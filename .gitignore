@@ -1,0 +1,6 @@
+# >>> swim >>>
+next[0-9]*.sh
+agent*.log
+.lane*.rc
+.swim/
+# <<< swim <<<

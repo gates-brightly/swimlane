@@ -1,0 +1,9 @@
+[1mswim · app · main@abc1234 · 1:12[0m
+[36m[1m swim 1  [0m[36m- running 1:12            [0m Cut over service X to Terraform[2m 3f2a9c1e[0m
+[35m[1m swim 2  [0m[33m- waiting on swim 1       [0m Diagnose Y
+[34m[1m swim 3  [0m[2m  idle                    [0m [2m-[0m
+[33m[1m swim 4  [0m[33m- waiting on swim 2, 3    [0m Remove old stack
+[32m[1m swim 5  [0m[32mPASS 1:00                 [0m Audit
+[91m[1m swim 6  [0m[31mFAIL exit 2 0:30          [0m Deploy
+[36m[1m swim 7  [0m[33mSKIP (swim 6 failed)      [0m Cleanup
+[2m────────────────────────────────────────────────────────────────────────────────[0m

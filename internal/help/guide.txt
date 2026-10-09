@@ -1,0 +1,247 @@
+swim — operator-in-the-loop automation
+
+  An AI session (the planner) and its subagents (workers) write operational
+  work as bash lane scripts. A human operator runs them with `swim run`, in
+  environments the session can't reach (VPN-only accounts, their own
+  credentials). Every step and result lands in a log the session reads back
+  to decide the next step.
+
+    The session writes. The operator runs. The log reports.
+
+  The planner never executes against the target itself.
+
+USAGE
+  swim <command> [flags] [args]
+  swim <command> --help        detail for one command
+  swim --help                  this guide (written for AI planners/workers)
+
+COMMANDS
+  init                     set up this repo: config entry, .gitignore block, .swim/status.yml
+  config [--path]          show effective config for this repo (or the config file path)
+  new N "<round goal>"     write lane.N.sh from the template, with a new job id
+  run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered
+  status [N|JOB] [--yaml]  last state of every lane (from .swim/status.yml)
+  step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
+  lib                      print the bash library lane scripts load
+  archive N|JOB [<what>]   rename agentN.log to agentN.prev-<what or job id>.log
+  stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
+
+  Wherever a command takes a lane number N it also takes a job id (JOB): the
+  full id or its first 8+ characters. See "job" below.
+  help [command]           this guide, or one command's detail
+
+CONCEPTS
+  lane        A numbered slot, swim 1..N (N from config). One script (lane.N.sh),
+              one log (agentN.log), owned by one worker at a time. Lanes are
+              always numbers; there are no named lanes.
+  round       One lane script's contents: a single goal ("cut over service X",
+              "diagnose Y"). Rewritten per round; disposable.
+  job         One round's unique id, written in the script header as
+              `# Job: <id>` by `swim new` (a UUID, or your own with --job).
+              It is recorded in the log, status.yml, the live view and the
+              summary, and exported to steps as $SWIM_JOB (tag resources with
+              it so gates can tell "ours" from "theirs"). Pin a command to a
+              job by passing the id instead of a lane number: `swim run 3f2a9c1e`
+              runs exactly that job, and refuses if no lane holds it any more
+              (the script was rewritten or stubbed). A script without a Job:
+              line gets an id when it starts, so it can't be pinned before then.
+  step        One command run through `swim step` (via run/gate/snapshot),
+              recorded with a header, its output and exit code.
+  gate        A step whose failure stops the round before any later step.
+  guard flag  An env var the operator sets to approve one destructive action,
+              e.g. FIN_ALLOW_DELETE_ZG_ITEMS=1. Unset means dry run.
+  dependency  "swim B starts after swim A succeeds", declared in config. If A
+              fails or is skipped, B is skipped.
+  stub        The placeholder a lane holds between rounds (`swim stub`).
+  archive     A finished log renamed agentN.prev-<what>.log (`swim archive`).
+              Logs are kept; rounds are not.
+
+FILES (repo root; all git-ignored by `swim init`)
+  lane.N.sh              lane N's script (the current round)
+  agentN.log            lane N's log, append-only, plain text (ANSI stripped)
+  agentN.prev-*.log     archived logs
+  .lane.N.rc             optional operator-local env sourced by lane_init
+  .swim/status.yml      last state of every lane (see READING RESULTS)
+  .swim/snapshots/      output saved by `snapshot` steps
+  .swim/laneN.pid       present while lane N runs
+  ~/.config/swim/config.yml   configuration (outside the repo; see CONFIG)
+
+PLANNER WORKFLOW
+  1. Look before writing. Run `swim status`. Confirm with the operator which
+     lanes are idle. Never write to a lane that is running or holds a pending
+     round someone else may be about to run.
+  2. Assign each worker one lane number. A worker writes only lane.N.sh.
+  3. Write the round: `swim new N "<goal>"`, then fill in the steps. Keep the
+     header (Round:, Goal, Steps, Guard flags) accurate: the operator reads
+     it without you.
+  4. Hand the operator the exact command, e.g. `swim run 1 3`, or pinned to
+     the jobs you wrote, e.g. `swim run 3f2a9c1e 7b4d4e2a`, so a lane rewritten
+     in the meantime is refused instead of run. Add any guard
+     flags they must set to approve destructive steps, e.g.
+     `FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2`. Explain what each flag approves.
+  5. After the run, read agentN.log and .swim/status.yml. Validate real
+     outcomes in the step output (resource ids, counts, plan says "No
+     changes"); a PASS line only means exit 0.
+  6. Record the results (with the job id) where your project tracks them,
+     then `swim archive N|JOB [<what-happened>]` and `swim stub N "<why idle>"`.
+  7. Out-of-scope findings go on a follow-up list, never into the round.
+  8. Dependencies live in config (outside the repo). To change ordering, give
+     the operator the exact YAML lines to add under this repo's `deps:`.
+
+WORKER RULES
+  - Write only your own lane.N.sh. Never edit shared files (registries, plan
+    docs, config, other lanes). Report the exact lines to the planner, who
+    applies them.
+  - Prefer new modules over changing shared ones while other lanes run. Any
+    change to a shared module must leave existing users unchanged.
+  - NEVER edit a lane script while it may be running. Bash reads scripts
+    incrementally; a mid-run edit corrupts the run. `swim status` shows
+    running lanes; `swim new`/`stub`/`archive` refuse to touch them.
+  - Use names (resources, tags, snapshot labels, archive names) that no other
+    session will reuse. $SWIM_JOB is unique per job; prefer it for tags.
+  - Keep the `# Job:` line from `swim new`. Don't copy a job id into another
+    script: ids must be unique, and pins rely on that.
+
+WRITING A LANE SCRIPT
+  Start from `swim new N "<goal>"`. The library functions:
+
+  lane_init N                     claim lane N: cd to repo root, STEP_LOG=agentN.log,
+                                  source .lane.N.rc, write round marker, mark running,
+                                  export SWIM_JOB (the script's job id).
+                                  Refuses if lane N is already running. Call it first.
+  run "<label>" cmd [args...]     one step; records PASS/FAIL <label>. A failure does
+                                  NOT stop the round (checks keep going).
+  gate "<label>" cmd [args...]    like run, but failure stops the round here (STOP).
+  snapshot "<label>" cmd [args]   read-only step whose output is also saved to
+                                  .swim/snapshots/laneN-<time>-<label>.txt.
+  guard FLAG "<action - date, reason>"
+                                  true only if the operator set FLAG=1; otherwise logs
+                                  SKIP with the approval hint and returns false.
+  confirm "<question>" [answer]   operator must type the answer (default "yes");
+                                  anything else, or no stdin, stops the round.
+  last_failed                     true if the previous step failed.
+  any_failed                      true if any step in this round failed.
+  drift "<what differs>"          record DRIFT (deployed state differs from code).
+  stop "<reason>"                 record STOP and end the round now.
+  summary                         print + log the summary, record final state.
+                                  Exits non-zero if any step failed. Put it last.
+
+  Rules for lane scripts:
+  - Do not use `set -e`. Failed checks keep going; only gates stop the round.
+  - run/gate/snapshot take argv, not a shell string. For pipes or redirects:
+      run "count items" bash -c 'aws dynamodb scan --table-name T --select COUNT | jq .Count'
+  - Load the pinned toolchain yourself (the template does it from config):
+    non-interactive shells don't load nvm/asdf/pyenv.
+  - Start every multi-step change with a read-only snapshot of current state.
+  - Put every destructive step behind its own guard flag AND after a gate:
+      gate "stack is ours (tag owner=swim-lane2)" bash -c '...exit 1 if not ours...'
+      if guard FIN_ALLOW_DELETE_ZG_ITEMS "delete zg items table (2026-10-09: migrated to tf)"; then
+        run "back up items" bash -c 'aws dynamodb scan ... > .swim/snapshots/zg-items.json'
+        run "delete items table" aws dynamodb delete-table --table-name zg-items
+      fi
+    List each flag in the lane script header with the date and reason.
+  - Make rounds rerunnable: gates must tell "ours" (tagged) from "theirs" so a
+    rerun doesn't trip on resources the previous run created. Steps should be
+    idempotent or detect their own prior success (VPNs drop).
+  - End with a verification step (e.g. "re-plan is a no-op") and any shared audit.
+  - Write the round's goal on the `# Round:` line: `swim run`, `swim status`
+    and the live view show it. A lane script without a Round: line is not run.
+
+  Example:
+      #!/usr/bin/env bash
+      # Round: Cut over orders-api from SST to Terraform
+      # Job:   3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
+      # Guard flags: ORDERS_ALLOW_SST_REMOVE - remove SST stack (2026-10-09: tf owns it)
+      _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+      lane_init 2
+      . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null || stop "toolchain failed"
+
+      snapshot "cfn template" aws cloudformation get-template --stack-name orders-prod
+      run  "tf plan" terraform -chdir=infra/orders plan -detailed-exitcode
+      gate "tf state has orders table" bash -c 'terraform -chdir=infra/orders state list | grep -q aws_dynamodb_table.orders'
+      gate "DeletionPolicy is Retain (deployed)" bash -c 'aws cloudformation get-template --stack-name orders-prod | grep -q Retain'
+      if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (2026-10-09: tf owns it)"; then
+        run "sst remove" npx sst remove --stage prod
+      fi
+      run "verify: re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
+      summary
+
+SAFETY RULES
+  - Snapshot before any change. Back up stateful data (e.g. table items)
+    before removal, and know how you would restore it.
+  - Read the DEPLOYED state (e.g. the CloudFormation template's
+    DeletionPolicy); never assume it from code.
+  - One guard flag per destructive or irreversible action, recorded in the
+    lane script header with date and reason. Never default a flag on.
+  - Prefer reversible operations (disable, unsubscribe, keep a saved copy)
+    over deletes when ownership is unclear.
+  - Probes must not cause side effects: no messages, emails, payments or
+    mutations. Use inputs rejected by validation, health routes, dry runs.
+  - Gates are fail-closed: an empty or unknown answer stops the round.
+  - Logs never contain secret values. Print keys or lengths only
+    (e.g. `bash -c 'echo ${#API_KEY}'`). Never list a secret in header_env.
+  - Rounds must be safe to rerun.
+
+READING RESULTS
+  Log grammar (agentN.log, append-only, plain text):
+      === ROUND START <utc> swim N job=<id>
+      Round: <goal>
+      === STEP <utc> <label>
+      $ <command, shell-quoted so it can be re-run>
+      cwd: <dir>   git: <branch>@<sha>   runtime: <version>   job: <id>
+      env: AWS_PROFILE=<p> STAGE=<s> ...
+      --- output
+      <command output, ANSI stripped>
+      --- exit <code> (<seconds>s)          or: --- interrupted (signal ...) exit <code> (...)
+      PASS  <label>                         or: FAIL  <label> (exit <code>)
+      SKIP  <label> (dry run: set FLAG=1 to approve)
+      APPROVED  <label> (FLAG=1)
+      DRIFT  <what>
+      STOP  <reason>
+      === SUMMARY <utc> swim N job=<id> pass=P fail=F skip=S drift=D exit=E duration=<s>s
+      failed: FAIL  <label> (exit <code>)
+      === END
+  Only lines outside "--- output" blocks are results. The current round is
+  everything after the last ROUND START.
+
+  .swim/status.yml (also `swim status`, `swim status --yaml`):
+      updated_at: <utc>
+      root: <repo root>
+      branch: <branch>@<sha>
+      lanes:
+        - lane: 1
+          state: running   # idle|waiting|running|passed|failed|skipped|interrupted
+          pending: <Round: line of lane.N.sh on disk, "" if stub/none>
+          pending_job: <Job: id of lane.N.sh on disk>
+          round: <round of the last or current run>
+          job: <job id of the last or current run>
+          script: lane.1.sh
+          log: agent1.log
+          waiting_on: []   # e.g. [2] while waiting on swim 2
+          reason: <why skipped, if skipped>
+          pid: <script pid while running>
+          started_at / finished_at: <utc or null>
+          duration_s: <seconds or null>
+          exit_code: <int or null>
+          pass / fail / skip / drift: <counts for the round>
+          current_step: <label of the step in progress or last run>
+          failed_steps: [<FAIL lines>]
+          last_archive: <last archived log name>
+  `swim status` shows "running?" when a lane's pid is gone (killed terminal);
+  treat that lane's round as interrupted.
+
+CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
+      defaults:
+        lanes: 4                         # lanes are swim 1..lanes
+        header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
+        runtime: node --version          # recorded as runtime version
+        toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
+      repos:
+        /path/to/repo:                   # git toplevel; overrides defaults field by field
+          lanes: 4
+          deps:                          # swim N starts after these succeed
+            2: [1]
+            4: [2]
+  Dependencies are resolved per run: a lane waits only on dependencies that
+  are part of the same `swim run`; a dependency not being run counts as
+  satisfied. Cycles and lanes outside 1..N are rejected.
