@@ -18,7 +18,9 @@ import (
 	// rerun them (instead of reusing a cached pass) when that code changes.
 	_ "github.com/gates-brightly/swimlane/internal/cli"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/timeline"
 	"github.com/gates-brightly/swimlane/internal/version"
+	"gopkg.in/yaml.v3"
 )
 
 var bin string
@@ -1459,4 +1461,94 @@ summary`)
 	log := r.log(1)
 	contains(t, "agent1.log", log, "masked: ", "GITHUB_TOKEN", "DD_KEY", "env: GITHUB_TOKEN=***(len 19)", "        | token=***", "  FAIL  fail with *** in the label", "reason mentions ***")
 	contains(t, ".swim.log", r.mustSwim("log"), "the token is ***")
+}
+
+func TestTimeline(t *testing.T) {
+	r := newRepo(t, "")
+	r.mustSwim("config", "--lanes", "6")
+	r.script(1, "root", `run "root work" sleep 0.3`)
+	r.script(2, "slow child", `stage check
+run "slow a" sleep 0.6
+run "slow b" sleep 0.2`)
+	r.script(3, "fast child", `run "fast" sleep 0.1`)
+	r.script(4, "join", `run "join" true`)
+	r.script(5, "fails", `run "nope" false`)
+	r.script(6, "after fails", `run "never" true`)
+	for n, after := range map[int]string{2: "1", 3: "1", 4: "2, 3", 6: "5"} {
+		withHeader(t, r, n, "# After: "+after)
+	}
+	if out, code := r.swim("all", "--plain"); code == 0 {
+		t.Fatalf("run should fail (lane 5):\n%s", out)
+	}
+	run := r.status().LastRun
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "runs", run+".yml")); err != nil {
+		t.Fatalf("no run record: %v", err)
+	}
+
+	var tl timeline.Timeline
+	if err := yaml.Unmarshal([]byte(r.mustSwim("timeline", "--yaml")), &tl); err != nil {
+		t.Fatal(err)
+	}
+	if tl.Schema != "swim.timeline/v1" || tl.Run != run || len(tl.Lanes) != 6 {
+		t.Fatalf("timeline: %+v", tl)
+	}
+	if got := fmt.Sprint(tl.Chain); got != "[1 2 4]" {
+		t.Errorf("longest chain = %s, want root -> slow child -> join", got)
+	}
+	if tl.ChainS < 1.0 || tl.ChainS > tl.Total || tl.Overhead < 0 {
+		t.Errorf("chain %.2fs, total %.2fs, overhead %.2fs", tl.ChainS, tl.Total, tl.Overhead)
+	}
+	lanes := map[int]timeline.Lane{}
+	for _, l := range tl.Lanes {
+		lanes[l.Lane] = l
+	}
+	for n, parents := range map[int][]int{2: {1}, 3: {1}, 4: {2, 3}} {
+		l := lanes[n]
+		if l.Delay == nil || *l.Delay < 0 || *l.Start < *lanes[parents[0]].End {
+			t.Errorf("swim %d started before its parents finished: %+v", n, l)
+		}
+		if l.DepWait <= 0 {
+			t.Errorf("swim %d should show a dependency wait: %+v", n, l)
+		}
+	}
+	if l := lanes[6]; l.State != status.Skipped || l.Start != nil || !strings.Contains(l.Reason, "swim 5") {
+		t.Errorf("swim 6 should be skipped, never started: %+v", l)
+	}
+	if l := lanes[2]; len(l.Steps) != 1 || l.Steps[0].Label != "stage check" || l.Steps[0].Dur < 0.7 {
+		t.Errorf("swim 2 staged steps: %+v", l.Steps)
+	}
+
+	text := r.mustSwim("timeline", "--steps")
+	contains(t, "timeline text", text, "run "+run, "longest chain: 1 → 2 → 4", "swim  6 |", "skipped: swim 5 failed", "stage check", "start delay after last parent")
+
+	// The lane's history, and the run by id, still work after archiving.
+	r.mustSwim("archive", "2", "slow")
+	if l := lanes[2]; true {
+		var again timeline.Timeline
+		yaml.Unmarshal([]byte(r.mustSwim("timeline", run[:len(run)-2], "--yaml")), &again)
+		for _, a := range again.Lanes {
+			if a.Lane == 2 && (len(a.Steps) != 1 || *a.Start != *l.Start) {
+				t.Errorf("after archive: %+v", a)
+			}
+		}
+	}
+	contains(t, "lane history", r.mustSwim("timeline", "2"), "swim 2 · 1 rounds", run)
+
+	html := filepath.Join(r.root, "tl.html")
+	r.mustSwim("timeline", "--html", html)
+	data, _ := os.ReadFile(html)
+	contains(t, "html", string(data), "<svg", "swim run "+run, "longest chain: 1 → 2 → 4")
+	if strings.Contains(string(data), "src=") || strings.Contains(string(data), "href=") {
+		t.Errorf("html should have no external assets")
+	}
+}
+
+func withHeader(t *testing.T, r *repo, n int, line string) {
+	t.Helper()
+	p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n"+line+"\n", 1)), 0o755)
 }

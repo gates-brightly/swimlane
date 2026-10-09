@@ -164,6 +164,9 @@ func TestParseV2(t *testing.T) {
 	if r.Stage != "change" || strings.Join(r.Declared, ",") != "snapshot,check,change" {
 		t.Fatalf("stage tracking: %q %v", r.Stage, r.Declared)
 	}
+	if res := r.Results[0]; res.Dur != 0.4 || res.Clock != "12:00:01" {
+		t.Fatalf("step timing: %+v", res)
+	}
 	if f := r.Failed(); len(f) != 2 || f[0].Label != "tf plan" || f[0].Stage != "check" {
 		t.Fatalf("failed: %+v", f)
 	}

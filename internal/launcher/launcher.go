@@ -23,6 +23,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/runrec"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -63,8 +64,13 @@ type Outcome struct {
 	State   string
 	Exit    int
 	Reason  string
+	Round   string
 	Blocked bool // refused before starting (blocked command)
 	Elapsed time.Duration
+	// When the lane's dependencies were met, its locks and slot taken, its
+	// process started and finished (zero when it never got that far). The
+	// run record (.swim/runs/) keeps them for swim timeline.
+	Ready, Locked, Slot, Start, End time.Time
 }
 
 // Select resolves which lanes to run and checks none is already running.
@@ -257,6 +263,9 @@ func Run(o Options) (int, error) {
 	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d  %s",
 		joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted], display.Elapsed(time.Since(start)))})
 	elapsed := time.Since(start)
+	if err := writeRunRecord(o, start, cap, sel, selected, deps, outcomes); err != nil {
+		fmt.Fprintln(o.Out, "swim: run record: "+err.Error())
+	}
 	printSummary(o.Out, o.Root, sel, outcomes, elapsed, disp.Color())
 	if o.Finished != nil {
 		mu.Lock()
@@ -270,6 +279,14 @@ func Run(o Options) (int, error) {
 func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl *slots, lt *lockTable, disp *display.Display,
 	done map[int]chan struct{}, outcomes map[int]*Outcome, mu *sync.Mutex, interrupted *bool, procs map[int]*os.Process) *Outcome {
 
+	var ready, locked, slotted time.Time
+	stamp := func(oc *Outcome) *Outcome {
+		oc.Ready, oc.Locked, oc.Slot = ready, locked, slotted
+		if oc.End.IsZero() {
+			oc.End = time.Now()
+		}
+		return oc
+	}
 	skip := func(reason string) *Outcome {
 		disp.Set(n, func(v *display.LaneView) { v.State, v.Reason, v.WaitingOn = display.Skipped, reason, nil })
 		info, _ := lane.ReadScript(o.Root, n)
@@ -282,7 +299,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			l.FinishedAt = status.Str(status.Now())
 		})
 		history.Log(o.Root, history.Entry{Event: history.Skip, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
-		return &Outcome{N: n, Job: info.Job, State: status.Skipped, Exit: -1, Reason: reason}
+		return stamp(&Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Skipped, Exit: -1, Reason: reason})
 	}
 	// Dependencies outside this run must already be satisfied (see
 	// outsideBlocker); those inside it are waited for.
@@ -314,6 +331,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 		waitOn = waitOn[1:]
 	}
+	ready = time.Now()
 	mu.Lock()
 	stop := *interrupted
 	mu.Unlock()
@@ -356,6 +374,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			return skip("interrupted before start")
 		}
 		defer fileLocks.Release()
+		locked = time.Now()
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = append([]string(nil), info.Locks...) })
 		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
 	}
@@ -376,6 +395,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		return skip("interrupted before start")
 	}
 	defer sl.release()
+	slotted = time.Now()
 
 	cmd := exec.Command("bash", lane.Script(o.Root, n))
 	cmd.Dir = o.Root
@@ -407,8 +427,8 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	if err := cmd.Start(); err != nil {
 		disp.Line(n, "swim: cannot start lane script: "+err.Error())
 		oc := finish(o, n, disp, launched, launchedTS, 127)
-		oc.Job = info.Job
-		return oc
+		oc.Job, oc.Round, oc.Start = info.Job, info.Round, launched
+		return stamp(oc)
 	}
 	mu.Lock()
 	procs[n] = cmd.Process
@@ -431,9 +451,10 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			code = 1
 		}
 	}
+	end := time.Now()
 	oc := finish(o, n, disp, launched, launchedTS, code)
-	oc.Job = info.Job
-	return oc
+	oc.Job, oc.Round, oc.Start, oc.End = info.Job, info.Round, launched, end
+	return stamp(oc)
 }
 
 func finish(o Options, n int, disp *display.Display, started time.Time, startedTS string, code int) *Outcome {
@@ -578,4 +599,34 @@ func joinInts(ns []int, sep ...string) string {
 		s = sep[0]
 	}
 	return strings.Join(parts, s)
+}
+
+// writeRunRecord saves when each lane became ready, started and finished,
+// and the dependencies this run resolved, so swim timeline can draw any past
+// run even after its scripts change.
+func writeRunRecord(o Options, start time.Time, cap int, sel []int, selected map[int]bool, deps map[int][]Dep, outcomes map[int]*Outcome) error {
+	r := &runrec.Run{Run: o.RunID, Started: start.UTC(), Finished: time.Now().UTC(), MaxParallel: cap}
+	for _, n := range sel {
+		oc := outcomes[n]
+		l := runrec.Lane{Lane: n, Job: oc.Job, Round: oc.Round, State: oc.State, Reason: oc.Reason, After: []int{}}
+		for _, d := range deps[n] {
+			if selected[d.Lane] {
+				l.After = append(l.After, d.Lane)
+			}
+		}
+		if info, err := lane.ReadScript(o.Root, n); err == nil {
+			l.Locks = info.Locks
+		}
+		if oc.Exit >= 0 {
+			e := oc.Exit
+			l.Exit = &e
+		}
+		l.Ready = runrec.Since(start, oc.Ready)
+		l.Locked = runrec.Since(start, oc.Locked)
+		l.Slot = runrec.Since(start, oc.Slot)
+		l.Start = runrec.Since(start, oc.Start)
+		l.End = runrec.Since(start, oc.End)
+		r.Lanes = append(r.Lanes, l)
+	}
+	return runrec.Write(o.Root, r)
 }

@@ -139,8 +139,10 @@ type Result struct {
 	Kind   string
 	Label  string
 	Detail string
-	Stage  string // stage it ran in (setup before any stage line)
-	Step   bool   // a step result (has a duration), not a mark
+	Stage  string  // stage it ran in (setup before any stage line)
+	Step   bool    // a step result (has a duration), not a mark
+	Dur    float64 // a step's duration in seconds (syntax 2; 0 if unknown)
+	Clock  string  // a step's start time, hh:mm:ss local (syntax 2)
 }
 
 // Text renders the result as text, e.g. "FAIL  tf plan (exit 2)".
@@ -344,7 +346,8 @@ func parseV2(rd io.Reader) (*Round, error) {
 			res := Result{Kind: m[1], Stage: cur.Stage}
 			rest := m[2]
 			if t := timedRE.FindStringSubmatch(rest); t != nil {
-				res.Step, rest = true, t[1]
+				res.Step, rest, res.Clock = true, t[1], t[3]
+				res.Dur, _ = strconv.ParseFloat(strings.TrimSuffix(t[2], "s"), 64)
 			}
 			res.Label, res.Detail = splitLabel(rest)
 			if strings.Contains(res.Detail, "interrupted") {

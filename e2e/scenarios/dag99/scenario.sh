@@ -21,6 +21,11 @@ scenario_check() {
   expect_match "roots started together" "$audit" '^roots in this run \[1, 8, 20, 21, 22\]: .* ok$'
   expect_match "lane 1 recorded its stages" "$("$SWIM" log 1 --raw | grep '^   stages:' | tail -1)" 'check PASS \| change PASS \| verify PASS'
   expect_match "audit lane recorded its stages" "$("$SWIM" log 99 --raw | grep '^   stages:' | tail -1)" 'check PASS \| change none \| verify PASS'
+  local tl
+  printf '%s\n' "$audit" >audit.out
+  tl=$("$SWIM" timeline --yaml | e2etool timeline-check 99 audit.out 2>&1)
+  expect_eq "timeline agrees with the run and the audit" "$?" 0
+  info "$tl"
   printf '%s\n' "$audit" | grep -E '^(scheduler latency|makespan)' | while IFS= read -r l; do info "$l"; done
   checks_passed
 }

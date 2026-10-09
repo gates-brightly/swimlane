@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
@@ -56,5 +57,5 @@ func refuseBlocked(o Options, n int, reason string, disp *display.Display) *Outc
 		l.FinishedAt = status.Str(status.Now())
 	})
 	history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
-	return &Outcome{N: n, Job: info.Job, State: status.Failed, Exit: policy.ExitBlocked, Reason: reason, Blocked: true}
+	return &Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Failed, Exit: policy.ExitBlocked, Reason: reason, Blocked: true, End: time.Now()}
 }

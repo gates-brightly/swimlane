@@ -202,6 +202,29 @@ var Commands = map[string]string{
   --lane N|JOB   tie the note to a lane (and its job id)
   Keep notes short and factual; never include secret values.
 `,
+	"timeline": `swim timeline [RUN|N|JOB] [--top N] [--all] [--steps] [--yaml] [--html FILE]
+
+  Draw when each lane of a run waited, ran and finished. No argument: the
+  last run; RUN: that run id (or its start, e.g. r-20261009T14). Every run
+  is recorded in .swim/runs/RUN.yml when it ends, with the dependencies it
+  resolved, so a later edit to a script never changes an old timeline.
+      swim  2 |░░░░██████████    | 0.55 → 2.05    after 1      ◆
+  Bars: █ running, ░ waiting on dependencies, ▒ queued for a slot
+  (max_parallel), ▓ waiting for a lock. Failed lanes are red, skipped ones
+  dim, lanes on the longest chain marked ◆. Below: the longest chain (the
+  dependency path with the most running time; overhead = the run's time
+  minus it), the start delay after each lane's last parent (median, p95,
+  max), and the share of lane-time spent waiting.
+    --top N    the N slowest lanes plus the longest chain (runs of more than
+               30 lanes show 20 unless --all)
+    --steps    a row per step under each lane (per stage, for rounds that use
+               stage), laid out by duration from the lane's start; found in
+               the current and archived logs by run id
+    --yaml     the data (schema swim.timeline/v1): per-lane ready/start/end,
+               waits, start delay, steps, the longest chain and its totals
+    --html F   a self-contained HTML Gantt chart (inline SVG), for sharing
+  N or JOB: that lane's (or job's) rounds across recorded runs, one bar each.
+`,
 	"log": `swim log [N|JOB] [--all] [--full] [--raw]
 
   Print logs:
@@ -270,7 +293,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 func Full() string {
 	s := Guide + "\nCOMMAND DETAIL\n"
-	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "step", "lib", "archive", "stub", "note", "lock"} {
+	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib", "archive", "stub", "note", "lock"} {
 		s += "\n" + Commands[order]
 	}
 	return s

@@ -27,6 +27,8 @@ COMMANDS
   status [N|JOB] [--yaml] [--run RUN]   last state of every lane, or as of one run
   log [N|JOB] [--all]      print a lane's log (--all: with its archives), a job's
                            rounds, or with no argument the project log .swim.log
+  timeline [RUN|N|JOB]     when each lane of the last run (or RUN) waited, ran and finished,
+                           and the longest dependency chain; N/JOB: its rounds across runs
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
   lib                      print the bash library lane scripts load
   archive N|JOB [<what>]   archive lane N's log as .swim/logs/agentN.prev-<what or job id>.log
@@ -102,6 +104,8 @@ FILES (repo root)
                                 stripped); read it with `swim log N`
   .swim/logs/agentN.prev-*.log  archived logs (`swim log N --all`)
   .swim/snapshots/      output saved by `snapshot` steps
+  .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,
+                        locked, started and finished (`swim timeline`)
   .swim/laneN.pid       present while lane N runs
   ~/.config/swim/config.yml   configuration (outside the repo; see CONFIG)
 
@@ -128,7 +132,9 @@ PLANNER WORKFLOW
   5. After the run, read the log (`swim log N`, or `swim log <job>`) and
      .swim/status.yml. Validate real
      outcomes in the step output (resource ids, counts, plan says "No
-     changes"); a PASS line only means exit 0.
+     changes"); a PASS line only means exit 0. If the run was slow,
+     `swim timeline` shows which lane held it up (the longest chain) and
+     whether the time went to work, dependencies, slots or locks.
   6. Record the results (with the job id) where your project tracks them,
      then `swim archive N|JOB [<what-happened>]` and `swim stub N "<why idle>"`.
   7. Out-of-scope findings go on a follow-up list, never into the round.

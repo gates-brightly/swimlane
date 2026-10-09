@@ -13,6 +13,7 @@
 //	e2etool edges                     number of # After: edges
 //	e2etool gen SCENARIO_DIR          write dag99 lanes 10..99 into the cwd
 //	e2etool lock-lanes                add # Locks: (from a pool of five) to lanes 10..98
+//	e2etool timeline-check LANES FILE check `swim timeline --yaml` (stdin) against the run and the audit in FILE
 //	e2etool aggregate|markdown|stats|stats-pages|report|links|wordfreq|reconcile|domains|headers
 //	                                  dag99 lanes 1-9's work (see each lane script)
 //
@@ -29,25 +30,26 @@ import (
 )
 
 var commands = map[string]func(args []string) error{
-	"version":       func([]string) error { fmt.Println("e2etool (swim e2e helper)"); return nil },
-	"now":           cmdNow,
-	"parents-check": cmdParentsCheck,
-	"node-value":    cmdNodeValue,
-	"audit":         cmdAudit,
-	"descendants":   cmdDescendants,
-	"edges":         cmdEdges,
-	"gen":           cmdGen,
-	"lock-lanes":    cmdLockLanes,
-	"aggregate":     cmdAggregate,
-	"markdown":      cmdMarkdown,
-	"stats":         cmdStats,
-	"stats-pages":   cmdStatsPages,
-	"report":        cmdReport,
-	"links":         cmdLinks,
-	"wordfreq":      cmdWordfreq,
-	"reconcile":     cmdReconcile,
-	"domains":       cmdDomains,
-	"headers":       cmdHeaders,
+	"version":        func([]string) error { fmt.Println("e2etool (swim e2e helper)"); return nil },
+	"now":            cmdNow,
+	"parents-check":  cmdParentsCheck,
+	"node-value":     cmdNodeValue,
+	"audit":          cmdAudit,
+	"descendants":    cmdDescendants,
+	"edges":          cmdEdges,
+	"gen":            cmdGen,
+	"lock-lanes":     cmdLockLanes,
+	"timeline-check": cmdTimelineCheck,
+	"aggregate":      cmdAggregate,
+	"markdown":       cmdMarkdown,
+	"stats":          cmdStats,
+	"stats-pages":    cmdStatsPages,
+	"report":         cmdReport,
+	"links":          cmdLinks,
+	"wordfreq":       cmdWordfreq,
+	"reconcile":      cmdReconcile,
+	"domains":        cmdDomains,
+	"headers":        cmdHeaders,
 }
 
 // exitCode lets a command fail without printing an error line (its own

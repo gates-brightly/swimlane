@@ -1,6 +1,6 @@
 # swim timeline
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -91,6 +91,41 @@ work?
    per-lane view?
 3. **Should the TUI ([tui.md](tui.md)) show this live**, as a third view?
    Probably later, once both exist.
+
+## Decisions
+
+1. **Archived logs:** yes. `--steps` (and `--yaml`/`--html`) find each
+   lane's round by run id in its current log and in every archived
+   `agentN.prev-*.log`.
+2. **Wide `--steps`:** no vertical view. Steps are drawn as indented rows
+   under each lane, on the same time axis, laid back to back from the lane's
+   start by duration (log clocks have only one-second precision). A round
+   that uses `stage` gets one row per stage.
+3. **Live view in the TUI:** later, once [tui.md](tui.md) exists.
+4. **Where the data comes from:** a run record, `.swim/runs/<run>.yml`, not
+   `.swim.log` events and log timestamps. Both of those have one-second
+   precision, which is too coarse for sub-second lanes. The launcher already
+   knows when each lane became ready, took its locks and slot, started and
+   finished, so it writes those times (in milliseconds from the run's start),
+   the dependencies it resolved inside the run, and each lane's state and
+   reason when the run ends. This is the only new instrumentation. Runs from
+   before this version have no record, and `swim timeline` says so.
+5. **Overhead** is the run's wall time (launcher start to end) minus the
+   longest chain, so it includes swim's own start-up and the gaps between
+   lanes. The start delay is measured from the last parent's process end to
+   the child's process start.
+6. **dag99:** the audit keeps its own calculation. It runs inside lane 99,
+   before the run (and its record) has ended, so it can't call
+   `swim timeline`. Instead the scenario checks, after the run, that
+   `swim timeline --yaml` agrees with the run and with the audit, using
+   `e2etool timeline-check`: every lane started after its parents finished,
+   the longest chain is a real dependency path whose durations add up, and
+   the audit's critical path (timed inside the lanes) fits within swim's
+   (timed around them).
+7. **`--top`:** a run of more than 30 lanes shows the 20 slowest plus the
+   longest chain, unless `--all` is given.
+8. **A lane or job** shows its rounds across recorded runs, one bar each,
+   with each bar starting at its run's start. `--html` needs a single run.
 
 ## Testing
 
