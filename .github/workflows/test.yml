@@ -55,6 +55,7 @@ jobs:
             .swim.log
             swim.xml
           if-no-files-found: ignore
+          include-hidden-files: true   # .swim/ and .swim.log start with a dot
 
       - name: Keep scenario repos on failure
         if: failure()
