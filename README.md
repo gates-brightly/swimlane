@@ -252,6 +252,7 @@ stops swim with instructions to update it.
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
 | `swim config [KEY [VALUE]] [--repo]` | Show the effective config (`--path`: its location), or get/set `chime`, `chime_style`, `chime_min_s` or `lanes` (`--lanes N` still works), keeping the file's comments. Writes go under `defaults:`, or this repo's section with `--repo`. |
+| `swim ci [N\|JOB ...] [--changed[=BASE]] [--junit FILE]` | Run rounds in a CI job: grouped per lane, failures as annotations, a job summary and JUnit; `--changed` runs only the rounds a push or merge request changed. |
 | `swim interrupt N\|JOB` | Ask one running lane to stop at its next step boundary (what the first Ctrl-C does to every lane). |
 | `swim lint [N\|JOB ...] [--strict] [--yaml]` | Check lane scripts (header, `set -e`, `lane_init`, `summary`, stages, bash 3.2, guards, blocked commands, secrets, dependencies); exits 1 on errors (`--strict`: warnings too). `swim run` refuses to start on `set -e` and `lane_init` errors. |
 | `swim doctor [--fix] [--strict] [--yaml]` | Check the environment: binary OS/CPU, PATH, config, `.gitignore` block, tracked lane scripts, stale pid files, toolchain, git, `.swim.lock`. `--fix` only rewrites swim's `.gitignore` block and removes stale pid files. |
@@ -367,6 +368,55 @@ repos:
 ```
 
 ---
+
+## Running in CI
+
+`swim ci` is `swim all` for a CI job. It never prompts, and lanes get no
+stdin. Each lane's log goes in a foldable section, failures and drift become
+annotations, and it writes a job summary and an optional JUnit report. It
+detects GitHub Actions and GitLab CI, and falls back to generic output.
+
+- **Committed settings:** commit a `swim.yml` at the repo root. It takes the
+  same keys as a `repos:` entry in your config, and is how a runner with no
+  `~/.config/swim` gets `lanes`, `deps`, `max_parallel` and so on.
+- **Committed rounds:** commit the lane scripts the job runs, with
+  `git add -f lane.N.sh`, or by dropping `lane.[0-9]*.sh` from swim's
+  `.gitignore` block.
+- **Only what changed:** `--changed` runs just the rounds whose `lane.N.sh` a
+  push or merge request changed, plus any unpassed lanes they wait on.
+- **Results stay on the runner:** swim never commits or pushes them. Upload
+  them as artifacts instead.
+
+```yaml
+# .github/workflows/swim.yml
+jobs:
+  swim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }          # --changed needs the history
+      - run: go install github.com/gates-brightly/swimlane/cmd/swim@latest
+      - run: swim ci --changed --junit swim.xml
+        env:
+          FIN_ALLOW_DELETE_ZG_ITEMS: ${{ secrets.FIN_ALLOW_DELETE_ZG_ITEMS }}   # guard flags come from the job
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: swim, path: ".swim/logs\n.swim/snapshots\n.swim.log\nswim.xml" }
+```
+
+```yaml
+# .gitlab-ci.yml
+swim:
+  variables: { GIT_DEPTH: 0 }
+  script: [swim ci --changed --junit swim.xml]
+  artifacts:
+    when: always
+    paths: [.swim/logs, .swim/snapshots, .swim.log]
+    reports: { junit: swim.xml }
+```
+
+`e2e/ci-demo/` holds small demo rounds that this repo's own workflow runs
+through `swim ci`.
 
 ## Safety
 

@@ -55,6 +55,15 @@ type Options struct {
 	// Interrupt overrides config interrupt for this run: graceful or
 	// immediate (swim run --interrupt).
 	Interrupt string
+	// Pins holds the job each lane must still hold when it starts (lanes
+	// named by job id, and every lane swim ci selects): a lane script
+	// rewritten in the meantime is skipped, not run.
+	Pins map[int]string
+	// Heartbeat, if set, prints "[N] still running: <step> (<elapsed>)"
+	// for a running lane silent this long, so a CI log never looks hung.
+	Heartbeat time.Duration
+
+	beat *heartbeat
 
 	// Interactive allows the interactive view (keys pick a lane's log) when
 	// more than one lane runs on a terminal; the view then reads Stdin.
@@ -143,6 +152,7 @@ func Run(o Options) (int, error) {
 		return 2, err
 	}
 	o.ev = newEvents(o.YAML, o.YAMLOutput)
+	o.beat = &heartbeat{last: map[int]time.Time{}, started: map[int]time.Time{}}
 	if o.RunID == "" {
 		o.RunID = lane.NewRunID()
 	}
@@ -268,6 +278,10 @@ func Run(o Options) (int, error) {
 	o.ev.emit(Event{Event: "run", Run: o.RunID, Lanes: sel, MaxParallel: cap, At: now()})
 	disp.Start()
 	defer disp.Restore()
+	if o.Heartbeat > 0 {
+		stopBeat := o.beat.run(o, disp)
+		defer stopBeat()
+	}
 
 	var wg sync.WaitGroup
 	for _, n := range sel {
@@ -417,6 +431,13 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
 	}
 
+	// A lane named by job id runs only if its script still holds that job.
+	if pin := o.Pins[n]; pin != "" {
+		if now, _ := lane.ReadScript(o.Root, n); !lane.MatchJob(now.Job, pin) {
+			return skip(fmt.Sprintf("lane.%d.sh was rewritten: it holds job %s, not the pinned %s", n, or(lane.ShortJob(now.Job), "none"), lane.ShortJob(pin)))
+		}
+	}
+
 	// Wait for a free slot (max_parallel); queued lanes don't hold one.
 	loggedQueue := false
 	if !sl.acquire(n, func(ahead int) {
@@ -462,6 +483,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	cmd.ExtraFiles = fileLocks
 	mk := o.Cfg.Masker(os.Environ())
 	w := &lineWriter{emit: func(s string) {
+		o.beat.saw(n)
 		s = mk.String(s)
 		disp.Line(n, s)
 		if o.ev.wantsOutput() {
@@ -483,8 +505,10 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	}
 	o.ev.emit(Event{Event: "start", Lane: n, Job: info.Job, Round: info.Round, At: launchedTS})
 	ir.add(n, &laneProc{proc: cmd.Process, group: ownGroup, started: launched})
+	o.beat.begin(n, launched)
 	err := cmd.Wait()
 	w.Flush()
+	o.beat.end(n)
 	ir.remove(n)
 
 	code := 0

@@ -191,6 +191,7 @@ func showConfig() error {
 		"config_file":  cfg.Path,
 		"repo":         cfg.Root,
 		"repo_section": cfg.HasRepo,
+		"repo_file":    cfg.RepoFile,
 		"effective":    cfg.Settings,
 	})
 	fmt.Print(string(out))
@@ -372,12 +373,16 @@ func runLanes(rest []string, rf runFlags) error {
 		}
 	}
 	var lanes []int
+	pins := map[int]string{}
 	for _, a := range rest {
 		n, err := laneRef(root, cfg, a, false)
 		if err != nil {
 			return err
 		}
 		lanes = append(lanes, n)
+		if _, err := strconv.Atoi(a); err != nil {
+			pins[n] = a // named by job id: must still hold it when it starts
+		}
 	}
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
@@ -392,6 +397,7 @@ func runLanes(rest []string, rf runFlags) error {
 		Finished:    chimeWhenDone(cfg, rf),
 		Interactive: !rf.noTUI && display.TUIAllowed(os.Getenv),
 		Interrupt:   rf.interrupt,
+		Pins:        pins,
 	}
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput

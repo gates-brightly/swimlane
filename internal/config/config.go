@@ -6,10 +6,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,6 +57,13 @@ type Config struct {
 	Path    string // config.yml location
 	Root    string // repo root the settings apply to
 	HasRepo bool   // a repos entry exists for Root
+	// RepoFile is the repo's committed swim.yml, if it has one ("" if not).
+	// Its settings apply on top of defaults and under the repos entry, so a
+	// CI runner with no config of its own gets them.
+	RepoFile string
+	// RepoLanes reports whether lanes was set explicitly (repos entry or
+	// swim.yml), not defaulted.
+	RepoLanes bool
 	Settings
 }
 
@@ -101,18 +110,56 @@ func Load(root string) (*Config, error) {
 		return nil, err
 	}
 	c.Settings = f.Defaults
+	if s, path, err := readRepoFile(root); err != nil {
+		return nil, err
+	} else if path != "" {
+		c.RepoFile = path
+		c.RepoLanes = s.Lanes != 0
+		c.merge(s)
+	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
 		c.HasRepo = true
+		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
 		c.merge(repo)
 	}
 	if c.Lanes == 0 {
 		c.Lanes = DefaultLanes
+	}
+	// swim ci on a runner with no lanes setting counts the lane scripts and
+	// passes that on to the lanes it starts (their swim hooks load config
+	// again).
+	if v := os.Getenv("SWIM_LANES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > c.Lanes {
+			c.Lanes = n
+		}
 	}
 	c.fillChimeDefaults()
 	if err := c.Validate(); err != nil {
 		return nil, fmt.Errorf("%s (repo %s): %w", c.Path, root, err)
 	}
 	return c, nil
+}
+
+// RepoFileName is the committed per-repo settings file at the repo root.
+const RepoFileName = "swim.yml"
+
+// readRepoFile reads root's swim.yml: the same keys as a repos entry.
+func readRepoFile(root string) (Settings, string, error) {
+	var s Settings
+	path := filepath.Join(root, RepoFileName)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) || root == "" {
+		return s, "", nil
+	}
+	if err != nil {
+		return s, "", err
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&s); err != nil && !errors.Is(err, io.EOF) {
+		return s, "", fmt.Errorf("parse %s: %w", path, err)
+	}
+	return s, path, nil
 }
 
 func readFile(path string) (*File, error) {

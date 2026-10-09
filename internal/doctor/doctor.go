@@ -359,7 +359,10 @@ func checkGitignore(o *Options) []finding.Finding {
 		"swim's block is out of date (%s)", strings.Join(why, "; "))}
 }
 
-var trackedRE = regexp.MustCompile(`^(lane\.[0-9]+\.sh|\.lane.*\.rc|\.swim/.*)$`)
+var (
+	trackedRE  = regexp.MustCompile(`^(lane\.[0-9]+\.sh|\.lane.*\.rc|\.swim/.*)$`)
+	laneFileRE = regexp.MustCompile(`^lane\.[0-9]+\.sh$`)
+)
 
 func checkTracked(o *Options) []finding.Finding {
 	cmd := exec.Command("git", "ls-files", "--", "lane.*.sh", ".lane*.rc", ".swim")
@@ -368,9 +371,12 @@ func checkTracked(o *Options) []finding.Finding {
 	if err != nil {
 		return nil // checkGit reports a missing git or repo
 	}
+	// A repo with a committed swim.yml runs committed rounds in CI
+	// (swim ci): tracked lane scripts are intended there; swim state isn't.
+	ciRepo := o.Cfg != nil && o.Cfg.RepoFile != ""
 	var files []string
 	for _, l := range lines(string(out)) {
-		if trackedRE.MatchString(l) {
+		if trackedRE.MatchString(l) && !(ciRepo && laneFileRE.MatchString(l)) {
 			files = append(files, l)
 		}
 	}

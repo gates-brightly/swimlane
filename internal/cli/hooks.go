@@ -150,6 +150,10 @@ func cmdStart(args []string) error {
 		{K: "guards", V: or(strings.Join(info.GuardFlags(), " "), "-")},
 		{K: "git", V: ref},
 	}
+	commit := os.Getenv("SWIM_COMMIT") // set by swim ci
+	if commit != "" {
+		ctx = append(ctx, logparse.KV{K: "commit", V: commit})
+	}
 	if cfg.Runtime != "" {
 		ctx = append(ctx, logparse.KV{K: "runtime", V: step.RuntimeVersion(cfg.Runtime)})
 	}
@@ -193,6 +197,7 @@ func cmdStart(args []string) error {
 		l.Round = info.Round
 		l.Job = job
 		l.Run = run
+		l.Commit = commit
 		l.Pending, l.PendingJob = info.Round, info.Job
 		l.PID = pid
 		l.StartedAt = status.Str(ts)

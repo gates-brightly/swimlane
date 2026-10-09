@@ -37,6 +37,7 @@ COMMANDS
   lock [--upgrade]         show swim's version and the repo's .swim.lock; move it up
   changelog [-n N] [--since VERSION] [--all]   what changed in swim (newest revision first)
   interrupt N|JOB          ask one running lane to stop at its next step boundary
+  ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
   doctor [--fix]           check the environment: binary platform, PATH, config, .gitignore,
@@ -513,6 +514,11 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
           deps:                          # swim N starts after these succeed
             2: [1]
             4: [2]
+  A repo may commit swim.yml at its root: the same keys as a repos entry
+  (lanes, deps, max_parallel, blocked_commands, secret_env, header_env, ...).
+  It applies on top of defaults and under the operator's repos entry, so CI
+  runners (no config of their own) and every operator share it. Unknown keys
+  are an error. `swim config` shows it as repo_file.
   A lane's dependencies are config `deps` plus its script's `# After:` line.
   Dependencies in the same `swim run` are waited for. A dependency outside
   the run must already be satisfied, otherwise the lane is skipped:

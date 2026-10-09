@@ -327,3 +327,27 @@ func TestSetKeyRejectsBadKeysAndValues(t *testing.T) {
 		t.Errorf("rejected writes changed the file:\n%s", after)
 	}
 }
+
+func TestRepoFile(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("lanes: 7\nmax_parallel: 3\nblocked_commands: [terraform destroy]\n"), 0o644)
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Lanes != 7 || c.Parallel() != 3 || !c.RepoLanes || c.RepoFile == "" {
+		t.Fatalf("swim.yml not applied: %+v", c)
+	}
+	// The operator's repos entry wins over swim.yml.
+	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
+	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  lanes: 4\nrepos:\n  "+root+":\n    max_parallel: 5\n"), 0o644)
+	if c, _ = Load(root); c.Lanes != 7 || c.Parallel() != 5 {
+		t.Fatalf("precedence: lanes %d parallel %d", c.Lanes, c.Parallel())
+	}
+	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("lanse: 3\n"), 0o644)
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "swim.yml") {
+		t.Fatalf("unknown key should be an error naming swim.yml: %v", err)
+	}
+}

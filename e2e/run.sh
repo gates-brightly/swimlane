@@ -85,7 +85,11 @@ for s in $selected; do
     "$SWIM" config --lanes "$LANES" >/dev/null || exit 1
     scenario_setup || { echo "  setup failed"; exit 1; }
     scenario_run
-    echo "  swim run exit $RUN_EXIT: $(lane_results | awk '{c[$2]++} END {printf "%d pass, %d fail, %d skip", c["PASS"], c["FAIL"], c["SKIP"]}')"
+    if [ -f "$OUT/run.yml" ]; then
+      echo "  swim run exit $RUN_EXIT: $(lane_results | awk '{c[$2]++} END {printf "%d pass, %d fail, %d skip", c["PASS"], c["FAIL"], c["SKIP"]}')"
+    else
+      echo "  swim exit $RUN_EXIT"
+    fi
     scenario_check
   )
   rc=$?

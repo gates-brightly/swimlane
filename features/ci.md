@@ -1,6 +1,6 @@
 # swim ci
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -184,6 +184,63 @@ CI works, using generic output, so it can be tried locally.
 6. **Sharding.** Should one large DAG split across several CI jobs
    (`--shard 2/4`, so lanes N where N mod 4 == 1)? That needs cross-job
    dependencies, so probably later.
+
+## Decisions
+
+1. **Where CI rounds live:** the usual `lane.N.sh` at the repo root,
+   committed with `git add -f` (or by dropping `lane.[0-9]*.sh` from swim's
+   `.gitignore` block). A `lanes_dir` would break `lane_init`, which finds
+   the repo root from the script's own directory, and every tool that reads
+   `lane.N.sh`. `swim doctor` no longer warns about tracked lane scripts in a
+   repo with a committed `swim.yml` (it still warns about tracked `.swim/`
+   state).
+2. **Config on a fresh runner:** a committed `swim.yml` at the repo root.
+   It takes the same keys as a `repos:` entry and applies on top of the
+   defaults and under the operator's own repos entry. So operators share it
+   too, and unknown keys are an error. If no lanes setting exists anywhere
+   (no `swim.yml` lanes and no repos entry), `swim ci` sets the lane count
+   from the highest lane script, and passes it to the lanes' own hooks as
+   `SWIM_LANES`. Otherwise a script past the configured lanes fails with the
+   exact fix, and exit 2.
+3. **"Already passed" across runners:** it lives in `.swim/status.yml`. A
+   fresh runner reruns every pending round unless `--changed` narrows the
+   run, or the job restores `.swim/` from a cache. Reading `.swim.log` for
+   passes at ancestor commits isn't built.
+4. **Results stay on the runner:** swim never commits or pushes. The docs
+   show `upload-artifact` and GitLab `artifacts:` snippets, and `swim ci`
+   prints the paths to upload.
+5. **Colour:** off. `swim ci` uses plain output, which every CI log viewer
+   renders and which keeps the annotations exact.
+6. **Sharding:** later.
+7. **Verbose stream:** no `SWIM_VERBOSE`. `swim step` already writes the step
+   header (`==> label`, `$ command`) and the result line to the terminal, and
+   plain mode relays them prefixed `[N]`.
+8. **Commit tagging:** `swim ci` exports `SWIM_COMMIT` (HEAD). The commit
+   goes in four places, all of them additive, so neither the log grammar nor
+   the `.swim.log` field positions change:
+   - the round's context line, as `commit: <sha>` (not the `== ROUND` line,
+     whose grammar would change)
+   - `status.yml`, as `commit:`
+   - the end of the details of the `run`, `run-done`, `start` and
+     `pass`/`fail`/`interrupted` events in `.swim.log`, as `commit=<sha>`
+9. **Pinning:** `swim ci` fixes each selected lane's job id up front, and the
+   launcher skips a lane whose script holds a different job when it starts.
+   This pin (`launcher.Options.Pins`) now also applies to `swim run <job>`.
+10. **`--changed`:** uses `git diff --name-only` (BASE with HEAD, or
+    `BASE...HEAD` for a pull request's merge base), in line with "swim only
+    reads git". It adds the changed lanes' unpassed dependencies
+    transitively. Lanes named by `--changed` run even if their job passed
+    before, because the script changed.
+11. **Heartbeat:** `--heartbeat D` (default 60s; 0 turns it off). A lane's
+    output resets its clock.
+12. **Interruptions:** handled by
+    [graceful-interrupt.md](graceful-interrupt.md). SIGTERM (a CI cancel)
+    stops lanes at step boundaries and forces after `term_grace`. Set
+    `term_grace` in `swim.yml` below the runner's own kill timeout. A per-run
+    `--timeout` isn't built: rounds have `Timeout:` and steps `--timeout`.
+13. **Real CI:** this repo's workflow runs `e2e/ci-demo/run.sh`, which uses
+    committed demo rounds with their own `swim.yml`, on Linux. It uploads the
+    logs and JUnit report as an artifact.
 
 ## Testing
 

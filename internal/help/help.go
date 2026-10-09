@@ -287,6 +287,50 @@ var Commands = map[string]string{
   --yaml   the round parsed, as data (schema swim.log/v1): the latest round,
            every round with --all, or a job's rounds. See READING RESULTS.
 `,
+	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--junit FILE] [--provider github|gitlab|generic]
+        [--require-work] [--heartbeat D] [--run-id ID]
+
+  Run rounds in a CI job: swim all, written for a CI log viewer and built for
+  commits. Detects GitHub Actions (GITHUB_ACTIONS), GitLab CI (GITLAB_CI) or
+  any runner (CI=true); --provider overrides. Works outside CI too (generic).
+    - Header: swim version, provider, commit and branch, the lanes selected
+      and why, and the guard flags set (names only, never values).
+    - Live: plain output, every lane prefixed [N], step headers and results
+      included; "[N] still running: <step> (5m02s)" for a lane silent for
+      --heartbeat (default 60s; 0 turns it off).
+    - After the run: each lane's round log in its own section (::group:: on
+      GitHub, collapsed sections on GitLab; failed lanes left open),
+      annotations (FAIL/BLOCKED/STOP error, DRIFT warning, a dry-run SKIP
+      notice, one notice for the lanes skipped below a failure), the
+      Markdown job summary ($GITHUB_STEP_SUMMARY), --junit FILE (one suite
+      per lane, one case per step), and the paths to upload as artifacts.
+    - Never interactive: lanes get no stdin (confirm fails closed), no
+      prompts; a lane script past the configured lanes fails with the fix,
+      unless no lanes setting exists anywhere (then the highest lane script
+      sets the count).
+    - Pinned: the selected rounds' job ids are fixed up front; a lane
+      script rewritten before its lane starts is skipped, not run.
+    - Commit-tagged: SWIM_COMMIT (HEAD) goes into each round's context line
+      (commit: <sha>), status.yml (commit:) and the .swim.log run, start and
+      result events (commit=<sha>).
+  --changed[=BASE]  only rounds whose lane.N.sh changed between BASE and HEAD,
+                    plus lanes they wait on that haven't passed. The base
+                    defaults from the provider: GitHub push: the event's
+                    "before"; pull request: the merge base with
+                    origin/$GITHUB_BASE_REF; GitLab: CI_MERGE_REQUEST_DIFF_BASE_SHA
+                    or CI_COMMIT_BEFORE_SHA. An all-zero SHA (new branch) runs
+                    every pending round. Needs the history (fetch-depth: 0).
+  --require-work    exit 1 when there is nothing to run (default: a notice, 0)
+  Exit codes: 0 every selected lane passed, 1 a lane failed or was skipped,
+  2 usage, config or an unresolvable # After:.
+  Config on a runner comes from the repo's committed swim.yml (see CONFIG);
+  commit the lane scripts the job runs (git add -f lane.N.sh, or drop
+  lane.[0-9]*.sh from swim's .gitignore block). swim never commits or pushes
+  results: upload .swim/logs/, .swim/snapshots/, .swim.log and the JUnit file
+  as artifacts. "Already passed" lives in .swim/status.yml: a fresh runner
+  reruns every pending round unless --changed narrows it (or .swim/ is
+  restored from a CI cache).
+`,
 	"interrupt": `swim interrupt N|JOB
 
   Ask one running lane to stop at its next step boundary, from any

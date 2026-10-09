@@ -34,6 +34,10 @@ Set `SWIM_E2E_BIN=/path/to/swim` to test a prebuilt binary.
 | `blocked` | swim never pushes, commits or pulls: `git push` refused before the lane starts, `git commit` built at runtime refused at the step, `git -C . pull` refused by the git shim. Blocked lanes fail, dependents are skipped, a read-only git lane passes, and the repo's history and working tree are unchanged. |
 | `flaky` | Steps that fail their first N calls: `--retry 2` passes on attempt 3/3 when N is 2 and fails at 3/3 when N is 3; every attempt is in the log, and the failed lane's dependent is skipped. |
 | `dag99-retry` | Same failures through `swim all`, then a retry with them fixed. `swim plan` must predict the retry (`0 to run, 70 to retry`), `swim all` must rerun exactly the failed and skipped lanes and never one that passed, and a third `swim all` must find nothing to run. |
+| `dag99-interrupt` | One Ctrl-C (SIGINT to swim) at a random point between 1s and 3s: every lane ends passed, interrupted at a step boundary, or skipped; no step is cut off mid-command, and no lane starts after the signal. |
+| `dag99-force` | Ctrl-C twice with `interrupt_grace` 1s: swim exits, and every lane process is gone, within the grace plus a second. |
+| `ci-github` | dag99-cascade under `swim ci` as GitHub Actions: an `::error` for each failed lane, one notice for all the skipped lanes, failed lanes' sections left open, a job summary row and a JUnit suite for each of the 99 lanes, results tagged with the commit. |
+| `ci-changed` | dag99 passes, then a commit touches lanes 30 and 60: `swim ci --changed=<base>` runs exactly those two. |
 
 ## Adding a scenario
 

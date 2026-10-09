@@ -112,6 +112,13 @@ func Append(root string, e Entry) error {
 // Log is Append with the error dropped, for call sites where the project
 // log must never block the operator's work.
 func Log(root string, e Entry) {
+	// swim ci tags results with the commit it ran for (SWIM_COMMIT).
+	if c := os.Getenv("SWIM_COMMIT"); c != "" {
+		switch e.Event {
+		case Run, RunDone, Start, Pass, Fail, Interrupted:
+			e.Detail = strings.TrimSpace(e.Detail + "  commit=" + c)
+		}
+	}
 	if err := Append(root, e); err != nil {
 		fmt.Fprintf(os.Stderr, "swim: warning: could not write %s: %v\n", FileName, err)
 	}
