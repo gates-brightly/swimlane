@@ -18,7 +18,8 @@ USAGE
 
 COMMANDS
   init                     set up this repo: config entry, .gitignore block, .swim/status.yml
-  config [--path] [--lanes N]   show effective config (or its path); --lanes sets the lane count
+  config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set lanes,
+                           chime, chime_style, chime_min_s (--lanes N = `config lanes N`)
   new N "<round goal>"     write lane.N.sh from the template, with a new job id
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
@@ -413,6 +414,9 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
         runtime: node --version          # recorded as runtime version
         toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
+        chime: false                     # true | false | failure: chime when swim run/all ends
+        chime_style: bell                # bell | sound | notify
+        chime_min_s: 10                  # don't chime for runs shorter than this
       repos:
         /path/to/repo:                   # git toplevel; overrides defaults field by field
           lanes: 4
@@ -427,3 +431,10 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
     - by job id: that job must be the lane's last run, and have passed.
   Unresolvable `# After:` references and cycles stop `swim run` before
   anything starts. Lanes outside 1..N are rejected.
+  Chime (operator preference; workers never set it): after `swim run` /
+  `swim all` prints its summary, swim rings the bell (twice on failure) if
+  chime is true, or failure and the run didn't fully pass, the run took at
+  least chime_min_s, stdout is a terminal (not needed for notify) and CI
+  isn't true. sound adds a system sound, notify a desktop notification.
+  --chime / --no-chime override it for one run. Set it with
+  `swim config chime true|false|failure` (--repo for this repo only).

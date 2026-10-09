@@ -43,6 +43,17 @@ type Options struct {
 	Self     string // path of the swim binary, exported to lane scripts as SWIM_BIN
 	Out      *os.File
 	Stdin    *os.File
+	// Finished, if set, is called once after the summary prints (the live
+	// view is gone by then), e.g. to chime.
+	Finished func(Finish)
+}
+
+// Finish is a completed run's outcome, passed to Options.Finished.
+type Finish struct {
+	Code        int            // Run's exit code: 0 only if every lane passed
+	Interrupted bool           // Ctrl-C or a signal arrived during the run
+	Counts      map[string]int // lanes by final state (status.Passed, ...)
+	Elapsed     time.Duration
 }
 
 // Outcome is one lane's result.
@@ -245,7 +256,14 @@ func Run(o Options) (int, error) {
 	}
 	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d  %s",
 		joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted], display.Elapsed(time.Since(start)))})
-	printSummary(o.Out, o.Root, sel, outcomes, time.Since(start), disp.Color())
+	elapsed := time.Since(start)
+	printSummary(o.Out, o.Root, sel, outcomes, elapsed, disp.Color())
+	if o.Finished != nil {
+		mu.Lock()
+		stopped := interrupted
+		mu.Unlock()
+		o.Finished(Finish{Code: code, Interrupted: stopped, Counts: counts, Elapsed: elapsed})
+	}
 	return code, nil
 }
 

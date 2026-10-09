@@ -25,15 +25,30 @@ var Commands = map[string]string{
       from the block if you want to commit the project's history)
   Safe to run again.
 `,
-	"config": `swim config [--path] [--lanes N]
+	"config": `swim config [KEY [VALUE]] [--repo] [--path] [--lanes N]
 
-  Print the effective configuration for this repo (defaults merged with the
-  repo's section), or with --path just the config file location. The output
-  ends with the effective blocked_commands: the built-ins (git push, git
-  commit, git pull; always on) plus the defaults' and the repo's additions.
-  --lanes N   set this repo's lane count (swim 1..N) in the config file,
-              keeping its comments; recorded in .swim.log. Refuses to drop a
-              lane that holds a pending round.
+  With no key, print the effective configuration for this repo (defaults
+  merged with the repo's section), or with --path just the config file
+  location. The output ends with the effective blocked_commands: the
+  built-ins (git push, git commit, git pull; always on) plus the defaults'
+  and the repo's additions.
+  swim config KEY          print KEY's effective value
+  swim config KEY VALUE    set KEY in the config file, keeping its comments
+  Keys:
+    chime        true | false | failure   chime when swim run/all finishes
+                 (failure: only when a lane failed, was skipped or the run
+                 was interrupted). Default false.
+    chime_style  bell | sound | notify    bell rings the terminal bell
+                 (twice on failure); sound adds a system sound, notify a
+                 desktop notification, falling back to the bell. Default bell.
+    chime_min_s  seconds (0 or more)      runs shorter than this never
+                 chime. Default 10.
+    lanes        1..99                    this repo's lane count (swim 1..N);
+                 recorded in .swim.log. Refuses to drop a lane that holds a
+                 pending round. Always written to the repo's section.
+  Settings go under defaults: (every repo); --repo writes this repo's
+  section instead. Unknown keys and bad values are rejected.
+  --lanes N   same as "swim config lanes N".
   Config lives outside the repo, in ~/.config/swim/config.yml
   ($XDG_CONFIG_HOME/swim/config.yml if set). Workers must not edit it; give
   the operator exact YAML lines instead.
@@ -49,7 +64,7 @@ var Commands = map[string]string{
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
-	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N]
+	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N] [--chime|--no-chime]
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -85,10 +100,15 @@ var Commands = map[string]string{
   Shorthand: "swim 1 2" is "swim run 1 2"; "swim 3f2a9c1e" is "swim run 3f2a9c1e".
   --plain   no pinned panel, colour or throbber; state changes print as lines.
             Automatic when stdout isn't a terminal or NO_COLOR is set.
+  --chime / --no-chime   chime (or don't) when this run finishes, whatever
+            config chime says. The chime comes after the summary (Ctrl-C
+            too), once, if the run took at least chime_min_s seconds, stdout
+            is a terminal (notify style excepted) and CI isn't true. See
+            "swim config --help".
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
 `,
-	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N]
+	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N] [--chime|--no-chime]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
@@ -98,7 +118,8 @@ var Commands = map[string]string{
   lanes: 4) holding jobs that haven't passed, swim asks whether to raise the
   lane count so they run. Without a terminal it never asks or changes
   config; it prints the "swim config --lanes N" command instead. Dependencies ("# After:" lines and config deps), the live
-  view, guard flags and the summary all work as in "swim run".
+  view, guard flags, the summary and the chime (--chime / --no-chime) all
+  work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
 	"plan": `swim plan [N|JOB ...] [--rerun]

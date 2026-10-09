@@ -1,6 +1,6 @@
 # Chime when a run finishes
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -82,16 +82,48 @@ alias. That gives one consistent way to set things.
   `\a` so the bell doesn't land in the panel. The TUI ([tui.md](tui.md)) does
   the same when it leaves the alternate screen.
 
-## Open questions
+## Decisions
 
-1. **Chime when a gate stops a lane** mid-run, not only at the end? That's
-   useful when a stopped lane blocks others for a long time. Recommend a
-   later `chime: stop` mode.
-2. **Custom sound file or command** (`chime_command: say "swim done"`)? It's
-   flexible, but it runs an arbitrary command from config. Probably fine,
-   since it's the operator's own file, but it should be noted.
-3. **Should `swim ci` post to chat instead?** Out of scope: CI providers
-   already notify.
+1. **Chime when a gate stops a lane mid-run:** not now. The chime fires only
+   at the end of a run; a later `chime: stop` mode can add mid-run chimes.
+2. **Custom sound file or command (`chime_command`):** not built. Only the
+   built-in styles exist, so config never runs an arbitrary command. If it's
+   added later, note that it runs a command from the operator's own file.
+3. **`swim ci` posting to chat:** out of scope; CI providers already notify.
+   `CI=true` never chimes.
+
+Decided while building:
+
+- **Values:** `chime` reads YAML `true`/`false` or the string `failure`
+  (`on`/`off` are accepted too) and is held as `on|off|failure`;
+  `swim config chime` prints it as config spells it (`true`, `false`,
+  `failure`). `chime_style` is `bell|sound|notify` (default `bell`),
+  `chime_min_s` an integer of 0 or more (default 10). Each is a pointer in
+  `Settings`, so a repo section overrides `defaults:` field by field.
+- **What counts as "didn't fully pass":** any exit other than 0 (a lane
+  failed, was skipped or was interrupted), or a Ctrl-C/signal during the
+  run. The bell rings twice for all of these.
+- **`--chime` / `--no-chime`** set the mode to on/off for one run; the
+  minimum duration, terminal and CI rules still apply. Both together is a
+  usage error.
+- **Non-terminal stdout with `notify`:** the notification is sent, but no
+  `\a` is written into the pipe or file.
+- **External commands** (`afplay`, `osascript`, `canberra-gtk-play`,
+  `paplay`, `notify-send`) are looked up on `PATH`; when none is found the
+  chime is the bell alone. They start in their own process group with no
+  stdio, are killed after 2s if swim is still running, and swim never
+  waits for them. Linux sounds are the freedesktop `complete` /
+  `dialog-error`.
+- **`swim config <key> [value]`** handles `chime`, `chime_style`,
+  `chime_min_s` and `lanes`. Writes go under `defaults:` (or the repo's
+  section with `--repo`), through `config.SetKey`, which `SetLanes` now
+  wraps. `lanes` is always written to the repo's section (lane numbers are
+  per repo, and `swim init` gives every repo its own `lanes:`), keeps the
+  guard against dropping a lane holding a pending round, and is still
+  logged in `.swim.log`. When a write to `defaults:` is shadowed by the
+  repo's section, swim says so.
+- **No chime** when there was nothing to run, or the run failed to start
+  (bad flags, cycles, a lane already running).
 
 ## Testing
 

@@ -235,14 +235,14 @@ stops swim with instructions to update it.
 | `swim init` | Set up the repo: config entry, `.gitignore` block, `.swim/status.yml`. |
 | `swim new N "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id. |
 | `swim plan [N\|JOB ...] [--rerun]` | Dry run in Terraform style (`[+]` run, `[~]` retry, `[+/-]` rerun, `[-]` skip), shown as a dependency tree with guard flags. |
-| `swim all [--rerun] [--parallel N]` | Run every pending job that hasn't passed yet, at most N lanes at once if set. Offers to add lanes if scripts exist beyond the configured count. |
+| `swim all [--rerun] [--parallel N] [--chime\|--no-chime]` | Run every pending job that hasn't passed yet, at most N lanes at once if set. Offers to add lanes if scripts exist beyond the configured count. `--chime`/`--no-chime` override the config chime for this run. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they already passed. A job id pins the run to exactly that job. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane, from `.swim/status.yml`. |
 | `swim log [N\|JOB] [--all] [--full] [--raw]` | A lane's log (`--all` adds its archives), a job's rounds, or with no argument the project log; rendered on a terminal. |
 | `swim archive N\|JOB [<what>]` | Archive a lane's log (the name defaults to the job id). |
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
-| `swim config [--path] [--lanes N]` | Show the effective config, or set the lane count. |
+| `swim config [KEY [VALUE]] [--repo]` | Show the effective config (`--path`: its location), or get/set `chime`, `chime_style`, `chime_min_s` or `lanes` (`--lanes N` still works), keeping the file's comments. Writes go under `defaults:`, or this repo's section with `--repo`. |
 | `swim lock [--upgrade]` | Show swim's version and the repo's `.swim.lock`, or move the lock up a breaking version. |
 | `swim step -- cmd ...` | Run and log one command (what `run` calls). |
 | `swim lib` | Print the bash library lane scripts load. |
@@ -260,6 +260,11 @@ a dependency. Output scrolls underneath, prefixed `[N]`.
 - **Ctrl-C:** reaches the running lanes, skips the rest, and still prints
   the summary.
 - **No terminal (CI, pipes) or `--plain`:** output is plain prefixed lines.
+- **Chime:** with `swim config chime true` (or `failure`: only when
+  something failed or was interrupted), the terminal bell rings after the
+  summary, twice on failure, so you know to come back. `chime_style: sound`
+  adds a system sound, `notify` a desktop notification. Runs shorter than
+  `chime_min_s` (default 10s), non-terminal output and `CI=true` stay quiet.
 
 ---
 
@@ -315,6 +320,9 @@ defaults:
   header_env: [STAGE, AWS_PROFILE]       # env recorded in every step header (never secrets)
   runtime: node --version                # recorded as the runtime version
   toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
+  chime: failure                         # true | false | failure: chime when swim run/all ends (default false)
+  chime_style: bell                      # bell | sound | notify
+  chime_min_s: 10                        # runs shorter than this stay quiet
 repos:
   /path/to/your-repo:                    # git toplevel; overrides defaults
     lanes: 6
@@ -396,5 +404,6 @@ Layout: `cmd/swim` (entry point), `internal/cli` (commands),
 `internal/launcher` (runs lanes, dependencies, plan), `internal/display`
 (live view), `internal/step` (step wrapper), `internal/status`,
 `internal/history` (project log), `internal/logparse`, `internal/lane`,
-`internal/config`, `internal/version` (version and `.swim.lock`),
+`internal/config`, `internal/chime` (bell/sound/notify when a run ends),
+`internal/version` (version and `.swim.lock`),
 `internal/assets` (bash library and templates), `internal/help` (the guide).

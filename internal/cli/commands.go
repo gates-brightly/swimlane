@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -128,30 +129,59 @@ func refreshStatus(root string, cfg *config.Config) error {
 }
 
 func cmdConfig(args []string) error {
-	var pathOnly bool
+	var pathOnly, toRepo bool
 	var setLanes string
-	rest, err := flags{bools: map[string]*bool{"path": &pathOnly}, strs: map[string]*string{"lanes": &setLanes}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"path": &pathOnly, "repo": &toRepo}, strs: map[string]*string{"lanes": &setLanes}}.parse(args)
 	if err != nil {
 		return err
 	}
-	if len(rest) > 0 {
-		return usagef("config takes no arguments")
-	}
 	if pathOnly {
+		if len(rest) > 0 || setLanes != "" {
+			return usagef("--path takes no key or value")
+		}
 		fmt.Println(config.Path())
 		return nil
 	}
 	if setLanes != "" {
-		n, err := strconv.Atoi(setLanes)
-		if err != nil {
+		// --lanes N is an alias for `swim config lanes N`.
+		if len(rest) > 0 {
+			return usagef("use either --lanes N or `swim config lanes N`, not both")
+		}
+		if _, err := strconv.Atoi(setLanes); err != nil {
 			return usagef("--lanes needs a number, got %q", setLanes)
 		}
-		root, cfg, err := repo()
+		rest = []string{"lanes", setLanes}
+	}
+	if len(rest) > 2 {
+		return usagef("usage: swim config [KEY [VALUE]] [--repo] [--path]")
+	}
+	if len(rest) == 0 {
+		if toRepo {
+			return usagef("--repo is for setting a key: swim config KEY VALUE --repo")
+		}
+		return showConfig()
+	}
+	key := rest[0]
+	if !slices.Contains(config.Keys, key) {
+		return usagef("unknown config key %q; keys: %s", key, strings.Join(config.Keys, ", "))
+	}
+	if len(rest) == 1 {
+		_, cfg, err := repo()
 		if err != nil {
 			return err
 		}
-		return applyLanes(root, cfg, n, "")
+		v, err := cfg.Get(key)
+		if err != nil {
+			return err
+		}
+		fmt.Println(v)
+		return nil
 	}
+	return setConfigKey(key, rest[1], toRepo)
+}
+
+// showConfig prints the effective configuration for this repo.
+func showConfig() error {
 	_, cfg, err := repo()
 	if err != nil {
 		return err
@@ -173,6 +203,45 @@ func cmdConfig(args []string) error {
 	}
 	if !cfg.HasRepo {
 		fmt.Println("# no section for this repo; run `swim init` to add one")
+	}
+	return nil
+}
+
+// setConfigKey writes one operator setting: under defaults:, or this
+// repo's section with --repo. lanes always goes to the repo's section
+// (lane numbers are per repo) and keeps the pending-round guard.
+func setConfigKey(key, value string, toRepo bool) error {
+	if key == "lanes" {
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil {
+			return fmt.Errorf("lanes must be a number 1..99, got %q", value)
+		}
+		root, cfg, err := repo()
+		if err != nil {
+			return err
+		}
+		return applyLanes(root, cfg, n, "")
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	root, path := config.RepoRoot(cwd), config.Path()
+	if err := config.SetKey(path, root, key, value, toRepo); err != nil {
+		return err
+	}
+	where := "defaults"
+	if toRepo {
+		where = "repo " + root
+	}
+	written, _ := config.Normalize(key, value)
+	fmt.Printf("%s: %s  (%s in %s)\n", key, written, where, path)
+	if !toRepo {
+		if cfg, err := config.Load(root); err == nil {
+			if v, _ := cfg.Get(key); v != written {
+				fmt.Printf("note: this repo's section sets %s: %s, which wins here (change it with --repo)\n", key, v)
+			}
+		}
 	}
 	return nil
 }
@@ -231,14 +300,15 @@ func cmdNew(args []string) error {
 
 // runFlags are the options swim run and swim all share.
 type runFlags struct {
-	plain, rerun bool
-	runID        string
-	parallel     string
+	plain, rerun   bool
+	runID          string
+	parallel       string
+	chime, noChime bool
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
 	return flags{
-		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun},
+		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime},
 		strs:  map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel},
 	}.parse(args)
 }
@@ -266,6 +336,9 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if rf.runID != "" && !lane.ValidRunID(rf.runID) {
 		return usagef("--run-id %q: use 8-64 letters, digits, '.', '_' or '-' (not all digits)", rf.runID)
+	}
+	if rf.chime && rf.noChime {
+		return usagef("use --chime or --no-chime, not both")
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -298,6 +371,7 @@ func runLanes(rest []string, rf runFlags) error {
 	code, err := launcher.Run(launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
+		Finished: chimeWhenDone(cfg, rf),
 	})
 	if err != nil {
 		return err

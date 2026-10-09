@@ -162,3 +162,168 @@ repos:
 		t.Error("lanes=100 accepted")
 	}
 }
+
+func TestChimeYAMLAcceptsBoolsAndFailure(t *testing.T) {
+	cases := map[string]Chime{"true": ChimeOn, "false": ChimeOff, "failure": ChimeFailure, `"failure"`: ChimeFailure, "on": ChimeOn}
+	for v, want := range cases {
+		writeConfig(t, "defaults:\n  chime: "+v+"\n")
+		c, err := Load("/r")
+		if err != nil {
+			t.Fatalf("chime: %s: %v", v, err)
+		}
+		if mode, _, _ := c.ChimeSettings(); mode != want {
+			t.Errorf("chime: %s -> %q, want %q", v, mode, want)
+		}
+	}
+}
+
+func TestChimeDefaultsAndRepoOverride(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	c, err := Load("/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode, style, minS := c.ChimeSettings(); mode != ChimeOff || style != StyleBell || minS != 10 {
+		t.Fatalf("defaults: %s %s %d", mode, style, minS)
+	}
+	writeConfig(t, `defaults:
+  chime: true
+  chime_style: sound
+  chime_min_s: 30
+repos:
+  /r:
+    chime: failure
+    chime_min_s: 0
+`)
+	c, err = Load("/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode, style, minS := c.ChimeSettings(); mode != ChimeFailure || style != StyleSound || minS != 0 {
+		t.Fatalf("merged: %s %s %d", mode, style, minS)
+	}
+	if o, _ := Load("/other"); o == nil || *o.Chime != ChimeOn || *o.ChimeMinS != 30 {
+		t.Fatalf("other repo: %+v", o)
+	}
+}
+
+func TestChimeBadValuesRejected(t *testing.T) {
+	cases := map[string]string{
+		"chime word":   "defaults:\n  chime: sometimes\n",
+		"chime number": "defaults:\n  chime: 3\n",
+		"chime list":   "defaults:\n  chime: [true]\n",
+		"style":        "defaults:\n  chime_style: kazoo\n",
+		"repo style":   "repos:\n  /r:\n    chime_style: kazoo\n",
+		"min negative": "defaults:\n  chime_min_s: -1\n",
+		"min word":     "defaults:\n  chime_min_s: soon\n",
+	}
+	for name, body := range cases {
+		writeConfig(t, body)
+		if _, err := Load("/r"); err == nil {
+			t.Errorf("%s: accepted", name)
+		} else if strings.Contains(name, "chime ") && !strings.Contains(err.Error(), "true, false or failure") {
+			t.Errorf("%s: err %v", name, err)
+		}
+	}
+}
+
+func TestSetKeyRoundTripKeepsComments(t *testing.T) {
+	p := writeConfig(t, `# top comment
+defaults:
+  lanes: 4
+  # chime comment
+  chime: false # trailing
+repos:
+  /repo/a:
+    # keep me
+    deps: {2: [1]}
+`)
+	if err := SetKey(p, "/repo/a", "chime", "failure", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetKey(p, "/repo/a", "chime_style", "notify", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetKey(p, "/repo/a", "chime_min_s", "0", true); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load("/repo/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{"chime": "failure", "chime_style": "notify", "chime_min_s": "0", "lanes": "4"} {
+		if got, _ := c.Get(key); got != want {
+			t.Errorf("Get(%s) = %q, want %q", key, got, want)
+		}
+	}
+	if o, _ := Load("/other"); *o.ChimeMinS != DefaultChimeMinS {
+		t.Errorf("--repo write leaked to defaults: %d", *o.ChimeMinS)
+	}
+	data, _ := os.ReadFile(p)
+	s := string(data)
+	for _, want := range []string{"# top comment", "# chime comment", "# trailing", "# keep me", "chime: failure", "chime_min_s: 0"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("lost %q:\n%s", want, s)
+		}
+	}
+	// true/false are written as YAML booleans and read back.
+	if err := SetKey(p, "/repo/a", "chime", "true", false); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(p)
+	if !strings.Contains(string(data), "chime: true # trailing") {
+		t.Errorf("chime true not written in place:\n%s", data)
+	}
+	if c, _ := Load("/repo/a"); *c.Chime != ChimeOn {
+		t.Errorf("chime = %q", *c.Chime)
+	}
+}
+
+func TestSetKeyCreatesFileAndDefaults(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	p := Path()
+	if err := SetKey(p, "/repo/x", "chime", "true", false); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load("/repo/x")
+	if err != nil || *c.Chime != ChimeOn || c.HasRepo {
+		t.Fatalf("new file: %+v %v", c, err)
+	}
+	// An empty file and a flow-style `defaults: {}` both work.
+	writeConfig(t, "")
+	if err := SetKey(Path(), "/r", "chime_style", "sound", false); err != nil {
+		t.Fatal(err)
+	}
+	writeConfig(t, "defaults: {}\n")
+	if err := SetKey(Path(), "/r", "chime_min_s", "5", false); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(Path())
+	if !strings.Contains(string(data), "defaults:\n  chime_min_s: 5") {
+		t.Errorf("flow defaults:\n%s", data)
+	}
+}
+
+func TestSetKeyRejectsBadKeysAndValues(t *testing.T) {
+	p := writeConfig(t, "defaults:\n  lanes: 4\n")
+	before, _ := os.ReadFile(p)
+	cases := []struct{ key, value, want string }{
+		{"colour", "red", "keys: lanes, chime, chime_style, chime_min_s"},
+		{"chime", "maybe", "true, false or failure"},
+		{"chime_style", "kazoo", "bell, sound, notify"},
+		{"chime_min_s", "-3", "0 or more"},
+		{"chime_min_s", "ten", "0 or more"},
+		{"lanes", "0", "1..99"},
+		{"lanes", "many", "1..99"},
+	}
+	for _, c := range cases {
+		err := SetKey(p, "/r", c.key, c.value, false)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("SetKey(%s, %s) err = %v, want %q", c.key, c.value, err, c.want)
+		}
+	}
+	if after, _ := os.ReadFile(p); string(after) != string(before) {
+		t.Errorf("rejected writes changed the file:\n%s", after)
+	}
+}

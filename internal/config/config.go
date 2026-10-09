@@ -30,6 +30,9 @@ type Settings struct {
 	Deps            map[int][]int `yaml:"deps,omitempty"`
 	MaxParallel     *int          `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
 	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // added to the built-in git push/commit/pull
+	Chime           *Chime        `yaml:"chime,omitempty"`            // on | off | failure (YAML true/false/failure)
+	ChimeStyle      *string       `yaml:"chime_style,omitempty"`      // bell | sound | notify
+	ChimeMinS       *int          `yaml:"chime_min_s,omitempty"`      // don't chime for runs shorter than this
 }
 
 // File is the on-disk shape of config.yml.
@@ -96,6 +99,7 @@ func Load(root string) (*Config, error) {
 	if c.Lanes == 0 {
 		c.Lanes = DefaultLanes
 	}
+	c.fillChimeDefaults()
 	if err := c.Validate(); err != nil {
 		return nil, fmt.Errorf("%s (repo %s): %w", c.Path, root, err)
 	}
@@ -170,6 +174,15 @@ func (c *Config) merge(r Settings) {
 	}
 	// Blocked commands add up: defaults, then the repo's (never removed).
 	c.BlockedCommands = append(append([]string(nil), c.BlockedCommands...), r.BlockedCommands...)
+	if r.Chime != nil {
+		c.Chime = r.Chime
+	}
+	if r.ChimeStyle != nil {
+		c.ChimeStyle = r.ChimeStyle
+	}
+	if r.ChimeMinS != nil {
+		c.ChimeMinS = r.ChimeMinS
+	}
 }
 
 // Validate checks lane numbers are within 1..Lanes and deps form no cycle.
@@ -184,6 +197,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)
+	}
+	if err := c.validateChime(); err != nil {
+		return err
 	}
 	for lane, deps := range c.Deps {
 		if !c.ValidLane(lane) {
@@ -369,38 +385,5 @@ func writeNode(path string, doc *yaml.Node) error {
 // SetLanes sets `lanes` in root's repo section (creating the file or the
 // section if needed), keeping the rest of the file and its comments.
 func SetLanes(path, root string, lanes int) error {
-	if lanes < 1 || lanes > 99 {
-		return fmt.Errorf("lanes must be 1..99, got %d", lanes)
-	}
-	if _, _, err := EnsureRepo(path, root); err != nil {
-		return err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("parse %s: %w", path, err)
-	}
-	repos := mapGet(doc.Content[0], "repos")
-	if repos == nil || repos.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: no repos mapping", path)
-	}
-	for i := 0; i+1 < len(repos.Content); i += 2 {
-		if !sameRepo(repos.Content[i].Value, root) {
-			continue
-		}
-		entry := repos.Content[i+1]
-		if entry.Kind != yaml.MappingNode {
-			*entry = yaml.Node{Kind: yaml.MappingNode}
-		}
-		if v := mapGet(entry, "lanes"); v != nil {
-			*v = *scalar(fmt.Sprint(lanes))
-		} else {
-			entry.Content = append([]*yaml.Node{scalar("lanes"), scalar(fmt.Sprint(lanes))}, entry.Content...)
-		}
-		return writeNode(path, &doc)
-	}
-	return fmt.Errorf("%s: no section for %s", path, root)
+	return SetKey(path, root, "lanes", fmt.Sprint(lanes), true)
 }
