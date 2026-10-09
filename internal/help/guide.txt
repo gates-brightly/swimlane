@@ -145,9 +145,12 @@ WRITING A LANE SCRIPT
   Start from `swim new N "<goal>"`. The library functions:
 
   lane_init N                     claim lane N: cd to repo root, STEP_LOG=.swim/logs/agentN.log,
-                                  source .lane.N.rc, write round marker, mark running,
-                                  export SWIM_JOB (the script's job id).
-                                  Refuses if lane N is already running. Call it first.
+                                  source .lane.N.rc, write the round header, mark running,
+                                  export SWIM_JOB (the script's job id), SWIM_DEADLINE and
+                                  SWIM_TIMEOUT (from Timeout:). Refuses if lane N is already
+                                  running. Call it first.
+  stage NAME                      start a stage: snapshot, check, change or verify. Steps
+                                  before the first stage are setup. See STAGES below.
   run "<label>" cmd [args...]     one step; records PASS/FAIL <label>. A failure does
                                   NOT stop the round (checks keep going).
   gate "<label>" cmd [args...]    like run, but failure stops the round here (STOP).
@@ -165,10 +168,36 @@ WRITING A LANE SCRIPT
   summary                         print + log the summary, record final state.
                                   Exits non-zero if any step failed. Put it last.
 
-  Header lines swim reads:
-      # Round: <goal>                 required; a script without it is not run
-      # Job:   <id>                   written by swim new; keep it
-      # After: <lane|job> [...]       wait for these to pass first, e.g. "# After: 2 3"
+  Header (the `# Key: value` lines at the top; one space at most after the
+  #, since indented comment lines are prose). Empty or missing means the default:
+      # swim: syntax 2                the syntax this script is written in (see SYNTAX)
+      # Round:   <goal>               required; a script without it is not run
+      # Job:     <id>                 written by swim new; keep it. Default: one is made
+                                      when the round starts (then it can't be pinned)
+      # After:   <lane|job> [...]     wait for these to pass first, e.g. "2 3". Default: none
+      # Owner:   <who wrote it>       Default: - (swim new fills in $USER)
+      # Created: <YYYY-MM-DD>         Default: the file's modification date
+      # Guards:  FLAG  <what it approves (date, reason)>
+                                      one line per flag. Flags the body uses are found
+                                      anyway; list them to explain them. Default: none
+      # Timeout: <30m, 1h30m, ...>    limit for the whole round. A step still running
+                                      at the limit is stopped (FAIL, timeout) and the
+                                      round ends. Default: none
+  Other keys in the header block (e.g. "# Ticket: OPS-42") are kept and shown
+  in the log's round header. A value swim can't use (a bad Timeout) is
+  recorded as WARN when the round starts, and the default applies.
+
+  STAGES. Every job has the same four stages, in this order:
+      snapshot   read-only capture of current state (snapshot steps)
+      check      checks and gates; nothing changes yet
+      change     the change itself; destructive steps behind guard flags
+      verify     prove it worked (re-plan is a no-op, health checks)
+  Start each with `stage NAME`. A stage a job doesn't need is simply left
+  out (it shows as "none"). Steps before the first stage line are "setup".
+  A stage out of order or declared twice, or `stage change` without a
+  snapshot and a check stage before it, records a WARN line (the round
+  continues). An unknown stage name stops the round. The log's END block and
+  status.yml record each stage's result: PASS, FAIL, SKIP (only skipped) or none.
 
   Rules for lane scripts:
   - Do not use `set -e`. Failed checks keep going; only gates stop the round.
@@ -193,22 +222,47 @@ WRITING A LANE SCRIPT
 
   Example:
       #!/usr/bin/env bash
-      # Round: Cut over orders-api from SST to Terraform
-      # Job:   3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
-      # Guard flags: ORDERS_ALLOW_SST_REMOVE - remove SST stack (2026-10-09: tf owns it)
+      # swim: syntax 2
+      # Round:   Cut over orders-api from SST to Terraform
+      # Job:     3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
+      # After:   1
+      # Owner:   zach
+      # Created: 2026-10-09
+      # Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack orders-prod (2026-10-09: tf owns it)
+      # Timeout: 30m
       _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
       lane_init 2
       . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null || stop "toolchain failed"
 
+      stage snapshot
       snapshot "cfn template" aws cloudformation get-template --stack-name orders-prod
+      stage check
       run  "tf plan" terraform -chdir=infra/orders plan -detailed-exitcode
       gate "tf state has orders table" bash -c 'terraform -chdir=infra/orders state list | grep -q aws_dynamodb_table.orders'
       gate "DeletionPolicy is Retain (deployed)" bash -c 'aws cloudformation get-template --stack-name orders-prod | grep -q Retain'
+      stage change
       if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (2026-10-09: tf owns it)"; then
         run "sst remove" npx sst remove --stage prod
       fi
+      stage verify
       run "verify: re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
       summary
+
+SYNTAX
+  Lane scripts and lane logs say which syntax they use ("# swim: syntax 2" near
+  a script's top, "# swim lane log | syntax 2" as a log's first line; none
+  means syntax 1). This swim writes syntax 2 and reads syntax 1 and 2.
+  - Older files are migrated automatically when any swim command loads the
+    repo: rewritten in place, originals copied to .swim/migrations/<time>/,
+    the migration recorded in .swim.log. A running lane's files wait until
+    it finishes. Syntax 1 scripts get the syntax line, a Created: date, and
+    stage lines where the old template's numbered sections were.
+  - A file in a newer syntax stops swim with an update prompt
+    (go install github.com/gates-brightly/swimlane/cmd/swim@latest).
+  Syntaxes:
+    2   header metadata (Owner, Created, Guards, Timeout, ...), the four
+        stages, and logs grouped by round and stage with output fenced by "| "
+    1   no syntax line, no stages, === STEP / --- output log framing
 
 SAFETY RULES
   - Snapshot before any change. Back up stateful data (e.g. table items)
@@ -227,26 +281,31 @@ SAFETY RULES
   - Rounds must be safe to rerun.
 
 READING RESULTS
-  Log grammar (.swim/logs/agentN.log, append-only, plain text):
-      === ROUND START <utc> swim N job=<id>
-      Round: <goal>
-      === STEP <utc> <label>
-      $ <command, shell-quoted so it can be re-run>
-      cwd: <dir>   git: <branch>@<sha>   runtime: <version>   job: <id>
-      env: AWS_PROFILE=<p> STAGE=<s> ...
-      --- output
-      <command output, ANSI stripped>
-      --- exit <code> (<seconds>s)          or: --- interrupted (signal ...) exit <code> (...)
-      PASS  <label>                         or: FAIL  <label> (exit <code>)
-      SKIP  <label> (dry run: set FLAG=1 to approve)
-      APPROVED  <label> (FLAG=1)
-      DRIFT  <what>
-      STOP  <reason>
-      === SUMMARY <utc> swim N job=<id> pass=P fail=F skip=S drift=D exit=E duration=<s>s
-      failed: FAIL  <label> (exit <code>)
-      === END
-  Only lines outside "--- output" blocks are results. The current round is
-  everything after the last ROUND START.
+  Lane log (.swim/logs/agentN.log): append-only plain text, written to be
+  read with cat or an editor; `swim log N` renders it (colour, folded output,
+  relative times; --full, --raw). Every line says what it is by how it starts:
+      # swim lane log | syntax 2 | swim N           first line: the log's syntax
+      == ROUND <utc>  job=<id>  <Round>             a round starts
+         script: lane.N.sh | owner: ... | after: ... | timeout: ... | guards: ...
+         | git: <branch>@<sha> | runtime: ... | env: STAGE=... ...
+      -- stage <name>  <hh:mm:ss>                   a stage starts
+        PASS  <label>                <dur>s  <hh:mm:ss>    a step (2 spaces, kind, 2 spaces)
+        FAIL  <label> (exit <code>)  <dur>s  <hh:mm:ss>    ... or (exit 130, interrupted),
+                                                           (timeout: Timeout 30m reached)
+              $ <command, shell-quoted so it can be re-run>
+              | <command output, ANSI stripped>    output is always fenced with "| "
+              saved: <snapshot path>
+        SKIP  <label> (dry run: set FLAG=1 to approve)
+        APPROVED  <label> (FLAG=1)
+        DRIFT  <what>
+        STOP  <reason>
+        WARN  <what>                                stage order, bad header values
+      == END <PASS|FAIL|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>
+         stages: snapshot PASS | check PASS | change SKIP | verify PASS
+         failed: FAIL  <label> (exit <code>); ...
+  Results are the lines starting "  KIND  " (grep '^  FAIL' finds every
+  failure); anything indented 8 spaces belongs to the step above it and is
+  never a result. The current round is everything after the last "== ROUND".
 
   .swim.log (project log, oldest first; one line per event):
       <utc>  <user>  <event>  [swim N]  [job=<id>]  <detail>

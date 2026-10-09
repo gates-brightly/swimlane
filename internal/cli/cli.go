@@ -12,7 +12,9 @@ import (
 	"github.com/gates-brightly/swimlane/internal/help"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/migrate"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/syntax"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -44,6 +46,7 @@ func init() {
 		"_start":  {run: cmdStart, hidden: true},
 		"_finish": {run: cmdFinish, hidden: true},
 		"_mark":   {run: cmdMark, hidden: true},
+		"_stage":  {run: cmdStage, hidden: true},
 	}
 }
 
@@ -165,6 +168,32 @@ func (f flags) parse(args []string) ([]string, error) {
 
 // repo resolves the repo root and its configuration.
 func repo() (string, *config.Config, error) {
+	root, cfg, err := repoNoMigrate()
+	if err != nil {
+		return "", nil, err
+	}
+	// Older versions kept lane logs at the repo root.
+	if moved := lane.MigrateLogs(root); len(moved) > 0 {
+		fmt.Fprintf(os.Stderr, "swim: moved %d lane log(s) to .swim/logs/: %s\n", len(moved), strings.Join(moved, " "))
+	}
+	// Bring lane scripts and logs up to the current syntax; refuse newer ones.
+	res, err := migrate.Run(root)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(res.Files) > 0 {
+		fmt.Fprintf(os.Stderr, "swim: migrated %d file(s) to syntax %d (originals in %s/):\n  %s\n",
+			len(res.Files), syntax.Current, res.Backup, strings.Join(res.Files, "  "))
+	}
+	if len(res.Skipped) > 0 {
+		fmt.Fprintf(os.Stderr, "swim: left %s at an older syntax while its lane runs; they migrate next time\n", strings.Join(res.Skipped, " "))
+	}
+	return root, cfg, nil
+}
+
+// repoNoMigrate resolves the repo root and its configuration and touches no
+// files (for commands that run inside a lane script).
+func repoNoMigrate() (string, *config.Config, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", nil, err
@@ -173,10 +202,6 @@ func repo() (string, *config.Config, error) {
 	cfg, err := config.Load(root)
 	if err != nil {
 		return "", nil, err
-	}
-	// Older versions kept lane logs at the repo root.
-	if moved := lane.MigrateLogs(root); len(moved) > 0 {
-		fmt.Fprintf(os.Stderr, "swim: moved %d lane log(s) to .swim/logs/: %s\n", len(moved), strings.Join(moved, " "))
 	}
 	return root, cfg, nil
 }

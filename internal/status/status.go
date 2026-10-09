@@ -50,8 +50,10 @@ type Lane struct {
 	Fail        int      `yaml:"fail"`
 	Skip        int      `yaml:"skip"`
 	Drift       int      `yaml:"drift"`
+	Stage       string   `yaml:"stage,omitempty"` // stage the running round is in
 	CurrentStep string   `yaml:"current_step"`
 	FailedSteps []string `yaml:"failed_steps"`
+	Stages      []string `yaml:"stages,flow,omitempty"` // e.g. [snapshot PASS, check FAIL, change none, verify none]
 	LastArchive string   `yaml:"last_archive,omitempty"`
 }
 
@@ -202,6 +204,8 @@ func (l *Lane) ResetRun() {
 	l.StartedAt, l.FinishedAt, l.DurationS, l.ExitCode = nil, nil, nil, nil
 	l.Pass, l.Fail, l.Skip, l.Drift = 0, 0, 0, 0
 	l.CurrentStep = ""
+	l.Stage = ""
+	l.Stages = nil
 	l.FailedSteps = []string{}
 }
 

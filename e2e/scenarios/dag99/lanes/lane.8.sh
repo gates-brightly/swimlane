@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# swim: syntax 2
 # Round: DAG independent root: HTTP response headers
 # Job:   07aee2b7-be33-4c6e-9f09-2fbbbb35af2a
 # After: 
@@ -44,6 +45,7 @@ export RUN_ID
 
 H=$D/headers
 export H
+stage change
 gate "reset $H" bash -c 'rm -rf "$H" && mkdir -p "$H"'
 run "simulated work (4ms)" sleep 0.004
 head_of() { # head_of <name> <url>
@@ -54,6 +56,7 @@ head_of httpbin https://httpbin.org/get
 head_of cern    http://info.cern.ch/
 gate "headers.md" e2etool headers
 
+stage verify
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
   gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'

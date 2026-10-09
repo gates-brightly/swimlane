@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
 
@@ -45,18 +47,16 @@ func newOpts(t *testing.T, args ...string) (Options, *bytes.Buffer, *bytes.Buffe
 	root := t.TempDir()
 	var out, errb bytes.Buffer
 	return Options{
-		Args:      args,
-		LogPath:   filepath.Join(root, "agent1.log"),
-		Root:      root,
-		HeaderEnv: []string{"STAGE"},
-		Stdout:    &out,
-		Stderr:    &errb,
+		Args:    args,
+		LogPath: filepath.Join(root, "agent1.log"),
+		Root:    root,
+		Stdout:  &out,
+		Stderr:  &errb,
 	}, &out, &errb
 }
 
-func TestRunRecordsStepAndPreservesExitCode(t *testing.T) {
-	t.Setenv("STAGE", "dev")
-	o, out, _ := newOpts(t, "bash", "-c", `printf '\033[32mgreen\033[0m\n'; echo err >&2; exit 3`)
+func TestRunWritesV2BlockAndPreservesExitCode(t *testing.T) {
+	o, out, _ := newOpts(t, "bash", "-c", `printf '\033[32mgreen\033[0m\n'; echo err >&2; echo 'FAIL  fake (exit 1)'; exit 3`)
 	o.Label = "colour test"
 	o.Lane, o.Lanes = 1, 2
 	res, err := Run(o)
@@ -71,24 +71,37 @@ func TestRunRecordsStepAndPreservesExitCode(t *testing.T) {
 	}
 	data, _ := os.ReadFile(o.LogPath)
 	log := string(data)
-	for _, want := range []string{"=== STEP ", "colour test", "$ bash -c ", "env: STAGE=dev", "--- output\n", "green\n", "err\n", "--- exit 3 (", "FAIL  colour test (exit 3)"} {
+	if !strings.HasPrefix(log, "# swim lane log | syntax 2 | swim 1\n") {
+		t.Fatalf("no header:\n%s", log)
+	}
+	for _, want := range []string{"  FAIL  colour test (exit 3)", "        $ bash -c ", "        | green\n", "        | err\n", "        | FAIL  fake (exit 1)\n"} {
 		if !strings.Contains(log, want) {
 			t.Errorf("log missing %q:\n%s", want, log)
 		}
 	}
+	// The result line comes before the command and output.
+	if strings.Index(log, "  FAIL  colour test") > strings.Index(log, "        $ bash") {
+		t.Errorf("result line should come first:\n%s", log)
+	}
 	if strings.Contains(log, "\x1b") {
 		t.Errorf("log contains ANSI escapes:\n%q", log)
 	}
+	if _, err := os.Stat(SpoolPath(o.LogPath)); err == nil {
+		t.Error("spool left behind")
+	}
+	r, _ := logparse.ParseFile(o.LogPath)
+	if r.Fail != 1 || r.Steps != 1 {
+		t.Fatalf("parsed: %+v (command output must not count)", r)
+	}
 	st, _ := status.Load(o.Root)
-	l := st.Get(1)
-	if l.Fail != 1 || len(l.FailedSteps) != 1 || l.CurrentStep != "colour test" {
+	if l := st.Get(1); l.Fail != 1 || len(l.FailedSteps) != 1 || l.CurrentStep != "colour test" {
 		t.Fatalf("status lane: %+v", l)
 	}
 }
 
 func TestRunNewTruncatesAndSnapshotSaves(t *testing.T) {
 	o, _, _ := newOpts(t, "echo", "state-v1")
-	os.WriteFile(o.LogPath, []byte("old content\n"), 0o644)
+	os.WriteFile(o.LogPath, []byte("# swim lane log | syntax 2 | swim 1\nold content\n"), 0o644)
 	o.New, o.Snapshot, o.Label, o.Lane, o.Lanes = true, true, "current state", 1, 1
 	res, err := Run(o)
 	if err != nil || res.ExitCode != 0 {
@@ -96,9 +109,9 @@ func TestRunNewTruncatesAndSnapshotSaves(t *testing.T) {
 	}
 	data, _ := os.ReadFile(o.LogPath)
 	if strings.Contains(string(data), "old content") {
-		t.Fatal("--new did not truncate")
+		t.Fatal("--new did not start a fresh log")
 	}
-	if !strings.Contains(string(data), "PASS  snapshot: current state") {
+	if !strings.Contains(string(data), "  PASS  snapshot: current state") || !strings.Contains(string(data), "        saved: .swim/snapshots/lane1-") {
 		t.Fatalf("log:\n%s", data)
 	}
 	snap, err := os.ReadFile(res.Saved)
@@ -113,5 +126,45 @@ func TestRunMissingCommand(t *testing.T) {
 	res, _ := Run(o)
 	if res.ExitCode != 127 {
 		t.Fatalf("exit = %d", res.ExitCode)
+	}
+}
+
+func TestRunStopsAtDeadline(t *testing.T) {
+	o, _, _ := newOpts(t, "sleep", "30")
+	o.Label, o.TimeoutText = "slow", "1s"
+	o.Deadline = time.Now().Add(500 * time.Millisecond)
+	start := time.Now()
+	res, _ := Run(o)
+	if !res.TimedOut || res.ExitCode != 124 || time.Since(start) > 10*time.Second {
+		t.Fatalf("res=%+v after %s", res, time.Since(start))
+	}
+	data, _ := os.ReadFile(o.LogPath)
+	if !strings.Contains(string(data), "  FAIL  slow (timeout: Timeout 1s reached)") || !strings.Contains(string(data), "time limit (Timeout: 1s) ran out") {
+		t.Fatalf("log:\n%s", data)
+	}
+	// Past the deadline a step doesn't start at all.
+	o.Label, o.Args = "late", []string{"touch", filepath.Join(o.Root, "ran")}
+	res, _ = Run(o)
+	if !res.TimedOut || res.ExitCode != 124 {
+		t.Fatalf("late: %+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(o.Root, "ran")); err == nil {
+		t.Fatal("a step ran past the deadline")
+	}
+}
+
+func TestRecoverSpool(t *testing.T) {
+	o, _, _ := newOpts(t, "true")
+	logparse.EnsureV2(o.LogPath, 1)
+	os.WriteFile(SpoolPath(o.LogPath), []byte(spoolMagic+"\tkilled step\t12:00:00\tdo thing\npartial line\n"), 0o644)
+	RecoverSpool(o.LogPath)
+	data, _ := os.ReadFile(o.LogPath)
+	for _, want := range []string{"  FAIL  killed step (cut off: swim step was killed, output recovered)", "        $ do thing", "        | partial line"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("missing %q:\n%s", want, data)
+		}
+	}
+	if _, err := os.Stat(SpoolPath(o.LogPath)); err == nil {
+		t.Error("spool not removed")
 	}
 }

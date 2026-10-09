@@ -27,14 +27,14 @@ lanes_with() {
   lane_results | awk -v r="$1" '$2 == r { print $1 }' | sort -n | tr '\n' ' ' | sed 's/ $//'
 }
 
-# step_output N LABEL  the output block of step LABEL in lane N's latest round.
+# step_output N LABEL  the output of step LABEL in lane N's latest round:
+# the "        | " lines under its result line, prefix removed (log syntax 2).
 step_output() {
-  "$SWIM" log "$1" 2>/dev/null | awk -v label="$2" '
-    /^=== ROUND START/ { buf = ""; f = 0; p = 0 }
-    index($0, "=== STEP ") == 1 && index($0, label) { f = 1; next }
-    f && /^--- output/ { p = 1; next }
-    p && /^--- (exit|interrupted)/ { p = 0; f = 0; next }
-    p { buf = buf $0 "\n" }
+  "$SWIM" log "$1" --raw 2>/dev/null | awk -v label="$2" '
+    /^== ROUND / { buf = ""; f = 0 }
+    /^  [A-Z]+  / { f = (index($0, label) > 0); next }
+    f && /^        \| / { buf = buf substr($0, 11) "\n"; next }
+    f && !/^        / { f = 0 }
     END { printf "%s", buf }'
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
+	"github.com/gates-brightly/swimlane/internal/syntax"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -30,9 +31,11 @@ func reraise(s syscall.Signal) {
 	os.Exit(128 + int(s))
 }
 
-// laneCtx resolves root, config and lane number for a hook.
+// laneCtx resolves root, config and lane number for a hook. Hooks run from
+// inside a lane script, so they never migrate files: rewriting a script bash
+// is reading would corrupt the run.
 func laneCtx(arg string) (string, *config.Config, int, error) {
-	root, cfg, err := repo()
+	root, cfg, err := repoNoMigrate()
 	if err != nil {
 		return "", nil, 0, err
 	}
@@ -83,7 +86,11 @@ func cmdStart(args []string) error {
 	if err := lane.WritePID(root, n, pid); err != nil {
 		return err
 	}
-	info, _ := lane.ReadScript(root, n)
+	info, err := lane.ReadScript(root, n)
+	if err != nil {
+		lane.RemovePID(root, n)
+		return err
+	}
 	round := info.Round
 	if round == "" {
 		round = "(no Round: line)"
@@ -94,19 +101,64 @@ func cmdStart(args []string) error {
 		// gets one for this run (it can't be pinned before it starts).
 		job = lane.NewJobID()
 	}
-	ts := status.Now()
-	header := fmt.Sprintf("\n%s %s swim %d job=%s\nRound: %s\nscript: %s   pid: %d\n\n",
-		logparse.RoundStart, ts, n, job, round, filepath.Base(lane.Script(root, n)), pid)
-	if err := appendLog(lane.Log(root, n), header); err != nil {
+	logPath := lane.Log(root, n)
+	// This lane's own log is safe to convert: bash never reads it.
+	if err := logparse.EnsureV2(logPath, n); err != nil {
+		lane.RemovePID(root, n)
+		return err
+	}
+	step.RecoverSpool(logPath)
+
+	now := time.Now()
+	ts := now.UTC().Format(time.RFC3339)
+	ref := step.GitRef(root)
+	deadline, timeoutText := int64(0), "none"
+	if info.Timeout > 0 {
+		deadline, timeoutText = now.Add(info.Timeout).Unix(), info.TimeoutText
+	}
+	or := func(v, def string) string {
+		if v == "" {
+			return def
+		}
+		return v
+	}
+	ctx := []logparse.KV{
+		{K: "script", V: filepath.Base(lane.Script(root, n))},
+		{K: "pid", V: strconv.Itoa(pid)},
+		{K: "operator", V: or(os.Getenv("USER"), "-")},
+		{K: "owner", V: or(info.Owner, "-")},
+		{K: "created", V: or(info.Created, "-")},
+		{K: "after", V: or(strings.Join(info.After, " "), "-")},
+		{K: "timeout", V: timeoutText},
+		{K: "guards", V: or(strings.Join(info.GuardFlags(), " "), "-")},
+		{K: "git", V: ref},
+	}
+	if cfg.Runtime != "" {
+		ctx = append(ctx, logparse.KV{K: "runtime", V: step.RuntimeVersion(cfg.Runtime)})
+	}
+	if env := step.EnvLine(cfg.HeaderEnv); env != "" {
+		ctx = append(ctx, logparse.KV{K: "env", V: env})
+	}
+	for _, kv := range info.Extra {
+		ctx = append(ctx, logparse.KV{K: strings.ToLower(kv.K), V: kv.V})
+	}
+	header := logparse.RoundHeader(ts, job, round, ctx)
+	for _, prob := range info.Problems {
+		header += logparse.MarkLine(logparse.Warn, prob, "") + "\n"
+	}
+	if err := appendLog(logPath, header); err != nil {
 		lane.RemovePID(root, n)
 		return err
 	}
 	p := painter()
 	fmt.Fprintln(os.Stderr, p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d", n))+"  "+p.Paint(ui.Bold, "Round: "+round)+"  "+p.Paint(ui.Dim, "job "+job))
-	ref := step.GitRef(root)
+	for _, prob := range info.Problems {
+		fmt.Fprintln(os.Stderr, p.Paint(ui.Yellow, "WARN  "+prob))
+	}
 	history.Log(root, history.Entry{Event: history.Start, Lane: n, Job: job, Detail: round})
-	// stdout carries the job id back to lane_init, which exports SWIM_JOB.
-	defer fmt.Println(job)
+	// stdout carries "<job> <deadline epoch or 0> <timeout>" back to
+	// lane_init, which exports SWIM_JOB, SWIM_DEADLINE and SWIM_TIMEOUT.
+	defer fmt.Printf("%s %d %s\n", job, deadline, timeoutText)
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		f.Branch = ref
 		l := f.Get(n)
@@ -117,8 +169,67 @@ func cmdStart(args []string) error {
 		l.Pending, l.PendingJob = info.Round, info.Job
 		l.PID = pid
 		l.StartedAt = status.Str(ts)
+		l.Stage = syntax.Setup
 		return nil
 	})
+}
+
+// swim _stage N NAME: the lane script entered a stage.
+func cmdStage(args []string) error {
+	if len(args) != 2 {
+		return usagef("usage: swim _stage N NAME")
+	}
+	name := args[1]
+	if syntax.StageIndex(name) < 0 {
+		return fmt.Errorf("unknown stage %q: stages are %s (in that order)", name, strings.Join(syntax.Stages, ", "))
+	}
+	root, cfg, n, err := laneCtx(args[0])
+	if err != nil {
+		return err
+	}
+	logPath := lane.Log(root, n)
+	r, err := logparse.ParseFile(logPath)
+	if err != nil {
+		return err
+	}
+	var warns []string
+	seen := map[string]bool{}
+	last := -1
+	for _, d := range r.Declared {
+		seen[d] = true
+		last = max(last, syntax.StageIndex(d))
+	}
+	order := strings.Join(syntax.Stages, ", ")
+	switch {
+	case seen[name]:
+		warns = append(warns, fmt.Sprintf("stage %s declared twice", name))
+	case syntax.StageIndex(name) < last:
+		warns = append(warns, fmt.Sprintf("stage %s after %s (expected order: %s)", name, syntax.Stages[last], order))
+	}
+	if name == syntax.Change {
+		var missing []string
+		for _, need := range []string{syntax.Snapshot, syntax.CheckSt} {
+			if !seen[need] {
+				missing = append(missing, need)
+			}
+		}
+		if len(missing) > 0 {
+			warns = append(warns, fmt.Sprintf("change stage without a %s stage before it", strings.Join(missing, " or ")))
+		}
+	}
+	text := "\n" + logparse.StageLine(name, time.Now().Format("15:04:05")) + "\n"
+	for _, w := range warns {
+		text += logparse.MarkLine(logparse.Warn, w, "") + "\n"
+	}
+	if err := appendLog(logPath, text); err != nil {
+		return err
+	}
+	p := painter()
+	fmt.Fprintln(os.Stderr, p.Paint(ui.Bold, "-- stage "+name))
+	for _, w := range warns {
+		fmt.Fprintln(os.Stderr, p.Paint(ui.Yellow, "WARN  "+w))
+	}
+	return status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.Stage = name })
 }
 
 // swim _finish N [--exit CODE]
@@ -133,6 +244,7 @@ func cmdFinish(args []string) error {
 		return err
 	}
 	logPath := lane.Log(root, n)
+	step.RecoverSpool(logPath)
 	r, err := logparse.ParseFile(logPath)
 	if err != nil {
 		return err
@@ -160,21 +272,17 @@ func cmdFinish(args []string) error {
 	ds := fmt.Sprintf("%.1fs", dur.Seconds())
 	ts := now.UTC().Format(time.RFC3339)
 
-	var b strings.Builder
-	b.WriteString(logparse.SummaryLine(ts, n, r, code, ds) + "\n")
-	for _, f := range failed {
-		b.WriteString("failed: " + f.Text() + "\n")
-	}
-	b.WriteString(logparse.End + "\n")
-	if err := appendLog(logPath, b.String()); err != nil {
+	word := map[string]string{status.Passed: "PASS", status.Failed: "FAIL", status.Interrupted: "INTERRUPTED"}[state]
+	if err := appendLog(logPath, logparse.EndBlock(word, r, code, ds, ts)); err != nil {
 		return err
 	}
+	stages := r.StageResults()
 
 	p := painter()
-	word := map[string]string{status.Passed: "PASS", status.Failed: "FAIL", status.Interrupted: "INTERRUPTED"}[state]
 	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d drift=%d  exit %d  %s\n",
 		p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d summary:", n)),
 		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, code, display.Elapsed(dur))
+	fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "stages: "+logparse.StagesText(stages)))
 	for _, f := range failed {
 		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Red, f.Text()))
 	}
@@ -197,6 +305,11 @@ func cmdFinish(args []string) error {
 		l.ExitCode = status.Int(code)
 		l.Pass, l.Fail, l.Skip, l.Drift = r.Pass, r.Fail, r.Skip, r.Drift
 		l.FailedSteps = failedSteps
+		l.Stage = ""
+		l.Stages = []string{}
+		for _, st := range stages {
+			l.Stages = append(l.Stages, st.Name+" "+st.State)
+		}
 	})
 	if pid, ok := lane.Running(root, n); !ok || pid == os.Getppid() {
 		lane.RemovePID(root, n)
@@ -228,18 +341,22 @@ func cmdMark(args []string) error {
 		detail = args[3]
 	}
 	switch kind {
-	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop:
+	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn:
 	default:
 		return usagef("unknown mark kind %q", kind)
 	}
 	line := logparse.ResultLine(kind, label, detail)
+	logLine := logparse.MarkLine(kind, label, detail)
 	p := painter()
 	fmt.Fprintln(os.Stderr, p.Paint(ui.StateColor(kind), line))
 
 	if args[0] == "" {
 		// Library used outside lane_init: log only, if a log is set.
 		if l := os.Getenv("STEP_LOG"); l != "" {
-			return appendLog(l, line+"\n")
+			if err := logparse.EnsureV2(l, 0); err != nil {
+				return err
+			}
+			return appendLog(l, logLine+"\n")
 		}
 		return nil
 	}
@@ -250,7 +367,7 @@ func cmdMark(args []string) error {
 	if m := dryRunRE.FindStringSubmatch(detail); m != nil {
 		fmt.Fprintln(os.Stderr, p.Paint(ui.Dim, fmt.Sprintf("  to approve: %s=1 swim run %d", m[1], n)))
 	}
-	if err := appendLog(lane.Log(root, n), line+"\n"); err != nil {
+	if err := appendLog(lane.Log(root, n), logLine+"\n"); err != nil {
 		return err
 	}
 	return status.Update(root, n, cfg.Lanes, func(l *status.Lane) {

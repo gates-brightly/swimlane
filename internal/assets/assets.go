@@ -29,9 +29,10 @@ func LibFor(bin string) string {
 }
 
 // Lane script renders a fresh lane.N.sh.
-func Script(lane int, goal, toolchain, job string) (string, error) {
+func Script(lane int, goal, toolchain, job, owner string) (string, error) {
 	return render(laneTmpl, map[string]any{
 		"Job":       job,
+		"Owner":     owner,
 		"Lane":      lane,
 		"Goal":      oneLine(goal),
 		"Toolchain": strings.TrimSpace(toolchain),

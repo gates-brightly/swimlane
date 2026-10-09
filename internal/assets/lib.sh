@@ -11,7 +11,8 @@ SWIM_LANE=
 # lane_init N — claim lane N: cd to the repo root, point STEP_LOG at
 # .swim/logs/agentN.log, source .lane.N.rc if present, write the round marker and mark
 # the lane running in .swim/status.yml. Exports SWIM_JOB (the job id from
-# the script's Job: line). Refuses if lane N is already running.
+# the script's Job: line), and SWIM_DEADLINE / SWIM_TIMEOUT from its
+# Timeout: line. Refuses if lane N is already running.
 lane_init() {
   case "$1" in
     ''|*[!0-9]*) echo "swim: lane_init needs a lane number, e.g. lane_init 1" >&2; exit 2 ;;
@@ -24,11 +25,16 @@ lane_init() {
   if [ -f "$SWIM_ROOT/.lane.$SWIM_LANE.rc" ]; then
     . "$SWIM_ROOT/.lane.$SWIM_LANE.rc"
   fi
-  if ! SWIM_JOB=$("$SWIM_BIN" _start "$SWIM_LANE" --pid $$ --script "$0"); then
+  if ! _swim_start=$("$SWIM_BIN" _start "$SWIM_LANE" --pid $$ --script "$0"); then
     _swim_done=1
     exit 1
   fi
-  export SWIM_JOB
+  # "<job> <deadline epoch, 0 for none> <timeout text>"
+  SWIM_JOB=${_swim_start%% *}
+  _swim_start=${_swim_start#* }
+  SWIM_DEADLINE=${_swim_start%% *}
+  SWIM_TIMEOUT=${_swim_start#* }
+  export SWIM_JOB SWIM_DEADLINE SWIM_TIMEOUT
   trap '_swim_on_exit' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -50,6 +56,28 @@ _swim_on_exit() {
   exit $?
 }
 
+# _swim_after_step CODE — count a failure; stop the round if the round's
+# Timeout: ran out (swim step exits 124 then).
+_swim_after_step() {
+  _swim_last=$1
+  if [ "$_swim_last" -ne 0 ]; then
+    _swim_fail=$((_swim_fail + 1))
+  fi
+  if [ "$_swim_last" -eq 124 ] && [ "${SWIM_DEADLINE:-0}" -gt 0 ] && [ "$(date +%s)" -ge "$SWIM_DEADLINE" ]; then
+    stop "timeout: the round's Timeout ($SWIM_TIMEOUT) ran out"
+  fi
+  return "$_swim_last"
+}
+
+# stage NAME — start a stage: snapshot, check, change or verify (in that
+# order). Steps before the first stage belong to setup. Out of order, twice,
+# or a change stage without a snapshot and check before it records WARN.
+stage() {
+  if ! "$SWIM_BIN" _stage "$SWIM_LANE" "$1"; then
+    stop "bad stage: ${1:-<none>} (stages are snapshot, check, change, verify)"
+  fi
+}
+
 # run "<label>" cmd [args...] — run one step through `swim step`, recording
 # PASS/FAIL <label>. A failure does not stop the round; use gate for that.
 # For pipes or redirects, wrap them: run "<label>" bash -c 'a | b'.
@@ -61,11 +89,7 @@ run() {
   _swim_label=$1
   shift
   "$SWIM_BIN" step --label "$_swim_label" -- "$@"
-  _swim_last=$?
-  if [ "$_swim_last" -ne 0 ]; then
-    _swim_fail=$((_swim_fail + 1))
-  fi
-  return $_swim_last
+  _swim_after_step $?
 }
 
 # gate "<label>" cmd [args...] — like run, but a failure stops the round
@@ -88,11 +112,7 @@ snapshot() {
   _swim_label=$1
   shift
   "$SWIM_BIN" step --snapshot --label "$_swim_label" -- "$@"
-  _swim_last=$?
-  if [ "$_swim_last" -ne 0 ]; then
-    _swim_fail=$((_swim_fail + 1))
-  fi
-  return $_swim_last
+  _swim_after_step $?
 }
 
 # last_failed — true if the previous run/gate/snapshot failed.

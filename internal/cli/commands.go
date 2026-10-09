@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -202,7 +203,7 @@ func cmdNew(args []string) error {
 			return fmt.Errorf("job %s is already in lane.%d.sh; job ids must be unique", job, m)
 		}
 	}
-	content, err := assets.Script(n, goal, cfg.Toolchain, job)
+	content, err := assets.Script(n, goal, cfg.Toolchain, job, os.Getenv("USER"))
 	if err != nil {
 		return err
 	}
@@ -419,6 +420,11 @@ func cmdStep(args []string) error {
 	if !cfg.ValidLane(n) {
 		n = 0
 	}
+	// lane_init exports the round's deadline (Timeout:) as epoch seconds.
+	var deadline time.Time
+	if d, err := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64); err == nil && d > 0 {
+		deadline = time.Unix(d, 0)
+	}
 	logPath := os.Getenv("STEP_LOG")
 	if logPath == "" {
 		logPath = "step.log"
@@ -426,9 +432,9 @@ func cmdStep(args []string) error {
 	res, err := step.Run(step.Options{
 		Args: cmdArgs, Label: label, New: fresh, Snapshot: snap,
 		LogPath: logPath, Root: root, Lane: n, Lanes: cfg.Lanes,
-		HeaderEnv: cfg.HeaderEnv, Runtime: cfg.Runtime,
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
-		Color: ui.ColorEnabled(os.Stderr),
+		Color:    ui.ColorEnabled(os.Stderr),
+		Deadline: deadline, TimeoutText: os.Getenv("SWIM_TIMEOUT"),
 	})
 	if err != nil {
 		return err

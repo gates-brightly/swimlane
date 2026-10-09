@@ -57,6 +57,18 @@ make install     # go install, with the build date and commit stamped in
 make link        # build bin/swim and symlink it into ~/.local/bin (LINK_DIR=... to change)
 ```
 
+### Managing installs
+
+You can have both a `go install` copy and a `make link` copy; whichever comes
+first on your `PATH` runs.
+
+```sh
+make which            # every swim on your PATH, which one runs, where each came from
+make install-latest   # go install the published swim (V=v0.2.20261009 to pin)
+make uninstall        # remove the go-installed swim
+make link / unlink    # add / remove the symlink to this checkout's bin/swim
+```
+
 `make help` lists every target.
 
 ### Versions
@@ -124,30 +136,88 @@ rules, and how to read results.
 
 ```bash
 #!/usr/bin/env bash
-# Round: Cut over orders-api from SST to Terraform
-# Job:   3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
-# After: 1
-# Guard flags: ORDERS_ALLOW_SST_REMOVE - remove SST stack (2026-10-09: tf owns it)
+# swim: syntax 2
+# Round:   Cut over orders-api from SST to Terraform
+# Job:     3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
+# After:   1
+# Owner:   zach
+# Created: 2026-10-09
+# Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack (2026-10-09: tf owns it)
+# Timeout: 30m
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 2
 
+stage snapshot
 snapshot "cfn template" aws cloudformation get-template --stack-name orders-prod
+stage check
 run  "tf plan" terraform -chdir=infra/orders plan -detailed-exitcode
 gate "DeletionPolicy is Retain (deployed)" \
   bash -c 'aws cloudformation get-template --stack-name orders-prod | grep -q Retain'
+stage change
 if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (2026-10-09: tf owns it)"; then
   run "sst remove" npx sst remove --stage prod
 fi
+stage verify
 run "verify: re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 summary
 ```
 
-- **Library functions** (from `swim lib`): `lane_init`, `run`, `gate`,
+- **Header:** `Round` is required. Everything else has a default when
+  missing or empty:
+  - `Job`: generated when the round starts
+  - `After`: none
+  - `Owner`: `-`
+  - `Created`: the file's date
+  - `Guards`: found from `guard` calls in the body
+  - `Timeout`: none
+
+  Unknown keys are kept and shown in the log. A `Timeout` stops the round
+  when it runs out.
+- **Stages:** every job has the same four, in order: `snapshot` (read-only
+  capture), `check` (checks and gates), `change` (guarded changes) and
+  `verify` (prove it worked). A job skips the ones it doesn't need. Steps
+  before the first `stage` are "setup". Out-of-order stages, or `change`
+  without a snapshot and check before it, log a `WARN`.
+- **Library functions** (from `swim lib`): `lane_init`, `stage`, `run`, `gate`,
   `snapshot`, `guard`, `confirm`, `last_failed`, `any_failed`, `drift`,
   `stop` and `summary`.
 - **Shell:** the library runs on macOS's bash 3.2.
 - **Failures:** a failed check doesn't stop the round; only gates do. Don't
   use `set -e`.
+
+### The lane log
+
+Logs are plain text, built to be read with `cat` or an editor. Every line
+says what it is by how it starts, and command output is always fenced with
+`| `, so `grep '^  FAIL' .swim/logs/agent2.log` finds every failure:
+
+```
+== ROUND 2026-10-09T12:00:00Z  job=3f2a9c1e-...  Cut over orders-api
+   script: lane.2.sh | owner: zach | after: 1 | timeout: 30m | git: main@abc1234
+
+-- stage check  12:00:02
+  FAIL  tf plan (exit 2)                        3.1s  12:00:02
+        $ terraform -chdir=infra/orders plan -detailed-exitcode
+        | Error: ...
+  STOP  gate failed: tf plan
+
+== END FAIL  pass=1 fail=1 skip=0 drift=0  exit=1  3.6s  2026-10-09T12:00:04Z
+   stages: snapshot PASS | check FAIL | change none | verify none
+   failed: FAIL  tf plan (exit 2); STOP  gate failed: tf plan
+```
+
+On a terminal, `swim log 2` renders it: colours, times relative to the
+round start, and long output folded (`--full` to expand). Piped or with
+`--raw`, it is the file as is.
+
+### Syntax versions
+
+Lane scripts (`# swim: syntax 2`) and logs (`# swim lane log | syntax 2`)
+declare their syntax. swim migrates older files automatically the next time
+it loads the repo: they are rewritten in place, the originals are copied to
+`.swim/migrations/<time>/`, and the migration is recorded in `.swim.log`. A
+running lane's files are left until it finishes. A file in a newer syntax
+stops swim with instructions to update it.
 
 ---
 
@@ -161,7 +231,7 @@ summary
 | `swim all [--rerun]` | Run every pending job that hasn't passed yet. Offers to add lanes if scripts exist beyond the configured count. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they already passed. A job id pins the run to exactly that job. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane, from `.swim/status.yml`. |
-| `swim log [N\|JOB] [--all]` | A lane's log (`--all` adds its archives), a job's rounds, or with no argument the project log. |
+| `swim log [N\|JOB] [--all] [--full] [--raw]` | A lane's log (`--all` adds its archives), a job's rounds, or with no argument the project log; rendered on a terminal. |
 | `swim archive N\|JOB [<what>]` | Archive a lane's log (the name defaults to the job id). |
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
@@ -225,6 +295,7 @@ In the repo:
 | `.swim/logs/agentN.log` | Lane N's log: append-only, plain text. Read it with `swim log N`. |
 | `.swim/logs/agentN.prev-*.log` | Archived logs. Read them with `swim log N --all`. |
 | `.swim/snapshots/` | Output saved by `snapshot` steps. |
+| `.swim/migrations/` | Originals of files migrated to a newer syntax. |
 
 `swim init` git-ignores everything above except `.swim.lock`.
 

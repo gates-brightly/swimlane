@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# swim: syntax 2
 # Round: DAG root: fetch pages, aggregate, stamp run.id
 # Job:   6885ada8-4cda-4947-98d6-17f37df32cea
 # After: 
@@ -44,8 +45,10 @@ export RUN_ID
 
 P=$D/pages
 export P
+stage check
 gate "curl available" curl --version
 gate "e2etool available" e2etool version
+stage change
 gate "reset $P" bash -c 'rm -rf "$P" && mkdir -p "$P"'
 fetch() { # fetch <name> <url>
   run "fetch $1" curl -fsSL --max-time 20 -A "swim-demo/$SWIM_JOB" -o "$P/$1.html" -w '%{http_code} %{size_download}B %{url_effective}\n' "$2"
@@ -60,6 +63,7 @@ gate "aggregate into combined.html" e2etool aggregate
 
 gate "write run.id" bash -c 'echo "$RUN_ID $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$D/.run.id.tmp" && mv "$D/.run.id.tmp" "$D/run.id" && cat "$D/run.id"'
 
+stage verify
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
   gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'

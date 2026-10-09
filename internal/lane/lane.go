@@ -3,7 +3,6 @@
 package lane
 
 import (
-	"bufio"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -14,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
 // StubMarker identifies a "nothing pending" lane script.
@@ -34,70 +36,242 @@ func RCFile(root string, n int) string {
 	return filepath.Join(root, fmt.Sprintf(".lane.%d.rc", n))
 }
 
-// Info describes the lane script currently on disk.
+// Guard is a guard flag a round honours.
+type Guard struct {
+	Flag string
+	Desc string // from the header's Guards: line; "" if only found in the body
+}
+
+// KV is a header key the lane script sets that swim doesn't know.
+type KV struct{ K, V string }
+
+// Info describes the lane script currently on disk, with defaults filled in
+// for header metadata it doesn't set.
 type Info struct {
 	Exists  bool
 	Stub    bool
-	Round   string   // first Round: line (lane scripts only)
-	Job     string   // Job: line, the job's id ("" if the script has none)
-	After   []string // After: line(s), lanes or job ids this round waits for
-	Message string   // stub message
+	Syntax  int      // the script's syntax (1 if it declares none)
+	Round   string   // Round: (required for the lane to run)
+	Job     string   // Job: id ("" if the script has none; one is made at start)
+	After   []string // After: lanes or job ids this round waits for (default none)
+	Owner   string   // Owner: who wrote the round (default "")
+	Created string   // Created: date (default: the file's modification date)
+	Guards  []Guard  // Guards: lines, plus guard flags used in the body
+	Timeout time.Duration
+	// TimeoutText is the Timeout: value as written ("" for none).
+	TimeoutText string
+	Extra       []KV     // other keys in the header block, kept and shown
+	Problems    []string // header values swim couldn't use (e.g. a bad Timeout)
+	Message     string   // stub message
 }
 
 // Pending reports whether the lane script holds a round to run.
 func (i Info) Pending() bool { return i.Exists && !i.Stub && i.Round != "" }
 
+// GuardFlags lists the flags of i.Guards.
+func (i Info) GuardFlags() []string {
+	out := make([]string, len(i.Guards))
+	for k, g := range i.Guards {
+		out[k] = g.Flag
+	}
+	return out
+}
+
 var (
-	roundRE = regexp.MustCompile(`^#?\s*Round:\s*(.*)$`)
-	jobRE   = regexp.MustCompile(`^#\s*Job:\s*(\S+)`)
-	afterRE = regexp.MustCompile(`^#\s*After:\s*(.*)$`)
-	sepRE   = regexp.MustCompile(`[\s,]+`)
+	// Header keys are "# Key: value" with at most one space after the #;
+	// indented comment lines ("#   After: ...") are prose, not keys.
+	roundRE   = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
+	jobRE     = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
+	afterRE   = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
+	metaRE    = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout):\s*(.*)$`)
+	keyRE     = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
+	sepRE     = regexp.MustCompile(`[\s,]+`)
+	guardUse  = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "swim": true}
 )
 
-// ReadScript inspects lane.N.sh. A lane script without a Round: line is treated
-// as not pending, so a half-written file is never launched by `swim run`.
+// ReadScript inspects lane.N.sh. A lane script without a Round: line is
+// treated as not pending, so a half-written file is never launched by
+// `swim run`. A script in a newer syntax than this swim reads is an error.
 func ReadScript(root string, n int) (Info, error) {
-	f, err := os.Open(Script(root, n))
+	path := Script(root, n)
+	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return Info{}, nil
 	}
 	if err != nil {
 		return Info{}, err
 	}
-	defer f.Close()
-	info := Info{Exists: true}
-	sc := bufio.NewScanner(f)
-	for i := 0; sc.Scan() && i < 200; i++ {
-		line := strings.TrimSpace(sc.Text())
-		if line == StubMarker {
-			info.Stub = true
-			continue
+	info := ParseScript(string(data))
+	if err := syntax.Check(filepath.Base(path), info.Syntax); err != nil {
+		return Info{}, err
+	}
+	if info.Created == "" {
+		if st, err := os.Stat(path); err == nil {
+			info.Created = st.ModTime().Format("2006-01-02")
 		}
-		if m := afterRE.FindStringSubmatch(line); m != nil {
-			for _, tok := range sepRE.Split(m[1], -1) {
-				switch strings.ToLower(tok) {
-				case "", "swim", "-", "none", "(none)":
+	}
+	return info, nil
+}
+
+// ParseScript reads a lane script's header and body. Round, Job and After
+// may appear anywhere in the leading comments (as in syntax 1); unknown
+// keys are collected from the metadata block at the top (the `# Key: value`
+// lines straight after the shebang and syntax line).
+func ParseScript(src string) Info {
+	info := Info{Exists: true, Syntax: syntax.OfScript(src)}
+	lines := strings.Split(src, "\n")
+	inBlock := true
+	listed := map[string]bool{}
+	for i, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if i < 200 {
+			if i == 0 && strings.HasPrefix(line, "#!") || syntaxLineRE.MatchString(line) {
+				continue
+			}
+			if line == StubMarker {
+				info.Stub = true
+				continue
+			}
+			if m := afterRE.FindStringSubmatch(line); m != nil {
+				for _, tok := range sepRE.Split(m[1], -1) {
+					switch strings.ToLower(tok) {
+					case "", "swim", "-", "none", "(none)":
+						continue
+					}
+					info.After = append(info.After, tok)
+				}
+				continue
+			}
+			if m := jobRE.FindStringSubmatch(line); m != nil {
+				if info.Job == "" {
+					info.Job = m[1]
+				}
+				continue
+			}
+			if m := metaRE.FindStringSubmatch(line); m != nil {
+				v := strings.TrimSpace(m[2])
+				switch m[1] {
+				case "Owner":
+					info.Owner = v
+				case "Created":
+					info.Created = v
+				case "Timeout":
+					info.TimeoutText = v
+					if v != "" && v != "-" && !strings.EqualFold(v, "none") {
+						d, err := time.ParseDuration(v)
+						if err != nil || d <= 0 {
+							info.Problems = append(info.Problems, fmt.Sprintf("Timeout %q is not a duration like 30m or 1h30m; no timeout applies", v))
+						} else {
+							info.Timeout = d
+						}
+					}
+				case "Guards":
+					if f := strings.Fields(v); len(f) > 0 && f[0] != "-" && !strings.EqualFold(f[0], "none") && !listed[f[0]] {
+						listed[f[0]] = true
+						info.Guards = append(info.Guards, Guard{Flag: f[0], Desc: strings.TrimSpace(strings.TrimPrefix(v, f[0]))})
+					}
+				}
+				continue
+			}
+			if inBlock {
+				if m := keyRE.FindStringSubmatch(line); m != nil && !knownKeys[strings.ToLower(m[1])] && !strings.HasPrefix(line, "#!") {
+					info.Extra = append(info.Extra, KV{m[1], strings.TrimSpace(m[2])})
 					continue
 				}
-				info.After = append(info.After, tok)
+				if !roundRE.MatchString(line) {
+					inBlock = false
+				}
 			}
-			continue
+			if info.Stub && strings.HasPrefix(line, "# ") && info.Message == "" && !roundRE.MatchString(line) && i > 0 {
+				info.Message = strings.TrimPrefix(line, "# ")
+			}
+			if m := roundRE.FindStringSubmatch(line); m != nil && info.Round == "" {
+				info.Round = strings.TrimSpace(m[1])
+			}
 		}
-		if m := jobRE.FindStringSubmatch(line); m != nil && info.Job == "" {
-			info.Job = m[1]
-			continue
-		}
-		if info.Stub && strings.HasPrefix(line, "# ") && info.Message == "" && !roundRE.MatchString(line) && i > 0 {
-			info.Message = strings.TrimPrefix(line, "# ")
-		}
-		if m := roundRE.FindStringSubmatch(line); m != nil && info.Round == "" {
-			info.Round = strings.TrimSpace(m[1])
+		// Guard flags used in the body count even if the header doesn't list them.
+		if !strings.HasPrefix(line, "#") {
+			for _, m := range guardUse.FindAllStringSubmatch(line, -1) {
+				if !listed[m[1]] {
+					listed[m[1]] = true
+					info.Guards = append(info.Guards, Guard{Flag: m[1]})
+				}
+			}
 		}
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After = "", "", nil
+		info.Round, info.Job, info.After, info.Guards = "", "", nil, nil
 	}
-	return info, sc.Err()
+	return info
+}
+
+var syntaxLineRE = regexp.MustCompile(`^#\s*swim:\s*syntax\s+\d+\s*$`)
+
+var (
+	lane1RE      = regexp.MustCompile(`^#\s*Lane:.*Written:\s*(\S+)`)
+	headKeyRE    = regexp.MustCompile(`^#\s*(Round|Job|After):`)
+	v1StageRE    = regexp.MustCompile(`^# ([1-4])\. (Snapshot|Checks?|Change|Verify)\b`)
+	stageCallRE  = regexp.MustCompile(`^\s*stage\s+\w+`)
+	laneInitRE   = regexp.MustCompile(`^\s*lane_init\s`)
+	v1StageNames = map[string]string{"1": "snapshot", "2": "check", "3": "change", "4": "verify"}
+)
+
+// MigrateScript rewrites a syntax 1 lane script as syntax 2: it adds the
+// syntax line, a Created: date from the old template's "Written:" field, and
+// for scripts made from the old template, `stage` lines at its numbered
+// "# 1. Snapshot / 2. Checks / 3. Change / 4. Verify" sections. Everything
+// else is kept byte for byte. ok is false if src isn't syntax 1.
+func MigrateScript(src string) (string, bool) {
+	if syntax.OfScript(src) != 1 {
+		return src, false
+	}
+	lines := strings.Split(src, "\n")
+	var out []string
+	i := 0
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "#!") {
+		out = append(out, lines[0])
+		i = 1
+	}
+	out = append(out, syntax.ScriptLine())
+
+	created, hasCreated, hasStages := "", false, false
+	for _, l := range lines {
+		if m := lane1RE.FindStringSubmatch(l); m != nil {
+			created = m[1]
+		}
+		if strings.HasPrefix(strings.TrimSpace(l), "# Created:") {
+			hasCreated = true
+		}
+		if stageCallRE.MatchString(l) {
+			hasStages = true
+		}
+	}
+	// Created: goes after the leading Round/Job/After lines.
+	insertAt := -1
+	for k := i; k < len(lines) && k < i+8; k++ {
+		if headKeyRE.MatchString(strings.TrimSpace(lines[k])) {
+			insertAt = k
+		} else if insertAt >= 0 {
+			break
+		}
+	}
+	afterInit := false
+	for k := i; k < len(lines); k++ {
+		out = append(out, lines[k])
+		if k == insertAt && created != "" && !hasCreated {
+			out = append(out, "# Created: "+created)
+		}
+		if laneInitRE.MatchString(lines[k]) {
+			afterInit = true
+		}
+		if afterInit && !hasStages {
+			if m := v1StageRE.FindStringSubmatch(lines[k]); m != nil {
+				out = append(out, "stage "+v1StageNames[m[1]])
+			}
+		}
+	}
+	return strings.Join(out, "\n"), true
 }
 
 // Running returns the pid recorded for lane n if that process is alive.

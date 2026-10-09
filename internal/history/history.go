@@ -32,6 +32,7 @@ const (
 	Note        = "note"
 	Lanes       = "lanes"
 	Lock        = "lock"
+	Migrate     = "migrate"
 )
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.

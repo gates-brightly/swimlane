@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# swim: syntax 2
 # Round: DAG child A (of 1): combined.html to Markdown
 # Job:   7353ee29-f742-41b0-bcd1-ebab167c75a2
 # After: 1
@@ -38,8 +39,10 @@ NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
+stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
+stage change
 export RUN_ID
 
 IN=$D/input-2.$SWIM_JOB.html
@@ -50,6 +53,7 @@ gate "convert html -> markdown" env OUT="$D" e2etool markdown
 gate "one H1 per source page" bash -c 'h=$(grep -c "^# " "$D/combined.md"); s=$(grep -c "<section data-source" "$IN"); echo "h1=$h sections=$s"; test "$h" -ge "$s" -a "$h" -gt 0'
 gate "no leftover HTML tags" bash -c '! grep -nE "</?(div|p|span|section|body|html)[ >]" "$D/combined.md"'
 
+stage verify
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
   gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'

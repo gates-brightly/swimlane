@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# swim: syntax 2
 # Round: DAG wide join (of 4,6,7,8): bundle.md
 # Job:   4b01289e-7ad9-4754-b975-886bf0da5c08
 # After: 4 6 7 8
@@ -38,14 +39,17 @@ NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
+stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
+stage change
 export RUN_ID
 
 gate "parent outputs present" bash -c 'for f in report.md wordfreq.md domains.md headers.md; do test -s "$D/$f" || { echo "missing $f"; exit 1; }; wc -l "$D/$f"; done'
 gate "build bundle.md" bash -c '{ echo "# Swim DAG demo bundle"; echo; echo "Run: \`$RUN_ID\`"; echo; for f in headers.md wordfreq.md domains.md; do cat "$D/$f"; echo; done; sed "1s/^# /## /" "$D/report.md"; } > "$D/.bundle.tmp" && mv "$D/.bundle.tmp" "$D/bundle.md" && wc -l "$D/bundle.md"'
 run "bundle has every section" bash -c 'for h in "Response headers" "Word frequency" "External link domains" "Stats (swim 3)" "Content (swim 2)"; do grep -q "^## $h" "$D/bundle.md" && echo "ok  $h" || { echo "MISSING  $h"; exit 1; }; done'
 
+stage verify
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
   gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'

@@ -25,7 +25,7 @@ scenario_run() {
   THIRD_EXIT=$?
 }
 
-rounds_of() { "$SWIM" log "$1" 2>/dev/null | grep -c '^=== ROUND START'; }
+rounds_of() { "$SWIM" log "$1" 2>/dev/null | grep -c '^== ROUND '; }
 
 scenario_check() {
   local npass nredo l bad=""

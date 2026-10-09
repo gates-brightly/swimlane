@@ -100,7 +100,7 @@ func (r *repo) mustSwim(args ...string) string {
 // lane script writes lane.N.sh with the given round and body.
 func (r *repo) script(n int, round, body string) {
 	r.t.Helper()
-	s := fmt.Sprintf("#!/usr/bin/env bash\n# Round: %s\n_swim_lib=$(\"${SWIM_BIN:-swim}\" lib) || exit 1; eval \"$_swim_lib\"\nlane_init %d\n%s\nsummary\n", round, n, body)
+	s := fmt.Sprintf("#!/usr/bin/env bash\n# swim: syntax 2\n# Round: %s\n_swim_lib=$(\"${SWIM_BIN:-swim}\" lib) || exit 1; eval \"$_swim_lib\"\nlane_init %d\n%s\nsummary\n", round, n, body)
 	if err := os.WriteFile(filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n)), []byte(s), 0o755); err != nil {
 		r.t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ run "never" true`)
 	}
 
 	log := r.log(1)
-	contains(t, "agent1.log", log, "=== ROUND START", "Round: Lane one", "PASS  snapshot: state", "saved: .swim/snapshots/lane1-", "PASS  slow", "=== SUMMARY", "exit=0", "=== END")
+	contains(t, "agent1.log", log, "# swim lane log | syntax 2 | swim 1", "== ROUND ", "  Lane one\n", "  PASS  snapshot: state", "        saved: .swim/snapshots/lane1-", "  PASS  slow", "== END PASS", "exit=0")
 	snaps, _ := filepath.Glob(filepath.Join(r.root, ".swim", "snapshots", "lane1-*-state.txt"))
 	if len(snaps) != 1 {
 		t.Fatalf("snapshots: %v", snaps)
@@ -418,7 +418,7 @@ run "never" true`)
 		t.Fatalf("lane script exit: %v", err)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "--- interrupted (signal interrupt) exit 130", "FAIL  long (exit 130, interrupted)", "exit=130", "=== END")
+	contains(t, "agent1.log", log, "  FAIL  long (exit 130, interrupted)", "== END INTERRUPTED", "exit=130")
 	if strings.Contains(log, "never") {
 		t.Error("round continued after Ctrl-C")
 	}
@@ -440,7 +440,7 @@ func TestStepStandalone(t *testing.T) {
 		t.Fatalf("exit: %v\n%s", err, out)
 	}
 	data, _ := os.ReadFile(filepath.Join(r.root, "custom.log"))
-	contains(t, "custom.log", string(data), "$ bash -c 'echo hi; exit 7'", "hi\n", "--- exit 7", "FAIL  hello (exit 7)")
+	contains(t, "custom.log", string(data), "        $ bash -c 'echo hi; exit 7'", "        | hi\n", "  FAIL  hello (exit 7)")
 }
 
 func TestStaleRunningShown(t *testing.T) {
@@ -498,7 +498,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 	}
 	job := m[1]
 	script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	contains(t, "lane.1.sh", string(script), "# Job:   "+job)
+	contains(t, "lane.1.sh", string(script), "# swim: syntax 2", "# Job:     "+job)
 	if l := r.status().Get(1); l.PendingJob != job {
 		t.Errorf("pending_job = %q", l.PendingJob)
 	}
@@ -511,7 +511,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 	out = r.mustSwim("run", job[:8])
 	contains(t, "pinned run", out, "tag="+job, job[:8])
 	log := r.log(1)
-	contains(t, "agent1.log", log, "swim 1 job="+job, "job: "+job, "tag="+job)
+	contains(t, "agent1.log", log, "  job="+job+"  pinned round", "| tag="+job)
 	if l := r.status().Get(1); l.Job != job || l.State != status.Passed {
 		t.Errorf("status after run: %+v", l)
 	}
@@ -615,7 +615,7 @@ func TestLogCommand(t *testing.T) {
 
 	// Current log only.
 	out := r.mustSwim("log", "1")
-	contains(t, "log 1", out, "job=second-job-02", "Round: second round", "=== SUMMARY")
+	contains(t, "log 1", out, "job=second-job-02  second round", "== END PASS")
 	if strings.Contains(out, "first-job-01") || strings.Contains(out, "==>") {
 		t.Errorf("log 1 should be just agent1.log:\n%s", out)
 	}
@@ -632,7 +632,7 @@ func TestLogCommand(t *testing.T) {
 
 	// By job, found in the archive.
 	out = r.mustSwim("log", "first-job")
-	contains(t, "log job", out, "==> agent1.prev-first.log <==", "Round: first round")
+	contains(t, "log job", out, "==> agent1.prev-first.log <==", "job=first-job-01  first round")
 	if strings.Contains(out, "second round") {
 		t.Errorf("log by job leaked another round:\n%s", out)
 	}
@@ -661,7 +661,7 @@ func TestAllSkipsPassedJobs(t *testing.T) {
 	if strings.Contains(out, "[1] started") || !strings.Contains(out, "[2] started") {
 		t.Fatalf("second all should retry only lane 2:\n%s", out)
 	}
-	if n := strings.Count(r.log(1), "=== ROUND START"); n != 1 {
+	if n := strings.Count(r.log(1), "== ROUND "); n != 1 {
 		t.Errorf("lane 1 ran %d times", n)
 	}
 	// Everything passed: nothing to run.
@@ -670,7 +670,7 @@ func TestAllSkipsPassedJobs(t *testing.T) {
 	// Explicit lanes and --rerun still run passed rounds.
 	r.mustSwim("run", "1")
 	r.mustSwim("all", "--rerun")
-	if n := strings.Count(r.log(1), "=== ROUND START"); n != 3 {
+	if n := strings.Count(r.log(1), "== ROUND "); n != 3 {
 		t.Errorf("lane 1 ran %d times, want 3", n)
 	}
 	// A new round in the lane is pending again.
@@ -792,7 +792,7 @@ func TestOldRootLogsMigrate(t *testing.T) {
 			t.Errorf("%s not in .swim/logs: %v", f, err)
 		}
 	}
-	contains(t, "log 1 --all", r.mustSwim("log", "1", "--all"), "==> agent1.prev-earlier.log <==", "Round: old")
+	contains(t, "log 1 --all", r.mustSwim("log", "1", "--all"), "==> agent1.prev-earlier.log <==", "job=old-job-0001  old")
 	// Nothing operational left at the root after a run.
 	r.script(2, "x", `run "ok" true`)
 	r.mustSwim("run", "2")
@@ -836,7 +836,131 @@ func TestVersionAndLock(t *testing.T) {
 	// Read-only commands still work, with a warning.
 	contains(t, "status", r.mustSwim("status"), "warning: this repo needs a newer swim", "swim 1")
 	contains(t, "plan", r.mustSwim("plan"), "warning: this repo needs a newer swim")
-	if strings.Count(r.log(1), "=== ROUND START") != 2 {
+	if strings.Count(r.log(1), "== ROUND ") != 2 {
 		t.Error("a lane ran despite the lock mismatch")
+	}
+}
+
+const v1Lane = `#!/usr/bin/env bash
+# Round: Old template round
+# Job:   old-job-0001
+# Lane:  swim 1    Written: 2026-10-01
+_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+lane_init 1
+
+# 1. Snapshot (read-only)
+snapshot "state" echo state
+
+# 2. Checks
+run "precheck" true
+
+# 4. Verify
+run "verify" true
+
+summary
+`
+
+const v1Log = `=== ROUND START 2026-10-01T00:00:00Z swim 1 job=old-job-0001
+Round: Old template round
+=== STEP 2026-10-01T00:00:01Z precheck
+$ true
+--- output
+--- exit 0 (0.0s)
+PASS  precheck
+=== SUMMARY 2026-10-01T00:00:02Z swim 1 pass=1 fail=0 skip=0 drift=0 exit=0 duration=1.0s
+=== END
+`
+
+func TestSyntaxMigration(t *testing.T) {
+	r := newRepo(t, "")
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(v1Lane), 0o755)
+	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
+	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent1.log"), []byte(v1Log), 0o644)
+
+	out := r.mustSwim("status")
+	contains(t, "status", out, "migrated 2 file(s) to syntax 2 (originals in .swim/migrations/", "lane.1.sh", ".swim/logs/agent1.log")
+	script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
+	contains(t, "migrated lane.1.sh", string(script), "#!/usr/bin/env bash\n# swim: syntax 2\n", "# Created: 2026-10-01", "# 1. Snapshot (read-only)\nstage snapshot\n", "# 2. Checks\nstage check\n", "# 4. Verify\nstage verify\n")
+	if !strings.HasPrefix(r.log(1), "# swim lane log | syntax 2 | swim 1\n") || !strings.Contains(r.log(1), "== END PASS") {
+		t.Fatalf("migrated log:\n%s", r.log(1))
+	}
+	baks, _ := filepath.Glob(filepath.Join(r.root, ".swim", "migrations", "*", "lane.1.sh"))
+	if len(baks) != 1 {
+		t.Fatalf("backups: %v", baks)
+	}
+	if b, _ := os.ReadFile(baks[0]); string(b) != v1Lane {
+		t.Fatal("backup is not the original")
+	}
+	contains(t, ".swim.log", r.mustSwim("log"), "migrate      2 file(s) to syntax 2")
+	if out := r.mustSwim("status"); strings.Contains(out, "migrated") {
+		t.Errorf("second load migrated again:\n%s", out)
+	}
+
+	// The migrated round runs, with its stages.
+	r.mustSwim("run", "1")
+	log := r.log(1)
+	contains(t, "run after migration", log, "-- stage snapshot", "-- stage check", "-- stage verify", "stages: snapshot PASS | check PASS | change none | verify PASS")
+	if l := r.status().Get(1); strings.Join(l.Stages, ",") != "snapshot PASS,check PASS,change none,verify PASS" {
+		t.Errorf("status stages: %v", l.Stages)
+	}
+}
+
+func TestSyntaxTooNew(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "fine", `run "ok" true`)
+	os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte("#!/usr/bin/env bash\n# swim: syntax 9\n# Round: from the future\n"), 0o755)
+	for _, args := range [][]string{{"status"}, {"run", "1"}, {"all"}, {"plan"}} {
+		out, code := r.swim(args...)
+		if code == 0 || !strings.Contains(out, "lane.2.sh uses swim syntax 9") || !strings.Contains(out, "go install github.com/gates-brightly/swimlane/cmd/swim@latest") {
+			t.Errorf("swim %v with a syntax 9 script: %d %s", args, code, out)
+		}
+	}
+	os.Remove(filepath.Join(r.root, "lane.2.sh"))
+	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
+	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent3.log"), []byte("# swim lane log | syntax 7 | swim 3\n"), 0o644)
+	if out, code := r.swim("status"); code == 0 || !strings.Contains(out, "agent3.log uses swim syntax 7") {
+		t.Errorf("syntax 7 log: %d %s", code, out)
+	}
+}
+
+func TestStagesWarnings(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "out of order", `stage change
+run "change" true
+stage check
+run "check" true
+stage verify
+run "verify" true`)
+	r.mustSwim("run", "1")
+	contains(t, "agent1.log", r.log(1),
+		"  WARN  change stage without a snapshot or check stage before it",
+		"  WARN  stage check after change (expected order: snapshot, check, change, verify)",
+		"stages: snapshot none | check PASS | change PASS | verify PASS")
+
+	r.script(2, "bad stage", `stage deploy
+run "never" true`)
+	out, code := r.swim("run", "2")
+	if code == 0 || !strings.Contains(r.log(2), "  STOP  bad stage: deploy") || strings.Contains(r.log(2), "never") {
+		t.Fatalf("unknown stage: %d %s\n%s", code, out, r.log(2))
+	}
+}
+
+func TestTimeoutStopsRound(t *testing.T) {
+	r := newRepo(t, "")
+	p := filepath.Join(r.root, "lane.1.sh")
+	r.script(1, "slow", `stage check
+run "slow" sleep 20
+run "after" true`)
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: slow\n", "# Round: slow\n# Timeout: 1s\n", 1)), 0o755)
+	start := time.Now()
+	out, code := r.swim("run", "1")
+	if code == 0 || time.Since(start) > 15*time.Second {
+		t.Fatalf("exit %d after %s:\n%s", code, time.Since(start), out)
+	}
+	log := r.log(1)
+	contains(t, "agent1.log", log, "timeout: 1s", "  FAIL  slow (timeout: Timeout 1s reached)", "  STOP  timeout: the round's Timeout (1s) ran out", "== END FAIL")
+	if strings.Contains(log, "PASS  after") {
+		t.Error("a step ran after the timeout")
 	}
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# swim: syntax 2
 # Round: DAG cross-branch join (of 3,5): domains, reconciled with stats
 # Job:   1761bace-f44d-401e-8175-c92907acf66a
 # After: 3 5
@@ -39,13 +40,16 @@ NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
+stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
+stage change
 export RUN_ID
 
 gate "links.tsv (swim 5) agrees with stats.json (swim 3)" e2etool reconcile
 gate "domains.md" e2etool domains
 
+stage verify
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
   gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'

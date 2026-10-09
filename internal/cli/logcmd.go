@@ -11,28 +11,33 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// swim log [N|JOB] [--all]
+// swim log [N|JOB] [--all] [--full] [--raw]
 func cmdLog(args []string) error {
-	var all bool
-	rest, err := flags{bools: map[string]*bool{"all": &all}}.parse(args)
+	var all, full, raw bool
+	rest, err := flags{bools: map[string]*bool{"all": &all, "full": &full, "raw": &raw}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim log [N|JOB] [--all]")
+		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw]")
 	}
 	root, cfg, err := repo()
 	if err != nil {
 		return err
 	}
-	out := logWriter{w: os.Stdout, p: ui.Painter{On: ui.ColorEnabled(os.Stdout)}}
+	// On a terminal the log is rendered (colour, folded output, relative
+	// times); piped or with --raw it is the file exactly, as cat shows it.
+	render := ui.ColorEnabled(os.Stdout) && !raw
+	out := logWriter{w: os.Stdout, p: ui.Painter{On: render}, full: full, ref: strings.Join(rest, "")}
 
 	if len(rest) == 0 {
 		if all {
@@ -132,7 +137,13 @@ func firstRoundTime(path string) string {
 	defer f.Close()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		if line := sc.Text(); strings.HasPrefix(line, logparse.RoundStart) {
+		line := sc.Text()
+		if strings.HasPrefix(line, logparse.RoundMark) {
+			if fields := strings.Fields(line); len(fields) >= 3 {
+				return fields[2]
+			}
+		}
+		if strings.HasPrefix(line, "=== ROUND START") { // syntax 1
 			if fields := strings.Fields(line); len(fields) >= 4 {
 				return fields[3]
 			}
@@ -161,7 +172,7 @@ func roundsOf(path, ref string) ([][]string, error) {
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for sc.Scan() {
 		line := sc.Text()
-		if strings.HasPrefix(line, logparse.RoundStart) {
+		if strings.HasPrefix(line, logparse.RoundMark) || strings.HasPrefix(line, "=== ROUND START") {
 			if keep {
 				rounds = append(rounds, cur)
 			}
@@ -180,10 +191,15 @@ func roundsOf(path, ref string) ([][]string, error) {
 	return rounds, sc.Err()
 }
 
-// logWriter prints logs, colouring markers and result lines on a terminal.
+// logWriter prints logs. With colour on (a terminal) it renders them: the
+// round banner and stage headers stand out, results are coloured, times show
+// how far into the round they were, and long step output is folded unless
+// full is set. Without colour it writes the file's lines unchanged.
 type logWriter struct {
-	w io.Writer
-	p ui.Painter
+	w    io.Writer
+	p    ui.Painter
+	full bool
+	ref  string // lane or job as typed, for the "--full" hint
 }
 
 func (lw logWriter) header(path string) {
@@ -216,26 +232,158 @@ func (lw logWriter) file(path string, withHeader bool) error {
 	return sc.Err()
 }
 
-var resultKindRE = regexp.MustCompile(`^(PASS|FAIL|SKIP|DRIFT|APPROVED|STOP)  `)
+// Output folding: a step with more than foldOver lines of output shows its
+// first and last foldKeep.
+const (
+	foldOver = 40
+	foldKeep = 15
+)
 
-// lines prints log lines; outside command output, markers are bold and
-// result lines take their state colour.
+var (
+	resultKindRE = regexp.MustCompile(`^  (PASS|FAIL|SKIP|DRIFT|APPROVED|STOP|WARN)  (.*)$`)
+	timedTailRE  = regexp.MustCompile(`^(.*?)(\s+\d+(?:\.\d+)?s\s+)(\d\d:\d\d:\d\d)$`)
+	stageLineRE  = regexp.MustCompile(`^-- stage (\S+)(?:\s+(\d\d:\d\d:\d\d))?`)
+	stageWordRE  = regexp.MustCompile(`(\w+) (PASS|FAIL|SKIP|none)`)
+)
+
+// lines writes log lines, rendered if colour is on.
 func (lw logWriter) lines(lines []string) {
+	if !lw.p.On {
+		for _, l := range lines {
+			fmt.Fprintln(lw.w, l)
+		}
+		return
+	}
+	if len(lines) > 0 && !strings.HasPrefix(lines[0], "# swim lane log") && syntaxOneLog(lines) {
+		lw.linesV1(lines)
+		return
+	}
+	p := lw.p
+	var start time.Time // current round's start, for relative times
+	rel := func(clock string) string {
+		if start.IsZero() {
+			return ""
+		}
+		t, err := time.Parse("15:04:05", clock)
+		if err != nil {
+			return ""
+		}
+		at := time.Date(start.Year(), start.Month(), start.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
+		d := at.Sub(start)
+		if d < 0 {
+			d += 24 * time.Hour
+		}
+		return "  +" + display.Elapsed(d)
+	}
+	var out []string // the current step's output lines, for folding
+	flush := func() {
+		if len(out) > foldOver && !lw.full {
+			for _, o := range out[:foldKeep] {
+				fmt.Fprintln(lw.w, o)
+			}
+			hint := "swim log --full"
+			if lw.ref != "" {
+				hint = "swim log " + lw.ref + " --full"
+			}
+			fmt.Fprintln(lw.w, p.Paint(ui.Dim, fmt.Sprintf("%s… %d more lines (%s shows them)", logparse.OutPrefix, len(out)-2*foldKeep, hint)))
+			for _, o := range out[len(out)-foldKeep:] {
+				fmt.Fprintln(lw.w, o)
+			}
+		} else {
+			for _, o := range out {
+				fmt.Fprintln(lw.w, o)
+			}
+		}
+		out = out[:0]
+	}
+	for _, l := range lines {
+		if strings.HasPrefix(l, logparse.OutPrefix) {
+			out = append(out, l)
+			continue
+		}
+		flush()
+		switch {
+		case strings.HasPrefix(l, "# swim lane log"):
+			fmt.Fprintln(lw.w, p.Paint(ui.Dim, l))
+		case strings.HasPrefix(l, logparse.RoundMark):
+			if f := strings.Fields(l); len(f) >= 3 {
+				start, _ = time.Parse(time.RFC3339, f[2])
+			}
+			fmt.Fprintln(lw.w, p.Paint(ui.Bold+ui.Cyan, l))
+		case strings.HasPrefix(l, logparse.EndMark):
+			state := ""
+			if f := strings.Fields(l); len(f) >= 3 {
+				state = f[2]
+			}
+			fmt.Fprintln(lw.w, p.Paint(ui.Bold+ui.StateColor(state), l))
+		case strings.HasPrefix(l, "   stages: "):
+			fmt.Fprintln(lw.w, "   stages: "+stageWordRE.ReplaceAllStringFunc(strings.TrimPrefix(l, "   stages: "), func(m string) string {
+				name, st, _ := strings.Cut(m, " ")
+				return name + " " + p.Paint(ui.StateColor(st), st)
+			}))
+		case strings.HasPrefix(l, "   failed: "):
+			fmt.Fprintln(lw.w, p.Paint(ui.Red, l))
+		case strings.HasPrefix(l, logparse.StageMark):
+			m := stageLineRE.FindStringSubmatch(l)
+			text := p.Paint(ui.Bold+ui.Blue, l)
+			if m != nil && m[2] != "" {
+				text += p.Paint(ui.Dim, rel(m[2]))
+			}
+			fmt.Fprintln(lw.w, text)
+		case strings.HasPrefix(l, logparse.Indent):
+			fmt.Fprintln(lw.w, p.Paint(ui.Dim, l))
+		case strings.HasPrefix(l, "   "):
+			fmt.Fprintln(lw.w, p.Paint(ui.Dim, l))
+		default:
+			m := resultKindRE.FindStringSubmatch(l)
+			if m == nil {
+				fmt.Fprintln(lw.w, l)
+				continue
+			}
+			kind, rest := m[1], m[2]
+			tail := ""
+			if t := timedTailRE.FindStringSubmatch(rest); t != nil {
+				rest, tail = t[1], p.Paint(ui.Dim, t[2]+t[3]+rel(t[3]))
+			}
+			fmt.Fprintln(lw.w, "  "+p.Paint(ui.StateColor(kind)+ui.Bold, kind)+"  "+p.Paint(ui.StateColor(kind), rest)+tail)
+		}
+	}
+	flush()
+}
+
+// syntaxOneLog reports whether lines use syntax 1 framing.
+func syntaxOneLog(lines []string) bool {
+	for _, l := range lines {
+		if strings.HasPrefix(l, "=== ") {
+			return true
+		}
+		if strings.HasPrefix(l, logparse.RoundMark) {
+			return false
+		}
+	}
+	return false
+}
+
+var resultKindV1RE = regexp.MustCompile(`^(PASS|FAIL|SKIP|DRIFT|APPROVED|STOP)  `)
+
+// linesV1 renders a syntax 1 log (one that couldn't be migrated yet because
+// its lane is running).
+func (lw logWriter) linesV1(lines []string) {
 	inOutput := false
 	for _, l := range lines {
 		color := ""
 		switch {
-		case l == logparse.OutputMark:
+		case l == "--- output":
 			inOutput = true
 			color = ui.Dim
-		case strings.HasPrefix(l, logparse.ExitMark), strings.HasPrefix(l, logparse.IntrMark):
+		case strings.HasPrefix(l, "--- exit"), strings.HasPrefix(l, "--- interrupted"):
 			inOutput = false
 			color = ui.Dim
 		case strings.HasPrefix(l, "=== "):
 			inOutput = false
 			color = ui.Bold
 		case !inOutput:
-			if m := resultKindRE.FindStringSubmatch(l); m != nil {
+			if m := resultKindV1RE.FindStringSubmatch(l); m != nil {
 				color = ui.StateColor(m[1])
 			}
 		}

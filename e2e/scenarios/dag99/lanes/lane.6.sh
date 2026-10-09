@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# swim: syntax 2
 # Round: DAG grandchild (of 2): word frequency from Markdown
 # Job:   5f181388-34b3-4020-8a2f-26e5ab37d638
 # After: 2
@@ -38,13 +39,16 @@ NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
+stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
+stage change
 export RUN_ID
 
 run "simulated work (4ms)" sleep 0.004
 gate "word frequency -> wordfreq.md" e2etool wordfreq
 
+stage verify
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
   gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# swim: syntax 2
 # Round: DAG join A+B (of 2,3): report.md
 # Job:   7a2fd47d-e445-4c07-944a-b7519b8ef4ff
 # After: 2 3
@@ -38,8 +39,10 @@ NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
+stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
+stage change
 export RUN_ID
 
 gate "build report.md" e2etool report
@@ -48,6 +51,7 @@ run "report has stats table and a section per page" bash -c '
   n=$(e2etool stats-pages)
   grep -q "^| \*\*total\*\*" "$D/report.md" && h=$(grep -c "^## " "$D/report.md") && echo "pages=$n h2=$h" && test "$h" -ge $((n + 2))'
 
+stage verify
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
   gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'

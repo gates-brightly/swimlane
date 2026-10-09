@@ -19,6 +19,8 @@ scenario_check() {
   expect_match "edges all ok" "$audit" '^edges: 197 checked, 197 ok'
   expect_match "values all match" "$audit" '^values: 89 recomputed, 89 match'
   expect_match "roots started together" "$audit" '^roots in this run \[1, 8, 20, 21, 22\]: .* ok$'
+  expect_match "lane 1 recorded its stages" "$("$SWIM" log 1 --raw | grep '^   stages:' | tail -1)" 'check PASS \| change PASS \| verify PASS'
+  expect_match "audit lane recorded its stages" "$("$SWIM" log 99 --raw | grep '^   stages:' | tail -1)" 'check PASS \| change none \| verify PASS'
   printf '%s\n' "$audit" | grep -E '^(scheduler latency|makespan)' | while IFS= read -r l; do info "$l"; done
   checks_passed
 }

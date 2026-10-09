@@ -150,7 +150,31 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			detail(counts, ui.Dim)
 		}
 		if (state == status.Running || strings.HasSuffix(state, "?")) && l.CurrentStep != "" {
-			detail("step: "+l.CurrentStep, ui.Cyan)
+			step := "step: " + l.CurrentStep
+			if l.Stage != "" {
+				step = "stage: " + l.Stage + "  " + step
+			}
+			detail(step, ui.Cyan)
+		}
+		if len(l.Stages) > 0 && state != status.Running {
+			detail("stages: "+strings.Join(l.Stages, " | "), ui.Dim)
+		}
+		if l.Pending != "" && state != status.Running {
+			if info, err := lane.ReadScript(root, l.Lane); err == nil && info.Pending() {
+				var meta []string
+				if info.Owner != "" {
+					meta = append(meta, "owner "+info.Owner)
+				}
+				if info.Timeout > 0 {
+					meta = append(meta, "timeout "+info.TimeoutText)
+				}
+				if len(info.Guards) > 0 {
+					meta = append(meta, "guards "+strings.Join(info.GuardFlags(), " "))
+				}
+				if len(meta) > 0 {
+					detail(strings.Join(meta, " · "), ui.Dim)
+				}
+			}
 		}
 		if l.Reason != "" {
 			detail("reason: "+l.Reason, ui.Yellow)

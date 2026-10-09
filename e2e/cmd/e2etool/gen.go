@@ -213,6 +213,7 @@ func uuid() string {
 }
 
 const auditLane = `#!/usr/bin/env bash
+# swim: syntax 2
 # Round: DAG99 audit: every node done, every edge honoured, every value matches
 # Job:   @JOB@
 # After: @SINKS@
@@ -247,8 +248,10 @@ NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own marker" rm -f "$D/nodes/$N.done"
+stage check
 @PARENT_CHECK@@DERIVE@export RUN_ID
 
+stage verify
 @AUDIT@
 summary
 `

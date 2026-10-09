@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -34,30 +33,6 @@ func Beyond(root string, cfg *config.Config, rerun bool) []int {
 			continue
 		}
 		out = append(out, n)
-	}
-	return out
-}
-
-var guardRE = regexp.MustCompile(`(?:^|[\s;&|(])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
-
-// guards lists the guard flags a lane script uses (outside comments).
-func guards(root string, n int) []string {
-	data, err := os.ReadFile(lane.Script(root, n))
-	if err != nil {
-		return nil
-	}
-	seen := map[string]bool{}
-	var out []string
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		for _, m := range guardRE.FindAllStringSubmatch(line, -1) {
-			if !seen[m[1]] {
-				seen[m[1]] = true
-				out = append(out, m[1])
-			}
-		}
 	}
 	return out
 }
@@ -203,16 +178,23 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		case "└── ":
 			childPrefix += "    "
 		}
-		for _, g := range guards(o.Root, n) {
+		bar := "│ "
+		if len(children[n]) == 0 {
+			bar = "  "
+		}
+		for _, g := range info.Guards {
 			state := p.Paint(ui.Yellow, "unset: dry run")
-			if os.Getenv(g) == "1" {
+			if os.Getenv(g.Flag) == "1" {
 				state = p.Paint(ui.Green, "set: approved")
 			}
-			bar := "│ "
-			if len(children[n]) == 0 {
-				bar = "  "
+			desc := ""
+			if g.Desc != "" {
+				desc = "  " + p.Paint(ui.Dim, g.Desc)
 			}
-			fmt.Fprintf(w, "%s%s%s %s=1 (%s)\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "guard"), g, state)
+			fmt.Fprintf(w, "%s%s%s %s=1 (%s)%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "guard"), g.Flag, state, desc)
+		}
+		if info.Timeout > 0 {
+			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "timeout "+info.TimeoutText))
 		}
 		kids := children[n]
 		sort.Ints(kids)

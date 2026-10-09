@@ -164,7 +164,7 @@ var Commands = map[string]string{
   --lane N|JOB   tie the note to a lane (and its job id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|JOB] [--all]
+	"log": `swim log [N|JOB] [--all] [--full] [--raw]
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
@@ -174,7 +174,12 @@ var Commands = map[string]string{
                         oldest first, then agentN.log, each under a header
     swim log JOB        just the rounds of that job (full id or 8+ characters),
                         from whichever current or archived log holds them
-  Coloured on a terminal, plain when piped (e.g. swim log 2 | less).
+  On a terminal the log is rendered: round and stage headers stand out,
+  results are coloured, times show how far into the round they were, and
+  step output longer than 40 lines is folded to its first and last 15.
+  Piped (swim log 2 | less) it is the file exactly, as cat shows it.
+  --full   don't fold long output
+  --raw    print the file as is, even on a terminal
 `,
 	"lock": `swim lock [--upgrade]
 
