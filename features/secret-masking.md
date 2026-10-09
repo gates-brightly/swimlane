@@ -1,6 +1,6 @@
 # Masking secrets in logs
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -82,16 +82,29 @@ masking was active.
 - **Status and history:** the strings come from logs, so they're already
   masked. `swim note` text is masked too, using the caller's environment.
 
-## Open questions
+## Decisions
 
-1. **Mask the terminal stream as well, or only what's persisted?** Recommend
-   both: the terminal often ends up in screenshots, recordings or CI logs.
-2. **Value patterns** (e.g. `AKIA[0-9A-Z]{16}`, `ghp_…`, JWTs), not just
-   values from known env names? That catches secrets that came from files.
-   Recommend a small built-in set behind `secret_patterns_auto`.
-3. **Re-masking old logs:** should there be `swim log --redact-archive` to
-   re-mask logs written before this feature? Probably not: document a
-   one-off `sed` instead.
+1. **The terminal stream is masked too**, not only what's persisted: `swim
+   step`'s stdout/stderr copies and the launcher's relay of lane output.
+2. **Value patterns ship**, on by default behind `secret_patterns_auto`: AWS
+   access key ids, GitHub classic and fine-grained tokens, Slack tokens, JWTs.
+3. **No re-masking of old logs.** For logs written before this feature, a
+   one-off `sed -i 's/<value>/***/g' .swim/logs/*.log` does it.
+4. **Masking is line-buffered** (a line ends at `\n` or `\r`), which catches
+   values split across writes and lets the patterns apply; output without a
+   newline appears when its line ends (or when the step ends). Partial lines
+   over 64KiB are flushed as they are.
+5. **Where it's configured:** `swim step` and the hooks load config
+   themselves, so no `SWIM_SECRET_ENV` export is needed. Lists
+   (`secret_env`, `secret_env_ignore`) add up across defaults and the repo;
+   the switches override.
+6. **Multi-line values** (PEM keys) are also masked line by line.
+7. The `swim doctor` warning for a secret listed in `header_env` lands with
+   `lint-doctor.md`; until then the value is logged as `NAME=***(len N)`.
+8. The spec's `secrets` scenario is covered by the Go e2e test
+   `TestSecretMasking`: output, a snapshot (raw and base64), a failed step's
+   label, a guard reason, `header_env` and `swim note`, then a scan of every
+   file under `.swim/` and `.swim.log` for the raw values.
 
 ## Testing
 

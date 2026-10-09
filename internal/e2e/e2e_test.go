@@ -1412,3 +1412,51 @@ run "never" true`)
 		t.Error("the repo's history changed")
 	}
 }
+
+func TestSecretMasking(t *testing.T) {
+	r := newRepo(t, "")
+	const tok = "ghp_testvalue123456"
+	const listed = "dd-api-key-0042"
+	cfg := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")
+	data, _ := os.ReadFile(cfg)
+	conf := strings.Replace(string(data), "defaults:\n", "defaults:\n  secret_env: [DD_KEY]\n", 1)
+	conf = regexp.MustCompile(`(?m)^  header_env: .*$`).ReplaceAllString(conf, "  header_env: [GITHUB_TOKEN, STAGE]")
+	os.WriteFile(cfg, []byte(conf), 0o644)
+	r.script(1, "leaky", `run "echo the token" bash -c 'echo "token=$GITHUB_TOKEN"; env | grep -E "GITHUB_TOKEN|DD_KEY"'
+snapshot "state with secrets" bash -c 'echo "dd=$DD_KEY b64=$(printf %s "$GITHUB_TOKEN" | base64)"'
+run "fail with $GITHUB_TOKEN in the label" false
+guard SECRET_FLAG "reason mentions $DD_KEY"
+summary`)
+	c := r.cmd(bin, "run", "1", "--plain")
+	c.Env = append(c.Env, "GITHUB_TOKEN="+tok, "DD_KEY="+listed)
+	out, _ := c.CombinedOutput()
+	n := r.cmd(bin, "note", "--lane", "1", "the token is "+tok)
+	n.Env = append(n.Env, "GITHUB_TOKEN="+tok)
+	if o, err := n.CombinedOutput(); err != nil {
+		t.Fatalf("note: %v %s", err, o)
+	}
+
+	if strings.Contains(string(out), tok) || strings.Contains(string(out), listed) {
+		t.Errorf("a secret reached the terminal stream:\n%s", out)
+	}
+	contains(t, "terminal", string(out), "token=***")
+	// Nothing swim wrote, anywhere, holds the raw values (or the base64 form).
+	b64, _ := exec.Command("bash", "-c", "printf %s "+tok+" | base64").Output()
+	for _, root := range []string{filepath.Join(r.root, ".swim"), filepath.Join(r.root, ".swim.log")} {
+		filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			body, _ := os.ReadFile(path)
+			for _, raw := range []string{tok, listed, strings.TrimSpace(string(b64))} {
+				if strings.Contains(string(body), raw) {
+					t.Errorf("%s contains a secret (%q)", path, raw)
+				}
+			}
+			return nil
+		})
+	}
+	log := r.log(1)
+	contains(t, "agent1.log", log, "masked: ", "GITHUB_TOKEN", "DD_KEY", "env: GITHUB_TOKEN=***(len 19)", "        | token=***", "  FAIL  fail with *** in the label", "reason mentions ***")
+	contains(t, ".swim.log", r.mustSwim("log"), "the token is ***")
+}

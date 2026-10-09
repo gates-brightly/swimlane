@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/policy"
+	"github.com/gates-brightly/swimlane/internal/redact"
 )
 
 // DefaultLanes is used when neither the defaults nor the repo set `lanes`.
@@ -23,16 +24,20 @@ const DefaultLanes = 4
 // Settings is one block of configuration, either `defaults` or a repo entry.
 // Zero values mean "not set" so a repo block can override field by field.
 type Settings struct {
-	Lanes           int           `yaml:"lanes,omitempty"`
-	HeaderEnv       []string      `yaml:"header_env,omitempty"`
-	Runtime         string        `yaml:"runtime,omitempty"`
-	Toolchain       string        `yaml:"toolchain,omitempty"`
-	Deps            map[int][]int `yaml:"deps,omitempty"`
-	MaxParallel     *int          `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
-	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // added to the built-in git push/commit/pull
-	Chime           *Chime        `yaml:"chime,omitempty"`            // on | off | failure (YAML true/false/failure)
-	ChimeStyle      *string       `yaml:"chime_style,omitempty"`      // bell | sound | notify
-	ChimeMinS       *int          `yaml:"chime_min_s,omitempty"`      // don't chime for runs shorter than this
+	Lanes              int           `yaml:"lanes,omitempty"`
+	HeaderEnv          []string      `yaml:"header_env,omitempty"`
+	Runtime            string        `yaml:"runtime,omitempty"`
+	Toolchain          string        `yaml:"toolchain,omitempty"`
+	Deps               map[int][]int `yaml:"deps,omitempty"`
+	MaxParallel        *int          `yaml:"max_parallel,omitempty"`         // lanes running at once; 0 = unlimited
+	BlockedCommands    []string      `yaml:"blocked_commands,omitempty"`     // added to the built-in git push/commit/pull
+	Chime              *Chime        `yaml:"chime,omitempty"`                // on | off | failure (YAML true/false/failure)
+	ChimeStyle         *string       `yaml:"chime_style,omitempty"`          // bell | sound | notify
+	ChimeMinS          *int          `yaml:"chime_min_s,omitempty"`          // don't chime for runs shorter than this
+	SecretEnv          []string      `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
+	SecretEnvAuto      *bool         `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
+	SecretEnvIgnore    []string      `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
+	SecretPatternsAuto *bool         `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
 }
 
 // File is the on-disk shape of config.yml.
@@ -174,6 +179,15 @@ func (c *Config) merge(r Settings) {
 	}
 	// Blocked commands add up: defaults, then the repo's (never removed).
 	c.BlockedCommands = append(append([]string(nil), c.BlockedCommands...), r.BlockedCommands...)
+	// Secret names add up too; the switches override.
+	c.SecretEnv = append(append([]string(nil), c.SecretEnv...), r.SecretEnv...)
+	c.SecretEnvIgnore = append(append([]string(nil), c.SecretEnvIgnore...), r.SecretEnvIgnore...)
+	if r.SecretEnvAuto != nil {
+		c.SecretEnvAuto = r.SecretEnvAuto
+	}
+	if r.SecretPatternsAuto != nil {
+		c.SecretPatternsAuto = r.SecretPatternsAuto
+	}
 	if r.Chime != nil {
 		c.Chime = r.Chime
 	}
@@ -227,6 +241,17 @@ func (c *Config) Validate() error {
 // Blocked returns the patterns no lane command may contain: the built-ins
 // (git push, git commit, git pull) plus defaults' and this repo's additions.
 func (c *Config) Blocked() []string { return policy.Patterns(c.BlockedCommands) }
+
+// Masker returns the secret masker for env (usually os.Environ()).
+func (c *Config) Masker(env []string) *redact.Masker {
+	on := func(b *bool) bool { return b == nil || *b }
+	return redact.New(env, redact.Options{
+		Names:        c.SecretEnv,
+		Auto:         on(c.SecretEnvAuto),
+		Ignore:       c.SecretEnvIgnore,
+		AutoPatterns: on(c.SecretPatternsAuto),
+	})
+}
 
 // Parallel is the cap on lanes running at once (0 = unlimited).
 func (c *Config) Parallel() int {

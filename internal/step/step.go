@@ -23,6 +23,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/policy"
+	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -53,6 +54,9 @@ type Options struct {
 	// Blocked are patterns the command line may not contain (git push, ...);
 	// a match is refused without running: BLOCKED, exit policy.ExitBlocked.
 	Blocked []string
+	// Mask replaces secret values in everything the step writes (log,
+	// snapshot, terminal); nil masks nothing.
+	Mask *redact.Masker
 }
 
 // Retry configures a step's retries (run --retry N ...).
@@ -134,11 +138,25 @@ func Run(o Options) (Result, error) {
 	}
 	RecoverSpool(o.LogPath)
 
-	label := o.Label
+	// Secrets never reach the log, the snapshot or the terminal: every
+	// stream and every string the step writes goes through the masker.
+	mk := o.Mask
+	var flushes []*redact.Writer
+	if mk.Active() {
+		outW, errW := mk.Writer(o.Stdout), mk.Writer(o.Stderr)
+		flushes = append(flushes, outW, errW)
+		o.Stdout, o.Stderr = outW, errW
+		defer func() {
+			for _, f := range flushes {
+				f.Flush()
+			}
+		}()
+	}
+	label := mk.String(o.Label)
 	if o.Snapshot && !strings.HasPrefix(label, "snapshot") {
 		label = "snapshot: " + label
 	}
-	cmdline := Quote(o.Args)
+	cmdline := mk.String(Quote(o.Args))
 	logLabel := label
 	if logLabel == "" {
 		logLabel = shorten(cmdline, 40)
@@ -199,10 +217,12 @@ func Run(o Options) (Result, error) {
 	if save != nil {
 		sink = io.MultiWriter(spool, save)
 	}
-	plain := &lockedWriter{w: &StripWriter{W: sink}}
+	maskedSink := mk.Writer(sink)
+	plain := &lockedWriter{w: &StripWriter{W: maskedSink}}
 	// note writes a "-- text" line into the step's block and the terminal.
 	note := func(text string) {
 		plain.mu.Lock()
+		maskedSink.Flush() // keep notes after the output they follow
 		fmt.Fprintf(spool, "%s%s\n", spoolMark, text)
 		plain.mu.Unlock()
 		fmt.Fprintln(o.Stderr, p.Paint(ui.Dim, "-- "+text))
@@ -262,6 +282,12 @@ func Run(o Options) (Result, error) {
 			break
 		}
 		backoff = min(backoff*2, 5*time.Minute)
+	}
+	plain.mu.Lock()
+	maskedSink.Flush()
+	plain.mu.Unlock()
+	for _, f := range flushes {
+		f.Flush()
 	}
 	spool.Close()
 	res.ExitCode, res.Signal = last.exit, last.sig
@@ -509,7 +535,11 @@ func exitCode(cmd *exec.Cmd, err error) int {
 
 // EnvLine records the cloud profile and configured keys. Only names listed
 // in config are printed, so secrets stay out of logs unless someone lists one.
-func EnvLine(keys []string) string {
+func EnvLine(keys []string, mk ...*redact.Masker) string {
+	var m *redact.Masker
+	if len(mk) > 0 {
+		m = mk[0]
+	}
 	seen := map[string]bool{}
 	var parts []string
 	for _, k := range append([]string{"AWS_PROFILE"}, keys...) {
@@ -523,6 +553,9 @@ func EnvLine(keys []string) string {
 				continue
 			}
 			v = "<unset>"
+		}
+		if m != nil && v != "<unset>" && (m.Value(k) || m.String(v) != v) {
+			v = fmt.Sprintf("***(len %d)", len(v))
 		}
 		parts = append(parts, k+"="+v)
 	}

@@ -305,6 +305,16 @@ SYNTAX
     1   no syntax line, no stages, === STEP / --- output log framing
 
 SAFETY RULES
+  - Secrets are masked, as a backstop. swim replaces the values of secret
+    variables (config secret_env, plus names like *_TOKEN, *_SECRET,
+    *_PASSWORD, *_API_KEY with secret_env_auto) and well-known credential
+    shapes (AWS key ids, GitHub/Slack tokens, JWTs) with *** in step output,
+    commands, snapshots, the terminal stream, labels, status.yml and
+    .swim.log, including their base64 and URL-encoded forms. A secret in
+    header_env is logged as NAME=***(len N), and each round header says
+    "masked: N vars (NAMES)". Masking does NOT cover output a step pipes or
+    writes elsewhere, or values split or transformed. The rule stands: never
+    print secrets; print keys or lengths only.
   - swim never pushes, commits or pulls, and neither do lanes. A lane script
     containing `git push`, `git commit` or `git pull` (or a repo's
     blocked_commands) fails before it starts; a step whose command contains one
@@ -411,6 +421,10 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         lanes: 4                         # lanes are swim 1..lanes
         max_parallel: 8                  # lanes running at once (0 = unlimited, the default)
         blocked_commands: ["git rebase", "gh pr merge"]   # added to the built-in git push/commit/pull
+        secret_env: [GITHUB_TOKEN, DATADOG_API_KEY]       # values masked as *** everywhere swim writes
+        secret_env_auto: true            # also *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY, ... (default)
+        secret_env_ignore: [CSRF_TOKEN]  # names exempt from secret_env_auto
+        secret_patterns_auto: true       # also AWS key ids, GitHub/Slack tokens, JWTs (default)
         header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
         runtime: node --version          # recorded as runtime version
         toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null

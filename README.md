@@ -327,6 +327,7 @@ repos:
   /path/to/your-repo:                    # git toplevel; overrides defaults
     lanes: 6
     max_parallel: 8                      # lanes running at once (default unlimited)
+    secret_env: [DATADOG_API_KEY]        # masked as *** (with *_TOKEN etc. automatically)
     deps: {2: [1], 4: [2, 3]}            # ordering that holds every round
 ```
 
@@ -346,8 +347,10 @@ repos:
   snapshot.
 - **Fail-closed:** gates and `confirm` prompts stop the round when there is
   no answer.
-- **Clean logs:** ANSI codes are stripped, and only the env keys you list
-  are recorded, never secrets.
+- **Clean logs:** ANSI codes are stripped, and secrets are masked as `***`
+  everywhere swim writes: the values of `secret_env` variables and of names
+  like `*_TOKEN`/`*_PASSWORD`, plus credential shapes such as AWS key ids and
+  GitHub tokens. It's a backstop; still never print secrets.
 - **Running lanes are protected:** swim refuses to edit, archive, stub or
   rerun a lane that is running, and refuses to run under a breaking-version
   mismatch.

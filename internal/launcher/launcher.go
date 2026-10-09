@@ -395,7 +395,8 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// The lane's process inherits the lock files, so the locks stay held as
 	// long as the lane runs, even if this launcher dies.
 	cmd.ExtraFiles = fileLocks
-	w := &lineWriter{emit: func(s string) { disp.Line(n, s) }}
+	mk := o.Cfg.Masker(os.Environ())
+	w := &lineWriter{emit: func(s string) { disp.Line(n, mk.String(s)) }}
 	cmd.Stdout, cmd.Stderr = w, w
 
 	launched := time.Now()

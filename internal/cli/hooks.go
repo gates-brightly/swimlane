@@ -149,13 +149,17 @@ func cmdStart(args []string) error {
 	if cfg.Runtime != "" {
 		ctx = append(ctx, logparse.KV{K: "runtime", V: step.RuntimeVersion(cfg.Runtime)})
 	}
-	if env := step.EnvLine(cfg.HeaderEnv); env != "" {
+	mk := cfg.Masker(os.Environ())
+	if env := step.EnvLine(cfg.HeaderEnv, mk); env != "" {
 		ctx = append(ctx, logparse.KV{K: "env", V: env})
 	}
 	for _, kv := range info.Extra {
-		ctx = append(ctx, logparse.KV{K: strings.ToLower(kv.K), V: kv.V})
+		ctx = append(ctx, logparse.KV{K: strings.ToLower(kv.K), V: mk.String(kv.V)})
 	}
-	header := logparse.RoundHeader(ts, job, round, ctx)
+	if names := mk.Names(); len(names) > 0 {
+		ctx = append(ctx, logparse.KV{K: "masked", V: fmt.Sprintf("%d vars (%s)", len(names), strings.Join(names, ", "))})
+	}
+	header := logparse.RoundHeader(ts, job, mk.String(round), ctx)
 	for _, prob := range info.Problems {
 		header += logparse.MarkLine(logparse.Warn, prob, "") + "\n"
 	}
@@ -361,6 +365,10 @@ func cmdMark(args []string) error {
 	kind, label, detail := args[1], args[2], ""
 	if len(args) > 3 {
 		detail = args[3]
+	}
+	if _, cfg, err := repoNoMigrate(); err == nil { // guard reasons, drift, stop text: no secrets
+		mk := cfg.Masker(os.Environ())
+		label, detail = mk.String(label), mk.String(detail)
 	}
 	switch kind {
 	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn, logparse.Blocked:

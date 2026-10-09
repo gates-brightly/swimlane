@@ -595,6 +595,7 @@ func cmdStep(args []string) error {
 		Deadline: deadline, TimeoutText: os.Getenv("SWIM_TIMEOUT"),
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
 		Blocked: cfg.Blocked(),
+		Mask:    cfg.Masker(os.Environ()),
 	})
 	if err != nil {
 		return err
@@ -695,6 +696,7 @@ func cmdNote(args []string) error {
 	if err != nil {
 		return err
 	}
+	text = cfg.Masker(os.Environ()).String(text)
 	e := history.Entry{Event: history.Note, Detail: text}
 	if ref != "" {
 		if e.Lane, err = laneRef(root, cfg, ref, true); err != nil {
