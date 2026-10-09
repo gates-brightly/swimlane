@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/term"
 
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // Display is the launcher's view. In live mode it pins the panel with an

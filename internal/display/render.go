@@ -10,8 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"swim/internal/lane"
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // Lane states shown in the panel (same words as status.yml).

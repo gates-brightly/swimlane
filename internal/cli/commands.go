@@ -12,15 +12,16 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"swim/internal/assets"
-	"swim/internal/config"
-	"swim/internal/history"
-	"swim/internal/lane"
-	"swim/internal/launcher"
-	"swim/internal/logparse"
-	"swim/internal/status"
-	"swim/internal/step"
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/assets"
+	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/history"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/launcher"
+	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/step"
+	"github.com/gates-brightly/swimlane/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 const (
@@ -180,6 +181,9 @@ func cmdNew(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := requireVersion(root, false); err != nil {
+		return err
+	}
 	n, err := laneArg(cfg, rest[0])
 	if err != nil {
 		return err
@@ -227,6 +231,11 @@ func cmdRun(args []string) error {
 	}
 	if rerun && len(rest) > 0 {
 		return usagef("--rerun is for running every pending lane; named lanes always run")
+	}
+	if root, _, err := repo(); err != nil {
+		return err
+	} else if err := requireVersion(root, true); err != nil {
+		return err
 	}
 	if len(rest) == 0 {
 		if cfg, err = offerMoreLanes(root, cfg, rerun); err != nil {
@@ -346,6 +355,7 @@ func cmdPlan(args []string) error {
 	if err != nil {
 		return err
 	}
+	warnVersion(root)
 	var lanes []int
 	for _, a := range rest {
 		n, err := laneRef(root, cfg, a, false)
@@ -542,4 +552,59 @@ func rel(root, p string) string {
 		return r
 	}
 	return p
+}
+
+// swim lock [--upgrade]
+func cmdLock(args []string) error {
+	var upgrade bool
+	rest, err := flags{bools: map[string]*bool{"upgrade": &upgrade}}.parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) > 0 {
+		return usagef("usage: swim lock [--upgrade]")
+	}
+	root, _, err := repo()
+	if err != nil {
+		return err
+	}
+	l, ok, err := version.ReadLock(root)
+	if err != nil {
+		return err
+	}
+	if !upgrade {
+		fmt.Printf("swim:  %s (breaking version %d)\n", version.Long(), version.Breaking)
+		if !ok {
+			fmt.Printf("lock:  none (%s is written on the next swim run)\n", version.LockName)
+			return nil
+		}
+		fmt.Printf("lock:  breaking version %d, written by swim %s at %s\n", l.Breaking, l.Version, l.UpdatedAt)
+		if l.Breaking != version.Breaking {
+			return version.ErrMismatch{Lock: l, Path: version.LockPath(root)}
+		}
+		fmt.Println("ok:    this swim can run this repo's lanes")
+		return nil
+	}
+	switch {
+	case ok && l.Breaking > version.Breaking:
+		return version.ErrMismatch{Lock: l, Path: version.LockPath(root)}
+	case ok && l.Breaking == version.Breaking:
+		fmt.Printf("%s already pins breaking version %d\n", version.LockName, l.Breaking)
+		return nil
+	}
+	for n := 1; n <= 99; n++ {
+		if pid, running := lane.Running(root, n); running {
+			return fmt.Errorf("swim %d is running (pid %d); let it finish before upgrading the lock", n, pid)
+		}
+	}
+	if err := version.WriteLock(root); err != nil {
+		return err
+	}
+	from := "none"
+	if ok {
+		from = fmt.Sprint(l.Breaking)
+	}
+	history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("breaking %s -> %d (swim %s)", from, version.Breaking, version.String())})
+	fmt.Printf("%s: breaking version %s -> %d\n", version.LockName, from, version.Breaking)
+	return nil
 }

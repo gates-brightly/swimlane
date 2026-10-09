@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"swim/internal/cli"
+	"github.com/gates-brightly/swimlane/internal/cli"
 )
 
 func main() {

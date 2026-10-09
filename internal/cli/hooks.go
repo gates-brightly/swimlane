@@ -11,14 +11,14 @@ import (
 	"syscall"
 	"time"
 
-	"swim/internal/config"
-	"swim/internal/display"
-	"swim/internal/history"
-	"swim/internal/lane"
-	"swim/internal/logparse"
-	"swim/internal/status"
-	"swim/internal/step"
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/history"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/step"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // Hidden commands called by the lane script library (lib.sh).
@@ -67,6 +67,10 @@ func cmdStart(args []string) error {
 	}
 	root, cfg, n, err := laneCtx(rest[0])
 	if err != nil {
+		return err
+	}
+	// Lane scripts run directly with bash honour the lock too.
+	if err := requireVersion(root, true); err != nil {
 		return err
 	}
 	pid, _ := strconv.Atoi(pidS)

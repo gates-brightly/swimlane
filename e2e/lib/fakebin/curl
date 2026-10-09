@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Offline stand-in for curl, put first on PATH by e2e/run.sh.
+# GET  -> copies $E2E_FIXTURES/pages/<site>.html to -o
+# -I   -> writes canned 200 response headers to -o
+# Each request sleeps $E2E_CURL_DELAY seconds (default 0.3) to mimic network time;
+# a fast fake hides races that real fetches expose.
+out=; url=; head=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --version) echo "curl 0.0.0-e2e (fake)"; exit 0 ;;
+    -o) out=$2; shift ;;
+    -w|-A|--max-time|-H|-X) shift ;;
+    -I|-sSI|-sI) head=1 ;;
+    -*) ;;
+    *) url=$1 ;;
+  esac
+  shift
+done
+case "$url" in
+  *example.com*) site=example ;;
+  *cern.ch*)     site=cern ;;
+  *httpbin.org*) site=httpbin ;;
+  *iana.org*)    site=iana ;;
+  *) echo "fake curl: no fixture for $url" >&2; exit 6 ;;
+esac
+sleep "${E2E_CURL_DELAY:-0.3}"
+if [ "$head" = 1 ]; then
+  body=$(printf 'HTTP/1.1 200 OK\r\nServer: e2e-fake\r\nContent-Type: text/html\r\n\r\n')
+else
+  body=$(cat "$E2E_FIXTURES/pages/$site.html") || exit 23
+fi
+if [ -n "$out" ]; then printf '%s\n' "$body" > "$out"; else printf '%s\n' "$body"; fi
+echo "200 $url"

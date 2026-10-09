@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"strings"
 
-	"swim/internal/history"
-	"swim/internal/lane"
-	"swim/internal/logparse"
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/history"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // swim log [N|JOB] [--all]

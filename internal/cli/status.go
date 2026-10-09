@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"swim/internal/config"
-	"swim/internal/display"
-	"swim/internal/lane"
-	"swim/internal/logparse"
-	"swim/internal/status"
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 func cmdStatus(args []string) error {
@@ -28,6 +28,7 @@ func cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
+	warnVersion(root)
 	only := 0
 	if len(rest) == 1 {
 		if only, err = laneRef(root, cfg, rest[0], true); err != nil {

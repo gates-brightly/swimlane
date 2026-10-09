@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Round: DAG independent root: HTTP response headers
+# Job:   07aee2b7-be33-4c6e-9f09-2fbbbb35af2a
+# After: 
+# Lane:  swim 8    Written: 2026-10-09
+#
+# Goal:
+#   No parents: should start at the same moment as swim 1, not after it.
+#   HEAD three sites; summarise status/server/content-type into headers.md.
+#
+# Steps:
+#   0. Clear this node's done marker; 
+#   1. Simulated work (0.2s); HEAD three sites (read-only)
+#   2. Gate: headers.md
+#   z. E2E_FAIL toggle; on success write .scenario/dag/nodes/8.done
+#
+# Guard flags this round honours (flag: action, date, reason):
+#   (none)
+# Test toggle (not a guard; nothing destructive):
+#   E2E_FAIL="3 5"   space-separated lanes that fail on purpose (to watch skips propagate)
+#
+# DAG (each lane's `# After:` line), lanes 1-9:
+#   1 -> 2, 3, 5    2 -> 4, 6    3 -> 4, 7    5 -> 7
+#   4, 6, 7, 8 -> 9    9 -> 10..19 (generated)    8 has no parents (independent root)
+# Shared dir .scenario/dag/: run.id (swim 1), nodes/N.done ("<run> <start> <end>").
+#
+# Part of the e2e scenario e2e/scenarios/dag99 (run: e2e/run.sh dag99).
+# Never edit this file while it may be running: `swim status` first.
+# Do not use `set -e`: failed checks keep going; only gates stop the round.
+
+_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
+eval "$_swim_lib"
+lane_init 8
+
+D=.scenario/dag
+N=8
+PARENTS=""
+NODE_START=$(python3 -c 'import time; print(f"{time.time():.3f}")')
+export D N PARENTS NODE_START
+mkdir -p "$D/nodes"
+run "clear own done marker" rm -f "$D/nodes/$N.done"
+RUN_ID="indep:${SWIM_JOB:0:8}"
+export RUN_ID
+
+H=$D/headers
+export H
+gate "reset $H" bash -c 'rm -rf "$H" && mkdir -p "$H"'
+run "simulated work (0.2s)" sleep 0.2
+head_of() { # head_of <name> <url>
+  run "HEAD $1" curl -sSI --max-time 15 -A "swim-demo/$SWIM_JOB" -o "$H/$1.txt" -w '%{http_code} %{url_effective}\n' "$2"
+}
+head_of example https://example.com/
+head_of httpbin https://httpbin.org/get
+head_of cern    http://info.cern.ch/
+gate "headers.md" python3 - <<'PY'
+import os, glob
+d, h = os.environ["D"], os.environ["H"]
+rows = []
+for p in sorted(glob.glob(f"{h}/*.txt")):
+    lines = open(p, encoding="utf-8", errors="replace").read().splitlines()
+    hdr = {k.strip().lower(): v.strip() for k, _, v in (l.partition(":") for l in lines[1:]) if v}
+    rows.append(f"| {os.path.basename(p)[:-4]} | {lines[0].strip() if lines else '?'} | {hdr.get('server', '-')} | {hdr.get('content-type', '-')} |")
+out = "## Response headers (swim 8)\n\n| site | status | server | content-type |\n|---|---|---|---|\n" + "\n".join(rows) + "\n"
+open(f"{d}/headers.md", "w").write(out)
+print(out)
+assert rows, "no headers"
+PY
+
+gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
+if ! any_failed; then
+  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(python3 -c "import time; print(f\"{time.time():.3f}\")")" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
+fi
+
+summary

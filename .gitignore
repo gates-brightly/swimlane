@@ -4,3 +4,6 @@ lane.[0-9]*.sh
 .swim/
 .swim.log
 # <<< swim <<<
+
+# e2e scenario lane scripts are source, not swim working files
+!/e2e/scenarios/*/lanes/lane.[0-9]*.sh

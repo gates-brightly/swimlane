@@ -2,12 +2,13 @@ BINARY  := swim
 PKG     := ./cmd/swim
 BIN_DIR := bin
 LINK_DIR ?= $(HOME)/.local/bin
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -s -w -X swim/internal/cli.Version=$(VERSION)
+COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+BUILD_DATE ?= $(shell date -u +%Y%m%d)
+LDFLAGS := -s -w -X github.com/gates-brightly/swimlane/internal/version.BuildDate=$(BUILD_DATE) -X github.com/gates-brightly/swimlane/internal/version.Commit=$(COMMIT)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build install link unlink run test test-unit test-e2e cover fmt vet tidy check clean
+.PHONY: help build install link unlink run test test-unit test-e2e test-scenarios cover fmt vet tidy check clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -37,6 +38,9 @@ test-unit: ## Run unit tests only (skip e2e)
 
 test-e2e: ## Run end-to-end tests against the built binary
 	go test -count=1 ./internal/e2e/...
+
+test-scenarios: ## Run e2e/ scenarios (whole lane DAGs, offline); pick some with S="dag99 ..."
+	./e2e/run.sh $(S)
 
 cover: ## Run tests with a coverage report
 	go test -coverprofile=coverage.out ./...

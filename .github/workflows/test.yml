@@ -1,0 +1,43 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Lane scripts and e2e/run.sh must work on macOS's /bin/bash 3.2. Runner
+      # images also ship a newer bash; put 3.2 first so every `bash` (the
+      # launcher's, the scenario runner's, #!/usr/bin/env bash) is 3.2.
+      - name: Use macOS system bash 3.2
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$HOME/bash32"
+          ln -sf /bin/bash "$HOME/bash32/bash"
+          echo "$HOME/bash32" >> "$GITHUB_PATH"
+
+      - name: Tool versions
+        run: |
+          bash --version | head -1
+          python3 --version
+          go version
+
+      # gofmt, go vet, unit tests, the Go e2e suite and the e2e/ scenarios.
+      - run: make check
+
+      - name: Keep scenario repos on failure
+        if: failure()
+        run: e2e/run.sh -k || true

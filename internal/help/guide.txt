@@ -31,6 +31,8 @@ COMMANDS
   archive N|JOB [<what>]   archive lane N's log as .swim/logs/agentN.prev-<what or job id>.log
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
+  lock [--upgrade]         show swim's version and the repo's .swim.lock; move it up
+  --version                swim's version: <breaking>.<YYYYMMDD>
 
   Wherever a command takes a lane number N it also takes a job id (JOB): the
   full id or its first 8+ characters. See "job" below.
@@ -67,6 +69,11 @@ CONCEPTS
               Logs are kept; rounds are not.
 
 FILES (repo root)
+  .swim.lock            the breaking version of swim this repo uses; written on
+                        the first run. Commit it. If swim refuses to run over a
+                        version mismatch, follow its instructions (and see
+                        `swim lock --help`); never edit or delete the lock to
+                        get past it.
   .swim.log             project log: one line per top-level action (rounds
                         written, run, passed/failed, skipped, archived, stubbed,
                         notes). A new agent reads it first. Git-ignored by

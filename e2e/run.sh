@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# e2e scenario runner: each scenario gets a fresh git repo and swim config,
+# writes its lane scripts, runs them through the swim binary built from this
+# checkout, and checks the outcome. Offline: curl is a fake serving fixtures/.
+#
+#   e2e/run.sh                 run every scenario
+#   e2e/run.sh dag99 ...       run the named scenarios
+#   e2e/run.sh -l              list scenarios
+#   e2e/run.sh -k ...          keep scratch repos (paths printed) for digging in
+#
+#   SWIM_E2E_BIN=/path/swim    test that binary instead of building one
+#   E2E_CURL_DELAY=0.3         seconds per fake curl request
+#
+# Scenario contract (e2e/scenarios/<name>/scenario.sh, sourced in a subshell
+# whose cwd is the scratch repo, after lib/common.sh):
+#   DESCRIPTION="..."           one line for -l and the report
+#   LANES=N                     lanes to configure (1..99)
+#   scenario_setup              write lane.N.sh files into the repo
+#   scenario_run                run swim (default: swim_run on lanes 1..LANES)
+#   scenario_check              assert on the outcome; non-zero fails the scenario
+# Bash 3.2 compatible (macOS).
+set -u
+
+E2E=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(dirname "$E2E")
+keep=0
+
+scenarios() { for d in "$E2E"/scenarios/*/; do [ -f "$d/scenario.sh" ] && basename "$d"; done; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -k) keep=1; shift ;;
+    -l)
+      for s in $(scenarios); do
+        printf '  %-16s %s\n' "$s" "$(DESCRIPTION=; . "$E2E/scenarios/$s/scenario.sh" >/dev/null 2>&1; echo "$DESCRIPTION")"
+      done
+      exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "e2e: unknown flag $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+selected=${*:-$(scenarios)}
+for s in $selected; do
+  [ -f "$E2E/scenarios/$s/scenario.sh" ] || { echo "e2e: no scenario '$s' (e2e/run.sh -l lists them)" >&2; exit 2; }
+done
+
+base=$(mktemp -d "${TMPDIR:-/tmp}/swim-e2e.XXXXXX") || exit 1
+cleanup() { [ "$keep" = 1 ] || rm -rf "$base"; }
+trap cleanup EXIT
+
+if [ -n "${SWIM_E2E_BIN:-}" ]; then
+  SWIM=$SWIM_E2E_BIN
+else
+  SWIM=$base/bin/swim
+  echo "building swim from $ROOT"
+  (cd "$ROOT" && go build -buildvcs=false -o "$SWIM" ./cmd/swim) || { echo "e2e: build failed" >&2; exit 1; }
+fi
+
+report=""
+failed=0
+for s in $selected; do
+  dir=$base/$s
+  repo=$dir/repo
+  mkdir -p "$repo" "$dir/out" "$dir/xdg"
+  echo
+  echo "=== $s"
+  start=$(date +%s)
+  (
+    export SWIM E2E SCENARIO_DIR="$E2E/scenarios/$s" OUT="$dir/out" E2E_FIXTURES="$E2E/fixtures"
+    export XDG_CONFIG_HOME="$dir/xdg" PATH="$E2E/lib/fakebin:$(dirname "$SWIM"):$PATH"
+    export NO_COLOR=1 SWIM_BIN="$SWIM"
+    unset SWIM_ROOT SWIM_LANE STEP_LOG SWIM_JOB E2E_FAIL   # hermetic: scenarios set what they need
+    cd "$repo" || exit 1
+    git init -q . || exit 1
+    "$SWIM" init >/dev/null || exit 1
+    . "$E2E/lib/common.sh"
+    LANES=4
+    scenario_run() { swim_run $(seq 1 "$LANES"); }
+    . "$SCENARIO_DIR/scenario.sh"
+    "$SWIM" config --lanes "$LANES" >/dev/null || exit 1
+    scenario_setup || { echo "  setup failed"; exit 1; }
+    scenario_run
+    echo "  swim run exit $RUN_EXIT: $(lane_results | awk '{c[$2]++} END {printf "%d pass, %d fail, %d skip", c["PASS"], c["FAIL"], c["SKIP"]}')"
+    scenario_check
+  )
+  rc=$?
+  secs=$(( $(date +%s) - start ))
+  if [ $rc -eq 0 ]; then result=PASS; else result=FAIL; failed=$((failed + 1)); fi
+  [ -f "$dir/out/info" ] && cat "$dir/out/info"
+  [ "$keep" = 1 ] && echo "  kept: $repo"
+  report="$report$(printf '  %-16s %-4s %4ss' "$s" "$result" "$secs")
+"
+done
+
+echo
+echo "e2e summary"
+printf '%s' "$report"
+[ "$keep" = 1 ] && echo "scratch repos kept under $base"
+exit $(( failed > 0 ))

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"swim/internal/assets"
+	"github.com/gates-brightly/swimlane/internal/assets"
 )
 
 // Every function the lane script library defines must be documented in the guide,

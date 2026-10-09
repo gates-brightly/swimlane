@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"swim/internal/status"
+	"github.com/gates-brightly/swimlane/internal/status"
 )
 
 func TestQuoteRoundTripsThroughBash(t *testing.T) {

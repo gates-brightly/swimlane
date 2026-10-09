@@ -16,8 +16,8 @@ import (
 
 	// The tests run a built binary; importing its code makes `go test`
 	// rerun them (instead of reusing a cached pass) when that code changes.
-	_ "swim/internal/cli"
-	"swim/internal/status"
+	_ "github.com/gates-brightly/swimlane/internal/cli"
+	"github.com/gates-brightly/swimlane/internal/status"
 )
 
 var bin string
@@ -240,6 +240,11 @@ func TestSkipPropagatesDownChain(t *testing.T) {
 	if f.Get(2).State != status.Skipped || f.Get(4).State != status.Skipped || f.Get(4).Reason != "swim 2 skipped" {
 		t.Fatalf("status: 2=%+v 4=%+v", f.Get(2), f.Get(4))
 	}
+	// A skipped lane records the round it skipped, so plan sees a retry, not a new job.
+	if f.Get(4).Round != "four" || f.Get(4).FinishedAt == nil {
+		t.Errorf("skipped lane should record its round: %+v", f.Get(4))
+	}
+	contains(t, "plan after skips", r.mustSwim("plan"), "[~] swim 4  four")
 	if r.log(2) != "" {
 		t.Error("skipped lane wrote a log")
 	}
@@ -572,6 +577,7 @@ func TestProjectLog(t *testing.T) {
 		"init lanes=4",
 		"new swim 1 job=job-one-0001 first goal",
 		"new swim 2 job=job-two-0002 second goal",
+		"lock created .swim.lock: breaking 1",
 		"run swim 1,2",
 		"start swim 1 job=job-one-0001 first goal",
 		"fail swim 1 job=job-one-0001 pass=",
@@ -752,8 +758,9 @@ func TestPlan(t *testing.T) {
 	r.script(3, "child b", `run "ok" true`)
 	head(3, "1")
 	out = r.mustSwim("plan")
-	contains(t, "retry", out, "[~] retry: the job ran before and didn't pass", "[~] swim 3  child b", "└── [+] swim 4  join")
-	contains(t, "retry", out, "Plan: 1 to run, 1 to retry, 0 to rerun, 0 to skip.", "2 items have completed with no remaining work.")
+	// Lane 4 was skipped below lane 3: the same job comes back, so it's a retry too.
+	contains(t, "retry", out, "[~] retry: the job ran before and didn't pass", "[~] swim 3  child b", "└── [~] swim 4  join")
+	contains(t, "retry", out, "Plan: 0 to run, 2 to retry, 0 to rerun, 0 to skip.", "2 items have completed with no remaining work.")
 	if strings.Contains(out, "swim 1  root") {
 		t.Errorf("completed lanes should be summarised, not listed:\n%s", out)
 	}
@@ -790,5 +797,45 @@ func TestOldRootLogsMigrate(t *testing.T) {
 	r.mustSwim("run", "2")
 	if m, _ := filepath.Glob(filepath.Join(r.root, "agent*.log")); len(m) > 0 {
 		t.Errorf("logs at root: %v", m)
+	}
+}
+
+func TestVersionAndLock(t *testing.T) {
+	r := newRepo(t, "")
+	if out := r.mustSwim("--version"); !regexp.MustCompile(`^swim 1\.(\d{8}|dev)`).MatchString(out) {
+		t.Errorf("--version = %q", out)
+	}
+	lockPath := filepath.Join(r.root, ".swim.lock")
+	r.script(1, "one", `run "ok" true`)
+	r.mustSwim("plan")
+	if _, err := os.Stat(lockPath); err == nil {
+		t.Fatal("plan wrote a lock")
+	}
+	out := r.mustSwim("run", "1")
+	contains(t, "first run", out, "wrote .swim.lock (breaking version 1)")
+	data, _ := os.ReadFile(lockPath)
+	contains(t, ".swim.lock", string(data), "breaking: 1", "version: 1.")
+	if out := r.mustSwim("run", "1"); strings.Contains(out, "wrote .swim.lock") {
+		t.Error("lock rewritten on second run")
+	}
+	contains(t, "lock", r.mustSwim("lock"), "lock:  breaking version 1", "ok:")
+	contains(t, ".swim.log", r.mustSwim("log"), "lock         created .swim.lock: breaking 1")
+
+	// A lock from a newer breaking version: refuse to run, with instructions.
+	os.WriteFile(lockPath, []byte("breaking: 2\nversion: 2.20270101\n"), 0o644)
+	for _, args := range [][]string{{"run", "1"}, {"all"}, {"1"}, {"new", "2", "x"}, {"lock", "--upgrade"}} {
+		out, code := r.swim(args...)
+		if code == 0 || !strings.Contains(out, "this repo needs a newer swim") || !strings.Contains(out, "go install github.com/gates-brightly/swimlane/cmd/swim@latest") {
+			t.Errorf("swim %v with a newer lock: %d %s", args, code, out)
+		}
+	}
+	if out, err := r.cmd("bash", "lane.1.sh").CombinedOutput(); err == nil || !strings.Contains(string(out), "needs a newer swim") {
+		t.Errorf("direct run with a newer lock: %v %s", err, out)
+	}
+	// Read-only commands still work, with a warning.
+	contains(t, "status", r.mustSwim("status"), "warning: this repo needs a newer swim", "swim 1")
+	contains(t, "plan", r.mustSwim("plan"), "warning: this repo needs a newer swim")
+	if strings.Count(r.log(1), "=== ROUND START") != 2 {
+		t.Error("a lane ran despite the lock mismatch")
 	}
 }

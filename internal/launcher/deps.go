@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"swim/internal/config"
-	"swim/internal/lane"
-	"swim/internal/status"
+	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/status"
 )
 
 // Dep is one thing a lane waits for.

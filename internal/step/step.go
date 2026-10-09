@@ -16,10 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"swim/internal/lane"
-	"swim/internal/logparse"
-	"swim/internal/status"
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // Options configures one step.

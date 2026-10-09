@@ -176,6 +176,33 @@ var Commands = map[string]string{
                         from whichever current or archived log holds them
   Coloured on a terminal, plain when piped (e.g. swim log 2 | less).
 `,
+	"lock": `swim lock [--upgrade]
+
+  swim's version is <breaking>.<YYYYMMDD> (swim --version), e.g. 1.20261009:
+  the breaking version changes only when lane scripts, logs or swim's state
+  change incompatibly; the date is the build date.
+
+  .swim.lock, at the repo root, pins the breaking version a repo's lanes use.
+  swim writes it on the first run (swim run / swim all, or a lane script run
+  directly) if there is none. Commit it, so everyone runs a compatible swim.
+
+  When the lock and this swim disagree, swim refuses to run lanes or write
+  new ones (swim plan / status / log still work, with a warning):
+    - lock is newer than this swim: update swim, then run again:
+        go install github.com/gates-brightly/swimlane/cmd/swim@latest
+        (or in a swimlane checkout: git pull && make install)
+    - lock is older than this swim: the repo was set up before a breaking
+      change. Read the changes below, update the lane scripts (swim new
+      writes the current template), let running lanes finish, then record
+      that the repo is ready with: swim lock --upgrade
+
+  swim lock             show this swim's version and the repo's lock
+  swim lock --upgrade   move the lock up to this swim's breaking version
+
+  Breaking versions:
+    1   first release: lane.N.sh scripts with Round:/Job:/After: headers,
+        .swim/ state and logs, .swim.log project log
+`,
 	"help": `swim help [command]
 
   Print the full guide, or one command's detail.
@@ -195,7 +222,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 func Full() string {
 	s := Guide + "\nCOMMAND DETAIL\n"
-	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "step", "lib", "archive", "stub", "note"} {
+	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "step", "lib", "archive", "stub", "note", "lock"} {
 		s += "\n" + Commands[order]
 	}
 	return s

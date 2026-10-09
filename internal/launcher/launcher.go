@@ -18,14 +18,14 @@ import (
 	"syscall"
 	"time"
 
-	"swim/internal/config"
-	"swim/internal/display"
-	"swim/internal/history"
-	"swim/internal/lane"
-	"swim/internal/logparse"
-	"swim/internal/status"
-	"swim/internal/step"
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/history"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/step"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // Options configures a launch.
@@ -226,10 +226,15 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, dis
 
 	skip := func(reason string) *Outcome {
 		disp.Set(n, func(v *display.LaneView) { v.State, v.Reason, v.WaitingOn = display.Skipped, reason, nil })
-		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
-			l.State, l.Reason, l.WaitingOn, l.PID = status.Skipped, reason, []int{}, 0
-		})
 		info, _ := lane.ReadScript(o.Root, n)
+		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
+			// Record which round was skipped: a later plan or retry must see
+			// this job as attempted, not new. Counts from an older round go.
+			l.ResetRun()
+			l.State, l.Reason = status.Skipped, reason
+			l.Round, l.Job = info.Round, info.Job
+			l.FinishedAt = status.Str(status.Now())
+		})
 		history.Log(o.Root, history.Entry{Event: history.Skip, Lane: n, Job: info.Job, Detail: reason + "  " + info.Round})
 		return &Outcome{N: n, Job: info.Job, State: status.Skipped, Exit: -1, Reason: reason}
 	}

@@ -1,4 +1,4 @@
-module swim
+module github.com/gates-brightly/swimlane
 
 go 1.27.1
 

@@ -9,10 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"swim/internal/config"
-	"swim/internal/lane"
-	"swim/internal/status"
-	"swim/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // Beyond returns lane scripts numbered above the configured lanes that hold

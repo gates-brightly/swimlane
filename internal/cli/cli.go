@@ -8,10 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"swim/internal/config"
-	"swim/internal/help"
-	"swim/internal/lane"
-	"swim/internal/status"
+	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/help"
+	"github.com/gates-brightly/swimlane/internal/history"
+	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 type command struct {
@@ -36,6 +38,7 @@ func init() {
 		"stub":    {run: cmdStub},
 		"note":    {run: cmdNote},
 		"log":     {run: cmdLog},
+		"lock":    {run: cmdLock},
 		"help":    {run: cmdHelp},
 		// Called by the lane script library, not by people.
 		"_start":  {run: cmdStart, hidden: true},
@@ -56,7 +59,7 @@ func Main(args []string) int {
 		return 0
 	}
 	if args[0] == "--version" || args[0] == "version" {
-		fmt.Println("swim", Version)
+		fmt.Println("swim", version.Long())
 		return 0
 	}
 	name := args[0]
@@ -93,9 +96,6 @@ func Main(args []string) int {
 	}
 	return 0
 }
-
-// Version is set at build time with -ldflags "-X swim/internal/cli.Version=...".
-var Version = "dev"
 
 // looksLikeLaneRef reports whether a first argument that isn't a command
 // should be read as a lane number or job id.
@@ -228,6 +228,31 @@ func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, erro
 		return 0, errors.New(msg)
 	}
 	return 0, fmt.Errorf("job %s is ambiguous: matches lanes %v; use more characters", s, hits)
+}
+
+// requireVersion refuses to continue when the repo's .swim.lock pins
+// another breaking version, and creates the lock if create is set and none
+// exists (a swim job is about to run).
+func requireVersion(root string, create bool) error {
+	if !create {
+		return version.Check(root)
+	}
+	created, err := version.Ensure(root)
+	if err != nil {
+		return err
+	}
+	if created {
+		history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("created %s: breaking %d (swim %s)", version.LockName, version.Breaking, version.String())})
+		fmt.Fprintf(os.Stderr, "swim: wrote %s (breaking version %d); commit it so everyone runs a compatible swim\n", version.LockName, version.Breaking)
+	}
+	return nil
+}
+
+// warnVersion prints a lock mismatch without stopping a read-only command.
+func warnVersion(root string) {
+	if err := version.Check(root); err != nil {
+		fmt.Fprintf(os.Stderr, "swim: warning: %v\n\n", err)
+	}
 }
 
 // laneArg parses and range-checks a lane number.
