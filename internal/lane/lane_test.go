@@ -233,3 +233,32 @@ func TestIndentedProseIsNotAHeaderKey(t *testing.T) {
 		t.Fatalf("prose read as header keys: %+v", i)
 	}
 }
+
+func TestFileLocksAllOrNothing(t *testing.T) {
+	root := t.TempDir()
+	a, name, _, err := TryFileLocks(root, []string{"tf/orders", "vpc"}, "run A")
+	if err != nil || name != "" || len(a) != 2 {
+		t.Fatalf("first take: %v %q %v", a, name, err)
+	}
+	held := HeldLocks(root)
+	if len(held) != 2 || held[0].Name != "tf/orders" || held[0].By != "run A" {
+		t.Fatalf("held: %+v", held)
+	}
+	b, name, by, err := TryFileLocks(root, []string{"other", "vpc"}, "run B")
+	if err != nil || b != nil || name != "vpc" || by != "run A" {
+		t.Fatalf("second take should fail on vpc held by run A: %v %q %q %v", b, name, by, err)
+	}
+	// All or nothing: "other" must not be left held by the failed attempt.
+	for _, h := range HeldLocks(root) {
+		if h.Name == "other" {
+			t.Fatal("partial lock left behind")
+		}
+	}
+	a.Release()
+	if len(HeldLocks(root)) != 0 {
+		t.Fatal("locks still held after release")
+	}
+	if !ValidLockName("tf/orders-1.2_x") || ValidLockName("a b") || ValidLockName("../x") || ValidLockName("") {
+		t.Fatal("ValidLockName")
+	}
+}

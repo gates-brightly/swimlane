@@ -1,6 +1,6 @@
 # Resource locks between lanes
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -74,17 +74,26 @@ which locks.
   `# After:` and locks can't create a wait cycle, because locks are acquired
   only once dependencies are met.
 
-## Open questions
+## Decisions
 
-1. **Shared (reader) locks?** `# Locks: orders-table:read` would let readers
-   share a resource while writers get it alone. Useful for snapshot-only
-   rounds, but it adds complexity. Recommend exclusive only to start.
-2. **Locks across machines?** Two operators on different laptops against the
-   same AWS account aren't protected. Out of scope, and it should be
-   documented so nobody assumes otherwise.
-3. **Merge with parallel limits?** A lock is a pool of size 1, so
-   `# Pool: aws` with `pools: {aws: 4}` generalises both. Decide before
-   implementing either.
+1. **Exclusive locks only.** No shared (reader) locks yet.
+2. **Not across machines.** Locks protect lanes in one repo on one machine
+   (within a run and across concurrent runs). This is documented in
+   `swim --help` so nobody assumes otherwise.
+3. **No pools.** Parallel limit shipped as a global cap and locks as exclusive
+   locks; `# Pool:` is not built.
+4. **Lock files are held by the lane's process.** The launcher takes the
+   `flock` and passes the open file to the lane (`ExtraFiles`), so a killed
+   launcher doesn't release a lock its still-running lane needs, and a killed
+   lane never leaves a stale one. Across runs, locks are taken all-or-nothing
+   (try every lock non-blocking, release and poll on any conflict), so two runs
+   can't deadlock.
+5. **Direct runs** (`bash lane.N.sh`) take no locks; documented.
+6. Waits are recorded as `state: locked` (status.yml), `locked` events
+   (`.swim.log`) and `locked (name: swim N)` in the panel; `swim status` lists
+   held locks and `swim plan` lists which lanes take turns on which lock.
+7. The scheduler's callbacks (queued, locked) run without the scheduler's lock
+   held, so their I/O never serialises other lanes.
 
 ## Testing
 
@@ -98,6 +107,6 @@ which locks.
     shares a lock with a lane running at the same time
   - two concurrent `swim run` processes in one repo respect the same lock
   - a SIGKILLed run releases its lock
-- **Scenario:** `locks`: dag99-style generated lanes with random locks from a
+- **Scenario:** `dag99-locks` (shipped as this): dag99-style generated lanes with random locks from a
   pool of five names. The audit checks that no two lanes sharing a lock
   overlapped, and that lock waits never caused a lane to be skipped.

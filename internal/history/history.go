@@ -34,6 +34,7 @@ const (
 	Lock        = "lock"
 	Migrate     = "migrate"
 	Queued      = "queued"
+	Locked      = "locked" // a lane waits for a resource lock
 )
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.

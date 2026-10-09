@@ -60,6 +60,7 @@ type Info struct {
 	Timeout time.Duration
 	// TimeoutText is the Timeout: value as written ("" for none).
 	TimeoutText string
+	Locks       []string // Locks: resources this round needs exclusively (default none)
 	Extra       []KV     // other keys in the header block, kept and shown
 	Problems    []string // header values swim couldn't use (e.g. a bad Timeout)
 	Message     string   // stub message
@@ -83,11 +84,11 @@ var (
 	roundRE   = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE     = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE   = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE    = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout):\s*(.*)$`)
+	metaRE    = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Locks):\s*(.*)$`)
 	keyRE     = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE     = regexp.MustCompile(`[\s,]+`)
 	guardUse  = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "swim": true}
+	knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "locks": true, "swim": true}
 )
 
 // ReadScript inspects lane.N.sh. A lane script without a Round: line is
@@ -166,6 +167,16 @@ func ParseScript(src string) Info {
 							info.Timeout = d
 						}
 					}
+				case "Locks":
+					for _, tok := range sepRE.Split(v, -1) {
+						switch {
+						case tok == "" || tok == "-" || strings.EqualFold(tok, "none"):
+						case !ValidLockName(tok):
+							info.Problems = append(info.Problems, fmt.Sprintf("Locks: %q is not a lock name (letters, digits, . _ - /); ignored", tok))
+						default:
+							info.Locks = append(info.Locks, tok)
+						}
+					}
 				case "Guards":
 					if f := strings.Fields(v); len(f) > 0 && f[0] != "-" && !strings.EqualFold(f[0], "none") && !listed[f[0]] {
 						listed[f[0]] = true
@@ -201,7 +212,7 @@ func ParseScript(src string) Info {
 		}
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards = "", "", nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks = "", "", nil, nil, nil
 	}
 	return info
 }

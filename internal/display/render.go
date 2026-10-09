@@ -19,6 +19,7 @@ const (
 	Idle        = "idle"
 	Starting    = "starting" // selected, about to start
 	Queued      = "queued"   // dependencies passed; waiting for a free slot (max_parallel)
+	Locked      = "locked"   // dependencies passed; waiting for a resource lock (# Locks:)
 	Waiting     = "waiting"
 	Running     = "running"
 	Passed      = "passed"
@@ -37,14 +38,15 @@ type LaneView struct {
 	WaitingOn []int
 	Reason    string // why a lane was skipped
 	Exit      int
-	QueuePos  int // lanes ahead of it while Queued
+	QueuePos  int    // lanes ahead of it while Queued
+	LockWait  string // while Locked, e.g. "orders-table: swim 4"
 	Started   time.Time
 	Finished  time.Time
 }
 
 // Active reports whether the lane is still queued, waiting or running.
 func (v LaneView) Active() bool {
-	return v.State == Starting || v.State == Queued || v.State == Waiting || v.State == Running
+	return v.State == Starting || v.State == Queued || v.State == Locked || v.State == Waiting || v.State == Running
 }
 
 var throbberFrames = []string{"|", "/", "-", `\`}
@@ -83,6 +85,8 @@ func stateText(v LaneView, now time.Time) (string, string) {
 		return thr + " starting", ui.Cyan
 	case Queued:
 		return fmt.Sprintf("%s queued (#%d)", thr, v.QueuePos+1), ui.Yellow
+	case Locked:
+		return fmt.Sprintf("%s locked (%s)", thr, v.LockWait), ui.Yellow
 	case Waiting:
 		return thr + " " + WaitingText(v.WaitingOn), ui.Yellow
 	case Running:
@@ -141,7 +145,7 @@ func rank(state string) int {
 		return 0
 	case Failed, Interrupted:
 		return 1
-	case Starting, Queued, Waiting:
+	case Starting, Queued, Locked, Waiting:
 		return 2
 	case Skipped:
 		return 3
@@ -160,6 +164,8 @@ func hiddenWord(state string) string {
 		return "waiting"
 	case Queued:
 		return "queued"
+	case Locked:
+		return "locked"
 	case Failed:
 		return "failed"
 	case Done:
@@ -216,7 +222,7 @@ func visible(views []LaneView) ([]LaneView, string) {
 }
 
 func wordRank(w string) int {
-	for _, s := range []string{Running, Failed, Interrupted, Queued, Waiting, Skipped, Passed, Done, Idle} {
+	for _, s := range []string{Running, Failed, Interrupted, Queued, Locked, Waiting, Skipped, Passed, Done, Idle} {
 		if hiddenWord(s) == w {
 			return rank(s)
 		}

@@ -196,6 +196,9 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		if info.Timeout > 0 {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "timeout "+info.TimeoutText))
 		}
+		if len(info.Locks) > 0 {
+			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "locks "+strings.Join(info.Locks, ", ")))
+		}
 		kids := children[n]
 		sort.Ints(kids)
 		for i, c := range kids {
@@ -249,6 +252,26 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 	}
 	if len(idle) > 0 {
 		fmt.Fprintln(w, p.Paint(ui.Dim, "Idle lanes: "+strings.Join(idle, ", ")))
+	}
+	// Lanes that share a lock never run at the same time (in either order).
+	byLock := map[string][]int{}
+	for _, n := range sel {
+		if actions[n] == actSkip {
+			continue
+		}
+		for _, l := range scripts[n].Locks {
+			byLock[l] = append(byLock[l], n)
+		}
+	}
+	var lockNames []string
+	for name, ls := range byLock {
+		if len(ls) > 1 {
+			lockNames = append(lockNames, name)
+		}
+	}
+	sort.Strings(lockNames)
+	for _, name := range lockNames {
+		fmt.Fprintf(w, "%s %s: swim %s take turns (never at the same time)\n", p.Paint(ui.Yellow, "Lock"), name, joinInts(byLock[name], ", "))
 	}
 	for _, n := range notes {
 		fmt.Fprintln(w, p.Paint(ui.Yellow, "Note: ")+n)

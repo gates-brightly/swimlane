@@ -236,6 +236,11 @@ func transition(a, b LaneView) string {
 	switch b.State {
 	case Waiting:
 		return WaitingText(b.WaitingOn)
+	case Locked:
+		if a.State == Locked && a.LockWait == b.LockWait {
+			return ""
+		}
+		return "waiting for lock " + b.LockWait
 	case Queued:
 		if a.State == Queued {
 			return "" // position changes aren't worth a line each

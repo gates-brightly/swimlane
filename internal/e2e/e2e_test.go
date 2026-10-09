@@ -1104,3 +1104,151 @@ func envOf(r *repo, key string) string {
 	}
 	return ""
 }
+
+// withLocks adds a "# Locks:" header line to lane n.
+func withLocks(t *testing.T, r *repo, n int, locks string) {
+	t.Helper()
+	p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "\n# Round:", "\n# Locks: "+locks+"\n# Round:", 1)), 0o755)
+}
+
+// overlapWatcher samples lane pidfiles until stop is closed, recording the
+// pairs of lanes that were ever running at the same time.
+func overlapWatcher(r *repo, stop chan struct{}) <-chan map[[2]int]bool {
+	out := make(chan map[[2]int]bool, 1)
+	go func() {
+		seen := map[[2]int]bool{}
+		tick := time.NewTicker(10 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stop:
+				out <- seen
+				return
+			case <-tick.C:
+				var live []int
+				for n := 1; n <= 9; n++ {
+					if _, err := os.Stat(filepath.Join(r.root, ".swim", fmt.Sprintf("lane%d.pid", n))); err == nil {
+						live = append(live, n)
+					}
+				}
+				for i := range live {
+					for j := i + 1; j < len(live); j++ {
+						seen[[2]int{live[i], live[j]}] = true
+					}
+				}
+			}
+		}
+	}()
+	return out
+}
+
+func TestResourceLocksWithinARun(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "migrate table", `run "work" bash -c 'sleep 1; exit 1'`)
+	r.script(2, "back up table", `run "work" sleep 1`)
+	withLocks(t, r, 1, "orders-table")
+	withLocks(t, r, 2, "orders-table")
+	contains(t, "plan", r.mustSwim("plan"), "locks orders-table", "Lock orders-table: swim 1, 2 take turns")
+
+	stop := make(chan struct{})
+	seen := overlapWatcher(r, stop)
+	start := time.Now()
+	out, _ := r.swim("all", "--plain")
+	close(stop)
+	took := time.Since(start)
+	if (<-seen)[[2]int{1, 2}] {
+		t.Error("lanes sharing a lock ran at the same time")
+	}
+	if took < 1900*time.Millisecond || took > 6*time.Second {
+		t.Errorf("two one-second lanes taking turns should take about 2s; took %s", took)
+	}
+	// A failure doesn't spread through a lock: lane 2 still ran and passed.
+	if st := r.status(); st.Get(1).State != status.Failed || st.Get(2).State != status.Passed {
+		t.Fatalf("states: 1=%s 2=%s\n%s", st.Get(1).State, st.Get(2).State, out)
+	}
+	contains(t, "output", out, "waiting for lock orders-table: swim ")
+	contains(t, ".swim.log", r.mustSwim("log"), "locked       swim ")
+
+	// Locks {a}, {a,b}, {b}: no deadlock; sharers never overlap.
+	r2 := newRepo(t, "")
+	for n, locks := range map[int]string{1: "a", 2: "a, b", 3: "b"} {
+		r2.script(n, fmt.Sprintf("lane %d", n), `run "work" sleep 0.5`)
+		withLocks(t, r2, n, locks)
+	}
+	stop2 := make(chan struct{})
+	seen2 := overlapWatcher(r2, stop2)
+	done := make(chan string, 1)
+	go func() { o, _ := r2.swim("all", "--plain"); done <- o }()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("deadlock: run with overlapping lock sets never finished")
+	}
+	close(stop2)
+	pairs := <-seen2
+	if pairs[[2]int{1, 2}] || pairs[[2]int{2, 3}] {
+		t.Errorf("lanes sharing a lock overlapped: %v", pairs)
+	}
+	for n := 1; n <= 3; n++ {
+		if st := r2.status().Get(n).State; st != status.Passed {
+			t.Errorf("swim %d = %s", n, st)
+		}
+	}
+	if out, _ := r2.swim("status"); strings.Contains(out, "held by") {
+		t.Errorf("locks still held after the run:\n%s", out)
+	}
+}
+
+func TestResourceLocksAcrossRuns(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "one", `run "work" sleep 1.5`)
+	r.script(2, "two", `run "work" sleep 0.2`)
+	withLocks(t, r, 1, "tf/orders")
+	withLocks(t, r, 2, "tf/orders")
+
+	// Two concurrent swim run processes respect the same lock.
+	stop := make(chan struct{})
+	seen := overlapWatcher(r, stop)
+	a := r.cmd(bin, "run", "1", "--plain")
+	if err := a.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return r.status().Get(1).State == status.Running })
+	contains(t, "status while held", r.mustSwim("status"), "lock tf/orders held by swim 1", "locks: tf/orders")
+	out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput()
+	a.Wait()
+	close(stop)
+	if err != nil {
+		t.Fatalf("run 2: %v\n%s", err, out)
+	}
+	if (<-seen)[[2]int{1, 2}] {
+		t.Error("two runs overlapped lanes holding the same lock")
+	}
+	contains(t, "run 2 output", string(out), "waiting for lock tf/orders: another run, swim 1")
+
+	// A killed run doesn't leave the lock behind.
+	r.script(1, "one", `run "work" sleep 30`)
+	withLocks(t, r, 1, "tf/orders")
+	k := r.cmd(bin, "run", "1", "--plain")
+	k.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := k.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "work" })
+	syscall.Kill(-k.Process.Pid, syscall.SIGKILL)
+	k.Wait()
+	start := time.Now()
+	if out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput(); err != nil || time.Since(start) > 5*time.Second {
+		t.Fatalf("lock left behind by a killed run: %v after %s\n%s", err, time.Since(start), out)
+	}
+}
+
+func TestBadLockNameWarns(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "bad lock", `run "x" true`)
+	withLocks(t, r, 1, "ok-name, bad*name")
+	r.mustSwim("run", "1")
+	contains(t, "agent1.log", r.log(1), `WARN  Locks: "bad*name" is not a lock name`)
+}

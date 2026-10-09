@@ -126,6 +126,7 @@ rules, and how to read results.
 | **gate** | A step whose failure stops the round before any later (destructive) step. |
 | **guard flag** | An env var the operator sets to approve one destructive action, e.g. `FIN_ALLOW_DELETE=1`. Unset means dry run. |
 | **dependency** | `# After: 1` in a lane script: the lane waits for swim 1 to pass, and is skipped if it doesn't. |
+| **lock** | `# Locks: orders-table` in a lane script: lanes sharing a lock never run at the same time (in either order, within a run and across concurrent runs), and a failure doesn't spread through a lock. |
 | **stub / archive** | Between rounds a lane holds a "nothing pending" stub, and its finished log is archived. |
 
 ---
@@ -143,6 +144,7 @@ rules, and how to read results.
 # Owner:   zach
 # Created: 2026-10-09
 # Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack (2026-10-09: tf owns it)
+# Locks:   tf/orders
 # Timeout: 30m
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 2
@@ -169,6 +171,7 @@ summary
   - `Owner`: `-`
   - `Created`: the file's date
   - `Guards`: found from `guard` calls in the body
+  - `Locks`: none
   - `Timeout`: none
 
   Unknown keys are kept and shown in the log. A `Timeout` stops the round

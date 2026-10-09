@@ -33,7 +33,13 @@ func TestSlotsCapAndPriority(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			if s.acquire(n, func(int) { queued <- n }) {
+			first := true
+			if s.acquire(n, func(int) {
+				if first { // only the first notice per lane; positions change as others queue
+					first = false
+					queued <- n
+				}
+			}) {
 				mu.Lock()
 				order = append(order, n)
 				mu.Unlock()

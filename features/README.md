@@ -14,7 +14,7 @@ where it would land in the code, open questions, and how to test it.
 | Parallel limit: `max_parallel` / `--parallel N`, queueing ready lanes so the longest chain runs first | [parallel-limit.md](parallel-limit.md) | shipped (unreleased) |
 | Per-step timeouts and retries: `run --timeout 2m --retry 3 --backoff 5s`, on top of the round's `Timeout:` | [step-timeout-retry.md](step-timeout-retry.md) | proposed |
 | `swim lint` (lane scripts) and `swim doctor` (binary, PATH, config, `.gitignore`) | [lint-doctor.md](lint-doctor.md) | proposed |
-| Resource locks: `# Locks: name`, so lanes that share a resource never overlap, without ordering them or spreading failures | [resource-locks.md](resource-locks.md) | proposed |
+| Resource locks: `# Locks: name`, so lanes that share a resource never overlap, without ordering them or spreading failures | [resource-locks.md](resource-locks.md) | shipped (unreleased) |
 | Masking secrets: values of `secret_env` and auto-detected secret vars become `***` in logs, snapshots, status and output | [secret-masking.md](secret-masking.md) | proposed |
 | `swim timeline`: Gantt view of any run, with each lane's start delay, the longest chain and wait breakdown | [timeline.md](timeline.md) | proposed |
 | Chime: bell, sound or desktop notification when `swim run`/`swim all` finishes; `swim config chime true` | [chime.md](chime.md) | proposed |

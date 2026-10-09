@@ -29,6 +29,7 @@ func cmdNow([]string) error {
 var (
 	afterRE = regexp.MustCompile(`(?m)^# After:[ \t]*(.*)$`)
 	stubRE  = regexp.MustCompile(`(?m)^# swim:stub`)
+	locksRE = regexp.MustCompile(`(?m)^# Locks:[ \t]*(.*)$`)
 	laneRE  = regexp.MustCompile(`^lane\.(\d+)\.sh$`)
 )
 
@@ -547,6 +548,38 @@ func cmdAudit([]string) error {
 		fmt.Printf("concurrency: at most %d lanes running at once\n", peak)
 	}
 
+	// Resource locks: no two lanes of this run that share a lock overlapped.
+	locks, err := laneLocks()
+	if err != nil {
+		return err
+	}
+	holders, pairs, clash := 0, 0, 0
+	for _, n := range lanes {
+		if len(locks[n]) > 0 && cur[n] {
+			holders++
+		}
+	}
+	for i, a := range lanes {
+		for _, b := range lanes[i+1:] {
+			if !cur[a] || !cur[b] || !shareLock(locks[a], locks[b]) {
+				continue
+			}
+			na, oka := nodes[a]
+			nb, okb := nodes[b]
+			if !oka || !okb || a == me || b == me {
+				continue
+			}
+			pairs++
+			if na.start < nb.end && nb.start < na.end {
+				clash++
+				bad = append(bad, fmt.Sprintf("swim %d and swim %d share a lock but overlapped", a, b))
+			}
+		}
+	}
+	if holders > 0 {
+		fmt.Printf("locks: %d lanes hold locks, %d sharing pairs checked, %d overlapped\n", holders, pairs, clash)
+	}
+
 	// Makespan against the critical path by recorded durations.
 	endOf := func(nd done) float64 {
 		if nd.ended {
@@ -633,4 +666,69 @@ func cmdAudit([]string) error {
 	}
 	fmt.Printf("\nFAIL (%d):\n  %s\n", total, strings.Join(bad, "\n  "))
 	return exitCode(1)
+}
+
+// laneLocks reads each lane script's # Locks: line.
+func laneLocks() (map[int][]string, error) {
+	paths, err := filepath.Glob("lane.*.sh")
+	if err != nil {
+		return nil, err
+	}
+	out := map[int][]string{}
+	for _, p := range paths {
+		m := laneRE.FindStringSubmatch(filepath.Base(p))
+		if m == nil {
+			continue
+		}
+		src, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		n, _ := strconv.Atoi(m[1])
+		if l := locksRE.FindSubmatch(src); l != nil {
+			for _, f := range strings.FieldsFunc(string(l[1]), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }) {
+				out[n] = append(out[n], f)
+			}
+		}
+	}
+	return out, nil
+}
+
+func shareLock(a, b []string) bool {
+	for _, x := range a {
+		for _, y := range b {
+			if x == y {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// lock-lanes: give generated lanes 10..98 locks from a pool of five, by
+// lane number (fixed, so runs are comparable): n%7 = 0 none, 1-5 one lock,
+// 6 two locks.
+func cmdLockLanes([]string) error {
+	pool := []string{"pool/a", "pool/b", "pool/c", "pool/d", "pool/e"}
+	for n := 10; n <= 98; n++ {
+		var locks string
+		switch k := n % 7; {
+		case k == 0:
+			continue
+		case k <= 5:
+			locks = pool[k-1]
+		default:
+			locks = pool[0] + ", " + pool[2]
+		}
+		p := fmt.Sprintf("lane.%d.sh", n)
+		src, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		out := strings.Replace(string(src), "\n# Job:", "\n# Locks: "+locks+"\n# Job:", 1)
+		if err := os.WriteFile(p, []byte(out), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }

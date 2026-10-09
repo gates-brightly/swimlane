@@ -84,6 +84,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		title += " · updated " + f.UpdatedAt
 	}
 	fmt.Println(p.Paint(ui.Bold, title))
+	for _, h := range lane.HeldLocks(root) {
+		fmt.Println(p.Paint(ui.Yellow, "lock "+h.Name+" held by "+h.By))
+	}
 	for i := range f.Lanes {
 		l := &f.Lanes[i]
 		if l.Lane > cfg.Lanes || (only != 0 && l.Lane != only) {
@@ -160,6 +163,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 				step = "stage: " + l.Stage + "  " + step
 			}
 			detail(step, ui.Cyan)
+		}
+		if len(l.Locks) > 0 && state == status.Running {
+			detail("locks: "+strings.Join(l.Locks, ", "), ui.Dim)
 		}
 		if len(l.Stages) > 0 && state != status.Running {
 			detail("stages: "+strings.Join(l.Stages, " | "), ui.Dim)

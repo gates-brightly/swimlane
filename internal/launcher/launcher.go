@@ -157,6 +157,7 @@ func Run(o Options) (int, error) {
 		cap = *o.Parallel
 	}
 	sl := newSlots(cap, chainBelow(sel, deps))
+	lt := newLockTable()
 	disp := display.New(display.Options{
 		Out:   o.Out,
 		Plain: o.Plain,
@@ -188,6 +189,7 @@ func Run(o Options) (int, error) {
 			mu.Lock()
 			interrupted = true
 			sl.close()
+			lt.close()
 			if s != syscall.SIGINT {
 				for _, p := range procs {
 					p.Signal(s)
@@ -215,7 +217,7 @@ func Run(o Options) (int, error) {
 		go func(n int) {
 			defer wg.Done()
 			defer close(done[n])
-			out := runLane(o, n, sel, selected, deps[n], sl, disp, done, outcomes, &mu, &interrupted, procs)
+			out := runLane(o, n, sel, selected, deps[n], sl, lt, disp, done, outcomes, &mu, &interrupted, procs)
 			mu.Lock()
 			outcomes[n] = out
 			mu.Unlock()
@@ -240,7 +242,7 @@ func Run(o Options) (int, error) {
 	return code, nil
 }
 
-func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl *slots, disp *display.Display,
+func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl *slots, lt *lockTable, disp *display.Display,
 	done map[int]chan struct{}, outcomes map[int]*Outcome, mu *sync.Mutex, interrupted *bool, procs map[int]*os.Process) *Outcome {
 
 	skip := func(reason string) *Outcome {
@@ -293,6 +295,46 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	if stop {
 		return skip("interrupted before start")
 	}
+	// Take the round's resource locks (# Locks:), all at once: first from the
+	// other lanes of this run, then across concurrent runs (lock files). A
+	// lane waiting for a lock holds no slot.
+	info, _ := lane.ReadScript(o.Root, n)
+	var fileLocks lane.FileLocks
+	if len(info.Locks) > 0 {
+		lockWait := func(text string) {
+			disp.Set(n, func(v *display.LaneView) { v.State, v.LockWait, v.WaitingOn = display.Locked, text, nil })
+			status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
+				l.State, l.WaitingOn, l.Reason = status.Locked, []int{}, "waiting for lock "+text
+			})
+			history.Log(o.Root, history.Entry{Event: history.Locked, Lane: n, Job: info.Job, Run: o.RunID, Detail: "waiting for lock " + text})
+		}
+		if !lt.acquire(n, info.Locks, func(name string, holder int) {
+			if holder > 0 {
+				lockWait(fmt.Sprintf("%s: swim %d", name, holder))
+			} else {
+				lockWait(name + ": queued behind another lane")
+			}
+		}) {
+			return skip("interrupted before start")
+		}
+		defer lt.release(n, info.Locks)
+		var ok bool
+		var err error
+		fileLocks, ok, err = lane.WaitFileLocks(o.Root, info.Locks, lane.LockHolder(n, info.Job, o.RunID),
+			func(name, by string) { lockWait(fmt.Sprintf("%s: another run, %s", name, by)) },
+			func() bool { mu.Lock(); defer mu.Unlock(); return *interrupted })
+		if err != nil {
+			disp.Line(n, "swim: lock files: "+err.Error())
+			return skip("could not take locks: " + err.Error())
+		}
+		if !ok {
+			return skip("interrupted before start")
+		}
+		defer fileLocks.Release()
+		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = append([]string(nil), info.Locks...) })
+		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
+	}
+
 	// Wait for a free slot (max_parallel); queued lanes don't hold one.
 	loggedQueue := false
 	if !sl.acquire(n, func(ahead int) {
@@ -310,7 +352,6 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	}
 	defer sl.release()
 
-	info, _ := lane.ReadScript(o.Root, n)
 	cmd := exec.Command("bash", lane.Script(o.Root, n))
 	cmd.Dir = o.Root
 	env := append(os.Environ(), "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
@@ -326,6 +367,9 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	if len(sel) == 1 && o.Stdin != nil {
 		cmd.Stdin = o.Stdin
 	}
+	// The lane's process inherits the lock files, so the locks stay held as
+	// long as the lane runs, even if this launcher dies.
+	cmd.ExtraFiles = fileLocks
 	w := &lineWriter{emit: func(s string) { disp.Line(n, s) }}
 	cmd.Stdout, cmd.Stderr = w, w
 

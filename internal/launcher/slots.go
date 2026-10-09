@@ -42,8 +42,8 @@ func (s *slots) order() []int {
 }
 
 // acquire takes a slot for lane n, waiting if none is free. queued is called
-// with the number of lanes ahead whenever that changes while n waits. It
-// returns false if the run was interrupted first.
+// (without the lock held) with the number of lanes ahead whenever that
+// changes while n waits. It returns false if the run was interrupted first.
 func (s *slots) acquire(n int, queued func(ahead int)) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -75,12 +75,14 @@ func (s *slots) acquire(n int, queued func(ahead int)) bool {
 			s.cond.Broadcast() // the next waiter may be first now
 			return true
 		}
-		// Lanes ahead of n in the order, plus n itself, wait for a slot.
-		if s.running >= s.cap || ahead > 0 {
-			if ahead != last && queued != nil {
-				queued(ahead)
-				last = ahead
-			}
+		if ahead != last && queued != nil {
+			// Report outside the lock (the callback does I/O), then look
+			// again: the state may have changed meanwhile.
+			last = ahead
+			s.mu.Unlock()
+			queued(ahead)
+			s.mu.Lock()
+			continue
 		}
 		s.cond.Wait()
 	}

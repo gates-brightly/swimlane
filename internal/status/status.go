@@ -22,6 +22,7 @@ const (
 	Idle        = "idle"
 	Waiting     = "waiting"
 	Queued      = "queued" // waiting for a free slot (max_parallel)
+	Locked      = "locked" // waiting for a resource lock (# Locks:)
 	Running     = "running"
 	Passed      = "passed"
 	Failed      = "failed"
@@ -43,6 +44,7 @@ type Lane struct {
 	Log         string   `yaml:"log"`
 	WaitingOn   []int    `yaml:"waiting_on,flow"`
 	Reason      string   `yaml:"reason,omitempty"`
+	Locks       []string `yaml:"locks,flow,omitempty"` // locks the running round holds
 	PID         int      `yaml:"pid,omitempty"`
 	StartedAt   *string  `yaml:"started_at"`
 	FinishedAt  *string  `yaml:"finished_at"`

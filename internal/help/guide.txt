@@ -66,6 +66,14 @@ CONCEPTS
   gate        A step whose failure stops the round before any later step.
   guard flag  An env var the operator sets to approve one destructive action,
               e.g. FIN_ALLOW_DELETE_ZG_ITEMS=1. Unset means dry run.
+  lock        A named resource a round needs exclusively (# Locks:). A lane takes
+              all its locks at once, after its dependencies pass and before it
+              starts; lanes waiting for one show "locked (name: swim N)". Locks
+              hold within a run and across concurrent swim runs in the repo
+              (files under .swim/locks/, released when the lane's process ends,
+              even if killed). They don't protect across machines, and a lane
+              run directly with bash takes none. Use After: for order; Locks:
+              when either order is fine but overlap isn't.
   dependency  "swim B starts after swim A succeeds". Declare it in B's script
               header, `# After: A` (lane numbers or job ids), or for ordering
               that holds every round, in config `deps`. If A fails or is
@@ -186,6 +194,11 @@ WRITING A LANE SCRIPT
       # Guards:  FLAG  <what it approves (date, reason)>
                                       one line per flag. Flags the body uses are found
                                       anyway; list them to explain them. Default: none
+      # Locks:   <name>[, <name> ...] resources this round needs to itself (letters,
+                                      digits, . _ - /, e.g. orders-table, tf/orders).
+                                      Lanes sharing a lock never run at the same time,
+                                      in either order, and a failure doesn't spread
+                                      through a lock (unlike After:). Default: none
       # Timeout: <30m, 1h30m, ...>    limit for the whole round. A step still running
                                       at the limit is stopped (FAIL, timeout) and the
                                       round ends. Default: none
@@ -336,7 +349,7 @@ READING RESULTS
       branch: <branch>@<sha>
       lanes:
         - lane: 1
-          state: running   # idle|waiting|queued|running|passed|failed|skipped|interrupted
+          state: running   # idle|waiting|locked|queued|running|passed|failed|skipped|interrupted
           pending: <Round: line of lane.N.sh on disk, "" if stub/none>
           pending_job: <Job: id of lane.N.sh on disk>
           round: <round of the last or current run>
@@ -345,7 +358,8 @@ READING RESULTS
           script: lane.1.sh
           log: .swim/logs/agent1.log
           waiting_on: []   # e.g. [2] while waiting on swim 2
-          reason: <why skipped, if skipped>
+          reason: <why skipped, or what a waiting lane waits for>
+          locks: [<locks the running round holds>]
           pid: <script pid while running>
           started_at / finished_at: <utc or null>
           duration_s: <seconds or null>
