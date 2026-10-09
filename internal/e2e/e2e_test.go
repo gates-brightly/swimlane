@@ -14,6 +14,9 @@ import (
 	"testing"
 	"time"
 
+	// The tests run a built binary; importing its code makes `go test`
+	// rerun them (instead of reusing a cached pass) when that code changes.
+	_ "swim/internal/cli"
 	"swim/internal/status"
 )
 
@@ -26,7 +29,7 @@ func TestMain(m *testing.M) {
 	}
 	bin = filepath.Join(dir, "swim")
 	_, file, _, _ := runtime.Caller(0)
-	build := exec.Command("go", "build", "-o", bin, "./cmd/swim")
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "./cmd/swim")
 	build.Dir = filepath.Join(filepath.Dir(file), "..", "..")
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build failed: %v\n%s", err, out)
@@ -103,7 +106,7 @@ func (r *repo) script(n int, round, body string) {
 }
 
 func (r *repo) log(n int) string {
-	data, _ := os.ReadFile(filepath.Join(r.root, fmt.Sprintf("agent%d.log", n)))
+	data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("agent%d.log", n)))
 	return string(data)
 }
 
@@ -247,17 +250,85 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 	for n := 1; n <= 3; n++ {
 		r.script(n, fmt.Sprintf("lane %d", n), `run "ok" true`)
 	}
-	// Lane 3 depends on nothing; lane 2's dep (1) isn't selected, so it's satisfied.
-	out := r.mustSwim("run", "3", "2")
-	if r.log(1) != "" || r.log(2) == "" || r.log(3) == "" {
-		t.Fatalf("wrong lanes ran:\n%s", out)
+	// `swim 3 2` is shorthand for `swim run 3 2`. Lane 2's dependency (1) is
+	// not in the run and holds a round that hasn't passed: lane 2 is skipped.
+	out, code := r.swim("3", "2")
+	if code != 1 || r.log(1) != "" || r.log(2) != "" || r.log(3) == "" {
+		t.Fatalf("wrong lanes ran (exit %d):\n%s", code, out)
 	}
+	contains(t, "output", out, "[2] SKIP (swim 1's pending round has not passed; run it too: swim run 1 ...)")
+
+	// Once lane 1's round has passed, lane 2 may run on its own.
+	r.mustSwim("1")
+	out = r.mustSwim("2")
 	if strings.Contains(out, "waiting on") {
-		t.Errorf("lane waited on an unselected dependency:\n%s", out)
+		t.Errorf("lane waited on a dependency outside the run:\n%s", out)
 	}
+	// A stubbed dependency never blocks.
+	r.mustSwim("stub", "1", "done")
+	r.mustSwim("run", "2")
+
 	if out, code := r.swim("run", "9"); code == 0 || !strings.Contains(out, "lanes are numbered 1..4") {
 		t.Errorf("run 9: %d %s", code, out)
 	}
+}
+
+func TestAfterHeaderDiamond(t *testing.T) {
+	r := newRepo(t, "") // no config deps: the scripts declare them
+	r.script(1, "root", `run "write" bash -c 'sleep 0.5; echo root > out1'`)
+	r.script(2, "child a", `gate "root output" test -s out1`)
+	r.script(3, "child b", `gate "root output" test -s out1`)
+	r.script(4, "join", `gate "children" true`)
+	addHeader := func(n int, line string) {
+		p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
+		data, _ := os.ReadFile(p)
+		os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n"+line+"\n", 1)), 0o755)
+	}
+	addHeader(2, "# After: 1")
+	addHeader(3, "# After: swim 1")
+	addHeader(4, "# After: 2, 3")
+
+	out := r.mustSwim("all") // every pending lane, like `swim run`
+	contains(t, "output", out, "[2] waiting on swim 1", "[4] waiting on swim 2, 3")
+	if out, code := r.swim("all", "2"); code == 0 || !strings.Contains(out, "all takes no lanes") {
+		t.Errorf("all with a lane: %d %s", code, out)
+	}
+	for n := 1; n <= 4; n++ {
+		if st := r.status().Get(n).State; st != status.Passed {
+			t.Errorf("swim %d = %s\n%s", n, st, out)
+		}
+	}
+
+	// A cycle is refused before anything runs.
+	addHeader(1, "# After: 4")
+	if out, code := r.swim("all", "--rerun"); code == 0 || !strings.Contains(out, "dependency cycle") || r.status().Get(1).State != status.Passed {
+		t.Errorf("cycle: %d %s", code, out)
+	}
+}
+
+func TestAfterPinnedToJob(t *testing.T) {
+	r := newRepo(t, "")
+	r.mustSwim("new", "1", "root", "--job", "root-job-0001")
+	r.script(2, "child", `run "ok" true`)
+	p := filepath.Join(r.root, "lane.2.sh")
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: root-jo\n", 1)), 0o755)
+
+	// A prefix shorter than 8 characters doesn't resolve.
+	if out, code := r.swim("run", "2"); code == 0 || !strings.Contains(out, "no lane holds or last ran job root-jo") {
+		t.Fatalf("short ref: %d %s", code, out)
+	}
+	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: root-job-0001\n", 1)), 0o755)
+	// The pinned job hasn't run: lane 2 alone is skipped.
+	if out, code := r.swim("run", "2"); code != 1 || !strings.Contains(out, "swim 1 (job root-job) has not passed") {
+		t.Fatalf("unrun pinned dep: %d %s", code, out)
+	}
+	r.mustSwim("run", "1")
+	r.mustSwim("run", "2")
+	// After lane 1 is rewritten, the pin still refers to the job that ran
+	// (from status), which passed.
+	r.mustSwim("new", "1", "next root", "--force")
+	r.mustSwim("run", "2")
 }
 
 func TestGuardApprovedAndConfirmFailsClosed(t *testing.T) {
@@ -290,7 +361,7 @@ func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
 	}
 	r.mustSwim("run", "1")
 	r.mustSwim("archive", "1", "first round")
-	if _, err := os.Stat(filepath.Join(r.root, "agent1.prev-first-round.log")); err != nil {
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.prev-first-round.log")); err != nil {
 		t.Fatal(err)
 	}
 	r.mustSwim("stub", "1", "all done")
@@ -455,7 +526,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 
 	// Archive by the job that last ran, defaulting the name to the job id.
 	out = r.mustSwim("archive", job[:8])
-	if _, err := os.Stat(filepath.Join(r.root, "agent1.prev-"+job+".log")); err != nil {
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.prev-"+job+".log")); err != nil {
 		t.Fatalf("archive by job: %v\n%s", err, out)
 	}
 }
@@ -467,5 +538,257 @@ func TestScriptWithoutJobLineGetsOne(t *testing.T) {
 	l := r.status().Get(1)
 	if len(l.Job) != 36 || !strings.Contains(r.log(1), "job="+l.Job) {
 		t.Fatalf("generated job: %+v\n%s", l, r.log(1))
+	}
+}
+
+func TestProjectLog(t *testing.T) {
+	r := newRepo(t, "{2: [1]}")
+	r.mustSwim("new", "1", "first goal", "--job", "job-one-0001")
+	body, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(body), `run "precheck" true`, `run "precheck" false`, 1)), 0o755)
+	r.mustSwim("new", "2", "second goal", "--job", "job-two-0002")
+	r.swim("run")
+	r.script(3, "direct run", `run "ok" true`)
+	if out, err := r.cmd("bash", "lane.3.sh").CombinedOutput(); err != nil {
+		t.Fatalf("direct run: %v %s", err, out)
+	}
+	r.mustSwim("archive", "job-one-0001")
+	r.mustSwim("stub", "1", "precheck needs a fix")
+	r.mustSwim("note", "--lane", "2", "rerun after lane 1 is fixed")
+
+	data, err := os.ReadFile(filepath.Join(r.root, ".swim.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []string
+	for _, l := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if strings.HasPrefix(l, "#") {
+			continue
+		}
+		f := strings.Fields(l)
+		events = append(events, strings.Join(f[2:], " "))
+	}
+	want := []string{
+		"init lanes=4",
+		"new swim 1 job=job-one-0001 first goal",
+		"new swim 2 job=job-two-0002 second goal",
+		"run swim 1,2",
+		"start swim 1 job=job-one-0001 first goal",
+		"fail swim 1 job=job-one-0001 pass=",
+		"skip swim 2 job=job-two-0002 swim 1 failed second goal",
+		"run-done swim 1,2 passed=0 failed=1 skipped=1 interrupted=0",
+		"start swim 3 job=",
+		"pass swim 3 job=",
+		"archive swim 1 job=job-one-0001 agent1.prev-job-one-0001.log",
+		"stub swim 1 job=job-one-0001 precheck needs a fix",
+		"note swim 2 job=job-two-0002 rerun after lane 1 is fixed",
+	}
+	if len(events) != len(want) {
+		t.Fatalf("got %d events, want %d:\n%s", len(events), len(want), data)
+	}
+	for i, w := range want {
+		if !strings.HasPrefix(events[i], w) {
+			t.Errorf("event %d:\n got  %q\n want %q...", i, events[i], w)
+		}
+	}
+	contains(t, ".swim.log", string(data), "| FAIL  precheck (exit 1)")
+	gi, _ := os.ReadFile(filepath.Join(r.root, ".gitignore"))
+	if out, _ := r.cmd("git", "check-ignore", ".swim.log").Output(); len(out) == 0 {
+		t.Errorf(".swim.log should be git-ignored (.gitignore:\n%s)", gi)
+	}
+}
+
+func TestLogCommand(t *testing.T) {
+	r := newRepo(t, "")
+	r.mustSwim("new", "1", "first round", "--job", "first-job-01")
+	r.mustSwim("run", "1")
+	r.mustSwim("archive", "1", "first")
+	r.mustSwim("new", "1", "second round", "--force", "--job", "second-job-02")
+	r.mustSwim("run", "1")
+
+	// Current log only.
+	out := r.mustSwim("log", "1")
+	contains(t, "log 1", out, "job=second-job-02", "Round: second round", "=== SUMMARY")
+	if strings.Contains(out, "first-job-01") || strings.Contains(out, "==>") {
+		t.Errorf("log 1 should be just agent1.log:\n%s", out)
+	}
+	if out != r.log(1) {
+		t.Errorf("piped output should be the file verbatim")
+	}
+
+	// --all: archive first, then the current log, each with a header.
+	out = r.mustSwim("log", "1", "--all")
+	a, b := strings.Index(out, "==> agent1.prev-first.log <=="), strings.Index(out, "==> agent1.log <==")
+	if a < 0 || b < 0 || a > b || strings.Index(out, "first-job-01") > b || strings.Index(out, "second-job-02") < b {
+		t.Errorf("log 1 --all order:\n%s", out)
+	}
+
+	// By job, found in the archive.
+	out = r.mustSwim("log", "first-job")
+	contains(t, "log job", out, "==> agent1.prev-first.log <==", "Round: first round")
+	if strings.Contains(out, "second round") {
+		t.Errorf("log by job leaked another round:\n%s", out)
+	}
+
+	// No argument: the project log.
+	contains(t, "log", r.mustSwim("log"), "# swim project log", "archive", "swim 1  job=first-job-01")
+
+	if out, code := r.swim("log", "2"); code == 0 || !strings.Contains(out, "no current log") {
+		t.Errorf("log 2: %d %s", code, out)
+	}
+	if out, code := r.swim("log", "nosuchjob1"); code == 0 || !strings.Contains(out, "no log holds a round of job nosuchjob1") {
+		t.Errorf("log unknown job: %d %s", code, out)
+	}
+}
+
+func TestAllSkipsPassedJobs(t *testing.T) {
+	r := newRepo(t, "")
+	r.mustSwim("new", "1", "passes")
+	r.script(2, "fails until fixed", `run "check" test -e fixed`)
+	if _, code := r.swim("all"); code != 1 {
+		t.Fatalf("first run should fail (lane 2)")
+	}
+	// Second `swim all`: lane 1 passed already, only lane 2 is retried.
+	os.WriteFile(filepath.Join(r.root, "fixed"), nil, 0o644)
+	out := r.mustSwim("all")
+	if strings.Contains(out, "[1] started") || !strings.Contains(out, "[2] started") {
+		t.Fatalf("second all should retry only lane 2:\n%s", out)
+	}
+	if n := strings.Count(r.log(1), "=== ROUND START"); n != 1 {
+		t.Errorf("lane 1 ran %d times", n)
+	}
+	// Everything passed: nothing to run.
+	out = r.mustSwim("all")
+	contains(t, "third all", out, "nothing to run: every pending job has already passed (swim 1,2)")
+	// Explicit lanes and --rerun still run passed rounds.
+	r.mustSwim("run", "1")
+	r.mustSwim("all", "--rerun")
+	if n := strings.Count(r.log(1), "=== ROUND START"); n != 3 {
+		t.Errorf("lane 1 ran %d times, want 3", n)
+	}
+	// A new round in the lane is pending again.
+	r.mustSwim("new", "1", "next round", "--force")
+	if out := r.mustSwim("all"); !strings.Contains(out, "[1] started: next round") || strings.Contains(out, "[2] started") {
+		t.Errorf("new round not picked up:\n%s", out)
+	}
+}
+
+func TestJobsBeyondConfiguredLanes(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "inside", `run "ok" true`)
+	r.script(6, "beyond", `run "ok" true`)
+	// No terminal: no prompt, no config change, a notice with the command.
+	out := r.mustSwim("all")
+	contains(t, "notice", out, "1 job(s) waiting beyond swim 4", "lane.6.sh  beyond", "swim config --lanes 6")
+	if r.log(6) != "" {
+		t.Fatal("lane 6 ran without lanes being raised")
+	}
+	if out, code := r.swim("new", "6", "x"); code == 0 || !strings.Contains(out, "swim config --lanes 6") {
+		t.Errorf("new 6: %d %s", code, out)
+	}
+
+	contains(t, "config --lanes", r.mustSwim("config", "--lanes", "6"), "lanes: 4 -> 6")
+	out = r.mustSwim("all")
+	if !strings.Contains(out, "[6] started: beyond") || strings.Contains(out, "waiting beyond") {
+		t.Errorf("after raising lanes:\n%s", out)
+	}
+	if len(r.status().Lanes) != 6 {
+		t.Errorf("status lanes = %d", len(r.status().Lanes))
+	}
+	// Can't drop a lane holding a pending round; can once it's stubbed.
+	r.mustSwim("new", "5", "pending in five")
+	if out, code := r.swim("config", "--lanes", "4"); code == 0 || !strings.Contains(out, "lane.5.sh holds a pending round") {
+		t.Errorf("reduce over pending: %d %s", code, out)
+	}
+	r.mustSwim("stub", "5", "x")
+	r.mustSwim("stub", "6", "x")
+	r.mustSwim("config", "--lanes", "4")
+	contains(t, ".swim.log", r.mustSwim("log"), "lanes        4 -> 6", "lanes        6 -> 4")
+}
+
+func TestPlan(t *testing.T) {
+	r := newRepo(t, "")
+	head := func(n int, after string) {
+		p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
+		data, _ := os.ReadFile(p)
+		os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: "+after+"\n", 1)), 0o755)
+	}
+	r.script(1, "root", `run "ok" true`)
+	r.script(2, "child a", `run "ok" true`)
+	r.script(3, "child b", `run "ok" true`)
+	r.script(4, "join", `if guard PLAN_ALLOW_X "do x"; then run "x" true; fi`)
+	head(2, "1")
+	head(3, "1")
+	head(4, "2 3")
+
+	out := r.mustSwim("plan")
+	contains(t, "plan", out,
+		"swim plan · ", "swim all",
+		"[+] run: a new job",
+		"[+] swim 1  root",
+		"├── [+] swim 2  child a",
+		"│   └── [+] swim 4  join  wait [2,3]",
+		"guard PLAN_ALLOW_X=1 (unset: dry run)",
+		"└── [+] swim 3  child b",
+		"    └── [+] swim 4 (shown above)",
+		"Plan: 4 to run, 0 to retry, 0 to rerun, 0 to skip.")
+	if r.log(1) != "" || r.status().Get(1).State != status.Idle {
+		t.Fatal("plan ran something")
+	}
+
+	c := r.cmd(bin, "plan")
+	c.Env = append(c.Env, "PLAN_ALLOW_X=1")
+	if out, _ := c.CombinedOutput(); !strings.Contains(string(out), "PLAN_ALLOW_X=1 (set: approved)") {
+		t.Errorf("guard set not shown:\n%s", out)
+	}
+
+	// Lane 4 alone: its dependencies haven't passed, so it would be skipped.
+	contains(t, "plan 4", r.mustSwim("plan", "4"), "swim run 4", "[-] swim 4  join", "skip: swim 2's pending round has not passed", "0 to run, 0 to retry, 0 to rerun, 1 to skip.")
+
+	// Lane 3 fails once: it's a retry; the passed lanes are summarised.
+	r.script(3, "child b", `run "flaky" false`)
+	head(3, "1")
+	r.swim("all", "--plain")
+	r.script(3, "child b", `run "ok" true`)
+	head(3, "1")
+	out = r.mustSwim("plan")
+	contains(t, "retry", out, "[~] retry: the job ran before and didn't pass", "[~] swim 3  child b", "└── [+] swim 4  join")
+	contains(t, "retry", out, "Plan: 1 to run, 1 to retry, 0 to rerun, 0 to skip.", "2 items have completed with no remaining work.")
+	if strings.Contains(out, "swim 1  root") {
+		t.Errorf("completed lanes should be summarised, not listed:\n%s", out)
+	}
+	contains(t, "rerun", r.mustSwim("plan", "--rerun"), "[+/-] swim 1  root", "2 to rerun")
+
+	// After a full run, nothing is left.
+	r.mustSwim("all", "--plain")
+	contains(t, "plan after run", r.mustSwim("plan"), "No changes. 4 items have completed with no remaining work.")
+
+	// A cycle fails the plan just as it would fail the run.
+	head(1, "4")
+	if out, code := r.swim("plan", "--rerun"); code == 0 || !strings.Contains(out, "dependency cycle") {
+		t.Errorf("cycle: %d %s", code, out)
+	}
+}
+
+func TestOldRootLogsMigrate(t *testing.T) {
+	r := newRepo(t, "")
+	os.WriteFile(filepath.Join(r.root, "agent1.log"), []byte("=== ROUND START 2026-10-01T00:00:00Z swim 1 job=old-job-0001\nRound: old\n"), 0o644)
+	os.WriteFile(filepath.Join(r.root, "agent1.prev-earlier.log"), []byte("old archive\n"), 0o644)
+	out := r.mustSwim("status")
+	contains(t, "status", out, "moved 2 lane log(s) to .swim/logs/")
+	for _, f := range []string{"agent1.log", "agent1.prev-earlier.log"} {
+		if _, err := os.Stat(filepath.Join(r.root, f)); err == nil {
+			t.Errorf("%s still at the root", f)
+		}
+		if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", f)); err != nil {
+			t.Errorf("%s not in .swim/logs: %v", f, err)
+		}
+	}
+	contains(t, "log 1 --all", r.mustSwim("log", "1", "--all"), "==> agent1.prev-earlier.log <==", "Round: old")
+	// Nothing operational left at the root after a run.
+	r.script(2, "x", `run "ok" true`)
+	r.mustSwim("run", "2")
+	if m, _ := filepath.Glob(filepath.Join(r.root, "agent*.log")); len(m) > 0 {
+		t.Errorf("logs at root: %v", m)
 	}
 }

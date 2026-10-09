@@ -12,19 +12,25 @@ swim — operator-in-the-loop automation
 
 USAGE
   swim <command> [flags] [args]
+  swim N|JOB [N|JOB ...]       shorthand for `swim run N|JOB ...`, e.g. `swim 1 2`
   swim <command> --help        detail for one command
   swim --help                  this guide (written for AI planners/workers)
 
 COMMANDS
   init                     set up this repo: config entry, .gitignore block, .swim/status.yml
-  config [--path]          show effective config for this repo (or the config file path)
+  config [--path] [--lanes N]   show effective config (or its path); --lanes sets the lane count
   new N "<round goal>"     write lane.N.sh from the template, with a new job id
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered
+  all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
+  plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing
   status [N|JOB] [--yaml]  last state of every lane (from .swim/status.yml)
+  log [N|JOB] [--all]      print a lane's log (--all: with its archives), a job's
+                           rounds, or with no argument the project log .swim.log
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
   lib                      print the bash library lane scripts load
-  archive N|JOB [<what>]   rename agentN.log to agentN.prev-<what or job id>.log
+  archive N|JOB [<what>]   archive lane N's log as .swim/logs/agentN.prev-<what or job id>.log
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
+  note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
 
   Wherever a command takes a lane number N it also takes a job id (JOB): the
   full id or its first 8+ characters. See "job" below.
@@ -32,10 +38,12 @@ COMMANDS
 
 CONCEPTS
   lane        A numbered slot, swim 1..N (N from config). One script (lane.N.sh),
-              one log (agentN.log), owned by one worker at a time. Lanes are
+              one log (.swim/logs/agentN.log), owned by one worker at a time. Lanes are
               always numbers; there are no named lanes.
   round       One lane script's contents: a single goal ("cut over service X",
-              "diagnose Y"). Rewritten per round; disposable.
+              "diagnose Y"). Rewritten per round; disposable. A round that
+              passed is "done": `swim all` won't run it again (`swim run N`
+              or `swim all --rerun` will) until the lane gets a new round.
   job         One round's unique id, written in the script header as
               `# Job: <id>` by `swim new` (a UUID, or your own with --job).
               It is recorded in the log, status.yml, the live view and the
@@ -50,43 +58,67 @@ CONCEPTS
   gate        A step whose failure stops the round before any later step.
   guard flag  An env var the operator sets to approve one destructive action,
               e.g. FIN_ALLOW_DELETE_ZG_ITEMS=1. Unset means dry run.
-  dependency  "swim B starts after swim A succeeds", declared in config. If A
-              fails or is skipped, B is skipped.
+  dependency  "swim B starts after swim A succeeds". Declare it in B's script
+              header, `# After: A` (lane numbers or job ids), or for ordering
+              that holds every round, in config `deps`. If A fails or is
+              skipped, B is skipped.
   stub        The placeholder a lane holds between rounds (`swim stub`).
   archive     A finished log renamed agentN.prev-<what>.log (`swim archive`).
               Logs are kept; rounds are not.
 
-FILES (repo root; all git-ignored by `swim init`)
+FILES (repo root)
+  .swim.log             project log: one line per top-level action (rounds
+                        written, run, passed/failed, skipped, archived, stubbed,
+                        notes). A new agent reads it first. Git-ignored by
+                        default; remove it from the swim block in .gitignore
+                        to commit the project's history.
+  Also git-ignored by `swim init`:
   lane.N.sh              lane N's script (the current round)
-  agentN.log            lane N's log, append-only, plain text (ANSI stripped)
-  agentN.prev-*.log     archived logs
   .lane.N.rc             optional operator-local env sourced by lane_init
   .swim/status.yml      last state of every lane (see READING RESULTS)
+  .swim/logs/agentN.log         lane N's log, append-only, plain text (ANSI
+                                stripped); read it with `swim log N`
+  .swim/logs/agentN.prev-*.log  archived logs (`swim log N --all`)
   .swim/snapshots/      output saved by `snapshot` steps
   .swim/laneN.pid       present while lane N runs
   ~/.config/swim/config.yml   configuration (outside the repo; see CONFIG)
 
 PLANNER WORKFLOW
+  0. Catch up. Read .swim.log (`swim log`, or `tail -50 .swim.log`), then
+     `swim status`. Don't redo or contradict what it records without asking.
   1. Look before writing. Run `swim status`. Confirm with the operator which
      lanes are idle. Never write to a lane that is running or holds a pending
      round someone else may be about to run.
   2. Assign each worker one lane number. A worker writes only lane.N.sh.
+     Use lanes 1..N from `swim status`. If the work needs more lanes, ask the
+     operator to run `swim config --lanes N` (or write lane.5.sh and let
+     `swim all` offer to add lanes); never edit the config yourself.
   3. Write the round: `swim new N "<goal>"`, then fill in the steps. Keep the
      header (Round:, Goal, Steps, Guard flags) accurate: the operator reads
      it without you.
-  4. Hand the operator the exact command, e.g. `swim run 1 3`, or pinned to
+  4. Check the shape with `swim plan` (the dependency tree, predicted skips,
+     guard flags) and fix anything unexpected. Then hand the operator the
+     exact command, e.g. `swim run 1 3`, or pinned to
      the jobs you wrote, e.g. `swim run 3f2a9c1e 7b4d4e2a`, so a lane rewritten
      in the meantime is refused instead of run. Add any guard
      flags they must set to approve destructive steps, e.g.
      `FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2`. Explain what each flag approves.
-  5. After the run, read agentN.log and .swim/status.yml. Validate real
+  5. After the run, read the log (`swim log N`, or `swim log <job>`) and
+     .swim/status.yml. Validate real
      outcomes in the step output (resource ids, counts, plan says "No
      changes"); a PASS line only means exit 0.
   6. Record the results (with the job id) where your project tracks them,
      then `swim archive N|JOB [<what-happened>]` and `swim stub N "<why idle>"`.
   7. Out-of-scope findings go on a follow-up list, never into the round.
-  8. Dependencies live in config (outside the repo). To change ordering, give
-     the operator the exact YAML lines to add under this repo's `deps:`.
+     Record decisions and findings the next agent needs with
+     `swim note "<text>"` (or `swim note --lane N "<text>"`). Keep notes
+     factual and short; never put secrets in them.
+  8. Declare ordering in the scripts you write: `# After: 1` in lane.2.sh
+     makes swim 2 wait for swim 1 to pass. Write it in the header, never just
+     in prose: swim only enforces what it can parse. Pin to a job id
+     (`# After: 3f2a9c1e`) when the dependency must be that exact round.
+     Ordering that holds for every round can live in config `deps:` (outside
+     the repo); give the operator the exact YAML lines for that.
 
 WORKER RULES
   - Write only your own lane.N.sh. Never edit shared files (registries, plan
@@ -105,7 +137,7 @@ WORKER RULES
 WRITING A LANE SCRIPT
   Start from `swim new N "<goal>"`. The library functions:
 
-  lane_init N                     claim lane N: cd to repo root, STEP_LOG=agentN.log,
+  lane_init N                     claim lane N: cd to repo root, STEP_LOG=.swim/logs/agentN.log,
                                   source .lane.N.rc, write round marker, mark running,
                                   export SWIM_JOB (the script's job id).
                                   Refuses if lane N is already running. Call it first.
@@ -125,6 +157,11 @@ WRITING A LANE SCRIPT
   stop "<reason>"                 record STOP and end the round now.
   summary                         print + log the summary, record final state.
                                   Exits non-zero if any step failed. Put it last.
+
+  Header lines swim reads:
+      # Round: <goal>                 required; a script without it is not run
+      # Job:   <id>                   written by swim new; keep it
+      # After: <lane|job> [...]       wait for these to pass first, e.g. "# After: 2 3"
 
   Rules for lane scripts:
   - Do not use `set -e`. Failed checks keep going; only gates stop the round.
@@ -183,7 +220,7 @@ SAFETY RULES
   - Rounds must be safe to rerun.
 
 READING RESULTS
-  Log grammar (agentN.log, append-only, plain text):
+  Log grammar (.swim/logs/agentN.log, append-only, plain text):
       === ROUND START <utc> swim N job=<id>
       Round: <goal>
       === STEP <utc> <label>
@@ -204,6 +241,23 @@ READING RESULTS
   Only lines outside "--- output" blocks are results. The current round is
   everything after the last ROUND START.
 
+  .swim.log (project log, oldest first; one line per event):
+      <utc>  <user>  <event>  [swim N]  [job=<id>]  <detail>
+  events:
+      init         swim init ran (detail: lanes=N)
+      new          a round was written (detail: the round goal)
+      run          swim run started (detail: swim 1,2,4)
+      start        a lane began its round (also when run directly with bash)
+      pass / fail / interrupted
+                   a round ended (detail: counts, exit, duration, goal, and
+                   after "|" the failed steps)
+      skip         a lane was skipped (detail: why, e.g. "swim 1 failed")
+      run-done     swim run finished (detail: passed/failed/skipped counts)
+      archive      a log was archived (detail: archive file name)
+      stub         a lane was stubbed (job= is the job it replaced)
+      note         swim note (detail: the text)
+  Its details are summaries; the evidence is in the lane log (swim log N).
+
   .swim/status.yml (also `swim status`, `swim status --yaml`):
       updated_at: <utc>
       root: <repo root>
@@ -216,7 +270,7 @@ READING RESULTS
           round: <round of the last or current run>
           job: <job id of the last or current run>
           script: lane.1.sh
-          log: agent1.log
+          log: .swim/logs/agent1.log
           waiting_on: []   # e.g. [2] while waiting on swim 2
           reason: <why skipped, if skipped>
           pid: <script pid while running>
@@ -242,6 +296,11 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
           deps:                          # swim N starts after these succeed
             2: [1]
             4: [2]
-  Dependencies are resolved per run: a lane waits only on dependencies that
-  are part of the same `swim run`; a dependency not being run counts as
-  satisfied. Cycles and lanes outside 1..N are rejected.
+  A lane's dependencies are config `deps` plus its script's `# After:` line.
+  Dependencies in the same `swim run` are waited for. A dependency outside
+  the run must already be satisfied, otherwise the lane is skipped:
+    - by lane number: if that lane holds a pending round, the round must have
+      passed (a stubbed or empty lane never blocks);
+    - by job id: that job must be the lane's last run, and have passed.
+  Unresolvable `# After:` references and cycles stop `swim run` before
+  anything starts. Lanes outside 1..N are rejected.

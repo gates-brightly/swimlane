@@ -35,6 +35,7 @@ func TestRunningAndRefusals(t *testing.T) {
 	if pid, ok := Running(root, 1); !ok || pid != os.Getpid() {
 		t.Fatalf("Running = %d %v", pid, ok)
 	}
+	os.MkdirAll(LogDir(root), 0o755)
 	os.WriteFile(Log(root, 1), []byte("x"), 0o644)
 
 	var er ErrRunning
@@ -58,12 +59,13 @@ func TestRunningAndRefusals(t *testing.T) {
 
 func TestArchive(t *testing.T) {
 	root := t.TempDir()
+	os.MkdirAll(LogDir(root), 0o755)
 	os.WriteFile(Log(root, 2), []byte("log"), 0o644)
 	dst, err := Archive(root, 2, "Cut over API!")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(dst) != "agent2.prev-cut-over-api.log" {
+	if filepath.Base(dst) != "agent2.prev-cut-over-api.log" || filepath.Dir(dst) != LogDir(root) {
 		t.Fatalf("dst = %s", dst)
 	}
 	os.WriteFile(Log(root, 2), []byte("log2"), 0o644)

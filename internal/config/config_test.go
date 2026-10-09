@@ -123,3 +123,42 @@ func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
 		t.Fatalf("Load after EnsureRepo: %+v err=%v", c, err)
 	}
 }
+
+func TestSetLanesKeepsCommentsAndOtherRepos(t *testing.T) {
+	p := writeConfig(t, `# top comment
+defaults:
+  lanes: 4
+repos:
+  /other:
+    lanes: 2
+  /repo/a:
+    # keep me
+    deps: {2: [1]}
+`)
+	if err := SetLanes(p, "/repo/a", 6); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load("/repo/a")
+	if err != nil || c.Lanes != 6 || len(c.DepsOf(2)) != 1 {
+		t.Fatalf("after SetLanes: %+v %v", c, err)
+	}
+	if o, _ := Load("/other"); o.Lanes != 2 {
+		t.Errorf("other repo changed: %d", o.Lanes)
+	}
+	data, _ := os.ReadFile(p)
+	for _, want := range []string{"# top comment", "# keep me"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("lost %q:\n%s", want, data)
+		}
+	}
+	// A repo without a section gets one.
+	if err := SetLanes(p, "/repo/new", 5); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := Load("/repo/new"); c.Lanes != 5 || !c.HasRepo {
+		t.Errorf("new repo: %+v", c)
+	}
+	if err := SetLanes(p, "/repo/a", 100); err == nil {
+		t.Error("lanes=100 accepted")
+	}
+}

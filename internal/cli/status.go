@@ -161,7 +161,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			detail("last archive: "+l.LastArchive, ui.Dim)
 		}
 	}
-	fmt.Println(p.Paint(ui.Dim, "raw: "+rel(root, status.Path(root))+"   logs: agentN.log"))
+	fmt.Println(p.Paint(ui.Dim, "raw: "+rel(root, status.Path(root))+"   logs: swim log N"))
 }
 
 // rebuildStatus reconstructs every lane's entry from its lane script and log.

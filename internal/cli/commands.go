@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"swim/internal/assets"
 	"swim/internal/config"
+	"swim/internal/history"
 	"swim/internal/lane"
 	"swim/internal/launcher"
 	"swim/internal/logparse"
@@ -58,7 +60,7 @@ func cmdInit(args []string) error {
 		return err
 	}
 	if changed {
-		fmt.Println("updated .gitignore (lane.[0-9]*.sh, agent*.log, .lane*.rc, .swim/)")
+		fmt.Println("updated .gitignore (lane.[0-9]*.sh, .lane*.rc, .swim/, .swim.log)")
 	} else {
 		fmt.Println(".gitignore already has the swim block")
 	}
@@ -66,7 +68,8 @@ func cmdInit(args []string) error {
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
 	}
-	fmt.Printf("lanes: swim 1..%d   status: %s\n", cfg.Lanes, rel(root, status.Path(root)))
+	history.Log(root, history.Entry{Event: history.Init, Detail: fmt.Sprintf("lanes=%d", cfg.Lanes)})
+	fmt.Printf("lanes: swim 1..%d   status: %s   project log: %s\n", cfg.Lanes, rel(root, status.Path(root)), history.FileName)
 	fmt.Println(`next: swim new 1 "<round goal>"   (AI agents: read swim --help first)`)
 	return nil
 }
@@ -123,7 +126,8 @@ func refreshStatus(root string, cfg *config.Config) error {
 
 func cmdConfig(args []string) error {
 	var pathOnly bool
-	rest, err := flags{bools: map[string]*bool{"path": &pathOnly}}.parse(args)
+	var setLanes string
+	rest, err := flags{bools: map[string]*bool{"path": &pathOnly}, strs: map[string]*string{"lanes": &setLanes}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -133,6 +137,17 @@ func cmdConfig(args []string) error {
 	if pathOnly {
 		fmt.Println(config.Path())
 		return nil
+	}
+	if setLanes != "" {
+		n, err := strconv.Atoi(setLanes)
+		if err != nil {
+			return usagef("--lanes needs a number, got %q", setLanes)
+		}
+		root, cfg, err := repo()
+		if err != nil {
+			return err
+		}
+		return applyLanes(root, cfg, n, "")
 	}
 	_, cfg, err := repo()
 	if err != nil {
@@ -193,6 +208,7 @@ func cmdNew(args []string) error {
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
 		l.Pending, l.PendingJob = strings.Join(strings.Fields(goal), " "), job
 	})
+	history.Log(root, history.Entry{Event: history.New, Lane: n, Job: job, Detail: goal})
 	fmt.Printf("wrote %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, goal)
 	fmt.Printf("job: %s\n", job)
 	fmt.Printf("edit its steps, then the operator runs: swim run %d   (or pinned: swim run %s)\n", n, job)
@@ -200,14 +216,22 @@ func cmdNew(args []string) error {
 }
 
 func cmdRun(args []string) error {
-	var plain bool
-	rest, err := flags{bools: map[string]*bool{"plain": &plain}}.parse(args)
+	var plain, rerun bool
+	rest, err := flags{bools: map[string]*bool{"plain": &plain, "rerun": &rerun}}.parse(args)
 	if err != nil {
 		return err
 	}
 	root, cfg, err := repo()
 	if err != nil {
 		return err
+	}
+	if rerun && len(rest) > 0 {
+		return usagef("--rerun is for running every pending lane; named lanes always run")
+	}
+	if len(rest) == 0 {
+		if cfg, err = offerMoreLanes(root, cfg, rerun); err != nil {
+			return err
+		}
 	}
 	var lanes []int
 	for _, a := range rest {
@@ -221,7 +245,7 @@ func cmdRun(args []string) error {
 		return err
 	}
 	code, err := launcher.Run(launcher.Options{
-		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain,
+		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin,
 	})
 	if err != nil {
@@ -231,6 +255,116 @@ func cmdRun(args []string) error {
 		return exitError{code}
 	}
 	return nil
+}
+
+// offerMoreLanes looks for lane scripts numbered above the configured lane
+// count (lane.5.sh with lanes: 4) holding jobs that haven't passed. On a
+// terminal it asks whether to raise the lane count so they run; otherwise
+// it only says how, and never changes config.
+func offerMoreLanes(root string, cfg *config.Config, rerun bool) (*config.Config, error) {
+	waiting := launcher.Beyond(root, cfg, rerun)
+	var lines []string
+	for _, n := range waiting {
+		info, _ := lane.ReadScript(root, n)
+		lines = append(lines, fmt.Sprintf("  lane.%d.sh  %s", n, info.Round))
+	}
+	if len(waiting) == 0 {
+		return cfg, nil
+	}
+	want := waiting[len(waiting)-1]
+	if want > 99 {
+		fmt.Fprintf(os.Stderr, "swim: lane scripts above lane.99.sh are never run\n")
+		return cfg, nil
+	}
+	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	head := fmt.Sprintf("%d job(s) waiting beyond swim %d (only %d lanes are configured):", len(waiting), cfg.Lanes, cfg.Lanes)
+	if !ui.IsTTY(os.Stdin) || !ui.IsTTY(os.Stdout) {
+		fmt.Fprintln(os.Stderr, "swim: "+head)
+		fmt.Fprintln(os.Stderr, strings.Join(lines, "\n"))
+		fmt.Fprintf(os.Stderr, "swim: they won't run. To include them: swim config --lanes %d\n", want)
+		return cfg, nil
+	}
+	fmt.Println(p.Paint(ui.Yellow+ui.Bold, head))
+	fmt.Println(strings.Join(lines, "\n"))
+	fmt.Printf("Increase lanes from %d to %d so they run now? [y/N] ", cfg.Lanes, want)
+	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", "yes":
+		if err := applyLanes(root, cfg, want, "jobs waiting in lane "+joinNums(waiting)); err != nil {
+			return nil, err
+		}
+		return config.Load(root)
+	}
+	fmt.Printf("keeping %d lanes; %s won't run (swim config --lanes %d to include them later)\n", cfg.Lanes, joinNums(waiting), want)
+	return cfg, nil
+}
+
+// applyLanes sets this repo's lane count in config and records it.
+func applyLanes(root string, cfg *config.Config, n int, why string) error {
+	if n == cfg.Lanes {
+		fmt.Printf("lanes already %d\n", n)
+		return nil
+	}
+	if n < cfg.Lanes {
+		for k := n + 1; k <= cfg.Lanes; k++ {
+			if info, _ := lane.ReadScript(root, k); info.Pending() {
+				return fmt.Errorf("lane.%d.sh holds a pending round; stub it before reducing lanes to %d", k, n)
+			}
+		}
+	}
+	if err := config.SetLanes(cfg.Path, root, n); err != nil {
+		return err
+	}
+	detail := fmt.Sprintf("%d -> %d", cfg.Lanes, n)
+	if why != "" {
+		detail += "  (" + why + ")"
+	}
+	history.Log(root, history.Entry{Event: history.Lanes, Detail: detail})
+	fmt.Printf("lanes: %d -> %d in %s\n", cfg.Lanes, n, cfg.Path)
+	return nil
+}
+
+func joinNums(ns []int) string {
+	parts := make([]string, len(ns))
+	for i, n := range ns {
+		parts[i] = strconv.Itoa(n)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// cmdPlan prints what `swim run` / `swim all` would do, running nothing.
+func cmdPlan(args []string) error {
+	var rerun bool
+	rest, err := flags{bools: map[string]*bool{"rerun": &rerun}}.parse(args)
+	if err != nil {
+		return err
+	}
+	if rerun && len(rest) > 0 {
+		return usagef("--rerun is for planning every pending lane; named lanes always run")
+	}
+	root, cfg, err := repo()
+	if err != nil {
+		return err
+	}
+	var lanes []int
+	for _, a := range rest {
+		n, err := laneRef(root, cfg, a, false)
+		if err != nil {
+			return err
+		}
+		lanes = append(lanes, n)
+	}
+	return launcher.WritePlan(os.Stdout, launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun}, ui.ColorEnabled(os.Stdout))
+}
+
+// cmdAll runs every lane holding a pending round: `swim run` with no lanes.
+func cmdAll(args []string) error {
+	for _, a := range args {
+		if !strings.HasPrefix(a, "--") {
+			return usagef("all takes no lanes (it runs every pending one); to pick lanes: swim run %s", strings.Join(args, " "))
+		}
+	}
+	return cmdRun(args)
 }
 
 func cmdStep(args []string) error {
@@ -338,6 +472,8 @@ func cmdArchive(args []string) error {
 		l.State, l.Round, l.Job = status.Idle, "", ""
 		l.LastArchive = filepath.Base(dst)
 	})
+	archived, _ := logparse.ParseFile(dst)
+	history.Log(root, history.Entry{Event: history.Archive, Lane: n, Job: archived.Job, Detail: filepath.Base(dst)})
 	fmt.Printf("archived %s -> %s\n", rel(root, lane.Log(root, n)), rel(root, dst))
 	return nil
 }
@@ -355,6 +491,7 @@ func cmdStub(args []string) error {
 		return err
 	}
 	msg := strings.Join(args[1:], " ")
+	replaced, _ := lane.ReadScript(root, n)
 	content, err := assets.Stub(n, msg)
 	if err != nil {
 		return err
@@ -363,7 +500,40 @@ func cmdStub(args []string) error {
 		return err
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.Pending, l.PendingJob = "", "" })
+	history.Log(root, history.Entry{Event: history.Stub, Lane: n, Job: replaced.Job, Detail: msg})
 	fmt.Printf("stubbed %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, msg)
+	return nil
+}
+
+func cmdNote(args []string) error {
+	var ref string
+	rest, err := flags{strs: map[string]*string{"lane": &ref}}.parse(args)
+	if err != nil {
+		return err
+	}
+	text := strings.TrimSpace(strings.Join(rest, " "))
+	if text == "" {
+		return usagef(`usage: swim note [--lane N|JOB] "<text>"`)
+	}
+	root, cfg, err := repo()
+	if err != nil {
+		return err
+	}
+	e := history.Entry{Event: history.Note, Detail: text}
+	if ref != "" {
+		if e.Lane, err = laneRef(root, cfg, ref, true); err != nil {
+			return err
+		}
+		if info, _ := lane.ReadScript(root, e.Lane); info.Job != "" {
+			e.Job = info.Job
+		} else if st, _ := status.Load(root); st != nil && st.Get(e.Lane) != nil {
+			e.Job = st.Get(e.Lane).Job
+		}
+	}
+	if err := history.Append(root, e); err != nil {
+		return err
+	}
+	fmt.Printf("noted in %s\n", history.FileName)
 	return nil
 }
 

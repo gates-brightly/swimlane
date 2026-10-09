@@ -1,6 +1,6 @@
 # >>> swim >>>
-next[0-9]*.sh
-agent*.log
+lane.[0-9]*.sh
 .lane*.rc
 .swim/
+.swim.log
 # <<< swim <<<

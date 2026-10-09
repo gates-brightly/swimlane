@@ -1,4 +1,4 @@
-// Package lane knows a lane's files: lane.N.sh (lane script), agentN.log (log),
+// Package lane knows a lane's files: lane.N.sh (lane script), .swim/logs/agentN.log (log),
 // .swim/laneN.pid (running marker) and .swim/snapshots/.
 package lane
 
@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -19,7 +20,12 @@ import (
 const StubMarker = "# swim:stub"
 
 func Script(root string, n int) string { return filepath.Join(root, fmt.Sprintf("lane.%d.sh", n)) }
-func Log(root string, n int) string    { return filepath.Join(root, fmt.Sprintf("agent%d.log", n)) }
+func Log(root string, n int) string {
+	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.log", n))
+}
+
+// LogDir holds lane logs and their archives.
+func LogDir(root string) string { return filepath.Join(root, ".swim", "logs") }
 func PIDFile(root string, n int) string {
 	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d.pid", n))
 }
@@ -32,9 +38,10 @@ func RCFile(root string, n int) string {
 type Info struct {
 	Exists  bool
 	Stub    bool
-	Round   string // first Round: line (lane scripts only)
-	Job     string // Job: line, the job's id ("" if the script has none)
-	Message string // stub message
+	Round   string   // first Round: line (lane scripts only)
+	Job     string   // Job: line, the job's id ("" if the script has none)
+	After   []string // After: line(s), lanes or job ids this round waits for
+	Message string   // stub message
 }
 
 // Pending reports whether the lane script holds a round to run.
@@ -43,6 +50,8 @@ func (i Info) Pending() bool { return i.Exists && !i.Stub && i.Round != "" }
 var (
 	roundRE = regexp.MustCompile(`^#?\s*Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#\s*Job:\s*(\S+)`)
+	afterRE = regexp.MustCompile(`^#\s*After:\s*(.*)$`)
+	sepRE   = regexp.MustCompile(`[\s,]+`)
 )
 
 // ReadScript inspects lane.N.sh. A lane script without a Round: line is treated
@@ -64,6 +73,16 @@ func ReadScript(root string, n int) (Info, error) {
 			info.Stub = true
 			continue
 		}
+		if m := afterRE.FindStringSubmatch(line); m != nil {
+			for _, tok := range sepRE.Split(m[1], -1) {
+				switch strings.ToLower(tok) {
+				case "", "swim", "-", "none", "(none)":
+					continue
+				}
+				info.After = append(info.After, tok)
+			}
+			continue
+		}
 		if m := jobRE.FindStringSubmatch(line); m != nil && info.Job == "" {
 			info.Job = m[1]
 			continue
@@ -76,7 +95,7 @@ func ReadScript(root string, n int) (Info, error) {
 		}
 	}
 	if info.Stub {
-		info.Round, info.Job = "", ""
+		info.Round, info.Job, info.After = "", "", nil
 	}
 	return info, sc.Err()
 }
@@ -143,7 +162,7 @@ func Slug(s string) string {
 	return s
 }
 
-// Archive renames agentN.log to agentN.prev-<what>.log and returns the new
+// Archive renames .swim/logs/agentN.log to agentN.prev-<what>.log there and returns the new
 // path. It never overwrites an existing archive.
 func Archive(root string, n int, what string) (string, error) {
 	if err := refuseRunning(root, n); err != nil {
@@ -157,7 +176,7 @@ func Archive(root string, n int, what string) (string, error) {
 	if _, err := os.Stat(src); err != nil {
 		return "", fmt.Errorf("nothing to archive: %w", err)
 	}
-	dst := filepath.Join(root, fmt.Sprintf("agent%d.prev-%s.log", n, slug))
+	dst := filepath.Join(LogDir(root), fmt.Sprintf("agent%d.prev-%s.log", n, slug))
 	if _, err := os.Stat(dst); err == nil {
 		return "", fmt.Errorf("%s already exists; choose a different description", filepath.Base(dst))
 	}
@@ -234,4 +253,60 @@ func MatchJob(id, ref string) bool {
 		return true
 	}
 	return len(ref) >= 8 && strings.HasPrefix(strings.ToLower(id), strings.ToLower(ref))
+}
+
+var scriptNameRE = regexp.MustCompile(`^lane\.([0-9]+)\.sh$`)
+
+// ScriptsBeyond returns the numbers of lane scripts in root numbered above
+// n (e.g. lane.5.sh when only 4 lanes are configured), sorted.
+func ScriptsBeyond(root string, n int) []int {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var out []int
+	for _, e := range entries {
+		if m := scriptNameRE.FindStringSubmatch(e.Name()); m != nil {
+			if k, err := strconv.Atoi(m[1]); err == nil && k > n {
+				out = append(out, k)
+			}
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
+var oldLogRE = regexp.MustCompile(`^agent([0-9]+)(\.prev-.+)?\.log$`)
+
+// MigrateLogs moves lane logs written by older versions of swim to the repo
+// root (agentN.log, agentN.prev-*.log) into .swim/logs/. Logs of a running
+// lane, and files whose destination already exists, are left in place. It
+// returns the names it moved.
+func MigrateLogs(root string) []string {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var moved []string
+	for _, e := range entries {
+		m := oldLogRE.FindStringSubmatch(e.Name())
+		if m == nil || e.IsDir() {
+			continue
+		}
+		n, _ := strconv.Atoi(m[1])
+		if _, running := Running(root, n); running {
+			continue
+		}
+		dst := filepath.Join(LogDir(root), e.Name())
+		if _, err := os.Stat(dst); err == nil {
+			continue
+		}
+		if os.MkdirAll(LogDir(root), 0o755) != nil {
+			return moved
+		}
+		if os.Rename(filepath.Join(root, e.Name()), dst) == nil {
+			moved = append(moved, e.Name())
+		}
+	}
+	return moved
 }

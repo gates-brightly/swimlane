@@ -13,6 +13,7 @@ import (
 
 	"swim/internal/config"
 	"swim/internal/display"
+	"swim/internal/history"
 	"swim/internal/lane"
 	"swim/internal/logparse"
 	"swim/internal/status"
@@ -43,6 +44,9 @@ func laneCtx(arg string) (string, *config.Config, int, error) {
 }
 
 func appendLog(path, text string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
@@ -96,6 +100,7 @@ func cmdStart(args []string) error {
 	p := painter()
 	fmt.Fprintln(os.Stderr, p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d", n))+"  "+p.Paint(ui.Bold, "Round: "+round)+"  "+p.Paint(ui.Dim, "job "+job))
 	ref := step.GitRef(root)
+	history.Log(root, history.Entry{Event: history.Start, Lane: n, Job: job, Detail: round})
 	// stdout carries the job id back to lane_init, which exports SWIM_JOB.
 	defer fmt.Println(job)
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
@@ -192,6 +197,12 @@ func cmdFinish(args []string) error {
 	if pid, ok := lane.Running(root, n); !ok || pid == os.Getppid() {
 		lane.RemovePID(root, n)
 	}
+	event := map[string]string{status.Passed: history.Pass, status.Failed: history.Fail, status.Interrupted: history.Interrupted}[state]
+	detail := fmt.Sprintf("pass=%d fail=%d skip=%d drift=%d exit=%d %s  %s", r.Pass, r.Fail, r.Skip, r.Drift, code, ds, r.Title)
+	if len(failedSteps) > 0 {
+		detail += "  | " + strings.Join(failedSteps, "; ")
+	}
+	history.Log(root, history.Entry{Event: event, Lane: n, Job: r.Job, Detail: detail})
 	if err != nil {
 		return err
 	}

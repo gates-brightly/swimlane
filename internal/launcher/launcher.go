@@ -20,6 +20,7 @@ import (
 
 	"swim/internal/config"
 	"swim/internal/display"
+	"swim/internal/history"
 	"swim/internal/lane"
 	"swim/internal/logparse"
 	"swim/internal/status"
@@ -29,13 +30,15 @@ import (
 
 // Options configures a launch.
 type Options struct {
-	Root  string
-	Cfg   *config.Config
-	Lanes []int // explicit selection; empty means every lane with a pending round
-	Plain bool
-	Self  string // path of the swim binary, exported to lane scripts as SWIM_BIN
-	Out   *os.File
-	Stdin *os.File
+	Root   string
+	Cfg    *config.Config
+	Lanes  []int // explicit selection; empty means every lane with a pending round
+	Rerun  bool  // with no explicit lanes, also run rounds that already passed
+	DryRun bool  // plan only: don't refuse lanes that are running
+	Plain  bool
+	Self   string // path of the swim binary, exported to lane scripts as SWIM_BIN
+	Out    *os.File
+	Stdin  *os.File
 }
 
 // Outcome is one lane's result.
@@ -49,20 +52,21 @@ type Outcome struct {
 }
 
 // Select resolves which lanes to run and checks none is already running.
-func Select(o Options) ([]int, error) {
-	var sel []int
+// With no explicit lanes it picks every pending round that hasn't already
+// passed (unless Rerun), and returns the passed ones as done.
+func Select(o Options) (sel, done []int, err error) {
 	if len(o.Lanes) > 0 {
 		seen := map[int]bool{}
 		for _, n := range o.Lanes {
 			if !o.Cfg.ValidLane(n) {
-				return nil, fmt.Errorf("no swim %d: lanes are numbered 1..%d", n, o.Cfg.Lanes)
+				return nil, nil, fmt.Errorf("no swim %d: lanes are numbered 1..%d", n, o.Cfg.Lanes)
 			}
 			info, err := lane.ReadScript(o.Root, n)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !info.Pending() {
-				return nil, fmt.Errorf("swim %d has no pending round (%s is missing, a stub, or has no Round: line)", n, filepath.Base(lane.Script(o.Root, n)))
+				return nil, nil, fmt.Errorf("swim %d has no pending round (%s is missing, a stub, or has no Round: line)", n, filepath.Base(lane.Script(o.Root, n)))
 			}
 			if !seen[n] {
 				sel = append(sel, n)
@@ -70,34 +74,57 @@ func Select(o Options) ([]int, error) {
 			}
 		}
 	} else {
+		st, _ := status.Load(o.Root)
 		for n := 1; n <= o.Cfg.Lanes; n++ {
-			if info, err := lane.ReadScript(o.Root, n); err == nil && info.Pending() {
-				sel = append(sel, n)
+			info, err := lane.ReadScript(o.Root, n)
+			if err != nil || !info.Pending() {
+				continue
 			}
+			var last *status.Lane
+			if st != nil {
+				last = st.Get(n)
+			}
+			if !o.Rerun && AlreadyPassed(info, last) {
+				done = append(done, n)
+				continue
+			}
+			sel = append(sel, n)
 		}
 	}
 	sort.Ints(sel)
 	for _, n := range sel {
-		if pid, ok := lane.Running(o.Root, n); ok {
-			return nil, lane.ErrRunning{Lane: n, PID: pid}
+		if pid, ok := lane.Running(o.Root, n); ok && !o.DryRun {
+			return nil, nil, lane.ErrRunning{Lane: n, PID: pid}
 		}
 	}
-	return sel, nil
+	return sel, done, nil
 }
 
 // Run launches the selected lanes and returns 0 only if all passed.
 func Run(o Options) (int, error) {
-	sel, err := Select(o)
+	sel, passed, err := Select(o)
 	if err != nil {
 		return 2, err
 	}
 	if len(sel) == 0 {
-		fmt.Fprintln(o.Out, "swim: nothing pending (every lane is a stub or has no lane script). Write one with `swim new N \"<goal>\"`.")
+		if len(passed) > 0 {
+			fmt.Fprintf(o.Out, "swim: nothing to run: every pending job has already passed (swim %s). Rerun one with `swim run N`, or all with `swim all --rerun`.\n", joinInts(passed))
+		} else {
+			fmt.Fprintln(o.Out, "swim: nothing pending (every lane is a stub or has no lane script). Write one with `swim new N \"<goal>\"`.")
+		}
 		return 0, nil
+	}
+	isDone := map[int]bool{}
+	for _, n := range passed {
+		isDone[n] = true
 	}
 	selected := map[int]bool{}
 	for _, n := range sel {
 		selected[n] = true
+	}
+	deps, err := ResolveDeps(o.Root, o.Cfg, sel)
+	if err != nil {
+		return 2, err
 	}
 
 	// The panel shows every lane 1..N so numbering never has gaps.
@@ -105,12 +132,15 @@ func Run(o Options) (int, error) {
 	for n := 1; n <= o.Cfg.Lanes; n++ {
 		info, _ := lane.ReadScript(o.Root, n)
 		v := display.LaneView{N: n, State: display.Idle, Round: info.Round, Job: info.Job}
+		if isDone[n] {
+			v.State = display.Done
+		}
 		if selected[n] {
 			v.State = display.Queued
-			for _, d := range o.Cfg.DepsOf(n) {
-				if selected[d] {
+			for _, d := range deps[n] {
+				if selected[d.Lane] {
 					v.State = display.Waiting
-					v.WaitingOn = append(v.WaitingOn, d)
+					v.WaitingOn = append(v.WaitingOn, d.Lane)
 				}
 			}
 		}
@@ -156,6 +186,7 @@ func Run(o Options) (int, error) {
 		}
 	}()
 
+	history.Log(o.Root, history.Entry{Event: history.Run, Detail: "swim " + joinInts(sel)})
 	disp.Start()
 	defer disp.Restore()
 
@@ -165,7 +196,7 @@ func Run(o Options) (int, error) {
 		go func(n int) {
 			defer wg.Done()
 			defer close(done[n])
-			out := runLane(o, n, sel, selected, disp, done, outcomes, &mu, &interrupted, procs)
+			out := runLane(o, n, sel, selected, deps[n], disp, done, outcomes, &mu, &interrupted, procs)
 			mu.Lock()
 			outcomes[n] = out
 			mu.Unlock()
@@ -180,28 +211,37 @@ func Run(o Options) (int, error) {
 			code = 1
 		}
 	}
+	counts := map[string]int{}
+	for _, n := range sel {
+		counts[outcomes[n].State]++
+	}
+	history.Log(o.Root, history.Entry{Event: history.RunDone, Detail: fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d  %s",
+		joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted], display.Elapsed(time.Since(start)))})
 	printSummary(o.Out, o.Root, sel, outcomes, time.Since(start), disp.Color())
 	return code, nil
 }
 
-func runLane(o Options, n int, sel []int, selected map[int]bool, disp *display.Display,
+func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, disp *display.Display,
 	done map[int]chan struct{}, outcomes map[int]*Outcome, mu *sync.Mutex, interrupted *bool, procs map[int]*os.Process) *Outcome {
 
-	// Wait for dependencies that are part of this run. A dependency outside
-	// the run counts as satisfied: the operator chose not to run it now.
-	var waitOn []int
-	for _, d := range o.Cfg.DepsOf(n) {
-		if selected[d] {
-			waitOn = append(waitOn, d)
-		}
-	}
 	skip := func(reason string) *Outcome {
 		disp.Set(n, func(v *display.LaneView) { v.State, v.Reason, v.WaitingOn = display.Skipped, reason, nil })
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
 			l.State, l.Reason, l.WaitingOn, l.PID = status.Skipped, reason, []int{}, 0
 		})
 		info, _ := lane.ReadScript(o.Root, n)
+		history.Log(o.Root, history.Entry{Event: history.Skip, Lane: n, Job: info.Job, Detail: reason + "  " + info.Round})
 		return &Outcome{N: n, Job: info.Job, State: status.Skipped, Exit: -1, Reason: reason}
+	}
+	// Dependencies outside this run must already be satisfied (see
+	// outsideBlocker); those inside it are waited for.
+	var waitOn []int
+	for _, d := range deps {
+		if selected[d.Lane] {
+			waitOn = append(waitOn, d.Lane)
+		} else if why := outsideBlocker(o.Root, d); why != "" {
+			return skip(why)
+		}
 	}
 	for len(waitOn) > 0 {
 		remaining := append([]int(nil), waitOn...)
@@ -307,10 +347,12 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 	})
 	// The lane script records its own final state. If it died before
 	// lane_init (syntax error, missing swim), record it here instead.
+	died := false
 	status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
 		if l.StartedAt != nil && *l.StartedAt >= startedTS {
 			return
 		}
+		died = true
 		l.ResetRun()
 		l.State = state
 		l.StartedAt = status.Str(startedTS)
@@ -319,6 +361,11 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 		l.ExitCode = status.Int(code)
 		l.Reason = "lane script exited before lane_init"
 	})
+	if died {
+		info, _ := lane.ReadScript(o.Root, n)
+		history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job,
+			Detail: fmt.Sprintf("exit=%d  lane script exited before lane_init  %s", code, info.Round)})
+	}
 	return &Outcome{N: n, State: state, Exit: code, Elapsed: now.Sub(started)}
 }
 
@@ -393,13 +440,21 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, f.Text()))
 		}
 	}
-	fmt.Fprintln(out, p.Paint(ui.Dim, "  logs: "+logList(sel)+"   status: swim status / cat .swim/status.yml"))
+	fmt.Fprintln(out, p.Paint(ui.Dim, "  logs: swim log N (or "+logList(sel)+")   status: swim status"))
 }
 
 func logList(sel []int) string {
 	parts := make([]string, len(sel))
 	for i, n := range sel {
-		parts[i] = fmt.Sprintf("agent%d.log", n)
+		parts[i] = fmt.Sprintf(".swim/logs/agent%d.log", n)
 	}
 	return strings.Join(parts, " ")
+}
+
+func joinInts(ns []int) string {
+	parts := make([]string, len(ns))
+	for i, n := range ns {
+		parts[i] = fmt.Sprint(n)
+	}
+	return strings.Join(parts, ",")
 }

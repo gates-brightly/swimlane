@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Round: {{.Goal}}
 # Job:   {{.Job}}
+# After:
+#   ^ lanes (or job ids) that must pass before this round starts, e.g.
+#     "# After: 1" or "# After: 2 3". Leave empty to start right away.
 # Lane:  swim {{.Lane}}    Written: {{.Date}}
 #
 # Goal:

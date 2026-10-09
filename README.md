@@ -21,12 +21,24 @@ path before publishing, so `go install <path>/cmd/swim@latest` works.
 cd your-repo
 swim init                              # config entry, .gitignore block, .swim/status.yml
 swim new 1 "Cut over orders-api"       # writes lane.1.sh from the template; edit its steps
-swim run                               # runs every pending lane; live pinned view
+swim plan                              # dry run: tree of what swim all would do, guard flags, skips
+swim all                               # runs every pending lane (same as `swim run`); live pinned view
 swim status                            # last state of every lane (or: cat .swim/status.yml)
+swim note "orders table kept: still read by billing"   # record a decision in .swim.log
+swim log                               # project history (.swim.log): one line per top-level action
+swim log 2                             # lane 2's current log; --all adds its archives
+swim log 3f2a9c1e                      # just the rounds of one job
 swim archive 1 && swim stub 1 "orders done"   # archive name defaults to the job id
 ```
 
-Dependencies and settings live in `~/.config/swim/config.yml`:
+Dependencies are usually declared by the round itself, in the lane script header:
+
+```sh
+# Round: Diamond join: build report from child A and child B
+# After: 2 3          # wait for swim 2 and swim 3 to pass (lane numbers or job ids)
+```
+
+Ordering that holds for every round, and other settings, live in `~/.config/swim/config.yml`:
 
 ```yaml
 defaults:

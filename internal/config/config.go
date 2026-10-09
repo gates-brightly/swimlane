@@ -115,20 +115,25 @@ func readFile(path string) (*File, error) {
 
 // lookupRepo matches root against repo keys, expanding ~ and cleaning paths.
 func lookupRepo(repos map[string]Settings, root string) (Settings, bool) {
-	want := filepath.Clean(root)
-	if r, err := filepath.EvalSymlinks(want); err == nil {
-		want = r
-	}
 	for k, v := range repos {
-		key := filepath.Clean(expandHome(k))
-		if r, err := filepath.EvalSymlinks(key); err == nil {
-			key = r
-		}
-		if key == want {
+		if sameRepo(k, root) {
 			return v, true
 		}
 	}
 	return Settings{}, false
+}
+
+// sameRepo reports whether a repos key names root (after ~ expansion,
+// cleaning and resolving symlinks).
+func sameRepo(key, root string) bool {
+	canon := func(p string) string {
+		p = filepath.Clean(expandHome(p))
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			p = r
+		}
+		return p
+	}
+	return canon(key) == canon(root)
 }
 
 func expandHome(p string) string {
@@ -330,4 +335,43 @@ func writeNode(path string, doc *yaml.Node) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// SetLanes sets `lanes` in root's repo section (creating the file or the
+// section if needed), keeping the rest of the file and its comments.
+func SetLanes(path, root string, lanes int) error {
+	if lanes < 1 || lanes > 99 {
+		return fmt.Errorf("lanes must be 1..99, got %d", lanes)
+	}
+	if _, _, err := EnsureRepo(path, root); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	repos := mapGet(doc.Content[0], "repos")
+	if repos == nil || repos.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s: no repos mapping", path)
+	}
+	for i := 0; i+1 < len(repos.Content); i += 2 {
+		if !sameRepo(repos.Content[i].Value, root) {
+			continue
+		}
+		entry := repos.Content[i+1]
+		if entry.Kind != yaml.MappingNode {
+			*entry = yaml.Node{Kind: yaml.MappingNode}
+		}
+		if v := mapGet(entry, "lanes"); v != nil {
+			*v = *scalar(fmt.Sprint(lanes))
+		} else {
+			entry.Content = append([]*yaml.Node{scalar("lanes"), scalar(fmt.Sprint(lanes))}, entry.Content...)
+		}
+		return writeNode(path, &doc)
+	}
+	return fmt.Errorf("%s: no section for %s", path, root)
 }

@@ -27,11 +27,15 @@ func init() {
 		"config":  {run: cmdConfig},
 		"new":     {run: cmdNew},
 		"run":     {run: cmdRun},
+		"all":     {run: cmdAll},
+		"plan":    {run: cmdPlan},
 		"status":  {run: cmdStatus},
 		"step":    {run: cmdStep},
 		"lib":     {run: cmdLib},
 		"archive": {run: cmdArchive},
 		"stub":    {run: cmdStub},
+		"note":    {run: cmdNote},
+		"log":     {run: cmdLog},
 		"help":    {run: cmdHelp},
 		// Called by the lane script library, not by people.
 		"_start":  {run: cmdStart, hidden: true},
@@ -56,6 +60,10 @@ func Main(args []string) int {
 		return 0
 	}
 	name := args[0]
+	if _, ok := commands[name]; !ok && looksLikeLaneRef(name) {
+		// `swim 1 2` / `swim 3f2a9c1e` is shorthand for `swim run ...`.
+		name, args = "run", append([]string{"run"}, args...)
+	}
 	cmd, ok := commands[name]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "swim: unknown command %q\nRun `swim --help` for the guide.\n", name)
@@ -88,6 +96,15 @@ func Main(args []string) int {
 
 // Version is set at build time with -ldflags "-X swim/internal/cli.Version=...".
 var Version = "dev"
+
+// looksLikeLaneRef reports whether a first argument that isn't a command
+// should be read as a lane number or job id.
+func looksLikeLaneRef(s string) bool {
+	if n, err := strconv.Atoi(s); err == nil {
+		return n > 0
+	}
+	return lane.ValidJobID(s)
+}
 
 func wantsHelp(args []string) bool {
 	for _, a := range args {
@@ -157,6 +174,10 @@ func repo() (string, *config.Config, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	// Older versions kept lane logs at the repo root.
+	if moved := lane.MigrateLogs(root); len(moved) > 0 {
+		fmt.Fprintf(os.Stderr, "swim: moved %d lane log(s) to .swim/logs/: %s\n", len(moved), strings.Join(moved, " "))
+	}
 	return root, cfg, nil
 }
 
@@ -216,7 +237,7 @@ func laneArg(cfg *config.Config, s string) (int, error) {
 		return 0, usagef("%q is not a lane number", s)
 	}
 	if !cfg.ValidLane(n) {
-		return 0, fmt.Errorf("no swim %d: lanes are numbered 1..%d (set lanes in %s)", n, cfg.Lanes, cfg.Path)
+		return 0, fmt.Errorf("no swim %d: lanes are numbered 1..%d (more lanes: swim config --lanes %d)", n, cfg.Lanes, n)
 	}
 	return n, nil
 }

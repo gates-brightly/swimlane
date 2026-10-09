@@ -57,7 +57,7 @@ func New(o Options, views []LaneView) *Display {
 	if d.title == nil {
 		d.title = func(time.Time) string { return "swim" }
 	}
-	d.panelH = len(views) + 2
+	d.panelH = PanelRows(len(views)) + 2 // title + lane rows + separator
 	if !o.Plain && d.color && ui.IsTTY(o.Out) {
 		if cols, rows, err := term.GetSize(d.fd); err == nil && rows >= d.panelH+5 && cols >= 30 {
 			d.live, d.cols, d.rows = true, cols, rows
@@ -166,11 +166,28 @@ func (d *Display) restoreLocked() {
 func (d *Display) Line(n int, text string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	line := Prefix(n, d.color) + text
-	if d.color && strings.Contains(text, "\x1b[") {
-		line += ui.Reset // don't let a lane's colour bleed into the next line
+	prefix := Prefix(n, d.color)
+	if !d.live {
+		line := prefix + text
+		if d.color && strings.Contains(text, "\x1b[") {
+			line += ui.Reset // don't let a lane's colour bleed into the next line
+		}
+		fmt.Fprintln(d.out, line)
+		return
 	}
-	fmt.Fprintln(d.out, line)
+	// Live: wrap to one column short of the edge so the terminal never
+	// wraps (or holds a pending wrap) itself; continuation lines keep the
+	// lane prefix.
+	prefixW := len(fmt.Sprintf("[%d] ", n))
+	var b strings.Builder
+	for _, part := range WrapANSI(text, d.cols-1-prefixW) {
+		b.WriteString(prefix + part)
+		if strings.Contains(part, "\x1b[") {
+			b.WriteString(ui.Reset)
+		}
+		b.WriteString("\n")
+	}
+	fmt.Fprint(d.out, b.String())
 }
 
 // Message prints a launcher line (not tied to a lane) in the output area.

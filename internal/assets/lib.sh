@@ -9,7 +9,7 @@ _swim_done=
 SWIM_LANE=
 
 # lane_init N — claim lane N: cd to the repo root, point STEP_LOG at
-# agentN.log, source .lane.N.rc if present, write the round marker and mark
+# .swim/logs/agentN.log, source .lane.N.rc if present, write the round marker and mark
 # the lane running in .swim/status.yml. Exports SWIM_JOB (the job id from
 # the script's Job: line). Refuses if lane N is already running.
 lane_init() {
@@ -19,7 +19,7 @@ lane_init() {
   SWIM_LANE=$1
   SWIM_ROOT=$(cd "$(dirname "$0")" && pwd -P) || exit 1
   cd "$SWIM_ROOT" || exit 1
-  STEP_LOG="$SWIM_ROOT/agent$SWIM_LANE.log"
+  STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE.log"
   export SWIM_LANE SWIM_ROOT STEP_LOG
   if [ -f "$SWIM_ROOT/.lane.$SWIM_LANE.rc" ]; then
     . "$SWIM_ROOT/.lane.$SWIM_LANE.rc"

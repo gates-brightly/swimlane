@@ -107,7 +107,7 @@ func (f *File) Normalize(n int) {
 			l.State = Idle
 		}
 		l.Script = fmt.Sprintf("lane.%d.sh", l.Lane)
-		l.Log = fmt.Sprintf("agent%d.log", l.Lane)
+		l.Log = fmt.Sprintf(".swim/logs/agent%d.log", l.Lane)
 		if l.WaitingOn == nil {
 			l.WaitingOn = []int{}
 		}
