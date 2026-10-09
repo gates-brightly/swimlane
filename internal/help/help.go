@@ -65,7 +65,7 @@ var Commands = map[string]string{
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N] [--chime|--no-chime]
-         [--yaml] [--yaml-output]
+         [--yaml] [--yaml-output] [--interrupt graceful|immediate]
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -86,8 +86,11 @@ var Commands = map[string]string{
       one fails or is skipped, or if a dependency outside the run holds a
       round that hasn't passed. Cycles stop the run before it starts.
     - With more than one lane, lanes get no stdin (prompts fail closed).
-    - Ctrl-C reaches running lanes; lanes not yet started are skipped; the
-      summary still prints.
+    - Ctrl-C (see INTERRUPTING in swim --help): the first press stops every
+      lane at its next step boundary (running steps finish, no new step
+      starts, lanes not yet started are skipped); the second interrupts the
+      running steps (SIGINT) and kills them after interrupt_grace (5s); the
+      third kills them at once. The summary still prints.
     - Ends with a per-lane summary: result, exit code, counts, failed steps.
   Exits 0 only if every lane passed.
   --parallel N  run at most N lanes at once (0 = unlimited; default: config
@@ -99,6 +102,9 @@ var Commands = map[string]string{
                 each run gets r-<utc>-<hex>. Lanes see it as $SWIM_RUN, and the
                 lanes in the run as $SWIM_RUN_LANES.
   Shorthand: "swim 1 2" is "swim run 1 2"; "swim 3f2a9c1e" is "swim run 3f2a9c1e".
+  --interrupt graceful|immediate   what the first Ctrl-C does, for this run
+            (default: config interrupt, graceful). immediate interrupts
+            running steps at once (the second press then kills).
   --plain   no pinned panel, colour or throbber; state changes print as lines.
             Automatic when stdout isn't a terminal or NO_COLOR is set.
   --yaml    stdout is a stream of YAML documents (schema swim.run/v1: run,
@@ -115,7 +121,7 @@ var Commands = map[string]string{
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
 `,
 	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N] [--chime|--no-chime]
-         [--yaml] [--yaml-output]
+         [--yaml] [--yaml-output] [--interrupt graceful|immediate]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
@@ -256,6 +262,14 @@ var Commands = map[string]string{
   --yaml   the round parsed, as data (schema swim.log/v1): the latest round,
            every round with --all, or a job's rounds. See READING RESULTS.
 `,
+	"interrupt": `swim interrupt N|JOB
+
+  Ask one running lane to stop at its next step boundary, from any
+  terminal: its current step finishes, no further step starts, and the round
+  ends interrupted (STOP  interrupted by operator (after: <step>), exit 130).
+  Other lanes keep running. The same thing the first Ctrl-C does to every
+  lane of a swim run.
+`,
 	"lint": `swim lint [N|JOB ...] [--strict] [--yaml]
 
   Check lane scripts before they run; changes nothing. With no lanes, lints
@@ -325,11 +339,30 @@ var Commands = map[string]string{
   swim's .gitignore block and removes stale pid files. It never edits config,
   lane scripts or git.
 `,
+	"changelog": `swim changelog [-n N] [--since VERSION] [--all]
+
+  What changed in swim, from the changelog built into this binary (the
+  repo's CHANGELOG.md when it was built). Run it after updating to see what
+  is new. Works anywhere; it needs no repo.
+
+  swim changelog                  the newest revision (default -n 1)
+  swim changelog -n 3             the newest three revisions
+  swim changelog --since 2.20261009
+                                  every revision after that version (or tag,
+                                  v0.2.20261009, or a pre-release commit id)
+  swim changelog --all            every revision
+
+  A revision is one "## " section: Unreleased (on a build from main), a
+  release version <breaking>.<YYYYMMDD>, or a commit for revisions before
+  versioning. A revision with a new breaking number has Upgrading notes:
+  read them, and swim lock --help, before running lanes.
+`,
 	"lock": `swim lock [--upgrade]
 
   swim's version is <breaking>.<YYYYMMDD> (swim --version), e.g. 1.20261009:
-  the breaking version changes only when lane scripts, logs or swim's state
-  change incompatibly; the date is the build date.
+  the breaking version changes when lane scripts, logs or swim's state
+  change incompatibly, or for a second release on the same day; the date is
+  the build date.
 
   .swim.lock, at the repo root, pins the breaking version a repo's lanes use.
   swim writes it on the first run (swim run / swim all, or a lane script run
@@ -375,7 +408,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 func Full() string {
 	s := Guide + "\nCOMMAND DETAIL\n"
-	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib", "archive", "stub", "note", "lock", "lint", "doctor"} {
+	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib", "archive", "stub", "note", "lock", "changelog", "interrupt", "lint", "doctor"} {
 		s += "\n" + Commands[order]
 	}
 	return s

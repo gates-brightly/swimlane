@@ -16,7 +16,9 @@ import (
 )
 
 // Breaking is bumped when lane scripts, logs or swim's state files change
-// incompatibly. Repos locked to another breaking version refuse to run.
+// incompatibly, and for a second release on the same day (a tag is
+// v0.<breaking>.<YYYYMMDD>, so there is one release per breaking version per
+// day). Repos locked to another breaking version refuse to run.
 const Breaking = 2
 
 // Set at build time by the Makefile:

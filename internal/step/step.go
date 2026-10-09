@@ -57,7 +57,15 @@ type Options struct {
 	// Mask replaces secret values in everything the step writes (log,
 	// snapshot, terminal); nil masks nothing.
 	Mask *redact.Masker
+	// Stopped reports whether the lane has been asked to stop (the
+	// operator's first Ctrl-C, or swim interrupt N): the step then doesn't
+	// start, and a step waiting to retry stops waiting. Nil: never.
+	Stopped func() bool
 }
+
+// ExitStopped is swim step's exit code when a stop request kept it from
+// starting; the lane library then records STOP and ends the round.
+const ExitStopped = 86
 
 // Retry configures a step's retries (run --retry N ...).
 type Retry struct {
@@ -71,6 +79,7 @@ type Retry struct {
 type Result struct {
 	ExitCode int
 	Signal   os.Signal // set when interrupted
+	Stopped  bool      // refused, or retries cut short, by a stop request
 	TimedOut bool      // stopped (or not started) by a time limit
 	Attempts int       // attempts made
 	Saved    string    // snapshot path, if any
@@ -163,6 +172,11 @@ func Run(o Options) (Result, error) {
 	}
 	start := time.Now()
 	clock := start.Format("15:04:05")
+
+	if o.Stopped != nil && o.Stopped() {
+		fmt.Fprintln(o.Stderr, p.Paint(ui.Yellow, "swim: not started: "+logLabel+" (the lane is stopping: operator interrupt)"))
+		return Result{ExitCode: ExitStopped, Stopped: true}, nil
+	}
 
 	if label != "" {
 		fmt.Fprintln(o.Stderr, p.Paint(ui.Bold, "==> "+label))
@@ -271,11 +285,14 @@ func Run(o Options) (Result, error) {
 			break
 		}
 		note(fmt.Sprintf("%s; retry in %s", outcome, wait.Round(100*time.Millisecond)))
-		select {
-		case s := <-sigs:
-			last.sig = s
-			note("interrupted while waiting to retry")
-		case <-time.After(wait):
+		if waitForRetry(wait, sigs, o.Stopped, &last) {
+			if last.sig != nil {
+				note("interrupted while waiting to retry")
+			} else {
+				note("stop requested (operator interrupt): no retry")
+				res.Stopped = true
+				break
+			}
 		}
 		if last.sig != nil {
 			last.exit = 128 + int(last.sig.(syscall.Signal))
@@ -430,6 +447,32 @@ loop:
 		at.exit, at.sig = 124, nil
 	}
 	return at
+}
+
+// waitForRetry sleeps for the backoff; a signal or a stop request ends
+// the wait early (and returns true; a signal is recorded on last).
+func waitForRetry(wait time.Duration, sigs chan os.Signal, stopped func() bool, last *attempt) bool {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	var poll <-chan time.Time
+	if stopped != nil {
+		t := time.NewTicker(100 * time.Millisecond)
+		defer t.Stop()
+		poll = t.C
+	}
+	for {
+		select {
+		case s := <-sigs:
+			last.sig = s
+			return true
+		case <-poll:
+			if stopped() {
+				return true
+			}
+		case <-timer.C:
+			return false
+		}
+	}
 }
 
 // jitter spreads d by ±20%, so retries in parallel lanes don't all fire together.

@@ -45,7 +45,10 @@ swim --version                             # e.g. swim 2.20261009
 
 - **Pin a version:** replace `@latest` with a release tag (`@v0.2.20261009`)
   or a commit (`@64a0e07`).
-- **Update:** run the same `go install` command again.
+- **Update:** run the same `go install` command again, then `swim changelog`
+  to see what's new (`-n 3` for more revisions, `--since <old version>` for
+  everything since the version you had). The history is in
+  [CHANGELOG.md](CHANGELOG.md).
 - **Uninstall:** `rm "$(go env GOPATH)/bin/swim"`.
 
 ### From a checkout
@@ -76,9 +79,13 @@ make link / unlink    # add / remove the symlink to this checkout's bin/swim
 `swim --version` prints `<breaking>.<YYYYMMDD>`, for example
 `swim 2.20261009 (64a0e07)`:
 
-- the **breaking** number changes only when lane scripts, logs or swim's
-  state change incompatibly;
+- the **breaking** number changes when lane scripts, logs or swim's state
+  change incompatibly;
 - the **date** is the build date.
+
+There is one release per breaking number per day. A second release on the
+same day bumps the breaking number: shipping twice in a day usually means
+something changed that people need to act on anyway.
 
 The first `swim run` / `swim all` in a repo writes **`.swim.lock`**, which
 records the breaking version the repo uses. Commit it. If someone runs a swim
@@ -245,6 +252,7 @@ stops swim with instructions to update it.
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
 | `swim config [KEY [VALUE]] [--repo]` | Show the effective config (`--path`: its location), or get/set `chime`, `chime_style`, `chime_min_s` or `lanes` (`--lanes N` still works), keeping the file's comments. Writes go under `defaults:`, or this repo's section with `--repo`. |
+| `swim interrupt N\|JOB` | Ask one running lane to stop at its next step boundary (what the first Ctrl-C does to every lane). |
 | `swim lint [N\|JOB ...] [--strict] [--yaml]` | Check lane scripts (header, `set -e`, `lane_init`, `summary`, stages, bash 3.2, guards, blocked commands, secrets, dependencies); exits 1 on errors (`--strict`: warnings too). `swim run` refuses to start on `set -e` and `lane_init` errors. |
 | `swim doctor [--fix] [--strict] [--yaml]` | Check the environment: binary OS/CPU, PATH, config, `.gitignore` block, tracked lane scripts, stale pid files, toolchain, git, `.swim.lock`. `--fix` only rewrites swim's `.gitignore` block and removes stale pid files. |
 | `swim lock [--upgrade]` | Show swim's version and the repo's `.swim.lock`, or move the lock up a breaking version. |
@@ -261,8 +269,13 @@ a dependency. Output scrolls underneath, prefixed `[N]`.
 
 - **More than 15 lanes:** idle and finished lanes fold into a `… N more`
   line, so running lanes stay visible.
-- **Ctrl-C:** reaches the running lanes, skips the rest, and still prints
-  the summary.
+- **Ctrl-C:** the first press stops every lane at its next step boundary
+  (running steps finish, nothing new starts, waiting lanes are skipped); the
+  second interrupts running steps and kills them after `interrupt_grace`
+  (5s); the third kills at once. The summary still prints. `swim interrupt N`
+  stops one lane the same way from another terminal; `interrupt: immediate`
+  in config (or `--interrupt immediate`) restores the old one-press
+  behaviour.
 - **No terminal (CI, pipes) or `--plain`:** output is plain prefixed lines.
 - **`--yaml`:** stdout is a stream of YAML documents instead (`schema:
   swim.run/v1`: `run`, `waiting`, `queued`, `locked`, `start`, `step`,

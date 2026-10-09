@@ -5,6 +5,8 @@
 export SWIM_BIN
 _swim_fail=0
 _swim_last=0
+_swim_label=
+_swim_prev_label=
 _swim_done=
 SWIM_LANE=
 
@@ -31,6 +33,10 @@ lane_init() {
   if [ -f "$SWIM_ROOT/.lane.$SWIM_LANE.rc" ]; then
     . "$SWIM_ROOT/.lane.$SWIM_LANE.rc"
   fi
+  # Before _start marks the lane running: the launcher only signals a lane
+  # (SIGUSR2, a stop request) once status shows its pid, so the trap is
+  # always in place by then.
+  trap '_swim_operator_stop' USR2
   if ! _swim_start=$("$SWIM_BIN" _start "$SWIM_LANE" --pid $$ --script "$0"); then
     _swim_done=1
     exit 1
@@ -73,6 +79,11 @@ _swim_on_exit() {
 # $STEP_LOG.round-timeout when it was the round's (not the step's own).
 _swim_after_step() {
   _swim_last=$1
+  if [ "$_swim_last" -eq 86 ]; then
+    # swim step refused to start: the lane is stopping.
+    _swim_operator_stop "$_swim_prev_label"
+  fi
+  _swim_prev_label=$_swim_label
   if [ "$_swim_last" -ne 0 ]; then
     _swim_fail=$((_swim_fail + 1))
   fi
@@ -84,6 +95,26 @@ _swim_after_step() {
     stop "timeout: the round's Timeout ($SWIM_TIMEOUT) ran out"
   fi
   return "$_swim_last"
+}
+
+# _swim_operator_stop [LABEL] — end the round at a step boundary because
+# the operator asked (exit 130: interrupted). LABEL is the last step that
+# ran (default: the current one, which has just finished when the trap runs).
+# A stop request is the operator's first Ctrl-C or swim interrupt N. Bash
+# runs the trap once the current command returns, so a running step
+# finishes first; a waiting confirm is cancelled.
+_swim_operator_stop() {
+  trap '' USR2 # ignore repeats (resetting would let a second one kill bash)
+  if [ -n "$_swim_done" ]; then
+    return
+  fi
+  _swim_after=${1-$_swim_label}
+  if [ -n "$_swim_after" ]; then
+    "$SWIM_BIN" _mark "$SWIM_LANE" STOP "interrupted by operator (after: $_swim_after)"
+  else
+    "$SWIM_BIN" _mark "$SWIM_LANE" STOP "interrupted by operator (before the first step)"
+  fi
+  exit 130
 }
 
 # stage NAME — start a stage: snapshot, check, change or verify (in that
@@ -195,7 +226,22 @@ confirm() {
   _swim_want=${2:-yes}
   printf '%s [type %s to continue]: ' "$1" "$_swim_want" >&2
   _swim_ans=
-  read -r _swim_ans || _swim_ans=
+  # Read in 1s slices so a stop request (Ctrl-C) cancels the wait on any
+  # bash (3.2's read isn't interrupted by the USR2 trap). A failed read
+  # that returns at once is end of input, not a timeout.
+  while :; do
+    _swim_t=$SECONDS
+    if read -r -t 1 _swim_ans; then
+      break
+    fi
+    _swim_ans=
+    if [ "$SECONDS" -eq "$_swim_t" ]; then
+      break
+    fi
+    if [ -e "$SWIM_ROOT/.swim/lane$SWIM_LANE.stop" ]; then
+      _swim_operator_stop
+    fi
+  done
   if [ "$_swim_ans" = "$_swim_want" ]; then
     "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$1" "operator typed $_swim_want"
     return 0

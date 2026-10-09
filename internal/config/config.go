@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -38,6 +39,9 @@ type Settings struct {
 	SecretEnvAuto      *bool         `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
 	SecretEnvIgnore    []string      `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
 	SecretPatternsAuto *bool         `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
+	Interrupt          string        `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
+	InterruptGrace     string        `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
+	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
 }
 
 // File is the on-disk shape of config.yml.
@@ -197,6 +201,15 @@ func (c *Config) merge(r Settings) {
 	if r.ChimeMinS != nil {
 		c.ChimeMinS = r.ChimeMinS
 	}
+	if r.Interrupt != "" {
+		c.Interrupt = r.Interrupt
+	}
+	if r.InterruptGrace != "" {
+		c.InterruptGrace = r.InterruptGrace
+	}
+	if r.TermGrace != "" {
+		c.TermGrace = r.TermGrace
+	}
 }
 
 // Validate checks lane numbers are within 1..Lanes and deps form no cycle.
@@ -208,6 +221,9 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(b) == "" {
 			return fmt.Errorf("blocked_commands: empty pattern")
 		}
+	}
+	if err := c.validateInterrupt(); err != nil {
+		return err
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)
@@ -411,4 +427,50 @@ func writeNode(path string, doc *yaml.Node) error {
 // section if needed), keeping the rest of the file and its comments.
 func SetLanes(path, root string, lanes int) error {
 	return SetKey(path, root, "lanes", fmt.Sprint(lanes), true)
+}
+
+// Interrupt defaults.
+const (
+	InterruptGraceful     = "graceful"  // first Ctrl-C: stop at the next step boundary
+	InterruptImmediate    = "immediate" // first Ctrl-C: interrupt running steps
+	DefaultInterruptGrace = 5 * time.Second
+	DefaultTermGrace      = 10 * time.Second
+)
+
+func (c *Config) validateInterrupt() error {
+	switch c.Interrupt {
+	case "", InterruptGraceful, InterruptImmediate:
+	default:
+		return fmt.Errorf("interrupt must be graceful or immediate, got %q", c.Interrupt)
+	}
+	for _, kv := range [][2]string{{"interrupt_grace", c.InterruptGrace}, {"term_grace", c.TermGrace}} {
+		if kv[1] == "" {
+			continue
+		}
+		if d, err := time.ParseDuration(kv[1]); err != nil || d < 0 {
+			return fmt.Errorf("%s must be a duration like 5s or 1m, got %q", kv[0], kv[1])
+		}
+	}
+	return nil
+}
+
+// InterruptMode is what the first Ctrl-C does: graceful or immediate.
+func (c *Config) InterruptMode() string {
+	if c.Interrupt == "" {
+		return InterruptGraceful
+	}
+	return c.Interrupt
+}
+
+// Graces returns how long a force quit waits before SIGKILL, and how long
+// SIGTERM's graceful stop waits before forcing.
+func (c *Config) Graces() (interrupt, term time.Duration) {
+	interrupt, term = DefaultInterruptGrace, DefaultTermGrace
+	if d, err := time.ParseDuration(c.InterruptGrace); err == nil {
+		interrupt = d
+	}
+	if d, err := time.ParseDuration(c.TermGrace); err == nil {
+		term = d
+	}
+	return interrupt, term
 }

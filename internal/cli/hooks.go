@@ -106,6 +106,10 @@ func cmdStart(args []string) error {
 	if run == "" {
 		run = lane.NewRunID() // run directly with bash: a run of its own
 	}
+	// A stop request left from an earlier run doesn't apply to this round.
+	if !lane.StopRequested(root, n, run) {
+		lane.ClearStop(root, n)
+	}
 	// The git shim lane_init puts first on PATH (swim never writes to git).
 	shim := filepath.Join(root, ".swim", "bin", "git")
 	if err := os.MkdirAll(filepath.Dir(shim), 0o755); err == nil {
@@ -268,6 +272,7 @@ func cmdFinish(args []string) error {
 	}
 	logPath := lane.Log(root, n)
 	step.RecoverSpool(logPath)
+	lane.ClearStop(root, n) // the round is over: a stop request is spent
 	r, err := logparse.ParseFile(logPath)
 	if err != nil {
 		return err
@@ -281,7 +286,7 @@ func cmdFinish(args []string) error {
 	}
 	state := status.Passed
 	switch {
-	case code == 130 || code == 143 || code == 129 || r.Interrupt:
+	case code == 130 || code == 143 || code == 129 || code == 137 || r.Interrupt:
 		state = status.Interrupted
 	case code != 0:
 		state = status.Failed

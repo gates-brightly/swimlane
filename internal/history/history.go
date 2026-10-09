@@ -35,6 +35,7 @@ const (
 	Migrate     = "migrate"
 	Queued      = "queued"
 	Locked      = "locked" // a lane waits for a resource lock
+	StopReq     = "stop"   // swim interrupt N: a lane asked to stop at its next step boundary
 )
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.

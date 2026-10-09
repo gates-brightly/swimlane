@@ -1,6 +1,6 @@
 # Graceful Ctrl-C, twice to force quit
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -172,6 +172,53 @@ Ctrl-C goes straight to the force-quit step.
 4. **Stopping one lane.** Should `swim interrupt N` request a graceful stop for
    just that lane, from another terminal? It's cheap given the stop-file
    design, and useful for the TUI's "stop selected lane".
+
+## Decisions
+
+1. **Lanes that own the terminal's input:** (b). A single lane given a
+   terminal as stdin (so `confirm` can read it) stays in swim's process group
+   and gets Ctrl-C from the terminal directly, at once, as before. Every other
+   lane, including a single lane whose stdin is a pipe or `/dev/null`, gets
+   its own group. When the TUI ([tui.md](tui.md)) reads the keyboard itself,
+   (c) becomes possible.
+2. **Default:** `graceful`. `interrupt: immediate` in config, or
+   `--interrupt immediate` on one run, makes the first press force quit. The
+   guide's new INTERRUPTING section and `swim run --help` describe the change.
+3. **A step that never ends:** no `stop_timeout` for Ctrl-C, since a human is
+   there to press again. SIGTERM has `term_grace` (10s).
+4. **`swim interrupt N|JOB`:** built. It writes the same stop file and sends
+   the same signal for one lane, from any terminal, and logs a `stop` event
+   in `.swim.log`.
+5. **USR2, not USR1:** the stop request signals the lane's bash with SIGUSR2,
+   because the git shim already uses USR1 for blocked commands. Bash runs the
+   USR2 trap once the current command returns. So the trap itself enforces
+   the step boundary, and it interrupts a `confirm` waiting in `read` at once.
+   The step command never gets USR2, since it goes to the bash pid only.
+6. **The stop file still matters:** `.swim/laneN.stop` holds the run id. It
+   covers a step that starts in the instant between the request and the trap
+   (`swim step` refuses with exit 86, and the library records the STOP), and a
+   retry backoff, which `swim step` polls every 100ms and cuts short. Stop
+   files from an earlier run are ignored and removed when a round starts, and
+   the launcher removes a lane's file when it ends.
+7. **The STOP line:** `STOP  interrupted by operator (after: <last step>)`,
+   or `(before the first step)`. The lane ends `interrupted` with exit 130,
+   and its END block is written as usual.
+8. **SIGKILL'd lanes** (force quit's last resort) never run `_finish`. The
+   launcher closes their round itself with `swim _finish N --exit 137`, which
+   recovers the in-flight step output and records END INTERRUPTED. Exit 137
+   now counts as `interrupted`, not `failed`.
+9. **`confirm` on bash 3.2:** macOS's bash 3.2 doesn't interrupt `read` for
+   a trapped signal. So `confirm` reads in 1-second slices and checks the stop
+   file between them, cancelling within about a second on any bash.
+10. **Dependents of an interrupted lane** are skipped with the reason
+   `swim N interrupted`. Lanes with nothing to wait for are skipped with
+   `interrupted before start`, as before.
+11. **YAML stream:** `stop_requested`, `stopping` (per lane, with the step),
+    `force_quit` and `kill` events.
+12. **Scenarios:**
+    - `dag99-interrupt`: one Ctrl-C at a random point between 1s and 3s.
+    - `dag99-force`: two Ctrl-Cs, with a 1s grace. It checks that swim exits
+      within the grace plus 1s and that no lane process survives.
 
 ## Testing
 

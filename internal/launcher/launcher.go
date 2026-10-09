@@ -52,6 +52,9 @@ type Options struct {
 	// YAMLOutput adds lane output lines to it.
 	YAML       io.Writer
 	YAMLOutput bool
+	// Interrupt overrides config interrupt for this run: graceful or
+	// immediate (swim run --interrupt).
+	Interrupt string
 
 	ev *events
 }
@@ -196,6 +199,7 @@ func Run(o Options) (int, error) {
 	}
 	sl := newSlots(cap, chainBelow(sel, deps))
 	lt := newLockTable()
+	var ir *interrupter
 	screen, summaryOut := o.Out, io.Writer(o.Out)
 	if o.ev != nil {
 		// The YAML stream owns stdout: no live view, no table.
@@ -210,39 +214,36 @@ func Run(o Options) (int, error) {
 		Plain: o.Plain || o.ev != nil,
 		Cap:   cap,
 		Title: func(now time.Time) string {
-			return fmt.Sprintf("swim · %s · %s · %s", filepath.Base(o.Root), ref, display.Elapsed(now.Sub(start)))
+			t := fmt.Sprintf("swim · %s · %s · %s", filepath.Base(o.Root), ref, display.Elapsed(now.Sub(start)))
+			if n := ir.Notice(); n != "" {
+				t += " · " + n
+			}
+			return t
 		},
 	}, views)
+	ir = newInterrupter(o, disp, sl, lt)
+	defer ir.stop()
 
 	var (
-		mu          sync.Mutex
-		interrupted bool
-		procs       = map[int]*os.Process{}
-		outcomes    = map[int]*Outcome{}
-		done        = map[int]chan struct{}{}
+		mu       sync.Mutex
+		outcomes = map[int]*Outcome{}
+		done     = map[int]chan struct{}{}
 	)
 	for _, n := range sel {
 		done[n] = make(chan struct{})
 	}
 
-	// Ctrl-C reaches the lanes directly (same process group); the launcher
-	// stays up so it can skip lanes that haven't started and still print
-	// the summary. SIGTERM is aimed at us, so pass it on.
+	// Lanes run in their own process groups, so Ctrl-C reaches only swim,
+	// which decides what the lanes get (interrupt.go): the first press stops
+	// them at the next step boundary, the second interrupts and then kills
+	// them, the third kills them at once. Lanes not yet started are skipped,
+	// and the summary still prints.
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sigs)
 	go func() {
 		for s := range sigs {
-			mu.Lock()
-			interrupted = true
-			sl.close()
-			lt.close()
-			if s != syscall.SIGINT {
-				for _, p := range procs {
-					p.Signal(s)
-				}
-			}
-			mu.Unlock()
+			ir.handle(s)
 		}
 	}()
 
@@ -266,7 +267,7 @@ func Run(o Options) (int, error) {
 			if reason := blocked[n]; reason != "" {
 				out = refuseBlocked(o, n, reason, disp)
 			} else {
-				out = runLane(o, n, sel, selected, deps[n], sl, lt, disp, done, outcomes, &mu, &interrupted, procs)
+				out = runLane(o, n, sel, selected, deps[n], sl, lt, disp, done, outcomes, &mu, ir)
 			}
 			o.ev.laneDone(o, out)
 			mu.Lock()
@@ -294,9 +295,7 @@ func Run(o Options) (int, error) {
 		fmt.Fprintln(os.Stderr, "swim: run record: "+err.Error())
 	}
 	printSummary(summaryOut, o.Root, sel, outcomes, elapsed, disp.Color())
-	mu.Lock()
-	stopped := interrupted
-	mu.Unlock()
+	stopped := ir.stopping()
 	o.ev.summary(o, sel, outcomes, code, stopped, elapsed)
 	if o.Finished != nil {
 		o.Finished(Finish{Code: code, Interrupted: stopped, Counts: counts, Elapsed: elapsed})
@@ -305,7 +304,7 @@ func Run(o Options) (int, error) {
 }
 
 func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl *slots, lt *lockTable, disp *display.Display,
-	done map[int]chan struct{}, outcomes map[int]*Outcome, mu *sync.Mutex, interrupted *bool, procs map[int]*os.Process) *Outcome {
+	done map[int]chan struct{}, outcomes map[int]*Outcome, mu *sync.Mutex, ir *interrupter) *Outcome {
 
 	var ready, locked, slotted time.Time
 	stamp := func(oc *Outcome) *Outcome {
@@ -361,10 +360,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		waitOn = waitOn[1:]
 	}
 	ready = time.Now()
-	mu.Lock()
-	stop := *interrupted
-	mu.Unlock()
-	if stop {
+	if ir.stopping() {
 		return skip("interrupted before start")
 	}
 	// Take the round's resource locks (# Locks:), all at once: first from the
@@ -395,7 +391,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		var err error
 		fileLocks, ok, err = lane.WaitFileLocks(o.Root, info.Locks, lane.LockHolder(n, info.Job, o.RunID),
 			func(name, by string) { lockWait(fmt.Sprintf("%s: another run, %s", name, by)) },
-			func() bool { mu.Lock(); defer mu.Unlock(); return *interrupted })
+			ir.stopping)
 		if err != nil {
 			disp.Line(n, "swim: lock files: "+err.Error())
 			return skip("could not take locks: " + err.Error())
@@ -443,6 +439,12 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	if len(sel) == 1 && o.Stdin != nil {
 		cmd.Stdin = o.Stdin
 	}
+	// Its own process group, so the terminal's Ctrl-C reaches only swim.
+	// Not for a lane reading the terminal: a background group that reads
+	// it is stopped (SIGTTIN). That lane gets Ctrl-C from the terminal
+	// directly, at once, as before.
+	ownGroup := cmd.Stdin == nil || !ui.IsTTY(o.Stdin)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: ownGroup}
 	// The lane's process inherits the lock files, so the locks stay held as
 	// long as the lane runs, even if this launcher dies.
 	cmd.ExtraFiles = fileLocks
@@ -468,14 +470,10 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		return stamp(oc)
 	}
 	o.ev.emit(Event{Event: "start", Lane: n, Job: info.Job, Round: info.Round, At: launchedTS})
-	mu.Lock()
-	procs[n] = cmd.Process
-	mu.Unlock()
+	ir.add(n, &laneProc{proc: cmd.Process, group: ownGroup, started: launched})
 	err := cmd.Wait()
 	w.Flush()
-	mu.Lock()
-	delete(procs, n)
-	mu.Unlock()
+	ir.remove(n)
 
 	code := 0
 	if err != nil {
@@ -498,7 +496,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 func finish(o Options, n int, disp *display.Display, started time.Time, startedTS string, code int) *Outcome {
 	state := status.Passed
 	switch {
-	case code == 130 || code == 143 || code == 129:
+	case code == 130 || code == 143 || code == 129 || code == 137:
 		state = status.Interrupted
 	case code != 0:
 		state = status.Failed
@@ -531,6 +529,9 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 		l.ExitCode = status.Int(code)
 		l.Reason = "lane script exited before lane_init"
 	})
+	if !died && code > 128 {
+		closeKilledRound(o, n, code)
+	}
 	if died {
 		info, _ := lane.ReadScript(o.Root, n)
 		history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID,
@@ -667,4 +668,19 @@ func writeRunRecord(o Options, start time.Time, cap int, sel []int, selected map
 		r.Lanes = append(r.Lanes, l)
 	}
 	return runrec.Write(o.Root, r)
+}
+
+// closeKilledRound finishes the round of a lane killed by a signal (SIGKILL
+// is a force quit's last resort): its bash never ran _finish, so the step
+// output in flight is recovered and the round's END and final state are
+// recorded. A lane that ended its round itself is left alone.
+func closeKilledRound(o Options, n, code int) {
+	st, _ := status.Load(o.Root)
+	if st == nil || st.Get(n) == nil || st.Get(n).State != status.Running {
+		return
+	}
+	cmd := exec.Command(o.Self, "_finish", fmt.Sprint(n), "--exit", fmt.Sprint(code))
+	cmd.Dir = o.Root
+	cmd.Env = append(os.Environ(), "SWIM_COLOR=0")
+	cmd.Run()
 }

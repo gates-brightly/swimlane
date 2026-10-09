@@ -18,7 +18,7 @@ where it would land in the code, open questions, and how to test it.
 | Masking secrets: values of `secret_env` and auto-detected secret vars become `***` in logs, snapshots, status and output | [secret-masking.md](secret-masking.md) | shipped (unreleased) |
 | `swim timeline`: Gantt view of any run, with each lane's start delay, the longest chain and wait breakdown | [timeline.md](timeline.md) | shipped (unreleased) |
 | Chime: bell, sound or desktop notification when `swim run`/`swim all` finishes; `swim config chime true` | [chime.md](chime.md) | shipped (unreleased) |
-| Graceful Ctrl-C: first press stops every lane at the next step boundary, second force quits (SIGINT then SIGKILL), third kills | [graceful-interrupt.md](graceful-interrupt.md) | proposed |
+| Graceful Ctrl-C: first press stops every lane at the next step boundary, second force quits (SIGINT then SIGKILL), third kills | [graceful-interrupt.md](graceful-interrupt.md) | shipped (unreleased) |
 
 ## Staging a feature
 

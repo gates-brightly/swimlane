@@ -14,8 +14,14 @@ import (
 )
 
 // cmdRunResults reads a `swim run --yaml` stream on stdin and prints
-// "<lane> <PASS|FAIL|SKIP>" for every lane in its summary.
+// "<lane> <PASS|FAIL|SKIP>" for every lane in its summary; with --raw, the
+// summary's own words (passed, failed, skipped, interrupted). With
+// --after-stop it instead prints the lanes whose start event came after
+// the stop_requested event (none should).
 func cmdRunResults(args []string) error {
+	raw := len(args) > 0 && args[0] == "--raw"
+	afterStop := len(args) > 0 && args[0] == "--after-stop"
+	stopped := false
 	dec := yaml.NewDecoder(os.Stdin)
 	var sum *launcher.Summary
 	for {
@@ -30,6 +36,14 @@ func cmdRunResults(args []string) error {
 		if doc["schema"] != launcher.RunSchema {
 			return fmt.Errorf("document without schema %s: %v", launcher.RunSchema, doc)
 		}
+		switch doc["event"] {
+		case "stop_requested", "force_quit":
+			stopped = true
+		case "start":
+			if afterStop && stopped {
+				fmt.Println(doc["lane"])
+			}
+		}
 		if doc["event"] == "summary" {
 			data, _ := yaml.Marshal(doc)
 			sum = &launcher.Summary{}
@@ -41,8 +55,15 @@ func cmdRunResults(args []string) error {
 	if sum == nil {
 		return errors.New("no summary event in the stream")
 	}
+	if afterStop {
+		return nil
+	}
 	words := map[string]string{"passed": "PASS", "failed": "FAIL", "skipped": "SKIP", "interrupted": "FAIL"}
 	for _, l := range sum.Lanes {
+		if raw {
+			fmt.Println(l.Lane, l.Result)
+			continue
+		}
 		fmt.Println(l.Lane, words[l.Result])
 	}
 	return nil

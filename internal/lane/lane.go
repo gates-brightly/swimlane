@@ -521,3 +521,31 @@ func MigrateLogs(root string) []string {
 	}
 	return moved
 }
+
+// StopPath is lane n's stop request (.swim/laneN.stop): while it exists,
+// holding the lane's run id, swim step starts no new step in that lane. The
+// launcher writes it on the first Ctrl-C; swim interrupt N writes it too.
+func StopPath(root string, n int) string {
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d.stop", n))
+}
+
+// RequestStop asks lane n (in run) to stop at its next step boundary.
+func RequestStop(root string, n int, run string) error {
+	os.MkdirAll(filepath.Join(root, ".swim"), 0o755)
+	return os.WriteFile(StopPath(root, n), []byte(run+"\n"), 0o644)
+}
+
+// StopRequested reports whether lane n's run has been asked to stop. A
+// request for another run (left over from an earlier one) doesn't count;
+// an empty run matches any request.
+func StopRequested(root string, n int, run string) bool {
+	data, err := os.ReadFile(StopPath(root, n))
+	if err != nil {
+		return false
+	}
+	want := strings.TrimSpace(string(data))
+	return run == "" || want == "" || want == run
+}
+
+// ClearStop removes lane n's stop request.
+func ClearStop(root string, n int) { os.Remove(StopPath(root, n)) }

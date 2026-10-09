@@ -193,6 +193,8 @@ func showConfig() error {
 		"effective":    cfg.Settings,
 	})
 	fmt.Print(string(out))
+	ig, tg := cfg.Graces()
+	fmt.Printf("interrupt: %s   # first Ctrl-C; interrupt_grace %s, term_grace %s\n", cfg.InterruptMode(), ig, tg)
 	fmt.Println("blocked_commands:            # no lane command may contain these")
 	for _, b := range cfg.Blocked() {
 		mark := ""
@@ -306,13 +308,14 @@ type runFlags struct {
 	parallel         string
 	chime, noChime   bool
 	yaml, yamlOutput bool
+	interrupt        string
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
 			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput},
-		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel},
+		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
 
@@ -345,6 +348,9 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if rf.yamlOutput {
 		rf.yaml = true
+	}
+	if rf.interrupt != "" && rf.interrupt != config.InterruptGraceful && rf.interrupt != config.InterruptImmediate {
+		return usagef("--interrupt takes graceful or immediate, got %q", rf.interrupt)
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -381,7 +387,7 @@ func runLanes(rest []string, rf runFlags) error {
 	o := launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
-		Finished: chimeWhenDone(cfg, rf),
+		Finished: chimeWhenDone(cfg, rf), Interrupt: rf.interrupt,
 	}
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput
@@ -623,6 +629,7 @@ func cmdStep(args []string) error {
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
 		Blocked: cfg.Blocked(),
 		Mask:    cfg.Masker(os.Environ()),
+		Stopped: func() bool { return n > 0 && lane.StopRequested(root, n, os.Getenv("SWIM_RUN")) },
 	})
 	if err != nil {
 		return err

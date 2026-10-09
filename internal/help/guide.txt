@@ -35,6 +35,8 @@ COMMANDS
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
   lock [--upgrade]         show swim's version and the repo's .swim.lock; move it up
+  changelog [-n N] [--since VERSION] [--all]   what changed in swim (newest revision first)
+  interrupt N|JOB          ask one running lane to stop at its next step boundary
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
   doctor [--fix]           check the environment: binary platform, PATH, config, .gitignore,
@@ -461,6 +463,10 @@ READING RESULTS
         event: finish   lane, job, result (passed|failed|skipped|interrupted),
                         exit, reason (skips), counts {pass,fail,skip,drift},
                         failed_steps, duration_s, at
+        event: stop_requested   run, lanes: [running]   (first Ctrl-C)
+        event: stopping lane, label (the step it is finishing)
+        event: force_quit run, lanes, duration_s (the grace before SIGKILL)
+        event: kill     run, lanes
         event: summary  last: run, result (passed|failed|interrupted|nothing),
                         exit, duration_s, lanes: [{lane, job, result, exit,
                         reason, duration_s, failed_steps}], logs: {N: path}
@@ -494,6 +500,9 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         chime: false                     # true | false | failure: chime when swim run/all ends
         chime_style: bell                # bell | sound | notify
         chime_min_s: 10                  # don't chime for runs shorter than this
+        interrupt: graceful              # graceful | immediate: what the first Ctrl-C does
+        interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
+        term_grace: 10s                  # SIGTERM: graceful, then force quit after this
       repos:
         /path/to/repo:                   # git toplevel; overrides defaults field by field
           lanes: 4
@@ -508,6 +517,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
     - by job id: that job must be the lane's last run, and have passed.
   Unresolvable `# After:` references and cycles stop `swim run` before
   anything starts. Lanes outside 1..N are rejected.
+
   Chime (operator preference; workers never set it): after `swim run` /
   `swim all` prints its summary, swim rings the bell (twice on failure) if
   chime is true, or failure and the run didn't fully pass, the run took at
@@ -515,3 +525,28 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
   isn't true. sound adds a system sound, notify a desktop notification.
   --chime / --no-chime override it for one run. Set it with
   `swim config chime true|false|failure` (--repo for this repo only).
+
+INTERRUPTING
+  Lanes run in their own process groups, so Ctrl-C reaches only swim, which
+  decides what the lanes get:
+    1st Ctrl-C  stop gracefully: each running lane finishes its current step
+                (nothing is sent to it), starts no other, and ends
+                interrupted (exit 130) with
+                "STOP  interrupted by operator (after: <step>)"; a step
+                waiting to retry stops waiting; a waiting confirm is
+                cancelled; lanes not yet started are skipped. The panel
+                shows "stopping <step>".
+    2nd Ctrl-C  force quit: SIGINT to every running lane's process group
+                (tools that clean up on SIGINT, like terraform, get exactly
+                one), then SIGKILL after interrupt_grace (5s).
+    3rd Ctrl-C  SIGKILL now.
+  The time between presses doesn't matter. SIGTERM (a CI cancel) stops
+  gracefully and forces after term_grace (10s); SIGHUP (terminal closed)
+  forces at once. interrupt: immediate (or --interrupt immediate) makes the
+  first press force. `swim interrupt N` stops one lane gracefully from
+  another terminal. A single lane given the terminal (so confirm can read
+  it) stays in swim's process group and gets Ctrl-C directly, at once.
+  Mechanism, for lane authors: a stop request is .swim/laneN.stop (holding
+  the run id) plus SIGUSR2 to the lane's bash; swim step refuses to start
+  while it exists (exit 86) and the library records the STOP. A lane run
+  directly with bash has no launcher: Ctrl-C interrupts it at once.

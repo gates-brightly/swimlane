@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -38,7 +39,7 @@ const (
 var ChimeStyles = []string{StyleBell, StyleSound, StyleNotify}
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s"}
+var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace"}
 
 // ParseChime reads true|false|failure (on|off also accepted).
 func ParseChime(s string) (Chime, error) {
@@ -152,6 +153,14 @@ func (c *Config) Get(key string) (string, error) {
 		return style, nil
 	case "chime_min_s":
 		return strconv.Itoa(minS), nil
+	case "interrupt":
+		return c.InterruptMode(), nil
+	case "interrupt_grace", "term_grace":
+		ig, tg := c.Graces()
+		if key == "term_grace" {
+			return tg.String(), nil
+		}
+		return ig.String(), nil
 	}
 	return "", unknownKey(key)
 }
@@ -196,6 +205,18 @@ func keyValue(key, value string) (*yaml.Node, error) {
 			return nil, fmt.Errorf("chime_min_s must be 0 or more seconds, got %q", value)
 		}
 		return intNode(n), nil
+	case "interrupt":
+		v := strings.ToLower(strings.TrimSpace(value))
+		if v != InterruptGraceful && v != InterruptImmediate {
+			return nil, fmt.Errorf("interrupt must be graceful or immediate, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "interrupt_grace", "term_grace":
+		v := strings.TrimSpace(value)
+		if d, err := time.ParseDuration(v); err != nil || d < 0 {
+			return nil, fmt.Errorf("%s must be a duration like 5s or 1m, got %q", key, value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	}
 	return nil, unknownKey(key)
 }
