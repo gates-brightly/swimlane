@@ -406,13 +406,20 @@ func WriteScript(root string, n int, content string, force bool) error {
 
 // NewJobID returns a random (version 4) UUID.
 func NewJobID() string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err)
+	for {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			panic(err)
+		}
+		b[6] = b[6]&0x0f | 0x40
+		b[8] = b[8]&0x3f | 0x80
+		id := fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+		// Its 8-character prefix (how people type it) must not read as a
+		// lane number: about 1 in 50 random ids start with 8 digits.
+		if strings.Trim(id[:8], "0123456789") != "" {
+			return id
+		}
 	}
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // NewRunID returns a run id: r-<UTC yyyymmddThhmmssZ>-<4 hex>. Sortable,

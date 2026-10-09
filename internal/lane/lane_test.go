@@ -262,3 +262,15 @@ func TestFileLocksAllOrNothing(t *testing.T) {
 		t.Fatal("ValidLockName")
 	}
 }
+
+func TestNewJobIDPrefixNeverNumeric(t *testing.T) {
+	for i := 0; i < 5000; i++ {
+		id := NewJobID()
+		if strings.Trim(id[:8], "0123456789") == "" {
+			t.Fatalf("job id %s has an all-digit prefix (reads as a lane number)", id)
+		}
+		if !ValidJobID(id) {
+			t.Fatalf("invalid job id %s", id)
+		}
+	}
+}
