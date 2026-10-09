@@ -235,12 +235,12 @@ stops swim with instructions to update it.
 |---|---|
 | `swim init` | Set up the repo: config entry, `.gitignore` block, `.swim/status.yml`. |
 | `swim new N "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id. |
-| `swim plan [N\|JOB ...] [--rerun]` | Dry run in Terraform style (`[+]` run, `[~]` retry, `[+/-]` rerun, `[-]` skip), shown as a dependency tree with guard flags. |
-| `swim all [--rerun] [--parallel N] [--chime\|--no-chime]` | Run every pending job that hasn't passed yet, at most N lanes at once if set. Offers to add lanes if scripts exist beyond the configured count. `--chime`/`--no-chime` override the config chime for this run. |
+| `swim plan [N\|JOB ...] [--rerun] [--yaml]` | Dry run in Terraform style (`[+]` run, `[~]` retry, `[+/-]` rerun, `[-]` skip), shown as a dependency tree with guard flags. |
+| `swim all [--rerun] [--parallel N] [--chime\|--no-chime] [--yaml]` | Run every pending job that hasn't passed yet, at most N lanes at once if set. Offers to add lanes if scripts exist beyond the configured count. `--chime`/`--no-chime` override the config chime for this run. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they already passed. A job id pins the run to exactly that job. |
 | `swim timeline [RUN\|N\|JOB] [--top N] [--all] [--steps] [--yaml] [--html FILE]` | When each lane of the last run waited (dependencies, slot, locks), ran and finished; the longest dependency chain and start delays. From `.swim/runs/<run>.yml`. |
-| `swim status [N\|JOB] [--yaml]` | Last state of every lane, from `.swim/status.yml`. |
-| `swim log [N\|JOB] [--all] [--full] [--raw]` | A lane's log (`--all` adds its archives), a job's rounds, or with no argument the project log; rendered on a terminal. |
+| `swim status [N\|JOB] [--yaml]` | Last state of every lane, from `.swim/status.yml` (`--yaml`: tagged `schema: swim.status/v1`). |
+| `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml]` | A lane's log (`--all` adds its archives), a job's rounds, or with no argument the project log; rendered on a terminal. `--yaml`: the round parsed, as data. |
 | `swim archive N\|JOB [<what>]` | Archive a lane's log (the name defaults to the job id). |
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
@@ -262,6 +262,11 @@ a dependency. Output scrolls underneath, prefixed `[N]`.
 - **Ctrl-C:** reaches the running lanes, skips the rest, and still prints
   the summary.
 - **No terminal (CI, pipes) or `--plain`:** output is plain prefixed lines.
+- **`--yaml`:** stdout is a stream of YAML documents instead (`schema:
+  swim.run/v1`: `run`, `waiting`, `queued`, `locked`, `start`, `step`,
+  `finish`, then a `summary`), for scripts, CI and agents. `plan`, `log`,
+  `status` and `timeline` take `--yaml` too; the schemas are in `swim --help`
+  under READING RESULTS.
 - **Chime:** with `swim config chime true` (or `failure`: only when
   something failed or was interrupted), the terminal bell rings after the
   summary, twice on failure, so you know to come back. `chime_style: sound`

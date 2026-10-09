@@ -20,7 +20,7 @@ scenario_check() {
   expect_eq "blocked lanes failed" "$(lanes_with FAIL)" "1 2 3"
   expect_eq "their dependents were skipped" "$(lanes_with SKIP)" "4 5"
   expect_eq "the read-only lane passed" "$(lanes_with PASS)" "6"
-  expect_match "lane 1 refused before starting" "$(cat "$OUT/run.out")" 'blocked: lane\.1\.sh:[0-9]+ matches "git push"'
+  expect_match "lane 1 refused before starting" "$(cat "$OUT/run.yml")" 'blocked: lane\.1\.sh:[0-9]+ matches "git push"'
   expect_eq "lane 1 never started" "$("$SWIM" log 1 --raw 2>/dev/null | grep -c '^== ROUND ')" "0"
   expect_match "lane 1 exit code 87" "$("$SWIM" status --yaml | awk '/- lane: 1$/,/- lane: 2$/' | grep 'exit_code:')" 'exit_code: 87'
   expect_match "lane 2 BLOCKED at the step" "$("$SWIM" log 2 --raw)" '^  BLOCKED  commit results \(matched "git commit"; swim never writes to git\)'

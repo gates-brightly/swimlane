@@ -1,6 +1,6 @@
 # YAML output for planners and scripts
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -123,6 +123,40 @@ The exit code is the same as without `--yaml`.
 3. **Should `swim status --yaml` keep printing the raw file**, or a
    schema-tagged rendering of it? Recommend the latter, with the file itself
    unchanged.
+
+## Decisions
+
+1. **`output` events:** off by default; `--yaml-output` turns them on (and
+   implies `--yaml`).
+2. **JSON:** not built. Every document goes through one encoder function in
+   `internal/launcher/events.go`, so `--json` would be a small change.
+3. **`swim status --yaml`:** a schema-tagged rendering of the status file
+   (with `N|JOB`, just that lane). `.swim/status.yml` itself is unchanged, for
+   `cat`.
+4. **Step events** come from the lane's log, parsed when the lane finishes
+   (only a round carrying this run's id). A lane's `step` events therefore
+   arrive together, just before its `finish`, not as each step ends. `swim
+   step` runs in the lane's process, so streaming each step live would need a
+   channel from it back to the launcher. The log is already the record, and
+   this keeps one source of truth.
+5. **Every document carries `schema:`**, not just the first, so a reader can
+   pick out any document on its own.
+6. **The summary's lane list is `lanes:`**, as in the example, so the summary
+   is its own document type (`launcher.Summary`) rather than another `Event`.
+   A run with nothing to do prints only a summary, with `result: nothing` and
+   a `note`.
+7. **What else changes with `--yaml`:** the chime goes to stderr, and the
+   offer to add lanes never prompts (it prints its note on stderr), so stdout
+   stays pure YAML. Messages about migrations and the lock file were already
+   on stderr.
+8. **`swim log --yaml`:** needs a lane or job, since the project log has no
+   schema of its own yet. Results carry their step's command, output lines
+   (with `-- attempt` separators kept) and saved snapshot. To make that
+   possible, `logparse` now keeps each step's block.
+9. **Scenarios:** `lane_results` reads the `summary` event and `step_output`
+   reads `swim log N --yaml`, both through `e2etool`. Scenario checks that
+   looked for launcher messages in the text output now look for the matching
+   events (`queued`, `locked`, a `finish` reason).
 
 ## Testing
 

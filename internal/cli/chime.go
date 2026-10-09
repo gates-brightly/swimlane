@@ -30,12 +30,17 @@ func chimeWhenDone(cfg *config.Config, rf runFlags) func(launcher.Finish) {
 		case f.Code != 0:
 			result = chime.Failed
 		}
-		tty := ui.IsTTY(os.Stdout)
+		// With --yaml, stdout is the event stream: chime on stderr.
+		out := os.Stdout
+		if rf.yaml {
+			out = os.Stderr
+		}
+		tty := ui.IsTTY(out)
 		in := chime.Input{Mode: mode, Style: style, MinS: minS, Result: result, Elapsed: f.Elapsed, TTY: tty, CI: chime.IsCI(os.Getenv)}
 		if !chime.Should(in) {
 			return
 		}
 		msg := chime.Message(f.Counts[status.Passed], f.Counts[status.Failed], f.Counts[status.Skipped], f.Counts[status.Interrupted], display.Elapsed(f.Elapsed))
-		chime.New(os.Stdout, tty).Ring(style, result != chime.Passed, msg)
+		chime.New(out, tty).Ring(style, result != chime.Passed, msg)
 	}
 }

@@ -13,6 +13,8 @@
 //	e2etool edges                     number of # After: edges
 //	e2etool gen SCENARIO_DIR          write dag99 lanes 10..99 into the cwd
 //	e2etool lock-lanes                add # Locks: (from a pool of five) to lanes 10..98
+//	e2etool run-results               "<lane> <PASS|FAIL|SKIP>" from a `swim run --yaml` stream (stdin)
+//	e2etool step-output LABEL         output of the steps labelled LABEL, from `swim log N --yaml` (stdin)
 //	e2etool timeline-check LANES FILE check `swim timeline --yaml` (stdin) against the run and the audit in FILE
 //	e2etool aggregate|markdown|stats|stats-pages|report|links|wordfreq|reconcile|domains|headers
 //	                                  dag99 lanes 1-9's work (see each lane script)
@@ -40,6 +42,8 @@ var commands = map[string]func(args []string) error{
 	"gen":            cmdGen,
 	"lock-lanes":     cmdLockLanes,
 	"timeline-check": cmdTimelineCheck,
+	"run-results":    cmdRunResults,
+	"step-output":    cmdStepOutput,
 	"aggregate":      cmdAggregate,
 	"markdown":       cmdMarkdown,
 	"stats":          cmdStats,

@@ -25,7 +25,7 @@ COMMANDS
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
   plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing
   status [N|JOB] [--yaml] [--run RUN]   last state of every lane, or as of one run
-  log [N|JOB] [--all]      print a lane's log (--all: with its archives), a job's
+  log [N|JOB] [--all] [--yaml]   print a lane's log (--all: with its archives), a job's
                            rounds, or with no argument the project log .swim.log
   timeline [RUN|N|JOB]     when each lane of the last run (or RUN) waited, ran and finished,
                            and the longest dependency chain; N/JOB: its rounds across runs
@@ -39,6 +39,8 @@ COMMANDS
 
   Wherever a command takes a lane number N it also takes a job id (JOB): the
   full id or its first 8+ characters. See "job" below.
+  run, all, plan, log, status and timeline take --yaml: versioned YAML for
+  scripts and agents (see READING RESULTS).
   help [command]           this guide, or one command's detail
 
 CONCEPTS
@@ -421,6 +423,43 @@ READING RESULTS
           last_archive: <last archived log name>
   `swim status` shows "running?" when a lane's pid is gone (killed terminal);
   treat that lane's round as interrupted.
+
+  YAML for scripts and agents. Prefer these to scraping text: the text layouts
+  are for people and may change, the schemas are versioned. Each document
+  carries "schema:"; fields may be added within a version, and removing or
+  renaming one bumps it.
+    swim run|all --yaml       swim.run/v1: one document per event, "---"
+                              between them, flushed as they happen; no panel,
+                              table or colour on stdout. Same exit code.
+        event: run      run, lanes: [..], max_parallel, at
+        event: waiting  lane, on: [lanes it waits for in this run]
+        event: locked   lane, lock: "<name>: <who holds it>"
+        event: queued   lane, ahead: N (max_parallel)
+        event: start    lane, job, round, at
+        event: output   lane, line          (only with --yaml-output)
+        event: step     lane, label, stage, result (PASS|FAIL|BLOCKED|SKIP|
+                        APPROVED|DRIFT|STOP|WARN), detail, exit, duration_s;
+                        a lane's steps come together just before its finish
+        event: finish   lane, job, result (passed|failed|skipped|interrupted),
+                        exit, reason (skips), counts {pass,fail,skip,drift},
+                        failed_steps, duration_s, at
+        event: summary  last: run, result (passed|failed|interrupted|nothing),
+                        exit, duration_s, lanes: [{lane, job, result, exit,
+                        reason, duration_s, failed_steps}], logs: {N: path}
+    swim log N|JOB --yaml     swim.log/v1: the latest round (--all: every round,
+                              archives included; JOB: its rounds) as data: job,
+                              round, started_at, run, context {..}, finished,
+                              result, exit, duration, counts, stages {name:
+                              state}, results: [{result, label, detail, stage,
+                              step, exit, duration_s, clock, command, output:
+                              [lines], saved}], failed_steps
+    swim plan --yaml          swim.plan/v1: command, lanes: [{lane, job, round,
+                              action (run|retry|rerun|skip), waits_on, reason,
+                              running_pid, guards: [{flag, set, description}],
+                              timeout, locks}], idle: [{lane, why}],
+                              beyond_lanes, counts {run, retry, rerun, skip}
+    swim status --yaml        swim.status/v1: status.yml's fields (above)
+    swim timeline --yaml      swim.timeline/v1 (see swim timeline --help)
 
 CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       defaults:

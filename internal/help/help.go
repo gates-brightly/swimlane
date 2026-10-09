@@ -65,6 +65,7 @@ var Commands = map[string]string{
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N] [--chime|--no-chime]
+         [--yaml] [--yaml-output]
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -100,6 +101,11 @@ var Commands = map[string]string{
   Shorthand: "swim 1 2" is "swim run 1 2"; "swim 3f2a9c1e" is "swim run 3f2a9c1e".
   --plain   no pinned panel, colour or throbber; state changes print as lines.
             Automatic when stdout isn't a terminal or NO_COLOR is set.
+  --yaml    stdout is a stream of YAML documents (schema swim.run/v1: run,
+            waiting, locked, queued, start, step, finish, then summary)
+            instead of the panel and table; lane output goes only to the
+            logs. See READING RESULTS in swim --help. --yaml-output also
+            streams lane output lines as output events.
   --chime / --no-chime   chime (or don't) when this run finishes, whatever
             config chime says. The chime comes after the summary (Ctrl-C
             too), once, if the run took at least chime_min_s seconds, stdout
@@ -109,6 +115,7 @@ var Commands = map[string]string{
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
 `,
 	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N] [--chime|--no-chime]
+         [--yaml] [--yaml-output]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
@@ -122,7 +129,7 @@ var Commands = map[string]string{
   work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
-	"plan": `swim plan [N|JOB ...] [--rerun]
+	"plan": `swim plan [N|JOB ...] [--rerun] [--yaml]
 
   Show what "swim all" (or "swim run N ...", with lanes) would do, without
   running or changing anything, Terraform style:
@@ -142,6 +149,8 @@ var Commands = map[string]string{
   lanes and jobs in lane scripts beyond the configured lanes.
   Fails, like swim run would, on a dependency cycle or an "# After:" that
   doesn't resolve.
+  --yaml   the plan as data (schema swim.plan/v1): each lane's action, what it
+           waits on, why it would be skipped, its guards, timeout and locks.
 `,
 	"status": `swim status [N|JOB] [--yaml] [--rebuild] [--run RUN]
 
@@ -150,7 +159,9 @@ var Commands = map[string]string{
   (from lane.N.sh on disk), last round, counts,
   current or failed steps, and timing. Running lanes whose process is gone
   are shown as "running?" (interrupted).
-  --yaml     print the raw status file (same as cat .swim/status.yml)
+  --yaml     the status file's fields as YAML, tagged schema: swim.status/v1
+             (with N|JOB, just that lane); the file itself is unchanged
+             (cat .swim/status.yml)
   --rebuild  reconstruct status.yml from lane scripts and logs
   --run RUN  each lane as it was in swim run RUN (from the logs, archives
              included, and .swim.log for lanes skipped before they started)
@@ -242,6 +253,8 @@ var Commands = map[string]string{
   Piped (swim log 2 | less) it is the file exactly, as cat shows it.
   --full   don't fold long output
   --raw    print the file as is, even on a terminal
+  --yaml   the round parsed, as data (schema swim.log/v1): the latest round,
+           every round with --all, or a job's rounds. See READING RESULTS.
 `,
 	"lock": `swim lock [--upgrade]
 

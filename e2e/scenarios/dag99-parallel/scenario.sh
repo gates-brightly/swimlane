@@ -6,7 +6,7 @@ DESCRIPTION="dag99 with --parallel 8: never more than 8 lanes at once, every dag
 PARALLEL=8
 
 scenario_run() {
-  E2E_MAX_PARALLEL=$PARALLEL "$SWIM" run --plain --parallel "$PARALLEL" $(seq 1 "$LANES") >"$OUT/run.out" 2>&1
+  E2E_MAX_PARALLEL=$PARALLEL "$SWIM" run --yaml --parallel "$PARALLEL" $(seq 1 "$LANES") >"$OUT/run.yml" 2>"$OUT/run.err"
   RUN_EXIT=$?
 }
 
@@ -19,7 +19,7 @@ scenario_check() {
   expect_match "edges all ok" "$audit" '^edges: 197 checked, 197 ok'
   expect_match "values all match" "$audit" '^values: 89 recomputed, 89 match'
   expect_match "never more than $PARALLEL at once" "$audit" "^concurrency: at most [1-8] lanes running at once \(limit $PARALLEL\)  ok$"
-  expect_match "lanes queued for a slot" "$(cat "$OUT/run.out")" 'queued \([0-9]+ ahead\)'
+  expect_match "lanes queued for a slot" "$(cat "$OUT/run.yml")" '^event: queued$'
   printf '%s\n' "$audit" | grep -E '^(concurrency|scheduler latency|makespan)' | while IFS= read -r l; do info "$l"; done
   checks_passed
 }

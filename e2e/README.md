@@ -49,7 +49,7 @@ scenario_setup() {                         # write lane.N.sh files here
 }
 
 scenario_run() {                           # optional; default runs lanes 1..LANES
-  SOME_FLAG=1 swim_run 1 2 3               # output in $OUT/run.out, exit in $RUN_EXIT
+  SOME_FLAG=1 swim_run 1 2 3               # swim run --yaml stream in $OUT/run.yml, exit in $RUN_EXIT
 }
 
 scenario_check() {                         # non-zero fails the scenario
@@ -84,6 +84,8 @@ arguments lists its commands:
 | `descendants N...`, `edges` | scenario checks |
 | `gen DIR` | dag99 setup: writes lanes 10-99 |
 | `lock-lanes` | dag99-locks setup: adds `# Locks:` to lanes 10-98 |
+| `run-results`, `step-output LABEL` | `lane_results` and `step_output`: read `swim run --yaml` and `swim log N --yaml`, so layout changes to the human output can't break the suite |
+| `timeline-check LANES FILE` | dag99: `swim timeline --yaml` agrees with the run and the audit |
 
 Inputs come from the variables lane scripts export (`D`, `N`, `P`, `IN`, `OUT`,
 `H`, `NODE_START`, `RUN_ID`, `SWIM_JOB`). To give a new scenario's lanes more

@@ -17,6 +17,7 @@ import (
 	// The tests run a built binary; importing its code makes `go test`
 	// rerun them (instead of reusing a cached pass) when that code changes.
 	_ "github.com/gates-brightly/swimlane/internal/cli"
+	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/timeline"
 	"github.com/gates-brightly/swimlane/internal/version"
@@ -221,10 +222,11 @@ run "never" true`)
 		t.Errorf("snapshot content %q", data)
 	}
 
-	// status --yaml is the raw file.
+	// status --yaml is the file's content with a schema tag.
 	raw, _ := os.ReadFile(status.Path(r.root))
-	if got := r.mustSwim("status", "--yaml"); got != string(raw) {
-		t.Errorf("status --yaml differs from the file")
+	body := regexp.MustCompile(`(?m)^#.*\n`).ReplaceAllString(string(raw), "")
+	if got := r.mustSwim("status", "--yaml"); got != "schema: swim.status/v1\n"+body {
+		t.Errorf("status --yaml should be the file plus its schema:\n%s\n---\n%s", got, raw)
 	}
 	contains(t, "status", r.mustSwim("status"), "swim 1", "PASS", "swim 3", "FAIL exit 1", "STOP  gate failed: stops")
 }
@@ -1551,4 +1553,113 @@ func withHeader(t *testing.T, r *repo, n int, line string) {
 		t.Fatal(err)
 	}
 	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n"+line+"\n", 1)), 0o755)
+}
+
+func TestYAMLOutput(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "root", `run "hello" echo hi there`)
+	r.script(2, "fails", `run "convert" false`)
+	r.script(3, "after fails", `run "never" true`)
+	r.script(4, "after root", `run "child" true`)
+	withHeader(t, r, 2, "# After: 1")
+	withHeader(t, r, 3, "# After: 2")
+	withHeader(t, r, 4, "# After: 1")
+
+	c := r.cmd(bin, "all", "--yaml")
+	var out, errOut bytes.Buffer
+	c.Stdout, c.Stderr = &out, &errOut
+	err := c.Run()
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 {
+		t.Fatalf("exit: %v\n%s\n%s", err, out.String(), errOut.String())
+	}
+	type doc struct {
+		Schema, Event, Run, Result string
+		Lane                       int
+		On                         []int
+		Lanes                      []yaml.Node
+	}
+	dec := yaml.NewDecoder(&out)
+	pos := map[string]int{} // "start 2" -> index
+	var docs []doc
+	var summary launcherSummary
+	for i := 0; ; i++ {
+		var n yaml.Node
+		if err := dec.Decode(&n); err != nil {
+			break
+		}
+		var d doc
+		if err := n.Decode(&d); err != nil {
+			t.Fatal(err)
+		}
+		if d.Schema != "swim.run/v1" {
+			t.Fatalf("document %d has no schema: %+v", i, d)
+		}
+		if d.Event == "summary" {
+			n.Decode(&summary)
+		}
+		docs = append(docs, d)
+		pos[fmt.Sprintf("%s %d", d.Event, d.Lane)] = i
+	}
+	if len(docs) == 0 || docs[0].Event != "run" || docs[len(docs)-1].Event != "summary" {
+		t.Fatalf("stream should open with run and close with summary: %+v", docs)
+	}
+	for _, n := range []int{1, 2, 4} {
+		s, ok1 := pos[fmt.Sprintf("start %d", n)]
+		f, ok2 := pos[fmt.Sprintf("finish %d", n)]
+		if !ok1 || !ok2 || s > f {
+			t.Errorf("swim %d: start %d finish %d", n, s, f)
+		}
+	}
+	if pos["start 2"] < pos["finish 1"] || pos["start 4"] < pos["finish 1"] {
+		t.Errorf("children started before their parent finished: %v", pos)
+	}
+	if _, ok := pos["start 3"]; ok {
+		t.Errorf("swim 3 should never start")
+	}
+	if _, ok := pos["step 2"]; !ok {
+		t.Errorf("no step events for swim 2")
+	}
+	if strings.Contains(errOut.String(), "swim summary") || strings.Contains(out.String(), "hi there") {
+		t.Errorf("no table or lane output without --yaml-output:\n%s\n%s", out.String(), errOut.String())
+	}
+
+	// The summary matches status.yml.
+	st := r.status()
+	if summary.Run != st.LastRun || summary.Result != "failed" || len(summary.Lanes) != 4 {
+		t.Fatalf("summary: %+v", summary)
+	}
+	for _, l := range summary.Lanes {
+		if got := st.Get(l.Lane).State; got != l.Result {
+			t.Errorf("swim %d: summary %s, status.yml %s", l.Lane, l.Result, got)
+		}
+	}
+
+	// --yaml-output adds lane output lines.
+	r.script(1, "root again", `run "hello" echo hi there`)
+	if out := r.mustSwim("run", "1", "--yaml-output"); !strings.Contains(out, "event: output") || !strings.Contains(out, "line: hi there") {
+		t.Errorf("--yaml-output:\n%s", out)
+	}
+
+	// log, plan and status --yaml carry their schemas.
+	var lg logparse.Doc
+	if err := yaml.Unmarshal([]byte(r.mustSwim("log", "2", "--yaml")), &lg); err != nil {
+		t.Fatal(err)
+	}
+	if lg.Schema != "swim.log/v1" || lg.Result != "failed" || len(lg.Results) != 1 || lg.Results[0].Command != "false" || *lg.Results[0].Exit != 1 {
+		t.Errorf("log --yaml: %+v", lg)
+	}
+	plan := r.mustSwim("plan", "--yaml")
+	contains(t, "plan --yaml", plan, "schema: swim.plan/v1", "action: retry", "waits_on: [2]")
+	contains(t, "status --yaml", r.mustSwim("status", "--yaml"), "schema: swim.status/v1", "last_run: ")
+	if data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "status.yml")); strings.Contains(string(data), "schema:") {
+		t.Errorf("status.yml itself stays unchanged")
+	}
+}
+
+type launcherSummary struct {
+	Run, Result string
+	Lanes       []struct {
+		Lane   int
+		Result string
+	}
 }

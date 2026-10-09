@@ -143,6 +143,11 @@ type Result struct {
 	Step   bool    // a step result (has a duration), not a mark
 	Dur    float64 // a step's duration in seconds (syntax 2; 0 if unknown)
 	Clock  string  // a step's start time, hh:mm:ss local (syntax 2)
+	// The step's block (syntax 2): its command line, output lines (with
+	// "-- attempt" separators kept) and saved snapshot path.
+	Cmd    string
+	Output []string
+	Saved  string
 }
 
 // Text renders the result as text, e.g. "FAIL  tf plan (exit 2)".
@@ -336,8 +341,24 @@ func parseV2(rd io.Reader) (*Round, error) {
 		case inCtx && strings.HasPrefix(line, ctxIndent) && !strings.HasPrefix(line, Indent):
 			cur.Context = ParseContext(line)
 			cur.Run = cur.Context["run"]
-		case strings.HasPrefix(line, Indent), strings.HasPrefix(line, ctxIndent):
-			// step detail, round context or END detail: not a result
+		case strings.HasPrefix(line, Indent):
+			// A step's block: its command, output and snapshot.
+			if n := len(cur.Results); n > 0 && cur.Results[n-1].Step {
+				res := &cur.Results[n-1]
+				body := strings.TrimPrefix(line, Indent)
+				switch {
+				case strings.HasPrefix(body, "$ ") && res.Cmd == "" && len(res.Output) == 0:
+					res.Cmd = strings.TrimPrefix(body, "$ ")
+				case body == "|" || strings.HasPrefix(body, "| "):
+					res.Output = append(res.Output, strings.TrimPrefix(strings.TrimPrefix(body, "|"), " "))
+				case strings.HasPrefix(body, "saved: "):
+					res.Saved = strings.TrimPrefix(body, "saved: ")
+				case strings.HasPrefix(body, "-- "):
+					res.Output = append(res.Output, body)
+				}
+			}
+		case strings.HasPrefix(line, ctxIndent):
+			// round context or END detail: not a result
 		default:
 			m := resultV2RE.FindStringSubmatch(line)
 			if m == nil {

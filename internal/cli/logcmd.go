@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,13 +23,16 @@ import (
 
 // swim log [N|JOB] [--all] [--full] [--raw]
 func cmdLog(args []string) error {
-	var all, full, raw bool
-	rest, err := flags{bools: map[string]*bool{"all": &all, "full": &full, "raw": &raw}}.parse(args)
+	var all, full, raw, asYAML bool
+	rest, err := flags{bools: map[string]*bool{"all": &all, "full": &full, "raw": &raw, "yaml": &asYAML}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw]")
+		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw] [--yaml]")
+	}
+	if asYAML && len(rest) == 0 {
+		return usagef("--yaml needs a lane or job: swim log N --yaml")
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -69,6 +73,21 @@ func cmdLog(args []string) error {
 			}
 			return errors.New(msg)
 		}
+		if asYAML {
+			// The latest round, or with --all every round, as data.
+			var rounds [][]string
+			for _, f := range files {
+				rs, err := splitRounds(f)
+				if err != nil {
+					return err
+				}
+				rounds = append(rounds, rs...)
+			}
+			if !all && len(rounds) > 1 {
+				rounds = rounds[len(rounds)-1:]
+			}
+			return writeDocs(os.Stdout, n, rounds)
+		}
 		for _, f := range files {
 			if err := out.file(f, len(files) > 1); err != nil {
 				return err
@@ -93,11 +112,17 @@ func cmdLog(args []string) error {
 			if len(rounds) == 0 {
 				continue
 			}
+			found += len(rounds)
+			if asYAML {
+				if err := writeDocs(os.Stdout, n, rounds); err != nil {
+					return err
+				}
+				continue
+			}
 			out.header(f)
 			for _, r := range rounds {
 				out.lines(r)
 			}
-			found += len(rounds)
 		}
 	}
 	if found == 0 {
@@ -158,6 +183,19 @@ var roundJobRE = regexp.MustCompile(` job=(\S+)`)
 // roundsOf returns the rounds in path (each from its round start to the
 // next) that belong to job ref or, given a run id, to that swim run.
 func roundsOf(path, ref string) ([][]string, error) {
+	all, err := splitRounds(path)
+	var rounds [][]string
+	for _, r := range all {
+		if roundMatches(r, ref) {
+			rounds = append(rounds, r)
+		}
+	}
+	return rounds, err
+}
+
+// splitRounds returns every round in path, each from its round start to
+// the next.
+func splitRounds(path string) ([][]string, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -178,13 +216,23 @@ func roundsOf(path, ref string) ([][]string, error) {
 			all[len(all)-1] = append(all[len(all)-1], line)
 		}
 	}
-	var rounds [][]string
-	for _, r := range all {
-		if roundMatches(r, ref) {
-			rounds = append(rounds, r)
+	return all, sc.Err()
+}
+
+// writeDocs prints rounds as YAML documents (swim log --yaml).
+func writeDocs(w io.Writer, n int, rounds [][]string) error {
+	enc := yaml.NewEncoder(w)
+	enc.SetIndent(2)
+	for _, lines := range rounds {
+		r, err := logparse.ParseRound(lines)
+		if err != nil {
+			return err
+		}
+		if err := enc.Encode(r.Doc(n)); err != nil {
+			return err
 		}
 	}
-	return rounds, sc.Err()
+	return enc.Close()
 }
 
 // roundMatches reports whether a round's lines belong to job or run ref.

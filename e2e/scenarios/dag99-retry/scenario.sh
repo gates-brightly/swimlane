@@ -9,16 +9,17 @@ FAIL_LANES="23 38 41"
 
 scenario_run() {
   # 1. Every lane, with failures injected.
-  E2E_FAIL="$FAIL_LANES" "$SWIM" all --plain >"$OUT/first.out" 2>&1
+  E2E_FAIL="$FAIL_LANES" "$SWIM" all --yaml >"$OUT/first.yml" 2>"$OUT/first.err"
   FIRST_EXIT=$?
-  cp "$OUT/first.out" "$OUT/run.out"
+  cp "$OUT/first.yml" "$OUT/run.yml"
   FIRST_PASS=$(lanes_with PASS)
   FIRST_REDO=$(lane_results | awk '$2 != "PASS" { print $1 }' | sort -n | tr '\n' ' ' | sed 's/ $//')
   # 2. What a retry would do.
   "$SWIM" plan >"$OUT/plan.out" 2>&1
   PLAN_EXIT=$?
-  # 3. The retry, failures fixed: becomes $OUT/run.out for the helpers.
-  "$SWIM" all --plain >"$OUT/run.out" 2>&1
+  "$SWIM" plan --yaml >"$OUT/plan.yml" 2>&1
+  # 3. The retry, failures fixed: becomes $OUT/run.yml for the helpers.
+  "$SWIM" all --yaml >"$OUT/run.yml" 2>"$OUT/run.err"
   RUN_EXIT=$?
   # 4. Nothing should be left.
   "$SWIM" all --plain >"$OUT/third.out" 2>&1
@@ -41,6 +42,7 @@ scenario_check() {
   expect_match "plan: passed lanes summarised as completed" "$(cat "$OUT/plan.out")" \
     "^$npass items have completed with no remaining work\.$"
   expect_match "plan: lane 23 marked [~]" "$(cat "$OUT/plan.out")" '\[~\] swim 23 '
+  expect_eq "plan --yaml: the same retries" "$(grep -c '^    action: retry$' "$OUT/plan.yml")" "$nredo"
 
   expect_eq "retry exit" "$RUN_EXIT" 0
   expect_eq "retry ran exactly the lanes that didn't pass" "$(lane_results | awk '{print $1}' | sort -n | tr '\n' ' ' | sed 's/ $//')" "$FIRST_REDO"

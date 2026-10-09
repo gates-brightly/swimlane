@@ -164,8 +164,14 @@ func TestParseV2(t *testing.T) {
 	if r.Stage != "change" || strings.Join(r.Declared, ",") != "snapshot,check,change" {
 		t.Fatalf("stage tracking: %q %v", r.Stage, r.Declared)
 	}
-	if res := r.Results[0]; res.Dur != 0.4 || res.Clock != "12:00:01" {
-		t.Fatalf("step timing: %+v", res)
+	if res := r.Results[0]; res.Dur != 0.4 || res.Clock != "12:00:01" || res.Cmd != "aws cloudformation get-template" ||
+		len(res.Output) != 2 || res.Output[1] != "  PASS  even indented two spaces" || res.Saved != ".swim/snapshots/lane1-x.txt" {
+		t.Fatalf("step block: %+v", res)
+	}
+	d := r.Doc(1)
+	if d.Schema != DocSchema || d.Result != "failed" || *d.Exit != 1 || d.Stages["check"] != "FAIL" || len(d.Results) != 5 ||
+		*d.Results[1].Exit != 2 || d.Results[1].Command != "terraform plan" || d.Results[2].Exit != nil || len(d.Failed) != 2 {
+		t.Fatalf("doc: %+v", d)
 	}
 	if f := r.Failed(); len(f) != 2 || f[0].Label != "tf plan" || f[0].Stage != "check" {
 		t.Fatalf("failed: %+v", f)

@@ -9,17 +9,18 @@
 
 E2E_CHECK_FAILS=0
 
-# swim_run LANE...  runs `swim run --plain` on the lanes; output in $OUT/run.out,
-# exit code in $RUN_EXIT. Env set by the caller passes through.
+# swim_run LANE...  runs `swim run --yaml` on the lanes; the event stream in
+# $OUT/run.yml, stderr in $OUT/run.err, exit code in $RUN_EXIT. Env set by the
+# caller passes through.
 swim_run() {
-  "$SWIM" run --plain "$@" >"$OUT/run.out" 2>&1
+  "$SWIM" run --yaml "$@" >"$OUT/run.yml" 2>"$OUT/run.err"
   RUN_EXIT=$?
 }
 
-# lane_results  prints "<lane> <PASS|FAIL|SKIP>" for every lane in the last summary.
+# lane_results  prints "<lane> <PASS|FAIL|SKIP>" for every lane in the last
+# run's summary event ($OUT/run.yml, from swim run --yaml).
 lane_results() {
-  sed -n '/^swim summary/,$p' "$OUT/run.out" |
-    awk '$1 == "swim" && $2 ~ /^[0-9]+$/ && ($4 == "PASS" || $4 == "FAIL" || $4 == "SKIP") { print $2, $4 }'
+  e2etool run-results <"$OUT/run.yml"
 }
 
 # lanes_with RESULT  space-separated lanes with that result, ascending.
@@ -27,15 +28,10 @@ lanes_with() {
   lane_results | awk -v r="$1" '$2 == r { print $1 }' | sort -n | tr '\n' ' ' | sed 's/ $//'
 }
 
-# step_output N LABEL  the output of step LABEL in lane N's latest round:
-# the "        | " lines under its result line, prefix removed (log syntax 2).
+# step_output N LABEL  the output of step LABEL in lane N's latest round
+# (from swim log N --yaml).
 step_output() {
-  "$SWIM" log "$1" --raw 2>/dev/null | awk -v label="$2" '
-    /^== ROUND / { buf = ""; f = 0 }
-    /^  [A-Z]+  / { f = (index($0, label) > 0); next }
-    f && /^        \| / { buf = buf substr($0, 11) "\n"; next }
-    f && !/^        / { f = 0 }
-    END { printf "%s", buf }'
+  "$SWIM" log "$1" --yaml 2>/dev/null | e2etool step-output "$2"
 }
 
 # info TEXT  a line for the report (shown under the scenario's result).

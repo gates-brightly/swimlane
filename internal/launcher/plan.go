@@ -37,19 +37,29 @@ func Beyond(root string, cfg *config.Config, rerun bool) []int {
 	return out
 }
 
-// WritePlan prints what `swim run` with these options would do, without
-// running anything: a tree of the lanes that will run (each under the
-// lanes it waits for), predicted skips, guard flags, and what won't run.
-func WritePlan(w io.Writer, o Options, color bool) error {
-	p := ui.Painter{On: color}
+// plan is what swim run would do, before it's rendered.
+type plan struct {
+	what      string
+	sel       []int
+	passed    []int
+	selected  map[int]bool
+	scripts   map[int]lane.Info
+	children  map[int][]int
+	inRunDeps map[int][]int
+	skip      map[int]string
+	actions   map[int]planAction
+	counts    map[planAction]int
+}
+
+func computePlan(o Options) (*plan, error) {
 	o.DryRun = true
 	sel, passed, err := Select(o)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	deps, err := ResolveDeps(o.Root, o.Cfg, sel)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	selected := map[int]bool{}
 	for _, n := range sel {
@@ -125,6 +135,21 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		counts[a]++
 	}
 
+	return &plan{what: what, sel: sel, passed: passed, selected: selected, scripts: scripts, children: children,
+		inRunDeps: inRunDeps, skip: skip, actions: actions, counts: counts}, nil
+}
+
+// WritePlan prints what `swim run` with these options would do, without
+// running anything: a tree of the lanes that will run (each under the
+// lanes it waits for), predicted skips, guard flags, and what won't run.
+func WritePlan(w io.Writer, o Options, color bool) error {
+	p := ui.Painter{On: color}
+	pl, err := computePlan(o)
+	if err != nil {
+		return err
+	}
+	what, sel, passed, selected, scripts, children := pl.what, pl.sel, pl.passed, pl.selected, pl.scripts, pl.children
+	inRunDeps, skip, actions, counts := pl.inRunDeps, pl.skip, pl.actions, pl.counts
 	fmt.Fprintln(w, p.Paint(ui.Bold, fmt.Sprintf("swim plan · %s · %s · lanes 1..%d", filepath.Base(o.Root), what, o.Cfg.Lanes)))
 	fmt.Fprintln(w)
 	if len(sel) > 0 {
@@ -359,4 +384,91 @@ func contains(ns []int, n int) bool {
 		}
 	}
 	return false
+}
+
+func (a planAction) name() string {
+	return [...]string{"run", "retry", "rerun", "skip"}[a]
+}
+
+// PlanGuard is a guard flag a job's round declares.
+type PlanGuard struct {
+	Flag string `yaml:"flag"`
+	Set  bool   `yaml:"set"`
+	Desc string `yaml:"description,omitempty"`
+}
+
+// PlanLane is one lane swim run would act on.
+type PlanLane struct {
+	Lane    int         `yaml:"lane"`
+	Job     string      `yaml:"job,omitempty"`
+	Round   string      `yaml:"round"`
+	Action  string      `yaml:"action"` // run | retry | rerun | skip
+	WaitsOn []int       `yaml:"waits_on,flow"`
+	Reason  string      `yaml:"reason,omitempty"` // why it would be skipped
+	Running int         `yaml:"running_pid,omitempty"`
+	Guards  []PlanGuard `yaml:"guards,omitempty"`
+	Timeout string      `yaml:"timeout,omitempty"`
+	Locks   []string    `yaml:"locks,flow,omitempty"`
+}
+
+// PlanIdle is a lane with nothing to do.
+type PlanIdle struct {
+	Lane int    `yaml:"lane"`
+	Why  string `yaml:"why"` // passed | stub | no lane script | no Round: line
+}
+
+// PlanDoc is swim plan --yaml.
+type PlanDoc struct {
+	Schema  string         `yaml:"schema"`
+	Command string         `yaml:"command"`
+	Lanes   []PlanLane     `yaml:"lanes"`
+	Idle    []PlanIdle     `yaml:"idle"`
+	Beyond  []int          `yaml:"beyond_lanes,flow,omitempty"` // lane scripts past the configured count
+	Counts  map[string]int `yaml:"counts"`
+}
+
+// Plan returns what swim run with these options would do, as data.
+func Plan(o Options) (*PlanDoc, error) {
+	pl, err := computePlan(o)
+	if err != nil {
+		return nil, err
+	}
+	doc := &PlanDoc{Schema: "swim.plan/v1", Command: pl.what, Lanes: []PlanLane{}, Idle: []PlanIdle{},
+		Counts: map[string]int{"run": 0, "retry": 0, "rerun": 0, "skip": 0}}
+	for a, c := range pl.counts {
+		doc.Counts[a.name()] = c
+	}
+	for _, n := range pl.sel {
+		info := pl.scripts[n]
+		l := PlanLane{Lane: n, Job: info.Job, Round: info.Round, Action: pl.actions[n].name(),
+			WaitsOn: append([]int{}, pl.inRunDeps[n]...), Reason: pl.skip[n], Timeout: info.TimeoutText, Locks: info.Locks}
+		if pid, ok := lane.Running(o.Root, n); ok {
+			l.Running = pid
+		}
+		for _, g := range info.Guards {
+			l.Guards = append(l.Guards, PlanGuard{Flag: g.Flag, Set: os.Getenv(g.Flag) == "1", Desc: g.Desc})
+		}
+		doc.Lanes = append(doc.Lanes, l)
+	}
+	for _, n := range pl.passed {
+		doc.Idle = append(doc.Idle, PlanIdle{Lane: n, Why: "passed"})
+	}
+	if len(o.Lanes) == 0 {
+		for n := 1; n <= o.Cfg.Lanes; n++ {
+			if pl.selected[n] || contains(pl.passed, n) {
+				continue
+			}
+			why := "no Round: line"
+			switch info := pl.scripts[n]; {
+			case !info.Exists:
+				why = "no lane script"
+			case info.Stub:
+				why = "stub"
+			}
+			doc.Idle = append(doc.Idle, PlanIdle{Lane: n, Why: why})
+		}
+		doc.Beyond = Beyond(o.Root, o.Cfg, o.Rerun)
+	}
+	sort.Slice(doc.Idle, func(a, b int) bool { return doc.Idle[a].Lane < doc.Idle[b].Lane })
+	return doc, nil
 }

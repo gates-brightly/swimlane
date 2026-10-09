@@ -17,7 +17,7 @@ scenario_check() {
   expect_match "audit passed" "$audit" '^PASS: every node done, every edge honoured, every value matches'
   expect_match "edges all ok" "$audit" '^edges: 197 checked, 197 ok'
   expect_match "no lanes sharing a lock overlapped" "$audit" '^locks: [0-9]+ lanes hold locks, [0-9]+ sharing pairs checked, 0 overlapped$'
-  expect_match "lanes waited for locks" "$(cat "$OUT/run.out")" 'waiting for lock pool/'
+  expect_match "lanes waited for locks" "$(cat "$OUT/run.yml")" "^lock: '?pool/"
   printf '%s\n' "$audit" | grep -E '^(locks|makespan)' | while IFS= read -r l; do info "$l"; done
   checks_passed
 }

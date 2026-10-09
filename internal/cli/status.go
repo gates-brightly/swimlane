@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,19 +51,28 @@ func cmdStatus(args []string) error {
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
 	}
-	if raw {
-		data, err := os.ReadFile(status.Path(root))
-		if err != nil {
-			return err
-		}
-		fmt.Print(string(data))
-		return nil
-	}
 	f, err := status.Load(root)
 	if err != nil {
 		return err
 	}
 	f.Normalize(cfg.Lanes)
+	if raw {
+		// The file's contents with a schema tag; the file itself stays as
+		// it is, for cat. A lane argument narrows it to that lane.
+		doc := struct {
+			Schema      string `yaml:"schema"`
+			status.File `yaml:",inline"`
+		}{"swim.status/v1", *f}
+		if only > 0 {
+			doc.Lanes = []status.Lane{*f.Get(only)}
+		}
+		enc := yaml.NewEncoder(os.Stdout)
+		enc.SetIndent(2)
+		if err := enc.Encode(doc); err != nil {
+			return err
+		}
+		return enc.Close()
+	}
 	printStatus(root, cfg, f, only, ui.Painter{On: ui.ColorEnabled(os.Stdout)}, time.Now())
 	return nil
 }

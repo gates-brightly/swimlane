@@ -300,16 +300,18 @@ func cmdNew(args []string) error {
 
 // runFlags are the options swim run and swim all share.
 type runFlags struct {
-	plain, rerun   bool
-	runID          string
-	parallel       string
-	chime, noChime bool
+	plain, rerun     bool
+	runID            string
+	parallel         string
+	chime, noChime   bool
+	yaml, yamlOutput bool
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
 	return flags{
-		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime},
-		strs:  map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel},
+		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput},
+		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel},
 	}.parse(args)
 }
 
@@ -340,6 +342,9 @@ func runLanes(rest []string, rf runFlags) error {
 	if rf.chime && rf.noChime {
 		return usagef("use --chime or --no-chime, not both")
 	}
+	if rf.yamlOutput {
+		rf.yaml = true
+	}
 	root, cfg, err := repo()
 	if err != nil {
 		return err
@@ -353,7 +358,7 @@ func runLanes(rest []string, rf runFlags) error {
 		return err
 	}
 	if len(rest) == 0 {
-		if cfg, err = offerMoreLanes(root, cfg, rerun); err != nil {
+		if cfg, err = offerMoreLanes(root, cfg, rerun, !rf.yaml); err != nil {
 			return err
 		}
 	}
@@ -368,11 +373,15 @@ func runLanes(rest []string, rf runFlags) error {
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
 	}
-	code, err := launcher.Run(launcher.Options{
+	o := launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
 		Finished: chimeWhenDone(cfg, rf),
-	})
+	}
+	if rf.yaml {
+		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput
+	}
+	code, err := launcher.Run(o)
 	if err != nil {
 		return err
 	}
@@ -386,7 +395,7 @@ func runLanes(rest []string, rf runFlags) error {
 // count (lane.5.sh with lanes: 4) holding jobs that haven't passed. On a
 // terminal it asks whether to raise the lane count so they run; otherwise
 // it only says how, and never changes config.
-func offerMoreLanes(root string, cfg *config.Config, rerun bool) (*config.Config, error) {
+func offerMoreLanes(root string, cfg *config.Config, rerun, ask bool) (*config.Config, error) {
 	waiting := launcher.Beyond(root, cfg, rerun)
 	var lines []string
 	for _, n := range waiting {
@@ -403,7 +412,7 @@ func offerMoreLanes(root string, cfg *config.Config, rerun bool) (*config.Config
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	head := fmt.Sprintf("%d job(s) waiting beyond swim %d (only %d lanes are configured):", len(waiting), cfg.Lanes, cfg.Lanes)
-	if !ui.IsTTY(os.Stdin) || !ui.IsTTY(os.Stdout) {
+	if !ask || !ui.IsTTY(os.Stdin) || !ui.IsTTY(os.Stdout) {
 		fmt.Fprintln(os.Stderr, "swim: "+head)
 		fmt.Fprintln(os.Stderr, strings.Join(lines, "\n"))
 		fmt.Fprintf(os.Stderr, "swim: they won't run. To include them: swim config --lanes %d\n", want)
@@ -459,8 +468,8 @@ func joinNums(ns []int) string {
 
 // cmdPlan prints what `swim run` / `swim all` would do, running nothing.
 func cmdPlan(args []string) error {
-	var rerun bool
-	rest, err := flags{bools: map[string]*bool{"rerun": &rerun}}.parse(args)
+	var rerun, asYAML bool
+	rest, err := flags{bools: map[string]*bool{"rerun": &rerun, "yaml": &asYAML}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -480,7 +489,20 @@ func cmdPlan(args []string) error {
 		}
 		lanes = append(lanes, n)
 	}
-	return launcher.WritePlan(os.Stdout, launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun}, ui.ColorEnabled(os.Stdout))
+	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun}
+	if asYAML {
+		doc, err := launcher.Plan(o)
+		if err != nil {
+			return err
+		}
+		enc := yaml.NewEncoder(os.Stdout)
+		enc.SetIndent(2)
+		if err := enc.Encode(doc); err != nil {
+			return err
+		}
+		return enc.Close()
+	}
+	return launcher.WritePlan(os.Stdout, o, ui.ColorEnabled(os.Stdout))
 }
 
 // cmdAll runs every lane holding a pending round: `swim run` with no lanes.

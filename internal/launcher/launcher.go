@@ -47,6 +47,13 @@ type Options struct {
 	// Finished, if set, is called once after the summary prints (the live
 	// view is gone by then), e.g. to chime.
 	Finished func(Finish)
+	// YAML, if set, receives the run as a stream of YAML documents (swim
+	// run --yaml) instead of the live view and summary table on Out;
+	// YAMLOutput adds lane output lines to it.
+	YAML       io.Writer
+	YAMLOutput bool
+
+	ev *events
 }
 
 // Finish is a completed run's outcome, passed to Options.Finished.
@@ -128,7 +135,19 @@ func Run(o Options) (int, error) {
 	if err != nil {
 		return 2, err
 	}
+	o.ev = newEvents(o.YAML, o.YAMLOutput)
+	if o.RunID == "" {
+		o.RunID = lane.NewRunID()
+	}
 	if len(sel) == 0 {
+		if o.ev != nil {
+			note := "nothing pending (every lane is a stub or has no lane script)"
+			if len(passed) > 0 {
+				note = "every pending job has already passed (swim " + joinInts(passed) + ")"
+			}
+			o.ev.nothing(o, note)
+			return 0, nil
+		}
 		if len(passed) > 0 {
 			fmt.Fprintf(o.Out, "swim: nothing to run: every pending job has already passed (swim %s). Rerun one with `swim run N`, or all with `swim all --rerun`.\n", joinInts(passed))
 		} else {
@@ -177,9 +196,18 @@ func Run(o Options) (int, error) {
 	}
 	sl := newSlots(cap, chainBelow(sel, deps))
 	lt := newLockTable()
+	screen, summaryOut := o.Out, io.Writer(o.Out)
+	if o.ev != nil {
+		// The YAML stream owns stdout: no live view, no table.
+		if devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0); err == nil {
+			defer devnull.Close()
+			screen = devnull
+		}
+		summaryOut = io.Discard
+	}
 	disp := display.New(display.Options{
-		Out:   o.Out,
-		Plain: o.Plain,
+		Out:   screen,
+		Plain: o.Plain || o.ev != nil,
 		Cap:   cap,
 		Title: func(now time.Time) string {
 			return fmt.Sprintf("swim · %s · %s · %s", filepath.Base(o.Root), ref, display.Elapsed(now.Sub(start)))
@@ -218,15 +246,13 @@ func Run(o Options) (int, error) {
 		}
 	}()
 
-	if o.RunID == "" {
-		o.RunID = lane.NewRunID()
-	}
 	status.UpdateFile(o.Root, o.Cfg.Lanes, func(f *status.File) error { f.LastRun = o.RunID; return nil })
 	runDetail := "swim " + joinInts(sel)
 	if cap > 0 {
 		runDetail += fmt.Sprintf("  max_parallel=%d", cap)
 	}
 	history.Log(o.Root, history.Entry{Event: history.Run, Run: o.RunID, Detail: runDetail})
+	o.ev.emit(Event{Event: "run", Run: o.RunID, Lanes: sel, MaxParallel: cap, At: now()})
 	disp.Start()
 	defer disp.Restore()
 
@@ -242,6 +268,7 @@ func Run(o Options) (int, error) {
 			} else {
 				out = runLane(o, n, sel, selected, deps[n], sl, lt, disp, done, outcomes, &mu, &interrupted, procs)
 			}
+			o.ev.laneDone(o, out)
 			mu.Lock()
 			outcomes[n] = out
 			mu.Unlock()
@@ -264,13 +291,14 @@ func Run(o Options) (int, error) {
 		joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted], display.Elapsed(time.Since(start)))})
 	elapsed := time.Since(start)
 	if err := writeRunRecord(o, start, cap, sel, selected, deps, outcomes); err != nil {
-		fmt.Fprintln(o.Out, "swim: run record: "+err.Error())
+		fmt.Fprintln(os.Stderr, "swim: run record: "+err.Error())
 	}
-	printSummary(o.Out, o.Root, sel, outcomes, elapsed, disp.Color())
+	printSummary(summaryOut, o.Root, sel, outcomes, elapsed, disp.Color())
+	mu.Lock()
+	stopped := interrupted
+	mu.Unlock()
+	o.ev.summary(o, sel, outcomes, code, stopped, elapsed)
 	if o.Finished != nil {
-		mu.Lock()
-		stopped := interrupted
-		mu.Unlock()
 		o.Finished(Finish{Code: code, Interrupted: stopped, Counts: counts, Elapsed: elapsed})
 	}
 	return code, nil
@@ -317,6 +345,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
 			l.State, l.WaitingOn, l.Reason, l.PID = status.Waiting, remaining, "", os.Getpid()
 		})
+		o.ev.emit(Event{Event: "waiting", Lane: n, On: remaining, At: now()})
 		d := waitOn[0]
 		<-done[d]
 		mu.Lock()
@@ -350,6 +379,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 				l.State, l.WaitingOn, l.Reason = status.Locked, []int{}, "waiting for lock "+text
 			})
 			history.Log(o.Root, history.Entry{Event: history.Locked, Lane: n, Job: info.Job, Run: o.RunID, Detail: "waiting for lock " + text})
+			o.ev.emit(Event{Event: "locked", Lane: n, Lock: text, At: now()})
 		}
 		if !lt.acquire(n, info.Locks, func(name string, holder int) {
 			if holder > 0 {
@@ -390,6 +420,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			loggedQueue = true
 			info, _ := lane.ReadScript(o.Root, n)
 			history.Log(o.Root, history.Entry{Event: history.Queued, Lane: n, Job: info.Job, Run: o.RunID, Detail: fmt.Sprintf("%d ahead", ahead)})
+			o.ev.emit(Event{Event: "queued", Lane: n, Ahead: intp(ahead), At: now()})
 		}
 	}) {
 		return skip("interrupted before start")
@@ -416,7 +447,13 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// long as the lane runs, even if this launcher dies.
 	cmd.ExtraFiles = fileLocks
 	mk := o.Cfg.Masker(os.Environ())
-	w := &lineWriter{emit: func(s string) { disp.Line(n, mk.String(s)) }}
+	w := &lineWriter{emit: func(s string) {
+		s = mk.String(s)
+		disp.Line(n, s)
+		if o.ev.wantsOutput() {
+			o.ev.emit(Event{Event: "output", Lane: n, Line: &s})
+		}
+	}}
 	cmd.Stdout, cmd.Stderr = w, w
 
 	launched := time.Now()
@@ -430,6 +467,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		oc.Job, oc.Round, oc.Start = info.Job, info.Round, launched
 		return stamp(oc)
 	}
+	o.ev.emit(Event{Event: "start", Lane: n, Job: info.Job, Round: info.Round, At: launchedTS})
 	mu.Lock()
 	procs[n] = cmd.Process
 	mu.Unlock()
