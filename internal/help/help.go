@@ -451,6 +451,13 @@ var Commands = map[string]string{
   swim lock --upgrade   move the lock up to this swim's breaking version
 
   Breaking versions:
+    4   v0.4.<YYYYMMDD>. Syntax 2 lane scripts and logs (migrated
+        automatically), BLOCKED results (exit 87), new lane states
+        (starting, queued, locked), graceful Ctrl-C by default (exit 137
+        counts as interrupted), swim.yml. Read swim changelog --since 2.20261009,
+        then: swim lock --upgrade
+    3   v0.3.20261009 only, retracted: tagged without the bump, so it reports
+        itself as 2.20261009. No lock was ever written at 3.
     2   first published release (tag v0.2.<YYYYMMDD>). .swim/status.yml now
         records the round a skipped lane skipped (job, round, finished_at),
         which swim plan uses to show it as a retry. Lane scripts are unchanged:

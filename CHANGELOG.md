@@ -20,22 +20,39 @@ There is one release per breaking number per day. A second release on the
 same day bumps the breaking number (`Breaking` in `internal/version`) and gets
 **Upgrading** notes like any other breaking release.
 
-When you cut a release, rename `## Unreleased` to `## <version> (v0.<breaking>.<date>, <commit>, <date>)`
-and start a new empty `## Unreleased` above it.
+To cut a release:
+1. Set `Breaking` in `internal/version`.
+2. Rename `## Unreleased` to `## <version> (v0.<breaking>.<date>, <date>)`, and
+   start a new empty `## Unreleased` above it.
+3. Commit, then run `make release V=v0.<breaking>.<date>`. It refuses to tag
+   unless the version, `Breaking`, the changelog and a clean tree all agree.
 
 ## Unreleased
 
-Everything after the `v0.2.20261009` tag on `main` (`3b3528d` … `47da625`). To
-use it before the next release, build from a checkout (`make link`).
+## 4.20261009 (v0.4.20261009, 2026-10-09)
+
+Everything since `v0.2.20261009`. Breaking version 4 (3 went to the retracted,
+mis-tagged `v0.3.20261009`; see below). Install it with
+`go install github.com/gates-brightly/swimlane/cmd/swim@v0.4.20261009`.
 
 ### Upgrading
 
+- **Repos locked at 2 refuse to run until upgraded.** Read this revision, let
+  running lanes finish, then run `swim lock --upgrade`.
 - **Lane scripts and logs move to syntax 2.** This happens automatically the
   first time any swim command loads the repo. Originals are copied to
   `.swim/migrations/<time>/`, and the migration is recorded in `.swim.log`. A
-  running lane's files are migrated after it finishes. The breaking version
-  stays 2, so `swim lock --upgrade` isn't needed.
+  running lane's files are migrated after it finishes.
 - **A file written in a newer syntax stops swim** with a prompt to update.
+- **Ctrl-C is graceful by default.** The first press lets running steps finish
+  and starts no new ones. `interrupt: immediate` in config, or
+  `--interrupt immediate`, restores the old behaviour.
+- **Exit 137 counts as interrupted,** not failed.
+- **Scripts that read `status.yml` or the run summary** should allow for the new
+  lane states (`starting`, `queued`, `locked`) and the new `BLOCKED` result.
+  The `--yaml` output is the stable interface for scripts.
+- **On `v0.3.20261009`?** It reports itself as `2.20261009`, so run
+  `swim changelog --since 2.20261009` on this build to see what changed for you.
 
 ### Added
 
@@ -114,6 +131,43 @@ use it before the next release, build from a checkout (`make link`).
     changes the exit code.
 - **`swim config KEY [VALUE] [--repo]`** gets and sets `lanes`, `chime`,
   `chime_style` and `chime_min_s`. `--lanes N` still works.
+- **Interactive lane view** for `swim run`/`swim all` with more than one lane,
+  in a terminal:
+  - `←`/`→` (or `h`/`l`, `Tab`) focus one lane and show its log for the
+    current round; `↑`/`↓`, `PgUp`/`PgDn`, `g`/`G` scroll it
+  - type digits then `Enter` to jump to a lane; `f` cycles every lane /
+    running / failed; `Esc` returns to all lanes; `?` shows the keys
+  - scrolling up pauses following; finishing while you read keeps the screen
+    open (`q` closes it)
+  - off with `--no-tui`, `SWIM_TUI=0`, `--plain`, `--yaml`, in CI, or for a
+    single-lane run
+- **Graceful Ctrl-C:** the first press stops every lane at its next step
+  boundary (`STOP  interrupted by operator (after: <step>)`), and lanes that
+  haven't started are skipped. The second press force quits: SIGINT to each
+  lane's process group, then SIGKILL after `interrupt_grace` (5s). A third
+  kills at once.
+  - SIGTERM stops gracefully and escalates after `term_grace` (10s); SIGHUP
+    force quits.
+  - A `confirm` prompt or a retry wait is cut short.
+  - `swim interrupt N|JOB` stops one lane the same way, from any terminal.
+  - Lanes now run in their own process groups, except a single lane reading
+    the terminal (for `confirm`).
+- **`swim ci [N|JOB ...] [--changed[=BASE]]`:** runs rounds in GitHub Actions,
+  GitLab CI or any runner with `CI=true`.
+  - Step headers and results stream to the log, each lane's round gets a
+    collapsible group, failures and drift become annotations, and there's a
+    job summary and optional JUnit report (`--junit FILE`).
+  - `--changed` runs only rounds whose lane scripts changed in the push or
+    merge request, plus parents that haven't passed.
+  - The commit is recorded on each round (`$SWIM_COMMIT`, `status.yml`,
+    `.swim.log`). Lanes never get stdin, and swim never prompts.
+  - Results stay on the runner: upload `.swim/logs/` as artifacts.
+- **`swim.yml`:** a committed file at the repo root with the same keys as a
+  `repos:` entry, shared by CI runners and every operator.
+- **`swim changelog [-n N] [--since VERSION] [--all]`:** what changed in swim,
+  from the changelog built into the binary. It works outside a repo.
+- **`swim --version` warns about a mis-tagged build,** one whose tag disagrees
+  with its breaking version.
 - **`features/`:** specs for planned and shipped features, with their status.
 
 ### Changed
@@ -122,6 +176,18 @@ use it before the next release, build from a checkout (`make link`).
   "waiting for a parallel slot".
 - **`BLOCKED` is a new result kind.** It counts as a failure in pass/fail
   counts, `failed_steps` and stage results.
+
+### Fixed
+
+- **New job ids never start with 8 digits.** Such an id read as a lane number.
+
+## 3.20261009 (v0.3.20261009, 8cd95a5, 2026-10-09)
+
+**Retracted.** This tag was made without bumping `Breaking`, so the build
+reports itself as `2.20261009` and the `.swim.lock` check treats it as
+breaking version 2. Its code is the same as `4.20261009`, without the fix for
+this mistake. Install `v0.4.20261009` or later. `go.mod` retracts it, so
+`@latest` skips it.
 
 ## 2.20261009 (v0.2.20261009, c6a87b0, 2026-10-09)
 

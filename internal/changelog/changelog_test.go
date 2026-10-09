@@ -97,7 +97,7 @@ func TestRepoChangelog(t *testing.T) {
 	if len(NonEmpty(es)) == 0 {
 		t.Fatal("CHANGELOG.md has no revisions")
 	}
-	heading := regexp.MustCompile(`^(\d+\.\d{8}) \(v0\.\d+\.\d{8}, [0-9a-f]{7,}, \d{4}-\d{2}-\d{2}\)$|^(\d+\.\d{8}) \(pre-release, [0-9a-f]{7,}, \d{4}-\d{2}-\d{2}\)$|^([0-9a-f]{7,}) \(pre-release, \d{4}-\d{2}-\d{2}\)$`)
+	heading := regexp.MustCompile(`^(\d+\.\d{8}) \(v0\.\d+\.\d{8}, ([0-9a-f]{7,}, )?\d{4}-\d{2}-\d{2}\)$|^(\d+\.\d{8}) \(pre-release, [0-9a-f]{7,}, \d{4}-\d{2}-\d{2}\)$|^([0-9a-f]{7,}) \(pre-release, \d{4}-\d{2}-\d{2}\)$`)
 	seen := map[string]bool{}
 	lastB, lastD := 1<<31, 1<<31
 	for i, e := range es {
@@ -112,7 +112,7 @@ func TestRepoChangelog(t *testing.T) {
 			continue
 		}
 		if !heading.MatchString(e.Heading) {
-			t.Errorf("heading %q isn't `<version> (v0.<b>.<date>, <commit>, <date>)`, `<version> (pre-release, <commit>, <date>)` or `<commit> (pre-release, <date>)`", e.Heading)
+			t.Errorf("heading %q isn't `<version> (v0.<b>.<date>[, <commit>], <date>)`, `<version> (pre-release, <commit>, <date>)` or `<commit> (pre-release, <date>)`", e.Heading)
 		}
 		if b, d, ok := version(e.ID); ok {
 			if b > lastB || (b == lastB && d >= lastD) {

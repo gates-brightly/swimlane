@@ -69,6 +69,9 @@ func Main(args []string) int {
 	}
 	if args[0] == "--version" || args[0] == "version" {
 		fmt.Println("swim", version.Long())
+		if t := version.TagMismatch(); t != "" {
+			fmt.Fprintf(os.Stderr, "swim: warning: built from %s, but its code says breaking version %d: a mis-tagged release. Install another: %s\n", t, version.Breaking, version.InstallCmd)
+		}
 		return 0
 	}
 	name := args[0]

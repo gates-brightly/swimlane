@@ -19,7 +19,7 @@ import (
 // incompatibly, and for a second release on the same day (a tag is
 // v0.<breaking>.<YYYYMMDD>, so there is one release per breaking version per
 // day). Repos locked to another breaking version refuse to run.
-const Breaking = 2
+const Breaking = 4
 
 // Set at build time by the Makefile:
 //
@@ -67,6 +67,20 @@ func Date() string {
 		}
 	}
 	return "dev"
+}
+
+// TagMismatch returns the release tag this binary was built from when the
+// tag's breaking number isn't Breaking (a release tagged without bumping
+// Breaking, like v0.3.20261009), else "".
+func TagMismatch() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	if m := tagRE.FindStringSubmatch(bi.Main.Version); m != nil && m[1] != fmt.Sprint(Breaking) {
+		return bi.Main.Version
+	}
+	return ""
 }
 
 // String is the version, e.g. "2.20261009".
