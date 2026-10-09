@@ -34,27 +34,11 @@ lane_init 9
 D=.scenario/dag
 N=9
 PARENTS="4 6 7 8"
-NODE_START=$(python3 -c 'import time; print(f"{time.time():.3f}")')
+NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
-gate "parents finished before this node started (swim $PARENTS)" python3 - $PARENTS <<'PY'
-import os, sys
-d, start = os.environ["D"], float(os.environ["NODE_START"])
-run = open(f"{d}/run.id").read().split()[0] if os.path.exists(f"{d}/run.id") else None
-ok = True
-for p in sys.argv[1:]:
-    path = f"{d}/nodes/{p}.done"
-    if not os.path.exists(path):
-        print(f"swim {p}: no done marker  BAD"); ok = False; continue
-    rid, s, e = open(path).read().split()
-    gap = start - float(e)
-    fresh = (rid.startswith("indep:") and gap < 600) or rid == run
-    good = fresh and gap >= 0
-    print(f"swim {p}: run={rid}  finished {gap:6.2f}s before this node started  {'ok' if good else 'BAD (stale run)' if not fresh else 'BAD (overlap)'}")
-    ok &= good
-sys.exit(0 if ok else 1)
-PY
+gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
 export RUN_ID
 
@@ -64,7 +48,7 @@ run "bundle has every section" bash -c 'for h in "Response headers" "Word freque
 
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
-  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(python3 -c "import time; print(f\"{time.time():.3f}\")")" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
+  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
 fi
 
 summary

@@ -13,7 +13,7 @@ scenario_run() {
 
 scenario_check() {
   local down failed skipped passed all l want_fail="" want_pass=""
-  down=" $(python3 "$E2E/lib/dag.py" descendants $FAIL_LANES) "
+  down=" $(e2etool descendants $FAIL_LANES) "
   for l in $FAIL_LANES; do case "$down" in *" $l "*) ;; *) want_fail="$want_fail $l" ;; esac; done
   for l in $(seq 1 "$LANES"); do
     case "$down $want_fail " in *" $l "*) ;; *) want_pass="$want_pass $l" ;; esac

@@ -2,6 +2,7 @@
 # e2e scenario runner: each scenario gets a fresh git repo and swim config,
 # writes its lane scripts, runs them through the swim binary built from this
 # checkout, and checks the outcome. Offline: curl is a fake serving fixtures/.
+# Lane scripts do their work with e2etool (e2e/cmd/e2etool), built alongside.
 #
 #   e2e/run.sh                 run every scenario
 #   e2e/run.sh dag99 ...       run the named scenarios
@@ -49,6 +50,7 @@ base=$(mktemp -d "${TMPDIR:-/tmp}/swim-e2e.XXXXXX") || exit 1
 cleanup() { [ "$keep" = 1 ] || rm -rf "$base"; }
 trap cleanup EXIT
 
+mkdir -p "$base/bin"
 if [ -n "${SWIM_E2E_BIN:-}" ]; then
   SWIM=$SWIM_E2E_BIN
 else
@@ -56,6 +58,8 @@ else
   echo "building swim from $ROOT"
   (cd "$ROOT" && go build -buildvcs=false -o "$SWIM" ./cmd/swim) || { echo "e2e: build failed" >&2; exit 1; }
 fi
+# The scenarios' lane scripts call e2etool for their work and checks.
+(cd "$ROOT" && go build -buildvcs=false -o "$base/bin/e2etool" ./e2e/cmd/e2etool) || { echo "e2e: e2etool build failed" >&2; exit 1; }
 
 report=""
 failed=0
@@ -68,7 +72,7 @@ for s in $selected; do
   start=$(date +%s)
   (
     export SWIM E2E SCENARIO_DIR="$E2E/scenarios/$s" OUT="$dir/out" E2E_FIXTURES="$E2E/fixtures"
-    export XDG_CONFIG_HOME="$dir/xdg" PATH="$E2E/lib/fakebin:$(dirname "$SWIM"):$PATH"
+    export XDG_CONFIG_HOME="$dir/xdg" PATH="$E2E/lib/fakebin:$base/bin:$(dirname "$SWIM"):$PATH"
     export NO_COLOR=1 SWIM_BIN="$SWIM"
     unset SWIM_ROOT SWIM_LANE STEP_LOG SWIM_JOB E2E_FAIL   # hermetic: scenarios set what they need
     cd "$repo" || exit 1

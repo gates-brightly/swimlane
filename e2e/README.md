@@ -58,10 +58,30 @@ scenario_check() {                         # non-zero fails the scenario
 
 Helpers (`lib/common.sh`): `swim_run`, `lane_results`, `lanes_with
 PASS|FAIL|SKIP`, `step_output N LABEL`, `expect_eq`, `expect_match`, `info`,
-`checks_passed`, `seq_list A B`. `lib/dag.py descendants N...` gives the lanes
+`checks_passed`, `seq_list A B`. `e2etool descendants N...` gives the lanes
 downstream of N, read from the lane scripts' `# After:` lines. A scenario can
 reuse another's setup by sourcing its `scenario.sh` and overriding functions
 (see `dag99-cascade`).
+
+## e2etool
+
+Scenarios need only bash and Go. The work inside lane scripts, and the graph
+queries scenario checks make, are done by `e2etool` (`e2e/cmd/e2etool`), which
+`run.sh` builds next to the swim binary and puts on `PATH`. `e2etool` with no
+arguments lists its commands:
+
+| command | used by |
+|---|---|
+| `now` | every lane: start and end timestamps |
+| `parents-check P...`, `run-id P...`, `node-value P...` | every generated lane: freshness gate, run id, data-flow value |
+| `aggregate`, `markdown`, `stats`, `stats-pages`, `report`, `links`, `wordfreq`, `reconcile`, `domains`, `headers` | dag99 lanes 1-9's real work |
+| `audit` | lane 99 |
+| `descendants N...`, `edges` | scenario checks |
+| `gen DIR` | dag99 setup: writes lanes 10-99 |
+
+Inputs come from the variables lane scripts export (`D`, `N`, `P`, `IN`, `OUT`,
+`H`, `NODE_START`, `RUN_ID`, `SWIM_JOB`). To give a new scenario's lanes more
+work, add a command in `e2e/cmd/e2etool`, not an inline interpreter.
 
 Lane scripts inside a scenario are source files. A `.gitignore` exception keeps
 them tracked, even though swim's own block ignores `lane.N.sh` in working repos.
@@ -72,7 +92,9 @@ Keep `run.sh` and `lib/common.sh` compatible with macOS bash 3.2.
 - `lanes/lane.1.sh`–`lane.9.sh` do real work: fetch, Markdown, stats, links,
   word frequency, a reconcile between branches, headers, a bundle. Their
   `# After:` lines form the first DAG.
-- `gen.py` writes lanes 10–99 with fresh job ids from `parts/`:
+- `e2etool gen` writes lanes 10–99 with fresh job ids from `parts/`. The
+  graph itself is a fixed table in `e2e/cmd/e2etool/gen.go`, so the expected
+  counts (197 edges, 89 values, roots 1 8 20 21 22) never drift:
   - `node.tmpl`: a generated lane
   - `parent_check.sh`: each parent must have finished, for this run, before this lane started
   - `derive.sh`: a lane takes its run id from its parents

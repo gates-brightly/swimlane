@@ -33,7 +33,7 @@ lane_init @N@
 D=.scenario/dag
 N=@N@
 PARENTS="@AFTER@"
-NODE_START=$(python3 -c 'import time; print(f"{time.time():.3f}")')
+NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own marker and value" rm -f "$D/nodes/$N.done" "$D/nodes/$N.val"
@@ -41,23 +41,11 @@ run "clear own marker and value" rm -f "$D/nodes/$N.done" "$D/nodes/$N.val"
 export RUN_ID
 
 run "simulated work (@DUR@s)" sleep @DUR@
-gate "value from parents -> nodes/$N.val" python3 - $PARENTS <<'PY'
-import os, sys, hashlib
-d, n = os.environ["D"], os.environ["N"]
-h = lambda s: hashlib.sha256(s.encode()).hexdigest()[:16]
-vals = []
-for p in sorted(map(int, sys.argv[1:])):
-    v = f"{d}/nodes/{p}.val"
-    if os.path.exists(v): vals.append(open(v).read().strip())
-    else: vals.append(h(f"{p}:" + open(f"{d}/nodes/{p}.done").read().split()[0]))   # real-work lane: hash its run id
-val = h(f"{n}|" + "|".join(vals)) if vals else h(f"{n}:root")
-open(f"{d}/nodes/.{n}.val", "w").write(val + "\n"); os.replace(f"{d}/nodes/.{n}.val", f"{d}/nodes/{n}.val")
-print(f"parents={sys.argv[1:] or '-'} value={val}")
-PY
+gate "value from parents -> nodes/$N.val" e2etool node-value $PARENTS
 
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
-  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(python3 -c "import time; print(f\"{time.time():.3f}\")")" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
+  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
 fi
 
 summary

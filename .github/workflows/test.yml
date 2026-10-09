@@ -32,7 +32,6 @@ jobs:
       - name: Tool versions
         run: |
           bash --version | head -1
-          python3 --version
           go version
 
       # gofmt, go vet, unit tests, the Go e2e suite and the e2e/ scenarios.

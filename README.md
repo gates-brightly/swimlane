@@ -16,7 +16,7 @@ swim · myrepo · main@64a0e07 · 0:04
  swim 4  / waiting on swim 3        Join: build report                     db8e71f9
 ──────────────────────────────────────────────────────────────────────────────────
 [3] ==> compute stats.json
-[3] $ python3 -
+[3] $ e2etool stats
 [3] cern     words=  173 int= 25 ext=  0  The World Wide Web project
 [3] PASS  compute stats.json  0.1s
 ```
@@ -279,7 +279,7 @@ against scratch repos:
 
 - **`internal/e2e`** (Go) checks commands one at a time: init, new, run,
   plan, log, archive, interrupts, locks.
-- **`e2e/scenarios`** (bash) runs whole lane DAGs offline: 99 lanes with real
+- **`e2e/scenarios`** (bash, with the Go helper `e2e/cmd/e2etool`) runs whole lane DAGs offline: 99 lanes with real
   work over fixture pages, injected failures, and a retry. They guard the
   scheduler, dependencies, `swim all` and `swim plan` against regressions.
   `go test ./internal/e2e` runs them too; `-short` skips them. See

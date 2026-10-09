@@ -16,9 +16,6 @@ func TestScenarios(t *testing.T) {
 	if testing.Short() {
 		t.Skip("scenarios skipped with -short")
 	}
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("scenarios need python3")
-	}
 	_, file, _, _ := runtime.Caller(0)
 	e2e := filepath.Join(filepath.Dir(file), "..", "..", "e2e")
 	dirs, err := filepath.Glob(filepath.Join(e2e, "scenarios", "*", "scenario.sh"))

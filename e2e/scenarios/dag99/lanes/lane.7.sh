@@ -35,56 +35,20 @@ lane_init 7
 D=.scenario/dag
 N=7
 PARENTS="3 5"
-NODE_START=$(python3 -c 'import time; print(f"{time.time():.3f}")')
+NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
-gate "parents finished before this node started (swim $PARENTS)" python3 - $PARENTS <<'PY'
-import os, sys
-d, start = os.environ["D"], float(os.environ["NODE_START"])
-run = open(f"{d}/run.id").read().split()[0] if os.path.exists(f"{d}/run.id") else None
-ok = True
-for p in sys.argv[1:]:
-    path = f"{d}/nodes/{p}.done"
-    if not os.path.exists(path):
-        print(f"swim {p}: no done marker  BAD"); ok = False; continue
-    rid, s, e = open(path).read().split()
-    gap = start - float(e)
-    fresh = (rid.startswith("indep:") and gap < 600) or rid == run
-    good = fresh and gap >= 0
-    print(f"swim {p}: run={rid}  finished {gap:6.2f}s before this node started  {'ok' if good else 'BAD (stale run)' if not fresh else 'BAD (overlap)'}")
-    ok &= good
-sys.exit(0 if ok else 1)
-PY
+gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
 export RUN_ID
 
-gate "links.tsv (swim 5) agrees with stats.json (swim 3)" python3 - <<'PY'
-import os, json, csv, collections, sys
-d = os.environ["D"]
-stats = {p["source"]: p["links_external"] for p in json.load(open(f"{d}/stats.json"))["pages"]}
-rows = list(csv.DictReader(open(f"{d}/links.tsv"), delimiter="\t"))
-ext = collections.Counter(r["source"] for r in rows if r["kind"] == "external")
-bad = 0
-for src in sorted(set(stats) | set(ext)):
-    m = "ok" if stats.get(src, 0) == ext.get(src, 0) else "MISMATCH"; bad += m != "ok"
-    print(f"{src:8} stats={stats.get(src, 0):3}  links.tsv={ext.get(src, 0):3}  {m}")
-sys.exit(1 if bad else 0)
-PY
-gate "domains.md" python3 - <<'PY'
-import os, csv, collections
-from urllib.parse import urlparse
-d = os.environ["D"]
-rows = [r for r in csv.DictReader(open(f"{d}/links.tsv"), delimiter="\t") if r["kind"] == "external"]
-c = collections.Counter(urlparse(r["href"]).netloc for r in rows)
-out = "## External link domains (swim 7)\n\n| domain | links |\n|---|---:|\n" + "".join(f"| {k} | {v} |\n" for k, v in c.most_common())
-open(f"{d}/domains.md", "w").write(out)
-print(out)
-PY
+gate "links.tsv (swim 5) agrees with stats.json (swim 3)" e2etool reconcile
+gate "domains.md" e2etool domains
 
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
-  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(python3 -c "import time; print(f\"{time.time():.3f}\")")" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
+  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
 fi
 
 summary

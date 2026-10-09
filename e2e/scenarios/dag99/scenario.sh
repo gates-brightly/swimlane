@@ -1,13 +1,13 @@
 # dag99: a 99-lane DAG through the scheduler, with every edge and value audited.
 #   lanes 1-9   real work over fixture pages (fetch, markdown, stats, links, ...)
 #   lanes 10-98 generated: fan-out, deep chain, wide fan-in, random layers, 3 more roots
-#   lane 99     audit (waits on every sink); see gen.py for the shape
+#   lane 99     audit (waits on every sink); the shape is in e2e/cmd/e2etool/gen.go
 DESCRIPTION="99-lane DAG: ordering, data flow, parallel roots, scheduler latency"
 LANES=99
 DAG99_DIR="$E2E/scenarios/dag99"   # fixed, so scenarios that source this file reuse it
 
 scenario_setup() {
-  cp "$DAG99_DIR"/lanes/lane.*.sh . && python3 "$DAG99_DIR/gen.py"
+  cp "$DAG99_DIR"/lanes/lane.*.sh . && e2etool gen "$DAG99_DIR"
 }
 
 scenario_check() {

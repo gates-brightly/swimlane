@@ -35,7 +35,7 @@ lane_init 8
 D=.scenario/dag
 N=8
 PARENTS=""
-NODE_START=$(python3 -c 'import time; print(f"{time.time():.3f}")')
+NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
@@ -52,23 +52,11 @@ head_of() { # head_of <name> <url>
 head_of example https://example.com/
 head_of httpbin https://httpbin.org/get
 head_of cern    http://info.cern.ch/
-gate "headers.md" python3 - <<'PY'
-import os, glob
-d, h = os.environ["D"], os.environ["H"]
-rows = []
-for p in sorted(glob.glob(f"{h}/*.txt")):
-    lines = open(p, encoding="utf-8", errors="replace").read().splitlines()
-    hdr = {k.strip().lower(): v.strip() for k, _, v in (l.partition(":") for l in lines[1:]) if v}
-    rows.append(f"| {os.path.basename(p)[:-4]} | {lines[0].strip() if lines else '?'} | {hdr.get('server', '-')} | {hdr.get('content-type', '-')} |")
-out = "## Response headers (swim 8)\n\n| site | status | server | content-type |\n|---|---|---|---|\n" + "\n".join(rows) + "\n"
-open(f"{d}/headers.md", "w").write(out)
-print(out)
-assert rows, "no headers"
-PY
+gate "headers.md" e2etool headers
 
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'
 if ! any_failed; then
-  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(python3 -c "import time; print(f\"{time.time():.3f}\")")" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
+  gate "mark node done" bash -c 'printf "%s %s %s\n" "$RUN_ID" "$NODE_START" "$(e2etool now)" > "$D/nodes/.$N.tmp" && mv "$D/nodes/.$N.tmp" "$D/nodes/$N.done" && cat "$D/nodes/$N.done"'
 fi
 
 summary
