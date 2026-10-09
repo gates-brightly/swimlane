@@ -60,10 +60,13 @@ type Info struct {
 	Timeout time.Duration
 	// TimeoutText is the Timeout: value as written ("" for none).
 	TimeoutText string
-	Locks       []string // Locks: resources this round needs exclusively (default none)
-	Extra       []KV     // other keys in the header block, kept and shown
-	Problems    []string // header values swim couldn't use (e.g. a bad Timeout)
-	Message     string   // stub message
+	// StepTimeout is Step-Timeout:, the default limit for each step.
+	StepTimeout     time.Duration
+	StepTimeoutText string
+	Locks           []string // Locks: resources this round needs exclusively (default none)
+	Extra           []KV     // other keys in the header block, kept and shown
+	Problems        []string // header values swim couldn't use (e.g. a bad Timeout)
+	Message         string   // stub message
 }
 
 // Pending reports whether the lane script holds a round to run.
@@ -84,11 +87,11 @@ var (
 	roundRE   = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE     = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE   = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE    = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Locks):\s*(.*)$`)
+	metaRE    = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks):\s*(.*)$`)
 	keyRE     = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE     = regexp.MustCompile(`[\s,]+`)
 	guardUse  = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "locks": true, "swim": true}
+	knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true}
 )
 
 // ReadScript inspects lane.N.sh. A lane script without a Round: line is
@@ -165,6 +168,15 @@ func ParseScript(src string) Info {
 							info.Problems = append(info.Problems, fmt.Sprintf("Timeout %q is not a duration like 30m or 1h30m; no timeout applies", v))
 						} else {
 							info.Timeout = d
+						}
+					}
+				case "Step-Timeout":
+					if v != "" && v != "-" && !strings.EqualFold(v, "none") {
+						d, err := time.ParseDuration(v)
+						if err != nil || d <= 0 {
+							info.Problems = append(info.Problems, fmt.Sprintf("Step-Timeout %q is not a duration like 2m or 30s; no default step limit applies", v))
+						} else {
+							info.StepTimeout, info.StepTimeoutText = d, v
 						}
 					}
 				case "Locks":

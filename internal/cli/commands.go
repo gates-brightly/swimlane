@@ -414,8 +414,8 @@ func cmdAll(args []string) error {
 }
 
 func cmdStep(args []string) error {
-	var label string
-	var fresh, snap bool
+	var label, timeout, retry, backoff, retryOn string
+	var fresh, snap, noRetryTimeout bool
 	// Flags only before "--"; everything after is the command.
 	sep := -1
 	for i, a := range args {
@@ -430,8 +430,8 @@ func cmdStep(args []string) error {
 		flagArgs, cmdArgs = args[:sep], args[sep+1:]
 	}
 	rest, err := flags{
-		bools: map[string]*bool{"new": &fresh, "snapshot": &snap},
-		strs:  map[string]*string{"label": &label},
+		bools: map[string]*bool{"new": &fresh, "snapshot": &snap, "no-retry-timeout": &noRetryTimeout},
+		strs:  map[string]*string{"label": &label, "timeout": &timeout, "retry": &retry, "backoff": &backoff, "retry-on": &retryOn},
 	}.parse(flagArgs)
 	if err != nil {
 		return err
@@ -455,6 +455,46 @@ func cmdStep(args []string) error {
 	if !cfg.ValidLane(n) {
 		n = 0
 	}
+	// A step limit: --timeout, else the script's Step-Timeout: (exported by
+	// lane_init); --timeout 0 turns the default off for this step.
+	stepTimeout, stepText := time.Duration(0), ""
+	if timeout == "" {
+		if t := os.Getenv("SWIM_STEP_TIMEOUT"); t != "" && t != "0" {
+			timeout = t
+		}
+	}
+	if timeout != "" && timeout != "0" {
+		d, err := time.ParseDuration(timeout)
+		if err != nil || d <= 0 {
+			return usagef("--timeout %q: use a duration like 30s, 5m or 1h30m (0 for none)", timeout)
+		}
+		stepTimeout, stepText = d, timeout
+	}
+	var rt step.Retry
+	if retry != "" {
+		n, err := strconv.Atoi(retry)
+		if err != nil || n < 0 {
+			return usagef("--retry %q: use a number of extra attempts (e.g. 3)", retry)
+		}
+		rt.Max = n
+	}
+	if backoff != "" {
+		d, err := time.ParseDuration(backoff)
+		if err != nil || d < 0 {
+			return usagef("--backoff %q: use a duration like 5s", backoff)
+		}
+		rt.Backoff = d
+	}
+	if retryOn != "" {
+		for _, c := range strings.Split(retryOn, ",") {
+			n, err := strconv.Atoi(strings.TrimSpace(c))
+			if err != nil {
+				return usagef("--retry-on %q: use exit codes, e.g. 1,255", retryOn)
+			}
+			rt.On = append(rt.On, n)
+		}
+	}
+	rt.NoTimeout = noRetryTimeout
 	// lane_init exports the round's deadline (Timeout:) as epoch seconds.
 	var deadline time.Time
 	if d, err := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64); err == nil && d > 0 {
@@ -470,6 +510,7 @@ func cmdStep(args []string) error {
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
 		Color:    ui.ColorEnabled(os.Stderr),
 		Deadline: deadline, TimeoutText: os.Getenv("SWIM_TIMEOUT"),
+		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
 	})
 	if err != nil {
 		return err

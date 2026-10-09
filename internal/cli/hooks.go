@@ -135,6 +135,7 @@ func cmdStart(args []string) error {
 		{K: "created", V: or(info.Created, "-")},
 		{K: "after", V: or(strings.Join(info.After, " "), "-")},
 		{K: "timeout", V: timeoutText},
+		{K: "step-timeout", V: or(info.StepTimeoutText, "none")},
 		{K: "guards", V: or(strings.Join(info.GuardFlags(), " "), "-")},
 		{K: "git", V: ref},
 	}
@@ -161,9 +162,14 @@ func cmdStart(args []string) error {
 		fmt.Fprintln(os.Stderr, p.Paint(ui.Yellow, "WARN  "+prob))
 	}
 	history.Log(root, history.Entry{Event: history.Start, Lane: n, Job: job, Run: run, Detail: round})
-	// stdout carries "<job> <deadline epoch or 0> <run> <timeout>" back to
-	// lane_init, which exports SWIM_JOB, SWIM_DEADLINE, SWIM_RUN, SWIM_TIMEOUT.
-	defer fmt.Printf("%s %d %s %s\n", job, deadline, run, timeoutText)
+	stepTimeout := "0"
+	if info.StepTimeout > 0 {
+		stepTimeout = info.StepTimeoutText
+	}
+	// stdout carries "<job> <deadline epoch or 0> <run> <step timeout or 0>
+	// <timeout>" back to lane_init, which exports SWIM_JOB, SWIM_DEADLINE,
+	// SWIM_RUN, SWIM_STEP_TIMEOUT and SWIM_TIMEOUT.
+	defer fmt.Printf("%s %d %s %s %s\n", job, deadline, run, stepTimeout, timeoutText)
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		f.Branch = ref
 		l := f.Get(n)

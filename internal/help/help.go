@@ -132,7 +132,8 @@ var Commands = map[string]string{
   --run RUN  each lane as it was in swim run RUN (from the logs, archives
              included, and .swim.log for lanes skipped before they started)
 `,
-	"step": `swim step [--label L] [--new] [--snapshot] -- cmd [args...]
+	"step": `swim step [--label L] [--new] [--snapshot] [--timeout D] [--retry N]
+          [--backoff D] [--retry-on CODES] [--no-retry-timeout] -- cmd [args...]
 
   Run one command. Its output streams to the terminal unchanged; a framed copy
   goes to the log chosen by $STEP_LOG (default step.log):
@@ -144,6 +145,10 @@ var Commands = map[string]string{
   --label L     record PASS/FAIL L (and update status.yml when run in a lane)
   --new         start a fresh log (truncate)
   --snapshot    also save output to .swim/snapshots/laneN-<time>-<label>.txt
+  --timeout D   stop the command after D (default: $SWIM_STEP_TIMEOUT, from the
+                script's Step-Timeout:; 0 for none); never past the round's Timeout
+  --retry N, --backoff D, --retry-on CODES, --no-retry-timeout
+                retry on failure (see "WRITING A LANE SCRIPT" in swim --help)
   Lane scripts call this through run/gate/snapshot; you rarely need it directly.
 `,
 	"lib": `swim lib

@@ -1,6 +1,6 @@
 # Per-step timeouts and retries
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -65,21 +65,18 @@ Options come before the label:
 
 ### Log
 
-Each attempt gets a sub-block, so the log stays complete:
+Each attempt gets indented sub-lines inside the step's block (log syntax 2),
+so the log stays complete and parsers ignore them:
 
 ```
-=== STEP 2026-10-09T15:20:01Z stack is ours
-$ bash -c 'aws cloudformation describe-stacks …'
---- attempt 1/4
---- output
-Could not connect to the endpoint URL
---- exit 255 (3.0s)
---- retry in 5s (exit 255)
---- attempt 2/4
---- output
-{"Stacks": [...]}
---- exit 0 (0.8s)
-PASS  stack is ours (attempt 2/4)
+  PASS  stack is ours (attempt 2/4)               3.8s  15:20:01
+        $ bash -c 'aws cloudformation describe-stacks …'
+        -- attempt 1/4
+        | Could not connect to the endpoint URL
+        -- exit 255 (3.0s); retry in 5s
+        -- attempt 2/4
+        | {"Stacks": [...]}
+        -- exit 0 (0.8s)
 ```
 
 The step's counts in status are unchanged (one PASS or one FAIL).
@@ -100,14 +97,19 @@ The step's counts in status are unchanged (one PASS or one FAIL).
 - **Header:** `lane.Info` parses `Step-Timeout:` beside `Timeout:`, and
   `lane_init` exports `SWIM_STEP_TIMEOUT`.
 
-## Open questions
+## Decisions
 
-1. **Should `snapshot` save every attempt's output, or only the last?**
-   Recommend the last, with every attempt still in the log.
-2. **Jitter on backoff?** Recommend ±20%, so retries in parallel lanes don't
-   all fire together.
-3. **Retry a whole lane** (`# Retry: 1` reruns the round on failure)? That's a
-   different feature, and `swim all` already reruns failed rounds. Out of scope.
+1. **Snapshots keep the last attempt's output**; every attempt is still in the log.
+2. **Jitter:** ±20% on every backoff wait.
+3. **Retrying a whole lane** is out of scope (`swim all` reruns failed rounds).
+4. **Round timeout vs step limit:** both exit 124. When a step ends because of
+   the round's `Timeout` (including a retry refused because it couldn't start
+   before the deadline), `swim step` leaves `<log>.round-timeout`; the lane
+   library sees it and stops the round. A step limit alone doesn't stop the round.
+5. `Step-Timeout:` is passed from `_start` to `lane_init` and exported as
+   `SWIM_STEP_TIMEOUT`; `swim step --timeout 0` turns it off for one step.
+6. Attempt sub-lines are `        -- …` lines in the step block (8-space indent),
+   so syntax-2 parsers already ignore them: no syntax bump.
 
 ## Testing
 
@@ -121,6 +123,6 @@ The step's counts in status are unchanged (one PASS or one FAIL).
   - `--retry-on 7` doesn't retry exit 1
   - a retry never starts after the round deadline
   - Ctrl-C during backoff interrupts cleanly
-- **Scenario:** a small `flaky` scenario: lanes whose steps fail the first N
+- **Scenario:** `flaky` (shipped): lanes whose steps fail the first N
   times, using a counter file, so that a correct retry config passes and too
   few retries fails with the right attempt counts.

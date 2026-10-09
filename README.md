@@ -181,6 +181,10 @@ summary
   `verify` (prove it worked). A job skips the ones it doesn't need. Steps
   before the first `stage` are "setup". Out-of-order stages, or `change`
   without a snapshot and check before it, log a `WARN`.
+- **Time limits and retries:** `run`, `gate` and `snapshot` take
+  `--timeout 2m`, `--retry 3`, `--backoff 5s` and `--retry-on 1,255` before
+  the label. `# Step-Timeout: 5m` sets a default limit for every step. Every
+  attempt is logged, and the round's `Timeout` always wins.
 - **Library functions** (from `swim lib`): `lane_init`, `stage`, `run`, `gate`,
   `snapshot`, `guard`, `confirm`, `last_failed`, `any_failed`, `drift`,
   `stop` and `summary`.

@@ -31,6 +31,7 @@ Set `SWIM_E2E_BIN=/path/to/swim` to test a prebuilt binary.
 | `dag99-cascade` | Same graph with lanes 23, 38 and 41 made to fail (`E2E_FAIL`). The skipped set must equal exactly their descendants, and everything else must pass. |
 | `dag99-parallel` | Same graph with `--parallel 8`: the audit measures how many lanes ran at once (never over 8), and every dag99 edge and value check still holds. |
 | `dag99-locks` | Same graph with `# Locks:` from a pool of five on the generated lanes: the audit checks that no two lanes sharing a lock ever overlapped, and every lane must pass (lock waits never cause skips). |
+| `flaky` | Steps that fail their first N calls: `--retry 2` passes on attempt 3/3 when N is 2 and fails at 3/3 when N is 3; every attempt is in the log, and the failed lane's dependent is skipped. |
 | `dag99-retry` | Same failures through `swim all`, then a retry with them fixed. `swim plan` must predict the retry (`0 to run, 70 to retry`), `swim all` must rerun exactly the failed and skipped lanes and never one that passed, and a third `swim all` must find nothing to run. |
 
 ## Adding a scenario

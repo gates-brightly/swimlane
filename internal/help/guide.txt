@@ -165,11 +165,29 @@ WRITING A LANE SCRIPT
                                   running. Call it first.
   stage NAME                      start a stage: snapshot, check, change or verify. Steps
                                   before the first stage are setup. See STAGES below.
-  run "<label>" cmd [args...]     one step; records PASS/FAIL <label>. A failure does
+  run [opts] "<label>" cmd [args...]
+                                  one step; records PASS/FAIL <label>. A failure does
                                   NOT stop the round (checks keep going).
-  gate "<label>" cmd [args...]    like run, but failure stops the round here (STOP).
-  snapshot "<label>" cmd [args]   read-only step whose output is also saved to
-                                  .swim/snapshots/laneN-<time>-<label>.txt.
+  gate [opts] "<label>" cmd [args...]
+                                  like run, but failure (after the last attempt)
+                                  stops the round here (STOP).
+  snapshot [opts] "<label>" cmd [args]
+                                  read-only step whose output (the last attempt's)
+                                  is also saved to .swim/snapshots/laneN-<time>-<label>.txt.
+    opts, before the label:
+      --timeout D                 stop the step after D (30s, 5m, 1h30m): FAIL
+                                  (timeout: step limit D), exit 124. 0 turns off the
+                                  script's Step-Timeout: for this step.
+      --retry N                   try up to N more times on a non-zero exit (a step
+                                  that timed out is retried too)
+      --backoff D                 wait D before the first retry, doubling, capped at 5m,
+                                  with +/-20% jitter (default 2s)
+      --retry-on CODES            retry only on these exit codes, e.g. 1,255
+      --no-retry-timeout          don't retry an attempt the step limit stopped
+    The round's Timeout: always wins: no attempt runs past it, and a retry that
+    couldn't start before it isn't attempted (the round stops, as for a timeout).
+    Each attempt is in the log; the step counts once (one PASS or FAIL). Only put
+    --retry on read-only or idempotent steps, never on a change that isn't.
   guard FLAG "<action - date, reason>"
                                   true only if the operator set FLAG=1; otherwise logs
                                   SKIP with the approval hint and returns false.
@@ -199,6 +217,8 @@ WRITING A LANE SCRIPT
                                       Lanes sharing a lock never run at the same time,
                                       in either order, and a failure doesn't spread
                                       through a lock (unlike After:). Default: none
+      # Step-Timeout: <2m, 30s, ...>  default limit for each step (--timeout overrides,
+                                      --timeout 0 turns it off for one step). Default: none
       # Timeout: <30m, 1h30m, ...>    limit for the whole round. A step still running
                                       at the limit is stopped (FAIL, timeout) and the
                                       round ends. Default: none
@@ -310,8 +330,12 @@ READING RESULTS
       -- stage <name>  <hh:mm:ss>                   a stage starts
         PASS  <label>                <dur>s  <hh:mm:ss>    a step (2 spaces, kind, 2 spaces)
         FAIL  <label> (exit <code>)  <dur>s  <hh:mm:ss>    ... or (exit 130, interrupted),
-                                                           (timeout: Timeout 30m reached)
+                                                           (timeout: Timeout 30m reached),
+                                                           (timeout: step limit 2m),
+                                                           (exit 1, attempt 4/4)
               $ <command, shell-quoted so it can be re-run>
+              -- attempt 1/4                       with --retry: each attempt, its
+              -- exit 255 (3.0s); retry in 5s      outcome and the wait before the next
               | <command output, ANSI stripped>    output is always fenced with "| "
               saved: <snapshot path>
         SKIP  <label> (dry run: set FLAG=1 to approve)

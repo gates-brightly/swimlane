@@ -1252,3 +1252,89 @@ func TestBadLockNameWarns(t *testing.T) {
 	r.mustSwim("run", "1")
 	contains(t, "agent1.log", r.log(1), `WARN  Locks: "bad*name" is not a lock name`)
 }
+
+func TestStepTimeoutAndRetry(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "timeouts and retries", `run --timeout 1s "slow" sleep 5
+run --retry 2 --backoff 0.1s "flaky" bash -c 'test -f ok || { touch ok; exit 1; }'
+run --retry 3 --backoff 0.1s --retry-on 7 "wrong code" bash -c 'exit 1'
+gate --retry 1 --backoff 0.1s "gate passes on retry" bash -c 'test -f ok2 || { touch ok2; exit 1; }'
+run "after" true`)
+	start := time.Now()
+	r.swim("run", "1", "--plain")
+	if took := time.Since(start); took > 8*time.Second {
+		t.Fatalf("step limit didn't stop sleep 5 promptly: %s", took)
+	}
+	log := r.log(1)
+	contains(t, "agent1.log", log,
+		"  FAIL  slow (timeout: step limit 1s)",
+		"the step's time limit (1s) ran out",
+		"  PASS  flaky (attempt 2/3)",
+		"        -- attempt 1/3",
+		"        -- exit 1 (",
+		"; retry in ",
+		"        -- attempt 2/3",
+		"  FAIL  wrong code (exit 1, attempt 1/4)",
+		"  PASS  gate passes on retry (attempt 2/2)",
+		"  PASS  after")
+	if strings.Contains(log, "-- attempt 2/4") {
+		t.Error("--retry-on 7 retried exit 1")
+	}
+	if l := r.status().Get(1); l.Pass != 3 || l.Fail != 2 {
+		t.Errorf("each step counts once: pass=%d fail=%d", l.Pass, l.Fail)
+	}
+
+	// Step-Timeout: in the header is the default; --timeout 0 turns it off.
+	r.script(2, "default limit", `run "limited" sleep 3
+run --timeout 0 "unlimited" sleep 1.5`)
+	p := filepath.Join(r.root, "lane.2.sh")
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: default limit\n", "# Round: default limit\n# Step-Timeout: 1s\n", 1)), 0o755)
+	r.swim("run", "2", "--plain")
+	contains(t, "agent2.log", r.log(2), "step-timeout: 1s", "  FAIL  limited (timeout: step limit 1s)", "  PASS  unlimited")
+}
+
+func TestRetryRespectsRoundDeadline(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "deadline", `run --retry 5 --backoff 1.5s "keeps failing" false
+run "after" true`)
+	p := filepath.Join(r.root, "lane.1.sh")
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: deadline\n", "# Round: deadline\n# Timeout: 2s\n", 1)), 0o755)
+	start := time.Now()
+	r.swim("run", "1", "--plain")
+	if took := time.Since(start); took > 6*time.Second {
+		t.Fatalf("retries ran past the round's deadline: %s", took)
+	}
+	log := r.log(1)
+	contains(t, "agent1.log", log, "no retry: the round's Timeout 2s would pass first", "  FAIL  keeps failing (timeout: Timeout 2s reached, attempt ", "  STOP  timeout: the round's Timeout (2s) ran out")
+	if strings.Contains(log, "PASS  after") {
+		t.Error("the round continued after its timeout")
+	}
+}
+
+func TestCtrlCDuringBackoff(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "backoff", `run --retry 3 --backoff 20s "fails" false
+run "never" true`)
+	c := r.cmd("bash", "lane.1.sh")
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"))
+		return strings.Contains(string(data), "retry in")
+	})
+	start := time.Now()
+	syscall.Kill(-c.Process.Pid, syscall.SIGINT)
+	c.Wait()
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("Ctrl-C during backoff took %s", took)
+	}
+	log := r.log(1)
+	contains(t, "agent1.log", log, "interrupted while waiting to retry", "== END INTERRUPTED")
+	if strings.Contains(log, "never") {
+		t.Error("the round continued after Ctrl-C")
+	}
+}

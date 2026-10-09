@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	mrand "math/rand/v2"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -42,13 +43,27 @@ type Options struct {
 	// a step still running then is stopped; past it, steps don't start.
 	Deadline    time.Time
 	TimeoutText string // the Timeout: value, for messages
+	// StepTimeout limits each attempt of this step (--timeout, or the
+	// script's Step-Timeout:); 0 means none. It never extends past Deadline.
+	StepTimeout     time.Duration
+	StepTimeoutText string
+	Retry           Retry
+}
+
+// Retry configures a step's retries (run --retry N ...).
+type Retry struct {
+	Max       int           // extra attempts after the first
+	Backoff   time.Duration // wait before the first retry, doubling, capped at 5m (default 2s)
+	On        []int         // retry only on these exit codes (default: any failure)
+	NoTimeout bool          // don't retry an attempt the step limit stopped
 }
 
 // Result describes how the step ended.
 type Result struct {
 	ExitCode int
 	Signal   os.Signal // set when interrupted
-	TimedOut bool      // stopped (or not started) by the round's Timeout
+	TimedOut bool      // stopped (or not started) by a time limit
+	Attempts int       // attempts made
 	Saved    string    // snapshot path, if any
 }
 
@@ -68,13 +83,36 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 // written to the log (the result line has to come first).
 func SpoolPath(logPath string) string { return logPath + ".partial" }
 
-const spoolMagic = "#swim-spool"
+// RoundTimeoutPath marks that the last step ended because of the round's
+// Timeout (not its own step limit, which also exits 124): the lane library
+// sees it, removes it and stops the round.
+func RoundTimeoutPath(logPath string) string { return logPath + ".round-timeout" }
 
-// Run executes the step. Output streams to the terminal unchanged and,
-// ANSI-stripped, to a spool file; when the command ends, the step's block
-// (result line, command, output) is appended to the log. It returns the
-// command's exit code; a command killed by a signal reports 128+signal, and
-// one stopped by the round's Timeout reports 124.
+const (
+	spoolMagic = "#swim-spool"
+	spoolMark  = "\x00" // a spool line starting with this is a "-- note" in the log
+)
+
+// Why an attempt ended early.
+const (
+	notTimedOut = iota
+	stepLimit   // the step's own --timeout / Step-Timeout:
+	roundLimit  // the round's Timeout:
+)
+
+// attempt is the outcome of one try of the command.
+type attempt struct {
+	exit int
+	sig  os.Signal
+	why  int
+	dur  time.Duration
+}
+
+// Run executes the step, retrying as configured. Output streams to the
+// terminal unchanged and, ANSI-stripped, to a spool file; when the step ends,
+// its block (result line, command, attempts, output) is appended to the log.
+// It returns the last attempt's exit code; a command killed by a signal
+// reports 128+signal, and one stopped by a time limit reports 124.
 func Run(o Options) (Result, error) {
 	if len(o.Args) == 0 {
 		return Result{ExitCode: 2}, errors.New("step: no command given (usage: swim step [--label L] -- cmd args...)")
@@ -134,12 +172,13 @@ func Run(o Options) (Result, error) {
 		sink = io.MultiWriter(spool, save)
 	}
 	plain := &lockedWriter{w: &StripWriter{W: sink}}
-
-	cmd := exec.Command(o.Args[0], o.Args[1:]...)
-	cmd.Stdin = o.Stdin
-	cmd.Stdout = io.MultiWriter(o.Stdout, plain)
-	cmd.Stderr = io.MultiWriter(o.Stderr, plain)
-	cmd.WaitDelay = 2 * time.Second // don't hang on grandchildren holding the pipes
+	// note writes a "-- text" line into the step's block and the terminal.
+	note := func(text string) {
+		plain.mu.Lock()
+		fmt.Fprintf(spool, "%s%s\n", spoolMark, text)
+		plain.mu.Unlock()
+		fmt.Fprintln(o.Stderr, p.Paint(ui.Dim, "-- "+text))
+	}
 
 	// The terminal delivers Ctrl-C to the whole process group, so the child
 	// already has it: we only note it, wait, and flush. SIGTERM/SIGHUP may be
@@ -148,81 +187,85 @@ func Run(o Options) (Result, error) {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sigs)
 
-	switch {
-	case !o.Deadline.IsZero() && !start.Before(o.Deadline):
-		res.TimedOut = true
-		msg := fmt.Sprintf("swim: not started: the round's time limit (Timeout: %s) has run out\n", o.TimeoutText)
-		plain.Write([]byte(msg))
-		fmt.Fprint(o.Stderr, msg)
-	default:
-		if startErr := cmd.Start(); startErr != nil {
-			msg := fmt.Sprintf("swim: cannot start %s: %v\n", o.Args[0], startErr)
-			plain.Write([]byte(msg))
-			fmt.Fprint(o.Stderr, msg)
-			res.ExitCode = 127 // like the shell: not found
-			if errors.Is(startErr, os.ErrPermission) {
-				res.ExitCode = 126
+	attempts := 1 + max(o.Retry.Max, 0)
+	backoff := o.Retry.Backoff
+	if backoff <= 0 {
+		backoff = 2 * time.Second
+	}
+	var last attempt
+	for a := 1; a <= attempts; a++ {
+		res.Attempts = a
+		if attempts > 1 {
+			note(fmt.Sprintf("attempt %d/%d", a, attempts))
+		}
+		if save != nil && a > 1 { // a snapshot keeps the last attempt's output
+			save.Truncate(0)
+			save.Seek(0, io.SeekStart)
+		}
+		last = runOnce(o, plain, sigs)
+		retryable := a < attempts && last.exit != 0 && last.sig == nil && last.why != roundLimit &&
+			!(last.why == stepLimit && o.Retry.NoTimeout) &&
+			(len(o.Retry.On) == 0 || last.why == stepLimit || containsInt(o.Retry.On, last.exit))
+		outcome := fmt.Sprintf("exit %d (%.1fs)", last.exit, last.dur.Seconds())
+		if last.why == stepLimit {
+			outcome = fmt.Sprintf("stopped at the step limit %s (%.1fs)", o.StepTimeoutText, last.dur.Seconds())
+		}
+		if !retryable {
+			if attempts > 1 {
+				note(outcome)
 			}
 			break
 		}
-		done := make(chan error, 1)
-		go func() { done <- cmd.Wait() }()
-		var deadline, kill <-chan time.Time
-		if !o.Deadline.IsZero() {
-			t := time.NewTimer(time.Until(o.Deadline))
-			defer t.Stop()
-			deadline = t.C
+		wait := jitter(backoff)
+		if !o.Deadline.IsZero() && !time.Now().Add(wait).Before(o.Deadline) {
+			note(outcome + "; no retry: the round's Timeout " + o.TimeoutText + " would pass first")
+			last.why, last.exit = roundLimit, 124
+			break
 		}
-		var waitErr error
-	loop:
-		for {
-			select {
-			case s := <-sigs:
-				if res.Signal == nil {
-					res.Signal = s
-				}
-				if s != syscall.SIGINT && cmd.Process != nil {
-					cmd.Process.Signal(s)
-				}
-			case <-deadline:
-				res.TimedOut = true
-				msg := fmt.Sprintf("swim: stopping: the round's time limit (Timeout: %s) ran out\n", o.TimeoutText)
-				plain.Write([]byte(msg))
-				fmt.Fprint(o.Stderr, msg)
-				cmd.Process.Signal(syscall.SIGTERM)
-				kill = time.After(5 * time.Second)
-			case <-kill:
-				cmd.Process.Kill()
-			case waitErr = <-done:
-				break loop
-			}
+		note(fmt.Sprintf("%s; retry in %s", outcome, wait.Round(100*time.Millisecond)))
+		select {
+		case s := <-sigs:
+			last.sig = s
+			note("interrupted while waiting to retry")
+		case <-time.After(wait):
 		}
-		res.ExitCode = exitCode(cmd, waitErr)
-		if ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() && !res.TimedOut {
-			if res.Signal == nil {
-				res.Signal = ws.Signal()
-			}
-		} else if res.Signal != nil && res.ExitCode == 0 {
-			// The child handled the signal and succeeded; not an interruption.
-			res.Signal = nil
+		if last.sig != nil {
+			last.exit = 128 + int(last.sig.(syscall.Signal))
+			break
 		}
+		backoff = min(backoff*2, 5*time.Minute)
 	}
+	spool.Close()
+	res.ExitCode, res.Signal = last.exit, last.sig
+	res.TimedOut = last.why != notTimedOut
 	if res.TimedOut {
 		res.ExitCode, res.Signal = 124, nil
 	}
-	spool.Close()
+	if last.why == roundLimit {
+		os.WriteFile(RoundTimeoutPath(o.LogPath), nil, 0o644)
+	}
 
 	dur := time.Since(start)
 	ds := fmt.Sprintf("%.1fs", dur.Seconds())
 	kind, detail := logparse.Pass, ""
-	switch {
-	case res.TimedOut:
+	switch last.why {
+	case roundLimit:
 		kind, detail = logparse.Fail, "timeout: Timeout "+o.TimeoutText+" reached"
-	case res.ExitCode != 0:
-		kind, detail = logparse.Fail, fmt.Sprintf("exit %d", res.ExitCode)
-		if res.Signal != nil {
-			detail += ", interrupted"
+	case stepLimit:
+		kind, detail = logparse.Fail, "timeout: step limit "+o.StepTimeoutText
+	default:
+		if res.ExitCode != 0 {
+			kind, detail = logparse.Fail, fmt.Sprintf("exit %d", res.ExitCode)
+			if res.Signal != nil {
+				detail += ", interrupted"
+			}
 		}
+	}
+	if attempts > 1 && (kind == logparse.Fail || res.Attempts > 1) {
+		if detail != "" {
+			detail += ", "
+		}
+		detail += fmt.Sprintf("attempt %d/%d", res.Attempts, attempts)
 	}
 	saved := ""
 	if res.Saved != "" {
@@ -248,6 +291,105 @@ func Run(o Options) (Result, error) {
 		})
 	}
 	return res, nil
+}
+
+// runOnce runs the command once, stopping it at the step limit or the
+// round's deadline, whichever comes first.
+func runOnce(o Options, plain *lockedWriter, sigs chan os.Signal) attempt {
+	start := time.Now()
+	var at attempt
+	limit, why := time.Time{}, notTimedOut
+	if o.StepTimeout > 0 {
+		limit, why = start.Add(o.StepTimeout), stepLimit
+	}
+	if !o.Deadline.IsZero() && (limit.IsZero() || o.Deadline.Before(limit)) {
+		limit, why = o.Deadline, roundLimit
+	}
+	if why == roundLimit && !start.Before(limit) {
+		msg := fmt.Sprintf("swim: not started: the round's time limit (Timeout: %s) has run out\n", o.TimeoutText)
+		plain.Write([]byte(msg))
+		fmt.Fprint(o.Stderr, msg)
+		return attempt{exit: 124, why: roundLimit}
+	}
+
+	cmd := exec.Command(o.Args[0], o.Args[1:]...)
+	cmd.Stdin = o.Stdin
+	cmd.Stdout = io.MultiWriter(o.Stdout, plain)
+	cmd.Stderr = io.MultiWriter(o.Stderr, plain)
+	cmd.WaitDelay = 2 * time.Second // don't hang on grandchildren holding the pipes
+	if err := cmd.Start(); err != nil {
+		msg := fmt.Sprintf("swim: cannot start %s: %v\n", o.Args[0], err)
+		plain.Write([]byte(msg))
+		fmt.Fprint(o.Stderr, msg)
+		at.exit = 127 // like the shell: not found
+		if errors.Is(err, os.ErrPermission) {
+			at.exit = 126
+		}
+		return at
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	var deadline, kill <-chan time.Time
+	if !limit.IsZero() {
+		t := time.NewTimer(time.Until(limit))
+		defer t.Stop()
+		deadline = t.C
+	}
+	var waitErr error
+loop:
+	for {
+		select {
+		case s := <-sigs:
+			if at.sig == nil {
+				at.sig = s
+			}
+			if s != syscall.SIGINT && cmd.Process != nil {
+				cmd.Process.Signal(s)
+			}
+		case <-deadline:
+			at.why = why
+			msg := fmt.Sprintf("swim: stopping: the round's time limit (Timeout: %s) ran out\n", o.TimeoutText)
+			if why == stepLimit {
+				msg = fmt.Sprintf("swim: stopping: the step's time limit (%s) ran out\n", o.StepTimeoutText)
+			}
+			plain.Write([]byte(msg))
+			fmt.Fprint(o.Stderr, msg)
+			cmd.Process.Signal(syscall.SIGTERM)
+			kill = time.After(5 * time.Second)
+		case <-kill:
+			cmd.Process.Kill()
+		case waitErr = <-done:
+			break loop
+		}
+	}
+	at.dur = time.Since(start)
+	at.exit = exitCode(cmd, waitErr)
+	if ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() && at.why == notTimedOut {
+		if at.sig == nil {
+			at.sig = ws.Signal()
+		}
+	} else if at.sig != nil && at.exit == 0 {
+		// The child handled the signal and succeeded; not an interruption.
+		at.sig = nil
+	}
+	if at.why != notTimedOut {
+		at.exit, at.sig = 124, nil
+	}
+	return at
+}
+
+// jitter spreads d by ±20%, so retries in parallel lanes don't all fire together.
+func jitter(d time.Duration) time.Duration {
+	return time.Duration(float64(d) * (0.8 + 0.4*mrand.Float64()))
+}
+
+func containsInt(xs []int, x int) bool {
+	for _, v := range xs {
+		if v == x {
+			return true
+		}
+	}
+	return false
 }
 
 // writeBlock appends a step's block to the log: its result line, then the
@@ -279,6 +421,10 @@ func writeBlock(logPath, resultLine, saved string) error {
 				w.WriteString(logparse.CmdPrefix + f[3] + "\n")
 				continue
 			}
+		}
+		if strings.HasPrefix(line, spoolMark) {
+			w.WriteString(logparse.Indent + "-- " + strings.TrimPrefix(line, spoolMark) + "\n")
+			continue
 		}
 		w.WriteString(logparse.OutPrefix + line + "\n")
 	}

@@ -31,15 +31,17 @@ lane_init() {
     _swim_done=1
     exit 1
   fi
-  # "<job> <deadline epoch, 0 for none> <run> <timeout text>"
+  # "<job> <deadline epoch, 0 for none> <run> <step timeout, 0 for none> <timeout text>"
   SWIM_JOB=${_swim_start%% *}
   _swim_start=${_swim_start#* }
   SWIM_DEADLINE=${_swim_start%% *}
   _swim_start=${_swim_start#* }
   SWIM_RUN=${_swim_start%% *}
+  _swim_start=${_swim_start#* }
+  SWIM_STEP_TIMEOUT=${_swim_start%% *}
   SWIM_TIMEOUT=${_swim_start#* }
   SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
-  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_TIMEOUT
+  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT
   trap '_swim_on_exit' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -62,13 +64,15 @@ _swim_on_exit() {
 }
 
 # _swim_after_step CODE — count a failure; stop the round if the round's
-# Timeout: ran out (swim step exits 124 then).
+# Timeout: ran out. swim step exits 124 for any time limit, and leaves
+# $STEP_LOG.round-timeout when it was the round's (not the step's own).
 _swim_after_step() {
   _swim_last=$1
   if [ "$_swim_last" -ne 0 ]; then
     _swim_fail=$((_swim_fail + 1))
   fi
-  if [ "$_swim_last" -eq 124 ] && [ "${SWIM_DEADLINE:-0}" -gt 0 ] && [ "$(date +%s)" -ge "$SWIM_DEADLINE" ]; then
+  if [ "$_swim_last" -eq 124 ] && [ -e "$STEP_LOG.round-timeout" ]; then
+    rm -f "$STEP_LOG.round-timeout"
     stop "timeout: the round's Timeout ($SWIM_TIMEOUT) ran out"
   fi
   return "$_swim_last"
@@ -83,41 +87,68 @@ stage() {
   fi
 }
 
-# run "<label>" cmd [args...] — run one step through `swim step`, recording
-# PASS/FAIL <label>. A failure does not stop the round; use gate for that.
-# For pipes or redirects, wrap them: run "<label>" bash -c 'a | b'.
-run() {
+# _swim_run_step MODE [options] "<label>" cmd [args...] — shared by run and
+# snapshot (MODE is "" or --snapshot). Options, before the label:
+#   --timeout D        stop the step after D (30s, 5m); 0 turns off Step-Timeout:
+#   --retry N          try up to N more times on a non-zero exit
+#   --backoff D        wait D before the first retry, doubling (default 2s)
+#   --retry-on CODES   retry only on these exit codes (e.g. 1,255)
+#   --no-retry-timeout don't retry an attempt the step limit stopped
+_swim_run_step() {
+  _swim_mode=$1
+  shift
+  _swim_o=
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --timeout|--retry|--backoff|--retry-on)
+        if [ $# -lt 2 ]; then
+          echo "swim: $1 needs a value" >&2
+          return 2
+        fi
+        _swim_o="$_swim_o $1 $2"
+        shift 2 ;;
+      --no-retry-timeout) _swim_o="$_swim_o $1"; shift ;;
+      --) shift; break ;;
+      --*) echo "swim: unknown step option $1" >&2; return 2 ;;
+      *) break ;;
+    esac
+  done
   if [ $# -lt 2 ]; then
-    echo 'swim: usage: run "<label>" cmd [args...]' >&2
+    echo 'swim: usage: run|gate|snapshot [options] "<label>" cmd [args...]' >&2
     return 2
   fi
   _swim_label=$1
   shift
-  "$SWIM_BIN" step --label "$_swim_label" -- "$@"
+  # $_swim_o is unquoted on purpose: option values (durations, codes) have no spaces.
+  "$SWIM_BIN" step $_swim_mode $_swim_o --label "$_swim_label" -- "$@"
   _swim_after_step $?
 }
 
-# gate "<label>" cmd [args...] — like run, but a failure stops the round
-# here, before any later (destructive) step. Fail-closed.
+# run [options] "<label>" cmd [args...] — run one step through `swim step`,
+# recording PASS/FAIL <label>. A failure does not stop the round; use gate
+# for that. For pipes or redirects, wrap them: run "<label>" bash -c 'a | b'.
+# Options (--timeout, --retry, --backoff, --retry-on, --no-retry-timeout):
+# see _swim_run_step. Only retry read-only or idempotent steps.
+run() {
+  _swim_run_step "" "$@"
+}
+
+# gate [options] "<label>" cmd [args...] — like run, but a failure (after
+# the last attempt) stops the round here, before any later (destructive)
+# step. Fail-closed.
 gate() {
-  run "$@"
+  _swim_run_step "" "$@"
   if [ "$_swim_last" -ne 0 ]; then
-    stop "gate failed: $1"
+    stop "gate failed: $_swim_label"
   fi
   return 0
 }
 
-# snapshot "<label>" cmd [args...] — run a read-only command and also save
-# its output to .swim/snapshots/laneN-<time>-<label>.txt for comparison.
+# snapshot [options] "<label>" cmd [args...] — run a read-only command and
+# also save its output (the last attempt's) to
+# .swim/snapshots/laneN-<time>-<label>.txt for comparison.
 snapshot() {
-  if [ $# -lt 2 ]; then
-    echo 'swim: usage: snapshot "<label>" cmd [args...]' >&2
-    return 2
-  fi
-  _swim_label=$1
-  shift
-  "$SWIM_BIN" step --snapshot --label "$_swim_label" -- "$@"
-  _swim_after_step $?
+  _swim_run_step --snapshot "$@"
 }
 
 # last_failed — true if the previous run/gate/snapshot failed.
