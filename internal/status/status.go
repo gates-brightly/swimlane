@@ -21,6 +21,7 @@ import (
 const (
 	Idle        = "idle"
 	Waiting     = "waiting"
+	Queued      = "queued" // waiting for a free slot (max_parallel)
 	Running     = "running"
 	Passed      = "passed"
 	Failed      = "failed"

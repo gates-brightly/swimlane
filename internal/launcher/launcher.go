@@ -36,10 +36,13 @@ type Options struct {
 	Rerun  bool   // with no explicit lanes, also run rounds that already passed
 	DryRun bool   // plan only: don't refuse lanes that are running
 	RunID  string // this run's id; generated if empty (swim run --run-id)
-	Plain  bool
-	Self   string // path of the swim binary, exported to lane scripts as SWIM_BIN
-	Out    *os.File
-	Stdin  *os.File
+	// Parallel caps lanes running at once; nil means config's max_parallel,
+	// 0 unlimited.
+	Parallel *int
+	Plain    bool
+	Self     string // path of the swim binary, exported to lane scripts as SWIM_BIN
+	Out      *os.File
+	Stdin    *os.File
 }
 
 // Outcome is one lane's result.
@@ -137,7 +140,7 @@ func Run(o Options) (int, error) {
 			v.State = display.Done
 		}
 		if selected[n] {
-			v.State = display.Queued
+			v.State = display.Starting
 			for _, d := range deps[n] {
 				if selected[d.Lane] {
 					v.State = display.Waiting
@@ -149,9 +152,15 @@ func Run(o Options) (int, error) {
 	}
 	start := time.Now()
 	ref := step.GitRef(o.Root)
+	cap := o.Cfg.Parallel()
+	if o.Parallel != nil {
+		cap = *o.Parallel
+	}
+	sl := newSlots(cap, chainBelow(sel, deps))
 	disp := display.New(display.Options{
 		Out:   o.Out,
 		Plain: o.Plain,
+		Cap:   cap,
 		Title: func(now time.Time) string {
 			return fmt.Sprintf("swim · %s · %s · %s", filepath.Base(o.Root), ref, display.Elapsed(now.Sub(start)))
 		},
@@ -178,6 +187,7 @@ func Run(o Options) (int, error) {
 		for s := range sigs {
 			mu.Lock()
 			interrupted = true
+			sl.close()
 			if s != syscall.SIGINT {
 				for _, p := range procs {
 					p.Signal(s)
@@ -191,7 +201,11 @@ func Run(o Options) (int, error) {
 		o.RunID = lane.NewRunID()
 	}
 	status.UpdateFile(o.Root, o.Cfg.Lanes, func(f *status.File) error { f.LastRun = o.RunID; return nil })
-	history.Log(o.Root, history.Entry{Event: history.Run, Run: o.RunID, Detail: "swim " + joinInts(sel)})
+	runDetail := "swim " + joinInts(sel)
+	if cap > 0 {
+		runDetail += fmt.Sprintf("  max_parallel=%d", cap)
+	}
+	history.Log(o.Root, history.Entry{Event: history.Run, Run: o.RunID, Detail: runDetail})
 	disp.Start()
 	defer disp.Restore()
 
@@ -201,7 +215,7 @@ func Run(o Options) (int, error) {
 		go func(n int) {
 			defer wg.Done()
 			defer close(done[n])
-			out := runLane(o, n, sel, selected, deps[n], disp, done, outcomes, &mu, &interrupted, procs)
+			out := runLane(o, n, sel, selected, deps[n], sl, disp, done, outcomes, &mu, &interrupted, procs)
 			mu.Lock()
 			outcomes[n] = out
 			mu.Unlock()
@@ -226,7 +240,7 @@ func Run(o Options) (int, error) {
 	return code, nil
 }
 
-func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, disp *display.Display,
+func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl *slots, disp *display.Display,
 	done map[int]chan struct{}, outcomes map[int]*Outcome, mu *sync.Mutex, interrupted *bool, procs map[int]*os.Process) *Outcome {
 
 	skip := func(reason string) *Outcome {
@@ -279,6 +293,22 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, dis
 	if stop {
 		return skip("interrupted before start")
 	}
+	// Wait for a free slot (max_parallel); queued lanes don't hold one.
+	loggedQueue := false
+	if !sl.acquire(n, func(ahead int) {
+		disp.Set(n, func(v *display.LaneView) { v.State, v.QueuePos, v.WaitingOn = display.Queued, ahead, nil })
+		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
+			l.State, l.WaitingOn, l.Reason = status.Queued, []int{}, fmt.Sprintf("%d ahead", ahead)
+		})
+		if !loggedQueue {
+			loggedQueue = true
+			info, _ := lane.ReadScript(o.Root, n)
+			history.Log(o.Root, history.Entry{Event: history.Queued, Lane: n, Job: info.Job, Run: o.RunID, Detail: fmt.Sprintf("%d ahead", ahead)})
+		}
+	}) {
+		return skip("interrupted before start")
+	}
+	defer sl.release()
 
 	info, _ := lane.ReadScript(o.Root, n)
 	cmd := exec.Command("bash", lane.Script(o.Root, n))

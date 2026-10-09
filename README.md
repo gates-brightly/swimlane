@@ -228,7 +228,7 @@ stops swim with instructions to update it.
 | `swim init` | Set up the repo: config entry, `.gitignore` block, `.swim/status.yml`. |
 | `swim new N "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id. |
 | `swim plan [N\|JOB ...] [--rerun]` | Dry run in Terraform style (`[+]` run, `[~]` retry, `[+/-]` rerun, `[-]` skip), shown as a dependency tree with guard flags. |
-| `swim all [--rerun]` | Run every pending job that hasn't passed yet. Offers to add lanes if scripts exist beyond the configured count. |
+| `swim all [--rerun] [--parallel N]` | Run every pending job that hasn't passed yet, at most N lanes at once if set. Offers to add lanes if scripts exist beyond the configured count. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they already passed. A job id pins the run to exactly that job. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane, from `.swim/status.yml`. |
 | `swim log [N\|JOB] [--all] [--full] [--raw]` | A lane's log (`--all` adds its archives), a job's rounds, or with no argument the project log; rendered on a terminal. |
@@ -311,6 +311,7 @@ defaults:
 repos:
   /path/to/your-repo:                    # git toplevel; overrides defaults
     lanes: 6
+    max_parallel: 8                      # lanes running at once (default unlimited)
     deps: {2: [1], 4: [2, 3]}            # ordering that holds every round
 ```
 

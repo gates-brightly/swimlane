@@ -25,6 +25,7 @@ type Display struct {
 	color bool
 	title func(now time.Time) string
 	now   func() time.Time
+	cap   int
 
 	mu       sync.Mutex
 	views    []LaneView
@@ -41,6 +42,7 @@ type Options struct {
 	Out   *os.File
 	Plain bool // force plain output
 	Title func(now time.Time) string
+	Cap   int // max_parallel; > 0 adds "running n/cap · queued m" to the title
 }
 
 // New prepares a display for lanes 1..len(views). Live mode needs a
@@ -52,6 +54,7 @@ func New(o Options, views []LaneView) *Display {
 		color: ui.ColorEnabled(o.Out) && !o.Plain,
 		title: o.Title,
 		now:   time.Now,
+		cap:   o.Cap,
 		views: views,
 	}
 	if d.title == nil {
@@ -233,6 +236,11 @@ func transition(a, b LaneView) string {
 	switch b.State {
 	case Waiting:
 		return WaitingText(b.WaitingOn)
+	case Queued:
+		if a.State == Queued {
+			return "" // position changes aren't worth a line each
+		}
+		return fmt.Sprintf("queued (%d ahead)", b.QueuePos)
 	case Running:
 		return "started: " + b.Round
 	case Passed:
@@ -255,7 +263,20 @@ func (d *Display) setRegionLocked() {
 
 // drawLocked repaints the panel without moving the output cursor.
 func (d *Display) drawLocked() {
-	lines := RenderPanel(d.title(d.now()), d.views, d.cols, d.now(), d.color)
+	title := d.title(d.now())
+	if d.cap > 0 {
+		running, queued := 0, 0
+		for _, v := range d.views {
+			switch v.State {
+			case Running:
+				running++
+			case Queued:
+				queued++
+			}
+		}
+		title += fmt.Sprintf(" · running %d/%d · queued %d", running, d.cap, queued)
+	}
+	lines := RenderPanel(title, d.views, d.cols, d.now(), d.color)
 	var b strings.Builder
 	b.WriteString("\x1b7") // save cursor
 	for i, l := range lines {

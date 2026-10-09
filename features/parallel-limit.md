@@ -1,6 +1,6 @@
 # Limit on parallel lanes
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -63,14 +63,21 @@ defaults:
 - **Config:** `Config.MaxParallel int` (`max_parallel`), validated `>= 0`. It
   is recorded in the `run` event of `.swim.log`.
 
-## Open questions
+## Decisions
 
-1. **Separate caps per kind of work** (`# Pool: aws` with
-   `pools: {aws: 4}`)? It overlaps with [resource-locks.md](resource-locks.md):
-   a lock is a pool of size 1. Recommend shipping the global cap first, then
-   deciding whether pools are really a generalisation of locks.
-2. **Ctrl-C:** do queued lanes count as skipped or interrupted? Recommend
-   skipped, the same as lanes that hadn't started today.
+1. **Global cap only.** Pools (`# Pool: aws`) are not built; resource locks
+   ship as exclusive locks. Revisit pools if both prove too coarse.
+2. **Ctrl-C:** queued lanes count as **skipped** ("interrupted before start"),
+   the same as lanes that hadn't started.
+3. **Config:** `max_parallel` is a pointer in config so a repo section can set
+   `0` (unlimited) over a non-zero default. The cap is recorded in the `run`
+   event (`max_parallel=N`), and each queued lane gets a `queued` event in
+   `.swim.log` and `state: queued` in status.yml.
+4. **Display:** the existing pre-start state was renamed `starting`; `queued`
+   now means "waiting for a slot", shown as `queued (#n)` in the panel and
+   `queued (n ahead)` once in plain mode.
+5. **Audit:** dag99's audit reports peak concurrency for every run, and fails
+   it when `E2E_MAX_PARALLEL` is exceeded (the `dag99-parallel` scenario).
 
 ## Testing
 

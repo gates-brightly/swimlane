@@ -1033,3 +1033,74 @@ func TestRunID(t *testing.T) {
 		t.Fatalf("direct run id: %v", ms)
 	}
 }
+
+func TestParallelLimit(t *testing.T) {
+	r := newRepo(t, "")
+	r.mustSwim("config", "--lanes", "10")
+	for n := 1; n <= 10; n++ {
+		r.script(n, fmt.Sprintf("sleeper %d", n), `run "sleep" sleep 1`)
+	}
+	c := r.cmd(bin, "all", "--parallel", "3", "--plain")
+	var out bytes.Buffer
+	c.Stdout, c.Stderr = &out, &out
+	start := time.Now()
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error)
+	go func() { done <- c.Wait() }()
+	most := 0
+	tick := time.NewTicker(25 * time.Millisecond)
+	defer tick.Stop()
+loop:
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("run: %v\n%s", err, out.String())
+			}
+			break loop
+		case <-tick.C:
+			pids, _ := filepath.Glob(filepath.Join(r.root, ".swim", "lane*.pid"))
+			most = max(most, len(pids))
+		}
+	}
+	took := time.Since(start)
+	if most > 3 || most < 2 {
+		t.Errorf("at most 3 lanes should run at once; saw %d", most)
+	}
+	if took < 3500*time.Millisecond || took > 9*time.Second {
+		t.Errorf("10 one-second lanes, 3 at a time, should take about 4s; took %s", took)
+	}
+	s := out.String()
+	contains(t, "output", s, "queued (", "swim summary")
+	for n := 1; n <= 10; n++ {
+		if st := r.status().Get(n).State; st != status.Passed {
+			t.Errorf("swim %d = %s", n, st)
+		}
+	}
+	contains(t, ".swim.log", r.mustSwim("log"), "max_parallel=3", "queued       swim ")
+
+	// Config sets the default; --parallel 0 lifts it.
+	cfg := filepath.Join(strings.TrimPrefix(envOf(r, "XDG_CONFIG_HOME"), ""), "swim", "config.yml")
+	data, _ := os.ReadFile(cfg)
+	os.WriteFile(cfg, []byte(strings.Replace(string(data), "defaults:\n", "defaults:\n  max_parallel: 2\n", 1)), 0o644)
+	contains(t, "config", r.mustSwim("config"), "max_parallel: 2")
+	start = time.Now()
+	r.mustSwim("all", "--rerun", "--parallel", "0", "--plain")
+	if took := time.Since(start); took > 3*time.Second {
+		t.Errorf("--parallel 0 should run all 10 at once; took %s", took)
+	}
+	if out, code := r.swim("all", "--parallel", "-1"); code == 0 || !strings.Contains(out, "--parallel") {
+		t.Errorf("--parallel -1: %d %s", code, out)
+	}
+}
+
+func envOf(r *repo, key string) string {
+	for _, kv := range r.env {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == key {
+			return v
+		}
+	}
+	return ""
+}

@@ -511,6 +511,42 @@ func cmdAudit([]string) error {
 			len(lats), lats[len(lats)/2].x, lats[int(float64(len(lats))*.95)].x, lats[len(lats)-1].x, lats[len(lats)-1].n)
 	}
 
+	// Concurrency: the most lanes of this run running at the same instant.
+	// E2E_MAX_PARALLEL (a scenario's --parallel) makes going over it a failure.
+	type edge struct {
+		t   float64
+		inc int
+	}
+	var evs []edge
+	for n, nd := range nodes {
+		if cur[n] && n != me && nd.ended {
+			evs = append(evs, edge{nd.start, 1}, edge{nd.end, -1})
+		}
+	}
+	sort.Slice(evs, func(a, b int) bool {
+		if evs[a].t != evs[b].t {
+			return evs[a].t < evs[b].t
+		}
+		return evs[a].inc < evs[b].inc // an end before a start at the same instant
+	})
+	peak, live := 0, 0
+	for _, e := range evs {
+		live += e.inc
+		peak = max(peak, live)
+	}
+	limit := os.Getenv("E2E_MAX_PARALLEL")
+	if limit != "" {
+		lim, _ := strconv.Atoi(limit)
+		verdict := "ok"
+		if peak > lim {
+			verdict = "OVER"
+			bad = append(bad, fmt.Sprintf("%d lanes ran at once, over the limit of %d", peak, lim))
+		}
+		fmt.Printf("concurrency: at most %d lanes running at once (limit %d)  %s\n", peak, lim, verdict)
+	} else {
+		fmt.Printf("concurrency: at most %d lanes running at once\n", peak)
+	}
+
 	// Makespan against the critical path by recorded durations.
 	endOf := func(nd done) float64 {
 		if nd.ended {

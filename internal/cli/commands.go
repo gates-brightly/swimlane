@@ -224,12 +224,13 @@ func cmdNew(args []string) error {
 type runFlags struct {
 	plain, rerun bool
 	runID        string
+	parallel     string
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun},
-		strs:  map[string]*string{"run-id": &rf.runID},
+		strs:  map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel},
 	}.parse(args)
 }
 
@@ -246,6 +247,14 @@ func cmdRun(args []string) error {
 // every pending lane.
 func runLanes(rest []string, rf runFlags) error {
 	plain, rerun := rf.plain, rf.rerun
+	var parallel *int
+	if rf.parallel != "" {
+		n, err := strconv.Atoi(rf.parallel)
+		if err != nil || n < 0 {
+			return usagef("--parallel needs 0 (unlimited) or a positive number, got %q", rf.parallel)
+		}
+		parallel = &n
+	}
 	if rf.runID != "" && !lane.ValidRunID(rf.runID) {
 		return usagef("--run-id %q: use 8-64 letters, digits, '.', '_' or '-' (not all digits)", rf.runID)
 	}
@@ -279,7 +288,7 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	code, err := launcher.Run(launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
-		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID,
+		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
 	})
 	if err != nil {
 		return err

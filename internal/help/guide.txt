@@ -336,7 +336,7 @@ READING RESULTS
       branch: <branch>@<sha>
       lanes:
         - lane: 1
-          state: running   # idle|waiting|running|passed|failed|skipped|interrupted
+          state: running   # idle|waiting|queued|running|passed|failed|skipped|interrupted
           pending: <Round: line of lane.N.sh on disk, "" if stub/none>
           pending_job: <Job: id of lane.N.sh on disk>
           round: <round of the last or current run>
@@ -360,6 +360,7 @@ READING RESULTS
 CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       defaults:
         lanes: 4                         # lanes are swim 1..lanes
+        max_parallel: 8                  # lanes running at once (0 = unlimited, the default)
         header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
         runtime: node --version          # recorded as runtime version
         toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null

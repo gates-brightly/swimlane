@@ -21,11 +21,12 @@ const DefaultLanes = 4
 // Settings is one block of configuration, either `defaults` or a repo entry.
 // Zero values mean "not set" so a repo block can override field by field.
 type Settings struct {
-	Lanes     int           `yaml:"lanes,omitempty"`
-	HeaderEnv []string      `yaml:"header_env,omitempty"`
-	Runtime   string        `yaml:"runtime,omitempty"`
-	Toolchain string        `yaml:"toolchain,omitempty"`
-	Deps      map[int][]int `yaml:"deps,omitempty"`
+	Lanes       int           `yaml:"lanes,omitempty"`
+	HeaderEnv   []string      `yaml:"header_env,omitempty"`
+	Runtime     string        `yaml:"runtime,omitempty"`
+	Toolchain   string        `yaml:"toolchain,omitempty"`
+	Deps        map[int][]int `yaml:"deps,omitempty"`
+	MaxParallel *int          `yaml:"max_parallel,omitempty"` // lanes running at once; 0 = unlimited
 }
 
 // File is the on-disk shape of config.yml.
@@ -161,12 +162,18 @@ func (c *Config) merge(r Settings) {
 	if r.Deps != nil {
 		c.Deps = r.Deps
 	}
+	if r.MaxParallel != nil {
+		c.MaxParallel = r.MaxParallel
+	}
 }
 
 // Validate checks lane numbers are within 1..Lanes and deps form no cycle.
 func (c *Config) Validate() error {
 	if c.Lanes < 1 || c.Lanes > 99 {
 		return fmt.Errorf("lanes must be 1..99, got %d", c.Lanes)
+	}
+	if c.MaxParallel != nil && *c.MaxParallel < 0 {
+		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)
 	}
 	for lane, deps := range c.Deps {
 		if !c.ValidLane(lane) {
@@ -189,6 +196,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("deps: cycle %s", strings.Join(parts, " -> "))
 	}
 	return nil
+}
+
+// Parallel is the cap on lanes running at once (0 = unlimited).
+func (c *Config) Parallel() int {
+	if c.MaxParallel == nil {
+		return 0
+	}
+	return *c.MaxParallel
 }
 
 // ValidLane reports whether n is a lane number for this repo.

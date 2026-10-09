@@ -47,7 +47,7 @@ var Commands = map[string]string{
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
-	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID]
+	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N]
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -72,6 +72,11 @@ var Commands = map[string]string{
       summary still prints.
     - Ends with a per-lane summary: result, exit code, counts, failed steps.
   Exits 0 only if every lane passed.
+  --parallel N  run at most N lanes at once (0 = unlimited; default: config
+                max_parallel, else unlimited). A lane whose dependencies have
+                passed waits as "queued" for a free slot; slots go to the lane
+                with the longest chain of lanes below it, then the lowest
+                number. Queued lanes interrupted by Ctrl-C are skipped.
   --run-id ID   use ID as this run's id (e.g. a CI pipeline id); by default
                 each run gets r-<utc>-<hex>. Lanes see it as $SWIM_RUN, and the
                 lanes in the run as $SWIM_RUN_LANES.
@@ -81,7 +86,7 @@ var Commands = map[string]string{
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
 `,
-	"all": `swim all [--rerun] [--plain] [--run-id ID]
+	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
