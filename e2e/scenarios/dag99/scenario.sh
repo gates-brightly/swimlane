@@ -7,7 +7,16 @@ LANES=99
 DAG99_DIR="$E2E/scenarios/dag99"   # fixed, so scenarios that source this file reuse it
 
 scenario_setup() {
-  cp "$DAG99_DIR"/lanes/lane.*.sh . && e2etool gen "$DAG99_DIR"
+  cp "$DAG99_DIR"/lanes/lane.*.sh . && e2etool gen "$DAG99_DIR" && dag99_lint
+}
+
+# The scenario's own lanes must lint clean (warnings too), which keeps
+# them honest and swim lint exercised on 99 real scripts.
+dag99_lint() {
+  "$SWIM" lint --strict > "$OUT/lint.txt" 2>&1 && return 0
+  echo "  swim lint --strict failed on the dag99 lanes:"
+  sed 's/^/    /' "$OUT/lint.txt"
+  return 1
 }
 
 scenario_check() {

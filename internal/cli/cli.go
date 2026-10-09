@@ -42,6 +42,8 @@ func init() {
 		"note":     {run: cmdNote},
 		"log":      {run: cmdLog},
 		"lock":     {run: cmdLock},
+		"lint":     {run: cmdLint},
+		"doctor":   {run: cmdDoctor},
 		"help":     {run: cmdHelp},
 		// Called by the lane script library, not by people.
 		"_start":  {run: cmdStart, hidden: true},

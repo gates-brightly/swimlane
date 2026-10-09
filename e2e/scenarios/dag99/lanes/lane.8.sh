@@ -45,7 +45,9 @@ export RUN_ID
 
 H=$D/headers
 export H
+# swim:lint-ignore stage-order nothing to snapshot or check: HEAD probes into a scratch dir
 stage change
+# swim:lint-ignore destructive scratch dir under .scenario/, recreated every run
 gate "reset $H" bash -c 'rm -rf "$H" && mkdir -p "$H"'
 run "simulated work (4ms)" sleep 0.004
 head_of() { # head_of <name> <url>

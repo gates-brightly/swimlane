@@ -245,6 +245,8 @@ stops swim with instructions to update it.
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
 | `swim config [KEY [VALUE]] [--repo]` | Show the effective config (`--path`: its location), or get/set `chime`, `chime_style`, `chime_min_s` or `lanes` (`--lanes N` still works), keeping the file's comments. Writes go under `defaults:`, or this repo's section with `--repo`. |
+| `swim lint [N\|JOB ...] [--strict] [--yaml]` | Check lane scripts (header, `set -e`, `lane_init`, `summary`, stages, bash 3.2, guards, blocked commands, secrets, dependencies); exits 1 on errors (`--strict`: warnings too). `swim run` refuses to start on `set -e` and `lane_init` errors. |
+| `swim doctor [--fix] [--strict] [--yaml]` | Check the environment: binary OS/CPU, PATH, config, `.gitignore` block, tracked lane scripts, stale pid files, toolchain, git, `.swim.lock`. `--fix` only rewrites swim's `.gitignore` block and removes stale pid files. |
 | `swim lock [--upgrade]` | Show swim's version and the repo's `.swim.lock`, or move the lock up a breaking version. |
 | `swim step -- cmd ...` | Run and log one command (what `run` calls). |
 | `swim lib` | Print the bash library lane scripts load. |

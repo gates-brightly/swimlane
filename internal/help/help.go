@@ -256,6 +256,75 @@ var Commands = map[string]string{
   --yaml   the round parsed, as data (schema swim.log/v1): the latest round,
            every round with --all, or a job's rounds. See READING RESULTS.
 `,
+	"lint": `swim lint [N|JOB ...] [--strict] [--yaml]
+
+  Check lane scripts before they run; changes nothing. With no lanes, lints
+  every lane script (stubs skipped). Each finding is printed as
+      lane.2.sh:5  error  <what is wrong>  [code]
+                          fix: <how to fix it>
+  then a summary line ("2 errors, 1 warning"). Exit 1 on any error; with
+  --strict (for CI), on warnings too. --yaml prints a swim.lint/v1 document.
+
+  Checks [code] (level):
+    round (error)          no # Round: line
+    placeholder (error)    a template placeholder left in
+    after (error)          # After: names an unknown lane or job, or itself
+    cycle (error)          lanes wait on each other in a cycle
+    set-e (error)          set -e / set -o errexit (failed checks must go on)
+    lane-init (error)      no lane_init, or lane_init with another lane's number
+    summary (warn)         summary missing or not the last line
+    stage (error)          an unknown stage name (the round would stop there)
+    stage-order (warn)     stages out of order, repeated, or change first
+    bash4 (warn)           declare -A, mapfile, ${x,,}, |&, coproc, ... (macOS
+                           has bash 3.2)
+    guard-unlisted (warn)  a guard flag used but not listed in # Guards:
+    guard-unused (warn)    a # Guards: flag no guard uses
+    destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
+    blocked (error)        git push/commit/pull or a blocked_commands pattern
+    secret-echo (warn)     echo/printf of a secret variable
+    header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
+    cross-lane (info)      uses a path another lane writes (> path, -o path,
+                           cp/mv/tee) without either waiting on the other
+    syntax                 an older (warn) or newer (error) script syntax
+    lint-ignore            a malformed disable comment
+
+  Disable comments need a check code and a reason:
+    cmd   # swim:lint-ignore CODE[,CODE] reason    this line
+    # swim:lint-ignore CODE reason                 the next line
+    # swim:lint-ignore-file CODE reason            the whole script
+  Without a reason the comment is an error and disables nothing.
+
+  swim run lints the lanes it is about to run and refuses to start (exit 2)
+  on set-e and lane-init errors; blocked commands, After: and cycles it
+  refuses on its own.
+`,
+	"doctor": `swim doctor [--fix] [--strict] [--yaml]
+
+  Check swim's environment and this repo; prints findings like swim lint
+  and exits 1 on any error (--strict: on warnings too; --yaml: a
+  swim.doctor/v1 document). Checks [code] (level):
+    binary-platform (error)   this swim, bin/swim or a swim on PATH is built
+                              for another OS/CPU (read from its ELF/Mach-O
+                              header; nothing is run)
+    path-missing (warn)       no swim on PATH
+    path-multiple (warn)      more than one swim on PATH: which runs, which hide
+    swim-bin (warn)           $SWIM_BIN, or the first swim on PATH, isn't this one
+    config-parse (error)      the config file doesn't load
+    config-repo (warn)        no config section for this repo (swim init)
+    lanes-beyond (warn)       lane scripts above the configured lane count
+    gitignore (warn)          swim's .gitignore block missing or out of date
+    tracked (warn)            git tracks lane scripts, .lane*.rc or .swim/
+    stale-pid (warn)          .swim/laneN.pid naming a process that is gone
+    toolchain (error)         config toolchain fails in bash -c (30s limit)
+    git (error)               git missing, or not inside a git repo
+    header-env-secret (warn)  header_env lists a secret variable
+    lock (info/warn)          .swim.lock missing (info), invalid or for
+                              another breaking version (warn)
+
+  --fix applies only safe local repairs, then checks again: it rewrites
+  swim's .gitignore block and removes stale pid files. It never edits config,
+  lane scripts or git.
+`,
 	"lock": `swim lock [--upgrade]
 
   swim's version is <breaking>.<YYYYMMDD> (swim --version), e.g. 1.20261009:
@@ -306,7 +375,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 func Full() string {
 	s := Guide + "\nCOMMAND DETAIL\n"
-	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib", "archive", "stub", "note", "lock"} {
+	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib", "archive", "stub", "note", "lock", "lint", "doctor"} {
 		s += "\n" + Commands[order]
 	}
 	return s

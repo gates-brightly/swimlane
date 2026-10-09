@@ -6,7 +6,7 @@
 DESCRIPTION="dag99 with locks from a pool of five: sharers never overlap, lock waits never skip a lane"
 
 scenario_setup() {
-  cp "$DAG99_DIR"/lanes/lane.*.sh . && e2etool gen "$DAG99_DIR" && e2etool lock-lanes
+  cp "$DAG99_DIR"/lanes/lane.*.sh . && e2etool gen "$DAG99_DIR" && e2etool lock-lanes && dag99_lint
 }
 
 scenario_check() {

@@ -1,6 +1,6 @@
 # swim lint and swim doctor
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -45,40 +45,80 @@ error:
 
 ## `swim lint` checks
 
-| check | level |
-|---|---|
-| `# Round:` missing, or a template placeholder left in | error |
-| `# After:` refers to an unknown lane or job, a cycle, or the lane itself | error (`swim run` refuses these today; lint reports them earlier) |
-| `set -e` / `set -o errexit` | error |
-| no `lane_init`, `lane_init` with the wrong lane number, or `summary` missing or not last | error / warn |
-| bash 4 features: `declare -A`, `mapfile`, `readarray`, `${x,,}`, `${x^^}`, `\|&`, `coproc` | warn |
-| a guard flag used in `guard` but not listed in the `# Guards:` header, or the other way round | warn |
-| a destructive-looking command (`delete`, `destroy`, `rm -rf`, `drop`) not inside a `guard` block | warn |
-| a blocked command (see [blocked-commands.md](blocked-commands.md)) | error |
-| a variable named in config `secret_env` echoed directly (see [secret-masking.md](secret-masking.md)) | warn |
-| **reads another lane's output without depending on it** (heuristic: a path written in lane A, e.g. `> path`, `-o path` or `cp … path`, read in lane B, which doesn't depend on A) | warn |
+Each finding carries a code in brackets (`[set-e]`), which disable comments
+name.
 
-The last check is a heuristic and can't be complete. It reports what it saw
-(`lane.1.sh:44 writes $D/combined.html`) so a person can judge.
+| check | code | level |
+|---|---|---|
+| `# Round:` missing | `round` | error |
+| a template placeholder left in (`{{...}}`, `<round goal>`, the template's "replace with a read-only describe/list command" step) | `placeholder` | error |
+| `# After:` refers to an unknown lane or job, or the lane itself (via `launcher.ResolveDeps`) | `after` | error (`swim run` refuses these too) |
+| lanes waiting on each other in a cycle (`# After:` plus config `deps`) | `cycle` | error (`swim run` refuses these too) |
+| `set -e` / `set -o errexit` / `set -euo pipefail` / a `-e` shebang | `set-e` | error |
+| no `lane_init`, `lane_init` without a number, or with another lane's number | `lane-init` | error |
+| `summary` missing or not last (`summary` then `exit` is fine) | `summary` | warn |
+| an unknown stage name (`stage deploy`; the round stops there at runtime) | `stage` | error |
+| stages out of order, repeated, or `change` before any `snapshot`/`check` | `stage-order` | warn |
+| bash 4 features: `declare -A`, `mapfile`, `readarray`, `${x,,}`, `${x^^}`, `\|&`, `&>>`, `coproc`, negative indexes, namerefs | `bash4` | warn |
+| a guard flag used in `guard` but not listed in `# Guards:` | `guard-unlisted` | warn |
+| a flag listed in `# Guards:` that no `guard` uses | `guard-unused` | warn |
+| a destructive-looking command (`delete`, `destroy`, `drop`, `rm -r`) outside the `then` branch of an `if guard ...` block (or `guard ... &&`) | `destructive` | warn |
+| a blocked command (see [blocked-commands.md](blocked-commands.md)), via `policy.ScanScript` | `blocked` | error (`swim run` refuses these too) |
+| `echo`/`printf` of a variable named in `secret_env`, or matching the `secret_env_auto` patterns (see [secret-masking.md](secret-masking.md)) | `secret-echo` | warn |
+| a header value swim ignores (`lane.Info.Problems`: a bad `Timeout`, `Step-Timeout` or `Locks` name) | `header` | warn |
+| **uses a path another lane writes without either waiting on the other** (heuristic: a path written in lane A with `> path`, `-o path`, `cp`/`mv … path` or `tee path`, appearing in lane B's code, with no dependency either way) | `cross-lane` | info |
+| the script's syntax is older (migrated by the next swim command) or newer than this swim reads | `syntax` | warn / error |
+| a malformed disable comment (no reason: error; unknown code: warn) | `lint-ignore` | error / warn |
+
+The cross-lane check is a heuristic and can't be complete. It reports what it
+saw (`uses shared/report.json, which lane.2.sh:23 writes, but doesn't wait for
+swim 2`) so a person can judge.
+
+The scans work on a view of the script with comments, quoted strings and
+heredoc bodies told apart (`internal/lint/shell.go`), so prose like
+`# Do not use set -e` or a step like `run "x" bash -c 'mapfile ...'` (a
+sub-shell, not the lane script) doesn't trip them.
+
+### Disable comments
+
+```
+rm -rf "$TMP"   # swim:lint-ignore destructive scratch dir this round made   (this line)
+# swim:lint-ignore bash4 runs only on the Linux CI box                      (the next line)
+# swim:lint-ignore-file cross-lane reads yesterday's export, not lane 1's   (the whole script)
+```
+
+- A trailing comment applies to its own line. A comment on a line of its own
+  applies to the next line that isn't blank or another disable comment (which
+  may be a header line, e.g. `# After:`).
+- `-file` applies to the whole script; it's the only way to silence a finding
+  with no line (e.g. no `summary`).
+- Several codes: `# swim:lint-ignore bash4,destructive <reason>`.
+- The reason is required. Without one (or without a code) the comment is an
+  `error` and disables nothing; an unknown code is a `warn`.
 
 ## `swim doctor` checks
 
-| check | level |
-|---|---|
-| this binary's OS and architecture match the host (catches an "exec format error" before it happens, for `bin/swim` and every `swim` on PATH) | error |
-| more than one `swim` on PATH: list them in order, and which wins | warn |
-| `$SWIM_BIN` or the `swim` that lanes will use is different from the one running doctor | warn |
-| the config file parses; this repo has a section; lane scripts exist beyond `lanes` | error / warn |
-| swim's `.gitignore` block is out of date with the current patterns, or lane scripts are tracked by git | warn |
-| `.swim.log` is git-ignored (it's meant to be committed) | warn |
-| stale `.swim/laneN.pid` files with no process | warn (fix: `swim status --rebuild`) |
-| toolchain in config fails to load (`nvm use` etc.) | error |
-| git missing, or not a git repo | error |
+| check | code | level |
+|---|---|---|
+| this binary, `bin/swim` at the repo root, and every `swim` on PATH match the host's OS and architecture (read from ELF/Mach-O headers; a darwin/amd64 binary on Apple silicon is `info`: Rosetta) | `binary-platform` | error |
+| no `swim` on PATH | `path-missing` | warn |
+| more than one distinct `swim` on PATH: listed in order, which runs and which are hidden | `path-multiple` | warn |
+| `$SWIM_BIN`, or (unset) the first `swim` on PATH, is a different file from the one running doctor | `swim-bin` | warn |
+| the config file doesn't parse or validate | `config-parse` | error |
+| the config has no section for this repo | `config-repo` | warn |
+| lane scripts exist beyond `lanes` | `lanes-beyond` | warn |
+| swim's `.gitignore` block is missing or out of date with `internal/assets/gitignore.txt` | `gitignore` | warn (fixable) |
+| lane scripts, `.lane*.rc` or `.swim/` tracked by git (`git ls-files`, read-only) | `tracked` | warn |
+| stale `.swim/laneN.pid` files with no process | `stale-pid` | warn (fixable) |
+| the config `toolchain` fails in `bash -c` (30 s limit) | `toolchain` | error |
+| git missing, or not a git repo | `git` | error |
+| `header_env` lists a secret (decision 7 of [secret-masking.md](secret-masking.md)) | `header-env-secret` | warn |
+| `.swim.lock` missing (`info`), invalid, or pinning another breaking version (`warn`) | `lock` | info / warn |
 
-`swim doctor --fix` applies only safe local fixes:
+`swim doctor --fix` applies only safe local fixes, then runs the checks again:
 
-- rewrite swim's `.gitignore` block
-- remove stale pid files
+- rewrite swim's `.gitignore` block (the same merge as `swim init`)
+- remove stale pid files (re-checked just before removal)
 
 It never edits config outside the repo, never touches lane scripts, and never
 runs git writes.
@@ -99,25 +139,67 @@ runs git writes.
   pre-flight. Most already exist there, so this mostly consolidates.
   `swim new` could suggest `swim lint N` after writing a round.
 
-## Open questions
+## Decisions
 
-1. **Should `swim run` refuse to start on lint warnings?** Recommend no, only
-   errors, with `--strict` for CI.
-2. **Is the cross-lane read/write heuristic worth the false positives?**
-   Recommend shipping it as `info` first and promoting it if it proves useful.
-3. **Disabling checks:** per-check disable comments
-   (`# swim:lint-ignore set-e`)? Recommend yes, but require a reason after
-   the code.
+1. **`swim run` refuses on errors only**, never on warnings; `--strict` on
+   `swim lint` / `swim doctor` makes warnings fail too, for CI.
+2. **The cross-lane read/write heuristic ships as `info`**, which never
+   changes the exit code. Promote it if it proves useful.
+3. **Disable comments exist and need a reason**: `# swim:lint-ignore <code>
+   <reason>` (this line if trailing, else the next line) and
+   `# swim:lint-ignore-file <code> <reason>`. A reasonless comment is an error
+   and disables nothing.
+4. **The `.swim.log` check is dropped.** The spec had "`.swim.log` is
+   git-ignored (it's meant to be committed)", but a later product decision
+   git-ignores `.swim.log` by default (it's in swim's `.gitignore` block), so
+   doctor doesn't warn about it. Since `swim init --help` invites dropping
+   `.swim.log` from the block to commit the project log, a block without it
+   still counts as current (`--fix`, when the block is stale for another
+   reason, writes the standard block back).
+5. **The run pre-flight checks only what the launcher doesn't already
+   enforce**: `set-e` and `lane-init` errors, for the lanes about to run
+   (pending, not already passed unless `--rerun` or named). It prints the
+   findings and exits 2 before anything starts. Blocked commands, `After:`
+   and cycles stay with the launcher, so nothing is reported twice. An
+   unknown stage is left to its runtime STOP, which existing behaviour and
+   tests rely on. It's a separate call in `runLanes` (`lintPreflight` in
+   `internal/cli/lint.go`).
+6. **Levels**: a missing or wrong `lane_init` is an error (the round would
+   claim another lane's log or none); `summary` problems are warnings (the
+   exit trap still records a final state); an unknown stage is an error (the
+   round stops there), order problems are warnings (the library records WARN).
+7. **Doctor additions**: `.swim.lock` (missing is `info`, mismatched or
+   invalid is `warn`), `header_env` secrets, git-tracked lane scripts, and
+   `path-missing`. `--fix` re-runs the checks and reports what's left.
+8. **Output**: text is `file:line  level  message  [code]` with the fix on
+   the next line, then `N errors, N warnings[, N infos]`. `--yaml` prints one
+   document: `schema` (`swim.lint/v1` or `swim.doctor/v1`), counts and a
+   `findings` list of `{level, file, line, code, message, fix}`.
+9. **`swim lint` is read-only**: it resolves the repo without migrating logs
+   or lane scripts (a syntax 1 script is reported as `[syntax]`, not
+   rewritten). `swim new` ends with `then check it: swim lint N`.
 
 ## Testing
 
-- **Unit:** one fixture script per check, each producing exactly the expected
-  finding, and a clean script producing none; ELF/Mach-O fixtures for the
-  architecture check.
-- **Go e2e:** `swim lint` exit codes; `swim doctor` in a scratch repo with a
-  deliberately stale `.gitignore` block, a stale pid file and a Linux-built
-  binary on Mac (or the other way round, using a fixture binary); `--fix`
-  repairs only the safe items.
-- **Scenarios:** run `swim lint` over every scenario's generated lanes as part
-  of setup. The suite's own lanes must lint clean, which also keeps the
-  scenarios honest.
+- **Unit** (`internal/lint`): a clean fixture script produces no findings;
+  one fixture per check produces exactly its finding (code, level, line);
+  disable comments are honoured (same line, next line, file, several codes)
+  and rejected without a reason or with an unknown code; the comment/quote/
+  heredoc scanner. (`internal/doctor`): `Platform` on tiny Go programs
+  cross-compiled at test time for linux/amd64, linux/arm64, darwin/amd64 and
+  darwin/arm64, plus a script and junk; a wrong-platform `swim` first on
+  PATH; the `.gitignore` block; stale pid files and `Fix`; `header_env`
+  secrets; the toolchain; the lock; lanes beyond.
+- **Go e2e** (`internal/e2e/lint_test.go`): `swim lint` exit codes,
+  `--strict`, `--yaml`, named lanes, read-only on a syntax 1 script; the run
+  pre-flight (exit 2, nothing runs, disable comment with and without a
+  reason); `swim doctor` in a scratch repo with a stale `.gitignore` block, a
+  stale pid file, a git-tracked lane script and a cross-compiled
+  wrong-platform `swim` first on PATH; `--fix` repairs only the block and the
+  pid file (config, lane scripts, the binary and the git index untouched); a
+  broken config, a repo without a section, a `header_env` secret and a
+  failing toolchain.
+- **Scenarios:** `dag99` (and the scenarios built on it, plus `dag99-locks`)
+  runs `swim lint --strict` over its 99 generated lanes during setup; they
+  lint clean. The `blocked` scenario's lanes deliberately contain blocked
+  commands and `flaky`'s aren't checked in setup.

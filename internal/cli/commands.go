@@ -295,6 +295,7 @@ func cmdNew(args []string) error {
 	fmt.Printf("wrote %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, goal)
 	fmt.Printf("job: %s\n", job)
 	fmt.Printf("edit its steps, then the operator runs: swim run %d   (or pinned: swim run %s)\n", n, job)
+	fmt.Printf("check it after editing: swim lint %d\n", n)
 	return nil
 }
 
@@ -371,6 +372,10 @@ func runLanes(rest []string, rf runFlags) error {
 		lanes = append(lanes, n)
 	}
 	if err := refreshStatus(root, cfg); err != nil {
+		return err
+	}
+	// Pre-flight: lint's error-level checks the launcher doesn't enforce (lint.go).
+	if err := lintPreflight(root, cfg, lanes, rerun); err != nil {
 		return err
 	}
 	o := launcher.Options{

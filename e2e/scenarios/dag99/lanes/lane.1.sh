@@ -48,6 +48,7 @@ stage check
 gate "curl available" curl --version
 gate "e2etool available" e2etool version
 stage change
+# swim:lint-ignore destructive scratch dir under .scenario/, recreated every run
 gate "reset $P" bash -c 'rm -rf "$P" && mkdir -p "$P"'
 fetch() { # fetch <name> <url>
   run "fetch $1" curl -fsSL --max-time 20 -A "swim-demo/$SWIM_JOB" -o "$P/$1.html" -w '%{http_code} %{size_download}B %{url_effective}\n' "$2"
