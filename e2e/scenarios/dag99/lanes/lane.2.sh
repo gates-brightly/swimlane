@@ -5,11 +5,11 @@
 # Lane:  swim 2    Written: 2026-10-09
 #
 # Goal:
-#   Convert swim 1's combined.html to combined.md (stdlib-only converter). ~0.3s.
+#   Convert swim 1's combined.html to combined.md (stdlib-only converter). ~6ms.
 #
 # Steps:
 #   0. Clear this node's done marker; gate: every parent (swim 1) finished, for this run, before this node started
-#   1. Private copy of the input; simulated work (0.3s); convert
+#   1. Private copy of the input; simulated work (6ms); convert
 #   2. Gate: one H1 per page, no leftover tags
 #   z. E2E_FAIL toggle; on success write .scenario/dag/nodes/2.done
 #
@@ -45,7 +45,7 @@ export RUN_ID
 IN=$D/input-2.$SWIM_JOB.html
 export IN
 gate "copy input to $IN" cp "$D/combined.html" "$IN"
-run "simulated work (0.3s)" sleep 0.3
+run "simulated work (6ms)" sleep 0.006
 gate "convert html -> markdown" env OUT="$D" e2etool markdown
 gate "one H1 per source page" bash -c 'h=$(grep -c "^# " "$D/combined.md"); s=$(grep -c "<section data-source" "$IN"); echo "h1=$h sections=$s"; test "$h" -ge "$s" -a "$h" -gt 0'
 gate "no leftover HTML tags" bash -c '! grep -nE "</?(div|p|span|section|body|html)[ >]" "$D/combined.md"'

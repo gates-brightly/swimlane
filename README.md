@@ -40,11 +40,11 @@ This builds `swim` into `$GOBIN`, or into `$(go env GOPATH)/bin` (usually
 
 ```sh
 export PATH="$(go env GOPATH)/bin:$PATH"   # add to ~/.zshrc or ~/.bashrc
-swim --version                             # e.g. swim 1.20261009
+swim --version                             # e.g. swim 2.20261009
 ```
 
-- **Pin a version:** replace `@latest` with a tag (`@v1.0.0`) or a commit
-  (`@64a0e07`).
+- **Pin a version:** replace `@latest` with a release tag (`@v0.2.20261009`)
+  or a commit (`@64a0e07`).
 - **Update:** run the same `go install` command again.
 - **Uninstall:** `rm "$(go env GOPATH)/bin/swim"`.
 
@@ -62,7 +62,7 @@ make link        # build bin/swim and symlink it into ~/.local/bin (LINK_DIR=...
 ### Versions
 
 `swim --version` prints `<breaking>.<YYYYMMDD>`, for example
-`swim 1.20261009 (64a0e07)`:
+`swim 2.20261009 (64a0e07)`:
 
 - the **breaking** number changes only when lane scripts, logs or swim's
   state change incompatibly;
@@ -295,6 +295,18 @@ runner are checked against it.
 - **Breaking changes:** bump `Breaking` in `internal/version/version.go`, and
   add a line to the "Breaking versions" list in `swim lock --help`
   (`internal/help/help.go`).
+- **Releases** are git tags `v0.<breaking>.<YYYYMMDD>`, e.g. `v0.2.20261009`
+  for swim `2.20261009`. Go requires a `/vN` module path for majors above 1,
+  so swim's breaking number lives in the tag's minor. A release is a tag on a
+  commit where `make check` passes:
+
+  ```sh
+  git tag -a v0.2.$(date -u +%Y%m%d) -m "swim 2.$(date -u +%Y%m%d)"
+  git push origin main --follow-tags
+  ```
+
+  `go install …@latest` then picks the newest tag, and `swim --version` reads
+  its date from the tag.
 
 Layout: `cmd/swim` (entry point), `internal/cli` (commands),
 `internal/launcher` (runs lanes, dependencies, plan), `internal/display`

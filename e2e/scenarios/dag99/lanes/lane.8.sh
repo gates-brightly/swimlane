@@ -10,7 +10,7 @@
 #
 # Steps:
 #   0. Clear this node's done marker; 
-#   1. Simulated work (0.2s); HEAD three sites (read-only)
+#   1. Simulated work (4ms); HEAD three sites (read-only)
 #   2. Gate: headers.md
 #   z. E2E_FAIL toggle; on success write .scenario/dag/nodes/8.done
 #
@@ -45,7 +45,7 @@ export RUN_ID
 H=$D/headers
 export H
 gate "reset $H" bash -c 'rm -rf "$H" && mkdir -p "$H"'
-run "simulated work (0.2s)" sleep 0.2
+run "simulated work (4ms)" sleep 0.004
 head_of() { # head_of <name> <url>
   run "HEAD $1" curl -sSI --max-time 15 -A "swim-demo/$SWIM_JOB" -o "$H/$1.txt" -w '%{http_code} %{url_effective}\n' "$2"
 }

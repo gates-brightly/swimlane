@@ -2,8 +2,8 @@
 # Offline stand-in for curl, put first on PATH by e2e/run.sh.
 # GET  -> copies $E2E_FIXTURES/pages/<site>.html to -o
 # -I   -> writes canned 200 response headers to -o
-# Each request sleeps $E2E_CURL_DELAY seconds (default 0.3) to mimic network time;
-# a fast fake hides races that real fetches expose.
+# Each request sleeps $E2E_CURL_DELAY seconds (default 0.01) to mimic network time.
+# Raise it (e.g. 0.7) to widen windows a slow real fetch would open.
 out=; url=; head=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -23,7 +23,7 @@ case "$url" in
   *iana.org*)    site=iana ;;
   *) echo "fake curl: no fixture for $url" >&2; exit 6 ;;
 esac
-sleep "${E2E_CURL_DELAY:-0.3}"
+sleep "${E2E_CURL_DELAY:-0.01}"
 if [ "$head" = 1 ]; then
   body=$(printf 'HTTP/1.1 200 OK\r\nServer: e2e-fake\r\nContent-Type: text/html\r\n\r\n')
 else

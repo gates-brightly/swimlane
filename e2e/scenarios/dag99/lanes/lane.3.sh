@@ -5,12 +5,12 @@
 # Lane:  swim 3    Written: 2026-10-09
 #
 # Goal:
-#   Per-page title, words, internal/external link counts into stats.json. ~0.5s:
+#   Per-page title, words, internal/external link counts into stats.json. ~10ms:
 #   the slow branch, so 4 and 7 wait on it after their other parents finish.
 #
 # Steps:
 #   0. Clear this node's done marker; gate: every parent (swim 1) finished, for this run, before this node started
-#   1. Private copy of the input; simulated work (0.5s)
+#   1. Private copy of the input; simulated work (10ms)
 #   2. Gate: compute stats.json
 #   z. E2E_FAIL toggle; on success write .scenario/dag/nodes/3.done
 #
@@ -46,7 +46,7 @@ export RUN_ID
 IN=$D/input-3.$SWIM_JOB.html
 export IN
 gate "copy input to $IN" cp "$D/combined.html" "$IN"
-run "simulated work (0.5s)" sleep 0.5
+run "simulated work (10ms)" sleep 0.01
 gate "compute stats.json" e2etool stats
 
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'

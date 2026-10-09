@@ -5,12 +5,12 @@
 # Lane:  swim 5    Written: 2026-10-09
 #
 # Goal:
-#   Every <a href> in combined.html, per source page, into links.tsv. ~0.1s: the
+#   Every <a href> in combined.html, per source page, into links.tsv. ~2ms: the
 #   fast branch, so swim 7 waits on swim 3 long after this is done.
 #
 # Steps:
 #   0. Clear this node's done marker; gate: every parent (swim 1) finished, for this run, before this node started
-#   1. Simulated work (0.1s)
+#   1. Simulated work (2ms)
 #   2. Gate: extract links.tsv (source, kind, href)
 #   z. E2E_FAIL toggle; on success write .scenario/dag/nodes/5.done
 #
@@ -43,7 +43,7 @@ gate "parents finished before this node started (swim $PARENTS)" e2etool parents
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
 export RUN_ID
 
-run "simulated work (0.1s)" sleep 0.1
+run "simulated work (2ms)" sleep 0.002
 gate "extract links.tsv" e2etool links
 
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'

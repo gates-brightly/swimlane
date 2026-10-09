@@ -200,7 +200,11 @@ var Commands = map[string]string{
   swim lock --upgrade   move the lock up to this swim's breaking version
 
   Breaking versions:
-    1   first release: lane.N.sh scripts with Round:/Job:/After: headers,
+    2   first published release (tag v0.2.<YYYYMMDD>). .swim/status.yml now
+        records the round a skipped lane skipped (job, round, finished_at),
+        which swim plan uses to show it as a retry. Lane scripts are unchanged:
+        a repo locked at 1 only needs: swim lock --upgrade
+    1   pre-release: lane.N.sh scripts with Round:/Job:/After: headers,
         .swim/ state and logs, .swim.log project log
 `,
 	"help": `swim help [command]

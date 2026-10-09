@@ -18,8 +18,9 @@ e2e/run.sh -k dag99              # keep the scratch repo to dig into logs
 scenario as a subtest, against the binary the Go suite builds; `go test -short` skips them.
 
 Everything runs offline. `lib/fakebin/curl` is first on PATH and serves
-`fixtures/pages/`. Each request sleeps `E2E_CURL_DELAY` seconds (default 0.3),
-because a fake that answers instantly hides races that real fetches expose.
+`fixtures/pages/`. Each request sleeps `E2E_CURL_DELAY` seconds (default 0.01).
+Simulated work in lanes is 0-10ms. To hunt a race that real, slower fetches
+would expose, widen the window: `E2E_CURL_DELAY=0.7 e2e/run.sh dag99`.
 Set `SWIM_E2E_BIN=/path/to/swim` to test a prebuilt binary.
 
 ## Scenarios

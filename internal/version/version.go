@@ -17,7 +17,7 @@ import (
 
 // Breaking is bumped when lane scripts, logs or swim's state files change
 // incompatibly. Repos locked to another breaking version refuse to run.
-const Breaking = 1
+const Breaking = 2
 
 // Set at build time by the Makefile:
 //
@@ -31,16 +31,28 @@ var (
 // InstallCmd is how users get a current swim.
 const InstallCmd = "go install github.com/gates-brightly/swimlane/cmd/swim@latest"
 
-var pseudoRE = regexp.MustCompile(`-(\d{8})\d{6}-[0-9a-f]{12}`)
+var (
+	pseudoRE = regexp.MustCompile(`-(\d{8})\d{6}-[0-9a-f]{12}`)
+	// Release tags are v0.<breaking>.<YYYYMMDD>: Go needs a /vN module path
+	// for majors above 1, so swim's own breaking number goes in the minor.
+	tagRE = regexp.MustCompile(`^v0\.(\d+)\.(\d{8})$`)
+)
+
+// Tag is the git tag for this version, e.g. "v0.2.20261009".
+func Tag(date string) string { return fmt.Sprintf("v0.%d.%s", Breaking, date) }
 
 // Date returns the build date as YYYYMMDD: from the Makefile, else from Go's
-// build info (VCS time for a checkout build, or the timestamp in a
-// pseudo-version for `go install ...@latest`), else "dev".
+// build info (the release tag's date for `go install ...@v0.2.20261009` or
+// @latest, VCS time for a checkout build, or a pseudo-version's timestamp
+// for an untagged commit), else "dev".
 func Date() string {
 	if BuildDate != "" {
 		return BuildDate
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {
+		if m := tagRE.FindStringSubmatch(bi.Main.Version); m != nil {
+			return m[2]
+		}
 		for _, s := range bi.Settings {
 			if s.Key == "vcs.time" {
 				if t, err := time.Parse(time.RFC3339, s.Value); err == nil {
@@ -55,10 +67,10 @@ func Date() string {
 	return "dev"
 }
 
-// String is the version, e.g. "1.20261009".
+// String is the version, e.g. "2.20261009".
 func String() string { return fmt.Sprintf("%d.%s", Breaking, Date()) }
 
-// Long adds the commit when known, e.g. "1.20261009 (64a0e07)".
+// Long adds the commit when known, e.g. "2.20261009 (64a0e07)".
 func Long() string {
 	c := Commit
 	if c == "" {

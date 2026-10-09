@@ -5,11 +5,11 @@
 # Lane:  swim 6    Written: 2026-10-09
 #
 # Goal:
-#   Grandchild via child A: top words in combined.md into wordfreq.md. ~0.2s.
+#   Grandchild via child A: top words in combined.md into wordfreq.md. ~4ms.
 #
 # Steps:
 #   0. Clear this node's done marker; gate: every parent (swim 2) finished, for this run, before this node started
-#   1. Simulated work (0.2s)
+#   1. Simulated work (4ms)
 #   2. Gate: wordfreq.md (top 15, links and stopwords removed)
 #   z. E2E_FAIL toggle; on success write .scenario/dag/nodes/6.done
 #
@@ -42,7 +42,7 @@ gate "parents finished before this node started (swim $PARENTS)" e2etool parents
 RUN_ID=$(cut -d' ' -f1 "$D/run.id")
 export RUN_ID
 
-run "simulated work (0.2s)" sleep 0.2
+run "simulated work (4ms)" sleep 0.004
 gate "word frequency -> wordfreq.md" e2etool wordfreq
 
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'

@@ -10,7 +10,7 @@
 #   e2e/run.sh -k ...          keep scratch repos (paths printed) for digging in
 #
 #   SWIM_E2E_BIN=/path/swim    test that binary instead of building one
-#   E2E_CURL_DELAY=0.3         seconds per fake curl request
+#   E2E_CURL_DELAY=0.01        seconds per fake curl request
 #
 # Scenario contract (e2e/scenarios/<name>/scenario.sh, sourced in a subshell
 # whose cwd is the scratch repo, after lib/common.sh):

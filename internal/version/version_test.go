@@ -13,11 +13,17 @@ func TestStringFormat(t *testing.T) {
 	old := BuildDate
 	defer func() { BuildDate = old }()
 	BuildDate = "20261009"
-	if String() != "1.20261009" {
-		t.Fatalf("String() = %q", String())
+	if want := fmt.Sprintf("%d.20261009", Breaking); String() != want {
+		t.Fatalf("String() = %q, want %q", String(), want)
+	}
+	if want := fmt.Sprintf("v0.%d.20261009", Breaking); Tag("20261009") != want {
+		t.Fatalf("Tag() = %q, want %q", Tag("20261009"), want)
+	}
+	if m := tagRE.FindStringSubmatch(Tag("20261009")); m == nil || m[1] != fmt.Sprint(Breaking) || m[2] != "20261009" {
+		t.Fatalf("Tag() doesn't parse back: %v", m)
 	}
 	BuildDate = ""
-	if !regexp.MustCompile(`^1\.(\d{8}|dev)$`).MatchString(String()) {
+	if !regexp.MustCompile(fmt.Sprintf(`^%d\.(\d{8}|dev)$`, Breaking)).MatchString(String()) {
 		t.Fatalf("String() = %q", String())
 	}
 }
@@ -32,7 +38,7 @@ func TestEnsureCreatesAndChecks(t *testing.T) {
 		t.Fatalf("second Ensure: %v %v", created, err)
 	}
 	data, _ := os.ReadFile(LockPath(root))
-	if !strings.Contains(string(data), "breaking: 1") {
+	if !strings.Contains(string(data), fmt.Sprintf("breaking: %d", Breaking)) {
 		t.Fatalf("lock:\n%s", data)
 	}
 
