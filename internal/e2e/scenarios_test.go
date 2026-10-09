@@ -11,7 +11,7 @@ import (
 
 // TestScenarios runs every whole-workflow scenario in e2e/scenarios through
 // e2e/run.sh, against the binary TestMain built. They take ~35s; skip them
-// with `go test -short` (or `make test-unit`, which skips this package).
+// with `go test -short` (or `make test`, which skips this package).
 func TestScenarios(t *testing.T) {
 	if testing.Short() {
 		t.Skip("scenarios skipped with -short")

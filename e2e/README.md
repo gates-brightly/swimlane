@@ -8,14 +8,14 @@ one at a time. Scenarios check the scheduler, dependencies and lane library toge
 at scale.
 
 ```sh
-make test-scenarios              # all scenarios
-make test-scenarios S=dag99      # some of them
+make e2e                         # Go e2e suite + all scenarios
+make e2e S=dag99                 # just some scenarios
 e2e/run.sh -l                    # list
 e2e/run.sh -k dag99              # keep the scratch repo to dig into logs
 ```
 
-`go test ./internal/e2e` (and so `make check` and CI) runs every scenario as a
-subtest, against the binary the Go suite builds; `go test -short` skips them.
+`make e2e` / `go test ./internal/e2e` (and so `make check` and CI) runs every
+scenario as a subtest, against the binary the Go suite builds; `go test -short` skips them.
 
 Everything runs offline. `lib/fakebin/curl` is first on PATH and serves
 `fixtures/pages/`. Each request sleeps `E2E_CURL_DELAY` seconds (default 0.3),

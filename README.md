@@ -267,9 +267,10 @@ The full rules for planners and workers are in `swim --help`.
 ## Development
 
 ```sh
-make check            # gofmt, go vet, unit tests, e2e suite and scenarios (what CI runs)
-make test-unit        # fast: skip the e2e suite and scenarios
-make test-scenarios   # just the scenarios (S="dag99-retry" to pick)
+make test             # unit tests (fast)
+make e2e              # end-to-end: the Go e2e suite and every scenario
+make e2e S=dag99-retry   # just the named scenarios
+make check            # gofmt, go vet, unit and e2e tests (what CI runs)
 make build            # bin/swim
 go test ./internal/display -update   # regenerate the panel golden files
 ```
@@ -282,7 +283,7 @@ against scratch repos:
 - **`e2e/scenarios`** (bash, with the Go helper `e2e/cmd/e2etool`) runs whole lane DAGs offline: 99 lanes with real
   work over fixture pages, injected failures, and a retry. They guard the
   scheduler, dependencies, `swim all` and `swim plan` against regressions.
-  `go test ./internal/e2e` runs them too; `-short` skips them. See
+  `make e2e` (and `go test ./internal/e2e`) runs them; `go test -short` skips them. See
   [`e2e/README.md`](e2e/README.md) for writing one.
 
 CI (`.github/workflows/test.yml`) runs `make check` on Linux and on macOS,

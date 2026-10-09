@@ -8,7 +8,7 @@ LDFLAGS := -s -w -X github.com/gates-brightly/swimlane/internal/version.BuildDat
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build install link unlink run test test-unit test-e2e test-scenarios cover fmt vet tidy check clean
+.PHONY: help build install link unlink run test e2e cover fmt vet tidy check clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -30,17 +30,15 @@ unlink: ## Remove the symlink created by 'make link'
 run: build ## Build and run swim (pass args with ARGS="...")
 	./$(BIN_DIR)/$(BINARY) $(ARGS)
 
-test: ## Run all tests, including e2e
-	go test ./...
-
-test-unit: ## Run unit tests only (skip e2e)
+test: ## Run the unit tests (fast; no e2e)
 	go test $$(go list ./... | grep -v /internal/e2e)
 
-test-e2e: ## Run end-to-end tests against the built binary
-	go test -count=1 ./internal/e2e/...
-
-test-scenarios: ## Run e2e/ scenarios (whole lane DAGs, offline); pick some with S="dag99 ..."
+e2e: ## Run the end-to-end tests: Go e2e suite + e2e/ scenarios; S="dag99 ..." runs just those scenarios
+ifdef S
 	./e2e/run.sh $(S)
+else
+	go test -count=1 ./internal/e2e/...
+endif
 
 cover: ## Run tests with a coverage report
 	go test -coverprofile=coverage.out ./...
@@ -55,7 +53,7 @@ vet: ## Run go vet
 tidy: ## Tidy go.mod / go.sum
 	go mod tidy
 
-check: ## Verify formatting, vet, and tests (CI-style)
+check: ## gofmt, vet, unit and e2e tests (what CI runs)
 	@test -z "$$(gofmt -s -l .)" || { echo "gofmt needed on:"; gofmt -s -l .; exit 1; }
 	go vet ./...
 	go test ./...
