@@ -101,6 +101,10 @@ func cmdStart(args []string) error {
 		// gets one for this run (it can't be pinned before it starts).
 		job = lane.NewJobID()
 	}
+	run := os.Getenv("SWIM_RUN")
+	if run == "" {
+		run = lane.NewRunID() // run directly with bash: a run of its own
+	}
 	logPath := lane.Log(root, n)
 	// This lane's own log is safe to convert: bash never reads it.
 	if err := logparse.EnsureV2(logPath, n); err != nil {
@@ -123,6 +127,7 @@ func cmdStart(args []string) error {
 		return v
 	}
 	ctx := []logparse.KV{
+		{K: "run", V: run},
 		{K: "script", V: filepath.Base(lane.Script(root, n))},
 		{K: "pid", V: strconv.Itoa(pid)},
 		{K: "operator", V: or(os.Getenv("USER"), "-")},
@@ -155,10 +160,10 @@ func cmdStart(args []string) error {
 	for _, prob := range info.Problems {
 		fmt.Fprintln(os.Stderr, p.Paint(ui.Yellow, "WARN  "+prob))
 	}
-	history.Log(root, history.Entry{Event: history.Start, Lane: n, Job: job, Detail: round})
-	// stdout carries "<job> <deadline epoch or 0> <timeout>" back to
-	// lane_init, which exports SWIM_JOB, SWIM_DEADLINE and SWIM_TIMEOUT.
-	defer fmt.Printf("%s %d %s\n", job, deadline, timeoutText)
+	history.Log(root, history.Entry{Event: history.Start, Lane: n, Job: job, Run: run, Detail: round})
+	// stdout carries "<job> <deadline epoch or 0> <run> <timeout>" back to
+	// lane_init, which exports SWIM_JOB, SWIM_DEADLINE, SWIM_RUN, SWIM_TIMEOUT.
+	defer fmt.Printf("%s %d %s %s\n", job, deadline, run, timeoutText)
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		f.Branch = ref
 		l := f.Get(n)
@@ -166,6 +171,7 @@ func cmdStart(args []string) error {
 		l.State = status.Running
 		l.Round = info.Round
 		l.Job = job
+		l.Run = run
 		l.Pending, l.PendingJob = info.Round, info.Job
 		l.PID = pid
 		l.StartedAt = status.Str(ts)
@@ -295,6 +301,9 @@ func cmdFinish(args []string) error {
 		l.State = state
 		l.Round = r.Title
 		l.Job = r.Job
+		if r.Run != "" {
+			l.Run = r.Run
+		}
 		l.PID = 0
 		l.WaitingOn = []int{}
 		l.FinishedAt = status.Str(ts)
@@ -319,7 +328,7 @@ func cmdFinish(args []string) error {
 	if len(failedSteps) > 0 {
 		detail += "  | " + strings.Join(failedSteps, "; ")
 	}
-	history.Log(root, history.Entry{Event: event, Lane: n, Job: r.Job, Detail: detail})
+	history.Log(root, history.Entry{Event: event, Lane: n, Job: r.Job, Run: r.Run, Detail: detail})
 	if err != nil {
 		return err
 	}

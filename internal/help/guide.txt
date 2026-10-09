@@ -23,7 +23,7 @@ COMMANDS
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
   plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing
-  status [N|JOB] [--yaml]  last state of every lane (from .swim/status.yml)
+  status [N|JOB] [--yaml] [--run RUN]   last state of every lane, or as of one run
   log [N|JOB] [--all]      print a lane's log (--all: with its archives), a job's
                            rounds, or with no argument the project log .swim.log
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
@@ -46,6 +46,12 @@ CONCEPTS
               "diagnose Y"). Rewritten per round; disposable. A round that
               passed is "done": `swim all` won't run it again (`swim run N`
               or `swim all --rerun` will) until the lane gets a new round.
+  run         One `swim run` / `swim all`. Each gets a run id (r-<utc>-<hex>, or
+              --run-id ID), exported to every lane as $SWIM_RUN with the lanes
+              in the run as $SWIM_RUN_LANES, and recorded in the log, status.yml
+              and .swim.log. Use it to tell this run's outputs from leftovers.
+              `swim log <run>` and `swim status --run <run>` show one run. A lane
+              run directly with bash is a run of its own.
   job         One round's unique id, written in the script header as
               `# Job: <id>` by `swim new` (a UUID, or your own with --job).
               It is recorded in the log, status.yml, the live view and the
@@ -286,7 +292,7 @@ READING RESULTS
   relative times; --full, --raw). Every line says what it is by how it starts:
       # swim lane log | syntax 2 | swim N           first line: the log's syntax
       == ROUND <utc>  job=<id>  <Round>             a round starts
-         script: lane.N.sh | owner: ... | after: ... | timeout: ... | guards: ...
+         run: <run id> | script: lane.N.sh | owner: ... | after: ... | timeout: ... | guards: ...
          | git: <branch>@<sha> | runtime: ... | env: STAGE=... ...
       -- stage <name>  <hh:mm:ss>                   a stage starts
         PASS  <label>                <dur>s  <hh:mm:ss>    a step (2 spaces, kind, 2 spaces)
@@ -300,7 +306,7 @@ READING RESULTS
         DRIFT  <what>
         STOP  <reason>
         WARN  <what>                                stage order, bad header values
-      == END <PASS|FAIL|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>
+      == END <PASS|FAIL|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>  run=<run id>
          stages: snapshot PASS | check PASS | change SKIP | verify PASS
          failed: FAIL  <label> (exit <code>); ...
   Results are the lines starting "  KIND  " (grep '^  FAIL' finds every
@@ -308,7 +314,7 @@ READING RESULTS
   never a result. The current round is everything after the last "== ROUND".
 
   .swim.log (project log, oldest first; one line per event):
-      <utc>  <user>  <event>  [swim N]  [job=<id>]  <detail>
+      <utc>  <user>  <event>  [swim N]  [job=<id>]  [run=<run id>]  <detail>
   events:
       init         swim init ran (detail: lanes=N)
       new          a round was written (detail: the round goal)
@@ -335,6 +341,7 @@ READING RESULTS
           pending_job: <Job: id of lane.N.sh on disk>
           round: <round of the last or current run>
           job: <job id of the last or current run>
+          run: <swim run id of that round>
           script: lane.1.sh
           log: .swim/logs/agent1.log
           waiting_on: []   # e.g. [2] while waiting on swim 2

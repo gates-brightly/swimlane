@@ -47,7 +47,7 @@ var Commands = map[string]string{
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
-	"run": `swim run [N|JOB ...] [--rerun] [--plain]
+	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID]
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -72,13 +72,16 @@ var Commands = map[string]string{
       summary still prints.
     - Ends with a per-lane summary: result, exit code, counts, failed steps.
   Exits 0 only if every lane passed.
+  --run-id ID   use ID as this run's id (e.g. a CI pipeline id); by default
+                each run gets r-<utc>-<hex>. Lanes see it as $SWIM_RUN, and the
+                lanes in the run as $SWIM_RUN_LANES.
   Shorthand: "swim 1 2" is "swim run 1 2"; "swim 3f2a9c1e" is "swim run 3f2a9c1e".
   --plain   no pinned panel, colour or throbber; state changes print as lines.
             Automatic when stdout isn't a terminal or NO_COLOR is set.
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
 `,
-	"all": `swim all [--rerun] [--plain]
+	"all": `swim all [--rerun] [--plain] [--run-id ID]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
@@ -112,7 +115,7 @@ var Commands = map[string]string{
   Fails, like swim run would, on a dependency cycle or an "# After:" that
   doesn't resolve.
 `,
-	"status": `swim status [N|JOB] [--yaml] [--rebuild]
+	"status": `swim status [N|JOB] [--yaml] [--rebuild] [--run RUN]
 
   Show the last state of every lane, swim 1..N (or just one lane, by number
   or job id), from .swim/status.yml: state, job id, pending round and job
@@ -121,6 +124,8 @@ var Commands = map[string]string{
   are shown as "running?" (interrupted).
   --yaml     print the raw status file (same as cat .swim/status.yml)
   --rebuild  reconstruct status.yml from lane scripts and logs
+  --run RUN  each lane as it was in swim run RUN (from the logs, archives
+             included, and .swim.log for lanes skipped before they started)
 `,
 	"step": `swim step [--label L] [--new] [--snapshot] -- cmd [args...]
 
@@ -174,6 +179,7 @@ var Commands = map[string]string{
                         oldest first, then agentN.log, each under a header
     swim log JOB        just the rounds of that job (full id or 8+ characters),
                         from whichever current or archived log holds them
+    swim log RUN        every lane's round from that swim run, in lane order
   On a terminal the log is rendered: round and stage headers stand out,
   results are coloured, times show how far into the round they were, and
   step output longer than 40 lines is folded to its first and last 15.

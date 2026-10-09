@@ -169,18 +169,6 @@ func readDone(d string, n int) (done, error) {
 	return done{run: f[0], start: s, end: e, ended: true}, nil
 }
 
-// readRunID returns the first field of run.id, or "" if there is none.
-func readRunID(d string) string {
-	data, err := os.ReadFile(filepath.Join(d, "run.id"))
-	if err != nil {
-		return ""
-	}
-	if f := strings.Fields(string(data)); len(f) > 0 {
-		return f[0]
-	}
-	return ""
-}
-
 func nodeStart() (float64, error) {
 	s, err := env("NODE_START")
 	if err != nil {
@@ -189,9 +177,21 @@ func nodeStart() (float64, error) {
 	return strconv.ParseFloat(s, 64)
 }
 
-// parents-check P...: every parent finished, on this run, before this node
-// started. An indep: run id (an independent root's lineage) counts as fresh
-// if it finished in the last 10 minutes.
+// runLanes returns the lanes in this swim run, from SWIM_RUN_LANES.
+func runLanes() map[int]bool {
+	set := map[int]bool{}
+	for _, f := range strings.Fields(os.Getenv("SWIM_RUN_LANES")) {
+		if n, err := strconv.Atoi(f); err == nil {
+			set[n] = true
+		}
+	}
+	return set
+}
+
+// parents-check P...: every parent in this swim run finished, on this run
+// (SWIM_RUN), before this node started. A parent outside this run passed in
+// an earlier one (swim only runs a lane whose outside dependencies passed),
+// so its marker just has to exist.
 func cmdParentsCheck(args []string) error {
 	parents, err := atoiAll(args)
 	if err != nil {
@@ -201,11 +201,15 @@ func cmdParentsCheck(args []string) error {
 	if err != nil {
 		return err
 	}
+	run, err := env("SWIM_RUN")
+	if err != nil {
+		return err
+	}
 	start, err := nodeStart()
 	if err != nil {
 		return err
 	}
-	run := readRunID(d)
+	inRun := runLanes()
 	ok := true
 	for _, p := range parents {
 		nd, err := readDone(d, p)
@@ -215,60 +219,20 @@ func cmdParentsCheck(args []string) error {
 			continue
 		}
 		gap := start - nd.end
-		fresh := (strings.HasPrefix(nd.run, "indep:") && gap < 600) || (run != "" && nd.run == run)
-		good := fresh && gap >= 0
 		verdict := "ok"
 		switch {
-		case !fresh:
-			verdict = "BAD (stale run)"
-		case !good:
-			verdict = "BAD (overlap)"
+		case !inRun[p]:
+			verdict = "ok (earlier run)"
+		case nd.run != run:
+			verdict, ok = "BAD (stale run)", false
+		case gap < 0:
+			verdict, ok = "BAD (overlap)", false
 		}
 		fmt.Printf("swim %d: run=%s  finished %6.2fs before this node started  %s\n", p, nd.run, gap, verdict)
-		ok = ok && good
 	}
 	if !ok {
 		return exitCode(1)
 	}
-	return nil
-}
-
-// run-id P...: a node takes its run id from its parents, not run.id, so a
-// node whose ancestry never reaches swim 1 can start before swim 1 writes
-// this run's run.id.
-func cmdRunID(args []string) error {
-	parents, err := atoiAll(args)
-	if err != nil {
-		return err
-	}
-	d, err := env("D")
-	if err != nil {
-		return err
-	}
-	set := map[string]bool{}
-	for _, p := range parents {
-		nd, err := readDone(d, p)
-		if err != nil {
-			return err
-		}
-		set[nd.run] = true
-	}
-	var main []string
-	for r := range set {
-		if !strings.HasPrefix(r, "indep:") {
-			main = append(main, r)
-		}
-	}
-	sort.Strings(main)
-	if len(main) > 0 {
-		fmt.Println(main[0])
-		return nil
-	}
-	job, err := env("SWIM_JOB")
-	if err != nil {
-		return err
-	}
-	fmt.Println("indep:" + prefix(job, 8))
 	return nil
 }
 
@@ -323,31 +287,15 @@ func cmdNodeValue(args []string) error {
 	return nil
 }
 
-// thisRun returns the lanes in the swim run that includes lane me: the last
-// `run` event in .swim.log listing it. Without one, every lane.
-func thisRun(after map[int][]int, me int) map[int]bool {
+// thisRun returns the lanes in this swim run (SWIM_RUN_LANES), or every
+// lane if it isn't set.
+func thisRun(after map[int][]int) map[int]bool {
+	if set := runLanes(); len(set) > 0 {
+		return set
+	}
 	set := map[int]bool{}
 	for n := range after {
 		set[n] = true
-	}
-	data, err := os.ReadFile(".swim.log")
-	if err != nil {
-		return set
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 5 || f[2] != "run" || f[3] != "swim" {
-			continue
-		}
-		lanes := map[int]bool{}
-		for _, x := range strings.Split(f[4], ",") {
-			if k, err := strconv.Atoi(x); err == nil {
-				lanes[k] = true
-			}
-		}
-		if lanes[me] {
-			set = lanes
-		}
 	}
 	return set
 }
@@ -370,16 +318,16 @@ func cmdAudit([]string) error {
 	if err != nil {
 		return err
 	}
-	run := readRunID(d)
-	if run == "" {
-		return fmt.Errorf("%s/run.id is missing", d)
+	run, err := env("SWIM_RUN")
+	if err != nil {
+		return err
 	}
 	after, err := graph()
 	if err != nil {
 		return err
 	}
 	lanes := sortedKeys(after)
-	cur := thisRun(after, me)
+	cur := thisRun(after)
 	inRun := 0
 	var earlier []int
 	for _, n := range lanes {
@@ -407,27 +355,16 @@ func cmdAudit([]string) error {
 	}
 	var bad []string
 
-	// 1. Every node finished, on this run. Lanes descending from swim 1 carry
-	//    run.id; lanes whose ancestry never reaches swim 1 carry their own indep: id.
-	main := map[int]bool{1: true}
-	for _, n := range lanes { // parents are always lower-numbered
-		for _, p := range after[n] {
-			if main[p] {
-				main[n] = true
-			}
-		}
-	}
-	fmt.Printf("lineage: %d lanes descend from swim 1, %d only from independent roots\n", len(main), len(after)-len(main))
+	// 1. Every node finished. Lanes in this swim run carry its SWIM_RUN;
+	//    lanes from an earlier run carry that run's id.
 	for _, n := range lanes {
 		nd, ok := nodes[n]
 		if !ok {
 			bad = append(bad, fmt.Sprintf("swim %d: no done marker", n))
 			continue
 		}
-		if main[n] && nd.run != run {
-			bad = append(bad, fmt.Sprintf("swim %d: run %s, expected %s", n, nd.run, run))
-		} else if !main[n] && !strings.HasPrefix(nd.run, "indep:") {
-			bad = append(bad, fmt.Sprintf("swim %d: run %s, expected indep:*", n, nd.run))
+		if cur[n] && nd.run != run {
+			bad = append(bad, fmt.Sprintf("swim %d: run %s, expected this run %s", n, nd.run, run))
 		}
 	}
 

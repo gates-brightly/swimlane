@@ -116,8 +116,12 @@ func RoundHeader(ts, job, title string, ctx []KV) string {
 // EndBlock closes a round: totals, the stage results and the failures.
 func EndBlock(state string, r *Round, exit int, dur, ts string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n%s%s  pass=%d fail=%d skip=%d drift=%d  exit=%d  %s  %s\n",
+	fmt.Fprintf(&b, "\n%s%s  pass=%d fail=%d skip=%d drift=%d  exit=%d  %s  %s",
 		EndMark, state, r.Pass, r.Fail, r.Skip, r.Drift, exit, dur, ts)
+	if r.Run != "" {
+		fmt.Fprintf(&b, "  run=%s", r.Run)
+	}
+	b.WriteString("\n")
 	b.WriteString(ctxIndent + "stages: " + StagesText(r.StageResults()) + "\n")
 	if failed := r.Failed(); len(failed) > 0 {
 		texts := make([]string, len(failed))
@@ -172,6 +176,9 @@ type Round struct {
 	Interrupt bool
 	Stage     string   // stage in effect at the end of the log
 	Declared  []string // stage lines seen, in order
+	Run       string   // swim run id (from the round's context line)
+	// Context holds the round header's key/value context line.
+	Context map[string]string
 }
 
 // Failed returns the FAIL and STOP results.
@@ -296,14 +303,19 @@ func splitLabel(s string) (string, string) {
 func parseV2(rd io.Reader) (*Round, error) {
 	sc := scanner(rd)
 	cur := &Round{Syntax: 2, Stage: syntax.Setup}
+	ctxNext := false // the line after == ROUND may be its context
 	for sc.Scan() {
 		line := sc.Text()
+		inCtx := ctxNext
+		ctxNext = false
 		switch {
 		case strings.HasPrefix(line, RoundMark):
 			cur = &Round{Syntax: 2, Found: true, Stage: syntax.Setup}
 			if m := roundV2RE.FindStringSubmatch(line); m != nil {
 				cur.StartedAt, cur.Job, cur.Title = m[1], m[2], strings.TrimSpace(m[3])
 			}
+			ctxNext = true
+			continue
 		case strings.HasPrefix(line, EndMark):
 			cur.Finished = true
 			if m := endV2RE.FindStringSubmatch(line); m != nil {
@@ -318,6 +330,9 @@ func parseV2(rd io.Reader) (*Round, error) {
 				cur.Stage = f[0]
 				cur.Declared = append(cur.Declared, f[0])
 			}
+		case inCtx && strings.HasPrefix(line, ctxIndent) && !strings.HasPrefix(line, Indent):
+			cur.Context = ParseContext(line)
+			cur.Run = cur.Context["run"]
 		case strings.HasPrefix(line, Indent), strings.HasPrefix(line, ctxIndent):
 			// step detail, round context or END detail: not a result
 		default:
@@ -338,6 +353,26 @@ func parseV2(rd io.Reader) (*Round, error) {
 		}
 	}
 	return cur, sc.Err()
+}
+
+// ParseRound parses one round's lines (as cut from a syntax 2 log).
+func ParseRound(lines []string) (*Round, error) {
+	text := strings.Join(lines, "\n") + "\n"
+	if len(lines) > 0 && strings.HasPrefix(lines[0], RoundMark) {
+		text = syntax.LogHeader(0) + "\n" + text
+	}
+	return Parse(strings.NewReader(text))
+}
+
+// ParseContext reads a round's context line, "   k: v | k: v | ...".
+func ParseContext(line string) map[string]string {
+	ctx := map[string]string{}
+	for _, part := range strings.Split(strings.TrimSpace(line), " | ") {
+		if k, v, ok := strings.Cut(part, ": "); ok {
+			ctx[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		}
+	}
+	return ctx
 }
 
 // Syntax 1 markers, kept for reading and converting old logs.

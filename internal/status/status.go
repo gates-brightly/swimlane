@@ -33,10 +33,11 @@ const (
 type Lane struct {
 	Lane        int      `yaml:"lane"`
 	State       string   `yaml:"state"`
-	Pending     string   `yaml:"pending"`     // Round: line of the lane script on disk ("" for stub/none)
-	PendingJob  string   `yaml:"pending_job"` // Job: id of the lane script on disk
-	Round       string   `yaml:"round"`       // round of the last or current run
-	Job         string   `yaml:"job"`         // job id of the last or current run
+	Pending     string   `yaml:"pending"`       // Round: line of the lane script on disk ("" for stub/none)
+	PendingJob  string   `yaml:"pending_job"`   // Job: id of the lane script on disk
+	Round       string   `yaml:"round"`         // round of the last or current run
+	Job         string   `yaml:"job"`           // job id of the last or current run
+	Run         string   `yaml:"run,omitempty"` // swim run id of the last or current round
 	Script      string   `yaml:"script"`
 	Log         string   `yaml:"log"`
 	WaitingOn   []int    `yaml:"waiting_on,flow"`
@@ -62,6 +63,7 @@ type File struct {
 	UpdatedAt string `yaml:"updated_at"`
 	Root      string `yaml:"root"`
 	Branch    string `yaml:"branch,omitempty"`
+	LastRun   string `yaml:"last_run,omitempty"` // id of the last swim run
 	Lanes     []Lane `yaml:"lanes"`
 }
 

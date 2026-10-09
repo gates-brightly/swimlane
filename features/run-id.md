@@ -1,6 +1,6 @@
 # Run id: one id per `swim run`, given to every lane
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -10,7 +10,8 @@ results are recorded. Lanes can then tell "output from my run" apart from
 "output left over from an earlier run" without inventing their own markers.
 
 ```
-=== ROUND START 2026-10-09T14:11:18Z swim 60 job=d68714a7-… run=r-20261009T141118Z-7c2e
+== ROUND 2026-10-09T14:11:18Z  job=d68714a7-…  DAG99 node 60
+   run: r-20261009T141118Z-7c2e | script: lane.60.sh | ...
 ```
 
 ## Motivation
@@ -41,7 +42,8 @@ lanes are in it. Handing them over is cheap and removes a class of race.
 
   `swim step` passes both through to step commands.
 - **Recorded:**
-  - **`agentN.log`:** `run=<id>` on `=== ROUND START` and `=== SUMMARY`
+  - **`agentN.log`:** `run: <id>` first in the round's context line, and
+    `run=<id>` at the end of the `== END` line (log syntax 2)
   - **`status.yml`:** `run:` on each lane, and `last_run:` at the top level
   - **`.swim.log`:** `run=<id>` on `run`, `start`, `pass`/`fail`/`interrupted`,
     `skip` and `run-done` events
@@ -60,13 +62,18 @@ lanes are in it. Handing them over is cheap and removes a class of race.
   unknown key as optional, so old logs still parse.
 - `status.Lane` gets `Run string \`yaml:"run,omitempty"\``.
 
-## Open questions
+## Decisions
 
-1. Should a pinned rerun of one lane (`swim run 3`) reuse the last run's id, to
-   "repair" that run? Recommend no: each invocation is its own run, and queries
-   group by id.
-2. Should `SWIM_RUN_LANES` include lanes that were skipped before they started?
-   Recommend yes: it's the selection, and the outcomes are in status.
+1. A pinned rerun of one lane (`swim run 3`) does **not** reuse the last run's
+   id: each invocation is its own run, and queries group by id.
+2. `SWIM_RUN_LANES` **includes** lanes skipped before they started: it's the
+   selection, and the outcomes are in status.
+3. `swim log <id>` matches a round by job or by run id. `swim status --run`
+   reads the logs (archives included), because `status.yml` holds only the
+   latest state; lanes skipped before starting come from `.swim.log`.
+4. dag99 now uses `SWIM_RUN`/`SWIM_RUN_LANES`: lane 1 no longer stamps a
+   `run.id`, the `indep:` lineage is gone, and a parent outside the current run
+   counts as fresh (swim only starts a lane whose outside dependencies passed).
 
 ## Testing
 

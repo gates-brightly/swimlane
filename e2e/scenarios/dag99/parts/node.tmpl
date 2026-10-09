@@ -21,7 +21,7 @@
 # Test toggle (not a guard): E2E_FAIL="3 41"  lanes that fail on purpose.
 #
 # 99-lane stress DAG: lanes 1-9 real work, 10-98 synthetic, 99 audit.
-# Shared dir .scenario/dag/: run.id (swim 1), nodes/N.done, nodes/N.val.
+# Shared dir .scenario/dag/: nodes/N.done (<run> <start> <end>), nodes/N.val.
 #
 # Part of the e2e scenario e2e/scenarios/dag99 (run: e2e/run.sh dag99).
 # Never edit this file while it may be running: `swim status` first.

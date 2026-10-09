@@ -12,7 +12,9 @@ SWIM_LANE=
 # .swim/logs/agentN.log, source .lane.N.rc if present, write the round marker and mark
 # the lane running in .swim/status.yml. Exports SWIM_JOB (the job id from
 # the script's Job: line), and SWIM_DEADLINE / SWIM_TIMEOUT from its
-# Timeout: line. Refuses if lane N is already running.
+# Timeout: line, and SWIM_RUN / SWIM_RUN_LANES (the swim run and the lanes
+# in it; a lane run directly with bash is a run of its own). Refuses if lane
+# N is already running.
 lane_init() {
   case "$1" in
     ''|*[!0-9]*) echo "swim: lane_init needs a lane number, e.g. lane_init 1" >&2; exit 2 ;;
@@ -29,12 +31,15 @@ lane_init() {
     _swim_done=1
     exit 1
   fi
-  # "<job> <deadline epoch, 0 for none> <timeout text>"
+  # "<job> <deadline epoch, 0 for none> <run> <timeout text>"
   SWIM_JOB=${_swim_start%% *}
   _swim_start=${_swim_start#* }
   SWIM_DEADLINE=${_swim_start%% *}
+  _swim_start=${_swim_start#* }
+  SWIM_RUN=${_swim_start%% *}
   SWIM_TIMEOUT=${_swim_start#* }
-  export SWIM_JOB SWIM_DEADLINE SWIM_TIMEOUT
+  SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
+  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_TIMEOUT
   trap '_swim_on_exit' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM

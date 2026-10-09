@@ -23,7 +23,7 @@
 # DAG (each lane's `# After:` line), lanes 1-9:
 #   1 -> 2, 3, 5    2 -> 4, 6    3 -> 4, 7    5 -> 7
 #   4, 6, 7, 8 -> 9    9 -> 10..19 (generated)    8 has no parents (independent root)
-# Shared dir .scenario/dag/: run.id (swim 1), nodes/N.done ("<run> <start> <end>").
+# Shared dir .scenario/dag/: nodes/N.done ("<run> <start> <end>"); <run> is $SWIM_RUN.
 #
 # Part of the e2e scenario e2e/scenarios/dag99 (run: e2e/run.sh dag99).
 # Never edit this file while it may be running: `swim status` first.
@@ -42,7 +42,7 @@ mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
 stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
-RUN_ID=$(cut -d' ' -f1 "$D/run.id")
+RUN_ID=$SWIM_RUN
 stage change
 export RUN_ID
 

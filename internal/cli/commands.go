@@ -220,11 +220,34 @@ func cmdNew(args []string) error {
 	return nil
 }
 
+// runFlags are the options swim run and swim all share.
+type runFlags struct {
+	plain, rerun bool
+	runID        string
+}
+
+func (rf *runFlags) parse(args []string) ([]string, error) {
+	return flags{
+		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun},
+		strs:  map[string]*string{"run-id": &rf.runID},
+	}.parse(args)
+}
+
 func cmdRun(args []string) error {
-	var plain, rerun bool
-	rest, err := flags{bools: map[string]*bool{"plain": &plain, "rerun": &rerun}}.parse(args)
+	var rf runFlags
+	rest, err := rf.parse(args)
 	if err != nil {
 		return err
+	}
+	return runLanes(rest, rf)
+}
+
+// runLanes runs the named lanes (lane numbers or job ids), or with none,
+// every pending lane.
+func runLanes(rest []string, rf runFlags) error {
+	plain, rerun := rf.plain, rf.rerun
+	if rf.runID != "" && !lane.ValidRunID(rf.runID) {
+		return usagef("--run-id %q: use 8-64 letters, digits, '.', '_' or '-' (not all digits)", rf.runID)
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -256,7 +279,7 @@ func cmdRun(args []string) error {
 	}
 	code, err := launcher.Run(launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
-		Self: self(), Out: os.Stdout, Stdin: os.Stdin,
+		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID,
 	})
 	if err != nil {
 		return err
@@ -370,12 +393,15 @@ func cmdPlan(args []string) error {
 
 // cmdAll runs every lane holding a pending round: `swim run` with no lanes.
 func cmdAll(args []string) error {
-	for _, a := range args {
-		if !strings.HasPrefix(a, "--") {
-			return usagef("all takes no lanes (it runs every pending one); to pick lanes: swim run %s", strings.Join(args, " "))
-		}
+	var rf runFlags
+	rest, err := rf.parse(args)
+	if err != nil {
+		return err
 	}
-	return cmdRun(args)
+	if len(rest) > 0 {
+		return usagef("all takes no lanes (it runs every pending one); to pick lanes: swim run %s", strings.Join(rest, " "))
+	}
+	return runLanes(nil, rf)
 }
 
 func cmdStep(args []string) error {

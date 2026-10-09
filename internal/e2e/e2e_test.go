@@ -571,7 +571,12 @@ func TestProjectLog(t *testing.T) {
 		if strings.HasPrefix(l, "#") {
 			continue
 		}
-		f := strings.Fields(l)
+		var f []string
+		for _, w := range strings.Fields(l) {
+			if !strings.HasPrefix(w, "run=r-") { // run ids vary; checked in TestRunID
+				f = append(f, w)
+			}
+		}
 		events = append(events, strings.Join(f[2:], " "))
 	}
 	want := []string{
@@ -643,7 +648,7 @@ func TestLogCommand(t *testing.T) {
 	if out, code := r.swim("log", "2"); code == 0 || !strings.Contains(out, "no current log") {
 		t.Errorf("log 2: %d %s", code, out)
 	}
-	if out, code := r.swim("log", "nosuchjob1"); code == 0 || !strings.Contains(out, "no log holds a round of job nosuchjob1") {
+	if out, code := r.swim("log", "nosuchjob1"); code == 0 || !strings.Contains(out, "no log holds a round of job or run nosuchjob1") {
 		t.Errorf("log unknown job: %d %s", code, out)
 	}
 }
@@ -962,5 +967,69 @@ run "after" true`)
 	contains(t, "agent1.log", log, "timeout: 1s", "  FAIL  slow (timeout: Timeout 1s reached)", "  STOP  timeout: the round's Timeout (1s) ran out", "== END FAIL")
 	if strings.Contains(log, "PASS  after") {
 		t.Error("a step ran after the timeout")
+	}
+}
+
+var runRE = regexp.MustCompile(`run=(r-\d{8}T\d{6}Z-[0-9a-f]{4})`)
+
+func TestRunID(t *testing.T) {
+	r := newRepo(t, "{2: [1]}")
+	r.script(1, "one", `run "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
+	r.script(2, "two", `run "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
+	r.script(3, "three", `run "x" false`)
+	r.script(4, "four", `run "x" true`)
+	p := filepath.Join(r.root, "lane.4.sh")
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: four\n", "# Round: four\n# After: 3\n", 1)), 0o755)
+
+	r.swim("all", "--plain")
+	idRE := regexp.MustCompile(`\| id=(\S+) lanes=(.*)`)
+	m1, m2 := idRE.FindStringSubmatch(r.log(1)), idRE.FindStringSubmatch(r.log(2))
+	if m1 == nil || m2 == nil || m1[1] != m2[1] || !regexp.MustCompile(`^r-\d{8}T\d{6}Z-[0-9a-f]{4}$`).MatchString(m1[1]) {
+		t.Fatalf("lanes in one run should share SWIM_RUN: %v %v", m1, m2)
+	}
+	run := m1[1]
+	if m1[2] != "1 2 3 4" {
+		t.Errorf("SWIM_RUN_LANES = %q (skipped lanes are part of the selection)", m1[2])
+	}
+	contains(t, "agent1.log", r.log(1), "   run: "+run+" | script: lane.1.sh", "== END PASS", "  run="+run)
+	st := r.status()
+	if st.LastRun != run || st.Get(1).Run != run || st.Get(4).Run != run || st.Get(4).State != status.Skipped {
+		t.Errorf("status: last_run=%s lane1=%s lane4=%+v", st.LastRun, st.Get(1).Run, st.Get(4))
+	}
+	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
+	for _, ev := range []string{"run ", "start ", "pass ", "fail ", "skip ", "run-done "} {
+		found := false
+		for _, line := range strings.Split(string(hist), "\n") {
+			if f := strings.Fields(line); len(f) > 2 && f[2]+" " == ev && strings.Contains(line, "run="+run) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf(".swim.log has no %q event with run=%s:\n%s", ev, run, hist)
+		}
+	}
+
+	// swim log <run>: every lane's round from that run.
+	out := r.mustSwim("log", run)
+	contains(t, "log <run>", out, "==> agent1.log <==", "==> agent2.log <==", "==> agent3.log <==", "id="+run)
+	// swim status --run: lanes as of that run, including the skipped one.
+	contains(t, "status --run", r.mustSwim("status", "--run", run), "run "+run, "swim 1", "PASS", "FAIL exit 1", "SKIP", "swim 3 failed")
+
+	// The next run gets a new id; --run-id is honoured.
+	r.mustSwim("run", "1", "--run-id", "pipeline-12345")
+	if m := idRE.FindAllStringSubmatch(r.log(1), -1); len(m) != 2 || m[1][1] != "pipeline-12345" {
+		t.Fatalf("--run-id: %v", m)
+	}
+	if out, code := r.swim("run", "1", "--run-id", "x y"); code == 0 || !strings.Contains(out, "--run-id") {
+		t.Errorf("bad --run-id: %d %s", code, out)
+	}
+	// A lane run directly with bash is a run of its own.
+	if out, err := r.cmd("bash", "lane.1.sh").CombinedOutput(); err != nil {
+		t.Fatalf("direct run: %v %s", err, out)
+	}
+	ms := idRE.FindAllStringSubmatch(r.log(1), -1)
+	if len(ms) != 3 || ms[2][1] == run || ms[2][1] == "pipeline-12345" || ms[2][2] != "1" {
+		t.Fatalf("direct run id: %v", ms)
 	}
 }

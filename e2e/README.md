@@ -74,7 +74,7 @@ arguments lists its commands:
 | command | used by |
 |---|---|
 | `now` | every lane: start and end timestamps |
-| `parents-check P...`, `run-id P...`, `node-value P...` | every generated lane: freshness gate, run id, data-flow value |
+| `parents-check P...`, `node-value P...` | every generated lane: freshness gate (parents in this run, from `SWIM_RUN`/`SWIM_RUN_LANES`), data-flow value |
 | `aggregate`, `markdown`, `stats`, `stats-pages`, `report`, `links`, `wordfreq`, `reconcile`, `domains`, `headers` | dag99 lanes 1-9's real work |
 | `audit` | lane 99 |
 | `descendants N...`, `edges` | scenario checks |
@@ -100,6 +100,7 @@ Keep `run.sh` and `lib/common.sh` compatible with macOS bash 3.2.
   - `parent_check.sh`: each parent must have finished, for this run, before this lane started
   - `derive.sh`: a lane takes its run id from its parents
   - `audit.sh`: lane 99's checks
-- Lanes share `.scenario/dag/` in the scratch repo: `run.id`, `nodes/N.done`
-  (run, start, end) and `nodes/N.val` (sha256 over the parents' values).
+- Lanes share `.scenario/dag/` in the scratch repo: `nodes/N.done`
+  (run, start, end; the run is swim's `SWIM_RUN`) and `nodes/N.val`
+  (sha256 over the parents' values).
 - `E2E_FAIL="23 41"` makes those lanes fail on purpose. It is a test switch, not a guard flag.

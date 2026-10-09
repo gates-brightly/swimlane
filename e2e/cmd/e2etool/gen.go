@@ -154,7 +154,7 @@ func cmdGen(args []string) error {
 		if round == "" {
 			round = "nothing"
 		}
-		parentsTxt, check, runID := "none", "", `RUN_ID="indep:${SWIM_JOB:0:8}"`+"\n"
+		parentsTxt, check, runID := "none", "", "RUN_ID=$SWIM_RUN\n"
 		if ps != "" {
 			parentsTxt, check, runID = "swim "+ps, pcheck, derive
 		}

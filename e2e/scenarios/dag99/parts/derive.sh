@@ -1,3 +1,2 @@
-# Run id comes from the parents, not run.id: a node whose ancestry never reaches
-# swim 1 can start before swim 1 writes this run's run.id.
-RUN_ID=$(e2etool run-id $PARENTS)
+# Every lane in one swim run gets the same SWIM_RUN from swim.
+RUN_ID=$SWIM_RUN

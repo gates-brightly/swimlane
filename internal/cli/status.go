@@ -9,6 +9,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -17,7 +18,8 @@ import (
 
 func cmdStatus(args []string) error {
 	var raw, rebuild bool
-	rest, err := flags{bools: map[string]*bool{"yaml": &raw, "rebuild": &rebuild}}.parse(args)
+	var run string
+	rest, err := flags{bools: map[string]*bool{"yaml": &raw, "rebuild": &rebuild}, strs: map[string]*string{"run": &run}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -29,6 +31,9 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	warnVersion(root)
+	if run != "" {
+		return printRunStatus(root, cfg, run, ui.Painter{On: ui.ColorEnabled(os.Stdout)})
+	}
 	only := 0
 	if len(rest) == 1 {
 		if only, err = laneRef(root, cfg, rest[0], true); err != nil {
@@ -234,4 +239,88 @@ func rebuildStatus(root string, cfg *config.Config) error {
 		}
 		return nil
 	})
+}
+
+// printRunStatus shows each lane as it was in swim run id: its round from
+// the lane's current or archived logs, or, for a lane skipped before it
+// started, the skip recorded in .swim.log.
+func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) error {
+	skips := map[int]string{}
+	lanesInRun := map[int]bool{}
+	if data, err := os.ReadFile(history.Path(root)); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if !strings.Contains(line, "  run="+id) {
+				continue
+			}
+			f := strings.Fields(line)
+			if len(f) < 3 {
+				continue
+			}
+			n := 0
+			for i := 3; i+1 < len(f); i++ {
+				if f[i] == "swim" {
+					fmt.Sscan(f[i+1], &n)
+					break
+				}
+			}
+			if f[2] == "run" {
+				for _, x := range strings.Split(f[4], ",") {
+					var k int
+					if _, err := fmt.Sscan(x, &k); err == nil {
+						lanesInRun[k] = true
+					}
+				}
+			}
+			if f[2] == history.Skip && n > 0 {
+				_, after, _ := strings.Cut(line, "run="+id)
+				skips[n] = strings.TrimSpace(after)
+			}
+		}
+	}
+	fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim status · %s · run %s", filepath.Base(root), id)))
+	found := 0
+	for n := 1; n <= cfg.Lanes; n++ {
+		label := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf(" swim %-2d", n))
+		var round *logparse.Round
+		for _, f := range append(archives(root, n), lane.Log(root, n)) {
+			rs, err := roundsOf(f, id)
+			if err != nil {
+				return err
+			}
+			if len(rs) > 0 {
+				if round, err = logparse.ParseRound(rs[len(rs)-1]); err != nil {
+					return err
+				}
+			}
+		}
+		switch {
+		case round != nil:
+			found++
+			word := "PASS"
+			switch {
+			case !round.Finished:
+				word = "running?"
+			case round.Interrupt:
+				word = "INTERRUPTED"
+			case round.ExitCode != 0:
+				word = fmt.Sprintf("FAIL exit %d", round.ExitCode)
+			}
+			fmt.Printf("%s %s %s\n", label, p.Paint(ui.StateColor(word), fmt.Sprintf("%-22s", word)), round.Title)
+			fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Dim, fmt.Sprintf("job: %s  pass %d  fail %d  skip %d  drift %d  stages: %s",
+				round.Job, round.Pass, round.Fail, round.Skip, round.Drift, logparse.StagesText(round.StageResults()))))
+			for _, fr := range round.Failed() {
+				fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Red, fr.Text()))
+			}
+		case skips[n] != "":
+			found++
+			fmt.Printf("%s %s %s\n", label, p.Paint(ui.Yellow, fmt.Sprintf("%-22s", "SKIP")), skips[n])
+		case lanesInRun[n]:
+			found++
+			fmt.Printf("%s %s\n", label, p.Paint(ui.Dim, "in the run, but no record of its round"))
+		}
+	}
+	if found == 0 {
+		return fmt.Errorf("no lane has a record of run %s", id)
+	}
+	return nil
 }

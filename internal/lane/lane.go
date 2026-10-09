@@ -392,6 +392,20 @@ func NewJobID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
+// NewRunID returns a run id: r-<UTC yyyymmddThhmmssZ>-<4 hex>. Sortable,
+// and unique enough on one machine.
+func NewRunID() string {
+	var b [2]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("r-%s-%x", time.Now().UTC().Format("20060102T150405Z"), b)
+}
+
+// ValidRunID reports whether id can be used as a run id (e.g. passed with
+// --run-id): the same characters as a job id.
+func ValidRunID(id string) bool { return ValidJobID(id) }
+
 var jobIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$`)
 
 // ValidJobID reports whether id can be used as a job id: 8-64 characters of

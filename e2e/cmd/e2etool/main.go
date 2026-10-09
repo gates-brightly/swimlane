@@ -6,8 +6,7 @@
 // PATH, so scenarios need only bash and Go.
 //
 //	e2etool now                       epoch seconds, 3 decimals
-//	e2etool parents-check P...        gate: each parent finished, this run, before NODE_START
-//	e2etool run-id P...               this node's run id, from its parents
+//	e2etool parents-check P...        gate: each parent in this run finished, on it, before NODE_START
 //	e2etool node-value P...           sha256 value from the parents -> nodes/N.val
 //	e2etool audit                     lane 99: every node, edge and value
 //	e2etool descendants N...          lanes downstream of N (from lane.*.sh # After:)
@@ -17,7 +16,8 @@
 //	                                  dag99 lanes 1-9's work (see each lane script)
 //
 // Inputs come from the environment the lane scripts export (D, N, P, IN,
-// OUT, H, NODE_START, RUN_ID, SWIM_JOB).
+// OUT, H, NODE_START, RUN_ID) and swim sets (SWIM_JOB, SWIM_RUN,
+// SWIM_RUN_LANES).
 package main
 
 import (
@@ -31,7 +31,6 @@ var commands = map[string]func(args []string) error{
 	"version":       func([]string) error { fmt.Println("e2etool (swim e2e helper)"); return nil },
 	"now":           cmdNow,
 	"parents-check": cmdParentsCheck,
-	"run-id":        cmdRunID,
 	"node-value":    cmdNodeValue,
 	"audit":         cmdAudit,
 	"descendants":   cmdDescendants,

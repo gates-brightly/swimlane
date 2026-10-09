@@ -77,7 +77,8 @@ func cmdLog(args []string) error {
 		return nil
 	}
 
-	// A job id: print that job's rounds from any lane's current or archived log.
+	// A job or run id: print its rounds from every lane's current or archived
+	// logs, in lane order.
 	if len(ref) < 8 && !lane.ValidJobID(ref) {
 		return usagef("%q is neither a lane number nor a job id (job ids need 8+ characters)", ref)
 	}
@@ -100,7 +101,7 @@ func cmdLog(args []string) error {
 		}
 	}
 	if found == 0 {
-		return fmt.Errorf("no log holds a round of job %s", ref)
+		return fmt.Errorf("no log holds a round of job or run %s", ref)
 	}
 	return nil
 }
@@ -154,8 +155,8 @@ func firstRoundTime(path string) string {
 
 var roundJobRE = regexp.MustCompile(` job=(\S+)`)
 
-// roundsOf returns the rounds in path (each from its ROUND START line to the
-// next) whose job matches ref.
+// roundsOf returns the rounds in path (each from its round start to the
+// next) that belong to job ref or, given a run id, to that swim run.
 func roundsOf(path, ref string) ([][]string, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -165,30 +166,38 @@ func roundsOf(path, ref string) ([][]string, error) {
 		return nil, err
 	}
 	defer f.Close()
-	var rounds [][]string
-	var cur []string
-	keep := false
+	var all [][]string
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for sc.Scan() {
 		line := sc.Text()
 		if strings.HasPrefix(line, logparse.RoundMark) || strings.HasPrefix(line, "=== ROUND START") {
-			if keep {
-				rounds = append(rounds, cur)
-			}
-			cur, keep = nil, false
-			if m := roundJobRE.FindStringSubmatch(line); m != nil {
-				keep = lane.MatchJob(m[1], ref)
-			}
+			all = append(all, nil)
 		}
-		if keep {
-			cur = append(cur, line)
+		if len(all) > 0 {
+			all[len(all)-1] = append(all[len(all)-1], line)
 		}
 	}
-	if keep {
-		rounds = append(rounds, cur)
+	var rounds [][]string
+	for _, r := range all {
+		if roundMatches(r, ref) {
+			rounds = append(rounds, r)
+		}
 	}
 	return rounds, sc.Err()
+}
+
+// roundMatches reports whether a round's lines belong to job or run ref.
+func roundMatches(r []string, ref string) bool {
+	if m := roundJobRE.FindStringSubmatch(r[0]); m != nil && lane.MatchJob(m[1], ref) {
+		return true
+	}
+	if len(r) > 1 && strings.HasPrefix(r[1], "   ") && !strings.HasPrefix(r[1], logparse.Indent) {
+		if run := logparse.ParseContext(r[1])["run"]; run != "" && run == ref {
+			return true
+		}
+	}
+	return false
 }
 
 // logWriter prints logs. With colour on (a terminal) it renders them: the

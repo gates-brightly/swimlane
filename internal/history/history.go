@@ -37,7 +37,7 @@ const (
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.
 # Read this to catch up, then: swim status (current state), swim log N (step detail).
-# Format: <utc time>  <user>  <event>  [swim N]  [job=<id>]  <detail>
+# Format: <utc time>  <user>  <event>  [swim N]  [job=<id>]  [run=<id>]  <detail>
 `
 
 // Path returns the project log location.
@@ -48,6 +48,7 @@ type Entry struct {
 	Event  string
 	Lane   int    // 0 when not about one lane
 	Job    string // "" when not about one job
+	Run    string // the swim run it belongs to ("" when not about a run)
 	Detail string
 }
 
@@ -60,6 +61,9 @@ func Format(t time.Time, user string, e Entry) string {
 	}
 	if e.Job != "" {
 		fmt.Fprintf(&b, "  job=%s", e.Job)
+	}
+	if e.Run != "" {
+		fmt.Fprintf(&b, "  run=%s", e.Run)
 	}
 	if d := oneLine(e.Detail); d != "" {
 		b.WriteString("  " + d)

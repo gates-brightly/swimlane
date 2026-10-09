@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 # swim: syntax 2
-# Round: DAG root: fetch pages, aggregate, stamp run.id
+# Round: DAG root: fetch pages, aggregate
 # Job:   6885ada8-4cda-4947-98d6-17f37df32cea
 # After: 
 # Lane:  swim 1    Written: 2026-10-09
 #
 # Goal:
-#   curl four small public pages, aggregate into combined.html, then stamp a
-#   fresh run.id that every descendant checks.
+#   curl four small public pages and aggregate them into combined.html.
 #
 # Steps:
 #   0. Clear this node's done marker; 
 #   1. Gate: curl, e2etool; fetch four pages (a flaky site doesn't stop the round)
-#   2. Gate: aggregate into combined.html (atomic); write run.id (atomic, last)
+#   2. Gate: aggregate into combined.html (atomic)
 #   z. E2E_FAIL toggle; on success write .scenario/dag/nodes/1.done
 #
 # Guard flags this round honours (flag: action, date, reason):
@@ -23,7 +22,7 @@
 # DAG (each lane's `# After:` line), lanes 1-9:
 #   1 -> 2, 3, 5    2 -> 4, 6    3 -> 4, 7    5 -> 7
 #   4, 6, 7, 8 -> 9    9 -> 10..19 (generated)    8 has no parents (independent root)
-# Shared dir .scenario/dag/: run.id (swim 1), nodes/N.done ("<run> <start> <end>").
+# Shared dir .scenario/dag/: nodes/N.done ("<run> <start> <end>"); <run> is $SWIM_RUN.
 #
 # Part of the e2e scenario e2e/scenarios/dag99 (run: e2e/run.sh dag99).
 # Never edit this file while it may be running: `swim status` first.
@@ -40,7 +39,7 @@ NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
 run "clear own done marker" rm -f "$D/nodes/$N.done"
-RUN_ID="${SWIM_JOB:0:8}-$NODE_START"
+RUN_ID=$SWIM_RUN
 export RUN_ID
 
 P=$D/pages
@@ -61,7 +60,6 @@ gate "at least one page fetched" bash -c 'ls "$P"/*.html >/dev/null 2>&1 && ls -
 
 gate "aggregate into combined.html" e2etool aggregate
 
-gate "write run.id" bash -c 'echo "$RUN_ID $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$D/.run.id.tmp" && mv "$D/.run.id.tmp" "$D/run.id" && cat "$D/run.id"'
 
 stage verify
 gate "simulated failure off (E2E_FAIL='${E2E_FAIL:-}')" bash -c 'case " ${E2E_FAIL:-} " in *" $N "*) echo "E2E_FAIL includes $N"; exit 1;; esac'

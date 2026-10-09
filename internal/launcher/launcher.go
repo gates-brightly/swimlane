@@ -32,9 +32,10 @@ import (
 type Options struct {
 	Root   string
 	Cfg    *config.Config
-	Lanes  []int // explicit selection; empty means every lane with a pending round
-	Rerun  bool  // with no explicit lanes, also run rounds that already passed
-	DryRun bool  // plan only: don't refuse lanes that are running
+	Lanes  []int  // explicit selection; empty means every lane with a pending round
+	Rerun  bool   // with no explicit lanes, also run rounds that already passed
+	DryRun bool   // plan only: don't refuse lanes that are running
+	RunID  string // this run's id; generated if empty (swim run --run-id)
 	Plain  bool
 	Self   string // path of the swim binary, exported to lane scripts as SWIM_BIN
 	Out    *os.File
@@ -186,7 +187,11 @@ func Run(o Options) (int, error) {
 		}
 	}()
 
-	history.Log(o.Root, history.Entry{Event: history.Run, Detail: "swim " + joinInts(sel)})
+	if o.RunID == "" {
+		o.RunID = lane.NewRunID()
+	}
+	status.UpdateFile(o.Root, o.Cfg.Lanes, func(f *status.File) error { f.LastRun = o.RunID; return nil })
+	history.Log(o.Root, history.Entry{Event: history.Run, Run: o.RunID, Detail: "swim " + joinInts(sel)})
 	disp.Start()
 	defer disp.Restore()
 
@@ -215,7 +220,7 @@ func Run(o Options) (int, error) {
 	for _, n := range sel {
 		counts[outcomes[n].State]++
 	}
-	history.Log(o.Root, history.Entry{Event: history.RunDone, Detail: fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d  %s",
+	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d  %s",
 		joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted], display.Elapsed(time.Since(start)))})
 	printSummary(o.Out, o.Root, sel, outcomes, time.Since(start), disp.Color())
 	return code, nil
@@ -232,10 +237,10 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, dis
 			// this job as attempted, not new. Counts from an older round go.
 			l.ResetRun()
 			l.State, l.Reason = status.Skipped, reason
-			l.Round, l.Job = info.Round, info.Job
+			l.Round, l.Job, l.Run = info.Round, info.Job, o.RunID
 			l.FinishedAt = status.Str(status.Now())
 		})
-		history.Log(o.Root, history.Entry{Event: history.Skip, Lane: n, Job: info.Job, Detail: reason + "  " + info.Round})
+		history.Log(o.Root, history.Entry{Event: history.Skip, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
 		return &Outcome{N: n, Job: info.Job, State: status.Skipped, Exit: -1, Reason: reason}
 	}
 	// Dependencies outside this run must already be satisfied (see
@@ -278,7 +283,8 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, dis
 	info, _ := lane.ReadScript(o.Root, n)
 	cmd := exec.Command("bash", lane.Script(o.Root, n))
 	cmd.Dir = o.Root
-	env := append(os.Environ(), "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1")
+	env := append(os.Environ(), "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
+		"SWIM_RUN="+o.RunID, "SWIM_RUN_LANES="+joinInts(sel, " "))
 	if disp.Color() {
 		env = append(env, "SWIM_COLOR=1")
 	} else {
@@ -368,7 +374,7 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 	})
 	if died {
 		info, _ := lane.ReadScript(o.Root, n)
-		history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job,
+		history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID,
 			Detail: fmt.Sprintf("exit=%d  lane script exited before lane_init  %s", code, info.Round)})
 	}
 	return &Outcome{N: n, State: state, Exit: code, Elapsed: now.Sub(started)}
@@ -456,10 +462,15 @@ func logList(sel []int) string {
 	return strings.Join(parts, " ")
 }
 
-func joinInts(ns []int) string {
+// joinInts joins lane numbers with sep (default ",").
+func joinInts(ns []int, sep ...string) string {
 	parts := make([]string, len(ns))
 	for i, n := range ns {
 		parts[i] = fmt.Sprint(n)
 	}
-	return strings.Join(parts, ",")
+	s := ","
+	if len(sep) > 0 {
+		s = sep[0]
+	}
+	return strings.Join(parts, s)
 }
