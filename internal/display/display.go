@@ -17,7 +17,8 @@ import (
 
 // Display is the launcher's view. In live mode it pins the panel with an
 // ANSI scroll region; in plain mode it prints prefixed lines and one line
-// per state change.
+// per state change. Interactive mode is live mode drawn on the alternate
+// screen, with keys to read one lane's log (interactive.go).
 type Display struct {
 	out   io.Writer
 	fd    int
@@ -35,6 +36,7 @@ type Display struct {
 	panelH   int
 	done     chan struct{}
 	wg       sync.WaitGroup
+	tui      *interactive // interactive mode; nil otherwise
 }
 
 // Options configures New.
@@ -43,6 +45,19 @@ type Options struct {
 	Plain bool // force plain output
 	Title func(now time.Time) string
 	Cap   int // max_parallel; > 0 adds "running n/cap · queued m" to the title
+	// Interactive asks for the interactive view: the keyboard picks a lane
+	// to read. It is used only if live mode is, In is a terminal and this
+	// process is in its foreground; the caller rules out the rest (a lane
+	// that needs stdin, --no-tui, SWIM_TUI=0, CI: see TUIAllowed).
+	Interactive bool
+	In          *os.File
+	// LogPath and LogLabel name lane n's log file, read by the lane view,
+	// and how it is shown (".swim/logs/agent3.log").
+	LogPath, LogLabel func(n int) string
+	// OnInterrupt runs when Ctrl-C is typed in the interactive view (raw
+	// mode turns off the terminal's own signal). nil sends SIGINT to the
+	// terminal's foreground process group, as the terminal would have.
+	OnInterrupt func()
 }
 
 // New prepares a display for lanes 1..len(views). Live mode needs a
@@ -65,6 +80,13 @@ func New(o Options, views []LaneView) *Display {
 		if cols, rows, err := term.GetSize(d.fd); err == nil && rows >= d.panelH+5 && cols >= 30 {
 			d.live, d.cols, d.rows = true, cols, rows
 		}
+	}
+	if d.live && o.Interactive && o.In != nil && ui.IsTTY(o.In) && foreground(int(o.In.Fd())) && o.LogPath != nil {
+		label := o.LogLabel
+		if label == nil {
+			label = o.LogPath
+		}
+		d.tui = &interactive{in: int(o.In.Fd()), onInterrupt: o.OnInterrupt, model: newTUI(d.color, o.LogPath, label)}
 	}
 	return d
 }
@@ -89,6 +111,12 @@ func (d *Display) Start() {
 		}
 		d.mu.Unlock()
 		return
+	}
+	if d.tui != nil {
+		if d.startInteractive() {
+			return
+		}
+		d.tui = nil // the terminal wouldn't go raw: plain live mode
 	}
 	d.mu.Lock()
 	fmt.Fprint(d.out, "\x1b[2J\x1b[H")
@@ -137,8 +165,13 @@ func (d *Display) Stop() {
 		d.mu.Unlock()
 		return
 	default:
-		close(d.done)
 	}
+	if d.tui != nil {
+		d.mu.Unlock()
+		d.stopInteractive()
+		return
+	}
+	close(d.done)
 	d.mu.Unlock()
 	d.wg.Wait()
 	if !d.live {
@@ -150,8 +183,14 @@ func (d *Display) Stop() {
 	d.restoreLocked()
 }
 
-// Restore resets the scroll region if Stop didn't; for early exits.
+// Restore resets the scroll region (or leaves the interactive view) if Stop
+// didn't; for early exits and panics.
 func (d *Display) Restore() {
+	if d.tui != nil {
+		d.closeDone() // stop the view's goroutines drawing
+		d.restoreTTY()
+		return
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.restoreLocked()
@@ -169,6 +208,11 @@ func (d *Display) restoreLocked() {
 func (d *Display) Line(n int, text string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.tui != nil {
+		d.tui.model.addLine(n, text)
+		d.tui.dirty = true
+		return
+	}
 	prefix := Prefix(n, d.color)
 	if !d.live {
 		line := prefix + text
@@ -197,6 +241,11 @@ func (d *Display) Line(n int, text string) {
 func (d *Display) Message(text string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.tui != nil {
+		d.tui.model.addLine(0, text)
+		d.tui.dirty = true
+		return
+	}
 	fmt.Fprintln(d.out, text)
 }
 
@@ -211,7 +260,9 @@ func (d *Display) Set(n int, fn func(*LaneView)) {
 		before := d.views[i]
 		fn(&d.views[i])
 		after := d.views[i]
-		if d.live {
+		if d.tui != nil {
+			d.tui.dirty = true
+		} else if d.live {
 			d.drawLocked()
 		} else if msg := transition(before, after); msg != "" {
 			p := ui.Painter{On: d.color}
@@ -266,8 +317,8 @@ func (d *Display) setRegionLocked() {
 	fmt.Fprintf(d.out, "\x1b[%d;%dr\x1b[%d;1H", d.panelH+1, d.rows, d.rows)
 }
 
-// drawLocked repaints the panel without moving the output cursor.
-func (d *Display) drawLocked() {
+// titleLocked is the panel's title line text.
+func (d *Display) titleLocked() string {
 	title := d.title(d.now())
 	if d.cap > 0 {
 		running, queued := 0, 0
@@ -281,7 +332,12 @@ func (d *Display) drawLocked() {
 		}
 		title += fmt.Sprintf(" · running %d/%d · queued %d", running, d.cap, queued)
 	}
-	lines := RenderPanel(title, d.views, d.cols, d.now(), d.color)
+	return title
+}
+
+// drawLocked repaints the panel without moving the output cursor.
+func (d *Display) drawLocked() {
+	lines := RenderPanel(d.titleLocked(), d.views, d.cols, d.now(), d.color)
 	var b strings.Builder
 	b.WriteString("\x1b7") // save cursor
 	for i, l := range lines {

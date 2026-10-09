@@ -64,8 +64,8 @@ var Commands = map[string]string{
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
-	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N] [--chime|--no-chime]
-         [--yaml] [--yaml-output] [--interrupt graceful|immediate]
+	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
+         [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate]
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -91,6 +91,15 @@ var Commands = map[string]string{
       starts, lanes not yet started are skipped); the second interrupts the
       running steps (SIGINT) and kills them after interrupt_grace (5s); the
       third kills them at once. The summary still prints.
+    - Interactive view: with more than one lane on a terminal, the keyboard
+      picks what to read below the panel (see KEYS). The panel stays on top;
+      below it is all lanes' output (the "all view") or one lane's log for
+      its current round, as swim log N shows it (the "lane view"). Both
+      follow new lines; scrolling up pauses ("paused · 37 new lines"). The
+      all view keeps the last 20000 lines; older ones are in the logs. If
+      you are in a lane view or scrolled back when the run ends, the screen
+      stays until you press q ("run finished · q to close"); the summary
+      prints after it closes.
     - Ends with a per-lane summary: result, exit code, counts, failed steps.
   Exits 0 only if every lane passed.
   --parallel N  run at most N lanes at once (0 = unlimited; default: config
@@ -107,6 +116,22 @@ var Commands = map[string]string{
             running steps at once (the second press then kills).
   --plain   no pinned panel, colour or throbber; state changes print as lines.
             Automatic when stdout isn't a terminal or NO_COLOR is set.
+  --no-tui  the pinned panel without the interactive view (output scrolls in
+            the terminal as before). Also SWIM_TUI=0. The interactive view is
+            also off for a single lane (it may prompt on stdin), with --plain,
+            --yaml, NO_COLOR or SWIM_COLOR=0, CI=true, when stdin or stdout
+            isn't a terminal, and when the terminal is too small.
+  KEYS (interactive view)
+    → l Tab / ← h Shift-Tab   next / previous lane, in panel order (running,
+                    then waiting, then finished); from the all view → opens
+                    the last lane selected, ← the last lane
+    ↑ k / ↓ j       scroll one line      PgUp b / PgDn Space   a page
+    Home g / End G  top; bottom and follow again
+    4 2 Enter       jump to swim 42
+    f               which lanes ← → visit: every lane / running / failed
+    Esc             back to the all view, following, filter cleared
+    Ctrl-C          interrupt, as without the view   ?  help    q  close
+                    the view after the run
   --yaml    stdout is a stream of YAML documents (schema swim.run/v1: run,
             waiting, locked, queued, start, step, finish, then summary)
             instead of the panel and table; lane output goes only to the
@@ -120,8 +145,8 @@ var Commands = map[string]string{
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
 `,
-	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N] [--chime|--no-chime]
-         [--yaml] [--yaml-output] [--interrupt graceful|immediate]
+	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
+         [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
@@ -131,7 +156,7 @@ var Commands = map[string]string{
   lanes: 4) holding jobs that haven't passed, swim asks whether to raise the
   lane count so they run. Without a terminal it never asks or changes
   config; it prints the "swim config --lanes N" command instead. Dependencies ("# After:" lines and config deps), the live
-  view, guard flags, the summary and the chime (--chime / --no-chime) all
+  view and its keys (--no-tui), guard flags, the summary and the chime (--chime / --no-chime) all
   work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,

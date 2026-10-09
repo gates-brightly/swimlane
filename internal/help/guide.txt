@@ -63,6 +63,10 @@ CONCEPTS
               and .swim.log. Use it to tell this run's outputs from leftovers.
               `swim log <run>` and `swim status --run <run>` show one run. A lane
               run directly with bash is a run of its own.
+              On a terminal with more than one lane, the operator's live view is
+              interactive: ← → pick a lane to read its log, ↑ ↓ scroll, Esc
+              returns to all lanes, ? lists the keys (--no-tui or SWIM_TUI=0:
+              off). It changes nothing a lane sees or records.
   job         One round's unique id, written in the script header as
               `# Job: <id>` by `swim new` (a UUID, or your own with --job).
               It is recorded in the log, status.yml, the live view and the

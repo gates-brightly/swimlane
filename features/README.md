@@ -7,7 +7,7 @@ where it would land in the code, open questions, and how to test it.
 | feature | file | status |
 |---|---|---|
 | `swim ci`: a CI/CD mode (GitHub Actions, GitLab, others) with verbose logs, optimized for running on commits | [ci.md](ci.md) | proposed |
-| Interactive TUI for `swim all` / `swim run`: arrow keys pick a lane, up/down scroll its log, ESC returns to all lanes | [tui.md](tui.md) | proposed |
+| Interactive TUI for `swim all` / `swim run`: arrow keys pick a lane, up/down scroll its log, ESC returns to all lanes | [tui.md](tui.md) | shipped (unreleased) |
 | Blocked commands: swim never pushes, commits or pulls; a lane whose command contains a blocked substring is stopped | [blocked-commands.md](blocked-commands.md) | shipped (unreleased) |
 | Run id: one id per `swim run`, exported as `SWIM_RUN` and recorded in logs, status and `.swim.log` | [run-id.md](run-id.md) | shipped (unreleased) |
 | YAML output: `swim run --yaml` event stream, plus `--yaml` for `log`, `plan` and `status`, with versioned schemas | [yaml-output.md](yaml-output.md) | shipped (unreleased) |

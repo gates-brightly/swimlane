@@ -1,6 +1,6 @@
 # Interactive lane view for `swim all` / `swim run`
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -9,21 +9,19 @@ the keyboard to focus one lane and read only its log, scroll back through it,
 then press ESC to return to the combined view of all lanes.
 
 ```
- swim · swimlane · main@64a0e07 · 0:42                    ← → lane  ↑ ↓ scroll  esc all
- swim 1  PASS     DAG root: fetch pages, aggregate               0:01
- swim 2  PASS     DAG child A: combined.html to Markdown         0:03
-▶swim 3  running  DAG child B: per-page link and word stats      0:08  stats.json
- swim 4  waiting  DAG join A+B: report.md                        waiting on swim 3
- … 95 more (88 pass, 6 running, 1 waiting)
-──────────────────────────────── swim 3 · following · .swim/logs/agent3.log ──
-=== STEP 2026-10-09T13:40:28Z simulated work (10ms)
-$ sleep 0.01
---- exit 0 (0.0s)
-PASS  simulated work (10ms)
-=== STEP 2026-10-09T13:40:28Z compute stats.json
-$ e2etool stats
---- output
-cern     words=  291 int= 14 ext=  0  The World Wide Web project
+swim · swimlane · main@64a0e07 · 0:42         ← → lane  ↑ ↓ scroll  esc all  ? help
+ swim 1   PASS 0:01                  DAG root: fetch pages, aggregate
+ swim 2   PASS 0:03                  DAG child A: combined.html to Markdown
+▶swim 3   | running 0:08             DAG child B: per-page link and word stats
+ swim 4   | waiting on swim 3        DAG join A+B: report.md
+ … 95 more: 6 running, 1 waiting, 88 passed
+───────────────────────── swim 3 · following · .swim/logs/agent3.log ──
+-- stage change  13:40:28
+  PASS  simulated work (10ms)                  0.0s  13:40:28
+        $ sleep 0.01
+  PASS  compute stats.json                     0.1s  13:40:28
+        $ e2etool stats
+        | cern     words=  291 int= 14 ext=  0  The World Wide Web project
 ```
 
 ## Motivation
@@ -157,6 +155,74 @@ The existing views are used, unchanged, when any of these apply:
 5. **Stopping one lane:** a key to send SIGINT to just the selected lane. That's
    useful, but it's a new capability (today interrupts are all or nothing), and
    it needs a confirm step and log semantics.
+
+## Decisions
+
+1. **A single lane that needs stdin:** (a). A run of one lane never uses the
+   interactive view; it keeps the live view and gets stdin, so `confirm`
+   works as before. The view is on only when more than one lane runs, and
+   then it, not a lane, reads stdin (those lanes got no stdin already).
+2. **What the lane view shows:** the lane's log for its current round
+   (from its last `== ROUND` line), complete: stage headers, result lines,
+   commands and their `| ` output, the `== END` block. The text is the
+   file's, as `swim log N --raw` prints it, lightly coloured (banners,
+   stage headers, result kinds); long step output is not folded. A key
+   for the lane's raw stdout was not added: the log already holds it. A
+   lane that hasn't started in this run shows its last round, and the
+   divider says `last round`.
+3. **Scrollback:** the all view keeps the last 20,000 lines (as does one
+   lane's view); older lines are only in the logs. Opening a lane view reads
+   at most the last 8 MB of its log, then only what is appended.
+4. **Search (`/`):** not now. A follow-up, now that there is a viewport.
+5. **Stopping one lane:** not in this feature. Per-lane interrupts are left
+   to [graceful-interrupt.md](graceful-interrupt.md) (graceful Ctrl-C, a
+   process group per lane, `swim interrupt N`); a key for it can come with
+   that.
+
+Decided while building:
+
+- **Ctrl-C in raw mode:** the launcher sets `display.Options.OnInterrupt`
+  to its interrupt escalation ([graceful-interrupt.md](graceful-interrupt.md)),
+  so a Ctrl-C typed in the view does exactly what the terminal's own does:
+  the first press stops lanes at the next step boundary, the second forces,
+  the third kills. Without `OnInterrupt`, the view sends SIGINT to the
+  terminal's foreground process group. After the run, while the screen is
+  held, Ctrl-C just closes it. Ctrl-Z does nothing in the view.
+- **When it's on:** live mode would be used (colour, stdout a terminal with
+  rows for the panel plus 5), stdin is a terminal and swim is in its
+  foreground process group (a background job would be stopped by SIGTTOU),
+  more than one lane runs, and none of `--no-tui`, `SWIM_TUI=0`, `CI=true`
+  (or `1`), `--plain`, `--yaml` applies. If the terminal won't go raw, the
+  live view is used.
+- **Keys beyond the table:** `b` / `Space` page like `less`; `Backspace`
+  edits a typed lane number and `Esc` cancels it; `q` during the run only
+  says that Ctrl-C interrupts. Jumping by number reaches any lane in the
+  panel (idle and done ones too, showing their last round); ←/→ visit only
+  lanes in this run. `f` shows its set in the divider (`lanes: running`)
+  and, when it is empty, says so instead of moving.
+- **Lane order** is recomputed on every key from the lanes' current states,
+  so a lane that starts or finishes moves; the selection is kept by lane
+  number, and → / ← move on from wherever it now is.
+- **Scrolling** is by log line; long lines wrap (the all view repeats the
+  `[N]` prefix on each row). The divider shows `paused · N new lines · End
+  to follow`; reaching the bottom by scrolling follows again.
+- **Holding the screen at the end:** in a lane view or scrolled back, the
+  divider says `run finished · q to close`. `q`, `Ctrl-C` or `Esc` from the
+  all view closes it (`Esc` from a lane view goes to the all view first).
+  SIGTERM or SIGHUP never holds it. Nothing of the alternate screen is
+  copied to the scrollback; the summary prints as before.
+- **Drawing:** the whole frame is redrawn into memory at most every 50ms
+  (100ms when only the clocks change) and only rows that changed are
+  written. The last column is never written, so terminals never wrap.
+- **Restoring the terminal:** leaving the alternate screen, showing the
+  cursor and restoring the saved termios happen once, under their own lock,
+  on a normal finish, SIGTERM/SIGHUP (the run then ends as before),
+  `Display.Restore` (early returns and panics in the launcher's goroutine),
+  and a panic in the view's goroutines (recovered, restored, re-raised).
+  `SWIM_TEST_TUI_PANIC=1` forces that panic for the tests.
+- **Key input** uses `select(2)` with a 50ms timeout (30ms while an ESC
+  may start a sequence), so the reader stops promptly and never leaves a
+  byte half-read; `poll(2)` doesn't work on terminals on macOS.
 
 ## Testing
 

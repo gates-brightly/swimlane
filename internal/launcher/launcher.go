@@ -56,6 +56,10 @@ type Options struct {
 	// immediate (swim run --interrupt).
 	Interrupt string
 
+	// Interactive allows the interactive view (keys pick a lane's log) when
+	// more than one lane runs on a terminal; the view then reads Stdin.
+	Interactive bool
+
 	ev *events
 }
 
@@ -220,6 +224,14 @@ func Run(o Options) (int, error) {
 			}
 			return t
 		},
+		// The interactive view takes the keyboard only when lanes get no stdin
+		// (more than one lane, see runLane). Ctrl-C typed in it (raw mode)
+		// goes to the same escalation as the terminal's own (interrupt.go).
+		Interactive: o.Interactive && len(sel) > 1 && o.ev == nil,
+		In:          o.Stdin,
+		LogPath:     func(n int) string { return lane.Log(o.Root, n) },
+		LogLabel:    func(n int) string { return fmt.Sprintf(".swim/logs/agent%d.log", n) },
+		OnInterrupt: func() { ir.handle(syscall.SIGINT) },
 	}, views)
 	ir = newInterrupter(o, disp, sl, lt)
 	defer ir.stop()

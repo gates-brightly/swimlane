@@ -1,0 +1,18 @@
+swim · app · main@abc1234 · 1:12         ← → lane  ↑ ↓ scroll  f filter  ? help
+ swim 1  - running 1:12             Cut over service X to Terraform 3f2a9c1e
+ swim 2  - waiting on swim 1        Diagnose Y
+ swim 3    idle                     -
+ swim 4  - waiting on swim 2, 3     Remove old stack
+ swim 5  PASS 1:00                  Audit
+ swim 6  FAIL exit 2 0:30           Deploy
+ swim 7  SKIP (swim 6 failed)       Cleanup
+────────────────────────────────────────────────────── all lanes · following ──
+[2] output line 1 from a lane that has quite a lot to say about what it is doin
+[2] g
+[1] output line 2 from a lane that has quite a lot to say about what it is doin
+[1] g
+[2] output line 3 from a lane that has quite a lot to say about what it is doin
+[2] g
+[1] output line 4 from a lane that has quite a lot to say about what it is doin
+[1] g
+a launcher message

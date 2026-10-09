@@ -16,6 +16,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/assets"
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
@@ -309,12 +310,13 @@ type runFlags struct {
 	chime, noChime   bool
 	yaml, yamlOutput bool
 	interrupt        string
+	noTUI            bool
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
-			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput},
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
@@ -387,7 +389,9 @@ func runLanes(rest []string, rf runFlags) error {
 	o := launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
-		Finished: chimeWhenDone(cfg, rf), Interrupt: rf.interrupt,
+		Finished:    chimeWhenDone(cfg, rf),
+		Interactive: !rf.noTUI && display.TUIAllowed(os.Getenv),
+		Interrupt:   rf.interrupt,
 	}
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput

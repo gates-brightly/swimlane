@@ -189,8 +189,8 @@ func PanelRows(n int) int {
 
 // visible picks the lanes to show when there are more than MaxRows: the
 // MaxRows-1 best ranked (ties keep lane order), returned in lane order,
-// plus a summary of the rest.
-func visible(views []LaneView) ([]LaneView, string) {
+// plus a summary of the rest. Lane sel (if not 0) always gets a row.
+func visible(views []LaneView, sel int) ([]LaneView, string) {
 	if len(views) <= MaxRows {
 		return views, ""
 	}
@@ -198,7 +198,13 @@ func visible(views []LaneView) ([]LaneView, string) {
 	for i := range idx {
 		idx[i] = i
 	}
-	sort.SliceStable(idx, func(a, b int) bool { return rank(views[idx[a]].State) < rank(views[idx[b]].State) })
+	key := func(i int) int {
+		if views[i].N == sel {
+			return -1
+		}
+		return rank(views[i].State)
+	}
+	sort.SliceStable(idx, func(a, b int) bool { return key(idx[a]) < key(idx[b]) })
 	keep := map[int]bool{}
 	for _, i := range idx[:MaxRows-1] {
 		keep[i] = true
@@ -237,6 +243,12 @@ func wordRank(w string) int {
 // RenderPanel returns the pinned panel: a title line, one row per lane and
 // a separator. Every line fits in width columns (ANSI codes excluded).
 func RenderPanel(title string, views []LaneView, width int, now time.Time, color bool) []string {
+	return renderPanel(title, views, width, now, color, 0)
+}
+
+// renderPanel is RenderPanel with lane sel (if not 0) marked ▶ and always
+// shown, for the interactive view.
+func renderPanel(title string, views []LaneView, width int, now time.Time, color bool, sel int) []string {
 	p := ui.Painter{On: color}
 	if width < 20 {
 		width = 20
@@ -250,9 +262,12 @@ func RenderPanel(title string, views []LaneView, width int, now time.Time, color
 		}
 	}
 	labelW := len(fmt.Sprintf(" swim %d  ", maxN))
-	shown, more := visible(views)
+	shown, more := visible(views, sel)
 	for _, v := range shown {
 		label := pad(fmt.Sprintf(" swim %d", v.N), labelW)
+		if v.N == sel {
+			label = "▶" + label[1:]
+		}
 		st, stColor := stateText(v, now)
 		stW := stateWidth
 		if labelW+stW > width {
