@@ -238,9 +238,18 @@ CI works, using generic output, so it can be tried locally.
     stops lanes at step boundaries and forces after `term_grace`. Set
     `term_grace` in `swim.yml` below the runner's own kill timeout. A per-run
     `--timeout` isn't built: rounds have `Timeout:` and steps `--timeout`.
-13. **Real CI:** this repo's workflow runs `e2e/ci-demo/run.sh`, which uses
-    committed demo rounds with their own `swim.yml`, on Linux. It uploads the
-    logs and JUnit report as an artifact.
+13. **Real CI (dogfooding):** this repo's GitHub Actions workflow is
+    `swim ci --junit` over committed rounds at its root: `lane.1.sh` (lint:
+    build, gofmt, vet, `swim lint`, shell syntax), then `lane.2.sh` (unit
+    tests) and `lane.3.sh` (the Go e2e suite with every scenario) in
+    parallel, with settings in `swim.yml`. It runs on Linux and on macOS
+    (bash 3.2), and uploads the logs and JUnit report. `make ci` runs the same
+    thing locally. The test steps run through `scripts/hermetic`, because
+    swim is testing swim from inside a swim lane. The script removes the
+    lane's `SWIM_*` variables, its git shim (which refuses the tests'
+    `git commit` and would stop the lane) and the CI provider's variables.
+    The e2e harness (`TestMain`, `e2e/run.sh`) strips the same variables
+    itself.
 
 ## Testing
 

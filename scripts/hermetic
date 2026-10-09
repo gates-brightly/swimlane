@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# scripts/hermetic CMD [ARGS...] — run CMD without the swim lane's own
+# environment, for steps that test swim itself (this repo's CI rounds,
+# lane.1-3.sh, run through swim ci): the lane's SWIM_* variables and
+# STEP_LOG are unset, the git shim lane_init put first on PATH is dropped
+# (it refuses git commit, which the tests use, and would stop the lane), and
+# the CI provider's variables are unset so tests see a plain machine.
+# Bash 3.2 compatible.
+for v in $(env | sed -nE 's/^((SWIM|GITHUB|GITLAB|CI)_[A-Za-z0-9_]*)=.*/\1/p'); do
+  unset "$v"
+done
+unset CI STEP_LOG
+PATH=$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -v '/\.swim/bin$' | paste -s -d: -)
+export PATH
+exec "$@"

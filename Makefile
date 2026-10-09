@@ -92,7 +92,10 @@ vet: ## Run go vet
 tidy: ## Tidy go.mod / go.sum
 	go mod tidy
 
-check: ## gofmt, vet, unit and e2e tests (what CI runs)
+ci: build ## Run this repo's CI rounds (lane.1-3.sh: lint, unit, e2e) through swim ci, as GitHub Actions does
+	$(BIN_DIR)/$(BINARY) ci --rerun
+
+check: ## gofmt, vet, unit and e2e tests (the same checks as the CI rounds, without swim)
 	@test -z "$$(gofmt -s -l .)" || { echo "gofmt needed on:"; gofmt -s -l .; exit 1; }
 	go vet ./...
 	go test ./...

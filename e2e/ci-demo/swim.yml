@@ -1,8 +1,0 @@
-# swim.yml: this repo's committed swim settings (the same keys as a repos
-# entry in ~/.config/swim/config.yml). A CI runner has no config of its own,
-# so swim ci reads these; an operator's own repos entry overrides them.
-lanes: 3
-max_parallel: 2
-header_env: [CI, GITHUB_REF_NAME]
-interrupt: graceful
-term_grace: 20s

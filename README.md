@@ -420,8 +420,12 @@ swim:
     reports: { junit: swim.xml }
 ```
 
-`e2e/ci-demo/` holds small demo rounds that this repo's own workflow runs
-through `swim ci`.
+This repo dogfoods it: its GitHub Actions workflow is `swim ci` over three
+committed rounds, `lane.1.sh` (lint), `lane.2.sh` (unit tests) and
+`lane.3.sh` (e2e), with settings in `swim.yml`. Run the same thing locally
+with `make ci` (or `swim all`). The test steps go through `scripts/hermetic`,
+which strips the lane's own swim environment, because they test swim from
+inside a swim lane.
 
 ## Safety
 

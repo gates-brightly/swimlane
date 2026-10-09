@@ -104,6 +104,11 @@ func TestCIGitHub(t *testing.T) {
 	if _, code := r.swimEnv([]string{"GITHUB_ACTIONS=true"}, "ci", "--require-work"); code != 1 {
 		t.Errorf("--require-work with nothing to run: exit %d", code)
 	}
+	// --rerun runs the passed rounds again (a test suite as rounds).
+	out, code = r.swimEnv([]string{"CI=true"}, "ci", "--rerun")
+	if code != 0 || !strings.Contains(out, "lanes 1, 2, 3, 4") || !strings.Contains(out, "--rerun: including ones that passed") {
+		t.Errorf("--rerun: %d\n%s", code, out)
+	}
 }
 
 func TestCIGitLabAndGeneric(t *testing.T) {

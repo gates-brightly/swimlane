@@ -34,23 +34,26 @@ jobs:
           bash --version | head -1
           go version
 
-      # gofmt, go vet, unit tests, the Go e2e suite and the e2e/ scenarios.
-      - run: make check
+      # swim tests itself: the CI rounds are committed lane scripts (lane.1.sh
+      # lint, lane.2.sh unit tests, lane.3.sh e2e; settings in swim.yml), run
+      # by the swim built from this checkout. Same as `make ci` locally.
+      - name: Build swim from this checkout
+        run: |
+          go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim
+          echo "$RUNNER_TEMP/swim-bin" >> "$GITHUB_PATH"
 
-      # swim ci on committed demo rounds, so GitHub's rendering of its groups,
-      # annotations and job summary can be checked by eye.
-      - name: swim ci demo
-        if: runner.os == 'Linux'
-        run: e2e/ci-demo/run.sh
-        env:
-          SWIM_CI_DEMO_OUT: ${{ runner.temp }}/ci-demo
+      - name: swim ci
+        run: swim ci --rerun --junit swim.xml
 
-      - name: Upload swim ci demo logs
-        if: always() && runner.os == 'Linux'
+      - name: Upload swim logs and JUnit
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: swim-ci-demo
-          path: ${{ runner.temp }}/ci-demo
+          name: swim-${{ matrix.os }}
+          path: |
+            .swim/logs
+            .swim.log
+            swim.xml
           if-no-files-found: ignore
 
       - name: Keep scenario repos on failure

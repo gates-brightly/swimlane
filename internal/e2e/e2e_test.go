@@ -27,6 +27,7 @@ import (
 var bin string
 
 func TestMain(m *testing.M) {
+	hermetic()
 	dir, err := os.MkdirTemp("", "swim-e2e-bin")
 	if err != nil {
 		panic(err)
@@ -42,6 +43,31 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+// hermetic strips what the suite may inherit when it runs inside a swim
+// lane (this repo's own CI runs it through swim ci) or a CI runner: the
+// lane's SWIM_* variables and STEP_LOG, the git shim lane_init puts first on
+// PATH (it refuses git commit and stops the outer lane), and the CI
+// provider's variables (tests set the ones they need; inherited, they
+// would change provider detection, turn the TUI off and write to the
+// runner's real job summary).
+func hermetic() {
+	for _, kv := range os.Environ() {
+		k, _, _ := strings.Cut(kv, "=")
+		switch {
+		case strings.HasPrefix(k, "SWIM_"), strings.HasPrefix(k, "GITHUB_"), strings.HasPrefix(k, "GITLAB_"),
+			strings.HasPrefix(k, "CI_"), k == "CI", k == "STEP_LOG", k == "XDG_CONFIG_HOME":
+			os.Unsetenv(k)
+		}
+	}
+	var path []string
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		if !strings.HasSuffix(filepath.ToSlash(p), "/.swim/bin") {
+			path = append(path, p)
+		}
+	}
+	os.Setenv("PATH", strings.Join(path, string(os.PathListSeparator)))
 }
 
 type repo struct {
@@ -1100,13 +1126,15 @@ loop:
 	}
 }
 
+// envOf is key's value in r.env: the last one, as exec uses it.
 func envOf(r *repo, key string) string {
+	val := ""
 	for _, kv := range r.env {
 		if k, v, ok := strings.Cut(kv, "="); ok && k == key {
-			return v
+			val = v
 		}
 	}
-	return ""
+	return val
 }
 
 // withLocks adds a "# Locks:" header line to lane n.

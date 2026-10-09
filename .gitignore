@@ -7,4 +7,7 @@ lane.[0-9]*.sh
 
 # e2e scenario lane scripts are source, not swim working files
 !/e2e/scenarios/*/lanes/lane.[0-9]*.sh
-!/e2e/ci-demo/lane.[0-9]*.sh
+# this repo's CI rounds (swim ci in .github/workflows/test.yml)
+!/lane.1.sh
+!/lane.2.sh
+!/lane.3.sh

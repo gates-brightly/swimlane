@@ -287,7 +287,7 @@ var Commands = map[string]string{
   --yaml   the round parsed, as data (schema swim.log/v1): the latest round,
            every round with --all, or a job's rounds. See READING RESULTS.
 `,
-	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--junit FILE] [--provider github|gitlab|generic]
+	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
         [--require-work] [--heartbeat D] [--run-id ID]
 
   Run rounds in a CI job: swim all, written for a CI log viewer and built for
@@ -320,6 +320,8 @@ var Commands = map[string]string{
                     origin/$GITHUB_BASE_REF; GitLab: CI_MERGE_REQUEST_DIFF_BASE_SHA
                     or CI_COMMIT_BEFORE_SHA. An all-zero SHA (new branch) runs
                     every pending round. Needs the history (fetch-depth: 0).
+  --rerun           also rounds that already passed (a test suite as rounds,
+                    like this repo's own CI, always runs everything)
   --require-work    exit 1 when there is nothing to run (default: a notice, 0)
   Exit codes: 0 every selected lane passed, 1 a lane failed or was skipped,
   2 usage, config or an unresolvable # After:.
