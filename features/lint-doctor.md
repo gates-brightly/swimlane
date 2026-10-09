@@ -1,6 +1,6 @@
 # swim lint and swim doctor
 
-Status: shipped (unreleased)
+Status: shipped (4.20261009)
 
 ## Summary
 

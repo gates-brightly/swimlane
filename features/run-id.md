@@ -1,6 +1,6 @@
 # Run id: one id per `swim run`, given to every lane
 
-Status: shipped (unreleased)
+Status: shipped (4.20261009)
 
 ## Summary
 

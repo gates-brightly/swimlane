@@ -87,6 +87,11 @@ There is one release per breaking number per day. A second release on the
 same day bumps the breaking number: shipping twice in a day usually means
 something changed that people need to act on anyway.
 
+Cut a release with `make release V=v0.<breaking>.<YYYYMMDD>`. It tags only
+when the version, `Breaking`, the newest `CHANGELOG.md` revision and a clean
+tree all agree, and it never pushes. `v0.3.20261009` was tagged without the
+bump, and `go.mod` retracts it.
+
 The first `swim run` / `swim all` in a repo writes **`.swim.lock`**, which
 records the breaking version the repo uses. Commit it. If someone runs a swim
 with a different breaking version, swim refuses to run lanes and says how to

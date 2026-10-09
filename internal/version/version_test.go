@@ -61,3 +61,13 @@ func TestEnsureCreatesAndChecks(t *testing.T) {
 		t.Error("corrupt lock accepted")
 	}
 }
+
+func TestTagMismatch(t *testing.T) {
+	good := Tag("20261009")
+	bad := fmt.Sprintf("v0.%d.20261009", Breaking-1)
+	for v, want := range map[string]string{good: "", bad: bad, "(devel)": "", "v0.0.0-20261009123456-abcdef123456": ""} {
+		if got := tagMismatch(v); got != want {
+			t.Errorf("tagMismatch(%q) = %q, want %q", v, got, want)
+		}
+	}
+}

@@ -1,6 +1,6 @@
 # Masking secrets in logs
 
-Status: shipped (unreleased)
+Status: shipped (4.20261009)
 
 ## Summary
 

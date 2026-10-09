@@ -6,19 +6,19 @@ where it would land in the code, open questions, and how to test it.
 
 | feature | file | status |
 |---|---|---|
-| `swim ci`: a CI/CD mode (GitHub Actions, GitLab, others) with verbose logs, optimized for running on commits | [ci.md](ci.md) | shipped (unreleased) |
-| Interactive TUI for `swim all` / `swim run`: arrow keys pick a lane, up/down scroll its log, ESC returns to all lanes | [tui.md](tui.md) | shipped (unreleased) |
-| Blocked commands: swim never pushes, commits or pulls; a lane whose command contains a blocked substring is stopped | [blocked-commands.md](blocked-commands.md) | shipped (unreleased) |
-| Run id: one id per `swim run`, exported as `SWIM_RUN` and recorded in logs, status and `.swim.log` | [run-id.md](run-id.md) | shipped (unreleased) |
-| YAML output: `swim run --yaml` event stream, plus `--yaml` for `log`, `plan` and `status`, with versioned schemas | [yaml-output.md](yaml-output.md) | shipped (unreleased) |
-| Parallel limit: `max_parallel` / `--parallel N`, queueing ready lanes so the longest chain runs first | [parallel-limit.md](parallel-limit.md) | shipped (unreleased) |
-| Per-step timeouts and retries: `run --timeout 2m --retry 3 --backoff 5s`, on top of the round's `Timeout:` | [step-timeout-retry.md](step-timeout-retry.md) | shipped (unreleased) |
-| `swim lint` (lane scripts) and `swim doctor` (binary, PATH, config, `.gitignore`) | [lint-doctor.md](lint-doctor.md) | shipped (unreleased) |
-| Resource locks: `# Locks: name`, so lanes that share a resource never overlap, without ordering them or spreading failures | [resource-locks.md](resource-locks.md) | shipped (unreleased) |
-| Masking secrets: values of `secret_env` and auto-detected secret vars become `***` in logs, snapshots, status and output | [secret-masking.md](secret-masking.md) | shipped (unreleased) |
-| `swim timeline`: Gantt view of any run, with each lane's start delay, the longest chain and wait breakdown | [timeline.md](timeline.md) | shipped (unreleased) |
-| Chime: bell, sound or desktop notification when `swim run`/`swim all` finishes; `swim config chime true` | [chime.md](chime.md) | shipped (unreleased) |
-| Graceful Ctrl-C: first press stops every lane at the next step boundary, second force quits (SIGINT then SIGKILL), third kills | [graceful-interrupt.md](graceful-interrupt.md) | shipped (unreleased) |
+| `swim ci`: a CI/CD mode (GitHub Actions, GitLab, others) with verbose logs, optimized for running on commits | [ci.md](ci.md) | shipped (4.20261009) |
+| Interactive TUI for `swim all` / `swim run`: arrow keys pick a lane, up/down scroll its log, ESC returns to all lanes | [tui.md](tui.md) | shipped (4.20261009) |
+| Blocked commands: swim never pushes, commits or pulls; a lane whose command contains a blocked substring is stopped | [blocked-commands.md](blocked-commands.md) | shipped (4.20261009) |
+| Run id: one id per `swim run`, exported as `SWIM_RUN` and recorded in logs, status and `.swim.log` | [run-id.md](run-id.md) | shipped (4.20261009) |
+| YAML output: `swim run --yaml` event stream, plus `--yaml` for `log`, `plan` and `status`, with versioned schemas | [yaml-output.md](yaml-output.md) | shipped (4.20261009) |
+| Parallel limit: `max_parallel` / `--parallel N`, queueing ready lanes so the longest chain runs first | [parallel-limit.md](parallel-limit.md) | shipped (4.20261009) |
+| Per-step timeouts and retries: `run --timeout 2m --retry 3 --backoff 5s`, on top of the round's `Timeout:` | [step-timeout-retry.md](step-timeout-retry.md) | shipped (4.20261009) |
+| `swim lint` (lane scripts) and `swim doctor` (binary, PATH, config, `.gitignore`) | [lint-doctor.md](lint-doctor.md) | shipped (4.20261009) |
+| Resource locks: `# Locks: name`, so lanes that share a resource never overlap, without ordering them or spreading failures | [resource-locks.md](resource-locks.md) | shipped (4.20261009) |
+| Masking secrets: values of `secret_env` and auto-detected secret vars become `***` in logs, snapshots, status and output | [secret-masking.md](secret-masking.md) | shipped (4.20261009) |
+| `swim timeline`: Gantt view of any run, with each lane's start delay, the longest chain and wait breakdown | [timeline.md](timeline.md) | shipped (4.20261009) |
+| Chime: bell, sound or desktop notification when `swim run`/`swim all` finishes; `swim config chime true` | [chime.md](chime.md) | shipped (4.20261009) |
+| Graceful Ctrl-C: first press stops every lane at the next step boundary, second force quits (SIGINT then SIGKILL), third kills | [graceful-interrupt.md](graceful-interrupt.md) | shipped (4.20261009) |
 
 ## Staging a feature
 

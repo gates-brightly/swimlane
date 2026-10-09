@@ -1,6 +1,6 @@
 # Interactive lane view for `swim all` / `swim run`
 
-Status: shipped (unreleased)
+Status: shipped (4.20261009)
 
 ## Summary
 

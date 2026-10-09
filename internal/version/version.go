@@ -77,8 +77,12 @@ func TagMismatch() string {
 	if !ok {
 		return ""
 	}
-	if m := tagRE.FindStringSubmatch(bi.Main.Version); m != nil && m[1] != fmt.Sprint(Breaking) {
-		return bi.Main.Version
+	return tagMismatch(bi.Main.Version)
+}
+
+func tagMismatch(mainVersion string) string {
+	if m := tagRE.FindStringSubmatch(mainVersion); m != nil && m[1] != fmt.Sprint(Breaking) {
+		return mainVersion
 	}
 	return ""
 }

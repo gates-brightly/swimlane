@@ -1,6 +1,6 @@
 # swim ci
 
-Status: shipped (unreleased)
+Status: shipped (4.20261009)
 
 ## Summary
 
