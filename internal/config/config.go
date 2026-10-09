@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/gates-brightly/swimlane/internal/policy"
 )
 
 // DefaultLanes is used when neither the defaults nor the repo set `lanes`.
@@ -21,12 +23,13 @@ const DefaultLanes = 4
 // Settings is one block of configuration, either `defaults` or a repo entry.
 // Zero values mean "not set" so a repo block can override field by field.
 type Settings struct {
-	Lanes       int           `yaml:"lanes,omitempty"`
-	HeaderEnv   []string      `yaml:"header_env,omitempty"`
-	Runtime     string        `yaml:"runtime,omitempty"`
-	Toolchain   string        `yaml:"toolchain,omitempty"`
-	Deps        map[int][]int `yaml:"deps,omitempty"`
-	MaxParallel *int          `yaml:"max_parallel,omitempty"` // lanes running at once; 0 = unlimited
+	Lanes           int           `yaml:"lanes,omitempty"`
+	HeaderEnv       []string      `yaml:"header_env,omitempty"`
+	Runtime         string        `yaml:"runtime,omitempty"`
+	Toolchain       string        `yaml:"toolchain,omitempty"`
+	Deps            map[int][]int `yaml:"deps,omitempty"`
+	MaxParallel     *int          `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
+	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // added to the built-in git push/commit/pull
 }
 
 // File is the on-disk shape of config.yml.
@@ -165,12 +168,19 @@ func (c *Config) merge(r Settings) {
 	if r.MaxParallel != nil {
 		c.MaxParallel = r.MaxParallel
 	}
+	// Blocked commands add up: defaults, then the repo's (never removed).
+	c.BlockedCommands = append(append([]string(nil), c.BlockedCommands...), r.BlockedCommands...)
 }
 
 // Validate checks lane numbers are within 1..Lanes and deps form no cycle.
 func (c *Config) Validate() error {
 	if c.Lanes < 1 || c.Lanes > 99 {
 		return fmt.Errorf("lanes must be 1..99, got %d", c.Lanes)
+	}
+	for _, b := range c.BlockedCommands {
+		if strings.TrimSpace(b) == "" {
+			return fmt.Errorf("blocked_commands: empty pattern")
+		}
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)
@@ -197,6 +207,10 @@ func (c *Config) Validate() error {
 	}
 	return nil
 }
+
+// Blocked returns the patterns no lane command may contain: the built-ins
+// (git push, git commit, git pull) plus defaults' and this repo's additions.
+func (c *Config) Blocked() []string { return policy.Patterns(c.BlockedCommands) }
 
 // Parallel is the cap on lanes running at once (0 = unlimited).
 func (c *Config) Parallel() int {

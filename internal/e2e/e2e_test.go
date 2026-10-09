@@ -1338,3 +1338,77 @@ run "never" true`)
 		t.Error("the round continued after Ctrl-C")
 	}
 }
+
+func TestBlockedCommands(t *testing.T) {
+	r := newRepo(t, "")
+	exec.Command("git", "-C", r.root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base").Run()
+	head := func() string {
+		out, _ := exec.Command("git", "-C", r.root, "rev-parse", "HEAD").Output()
+		return strings.TrimSpace(string(out))
+	}
+	before := head()
+
+	// 1. Pre-flight: a literal git push fails the lane before it starts.
+	r.script(1, "publish", `run "snapshot" echo before
+run "publish" git push origin main`)
+	r.script(2, "after publish", `run "x" true`)
+	p := filepath.Join(r.root, "lane.2.sh")
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: after publish\n", "# Round: after publish\n# After: 1\n", 1)), 0o755)
+	contains(t, "plan", r.mustSwim("plan"), "[-] swim 1  publish", `blocked: lane.1.sh:7 matches "git push"`, "[-] swim 2")
+	out, code := r.swim("all", "--plain")
+	if code == 0 {
+		t.Fatalf("blocked lane passed:\n%s", out)
+	}
+	contains(t, "summary", out, `blocked: lane.1.sh:7 matches "git push"`, "[2] SKIP (swim 1 failed)")
+	if r.log(1) != "" {
+		t.Errorf("a refused lane must not start (its log has a round):\n%s", r.log(1))
+	}
+	l := r.status().Get(1)
+	if l.State != status.Failed || l.ExitCode == nil || *l.ExitCode != 87 || len(l.FailedSteps) != 1 || !strings.HasPrefix(l.FailedSteps[0], "BLOCKED  publish") {
+		t.Errorf("status: %+v", l)
+	}
+	contains(t, ".swim.log", r.mustSwim("log"), `blocked: lane.1.sh:7 matches "git push"`)
+
+	// 2. A command built at runtime is refused at the step, and a plain run
+	//    (not just gate) stops the round.
+	r.script(3, "runtime", `CMD="git com""mit -m x"
+run "builds a commit" bash -c "$CMD"
+run "never" true`)
+	r.swim("run", "3", "--plain")
+	log := r.log(3)
+	contains(t, "agent3.log", log, `  BLOCKED  builds a commit (matched "git commit"; swim never writes to git)`, "  STOP  blocked command: builds a commit", "== END FAIL", "exit=1")
+	if strings.Contains(log, "PASS  never") {
+		t.Errorf("the round continued after a blocked command:\n%s", log)
+	}
+
+	// 3. A repo-added pattern is honoured, on top of the built-ins.
+	cfg := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")
+	data, _ = os.ReadFile(cfg)
+	os.WriteFile(cfg, []byte(strings.Replace(string(data), "defaults:\n", "defaults:\n  blocked_commands: [\"terraform destroy\"]\n", 1)), 0o644)
+	contains(t, "config", r.mustSwim("config"), `"git push"   # built-in, always on`, `"terraform destroy"`)
+	r.script(4, "destroy", `run "x" true
+run "tear down" terraform  destroy -auto-approve`)
+	if out, _ := r.swim("run", "4", "--plain"); !strings.Contains(out, `blocked: lane.4.sh:7 matches "terraform destroy"`) {
+		t.Errorf("repo pattern not honoured:\n%s", out)
+	}
+
+	// 4. The git shim catches git outside run/gate, e.g. git -C . push, and
+	//    leaves read-only git alone.
+	r.mustSwim("config", "--lanes", "5")
+	r.script(5, "shim", `run "git status works" git status --short
+git -C . push origin main
+run "never" true`)
+	out5, _ := r.swim("run", "5", "--plain")
+	log = r.log(5)
+	if !strings.Contains(log, "BLOCKED") {
+		t.Logf("run 5 output:\n%s", out5)
+	}
+	contains(t, "agent5.log", log, "  PASS  git status works", "  BLOCKED  git push (git shim; swim never writes to git)", "  STOP  blocked command: git push/commit/pull")
+	if strings.Contains(log, "PASS  never") {
+		t.Error("the round continued after the shim refused git push")
+	}
+	if head() != before {
+		t.Error("the repo's history changed")
+	}
+}

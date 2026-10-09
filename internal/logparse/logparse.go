@@ -25,8 +25,8 @@
 //	   stages: snapshot PASS | check FAIL | change none | verify none
 //	   failed: FAIL  tf plan (exit 2); STOP  gate failed: tf plan
 //
-// Result lines are two spaces, a KIND (PASS FAIL SKIP DRIFT APPROVED STOP
-// WARN), two spaces and a label. Step results end with a duration and a
+// Result lines are two spaces, a KIND (PASS FAIL BLOCKED SKIP DRIFT APPROVED
+// STOP WARN), two spaces and a label. Step results end with a duration and a
 // clock time; marks (SKIP, DRIFT, APPROVED, STOP, WARN) carry a detail in
 // parentheses instead. Lines indented 8 spaces belong to the step above.
 //
@@ -57,6 +57,7 @@ const (
 	Approved = "APPROVED"
 	Stop     = "STOP"
 	Warn     = "WARN"
+	Blocked  = "BLOCKED" // a command swim refused to run (counts as a failure)
 )
 
 // Syntax 2 markers and indents.
@@ -185,7 +186,7 @@ type Round struct {
 func (r *Round) Failed() []Result {
 	var out []Result
 	for _, res := range r.Results {
-		if res.Kind == Fail || res.Kind == Stop {
+		if res.Kind == Fail || res.Kind == Stop || res.Kind == Blocked {
 			out = append(out, res)
 		}
 	}
@@ -204,7 +205,7 @@ func (r *Round) StageResults() []StageResult {
 			}
 			any = true
 			switch res.Kind {
-			case Fail, Stop:
+			case Fail, Stop, Blocked:
 				return "FAIL", true
 			case Pass:
 				pass = true
@@ -239,7 +240,7 @@ func (r *Round) add(res Result) {
 	switch res.Kind {
 	case Pass:
 		r.Pass++
-	case Fail:
+	case Fail, Blocked:
 		r.Fail++
 	case Skip:
 		r.Skip++
@@ -287,7 +288,7 @@ func scanner(r io.Reader) *bufio.Scanner {
 }
 
 var (
-	resultV2RE = regexp.MustCompile(`^  (PASS|FAIL|SKIP|DRIFT|APPROVED|STOP|WARN)  (.*)$`)
+	resultV2RE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN)  (.*)$`)
 	timedRE    = regexp.MustCompile(`^(.*?)\s+(\d+(?:\.\d+)?s)\s+(\d\d:\d\d:\d\d)$`)
 	labelRE    = regexp.MustCompile(`^(.*?)(?: \((.*)\))?$`)
 	roundV2RE  = regexp.MustCompile(`^== ROUND (\S+)\s+job=(\S+)\s+(.*)$`)

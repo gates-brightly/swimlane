@@ -304,6 +304,14 @@ SYNTAX
     1   no syntax line, no stages, === STEP / --- output log framing
 
 SAFETY RULES
+  - swim never pushes, commits or pulls, and neither do lanes. A lane script
+    containing `git push`, `git commit` or `git pull` (or a repo's
+    blocked_commands) fails before it starts; a step whose command contains one
+    at runtime is refused (BLOCKED, exit 87) and the round stops, even for a
+    plain `run`; and a git shim first on each lane's PATH refuses those
+    subcommands however git is called (git -C dir push, scripts the lane runs).
+    Committing is the operator's decision, made outside swim. The match is on
+    text, so even `echo "git push"` is refused: rephrase it.
   - Snapshot before any change. Back up stateful data (e.g. table items)
     before removal, and know how you would restore it.
   - Read the DEPLOYED state (e.g. the CloudFormation template's
@@ -338,6 +346,8 @@ READING RESULTS
               -- exit 255 (3.0s); retry in 5s      outcome and the wait before the next
               | <command output, ANSI stripped>    output is always fenced with "| "
               saved: <snapshot path>
+        BLOCKED  <label> (matched "git push"; swim never writes to git)
+                                                    a refused command (exit 87); counts as FAIL
         SKIP  <label> (dry run: set FLAG=1 to approve)
         APPROVED  <label> (FLAG=1)
         DRIFT  <what>
@@ -346,8 +356,8 @@ READING RESULTS
       == END <PASS|FAIL|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>  run=<run id>
          stages: snapshot PASS | check PASS | change SKIP | verify PASS
          failed: FAIL  <label> (exit <code>); ...
-  Results are the lines starting "  KIND  " (grep '^  FAIL' finds every
-  failure); anything indented 8 spaces belongs to the step above it and is
+  Results are the lines starting "  KIND  " (grep -E '^  (FAIL|BLOCKED)' finds
+  every failure); anything indented 8 spaces belongs to the step above it and is
   never a result. The current round is everything after the last "== ROUND".
 
   .swim.log (project log, oldest first; one line per event):
@@ -399,6 +409,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       defaults:
         lanes: 4                         # lanes are swim 1..lanes
         max_parallel: 8                  # lanes running at once (0 = unlimited, the default)
+        blocked_commands: ["git rebase", "gh pr merge"]   # added to the built-in git push/commit/pull
         header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
         runtime: node --version          # recorded as runtime version
         toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null

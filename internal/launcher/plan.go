@@ -74,6 +74,9 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 			}
 		}
 	}
+	for n, why := range BlockedLanes(o.Root, o.Cfg, sel) {
+		blocked[n] = why
+	}
 	skip := map[int]string{}
 	var skipReason func(n int) string
 	skipReason = func(n int) string {

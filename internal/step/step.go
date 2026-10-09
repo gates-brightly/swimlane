@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -48,6 +50,9 @@ type Options struct {
 	StepTimeout     time.Duration
 	StepTimeoutText string
 	Retry           Retry
+	// Blocked are patterns the command line may not contain (git push, ...);
+	// a match is refused without running: BLOCKED, exit policy.ExitBlocked.
+	Blocked []string
 }
 
 // Retry configures a step's retries (run --retry N ...).
@@ -145,6 +150,29 @@ func Run(o Options) (Result, error) {
 		fmt.Fprintln(o.Stderr, p.Paint(ui.Bold, "==> "+label))
 	}
 	fmt.Fprintln(o.Stderr, p.Paint(ui.Dim, "$ "+cmdline))
+
+	// swim never pushes, commits or pulls: check the whole command line,
+	// including the string inside bash -c '...', before running anything.
+	if hits := policy.Match(strings.Join(o.Args, " "), o.Blocked); len(hits) > 0 {
+		quoted := make([]string, len(hits))
+		for i, h := range hits {
+			quoted[i] = strconv.Quote(h)
+		}
+		detail := "matched " + strings.Join(quoted, ", ") + "; swim never writes to git"
+		os.WriteFile(SpoolPath(o.LogPath), []byte(fmt.Sprintf("%s\t%s\t%s\t%s\n", spoolMagic, logLabel, clock, cmdline)), 0o644)
+		if err := writeBlock(o.LogPath, logparse.StepLine(logparse.Blocked, logLabel, detail, "0.0s", clock), ""); err != nil {
+			return Result{ExitCode: policy.ExitBlocked}, err
+		}
+		line := logparse.ResultLine(logparse.Blocked, logLabel, detail)
+		fmt.Fprintln(o.Stderr, p.Paint(ui.Red+ui.Bold, line))
+		if o.Lane > 0 {
+			status.Update(o.Root, o.Lane, o.Lanes, func(l *status.Lane) {
+				l.Fail++
+				l.FailedSteps = append(l.FailedSteps, line)
+			})
+		}
+		return Result{ExitCode: policy.ExitBlocked}, nil
+	}
 
 	var res Result
 	var err error
@@ -501,10 +529,10 @@ func EnvLine(keys []string) string {
 	return strings.Join(parts, " ")
 }
 
-// GitRef returns branch@shortsha for dir, or "-" outside git.
+// GitRef returns branch@shortsha for dir, or "-" outside git. (swim only
+// reads git; see policy.TestSwimOnlyReadsGit.)
 func GitRef(dir string) string {
-	run := func(args ...string) string {
-		c := exec.Command("git", args...)
+	read := func(c *exec.Cmd) string {
 		c.Dir = dir
 		out, err := c.Output()
 		if err != nil {
@@ -512,12 +540,11 @@ func GitRef(dir string) string {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	sha := run("rev-parse", "--short", "HEAD")
+	sha := read(exec.Command("git", "rev-parse", "--short", "HEAD"))
 	if sha == "" {
 		return "-"
 	}
-	branch := run("rev-parse", "--abbrev-ref", "HEAD")
-	return branch + "@" + sha
+	return read(exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")) + "@" + sha
 }
 
 // RuntimeVersion runs cmdline (config's runtime:) and returns its first line.

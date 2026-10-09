@@ -326,6 +326,11 @@ repos:
 
 ## Safety
 
+- **swim never pushes, commits or pulls.** A lane containing `git push`,
+  `git commit` or `git pull` (plus a repo's `blocked_commands`) fails before
+  it starts; a command built at runtime is refused at the step (`BLOCKED`,
+  exit 87); and a git shim on each lane's `PATH` catches `git -C dir push` and
+  friends. The round stops. Committing is your decision, outside swim.
 - **Guarded destructive steps:** each one sits behind a gate and has its own
   guard flag. With the flag unset, the step dry-runs and the log shows how to
   approve it.

@@ -23,7 +23,11 @@ lane_init() {
   SWIM_ROOT=$(cd "$(dirname "$0")" && pwd -P) || exit 1
   cd "$SWIM_ROOT" || exit 1
   STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE.log"
-  export SWIM_LANE SWIM_ROOT STEP_LOG
+  # The git shim (.swim/bin/git, installed by swim _start) refuses push,
+  # commit and pull and signals this script (SWIM_PID) to stop the round.
+  SWIM_PID=$$
+  PATH="$SWIM_ROOT/.swim/bin:$PATH"
+  export SWIM_LANE SWIM_ROOT STEP_LOG SWIM_PID PATH
   if [ -f "$SWIM_ROOT/.lane.$SWIM_LANE.rc" ]; then
     . "$SWIM_ROOT/.lane.$SWIM_LANE.rc"
   fi
@@ -43,6 +47,7 @@ lane_init() {
   SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
   export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT
   trap '_swim_on_exit' EXIT
+  trap 'stop "blocked command: git push/commit/pull (swim never writes to git)"' USR1
   trap 'exit 130' INT
   trap 'exit 143' TERM
 }
@@ -70,6 +75,9 @@ _swim_after_step() {
   _swim_last=$1
   if [ "$_swim_last" -ne 0 ]; then
     _swim_fail=$((_swim_fail + 1))
+  fi
+  if [ "$_swim_last" -eq 87 ]; then
+    stop "blocked command: $_swim_label"
   fi
   if [ "$_swim_last" -eq 124 ] && [ -e "$STEP_LOG.round-timeout" ]; then
     rm -f "$STEP_LOG.round-timeout"

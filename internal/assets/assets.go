@@ -16,6 +16,11 @@ var Lib string
 //go:embed gitignore.txt
 var Gitignore string
 
+// GitShim is installed as .swim/bin/git for lanes (see blocked commands).
+//
+//go:embed git-shim.sh
+var GitShim string
+
 //go:embed lane.tmpl.sh
 var laneTmpl string
 

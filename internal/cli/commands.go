@@ -19,6 +19,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -162,6 +163,14 @@ func cmdConfig(args []string) error {
 		"effective":    cfg.Settings,
 	})
 	fmt.Print(string(out))
+	fmt.Println("blocked_commands:            # no lane command may contain these")
+	for _, b := range cfg.Blocked() {
+		mark := ""
+		if policy.IsBuiltin(b) {
+			mark = "   # built-in, always on"
+		}
+		fmt.Printf("  - %q%s\n", b, mark)
+	}
 	if !cfg.HasRepo {
 		fmt.Println("# no section for this repo; run `swim init` to add one")
 	}
@@ -511,6 +520,7 @@ func cmdStep(args []string) error {
 		Color:    ui.ColorEnabled(os.Stderr),
 		Deadline: deadline, TimeoutText: os.Getenv("SWIM_TIMEOUT"),
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
+		Blocked: cfg.Blocked(),
 	})
 	if err != nil {
 		return err

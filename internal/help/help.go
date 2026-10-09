@@ -28,7 +28,9 @@ var Commands = map[string]string{
 	"config": `swim config [--path] [--lanes N]
 
   Print the effective configuration for this repo (defaults merged with the
-  repo's section), or with --path just the config file location.
+  repo's section), or with --path just the config file location. The output
+  ends with the effective blocked_commands: the built-ins (git push, git
+  commit, git pull; always on) plus the defaults' and the repo's additions.
   --lanes N   set this repo's lane count (swim 1..N) in the config file,
               keeping its comments; recorded in .swim.log. Refuses to drop a
               lane that holds a pending round.

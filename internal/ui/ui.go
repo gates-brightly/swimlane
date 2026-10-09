@@ -65,7 +65,7 @@ func StateColor(state string) string {
 	switch {
 	case strings.HasPrefix(s, "pass"), strings.HasPrefix(s, "approved"):
 		return Green
-	case strings.HasPrefix(s, "fail"), strings.HasPrefix(s, "interrupted"), strings.HasPrefix(s, "stop"):
+	case strings.HasPrefix(s, "fail"), strings.HasPrefix(s, "interrupted"), strings.HasPrefix(s, "stop"), strings.HasPrefix(s, "blocked"):
 		return Red
 	case strings.HasPrefix(s, "skip"), strings.HasPrefix(s, "drift"), strings.HasPrefix(s, "waiting"), strings.HasPrefix(s, "running?"):
 		return Yellow

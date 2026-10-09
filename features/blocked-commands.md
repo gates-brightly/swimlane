@@ -1,6 +1,6 @@
 # Blocked commands: swim never pushes, commits or pulls
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -15,10 +15,9 @@ own code or through the lanes it runs:
   `git pull`. Repos can add to the list but can't remove the defaults.
 
 ```
-=== STEP 2026-10-09T15:02:11Z publish results
-$ bash -c 'git add .swim.log && git commit -m results && git push'
-BLOCKED  publish results (matched "git commit", "git push"; swim never writes to git)
-STOP  blocked command: publish results
+  BLOCKED  publish results (matched "git commit", "git push"; swim never writes to git)    0.0s  15:02:11
+        $ bash -c 'git add .swim.log && git commit -m results && git push'
+  STOP  blocked command: publish results
 ```
 
 ## Motivation
@@ -149,27 +148,26 @@ operation, and stays allowed.
   remove anything in other feature specs that would have swim commit (see
   `ci.md`).
 
-## Open questions
+## Decisions
 
-1. **Ship the git shim?**
-   - For: it closes the obvious gaps that substring matching leaves
-     (`git -C . push`, `git $verb`, scripts that call scripts).
-   - Against: a shim that sits in front of every git call. Note that
-     `.swim/bin` is inside a git-ignored directory, so it doesn't dirty the
-     repo.
-   - Recommend shipping it, with the substring check as the documented
-     contract and the shim as defence in depth.
-2. **Other ways to write to a remote.** Patterns are substrings, so
-   `git push-mirror`-style aliases or `hub`/`gh` commands aren't caught unless a
-   repo adds them. Should the built-ins include `gh pr merge`, `gh repo sync`
-   and `git merge`? Recommend keeping the built-ins to the three asked for and
-   showing examples in the docs.
-3. **Matches inside quoted data.** `echo "never git push"` matches too. That
-   leans safe, and a lane can rephrase. Should there be an escape hatch? Not
-   recommended: a lane that needs the literal text can split it,
-   e.g. `"git ""push"`. That's deliberate friction.
-4. **Exit code.** Pick a code nothing common uses. 87 is suggested, distinct
-   from 126/127 and signal codes. Document it in the log grammar.
+1. **The git shim ships.** `swim _start` writes `.swim/bin/git` (git-ignored with
+   `.swim/`), and `lane_init` puts it first on `PATH`. It finds the real
+   subcommand past global options (`-C`, `-c`, `--git-dir`, ...), refuses
+   `push`/`commit`/`pull` (records BLOCKED, exits 87, and sends the lane
+   script SIGUSR1, which stops the round), and execs the real git otherwise.
+   The substring check stays the documented contract; the shim is defence in
+   depth.
+2. **Built-ins stay at the three asked for.** Repos add more with
+   `blocked_commands` (additive across defaults and the repo; never removable).
+3. **No escape hatch** for matches inside quoted data; rephrase.
+4. **Exit code 87**, documented in the log grammar. BLOCKED is a new result
+   kind that counts as a failure (pass/fail counts, `failed_steps`, stage FAIL).
+5. Pre-flight refusals have no round in the lane's log (nothing ran): the
+   reason is in the run summary, `status.yml` (`reason`, `exit_code: 87`,
+   `failed_steps`) and the `.swim.log` `fail` event.
+6. swim's own git use is pinned by `policy.TestSwimOnlyReadsGit`: every
+   `exec.Command("git", ...)` must pass a literal, read-only subcommand
+   (`rev-parse`, `diff`, `log`, `ls-files`, `status`).
 
 ## Testing
 

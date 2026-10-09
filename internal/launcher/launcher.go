@@ -52,6 +52,7 @@ type Outcome struct {
 	State   string
 	Exit    int
 	Reason  string
+	Blocked bool // refused before starting (blocked command)
 	Elapsed time.Duration
 }
 
@@ -130,6 +131,7 @@ func Run(o Options) (int, error) {
 	if err != nil {
 		return 2, err
 	}
+	blocked := BlockedLanes(o.Root, o.Cfg, sel)
 
 	// The panel shows every lane 1..N so numbering never has gaps.
 	views := make([]display.LaneView, 0, o.Cfg.Lanes)
@@ -217,7 +219,12 @@ func Run(o Options) (int, error) {
 		go func(n int) {
 			defer wg.Done()
 			defer close(done[n])
-			out := runLane(o, n, sel, selected, deps[n], sl, lt, disp, done, outcomes, &mu, &interrupted, procs)
+			var out *Outcome
+			if reason := blocked[n]; reason != "" {
+				out = refuseBlocked(o, n, reason, disp)
+			} else {
+				out = runLane(o, n, sel, selected, deps[n], sl, lt, disp, done, outcomes, &mu, &interrupted, procs)
+			}
 			mu.Lock()
 			outcomes[n] = out
 			mu.Unlock()
@@ -507,6 +514,11 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 			job = "-"
 		}
 		label += " " + p.Paint(ui.Dim, fmt.Sprintf("%-8s", lane.ShortJob(job)))
+		if oc.Blocked { // refused before starting: no round of its own in the log
+			fmt.Fprintf(out, "  %s %s %4d %5s %5s %5s %6s %7s\n", label, p.Paint(ui.Red, fmt.Sprintf("%-12s", "FAIL")), oc.Exit, "-", "-", "-", "-", "-")
+			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, oc.Reason))
+			continue
+		}
 		result := strings.ToUpper(oc.State)
 		if oc.State == status.Passed {
 			result = "PASS"

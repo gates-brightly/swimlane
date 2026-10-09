@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/assets"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
@@ -104,6 +105,12 @@ func cmdStart(args []string) error {
 	run := os.Getenv("SWIM_RUN")
 	if run == "" {
 		run = lane.NewRunID() // run directly with bash: a run of its own
+	}
+	// The git shim lane_init puts first on PATH (swim never writes to git).
+	shim := filepath.Join(root, ".swim", "bin", "git")
+	if err := os.MkdirAll(filepath.Dir(shim), 0o755); err == nil {
+		os.WriteFile(shim+".tmp", []byte(assets.GitShim), 0o755)
+		os.Rename(shim+".tmp", shim)
 	}
 	logPath := lane.Log(root, n)
 	// This lane's own log is safe to convert: bash never reads it.
@@ -356,7 +363,7 @@ func cmdMark(args []string) error {
 		detail = args[3]
 	}
 	switch kind {
-	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn:
+	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn, logparse.Blocked:
 	default:
 		return usagef("unknown mark kind %q", kind)
 	}
@@ -392,6 +399,9 @@ func cmdMark(args []string) error {
 		case logparse.Drift:
 			l.Drift++
 		case logparse.Stop:
+			l.FailedSteps = append(l.FailedSteps, line)
+		case logparse.Blocked:
+			l.Fail++
 			l.FailedSteps = append(l.FailedSteps, line)
 		}
 	})
