@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,7 +20,18 @@ func h(s string) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-func now() float64 { return float64(time.Now().UnixNano()) / 1e9 }
+// now is the system-wide monotonic clock, in seconds. The audit compares
+// stamps written by different processes (a parent's end against a child's
+// start); the wall clock can step (NTP, a VM's clock sync), which would show
+// a correct run as an overlap. Every stamp comes from here, so only their
+// differences matter.
+func now() float64 {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
+		return float64(time.Now().UnixNano()) / 1e9
+	}
+	return float64(ts.Sec) + float64(ts.Nsec)/1e9
+}
 
 func cmdNow([]string) error {
 	fmt.Printf("%.3f\n", now())

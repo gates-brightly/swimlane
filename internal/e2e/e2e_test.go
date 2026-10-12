@@ -70,6 +70,24 @@ func hermetic() {
 	os.Setenv("PATH", strings.Join(path, string(os.PathListSeparator)))
 }
 
+// killLanes kills every lane still recorded in root's .swim/lane*.pid,
+// with its process group (the lane's steps).
+func killLanes(root string) {
+	files, _ := filepath.Glob(filepath.Join(root, ".swim", "lane*.pid"))
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		var pid int
+		if _, err := fmt.Sscan(string(data), &pid); err != nil || pid <= 1 {
+			continue
+		}
+		syscall.Kill(-pid, syscall.SIGKILL)
+		syscall.Kill(pid, syscall.SIGKILL)
+	}
+}
+
 type repo struct {
 	t    *testing.T
 	root string
@@ -89,6 +107,11 @@ func newRepo(t *testing.T, deps string) *repo {
 	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
+	// A test that fails mid-run, or crashes swim on purpose, must not leave
+	// lanes behind: they run in their own process groups and would outlive
+	// it (looping on files whose directory is about to go). Registered after
+	// t.TempDir, so it runs before the directory is removed.
+	t.Cleanup(func() { killLanes(root) })
 	r.mustSwim("init")
 	if deps != "" {
 		cfg := filepath.Join(xdg, "swim", "config.yml")

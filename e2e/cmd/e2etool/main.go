@@ -5,7 +5,7 @@
 // e2e/run.sh builds it next to the swim binary under test and puts it on
 // PATH, so scenarios need only bash and Go.
 //
-//	e2etool now                       epoch seconds, 3 decimals
+//	e2etool now                       monotonic clock seconds, 3 decimals (compare stamps only with each other)
 //	e2etool parents-check P...        gate: each parent in this run finished, on it, before NODE_START
 //	e2etool node-value P...           sha256 value from the parents -> nodes/N.val
 //	e2etool audit                     lane 99: every node, edge and value
