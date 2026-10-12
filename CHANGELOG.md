@@ -29,6 +29,21 @@ To cut a release:
 
 ## Unreleased
 
+## 6.20261012 (v0.6.20261012, 2026-10-12)
+
+Everything since `5.20261012`. Breaking version 6 only because this is the
+third release on 2026-10-12. Lane scripts, logs and existing state are the
+same as in 5; the queue adds new files under `.swim/queue/`. Install it with
+`go install github.com/gates-brightly/swimlane/cmd/swim@v0.6.20261012`.
+
+### Upgrading
+
+- **Repos locked at 5 (or 4) refuse to run until upgraded.** Nothing about
+  lane scripts, logs or state changed, so upgrading is just the lock: let
+  running lanes finish, run `swim lock --upgrade`, and commit `.swim.lock`.
+  CI jobs read the committed lock too, so they need that commit before they
+  run.
+
 ### Added
 
 - **A queue, and a worker that runs it:**
