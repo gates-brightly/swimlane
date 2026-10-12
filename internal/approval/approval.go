@@ -33,7 +33,8 @@ type Request struct {
 type Response struct {
 	Approved bool   `json:"approved"`
 	By       string `json:"by,omitempty"`   // who answered (the operator's user name)
-	Auto     bool   `json:"auto,omitempty"` // approved by swim run -y, not at a prompt
+	Auto     bool   `json:"auto,omitempty"` // approved by -y, not at a prompt
+	Via      string `json:"via,omitempty"`  // what approved it when Auto ("swim run -y", "queue q-... -y")
 	Why      string `json:"why,omitempty"`  // for a decline without an answer: "the run is stopping", ...
 }
 

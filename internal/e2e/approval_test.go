@@ -142,7 +142,7 @@ if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
 	}
 	contains(t, "agent2.log", r.log(2), "APPROVED  change b (approved by swim run -y (tester))", "PASS  b changed")
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	contains(t, ".swim.log", string(hist), "change a  (ALLOW_A, by tester with -y)")
+	contains(t, ".swim.log", string(hist), "change a  (ALLOW_A, by tester with swim run -y)")
 
 	// The lane shorthand takes it too, and the YAML stream records it.
 	r.script(2, "again", `if guard ALLOW_C "change c"; then run "c changed" true; fi`)

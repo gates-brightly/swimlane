@@ -29,6 +29,34 @@ To cut a release:
 
 ## Unreleased
 
+### Added
+
+- **A queue, and a worker that runs it:**
+  - **`swim queue add [N|JOB ...] [--approve FLAG]... [-y] [--note …]`**
+    queues a batch of rounds to run as soon as swim is idle. Each lane is
+    pinned to the job it held when queued, so a lane rewritten afterwards
+    is skipped, not run.
+  - **Approvals travel with the batch:** `--approve FLAG` approves that
+    guard and `-y` approves all of them. An approval must name a guard in
+    the batch, so a typo fails when you queue. A queued batch never asks,
+    and the worker's own environment approves nothing, so the queue entry
+    alone says what may change. The log records which entry approved each
+    step and who queued it.
+  - **`swim watch [--once]`** is the worker:
+    - It waits until swim is idle (no lane running, no other run waiting
+      on lanes), then runs the oldest batch.
+    - It consumes the entry when the run ends: the entry moves to
+      `.swim/queue/done/` with its run id, exit and each lane's result.
+    - Ctrl-C stops the batch gracefully and exits. Batches still waiting
+      stay queued.
+  - **Safe to run several workers:** an entry is claimed by atomically
+    renaming it, so no two workers ever claim the same one. A worker lock
+    keeps one batch running per repo.
+  - **Managing it:** `swim queue` lists the queue (`--yaml` too), and
+    `show`, `rm` and `requeue` manage entries, including orphaned ones whose
+    worker died. `swim status` notes waiting batches. `.swim.log` records
+    `queue`, `queue-run` and `queue-done` events.
+
 ## 5.20261012 (v0.5.20261012, 2026-10-12)
 
 Everything since `4.20261012`. Breaking version 5 only because this is the

@@ -354,6 +354,53 @@ var Commands = map[string]string{
   reruns every pending round unless --changed narrows it (or .swim/ is
   restored from a CI cache).
 `,
+	"queue": `swim queue [list] [--all] [--yaml]
+swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT]
+swim queue show|rm|requeue ID
+
+  Queue a batch of rounds to run as soon as swim is idle, by a worker
+  (swim watch). Get a batch ready, queue it with its approvals, and let it
+  fire when the current work is done.
+  add       queue the named lanes, or with none every pending round that
+            hasn't passed (as swim all would run). The batch is fixed now:
+            each lane is pinned to the job it holds, so a lane rewritten
+            before the batch runs is skipped, not run.
+            --approve FLAG  approve that guard for this batch (repeat, or
+                            FLAG,FLAG); it must be a guard of a lane in the
+                            batch, so a typo fails here, not at 3am
+            -y, --yes       approve every guard in the batch
+            A queued batch never asks: guards it doesn't approve are dry
+            runs, and a guard flag in the worker's own environment does not
+            count (the queue entry alone says what may change).
+  list      waiting, running and orphaned entries, and the last 5 consumed
+            (--all: every one); --yaml for scripts (schema swim.queue-list/v1)
+  show ID   the entry file; ID is its id, a 4+ character prefix, or #seq
+  rm ID     remove an entry that isn't running
+  requeue ID  put an orphaned (its worker died) or consumed entry back at the
+            end of the queue
+  Entries are files under .swim/queue/: NNNN-q-<utc>-<hex>.queue while
+  waiting, .running once a worker has claimed it (by renaming it, which
+  is atomic: two workers can never claim the same entry), then
+  done/NNNN-....yml with its result (run id, exit, each lane's result).
+  .swim.log records queue, queue-run and queue-done events.
+`,
+	"watch": `swim watch [--once] [--interval D]
+
+  The queue's worker. Runs each queued batch (swim queue add), oldest
+  first, as soon as swim is idle in this repo: no lane running and no other
+  swim run waiting on lanes. It runs the batch like swim run with the
+  batch's lanes pinned and its approvals, never prompts, and consumes the
+  entry when the run ends (passed, failed or interrupted alike: a half-run
+  change is never retried on its own; swim queue requeue does that).
+  One batch runs at a time per repo (a worker lock), so several workers
+  can share a queue.
+  --once         run every queued batch, then exit (non-zero if one failed)
+  --interval D   how often to check the queue and for idleness (default 2s)
+  Ctrl-C: during a batch, the usual graceful stop (lanes stop at a step
+  boundary; again to force quit), then the batch is consumed as interrupted
+  and the watch exits; between batches, the watch exits at once. Batches
+  still waiting stay queued.
+`,
 	"interrupt": `swim interrupt N|JOB
 
   Ask one running lane to stop at its next step boundary, from any

@@ -38,6 +38,9 @@ COMMANDS
   changelog [-n N] [--since VERSION] [--all]   what changed in swim (newest revision first)
   interrupt N|JOB          ask one running lane to stop at its next step boundary
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
+  queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
+                           to run as soon as swim is idle; queue [list|show|rm|requeue]
+  watch [--once]           the queue's worker: runs queued batches when idle, consumes them
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
   doctor [--fix]           check the environment: binary platform, PATH, config, .gitignore,
@@ -119,6 +122,8 @@ FILES (repo root)
                                 stripped); read it with `swim log N`
   .swim/logs/agentN.prev-*.log  archived logs (`swim log N --all`)
   .swim/snapshots/      output saved by `snapshot` steps
+  .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
+                        .running claimed by a worker, done/ consumed with results
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,
                         locked, started and finished (`swim timeline`)
   .swim/laneN.pid       present while lane N runs
@@ -163,6 +168,12 @@ PLANNER WORKFLOW
      (`# After: 3f2a9c1e`) when the dependency must be that exact round.
      Ordering that holds for every round can live in config `deps:` (outside
      the repo); give the operator the exact YAML lines for that.
+  9. Batches can wait their turn: while lanes are still busy, write the next
+     rounds, then have the operator queue them with the approvals they give
+     up front (`swim queue add 4 5 --approve FIN_ALLOW_DELETE_ZG_ITEMS`). A
+     worker (`swim watch`) runs the batch as soon as swim is idle. Queue only
+     what you'd hand over to run unattended: a queued batch never asks, so
+     every guard it doesn't approve is a dry run.
 
 WORKER RULES
   - Write only your own lane.N.sh. Never edit shared files (registries, plan

@@ -68,8 +68,9 @@ func cmdApprove(args []string) error {
 	by := or(resp.By, operator())
 	how := "approved at the prompt by " + by
 	if resp.Auto {
-		how = "approved by swim run -y (" + by + ")"
-		by += " with -y"
+		via := or(resp.Via, "swim run -y")
+		how = "approved by " + via + " (" + by + ")"
+		by += " with " + via
 	}
 	if err := cmdMark([]string{args[0], logparse.Approved, desc, how}); err != nil {
 		return err

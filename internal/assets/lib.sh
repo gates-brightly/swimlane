@@ -217,7 +217,12 @@ guard() {
   esac
   eval "_swim_val=\${$1-unset}"
   if [ "$_swim_val" = "1" ]; then
-    "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1"
+    # A queued batch's approvals (swim queue add --approve) say where they
+    # came from.
+    case " ${SWIM_QUEUE_APPROVED:-} " in
+      *" $1 "*) "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1, approved in $SWIM_QUEUE" ;;
+      *) "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1" ;;
+    esac
     return 0
   fi
   if [ "$_swim_val" = "unset" ] && [ -n "$SWIM_LANE" ]; then

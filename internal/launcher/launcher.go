@@ -61,8 +61,11 @@ type Options struct {
 	// terminal and this isn't the YAML stream.
 	Prompt bool
 	// AutoApprove (swim run -y) approves every such guard without asking,
-	// terminal or not; each approval is logged as by -y.
-	AutoApprove bool
+	// terminal or not; each approval is logged as by -y. ApprovedBy and
+	// ApprovedVia name who and what approved (default: this user, "swim run
+	// -y"; a queued batch: who queued it, "queue <id> -y").
+	AutoApprove             bool
+	ApprovedBy, ApprovedVia string
 	// Pins holds the job each lane must still hold when it starts (lanes
 	// named by job id, and every lane swim ci selects): a lane script
 	// rewritten in the meantime is skipped, not run.
@@ -262,7 +265,7 @@ func Run(o Options) (int, error) {
 			if o.AutoApprove {
 				disp.Message(fmt.Sprintf("%sapproved by -y: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
 				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (-y)", At: now()})
-				return approval.Response{Approved: true, By: operator(), Auto: true}
+				return approval.Response{Approved: true, By: or(o.ApprovedBy, operator()), Auto: true, Via: or(o.ApprovedVia, "swim run -y")}
 			}
 			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
 			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })

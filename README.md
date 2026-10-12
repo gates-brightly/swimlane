@@ -257,6 +257,8 @@ stops swim with instructions to update it.
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
 | `swim config [KEY [VALUE]] [--repo]` | Show the effective config (`--path`: its location), or get/set `chime`, `chime_style`, `chime_min_s` or `lanes` (`--lanes N` still works), keeping the file's comments. Writes go under `defaults:`, or this repo's section with `--repo`. |
+| `swim queue add [N\|JOB ...] [--approve FLAG] [-y]` | Queue a batch of rounds, pinned to their jobs and with their approvals, to run as soon as swim is idle. `swim queue` lists the queue; `show`, `rm` and `requeue` manage entries. |
+| `swim watch [--once]` | The queue's worker: runs each queued batch when swim is idle, then consumes it. One batch at a time per repo, so several workers can share a queue. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--junit FILE]` | Run rounds in a CI job: grouped per lane, failures as annotations, a job summary and JUnit; `--changed` runs only the rounds a push or merge request changed. |
 | `swim interrupt N\|JOB` | Ask one running lane to stop at its next step boundary (what the first Ctrl-C does to every lane). |
 | `swim lint [N\|JOB ...] [--strict] [--yaml]` | Check lane scripts (header, `set -e`, `lane_init`, `summary`, stages, bash 3.2, guards, blocked commands, secrets, dependencies); exits 1 on errors (`--strict`: warnings too). `swim run` refuses to start on `set -e` and `lane_init` errors. |

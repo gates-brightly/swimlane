@@ -13,6 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -206,6 +207,24 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		if l.LastArchive != "" && state == status.Idle {
 			detail("last archive: "+l.LastArchive, ui.Dim)
 		}
+	}
+	if entries, err := queue.List(root, false); err == nil && len(entries) > 0 {
+		waiting, running, orphaned := 0, 0, 0
+		for _, e := range entries {
+			switch e.State {
+			case queue.Queued:
+				waiting++
+			case queue.Running:
+				running++
+			case queue.Orphaned:
+				orphaned++
+			}
+		}
+		line := fmt.Sprintf("queue: %d waiting, %d running", waiting, running)
+		if orphaned > 0 {
+			line += fmt.Sprintf(", %d orphaned", orphaned)
+		}
+		fmt.Println(p.Paint(ui.Yellow, line+"   (swim queue; a worker: swim watch)"))
 	}
 	fmt.Println(p.Paint(ui.Dim, "raw: "+rel(root, status.Path(root))+"   logs: swim log N"))
 }
