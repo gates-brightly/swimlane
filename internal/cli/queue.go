@@ -324,14 +324,20 @@ func queueRequeue(args []string) error {
 // cmdWatch is the queue's worker: it runs each queued batch, oldest first,
 // as soon as swim is idle, and consumes it when it ends.
 func cmdWatch(args []string) error {
-	var once bool
+	var once, yes bool
 	var interval string
-	rest, err := flags{bools: map[string]*bool{"once": &once}, strs: map[string]*string{"interval": &interval}}.parse(args)
+	args = append([]string(nil), args...)
+	for i, a := range args {
+		if a == "-y" {
+			args[i] = "--yes"
+		}
+	}
+	rest, err := flags{bools: map[string]*bool{"once": &once, "yes": &yes}, strs: map[string]*string{"interval": &interval}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim watch [--once] [--interval D]")
+		return usagef("usage: swim watch [--once] [-y] [--interval D]")
 	}
 	every := 2 * time.Second
 	if interval != "" {
@@ -373,6 +379,9 @@ func cmdWatch(args []string) error {
 		mode = "running every queued batch, then exiting"
 	}
 	fmt.Println(p.Paint(ui.Bold, "swim watch · "+mode))
+	if yes {
+		fmt.Println(p.Paint(ui.Yellow+ui.Bold, "swim watch: -y: every guard in every batch is approved, beyond what each batch approves (logged as approved by swim watch -y ("+operator()+"))"))
+	}
 	code, said := 0, ""
 	say := func(s string) {
 		if s != said {
@@ -425,7 +434,7 @@ func cmdWatch(args []string) error {
 			continue
 		}
 		said = ""
-		res, interrupted := runEntry(root, cfg, e)
+		res, interrupted := runEntry(root, cfg, e, yes)
 		if err := queue.Consume(root, e, res); err != nil {
 			fmt.Fprintln(os.Stderr, "swim watch: consume "+e.ID+": "+err.Error())
 		}
@@ -455,7 +464,7 @@ func loadCfg(root string) (*config.Config, error) {
 // approvals and nothing else: a guard flag the batch doesn't approve is
 // cleared from the environment for the run, so the queue file alone says
 // what may change. It never prompts (nobody is watching a queue).
-func runEntry(root string, cfg *config.Config, e *queue.Entry) (queue.Result, bool) {
+func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes bool) (queue.Result, bool) {
 	started := time.Now().UTC()
 	res := queue.Result{Started: started.Format(time.RFC3339)}
 	var lanes []int
@@ -512,6 +521,12 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry) (queue.Result, bo
 	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y"}
+	if !e.ApproveAll && workerYes {
+		// The worker approves what the batch doesn't (the batch's own
+		// approvals keep their credit): swim watch -y.
+		o.AutoApprove, o.ApprovedBy, o.ApprovedVia = true, operator(), "swim watch -y"
+		res.ApprovedBy = "swim watch -y (" + operator() + ")"
+	}
 	interrupted := false
 	o.Finished = func(f launcher.Finish) { interrupted = f.Interrupted }
 	res.Run = o.RunID
@@ -519,7 +534,11 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry) (queue.Result, bo
 	for _, n := range lanes {
 		ns = append(ns, strconv.Itoa(n))
 	}
-	history.Log(root, history.Entry{Event: history.QueueRun, Run: o.RunID, Detail: fmt.Sprintf("%s: swim %s  queued by %s", e.ID, strings.Join(ns, ","), e.By)})
+	detail := fmt.Sprintf("%s: swim %s  queued by %s", e.ID, strings.Join(ns, ","), e.By)
+	if res.ApprovedBy != "" {
+		detail += "  every other guard approved by " + res.ApprovedBy
+	}
+	history.Log(root, history.Entry{Event: history.QueueRun, Run: o.RunID, Detail: detail})
 	fmt.Printf("\nswim watch: running %s (#%d, queued by %s): swim %s\n", e.ID, e.Seq, e.By, strings.Join(ns, " "))
 
 	code, err := launcher.Run(o)

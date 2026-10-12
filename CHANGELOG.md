@@ -29,6 +29,16 @@ To cut a release:
 
 ## Unreleased
 
+### Added
+
+- **`swim watch -y`:** the worker approves every guard in every batch it
+  runs, beyond what the batch approves:
+  - **Logged:** steps read `approved by swim watch -y (<user>)`. The
+    consumed entry records it as `approved_by`, and `.swim.log`'s
+    `queue-run` event says so.
+  - **Batch approvals keep their own credit:** `--approve FLAG` and the
+    batch's own `-y` are still credited to the person who queued it.
+
 ## 6.20261012 (v0.6.20261012, 2026-10-12)
 
 Everything since `5.20261012`. Breaking version 6 only because this is the

@@ -246,3 +246,36 @@ run "b" true`)
 	// The next batch is still waiting: Ctrl-C stops the watch, not the queue.
 	contains(t, "queue", r.mustSwim("queue"), "#2", "queued")
 }
+
+func TestWatchYes(t *testing.T) {
+	r := newRepo(t, "")
+	guardedLanes(t, r)
+	add := r.cmd(bin, "queue", "add", "--approve", "ALLOW_DROP")
+	add.Env = append(add.Env, "SWIM_USER=zach")
+	if out, err := add.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	w := r.cmd(bin, "watch", "--once", "-y")
+	w.Env = append(w.Env, "SWIM_USER=worker")
+	out, err := w.CombinedOutput()
+	if err != nil {
+		t.Fatalf("watch -y: %v\n%s", err, out)
+	}
+	contains(t, "watch", string(out), "-y: every guard in every batch is approved")
+	// The batch's own approval keeps its credit; the worker approves the rest.
+	contains(t, "agent1.log", r.log(1), "APPROVED  drop table t (ALLOW_DROP=1, approved in queue q-", " by zach)")
+	contains(t, "agent2.log", r.log(2), "APPROVED  other change (approved by swim watch -y (worker))", "PASS  other changed")
+	done := doneEntries(t, r)
+	if len(done) != 1 || done[0].Result.ApprovedBy != "swim watch -y (worker)" {
+		t.Fatalf("consumed entry should record the worker's approval: %+v", done[0].Result)
+	}
+	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
+	contains(t, ".swim.log", string(hist), "every other guard approved by swim watch -y (worker)")
+
+	// Without -y the same batch would have dry-run lane 2's change.
+	r.mustSwim("queue", "add", "2")
+	r.mustSwim("watch", "--once")
+	if !strings.Contains(r.log(2), "SKIP  other change (dry run: set ALLOW_OTHER=1 to approve)") {
+		t.Errorf("without -y an unapproved guard must dry-run:\n%s", r.log(2))
+	}
+}

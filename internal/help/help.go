@@ -384,7 +384,7 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [--interval D]
+	"watch": `swim watch [--once] [-y] [--interval D]
 
   The queue's worker. Runs each queued batch (swim queue add), oldest
   first, as soon as swim is idle in this repo: no lane running and no other
@@ -395,6 +395,10 @@ swim queue show|rm|requeue ID
   One batch runs at a time per repo (a worker lock), so several workers
   can share a queue.
   --once         run every queued batch, then exit (non-zero if one failed)
+  -y, --yes      approve every guard in every batch, beyond what the batch
+                 approves (the worker's say-so: logged as "approved by swim
+                 watch -y (<user>)", and in the consumed entry as approved_by).
+                 The batch's own --approve and -y keep their credit.
   --interval D   how often to check the queue and for idleness (default 2s)
   Ctrl-C: during a batch, the usual graceful stop (lanes stop at a step
   boundary; again to force quit), then the batch is consumed as interrupted

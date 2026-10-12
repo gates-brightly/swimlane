@@ -57,13 +57,16 @@ type LaneResult struct {
 
 // Result is filled in when the entry is consumed.
 type Result struct {
-	Run      string       `yaml:"run,omitempty"`
-	Started  string       `yaml:"started"`
-	Finished string       `yaml:"finished"`
-	Exit     int          `yaml:"exit"`
-	Result   string       `yaml:"result"` // passed | failed | interrupted | error
-	Error    string       `yaml:"error,omitempty"`
-	Lanes    []LaneResult `yaml:"lanes,omitempty"`
+	Run      string `yaml:"run,omitempty"`
+	Started  string `yaml:"started"`
+	Finished string `yaml:"finished"`
+	Exit     int    `yaml:"exit"`
+	Result   string `yaml:"result"` // passed | failed | interrupted | error
+	Error    string `yaml:"error,omitempty"`
+	// ApprovedBy is set when the worker approved the guards the batch
+	// didn't (swim watch -y): "swim watch -y (<user>)".
+	ApprovedBy string       `yaml:"approved_by,omitempty"`
+	Lanes      []LaneResult `yaml:"lanes,omitempty"`
 }
 
 // Entry is one queued batch.
