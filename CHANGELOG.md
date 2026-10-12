@@ -29,6 +29,43 @@ To cut a release:
 
 ## Unreleased
 
+## 5.20261012 (v0.5.20261012, 2026-10-12)
+
+Everything since `4.20261012`. Breaking version 5 only because this is the
+second release on 2026-10-12. Lane scripts, logs and swim's state are the
+same as in 4. Install it with
+`go install github.com/gates-brightly/swimlane/cmd/swim@v0.5.20261012`.
+
+### Upgrading
+
+- **Repos locked at 4 refuse to run until upgraded.** Nothing about lane
+  scripts, logs or state changed, so upgrading is just the lock: let running
+  lanes finish, run `swim lock --upgrade`, and commit `.swim.lock`. CI jobs
+  read the committed lock too, so they need that commit before they run.
+
+### Changed
+
+- **Approvals in the interactive view happen on the lane's own view:**
+  - **No more takeover:** a lane waiting for approval no longer covers the
+    screen. A banner names it (`▶ swim 2 needs approval · Enter to view it
+    and answer`).
+  - **Enter** opens the lane waiting longest: its log, with the question
+    underneath, where `y` or `n` answers it.
+  - **Moving around:** `←`/`→` still visit other lanes and `Esc` returns to
+    all lanes; the question waits until answered.
+  - **Several at once:** more than one lane can wait. Outside the
+    interactive view, questions are still asked one at a time.
+
+### Added
+
+- **`swim run|all … -y` (`--yes`)** approves every guard whose flag isn't
+  set without asking, terminal or not:
+  - **Logged:** each approval is recorded as
+    `approved by swim run -y (<user>)`, and as an `approved` event in
+    `--yaml`.
+  - **Limits:** `FLAG=0` still declines, and `-y` with `--no-prompt` is
+    refused.
+
 ## 4.20261012 (v0.4.20261012, 2026-10-12)
 
 Everything since `4.20261009`. Install it with
@@ -50,22 +87,15 @@ Everything since `4.20261009`. Install it with
     approved. `n`, Enter or Esc declines, and the step dry-runs as before.
   - **Approving up front:** `FLAG=1` still approves without asking (CI,
     scripts). `FLAG=0` declines without asking.
-  - **Parallel lanes** send their questions to swim run, and the lane's
-    panel row shows `awaiting approval`.
-    - In the interactive view, several lanes can wait at once. A banner
-      names them, and `Enter` opens the lane waiting longest: its log, with
-      the question underneath, where `y` or `n` answers it. `←`/`→` and
-      `Esc` work as usual, and the question waits.
-    - Otherwise questions are asked one at a time on a line below the
-      output, with lane output held until you answer.
+  - **Parallel lanes** queue their questions through swim run, one at a
+    time. In the interactive view the question is a box over the screen;
+    otherwise it is a line below the output, with lane output held until
+    you answer. The lane's panel row shows `awaiting approval`.
   - **No stuck questions:** Ctrl-C at a question declines it and stops the
     run. A stop request or the round's `Timeout:` ends the wait. A lane run
     with `bash lane.N.sh` asks on its own terminal.
   - **Switching it off:** `--no-prompt`, `approvals: prompt|flags` in
     config, or `swim config approvals flags`.
-  - **`swim run|all … -y` (`--yes`)** approves every guard question without
-    asking, terminal or not. Each approval is logged as
-    `approved by swim run -y (<user>)`. `FLAG=0` still declines.
 - **`swim ci --rerun`** also runs rounds that already passed, for a test
   suite written as rounds.
 

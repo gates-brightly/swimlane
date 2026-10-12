@@ -474,6 +474,9 @@ var Commands = map[string]string{
   swim lock --upgrade   move the lock up to this swim's breaking version
 
   Breaking versions:
+    5   v0.5.20261012: the second release that day, so a new breaking number
+        with nothing incompatible. Lane scripts, logs and state are as in 4:
+        swim lock --upgrade
     4   v0.4.<YYYYMMDD>. Syntax 2 lane scripts and logs (migrated
         automatically), BLOCKED results (exit 87), new lane states
         (starting, queued, locked), graceful Ctrl-C by default (exit 137
