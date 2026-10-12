@@ -65,7 +65,7 @@ var Commands = map[string]string{
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
-         [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate]
+         [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -144,9 +144,18 @@ var Commands = map[string]string{
             "swim config --help".
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
+  With a guard's flag unset and swim on a terminal, the lane asks instead:
+    swim 2 requires human approval of task: delete the zg items - 2026-10-12
+    (guard FIN_ALLOW_DELETE_ZG_ITEMS; or set FIN_ALLOW_DELETE_ZG_ITEMS=1 to approve without asking)  Y/N [N]
+  y approves (logged with who answered); n, Enter or Esc declines and the step
+  dry-runs. Questions from parallel lanes wait their turn; the lane's panel
+  row shows "awaiting approval". Ctrl-C at a question declines it and stops
+  the run as usual. Not asked: in CI, without a terminal, with --yaml,
+  --no-prompt or config approvals: flags (then only FLAG=1 approves).
+  --no-prompt   never ask; an unset guard flag is a dry run
 `,
 	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
-         [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate]
+         [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as

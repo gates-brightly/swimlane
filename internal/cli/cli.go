@@ -49,10 +49,11 @@ func init() {
 		"doctor":    {run: cmdDoctor},
 		"help":      {run: cmdHelp},
 		// Called by the lane script library, not by people.
-		"_start":  {run: cmdStart, hidden: true},
-		"_finish": {run: cmdFinish, hidden: true},
-		"_mark":   {run: cmdMark, hidden: true},
-		"_stage":  {run: cmdStage, hidden: true},
+		"_start":   {run: cmdStart, hidden: true},
+		"_finish":  {run: cmdFinish, hidden: true},
+		"_mark":    {run: cmdMark, hidden: true},
+		"_approve": {run: cmdApprove, hidden: true},
+		"_stage":   {run: cmdStage, hidden: true},
 	}
 }
 

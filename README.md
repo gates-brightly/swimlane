@@ -137,7 +137,7 @@ rules, and how to read results.
 | **job** | A round's unique id (the `# Job:` line). It is recorded everywhere, exported to steps as `$SWIM_JOB`, and usable in place of a lane number. |
 | **step** | One command run through `run` / `gate` / `snapshot`, logged with a header, its output and its exit code. |
 | **gate** | A step whose failure stops the round before any later (destructive) step. |
-| **guard flag** | An env var the operator sets to approve one destructive action, e.g. `FIN_ALLOW_DELETE=1`. Unset means dry run. |
+| **guard flag** | An env var that approves one destructive action up front, e.g. `FIN_ALLOW_DELETE=1`. Unset, swim asks you at the terminal: `swim 2 requires human approval of task: <action>  Y/N [N]`. A "no", or nobody to ask (CI, no terminal), means a dry run. |
 | **dependency** | `# After: 1` in a lane script: the lane waits for swim 1 to pass, and is skipped if it doesn't. |
 | **lock** | `# Locks: orders-table` in a lane script: lanes sharing a lock never run at the same time (in either order, within a run and across concurrent runs), and a failure doesn't spread through a lock. |
 | **stub / archive** | Between rounds a lane holds a "nothing pending" stub, and its finished log is archived. |
@@ -435,8 +435,11 @@ inside a swim lane.
   exit 87); and a git shim on each lane's `PATH` catches `git -C dir push` and
   friends. The round stops. Committing is your decision, outside swim.
 - **Guarded destructive steps:** each one sits behind a gate and has its own
-  guard flag. With the flag unset, the step dry-runs and the log shows how to
-  approve it.
+  guard flag. Setting the flag approves the step up front. With it unset, swim
+  asks you, and records who approved. Questions from parallel lanes take
+  turns. Anything but `y`, or nobody at the terminal, makes the step a dry
+  run, and the log shows how to approve it. `--no-prompt` or
+  `approvals: flags` turns the questions off.
 - **Snapshot first:** every multi-step change starts with a read-only
   snapshot.
 - **Fail-closed:** gates and `confirm` prompts stop the round when there is

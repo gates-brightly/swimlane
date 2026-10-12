@@ -211,7 +211,7 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 			bar = "  "
 		}
 		for _, g := range info.Guards {
-			state := p.Paint(ui.Yellow, "unset: dry run")
+			state := p.Paint(ui.Yellow, "unset: asks at the prompt; dry run if no one can answer")
 			if os.Getenv(g.Flag) == "1" {
 				state = p.Paint(ui.Green, "set: approved")
 			}

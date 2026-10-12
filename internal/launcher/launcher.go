@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
@@ -55,6 +56,10 @@ type Options struct {
 	// Interrupt overrides config interrupt for this run: graceful or
 	// immediate (swim run --interrupt).
 	Interrupt string
+	// Prompt lets a guard whose flag isn't set ask the operator (approval
+	// broker, approval.go) when the display can: stdin and stdout are a
+	// terminal and this isn't the YAML stream.
+	Prompt bool
 	// Pins holds the job each lane must still hold when it starts (lanes
 	// named by job id, and every lane swim ci selects): a lane script
 	// rewritten in the meantime is skipped, not run.
@@ -63,7 +68,8 @@ type Options struct {
 	// for a running lane silent this long, so a CI log never looks hung.
 	Heartbeat time.Duration
 
-	beat *heartbeat
+	beat         *heartbeat
+	approvalSock string
 
 	// Interactive allows the interactive view (keys pick a lane's log) when
 	// more than one lane runs on a terminal; the view then reads Stdin.
@@ -245,6 +251,21 @@ func Run(o Options) (int, error) {
 	}, views)
 	ir = newInterrupter(o, disp, sl, lt)
 	defer ir.stop()
+	if o.Prompt && o.ev == nil && disp.CanAsk() {
+		srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
+			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
+			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+			yes := disp.Ask(approval.Question(req), cancel)
+			return approval.Response{Approved: yes, By: operator()}
+		})
+		if err != nil {
+			disp.Message("swim: approvals: " + err.Error() + "; guards without their flag run as dry runs")
+		} else {
+			defer srv.Close()
+			ir.approvals = srv
+			o.approvalSock = srv.Path()
+		}
+	}
 
 	var (
 		mu       sync.Mutex
@@ -460,7 +481,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	cmd := exec.Command("bash", lane.Script(o.Root, n))
 	cmd.Dir = o.Root
 	env := append(os.Environ(), "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
-		"SWIM_RUN="+o.RunID, "SWIM_RUN_LANES="+joinInts(sel, " "))
+		"SWIM_RUN="+o.RunID, "SWIM_RUN_LANES="+joinInts(sel, " "), approval.EnvVar+"="+o.approvalSock)
 	if disp.Color() {
 		env = append(env, "SWIM_COLOR=1")
 	} else {
@@ -719,4 +740,14 @@ func closeKilledRound(o Options, n, code int) {
 	cmd.Dir = o.Root
 	cmd.Env = append(os.Environ(), "SWIM_COLOR=0")
 	cmd.Run()
+}
+
+// operator is who answers approvals at this terminal.
+func operator() string {
+	for _, k := range []string{"SWIM_USER", "USER", "LOGNAME"} {
+		if u := os.Getenv(k); u != "" {
+			return u
+		}
+	}
+	return "operator"
 }

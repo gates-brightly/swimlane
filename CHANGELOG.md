@@ -29,6 +29,45 @@ To cut a release:
 
 ## Unreleased
 
+### Upgrading
+
+- **A guard whose flag isn't set now asks you,** when swim is on a terminal:
+  `swim N requires human approval of task: <action>  Y/N [N]`. Before, it was
+  always a dry run. In CI, without a terminal or with `--yaml`, nothing
+  changes. To keep the old behaviour everywhere, set `approvals: flags` in
+  config, or pass `--no-prompt` for one run.
+
+### Added
+
+- **Approval prompts for guarded steps:**
+  - **What you see:** `guard FLAG "<action>"` with `FLAG` unset puts the
+    question to you. `y` approves, and the log and `.swim.log` record who
+    approved. `n`, Enter or Esc declines, and the step dry-runs as before.
+  - **Approving up front:** `FLAG=1` still approves without asking (CI,
+    scripts). `FLAG=0` declines without asking.
+  - **Parallel lanes** queue their questions through swim run, one at a
+    time. In the interactive view the question is a box over the screen;
+    otherwise it is a line below the output, with lane output held until
+    you answer. The lane's panel row shows `awaiting approval`.
+  - **No stuck questions:** Ctrl-C at a question declines it and stops the
+    run. A stop request or the round's `Timeout:` ends the wait. A lane run
+    with `bash lane.N.sh` asks on its own terminal.
+  - **Switching it off:** `--no-prompt`, `approvals: prompt|flags` in
+    config, or `swim config approvals flags`.
+- **`swim ci --rerun`** also runs rounds that already passed, for a test
+  suite written as rounds.
+
+### Changed
+
+- **This repo's CI is swim:**
+  - **The workflow:** GitHub Actions runs `swim ci` over committed rounds:
+    `lane.1.sh` (lint), then `lane.2.sh` (unit tests) and `lane.3.sh` (e2e)
+    in parallel, with settings in `swim.yml`.
+  - **Locally:** `make ci` runs the same rounds.
+  - **Hermetic tests:** the e2e harness strips an outer lane's `SWIM_*`
+    variables, its git shim and CI variables, so the suite can run inside a
+    swim lane.
+
 ## 4.20261009 (v0.4.20261009, 2026-10-09)
 
 Everything since `v0.2.20261009`. Breaking version 4 (3 went to the retracted,

@@ -200,9 +200,13 @@ any_failed() {
   [ "$_swim_fail" -gt 0 ]
 }
 
-# guard FLAG "<action — date, reason>" — true only if the operator set
-# FLAG=1. Otherwise records SKIP with a dry-run message showing how to
-# approve, and returns false. One flag per destructive action.
+# guard FLAG "<action — date, reason>" — true if the operator approves:
+# FLAG=1 approves up front (CI, scripts). With FLAG unset and an operator
+# at the terminal, swim asks: "swim N requires human approval of task:
+# <action> Y/N [N]"; y approves (recorded with who answered). Anything else
+# (n, Enter, FLAG set to another value, nobody to ask) records SKIP with a
+# dry-run message showing how to approve, and returns false. One flag per
+# destructive action.
 guard() {
   if [ $# -lt 2 ]; then
     echo 'swim: usage: guard FLAG "<action - date, reason>"' >&2
@@ -211,10 +215,18 @@ guard() {
   case "$1" in
     ''|[0-9]*|*[!A-Za-z0-9_]*) echo "swim: bad guard flag name: $1" >&2; return 2 ;;
   esac
-  eval "_swim_val=\${$1:-}"
+  eval "_swim_val=\${$1-unset}"
   if [ "$_swim_val" = "1" ]; then
     "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1"
     return 0
+  fi
+  if [ "$_swim_val" = "unset" ] && [ -n "$SWIM_LANE" ]; then
+    # Nobody set the flag: ask the operator if one is at the terminal
+    # ("requires human approval of task: ... Y/N [N]"); swim _approve
+    # records APPROVED, or SKIP as a dry run when declined or no one can be
+    # asked (CI, no terminal, approvals: flags).
+    "$SWIM_BIN" _approve "$SWIM_LANE" "$1" "$2"
+    return $?
   fi
   "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$2" "dry run: set $1=1 to approve"
   return 1

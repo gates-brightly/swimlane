@@ -80,8 +80,10 @@ CONCEPTS
   step        One command run through `swim step` (via run/gate/snapshot),
               recorded with a header, its output and exit code.
   gate        A step whose failure stops the round before any later step.
-  guard flag  An env var the operator sets to approve one destructive action,
-              e.g. FIN_ALLOW_DELETE_ZG_ITEMS=1. Unset means dry run.
+  guard flag  An env var that approves one destructive action up front, e.g.
+              FIN_ALLOW_DELETE_ZG_ITEMS=1. Unset, swim asks the operator at the
+              terminal ("requires human approval of task: ... Y/N [N]"); with
+              no one to ask (CI, no terminal) or a "no", the step dry-runs.
   lock        A named resource a round needs exclusively (# Locks:). A lane takes
               all its locks at once, after its dependencies pass and before it
               starts; lanes waiting for one show "locked (name: swim N)". Locks
@@ -210,8 +212,13 @@ WRITING A LANE SCRIPT
     Each attempt is in the log; the step counts once (one PASS or FAIL). Only put
     --retry on read-only or idempotent steps, never on a change that isn't.
   guard FLAG "<action - date, reason>"
-                                  true only if the operator set FLAG=1; otherwise logs
-                                  SKIP with the approval hint and returns false.
+                                  true if FLAG=1, or (FLAG unset) the operator answers y
+                                  to "swim N requires human approval of task: <action>
+                                  Y/N [N]" (swim run asks, one question at a time, even
+                                  for parallel lanes); otherwise logs SKIP with the
+                                  approval hint and returns false. FLAG set to anything
+                                  else (FLAG=0) never asks. Write <action> for the person
+                                  approving it: what it changes, and why.
   confirm "<question>" [answer]   operator must type the answer (default "yes");
                                   anything else, or no stdin, stops the round.
   last_failed                     true if the previous step failed.
@@ -393,7 +400,9 @@ READING RESULTS
         BLOCKED  <label> (matched "git push"; swim never writes to git)
                                                     a refused command (exit 87); counts as FAIL
         SKIP  <label> (dry run: set FLAG=1 to approve)
+        SKIP  <label> (dry run: declined at the prompt by <user>; set FLAG=1 to approve)
         APPROVED  <label> (FLAG=1)
+        APPROVED  <label> (approved at the prompt by <user>)
         DRIFT  <what>
         STOP  <reason>
         WARN  <what>                                stage order, bad header values
@@ -415,6 +424,9 @@ READING RESULTS
                    a round ended (detail: counts, exit, duration, goal, and
                    after "|" the failed steps)
       skip         a lane was skipped (detail: why, e.g. "swim 1 failed")
+      approve      the operator approved a guarded step at the prompt
+                   (detail: the action, the flag and who)
+      decline      ... declined it, or no answer came (detail: the action, why)
       run-done     swim run finished (detail: passed/failed/skipped counts)
       archive      a log was archived (detail: archive file name)
       stub         a lane was stubbed (job= is the job it replaced)
@@ -506,6 +518,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         chime_style: bell                # bell | sound | notify
         chime_min_s: 10                  # don't chime for runs shorter than this
         interrupt: graceful              # graceful | immediate: what the first Ctrl-C does
+        approvals: prompt                # prompt | flags: may an unset guard flag ask the operator
         interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
       repos:

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -47,7 +48,9 @@ type interrupter struct {
 
 	// notice is shown in the panel title; separate from mu, because the
 	// display reads it while holding its own lock.
-	notice atomic.Value
+	notice    atomic.Value
+	approvals *approval.Server // declines open questions once the run stops; nil if none
+
 	mu     sync.Mutex
 	level  int
 	procs  map[int]*laneProc
@@ -162,6 +165,9 @@ func (ir *interrupter) running() []int {
 
 func (ir *interrupter) gracefulLocked(s os.Signal) {
 	ir.level = levelGraceful
+	if ir.approvals != nil {
+		go ir.approvals.CancelAll() // a waiting approval is answered no
+	}
 	ns := ir.running()
 	ir.notice.Store(fmt.Sprintf("stopping · %d steps running · Ctrl-C again to force quit", len(ns)))
 	how := "Ctrl-C again to force quit."
@@ -216,6 +222,9 @@ func (ir *interrupter) requestStopLocked(n int, lp *laneProc, s os.Signal) {
 
 func (ir *interrupter) forceLocked(s os.Signal) {
 	ir.level = levelForce
+	if ir.approvals != nil {
+		go ir.approvals.CancelAll()
+	}
 	ns := ir.running()
 	ir.notice.Store(fmt.Sprintf("force quitting · killing in %s · Ctrl-C again to kill now", ir.grace))
 	ir.disp.Message(fmt.Sprintf("swim: force quitting: interrupting %d lanes, killing in %s. Ctrl-C again to kill now.", len(ns), ir.grace))

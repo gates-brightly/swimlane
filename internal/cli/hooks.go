@@ -365,7 +365,7 @@ func cmdFinish(args []string) error {
 	return nil
 }
 
-var dryRunRE = regexp.MustCompile(`^dry run: set ([A-Za-z_][A-Za-z0-9_]*)=1 to approve$`)
+var dryRunRE = regexp.MustCompile(`^dry run: (?:.*; )?set ([A-Za-z_][A-Za-z0-9_]*)=1 to approve$`)
 
 // swim _mark N KIND label [detail]
 func cmdMark(args []string) error {

@@ -39,7 +39,7 @@ const (
 var ChimeStyles = []string{StyleBell, StyleSound, StyleNotify}
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace"}
+var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals"}
 
 // ParseChime reads true|false|failure (on|off also accepted).
 func ParseChime(s string) (Chime, error) {
@@ -155,6 +155,8 @@ func (c *Config) Get(key string) (string, error) {
 		return strconv.Itoa(minS), nil
 	case "interrupt":
 		return c.InterruptMode(), nil
+	case "approvals":
+		return c.ApprovalMode(), nil
 	case "interrupt_grace", "term_grace":
 		ig, tg := c.Graces()
 		if key == "term_grace" {
@@ -209,6 +211,12 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.ToLower(strings.TrimSpace(value))
 		if v != InterruptGraceful && v != InterruptImmediate {
 			return nil, fmt.Errorf("interrupt must be graceful or immediate, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "approvals":
+		v := strings.ToLower(strings.TrimSpace(value))
+		if v != ApprovalsPrompt && v != ApprovalsFlags {
+			return nil, fmt.Errorf("approvals must be prompt or flags, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "interrupt_grace", "term_grace":

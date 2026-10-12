@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/assets"
+	"github.com/gates-brightly/swimlane/internal/ci"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
@@ -312,12 +313,13 @@ type runFlags struct {
 	yaml, yamlOutput bool
 	interrupt        string
 	noTUI            bool
+	noPrompt         bool
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
-			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI},
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
@@ -398,6 +400,9 @@ func runLanes(rest []string, rf runFlags) error {
 		Interactive: !rf.noTUI && display.TUIAllowed(os.Getenv),
 		Interrupt:   rf.interrupt,
 		Pins:        pins,
+		// Guards without their flag may ask the operator (not in CI, where
+		// nobody is at the terminal, nor with approvals: flags).
+		Prompt: !rf.noPrompt && cfg.ApprovalMode() == config.ApprovalsPrompt && !ci.InCI(os.Getenv),
 	}
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput

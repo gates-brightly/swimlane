@@ -37,6 +37,12 @@ type Display struct {
 	done     chan struct{}
 	wg       sync.WaitGroup
 	tui      *interactive // interactive mode; nil otherwise
+
+	// Approval questions (ask.go).
+	in          *os.File // the terminal to read answers from; nil if none
+	onInterrupt func()
+	asking      bool     // a question is on screen: lane lines are held
+	held        []string // lines held while asking, printed after the answer
 }
 
 // Options configures New.
@@ -72,6 +78,10 @@ func New(o Options, views []LaneView) *Display {
 		cap:   o.Cap,
 		views: views,
 	}
+	if o.In != nil && ui.IsTTY(o.In) && ui.IsTTY(o.Out) {
+		d.in = o.In
+	}
+	d.onInterrupt = o.OnInterrupt
 	if d.title == nil {
 		d.title = func(time.Time) string { return "swim" }
 	}
@@ -214,6 +224,10 @@ func (d *Display) Line(n int, text string) {
 		return
 	}
 	prefix := Prefix(n, d.color)
+	if d.asking {
+		d.held = append(d.held, prefix+text)
+		return
+	}
 	if !d.live {
 		line := prefix + text
 		if d.color && strings.Contains(text, "\x1b[") {
@@ -246,6 +260,10 @@ func (d *Display) Message(text string) {
 		d.tui.dirty = true
 		return
 	}
+	if d.asking {
+		d.held = append(d.held, text)
+		return
+	}
 	fmt.Fprintln(d.out, text)
 }
 
@@ -266,7 +284,12 @@ func (d *Display) Set(n int, fn func(*LaneView)) {
 			d.drawLocked()
 		} else if msg := transition(before, after); msg != "" {
 			p := ui.Painter{On: d.color}
-			fmt.Fprintln(d.out, Prefix(n, d.color)+p.Paint(ui.StateColor(after.State), msg))
+			line := Prefix(n, d.color) + p.Paint(ui.StateColor(after.State), msg)
+			if d.asking {
+				d.held = append(d.held, line)
+			} else {
+				fmt.Fprintln(d.out, line)
+			}
 		}
 		return
 	}

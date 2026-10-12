@@ -33,6 +33,8 @@ const (
 	actNone action = iota
 	actInterrupt
 	actQuit
+	actYes // an approval question answered yes
+	actNo  // ... no (n, Enter, Esc)
 )
 
 type tui struct {
@@ -48,7 +50,8 @@ type tui struct {
 	digits   string // typed lane number, waiting for Enter
 	note     string // one-off message for the divider ("no running lanes")
 	help     bool
-	finished bool // the run ended and the view is held open for the reader
+	ask      []string // an approval question shown over the view; nil if none
+	finished bool     // the run ended and the view is held open for the reader
 
 	// Last frame's size, so keys scroll by what's on screen.
 	viewH, cols int
@@ -145,6 +148,18 @@ func (t *tui) pollLog() bool {
 // key applies one key press.
 func (t *tui) key(k Key, views []LaneView) action {
 	t.note = ""
+	if t.ask != nil {
+		// An approval question takes every key until it is answered.
+		switch {
+		case k.Code == KeyCtrlC:
+			return actInterrupt
+		case k.Code == KeyRune && (k.Rune == 'y' || k.Rune == 'Y'):
+			return actYes
+		case k.Code == KeyEnter || k.Code == KeyEsc || k.Code == KeyRune && (k.Rune == 'n' || k.Rune == 'N'):
+			return actNo
+		}
+		return actNone
+	}
 	if k.Code == KeyCtrlC {
 		if t.finished {
 			return actQuit
@@ -340,6 +355,9 @@ func (t *tui) render(title string, views []LaneView, now time.Time, rows, cols i
 	}
 	if t.help {
 		body = overlay(body, helpText, w, p)
+	}
+	if t.ask != nil {
+		body = overlay(body, t.ask, w, p)
 	}
 	out := append(panel, body...)
 	if len(out) > rows { // resized smaller than the panel

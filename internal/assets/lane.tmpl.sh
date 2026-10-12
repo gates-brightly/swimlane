@@ -46,6 +46,8 @@ gate "target is ours (tagged)" true
 
 stage change
 # One guard flag per destructive action; list it under Guards: above.
+# Unset, swim asks the operator "requires human approval of task: <action>
+# Y/N [N]"; FLAG=1 approves without asking (CI). Write <action> for them.
 # if guard EXAMPLE_ALLOW_DELETE "delete X ({{.Date}}: why it is safe)"; then
 #   run "delete X" echo "would delete X"
 # fi

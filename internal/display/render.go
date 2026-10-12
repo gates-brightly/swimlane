@@ -41,6 +41,7 @@ type LaneView struct {
 	QueuePos  int    // lanes ahead of it while Queued
 	LockWait  string // while Locked, e.g. "orders-table: swim 4"
 	Stopping  string // while Running after a stop request: the step it is finishing
+	Approval  string // while Running and waiting for the operator to approve a guarded step
 	Started   time.Time
 	Finished  time.Time
 }
@@ -91,6 +92,9 @@ func stateText(v LaneView, now time.Time) (string, string) {
 	case Waiting:
 		return thr + " " + WaitingText(v.WaitingOn), ui.Yellow
 	case Running:
+		if v.Approval != "" {
+			return fmt.Sprintf("%s awaiting approval: %s", thr, v.Approval), ui.Yellow
+		}
 		if v.Stopping != "" {
 			return fmt.Sprintf("%s stopping %s (%s)", thr, v.Stopping, Elapsed(now.Sub(v.Started))), ui.Yellow
 		}

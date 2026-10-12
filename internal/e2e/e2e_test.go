@@ -770,7 +770,7 @@ func TestPlan(t *testing.T) {
 		"[+] swim 1  root",
 		"├── [+] swim 2  child a",
 		"│   └── [+] swim 4  join  wait [2,3]",
-		"guard PLAN_ALLOW_X=1 (unset: dry run)",
+		"guard PLAN_ALLOW_X=1 (unset: asks at the prompt; dry run if no one can answer)",
 		"└── [+] swim 3  child b",
 		"    └── [+] swim 4 (shown above)",
 		"Plan: 4 to run, 0 to retry, 0 to rerun, 0 to skip.")

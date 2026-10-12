@@ -42,6 +42,7 @@ type Settings struct {
 	SecretEnvIgnore    []string      `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
 	SecretPatternsAuto *bool         `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
 	Interrupt          string        `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
+	Approvals          string        `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
 	InterruptGrace     string        `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
 	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
 }
@@ -250,6 +251,9 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.Interrupt != "" {
 		c.Interrupt = r.Interrupt
+	}
+	if r.Approvals != "" {
+		c.Approvals = r.Approvals
 	}
 	if r.InterruptGrace != "" {
 		c.InterruptGrace = r.InterruptGrace
@@ -485,6 +489,11 @@ const (
 )
 
 func (c *Config) validateInterrupt() error {
+	switch c.Approvals {
+	case "", ApprovalsPrompt, ApprovalsFlags:
+	default:
+		return fmt.Errorf("approvals must be prompt or flags, got %q", c.Approvals)
+	}
 	switch c.Interrupt {
 	case "", InterruptGraceful, InterruptImmediate:
 	default:
@@ -520,4 +529,18 @@ func (c *Config) Graces() (interrupt, term time.Duration) {
 		term = d
 	}
 	return interrupt, term
+}
+
+// Approval modes: what a guard does when its flag isn't set.
+const (
+	ApprovalsPrompt = "prompt" // ask the operator at the terminal (dry run if no one can be asked)
+	ApprovalsFlags  = "flags"  // never ask: only FLAG=1 approves
+)
+
+// ApprovalMode is prompt (the default) or flags.
+func (c *Config) ApprovalMode() string {
+	if c.Approvals == "" {
+		return ApprovalsPrompt
+	}
+	return c.Approvals
 }

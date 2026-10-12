@@ -34,8 +34,10 @@ const (
 	Lock        = "lock"
 	Migrate     = "migrate"
 	Queued      = "queued"
-	Locked      = "locked" // a lane waits for a resource lock
-	StopReq     = "stop"   // swim interrupt N: a lane asked to stop at its next step boundary
+	Locked      = "locked"  // a lane waits for a resource lock
+	StopReq     = "stop"    // swim interrupt N: a lane asked to stop at its next step boundary
+	Approve     = "approve" // the operator approved a guarded step at the prompt
+	Decline     = "decline" // ... declined it, or no answer came (the step ran as a dry run)
 )
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.
