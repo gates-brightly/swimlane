@@ -29,6 +29,11 @@ To cut a release:
 
 ## Unreleased
 
+## 4.20261012 (v0.4.20261012, 2026-10-12)
+
+Everything since `4.20261009`. Install it with
+`go install github.com/gates-brightly/swimlane/cmd/swim@v0.4.20261012`.
+
 ### Upgrading
 
 - **A guard whose flag isn't set now asks you,** when swim is on a terminal:
