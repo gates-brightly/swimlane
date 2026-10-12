@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -16,13 +17,24 @@ func TestPromptInTUI(t *testing.T) {
 	r := newRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
-	s := tr.waitScreen("the approval box", func(s string) bool {
-		return strings.Contains(s, "swim 1 requires human approval of task: drop table orders - 2026-10-12") &&
-			strings.Contains(s, "Y/N [N]")
+	// From the all view: a banner, not a question that takes the keys.
+	s := tr.waitScreen("the approval banner", func(s string) bool {
+		return strings.Contains(s, "▶ swim 1 needs approval · Enter to view it and answer · drop table orders - 2026-10-12")
 	})
-	contains(t, "panel", s, "awaiting approval: drop")
-	tr.send("l") // other keys don't answer
+	contains(t, "panel", s, "awaiting approval: drop", "all lanes")
+	tr.send("y") // not on lane 1's view: doesn't answer
+	// Enter opens lane 1: its log, with the question under it.
+	tr.send("\r")
+	s = tr.waitScreen("lane 1 with its question", func(s string) bool {
+		return strings.Contains(s, "swim 1 · ") && strings.Contains(s, "y approve   n decline") && strings.Contains(s, "Y/N [N]")
+	})
+	contains(t, "lane view", s, "== ROUND ", "▶swim 1")
+	if strings.Contains(r.log(1), "APPROVED") {
+		t.Fatal("y on the all view answered the question")
+	}
 	tr.send("y")
+	tr.waitFor("run finished · q to close") // still on lane 1's view: the screen holds
+	tr.send("q")
 	code, _ := tr.wait()
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -80,7 +92,7 @@ func TestPromptCtrlCStops(t *testing.T) {
 	r := newRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
-	tr.waitFor("requires human approval of task: drop table orders")
+	tr.waitFor("swim 1 needs approval · Enter to view")
 	tr.send("\x03")
 	code, _ := tr.wait()
 	if code == 0 {
@@ -91,4 +103,40 @@ func TestPromptCtrlCStops(t *testing.T) {
 	if strings.Contains(log, "PASS  dropped") || strings.Contains(log, "PASS  after") {
 		t.Errorf("the round went on after Ctrl-C at the prompt:\n%s", log)
 	}
+}
+
+func TestPromptSeveralLanes(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
+	r.script(2, "two", `if guard ALLOW_TWO "change two"; then run "two changed" true; fi`)
+	r.script(3, "busy", `run "work" bash -c 'for i in $(seq 1 30); do echo busy-$i; sleep 0.1; done'`)
+	tr := r.startTUI(nil, "all")
+	tr.waitScreen("both waiting", func(s string) bool {
+		return strings.Contains(s, "need approval · Enter to view swim")
+	})
+	tr.send("\r")
+	s := tr.waitScreen("a waiting lane", func(s string) bool { return strings.Contains(s, "y approve   n decline") })
+	first := 1
+	if strings.Contains(s, "swim 2 requires human approval") {
+		first = 2
+	}
+	second := 3 - first
+	tr.send("n") // decline the first...
+	tr.waitScreen("only the other still waiting", func(s string) bool {
+		return strings.Contains(s, fmt.Sprintf("▶ swim %d needs approval · Enter to view", second))
+	})
+	tr.send("\x1b") // Esc: all lanes; the other question still waits
+	tr.waitFor("all lanes")
+	tr.send("\r") // ...then approve the second
+	tr.waitScreen("the second lane", func(s string) bool {
+		return strings.Contains(s, fmt.Sprintf("swim %d requires human approval", second)) && strings.Contains(s, "y approve")
+	})
+	tr.send("y")
+	tr.waitFor("run finished · q to close") // we're on a lane view: the screen holds
+	tr.send("q")
+	if code, out := tr.wait(); code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	contains(t, "first lane", r.log(first), "SKIP  change ", "declined at the prompt")
+	contains(t, "second lane", r.log(second), "APPROVED  change ", "PASS  ")
 }

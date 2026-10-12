@@ -66,7 +66,12 @@ func cmdApprove(args []string) error {
 		return dryRun(w)
 	}
 	by := or(resp.By, operator())
-	if err := cmdMark([]string{args[0], logparse.Approved, desc, "approved at the prompt by " + by}); err != nil {
+	how := "approved at the prompt by " + by
+	if resp.Auto {
+		how = "approved by swim run -y (" + by + ")"
+		by += " with -y"
+	}
+	if err := cmdMark([]string{args[0], logparse.Approved, desc, how}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", by " + by + ")"})

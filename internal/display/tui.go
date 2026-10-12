@@ -50,15 +50,48 @@ type tui struct {
 	digits   string // typed lane number, waiting for Enter
 	note     string // one-off message for the divider ("no running lanes")
 	help     bool
-	ask      []string // an approval question shown over the view; nil if none
-	finished bool     // the run ended and the view is held open for the reader
+	finished bool // the run ended and the view is held open for the reader
+
+	// Approval questions waiting for an answer, by lane, oldest first in
+	// pendOrder. A lane's question shows at the bottom of its lane view,
+	// where y or n answers it; elsewhere a banner says who is waiting and
+	// Enter jumps there.
+	pending    map[int][]string
+	pendOrder  []int
+	answerLane int // the lane the last actYes/actNo answers
 
 	// Last frame's size, so keys scroll by what's on screen.
 	viewH, cols int
 }
 
 func newTUI(color bool, logPath, logLabel func(int) string) *tui {
-	return &tui{color: color, all: newViewport(Scrollback), lane: newViewport(Scrollback), logPath: logPath, logLabel: logLabel, viewH: 10, cols: 80}
+	return &tui{color: color, all: newViewport(Scrollback), lane: newViewport(Scrollback), logPath: logPath, logLabel: logLabel, viewH: 10, cols: 80,
+		pending: map[int][]string{}}
+}
+
+// addPending records lane n's approval question.
+func (t *tui) addPending(n int, question []string) {
+	if _, ok := t.pending[n]; !ok {
+		t.pendOrder = append(t.pendOrder, n)
+	}
+	t.pending[n] = question
+}
+
+// removePending forgets lane n's question (answered or cancelled).
+func (t *tui) removePending(n int) {
+	delete(t.pending, n)
+	for i, m := range t.pendOrder {
+		if m == n {
+			t.pendOrder = append(t.pendOrder[:i:i], t.pendOrder[i+1:]...)
+			break
+		}
+	}
+}
+
+// asking reports whether the lane on screen is waiting for an answer.
+func (t *tui) asking() bool {
+	_, ok := t.pending[t.laneN]
+	return ok && t.laneN != 0
 }
 
 // cur is the viewport on screen.
@@ -148,18 +181,6 @@ func (t *tui) pollLog() bool {
 // key applies one key press.
 func (t *tui) key(k Key, views []LaneView) action {
 	t.note = ""
-	if t.ask != nil {
-		// An approval question takes every key until it is answered.
-		switch {
-		case k.Code == KeyCtrlC:
-			return actInterrupt
-		case k.Code == KeyRune && (k.Rune == 'y' || k.Rune == 'Y'):
-			return actYes
-		case k.Code == KeyEnter || k.Code == KeyEsc || k.Code == KeyRune && (k.Rune == 'n' || k.Rune == 'N'):
-			return actNo
-		}
-		return actNone
-	}
 	if k.Code == KeyCtrlC {
 		if t.finished {
 			return actQuit
@@ -169,6 +190,18 @@ func (t *tui) key(k Key, views []LaneView) action {
 	if t.help {
 		t.help = false
 		return actNone
+	}
+	// On a lane waiting for approval, y and n answer it; every other key
+	// works as usual (← → other lanes, Esc all lanes), leaving it waiting.
+	if t.asking() && k.Code == KeyRune {
+		switch k.Rune {
+		case 'y', 'Y':
+			t.answerLane = t.laneN
+			return actYes
+		case 'n', 'N':
+			t.answerLane = t.laneN
+			return actNo
+		}
 	}
 	v, h, w := t.cur(), t.viewH, t.cols
 	page := h - 1
@@ -204,6 +237,14 @@ func (t *tui) key(k Key, views []LaneView) action {
 		t.digits = ""
 	}
 	switch {
+	case k.Code == KeyEnter && len(t.pendOrder) > 0:
+		// Jump to the lane waiting longest for approval.
+		if t.asking() {
+			t.note = "y approves, n declines"
+		} else {
+			t.selectLane(t.pendOrder[0])
+			t.lane.toEnd()
+		}
 	case k.Code == KeyRight || k.Code == KeyTab || k.Rune == 'l':
 		t.step(views, +1)
 	case k.Code == KeyLeft || k.Code == KeyBackTab || k.Rune == 'h':
@@ -274,8 +315,31 @@ func (t *tui) step(views []LaneView, d int) {
 	t.selectLane(next)
 }
 
+// banner says which lanes wait for approval, on views other than theirs.
+func (t *tui) banner() string {
+	first := t.pendOrder[0]
+	if len(t.pendOrder) == 1 {
+		// The key first, so a narrow terminal cuts the task, not the hint.
+		s := fmt.Sprintf("▶ swim %d needs approval · Enter to view it and answer", first)
+		if q := t.pending[first]; len(q) > 0 {
+			if _, task, ok := strings.Cut(q[0], "approval of task: "); ok {
+				s += " · " + task
+			}
+		}
+		return s
+	}
+	ns := make([]string, len(t.pendOrder))
+	for i, n := range t.pendOrder {
+		ns[i] = fmt.Sprint(n)
+	}
+	return fmt.Sprintf("▶ swim %s need approval · Enter to view swim %d", strings.Join(ns, ", "), first)
+}
+
 // hints is the key reminder on the title line.
 func (t *tui) hints() string {
+	if t.asking() {
+		return "y approve  n decline  ← → lane  esc all"
+	}
 	if t.laneN != 0 {
 		return "← → lane  ↑ ↓ scroll  esc all  ? help"
 	}
@@ -356,8 +420,12 @@ func (t *tui) render(title string, views []LaneView, now time.Time, rows, cols i
 	if t.help {
 		body = overlay(body, helpText, w, p)
 	}
-	if t.ask != nil {
-		body = overlay(body, t.ask, w, p)
+	switch {
+	case t.asking():
+		q := append(append([]string(nil), t.pending[t.laneN]...), "", "y approve   n decline   ← → other lanes   esc all lanes")
+		body = bottomBox(body, q, w, p)
+	case len(t.pendOrder) > 0 && len(body) > 0:
+		body[len(body)-1] = p.Paint(ui.Yellow+ui.Bold, truncate(t.banner(), w))
 	}
 	out := append(panel, body...)
 	if len(out) > rows { // resized smaller than the panel
@@ -375,12 +443,28 @@ var helpText = []string{
 	"PgUp b  PgDn   scroll a page",
 	"Home g  End G  top; bottom and follow",
 	"4 2 Enter      jump to swim 42",
+	"Enter          open the lane waiting longest for approval",
+	"y / n          on a lane waiting for approval: approve / decline",
 	"f              lanes ← → visit: every / running / failed",
 	"Esc            back to all lanes, following",
 	"Ctrl-C         interrupt the run (as without the view)",
 	"q              close the view once the run has finished",
 	"",
 	"any key closes this help",
+}
+
+// bottomBox draws a box holding text over the bottom of body, so the log
+// above it stays readable.
+func bottomBox(body, text []string, w int, p ui.Painter) []string {
+	out := overlay(body, text, w, p)
+	if len(body) < len(text)+2 {
+		return out
+	}
+	// overlay centres the box; move it to the bottom rows instead.
+	out = append([]string(nil), body...)
+	box := overlay(make([]string, len(text)+2), text, w, p)
+	copy(out[len(out)-len(box):], box)
+	return out
 }
 
 // overlay draws a box holding text over the middle of body.

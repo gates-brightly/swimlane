@@ -13,20 +13,26 @@ import (
 // output are both a terminal.
 func (d *Display) CanAsk() bool { return d.in != nil }
 
-// Ask puts question to the operator and waits for a key: y approves; n,
-// Enter or Esc declines (the default is no). Ctrl-C declines and runs the
-// interrupt (as it would anywhere else). A close of cancel declines.
+// Ask puts lane n's question to the operator and waits for the answer: y
+// approves, n declines. A close of cancel declines (the run is stopping:
+// Ctrl-C).
 //
-// In the interactive view the question is a box over the screen. Otherwise
-// it is a line below the output; lane output is held while it waits, so it
-// can't scroll the question away, and printed after the answer.
-func (d *Display) Ask(question []string, cancel <-chan struct{}) bool {
+// In the interactive view several lanes may wait at once: a banner names
+// them, Enter opens the one waiting longest, and on a waiting lane's view
+// its question sits under its log, where y or n answers it. Otherwise
+// questions are asked one at a time on a line below the output (Enter or
+// Esc also declines there, Ctrl-C declines and interrupts); lane output is
+// held while it waits, so it can't scroll the question away, and printed
+// after the answer.
+func (d *Display) Ask(n int, question []string, cancel <-chan struct{}) bool {
 	if d.in == nil {
 		return false
 	}
 	if d.tui != nil && d.tuiActive() {
-		return d.askTUI(question, cancel)
+		return d.askTUI(n, question, cancel)
 	}
+	d.askMu.Lock()
+	defer d.askMu.Unlock()
 	return d.askLine(question, cancel)
 }
 
@@ -36,17 +42,20 @@ func (d *Display) tuiActive() bool {
 	return d.tui.active
 }
 
-func (d *Display) askTUI(question []string, cancel <-chan struct{}) bool {
+func (d *Display) askTUI(n int, question []string, cancel <-chan struct{}) bool {
 	ch := make(chan bool, 1)
 	d.mu.Lock()
-	d.tui.model.ask = question
-	d.tui.answer = ch
+	d.tui.model.addPending(n, question)
+	if d.tui.answers == nil {
+		d.tui.answers = map[int]chan bool{}
+	}
+	d.tui.answers[n] = ch
 	d.tui.dirty = true
 	d.mu.Unlock()
 	defer func() {
 		d.mu.Lock()
-		d.tui.model.ask = nil
-		d.tui.answer = nil
+		d.tui.model.removePending(n)
+		delete(d.tui.answers, n)
 		d.tui.dirty = true
 		d.mu.Unlock()
 	}()

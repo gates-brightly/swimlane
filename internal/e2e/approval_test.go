@@ -121,3 +121,33 @@ func TestNoPromptWithoutTerminal(t *testing.T) {
 		t.Error("a bad approvals value was accepted")
 	}
 }
+
+func TestAutoApprove(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "guarded", `if guard ALLOW_A "change a"; then run "a changed" true; fi
+if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
+	r.script(2, "guarded too", `if guard ALLOW_B "change b"; then run "b changed" true; fi`)
+	c := r.cmd(bin, "all", "-y", "--plain")
+	c.Env = append(c.Env, "SWIM_USER=tester", "ALLOW_OFF=0")
+	out, err := c.CombinedOutput()
+	if err != nil {
+		t.Fatalf("swim all -y: %v\n%s", err, out)
+	}
+	contains(t, "output", string(out), "swim: -y: every guard whose flag isn't set is approved without asking",
+		"[1] approved by -y: change a (ALLOW_A)", "[2] approved by -y: change b (ALLOW_B)")
+	contains(t, "agent1.log", r.log(1), "APPROVED  change a (approved by swim run -y (tester))", "PASS  a changed",
+		"SKIP  explicitly off (dry run: set ALLOW_OFF=1 to approve)")
+	if strings.Contains(r.log(1), "PASS  off ran") {
+		t.Error("-y approved a guard whose flag was set to 0")
+	}
+	contains(t, "agent2.log", r.log(2), "APPROVED  change b (approved by swim run -y (tester))", "PASS  b changed")
+	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
+	contains(t, ".swim.log", string(hist), "change a  (ALLOW_A, by tester with -y)")
+
+	// The lane shorthand takes it too, and the YAML stream records it.
+	r.script(2, "again", `if guard ALLOW_C "change c"; then run "c changed" true; fi`)
+	contains(t, "yaml", r.mustSwim("2", "-y", "--yaml"), "event: approved", "label: change c", "detail: ALLOW_C (-y)")
+	if out, code := r.swim("all", "-y", "--no-prompt"); code == 0 || !strings.Contains(out, "not both") {
+		t.Errorf("-y with --no-prompt: %d %s", code, out)
+	}
+}

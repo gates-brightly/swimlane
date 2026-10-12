@@ -7,12 +7,12 @@ swim · app · main@abc1234 · 1:12          ← → lane  ↑ ↓ scroll  esc a
 ▶swim 6  FAIL exit 2 0:30           Deploy
  swim 7  SKIP (swim 6 failed)       Cleanup
 ───────────────────────────────── swim 6 · following · .swim/logs/agent6.log ──
-         ┌──────────────────────────────────────────────────────────┐
-         │ keys                                                     │
-         │                                                          │
-         │ → l Tab        next lane (from all lanes: last selected) │
-         │ ← h Shift-Tab  previous lane                             │
-         │ ↑ k  ↓ j       scroll one line                           │
-         │ PgUp b  PgDn   scroll a page                             │
-         │ Home g  End G  top; bottom and follow                    │
-         │ 4 2 Enter      jump to swim 42                           │
+     ┌──────────────────────────────────────────────────────────────────┐
+     │ keys                                                             │
+     │                                                                  │
+     │ → l Tab        next lane (from all lanes: last selected)         │
+     │ ← h Shift-Tab  previous lane                                     │
+     │ ↑ k  ↓ j       scroll one line                                   │
+     │ PgUp b  PgDn   scroll a page                                     │
+     │ Home g  End G  top; bottom and follow                            │
+     │ 4 2 Enter      jump to swim 42                                   │

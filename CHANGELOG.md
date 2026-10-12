@@ -50,15 +50,22 @@ Everything since `4.20261009`. Install it with
     approved. `n`, Enter or Esc declines, and the step dry-runs as before.
   - **Approving up front:** `FLAG=1` still approves without asking (CI,
     scripts). `FLAG=0` declines without asking.
-  - **Parallel lanes** queue their questions through swim run, one at a
-    time. In the interactive view the question is a box over the screen;
-    otherwise it is a line below the output, with lane output held until
-    you answer. The lane's panel row shows `awaiting approval`.
+  - **Parallel lanes** send their questions to swim run, and the lane's
+    panel row shows `awaiting approval`.
+    - In the interactive view, several lanes can wait at once. A banner
+      names them, and `Enter` opens the lane waiting longest: its log, with
+      the question underneath, where `y` or `n` answers it. `←`/`→` and
+      `Esc` work as usual, and the question waits.
+    - Otherwise questions are asked one at a time on a line below the
+      output, with lane output held until you answer.
   - **No stuck questions:** Ctrl-C at a question declines it and stops the
     run. A stop request or the round's `Timeout:` ends the wait. A lane run
     with `bash lane.N.sh` asks on its own terminal.
   - **Switching it off:** `--no-prompt`, `approvals: prompt|flags` in
     config, or `swim config approvals flags`.
+  - **`swim run|all … -y` (`--yes`)** approves every guard question without
+    asking, terminal or not. Each approval is logged as
+    `approved by swim run -y (<user>)`. `FLAG=0` still declines.
 - **`swim ci --rerun`** also runs rounds that already passed, for a test
   suite written as rounds.
 

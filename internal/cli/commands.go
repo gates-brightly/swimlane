@@ -314,12 +314,23 @@ type runFlags struct {
 	interrupt        string
 	noTUI            bool
 	noPrompt         bool
+	yes              bool
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
+	// -y is the one short flag: approve every guard question (--yes).
+	args = append([]string(nil), args...)
+	for i, a := range args {
+		if a == "--" {
+			break
+		}
+		if a == "-y" {
+			args[i] = "--yes"
+		}
+	}
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
-			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt},
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
@@ -353,6 +364,9 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if rf.yamlOutput {
 		rf.yaml = true
+	}
+	if rf.yes && rf.noPrompt {
+		return usagef("use -y (approve every guard question) or --no-prompt (ask none), not both")
 	}
 	if rf.interrupt != "" && rf.interrupt != config.InterruptGraceful && rf.interrupt != config.InterruptImmediate {
 		return usagef("--interrupt takes graceful or immediate, got %q", rf.interrupt)
@@ -403,6 +417,9 @@ func runLanes(rest []string, rf runFlags) error {
 		// Guards without their flag may ask the operator (not in CI, where
 		// nobody is at the terminal, nor with approvals: flags).
 		Prompt: !rf.noPrompt && cfg.ApprovalMode() == config.ApprovalsPrompt && !ci.InCI(os.Getenv),
+		// -y approves every guard question without asking (the operator's
+		// explicit say-so for this run; FLAG=0 still declines).
+		AutoApprove: rf.yes,
 	}
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput

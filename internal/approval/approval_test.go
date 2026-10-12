@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestRoundTripAndSerial(t *testing.T) {
+func TestRoundTripConcurrent(t *testing.T) {
 	var mu sync.Mutex
 	active, most := 0, 0
 	s, err := Listen(func(req Request, cancel <-chan struct{}) Response {
@@ -44,8 +44,10 @@ func TestRoundTripAndSerial(t *testing.T) {
 			t.Errorf("request %d: %+v", i, r)
 		}
 	}
-	if most != 1 {
-		t.Errorf("questions must be asked one at a time; %d at once", most)
+	// Lanes wait at the same time; the asker decides how to queue them
+	// (the interactive view shows them all, the line prompt asks in turn).
+	if most < 2 {
+		t.Errorf("questions from parallel lanes should reach the asker together; at most %d at once", most)
 	}
 }
 

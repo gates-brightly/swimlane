@@ -32,8 +32,9 @@ type Request struct {
 // Response is the operator's answer.
 type Response struct {
 	Approved bool   `json:"approved"`
-	By       string `json:"by,omitempty"`  // who answered (the operator's user name)
-	Why      string `json:"why,omitempty"` // for a decline without an answer: "the run is stopping", ...
+	By       string `json:"by,omitempty"`   // who answered (the operator's user name)
+	Auto     bool   `json:"auto,omitempty"` // approved by swim run -y, not at a prompt
+	Why      string `json:"why,omitempty"`  // for a decline without an answer: "the run is stopping", ...
 }
 
 // Asker asks the operator; it returns false when cancel closes first.
@@ -41,10 +42,9 @@ type Asker func(req Request, cancel <-chan struct{}) Response
 
 // Server answers requests from the lanes of one run.
 type Server struct {
-	ln     net.Listener
-	dir    string
-	ask    Asker
-	serial sync.Mutex // one question at a time
+	ln  net.Listener
+	dir string
+	ask Asker // called concurrently, once per waiting lane: it decides how to queue them
 
 	mu        sync.Mutex
 	cancelled bool
@@ -103,8 +103,6 @@ func (s *Server) serve(c net.Conn) {
 		c.Read(buf)
 		close(gone)
 	}()
-	s.serial.Lock()
-	defer s.serial.Unlock()
 	var resp Response
 	select {
 	case <-gone:

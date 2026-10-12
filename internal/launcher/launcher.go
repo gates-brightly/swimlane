@@ -60,6 +60,9 @@ type Options struct {
 	// broker, approval.go) when the display can: stdin and stdout are a
 	// terminal and this isn't the YAML stream.
 	Prompt bool
+	// AutoApprove (swim run -y) approves every such guard without asking,
+	// terminal or not; each approval is logged as by -y.
+	AutoApprove bool
 	// Pins holds the job each lane must still hold when it starts (lanes
 	// named by job id, and every lane swim ci selects): a lane script
 	// rewritten in the meantime is skipped, not run.
@@ -251,11 +254,19 @@ func Run(o Options) (int, error) {
 	}, views)
 	ir = newInterrupter(o, disp, sl, lt)
 	defer ir.stop()
-	if o.Prompt && o.ev == nil && disp.CanAsk() {
+	if o.AutoApprove || o.Prompt && o.ev == nil && disp.CanAsk() {
+		if o.AutoApprove {
+			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
+		}
 		srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
+			if o.AutoApprove {
+				disp.Message(fmt.Sprintf("%sapproved by -y: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
+				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (-y)", At: now()})
+				return approval.Response{Approved: true, By: operator(), Auto: true}
+			}
 			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
 			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
-			yes := disp.Ask(approval.Question(req), cancel)
+			yes := disp.Ask(req.Lane, approval.Question(req), cancel)
 			return approval.Response{Approved: yes, By: operator()}
 		})
 		if err != nil {

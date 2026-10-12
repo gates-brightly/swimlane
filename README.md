@@ -295,6 +295,12 @@ a dependency. Output scrolls underneath, prefixed `[N]`.
   then the summary prints. `--no-tui` or `SWIM_TUI=0` turns the keys off;
   they're also off for a single lane (it may prompt), in CI and with
   `--plain` or `--yaml`.
+- **Approvals:** when a lane needs your approval, a banner says so
+  (`▶ swim 2 needs approval · Enter to view it and answer`). `Enter` opens
+  that lane's log with the question under it, and `y` or `n` answers it
+  there. `←`/`→` still visit other lanes and `Esc` returns to all lanes; the
+  question waits until you answer. `swim all -y` approves every question
+  without asking, and logs that `-y` did.
 - **No terminal (CI, pipes) or `--plain`:** output is plain prefixed lines.
 - **`--yaml`:** stdout is a stream of YAML documents instead (`schema:
   swim.run/v1`: `run`, `waiting`, `queued`, `locked`, `start`, `step`,
@@ -439,7 +445,7 @@ inside a swim lane.
   asks you, and records who approved. Questions from parallel lanes take
   turns. Anything but `y`, or nobody at the terminal, makes the step a dry
   run, and the log shows how to approve it. `--no-prompt` or
-  `approvals: flags` turns the questions off.
+  `approvals: flags` turns the questions off; `-y` answers them all yes.
 - **Snapshot first:** every multi-step change starts with a read-only
   snapshot.
 - **Fail-closed:** gates and `confirm` prompts stop the round when there is

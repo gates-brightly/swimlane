@@ -41,8 +41,9 @@ type Display struct {
 	// Approval questions (ask.go).
 	in          *os.File // the terminal to read answers from; nil if none
 	onInterrupt func()
-	asking      bool     // a question is on screen: lane lines are held
-	held        []string // lines held while asking, printed after the answer
+	askMu       sync.Mutex // line-mode questions go one at a time
+	asking      bool       // a line-mode question is on screen: lane lines are held
+	held        []string   // lines held while asking, printed after the answer
 }
 
 // Options configures New.
