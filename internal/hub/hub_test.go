@@ -33,7 +33,8 @@ func TestHubFlow(t *testing.T) {
 	}
 	exit := 1
 	snap := Snapshot{Worker: Worker{Name: "billing", Host: "box1", Root: "/srv/billing"}, Activity: "running q-1", Interval: 2,
-		Lanes: []Lane{{Lane: 1, State: "running", Round: "cut over <api>", Step: "deploy", Tail: []string{"  RUNNING  deploy (in progress)", "        | step 3/5"}},
+		Lanes: []Lane{{Lane: 1, State: "running", Round: "cut over <api>", Step: "deploy", Tail: []string{"  RUNNING  deploy (in progress)", "        | step 3/5"},
+			Message: "migrating billing", Progress: "7/28", MsgAt: time.Now().Add(-9 * time.Minute).UTC().Format(time.RFC3339)},
 			{Lane: 2, State: "failed", Round: "migrate", Exit: &exit}},
 		Queue:  []Batch{{Seq: 1, ID: "q-1", State: "running", Lanes: []int{1, 2}}},
 		Events: []string{"2026-10-13T15:00:00Z  zach  queue-run  q-1"}}
@@ -48,12 +49,16 @@ func TestHubFlow(t *testing.T) {
 		Workers []View
 	}
 	json.NewDecoder(resp.Body).Decode(&got)
+	if body := get(t, srv.URL+"/api/workers"); !strings.Contains(body, `"message":"migrating billing"`) || !strings.Contains(body, `"progress":"7/28"`) {
+		t.Errorf("api lacks the message: %s", body)
+	}
 	if got.Schema != "swim.hub/v1" || len(got.Workers) != 1 || got.Workers[0].Activity != "running q-1" || got.Workers[0].Stale {
 		t.Fatalf("workers: %+v", got)
 	}
 	// Pages: escaped, with the live tail.
 	page := get(t, srv.URL+"/")
-	for _, want := range []string{"billing", "/srv/billing", "running q-1", "swim 1 running", "cut over &lt;api&gt;", "1 failed"} {
+	for _, want := range []string{"billing", "/srv/billing", "running q-1", "swim 1 running", "cut over &lt;api&gt;", "1 failed",
+		"… migrating billing (7/28)", `style="width:25%"`, "9m ago"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
 		}

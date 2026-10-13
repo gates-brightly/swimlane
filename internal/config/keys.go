@@ -39,7 +39,7 @@ const (
 var ChimeStyles = []string{StyleBell, StyleSound, StyleNotify}
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key"}
+var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval"}
 
 // ParseChime reads true|false|failure (on|off also accepted).
 func ParseChime(s string) (Chime, error) {
@@ -164,6 +164,8 @@ func (c *Config) Get(key string) (string, error) {
 		return c.SigningMode(), nil
 	case "signing_key":
 		return c.SigningKey, nil
+	case "msg_log_interval":
+		return c.MsgLogEvery().String(), nil
 	case "interrupt_grace", "term_grace":
 		ig, tg := c.Graces()
 		if key == "term_grace" {
@@ -256,7 +258,7 @@ func keyValue(key, value string) (*yaml.Node, error) {
 			return nil, fmt.Errorf("approvals must be prompt or flags, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "interrupt_grace", "term_grace":
+	case "interrupt_grace", "term_grace", "msg_log_interval":
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d < 0 {
 			return nil, fmt.Errorf("%s must be a duration like 5s or 1m, got %q", key, value)

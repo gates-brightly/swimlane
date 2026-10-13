@@ -47,6 +47,7 @@ type Settings struct {
 	Signing            string        `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
 	InterruptGrace     string        `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
 	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
+	MsgLogInterval     string        `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
 	// Runners maps a lane script's extension (ts, py, ...) to the command
 	// that runs it ("tsx", "/usr/local/bin/python3"). A script's #! line
 	// wins; swim asks the operator for one the first time it meets an
@@ -302,6 +303,9 @@ func (c *Config) merge(r Settings) {
 	if r.Approvals != "" {
 		c.Approvals = r.Approvals
 	}
+	if r.MsgLogInterval != "" {
+		c.MsgLogInterval = r.MsgLogInterval
+	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
 	}
@@ -379,6 +383,19 @@ func (c *Config) Masker(env []string) *redact.Masker {
 		Ignore:       c.SecretEnvIgnore,
 		AutoPatterns: on(c.SecretPatternsAuto),
 	})
+}
+
+// MsgLogEvery is msg_log_interval: the least time between two MSG lines a
+// lane writes to its log (default 10s; 0 logs every change).
+func (c *Config) MsgLogEvery() time.Duration {
+	if c.MsgLogInterval == "" {
+		return 10 * time.Second
+	}
+	d, err := time.ParseDuration(c.MsgLogInterval)
+	if err != nil || d < 0 {
+		return 10 * time.Second
+	}
+	return d
 }
 
 // Parallel is the cap on lanes running at once (0 = unlimited).

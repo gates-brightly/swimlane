@@ -239,6 +239,10 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
+- **Status messages:** `msg --progress 7/25 "migrating billing"` (or
+  `swim msg` from any language, even inside a step) shows where a long job
+  is now, in the live view, `swim status` and the hub. The latest wins, and
+  the log keeps throttled `MSG` lines.
 - **Outcome handlers** (`# swim: syntax 3`): `on_success`, `on_failure` and
   `on_exit` functions run however the round ends, like try / catch /
   finally. They run soft, so every rollback step gets its attempt, and

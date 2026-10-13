@@ -46,6 +46,8 @@ var Commands = map[string]string{
     lanes        1..99                    this repo's lane count (swim 1..N);
                  recorded in .swim.log. Refuses to drop a lane that holds a
                  pending round. Always written to the repo's section.
+    msg_log_interval  duration            at most one MSG log line per lane per
+                 this (default 10s; 0 logs every change of swim msg).
     runners.EXT  a command                the runner for lane.N.EXT scripts with
                  no #! line, e.g. swim config runners.ts tsx. Always written
                  to the repo's section; swim.yml's runners: is the default.
@@ -287,6 +289,17 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   (file and line) and whether the shell overrides it. Exits 1 if a key is
   one of the lane's guard flags. --yaml: a swim.env/v1 document with the
   env_sha256 the round would record. See ENV FILES in swim --help.
+`,
+	"msg": `swim msg [--progress N/M] "<text>"
+
+  In a lane (bash, any language, or a command inside a step): post the
+  lane's status message, where a long job is now. The live view, swim
+  status, swim run --yaml (msg events) and the hub show it; the latest
+  wins; msg "" clears it, and so does the round's end. Text is one line,
+  cleaned (no ANSI or control characters), masked, at most 120 characters.
+  The log gets MSG lines for changes, at most one per msg_log_interval
+  (default 10s; 0 logs every change), and the latest when a step or the
+  round ends. Never fails the round: outside a lane it warns and exits 0.
 `,
 	"lib": `swim lib
 
@@ -781,7 +794,7 @@ func Names() []string {
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
-	"gate", "snapshot", "guard", "stage", "drift", "stop",
+	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg",
 	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "keys", "ci", "lint", "doctor"}
 

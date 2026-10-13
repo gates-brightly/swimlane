@@ -65,7 +65,26 @@ func stateClass(s string) string {
 	return "dim"
 }
 
-var funcs = template.FuncMap{"ago": ago, "state": stateClass, "short": func(s string) string {
+// pct is a progress "7/25" as a percentage (0 if it isn't one).
+func pct(p string) int {
+	var n, m int
+	if _, err := fmt.Sscanf(p, "%d/%d", &n, &m); err != nil || m <= 0 {
+		return 0
+	}
+	return min(100, max(0, n*100/m))
+}
+
+// msgAge is how old a status message is, when that's worth saying (a
+// minute or more: it may be stuck).
+func msgAge(at string) string {
+	t, err := time.Parse(time.RFC3339, at)
+	if err != nil || time.Since(t) < time.Minute {
+		return ""
+	}
+	return ago(t)
+}
+
+var funcs = template.FuncMap{"ago": ago, "state": stateClass, "pct": pct, "msgAge": msgAge, "short": func(s string) string {
 	if len(s) > 8 {
 		return s[:8]
 	}
@@ -90,6 +109,9 @@ th { font-weight:600; color:var(--muted); font-size:12px; }
 pre { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:8px 10px; overflow-x:auto; margin:6px 0 0; white-space:pre-wrap; word-break:break-word; }
 .pill { display:inline-block; padding:0 6px; border-radius:9px; border:1px solid currentColor; font-size:11.5px; }
 .wrap { overflow-x:auto; }
+.msg { color:var(--run); font-style:italic; }
+.bar { display:inline-block; vertical-align:middle; width:80px; height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin-left:6px; }
+.bar > span { display:block; height:100%; background:var(--run); }
 </style>`
 
 var dashTmpl = template.Must(template.New("dash").Funcs(funcs).Parse(`<!doctype html>
@@ -105,7 +127,7 @@ var dashTmpl = template.Must(template.New("dash").Funcs(funcs).Parse(`<!doctype 
   <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
   {{with .Counts}}<div style="margin-top:6px">{{range $s, $n := .}}<span class="{{state $s}}">{{$n}} {{$s}}</span> &nbsp;{{end}}</div>{{end}}
   {{with .QueueCounts}}<div class="muted">queue: {{range $s, $n := .}}{{$n}} {{$s}} &nbsp;{{end}}</div>{{end}}
-  {{range .Active}}<div class="mono" style="margin-top:4px"><span class="{{state .State}}">swim {{.Lane}} {{.State}}</span> {{.Round}}{{if .Step}} <span class="muted">· {{.Step}}</span>{{end}}</div>{{end}}
+  {{range .Active}}<div class="mono" style="margin-top:4px"><span class="{{state .State}}">swim {{.Lane}} {{.State}}</span> {{.Round}}{{if .Step}} <span class="muted">· {{.Step}}</span>{{end}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{if .Progress}}<span class="bar"><span style="width:{{pct .Progress}}%"></span></span>{{end}}{{with msgAge .MsgAt}} <span class="muted">· {{.}}</span>{{end}}{{end}}</div>{{end}}
 </div>{{end}}
 </div></body></html>`))
 
@@ -118,7 +140,7 @@ var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doct
 <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
 <h2>Lanes</h2>
 <div class="wrap"><table><tr><th>lane</th><th>state</th><th>round</th><th>step</th><th>pass</th><th>fail</th><th>skip</th><th>run</th></tr>
-{{range .Lanes}}<tr><td>swim {{.Lane}}</td><td class="{{state .State}}">{{.State}}{{if .Exit}} (exit {{.Exit}}){{end}}{{if .Reason}} <span class="muted">{{.Reason}}</span>{{end}}</td><td>{{.Round}}</td><td class="muted">{{.Step}}</td><td>{{.Pass}}</td><td>{{.Fail}}</td><td>{{.Skip}}</td><td class="mono muted">{{.Run}}</td></tr>{{end}}
+{{range .Lanes}}<tr><td>swim {{.Lane}}</td><td class="{{state .State}}">{{.State}}{{if .Exit}} (exit {{.Exit}}){{end}}{{if .Reason}} <span class="muted">{{.Reason}}</span>{{end}}</td><td>{{.Round}}</td><td class="muted">{{.Step}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{with msgAge .MsgAt}} · {{.}}{{end}}{{end}}</td><td>{{.Pass}}</td><td>{{.Fail}}</td><td>{{.Skip}}</td><td class="mono muted">{{.Run}}</td></tr>{{end}}
 </table></div>
 {{range .Lanes}}{{if .Tail}}<h2>swim {{.Lane}} · {{.Round}}</h2><pre>{{range .Tail}}{{.}}
 {{end}}</pre>{{end}}{{end}}

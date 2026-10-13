@@ -71,7 +71,7 @@ func StateColor(state string) string {
 		return Yellow
 	case strings.HasPrefix(s, "running"):
 		return Cyan
-	case strings.HasPrefix(s, "idle"):
+	case strings.HasPrefix(s, "idle"), s == "msg":
 		return Dim
 	}
 	return ""

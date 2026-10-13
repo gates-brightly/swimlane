@@ -342,6 +342,9 @@ func Run(o Options) (Result, error) {
 	if res.Saved != "" {
 		saved = rel(o.Root, res.Saved)
 	}
+	if o.Lane > 0 {
+		flushMsgs(o.Root, o.Lane, SpoolPath(o.LogPath))
+	}
 	if err := writeBlock(o.LogPath, logparse.StepLine(kind, logLabel, detail, ds, clock), saved); err != nil {
 		return res, err
 	}
@@ -532,6 +535,34 @@ func writeBlock(logPath, resultLine, saved string) error {
 		return err
 	}
 	return sc.Err()
+}
+
+// flushMsgs writes the status messages posted while the step ran (swim
+// msg), and the latest one if the log doesn't have it yet, into the step's
+// block as "-- MSG ..." lines.
+func flushMsgs(root string, n int, spool string) {
+	m, ok := lane.ReadMsg(root, n)
+	if !ok && len(m.Pending) == 0 {
+		return
+	}
+	lines := m.Pending
+	if m.Text != "" && m.Display() != m.Logged {
+		lines = append(lines, logparse.MsgText(m.Text, m.Progress, time.Now().Format("15:04:05")))
+		m.Logged, m.LoggedAt = m.Display(), time.Now().UTC().Format(time.RFC3339)
+	}
+	if len(lines) == 0 {
+		return
+	}
+	f, err := os.OpenFile(spool, os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	for _, l := range lines {
+		fmt.Fprintf(f, "%s%s\n", spoolMark, l)
+	}
+	f.Close()
+	m.Pending = nil
+	lane.WriteMsg(root, n, m)
 }
 
 // RecordOutput writes a step that has already run into the log: a lane

@@ -374,6 +374,11 @@ func cmdFinish(args []string) error {
 	logPath := lane.Log(root, n)
 	step.RecoverSpool(logPath)
 	lane.ClearStop(root, n) // the round is over: a stop request is spent
+	// So is its status message; the latest goes to the log if it isn't there.
+	if m, ok := lane.ReadMsg(root, n); ok && m.Display() != m.Logged && m.Run == os.Getenv("SWIM_RUN") {
+		appendLog(logPath, "  "+logparse.MsgText(m.Text, m.Progress, time.Now().Format("15:04:05"))+"\n")
+	}
+	lane.ClearMsg(root, n)
 	r, err := logparse.ParseFile(logPath)
 	if err != nil {
 		return err
@@ -450,6 +455,7 @@ func cmdFinish(args []string) error {
 		}
 		l.PID = 0
 		l.WaitingOn = []int{}
+		l.Message, l.Progress, l.MessageAt = "", "", ""
 		l.FinishedAt = status.Str(ts)
 		if l.StartedAt == nil && r.StartedAt != "" {
 			l.StartedAt = status.Str(r.StartedAt)

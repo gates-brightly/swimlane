@@ -22,6 +22,7 @@ type ResultDoc struct {
 	Command  string   `yaml:"command,omitempty"`
 	Output   []string `yaml:"output,omitempty"`
 	Saved    string   `yaml:"saved,omitempty"`
+	Messages []string `yaml:"messages,omitempty"` // status messages posted during the step (swim msg)
 }
 
 // Counts are a round's result totals.
@@ -84,7 +85,7 @@ func (r *Round) Doc(n int) Doc {
 	}
 	for _, res := range r.Results {
 		rd := ResultDoc{Result: res.Kind, Label: res.Label, Detail: res.Detail, Stage: res.Stage, Handler: res.Handler, Step: res.Step,
-			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved}
+			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved, Messages: res.Messages}
 		if res.Step {
 			dur := res.Dur
 			rd.Duration = &dur

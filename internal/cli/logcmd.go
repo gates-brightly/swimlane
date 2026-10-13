@@ -356,7 +356,7 @@ const (
 )
 
 var (
-	resultKindRE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN|RUNNING)  (.*)$`)
+	resultKindRE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN|MSG|RUNNING)  (.*)$`)
 	timedTailRE  = regexp.MustCompile(`^(.*?)(\s+\d+(?:\.\d+)?s\s+)(\d\d:\d\d:\d\d)$`)
 	stageLineRE  = regexp.MustCompile(`^-- stage (\S+)(?:\s+(\d\d:\d\d:\d\d))?`)
 	stageWordRE  = regexp.MustCompile(`(\w+) (PASS|FAIL|SKIP|none)`)

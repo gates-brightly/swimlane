@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -251,3 +252,72 @@ func cmdStop(args []string) error {
 // laneGate and laneSnapshot are swim gate / swim snapshot.
 func laneGate(args []string) error     { return laneStep("gate", args) }
 func laneSnapshot(args []string) error { return laneStep("snapshot", args) }
+
+// swim msg [--progress N/M] "<text>": post the lane's status message (the
+// latest wins; "" clears it). It shows in the live view, swim status and
+// the hub, and goes to the log throttled (msg_log_interval). It never fails
+// the round: a message that can't be posted warns and exits 0.
+func cmdMsg(args []string) error {
+	var progress string
+	rest, err := flags{strs: map[string]*string{"progress": &progress}}.parse(args)
+	if err != nil {
+		return err
+	}
+	warn := func(format string, a ...any) error {
+		fmt.Fprintf(os.Stderr, "swim msg: warning: "+format+"\n", a...)
+		return nil
+	}
+	ns := os.Getenv("SWIM_LANE")
+	if ns == "" {
+		return warn("not inside a lane's round (SWIM_LANE is unset); nothing posted")
+	}
+	root, cfg, n, err := laneCtx(ns)
+	if err != nil {
+		return warn("%v", err)
+	}
+	if progress != "" && !lane.ValidProgress(progress) {
+		warn("--progress %q is not N/M; ignored", progress)
+		progress = ""
+	}
+	text := cfg.Masker(os.Environ()).String(lane.CleanMsg(strings.Join(rest, " ")))
+	if text == "" {
+		progress = ""
+	}
+	now := time.Now()
+	m, _ := lane.ReadMsg(root, n)
+	if run := os.Getenv("SWIM_RUN"); m.Run != run {
+		m = lane.Msg{Run: run} // an earlier round's message (and log state) is spent
+	}
+	m.Text, m.Progress, m.At = text, progress, now.UTC().Format(time.RFC3339)
+
+	// The log: changes only, at most one line per msg_log_interval. A
+	// message posted during a step waits for the step, which writes it into
+	// its own block when it ends (nothing else writes into a running step).
+	if text != "" && m.Display() != m.Logged {
+		last, _ := time.Parse(time.RFC3339, m.LoggedAt)
+		if every := cfg.MsgLogEvery(); every == 0 || now.Sub(last) >= every {
+			line := logparse.MsgText(text, progress, now.Format("15:04:05"))
+			logPath := lane.Log(root, n)
+			if _, err := os.Stat(step.SpoolPath(logPath)); err == nil {
+				if len(m.Pending) < 100 {
+					m.Pending = append(m.Pending, line)
+				}
+			} else if err := appendLog(logPath, "  "+line+"\n"); err != nil {
+				return warn("%v", err)
+			}
+			m.Logged, m.LoggedAt = m.Display(), m.At
+		}
+	}
+	if err := lane.WriteMsg(root, n, m); err != nil {
+		return warn("%v", err)
+	}
+	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
+		l.Message, l.Progress, l.MessageAt = m.Text, m.Progress, m.At
+		if m.Text == "" {
+			l.MessageAt = ""
+		}
+	})
+	// Nothing printed: inside a step it would land in the step's output.
+	// swim run shows it ([3] … migrating billing (7/25)) as it changes.
+	return nil
+}

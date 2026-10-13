@@ -58,6 +58,7 @@ const (
 	Stop     = "STOP"
 	Warn     = "WARN"
 	Blocked  = "BLOCKED" // a command swim refused to run (counts as a failure)
+	Msg      = "MSG"     // a round's status message (swim msg); never a result
 )
 
 // Syntax 2 markers and indents.
@@ -99,6 +100,16 @@ func MarkLine(kind, label, detail string) string { return "  " + ResultLine(kind
 
 // StageLine starts a stage.
 func StageLine(name, clock string) string { return StageMark + name + "  " + clock }
+
+// MsgText is a status message as the log records it: "migrating billing
+// (7/25, 12:04:10)".
+func MsgText(text, progress, clock string) string {
+	detail := clock
+	if progress != "" {
+		detail = progress + ", " + clock
+	}
+	return ResultLine(Msg, text, detail)
+}
 
 // HandlerLine starts an outcome handler's section.
 func HandlerLine(name, clock string) string { return HandlerMark + name + "  " + clock }
@@ -160,6 +171,8 @@ type Result struct {
 	Cmd    string
 	Output []string
 	Saved  string
+	// Messages are the status messages (swim msg) posted while the step ran.
+	Messages []string
 }
 
 // Text renders the result as text, e.g. "FAIL  tf plan (exit 2)".
@@ -347,7 +360,7 @@ func scanner(r io.Reader) *bufio.Scanner {
 }
 
 var (
-	resultV2RE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN)  (.*)$`)
+	resultV2RE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN|MSG)  (.*)$`)
 	timedRE    = regexp.MustCompile(`^(.*?)\s+(\d+(?:\.\d+)?s)\s+(\d\d:\d\d:\d\d)$`)
 	labelRE    = regexp.MustCompile(`^(.*?)(?: \((.*)\))?$`)
 	roundV2RE  = regexp.MustCompile(`^== ROUND (\S+)\s+job=(\S+)\s+(.*)$`)
@@ -410,6 +423,9 @@ func parseV2(rd io.Reader) (*Round, error) {
 					res.Output = append(res.Output, strings.TrimPrefix(strings.TrimPrefix(body, "|"), " "))
 				case strings.HasPrefix(body, "saved: "):
 					res.Saved = strings.TrimPrefix(body, "saved: ")
+				case strings.HasPrefix(body, "-- "+Msg+"  "):
+					res.Messages = append(res.Messages, strings.TrimPrefix(body, "-- "+Msg+"  "))
+					res.Output = append(res.Output, body)
 				case strings.HasPrefix(body, "-- "):
 					res.Output = append(res.Output, body)
 				}

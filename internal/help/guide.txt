@@ -40,6 +40,7 @@ COMMANDS
   stage NAME               start a stage: snapshot, check, change, verify
   drift "<what differs>"   record DRIFT
   stop "<reason>"          record STOP and end the round
+  msg [--progress N/M] "<text>"   post the lane's status message (live view, status, hub)
   archive N|JOB ... [--as NAME]   archive lanes' logs as .swim/logs/agentN.prev-<NAME or job id>.log
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
@@ -265,6 +266,14 @@ WRITING A LANE SCRIPT
   last_failed                     true if the previous step failed.
   any_failed                      true if any step in this round failed.
   drift "<what differs>"          record DRIFT (deployed state differs from code).
+  msg [--progress N/M] "<text>"   post the lane's status message: where a long job is
+                                  now ("migrating billing", 7/25). It shows in the live
+                                  view, swim status and the hub; the latest wins, msg ""
+                                  clears it, and the round's end does. The log gets MSG
+                                  lines, at most one per msg_log_interval (default 10s;
+                                  changes only; the latest when a step or the round ends).
+                                  A command inside a step can post too: swim msg "...".
+                                  Never fails the round.
   stop "<reason>"                 record STOP and end the round now (in a handler: record
                                   it, and the handler carries on).
   reached STAGE                   true if the round started STAGE or a later one; an
@@ -430,6 +439,7 @@ OTHER LANGUAGES
     swim guard FLAG "<action - date, reason>"         exit 0 if approved, 1 if not (dry run)
     swim stage snapshot|check|change|verify
     swim drift "<what differs>"    swim stop "<reason>"
+    swim msg [--progress N/M] "<text>"                a status message (live view, status, hub)
   (options as for run in a bash lane: --timeout, --retry, --backoff,
   --retry-on, --no-retry-timeout, --soft). Outcome handlers are commands:
       # On-Failure: python3 rollback.py           (on-failure: in lane.N.yml)
@@ -595,8 +605,14 @@ READING RESULTS
         DRIFT  <what>
         STOP  <reason>
         WARN  <what>                                stage order, bad header values
+        MSG  <text> (7/25, <hh:mm:ss>)              a status message (msg); never a result.
+                                                    One posted during a step is in its
+                                                    block: -- MSG  <text> (...)
+      -- handler on_failure  <hh:mm:ss>             an outcome handler's section: its
+                                                    results never count toward the round's
       == END <PASS|FAIL|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>  run=<run id>
          stages: snapshot PASS | check PASS | change SKIP | verify PASS
+         handlers: on_failure PASS | on_exit PASS     (if any ran)
          failed: FAIL  <label> (exit <code>); ...
   Results are the lines starting "  KIND  " (grep -E '^  (FAIL|BLOCKED)' finds
   every failure); anything indented 8 spaces belongs to the step above it and is
@@ -669,8 +685,10 @@ READING RESULTS
         event: start    lane, job, round, at
         event: output   lane, line          (only with --yaml-output)
         event: step     lane, label, stage, result (PASS|FAIL|BLOCKED|SKIP|
-                        APPROVED|DRIFT|STOP|WARN), detail, exit, duration_s;
+                        APPROVED|DRIFT|STOP|WARN|MSG), detail, exit, duration_s;
                         a lane's steps come together just before its finish
+        event: msg      lane, message, progress: a running round's status message
+                        changed (message "" when cleared)
         event: finish   lane, job, result (passed|failed|skipped|interrupted),
                         exit, reason (skips), counts {pass,fail,skip,drift},
                         failed_steps, duration_s, at
@@ -714,6 +732,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         interrupt: graceful              # graceful | immediate: what the first Ctrl-C does
         approvals: prompt                # prompt | flags: may an unset guard flag ask the operator
         interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
+        msg_log_interval: 10s            # at most one MSG log line per lane per this (0: every change)
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
         # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)
         runners:                         # how lane.N.<ext> runs without a #! line (OTHER LANGUAGES)

@@ -42,6 +42,8 @@ type Event struct {
 	FailedSteps []string         `yaml:"failed_steps,omitempty"`
 	Duration    *float64         `yaml:"duration_s,omitempty"`
 	Note        string           `yaml:"note,omitempty"`
+	Message     *string          `yaml:"message,omitempty"`  // msg events: the status message ("" when cleared)
+	Progress    string           `yaml:"progress,omitempty"` // msg events: "7/25"
 	At          string           `yaml:"at,omitempty"`
 }
 

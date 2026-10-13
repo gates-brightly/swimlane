@@ -1,6 +1,6 @@
 # Lane messages (`msg`)
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -111,18 +111,27 @@ subprocess.run(["swim", "msg", "--progress", f"{n}/{total}", f"backfilled {table
   progress is set.
 - **Config:** `msg_log_interval` (a duration; `0` logs every change).
 
-## Open questions
+## Open questions (answered)
 
-1. **Name:** `msg`, or `progress` or `say`? `status` is taken by
-   `swim status`.
-2. **Log or not:** log throttled `MSG` lines (as above), or keep messages
-   display-only so they never cost a planner tokens?
-3. **Progress format:** is `N/M` enough, or also a percentage and an ETA
-   worked out from the rate?
-4. **Scope of a message:** clear it at each step's end, or keep it until the
-   next `msg` or the round's end (as above)?
-5. **Notifications:** should the hub or chime ever react to a message (for
-   example `msg --notify`), or is that a separate feature?
+1. **Name:** `msg`. It's short, doesn't collide with `swim status`, and
+   reads naturally in a loop.
+2. **Log or not:** log, throttled. A planner reading the log back gets the
+   job's milestones, and throttling keeps the token cost small.
+3. **Progress format:** `N/M` only. A percentage is derived where it's shown
+   (the hub's bar). An ETA can come later.
+4. **Scope:** a message stays until the next `msg` or the round's end, so a
+   loop's message survives across the steps in it.
+5. **Notifications:** a separate feature. `msg` never notifies.
+
+Decided while building:
+
+- **Writes never interleave:** a message posted during a step is queued in
+  `.swim/msg/laneN` and written into the step's block (`-- MSG  ...`) when
+  the step ends, so nothing writes into a running step's output.
+- **Printing:** `swim msg` prints nothing, since inside a step that would
+  land in the step's output. The launcher prints `[N] … text` when the
+  message changes, polling every 200ms, so fast updates coalesce.
+- **Status** is written by `swim msg` itself, under status.yml's lock.
 
 ## Testing
 

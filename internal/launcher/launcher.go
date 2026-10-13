@@ -602,7 +602,9 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	o.ev.emit(Event{Event: "start", Lane: n, Job: info.Job, Round: info.Round, At: launchedTS})
 	ir.add(n, &laneProc{proc: cmd.Process, group: ownGroup, started: launched})
 	o.beat.begin(n, launched)
+	stopMsgs := watchMsgs(o, n, disp)
 	err := cmd.Wait()
+	stopMsgs()
 	w.Flush()
 	o.beat.end(n)
 	ir.remove(n)
@@ -825,4 +827,50 @@ func operator() string {
 		}
 	}
 	return "operator"
+}
+
+// watchMsgs follows lane n's status message (swim msg) while it runs: the
+// panel shows it and the YAML stream gets a msg event for each change. The
+// returned func stops it and clears the panel's message.
+func watchMsgs(o Options, n int, disp *display.Display) func() {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		t := time.NewTicker(200 * time.Millisecond)
+		defer t.Stop()
+		last := ""
+		for first := true; ; first = false {
+			if !first {
+				select {
+				case <-done:
+					return
+				case <-t.C:
+				}
+			}
+			m, ok := lane.ReadMsg(o.Root, n)
+			if ok && m.Run != o.RunID {
+				ok = false // an earlier round's
+			}
+			cur := ""
+			if ok {
+				cur = m.Display()
+			}
+			if cur == last {
+				continue
+			}
+			last = cur
+			disp.Set(n, func(v *display.LaneView) { v.Message = cur })
+			if cur != "" {
+				disp.Line(n, "… "+cur)
+			}
+			text := m.Text
+			o.ev.emit(Event{Event: "msg", Lane: n, Message: &text, Progress: m.Progress, At: now()})
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
+		disp.Set(n, func(v *display.LaneView) { v.Message = "" })
+	}
 }

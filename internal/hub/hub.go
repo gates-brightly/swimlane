@@ -54,7 +54,10 @@ type Lane struct {
 	Exit     *int     `json:"exit,omitempty"`
 	Started  string   `json:"started,omitempty"`
 	Finished string   `json:"finished,omitempty"`
-	Tail     []string `json:"tail,omitempty"` // the end of a running lane's log, its running step included
+	Tail     []string `json:"tail,omitempty"`     // the end of a running lane's log, its running step included
+	Message  string   `json:"message,omitempty"`  // a running round's status message (swim msg)
+	Progress string   `json:"progress,omitempty"` // its progress, "7/25"
+	MsgAt    string   `json:"message_at,omitempty"`
 }
 
 // Batch is one queue entry.

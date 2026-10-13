@@ -432,6 +432,14 @@ confirm() {
   stop "not confirmed: $1"
 }
 
+# msg [--progress N/M] "<text>" — post the lane's status message: where a
+# long job is now ("migrating billing", --progress 7/25). It shows in the
+# live view, swim status and the hub; the latest wins, msg "" clears it,
+# and the log gets it throttled. Never fails the round.
+msg() {
+  "$SWIM_BIN" msg "$@" || true
+}
+
 # drift "<what differs>" — record a DRIFT line (deployed state differs from code).
 drift() {
   "$SWIM_BIN" _mark "$SWIM_LANE" DRIFT "$1"

@@ -42,6 +42,7 @@ type LaneView struct {
 	LockWait  string // while Locked, e.g. "orders-table: swim 4"
 	Stopping  string // while Running after a stop request: the step it is finishing
 	Approval  string // while Running and waiting for the operator to approve a guarded step
+	Message   string // while Running: the round's status message (swim msg), "migrating billing (7/25)"
 	Started   time.Time
 	Finished  time.Time
 }
@@ -296,12 +297,24 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 		if v.State == Idle || v.State == Done {
 			roundColor = ui.Dim
 		}
+		// A running round's message, in its own style after the round, when
+		// there's room (it never takes the state column).
+		msg := ""
+		if v.State == Running && v.Message != "" {
+			if left := avail - utf8.RuneCountInString(round) - 3; left >= 10 {
+				job = ""
+				msg = truncate("… "+v.Message, left)
+			}
+		}
 		line := p.Paint(ui.LaneColor(v.N)+ui.Bold, label) + p.Paint(stColor, st)
 		if round != "" {
 			line += " " + p.Paint(roundColor, round)
 		}
 		if job != "" {
 			line += p.Paint(ui.Dim, job)
+		}
+		if msg != "" {
+			line += "  " + p.Paint(ui.Mag, msg)
 		}
 		lines = append(lines, line)
 	}

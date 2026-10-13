@@ -301,6 +301,7 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 		st.Normalize(cfg.Lanes)
 		for _, l := range st.Lanes {
 			hl := hub.Lane{Lane: l.Lane, State: l.State, Round: l.Round, Job: l.Job, Run: l.Run, Step: l.CurrentStep, Reason: l.Reason,
+				Message: l.Message, Progress: l.Progress, MsgAt: l.MessageAt,
 				Pass: l.Pass, Fail: l.Fail, Skip: l.Skip, Drift: l.Drift, Exit: l.ExitCode}
 			if l.Round == "" {
 				hl.Round = l.Pending

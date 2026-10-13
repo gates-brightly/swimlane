@@ -31,6 +31,22 @@ To cut a release:
 
 ### Added
 
+- **Lane messages (`msg`):**
+  - **Posting:** `msg [--progress N/M] "<text>"` in a bash lane, or
+    `swim msg` from any language or from a command inside a step, posts the
+    lane's status message. The latest wins, and `msg ""` clears it.
+  - **Where it shows:** the live view (after the round), `swim status`
+    (`message`, `progress`, `message_at`), `swim run --yaml` (`msg` events)
+    and the hub, with a progress bar and the message's age once it's a
+    minute old.
+  - **The log:** `MSG` lines, changes only, at most one per
+    `msg_log_interval` (default 10s), plus the latest when a step or the
+    round ends. A message posted during a step goes into that step's block,
+    and `swim log --yaml` lists it under the step's `messages`.
+  - **Clean text:** one line, ANSI and control characters removed, masked,
+    at most 120 characters.
+  - **Never fails a round.**
+
 - **Outcome handlers (lane script syntax 3):**
   - **Handlers:** a round can define `on_success`, `on_failure` and
     `on_exit`. swim calls them however the round ends: the end of the

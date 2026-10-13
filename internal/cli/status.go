@@ -175,6 +175,16 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			}
 			detail(step, ui.Cyan)
 		}
+		if state == status.Running && l.Message != "" {
+			m := l.Message
+			if l.Progress != "" {
+				m += " (" + l.Progress + ")"
+			}
+			if t, err := time.Parse(time.RFC3339, l.MessageAt); err == nil && time.Since(t) > time.Minute {
+				m += " · " + display.Elapsed(time.Since(t)) + " ago"
+			}
+			detail("msg: "+m, ui.Dim)
+		}
 		if len(l.Locks) > 0 && state == status.Running {
 			detail("locks: "+strings.Join(l.Locks, ", "), ui.Dim)
 		}
