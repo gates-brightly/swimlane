@@ -1714,3 +1714,30 @@ type launcherSummary struct {
 		Result string
 	}
 }
+
+func TestArchiveSeveralLanes(t *testing.T) {
+	r := newRepo(t, "")
+	for n := 1; n <= 3; n++ {
+		r.script(n, fmt.Sprintf("round %d", n), `run "a" true`)
+		withHeader(t, r, n, fmt.Sprintf("# Job: aaaa000%d-1111-4222-8333-444455556666", n))
+	}
+	r.mustSwim("all")
+	out := r.mustSwim("archive", "1", "2", "3")
+	for n := 1; n <= 3; n++ {
+		contains(t, "archive", out, fmt.Sprintf("agent%d.log -> .swim/logs/agent%d.prev-aaaa000%d-1111-4222-8333-444455556666.log", n, n, n))
+		if st := r.status().Get(n); st.State != status.Idle || !strings.HasPrefix(st.LastArchive, fmt.Sprintf("agent%d.prev-", n)) {
+			t.Errorf("swim %d after archive: %+v", n, st)
+		}
+	}
+	// --as names every lane's archive; all or nothing when one can't be archived.
+	r.mustSwim("all", "--rerun")
+	if out, code := r.swim("archive", "1", "2", "4", "--as", "batch"); code == 0 || !strings.Contains(out, "nothing archived") || !strings.Contains(out, "swim 4 has nothing to archive") {
+		t.Fatalf("a lane without a log: %d %s", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log")); err != nil {
+		t.Fatal("lane 1 was archived although lane 4 couldn't be")
+	}
+	contains(t, "--as", r.mustSwim("archive", "1", "2", "--as", "batch"), "agent1.prev-batch.log", "agent2.prev-batch.log")
+	// A job id is a lane too, and the older "name after the lane" form still works.
+	contains(t, "job id + old form", r.mustSwim("archive", "aaaa0003", "cut", "over"), "agent3.prev-cut-over.log")
+}

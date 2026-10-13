@@ -31,7 +31,7 @@ COMMANDS
                            and the longest dependency chain; N/JOB: its rounds across runs
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
   lib                      print the bash library lane scripts load
-  archive N|JOB [<what>]   archive lane N's log as .swim/logs/agentN.prev-<what or job id>.log
+  archive N|JOB ... [--as NAME]   archive lanes' logs as .swim/logs/agentN.prev-<NAME or job id>.log
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
   lock [--upgrade]         show swim's version and the repo's .swim.lock; move it up
@@ -157,7 +157,7 @@ PLANNER WORKFLOW
      `swim timeline` shows which lane held it up (the longest chain) and
      whether the time went to work, dependencies, slots or locks.
   6. Record the results (with the job id) where your project tracks them,
-     then `swim archive N|JOB [<what-happened>]` and `swim stub N "<why idle>"`.
+     then `swim archive N|JOB ... [--as <what-happened>]` and `swim stub N "<why idle>"`.
   7. Out-of-scope findings go on a follow-up list, never into the round.
      Record decisions and findings the next agent needs with
      `swim note "<text>"` (or `swim note --lane N "<text>"`). Keep notes

@@ -29,6 +29,18 @@ To cut a release:
 
 ## Unreleased
 
+### Changed
+
+- **`swim archive 1 2 3` archives lanes 1, 2 and 3:**
+  - **Arguments:** every argument is a lane number or job id. Before, the
+    second argument was taken as the archive's name.
+  - **Naming:** each archive is named after its job id. Use `--as NAME` to
+    name them all.
+  - **All or nothing:** if any lane is running, has no log, or its archive
+    name is taken, nothing is archived and every problem is listed.
+  - **Old form:** `swim archive 1 cutover`, a name after one lane, still
+    works.
+
 ### Added
 
 - **`swim log` shows the step running now:**

@@ -253,7 +253,7 @@ stops swim with instructions to update it.
 | `swim timeline [RUN\|N\|JOB] [--top N] [--all] [--steps] [--yaml] [--html FILE]` | When each lane of the last run waited (dependencies, slot, locks), ran and finished; the longest dependency chain and start delays. From `.swim/runs/<run>.yml`. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane, from `.swim/status.yml` (`--yaml`: tagged `schema: swim.status/v1`). |
 | `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml] [-f] [--until-done]` | A lane's log (`--all` adds its archives), a job's rounds, or with no argument the project log; rendered on a terminal. Includes the step running now, with its output so far (`RUNNING`). `--yaml`: the round parsed, as data. `-f` follows it live like `tail -f`; `--until-done` exits with the round's status when it ends. |
-| `swim archive N\|JOB [<what>]` | Archive a lane's log (the name defaults to the job id). |
+| `swim archive N\|JOB ... [--as NAME]` | Archive lanes' logs, e.g. `swim archive 1 2 3`. Each archive is named after its job id unless you give `--as`. All or nothing. |
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
 | `swim config [KEY [VALUE]] [--repo]` | Show the effective config (`--path`: its location), or get/set `chime`, `chime_style`, `chime_min_s` or `lanes` (`--lanes N` still works), keeping the file's comments. Writes go under `defaults:`, or this repo's section with `--repo`. |

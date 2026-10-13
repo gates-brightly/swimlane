@@ -244,14 +244,17 @@ var Commands = map[string]string{
   (eval, not "source <(...)": process-substitution source is broken in
   macOS bash 3.2). See "WRITING A LANE SCRIPT" in swim --help for the functions.
 `,
-	"archive": `swim archive N|JOB [<what>]
+	"archive": `swim archive N|JOB ... [--as NAME]
 
-  Rename .swim/logs/agentN.log to agentN.prev-<what>.log in the same
-  directory (<what> is slugified; it
-  defaults to the archived round's job id). A job id selects the lane whose
-  script holds that job or that last ran it. The next round starts a fresh
-  log and history is kept. Refuses if lane N is
-  running or the archive name exists. Resets the lane to idle in status.yml.
+  Rename each lane's .swim/logs/agentN.log to agentN.prev-<NAME>.log in the
+  same directory: swim archive 1 2 3 archives lanes 1, 2 and 3. Every
+  argument is a lane number or a job id (the lane whose script holds that
+  job or that last ran it). NAME is slugified; without --as each archive is
+  named after its round's job id. The next round starts a fresh log and
+  history is kept; each lane is reset to idle in status.yml.
+  All or nothing: if any lane is running, has no log, or its archive name
+  exists, nothing is archived and every problem is listed.
+  The older form, a name after one lane, still works: swim archive 1 cutover.
 `,
 	"stub": `swim stub N|JOB "<message>"
 

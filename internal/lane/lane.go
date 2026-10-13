@@ -362,22 +362,32 @@ func Slug(s string) string {
 // Archive renames .swim/logs/agentN.log to agentN.prev-<what>.log there and returns the new
 // path. It never overwrites an existing archive.
 func Archive(root string, n int, what string) (string, error) {
+	dst, err := ArchiveCheck(root, n, what)
+	if err != nil {
+		return "", err
+	}
+	return dst, os.Rename(Log(root, n), dst)
+}
+
+// ArchiveCheck reports where Archive would move lane n's log, or why it
+// can't (the lane is running, has no log, or the archive name is taken),
+// without moving anything.
+func ArchiveCheck(root string, n int, what string) (string, error) {
 	if err := refuseRunning(root, n); err != nil {
 		return "", err
 	}
 	slug := Slug(what)
 	if slug == "" {
-		return "", errors.New("archive needs a description, e.g. `swim archive 1 cutover-api`")
+		return "", errors.New("archive needs a description, e.g. `swim archive 1 --as cutover-api`")
 	}
-	src := Log(root, n)
-	if _, err := os.Stat(src); err != nil {
-		return "", fmt.Errorf("nothing to archive: %w", err)
+	if _, err := os.Stat(Log(root, n)); err != nil {
+		return "", fmt.Errorf("swim %d has nothing to archive (no .swim/logs/agent%d.log)", n, n)
 	}
 	dst := filepath.Join(LogDir(root), fmt.Sprintf("agent%d.prev-%s.log", n, slug))
 	if _, err := os.Stat(dst); err == nil {
-		return "", fmt.Errorf("%s already exists; choose a different description", filepath.Base(dst))
+		return "", fmt.Errorf("%s already exists; choose a different name (--as)", filepath.Base(dst))
 	}
-	return dst, os.Rename(src, dst)
+	return dst, nil
 }
 
 // WriteScript writes content to lane.N.sh (mode 0755) unless the lane is

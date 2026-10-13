@@ -685,39 +685,85 @@ func cmdLib(args []string) error {
 	return nil
 }
 
+// cmdArchive archives lanes' logs: swim archive N|JOB ... [--as NAME].
+// Every argument that is a lane number or a job id is a lane; each lane's
+// log becomes agentN.prev-<NAME>.log, or with no name its round's job id.
+// The older form, a name after one lane (swim archive 1 cutover), still
+// works: arguments after the lanes that are neither are taken as the name.
 func cmdArchive(args []string) error {
-	if len(args) < 1 {
-		return usagef("usage: swim archive N|JOB [<what>]")
+	var as string
+	rest, err := flags{strs: map[string]*string{"as": &as}}.parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) < 1 {
+		return usagef("usage: swim archive N|JOB ... [--as NAME]")
 	}
 	root, cfg, err := repo()
 	if err != nil {
 		return err
 	}
-	n, err := laneRef(root, cfg, args[0], true)
-	if err != nil {
-		return err
-	}
-	what := strings.Join(args[1:], " ")
-	if what == "" {
-		// Default to the job id of the round being archived.
-		if r, _ := logparse.ParseFile(lane.Log(root, n)); r.Job != "" {
-			what = r.Job
-		} else {
-			return usagef("swim %d's log has no job id; give a description: swim archive %d <what>", n, n)
+	var lanes []int
+	seen := map[int]bool{}
+	for i, a := range rest {
+		n, err := laneRef(root, cfg, a, true)
+		if err != nil {
+			if _, numErr := strconv.Atoi(a); numErr == nil || i == 0 || as != "" {
+				return err // a number is always a lane; so is the first argument
+			}
+			// The older form: the rest is the archive's name.
+			as = strings.Join(rest[i:], " ")
+			break
+		}
+		if !seen[n] {
+			seen[n] = true
+			lanes = append(lanes, n)
 		}
 	}
-	dst, err := lane.Archive(root, n, what)
-	if err != nil {
-		return err
+	// Check every lane first: archive all of them or none.
+	type plan struct {
+		n    int
+		what string
+		dst  string
 	}
-	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
-		l.ResetRun()
-		l.State, l.Round, l.Job = status.Idle, "", ""
-		l.LastArchive = filepath.Base(dst)
-	})
-	archived, _ := logparse.ParseFile(dst)
-	history.Log(root, history.Entry{Event: history.Archive, Lane: n, Job: archived.Job, Detail: filepath.Base(dst)})
-	fmt.Printf("archived %s -> %s\n", rel(root, lane.Log(root, n)), rel(root, dst))
+	var plans []plan
+	var problems []string
+	for _, n := range lanes {
+		what := as
+		if what == "" {
+			// Default to the job id of the round being archived.
+			if r, _ := logparse.ParseFile(lane.Log(root, n)); r.Job != "" {
+				what = r.Job
+			} else if _, err := os.Stat(lane.Log(root, n)); err == nil {
+				problems = append(problems, fmt.Sprintf("swim %d's log has no job id; name the archive: swim archive %d --as <name>", n, n))
+				continue
+			}
+		}
+		dst, err := lane.ArchiveCheck(root, n, or(what, "x"))
+		if err != nil {
+			problems = append(problems, err.Error())
+			continue
+		}
+		plans = append(plans, plan{n: n, what: what, dst: dst})
+	}
+	if len(problems) > 0 {
+		msg := "nothing archived:\n  " + strings.Join(problems, "\n  ")
+		return errors.New(msg)
+	}
+	for _, pl := range plans {
+		dst, err := lane.Archive(root, pl.n, pl.what)
+		if err != nil {
+			return err
+		}
+		status.Update(root, pl.n, cfg.Lanes, func(l *status.Lane) {
+			l.ResetRun()
+			l.State, l.Round, l.Job = status.Idle, "", ""
+			l.LastArchive = filepath.Base(dst)
+		})
+		archived, _ := logparse.ParseFile(dst)
+		history.Log(root, history.Entry{Event: history.Archive, Lane: pl.n, Job: archived.Job, Detail: filepath.Base(dst)})
+		fmt.Printf("archived %s -> %s\n", rel(root, lane.Log(root, pl.n)), rel(root, dst))
+	}
 	return nil
 }
 
