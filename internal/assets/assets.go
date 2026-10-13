@@ -5,6 +5,7 @@ package assets
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"strings"
 	"text/template"
 	"time"
@@ -27,6 +28,15 @@ var laneTmpl string
 //go:embed stub.tmpl.sh
 var stubTmpl string
 
+//go:embed lane.tmpl.py
+var pyTmpl string
+
+//go:embed lane.tmpl.js
+var jsTmpl string
+
+// Langs are the languages swim new writes a lane script in (--lang).
+var Langs = []string{"sh", "py", "js", "ts"}
+
 // LibFor returns the lane script library with SWIM_BIN pointing at bin unless
 // the environment already set it.
 func LibFor(bin string) string {
@@ -43,6 +53,35 @@ func Script(lane int, goal, toolchain, job, owner string) (string, error) {
 		"Toolchain": strings.TrimSpace(toolchain),
 		"Date":      time.Now().Format("2006-01-02"),
 	})
+}
+
+// ScriptIn renders a fresh lane.N.<lang> (sh, py, js or ts).
+func ScriptIn(lang string, lane int, goal, toolchain, job, owner string) (string, error) {
+	data := map[string]any{
+		"Job":   job,
+		"Owner": owner,
+		"Lane":  lane,
+		"Goal":  oneLine(goal),
+		"Date":  time.Now().Format("2006-01-02"),
+	}
+	switch lang {
+	case "", "sh":
+		return Script(lane, goal, toolchain, job, owner)
+	case "py":
+		return render(pyTmpl, data)
+	case "js":
+		data["Import"] = `const { spawnSync } = require("node:child_process");`
+		data["ArgsType"], data["RetType"] = "", ""
+		return render(jsTmpl, data)
+	case "ts":
+		// No #! line: TypeScript runners differ (tsx, ts-node, bun, deno), so
+		// swim asks the operator once and remembers (runners.ts).
+		data["Import"] = `import { spawnSync } from "node:child_process";`
+		data["ArgsType"], data["RetType"] = ": string[]", ": number"
+		out, err := render(jsTmpl, data)
+		return strings.TrimPrefix(out, "#!/usr/bin/env node\n"), err
+	}
+	return "", fmt.Errorf("unknown language %q (use one of %s)", lang, strings.Join(Langs, ", "))
 }
 
 // Stub renders a "nothing pending" placeholder.

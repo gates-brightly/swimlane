@@ -47,6 +47,14 @@ type Settings struct {
 	Signing            string        `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
 	InterruptGrace     string        `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
 	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
+	// Runners maps a lane script's extension (ts, py, ...) to the command
+	// that runs it ("tsx", "/usr/local/bin/python3"). A script's #! line
+	// wins; swim asks the operator for one the first time it meets an
+	// extension with neither, and saves the answer in the repo's section.
+	Runners map[string]string `yaml:"runners,omitempty"`
+	// RunnerFrom says where each runner came from (a config path or
+	// swim.yml), for messages.
+	RunnerFrom map[string]string `yaml:"-"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -113,17 +121,21 @@ func Load(root string) (*Config, error) {
 		return nil, err
 	}
 	c.Settings = f.Defaults
+	c.Runners, c.RunnerFrom = nil, nil
+	c.mergeRunners(f.Defaults.Runners, c.Path)
 	if s, path, err := readRepoFile(root); err != nil {
 		return nil, err
 	} else if path != "" {
 		c.RepoFile = path
 		c.RepoLanes = s.Lanes != 0
 		c.merge(s)
+		c.mergeRunners(s.Runners, path)
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
 		c.HasRepo = true
 		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
 		c.merge(repo)
+		c.mergeRunners(repo.Runners, c.Path)
 	}
 	if c.Lanes == 0 {
 		c.Lanes = DefaultLanes
@@ -210,6 +222,20 @@ func expandHome(p string) string {
 		}
 	}
 	return p
+}
+
+// mergeRunners adds runners, later sources winning per extension.
+func (c *Config) mergeRunners(r map[string]string, from string) {
+	for ext, cmd := range r {
+		ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+		if strings.TrimSpace(cmd) == "" {
+			continue
+		}
+		if c.Runners == nil {
+			c.Runners, c.RunnerFrom = map[string]string{}, map[string]string{}
+		}
+		c.Runners[ext], c.RunnerFrom[ext] = strings.TrimSpace(cmd), from
+	}
 }
 
 func (c *Config) merge(r Settings) {

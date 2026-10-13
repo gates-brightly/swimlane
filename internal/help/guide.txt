@@ -19,8 +19,9 @@ USAGE
 COMMANDS
   init                     set up this repo: config entry, .gitignore block, .swim/status.yml
   config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set lanes,
-                           chime, chime_style, chime_min_s (--lanes N = `config lanes N`)
-  new N "<round goal>"     write lane.N.sh from the template, with a new job id
+                           chime, chime_style, chime_min_s, runners.EXT (--lanes N = `config lanes N`)
+  new N "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
+                           template, with a new job id
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
   plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing
@@ -31,6 +32,13 @@ COMMANDS
                            and the longest dependency chain; N/JOB: its rounds across runs
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
   lib                      print the bash library lane scripts load
+  In a lane script in any language (OTHER LANGUAGES); run "<label>" -- cmd is a step too:
+  gate "<label>" -- cmd    a step whose failure ends the round (and stops the program)
+  snapshot "<label>" -- cmd   a read-only step whose output is saved
+  guard FLAG "<action>"    exit 0 if the operator approves the action, 1 if not
+  stage NAME               start a stage: snapshot, check, change, verify
+  drift "<what differs>"   record DRIFT
+  stop "<reason>"          record STOP and end the round
   archive N|JOB ... [--as NAME]   archive lanes' logs as .swim/logs/agentN.prev-<NAME or job id>.log
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
@@ -62,7 +70,8 @@ COMMANDS
   help [command]           this guide, or one command's detail
 
 CONCEPTS
-  lane        A numbered slot, swim 1..N (N from config). One script (lane.N.sh),
+  lane        A numbered slot, swim 1..N (N from config). One script (lane.N.sh,
+              or lane.N.py, lane.N.ts, a binary lane.N, ...: see OTHER LANGUAGES),
               one log (.swim/logs/agentN.log), owned by one worker at a time. Lanes are
               always numbers; there are no named lanes.
   round       One lane script's contents: a single goal ("cut over service X",
@@ -123,7 +132,10 @@ FILES (repo root)
                         default; remove it from the swim block in .gitignore
                         to commit the project's history.
   Also git-ignored by `swim init`:
-  lane.N.sh              lane N's script (the current round)
+  lane.N.sh              lane N's script (the current round); or lane.N.<ext> in
+                         another language, or a compiled lane.N (exactly one per lane)
+  lane.N.yml             optional metadata for lane N's script (round, job, after,
+                         guards, locks, timeout, ...), over its header (OTHER LANGUAGES)
   .lane.N.rc             optional operator-local env sourced by lane_init
   .swim/status.yml      last state of every lane (see READING RESULTS)
   .swim/logs/agentN.log         lane N's log, append-only, plain text (ANSI
@@ -341,6 +353,58 @@ WRITING A LANE SCRIPT
       run "verify: re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
       summary
 
+OTHER LANGUAGES
+  A lane script can be any runnable: lane.N.py, lane.N.js, lane.N.ts, lane.N.rb,
+  a compiled program lane.N, a plain bash script. Exactly one per lane (two
+  is an error). `swim new N "<goal>" --lang py|js|ts` writes a template.
+  How it runs (decided before the lane starts):
+    1. lane.N.sh: bash, as always.
+    2. A #! line: that command (no question asked).
+    3. runners: for its extension: the operator's (config.yml, this repo's
+       section) wins over the repo's committed swim.yml.
+    4. A compiled or executable file with no runner: run as itself.
+    5. Otherwise, at a terminal, swim looks the extension's runners up on
+       PATH (.js node, bun, deno; .ts tsx, ts-node, bun, deno; .py python3,
+       python; .rb ruby; ...), asks "Run .ts lanes with /usr/local/bin/tsx?
+       [Y/n, a number, or type a command]" and saves the answer as
+       runners.ts for this repo. Off a terminal (CI, swim watch) the lane
+       fails at start with the exact fix: a #! line, `swim config
+       runners.ts tsx`, or swim.yml (runners: {ts: tsx}) for everyone.
+  A script that doesn't load the bash library (no lane_init) runs inside
+  swim's wrapper, which opens and closes its round, exports SWIM_LANE,
+  SWIM_JOB, SWIM_RUN, STEP_LOG and the rest, and puts the git shim first on
+  PATH. Steps are swim commands (they read SWIM_LANE):
+    swim run [options] "<label>" -- cmd [args...]     a step (PASS/FAIL)
+    swim gate [options] "<label>" -- cmd [args...]    a step that ends the round on failure
+    swim snapshot [options] "<label>" -- cmd ...      a step whose output is saved
+    swim guard FLAG "<action - date, reason>"         exit 0 if approved, 1 if not (dry run)
+    swim stage snapshot|check|change|verify
+    swim drift "<what differs>"    swim stop "<reason>"
+  (options as for run in a bash lane: --timeout, --retry, --backoff,
+  --retry-on, --no-retry-timeout). A failed gate, swim stop, a refused git
+  push or the operator's stop ends the program even if it ignores the exit
+  code (SIGTERM to its process group, SIGKILL after 5s). A program that
+  never calls swim run is logged as one step: its whole output (masked),
+  passed or failed by its exit code. In Python:
+      import os, subprocess
+      def swim(*a): return subprocess.run([os.environ.get("SWIM_BIN", "swim"), *a]).returncode
+      swim("stage", "check")
+      swim("gate", "target is ours", "--", "aws", "s3api", "head-bucket", "--bucket", "orders")
+      if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: replaced)") == 0:
+          swim("run", "delete bucket", "--", "aws", "s3", "rb", "s3://orders")
+  Header keys are comments, # or //, as in a bash lane. A binary (or any
+  lane) can keep them in a sidecar lane.N.yml instead; its keys win:
+      round: cut over orders
+      job: 3f2a9c1e-...
+      after: [1, 2]
+      guards:
+        ORDERS_ALLOW_DELETE: delete bucket orders (2026-10-13: replaced)
+      locks: [orders-db]
+      timeout: 30m
+      step-timeout: 5m
+  Approvals, the queue's pins and the chain of custody hash the script file
+  itself (the binary, for a compiled lane). .lane.N.rc is for bash lanes only.
+
 LINT
   `swim lint` reads lane scripts and reports problems as error, warn or info
   with file:line, a fix and a [code]. It exits 1 on any error (--strict: on
@@ -552,6 +616,8 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         approvals: prompt                # prompt | flags: may an unset guard flag ask the operator
         interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
+        runners:                         # how lane.N.<ext> runs without a #! line (OTHER LANGUAGES)
+          ts: tsx                        # swim asks the first time, and saves the answer per repo
       repos:
         /path/to/repo:                   # git toplevel; overrides defaults field by field
           lanes: 4

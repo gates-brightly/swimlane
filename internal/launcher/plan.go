@@ -260,8 +260,8 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 			}
 		}
 		for _, n := range Beyond(o.Root, o.Cfg, o.Rerun) {
-			notes = append(notes, fmt.Sprintf("lane.%d.sh holds a job beyond swim %d (%s): swim all will offer to add lanes, or run swim config --lanes %d",
-				n, o.Cfg.Lanes, scripts0(o.Root, n).Round, n))
+			notes = append(notes, fmt.Sprintf("%s holds a job beyond swim %d (%s): swim all will offer to add lanes, or run swim config --lanes %d",
+				lane.ScriptName(o.Root, n), o.Cfg.Lanes, scripts0(o.Root, n).Round, n))
 		}
 	}
 

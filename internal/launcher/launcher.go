@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -25,6 +26,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/runrec"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -104,7 +106,7 @@ type Outcome struct {
 	Exit    int
 	Reason  string
 	Round   string
-	Blocked bool // refused before starting (blocked command)
+	Blocked bool // refused before starting (a blocked command, or no runner)
 	Elapsed time.Duration
 	// When the lane's dependencies were met, its locks and slot taken, its
 	// process started and finished (zero when it never got that far). The
@@ -472,13 +474,13 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 
 	if want := o.PinSHA[n]; want != "" {
 		if data, err := os.ReadFile(lane.Script(o.Root, n)); err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != want {
-			return skip(fmt.Sprintf("lane.%d.sh changed since it was queued (queued %s)", n, want[:12]))
+			return skip(fmt.Sprintf("%s changed since it was queued (queued %s)", lane.ScriptName(o.Root, n), want[:12]))
 		}
 	}
 	// A lane named by job id runs only if its script still holds that job.
 	if pin := o.Pins[n]; pin != "" {
 		if now, _ := lane.ReadScript(o.Root, n); !lane.MatchJob(now.Job, pin) {
-			return skip(fmt.Sprintf("lane.%d.sh was rewritten: it holds job %s, not the pinned %s", n, or(lane.ShortJob(now.Job), "none"), lane.ShortJob(pin)))
+			return skip(fmt.Sprintf("%s was rewritten: it holds job %s, not the pinned %s", lane.ScriptName(o.Root, n), or(lane.ShortJob(now.Job), "none"), lane.ShortJob(pin)))
 		}
 	}
 
@@ -501,7 +503,18 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	defer sl.release()
 	slotted = time.Now()
 
-	cmd := exec.Command("bash", lane.Script(o.Root, n))
+	// How the script runs: bash for lane.N.sh, its #! line, a confirmed
+	// runner, or itself; a script that doesn't load the bash library runs
+	// inside swim's wrapper, which opens and closes its round.
+	plan, perr := runner.Resolve(o.Cfg, lane.Script(o.Root, n))
+	if perr != nil {
+		return stamp(refuseStart(o, n, perr, disp))
+	}
+	argv := plan.Argv
+	if plan.Wrapped {
+		argv = append([]string{o.Self, "_wrap", strconv.Itoa(n), "--"}, argv...)
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = o.Root
 	env := append(os.Environ(), "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
 		"SWIM_RUN="+o.RunID, "SWIM_RUN_LANES="+joinInts(sel, " "), approval.EnvVar+"="+o.approvalSock)

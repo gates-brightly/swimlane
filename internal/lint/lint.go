@@ -15,6 +15,7 @@
 package lint
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -35,10 +36,23 @@ const Schema = "swim.lint/v1"
 // Script is one lane script being linted.
 type Script struct {
 	N    int
-	Name string // lane.N.sh
+	Name string // lane.N.sh, lane.N.py, ...
 	Src  string
 	Info lane.Info
-	v    *view
+	// Lib: the script loads swim's bash library. Only those get the bash
+	// checks; any other script (lane.N.py, a binary, plain bash) runs
+	// inside swim's wrapper.
+	Lib bool
+	v   *view
+}
+
+// bashOnly are the checks that read a script written against the bash
+// library. (A wrapped script's guards pass their action to swim guard
+// itself, and its stages are checked as they run.)
+var bashOnly = map[string]bool{
+	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true,
+	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
+	"guard-unlisted": true, "guard-unused": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -132,7 +146,23 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		if err != nil {
 			return nil, err
 		}
+		if lane.IsBinary(data) {
+			data = nil // a compiled lane: only its sidecar has anything to check
+		}
 		s := NewScript(n, string(data))
+		s.Name = lane.ScriptName(root, n)
+		if !strings.HasSuffix(s.Name, ".sh") && s.Info.Syntax < syntax.Current {
+			s.Info.Syntax = syntax.Current // syntax 1 was bash only
+		}
+		// The sidecar's keys (lane.N.yml) count, and a lane with two
+		// scripts or a bad sidecar is an error.
+		var tooNewErr syntax.ErrTooNew
+		if info, err := lane.ReadScript(root, n); err != nil && !errors.As(err, &tooNewErr) {
+			out = append(out, finding.Finding{Level: finding.Error, File: s.Name, Code: "header", Message: err.Error()})
+			continue
+		} else if err == nil && info.Exists {
+			s.Info = info
+		}
 		if s.Info.Syntax > syntax.Current {
 			tooNew[n] = s.Info.Syntax
 		}
@@ -149,7 +179,7 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		}
 	}
 	for _, n := range lanes {
-		name := fmt.Sprintf("lane.%d.sh", n)
+		name := lane.ScriptName(root, n)
 		if tooNew[n] > 0 {
 			out = append(out, finding.Finding{Level: finding.Error, File: name, Code: codeSyntax,
 				Message: fmt.Sprintf("uses swim syntax %d; this swim reads up to %d", tooNew[n], syntax.Current),
@@ -166,7 +196,7 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 				Message: fmt.Sprintf("uses swim syntax %d; the next swim command migrates it to %d", s.Info.Syntax, syntax.Current)})
 		}
 		for _, ch := range Checks {
-			if want(ch) {
+			if want(ch) && (s.Lib || !bashOnly[ch.Code]) {
 				fs = append(fs, ch.Run(c, s)...)
 			}
 		}
@@ -181,8 +211,14 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 
 // NewScript parses src as lane n's script.
 func NewScript(n int, src string) *Script {
-	return &Script{N: n, Name: fmt.Sprintf("lane.%d.sh", n), Src: src, Info: lane.ParseScript(src), v: scan(src)}
+	return &Script{N: n, Name: fmt.Sprintf("lane.%d.sh", n), Src: src, Info: lane.ParseScript(src), Lib: loadsLib(src), v: scan(src)}
 }
+
+var libLoadRE = regexp.MustCompile(`(?:swim|SWIM_BIN[^"]*)"?\s+lib\b`)
+
+// loadsLib reports whether src loads swim's bash library (or calls
+// lane_init, which only it defines).
+func loadsLib(src string) bool { return lane.UsesLib(src) || libLoadRE.MatchString(src) }
 
 // Lint runs every check on one script outside a repo (for tests): deps are
 // resolved against the other scripts given, with cfg's lane count.

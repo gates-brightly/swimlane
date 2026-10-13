@@ -66,7 +66,7 @@ func cmdInit(args []string) error {
 		return err
 	}
 	if changed {
-		fmt.Println("updated .gitignore (lane.[0-9]*.sh, .lane*.rc, .swim/, .swim.log)")
+		fmt.Println("updated .gitignore (lane.[0-9]*, .lane*.rc, .swim/, .swim.log)")
 	} else {
 		fmt.Println(".gitignore already has the swim block")
 	}
@@ -125,6 +125,7 @@ func refreshStatus(root string, cfg *config.Config) error {
 			if info.Pending() {
 				l.Pending, l.PendingJob = info.Round, info.Job
 			}
+			l.Script = lane.ScriptName(root, l.Lane)
 		}
 		return nil
 	})
@@ -164,8 +165,12 @@ func cmdConfig(args []string) error {
 		return showConfig()
 	}
 	key := rest[0]
-	if !slices.Contains(config.Keys, key) {
-		return usagef("unknown config key %q; keys: %s", key, strings.Join(config.Keys, ", "))
+	_, isRunner := config.RunnerKey(key)
+	if !slices.Contains(config.Keys, key) && !isRunner {
+		return usagef("unknown config key %q; keys: %s, runners.EXT", key, strings.Join(config.Keys, ", "))
+	}
+	if isRunner {
+		toRepo = true // runners are per repo, like the confirmation that saves them
 	}
 	if len(rest) == 1 {
 		_, cfg, err := repo()
@@ -253,13 +258,20 @@ func setConfigKey(key, value string, toRepo bool) error {
 
 func cmdNew(args []string) error {
 	var force bool
-	var job string
-	rest, err := flags{bools: map[string]*bool{"force": &force}, strs: map[string]*string{"job": &job}}.parse(args)
+	var job, lang string
+	rest, err := flags{bools: map[string]*bool{"force": &force}, strs: map[string]*string{"job": &job, "lang": &lang}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) < 2 {
-		return usagef(`usage: swim new N "<round goal>"`)
+		return usagef(`usage: swim new N "<round goal>" [--lang sh|py|js|ts]`)
+	}
+	lang = strings.TrimPrefix(strings.ToLower(lang), ".")
+	if lang == "" {
+		lang = "sh"
+	}
+	if !slices.Contains(assets.Langs, lang) {
+		return usagef("--lang %q: use one of %s", lang, strings.Join(assets.Langs, ", "))
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -283,14 +295,14 @@ func cmdNew(args []string) error {
 	}
 	for m := 1; m <= cfg.Lanes; m++ {
 		if info, _ := lane.ReadScript(root, m); m != n && info.Pending() && strings.EqualFold(info.Job, job) {
-			return fmt.Errorf("job %s is already in lane.%d.sh; job ids must be unique", job, m)
+			return fmt.Errorf("job %s is already in %s; job ids must be unique", job, lane.ScriptName(root, m))
 		}
 	}
-	content, err := assets.Script(n, goal, cfg.Toolchain, job, os.Getenv("USER"))
+	content, err := assets.ScriptIn(lang, n, goal, cfg.Toolchain, job, os.Getenv("USER"))
 	if err != nil {
 		return err
 	}
-	if err := lane.WriteScript(root, n, content, force); err != nil {
+	if err := lane.WriteScriptAs(root, n, lang, content, force); err != nil {
 		return err
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
@@ -336,6 +348,10 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 }
 
 func cmdRun(args []string) error {
+	if hasDashDash(args) {
+		// swim run "<label>" -- cmd: a step, from inside a lane.
+		return laneStep("run", args)
+	}
 	var rf runFlags
 	rest, err := rf.parse(args)
 	if err != nil {
@@ -407,6 +423,11 @@ func runLanes(rest []string, rf runFlags) error {
 	if err := lintPreflight(root, cfg, lanes, rerun); err != nil {
 		return err
 	}
+	// The first lane of a kind swim has no runner for: ask now, before the
+	// live view takes the terminal (runners.go).
+	if cfg, err = confirmRunners(root, cfg, lanes); err != nil {
+		return err
+	}
 	o := launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
@@ -443,14 +464,14 @@ func offerMoreLanes(root string, cfg *config.Config, rerun, ask bool) (*config.C
 	var lines []string
 	for _, n := range waiting {
 		info, _ := lane.ReadScript(root, n)
-		lines = append(lines, fmt.Sprintf("  lane.%d.sh  %s", n, info.Round))
+		lines = append(lines, fmt.Sprintf("  %s  %s", lane.ScriptName(root, n), info.Round))
 	}
 	if len(waiting) == 0 {
 		return cfg, nil
 	}
 	want := waiting[len(waiting)-1]
 	if want > 99 {
-		fmt.Fprintf(os.Stderr, "swim: lane scripts above lane.99.sh are never run\n")
+		fmt.Fprintf(os.Stderr, "swim: lane scripts above lane.99 are never run\n")
 		return cfg, nil
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
@@ -485,7 +506,7 @@ func applyLanes(root string, cfg *config.Config, n int, why string) error {
 	if n < cfg.Lanes {
 		for k := n + 1; k <= cfg.Lanes; k++ {
 			if info, _ := lane.ReadScript(root, k); info.Pending() {
-				return fmt.Errorf("lane.%d.sh holds a pending round; stub it before reducing lanes to %d", k, n)
+				return fmt.Errorf("%s holds a pending round; stub it before reducing lanes to %d", lane.ScriptName(root, k), n)
 			}
 		}
 	}

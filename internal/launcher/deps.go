@@ -50,7 +50,7 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 		for _, ref := range scripts[n].After {
 			d, err := resolveAfter(cfg, scripts, st, n, ref)
 			if err != nil {
-				return nil, fmt.Errorf("lane.%d.sh `# After: %s`: %w", n, ref, err)
+				return nil, fmt.Errorf("%s `After: %s`: %w", lane.ScriptName(cfg.Root, n), ref, err)
 			}
 			if prev, ok := byLane[d.Lane]; !ok || prev.Job == "" {
 				byLane[d.Lane] = d

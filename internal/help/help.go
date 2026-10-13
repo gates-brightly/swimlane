@@ -18,7 +18,7 @@ var Commands = map[string]string{
     - creates ~/.config/swim/config.yml if missing and adds a section for this
       repo (keyed by git toplevel) with lanes and an empty deps table;
       existing content and comments are kept
-    - adds a marked block to .gitignore: lane.[0-9]*.sh, .lane*.rc, .swim/,
+    - adds a marked block to .gitignore: lane.[0-9]*, .lane*.rc, .swim/,
       .swim.log
     - creates .swim/status.yml with every lane idle
     - records "init" in .swim.log, the project log (git-ignored too; drop it
@@ -46,6 +46,9 @@ var Commands = map[string]string{
     lanes        1..99                    this repo's lane count (swim 1..N);
                  recorded in .swim.log. Refuses to drop a lane that holds a
                  pending round. Always written to the repo's section.
+    runners.EXT  a command                the runner for lane.N.EXT scripts with
+                 no #! line, e.g. swim config runners.ts tsx. Always written
+                 to the repo's section; swim.yml's runners: is the default.
   Settings go under defaults: (every repo); --repo writes this repo's
   section instead. Unknown keys and bad values are rejected.
   --lanes N   same as "swim config lanes N".
@@ -53,9 +56,9 @@ var Commands = map[string]string{
   ($XDG_CONFIG_HOME/swim/config.yml if set). Workers must not edit it; give
   the operator exact YAML lines instead.
 `,
-	"new": `swim new N "<round goal>" [--job ID] [--force]
+	"new": `swim new N "<round goal>" [--lang sh|py|js|ts] [--job ID] [--force]
 
-  Write lane.N.sh from the template: the goal on its Round: line, a new job
+  Write lane.N.sh (or lane.N.py, .js, .ts with --lang) from the template: the goal on its Round: line, a new job
   id on its Job: line, the toolchain preamble from config, and example
   snapshot/gate/guard/verify steps to replace. Prints the job id. Marks the
   lane's pending round and job in status.yml.
@@ -63,9 +66,13 @@ var Commands = map[string]string{
   --force to replace a pending round you own).
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
+  --lang L   sh (default), py, js or ts. The lane's script in another
+             language, and its lane.N.yml, are replaced. A ts template has
+             no #! line: swim asks which runner once (see OTHER LANGUAGES).
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
          [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
+swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see OTHER LANGUAGES)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -237,6 +244,42 @@ var Commands = map[string]string{
                 retry on failure (see "WRITING A LANE SCRIPT" in swim --help)
   Lane scripts call this through run/gate/snapshot; you rarely need it directly.
 `,
+	"gate": `swim gate [options] "<label>" -- cmd [args...]
+
+  In a lane script in any language (see OTHER LANGUAGES in swim --help): run
+  one step like swim run "<label>" -- cmd; if it fails, record STOP and end
+  the round, stopping the program even if it carries on. Options as for
+  swim run's in-lane form: --timeout D, --retry N, --backoff D,
+  --retry-on CODES, --no-retry-timeout. (In a bash lane, use the library's
+  gate.)
+`,
+	"snapshot": `swim snapshot [options] "<label>" -- cmd [args...]
+
+  In a lane script in any language: run a read-only step and save its output
+  to .swim/snapshots/laneN-<time>-<label>.txt.
+`,
+	"guard": `swim guard FLAG "<action - date, reason>"
+
+  In a lane script in any language: exit 0 if the operator approves the
+  action, 1 if not. FLAG=1 approves up front; unset, swim asks the operator
+  (or counts signed approvals); anything else records SKIP as a dry run.
+  One flag per destructive action; list it in the header (or lane.N.yml).
+`,
+	"stage": `swim stage snapshot|check|change|verify
+
+  In a lane script in any language: start a stage. Out of order or twice
+  records WARN; an unknown name ends the round.
+`,
+	"drift": `swim drift "<what differs>"
+
+  In a lane script in any language: record DRIFT (deployed state differs
+  from code).
+`,
+	"stop": `swim stop "<reason>"
+
+  In a lane script in any language: record STOP <reason> and end the round
+  now (exit 1); the program is stopped.
+`,
 	"lib": `swim lib
 
   Print the bash library lane scripts load. Lane scripts start with:
@@ -367,7 +410,7 @@ var Commands = map[string]string{
   2 usage, config or an unresolvable # After:.
   Config on a runner comes from the repo's committed swim.yml (see CONFIG);
   commit the lane scripts the job runs (git add -f lane.N.sh, or drop
-  lane.[0-9]*.sh from swim's .gitignore block). swim never commits or pushes
+  lane.[0-9]* from swim's .gitignore block). swim never commits or pushes
   results: upload .swim/logs/, .swim/snapshots/, .swim.log and the JUnit file
   as artifacts. "Already passed" lives in .swim/status.yml: a fresh runner
   reruns every pending round unless --changed narrows it (or .swim/ is
@@ -721,6 +764,7 @@ func Names() []string {
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
+	"gate", "snapshot", "guard", "stage", "drift", "stop",
 	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "keys", "ci", "lint", "doctor"}
 

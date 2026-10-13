@@ -144,6 +144,9 @@ func (c *Config) ChimeSettings() (mode Chime, style string, minS int) {
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
 	mode, style, minS := c.ChimeSettings()
+	if ext, ok := RunnerKey(key); ok {
+		return c.Runners[ext], nil
+	}
 	switch key {
 	case "lanes":
 		return strconv.Itoa(c.Lanes), nil
@@ -172,13 +175,31 @@ func (c *Config) Get(key string) (string, error) {
 }
 
 func unknownKey(key string) error {
-	return fmt.Errorf("unknown config key %q; keys: %s", key, strings.Join(Keys, ", "))
+	return fmt.Errorf("unknown config key %q; keys: %s, runners.EXT", key, strings.Join(Keys, ", "))
+}
+
+// RunnerKey reports whether key is runners.EXT (the runner for lane
+// scripts ending in .EXT) and returns EXT.
+func RunnerKey(key string) (string, bool) {
+	ext, ok := strings.CutPrefix(key, "runners.")
+	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+	if !ok || ext == "" || strings.ContainsAny(ext, " ./") {
+		return "", false
+	}
+	return ext, true
 }
 
 // keyValue validates value for key and returns the YAML scalar to write.
 func keyValue(key, value string) (*yaml.Node, error) {
 	intNode := func(n int) *yaml.Node {
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(n)}
+	}
+	if _, ok := RunnerKey(key); ok {
+		v := strings.TrimSpace(value)
+		if v == "" {
+			return nil, fmt.Errorf("%s needs a command, e.g. tsx or /usr/bin/python3", key)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	}
 	switch key {
 	case "lanes":
@@ -318,6 +339,19 @@ func SetKey(path, root, key, value string, repo bool) error {
 		section.Style = 0 // render block style even if it was `{}`
 	}
 
+	if ext, ok := RunnerKey(key); ok {
+		// runners.EXT is a key of the runners mapping.
+		runners := mapGet(section, "runners")
+		if runners == nil {
+			section.Content = append(section.Content, scalar("runners"), &yaml.Node{Kind: yaml.MappingNode})
+			runners = section.Content[len(section.Content)-1]
+		}
+		if runners.Kind != yaml.MappingNode {
+			*runners = yaml.Node{Kind: yaml.MappingNode}
+		}
+		runners.Style = 0
+		section, key = runners, ext
+	}
 	if v := mapGet(section, key); v != nil {
 		// Replace the value in place so comments on it survive.
 		v.Kind, v.Tag, v.Value, v.Style, v.Content, v.Alias = val.Kind, val.Tag, val.Value, 0, nil, nil

@@ -31,6 +31,39 @@ To cut a release:
 
 ### Added
 
+- **Lanes in any language:**
+  - **Scripts:** a lane's script can be `lane.N.py`, `lane.N.js`,
+    `lane.N.ts`, a compiled `lane.N`, a plain bash script or any runnable.
+    There is exactly one per lane; two is an error.
+  - **Templates:** `swim new N "<goal>" --lang py|js|ts` writes one.
+  - **How it runs:** `lane.N.sh` runs with bash as before. Otherwise swim
+    uses the `#!` line, then a `runners:` entry for the extension (your
+    config's, then the repo's `swim.yml`), then the file itself if it is
+    executable.
+  - **First run:** for an extension with no runner, at a terminal, swim looks
+    up the usual runners on PATH (node, tsx, ts-node, bun, deno, python3,
+    ...). It asks which to use and saves the answer as `runners.EXT` for
+    the repo (`swim config runners.ts tsx` sets it directly).
+  - **No terminal:** in CI or under `swim watch`, a lane with no runner fails
+    at start with the exact fix.
+  - **Wrapper:** a script that doesn't load the bash library runs inside
+    swim's wrapper, which opens and closes its round, exports the `SWIM_*`
+    variables and keeps the git shim in front.
+  - **In-lane commands:** steps are swim commands: `swim run|gate|snapshot
+    "<label>" -- cmd`, `swim guard FLAG "<action>"`, `swim stage`,
+    `swim drift` and `swim stop`.
+  - **Ending the round:** a failed gate, `swim stop`, a blocked git push or
+    the operator's stop ends the program, even if it carries on.
+  - **No swim calls:** a program that never calls `swim run` is logged as
+    one step, with its whole output masked.
+  - **Headers:** header comments may be `#` or `//`. A sidecar `lane.N.yml`
+    (round, job, after, guards, locks, timeout, step-timeout) carries a
+    binary's header, or overrides any script's.
+  - **Lint:** `swim lint` runs its bash-only checks only on scripts that load
+    the bash library.
+  - **CI:** `swim ci --changed` counts changed `lane.N.<ext>` and
+    `lane.N.yml` files.
+
 - **Watch hub:**
   - **`swim hub`** serves a dashboard of many workers, with a page per
     worker and `GET /api/workers` as JSON.
@@ -87,6 +120,13 @@ To cut a release:
 
 ### Changed
 
+- **A `lane.N.sh` without `lane_init` runs:** it is a plain program, so it
+  runs inside the wrapper and is logged as one step (or its `swim run`
+  calls are logged). Before, lint refused it. A script that loads the
+  library but forgets `lane_init` is still an error.
+- **The `.gitignore` block ignores `lane.[0-9]*`:** this covers scripts in
+  any language and their `lane.N.yml`. `swim doctor` reports the old block
+  as out of date, and `swim doctor --fix` (or `swim init`) rewrites it.
 - **`swim archive 1 2 3` archives lanes 1, 2 and 3:**
   - **Arguments:** every argument is a lane number or job id. Before, the
     second argument was taken as the archive's name.

@@ -4,7 +4,8 @@
 provable record of what happened.**
 
 An AI session (the *planner*) and its subagents (the *workers*) write
-operational work as small bash scripts, one per numbered *lane*. A person
+operational work as small scripts (bash, Python, TypeScript, or any
+program), one per numbered *lane*. A person
 runs them with `swim`, in places the AI can't reach: a VPN-only account,
 their own credentials, production. Every step, result and approval lands in
 plain-text logs the AI reads back to decide what to do next.
@@ -184,7 +185,7 @@ swim plan --yaml
 
 | Term | Meaning |
 |---|---|
-| **lane** | A numbered slot, `swim 1..N`, with one script (`lane.N.sh`) and one log. One worker owns it at a time. |
+| **lane** | A numbered slot, `swim 1..N`, with one script (`lane.N.sh`, or `lane.N.py`, `lane.N.ts`, a binary `lane.N`, ...) and one log. One worker owns it at a time. |
 | **round** | What a lane script holds: one goal ("cut over service X"). Disposable. |
 | **job** | A round's unique id (its `# Job:` line). It's recorded everywhere, exported to steps as `$SWIM_JOB`, and usable wherever a lane number is: `swim run 3f2a9c1e`. Naming a job pins the run to that exact round, so a lane rewritten in the meantime is refused. |
 | **step** | One command run through `run`, `gate` or `snapshot`, logged with its command, output and exit code. |
@@ -240,6 +241,65 @@ summary
   Don't use `set -e`.
 - **Checks:** `swim lint` checks scripts before you run them: header,
   stages, guards, bash 3.2, blocked commands, and secrets echoed to the log.
+
+### Lanes in other languages
+
+A lane script can be any runnable: `lane.N.py`, `lane.N.js`, `lane.N.ts`, a
+compiled `lane.N`, a plain bash script. `swim new 3 "<goal>" --lang py`
+(or `js`, `ts`) writes a template.
+
+How swim runs it:
+
+1. `lane.N.sh` runs with bash, as always.
+2. A `#!` line wins, and swim asks nothing.
+3. Otherwise, `runners:` for the extension: your own (saved per repo in
+   your config) wins over the repo's committed `swim.yml`.
+4. A compiled or executable file runs as itself.
+5. The first time swim meets an extension with none of these, it looks up
+   the usual runners on `PATH` and asks:
+
+   ```
+   swim: lane.2.ts is the first .ts lane here: it has no #! line, and no runner is set for .ts files.
+     1) /usr/local/bin/tsx
+     2) /opt/homebrew/bin/bun
+   Run .ts lanes with /usr/local/bin/tsx? [Y/n, a number, or type a command]:
+   ```
+
+   It saves the answer as `runners.ts` for this repo. In CI, or under
+   `swim watch`, nobody is there to ask, so the lane fails at start with the
+   exact fix: a `#!` line, `swim config runners.ts tsx`, or
+   `runners: {ts: tsx}` in `swim.yml`.
+
+swim runs the program inside a wrapper. The wrapper opens and closes the
+round, exports `SWIM_LANE`, `SWIM_JOB` and the rest, and keeps the git shim
+in front. Steps are swim commands, so any language can call them:
+
+```python
+#!/usr/bin/env python3
+# Round:  Rotate the orders bucket
+# Guards: ORDERS_ALLOW_DELETE  delete the old bucket (2026-10-13: replaced)
+import os, subprocess
+def swim(*a): return subprocess.run([os.environ.get("SWIM_BIN", "swim"), *a]).returncode
+
+swim("stage", "check")
+swim("gate", "new bucket exists", "--", "aws", "s3api", "head-bucket", "--bucket", "orders-v2")
+swim("stage", "change")
+if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: replaced)") == 0:
+    swim("run", "delete old bucket", "--", "aws", "s3", "rb", "s3://orders")
+```
+
+- **The commands:** `swim run|gate|snapshot "<label>" -- cmd`,
+  `swim guard FLAG "<action>"` (exit 0 when approved), `swim stage NAME`,
+  `swim drift "<what>"` and `swim stop "<why>"`.
+- **Ending the round:** a failed gate, `swim stop`, a blocked `git push` or
+  your Ctrl-C ends the program, even if it ignores the exit code.
+- **No swim calls:** a program that never calls `swim run` is logged as one
+  step, with its whole output (secrets masked) and a result from its exit
+  code.
+- **Header:** `#` or `//` comments. A binary, or any lane, can keep its
+  header in a sidecar `lane.N.yml` instead, and the sidecar's keys win:
+  `round`, `job`, `after`, `guards` (a map of flag to action), `locks`,
+  `timeout`, `step-timeout`.
 
 ### Logs
 
@@ -539,7 +599,7 @@ they waited for.
 | Command | What it does |
 |---|---|
 | `swim init` | Set up the repo: config entry, `.gitignore` block, `.swim/status.yml`. |
-| `swim new N "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id. |
+| `swim new N "<goal>" [--lang py\|js\|ts] [--job ID]` | Write `lane.N.sh` (or `.py`, `.js`, `.ts`) from the template with a new job id. |
 | `swim plan [N\|JOB ...] [--rerun] [--yaml]` | Dry run: what would run, retry, rerun or be skipped, as a dependency tree. |
 | `swim all [--rerun] [--parallel N] [-y\|--no-prompt] [--no-tui] [--yaml]` | Run every pending round that hasn't passed. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they passed. A job id pins the exact round. |
@@ -560,13 +620,15 @@ they waited for.
 | `swim config [KEY [VALUE]] [--repo]` | Show or set config, keeping the file's comments. |
 | `swim lock [--upgrade]` / `swim changelog` | The repo's breaking-version lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
+| `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
 | `swim --help` / `swim <cmd> --help` | The full guide, or one command's detail. |
 
 ### Files
 
 | Path | Contents | Commit? |
 |---|---|---|
-| `lane.N.sh` | Lane N's current round. | Usually not; yes for CI rounds. |
+| `lane.N.sh` (or `lane.N.<ext>`, `lane.N`) | Lane N's current round. | Usually not; yes for CI rounds. |
+| `lane.N.yml` | Optional metadata for lane N's script (a binary's header). | With its script. |
 | `swim.yml` | The repo's shared settings. | Yes |
 | `lookup.yml` | Users, keys, groups and approval rules. | Yes |
 | `approvals/` | Signed approvals. | Yes |
@@ -596,6 +658,7 @@ repos:
     max_parallel: 8
     secret_env: [DATADOG_API_KEY]
     deps: {2: [1], 4: [2, 3]}
+    runners: {ts: /usr/local/bin/tsx}    # saved when swim asks; swim.yml's runners: are the default
 ```
 
 `swim config KEY VALUE` sets a value and keeps the file's comments. A

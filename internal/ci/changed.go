@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
+	"slices"
 	"sort"
-	"strconv"
 	"strings"
+
+	"github.com/gates-brightly/swimlane/internal/lane"
 )
 
 // Base is where --changed diffs from. Range is the git diff argument
@@ -84,10 +85,9 @@ func short(sha string) string {
 	return sha
 }
 
-var laneFileRE = regexp.MustCompile(`^lane\.([0-9]+)\.sh$`)
-
-// ChangedLanes returns the lanes whose lane.N.sh differs between the base
-// and HEAD, with the changed file names.
+// ChangedLanes returns the lanes whose script (lane.N.sh, lane.N.py, ...)
+// or sidecar (lane.N.yml) differs between the base and HEAD, with the
+// changed file names.
 func ChangedLanes(root string, b Base) ([]int, []string, error) {
 	rng := b.Ref
 	if b.Merge {
@@ -109,9 +109,10 @@ func ChangedLanes(root string, b Base) ([]int, []string, error) {
 	var lanes []int
 	var files []string
 	for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if m := laneFileRE.FindStringSubmatch(f); m != nil {
-			n, _ := strconv.Atoi(m[1])
-			lanes = append(lanes, n)
+		if n, ok := lane.ParseLaneFile(f); ok && !strings.Contains(f, "/") {
+			if !slices.Contains(lanes, n) {
+				lanes = append(lanes, n)
+			}
 			files = append(files, f)
 		}
 	}

@@ -23,7 +23,7 @@ func BlockedLanes(root string, cfg *config.Config, sel []int) map[int]string {
 	patterns := cfg.Blocked()
 	for _, n := range sel {
 		data, err := os.ReadFile(lane.Script(root, n))
-		if err != nil {
+		if err != nil || lane.IsBinary(data) {
 			continue
 		}
 		hits := policy.ScanScript(string(data), patterns)
@@ -32,7 +32,7 @@ func BlockedLanes(root string, cfg *config.Config, sel []int) map[int]string {
 		}
 		var parts []string
 		for _, h := range hits {
-			parts = append(parts, fmt.Sprintf("lane.%d.sh:%d matches %q", n, h.Line, h.Pattern))
+			parts = append(parts, fmt.Sprintf("%s:%d matches %q", lane.ScriptName(root, n), h.Line, h.Pattern))
 		}
 		out[n] = "blocked: " + strings.Join(parts, ", ") + " (swim never pushes, commits or pulls)"
 	}
@@ -58,4 +58,29 @@ func refuseBlocked(o Options, n int, reason string, disp *display.Display) *Outc
 	})
 	history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
 	return &Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Failed, Exit: policy.ExitBlocked, Reason: reason, Blocked: true, End: time.Now()}
+}
+
+// refuseStart fails a lane whose script swim can't start (no runner for its
+// extension, a binary that isn't executable): nothing runs, the reason is
+// recorded in status, and its dependents are skipped like any failure's.
+func refuseStart(o Options, n int, err error, disp *display.Display) *Outcome {
+	info, _ := lane.ReadScript(o.Root, n)
+	lines := strings.Split(err.Error(), "\n")
+	reason := "cannot start: " + lines[0]
+	disp.Set(n, func(v *display.LaneView) {
+		v.State, v.Exit, v.Reason, v.Round, v.Job = display.Failed, 127, reason, info.Round, info.Job
+	})
+	for _, l := range lines {
+		disp.Line(n, l)
+	}
+	status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
+		l.ResetRun()
+		l.State, l.Reason = status.Failed, reason
+		l.Round, l.Job, l.Run = info.Round, info.Job, o.RunID
+		l.ExitCode = status.Int(127)
+		l.FailedSteps = []string{reason}
+		l.FinishedAt = status.Str(status.Now())
+	})
+	history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
+	return &Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Failed, Exit: 127, Reason: reason, Blocked: true, End: time.Now()}
 }

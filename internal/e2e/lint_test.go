@@ -184,7 +184,7 @@ func TestDoctor(t *testing.T) {
 	contains(t, "doctor", out,
 		filepath.Join(dir, "swim"), "error", "built for "+plat, "exec format error", "[binary-platform]",
 		"[path-multiple]", "[swim-bin]",
-		".gitignore", "missing lane.[0-9]*.sh", "has old next[0-9]*.sh", "[gitignore]",
+		".gitignore", "missing lane.[0-9]*", "has old next[0-9]*.sh", "[gitignore]",
 		".swim/lane2.pid", "[stale-pid]",
 		"git tracks lane.1.sh", "[tracked]",
 		"swim doctor --fix")
@@ -207,7 +207,7 @@ func TestDoctor(t *testing.T) {
 		}
 	}
 	data, _ := os.ReadFile(gi)
-	contains(t, ".gitignore", string(data), "node_modules/\n# >>> swim >>>\nlane.[0-9]*.sh\n", "# <<< swim <<<\ndist/\n")
+	contains(t, ".gitignore", string(data), "node_modules/\n# >>> swim >>>\nlane.[0-9]*\n", "# <<< swim <<<\ndist/\n")
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "lane2.pid")); !os.IsNotExist(err) {
 		t.Error("stale pid file still there")
 	}

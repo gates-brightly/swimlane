@@ -534,6 +534,34 @@ func writeBlock(logPath, resultLine, saved string) error {
 	return sc.Err()
 }
 
+// RecordOutput writes a step that has already run into the log: a lane
+// program that never called swim (its whole run is one step). out is its
+// output, already plain text with secrets masked. It returns the step's
+// result line.
+func RecordOutput(logPath, label, cmdline string, start time.Time, dur time.Duration, exit int, out io.Reader) (string, error) {
+	sp, err := os.Create(SpoolPath(logPath))
+	if err != nil {
+		return "", err
+	}
+	clock := start.Format("15:04:05")
+	fmt.Fprintf(sp, "%s\t%s\t%s\t%s\n", spoolMagic, label, clock, cmdline)
+	_, err = io.Copy(sp, out)
+	if cerr := sp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return "", err
+	}
+	kind, detail := logparse.Pass, ""
+	if exit != 0 {
+		kind, detail = logparse.Fail, fmt.Sprintf("exit %d", exit)
+	}
+	if err := writeBlock(logPath, logparse.StepLine(kind, label, detail, fmt.Sprintf("%.1fs", dur.Seconds()), clock), ""); err != nil {
+		return "", err
+	}
+	return logparse.ResultLine(kind, label, detail), nil
+}
+
 // RecoverSpool writes a step that never finished (swim step was killed
 // outright, so it never wrote its block) into the log as a failed step with
 // whatever output it had collected.

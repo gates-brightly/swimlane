@@ -212,6 +212,7 @@ func cmdStart(args []string) error {
 		l.Run = run
 		l.Commit = commit
 		l.ScriptSHA = scriptSum
+		l.Script = filepath.Base(lane.Script(root, n))
 		l.Pending, l.PendingJob = info.Round, info.Job
 		l.PID = pid
 		l.StartedAt = status.Str(ts)

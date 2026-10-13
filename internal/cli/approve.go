@@ -114,7 +114,7 @@ func cmdApproveHook(args []string) error {
 			all, _ := sigfile.All(root)
 			for _, f := range all {
 				if f.Kind == sigfile.Script && f.Lane == n && f.SHA256 != sha && f.Covers(flag) {
-					sigWhy = fmt.Sprintf("%s approves another version of lane.%d.sh (approved %s, running %s)", filepath.Base(f.Path), n, short12(f.SHA256), short12(sha))
+					sigWhy = fmt.Sprintf("%s approves another version of %s (approved %s, running %s)", filepath.Base(f.Path), lane.ScriptName(root, n), short12(f.SHA256), short12(sha))
 				}
 			}
 		}

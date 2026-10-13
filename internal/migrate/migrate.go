@@ -84,7 +84,13 @@ func versionOf(root string, f file) int {
 	if err != nil {
 		return 0
 	}
-	return syntax.OfScript(string(data))
+	src := string(data)
+	if !lane.UsesLib(src) && !strings.Contains(src, lane.StubMarker) {
+		// A plain program (it runs inside swim's wrapper): swim's syntax
+		// versions are the bash library's, so there is nothing to migrate.
+		return syntax.Current
+	}
+	return syntax.OfScript(src)
 }
 
 // Run migrates every lane script and log below the current syntax. It

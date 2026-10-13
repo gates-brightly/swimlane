@@ -286,7 +286,7 @@ func checkConfigRepo(o *Options) []finding.Finding {
 func checkLanesBeyond(o *Options) []finding.Finding {
 	var out []finding.Finding
 	for _, n := range lane.ScriptsBeyond(o.Root, o.Cfg.Lanes) {
-		out = append(out, fd(finding.Warn, "lanes-beyond", fmt.Sprintf("lane.%d.sh", n), fmt.Sprintf("swim config --lanes %d (or stub/remove the script)", n),
+		out = append(out, fd(finding.Warn, "lanes-beyond", lane.ScriptName(o.Root, n), fmt.Sprintf("swim config --lanes %d (or stub/remove the script)", n),
 			"only %d lanes are configured, so swim %d never runs", o.Cfg.Lanes, n))
 	}
 	return out
@@ -360,12 +360,12 @@ func checkGitignore(o *Options) []finding.Finding {
 }
 
 var (
-	trackedRE  = regexp.MustCompile(`^(lane\.[0-9]+\.sh|\.lane.*\.rc|\.swim/.*)$`)
-	laneFileRE = regexp.MustCompile(`^lane\.[0-9]+\.sh$`)
+	trackedRE  = regexp.MustCompile(`^(lane\.[0-9]+(\.[A-Za-z0-9]+)?|\.lane.*\.rc|\.swim/.*)$`)
+	laneFileRE = regexp.MustCompile(`^lane\.[0-9]+(\.[A-Za-z0-9]+)?$`)
 )
 
 func checkTracked(o *Options) []finding.Finding {
-	cmd := exec.Command("git", "ls-files", "--", "lane.*.sh", ".lane*.rc", ".swim")
+	cmd := exec.Command("git", "ls-files", "--", "lane.[0-9]*", ".lane*.rc", ".swim")
 	cmd.Dir = o.Root
 	out, err := cmd.Output()
 	if err != nil {

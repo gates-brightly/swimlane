@@ -1,5 +1,6 @@
-// Package lane knows a lane's files: lane.N.sh (lane script), .swim/logs/agentN.log (log),
-// .swim/laneN.pid (running marker) and .swim/snapshots/.
+// Package lane knows a lane's files: its script (lane.N.sh, or lane.N.py,
+// lane.N.ts, a binary lane.N, ...) and sidecar lane.N.yml, .swim/logs/agentN.log
+// (log), .swim/laneN.pid (running marker) and .swim/snapshots/.
 package lane
 
 import (
@@ -21,7 +22,6 @@ import (
 // StubMarker identifies a "nothing pending" lane script.
 const StubMarker = "# swim:stub"
 
-func Script(root string, n int) string { return filepath.Join(root, fmt.Sprintf("lane.%d.sh", n)) }
 func Log(root string, n int) string {
 	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.log", n))
 }
@@ -84,20 +84,28 @@ func (i Info) GuardFlags() []string {
 var (
 	// Header keys are "# Key: value" with at most one space after the #;
 	// indented comment lines ("#   After: ...") are prose, not keys.
-	roundRE   = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
-	jobRE     = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
-	afterRE   = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE    = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks):\s*(.*)$`)
-	keyRE     = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
-	sepRE     = regexp.MustCompile(`[\s,]+`)
-	guardUse  = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true}
+	roundRE  = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
+	jobRE    = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
+	afterRE  = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
+	metaRE   = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks):\s*(.*)$`)
+	keyRE    = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
+	sepRE    = regexp.MustCompile(`[\s,]+`)
+	guardUse = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	// guardArgUse is `swim guard FLAG` from another language, the
+	// arguments as a list: ["swim", "guard", "FLAG", ...].
+	guardArgUse = regexp.MustCompile(`['"]guard['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]`)
+	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true}
 )
 
-// ReadScript inspects lane.N.sh. A lane script without a Round: line is
-// treated as not pending, so a half-written file is never launched by
-// `swim run`. A script in a newer syntax than this swim reads is an error.
+// ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
+// script without a Round (in its header or sidecar) is treated as not
+// pending, so a half-written file is never launched by `swim run`. A script
+// in a newer syntax than this swim reads, a lane with two scripts, or a
+// sidecar swim can't read is an error.
 func ReadScript(root string, n int) (Info, error) {
+	if err := ScriptConflict(root, n); err != nil {
+		return Info{}, err
+	}
 	path := Script(root, n)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -106,9 +114,23 @@ func ReadScript(root string, n int) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	info := ParseScript(string(data))
+	var info Info
+	if IsBinary(data) {
+		info = Info{Exists: true, Syntax: syntax.Current}
+	} else {
+		info = ParseScript(string(data))
+		if !strings.HasSuffix(path, ".sh") && info.Syntax == 1 {
+			info.Syntax = syntax.Current // syntax 1 was bash only
+		}
+	}
 	if err := syntax.Check(filepath.Base(path), info.Syntax); err != nil {
 		return Info{}, err
+	}
+	if err := applySidecar(Sidecar(root, n), &info); err != nil {
+		return Info{}, err
+	}
+	if info.Stub {
+		info.Round, info.Job, info.After, info.Guards, info.Locks = "", "", nil, nil, nil
 	}
 	if info.Created == "" {
 		if st, err := os.Stat(path); err == nil {
@@ -121,10 +143,16 @@ func ReadScript(root string, n int) (Info, error) {
 // ParseScript reads a lane script's header and body. Round, Job and After
 // may appear anywhere in the leading comments (as in syntax 1); unknown
 // keys are collected from the metadata block at the top (the `# Key: value`
-// lines straight after the shebang and syntax line).
+// lines straight after the shebang and syntax line). Header comments are
+// "#" or "//" (lane.N.js, lane.N.ts, lane.N.go, ...).
 func ParseScript(src string) Info {
-	info := Info{Exists: true, Syntax: syntax.OfScript(src)}
 	lines := strings.Split(src, "\n")
+	for i, l := range lines {
+		if t := strings.TrimLeft(l, " \t"); strings.HasPrefix(t, "//") {
+			lines[i] = "#" + strings.TrimPrefix(t, "//")
+		}
+	}
+	info := Info{Exists: true, Syntax: syntax.OfScript(strings.Join(lines, "\n"))}
 	inBlock := true
 	listed := map[string]bool{}
 	for i, raw := range lines {
@@ -215,7 +243,9 @@ func ParseScript(src string) Info {
 		}
 		// Guard flags used in the body count even if the header doesn't list them.
 		if !strings.HasPrefix(line, "#") {
-			for _, m := range guardUse.FindAllStringSubmatch(line, -1) {
+			uses := guardUse.FindAllStringSubmatch(line, -1)
+			uses = append(uses, guardArgUse.FindAllStringSubmatch(line, -1)...)
+			for _, m := range uses {
 				if !listed[m[1]] {
 					listed[m[1]] = true
 					info.Guards = append(info.Guards, Guard{Flag: m[1]})
@@ -393,6 +423,14 @@ func ArchiveCheck(root string, n int, what string) (string, error) {
 // WriteScript writes content to lane.N.sh (mode 0755) unless the lane is
 // running. Unless force is set it also refuses to replace a pending round.
 func WriteScript(root string, n int, content string, force bool) error {
+	return WriteScriptAs(root, n, "sh", content, force)
+}
+
+// WriteScriptAs writes content to lane.N.<ext> (mode 0755) unless the lane
+// is running, replacing the lane's script in any other language and its
+// sidecar (a stub or a new round starts clean). Unless force is set it
+// refuses to replace a pending round.
+func WriteScriptAs(root string, n int, ext, content string, force bool) error {
 	if err := refuseRunning(root, n); err != nil {
 		return err
 	}
@@ -405,13 +443,22 @@ func WriteScript(root string, n int, content string, force bool) error {
 			return fmt.Errorf("swim %d already holds a pending round (%q); run it and archive/stub it first, or pass --force", n, info.Round)
 		}
 	}
-	tmp := Script(root, n) + ".tmp"
+	dst := filepath.Join(root, fmt.Sprintf("lane.%d.%s", n, ext))
+	tmp := dst + ".tmp"
 	if err := os.WriteFile(tmp, []byte(content), 0o755); err != nil {
 		return err
 	}
 	// Rename gives running readers (there should be none) the old inode
 	// rather than a half-written file.
-	return os.Rename(tmp, Script(root, n))
+	if err := os.Rename(tmp, dst); err != nil {
+		return err
+	}
+	for _, p := range append(Scripts(root, n), Sidecar(root, n)) {
+		if p != dst {
+			os.Remove(p)
+		}
+	}
+	return nil
 }
 
 // NewJobID returns a random (version 4) UUID.
@@ -483,8 +530,6 @@ func MatchJob(id, ref string) bool {
 	return len(ref) >= 8 && strings.HasPrefix(strings.ToLower(id), strings.ToLower(ref))
 }
 
-var scriptNameRE = regexp.MustCompile(`^lane\.([0-9]+)\.sh$`)
-
 // ScriptsBeyond returns the numbers of lane scripts in root numbered above
 // n (e.g. lane.5.sh when only 4 lanes are configured), sorted.
 func ScriptsBeyond(root string, n int) []int {
@@ -493,11 +538,11 @@ func ScriptsBeyond(root string, n int) []int {
 		return nil
 	}
 	var out []int
+	seen := map[int]bool{}
 	for _, e := range entries {
-		if m := scriptNameRE.FindStringSubmatch(e.Name()); m != nil {
-			if k, err := strconv.Atoi(m[1]); err == nil && k > n {
-				out = append(out, k)
-			}
+		if k, _, ok := ParseScriptName(e.Name()); ok && k > n && !seen[k] && len(Scripts(root, k)) > 0 {
+			seen[k] = true
+			out = append(out, k)
 		}
 	}
 	sort.Ints(out)

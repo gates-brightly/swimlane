@@ -57,12 +57,21 @@ func init() {
 		"keys":      {run: cmdKeys},
 		"doctor":    {run: cmdDoctor},
 		"help":      {run: cmdHelp},
+		// In-lane commands, for lane scripts in any language (lanecmds.go);
+		// swim run "<label>" -- cmd is the in-lane form of run.
+		"gate":     {run: laneGate},
+		"snapshot": {run: laneSnapshot},
+		"guard":    {run: cmdGuard},
+		"stage":    {run: cmdStagePublic},
+		"drift":    {run: cmdDrift},
+		"stop":     {run: cmdStop},
 		// Called by the lane script library, not by people.
 		"_start":   {run: cmdStart, hidden: true},
 		"_finish":  {run: cmdFinish, hidden: true},
 		"_mark":    {run: cmdMark, hidden: true},
 		"_approve": {run: cmdApproveHook, hidden: true},
 		"_stage":   {run: cmdStage, hidden: true},
+		"_wrap":    {run: cmdWrap, hidden: true},
 	}
 }
 

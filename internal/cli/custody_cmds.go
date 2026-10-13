@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -25,7 +24,14 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-var laneFileRE = regexp.MustCompile(`(?:^|/)lane\.([0-9]+)\.sh$`)
+// laneFile is a lane script named by path (lane.3.py, ./lane.3.sh).
+func laneFile(arg string) (int, bool) {
+	if !strings.HasPrefix(filepath.Base(arg), "lane.") {
+		return 0, false
+	}
+	n, _, ok := lane.ParseScriptName(filepath.Base(arg))
+	return n, ok
+}
 
 // cmdApprove is how approvers act:
 //
@@ -79,8 +85,8 @@ func cmdApprove(args []string) error {
 			return usagef("usage: swim approve N|JOB [--guards A,B | --all]  or  swim approve --auto USER")
 		}
 		var n int
-		if m := laneFileRE.FindStringSubmatch(rest[0]); m != nil {
-			n, _ = strconv.Atoi(m[1])
+		if k, ok := laneFile(rest[0]); ok {
+			n = k
 		} else if n, err = laneRef(root, cfg, rest[0], false); err != nil {
 			return err
 		}
@@ -100,7 +106,7 @@ func cmdApprove(args []string) error {
 		}
 		for _, g := range approves {
 			if !known[g] {
-				return fmt.Errorf("--guards %s: lane.%d.sh has no guard %s (its guards: %s)", g, n, g, or(strings.Join(scriptGuards, ", "), "none"))
+				return fmt.Errorf("--guards %s: %s has no guard %s (its guards: %s)", g, lane.ScriptName(root, n), g, or(strings.Join(scriptGuards, ", "), "none"))
 			}
 		}
 		f, err = loadOrNew(sigfile.ScriptPath(root, n, sha), func() *sigfile.File {
@@ -149,7 +155,7 @@ func cmdApprove(args []string) error {
 	if !known {
 		who = "your key " + sign.Fingerprint(key.Public) + " (not in lookup.yml: it won't count until it's listed)"
 	}
-	what := fmt.Sprintf("lane.%d.sh %s", f.Lane, short12(f.SHA256))
+	what := fmt.Sprintf("%s %s", lane.ScriptName(root, f.Lane), short12(f.SHA256))
 	if f.Kind == sigfile.Standing {
 		what = "every job " + f.For + " queues (standing; revoke with swim revoke --auto " + f.For + ")"
 	}
@@ -284,7 +290,7 @@ func listApprovals(root string, lk *lookup.Lookup) error {
 		for _, s := range signers {
 			names = append(names, or(s.User, "unknown "+sign.Fingerprint(s.Key)))
 		}
-		what := fmt.Sprintf("swim %d (lane.%d.sh %s)", f.Lane, f.Lane, short12(f.SHA256))
+		what := fmt.Sprintf("swim %d (%s %s)", f.Lane, lane.ScriptName(root, f.Lane), short12(f.SHA256))
 		if f.Kind == sigfile.Standing {
 			what = "standing: every job " + f.For + " queues"
 		} else if data, err := os.ReadFile(lane.Script(root, f.Lane)); err != nil || chain.Hash(data) != f.SHA256 {

@@ -70,8 +70,8 @@ func lessFile(a, b string) bool {
 		return b == ""
 	}
 	var na, nb int
-	if _, err := fmt.Sscanf(a, "lane.%d.sh", &na); err == nil {
-		if _, err := fmt.Sscanf(b, "lane.%d.sh", &nb); err == nil && na != nb {
+	if _, err := fmt.Sscanf(a, "lane.%d", &na); err == nil {
+		if _, err := fmt.Sscanf(b, "lane.%d", &nb); err == nil && na != nb {
 			return na < nb
 		}
 	}

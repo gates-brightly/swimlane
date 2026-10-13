@@ -42,7 +42,7 @@ func checkRound(c *Context, s *Script) []finding.Finding {
 	if s.Info.Round != "" {
 		return nil
 	}
-	return []finding.Finding{f(finding.Error, "round", -1, "add `# Round: <goal>` to the header",
+	return []finding.Finding{f(finding.Error, "round", -1, fmt.Sprintf("add `# Round: <goal>` to the header (or round: to lane.%d.yml)", s.N),
 		"no `# Round:` line; swim treats the lane as having nothing pending and won't run it")}
 }
 

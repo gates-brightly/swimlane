@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -115,7 +116,11 @@ func (f *File) Normalize(n int) {
 		if l.State == "" {
 			l.State = Idle
 		}
-		l.Script = fmt.Sprintf("lane.%d.sh", l.Lane)
+		// The script's name (lane.3.py) is filled in by swim from the file
+		// on disk; lane.N.sh until then.
+		if base := fmt.Sprintf("lane.%d", l.Lane); l.Script != base && !strings.HasPrefix(l.Script, base+".") {
+			l.Script = base + ".sh"
+		}
 		l.Log = fmt.Sprintf(".swim/logs/agent%d.log", l.Lane)
 		if l.WaitingOn == nil {
 			l.WaitingOn = []int{}

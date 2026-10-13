@@ -1,5 +1,5 @@
 # >>> swim >>>
-lane.[0-9]*.sh
+lane.[0-9]*
 .lane*.rc
 .swim/
 .swim.log

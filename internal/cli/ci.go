@@ -79,7 +79,7 @@ func cmdCi(args []string) error {
 			cfg.Lanes = top
 			os.Setenv("SWIM_LANES", strconv.Itoa(top)) // for the lanes' own swim hooks
 		} else {
-			fmt.Fprintf(os.Stderr, "swim ci: lane.%d.sh is beyond the %d configured lanes and would not run.\n", top, cfg.Lanes)
+			fmt.Fprintf(os.Stderr, "swim ci: %s is beyond the %d configured lanes and would not run.\n", lane.ScriptName(root, top), cfg.Lanes)
 			fmt.Fprintf(os.Stderr, "  fix: set `lanes: %d` in swim.yml (committed), or `swim config --lanes %d`\n", top, top)
 			return exitError{2}
 		}
