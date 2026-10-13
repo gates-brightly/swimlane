@@ -27,6 +27,10 @@ const (
 	Skipped     = "skipped"
 	Interrupted = "interrupted"
 	Done        = "done" // passed in an earlier run; not run again
+	// Elsewhere is a lane this run doesn't include that another swim (a
+	// concurrent swim run, swim watch) is running now: shown live, never
+	// part of this run.
+	Elsewhere = "elsewhere"
 )
 
 // LaneView is what the panel knows about one lane.
@@ -100,6 +104,8 @@ func stateText(v LaneView, now time.Time) (string, string) {
 			return fmt.Sprintf("%s stopping %s (%s)", thr, v.Stopping, Elapsed(now.Sub(v.Started))), ui.Yellow
 		}
 		return thr + " running " + Elapsed(now.Sub(v.Started)), ui.Cyan
+	case Elsewhere:
+		return thr + " running elsewhere " + Elapsed(now.Sub(v.Started)), ui.Blue
 	case Passed:
 		return "PASS " + Elapsed(v.Finished.Sub(v.Started)), ui.Green
 	case Failed:
@@ -154,7 +160,7 @@ func rank(state string) int {
 		return 0
 	case Failed, Interrupted:
 		return 1
-	case Starting, Queued, Locked, Waiting:
+	case Starting, Queued, Locked, Waiting, Elsewhere:
 		return 2
 	case Skipped:
 		return 3
@@ -169,6 +175,8 @@ func rank(state string) int {
 // hiddenWord is how a hidden state is counted in the "more" line.
 func hiddenWord(state string) string {
 	switch state {
+	case Elsewhere:
+		return "running elsewhere"
 	case Starting, Waiting:
 		return "waiting"
 	case Queued:
@@ -237,7 +245,7 @@ func visible(views []LaneView, sel int) ([]LaneView, string) {
 }
 
 func wordRank(w string) int {
-	for _, s := range []string{Running, Failed, Interrupted, Queued, Locked, Waiting, Skipped, Passed, Done, Idle} {
+	for _, s := range []string{Running, Failed, Interrupted, Queued, Locked, Waiting, Elsewhere, Skipped, Passed, Done, Idle} {
 		if hiddenWord(s) == w {
 			return rank(s)
 		}

@@ -281,6 +281,8 @@ func Run(o Options) (int, error) {
 	}, views)
 	ir = newInterrupter(o, disp, sl, lt)
 	defer ir.stop()
+	// Lanes this run leaves out may be running in another swim right now.
+	stopOthers := watchOtherRuns(o, selected, disp)
 	if o.AutoApprove || o.Prompt && o.ev == nil && disp.CanAsk() {
 		if o.AutoApprove {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
@@ -361,6 +363,7 @@ func Run(o Options) (int, error) {
 		}(n)
 	}
 	wg.Wait()
+	stopOthers()
 	disp.Stop()
 
 	code := 0
@@ -872,5 +875,87 @@ func watchMsgs(o Options, n int, disp *display.Display) func() {
 		close(done)
 		<-finished
 		disp.Set(n, func(v *display.LaneView) { v.Message = "" })
+	}
+}
+
+// watchOtherRuns keeps the panel's rows for lanes this run doesn't include
+// in step with status.yml: a lane another swim in the repo (a concurrent
+// swim run, swim watch running a queued batch) is running shows as running
+// elsewhere, with its round and elapsed time, and its result once it ends.
+// The returned func stops it.
+func watchOtherRuns(o Options, selected map[int]bool, disp *display.Display) func() {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		elsewhere := map[int]bool{}
+		for first := true; ; first = false {
+			if !first {
+				select {
+				case <-done:
+					return
+				case <-t.C:
+				}
+			}
+			st, err := status.Load(o.Root)
+			if err != nil || st == nil {
+				continue
+			}
+			for n := 1; n <= o.Cfg.Lanes; n++ {
+				if selected[n] {
+					continue
+				}
+				l := st.Get(n)
+				if l == nil {
+					continue
+				}
+				active := l.Run != o.RunID && l.PID > 0 && lane.Alive(l.PID) &&
+					(l.State == status.Running || l.State == status.Waiting || l.State == status.Queued || l.State == status.Locked)
+				switch {
+				case active:
+					started := time.Now()
+					if l.StartedAt != nil {
+						if ts, err := time.Parse(time.RFC3339, *l.StartedAt); err == nil {
+							started = ts
+						}
+					}
+					elsewhere[n] = true
+					round, job := l.Round, l.Job
+					disp.Set(n, func(v *display.LaneView) {
+						v.State, v.Started, v.Round, v.Job = display.Elsewhere, started, round, job
+					})
+				case elsewhere[n]:
+					// It ended over there: show how.
+					delete(elsewhere, n)
+					state, exit := display.Idle, 0
+					switch l.State {
+					case status.Passed:
+						state = display.Passed
+					case status.Failed:
+						state = display.Failed
+					case status.Interrupted:
+						state = display.Interrupted
+					case status.Skipped:
+						state = display.Skipped
+					}
+					if l.ExitCode != nil {
+						exit = *l.ExitCode
+					}
+					fin := time.Now()
+					if l.FinishedAt != nil {
+						if ts, err := time.Parse(time.RFC3339, *l.FinishedAt); err == nil {
+							fin = ts
+						}
+					}
+					disp.Set(n, func(v *display.LaneView) { v.State, v.Exit, v.Finished = state, exit, fin })
+				}
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
 	}
 }

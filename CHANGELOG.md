@@ -184,6 +184,13 @@ To cut a release:
   with the batch's result. `--timeout D` gives up after D (exit 1), leaving
   the batch queued.
 
+### Fixed
+
+- **Two swims in one repo:** a lane another swim was running (a concurrent
+  `swim run`, or `swim watch` running a queued batch) showed as idle in this
+  one's live view. It now shows as `running elsewhere` with its round and
+  elapsed time, then its result, and is never counted as part of this run.
+
 ### Changed
 
 - **`.lane.N.rc` is deprecated:**

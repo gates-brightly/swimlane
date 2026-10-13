@@ -323,6 +323,8 @@ func transition(a, b LaneView) string {
 		return fmt.Sprintf("queued (%d ahead)", b.QueuePos)
 	case Running:
 		return "started: " + b.Round
+	case Elsewhere:
+		return "running in another swim: " + b.Round
 	case Passed:
 		return "PASS (" + Elapsed(b.Finished.Sub(b.Started)) + ")"
 	case Failed:
