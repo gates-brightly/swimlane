@@ -19,6 +19,9 @@ where it would land in the code, open questions, and how to test it.
 | `swim timeline`: Gantt view of any run, with each lane's start delay, the longest chain and wait breakdown | [timeline.md](timeline.md) | shipped (4.20261009) |
 | Chime: bell, sound or desktop notification when `swim run`/`swim all` finishes; `swim config chime true` | [chime.md](chime.md) | shipped (4.20261009) |
 | Graceful Ctrl-C: first press stops every lane at the next step boundary, second force quits (SIGINT then SIGKILL), third kills | [graceful-interrupt.md](graceful-interrupt.md) | shipped (4.20261009) |
+| Env files: `.env.swim` with general, repo and lane scopes, parsed not sourced, never setting guard flags, hashed into the chain; replaces `.lane.N.rc` | [env-file.md](env-file.md) | proposed |
+| Outcome handlers: `on_success`, `on_failure` and `on_exit` functions run when a round ends, plus `# Fail: hard` to stop at the first failed step and go straight to `on_failure` | [outcome-handlers.md](outcome-handlers.md) | proposed |
+| Native SDKs: Python, TypeScript and Go libraries for lane steps, generated from a `swim.lane.v1` protobuf contract and served over a per-lane socket; all decisions stay in the binary | [native-sdk.md](native-sdk.md) | proposed |
 
 ## Staging a feature
 
