@@ -168,3 +168,29 @@ func TestRecoverSpool(t *testing.T) {
 		t.Error("spool not removed")
 	}
 }
+
+func TestReadSpool(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "agent1.log")
+	if _, ok := ReadSpool(logPath); ok {
+		t.Fatal("no spool: nothing running")
+	}
+	clock := time.Now().Add(-3 * time.Second).Format("15:04:05")
+	os.WriteFile(SpoolPath(logPath), []byte(spoolMagic+"\tdeploy\t"+clock+"\tdeploy --all\nline one\n"+spoolMark+"attempt 1/2\nhalf a li"), 0o644)
+	sp, ok := ReadSpool(logPath)
+	if !ok || sp.Label != "deploy" || sp.Cmd != "deploy --all" || sp.Partial != "half a li" || len(sp.Output) != 2 || sp.Output[1] != "-- attempt 1/2" {
+		t.Fatalf("spool: %+v", sp)
+	}
+	if e := sp.Elapsed(); e < 2*time.Second || e > 10*time.Second {
+		t.Errorf("elapsed %s", e)
+	}
+	b := sp.Block("in progress")
+	want := []string{"        $ deploy --all", "        | line one", "        -- attempt 1/2", "        | half a li"}
+	if !strings.HasPrefix(b[0], "  RUNNING  deploy (in progress)") || strings.Join(b[1:], "\n") != strings.Join(want, "\n") {
+		t.Fatalf("block:\n%s", strings.Join(b, "\n"))
+	}
+	// RUNNING never counts as a result if a log ever held it.
+	r, _ := logparse.Parse(strings.NewReader("# swim lane log | syntax 2 | swim 1\n\n== ROUND 2026-10-13T00:00:00Z  job=j  t\n" + strings.Join(b, "\n") + "\n"))
+	if r.Steps != 0 || len(r.Results) != 0 {
+		t.Errorf("RUNNING was parsed as a result: %+v", r.Results)
+	}
+}

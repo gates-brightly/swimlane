@@ -649,3 +649,81 @@ func rel(root, p string) string {
 	}
 	return p
 }
+
+// Running is the in-progress result kind: a step whose block isn't in the
+// log yet (swim log shows it from the spool). It never appears in a log
+// file, and parsers don't count it as a result.
+const Running = "RUNNING"
+
+// Spool is a running step as its spool file (<log>.partial) has it: what
+// swim log shows before the step's block reaches the log.
+type Spool struct {
+	Label, Clock, Cmd string
+	Started           time.Time // from Clock (today, local time)
+	Output            []string  // output lines; "-- ..." for notes (attempts, retries)
+	Partial           string    // an unfinished last line, if any
+}
+
+// ReadSpool reads lane log logPath's in-flight step, if one is running.
+func ReadSpool(logPath string) (*Spool, bool) {
+	data, err := os.ReadFile(SpoolPath(logPath))
+	if err != nil || len(data) == 0 {
+		return nil, false
+	}
+	text := string(data)
+	head, body, _ := strings.Cut(text, "\n")
+	f := strings.SplitN(head, "\t", 4)
+	if len(f) != 4 || f[0] != spoolMagic {
+		return nil, false
+	}
+	s := &Spool{Label: f[1], Clock: f[2], Cmd: f[3]}
+	if t, err := time.ParseInLocation("15:04:05", s.Clock, time.Local); err == nil {
+		now := time.Now()
+		s.Started = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local)
+		if s.Started.After(now.Add(time.Minute)) { // started before midnight
+			s.Started = s.Started.AddDate(0, 0, -1)
+		}
+	}
+	lines := strings.Split(body, "\n")
+	if last := lines[len(lines)-1]; last != "" {
+		s.Partial = last // no newline yet
+	}
+	for _, l := range lines[:len(lines)-1] {
+		if strings.HasPrefix(l, spoolMark) {
+			s.Output = append(s.Output, "-- "+strings.TrimPrefix(l, spoolMark))
+		} else {
+			s.Output = append(s.Output, l)
+		}
+	}
+	return s, true
+}
+
+// Elapsed is how long the step has been running.
+func (s *Spool) Elapsed() time.Duration {
+	if s.Started.IsZero() {
+		return 0
+	}
+	return time.Since(s.Started).Truncate(100 * time.Millisecond)
+}
+
+// Block renders the step as syntax 2 log lines, the way its block will be
+// written when it ends, but with a RUNNING result line. detail says why it
+// isn't in the log yet ("in progress", or "cut off" for a step whose swim
+// step died).
+func (s *Spool) Block(detail string) []string {
+	out := []string{
+		logparse.StepLine(Running, s.Label, detail, fmt.Sprintf("%.1fs", s.Elapsed().Seconds()), s.Clock),
+		logparse.CmdPrefix + s.Cmd,
+	}
+	for _, l := range s.Output {
+		if strings.HasPrefix(l, "-- ") {
+			out = append(out, logparse.Indent+l)
+		} else {
+			out = append(out, logparse.OutPrefix+l)
+		}
+	}
+	if s.Partial != "" {
+		out = append(out, logparse.OutPrefix+s.Partial)
+	}
+	return out
+}

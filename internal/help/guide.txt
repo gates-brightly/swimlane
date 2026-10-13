@@ -424,6 +424,11 @@ READING RESULTS
   Results are the lines starting "  KIND  " (grep -E '^  (FAIL|BLOCKED)' finds
   every failure); anything indented 8 spaces belongs to the step above it and is
   never a result. The current round is everything after the last "== ROUND".
+  A running step's block isn't in the file until it ends; swim log adds it
+  (RUNNING  <label> (in progress), with its output so far), swim log N
+  --yaml includes it as a RUNNING result, and swim log N -f streams it.
+  To wait for a job from a script: swim log <job> --until-done (exits with
+  the round's status).
 
   .swim.log (project log, oldest first; one line per event):
       <utc>  <user>  <event>  [swim N]  [job=<id>]  [run=<run id>]  <detail>

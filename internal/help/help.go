@@ -288,7 +288,7 @@ var Commands = map[string]string{
     --html F   a self-contained HTML Gantt chart (inline SVG), for sharing
   N or JOB: that lane's (or job's) rounds across recorded runs, one bar each.
 `,
-	"log": `swim log [N|JOB] [--all] [--full] [--raw]
+	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
@@ -302,11 +302,27 @@ var Commands = map[string]string{
   On a terminal the log is rendered: round and stage headers stand out,
   results are coloured, times show how far into the round they were, and
   step output longer than 40 lines is folded to its first and last 15.
-  Piped (swim log 2 | less) it is the file exactly, as cat shows it.
-  --full   don't fold long output
-  --raw    print the file as is, even on a terminal
-  --yaml   the round parsed, as data (schema swim.log/v1): the latest round,
-           every round with --all, or a job's rounds. See READING RESULTS.
+  Piped (swim log 2 | less) it is the file, as cat shows it, plus the step
+  running now: a step's block reaches the log file only when it ends, so
+  swim log adds it from the step's spool (.swim/logs/agentN.log.partial),
+  output so far included, under a result line that never appears in a file:
+      RUNNING  <label> (in progress)          <elapsed>s  <hh:mm:ss>
+  ("cut off: ..." instead of "in progress" if its swim step died; it is
+  recorded as FAIL when the lane next runs).
+  --full        don't fold long output
+  --raw         print the file exactly, even on a terminal (no running step)
+  --yaml        the round parsed, as data (schema swim.log/v1): the latest round,
+                every round with --all, or a job's rounds; the running step is
+                a result "RUNNING" with its command, output so far and
+                duration_s. See READING RESULTS.
+  -f, --follow  print lane N's (or JOB's lane's) current round, then follow it
+                like tail -f: new log lines, and the running step's output as
+                it is written (the step's block then adds only its result
+                line). Runs until Ctrl-C.
+  --until-done  follow until the lane has finished its round, then exit with
+                the round's exit status (0 passed); on an idle lane, print its
+                last round and exit with that. For scripts and services
+                waiting on a job: swim log 3f2a9c1e --until-done
 `,
 	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
         [--require-work] [--heartbeat D] [--run-id ID]

@@ -29,6 +29,24 @@ To cut a release:
 
 ## Unreleased
 
+### Added
+
+- **`swim log` shows the step running now:**
+  - **Why:** a step's block reaches the log file only when the step ends.
+    Now `swim log N` (and `swim log JOB`) adds the in-flight step from its
+    spool: `RUNNING  <label> (in progress)`, with its command and output so
+    far.
+  - **`--yaml`:** includes it as a `RUNNING` result with `duration_s`,
+    `command` and `output`.
+  - **`--raw`** is still the file exactly. `RUNNING` never appears in a log
+    file and never counts as a result.
+- **`swim log N -f` (`--follow`)** follows a lane like `tail -f`. Log lines
+  appear as they are written, and the running step's output streams live
+  rather than when the step ends.
+- **`swim log N|JOB --until-done`** follows until the round ends, then exits
+  with the round's status: other services can wait on a job and get its
+  result. On an idle lane it prints the last round and exits with that.
+
 ## 7.20261013 (v0.7.20261013, 2026-10-13)
 
 Everything since `6.20261012`. Breaking version 7 is a deliberate bump.
