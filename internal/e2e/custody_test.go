@@ -51,26 +51,38 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 	r.mustSwim("config", "signing_key", keys["zach"]) // the runner
 	dropLane(t, r)
 
-	if out, code := r.swim("sign", "1", "--guards", "FIN_ALLOW_TYPO", "--key", keys["zach"]); code == 0 || !strings.Contains(out, "has no guard FIN_ALLOW_TYPO") {
+	if out, code := r.swim("approve", "1", "--guards", "FIN_ALLOW_TYPO", "--key", keys["zach"]); code == 0 || !strings.Contains(out, "has no guard FIN_ALLOW_TYPO") {
 		t.Fatalf("typo guard: %d %s", code, out)
 	}
-	contains(t, "first signature", r.mustSwim("sign", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"]),
-		"signed lane.1.sh.signature as zach", "not yet:  FIN_ALLOW_DROP: lane.1.sh.signature needs 2 signature(s) from platform-admin, has 1")
+	contains(t, "first approval", r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"]),
+		"approved lane.1.sh", "as zach", "not yet:  FIN_ALLOW_DROP: approval needs 2 signature(s) from platform-admin, has 1")
 	r.mustSwim("run", "1")
-	contains(t, "one of two", r.log(1), "SKIP  drop table old_orders (dry run: lane.1.sh.signature needs 2 signature(s) from platform-admin, has 1; set FIN_ALLOW_DROP=1 to approve)")
+	contains(t, "one of two", r.log(1), "SKIP  drop table old_orders (dry run: approval needs 2 signature(s) from platform-admin, has 1; set FIN_ALLOW_DROP=1 to approve)")
 
 	// A valid signature from a key not in lookup.yml doesn't count.
-	contains(t, "mallory", r.mustSwim("sign", "1", "--key", keys["mallory"]), "not in lookup.yml: it won't count")
-	if out, code := r.swim("sign", "1", "--guards", "OTHER", "--key", keys["alice"]); code == 0 || !strings.Contains(out, "co-signing signs that statement as is") {
-		t.Fatalf("co-sign changing the statement: %d %s", code, out)
+	contains(t, "mallory", r.mustSwim("approve", "1", "--key", keys["mallory"]), "not in lookup.yml: it won't count")
+	if out, code := r.swim("approve", "1", "--all", "--key", keys["alice"]); code == 0 || !strings.Contains(out, "approving again signs that statement as is") {
+		t.Fatalf("co-approve changing the statement: %d %s", code, out)
 	}
-	contains(t, "second signature", r.mustSwim("sign", "1", "--key", keys["alice"]), "approved: FIN_ALLOW_DROP (signed by alice, zach)")
+	contains(t, "second approval", r.mustSwim("approve", "1", "--key", keys["alice"]), "approved: FIN_ALLOW_DROP (alice, zach)")
+	contains(t, "list", r.mustSwim("approve"), "swim 1 (lane.1.sh", "approves FIN_ALLOW_DROP", "approved by zach, unknown", "alice")
+
+	// Alice revokes before it runs: not enough any more.
+	contains(t, "revoke", r.mustSwim("revoke", "1", "--key", keys["alice"]), "revoked your approval")
 	r.mustSwim("run", "1")
-	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (approved by signature: ", "zach (platform-admin)", "alice (platform-admin)", "PASS  drop")
+	if strings.Contains(r.log(1), "APPROVED") {
+		t.Fatal("a revoked approval still counted")
+	}
+	if out, code := r.swim("revoke", "1", "--key", keys["alice"]); code == 0 || !strings.Contains(out, "no standing approval there to revoke") {
+		t.Errorf("revoking twice: %d %s", code, out)
+	}
+	r.mustSwim("approve", "1", "--key", keys["alice"]) // and approves again
+	r.mustSwim("run", "1")
+	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (approved by ", "zach (platform-admin)", "alice (platform-admin)", "(signed)", "PASS  drop")
 
 	hist := r.mustSwim("history", "1")
-	contains(t, "history", hist, "approve  swim 1  FIN_ALLOW_DROP", "via signature", "round  swim 1  passed exit 0", "signed by zach (platform-admin)")
-	contains(t, "verify", r.mustSwim("verify"), "verified: every link, signature, log and script checks out", "3 signatories")
+	contains(t, "history", hist, "approved  swim 1 script", "revoked  swim 1 script", "approve  swim 1  FIN_ALLOW_DROP", "via signature", "round  swim 1  passed exit 0", "signed by zach (platform-admin)")
+	contains(t, "verify", r.mustSwim("verify"), "verified: every link, signature, log and script checks out", "script, approves FIN_ALLOW_DROP; 3 standing of 5 events")
 
 	// Tampering is provable.
 	logPath := filepath.Join(r.root, ".swim", "logs", "agent1.log")
@@ -93,8 +105,8 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 	r.script(1, "drop old table v2", `if guard FIN_ALLOW_DROP "drop table old_orders"; then run "drop" true; fi`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop table old_orders")
 	r.mustSwim("run", "1")
-	contains(t, "stale", r.log(1), "lane.1.sh.signature approves another version of lane.1.sh")
-	contains(t, "stale verify", r.mustSwim("verify"), "stale: lane.1.sh changed since it was signed")
+	contains(t, "stale", r.log(1), "approves another version of lane.1.sh")
+	contains(t, "stale verify", r.mustSwim("verify"), "stale: lane.1.sh changed since")
 }
 
 func TestChainRecordsEveryApproval(t *testing.T) {
@@ -156,16 +168,78 @@ func TestWatchSigned(t *testing.T) {
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])
 	dropLane(t, r)
-	// Nothing signed: nothing to do.
-	contains(t, "nothing", r.mustSwim("watch", "--once", "--signed"), "swim watch")
-	// Alice approves remotely by dropping a signature; the watch runs it.
-	r.mustSwim("sign", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["alice"])
-	out := r.mustSwim("watch", "--once", "--signed")
-	contains(t, "watch", out, "queued swim 1", "signed by alice", "passed; consumed")
-	contains(t, "agent1.log", r.log(1), "APPROVED  drop table old_orders (approved by signature: alice)", "PASS  drop")
+	// Nothing approved: nothing to do.
+	contains(t, "nothing", r.mustSwim("watch", "--once", "--approved"), "swim watch")
+	// Alice approves remotely (the approvals file arrives); the watch runs it.
+	r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["alice"])
+	out := r.mustSwim("watch", "--once", "--approved")
+	contains(t, "watch", out, "queued swim 1", "approved by alice", "passed; consumed")
+	contains(t, "agent1.log", r.log(1), "APPROVED  drop table old_orders (approved by alice (signed))", "PASS  drop")
 	// Already ran: not queued again.
-	if out := r.mustSwim("watch", "--once", "--signed"); strings.Contains(out, "queued swim 1") {
+	if out := r.mustSwim("watch", "--once", "--approved"); strings.Contains(out, "queued swim 1") {
 		t.Errorf("queued the same signed approval twice:\n%s", out)
 	}
 	contains(t, "keys", r.mustSwim("keys"), "alice", "zach", "this machine signs with")
+}
+
+func TestStandingApproval(t *testing.T) {
+	r := newRepo(t, "")
+	keys := people(t, r, "groups:\n  platform-admin: [zach, alice]\nrequire:\n  - guards: [FIN_ALLOW_*]\n    group: platform-admin\n    count: 2\n", "zach", "alice", "bob")
+	r.mustSwim("config", "signing", "auto")
+	r.mustSwim("config", "signing_key", keys["zach"])
+	dropLane(t, r)
+	if out, code := r.swim("approve", "--auto", "nobody", "--key", keys["zach"]); code == 0 || !strings.Contains(out, "no user nobody in lookup.yml") {
+		t.Fatalf("standing for an unknown user: %d %s", code, out)
+	}
+	// Zach approves every job bob queues. One platform-admin isn't enough
+	// for FIN_ALLOW_* on its own...
+	contains(t, "standing", r.mustSwim("approve", "--auto", "bob", "--key", keys["zach"]), "approved every job bob queues (standing", "approves every guard")
+	contains(t, "queue add", r.mustSwim("queue", "add", "1", "--key", keys["bob"]), "signed by bob")
+	r.mustSwim("watch", "--once")
+	contains(t, "one admin", r.log(1), "SKIP  drop table old_orders (dry run: approval needs 2 signature(s) from platform-admin, has 1")
+	// ...but with alice's approval of this script it is: they count together.
+	r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["alice"])
+	r.mustSwim("queue", "add", "1", "--key", keys["bob"])
+	r.mustSwim("watch", "--once")
+	contains(t, "standing + script", r.log(1), "APPROVED  drop table old_orders (approved by ", "alice (platform-admin)", "zach (platform-admin)", "(signed, and standing for jobs queued by bob)")
+	// The standing approval isn't consumed: it applies to the next batch too
+	// (with a rule it meets alone).
+	r.script(2, "small change", `if guard ALLOW_SMALL "small change"; then run "small" true; fi`)
+	r.mustSwim("queue", "add", "2", "--key", keys["bob"])
+	r.mustSwim("watch", "--once")
+	contains(t, "standing alone", r.log(2), "APPROVED  small change (approved by zach (platform-admin) (standing approval for jobs queued by bob))")
+	// A batch alice queues doesn't get bob's standing approval.
+	r.script(2, "small change 2", `if guard ALLOW_SMALL "small change 2"; then run "small" true; fi`)
+	r.mustSwim("queue", "add", "2", "--key", keys["alice"])
+	r.mustSwim("watch", "--once")
+	contains(t, "not bob", r.log(2), "SKIP  small change 2 (dry run: set ALLOW_SMALL=1 to approve)")
+	// A forged run: point a lane at bob's signed entry from an earlier batch
+	// (for another version of the script). The entry must hold this lane's
+	// exact script, so the standing approval doesn't apply.
+	done, _ := filepath.Glob(filepath.Join(r.root, ".swim", "queue", "done", "*.yml"))
+	var bobs string
+	for _, d := range done {
+		if data, _ := os.ReadFile(d); strings.Contains(string(data), "by: bob") && strings.Contains(string(data), "lane: 2") {
+			bobs = d
+		}
+	}
+	forged := filepath.Join(r.root, ".swim", "queue", "forged.running")
+	data, err := os.ReadFile(bobs)
+	if err != nil {
+		t.Fatalf("bob's earlier entry: %v", err)
+	}
+	os.WriteFile(forged, data, 0o644)
+	c := r.cmd("bash", "lane.2.sh")
+	c.Env = append(c.Env, "SWIM_QUEUE_ENTRY="+forged)
+	c.CombinedOutput()
+	os.Remove(forged)
+	contains(t, "forged", r.log(2), "SKIP  small change 2 (dry run:")
+
+	// Zach revokes: bob's next batch dry-runs.
+	contains(t, "revoke --auto", r.mustSwim("revoke", "--auto", "bob", "--key", keys["zach"]), "revoked your approval in approvals/auto.bob.signature")
+	r.script(2, "small change 3", `if guard ALLOW_SMALL "small change 3"; then run "small" true; fi`)
+	r.mustSwim("queue", "add", "2", "--key", keys["bob"])
+	r.mustSwim("watch", "--once")
+	contains(t, "revoked", r.log(2), "SKIP  small change 3 (dry run:")
+	contains(t, "verify", r.mustSwim("verify"), "verified: every link")
 }

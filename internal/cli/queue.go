@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/signal"
 	"sort"
@@ -20,14 +22,18 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
+	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // cmdQueue manages queued batches: swim queue [list|add|show|rm|requeue].
+// swim queue 1 2 3 is shorthand for swim queue add 1 2 3.
 func cmdQueue(args []string) error {
 	sub := "list"
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+	if len(args) > 0 && looksLikeLaneRef(args[0]) {
+		sub = "add"
+	} else if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		sub, args = args[0], args[1:]
 	}
 	switch sub {
@@ -49,8 +55,8 @@ func cmdQueue(args []string) error {
 // hasn't passed), pinned to the jobs they hold now, with approvals.
 func queueAdd(args []string) error {
 	var approve []string
-	var note, parallel string
-	var yes bool
+	var note, parallel, keyPath string
+	var yes, wait bool
 	// --approve repeats; -y is the short --yes.
 	var rest0 []string
 	for i := 0; i < len(args); i++ {
@@ -66,7 +72,7 @@ func queueAdd(args []string) error {
 			rest0 = append(rest0, a)
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"yes": &yes}, strs: map[string]*string{"note": &note, "parallel": &parallel}}.parse(rest0)
+	rest, err := flags{bools: map[string]*bool{"yes": &yes, "wait": &wait}, strs: map[string]*string{"note": &note, "parallel": &parallel, "key": &keyPath}}.parse(rest0)
 	if err != nil {
 		return err
 	}
@@ -110,7 +116,11 @@ func queueAdd(args []string) error {
 		if !info.Pending() {
 			return fmt.Errorf("swim %d holds no pending round (a stub, or no Round: line); write one before queueing it", n)
 		}
-		e.Lanes = append(e.Lanes, queue.Lane{Lane: n, Job: info.Job, Round: info.Round})
+		data, err := os.ReadFile(lane.Script(root, n))
+		if err != nil {
+			return err
+		}
+		e.Lanes = append(e.Lanes, queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data)})
 		for _, g := range info.Guards {
 			guards[g.Flag] = true
 		}
@@ -130,6 +140,26 @@ func queueAdd(args []string) error {
 		e.Approve = append(e.Approve, f)
 	}
 	sort.Strings(e.Approve)
+	// Sign the batch: it proves who queued it, so standing approvals for
+	// that person (swim approve --auto) apply to it.
+	e.ID = queue.NewID()
+	signedAs := ""
+	if key, err := sign.LoadKey(or(keyPath, cfg.SigningKey)); err == nil && sign.Available() {
+		if sig, err := sign.Sign(key, []byte(e.Statement())); err == nil {
+			e.QueuedKey, e.QueueSig = key.Public, sig
+			signedAs = sign.Fingerprint(key.Public)
+			if lk, err := lookup.Load(root); err == nil {
+				if u, ok := lk.Who(key.Public); ok {
+					signedAs = u
+					e.By = u
+				}
+			}
+		} else {
+			fmt.Fprintln(os.Stderr, "swim queue: not signed ("+err.Error()+"); standing approvals won't apply to it")
+		}
+	} else if keyPath != "" {
+		return err
+	}
 	if err := queue.Add(root, e); err != nil {
 		return err
 	}
@@ -150,6 +180,11 @@ func queueAdd(args []string) error {
 	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: detail})
 
 	fmt.Printf("queued %s (#%d): %d lanes\n", e.ID, e.Seq, len(e.Lanes))
+	if signedAs != "" {
+		fmt.Printf("  signed by %s (standing approvals for %s apply)\n", signedAs, signedAs)
+	} else {
+		fmt.Println("  unsigned (no signing key): standing approvals don't apply")
+	}
 	for _, l := range e.Lanes {
 		fmt.Printf("  swim %-2d %s  %s\n", l.Lane, lane.ShortJob(l.Job), l.Round)
 	}
@@ -174,7 +209,109 @@ func queueAdd(args []string) error {
 	} else {
 		fmt.Println("  runs when a worker takes it: swim watch (or swim watch --once)")
 	}
+	if !wait {
+		return nil
+	}
+	if err := waitIdle(root, 2*time.Second, 0); err != nil {
+		return err
+	}
+	// Exit with the batch's result, like swim log --until-done.
+	done, err := queue.Find(root, e.ID)
+	if err != nil {
+		return fmt.Errorf("%s: %v (removed before it ran?)", e.ID, err)
+	}
+	if done.State != queue.Done || done.Result == nil {
+		return fmt.Errorf("%s is %s, not done", e.ID, done.State)
+	}
+	fmt.Printf("%s (#%d): %s\n", e.ID, e.Seq, done.Result.Result)
+	if done.Result.Result != status.Passed {
+		return exitError{1}
+	}
 	return nil
+}
+
+// cmdWait blocks until swim is idle and nothing is about to start: no lane
+// running, no swim run waiting on lanes, and no queued or running batch.
+func cmdWait(args []string) error {
+	var interval, timeout string
+	rest, err := flags{strs: map[string]*string{"interval": &interval, "timeout": &timeout}}.parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) > 0 {
+		return usagef("usage: swim wait [--interval D] [--timeout D]")
+	}
+	every, limit := 2*time.Second, time.Duration(0)
+	if interval != "" {
+		if every, err = time.ParseDuration(interval); err != nil || every <= 0 {
+			return usagef("--interval takes a duration like 2s, got %q", interval)
+		}
+	}
+	if timeout != "" {
+		if limit, err = time.ParseDuration(timeout); err != nil || limit <= 0 {
+			return usagef("--timeout takes a duration like 30m, got %q", timeout)
+		}
+	}
+	root, _, err := repo()
+	if err != nil {
+		return err
+	}
+	return waitIdle(root, every, limit)
+}
+
+// waitIdle polls until swim is idle and the queue holds nothing queued or
+// running (orphaned entries never run, so they don't count), saying what
+// it waits on whenever that changes. A limit > 0 gives up after that long.
+func waitIdle(root string, every, limit time.Duration) error {
+	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	said := ""
+	say := func(s string) {
+		if s != said {
+			fmt.Println(p.Paint(ui.Dim, "swim wait: "+s))
+			said = s
+		}
+	}
+	start := time.Now()
+	for {
+		cfg, err := loadCfg(root)
+		if err != nil {
+			return err
+		}
+		why := launcher.Busy(root, cfg)
+		if why == "" {
+			entries, err := queue.List(root, false)
+			if errors.Is(err, fs.ErrNotExist) {
+				time.Sleep(every / 4) // an entry moved while we read it
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			queued := 0
+			for _, e := range entries {
+				switch e.State {
+				case queue.Running:
+					if why == "" {
+						why = fmt.Sprintf("batch %s (#%d) is running (pid %d)", e.ID, e.Seq, e.Worker.PID)
+					}
+				case queue.Queued:
+					queued++
+				}
+			}
+			if why == "" && queued > 0 {
+				why = fmt.Sprintf("%d queued batch(es) not yet taken by a worker (swim watch)", queued)
+			}
+		}
+		if why == "" {
+			say("idle")
+			return nil
+		}
+		if limit > 0 && time.Since(start) >= limit {
+			return fmt.Errorf("still busy after %s: %s", limit, why)
+		}
+		say("waiting: " + why)
+		time.Sleep(every)
+	}
 }
 
 func sortedKeys(m map[string]bool) []string {
@@ -327,7 +464,7 @@ func queueRequeue(args []string) error {
 // cmdWatch is the queue's worker: it runs each queued batch, oldest first,
 // as soon as swim is idle, and consumes it when it ends.
 func cmdWatch(args []string) error {
-	var once, yes, signed bool
+	var once, yes, approved bool
 	var interval string
 	args = append([]string(nil), args...)
 	for i, a := range args {
@@ -335,12 +472,12 @@ func cmdWatch(args []string) error {
 			args[i] = "--yes"
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"once": &once, "yes": &yes, "signed": &signed}, strs: map[string]*string{"interval": &interval}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"once": &once, "yes": &yes, "approved": &approved}, strs: map[string]*string{"interval": &interval}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim watch [--once] [-y] [--signed] [--interval D]")
+		return usagef("usage: swim watch [--once] [-y] [--approved] [--interval D]")
 	}
 	every := 2 * time.Second
 	if interval != "" {
@@ -393,8 +530,8 @@ func cmdWatch(args []string) error {
 		}
 	}
 	for !stopped() {
-		if signed {
-			for _, msg := range queueSigned(root, cfg) {
+		if approved {
+			for _, msg := range queueApproved(root, cfg) {
 				fmt.Println(p.Paint(ui.Cyan, "swim watch: "+msg))
 			}
 		}
@@ -515,6 +652,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes bool) (
 		setenv(f, "1", false)
 	}
 	setenv("SWIM_QUEUE", fmt.Sprintf("queue %s by %s", e.ID, e.By), false)
+	setenv("SWIM_QUEUE_ENTRY", e.Path, false) // the guards check its signature for standing approvals
 	setenv("SWIM_QUEUE_APPROVED", strings.Join(e.Approve, " "), false)
 	defer func() {
 		for k, v := range restore {
@@ -526,7 +664,13 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes bool) (
 		}
 	}()
 
-	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, Self: self(), Out: os.Stdout,
+	pinSHA := map[int]string{}
+	for _, l := range e.Lanes {
+		if l.SHA256 != "" {
+			pinSHA[l.Lane] = l.SHA256
+		}
+	}
+	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y"}
 	if !e.ApproveAll && workerYes {
@@ -572,19 +716,17 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes bool) (
 	return res, interrupted
 }
 
-// queueSigned queues every lane whose script has a complete remote approval
-// (a .signature whose signers meet lookup.yml's rule for each guard it
-// approves) and hasn't been queued or run for it yet. The run's guards then
-// find the same signature, so the approval is credited to its signers.
-func queueSigned(root string, cfg *config.Config) []string {
+// queueApproved queues every lane whose exact script is fully approved
+// (approvals/lane.N.<sha>.signature whose standing signers meet lookup.yml's
+// rule for each guard it approves) and hasn't been queued or run for that
+// approval yet. The run's guards then count the same approval, credited to
+// its approvers.
+func queueApproved(root string, cfg *config.Config) []string {
 	lk, err := lookup.Load(root)
 	if err != nil {
-		return []string{"signed approvals: " + err.Error()}
+		return []string{"approvals: " + err.Error()}
 	}
 	files, _ := sigfile.All(root)
-	if len(files) == 0 {
-		return nil
-	}
 	done := map[string]bool{}
 	if entries, err := queue.List(root, true); err == nil {
 		for _, e := range entries {
@@ -604,13 +746,16 @@ func queueSigned(root string, cfg *config.Config) []string {
 	var msgs []string
 	now := time.Now()
 	for _, f := range files {
+		if f.Kind != sigfile.Script {
+			continue
+		}
 		id := f.StatementHash()
 		if done[id] || ran[f.SHA256] || f.Expired(now) {
 			continue
 		}
 		data, err := os.ReadFile(lane.Script(root, f.Lane))
 		if err != nil || chain.Hash(data) != f.SHA256 {
-			continue // stale: the script changed since it was signed
+			continue // stale: the script changed since it was approved
 		}
 		info, err := lane.ReadScript(root, f.Lane)
 		if err != nil || !info.Pending() || f.Lane > cfg.Lanes {
@@ -623,7 +768,7 @@ func queueSigned(root string, cfg *config.Config) []string {
 		ok := true
 		users := map[string]bool{}
 		for _, g := range flags {
-			d := f.Decide(lk, g, now)
+			d := sigfile.Decide([]*sigfile.File{f}, lk, g, now)
 			if !d.OK {
 				ok = false
 				break
@@ -633,18 +778,18 @@ func queueSigned(root string, cfg *config.Config) []string {
 			}
 		}
 		if !ok {
-			continue // not fully signed yet
+			continue // not fully approved yet
 		}
 		names := sortedKeys(users)
-		e := &queue.Entry{By: "signature (" + strings.Join(names, ", ") + ")", Note: "signed approval " + rel(root, f.Path),
-			Lanes: []queue.Lane{{Lane: f.Lane, Job: info.Job, Round: info.Round}}, Signature: id}
+		e := &queue.Entry{By: "approval (" + strings.Join(names, ", ") + ")", Note: "approved " + rel(root, f.Path),
+			Lanes: []queue.Lane{{Lane: f.Lane, Job: info.Job, Round: info.Round, SHA256: f.SHA256}}, Signature: id}
 		if err := queue.Add(root, e); err != nil {
 			msgs = append(msgs, "queue "+rel(root, f.Path)+": "+err.Error())
 			continue
 		}
 		done[id] = true
-		history.Log(root, history.Entry{Event: history.QueueAdd, Detail: fmt.Sprintf("%s: swim %d  signed by %s  (%s)", e.ID, f.Lane, strings.Join(names, ", "), rel(root, f.Path))})
-		msgs = append(msgs, fmt.Sprintf("queued swim %d (%s): %s, signed by %s", f.Lane, e.ID, rel(root, f.Path), strings.Join(names, ", ")))
+		history.Log(root, history.Entry{Event: history.QueueAdd, Detail: fmt.Sprintf("%s: swim %d  approved by %s  (%s)", e.ID, f.Lane, strings.Join(names, ", "), rel(root, f.Path))})
+		msgs = append(msgs, fmt.Sprintf("queued swim %d (%s): approved by %s", f.Lane, e.ID, strings.Join(names, ", ")))
 	}
 	return msgs
 }

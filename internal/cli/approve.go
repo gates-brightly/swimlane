@@ -17,18 +17,20 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
+	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// cmdApprove is `guard FLAG "<desc>"` when FLAG isn't set: ask the operator
+// cmdApproveHook is `guard FLAG "<desc>"` when FLAG isn't set: ask the operator
 // to approve the guarded step, through swim run (SWIM_APPROVAL) or, for a
 // lane run directly with bash, on the terminal. It records APPROVED (exit
 // 0) or SKIP as a dry run (exit 1), as guard does with the flag.
 //
 //	swim _approve N FLAG "<desc>"
-func cmdApprove(args []string) error {
+func cmdApproveHook(args []string) error {
 	if len(args) != 3 {
 		return usagef(`usage: swim _approve N FLAG "<desc>"`)
 	}
@@ -52,50 +54,70 @@ func cmdApprove(args []string) error {
 		return exitError{1}
 	}
 
-	// A remote approval (.signature) for this exact script comes first.
+	// Signed approvals come first: those of this exact script, plus the
+	// standing approvals of whoever signed the queue entry this run came
+	// from (swim approve --auto), counted together against lookup.yml.
 	sha := scriptSHA(root, n)
 	sigWhy := ""
 	if lk, err := lookup.Load(root); err != nil {
 		sigWhy = err.Error()
 	} else {
-		var whyNot []string
-		for _, f := range sigfile.ForScript(root, sha) {
-			d := f.Decide(lk, flag, time.Now())
-			if !d.OK {
-				whyNot = append(whyNot, d.Why)
-				continue
-			}
-			var names []string
-			var approvers []chain.Approver
-			for _, v := range d.Signed {
-				if v.User == "" {
-					continue
-				}
-				names = append(names, lk.Describe(v.User))
-				approvers = append(approvers, chain.Approver{Name: v.User, Key: v.Key, SignedAt: v.SignedAt, Sig: v.Sig})
-			}
-			approveRecorded = true
-			if err := cmdMark([]string{args[0], logparse.Approved, desc, "approved by signature: " + strings.Join(names, ", ")}); err != nil {
-				return err
-			}
-			if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Guard: flag, Action: desc,
-				Method: "signature", Statement: f.Statement(), Approvers: approvers}); err != nil {
-				return err
-			}
-			history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", signed by " + strings.Join(d.Users, ", ") + " in " + filepath.Base(f.Path) + ")"})
-			return nil
+		files := sigfile.ForScript(root, sha)
+		queuer := verifiedQueuer(root, lk, n, sha)
+		if queuer != "" {
+			files = append(files, sigfile.StandingFor(root, queuer)...)
 		}
-		if len(whyNot) == 0 {
-			// A signature for another version of this lane's script: say so
-			// rather than leave the operator wondering why it didn't count.
+		relevant := false
+		for _, f := range files {
+			relevant = relevant || f.Covers(flag)
+		}
+		if relevant {
+			d := sigfile.Decide(files, lk, flag, time.Now())
+			if d.OK {
+				var names []string
+				for _, u := range d.Users {
+					names = append(names, lk.Describe(u))
+				}
+				var approvers []chain.Approver
+				methods := map[string]bool{}
+				for _, g := range d.Grants {
+					methods[g.File.Kind] = true
+					for _, sg := range g.Signers {
+						ev := sg.Events[len(sg.Events)-1]
+						approvers = append(approvers, chain.Approver{Name: sg.User, Key: sg.Key, Statement: g.File.Statement(), Prev: ev.Prev, SignedAt: ev.At, Sig: ev.Sig})
+					}
+				}
+				how := "approved by " + strings.Join(names, ", ")
+				method := "signature"
+				switch {
+				case methods[sigfile.Standing] && methods[sigfile.Script]:
+					method, how = "signature+standing", how+" (signed, and standing for jobs queued by "+queuer+")"
+				case methods[sigfile.Standing]:
+					method, how = "standing", how+" (standing approval for jobs queued by "+queuer+")"
+				default:
+					how += " (signed)"
+				}
+				approveRecorded = true
+				if err := cmdMark([]string{args[0], logparse.Approved, desc, how}); err != nil {
+					return err
+				}
+				if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Guard: flag, Action: desc,
+					Method: method, Approvers: approvers}); err != nil {
+					return err
+				}
+				history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", " + method + ": " + strings.Join(d.Users, ", ") + ")"})
+				return nil
+			}
+			sigWhy = d.Why
+		} else {
+			// An approval of another version of this script: say so.
 			all, _ := sigfile.All(root)
 			for _, f := range all {
-				if f.Lane == n && f.SHA256 != sha && f.Covers(flag) {
-					whyNot = append(whyNot, fmt.Sprintf("%s approves another version of lane.%d.sh (signed %s, running %s)", filepath.Base(f.Path), n, short12(f.SHA256), short12(sha)))
+				if f.Kind == sigfile.Script && f.Lane == n && f.SHA256 != sha && f.Covers(flag) {
+					sigWhy = fmt.Sprintf("%s approves another version of lane.%d.sh (approved %s, running %s)", filepath.Base(f.Path), n, short12(f.SHA256), short12(sha))
 				}
 			}
 		}
-		sigWhy = strings.Join(whyNot, "; ")
 	}
 
 	ask, why := approvalChannel(cfg)
@@ -198,3 +220,23 @@ func deadline() time.Time {
 // approveRecorded is set when swim _approve has put an approval in the
 // chain itself, so the _mark it calls doesn't record it twice.
 var approveRecorded bool
+
+// verifiedQueuer is who queued the batch this run came from, proven by
+// their SSH signature on the queue entry (SWIM_QUEUE_ENTRY, set by swim
+// watch) and lookup.yml; "" if there's no such entry, it isn't signed by a
+// listed user, or it doesn't hold lane n's exact script.
+func verifiedQueuer(root string, lk *lookup.Lookup, n int, sha string) string {
+	path := os.Getenv("SWIM_QUEUE_ENTRY")
+	if path == "" || filepath.Dir(path) != queue.Dir(root) {
+		return ""
+	}
+	e, err := queue.Load(path)
+	if err != nil || e.QueueSig == "" || !e.Has(n, sha) {
+		return ""
+	}
+	if sign.Verify(e.QueuedKey, []byte(e.Statement()), e.QueueSig) != nil {
+		return ""
+	}
+	user, _ := lk.Who(e.QueuedKey)
+	return user
+}

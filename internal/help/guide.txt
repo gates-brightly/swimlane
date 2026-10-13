@@ -41,7 +41,10 @@ COMMANDS
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run as soon as swim is idle; queue [list|show|rm|requeue]
   watch [--once]           the queue's worker: runs queued batches when idle, consumes them
-  sign N|JOB --guards A    approve a script remotely: lane.N.sh.signature (co-sign: again)
+  wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
+  approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
+  approve --auto USER      standing approval of every job USER queues, until revoked
+  revoke N|JOB / --auto USER   withdraw your approval
   verify                   prove the chain of custody is intact (logs, scripts, signatures)
   history [RUN|N|JOB]      the chain of custody: who approved and ran what
   keys                     who's who: lookup.yml's users, keys and groups
@@ -128,7 +131,8 @@ FILES (repo root)
   .swim/snapshots/      output saved by `snapshot` steps
   .swim/chain.jsonl     chain of custody: hash-linked, signed approvals and rounds
   .swim/scripts/        every lane script a round ran, by SHA-256
-  lane.N.sh.signature   a remote approval of lane.N.sh (swim sign); also .swim/signatures/
+  approvals/            signed approvals (committed): lane.N.<sha12>.signature for one
+                        exact script, auto.USER.signature standing for USER's jobs
   lookup.yml            who's who: users' SSH keys, groups, approval rules (committed)
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
                         .running claimed by a worker, done/ consumed with results
@@ -601,24 +605,31 @@ INTERRUPTING
 
 CHAIN OF CUSTODY
   Every approval and every round is recorded in .swim/chain.jsonl, one
-  signed entry per line, each carrying the SHA-256 of the line before it:
+  signed entry per line, each carrying the SHA-256 of the line before it
+  (like commits: the sequence is the attestation):
     approve  lane, job, the script's hash, the guard and its action, who
-             approved (name, key) and how: signature (a .signature file;
-             its approvers' own signatures are copied in), prompt, flag
-             (FLAG=1), auto (-y) or queue (a queued batch's approval)
+             approved (name, key) and how: signature (approvals of this
+             script), standing (a standing approval of the queuer's jobs),
+             prompt, flag (FLAG=1), auto (-y) or queue; signed approvals
+             carry their approvers' own signed events
     round    the script's hash, the hash of the round's log section, the
              result and exit, and the approvals it used
+    grant / revoke   approvals given or withdrawn on this machine
   The runner signs each entry with its SSH key (config signing_key; default
   ~/.ssh/id_ed25519; signing: auto | required | off). The scripts that ran
   are kept by hash under .swim/scripts/. Changing a log, a kept script or
   any entry (or removing or reordering entries) is provable: swim verify.
   swim history shows the chain by approver.
-  Remote approval: an approver (anywhere, with the repo) signs the exact
-  script with swim sign N --guards FLAG and drops lane.N.sh.signature into
-  the repo; co-signers run swim sign on the same file. The guard approves
-  when the signers, named by lookup.yml, meet its rule; swim watch --signed
-  runs such rounds by itself. A script edited after signing no longer
-  matches, so its signature stops counting.
+  Approving: swim approve N --guards FLAG approves lane N's exact script;
+  co-approvers run the same; swim approve --auto USER approves every job
+  USER queues (swim queue add signs the batch with the queuer's key, so
+  who queued it is proven, not claimed), until swim revoke --auto USER.
+  The approvals live in committed files under approvals/, each an ordered,
+  signed log of approve and revoke events. A guard approves when the
+  approvers of its script plus the standing approvals of its batch's
+  queuer, named by lookup.yml, meet lookup.yml's rule for it; swim watch
+  --approved runs fully approved scripts by itself. A script edited after
+  approval no longer matches, so the approval stops counting.
   lookup.yml (repo root) names keys and groups them: see swim keys --help.
   Signing uses ssh-keygen -Y (OpenSSH 8.0+); anyone can check a signature
   with it. Signing never prompts: a key with a passphrase needs ssh-agent

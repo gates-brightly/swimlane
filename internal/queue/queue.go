@@ -34,9 +34,10 @@ const Schema = "swim.queue/v1"
 
 // Lane is one round in a batch, pinned to the job it held when queued.
 type Lane struct {
-	Lane  int    `yaml:"lane"`
-	Job   string `yaml:"job,omitempty"`
-	Round string `yaml:"round"`
+	Lane   int    `yaml:"lane"`
+	Job    string `yaml:"job,omitempty"`
+	Round  string `yaml:"round"`
+	SHA256 string `yaml:"script_sha256,omitempty"` // the exact script queued
 }
 
 // Worker is who claimed an entry.
@@ -81,9 +82,13 @@ type Entry struct {
 	Approve    []string `yaml:"approve,omitempty"`     // guard flags approved for this batch
 	ApproveAll bool     `yaml:"approve_all,omitempty"` // -y: every guard
 	Parallel   *int     `yaml:"parallel,omitempty"`
-	Signature  string   `yaml:"signature,omitempty"` // queued by swim watch --signed: the signed statement's hash
-	Worker     *Worker  `yaml:"worker,omitempty"`
-	Result     *Result  `yaml:"result,omitempty"`
+	Signature  string   `yaml:"signature,omitempty"` // queued by swim watch --approved: the approval's statement hash
+	// The queuer's SSH signature over Statement: it proves who queued the
+	// batch (standing approvals, swim approve --auto, apply to their jobs).
+	QueuedKey string  `yaml:"queued_key,omitempty"`
+	QueueSig  string  `yaml:"queue_sig,omitempty"`
+	Worker    *Worker `yaml:"worker,omitempty"`
+	Result    *Result `yaml:"result,omitempty"`
 
 	// State and Path are where the entry is now; not stored.
 	State string `yaml:"-"` // queued | running | orphaned | done
@@ -350,3 +355,28 @@ func LockWorker(root string) (unlock func(), ok bool, err error) {
 	fmt.Fprintf(f, "%s pid %d\n", hostname(), os.Getpid())
 	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, true, nil
 }
+
+// Statement is what the queuer signs: the batch's id, each lane's job and
+// exact script, and the approvals it carries.
+func (e *Entry) Statement() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "swim queue v1\nid: %s\n", e.ID)
+	for _, l := range e.Lanes {
+		fmt.Fprintf(&b, "lane: %d %s %s\n", l.Lane, l.Job, l.SHA256)
+	}
+	fmt.Fprintf(&b, "approve: %s\napprove-all: %v\n", strings.Join(e.Approve, ","), e.ApproveAll)
+	return b.String()
+}
+
+// Has reports whether the batch includes lane n with script hash sha.
+func (e *Entry) Has(n int, sha string) bool {
+	for _, l := range e.Lanes {
+		if l.Lane == n && l.SHA256 == sha {
+			return true
+		}
+	}
+	return false
+}
+
+// Load reads one entry file.
+func Load(path string) (*Entry, error) { return load(path) }

@@ -22,15 +22,19 @@ func newKey(t *testing.T, dir, name string) *sign.Key {
 	return k
 }
 
-func TestRemoteApproval(t *testing.T) {
+func setup(t *testing.T) (string, *lookup.Lookup, map[string]*sign.Key) {
 	if !sign.Available() {
 		t.Skip("ssh-keygen not installed")
 	}
 	root := t.TempDir()
-	zach, alice, mallory := newKey(t, root, "zach"), newKey(t, root, "alice"), newKey(t, root, "mallory")
+	keys := map[string]*sign.Key{}
+	for _, n := range []string{"zach", "alice", "bob", "mallory"} {
+		keys[n] = newKey(t, root, n)
+	}
 	os.WriteFile(filepath.Join(root, lookup.FileName), []byte(`users:
-  zach: {keys: ["`+zach.Public+`"]}
-  alice: {keys: ["`+alice.Public+`"]}
+  zach: {keys: ["`+keys["zach"].Public+`"]}
+  alice: {keys: ["`+keys["alice"].Public+`"]}
+  bob: {keys: ["`+keys["bob"].Public+`"]}
 groups:
   platform-admin: [zach, alice]
 require:
@@ -42,45 +46,70 @@ require:
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &File{Path: filepath.Join(root, "lane.3.sh.signature"), Script: "lane.3.sh", SHA256: "abc123", Lane: 3, Job: "j", Approves: []string{"FIN_ALLOW_DELETE", "OTHER"}}
-	f.Sign(zach, "zach")
+	return root, l, keys
+}
+
+func TestApproveRevokeSequence(t *testing.T) {
+	root, l, k := setup(t)
+	f := &File{Kind: Script, Path: ScriptPath(root, 3, "abc123abc123abc123"), Script: "lane.3.sh", SHA256: "abc123abc123abc123", Lane: 3, Approves: []string{"FIN_ALLOW_DELETE", "OTHER"}}
 	now := time.Now()
-	if d := f.Decide(l, "FIN_ALLOW_DELETE", now); d.OK || !strings.Contains(d.Why, "needs 2 signature(s) from platform-admin, has 1") {
+	f.Add(k["zach"], Approve, "zach")
+	if d := Decide([]*File{f}, l, "FIN_ALLOW_DELETE", now); d.OK || !strings.Contains(d.Why, "needs 2 signature(s) from platform-admin, has 1") {
 		t.Fatalf("one of two: %+v", d)
 	}
-	if d := f.Decide(l, "OTHER", now); !d.OK || strings.Join(d.Users, ",") != "zach" {
-		t.Fatalf("default rule, one known signer: %+v", d)
+	if d := Decide([]*File{f}, l, "OTHER", now); !d.OK {
+		t.Fatalf("default rule: %+v", d)
 	}
-	f.Sign(mallory, "mallory") // valid signature, unknown key: doesn't count
-	if d := f.Decide(l, "FIN_ALLOW_DELETE", now); d.OK || !strings.Contains(d.Why, "1 signer(s) not in lookup.yml") {
+	f.Add(k["mallory"], Approve, "mallory")
+	if d := Decide([]*File{f}, l, "FIN_ALLOW_DELETE", now); d.OK || !strings.Contains(d.Why, "1 signer(s) not in lookup.yml") {
 		t.Fatalf("unknown signer: %+v", d)
 	}
-	f.Sign(alice, "alice")
+	f.Add(k["alice"], Approve, "alice")
+	if d := Decide([]*File{f}, l, "FIN_ALLOW_DELETE", now); !d.OK || strings.Join(d.Users, ",") != "alice,zach" {
+		t.Fatalf("two admins: %+v", d)
+	}
+	// Alice revokes: no longer enough. Then approves again: enough again.
+	f.Add(k["alice"], Revoke, "alice")
+	if d := Decide([]*File{f}, l, "FIN_ALLOW_DELETE", now); d.OK {
+		t.Fatal("a revoked approval still counted")
+	}
+	f.Add(k["alice"], Approve, "alice")
 	if err := f.Save(); err != nil {
 		t.Fatal(err)
 	}
-	g, err := Load(f.Path)
-	if err != nil {
-		t.Fatal(err)
+	g, _ := Load(f.Path)
+	if d := Decide([]*File{g}, l, "FIN_ALLOW_DELETE", now); !d.OK {
+		t.Fatalf("re-approved after a revoke: %+v", d)
 	}
-	if d := g.Decide(l, "FIN_ALLOW_DELETE", now); !d.OK || strings.Join(d.Users, ",") != "alice,zach" {
-		t.Fatalf("two platform-admins: %+v", d)
+
+	// The order is attested: drop the revoke, and the chain breaks there.
+	g.Events = append(g.Events[:3], g.Events[4:]...)
+	signers, bad := g.Standing(l)
+	if len(bad) != 1 || !strings.Contains(bad[0], "event 4 breaks the chain") || len(signers) != 3 {
+		t.Fatalf("removed event: signers %d, %v", len(signers), bad)
 	}
-	if d := g.Decide(l, "NOT_LISTED", now); d.OK {
-		t.Error("approved a guard it doesn't name")
-	}
-	// Tampering: change what it approves, and every signature fails.
-	g.Approves = append(g.Approves, "SNEAKY")
-	if v, bad := g.Verify(l); len(v) != 0 || len(bad) != 3 {
-		t.Errorf("edited statement: %d verified, %d bad", len(v), len(bad))
-	}
-	// Expiry.
+	// Changing the statement invalidates every event.
 	g, _ = Load(f.Path)
-	g.Expires = now.Add(-time.Minute).UTC().Format(time.RFC3339)
-	if d := g.Decide(l, "OTHER", now); d.OK || !strings.Contains(d.Why, "expired") {
-		t.Errorf("expired: %+v", d)
+	g.Approves = append(g.Approves, "SNEAKY")
+	if s, bad := g.Standing(l); len(s) != 0 || len(bad) == 0 {
+		t.Fatalf("edited statement: %d signers, %v", len(s), bad)
 	}
-	if got := ForScript(root, "abc123"); len(got) != 1 {
-		t.Errorf("ForScript: %d", len(got))
+}
+
+func TestStandingCombinesWithScript(t *testing.T) {
+	root, l, k := setup(t)
+	standing := &File{Kind: Standing, For: "bob", All: true, Path: StandingPath(root, "bob")}
+	standing.Add(k["zach"], Approve, "zach")
+	script := &File{Kind: Script, SHA256: "def456def456def456", Lane: 1, Approves: []string{"FIN_ALLOW_DROP"}, Path: ScriptPath(root, 1, "def456def456def456")}
+	script.Add(k["alice"], Approve, "alice")
+	now := time.Now()
+	if d := Decide([]*File{standing}, l, "FIN_ALLOW_DROP", now); d.OK {
+		t.Fatal("one standing approval shouldn't meet 2 of platform-admin")
+	}
+	if d := Decide([]*File{standing, script}, l, "FIN_ALLOW_DROP", now); !d.OK || strings.Join(d.Users, ",") != "alice,zach" {
+		t.Fatalf("standing + script: %+v", d)
+	}
+	if !strings.Contains(standing.Statement(), "for: bob") || standing.StatementHash() == script.StatementHash() {
+		t.Error("statements")
 	}
 }

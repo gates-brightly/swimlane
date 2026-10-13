@@ -5,6 +5,7 @@
 package launcher
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -70,6 +71,9 @@ type Options struct {
 	// named by job id, and every lane swim ci selects): a lane script
 	// rewritten in the meantime is skipped, not run.
 	Pins map[int]string
+	// PinSHA holds the exact script (SHA-256) a lane must hold when it
+	// starts (queued batches): an edit since it was queued skips it.
+	PinSHA map[int]string
 	// Heartbeat, if set, prints "[N] still running: <step> (<elapsed>)"
 	// for a running lane silent this long, so a CI log never looks hung.
 	Heartbeat time.Duration
@@ -466,6 +470,11 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
 	}
 
+	if want := o.PinSHA[n]; want != "" {
+		if data, err := os.ReadFile(lane.Script(o.Root, n)); err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != want {
+			return skip(fmt.Sprintf("lane.%d.sh changed since it was queued (queued %s)", n, want[:12]))
+		}
+	}
 	// A lane named by job id runs only if its script still holds that job.
 	if pin := o.Pins[n]; pin != "" {
 		if now, _ := lane.ReadScript(o.Root, n); !lane.MatchJob(now.Job, pin) {

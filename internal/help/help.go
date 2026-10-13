@@ -374,7 +374,8 @@ var Commands = map[string]string{
   restored from a CI cache).
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
-swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT]
+swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait]
+swim queue N|JOB ... [flags]     (shorthand for swim queue add)
 swim queue show|rm|requeue ID
 
   Queue a batch of rounds to run as soon as swim is idle, by a worker
@@ -388,6 +389,8 @@ swim queue show|rm|requeue ID
                             FLAG,FLAG); it must be a guard of a lane in the
                             batch, so a typo fails here, not at 3am
             -y, --yes       approve every guard in the batch
+            --wait          then block like swim wait, and exit with the
+                            batch's result (0 passed, 1 otherwise)
             A queued batch never asks: guards it doesn't approve are dry
             runs, and a guard flag in the worker's own environment does not
             count (the queue entry alone says what may change).
@@ -403,7 +406,7 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [-y] [--signed] [--interval D]
+	"watch": `swim watch [--once] [-y] [--approved] [--interval D]
 
   The queue's worker. Runs each queued batch (swim queue add), oldest
   first, as soon as swim is idle in this repo: no lane running and no other
@@ -414,10 +417,9 @@ swim queue show|rm|requeue ID
   One batch runs at a time per repo (a worker lock), so several workers
   can share a queue.
   --once         run every queued batch, then exit (non-zero if one failed)
-  --signed       also queue, by itself, every lane whose script has a complete
-                 remote approval (a .signature meeting lookup.yml's rules, see
-                 swim sign), once per approval; dropping the signature is
-                 what makes it run
+  --approved     also queue, by itself, every lane whose exact script is fully
+                 approved (swim approve, meeting lookup.yml's rules), once per
+                 approval: the last approval is what makes it run
   -y, --yes      approve every guard in every batch, beyond what the batch
                  approves (the worker's say-so: logged as "approved by swim
                  watch -y (<user>)", and in the consumed entry as approved_by).
@@ -428,25 +430,51 @@ swim queue show|rm|requeue ID
   and the watch exits; between batches, the watch exits at once. Batches
   still waiting stay queued.
 `,
-	"sign": `swim sign N|JOB|lane.N.sh [--guards A,B | --all] [--expires D] [--key K] [--note T] [-o FILE]
+	"wait": `swim wait [--interval D] [--timeout D]
 
-  Approve a lane script remotely: write (or co-sign) lane.N.sh.signature,
-  which states the exact script (its SHA-256, lane, job and round) and the
-  guards it approves, with your SSH signature over that statement. Drop the
-  file beside the script (or in .swim/signatures/); when the lane's guard
-  runs, under swim run, swim watch or swim ci, the signature approves it if
-  its signers, looked up in lookup.yml, meet lookup.yml's rule for that
-  guard (default: one listed user). No prompt, no flag needed.
-  --guards A,B  which guards it approves (must be the script's guards)
-  --all         every guard
-  --expires D   it stops counting after D (24h)
-  --key K       sign with this key (default: config signing_key, then
-                ~/.ssh/id_ed25519; a .pub path signs through ssh-agent)
-  Co-signing: run swim sign again (another person, their key) on the same
-  file; it signs the same statement, so --guards/--all/--expires can't
-  change. If the script changes, the signature no longer matches it (swim
-  verify says "stale"): approve the new version with a new file.
-  swim watch --signed queues fully signed rounds by itself.
+  Block until swim is idle and nothing new is about to start: no lane
+  running, no swim run waiting on lanes, and no batch queued or running
+  (an orphaned batch never runs, so it doesn't count). Prints what it is
+  waiting on whenever that changes. Use it in scripts to wait out the
+  current work and the queue behind it; swim queue add --wait does the
+  same after queueing. With batches queued and no worker up, it waits
+  until one starts (swim watch).
+  --interval D   how often to check (default 2s)
+  --timeout D    give up after D (exit 1, saying what is still busy)
+`,
+	"approve": `swim approve                                    list approvals and standing approvals
+swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K]
+swim approve --auto USER [--guards A,B | --all] [--key K]
+
+  How approvers act. Every approval is an SSH-signed event in a committed
+  file under approvals/, so an approver anywhere (with the repo) can add
+  theirs and push it; the files are hash-linked logs of approve and revoke
+  events, so their order is attested like commits.
+  swim approve N   approve this exact lane script (its SHA-256): its guards
+                   (--guards, or --all) approve without a prompt or flag when
+                   the approvers, named by lookup.yml, meet lookup.yml's rule
+                   for each guard. Another approver runs the same command to
+                   co-approve (the statement can't change). Writes
+                   approvals/lane.N.<sha12>.signature. If the script changes
+                   it no longer matches: approve the new version.
+  --auto USER      a standing approval: every job USER queues (swim queue add,
+                   signed with USER's key) is approved, by you, for the guards
+                   given (default every guard). It is never consumed: it
+                   stands until you revoke it. Writes approvals/auto.USER.signature.
+  Approvals of a script and standing approvals for its queuer count
+  together toward a rule (zach standing for bob + alice approving the script
+  = 2 of platform-admin).
+  --key K    sign with this key (default: config signing_key, then
+             ~/.ssh/id_ed25519; a .pub path signs through ssh-agent)
+  swim watch --approved runs fully approved scripts by itself.
+`,
+	"revoke": `swim revoke N|JOB [--key K]
+swim revoke --auto USER [--key K]
+
+  Withdraw your approval: of lane N's script (every version you approved),
+  or your standing approval of USER's queued jobs. Adds a signed revoke
+  event; your approval stops counting from then on (approving again adds
+  another approve event). A round that already ran keeps its record.
 `,
 	"verify": `swim verify [--strict]
 
@@ -458,8 +486,8 @@ swim queue show|rm|requeue ID
       edited after the round ended is caught), and the copy of its script
       kept under .swim/scripts/<sha256>.sh is unchanged
     - every signed approval's signatures check out
-  and lists the .signature files present (current, or stale: the script
-  changed since). Exits 1 on any break. --strict also fails on unsigned
+  and checks every approvals file under approvals/ event by event (listing
+  each, and whether a script approval is stale: the script changed since). Exits 1 on any break. --strict also fails on unsigned
   entries and on signers not in lookup.yml.
 `,
 	"history": `swim history [RUN|N|JOB] [--yaml]

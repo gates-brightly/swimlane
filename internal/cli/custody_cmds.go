@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
@@ -23,52 +24,33 @@ import (
 
 var laneFileRE = regexp.MustCompile(`(?:^|/)lane\.([0-9]+)\.sh$`)
 
-// cmdSign makes or co-signs a remote approval for one lane script:
+// cmdApprove is how approvers act:
 //
-//	swim sign N|JOB|lane.N.sh [--guards A,B | --all] [--expires D] [--key K] [--note T] [-o FILE]
-func cmdSign(args []string) error {
-	var guards, expires, keyPath, note, out string
+//	swim approve                                  list approvals and standing approvals
+//	swim approve N|JOB [--guards A,B | --all]     approve this exact lane script
+//	swim approve --auto USER [--guards A,B|--all] standing approval of USER's queued jobs
+//
+// Each adds a signed event to a file under approvals/ (created if new;
+// otherwise co-signed). --key picks the key, --expires D and --note T
+// describe a new approval.
+func cmdApprove(args []string) error {
+	var guards, expires, keyPath, note, auto string
 	var all bool
-	args = append([]string(nil), args...)
-	for i, a := range args {
-		if a == "-o" {
-			args[i] = "--out"
-		}
-	}
 	rest, err := flags{bools: map[string]*bool{"all": &all},
-		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "out": &out}}.parse(args)
+		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto}}.parse(args)
 	if err != nil {
 		return err
-	}
-	if len(rest) != 1 {
-		return usagef("usage: swim sign N|JOB|lane.N.sh [--guards A,B | --all] [--expires D] [--key K] [--note T] [-o FILE]")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
 		return err
 	}
-	var n int
-	if m := laneFileRE.FindStringSubmatch(rest[0]); m != nil {
-		n, _ = strconv.Atoi(m[1])
-	} else if n, err = laneRef(root, cfg, rest[0], false); err != nil {
-		return err
-	}
-	script := lane.Script(root, n)
-	data, err := os.ReadFile(script)
-	if err != nil {
-		return fmt.Errorf("swim %d has no lane script (%s)", n, filepath.Base(script))
-	}
-	info, err := lane.ReadScript(root, n)
-	if err != nil {
-		return err
-	}
-	sha := chain.Hash(data)
-	if out == "" {
-		out = script + ".signature"
-	}
 	lk, err := lookup.Load(root)
 	if err != nil {
 		return err
+	}
+	if auto == "" && len(rest) == 0 {
+		return listApprovals(root, lk)
 	}
 	var approves []string
 	for _, g := range strings.Split(guards, ",") {
@@ -77,25 +59,63 @@ func cmdSign(args []string) error {
 		}
 	}
 	sort.Strings(approves)
-
-	f, err := sigfile.Load(out)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		// A new approval: it must say what it approves.
-		if len(approves) == 0 && !all {
-			return usagef("say what this approves: --guards FLAG[,FLAG] or --all")
+	var f *sigfile.File
+	var scriptGuards []string
+	if auto != "" {
+		if len(rest) > 0 {
+			return usagef("swim approve --auto USER takes no lanes (it approves every job USER queues)")
 		}
+		if _, ok := lk.Users[auto]; !ok {
+			return fmt.Errorf("--auto %s: no user %s in lookup.yml (standing approvals are for people swim can identify)", auto, auto)
+		}
+		f, err = loadOrNew(sigfile.StandingPath(root, auto), func() *sigfile.File {
+			return &sigfile.File{Kind: sigfile.Standing, For: auto}
+		})
+	} else {
+		if len(rest) != 1 {
+			return usagef("usage: swim approve N|JOB [--guards A,B | --all]  or  swim approve --auto USER")
+		}
+		var n int
+		if m := laneFileRE.FindStringSubmatch(rest[0]); m != nil {
+			n, _ = strconv.Atoi(m[1])
+		} else if n, err = laneRef(root, cfg, rest[0], false); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(lane.Script(root, n))
+		if err != nil {
+			return fmt.Errorf("swim %d has no lane script", n)
+		}
+		info, err := lane.ReadScript(root, n)
+		if err != nil {
+			return err
+		}
+		scriptGuards = info.GuardFlags()
+		sha := chain.Hash(data)
 		known := map[string]bool{}
-		for _, g := range info.Guards {
-			known[g.Flag] = true
+		for _, g := range scriptGuards {
+			known[g] = true
 		}
 		for _, g := range approves {
 			if !known[g] {
-				return fmt.Errorf("--guards %s: lane.%d.sh has no guard %s (its guards: %s)", g, n, g, or(strings.Join(info.GuardFlags(), ", "), "none"))
+				return fmt.Errorf("--guards %s: lane.%d.sh has no guard %s (its guards: %s)", g, n, g, or(strings.Join(scriptGuards, ", "), "none"))
 			}
 		}
-		f = &sigfile.File{Path: out, Script: filepath.Base(script), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round,
-			Approves: approves, All: all, Note: note}
+		f, err = loadOrNew(sigfile.ScriptPath(root, n, sha), func() *sigfile.File {
+			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round}
+		})
+	}
+	if err != nil {
+		return err
+	}
+	if len(f.Events) == 0 {
+		// A new approval states what it approves.
+		if len(approves) == 0 && !all {
+			if auto == "" {
+				return usagef("say what this approves: --guards FLAG[,FLAG] or --all")
+			}
+			all = true // a standing approval defaults to every guard
+		}
+		f.Approves, f.All, f.Note = approves, all, note
 		if expires != "" {
 			d, err := time.ParseDuration(expires)
 			if err != nil || d <= 0 {
@@ -103,35 +123,121 @@ func cmdSign(args []string) error {
 			}
 			f.Expires = time.Now().Add(d).UTC().Format(time.RFC3339)
 		}
-	case err != nil:
-		return err
-	default:
-		// Co-signing: the statement must stay exactly what others signed.
-		if f.SHA256 != sha {
-			return fmt.Errorf("%s approves a different version of lane.%d.sh (signed %s, now %s): the script changed since; remove the file to approve the new one", filepath.Base(out), n, f.SHA256[:12], sha[:12])
-		}
-		if (len(approves) > 0 && strings.Join(approves, ",") != strings.Join(f.Approves, ",")) || (all && !f.All) || expires != "" {
-			return fmt.Errorf("%s already states what it approves (%s); co-signing signs that statement as is (drop --guards/--all/--expires)", filepath.Base(out), approvesText(f))
-		}
+	} else if (len(approves) > 0 && strings.Join(approves, ",") != strings.Join(f.Approves, ",")) || (all && !f.All) || expires != "" {
+		return fmt.Errorf("%s already states what it approves (%s); approving again signs that statement as is (drop --guards/--all/--expires, or revoke and start a new one)", rel(root, f.Path), approvesText(f))
 	}
 	key, err := sign.LoadKey(or(keyPath, cfg.SigningKey))
 	if err != nil {
 		return err
 	}
 	name, known := lk.Who(key.Public)
-	if err := f.Sign(key, name); err != nil {
+	if f.HasApproved(lk, key.Public) {
+		fmt.Printf("you already approve %s; nothing to add\n", rel(root, f.Path))
+		return nil
+	}
+	if err := f.Add(key, sigfile.Approve, name); err != nil {
 		return err
 	}
 	if err := f.Save(); err != nil {
 		return err
 	}
+	recordGrant(root, cfg, f, sigfile.Approve, key, name)
 	who := name
 	if !known {
 		who = "your key " + sign.Fingerprint(key.Public) + " (not in lookup.yml: it won't count until it's listed)"
 	}
-	fmt.Printf("signed %s as %s: lane.%d.sh %s, approves %s\n", rel(root, out), who, n, sha[:12], approvesText(f))
-	printDecisions(root, lk, f, info.GuardFlags())
+	what := fmt.Sprintf("lane.%d.sh %s", f.Lane, short12(f.SHA256))
+	if f.Kind == sigfile.Standing {
+		what = "every job " + f.For + " queues (standing; revoke with swim revoke --auto " + f.For + ")"
+	}
+	fmt.Printf("approved %s as %s: approves %s (%s)\n", what, who, approvesText(f), rel(root, f.Path))
+	printDecision(lk, f, scriptGuards)
 	return nil
+}
+
+// cmdRevoke withdraws your approval: swim revoke N|JOB, or swim revoke
+// --auto USER. It adds a signed revoke event; the approval stops counting.
+func cmdRevoke(args []string) error {
+	var keyPath, auto string
+	rest, err := flags{strs: map[string]*string{"key": &keyPath, "auto": &auto}}.parse(args)
+	if err != nil {
+		return err
+	}
+	root, cfg, err := repoNoMigrate()
+	if err != nil {
+		return err
+	}
+	lk, err := lookup.Load(root)
+	if err != nil {
+		return err
+	}
+	key, err := sign.LoadKey(or(keyPath, cfg.SigningKey))
+	if err != nil {
+		return err
+	}
+	var files []*sigfile.File
+	switch {
+	case auto != "" && len(rest) == 0:
+		files = sigfile.StandingFor(root, auto)
+	case auto == "" && len(rest) == 1:
+		n, err := laneRef(root, cfg, rest[0], true)
+		if err != nil {
+			return err
+		}
+		// Every version of the lane's script you approve: revoking means
+		// you no longer approve this lane's change.
+		all, _ := sigfile.All(root)
+		for _, f := range all {
+			if f.Kind == sigfile.Script && f.Lane == n {
+				files = append(files, f)
+			}
+		}
+	default:
+		return usagef("usage: swim revoke N|JOB  or  swim revoke --auto USER")
+	}
+	name, _ := lk.Who(key.Public)
+	revoked := 0
+	for _, f := range files {
+		if !f.HasApproved(lk, key.Public) {
+			continue
+		}
+		if err := f.Add(key, sigfile.Revoke, name); err != nil {
+			return err
+		}
+		if err := f.Save(); err != nil {
+			return err
+		}
+		recordGrant(root, cfg, f, sigfile.Revoke, key, name)
+		fmt.Printf("revoked your approval in %s\n", rel(root, f.Path))
+		revoked++
+	}
+	if revoked == 0 {
+		return fmt.Errorf("you have no standing approval there to revoke")
+	}
+	return nil
+}
+
+func loadOrNew(path string, fresh func() *sigfile.File) (*sigfile.File, error) {
+	f, err := sigfile.Load(path)
+	if errors.Is(err, os.ErrNotExist) {
+		f = fresh()
+		f.Path = path
+		return f, nil
+	}
+	return f, err
+}
+
+// recordGrant puts an approve or revoke action in the chain of custody.
+func recordGrant(root string, cfg *config.Config, f *sigfile.File, typ string, key *sign.Key, name string) {
+	e := chain.Entry{Type: "grant", Method: typ, Lane: f.Lane, Job: f.Job, Script: f.SHA256, Statement: f.Statement(),
+		Approvers: []chain.Approver{{Name: name, Key: key.Public}}}
+	if typ == sigfile.Revoke {
+		e.Type = "revoke"
+	}
+	if f.Kind == sigfile.Standing {
+		e.Action = "standing approval for jobs queued by " + f.For
+	}
+	record(root, cfg, e)
 }
 
 func approvesText(f *sigfile.File) string {
@@ -141,21 +247,52 @@ func approvesText(f *sigfile.File) string {
 	return strings.Join(f.Approves, ", ")
 }
 
-// printDecisions says, per guard, whether the file approves it yet.
-func printDecisions(root string, lk *lookup.Lookup, f *sigfile.File, scriptGuards []string) {
+// printDecision says, per guard, whether the approval is enough yet.
+func printDecision(lk *lookup.Lookup, f *sigfile.File, scriptGuards []string) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	flags := f.Approves
 	if f.All {
 		flags = scriptGuards
 	}
 	for _, g := range flags {
-		d := f.Decide(lk, g, time.Now())
+		d := sigfile.Decide([]*sigfile.File{f}, lk, g, time.Now())
 		if d.OK {
-			fmt.Println("  " + p.Paint(ui.Green, "approved: "+g+" (signed by "+strings.Join(d.Users, ", ")+")"))
+			fmt.Println("  " + p.Paint(ui.Green, "approved: "+g+" ("+strings.Join(d.Users, ", ")+")"))
 		} else {
 			fmt.Println("  " + p.Paint(ui.Yellow, "not yet:  "+g+": "+d.Why))
 		}
 	}
+}
+
+// listApprovals shows every approvals file: what it approves and whose
+// approvals stand.
+func listApprovals(root string, lk *lookup.Lookup) error {
+	files, errs := sigfile.All(root)
+	for _, e := range errs {
+		fmt.Fprintln(os.Stderr, "swim approve: "+e.Error())
+	}
+	if len(files) == 0 {
+		fmt.Println("no approvals yet: swim approve N --guards FLAG (this script) or swim approve --auto USER (standing)")
+		return nil
+	}
+	for _, f := range files {
+		signers, bad := f.Standing(lk)
+		var names []string
+		for _, s := range signers {
+			names = append(names, or(s.User, "unknown "+sign.Fingerprint(s.Key)))
+		}
+		what := fmt.Sprintf("swim %d (lane.%d.sh %s)", f.Lane, f.Lane, short12(f.SHA256))
+		if f.Kind == sigfile.Standing {
+			what = "standing: every job " + f.For + " queues"
+		} else if data, err := os.ReadFile(lane.Script(root, f.Lane)); err != nil || chain.Hash(data) != f.SHA256 {
+			what += " · stale: the script changed since"
+		}
+		fmt.Printf("%s\n  approves %s · approved by %s · %d events (%s)\n", what, approvesText(f), or(strings.Join(names, ", "), "nobody now"), len(f.Events), rel(root, f.Path))
+		for _, b := range bad {
+			fmt.Println("  BROKEN: " + b)
+		}
+	}
+	return nil
 }
 
 // cmdKeys shows who's who: lookup.yml's users, keys and groups, and the
@@ -312,6 +449,20 @@ func cmdHistory(args []string) error {
 				exit = fmt.Sprintf(" exit %d", *l.Exit)
 			}
 			fmt.Printf("#%-4d %s  %s  swim %d  %s%s  script %s  log %s  %d approval(s)\n", l.Seq, l.At, p.Paint(ui.StateColor(l.Result)+ui.Bold, "round"), l.Lane, l.Result, exit, short12(l.Script), short12(l.Log), len(l.Approvals))
+		case "grant", "revoke":
+			var names []string
+			for _, a := range l.Approvers {
+				names = append(names, or(a.Name, who(lk, a.Key)))
+			}
+			what := l.Action
+			if what == "" {
+				what = fmt.Sprintf("swim %d script %s", l.Lane, short12(l.Script))
+			}
+			verb, color := "approved", ui.Green
+			if l.Type == "revoke" {
+				verb, color = "revoked", ui.Yellow
+			}
+			fmt.Printf("#%-4d %s  %s  %s  by %s\n", l.Seq, l.At, p.Paint(color, verb), what, strings.Join(names, ", "))
 		default:
 			fmt.Printf("#%-4d %s  %s\n", l.Seq, l.At, l.Type)
 		}
@@ -393,11 +544,13 @@ func cmdVerify(args []string) error {
 			}
 		case "approve":
 			approvals++
-			if l.Method == "signature" {
-				for _, a := range l.Approvers {
-					if err := sigfile.VerifyStatement(l.Statement, a.Key, a.SignedAt, a.Sig); err != nil {
-						bad = append(bad, fmt.Sprintf("entry #%d: %s's approval signature: %v", l.Seq, or(a.Name, "an approver"), err))
-					}
+			for _, ap := range l.Approvers {
+				if ap.Statement == "" || ap.Sig == "" {
+					continue
+				}
+				ev := sigfile.Event{Type: sigfile.Approve, Key: ap.Key, At: ap.SignedAt, Prev: ap.Prev, Sig: ap.Sig}
+				if err := sigfile.VerifyEvent(ap.Statement, ev); err != nil {
+					bad = append(bad, fmt.Sprintf("entry #%d: %s's approval signature: %v", l.Seq, or(ap.Name, "an approver"), err))
 				}
 			}
 		}
@@ -411,18 +564,17 @@ func cmdVerify(args []string) error {
 		bad = append(bad, e.Error())
 	}
 	for _, f := range files {
-		cur := ""
-		if data, err := os.ReadFile(lane.Script(root, f.Lane)); err == nil {
-			cur = chain.Hash(data)
+		signers, broken := f.Standing(lk)
+		for _, b := range broken {
+			bad = append(bad, rel(root, f.Path)+": "+b)
 		}
-		state := "matches lane." + strconv.Itoa(f.Lane) + ".sh"
-		if cur != f.SHA256 {
-			state = "stale: lane." + strconv.Itoa(f.Lane) + ".sh changed since it was signed"
+		state := ""
+		if f.Kind == sigfile.Script {
+			if data, err := os.ReadFile(lane.Script(root, f.Lane)); err != nil || chain.Hash(data) != f.SHA256 {
+				state = "; stale: lane." + strconv.Itoa(f.Lane) + ".sh changed since"
+			}
 		}
-		if _, badSigs := f.Verify(lk); len(badSigs) > 0 {
-			bad = append(bad, rel(root, f.Path)+": "+strings.Join(badSigs, "; "))
-		}
-		fmt.Printf("signature %s: approves %s; %d signatories; %s\n", rel(root, f.Path), approvesText(f), len(f.Signatories), state)
+		fmt.Printf("approvals %s: %s, approves %s; %d standing of %d events%s\n", rel(root, f.Path), f.Kind, approvesText(f), len(signers), len(f.Events), state)
 	}
 	for _, w := range warn {
 		fmt.Println(p.Paint(ui.Yellow, "warning: "+w))

@@ -257,10 +257,12 @@ stops swim with instructions to update it.
 | `swim stub N\|JOB "<message>"` | Replace a lane script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision or finding in the project log. |
 | `swim config [KEY [VALUE]] [--repo]` | Show the effective config (`--path`: its location), or get/set `chime`, `chime_style`, `chime_min_s` or `lanes` (`--lanes N` still works), keeping the file's comments. Writes go under `defaults:`, or this repo's section with `--repo`. |
-| `swim queue add [N\|JOB ...] [--approve FLAG] [-y]` | Queue a batch of rounds, pinned to their jobs and with their approvals, to run as soon as swim is idle. `swim queue` lists the queue; `show`, `rm` and `requeue` manage entries. |
+| `swim queue add [N\|JOB ...] [--approve FLAG] [-y] [--wait]` | Queue a batch of rounds, pinned to their jobs and with their approvals, to run as soon as swim is idle. `swim queue 1 2 3` is short for `swim queue add 1 2 3`. `swim queue` lists the queue; `show`, `rm` and `requeue` manage entries. |
+| `swim wait [--timeout D]` | Block until swim is idle and nothing new is about to start: no lane running and no batch queued or running. `swim queue 1 2 3 --wait` queues a batch, waits the same way, and exits with the batch's result. |
 | `swim watch [--once] [-y]` | The queue's worker: runs each queued batch when swim is idle, then consumes it. One batch at a time per repo, so several workers can share a queue. `-y` approves every guard the batches don't approve themselves, logged as the worker's approval. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--junit FILE]` | Run rounds in a CI job: grouped per lane, failures as annotations, a job summary and JUnit; `--changed` runs only the rounds a push or merge request changed. |
-| `swim sign N\|JOB --guards A,B` | Approve a lane script remotely: writes or co-signs `lane.N.sh.signature` (SSH-signed, for that exact script's hash). The guard approves when the signers in `lookup.yml` meet its rule; `swim watch --signed` runs it by itself. |
+| `swim approve N\|JOB --guards A,B` | Approve that exact lane script, SSH-signed in `approvals/`. Others co-approve the same way. The guard approves when the approvers in `lookup.yml` meet its rule. `swim approve` alone lists approvals. |
+| `swim approve --auto USER` / `swim revoke …` | A standing approval of every job USER queues, never consumed; `swim revoke N` or `swim revoke --auto USER` withdraws yours. |
 | `swim verify` / `swim history` / `swim keys` | Prove the chain of custody is intact (logs, scripts, signatures, hash links); show it by approver; show who's who in `lookup.yml`. |
 | `swim interrupt N\|JOB` | Ask one running lane to stop at its next step boundary (what the first Ctrl-C does to every lane). |
 | `swim lint [N\|JOB ...] [--strict] [--yaml]` | Check lane scripts (header, `set -e`, `lane_init`, `summary`, stages, bash 3.2, guards, blocked commands, secrets, dependencies); exits 1 on errors (`--strict`: warnings too). `swim run` refuses to start on `set -e` and `lane_init` errors. |
@@ -451,13 +453,21 @@ hash of the entry before it.
   reordered, including the logs and the copies of every script that ran.
   `swim history` shows the chain by approver.
 
-Approvers don't need to be at the terminal. `swim sign 3 --guards
-FIN_ALLOW_DROP` writes `lane.3.sh.signature`, an SSH signature over that
-exact script and the guards it approves. Co-signers sign the same file.
-`lookup.yml`, committed at the repo root, maps keys to people and groups and
-sets the rules, for example "`FIN_ALLOW_*` needs two of platform-admin". Run
-`swim watch --signed`, and dropping in the signature is what makes the round
-run.
+Approvers don't need to be at the terminal:
+
+- **One script:** `swim approve 3 --guards FIN_ALLOW_DROP` approves that
+  exact script, as a signed event in `approvals/` (committed, so it travels
+  with a push). Co-approvers run the same command.
+- **Standing:** `swim approve --auto bob` approves every job bob queues
+  until `swim revoke --auto bob`. `swim queue add` signs batches with the
+  queuer's key, so "queued by bob" is proven, not claimed.
+- **Order is the attestation:** each approvals file is an ordered,
+  hash-linked log of approve and revoke events, like commits.
+- **Rules:** `lookup.yml` maps keys to people and groups and sets the
+  rules, for example "`FIN_ALLOW_*` needs two of platform-admin". Script
+  approvals and standing approvals count together toward them.
+- **Unattended:** with `swim watch --approved`, the last approval is what
+  makes the round run.
 
 ```yaml
 # lookup.yml

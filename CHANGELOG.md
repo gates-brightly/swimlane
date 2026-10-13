@@ -45,16 +45,30 @@ To cut a release:
   - **Config:** `signing_key` and `signing: auto|required|off`. Signing
     uses `ssh-keygen -Y` and never prompts; use ssh-agent for keys with a
     passphrase.
-- **Remote approval:** `swim sign N --guards FLAG` writes
-  `lane.N.sh.signature`, an SSH-signed approval of that exact script.
-  - **Co-signing:** others sign the same file.
-  - **Counting:** the guard approves when its signers meet `lookup.yml`'s
-    rule. A script edited after signing no longer matches.
-  - **Unattended:** `swim watch --signed` runs fully signed rounds by
+- **Approving (`swim approve`, `swim revoke`):**
+  - **One script:** `swim approve N --guards FLAG` approves that exact
+    script. Co-approvers run the same command.
+  - **Standing:** `swim approve --auto USER` approves every job USER queues,
+    never consumed. `swim queue add` signs batches with the queuer's key, so
+    "queued by USER" is proven, not claimed. Script and standing approvals
+    count together.
+  - **Withdrawing:** `swim revoke N` or `swim revoke --auto USER`.
+  - **Storage:** approvals are signed, hash-linked logs of approve and
+    revoke events in committed files under `approvals/`. Their order is the
+    attestation, like commits. `swim approve` lists them.
+  - **Unattended:** `swim watch --approved` runs fully approved scripts by
     itself.
+  - **Pinned scripts:** queued batches now pin each lane's exact script
+    hash. A lane edited after queueing is skipped.
 - **`lookup.yml`:** names SSH keys (users with any number of keys), groups
   users (groups can nest), and sets `require` rules such as "`FIN_ALLOW_*`
   needs 2 of platform-admin". `swim keys` shows it.
+- **`swim wait`:** blocks until swim is idle and nothing new is about to
+  start: no lane running, no swim run waiting, no batch queued or running.
+  `--timeout D` gives up after D.
+- **`swim queue 1 2 3 --wait`:** `swim queue N ...` is short for
+  `swim queue add N ...`, and `--wait` blocks like `swim wait`, then exits
+  with the batch's result.
 
 ### Changed
 

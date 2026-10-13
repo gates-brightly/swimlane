@@ -48,7 +48,9 @@ func init() {
 		"ci":        {run: cmdCi},
 		"queue":     {run: cmdQueue},
 		"watch":     {run: cmdWatch},
-		"sign":      {run: cmdSign},
+		"wait":      {run: cmdWait},
+		"approve":   {run: cmdApprove},
+		"revoke":    {run: cmdRevoke},
 		"verify":    {run: cmdVerify},
 		"history":   {run: cmdHistory},
 		"keys":      {run: cmdKeys},
@@ -58,7 +60,7 @@ func init() {
 		"_start":   {run: cmdStart, hidden: true},
 		"_finish":  {run: cmdFinish, hidden: true},
 		"_mark":    {run: cmdMark, hidden: true},
-		"_approve": {run: cmdApprove, hidden: true},
+		"_approve": {run: cmdApproveHook, hidden: true},
 		"_stage":   {run: cmdStage, hidden: true},
 	}
 }

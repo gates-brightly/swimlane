@@ -30,10 +30,15 @@ import (
 // Approver is one person behind an approval: their key, and for a remote
 // signature (.signature file) their own signature over the approval.
 type Approver struct {
-	Name     string `json:"name,omitempty"` // from lookup.yml when recorded
-	Key      string `json:"key"`
-	SignedAt string `json:"signed_at,omitempty"`
-	Sig      string `json:"sig,omitempty"`
+	Name string `json:"name,omitempty"` // from lookup.yml when recorded
+	Key  string `json:"key"`
+	// For a signed approval (approvals/*.signature): the statement and the
+	// approving event (its prev, time and signature), so swim verify can
+	// check it without the file.
+	Statement string `json:"statement,omitempty"`
+	Prev      string `json:"prev,omitempty"`
+	SignedAt  string `json:"signed_at,omitempty"`
+	Sig       string `json:"sig,omitempty"`
 }
 
 // Entry is one link.

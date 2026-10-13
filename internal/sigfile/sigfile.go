@@ -1,10 +1,21 @@
-// Package sigfile is remote approval: a .signature file states which guards
-// of one exact lane script are approved (by the script's SHA-256), and
-// carries an SSH signature from each signatory over that statement. Anyone
-// with the repo can make or co-sign one (swim sign) and drop it beside the
-// script (lane.N.sh.signature) or in .swim/signatures/; when the lane's
-// guard runs, the signature approves it if its signers, looked up in
-// lookup.yml, meet the guard's rule.
+// Package sigfile is signed approval, kept in committed files under
+// approvals/ so approvers anywhere can add to them. A file is an
+// append-only, hash-linked log of approve and revoke events, each SSH-signed
+// over the file's statement and the hash of the event before it: like
+// commits, the order of approvals and revocations is the attestation. A
+// signer's approval counts while their latest event is an approve.
+//
+// Two kinds:
+//
+//	approvals/lane.3.<sha12>.signature  this exact lane script (its SHA-256):
+//	                                    swim approve 3 --guards FLAG
+//	approvals/auto.alice.signature      standing approval of any job alice
+//	                                    queues (never consumed):
+//	                                    swim approve --auto alice
+//
+// A guard counts the approvals for its script, plus the standing approvals
+// for whoever signed the queue entry it runs from, and approves when the
+// signers, named by lookup.yml, meet lookup.yml's rule for it.
 package sigfile
 
 import (
@@ -23,35 +34,70 @@ import (
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
-// Schema identifies a signature file.
-const Schema = "swim.signature/v1"
+// Schema identifies an approvals file.
+const Schema = "swim.approval/v1"
 
-// Signatory is one approver's signature.
-type Signatory struct {
-	Name     string `yaml:"name,omitempty"` // informational; trust comes from lookup.yml
-	Key      string `yaml:"key"`
-	SignedAt string `yaml:"signed_at"`
-	Sig      string `yaml:"sig"`
+// Kinds.
+const (
+	Script   = "script"   // one exact lane script
+	Standing = "standing" // any job queued by one user
+)
+
+// Event types.
+const (
+	Approve = "approve"
+	Revoke  = "revoke"
+)
+
+// Event is one signed approve or revoke.
+type Event struct {
+	Type string `yaml:"type"`
+	Name string `yaml:"name,omitempty"` // informational; trust comes from lookup.yml
+	Key  string `yaml:"key"`
+	At   string `yaml:"at"`   // informational: the order is what attests
+	Prev string `yaml:"prev"` // hash of the event before (the statement's, for the first)
+	Sig  string `yaml:"sig"`
 }
 
-// File is a .signature file.
+// File is one approvals file.
 type File struct {
-	Schema      string      `yaml:"schema"`
-	Script      string      `yaml:"script"` // lane.N.sh
-	SHA256      string      `yaml:"script_sha256"`
-	Lane        int         `yaml:"lane"`
-	Job         string      `yaml:"job,omitempty"`
-	Round       string      `yaml:"round,omitempty"`
-	Approves    []string    `yaml:"approves,omitempty"` // guard flags
-	All         bool        `yaml:"approves_all,omitempty"`
-	Expires     string      `yaml:"expires,omitempty"` // RFC3339; empty: never
-	Note        string      `yaml:"note,omitempty"`
-	Signatories []Signatory `yaml:"signatories"`
+	Schema string `yaml:"schema"`
+	Kind   string `yaml:"kind"`
+
+	// Script: the exact script approved.
+	Script string `yaml:"script,omitempty"` // lane.N.sh
+	SHA256 string `yaml:"script_sha256,omitempty"`
+	Lane   int    `yaml:"lane,omitempty"`
+	Job    string `yaml:"job,omitempty"`
+	Round  string `yaml:"round,omitempty"`
+
+	// Standing: whose queued jobs are approved.
+	For string `yaml:"for,omitempty"` // a user in lookup.yml
+
+	Approves []string `yaml:"approves,omitempty"` // guard flags
+	All      bool     `yaml:"approves_all,omitempty"`
+	Expires  string   `yaml:"expires,omitempty"`
+	Note     string   `yaml:"note,omitempty"`
+	Events   []Event  `yaml:"events"`
 
 	Path string `yaml:"-"`
 }
 
-// Statement is what every signatory signs (plus their key and time).
+// Dir holds approvals files (committed, so approvers anywhere can add).
+func Dir(root string) string { return filepath.Join(root, "approvals") }
+
+// ScriptPath is the file approving lane n's script with hash sha.
+func ScriptPath(root string, n int, sha string) string {
+	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s.signature", n, sha[:12]))
+}
+
+// StandingPath is the file of standing approvals for user's queued jobs.
+func StandingPath(root, user string) string {
+	return filepath.Join(Dir(root), "auto."+user+".signature")
+}
+
+// Statement is what every event signs, with its own type, prev, signer
+// and time.
 func (f *File) Statement() string {
 	appr := strings.Join(f.Approves, ",")
 	if f.All {
@@ -61,31 +107,38 @@ func (f *File) Statement() string {
 	if exp == "" {
 		exp = "never"
 	}
+	if f.Kind == Standing {
+		return fmt.Sprintf("swim standing approval v1\nfor: %s\napproves: %s\nexpires: %s\n", f.For, appr, exp)
+	}
 	return fmt.Sprintf("swim approval v1\nscript: %s\nscript-sha256: %s\nlane: %d\njob: %s\nround: %s\napproves: %s\nexpires: %s\n",
 		f.Script, f.SHA256, f.Lane, f.Job, f.Round, appr, exp)
 }
 
-// StatementHash identifies the statement (one approval, however many sign).
+// StatementHash identifies the approval (one statement, many events).
 func (f *File) StatementHash() string { return chain.Hash([]byte(f.Statement())) }
 
-func signed(statement, key, at string) []byte {
-	return []byte(statement + "signer: " + sign.KeyOnly(key) + "\nsigned-at: " + at + "\n")
+// EventPayload is what an event's signature covers.
+func EventPayload(statement, typ, prev, key, at string) []byte {
+	return []byte(statement + "event: " + typ + "\nprev: " + prev + "\nsigner: " + sign.KeyOnly(key) + "\nat: " + at + "\n")
 }
 
-// Sign adds k's signature (replacing an earlier one by the same key).
-func (f *File) Sign(k *sign.Key, name string) error {
+func eventHash(statement string, e Event) string {
+	return chain.Hash(append(EventPayload(statement, e.Type, e.Prev, e.Key, e.At), []byte(e.Sig)...))
+}
+
+// Add appends a signed event by k.
+func (f *File) Add(k *sign.Key, typ, name string) error {
+	st := f.Statement()
+	prev := f.StatementHash()
+	if n := len(f.Events); n > 0 {
+		prev = eventHash(st, f.Events[n-1])
+	}
 	at := time.Now().UTC().Format(time.RFC3339)
-	sig, err := sign.Sign(k, signed(f.Statement(), k.Public, at))
+	sig, err := sign.Sign(k, EventPayload(st, typ, prev, k.Public, at))
 	if err != nil {
 		return err
 	}
-	var keep []Signatory
-	for _, s := range f.Signatories {
-		if sign.KeyOnly(s.Key) != sign.KeyOnly(k.Public) {
-			keep = append(keep, s)
-		}
-	}
-	f.Signatories = append(keep, Signatory{Name: name, Key: k.Public, SignedAt: at, Sig: sig})
+	f.Events = append(f.Events, Event{Type: typ, Name: name, Key: k.Public, At: at, Prev: prev, Sig: sig})
 	return nil
 }
 
@@ -96,10 +149,13 @@ func (f *File) Save() error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(f.Path), 0o755); err != nil {
+		return err
+	}
 	return os.WriteFile(f.Path, data, 0o644)
 }
 
-// Load reads a signature file.
+// Load reads an approvals file.
 func Load(path string) (*File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -110,24 +166,15 @@ func Load(path string) (*File, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if f.Schema != Schema {
-		return nil, fmt.Errorf("%s: not a swim signature file (schema %q)", path, f.Schema)
+		return nil, fmt.Errorf("%s: not a swim approvals file (schema %q)", path, f.Schema)
 	}
 	f.Path = path
 	return &f, nil
 }
 
-// Dir holds signature files dropped into the repo's state.
-func Dir(root string) string { return filepath.Join(root, ".swim", "signatures") }
-
-// All loads every signature file: *.signature at the repo root (beside the
-// lane scripts) and in .swim/signatures/. Files that don't parse are
-// returned as errors, not skipped silently.
+// All loads every approvals file; ones that don't parse are errors.
 func All(root string) ([]*File, []error) {
-	var paths []string
-	for _, dir := range []string{root, Dir(root)} {
-		m, _ := filepath.Glob(filepath.Join(dir, "*.signature"))
-		paths = append(paths, m...)
-	}
+	paths, _ := filepath.Glob(filepath.Join(Dir(root), "*.signature"))
 	sort.Strings(paths)
 	var out []*File
 	var errs []error
@@ -142,39 +189,87 @@ func All(root string) ([]*File, []error) {
 	return out, errs
 }
 
-// ForScript returns the signature files for a script hash.
+// ForScript returns the script approvals for a script hash.
 func ForScript(root, sha string) []*File {
 	all, _ := All(root)
 	var out []*File
 	for _, f := range all {
-		if f.SHA256 == sha {
+		if f.Kind == Script && f.SHA256 == sha {
 			out = append(out, f)
 		}
 	}
 	return out
 }
 
-// Verified is a signatory whose signature checks out.
-type Verified struct {
-	Signatory
-	User string // from lookup.yml; "" if the key isn't listed
+// StandingFor returns the standing approvals for user's queued jobs.
+func StandingFor(root, user string) []*File {
+	all, _ := All(root)
+	var out []*File
+	for _, f := range all {
+		if f.Kind == Standing && f.For == user {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
-// Verify checks every signature; it returns the valid ones and the
-// problems with the rest.
-func (f *File) Verify(l *lookup.Lookup) ([]Verified, []string) {
-	var ok []Verified
-	var bad []string
+// Signer is one signer whose approval currently stands.
+type Signer struct {
+	Key  string
+	User string // from lookup.yml; "" if the key isn't listed
+	// Events are this signer's events (approve, revoke, approve, ...), for
+	// the chain of custody.
+	Events []Event
+}
+
+// Standing walks the events in order and returns the signers whose latest
+// event is an approve, and the problems: a broken link or a bad signature
+// invalidates that event and everything after it (the order can't be
+// trusted past it).
+func (f *File) Standing(l *lookup.Lookup) ([]Signer, []string) {
 	st := f.Statement()
-	for _, s := range f.Signatories {
-		if err := sign.Verify(s.Key, signed(st, s.Key, s.SignedAt), s.Sig); err != nil {
-			bad = append(bad, fmt.Sprintf("%s: %v", or(s.Name, sign.KeyOnly(s.Key)), err))
+	prev := f.StatementHash()
+	latest := map[string]string{}
+	events := map[string][]Event{}
+	var order []string
+	var bad []string
+	for i, e := range f.Events {
+		if e.Prev != prev {
+			bad = append(bad, fmt.Sprintf("event %d breaks the chain (an event before it was changed, removed or reordered); it and later events don't count", i+1))
+			break
+		}
+		if err := sign.Verify(e.Key, EventPayload(st, e.Type, e.Prev, e.Key, e.At), e.Sig); err != nil {
+			bad = append(bad, fmt.Sprintf("event %d (%s by %s): %v; it and later events don't count", i+1, e.Type, or(e.Name, sign.KeyOnly(e.Key)), err))
+			break
+		}
+		k := sign.KeyOnly(e.Key)
+		if _, seen := latest[k]; !seen {
+			order = append(order, k)
+		}
+		latest[k] = e.Type
+		events[k] = append(events[k], e)
+		prev = eventHash(st, e)
+	}
+	var out []Signer
+	for _, k := range order {
+		if latest[k] != Approve {
 			continue
 		}
-		user, _ := l.Who(s.Key)
-		ok = append(ok, Verified{Signatory: s, User: user})
+		user, _ := l.Who(k)
+		out = append(out, Signer{Key: events[k][len(events[k])-1].Key, User: user, Events: events[k]})
 	}
-	return ok, bad
+	return out, bad
+}
+
+// HasApproved reports whether key's latest event is an approve.
+func (f *File) HasApproved(l *lookup.Lookup, key string) bool {
+	signers, _ := f.Standing(l)
+	for _, s := range signers {
+		if sign.KeyOnly(s.Key) == sign.KeyOnly(key) {
+			return true
+		}
+	}
+	return false
 }
 
 // Covers reports whether the file approves flag (by name or all).
@@ -199,54 +294,97 @@ func (f *File) Expired(now time.Time) bool {
 	return err != nil || now.After(t)
 }
 
-// Decision is whether a signature file approves one guard.
-type Decision struct {
-	OK     bool
-	Users  []string // distinct known signers that count
-	Signed []Verified
-	Why    string // when not OK
+// Grant is one file's standing signers for a guard, ready to count.
+type Grant struct {
+	File    *File
+	Signers []Signer // known to lookup.yml, approval standing
 }
 
-// Decide says whether f approves flag now, under lookup.yml's rule for it.
-func (f *File) Decide(l *lookup.Lookup, flag string, now time.Time) Decision {
-	if !f.Covers(flag) {
-		return Decision{Why: fmt.Sprintf("%s doesn't approve %s", filepath.Base(f.Path), flag)}
-	}
-	if f.Expired(now) {
-		return Decision{Why: fmt.Sprintf("%s expired at %s", filepath.Base(f.Path), f.Expires)}
-	}
-	if l.Path == "" {
-		return Decision{Why: "no lookup.yml: signatures need their keys listed there to count"}
-	}
-	verified, bad := f.Verify(l)
-	seen := map[string]bool{}
-	var users []string
-	var unknown []string
-	for _, v := range verified {
-		if v.User == "" {
-			unknown = append(unknown, sign.KeyOnly(v.Key))
+// Collect returns, for flag, each file's standing known signers and why
+// the others don't count (expired, not covering it, unknown keys, broken).
+func Collect(files []*File, l *lookup.Lookup, flag string, now time.Time) ([]Grant, []string) {
+	var grants []Grant
+	var why []string
+	for _, f := range files {
+		name := filepath.Base(f.Path)
+		switch {
+		case !f.Covers(flag):
+			continue
+		case f.Expired(now):
+			why = append(why, name+" expired")
 			continue
 		}
-		if !seen[v.User] {
-			seen[v.User] = true
-			users = append(users, v.User)
+		signers, bad := f.Standing(l)
+		for _, b := range bad {
+			why = append(why, name+": "+b)
+		}
+		var known []Signer
+		unknown := 0
+		for _, s := range signers {
+			if s.User == "" {
+				unknown++
+				continue
+			}
+			known = append(known, s)
+		}
+		if unknown > 0 {
+			why = append(why, fmt.Sprintf("%s: %d signer(s) not in lookup.yml", name, unknown))
+		}
+		if len(known) > 0 {
+			grants = append(grants, Grant{File: f, Signers: known})
 		}
 	}
-	sort.Strings(users)
-	rule := l.RuleFor(flag)
-	if ok, why := l.Satisfied(rule, users); !ok {
-		if len(unknown) > 0 {
-			why += fmt.Sprintf("; %d signer(s) not in lookup.yml", len(unknown))
-		}
-		if len(bad) > 0 {
-			why += "; bad signature: " + strings.Join(bad, "; ")
-		}
-		return Decision{Why: filepath.Base(f.Path) + " " + why, Signed: verified}
-	}
-	return Decision{OK: true, Users: users, Signed: verified}
+	return grants, why
 }
 
-// ErrNoScript is returned when the script to sign doesn't exist.
+// Users are the distinct users behind grants.
+func Users(grants []Grant) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, g := range grants {
+		for _, s := range g.Signers {
+			if !seen[s.User] {
+				seen[s.User] = true
+				out = append(out, s.User)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Decision is whether a set of approvals approves one guard.
+type Decision struct {
+	OK     bool
+	Users  []string
+	Grants []Grant
+	Why    string
+}
+
+// Decide counts the standing approvals in files for flag against
+// lookup.yml's rule for it.
+func Decide(files []*File, l *lookup.Lookup, flag string, now time.Time) Decision {
+	if l.Path == "" {
+		return Decision{Why: "no lookup.yml: approvals need their signers' keys listed there to count"}
+	}
+	grants, why := Collect(files, l, flag, now)
+	users := Users(grants)
+	if ok, need := l.Satisfied(l.RuleFor(flag), users); !ok {
+		msg := "approval " + need
+		if len(why) > 0 {
+			msg += " (" + strings.Join(why, "; ") + ")"
+		}
+		return Decision{Why: msg, Users: users, Grants: grants}
+	}
+	return Decision{OK: true, Users: users, Grants: grants}
+}
+
+// VerifyEvent checks one event's signature, as recorded in the chain.
+func VerifyEvent(statement string, e Event) error {
+	return sign.Verify(e.Key, EventPayload(statement, e.Type, e.Prev, e.Key, e.At), e.Sig)
+}
+
+// ErrNoScript is returned when the script to approve doesn't exist.
 var ErrNoScript = errors.New("no such lane script")
 
 func or(s, def string) string {
@@ -254,10 +392,4 @@ func or(s, def string) string {
 		return def
 	}
 	return s
-}
-
-// VerifyStatement checks one signatory's signature over a statement, as
-// recorded in the chain (so verify needs no .signature file).
-func VerifyStatement(statement, key, signedAt, sig string) error {
-	return sign.Verify(key, signed(statement, key, signedAt), sig)
 }
