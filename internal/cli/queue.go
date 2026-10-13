@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/signal"
 	"sort"
@@ -31,10 +29,13 @@ import (
 // swim queue 1 2 3 is shorthand for swim queue add 1 2 3.
 func cmdQueue(args []string) error {
 	sub := "list"
-	if len(args) > 0 && looksLikeLaneRef(args[0]) {
-		sub = "add"
-	} else if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		sub, args = args[0], args[1:]
+	if len(args) > 0 {
+		switch {
+		case looksLikeLaneRef(args[0]):
+			sub = "add"
+		case !strings.HasPrefix(args[0], "-"):
+			sub, args = args[0], args[1:]
+		}
 	}
 	switch sub {
 	case "list", "ls":
@@ -212,7 +213,7 @@ func queueAdd(args []string) error {
 	if !wait {
 		return nil
 	}
-	if err := waitIdle(root, 2*time.Second, 0); err != nil {
+	if err := waitIdle(root, pollEvery, 0); err != nil {
 		return err
 	}
 	// Exit with the batch's result, like swim log --until-done.
@@ -241,16 +242,13 @@ func cmdWait(args []string) error {
 	if len(rest) > 0 {
 		return usagef("usage: swim wait [--interval D] [--timeout D]")
 	}
-	every, limit := 2*time.Second, time.Duration(0)
-	if interval != "" {
-		if every, err = time.ParseDuration(interval); err != nil || every <= 0 {
-			return usagef("--interval takes a duration like 2s, got %q", interval)
-		}
+	every, err := durationFlag("interval", interval, pollEvery, "2s")
+	if err != nil {
+		return err
 	}
-	if timeout != "" {
-		if limit, err = time.ParseDuration(timeout); err != nil || limit <= 0 {
-			return usagef("--timeout takes a duration like 30m, got %q", timeout)
-		}
+	limit, err := durationFlag("timeout", timeout, 0, "30m")
+	if err != nil {
+		return err
 	}
 	root, _, err := repo()
 	if err != nil {
@@ -259,19 +257,40 @@ func cmdWait(args []string) error {
 	return waitIdle(root, every, limit)
 }
 
-// waitIdle polls until swim is idle and the queue holds nothing queued or
-// running (orphaned entries never run, so they don't count), saying what
-// it waits on whenever that changes. A limit > 0 gives up after that long.
-func waitIdle(root string, every, limit time.Duration) error {
-	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
-	said := ""
-	say := func(s string) {
-		if s != said {
-			fmt.Println(p.Paint(ui.Dim, "swim wait: "+s))
-			said = s
-		}
+// pollEvery is how often swim wait and swim watch check, by default.
+const pollEvery = 2 * time.Second
+
+// durationFlag parses a --name duration flag's value v, or def when unset.
+func durationFlag(name, v string, def time.Duration, example string) (time.Duration, error) {
+	if v == "" {
+		return def, nil
 	}
-	start := time.Now()
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return 0, usagef("--%s takes a duration like %s, got %q", name, example, v)
+	}
+	return d, nil
+}
+
+// sayer prints a dim status line only when it differs from the last one.
+type sayer struct {
+	p            ui.Painter
+	prefix, said string
+}
+
+func (s *sayer) say(msg string) {
+	if msg != s.said {
+		fmt.Println(s.p.Paint(ui.Dim, s.prefix+msg))
+		s.said = msg
+	}
+}
+
+// waitIdle polls until swim is idle and the queue has nothing left to run,
+// saying what it waits on whenever that changes. A limit > 0 gives up after
+// that long. It checks quickly at first, backing off to every.
+func waitIdle(root string, every, limit time.Duration) error {
+	s := sayer{p: ui.Painter{On: ui.ColorEnabled(os.Stdout)}, prefix: "swim wait: "}
+	start, nap := time.Now(), min(every, 100*time.Millisecond)
 	for {
 		cfg, err := loadCfg(root)
 		if err != nil {
@@ -279,38 +298,20 @@ func waitIdle(root string, every, limit time.Duration) error {
 		}
 		why := launcher.Busy(root, cfg)
 		if why == "" {
-			entries, err := queue.List(root, false)
-			if errors.Is(err, fs.ErrNotExist) {
-				time.Sleep(every / 4) // an entry moved while we read it
-				continue
-			}
-			if err != nil {
+			if why, err = queue.Busy(root); err != nil {
 				return err
-			}
-			queued := 0
-			for _, e := range entries {
-				switch e.State {
-				case queue.Running:
-					if why == "" {
-						why = fmt.Sprintf("batch %s (#%d) is running (pid %d)", e.ID, e.Seq, e.Worker.PID)
-					}
-				case queue.Queued:
-					queued++
-				}
-			}
-			if why == "" && queued > 0 {
-				why = fmt.Sprintf("%d queued batch(es) not yet taken by a worker (swim watch)", queued)
 			}
 		}
 		if why == "" {
-			say("idle")
+			s.say("idle")
 			return nil
 		}
 		if limit > 0 && time.Since(start) >= limit {
 			return fmt.Errorf("still busy after %s: %s", limit, why)
 		}
-		say("waiting: " + why)
-		time.Sleep(every)
+		s.say("waiting: " + why)
+		time.Sleep(nap)
+		nap = min(2*nap, every)
 	}
 }
 
@@ -479,11 +480,9 @@ func cmdWatch(args []string) error {
 	if len(rest) > 0 {
 		return usagef("usage: swim watch [--once] [-y] [--approved] [--interval D]")
 	}
-	every := 2 * time.Second
-	if interval != "" {
-		if every, err = time.ParseDuration(interval); err != nil || every <= 0 {
-			return usagef("--interval takes a duration like 2s, got %q", interval)
-		}
+	every, err := durationFlag("interval", interval, pollEvery, "2s")
+	if err != nil {
+		return err
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -522,13 +521,8 @@ func cmdWatch(args []string) error {
 	if yes {
 		fmt.Println(p.Paint(ui.Yellow+ui.Bold, "swim watch: -y: every guard in every batch is approved, beyond what each batch approves (logged as approved by swim watch -y ("+operator()+"))"))
 	}
-	code, said := 0, ""
-	say := func(s string) {
-		if s != said {
-			fmt.Println(p.Paint(ui.Dim, "swim watch: "+s))
-			said = s
-		}
-	}
+	code, s := 0, sayer{p: p, prefix: "swim watch: "}
+	say := s.say
 	for !stopped() {
 		if approved {
 			for _, msg := range queueApproved(root, cfg) {
@@ -578,7 +572,7 @@ func cmdWatch(args []string) error {
 			}
 			continue
 		}
-		said = ""
+		s.said = ""
 		res, interrupted := runEntry(root, cfg, e, yes)
 		if err := queue.Consume(root, e, res); err != nil {
 			fmt.Fprintln(os.Stderr, "swim watch: consume "+e.ID+": "+err.Error())
