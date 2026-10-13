@@ -67,6 +67,8 @@ func init() {
 		"drift":    {run: cmdDrift},
 		"stop":     {run: cmdStop},
 		"msg":      {run: cmdMsg},
+		"input":    {run: cmdInput},
+		"output":   {run: cmdOutput},
 		// Called by the lane script library, not by people.
 		"_start":   {run: cmdStart, hidden: true},
 		"_finish":  {run: cmdFinish, hidden: true},

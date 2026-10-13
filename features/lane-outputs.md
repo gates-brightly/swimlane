@@ -1,6 +1,6 @@
 # Lane outputs: passing files between lanes
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -91,16 +91,34 @@ run "build report" e2etool report --stats "$(input 2 stats.json)" --pages "$(inp
   maps, additive.
 - **Queue:** a batch records the producer jobs its lanes will read from.
 
-## Open questions
+## Open questions (answered)
 
-1. **Size limit:** cap outputs per round (say 1 GB) to keep `.swim/` sane?
-2. **Remote storage:** with the hub or a queue across machines, should
-   outputs be uploaded somewhere shared? Out of scope for now: inputs are
-   local to one machine.
-3. **Passing small values:** a lighter `output KEY=value` for strings
-   (an id, a version), readable as `$(input 2 KEY)`?
-4. **Matrix inputs:** how does `input 3 stats.json` resolve when lane 3 is a
-   matrix: all cells as a directory per cell, or `input '3[orders]' ...`?
+1. **Size limit:** no hard cap. A round whose outputs pass 1 GB gets a
+   `WARN`, and `swim doctor --fix` prunes old outputs (`outputs_keep`,
+   default 14d).
+2. **Remote storage:** out of scope. Inputs are local to one machine.
+3. **Small values:** yes. `output KEY value` records one, and
+   `$(input 2 KEY)` prints it. Values are hashed into the chain as
+   `value:KEY`.
+4. **Matrix inputs:** settled with matrix rounds. Until then, a lane's
+   outputs are its one round's.
+
+Decided while building:
+
+- **One directory per round:** `.swim/out/<job>/<run>/`, so a rerun of the
+  same job gets a fresh `$SWIM_OUT` and older rounds stay addressable.
+  `input JOB` reads that job's latest passed round, from status or the
+  chain.
+- **Read-only files:** outputs' files become read-only when the round
+  ends. Directories stay writable, so the tree can still be pruned.
+- **What's verified:** the consumer records the hash of each input as it
+  read it. `swim verify` compares that hash with the producer's recorded
+  output, so a file changed in between is caught.
+- **Not done:** a queued batch doesn't pin the producer jobs its lanes will
+  read. Today a lane reads its dependency's round from the same batch or
+  run.
+- **A failed `input`** records `FAIL  input N name (why)` (a failure) and
+  prints nothing, so the step that used it fails too.
 
 ## Testing
 

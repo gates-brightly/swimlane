@@ -69,6 +69,12 @@ type Entry struct {
 	EnvSHA256 string   `json:"env_sha256,omitempty"` // the lane's env from env files (sorted KEY=VALUE)
 	// Handlers are the round's outcome handlers that ran: name -> PASS | FAIL | SKIP | none.
 	Handlers map[string]string `json:"handlers,omitempty"`
+	// Outputs are the files (and values) the round produced: name -> SHA-256.
+	Outputs map[string]string `json:"outputs,omitempty"`
+	// Inputs are the outputs it read: "2:stats.json" -> SHA-256 when read,
+	// and which round produced each: "2" -> "<job> <run>".
+	Inputs      map[string]string `json:"inputs,omitempty"`
+	InputRounds map[string]string `json:"input_rounds,omitempty"`
 
 	Signer string `json:"signer,omitempty"` // public key of whoever recorded the entry
 	Sig    string `json:"sig,omitempty"`

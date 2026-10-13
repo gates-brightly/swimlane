@@ -19,6 +19,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/syntax"
@@ -122,6 +123,11 @@ func cmdStart(args []string) error {
 	// A stop request left from an earlier run doesn't apply to this round.
 	if !lane.StopRequested(root, n, run) {
 		lane.ClearStop(root, n)
+	}
+	// The round's outputs directory ($SWIM_OUT), fresh for this run.
+	if err := os.MkdirAll(outputs.Dir(root, job, run), 0o755); err != nil {
+		lane.RemovePID(root, n)
+		return err
 	}
 	// The git shim lane_init puts first on PATH (swim never writes to git).
 	shim := filepath.Join(root, ".swim", "bin", "git")
@@ -249,6 +255,77 @@ func cmdStart(args []string) error {
 		l.Stage = syntax.Setup
 		return nil
 	})
+}
+
+// finishOutputs checks and records lane n's round outputs as it ends: a
+// promised output that's missing is a FAIL line, undeclared files a WARN,
+// over 1 GB a WARN. It returns the hashes, what the round read, and the
+// END block's outputs line ("" if none).
+func finishOutputs(root string, n int, logPath string) (map[string]string, []outputs.Input, string) {
+	st, _ := status.Load(root)
+	var l *status.Lane
+	if st != nil {
+		l = st.Get(n)
+	}
+	if l == nil || l.Job == "" || l.Run == "" {
+		return nil, nil, ""
+	}
+	dir := outputs.Dir(root, l.Job, l.Run)
+	info, _ := lane.ReadScript(root, n)
+	res, err := outputs.Check(dir, info.Outputs)
+	if err != nil {
+		appendLog(logPath, logparse.MarkLine(logparse.Warn, "outputs: "+err.Error(), "")+"\n")
+		return nil, outputs.Inputs(dir), ""
+	}
+	var lines []string
+	for _, m := range res.Missing {
+		lines = append(lines, logparse.MarkLine(logparse.Fail, "declared output missing: "+m, "Outputs:"))
+	}
+	if len(res.Undeclared) > 0 {
+		lines = append(lines, logparse.MarkLine(logparse.Warn, "undeclared files in $SWIM_OUT: "+strings.Join(res.Undeclared, ", "), "kept, not offered to other lanes; list them in Outputs:"))
+	}
+	if res.Size > 1<<30 {
+		lines = append(lines, logparse.MarkLine(logparse.Warn, "outputs total "+outputs.HumanSize(res.Size), "over 1 GB; .swim/out/ is pruned by swim doctor --fix"))
+	}
+	if len(lines) > 0 {
+		appendLog(logPath, strings.Join(lines, "\n")+"\n")
+	}
+	outputs.Freeze(dir)
+	var parts []string
+	for _, o := range res.Outputs {
+		what := outputs.HumanSize(o.Size)
+		if o.Files > 1 {
+			what = fmt.Sprintf("%d files, %s", o.Files, what)
+		}
+		parts = append(parts, fmt.Sprintf("%s %s %s", o.Name, what, o.Sum[:12]))
+	}
+	line := ""
+	if len(parts) > 0 {
+		line = "   outputs: " + strings.Join(parts, " | ") + "\n"
+	}
+	return res.Sums(), outputs.Inputs(dir), line
+}
+
+func inputMap(in []outputs.Input) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	m := map[string]string{}
+	for _, i := range in {
+		m[i.Key] = i.Sum
+	}
+	return m
+}
+
+func inputRounds(in []outputs.Input) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	m := map[string]string{}
+	for _, i := range in {
+		m[strings.SplitN(i.Key, ":", 2)[0]] = i.Round
+	}
+	return m
 }
 
 // ExitRollbackFailed is a failed round's exit code when its on_failure
@@ -379,6 +456,9 @@ func cmdFinish(args []string) error {
 		appendLog(logPath, "  "+logparse.MsgText(m.Text, m.Progress, time.Now().Format("15:04:05"))+"\n")
 	}
 	lane.ClearMsg(root, n)
+	// The round's outputs: promised ones must be there; all are hashed and
+	// made read-only, then recorded for the lanes that read them.
+	outSums, inputs, outLine := finishOutputs(root, n, logPath)
 	r, err := logparse.ParseFile(logPath)
 	if err != nil {
 		return err
@@ -413,7 +493,7 @@ func cmdFinish(args []string) error {
 	ts := now.UTC().Format(time.RFC3339)
 
 	word := map[string]string{status.Passed: "PASS", status.Failed: "FAIL", status.Interrupted: "INTERRUPTED"}[state]
-	if err := appendLog(logPath, logparse.EndBlock(word, r, code, ds, ts)); err != nil {
+	if err := appendLog(logPath, logparse.EndBlock(word, r, code, ds, ts)+outLine); err != nil {
 		return err
 	}
 	// The round's link in the chain of custody: what ran (the script's
@@ -424,7 +504,8 @@ func cmdFinish(args []string) error {
 		if err := record(root, cfg, chain.Entry{Type: "round", Run: r.Run, Lane: n, Job: r.Job, Round: r.Title,
 			Script: scriptSHA(root, n), Result: state, Exit: &exit,
 			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: roundApprovals(root, r.Run, n),
-			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r)}); err != nil {
+			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums,
+			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 	}
@@ -456,6 +537,7 @@ func cmdFinish(args []string) error {
 		l.PID = 0
 		l.WaitingOn = []int{}
 		l.Message, l.Progress, l.MessageAt = "", "", ""
+		l.Outputs = outSums
 		l.FinishedAt = status.Str(ts)
 		if l.StartedAt == nil && r.StartedAt != "" {
 			l.StartedAt = status.Str(r.StartedAt)
@@ -508,7 +590,7 @@ func cmdMark(args []string) error {
 		label, detail = mk.String(label), mk.String(detail)
 	}
 	switch kind {
-	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn, logparse.Blocked:
+	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn, logparse.Blocked, logparse.Fail:
 	default:
 		return usagef("unknown mark kind %q", kind)
 	}
@@ -562,7 +644,7 @@ func cmdMark(args []string) error {
 			l.Drift++
 		case logparse.Stop:
 			l.FailedSteps = append(l.FailedSteps, line)
-		case logparse.Blocked:
+		case logparse.Blocked, logparse.Fail:
 			l.Fail++
 			l.FailedSteps = append(l.FailedSteps, line)
 		}

@@ -46,6 +46,8 @@ var Commands = map[string]string{
     lanes        1..99                    this repo's lane count (swim 1..N);
                  recorded in .swim.log. Refuses to drop a lane that holds a
                  pending round. Always written to the repo's section.
+    outputs_keep duration (14d, 36h)      round outputs older than this that no
+                 lane's latest round uses are pruned by swim doctor --fix.
     msg_log_interval  duration            at most one MSG log line per lane per
                  this (default 10s; 0 logs every change of swim msg).
     runners.EXT  a command                the runner for lane.N.EXT scripts with
@@ -300,6 +302,20 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   The log gets MSG lines for changes, at most one per msg_log_interval
   (default 10s; 0 logs every change), and the latest when a step or the
   round ends. Never fails the round: outside a lane it warns and exits 0.
+`,
+	"input": `swim input N|JOB NAME
+
+  In a lane: print the path of an output (# Outputs:) of a round this one
+  depends on: lane N's round this run waited on (it must have passed), or
+  job JOB's latest passed round. Only lanes and jobs in the round's After:
+  (or config deps). A small value (swim output) prints the value. What was
+  read, and its hash, goes in the chain, and swim verify proves it matches
+  what the producer made. A failure records FAIL and exits 1.
+`,
+	"output": `swim output KEY VALUE
+
+  In a lane: record a small value (an id, a version) among the round's
+  outputs, for dependents to read with swim input N KEY.
 `,
 	"lib": `swim lib
 
@@ -661,6 +677,8 @@ swim hub leave | status
     handler (error)        handlers or Fail: without syntax 3; a near-miss handler
                            name (on_fail, onfailure, ...) swim would never call
     handler-reached (warn) an on_failure with a guard that never checks reached
+    outputs (warn)         an output whose name suggests secrets (not masked)
+    input-dep (error)      input N of a lane not in After: (or config deps)
     cross-lane (info)      uses a path another lane writes (> path, -o path,
                            cp/mv/tee) without either waiting on the other
     syntax                 an older (warn) or newer (error) script syntax
@@ -701,6 +719,9 @@ swim hub leave | status
     env-file (error)          an env file that doesn't parse, or sets a
                               lane's guard flag
     lane-rc (warn)            a deprecated .lane.N.rc
+    outputs-old (info)        round outputs older than outputs_keep (default
+                              14d) that no lane's latest round uses; --fix
+                              removes them
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of
@@ -794,7 +815,7 @@ func Names() []string {
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
-	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg",
+	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "keys", "ci", "lint", "doctor"}
 

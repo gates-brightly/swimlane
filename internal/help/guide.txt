@@ -41,6 +41,8 @@ COMMANDS
   drift "<what differs>"   record DRIFT
   stop "<reason>"          record STOP and end the round
   msg [--progress N/M] "<text>"   post the lane's status message (live view, status, hub)
+  input N|JOB NAME         print the path (or value) of a dependency's output (Outputs:)
+  output KEY VALUE         record a small value among the round's outputs
   archive N|JOB ... [--as NAME]   archive lanes' logs as .swim/logs/agentN.prev-<NAME or job id>.log
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
@@ -145,6 +147,7 @@ FILES (repo root)
                                 stripped); read it with `swim log N`
   .swim/logs/agentN.prev-*.log  archived logs (`swim log N --all`)
   .swim/snapshots/      output saved by `snapshot` steps
+  .swim/out/<job>/<run>/  a round's outputs ($SWIM_OUT; Outputs:), read-only once it ends
   .swim/chain.jsonl     chain of custody: hash-linked, signed approvals and rounds
   .swim/scripts/        every lane script a round ran, by SHA-256
   approvals/            signed approvals (committed): lane.N.<sha12>.signature for one
@@ -276,6 +279,15 @@ WRITING A LANE SCRIPT
                                   Never fails the round.
   stop "<reason>"                 record STOP and end the round now (in a handler: record
                                   it, and the handler carries on).
+  input N|JOB NAME                print the path of an output of a round this one depends on:
+                                  lane N's round this run waited on (it must have passed),
+                                  or job JOB's latest passed round, even from an earlier run.
+                                  Only lanes and jobs in After: (or config deps). A small value
+                                  prints the value itself. Use it as "$(input 2 stats.json)";
+                                  inside bash -c, call swim input. What was read, and its hash,
+                                  goes in the chain. A failure records FAIL.
+  output KEY VALUE                record a small value (an id, a version) among the round's
+                                  outputs; dependents read it with $(input N KEY).
   reached STAGE                   true if the round started STAGE or a later one; an
                                   on_failure usually starts with: reached change || return 0
   summary                         run the outcome handlers, print + log the summary, record
@@ -303,6 +315,13 @@ WRITING A LANE SCRIPT
       # Timeout: <30m, 1h30m, ...>    limit for the whole round. A step still running
                                       at the limit is stopped (FAIL, timeout) and the
                                       round ends. Default: none
+      # Outputs: <name>[, <name> ...]  files or directories the round promises in $SWIM_OUT
+                                      (.swim/out/<job>/<run>/, fresh each round), for the
+                                      lanes that depend on it (input N name). A promised one
+                                      missing at the end is FAIL; undeclared files are a WARN.
+                                      They're hashed (a directory as a sorted manifest) into
+                                      status, the END block and the chain, and made read-only.
+                                      Not masked: never put secrets in outputs. Default: none
       # Fail: soft|hard               hard: the first failed step ends the round (STOP
                                       hard failure) and goes to on_failure. Default: soft.
                                       Needs syntax 3
@@ -440,6 +459,7 @@ OTHER LANGUAGES
     swim stage snapshot|check|change|verify
     swim drift "<what differs>"    swim stop "<reason>"
     swim msg [--progress N/M] "<text>"                a status message (live view, status, hub)
+    swim input N|JOB NAME    swim output KEY VALUE    outputs between lanes (Outputs:)
   (options as for run in a bash lane: --timeout, --retry, --backoff,
   --retry-on, --no-retry-timeout, --soft). Outcome handlers are commands:
       # On-Failure: python3 rollback.py           (on-failure: in lane.N.yml)
@@ -613,6 +633,7 @@ READING RESULTS
       == END <PASS|FAIL|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>  run=<run id>
          stages: snapshot PASS | check PASS | change SKIP | verify PASS
          handlers: on_failure PASS | on_exit PASS     (if any ran)
+         outputs: stats.json 2.1 KB 3f2a9c1e0b7d | pages 14 files, 1.2 MB 9d8e...  (if any)
          failed: FAIL  <label> (exit <code>); ...
   Results are the lines starting "  KIND  " (grep -E '^  (FAIL|BLOCKED)' finds
   every failure); anything indented 8 spaces belongs to the step above it and is
@@ -733,6 +754,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         approvals: prompt                # prompt | flags: may an unset guard flag ask the operator
         interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
         msg_log_interval: 10s            # at most one MSG log line per lane per this (0: every change)
+        outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
         # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)
         runners:                         # how lane.N.<ext> runs without a #! line (OTHER LANGUAGES)

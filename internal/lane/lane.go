@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
@@ -79,6 +80,9 @@ type Info struct {
 	// on_failure and on_exit, or for a lane in another language the
 	// On-Success:, On-Failure: and On-Exit: commands. Script syntax 3.
 	Handlers []Handler
+	// Outputs are the files or directories the round promises in
+	// $SWIM_OUT (# Outputs:), for lanes that depend on it (input N name).
+	Outputs []string
 }
 
 // DefaultHandlerTimeout is the handlers' budget when Handler-Timeout: is unset.
@@ -131,7 +135,7 @@ var (
 	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit):\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// handlerFnRE is a handler function's first line: on_failure() {
@@ -141,7 +145,7 @@ var (
 	// arguments as a list: ["swim", "guard", "FLAG", ...].
 	guardArgUse = regexp.MustCompile(`['"]guard['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]`)
 	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
-		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true}
+		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -177,7 +181,7 @@ func ReadScript(root string, n int) (Info, error) {
 		return Info{}, err
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers = "", "", nil, nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers, info.Outputs = "", "", nil, nil, nil, nil, nil
 	}
 	if info.Created == "" {
 		if st, err := os.Stat(path); err == nil {
@@ -265,6 +269,8 @@ func ParseScript(src string) Info {
 							info.Locks = append(info.Locks, tok)
 						}
 					}
+				case "Outputs":
+					info.setOutputs(sepRE.Split(v, -1), "Outputs:")
 				case "Fail":
 					info.setFail(v, "Fail:")
 				case "Handler-Timeout":
@@ -322,9 +328,23 @@ func ParseScript(src string) Info {
 		}
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers = "", "", nil, nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers, info.Outputs = "", "", nil, nil, nil, nil, nil
 	}
 	return info
+}
+
+// setOutputs reads Outputs: names: relative paths inside $SWIM_OUT.
+func (i *Info) setOutputs(names []string, where string) {
+	i.Outputs = nil
+	for _, name := range names {
+		switch {
+		case name == "" || name == "-" || strings.EqualFold(name, "none"):
+		case !outputs.ValidName(name):
+			i.Problems = append(i.Problems, fmt.Sprintf("%s %q is not a path inside $SWIM_OUT (relative, no ..); ignored", where, name))
+		default:
+			i.Outputs = append(i.Outputs, name)
+		}
+	}
 }
 
 // setFail reads a Fail: value (soft or hard).

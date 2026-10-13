@@ -682,3 +682,47 @@ func checkHandlerReached(c *Context, s *Script) []finding.Finding {
 	return []finding.Finding{f(finding.Warn, "handler-reached", start, "start it with: reached change || return 0",
 		"on_failure uses guard %s but never checks `reached`: it would roll back even when the round failed before changing anything", h.Guards[0])}
 }
+
+var (
+	secretOutputRE = regexp.MustCompile(`(?i)(^|/|[._-])(\.?env|secrets?|credentials?|passwords?|tokens?|id_rsa|id_ed25519|.*\.pem|.*\.key)($|[._/-])`)
+	inputUseRE     = regexp.MustCompile(`(?:^|[\s(;&|$])input\s+([0-9]+)\s`)
+)
+
+// checkOutputs: outputs aren't masked, so a name that suggests secrets is
+// worth a second look.
+func checkOutputs(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for _, name := range s.Info.Outputs {
+		if secretOutputRE.MatchString(name) {
+			out = append(out, f(finding.Warn, "outputs", s.headerLine("Outputs"), "never put secret values in outputs: they aren't masked",
+				"output %s looks like it could hold secrets", name))
+		}
+	}
+	return out
+}
+
+// checkInputDeps: input N reads lane N's outputs only if N is a dependency.
+func checkInputDeps(c *Context, s *Script) []finding.Finding {
+	deps := map[string]bool{}
+	for _, a := range s.Info.After {
+		deps[a] = true
+	}
+	if c.Cfg != nil {
+		for _, d := range c.Cfg.DepsOf(s.N) {
+			deps[strconv.Itoa(d)] = true
+		}
+	}
+	var out []finding.Finding
+	for i, line := range s.v.raw {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		for _, m := range inputUseRE.FindAllStringSubmatch(line+" ", -1) {
+			if !deps[m[1]] {
+				out = append(out, f(finding.Error, "input-dep", i, "add "+m[1]+" to the round's After:",
+					"input %s reads swim %s's outputs, but swim %s isn't in After: (or config deps)", m[1], m[1], m[1]))
+			}
+		}
+	}
+	return out
+}

@@ -48,6 +48,7 @@ type Settings struct {
 	InterruptGrace     string        `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
 	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
 	MsgLogInterval     string        `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
+	OutputsKeep        string        `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
 	// Runners maps a lane script's extension (ts, py, ...) to the command
 	// that runs it ("tsx", "/usr/local/bin/python3"). A script's #! line
 	// wins; swim asks the operator for one the first time it meets an
@@ -303,6 +304,9 @@ func (c *Config) merge(r Settings) {
 	if r.Approvals != "" {
 		c.Approvals = r.Approvals
 	}
+	if r.OutputsKeep != "" {
+		c.OutputsKeep = r.OutputsKeep
+	}
 	if r.MsgLogInterval != "" {
 		c.MsgLogInterval = r.MsgLogInterval
 	}
@@ -396,6 +400,41 @@ func (c *Config) MsgLogEvery() time.Duration {
 		return 10 * time.Second
 	}
 	return d
+}
+
+// OutputsKeepFor is outputs_keep: how long round outputs nothing uses are
+// kept (default 14 days). Durations take d for days: 14d, 36h.
+func (c *Config) OutputsKeepFor() time.Duration {
+	if d, ok := parseDays(c.OutputsKeep); ok {
+		return d
+	}
+	return 14 * 24 * time.Hour
+}
+
+// parseDays parses a duration that may use d (days): "14d", "1d12h".
+func parseDays(s string) (time.Duration, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	var days int
+	if i := strings.Index(s, "d"); i > 0 {
+		n, err := strconv.Atoi(s[:i])
+		if err != nil {
+			return 0, false
+		}
+		days, s = n, s[i+1:]
+	}
+	var rest time.Duration
+	if s != "" {
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			return 0, false
+		}
+		rest = d
+	}
+	total := time.Duration(days)*24*time.Hour + rest
+	return total, total > 0
 }
 
 // Parallel is the cap on lanes running at once (0 = unlimited).

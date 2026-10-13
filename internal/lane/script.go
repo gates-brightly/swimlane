@@ -179,11 +179,12 @@ type sideFile struct {
 	Locks       *strList          `yaml:"locks"`
 	Stub        *bool             `yaml:"stub"`
 	// Outcome handlers (script syntax 3).
-	Fail           *string `yaml:"fail"`
-	HandlerTimeout *string `yaml:"handler-timeout"`
-	OnSuccess      *string `yaml:"on-success"`
-	OnFailure      *string `yaml:"on-failure"`
-	OnExit         *string `yaml:"on-exit"`
+	Fail           *string  `yaml:"fail"`
+	HandlerTimeout *string  `yaml:"handler-timeout"`
+	OnSuccess      *string  `yaml:"on-success"`
+	OnFailure      *string  `yaml:"on-failure"`
+	OnExit         *string  `yaml:"on-exit"`
+	Outputs        *strList `yaml:"outputs"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -225,7 +226,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -303,6 +304,9 @@ func applySidecar(path string, info *Info) error {
 	}
 	if sf.Stub != nil {
 		info.Stub = *sf.Stub
+	}
+	if sf.Outputs != nil {
+		info.setOutputs(*sf.Outputs, name+" outputs:")
 	}
 	if sf.Fail != nil {
 		info.setFail(*sf.Fail, name+" fail:")

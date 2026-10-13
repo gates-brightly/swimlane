@@ -205,7 +205,7 @@ func cmdCi(args []string) error {
 			return err
 		}
 	}
-	artifacts := ".swim/logs/ .swim/snapshots/ .swim.log"
+	artifacts := ".swim/logs/ .swim/snapshots/ .swim/out/ .swim.log"
 	if junit != "" {
 		artifacts += " " + junit
 	}

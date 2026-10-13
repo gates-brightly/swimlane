@@ -23,7 +23,9 @@ import (
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/redact"
+	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -94,6 +96,7 @@ var Checks = []Check{
 	{"lock", false, ".swim.lock missing, invalid or for another breaking version", checkLock},
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
 	{"lane-rc", true, "a deprecated .lane.N.rc (env files replace it)", checkLaneRC},
+	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
 }
 
 // Run runs every check.
@@ -146,6 +149,10 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 				return done, err
 			}
 			done = append(done, "removed "+f.File)
+		case "outputs-old":
+			if removed := outputs.Prune(o.Root, o.Cfg.OutputsKeepFor(), o.keepRound()); len(removed) > 0 {
+				done = append(done, fmt.Sprintf("removed %d old round output dirs from .swim/out/", len(removed)))
+			}
 		case "lane-rc":
 			did, err := migrateRC(&o, f.File)
 			if err != nil {
@@ -157,6 +164,31 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 		}
 	}
 	return done, nil
+}
+
+// keepRound keeps each lane's latest round's outputs (what input reads).
+func (o *Options) keepRound() func(job, run string) bool {
+	st, _ := status.Load(o.Root)
+	return func(job, run string) bool {
+		if st == nil {
+			return false
+		}
+		for _, l := range st.Lanes {
+			if l.Job == job && l.Run == run {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func checkOldOutputs(o *Options) []finding.Finding {
+	old := outputs.Stale(o.Root, o.Cfg.OutputsKeepFor(), o.keepRound())
+	if len(old) == 0 {
+		return nil
+	}
+	return []finding.Finding{fd(finding.Info, "outputs-old", ".swim/out/", "swim doctor --fix (removes them)",
+		"%d round output dirs are older than outputs_keep (%s) and no lane's latest round", len(old), o.Cfg.OutputsKeepFor())}
 }
 
 var rcNameRE = regexp.MustCompile(`^\.lane\.([0-9]+)\.rc$`)

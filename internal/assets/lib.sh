@@ -72,7 +72,9 @@ lane_init() {
   SWIM_HANDLER_TIMEOUT=${_swim_start%% *}
   SWIM_TIMEOUT=${_swim_start#* }
   SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
-  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE SWIM_HANDLER_TIMEOUT
+  # Where the round's outputs go (# Outputs:), fresh for each round.
+  SWIM_OUT="$SWIM_ROOT/.swim/out/$SWIM_JOB/$SWIM_RUN"
+  export SWIM_OUT SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE SWIM_HANDLER_TIMEOUT
   trap '_swim_on_exit' EXIT
   trap 'stop "blocked command: git push/commit/pull (swim never writes to git)"' USR1
   trap '_swim_on_signal 130' INT
@@ -438,6 +440,20 @@ confirm() {
 # and the log gets it throttled. Never fails the round.
 msg() {
   "$SWIM_BIN" msg "$@" || true
+}
+
+# input N|JOB NAME — print the path of an output of a round this one
+# depends on (After:): lane N's round this run waited on, or job JOB's.
+# A small value (output KEY value) prints the value itself. Use it as
+# "$(input 2 stats.json)". A failure is recorded as FAIL.
+input() {
+  "$SWIM_BIN" input "$@"
+}
+
+# output KEY VALUE — record a small value (an id, a version) among the
+# round's outputs; dependent lanes read it with $(input N KEY).
+output() {
+  "$SWIM_BIN" output "$@"
 }
 
 # drift "<what differs>" — record a DRIFT line (deployed state differs from code).

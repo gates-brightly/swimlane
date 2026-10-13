@@ -19,6 +19,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -671,6 +672,18 @@ func cmdVerify(args []string) error {
 					bad = append(bad, fmt.Sprintf("entry #%d: the kept script %s.sh was changed", l.Seq, short12(l.Script)))
 				}
 			}
+			// What it read must be what its producers recorded.
+			for key, sum := range l.Inputs {
+				from := l.InputRounds[strings.SplitN(key, ":", 2)[0]]
+				name := strings.SplitN(key, ":", 2)[1]
+				prod, ok := producedBy(links, from)
+				switch {
+				case !ok:
+					warn = append(warn, fmt.Sprintf("entry #%d: input %s came from round %s, which isn't in the chain", l.Seq, key, from))
+				case prod.Outputs[name] != sum && prod.Outputs[outputs.ValuePrefix+name] != sum:
+					bad = append(bad, fmt.Sprintf("entry #%d: input %s doesn't match what round %s produced (entry #%d): changed after it was produced", l.Seq, key, from, prod.Seq))
+				}
+			}
 			if l.Log != "" {
 				switch sum, ok := roundLogHash(root, l.Lane, l.Run); {
 				case !ok:
@@ -724,6 +737,17 @@ func cmdVerify(args []string) error {
 	}
 	fmt.Println(p.Paint(ui.Green, "verified: every link, signature, log and script checks out"))
 	return nil
+}
+
+// producedBy is the round entry for "<job> <run>".
+func producedBy(links []chain.Link, round string) (chain.Link, bool) {
+	job, run, _ := strings.Cut(round, " ")
+	for _, l := range links {
+		if l.Type == "round" && l.Job == job && l.Run == run {
+			return l, true
+		}
+	}
+	return chain.Link{}, false
 }
 
 // roundLogHash is the hash of lane n's round in run, from its current or

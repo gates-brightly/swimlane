@@ -65,10 +65,13 @@ type Lane struct {
 	Handlers    []string `yaml:"handlers,flow,omitempty"` // outcome handlers that ran, e.g. [on_failure PASS, on_exit PASS]
 	// Message is the running round's status message (swim msg), with its
 	// progress ("7/25") and when it was posted; cleared when the round ends.
-	Message     string `yaml:"message,omitempty"`
-	Progress    string `yaml:"progress,omitempty"`
-	MessageAt   string `yaml:"message_at,omitempty"`
-	LastArchive string `yaml:"last_archive,omitempty"`
+	Message   string `yaml:"message,omitempty"`
+	Progress  string `yaml:"progress,omitempty"`
+	MessageAt string `yaml:"message_at,omitempty"`
+	// Outputs are the last round's outputs (# Outputs:, output KEY value):
+	// name -> SHA-256, in .swim/out/<job>/<run>/.
+	Outputs     map[string]string `yaml:"outputs,omitempty"`
+	LastArchive string            `yaml:"last_archive,omitempty"`
 }
 
 // File is the whole status.yml document.

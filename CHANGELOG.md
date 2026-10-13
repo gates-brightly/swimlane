@@ -31,6 +31,25 @@ To cut a release:
 
 ### Added
 
+- **Lane outputs:**
+  - **Producing:** `# Outputs: stats.json, pages/` promises files in
+    `$SWIM_OUT`, a fresh `.swim/out/<job>/<run>/` per round. `output KEY
+    value` records small values.
+  - **Checked at the end:** a promised output that's missing fails the
+    round, and undeclared files get a `WARN`. Outputs are hashed (a
+    directory as a sorted manifest) into status, the END block and the
+    chain, and made read-only.
+  - **Consuming:** `input N name` (or `swim input` from any language)
+    prints the path, or the value, from the round this run waited on.
+    `input JOB name` pins an exact round, even from an earlier run. Only
+    dependencies (`After:`, config deps) can be read; lint catches an
+    `input` of a lane outside them.
+  - **Provenance:** the chain records what each round read and its hash,
+    and `swim verify` proves it matches what the producer made.
+  - **Housekeeping:** `swim doctor --fix` prunes outputs older than
+    `outputs_keep` (default 14d) that no lane's latest round uses.
+    `swim ci` lists `.swim/out/` among its artifacts.
+
 - **Lane messages (`msg`):**
   - **Posting:** `msg [--progress N/M] "<text>"` in a bash lane, or
     `swim msg` from any language or from a command inside a step, posts the

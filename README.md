@@ -239,6 +239,11 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
+- **Outputs between lanes:** `# Outputs: stats.json` promises files in
+  `$SWIM_OUT`, and a dependent lane reads them with
+  `"$(input 2 stats.json)"` (or `output KEY value` / `$(input 2 KEY)` for
+  small values). Outputs are hashed into the chain on both sides, so
+  `swim verify` proves the report was built from exactly those stats.
 - **Status messages:** `msg --progress 7/25 "migrating billing"` (or
   `swim msg` from any language, even inside a step) shows where a long job
   is now, in the live view, `swim status` and the hub. The latest wins, and
