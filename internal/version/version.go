@@ -19,7 +19,7 @@ import (
 // incompatibly, and for a second release on the same day (a tag is
 // v0.<breaking>.<YYYYMMDD>, so there is one release per breaking version per
 // day). Repos locked to another breaking version refuse to run.
-const Breaking = 6
+const Breaking = 7
 
 // Set at build time by the Makefile:
 //

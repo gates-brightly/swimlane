@@ -525,6 +525,9 @@ swim queue show|rm|requeue ID
   swim lock --upgrade   move the lock up to this swim's breaking version
 
   Breaking versions:
+    7   v0.7.20261013: a deliberate bump (swim watch -y is new; nothing
+        incompatible). Lane scripts, logs and state are as in 4-6:
+        swim lock --upgrade
     6   v0.6.20261012: the third release that day (swim queue and swim watch
         are new; nothing incompatible). Lane scripts, logs and state are as
         in 4 and 5: swim lock --upgrade

@@ -29,6 +29,20 @@ To cut a release:
 
 ## Unreleased
 
+## 7.20261013 (v0.7.20261013, 2026-10-13)
+
+Everything since `6.20261012`. Breaking version 7 is a deliberate bump.
+Lane scripts, logs and state are the same as in 6. Install it with
+`go install github.com/gates-brightly/swimlane/cmd/swim@v0.7.20261013`.
+
+### Upgrading
+
+- **Repos locked at 6 (or earlier) refuse to run until upgraded.** Nothing
+  about lane scripts, logs or state changed, so upgrading is just the lock:
+  let running lanes finish, run `swim lock --upgrade`, and commit
+  `.swim.lock`. CI jobs read the committed lock too, so they need that
+  commit before they run.
+
 ### Added
 
 - **`swim watch -y`:** the worker approves every guard in every batch it

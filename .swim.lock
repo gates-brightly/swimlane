@@ -1,5 +1,5 @@
 # swim lock: the breaking version of swim this repo's lanes use.
 # Written by swim; commit it so everyone runs a compatible swim. See `swim lock --help`.
-breaking: 6
-version: "6.20261012"
-updated_at: "2026-10-12T15:39:42Z"
+breaking: 7
+version: "7.20261013"
+updated_at: "2026-10-13T00:31:11Z"
