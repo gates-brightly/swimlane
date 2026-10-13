@@ -14,7 +14,8 @@ type ResultDoc struct {
 	Label    string   `yaml:"label"`
 	Detail   string   `yaml:"detail,omitempty"`
 	Stage    string   `yaml:"stage"`
-	Step     bool     `yaml:"step"` // a step that ran a command (not a mark)
+	Handler  string   `yaml:"handler,omitempty"` // the outcome handler it ran in
+	Step     bool     `yaml:"step"`              // a step that ran a command (not a mark)
 	Exit     *int     `yaml:"exit,omitempty"`
 	Duration *float64 `yaml:"duration_s,omitempty"`
 	Clock    string   `yaml:"clock,omitempty"`
@@ -46,6 +47,7 @@ type Doc struct {
 	Duration  string            `yaml:"duration,omitempty"`
 	Counts    Counts            `yaml:"counts"`
 	Stages    map[string]string `yaml:"stages"`
+	Handlers  map[string]string `yaml:"handlers,omitempty"` // outcome handlers that ran: PASS | FAIL | SKIP | none
 	Results   []ResultDoc       `yaml:"results"`
 	Failed    []string          `yaml:"failed_steps"`
 }
@@ -74,8 +76,14 @@ func (r *Round) Doc(n int) Doc {
 	for _, st := range r.StageResults() {
 		d.Stages[st.Name] = st.State
 	}
+	for _, h := range r.HandlerResults() {
+		if d.Handlers == nil {
+			d.Handlers = map[string]string{}
+		}
+		d.Handlers[h.Name] = h.State
+	}
 	for _, res := range r.Results {
-		rd := ResultDoc{Result: res.Kind, Label: res.Label, Detail: res.Detail, Stage: res.Stage, Step: res.Step,
+		rd := ResultDoc{Result: res.Kind, Label: res.Label, Detail: res.Detail, Stage: res.Stage, Handler: res.Handler, Step: res.Step,
 			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved}
 		if res.Step {
 			dur := res.Dur

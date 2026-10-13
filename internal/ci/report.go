@@ -166,11 +166,15 @@ func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 			continue
 		}
 		for _, res := range r.Round.Results {
+			text := res.Text()
+			if res.Handler != "" {
+				text = res.Handler + ": " + text // a handler's step (rollback, cleanup)
+			}
 			switch res.Kind {
 			case logparse.Fail, logparse.Blocked, logparse.Stop:
-				p.Annotate(w, Error, title, res.Text())
+				p.Annotate(w, Error, title, text)
 			case logparse.Drift:
-				p.Annotate(w, Warning, title, res.Text())
+				p.Annotate(w, Warning, title, text)
 			case logparse.Skip:
 				if strings.HasPrefix(res.Detail, "dry run:") {
 					p.Annotate(w, Notice, title, res.Label+": "+res.Detail)
@@ -299,7 +303,11 @@ func JUnit(w io.Writer, reps []LaneReport) error {
 			s.Cases, s.Tests = append(s.Cases, c), 1
 		} else {
 			for _, res := range r.Round.Results {
-				c := junitCase{Name: res.Label, ClassName: class + "." + res.Stage, Time: fmt.Sprintf("%.1f", res.Dur)}
+				group := res.Stage
+				if res.Handler != "" {
+					group = res.Handler
+				}
+				c := junitCase{Name: res.Label, ClassName: class + "." + group, Time: fmt.Sprintf("%.1f", res.Dur)}
 				switch res.Kind {
 				case logparse.Fail, logparse.Blocked, logparse.Stop:
 					c.Failure = &junitMessage{Message: res.Text(), Body: tail(res.Output, 30)}

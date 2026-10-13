@@ -1,6 +1,6 @@
 # Outcome handlers and hard failure
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -167,19 +167,37 @@ A round can also choose how a failed step behaves:
   `set-e` fix text.
 - **Syntax (`internal/syntax/syntax.go:30`):** `Current = 3`.
 
-## Open questions
+## Open questions (answered)
 
-1. **Outcome naming:** should a hard stop report `SWIM_OUTCOME=hard_failure`
-   instead of `stopped`, to tell it apart from a gate or `stop`?
-2. **`on_exit` or `always`:** `always` is the familiar CI word, but it's a
-   generic bash function name that could clash with a script's own.
-3. **`on_failure` after interrupt:** an operator who presses Ctrl-C may
-   not want a rollback to start. Run handlers on the first Ctrl-C, or ask
-   ("run on_failure? Y/N") when someone is at the terminal?
-4. **Exit code 89:** is a distinct exit code worth it, or is the `END` line
-   and YAML enough?
-5. **Breaking version:** syntax 3 alone keeps old binaries safe. Does it
-   also need a breaking bump in `.swim.lock`?
+1. **Outcome naming:** `stopped`, with `SWIM_STOP_REASON` starting
+   `hard failure:`. One outcome for every deliberate stop keeps handlers
+   simple, and the reason tells them apart.
+2. **`on_exit` or `always`:** `on_exit`. `always` is a generic bash name,
+   and lint treats `always`, `cleanup` and `rollback` as near misses only
+   when a round defines no handler (otherwise they're helpers).
+3. **`on_failure` after interrupt:** handlers run on the first Ctrl-C, with
+   `SWIM_OUTCOME=interrupted` so a handler can return early. There's no
+   extra question: guards in handlers aren't asked once the run is
+   stopping (the approval broker declines), so a destructive rollback after
+   an interrupt runs only if it was approved up front.
+4. **Exit code 89:** kept, for failed rounds only. An interrupted round
+   keeps 130/143, and its handler outcome is on the END line.
+5. **Breaking version:** no bump. Script syntax 3 (a new `syntax.Script`,
+   separate from the log syntax) makes an older swim refuse such scripts,
+   and nothing is migrated. A sidecar with handler keys implies syntax 3,
+   since an older swim refuses its unknown keys.
+
+Decided while building:
+
+- **`reached STAGE`** is true for that stage or a later one, so a round
+  that got to verify also "reached change".
+- **Lanes in other languages:** `On-Success:`, `On-Failure:` and `On-Exit:`
+  commands (or sidecar keys), run with `sh -c` by the wrapper. A command
+  that never calls `swim run` is recorded as one step.
+- **A handler that calls `exit`** records STOP and skips the remaining
+  handlers. The round still ends normally.
+- **The log section line** is `-- handler NAME  hh:mm:ss`, and the END
+  block adds `handlers: on_failure PASS | on_exit PASS`.
 
 ## Testing
 

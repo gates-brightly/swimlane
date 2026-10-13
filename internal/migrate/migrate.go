@@ -68,7 +68,11 @@ func files(root string) []file {
 // in a newer syntax than this swim reads.
 func Check(root string) error {
 	for _, f := range files(root) {
-		if err := syntax.Check(f.rel, versionOf(root, f)); err != nil {
+		check := syntax.CheckScript
+		if f.log {
+			check = syntax.Check
+		}
+		if err := check(f.rel, versionOf(root, f)); err != nil {
 			return err
 		}
 	}

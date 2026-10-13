@@ -9,6 +9,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
+	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
@@ -102,7 +103,7 @@ var (
 )
 
 func checkSetE(c *Context, s *Script) []finding.Finding {
-	const fix = "remove it: failed checks keep going; use gate to stop the round"
+	const fix = "remove it: failed checks keep going; use gate to stop the round, or `# Fail: hard` (swim: syntax 3) to stop at the first failed step"
 	var out []finding.Finding
 	if len(s.v.raw) > 0 && shebangERE.MatchString(s.v.raw[0]) {
 		out = append(out, f(finding.Error, "set-e", 0, fix, "the shebang turns on errexit (-e); a failed check would end the round without a summary"))
@@ -616,4 +617,68 @@ func checkEnv(c *Context, s *Script) []finding.Finding {
 		out = append(out, f(finding.Error, "env", -1, "remove it from the env file; approve with the shell, the prompt or swim approve", "%s", g.Error()))
 	}
 	return out
+}
+
+var (
+	// nearHandlerRE are function names that look like an outcome handler
+	// but aren't one: swim would never call them.
+	nearHandlerRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_fail|on_failed|onfailure|onfail|on_error|onerror|on_succes|on_succeed|onsuccess|onexit|on_finally|finally)\s*\(\s*\)`)
+	// helperHandlerRE are generic names that are a typo only when the round
+	// defines no handler at all (otherwise they're helpers a handler calls).
+	helperHandlerRE = regexp.MustCompile(`^\s*(?:function\s+)?(always|cleanup|rollback)\s*\(\s*\)`)
+	reachedRE       = regexp.MustCompile(`(?:^|[\s;&|(!])reached\s`)
+)
+
+// checkHandlers: a round with outcome handlers or Fail: must declare script
+// syntax 3, or an older swim would run it without them; and a near-miss
+// handler name means the rollback silently never runs.
+func checkHandlers(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	if (len(s.Info.Handlers) > 0 || s.Info.FailText != "") && s.Info.Syntax < syntax.Script {
+		what := "Fail:"
+		if len(s.Info.Handlers) > 0 {
+			what = "outcome handlers (" + s.Info.Handlers[0].Name + ")"
+		}
+		out = append(out, f(finding.Error, "handler", -1, "change the syntax line to `# swim: syntax 3`",
+			"uses %s but declares syntax %d: an older swim would run the round without them", what, s.Info.Syntax))
+	}
+	if !s.Lib {
+		return out
+	}
+	for i, raw := range s.v.raw {
+		if m := nearHandlerRE.FindStringSubmatch(raw); m != nil {
+			out = append(out, f(finding.Error, "handler", i, "rename it on_success, on_failure or on_exit",
+				"function %s is not an outcome handler: swim calls only on_success, on_failure and on_exit", m[1]))
+		} else if m := helperHandlerRE.FindStringSubmatch(raw); m != nil && len(s.Info.Handlers) == 0 {
+			out = append(out, f(finding.Error, "handler", i, "call it from on_failure or on_exit (or rename it)",
+				"function %s is never called when the round ends: swim calls only on_success, on_failure and on_exit", m[1]))
+		}
+	}
+	for _, h := range s.Info.Handlers {
+		if h.Cmd != "" {
+			out = append(out, f(finding.Warn, "handler", h.Line-1, "define a bash function "+h.Name+"() instead",
+				"a bash lane's handlers are functions; the %s: header key is for lanes in other languages", map[string]string{lane.OnSuccess: "On-Success", lane.OnFailure: "On-Failure", lane.OnExit: "On-Exit"}[h.Name]))
+		}
+	}
+	return out
+}
+
+// checkHandlerReached: an on_failure that can approve something (a guard)
+// should first check that the round got far enough to have changed it.
+func checkHandlerReached(c *Context, s *Script) []finding.Finding {
+	h, ok := s.Info.Handler(lane.OnFailure)
+	if !ok || h.Cmd != "" || len(h.Guards) == 0 {
+		return nil
+	}
+	start := h.Line - 1
+	for i := start; i < len(s.v.raw); i++ {
+		if i > start && strings.TrimRight(s.v.raw[i], " \t") == "}" {
+			break
+		}
+		if reachedRE.MatchString(s.v.raw[i]) {
+			return nil
+		}
+	}
+	return []finding.Finding{f(finding.Warn, "handler-reached", start, "start it with: reached change || return 0",
+		"on_failure uses guard %s but never checks `reached`: it would roll back even when the round failed before changing anything", h.Guards[0])}
 }

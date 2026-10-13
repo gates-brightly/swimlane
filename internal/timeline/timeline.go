@@ -249,6 +249,9 @@ func stepsOf(r *logparse.Round, start float64) []Step {
 		if !res.Step {
 			continue
 		}
+		if res.Handler != "" {
+			res.Stage = res.Handler // a handler's steps are a group of their own
+		}
 		if staged && len(out) > 0 && out[len(out)-1].Stage == res.Stage {
 			s := &out[len(out)-1]
 			s.Dur = r3(s.Dur + res.Dur)

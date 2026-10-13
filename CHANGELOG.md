@@ -31,6 +31,37 @@ To cut a release:
 
 ### Added
 
+- **Outcome handlers (lane script syntax 3):**
+  - **Handlers:** a round can define `on_success`, `on_failure` and
+    `on_exit`. swim calls them however the round ends: the end of the
+    script, a gate, `stop`, a hard failure, a blocked command, Ctrl-C, a
+    timeout or a bash error. `on_success` or `on_failure` runs first, then
+    `on_exit`.
+  - **Context:** handlers get `SWIM_OUTCOME` (pass, fail, stopped,
+    interrupted, timeout), `SWIM_STOP_REASON`, `SWIM_FAILED_STEP` and
+    `SWIM_FAILED_STAGE`. `reached STAGE` tells whether the round got that
+    far.
+  - **They run soft:** a failed step, gate or `stop` in a handler never
+    stops it. Handler results are logged in their own sections and
+    recorded on the END block, in status, `--yaml` and the chain, but never
+    change the round's result. A failed round whose `on_failure` failed
+    exits 89.
+  - **`# Fail: hard`:** the first failed step ends the round and goes to
+    `on_failure`. `run --soft` opts one step out.
+  - **`# Handler-Timeout:`** (default 5m) is the handlers' budget, starting
+    when the round ends.
+  - **Interrupts:** the first Ctrl-C runs the handlers, and their steps
+    start despite the stop request. The second skips the rest.
+  - **Other languages:** lanes name commands with `On-Success:`,
+    `On-Failure:` and `On-Exit:` (or sidecar keys). In them `swim gate` and
+    `swim stop` end nothing, and `swim run --soft` works in hard rounds.
+  - **Syntax:** scripts that use any of this declare `# swim: syntax 3`, so
+    an older swim refuses them rather than skipping their rollback. Nothing
+    is migrated, and logs stay syntax 2.
+  - **Lint and plan:** `swim lint` catches a missing syntax line, near-miss
+    names (`on_fail`, `onfailure`, ...) and an `on_failure` that uses a
+    guard without `reached`. `swim plan` lists each handler and its guards.
+
 - **Env files:**
   - **What they are:** declarative `KEY=VALUE` files that give lanes their
     environment. They are parsed and never run as shell.

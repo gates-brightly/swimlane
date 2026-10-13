@@ -221,6 +221,21 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 			}
 			fmt.Fprintf(w, "%s%s%s %s=1 (%s)%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "guard"), g.Flag, state, desc)
 		}
+		// Outcome handlers, with the guards inside them: an unattended run
+		// with an unapproved rollback shouldn't be a surprise.
+		for _, h := range info.Handlers {
+			text := "handler " + h.Name
+			if h.Cmd != "" {
+				text += ": " + h.Cmd
+			}
+			if len(h.Guards) > 0 {
+				text += "  (guards: " + strings.Join(h.Guards, ", ") + ")"
+			}
+			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, text))
+		}
+		if info.FailHard {
+			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "fail: hard (the first failed step ends the round)"))
+		}
 		if info.Timeout > 0 {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "timeout "+info.TimeoutText))
 		}
@@ -409,6 +424,16 @@ type PlanLane struct {
 	Guards  []PlanGuard `yaml:"guards,omitempty"`
 	Timeout string      `yaml:"timeout,omitempty"`
 	Locks   []string    `yaml:"locks,flow,omitempty"`
+	// Handlers are the round's outcome handlers and the guards in them.
+	Handlers []PlanHandler `yaml:"handlers,omitempty"`
+	Fail     string        `yaml:"fail,omitempty"` // hard, when Fail: hard
+}
+
+// PlanHandler is one outcome handler of a round.
+type PlanHandler struct {
+	Name    string   `yaml:"name"`
+	Command string   `yaml:"command,omitempty"`
+	Guards  []string `yaml:"guards,flow,omitempty"`
 }
 
 // PlanIdle is a lane with nothing to do.
@@ -447,6 +472,12 @@ func Plan(o Options) (*PlanDoc, error) {
 		}
 		for _, g := range info.Guards {
 			l.Guards = append(l.Guards, PlanGuard{Flag: g.Flag, Set: os.Getenv(g.Flag) == "1", Desc: g.Desc})
+		}
+		for _, h := range info.Handlers {
+			l.Handlers = append(l.Handlers, PlanHandler{Name: h.Name, Command: h.Cmd, Guards: h.Guards})
+		}
+		if info.FailHard {
+			l.Fail = "hard"
 		}
 		doc.Lanes = append(doc.Lanes, l)
 	}

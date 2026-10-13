@@ -65,10 +65,13 @@ const (
 	RoundMark = "== ROUND "
 	EndMark   = "== END "
 	StageMark = "-- stage "
-	Indent    = "        " // lines that belong to a step
-	CmdPrefix = Indent + "$ "
-	OutPrefix = Indent + "| "
-	ctxIndent = "   " // round context and END detail lines
+	// HandlerMark starts an outcome handler's section (on_success,
+	// on_failure, on_exit): its results don't count toward the round's.
+	HandlerMark = "-- handler "
+	Indent      = "        " // lines that belong to a step
+	CmdPrefix   = Indent + "$ "
+	OutPrefix   = Indent + "| "
+	ctxIndent   = "   " // round context and END detail lines
 )
 
 // ResultLine formats a result as text, e.g. "FAIL  tf plan (exit 2)".
@@ -97,6 +100,9 @@ func MarkLine(kind, label, detail string) string { return "  " + ResultLine(kind
 // StageLine starts a stage.
 func StageLine(name, clock string) string { return StageMark + name + "  " + clock }
 
+// HandlerLine starts an outcome handler's section.
+func HandlerLine(name, clock string) string { return HandlerMark + name + "  " + clock }
+
 // KV is one key/value of a round's context line.
 type KV struct{ K, V string }
 
@@ -124,6 +130,9 @@ func EndBlock(state string, r *Round, exit int, dur, ts string) string {
 	}
 	b.WriteString("\n")
 	b.WriteString(ctxIndent + "stages: " + StagesText(r.StageResults()) + "\n")
+	if hs := r.HandlerResults(); len(hs) > 0 {
+		b.WriteString(ctxIndent + "handlers: " + StagesText(hs) + "\n")
+	}
 	if failed := r.Failed(); len(failed) > 0 {
 		texts := make([]string, len(failed))
 		for i, f := range failed {
@@ -139,10 +148,13 @@ type Result struct {
 	Kind   string
 	Label  string
 	Detail string
-	Stage  string  // stage it ran in (setup before any stage line)
-	Step   bool    // a step result (has a duration), not a mark
-	Dur    float64 // a step's duration in seconds (syntax 2; 0 if unknown)
-	Clock  string  // a step's start time, hh:mm:ss local (syntax 2)
+	Stage  string // stage it ran in (setup before any stage line)
+	// Handler is the outcome handler it ran in (on_failure, ...); "" for
+	// the round itself. Handler results never count toward the round's.
+	Handler string
+	Step    bool    // a step result (has a duration), not a mark
+	Dur     float64 // a step's duration in seconds (syntax 2; 0 if unknown)
+	Clock   string  // a step's start time, hh:mm:ss local (syntax 2)
 	// The step's block (syntax 2): its command line, output lines (with
 	// "-- attempt" separators kept) and saved snapshot path.
 	Cmd    string
@@ -184,20 +196,57 @@ type Round struct {
 	Interrupt bool
 	Stage     string   // stage in effect at the end of the log
 	Declared  []string // stage lines seen, in order
+	Handlers  []string // handler sections seen, in order
 	Run       string   // swim run id (from the round's context line)
 	// Context holds the round header's key/value context line.
 	Context map[string]string
+
+	handler string // the handler section being read
 }
 
 // Failed returns the FAIL and STOP results.
 func (r *Round) Failed() []Result {
 	var out []Result
 	for _, res := range r.Results {
-		if res.Kind == Fail || res.Kind == Stop || res.Kind == Blocked {
+		if res.Handler == "" && (res.Kind == Fail || res.Kind == Stop || res.Kind == Blocked) {
 			out = append(out, res)
 		}
 	}
 	return out
+}
+
+// HandlerResults returns each handler that ran and its outcome: FAIL if a
+// step in it failed or it stopped, PASS if a step passed, else SKIP or none.
+func (r *Round) HandlerResults() []StageResult {
+	var out []StageResult
+	for _, h := range r.Handlers {
+		state := "none"
+		for _, res := range r.Results {
+			if res.Handler != h {
+				continue
+			}
+			switch {
+			case res.Kind == Fail || res.Kind == Stop || res.Kind == Blocked:
+				state = "FAIL"
+			case res.Kind == Pass && state != "FAIL":
+				state = "PASS"
+			case res.Kind == Skip && state == "none":
+				state = "SKIP"
+			}
+		}
+		out = append(out, StageResult{h, state})
+	}
+	return out
+}
+
+// HandlerState is handler name's outcome ("" if it didn't run).
+func (r *Round) HandlerState(name string) string {
+	for _, h := range r.HandlerResults() {
+		if h.Name == name {
+			return h.State
+		}
+	}
+	return ""
 }
 
 // StageResults returns each standard stage's outcome, in order, preceded by
@@ -207,7 +256,7 @@ func (r *Round) StageResults() []StageResult {
 	state := func(name string) (string, bool) {
 		pass, skip, any := false, false, false
 		for _, res := range r.Results {
-			if res.Stage != name {
+			if res.Stage != name || res.Handler != "" {
 				continue
 			}
 			any = true
@@ -241,6 +290,9 @@ func (r *Round) StageResults() []StageResult {
 
 func (r *Round) add(res Result) {
 	r.Results = append(r.Results, res)
+	if res.Handler != "" {
+		return // a handler's results don't count toward the round's
+	}
 	if res.Step {
 		r.Steps++
 	}
@@ -333,6 +385,11 @@ func parseV2(rd io.Reader) (*Round, error) {
 					cur.Interrupt = true
 				}
 			}
+		case strings.HasPrefix(line, HandlerMark):
+			if f := strings.Fields(strings.TrimPrefix(line, HandlerMark)); len(f) > 0 {
+				cur.handler = f[0]
+				cur.Handlers = append(cur.Handlers, f[0])
+			}
 		case strings.HasPrefix(line, StageMark):
 			if f := strings.Fields(strings.TrimPrefix(line, StageMark)); len(f) > 0 {
 				cur.Stage = f[0]
@@ -364,14 +421,14 @@ func parseV2(rd io.Reader) (*Round, error) {
 			if m == nil {
 				continue
 			}
-			res := Result{Kind: m[1], Stage: cur.Stage}
+			res := Result{Kind: m[1], Stage: cur.Stage, Handler: cur.handler}
 			rest := m[2]
 			if t := timedRE.FindStringSubmatch(rest); t != nil {
 				res.Step, rest, res.Clock = true, t[1], t[3]
 				res.Dur, _ = strconv.ParseFloat(strings.TrimSuffix(t[2], "s"), 64)
 			}
 			res.Label, res.Detail = splitLabel(rest)
-			if strings.Contains(res.Detail, "interrupted") {
+			if strings.Contains(res.Detail, "interrupted") && res.Handler == "" {
 				cur.Interrupt = true
 			}
 			cur.add(res)

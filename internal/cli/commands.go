@@ -682,7 +682,11 @@ func cmdStep(args []string) error {
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
 		Blocked: cfg.Blocked(),
 		Mask:    cfg.Masker(os.Environ()),
-		Stopped: func() bool { return n > 0 && lane.StopRequested(root, n, os.Getenv("SWIM_RUN")) },
+		// A stop request ends the round at its next step, but a handler's
+		// steps (rollback, cleanup) still run: SWIM_IN_HANDLER.
+		Stopped: func() bool {
+			return n > 0 && os.Getenv("SWIM_IN_HANDLER") == "" && lane.StopRequested(root, n, os.Getenv("SWIM_RUN"))
+		},
 	})
 	if err != nil {
 		return err

@@ -29,6 +29,15 @@ import (
 //	2  header metadata and fixed stages in lane scripts; grouped, fenced logs
 const Current = 2
 
+// Script is the newest lane script syntax this swim reads. Script syntax 3
+// adds outcome handlers (on_success, on_failure, on_exit) and Fail: hard: a
+// script that uses them declares it, so an older swim, which would skip its
+// rollback, refuses it. Syntax 2 scripts are read as they are; nothing is
+// migrated to 3, and logs stay at Current.
+//
+//	3  outcome handlers and Fail: (lane scripts only)
+const Script = 3
+
 var (
 	scriptRE = regexp.MustCompile(`^#\s*swim:\s*syntax\s+(\d+)\s*$`)
 	logRE    = regexp.MustCompile(`^#\s*swim lane log\s*\|\s*syntax\s+(\d+)`)
@@ -83,19 +92,29 @@ func OfLogFile(path string) int {
 type ErrTooNew struct {
 	File string
 	Got  int
+	Max  int // the newest syntax this swim reads for that kind of file (default Current)
 }
 
 func (e ErrTooNew) Error() string {
 	return fmt.Sprintf("%s uses swim syntax %d, but this swim (%s) reads up to syntax %d.\n\n"+
 		"Update swim, then run again:\n  %s\n  (or, in a checkout of swimlane: git pull && make install)\n"+
 		"Check with: swim --version",
-		e.File, e.Got, version.String(), Current, version.InstallCmd)
+		e.File, e.Got, version.String(), max(e.Max, Current), version.InstallCmd)
 }
 
 // Check returns ErrTooNew if got is newer than Current.
 func Check(file string, got int) error {
 	if got > Current {
 		return ErrTooNew{File: file, Got: got}
+	}
+	return nil
+}
+
+// CheckScript returns ErrTooNew if a lane script's syntax is newer than
+// Script.
+func CheckScript(file string, got int) error {
+	if got > Script {
+		return ErrTooNew{File: file, Got: got, Max: Script}
 	}
 	return nil
 }

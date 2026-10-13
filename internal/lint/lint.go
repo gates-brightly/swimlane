@@ -98,6 +98,8 @@ var Checks = []Check{
 	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
+	{"handler", finding.Error, false, "outcome handlers or Fail: without `# swim: syntax 3`, or a handler name swim never calls", checkHandlers},
+	{"handler-reached", finding.Warn, false, "an on_failure that uses a guard but never checks `reached`", checkHandlerReached},
 }
 
 // Codes of findings that come from outside the table.
@@ -164,7 +166,7 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		} else if err == nil && info.Exists {
 			s.Info = info
 		}
-		if s.Info.Syntax > syntax.Current {
+		if s.Info.Syntax > syntax.Script {
 			tooNew[n] = s.Info.Syntax
 		}
 		if s.Info.Stub {
@@ -183,7 +185,7 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		name := lane.ScriptName(root, n)
 		if tooNew[n] > 0 {
 			out = append(out, finding.Finding{Level: finding.Error, File: name, Code: codeSyntax,
-				Message: fmt.Sprintf("uses swim syntax %d; this swim reads up to %d", tooNew[n], syntax.Current),
+				Message: fmt.Sprintf("uses swim syntax %d; this swim reads up to %d", tooNew[n], syntax.Script),
 				Fix:     "update swim (swim --version)"})
 			continue
 		}

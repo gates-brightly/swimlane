@@ -67,6 +67,50 @@ type Info struct {
 	Extra           []KV     // other keys in the header block, kept and shown
 	Problems        []string // header values swim couldn't use (e.g. a bad Timeout)
 	Message         string   // stub message
+	// FailHard is Fail: hard: the first failed step stops the round (and
+	// goes to on_failure). Default soft. Script syntax 3.
+	FailHard bool
+	FailText string // the Fail: value as written ("" if unset)
+	// HandlerTimeout is Handler-Timeout:, the budget for all handlers
+	// together (default DefaultHandlerTimeout).
+	HandlerTimeout     time.Duration
+	HandlerTimeoutText string
+	// Handlers are the round's outcome handlers: bash functions on_success,
+	// on_failure and on_exit, or for a lane in another language the
+	// On-Success:, On-Failure: and On-Exit: commands. Script syntax 3.
+	Handlers []Handler
+}
+
+// DefaultHandlerTimeout is the handlers' budget when Handler-Timeout: is unset.
+const DefaultHandlerTimeout = 5 * time.Minute
+
+// Handler names, in the order they run: on_success or on_failure, then
+// on_exit.
+const (
+	OnSuccess = "on_success"
+	OnFailure = "on_failure"
+	OnExit    = "on_exit"
+)
+
+// HandlerNames are the outcome handlers swim calls.
+var HandlerNames = []string{OnSuccess, OnFailure, OnExit}
+
+// Handler is one outcome handler a round defines.
+type Handler struct {
+	Name   string   // on_success, on_failure or on_exit
+	Cmd    string   // the command (a lane in another language); "" for a bash function
+	Line   int      // where it is defined (1-based; 0 in a sidecar)
+	Guards []string // guard flags used inside it (bash functions)
+}
+
+// Handler returns the round's handler called name, if it defines one.
+func (i Info) Handler(name string) (Handler, bool) {
+	for _, h := range i.Handlers {
+		if h.Name == name {
+			return h, true
+		}
+	}
+	return Handler{}, false
 }
 
 // Pending reports whether the lane script holds a round to run.
@@ -84,17 +128,20 @@ func (i Info) GuardFlags() []string {
 var (
 	// Header keys are "# Key: value" with at most one space after the #;
 	// indented comment lines ("#   After: ...") are prose, not keys.
-	roundRE  = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
-	jobRE    = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
-	afterRE  = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE   = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks):\s*(.*)$`)
-	keyRE    = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
-	sepRE    = regexp.MustCompile(`[\s,]+`)
-	guardUse = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
+	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
+	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit):\s*(.*)$`)
+	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
+	sepRE   = regexp.MustCompile(`[\s,]+`)
+	// handlerFnRE is a handler function's first line: on_failure() {
+	handlerFnRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failure|on_exit)\s*\(\s*\)`)
+	guardUse    = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	// guardArgUse is `swim guard FLAG` from another language, the
 	// arguments as a list: ["swim", "guard", "FLAG", ...].
 	guardArgUse = regexp.MustCompile(`['"]guard['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]`)
-	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true}
+	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
+		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -123,14 +170,14 @@ func ReadScript(root string, n int) (Info, error) {
 			info.Syntax = syntax.Current // syntax 1 was bash only
 		}
 	}
-	if err := syntax.Check(filepath.Base(path), info.Syntax); err != nil {
+	if err := syntax.CheckScript(filepath.Base(path), info.Syntax); err != nil {
 		return Info{}, err
 	}
 	if err := applySidecar(Sidecar(root, n), &info); err != nil {
 		return Info{}, err
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks = "", "", nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers = "", "", nil, nil, nil, nil
 	}
 	if info.Created == "" {
 		if st, err := os.Stat(path); err == nil {
@@ -154,6 +201,7 @@ func ParseScript(src string) Info {
 	}
 	info := Info{Exists: true, Syntax: syntax.OfScript(strings.Join(lines, "\n"))}
 	inBlock := true
+	inHandler := -1 // index in info.Handlers of the function being read
 	listed := map[string]bool{}
 	for i, raw := range lines {
 		line := strings.TrimSpace(raw)
@@ -217,6 +265,14 @@ func ParseScript(src string) Info {
 							info.Locks = append(info.Locks, tok)
 						}
 					}
+				case "Fail":
+					info.setFail(v, "Fail:")
+				case "Handler-Timeout":
+					info.setHandlerTimeout(v, "Handler-Timeout")
+				case "On-Success", "On-Failure", "On-Exit":
+					if v != "" && v != "-" && !strings.EqualFold(v, "none") {
+						info.setHandlerCmd(strings.ReplaceAll(strings.ToLower(m[1]), "-", "_"), v, i+1)
+					}
 				case "Guards":
 					if f := strings.Fields(v); len(f) > 0 && f[0] != "-" && !strings.EqualFold(f[0], "none") && !listed[f[0]] {
 						listed[f[0]] = true
@@ -241,11 +297,23 @@ func ParseScript(src string) Info {
 				info.Round = strings.TrimSpace(m[1])
 			}
 		}
+		// Outcome handler functions, and the guards inside them.
+		if m := handlerFnRE.FindStringSubmatch(raw); m != nil {
+			if _, dup := info.Handler(m[1]); !dup {
+				info.Handlers = append(info.Handlers, Handler{Name: m[1], Line: i + 1})
+				inHandler = len(info.Handlers) - 1
+			}
+		} else if inHandler >= 0 && strings.TrimRight(raw, " \t") == "}" {
+			inHandler = -1
+		}
 		// Guard flags used in the body count even if the header doesn't list them.
 		if !strings.HasPrefix(line, "#") {
 			uses := guardUse.FindAllStringSubmatch(line, -1)
 			uses = append(uses, guardArgUse.FindAllStringSubmatch(line, -1)...)
 			for _, m := range uses {
+				if inHandler >= 0 {
+					info.Handlers[inHandler].Guards = append(info.Handlers[inHandler].Guards, m[1])
+				}
 				if !listed[m[1]] {
 					listed[m[1]] = true
 					info.Guards = append(info.Guards, Guard{Flag: m[1]})
@@ -254,9 +322,57 @@ func ParseScript(src string) Info {
 		}
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks = "", "", nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers = "", "", nil, nil, nil, nil
 	}
 	return info
+}
+
+// setFail reads a Fail: value (soft or hard).
+func (i *Info) setFail(v, where string) {
+	i.FailText = v
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "-", "soft":
+		i.FailHard = false
+	case "hard":
+		i.FailHard = true
+	default:
+		i.Problems = append(i.Problems, fmt.Sprintf("%s %q is not soft or hard; soft applies", where, v))
+		i.FailHard = false
+	}
+}
+
+// setHandlerTimeout reads a Handler-Timeout: value.
+func (i *Info) setHandlerTimeout(v, where string) {
+	i.HandlerTimeout, i.HandlerTimeoutText = 0, ""
+	if v == "" || v == "-" || strings.EqualFold(v, "none") {
+		return
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		i.Problems = append(i.Problems, fmt.Sprintf("%s %q is not a duration like 5m; the default %s applies", where, v, DefaultHandlerTimeout))
+		return
+	}
+	i.HandlerTimeout, i.HandlerTimeoutText = d, v
+}
+
+// setHandlerCmd sets (or replaces) handler name's command.
+func (i *Info) setHandlerCmd(name, cmd string, line int) {
+	for k, h := range i.Handlers {
+		if h.Name == name {
+			i.Handlers[k].Cmd, i.Handlers[k].Line = cmd, line
+			return
+		}
+	}
+	i.Handlers = append(i.Handlers, Handler{Name: name, Cmd: cmd, Line: line})
+}
+
+// HandlerBudget is the handlers' time budget: Handler-Timeout:, or the
+// default.
+func (i Info) HandlerBudget() time.Duration {
+	if i.HandlerTimeout > 0 {
+		return i.HandlerTimeout
+	}
+	return DefaultHandlerTimeout
 }
 
 var syntaxLineRE = regexp.MustCompile(`^#\s*swim:\s*syntax\s+\d+\s*$`)

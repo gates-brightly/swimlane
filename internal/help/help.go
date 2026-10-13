@@ -645,6 +645,9 @@ swim hub leave | status
     secret-echo (warn)     echo/printf of a secret variable
     header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag
+    handler (error)        handlers or Fail: without syntax 3; a near-miss handler
+                           name (on_fail, onfailure, ...) swim would never call
+    handler-reached (warn) an on_failure with a guard that never checks reached
     cross-lane (info)      uses a path another lane writes (> path, -o path,
                            cp/mv/tee) without either waiting on the other
     syntax                 an older (warn) or newer (error) script syntax

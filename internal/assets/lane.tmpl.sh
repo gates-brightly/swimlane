@@ -37,6 +37,16 @@ lane_init {{.Lane}}
 {{else}}
 # Pinned toolchain: none configured (set `toolchain` in ~/.config/swim/config.yml).
 {{end}}
+# Outcome handlers (change the syntax line above to "# swim: syntax 3"):
+# swim calls them when the round ends, however it ends; their steps run
+# soft. on_success or on_failure, then on_exit. See swim --help.
+# on_failure() {
+#   reached change || return 0   # it failed before changing anything
+#   if guard EXAMPLE_ALLOW_ROLLBACK "undo X ({{.Date}}: why it is safe)"; then
+#     run "undo X" echo "would undo X"
+#   fi
+# }
+
 stage snapshot
 snapshot "current state" echo "replace with a read-only describe/list command"
 

@@ -246,6 +246,7 @@ WRITING A LANE SCRIPT
                                   with +/-20% jitter (default 2s)
       --retry-on CODES            retry only on these exit codes, e.g. 1,255
       --no-retry-timeout          don't retry an attempt the step limit stopped
+      --soft                      in a Fail: hard round, this step's failure doesn't end it
     The round's Timeout: always wins: no attempt runs past it, and a retry that
     couldn't start before it isn't attempted (the round stops, as for a timeout).
     Each attempt is in the log; the step counts once (one PASS or FAIL). Only put
@@ -264,9 +265,12 @@ WRITING A LANE SCRIPT
   last_failed                     true if the previous step failed.
   any_failed                      true if any step in this round failed.
   drift "<what differs>"          record DRIFT (deployed state differs from code).
-  stop "<reason>"                 record STOP and end the round now.
-  summary                         print + log the summary, record final state.
-                                  Exits non-zero if any step failed. Put it last.
+  stop "<reason>"                 record STOP and end the round now (in a handler: record
+                                  it, and the handler carries on).
+  reached STAGE                   true if the round started STAGE or a later one; an
+                                  on_failure usually starts with: reached change || return 0
+  summary                         run the outcome handlers, print + log the summary, record
+                                  final state. Exits non-zero if any step failed. Put it last.
 
   Header (the `# Key: value` lines at the top; one space at most after the
   #, since indented comment lines are prose). Empty or missing means the default:
@@ -290,6 +294,11 @@ WRITING A LANE SCRIPT
       # Timeout: <30m, 1h30m, ...>    limit for the whole round. A step still running
                                       at the limit is stopped (FAIL, timeout) and the
                                       round ends. Default: none
+      # Fail: soft|hard               hard: the first failed step ends the round (STOP
+                                      hard failure) and goes to on_failure. Default: soft.
+                                      Needs syntax 3
+      # Handler-Timeout: <5m, ...>    the budget for all outcome handlers together, from
+                                      when the round ends. Default: 5m
   Other keys in the header block (e.g. "# Ticket: OPS-42") are kept and shown
   in the log's round header. A value swim can't use (a bad Timeout) is
   recorded as WARN when the round starts, and the default applies.
@@ -305,6 +314,45 @@ WRITING A LANE SCRIPT
   snapshot and a check stage before it, records a WARN line (the round
   continues). An unknown stage name stops the round. The log's END block and
   status.yml record each stage's result: PASS, FAIL, SKIP (only skipped) or none.
+
+  OUTCOME HANDLERS (script syntax 3: `# swim: syntax 3`). A round may define
+  bash functions swim calls when it ends, however it ends (the end of the
+  script, summary, a gate, stop, a hard failure, a blocked command, Ctrl-C,
+  a timeout, a bash error), like try / catch / finally:
+      on_success() { run "tag migrated" aws ... ; }      # the round passed
+      on_failure() {                                    # anything else
+        reached change || return 0                      # nothing changed, nothing to undo
+        if guard ORDERS_ALLOW_ROLLBACK "redeploy SST stack orders-prod"; then
+          run "sst deploy" npx sst deploy --stage prod
+        fi
+      }
+      on_exit() { run "remove temp bucket" aws s3 rb s3://orders-tmp --force ; }
+  - Order: on_success or on_failure, then on_exit. Each has its own log
+    section (-- handler on_failure). Their results never change the round's:
+    a failed round stays FAIL, and the END block, status.yml, --yaml and the
+    chain record each handler (handlers: on_failure PASS | on_exit PASS).
+  - Handlers run soft: a failed step, a gate, stop or a declined confirm in
+    a handler records the failure and the handler carries on, so every
+    rollback step gets its attempt. A round whose on_failure failed exits 89
+    ("failed, and the rollback failed"), not 1.
+  - Context: SWIM_OUTCOME (pass, fail, stopped, interrupted, timeout),
+    SWIM_STOP_REASON, SWIM_FAILED_STEP and SWIM_FAILED_STAGE (the first
+    failed step).
+  - Guards in handlers approve as anywhere else; an unapproved rollback is a
+    dry run. After a Ctrl-C nobody is asked: approve rollbacks up front
+    (queue --approve, a signed approval). swim plan lists each handler and
+    the guards in it.
+  - Ctrl-C: the first stops the round at a step boundary and runs its
+    handlers (SWIM_OUTCOME=interrupted; return early if a rollback shouldn't
+    follow an interrupt). Their steps start even though a stop was asked
+    for. The second interrupts the running handler step and skips the rest;
+    a third kills everything.
+  - Handler-Timeout: (default 5m) is their budget together, from when the
+    round ends, so a round that ran out its Timeout still gets time to roll
+    back. Past it, the running step is stopped and the rest skipped.
+  Lanes in other languages name commands instead: # On-Success:, # On-Failure:,
+  # On-Exit: (or on-success:, ... in lane.N.yml), run with sh -c in a handler
+  section with the same context and budget (see OTHER LANGUAGES).
 
   Rules for lane scripts:
   - Do not use `set -e`. Failed checks keep going; only gates stop the round.
@@ -383,7 +431,13 @@ OTHER LANGUAGES
     swim stage snapshot|check|change|verify
     swim drift "<what differs>"    swim stop "<reason>"
   (options as for run in a bash lane: --timeout, --retry, --backoff,
-  --retry-on, --no-retry-timeout). A failed gate, swim stop, a refused git
+  --retry-on, --no-retry-timeout, --soft). Outcome handlers are commands:
+      # On-Failure: python3 rollback.py           (on-failure: in lane.N.yml)
+      # On-Exit:    swim run "remove tmp" -- rm -rf /tmp/orders
+  run with sh -c when the round ends; in them swim gate and swim stop record a
+  failure and end nothing. # Fail: hard makes a failed swim run end the round
+  (swim run --soft opts out). Both need `# swim: syntax 3` in the header; a
+  sidecar with these keys needs none. A failed gate, swim stop, a refused git
   push or the operator's stop ends the program even if it ignores the exit
   code (SIGTERM to its process group, SIGKILL after 5s). A program that
   never calls swim run is logged as one step: its whole output (masked),
@@ -462,7 +516,8 @@ ENV FILES
 SYNTAX
   Lane scripts and lane logs say which syntax they use ("# swim: syntax 2" near
   a script's top, "# swim lane log | syntax 2" as a log's first line; none
-  means syntax 1). This swim writes syntax 2 and reads syntax 1 and 2.
+  means syntax 1). This swim writes syntax 2, reads lane logs in syntax 1
+  and 2, and lane scripts in syntax 1 to 3.
   - Older files are migrated automatically when any swim command loads the
     repo: rewritten in place, originals copied to .swim/migrations/<time>/,
     the migration recorded in .swim.log. A running lane's files wait until
@@ -471,6 +526,9 @@ SYNTAX
   - A file in a newer syntax stops swim with an update prompt
     (go install github.com/gates-brightly/swimlane/cmd/swim@latest).
   Syntaxes:
+    3   (lane scripts only) outcome handlers (on_success, on_failure, on_exit,
+        or On-*: commands) and Fail:. Declare it only when you use them; a
+        syntax 2 script is never rewritten to 3, and logs stay syntax 2.
     2   header metadata (Owner, Created, Guards, Timeout, ...), the four
         stages, and logs grouped by round and stage with output fenced by "| "
     1   no syntax line, no stages, === STEP / --- output log framing

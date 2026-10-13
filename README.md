@@ -239,6 +239,14 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
+- **Outcome handlers** (`# swim: syntax 3`): `on_success`, `on_failure` and
+  `on_exit` functions run however the round ends, like try / catch /
+  finally. They run soft, so every rollback step gets its attempt, and
+  `reached change || return 0` skips a rollback when nothing changed. A
+  failed round whose `on_failure` failed exits 89. `# Fail: hard` ends the
+  round at the first failed step (`run --soft` opts one out), and
+  `# Handler-Timeout:` (default 5m) is the handlers' budget. Lanes in other
+  languages name commands: `# On-Failure: python3 rollback.py`.
 - **Checks:** `swim lint` checks scripts before you run them: header,
   stages, guards, bash 3.2, blocked commands, and secrets echoed to the log.
 

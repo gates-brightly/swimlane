@@ -8,8 +8,18 @@ _swim_last=0
 _swim_label=
 _swim_prev_label=
 _swim_done=
-_swim_rc=
+_swim_rc_file=
 _swim_pre_rc=
+_swim_soft=
+_swim_no_hard=
+_swim_stage=
+_swim_reached=
+_swim_stop_reason=
+_swim_first_failed=
+_swim_first_failed_stage=
+_swim_in_handler=
+_swim_handler_abort=
+_swim_round_code=
 SWIM_LANE=
 
 # lane_init N — claim lane N: cd to the repo root, point STEP_LOG at
@@ -36,9 +46,9 @@ lane_init() {
   # WARN). What the shell held before it is kept so that a guard flag it
   # sets is refused (see _swim_from_rc).
   if [ -f "$SWIM_ROOT/.lane.$SWIM_LANE.rc" ]; then
-    _swim_rc="$SWIM_ROOT/.lane.$SWIM_LANE.rc"
+    _swim_rc_file="$SWIM_ROOT/.lane.$SWIM_LANE.rc"
     _swim_pre_rc=$(declare -p 2>/dev/null)
-    . "$_swim_rc"
+    . "$_swim_rc_file"
   fi
   # Before _start marks the lane running: the launcher only signals a lane
   # (SIGUSR2, a stop request) once status shows its pid, so the trap is
@@ -56,29 +66,115 @@ lane_init() {
   SWIM_RUN=${_swim_start%% *}
   _swim_start=${_swim_start#* }
   SWIM_STEP_TIMEOUT=${_swim_start%% *}
+  _swim_start=${_swim_start#* }
+  SWIM_FAIL_MODE=${_swim_start%% *}
+  _swim_start=${_swim_start#* }
+  SWIM_HANDLER_TIMEOUT=${_swim_start%% *}
   SWIM_TIMEOUT=${_swim_start#* }
   SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
-  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT
+  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE SWIM_HANDLER_TIMEOUT
   trap '_swim_on_exit' EXIT
   trap 'stop "blocked command: git push/commit/pull (swim never writes to git)"' USR1
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+  trap '_swim_on_signal 130' INT
+  trap '_swim_on_signal 143' TERM
+}
+
+# _swim_on_signal CODE — Ctrl-C (130) or SIGTERM (143): end the round; in a
+# handler, skip the handlers' remaining steps instead (the running one has
+# the signal too).
+_swim_on_signal() {
+  if [ -n "$_swim_in_handler" ]; then
+    _swim_handler_abort="interrupted"
+    return
+  fi
+  exit "$1"
 }
 
 # Runs on any exit: a round that ends without `summary` (Ctrl-C, gate,
-# stop, a typo) still gets a summary and a final state.
+# stop, a typo) still runs its handlers and gets a summary and a final state.
 _swim_on_exit() {
   _swim_code=$?
-  if [ -n "$_swim_done" ] || [ -z "$SWIM_LANE" ]; then
+  if [ -z "$SWIM_LANE" ]; then
     return
   fi
+  if [ -n "$_swim_in_handler" ]; then
+    # A handler called exit: the rest of the handlers are skipped, and the
+    # round ends as it would have.
+    "$SWIM_BIN" _mark "$SWIM_LANE" STOP "handler exited (exit $_swim_code); remaining handlers skipped"
+    _swim_in_handler=
+    _swim_finish "$_swim_round_code"
+    exit $?
+  fi
+  if [ -n "$_swim_done" ]; then
+    return
+  fi
+  _swim_end "$_swim_code"
+  exit $?
+}
+
+# _swim_end [CODE] — end the round: run its outcome handlers, then record
+# the summary and final state. CODE is how the script exited ("" from
+# summary: the log decides).
+_swim_end() {
   _swim_done=1
-  if [ "$_swim_code" -eq 0 ]; then
+  _swim_round_code=$1
+  _swim_handlers "${1:-0}"
+  _swim_finish "$1"
+}
+
+_swim_finish() {
+  if [ -z "$1" ] || [ "$1" -eq 0 ]; then
     "$SWIM_BIN" _finish "$SWIM_LANE"
   else
-    "$SWIM_BIN" _finish "$SWIM_LANE" --exit "$_swim_code"
+    "$SWIM_BIN" _finish "$SWIM_LANE" --exit "$1"
   fi
-  exit $?
+}
+
+# _swim_handlers CODE — call the round's outcome handlers: on_success if it
+# passed, else on_failure; then on_exit. Each gets SWIM_OUTCOME (pass, fail,
+# stopped, interrupted, timeout), SWIM_STOP_REASON, SWIM_FAILED_STEP and
+# SWIM_FAILED_STAGE, and runs soft: nothing in it stops it, and its steps
+# share one budget (Handler-Timeout:, default 5m) that starts now.
+_swim_handlers() {
+  if [ -n "$_swim_stop_reason" ]; then
+    case "$_swim_stop_reason" in
+      "interrupted by operator"*) _swim_outcome=interrupted ;;
+      timeout:*) _swim_outcome=timeout ;;
+      *) _swim_outcome=stopped ;;
+    esac
+  elif [ "$1" -eq 130 ] || [ "$1" -eq 143 ] || [ "$1" -eq 129 ]; then
+    _swim_outcome=interrupted
+  elif [ "$1" -ne 0 ] || [ "$_swim_fail" -gt 0 ]; then
+    _swim_outcome=fail
+  else
+    _swim_outcome=pass
+  fi
+  if [ "$_swim_outcome" = pass ]; then
+    _swim_first=on_success
+  else
+    _swim_first=on_failure
+  fi
+  for _swim_h in $_swim_first on_exit; do
+    declare -F "$_swim_h" >/dev/null 2>&1 || continue
+    if [ -z "$_swim_in_handler" ]; then
+      _swim_in_handler=1
+      SWIM_OUTCOME=$_swim_outcome
+      SWIM_STOP_REASON=$_swim_stop_reason
+      SWIM_FAILED_STEP=$_swim_first_failed
+      SWIM_FAILED_STAGE=$_swim_first_failed_stage
+      # The handlers' own deadline replaces the round's; steps in them start
+      # even after a stop request (SWIM_IN_HANDLER).
+      SWIM_DEADLINE=$(( $(date +%s) + ${SWIM_HANDLER_TIMEOUT:-300} ))
+      SWIM_TIMEOUT="Handler-Timeout ${SWIM_HANDLER_TIMEOUT:-300}s"
+      SWIM_IN_HANDLER=1
+      export SWIM_OUTCOME SWIM_STOP_REASON SWIM_FAILED_STEP SWIM_FAILED_STAGE SWIM_DEADLINE SWIM_TIMEOUT SWIM_IN_HANDLER
+      trap '' USR2 # a stop request now only skips the handlers' remaining steps (see run)
+    fi
+    "$SWIM_BIN" _handler "$SWIM_LANE" "$_swim_h"
+    "$_swim_h"
+  done
+  _swim_in_handler=
+  unset SWIM_IN_HANDLER
 }
 
 # _swim_after_step CODE — count a failure; stop the round if the round's
@@ -86,6 +182,14 @@ _swim_on_exit() {
 # $STEP_LOG.round-timeout when it was the round's (not the step's own).
 _swim_after_step() {
   _swim_last=$1
+  if [ -n "$_swim_in_handler" ]; then
+    # Nothing stops a handler; its budget running out skips the rest.
+    if [ "$_swim_last" -eq 124 ] && [ -e "$STEP_LOG.round-timeout" ]; then
+      rm -f "$STEP_LOG.round-timeout"
+      _swim_handler_abort="the handlers' budget ($SWIM_TIMEOUT) ran out"
+    fi
+    return "$_swim_last"
+  fi
   if [ "$_swim_last" -eq 86 ]; then
     # swim step refused to start: the lane is stopping.
     _swim_operator_stop "$_swim_prev_label"
@@ -93,6 +197,10 @@ _swim_after_step() {
   _swim_prev_label=$_swim_label
   if [ "$_swim_last" -ne 0 ]; then
     _swim_fail=$((_swim_fail + 1))
+    if [ -z "$_swim_first_failed" ]; then
+      _swim_first_failed=$_swim_label
+      _swim_first_failed_stage=${_swim_stage:-setup}
+    fi
   fi
   if [ "$_swim_last" -eq 87 ]; then
     stop "blocked command: $_swim_label"
@@ -100,6 +208,11 @@ _swim_after_step() {
   if [ "$_swim_last" -eq 124 ] && [ -e "$STEP_LOG.round-timeout" ]; then
     rm -f "$STEP_LOG.round-timeout"
     stop "timeout: the round's Timeout ($SWIM_TIMEOUT) ran out"
+  fi
+  # Fail: hard: the first failed step ends the round (a gate stops it with
+  # its own reason; run --soft opts one step out).
+  if [ "$_swim_last" -ne 0 ] && [ "${SWIM_FAIL_MODE:-soft}" = hard ] && [ -z "$_swim_soft" ] && [ -z "$_swim_no_hard" ]; then
+    stop "hard failure: $_swim_label"
   fi
   return "$_swim_last"
 }
@@ -117,10 +230,11 @@ _swim_operator_stop() {
   fi
   _swim_after=${1-$_swim_label}
   if [ -n "$_swim_after" ]; then
-    "$SWIM_BIN" _mark "$SWIM_LANE" STOP "interrupted by operator (after: $_swim_after)"
+    _swim_stop_reason="interrupted by operator (after: $_swim_after)"
   else
-    "$SWIM_BIN" _mark "$SWIM_LANE" STOP "interrupted by operator (before the first step)"
+    _swim_stop_reason="interrupted by operator (before the first step)"
   fi
+  "$SWIM_BIN" _mark "$SWIM_LANE" STOP "$_swim_stop_reason"
   exit 130
 }
 
@@ -131,6 +245,26 @@ stage() {
   if ! "$SWIM_BIN" _stage "$SWIM_LANE" "$1"; then
     stop "bad stage: ${1:-<none>} (stages are snapshot, check, change, verify)"
   fi
+  _swim_stage=$1
+  _swim_reached="$_swim_reached $1"
+}
+
+# reached STAGE — true if the round started STAGE or a later one. A
+# failure before the change stage changed nothing, so an on_failure handler
+# usually starts with: reached change || return 0
+reached() {
+  _swim_later=
+  for _swim_s in snapshot check change verify; do
+    if [ "$_swim_s" = "$1" ]; then
+      _swim_later=1
+    fi
+    if [ -n "$_swim_later" ]; then
+      case " $_swim_reached " in
+        *" $_swim_s "*) return 0 ;;
+      esac
+    fi
+  done
+  return 1
 }
 
 # _swim_run_step MODE [options] "<label>" cmd [args...] — shared by run and
@@ -140,12 +274,15 @@ stage() {
 #   --backoff D        wait D before the first retry, doubling (default 2s)
 #   --retry-on CODES   retry only on these exit codes (e.g. 1,255)
 #   --no-retry-timeout don't retry an attempt the step limit stopped
+#   --soft             in a Fail: hard round, a failure doesn't end it
 _swim_run_step() {
   _swim_mode=$1
   shift
   _swim_o=
+  _swim_soft=
   while [ $# -gt 0 ]; do
     case "$1" in
+      --soft) _swim_soft=1; shift ;;
       --timeout|--retry|--backoff|--retry-on)
         if [ $# -lt 2 ]; then
           echo "swim: $1 needs a value" >&2
@@ -165,6 +302,11 @@ _swim_run_step() {
   fi
   _swim_label=$1
   shift
+  if [ -n "$_swim_in_handler" ] && [ -n "$_swim_handler_abort" ]; then
+    "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$_swim_label" "not run: $_swim_handler_abort"
+    _swim_last=1
+    return 1
+  fi
   # $_swim_o is unquoted on purpose: option values (durations, codes) have no spaces.
   "$SWIM_BIN" step $_swim_mode $_swim_o --label "$_swim_label" -- "$@"
   _swim_after_step $?
@@ -183,7 +325,9 @@ run() {
 # the last attempt) stops the round here, before any later (destructive)
 # step. Fail-closed.
 gate() {
+  _swim_no_hard=1
   _swim_run_step "" "$@"
+  _swim_no_hard=
   if [ "$_swim_last" -ne 0 ]; then
     stop "gate failed: $_swim_label"
   fi
@@ -252,11 +396,11 @@ guard() {
 # _swim_from_rc FLAG — true if .lane.N.rc set FLAG=1: it names FLAG, and
 # FLAG wasn't already 1 before lane_init sourced it.
 _swim_from_rc() {
-  [ -n "${_swim_rc:-}" ] || return 1
+  [ -n "${_swim_rc_file:-}" ] || return 1
   case "$_swim_pre_rc" in
     *" $1=\"1\""*|*" $1=1"*) return 1 ;;
   esac
-  grep -q "$1" "$_swim_rc" 2>/dev/null
+  grep -q "$1" "$_swim_rc_file" 2>/dev/null
 }
 
 # confirm "<question>" [answer] — ask the operator; anything other than the
@@ -277,7 +421,7 @@ confirm() {
     if [ "$SECONDS" -eq "$_swim_t" ]; then
       break
     fi
-    if [ -e "$SWIM_ROOT/.swim/lane$SWIM_LANE.stop" ]; then
+    if [ -z "$_swim_in_handler" ] && [ -e "$SWIM_ROOT/.swim/lane$SWIM_LANE.stop" ]; then
       _swim_operator_stop
     fi
   done
@@ -293,17 +437,21 @@ drift() {
   "$SWIM_BIN" _mark "$SWIM_LANE" DRIFT "$1"
 }
 
-# stop "<reason>" — record STOP <reason> and end the round now.
+# stop "<reason>" — record STOP <reason> and end the round now. In a
+# handler it records the STOP (the handler fails) and returns 1 instead:
+# nothing stops a rollback halfway.
 stop() {
   "$SWIM_BIN" _mark "$SWIM_LANE" STOP "${1:-stopped}"
+  if [ -n "$_swim_in_handler" ]; then
+    return 1
+  fi
+  _swim_stop_reason=${1:-stopped}
   exit 1
 }
 
-# summary — print the round summary, append it to the log, record the
-# final state. Exits non-zero if any step failed. Put it last.
+# summary — run the round's outcome handlers, print the round summary,
+# append it to the log, record the final state. Exits non-zero if any step
+# failed. Put it last.
 summary() {
-  "$SWIM_BIN" _finish "$SWIM_LANE"
-  _swim_rc=$?
-  _swim_done=1
-  return $_swim_rc
+  _swim_end ""
 }

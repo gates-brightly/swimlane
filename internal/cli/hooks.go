@@ -167,6 +167,16 @@ func cmdStart(args []string) error {
 	if commit != "" {
 		ctx = append(ctx, logparse.KV{K: "commit", V: commit})
 	}
+	if info.FailHard {
+		ctx = append(ctx, logparse.KV{K: "fail", V: "hard"})
+	}
+	if len(info.Handlers) > 0 {
+		var names []string
+		for _, h := range info.Handlers {
+			names = append(names, h.Name)
+		}
+		ctx = append(ctx, logparse.KV{K: "handlers", V: strings.Join(names, " ") + " (" + info.HandlerBudget().String() + ")"})
+	}
 	ctx = append(ctx, logparse.KV{K: "sha256", V: scriptSum[:12]})
 	// The env files that applied (their values are in the lane's env, and
 	// masked), and their hash for the chain.
@@ -212,10 +222,15 @@ func cmdStart(args []string) error {
 	if info.StepTimeout > 0 {
 		stepTimeout = info.StepTimeoutText
 	}
+	failMode := "soft"
+	if info.FailHard {
+		failMode = "hard"
+	}
 	// stdout carries "<job> <deadline epoch or 0> <run> <step timeout or 0>
-	// <timeout>" back to lane_init, which exports SWIM_JOB, SWIM_DEADLINE,
-	// SWIM_RUN, SWIM_STEP_TIMEOUT and SWIM_TIMEOUT.
-	defer fmt.Printf("%s %d %s %s %s\n", job, deadline, run, stepTimeout, timeoutText)
+	// <fail mode> <handler budget, seconds> <timeout>" back to lane_init,
+	// which exports SWIM_JOB, SWIM_DEADLINE, SWIM_RUN, SWIM_STEP_TIMEOUT,
+	// SWIM_FAIL_MODE, SWIM_HANDLER_TIMEOUT and SWIM_TIMEOUT.
+	defer fmt.Printf("%s %d %s %s %s %d %s\n", job, deadline, run, stepTimeout, failMode, int(info.HandlerBudget().Seconds()), timeoutText)
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		f.Branch = ref
 		l := f.Get(n)
@@ -236,6 +251,22 @@ func cmdStart(args []string) error {
 	})
 }
 
+// ExitRollbackFailed is a failed round's exit code when its on_failure
+// handler failed too.
+const ExitRollbackFailed = 89
+
+// handlerMap is the round's handler outcomes for the chain (nil if none ran).
+func handlerMap(r *logparse.Round) map[string]string {
+	var m map[string]string
+	for _, h := range r.HandlerResults() {
+		if m == nil {
+			m = map[string]string{}
+		}
+		m[h.Name] = h.State
+	}
+	return m
+}
+
 // laneEnvSHA is the env files' hash lane n's round started with.
 func laneEnvSHA(root string, n int) string {
 	if st, _ := status.Load(root); st != nil {
@@ -244,6 +275,31 @@ func laneEnvSHA(root string, n int) string {
 		}
 	}
 	return ""
+}
+
+// swim _handler N NAME: the round's outcome handler NAME starts (the
+// library or the wrapper calls it as the round ends).
+func cmdHandler(args []string) error {
+	if len(args) != 2 {
+		return usagef("usage: swim _handler N on_success|on_failure|on_exit")
+	}
+	name := args[1]
+	known := false
+	for _, h := range lane.HandlerNames {
+		known = known || h == name
+	}
+	if !known {
+		return fmt.Errorf("unknown handler %q (handlers: %s)", name, strings.Join(lane.HandlerNames, ", "))
+	}
+	root, cfg, n, err := laneCtx(args[0])
+	if err != nil {
+		return err
+	}
+	if err := appendLog(lane.Log(root, n), "\n"+logparse.HandlerLine(name, time.Now().Format("15:04:05"))+"\n"); err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, painter().Paint(ui.Bold, "-- handler "+name+" ("+os.Getenv("SWIM_OUTCOME")+")"))
+	return status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.Stage = name })
 }
 
 // swim _stage N NAME: the lane script entered a stage.
@@ -329,6 +385,12 @@ func cmdFinish(args []string) error {
 	} else if len(failed) > 0 {
 		code = 1
 	}
+	// A failed round whose rollback (on_failure) failed too exits 89, so CI
+	// and swim wait can tell it from one that rolled back. The result
+	// stays FAIL either way.
+	if code != 0 && code != 130 && code != 143 && code != 129 && code != 137 && r.HandlerState(lane.OnFailure) == "FAIL" {
+		code = ExitRollbackFailed
+	}
 	state := status.Passed
 	switch {
 	case code == 130 || code == 143 || code == 129 || code == 137 || r.Interrupt:
@@ -357,7 +419,7 @@ func cmdFinish(args []string) error {
 		if err := record(root, cfg, chain.Entry{Type: "round", Run: r.Run, Lane: n, Job: r.Job, Round: r.Title,
 			Script: scriptSHA(root, n), Result: state, Exit: &exit,
 			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: roundApprovals(root, r.Run, n),
-			EnvSHA256: laneEnvSHA(root, n)}); err != nil {
+			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 	}
@@ -368,6 +430,9 @@ func cmdFinish(args []string) error {
 		p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d summary:", n)),
 		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, code, display.Elapsed(dur))
 	fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "stages: "+logparse.StagesText(stages)))
+	if hs := r.HandlerResults(); len(hs) > 0 {
+		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "handlers: "+logparse.StagesText(hs)))
+	}
 	for _, f := range failed {
 		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Red, f.Text()))
 	}
@@ -397,6 +462,10 @@ func cmdFinish(args []string) error {
 		l.Stages = []string{}
 		for _, st := range stages {
 			l.Stages = append(l.Stages, st.Name+" "+st.State)
+		}
+		l.Handlers = nil
+		for _, h := range r.HandlerResults() {
+			l.Handlers = append(l.Handlers, h.Name+" "+h.State)
 		}
 	})
 	if pid, ok := lane.Running(root, n); !ok || pid == os.Getppid() {

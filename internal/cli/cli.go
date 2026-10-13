@@ -73,6 +73,7 @@ func init() {
 		"_approve": {run: cmdApproveHook, hidden: true},
 		"_stage":   {run: cmdStage, hidden: true},
 		"_wrap":    {run: cmdWrap, hidden: true},
+		"_handler": {run: cmdHandler, hidden: true},
 	}
 }
 

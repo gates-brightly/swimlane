@@ -16,6 +16,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/step"
 )
 
@@ -67,9 +68,10 @@ func cmdWrap(args []string) error {
 	if err != nil {
 		return exitError{1} // _start said why
 	}
-	// "<job> <deadline epoch, 0 for none> <run> <step timeout, 0 for none> <timeout text>"
-	f := strings.SplitN(strings.TrimSpace(string(out)), " ", 5)
-	for len(f) < 5 {
+	// "<job> <deadline epoch, 0 for none> <run> <step timeout, 0 for none>
+	// <fail mode> <handler budget, seconds> <timeout text>"
+	f := strings.SplitN(strings.TrimSpace(string(out)), " ", 7)
+	for len(f) < 7 {
 		f = append(f, "")
 	}
 	logPath := lane.Log(root, n)
@@ -81,7 +83,8 @@ func cmdWrap(args []string) error {
 		"SWIM_LANE", strconv.Itoa(n), "SWIM_ROOT", root, "STEP_LOG", logPath,
 		"SWIM_PID", strconv.Itoa(pid), "SWIM_WRAPPED", "1",
 		"PATH", filepath.Join(root, ".swim", "bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"SWIM_JOB", f[0], "SWIM_DEADLINE", f[1], "SWIM_RUN", f[2], "SWIM_STEP_TIMEOUT", f[3], "SWIM_TIMEOUT", f[4],
+		"SWIM_JOB", f[0], "SWIM_DEADLINE", f[1], "SWIM_RUN", f[2], "SWIM_STEP_TIMEOUT", f[3],
+		"SWIM_FAIL_MODE", f[4], "SWIM_HANDLER_TIMEOUT", f[5], "SWIM_TIMEOUT", f[6],
 		"SWIM_RUN_LANES", runLanes)
 
 	// The program's output goes to the terminal as it is, and (plain,
@@ -141,6 +144,12 @@ func cmdWrap(args []string) error {
 			}
 			in.Close()
 		}
+	}
+
+	// The round's outcome handlers (On-Success:, On-Failure:, On-Exit:).
+	if info, err := lane.ReadScript(root, n); err == nil && len(info.Handlers) > 0 {
+		budget, _ := strconv.Atoi(f[5])
+		runHandlers(root, cfg.Masker(env), n, bin, env, info, code, time.Duration(budget)*time.Second, sigs)
 	}
 
 	fin := []string{"_finish", strconv.Itoa(n)}
@@ -249,4 +258,150 @@ func (s *syncWriter) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.w.Write(p)
+}
+
+// wrappedOutcome is SWIM_OUTCOME for a wrapped lane's round that ended with
+// code: from its last STOP (stopped, interrupted, timeout), else fail or pass.
+func wrappedOutcome(r *logparse.Round, code int) (outcome, reason, failedStep, failedStage string) {
+	for _, res := range r.Failed() {
+		if res.Kind == logparse.Fail && failedStep == "" {
+			failedStep, failedStage = res.Label, res.Stage
+		}
+		if res.Kind == logparse.Stop {
+			reason = res.Label
+		}
+	}
+	switch {
+	case strings.HasPrefix(reason, "interrupted by operator"):
+		outcome = "interrupted"
+	case strings.HasPrefix(reason, "timeout:"):
+		outcome = "timeout"
+	case reason != "":
+		outcome = "stopped"
+	case code == 130 || code == 143 || code == 129:
+		outcome = "interrupted"
+	case code != 0 || r.Fail > 0:
+		outcome = "fail"
+	default:
+		outcome = "pass"
+	}
+	return outcome, reason, failedStep, failedStage
+}
+
+// runHandlers runs a wrapped lane's handler commands: on_success if the
+// round passed, else on_failure; then on_exit. Each runs with sh -c, soft
+// (an in-lane gate or swim stop records a failure and nothing more), with
+// the round's outcome in SWIM_OUTCOME and friends, inside one budget. A
+// command that never calls swim run is recorded as one step.
+func runHandlers(root string, mk *redact.Masker, n int, bin string, env []string, info lane.Info, code int, budget time.Duration, sigs chan os.Signal) {
+	logPath := lane.Log(root, n)
+	r, err := logparse.ParseFile(logPath)
+	if err != nil {
+		return
+	}
+	outcome, reason, failedStep, failedStage := wrappedOutcome(r, code)
+	if budget <= 0 {
+		budget = lane.DefaultHandlerTimeout
+	}
+	deadline := time.Now().Add(budget)
+	env = setEnv(env, "SWIM_OUTCOME", outcome, "SWIM_STOP_REASON", reason, "SWIM_FAILED_STEP", failedStep,
+		"SWIM_FAILED_STAGE", failedStage, "SWIM_IN_HANDLER", "1",
+		"SWIM_DEADLINE", strconv.FormatInt(deadline.Unix(), 10), "SWIM_TIMEOUT", "Handler-Timeout "+budget.String())
+	first := lane.OnFailure
+	if outcome == "pass" {
+		first = lane.OnSuccess
+	}
+	aborted := ""
+	for _, name := range []string{first, lane.OnExit} {
+		h, ok := info.Handler(name)
+		if !ok || h.Cmd == "" {
+			continue
+		}
+		mark := exec.Command(bin, "_handler", strconv.Itoa(n), name)
+		mark.Env, mark.Stderr, mark.Dir = env, os.Stderr, root
+		mark.Run()
+		if aborted != "" {
+			cmdMark([]string{strconv.Itoa(n), logparse.Skip, name, "not run: " + aborted})
+			continue
+		}
+		before, _ := logparse.ParseFile(logPath)
+		capPath := logPath + ".wrap"
+		capF, err := os.Create(capPath)
+		if err != nil {
+			continue
+		}
+		mw := mk.Writer(capF)
+		capture := &syncWriter{w: &step.StripWriter{W: mw}}
+		c := exec.Command("/bin/sh", "-c", h.Cmd)
+		c.Dir, c.Env, c.Stdin = root, env, nil
+		c.Stdout, c.Stderr = io.MultiWriter(os.Stdout, capture), io.MultiWriter(os.Stderr, capture)
+		began := time.Now()
+		hcode := 127
+		if err := c.Start(); err == nil {
+			done := make(chan error, 1)
+			go func() { done <- c.Wait() }()
+			hcode, aborted = waitHandler(c, done, sigs, deadline)
+		} else {
+			fmt.Fprintf(capture, "swim: cannot start %s: %v\n", h.Cmd, err)
+		}
+		capture.mu.Lock()
+		mw.Flush()
+		capture.mu.Unlock()
+		capF.Close()
+		after, _ := logparse.ParseFile(logPath)
+		if before != nil && after != nil && countSteps(after, name) == countSteps(before, name) {
+			if in, err := os.Open(capPath); err == nil {
+				step.RecordOutput(logPath, name+": "+mk.String(h.Cmd), mk.String(h.Cmd), began, time.Since(began), hcode, in)
+				in.Close()
+			}
+		}
+		os.Remove(capPath)
+		if aborted != "" {
+			cmdMark([]string{strconv.Itoa(n), logparse.Stop, name + " stopped: " + aborted})
+		}
+	}
+}
+
+// countSteps counts the step results in handler name's section(s).
+func countSteps(r *logparse.Round, name string) int {
+	k := 0
+	for _, res := range r.Results {
+		if res.Handler == name && res.Step {
+			k++
+		}
+	}
+	return k
+}
+
+// waitHandler waits for a handler command within the handlers' deadline;
+// Ctrl-C (which the command gets too) skips the remaining handlers. It
+// returns the exit code and why the handlers stop ("" if they don't).
+func waitHandler(c *exec.Cmd, done chan error, sigs chan os.Signal, deadline time.Time) (int, string) {
+	budget := time.NewTimer(time.Until(deadline))
+	defer budget.Stop()
+	var kill <-chan time.Time
+	why := ""
+	for {
+		select {
+		case <-done:
+			return exitStatus(c.ProcessState), why
+		case <-budget.C:
+			why = "the handlers' budget (Handler-Timeout) ran out"
+			terminate(c)
+			kill = time.After(5 * time.Second)
+		case <-kill:
+			c.Process.Kill()
+			kill = nil
+		case s := <-sigs:
+			switch s {
+			case syscall.SIGINT:
+				why = "interrupted"
+			case syscall.SIGTERM, syscall.SIGHUP:
+				why = "interrupted"
+				c.Process.Signal(s)
+			}
+			// SIGUSR1 (the git shim refused a command) and SIGUSR2 (a stop
+			// request): a handler isn't stopped by either.
+		}
+	}
 }

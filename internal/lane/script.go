@@ -178,6 +178,12 @@ type sideFile struct {
 	StepTimeout *string           `yaml:"step-timeout"`
 	Locks       *strList          `yaml:"locks"`
 	Stub        *bool             `yaml:"stub"`
+	// Outcome handlers (script syntax 3).
+	Fail           *string `yaml:"fail"`
+	HandlerTimeout *string `yaml:"handler-timeout"`
+	OnSuccess      *string `yaml:"on-success"`
+	OnFailure      *string `yaml:"on-failure"`
+	OnExit         *string `yaml:"on-exit"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -219,7 +225,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -298,6 +304,26 @@ func applySidecar(path string, info *Info) error {
 	if sf.Stub != nil {
 		info.Stub = *sf.Stub
 	}
+	if sf.Fail != nil {
+		info.setFail(*sf.Fail, name+" fail:")
+	}
+	if sf.HandlerTimeout != nil {
+		info.setHandlerTimeout(*sf.HandlerTimeout, name+" handler-timeout")
+	}
+	for _, h := range []struct {
+		name string
+		cmd  *string
+	}{{OnSuccess, sf.OnSuccess}, {OnFailure, sf.OnFailure}, {OnExit, sf.OnExit}} {
+		if h.cmd != nil && strings.TrimSpace(*h.cmd) != "" {
+			info.setHandlerCmd(h.name, strings.TrimSpace(*h.cmd), 0)
+		}
+	}
+	// An older swim refuses a sidecar with keys it doesn't know, so these
+	// keys need no syntax line: the round is syntax 3.
+	if sf.Fail != nil || sf.HandlerTimeout != nil || sf.OnSuccess != nil || sf.OnFailure != nil || sf.OnExit != nil {
+		info.Syntax = max(info.Syntax, 3)
+	}
+	sort.SliceStable(info.Handlers, func(a, b int) bool { return handlerOrder(info.Handlers[a].Name) < handlerOrder(info.Handlers[b].Name) })
 	return nil
 }
 
@@ -340,3 +366,12 @@ func EndCode(root string, n int) (int, bool) {
 
 // ClearEnd removes lane n's end request.
 func ClearEnd(root string, n int) { os.Remove(EndPath(root, n)) }
+
+func handlerOrder(name string) int {
+	for i, n := range HandlerNames {
+		if n == name {
+			return i
+		}
+	}
+	return len(HandlerNames)
+}

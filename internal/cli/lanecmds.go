@@ -58,6 +58,7 @@ func laneStep(cmd string, args []string) error {
 		return err
 	}
 	var opts []string
+	soft := false // in a Fail: hard round, this step's failure doesn't end it
 	i := 0
 	for ; i < len(args); i++ {
 		a := args[i]
@@ -71,6 +72,9 @@ func laneStep(cmd string, args []string) error {
 			continue
 		case "--no-retry-timeout":
 			opts = append(opts, a)
+			continue
+		case "--soft":
+			soft = true
 			continue
 		}
 		break
@@ -123,6 +127,8 @@ func laneStep(cmd string, args []string) error {
 		return endRound(root, ln, 1, "timeout: the round's Timeout ("+os.Getenv("SWIM_TIMEOUT")+") ran out")
 	case cmd == "gate" && code != 0:
 		return endRound(root, ln, 1, "gate failed: "+label)
+	case code != 0 && os.Getenv("SWIM_FAIL_MODE") == "hard" && !soft && os.Getenv("SWIM_IN_HANDLER") == "":
+		return endRound(root, ln, 1, "hard failure: "+label)
 	}
 	if code != 0 {
 		return exitError{code}
@@ -137,11 +143,13 @@ func exists(path string) bool {
 
 // endRound records STOP reason and ends lane n's round with code: inside
 // swim's wrapper, by claiming the end and signalling it (it stops the
-// program); in a bash lane script, which ends its own round, by recording
-// the STOP only. Either way the command exits with code.
+// program); in a bash lane script, which ends its own round, or in an
+// outcome handler, which nothing stops, by recording the STOP only. Either
+// way the command exits with code.
 func endRound(root string, n, code int, reason string) error {
 	ns := strconv.Itoa(n)
-	if os.Getenv("SWIM_WRAPPED") == "" {
+	if os.Getenv("SWIM_WRAPPED") == "" || os.Getenv("SWIM_IN_HANDLER") != "" {
+		// A bash lane ends its own round; in a handler, nothing ends it.
 		cmdMark([]string{ns, logparse.Stop, reason})
 		return exitError{code}
 	}
