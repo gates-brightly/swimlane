@@ -48,6 +48,7 @@ func init() {
 		"ci":        {run: cmdCi},
 		"queue":     {run: cmdQueue},
 		"watch":     {run: cmdWatch},
+		"hub":       {run: cmdHub},
 		"wait":      {run: cmdWait},
 		"approve":   {run: cmdApprove},
 		"revoke":    {run: cmdRevoke},

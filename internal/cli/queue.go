@@ -533,7 +533,13 @@ func cmdWatch(args []string) error {
 		fmt.Println(p.Paint(ui.Yellow+ui.Bold, "swim watch: -y: every guard in every batch is approved, beyond what each batch approves (logged as approved by swim watch -y ("+operator()+"))"))
 	}
 	code, s := 0, sayer{p: p, prefix: "swim watch: "}
-	say := s.say
+	// Enrolled with a hub (swim hub enroll): report there as we go.
+	setActivity, stopReporting := hubReporter(root, every)
+	defer stopReporting()
+	say := func(msg string) {
+		setActivity(msg)
+		s.say(msg)
+	}
 	for !stopped() {
 		if approved {
 			for _, msg := range queueApproved(root, cfg) {
@@ -584,7 +590,9 @@ func cmdWatch(args []string) error {
 			continue
 		}
 		s.said = ""
+		setActivity(fmt.Sprintf("running %s (#%d)", e.ID, e.Seq))
 		res, interrupted := runEntry(root, cfg, e, yes)
+		setActivity(fmt.Sprintf("%s (#%d) %s", e.ID, e.Seq, res.Result))
 		if err := queue.Consume(root, e, res); err != nil {
 			fmt.Fprintln(os.Stderr, "swim watch: consume "+e.ID+": "+err.Error())
 		}

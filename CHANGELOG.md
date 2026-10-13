@@ -31,6 +31,17 @@ To cut a release:
 
 ### Added
 
+- **Watch hub:**
+  - **`swim hub`** serves a dashboard of many workers, with a page per
+    worker and `GET /api/workers` as JSON.
+  - **`swim hub enroll URL --token T`** enrolls a directory. Its
+    `swim watch` then reports lanes, steps, the live tail of running lanes,
+    the queue and recent events every interval, including mid-batch.
+  - **Push, not pull:** workers report to the hub, so they can sit behind
+    NAT or a firewall. A restarted hub fills back up as workers report, and
+    silent workers show as stale.
+  - **Managing it:** `swim hub leave` and `swim hub status`.
+
 - **Chain of custody:**
   - **What's recorded:** every approval and every round goes into
     `.swim/chain.jsonl`. Each entry is signed with the runner's SSH key and

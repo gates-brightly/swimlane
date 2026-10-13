@@ -41,6 +41,7 @@ COMMANDS
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run as soon as swim is idle; queue [list|show|rm|requeue]
   watch [--once]           the queue's worker: runs queued batches when idle, consumes them
+  hub / hub enroll URL     a dashboard of many workers; enroll a directory to report to it
   wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until revoked
@@ -134,6 +135,7 @@ FILES (repo root)
   approvals/            signed approvals (committed): lane.N.<sha12>.signature for one
                         exact script, auto.USER.signature standing for USER's jobs
   lookup.yml            who's who: users' SSH keys, groups, approval rules (committed)
+  .swim/hub.yml         this directory's hub enrollment (swim hub enroll), private
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
                         .running claimed by a worker, done/ consumed with results
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,

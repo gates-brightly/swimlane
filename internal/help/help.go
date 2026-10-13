@@ -532,6 +532,32 @@ swim revoke --auto USER [--key K]
   With no rule a signature from any listed user approves; with no
   lookup.yml signatures don't count at all (their keys can't be named).
 `,
+	"hub": `swim hub [--addr HOST:PORT] [--token T]
+swim hub enroll URL [--token T] [--name N]
+swim hub leave | status
+
+  A watch hub: one page showing what many swim workers are doing.
+  swim hub         serve it (default 127.0.0.1:7700): a dashboard of every
+                   enrolled worker (activity, lanes, queue, staleness), a page
+                   per worker (each lane's state and step, the live tail of
+                   running lanes, the queue, recent .swim.log events), and
+                   GET /api/workers as JSON (schema swim.hub/v1) for other
+                   services. It prints the enroll command. Workers present
+                   the token (--token, else $SWIM_HUB_TOKEN, else a new random
+                   one each start); the pages are read-only and
+                   unauthenticated, so keep the default localhost bind or put
+                   it behind your own access control.
+  swim hub enroll URL --token T [--name N]
+                   enroll this directory (name: the directory's): saves
+                   .swim/hub.yml (private), and from then on swim watch here
+                   reports to the hub every --interval, also during batches.
+  swim hub leave   stop reporting (and drop off the hub)
+  swim hub status  this directory's enrollment, and whether the hub answers
+  Workers push their reports, so they can sit behind NAT or a firewall; the
+  hub keeps only each worker's latest report in memory (a restarted hub
+  fills back up as workers report). A worker silent for 3 intervals shows
+  as stale. Lane output in reports is the logs' text, secrets masked.
+`,
 	"interrupt": `swim interrupt N|JOB
 
   Ask one running lane to stop at its next step boundary, from any
@@ -695,7 +721,7 @@ func Names() []string {
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
-	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "wait", "approve", "revoke",
+	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "keys", "ci", "lint", "doctor"}
 
 func Full() string {
