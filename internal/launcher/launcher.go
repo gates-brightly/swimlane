@@ -591,6 +591,12 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	}}
 	cmd.Stdout, cmd.Stderr = w, w
 
+	// The last moment to honour a Ctrl-C that came while this lane was
+	// getting ready (runner, env, slot): after this it starts, and gets the
+	// stop request as a running lane.
+	if ir.stopping() {
+		return skip("interrupted before start")
+	}
 	launched := time.Now()
 	launchedTS := launched.UTC().Format(time.RFC3339)
 	disp.Set(n, func(v *display.LaneView) {

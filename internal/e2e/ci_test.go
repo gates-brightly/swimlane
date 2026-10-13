@@ -70,7 +70,7 @@ func TestCIGitHub(t *testing.T) {
 		"::warning title=swim 2%3A fails::DRIFT  queue policy differs",
 		"::notice title=swim 2%3A fails::drop x - 2026-10-09: dry run: set ALLOW_X=1 to approve",
 		"::notice title=swim%3A 1 lane skipped::swim 3 (swim 2 failed)",
-		"artifacts to upload: .swim/logs/ .swim/snapshots/ .swim.log "+junit)
+		"artifacts to upload: .swim/logs/ .swim/snapshots/ .swim/out/ .swim.log "+junit)
 	md, _ := os.ReadFile(summary)
 	contains(t, "job summary", string(md), "## swim ci: failed", "| swim 2 |", "FAIL  convert (exit 1)", "| swim 3 |", "swim 2 failed")
 	data, _ := os.ReadFile(junit)
