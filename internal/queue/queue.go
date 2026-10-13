@@ -18,6 +18,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -148,12 +149,21 @@ func Add(root string, e *Entry) error {
 		if werr != nil {
 			return werr
 		}
+		if cerr == nil {
+			os.WriteFile(filepath.Join(Dir(root), ".seq"), []byte(strconv.Itoa(e.Seq)+"\n"), 0o644)
+		}
 		return cerr
 	}
 }
 
+// nextSeq is one past the highest sequence number ever used: the entries
+// present, and the high-water mark in .seq (so a removed entry's number is
+// never handed out again).
 func nextSeq(root string) int {
 	top := 0
+	if data, err := os.ReadFile(filepath.Join(Dir(root), ".seq")); err == nil {
+		top, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+	}
 	for _, dir := range []string{Dir(root), DoneDir(root)} {
 		files, _ := os.ReadDir(dir)
 		for _, f := range files {
@@ -191,13 +201,17 @@ func write(e *Entry) error {
 }
 
 // List returns the entries waiting or running (oldest first), and with
-// done the consumed ones too.
+// done the consumed ones too. An entry a worker moves on (claims or
+// consumes) while it is being listed is skipped in its old place.
 func List(root string, done bool) ([]*Entry, error) {
 	var out []*Entry
 	files, _ := filepath.Glob(filepath.Join(Dir(root), "*.queue"))
 	running, _ := filepath.Glob(filepath.Join(Dir(root), "*.running"))
 	for _, p := range append(files, running...) {
 		e, err := load(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -223,6 +237,29 @@ func List(root string, done bool) ([]*Entry, error) {
 	}
 	sort.SliceStable(out, func(a, b int) bool { return out[a].Seq < out[b].Seq })
 	return out, nil
+}
+
+// Busy says what the queue still has to run ("" when nothing): a running
+// batch, or batches waiting for a worker. Orphaned entries never run, so
+// they don't count.
+func Busy(root string) (string, error) {
+	entries, err := List(root, false)
+	if err != nil {
+		return "", err
+	}
+	queued := 0
+	for _, e := range entries {
+		switch e.State {
+		case Running:
+			return fmt.Sprintf("batch %s (#%d) is running (pid %d)", e.ID, e.Seq, e.Worker.PID), nil
+		case Queued:
+			queued++
+		}
+	}
+	if queued > 0 {
+		return fmt.Sprintf("%d queued batch(es) not yet taken by a worker (swim watch)", queued), nil
+	}
+	return "", nil
 }
 
 // Find returns the entry whose id (or seq, or id prefix) matches ref.

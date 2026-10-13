@@ -47,3 +47,22 @@ func TestLibAvoidsBash4Features(t *testing.T) {
 		}
 	}
 }
+
+func TestFullHelpHasEveryCommand(t *testing.T) {
+	in := map[string]bool{}
+	for _, c := range FullOrder {
+		if in[c] {
+			t.Errorf("%s twice in FullOrder", c)
+		}
+		in[c] = true
+		if _, ok := Commands[c]; !ok {
+			t.Errorf("FullOrder has %s, which has no help", c)
+		}
+	}
+	for c := range Commands {
+		if !in[c] && c != "help" { // swim help's own entry: the guide is its output
+
+			t.Errorf("swim --help leaves out %s: add it to FullOrder", c)
+		}
+	}
+}

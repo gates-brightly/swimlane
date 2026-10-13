@@ -683,9 +683,15 @@ func Names() []string {
 }
 
 // Full is the complete --help text: the guide plus every command's detail.
+// FullOrder is the order of the command details in swim --help; every
+// command in Commands is in it (help_test checks).
+var FullOrder = []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
+	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "wait", "approve", "revoke",
+	"verify", "history", "keys", "ci", "lint", "doctor"}
+
 func Full() string {
 	s := Guide + "\nCOMMAND DETAIL\n"
-	for _, order := range []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib", "archive", "stub", "note", "lock", "changelog", "interrupt", "lint", "doctor"} {
+	for _, order := range FullOrder {
 		s += "\n" + Commands[order]
 	}
 	return s

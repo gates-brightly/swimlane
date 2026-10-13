@@ -103,3 +103,16 @@ func TestOrphanAndRequeue(t *testing.T) {
 		t.Errorf("old claim left: %v", files)
 	}
 }
+
+func TestSeqNeverReused(t *testing.T) {
+	root := t.TempDir()
+	Add(root, &Entry{By: "op"})
+	Add(root, &Entry{By: "op"})
+	all, _ := List(root, false)
+	Remove(all[1]) // the newest
+	e := &Entry{By: "op"}
+	Add(root, e)
+	if e.Seq != 3 {
+		t.Fatalf("a removed entry's number was reused: got #%d, want #3", e.Seq)
+	}
+}
