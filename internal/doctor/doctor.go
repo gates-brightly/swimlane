@@ -19,8 +19,10 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
@@ -90,6 +92,8 @@ var Checks = []Check{
 	{"git", false, "git missing, or not a git repo", checkGit},
 	{"header-env-secret", false, "header_env lists a secret", checkHeaderEnvSecret},
 	{"lock", false, ".swim.lock missing, invalid or for another breaking version", checkLock},
+	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
+	{"lane-rc", true, "a deprecated .lane.N.rc (env files replace it)", checkLaneRC},
 }
 
 // Run runs every check.
@@ -113,8 +117,8 @@ func Fixable(code string) bool {
 }
 
 // Fix applies the safe repairs for fs (the .gitignore block, stale pid
-// files) and returns what it did. It never touches config, lane scripts or
-// git.
+// files, plain .lane.N.rc files moved into .env.swim) and returns what it
+// did. It never touches config, lane scripts or git.
 func Fix(o Options, fs []finding.Finding) ([]string, error) {
 	o.defaults()
 	var done []string
@@ -142,9 +146,116 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 				return done, err
 			}
 			done = append(done, "removed "+f.File)
+		case "lane-rc":
+			did, err := migrateRC(&o, f.File)
+			if err != nil {
+				return done, err
+			}
+			if did != "" {
+				done = append(done, did)
+			}
 		}
 	}
 	return done, nil
+}
+
+var rcNameRE = regexp.MustCompile(`^\.lane\.([0-9]+)\.rc$`)
+
+func checkEnvFiles(o *Options) []finding.Finding {
+	var out []finding.Finding
+	lk, _ := lookup.Load(o.Root)
+	reported := map[string]bool{}
+	for n := 1; n <= o.Cfg.Lanes; n++ {
+		info, err := lane.ReadScript(o.Root, n)
+		if err != nil || !info.Exists {
+			info = lane.Info{}
+		}
+		r, err := envfile.Resolve(o.Root, o.Cfg, n)
+		if err != nil {
+			if !reported[err.Error()] {
+				reported[err.Error()] = true
+				out = append(out, fd(finding.Error, "env-file", "", "fix the line: KEY=VALUE, '...' for literal text, no export or $", "%v", err))
+			}
+			continue
+		}
+		for _, c := range envfile.GuardConflicts(r, info, lk) {
+			out = append(out, fd(finding.Error, "env-file", c.File, "remove the line; approve with the shell, the prompt or swim approve",
+				"%s (swim %d)", c.Error(), n))
+		}
+	}
+	return out
+}
+
+func checkLaneRC(o *Options) []finding.Finding {
+	files, _ := filepath.Glob(filepath.Join(o.Root, ".lane.*.rc"))
+	var out []finding.Finding
+	for _, f := range files {
+		m := rcNameRE.FindStringSubmatch(filepath.Base(f))
+		if m == nil {
+			continue
+		}
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		fix := "swim doctor --fix (moves it into .env.swim [lane " + m[1] + "])"
+		if _, problems := envfile.MigrateRC(data); len(problems) > 0 {
+			fix = "move it to .env.swim by hand: " + problems[0]
+		}
+		out = append(out, fd(finding.Warn, "lane-rc", filepath.Base(f), fix,
+			"%s is deprecated: env files replace it, and a guard flag it sets no longer approves", filepath.Base(f)))
+	}
+	return out
+}
+
+// migrateRC moves a plain .lane.N.rc into a [lane N] section of .env.swim,
+// keeping a copy under .swim/migrations/. One that sets a guard flag, or
+// isn't plain assignments, is left alone.
+func migrateRC(o *Options, name string) (string, error) {
+	m := rcNameRE.FindStringSubmatch(name)
+	if m == nil {
+		return "", nil
+	}
+	n, _ := strconv.Atoi(m[1])
+	if _, running := lane.Running(o.Root, n); running {
+		return "", nil
+	}
+	path := filepath.Join(o.Root, name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil
+	}
+	entries, problems := envfile.MigrateRC(data)
+	if len(problems) > 0 {
+		return "", nil
+	}
+	info, _ := lane.ReadScript(o.Root, n)
+	lk, _ := lookup.Load(o.Root)
+	if c := envfile.GuardConflicts(&envfile.Resolved{Vars: toVars(entries, name)}, info, lk); len(c) > 0 {
+		return "", fmt.Errorf("%s sets guard flag %s: env files can't approve guards, so it isn't moved; remove that line and approve another way, then run swim doctor --fix again", name, c[0].Key)
+	}
+	bak := filepath.Join(o.Root, ".swim", "migrations", time.Now().UTC().Format("20060102T150405Z"), name)
+	if err := os.MkdirAll(filepath.Dir(bak), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(bak, data, 0o600); err != nil {
+		return "", err
+	}
+	if err := envfile.AppendLane(o.Root, n, entries, "moved from "+name); err != nil {
+		return "", err
+	}
+	if err := os.Remove(path); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("moved %s into .env.swim [lane %d] (original in %s)", name, n, o.rel(bak)), nil
+}
+
+func toVars(entries []envfile.Entry, file string) []envfile.Var {
+	out := make([]envfile.Var, len(entries))
+	for i, e := range entries {
+		out[i] = envfile.Var{Key: e.Key, Value: e.Value, File: file, Line: e.Line}
+	}
+	return out
 }
 
 func fd(level, code, file, fix, format string, a ...any) finding.Finding {

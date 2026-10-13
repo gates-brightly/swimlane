@@ -1,4 +1,5 @@
 lane.[0-9]*
 .lane*.rc
+.env.swim
 .swim/
 .swim.log

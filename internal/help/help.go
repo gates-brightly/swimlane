@@ -18,7 +18,7 @@ var Commands = map[string]string{
     - creates ~/.config/swim/config.yml if missing and adds a section for this
       repo (keyed by git toplevel) with lanes and an empty deps table;
       existing content and comments are kept
-    - adds a marked block to .gitignore: lane.[0-9]*, .lane*.rc, .swim/,
+    - adds a marked block to .gitignore: lane.[0-9]*, .lane*.rc, .env.swim, .swim/,
       .swim.log
     - creates .swim/status.yml with every lane idle
     - records "init" in .swim.log, the project log (git-ignored too; drop it
@@ -279,6 +279,14 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
 
   In a lane script in any language: record STOP <reason> and end the round
   now (exit 1); the program is stopped.
+`,
+	"env": `swim env [N|JOB] [--yaml]
+
+  The environment env files give lane N (with no lane: the general and repo
+  keys), masked as the lane's logs show it, with where each key comes from
+  (file and line) and whether the shell overrides it. Exits 1 if a key is
+  one of the lane's guard flags. --yaml: a swim.env/v1 document with the
+  env_sha256 the round would record. See ENV FILES in swim --help.
 `,
 	"lib": `swim lib
 
@@ -636,6 +644,7 @@ swim hub leave | status
     blocked (error)        git push/commit/pull or a blocked_commands pattern
     secret-echo (warn)     echo/printf of a secret variable
     header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
+    env (error)            the lane's env files don't parse, or set its guard flag
     cross-lane (info)      uses a path another lane writes (> path, -o path,
                            cp/mv/tee) without either waiting on the other
     syntax                 an older (warn) or newer (error) script syntax
@@ -673,10 +682,15 @@ swim hub leave | status
     header-env-secret (warn)  header_env lists a secret variable
     lock (info/warn)          .swim.lock missing (info), invalid or for
                               another breaking version (warn)
+    env-file (error)          an env file that doesn't parse, or sets a
+                              lane's guard flag
+    lane-rc (warn)            a deprecated .lane.N.rc
 
   --fix applies only safe local repairs, then checks again: it rewrites
-  swim's .gitignore block and removes stale pid files. It never edits config,
-  lane scripts or git.
+  swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of
+  plain KEY=VALUE lines into .env.swim [lane N] (the original is kept under
+  .swim/migrations/; one that sets a guard flag is refused). It never edits
+  config, lane scripts or git.
 `,
 	"changelog": `swim changelog [-n N] [--since VERSION] [--all]
 
@@ -763,7 +777,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop",
 	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "keys", "ci", "lint", "doctor"}

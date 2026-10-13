@@ -43,6 +43,7 @@ type Lane struct {
 	Run         string   `yaml:"run,omitempty"`           // swim run id of the last or current round
 	Commit      string   `yaml:"commit,omitempty"`        // commit the round ran for (swim ci)
 	ScriptSHA   string   `yaml:"script_sha256,omitempty"` // SHA-256 of the lane script the round runs
+	EnvSHA      string   `yaml:"env_sha256,omitempty"`    // SHA-256 of its env from env files ("" for none)
 	Script      string   `yaml:"script"`
 	Log         string   `yaml:"log"`
 	WaitingOn   []int    `yaml:"waiting_on,flow"`

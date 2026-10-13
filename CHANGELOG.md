@@ -31,6 +31,25 @@ To cut a release:
 
 ### Added
 
+- **Env files:**
+  - **What they are:** declarative `KEY=VALUE` files that give lanes their
+    environment. They are parsed and never run as shell.
+  - **Scopes:** `~/.config/swim/env.swim` holds general keys and
+    `[repo PATH]` sections. The repo's git-ignored `.env.swim` holds
+    `[lane N]` sections. A committed `swim.yml` can add shared `env:`
+    defaults.
+  - **Precedence:** the shell, then lane, repo, `swim.yml`, general.
+  - **No approvals from files:** a key that is one of a lane's guard flags,
+    or matches a `lookup.yml` guard glob, stops the run before any lane
+    starts. `swim lint` and `swim doctor` report it too.
+  - **Masked and recorded:** file values are masked whatever their names.
+    The round header lists the files that applied (`env-files:`), and
+    status and the chain record `env_sha256`.
+  - **Queue:** a queued lane whose env changed since it was queued is
+    skipped.
+  - **`swim env [N]`** shows the resolved env, masked, with each key's file
+    and line.
+
 - **Lanes in any language:**
   - **Scripts:** a lane's script can be `lane.N.py`, `lane.N.js`,
     `lane.N.ts`, a compiled `lane.N`, a plain bash script or any runnable.
@@ -119,6 +138,15 @@ To cut a release:
   the batch queued.
 
 ### Changed
+
+- **`.lane.N.rc` is deprecated:**
+  - **A guard flag it sets no longer approves.** `guard` logs a `WARN` and
+    asks as if the flag were unset.
+  - **Each round logs a `WARN`** while the file exists.
+  - **Migrating:** `swim doctor --fix` moves an rc of plain assignments into
+    `.env.swim [lane N]` and keeps the original under `.swim/migrations/`.
+  - **Removal:** the file stops loading in the next breaking version.
+- **The `.gitignore` block ignores `.env.swim`.**
 
 - **A `lane.N.sh` without `lane_init` runs:** it is a plain program, so it
   runs inside the wrapper and is logged as one step (or its `swim run`

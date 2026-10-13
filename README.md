@@ -377,6 +377,33 @@ Plan: 3 to run, 1 to retry, 0 to rerun, 0 to skip.
 lock), ran and finished. It marks the longest chain, and `--html` writes a
 Gantt chart you can share.
 
+### Env files
+
+Lanes get non-secret context (`STAGE`, `AWS_PROFILE`, table names) from
+`KEY=VALUE` files. swim parses them and never runs them as shell:
+
+```ini
+# ~/.config/swim/env.swim: general keys, then a section per repo
+STAGE=dev
+[repo ~/dev/orders]
+AWS_PROFILE=orders-prod
+
+# <repo>/.env.swim (git-ignored): a section per lane
+[lane 2]
+TABLE=orders-v2
+```
+
+- **Precedence:** the shell wins, then the lane's section, the repo's
+  section, `env:` in the committed `swim.yml`, and the general keys.
+- **No approvals from files:** a key that is a lane's guard flag (or matches
+  a `lookup.yml` guard glob) stops the run before anything starts.
+- **Masked and recorded:** file values are masked in logs. The round header
+  lists the files that applied, and status and the chain record a hash of
+  the env. A queued lane whose env changed since it was queued is skipped.
+- **`swim env N`** shows what a lane gets and where each key comes from.
+- **`.lane.N.rc` is deprecated.** A guard flag it sets no longer approves,
+  and `swim doctor --fix` moves a plain one into `.env.swim`.
+
 ### Guards and approvals
 
 <a id="approvals"></a>
@@ -618,6 +645,7 @@ they waited for.
 | `swim interrupt N\|JOB` | Stop one lane at its next step boundary. |
 | `swim lint [--strict]` / `swim doctor [--fix]` | Check lane scripts / the environment. |
 | `swim config [KEY [VALUE]] [--repo]` | Show or set config, keeping the file's comments. |
+| `swim env [N\|JOB] [--yaml]` | The env a lane gets from env files, masked, with each key's source. |
 | `swim lock [--upgrade]` / `swim changelog` | The repo's breaking-version lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
 | `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
@@ -634,6 +662,7 @@ they waited for.
 | `approvals/` | Signed approvals. | Yes |
 | `.swim.lock` | The breaking version of swim the repo uses. | Yes |
 | `.swim.log` | The project log: one line per top-level action. | No |
+| `.env.swim` | Lane-scoped env (`[lane N]` sections). | No |
 | `.swim/status.yml` | Last state of every lane (`cat` it). | No |
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain of custody, and every script that ran. | No (export it to keep it) |

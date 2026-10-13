@@ -29,6 +29,7 @@ func init() {
 	commands = map[string]command{
 		"init":      {run: cmdInit},
 		"config":    {run: cmdConfig},
+		"env":       {run: cmdEnv},
 		"new":       {run: cmdNew},
 		"run":       {run: cmdRun},
 		"all":       {run: cmdAll},

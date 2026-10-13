@@ -14,6 +14,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
@@ -128,7 +129,12 @@ func queueAdd(args []string) error {
 		if err != nil {
 			return err
 		}
-		e.Lanes = append(e.Lanes, queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data)})
+		r, err := envfile.Check(root, cfg, n, info, nil)
+		if err != nil {
+			return err
+		}
+		envSum := r.SHA256()
+		e.Lanes = append(e.Lanes, queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum})
 		for _, g := range info.Guards {
 			guards[g.Flag] = true
 		}
@@ -677,13 +683,16 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes bool) (
 		}
 	}()
 
-	pinSHA := map[int]string{}
+	pinSHA, pinEnv := map[int]string{}, map[int]string{}
 	for _, l := range e.Lanes {
 		if l.SHA256 != "" {
 			pinSHA[l.Lane] = l.SHA256
 		}
+		if l.EnvSHA256 != nil {
+			pinEnv[l.Lane] = *l.EnvSHA256
+		}
 	}
-	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, Self: self(), Out: os.Stdout,
+	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y"}
 	if !e.ApproveAll && workerYes {

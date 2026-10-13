@@ -64,8 +64,9 @@ type Entry struct {
 	// round
 	Result    string   `json:"result,omitempty"`
 	Exit      *int     `json:"exit,omitempty"`
-	Log       string   `json:"log,omitempty"`       // SHA-256 of the round's section of the log
-	Approvals []string `json:"approvals,omitempty"` // hashes of the approve entries it used
+	Log       string   `json:"log,omitempty"`        // SHA-256 of the round's section of the log
+	Approvals []string `json:"approvals,omitempty"`  // hashes of the approve entries it used
+	EnvSHA256 string   `json:"env_sha256,omitempty"` // the lane's env from env files (sorted KEY=VALUE)
 
 	Signer string `json:"signer,omitempty"` // public key of whoever recorded the entry
 	Sig    string `json:"sig,omitempty"`

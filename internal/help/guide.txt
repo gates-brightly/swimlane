@@ -20,6 +20,7 @@ COMMANDS
   init                     set up this repo: config entry, .gitignore block, .swim/status.yml
   config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set lanes,
                            chime, chime_style, chime_min_s, runners.EXT (--lanes N = `config lanes N`)
+  env [N|JOB]              the env a lane gets from env files, masked, with each key's source
   new N "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
                            template, with a new job id
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered
@@ -136,7 +137,8 @@ FILES (repo root)
                          another language, or a compiled lane.N (exactly one per lane)
   lane.N.yml             optional metadata for lane N's script (round, job, after,
                          guards, locks, timeout, ...), over its header (OTHER LANGUAGES)
-  .lane.N.rc             optional operator-local env sourced by lane_init
+  .env.swim              lane-scoped env: [lane N] sections of KEY=VALUE (ENV FILES)
+  .lane.N.rc             deprecated: operator-local env sourced by lane_init (ENV FILES)
   .swim/status.yml      last state of every lane (see READING RESULTS)
   .swim/logs/agentN.log         lane N's log, append-only, plain text (ANSI
                                 stripped); read it with `swim log N`
@@ -219,7 +221,7 @@ WRITING A LANE SCRIPT
   Start from `swim new N "<goal>"`. The library functions:
 
   lane_init N                     claim lane N: cd to repo root, STEP_LOG=.swim/logs/agentN.log,
-                                  source .lane.N.rc, write the round header, mark running,
+                                  source .lane.N.rc (deprecated), write the round header, mark running,
                                   export SWIM_JOB (the script's job id), SWIM_DEADLINE and
                                   SWIM_TIMEOUT (from Timeout:). Refuses if lane N is already
                                   running. Call it first.
@@ -403,7 +405,8 @@ OTHER LANGUAGES
       timeout: 30m
       step-timeout: 5m
   Approvals, the queue's pins and the chain of custody hash the script file
-  itself (the binary, for a compiled lane). .lane.N.rc is for bash lanes only.
+  itself (the binary, for a compiled lane). Env files apply to every lane;
+  the deprecated .lane.N.rc only to bash lanes.
 
 LINT
   `swim lint` reads lane scripts and reports problems as error, warn or info
@@ -416,7 +419,45 @@ LINT
       # swim:lint-ignore-file cross-lane reads lane 1's output from yesterday's run
   `swim doctor` checks the environment the same way; it never changes config,
   lane scripts or git. `swim doctor --fix` only rewrites swim's .gitignore
-  block and removes stale .swim/laneN.pid files.
+  block, removes stale .swim/laneN.pid files and moves plain .lane.N.rc files
+  into .env.swim.
+
+ENV FILES
+  Lanes get non-secret context (STAGE, AWS_PROFILE, table names) from
+  declarative KEY=VALUE files. swim parses them; it never runs them as shell.
+      # ~/.config/swim/env.swim   general keys, then [repo PATH] sections
+      STAGE=dev
+      AWS_REGION=us-east-1
+      [repo ~/dev/orders]
+      AWS_PROFILE=orders-prod
+
+      # <repo>/.env.swim          [lane N] sections only (git-ignored)
+      [lane 2]
+      TABLE=orders-v2
+
+      # <repo>/swim.yml           shared defaults, committed (CI gets them)
+      env:
+        LOG_LEVEL: info
+  - Precedence, highest first: the shell (what you type wins), then the
+    lane's section, the repo's section, swim.yml env:, the general keys.
+  - Format: KEY=VALUE, # comments, '...' or "..." around a value. No export,
+    no $VAR or $(...): a line that doesn't parse stops the run before any
+    lane starts, naming the file and line ('$x' means the characters).
+  - No guard flags. A key that is a guard of a selected lane, or matches a
+    guards: glob in lookup.yml (FIN_ALLOW_*), stops the run. Approvals come
+    only from the shell, the prompt, -y, signatures or a queued batch.
+  - Masked: every value from a file (6 characters or more) is masked in
+    logs, snapshots, status and output, whatever its name. Still, never
+    store secrets there: store AWS_PROFILE, not the key.
+  - Recorded: the round header lists the files that applied (env-files:),
+    status.yml and the chain record their hash (env_sha256: same script and
+    same env hash, same inputs), and a queued lane whose env changed since it
+    was queued is skipped. `swim env N` shows what a lane gets.
+  - Lanes started by swim run (any language) get them; a bash lane run
+    directly with bash doesn't (its round still records the hash).
+  - .lane.N.rc is deprecated: lane_init still sources it, with a WARN, but a
+    guard flag it sets no longer approves (guard asks as if it were unset).
+    `swim doctor --fix` moves a plain one into .env.swim.
 
 SYNTAX
   Lane scripts and lane logs say which syntax they use ("# swim: syntax 2" near
@@ -616,6 +657,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         approvals: prompt                # prompt | flags: may an unset guard flag ask the operator
         interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
+        # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)
         runners:                         # how lane.N.<ext> runs without a #! line (OTHER LANGUAGES)
           ts: tsx                        # swim asks the first time, and saves the answer per repo
       repos:

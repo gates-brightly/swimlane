@@ -97,6 +97,7 @@ var Checks = []Check{
 	{"secret-echo", finding.Warn, false, "a secret variable echoed directly", checkSecretEcho},
 	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
+	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
 }
 
 // Codes of findings that come from outside the table.

@@ -15,6 +15,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -167,6 +168,19 @@ func cmdStart(args []string) error {
 		ctx = append(ctx, logparse.KV{K: "commit", V: commit})
 	}
 	ctx = append(ctx, logparse.KV{K: "sha256", V: scriptSum[:12]})
+	// The env files that applied (their values are in the lane's env, and
+	// masked), and their hash for the chain.
+	envSum := ""
+	if r, err := envfile.Resolve(root, cfg, n); err != nil {
+		lane.RemovePID(root, n)
+		return err
+	} else if len(r.Sources) > 0 {
+		envSum = r.SHA256()
+		ctx = append(ctx, logparse.KV{K: "env-files", V: strings.Join(r.Sources, ", ")})
+	}
+	if _, err := os.Stat(lane.RCFile(root, n)); err == nil {
+		info.Problems = append(info.Problems, fmt.Sprintf(".lane.%d.rc is deprecated: move its plain KEY=VALUE lines to a [lane %d] section of .env.swim (swim doctor --fix does it); a guard flag it sets no longer approves", n, n))
+	}
 	if cfg.Runtime != "" {
 		ctx = append(ctx, logparse.KV{K: "runtime", V: step.RuntimeVersion(cfg.Runtime)})
 	}
@@ -212,6 +226,7 @@ func cmdStart(args []string) error {
 		l.Run = run
 		l.Commit = commit
 		l.ScriptSHA = scriptSum
+		l.EnvSHA = envSum
 		l.Script = filepath.Base(lane.Script(root, n))
 		l.Pending, l.PendingJob = info.Round, info.Job
 		l.PID = pid
@@ -219,6 +234,16 @@ func cmdStart(args []string) error {
 		l.Stage = syntax.Setup
 		return nil
 	})
+}
+
+// laneEnvSHA is the env files' hash lane n's round started with.
+func laneEnvSHA(root string, n int) string {
+	if st, _ := status.Load(root); st != nil {
+		if l := st.Get(n); l != nil {
+			return l.EnvSHA
+		}
+	}
+	return ""
 }
 
 // swim _stage N NAME: the lane script entered a stage.
@@ -331,7 +356,8 @@ func cmdFinish(args []string) error {
 		exit := code
 		if err := record(root, cfg, chain.Entry{Type: "round", Run: r.Run, Lane: n, Job: r.Job, Round: r.Title,
 			Script: scriptSHA(root, n), Result: state, Exit: &exit,
-			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: roundApprovals(root, r.Run, n)}); err != nil {
+			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: roundApprovals(root, r.Run, n),
+			EnvSHA256: laneEnvSHA(root, n)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 	}

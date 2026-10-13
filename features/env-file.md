@@ -1,6 +1,6 @@
 # Env files for lanes (`.env.swim`)
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -113,19 +113,31 @@ TABLE=orders-v2
   (`internal/queue/queue.go:41`), and check it at claim time.
 - **Config:** add `env` to the keys that `swim.yml` accepts.
 
-## Open questions
+## Open questions (answered)
 
-1. **Named profiles:** add `[scope prod]` sections, chosen with
-   `swim run --env prod`? Switching to prod is a high-stakes change, so a
-   profile choice should appear in the round header, and maybe needs a
-   guard of its own.
-2. **Repo sections:** are paths in the user file enough, or should a repo
-   section also match by git remote, so clones in other places pick it up?
-3. **Who may write `.env.swim`:** should a lane's own section be writable
-   by its worker (the env hash makes edits visible), or is the file
-   operator-only, enforced by `lint`?
-4. **Is this breaking?** Does refusing guard flags from `.lane.N.rc` need a
-   breaking bump and `swim lock --help` notes?
+1. **Named profiles:** not now. Switching to prod deserves its own design
+   (a profile shown in the round header, maybe its own guard). Profiles
+   stay out of scope until then.
+2. **Repo sections:** matched by path only, like config's `repos:` keys.
+   Matching by git remote can come later if clones in other places need it.
+3. **Who may write `.env.swim`:** it is operator-local and git-ignored.
+   swim doesn't police edits to it. The env hash in the round header,
+   status and the chain makes every change visible, and queued lanes pin it.
+4. **Is this breaking?** No bump of its own. Refusing a guard flag set by
+   `.lane.N.rc` only removes an unaudited way to approve: `guard` asks as
+   if the flag were unset. The changelog's Changed section says so. Removing
+   the rc entirely is for the next breaking release.
+
+Decided while building:
+
+- **Masking:** file values join the masker by key (`SWIM_ENV_KEYS`), so the
+  masker's 6-character minimum applies: `STAGE=dev` still reads as `dev`.
+- **Direct runs:** a bash lane run with `bash lane.N.sh` doesn't get the
+  file env (the launcher sets it), but its round still records the hash.
+- **The header key** is `env-files:`, because `env:` already shows
+  `header_env`.
+- **Values:** a `$` or backtick in an unquoted value is an error, and
+  quoting it makes it literal. A trailing ` # comment` is allowed.
 
 ## Testing
 

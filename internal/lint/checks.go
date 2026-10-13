@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/syntax"
@@ -593,6 +595,25 @@ func checkCrossLane(c *Context, s *Script) []finding.Finding {
 			out = append(out, f(finding.Info, "cross-lane", i, fmt.Sprintf("if it needs swim %d's output, add `# After: %d`", a, a),
 				"uses %s, which %s:%d writes, but doesn't wait for swim %d", p, o.Name, ws[p]+1, a))
 		}
+	}
+	return out
+}
+
+// checkEnv resolves the lane's env files: a line that doesn't parse, or a
+// key that is one of the lane's guard flags (or matches a lookup.yml guard
+// glob), is an error. swim run refuses both before any lane starts.
+func checkEnv(c *Context, s *Script) []finding.Finding {
+	if c.Root == "" {
+		return nil
+	}
+	r, err := envfile.Resolve(c.Root, c.Cfg, s.N)
+	if err != nil {
+		return []finding.Finding{f(finding.Error, "env", -1, "fix the line: KEY=VALUE, '...' for literal text, no export or $", "%v", err)}
+	}
+	lk, _ := lookup.Load(c.Root)
+	var out []finding.Finding
+	for _, g := range envfile.GuardConflicts(r, s.Info, lk) {
+		out = append(out, f(finding.Error, "env", -1, "remove it from the env file; approve with the shell, the prompt or swim approve", "%s", g.Error()))
 	}
 	return out
 }

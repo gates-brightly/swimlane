@@ -8,6 +8,8 @@ _swim_last=0
 _swim_label=
 _swim_prev_label=
 _swim_done=
+_swim_rc=
+_swim_pre_rc=
 SWIM_LANE=
 
 # lane_init N — claim lane N: cd to the repo root, point STEP_LOG at
@@ -30,8 +32,13 @@ lane_init() {
   SWIM_PID=$$
   PATH="$SWIM_ROOT/.swim/bin:$PATH"
   export SWIM_LANE SWIM_ROOT STEP_LOG SWIM_PID PATH
+  # .lane.N.rc is deprecated (env files replace it; swim _start logs a
+  # WARN). What the shell held before it is kept so that a guard flag it
+  # sets is refused (see _swim_from_rc).
   if [ -f "$SWIM_ROOT/.lane.$SWIM_LANE.rc" ]; then
-    . "$SWIM_ROOT/.lane.$SWIM_LANE.rc"
+    _swim_rc="$SWIM_ROOT/.lane.$SWIM_LANE.rc"
+    _swim_pre_rc=$(declare -p 2>/dev/null)
+    . "$_swim_rc"
   fi
   # Before _start marks the lane running: the launcher only signals a lane
   # (SIGUSR2, a stop request) once status shows its pid, so the trap is
@@ -216,6 +223,11 @@ guard() {
     ''|[0-9]*|*[!A-Za-z0-9_]*) echo "swim: bad guard flag name: $1" >&2; return 2 ;;
   esac
   eval "_swim_val=\${$1-unset}"
+  if [ "$_swim_val" = "1" ] && _swim_from_rc "$1"; then
+    # Files never approve guards: ask as if the flag were unset.
+    "$SWIM_BIN" _mark "$SWIM_LANE" WARN "$1=1 from .lane.$SWIM_LANE.rc ignored" "files can't approve guards; set it in the shell or approve"
+    _swim_val=unset
+  fi
   if [ "$_swim_val" = "1" ]; then
     # A queued batch's approvals (swim queue add --approve) say where they
     # came from.
@@ -235,6 +247,16 @@ guard() {
   fi
   "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$2" "dry run: set $1=1 to approve"
   return 1
+}
+
+# _swim_from_rc FLAG — true if .lane.N.rc set FLAG=1: it names FLAG, and
+# FLAG wasn't already 1 before lane_init sourced it.
+_swim_from_rc() {
+  [ -n "${_swim_rc:-}" ] || return 1
+  case "$_swim_pre_rc" in
+    *" $1=\"1\""*|*" $1=1"*) return 1 ;;
+  esac
+  grep -q "$1" "$_swim_rc" 2>/dev/null
 }
 
 # confirm "<question>" [answer] — ask the operator; anything other than the

@@ -55,6 +55,10 @@ type Settings struct {
 	// RunnerFrom says where each runner came from (a config path or
 	// swim.yml), for messages.
 	RunnerFrom map[string]string `yaml:"-"`
+	// Env is swim.yml's env: shared, non-secret defaults for every lane
+	// (see the envfile package). Only swim.yml may set it; personal values
+	// go in ~/.config/swim/env.swim.
+	Env map[string]string `yaml:"env,omitempty"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -120,6 +124,9 @@ func Load(root string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if f.Defaults.Env != nil {
+		return nil, fmt.Errorf("%s: env: belongs in %s (or a repo's swim.yml), not config.yml", c.Path, filepath.Join(filepath.Dir(c.Path), "env.swim"))
+	}
 	c.Settings = f.Defaults
 	c.Runners, c.RunnerFrom = nil, nil
 	c.mergeRunners(f.Defaults.Runners, c.Path)
@@ -130,8 +137,12 @@ func Load(root string) (*Config, error) {
 		c.RepoLanes = s.Lanes != 0
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)
+		c.Env = s.Env
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
+		if repo.Env != nil {
+			return nil, fmt.Errorf("%s (repo %s): env: belongs in a [repo PATH] section of %s, not config.yml", c.Path, root, filepath.Join(filepath.Dir(c.Path), "env.swim"))
+		}
 		c.HasRepo = true
 		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
 		c.merge(repo)
@@ -154,6 +165,10 @@ func Load(root string) (*Config, error) {
 	}
 	return c, nil
 }
+
+// EnvKeysVar lists (space separated) the keys a lane's environment got
+// from env files.
+const EnvKeysVar = "SWIM_ENV_KEYS"
 
 // RepoFileName is the committed per-repo settings file at the repo root.
 const RepoFileName = "swim.yml"
@@ -204,7 +219,11 @@ func lookupRepo(repos map[string]Settings, root string) (Settings, bool) {
 
 // sameRepo reports whether a repos key names root (after ~ expansion,
 // cleaning and resolving symlinks).
-func sameRepo(key, root string) bool {
+func sameRepo(key, root string) bool { return SameRepo(key, root) }
+
+// SameRepo reports whether path (a repos key, an env.swim [repo PATH]
+// section) names root, after ~ expansion, cleaning and resolving symlinks.
+func SameRepo(key, root string) bool {
 	canon := func(p string) string {
 		p = filepath.Clean(expandHome(p))
 		if r, err := filepath.EvalSymlinks(p); err == nil {
@@ -346,8 +365,16 @@ func (c *Config) Blocked() []string { return policy.Patterns(c.BlockedCommands) 
 // Masker returns the secret masker for env (usually os.Environ()).
 func (c *Config) Masker(env []string) *redact.Masker {
 	on := func(b *bool) bool { return b == nil || *b }
+	names := c.SecretEnv
+	// Values a lane got from env files are masked whatever their names
+	// (the launcher lists those keys in SWIM_ENV_KEYS).
+	for _, kv := range env {
+		if keys, ok := strings.CutPrefix(kv, EnvKeysVar+"="); ok {
+			names = append(append([]string(nil), names...), strings.Fields(keys)...)
+		}
+	}
 	return redact.New(env, redact.Options{
-		Names:        c.SecretEnv,
+		Names:        names,
 		Auto:         on(c.SecretEnvAuto),
 		Ignore:       c.SecretEnvIgnore,
 		AutoPatterns: on(c.SecretPatternsAuto),

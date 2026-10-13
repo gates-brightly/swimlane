@@ -23,9 +23,11 @@ import (
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/runrec"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -76,12 +78,16 @@ type Options struct {
 	// PinSHA holds the exact script (SHA-256) a lane must hold when it
 	// starts (queued batches): an edit since it was queued skips it.
 	PinSHA map[int]string
+	// PinEnv holds the env files' hash (envfile.Resolved.SHA256) a lane
+	// must still resolve to when it starts (queued batches).
+	PinEnv map[int]string
 	// Heartbeat, if set, prints "[N] still running: <step> (<elapsed>)"
 	// for a running lane silent this long, so a CI log never looks hung.
 	Heartbeat time.Duration
 
 	beat         *heartbeat
 	approvalSock string
+	env          map[int]*envfile.Resolved // each lane's env from env files
 
 	// Interactive allows the interactive view (keys pick a lane's log) when
 	// more than one lane runs on a terminal; the view then reads Stdin.
@@ -203,6 +209,18 @@ func Run(o Options) (int, error) {
 		return 2, err
 	}
 	blocked := BlockedLanes(o.Root, o.Cfg, sel)
+	// Env files: every selected lane's env resolves, and none sets a guard
+	// flag, or nothing starts.
+	lk, _ := lookup.Load(o.Root)
+	o.env = map[int]*envfile.Resolved{}
+	for _, n := range sel {
+		info, _ := lane.ReadScript(o.Root, n)
+		r, err := envfile.Check(o.Root, o.Cfg, n, info, lk)
+		if err != nil {
+			return 2, err
+		}
+		o.env[n] = r
+	}
 
 	// The panel shows every lane 1..N so numbering never has gaps.
 	views := make([]display.LaneView, 0, o.Cfg.Lanes)
@@ -477,6 +495,13 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			return skip(fmt.Sprintf("%s changed since it was queued (queued %s)", lane.ScriptName(o.Root, n), want[:12]))
 		}
 	}
+	if want, ok := o.PinEnv[n]; ok && want != o.env[n].SHA256() {
+		was := "no env"
+		if len(want) >= 12 {
+			was = want[:12]
+		}
+		return skip(fmt.Sprintf("its env files changed since it was queued (queued %s)", was))
+	}
 	// A lane named by job id runs only if its script still holds that job.
 	if pin := o.Pins[n]; pin != "" {
 		if now, _ := lane.ReadScript(o.Root, n); !lane.MatchJob(now.Job, pin) {
@@ -516,7 +541,21 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = o.Root
-	env := append(os.Environ(), "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
+	// The env files' values go under the shell's: what the operator typed
+	// wins. Keys the shell doesn't override are masked whatever their names.
+	var fileKeys []string
+	env := []string{}
+	if r := o.env[n]; r != nil {
+		for _, v := range r.Vars {
+			if _, set := os.LookupEnv(v.Key); !set {
+				fileKeys = append(fileKeys, v.Key)
+			}
+		}
+		env = append(env, r.Env()...)
+	}
+	env = append(env, os.Environ()...)
+	env = append(env, config.EnvKeysVar+"="+strings.Join(fileKeys, " "))
+	env = append(env, "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
 		"SWIM_RUN="+o.RunID, "SWIM_RUN_LANES="+joinInts(sel, " "), approval.EnvVar+"="+o.approvalSock)
 	if disp.Color() {
 		env = append(env, "SWIM_COLOR=1")
@@ -538,7 +577,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// The lane's process inherits the lock files, so the locks stay held as
 	// long as the lane runs, even if this launcher dies.
 	cmd.ExtraFiles = fileLocks
-	mk := o.Cfg.Masker(os.Environ())
+	mk := o.Cfg.Masker(env)
 	w := &lineWriter{emit: func(s string) {
 		o.beat.saw(n)
 		s = mk.String(s)

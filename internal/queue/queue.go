@@ -39,6 +39,9 @@ type Lane struct {
 	Job    string `yaml:"job,omitempty"`
 	Round  string `yaml:"round"`
 	SHA256 string `yaml:"script_sha256,omitempty"` // the exact script queued
+	// EnvSHA256 is the hash of its env from env files when queued ("" for
+	// none); nil in entries from before env files.
+	EnvSHA256 *string `yaml:"env_sha256,omitempty"`
 }
 
 // Worker is who claimed an entry.
