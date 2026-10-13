@@ -61,7 +61,6 @@ func TestFullHelpHasEveryCommand(t *testing.T) {
 	}
 	for c := range Commands {
 		if !in[c] && c != "help" { // swim help's own entry: the guide is its output
-
 			t.Errorf("swim --help leaves out %s: add it to FullOrder", c)
 		}
 	}
