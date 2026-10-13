@@ -334,3 +334,35 @@ func TestWaitNamesAQueueWithNoWorker(t *testing.T) {
 		t.Errorf("wait with a queued batch and no worker: %d\n%s", code, out)
 	}
 }
+
+func TestQueueWaitTimeout(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "q", `run "q" true`)
+	// No worker up: --timeout gives up, exits 1, and leaves the batch queued.
+	start := time.Now()
+	out, code := r.swim("queue", "1", "--timeout", "300ms")
+	if code != 1 || !strings.Contains(out, "still busy after 300ms: 1 queued batch(es) not yet taken by a worker") || !strings.Contains(out, "(#1) is still queued") {
+		t.Fatalf("queue --timeout with no worker: %d\n%s", code, out)
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Errorf("--timeout 300ms took %s", took)
+	}
+	contains(t, "still queued", r.mustSwim("queue"), "#1", "queued")
+	// With a worker, it finishes within the limit and exits with the result.
+	r.mustSwim("watch", "--once")
+	r.script(2, "q2", `run "q" true`)
+	q := r.cmd(bin, "queue", "2", "--wait", "--timeout", "30s")
+	var qout bytes.Buffer
+	q.Stdout, q.Stderr = &qout, &qout
+	if err := q.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return strings.Contains(qout.String(), "queued q-") })
+	r.mustSwim("watch", "--once")
+	if err := q.Wait(); err != nil || !strings.Contains(qout.String(), "(#2): passed") {
+		t.Errorf("queue --wait --timeout with a worker: %v\n%s", err, qout.String())
+	}
+	if _, code := r.swim("queue", "1", "--timeout", "soon"); code != 2 {
+		t.Errorf("a bad --timeout should be a usage error, got %d", code)
+	}
+}

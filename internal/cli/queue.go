@@ -56,7 +56,7 @@ func cmdQueue(args []string) error {
 // hasn't passed), pinned to the jobs they hold now, with approvals.
 func queueAdd(args []string) error {
 	var approve []string
-	var note, parallel, keyPath string
+	var note, parallel, keyPath, timeout string
 	var yes, wait bool
 	// --approve repeats; -y is the short --yes.
 	var rest0 []string
@@ -73,9 +73,16 @@ func queueAdd(args []string) error {
 			rest0 = append(rest0, a)
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"yes": &yes, "wait": &wait}, strs: map[string]*string{"note": &note, "parallel": &parallel, "key": &keyPath}}.parse(rest0)
+	rest, err := flags{bools: map[string]*bool{"yes": &yes, "wait": &wait}, strs: map[string]*string{"note": &note, "parallel": &parallel, "key": &keyPath, "timeout": &timeout}}.parse(rest0)
 	if err != nil {
 		return err
+	}
+	limit, err := durationFlag("timeout", timeout, 0, "30m")
+	if err != nil {
+		return err
+	}
+	if limit > 0 {
+		wait = true // --timeout bounds the wait, so it implies it
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -213,7 +220,11 @@ func queueAdd(args []string) error {
 	if !wait {
 		return nil
 	}
-	if err := waitIdle(root, pollEvery, 0); err != nil {
+	if err := waitIdle(root, pollEvery, limit); err != nil {
+		// Timed out: the batch stays queued (or running) for a worker.
+		if cur, ferr := queue.Find(root, e.ID); ferr == nil {
+			return fmt.Errorf("%v; %s (#%d) is still %s", err, e.ID, e.Seq, cur.State)
+		}
 		return err
 	}
 	// Exit with the batch's result, like swim log --until-done.

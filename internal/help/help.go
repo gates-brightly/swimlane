@@ -374,7 +374,7 @@ var Commands = map[string]string{
   restored from a CI cache).
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
-swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait]
+swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
 swim queue N|JOB ... [flags]     (shorthand for swim queue add)
 swim queue show|rm|requeue ID
 
@@ -391,6 +391,8 @@ swim queue show|rm|requeue ID
             -y, --yes       approve every guard in the batch
             --wait          then block like swim wait, and exit with the
                             batch's result (0 passed, 1 otherwise)
+            --timeout D     give up waiting after D (implies --wait): exit 1,
+                            saying what is still busy; the batch stays queued
             A queued batch never asks: guards it doesn't approve are dry
             runs, and a guard flag in the worker's own environment does not
             count (the queue entry alone says what may change).

@@ -68,7 +68,8 @@ To cut a release:
   `--timeout D` gives up after D.
 - **`swim queue 1 2 3 --wait`:** `swim queue N ...` is short for
   `swim queue add N ...`, and `--wait` blocks like `swim wait`, then exits
-  with the batch's result.
+  with the batch's result. `--timeout D` gives up after D (exit 1), leaving
+  the batch queued.
 
 ### Changed
 
