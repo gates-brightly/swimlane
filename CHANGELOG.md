@@ -66,6 +66,9 @@ To cut a release:
 - **`swim wait`:** blocks until swim is idle and nothing new is about to
   start: no lane running, no swim run waiting, no batch queued or running.
   `--timeout D` gives up after D.
+- **`swim history` reads like `git log`:** newest first, each entry with
+  its hash, signer, date and what happened, paged on a terminal.
+  `--oneline`, `-n N` (or `-N`) and `--reverse` work as in git.
 - **`swim queue 1 2 3 --wait`:** `swim queue N ...` is short for
   `swim queue add N ...`, and `--wait` blocks like `swim wait`, then exits
   with the batch's result. `--timeout D` gives up after D (exit 1), leaving

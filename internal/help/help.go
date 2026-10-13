@@ -492,14 +492,21 @@ swim revoke --auto USER [--key K]
   each, and whether a script approval is stale: the script changed since). Exits 1 on any break. --strict also fails on unsigned
   entries and on signers not in lookup.yml.
 `,
-	"history": `swim history [RUN|N|JOB] [--yaml]
+	"history": `swim history [RUN|N|JOB] [--oneline] [-n N | -N] [--reverse] [--no-pager] [--yaml]
 
-  The chain of custody, oldest first, around who approved and who ran
-  what: each approval (guard, action, approvers by name and group from
-  lookup.yml, and how: signature, prompt, flag, auto, queue) and each round
-  (result, exit, script and log hashes, approvals used), with the entry's
-  hash, run and signer. --yaml: the entries as data (schema swim.history/v1).
-  swim verify checks it.
+  The chain of custody, read like git log: newest first, each entry as
+  "entry <hash> (#seq, run, lane, result)", its signer and date, then what
+  happened: each approval (guard, approvers by name from lookup.yml, and
+  how: signature, prompt, flag, auto, queue; the action and script) and
+  each round (result, exit, job, script and log hashes, approvals used).
+  --oneline      one line per entry: its short hash and what happened
+  -n N, -N       only the newest N entries (--max-count N)
+  --reverse      oldest first (after -n, as git log)
+  --no-pager     on a terminal the output goes through $SWIM_PAGER or
+                 $PAGER (default less, with LESS=FRX as git); this skips it
+  --yaml         the entries as data, oldest first unless --reverse is
+                 given (schema swim.history/v1)
+  swim verify checks the chain.
 `,
 	"keys": `swim keys
 

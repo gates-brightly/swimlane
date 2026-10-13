@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -81,7 +82,21 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (approved by ", "zach (platform-admin)", "alice (platform-admin)", "(signed)", "PASS  drop")
 
 	hist := r.mustSwim("history", "1")
-	contains(t, "history", hist, "approved  swim 1 script", "revoked  swim 1 script", "approve  swim 1  FIN_ALLOW_DROP", "via signature", "round  swim 1  passed exit 0", "signed by zach (platform-admin)")
+	contains(t, "history", hist, "approved swim 1 script", "revoked swim 1 script", "approve FIN_ALLOW_DROP for swim 1 by zach, alice via signature",
+		"round swim 1 passed (exit 0)", "Signer: zach (platform-admin)", "Date:   ", "    Action:    drop table old_orders")
+	if !strings.HasPrefix(hist, "entry ") || strings.Index(hist, "round swim 1") > strings.Index(hist, "approved swim 1") {
+		t.Errorf("history should start with the newest entry, like git log:\n%s", hist)
+	}
+	// --oneline, -n and --reverse, as in git log.
+	one := strings.Split(strings.TrimSpace(r.mustSwim("history", "--oneline", "-n", "2")), "\n")
+	if len(one) != 2 || !regexp.MustCompile(`^[0-9a-f]{12} round swim 1 passed \(exit 0\)$`).MatchString(one[0]) ||
+		!strings.Contains(one[1], " approve FIN_ALLOW_DROP for swim 1") {
+		t.Errorf("history --oneline -n 2: %q", one)
+	}
+	rev := strings.Split(strings.TrimSpace(r.mustSwim("history", "--oneline", "-2", "--reverse")), "\n")
+	if len(rev) != 2 || rev[0] != one[1] || rev[1] != one[0] {
+		t.Errorf("history --oneline -2 --reverse: %q, want %q reversed", rev, one)
+	}
 	contains(t, "verify", r.mustSwim("verify"), "verified: every link, signature, log and script checks out", "script, approves FIN_ALLOW_DROP; 3 standing of 5 events")
 
 	// Tampering is provable.

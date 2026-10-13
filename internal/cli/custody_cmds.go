@@ -3,9 +3,12 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -377,16 +380,43 @@ func who(lk *lookup.Lookup, key string) string {
 	return "unknown key " + sign.Fingerprint(key)
 }
 
-// cmdHistory shows the chain of custody, oriented around who approved and
-// who ran what: swim history [RUN|N|JOB] [--yaml].
+// cmdHistory shows the chain of custody like git log: newest first, each
+// entry with its hash, signer, date and what happened (--oneline: one line
+// each). swim history [RUN|N|JOB] [--oneline] [-n N] [--reverse] [--yaml].
 func cmdHistory(args []string) error {
-	var asYAML bool
-	rest, err := flags{bools: map[string]*bool{"yaml": &asYAML}}.parse(args)
+	var asYAML, oneline, reverse, noPager bool
+	var limit string
+	// git log's -N and -n N.
+	var rest0 []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-n" && i+1 < len(args):
+			limit = args[i+1]
+			i++
+		case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && len(a) > 1:
+			if _, err := strconv.Atoi(a[1:]); err == nil {
+				limit = a[1:]
+				continue
+			}
+			rest0 = append(rest0, a)
+		default:
+			rest0 = append(rest0, a)
+		}
+	}
+	rest, err := flags{bools: map[string]*bool{"yaml": &asYAML, "oneline": &oneline, "reverse": &reverse, "no-pager": &noPager},
+		strs: map[string]*string{"max-count": &limit}}.parse(rest0)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim history [RUN|N|JOB] [--yaml]")
+		return usagef("usage: swim history [RUN|N|JOB] [--oneline] [-n N] [--reverse] [--yaml]")
+	}
+	count := 0
+	if limit != "" {
+		if count, err = strconv.Atoi(limit); err != nil || count < 0 {
+			return usagef("-n takes a number of entries, got %q", limit)
+		}
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -412,13 +442,19 @@ func cmdHistory(args []string) error {
 			match = func(l chain.Link) bool { return l.Run == ref || lane.MatchJob(l.Job, ref) }
 		}
 	}
+	// Newest first, limited, then (--reverse) flipped: as git log does.
 	var shown []chain.Link
-	for _, l := range links {
-		if match(l) {
-			shown = append(shown, l)
+	for i := len(links) - 1; i >= 0; i-- {
+		if match(links[i]) && (count == 0 || len(shown) < count) {
+			shown = append(shown, links[i])
 		}
 	}
+	if reverse {
+		slices.Reverse(shown)
+	}
 	if asYAML {
+		// Data stays oldest first, as swim.history/v1 always was.
+		slices.Reverse(shown)
 		type row struct {
 			chain.Entry `yaml:",inline"`
 			Hash        string `yaml:"hash"`
@@ -435,39 +471,134 @@ func cmdHistory(args []string) error {
 		return nil
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
-	for _, l := range shown {
-		switch l.Type {
-		case "approve":
-			var names []string
-			for _, a := range l.Approvers {
-				names = append(names, or(a.Name, who(lk, a.Key)))
+	return paged(noPager, func(w io.Writer) {
+		for i, l := range shown {
+			subject, body := historyEntry(lk, l)
+			if oneline {
+				fmt.Fprintf(w, "%s %s\n", p.Paint(ui.Yellow, short12(l.Hash)), subject)
+				continue
 			}
-			fmt.Printf("#%-4d %s  %s  swim %d  %s  %s  by %s via %s\n", l.Seq, l.At, p.Paint(ui.Green, "approve"), l.Lane, l.Guard, p.Paint(ui.Dim, l.Action), strings.Join(names, ", "), l.Method)
-		case "round":
-			exit := ""
-			if l.Exit != nil {
-				exit = fmt.Sprintf(" exit %d", *l.Exit)
+			if i > 0 {
+				fmt.Fprintln(w)
 			}
-			fmt.Printf("#%-4d %s  %s  swim %d  %s%s  script %s  log %s  %d approval(s)\n", l.Seq, l.At, p.Paint(ui.StateColor(l.Result)+ui.Bold, "round"), l.Lane, l.Result, exit, short12(l.Script), short12(l.Log), len(l.Approvals))
-		case "grant", "revoke":
-			var names []string
-			for _, a := range l.Approvers {
-				names = append(names, or(a.Name, who(lk, a.Key)))
+			fmt.Fprintln(w, p.Paint(ui.Yellow, "entry "+l.Hash)+historyRefs(p, l))
+			fmt.Fprintln(w, "Signer: "+who(lk, l.Signer))
+			fmt.Fprintln(w, "Date:   "+gitDate(l.At))
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "    "+subject)
+			if len(body) > 0 {
+				fmt.Fprintln(w)
+				for _, b := range body {
+					fmt.Fprintln(w, "    "+b)
+				}
 			}
-			what := l.Action
-			if what == "" {
-				what = fmt.Sprintf("swim %d script %s", l.Lane, short12(l.Script))
-			}
-			verb, color := "approved", ui.Green
-			if l.Type == "revoke" {
-				verb, color = "revoked", ui.Yellow
-			}
-			fmt.Printf("#%-4d %s  %s  %s  by %s\n", l.Seq, l.At, p.Paint(color, verb), what, strings.Join(names, ", "))
-		default:
-			fmt.Printf("#%-4d %s  %s\n", l.Seq, l.At, l.Type)
 		}
-		fmt.Println(p.Paint(ui.Dim, fmt.Sprintf("      %s · run %s · signed by %s", short12(l.Hash), or(l.Run, "-"), who(lk, l.Signer))))
+	})
+}
+
+// historyEntry is an entry's one-line subject and its detail lines.
+func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
+	var names []string
+	for _, a := range l.Approvers {
+		names = append(names, or(a.Name, who(lk, a.Key)))
 	}
+	by := strings.Join(names, ", ")
+	var body []string
+	field := func(k, v string) {
+		if v != "" {
+			body = append(body, fmt.Sprintf("%-10s %s", k+":", v))
+		}
+	}
+	var subject string
+	switch l.Type {
+	case "approve":
+		subject = fmt.Sprintf("approve %s for swim %d by %s via %s", l.Guard, l.Lane, by, l.Method)
+		field("Action", l.Action)
+		field("Round", l.Round)
+		field("Script", l.Script)
+	case "round":
+		exit := ""
+		if l.Exit != nil {
+			exit = fmt.Sprintf(" (exit %d)", *l.Exit)
+		}
+		subject = fmt.Sprintf("round swim %d %s%s", l.Lane, l.Result, exit)
+		field("Round", l.Round)
+		field("Job", l.Job)
+		field("Script", l.Script)
+		field("Log", l.Log)
+		for _, a := range l.Approvals {
+			field("Approval", a)
+		}
+	case "grant", "revoke":
+		what := l.Action
+		if what == "" {
+			what = fmt.Sprintf("swim %d script %s", l.Lane, short12(l.Script))
+		}
+		verb := "approved"
+		if l.Type == "revoke" {
+			verb = "revoked"
+		}
+		subject = fmt.Sprintf("%s %s by %s", verb, what, by)
+		field("Script", l.Script)
+	default:
+		subject = l.Type
+	}
+	return subject, body
+}
+
+// historyRefs decorates an entry's header like git log's refs: its seq,
+// run and lane, the round's result in its colour.
+func historyRefs(p ui.Painter, l chain.Link) string {
+	refs := []string{fmt.Sprintf("#%d", l.Seq)}
+	if l.Run != "" {
+		refs = append(refs, "run "+l.Run)
+	}
+	if l.Lane > 0 {
+		refs = append(refs, fmt.Sprintf("swim %d", l.Lane))
+	}
+	if l.Result != "" {
+		refs = append(refs, p.Paint(ui.StateColor(l.Result)+ui.Bold, l.Result))
+	}
+	return p.Paint(ui.Yellow, " (") + strings.Join(refs, p.Paint(ui.Yellow, ", ")) + p.Paint(ui.Yellow, ")")
+}
+
+// gitDate renders an RFC 3339 time as git log does, in local time.
+func gitDate(at string) string {
+	t, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		return at
+	}
+	return t.Local().Format("Mon Jan 2 15:04:05 2006 -0700")
+}
+
+// paged writes through $PAGER (default less -FRX, as git) when stdout is a
+// terminal, and straight to stdout otherwise or if the pager won't start.
+func paged(off bool, write func(w io.Writer)) error {
+	pager := or(os.Getenv("SWIM_PAGER"), os.Getenv("PAGER"))
+	if off || !ui.IsTTY(os.Stdout) || pager == "cat" {
+		write(os.Stdout)
+		return nil
+	}
+	if pager == "" {
+		pager = "less"
+	}
+	c := exec.Command("sh", "-c", pager)
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	if os.Getenv("LESS") == "" {
+		c.Env = append(os.Environ(), "LESS=FRX")
+	}
+	in, err := c.StdinPipe()
+	if err != nil {
+		write(os.Stdout)
+		return nil
+	}
+	if err := c.Start(); err != nil {
+		write(os.Stdout)
+		return nil
+	}
+	write(in)
+	in.Close()
+	c.Wait() // quitting the pager early is not an error
 	return nil
 }
 

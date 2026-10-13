@@ -46,7 +46,7 @@ COMMANDS
   approve --auto USER      standing approval of every job USER queues, until revoked
   revoke N|JOB / --auto USER   withdraw your approval
   verify                   prove the chain of custody is intact (logs, scripts, signatures)
-  history [RUN|N|JOB]      the chain of custody: who approved and ran what
+  history [RUN|N|JOB] [--oneline]   the chain of custody, like git log: who approved and ran what
   keys                     who's who: lookup.yml's users, keys and groups
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
