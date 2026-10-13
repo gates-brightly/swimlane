@@ -41,6 +41,10 @@ COMMANDS
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run as soon as swim is idle; queue [list|show|rm|requeue]
   watch [--once]           the queue's worker: runs queued batches when idle, consumes them
+  sign N|JOB --guards A    approve a script remotely: lane.N.sh.signature (co-sign: again)
+  verify                   prove the chain of custody is intact (logs, scripts, signatures)
+  history [RUN|N|JOB]      the chain of custody: who approved and ran what
+  keys                     who's who: lookup.yml's users, keys and groups
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
   doctor [--fix]           check the environment: binary platform, PATH, config, .gitignore,
@@ -122,6 +126,10 @@ FILES (repo root)
                                 stripped); read it with `swim log N`
   .swim/logs/agentN.prev-*.log  archived logs (`swim log N --all`)
   .swim/snapshots/      output saved by `snapshot` steps
+  .swim/chain.jsonl     chain of custody: hash-linked, signed approvals and rounds
+  .swim/scripts/        every lane script a round ran, by SHA-256
+  lane.N.sh.signature   a remote approval of lane.N.sh (swim sign); also .swim/signatures/
+  lookup.yml            who's who: users' SSH keys, groups, approval rules (committed)
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
                         .running claimed by a worker, done/ consumed with results
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,
@@ -590,3 +598,28 @@ INTERRUPTING
   the run id) plus SIGUSR2 to the lane's bash; swim step refuses to start
   while it exists (exit 86) and the library records the STOP. A lane run
   directly with bash has no launcher: Ctrl-C interrupts it at once.
+
+CHAIN OF CUSTODY
+  Every approval and every round is recorded in .swim/chain.jsonl, one
+  signed entry per line, each carrying the SHA-256 of the line before it:
+    approve  lane, job, the script's hash, the guard and its action, who
+             approved (name, key) and how: signature (a .signature file;
+             its approvers' own signatures are copied in), prompt, flag
+             (FLAG=1), auto (-y) or queue (a queued batch's approval)
+    round    the script's hash, the hash of the round's log section, the
+             result and exit, and the approvals it used
+  The runner signs each entry with its SSH key (config signing_key; default
+  ~/.ssh/id_ed25519; signing: auto | required | off). The scripts that ran
+  are kept by hash under .swim/scripts/. Changing a log, a kept script or
+  any entry (or removing or reordering entries) is provable: swim verify.
+  swim history shows the chain by approver.
+  Remote approval: an approver (anywhere, with the repo) signs the exact
+  script with swim sign N --guards FLAG and drops lane.N.sh.signature into
+  the repo; co-signers run swim sign on the same file. The guard approves
+  when the signers, named by lookup.yml, meet its rule; swim watch --signed
+  runs such rounds by itself. A script edited after signing no longer
+  matches, so its signature stops counting.
+  lookup.yml (repo root) names keys and groups them: see swim keys --help.
+  Signing uses ssh-keygen -Y (OpenSSH 8.0+); anyone can check a signature
+  with it. Signing never prompts: a key with a passphrase needs ssh-agent
+  (give the .pub path as signing_key).

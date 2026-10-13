@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/assets"
+	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
@@ -92,6 +93,17 @@ func cmdStart(args []string) error {
 		lane.RemovePID(root, n)
 		return err
 	}
+	// Chain of custody: the exact script this round runs, kept by hash; and
+	// with signing: required, no round starts unsigned.
+	scriptSum, err := keepScript(root, n)
+	if err != nil {
+		lane.RemovePID(root, n)
+		return err
+	}
+	if _, err := runnerKey(cfg); err != nil {
+		lane.RemovePID(root, n)
+		return fmt.Errorf("swim %d: %w (set signing_key, or signing: auto)", n, err)
+	}
 	round := info.Round
 	if round == "" {
 		round = "(no Round: line)"
@@ -154,6 +166,7 @@ func cmdStart(args []string) error {
 	if commit != "" {
 		ctx = append(ctx, logparse.KV{K: "commit", V: commit})
 	}
+	ctx = append(ctx, logparse.KV{K: "sha256", V: scriptSum[:12]})
 	if cfg.Runtime != "" {
 		ctx = append(ctx, logparse.KV{K: "runtime", V: step.RuntimeVersion(cfg.Runtime)})
 	}
@@ -198,6 +211,7 @@ func cmdStart(args []string) error {
 		l.Job = job
 		l.Run = run
 		l.Commit = commit
+		l.ScriptSHA = scriptSum
 		l.Pending, l.PendingJob = info.Round, info.Job
 		l.PID = pid
 		l.StartedAt = status.Str(ts)
@@ -309,6 +323,17 @@ func cmdFinish(args []string) error {
 	if err := appendLog(logPath, logparse.EndBlock(word, r, code, ds, ts)); err != nil {
 		return err
 	}
+	// The round's link in the chain of custody: what ran (the script's
+	// hash), what it wrote (its log section's hash), how it ended and which
+	// approvals it used, signed by the runner.
+	if rounds, _ := splitRounds(logPath); len(rounds) > 0 {
+		exit := code
+		if err := record(root, cfg, chain.Entry{Type: "round", Run: r.Run, Lane: n, Job: r.Job, Round: r.Title,
+			Script: scriptSHA(root, n), Result: state, Exit: &exit,
+			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: roundApprovals(root, r.Run, n)}); err != nil {
+			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
+		}
+	}
 	stages := r.StageResults()
 
 	p := painter()
@@ -410,6 +435,23 @@ func cmdMark(args []string) error {
 	if err := appendLog(lane.Log(root, n), logLine+"\n"); err != nil {
 		return err
 	}
+	if kind == logparse.Approved && !approveRecorded {
+		// guard with its flag set (FLAG=1, or a queued batch's approval):
+		// the runner attests it, as the operator who set it.
+		method := "flag"
+		if strings.Contains(detail, "approved in queue") {
+			method = "queue"
+		}
+		approver := chain.Approver{Name: operator()}
+		if k, _ := runnerKey(cfg); k != nil {
+			approver.Key = k.Public
+		}
+		if err := record(root, cfg, chain.Entry{Type: "approve", Run: os.Getenv("SWIM_RUN"), Lane: n, Job: os.Getenv("SWIM_JOB"),
+			Script: scriptSHA(root, n), Guard: guardFlag(detail), Action: label, Method: method, Statement: detail,
+			Approvers: []chain.Approver{approver}}); err != nil {
+			return err
+		}
+	}
 	return status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
 		switch kind {
 		case logparse.Skip:
@@ -423,4 +465,12 @@ func cmdMark(args []string) error {
 			l.FailedSteps = append(l.FailedSteps, line)
 		}
 	})
+}
+
+// guardFlag is FLAG from an approval detail "FLAG=1..." ("" if none).
+func guardFlag(detail string) string {
+	if i := strings.Index(detail, "=1"); i > 0 && !strings.ContainsAny(detail[:i], " ,(") {
+		return detail[:i]
+	}
+	return ""
 }

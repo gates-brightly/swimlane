@@ -39,7 +39,7 @@ const (
 var ChimeStyles = []string{StyleBell, StyleSound, StyleNotify}
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals"}
+var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key"}
 
 // ParseChime reads true|false|failure (on|off also accepted).
 func ParseChime(s string) (Chime, error) {
@@ -157,6 +157,10 @@ func (c *Config) Get(key string) (string, error) {
 		return c.InterruptMode(), nil
 	case "approvals":
 		return c.ApprovalMode(), nil
+	case "signing":
+		return c.SigningMode(), nil
+	case "signing_key":
+		return c.SigningKey, nil
 	case "interrupt_grace", "term_grace":
 		ig, tg := c.Graces()
 		if key == "term_grace" {
@@ -211,6 +215,18 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.ToLower(strings.TrimSpace(value))
 		if v != InterruptGraceful && v != InterruptImmediate {
 			return nil, fmt.Errorf("interrupt must be graceful or immediate, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "signing":
+		v := strings.ToLower(strings.TrimSpace(value))
+		if v != SigningAuto && v != SigningRequired && v != SigningOff {
+			return nil, fmt.Errorf("signing must be auto, required or off, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "signing_key":
+		v := strings.TrimSpace(value)
+		if v == "" {
+			return nil, fmt.Errorf("signing_key needs a path to an SSH key (or its .pub, for ssh-agent)")
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "approvals":

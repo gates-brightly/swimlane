@@ -403,7 +403,7 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [-y] [--interval D]
+	"watch": `swim watch [--once] [-y] [--signed] [--interval D]
 
   The queue's worker. Runs each queued batch (swim queue add), oldest
   first, as soon as swim is idle in this repo: no lane running and no other
@@ -414,6 +414,10 @@ swim queue show|rm|requeue ID
   One batch runs at a time per repo (a worker lock), so several workers
   can share a queue.
   --once         run every queued batch, then exit (non-zero if one failed)
+  --signed       also queue, by itself, every lane whose script has a complete
+                 remote approval (a .signature meeting lookup.yml's rules, see
+                 swim sign), once per approval; dropping the signature is
+                 what makes it run
   -y, --yes      approve every guard in every batch, beyond what the batch
                  approves (the worker's say-so: logged as "approved by swim
                  watch -y (<user>)", and in the consumed entry as approved_by).
@@ -423,6 +427,73 @@ swim queue show|rm|requeue ID
   boundary; again to force quit), then the batch is consumed as interrupted
   and the watch exits; between batches, the watch exits at once. Batches
   still waiting stay queued.
+`,
+	"sign": `swim sign N|JOB|lane.N.sh [--guards A,B | --all] [--expires D] [--key K] [--note T] [-o FILE]
+
+  Approve a lane script remotely: write (or co-sign) lane.N.sh.signature,
+  which states the exact script (its SHA-256, lane, job and round) and the
+  guards it approves, with your SSH signature over that statement. Drop the
+  file beside the script (or in .swim/signatures/); when the lane's guard
+  runs, under swim run, swim watch or swim ci, the signature approves it if
+  its signers, looked up in lookup.yml, meet lookup.yml's rule for that
+  guard (default: one listed user). No prompt, no flag needed.
+  --guards A,B  which guards it approves (must be the script's guards)
+  --all         every guard
+  --expires D   it stops counting after D (24h)
+  --key K       sign with this key (default: config signing_key, then
+                ~/.ssh/id_ed25519; a .pub path signs through ssh-agent)
+  Co-signing: run swim sign again (another person, their key) on the same
+  file; it signs the same statement, so --guards/--all/--expires can't
+  change. If the script changes, the signature no longer matches it (swim
+  verify says "stale"): approve the new version with a new file.
+  swim watch --signed queues fully signed rounds by itself.
+`,
+	"verify": `swim verify [--strict]
+
+  Prove the chain of custody (.swim/chain.jsonl) is intact:
+    - every entry follows the one before it (sequence and previous-hash):
+      a changed, removed or reordered entry breaks every link after it
+    - every signature is valid for its signer's key
+    - every round's log section still hashes to what was recorded (a log
+      edited after the round ended is caught), and the copy of its script
+      kept under .swim/scripts/<sha256>.sh is unchanged
+    - every signed approval's signatures check out
+  and lists the .signature files present (current, or stale: the script
+  changed since). Exits 1 on any break. --strict also fails on unsigned
+  entries and on signers not in lookup.yml.
+`,
+	"history": `swim history [RUN|N|JOB] [--yaml]
+
+  The chain of custody, oldest first, around who approved and who ran
+  what: each approval (guard, action, approvers by name and group from
+  lookup.yml, and how: signature, prompt, flag, auto, queue) and each round
+  (result, exit, script and log hashes, approvals used), with the entry's
+  hash, run and signer. --yaml: the entries as data (schema swim.history/v1).
+  swim verify checks it.
+`,
+	"keys": `swim keys
+
+  Who's who: lookup.yml's users with their key fingerprints, groups (with
+  nested groups expanded), require rules, and the key this machine signs
+  with and whom it maps to.
+  lookup.yml (repo root, committed):
+      users:
+        zach:
+          keys:
+            - ssh-ed25519 AAAA... zach@laptop
+            - sk-ssh-ed25519@openssh.com AAAA... zach@yubikey
+        alice:
+          keys: [ssh-ed25519 AAAA... alice@work]
+      groups:
+        platform-admin: [zach, alice]
+        ops: [bob, platform-admin]       # a group may include groups
+      require:                           # what a signed approval needs
+        - guards: [FIN_ALLOW_*]          # globs; the first matching rule applies
+          group: platform-admin
+          count: 2                       # distinct users
+        - group: ops                     # no guards: every other guard
+  With no rule a signature from any listed user approves; with no
+  lookup.yml signatures don't count at all (their keys can't be named).
 `,
 	"interrupt": `swim interrupt N|JOB
 

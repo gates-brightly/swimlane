@@ -81,6 +81,7 @@ type Entry struct {
 	Approve    []string `yaml:"approve,omitempty"`     // guard flags approved for this batch
 	ApproveAll bool     `yaml:"approve_all,omitempty"` // -y: every guard
 	Parallel   *int     `yaml:"parallel,omitempty"`
+	Signature  string   `yaml:"signature,omitempty"` // queued by swim watch --signed: the signed statement's hash
 	Worker     *Worker  `yaml:"worker,omitempty"`
 	Result     *Result  `yaml:"result,omitempty"`
 

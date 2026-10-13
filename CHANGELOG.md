@@ -29,6 +29,33 @@ To cut a release:
 
 ## Unreleased
 
+### Added
+
+- **Chain of custody:**
+  - **What's recorded:** every approval and every round goes into
+    `.swim/chain.jsonl`. Each entry is signed with the runner's SSH key and
+    hash-linked to the one before it.
+  - **Rounds** record the script's hash, the hash of the round's log
+    section, the result and the approvals used. Scripts that ran are kept
+    by hash under `.swim/scripts/`.
+  - **Approvals** record who approved and how: signature, prompt, flag,
+    `-y` or queue.
+  - **`swim verify`** proves nothing was edited, removed or reordered.
+    `swim history` shows the chain by approver.
+  - **Config:** `signing_key` and `signing: auto|required|off`. Signing
+    uses `ssh-keygen -Y` and never prompts; use ssh-agent for keys with a
+    passphrase.
+- **Remote approval:** `swim sign N --guards FLAG` writes
+  `lane.N.sh.signature`, an SSH-signed approval of that exact script.
+  - **Co-signing:** others sign the same file.
+  - **Counting:** the guard approves when its signers meet `lookup.yml`'s
+    rule. A script edited after signing no longer matches.
+  - **Unattended:** `swim watch --signed` runs fully signed rounds by
+    itself.
+- **`lookup.yml`:** names SSH keys (users with any number of keys), groups
+  users (groups can nest), and sets `require` rules such as "`FIN_ALLOW_*`
+  needs 2 of platform-admin". `swim keys` shows it.
+
 ### Changed
 
 - **`swim archive 1 2 3` archives lanes 1, 2 and 3:**

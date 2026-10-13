@@ -48,6 +48,10 @@ func init() {
 		"ci":        {run: cmdCi},
 		"queue":     {run: cmdQueue},
 		"watch":     {run: cmdWatch},
+		"sign":      {run: cmdSign},
+		"verify":    {run: cmdVerify},
+		"history":   {run: cmdHistory},
+		"keys":      {run: cmdKeys},
 		"doctor":    {run: cmdDoctor},
 		"help":      {run: cmdHelp},
 		// Called by the lane script library, not by people.

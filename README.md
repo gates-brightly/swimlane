@@ -260,6 +260,8 @@ stops swim with instructions to update it.
 | `swim queue add [N\|JOB ...] [--approve FLAG] [-y]` | Queue a batch of rounds, pinned to their jobs and with their approvals, to run as soon as swim is idle. `swim queue` lists the queue; `show`, `rm` and `requeue` manage entries. |
 | `swim watch [--once] [-y]` | The queue's worker: runs each queued batch when swim is idle, then consumes it. One batch at a time per repo, so several workers can share a queue. `-y` approves every guard the batches don't approve themselves, logged as the worker's approval. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--junit FILE]` | Run rounds in a CI job: grouped per lane, failures as annotations, a job summary and JUnit; `--changed` runs only the rounds a push or merge request changed. |
+| `swim sign N\|JOB --guards A,B` | Approve a lane script remotely: writes or co-signs `lane.N.sh.signature` (SSH-signed, for that exact script's hash). The guard approves when the signers in `lookup.yml` meet its rule; `swim watch --signed` runs it by itself. |
+| `swim verify` / `swim history` / `swim keys` | Prove the chain of custody is intact (logs, scripts, signatures, hash links); show it by approver; show who's who in `lookup.yml`. |
 | `swim interrupt N\|JOB` | Ask one running lane to stop at its next step boundary (what the first Ctrl-C does to every lane). |
 | `swim lint [N\|JOB ...] [--strict] [--yaml]` | Check lane scripts (header, `set -e`, `lane_init`, `summary`, stages, bash 3.2, guards, blocked commands, secrets, dependencies); exits 1 on errors (`--strict`: warnings too). `swim run` refuses to start on `set -e` and `lane_init` errors. |
 | `swim doctor [--fix] [--strict] [--yaml]` | Check the environment: binary OS/CPU, PATH, config, `.gitignore` block, tracked lane scripts, stale pid files, toolchain, git, `.swim.lock`. `--fix` only rewrites swim's `.gitignore` block and removes stale pid files. |
@@ -434,6 +436,41 @@ committed rounds, `lane.1.sh` (lint), `lane.2.sh` (unit tests) and
 with `make ci` (or `swim all`). The test steps go through `scripts/hermetic`,
 which strips the lane's own swim environment, because they test swim from
 inside a swim lane.
+
+## Chain of custody
+
+Every approval and every round swim runs goes into `.swim/chain.jsonl`. Each
+entry is signed with the runner's SSH key (`signing_key`) and carries the
+hash of the entry before it.
+
+- **Round entries** record the script's hash, the hash of the round's log
+  section, and the result.
+- **Approval entries** record who approved and how: a signature, a prompt,
+  a flag, `-y` or a queued batch.
+- **Proof:** `swim verify` proves that nothing has been edited, removed or
+  reordered, including the logs and the copies of every script that ran.
+  `swim history` shows the chain by approver.
+
+Approvers don't need to be at the terminal. `swim sign 3 --guards
+FIN_ALLOW_DROP` writes `lane.3.sh.signature`, an SSH signature over that
+exact script and the guards it approves. Co-signers sign the same file.
+`lookup.yml`, committed at the repo root, maps keys to people and groups and
+sets the rules, for example "`FIN_ALLOW_*` needs two of platform-admin". Run
+`swim watch --signed`, and dropping in the signature is what makes the round
+run.
+
+```yaml
+# lookup.yml
+users:
+  zach:  {keys: ["ssh-ed25519 AAAA... zach@laptop"]}
+  alice: {keys: ["ssh-ed25519 AAAA... alice@work"]}
+groups:
+  platform-admin: [zach, alice]
+require:
+  - guards: [FIN_ALLOW_*]
+    group: platform-admin
+    count: 2
+```
 
 ## Safety
 

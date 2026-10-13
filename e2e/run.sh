@@ -86,6 +86,7 @@ for s in $selected; do
     cd "$repo" || exit 1
     git init -q . || exit 1
     "$SWIM" init >/dev/null || exit 1
+    "$SWIM" config signing off >/dev/null || exit 1   # never the operator's own ssh key
     . "$E2E/lib/common.sh"
     LANES=4
     scenario_run() { swim_run $(seq 1 "$LANES"); }

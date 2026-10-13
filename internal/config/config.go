@@ -43,6 +43,8 @@ type Settings struct {
 	SecretPatternsAuto *bool         `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
 	Interrupt          string        `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
 	Approvals          string        `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
+	SigningKey         string        `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
+	Signing            string        `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
 	InterruptGrace     string        `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
 	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
 }
@@ -254,6 +256,12 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.Approvals != "" {
 		c.Approvals = r.Approvals
+	}
+	if r.SigningKey != "" {
+		c.SigningKey = r.SigningKey
+	}
+	if r.Signing != "" {
+		c.Signing = r.Signing
 	}
 	if r.InterruptGrace != "" {
 		c.InterruptGrace = r.InterruptGrace
@@ -494,6 +502,11 @@ func (c *Config) validateInterrupt() error {
 	default:
 		return fmt.Errorf("approvals must be prompt or flags, got %q", c.Approvals)
 	}
+	switch c.Signing {
+	case "", SigningAuto, SigningRequired, SigningOff:
+	default:
+		return fmt.Errorf("signing must be auto, required or off, got %q", c.Signing)
+	}
 	switch c.Interrupt {
 	case "", InterruptGraceful, InterruptImmediate:
 	default:
@@ -543,4 +556,19 @@ func (c *Config) ApprovalMode() string {
 		return ApprovalsPrompt
 	}
 	return c.Approvals
+}
+
+// Signing modes: whether the runner signs its chain entries.
+const (
+	SigningAuto     = "auto"     // sign when a key loads; record unsigned (still linked) when none does
+	SigningRequired = "required" // refuse to start a round without a key
+	SigningOff      = "off"      // never sign
+)
+
+// SigningMode is auto (the default), required or off.
+func (c *Config) SigningMode() string {
+	if c.Signing == "" {
+		return SigningAuto
+	}
+	return c.Signing
 }

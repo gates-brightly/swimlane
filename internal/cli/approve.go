@@ -4,16 +4,20 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
+	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/ci"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -48,8 +52,57 @@ func cmdApprove(args []string) error {
 		return exitError{1}
 	}
 
+	// A remote approval (.signature) for this exact script comes first.
+	sha := scriptSHA(root, n)
+	sigWhy := ""
+	if lk, err := lookup.Load(root); err != nil {
+		sigWhy = err.Error()
+	} else {
+		var whyNot []string
+		for _, f := range sigfile.ForScript(root, sha) {
+			d := f.Decide(lk, flag, time.Now())
+			if !d.OK {
+				whyNot = append(whyNot, d.Why)
+				continue
+			}
+			var names []string
+			var approvers []chain.Approver
+			for _, v := range d.Signed {
+				if v.User == "" {
+					continue
+				}
+				names = append(names, lk.Describe(v.User))
+				approvers = append(approvers, chain.Approver{Name: v.User, Key: v.Key, SignedAt: v.SignedAt, Sig: v.Sig})
+			}
+			approveRecorded = true
+			if err := cmdMark([]string{args[0], logparse.Approved, desc, "approved by signature: " + strings.Join(names, ", ")}); err != nil {
+				return err
+			}
+			if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Guard: flag, Action: desc,
+				Method: "signature", Statement: f.Statement(), Approvers: approvers}); err != nil {
+				return err
+			}
+			history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", signed by " + strings.Join(d.Users, ", ") + " in " + filepath.Base(f.Path) + ")"})
+			return nil
+		}
+		if len(whyNot) == 0 {
+			// A signature for another version of this lane's script: say so
+			// rather than leave the operator wondering why it didn't count.
+			all, _ := sigfile.All(root)
+			for _, f := range all {
+				if f.Lane == n && f.SHA256 != sha && f.Covers(flag) {
+					whyNot = append(whyNot, fmt.Sprintf("%s approves another version of lane.%d.sh (signed %s, running %s)", filepath.Base(f.Path), n, short12(f.SHA256), short12(sha)))
+				}
+			}
+		}
+		sigWhy = strings.Join(whyNot, "; ")
+	}
+
 	ask, why := approvalChannel(cfg)
 	if ask == nil {
+		if sigWhy != "" {
+			why = sigWhy
+		}
 		return dryRun(why)
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
@@ -72,7 +125,19 @@ func cmdApprove(args []string) error {
 		how = "approved by " + via + " (" + by + ")"
 		by += " with " + via
 	}
+	approveRecorded = true
 	if err := cmdMark([]string{args[0], logparse.Approved, desc, how}); err != nil {
+		return err
+	}
+	method, approver := "prompt", chain.Approver{Name: or(resp.By, operator())}
+	if resp.Auto {
+		method = "auto"
+	}
+	if k, _ := runnerKey(cfg); k != nil && (method == "prompt" || resp.By == operator()) {
+		approver.Key = k.Public // the operator at this terminal: the runner's key
+	}
+	if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Guard: flag, Action: desc,
+		Method: method, Statement: how, Approvers: []chain.Approver{approver}}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", by " + by + ")"})
@@ -129,3 +194,7 @@ func deadline() time.Time {
 	}
 	return time.Time{}
 }
+
+// approveRecorded is set when swim _approve has put an approval in the
+// chain itself, so the _mark it calls doesn't record it twice.
+var approveRecorded bool
