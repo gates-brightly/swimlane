@@ -3,7 +3,9 @@ package launcher
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -14,6 +16,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/step"
 )
 
 // Interrupt levels: what the launcher has asked running lanes to do.
@@ -280,7 +283,25 @@ func (ir *interrupter) killLocked() {
 	}
 	ir.o.ev.emit(Event{Event: "kill", Run: ir.o.RunID, Lanes: ns, At: now()})
 	for _, n := range ns {
-		ir.signalLocked(ir.procs[n], syscall.SIGKILL)
+		lp := ir.procs[n]
+		ir.signalLocked(lp, syscall.SIGKILL)
+		killSteps(ir.o.Root, lp.laneOf(n))
+	}
+}
+
+// killSteps SIGKILLs the process groups of lane n's running steps (its
+// round's, its cells', its check's): a step runs in a group of its own,
+// which the signal to the lane's group doesn't reach, and swim step, killed
+// with the lane, can't stop it any more.
+func killSteps(root string, n int) {
+	dir := lane.LogDir(root)
+	ents, _ := os.ReadDir(dir)
+	prefix := fmt.Sprintf("agent%d.", n)
+	for _, e := range ents {
+		name := e.Name()
+		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, step.GroupSuffix) {
+			step.KillRecorded(filepath.Join(dir, strings.TrimSuffix(name, step.GroupSuffix)))
+		}
 	}
 }
 

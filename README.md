@@ -384,6 +384,11 @@ summary
   `--timeout 2m`, `--retry 3`, `--backoff 5s` and `--retry-on 1,255` before
   the label. `# Step-Timeout: 5m` sets a default for every step, and the
   round's `Timeout` always wins. Only retry idempotent steps.
+  - A limit stops everything the step started: each step runs in its own
+    process group, which gets SIGTERM, then SIGKILL after 5s.
+  - Except a step whose stdin is the terminal (a lone lane run from a
+    terminal): it stays in the lane's group so it can read the keyboard, and
+    a limit stops only its own process.
 - **Library:** the functions are `lane_init`, `stage`, `run`, `gate`,
   `snapshot`, `guard`, `confirm`, `last_failed`, `any_failed`, `drift`,
   `stop` and `summary`. It runs on macOS's bash 3.2.
@@ -856,7 +861,7 @@ swim wait [--timeout D]                                  # block until idle and 
 - **First Ctrl-C:** every lane stops at its next step boundary. Running
   steps finish, nothing new starts, and lanes waiting to start are skipped.
 - **Second:** interrupts the running steps, and kills them after
-  `interrupt_grace` (5s).
+  `interrupt_grace` (5s). The kill reaches everything a step started.
 - **Third:** kills them at once.
 - **Other signals:** SIGTERM (a CI cancel) stops gracefully, then forces
   after `term_grace`. `swim interrupt N` stops one lane from another

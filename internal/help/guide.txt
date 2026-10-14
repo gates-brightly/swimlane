@@ -302,6 +302,12 @@ WRITING A LANE SCRIPT
       --soft                      in a Fail: hard round, this step's failure doesn't end it
     The round's Timeout: always wins: no attempt runs past it, and a retry that
     couldn't start before it isn't attempted (the round stops, as for a timeout).
+    TIME LIMITS: a step runs in its own process group, and a limit stops all of
+    it: SIGTERM to the group, SIGKILL after 5s, so bash -c 'server & tests'
+    leaves no server behind. What a step leaves running when it ends on its own
+    is left alone. A step whose stdin is the terminal (a lone lane run from a
+    terminal, or swim step by hand) stays in the lane's group so it can read
+    the keyboard: a limit then stops only its own process, not its children.
     Each attempt is in the log; the step counts once (one PASS or FAIL). Only put
     --retry on read-only or idempotent steps, never on a change that isn't.
   guard FLAG "<action - date, reason>"
@@ -932,6 +938,9 @@ INTERRUPTING
   first press force. `swim interrupt N` stops one lane gracefully from
   another terminal. A single lane given the terminal (so confirm can read
   it) stays in swim's process group and gets Ctrl-C directly, at once.
+  A step runs in a process group of its own (see TIME LIMITS): swim step
+  passes the force quit's SIGINT on to it, and the kill reaches it through
+  .swim/logs/<log>.partial.pgid, where swim step records it while it runs.
   Mechanism, for lane authors: a stop request is .swim/laneN.stop (holding
   the run id) plus SIGUSR2 to the lane's bash; swim step refuses to start
   while it exists (exit 86) and the library records the STOP. A lane run
