@@ -52,6 +52,7 @@ type Settings struct {
 	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
 	MsgLogInterval     string        `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
 	OutputsKeep        string        `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
+	QueueLease         string        `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
 	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
 	// the anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -343,6 +344,9 @@ func (c *Config) merge(r Settings) {
 	if r.MsgLogInterval != "" {
 		c.MsgLogInterval = r.MsgLogInterval
 	}
+	if r.QueueLease != "" {
+		c.QueueLease = r.QueueLease
+	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
 	}
@@ -464,6 +468,16 @@ func (c *Config) MsgLogEvery() time.Duration {
 		return 10 * time.Second
 	}
 	return d
+}
+
+// QueueLeaseFor is queue_lease: how long a queue worker's heartbeat holds
+// (0: the queue's default, 2m). A worker renews it every third of that;
+// from another host, a claim whose heartbeat is older is orphaned.
+func (c *Config) QueueLeaseFor() time.Duration {
+	if d, err := time.ParseDuration(c.QueueLease); err == nil && d >= 10*time.Second {
+		return d
+	}
+	return 0
 }
 
 // OutputsKeepFor is outputs_keep: how long round outputs nothing uses are
@@ -690,6 +704,11 @@ func (c *Config) validateInterrupt() error {
 		}
 		if d, err := time.ParseDuration(kv[1]); err != nil || d < 0 {
 			return fmt.Errorf("%s must be a duration like 5s or 1m, got %q", kv[0], kv[1])
+		}
+	}
+	if c.QueueLease != "" {
+		if d, err := time.ParseDuration(c.QueueLease); err != nil || d < 10*time.Second {
+			return fmt.Errorf("queue_lease must be a duration of 10s or more, like 2m, got %q", c.QueueLease)
 		}
 	}
 	return nil
