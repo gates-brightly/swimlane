@@ -309,25 +309,54 @@ func ClaimNext(root, user string) (*Entry, error) {
 	files, _ := filepath.Glob(filepath.Join(Dir(root), "*.queue"))
 	sort.Strings(files)
 	for _, p := range files {
-		running := strings.TrimSuffix(p, ".queue") + ".running"
-		if err := os.Rename(p, running); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue // claimed by another worker
-			}
-			return nil, err
-		}
-		e, err := load(running)
+		e, err := claim(p, user)
 		if err != nil {
 			return nil, err
 		}
-		e.State = Running
-		e.Worker = &Worker{Host: hostname(), PID: os.Getpid(), User: user, Claimed: time.Now().UTC().Format(time.RFC3339)}
-		if err := write(e); err != nil {
-			return nil, err
+		if e != nil {
+			return e, nil
 		}
-		return e, nil
 	}
 	return nil, nil
+}
+
+// Claim claims one waiting entry, out of turn (swim watch: r on a queued
+// batch). It errors if the entry isn't waiting any more: another worker
+// claimed it, or it was removed.
+func Claim(root string, e *Entry, user string) (*Entry, error) {
+	if e.State != Queued || !strings.HasSuffix(e.Path, ".queue") {
+		return nil, fmt.Errorf("%s is %s, not waiting", e.ID, e.State)
+	}
+	got, err := claim(e.Path, user)
+	if err != nil {
+		return nil, err
+	}
+	if got == nil {
+		return nil, fmt.Errorf("%s was just claimed by another worker (or removed)", e.ID)
+	}
+	return got, nil
+}
+
+// claim renames a waiting entry to .running and records the worker; nil
+// when another worker renamed it first.
+func claim(p, user string) (*Entry, error) {
+	running := strings.TrimSuffix(p, ".queue") + ".running"
+	if err := os.Rename(p, running); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil // claimed by another worker
+		}
+		return nil, err
+	}
+	e, err := load(running)
+	if err != nil {
+		return nil, err
+	}
+	e.State = Running
+	e.Worker = &Worker{Host: hostname(), PID: os.Getpid(), User: user, Claimed: time.Now().UTC().Format(time.RFC3339)}
+	if err := write(e); err != nil {
+		return nil, err
+	}
+	return e, nil
 }
 
 // Consume records the result and moves a claimed entry to done/.

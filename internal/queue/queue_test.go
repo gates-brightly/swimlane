@@ -116,3 +116,26 @@ func TestSeqNeverReused(t *testing.T) {
 		t.Fatalf("a removed entry's number was reused: got #%d, want #3", e.Seq)
 	}
 }
+
+func TestClaimOutOfTurn(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 3; i++ {
+		Add(root, &Entry{By: "op", Lanes: []Lane{{Lane: i + 1}}})
+	}
+	all, _ := List(root, false)
+	e, err := Claim(root, all[2], "op")
+	if err != nil || e.Seq != 3 || e.State != Running || e.Worker == nil {
+		t.Fatalf("claim #3: %+v %v", e, err)
+	}
+	// The oldest still comes next in turn.
+	if next, _ := ClaimNext(root, "op"); next == nil || next.Seq != 1 {
+		t.Fatalf("next after #3: %+v", next)
+	}
+	// A stale copy of a claimed entry can't be claimed again.
+	if _, err := Claim(root, all[2], "op"); err == nil {
+		t.Error("claimed #3 twice")
+	}
+	if _, err := Claim(root, e, "op"); err == nil {
+		t.Error("claimed a running entry")
+	}
+}

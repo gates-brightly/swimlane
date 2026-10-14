@@ -504,7 +504,7 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [-y] [--approved] [--interval D]
+	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--no-tui]
 
   The queue's worker. Runs each queued batch (swim queue add), oldest
   first, as soon as swim is idle in this repo: no lane running and no other
@@ -523,6 +523,20 @@ swim queue show|rm|requeue ID
                  watch -y (<user>)", and in the consumed entry as approved_by).
                  The batch's own --approve and -y keep their credit.
   --interval D   how often to check the queue and for idleness (default 2s)
+  --no-tui       print what the worker waits for instead of the jobs screen
+  On a terminal, while it waits, the watch shows every lane's job and the
+  queue: ↑ ↓ (or k j) pick one, r runs it now and q queues it.
+    r on a job     runs it as swim run N does: you're at the terminal, so its
+                   guards may ask
+    q on a job     queues it as swim queue add N does (no guard approved: its
+                   guards dry-run unless standing approvals cover them); the
+                   worker takes it when swim is idle
+    r on a batch   runs a waiting batch now, out of turn, with its own
+                   approvals (and -y's), exactly as in turn
+  A batch of several lanes runs in the interactive view: ← → pick a lane to
+  read, but its keys never answer a guard (a batch never prompts), and the
+  view closes when the batch ends. SWIM_TUI=0, CI and --once turn the screen
+  off. In the screen, Ctrl-C quits the watch.
   Ctrl-C: during a batch, the usual graceful stop (lanes stop at a step
   boundary; again to force quit), then the batch is consumed as interrupted
   and the watch exits; between batches, the watch exits at once. Batches

@@ -109,6 +109,10 @@ type Options struct {
 	// Interactive allows the interactive view (keys pick a lane's log) when
 	// more than one lane runs on a terminal; the view then reads Stdin.
 	Interactive bool
+	// Unattended is a run nobody answers for (a batch swim watch took from
+	// the queue): the view's keys only move around, never pre-answer a
+	// guard, and the view closes when the run ends.
+	Unattended bool
 
 	ev *events
 }
@@ -292,6 +296,10 @@ func Run(o Options) (int, error) {
 		summaryOut = io.Discard
 	}
 	pre := newPreAnswers(selected)
+	onPre := func(n int, choice string) string { return pre.set(o, n, choice) }
+	if o.Unattended {
+		onPre = nil // the view says pre-answers aren't available
+	}
 	disp := display.New(display.Options{
 		Out:   screen,
 		Plain: o.Plain || o.ev != nil,
@@ -313,7 +321,8 @@ func Run(o Options) (int, error) {
 			return filepath.ToSlash(filepath.Join(".swim", "logs", filepath.Base(viewLog(o.Root, n))))
 		},
 		OnInterrupt: func() { ir.handle(syscall.SIGINT) },
-		OnPre:       func(n int, choice string) string { return pre.set(o, n, choice) },
+		OnPre:       onPre,
+		NoHold:      o.Unattended,
 	}, views)
 	pre.disp = disp
 	ir = newInterrupter(o, disp, sl, lt)

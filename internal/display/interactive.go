@@ -33,6 +33,7 @@ var testPanic = os.Getenv("SWIM_TEST_TUI_PANIC") == "1"
 type interactive struct {
 	in          int // stdin's fd, in raw mode while the view is up
 	onInterrupt func()
+	noHold      bool // close at the end of the run, whatever the operator is reading
 
 	ttyMu  sync.Mutex // guards the terminal state below; never held with Display.mu waiting on it
 	raw    *term.State
@@ -191,7 +192,7 @@ func (d *Display) startInteractive() bool {
 func (d *Display) stopInteractive() {
 	it := d.tui
 	d.mu.Lock()
-	hold := it.model.holds() && !it.termSig
+	hold := it.model.holds() && !it.termSig && !it.noHold
 	if hold {
 		it.model.finished = true
 		it.model.pollLog() // the lane's END block

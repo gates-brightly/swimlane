@@ -70,6 +70,10 @@ type Options struct {
 	// mode turns off the terminal's own signal). nil sends SIGINT to the
 	// terminal's foreground process group, as the terminal would have.
 	OnInterrupt func()
+	// NoHold closes the interactive view as soon as the run ends, even if
+	// the operator is reading a lane's log (swim watch: the next batch is
+	// waiting).
+	NoHold bool
 }
 
 // New prepares a display for lanes 1..len(views). Live mode needs a
@@ -103,7 +107,7 @@ func New(o Options, views []LaneView) *Display {
 		if label == nil {
 			label = o.LogPath
 		}
-		d.tui = &interactive{in: int(o.In.Fd()), onInterrupt: o.OnInterrupt, model: newTUI(d.color, o.LogPath, label)}
+		d.tui = &interactive{in: int(o.In.Fd()), onInterrupt: o.OnInterrupt, noHold: o.NoHold, model: newTUI(d.color, o.LogPath, label)}
 	}
 	return d
 }

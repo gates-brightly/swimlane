@@ -532,7 +532,7 @@ ssh-agent) and `signing: auto | required | off`.
 swim queue add 4 5 --approve FLAG [-y] [--note "..."]   # or: swim queue 4 5 ...
 swim queue                                               # waiting, running, orphaned, done
 swim queue show|rm|requeue ID
-swim watch [--once] [-y] [--approved]                    # the worker
+swim watch [--once] [-y] [--approved] [--no-tui]         # the worker
 swim wait [--timeout D]                                  # block until idle and nothing queued
 ```
 
@@ -548,6 +548,10 @@ swim wait [--timeout D]                                  # block until idle and 
     and one batch runs at a time per repo.
   - **Ctrl-C** stops the current batch gracefully.
   - **`--approved`** also queues scripts as soon as they're fully approved.
+  - **On a terminal,** the watch lists every lane's job and the queue while
+    it waits. Use ↑ ↓ to pick one, `r` to run it now (a job as `swim run N`,
+    a waiting batch out of turn) and `q` to queue a job. A batch's live view
+    lets ← → pick a lane to read, but never answers its guards.
 
 ### Interrupts
 
@@ -680,7 +684,7 @@ they waited for.
 | `swim archive N\|JOB ... [--as NAME]` / `swim stub N "<msg>"` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run when swim is idle. |
-| `swim watch [--once] [-y] [--approved]` | The queue's worker. |
+| `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's worker; on a terminal, pick a job to run (`r`) or queue (`q`). |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
 | `swim verify [--strict]` / `swim history [--oneline]` / `swim keys` | The chain of custody: prove it, read it, and see who's who. |
