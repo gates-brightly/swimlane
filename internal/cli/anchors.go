@@ -45,32 +45,35 @@ func openAnchor(root, spec string) (anchor.Anchor, error) {
 // takeCheckpoint signs the chain's head and sends it to the configured
 // anchors (and to extra), warning about each that fails. Nothing is taken
 // inside a lane (a nested swim run), with no anchors and no extra unless
-// always, or for an empty chain.
-func takeCheckpoint(root string, cfg *config.Config, always bool, extra ...string) (*chain.Checkpoint, error) {
+// always, or for an empty chain. sent holds the anchors that took this
+// checkpoint: an anchor that failed is dropped from the record of sends
+// (swim doctor lists it until one gets through).
+func takeCheckpoint(root string, cfg *config.Config, always bool, extra ...string) (cp *chain.Checkpoint, sent map[string]bool, err error) {
 	if os.Getenv("SWIM_LANE") != "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	specs := append(append([]string(nil), cfg.ChainAnchors...), extra...)
 	if len(specs) == 0 && !always {
-		return nil, nil
+		return nil, nil, nil
 	}
 	links, err := chain.Read(root)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(links) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	host, _ := os.Hostname()
-	cp := chain.NewCheckpoint(links, host)
+	c := chain.NewCheckpoint(links, host)
+	cp = &c
 	key, err := runnerKey(cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if key != nil {
-		if err := chain.SignCheckpoint(&cp, key); err != nil {
+		if err := chain.SignCheckpoint(cp, key); err != nil {
 			if cfg.SigningMode() == config.SigningRequired {
-				return nil, err
+				return nil, nil, err
 			}
 			fmt.Fprintln(os.Stderr, "swim: warning: chain checkpoint: couldn't sign ("+err.Error()+"); sending it unsigned")
 			cp.Signer, cp.Sig, cp.RunnerKeyFP = "", "", ""
@@ -82,16 +85,19 @@ func takeCheckpoint(root string, cfg *config.Config, always bool, extra ...strin
 			f.Close()
 		}
 	}
-	sent := loadSent(root)
+	record := loadSent(root)
+	sent = map[string]bool{}
 	for _, spec := range specs {
-		if err := sendCheckpoint(root, spec, cp); err != nil {
+		if err := sendCheckpoint(root, spec, *cp); err != nil {
 			fmt.Fprintf(os.Stderr, "swim: warning: chain anchor %s: %v (the next checkpoint is sent anyway; swim doctor lists it until then)\n", spec, err)
+			delete(record, spec)
 			continue
 		}
-		sent[spec] = cp.Seq
+		record[spec] = cp.Seq
+		sent[spec] = true
 	}
-	saveSent(root, sent)
-	return &cp, nil
+	saveSent(root, record)
+	return cp, sent, nil
 }
 
 func sendCheckpoint(root, spec string, cp chain.Checkpoint) error {
@@ -105,7 +111,7 @@ func sendCheckpoint(root, spec string, cp chain.Checkpoint) error {
 // checkpointAfterRun is takeCheckpoint at the end of a run, batch or CI
 // job: never its result, only warnings.
 func checkpointAfterRun(root string, cfg *config.Config) {
-	if _, err := takeCheckpoint(root, cfg, false); err != nil {
+	if _, _, err := takeCheckpoint(root, cfg, false); err != nil {
 		fmt.Fprintln(os.Stderr, "swim: warning: chain checkpoint: "+err.Error())
 	}
 }

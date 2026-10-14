@@ -829,10 +829,18 @@ func checkCheckpointUnsent(o *Options) []finding.Finding {
 	for _, a := range o.Cfg.ChainAnchors {
 		if sent[a] != last.Seq {
 			out = append(out, fd(finding.Warn, "checkpoint-unsent", "", "check the anchor is reachable, then swim chain checkpoint",
-				"chain anchor %s hasn't had the latest checkpoint (seq %d, %s); its last is seq %d", a, last.Seq, last.At, sent[a]))
+				"chain anchor %s hasn't had the latest checkpoint (seq %d, %s); %s", a, last.Seq, last.At, lastSent(sent[a])))
 		}
 	}
 	return out
+}
+
+// lastSent says what an anchor last took: a send that failed clears it.
+func lastSent(seq int) string {
+	if seq == 0 {
+		return "the last send to it failed, or none was made"
+	}
+	return fmt.Sprintf("its last is seq %d", seq)
 }
 
 // checkHeadlessService says what of a headless worker is set up here: the

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -41,7 +42,7 @@ func chainRepair(args []string) error {
 		return err
 	}
 	r, err := chain.Repair(root, key)
-	if err != nil && key != nil && cfg.SigningMode() != config.SigningRequired {
+	if errors.As(err, new(chain.SignError)) && cfg.SigningMode() != config.SigningRequired {
 		// As record: a key that couldn't sign leaves the chain untouched,
 		// so repair it with an unsigned (still linked) entry.
 		fmt.Fprintln(os.Stderr, "swim: warning: chain of custody: couldn't sign ("+err.Error()+"); recording the repair unsigned")
@@ -78,7 +79,7 @@ func chainCheckpoint(args []string) error {
 	if to != "" {
 		extra = []string{to}
 	}
-	cp, err := takeCheckpoint(root, cfg, true, extra...)
+	cp, sent, err := takeCheckpoint(root, cfg, true, extra...)
 	if err != nil {
 		return err
 	}
@@ -91,14 +92,13 @@ func chainCheckpoint(args []string) error {
 		signed = "signed by " + cp.RunnerKeyFP
 	}
 	fmt.Printf("checkpoint %s, head %s, %s\n", cp, short12(cp.Head), signed)
-	sent := loadSent(root)
 	specs := append(append([]string(nil), cfg.ChainAnchors...), extra...)
 	if len(specs) == 0 {
 		fmt.Println("no chain_anchors configured: kept only in " + rel(root, checkpointsLog(root)) + ", which a lane can rewrite")
 	}
 	failed := false
 	for _, s := range specs {
-		if sent[s] == cp.Seq {
+		if sent[s] {
 			fmt.Println("sent to " + s)
 		} else {
 			failed = true
@@ -135,11 +135,14 @@ func chainExport(args []string) error {
 		return err
 	}
 	fmt.Printf("exported %d new entries to %s\n", n, to)
-	cp, err := takeCheckpoint(root, cfg, true, to)
+	cp, sent, err := takeCheckpoint(root, cfg, true, to)
 	if err != nil {
 		return err
 	}
-	if cp != nil && loadSent(root)[to] == cp.Seq {
+	if cp != nil && !sent[to] {
+		return exitError{1}
+	}
+	if cp != nil {
 		fmt.Printf("and checkpoint %s\n", cp)
 	}
 	return nil
