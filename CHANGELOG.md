@@ -296,7 +296,7 @@ To cut a release:
     (`r.guard("FLAG", ...)`) now count as declared guards.
 
 - **Headless workers, `swim watch --headless`:** the queue worker with no
-  terminal (first stage of `features/headless.md`).
+  terminal.
   - It needs the directory enrolled with a hub, never shows the watch
     screen and never reads stdin. The hub's worker page marks it headless,
     with `-y` in bold.
@@ -338,8 +338,35 @@ To cut a release:
     again before upload (only the last 8 MiB) and kept in the hub's memory
     only (64 MiB in all, 15 minutes); `headless.logs: off` refuses them.
   - New `swim.yml`-only block (an error in `config.yml`): `headless:
-    {allow, logs, command_ttl, approvals, answer_timeout}`; the last two
-    are for hub approvals, still to come.
+    {allow, logs, command_ttl, approvals, answer_timeout}`.
+- **Guards answered through the hub (headless stage H3):** a headless
+  worker's guard that nothing else approves waits for an answer on its hub
+  page instead of dry-running at once.
+  - **Signed** (the default, `headless.approvals: signed`): `swim approve
+    --hub WORKER/QUESTION [--decline]`, or *Sign an answer* on the page
+    (`ssh-keygen -Y sign` the statement shown and paste the signature).
+    The statement (`swim hub answer v1`) names the question, worker, lane,
+    job, run, script, manifest, evidence, guard, decision and expiry; the
+    worker builds it from its own facts, checks the signature against
+    `lookup.yml` as the run started and counts signers until the guard's
+    rule is met. The launcher checks the answer again before it grants.
+  - **Button** (`headless.approvals: hub`): a hub operator's *Approve*
+    counts as their answer, if `lookup.yml` lists them, only for guards no
+    `require:` rule names and that need no evidence. Either kind may
+    decline; a viewer may send signed answers.
+  - **No answer is a decline:** past `headless.answer_timeout` (30m), the
+    round's Timeout, or with the run stopping, the guard is a dry run.
+  - Recorded as chain methods `hub-signed` (each signer's statement and
+    signature) and `hub-button`; `swim verify` checks hub signatures
+    (consistent) and the rule (authorized: a button fails any `require:`
+    rule for its guard). The answer command itself is a `hub` entry too.
+  - The hub's worker JSON gains `pending` (the waiting questions); the
+    launcher gains an `Asker` option, used after pre-answers and `-y` when
+    there is no terminal.
+  - **`swim doctor`:** `headless-service` (running or installed),
+    `headless-stale` (a killed worker's pidfile), `hub-unreachable`,
+    `headless-hub-answers` (button answers on) and `headless-yes` (`-y` in a
+    service file).
 - **Jobs:** any lane can be split into jobs, numbered under it and nested
   to any depth (`1.1`, `1.2`, `1.5.9.9`): the lane's header first, then
   each job at a `# swim job N.K` line with its own header and steps.

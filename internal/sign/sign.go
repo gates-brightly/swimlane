@@ -148,6 +148,10 @@ func keyOnly(pub string) string {
 // KeyOnly is exported for matching keys against lookup.yml.
 func KeyOnly(pub string) string { return keyOnly(pub) }
 
+// Unarmor is a signature as swim stores it (one line of base64), from
+// ssh-keygen's armored output or from that already.
+func Unarmor(sig string) string { return unarmor(sig) }
+
 func unarmor(armor string) string {
 	var b strings.Builder
 	for _, l := range strings.Split(armor, "\n") {

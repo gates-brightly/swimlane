@@ -15,6 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/evidence"
@@ -48,12 +49,22 @@ func laneFile(arg string) (int, bool) {
 // otherwise co-signed). --key picks the key, --expires D and --note T
 // describe a new approval.
 func cmdApprove(args []string) error {
-	var guards, expires, keyPath, note, auto, cell string
-	var all, noEvidence bool
-	rest, err := flags{bools: map[string]*bool{"all": &all, "no-evidence": &noEvidence},
-		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto, "cell": &cell}}.parse(args)
+	var guards, expires, keyPath, note, auto, cell, hubRef, hubURL, hubToken string
+	var all, noEvidence, decline bool
+	rest, err := flags{bools: map[string]*bool{"all": &all, "no-evidence": &noEvidence, "decline": &decline},
+		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto, "cell": &cell,
+			"hub": &hubRef, "url": &hubURL, "token": &hubToken}}.parse(args)
 	if err != nil {
 		return err
+	}
+	if hubRef != "" {
+		if len(rest) > 0 || auto != "" || guards != "" || all || cell != "" || expires != "" {
+			return usagef("swim approve --hub WORKER/QUESTION answers one question: it takes only --decline, --key, --url and --token")
+		}
+		return approveHub(hubRef, keyPath, hubURL, hubToken, decline)
+	}
+	if decline || hubURL != "" || hubToken != "" {
+		return usagef("--decline, --url and --token go with --hub WORKER/QUESTION")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -920,6 +931,16 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				if ap.Statement == "" || ap.Sig == "" {
 					continue
 				}
+				if l.Method == approval.HubSigned {
+					// An answer signed through the hub: its statement must be
+					// for this guard and lane, approving.
+					if why := hubStatementWhy(ap.Statement, l); why != "" {
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: %s's answer through the hub %s", l.Seq, or(ap.Name, "an approver"), why))
+					} else if err := sigfile.VerifyHubSig(ap.Statement, ap.Key, ap.Sig); err != nil {
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: %s's answer through the hub: %v", l.Seq, or(ap.Name, "an approver"), err))
+					}
+					continue
+				}
 				ev := sigfile.Event{Type: sigfile.Approve, Key: ap.Key, At: ap.SignedAt, Prev: ap.Prev, Sig: ap.Sig}
 				if err := sigfile.VerifyEvent(ap.Statement, ev); err != nil {
 					v.bad = append(v.bad, fmt.Sprintf("entry #%d: %s's approval signature: %v", l.Seq, or(ap.Name, "an approver"), err))
@@ -927,6 +948,25 @@ func (v *verifier) checkEntries(links []chain.Link) {
 			}
 		}
 	}
+}
+
+// hubStatementWhy says how a hub answer's statement doesn't approve
+// entry l's guard ("" when it does): another guard, lane or run, or a
+// decline.
+func hubStatementWhy(st string, l chain.Link) string {
+	switch {
+	case !strings.HasPrefix(st, "swim hub answer v1\n"):
+		return "isn't a hub answer statement"
+	case approval.StatementField(st, "decision") != approval.Approve:
+		return "doesn't approve (decision: " + approval.StatementField(st, "decision") + ")"
+	case approval.StatementField(st, "flag") != l.Guard:
+		return "is for guard " + approval.StatementField(st, "flag") + ", not " + l.Guard
+	case approval.StatementField(st, "lane") != strconv.Itoa(l.Lane):
+		return "is for swim " + approval.StatementField(st, "lane")
+	case l.Run != "" && approval.StatementField(st, "run") != l.Run:
+		return "is for run " + approval.StatementField(st, "run")
+	}
+	return ""
 }
 
 // checkApprovalFiles checks every approvals file under approvals/ event by

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
@@ -273,5 +274,50 @@ func TestStandingStatement(t *testing.T) {
 	other.Require = &[]lookup.Rule{{Group: "ops"}}
 	if other.StatementHash() == bound.StatementHash() {
 		t.Error("different rules, same statement")
+	}
+}
+
+// A signed answer through the hub counts only for the exact question the
+// worker asked: any field changed (request, worker, lane, run, script,
+// manifest, evidence, flag, decision, expiry) breaks it, as does a key
+// lookup.yml doesn't list.
+func TestVerifyHubAnswer(t *testing.T) {
+	_, l, k := setup(t)
+	q := approval.HubQuestion{Request: "q1", Worker: "w1", Lane: 3, Job: "j1", Run: "r-1", Script: "s1", Manifest: "m1", Evidence: "e1", Flag: "FIN_ALLOW_DROP", Expires: "2026-10-14T12:00:00Z"}
+	st := q.Statement(approval.Approve)
+	sig, err := sign.Sign(k["alice"], []byte(st))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, err := VerifyHubAnswer(l, st, k["alice"].Public, sig); err != nil || u != "alice" {
+		t.Fatalf("the signed question: %q %v", u, err)
+	}
+	changes := map[string]func(q *approval.HubQuestion){
+		"request": func(q *approval.HubQuestion) { q.Request = "q2" }, "worker": func(q *approval.HubQuestion) { q.Worker = "w2" },
+		"lane": func(q *approval.HubQuestion) { q.Lane = 4 }, "run": func(q *approval.HubQuestion) { q.Run = "r-2" },
+		"script": func(q *approval.HubQuestion) { q.Script = "s2" }, "manifest": func(q *approval.HubQuestion) { q.Manifest = "m2" },
+		"evidence": func(q *approval.HubQuestion) { q.Evidence = "e2" }, "flag": func(q *approval.HubQuestion) { q.Flag = "FIN_ALLOW_ALL" },
+		"expires": func(q *approval.HubQuestion) { q.Expires = "2027-01-01T00:00:00Z" },
+	}
+	for name, change := range changes {
+		q2 := q
+		change(&q2)
+		if _, err := VerifyHubAnswer(l, q2.Statement(approval.Approve), k["alice"].Public, sig); err == nil || !strings.Contains(err.Error(), "doesn't match this question") {
+			t.Errorf("%s changed: %v", name, err)
+		}
+	}
+	if _, err := VerifyHubAnswer(l, q.Statement(approval.Decline), k["alice"].Public, sig); err == nil {
+		t.Error("an approval passed as a decline")
+	}
+	// Signed by a key lookup.yml doesn't list, or claimed for another key.
+	msig, _ := sign.Sign(k["mallory"], []byte(st))
+	if _, err := VerifyHubAnswer(l, st, k["mallory"].Public, msig); err == nil || !strings.Contains(err.Error(), "isn't in lookup.yml") {
+		t.Errorf("mallory: %v", err)
+	}
+	if _, err := VerifyHubAnswer(l, st, k["zach"].Public, sig); err == nil {
+		t.Error("alice's signature passed as zach's")
+	}
+	if _, err := VerifyHubAnswer(&lookup.Lookup{}, st, k["alice"].Public, sig); err == nil || !strings.Contains(err.Error(), "no lookup.yml") {
+		t.Errorf("no lookup.yml: %v", err)
 	}
 }

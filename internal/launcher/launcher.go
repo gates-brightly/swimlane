@@ -71,6 +71,11 @@ type Options struct {
 	// -y"; a queued batch: who queued it, "queue <id> -y").
 	AutoApprove             bool
 	ApprovedBy, ApprovedVia string
+	// Asker, if set, asks when no one at a terminal can: after a
+	// pre-answer and -y, a guard nothing else approves is put to it (swim
+	// watch --headless: the hub). The launcher still decides: what it
+	// answers is checked against the run's rules (authority.go).
+	Asker approval.Asker
 	// Pins holds the job each lane must still hold when it starts (lanes
 	// named by job id, and every lane swim ci selects): a lane script
 	// rewritten in the meantime is skipped, not run.
@@ -387,7 +392,8 @@ func Run(o Options) (int, error) {
 	// when the display can (or approves with -y). With no one to ask, a
 	// guard nothing else approves is a dry run.
 	var ask approval.Asker
-	if o.AutoApprove || o.Prompt && o.ev == nil && disp.CanAsk() {
+	prompt := o.Prompt && o.ev == nil && disp.CanAsk()
+	if o.AutoApprove || prompt || o.Asker != nil {
 		if o.AutoApprove {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
 		}
@@ -407,6 +413,13 @@ func Run(o Options) (int, error) {
 				disp.Message(fmt.Sprintf("%sapproved by -y: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
 				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (-y)", At: now()})
 				return approval.Response{Approved: true, By: or(o.ApprovedBy, operator()), Auto: true, Via: or(o.ApprovedVia, "swim run -y")}
+			}
+			if !prompt {
+				// No terminal: the caller's asker (the hub), which says
+				// where the question waits.
+				disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
+				defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+				return o.Asker(req, cancel)
 			}
 			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
 			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })

@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/doctor"
 	"github.com/gates-brightly/swimlane/internal/hub"
 )
 
@@ -725,4 +727,30 @@ func headlessUninstall(root string, cfg *config.Config) error {
 		fmt.Printf("swim watch: no unit installed for this repo (swim-%s)\n", id)
 	}
 	return nil
+}
+
+// doctorHeadless is this repo's headless worker for swim doctor.
+func doctorHeadless(root string) *doctor.Headless {
+	d := &doctor.Headless{Units: installedUnits(root)}
+	d.PID, d.Running = headlessHolder(root)
+	if pp := pidFile(root); pp != 0 && !(d.Running && pp == d.PID) && !processAlive(pp) {
+		d.Stale = pp
+	}
+	if h, err := loadHub(root); err == nil {
+		d.HubCheck = func() error {
+			c := hubClient(h)
+			hc := *c.HTTP
+			hc.Timeout = 5 * time.Second
+			resp, err := hc.Get(strings.TrimRight(h.URL, "/") + "/api/workers")
+			if err != nil {
+				return hub.Explain(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("%s answered %s", h.URL, resp.Status)
+			}
+			return nil
+		}
+	}
+	return d
 }

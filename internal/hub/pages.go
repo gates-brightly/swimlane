@@ -152,6 +152,12 @@ var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doct
 <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
 {{if $.Can "drain"}}<div style="margin-top:6px"><form class="inline" method="post" action="/api/workers/{{.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="drain"><button class="danger">Stop the worker after this batch</button></form></div>{{end}}
 {{if and .User (not .Headless)}}<p class="muted">This worker isn't headless (swim watch --headless): it takes no commands from the hub.</p>{{end}}
+{{if .Waiting}}<h2>Waiting for an answer</h2>
+<div class="wrap"><table><tr><th>lane</th><th>guard</th><th>the lane says</th><th>pinned to</th><th>waits until</th>{{if .User}}<th></th>{{end}}</tr>
+{{range .Waiting}}<tr><td>swim {{.Lane}}{{if .Cell}} [{{.Cell}}]{{end}}</td><td class="mono">{{.Flag}}</td><td>{{.Desc}}{{if .Signers}}<br><span class="muted">signed: {{range .Signers}}{{.}} {{end}}{{if .Need}}· still {{.Need}}{{end}}</span>{{end}}</td><td class="mono muted">{{if .Job}}{{.Job}} · {{end}}{{short .Script}}{{if .EvidenceSHA}} · evidence {{short .EvidenceSHA}}{{end}}</td><td class="muted">{{.Expires}}</td>{{if $.User}}<td>
+{{- if $.Can "answer"}}<a href="/w/{{$.ID}}/answer/{{.ID}}">Sign an answer</a>{{if and (not .SignedOnly) (eq $.Role "operator")}} <form class="inline" method="post" action="/api/workers/{{$.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="answer"><input type="hidden" name="request" value="{{.ID}}"><input type="hidden" name="evidence" value="{{.EvidenceSHA}}"><input type="hidden" name="decision" value="approve"><button>Approve</button></form>{{end}}{{if eq $.Role "operator"}} <form class="inline" method="post" action="/api/workers/{{$.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="answer"><input type="hidden" name="request" value="{{.ID}}"><input type="hidden" name="evidence" value="{{.EvidenceSHA}}"><input type="hidden" name="decision" value="decline"><button class="danger">Decline</button></form>{{end}}{{if .SignedOnly}}<br><span class="muted">only signed answers approve it</span>{{end}}{{end -}}
+</td>{{end}}</tr>{{end}}
+</table></div>{{end}}
 <h2>Lanes</h2>
 <div class="wrap"><table><tr><th>lane</th><th>state</th><th>round</th><th>step</th><th>pass</th><th>fail</th><th>skip</th><th>run</th>{{if .User}}<th></th>{{end}}</tr>
 {{range .Lanes}}<tr><td>swim {{.Lane}}</td><td class="{{state .State}}">{{.State}}{{if .Exit}} (exit {{.Exit}}){{end}}{{if .Reason}} <span class="muted">{{.Reason}}</span>{{end}}{{if .AutoApproved}}<br><span class="pill bad">approved by {{.AutoVia}}, no one asked: {{range $i, $f := .AutoApproved}}{{if $i}}, {{end}}{{$f}}{{end}}</span>{{end}}{{if .FlagApproved}}<br><span class="pill">flag set: {{range $i, $f := .FlagApproved}}{{if $i}}, {{end}}{{$f}}{{end}}</span>{{end}}</td><td>{{.Round}}</td><td class="muted">{{.Step}}{{if .Cells}}<br>cells: {{.Cells}}{{end}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{with msgAge .MsgAt}} · {{.}}{{end}}{{end}}</td><td>{{.Pass}}</td><td>{{.Fail}}</td><td>{{.Skip}}</td><td class="mono muted">{{.Run}}</td>{{if $.User}}<td>
@@ -168,7 +174,7 @@ var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doct
 </table></div>{{else}}<p class="muted">empty</p>{{end}}
 {{if .User}}<h2>Commands</h2>
 {{if .Commands}}<div class="wrap"><table><tr><th>#</th><th>command</th><th>by</th><th>sent</th><th>outcome</th></tr>
-{{range .Commands}}{{$st := $.StateOf .}}<tr><td>{{.Seq}}</td><td>{{.Kind}}{{if .Lane}} swim {{.Lane}}{{end}}{{if .Pin.Run}} <span class="mono muted">{{.Pin.Run}}</span>{{end}}{{if .Pin.SHA256}} <span class="mono muted">{{short .Pin.SHA256}}</span>{{end}}{{if and (eq .Kind "log") .Pin.Run}} · <a href="/w/{{$.ID}}/logs/{{.Pin.Run}}/{{.Lane}}">view</a>{{end}}</td><td>{{.By}}</td><td class="muted">{{.At}}</td><td class="{{state $st}}">{{$st}}{{if .Detail}}: <span class="muted">{{.Detail}}</span>{{end}}</td></tr>{{end}}
+{{range .Commands}}{{$st := $.StateOf .}}<tr><td>{{.Seq}}</td><td>{{.Kind}}{{with .Answer}} {{.Decision}}{{if .Sig}} (signed){{end}}{{end}}{{if .Lane}} swim {{.Lane}}{{end}}{{if .Pin.Run}} <span class="mono muted">{{.Pin.Run}}</span>{{end}}{{if .Pin.SHA256}} <span class="mono muted">{{short .Pin.SHA256}}</span>{{end}}{{if and (eq .Kind "log") .Pin.Run}} · <a href="/w/{{$.ID}}/logs/{{.Pin.Run}}/{{.Lane}}">view</a>{{end}}</td><td>{{.By}}</td><td class="muted">{{.At}}</td><td class="{{state $st}}">{{$st}}{{if .Detail}}: <span class="muted">{{.Detail}}</span>{{end}}</td></tr>{{end}}
 </table></div>{{else}}<p class="muted">none sent</p>{{end}}{{end}}
 <h2>Recent events</h2>
 <pre>{{range .Events}}{{.}}
@@ -205,7 +211,7 @@ type workerData struct {
 // Can reports whether the logged-in user may send command kind here and
 // the worker takes it.
 func (d workerData) Can(kind string) bool {
-	if d.User == "" || (kind != KindLog && d.Role != RoleOperator) {
+	if d.User == "" || (kind != KindLog && kind != KindAnswer && d.Role != RoleOperator) {
 		return false
 	}
 	return d.Headless.Allows(kind)

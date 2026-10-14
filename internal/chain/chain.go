@@ -62,7 +62,7 @@ type Entry struct {
 	// approve
 	Guard     string     `json:"guard,omitempty"`
 	Action    string     `json:"action,omitempty"`    // the guard's description
-	Method    string     `json:"method,omitempty"`    // signature | prompt | flag | auto | queue
+	Method    string     `json:"method,omitempty"`    // signature | standing | prompt | flag | auto | queue | preapproved | hub-signed | hub-button
 	Statement string     `json:"statement,omitempty"` // what a signature's approvers signed
 	Approvers []Approver `json:"approvers,omitempty"`
 	// Lookup is the SHA-256 of lookup.yml when the guard was approved, so

@@ -12,7 +12,7 @@ import (
 )
 
 // The worker's side of commands (Poll, Ack, UploadLog), the admin's of
-// users (AddUser, RemoveUser, Users), and a user's (Send).
+// users (AddUser, RemoveUser, Users), and a user's (Send, Workers, Log).
 
 // Poll gets this worker's commands after seq after, waiting up to wait for
 // one (0: answer at once). epoch is the hub epoch after counts in; the
@@ -115,6 +115,9 @@ func (u *UserClient) Send(id string, c Command) (Command, error) {
 	err := u.a.call("POST", "/api/workers/"+url.PathEscape(id)+"/commands", c, &out)
 	return out, err
 }
+
+// Workers lists the hub's workers (with the questions each waits on).
+func (u *UserClient) Workers() ([]View, error) { return u.a.Workers() }
 
 // Log reads a log a command had uploaded (an error until it is).
 func (u *UserClient) Log(id, run string, lane int) (string, error) {

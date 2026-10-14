@@ -575,6 +575,7 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 		h := *headlessInfo
 		h.Allow, h.LogsOff = cfg.HeadlessAllow(), !cfg.HeadlessLogs()
 		s.Headless = &h
+		s.Waiting = waitingApprovals()
 	} else if watchYes {
 		s.AutoApprove = "swim watch -y"
 	}

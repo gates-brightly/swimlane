@@ -838,7 +838,8 @@ func loadCfg(root string) (*config.Config, error) {
 // runEntry runs one claimed batch through the launcher with the batch's
 // approvals and nothing else: a guard flag the batch doesn't approve is
 // cleared from the environment for the run, so the queue file alone says
-// what may change. It never prompts (nobody is watching a queue).
+// what may change. It never prompts (nobody is watching a queue); a
+// headless worker asks through its hub instead.
 func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, headless bool) (queue.Result, bool) {
 	started := time.Now().UTC()
 	res := queue.Result{Started: started.Format(time.RFC3339)}
@@ -913,8 +914,10 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		HubSecrets: func() (map[string]string, error) { return hubGrants(root) }}
 	if headless {
 		// Plain lines for the log; SIGHUP reopens it rather than forcing
-		// the run as a closed terminal does.
+		// the run as a closed terminal does. A guard nothing else approves
+		// asks through the hub (hubanswers.go).
 		o.Plain, o.NoHangup = true, true
+		o.Asker = hubAskerFor(root, cfg)
 	}
 	if keys && len(lanes) > 1 {
 		// The live view's keys move between the batch's lanes. Parallel

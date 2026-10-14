@@ -240,8 +240,8 @@ adds `claimed`.
 
 - **Enforcing claims on file writes.** That needs a filesystem guard or a
   write API; swim doesn't own the planner's editor.
-- **Claims across machines, worktrees or the hub.** The hub stays read-only
-  (`swimlane.md`, *Out of scope*); cross-host leases need the per-user
-  identity in [headless.md](headless.md) first.
+- **Claims across machines, worktrees or the hub.** The hub only relays
+  commands to headless workers (`swimlane.md`, *Out of scope*); cross-host
+  leases would build on its per-user identity (`swim hub user`).
 - **Changing `Owner:`.** It stays a record of authorship.
 - **The queue's pins.** Unchanged.

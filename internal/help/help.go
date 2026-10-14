@@ -646,8 +646,29 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
       allow: [answer, interrupt, drain, log]   # add run to allow it
       logs: on                                 # off: logs stay here
       command_ttl: 10m
-      approvals: signed      # signed | hub: how guards are answered (to come)
-      answer_timeout: 30m    # (to come)
+      approvals: signed      # signed | hub: how guards are answered
+      answer_timeout: 30m    # no answer by then: a decline
+  Guards through the hub: a guard that nothing else approves (no signed
+  approval, no flag the batch approves, no -y) is shown on the worker's
+  hub page as a question, and the lane waits for an answer up to
+  headless.answer_timeout (or its round's Timeout). An approver answers:
+    signed      swim approve --hub WORKER/QUESTION (or Sign an answer on
+                the page: ssh-keygen -Y sign the statement shown, paste the
+                signature). The statement names the question, this worker,
+                the lane, job, run, script, manifest, evidence, guard,
+                approve or decline, and when it expires; the worker builds
+                it from its own facts and checks the signature against
+                lookup.yml (as the run started). Signers count until
+                lookup.yml's rule for the guard is met. Recorded as
+                hub-signed, with each signature (swim verify checks them).
+    button      only with headless.approvals: hub, by a hub operator whom
+                lookup.yml lists, and never for a guard a require: rule
+                names or that needs evidence: those wait for signatures.
+                Recorded as hub-button (unsigned).
+  Decline is a button, or signed. No answer by the deadline, the hub
+  unreachable, or the worker stopping all decline: the guard is a dry
+  run. Without lookup.yml nobody can answer. A worker that doesn't allow
+  answer never asks: its guards dry-run as in any batch.
 `,
 	"secret": `swim secret set NAME [--all|--repo]
 swim secret get NAME
@@ -715,6 +736,7 @@ swim secret grants [--hub URL] [--admin-token T]
 swim approve N|JOB --guards A --cell C              one cell of a matrix round only
 swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K] [--no-evidence]
 swim approve --auto USER [--guards A,B | --all] [--expires D] [--key K]
+swim approve --hub WORKER/QUESTION [--decline] [--key K] [--url URL] [--token T]
 
   How approvers act. Every approval is an SSH-signed event in a committed
   file under approvals/, so an approver anywhere (with the repo) can add
@@ -767,6 +789,16 @@ swim approve --auto USER [--guards A,B | --all] [--expires D] [--key K]
   --key K    sign with this key (default: config signing_key, then
              ~/.ssh/id_ed25519; a .pub path signs through ssh-agent)
   swim watch --approved runs fully approved scripts by itself.
+  --hub WORKER/QUESTION
+             answer a guard waiting on a headless worker (swim watch
+             --help): fetch the question from the hub (WORKER by name or
+             id; QUESTION its id, or 6+ leading characters, both on the
+             worker's page), show it, sign its statement with your key and
+             send it as your hub user. --decline signs a decline. The hub
+             is --url, else $SWIM_HUB_URL, swim hub login's, or this
+             repo's enrollment; your hub user token is --token, else
+             $SWIM_HUB_USER_TOKEN. The worker checks the signature against
+             its own lookup.yml; the hub only relays it.
 `,
 	"revoke": `swim revoke N|JOB [--key K]
 swim revoke --auto USER [--key K]
@@ -993,10 +1025,14 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
   logged in gets controls: Interrupt a running lane (pinned to the run
   shown), Stop the worker after this batch (drain), Run now an idle lane
   (pinned to the script and manifest shown; queued unsigned, by
-  hub:USER via URL, with no approvals of its own), and Log (the run's
-  full log, uploaded masked by the worker and kept in the hub's memory
-  only: 8 MiB a log, 64 MiB in all, 15 minutes). viewer may only ask for
-  logs; operator may do all four. The hub keeps commands in --state DIR
+  hub:USER via URL, with no approvals of its own), Log (the run's full
+  log, uploaded masked by the worker and kept in the hub's memory only:
+  8 MiB a log, 64 MiB in all, 15 minutes), and for a guard waiting for an
+  answer, Sign an answer (a page with the statement to sign, for
+  ssh-keygen -Y sign or swim approve --hub), Approve (a button, where the
+  worker's swim.yml says headless.approvals: hub) and Decline. viewer may
+  ask for logs and send signed answers (the signature is what counts);
+  operator may do all of it. The hub keeps commands in --state DIR
   and only relays them: the worker long-polls for them with its own
   token, checks each against swim.yml's headless: block, its expiry
   (10 minutes, interrupt 2) and its pin, and acknowledges done, refused
@@ -1150,6 +1186,16 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                               old terms: it never expires (until lookup.yml
                               sets standing.max), or a lookup.yml rule
                               change doesn't stale it
+    headless-service (info)   a headless worker runs here, or a service
+                              file for one is installed
+    headless-stale (warn)     .swim/headless.pid left by a headless worker
+                              that is gone (killed?)
+    hub-unreachable (warn)    a headless worker's hub can't be reached:
+                              guards waiting on it decline (5s limit)
+    headless-hub-answers (warn) swim.yml's headless.approvals is hub: a hub
+                              user's click approves guards no require:
+                              rule names
+    headless-yes (warn)       an installed headless service runs with -y
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of

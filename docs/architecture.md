@@ -78,9 +78,12 @@ Read it top to bottom:
 
 The **hub** is a side path: workers push their status, lanes and queue to
 it, and it serves a dashboard. Hub users can also send headless workers
-commands (interrupt, drain, run, fetch a log), which the workers poll for,
-check against their own committed `headless:` settings, carry out and
-record. The hub never runs anything itself.
+commands (interrupt, drain, run, fetch a log, answer a waiting guard),
+which the workers poll for, check against their own committed `headless:`
+settings, carry out and record. An answer approves only when the worker
+verifies it: an approver's SSH signature over the worker's own statement
+of the question, against `lookup.yml`, or where `swim.yml` allows a
+button. The hub never runs anything itself.
 
 ## Where credentials live
 

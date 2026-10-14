@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/peer"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -64,7 +65,8 @@ type Request struct {
 	Desc     string `json:"desc"`
 	// Token identifies the lane process (TokenEnv). Op is "" to ask,
 	// "consume" to use up the approval with request id ID, or "whoami" to
-	// learn which lane, cell and run the token is for.
+	// learn which lane, cell and run the token is for. (An ask's ID is the
+	// server's: whatever the lane sends is replaced.)
 	Token string `json:"token,omitempty"`
 	Op    string `json:"op,omitempty"`
 	ID    string `json:"id,omitempty"`
@@ -84,6 +86,13 @@ type Request struct {
 	Evidence         string `json:"evidence,omitempty"`
 	EvidenceSHA      string `json:"evidence_sha256,omitempty"`
 	EvidenceRequired bool   `json:"evidence_required,omitempty"`
+	// The launcher's, for an asker that pins an answer to this one
+	// question (the hub's): the question's ID (set by the server, fresh
+	// per ask), the run, the script's SHA-256, and lookup.yml as the run
+	// started (nil if it didn't load), which says who may answer.
+	Script string         `json:"-"`
+	Run    string         `json:"-"`
+	Rules  *lookup.Lookup `json:"-"`
 }
 
 // Response is the operator's answer.
@@ -118,6 +127,12 @@ type Response struct {
 	Hash string `json:"hash,omitempty"`
 	// Grant is what the launcher records once the approval is consumed.
 	Grant *Grant `json:"-"`
+	// Hub is how an answer through the hub approved (HubSigned or
+	// HubButton; "" for any other answer), and Signed the signed answers
+	// that did (HubSigned). The launcher checks them against its rules
+	// again before it grants anything.
+	Hub    string         `json:"-"`
+	Signed []SignedAnswer `json:"-"`
 }
 
 // Warn is a WARN line for the lane's log, with an optional diff under it.
@@ -461,6 +476,7 @@ func (s *Server) serve(c net.Conn) {
 			}
 			close(cancel)
 		}()
+		req.ID = newID() // this question, for an answer pinned to it
 		resp = s.ask(req, cancel)
 		close(stop)
 		if !resp.Approved && resp.Why == "" && s.isCancelled() {

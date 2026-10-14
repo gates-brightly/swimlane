@@ -20,7 +20,7 @@ import (
 // expiry and pin) and records it; the hub decides nothing beyond who may
 // send what.
 
-// Command kinds the hub relays. (answer arrives with hub approvals, H3.)
+// Command kinds the hub relays (and KindAnswer, answers.go).
 const (
 	KindInterrupt = "interrupt"
 	KindDrain     = "drain"
@@ -57,9 +57,11 @@ type Command struct {
 	By      string `json:"by"` // the hub user who sent it
 	At      string `json:"at"`
 	Expires string `json:"expires"`
-	Outcome string `json:"outcome,omitempty"` // done | refused | expired, once acknowledged
-	Detail  string `json:"detail,omitempty"`
-	AckedAt string `json:"acked_at,omitempty"`
+	// Answer is an answer command's decision (and signature).
+	Answer  *Answer `json:"answer,omitempty"`
+	Outcome string  `json:"outcome,omitempty"` // done | refused | expired, once acknowledged
+	Detail  string  `json:"detail,omitempty"`
+	AckedAt string  `json:"acked_at,omitempty"`
 }
 
 // Pin is what the page showed when the command was sent; the worker
@@ -68,6 +70,8 @@ type Pin struct {
 	Run      string `json:"run,omitempty"`      // interrupt, log: the run shown
 	SHA256   string `json:"sha256,omitempty"`   // run: the lane script's hash shown
 	Manifest string `json:"manifest,omitempty"` // run: its execution manifest's hash
+	Request  string `json:"request,omitempty"`  // answer: the question answered
+	Evidence string `json:"evidence,omitempty"` // answer: the evidence hash it showed
 }
 
 // State is the command's state for a page: its outcome, else "sent" while
@@ -92,10 +96,12 @@ func (s *Server) commandRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/workers/{id}/logs/{run}/{lane}", s.putLog)
 	mux.HandleFunc("GET /api/workers/{id}/logs/{run}/{lane}", s.getLog)
 	mux.HandleFunc("GET /w/{id}/logs/{run}/{lane}", s.logPage)
+	mux.HandleFunc("GET /w/{id}/answer/{req}", s.answerPage)
 }
 
 // Send queues a command for worker id from user by, after checking its
-// kind and pin; the role check is the caller's.
+// kind and pin (an answer: that it names a question the worker waits
+// on); the role check is the caller's.
 func (s *Server) Send(id, by string, c Command) (*Command, error) {
 	switch c.Kind {
 	case KindInterrupt, KindLog:
@@ -107,12 +113,17 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 			return nil, fmt.Errorf("run needs a lane and the script hash it's for")
 		}
 	case KindDrain:
-	case "answer":
-		return nil, fmt.Errorf("this hub doesn't relay answers yet")
+	case KindAnswer:
+		if c.Pin.Request == "" {
+			return nil, fmt.Errorf("answer needs the question it answers (pin.request)")
+		}
 	default:
-		return nil, fmt.Errorf("unknown command %q (interrupt, drain, run, log)", c.Kind)
+		return nil, fmt.Errorf("unknown command %q (answer, interrupt, drain, run, log)", c.Kind)
 	}
-	for _, p := range []string{c.Pin.Run, c.Pin.SHA256, c.Pin.Manifest} {
+	if c.Kind != KindAnswer {
+		c.Answer = nil
+	}
+	for _, p := range []string{c.Pin.Run, c.Pin.SHA256, c.Pin.Manifest, c.Pin.Request, c.Pin.Evidence} {
 		if p != "" && !pinRE.MatchString(p) {
 			return nil, fmt.Errorf("bad pin %q", p)
 		}
@@ -123,13 +134,18 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 	if rec == nil {
 		return nil, fmt.Errorf("no such worker")
 	}
+	if c.Kind == KindAnswer {
+		if err := checkAnswer(s.workers[id], &c); err != nil {
+			return nil, err
+		}
+	}
 	now := s.now().UTC()
 	ttl := CommandTTL
 	if c.Kind == KindInterrupt {
 		ttl = InterruptTTL
 	}
 	s.nextSeq[id]++
-	cmd := &Command{CID: newToken()[:16], Seq: s.nextSeq[id], Epoch: s.epoch, Kind: c.Kind, Lane: c.Lane, Pin: c.Pin, By: by,
+	cmd := &Command{CID: newToken()[:16], Seq: s.nextSeq[id], Epoch: s.epoch, Kind: c.Kind, Lane: c.Lane, Pin: c.Pin, Answer: c.Answer, By: by,
 		At: now.Format(time.RFC3339), Expires: now.Add(ttl).Format(time.RFC3339)}
 	list := append(s.commands[id], cmd)
 	if len(list) > keepCommands {
@@ -188,13 +204,20 @@ func (s *Server) sendCommand(w http.ResponseWriter, r *http.Request) {
 		}
 		c.Kind = r.PostFormValue("kind")
 		c.Lane, _ = strconv.Atoi(r.PostFormValue("lane"))
-		c.Pin = Pin{Run: r.PostFormValue("run"), SHA256: r.PostFormValue("sha256"), Manifest: r.PostFormValue("manifest")}
+		c.Pin = Pin{Run: r.PostFormValue("run"), SHA256: r.PostFormValue("sha256"), Manifest: r.PostFormValue("manifest"),
+			Request: r.PostFormValue("request"), Evidence: r.PostFormValue("evidence")}
+		if c.Kind == KindAnswer {
+			c.Answer = &Answer{Decision: r.PostFormValue("decision"), Key: r.PostFormValue("key"), Sig: r.PostFormValue("sig")}
+		}
 	} else if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
 		http.Error(w, "a command needs {kind, lane, pin}", http.StatusBadRequest)
 		return
 	}
+	// A viewer may fetch logs, and send a signed answer: the signature,
+	// not the hub's login, is what the worker counts. A button answer (no
+	// signature) rests on the login, so it takes an operator.
 	role := RoleOperator
-	if c.Kind == KindLog {
+	if c.Kind == KindLog || c.Kind == KindAnswer && c.Answer.Signed() {
 		role = RoleViewer
 	}
 	u, ok := s.requireUser(w, r, role)

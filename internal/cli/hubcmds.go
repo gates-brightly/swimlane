@@ -223,7 +223,7 @@ func checkAndDo(root string, cfg *config.Config, c *hub.Client, cmd hub.Command,
 	case config.HubLog:
 		return hubLog(root, cfg, c, cmd)
 	case config.HubAnswer:
-		return hub.OutcomeRefused, "this worker takes no answers from the hub yet"
+		return answerHub(cmd)
 	}
 	return hub.OutcomeRefused, "unknown command"
 }

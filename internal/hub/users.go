@@ -20,8 +20,8 @@ import (
 
 // Roles.
 const (
-	RoleViewer   = "viewer"   // reads full logs
-	RoleOperator = "operator" // also interrupts, drains and runs
+	RoleViewer   = "viewer"   // reads full logs, sends signed answers
+	RoleOperator = "operator" // also interrupts, drains, runs, and answers with a button
 )
 
 // SessionTTL is how long a login lasts.
