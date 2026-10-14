@@ -424,7 +424,14 @@ func cmdOutput(args []string) error {
 	if dir == "" {
 		return fmt.Errorf("swim output: SWIM_OUT is unset (a round started by an older swim?)")
 	}
-	return outputs.SetValue(dir, args[0], args[1])
+	// A value is kept in .swim/out/ (and hashed in the chain): masked, like
+	// everything else swim writes. Files a lane writes to $SWIM_OUT itself
+	// are its own.
+	value := args[1]
+	if _, cfg, err := repoNoMigrate(); err == nil {
+		value = cfg.Masker(os.Environ()).String(value)
+	}
+	return outputs.SetValue(dir, args[0], value)
 }
 
 // swim input N|JOB NAME: print the path of an output (or a small value) of

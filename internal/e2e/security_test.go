@@ -313,9 +313,8 @@ func TestSecurity(t *testing.T) {
 				t.Error("no round entry for lane 2")
 			}
 		}},
-		{"a guarded secret is refused without approval", "guarded-secrets", func(t *testing.T) {
-			gap(t, "features/guarded-secrets")
-		}},
+		{"a guarded secret is refused without approval", "guarded secrets", TestGuardedSecretRefused},
+		{"a guarded secret is released only to the approved lane", "guarded secrets", TestGuardedSecretReleased},
 		{"the chain and its signer key replaced: consistent, not trusted", "T8", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			// The runner's key is trusted, and swim verify pins trust.yml.
@@ -372,9 +371,7 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 			}
 			contains(t, "agent1.log", r.log(1), "db=***(db_password)")
 		}},
-		{"a planted secret in every file swim writes", "T9", func(t *testing.T) {
-			gap(t, "T9")
-		}},
+		{"a planted secret in every file swim writes", "T9", TestNoSecretLeaks},
 
 		// A hostile lane (T3, T10): authority_test.go.
 		{"a guard with a misleading description: the prompt shows the true lane", "T3", func(t *testing.T) {

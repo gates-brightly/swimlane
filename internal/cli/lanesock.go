@@ -22,6 +22,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/peer"
+	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -77,6 +78,15 @@ type laneServer struct {
 	mu                 sync.Mutex // one call at a time: a round's steps are sequential
 	steps              map[int]*inStep
 	nextStep           int
+	mkOnce             sync.Once
+	mk                 *redact.Masker // the lane's secrets (refreshed as guarded ones are released)
+}
+
+// masker masks what the program reports (step labels, output, details)
+// before swim writes it anywhere: the log, status.yml, the hub.
+func (s *laneServer) masker() *redact.Masker {
+	s.mkOnce.Do(func() { s.mk = s.cfg.Masker(s.env) })
+	return s.mk
 }
 
 // inStep is an in-process step: one the program runs itself (a native
@@ -308,7 +318,9 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 			return laneResponse{OK: true, Result: map[string]any{"started": false}}
 		}
 		s.nextStep++
-		label := ui.SafeField(a.Label) // the program's: no escape sequences or controls on screens
+		// The program's: masked (status.yml and the hub show it), and no
+		// escape sequences or controls on screens.
+		label := ui.SafeField(s.masker().String(a.Label))
 		s.steps[s.nextStep] = &inStep{label: label, gate: a.Gate, start: time.Now()}
 		status.Update(s.root, s.n, s.cfg.Lanes, func(l *status.Lane) { l.CurrentStep = label })
 		return laneResponse{OK: true, Result: map[string]any{"step": s.nextStep, "started": true}}
@@ -380,7 +392,7 @@ func (s *laneServer) endStep(st *inStep, ok bool, message string) laneResponse {
 			detail += ", " + message
 		}
 	}
-	mk := s.cfg.Masker(s.env)
+	mk := s.masker()
 	out := mk.String(st.output.String())
 	if _, err := step.RecordStep(s.logPath, kind, mk.String(st.label), mk.String(detail), "(in-process)", st.start, time.Since(st.start), strings.NewReader(out)); err != nil {
 		return fail("%v", err)
