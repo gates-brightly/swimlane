@@ -953,8 +953,9 @@ func (v *verifier) checkEntries(links []chain.Link) {
 			// A guarded secret goes out only on an approval swim run
 			// recorded: one its attestation doesn't list wasn't.
 			for _, h := range l.Approvals {
-				if attested && !slices.Contains(att.Approvals, h) {
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: secret %s released to swim %d in run %s on approval %s, which swim run didn't record (its attestation, entry #%d, doesn't list it)", l.Seq, l.Secret, l.Lane, l.Run, short12(h), att.Seq))
+				listed := slices.ContainsFunc(att, func(a chain.Link) bool { return slices.Contains(a.Approvals, h) })
+				if attested && !listed {
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: secret %s released to swim %d in run %s on approval %s, which swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, l.Secret, l.Lane, l.Run, short12(h), seqs(att)))
 				}
 			}
 		case "repair":
