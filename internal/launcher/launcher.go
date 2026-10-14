@@ -472,7 +472,7 @@ func Run(o Options) (int, error) {
 	if err := writeRunRecord(o, start, cap, sel, selected, deps, outcomes); err != nil {
 		fmt.Fprintln(os.Stderr, "swim: run record: "+err.Error())
 	}
-	printSummary(summaryOut, o.Root, sel, outcomes, elapsed, disp.Color())
+	printSummary(summaryOut, o.Root, sel, outcomes, start, elapsed, disp.Color())
 	stopped := ir.stopping()
 	o.ev.summary(o, sel, outcomes, code, stopped, elapsed)
 	if o.Finished != nil {
@@ -778,10 +778,10 @@ func indexByte(b []byte, c byte) int {
 	return -1
 }
 
-func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outcome, total time.Duration, color bool) {
+func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outcome, start time.Time, total time.Duration, color bool) {
 	p := ui.Painter{On: color}
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, p.Paint(ui.Bold, fmt.Sprintf("swim summary (%s)", display.Elapsed(total))))
+	fmt.Fprintln(out, p.Paint(ui.Bold, "swim summary · "+display.Span(start, start.Add(total))))
 	fmt.Fprintln(out, p.Paint(ui.Dim, fmt.Sprintf("  %-8s %-8s %-12s %4s %5s %5s %5s %6s %7s", "lane", "job", "result", "exit", "pass", "fail", "skip", "drift", "time")))
 	for _, n := range sel {
 		oc := outcomes[n]

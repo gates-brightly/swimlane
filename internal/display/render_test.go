@@ -240,3 +240,19 @@ func TestPanelHidesPassedBeforeRunning(t *testing.T) {
 		t.Errorf("%d lanes should all show", MaxRows)
 	}
 }
+
+func TestSpan(t *testing.T) {
+	loc := time.Local
+	start := time.Date(2026, 10, 14, 14, 2, 10, 700e6, loc)
+	if got := Span(start, start.Add(89*time.Second)); got != "14:02:11 → 14:03:40 (1:29)" {
+		t.Errorf("span: %q", got)
+	}
+	// Times and duration agree, even under a second.
+	if got := Span(start, start.Add(600*time.Millisecond)); got != "14:02:11 → 14:02:11 (0:00)" {
+		t.Errorf("sub-second: %q", got)
+	}
+	late := time.Date(2026, 10, 14, 23, 59, 50, 0, loc)
+	if got := Span(late, late.Add(80*time.Second)); got != "Oct 14 23:59:50 → Oct 15 00:01:10 (1:20)" {
+		t.Errorf("over midnight: %q", got)
+	}
+}

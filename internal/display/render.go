@@ -83,6 +83,19 @@ func Elapsed(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", s/60, s%60)
 }
 
+// Span is a job's start and stop clock times (local) and its duration:
+// "14:02:11 → 14:03:40 (1:29)", with dates when it crossed midnight.
+func Span(start, end time.Time) string {
+	// Whole seconds on both ends, and the duration between them, so the
+	// three always agree.
+	start, end = start.Local().Round(time.Second), end.Local().Round(time.Second)
+	layout := "15:04:05"
+	if start.YearDay() != end.YearDay() || start.Year() != end.Year() {
+		layout = "Jan 2 15:04:05"
+	}
+	return fmt.Sprintf("%s → %s (%s)", start.Format(layout), end.Format(layout), Elapsed(end.Sub(start)))
+}
+
 // WaitingText renders "waiting on swim 1" / "waiting on swim 1, 3".
 func WaitingText(deps []int) string {
 	parts := make([]string, len(deps))

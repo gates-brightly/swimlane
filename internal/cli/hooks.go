@@ -608,7 +608,7 @@ func cmdFinish(args []string) error {
 	p := painter()
 	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d drift=%d  exit %d  %s\n",
 		p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d summary:", n)),
-		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, code, display.Elapsed(dur))
+		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, code, display.Span(now.Add(-dur), now))
 	fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "stages: "+logparse.StagesText(stages)))
 	if hs := r.HandlerResults(); len(hs) > 0 {
 		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "handlers: "+logparse.StagesText(hs)))
