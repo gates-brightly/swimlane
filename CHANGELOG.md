@@ -311,6 +311,32 @@ To cut a release:
   - Existing `http://` enrollments keep working; `swim doctor` warns about
     one to another machine (`hub-http`).
 
+- **`.lane.N.rc` is deprecated:**
+  - **A guard flag it sets no longer approves.** `guard` logs a `WARN` and
+    asks as if the flag were unset.
+  - **Each round logs a `WARN`** while the file exists.
+  - **Migrating:** `swim doctor --fix` moves an rc of plain assignments into
+    `.env.swim [lane N]` and keeps the original under `.swim/migrations/`.
+  - **Removal:** the file stops loading in the next breaking version.
+- **The `.gitignore` block ignores `.env.swim`.**
+
+- **A `lane.N.sh` without `lane_init` runs:** it is a plain program, so it
+  runs inside the wrapper and is logged as one step (or its `swim run`
+  calls are logged). Before, lint refused it. A script that loads the
+  library but forgets `lane_init` is still an error.
+- **The `.gitignore` block ignores `lane.[0-9]*`:** this covers scripts in
+  any language and their `lane.N.yml`. `swim doctor` reports the old block
+  as out of date, and `swim doctor --fix` (or `swim init`) rewrites it.
+- **`swim archive 1 2 3` archives lanes 1, 2 and 3:**
+  - **Arguments:** every argument is a lane number or job id. Before, the
+    second argument was taken as the archive's name.
+  - **Naming:** each archive is named after its job id. Use `--as NAME` to
+    name them all.
+  - **All or nothing:** if any lane is running, has no log, or its archive
+    name is taken, nothing is archived and every problem is listed.
+  - **Old form:** `swim archive 1 cutover`, a name after one lane, still
+    works.
+
 ### Added
 
 - **Execution manifest:** swim pins what a lane runs before it waits, runs
@@ -794,6 +820,22 @@ To cut a release:
   panics in tests and the e2e suites (`SWIM_CHECK_STATES=1`); elsewhere the
   write goes through. `swim status --rebuild` is the one unchecked writer.
 
+- **`swim log` shows the step running now:**
+  - **Why:** a step's block reaches the log file only when the step ends.
+    Now `swim log N` (and `swim log JOB`) adds the in-flight step from its
+    spool: `RUNNING  <label> (in progress)`, with its command and output so
+    far.
+  - **`--yaml`:** includes it as a `RUNNING` result with `duration_s`,
+    `command` and `output`.
+  - **`--raw`** is still the file exactly. `RUNNING` never appears in a log
+    file and never counts as a result.
+- **`swim log N -f` (`--follow`)** follows a lane like `tail -f`. Log lines
+  appear as they are written, and the running step's output streams live
+  rather than when the step ends.
+- **`swim log N|JOB --until-done`** follows until the round ends, then exits
+  with the round's status: other services can wait on a job and get its
+  result. On an idle lane it prints the last round and exits with that.
+
 ### Fixed
 
 - **Crashes no longer leave state half-written, or lanes stuck running**
@@ -872,52 +914,6 @@ To cut a release:
     and the lane socket answers `run`, `gate`, `snapshot`, `evidence`,
     `begin_step`, `guard` and `confirm` with `round_ended` without running
     them, even for a program that ignores its stop.
-
-### Changed
-
-- **`.lane.N.rc` is deprecated:**
-  - **A guard flag it sets no longer approves.** `guard` logs a `WARN` and
-    asks as if the flag were unset.
-  - **Each round logs a `WARN`** while the file exists.
-  - **Migrating:** `swim doctor --fix` moves an rc of plain assignments into
-    `.env.swim [lane N]` and keeps the original under `.swim/migrations/`.
-  - **Removal:** the file stops loading in the next breaking version.
-- **The `.gitignore` block ignores `.env.swim`.**
-
-- **A `lane.N.sh` without `lane_init` runs:** it is a plain program, so it
-  runs inside the wrapper and is logged as one step (or its `swim run`
-  calls are logged). Before, lint refused it. A script that loads the
-  library but forgets `lane_init` is still an error.
-- **The `.gitignore` block ignores `lane.[0-9]*`:** this covers scripts in
-  any language and their `lane.N.yml`. `swim doctor` reports the old block
-  as out of date, and `swim doctor --fix` (or `swim init`) rewrites it.
-- **`swim archive 1 2 3` archives lanes 1, 2 and 3:**
-  - **Arguments:** every argument is a lane number or job id. Before, the
-    second argument was taken as the archive's name.
-  - **Naming:** each archive is named after its job id. Use `--as NAME` to
-    name them all.
-  - **All or nothing:** if any lane is running, has no log, or its archive
-    name is taken, nothing is archived and every problem is listed.
-  - **Old form:** `swim archive 1 cutover`, a name after one lane, still
-    works.
-
-### Added
-
-- **`swim log` shows the step running now:**
-  - **Why:** a step's block reaches the log file only when the step ends.
-    Now `swim log N` (and `swim log JOB`) adds the in-flight step from its
-    spool: `RUNNING  <label> (in progress)`, with its command and output so
-    far.
-  - **`--yaml`:** includes it as a `RUNNING` result with `duration_s`,
-    `command` and `output`.
-  - **`--raw`** is still the file exactly. `RUNNING` never appears in a log
-    file and never counts as a result.
-- **`swim log N -f` (`--follow`)** follows a lane like `tail -f`. Log lines
-  appear as they are written, and the running step's output streams live
-  rather than when the step ends.
-- **`swim log N|JOB --until-done`** follows until the round ends, then exits
-  with the round's status: other services can wait on a job and get its
-  result. On an idle lane it prints the last round and exits with that.
 
 ## 7.20261013 (v0.7.20261013, 2026-10-13)
 
