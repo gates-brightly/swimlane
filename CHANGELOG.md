@@ -31,6 +31,24 @@ To cut a release:
 
 ### Added
 
+- **Group files:** `lanes.<name>.sh` at the repo root holds several bash
+  lanes in one file, each starting at a `# swim lane N` line followed by its
+  header and steps.
+  - **Less ceremony:** swim loads its library and calls `lane_init` and
+    `summary` for a section that doesn't. Code before the first lane is
+    shared by every lane.
+  - **Real lanes:** swim writes each section to `.swim/groups/lane.N.sh`,
+    which runs, is hashed for approvals and is kept in the chain; numbers,
+    `After:`, status and logs work as for any lane.
+  - **One definition per lane:** a lane defined twice (in two sections, or
+    also in a `lane.N.sh`) is an error; `swim new` and `swim stub` refuse a
+    grouped lane.
+  - **Lint and CI:** `swim lint` reports at the group file's lines (and
+    `group` errors for the file itself); `swim ci --changed` counts a
+    changed group file as a change to every lane in it.
+  - This repo's CI rounds (fmt, lint, test, e2e) moved from `lane.1-4.sh`
+    into `lanes.ci.sh`.
+
 - **Always lanes:** `# Always: yes` (or `always: true` in `lane.N.yml`)
   makes a lane standing setup, like a CI `before_script`.
   - **Every time, first:** it never counts as passed, so `swim all` runs it

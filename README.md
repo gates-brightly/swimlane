@@ -284,6 +284,44 @@ summary
 - **Checks:** `swim lint` checks scripts before you run them: header,
   stages, guards, bash 3.2, blocked commands, and secrets echoed to the log.
 
+### Group files
+
+Standing jobs (fmt, lint, tests) don't need a `lane.N.sh` each. A group
+file, `lanes.<name>.sh` at the repo root, holds several bash lanes. Each one
+starts at a `# swim lane N` line, followed by its usual header and steps:
+
+```bash
+#!/usr/bin/env bash
+# swim: syntax 2
+# Comments before the first lane are prose; code there is shared by every
+# lane (it runs after lane_init).
+
+# swim lane 1 ------------------------------------------------------------
+# Round:  CI: fmt
+# Always: yes
+gate "gofmt -s" bash -c 'test -z "$(gofmt -s -l .)"'
+
+# swim lane 2 ------------------------------------------------------------
+# Round:  CI: lint
+# Always: yes
+# After:  1
+gate "go vet" go vet ./...
+```
+
+- **Less ceremony:** swim loads its library and calls `lane_init` and
+  `summary` for a section that doesn't.
+- **Still real lanes:** lane numbers, `After:`, status, logs, approvals and
+  the chain work as for any lane. swim writes each section to
+  `.swim/groups/lane.N.sh`, and that's what runs and is hashed. Edit the
+  group file, never the generated script; a running lane's script is left
+  alone.
+- **One definition per lane:** a lane in a group file and a `lane.N.sh` too,
+  or in two sections, is an error. `swim new` and `swim stub` refuse a
+  grouped lane: edit or remove its section instead.
+- **Lint and CI:** `swim lint` reports findings at the group file's lines,
+  and `swim ci --changed` treats a changed group file as a change to every
+  lane in it.
+
 ### Lanes in other languages
 
 A lane script can be any runnable: `lane.N.py`, `lane.N.js`, `lane.N.ts`, a
@@ -698,9 +736,9 @@ rounds, an Always lane with `Rerun-Children: yes` at its root does that
 without the flag. A fresh CI checkout has no passed rounds, so everything
 runs there either way. swim never commits results back.
 
-This repo dogfoods it. Its own CI is `swim ci` over committed rounds. Three
-Always lanes run first, in order: `lane.1.sh` (fmt), `lane.2.sh` (lint) and
-`lane.3.sh` (unit tests). Then `lane.4.sh` (e2e) runs. `make ci` runs the
+This repo dogfoods it. Its own CI is `swim ci` over the four lanes of one
+committed group file, [`lanes.ci.sh`](lanes.ci.sh). Three Always lanes run
+first, in order: fmt, lint and unit tests. Then e2e runs. `make ci` runs the
 same rounds locally.
 
 ### The watch hub

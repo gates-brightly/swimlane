@@ -267,6 +267,9 @@ func ReadScript(root string, n int) (Info, error) {
 		info.Always, info.RerunChildren = false, false
 	}
 	if info.Created == "" {
+		if g, ok := GroupOf(root, n); ok && path == GroupScript(root, n) {
+			path = filepath.Join(root, g.File)
+		}
 		if st, err := os.Stat(path); err == nil {
 			info.Created = st.ModTime().Format("2006-01-02")
 		}
@@ -713,6 +716,9 @@ func WriteScriptAs(root string, n int, ext, content string, force bool) error {
 	if err := refuseRunning(root, n); err != nil {
 		return err
 	}
+	if g, ok := GroupOf(root, n); ok {
+		return fmt.Errorf("swim %d is defined in %s (line %d); edit its section there, or remove the section to free the lane", n, g.File, g.Line)
+	}
 	if !force {
 		info, err := ReadScript(root, n)
 		if err != nil {
@@ -820,6 +826,13 @@ func ScriptsBeyond(root string, n int) []int {
 	seen := map[int]bool{}
 	for _, e := range entries {
 		if k, _, ok := ParseScriptName(e.Name()); ok && k > n && !seen[k] && len(Scripts(root, k)) > 0 {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	gs, _ := Groups(root)
+	for k := range gs {
+		if k > n && !seen[k] {
 			seen[k] = true
 			out = append(out, k)
 		}

@@ -35,6 +35,9 @@ lane_init() {
   esac
   SWIM_LANE=$1
   SWIM_ROOT=$(cd "$(dirname "$0")" && pwd -P) || exit 1
+  # A lane from a group file runs as .swim/groups/lane.N.sh: its repo is
+  # two directories up.
+  case "$SWIM_ROOT" in */.swim/groups) SWIM_ROOT=${SWIM_ROOT%/.swim/groups} ;; esac
   cd "$SWIM_ROOT" || exit 1
   # A read-only check (swim plan --check) logs apart from the round log.
   STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE${SWIM_CHECK_ONLY:+.check}.log"

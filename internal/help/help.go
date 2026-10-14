@@ -362,8 +362,9 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
 	"stub": `swim stub N|JOB "<message>" [--force]
 
   Replace lane.N.sh with a "nothing pending" stub carrying <message>. The lane
-  shows as idle and "swim run" skips it. Refuses if lane N is running, and
-  without --force if it is an Always lane (standing setup, not a round).
+  shows as idle and "swim run" skips it. Refuses if lane N is running, if a
+  group file defines it (edit or remove its section there), and without
+  --force if it is an Always lane (standing setup, not a round).
 `,
 	"note": `swim note [--lane N|JOB] "<text>"
 
@@ -812,6 +813,8 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     handler-reached (warn) an on_failure with a guard that never checks reached
     rerun-guard (warn)     a guarded round downstream of a Rerun-Children lane
                            (swim all reruns it even after it passed)
+    group (error)          a group file (lanes.<name>.sh) with no lanes, a lane
+                           defined twice, or a header key before the first lane
     outputs (warn)         an output whose name suggests secrets (not masked)
     includes (warn)        a Python/TypeScript lane imports a local module its
                            # Includes: doesn't cover (approvals wouldn't cover it)

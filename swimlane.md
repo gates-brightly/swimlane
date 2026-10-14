@@ -60,6 +60,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - **Always lane:** `# Always: yes` makes a lane standing setup, like a CI `before_script`: lint, fmt, init. It never counts as passed, so every run that includes it runs it fresh, first, and every other lane in that run waits for it to finish. Only lanes that name it in `After:` need it to pass, and naming it pulls it into a run. With `# Rerun-Children: yes`, `swim all` also reruns every lane downstream of it, at any depth, even if they passed. An Always lane waits only on other Always lanes, and isn't stubbed or archived without `--force`.
 - **Batch:** lanes queued together, pinned to their exact scripts, run later by a worker.
 - **Chain of custody:** the signed, hash-linked record of every round and approval.
+- **Group file:** `lanes.<name>.sh` holds several bash lanes, each starting at a `# swim lane N` line, for standing jobs that shouldn't each need a `lane.N.sh`. swim adds the library load, `lane_init` and `summary`, and runs the script it generates per lane under `.swim/groups/`.
 - **Stub / archive:** the placeholder a lane holds between rounds / a finished log kept under a new name.
 
 ---

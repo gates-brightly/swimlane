@@ -71,8 +71,18 @@ var guardNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var sidecarRE = regexp.MustCompile(`^lane\.([0-9]+)\.ya?ml$`)
 
 // Scripts returns the files in root that are lane n's script, sorted with
-// lane.N.sh first. More than one is a conflict (see ScriptConflict).
+// lane.N.sh first, and the script generated from a group file's section
+// (group.go) last. More than one is a conflict (see ScriptConflict).
 func Scripts(root string, n int) []string {
+	out := scriptFiles(root, n)
+	if g, ok := GroupOf(root, n); ok {
+		out = append(out, writeGroupScript(root, g))
+	}
+	return out
+}
+
+// scriptFiles is Scripts without group files: lane n's lane.N[.ext] files.
+func scriptFiles(root string, n int) []string {
 	var out []string
 	cands, _ := filepath.Glob(filepath.Join(root, fmt.Sprintf("lane.%d", n)))
 	more, _ := filepath.Glob(filepath.Join(root, fmt.Sprintf("lane.%d.*", n)))
@@ -109,8 +119,16 @@ func Script(root string, n int) string {
 	return filepath.Join(root, fmt.Sprintf("lane.%d.sh", n))
 }
 
-// ScriptName is the base name of lane n's script (lane.3.py), for messages.
-func ScriptName(root string, n int) string { return filepath.Base(Script(root, n)) }
+// ScriptName is the base name of lane n's script (lane.3.py), or for a
+// grouped lane its group file and lane (lanes.ci.sh[swim 3]), for messages.
+func ScriptName(root string, n int) string {
+	if len(scriptFiles(root, n)) == 0 {
+		if g, ok := GroupOf(root, n); ok {
+			return fmt.Sprintf("%s[swim %d]", g.File, n)
+		}
+	}
+	return filepath.Base(Script(root, n))
+}
 
 // ScriptConflict is an error if lane n has more than one script.
 func ScriptConflict(root string, n int) error {
@@ -121,6 +139,9 @@ func ScriptConflict(root string, n int) error {
 	names := make([]string, len(s))
 	for i, p := range s {
 		names[i] = filepath.Base(p)
+		if g, ok := GroupOf(root, n); ok && p == GroupScript(root, n) {
+			names[i] = fmt.Sprintf("%s:%d", g.File, g.Line)
+		}
 	}
 	return fmt.Errorf("swim %d has %d scripts (%s); a lane has exactly one: remove or rename the others", n, len(s), strings.Join(names, ", "))
 }

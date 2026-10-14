@@ -143,6 +143,14 @@ CONCEPTS
               # Rerun-Children: yes, `swim all` reruns every lane downstream
               of it, even ones that passed. It isn't a round: never assign,
               rewrite, archive or stub one (swim refuses without --force).
+  group file  Several bash lanes in one file, lanes.<name>.sh at the repo root,
+              for standing jobs (fmt, lint, test). Each lane starts at a
+              "# swim lane N" line, then its header and steps; swim adds the
+              library load, lane_init and summary, and runs the script it
+              generates at .swim/groups/lane.N.sh. Edit the group file, never
+              that script. Comments before the first lane are prose; code
+              there runs in every lane, after lane_init. A grouped lane can't
+              also have a lane.N.sh, and swim new/stub refuse it.
   stub        The placeholder a lane holds between rounds (`swim stub`).
   archive     A finished log renamed agentN.prev-<what>.log (`swim archive`).
               Logs are kept; rounds are not.

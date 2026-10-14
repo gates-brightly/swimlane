@@ -113,6 +113,7 @@ var Checks = []Check{
 const (
 	codeSyntax = "syntax"
 	codeIgnore = "lint-ignore"
+	codeGroup  = "group"
 )
 
 // KnownCode reports whether code names a check (for disable comments).
@@ -148,6 +149,13 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 	c := &Context{Root: root, Cfg: cfg, Scripts: map[int]*Script{}}
 	var out []finding.Finding
 	tooNew := map[int]int{} // lane -> the newer syntax it declares
+	// Group files (lanes.<name>.sh): what's wrong with one as a whole, and
+	// where each grouped lane's findings point (its section, not the
+	// script swim generates from it).
+	groups, problems := lane.Groups(root)
+	for _, p := range problems {
+		out = append(out, finding.Finding{Level: finding.Error, File: p.File, Line: p.Line, Code: codeGroup, Message: p.Message})
+	}
 	for n := 1; n <= cfg.Lanes; n++ {
 		data, err := os.ReadFile(lane.Script(root, n))
 		if os.IsNotExist(err) {
@@ -161,6 +169,9 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		}
 		s := NewScript(n, string(data))
 		s.Name = lane.ScriptName(root, n)
+		if g, ok := groups[n]; ok && lane.Script(root, n) == lane.GroupScript(root, n) {
+			s.Name = g.File
+		}
 		if !strings.HasSuffix(s.Name, ".sh") && s.Info.Syntax < syntax.Current {
 			s.Info.Syntax = syntax.Current // syntax 1 was bash only
 		}
@@ -213,7 +224,14 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		for i := range fs {
 			fs[i].File = s.Name
 		}
-		out = append(out, applyIgnores(s, fs)...)
+		fs = applyIgnores(s, fs)
+		if g, ok := groups[n]; ok && s.Name == g.File {
+			for i := range fs {
+				fs[i].Line = g.GroupLine(fs[i].Line)
+				fs[i].Message = fmt.Sprintf("swim %d: %s", n, fs[i].Message)
+			}
+		}
+		out = append(out, fs...)
 	}
 	finding.Sort(out)
 	return out, nil
