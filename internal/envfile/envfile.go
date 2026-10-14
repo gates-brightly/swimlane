@@ -45,6 +45,15 @@ type File struct {
 	General []Entry
 	Repos   []Section // [repo PATH], in file order
 	Lanes   map[int][]Entry
+	// Dups are keys set twice in one section (the last wins).
+	Dups []Dup
+}
+
+// Dup is a key set again in the same section of a file.
+type Dup struct {
+	Key         string
+	Line, First int
+	Section     string // "general", "repo PATH", "lane N"
 }
 
 // Section is a [repo PATH] section.
@@ -70,6 +79,7 @@ func Parse(path string, data []byte, user bool) (*File, error) {
 	// Where keys go: general (the user file, before any section), the
 	// current [repo] section, or the current [lane N] section.
 	general, repoSec, laneSec := user, -1, 0
+	seen := map[string]int{} // section + key -> first line
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for n := 1; sc.Scan(); n++ {
@@ -114,6 +124,18 @@ func Parse(path string, data []byte, user bool) (*File, error) {
 			return nil, bad(n, "%s: %v", k, err)
 		}
 		e := Entry{Key: k, Value: val, Line: n}
+		section := "general"
+		switch {
+		case laneSec > 0:
+			section = fmt.Sprintf("lane %d", laneSec)
+		case repoSec >= 0:
+			section = "repo " + f.Repos[repoSec].Path
+		}
+		if first, dup := seen[section+"\x00"+k]; dup {
+			f.Dups = append(f.Dups, Dup{Key: k, Line: n, First: first, Section: section})
+		} else {
+			seen[section+"\x00"+k] = n
+		}
 		switch {
 		case laneSec > 0:
 			f.Lanes[laneSec] = append(f.Lanes[laneSec], e)
@@ -306,6 +328,29 @@ func Check(root string, cfg *config.Config, n int, info lane.Info, lk *lookup.Lo
 		return nil, fmt.Errorf("swim %d: %w", n, c[0])
 	}
 	return r, nil
+}
+
+// Duplicates lists keys set twice in a section of the env files that apply
+// to the repo at root (the operator's and the repo's), as "file:line" notes.
+func Duplicates(root string) []string {
+	var out []string
+	for _, src := range []struct {
+		path string
+		user bool
+	}{{UserPath(), true}, {filepath.Join(root, RepoFile), false}} {
+		data, err := os.ReadFile(src.path)
+		if err != nil {
+			continue
+		}
+		f, err := Parse(src.path, data, src.user)
+		if err != nil {
+			continue
+		}
+		for _, d := range f.Dups {
+			out = append(out, fmt.Sprintf("%s:%d sets %s again in [%s] (first at line %d; the last wins)", tilde(src.path), d.Line, d.Key, d.Section, d.First))
+		}
+	}
+	return out
 }
 
 // MigrateRC reads a .lane.N.rc as plain assignments (KEY=VALUE, or export

@@ -615,6 +615,12 @@ func checkEnv(c *Context, s *Script) []finding.Finding {
 	}
 	lk, _ := lookup.Load(c.Root)
 	var out []finding.Finding
+	if s.N == firstLane(c) {
+		// Once per repo, on its first lane script: a key set twice in a file.
+		for _, d := range envfile.Duplicates(c.Root) {
+			out = append(out, f(finding.Warn, "env", -1, "remove one of them", "%s", d))
+		}
+	}
 	for _, g := range envfile.GuardConflicts(r, s.Info, lk) {
 		out = append(out, f(finding.Error, "env", -1, "remove it from the env file; approve with the shell, the prompt or swim approve", "%s", g.Error()))
 	}
@@ -861,4 +867,15 @@ func checkSDKBypass(c *Context, s *Script) []finding.Finding {
 		}
 	}
 	return out
+}
+
+// firstLane is the lowest lane number with a script being linted.
+func firstLane(c *Context) int {
+	first := 0
+	for n := range c.Scripts {
+		if first == 0 || n < first {
+			first = n
+		}
+	}
+	return first
 }

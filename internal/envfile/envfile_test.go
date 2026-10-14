@@ -114,3 +114,18 @@ func TestMigrateRC(t *testing.T) {
 		t.Errorf("round trip: %v\n%s", err, data)
 	}
 }
+
+func TestDuplicates(t *testing.T) {
+	xdg, root := t.TempDir(), t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
+	os.WriteFile(filepath.Join(xdg, "swim", "env.swim"), []byte("A=1\nB=2\nA=3\n[repo /x]\nA=4\n"), 0o644)
+	os.WriteFile(filepath.Join(root, RepoFile), []byte("[lane 1]\nT=1\n[lane 2]\nT=2\n[lane 1]\nT=3\n"), 0o644)
+	got := strings.Join(Duplicates(root), "\n")
+	if !strings.Contains(got, "env.swim:3 sets A again in [general] (first at line 1") || !strings.Contains(got, ".env.swim:6 sets T again in [lane 1] (first at line 2") {
+		t.Errorf("duplicates:\n%s", got)
+	}
+	if strings.Count(got, "\n") != 1 {
+		t.Errorf("want 2 duplicates (A in a repo section and T in lane 2 aren't):\n%s", got)
+	}
+}

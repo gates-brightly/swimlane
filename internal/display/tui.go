@@ -375,8 +375,11 @@ func (t *tui) divider(views []LaneView) string {
 	} else {
 		parts = append(parts, "all lanes")
 	}
-	// What just happened, and the selected lane's guards, before the rest:
-	// the line is cut at the screen's width.
+	// What the operator must know first, before the rest: the line is cut
+	// at the screen's width.
+	if t.finished {
+		parts = append(parts, "run finished · q to close")
+	}
 	if t.note != "" {
 		parts = append(parts, t.note)
 	}
@@ -401,7 +404,6 @@ func (t *tui) divider(views []LaneView) string {
 	}
 	switch {
 	case t.finished:
-		parts = append(parts, "run finished · q to close")
 	case v.follow:
 		parts = append(parts, "following")
 	case v.newLines > 0:
