@@ -567,6 +567,20 @@ swim secret rm NAME [--all|--repo]
   there is no key) and wins over the store.
   Names: a letter, then letters, digits and _. A repo-scoped set or rm is
   recorded in .swim.log by name, never value.
+  In lanes, three ways, in any language:
+    # Secrets: DB_PASSWORD=db_password   exported to the lane (a bare name
+                                         exports as NAME); one that doesn't
+                                         resolve stops the run before it starts
+    run "migrate" psql "_swim.db_url"    swapped in when the step runs; the
+                                         log shows the placeholder (the value
+                                         is in the command's argv while it runs:
+                                         prefer Secrets: for long-running ones)
+    TOKEN=$(swim secret get api_token)   from the run's broker
+  A swim run decrypts the repo's secrets once, at start (a protected key's
+  passphrase is asked then, only if a lane uses secrets; swim watch and CI
+  can't ask), and every lane process masks all of them as ***(name).
+  .swim.log records each lane's use: "secret  swim 2  db_password (repo
+  scope, step)". swim lint warns about names the store doesn't have.
 `,
 	"wait": `swim wait [--interval D] [--timeout D]
 

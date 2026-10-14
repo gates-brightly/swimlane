@@ -104,11 +104,15 @@ type Options struct {
 
 	beat         *heartbeat
 	approvalSock string
+	secrets      *runSecrets               // the run's decrypted secrets and broker; nil for none
 	env          map[int]*envfile.Resolved // each lane's env from env files
 
 	// Interactive allows the interactive view (keys pick a lane's log) when
 	// more than one lane runs on a terminal; the view then reads Stdin.
 	Interactive bool
+	// SecretsPrompt, if set, asks the secrets key's passphrase (at path) on
+	// the terminal; nil never asks (a protected key then serves no secrets).
+	SecretsPrompt func(path string) func() ([]byte, error)
 	// Unattended is a run nobody answers for (a batch swim watch took from
 	// the queue): the view's keys only move around, never pre-answer a
 	// guard, and the view closes when the run ends.
@@ -256,6 +260,16 @@ func Run(o Options) (int, error) {
 		}
 		o.env[n] = r
 	}
+	// Secrets (swim secret): decrypted once, now, before the live view
+	// takes the terminal; a Secrets: entry that won't resolve stops the run.
+	rs, err := openSecrets(&o, sel)
+	if err != nil {
+		return 2, err
+	}
+	if rs != nil {
+		defer rs.srv.Close()
+		o.secrets = rs
+	}
 
 	// The panel shows every lane 1..N so numbering never has gaps.
 	views := make([]display.LaneView, 0, o.Cfg.Lanes)
@@ -325,6 +339,9 @@ func Run(o Options) (int, error) {
 		NoHold:      o.Unattended,
 	}, views)
 	pre.disp = disp
+	if o.secrets != nil && o.secrets.note != "" {
+		disp.Message(o.secrets.note)
+	}
 	ir = newInterrupter(o, disp, sl, lt)
 	defer ir.stop()
 	// Lanes this run leaves out may be running in another swim right now.
@@ -930,6 +947,9 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 		env = append(env, "SWIM_COLOR=0")
 	}
 	env = append(env, extra...)
+	if o.secrets != nil {
+		env = append(env, o.secrets.env(o, n)...)
+	}
 	cmd.Env = env
 	// Parallel lanes can't share a keyboard: give them no stdin so
 	// fail-closed prompts stop instead of hanging. A lone lane may prompt.

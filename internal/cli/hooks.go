@@ -214,6 +214,13 @@ func cmdStart(args []string) error {
 	if names := mk.Names(); len(names) > 0 {
 		ctx = append(ctx, logparse.KV{K: "masked", V: fmt.Sprintf("%d vars (%s)", len(names), strings.Join(names, ", "))})
 	}
+	if len(info.Secrets) > 0 {
+		var refs []string
+		for _, s := range info.Secrets {
+			refs = append(refs, s.Env+"="+s.Name)
+		}
+		ctx = append(ctx, logparse.KV{K: "secrets", V: strings.Join(refs, ", ")})
+	}
 	header := logparse.RoundHeader(ts, job, mk.String(round), ctx)
 	for _, prob := range info.Problems {
 		header += logparse.MarkLine(logparse.Warn, prob, "") + "\n"

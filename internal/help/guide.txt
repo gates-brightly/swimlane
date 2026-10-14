@@ -345,6 +345,12 @@ WRITING A LANE SCRIPT
                                       They're hashed (a directory as a sorted manifest) into
                                       status, the END block and the chain, and made read-only.
                                       Not masked: never put secrets in outputs. Default: none
+      # Secrets: ENV=name[, name ...]  secrets (swim secret) the round gets as environment
+                                      variables; a bare name exports as its upper-case self
+                                      (api_token -> API_TOKEN). One that doesn't resolve stops
+                                      the run before it starts. Also: _swim.<name> in a step's
+                                      arguments (swapped in when it runs; the log keeps the
+                                      placeholder), or $(swim secret get name). Default: none
       # Matrix: KEY=a,b,c              run the round once per value (a cell); see MATRIX ROUNDS
       # Fail: soft|hard               hard: the first failed step ends the round (STOP
                                       hard failure) and goes to on_failure. Default: soft.
@@ -643,6 +649,13 @@ SAFETY RULES
     "masked: N vars (NAMES)". Masking does NOT cover output a step pipes or
     writes elsewhere, or values split or transformed. The rule stands: never
     print secrets; print keys or lengths only.
+  - Secrets from swim secret are masked exactly, by name: ***(db_password).
+    A swim run decrypts them once at start (asking the key's passphrase, if
+    any, before the live view) and every process in every lane masks all of
+    the repo's secrets, whichever it uses. .swim.log records which lane got
+    which secret and how, never a value. They guard against leaks into logs,
+    the hub and git, not against lane code: a lane runs as you and could
+    read your key itself.
   - swim never pushes, commits or pulls, and neither do lanes. A lane script
     containing `git push`, `git commit` or `git pull` (or a repo's
     blocked_commands) fails before it starts; a step whose command contains one
@@ -815,6 +828,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         secret_env_auto: true            # also *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY, ... (default)
         secret_env_ignore: [CSRF_TOKEN]  # names exempt from secret_env_auto
         secret_patterns_auto: true       # also AWS key ids, GitHub/Slack tokens, JWTs (default)
+        secrets_key: ~/.ssh/id_ed25519   # swim secret encrypts to it (default signing_key, then this)
         header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
         runtime: node --version          # recorded as runtime version
         toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null

@@ -14,6 +14,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/history"
+	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -160,34 +161,17 @@ func passphrasePrompt(path string) func() ([]byte, error) {
 	}
 }
 
-// openVault decrypts the secrets root sees with the operator's key. A
-// missing key isn't an error when the store is empty or the env supplies
-// (SWIM_SECRET_<NAME>): the vault then resolves only those.
-func openVault(root string, cfg *config.Config, ask bool) (*secrets.Vault, *secrets.File, error) {
-	f, err := secrets.Load(secretsPath())
-	if err != nil {
-		return nil, nil, err
-	}
-	repo := root
-	if !inGitRepo(root) {
-		repo = ""
-	}
-	if f.Empty(repo) {
-		return secrets.Open(f, repo, nil, os.Getenv), f, nil
-	}
-	key, err := secrets.LoadKey(cfg.SecretsKeyPath())
-	if err != nil {
-		return secrets.Open(f, repo, nil, os.Getenv), f, err
-	}
+// openVault decrypts the secrets root sees with the operator's key; ask
+// allows a passphrase prompt on the terminal.
+func openVault(root string, cfg *config.Config, ask bool) (*secrets.Vault, error) {
 	var prompt func() ([]byte, error)
 	if ask {
-		prompt = passphrasePrompt(key.Path)
+		if k, err := secrets.LoadKey(cfg.SecretsKeyPath()); err == nil {
+			prompt = passphrasePrompt(k.Path)
+		}
 	}
-	id, err := key.Identity(prompt)
-	if err != nil {
-		return secrets.Open(f, repo, nil, os.Getenv), f, err
-	}
-	return secrets.Open(f, repo, id, os.Getenv), f, nil
+	v, _, err := secrets.OpenStore(secretsPath(), secrets.RepoKey(root), cfg.SecretsKeyPath(), prompt, os.Getenv)
+	return v, err
 }
 
 func secretGet(args []string) error {
@@ -209,7 +193,7 @@ func secretGet(args []string) error {
 		if err != nil {
 			return err
 		}
-		v, _, openErr := openVault(root, cfg, true)
+		v, openErr := openVault(root, cfg, true)
 		s, err := v.Get(name)
 		if err != nil {
 			if openErr != nil {
@@ -243,11 +227,7 @@ func secretList(args []string) error {
 	if err != nil {
 		return err
 	}
-	repo := root
-	if !inGitRepo(root) {
-		repo = ""
-	}
-	ls := f.List(repo)
+	ls := f.List(secrets.RepoKey(root))
 	cur := ""
 	if k, err := secrets.LoadKey(cfg.SecretsKeyPath()); err == nil {
 		cur = k.Fingerprint
@@ -315,4 +295,46 @@ func secretRemove(args []string) error {
 	}
 	fmt.Printf("removed %s from %s\n", rest[0], scopeWord(repo))
 	return nil
+}
+
+// stepSecrets is a step's masker and, when its arguments hold _swim.<name>
+// placeholders, how to resolve them: from the run's broker inside a swim
+// run, else by decrypting here (and masking what was decrypted).
+func stepSecrets(root string, cfg *config.Config, n int, args []string) (*redact.Masker, func([]string) ([]string, error), error) {
+	uses := false
+	for _, a := range args {
+		if secrets.Placeholder.MatchString(a) {
+			uses = true
+			break
+		}
+	}
+	if !uses {
+		return cfg.Masker(os.Environ()), nil, nil
+	}
+	if os.Getenv(secrets.SockEnv) != "" {
+		get := func(name string) (string, error) {
+			resp, _, err := secrets.Call(os.Getenv, secrets.Request{Op: "get", Name: name, Lane: n, How: "step"})
+			if err != nil {
+				return "", fmt.Errorf("_swim.%s: %v", name, err)
+			}
+			return resp.Value, nil
+		}
+		return cfg.Masker(os.Environ()), func(a []string) ([]string, error) { return secrets.Expand(a, get) }, nil
+	}
+	v, openErr := openVault(root, cfg, true)
+	var known []redact.Labeled
+	for _, s := range v.All() {
+		known = append(known, redact.Labeled{Name: s.Name, Value: s.Value})
+	}
+	get := func(name string) (string, error) {
+		s, err := v.Get(name)
+		if err != nil && openErr != nil {
+			err = openErr
+		}
+		if err != nil {
+			return "", fmt.Errorf("_swim.%s: %v", name, err)
+		}
+		return s.Value, nil
+	}
+	return cfg.MaskerWith(os.Environ(), known), func(a []string) ([]string, error) { return secrets.Expand(a, get) }, nil
 }

@@ -19,6 +19,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
+	"github.com/gates-brightly/swimlane/internal/secrets"
 )
 
 // DefaultLanes is used when neither the defaults nor the repo set `lanes`.
@@ -375,7 +376,11 @@ func (c *Config) Validate() error {
 func (c *Config) Blocked() []string { return policy.Patterns(c.BlockedCommands) }
 
 // Masker returns the secret masker for env (usually os.Environ()).
-func (c *Config) Masker(env []string) *redact.Masker {
+func (c *Config) Masker(env []string) *redact.Masker { return c.MaskerWith(env, nil) }
+
+// MaskerWith is Masker that also masks extra named secrets (decrypted
+// outside a swim run, which has no broker to tell).
+func (c *Config) MaskerWith(env []string, extra []redact.Labeled) *redact.Masker {
 	on := func(b *bool) bool { return b == nil || *b }
 	names := c.SecretEnv
 	// Values a lane got from env files are masked whatever their names
@@ -390,7 +395,32 @@ func (c *Config) Masker(env []string) *redact.Masker {
 		Auto:         on(c.SecretEnvAuto),
 		Ignore:       c.SecretEnvIgnore,
 		AutoPatterns: on(c.SecretPatternsAuto),
+		Labeled:      append(runSecrets(env), extra...),
 	})
+}
+
+// runSecrets are the swim run's secrets (swim secret), from its broker
+// when env names one: every process in a lane masks all of them exactly,
+// whichever the lane uses and however it got them.
+func runSecrets(env []string) []redact.Labeled {
+	getenv := func(k string) string {
+		v := ""
+		for _, kv := range env {
+			if x, ok := strings.CutPrefix(kv, k+"="); ok {
+				v = x // the last one wins, as in exec
+			}
+		}
+		return v
+	}
+	resp, _, err := secrets.Call(getenv, secrets.Request{Op: "masks"})
+	if err != nil || resp == nil {
+		return nil
+	}
+	out := make([]redact.Labeled, len(resp.Masks))
+	for i, m := range resp.Masks {
+		out[i] = redact.Labeled{Name: m.Name, Value: m.Value}
+	}
+	return out
 }
 
 // MsgLogEvery is msg_log_interval: the least time between two MSG lines a

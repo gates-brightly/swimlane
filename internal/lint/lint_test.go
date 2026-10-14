@@ -2,6 +2,8 @@ package lint
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -242,5 +244,32 @@ func TestKnownCodes(t *testing.T) {
 	}
 	if !KnownCode("set-e") || KnownCode("nope") {
 		t.Error("KnownCode")
+	}
+}
+
+func TestSecretRefs(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	os.MkdirAll(filepath.Join(xdg, "swim"), 0o700)
+	os.WriteFile(filepath.Join(xdg, "swim", "secrets.yml"), []byte("schema: swim.secrets/v1\nall:\n  known: {value: x, key: k, updated: t}\n"), 0o600)
+	c := clean(1)
+	ok := before(replace(c, "# Timeout: 30m", "# Timeout: 30m\n# Secrets: KNOWN=known"), "stage verify\n", "run \"use\" curl -H \"token: _swim.known\" https://x\n")
+	if fs := Lint(cfg4(), map[int]string{1: ok, 2: clean(2)}, 1); len(fs) != 0 {
+		t.Fatalf("known secrets: %+v", fs)
+	}
+	for _, tc := range []struct{ name, script, message string }{
+		{"unknown in Secrets:", replace(c, "# Timeout: 30m", "# Timeout: 30m\n# Secrets: gone"), "Secrets: gone names no stored secret"},
+		{"unknown placeholder", before(c, "stage verify\n", "run \"use\" echo _swim.gone\n"), "_swim.gone names no stored secret"},
+		{"outside a step", before(c, "stage verify\n", "export T=_swim.known\n"), "outside a step stays as written"},
+	} {
+		fs := Lint(cfg4(), map[int]string{1: tc.script, 2: clean(2)}, 1)
+		if len(fs) != 1 || fs[0].Code != "secret-ref" || !strings.Contains(fs[0].Message, tc.message) {
+			t.Errorf("%s: %+v", tc.name, fs)
+		}
+	}
+	// SWIM_SECRET_<NAME> counts as known (CI).
+	t.Setenv("SWIM_SECRET_GONE", "x")
+	if fs := Lint(cfg4(), map[int]string{1: replace(c, "# Timeout: 30m", "# Timeout: 30m\n# Secrets: gone"), 2: clean(2)}, 1); len(fs) != 0 {
+		t.Errorf("env-supplied: %+v", fs)
 	}
 }

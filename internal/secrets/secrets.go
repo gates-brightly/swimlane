@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -306,15 +307,25 @@ type Secret struct {
 
 // Vault is the secrets one repo sees, decrypted.
 type Vault struct {
-	secrets map[string]Secret
-	errs    map[string]error // secrets that wouldn't decrypt (another key)
-	env     func(string) string
+	secrets  map[string]Secret
+	errs     map[string]error // secrets that wouldn't decrypt (another key)
+	env      func(string) string
+	envNames []string // secrets SWIM_SECRET_<NAME> supplies, for All
 }
 
 // Open decrypts every secret repo sees with id (nil when there's no key:
 // only SWIM_SECRET_<NAME> resolves then). env is os.Getenv in a run.
 func Open(f *File, repo string, id age.Identity, env func(string) string) *Vault {
 	v := &Vault{secrets: map[string]Secret{}, errs: map[string]error{}, env: env}
+	if env != nil {
+		for _, kv := range os.Environ() {
+			if k, _, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(k, EnvPrefix) {
+				if n := strings.ToLower(strings.TrimPrefix(k, EnvPrefix)); ValidName(n) {
+					v.envNames = append(v.envNames, n)
+				}
+			}
+		}
+	}
 	put := func(m map[string]Entry, scope string) {
 		for n, e := range m {
 			if id == nil {
@@ -376,6 +387,11 @@ func (v *Vault) All() []Secret {
 	for n := range v.errs {
 		names[n] = true
 	}
+	for _, n := range v.envNames {
+		if !names[strings.ToLower(n)] {
+			names[n] = true
+		}
+	}
 	for n := range names {
 		if s, err := v.Get(n); err == nil {
 			out = append(out, s)
@@ -406,4 +422,39 @@ func Expand(args []string, get func(name string) (string, error)) ([]string, err
 		})
 	}
 	return out, firstErr
+}
+
+// RepoKey is root's key in the store's repo scope: the git toplevel, or
+// "" outside a git repo (only all secrets apply there).
+func RepoKey(root string) string {
+	c := exec.Command("git", "rev-parse", "--show-toplevel")
+	c.Dir = root
+	out, err := c.Output()
+	if err != nil || filepath.Clean(strings.TrimSpace(string(out))) != filepath.Clean(root) {
+		return ""
+	}
+	return root
+}
+
+// OpenStore loads the store at storePath and decrypts what repo sees with
+// the key at keyPath. prompt asks a protected key's passphrase (nil: don't
+// ask). The vault always comes back: when the key can't be used it resolves
+// only SWIM_SECRET_<NAME>, and the error says why.
+func OpenStore(storePath, repo, keyPath string, prompt func() ([]byte, error), getenv func(string) string) (*Vault, *File, error) {
+	f, err := Load(storePath)
+	if err != nil {
+		return Open(&File{Schema: Schema}, repo, nil, getenv), nil, err
+	}
+	if f.Empty(repo) {
+		return Open(f, repo, nil, getenv), f, nil
+	}
+	key, err := LoadKey(keyPath)
+	if err != nil {
+		return Open(f, repo, nil, getenv), f, err
+	}
+	id, err := key.Identity(prompt)
+	if err != nil {
+		return Open(f, repo, nil, getenv), f, err
+	}
+	return Open(f, repo, id, getenv), f, nil
 }

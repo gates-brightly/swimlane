@@ -448,6 +448,49 @@ TABLE=orders-v2
 - **`.lane.N.rc` is deprecated.** A guard flag it sets no longer approves,
   and `swim doctor --fix` moves a plain one into `.env.swim`.
 
+### Secrets
+
+Secrets live encrypted to your SSH key, not in env files or the shell:
+
+```sh
+swim secret set db_password            # this repo (hidden prompt, or stdin)
+swim secret set datadog_api_key --all  # every repo
+swim secret ls                         # names and scopes, never values
+```
+
+A lane gets them three ways, in any language:
+
+```bash
+# Secrets: DB_PASSWORD=db_password       exported to the lane
+run "migrate" psql "_swim.db_url"         # swapped in when the step runs
+TOKEN=$(swim secret get api_token)        # from the run's broker
+```
+
+- **Encrypted with [age](https://age-encryption.org)** to an `ssh-ed25519`
+  or `ssh-rsa` key (`secrets_key`, else `signing_key`, else
+  `~/.ssh/id_ed25519`). They're kept in `secrets.yml` next to your config,
+  mode 0600. Names stay readable; each value is encrypted on its own.
+  Decrypting needs the private key on disk, because ssh-agent can't
+  decrypt.
+- **Two scopes:** `--all` and `--repo` (this git repo, the default inside
+  one). A repo's own secret wins over an `--all` one with the same name.
+- **Decrypted once per run:** `swim run` decrypts at start and serves the
+  lanes over a private socket. It asks a protected key's passphrase before
+  the live view, and only if a lane uses secrets. A `Secrets:` name that
+  doesn't resolve stops the run before anything starts.
+- **Masked exactly, by name:** every lane process masks all of the repo's
+  secrets as `***(db_password)`, including their base64 and URL forms.
+  A `_swim.` placeholder stays as written in the log.
+- **Audited:** `.swim.log` records which lane got which secret and how,
+  never the value. `swim lint` warns about names the store doesn't have.
+- **CI:** `SWIM_SECRET_<NAME>` stands in for a secret, with no key needed.
+- **The limits:**
+  - Secrets keep values out of logs, the hub and git. They don't protect
+    against lane code, which runs as you and could read your key itself.
+  - A `_swim.` value is in the command's arguments while it runs, so use
+    `Secrets:` for long-running commands.
+  - `swim watch` and CI can't ask a passphrase.
+
 ### Guards and approvals
 
 <a id="approvals"></a>
@@ -575,8 +618,9 @@ swim wait [--timeout D]                                  # block until idle and 
   A repo can block more commands with `blocked_commands`.
 - **Secrets are masked** as `***` everywhere swim writes. That covers the
   values of `secret_env` variables and of names like `*_TOKEN`, plus
-  credential shapes such as AWS key ids and GitHub tokens. It's a backstop:
-  still never print secrets.
+  credential shapes such as AWS key ids and GitHub tokens. Secrets from
+  [`swim secret`](#secrets) are masked exactly, as `***(name)`. It's a
+  backstop: still never print secrets.
 - **Fail-closed:** gates and `confirm` stop the round when there's no
   answer.
 - **Running lanes are protected:** swim won't edit, archive, stub or rerun a
@@ -694,6 +738,7 @@ they waited for.
 | `swim lint [--strict]` / `swim doctor [--fix]` | Check lane scripts / the environment. |
 | `swim config [KEY [VALUE]] [--repo]` | Show or set config, keeping the file's comments. |
 | `swim env [N\|JOB] [--yaml]` | The env a lane gets from env files, masked, with each key's source. |
+| `swim secret set\|get\|ls\|rm NAME [--all\|--repo]` | Secrets encrypted to your SSH key, for lanes. |
 | `swim lock [--upgrade]` / `swim changelog` | The repo's breaking-version lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
 | `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
@@ -711,6 +756,7 @@ they waited for.
 | `.swim.lock` | The breaking version of swim the repo uses. | Yes |
 | `.swim.log` | The project log: one line per top-level action. | No |
 | `.env.swim` | Lane-scoped env (`[lane N]` sections). | No |
+| `~/.config/swim/secrets.yml` | Your secrets, encrypted (`swim secret`). | Never |
 | `.swim/status.yml` | Last state of every lane (`cat` it). | No |
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain of custody, and every script that ran. | No (export it to keep it) |
@@ -730,6 +776,7 @@ defaults:
   approvals: prompt                      # prompt | flags (never ask)
   interrupt: graceful                    # graceful | immediate
   signing_key: ~/.ssh/id_ed25519.pub     # signs the chain and approvals (a .pub: via ssh-agent)
+  secrets_key: ~/.ssh/id_ed25519         # swim secret encrypts to it (the private key must be on disk)
 repos:
   /path/to/your-repo:                    # overrides defaults and the repo's swim.yml
     max_parallel: 8

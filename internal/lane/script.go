@@ -191,6 +191,7 @@ type sideFile struct {
 	MatrixParallel *int               `yaml:"matrix-parallel"`
 	MatrixFail     *string            `yaml:"matrix-fail"`
 	Includes       *strList           `yaml:"includes"`
+	Secrets        *strList           `yaml:"secrets"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -333,6 +334,9 @@ func applySidecar(path string, info *Info) error {
 	}
 	if sf.MatrixFail != nil {
 		info.setMatrixLine("Matrix-Fail", *sf.MatrixFail)
+	}
+	if sf.Secrets != nil {
+		info.setSecrets(*sf.Secrets, name+" secrets:")
 	}
 	if sf.Outputs != nil {
 		info.setOutputs(*sf.Outputs, name+" outputs:")

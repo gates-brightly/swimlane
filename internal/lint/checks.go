@@ -9,12 +9,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
+	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
@@ -469,6 +471,46 @@ func checkSecretEcho(c *Context, s *Script) []finding.Finding {
 					"echoes $%s, a secret; swim masks it in what it writes, but lanes must never print secrets", m[1]))
 				break
 			}
+		}
+	}
+	return out
+}
+
+// stepLineRE is a bash line that runs a step, where swim swaps
+// _swim.<name> for its secret.
+var stepLineRE = cmdRE(`run|gate|snapshot|evidence|swim\s+(?:run|gate|snapshot|evidence)`)
+
+// checkSecretRefs: every secret a lane names must be in the store (or come
+// from SWIM_SECRET_<NAME>); names are readable, so no key is needed. In a
+// bash lane, _swim.<name> works only in a step's arguments.
+func checkSecretRefs(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	store, err := secrets.Load(secrets.Path(config.Path()))
+	if err != nil {
+		return []finding.Finding{f(finding.Warn, "secret-ref", -1, "fix or remove the secrets store", "can't read the secrets store: %v", err)}
+	}
+	repo := secrets.RepoKey(c.Root)
+	known := func(name string) bool {
+		return store.Has(repo, name) || os.Getenv(secrets.EnvPrefix+secrets.EnvName(name)) != ""
+	}
+	for _, ref := range s.Info.Secrets {
+		if !known(ref.Name) {
+			out = append(out, f(finding.Warn, "secret-ref", s.headerLine("Secrets"), "swim secret set "+ref.Name+" (or --all)",
+				"Secrets: %s names no stored secret for this repo; the run will stop before it starts", ref.Name))
+		}
+	}
+	seen := map[string]bool{}
+	for i, line := range s.v.raw {
+		for _, m := range secrets.Placeholder.FindAllStringSubmatch(line, -1) {
+			if !known(m[1]) && !seen[m[1]] {
+				seen[m[1]] = true
+				out = append(out, f(finding.Warn, "secret-ref", i, "swim secret set "+m[1]+" (or --all)",
+					"_swim.%s names no stored secret for this repo; its step won't start", m[1]))
+			}
+		}
+		if s.Lib && !s.v.doc[i] && secrets.Placeholder.MatchString(s.v.code[i]) && !stepLineRE.MatchString(s.v.bare[i]) {
+			out = append(out, f(finding.Warn, "secret-ref", i, "use it in a step (run \"label\" cmd _swim.NAME), or $(swim secret get NAME)",
+				"_swim.<name> outside a step stays as written: swim swaps it only in a step's arguments"))
 		}
 	}
 	return out
