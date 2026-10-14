@@ -189,10 +189,16 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 		h = 5
 	}
 	head := title
+	bottom := pt.Paint(ui.Yellow, truncate(p.Note, cols))
 	if gap := cols - utf8.RuneCountInString(title) - utf8.RuneCountInString(hints); gap >= 2 {
 		head = pt.Paint(ui.Bold, title) + strings.Repeat(" ", gap) + pt.Paint(ui.Dim, hints)
 	} else {
+		// No room beside the title: the hints go to the bottom line
+		// while there's no note.
 		head = pt.Paint(ui.Bold, truncate(title, cols))
+		if p.Note == "" {
+			bottom = pt.Paint(ui.Dim, truncate(hints, cols))
+		}
 	}
 	out := []string{head, ""}
 	body := h - 3 // title, blank, note
@@ -221,5 +227,5 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 	for len(out) < body+2 {
 		out = append(out, "")
 	}
-	return append(out, pt.Paint(ui.Yellow, truncate(p.Note, cols)))
+	return append(out, bottom)
 }

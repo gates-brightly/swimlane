@@ -55,7 +55,12 @@ func openSecrets(o *Options, sel []int) (*runSecrets, error) {
 	if err != nil {
 		return nil, err
 	}
-	if f.Empty(repo) && !envSupplied {
+	var granted map[string]string
+	var hubErr error
+	if uses && o.HubSecrets != nil {
+		granted, hubErr = o.HubSecrets()
+	}
+	if f.Empty(repo) && !envSupplied && len(granted) == 0 && hubErr == nil {
 		return nil, nil
 	}
 	keyPath := o.Cfg.SecretsKeyPath()
@@ -66,9 +71,13 @@ func openSecrets(o *Options, sel []int) (*runSecrets, error) {
 		}
 	}
 	vault, _, openErr := secrets.OpenStore(path, repo, keyPath, prompt, os.Getenv)
+	vault.Add(secrets.ScopeHub, granted)
 	rs := &runSecrets{vault: vault, used: map[string]bool{}}
-	if openErr != nil && uses {
-		rs.note = "swim: secrets: " + openErr.Error() + "; lanes get only SWIM_SECRET_<NAME> this run"
+	switch {
+	case openErr != nil && uses && !f.Empty(repo):
+		rs.note = "swim: secrets: " + openErr.Error() + "; this run's lanes get the hub's grants and SWIM_SECRET_<NAME> only"
+	case hubErr != nil:
+		rs.note = "swim: " + hubErr.Error() + "; lanes get only local secrets this run"
 	}
 	srv, err := secrets.Serve(vault, func(n int, s secrets.Secret, how string) { rs.record(o, n, s, how) })
 	if err != nil {

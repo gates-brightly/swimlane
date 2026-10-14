@@ -33,8 +33,14 @@ func cmdSecret(args []string) error {
 		return secretList(args[1:])
 	case "rm", "remove":
 		return secretRemove(args[1:])
+	case "grant":
+		return secretGrant(args[1:])
+	case "revoke":
+		return secretRevoke(args[1:])
+	case "grants":
+		return secretGrants(args[1:])
 	}
-	return usagef("usage: swim secret set|get|ls|rm (see swim secret --help)")
+	return usagef("usage: swim secret set|get|ls|rm|grant|revoke|grants (see swim secret --help)")
 }
 
 // secretScope reads --all / --repo: the repo scope's key ("" for all). The
@@ -170,6 +176,11 @@ func openVault(root string, cfg *config.Config, ask bool) (*secrets.Vault, error
 		}
 	}
 	v, _, err := secrets.OpenStore(secretsPath(), secrets.RepoKey(root), cfg.SecretsKeyPath(), prompt, os.Getenv)
+	granted, hubErr := hubGrants(root)
+	v.Add(secrets.ScopeHub, granted)
+	if err == nil && hubErr != nil {
+		err = hubErr
+	}
 	return v, err
 }
 

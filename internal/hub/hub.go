@@ -5,15 +5,24 @@
 // each worker in memory (workers re-report every few seconds, so a
 // restarted hub fills back up by itself).
 //
-//	POST   /api/enroll           a worker joins: {name, host, root, version} -> {id}
-//	POST   /api/report/{id}      its latest snapshot (404: enroll again)
-//	DELETE /api/workers/{id}     it leaves
-//	GET    /api/workers          every worker, as JSON (for other services)
-//	GET    /                     the dashboard
-//	GET    /w/{id}               one worker
+//	POST   /api/enroll                  a worker joins: {name, host, root, version, key} -> {id, token}
+//	POST   /api/report/{id}             its latest snapshot (404: enroll again)
+//	DELETE /api/workers/{id}            it leaves
+//	GET    /api/workers                 every worker, as JSON (for other services)
+//	POST   /api/workers/{id}/approve    admin: approve it for secrets (DELETE: withdraw)
+//	GET    /api/workers/{id}/key        admin: its public key, to encrypt a grant to
+//	GET    /api/grants                  admin: every grant (names, never values)
+//	PUT    /api/grants/{id}/{name}      admin: a secret encrypted to worker id's key
+//	DELETE /api/grants/{id}/{name}      admin: revoke it
+//	GET    /api/grants/{id}             the worker itself: its grants, still encrypted
+//	GET    /                            the dashboard
+//	GET    /w/{id}                      one worker
 //
-// Writes need the hub's token (Authorization: Bearer <token>); the pages
-// and GET /api/workers are read-only.
+// Tokens (Authorization: Bearer <token>): the enroll token, shared, only
+// enrolls (and reports, for workers from before per-worker tokens); each
+// worker's own token, issued at enrollment, reports and fetches its
+// grants; the admin token (kept in the state dir) approves and grants.
+// The pages and GET /api/workers are read-only.
 package hub
 
 import (
@@ -36,6 +45,7 @@ type Worker struct {
 	Root    string `json:"root"`
 	Version string `json:"version,omitempty"`
 	PID     int    `json:"pid,omitempty"`
+	Key     string `json:"key,omitempty"` // its age public key, for secrets granted to it
 }
 
 // Lane is one lane as the worker sees it.
@@ -86,22 +96,36 @@ type Snapshot struct {
 // View is a worker as the hub serves it.
 type View struct {
 	Snapshot
-	Seen  time.Time `json:"seen"`
-	Stale bool      `json:"stale"` // no report for 3 intervals
+	Seen     time.Time `json:"seen"`
+	Stale    bool      `json:"stale"` // no report for 3 intervals
+	KeyFP    string    `json:"key_fp,omitempty"`
+	Approved bool      `json:"approved"`
+	Grants   []string  `json:"grants,omitempty"`  // secrets granted to it, by name
+	Fetched  string    `json:"fetched,omitempty"` // when it last fetched them
 }
+
+// Pending: it has a key and waits for the operator's approval.
+func (v View) Pending() bool { return v.KeyFP != "" && !v.Approved }
 
 // Server is the hub.
 type Server struct {
 	token string
+	admin string // "" without state: nothing can be approved or granted
+	dir   string // the state directory ("" keeps nothing)
 	now   func() time.Time
 
 	mu      sync.Mutex
 	workers map[string]*View
+	records map[string]*Record
+	grants  map[string]map[string]Grant
+	fetched map[string]time.Time
 }
 
-// New makes a hub that accepts workers presenting token.
+// New makes a hub that accepts workers presenting token, keeping nothing
+// on disk (NewWithState keeps approvals and grants).
 func New(token string) *Server {
-	return &Server{token: token, now: time.Now, workers: map[string]*View{}}
+	return &Server{token: token, now: time.Now, workers: map[string]*View{},
+		records: map[string]*Record{}, grants: map[string]map[string]Grant{}, fetched: map[string]time.Time{}}
 }
 
 // IDFor is a worker's id: stable for one host and directory.
@@ -122,16 +146,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/report/{id}", s.report)
 	mux.HandleFunc("DELETE /api/workers/{id}", s.leave)
 	mux.HandleFunc("GET /api/workers", s.list)
+	mux.HandleFunc("POST /api/workers/{id}/approve", s.approveAPI)
+	mux.HandleFunc("DELETE /api/workers/{id}/approve", s.approveAPI)
+	mux.HandleFunc("GET /api/workers/{id}/key", s.keyAPI)
+	mux.HandleFunc("GET /api/grants", s.grantsAPI)
+	mux.HandleFunc("GET /api/grants/{id}", s.fetchAPI)
+	mux.HandleFunc("PUT /api/grants/{id}/{name}", s.grantAPI)
+	mux.HandleFunc("DELETE /api/grants/{id}/{name}", s.grantAPI)
 	mux.HandleFunc("GET /w/{id}", s.workerPage)
 	mux.HandleFunc("GET /{$}", s.dashboard)
 	return mux
 }
 
 func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
-		http.Error(w, "bad or missing token", http.StatusUnauthorized)
-		return
-	}
 	var wk Worker
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&wk); err != nil || wk.Root == "" {
 		http.Error(w, "enroll needs {name, host, root}", http.StatusBadRequest)
@@ -141,23 +168,65 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 	if wk.Name == "" {
 		wk.Name = wk.Host
 	}
+	got := bearer(r.Header)
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	// The enroll token or the admin's enrolls anyone; a worker's own token
+	// enrolls it again (after a hub restart).
+	if !tokenIs(got, s.token) && !s.isAdmin(got) && !s.isWorker(wk.ID, got) {
+		http.Error(w, "bad or missing token", http.StatusUnauthorized)
+		return
+	}
+	rec := s.records[wk.ID]
+	if rec == nil {
+		rec = &Record{}
+		s.records[wk.ID] = rec
+	}
+	key := strings.TrimSpace(wk.Key)
+	if rec.Key != key && rec.Approved {
+		// A new key: the approval and the grants were for the old one.
+		s.audit("%s (%s) enrolled with a new key %s: approval withdrawn, %d grants deleted", wk.ID, wk.Name, KeyFingerprint(key), len(s.grants[wk.ID]))
+		rec.Approved, rec.ApprovedAt = false, ""
+		delete(s.grants, wk.ID)
+	}
+	rec.Worker, rec.Key = wk, key
+	rec.KeyFP = ""
+	if key != "" {
+		rec.KeyFP = KeyFingerprint(key)
+	}
+	token := got
+	if !s.isWorker(wk.ID, got) {
+		token = newToken()
+		rec.TokenHash = hashToken(token)
+	}
+	if err := s.save(); err != nil {
+		http.Error(w, "hub state: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	if v, ok := s.workers[wk.ID]; ok {
 		v.Worker = wk
 	} else {
 		s.workers[wk.ID] = &View{Snapshot: Snapshot{Worker: wk, Activity: "enrolled", At: s.now().UTC().Format(time.RFC3339),
 			Lanes: []Lane{}, Queue: []Batch{}, Events: []string{}}, Seen: s.now()}
 	}
-	s.mu.Unlock()
-	json.NewEncoder(w).Encode(map[string]string{"id": wk.ID})
+	json.NewEncoder(w).Encode(map[string]string{"id": wk.ID, "token": token})
 }
 
 func (s *Server) report(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
+	id := r.PathValue("id")
+	s.mu.Lock()
+	_, known := s.workers[id]
+	ok := s.authorized(r) || s.isWorker(id, bearer(r.Header))
+	s.mu.Unlock()
+	if !known {
+		// A hub that forgot it (restarted without state): enroll again.
+		http.Error(w, "unknown worker; enroll again", http.StatusNotFound)
+		return
+	}
+	if !ok {
 		http.Error(w, "bad or missing token", http.StatusUnauthorized)
 		return
 	}
-	id := r.PathValue("id")
 	var snap Snapshot
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&snap); err != nil {
 		http.Error(w, "bad snapshot: "+err.Error(), http.StatusBadRequest)
@@ -171,6 +240,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap.Worker.ID = id
+	snap.Worker.Key = v.Key
 	if snap.Name == "" {
 		snap.Name = v.Name
 	}
@@ -189,13 +259,21 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) leave(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
+	id := r.PathValue("id")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	got := bearer(r.Header)
+	if !s.authorized(r) && !s.isWorker(id, got) && !s.isAdmin(got) {
 		http.Error(w, "bad or missing token", http.StatusUnauthorized)
 		return
 	}
-	s.mu.Lock()
-	delete(s.workers, r.PathValue("id"))
-	s.mu.Unlock()
+	delete(s.workers, id)
+	if rec := s.records[id]; rec != nil {
+		s.audit("%s (%s) left; %d grants deleted", id, rec.Name, len(s.grants[id]))
+	}
+	delete(s.records, id)
+	delete(s.grants, id)
+	s.save()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -212,6 +290,14 @@ func (s *Server) Workers() []View {
 			every = 2 * time.Second
 		}
 		cp.Stale = now.Sub(cp.Seen) > 3*every+5*time.Second
+		if rec := s.records[cp.ID]; rec != nil {
+			cp.KeyFP, cp.Approved = rec.KeyFP, rec.Approved
+		}
+		cp.Worker.Key = ""
+		cp.Grants = s.grantNames(cp.ID)
+		if t, ok := s.fetched[cp.ID]; ok {
+			cp.Fetched = t.UTC().Format(time.RFC3339)
+		}
 		out = append(out, cp)
 	}
 	sort.Slice(out, func(a, b int) bool {

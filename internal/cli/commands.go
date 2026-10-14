@@ -461,6 +461,7 @@ func runLanes(rest []string, rf runFlags) error {
 		// The secrets key's passphrase, if it has one, is asked here
 		// before the live view starts (a terminal is needed).
 		SecretsPrompt: passphrasePrompt,
+		HubSecrets:    func() (map[string]string, error) { return hubGrants(root) },
 		Pins:          pins,
 		Cells:         cells,
 		FailedCells:   rf.failed,

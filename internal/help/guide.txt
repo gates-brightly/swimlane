@@ -22,6 +22,7 @@ COMMANDS
                            chime, chime_style, chime_min_s, runners.EXT (--lanes N = `config lanes N`)
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
   secret set|get|ls|rm NAME   secrets encrypted to your SSH key, for --all repos or this --repo
+  secret grant WORKER NAME    give a hub worker a secret, encrypted to its own key (revoke, grants)
   new N "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
                            template, with a new job id
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;

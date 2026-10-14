@@ -1,7 +1,9 @@
 # swim
 
-**Run AI-written operational changes safely, with a human in the loop and a
-provable record of what happened.**
+**Sane AI ops.**
+
+Run AI-written operational changes safely, with a human in the loop and a
+provable record of what happened.
 
 An AI session (the *planner*) and its subagents (the *workers*) write
 operational work as small scripts (bash, Python, TypeScript, or any
@@ -681,6 +683,9 @@ This repo dogfoods it. Its own CI is `swim ci` over committed rounds:
 swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard (and a live screen on a terminal)
 swim hub enroll URL --token T [--name billing]       # in a repo; then swim watch reports to it
 swim hub status | leave
+swim hub login URL --admin-token T                   # the operator, once
+swim hub approve billing                             # or press a on its row in the hub's screen
+swim secret grant billing db_password                # encrypted here to billing's key; the hub keeps ciphertext
 ```
 
 - **Dashboard:** a card per worker, showing its activity, lanes and queue.
@@ -695,6 +700,20 @@ swim hub status | leave
   A restarted hub fills back up as workers report.
 - **Access:** workers need the token. The pages are read-only, and bind to
   localhost by default.
+- **Secrets for workers:**
+  - **Keys:** enrolling gives each worker its own age key (with no
+    passphrase, so `swim watch` can decrypt unattended) and a token of its
+    own. A worker stays *pending* until you approve its key fingerprint on
+    the hub.
+  - **Grants:** `swim secret grant` encrypts a secret on your machine to
+    that worker's key. The hub keeps only ciphertext, in `--state DIR`, and
+    never holds a key that could decrypt it.
+  - **At run time:** the worker's runs fetch and decrypt their grants at
+    start. Lanes get them the usual way (`swim secret get`, `secret.get`),
+    masked by name.
+  - **Changes:** `swim secret revoke` removes a grant. A worker that comes
+    back with a new key drops to pending and loses its grants. The hub's
+    `audit.log` records approvals, grants and fetches.
 
 ### Scripting and YAML
 

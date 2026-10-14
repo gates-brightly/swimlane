@@ -25,6 +25,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/hub"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
+	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 	"github.com/gates-brightly/swimlane/internal/version"
@@ -50,19 +51,31 @@ func cmdHub(args []string) error {
 		return hubLeave(args)
 	case "status":
 		return hubStatus(args)
+	case "login":
+		return hubLoginCmd(args)
+	case "approve":
+		return hubApproveCmd(args, false)
+	case "unapprove":
+		return hubApproveCmd(args, true)
 	}
-	return usagef("usage: swim hub [serve|enroll|leave|status] (swim hub --help)")
+	return usagef("usage: swim hub [serve|enroll|leave|status|login|approve|unapprove] (swim hub --help)")
 }
 
 func hubServe(args []string) error {
-	var addr, token string
+	var addr, token, stateDir, adminToken string
 	var noTUI bool
-	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI}, strs: map[string]*string{"addr": &addr, "token": &token}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI}, strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--no-tui]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]")
+	}
+	if stateDir == "" {
+		stateDir = filepath.Join(filepath.Dir(config.Path()), "hub")
+	}
+	if adminToken == "" {
+		adminToken = os.Getenv("SWIM_HUB_ADMIN_TOKEN")
 	}
 	if addr == "" {
 		addr = "127.0.0.1:7700"
@@ -92,7 +105,11 @@ func hubServe(args []string) error {
 	if host, _, _ := net.SplitHostPort(ln.Addr().String()); !net.ParseIP(host).IsLoopback() {
 		note(ui.Yellow, "warning: the dashboard is read-only but unauthenticated: anyone who can reach "+url+" sees every worker's lanes, queue and log tails")
 	}
-	h := hub.New(token)
+	h, err := hub.NewWithState(token, adminToken, stateDir)
+	if err != nil {
+		return err
+	}
+	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim hub login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -145,12 +162,23 @@ func hubScreen(h *hub.Server, url string, notes []display.PickRow, stopped <-cha
 		}
 	}
 	for !until() {
-		res, err := list.Pick("swim hub · "+url, "↑ ↓ pick  enter open  ctrl-c quit",
-			string(display.PickEnter), func() []display.PickRow { return hub.ListRows(h.Workers(), list.Sel, notes, time.Now()) }, time.Second, until)
+		res, err := list.Pick("swim hub · "+url, "↑ ↓ pick  enter open  a approve  u unapprove  ctrl-c quit",
+			string(display.PickEnter)+"au", func() []display.PickRow { return hub.ListRows(h.Workers(), list.Sel, notes, time.Now()) }, time.Second, until)
 		if err != nil || res.Quit || res.ID == "" {
 			return
 		}
 		id := strings.TrimPrefix(res.ID, "w:")
+		if res.Key == 'a' || res.Key == 'u' {
+			msg, err := h.Approve(id)
+			if res.Key == 'u' {
+				msg, err = h.Unapprove(id)
+			}
+			list.Note = msg
+			if err != nil {
+				list.Note = err.Error()
+			}
+			continue
+		}
 		detail.Sel = ""
 		for !until() {
 			var v *hub.View
@@ -184,10 +212,40 @@ func hubScreen(h *hub.Server, url string, notes []display.PickRow, stopped <-cha
 
 // hubFile is this directory's enrollment (.swim/hub.yml, private).
 type hubFile struct {
-	URL   string `yaml:"url"`
-	Token string `yaml:"token"`
-	ID    string `yaml:"id"`
-	Name  string `yaml:"name"`
+	URL         string `yaml:"url"`
+	Token       string `yaml:"token"`                  // the hub's enroll token
+	WorkerToken string `yaml:"worker_token,omitempty"` // this worker's own, from enrolling
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+}
+
+func saveHub(root string, h *hubFile) error {
+	data, _ := yaml.Marshal(h)
+	os.MkdirAll(filepath.Dir(hubPath(root)), 0o755)
+	return os.WriteFile(hubPath(root), data, 0o600)
+}
+
+// hubClient is this directory's connection to its hub.
+func hubClient(h *hubFile) *hub.Client {
+	c := hub.NewClient(h.URL, h.Token, h.ID)
+	c.WorkerToken = h.WorkerToken
+	return c
+}
+
+// keepHubToken saves a new worker token the hub gave out (it enrolled us
+// again after forgetting us).
+func keepHubToken(root string, h *hubFile, c *hub.Client) {
+	if c.WorkerToken != h.WorkerToken || c.ID != h.ID {
+		h.WorkerToken, h.ID = c.WorkerToken, c.ID
+		saveHub(root, h)
+	}
+}
+
+// workerKeyPath is this directory's own age key for hub secrets (one per
+// enrolled directory, private to the operator's config dir).
+func workerKeyPath(root string) string {
+	host, _ := os.Hostname()
+	return filepath.Join(filepath.Dir(config.Path()), "worker-keys", hub.IDFor(host, root)+".key")
 }
 
 func hubPath(root string) string { return filepath.Join(root, ".swim", "hub.yml") }
@@ -209,7 +267,11 @@ func hubWorker(root, name string) hub.Worker {
 	if name == "" {
 		name = filepath.Base(root)
 	}
-	return hub.Worker{Name: name, Host: host, Root: root, Version: version.String(), PID: os.Getpid()}
+	w := hub.Worker{Name: name, Host: host, Root: root, Version: version.String(), PID: os.Getpid()}
+	if id, err := secrets.WorkerKey(workerKeyPath(root)); err == nil {
+		w.Key = id.Recipient().String()
+	}
+	return w
 }
 
 func hubEnroll(args []string) error {
@@ -237,9 +299,7 @@ func hubEnroll(args []string) error {
 	if err != nil {
 		return err
 	}
-	data, _ := yaml.Marshal(hubFile{URL: c.URL, Token: token, ID: id, Name: w.Name})
-	os.MkdirAll(filepath.Dir(hubPath(root)), 0o755)
-	if err := os.WriteFile(hubPath(root), data, 0o600); err != nil {
+	if err := saveHub(root, &hubFile{URL: c.URL, Token: token, WorkerToken: c.WorkerToken, ID: id, Name: w.Name}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: "hub", Detail: "enrolled with " + c.URL + " as " + w.Name})
@@ -248,6 +308,9 @@ func hubEnroll(args []string) error {
 		c.Report(hubSnapshot(root, cfg, w.Name, "enrolled; not watching (start swim watch)", pollEvery))
 	}
 	fmt.Printf("enrolled %s with %s as %s (id %s)\nswim watch here now reports to it: %s/w/%s\n", root, c.URL, w.Name, id, c.URL, id)
+	if w.Key != "" {
+		fmt.Printf("its key for secrets: %s (approve it on the hub: a on its row, or swim hub approve %s)\n", hub.KeyFingerprint(w.Key), w.Name)
+	}
 	return nil
 }
 
@@ -260,7 +323,7 @@ func hubLeave(args []string) error {
 	if err != nil {
 		return fmt.Errorf("this directory isn't enrolled with a hub")
 	}
-	if err := hub.NewClient(h.URL, h.Token, h.ID).Leave(); err != nil {
+	if err := hubClient(h).Leave(); err != nil {
 		fmt.Fprintln(os.Stderr, "swim hub: "+err.Error()+" (un-enrolled here anyway)")
 	}
 	os.Remove(hubPath(root))
@@ -280,10 +343,11 @@ func hubStatus(args []string) error {
 		return nil
 	}
 	fmt.Printf("enrolled with %s as %s (id %s)\n", h.URL, h.Name, h.ID)
-	c := hub.NewClient(h.URL, h.Token, h.ID)
+	c := hubClient(h)
 	if err := c.Report(hubSnapshot(root, cfg, h.Name, "checked by swim hub status", pollEvery)); err != nil {
 		return fmt.Errorf("hub unreachable: %w", err)
 	}
+	keepHubToken(root, h, c)
 	fmt.Printf("reachable: %s/w/%s\n", h.URL, h.ID)
 	return nil
 }
@@ -297,7 +361,7 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 	if err != nil {
 		return func(string) {}, func() {}
 	}
-	c := hub.NewClient(h.URL, h.Token, h.ID)
+	c := hubClient(h)
 	var mu sync.Mutex
 	activity := "starting"
 	done := make(chan struct{})
@@ -314,6 +378,7 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 			reportHubError(err)
 		} else {
 			reportHubError(nil)
+			keepHubToken(root, h, c)
 		}
 	}
 	go func() {

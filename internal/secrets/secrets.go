@@ -51,6 +51,7 @@ const EnvPrefix = "SWIM_SECRET_"
 const (
 	ScopeAll  = "all"
 	ScopeRepo = "repo"
+	ScopeHub  = "hub" // granted to this directory by its hub
 )
 
 var nameRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
@@ -434,4 +435,67 @@ func OpenStore(storePath, repo, keyPath string, prompt func() ([]byte, error), g
 		return Open(f, repo, nil, getenv), f, err
 	}
 	return Open(f, repo, id, getenv), f, nil
+}
+
+// WorkerKey is a hub worker's own age key at path (made, private, the first
+// time). Grants from the hub are encrypted to it; it has no passphrase, so
+// swim watch can decrypt unattended.
+func WorkerKey(path string) (*age.X25519Identity, error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		return age.ParseX25519Identity(strings.TrimSpace(string(data)))
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, []byte(id.String()+"\n"), 0o600); err != nil {
+		return nil, err
+	}
+	return id, nil
+}
+
+// EncryptTo encrypts value to an age public key (a hub worker's), armored.
+func EncryptTo(recipient, value string) (string, error) {
+	r, err := age.ParseX25519Recipient(strings.TrimSpace(recipient))
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	aw := armor.NewWriter(&buf)
+	w, err := age.Encrypt(aw, r)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.WriteString(w, value); err != nil {
+		return "", err
+	}
+	if err := w.Close(); err != nil {
+		return "", err
+	}
+	if err := aw.Close(); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// DecryptWith decrypts an armored age ciphertext with id.
+func DecryptWith(armored string, id age.Identity) (string, error) { return decrypt(armored, id) }
+
+// Add puts secrets from elsewhere (a hub's grants) into the vault as scope,
+// under the ones it already resolves.
+func (v *Vault) Add(scope string, s map[string]string) {
+	for n, val := range s {
+		if _, ok := v.secrets[n]; ok {
+			continue
+		}
+		delete(v.errs, n)
+		v.secrets[n] = Secret{Name: n, Value: val, Scope: scope}
+	}
 }

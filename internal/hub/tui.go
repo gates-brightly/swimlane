@@ -108,7 +108,7 @@ func ListRows(views []View, sel string, notes []display.PickRow, now time.Time) 
 	if len(views) == 0 {
 		return append(rows, display.PickRow{Text: "no workers yet: enroll one with swim hub enroll (above)", Color: ui.Dim})
 	}
-	rows = append(rows, display.PickRow{Text: fmt.Sprintf("%-14s %-16s %-10s %-44s %s", "WORKER", "HOST", "STATE", "ACTIVITY", "LANES")})
+	rows = append(rows, display.PickRow{Text: fmt.Sprintf("%-14s %-16s %-10s %-9s %-40s %s", "WORKER", "HOST", "STATE", "SECRETS", "ACTIVITY", "LANES")})
 	var chosen *View
 	for i := range views {
 		v := &views[i]
@@ -125,16 +125,36 @@ func ListRows(views []View, sel string, notes []display.PickRow, now time.Time) 
 		if v.Stale {
 			activity = "(no report since " + v.Seen.Format("15:04") + ")"
 		}
-		rows = append(rows, display.PickRow{ID: id, Color: stateColor(state),
-			Text: fmt.Sprintf("%-14s %-16s %-10s %-44s %s", clip(v.Name, 14), clip(v.Host, 16), state, clip(activity, 44), marks.String())})
+		color := stateColor(state)
+		if v.Pending() && !v.Stale {
+			color = ui.Yellow
+		}
+		rows = append(rows, display.PickRow{ID: id, Color: color,
+			Text: fmt.Sprintf("%-14s %-16s %-10s %-9s %-40s %s", clip(v.Name, 14), clip(v.Host, 16), state, secretsWord(*v), clip(activity, 40), marks.String())})
 	}
 	if chosen == nil {
 		return rows
 	}
 	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim},
 		display.PickRow{Text: "── " + chosen.Name + " · " + chosen.Root})
+	if chosen.Pending() {
+		rows = append(rows, display.PickRow{Text: "  pending: key " + chosen.KeyFP + " (check it matches what swim hub enroll printed, then a to approve)", Color: ui.Yellow})
+	}
 	rows = append(rows, laneRows(*chosen, now, false)...)
 	return rows
+}
+
+// secretsWord is a worker's standing for secrets, in one word.
+func secretsWord(v View) string {
+	switch {
+	case v.KeyFP == "":
+		return "-"
+	case !v.Approved:
+		return "PENDING"
+	case len(v.Grants) > 0:
+		return fmt.Sprintf("%d grants", len(v.Grants))
+	}
+	return "approved"
 }
 
 // laneRows are a worker's lanes doing something (all of them with every),
@@ -202,8 +222,23 @@ func WorkerRows(v View, sel string, now time.Time) []display.PickRow {
 	rows := []display.PickRow{
 		{Text: fmt.Sprintf("%s · %s · %s", v.Name, v.Host, v.Root)},
 		{Text: "  " + v.WorkerState(now) + " · " + v.Activity, Color: ui.Dim},
-		{Text: " ", Color: ui.Dim},
 	}
+	switch {
+	case v.KeyFP == "":
+		rows = append(rows, display.PickRow{Text: "  secrets: none (enrolled without a key)", Color: ui.Dim})
+	case !v.Approved:
+		rows = append(rows, display.PickRow{Text: "  secrets: pending approval, key " + v.KeyFP, Color: ui.Yellow})
+	default:
+		line := "  secrets: approved, key " + v.KeyFP
+		if len(v.Grants) > 0 {
+			line += " · granted: " + strings.Join(v.Grants, ", ")
+		}
+		if t, err := time.Parse(time.RFC3339, v.Fetched); err == nil {
+			line += " · last fetched " + t.Local().Format("15:04:05")
+		}
+		rows = append(rows, display.PickRow{Text: line, Color: ui.Dim})
+	}
+	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim})
 	var chosen *Lane
 	for i := range v.Lanes {
 		l := &v.Lanes[i]

@@ -546,6 +546,9 @@ swim queue show|rm|requeue ID
 swim secret get NAME
 swim secret ls [--yaml]
 swim secret rm NAME [--all|--repo]
+swim secret grant WORKER NAME... [--hub URL] [--admin-token T]
+swim secret revoke WORKER NAME... [--hub URL] [--admin-token T]
+swim secret grants [--hub URL] [--admin-token T]
 
   Secrets encrypted to your SSH key with age (https://age-encryption.org),
   kept in secrets.yml next to swim's config (0600). Names are readable;
@@ -579,6 +582,15 @@ swim secret rm NAME [--all|--repo]
   private socket. Every lane process masks all of them as ***(name).
   .swim.log records each lane's use: "secret  swim 2  db_password (repo
   scope, get)". swim lint warns about names the store doesn't have.
+  From a hub (swim hub --help): grant encrypts NAME, as this repo sees it,
+  to an approved worker's own key and gives the hub only the ciphertext;
+  the hub never holds a value or a key to decrypt one. The worker's runs
+  (swim run, swim watch) fetch their grants at start, decrypt them with its
+  key and resolve them under its own store, as scope "hub"; swim secret get
+  there does too. revoke deletes a grant (its next run can't get it: rotate
+  the secret at its source if it mattered); grants lists them, by name.
+  The hub's audit.log records approvals, grants and each fetch. A worker
+  that enrolls with a new key drops back to pending and loses its grants.
 `,
 	"wait": `swim wait [--interval D] [--timeout D]
 
@@ -692,9 +704,11 @@ swim revoke --auto USER [--key K]
   With no rule a signature from any listed user approves; with no
   lookup.yml signatures don't count at all (their keys can't be named).
 `,
-	"hub": `swim hub [--addr HOST:PORT] [--token T] [--no-tui]
+	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
 swim hub enroll URL [--token T] [--name N]
 swim hub leave | status
+swim hub login URL --admin-token T
+swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
 
   A watch hub: one page showing what many swim workers are doing.
   swim hub         serve it (default 127.0.0.1:7700): a dashboard of every
@@ -707,22 +721,43 @@ swim hub leave | status
                    selected one's running lanes and queue below; Enter opens
                    a worker (each lane, the selected lane's message and log
                    tail, its queue and recent events), Esc comes back,
-                   Ctrl-C stops the hub. --no-tui (or not a terminal)
-                   prints the URL and enroll command instead. Workers present
-                   the token (--token, else $SWIM_HUB_TOKEN, else a new random
-                   one each start); the pages are read-only and
-                   unauthenticated, so keep the default localhost bind or put
-                   it behind your own access control.
+                   Ctrl-C stops the hub; a approves the selected worker for
+                   secrets, u withdraws it. --no-tui (or not a terminal)
+                   prints the URL and enroll command instead. The pages are
+                   read-only and unauthenticated, so keep the default
+                   localhost bind or put it behind your own access control.
+                   --state DIR (default ~/.config/swim/hub) keeps the
+                   workers, their keys, approvals and grants, and the admin
+                   token (DIR/admin-token, made on first start; --admin-token
+                   or $SWIM_HUB_ADMIN_TOKEN overrides), plus DIR/audit.log.
+  Tokens: the enroll token (--token, else $SWIM_HUB_TOKEN, else a new one
+  each start) only enrolls; each worker gets its own token when it enrolls,
+  for its reports and secrets, so a hub restart doesn't strand it; the
+  admin token approves workers and manages grants.
   swim hub enroll URL --token T [--name N]
                    enroll this directory (name: the directory's): saves
                    .swim/hub.yml (private), and from then on swim watch here
                    reports to the hub every --interval, also during batches.
+                   It makes this directory's own age key for secrets
+                   (~/.config/swim/worker-keys/, no passphrase, so swim
+                   watch decrypts unattended) and prints its fingerprint:
+                   the worker shows as PENDING until approved.
+  swim hub login URL --admin-token T
+                   save the hub's URL and admin token (~/.config/swim/
+                   hub-admin.yml, private) for the commands below
+  swim hub approve WORKER
+                   approve a worker (by name or id) for secrets: compare the
+                   key fingerprint with what its enroll printed. unapprove
+                   withdraws it and deletes its grants.
   swim hub leave   stop reporting (and drop off the hub)
   swim hub status  this directory's enrollment, and whether the hub answers
   Workers push their reports, so they can sit behind NAT or a firewall; the
   hub keeps only each worker's latest report in memory (a restarted hub
   fills back up as workers report). A worker silent for 3 intervals shows
   as stale. Lane output in reports is the logs' text, secrets masked.
+  Secrets: swim secret grant WORKER NAME encrypts a secret on your machine
+  to that worker's key; the hub keeps only the ciphertext, and the worker's
+  runs fetch and decrypt it at start (see swim secret --help).
 `,
 	"interrupt": `swim interrupt N|JOB
 

@@ -776,7 +776,8 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys b
 	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
-		Unattended: true}
+		Unattended: true,
+		HubSecrets: func() (map[string]string, error) { return hubGrants(root) }}
 	if keys && len(lanes) > 1 {
 		// The live view's keys move between the batch's lanes. Parallel
 		// lanes get no stdin, so nothing in the batch can prompt.

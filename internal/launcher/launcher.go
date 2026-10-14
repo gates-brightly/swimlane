@@ -113,6 +113,9 @@ type Options struct {
 	// SecretsPrompt, if set, asks the secrets key's passphrase (at path) on
 	// the terminal; nil never asks (a protected key then serves no secrets).
 	SecretsPrompt func(path string) func() ([]byte, error)
+	// HubSecrets, if set, gets the secrets a hub granted this directory
+	// (decrypted with its worker key): they resolve under the local store's.
+	HubSecrets func() (map[string]string, error)
 	// Unattended is a run nobody answers for (a batch swim watch took from
 	// the queue): the view's keys only move around, never pre-answer a
 	// guard, and the view closes when the run ends.

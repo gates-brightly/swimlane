@@ -104,3 +104,15 @@ func TestPickerEnterEsc(t *testing.T) {
 		t.Errorf("esc with nothing selected: %+v %v", res, done)
 	}
 }
+
+func TestPickerHintsMoveDown(t *testing.T) {
+	p := &Picker{Sel: "lane:1"}
+	out := p.render("a long title that fills the line", "↑ ↓ pick  r run", pickRows(), 36, 8)
+	if !strings.HasPrefix(out[0], "a long title") || out[7] != "↑ ↓ pick  r run" {
+		t.Errorf("hints should move to the bottom:\n%s", strings.Join(out, "\n"))
+	}
+	p.Note = "a note wins"
+	if out := p.render("a long title that fills the line", "↑ ↓ pick  r run", pickRows(), 36, 8); out[7] != "a note wins" {
+		t.Errorf("the note should show: %q", out[7])
+	}
+}

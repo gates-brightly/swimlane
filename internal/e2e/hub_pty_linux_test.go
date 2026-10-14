@@ -26,6 +26,12 @@ func TestHubScreen(t *testing.T) {
 	s = tr.waitFor("▸ billing")
 	contains(t, "worker row", s, "1 worker ·", "WORKER", "enrolled; not watching", "── billing · "+r.root)
 
+	// A worker with a key waits for approval: a approves it, here.
+	contains(t, "pending", s, "PENDING", "pending: key SHA256:")
+	tr.send("a")
+	s = tr.waitFor("approved billing (key SHA256:")
+	contains(t, "approved", s, "approved ")
+
 	tr.send("\r")
 	s = tr.waitFor("esc back")
 	contains(t, "worker detail", s, "swim hub · billing", "▸ swim 1", "── swim 1", "billing · ")
