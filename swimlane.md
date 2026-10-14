@@ -56,7 +56,7 @@ Approval, signing and the chain prove **who** decided **what**. They don't make 
 
 - **Authorization:** nothing that needs approval runs without valid authorization for that exact operation. A guard approves by its flag, signed approvals, the person at the terminal or `-y`, and otherwise is a dry run; it fails closed when there's no one to ask, the approval socket fails, the round times out or the run stops. The guard itself is a bash function in the lane: advisory, not enforced.
 - **Integrity:** what runs matches what was approved. Approvals bind to an execution manifest (the script, the files it sources or includes, its sidecar, its runner, and the policy part of swim.yml), and each lane runs a staged copy of exactly that, so an edit mid-wait or mid-run never reaches it and an approval stops counting once anything it pins changes. A queued lane whose manifest changed is skipped.
-- **Attribution:** every run traces back to its job, worker, approval and outcome, in a hash-linked, SSH-signed chain that records how each guard was approved. `swim verify` checks each signature against the key stored in that entry; tying signers to keys pinned outside the repo, and detecting truncation, is still open (T8).
+- **Attribution:** every run traces back to its job, worker, approval and outcome, in a hash-linked, SSH-signed chain that records how each guard was approved. `swim verify` reports how far the chain can be believed: consistent, trusted (signers in a `trust.yml` pinned outside the repo), anchored (checkpoints sent where a lane can't rewrite them) and authorized.
 - **Out of scope:** a malicious or mistaken script that is approved and run with broad credentials. That needs scoped credentials and OS isolation; [features/guarded-secrets.md](features/guarded-secrets.md) designs releasing a credential only after its guard is approved.
 
 swim is a tool a person operates, with teammates approving from their own machines, not a multi-user production executor. The full model, with the test behind each claim, is [docs/trust-model.md](docs/trust-model.md).
@@ -187,12 +187,12 @@ swim is a tool a person operates, with teammates approving from their own machin
 ## Open questions
 
 - **Named lanes:** support `lane org` alongside numbers?
-- **Keeping the chain:** `.swim/chain.jsonl` isn't committed. Should swim export or ship it somewhere durable by default?
 - **Hub access:** is a shared token enough, or does the hub need per-user identity from `lookup.yml`?
 - **Beyond bash:** should rounds ever be written in something other than bash, or is bash's universality (and models' fluency in it) the point?
 
 ### Resolved since
 
+- **Keeping the chain?** Opt-in, not by default: `chain_anchors` sends a signed checkpoint of the chain's head to a `file:` path outside the repo or the hub at the end of every run, and `swim chain export` copies the entries; `swim verify` checks against them (anchored). An anchor only helps if someone other than the operator holds it, so swim doesn't pick one.
 - **Cross-session claims?** Yes, as an advisory lease: `swim new` claims the lane until it runs, is archived or stubbed, or the lease expires. `Owner` stays authorship. See [features/lane-claims.md](features/lane-claims.md) (proposed).
 
 ### Resolved from v1

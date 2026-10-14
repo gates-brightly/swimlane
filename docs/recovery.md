@@ -85,7 +85,8 @@ A dead pid file doesn't block a rerun on its own; the rebuild just makes
 
 ## `swim verify` fails
 
-**You see:** `BROKEN:` lines and exit 1. The common ones:
+**You see:** a level that says `no` (`consistent`, `trusted`, `anchored`
+or `authorized`), usually with `BROKEN:` lines, and exit 1. The common ones:
 
 - `entry #N (line L): prev hash doesn't match ...` or `seq ...`: an entry
   was changed, removed, inserted or reordered.
@@ -96,9 +97,25 @@ A dead pid file doesn't block a rerun on its own; the rebuild just makes
 - `the kept script <sha>.sh was changed`: a copy under `.swim/scripts/` was
   edited.
 - An `approvals/` file with a broken event.
+- `trusted  no`, `N signatures by SHA256:..., a key not in trust.yml`: the
+  chain was signed by a key `trust.yml` doesn't list. A new runner key that
+  was never added (`swim keys trust --sign`, below), or a chain re-signed
+  wholesale.
+- `trusted  no`, `trust.yml changed since it was pinned`: `trust.yml` was
+  edited without a signed change. Find out who changed it (`git log -p
+  trust.yml`); if the change is right, `swim keys pin` accepts it (on each
+  machine), or redo it with `swim keys trust KEY --sign`.
+- `anchored  no`, `chain truncated or replaced after checkpoint seq N`: the
+  local chain no longer holds the entry an anchor recorded. Entries were
+  removed from its end, or it was replaced. The anchor's copy (`swim chain
+  export`) is the record: `swim verify --against file:/path`.
+- `authorized  no`: an approval didn't meet `lookup.yml`'s rule for its
+  guard (the `BROKEN:` line names the entry and what was missing).
 
 `warning:` lines (unsigned entries, a missing script copy, a deleted log, a
-signer not in `lookup.yml`) don't fail it; `swim verify --strict` does.
+signer not in `lookup.yml` without a `trust.yml`, an unreachable anchor, an
+approval checked against a `lookup.yml` that changed since) and the levels
+that say `n/a` or `partial` don't fail it; `swim verify --strict` does.
 
 **Fix:** treat it as evidence, not as a bug to clear.
 
@@ -117,8 +134,11 @@ swim note "swim verify: <what broke>; copy in ~/swim-evidence"
   the bytes again.
 - **Starting over:** if you need a clean chain, move the broken one aside
   (`mv .swim/chain.jsonl ~/swim-evidence/chain.broken.jsonl`); the next
-  round starts a new chain at entry 1. Keep the old file and the note:
-  nothing else records that the chain was restarted (T8, pending).
+  round starts a new chain at entry 1. Keep the old file and the note. An
+  anchor records it: the new chain fails `anchored` against the old
+  checkpoints, and anchors refuse checkpoints that go back. To start the
+  record afresh, point `chain_anchors` at a new destination (keep the old
+  one).
 
 ## A lost runner key
 
@@ -135,6 +155,7 @@ needs a passphrase and no ssh-agent holds it.
 ssh-keygen -t ed25519 -f ~/.ssh/swim_runner     # a new key (or use another you have)
 swim config signing_key ~/.ssh/swim_runner      # a .pub path signs through ssh-agent
 $EDITOR lookup.yml                              # add the new public key to your user
+swim keys trust ~/.ssh/swim_runner.pub --sign --key ~/.ssh/other_trusted_key   # with a trust.yml
 swim keys                                       # check: this machine signs with ... (you)
 swim verify                                     # old entries still verify
 ```
@@ -144,12 +165,18 @@ swim verify                                     # old entries still verify
   losing the private key doesn't break the record.
 - **Lost, not stolen:** keep the old public key in `lookup.yml`, so old
   entries and approvals still name you.
-- **Stolen:** remove the old key from `lookup.yml`. Approvals it signed
-  stop counting: re-approve with the new key. `swim verify` then warns
-  about entries signed by a key not in `lookup.yml` (and `--strict`
-  fails). Whoever holds the old key could have rewritten the chain and
-  re-signed it, and verify can't tell yet (T8, pending): compare with a
-  copy you kept elsewhere.
+- **With a `trust.yml`,** the change adding the new key must be signed by
+  a key it already lists (another approver's, or the old key if you still
+  have it). With none left, edit `trust.yml` and run `swim keys pin` on
+  each machine (and update CI's `--trust-pin`): that's the decision a
+  signed change would have recorded.
+- **Stolen:** remove the old key from `lookup.yml`, and from `trust.yml`
+  (`swim keys trust OLD.pub --remove --sign`, then `swim keys pin` to stop
+  trusting what it signed before). Approvals it signed stop counting:
+  re-approve with the new key. Whoever holds the old key could have
+  rewritten the chain and re-signed it: `trusted` catches a new key,
+  and `anchored` catches a rewrite of anything a checkpoint left the
+  machine with (`swim verify --against` an exported copy).
 - `swim config signing_key` also sets the key `swim approve` signs with.
 
 ## A lock mismatch

@@ -152,21 +152,49 @@ hostile lane could still write `approvals/`, `lookup.yml` or
   (a passphrase and no agent). `signing: off` records unsigned entries.
   `swim verify` warns about unsigned entries, and `--strict` fails on them.
 
-**What `swim verify` proves, and what it doesn't.** It checks every link,
-every signature, every round's log section, every kept script and every
-signed approval. But it checks each entry's signature against the public
-key stored **in that same entry** (`internal/chain/chain.go`). Nothing ties
-that key to `lookup.yml` yet: a signer `lookup.yml` doesn't list is only a
-warning (`--strict` fails on it), and `lookup.yml` sits in the repo, where
-a lane can write it. So today `swim verify` can't detect:
+**What `swim verify` proves, and what it doesn't.** It reports four
+levels, each on its own line (and as its own field in `--yaml`):
 
-- entries removed from the end of the chain;
-- a chain replaced wholesale and re-signed with another key;
-- a chain rewritten by anyone holding the runner key.
+- **consistent:** every link, every signature against the key recorded
+  **in that same entry**, every round's log section, kept script and staged
+  copy, and every signed approval. A chain replaced wholesale and re-signed
+  with another key is consistent too.
+- **trusted:** every signature is by a key in `trust.yml` (committed),
+  whose key set is pinned outside the repo: in the operator's
+  `~/.config/swim/trust-pins.yml` on first use or by `swim keys pin`, or by
+  hash in CI (`--trust-pin`, `SWIM_TRUST_PIN`). A change to `trust.yml`
+  counts only when signed by a key the pinned set trusts (`swim keys trust
+  --sign`, recorded in `trust.yml.sig`); a hand edit fails the level.
+  `lookup.yml`'s keys must be in `trust.yml` (`swim lint`).
+- **anchored:** the chain still holds the entry the newest checkpoint at
+  each anchor recorded. A checkpoint (seq, head hash, time, host, signed by
+  the runner) goes to each `chain_anchors` destination (`file:/path`
+  outside the repo, or the hub) at the end of every top-level run, CI job
+  and watch batch. `swim chain export` also copies the entries, and `swim
+  verify --against DEST` checks against them.
+- **authorized:** each approve entry met `lookup.yml`'s rule for its guard,
+  under the `lookup.yml` it recorded (`lookup_sha256`).
 
-`.swim/chain.jsonl` isn't committed, so it lives only on the machine that
-ran the rounds. Pinned signers and external checkpoints are pending: T8,
-[features/chain-anchors.md](../features/chain-anchors.md).
+What each level can't catch:
+
+- **trusted** rests on the pin. A lane runs as the operator, so it could
+  write `~/.config/swim/trust-pins.yml` directly (not through the repo). A
+  pin a lane can't reach is one CI passes from its own settings
+  (`--trust-pin`). Trust on first use trusts whatever `trust.yml` says the
+  first time; check it, or pin it explicitly.
+- **anchored** proves nothing about entries written after the last
+  checkpoint, and someone holding the runner key **and** write access to
+  every anchor can rewrite everything. Anchors should be held by someone
+  other than the operator: another volume mounted append-only, a hub run by
+  someone else. Without an anchor, entries removed from the end of the
+  chain can't be told from a shorter history (`anchored: n/a`, which
+  `--strict` fails).
+- **authorized** checks the rules, not the people: a prompt, `FLAG=1`, `-y`
+  or queue approval meets any rule except one marked `signed: true`.
+- None of them proves the scripts were safe.
+
+`.swim/chain.jsonl` isn't committed; with an anchor, a copy lives outside
+the machine that ran the rounds (`swim chain export`).
 
 ## Bypasses, and how each is recorded
 
@@ -195,8 +223,8 @@ pending): today you find it in the log, `.swim.log` and the chain.
   [features/guarded-secrets.md](../features/guarded-secrets.md) (pending).
 - **An AI that shares your OS user.** swim gives the planner nothing, but it
   doesn't stop a process running as you from using what you have.
-- **Tampering by whoever holds the runner key,** or truncation of the chain,
-  until T8 lands (above).
+- **Tampering by whoever holds the runner key and can write every anchor,**
+  and anything written after the last checkpoint (above).
 - **The hub's identity.** It serves TLS, but its workers and admin use
   shared tokens, not per-person identity (headless stage H2, pending).
 
@@ -233,5 +261,9 @@ Test files are under `internal/`. "Pending" names the task in
 | Every approval is recorded with its method and signed by the runner; the scripts that ran are kept; `signing: required` refuses without a key; `--strict` fails on unsigned entries. | `TestChainRecordsEveryApproval` (e2e/custody_test.go) |
 | Entries signed with an old runner key still verify. | `TestRecoveryLostRunnerKey` (e2e/recovery_test.go) |
 | `git push`, `commit` and `pull` are blocked in the script, at the step and by the shim. | `TestBlockedCommands` (e2e/e2e_test.go) |
-| A truncated chain, or one re-signed with a new key, is detected. | Pending T8 |
+| A chain re-signed wholesale with a new key is consistent but not trusted; with an anchor, not anchored either. | `TestTrustCatchesWholesaleReplacement` (chain), `TestSecurity` (e2e/security_test.go) |
+| A `trust.yml` edit counts only when signed by a pinned key; trust is pinned on first use, or by hash in CI. | `TestTrustPinTransitions` (trust), `TestVerifyTrustedLevel` (e2e/verifylevels_test.go) |
+| A chain truncated below a checkpoint, or replaced, fails `anchored`; a tampered checkpoint fails its signature. | `TestCheckpointCatchesTruncationAndReplacement` (chain), `TestVerifyAnchoredLevel` (e2e/verifylevels_test.go) |
+| Anchors only go forward: a file anchor refuses a diverged export, the hub a seq that goes back. | `TestFileAnchorAppendsOnly` (anchor), `TestHubCheckpointsGoForward` (hub) |
+| An approval that didn't meet its `lookup.yml` rule fails `authorized`. | `TestVerifyAuthorizedLevel` (e2e/verifylevels_test.go) |
 | A crash never leaves a lane, claim or record half-written. | Pending T6, T7 |

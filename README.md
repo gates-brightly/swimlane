@@ -139,8 +139,13 @@ whoever runs it.
 - **The approved bytes run:** each lane runs a staged, read-only copy of
   what its execution manifest pins (script, sourced files, sidecar, runner,
   policy), and an approval binds that manifest.
-- **Not yet:** lanes forging their own approvals (T3) and a chain truncated
-  or re-signed wholesale (T8) are open in [`tasks.md`](tasks.md).
+- **A chain you can believe:** `swim verify` says how far, in levels:
+  consistent (links and signatures), trusted (signers pinned outside the
+  repo in `trust.yml`), anchored (checkpoints sent to `chain_anchors`, so a
+  chain truncated or re-signed wholesale is caught) and authorized (each
+  approval met `lookup.yml`'s rule).
+- **Not yet:** lanes forging their own approvals (T3) is open in
+  [`tasks.md`](tasks.md).
 
 The details, and the test behind each claim, are in the
 [trust model](docs/trust-model.md).
@@ -850,10 +855,38 @@ SHA-256 of the entry before it:
   batch.
 
 ```sh
-swim verify                 # every link, signature, log section and kept script checks out (exit 1 if not)
+swim verify                 # consistent, trusted, anchored, authorized: one line each (exit 1 if one says no)
 swim history                # the chain, newest first, like git log (--oneline, -n N, --reverse)
 swim chain repair           # remove a half-written last entry left by a crash (kept in a .bak, recorded)
+swim keys trust --sign      # trust.yml: the keys verify trusts, pinned outside the repo
+swim chain checkpoint       # sign the chain's head and send it to chain_anchors now
+swim chain export --to file:/mnt/audit/orders   # copy the entries there too
 ```
+
+`swim verify` reports levels, each saying what it rests on:
+
+```
+consistent  yes  418 entries, links and signatures match; logs, scripts and approvals as recorded
+trusted     yes  2 signers, all in trust.yml (pinned 2026-09-30)
+anchored    yes  extends checkpoint seq 412 (2026-10-14T09:12:00Z) from file:/mnt/audit/orders; 6 entries since
+authorized  yes  31 approvals, each met its lookup.yml rule
+note: anchoring proves this history existed by 2026-10-14T09:12:00Z; it doesn't prove the scripts were safe, nor anything about entries after it.
+```
+
+- **trusted:** `trust.yml` (committed) lists the runner and approver keys.
+  Its hash is pinned in your `~/.config/swim/trust-pins.yml` the first time
+  verify sees it (or `swim keys pin`; CI passes `--trust-pin`). A change
+  counts only when signed by a key it already trusts
+  (`swim keys trust KEY --sign`). A chain re-signed wholesale with a new
+  key fails here.
+- **anchored:** `chain_anchors: ["file:/path", hub]` in `swim.yml` sends a
+  signed checkpoint of the chain's head at the end of every run, CI job and
+  watch batch. Entries removed from the end, or a chain replaced, after a
+  checkpoint left the machine fail here; `swim verify --against DEST`
+  checks against an exported copy, even after the repo is gone.
+- **authorized:** each approval met `lookup.yml`'s rule for its guard
+  (`signed: true` on a rule also fails prompt and `FLAG=1` approvals).
+- `--yaml` has each level as a field (`swim.verify/v1`), for CI.
 
 Editing a log, removing an entry or reordering entries is caught and
 reported. Signing uses `ssh-keygen -Y`, the same format git uses for SSH
@@ -1108,7 +1141,7 @@ they waited for.
 | `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The worker with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
-| `swim verify [--strict]` / `swim history [--oneline]` / `swim chain repair` / `swim keys` | The chain of custody: prove it, read it, repair a cut-short write, and see who's who. |
+| `swim verify [--strict] [--against DEST] [--yaml]` / `swim history [--oneline]` / `swim chain repair\|checkpoint\|export` / `swim keys [trust\|pin]` | The chain of custody: prove it (in levels), read it, repair a cut-short write, checkpoint and export it, and see and pin who's who. |
 | `swim hub [enroll\|leave\|status]` | The watch hub. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE]` | Run rounds in a CI job. |
 | `swim interrupt N\|JOB` | Stop one lane at its next step boundary. |

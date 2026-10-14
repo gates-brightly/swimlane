@@ -100,4 +100,4 @@ it, and it serves a read-only dashboard. It never runs anything.
 | Queue pins | `swim watch` before a lane starts | Enforced; the stage and the pins are checked again right before the lane's process starts |
 | Guard | `guard` in the lane process | Advisory |
 | Approval rules | `lookup.yml`, read by the guard | As strong as the guard and the repo's files (T3) |
-| Chain | `swim verify` | Detects edits; not truncation or re-signing (T8) |
+| Chain | `swim verify` | Detects edits (consistent); re-signing with a key outside the pinned `trust.yml` (trusted); truncation or replacement after a checkpoint left the machine (anchored, with `chain_anchors`) |
