@@ -18,6 +18,8 @@
 //	    group: platform-admin
 //	    count: 2                   # distinct users from the group
 //	  - group: ops                 # no guards: every other guard
+//	standing:
+//	  max: 90d                     # longest a standing approval may last
 package lookup
 
 import (
@@ -28,7 +30,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -53,11 +57,22 @@ type Rule struct {
 	Evidence bool `yaml:"evidence,omitempty"`
 }
 
+// StandingPolicy limits standing approvals (swim approve --auto).
+type StandingPolicy struct {
+	// Max is the longest one may last ("90d", "720h"). Once set, a standing
+	// approval that never expires, or lasts longer, doesn't count.
+	Max string `yaml:"max,omitempty"`
+}
+
 // Lookup is lookup.yml.
 type Lookup struct {
-	Users   map[string]User     `yaml:"users"`
-	Groups  map[string][]string `yaml:"groups"`
-	Require []Rule              `yaml:"require,omitempty"`
+	Users    map[string]User     `yaml:"users"`
+	Groups   map[string][]string `yaml:"groups"`
+	Require  []Rule              `yaml:"require,omitempty"`
+	Standing StandingPolicy      `yaml:"standing,omitempty"`
+
+	// MaxStanding is Standing.Max parsed (0: no limit).
+	MaxStanding time.Duration `yaml:"-"`
 
 	Path  string            `yaml:"-"` // "" if the repo has none
 	byKey map[string]string // "type base64" -> user
@@ -109,7 +124,32 @@ func Load(root string) (*Lookup, error) {
 			}
 		}
 	}
+	if l.Standing.Max != "" {
+		d, err := ParseLifetime(l.Standing.Max)
+		if err != nil {
+			return nil, fmt.Errorf("%s: standing.max: %w", path, err)
+		}
+		l.MaxStanding = d
+	}
 	return l, nil
+}
+
+// ParseLifetime reads how long an approval lasts: a Go duration ("24h",
+// "90m") or whole days ("30d").
+func ParseLifetime(s string) (time.Duration, error) {
+	var d time.Duration
+	var err error
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		var n int
+		n, err = strconv.Atoi(days)
+		d = time.Duration(n) * 24 * time.Hour
+	} else {
+		d, err = time.ParseDuration(s)
+	}
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("want a duration like 24h or 30d, got %q", s)
+	}
+	return d, nil
 }
 
 func keyOnly(pub string) string {
@@ -182,8 +222,11 @@ func (l *Lookup) GroupsOf(user string) []string {
 // RuleFor is the rule a guard's approval must meet: the first whose
 // globs match it (or that has none). With no rules, one signature from any
 // user in lookup.yml.
-func (l *Lookup) RuleFor(flag string) Rule {
-	for _, r := range l.Require {
+func (l *Lookup) RuleFor(flag string) Rule { return MatchRule(l.Require, flag) }
+
+// MatchRule is the rule in rules that flag must meet (see RuleFor).
+func MatchRule(rules []Rule, flag string) Rule {
+	for _, r := range rules {
 		if len(r.Guards) == 0 {
 			return withDefaults(r)
 		}
@@ -201,6 +244,31 @@ func withDefaults(r Rule) Rule {
 		r.Count = 1
 	}
 	return r
+}
+
+// Canonical is the rule as signed text: what it requires, in a fixed
+// form (globs sorted, count defaulted), so reordering globs or spelling
+// out a default doesn't change it. A field added to Rule must add to this
+// only when set, or every signed statement naming a rule would change.
+func (r Rule) Canonical() string {
+	r = withDefaults(r)
+	globs := append([]string(nil), r.Guards...)
+	sort.Strings(globs)
+	s := fmt.Sprintf("guards=%s;group=%s;count=%d", strings.Join(globs, ","), r.Group, r.Count)
+	if r.Evidence {
+		s += ";evidence"
+	}
+	return s
+}
+
+// RulesText is rules as signed text, one canonical rule per line, in
+// order (order decides which rule matches).
+func RulesText(rules []Rule) string {
+	var b strings.Builder
+	for _, r := range rules {
+		b.WriteString(r.Canonical() + "\n")
+	}
+	return b.String()
 }
 
 // Satisfied reports whether users (distinct signers known to lookup.yml)

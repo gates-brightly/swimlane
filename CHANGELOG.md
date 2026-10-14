@@ -49,6 +49,12 @@ To cut a release:
     swim's `source` wrapper; use plain assignments.
   - **Undeclared guard flags are refused** under `swim run`: a flag named
     only at run time (`guard "$FLAG"`) must be listed in `# Guards:`.
+  - **Standing approvals now expire and bind `lookup.yml`'s rules.** An
+    existing `approvals/auto.USER.signature` (never expiring, no rules
+    bound) still counts, with a warning in `swim approve`, `swim doctor`
+    and `swim verify`, until `lookup.yml` sets `standing: {max: ...}`; then
+    it stops counting. Revoke it and approve again to renew it on the new
+    terms. An older swim can't check a new standing approval's signatures.
 
 ### Docs
 
@@ -82,6 +88,24 @@ To cut a release:
     trusted either); its pages also escape HTML, as before.
 
 ### Changed
+
+- **Approval lifecycle:** every signed approval is active, expired,
+  revoked, stale (with why) or insufficient (with why), and `swim approve`
+  and `swim verify` say which.
+  - **Standing approvals expire:** `swim approve --auto USER` lasts 30 days
+    unless `--expires D` says otherwise (it prints the expiry), and never
+    longer than `lookup.yml`'s new `standing: {max: 90d}`. Approving again
+    once one stopped counting starts a new one. `--expires` takes days
+    (`30d`) too.
+  - **Rule changes stale approvals:** a standing approval records
+    `lookup.yml`'s `require:` rules; once the rule for a guard changes,
+    stricter or looser, it stops counting for that guard. (Script approvals
+    already bind every rule through their manifest.) So loosening a rule
+    can't turn an approval signed under the stricter one into enough.
+  - **Who is who is read live:** a key removed from `lookup.yml`, or a user
+    removed from a group, stops counting at once.
+  - **`swim doctor`** warns of standing approvals on the old terms
+    (`standing-approval`).
 
 - **Versions are `0.<YYYYMMDD>.<index>`,** tagged `v0.<YYYYMMDD>.<index>`:
   any number of releases a day, each with the date. `Breaking` is gone.

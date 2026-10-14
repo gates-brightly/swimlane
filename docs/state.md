@@ -153,28 +153,42 @@ A lane's final `state` is one of `passed`, `failed`, `skipped` or
 Signed approvals are files under `approvals/` (`internal/sigfile`): an
 ordered, hash-linked log of approve and revoke events, one file per
 approved script (or per standing approval). Each signer's last event
-decides whether they stand behind it.
+decides whether they stand behind it. An approval's state
+(`sigfile.State`, shown by `swim approve` and `swim verify`) is one of:
 
 ```mermaid
 stateDiagram-v2
-  [*] --> standing: swim approve (a signed approve event)
-  standing --> revoked: swim revoke (a signed revoke event)
-  revoked --> standing: swim approve again
-  standing --> expired: past --expires
-  standing --> stale: the script changed (another SHA-256)
+  [*] --> active: swim approve (signed approve events that meet the rule)
+  [*] --> insufficient: too few signers, or unknown keys
+  insufficient --> active: co-approvers sign
+  active --> insufficient: a key or member removed from lookup.yml
+  active --> revoked: swim revoke (every signer's last event revokes)
+  revoked --> active: swim approve again
+  active --> expired: past its expiry
+  active --> stale: what it approves changed
   stale --> [*]: approve the new version
+  expired --> [*]: approve again
 ```
 
-- **Standing:** the signer's last event approves, and it counts toward
-  `lookup.yml`'s rule while its key is listed there.
-- **Revoked:** the signer's last event revokes. The events stay: the file
-  is append-only, and a round that already ran keeps its record.
-- **Expired:** an approval made with `--expires D` stops counting after it.
-- **Stale:** a script approval names a SHA-256. Once the script changes,
-  the approval no longer matches it, so it stops counting (the file
-  stays). `swim verify` lists it as stale; approve the new version.
-- **Standing approvals** (`swim approve --auto USER`) name a user, not a
-  script, so they never go stale; they stand until revoked or expired.
+- **Active:** it counts toward `lookup.yml`'s rule for the guard.
+- **Insufficient (why):** its signers don't meet the rule on their own
+  (signatures from several files still count together), none is in
+  `lookup.yml`, or a standing approval outlasts `standing.max`. Users,
+  keys and groups' members are read live, so this can change either way
+  without a new event.
+- **Revoked:** every signer's last event revokes. The events stay: the
+  file is append-only, and a round that already ran keeps its record.
+- **Expired:** past its `--expires`. A standing approval always has one:
+  30 days by default, never more than `lookup.yml`'s `standing.max`.
+- **Stale (why):** what it approves changed. A script approval names the
+  script's SHA-256 and its execution manifest (which pins `swim.yml`'s
+  policy and all of `lookup.yml`'s `require:` rules); a standing approval
+  names the rule each guard had. Once one changes, stricter or looser, the
+  approval stops counting there (the file stays). `swim approve` and
+  `swim verify` say why; approve again.
+- **Grandfathered:** a standing approval from before they expired (never
+  expiring, no rules bound) stays active with a warning until `lookup.yml`
+  sets `standing.max`, then becomes insufficient.
 - **Evidence-bound approvals** count only while the run's evidence matches
   what was approved (not compared under `swim watch`).
 - **Live-view answers** (`y` / `n` ahead of a prompt) aren't files: they

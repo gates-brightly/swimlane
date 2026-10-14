@@ -129,6 +129,20 @@ swim is a tool a person operates, with teammates approving from their own machin
 - `lookup.yml` maps people to keys and groups, and sets how many approvals, from which group, each guard needs.
 - Approvals are committed files, so approvers can add theirs from anywhere.
 
+#### Approval lifecycle
+
+A signed approval is in one of five states, shown by `swim approve` and `swim verify`:
+
+- **Active:** it counts.
+- **Expired:** past its expiry. `--expires D` sets one on any approval.
+- **Revoked:** every signer's latest event revokes.
+- **Stale (why):** what it approves changed. A script approval binds its execution manifest: the script, what it pins, `swim.yml`'s policy keys and all of `lookup.yml`'s `require:` rules, so any of them changing stales it. A standing approval binds the rule each guard had when it was signed: once that rule changes, stricter or looser, it stops counting for that guard. Loosening a rule never turns an approval signed under the stricter one into enough; the approvers sign again.
+- **Insufficient (why):** its signers don't meet the guard's rule, aren't in `lookup.yml`, or (standing) it outlasts `standing.max`.
+
+Policy changes and membership are treated differently on purpose. A rule is what approvers agreed to, so a change to it needs their agreement again. Who is who (users, keys, groups' members) is read live: a key removed from `lookup.yml` stops counting at once, and adding a person to a group needs no re-approval.
+
+Standing approvals (`swim approve --auto USER`) must expire: 30 days by default (printed), never longer than `standing: {max: D}` in `lookup.yml`. Approving again once one stopped counting starts a new one. Standing approvals from before this (never expiring, no rules bound) keep counting, with a warning in `swim approve`, `swim doctor` and `swim verify`, until `lookup.yml` sets `standing.max`; then they stop.
+
 ### Chain of custody
 - Record every round (script and manifest hashes, log-section hash, result, approvals used) and every approval (who, which guard, how).
 - Sign each entry and link it to the one before. Keep every script that ran, by hash.
@@ -194,6 +208,7 @@ swim is a tool a person operates, with teammates approving from their own machin
 ### Resolved since
 
 - **Cross-session claims?** Yes, as an advisory lease: `swim new` claims the lane until it runs, is archived or stubbed, or the lease expires. `Owner` stays authorship. See [features/lane-claims.md](features/lane-claims.md) (proposed).
+- **Do approvals outlive a policy change, and must standing approvals expire?** A rule change stales them; membership is read live; standing approvals expire. See [Approval lifecycle](#approval-lifecycle).
 
 ### Resolved from v1
 

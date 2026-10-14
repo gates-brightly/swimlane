@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const sample = `users:
@@ -73,9 +74,54 @@ func TestLookupErrors(t *testing.T) {
 		"users: {a: {keys: [k1 x]}}\ngroups: {g: [h], h: [g]}",
 		"users: {a: {keys: [t k1]}, b: {keys: [t k1]}}",
 		"users: {a: {keys: [t k1]}}\nrequire: [{group: missing}]",
+		"users: {a: {keys: [t k1]}}\nstanding: {max: forever}",
 	} {
 		if _, err := Load(write(t, bad)); err == nil {
 			t.Errorf("accepted:\n%s", bad)
+		}
+	}
+}
+
+// A rule's canonical form ignores glob order and spelled-out defaults, and
+// changes with anything it requires.
+func TestRuleCanonical(t *testing.T) {
+	a := Rule{Guards: []string{"B_*", "A_*"}, Group: "ops", Count: 0}
+	b := Rule{Guards: []string{"A_*", "B_*"}, Group: "ops", Count: 1}
+	if a.Canonical() != b.Canonical() {
+		t.Errorf("same rule: %q vs %q", a.Canonical(), b.Canonical())
+	}
+	for _, other := range []Rule{
+		{Guards: []string{"A_*", "B_*"}, Group: "ops", Count: 2},
+		{Guards: []string{"A_*", "B_*"}, Group: "admin"},
+		{Guards: []string{"A_*", "B_*"}, Group: "ops", Evidence: true},
+		{Guards: []string{"A_*"}, Group: "ops"},
+	} {
+		if other.Canonical() == a.Canonical() {
+			t.Errorf("%+v reads like %+v", other, a)
+		}
+	}
+	rules := []Rule{{Guards: []string{"FIN_*"}, Count: 2}, {Group: "ops"}}
+	if MatchRule(rules, "FIN_X").Count != 2 || MatchRule(rules, "OTHER").Group != "ops" || MatchRule(nil, "X").Count != 1 {
+		t.Error("MatchRule")
+	}
+	if RulesText(rules) == RulesText(rules[1:]) || RulesText(nil) != "" {
+		t.Error("RulesText")
+	}
+}
+
+func TestStandingMax(t *testing.T) {
+	l, err := Load(write(t, "users: {a: {keys: [t k1]}}\nstanding: {max: 90d}\n"))
+	if err != nil || l.MaxStanding != 90*24*time.Hour {
+		t.Fatalf("max: %v %v", l.MaxStanding, err)
+	}
+	for in, want := range map[string]time.Duration{"30d": 30 * 24 * time.Hour, "36h": 36 * time.Hour, "90m": 90 * time.Minute} {
+		if d, err := ParseLifetime(in); err != nil || d != want {
+			t.Errorf("%s: %v %v", in, d, err)
+		}
+	}
+	for _, bad := range []string{"", "0d", "-1d", "xd", "soon", "0s"} {
+		if _, err := ParseLifetime(bad); err == nil {
+			t.Errorf("accepted %q", bad)
 		}
 	}
 }

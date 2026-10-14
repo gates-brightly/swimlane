@@ -19,6 +19,14 @@
 // manifests, for its script hash alone), plus the standing approvals
 // for whoever signed the queue entry it runs from, and approves when the
 // signers, named by lookup.yml, meet lookup.yml's rule for it.
+//
+// An approval is in one of five states (State): active; expired (past
+// its expiry); revoked (every signer's latest event revokes); stale (what
+// it approves changed: the script or manifest, or for a standing approval
+// lookup.yml's rule for the guard); insufficient (its signers don't meet
+// the rule, aren't in lookup.yml, or it outlasts lookup.yml's standing.max).
+// Who is who (users, keys, groups' members) is always read live: a key
+// removed from lookup.yml stops counting at once.
 package sigfile
 
 import (
@@ -93,6 +101,12 @@ type File struct {
 	// hash alone.
 	Manifest string           `yaml:"manifest_sha256,omitempty"`
 	Pinned   *manifest.Pinned `yaml:"pinned,omitempty"`
+
+	// Require is lookup.yml's require: rules when a standing approval was
+	// made (nil on one from before): for each guard, the rule it then had to
+	// meet. Once that guard's rule changes, either way, it stops counting
+	// there. (Script approvals bind every rule through their manifest.)
+	Require *[]lookup.Rule `yaml:"require,omitempty"`
 
 	Approves []string `yaml:"approves,omitempty"` // guard flags
 	All      bool     `yaml:"approves_all,omitempty"`
@@ -173,7 +187,11 @@ func (f *File) Statement() string {
 		exp = "never"
 	}
 	if f.Kind == Standing {
-		return fmt.Sprintf("swim standing approval v1\nfor: %s\napproves: %s\nexpires: %s\n", f.For, appr, exp)
+		rules := ""
+		if f.Require != nil {
+			rules = "rules-sha256: " + chain.Hash([]byte(lookup.RulesText(*f.Require))) + "\n" // only when bound, so older statements read the same
+		}
+		return fmt.Sprintf("swim standing approval v1\nfor: %s\n%sapproves: %s\nexpires: %s\n", f.For, rules, appr, exp)
 	}
 	cells := ""
 	if len(f.Cells) > 0 {
@@ -395,6 +413,158 @@ func (f *File) Expired(now time.Time) bool {
 	return err != nil || now.After(t)
 }
 
+// BindRules records l's require: rules in a new standing approval.
+func (f *File) BindRules(l *lookup.Lookup) {
+	rules := append([]lookup.Rule{}, l.Require...)
+	f.Require = &rules
+}
+
+// RuleChanged reports whether the rule flag must meet differs from the one
+// it had when standing approval f was made (false for one from before
+// approvals bound rules, and for script approvals).
+func (f *File) RuleChanged(l *lookup.Lookup, flag string) bool {
+	if f.Kind != Standing || f.Require == nil {
+		return false
+	}
+	return lookup.MatchRule(*f.Require, flag).Canonical() != l.RuleFor(flag).Canonical()
+}
+
+// lifetimeSlack allows for the moment between computing an expiry and
+// signing it.
+const lifetimeSlack = time.Minute
+
+// LifetimeWhy says why standing approval f outlasts lookup.yml's
+// standing.max, so doesn't count ("" if it doesn't, or there's no max). A
+// standing approval from before the max was set that never expires stops
+// counting once it is set.
+func (f *File) LifetimeWhy(l *lookup.Lookup) string {
+	if f.Kind != Standing || l.MaxStanding == 0 {
+		return ""
+	}
+	limit := "lookup.yml's standing.max (" + l.Standing.Max + ")"
+	if f.Expires == "" {
+		return "it never expires, which is longer than " + limit
+	}
+	exp, err := time.Parse(time.RFC3339, f.Expires)
+	if err != nil || len(f.Events) == 0 {
+		return "no lifetime to check against " + limit
+	}
+	at, err := time.Parse(time.RFC3339, f.Events[0].At)
+	if err != nil || exp.Sub(at) > l.MaxStanding+lifetimeSlack {
+		return "it lasts longer than " + limit
+	}
+	return ""
+}
+
+// Approval states.
+const (
+	Active       = "active"
+	Expired      = "expired"
+	Revoked      = "revoked"
+	Stale        = "stale"
+	Insufficient = "insufficient"
+)
+
+// State is an approval's state, why, and (active) what to fix before it
+// stops counting.
+type State struct {
+	Name     string
+	Why      string
+	Warnings []string
+}
+
+func (s State) String() string {
+	if s.Why == "" {
+		return s.Name
+	}
+	return s.Name + ": " + s.Why
+}
+
+// Current is what an approval is judged against: a script approval's
+// lane as it is now (Script "" or Manifest nil: not checked), and the
+// guard asking ("" for every guard the file names).
+type Current struct {
+	Script   string
+	Manifest *manifest.Manifest
+	Flag     string
+}
+
+// State says whether f counts now, on its own.
+func (f *File) State(l *lookup.Lookup, now time.Time, cur Current) State {
+	signers, bad := f.Standing(l)
+	switch {
+	case len(signers) == 0 && len(bad) > 0:
+		return State{Name: Insufficient, Why: bad[0]}
+	case len(f.Events) == 0:
+		return State{Name: Insufficient, Why: "no signatures"}
+	case len(signers) == 0:
+		return State{Name: Revoked, Why: "every signer revoked"}
+	case f.Expired(now):
+		return State{Name: Expired, Why: "expired " + f.Expires}
+	}
+	flags := f.Approves
+	if cur.Flag != "" {
+		flags = []string{cur.Flag}
+	}
+	switch f.Kind {
+	case Script:
+		if cur.Script != "" && cur.Script != f.SHA256 {
+			return State{Name: Stale, Why: "the script changed since"}
+		}
+		if cur.Manifest != nil && f.Manifest != "" && f.Manifest != cur.Manifest.SHA256 {
+			return State{Name: Stale, Why: f.StaleReason(cur.Manifest)}
+		}
+	case Standing:
+		if f.Require != nil && f.All && cur.Flag == "" && lookup.RulesText(*f.Require) != lookup.RulesText(l.Require) {
+			return State{Name: Stale, Why: "lookup.yml's require: rules changed since (it no longer counts for guards whose rule changed)"}
+		}
+		for _, g := range flags {
+			if f.RuleChanged(l, g) {
+				return State{Name: Stale, Why: "lookup.yml's rule for " + g + " changed since"}
+			}
+		}
+	}
+	if why := f.LifetimeWhy(l); why != "" {
+		return State{Name: Insufficient, Why: why}
+	}
+	if l.Path == "" {
+		return State{Name: Insufficient, Why: "no lookup.yml"}
+	}
+	known := 0
+	for _, s := range signers {
+		if s.User != "" {
+			known++
+		}
+	}
+	if known == 0 {
+		return State{Name: Insufficient, Why: "no signer is in lookup.yml"}
+	}
+	if !f.All || cur.Flag != "" {
+		for _, g := range flags {
+			if d := Decide([]*File{f}, l, g, now); !d.OK {
+				return State{Name: Insufficient, Why: g + ": " + d.Why}
+			}
+		}
+	}
+	return State{Name: Active, Warnings: f.Warnings(l)}
+}
+
+// Warnings are what's grandfathered about an active standing approval
+// from before approvals expired and bound rules.
+func (f *File) Warnings(l *lookup.Lookup) []string {
+	if f.Kind != Standing {
+		return nil
+	}
+	var w []string
+	if f.Expires == "" && l.MaxStanding == 0 {
+		w = append(w, "never expires: set standing.max in lookup.yml (it then stops counting), or revoke it and approve again (30d by default)")
+	}
+	if f.Require == nil {
+		w = append(w, "made before approvals bound lookup.yml's rules: a rule change doesn't stale it; revoke it and approve again")
+	}
+	return w
+}
+
 // Grant is one file's standing signers for a guard, ready to count.
 type Grant struct {
 	File    *File
@@ -402,7 +572,8 @@ type Grant struct {
 }
 
 // Collect returns, for flag, each file's standing known signers and why
-// the others don't count (expired, not covering it, unknown keys, broken).
+// the others don't count (expired, stale, outlasting standing.max, unknown
+// keys, broken).
 func Collect(files []*File, l *lookup.Lookup, flag string, now time.Time) ([]Grant, []string) {
 	var grants []Grant
 	var why []string
@@ -413,6 +584,13 @@ func Collect(files []*File, l *lookup.Lookup, flag string, now time.Time) ([]Gra
 			continue
 		case f.Expired(now):
 			why = append(why, name+" expired")
+			continue
+		case f.RuleChanged(l, flag):
+			why = append(why, name+" stale: lookup.yml's rule for "+flag+" changed since it was signed")
+			continue
+		}
+		if w := f.LifetimeWhy(l); w != "" {
+			why = append(why, name+": "+w)
 			continue
 		}
 		signers, bad := f.Standing(l)

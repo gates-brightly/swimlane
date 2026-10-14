@@ -46,8 +46,11 @@ it in the first of these ways that applies (`internal/assets/lib.sh`,
 2. **Signed approvals.** Approvals of this exact script (by SHA-256), plus
    the standing approvals of whoever signed the queue entry the run came
    from, are counted against `lookup.yml`'s rule for the guard. A signature
-   from a key `lookup.yml` doesn't list, a revoked approval and an expired
-   one don't count. An approval bound to evidence counts only while this
+   from a key `lookup.yml` doesn't list (read live: a removed key stops
+   counting at once), a revoked approval and an expired one don't count,
+   and neither does one signed under a different rule for the guard
+   (standing approvals expire, 30 days by default, capped by
+   `standing.max`). An approval bound to evidence counts only while this
    run's evidence matches (`swim watch` doesn't compare evidence, and says
    so in the log).
 3. **The person at the terminal.** An answer given ahead of time in the
@@ -216,6 +219,7 @@ Test files are under `internal/`. "Pending" names the task in
 | An env file can't approve a guard. | `TestEnvFileGuardFlagRefused` (e2e/envfile_test.go) |
 | Signed approvals must meet `lookup.yml`'s rule; an unknown key doesn't count; a revoked approval stops counting. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
 | Standing approvals apply only to batches the queuer signed, holding the exact script. | `TestStandingApproval` (e2e/custody_test.go) |
+| A rule change, stricter or looser, stales a standing approval for that guard; a removed key stops counting at once; standing approvals expire, capped by `standing.max`. | `TestApprovalLifecycle` (e2e/custody_test.go), `TestState`, `TestStandingMax` (sigfile) |
 | A worker's own environment approves nothing; a batch's approvals are recorded as the queue's. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
 | `swim watch -y` is logged as the worker's. | `TestWatchYes` (e2e/queue_test.go) |
 | `swim watch --approved` runs a script once it is fully approved. | `TestWatchSigned` (e2e/custody_test.go) |

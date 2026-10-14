@@ -64,7 +64,7 @@ COMMANDS
                            (--tls-cert/--tls-key serve https; enroll --ca FILE trusts its cert)
   wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
-  approve --auto USER      standing approval of every job USER queues, until revoked
+  approve --auto USER      standing approval of every job USER queues, until it expires or is revoked
   revoke N|JOB / --auto USER   withdraw your approval
   verify                   prove the chain of custody is intact (logs, scripts, signatures)
   history [RUN|N|JOB] [--oneline]   the chain of custody, like git log: who approved and ran what

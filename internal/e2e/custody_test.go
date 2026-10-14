@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/sigfile"
+	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
 // people makes an ssh key per name and a lookup.yml listing them, with
@@ -257,4 +259,87 @@ func TestStandingApproval(t *testing.T) {
 	r.mustSwim("watch", "--once")
 	contains(t, "revoked", r.log(2), "SKIP  small change 3 (dry run:")
 	contains(t, "verify", r.mustSwim("verify"), "verified: every link")
+}
+
+// The approval lifecycle: standing approvals expire (30d by default,
+// capped by lookup.yml's standing.max), bind each guard's rule (a change
+// either way stales them), and who is who is read live.
+func TestApprovalLifecycle(t *testing.T) {
+	r := newRepo(t, "")
+	keys := people(t, r, "groups:\n  platform-admin: [zach, alice]\nrequire:\n  - guards: [FIN_ALLOW_*]\n    group: platform-admin\n    count: 2\n", "zach", "alice", "bob")
+	lookupPath := filepath.Join(r.root, "lookup.yml")
+	base, _ := os.ReadFile(lookupPath)
+	setLookup := func(from, to string) {
+		data, _ := os.ReadFile(lookupPath)
+		os.WriteFile(lookupPath, []byte(strings.Replace(string(data), from, to, 1)), 0o644)
+	}
+	r.mustSwim("config", "signing", "auto")
+	r.mustSwim("config", "signing_key", keys["zach"])
+	dropLane(t, r)
+	runQueued := func() string {
+		r.mustSwim("queue", "add", "1", "--key", keys["bob"])
+		r.mustSwim("watch", "--once")
+		return r.log(1)
+	}
+
+	contains(t, "default expiry", r.mustSwim("approve", "--auto", "bob", "--key", keys["zach"]), "standing approval expires in 30d (--expires D to change)")
+	contains(t, "listed", r.mustSwim("approve"), "standing: every job bob queues · active", "· expires 20")
+	contains(t, "one admin", runQueued(), "SKIP  drop table old_orders (dry run: approval needs 2 signature(s) from platform-admin, has 1")
+
+	// Loosening the rule doesn't make the old, insufficient approval count:
+	// it was signed under the rule that needed two.
+	setLookup("count: 2", "count: 1")
+	contains(t, "loosened", runQueued(), "auto.bob.signature stale: lookup.yml's rule for FIN_ALLOW_DROP changed since it was signed")
+	contains(t, "listed stale", r.mustSwim("approve"), "stale: lookup.yml's require: rules changed since")
+	// Approving again replaces it, under the rule as it is now.
+	contains(t, "replace", r.mustSwim("approve", "--auto", "bob", "--key", keys["zach"]), "replacing approvals/auto.bob.signature (stale: ", "approved every job bob queues")
+	contains(t, "re-approved", runQueued(), "APPROVED  drop table old_orders (approved by zach (platform-admin) (standing approval for jobs queued by bob))")
+
+	// Removing zach's key from lookup.yml stops his approval at once.
+	data, _ := os.ReadFile(lookupPath)
+	var kept []string
+	inZach := false
+	for _, line := range strings.Split(string(data), "\n") {
+		switch {
+		case line == "  zach:":
+			inZach = true
+			kept = append(kept, line, "    keys: []")
+			continue
+		case inZach && strings.HasPrefix(line, "    keys:"):
+			inZach = false
+			continue
+		}
+		kept = append(kept, line)
+	}
+	os.WriteFile(lookupPath, []byte(strings.Join(kept, "\n")), 0o644)
+	contains(t, "key removed", runQueued(), "1 signer(s) not in lookup.yml")
+	os.WriteFile(lookupPath, base, 0o644)
+
+	// standing.max caps how long one may last.
+	setLookup("groups:", "standing: {max: 7d}\ngroups:")
+	if out, code := r.swim("approve", "--auto", "alice", "--expires", "30d", "--key", keys["zach"]); code == 0 || !strings.Contains(out, "--expires 30d is longer than lookup.yml's standing.max (7d)") {
+		t.Errorf("over the max: %d %s", code, out)
+	}
+	contains(t, "default under a shorter max", r.mustSwim("approve", "--auto", "alice", "--key", keys["zach"]), "standing approval expires in 7d")
+
+	// A standing approval from before they expired (never expires, no rules
+	// bound) keeps counting, with warnings, until standing.max is set.
+	os.WriteFile(lookupPath, base, 0o644)
+	setLookup("count: 2", "count: 1")
+	k, err := sign.LoadKey(keys["zach"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := &sigfile.File{Kind: sigfile.Standing, For: "bob", All: true, Path: sigfile.StandingPath(r.root, "bob")}
+	if err := legacy.Add(k, sigfile.Approve, "zach"); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Save()
+	contains(t, "legacy listed", r.mustSwim("approve"), "standing: every job bob queues · active", "warning: never expires", "warning: made before approvals bound lookup.yml's rules")
+	contains(t, "legacy doctor", r.mustSwim("doctor"), "standing-approval", "never expires")
+	contains(t, "legacy verify", r.mustSwim("verify"), "warning: approvals/auto.bob.signature: never expires")
+	contains(t, "legacy counts", runQueued(), "APPROVED  drop table old_orders (approved by zach (platform-admin) (standing")
+	setLookup("groups:", "standing: {max: 90d}\ngroups:")
+	contains(t, "legacy capped", r.mustSwim("approve"), "insufficient: it never expires, which is longer than lookup.yml's standing.max (90d)")
+	contains(t, "legacy stops", runQueued(), "auto.bob.signature: it never expires")
 }
