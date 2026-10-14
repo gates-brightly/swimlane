@@ -2,12 +2,16 @@
 # swim: syntax 2
 # Round:   CI: lint (build, gofmt, vet, swim lint, shell syntax)
 # Job:     5c1a0001-11a7-4c1e-8d00-000000000001
+# Always:  yes
+# Rerun-Children: yes
 # Owner:   swim CI
 # Created: 2026-10-09
 # Timeout: 10m
 #
 # Goal: the tree builds and is clean before the tests spend minutes on it.
-# lane.2.sh (unit) and lane.3.sh (e2e) wait for this round to pass.
+# lane.2.sh (unit) and lane.3.sh (e2e) wait for this round to pass. It's an
+# Always lane, so every swim all or swim ci runs it fresh, and with
+# Rerun-Children the tests under it run again too, even if they passed.
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 

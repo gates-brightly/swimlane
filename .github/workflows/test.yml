@@ -43,7 +43,7 @@ jobs:
           echo "$RUNNER_TEMP/swim-bin" >> "$GITHUB_PATH"
 
       - name: swim ci
-        run: swim ci --rerun --junit swim.xml
+        run: swim ci --junit swim.xml
 
       - name: Upload swim logs and JUnit
         if: always()
