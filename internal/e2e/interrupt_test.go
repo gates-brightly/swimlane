@@ -259,7 +259,7 @@ func TestImmediateInterruptMode(t *testing.T) {
 	l.wait(t, 5*time.Second)
 	contains(t, "output", l.out.String(), "swim: force quitting")
 	contains(t, "agent1.log", r.log(1), "FAIL  long (exit 130, interrupted)")
-	noStray(t, "sleep 3")
+	noStray(t, `sleep 3(1\.9|2\.1)`) // this test's own steps, not any "sleep 3" on the machine
 }
 
 func TestStopDuringRetryWait(t *testing.T) {

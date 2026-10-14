@@ -357,18 +357,14 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 		{"the evidence changed between approval and exec", "T1, T2", func(t *testing.T) {
 			gap(t, "T1, T2")
 		}},
-		{"a chain record over 256 KiB, then another append", "T24", func(t *testing.T) {
-			gap(t, "T24")
-		}},
+		{"a chain record over 256 KiB, then another append", "T24", TestChainLargeEntryAndRepair},
 		{"a worker killed mid-step: no false success, no silent re-run", "T6, T7", func(t *testing.T) {
 			gap(t, "T6, T7")
 		}},
 		{"a worker killed mid-chain-append: the chain is repairable", "T6, T7", func(t *testing.T) {
 			gap(t, "T6, T7")
 		}},
-		{"escape sequences in a guard description are shown escaped", "T26", func(t *testing.T) {
-			gap(t, "T26")
-		}},
+		{"escape sequences in a guard description are shown escaped", "T26", TestUntrustedTextIsSafe},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
