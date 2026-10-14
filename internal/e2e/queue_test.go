@@ -271,6 +271,13 @@ func TestWatchYes(t *testing.T) {
 	}
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 	contains(t, ".swim.log", string(hist), "every other guard approved by swim watch -y (worker)")
+	// swim status names what approved which guard with no one asked.
+	if l := r.status().Get(2); strings.Join(l.AutoApproved, " ") != "ALLOW_OTHER" || l.AutoVia != "swim watch -y" {
+		t.Errorf("status lane 2: auto_approved %v via %q", l.AutoApproved, l.AutoVia)
+	}
+	if l := r.status().Get(1); strings.Join(l.FlagApproved, " ") != "ALLOW_DROP" || len(l.AutoApproved) != 0 {
+		t.Errorf("status lane 1: flag_approved %v auto_approved %v", l.FlagApproved, l.AutoApproved)
+	}
 
 	// Without -y the same batch would have dry-run lane 2's change.
 	r.mustSwim("queue", "add", "2")

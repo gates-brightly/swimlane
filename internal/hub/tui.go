@@ -198,6 +198,9 @@ func laneLine(l Lane, now time.Time) string {
 	if l.Reason != "" && l.State != "running" {
 		parts = append(parts, l.Reason)
 	}
+	if len(l.AutoApproved) > 0 {
+		parts = append(parts, "approved by "+l.AutoVia+": "+strings.Join(l.AutoApproved, ", "))
+	}
 	return fmt.Sprintf("swim %-2d %-11s %-30s %s", l.Lane, l.State, clip(l.Round, 30), strings.Join(parts, " · "))
 }
 

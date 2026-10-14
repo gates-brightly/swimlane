@@ -73,9 +73,12 @@ type Entry struct {
 	// round
 	Result    string   `json:"result,omitempty"`
 	Exit      *int     `json:"exit,omitempty"`
-	Log       string   `json:"log,omitempty"`        // SHA-256 of the round's section of the log
-	Approvals []string `json:"approvals,omitempty"`  // hashes of the approve entries it used
-	EnvSHA256 string   `json:"env_sha256,omitempty"` // the lane's env from env files (sorted KEY=VALUE)
+	Log       string   `json:"log,omitempty"`       // SHA-256 of the round's section of the log
+	Approvals []string `json:"approvals,omitempty"` // hashes of the approve entries it used
+	// AutoApproved are the guards among them approved by -y, with no one
+	// asked: on the round itself, so it shows without following the hashes.
+	AutoApproved []string `json:"auto_approved,omitempty" yaml:"auto_approved,omitempty"`
+	EnvSHA256    string   `json:"env_sha256,omitempty"` // the lane's env from env files (sorted KEY=VALUE)
 	// Handlers are the round's outcome handlers that ran: name -> PASS | FAIL | SKIP | none.
 	Handlers map[string]string `json:"handlers,omitempty"`
 	// Outputs are the files (and values) the round produced: name -> SHA-256.

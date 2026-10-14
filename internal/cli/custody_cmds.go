@@ -727,6 +727,9 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 		for _, a := range l.Approvals {
 			field("Approval", a)
 		}
+		if len(l.AutoApproved) > 0 {
+			field("Auto", strings.Join(l.AutoApproved, " ")+" (approved by -y: no one was asked)")
+		}
 	case "grant", "revoke":
 		what := l.Action
 		if what == "" {

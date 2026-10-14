@@ -30,6 +30,9 @@ type LaneReport struct {
 	Round    *logparse.Round // nil if the lane didn't run in this run
 	Lines    []string        // that round's log lines
 	Log      string          // the log's path, relative to the repo
+	// Unprompted sums up the guards approved with no one asked, -y's and
+	// guard flags' (status.Lane.UnpromptedText); "" for none.
+	Unprompted string
 }
 
 // Collect builds the reports for lanes after run, from status.yml and the logs.
@@ -45,6 +48,9 @@ func Collect(root string, lanes []int, run string) []LaneReport {
 		if st != nil {
 			if l := st.Get(n); l != nil {
 				r.Job, r.Title, r.State, r.Reason, r.Exit = l.Job, l.Round, l.State, l.Reason, l.ExitCode
+				if l.Run == run {
+					r.Unprompted = l.UnpromptedText()
+				}
 				if l.DurationS != nil {
 					r.Duration = *l.DurationS
 				}
@@ -82,7 +88,7 @@ func cellReports(root string, st *status.File, n int, run string) []LaneReport {
 		path := lane.CellLog(root, n, c.Cell)
 		rel := ".swim/logs/" + filepath.Base(path)
 		r := LaneReport{N: n, Label: "swim " + info.SubLabel(n, c.Cell), Job: c.Job, Title: c.Round, State: c.State,
-			Reason: c.Reason, Exit: c.ExitCode, Log: rel}
+			Reason: c.Reason, Exit: c.ExitCode, Log: rel, Unprompted: c.UnpromptedText()}
 		if c.DurationS != nil {
 			r.Duration = *c.DurationS
 		}
@@ -196,13 +202,17 @@ func writeLines(w io.Writer, r LaneReport) {
 	}
 }
 
-// Annotate surfaces failures (error), drift (warning), dry-run skips
-// (notice) and, as one notice, the lanes skipped because of others.
+// Annotate surfaces failures (error), drift and guards approved without
+// a prompt (warning), dry-run skips (notice) and, as one notice, the lanes
+// skipped because of others.
 func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 	skipped := map[string][]string{}
 	var reasons []string
 	for _, r := range reps {
 		title := fmt.Sprintf("%s: %s", r.name(), r.Title)
+		if r.Unprompted != "" {
+			p.Annotate(w, Warning, title, "approved without a prompt: "+r.Unprompted)
+		}
 		if r.Round == nil {
 			if r.State == status.Skipped {
 				if _, ok := skipped[r.Reason]; !ok {
@@ -285,6 +295,15 @@ func Markdown(w io.Writer, reps []LaneReport, run, commit string, code int) {
 		}
 		fmt.Fprintf(w, "| %s | `%s` | %s | %d | %d | %d | %d | %s | %s |\n", r.name(), lane.ShortJob(r.Job), word(r.State),
 			pass, fail, skip, drift, t, strings.Join(failed, "<br>"))
+	}
+	var unprompted []string
+	for _, r := range reps {
+		if r.Unprompted != "" {
+			unprompted = append(unprompted, r.name()+": "+mdCell(r.Unprompted))
+		}
+	}
+	if len(unprompted) > 0 {
+		fmt.Fprintf(w, "\n**Approved without a prompt:** %s\n", strings.Join(unprompted, "; "))
 	}
 	fmt.Fprintln(w, "\nLogs: `.swim/logs/` (upload them as an artifact to keep them).")
 }

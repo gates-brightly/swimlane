@@ -46,6 +46,9 @@ const (
 // unless it runs headless.
 var headlessInfo *hub.HeadlessInfo
 
+// watchYes is set by swim watch -y, for hubSnapshot.
+var watchYes bool
+
 // headlessFlags are swim watch's headless-only flags.
 type headlessFlags struct {
 	detach, status, stop, uninstall, iMeanIt bool

@@ -54,6 +54,10 @@ drift "queue policy differs"`)
 
 func TestCIGitHub(t *testing.T) {
 	r := ciRepo(t)
+	// Lane 4's guard is approved by the job's ALLOW_Y=1: no one is asked,
+	// so the summary says so.
+	r.script(4, "after root", `if guard ALLOW_Y "seed y"; then run "child" true; fi`)
+	withHeader(t, r, 4, "# After: 1")
 	summary := filepath.Join(t.TempDir(), "summary.md")
 	junit := filepath.Join(r.root, "swim.xml")
 	out, code := r.swimEnv([]string{"GITHUB_ACTIONS=true", "CI=true", "GITHUB_STEP_SUMMARY=" + summary, "ALLOW_Y=1"}, "ci", "--junit", junit)
@@ -62,7 +66,8 @@ func TestCIGitHub(t *testing.T) {
 	}
 	contains(t, "ci output", out,
 		"swim ci · swim ", "provider github", "selected: every pending round that hasn't passed",
-		"guard flags set: none",
+		"guard flags set (names only): ALLOW_Y",
+		"::warning title=swim 4%3A after root::approved without a prompt: ALLOW_Y (flag set)",
 		"[2] ==> convert", "[2] FAIL  convert (exit 1)", // step headers and results stream live
 		"::group::swim 1 PASS - root (job ", "::endgroup::",
 		"==== swim 2 FAIL - fails (job ", // a failed lane stays open
@@ -72,7 +77,8 @@ func TestCIGitHub(t *testing.T) {
 		"::notice title=swim%3A 1 lane skipped::swim 3 (swim 2 failed)",
 		"artifacts to upload: .swim/logs/ .swim/snapshots/ .swim/out/ .swim.log "+junit)
 	md, _ := os.ReadFile(summary)
-	contains(t, "job summary", string(md), "## swim ci: failed", "| swim 2 |", "FAIL  convert (exit 1)", "| swim 3 |", "swim 2 failed")
+	contains(t, "job summary", string(md), "## swim ci: failed", "| swim 2 |", "FAIL  convert (exit 1)", "| swim 3 |", "swim 2 failed",
+		"**Approved without a prompt:** swim 4: ALLOW_Y (flag set)")
 	data, _ := os.ReadFile(junit)
 	var j struct {
 		Suites []struct {

@@ -426,6 +426,8 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 			gap(t, "T6, T7")
 		}},
 		{"escape sequences in a guard description are shown escaped", "T26", TestUntrustedTextIsSafe},
+		{"-y is loud: swim status, the round's chain entry and swim history name what it approved", "T5", TestAutoApprove},
+		{"guards approved without a prompt are in the CI summary and a warning annotation", "T5", TestCIGitHub},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

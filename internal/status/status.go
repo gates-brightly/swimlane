@@ -81,6 +81,13 @@ type Lane struct {
 	CheckSHA    string   `yaml:"check_sha256,omitempty"`
 	CheckStop   string   `yaml:"check_stop,omitempty"`
 	CheckGuards []string `yaml:"check_guards,flow,omitempty"`
+	// The guards the round's run approved without a prompt: AutoApproved by
+	// -y (swim run -y, a queue batch's -y, swim watch -y; AutoVia says
+	// which), FlagApproved by a guard flag swim run's own environment set
+	// (FLAG=1) or the queue batch approved. Cleared when a round starts.
+	AutoApproved []string `yaml:"auto_approved,flow,omitempty"`
+	AutoVia      string   `yaml:"auto_via,omitempty"`
+	FlagApproved []string `yaml:"flag_approved,flow,omitempty"`
 	// A matrix round's cells, each with its own state (Cell names it).
 	Cell        string `yaml:"cell,omitempty"`
 	Cells       []Lane `yaml:"cells,omitempty"`
@@ -319,6 +326,36 @@ func (l *Lane) ResetRun() {
 	l.Handlers = nil
 	l.Message, l.Progress, l.MessageAt = "", "", ""
 	l.FailedSteps = []string{}
+	l.AutoApproved, l.AutoVia, l.FlagApproved = nil, "", nil
+}
+
+// Unprompted records that guard flag was approved without a prompt: by -y
+// when via names it ("swim run -y"), else by a guard flag. Each flag is
+// listed once.
+func (l *Lane) Unprompted(flag, via string) {
+	list := &l.FlagApproved
+	if via != "" {
+		list, l.AutoVia = &l.AutoApproved, via
+	}
+	for _, f := range *list {
+		if f == flag {
+			return
+		}
+	}
+	*list = append(*list, flag)
+}
+
+// UnpromptedText sums up the guards approved without a prompt: "DEPLOY,
+// MIGRATE (swim run -y); SEED (flag set)" ("" for none).
+func (l *Lane) UnpromptedText() string {
+	var parts []string
+	if len(l.AutoApproved) > 0 {
+		parts = append(parts, strings.Join(l.AutoApproved, ", ")+" ("+l.AutoVia+")")
+	}
+	if len(l.FlagApproved) > 0 {
+		parts = append(parts, strings.Join(l.FlagApproved, ", ")+" (flag set)")
+	}
+	return strings.Join(parts, "; ")
 }
 
 // Ptr helpers for the nullable fields.

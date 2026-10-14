@@ -104,7 +104,8 @@ func reports() []LaneReport {
 			{Kind: "DRIFT", Label: "queue policy differs", Stage: "verify"},
 		}}
 	return []LaneReport{
-		{N: 1, Title: "deploy", State: "failed", Exit: &exit1, Duration: 3.5, Round: r, Lines: []string{"== ROUND x", "  FAIL  apply (exit 1)"}},
+		{N: 1, Title: "deploy", State: "failed", Exit: &exit1, Duration: 3.5, Round: r, Lines: []string{"== ROUND x", "  FAIL  apply (exit 1)"},
+			Unprompted: "ALLOW_A (swim run -y); DEPLOY (flag set)"},
 		{N: 2, Title: "after", State: "skipped", Reason: "swim 1 failed"},
 		{N: 3, Title: "after too", State: "skipped", Reason: "swim 1 failed"},
 	}
@@ -113,7 +114,8 @@ func reports() []LaneReport {
 func TestAnnotateAndSections(t *testing.T) {
 	var b bytes.Buffer
 	Annotate(&b, Generic{}, reports())
-	want := "swim: error: swim 1: deploy: FAIL  apply (exit 1)\n" +
+	want := "swim: warning: swim 1: deploy: approved without a prompt: ALLOW_A (swim run -y); DEPLOY (flag set)\n" +
+		"swim: error: swim 1: deploy: FAIL  apply (exit 1)\n" +
 		"swim: notice: swim 1: deploy: delete table: dry run: set X=1 to approve\n" +
 		"swim: warning: swim 1: deploy: DRIFT  queue policy differs\n" +
 		"swim: notice: swim: 2 lanes skipped: swim 2, 3 (swim 1 failed)\n"
@@ -151,9 +153,16 @@ func TestJUnit(t *testing.T) {
 func TestMarkdown(t *testing.T) {
 	var b bytes.Buffer
 	Markdown(&b, reports(), "r-1", "0123456789abcdef", 1)
-	for _, want := range []string{"## swim ci: failed", "commit `0123456789ab`", "| swim 1 | `` | FAIL | 1 | 1 | 1 | 1 |", "FAIL  apply (exit 1)", "| swim 2 | `` | SKIP |"} {
+	for _, want := range []string{"## swim ci: failed", "commit `0123456789ab`", "| swim 1 | `` | FAIL | 1 | 1 | 1 | 1 |", "FAIL  apply (exit 1)", "| swim 2 | `` | SKIP |",
+		"\n**Approved without a prompt:** swim 1: ALLOW_A (swim run -y); DEPLOY (flag set)\n"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("summary missing %q:\n%s", want, b.String())
 		}
+	}
+	// Only when something was.
+	b.Reset()
+	Markdown(&b, reports()[1:], "r-1", "", 0)
+	if strings.Contains(b.String(), "without a prompt") {
+		t.Errorf("summary without unprompted approvals:\n%s", b.String())
 	}
 }

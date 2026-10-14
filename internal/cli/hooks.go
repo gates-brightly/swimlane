@@ -636,9 +636,10 @@ func cmdFinish(args []string) error {
 	// approvals it used, signed by the runner.
 	if rounds, _ := splitRounds(logPath); len(rounds) > 0 {
 		exit := code
+		approvals, auto := roundApprovals(root, r.Run, n)
 		if err := record(root, cfg, chain.Entry{Type: "round", Run: r.Run, Lane: n, Job: r.Job, Round: r.Title,
 			Script: scriptSHA(root, n), Manifest: manifestSHA(root, n), Result: state, Exit: &exit,
-			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: roundApprovals(root, r.Run, n),
+			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: approvals, AutoApproved: auto,
 			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums, Evidence: roundEvidence(root, r),
 			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())

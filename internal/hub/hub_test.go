@@ -36,10 +36,12 @@ func TestHubFlow(t *testing.T) {
 	exit := 1
 	snap := Snapshot{Worker: Worker{Name: "billing", Host: "box1", Root: "/srv/billing"}, Activity: "running q-1", Interval: 2,
 		Lanes: []Lane{{Lane: 1, State: "running", Round: "cut over <api>", Step: "deploy", Tail: []string{"  RUNNING  deploy (in progress)", "        | step 3/5"},
-			Message: "migrating billing", Progress: "7/28", MsgAt: time.Now().Add(-9 * time.Minute).UTC().Format(time.RFC3339)},
-			{Lane: 2, State: "failed", Round: "migrate", Exit: &exit}},
-		Queue:  []Batch{{Seq: 1, ID: "q-1", State: "running", Lanes: []int{1, 2}}},
-		Events: []string{"2026-10-13T15:00:00Z  zach  queue-run  q-1"}}
+			Message: "migrating billing", Progress: "7/28", MsgAt: time.Now().Add(-9 * time.Minute).UTC().Format(time.RFC3339),
+			AutoApproved: []string{"DEPLOY", "SWAP"}, AutoVia: "swim run -y"},
+			{Lane: 2, State: "failed", Round: "migrate", Exit: &exit, FlagApproved: []string{"MIGRATE"}}},
+		AutoApprove: "swim watch -y",
+		Queue:       []Batch{{Seq: 1, ID: "q-1", State: "running", Lanes: []int{1, 2}}},
+		Events:      []string{"2026-10-13T15:00:00Z  zach  queue-run  q-1"}}
 	if err := c.Report(snap); err != nil {
 		t.Fatal(err)
 	}
@@ -60,13 +62,15 @@ func TestHubFlow(t *testing.T) {
 	// Pages: escaped, with the live tail.
 	page := get(t, srv.URL+"/")
 	for _, want := range []string{"billing", "/srv/billing", "running q-1", "swim 1 running", "cut over &lt;api&gt;", "1 failed",
-		"… migrating billing (7/28)", `style="width:25%"`, "9m ago"} {
+		"… migrating billing (7/28)", `style="width:25%"`, "9m ago",
+		`<span class="pill bad" title="approved by swim run -y: DEPLOY SWAP ">-y</span>`, `<b class="bad">swim watch -y</b>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
 	detail := get(t, srv.URL+"/w/"+id)
-	for _, want := range []string{"RUNNING  deploy (in progress)", "| step 3/5", "q-1", "queue-run", "(exit 1)"} {
+	for _, want := range []string{"RUNNING  deploy (in progress)", "| step 3/5", "q-1", "queue-run", "(exit 1)",
+		"approved by swim run -y, no one asked: DEPLOY, SWAP", "flag set: MIGRATE", "swim watch -y: approves every guard in every batch"} {
 		if !strings.Contains(detail, want) {
 			t.Errorf("worker page missing %q", want)
 		}
@@ -108,7 +112,8 @@ func TestScreenRows(t *testing.T) {
 	views := []View{
 		{Snapshot: Snapshot{Worker: Worker{ID: "a1", Name: "orders", Host: "mac", Root: "/r/orders"}, Activity: "running q-1 (#4)",
 			Lanes: []Lane{
-				{Lane: 1, State: "running", Round: "Cut over", Step: "plan", Progress: "3/7", Started: now.Add(-42 * time.Second).Format(time.RFC3339), Tail: []string{"| tick"}},
+				{Lane: 1, State: "running", Round: "Cut over", Step: "plan", Progress: "3/7", Started: now.Add(-42 * time.Second).Format(time.RFC3339), Tail: []string{"| tick"},
+					AutoApproved: []string{"DEPLOY"}, AutoVia: "swim run -y"},
 				{Lane: 2, State: "idle"},
 			},
 			Queue: []Batch{{Seq: 5, State: "queued", Lanes: []int{3, 4}, By: "zach"}}}, Seen: now},
@@ -126,7 +131,7 @@ func TestScreenRows(t *testing.T) {
 	}
 	list := text(ListRows(views, "", nil, now))
 	for _, want := range []string{"w:a1|orders", "running", "▶·", "w:b2|infra", "stale 2m", "(no report since 11:58)",
-		"── orders · /r/orders", "swim 1  running     Cut over", "plan · 3/7 · 0:42", "queue   #5 queued   swim 3,4  by zach"} {
+		"── orders · /r/orders", "swim 1  running     Cut over", "plan · 3/7 · 0:42 · approved by swim run -y: DEPLOY", "queue   #5 queued   swim 3,4  by zach"} {
 		if !strings.Contains(list, want) {
 			t.Errorf("list lacks %q:\n%s", want, list)
 		}

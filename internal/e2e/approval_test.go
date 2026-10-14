@@ -144,10 +144,30 @@ if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
 	contains(t, "agent2.log", r.log(2), "APPROVED  change b (approved by swim run -y (tester))", "PASS  b changed")
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 	contains(t, ".swim.log", string(hist), "change a  (ALLOW_A, by tester with swim run -y)")
+	// Loud where people look: swim status (and its YAML), the round's chain
+	// entry and swim history.
+	if l := r.status().Get(1); strings.Join(l.AutoApproved, " ") != "ALLOW_A" || l.AutoVia != "swim run -y" {
+		t.Errorf("status lane 1: auto_approved %v via %q", l.AutoApproved, l.AutoVia)
+	}
+	contains(t, "status", r.mustSwim("status"), "approved without a prompt: ALLOW_A (swim run -y)", "approved without a prompt: ALLOW_B (swim run -y)")
+	contains(t, "status --yaml", r.mustSwim("status", "2", "--yaml"), "auto_approved: [ALLOW_B]", "auto_via: swim run -y")
+	contains(t, "history --yaml", r.mustSwim("history", "--yaml"), "auto_approved:\n        - ALLOW_A")
+	contains(t, "history", r.mustSwim("history", "1", "--no-pager"), "Auto:      ALLOW_A (approved by -y: no one was asked)")
 
 	// The lane shorthand takes it too, and the YAML stream records it.
 	r.script(2, "again", `if guard ALLOW_C "change c"; then run "c changed" true; fi`)
 	contains(t, "yaml", r.mustSwim("2", "-y", "--yaml"), "event: approved", "label: change c", "detail: ALLOW_C (-y)")
+	// A round approved by its flag instead lists it as such, and the next
+	// round starts clean.
+	r.script(2, "flagged", `if guard ALLOW_D "change d"; then run "d changed" true; fi`)
+	c = r.cmd(bin, "2")
+	c.Env = append(c.Env, "ALLOW_D=1")
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("ALLOW_D=1 swim 2: %v\n%s", err, out)
+	}
+	if l := r.status().Get(2); len(l.AutoApproved) != 0 || l.AutoVia != "" || strings.Join(l.FlagApproved, " ") != "ALLOW_D" {
+		t.Errorf("status lane 2 after a flag-approved round: auto %v via %q flag %v", l.AutoApproved, l.AutoVia, l.FlagApproved)
+	}
 	if out, code := r.swim("all", "-y", "--no-prompt"); code == 0 || !strings.Contains(out, "not both") {
 		t.Errorf("-y with --no-prompt: %d %s", code, out)
 	}

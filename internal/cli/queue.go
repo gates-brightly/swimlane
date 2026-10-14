@@ -648,6 +648,7 @@ func cmdWatch(args []string) error {
 	}
 	fmt.Println(p.Paint(ui.Bold, "swim watch · "+mode))
 	if yes {
+		watchYes = true // the hub shows it (hubSnapshot)
 		fmt.Println(p.Paint(ui.Yellow+ui.Bold, "swim watch: -y: every guard in every batch is approved, beyond what each batch approves (logged as approved by swim watch -y ("+operator()+"))"))
 	}
 	code, s := 0, sayer{p: p, prefix: "swim watch: "}
