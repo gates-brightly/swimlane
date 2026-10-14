@@ -1,5 +1,5 @@
 // Package chime rings the terminal bell, plays a sound or shows a desktop
-// notification when swim run / swim all finishes (features/chime.md).
+// notification when swim run / swim all finishes.
 // Should is the pure decision; Chimer does the ringing, with its output
 // writer and external-command runner injectable so tests never make noise.
 package chime

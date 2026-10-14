@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// swim config <key> [value]: get, set, reject (features/chime.md).
+// swim config <key> [value]: get, set, reject.
 func TestConfigKeys(t *testing.T) {
 	r := newRepo(t, "")
 	if got := strings.TrimSpace(r.mustSwim("config", "chime")); got != "false" {
