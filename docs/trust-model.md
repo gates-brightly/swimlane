@@ -253,8 +253,14 @@ These skip the question on purpose. Each leaves a record.
 | `swim watch -y` | The worker approves every guard in every batch, beyond what each batch approves. | `approved by swim watch -y (<user>)`; chain method `auto`; the consumed entry's `approved_by`. |
 | `swim watch --approved` | Queues and runs a script as soon as its signed approvals meet `lookup.yml`'s rules, with no one choosing when. | A queue entry by `approval (<names>)` and a `.swim.log` queue event; the guards are approved by `signature`. |
 
-`-y` isn't yet surfaced in `swim status`, CI summaries or the hub (T5,
-pending): today you find it in the log, `.swim.log` and the chain.
+What `-y` approved is also loud where a run's result is read, so it shows
+without reading the chain: `swim status` lists the guards under the lane
+(`auto_approved`, `auto_via` in `status.yml`), the round's chain entry
+carries `auto_approved` (`swim history`), `swim ci` names them in the job
+summary with a warning annotation, and the hub shows a `-y` badge on the
+lane and on a worker running `swim watch -y`. Guards approved by a flag
+(`FLAG=1`, a batch's `--approve`) are listed the same way, as
+`flag_approved`.
 
 ## Out of scope
 
@@ -301,6 +307,7 @@ Test files are under `internal/`. "Pending" names the task in
 | A rule change, stricter or looser, stales a standing approval for that guard; a removed key stops counting at once; standing approvals expire, capped by `standing.max`. | `TestApprovalLifecycle` (e2e/custody_test.go), `TestState`, `TestStandingMax` (sigfile) |
 | A worker's own environment approves nothing; a batch's approvals are recorded as the queue's. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
 | `swim watch -y` is logged as the worker's. | `TestWatchYes` (e2e/queue_test.go) |
+| What `-y` (and a guard flag) approved shows in `swim status`, the round's chain entry and `swim history`, the CI summary and annotations, and the hub. | `TestAutoApprove` (e2e/approval_test.go), `TestCIGitHub` (e2e/ci_test.go), `TestHubSnapshotUnprompted` (cli), `TestHubFlow` (hub) |
 | `swim watch --approved` runs a script once it is fully approved. | `TestWatchSigned` (e2e/custody_test.go) |
 | A script edited after approval no longer matches its approval. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
 | A lane edited after it was queued is skipped. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |

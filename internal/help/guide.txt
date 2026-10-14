@@ -856,6 +856,9 @@ READING RESULTS
           pass / fail / skip / drift: <counts for the round>
           current_step: <label of the step in progress or last run>
           failed_steps: [<FAIL lines>]
+          auto_approved: [<guards -y approved, no one asked>]
+          auto_via: <swim run -y | queue q-... -y | swim watch -y>
+          flag_approved: [<guards approved by FLAG=1 or a batch's --approve>]
           last_archive: <last archived log name>
   `swim status` shows "running?" when a lane's pid is gone (killed terminal);
   treat that lane's round as interrupted.

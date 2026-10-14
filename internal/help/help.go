@@ -184,7 +184,9 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   approvals: flags (then only FLAG=1 approves).
   -y, --yes     approve every guard whose flag isn't set, without asking,
                 terminal or not (logged as "approved by swim run -y (<user>)");
-                a flag set to anything but 1 (FLAG=0) still declines
+                a flag set to anything but 1 (FLAG=0) still declines. What it
+                approved stays loud: swim status (auto_approved), the round's
+                chain entry and swim history, swim ci's summary and the hub
   --no-prompt   never ask; an unset guard flag is a dry run
   Each lane runs a staged copy of its files (.swim/runs/<run>/<N>/), fixed
   before it waits for anything and checked again right before it starts;
@@ -250,7 +252,10 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   or job id), from .swim/status.yml: state, job id, pending round and job
   (from lane.N.sh on disk), last round, counts,
   current or failed steps, and timing. Running lanes whose process is gone
-  are shown as "running?" (interrupted).
+  are shown as "running?" (interrupted). Guards the round's run approved
+  with no one asked are listed as "approved without a prompt": by -y
+  (auto_approved, auto_via: swim run -y, queue q-... -y or swim watch -y)
+  or by a guard flag (flag_approved: FLAG=1, a batch's --approve).
   --yaml     the status file's fields as YAML, tagged schema: swim.status/v1
              (with N|JOB, just that lane); the file itself is unchanged
              (cat .swim/status.yml)
