@@ -214,6 +214,13 @@ func Select(o Options) (sel, done []int, err error) {
 
 // Run launches the selected lanes and returns 0 only if all passed.
 func Run(o Options) (int, error) {
+	if !o.DryRun && !o.CheckOnly && o.Self != "" {
+		// A lane left running by a process that died is ended first, so
+		// it's selected (and shown) as the interrupted round it is.
+		for _, r := range ReapDead(o.Root, o.Cfg, o.Self) {
+			fmt.Fprintln(os.Stderr, "swim: "+r.String())
+		}
+	}
 	sel, passed, err := Select(o)
 	if err != nil {
 		return 2, err
@@ -953,6 +960,9 @@ func writeRunRecord(o Options, start time.Time, cap int, sel []int, selected map
 // output in flight is recovered and the round's END and final state are
 // recorded. A lane that ended its round itself is left alone.
 func closeKilledRound(o Options, n, code int) {
+	if unlock, ok := reapLock(o.Root); ok {
+		defer unlock()
+	}
 	st, _ := status.Load(o.Root)
 	if st == nil || st.Get(n) == nil || st.Get(n).State != status.Running {
 		return

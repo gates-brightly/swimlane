@@ -642,6 +642,12 @@ func Running(root string, n int) (int, bool) {
 	return 0, false
 }
 
+// CellRunning returns the pid recorded for lane n's matrix cell or job
+// cell if that process is alive.
+func CellRunning(root string, n int, cell string) (int, bool) {
+	return runningIn(filepath.Join(root, ".swim", fmt.Sprintf("lane%d.%s.pid", n, CellSlug(cell))))
+}
+
 func runningIn(path string) (int, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {

@@ -87,3 +87,55 @@ func TestRecoveryStaleRunningLane(t *testing.T) {
 	r.script(1, "rerun", `run "quick" true`)
 	r.mustSwim("run", "1")
 }
+
+// A lane killed outright (no traps) is ended by the next swim run or swim
+// watch: its cut-off step and END INTERRUPTED go to the log, the chain
+// records the round as interrupted, and the lane isn't left running.
+func TestReapDeadLane(t *testing.T) {
+	r := newRepo(t, "")
+	kill := func() {
+		r.script(1, "killed", `run "long" sleep 30`)
+		c := r.cmd("bash", "lane.1.sh")
+		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := c.Start(); err != nil {
+			t.Fatal(err)
+		}
+		waitFor(t, func() bool {
+			l := r.status().Get(1)
+			return l.State == "running" && l.PID == c.Process.Pid && l.CurrentStep == "long"
+		})
+		syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
+		c.Wait()
+		if l := r.status().Get(1); l.State != "running" {
+			t.Fatalf("killed lane: state %q, want running until reaped\n%s", l.State, r.log(1))
+		}
+	}
+
+	kill()
+	out := r.mustSwim("watch", "--once")
+	contains(t, "watch", out, "swim 1: its process died without ending its round")
+	if l := r.status().Get(1); l.State != "interrupted" || l.ExitCode == nil || *l.ExitCode != 137 {
+		t.Fatalf("after watch: %+v", l)
+	}
+	contains(t, "log", r.log(1), "cut off: swim step was killed", "== END INTERRUPTED")
+	links, _ := chain.Read(r.root)
+	if last := links[len(links)-1]; last.Type != "round" || last.Result != "interrupted" || last.Exit == nil || *last.Exit != 137 {
+		t.Errorf("chain's last entry: %+v", last.Entry)
+	}
+
+	// swim run does the same before it starts anything; the lane is free.
+	kill()
+	r.script(1, "rerun", `run "quick" true`)
+	out = r.mustSwim("run", "1")
+	contains(t, "run", out, "swim 1: its process died without ending its round")
+	if strings.Count(r.log(1), "== END INTERRUPTED") != 2 {
+		t.Errorf("want both killed rounds ended:\n%s", r.log(1))
+	}
+	if l := r.status().Get(1); l.State != "passed" {
+		t.Errorf("rerun: state %q", l.State)
+	}
+	// Nothing left to reap: no message.
+	if out := r.mustSwim("run", "1"); strings.Contains(out, "died") {
+		t.Errorf("reaped a finished lane:\n%s", out)
+	}
+}

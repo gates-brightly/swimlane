@@ -614,6 +614,9 @@ func cmdWatch(args []string) error {
 		defer release()
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	for _, r := range launcher.ReapDead(root, cfg, self()) {
+		fmt.Println(p.Paint(ui.Yellow, "swim watch: "+r.String()))
+	}
 	sigs := make(chan os.Signal, 4)
 	if headless {
 		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM) // SIGHUP reopens its log (headlessStart)
