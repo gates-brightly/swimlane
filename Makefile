@@ -12,7 +12,7 @@ LDFLAGS := -s -w -X github.com/gates-brightly/swimlane/internal/version.BuildDat
 
 .DEFAULT_GOAL := help
 
-.PHONY: help release build install install-latest uninstall link unlink which run test e2e cover fmt vet tidy check clean
+.PHONY: help release next-tag build install install-latest uninstall link unlink which run test e2e cover fmt vet tidy check clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -26,6 +26,9 @@ install: ## Install swim from this checkout into $GOBIN (or $GOPATH/bin)
 
 release: ## Tag a release after checking version, Breaking, CHANGELOG.md and a clean tree (V=v0.<breaking>.<YYYYMMDD>); never pushes
 	@./scripts/release.sh $(V)
+
+next-tag: ## Print the next release tag (today's date; next version if today is tagged) and the git commands to publish it
+	@./scripts/next-tag.sh
 
 install-latest: ## go install the published swim (V=v0.2.20261009 to pin; default latest)
 	GOPRIVATE="$$(p=$$(go env GOPRIVATE); echo "$${p:+$$p,}github.com/gates-brightly/*")" go install $(MODULE)/cmd/swim@$(V)

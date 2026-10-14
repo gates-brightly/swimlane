@@ -373,7 +373,8 @@ func JobPrefix(n int, job string, color bool) string {
 	if job == "" {
 		job = fmt.Sprint(n)
 	}
-	return ui.Painter{On: color}.Paint(ui.LaneColor(n), "["+job+"]") + " "
+	p := ui.Painter{On: color}
+	return p.Paint(ui.LaneColor(n), "[") + p.Job(job, "") + p.Paint(ui.LaneColor(n), "]") + " "
 }
 
 // WrapANSI splits s into lines of at most w visible columns. Escape

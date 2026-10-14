@@ -31,6 +31,13 @@ To cut a release:
 
 ### Changed
 
+- **Hub link in swim watch:** an enrolled `swim watch` shows the hub link at
+  the top of its screen: `(hub online) URL` in green, or `(offline mode) hub
+  URL unreachable since hh:mm:ss; retrying` in yellow. The watch keeps
+  running and reporting retries either way. While the screen is up, it no
+  longer prints the "hub unreachable" and "reachable again" lines over it.
+  Without the screen, those lines now read `offline mode: hub unreachable`
+  and `hub online again`.
 - **No lane count:** swim shows the lanes in use instead of a configured
   `lanes`. A lane is in use while it has a lane script that isn't a stub, a
   current log (`agentN.log`, or a job's or cell's), or a running process.
@@ -77,6 +84,9 @@ To cut a release:
     as a change to its lane.
   - **CI:** `swim ci` gives each job (and each matrix cell) that ran its own
     log section, annotations, job summary row and JUnit suite (`swim 1.2`).
+  - **Output:** a job's lines start with its id alone (`[1.3] ...`, not
+    `[1] [1.3] ...`), and its banners read `swim 1.3`. Each part of the id
+    has its own lane colour: in `1.3` the 1 is lane 1's and the 3 lane 3's.
   - This repo's CI (fmt, lint, test, e2e) is lane 1 in `lanes.ci.sh`, jobs
     1.1-1.4.
 - **Always lanes:** `# Always: yes` (or `always: true` in `lane.N.yml`)

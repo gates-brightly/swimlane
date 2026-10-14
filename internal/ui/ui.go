@@ -5,6 +5,7 @@ package ui
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"golang.org/x/term"
@@ -31,6 +32,27 @@ func LaneColor(n int) string {
 		return ""
 	}
 	return laneColors[(n-1)%len(laneColors)]
+}
+
+// Job paints a lane or job id ("1", "1.4", "1.5.9") a part at a time, each
+// number in its own lane colour: in 1.4 the 1 is lane 1's colour and the
+// 4 lane 4's. extra (a style such as Bold) applies to every part.
+func (p Painter) Job(id, extra string) string {
+	if !p.On {
+		return id
+	}
+	parts := strings.Split(id, ".")
+	for i, part := range parts {
+		n, _ := strconv.Atoi(part)
+		parts[i] = p.Paint(LaneColor(n)+extra, part)
+	}
+	return strings.Join(parts, p.Paint(LaneColor(firstNum(id))+extra, "."))
+}
+
+func firstNum(id string) int {
+	head, _, _ := strings.Cut(id, ".")
+	n, _ := strconv.Atoi(head)
+	return n
 }
 
 // IsTTY reports whether f is a terminal.

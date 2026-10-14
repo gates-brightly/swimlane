@@ -41,3 +41,15 @@ func TestColorEnabled(t *testing.T) {
 		t.Error("NO_COLOR wins")
 	}
 }
+
+func TestJobColors(t *testing.T) {
+	p := Painter{On: true}
+	got := p.Job("1.4", "")
+	want := LaneColor(1) + "1" + Reset + LaneColor(1) + "." + Reset + LaneColor(4) + "4" + Reset
+	if got != want {
+		t.Errorf("Job(1.4) = %q, want %q", got, want)
+	}
+	if got := (Painter{}).Job("1.5.9", Bold); got != "1.5.9" {
+		t.Errorf("no colour: %q", got)
+	}
+}

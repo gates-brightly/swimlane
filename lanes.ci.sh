@@ -33,7 +33,7 @@ stage check
 gate "go build" go build ./...
 run "go vet" go vet ./...
 run "swim lint (the CI rounds)" "$SWIM_BIN" lint --strict
-run "shell syntax" bash -c 'for f in scripts/hermetic scripts/release.sh e2e/run.sh e2e/lib/common.sh e2e/lib/fakebin/*; do bash -n "$f" || exit 1; done'
+run "shell syntax" bash -c 'for f in scripts/hermetic scripts/release.sh scripts/next-tag.sh e2e/run.sh e2e/lib/common.sh e2e/lib/fakebin/*; do bash -n "$f" || exit 1; done'
 
 # swim job 1.3 -----------------------------------------------------------------
 # Round:   CI: test (unit)
