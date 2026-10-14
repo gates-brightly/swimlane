@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.swim.my-repo-1-q-x-b-0a1b2c3d</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/swim bin/swim</string>
+		<string>watch</string>
+		<string>--headless</string>
+		<string>--interval</string>
+		<string>5s</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/home/al/src/my repo %1 &#34;q&#34; $X &amp; &lt;b&gt;</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/swim bin:/usr/bin:/bin</string>
+		<key>SWIM_USER</key>
+		<string>al</string>
+		<key>SWIM_HEADLESS_MODE</key>
+		<string>launchd</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ExitTimeOut</key>
+	<integer>40</integer>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>/Users/al/Library/Logs/swim/my-repo-1-q-x-b-0a1b2c3d.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/al/Library/Logs/swim/my-repo-1-q-x-b-0a1b2c3d.log</string>
+</dict>
+</plist>

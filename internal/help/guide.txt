@@ -58,6 +58,8 @@ COMMANDS
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run as soon as swim is idle; queue [list|show|rm|requeue]
   watch [--once]           the queue's worker: runs queued batches when idle, consumes them
+  watch --headless [--detach]   the worker with no terminal (needs a hub enrollment);
+                           --status, --stop, --install systemd|launchd, --uninstall
   hub / hub enroll URL     a dashboard of many workers; enroll a directory to report to it
                            (--tls-cert/--tls-key serve https; enroll --ca FILE trusts its cert)
   wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
@@ -203,6 +205,8 @@ FILES (repo root)
                         a rule with evidence: true counts only evidence-bound approvals
   .swim/evidence/       each round's evidence (evidence steps), and blobs by hash for diffs
   .swim/hub.yml         this directory's hub enrollment (swim hub enroll), private
+  .swim/headless.*      a headless worker's lock (holds its pid), pidfile and own log
+                        (swim watch --headless --detach; rotates at 10 MiB, keeps 3)
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
                         .running claimed by a worker, done/ consumed with results
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,

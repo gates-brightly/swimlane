@@ -107,6 +107,24 @@ To cut a release:
 
 ### Added
 
+- **Headless workers, `swim watch --headless`:** the queue worker with no
+  terminal (first stage of `features/headless.md`).
+  - It needs the directory enrolled with a hub, never shows the watch
+    screen and never reads stdin. The hub's worker page marks it headless,
+    with `-y` in bold.
+  - One per repo: `.swim/headless.lock` holds its pid, and a second
+    `--headless` exits 2 naming it.
+  - `--detach` starts it in the background (`.swim/headless.pid`, output in
+    `.swim/headless.log`, rotated at 10 MiB with 3 kept). `--status` says
+    whether it runs (exit 3 when not, naming a stale pidfile), and `--stop`
+    sends SIGTERM only to a verified `swim watch --headless` holding the lock.
+  - `--install systemd|launchd` writes a user unit (`swim-<id>.service`, or
+    `com.swim.<id>.plist`) and prints the command to enable it, plus
+    `loginctl enable-linger` for systemd. swim never runs that command.
+    `-y` needs `--i-mean-it`. `--uninstall` stops the worker and removes the unit.
+  - SIGTERM stops it after the batch in hand, as before. SIGHUP reopens its
+    log and leaves running lanes alone (the launcher's new `NoHangup`
+    option). Told to stop, it exits 0.
 - **Jobs:** any lane can be split into jobs, numbered under it and nested
   to any depth (`1.1`, `1.2`, `1.5.9.9`): the lane's header first, then
   each job at a `# swim job N.K` line with its own header and steps.

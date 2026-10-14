@@ -515,6 +515,9 @@ swim queue show|rm|requeue ID
   .swim.log records queue, queue-run and queue-done events.
 `,
 	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--no-tui]
+swim watch --headless [--detach] [-y] [--approved] [--interval D]
+swim watch --headless --status | --stop | --uninstall
+swim watch --headless --install systemd|launchd [-y --i-mean-it]
 
   The queue's worker. Runs each queued batch (swim queue add), oldest
   first, as soon as swim is idle in this repo: no lane running and no other
@@ -551,6 +554,36 @@ swim queue show|rm|requeue ID
   boundary; again to force quit), then the batch is consumed as interrupted
   and the watch exits; between batches, the watch exits at once. Batches
   still waiting stay queued.
+
+  Headless: the same worker with no terminal at all, for a supervisor, the
+  background or a service. It never shows the screen and never reads
+  stdin. It needs this directory enrolled with a hub (swim hub enroll):
+  with no terminal, the hub is where it's seen (its page marks it headless,
+  and -y in bold). One per repo: .swim/headless.lock holds its pid, and a
+  second --headless exits 2 naming it.
+  --headless     run in the foreground (systemd, docker, tmux keep its output)
+  --detach       start it in the background, in its own session: its pid goes
+                 in .swim/headless.pid, its output in .swim/headless.log (rotated
+                 at 10 MiB, 3 kept). Waits up to 5s for it to start.
+  --status       is it running (exit 0) or not (exit 3, saying when a
+                 pidfile is stale); which unit is installed
+  --stop         SIGTERM to the worker holding the lock, once sure it is swim
+                 watch --headless; waits for it to stop
+  --install systemd|launchd
+                 write a user unit for this repo and print how to enable it
+                 (swim never runs that): ~/.config/systemd/user/swim-<id>.service,
+                 or ~/Library/LaunchAgents/com.swim.<id>.plist logging to
+                 ~/Library/Logs/swim/<id>.log. <id> is the repo directory's name
+                 and a hash of its path. The unit pins swim's path, the repo,
+                 PATH and SWIM_USER, restarts on failure, and allows term_grace
+                 + 30s to stop. -y needs --i-mean-it: a standing approval of
+                 every guard in a service that runs until removed.
+  --uninstall    stop it, and remove this repo's unit files
+  Signals: SIGTERM or SIGINT stop it after the batch in hand (the batch's
+  lanes stop at the next step boundary, forced after term_grace; a second
+  signal forces). SIGHUP reopens .swim/headless.log (for logrotate) and
+  never touches a running lane. Told to stop, it exits 0, so a service
+  manager doesn't restart it.
 `,
 	"secret": `swim secret set NAME [--all|--repo]
 swim secret get NAME

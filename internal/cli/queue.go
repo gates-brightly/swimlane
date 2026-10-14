@@ -519,20 +519,43 @@ func queueRequeue(args []string) error {
 // cmdWatch is the queue's worker: it runs each queued batch, oldest first,
 // as soon as swim is idle, and consumes it when it ends.
 func cmdWatch(args []string) error {
-	var once, yes, approved, noTUI bool
+	var once, yes, approved, noTUI, headless bool
+	var hf headlessFlags
 	var interval string
+	orig := args
 	args = append([]string(nil), args...)
 	for i, a := range args {
 		if a == "-y" {
 			args[i] = "--yes"
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"once": &once, "yes": &yes, "approved": &approved, "no-tui": &noTUI}, strs: map[string]*string{"interval": &interval}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"once": &once, "yes": &yes, "approved": &approved, "no-tui": &noTUI,
+		"headless": &headless, "detach": &hf.detach, "status": &hf.status, "stop": &hf.stop, "uninstall": &hf.uninstall, "i-mean-it": &hf.iMeanIt},
+		strs: map[string]*string{"interval": &interval, "install": &hf.install}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim watch [--once] [-y] [--approved] [--interval D] [--no-tui]")
+		return usagef("usage: swim watch [--once] [-y] [--approved] [--interval D] [--no-tui] [--headless [--detach|--status|--stop|--install systemd|launchd|--uninstall]]")
+	}
+	if !headless && hf.any() {
+		return usagef("--detach, --status, --stop, --install, --uninstall and --i-mean-it go with --headless")
+	}
+	if headless {
+		n := 0
+		for _, on := range []bool{hf.detach, hf.status, hf.stop, hf.uninstall, hf.install != ""} {
+			if on {
+				n++
+			}
+		}
+		switch {
+		case n > 1:
+			return usagef("pick one of --detach, --status, --stop, --install and --uninstall")
+		case hf.iMeanIt && hf.install == "":
+			return usagef("--i-mean-it goes with --install")
+		case once && (hf.detach || hf.install != ""):
+			return usagef("--once runs the queue and exits: it doesn't go with --detach or --install")
+		}
 	}
 	every, err := durationFlag("interval", interval, pollEvery, "2s")
 	if err != nil {
@@ -545,9 +568,43 @@ func cmdWatch(args []string) error {
 	if err := requireVersion(root, true); err != nil {
 		return err
 	}
+	if headless {
+		switch {
+		case hf.status:
+			return headlessStatus(root)
+		case hf.stop:
+			return headlessStop(root, cfg)
+		case hf.uninstall:
+			return headlessUninstall(root, cfg)
+		}
+		if _, err := loadHub(root); err != nil {
+			return headlessNoHub(err)
+		}
+		switch {
+		case hf.install != "":
+			return headlessInstall(root, cfg, hf.install, yes, hf.iMeanIt, approved, interval)
+		case hf.detach:
+			var child []string
+			for _, a := range orig {
+				if a != "--detach" && !strings.HasPrefix(a, "--detach=") {
+					child = append(child, a)
+				}
+			}
+			return headlessDetach(root, child)
+		}
+		release, err := headlessStart(root, yes, approved)
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	sigs := make(chan os.Signal, 4)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	if headless {
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM) // SIGHUP reopens its log (headlessStart)
+	} else {
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	}
 	defer signal.Stop(sigs)
 	stop := false
 	stopped := func() bool {
@@ -568,8 +625,11 @@ func cmdWatch(args []string) error {
 		}
 	}
 	mode := "watching .swim/queue/ (Ctrl-C stops after the batch in hand)"
-	if once {
+	switch {
+	case once:
 		mode = "running every queued batch, then exiting"
+	case headless:
+		mode = fmt.Sprintf("headless (%s), pid %d · watching .swim/queue/ (SIGTERM stops after the batch in hand; SIGHUP reopens the log)", headlessInfo.Mode, os.Getpid())
 	}
 	fmt.Println(p.Paint(ui.Bold, "swim watch · "+mode))
 	if yes {
@@ -582,7 +642,7 @@ func cmdWatch(args []string) error {
 	// On a terminal, waiting shows the jobs and the queue: r runs one now,
 	// q queues one (watchview.go).
 	var view *watchView
-	if !once && watchViewAllowed(noTUI) {
+	if !once && !headless && watchViewAllowed(noTUI) {
 		view = newWatchView(root, cfg, yes)
 		quietHub(true) // the screen shows the hub link; printing would scroll it
 		defer quietHub(false)
@@ -668,7 +728,7 @@ func cmdWatch(args []string) error {
 		}
 		s.said = ""
 		setActivity(fmt.Sprintf("running %s (#%d)", e.ID, e.Seq))
-		res, interrupted := runClaimed(root, cfg, e, yes, view != nil)
+		res, interrupted := runClaimed(root, cfg, e, yes, view != nil, headless)
 		setActivity(fmt.Sprintf("%s (#%d) %s", e.ID, e.Seq, res.Result))
 		unlock()
 		if view != nil {
@@ -681,7 +741,9 @@ func cmdWatch(args []string) error {
 			stop = true
 		}
 	}
-	if code != 0 {
+	// A headless worker told to stop exits 0 (a failed batch is in its
+	// queue entry), so a service manager doesn't restart it.
+	if code != 0 && (once || !headless) {
 		return exitError{code}
 	}
 	return nil
@@ -690,9 +752,10 @@ func cmdWatch(args []string) error {
 // runClaimed runs a batch this worker claimed and consumes it with its
 // result. view says the watch screen is up: the run's own view may then
 // take the keyboard (to move between lanes; it never answers guards).
-func runClaimed(root string, cfg *config.Config, e *queue.Entry, yes, view bool) (queue.Result, bool) {
+// headless: no terminal at all (swim watch --headless).
+func runClaimed(root string, cfg *config.Config, e *queue.Entry, yes, view, headless bool) (queue.Result, bool) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
-	res, interrupted := runEntry(root, cfg, e, yes, view)
+	res, interrupted := runEntry(root, cfg, e, yes, view, headless)
 	if err := queue.Consume(root, e, res); err != nil {
 		fmt.Fprintln(os.Stderr, "swim watch: consume "+e.ID+": "+err.Error())
 	}
@@ -711,7 +774,7 @@ func loadCfg(root string) (*config.Config, error) {
 // approvals and nothing else: a guard flag the batch doesn't approve is
 // cleared from the environment for the run, so the queue file alone says
 // what may change. It never prompts (nobody is watching a queue).
-func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys bool) (queue.Result, bool) {
+func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, headless bool) (queue.Result, bool) {
 	started := time.Now().UTC()
 	res := queue.Result{Started: started.Format(time.RFC3339)}
 	var lanes []int
@@ -780,6 +843,11 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys b
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
 		Unattended: true,
 		HubSecrets: func() (map[string]string, error) { return hubGrants(root) }}
+	if headless {
+		// Plain lines for the log; SIGHUP reopens it rather than forcing
+		// the run as a closed terminal does.
+		o.Plain, o.NoHangup = true, true
+	}
 	if keys && len(lanes) > 1 {
 		// The live view's keys move between the batch's lanes. Parallel
 		// lanes get no stdin, so nothing in the batch can prompt.
