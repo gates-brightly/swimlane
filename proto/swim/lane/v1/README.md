@@ -72,6 +72,22 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
   runs its registered handler functions inside `handler` sections, which run
   soft: nothing in them ends the round.
 
+## Secrets broker
+
+Secrets (`swim secret`) come from a separate socket that the swim run
+serves to all of its lanes, so they work with or without a lane
+connection:
+
+- **Transport:** JSON lines on the Unix socket in `SWIM_SECRETS`, one
+  request per connection.
+- **Request:** `{"token": $SWIM_SECRETS_TOKEN, "op": "get", "name": "db_password", "lane": $SWIM_LANE, "how": "sdk"}`.
+- **Response:** `{"ok": true, "value": "...", "scope": "repo|all|env"}`, or
+  `{"ok": false, "error": "no secret db_password (...)"}`.
+- **Outside a run** (`SWIM_SECRETS` unset), an SDK runs
+  `swim secret get NAME`, which decrypts with the operator's key.
+- **Masking and audit:** every lane process masks all of the run's secrets
+  whatever it fetched, and `.swim.log` records each get by name.
+
 ## Versioning
 
 - Fields only grow within `v1`, the same rule as the YAML schemas.

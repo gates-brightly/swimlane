@@ -16,6 +16,9 @@
 //		}))
 //	}
 //
+// Secrets stored with swim secret set come by name:
+// swim.Secret.Get("db_password").
+//
 // swim decides everything; this package only talks to it over the lane's
 // socket. Every call returns *RoundEnded (check with errors.As) once the
 // round is over: return it up, so the program unwinds and exits.

@@ -185,6 +185,7 @@ while the plan still matches (see
 | `r.Msg(text, "n/m")` | The lane's status message, in the live view and `swim status` (`""` for no progress). |
 | `r.Input(lane, name)` / `r.Output(key, value)` | Read a dependency's output (a path, or a small value), or set one of your own. |
 | `r.Drift(what)` / `r.Stop(reason)` | Record drift, or stop the round. |
+| `swim.Secret.Get(name)` | A secret stored with `swim secret set`. swim masks it as `***(name)` everywhere it writes. |
 | `r.OnSuccess(fn)` / `r.OnFailure(fn)` / `r.OnExit(fn)` | Handlers that get the outcome map (`outcome`, `stop_reason`, `failed_step`, `failed_stage`). Register them before the first step. |
 
 ### Things to know

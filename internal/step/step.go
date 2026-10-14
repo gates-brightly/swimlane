@@ -58,10 +58,6 @@ type Options struct {
 	// Mask replaces secret values in everything the step writes (log,
 	// snapshot, terminal); nil masks nothing.
 	Mask *redact.Masker
-	// Resolve, if set, gives the arguments to run for Args: _swim.<name>
-	// placeholders swapped for their secrets. Only the command gets them;
-	// the log and terminal show Args.
-	Resolve func(args []string) ([]string, error)
 	// Stopped reports whether the lane has been asked to stop (the
 	// operator's first Ctrl-C, or swim interrupt N): the step then doesn't
 	// start, and a step waiting to retry stops waiting. Nil: never.
@@ -394,17 +390,7 @@ func runOnce(o Options, plain *lockedWriter, sigs chan os.Signal) attempt {
 		return attempt{exit: 124, why: roundLimit}
 	}
 
-	args := o.Args
-	if o.Resolve != nil {
-		var err error
-		if args, err = o.Resolve(o.Args); err != nil {
-			msg := fmt.Sprintf("swim: not started: %v\n", err)
-			plain.Write([]byte(msg))
-			fmt.Fprint(o.Stderr, msg)
-			return attempt{exit: 2}
-		}
-	}
-	cmd := exec.Command(args[0], args[1:]...)
+	cmd := exec.Command(o.Args[0], o.Args[1:]...)
 	cmd.Stdin = o.Stdin
 	cmd.Stdout = io.MultiWriter(o.Stdout, plain)
 	cmd.Stderr = io.MultiWriter(o.Stderr, plain)

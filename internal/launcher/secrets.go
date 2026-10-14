@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"regexp"
@@ -24,23 +25,21 @@ type runSecrets struct {
 	used map[string]bool // lane/name/how already in .swim.log
 }
 
-// usesSecretsRE spots a script that gets secrets at run time: _swim.<name>
-// in a step, swim secret get, or ["swim", "secret", "get", ...].
-var usesSecretsRE = regexp.MustCompile(`_swim\.[A-Za-z]|\bsecret\s+get\b|['"]secret['"]\s*,\s*['"]get['"]`)
+// UsesSecretsRE spots a script that gets secrets: swim secret get NAME
+// (bash, or ["swim", "secret", "get", ...]), or an SDK's secret.get /
+// Secret.Get.
+var UsesSecretsRE = regexp.MustCompile(`\bsecret\s+get\b|['"]secret['"]\s*,\s*['"]get['"]|\bsecret\.get\(|\bSecret\.Get\(`)
 
 // openSecrets decrypts the secrets the run's repo sees and starts their
-// broker; nil when there are none and no lane asks for any. The key's
-// passphrase is asked only when a selected lane uses secrets.
+// broker; nil when there are none. The key's passphrase is asked only when
+// a selected lane may use secrets (a compiled lane can't be read: it may).
 func openSecrets(o *Options, sel []int) (*runSecrets, error) {
-	declared := map[int][]lane.SecretRef{}
 	uses := false
 	for _, n := range sel {
-		info, _ := lane.ReadScript(o.Root, n)
-		if len(info.Secrets) > 0 {
-			declared[n] = info.Secrets
+		data, err := lane.ScriptBytes(o.Root, n)
+		if err == nil && (UsesSecretsRE.Match(data) || bytes.IndexByte(data, 0) >= 0) {
 			uses = true
-		} else if data, err := lane.ScriptBytes(o.Root, n); err == nil && usesSecretsRE.Match(data) {
-			uses = true
+			break
 		}
 	}
 	envSupplied := false
@@ -56,7 +55,7 @@ func openSecrets(o *Options, sel []int) (*runSecrets, error) {
 	if err != nil {
 		return nil, err
 	}
-	if f.Empty(repo) && !envSupplied && !uses {
+	if f.Empty(repo) && !envSupplied {
 		return nil, nil
 	}
 	keyPath := o.Cfg.SecretsKeyPath()
@@ -67,16 +66,6 @@ func openSecrets(o *Options, sel []int) (*runSecrets, error) {
 		}
 	}
 	vault, _, openErr := secrets.OpenStore(path, repo, keyPath, prompt, os.Getenv)
-	for n, refs := range declared {
-		for _, ref := range refs {
-			if _, err := vault.Get(ref.Name); err != nil {
-				if openErr != nil {
-					err = openErr
-				}
-				return nil, fmt.Errorf("swim %d: Secrets: %s: %v", n, ref.Name, err)
-			}
-		}
-	}
 	rs := &runSecrets{vault: vault, used: map[string]bool{}}
 	if openErr != nil && uses {
 		rs.note = "swim: secrets: " + openErr.Error() + "; lanes get only SWIM_SECRET_<NAME> this run"
@@ -105,17 +94,5 @@ func (rs *runSecrets) record(o *Options, n int, s secrets.Secret, how string) {
 	}
 }
 
-// env is lane n's broker address and its Secrets: variables.
-func (rs *runSecrets) env(o Options, n int) []string {
-	env := rs.srv.Env()
-	info, _ := lane.ReadScript(o.Root, n)
-	for _, ref := range info.Secrets {
-		s, err := rs.vault.Get(ref.Name)
-		if err != nil {
-			continue // checked at start; gone since only if the env changed
-		}
-		env = append(env, ref.Env+"="+s.Value)
-		rs.record(&o, n, s, "Secrets: "+ref.Env)
-	}
-	return env
-}
+// env is what lane n needs to reach the broker.
+func (rs *runSecrets) env(o Options, n int) []string { return rs.srv.Env() }

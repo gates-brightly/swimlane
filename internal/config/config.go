@@ -376,11 +376,7 @@ func (c *Config) Validate() error {
 func (c *Config) Blocked() []string { return policy.Patterns(c.BlockedCommands) }
 
 // Masker returns the secret masker for env (usually os.Environ()).
-func (c *Config) Masker(env []string) *redact.Masker { return c.MaskerWith(env, nil) }
-
-// MaskerWith is Masker that also masks extra named secrets (decrypted
-// outside a swim run, which has no broker to tell).
-func (c *Config) MaskerWith(env []string, extra []redact.Labeled) *redact.Masker {
+func (c *Config) Masker(env []string) *redact.Masker {
 	on := func(b *bool) bool { return b == nil || *b }
 	names := c.SecretEnv
 	// Values a lane got from env files are masked whatever their names
@@ -395,7 +391,7 @@ func (c *Config) MaskerWith(env []string, extra []redact.Labeled) *redact.Masker
 		Auto:         on(c.SecretEnvAuto),
 		Ignore:       c.SecretEnvIgnore,
 		AutoPatterns: on(c.SecretPatternsAuto),
-		Labeled:      append(runSecrets(env), extra...),
+		Labeled:      runSecrets(env),
 	})
 }
 

@@ -458,12 +458,16 @@ swim secret set datadog_api_key --all  # every repo
 swim secret ls                         # names and scopes, never values
 ```
 
-A lane gets them three ways, in any language:
+A lane gets them by name: from bash with the CLI, and from other
+languages with the SDK:
 
 ```bash
-# Secrets: DB_PASSWORD=db_password       exported to the lane
-run "migrate" psql "_swim.db_url"         # swapped in when the step runs
-TOKEN=$(swim secret get api_token)        # from the run's broker
+DB=$(swim secret get db_password) || stop "no db password"   # check it: lanes don't run with set -e
+```
+
+```python
+password = swim.secret.get("db_password")          # TypeScript: await secret.get(...)
+                                                   # Go: swim.Secret.Get(...)
 ```
 
 - **Encrypted with [age](https://age-encryption.org)** to an `ssh-ed25519`
@@ -476,19 +480,19 @@ TOKEN=$(swim secret get api_token)        # from the run's broker
   one). A repo's own secret wins over an `--all` one with the same name.
 - **Decrypted once per run:** `swim run` decrypts at start and serves the
   lanes over a private socket. It asks a protected key's passphrase before
-  the live view, and only if a lane uses secrets. A `Secrets:` name that
-  doesn't resolve stops the run before anything starts.
+  the live view, and only if a lane looks like it uses secrets. Outside a
+  run, `swim secret get` and the SDKs decrypt with your key directly.
 - **Masked exactly, by name:** every lane process masks all of the repo's
-  secrets as `***(db_password)`, including their base64 and URL forms.
-  A `_swim.` placeholder stays as written in the log.
+  secrets as `***(db_password)`, including their base64 and URL forms,
+  whichever ones it used.
 - **Audited:** `.swim.log` records which lane got which secret and how,
   never the value. `swim lint` warns about names the store doesn't have.
 - **CI:** `SWIM_SECRET_<NAME>` stands in for a secret, with no key needed.
 - **The limits:**
   - Secrets keep values out of logs, the hub and git. They don't protect
     against lane code, which runs as you and could read your key itself.
-  - A `_swim.` value is in the command's arguments while it runs, so use
-    `Secrets:` for long-running commands.
+  - A value passed as a command argument (`psql "$DB"`) is visible in `ps`
+    while it runs; prefer the tool's env variable or a file when it has one.
   - `swim watch` and CI can't ask a passphrase.
 
 ### Guards and approvals

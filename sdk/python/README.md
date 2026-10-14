@@ -21,3 +21,7 @@ with swim.round() as r:
 The SDK talks to swim over the lane's socket (protocol `swim.lane/v1`, see
 `proto/swim/lane/v1/README.md`), and swim decides everything. Run the lane
 with `swim run N`.
+
+Secrets stored with `swim secret set` come by name, inside or outside a
+round: `password = swim.secret.get("db_password")`. swim masks every
+secret as `***(name)` in what it writes.

@@ -345,12 +345,6 @@ WRITING A LANE SCRIPT
                                       They're hashed (a directory as a sorted manifest) into
                                       status, the END block and the chain, and made read-only.
                                       Not masked: never put secrets in outputs. Default: none
-      # Secrets: ENV=name[, name ...]  secrets (swim secret) the round gets as environment
-                                      variables; a bare name exports as its upper-case self
-                                      (api_token -> API_TOKEN). One that doesn't resolve stops
-                                      the run before it starts. Also: _swim.<name> in a step's
-                                      arguments (swapped in when it runs; the log keeps the
-                                      placeholder), or $(swim secret get name). Default: none
       # Matrix: KEY=a,b,c              run the round once per value (a cell); see MATRIX ROUNDS
       # Fail: soft|hard               hard: the first failed step ends the round (STOP
                                       hard failure) and goes to on_failure. Default: soft.
@@ -649,7 +643,8 @@ SAFETY RULES
     "masked: N vars (NAMES)". Masking does NOT cover output a step pipes or
     writes elsewhere, or values split or transformed. The rule stands: never
     print secrets; print keys or lengths only.
-  - Secrets from swim secret are masked exactly, by name: ***(db_password).
+  - Secrets from swim secret (bash: $(swim secret get NAME); the SDKs:
+    secret.get("NAME")) are masked exactly, by name: ***(db_password).
     A swim run decrypts them once at start (asking the key's passphrase, if
     any, before the live view) and every process in every lane masks all of
     the repo's secrets, whichever it uses. .swim.log records which lane got

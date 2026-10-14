@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/outputs"
-	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
@@ -139,9 +138,6 @@ type Info struct {
 	// Outputs are the files or directories the round promises in
 	// $SWIM_OUT (# Outputs:), for lanes that depend on it (input N name).
 	Outputs []string
-	// Secrets are the secrets (swim secret) the round gets as environment
-	// variables (# Secrets: DB_PASSWORD=db_password, api_token).
-	Secrets []SecretRef
 }
 
 // DefaultHandlerTimeout is the handlers' budget when Handler-Timeout: is unset.
@@ -194,7 +190,7 @@ var (
 	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Secrets):\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
@@ -212,7 +208,7 @@ var (
 	guardArgUse = regexp.MustCompile(`['"]guard['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]`)
 	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
-		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true, "secrets": true}
+		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -347,8 +343,6 @@ func ParseScript(src string) Info {
 					}
 				case "Outputs":
 					info.setOutputs(sepRE.Split(v, -1), "Outputs:")
-				case "Secrets":
-					info.setSecrets(sepRE.Split(v, -1), "Secrets:")
 				case "Includes":
 					for _, g := range sepRE.Split(v, -1) {
 						if g != "" && g != "-" && !strings.EqualFold(g, "none") {
@@ -429,40 +423,6 @@ func ParseScript(src string) Info {
 	}
 	return info
 }
-
-// SecretRef is one Secrets: entry: the secret Name, exported as Env.
-type SecretRef struct {
-	Env, Name string
-}
-
-// setSecrets reads Secrets: entries: ENV=name, or a bare name exported as
-// its upper-case self (api_token -> API_TOKEN).
-func (i *Info) setSecrets(toks []string, where string) {
-	i.Secrets = nil
-	seen := map[string]bool{}
-	for _, tok := range toks {
-		if tok == "" || tok == "-" || strings.EqualFold(tok, "none") {
-			continue
-		}
-		env, name, ok := strings.Cut(tok, "=")
-		if !ok {
-			env, name = secrets.EnvName(tok), tok
-		}
-		switch {
-		case !secrets.ValidName(name):
-			i.Problems = append(i.Problems, fmt.Sprintf("%s %q is not a secret name (a letter, then letters, digits and _); ignored", where, name))
-		case !envNameRE.MatchString(env):
-			i.Problems = append(i.Problems, fmt.Sprintf("%s %q is not an environment variable name; ignored", where, env))
-		case seen[env]:
-			i.Problems = append(i.Problems, fmt.Sprintf("%s %s is set twice; the first wins", where, env))
-		default:
-			seen[env] = true
-			i.Secrets = append(i.Secrets, SecretRef{Env: env, Name: name})
-		}
-	}
-}
-
-var envNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // setOutputs reads Outputs: names: relative paths inside $SWIM_OUT.
 func (i *Info) setOutputs(names []string, where string) {

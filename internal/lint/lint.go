@@ -95,7 +95,7 @@ var Checks = []Check{
 	{"destructive", finding.Warn, false, "a destructive-looking command outside a guard block", checkDestructive},
 	{"blocked", finding.Error, false, "a blocked command (git push/commit/pull, blocked_commands)", checkBlocked},
 	{"secret-echo", finding.Warn, false, "a secret variable echoed directly", checkSecretEcho},
-	{"secret-ref", finding.Warn, false, "Secrets: or _swim.<name> names no stored secret, or _swim.<name> outside a step", checkSecretRefs},
+	{"secret-ref", finding.Warn, false, "a secret got by name (swim secret get, secret.get) that isn't stored", checkSecretRefs},
 	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},

@@ -106,15 +106,13 @@ func TestSecretCLI(t *testing.T) {
 
 const secretsLane = `#!/usr/bin/env bash
 # swim: syntax 2
-# Round:   Use secrets three ways
-# Secrets: DB_PASSWORD=db_password
+# Round: Use secrets from bash
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 stage check
-run "header env" bash -c 'echo "env has: $DB_PASSWORD"; printf %s "$DB_PASSWORD" | base64'
-run "placeholder" echo "token is _swim.api_token"
+DB=$(swim secret get db_password)
 TOK=$(swim secret get api_token)
-run "via get" bash -c "echo got $TOK"
+run "use them" bash -c "echo db=$DB; printf %s $DB | base64; echo tok=$TOK"
 summary
 `
 
@@ -129,11 +127,7 @@ func TestSecretsInRun(t *testing.T) {
 		t.Fatalf("exit %d:\n%s\n%s", code, out, r.log(1))
 	}
 	log := r.log(1)
-	contains(t, "log", log, "env has: ***(db_password)", "token is ***(api_token)", "got ***(api_token)",
-		"$ echo 'token is _swim.api_token'", "secrets: DB_PASSWORD=db_password")
-	if !strings.Contains(log, "| ***(db_password)\n") {
-		t.Errorf("the base64 form isn't masked:\n%s", log)
-	}
+	contains(t, "log", log, "db=***(db_password)", "tok=***(api_token)", "| ***(db_password)\n")
 	st, _ := os.ReadFile(filepath.Join(r.root, ".swim", "status.yml"))
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 	for _, where := range []string{out, log, string(st), string(hist)} {
@@ -143,23 +137,16 @@ func TestSecretsInRun(t *testing.T) {
 			}
 		}
 	}
-	contains(t, ".swim.log", string(hist), "db_password (repo scope, Secrets: DB_PASSWORD)",
-		"api_token (all scope, step)", "api_token (all scope, get)")
-}
+	contains(t, ".swim.log", string(hist), "db_password (repo scope, get)", "api_token (all scope, get)")
 
-func TestSecretsMissingStopsRun(t *testing.T) {
-	r := newRepo(t, "")
-	secretsKey(t, r)
-	r.setSecret("db_password", "s3cret-db-pass")
-	r.script(1, "needs a missing secret", `run "x" true`)
-	data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(data), "# Round:", "# Secrets: nope\n# Round:", 1)), 0o755)
-	out, code := r.swim("run", "1", "--plain")
-	if code == 0 || !strings.Contains(out, "swim 1: Secrets: nope: no secret nope") {
-		t.Fatalf("exit %d:\n%s", code, out)
-	}
-	if r.log(1) != "" {
-		t.Error("the lane started")
+	// A secret that isn't stored fails the get, and the step that needed it.
+	// (bash has no set -e in lanes: check the get, as the docs show).
+	lane2 := strings.Replace(secretsLane, "lane_init 1", "lane_init 2", 1)
+	lane2 = strings.Replace(lane2, "DB=$(swim secret get db_password)", `DB=$(swim secret get nope) || stop "no secret nope"`, 1)
+	r.write("lane.2.sh", lane2, 0o755)
+	out, code = r.swim("run", "2", "--plain")
+	if code == 0 || !strings.Contains(out, "no secret nope") || strings.Contains(r.log(2), "use them") {
+		t.Errorf("missing secret: exit %d\n%s", code, out)
 	}
 }
 
@@ -167,9 +154,8 @@ func TestSecretsMissingStopsRun(t *testing.T) {
 // masked by name like a stored one.
 func TestSecretsFromCIEnv(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "ci", `run "use" bash -c 'echo "token: $CI_TOKEN"'`)
-	data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(data), "# Round:", "# Secrets: ci_token\n# Round:", 1)), 0o755)
+	r.script(1, "ci", `T=$(swim secret get ci_token)
+run "use" bash -c "echo token: $T"`)
 	r.env = append(r.env, "SWIM_SECRET_CI_TOKEN=ci-supplied-value")
 	out, code := r.swim("run", "1", "--plain")
 	if code != 0 {
@@ -181,8 +167,8 @@ func TestSecretsFromCIEnv(t *testing.T) {
 	}
 }
 
-// A passphrase-protected key with nobody at a terminal can't decrypt: a
-// lane that declares secrets stops the run and says why.
+// A passphrase-protected key with nobody at a terminal can't decrypt: the
+// run says why, and a get fails; a lane that uses no secrets is untouched.
 func TestSecretsPassphraseKeyUnattended(t *testing.T) {
 	r := newRepo(t, "")
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
@@ -192,49 +178,74 @@ func TestSecretsPassphraseKeyUnattended(t *testing.T) {
 	exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "pass phrase", "-f", p).Run()
 	r.mustSwim("config", "secrets_key", p)
 	r.setSecret("db_password", "s3cret-db-pass") // encrypting needs only the .pub
-	r.script(1, "needs it", `run "x" true`)
-	data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(data), "# Round:", "# Secrets: db_password\n# Round:", 1)), 0o755)
+	r.script(1, "needs it", `T=$(swim secret get db_password) || stop "no secret"
+run "x" true`)
 	c := r.cmd(bin, "run", "1", "--plain")
 	c.SysProcAttr = noTTY()
 	outB, err := c.CombinedOutput()
-	out := string(outB)
-	if err == nil || !strings.Contains(out, "needs a passphrase") {
+	if out := string(outB); err == nil || !strings.Contains(out, "needs a passphrase") {
 		t.Fatalf("err %v:\n%s", err, out)
 	}
-	// A lane that uses no secrets still runs (nothing is asked).
 	r.script(2, "plain", `run "x" true`)
-	if out, code := r.swim("run", "2", "--plain"); code != 0 {
-		t.Errorf("a lane without secrets: exit %d\n%s", code, out)
+	c = r.cmd(bin, "run", "2", "--plain")
+	c.SysProcAttr = noTTY()
+	if out, err := c.CombinedOutput(); err != nil || strings.Contains(string(out), "passphrase") {
+		t.Errorf("a lane without secrets: %v\n%s", err, out)
 	}
 }
 
-// A lane in another language gets them the same way (wrapped by swim).
-func TestSecretsPythonLane(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not installed")
-	}
-	r := newRepo(t, "")
-	secretsKey(t, r)
-	r.setSecret("api_token", "py-token-value")
-	r.write("lane.1.py", `#!/usr/bin/env python3
-# Round:   python secrets
-# Secrets: api_token
-import os, subprocess
-print("env:", os.environ["API_TOKEN"])
-got = subprocess.run(["swim", "secret", "get", "api_token"], capture_output=True, text=True).stdout
-subprocess.run(["swim", "run", "placeholder", "--", "echo", "arg _swim.api_token"], check=True)
-print("got:", got)
+// The SDKs: swim.secret.get / secret.get / swim.Secret.Get, from the run's
+// broker, masked by name.
+func TestSecretsSDKs(t *testing.T) {
+	for _, lang := range []string{"py", "ts", "go"} {
+		t.Run(lang, func(t *testing.T) {
+			r := newRepo(t, "")
+			secretsKey(t, r)
+			r.setSecret("api_token", "sdk-token-value")
+			r.env = append(r.env, "PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
+			switch lang {
+			case "py":
+				if _, err := exec.LookPath("python3"); err != nil {
+					t.Skip("python3 not installed")
+				}
+				r.write("lane.1.py", `#!/usr/bin/env python3
+# Round: python secrets
+import swim
+with swim.round() as r:
+    tok = swim.secret.get("api_token")
+    r.run("use", ["echo", "tok=" + tok])
 `, 0o755)
-	out, code := r.swim("run", "1", "--plain")
-	if code != 0 {
-		t.Fatalf("exit %d:\n%s\n%s", code, out, r.log(1))
-	}
-	log := r.log(1)
-	contains(t, "log", log, "arg ***(api_token)")
-	// The program's own lines go to the terminal, masked there too.
-	contains(t, "output", out, "env: ***(api_token)", "got: ***(api_token)")
-	if strings.Contains(out+log, "py-token-value") {
-		t.Errorf("leaked:\n%s", log)
+			case "ts":
+				if out, err := exec.Command("node", "--experimental-strip-types", "-e", "1").CombinedOutput(); err != nil {
+					t.Skipf("node can't run TypeScript: %v %s", err, out)
+				}
+				r.write("lane.1.ts", `// Round: ts secrets
+import { round, secret } from "`+filepath.Join(repoRoot(), "sdk", "ts", "swim.ts")+`";
+await round(async (r) => {
+  const tok = await secret.get("api_token");
+  await r.run("use", ["echo", "tok=" + tok]);
+});
+`, 0o644)
+				r.write("swim.yml", "runners:\n  ts: node --experimental-strip-types --no-warnings\n", 0o644)
+			case "go":
+				dir := filepath.Join(repoRoot(), "internal", "e2e", "testdata", "secretlane")
+				build := exec.Command("go", "build", "-buildvcs=false", "-o", filepath.Join(r.root, "lane.1"), dir)
+				build.Dir = repoRoot()
+				if out, err := build.CombinedOutput(); err != nil {
+					t.Fatalf("build: %v %s", err, out)
+				}
+				r.write("lane.1.yml", "round: go secrets\n", 0o644)
+			}
+			out, code := r.swim("run", "1", "--plain")
+			if code != 0 {
+				t.Fatalf("exit %d:\n%s\n%s", code, out, r.log(1))
+			}
+			contains(t, "log", r.log(1), "tok=***(api_token)")
+			hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
+			contains(t, ".swim.log", string(hist), "api_token (repo scope, sdk)")
+			if strings.Contains(out+r.log(1)+string(hist), "sdk-token-value") {
+				t.Errorf("leaked:\n%s", r.log(1))
+			}
+		})
 	}
 }

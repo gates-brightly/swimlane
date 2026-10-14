@@ -119,6 +119,7 @@ If a table name is bad, the in-process gate fails, the round stops, and
 | `r.msg(text, progress=(n, m))` | The lane's status message, in the live view and `swim status`. |
 | `r.input(lane, name)` / `r.output(key, value)` | Read a dependency's output (a path, or a small value), or set one of your own. |
 | `r.drift(what)` / `r.stop(reason)` | Record drift, or stop the round. |
+| `swim.secret.get(name)` | A secret stored with `swim secret set`. swim masks it as `***(name)` everywhere it writes. |
 | `@r.on_success` / `@r.on_failure` / `@r.on_exit` | Handlers that get `outcome` (`outcome`, `stop_reason`, `failed_step`, `failed_stage`). Register them before the first step. |
 
 All of the step calls take `timeout="5m"`, `retry=2`, `backoff="1s"`,

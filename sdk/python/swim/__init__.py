@@ -21,8 +21,9 @@ this module only talks to it over the lane's socket. Run the script with
 import json
 import os
 import socket
+import subprocess
 
-__all__ = ["round", "Round", "Step", "RoundEnded", "SwimError", "PROTOCOL"]
+__all__ = ["round", "Round", "Step", "RoundEnded", "SwimError", "PROTOCOL", "secret"]
 
 PROTOCOL = "swim.lane/v1"
 __version__ = "1.0.0"
@@ -234,3 +235,48 @@ class Round:
 def round():
     """The lane's round, as a context manager."""
     return Round()
+
+
+class _Secrets:
+    """Secrets stored with `swim secret set`, by name:
+
+        password = swim.secret.get("db_password")
+
+    Inside a swim run it asks the run's secrets broker (the run decrypted
+    them at start, and masks every one as ***(name) in what swim writes);
+    outside one it runs `swim secret get`, which decrypts with your key.
+    """
+
+    def get(self, name):
+        path = os.environ.get("SWIM_SECRETS")
+        if not path:
+            bin_ = os.environ.get("SWIM_BIN") or "swim"
+            r = subprocess.run([bin_, "secret", "get", name], capture_output=True, text=True)
+            if r.returncode != 0:
+                raise SwimError(r.stderr.strip() or f"swim secret get {name} failed")
+            return r.stdout
+        req = {
+            "token": os.environ.get("SWIM_SECRETS_TOKEN", ""),
+            "op": "get",
+            "name": name,
+            "lane": int(os.environ.get("SWIM_LANE") or 0),
+            "how": "sdk",
+        }
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            s.connect(path)
+            f = s.makefile("rwb")
+            f.write((json.dumps(req) + "\n").encode())
+            f.flush()
+            reply = f.readline()
+        finally:
+            s.close()
+        if not reply:
+            raise SwimError("the run's secrets broker closed the connection")
+        resp = json.loads(reply)
+        if not resp.get("ok"):
+            raise SwimError(f"secret {name}: {resp.get('error') or 'refused'}")
+        return resp.get("value", "")
+
+
+secret = _Secrets()

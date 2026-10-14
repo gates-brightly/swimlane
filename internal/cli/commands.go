@@ -776,10 +776,6 @@ func cmdStep(args []string) error {
 	if logPath == "" {
 		logPath = "step.log"
 	}
-	mask, resolve, err := stepSecrets(root, cfg, n, cmdArgs)
-	if err != nil {
-		return err
-	}
 	res, err := step.Run(step.Options{
 		Args: cmdArgs, Label: label, New: fresh, Snapshot: snap || evid, Evidence: evid,
 		LogPath: logPath, Root: root, Lane: n, Lanes: cfg.Lanes,
@@ -788,8 +784,7 @@ func cmdStep(args []string) error {
 		Deadline: deadline, TimeoutText: os.Getenv("SWIM_TIMEOUT"),
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
 		Blocked: cfg.Blocked(),
-		Mask:    mask,
-		Resolve: resolve,
+		Mask:    cfg.Masker(os.Environ()),
 		// A stop request ends the round at its next step, but a handler's
 		// steps (rollback, cleanup) still run: SWIM_IN_HANDLER.
 		Stopped: func() bool {

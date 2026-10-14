@@ -401,29 +401,6 @@ func (v *Vault) All() []Secret {
 	return out
 }
 
-// Placeholder matches _swim.<name> in a step's arguments.
-var Placeholder = regexp.MustCompile(`_swim\.([A-Za-z][A-Za-z0-9_]*)`)
-
-// Expand replaces every _swim.<name> in args using get; the originals are
-// what the log shows.
-func Expand(args []string, get func(name string) (string, error)) ([]string, error) {
-	out := make([]string, len(args))
-	var firstErr error
-	for i, a := range args {
-		out[i] = Placeholder.ReplaceAllStringFunc(a, func(m string) string {
-			val, err := get(m[len("_swim."):])
-			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				return m
-			}
-			return val
-		})
-	}
-	return out, firstErr
-}
-
 // RepoKey is root's key in the store's repo scope: the git toplevel, or
 // "" outside a git repo (only all secrets apply there).
 func RepoKey(root string) string {

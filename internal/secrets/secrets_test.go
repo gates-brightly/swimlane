@@ -137,22 +137,3 @@ func TestPassphraseKey(t *testing.T) {
 		t.Error("decrypted with the wrong passphrase")
 	}
 }
-
-func TestExpand(t *testing.T) {
-	get := func(n string) (string, error) {
-		if n == "db_url" {
-			return "postgres://u:p@h/db", nil
-		}
-		return "", errors.New("no secret " + n)
-	}
-	got, err := Expand([]string{"psql", "_swim.db_url", "-c", "x=_swim.db_url;"}, get)
-	if err != nil || got[1] != "postgres://u:p@h/db" || got[3] != "x=postgres://u:p@h/db;" {
-		t.Errorf("expand: %q %v", got, err)
-	}
-	if _, err := Expand([]string{"echo", "_swim.nope"}, get); err == nil {
-		t.Error("an unknown secret expanded")
-	}
-	if got, _ := Expand([]string{"no placeholders"}, get); got[0] != "no placeholders" {
-		t.Errorf("untouched: %q", got)
-	}
-}

@@ -20,6 +20,7 @@
 // socket. Run the lane with `swim run N`. Written with erasable types only,
 // so `node --experimental-strip-types` runs it as is.
 
+import { execFile } from "node:child_process";
 import { createConnection, type Socket } from "node:net";
 import process from "node:process";
 
@@ -238,3 +239,48 @@ export async function round(fn: (r: Round) => Promise<void> | void): Promise<voi
   }
   if (ended) process.exit(ended.code);
 }
+
+/**
+ * Secrets stored with `swim secret set`, by name:
+ *
+ *   const password = await secret.get("db_password");
+ *
+ * Inside a swim run it asks the run's secrets broker (the run decrypted
+ * them at start, and masks every one as ***(name) in what swim writes);
+ * outside one it runs `swim secret get`, which decrypts with your key.
+ */
+export const secret = {
+  get(name: string): Promise<string> {
+    const path = process.env.SWIM_SECRETS;
+    if (!path) {
+      return new Promise((resolve, reject) => {
+        execFile(process.env.SWIM_BIN || "swim", ["secret", "get", name], (err, stdout, stderr) => {
+          if (err) reject(new SwimError(String(stderr).trim() || `swim secret get ${name} failed`));
+          else resolve(String(stdout));
+        });
+      });
+    }
+    const req = {
+      token: process.env.SWIM_SECRETS_TOKEN ?? "",
+      op: "get",
+      name,
+      lane: Number(process.env.SWIM_LANE || 0),
+      how: "sdk",
+    };
+    return new Promise((resolve, reject) => {
+      let buf = "";
+      const sock = createConnection(path, () => sock.write(JSON.stringify(req) + "\n"));
+      sock.setEncoding("utf8");
+      sock.on("data", (chunk: string) => {
+        buf += chunk;
+        const i = buf.indexOf("\n");
+        if (i < 0) return;
+        sock.end();
+        const resp = JSON.parse(buf.slice(0, i)) as Result;
+        if (resp.ok) resolve(String(resp.value ?? ""));
+        else reject(new SwimError(`secret ${name}: ${(resp.error as string) || "refused"}`));
+      });
+      sock.on("error", (e) => reject(new SwimError(`secret ${name}: ${e.message}`)));
+    });
+  },
+};

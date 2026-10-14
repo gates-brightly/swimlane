@@ -14,7 +14,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/history"
-	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -115,7 +114,7 @@ func secretSet(args []string) error {
 		history.Log(root, history.Entry{Event: history.SecretSet, Detail: name})
 	}
 	fmt.Printf("stored %s for %s (encrypted to %s, %s)\n", name, scopeWord(repo), key.Fingerprint, filepath.Base(key.Path))
-	fmt.Printf("  lanes get it with: # Secrets: %s   or   _swim.%s in a step   or   swim secret get %s\n", name, name, name)
+	fmt.Printf("  lanes get it with: $(swim secret get %s)   or, in an SDK lane: secret.get(%q)\n", name, name)
 	return nil
 }
 
@@ -295,46 +294,4 @@ func secretRemove(args []string) error {
 	}
 	fmt.Printf("removed %s from %s\n", rest[0], scopeWord(repo))
 	return nil
-}
-
-// stepSecrets is a step's masker and, when its arguments hold _swim.<name>
-// placeholders, how to resolve them: from the run's broker inside a swim
-// run, else by decrypting here (and masking what was decrypted).
-func stepSecrets(root string, cfg *config.Config, n int, args []string) (*redact.Masker, func([]string) ([]string, error), error) {
-	uses := false
-	for _, a := range args {
-		if secrets.Placeholder.MatchString(a) {
-			uses = true
-			break
-		}
-	}
-	if !uses {
-		return cfg.Masker(os.Environ()), nil, nil
-	}
-	if os.Getenv(secrets.SockEnv) != "" {
-		get := func(name string) (string, error) {
-			resp, _, err := secrets.Call(os.Getenv, secrets.Request{Op: "get", Name: name, Lane: n, How: "step"})
-			if err != nil {
-				return "", fmt.Errorf("_swim.%s: %v", name, err)
-			}
-			return resp.Value, nil
-		}
-		return cfg.Masker(os.Environ()), func(a []string) ([]string, error) { return secrets.Expand(a, get) }, nil
-	}
-	v, openErr := openVault(root, cfg, true)
-	var known []redact.Labeled
-	for _, s := range v.All() {
-		known = append(known, redact.Labeled{Name: s.Name, Value: s.Value})
-	}
-	get := func(name string) (string, error) {
-		s, err := v.Get(name)
-		if err != nil && openErr != nil {
-			err = openErr
-		}
-		if err != nil {
-			return "", fmt.Errorf("_swim.%s: %v", name, err)
-		}
-		return s.Value, nil
-	}
-	return cfg.MaskerWith(os.Environ(), known), func(a []string) ([]string, error) { return secrets.Expand(a, get) }, nil
 }

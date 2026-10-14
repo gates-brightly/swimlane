@@ -129,6 +129,7 @@ proves this lane published exactly what lane 1 produced.
 | `await r.msg(text, [n, m])` | The lane's status message, in the live view and `swim status`. |
 | `await r.input(lane, name)` / `await r.output(key, value)` | Read a dependency's output (a path, or a small value), or set one of your own. |
 | `await r.drift(what)` / `await r.stop(reason)` | Record drift, or stop the round. |
+| `await secret.get(name)` | A secret stored with `swim secret set` (`import { secret }`). swim masks it as `***(name)` everywhere it writes. |
 | `r.onSuccess(fn)` / `r.onFailure(fn)` / `r.onExit(fn)` | Handlers that get `outcome` (`outcome`, `stop_reason`, `failed_step`, `failed_stage`). Register them before the first step. |
 
 The step options are `{ timeout: "5m", retry: 2, backoff: "1s", retryOn: [75], soft: true }`.
