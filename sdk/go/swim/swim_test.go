@@ -102,7 +102,10 @@ func TestRoundEndsAtGate(t *testing.T) {
 			t.Error("no hello info")
 		}
 		r.OnSuccess(func(map[string]any) error { handled = append(handled, "success"); return nil })
-		r.OnFailure(func(out map[string]any) error { handled = append(handled, "failure:"+out["outcome"].(string)); return nil })
+		r.OnFailure(func(out map[string]any) error {
+			handled = append(handled, "failure:"+out["outcome"].(string))
+			return nil
+		})
 		r.OnExit(func(map[string]any) error { handled = append(handled, "exit"); return nil })
 		if ok, err := r.Run("probe", "true"); !ok || err != nil {
 			t.Errorf("run: %v %v", ok, err)

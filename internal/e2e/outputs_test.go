@@ -107,3 +107,22 @@ func TestLaneOutputsByJobAndPrune(t *testing.T) {
 		t.Error("doctor --fix removed the latest round's outputs")
 	}
 }
+
+// The bash library's input and output functions (not swim input inside
+// bash -c): a value and a path, and a failed input recorded as FAIL.
+func TestLibInputOutput(t *testing.T) {
+	r := newRepo(t, "")
+	producer(t, r, 1, "report.txt", `run "write" bash -c 'echo hello > "$SWIM_OUT/report.txt"'
+output BUILD 42`)
+	r.script(2, "consume with the library", `report=$(input 1 report.txt)
+build=$(input 1 BUILD)
+run "use" bash -c "cat '$report' > got.txt; echo $build >> got.txt"
+missing=$(input 1 nope.txt)
+run "after missing" test -z "$missing"`)
+	withHeader(t, r, 2, "# After: 1")
+	r.swim("run", "--plain")
+	if got := readFile(t, r, "got.txt"); got != "hello\n42" {
+		t.Errorf("read %q", got)
+	}
+	contains(t, "log", r.log(2), "FAIL  input 1 nope.txt (that round declared no output nope.txt", "PASS  after missing")
+}

@@ -153,3 +153,19 @@ run "stage" bash -c 'echo "stage=$STAGE" > stage.out'`)
 	data, _ = os.ReadFile(filepath.Join(r.root, "stage.out"))
 	contains(t, "migrated env", string(data), "stage=from-rc")
 }
+
+// Lint warns about a key set twice in one env file section; a lane in
+// another language gets the env files too, masked in its log.
+func TestEnvFileDuplicatesAndWrappedLane(t *testing.T) {
+	r := newRepo(t, "")
+	envFiles(t, r, "", "[lane 1]\nTABLE=first-table\nTABLE=orders-v2-table\n", "")
+	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped env\nswim run \"show\" -- bash -c 'echo \"table=$TABLE\"; echo \"$TABLE\" > table.txt'\n", 0o755)
+	contains(t, "lint", must(r.swim("lint", "1")), ".env.swim:3 sets TABLE again in [lane 1] (first at line 2; the last wins)")
+	r.mustSwim("run", "1", "--plain")
+	if got := readFile(t, r, "table.txt"); got != "orders-v2-table" {
+		t.Errorf("the lane got TABLE=%q (the last value should win)", got)
+	}
+	if log := r.log(1); !strings.Contains(log, "table=***") || strings.Contains(log, "orders-v2-table") {
+		t.Errorf("file value not masked in a wrapped lane's log:\n%s", log)
+	}
+}

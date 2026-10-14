@@ -75,3 +75,35 @@ func TestPreapprovePinnedToScript(t *testing.T) {
 	}
 	contains(t, "summary", out, "unused pre-answers", "swim 2")
 }
+
+// Precedence: a pre-decline beats -y (the operator's specific answer wins
+// over the run-wide one), and FLAG=0 beats a pre-approval.
+func TestPreanswerPrecedence(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "first", `run "hold" bash -c 'while [ ! -e release ]; do sleep 0.05; done'`)
+	r.script(2, "declined", `if guard ALLOW_A "do a"; then run "did a" true; fi`)
+	withHeader(t, r, 2, "# After: 1")
+	r.script(3, "flag zero", `if guard ALLOW_B "do b"; then run "did b" true; fi`)
+	withHeader(t, r, 3, "# After: 1")
+
+	tr := r.startTUI([]string{"ALLOW_B=0"}, "all", "-y")
+	tr.waitScreen("lanes listed", func(s string) bool { return strings.Contains(s, "swim 3") })
+	tr.send("\x1b[C\x1b[C")
+	tr.send("n")
+	tr.waitFor("swim 2: pre-declined")
+	tr.send("\x1b[C")
+	tr.send("y")
+	tr.waitFor("swim 3: pre-approved")
+	os.WriteFile(r.root+"/release", nil, 0o644)
+	tr.waitFor("run finished")
+	tr.send("q")
+	tr.wait()
+	contains(t, "pre-decline beats -y", r.log(2), "SKIP  do a (dry run: pre-declined by ")
+	if strings.Contains(r.log(2), "PASS  did a") {
+		t.Error("-y overrode a pre-decline")
+	}
+	if strings.Contains(r.log(3), "PASS  did b") {
+		t.Error("a pre-approval overrode ALLOW_B=0")
+	}
+	contains(t, "flag zero", r.log(3), "SKIP  do b (dry run: set ALLOW_B=1 to approve)")
+}

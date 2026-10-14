@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // matrixLane writes lane n as a matrix round over SVC.
@@ -132,4 +134,48 @@ func TestMatrixApprovalPerCell(t *testing.T) {
 	r.mustSwim("approve", "1", "--guards", "ALLOW_DROP", "--key", keys["alice"])
 	r.mustSwim("run", "1", "--plain", "--no-prompt")
 	contains(t, "billing, whole-round approval", readFile(t, r, ".swim/logs/agent1.billing.log"), "PASS  dropped billing")
+}
+
+// swim plan --check checks every cell (read-only); the first Ctrl-C stops
+// every running cell at its step boundary and skips cells not started.
+func TestMatrixCheckAndInterrupt(t *testing.T) {
+	r := newRepo(t, "")
+	matrixLane(t, r, 1, "# Matrix: SVC=a,b,c", `stage check
+run "probe $SVC" touch probed.$SVC
+stage change
+run "change $SVC" touch changed.$SVC`)
+	r.mustSwim("plan", "--check", "1")
+	for _, c := range []string{"a", "b", "c"} {
+		if _, err := os.Stat(filepath.Join(r.root, "probed."+c)); err != nil {
+			t.Errorf("cell %s wasn't checked", c)
+		}
+		if _, err := os.Stat(filepath.Join(r.root, "changed."+c)); err == nil {
+			t.Errorf("cell %s's change ran in a check", c)
+		}
+		contains(t, "cell check log", readFile(t, r, ".swim/logs/agent1."+c+".check.log"), "CHECKED  stopped before stage change")
+	}
+	if st := r.status().Get(1); st.State == "passed" {
+		t.Error("a check made the matrix lane passed")
+	}
+
+	matrixLane(t, r, 2, "# Matrix: SVC=x,y,z\n# Matrix-Parallel: 2", `run "first $SVC" sleep 1
+run "second $SVC" touch second.$SVC`)
+	l := r.launch(t, nil)
+	waitFor(t, func() bool {
+		st := r.status().Get(2)
+		return st != nil && st.FindCell("x") != nil && st.FindCell("x").CurrentStep == "first x"
+	})
+	time.Sleep(150 * time.Millisecond)
+	l.signal(syscall.SIGINT)
+	l.wait(t, 20*time.Second)
+	st := r.status().Get(2)
+	if st.FindCell("z").State != "skipped" {
+		t.Errorf("cell z (not started) should be skipped: %s", st.CellsText())
+	}
+	for _, c := range []string{"x", "y"} {
+		if _, err := os.Stat(filepath.Join(r.root, "second."+c)); err == nil {
+			t.Errorf("cell %s ran its next step after the stop", c)
+		}
+		contains(t, "cell "+c, readFile(t, r, ".swim/logs/agent2."+c+".log"), "STOP  interrupted by operator (after: first "+c+")")
+	}
 }

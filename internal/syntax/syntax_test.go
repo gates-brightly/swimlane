@@ -10,10 +10,10 @@ import (
 
 func TestOfScriptAndLog(t *testing.T) {
 	for src, want := range map[string]int{
-		"#!/usr/bin/env bash\n# swim: syntax 2\n":  2,
-		"# swim: syntax 3\n":                       3,
-		"#!/bin/bash\n# Round: old\n":              1,
-		"\n\n\n\n\n# swim: syntax 2\n":             1, // only the first five lines count
+		"#!/usr/bin/env bash\n# swim: syntax 2\n":   2,
+		"# swim: syntax 3\n":                        3,
+		"#!/bin/bash\n# Round: old\n":               1,
+		"\n\n\n\n\n# swim: syntax 2\n":              1, // only the first five lines count
 		"#!/usr/bin/env bash\n#   swim:   syntax 2": 2,
 	} {
 		if got := OfScript(src); got != want {
