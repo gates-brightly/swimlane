@@ -92,7 +92,7 @@ vet: ## Run go vet
 tidy: ## Tidy go.mod / go.sum
 	go mod tidy
 
-ci: build ## Run this repo's CI rounds (lane.1-4.sh: fmt, lint, unit, e2e) through swim ci, as GitHub Actions does
+ci: build ## Run this repo's CI rounds (lanes.ci.sh: fmt, lint, unit, e2e) through swim ci, as GitHub Actions does
 	$(BIN_DIR)/$(BINARY) ci --rerun
 
 check: ## gofmt, vet, unit and e2e tests (the same checks as the CI rounds, without swim)

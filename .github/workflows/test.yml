@@ -34,11 +34,11 @@ jobs:
           bash --version | head -1
           go version
 
-      # swim tests itself: the CI rounds are committed lane scripts, run by
-      # the swim built from this checkout (settings in swim.yml). fmt
-      # (lane.1.sh), lint (lane.2.sh) and unit tests (lane.3.sh) are Always
-      # lanes: they run first, in that order, and every other lane waits for
-      # them; e2e (lane.4.sh) runs once tests pass. Same as `make ci` locally.
+      # swim tests itself: the CI rounds are lanes 1-4 of the committed group
+      # file lanes.ci.sh, run by the swim built from this checkout (settings
+      # in swim.yml). fmt, lint and unit tests are Always lanes: they run
+      # first, in that order, and every other lane waits for them; e2e runs
+      # once tests pass. Same as `make ci` locally.
       - name: Build swim from this checkout
         run: |
           go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim

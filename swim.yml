@@ -1,8 +1,8 @@
 # swim.yml: this repo's committed swim settings (the same keys as a repos
 # entry in ~/.config/swim/config.yml; your own repos entry overrides them).
-# The CI rounds: lane.1.sh (fmt), lane.2.sh (lint) and lane.3.sh (unit
-# tests) are Always lanes, run in that order before anything else; lane.4.sh
-# (e2e) runs after them. Lanes 5 and up are for rounds. GitHub Actions runs
+# The CI rounds are lanes 1-4 in the group file lanes.ci.sh: fmt, lint and
+# unit tests are Always lanes, run in that order before anything else; e2e
+# runs after them. Lanes 5 and up are for rounds. GitHub Actions runs
 # them with `swim ci`, and `make ci` runs the same rounds locally.
 lanes: 4
 header_env: [GOFLAGS, GITHUB_REF_NAME, RUNNER_OS]
