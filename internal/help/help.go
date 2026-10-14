@@ -1132,6 +1132,16 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                               old terms: it never expires (until lookup.yml
                               sets standing.max), or a lookup.yml rule
                               change doesn't stale it
+    headless-service (info)   a headless worker runs here, or a service
+                              file for one is installed
+    headless-stale (warn)     .swim/headless.pid left by a headless worker
+                              that is gone (killed?)
+    hub-unreachable (warn)    a headless worker's hub can't be reached:
+                              guards waiting on it decline (5s limit)
+    headless-hub-answers (warn) swim.yml's headless.approvals is hub: a hub
+                              user's click approves guards no require:
+                              rule names
+    headless-yes (warn)       an installed headless service runs with -y
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of
