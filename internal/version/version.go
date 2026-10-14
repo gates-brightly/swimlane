@@ -1,5 +1,6 @@
-// Package version defines swim's version, <breaking>.<YYYYMMDD>, and the
-// repo's .swim.lock, which pins the breaking version a repo's lanes use.
+// Package version defines swim's version, 0.<YYYYMMDD>.<index>, and the
+// repo's .swim.lock, which pins the syntax versions of the files a repo's
+// lanes use (lane scripts, logs and swim's state).
 package version
 
 import (
@@ -15,19 +16,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Breaking is bumped when lane scripts, logs or swim's state files change
-// incompatibly, and for a second release on the same day (a tag is
-// v0.<breaking>.<YYYYMMDD>, so there is one release per breaking version per
-// day). Repos locked to another breaking version refuse to run.
-const Breaking = 7
+// A release is tagged v0.<YYYYMMDD>.<index>: the day, and the release's
+// number that day (1, 2, ...), e.g. v0.20261014.2, and reports itself as
+// 0.20261014.2. Go needs a /vN module path for majors above 1, so the
+// major stays 0. Compatibility isn't in the version: it's the syntax
+// versions .swim.lock pins (see Syntaxes).
 
 // Set at build time by the Makefile:
 //
 //	-X github.com/gates-brightly/swimlane/internal/version.BuildDate=20261009
 //	-X github.com/gates-brightly/swimlane/internal/version.Commit=64a0e07
+//	-X github.com/gates-brightly/swimlane/internal/version.BuildTag=v0.20261009.1  (HEAD is a release)
 var (
 	BuildDate = ""
 	Commit    = ""
+	BuildTag  = ""
 )
 
 // InstallCmd is how users get a current swim.
@@ -35,26 +38,43 @@ const InstallCmd = "go install github.com/gates-brightly/swimlane/cmd/swim@lates
 
 var (
 	pseudoRE = regexp.MustCompile(`-(\d{8})\d{6}-[0-9a-f]{12}`)
-	// Release tags are v0.<breaking>.<YYYYMMDD>: Go needs a /vN module path
-	// for majors above 1, so swim's own breaking number goes in the minor.
-	tagRE = regexp.MustCompile(`^v0\.(\d+)\.(\d{8})$`)
+	tagRE    = regexp.MustCompile(`^v0\.(\d{8})\.([1-9]\d*)$`)
 )
 
-// Tag is the git tag for this version, e.g. "v0.2.20261009".
-func Tag(date string) string { return fmt.Sprintf("v0.%d.%s", Breaking, date) }
+// Tag is the git tag of release index on date, e.g. "v0.20261009.2".
+func Tag(date string, index int) string { return fmt.Sprintf("v0.%s.%d", date, index) }
 
-// Date returns the build date as YYYYMMDD: from the Makefile, else from Go's
-// build info (the release tag's date for `go install ...@v0.2.20261009` or
-// @latest, VCS time for a checkout build, or a pseudo-version's timestamp
-// for an untagged commit), else "dev".
+// ParseTag splits a release tag ("v0.20261009.2") into its date and index.
+func ParseTag(tag string) (date string, index string, ok bool) {
+	if m := tagRE.FindStringSubmatch(tag); m != nil {
+		return m[1], m[2], true
+	}
+	return "", "", false
+}
+
+// release is the release tag this binary was built from: the Makefile's
+// BuildTag, or Go's build info (`go install ...@v0.20261009.2` or @latest).
+func release() (date, index string, ok bool) {
+	if d, i, ok := ParseTag(BuildTag); ok {
+		return d, i, true
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		return ParseTag(bi.Main.Version)
+	}
+	return "", "", false
+}
+
+// Date returns the build date as YYYYMMDD: the release's, the Makefile's,
+// else from Go's build info (VCS time for a checkout build, or a
+// pseudo-version's timestamp for an untagged commit), else "dev".
 func Date() string {
+	if d, _, ok := release(); ok {
+		return d
+	}
 	if BuildDate != "" {
 		return BuildDate
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {
-		if m := tagRE.FindStringSubmatch(bi.Main.Version); m != nil {
-			return m[2]
-		}
 		for _, s := range bi.Settings {
 			if s.Key == "vcs.time" {
 				if t, err := time.Parse(time.RFC3339, s.Value); err == nil {
@@ -69,28 +89,16 @@ func Date() string {
 	return "dev"
 }
 
-// TagMismatch returns the release tag this binary was built from when the
-// tag's breaking number isn't Breaking (a release tagged without bumping
-// Breaking, like v0.3.20261009), else "".
-func TagMismatch() string {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
+// String is the version: "0.20261009.2" for a release, "0.20261009" for a
+// build between releases.
+func String() string {
+	if d, i, ok := release(); ok {
+		return "0." + d + "." + i
 	}
-	return tagMismatch(bi.Main.Version)
+	return "0." + Date()
 }
 
-func tagMismatch(mainVersion string) string {
-	if m := tagRE.FindStringSubmatch(mainVersion); m != nil && m[1] != fmt.Sprint(Breaking) {
-		return mainVersion
-	}
-	return ""
-}
-
-// String is the version, e.g. "2.20261009".
-func String() string { return fmt.Sprintf("%d.%s", Breaking, Date()) }
-
-// Long adds the commit when known, e.g. "2.20261009 (64a0e07)".
+// Long adds the commit when known, e.g. "0.20261009.2 (64a0e07)".
 func Long() string {
 	c := Commit
 	if c == "" {
@@ -108,14 +116,63 @@ func Long() string {
 	return String() + " (" + c + ")"
 }
 
+// Syntaxes are the syntax versions of the files a repo's lanes use: lane
+// scripts (the newest swim reads), lane logs, and swim's state files
+// (status, the chain, the queue, approvals). Scripts and logs also say
+// their syntax in the file; state files don't.
+type Syntaxes struct {
+	Script int `yaml:"script" json:"script"`
+	Log    int `yaml:"log" json:"log"`
+	State  int `yaml:"state" json:"state"`
+}
+
+func (s Syntaxes) String() string {
+	return fmt.Sprintf("script %d, log %d, state %d", s.Script, s.Log, s.State)
+}
+
+// Current are this swim's syntaxes. The syntax package sets them (it
+// imports this one): every swim binary links it.
+var Current Syntaxes
+
+// legacy7 is what a lock from before syntax pinning, `breaking: 7`, means:
+// the formats of swim 7.20261013 (earlier breaking versions are older).
+var legacy7 = Syntaxes{Script: 3, Log: 2, State: 1}
+
+// newer reports whether s is newer than o in any syntax.
+func (s Syntaxes) newer(o Syntaxes) bool {
+	return s.Script > o.Script || s.Log > o.Log || s.State > o.State
+}
+
 // LockName is the lock file's name at the repo root.
 const LockName = ".swim.lock"
 
 // Lock is the content of .swim.lock.
 type Lock struct {
-	Breaking  int    `yaml:"breaking"`
-	Version   string `yaml:"version"`    // swim version that wrote the lock
-	UpdatedAt string `yaml:"updated_at"` // when it was written
+	Syntax    Syntaxes `yaml:"syntax"`
+	Version   string   `yaml:"version"`    // swim version that wrote the lock
+	UpdatedAt string   `yaml:"updated_at"` // when it was written
+	// Breaking is a lock from before syntax pinning (swim 7 and earlier).
+	Breaking int `yaml:"breaking,omitempty"`
+}
+
+// Syntaxes are the syntaxes the lock pins (a legacy lock's, translated:
+// breaking 7 is legacy7, an earlier one older than any syntax).
+func (l Lock) Syntaxes() Syntaxes {
+	if l.Syntax.Script > 0 || l.Breaking == 0 {
+		return l.Syntax
+	}
+	if l.Breaking == 7 {
+		return legacy7
+	}
+	return Syntaxes{}
+}
+
+// pins says what the lock pins, for messages.
+func (l Lock) pins() string {
+	if l.Syntax.Script == 0 && l.Breaking != 0 {
+		return fmt.Sprintf("breaking version %d", l.Breaking)
+	}
+	return "syntax " + l.Syntaxes().String()
 }
 
 // LockPath returns root's lock file path.
@@ -130,18 +187,19 @@ func ReadLock(root string) (l Lock, ok bool, err error) {
 	if err != nil {
 		return Lock{}, false, err
 	}
-	if err := yaml.Unmarshal(data, &l); err != nil || l.Breaking < 1 {
+	if err := yaml.Unmarshal(data, &l); err != nil || l.Syntax.Script < 1 && l.Breaking < 1 {
 		return Lock{}, false, fmt.Errorf("%s is not a valid swim lock (fix or delete it): %v", LockPath(root), err)
 	}
 	return l, true, nil
 }
 
-// WriteLock records this swim's breaking version in root's lock.
+// WriteLock records this swim's syntaxes in root's lock.
 func WriteLock(root string) error {
-	l := Lock{Breaking: Breaking, Version: String(), UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+	l := Lock{Syntax: Current, Version: String(), UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
 	data, _ := yaml.Marshal(l)
-	head := "# swim lock: the breaking version of swim this repo's lanes use.\n" +
-		"# Written by swim; commit it so everyone runs a compatible swim. See `swim lock --help`.\n"
+	head := "# swim lock: the syntax versions of the files this repo's lanes use (lane scripts,\n" +
+		"# logs, swim's state). Written by swim; commit it so everyone runs a compatible swim.\n" +
+		"# See `swim lock --help`.\n"
 	tmp := LockPath(root) + ".tmp"
 	if err := os.WriteFile(tmp, []byte(head+string(data)), 0o644); err != nil {
 		return err
@@ -149,7 +207,19 @@ func WriteLock(root string) error {
 	return os.Rename(tmp, LockPath(root))
 }
 
-// ErrMismatch explains a breaking-version mismatch and how to resolve it.
+// Mismatched reports whether the lock pins other syntaxes than this swim's.
+func (l Lock) Mismatched() bool { return l.Newer() || l.Syntaxes() != Current }
+
+// Newer reports whether the lock needs a newer swim. A legacy lock above
+// breaking 7 is: no swim wrote one before syntax pinning.
+func (l Lock) Newer() bool {
+	if l.Syntax.Script == 0 && l.Breaking > 7 {
+		return true
+	}
+	return l.Syntaxes().newer(Current)
+}
+
+// ErrMismatch explains a syntax mismatch and how to resolve it.
 type ErrMismatch struct {
 	Lock Lock
 	Path string
@@ -157,17 +227,18 @@ type ErrMismatch struct {
 
 func (e ErrMismatch) Error() string {
 	var b strings.Builder
-	if e.Lock.Breaking > Breaking {
-		fmt.Fprintf(&b, "this repo needs a newer swim: %s pins breaking version %d (written by swim %s),\n", LockName, e.Lock.Breaking, e.Lock.Version)
-		fmt.Fprintf(&b, "but this swim is %s (breaking version %d).\n\n", String(), Breaking)
+	pinned := e.Lock.pins()
+	if e.Lock.Newer() {
+		fmt.Fprintf(&b, "this repo needs a newer swim: %s pins %s (written by swim %s),\n", LockName, pinned, e.Lock.Version)
+		fmt.Fprintf(&b, "but this swim is %s (syntax %s).\n\n", String(), Current)
 		b.WriteString("Update swim, then run again:\n")
 		fmt.Fprintf(&b, "  %s\n", InstallCmd)
 		b.WriteString("  (or, in a checkout of swimlane: git pull && make install)\n")
 		b.WriteString("Check with: swim --version")
 		return b.String()
 	}
-	fmt.Fprintf(&b, "this repo's lanes were set up for an older swim: %s pins breaking version %d (written by swim %s),\n", LockName, e.Lock.Breaking, e.Lock.Version)
-	fmt.Fprintf(&b, "and this swim is %s (breaking version %d), which changed lane scripts, logs or state incompatibly.\n\n", String(), Breaking)
+	fmt.Fprintf(&b, "this repo's lanes were set up for an older swim: %s pins %s (written by swim %s),\n", LockName, pinned, e.Lock.Version)
+	fmt.Fprintf(&b, "and this swim is %s (syntax %s), which changed lane scripts, logs or state incompatibly.\n\n", String(), Current)
 	b.WriteString("Before running:\n")
 	b.WriteString("  1. Read what changed: swim lock --help\n")
 	b.WriteString("  2. Update the lane scripts (swim new writes the current template) and let running lanes finish.\n")
@@ -176,14 +247,14 @@ func (e ErrMismatch) Error() string {
 	return b.String()
 }
 
-// Check returns ErrMismatch if root's lock pins another breaking version.
-// A missing lock is fine.
+// Check returns ErrMismatch if root's lock pins other syntaxes. A missing
+// lock is fine.
 func Check(root string) error {
 	l, ok, err := ReadLock(root)
 	if err != nil || !ok {
 		return err
 	}
-	if l.Breaking != Breaking {
+	if l.Mismatched() {
 		return ErrMismatch{Lock: l, Path: LockPath(root)}
 	}
 	return nil
@@ -197,7 +268,7 @@ func Ensure(root string) (created bool, err error) {
 		return false, err
 	}
 	if ok {
-		if l.Breaking != Breaking {
+		if l.Mismatched() {
 			return false, ErrMismatch{Lock: l, Path: LockPath(root)}
 		}
 		return false, nil

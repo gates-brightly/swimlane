@@ -38,6 +38,17 @@ const Current = 2
 //	3  outcome handlers and Fail: (lane scripts only)
 const Script = 3
 
+// State is the syntax of swim's state files: .swim/status.yml, the chain
+// (.swim/chain.jsonl), queued batches and signed approvals. Unlike lane
+// scripts and logs they don't say which syntax they use, so a repo's
+// .swim.lock pins it: bump it when they change incompatibly.
+//
+//	1  the state files as of swim 7.20261013
+const State = 1
+
+// The lock (version.Check) compares a repo's pinned syntaxes with these.
+func init() { version.Current = version.Syntaxes{Script: Script, Log: Current, State: State} }
+
 var (
 	scriptRE = regexp.MustCompile(`^#\s*swim:\s*syntax\s+(\d+)\s*$`)
 	logRE    = regexp.MustCompile(`^#\s*swim lane log\s*\|\s*syntax\s+(\d+)`)

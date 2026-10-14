@@ -160,7 +160,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - **Nothing operational is committed by accident.** Lane scripts, logs and state are git-ignored by default. Shared settings, `lookup.yml`, approvals and `.swim.lock` are committed.
 - **Readable without the planner.** A round's header states its goal, and its log shows every step.
 - **Personal settings stay out of reach.** Config lives outside the repo, so workers can't change it.
-- **Upgrades are explicit.** `.swim.lock` pins the breaking version a repo uses, and older scripts and logs are migrated with the originals kept.
+- **Upgrades are explicit.** `.swim.lock` pins the syntax versions a repo uses (lane scripts, logs, state), and older scripts and logs are migrated with the originals kept. Releases (`0.<date>.<index>`) that change no syntax never touch it.
 
 ## Out of scope
 

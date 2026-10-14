@@ -70,7 +70,7 @@ COMMANDS
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
   doctor [--fix]           check the environment: binary platform, PATH, config, .gitignore,
                            pid files, toolchain, git, .swim.lock (--fix: safe local repairs)
-  --version                swim's version: <breaking>.<YYYYMMDD>
+  --version                swim's version: 0.<YYYYMMDD>.<index>
 
   Wherever a command takes a lane number N it also takes a job id (JOB): the
   full id or its first 8+ characters. See "job" below.
@@ -170,7 +170,7 @@ CONCEPTS
               Logs are kept; rounds are not.
 
 FILES (repo root)
-  .swim.lock            the breaking version of swim this repo uses; written on
+  .swim.lock            the syntax versions this repo's lanes use; written on
                         the first run. Commit it. If swim refuses to run over a
                         version mismatch, follow its instructions (and see
                         `swim lock --help`); never edit or delete the lock to

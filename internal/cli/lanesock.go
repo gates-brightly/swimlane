@@ -178,7 +178,7 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 		s.connected.Store(true)
 		deadline, _ := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64)
 		result := map[string]any{
-			"protocol": LaneProtocol, "swim": version.String(), "breaking": version.Breaking,
+			"protocol": LaneProtocol, "swim": version.String(), "syntax": version.Current,
 			"lane": s.n, "cell": lane.CurrentCell(), "job": envOf(s.env, "SWIM_JOB"), "run": envOf(s.env, "SWIM_RUN"),
 			"deadline": deadline, "check": lane.CheckMode(),
 		}

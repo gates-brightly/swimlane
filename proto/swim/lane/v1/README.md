@@ -42,7 +42,7 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
 
 | op | args | result |
 |---|---|---|
-| `hello` | `protocol` (`swim.lane/v1`), `sdk` | `protocol`, `swim`, `breaking`, `lane`, `cell`, `job`, `run`, `deadline` (epoch, 0 for none), `check` (a read-only check), and for one job of a lane of jobs `job_path` (`1.5.9`) |
+| `hello` | `protocol` (`swim.lane/v1`), `sdk` | `protocol`, `swim`, `syntax` ({script, log, state}; it replaced `breaking`, which no SDK read), `lane`, `cell`, `job`, `run`, `deadline` (epoch, 0 for none), `check` (a read-only check), and for one job of a lane of jobs `job_path` (`1.5.9`) |
 | `stage` | `name` | — |
 | `run`, `gate`, `snapshot`, `evidence` | `label`, `argv`, `opts` (as for `swim run`: `--timeout D`, `--retry N`, `--backoff D`, `--retry-on CODES`, `--no-retry-timeout`, `--soft`) | `exit`, `passed` |
 | `begin_step` | `label`, `gate` | `step` (id), `started` (false: the lane is stopping) |

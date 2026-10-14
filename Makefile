@@ -8,7 +8,9 @@ GO_BIN_DIR := $(or $(shell go env GOBIN 2>/dev/null),$(shell go env GOPATH 2>/de
 V ?= latest
 COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 BUILD_DATE ?= $(shell date -u +%Y%m%d)
-LDFLAGS := -s -w -X github.com/gates-brightly/swimlane/internal/version.BuildDate=$(BUILD_DATE) -X github.com/gates-brightly/swimlane/internal/version.Commit=$(COMMIT)
+# The release tag (v0.<YYYYMMDD>.<index>) when HEAD is one and the tree is clean.
+BUILD_TAG  ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && git tag --points-at HEAD 2>/dev/null | grep -E '^v0\.[0-9]{8}\.[1-9][0-9]*$$' | sort -t. -k3,3n | tail -1)
+LDFLAGS := -s -w -X github.com/gates-brightly/swimlane/internal/version.BuildDate=$(BUILD_DATE) -X github.com/gates-brightly/swimlane/internal/version.Commit=$(COMMIT) -X github.com/gates-brightly/swimlane/internal/version.BuildTag=$(BUILD_TAG)
 
 .DEFAULT_GOAL := help
 
@@ -24,13 +26,13 @@ install: ## Install swim from this checkout into $GOBIN (or $GOPATH/bin)
 	go install -ldflags "$(LDFLAGS)" $(PKG)
 	@$(MAKE) --no-print-directory which
 
-release: ## Tag a release after checking version, Breaking, CHANGELOG.md and a clean tree (V=v0.<breaking>.<YYYYMMDD>); never pushes
+release: ## Tag a release after checking its date and index, CHANGELOG.md and a clean tree (V=v0.<YYYYMMDD>.<index>); never pushes
 	@./scripts/release.sh $(V)
 
-next-tag: ## Print the next release tag (today's date; next version if today is tagged) and the git commands to publish it
+next-tag: ## Print the next release tag (v0.<today>.<next index>) and the git commands to publish it
 	@./scripts/next-tag.sh
 
-install-latest: ## go install the published swim (V=v0.2.20261009 to pin; default latest)
+install-latest: ## go install the published swim (V=v0.20261014.1 to pin; default latest)
 	GOPRIVATE="$$(p=$$(go env GOPRIVATE); echo "$${p:+$$p,}github.com/gates-brightly/*")" go install $(MODULE)/cmd/swim@$(V)
 	@$(MAKE) --no-print-directory which
 

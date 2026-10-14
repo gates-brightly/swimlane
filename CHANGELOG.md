@@ -6,30 +6,39 @@ What changed in swim, newest first. Each `##` section is one revision.
 ```sh
 swim changelog                  # the newest revision (what you just updated to)
 swim changelog -n 3             # the newest three revisions
-swim changelog --since 2.20261009   # everything after the version you came from
+swim changelog --since 0.20261014.1   # everything after the version you came from
 swim changelog --all            # every revision
 ```
 
-Versions are `<breaking>.<YYYYMMDD>` (`swim --version`), and release tags are
-`v0.<breaking>.<YYYYMMDD>`. A new breaking number means lane scripts, logs or
-swim's state changed incompatibly. Read that revision's **Upgrading** notes and
-`swim lock --help` before running lanes. Revisions before versioning existed are
-named by commit.
-
-There is one release per breaking number per day. A second release on the
-same day bumps the breaking number (`Breaking` in `internal/version`) and gets
-**Upgrading** notes like any other breaking release.
+Versions are `0.<YYYYMMDD>.<index>` (`swim --version`): the release's date and
+its number that day, tagged `v0.<YYYYMMDD>.<index>`. Until 0.20261014.1 they
+were `<breaking>.<YYYYMMDD>`, tagged `v0.<breaking>.<YYYYMMDD>`. The version
+says nothing about compatibility: lane scripts, logs and swim's state have
+syntax versions, which a repo's `.swim.lock` pins. A revision that changes
+one has **Upgrading** notes; read them and `swim lock --help` before running
+lanes. Revisions before versioning existed are named by commit.
 
 To cut a release:
-1. Set `Breaking` in `internal/version`.
-2. Rename `## Unreleased` to `## <version> (v0.<breaking>.<date>, <date>)`, and
-   start a new empty `## Unreleased` above it.
-3. Commit, then run `make release V=v0.<breaking>.<date>`. It refuses to tag
-   unless the version, `Breaking`, the changelog and a clean tree all agree.
+1. `make next-tag` prints the next tag, `v0.<today>.<index>`.
+2. Rename `## Unreleased` to `## 0.<date>.<index> (v0.<date>.<index>, <date>)`,
+   and start a new empty `## Unreleased` above it.
+3. Commit, then run `make release V=v0.<date>.<index>`. It refuses to tag
+   unless the date, the index, the changelog and a clean tree all agree.
 
 ## Unreleased
 
 ### Changed
+
+- **Versions are `0.<YYYYMMDD>.<index>`,** tagged `v0.<YYYYMMDD>.<index>`:
+  any number of releases a day, each with the date. `Breaking` is gone.
+  - **Compatibility is syntax versions:** `.swim.lock` pins the script, log
+    and (new) state syntax a repo uses, so a release that changes no format
+    never touches it. A lock that says `breaking: 7` means today's syntaxes
+    and needs nothing (`swim lock --upgrade` rewrites it in the new form).
+  - `make next-tag` prints the day's next tag; `make release` checks it.
+    The lane protocol's `hello` returns `syntax` instead of `breaking`.
+  - `swim --version` no longer warns about mis-tagged releases (a tag can't
+    disagree with the code any more).
 
 - **Hub link in swim watch:** an enrolled `swim watch` shows the hub link at
   the top of its screen: `(hub online) URL` in green, or `(offline mode) hub

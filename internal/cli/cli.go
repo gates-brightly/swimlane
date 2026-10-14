@@ -95,9 +95,6 @@ func Main(args []string) int {
 	}
 	if args[0] == "--version" || args[0] == "version" {
 		fmt.Println("swim", version.Long())
-		if t := version.TagMismatch(); t != "" {
-			fmt.Fprintf(os.Stderr, "swim: warning: built from %s, but its code says breaking version %d: a mis-tagged release. Install another: %s\n", t, version.Breaking, version.InstallCmd)
-		}
 		return 0
 	}
 	name := args[0]
@@ -302,8 +299,8 @@ func requireVersion(root string, create bool) error {
 		return err
 	}
 	if created {
-		history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("created %s: breaking %d (swim %s)", version.LockName, version.Breaking, version.String())})
-		fmt.Fprintf(os.Stderr, "swim: wrote %s (breaking version %d); commit it so everyone runs a compatible swim\n", version.LockName, version.Breaking)
+		history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("created %s: syntax %s (swim %s)", version.LockName, version.Current, version.String())})
+		fmt.Fprintf(os.Stderr, "swim: wrote %s (syntax %s); commit it so everyone runs a compatible swim\n", version.LockName, version.Current)
 	}
 	return nil
 }

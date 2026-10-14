@@ -2,8 +2,9 @@
 // `swim changelog` prints.
 //
 // A revision is a "## " section, newest first. Its id is the heading's first
-// word: "Unreleased", a version ("2.20261009"), or a commit for revisions
-// before versioning ("dd2db6f"). Text before the first "## " is the preamble.
+// word: "Unreleased", a version ("0.20261014.2", or before that scheme
+// "7.20261013"), or a commit for revisions before versioning ("dd2db6f").
+// Text before the first "## " is the preamble.
 package changelog
 
 import (
@@ -55,28 +56,51 @@ func Parse(md string) []Entry {
 }
 
 var (
-	versionRE = regexp.MustCompile(`^(\d+)\.(\d{8})$`)
-	tagRE     = regexp.MustCompile(`^v0\.(\d+)\.(\d{8})$`)
+	versionRE = regexp.MustCompile(`^0\.(\d{8})\.([1-9]\d*)$`)  // 0.20261014.2
+	tagRE     = regexp.MustCompile(`^v0\.(\d{8})\.([1-9]\d*)$`) // v0.20261014.2
+	// Before 0.<date>.<index>: <breaking>.<date>, tagged v0.<breaking>.<date>.
+	oldVersionRE = regexp.MustCompile(`^(\d+)\.(\d{8})$`)
+	// A commit prefix names a revision from before versioning.
+	commitRE = regexp.MustCompile(`^[0-9a-f]{7,}$`)
+	oldTagRE = regexp.MustCompile(`^v0\.(\d{1,7})\.(\d{8})$`)
 )
 
-// version parses "2.20261009" or the tag form "v0.2.20261009".
-func version(s string) (breaking, date int, ok bool) {
-	m := versionRE.FindStringSubmatch(s)
-	if m == nil {
-		m = tagRE.FindStringSubmatch(s)
+// order is a version's place in time: its date, then its release that day
+// (the index; for the old scheme, the breaking version, which also rose
+// with each release that day).
+type order struct{ date, n int }
+
+func (a order) after(b order) bool { return a.date > b.date || a.date == b.date && a.n > b.n }
+
+// version parses a version or its tag, in either scheme.
+func version(s string) (order, bool) {
+	if m := versionRE.FindStringSubmatch(s); m != nil {
+		return orderOf(m[1], m[2]), true
 	}
-	if m == nil {
-		return 0, 0, false
+	if m := tagRE.FindStringSubmatch(s); m != nil {
+		return orderOf(m[1], m[2]), true
 	}
-	b, _ := strconv.Atoi(m[1])
-	d, _ := strconv.Atoi(m[2])
-	return b, d, true
+	for _, re := range []*regexp.Regexp{oldVersionRE, oldTagRE} {
+		if m := re.FindStringSubmatch(s); m != nil {
+			return orderOf(m[2], m[1]), true
+		}
+	}
+	return order{}, false
 }
 
-// Normalize turns a tag ("v0.2.20261009") into its version ("2.20261009");
-// other ids are returned unchanged.
+func orderOf(date, n string) order {
+	d, _ := strconv.Atoi(date)
+	k, _ := strconv.Atoi(n)
+	return order{d, k}
+}
+
+// Normalize turns a tag ("v0.20261014.2", or "v0.2.20261009") into its
+// version ("0.20261014.2", "2.20261009"); other ids are returned unchanged.
 func Normalize(id string) string {
 	if m := tagRE.FindStringSubmatch(id); m != nil {
+		return "0." + m[1] + "." + m[2]
+	}
+	if m := oldTagRE.FindStringSubmatch(id); m != nil {
 		return m[1] + "." + m[2]
 	}
 	return id
@@ -89,11 +113,11 @@ func Normalize(id string) string {
 func Since(entries []Entry, ref string) ([]Entry, error) {
 	ref = Normalize(strings.TrimSpace(ref))
 	for i, e := range entries {
-		if e.ID == ref || (len(ref) >= 7 && strings.HasPrefix(e.ID, ref)) {
+		if e.ID == ref || (commitRE.MatchString(ref) && strings.HasPrefix(e.ID, ref)) {
 			return entries[:i], nil
 		}
 	}
-	rb, rd, ok := version(ref)
+	ro, ok := version(ref)
 	if !ok {
 		return nil, fmt.Errorf("no revision %q in the changelog (known: %s)", ref, ids(entries))
 	}
@@ -103,7 +127,7 @@ func Since(entries []Entry, ref string) ([]Entry, error) {
 			out = append(out, e)
 			continue
 		}
-		if b, d, ok := version(e.ID); ok && (b > rb || (b == rb && d > rd)) {
+		if o, ok := version(e.ID); ok && o.after(ro) {
 			out = append(out, e)
 		}
 	}

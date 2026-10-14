@@ -874,7 +874,7 @@ they waited for.
 | `swim config [KEY [VALUE]] [--repo]` | Show or set config, keeping the file's comments. |
 | `swim env [N\|JOB] [--yaml]` | The env a lane gets from env files, masked, with each key's source. |
 | `swim secret set\|get\|ls\|rm NAME [--all\|--repo]` | Secrets encrypted to your SSH key, for lanes. |
-| `swim lock [--upgrade]` / `swim changelog` | The repo's breaking-version lock; what changed between versions. |
+| `swim lock [--upgrade]` / `swim changelog` | The repo's syntax lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
 | `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
 | `swim --help` / `swim <cmd> --help` | The full guide, or one command's detail. |
@@ -888,7 +888,7 @@ they waited for.
 | `swim.yml` | The repo's shared settings. | Yes |
 | `lookup.yml` | Users, keys, groups and approval rules. | Yes |
 | `approvals/` | Signed approvals. | Yes |
-| `.swim.lock` | The breaking version of swim the repo uses. | Yes |
+| `.swim.lock` | The syntax versions the repo's lanes use (script, log, state). | Yes |
 | `.swim.log` | The project log: one line per top-level action. | No |
 | `.env.swim` | Lane-scoped env (`[lane N]` sections). | No |
 | `~/.config/swim/secrets.yml` | Your secrets, encrypted (`swim secret`). | Never |
@@ -939,16 +939,17 @@ make which            # every swim on your PATH, and which one runs
 swim changelog        # what's new in the version you're running (--since <old version>)
 ```
 
-- **Version numbers:** `swim --version` prints `<breaking>.<YYYYMMDD>`.
-  The breaking number changes when lane scripts, logs or swim's state
-  change incompatibly, and for a second release on the same day.
-- **`.swim.lock`:** the first run in a repo writes it, recording the
-  breaking version the repo uses. Commit it. A swim with a different
-  breaking number refuses to run lanes, and says whether to update swim or
-  run `swim lock --upgrade`.
+- **Version numbers:** `swim --version` prints `0.<YYYYMMDD>.<index>`:
+  the release's date and its number that day (tag `v0.<YYYYMMDD>.<index>`).
+  The version says nothing about compatibility; syntax versions do.
 - **Syntax versions:** lane scripts and logs declare their syntax
-  (`# swim: syntax 2`). Older files are migrated automatically, with the
-  originals kept under `.swim/migrations/`.
+  (`# swim: syntax 2`), and swim's state files (status, the chain, the
+  queue, approvals) have one too. Older files are migrated automatically,
+  with the originals kept under `.swim/migrations/`.
+- **`.swim.lock`:** the first run in a repo writes it, pinning the script,
+  log and state syntax the repo uses. Commit it. A swim with other syntaxes
+  refuses to run lanes, and says whether to update swim or run `swim lock
+  --upgrade`. Releases that change no syntax never touch it.
 
 ### Development
 
@@ -957,7 +958,8 @@ make test             # unit tests (fast)
 make e2e              # the Go e2e suite and every scenario (S="dag99 ..." for some)
 make check            # gofmt, vet, unit and e2e tests
 make ci               # this repo's CI rounds, through swim ci
-make release V=v0.<breaking>.<YYYYMMDD>   # tag a release (checks version, CHANGELOG, clean tree; never pushes)
+make next-tag                         # the next release tag (today's date, the day's next index)
+make release V=v0.<YYYYMMDD>.<index>  # tag it (checks the date, index, CHANGELOG, clean tree; never pushes)
 ```
 
 - **Two layers of end-to-end tests:**
@@ -967,6 +969,7 @@ make release V=v0.<breaking>.<YYYYMMDD>   # tag a release (checks version, CHANG
     [`e2e/README.md`](e2e/README.md).
 - **Bash 3.2:** `internal/assets/lib.sh`, `e2e/run.sh` and
   `e2e/lib/common.sh` must stay compatible with macOS's bash 3.2.
-- **Breaking changes:** bump `Breaking` in `internal/version/version.go`,
-  add the change to `swim lock --help` and `CHANGELOG.md`, and follow the
-  release steps at the top of the changelog.
+- **Incompatible changes:** bump the syntax version of what changed
+  (`Script`, `Current` for logs, or `State` in `internal/syntax`), add it to
+  `swim lock --help` and `CHANGELOG.md` (with Upgrading notes), and follow
+  the release steps at the top of the changelog.

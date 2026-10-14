@@ -648,7 +648,7 @@ func TestProjectLog(t *testing.T) {
 		"init status",
 		"new swim 1 job=job-one-0001 first goal",
 		"new swim 2 job=job-two-0002 second goal",
-		fmt.Sprintf("lock created .swim.lock: breaking %d", version.Breaking),
+		"lock created .swim.lock: syntax " + version.Current.String(),
 		"run swim 1,2",
 		"start swim 1 job=job-one-0001 first goal",
 		"fail swim 1 job=job-one-0001 pass=",
@@ -868,7 +868,7 @@ func TestOldRootLogsMigrate(t *testing.T) {
 
 func TestVersionAndLock(t *testing.T) {
 	r := newRepo(t, "")
-	if out := r.mustSwim("--version"); !regexp.MustCompile(fmt.Sprintf(`^swim %d\.(\d{8}|dev)`, version.Breaking)).MatchString(out) {
+	if out := r.mustSwim("--version"); !regexp.MustCompile(`^swim 0\.(\d{8}|dev)(\.\d+)?`).MatchString(out) || strings.Contains(out, "warning") {
 		t.Errorf("--version = %q", out)
 	}
 	lockPath := filepath.Join(r.root, ".swim.lock")
@@ -878,17 +878,25 @@ func TestVersionAndLock(t *testing.T) {
 		t.Fatal("plan wrote a lock")
 	}
 	out := r.mustSwim("run", "1")
-	contains(t, "first run", out, fmt.Sprintf("wrote .swim.lock (breaking version %d)", version.Breaking))
+	contains(t, "first run", out, "wrote .swim.lock (syntax "+version.Current.String()+")")
 	data, _ := os.ReadFile(lockPath)
-	contains(t, ".swim.lock", string(data), fmt.Sprintf("breaking: %d", version.Breaking), fmt.Sprintf("version: %d.", version.Breaking))
+	contains(t, ".swim.lock", string(data), fmt.Sprintf("script: %d", version.Current.Script), fmt.Sprintf("state: %d", version.Current.State), "version: 0.")
 	if out := r.mustSwim("run", "1"); strings.Contains(out, "wrote .swim.lock") {
 		t.Error("lock rewritten on second run")
 	}
-	contains(t, "lock", r.mustSwim("lock"), fmt.Sprintf("lock:  breaking version %d", version.Breaking), "ok:")
-	contains(t, ".swim.log", r.mustSwim("log"), fmt.Sprintf("lock         created .swim.lock: breaking %d", version.Breaking))
+	contains(t, "lock", r.mustSwim("lock"), "lock:  syntax "+version.Current.String(), "ok:")
+	contains(t, ".swim.log", r.mustSwim("log"), "lock         created .swim.lock: syntax "+version.Current.String())
 
-	// A lock from a newer breaking version: refuse to run, with instructions.
-	os.WriteFile(lockPath, []byte(fmt.Sprintf("breaking: %d\nversion: %d.20270101\n", version.Breaking+1, version.Breaking+1)), 0o644)
+	// An old-form lock (breaking: 7) is today's syntaxes: it runs, and
+	// swim lock --upgrade rewrites it in the new form.
+	os.WriteFile(lockPath, []byte("breaking: 7\nversion: 7.20261013\n"), 0o644)
+	r.mustSwim("run", "1")
+	contains(t, "upgrade old form", r.mustSwim("lock", "--upgrade"), "breaking 7")
+	data, _ = os.ReadFile(lockPath)
+	contains(t, "rewritten lock", string(data), fmt.Sprintf("script: %d", version.Current.Script))
+
+	// A lock with a newer syntax: refuse to run, with instructions.
+	os.WriteFile(lockPath, []byte(fmt.Sprintf("syntax: {script: %d, log: %d, state: %d}\nversion: 0.20270101.1\n", version.Current.Script, version.Current.Log, version.Current.State+1)), 0o644)
 	for _, args := range [][]string{{"run", "1"}, {"all"}, {"1"}, {"new", "2", "x"}, {"lock", "--upgrade"}} {
 		out, code := r.swim(args...)
 		if code == 0 || !strings.Contains(out, "this repo needs a newer swim") || !strings.Contains(out, "go install github.com/gates-brightly/swimlane/cmd/swim@latest") {
@@ -901,7 +909,7 @@ func TestVersionAndLock(t *testing.T) {
 	// Read-only commands still work, with a warning.
 	contains(t, "status", r.mustSwim("status"), "warning: this repo needs a newer swim", "swim 1")
 	contains(t, "plan", r.mustSwim("plan"), "warning: this repo needs a newer swim")
-	if strings.Count(r.log(1), "== ROUND ") != 2 {
+	if strings.Count(r.log(1), "== ROUND ") != 3 {
 		t.Error("a lane ran despite the lock mismatch")
 	}
 }

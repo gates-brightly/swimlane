@@ -855,8 +855,8 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     toolchain (error)         config toolchain fails in bash -c (30s limit)
     git (error)               git missing, or not inside a git repo
     header-env-secret (warn)  header_env lists a secret variable
-    lock (info/warn)          .swim.lock missing (info), invalid or for
-                              another breaking version (warn)
+    lock (info/warn)          .swim.lock missing or in the old form (info),
+                              invalid or pinning other syntaxes (warn)
     env-file (error)          an env file that doesn't parse, or sets a
                               lane's guard flag
     lane-rc (warn)            a deprecated .lane.N.rc
@@ -878,63 +878,55 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
 
   swim changelog                  the newest revision (default -n 1)
   swim changelog -n 3             the newest three revisions
-  swim changelog --since 2.20261009
+  swim changelog --since 0.20261014.1
                                   every revision after that version (or tag,
-                                  v0.2.20261009, or a pre-release commit id)
+                                  v0.20261014.1; an older 7.20261013; or a
+                                  pre-release commit id)
   swim changelog --all            every revision
 
   A revision is one "## " section: Unreleased (on a build from main), a
-  release version <breaking>.<YYYYMMDD>, or a commit for revisions before
-  versioning. A revision with a new breaking number has Upgrading notes:
-  read them, and swim lock --help, before running lanes.
+  release version 0.<YYYYMMDD>.<index> (earlier, <breaking>.<YYYYMMDD>), or
+  a commit for revisions before versioning. A revision that changes a syntax
+  version has Upgrading notes: read them, and swim lock --help, before
+  running lanes.
 `,
 	"lock": `swim lock [--upgrade]
 
-  swim's version is <breaking>.<YYYYMMDD> (swim --version), e.g. 1.20261009:
-  the breaking version changes when lane scripts, logs or swim's state
-  change incompatibly, or for a second release on the same day; the date is
-  the build date.
+  swim's version is 0.<YYYYMMDD>.<index> (swim --version), e.g. 0.20261014.2:
+  the release's date and its number that day; a build between releases is
+  0.<YYYYMMDD>. The version says nothing about compatibility: syntax
+  versions do. Lane scripts (# swim: syntax 3) and logs (# swim lane log |
+  syntax 2) say theirs in the file; swim's state files (status, the chain,
+  queued batches, approvals) have one too, which they don't record.
 
-  .swim.lock, at the repo root, pins the breaking version a repo's lanes use.
-  swim writes it on the first run (swim run / swim all, or a lane script run
-  directly) if there is none. Commit it, so everyone runs a compatible swim.
+  .swim.lock, at the repo root, pins the syntax versions a repo's lanes use:
+  script, log and state. swim writes it on the first run (swim run / swim
+  all, or a lane script run directly) if there is none. Commit it, so
+  everyone runs a compatible swim. Releases that change no syntax never
+  touch it.
 
   When the lock and this swim disagree, swim refuses to run lanes or write
   new ones (swim plan / status / log still work, with a warning):
     - lock is newer than this swim: update swim, then run again:
         go install github.com/gates-brightly/swimlane/cmd/swim@latest
         (or in a swimlane checkout: git pull && make install)
-    - lock is older than this swim: the repo was set up before a breaking
-      change. Read the changes below, update the lane scripts (swim new
-      writes the current template), let running lanes finish, then record
-      that the repo is ready with: swim lock --upgrade
+    - lock is older than this swim: the repo was set up before a syntax
+      changed. Read swim changelog for what changed, update the lane scripts
+      (swim new writes the current template), let running lanes finish, then
+      record that the repo is ready with: swim lock --upgrade
 
-  swim lock             show this swim's version and the repo's lock
-  swim lock --upgrade   move the lock up to this swim's breaking version
+  swim lock             show this swim's version and syntaxes, and the repo's lock
+  swim lock --upgrade   move the lock up to this swim's syntaxes (and rewrite
+                        an old-form lock)
 
-  Breaking versions:
-    7   v0.7.20261013: a deliberate bump (swim watch -y is new; nothing
-        incompatible). Lane scripts, logs and state are as in 4-6:
-        swim lock --upgrade
-    6   v0.6.20261012: the third release that day (swim queue and swim watch
-        are new; nothing incompatible). Lane scripts, logs and state are as
-        in 4 and 5: swim lock --upgrade
-    5   v0.5.20261012: the second release that day, so a new breaking number
-        with nothing incompatible. Lane scripts, logs and state are as in 4:
-        swim lock --upgrade
-    4   v0.4.<YYYYMMDD>. Syntax 2 lane scripts and logs (migrated
-        automatically), BLOCKED results (exit 87), new lane states
-        (starting, queued, locked), graceful Ctrl-C by default (exit 137
-        counts as interrupted), swim.yml. Read swim changelog --since 2.20261009,
-        then: swim lock --upgrade
-    3   v0.3.20261009 only, retracted: tagged without the bump, so it reports
-        itself as 2.20261009. No lock was ever written at 3.
-    2   first published release (tag v0.2.<YYYYMMDD>). .swim/status.yml now
-        records the round a skipped lane skipped (job, round, finished_at),
-        which swim plan uses to show it as a retry. Lane scripts are unchanged:
-        a repo locked at 1 only needs: swim lock --upgrade
-    1   pre-release: lane.N.sh scripts with Round:/Job:/After: headers,
-        .swim/ state and logs, .swim.log project log
+  Syntax versions:
+    script 3, log 2, state 1   since 0.20261014.1; the formats of swim 7.20261013
+
+  Before 0.<date>.<index> the version was <breaking>.<YYYYMMDD> and the lock
+  pinned that breaking number. A lock that says breaking: 7 means script 3,
+  log 2, state 1 and needs nothing (swim lock --upgrade rewrites it in the
+  new form); an earlier one is older: swim lock --upgrade after updating the
+  lane scripts.
 `,
 	"help": `swim help [command]
 

@@ -942,23 +942,23 @@ func cmdLock(args []string) error {
 		return err
 	}
 	if !upgrade {
-		fmt.Printf("swim:  %s (breaking version %d)\n", version.Long(), version.Breaking)
+		fmt.Printf("swim:  %s (syntax %s)\n", version.Long(), version.Current)
 		if !ok {
 			fmt.Printf("lock:  none (%s is written on the next swim run)\n", version.LockName)
 			return nil
 		}
-		fmt.Printf("lock:  breaking version %d, written by swim %s at %s\n", l.Breaking, l.Version, l.UpdatedAt)
-		if l.Breaking != version.Breaking {
+		fmt.Printf("lock:  syntax %s, written by swim %s at %s\n", l.Syntaxes(), l.Version, l.UpdatedAt)
+		if l.Mismatched() {
 			return version.ErrMismatch{Lock: l, Path: version.LockPath(root)}
 		}
 		fmt.Println("ok:    this swim can run this repo's lanes")
 		return nil
 	}
 	switch {
-	case ok && l.Breaking > version.Breaking:
+	case ok && l.Newer():
 		return version.ErrMismatch{Lock: l, Path: version.LockPath(root)}
-	case ok && l.Breaking == version.Breaking:
-		fmt.Printf("%s already pins breaking version %d\n", version.LockName, l.Breaking)
+	case ok && !l.Mismatched() && l.Breaking == 0:
+		fmt.Printf("%s already pins syntax %s\n", version.LockName, version.Current)
 		return nil
 	}
 	for n := 1; n <= 99; n++ {
@@ -971,9 +971,12 @@ func cmdLock(args []string) error {
 	}
 	from := "none"
 	if ok {
-		from = fmt.Sprint(l.Breaking)
+		from = l.Syntaxes().String()
+		if l.Breaking != 0 {
+			from = fmt.Sprintf("breaking %d (%s)", l.Breaking, from)
+		}
 	}
-	history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("breaking %s -> %d (swim %s)", from, version.Breaking, version.String())})
-	fmt.Printf("%s: breaking version %s -> %d\n", version.LockName, from, version.Breaking)
+	history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("syntax %s -> %s (swim %s)", from, version.Current, version.String())})
+	fmt.Printf("%s: syntax %s -> %s\n", version.LockName, from, version.Current)
 	return nil
 }
