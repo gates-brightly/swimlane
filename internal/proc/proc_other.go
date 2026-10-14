@@ -8,3 +8,6 @@ import "errors"
 func StartTime(pid int) (string, error) {
 	return "", errors.New("process start time not supported on this system")
 }
+
+// zombie can't be told here: a zombie counts as alive.
+func zombie(pid int) bool { return false }

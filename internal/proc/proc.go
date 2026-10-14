@@ -12,13 +12,16 @@ import (
 	"syscall"
 )
 
-// Alive reports whether a process with pid exists (whoever it is now).
+// Alive reports whether a process with pid exists (whoever it is now). A
+// zombie (exited, never reaped) doesn't count: it keeps its pid and start
+// time, and where nothing reaps orphans (a container whose pid 1 isn't an
+// init) a killed lane stays a zombie for good.
 func Alive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
 	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
+	return (err == nil || errors.Is(err, syscall.EPERM)) && !zombie(pid)
 }
 
 // Start is when process pid started, as an opaque string ("" when it

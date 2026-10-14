@@ -35,3 +35,10 @@ func StartTime(pid int) (string, error) {
 	}
 	return f[19], nil
 }
+
+// zombie reports whether pid has exited and waits to be reaped (state Z,
+// or X while it goes).
+func zombie(pid int) bool {
+	f, err := Stat(strconv.Itoa(pid))
+	return err == nil && (f[0] == "Z" || f[0] == "X")
+}

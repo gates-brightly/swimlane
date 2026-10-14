@@ -19,3 +19,9 @@ func StartTime(pid int) (string, error) {
 	t := kp.Proc.P_starttime
 	return fmt.Sprintf("%d.%06d", t.Sec, t.Usec), nil
 }
+
+// zombie reports whether pid has exited and waits to be reaped (SZOMB).
+func zombie(pid int) bool {
+	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	return err == nil && int(kp.Proc.P_pid) == pid && kp.Proc.P_stat == 5 // SZOMB
+}

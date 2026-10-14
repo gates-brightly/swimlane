@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 )
 
 func TestSame(t *testing.T) {
@@ -38,5 +39,26 @@ func TestSame(t *testing.T) {
 	}
 	if _, start, _ := Parse("42 -"); start != "" {
 		t.Errorf("unknown start: %q", start)
+	}
+}
+
+// A process that exited but wasn't reaped yet (a zombie, as a killed
+// lane stays where nothing reaps orphans) isn't alive.
+func TestZombieIsNotAlive(t *testing.T) {
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Skip(err)
+	}
+	defer cmd.Wait()
+	pid := cmd.Process.Pid
+	deadline := time.Now().Add(5 * time.Second)
+	for !zombie(pid) {
+		if time.Now().After(deadline) {
+			t.Skip("can't tell a zombie on this system")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if Alive(pid) || Same(pid, Start(pid)) {
+		t.Error("a zombie counts as alive")
 	}
 }
