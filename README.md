@@ -290,7 +290,7 @@ Approvers sign the exact script, from their own machine, with their SSH key:
 
 ```sh
 swim approve 4 --guards FIN_ALLOW_DROP    # approve lane 4's exact script; co-approvers run the same
-swim approve --auto bob                   # standing approval: every job bob queues, until revoked
+swim approve --auto bob                   # standing approval: every job bob queues, for 30 days or until revoked
 swim revoke --auto bob
 swim watch --approved                     # run scripts as soon as they're fully approved
 swim verify                               # prove the record hasn't been tampered with
@@ -777,7 +777,7 @@ commits:
 
 ```sh
 swim approve 4 --guards FIN_ALLOW_DROP     # this exact manifest (it lists what it pins); co-approvers run the same
-swim approve --auto bob [--guards A,B]     # every job bob queues, until revoked
+swim approve --auto bob [--guards A,B]     # every job bob queues, until it expires (30d) or is revoked
 swim revoke 4 / swim revoke --auto bob     # withdraw yours
 swim approve                               # list approvals and who stands behind each
 ```
@@ -796,6 +796,8 @@ require:
   - guards: [FIN_ALLOW_*]
     group: platform-admin
     count: 2              # two different people from platform-admin
+standing:
+  max: 90d                # the longest a standing approval may last
 ```
 
 Script approvals and standing approvals count together: zach's standing
@@ -803,6 +805,17 @@ approval of bob's jobs plus alice's approval of the script make two
 platform-admins. If a script, or anything else its manifest pins, changes
 after it was approved, the approval no longer matches it, and swim says why
 (`stale: includes lib/orders.sh changed`). `swim keys` shows who's who.
+
+Approvals have a lifecycle, and `swim approve` shows each one's state:
+**active**, **expired**, **revoked**, **stale** (what it approves changed)
+or **insufficient** (its signers don't meet the rule). A standing approval
+lasts 30 days unless `--expires` says otherwise, never longer than
+`standing: {max: 90d}` in `lookup.yml`, and binds the rule each guard had
+when it was signed: change that rule, stricter or looser, and it stops
+counting for that guard (a script approval binds every rule through its
+manifest). Who is who is read live, so a key removed from `lookup.yml`
+stops counting at once. A standing approval from before they expired keeps
+counting, with a warning, until `lookup.yml` sets `standing.max`.
 
 ### Execution manifest
 

@@ -82,9 +82,23 @@ func cmdApprove(args []string) error {
 		if _, ok := lk.Users[auto]; !ok {
 			return fmt.Errorf("--auto %s: no user %s in lookup.yml (standing approvals are for people swim can identify)", auto, auto)
 		}
-		f, err = loadOrNew(sigfile.StandingPath(root, auto), func() *sigfile.File {
-			return &sigfile.File{Kind: sigfile.Standing, For: auto}
-		})
+		fresh := func() *sigfile.File {
+			f := &sigfile.File{Kind: sigfile.Standing, For: auto}
+			f.BindRules(lk)
+			return f
+		}
+		f, err = loadOrNew(sigfile.StandingPath(root, auto), fresh)
+		// One file per user: a standing approval that no longer counts
+		// (revoked, expired, stale, outlasting standing.max) gives way to a
+		// new one. Its events stay in the chain of custody.
+		if err == nil && len(f.Events) > 0 {
+			if st := f.State(lk, time.Now(), sigfile.Current{}); st.Name == sigfile.Revoked || st.Name == sigfile.Expired || st.Name == sigfile.Stale || f.LifetimeWhy(lk) != "" {
+				fmt.Printf("replacing %s (%s)\n", rel(root, f.Path), st)
+				path := f.Path
+				f = fresh()
+				f.Path = path
+			}
+		}
 	} else {
 		if len(rest) != 1 {
 			return usagef("usage: swim approve N|JOB [--guards A,B | --all]  or  swim approve --auto USER")
@@ -174,12 +188,12 @@ func cmdApprove(args []string) error {
 			all = true // a standing approval defaults to every guard
 		}
 		f.Approves, f.All, f.Note = approves, all, note
-		if expires != "" {
-			d, err := time.ParseDuration(expires)
-			if err != nil || d <= 0 {
-				return usagef("--expires takes a duration like 24h, got %q", expires)
-			}
-			f.Expires = time.Now().Add(d).UTC().Format(time.RFC3339)
+		life, err := approvalLifetime(lk, f.Kind, expires)
+		if err != nil {
+			return err
+		}
+		if life > 0 {
+			f.Expires = time.Now().Add(life).UTC().Format(time.RFC3339)
 		}
 	} else if (len(approves) > 0 && strings.Join(approves, ",") != strings.Join(f.Approves, ",")) || (all && !f.All) || expires != "" {
 		return fmt.Errorf("%s already states what it approves (%s); approving again signs that statement as is (drop --guards/--all/--expires, or revoke and start a new one)", rel(root, f.Path), approvesText(f))
@@ -211,6 +225,47 @@ func cmdApprove(args []string) error {
 	fmt.Printf("approved %s as %s: approves %s (%s)\n", what, who, approvesText(f), rel(root, f.Path))
 	printDecision(lk, f, scriptGuards)
 	return nil
+}
+
+// defaultStanding is how long a standing approval lasts unless --expires
+// says otherwise (or lookup.yml's standing.max is shorter).
+const defaultStanding = 30 * 24 * time.Hour
+
+// approvalLifetime is how long a new approval of kind lasts (0: until
+// revoked): --expires D, or for a standing approval 30 days by default,
+// never more than lookup.yml's standing.max.
+func approvalLifetime(lk *lookup.Lookup, kind, expires string) (time.Duration, error) {
+	var d time.Duration
+	if expires != "" {
+		var err error
+		if d, err = lookup.ParseLifetime(expires); err != nil {
+			return 0, usagef("--expires: %v", err)
+		}
+	}
+	if kind != sigfile.Standing {
+		return d, nil
+	}
+	max := lk.MaxStanding
+	switch {
+	case d > 0 && max > 0 && d > max:
+		return 0, fmt.Errorf("--expires %s is longer than lookup.yml's standing.max (%s)", expires, lk.Standing.Max)
+	case d > 0:
+		return d, nil
+	case max > 0 && max < defaultStanding:
+		d = max
+	default:
+		d = defaultStanding
+	}
+	fmt.Printf("standing approval expires in %s (--expires D to change)\n", lifetimeText(d))
+	return d, nil
+}
+
+// lifetimeText is "30d", or a Go duration when not whole days.
+func lifetimeText(d time.Duration) string {
+	if d%(24*time.Hour) == 0 {
+		return fmt.Sprintf("%dd", d/(24*time.Hour))
+	}
+	return d.String()
 }
 
 // cmdRevoke withdraws your approval: swim revoke N|JOB, or swim revoke
@@ -364,6 +419,24 @@ func staleWhy(root string, cfg *config.Config, f *sigfile.File, mans map[int]*ma
 	return ""
 }
 
+// approvalState is f's state against its lane as it is now (see
+// sigfile.State). mans caches each lane's manifest.
+func approvalState(root string, cfg *config.Config, lk *lookup.Lookup, f *sigfile.File, mans map[int]*manifest.Manifest) sigfile.State {
+	cur := sigfile.Current{}
+	if f.Kind == sigfile.Script {
+		m, ok := mans[f.Lane]
+		if !ok {
+			m, _ = manifest.Build(root, cfg, f.Lane, "")
+			mans[f.Lane] = m
+		}
+		cur.Script, cur.Manifest = "(none)", m
+		if m != nil {
+			cur.Script = m.ScriptSHA
+		}
+	}
+	return f.State(lk, time.Now(), cur)
+}
+
 // listApprovals shows every approvals file: what it approves and whose
 // approvals stand.
 func listApprovals(root string, cfg *config.Config, lk *lookup.Lookup) error {
@@ -388,12 +461,19 @@ func listApprovals(root string, cfg *config.Config, lk *lookup.Lookup) error {
 		}
 		if f.Kind == sigfile.Standing {
 			what = "standing: every job " + f.For + " queues"
-		} else if why := staleWhy(root, cfg, f, mans); why != "" {
-			what += " · stale: " + why
 		}
-		fmt.Printf("%s\n  approves %s · approved by %s · %d events (%s)\n", what, approvesText(f), or(strings.Join(names, ", "), "nobody now"), len(f.Events), rel(root, f.Path))
+		st := approvalState(root, cfg, lk, f, mans)
+		what += " · " + st.String()
+		exp := ""
+		if f.Expires != "" {
+			exp = " · expires " + f.Expires
+		}
+		fmt.Printf("%s\n  approves %s · approved by %s%s · %d events (%s)\n", what, approvesText(f), or(strings.Join(names, ", "), "nobody now"), exp, len(f.Events), rel(root, f.Path))
 		for _, b := range bad {
 			fmt.Println("  BROKEN: " + b)
+		}
+		for _, w := range st.Warnings {
+			fmt.Println("  warning: " + w)
 		}
 	}
 	return nil
@@ -840,10 +920,15 @@ func cmdVerify(args []string) error {
 			bad = append(bad, rel(root, f.Path)+": "+b)
 		}
 		state := ""
-		if why := staleWhy(root, cfg, f, mans); why == "the script changed since" {
+		switch st := approvalState(root, cfg, lk, f, mans); {
+		case st.Name == sigfile.Stale && st.Why == "the script changed since":
 			state = "; stale: " + lane.ScriptName(root, f.Lane) + " changed since"
-		} else if why != "" {
-			state = "; stale: " + why
+		case st.Name != sigfile.Active:
+			state = "; " + st.String()
+		default:
+			for _, w := range st.Warnings {
+				warn = append(warn, rel(root, f.Path)+": "+w)
+			}
 		}
 		fmt.Printf("approvals %s: %s, approves %s; %d standing of %d events%s\n", rel(root, f.Path), f.Kind, approvesText(f), len(signers), len(f.Events), state)
 	}

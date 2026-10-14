@@ -665,7 +665,7 @@ swim secret grants [--hub URL] [--admin-token T]
 	"approve": `swim approve                                    list approvals and standing approvals
 swim approve N|JOB --guards A --cell C              one cell of a matrix round only
 swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K] [--no-evidence]
-swim approve --auto USER [--guards A,B | --all] [--key K]
+swim approve --auto USER [--guards A,B | --all] [--expires D] [--key K]
 
   How approvers act. Every approval is an SSH-signed event in a committed
   file under approvals/, so an approver anywhere (with the repo) can add
@@ -698,10 +698,23 @@ swim approve --auto USER [--guards A,B | --all] [--key K]
   --auto USER      a standing approval: every job USER queues (swim queue add,
                    signed with USER's key) is approved, by you, for the guards
                    given (default every guard). It is never consumed: it
-                   stands until you revoke it. Writes approvals/auto.USER.signature.
+                   stands until it expires (30d unless --expires says, never
+                   longer than lookup.yml's standing.max) or you revoke it.
+                   It binds lookup.yml's rule for each guard: once a guard's
+                   rule changes (stricter or looser), it stops counting
+                   there. Writes approvals/auto.USER.signature; approving
+                   again after it stopped counting starts a new one.
   Approvals of a script and standing approvals for its queuer count
   together toward a rule (zach standing for bob + alice approving the script
   = 2 of platform-admin).
+  --expires D  a new approval stops counting after D (24h, 90m, 30d).
+  Listed, each approval shows its state: active, expired, revoked,
+  stale: <why> (what it approves changed) or insufficient: <why> (its
+  signers don't meet the rule, aren't in lookup.yml, or it outlasts
+  standing.max). Who is who (users, keys, groups) is read live: a key
+  removed from lookup.yml stops counting at once. A standing approval from
+  before they expired keeps counting, with a warning (here, swim doctor and
+  swim verify), until lookup.yml sets standing.max.
   --key K    sign with this key (default: config signing_key, then
              ~/.ssh/id_ed25519; a .pub path signs through ssh-agent)
   swim watch --approved runs fully approved scripts by itself.
@@ -963,6 +976,10 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
                               older than outputs_keep, of no lane's latest
                               round; --fix removes them (run records stay)
+    standing-approval (warn)  a standing approval still counting under the
+                              old terms: it never expires (until lookup.yml
+                              sets standing.max), or a lookup.yml rule
+                              change doesn't stale it
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of

@@ -29,6 +29,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/redact"
+	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
@@ -103,6 +104,7 @@ var Checks = []Check{
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
 	{"hub-http", false, "enrolled with a hub over plain http on another machine", checkHubHTTP},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
+	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
 }
 
 // Run runs every check.
@@ -706,4 +708,28 @@ func checkHubHTTP(o *Options) []finding.Finding {
 	return []finding.Finding{fd(finding.Warn, "hub-http", o.rel(path),
 		"serve the hub with --tls-cert/--tls-key (or behind a TLS proxy), then swim hub enroll https://... again",
 		"enrolled with %s over plain http: its tokens, log tails and secrets cross the network unencrypted", h.URL)}
+}
+
+// checkStandingApprovals warns of the standing approvals still counting
+// under the old terms: never expiring (until lookup.yml sets a
+// standing.max), or not bound to lookup.yml's rules.
+func checkStandingApprovals(o *Options) []finding.Finding {
+	lk, err := lookup.Load(o.Root)
+	if err != nil {
+		return nil
+	}
+	files, _ := sigfile.All(o.Root)
+	var out []finding.Finding
+	for _, f := range files {
+		if f.Kind != sigfile.Standing {
+			continue
+		}
+		st := f.State(lk, time.Now(), sigfile.Current{})
+		for _, w := range st.Warnings {
+			out = append(out, fd(finding.Warn, "standing-approval", o.rel(f.Path),
+				"swim revoke --auto "+f.For+", then swim approve --auto "+f.For+" again (or set standing.max in lookup.yml)",
+				"standing approval for %s's jobs: %s", f.For, w))
+		}
+	}
+	return out
 }
