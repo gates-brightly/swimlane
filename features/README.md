@@ -7,7 +7,6 @@ where it would land in the code, open questions, and how to test it.
 | feature | file | status |
 |---|---|---|
 | Native SDKs: Python, TypeScript and Go libraries for lane steps, generated from a `swim.lane.v1` protobuf contract and served over a per-lane socket; all decisions stay in the binary | [native-sdk.md](native-sdk.md) | proposed |
-| Plan approvals: `evidence` steps (e.g. `terraform plan`) are signed with the approval and re-compared before `change`; not checked in `swim watch` | [plan-approvals.md](plan-approvals.md) | proposed |
 
 ## Staging a feature
 
