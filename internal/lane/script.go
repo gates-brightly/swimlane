@@ -191,6 +191,8 @@ type sideFile struct {
 	MatrixParallel *int               `yaml:"matrix-parallel"`
 	MatrixFail     *string            `yaml:"matrix-fail"`
 	Includes       *strList           `yaml:"includes"`
+	Always         *bool              `yaml:"always"`
+	RerunChildren  *bool              `yaml:"rerun-children"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -232,7 +234,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs, matrix, matrix-exclude, matrix-parallel, matrix-fail, includes)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs, matrix, matrix-exclude, matrix-parallel, matrix-fail, includes, always, rerun-children)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -336,6 +338,15 @@ func applySidecar(path string, info *Info) error {
 	}
 	if sf.Outputs != nil {
 		info.setOutputs(*sf.Outputs, name+" outputs:")
+	}
+	if sf.Always != nil {
+		info.Always = *sf.Always
+	}
+	if sf.RerunChildren != nil {
+		info.RerunChildren = *sf.RerunChildren
+	}
+	if sf.Always != nil || sf.RerunChildren != nil {
+		info.checkAlways(name + " rerun-children:")
 	}
 	if sf.Fail != nil {
 		info.setFail(*sf.Fail, name+" fail:")

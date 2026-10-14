@@ -16,6 +16,9 @@ type Dep struct {
 	Lane int
 	Job  string // set when pinned by job id in `# After:`: that exact job must pass
 	Cell string // set for one cell of a matrix round (After: 3[orders]): only it must pass
+	// Setup is a wait on an Always lane in the same run that the lane
+	// doesn't name: it starts after that lane finishes, whatever its result.
+	Setup bool
 }
 
 func (d Dep) String() string {
@@ -56,6 +59,10 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 			if err != nil {
 				return nil, fmt.Errorf("%s `After: %s`: %w", lane.ScriptName(cfg.Root, n), ref, err)
 			}
+			if scripts[n].Always && !scripts[d.Lane].Always {
+				return nil, fmt.Errorf("%s `After: %s`: swim %d is an Always lane, so it waits only on other Always lanes (setup runs before everything else); swim %d isn't one",
+					lane.ScriptName(cfg.Root, n), ref, n, d.Lane)
+			}
 			if prev, ok := byLane[d.Lane]; !ok || prev.Job == "" {
 				byLane[d.Lane] = d
 			}
@@ -67,6 +74,7 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 		sort.Slice(deps, func(a, b int) bool { return deps[a].Lane < deps[b].Lane })
 		out[n] = deps
 	}
+	setupDeps(sel, scripts, out)
 	if cyc := selectedCycle(out); cyc != "" {
 		return nil, fmt.Errorf("dependency cycle among the lanes being run: %s", cyc)
 	}
@@ -209,8 +217,11 @@ func outsideBlocker(root string, d Dep) string {
 
 // AlreadyPassed reports whether the round in a lane's script is the one the
 // lane last ran, and that run passed. Rounds are matched by job id, or by
-// Round: line for scripts without a Job: line.
+// Round: line for scripts without a Job: line. An Always lane never has.
 func AlreadyPassed(info lane.Info, last *status.Lane) bool {
+	if info.Always {
+		return false
+	}
 	if last == nil || last.State != status.Passed || !info.Pending() {
 		return false
 	}

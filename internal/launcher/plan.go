@@ -47,6 +47,8 @@ type plan struct {
 	scripts   map[int]lane.Info
 	children  map[int][]int
 	inRunDeps map[int][]int
+	setup     []int       // the run's Always lanes, which everything else waits for
+	rerunBy   map[int]int // lanes rerun because a Rerun-Children lane runs
 	skip      map[int]string
 	actions   map[int]planAction
 	counts    map[planAction]int
@@ -72,11 +74,18 @@ func computePlan(o Options) (*plan, error) {
 	}
 
 	// Edges inside the run, and lanes predicted to be skipped.
+	var setup []int
 	children := map[int][]int{}
 	inRunDeps := map[int][]int{}
 	blocked := map[int]string{}
 	for _, n := range sel {
+		if scripts[n].Always {
+			setup = append(setup, n)
+		}
 		for _, d := range deps[n] {
+			if d.Setup {
+				continue // drawn as the setup phase, not as tree edges
+			}
 			if selected[d.Lane] {
 				children[d.Lane] = append(children[d.Lane], n)
 				inRunDeps[n] = append(inRunDeps[n], d.Lane)
@@ -132,12 +141,15 @@ func computePlan(o Options) (*plan, error) {
 			last = st.Get(n)
 		}
 		a := actionFor(scripts[n], last, skip[n] != "")
+		if a != actSkip && scripts[n].Always {
+			a = actAlways
+		}
 		actions[n] = a
 		counts[a]++
 	}
 
 	return &plan{what: what, sel: sel, passed: passed, selected: selected, scripts: scripts, children: children,
-		inRunDeps: inRunDeps, skip: skip, actions: actions, counts: counts}, nil
+		inRunDeps: inRunDeps, setup: setup, rerunBy: rerunBy(o.Root, o.Cfg, sel, scripts), skip: skip, actions: actions, counts: counts}, nil
 }
 
 // WritePlan prints what `swim run` with these options would do, without
@@ -155,13 +167,17 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 	fmt.Fprintln(w)
 	if len(sel) > 0 {
 		fmt.Fprintln(w, "Job actions are indicated with the following symbols:")
-		for _, a := range []planAction{actRun, actRetry, actRerun, actSkip} {
+		for _, a := range []planAction{actAlways, actRun, actRetry, actRerun, actSkip} {
 			if counts[a] > 0 {
 				fmt.Fprintf(w, "  %s %s\n", a.symbol(p), p.Paint(ui.Dim, a.legend()))
 			}
 		}
 		fmt.Fprintln(w)
-		fmt.Fprintf(w, "Swim will perform the following actions (%s).\n", p.Paint(ui.Dim, "top-level lanes start at once; each lane starts when the lanes it sits under pass"))
+		how := "top-level lanes start at once; each lane starts when the lanes it sits under pass"
+		if len(pl.setup) > 0 {
+			how = "Always lanes run first; every other lane starts after they finish, then when the lanes it sits under pass"
+		}
+		fmt.Fprintf(w, "Swim will perform the following actions (%s).\n", p.Paint(ui.Dim, how))
 		fmt.Fprintln(w)
 	}
 
@@ -195,6 +211,9 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		}
 		if r := skip[n]; r != "" {
 			notes = append(notes, p.Paint(ui.Red, "skip: "+r))
+		}
+		if a := pl.rerunBy[n]; a != 0 && actions[n] == actRerun {
+			notes = append(notes, p.Paint(ui.Mag, fmt.Sprintf("rerun (swim %d)", a)))
 		}
 		if o.ShowChecks {
 			if c := checkOf(o, n, inRunDeps[n]); c != nil {
@@ -269,10 +288,23 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 			walk(c, childPrefix, b)
 		}
 	}
-	for _, n := range sel {
+	// Always lanes (and the Always lanes under them) are the setup phase.
+	for _, n := range pl.setup {
 		if len(inRunDeps[n]) == 0 {
 			walk(n, "", "")
 		}
+	}
+	var roots []int
+	for _, n := range sel {
+		if len(inRunDeps[n]) == 0 && !scripts[n].Always {
+			roots = append(roots, n)
+		}
+	}
+	if len(pl.setup) > 0 && len(roots) > 0 {
+		fmt.Fprintln(w, p.Paint(ui.Dim, fmt.Sprintf("then, once swim %s finish (whatever the result):", joinInts(pl.setup, ", "))))
+	}
+	for _, n := range roots {
+		walk(n, "", "")
 	}
 
 	// No-action items are summarised, not listed.
@@ -303,7 +335,11 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 	if len(sel) == 0 {
 		fmt.Fprintln(w, p.Paint(ui.Green+ui.Bold, "No changes.")+" "+completedLine(len(passed)))
 	} else {
-		fmt.Fprintf(w, "%s %s to run, %s to retry, %s to rerun, %s to skip.\n", p.Paint(ui.Bold, "Plan:"),
+		always := ""
+		if counts[actAlways] > 0 {
+			always = p.Paint(ui.Cyan, fmt.Sprint(counts[actAlways])) + " always, "
+		}
+		fmt.Fprintf(w, "%s %s%s to run, %s to retry, %s to rerun, %s to skip.\n", p.Paint(ui.Bold, "Plan:"), always,
 			p.Paint(ui.Green, fmt.Sprint(counts[actRun])), p.Paint(ui.Yellow, fmt.Sprint(counts[actRetry])),
 			p.Paint(ui.Mag, fmt.Sprint(counts[actRerun])), p.Paint(ui.Red, fmt.Sprint(counts[actSkip])))
 		if len(passed) > 0 {
@@ -367,10 +403,11 @@ func completedLine(n int) string {
 type planAction int
 
 const (
-	actRun   planAction = iota // [+]   new job, never run
-	actRetry                   // [~]   ran before and didn't pass
-	actRerun                   // [+/-] already passed; runs again
-	actSkip                    // [-]   pending but won't run
+	actRun    planAction = iota // [+]   new job, never run
+	actRetry                    // [~]   ran before and didn't pass
+	actRerun                    // [+/-] already passed; runs again
+	actSkip                     // [-]   pending but won't run
+	actAlways                   // [*]   an Always lane: runs every time, first
 )
 
 func (a planAction) symbol(p ui.Painter) string {
@@ -381,6 +418,8 @@ func (a planAction) symbol(p ui.Painter) string {
 		return p.Paint(ui.Mag, "[+/-]")
 	case actSkip:
 		return p.Paint(ui.Red, "[-]")
+	case actAlways:
+		return p.Paint(ui.Cyan, "[*]")
 	}
 	return p.Paint(ui.Green, "[+]")
 }
@@ -393,6 +432,8 @@ func (a planAction) legend() string {
 		return "rerun: the job already passed and runs again"
 	case actSkip:
 		return "skip: the job won't run (a dependency won't pass)"
+	case actAlways:
+		return "always: setup that runs every time, before the other lanes"
 	}
 	return "run: a new job"
 }
@@ -432,7 +473,7 @@ func contains(ns []int, n int) bool {
 }
 
 func (a planAction) name() string {
-	return [...]string{"run", "retry", "rerun", "skip"}[a]
+	return [...]string{"run", "retry", "rerun", "skip", "always"}[a]
 }
 
 // PlanGuard is a guard flag a job's round declares.
@@ -444,11 +485,16 @@ type PlanGuard struct {
 
 // PlanLane is one lane swim run would act on.
 type PlanLane struct {
-	Lane    int         `yaml:"lane"`
-	Job     string      `yaml:"job,omitempty"`
-	Round   string      `yaml:"round"`
-	Action  string      `yaml:"action"` // run | retry | rerun | skip
-	WaitsOn []int       `yaml:"waits_on,flow"`
+	Lane    int    `yaml:"lane"`
+	Job     string `yaml:"job,omitempty"`
+	Round   string `yaml:"round"`
+	Action  string `yaml:"action"` // run | retry | rerun | skip | always
+	WaitsOn []int  `yaml:"waits_on,flow"`
+	// Setup is the run's Always lanes this lane waits for without naming
+	// them: it starts after they finish, whatever their result.
+	Setup []int `yaml:"setup,flow,omitempty"`
+	// RerunBy is the Rerun-Children lane that makes a passed lane rerun.
+	RerunBy int         `yaml:"rerun_by,omitempty"`
 	Reason  string      `yaml:"reason,omitempty"` // why it would be skipped
 	Running int         `yaml:"running_pid,omitempty"`
 	Guards  []PlanGuard `yaml:"guards,omitempty"`
@@ -493,7 +539,7 @@ func Plan(o Options) (*PlanDoc, error) {
 		return nil, err
 	}
 	doc := &PlanDoc{Schema: "swim.plan/v1", Command: pl.what, Lanes: []PlanLane{}, Idle: []PlanIdle{},
-		Counts: map[string]int{"run": 0, "retry": 0, "rerun": 0, "skip": 0}}
+		Counts: map[string]int{"run": 0, "retry": 0, "rerun": 0, "skip": 0, "always": 0}}
 	for a, c := range pl.counts {
 		doc.Counts[a.name()] = c
 	}
@@ -503,6 +549,12 @@ func Plan(o Options) (*PlanDoc, error) {
 			WaitsOn: append([]int{}, pl.inRunDeps[n]...), Reason: pl.skip[n], Timeout: info.TimeoutText, Locks: info.Locks}
 		if pid, ok := lane.Running(o.Root, n); ok {
 			l.Running = pid
+		}
+		if !info.Always {
+			l.Setup = pl.setup
+		}
+		if a := pl.rerunBy[n]; a != 0 && pl.actions[n] == actRerun {
+			l.RerunBy = a
 		}
 		for _, g := range info.Guards {
 			l.Guards = append(l.Guards, PlanGuard{Flag: g.Flag, Set: os.Getenv(g.Flag) == "1", Desc: g.Desc})

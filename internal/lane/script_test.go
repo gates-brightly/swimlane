@@ -119,3 +119,23 @@ func TestEndClaim(t *testing.T) {
 		t.Error("cleared claim still there")
 	}
 }
+
+func TestAlwaysHeaders(t *testing.T) {
+	info := ParseScript("# Round: lint\n# Always: yes\n# Rerun-Children: true\n")
+	if !info.Always || !info.RerunChildren || len(info.Problems) > 0 {
+		t.Errorf("header: always=%v rerun=%v problems=%v", info.Always, info.RerunChildren, info.Problems)
+	}
+	info = ParseScript("# Round: x\n# Rerun-Children: yes\n")
+	if info.RerunChildren || len(info.Problems) != 1 || !strings.Contains(info.Problems[0], "needs `Always: yes`") {
+		t.Errorf("Rerun-Children without Always: rerun=%v problems=%v", info.RerunChildren, info.Problems)
+	}
+	if info = ParseScript("# Round: x\n# Always: sometimes\n"); info.Always || len(info.Problems) != 1 {
+		t.Errorf("bad value: always=%v problems=%v", info.Always, info.Problems)
+	}
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "lane.1.py"), []byte("# Round: py\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "lane.1.yml"), []byte("always: true\nrerun-children: true\n"), 0o644)
+	if info, err := ReadScript(root, 1); err != nil || !info.Always || !info.RerunChildren {
+		t.Errorf("sidecar: %+v %v", info, err)
+	}
+}

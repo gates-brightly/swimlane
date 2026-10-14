@@ -833,12 +833,13 @@ func cmdLib(args []string) error {
 // works: arguments after the lanes that are neither are taken as the name.
 func cmdArchive(args []string) error {
 	var as string
-	rest, err := flags{strs: map[string]*string{"as": &as}}.parse(args)
+	var force bool
+	rest, err := flags{strs: map[string]*string{"as": &as}, bools: map[string]*bool{"force": &force}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) < 1 {
-		return usagef("usage: swim archive N|JOB ... [--as NAME]")
+		return usagef("usage: swim archive N|JOB ... [--as NAME] [--force]")
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -870,6 +871,10 @@ func cmdArchive(args []string) error {
 	var plans []plan
 	var problems []string
 	for _, n := range lanes {
+		if err := refuseAlways(root, n, "archive", force); err != nil {
+			problems = append(problems, err.Error())
+			continue
+		}
 		what := as
 		if what == "" {
 			// Default to the job id of the round being archived.
@@ -909,8 +914,13 @@ func cmdArchive(args []string) error {
 }
 
 func cmdStub(args []string) error {
+	var force bool
+	args, err := flags{bools: map[string]*bool{"force": &force}}.parse(args)
+	if err != nil {
+		return err
+	}
 	if len(args) < 2 {
-		return usagef(`usage: swim stub N "<message>"`)
+		return usagef(`usage: swim stub N "<message>" [--force]`)
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -918,6 +928,9 @@ func cmdStub(args []string) error {
 	}
 	n, err := laneRef(root, cfg, args[0], false)
 	if err != nil {
+		return err
+	}
+	if err := refuseAlways(root, n, "stub", force); err != nil {
 		return err
 	}
 	msg := strings.Join(args[1:], " ")
@@ -932,6 +945,15 @@ func cmdStub(args []string) error {
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.Pending, l.PendingJob = "", "" })
 	history.Log(root, history.Entry{Event: history.Stub, Lane: n, Job: replaced.Job, Detail: msg})
 	fmt.Printf("stubbed %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, msg)
+	return nil
+}
+
+// refuseAlways keeps archive and stub off an Always lane, which is the
+// repo's standing setup, not a disposable round, unless forced.
+func refuseAlways(root string, n int, verb string, force bool) error {
+	if info, _ := lane.ReadScript(root, n); info.Always && !force {
+		return fmt.Errorf("swim %d is an Always lane (standing setup, not a round); %s it anyway with --force", n, verb)
+	}
 	return nil
 }
 

@@ -153,7 +153,8 @@ type Outcome struct {
 
 // Select resolves which lanes to run and checks none is already running.
 // With no explicit lanes it picks every pending round that hasn't already
-// passed (unless Rerun), and returns the passed ones as done.
+// passed (unless Rerun), and returns the passed ones as done. Either way
+// it adds the Always lanes the selection needs (expandAlways).
 func Select(o Options) (sel, done []int, err error) {
 	if len(o.Lanes) > 0 {
 		seen := map[int]bool{}
@@ -191,7 +192,7 @@ func Select(o Options) (sel, done []int, err error) {
 			sel = append(sel, n)
 		}
 	}
-	sort.Ints(sel)
+	sel, done = expandAlways(o, sel, done)
 	for _, n := range sel {
 		if pid, ok := lane.Running(o.Root, n); ok && !o.DryRun {
 			return nil, nil, lane.ErrRunning{Lane: n, PID: pid}
@@ -510,10 +511,12 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// outsideBlocker); those inside it are waited for.
 	var waitOn []int
 	cellOf := map[int]string{} // a dependency on one cell of a matrix lane
+	setup := map[int]bool{}    // an Always lane it only waits for (always.go)
 	for _, d := range deps {
 		if d.Cell != "" {
 			cellOf[d.Lane] = d.Cell
 		}
+		setup[d.Lane] = d.Setup
 		if selected[d.Lane] {
 			waitOn = append(waitOn, d.Lane)
 		} else if why := outsideBlocker(o.Root, d); why != "" {
@@ -532,7 +535,9 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		mu.Lock()
 		dep := outcomes[d]
 		mu.Unlock()
-		if c := cellOf[d]; c != "" && dep != nil && dep.Cells != nil {
+		if setup[d] {
+			// Setup ran first; its result is for the lanes that name it.
+		} else if c := cellOf[d]; c != "" && dep != nil && dep.Cells != nil {
 			// Waiting on one cell: it must have passed, whatever the others did.
 			if dep.Cells[c] != status.Passed {
 				return skip(fmt.Sprintf("%d[%s] %s", d, c, or(dep.Cells[c], "did not run")))

@@ -96,7 +96,7 @@ var Checks = []Check{
 	{"blocked", finding.Error, false, "a blocked command (git push/commit/pull, blocked_commands)", checkBlocked},
 	{"secret-echo", finding.Warn, false, "a secret variable echoed directly", checkSecretEcho},
 	{"secret-ref", finding.Warn, false, "a secret got by name (swim secret get, secret.get) that isn't stored", checkSecretRefs},
-	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks)", checkHeader},
+	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks, Always, Rerun-Children)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
 	{"check-unsafe", finding.Warn, false, "a destructive-looking command before `stage change` (swim plan --check runs it)", checkCheckUnsafe},
@@ -106,6 +106,7 @@ var Checks = []Check{
 	{"sdk-bypass", finding.Info, false, "an SDK lane runs commands itself (subprocess, child_process) rather than through r.run", checkSDKBypass},
 	{"handler", finding.Error, false, "outcome handlers or Fail: without `# swim: syntax 3`, or a handler name swim never calls", checkHandlers},
 	{"handler-reached", finding.Warn, false, "an on_failure that uses a guard but never checks `reached`", checkHandlerReached},
+	{"rerun-guard", finding.Warn, false, "a guarded lane downstream of a `Rerun-Children: yes` lane (swim all reruns it after it passed)", checkRerunGuard},
 }
 
 // Codes of findings that come from outside the table.

@@ -407,6 +407,17 @@ lane's state and round; output scrolls underneath, prefixed `[N]`.
 - **`# Locks: orders-table`:** lanes that share a lock never run at the same
   time, in either order. That holds within a run and across concurrent runs
   on the machine. A failure doesn't spread through a lock.
+- **`# Always: yes`** makes a lane standing setup, like a CI
+  `before_script` (lint, fmt, init). It never counts as passed: `swim all`
+  runs it every time, first, and every other lane in the run starts only
+  after it finishes. Lanes that name it in `# After:` need it to pass; the
+  others start whatever its result. `swim run N` pulls in the Always lanes
+  that N names, and no others. An Always lane waits only on other Always
+  lanes, and `swim stub` and `swim archive` refuse it without `--force`.
+- **`# Rerun-Children: yes`** (Always lanes only): `swim all` also reruns
+  every lane downstream of this one, at any depth, even if it passed. That's
+  a test suite written as rounds: lint first, then the tests again. `swim
+  lint` warns about a guarded round under one (`rerun-guard`).
 
 ```
 $ swim plan
@@ -417,6 +428,17 @@ $ swim plan
     └── [+] swim 4 (shown above)
 
 Plan: 3 to run, 1 to retry, 0 to rerun, 0 to skip.
+```
+
+With Always lanes, `swim plan` draws them first (`[*]`), says which passed
+lanes they rerun, then the rest:
+
+```
+[*] swim 1  lint
+└── [+/-] swim 2  unit  rerun (swim 1)
+[*] swim 5  init
+then, once swim 1, 5 finish (whatever the result):
+[+] swim 4  report
 ```
 
 `swim timeline` draws when each lane waited (on dependencies, a slot or a
@@ -670,12 +692,15 @@ jobs:
 ```
 
 `--changed` runs only the rounds whose script the push or merge request
-changed, plus any unpassed lanes they wait on. `--rerun` runs passed rounds
-again, for a test suite written as rounds. swim never commits results back.
+changed, plus any unpassed lanes they wait on (Always lanes count as
+unpassed). `--rerun` runs passed rounds again; for a test suite written as
+rounds, an Always lane with `Rerun-Children: yes` at its root does that
+without the flag. swim never commits results back.
 
 This repo dogfoods it. Its own CI is `swim ci` over committed rounds:
-`lane.1.sh` (lint), then `lane.2.sh` (unit tests) and `lane.3.sh` (e2e).
-`make ci` runs the same rounds locally.
+`lane.1.sh` (lint, an Always lane with `Rerun-Children: yes`), then
+`lane.2.sh` (unit tests) and `lane.3.sh` (e2e). `make ci` runs the same
+rounds locally.
 
 ### The watch hub
 
@@ -751,7 +776,7 @@ they waited for.
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane. |
 | `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml] [-f] [--until-done]` | A lane's or job's log (with the running step), or the project log. |
 | `swim timeline [RUN\|N\|JOB] [--steps] [--yaml] [--html FILE]` | When each lane waited, ran and finished; the longest chain. |
-| `swim archive N\|JOB ... [--as NAME]` / `swim stub N "<msg>"` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. |
+| `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. An Always lane needs `--force`. |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run when swim is idle. |
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's worker; on a terminal, pick a job to run (`r`) or queue (`q`). |

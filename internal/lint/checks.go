@@ -72,8 +72,37 @@ func checkAfter(c *Context, s *Script) []finding.Finding {
 	if !ok {
 		return nil
 	}
-	return []finding.Finding{f(finding.Error, "after", s.headerLine("After"),
-		"name a configured lane number or a job id a lane holds", "%s; swim run refuses this lane", msg)}
+	fix := "name a configured lane number or a job id a lane holds"
+	if s.Info.Always {
+		fix = "an Always lane waits only on other Always lanes: drop the dependency, or mark that lane `# Always: yes` too"
+	}
+	return []finding.Finding{f(finding.Error, "after", s.headerLine("After"), fix, "%s; swim run refuses this lane", msg)}
+}
+
+// checkRerunGuard warns about a guarded lane that a Rerun-Children lane
+// reruns: swim all runs it again after it passed, and asks for its
+// approvals again (or, unattended, dry-runs them).
+func checkRerunGuard(c *Context, s *Script) []finding.Finding {
+	if len(s.Info.Guards) == 0 && s.Info.DynamicGuards == 0 {
+		return nil
+	}
+	var by []int
+	for n, o := range c.Scripts {
+		if n != s.N && o.Info.Always && o.Info.RerunChildren && c.reaches(s.N, n) {
+			by = append(by, n)
+		}
+	}
+	if len(by) == 0 {
+		return nil
+	}
+	sort.Ints(by)
+	parts := make([]string, len(by))
+	for i, n := range by {
+		parts[i] = fmt.Sprintf("swim %d", n)
+	}
+	return []finding.Finding{f(finding.Warn, "rerun-guard", s.headerLine("After"),
+		"keep guarded rounds out from under Rerun-Children lanes, or archive and stub this lane once it has done its work",
+		"this guarded round sits downstream of %s (Rerun-Children: yes): swim all reruns it every time, even after it passed", strings.Join(parts, ", "))}
 }
 
 // checkCycle reports lanes on a dependency cycle (strongly connected

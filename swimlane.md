@@ -57,6 +57,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - **Guard:** a named approval in front of a destructive step, for example `FIN_ALLOW_DELETE`.
 - **Dependency:** `# After: 2 3` starts a lane once those lanes pass, and skips it if one fails.
 - **Lock:** `# Locks: name` keeps lanes that share a resource from overlapping, without ordering them.
+- **Always lane:** `# Always: yes` makes a lane standing setup, like a CI `before_script`: lint, fmt, init. It never counts as passed, so every run that includes it runs it fresh, first, and every other lane in that run waits for it to finish. Only lanes that name it in `After:` need it to pass, and naming it pulls it into a run. With `# Rerun-Children: yes`, `swim all` also reruns every lane downstream of it, at any depth, even if they passed. An Always lane waits only on other Always lanes, and isn't stubbed or archived without `--force`.
 - **Batch:** lanes queued together, pinned to their exact scripts, run later by a worker.
 - **Chain of custody:** the signed, hash-linked record of every round and approval.
 - **Stub / archive:** the placeholder a lane holds between rounds / a finished log kept under a new name.
@@ -112,6 +113,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - **Never edit a lane while it may be running.** Bash reads scripts incrementally, so a mid-run edit corrupts the run. swim refuses to edit, archive, stub or rerun a running lane.
 - Before writing a round, check `swim status` and confirm with the operator which lanes are idle.
 - After a run, the planner reads the log, validates real outcomes (not just PASS lines), records results in the project log, archives the log and stubs the lane.
+- Always lanes (`# Always: yes`) are the repo's standing setup, not rounds: planners never assign, rewrite, archive or stub them. A round that needs one passing says so with `# After:`.
 - Out-of-scope findings go to a follow-up list, not into the round.
 - The full protocol for agents is `swim --help`.
 

@@ -85,7 +85,10 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
   even if their round already passed (rounds are rerunnable).
   With no arguments (or "swim all"), runs every lane whose lane.N.sh holds a
   pending round (a Round: line, not a stub) that hasn't passed yet; rounds
-  that passed show as "done". --rerun runs them too.
+  that passed show as "done". --rerun runs them too. Always lanes
+  (# Always: yes) never count as passed: they run every time, first, and
+  every other lane waits for them to finish (whatever their result); a
+  named lane pulls in the Always lanes it names in After:.
   Lanes run in parallel as "bash lane.N.sh" from the repo root.
     - The top of the screen pins one row per lane (swim 1..N): its state and
       round. Lanes waiting on a dependency show a throbber and
@@ -184,6 +187,8 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
   "done" and not run again; failed, interrupted, skipped and new rounds run.
+  Always lanes run every time, before the rest; with Rerun-Children: yes,
+  so do the passed lanes downstream of one.
   --rerun   run every pending round, including ones that already passed.
   If lane scripts exist beyond the configured lanes (lane.5.sh with
   lanes: 4) holding jobs that haven't passed, swim asks whether to raise the
@@ -202,6 +207,9 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
       [+/-]  rerun  the job already passed and runs again (named lane, --rerun)
       [-]    skip   the job won't run (a dependency outside the run hasn't
                     passed, or one in the run won't run)
+      [*]    always an Always lane: setup that runs every time, first
+  Always lanes come first; a passed lane that a Rerun-Children lane reruns
+  shows "rerun (swim N)"; "then, once swim N finish" starts the rest.
   The jobs form a tree: top-level lanes start at once, and each lane sits
   under the lanes it waits for ("# After:" and config deps); a lane waiting
   for several shows "wait [2,3]" and appears in full once,
@@ -338,7 +346,7 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
   (eval, not "source <(...)": process-substitution source is broken in
   macOS bash 3.2). See "WRITING A LANE SCRIPT" in swim --help for the functions.
 `,
-	"archive": `swim archive N|JOB ... [--as NAME]
+	"archive": `swim archive N|JOB ... [--as NAME] [--force]
 
   Rename each lane's .swim/logs/agentN.log to agentN.prev-<NAME>.log in the
   same directory: swim archive 1 2 3 archives lanes 1, 2 and 3. Every
@@ -349,11 +357,13 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
   All or nothing: if any lane is running, has no log, or its archive name
   exists, nothing is archived and every problem is listed.
   The older form, a name after one lane, still works: swim archive 1 cutover.
+  An Always lane is standing setup, not a round: it needs --force.
 `,
-	"stub": `swim stub N|JOB "<message>"
+	"stub": `swim stub N|JOB "<message>" [--force]
 
   Replace lane.N.sh with a "nothing pending" stub carrying <message>. The lane
-  shows as idle and "swim run" skips it. Refuses if lane N is running.
+  shows as idle and "swim run" skips it. Refuses if lane N is running, and
+  without --force if it is an Always lane (standing setup, not a round).
 `,
 	"note": `swim note [--lane N|JOB] "<text>"
 
@@ -454,8 +464,9 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
                     origin/$GITHUB_BASE_REF; GitLab: CI_MERGE_REQUEST_DIFF_BASE_SHA
                     or CI_COMMIT_BEFORE_SHA. An all-zero SHA (new branch) runs
                     every pending round. Needs the history (fetch-depth: 0).
-  --rerun           also rounds that already passed (a test suite as rounds,
-                    like this repo's own CI, always runs everything)
+  --rerun           also rounds that already passed. A test suite as rounds
+                    doesn't need it: an Always lane with Rerun-Children: yes
+                    at its root (like this repo's own CI) reruns the rest
   --require-work    exit 1 when there is nothing to run (default: a notice, 0)
   Exit codes: 0 every selected lane passed, 1 a lane failed or was skipped,
   2 usage, config or an unresolvable # After:.
@@ -793,11 +804,14 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
     blocked (error)        git push/commit/pull or a blocked_commands pattern
     secret-echo (warn)     echo/printf of a secret variable
-    header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
+    header (warn)          a Timeout, Step-Timeout, Locks, Always or
+                           Rerun-Children value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag
     handler (error)        handlers or Fail: without syntax 3; a near-miss handler
                            name (on_fail, onfailure, ...) swim would never call
     handler-reached (warn) an on_failure with a guard that never checks reached
+    rerun-guard (warn)     a guarded round downstream of a Rerun-Children lane
+                           (swim all reruns it even after it passed)
     outputs (warn)         an output whose name suggests secrets (not masked)
     includes (warn)        a Python/TypeScript lane imports a local module its
                            # Includes: doesn't cover (approvals wouldn't cover it)

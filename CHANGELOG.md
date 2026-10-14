@@ -31,6 +31,26 @@ To cut a release:
 
 ### Added
 
+- **Always lanes:** `# Always: yes` (or `always: true` in `lane.N.yml`)
+  makes a lane standing setup, like a CI `before_script`.
+  - **Every time, first:** it never counts as passed, so `swim all` runs it
+    every time, and every other lane in the run waits for it to finish.
+    Lanes that name it in `# After:` need it to pass; the others start
+    whatever its result.
+  - **Pulled in by name:** `swim run N` (and `swim ci --changed`) runs the
+    Always lanes N names in `# After:`, and no others.
+  - **`# Rerun-Children: yes`:** `swim all` also reruns every lane
+    downstream of it, at any depth, even if it passed.
+  - **Guard rails:** an Always lane waits only on other Always lanes;
+    `swim stub` and `swim archive` refuse one without `--force`; `swim lint`
+    warns about a guarded round under a Rerun-Children lane (`rerun-guard`).
+  - **Plan:** `swim plan` draws Always lanes first as `[*]` and marks
+    reruns `rerun (swim N)`; `swim plan --yaml` adds the `always` action
+    and `setup` and `rerun_by` fields.
+  - This repo's CI uses it: `lane.1.sh` (lint) is an Always lane with
+    `Rerun-Children: yes`, so `swim ci` and `make ci` no longer pass
+    `--rerun`.
+
 - **Native SDKs over a lane protocol:**
   - **The protocol:** `swim _wrap` serves `swim.lane/v1` (JSON lines over a
     per-lane Unix socket, mode 0600, with a per-lane token) to lanes in

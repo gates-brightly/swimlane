@@ -135,6 +135,14 @@ CONCEPTS
               header, `# After: A` (lane numbers or job ids), or for ordering
               that holds every round, in config `deps`. If A fails or is
               skipped, B is skipped.
+  always lane Standing setup, like a CI before_script (# Always: yes): lint,
+              fmt, init. It never counts as passed, so `swim all` runs it
+              every time, first, and every other lane in the run waits for it
+              to finish; only lanes that name it in After: need it to pass.
+              `swim run N` pulls in the Always lanes N names, no others. With
+              # Rerun-Children: yes, `swim all` reruns every lane downstream
+              of it, even ones that passed. It isn't a round: never assign,
+              rewrite, archive or stub one (swim refuses without --force).
   stub        The placeholder a lane holds between rounds (`swim stub`).
   archive     A finished log renamed agentN.prev-<what>.log (`swim archive`).
               Logs are kept; rounds are not.
@@ -185,7 +193,9 @@ PLANNER WORKFLOW
      lanes are idle. Never write to a lane that is running or holds a pending
      round someone else may be about to run.
   2. Assign each worker one lane number. A worker writes only lane.N.sh.
-     Use lanes 1..N from `swim status`. If the work needs more lanes, ask the
+     Use lanes 1..N from `swim status`, never an Always lane (# Always: yes;
+     `swim plan` marks it [*]): name it in After: if your round needs it to
+     pass. If the work needs more lanes, ask the
      operator to run `swim config --lanes N` (or write lane.5.sh and let
      `swim all` offer to add lanes); never edit the config yourself.
   3. Write the round: `swim new N "<goal>"`, then fill in the steps. Keep the
@@ -324,6 +334,11 @@ WRITING A LANE SCRIPT
       # Job:     <id>                 written by swim new; keep it. Default: one is made
                                       when the round starts (then it can't be pinned)
       # After:   <lane|job> [...]     wait for these to pass first, e.g. "2 3". Default: none
+      # Always:  yes                  standing setup: runs every time, before every other
+                                      lane in the run (see "always lane"). Waits only on
+                                      other Always lanes. Default: no
+      # Rerun-Children: yes           (Always lanes) swim all reruns every lane downstream
+                                      of this one, even ones that passed. Default: no
       # Owner:   <who wrote it>       Default: - (swim new fills in $USER)
       # Created: <YYYY-MM-DD>         Default: the file's modification date
       # Guards:  FLAG  <what it approves (date, reason)>
