@@ -44,6 +44,7 @@ const (
 	SecretSet   = "secret-set" // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)
 	SecretRm    = "secret-rm"  // swim secret rm: ... removed
 	SecretUse   = "secret"     // a lane got a secret (detail: name, scope, how)
+	Hub         = "hub"        // enrolled with a hub, left it, or a command from it (detail: hub <cmd> by <user> via <url>: <outcome>)
 )
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.

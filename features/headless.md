@@ -1,9 +1,9 @@
 # Headless workers, driven from the hub
 
-Status: in progress. Stage H1 (running headless: the lock, `--detach`,
-`--status`, `--stop`, `--install`, `--uninstall`, and the hub's headless
-marker) is done. H2 (hub users, sessions and commands) and H3 (approvals
-through the hub) remain.
+Status: in progress (H1, H2 done). Stage H1 (running headless: the lock,
+`--detach`, `--status`, `--stop`, `--install`, `--uninstall`, and the
+hub's headless marker) and H2 (hub users, sessions, commands: interrupt,
+drain, run and log) are done. H3 (approvals through the hub) remains.
 
 ## Summary
 
@@ -295,6 +295,68 @@ Decided in H1:
 - **`--install` writes either kind on any OS.** It only writes a file.
   `--uninstall` also removes systemd's `default.target.wants` link, and
   prints `systemctl --user daemon-reload`, or `launchctl bootout`.
+
+Decided in H2:
+
+- **State v2.** `swim.hub-state/v2` adds `users` (name, role, token
+  hash), `commands` (per worker, the last 100), `next_seq` and `epoch`. A
+  v1 file loads, gets a new epoch, and is saved as v2 at start. A hub
+  without `--state` keeps no users, so it takes no commands.
+- **Users and sessions.** `swim hub user add NAME --role viewer|operator`
+  (admin token) prints the token once; adding the name again replaces
+  token and role and ends their sessions. Names are
+  `[A-Za-z0-9][A-Za-z0-9._-]*`; the CLI notes a name `lookup.yml` doesn't
+  know. `POST /api/login` (form or JSON) sets `swim_session`: 12 hours,
+  `HttpOnly`, `SameSite=Strict`, `Secure` when the hub serves TLS.
+  Sessions are in memory (a restart logs everyone out). A cookie's POSTs
+  need the session's CSRF token (form field `csrf` or `X-CSRF-Token`);
+  a bearer user token needs none. The admin token manages users and
+  sends no command; viewing pages and `GET /api/workers` still needs no
+  login, but controls and full logs do.
+- **Roles.** `viewer`: `log`. `operator`: `interrupt`, `drain`, `run`,
+  `log`. The hub refuses `answer` until H3.
+- **Commands.** `{cid, seq, epoch, kind, lane, pin {run, sha256,
+  manifest}, by, at, expires, outcome, detail, acked_at}`. The hub gives
+  10 minutes (interrupt 2); the worker caps that again from `at` (a future
+  `at` counts as now) with `headless.command_ttl`. A command past expiry
+  that no worker took shows as "expired (never picked up)". The worker
+  acknowledges `done`, `refused` or `expired` with a detail line the hub
+  makes safe; a second, different ack is refused.
+- **Long poll.** `GET /api/workers/{id}/commands?after=SEQ&epoch=E&wait=25s`
+  with the worker's own token (not the enroll token). A worker naming
+  another epoch gets every unacknowledged command. If the long poll times
+  out (a proxy), the worker polls with `wait=0` every `--interval`.
+- **Replay.** `.swim/hub.yml` keeps `epoch`, `last_seq` and the last 200
+  `recent_cids`, written before a command is carried out. A new epoch
+  starts the seq over; a seq at or below `last_seq`, or a known id, is
+  ignored (not acknowledged). The reporter and the command loop share the
+  file under one lock and write it atomically.
+- **Pins.** `interrupt` and `log` name the run the page showed
+  (`interruptLane(root, n, wantRun)`: "stale: swim N is now run R").
+  `run` needs both the script SHA and the manifest hash the snapshot
+  showed (a headless worker reports them for idle lanes holding a
+  pending round, when `run` is allowed); either differing refuses it as
+  stale. The queued entry pins script, env and manifest as `swim queue
+  add` does, unsigned, `By: hub:<user> via <url>`, note "run from the
+  hub", no approvals. The worker's own `-y`, if it runs with one, still
+  applies to it, as to every batch.
+- **Logs.** `PUT|GET /api/workers/{id}/logs/{run}/{lane}` (one lane of a
+  run, not the whole run). The hub takes an upload only for a `log`
+  command that asked for it, at most 8 MiB (`413` past that), made safe
+  line by line, into an LRU cache: 64 MiB in all, 15 minutes each. The
+  worker sends the run's rounds from the lane's log and archives,
+  re-masked with `cfg.Masker(os.Environ())`, and only the last 8 MiB.
+  `/w/{id}/logs/{run}/{lane}` shows it, polling until it arrives.
+- **Record.** Every command the worker takes, refused or expired too, is a
+  `.swim.log` event `hub` ("hub <cmd> by <user> via <url>: <outcome>")
+  and a chain entry of type `hub` (method: the kind; `swim verify`
+  accepts it, `swim history` shows it). Ignored replays are only printed.
+- **Drain** sends the watch loop the same stop SIGTERM does: the batch in
+  hand finishes, then the worker exits 0.
+- **Not in `swim.yml`'s policy hash.** `headless:` changes what a worker
+  takes from its hub, not what a lane may do, so it doesn't stale
+  approvals. `config.yml` (defaults or a repo entry) setting it is an
+  error.
 
 ## Testing
 

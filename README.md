@@ -166,7 +166,7 @@ flowchart TD
     S[".swim/logs/, .swim/status.yml,<br/>.swim.log"]
     C[".swim/chain.jsonl<br/>hash-linked, SSH-signed"]
   end
-  H["swim hub<br/>read-only dashboard"]
+  H["swim hub<br/>dashboard; relays commands"]
 
   P -->|writes| L
   P -->|swim queue add| Q
@@ -926,6 +926,24 @@ swim watch --headless --uninstall
   plus 30s to stop. swim prints the `systemctl`/`launchctl` command (and
   `loginctl enable-linger`) but never runs it. `-y` in a unit needs
   `--i-mean-it`.
+- **Commands from the hub:** a headless worker long-polls its hub for what
+  hub users send: interrupt a lane, drain (stop after the batch in hand),
+  run a lane, upload a run's log. The worker, not the hub, decides. It takes
+  each command once (the hub's epoch, last seq and recent ids are kept in
+  `.swim/hub.yml`), lets it expire after `headless.command_ttl` (10m;
+  interrupt 2m), takes only what `swim.yml` allows, and refuses a command
+  whose pin no longer holds (the run, or the script and manifest, the page
+  showed). A run from the hub is queued unsigned, by `hub:<user> via <url>`,
+  with no approvals of its own. A log is masked again before it goes.
+  Every command, refused or not, lands in `.swim.log` and the chain.
+
+```yaml
+# swim.yml (only swim.yml: config.yml can't set it)
+headless:
+  allow: [answer, interrupt, drain, log]   # the default; add run to allow it
+  logs: on                                 # off: logs never leave this machine
+  command_ttl: 10m
+```
 
 ### Interrupts
 
@@ -1016,6 +1034,7 @@ swim hub status | leave
 swim hub login URL --admin-token T [--ca hub.crt]    # the operator, once
 swim hub approve billing                             # or press a on its row in the hub's screen
 swim secret grant billing db_password                # encrypted here to billing's key; the hub keeps ciphertext
+swim hub user add alice --role operator              # a person: token shown once; viewer or operator
 ```
 
 - **Dashboard:** a card per worker, showing its activity, lanes and queue.
@@ -1028,8 +1047,17 @@ swim secret grant billing db_password                # encrypted here to billing
 - **`GET /api/workers`:** the same data as JSON.
 - **Push, not pull:** workers report to the hub, so they can sit behind NAT.
   A restarted hub fills back up as workers report.
-- **Access:** workers need the token. The pages are read-only, and bind to
-  localhost by default.
+- **Access:** workers need the token. Viewing the pages needs no login, so
+  the hub binds to localhost by default.
+- **Users:** `swim hub user add NAME --role viewer|operator` (the admin)
+  prints a token, once; the hub keeps its hash. The user logs in at
+  `/login` for a 12-hour session (`HttpOnly`, `SameSite=Strict`, `Secure`
+  under TLS, a CSRF token on every form), or sends the token as a bearer
+  token. On a headless worker's page they get controls: **Interrupt**,
+  **Stop after this batch**, **Run now** (operator) and **Log** (viewer
+  too). The page shows each command's outcome as the worker acknowledges
+  it. Uploaded logs stay in the hub's memory only (8 MiB a log, 64 MiB in
+  all, 15 minutes). The admin token manages users and sends no command.
 - **TLS:** `--tls-cert`/`--tls-key` serve https (TLS 1.2+), reloading the
   certificate when its files change. Without them the hub refuses any
   non-loopback `--addr` (exit 2) unless you pass `--insecure`; behind a TLS

@@ -21,10 +21,16 @@ import (
 // each one's public key (age), whether the operator approved it, a hash of
 // its token, and the secrets granted to it, encrypted to its key by the
 // operator before they reach the hub. The hub never holds a secret's value
-// or a key that could decrypt one.
+// or a key that could decrypt one. Since v2 it also keeps its users (a hash
+// of each one's token) and the commands sent to workers, with each
+// worker's next command seq and the hub's epoch.
 
 // StateSchema identifies the state file.
-const StateSchema = "swim.hub-state/v1"
+const StateSchema = "swim.hub-state/v2"
+
+// StateSchemaV1 is the state before users and commands; a hub reads it and
+// writes v2 from then on.
+const StateSchemaV1 = "swim.hub-state/v1"
 
 // Record is one worker the hub knows.
 type Record struct {
@@ -48,6 +54,13 @@ type state struct {
 	Schema  string                      `json:"schema"`
 	Workers map[string]*Record          `json:"workers"`
 	Grants  map[string]map[string]Grant `json:"grants"` // worker id -> secret name -> grant
+	// v2
+	Users    map[string]*User      `json:"users,omitempty"`
+	Commands map[string][]*Command `json:"commands,omitempty"` // worker id -> its recent commands, oldest first
+	NextSeq  map[string]int        `json:"next_seq,omitempty"` // worker id -> the seq its next command gets
+	// Epoch names this hub's command sequence: a worker that sees another
+	// one (the state was lost, or it's another hub) starts its seq over.
+	Epoch string `json:"epoch,omitempty"`
 }
 
 // KeyFingerprint is a short, stable name for a worker's public key.
@@ -104,7 +117,12 @@ func NewWithState(token, admin, dir string) (*Server, error) {
 		if err := json.Unmarshal(data, &st); err != nil {
 			return nil, fmt.Errorf("%s: %w", s.statePath(), err)
 		}
-		if st.Schema != StateSchema {
+		switch st.Schema {
+		case StateSchema:
+		case StateSchemaV1:
+			// v1 had no users or commands: a new epoch, and v2 on the next save.
+			st.Epoch = ""
+		default:
 			return nil, fmt.Errorf("%s: schema %q, want %s", s.statePath(), st.Schema, StateSchema)
 		}
 		if st.Workers != nil {
@@ -113,6 +131,22 @@ func NewWithState(token, admin, dir string) (*Server, error) {
 		if st.Grants != nil {
 			s.grants = st.Grants
 		}
+		if st.Users != nil {
+			s.users = st.Users
+		}
+		if st.Commands != nil {
+			s.commands = st.Commands
+		}
+		if st.NextSeq != nil {
+			s.nextSeq = st.NextSeq
+		}
+		if st.Epoch != "" {
+			s.epoch = st.Epoch
+		}
+	}
+	// Keep the epoch from the first start (and a v1 file as v2).
+	if err := s.save(); err != nil {
+		return nil, err
 	}
 	// Known workers show (stale) until they report again.
 	for id, r := range s.records {
@@ -130,7 +164,8 @@ func (s *Server) save() error {
 	if s.dir == "" {
 		return nil
 	}
-	data, err := json.MarshalIndent(state{Schema: StateSchema, Workers: s.records, Grants: s.grants}, "", "  ")
+	data, err := json.MarshalIndent(state{Schema: StateSchema, Workers: s.records, Grants: s.grants,
+		Users: s.users, Commands: s.commands, NextSeq: s.nextSeq, Epoch: s.epoch}, "", "  ")
 	if err != nil {
 		return err
 	}

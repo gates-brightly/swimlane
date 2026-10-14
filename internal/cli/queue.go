@@ -210,27 +210,11 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel}
 	b := batch{entry: e, guards: map[string]bool{}}
 	for _, n := range lanes {
-		info, err := lane.ReadScript(root, n)
+		l, info, err := pinLane(root, cfg, n)
 		if err != nil {
 			return b, err
 		}
-		if !info.Pending() {
-			return b, fmt.Errorf("swim %d holds no pending round (a stub, or no Round: line); write one before queueing it", n)
-		}
-		data, err := lane.ScriptBytes(root, n)
-		if err != nil {
-			return b, err
-		}
-		r, err := envfile.Check(root, cfg, n, info, nil)
-		if err != nil {
-			return b, err
-		}
-		envSum := r.SHA256()
-		m, err := manifest.Build(root, cfg, n, envSum)
-		if err != nil {
-			return b, err
-		}
-		e.Lanes = append(e.Lanes, queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum, Manifest: m.SHA256})
+		e.Lanes = append(e.Lanes, l)
 		for _, g := range info.Guards {
 			b.guards[g.Flag] = true
 		}
@@ -288,6 +272,32 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	}
 	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: detail})
 	return b, nil
+}
+
+// pinLane is lane n as a queue entry holds it: its job and round, pinned
+// to the script, env and manifest it has now.
+func pinLane(root string, cfg *config.Config, n int) (queue.Lane, lane.Info, error) {
+	info, err := lane.ReadScript(root, n)
+	if err != nil {
+		return queue.Lane{}, info, err
+	}
+	if !info.Pending() {
+		return queue.Lane{}, info, fmt.Errorf("swim %d holds no pending round (a stub, or no Round: line); write one before queueing it", n)
+	}
+	data, err := lane.ScriptBytes(root, n)
+	if err != nil {
+		return queue.Lane{}, info, err
+	}
+	r, err := envfile.Check(root, cfg, n, info, nil)
+	if err != nil {
+		return queue.Lane{}, info, err
+	}
+	envSum := r.SHA256()
+	m, err := manifest.Build(root, cfg, n, envSum)
+	if err != nil {
+		return queue.Lane{}, info, err
+	}
+	return queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum, Manifest: m.SHA256}, info, nil
 }
 
 // cmdWait blocks until swim is idle and nothing is about to start: no lane
@@ -644,6 +654,16 @@ func cmdWatch(args []string) error {
 	// Enrolled with a hub (swim hub enroll): report there as we go.
 	setActivity, stopReporting := hubReporter(root, every)
 	defer stopReporting()
+	if headless {
+		// Commands from the hub (hubcmds.go); drain stops it as SIGTERM does.
+		stopCommands := headlessCommands(root, every, func() {
+			select {
+			case sigs <- syscall.SIGTERM:
+			default:
+			}
+		})
+		defer stopCommands()
+	}
 	// On a terminal, waiting shows the jobs and the queue: r runs one now,
 	// q queues one (watchview.go).
 	var view *watchView

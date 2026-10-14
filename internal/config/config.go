@@ -64,6 +64,9 @@ type Settings struct {
 	// (see the envfile package). Only swim.yml may set it; personal values
 	// go in ~/.config/swim/env.swim.
 	Env map[string]string `yaml:"env,omitempty"`
+	// Headless is swim.yml's headless: block (what a headless worker takes
+	// from its hub). Only swim.yml may set it.
+	Headless *Headless `yaml:"headless,omitempty"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -139,6 +142,9 @@ func Load(root string) (*Config, error) {
 	if f.Defaults.Env != nil {
 		return nil, fmt.Errorf("%s: env: belongs in %s (or a repo's swim.yml), not config.yml", c.Path, filepath.Join(filepath.Dir(c.Path), "env.swim"))
 	}
+	if f.Defaults.Headless != nil {
+		return nil, fmt.Errorf("%s: headless: belongs in a repo's committed swim.yml, not config.yml (what a worker takes from its hub is the repo's decision)", c.Path)
+	}
 	c.Settings = f.Defaults
 	c.RepoLanes = f.Defaults.Lanes != 0
 	c.Runners, c.RunnerFrom = nil, nil
@@ -152,10 +158,14 @@ func Load(root string) (*Config, error) {
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
+		c.Headless = s.Headless
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
 		if repo.Env != nil {
 			return nil, fmt.Errorf("%s (repo %s): env: belongs in a [repo PATH] section of %s, not config.yml", c.Path, root, filepath.Join(filepath.Dir(c.Path), "env.swim"))
+		}
+		if repo.Headless != nil {
+			return nil, fmt.Errorf("%s (repo %s): headless: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
 		}
 		c.HasRepo = true
 		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
@@ -358,6 +368,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)
 	}
 	if err := c.validateChime(); err != nil {
+		return err
+	}
+	if err := c.Headless.validate(); err != nil {
 		return err
 	}
 	for lane, deps := range c.Deps {

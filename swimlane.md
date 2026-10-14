@@ -137,7 +137,7 @@ swim is a tool a person operates, with teammates approving from their own machin
 ### Queue, CI and hub
 - **Queue:** a batch is fixed when queued. Its approvals travel with it, and the worker's own environment approves nothing. Several workers can share one queue safely.
 - **CI:** `swim ci` never prompts. It folds each lane's log, turns failures into annotations, can run only the rounds a push changed, and never commits results back.
-- **Hub:** a read-only dashboard of many workers. Workers push to it, so they can sit behind NAT. It serves https with `--tls-cert`/`--tls-key`, and plain HTTP only on loopback unless `--insecure`.
+- **Hub:** a dashboard of many workers. Workers push to it, so they can sit behind NAT. It serves https with `--tls-cert`/`--tls-key`, and plain HTTP only on loopback unless `--insecure`. Hub users (each with their own token and a viewer or operator role) can send headless workers commands: interrupt, drain, run, fetch a log. The hub only relays them; the worker checks each against the repo's committed `headless:` settings and records it.
 
 ### Planner / worker protocol
 - The planner assigns each worker a lane number. A worker writes **only** its own `lane.N.sh`.
@@ -181,18 +181,18 @@ swim is a tool a person operates, with teammates approving from their own machin
 - **Running from the planner's side.** The operator's machine, or a worker they control, stays the only executor.
 - **Secret management.** Rounds use the operator's existing credentials.
 - **Writing to git.** swim never commits, pushes or pulls, including in CI.
-- **Running or approving from the hub.** The hub only shows state.
+- **Executing on the hub.** The hub relays requests to headless workers, which check, carry out and record them. It never runs anything itself, never holds credentials or secrets, and can't make an approval valid by itself. Answering approvals through it is still to come ([features/headless.md](features/headless.md), H3).
 - **Scheduling across rounds.** The queue runs batches when swim is idle; there is no cron.
 
 ## Open questions
 
 - **Named lanes:** support `lane org` alongside numbers?
 - **Keeping the chain:** `.swim/chain.jsonl` isn't committed. Should swim export or ship it somewhere durable by default?
-- **Hub access:** is a shared token enough, or does the hub need per-user identity from `lookup.yml`?
 - **Beyond bash:** should rounds ever be written in something other than bash, or is bash's universality (and models' fluency in it) the point?
 
 ### Resolved since
 
+- **Hub access?** Per-user identity: the hub's admin adds users (`swim hub user add NAME --role viewer|operator`), named as in `lookup.yml`, each with their own token and a browser session. Every command carries the user who sent it, and the worker records it. The shared tokens only enroll workers and manage the hub. See [features/headless.md](features/headless.md).
 - **Cross-session claims?** Yes, as an advisory lease: `swim new` claims the lane until it runs, is archived or stubbed, or the lease expires. `Owner` stays authorship. See [features/lane-claims.md](features/lane-claims.md) (proposed).
 
 ### Resolved from v1
