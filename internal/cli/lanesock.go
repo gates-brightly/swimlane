@@ -21,6 +21,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/peer"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -129,6 +130,12 @@ func (s *laneServer) serve() {
 
 func (s *laneServer) conn(c net.Conn) {
 	defer c.Close()
+	// Only the lane's own program (this wrapper's descendants) may use its
+	// socket, whoever else holds the token.
+	if ok, known := peer.FromLane(c, os.Getpid()); known && !ok {
+		json.NewEncoder(c).Encode(laneResponse{Error: "refused: the connection came from a process outside this lane"})
+		return
+	}
 	sc := bufio.NewScanner(c)
 	sc.Buffer(make([]byte, 64*1024), 8*1024*1024)
 	enc := json.NewEncoder(c)

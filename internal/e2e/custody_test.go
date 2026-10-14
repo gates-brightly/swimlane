@@ -88,14 +88,16 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 		t.Errorf("history should start with the newest entry, like git log:\n%s", hist)
 	}
 	// --oneline, -n and --reverse, as in git log.
-	one := strings.Split(strings.TrimSpace(r.mustSwim("history", "--oneline", "-n", "2")), "\n")
-	if len(one) != 2 || !regexp.MustCompile(`^[0-9a-f]{12} round swim 1 passed \(exit 0\)$`).MatchString(one[0]) ||
-		!strings.Contains(one[1], " approve FIN_ALLOW_DROP for swim 1") {
-		t.Errorf("history --oneline -n 2: %q", one)
+	// The newest: the run's attestation, its round, the approval.
+	one := strings.Split(strings.TrimSpace(r.mustSwim("history", "--oneline", "-n", "3")), "\n")
+	if len(one) != 3 || !regexp.MustCompile(`^[0-9a-f]{12} run r-\S+ attested: swim 1, 1 approvals$`).MatchString(one[0]) ||
+		!regexp.MustCompile(`^[0-9a-f]{12} round swim 1 passed \(exit 0\)$`).MatchString(one[1]) ||
+		!strings.Contains(one[2], " approve FIN_ALLOW_DROP for swim 1") {
+		t.Errorf("history --oneline -n 3: %q", one)
 	}
-	rev := strings.Split(strings.TrimSpace(r.mustSwim("history", "--oneline", "-2", "--reverse")), "\n")
-	if len(rev) != 2 || rev[0] != one[1] || rev[1] != one[0] {
-		t.Errorf("history --oneline -2 --reverse: %q, want %q reversed", rev, one)
+	rev := strings.Split(strings.TrimSpace(r.mustSwim("history", "--oneline", "-3", "--reverse")), "\n")
+	if len(rev) != 3 || rev[0] != one[2] || rev[2] != one[0] {
+		t.Errorf("history --oneline -3 --reverse: %q, want %q reversed", rev, one)
 	}
 	contains(t, "verify", r.mustSwim("verify"), "verified: every link, signature, log and script checks out", "script, approves FIN_ALLOW_DROP; 3 standing of 5 events")
 

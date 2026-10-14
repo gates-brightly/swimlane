@@ -647,6 +647,20 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 		}
 		subject = fmt.Sprintf("%s %s by %s", verb, what, by)
 		field("Script", l.Script)
+	case "run":
+		var lanes []string
+		for k := range l.Manifests {
+			lanes = append(lanes, k)
+		}
+		sort.Strings(lanes)
+		subject = fmt.Sprintf("run %s attested: swim %s, %d approvals", l.Run, strings.Join(lanes, " "), len(l.Approvals))
+		for _, k := range lanes {
+			field("Lane "+k, l.Manifests[k])
+		}
+		for _, a := range l.Approvals {
+			field("Approval", a)
+		}
+		field("Flags", strings.Join(l.Flags, " "))
 	case "repair":
 		subject = "repair: " + l.Action
 		for name := range l.Outputs {
@@ -763,15 +777,29 @@ func cmdVerify(args []string) error {
 	signers := map[string]bool{}
 	rounds, approvals := 0, 0
 	var notes []string
+	runs, unattested := attestations(links, &bad)
 	for _, l := range links {
 		if l.Signer != "" {
 			if _, ok := lk.Who(l.Signer); !ok {
 				signers[sign.Fingerprint(l.Signer)] = true
 			}
 		}
+		att, attested := runs[l.Run]
 		switch l.Type {
 		case "round":
 			rounds++
+			// What swim run attests its lane ran.
+			if attested {
+				key := strconv.Itoa(l.Lane)
+				switch {
+				case att.Manifests[key] == "" && att.Scripts[key] == "":
+					bad = append(bad, fmt.Sprintf("entry #%d: a round of swim %d in run %s, which the run's attestation (entry #%d) doesn't list", l.Seq, l.Lane, l.Run, att.Seq))
+				case l.Script != "" && att.Scripts[key] != "" && l.Script != att.Scripts[key]:
+					bad = append(bad, fmt.Sprintf("entry #%d: swim %d's round in run %s names script %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Script), short12(att.Scripts[key]), att.Seq))
+				case l.Manifest != "" && att.Manifests[key] != "" && l.Manifest != att.Manifests[key]:
+					bad = append(bad, fmt.Sprintf("entry #%d: swim %d's round in run %s names manifest %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Manifest), short12(att.Manifests[key]), att.Seq))
+				}
+			}
 			if l.Script != "" {
 				if got, err := chain.HashFile(filepath.Join(scriptsDir(root), l.Script+".sh")); err != nil {
 					warn = append(warn, fmt.Sprintf("entry #%d: the script copy %s.sh is missing", l.Seq, short12(l.Script)))
@@ -815,6 +843,12 @@ func cmdVerify(args []string) error {
 			notes = append(notes, fmt.Sprintf("entry #%d: swim chain repair %s", l.Seq, l.Action))
 		case "approve":
 			approvals++
+			// Under swim run only the launcher records approvals: one its
+			// run's attestation doesn't list was written by someone else (a
+			// lane recording its own approval).
+			if attested && !slices.Contains(att.Approvals, l.Hash) {
+				bad = append(bad, fmt.Sprintf("entry #%d: an approval of %s for swim %d in run %s that swim run didn't record (its attestation, entry #%d, doesn't list it)", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run, att.Seq))
+			}
 			for _, ap := range l.Approvers {
 				if ap.Statement == "" || ap.Sig == "" {
 					continue
@@ -847,6 +881,9 @@ func cmdVerify(args []string) error {
 		}
 		fmt.Printf("approvals %s: %s, approves %s; %d standing of %d events%s\n", rel(root, f.Path), f.Kind, approvesText(f), len(signers), len(f.Events), state)
 	}
+	if unattested > 0 {
+		notes = append(notes, fmt.Sprintf("%d runs have approvals or rounds but no run attestation (lanes run directly with bash, runs from before attestations, or a swim run that didn't finish): their approvals can't be checked against what swim run recorded", unattested))
+	}
 	for _, n := range notes {
 		fmt.Println("note: " + n)
 	}
@@ -861,6 +898,33 @@ func cmdVerify(args []string) error {
 	}
 	fmt.Println(p.Paint(ui.Green, "verified: every link, signature, log and script checks out"))
 	return nil
+}
+
+// attestations are the chain's run attestations by run id. A run attested
+// twice is a break (someone appended a second). unattested counts the runs
+// that have approve or round entries and no attestation.
+func attestations(links []chain.Link, bad *[]string) (runs map[string]chain.Link, unattested int) {
+	runs = map[string]chain.Link{}
+	for _, l := range links {
+		if l.Type != "run" {
+			continue
+		}
+		if first, ok := runs[l.Run]; ok {
+			*bad = append(*bad, fmt.Sprintf("entry #%d: run %s is attested twice (entries #%d and #%d)", l.Seq, l.Run, first.Seq, l.Seq))
+			continue
+		}
+		runs[l.Run] = l
+	}
+	seen := map[string]bool{}
+	for _, l := range links {
+		if (l.Type == "approve" || l.Type == "round") && !seen[l.Run] {
+			seen[l.Run] = true
+			if _, ok := runs[l.Run]; !ok {
+				unattested++
+			}
+		}
+	}
+	return runs, unattested
 }
 
 // needsEvidence reports whether a lookup.yml rule for any approved guard

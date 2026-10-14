@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
+	"github.com/gates-brightly/swimlane/internal/authority"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -15,35 +15,9 @@ import (
 	"github.com/gates-brightly/swimlane/internal/status"
 )
 
-// The runner's signing key, loaded once per process.
-var (
-	keyOnce sync.Once
-	keyVal  *sign.Key
-	keyErr  error
-)
-
 // runnerKey is the key this swim signs chain entries with: nil (and no
 // error) when signing is off, or auto and no key loads.
-func runnerKey(cfg *config.Config) (*sign.Key, error) {
-	mode := cfg.SigningMode()
-	if mode == config.SigningOff {
-		return nil, nil
-	}
-	keyOnce.Do(func() {
-		if !sign.Available() {
-			keyErr = fmt.Errorf("ssh-keygen isn't installed")
-			return
-		}
-		keyVal, keyErr = sign.LoadKey(cfg.SigningKey)
-	})
-	if keyErr != nil {
-		if mode == config.SigningRequired {
-			return nil, fmt.Errorf("signing: required, but %v", keyErr)
-		}
-		return nil, nil
-	}
-	return keyVal, nil
-}
+func runnerKey(cfg *config.Config) (*sign.Key, error) { return authority.Key(cfg) }
 
 // ScriptsDir keeps a copy of every lane script a round ran, by hash, so
 // swim verify can show exactly what ran.
@@ -143,27 +117,10 @@ func laneProbes(root string, n int, m *manifest.Manifest) []lane.Probe {
 }
 
 // record appends an entry to the chain, signed by the runner's key when
-// there is one. The chain is best-effort for the round (a failure is
-// reported, not fatal) unless signing is required.
+// there is one (authority.Record).
 func record(root string, cfg *config.Config, e chain.Entry) error {
-	key, err := runnerKey(cfg)
-	if err != nil {
-		return err
-	}
-	_, err = chain.Append(root, e, key)
-	if err != nil && key != nil && cfg.SigningMode() != config.SigningRequired {
-		// signing: auto and the key couldn't sign (a passphrase and no
-		// agent, a hardware key that wants a PIN): keep the link, unsigned.
-		fmt.Fprintln(os.Stderr, "swim: warning: chain of custody: couldn't sign ("+err.Error()+"); recorded unsigned")
-		_, err = chain.Append(root, e, nil)
-	}
-	if err != nil {
-		if cfg.SigningMode() == config.SigningRequired {
-			return err
-		}
-		fmt.Fprintln(os.Stderr, "swim: warning: chain of custody: "+err.Error())
-	}
-	return nil
+	_, err := authority.Record(root, cfg, e)
+	return err
 }
 
 // roundSection is the text a round's chain entry hashes: its lines from

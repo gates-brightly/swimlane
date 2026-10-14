@@ -140,18 +140,22 @@ if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 }
 
 // The broker, not the request, says who asks: a lane that asks as another
-// lane is shown (and recorded) as itself, an undeclared flag is refused,
-// and its description is labelled as the lane's.
+// lane is refused (a hidden command for another lane, T10), an undeclared
+// flag is refused, and the approval is recorded as the lane's own.
 func TestManifestRequestsFromTheLane(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "asks as another", `if "$SWIM_BIN" _approve 5 DROP "harmless cleanup"; then run "dropped" true; fi
+	r.script(1, "asks as another", `if "$SWIM_BIN" _approve 5 DROP "harmless cleanup"; then run "dropped as 5" true; fi
+if "$SWIM_BIN" _approve 1 DROP "harmless cleanup"; then run "dropped" true; fi
 if "$SWIM_BIN" _approve 1 WIPE_ALL "routine tidy"; then run "wiped" true; fi`)
 	withHeader(t, r, 1, "# Guards:  DROP drop the table")
 	out, code := r.swim("run", "1", "-y")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	contains(t, "output", out, "approval refused for swim 1: guard WIPE_ALL isn't declared in swim 1's script")
+	contains(t, "output", out, "refused: lane 1 can't report for lane 5", "approval refused for swim 1: guard WIPE_ALL isn't declared in swim 1's script")
+	if strings.Contains(r.log(1), "dropped as 5") {
+		t.Error("lane 1 was approved as lane 5")
+	}
 	log := r.log(1)
 	contains(t, "agent1.log", log, "APPROVED  harmless cleanup (approved by swim run -y", "PASS  dropped",
 		"SKIP  routine tidy (dry run: not approved: guard WIPE_ALL isn't declared")

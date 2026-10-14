@@ -427,11 +427,13 @@ any_failed() {
 # FLAG=1 approves up front (CI, scripts). With FLAG unset and an operator
 # at the terminal, swim asks: "swim N requires human approval of guard
 # FLAG ... the lane says: <action> Y/N [N]"; y approves (recorded with who
-# answered). Under swim run, a FLAG the script doesn't declare or use is
-# refused, and an Observe: fact that changed since approval stops the round
-# as drift. Anything else (n, Enter, FLAG set to another value, nobody to
-# ask) records SKIP with a dry-run message showing how to approve, and
-# returns false. One flag per destructive action.
+# answered). Under swim run the launcher decides every guard: FLAG=1
+# approves only if swim run's own environment set it (not the lane), a
+# FLAG the script doesn't declare or use is refused, and an Observe: fact
+# that changed since approval stops the round as drift. Anything else (n,
+# Enter, FLAG set to another value, nobody to ask) records SKIP with a
+# dry-run message showing how to approve, and returns false. One flag per
+# destructive action.
 guard() {
   if [ $# -lt 2 ]; then
     echo 'swim: usage: guard FLAG "<action - date, reason>"' >&2
@@ -451,21 +453,28 @@ guard() {
     "$SWIM_BIN" _mark "$SWIM_LANE" WARN "$1=1 from .lane.$SWIM_LANE.rc ignored" "files can't approve guards; set it in the shell or approve"
     _swim_val=unset
   fi
+  _swim_flag_set=
   if [ "$_swim_val" = "1" ]; then
-    # A queued batch's approvals (swim queue add --approve) say where they
-    # came from.
-    case " ${SWIM_QUEUE_APPROVED:-} " in
-      *" $1 "*) "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1, approved in $SWIM_QUEUE" ;;
-      *) "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1" ;;
-    esac
-    return 0
+    if [ "${SWIM_LAUNCHED:-}" = "1" ] && [ -n "$SWIM_LANE" ]; then
+      # Under swim run the launcher says whether the flag counts: set in
+      # the environment swim run started with, not inside the lane.
+      _swim_flag_set=--flag-set
+    else
+      # A queued batch's approvals (swim queue add --approve) say where they
+      # came from.
+      case " ${SWIM_QUEUE_APPROVED:-} " in
+        *" $1 "*) "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1, approved in $SWIM_QUEUE" ;;
+        *) "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1" ;;
+      esac
+      return 0
+    fi
   fi
-  if [ "$_swim_val" = "unset" ] && [ -n "$SWIM_LANE" ]; then
+  if [ -n "$_swim_flag_set" ] || { [ "$_swim_val" = "unset" ] && [ -n "$SWIM_LANE" ]; }; then
     # Nobody set the flag: ask the operator if one is at the terminal
     # ("requires human approval of guard ... Y/N [N]"); swim _approve
     # records APPROVED, or SKIP as a dry run when declined or no one can be
     # asked (CI, no terminal, approvals: flags).
-    "$SWIM_BIN" _approve "$SWIM_LANE" "$1" "$2"
+    "$SWIM_BIN" _approve "$SWIM_LANE" "$1" "$2" $_swim_flag_set
     _swim_rc=$?
     if [ "$_swim_rc" -eq 3 ]; then
       # An Observe: fact changed between approval and now.
@@ -515,7 +524,7 @@ confirm() {
     fi
   done
   if [ "$_swim_ans" = "$_swim_want" ]; then
-    "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$1" "operator typed $_swim_want"
+    "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$1" "operator typed $_swim_want" --confirm
     return 0
   fi
   stop "not confirmed: $1"

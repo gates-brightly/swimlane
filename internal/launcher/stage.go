@@ -70,18 +70,37 @@ func pinned(o Options, n int) (why string, refuse bool) {
 
 // stageEnv is the environment that tells lane n's process where its stage
 // and manifest are, and its approval token (registered with the facts the
-// question is built from: the lane, cell, job and manifest).
-func stageEnv(o Options, n int, who approval.Caller) []string {
+// question is built from: the lane, cell, job, run and manifest, and the
+// process once it starts, see started), which it returns too.
+func stageEnv(o Options, n int, who approval.Caller) ([]string, string) {
 	m := o.manifests[n]
 	if m == nil {
-		return nil
+		return nil, ""
 	}
 	env := []string{manifest.StageEnv + "=" + m.Dir, manifest.ManifestEnv + "=" + filepath.Join(m.Dir, manifest.FileName), "SWIM_ROOT=" + o.Root}
+	tok := ""
 	if o.approvalSrv != nil {
-		who.Lane, who.Manifest, who.Guards = n, m.SHA256, m.Guards
-		env = append(env, approval.TokenEnv+"="+o.approvalSrv.Register(who))
+		who.Lane, who.Run, who.Manifest, who.Guards, who.PID = n, o.RunID, m.SHA256, m.Guards, approval.AwaitPID
+		tok = o.approvalSrv.Register(who)
+		env = append(env, approval.TokenEnv+"="+tok)
 	}
-	return env
+	return env, tok
+}
+
+// started binds a lane process's approval token to its pid: only it and
+// its descendants may use the token.
+func started(o Options, tok string, pid int) {
+	if o.approvalSrv != nil && tok != "" {
+		o.approvalSrv.SetPID(tok, pid)
+	}
+}
+
+// exited revokes a lane process's token: nothing it left behind can ask
+// or report with it.
+func exited(o Options, tok string) {
+	if o.approvalSrv != nil && tok != "" {
+		o.approvalSrv.Revoke(tok)
+	}
 }
 
 // probesFor are the Observe: probes of lane n (one cell or job of it), from

@@ -51,7 +51,37 @@ func laneCtx(arg string) (string, *config.Config, int, error) {
 	if err != nil {
 		return "", nil, 0, err
 	}
+	if err := ownLane(n); err != nil {
+		return "", nil, 0, err
+	}
 	return root, cfg, n, nil
+}
+
+// ownLane refuses a hook for any lane but the one this process belongs to.
+// Under swim run the launcher says which that is (op whoami, by the lane
+// process's approval token and process tree), so lane 1 can't mark, stage
+// or finish lane 2's round.
+func ownLane(n int) error {
+	tok := os.Getenv(approval.TokenEnv)
+	if !launched() || tok == "" {
+		return nil
+	}
+	who, err := approval.Whoami(os.Getenv(approval.EnvVar), tok)
+	var why string
+	switch {
+	case err != nil:
+		why = "can't tell which lane this process belongs to: " + err.Error()
+	case who.Lane != n:
+		why = fmt.Sprintf("lane %d can't report for lane %d", who.Lane, n)
+	case who.Run != "" && os.Getenv("SWIM_RUN") != "" && who.Run != os.Getenv("SWIM_RUN"):
+		why = fmt.Sprintf("lane %d of run %s can't report for run %s", n, who.Run, os.Getenv("SWIM_RUN"))
+	case who.Cell != lane.CurrentCell():
+		why = fmt.Sprintf("lane %d [%s] can't report for [%s]", n, who.Cell, lane.CurrentCell())
+	default:
+		return nil
+	}
+	fmt.Fprintln(os.Stderr, "swim: refused: "+why)
+	return exitError{2}
 }
 
 func appendLog(path, text string) error {
@@ -681,34 +711,51 @@ func cmdFinish(args []string) error {
 
 var dryRunRE = regexp.MustCompile(`^dry run: (?:.*; )?set ([A-Za-z_][A-Za-z0-9_]*)=1 to approve$`)
 
-// swim _mark N KIND label [detail] [--request ID --guard FLAG]
+// swim _mark N KIND label [detail] [--request ID --guard FLAG] [--confirm]
 //
 // --request names the launcher's approval an APPROVED mark records: it is
 // consumed (once, by this lane process, for FLAG) before anything is
 // written, and refused if another lane got it or it was already used.
+// Under swim run that is the only APPROVED mark accepted: the launcher
+// records the approval in the chain as it is consumed, and a lane can't
+// approve itself. --confirm marks a confirm answered at the lane's own
+// terminal: logged, but under swim run not an approval in the chain (swim
+// didn't see it given).
 func cmdMark(args []string) error {
 	var request, guard string
+	confirmed := false
+	if i := slices.Index(args, "--confirm"); i >= 3 {
+		confirmed = true
+		args = slices.Delete(slices.Clone(args), i, i+1)
+	}
 	if i := slices.Index(args, "--request"); i >= 3 {
 		rest, err := flags{strs: map[string]*string{"request": &request, "guard": &guard}}.parse(args[i:])
 		if err != nil || len(rest) > 0 || request == "" || guard == "" {
-			return usagef("usage: swim _mark N KIND label [detail] [--request ID --guard FLAG]")
+			return usagef("usage: swim _mark N KIND label [detail] [--request ID --guard FLAG] [--confirm]")
 		}
 		args = args[:i]
 	}
 	if len(args) < 3 {
-		return usagef("usage: swim _mark N KIND label [detail] [--request ID --guard FLAG]")
+		return usagef("usage: swim _mark N KIND label [detail] [--request ID --guard FLAG] [--confirm]")
+	}
+	if (request != "" || confirmed) && args[1] != logparse.Approved {
+		return usagef("--request and --confirm are for APPROVED marks")
+	}
+	recorded := false // the launcher put the approval in the chain
+	if args[1] == logparse.Approved && request == "" && !confirmed && launched() {
+		fmt.Fprintf(os.Stderr, "swim: refused: an APPROVED mark under swim run needs the launcher's approval (guard asks for it): a lane can't approve itself\n")
+		return exitError{2}
 	}
 	if request != "" {
-		if args[1] != logparse.Approved {
-			return usagef("--request is for APPROVED marks")
-		}
 		sock := os.Getenv(approval.EnvVar)
 		if sock == "" {
 			return fmt.Errorf("approval %s: no swim run to check it with", request)
 		}
-		if err := approval.Consume(sock, os.Getenv(approval.TokenEnv), request, guard); err != nil {
+		hash, err := approval.Consume(sock, os.Getenv(approval.TokenEnv), request, guard)
+		if err != nil {
 			return fmt.Errorf("refused: %v", err)
 		}
+		recorded = hash != "" || launched()
 	}
 	kind, label, detail := args[1], args[2], ""
 	if len(args) > 3 {
@@ -752,7 +799,7 @@ func cmdMark(args []string) error {
 	if err := appendLog(lane.Log(root, n), logLine+"\n"); err != nil {
 		return err
 	}
-	if kind == logparse.Approved && !approveRecorded {
+	if kind == logparse.Approved && !approveRecorded && !recorded && !(confirmed && launched()) {
 		// guard with its flag set (FLAG=1, or a queued batch's approval):
 		// the runner attests it, as the operator who set it.
 		method := "flag"
