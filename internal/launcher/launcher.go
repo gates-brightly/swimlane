@@ -408,8 +408,8 @@ func Run(o Options) (int, error) {
 				return approval.Response{Approved: true, By: or(o.ApprovedBy, operator()), Auto: true, Via: or(o.ApprovedVia, "swim run -y")}
 			}
 			if !prompt {
-				// No terminal: the caller's asker (the hub).
-				disp.Message(fmt.Sprintf("%swaits for an answer through the hub: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
+				// No terminal: the caller's asker (the hub), which says
+				// where the question waits.
 				disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
 				defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
 				return o.Asker(req, cancel)
