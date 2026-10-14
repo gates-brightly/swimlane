@@ -15,30 +15,39 @@ import (
 
 // The operator's side of a hub: approving workers and granting them
 // secrets, with the hub's admin token. swim hub login saves the URL and
-// token; --hub / --admin-token (or SWIM_HUB_URL / SWIM_HUB_ADMIN_TOKEN)
-// override it.
+// token (and --ca's PEM); --hub / --admin-token (or SWIM_HUB_URL /
+// SWIM_HUB_ADMIN_TOKEN, and SWIM_HUB_CA, a file) override it.
 
 type hubLogin struct {
 	URL        string `yaml:"url"`
 	AdminToken string `yaml:"admin_token"`
+	CA         string `yaml:"ca,omitempty"`
 }
 
 func hubLoginPath() string { return filepath.Join(filepath.Dir(config.Path()), "hub-admin.yml") }
 
 func hubLoginCmd(args []string) error {
-	var token string
-	rest, err := flags{strs: map[string]*string{"admin-token": &token}}.parse(args)
+	var token, caFile string
+	var insecure bool
+	rest, err := flags{bools: map[string]*bool{"insecure": &insecure}, strs: map[string]*string{"admin-token": &token, "ca": &caFile}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || token == "" {
-		return usagef("usage: swim hub login URL --admin-token T   (the hub keeps it in its state dir: admin-token)")
+		return usagef("usage: swim hub login URL --admin-token T [--ca FILE] [--insecure]   (the hub keeps it in its state dir: admin-token)")
 	}
-	a := hub.NewAdmin(rest[0], token)
+	ca, err := hubCA(rest[0], caFile, insecure)
+	if err != nil {
+		return err
+	}
+	a, err := hub.NewAdminTLS(rest[0], token, []byte(ca))
+	if err != nil {
+		return fmt.Errorf("--ca %s: %w", caFile, err)
+	}
 	if _, err := a.Grants(); err != nil {
 		return fmt.Errorf("the hub refused the admin token: %w", err)
 	}
-	data, _ := yaml.Marshal(hubLogin{URL: strings.TrimRight(rest[0], "/"), AdminToken: token})
+	data, _ := yaml.Marshal(hubLogin{URL: strings.TrimRight(rest[0], "/"), AdminToken: token, CA: ca})
 	os.MkdirAll(filepath.Dir(hubLoginPath()), 0o700)
 	if err := os.WriteFile(hubLoginPath(), data, 0o600); err != nil {
 		return err
@@ -56,23 +65,37 @@ func hubAdmin(url, token string) (*hub.Admin, string, error) {
 	if token == "" {
 		token = os.Getenv("SWIM_HUB_ADMIN_TOKEN")
 	}
-	if url == "" || token == "" {
-		if data, err := os.ReadFile(hubLoginPath()); err == nil {
-			var l hubLogin
-			if yaml.Unmarshal(data, &l) == nil {
-				if url == "" {
-					url = l.URL
-				}
-				if token == "" {
-					token = l.AdminToken
-				}
+	var ca string
+	if f := os.Getenv("SWIM_HUB_CA"); f != "" {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			return nil, "", fmt.Errorf("SWIM_HUB_CA: %w", err)
+		}
+		ca = string(data)
+	}
+	if data, err := os.ReadFile(hubLoginPath()); err == nil {
+		var l hubLogin
+		if yaml.Unmarshal(data, &l) == nil {
+			if url == "" {
+				url = l.URL
+			}
+			if token == "" {
+				token = l.AdminToken
+			}
+			// The saved CA is for the saved hub only.
+			if ca == "" && strings.TrimRight(url, "/") == l.URL {
+				ca = l.CA
 			}
 		}
 	}
 	if url == "" || token == "" {
 		return nil, "", fmt.Errorf("no hub admin: swim hub login URL --admin-token T (or --hub URL --admin-token T)")
 	}
-	return hub.NewAdmin(url, token), url, nil
+	a, err := hub.NewAdminTLS(url, token, []byte(ca))
+	if err != nil {
+		return nil, "", fmt.Errorf("hub CA: %w", err)
+	}
+	return a, url, nil
 }
 
 // hubWorkerRef finds a worker by id or name.

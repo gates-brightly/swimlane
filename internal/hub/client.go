@@ -2,11 +2,15 @@ package hub
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -24,6 +28,68 @@ type Client struct {
 // up a worker.
 func NewClient(url, token, id string) *Client {
 	return &Client{URL: strings.TrimRight(url, "/"), Token: token, ID: id, HTTP: &http.Client{Timeout: 3 * time.Second}}
+}
+
+// NewClientTLS is NewClient trusting only the CA (or self-signed hub
+// certificate) in caPEM for https; with no caPEM it trusts the system's
+// roots, as NewClient does.
+func NewClientTLS(url, token, id string, caPEM []byte) (*Client, error) {
+	c := NewClient(url, token, id)
+	if len(caPEM) == 0 {
+		return c, nil
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("hub: the CA file holds no PEM certificate")
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	c.HTTP.Transport = tr
+	return c, nil
+}
+
+// LoopbackHost reports whether host (a name or an IP, no port) is this
+// machine only: localhost or a loopback IP. "" and 0.0.0.0/:: (every
+// interface) are not.
+func LoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// PlainRemote reports whether u is an http:// URL to another machine:
+// tokens, logs and grants would cross the network in the clear.
+func PlainRemote(u string) bool {
+	p, err := url.Parse(u)
+	return err == nil && strings.EqualFold(p.Scheme, "http") && !LoopbackHost(p.Hostname())
+}
+
+// CheckURL refuses a hub URL that isn't http(s), and an http:// one to
+// another machine unless insecure. It makes no network call.
+func CheckURL(u string, insecure bool) error {
+	p, err := url.Parse(u)
+	if err != nil || p.Host == "" || (!strings.EqualFold(p.Scheme, "http") && !strings.EqualFold(p.Scheme, "https")) {
+		return fmt.Errorf("%q isn't a hub URL (https://HOST:PORT, or http:// to this machine)", u)
+	}
+	if PlainRemote(u) && !insecure {
+		return fmt.Errorf("%s is plain http to another machine: tokens, logs and secrets would cross the network unencrypted; serve the hub with --tls-cert/--tls-key and use https:// (or pass --insecure)", u)
+	}
+	return nil
+}
+
+// Explain adds what to do to a certificate error.
+func Explain(err error) error {
+	var unknown x509.UnknownAuthorityError
+	var host x509.HostnameError
+	switch {
+	case errors.As(err, &unknown):
+		return fmt.Errorf("%w (pass --ca FILE: the hub's certificate, or the CA that signed it)", err)
+	case errors.As(err, &host):
+		return fmt.Errorf("%w (the hub's certificate doesn't name this host: use a URL it names)", err)
+	}
+	return err
 }
 
 // own is the token for this worker's own calls.
@@ -53,7 +119,8 @@ func (c *Client) doAs(token, method, path string, body any) (*http.Response, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	return c.HTTP.Do(req)
+	resp, err := c.HTTP.Do(req)
+	return resp, Explain(err)
 }
 
 func failure(resp *http.Response) error {
@@ -110,9 +177,18 @@ type Admin struct{ c *Client }
 
 // NewAdmin makes an admin client.
 func NewAdmin(url, adminToken string) *Admin {
-	c := NewClient(url, adminToken, "")
+	a, _ := NewAdminTLS(url, adminToken, nil)
+	return a
+}
+
+// NewAdminTLS is NewAdmin trusting caPEM for https, as NewClientTLS.
+func NewAdminTLS(url, adminToken string, caPEM []byte) (*Admin, error) {
+	c, err := NewClientTLS(url, adminToken, "", caPEM)
+	if err != nil {
+		return nil, err
+	}
 	c.HTTP.Timeout = 10 * time.Second
-	return &Admin{c: c}
+	return &Admin{c: c}, nil
 }
 
 func (a *Admin) call(method, path string, body, out any) error {
