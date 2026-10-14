@@ -11,6 +11,9 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
   short temp directory.
 - Every request carries `SWIM_TOKEN`, a random per-lane token. A wrong or
   missing token is refused.
+- Only the lane's own program (a descendant of `swim _wrap`) may connect:
+  where the platform can tell (Linux, macOS), a connection from any other
+  process is refused, whatever token it holds.
 - Requests and responses are JSON objects, one per line. Calls are
   answered in order, one at a time per lane.
 - Without `SWIM_SOCKET` an SDK refuses to run: a round exists only when swim
@@ -73,6 +76,34 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
 - **Handlers:** when the program's round closes, the SDK asks `outcome`, and
   runs its registered handler functions inside `handler` sections, which run
   soft: nothing in them ends the round.
+
+## Authority
+
+What a round's result is, and who approved what, is swim's to say, not
+the program's:
+
+- **Pass or fail** comes from the program's exit status and swim's own
+  lines in the log: the steps swim ran, the gates it checked, the END block
+  it wrote. Through the SDK a program can only add to them: its in-process
+  results, and failures (`end_step` with `ok: false`, `stop`, a failed
+  gate). It can't remove a failure or turn one into a pass.
+- **Approvals** are decided by `swim run`, not the lane. `guard` and
+  `confirm` ask swim (`swim guard`, which asks the launcher over its
+  approval socket, [`swim.approval/v1`](../../approval/v1/README.md)); the
+  launcher decides from what it saw as the run started and records the
+  approval in the chain. A program can't record an approval itself:
+  `swim _mark APPROVED` without the launcher's one-time request id is
+  refused under `swim run`.
+- **A lane reports only for itself.** swim's hidden commands (`_start`,
+  `_mark`, `_stage`, `_finish`, `_handler`, `_approve`) ask the launcher
+  which lane, cell and run their process belongs to (by its approval token
+  and its process tree) and refuse to act for another: `lane 1 can't
+  report for lane 2`, exit 2.
+- **Limits:** the program runs as the operator. It can write files swim
+  reads, and read the runner's signing key. swim run's attestation of each
+  run makes an approval or round entry a lane writes itself detectable
+  (`swim verify`), not impossible; see
+  [the trust model](../../../../docs/trust-model.md).
 
 ## Secrets broker
 

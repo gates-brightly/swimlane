@@ -60,9 +60,12 @@ Read it top to bottom:
    the worker's environment approves nothing.
 4. **The lock check.** A swim whose syntax versions differ from the repo's
    `.swim.lock` refuses to run lanes.
-5. **Guards ask for approval.** A guard approves with `FLAG=1`, signed
-   approvals counted against `lookup.yml`, the person at the terminal, or
-   `-y`, in that order; anything else is a dry run. The guard runs inside the
+5. **Guards ask for approval.** A guard asks the launcher, which approves
+   with `FLAG=1` (set in `swim run`'s own environment), signed approvals
+   counted against `lookup.yml` (as they were when the run started), the
+   person at the terminal, or `-y`, in that order; anything else is a dry
+   run. The launcher records each approval in the chain, and attests the
+   run when its last lane exits. The guard runs inside the
    lane's own process, so it is advisory: a script that skips it isn't
    stopped. See the [trust model](trust-model.md).
 6. **The git shim and step checks** refuse `git push`, `git commit` and
@@ -99,5 +102,5 @@ it, and it serves a read-only dashboard. It never runs anything.
 | Lock | `swim run`, `swim all`, `swim new`, a lane run directly | Enforced |
 | Queue pins | `swim watch` before a lane starts | Enforced; the stage and the pins are checked again right before the lane's process starts |
 | Guard | `guard` in the lane process | Advisory |
-| Approval rules | `lookup.yml`, read by the guard | As strong as the guard and the repo's files (T3) |
+| Approval rules | `swim run`'s launcher, from `approvals/`, `lookup.yml` and its environment as they were when the run started | Enforced for every guard a lane calls; the launcher records each approval, and `swim verify` fails on one it didn't |
 | Chain | `swim verify` | Detects edits; not truncation or re-signing (T8) |

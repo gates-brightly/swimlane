@@ -66,6 +66,43 @@ To cut a release:
 
 ### Security
 
+- **A lane can't approve itself (T3):** under `swim run` the launcher
+  decides every guard and writes every approval to the chain; a lane only
+  asks.
+  - **Behaviour change: `FLAG=1` must come from swim run's environment.**
+    The shell that runs `swim run` (or a script that runs it, or a queued
+    batch's `--approve`) still approves. A `FLAG=1` a lane sets for itself
+    (`export FLAG=1` in the script, or anything it runs) is now a dry run:
+    `SKIP ... (dry run: FLAG=1 was set inside the lane, not in the
+    environment swim run started with; set FLAG=1 to approve)`. Lanes run
+    directly with bash are unchanged.
+  - **Signed approvals are read once, as the run starts:** `approvals/` and
+    `lookup.yml` written later (by a lane, or by you mid-run) count from the
+    next run.
+  - **`swim _mark N APPROVED` is refused under `swim run`** without the
+    launcher's one-time approval id: `a lane can't approve itself`, exit 2.
+    `confirm` answered at the lane's own terminal is still logged, but
+    under `swim run` isn't an approval in the chain.
+  - **Run attestation:** once its last lane exits, `swim run` appends a
+    `run` entry to the chain (each lane's manifest and script, the approve
+    entries it recorded, the flags its environment approved). `swim verify`
+    fails on an approve entry its run didn't record, a round that ran
+    something else, and a run attested twice; runs without one are noted.
+    `swim history` shows it.
+  - Lanes still run as you and can read the runner key, so a lane that
+    hides from `swim run` can sign an entry: `swim verify` reports it. See
+    `docs/trust-model.md`.
+- **A lane reports only for itself (T10):** swim's hidden commands
+  (`_start`, `_mark`, `_stage`, `_finish`, `_handler`, `_approve`) ask
+  `swim run` which lane, cell and run they belong to and refuse another's:
+  `lane 1 can't report for lane 2`, exit 2.
+  - Lane tokens are bound to the lane's process tree (Linux, macOS): a token
+    read from another lane's environment is refused, and so is a lane
+    process that daemonized out of its tree. The SDK socket checks the same.
+  - The approval socket is `0600`, takes one request of at most 1 MiB,
+    sent within 10 seconds, and declines anything else.
+  - The protocols say who decides what: `proto/swim/lane/v1` (Authority)
+    and the new `proto/swim/approval/v1`.
 - **Text a lane supplies is made safe before it's shown:** a guard's
   description and evidence, step labels, command lines, `swim msg`, the
   live view and the hub can no longer carry escape sequences, `\r`,

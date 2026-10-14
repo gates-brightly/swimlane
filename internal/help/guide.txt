@@ -323,7 +323,9 @@ WRITING A LANE SCRIPT
     Each attempt is in the log; the step counts once (one PASS or FAIL). Only put
     --retry on read-only or idempotent steps, never on a change that isn't.
   guard FLAG "<action - date, reason>"
-                                  true if FLAG=1, or (FLAG unset) the operator answers y
+                                  true if FLAG=1 (under swim run: set in the environment
+                                  swim run started with, not by the lane; a lane's own
+                                  FLAG=1 is a dry run), or (FLAG unset) the operator answers y
                                   to "swim N requires human approval of guard FLAG ...
                                   the lane says: <action> ... Y/N [N]" (swim run asks,
                                   only for a flag the script declares or uses; even for
@@ -1020,6 +1022,13 @@ CHAIN OF CUSTODY
              carry their approvers' own signed events
     round    the script's and manifest's hashes, the hash of the round's
              log section, the result and exit, and the approvals it used
+    run      swim run's attestation once its last lane exits: the manifest
+             and script each lane ran, every approve entry it recorded and
+             the guard flags its own environment approved. Under swim run
+             only the launcher records approvals (a lane can't: swim _mark
+             APPROVED is refused), from approvals/ and lookup.yml as they
+             were when the run started; swim verify fails on an approval
+             its run didn't record
     grant / revoke   approvals given or withdrawn on this machine
     repair   swim chain repair removed a half-written final line: its size,
              its SHA-256 and the .swim/chain.tail-<time>.bak that keeps it
