@@ -27,6 +27,20 @@ To cut a release:
 
 ## Unreleased
 
+### Docs
+
+- **New pages under `docs/`:** the [trust model](docs/trust-model.md) (what
+  swim protects against, what it doesn't, and the test behind each claim),
+  the [architecture](docs/architecture.md) (where credentials live and where
+  policy is enforced), the [state machines](docs/state.md), a
+  [recovery playbook](docs/recovery.md) and the
+  [compatibility policy](docs/compatibility.md) (platforms, prerequisites,
+  stability tiers, deprecations).
+- **README:** a quickstart that needs no credentials (an e2e test runs it as
+  written), "What swim protects against", the architecture diagram, a CI
+  badge, and current version strings.
+- **`swim --help`** points to the trust model and the recovery playbook.
+
 ### Changed
 
 - **Versions are `0.<YYYYMMDD>.<index>`,** tagged `v0.<YYYYMMDD>.<index>`:

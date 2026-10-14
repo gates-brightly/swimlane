@@ -65,3 +65,12 @@ func TestFullHelpHasEveryCommand(t *testing.T) {
 		}
 	}
 }
+
+// The guide points agents to the trust model and the recovery playbook.
+func TestGuidePointsToDocs(t *testing.T) {
+	for _, doc := range []string{"docs/trust-model.md", "docs/recovery.md"} {
+		if !strings.Contains(Guide, doc) {
+			t.Errorf("the guide doesn't mention %s", doc)
+		}
+	}
+}

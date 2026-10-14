@@ -711,6 +711,14 @@ SAFETY RULES
   - Logs never contain secret values. Print keys or lengths only
     (e.g. `bash -c 'echo ${#API_KEY}'`). Never list a secret in header_env.
   - Rounds must be safe to rerun.
+  - Approval, signing and the chain prove who decided what; they don't make
+    a script safe. A guard is advisory (a bash function in the lane), and an
+    approved script runs with the operator's access. What swim protects
+    against, and what it doesn't: docs/trust-model.md
+    (https://github.com/gates-brightly/swimlane/blob/main/docs/trust-model.md).
+  - When something goes wrong (an orphaned queue entry, a lane stuck
+    running, swim verify failing, a lost signing key, a lock mismatch), see
+    docs/recovery.md in the same repo. Never edit .swim/chain.jsonl.
 
 READING RESULTS
   Lane log (.swim/logs/agentN.log): append-only plain text, written to be
