@@ -122,7 +122,7 @@ func laneStep(cmd string, args []string) error {
 		// The operator asked the lane to stop: the round ends here.
 		after := "before the first step"
 		if st, _ := status.Load(root); st != nil {
-			if l := st.Get(ln); l != nil && l.CurrentStep != "" {
+			if l := st.Mine(ln); l != nil && l.CurrentStep != "" {
 				after = "after: " + l.CurrentStep
 			}
 		}

@@ -327,6 +327,7 @@ type runFlags struct {
 	noTUI            bool
 	noPrompt         bool
 	yes              bool
+	failed           bool // matrix lanes: only the cells that didn't pass
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
@@ -342,7 +343,8 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 	}
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
-			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes},
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes,
+			"failed": &rf.failed},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
@@ -406,14 +408,35 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	var lanes []int
 	pins := map[int]string{}
+	cells := map[int][]string{}
 	for _, a := range rest {
-		n, err := laneRef(root, cfg, a, false)
+		// A matrix cell: 3[orders], or <job>/<cell>.
+		ref, cell, isCell := lane.ParseCellRef(a)
+		if !isCell {
+			if j, c, ok := strings.Cut(a, "/"); ok && lane.ValidJobID(j) {
+				ref, cell, isCell = j, c, true
+			}
+		}
+		n, err := laneRef(root, cfg, ref, false)
 		if err != nil {
 			return err
 		}
-		lanes = append(lanes, n)
-		if _, err := strconv.Atoi(a); err != nil {
-			pins[n] = a // named by job id: must still hold it when it starts
+		if isCell {
+			info, _ := lane.ReadScript(root, n)
+			if !info.IsMatrix() {
+				return fmt.Errorf("swim %d is not a matrix round; %s names no cell", n, a)
+			}
+			c, ok := info.Cell(cell)
+			if !ok {
+				return fmt.Errorf("swim %d has no cell %q (its cells: %s)", n, cell, strings.Join(launcher.CellNames(info.Cells()), ", "))
+			}
+			cells[n] = append(cells[n], c.Name)
+		}
+		if !slices.Contains(lanes, n) {
+			lanes = append(lanes, n)
+		}
+		if _, err := strconv.Atoi(ref); err != nil {
+			pins[n] = ref // named by job id: must still hold it when it starts
 		}
 	}
 	if err := refreshStatus(root, cfg); err != nil {
@@ -435,6 +458,8 @@ func runLanes(rest []string, rf runFlags) error {
 		Interactive: !rf.noTUI && display.TUIAllowed(os.Getenv),
 		Interrupt:   rf.interrupt,
 		Pins:        pins,
+		Cells:       cells,
+		FailedCells: rf.failed,
 		// Guards without their flag may ask the operator (not in CI, where
 		// nobody is at the terminal, nor with approvals: flags).
 		Prompt: !rf.noPrompt && cfg.ApprovalMode() == config.ApprovalsPrompt && !ci.InCI(os.Getenv),

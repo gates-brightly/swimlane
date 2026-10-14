@@ -58,6 +58,7 @@ type Lane struct {
 	Message  string   `json:"message,omitempty"`  // a running round's status message (swim msg)
 	Progress string   `json:"progress,omitempty"` // its progress, "7/25"
 	MsgAt    string   `json:"message_at,omitempty"`
+	Cells    string   `json:"cells,omitempty"` // a matrix round's cells: "2/3 passed · failed: billing"
 }
 
 // Batch is one queue entry.

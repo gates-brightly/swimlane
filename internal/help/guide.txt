@@ -23,7 +23,8 @@ COMMANDS
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
   new N "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
                            template, with a new job id
-  run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered
+  run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
+                           N[cell] runs one cell of a matrix round, --failed its failed cells
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
   plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing
                            (--check: first run every snapshot and check stage, read-only)
@@ -333,6 +334,7 @@ WRITING A LANE SCRIPT
                                       They're hashed (a directory as a sorted manifest) into
                                       status, the END block and the chain, and made read-only.
                                       Not masked: never put secrets in outputs. Default: none
+      # Matrix: KEY=a,b,c              run the round once per value (a cell); see MATRIX ROUNDS
       # Fail: soft|hard               hard: the first failed step ends the round (STOP
                                       hard failure) and goes to on_failure. Default: soft.
                                       Needs syntax 3
@@ -441,6 +443,32 @@ WRITING A LANE SCRIPT
       stage verify
       run "verify: re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
       summary
+
+MATRIX ROUNDS
+  One lane script runs once per value, each run a cell with its own log,
+  status, job and result:
+      # Round:  Cut over $SVC from SST to Terraform
+      # Matrix: SVC=orders,billing,users     (or SVC=@services.txt: one per line)
+      # Matrix-Parallel: 2                   cells at once (default 1), each in a
+                                             slot of the run's --parallel
+      # Matrix-Fail: stop                    skip cells not started after a failure
+                                             (default continue: every cell runs)
+      # Locks:  tf/$SVC                      $KEY in Round, Locks and Outputs is
+                                             each cell's value
+  - Several Matrix: lines give the cross product (cells named
+    ENV=prod,SVC=orders); # Matrix-Exclude: ENV=prod,SVC=search drops
+    combinations. At most 256 cells.
+  - A cell's process gets each key as an env var ($SVC) and SWIM_CELL. Its log
+    is .swim/logs/agentN.<cell>.log; its job <job>/<cell>; status.yml lists
+    it under its lane's cells:.
+  - The lane passes only if every cell does. After: 3 waits for the whole
+    lane; After: 3[orders] needs only that cell to pass.
+  - Rerun: swim run 3 --failed runs only the cells that didn't pass; swim run
+    '3[billing]' (or <job>/billing) runs one cell.
+  - Read: swim log 3 lists the cells; swim log '3[orders]' shows one.
+  - The value file (@services.txt) is part of the script's hash: approvals,
+    queue pins and the chain cover the list. Each cell asks its own guard
+    questions, naming its cell.
 
 OTHER LANGUAGES
   A lane script can be any runnable: lane.N.py, lane.N.js, lane.N.ts, lane.N.rb,

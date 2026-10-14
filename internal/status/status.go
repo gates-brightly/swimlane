@@ -80,7 +80,10 @@ type Lane struct {
 	CheckSHA    string   `yaml:"check_sha256,omitempty"`
 	CheckStop   string   `yaml:"check_stop,omitempty"`
 	CheckGuards []string `yaml:"check_guards,flow,omitempty"`
-	LastArchive string   `yaml:"last_archive,omitempty"`
+	// A matrix round's cells, each with its own state (Cell names it).
+	Cell        string `yaml:"cell,omitempty"`
+	Cells       []Lane `yaml:"cells,omitempty"`
+	LastArchive string `yaml:"last_archive,omitempty"`
 }
 
 // File is the whole status.yml document.
@@ -151,6 +154,56 @@ func (f *File) Normalize(n int) {
 }
 
 // Get returns lane n's entry, or nil.
+// CellsText sums up a matrix lane's cells: "2/3 passed · failed: billing ·
+// running: users" ("" for a plain lane).
+func (l *Lane) CellsText() string {
+	if len(l.Cells) == 0 {
+		return ""
+	}
+	by := map[string][]string{}
+	for _, c := range l.Cells {
+		by[c.State] = append(by[c.State], c.Cell)
+	}
+	parts := []string{fmt.Sprintf("%d/%d passed", len(by[Passed]), len(l.Cells))}
+	for _, st := range []string{Failed, Interrupted, Skipped, Running, Waiting, Locked} {
+		if len(by[st]) > 0 {
+			parts = append(parts, st+": "+strings.Join(by[st], ", "))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// CellEntry is the entry of the lane's cell name (created if new).
+func (l *Lane) CellEntry(name string) *Lane {
+	for i := range l.Cells {
+		if l.Cells[i].Cell == name {
+			return &l.Cells[i]
+		}
+	}
+	l.Cells = append(l.Cells, Lane{Lane: l.Lane, Cell: name, State: Idle, WaitingOn: []int{}, FailedSteps: []string{}})
+	return &l.Cells[len(l.Cells)-1]
+}
+
+// FindCell is the entry of the lane's cell name, or nil.
+func (l *Lane) FindCell(name string) *Lane {
+	for i := range l.Cells {
+		if l.Cells[i].Cell == name {
+			return &l.Cells[i]
+		}
+	}
+	return nil
+}
+
+// Mine is lane n's entry as this process sees its round: in a matrix
+// cell's process (SWIM_CELL set), that cell's entry.
+func (f *File) Mine(n int) *Lane {
+	l := f.Get(n)
+	if c := os.Getenv("SWIM_CELL"); c != "" && l != nil {
+		return l.CellEntry(c)
+	}
+	return l
+}
+
 func (f *File) Get(n int) *Lane {
 	for i := range f.Lanes {
 		if f.Lanes[i].Lane == n {
@@ -164,7 +217,7 @@ func (f *File) Get(n int) *Lane {
 // the check's own fields.
 func UpdateCheck(root string, n, lanes int, fn func(*Lane)) error {
 	return updateFile(root, max(n, lanes), func(f *File) error {
-		fn(f.Get(n))
+		fn(f.Mine(n))
 		return nil
 	})
 }
@@ -217,7 +270,7 @@ func Update(root string, n, lanes int, fn func(*Lane)) error {
 		lanes = n
 	}
 	return UpdateFile(root, lanes, func(f *File) error {
-		fn(f.Get(n))
+		fn(f.Mine(n))
 		return nil
 	})
 }

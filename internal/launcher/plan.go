@@ -246,6 +246,13 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		if info.FailHard {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "fail: hard (the first failed step ends the round)"))
 		}
+		if cells := info.Cells(); len(cells) > 0 {
+			text := fmt.Sprintf("matrix: %d cells (%s), %d at once", len(cells), strings.Join(CellNames(cells), ", "), max(info.MatrixParallel, 1))
+			if info.MatrixFail == "stop" {
+				text += ", stop after a failed cell"
+			}
+			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, text))
+		}
 		if info.Timeout > 0 {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "timeout "+info.TimeoutText))
 		}
@@ -449,6 +456,8 @@ type PlanLane struct {
 	Locks   []string    `yaml:"locks,flow,omitempty"`
 	// Handlers are the round's outcome handlers and the guards in them.
 	Handlers []PlanHandler `yaml:"handlers,omitempty"`
+	// Cells are a matrix round's cells.
+	Cells []string `yaml:"cells,flow,omitempty"`
 	// Check is the lane's last read-only check (swim plan --check).
 	Check *PlanCheck `yaml:"check,omitempty"`
 	Fail  string     `yaml:"fail,omitempty"` // hard, when Fail: hard
@@ -507,6 +516,9 @@ func Plan(o Options) (*PlanDoc, error) {
 		if o.ShowChecks {
 			l.Check = checkOf(o, n, pl.inRunDeps[n])
 		}
+		if cells := info.Cells(); len(cells) > 0 {
+			l.Cells = CellNames(cells)
+		}
 		doc.Lanes = append(doc.Lanes, l)
 	}
 	for _, n := range pl.passed {
@@ -554,7 +566,7 @@ func checkOf(o Options, n int, deps []int) *PlanCheck {
 	}
 	c := &PlanCheck{Result: l.CheckResult, StoppedAt: l.CheckStop, Guards: l.CheckGuards, At: l.CheckAt, DependsOn: deps}
 	if l.CheckSHA != "" {
-		if data, err := os.ReadFile(lane.Script(o.Root, n)); err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != l.CheckSHA {
+		if data, err := lane.ScriptBytes(o.Root, n); err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != l.CheckSHA {
 			c.Stale = true
 		}
 	}

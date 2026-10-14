@@ -18,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
@@ -44,10 +45,10 @@ func laneFile(arg string) (int, bool) {
 // otherwise co-signed). --key picks the key, --expires D and --note T
 // describe a new approval.
 func cmdApprove(args []string) error {
-	var guards, expires, keyPath, note, auto string
+	var guards, expires, keyPath, note, auto, cell string
 	var all bool
 	rest, err := flags{bools: map[string]*bool{"all": &all},
-		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto}}.parse(args)
+		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto, "cell": &cell}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -91,7 +92,7 @@ func cmdApprove(args []string) error {
 		} else if n, err = laneRef(root, cfg, rest[0], false); err != nil {
 			return err
 		}
-		data, err := os.ReadFile(lane.Script(root, n))
+		data, err := lane.ScriptBytes(root, n)
 		if err != nil {
 			return fmt.Errorf("swim %d has no lane script", n)
 		}
@@ -110,8 +111,18 @@ func cmdApprove(args []string) error {
 				return fmt.Errorf("--guards %s: %s has no guard %s (its guards: %s)", g, lane.ScriptName(root, n), g, or(strings.Join(scriptGuards, ", "), "none"))
 			}
 		}
-		f, err = loadOrNew(sigfile.ScriptPath(root, n, sha), func() *sigfile.File {
-			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round}
+		path := sigfile.ScriptPath(root, n, sha)
+		var cells []string
+		if cell != "" {
+			// One cell of a matrix round.
+			c, ok := info.Cell(cell)
+			if !info.IsMatrix() || !ok {
+				return fmt.Errorf("--cell %s: swim %d has no such cell (a matrix round's cells: %s)", cell, n, strings.Join(launcher.CellNames(info.Cells()), ", "))
+			}
+			cells, path = []string{c.Name}, sigfile.CellPath(root, n, sha, c.Name)
+		}
+		f, err = loadOrNew(path, func() *sigfile.File {
+			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round, Cells: cells}
 		})
 	}
 	if err != nil {
@@ -251,10 +262,14 @@ func recordGrant(root string, cfg *config.Config, f *sigfile.File, typ string, k
 }
 
 func approvesText(f *sigfile.File) string {
+	text := strings.Join(f.Approves, ", ")
 	if f.All {
-		return "every guard"
+		text = "every guard"
 	}
-	return strings.Join(f.Approves, ", ")
+	if len(f.Cells) > 0 {
+		text += " (cell " + strings.Join(f.Cells, ", ") + " only)"
+	}
+	return text
 }
 
 // printDecision says, per guard, whether the approval is enough yet.
@@ -294,7 +309,7 @@ func listApprovals(root string, lk *lookup.Lookup) error {
 		what := fmt.Sprintf("swim %d (%s %s)", f.Lane, lane.ScriptName(root, f.Lane), short12(f.SHA256))
 		if f.Kind == sigfile.Standing {
 			what = "standing: every job " + f.For + " queues"
-		} else if data, err := os.ReadFile(lane.Script(root, f.Lane)); err != nil || chain.Hash(data) != f.SHA256 {
+		} else if data, err := lane.ScriptBytes(root, f.Lane); err != nil || chain.Hash(data) != f.SHA256 {
 			what += " · stale: the script changed since"
 		}
 		fmt.Printf("%s\n  approves %s · approved by %s · %d events (%s)\n", what, approvesText(f), or(strings.Join(names, ", "), "nobody now"), len(f.Events), rel(root, f.Path))
@@ -720,7 +735,7 @@ func cmdVerify(args []string) error {
 		}
 		state := ""
 		if f.Kind == sigfile.Script {
-			if data, err := os.ReadFile(lane.Script(root, f.Lane)); err != nil || chain.Hash(data) != f.SHA256 {
+			if data, err := lane.ScriptBytes(root, f.Lane); err != nil || chain.Hash(data) != f.SHA256 {
 				state = "; stale: lane." + strconv.Itoa(f.Lane) + ".sh changed since"
 			}
 		}

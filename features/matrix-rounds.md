@@ -1,6 +1,6 @@
 # Matrix rounds
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -97,16 +97,39 @@ status and result:
   `internal/ui`.
 - **Queue:** a batch pins the script SHA, so the cell list is pinned too.
 
-## Open questions
+## Open questions (answered)
 
-1. **Limit:** cap the number of cells (say 256) to keep logs and the panel
-   readable?
-2. **Cross-product exclusions:** an `# Matrix-Exclude: ENV=prod,SVC=search`?
-3. **Dynamic values:** allow a matrix computed by an earlier lane's output
-   ([lane-outputs.md](lane-outputs.md))? That's powerful, but it makes
-   approvals cover a list that doesn't exist yet.
-4. **Lane numbers:** do cells ever need their own lane numbers for older
-   tools, or are cell references enough?
+1. **Limit:** 256 cells. A bigger matrix runs its first 256 and warns.
+2. **Exclusions:** yes. `# Matrix-Exclude: ENV=prod,SVC=search` drops every
+   cell that matches all the pairs given.
+3. **Dynamic values:** no. Approvals must cover a list that exists, so values
+   come from the script or a committed `@file`, and both are hashed.
+4. **Lane numbers for cells:** no. Cell references (`3[orders]`,
+   `<job>/<cell>`) are enough.
+
+Decided while building:
+
+- **How it runs:** a matrix lane stays one lane to the scheduler. Its cells
+  run as separate processes with `SWIM_CELL` (and `SWIM_CELL_LOG`) set, so
+  the hooks' paths (log, pid, end and msg files) and status writes become
+  that cell's: `status.File.Mine`, and `Lane.Cells` entries.
+- **Hashing:** `lane.ScriptBytes` is the script plus its `@file` value
+  lists. It's what's hashed for the kept script copy, approvals, queue pins,
+  pre-answers and checks.
+- **Locks:** a lock with `$KEY` is taken per cell, and other locks once for
+  the whole lane.
+- **No `Job:` line:** the launcher makes one job for the round and passes it
+  to the cells (`SWIM_MATRIX_JOB`). `--failed` and `3[cell]` reuse the
+  lane's last job, so passed cells are recognised.
+- **`After: 3[orders]`** starts once lane 3 finishes, if that cell passed.
+  It doesn't start the moment the cell ends.
+- **Approvals:** `swim approve N --cell orders` writes
+  `lane.N.<sha12>.orders.signature`, whose statement lists the cell. The
+  guard hook counts only approvals for the running cell, or for every cell.
+- **Live view:** there's no separate cell list. The panel row shows the cell
+  counts, output lines carry a `[cell]` prefix, and selecting the lane shows
+  the log of the cell running now (or the last that ran). `swim log N`
+  lists every cell.
 
 ## Testing
 

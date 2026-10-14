@@ -39,6 +39,9 @@ func cmdApproveHook(args []string) error {
 		return err
 	}
 	flag, desc := args[1], cfg.Masker(os.Environ()).String(args[2])
+	if cell := lane.CurrentCell(); cell != "" {
+		desc = "[" + cell + "] " + desc // each cell of a matrix asks for itself
+	}
 	job, run := os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN")
 	dryRun := func(why string) error {
 		detail := "dry run: set " + flag + "=1 to approve"
@@ -62,7 +65,7 @@ func cmdApproveHook(args []string) error {
 	if lk, err := lookup.Load(root); err != nil {
 		sigWhy = err.Error()
 	} else {
-		files := sigfile.ForScript(root, sha)
+		files := sigfile.ForCell(sigfile.ForScript(root, sha), lane.CurrentCell())
 		queuer := verifiedQueuer(root, lk, n, sha)
 		if queuer != "" {
 			files = append(files, sigfile.StandingFor(root, queuer)...)

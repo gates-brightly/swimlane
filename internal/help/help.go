@@ -77,6 +77,7 @@ var Commands = map[string]string{
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
          [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see OTHER LANGUAGES)
+swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only the cells that didn't pass)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -540,6 +541,7 @@ swim queue show|rm|requeue ID
   --timeout D    give up after D (exit 1, saying what is still busy)
 `,
 	"approve": `swim approve                                    list approvals and standing approvals
+swim approve N|JOB --guards A --cell C              one cell of a matrix round only
 swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K]
 swim approve --auto USER [--guards A,B | --all] [--key K]
 

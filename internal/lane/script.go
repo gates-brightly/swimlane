@@ -185,6 +185,11 @@ type sideFile struct {
 	OnFailure      *string  `yaml:"on-failure"`
 	OnExit         *string  `yaml:"on-exit"`
 	Outputs        *strList `yaml:"outputs"`
+	// Matrix: KEY -> values (a list, "a,b,c", or "@file").
+	Matrix         map[string]strList `yaml:"matrix"`
+	MatrixExclude  []string           `yaml:"matrix-exclude"`
+	MatrixParallel *int               `yaml:"matrix-parallel"`
+	MatrixFail     *string            `yaml:"matrix-fail"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -226,7 +231,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs, matrix, matrix-exclude, matrix-parallel, matrix-fail)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -271,7 +276,7 @@ func applySidecar(path string, info *Info) error {
 	if sf.Locks != nil {
 		info.Locks = nil
 		for _, tok := range *sf.Locks {
-			if !ValidLockName(tok) {
+			if !ValidLockName(strings.NewReplacer("${", "", "}", "", "$", "").Replace(tok)) {
 				info.Problems = append(info.Problems, fmt.Sprintf("%s locks: %q is not a lock name (letters, digits, . _ - /); ignored", name, tok))
 				continue
 			}
@@ -305,6 +310,26 @@ func applySidecar(path string, info *Info) error {
 	if sf.Stub != nil {
 		info.Stub = *sf.Stub
 	}
+	if len(sf.Matrix) > 0 {
+		keys := make([]string, 0, len(sf.Matrix))
+		for k := range sf.Matrix {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		info.Matrix = nil
+		for _, k := range keys {
+			info.setMatrixLine("Matrix", k+"="+strings.Join(sf.Matrix[k], ","))
+		}
+	}
+	for _, rule := range sf.MatrixExclude {
+		info.setMatrixLine("Matrix-Exclude", rule)
+	}
+	if sf.MatrixParallel != nil {
+		info.setMatrixLine("Matrix-Parallel", fmt.Sprint(*sf.MatrixParallel))
+	}
+	if sf.MatrixFail != nil {
+		info.setMatrixLine("Matrix-Fail", *sf.MatrixFail)
+	}
 	if sf.Outputs != nil {
 		info.setOutputs(*sf.Outputs, name+" outputs:")
 	}
@@ -336,7 +361,7 @@ func applySidecar(path string, info *Info) error {
 // step writes the round's exit code there and signals the wrapper
 // (SIGUSR1), which ends the program even if it ignores the failure.
 func EndPath(root string, n int) string {
-	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d.end", n))
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.end", n, cellPart()))
 }
 
 // ClaimEnd records that lane n's round ends with code. Only the first

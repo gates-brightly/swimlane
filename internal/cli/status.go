@@ -185,6 +185,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			}
 			detail("msg: "+m, ui.Dim)
 		}
+		if t := l.CellsText(); t != "" {
+			detail("cells: "+t, ui.Dim)
+		}
 		if len(l.Locks) > 0 && state == status.Running {
 			detail("locks: "+strings.Join(l.Locks, ", "), ui.Dim)
 		}

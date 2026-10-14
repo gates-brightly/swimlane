@@ -140,7 +140,7 @@ var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doct
 <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
 <h2>Lanes</h2>
 <div class="wrap"><table><tr><th>lane</th><th>state</th><th>round</th><th>step</th><th>pass</th><th>fail</th><th>skip</th><th>run</th></tr>
-{{range .Lanes}}<tr><td>swim {{.Lane}}</td><td class="{{state .State}}">{{.State}}{{if .Exit}} (exit {{.Exit}}){{end}}{{if .Reason}} <span class="muted">{{.Reason}}</span>{{end}}</td><td>{{.Round}}</td><td class="muted">{{.Step}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{with msgAge .MsgAt}} · {{.}}{{end}}{{end}}</td><td>{{.Pass}}</td><td>{{.Fail}}</td><td>{{.Skip}}</td><td class="mono muted">{{.Run}}</td></tr>{{end}}
+{{range .Lanes}}<tr><td>swim {{.Lane}}</td><td class="{{state .State}}">{{.State}}{{if .Exit}} (exit {{.Exit}}){{end}}{{if .Reason}} <span class="muted">{{.Reason}}</span>{{end}}</td><td>{{.Round}}</td><td class="muted">{{.Step}}{{if .Cells}}<br>cells: {{.Cells}}{{end}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{with msgAge .MsgAt}} · {{.}}{{end}}{{end}}</td><td>{{.Pass}}</td><td>{{.Fail}}</td><td>{{.Skip}}</td><td class="mono muted">{{.Run}}</td></tr>{{end}}
 </table></div>
 {{range .Lanes}}{{if .Tail}}<h2>swim {{.Lane}} · {{.Round}}</h2><pre>{{range .Tail}}{{.}}
 {{end}}</pre>{{end}}{{end}}

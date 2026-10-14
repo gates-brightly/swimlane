@@ -31,6 +31,28 @@ To cut a release:
 
 ### Added
 
+- **Matrix rounds:**
+  - **Declaring:** `# Matrix: SVC=orders,billing,users` (or `SVC=@file`)
+    runs one lane script once per value. Several lines give the cross
+    product, and `# Matrix-Exclude:` drops combinations.
+  - **Per cell:** each cell gets its own log (`agentN.<cell>.log`), status
+    entry, job (`<job>/<cell>`), chain entry and result, and its variables
+    as env vars. `$KEY` in `Round`, `Locks` and `Outputs` is substituted.
+  - **Scheduling:** `# Matrix-Parallel: N` caps cells at once (each in a
+    `--parallel` slot), and `# Matrix-Fail: stop` skips cells not yet
+    started after a failure.
+  - **Results:** the lane passes only if every cell does. `After: 3[orders]`
+    waits on one cell.
+  - **Rerunning:** `swim run 3 --failed` reruns only the cells that didn't
+    pass, and `swim run '3[billing]'` runs one cell.
+  - **Reading:** `swim log 3` lists the cells and `swim log '3[orders]'`
+    shows one. `swim status`, `swim plan` and the hub show the cells.
+  - **Hashing:** a value file is part of the script's hash, so approvals and
+    queue pins cover the list.
+  - **Approvals:** each cell asks its own guard questions, naming its cell,
+    and `swim approve N --cell orders` limits a signed approval to one
+    cell.
+
 - **Pre-approve in the live view:**
   - **Keys:** on a selected lane that hasn't asked yet, `y` pre-approves
     its known guards (`Guards:` and `guard` calls), `n` pre-declines them

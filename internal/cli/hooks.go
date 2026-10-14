@@ -244,7 +244,7 @@ func cmdStart(args []string) error {
 	defer fmt.Printf("%s %d %s %s %s %d %s\n", job, deadline, run, stepTimeout, failMode, int(info.HandlerBudget().Seconds()), timeoutText)
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		f.Branch = ref
-		l := f.Get(n)
+		l := f.Mine(n)
 		l.ResetRun()
 		l.State = status.Running
 		l.Round = info.Round
@@ -270,7 +270,7 @@ func finishOutputs(root string, n int, logPath string) (map[string]string, []out
 	st, _ := status.Load(root)
 	var l *status.Lane
 	if st != nil {
-		l = st.Get(n)
+		l = st.Mine(n)
 	}
 	if l == nil || l.Job == "" || l.Run == "" {
 		return nil, nil, ""
@@ -427,7 +427,7 @@ func handlerMap(r *logparse.Round) map[string]string {
 // laneEnvSHA is the env files' hash lane n's round started with.
 func laneEnvSHA(root string, n int) string {
 	if st, _ := status.Load(root); st != nil {
-		if l := st.Get(n); l != nil {
+		if l := st.Mine(n); l != nil {
 			return l.EnvSHA
 		}
 	}
@@ -530,7 +530,9 @@ func cmdFinish(args []string) error {
 	}
 	logPath := lane.Log(root, n)
 	step.RecoverSpool(logPath)
-	lane.ClearStop(root, n) // the round is over: a stop request is spent
+	if lane.CurrentCell() == "" {
+		lane.ClearStop(root, n) // the round is over: a stop request is spent (a cell's lane may still be running)
+	}
 	// So is its status message; the latest goes to the log if it isn't there.
 	if m, ok := lane.ReadMsg(root, n); ok && m.Display() != m.Logged && m.Run == os.Getenv("SWIM_RUN") {
 		appendLog(logPath, "  "+logparse.MsgText(m.Text, m.Progress, time.Now().Format("15:04:05"))+"\n")

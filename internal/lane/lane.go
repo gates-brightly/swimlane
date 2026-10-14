@@ -27,13 +27,31 @@ func Log(root string, n int) string {
 	if CheckMode() {
 		return CheckLog(root, n)
 	}
-	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.log", n))
+	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d%s.log", n, cellPart()))
 }
 
 // CheckLog is lane n's check log (swim plan --check), kept apart from its
 // round log.
 func CheckLog(root string, n int) string {
-	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.check.log", n))
+	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d%s.check.log", n, cellPart()))
+}
+
+// CellLog is the log of lane n's cell (a matrix round); in a read-only
+// check, its check log.
+func CellLog(root string, n int, cell string) string {
+	check := ""
+	if CheckMode() {
+		check = ".check"
+	}
+	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.%s%s.log", n, CellSlug(cell), check))
+}
+
+// cellPart is ".<cell>" in a cell's process (file names), else "".
+func cellPart() string {
+	if c := CurrentCell(); c != "" {
+		return "." + CellSlug(c)
+	}
+	return ""
 }
 
 // CheckEnv is set (to 1) in swim plan --check and in every lane process it
@@ -47,7 +65,7 @@ func CheckMode() bool { return os.Getenv(CheckEnv) == "1" }
 // LogDir holds lane logs and their archives.
 func LogDir(root string) string { return filepath.Join(root, ".swim", "logs") }
 func PIDFile(root string, n int) string {
-	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d.pid", n))
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.pid", n, cellPart()))
 }
 func SnapshotDir(root string) string { return filepath.Join(root, ".swim", "snapshots") }
 func RCFile(root string, n int) string {
@@ -100,6 +118,13 @@ type Info struct {
 	// Staged: the script calls stage (bash, or swim stage from another
 	// language), so a read-only check has a place to stop.
 	Staged bool
+	// Matrix is the round's matrix (# Matrix:), empty for a plain round;
+	// see Cells. MatrixExclude drops combinations; MatrixParallel caps cells
+	// at once (0: 1); MatrixFail is continue (default) or stop.
+	Matrix         []Axis
+	MatrixExclude  [][]KV
+	MatrixParallel int
+	MatrixFail     string
 	// DynamicGuards counts guard calls whose flag is named at run time
 	// (guard "$FLAG" ...): swim can't know them ahead.
 	DynamicGuards int
@@ -158,7 +183,7 @@ var (
 	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs):\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
@@ -173,7 +198,8 @@ var (
 	// arguments as a list: ["swim", "guard", "FLAG", ...].
 	guardArgUse = regexp.MustCompile(`['"]guard['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]`)
 	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
-		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true}
+		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
+		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -208,8 +234,17 @@ func ReadScript(root string, n int) (Info, error) {
 	if err := applySidecar(Sidecar(root, n), &info); err != nil {
 		return Info{}, err
 	}
+	info.resolveMatrix(root)
+	// In a cell's process, the round is that cell's.
+	if cell := CurrentCell(); cell != "" && info.IsMatrix() {
+		c, ok := info.Cell(cell)
+		if !ok {
+			return Info{}, fmt.Errorf("swim %d has no cell %q", n, cell)
+		}
+		info = info.ForCell(c)
+	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers, info.Outputs = "", "", nil, nil, nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers, info.Outputs, info.Matrix = "", "", nil, nil, nil, nil, nil, nil
 	}
 	if info.Created == "" {
 		if st, err := os.Stat(path); err == nil {
@@ -291,7 +326,7 @@ func ParseScript(src string) Info {
 					for _, tok := range sepRE.Split(v, -1) {
 						switch {
 						case tok == "" || tok == "-" || strings.EqualFold(tok, "none"):
-						case !ValidLockName(tok):
+						case !ValidLockName(strings.NewReplacer("${", "", "}", "", "$", "").Replace(tok)):
 							info.Problems = append(info.Problems, fmt.Sprintf("Locks: %q is not a lock name (letters, digits, . _ - /); ignored", tok))
 						default:
 							info.Locks = append(info.Locks, tok)
@@ -299,6 +334,10 @@ func ParseScript(src string) Info {
 					}
 				case "Outputs":
 					info.setOutputs(sepRE.Split(v, -1), "Outputs:")
+				case "Matrix", "Matrix-Exclude", "Matrix-Parallel", "Matrix-Fail":
+					if v != "" && v != "-" {
+						info.setMatrixLine(m[1], v)
+					}
 				case "Fail":
 					info.setFail(v, "Fail:")
 				case "Handler-Timeout":
@@ -362,7 +401,7 @@ func ParseScript(src string) Info {
 		}
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers, info.Outputs = "", "", nil, nil, nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers, info.Outputs, info.Matrix = "", "", nil, nil, nil, nil, nil, nil
 	}
 	return info
 }
@@ -498,8 +537,22 @@ func MigrateScript(src string) (string, bool) {
 }
 
 // Running returns the pid recorded for lane n if that process is alive.
+// Outside a cell's process, a lane any of whose cells runs is running.
 func Running(root string, n int) (int, bool) {
-	data, err := os.ReadFile(PIDFile(root, n))
+	if pid, ok := runningIn(PIDFile(root, n)); ok || CurrentCell() != "" {
+		return pid, ok
+	}
+	cells, _ := filepath.Glob(filepath.Join(root, ".swim", fmt.Sprintf("lane%d.*.pid", n)))
+	for _, f := range cells {
+		if pid, ok := runningIn(f); ok {
+			return pid, true
+		}
+	}
+	return 0, false
+}
+
+func runningIn(path string) (int, bool) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, false
 	}

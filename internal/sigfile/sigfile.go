@@ -74,6 +74,10 @@ type File struct {
 	// Standing: whose queued jobs are approved.
 	For string `yaml:"for,omitempty"` // a user in lookup.yml
 
+	// Cells limits a script approval to these cells of a matrix round
+	// (empty: every cell).
+	Cells []string `yaml:"cells,omitempty"`
+
 	Approves []string `yaml:"approves,omitempty"` // guard flags
 	All      bool     `yaml:"approves_all,omitempty"`
 	Expires  string   `yaml:"expires,omitempty"`
@@ -89,6 +93,31 @@ func Dir(root string) string { return filepath.Join(root, "approvals") }
 // ScriptPath is the file approving lane n's script with hash sha.
 func ScriptPath(root string, n int, sha string) string {
 	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s.signature", n, sha[:12]))
+}
+
+// CellPath is the file approving one cell of lane n's matrix round.
+func CellPath(root string, n int, sha, cell string) string {
+	slug := strings.NewReplacer("=", "-", ",", ".", "/", "_").Replace(cell)
+	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s.%s.signature", n, sha[:12], slug))
+}
+
+// ForCell keeps the files that cover cell (those limited to other cells
+// go). With no cell (a plain lane), cell-limited files go.
+func ForCell(files []*File, cell string) []*File {
+	var out []*File
+	for _, f := range files {
+		if len(f.Cells) == 0 {
+			out = append(out, f)
+			continue
+		}
+		for _, c := range f.Cells {
+			if c == cell {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // StandingPath is the file of standing approvals for user's queued jobs.
@@ -110,8 +139,12 @@ func (f *File) Statement() string {
 	if f.Kind == Standing {
 		return fmt.Sprintf("swim standing approval v1\nfor: %s\napproves: %s\nexpires: %s\n", f.For, appr, exp)
 	}
-	return fmt.Sprintf("swim approval v1\nscript: %s\nscript-sha256: %s\nlane: %d\njob: %s\nround: %s\napproves: %s\nexpires: %s\n",
-		f.Script, f.SHA256, f.Lane, f.Job, f.Round, appr, exp)
+	cells := ""
+	if len(f.Cells) > 0 {
+		cells = "cells: " + strings.Join(f.Cells, ";") + "\n" // only when limited, so older statements read the same
+	}
+	return fmt.Sprintf("swim approval v1\nscript: %s\nscript-sha256: %s\nlane: %d\njob: %s\nround: %s\n%sapproves: %s\nexpires: %s\n",
+		f.Script, f.SHA256, f.Lane, f.Job, f.Round, cells, appr, exp)
 }
 
 // StatementHash identifies the approval (one statement, many events).

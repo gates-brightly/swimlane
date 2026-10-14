@@ -50,8 +50,7 @@ func scriptsDir(root string) string { return filepath.Join(root, ".swim", "scrip
 
 // keepScript hashes lane n's script and keeps a copy under its hash.
 func keepScript(root string, n int) (string, error) {
-	path := lane.Script(root, n)
-	data, err := os.ReadFile(path)
+	data, err := lane.ScriptBytes(root, n)
 	if err != nil {
 		return "", err
 	}
@@ -59,7 +58,7 @@ func keepScript(root string, n int) (string, error) {
 	dst := filepath.Join(scriptsDir(root), sha+".sh")
 	if _, err := os.Stat(dst); err != nil {
 		os.MkdirAll(scriptsDir(root), 0o755)
-		tmp := dst + ".tmp"
+		tmp := fmt.Sprintf("%s.%d.tmp", dst, os.Getpid()) // a matrix's cells start at once
 		if err := os.WriteFile(tmp, data, 0o644); err != nil {
 			return "", err
 		}
@@ -74,11 +73,11 @@ func keepScript(root string, n int) (string, error) {
 // status.yml, recorded at the round's start), or of the script on disk.
 func scriptSHA(root string, n int) string {
 	if st, _ := status.Load(root); st != nil {
-		if l := st.Get(n); l != nil && l.ScriptSHA != "" {
+		if l := st.Mine(n); l != nil && l.ScriptSHA != "" {
 			return l.ScriptSHA
 		}
 	}
-	if data, err := os.ReadFile(lane.Script(root, n)); err == nil {
+	if data, err := lane.ScriptBytes(root, n); err == nil {
 		return chain.Hash(data)
 	}
 	return ""

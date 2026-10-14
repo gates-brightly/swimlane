@@ -78,6 +78,11 @@ type Options struct {
 	// PinSHA holds the exact script (SHA-256) a lane must hold when it
 	// starts (queued batches): an edit since it was queued skips it.
 	PinSHA map[int]string
+	// Cells names the cells to run of matrix lanes (swim run '3[orders]');
+	// a lane not in it runs every cell. FailedCells runs only the cells of
+	// each matrix lane that didn't pass in its current round (--failed).
+	Cells       map[int][]string
+	FailedCells bool
 	// CheckOnly is swim plan --check: every selected lane runs at once (After:
 	// is ignored; Locks: still apply) up to where change would begin, logs
 	// to its check log and leaves lane status alone (lane.CheckEnv is set).
@@ -125,6 +130,9 @@ type Outcome struct {
 	Reason  string
 	Round   string
 	Blocked bool // refused before starting (a blocked command, or no runner)
+	// Cells are a matrix round's cells and how each ended (passed, failed,
+	// skipped, interrupted).
+	Cells   map[string]string
 	Elapsed time.Duration
 	// When the lane's dependencies were met, its locks and slot taken, its
 	// process started and finished (zero when it never got that far). The
@@ -300,8 +308,10 @@ func Run(o Options) (int, error) {
 		// goes to the same escalation as the terminal's own (interrupt.go).
 		Interactive: o.Interactive && len(sel) > 1 && o.ev == nil,
 		In:          o.Stdin,
-		LogPath:     func(n int) string { return lane.Log(o.Root, n) },
-		LogLabel:    func(n int) string { return fmt.Sprintf(".swim/logs/agent%d.log", n) },
+		LogPath:     func(n int) string { return viewLog(o.Root, n) },
+		LogLabel: func(n int) string {
+			return filepath.ToSlash(filepath.Join(".swim", "logs", filepath.Base(viewLog(o.Root, n))))
+		},
 		OnInterrupt: func() { ir.handle(syscall.SIGINT) },
 		OnPre:       func(n int, choice string) string { return pre.set(o, n, choice) },
 	}, views)
@@ -470,7 +480,11 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// Dependencies outside this run must already be satisfied (see
 	// outsideBlocker); those inside it are waited for.
 	var waitOn []int
+	cellOf := map[int]string{} // a dependency on one cell of a matrix lane
 	for _, d := range deps {
+		if d.Cell != "" {
+			cellOf[d.Lane] = d.Cell
+		}
 		if selected[d.Lane] {
 			waitOn = append(waitOn, d.Lane)
 		} else if why := outsideBlocker(o.Root, d); why != "" {
@@ -489,7 +503,12 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		mu.Lock()
 		dep := outcomes[d]
 		mu.Unlock()
-		if dep == nil || dep.State != status.Passed {
+		if c := cellOf[d]; c != "" && dep != nil && dep.Cells != nil {
+			// Waiting on one cell: it must have passed, whatever the others did.
+			if dep.Cells[c] != status.Passed {
+				return skip(fmt.Sprintf("%d[%s] %s", d, c, or(dep.Cells[c], "did not run")))
+			}
+		} else if dep == nil || dep.State != status.Passed {
 			state := "did not finish"
 			if dep != nil {
 				state = dep.State
@@ -507,7 +526,13 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// lane waiting for a lock holds no slot.
 	info, _ := lane.ReadScript(o.Root, n)
 	var fileLocks lane.FileLocks
-	if len(info.Locks) > 0 {
+	// A matrix round's locks that name a cell variable ($SVC) are taken per
+	// cell (runMatrix); the rest, here, for the whole lane.
+	laneLocks := info.Locks
+	if info.IsMatrix() {
+		_, laneLocks = lane.CellLocks(info.Locks)
+	}
+	if len(laneLocks) > 0 {
 		lockWait := func(text string) {
 			disp.Set(n, func(v *display.LaneView) { v.State, v.LockWait, v.WaitingOn = display.Locked, text, nil })
 			status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
@@ -516,7 +541,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			history.Log(o.Root, history.Entry{Event: history.Locked, Lane: n, Job: info.Job, Run: o.RunID, Detail: "waiting for lock " + text})
 			o.ev.emit(Event{Event: "locked", Lane: n, Lock: text, At: now()})
 		}
-		if !lt.acquire(n, info.Locks, func(name string, holder int) {
+		if !lt.acquire(n, laneLocks, func(name string, holder int) {
 			if holder > 0 {
 				lockWait(fmt.Sprintf("%s: swim %d", name, holder))
 			} else {
@@ -525,10 +550,10 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}) {
 			return skip("interrupted before start")
 		}
-		defer lt.release(n, info.Locks)
+		defer lt.release(n, laneLocks)
 		var ok bool
 		var err error
-		fileLocks, ok, err = lane.WaitFileLocks(o.Root, info.Locks, lane.LockHolder(n, info.Job, o.RunID),
+		fileLocks, ok, err = lane.WaitFileLocks(o.Root, laneLocks, lane.LockHolder(n, info.Job, o.RunID),
 			func(name, by string) { lockWait(fmt.Sprintf("%s: another run, %s", name, by)) },
 			ir.stopping)
 		if err != nil {
@@ -540,12 +565,12 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 		defer fileLocks.Release()
 		locked = time.Now()
-		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = append([]string(nil), info.Locks...) })
+		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = append([]string(nil), laneLocks...) })
 		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
 	}
 
 	if want := o.PinSHA[n]; want != "" {
-		if data, err := os.ReadFile(lane.Script(o.Root, n)); err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != want {
+		if data, err := lane.ScriptBytes(o.Root, n); err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != want {
 			return skip(fmt.Sprintf("%s changed since it was queued (queued %s)", lane.ScriptName(o.Root, n), want[:12]))
 		}
 	}
@@ -563,6 +588,11 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 	}
 
+	// A matrix round runs its cells, each in its own process and slot.
+	if info.IsMatrix() {
+		oc := runMatrix(o, n, sel, info, sl, lt, disp, ir, fileLocks)
+		return stamp(oc)
+	}
 	// Wait for a free slot (max_parallel); queued lanes don't hold one.
 	loggedQueue := false
 	if !sl.acquire(n, func(ahead int) {
@@ -589,58 +619,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	if perr != nil {
 		return stamp(refuseStart(o, n, perr, disp))
 	}
-	argv := plan.Argv
-	if plan.Wrapped {
-		argv = append([]string{o.Self, "_wrap", strconv.Itoa(n), "--"}, argv...)
-	}
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = o.Root
-	// The env files' values go under the shell's: what the operator typed
-	// wins. Keys the shell doesn't override are masked whatever their names.
-	var fileKeys []string
-	env := []string{}
-	if r := o.env[n]; r != nil {
-		for _, v := range r.Vars {
-			if _, set := os.LookupEnv(v.Key); !set {
-				fileKeys = append(fileKeys, v.Key)
-			}
-		}
-		env = append(env, r.Env()...)
-	}
-	env = append(env, os.Environ()...)
-	env = append(env, config.EnvKeysVar+"="+strings.Join(fileKeys, " "))
-	env = append(env, "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
-		"SWIM_RUN="+o.RunID, "SWIM_RUN_LANES="+joinInts(sel, " "), approval.EnvVar+"="+o.approvalSock)
-	if disp.Color() {
-		env = append(env, "SWIM_COLOR=1")
-	} else {
-		env = append(env, "SWIM_COLOR=0")
-	}
-	cmd.Env = env
-	// Parallel lanes can't share a keyboard: give them no stdin so
-	// fail-closed prompts stop instead of hanging. A lone lane may prompt.
-	if len(sel) == 1 && o.Stdin != nil {
-		cmd.Stdin = o.Stdin
-	}
-	// Its own process group, so the terminal's Ctrl-C reaches only swim.
-	// Not for a lane reading the terminal: a background group that reads
-	// it is stopped (SIGTTIN). That lane gets Ctrl-C from the terminal
-	// directly, at once, as before.
-	ownGroup := cmd.Stdin == nil || !ui.IsTTY(o.Stdin)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: ownGroup}
-	// The lane's process inherits the lock files, so the locks stay held as
-	// long as the lane runs, even if this launcher dies.
-	cmd.ExtraFiles = fileLocks
-	mk := o.Cfg.Masker(env)
-	w := &lineWriter{emit: func(s string) {
-		o.beat.saw(n)
-		s = mk.String(s)
-		disp.Line(n, s)
-		if o.ev.wantsOutput() {
-			o.ev.emit(Event{Event: "output", Lane: n, Line: &s})
-		}
-	}}
-	cmd.Stdout, cmd.Stderr = w, w
+	cmd, ownGroup, w := laneCommand(o, n, sel, plan, nil, "", disp, fileLocks)
 
 	// The last moment to honour a Ctrl-C that came while this lane was
 	// getting ready (runner, env, slot): after this it starts, and gets the
@@ -805,6 +784,25 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 			fmt.Fprintf(out, "  %s %s %4s %5s %5s %5s %6s %7s  %s\n", label, res, "-", "-", "-", "-", "-", "-", oc.Reason)
 			continue
 		}
+		if oc.Cells != nil {
+			// A matrix round: its cells, each with its own log.
+			counts := map[string]int{}
+			for _, s := range oc.Cells {
+				counts[s]++
+			}
+			fmt.Fprintf(out, "  %s %s %4d %5d %5d %5d %6s %7s  cells\n", label, res, oc.Exit, counts[status.Passed], counts[status.Failed]+counts[status.Interrupted], counts[status.Skipped], "-", display.Elapsed(oc.Elapsed))
+			names := make([]string, 0, len(oc.Cells))
+			for c := range oc.Cells {
+				names = append(names, c)
+			}
+			sort.Strings(names)
+			for _, c := range names {
+				if s := oc.Cells[c]; s != status.Passed {
+					fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, fmt.Sprintf("%d[%s] %s  (swim log '%d[%s]')", n, c, strings.ToUpper(s), n, c)))
+				}
+			}
+			continue
+		}
 		fmt.Fprintf(out, "  %s %s %4d %5d %5d %5d %6d %7s\n", label, res, oc.Exit, r.Pass, r.Fail, r.Skip, r.Drift, display.Elapsed(oc.Elapsed))
 		for _, f := range r.Failed() {
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, f.Text()))
@@ -887,6 +885,84 @@ func operator() string {
 		}
 	}
 	return "operator"
+}
+
+// laneCommand builds lane n's process: its runner (inside swim's wrapper
+// for scripts that don't load the bash library), its environment (env
+// files under the shell's, the run's SWIM_* variables, extra for a cell),
+// stdin, process group and output (each line prefixed with prefix, for a
+// matrix cell).
+func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, prefix string, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter) {
+	argv := plan.Argv
+	if plan.Wrapped {
+		argv = append([]string{o.Self, "_wrap", strconv.Itoa(n), "--"}, argv...)
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Dir = o.Root
+	// The env files' values go under the shell's: what the operator typed
+	// wins. Keys the shell doesn't override are masked whatever their names.
+	var fileKeys []string
+	env := []string{}
+	if r := o.env[n]; r != nil {
+		for _, v := range r.Vars {
+			if _, set := os.LookupEnv(v.Key); !set {
+				fileKeys = append(fileKeys, v.Key)
+			}
+		}
+		env = append(env, r.Env()...)
+	}
+	env = append(env, os.Environ()...)
+	env = append(env, config.EnvKeysVar+"="+strings.Join(fileKeys, " "))
+	env = append(env, "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
+		"SWIM_RUN="+o.RunID, "SWIM_RUN_LANES="+joinInts(sel, " "), approval.EnvVar+"="+o.approvalSock)
+	if disp.Color() {
+		env = append(env, "SWIM_COLOR=1")
+	} else {
+		env = append(env, "SWIM_COLOR=0")
+	}
+	env = append(env, extra...)
+	cmd.Env = env
+	// Parallel lanes can't share a keyboard: give them no stdin so
+	// fail-closed prompts stop instead of hanging. A lone lane may prompt.
+	if len(sel) == 1 && o.Stdin != nil && len(extra) == 0 {
+		cmd.Stdin = o.Stdin
+	}
+	// Its own process group, so the terminal's Ctrl-C reaches only swim.
+	// Not for a lane reading the terminal: a background group that reads
+	// it is stopped (SIGTTIN). That lane gets Ctrl-C from the terminal
+	// directly, at once, as before.
+	ownGroup := cmd.Stdin == nil || !ui.IsTTY(o.Stdin)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: ownGroup}
+	// The lane's process inherits the lock files, so the locks stay held as
+	// long as the lane runs, even if this launcher dies.
+	cmd.ExtraFiles = fileLocks
+	mk := o.Cfg.Masker(env)
+	w := &lineWriter{emit: func(s string) {
+		o.beat.saw(n)
+		s = prefix + mk.String(s)
+		disp.Line(n, s)
+		if o.ev.wantsOutput() {
+			o.ev.emit(Event{Event: "output", Lane: n, Line: &s})
+		}
+	}}
+	cmd.Stdout, cmd.Stderr = w, w
+	return cmd, ownGroup, w
+}
+
+// exitCode is a finished process's exit code (128+signal if a signal
+// killed it).
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			return 128 + int(ws.Signal())
+		}
+		return ee.ExitCode()
+	}
+	return 1
 }
 
 // watchMsgs follows lane n's status message (swim msg) while it runs: the
@@ -1039,7 +1115,7 @@ func newPreAnswers(selected map[int]bool) *preAnswers {
 }
 
 func scriptSum(root string, n int) string {
-	data, err := os.ReadFile(lane.Script(root, n))
+	data, err := lane.ScriptBytes(root, n)
 	if err != nil {
 		return ""
 	}
@@ -1118,4 +1194,33 @@ func (p *preAnswers) unused() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// viewLog is the log the live view shows for lane n: its own, or for a
+// matrix round the log of a cell running now (else the last that ran).
+func viewLog(root string, n int) string {
+	info, _ := lane.ReadScript(root, n)
+	if !info.IsMatrix() {
+		return lane.Log(root, n)
+	}
+	if st, _ := status.Load(root); st != nil {
+		if l := st.Get(n); l != nil {
+			last := ""
+			for _, c := range l.Cells {
+				if c.State == status.Running {
+					return lane.CellLog(root, n, c.Cell)
+				}
+				if c.StartedAt != nil {
+					last = c.Cell
+				}
+			}
+			if last != "" {
+				return lane.CellLog(root, n, last)
+			}
+		}
+	}
+	if cells := info.Cells(); len(cells) > 0 {
+		return lane.CellLog(root, n, cells[0].Name)
+	}
+	return lane.Log(root, n)
 }

@@ -66,6 +66,20 @@ func cmdLog(args []string) error {
 	}
 
 	ref := rest[0]
+	// One cell of a matrix round: 3[orders] (or <job>/<cell>) reads its log.
+	if base, cell, ok := lane.ParseCellRef(ref); ok {
+		n, err := laneRef(root, cfg, base, true)
+		if err != nil {
+			return err
+		}
+		info, _ := lane.ReadScript(root, n)
+		c, found := info.Cell(cell)
+		if !found {
+			return fmt.Errorf("swim %d has no cell %q", n, cell)
+		}
+		os.Setenv(lane.CellEnv, c.Name) // lane.Log is now the cell's log
+		ref = strconv.Itoa(n)
+	}
 	if _, err := strconv.Atoi(ref); err == nil || follow {
 		n, err := laneRef(root, cfg, ref, true)
 		if err != nil {
@@ -80,6 +94,11 @@ func cmdLog(args []string) error {
 		}
 		if _, err := os.Stat(lane.Log(root, n)); err == nil {
 			files = append(files, lane.Log(root, n))
+		}
+		if len(files) == 0 && lane.CurrentCell() == "" {
+			if info, _ := lane.ReadScript(root, n); info.IsMatrix() {
+				return cellSummary(root, n, info)
+			}
 		}
 		if len(files) == 0 {
 			if all {
@@ -636,4 +655,31 @@ func laneWaiting(root string, n int) bool {
 		return l.PID > 0 && lane.Alive(l.PID)
 	}
 	return false
+}
+
+// cellSummary is swim log N for a matrix round: each cell's last result and
+// how to read its log.
+func cellSummary(root string, n int, info lane.Info) error {
+	st, _ := status.Load(root)
+	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim %d · %s · %d cells", n, info.Round, len(info.Cells()))))
+	for _, c := range info.Cells() {
+		state, detail := "not run", ""
+		if st != nil {
+			if l := st.Get(n); l != nil {
+				if e := l.FindCell(c.Name); e != nil {
+					state = e.State
+					if e.State != status.Running && e.State != status.Waiting {
+						detail = fmt.Sprintf("pass=%d fail=%d skip=%d", e.Pass, e.Fail, e.Skip)
+					}
+					if e.CurrentStep != "" && e.State == status.Running {
+						detail = "step: " + e.CurrentStep
+					}
+				}
+			}
+		}
+		fmt.Printf("  %-24s %-12s %-28s %s\n", fmt.Sprintf("%d[%s]", n, c.Name), p.Paint(ui.StateColor(state), state), detail,
+			p.Paint(ui.Dim, "swim log '"+fmt.Sprintf("%d[%s]", n, c.Name)+"'"))
+	}
+	return nil
 }

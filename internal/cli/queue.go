@@ -125,7 +125,7 @@ func queueAdd(args []string) error {
 		if !info.Pending() {
 			return fmt.Errorf("swim %d holds no pending round (a stub, or no Round: line); write one before queueing it", n)
 		}
-		data, err := os.ReadFile(lane.Script(root, n))
+		data, err := lane.ScriptBytes(root, n)
 		if err != nil {
 			return err
 		}
@@ -775,7 +775,7 @@ func queueApproved(root string, cfg *config.Config) []string {
 		if done[id] || ran[f.SHA256] || f.Expired(now) {
 			continue
 		}
-		data, err := os.ReadFile(lane.Script(root, f.Lane))
+		data, err := lane.ScriptBytes(root, f.Lane)
 		if err != nil || chain.Hash(data) != f.SHA256 {
 			continue // stale: the script changed since it was approved
 		}

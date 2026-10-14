@@ -15,9 +15,13 @@ import (
 type Dep struct {
 	Lane int
 	Job  string // set when pinned by job id in `# After:`: that exact job must pass
+	Cell string // set for one cell of a matrix round (After: 3[orders]): only it must pass
 }
 
 func (d Dep) String() string {
+	if d.Cell != "" {
+		return fmt.Sprintf("%d[%s]", d.Lane, d.Cell)
+	}
 	if d.Job != "" {
 		return fmt.Sprintf("swim %d (job %s)", d.Lane, lane.ShortJob(d.Job))
 	}
@@ -70,6 +74,19 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 }
 
 func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File, n int, ref string) (Dep, error) {
+	if base, cell, ok := lane.ParseCellRef(ref); ok {
+		d, err := resolveAfter(cfg, scripts, st, n, base)
+		if err != nil {
+			return Dep{}, err
+		}
+		info := scripts[d.Lane]
+		c, found := info.Cell(cell)
+		if !info.IsMatrix() || !found {
+			return Dep{}, fmt.Errorf("swim %d has no cell %q", d.Lane, cell)
+		}
+		d.Cell = c.Name
+		return d, nil
+	}
 	if m, err := strconv.Atoi(ref); err == nil {
 		if !cfg.ValidLane(m) {
 			return Dep{}, fmt.Errorf("no swim %d (lanes are 1..%d)", m, cfg.Lanes)
@@ -170,6 +187,12 @@ func outsideBlocker(root string, d Dep) string {
 		if l := st.Get(d.Lane); l != nil {
 			last = *l
 		}
+	}
+	if d.Cell != "" {
+		if c := last.FindCell(d.Cell); c != nil && c.State == status.Passed {
+			return ""
+		}
+		return fmt.Sprintf("%d[%s] has not passed; run it too: swim run '%d[%s]' ...", d.Lane, d.Cell, d.Lane, d.Cell)
 	}
 	if d.Job != "" {
 		if last.Job == d.Job && last.State == status.Passed {

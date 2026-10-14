@@ -239,6 +239,10 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
+- **Matrix rounds:** `# Matrix: SVC=orders,billing,users` runs one script
+  once per value. Each cell has its own log, status and result.
+  `# Matrix-Parallel: 2` runs cells two at a time, `swim run 3 --failed`
+  retries only the failed cells, and `After: 3[orders]` waits for one cell.
 - **Pre-approve in the live view:** select a lane that hasn't asked yet
   and press `y` (or `n`) to answer its guards ahead of time, then walk away.
   The answer is pinned to the script and lasts this run only.

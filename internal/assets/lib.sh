@@ -38,6 +38,10 @@ lane_init() {
   cd "$SWIM_ROOT" || exit 1
   # A read-only check (swim plan --check) logs apart from the round log.
   STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE${SWIM_CHECK_ONLY:+.check}.log"
+  # A matrix cell logs to its own file (swim passes it).
+  if [ -n "${SWIM_CELL:-}" ] && [ -n "${SWIM_CELL_LOG:-}" ]; then
+    STEP_LOG=$SWIM_CELL_LOG
+  fi
   # The git shim (.swim/bin/git, installed by swim _start) refuses push,
   # commit and pull and signals this script (SWIM_PID) to stop the round.
   SWIM_PID=$$
