@@ -59,6 +59,17 @@ To cut a release:
   file and saves it as `swim.hub-state/v2` (users and commands added) when
   it starts; an older swim hub refuses the new file. Workers, approvals and
   grants carry over.
+- **Manifest policy version 2 (guarded secrets):** `swim.yml`'s policy part
+  now covers `secrets:` and `ambient_credentials:`, so every lane's
+  execution manifest hash changes once. Signed approvals bound to a
+  manifest stop counting (approve again: `swim approve N`), and a queued
+  batch pinned to a manifest is skipped (queue it again). Approvals of the
+  script alone, from before manifests, are unaffected.
+- **SDKs and the secrets broker:** the broker no longer believes the lane a
+  request names; it asks swim run, from the lane process's own token
+  (`SWIM_APPROVAL_TOKEN`, sent as `lane_token`). The SDKs in this release
+  send it. An older SDK still gets unguarded secrets; a guarded one is
+  refused to it.
 - **`swim verify` reports levels:** the green `verified: every link,
   signature, log and script checks out` line is gone. Each level gets a line
   instead (`consistent  yes  ...`). CI that greps the output should use
@@ -80,6 +91,56 @@ To cut a release:
 
 ### Security
 
+- **Guarded secrets:** a secret can be guarded by a guard flag in the
+  committed `swim.yml`; the run's broker hands it to a lane only once that
+  lane's guard was approved in this run, so a script that skips `guard`
+  never gets the credential.
+  - `secrets: {NAME: {guard: FLAG | [FLAGS], release: lane | step}}`, in
+    `swim.yml` only (an error in `config.yml`), plus `ambient_credentials:`
+    (AWS profiles with the same access).
+  - Counts: the prompt and the live view's pre-answer, `-y`, signed
+    approvals, a queued batch's `--approve`, and `FLAG=1` in swim run's own
+    environment, as the launcher recorded them for that lane process. Not
+    `FLAG=1` a lane sets itself, a `.lane.N.rc`, a declined or dry-run
+    guard, another lane's approval, or `swim plan --check`.
+  - A refusal (`refused: NAME is guarded by FLAG, which isn't approved in
+    this run`) is a `WARN` in the lane's log, a `secret-refused` line in
+    `.swim.log` and a `secret-refused` chain entry; a release is a
+    `secret-released` entry naming the flag, how it was approved and the
+    approve entry (never the value), which `swim verify` checks against the
+    run's attestation. `swim history` shows both.
+  - `release: step` hands the value out once. `SWIM_SECRET_<NAME>` of a
+    guarded secret never reaches a lane's environment. `swim secret grant
+    --guard FLAG` guards a hub grant (both guards must be approved);
+    `swim secret grants` and `swim secret ls` show guards. Outside a run,
+    `swim secret get` of a guarded secret works at your shell (recorded in
+    `.swim.log`) and is refused in a lane run with bash.
+  - `swim lint`: `secret-guard` (a guarded secret got with no guard of it
+    first), `secret-argv` (`$(swim secret get ...)` inline in a command's
+    arguments, readable with `ps`), `ambient-credential` (a listed profile
+    used directly). `swim doctor`: `guarded-secrets` (lists them; warns when
+    the secrets key has no passphrase, which lets a lane decrypt the store
+    itself; `swim run` warns too) and `ambient-credential` (a listed
+    profile configured in `~/.aws`).
+- **The secrets broker gave every value to any lane (fixed):** its `masks`
+  request returned every secret's value to anything holding the run's
+  token, and `get` recorded whatever lane the request claimed. Now the
+  broker identifies the lane process from its approval token, checked
+  against the process that connects, and a lane's masks are the secrets it
+  may get: the unguarded ones and the guarded ones released to it. swim
+  run's own stream still masks them all. A masker that lives long (a
+  wrapped lane's log, a step that runs a while) picks up a secret released
+  after it started.
+- **More masking:** an SDK lane's in-process step label (status.yml's
+  current step, the hub) and `swim output KEY VALUE` values are masked.
+  (Files a lane writes to `$SWIM_OUT` itself are still its own.)
+- **Proof that secrets don't leak (T9):** `TestNoSecretLeaks` plants
+  secrets of every kind, prints them every way a lane can (raw,
+  base64, URL-encoded, split, in labels, guard descriptions, messages,
+  notes, outputs, handlers, errors), drives every writer (plain and YAML
+  streams, status, history, logs and archive, queue and watch, the hub),
+  and fails on a value in any file, output, hub page or process command
+  line, or on a file no known writer accounts for.
 - **`swim verify` says how far the chain can be believed,** one level per
   line, each saying what it rests on (T8):
   - **consistent:** links, signatures against the key recorded in each

@@ -27,7 +27,7 @@ from another's, and it doesn't sandbox lane scripts.
 | **Watch worker** (`swim watch`) | Runs queued batches when swim is idle. | Its own environment's credentials. Its environment never approves a guard: only the batch's approvals count. |
 | **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Signs every chain entry swim records on this machine. | An SSH key on the operator's or worker's machine (or in ssh-agent). |
 | **Approvers** | Sign approvals of exact scripts, or standing approvals, with `swim approve`. | Their own SSH keys. Their public keys are in the committed `lookup.yml`. |
-| **Secrets** (`swim secret`) | Encrypted to your SSH key with age, decrypted once per run. | Readable by every lane in the run: they keep values out of logs, the hub and git, not out of lane code. |
+| **Secrets** (`swim secret`) | Encrypted to your SSH key with age, decrypted once per run and served to lanes by the run's broker, which knows each lane process by its token. | An unguarded secret is readable by every lane in the run: it keeps values out of logs, the hub and git, not out of lane code. A guarded one (`swim.yml` `secrets:`) goes only to a lane whose guard of it was approved in this run. With a key that has no passphrase, a lane can decrypt the store itself. |
 | **Hub** (`swim hub`) | Shows workers' status, logs and queues, and relays hub users' commands (interrupt, drain, run, log, and answers to waiting guards) to headless workers. It runs nothing itself and can't make an answer valid. | Tokens (only hashes of worker and user tokens), sessions in memory, commands, and only ciphertext for secret grants. TLS (`--tls-cert`/`--tls-key`, clients pin `--ca`; session cookies are `Secure` under it); plain HTTP only on loopback or with `--insecure`. |
 | **Hub users** (`swim hub user add`) | Send commands to headless workers as their role allows: `viewer` fetches logs and sends signed answers; `operator` also interrupts, drains, runs, and answers with a button. | Their own token, or a 12-hour session cookie (`HttpOnly`, `SameSite=Strict`, CSRF token on every form). The admin token manages users and sends no command. |
 
@@ -101,6 +101,16 @@ else stops it. What is enforced outside the script:
 - **Blocked commands:** `git push`, `git commit`, `git pull` and a repo's
   `blocked_commands` are refused in the script before it starts, at the
   step at run time, and by a git shim on each lane's `PATH`.
+- **Guarded secrets:** a secret `swim.yml` guards by a flag (`secrets:
+  NAME: {guard: FLAG}`) is released by the run's secrets broker only to a
+  lane process whose guard of that flag the launcher approved and recorded
+  in this run. A script that skips the guard, or sets `FLAG=1` itself,
+  gets `refused: NAME is guarded by FLAG, which isn't approved in this
+  run`; each release and refusal is a chain entry. This makes a guard
+  enforced for credentials that live only in swim's vault, and for nothing
+  else: ambient credentials (your shell's `~/.aws`, tokens in the
+  environment) are still the lane's, and a released value is the lane's to
+  use as it likes. `release: step` hands it out once.
 - **Running lanes are protected:** swim won't rerun, edit, archive or stub a
   lane that's running.
 - **The lock:** a swim with other syntax versions than `.swim.lock` refuses
@@ -291,8 +301,10 @@ lane and on a worker running `swim watch -y`. Guards approved by a flag
   runs as you, with your environment, your secrets and your key. Limit the
   damage outside swim: scoped, short-lived credentials for each kind of
   change, and running workers as a separate OS user, in a container or a
-  VM. Releasing a credential only after its guard is approved is designed in
-  [features/guarded-secrets.md](../features/guarded-secrets.md) (pending).
+  VM. A guarded secret (above) releases a credential only after its guard
+  is approved, but only for credentials that exist nowhere else; and a
+  lane can read an unprotected secrets key, or a headless worker's own key
+  and hub token, as easily as you can.
 - **An AI that shares your OS user.** swim gives the planner nothing, but it
   doesn't stop a process running as you from using what you have.
 - **Tampering by whoever holds the runner key and can write every anchor,**
@@ -357,6 +369,9 @@ Test files are under `internal/`. "Pending" names the task in
 | The chain names the lane and job swim run knows, whatever the lane claims; its description is labelled as the lane's. | `TestHostileLaneWrongJob` (e2e/authority_test.go), `TestServerUsesRegisteredLane` (approval) |
 | A lane can't mark, stage or finish another lane's round, even with that lane's token. | `TestLaneCantReportForAnother` (e2e/authority_test.go), `TestPeerOutsideTheLane` (approval) |
 | The approval socket declines oversized, malformed and slow requests, made-up tokens and lanes that hang up. | `TestBrokerHostileClients` (e2e/authority_test.go), `TestHostileRequests`, `TestDisconnectCancels` (approval) |
+| A guarded secret is refused to a lane whose guard wasn't approved (skipped, set by the lane itself, a dry run), and released only to the approved lane process, on the prompt, `-y`, a signed approval, a queued batch's `--approve` or swim run's own `FLAG=1`; each release and refusal is in the chain and `.swim.log`, and `release: step` hands it out once. | `TestGuardedSecretRefused`, `TestGuardedSecretReleased`, `TestGuardedSecretSignedAndQueued`, `TestGuardedSecretReleaseStep` (e2e/guarded_secrets_test.go), `TestBrokerGuardedSecrets` (secrets) |
+| The secrets broker believes no lane a request names: it asks the launcher, from the lane process's token and the process that sent it, and gives a lane only the masks of secrets it may get. | `TestBrokerGuardedSecrets` (secrets), `TestNoSecretLeaks` (e2e/leak_test.go) |
+| A planted secret (a vault secret, a multi-line one, a `secret_env` variable, a CI stand-in, a guarded one), printed raw, base64- or URL-encoded, split across writes, in labels, guard descriptions, messages, notes, outputs, handlers and errors, is in no file swim writes, no output it prints, no hub snapshot and no process's command line; a file no known writer accounts for fails the test. | `TestNoSecretLeaks` (e2e/leak_test.go) |
 | Changing, removing or reordering a chain entry is detected. | `TestChainLinksAndDetectsTampering` (chain) |
 | An edited log or chain entry fails `swim verify`. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
 | Every approval is recorded with its method and signed by the runner; the scripts that ran are kept; `signing: required` refuses without a key; `--strict` fails on unsigned entries. | `TestChainRecordsEveryApproval` (e2e/custody_test.go) |

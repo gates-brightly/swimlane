@@ -67,7 +67,9 @@ Read it top to bottom:
    run. The launcher records each approval in the chain, and attests the
    run when its last lane exits. The guard runs inside the
    lane's own process, so it is advisory: a script that skips it isn't
-   stopped. See the [trust model](trust-model.md).
+   stopped, except from a guarded secret: the run's secrets broker
+   releases one only to a lane whose guard of it the launcher approved.
+   See the [trust model](trust-model.md).
 6. **The git shim and step checks** refuse `git push`, `git commit` and
    `git pull` however a lane calls git.
 7. **The record.** Each step lands in the lane's log, its state in

@@ -136,7 +136,9 @@ whoever runs it.
   status`, `swim history`, CI summaries and the hub.
 - **Out of scope:** a malicious or mistaken script that is approved and run
   with broad credentials. Guards and lint are conventions, not a sandbox:
-  use scoped credentials and OS isolation for that.
+  use scoped credentials and OS isolation for that. A
+  [guarded secret](#guarded-secrets) is the exception, for credentials
+  that live only in swim's vault: a lane that skips its guard never gets it.
 - **The approved bytes run:** each lane runs a staged, read-only copy of
   what its execution manifest pins (script, sourced files, sidecar, runner,
   policy), and an approval binds that manifest.
@@ -744,9 +746,9 @@ password = swim.secret.get("db_password")          # TypeScript: await secret.ge
   lanes over a private socket. It asks a protected key's passphrase before
   the live view, and only if a lane looks like it uses secrets. Outside a
   run, `swim secret get` and the SDKs decrypt with your key directly.
-- **Masked exactly, by name:** every lane process masks all of the repo's
-  secrets as `***(db_password)`, including their base64 and URL forms,
-  whichever ones it used.
+- **Masked exactly, by name:** every lane process masks every secret its
+  lane may get as `***(db_password)`, including their base64 and URL
+  forms, whichever ones it used. `swim run`'s own stream masks them all.
 - **Audited:** `.swim.log` records which lane got which secret and how,
   never the value. `swim lint` warns about names the store doesn't have.
 - **CI:** `SWIM_SECRET_<NAME>` stands in for a secret, with no key needed.
@@ -756,6 +758,57 @@ password = swim.secret.get("db_password")          # TypeScript: await secret.ge
   - A value passed as a command argument (`psql "$DB"`) is visible in `ps`
     while it runs; prefer the tool's env variable or a file when it has one.
   - `swim watch` and CI can't ask a passphrase.
+
+#### Guarded secrets
+
+A secret can be guarded by a guard flag in the committed `swim.yml`. The
+run hands it to a lane only after that lane's guard was approved in this
+run, so a script that skips `guard` never gets the credential that makes
+the destructive call possible:
+
+```yaml
+# swim.yml
+secrets:
+  PROD_DB_ADMIN_URL: { guard: ORDERS_ALLOW_DROP }                        # released after that guard is approved
+  AWS_PROD_WRITE_ROLE: { guard: [INFRA_APPLY, INFRA_DESTROY], release: step }  # either one; handed out once
+ambient_credentials: [prod-write]   # AWS profiles with the same access: lint and doctor point them out
+```
+
+```bash
+if guard ORDERS_ALLOW_DROP "drop the orders table"; then
+  export DATABASE_URL=$(swim secret get PROD_DB_ADMIN_URL) || stop "refused"
+  run "drop table" psql -c 'drop table orders'    # psql reads DATABASE_URL: not on its command line
+fi
+```
+
+- **Approvals that count:** the ones the launcher saw: the prompt (or the
+  live view's pre-answer), `-y`, signed approvals, a queued batch's
+  `--approve`, and `FLAG=1` in the environment `swim run` started with.
+  `FLAG=1` a lane sets itself, or a `.lane.N.rc`, never counts.
+- **Per lane, per run:** the approval is for that lane process: another
+  lane, or the next run, asks again. It lasts until the lane exits;
+  `release: step` hands the value out once and refuses a second get.
+  `swim plan --check` never releases one.
+- **Refused:** `refused: PROD_DB_ADMIN_URL is guarded by
+  ORDERS_ALLOW_DROP, which isn't approved in this run`, as a `WARN` in the
+  lane's log, in `.swim.log`, and a `secret-refused` chain entry. A release
+  is a `secret-released` entry: the name, the flag, how it was approved and
+  the approve entry it rests on (`swim verify` checks the run recorded
+  it), never the value.
+- **CI and the hub:** `SWIM_SECRET_<NAME>` of a guarded secret is kept out
+  of lanes' environments; only the broker serves it. `swim secret grant
+  --guard FLAG` guards a hub grant too (both guards must be approved).
+- **Outside a run:** `swim secret get` of a guarded secret works at your
+  own shell (recorded in `.swim.log`) and is refused in a lane run with
+  bash.
+- **The limits:** it protects only credentials that exist nowhere else.
+  Ambient credentials (`~/.aws` profiles) are out of its reach: run with
+  read-only ones and put write roles in the vault, for example as the
+  credentials an `aws sts assume-role` step uses, so the elevated session
+  exists only after approval. Released means usable: the lane can reuse
+  the value however it likes. And with a secrets key that has no
+  passphrase, a lane can decrypt `secrets.yml` itself (`swim run` and
+  `swim doctor` warn).
 
 ### Guards and approvals
 
@@ -1169,7 +1222,8 @@ swim hub user add alice --role operator              # a person: token shown onc
     never holds a key that could decrypt it.
   - **At run time:** the worker's runs fetch and decrypt their grants at
     start. Lanes get them the usual way (`swim secret get`, `secret.get`),
-    masked by name.
+    masked by name. A grant made with `--guard FLAG` is a
+    [guarded secret](#guarded-secrets) there.
   - **Changes:** `swim secret revoke` removes a grant. A worker that comes
     back with a new key drops to pending and loses its grants. The hub's
     `audit.log` records approvals, grants and fetches.

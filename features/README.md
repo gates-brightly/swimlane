@@ -6,7 +6,6 @@ where it would land in the code, open questions, and how to test it.
 
 | feature | file | status |
 |---|---|---|
-| Guarded secrets: approval enforced by credentials | [guarded-secrets.md](guarded-secrets.md) | proposed |
 | Lane claims: a lease on a lane while a session writes it | [lane-claims.md](lane-claims.md) | proposed |
 
 ## Staging a feature

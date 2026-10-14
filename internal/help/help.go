@@ -674,7 +674,7 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
 swim secret get NAME
 swim secret ls [--yaml]
 swim secret rm NAME [--all|--repo]
-swim secret grant WORKER NAME... [--hub URL] [--admin-token T]
+swim secret grant WORKER NAME... [--guard FLAG[,FLAG]] [--hub URL] [--admin-token T]
 swim secret revoke WORKER NAME... [--hub URL] [--admin-token T]
 swim secret grants [--hub URL] [--admin-token T]
 
@@ -688,8 +688,11 @@ swim secret grants [--hub URL] [--admin-token T]
          stays out of shell history and ps
   get    prints the value: inside a swim run from the run's secrets broker,
          outside one by decrypting with your key (asking its passphrase
-         on the terminal if it has one)
-  ls     names, scopes and when each was set; never values
+         on the terminal if it has one). A guarded secret (below) inside a
+         run only once its guard is approved; outside one at your own shell
+         (recorded in .swim.log), never in a lane run with bash
+  ls     names, scopes and when each was set, and the guard swim.yml puts
+         on it; never values
   rm     removes one from a scope
   The key is secrets_key, else signing_key, else ~/.ssh/id_ed25519
   (ssh-ed25519 or ssh-rsa). Encrypting needs only its .pub; decrypting
@@ -707,9 +710,27 @@ swim secret grants [--hub URL] [--admin-token T]
   A swim run decrypts the repo's secrets once, at start (a protected key's
   passphrase is asked then, only if a lane looks like it uses secrets;
   swim watch and CI can't ask), and serves them from a broker on a
-  private socket. Every lane process masks all of them as ***(name).
+  private socket. Each lane process says which lane it is with its own
+  token (SWIM_APPROVAL_TOKEN), checked against the process that asks, and
+  masks, as ***(name), every secret its lane may get.
   .swim.log records each lane's use: "secret  swim 2  db_password (repo
   scope, get)". swim lint warns about names the store doesn't have.
+  Guarded secrets: swim.yml can guard a secret by guard flags,
+      secrets:
+        PROD_DB_ADMIN_URL: { guard: ORDERS_ALLOW_DROP }
+        AWS_PROD_WRITE_ROLE: { guard: [INFRA_APPLY, INFRA_DESTROY], release: step }
+  and the broker releases it to a lane only once one of them was approved
+  for that lane (that process) in this run, as the launcher saw it: the
+  prompt, -y, a signed approval, a queued batch's --approve, or FLAG=1 in
+  swim run's own environment. FLAG=1 a lane sets itself never counts.
+  Otherwise the get fails: "refused: NAME is guarded by FLAG, which isn't
+  approved in this run" (a WARN in the lane's log, .swim.log and a
+  secret-refused chain entry). A release is a secret-released entry: the
+  name, the flag, how it was approved and the approve entry, never the
+  value. release: step hands it out once; swim plan --check never does.
+  SWIM_SECRET_<NAME> of a guarded secret never reaches a lane's
+  environment. grant --guard puts a guard on a hub grant (both it and
+  swim.yml's must be approved).
   From a hub (swim hub --help): grant encrypts NAME, as this repo sees it,
   to an approved worker's own key and gives the hub only the ciphertext;
   the hub never holds a value or a key to decrypt one. The worker's runs
@@ -1104,6 +1125,14 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
     blocked (error)        git push/commit/pull or a blocked_commands pattern
     secret-echo (warn)     echo/printf of a secret variable
+    secret-guard (warn)    a guarded secret (swim.yml secrets:) got with no
+                           guard of its flag before it: swim run refuses it
+    secret-argv (warn)     $(swim secret get NAME) inline in a command's
+                           arguments, readable with ps: assign it first and
+                           pass it in an environment variable or on stdin
+    ambient-credential (warn) a credential swim.yml lists in
+                           ambient_credentials (AWS_PROFILE=, --profile) used
+                           directly: no guard stands in its way
     header (warn)          a Timeout, Step-Timeout, Locks, Always or
                            Rerun-Children value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag
@@ -1116,7 +1145,8 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                            of another lane, a header key on the wrong side
                            (Always: on the lane, After: on a job), or a group
                            file (lanes.<name>.sh) for a lane another file has
-    outputs (warn)         an output whose name suggests secrets (not masked)
+    outputs (warn)         an output whose name suggests secrets (output files
+                           aren't masked)
     includes (warn)        a Python/TypeScript lane imports a local module its
                            # Includes: doesn't list (it's pinned anyway)
     source (error)         a bash lane sources a local file its # Includes:
@@ -1196,6 +1226,12 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                               user's click approves guards no require:
                               rule names
     headless-yes (warn)       an installed headless service runs with -y
+    guarded-secrets (info/warn) lists swim.yml's guarded secrets (info);
+                              warns when the secrets key has no passphrase:
+                              a lane could decrypt them itself
+    ambient-credential (warn) a profile swim.yml lists in
+                              ambient_credentials is configured in ~/.aws:
+                              every lane can use it without a guard
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of
