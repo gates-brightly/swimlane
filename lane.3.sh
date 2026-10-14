@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # swim: syntax 2
-# Round:   CI: e2e (Go suite and e2e/ scenarios)
-# Job:     5c1a0003-11a7-4c1e-8d00-000000000003
-# After:   1
+# Round:   CI: test (unit)
+# Job:     5c1a0013-11a7-4c1e-8d00-000000000013
+# Always:  yes
+# After:   2
 # Owner:   swim CI
-# Created: 2026-10-09
-# Timeout: 30m
+# Created: 2026-10-14
+# Timeout: 15m
 #
-# Goal: swim end to end: the Go e2e suite builds its own swim and drives it
-# in scratch repos, and runs every e2e/scenarios/ scenario as a subtest.
-# This is swim testing swim from inside a swim lane: scripts/hermetic strips
-# this lane's environment (SWIM_*, the git shim, CI variables) first.
+# Goal: every package's unit tests pass (internal/e2e runs in lane.4.sh). An
+# Always lane, after lint. scripts/hermetic keeps this lane's own swim
+# environment out of the tests.
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 3
 
 stage check
-run "go test ./internal/e2e" scripts/hermetic go test -count=1 ./internal/e2e/...
+run "go test (unit)" scripts/hermetic bash -c 'go test $(go list ./... | grep -v /internal/e2e)'
 
 summary

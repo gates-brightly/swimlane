@@ -695,12 +695,13 @@ jobs:
 changed, plus any unpassed lanes they wait on (Always lanes count as
 unpassed). `--rerun` runs passed rounds again; for a test suite written as
 rounds, an Always lane with `Rerun-Children: yes` at its root does that
-without the flag. swim never commits results back.
+without the flag. A fresh CI checkout has no passed rounds, so everything
+runs there either way. swim never commits results back.
 
-This repo dogfoods it. Its own CI is `swim ci` over committed rounds:
-`lane.1.sh` (lint, an Always lane with `Rerun-Children: yes`), then
-`lane.2.sh` (unit tests) and `lane.3.sh` (e2e). `make ci` runs the same
-rounds locally.
+This repo dogfoods it. Its own CI is `swim ci` over committed rounds. Three
+Always lanes run first, in order: `lane.1.sh` (fmt), `lane.2.sh` (lint) and
+`lane.3.sh` (unit tests). Then `lane.4.sh` (e2e) runs. `make ci` runs the
+same rounds locally.
 
 ### The watch hub
 

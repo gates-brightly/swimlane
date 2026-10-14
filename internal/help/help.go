@@ -466,7 +466,7 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
                     every pending round. Needs the history (fetch-depth: 0).
   --rerun           also rounds that already passed. A test suite as rounds
                     doesn't need it: an Always lane with Rerun-Children: yes
-                    at its root (like this repo's own CI) reruns the rest
+                    at its root reruns the rest
   --require-work    exit 1 when there is nothing to run (default: a notice, 0)
   Exit codes: 0 every selected lane passed, 1 a lane failed or was skipped,
   2 usage, config or an unresolvable # After:.

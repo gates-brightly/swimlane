@@ -47,9 +47,9 @@ To cut a release:
   - **Plan:** `swim plan` draws Always lanes first as `[*]` and marks
     reruns `rerun (swim N)`; `swim plan --yaml` adds the `always` action
     and `setup` and `rerun_by` fields.
-  - This repo's CI uses it: `lane.1.sh` (lint) is an Always lane with
-    `Rerun-Children: yes`, so `swim ci` and `make ci` no longer pass
-    `--rerun`.
+  - This repo's CI uses it: fmt (`lane.1.sh`), lint (`lane.2.sh`) and unit
+    tests (`lane.3.sh`) are Always lanes that run first, in that order;
+    e2e moved to `lane.4.sh`, and lanes 5 and up are free for rounds.
 
 - **Native SDKs over a lane protocol:**
   - **The protocol:** `swim _wrap` serves `swim.lane/v1` (JSON lines over a

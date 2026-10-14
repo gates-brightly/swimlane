@@ -11,3 +11,4 @@ lane.[0-9]*
 !/lane.1.sh
 !/lane.2.sh
 !/lane.3.sh
+!/lane.4.sh
