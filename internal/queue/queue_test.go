@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestAddClaimConsume(t *testing.T) {
@@ -18,7 +19,7 @@ func TestAddClaimConsume(t *testing.T) {
 	if len(all) != 3 || all[0].Seq != 1 || all[2].Seq != 3 || all[0].State != Queued {
 		t.Fatalf("list: %+v", all)
 	}
-	e, err := ClaimNext(root, "op")
+	e, err := ClaimNext(root, "op", 0)
 	if err != nil || e == nil || e.Seq != 1 || e.State != Running || e.Worker.PID != os.Getpid() {
 		t.Fatalf("claim: %+v %v", e, err)
 	}
@@ -56,7 +57,7 @@ func TestClaimIsExclusive(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for {
-				e, err := ClaimNext(root, "op")
+				e, err := ClaimNext(root, "op", 0)
 				if err != nil {
 					t.Error(err)
 					return
@@ -84,7 +85,7 @@ func TestClaimIsExclusive(t *testing.T) {
 func TestOrphanAndRequeue(t *testing.T) {
 	root := t.TempDir()
 	Add(root, &Entry{By: "op"})
-	e, _ := ClaimNext(root, "op")
+	e, _ := ClaimNext(root, "op", 0)
 	// Its worker dies: a pid that isn't running.
 	e.Worker.PID = 999999
 	write(e)
@@ -123,19 +124,78 @@ func TestClaimOutOfTurn(t *testing.T) {
 		Add(root, &Entry{By: "op", Lanes: []Lane{{Lane: i + 1}}})
 	}
 	all, _ := List(root, false)
-	e, err := Claim(root, all[2], "op")
+	e, err := Claim(root, all[2], "op", 0)
 	if err != nil || e.Seq != 3 || e.State != Running || e.Worker == nil {
 		t.Fatalf("claim #3: %+v %v", e, err)
 	}
 	// The oldest still comes next in turn.
-	if next, _ := ClaimNext(root, "op"); next == nil || next.Seq != 1 {
+	if next, _ := ClaimNext(root, "op", 0); next == nil || next.Seq != 1 {
 		t.Fatalf("next after #3: %+v", next)
 	}
 	// A stale copy of a claimed entry can't be claimed again.
-	if _, err := Claim(root, all[2], "op"); err == nil {
+	if _, err := Claim(root, all[2], "op", 0); err == nil {
 		t.Error("claimed #3 twice")
 	}
-	if _, err := Claim(root, e, "op"); err == nil {
+	if _, err := Claim(root, e, "op", 0); err == nil {
 		t.Error("claimed a running entry")
+	}
+}
+
+// A claim seen from another host is alive while its heartbeat is fresher
+// than its lease; on the worker's host, the pid must still be the worker
+// (same start time).
+func TestWorkerLease(t *testing.T) {
+	root := t.TempDir()
+	Add(root, &Entry{By: "op"})
+	e, err := ClaimNext(root, "op", time.Minute)
+	if err != nil || e.Worker.Lease != "1m0s" || e.Worker.Heartbeat == "" || e.Worker.Start == "" {
+		t.Fatalf("claim: %v %+v", err, e.Worker)
+	}
+	state := func() string {
+		all, _ := List(root, false)
+		return all[0].State
+	}
+	if s := state(); s != Running {
+		t.Fatalf("own claim: %s", s)
+	}
+	// The pid handed to another process (a different start time).
+	e.Worker.Start = "1"
+	write(e)
+	if s := state(); s != Orphaned {
+		t.Errorf("reused pid: %s", s)
+	}
+
+	defer func(h func() string, n func() time.Time) { hostname, now = h, n }(hostname, now)
+	hostname = func() string { return "another-host" }
+	t0 := time.Now()
+	if s := state(); s != Running {
+		t.Errorf("fresh heartbeat from another host: %s", s)
+	}
+	now = func() time.Time { return t0.Add(2 * time.Minute) }
+	if s := state(); s != Orphaned {
+		t.Errorf("stale heartbeat (2m, lease 1m): %s", s)
+	}
+	if err := Touch(e); err != nil {
+		t.Fatal(err)
+	}
+	if s := state(); s != Running {
+		t.Errorf("after Touch: %s", s)
+	}
+	// An older worker's claim (no heartbeat) can't be judged: alive.
+	e.Worker.Heartbeat, e.Worker.Lease = "", ""
+	write(e)
+	now = func() time.Time { return t0.Add(time.Hour) }
+	if s := state(); s != Running {
+		t.Errorf("no heartbeat: %s", s)
+	}
+	// Once orphaned and requeued elsewhere, the old worker's Touch fails.
+	e.Worker.Heartbeat = t0.UTC().Format(time.RFC3339)
+	write(e)
+	all, _ := List(root, false)
+	if err := Requeue(root, all[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := Touch(e); err == nil {
+		t.Error("Touch on a requeued entry succeeded")
 	}
 }

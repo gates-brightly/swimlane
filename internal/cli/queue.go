@@ -450,6 +450,12 @@ func queueList(args []string) error {
 		switch e.State {
 		case queue.Running:
 			state, color = fmt.Sprintf("running (pid %d)", e.Worker.PID), ui.Cyan
+			if e.Worker.Remote() {
+				state = fmt.Sprintf("running (pid %d on %s)", e.Worker.PID, e.Worker.Host)
+				if e.Worker.Heartbeat == "" {
+					state = fmt.Sprintf("running? (pid %d on %s; an older worker with no heartbeat: can't tell)", e.Worker.PID, e.Worker.Host)
+				}
+			}
 		case queue.Orphaned:
 			state, color = "orphaned: its worker is gone (swim queue requeue "+strconv.Itoa(e.Seq)+")", ui.Red
 		case queue.Done:
@@ -614,6 +620,9 @@ func cmdWatch(args []string) error {
 		defer release()
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	for _, r := range launcher.ReapDead(root, cfg, self()) {
+		fmt.Println(p.Paint(ui.Yellow, "swim watch: "+r.String()))
+	}
 	sigs := make(chan os.Signal, 4)
 	if headless {
 		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM) // SIGHUP reopens its log (headlessStart)
@@ -744,7 +753,7 @@ func cmdWatch(args []string) error {
 			sleep()
 			continue
 		}
-		e, err := queue.ClaimNext(root, operator())
+		e, err := queue.ClaimNext(root, operator(), cfg.QueueLeaseFor())
 		if err != nil || e == nil {
 			unlock()
 			if err != nil {
@@ -781,7 +790,9 @@ func cmdWatch(args []string) error {
 // headless: no terminal at all (swim watch --headless).
 func runClaimed(root string, cfg *config.Config, e *queue.Entry, yes, view, headless bool) (queue.Result, bool) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	stopBeat := heartbeatClaim(e)
 	res, interrupted := runEntry(root, cfg, e, yes, view, headless)
+	stopBeat()
 	checkpointAfterRun(root, cfg)
 	if err := queue.Consume(root, e, res); err != nil {
 		fmt.Fprintln(os.Stderr, "swim watch: consume "+e.ID+": "+err.Error())
@@ -789,6 +800,33 @@ func runClaimed(root string, cfg *config.Config, e *queue.Entry, yes, view, head
 	history.Log(root, history.Entry{Event: history.QueueDone, Run: res.Run, Detail: fmt.Sprintf("%s: %s  exit=%d", e.ID, res.Result, res.Exit)})
 	fmt.Println(p.Paint(ui.StateColor(res.Result)+ui.Bold, fmt.Sprintf("swim watch: %s (#%d) %s; consumed to %s", e.ID, e.Seq, res.Result, rel(root, e.Path))))
 	return res, interrupted
+}
+
+// heartbeatClaim renews a claimed entry's heartbeat every third of its
+// lease while the batch runs, so a worker on another host can tell this
+// one is alive (and that it's gone once the heartbeat stops). The returned
+// func stops it, and returns once no renewal is in flight.
+func heartbeatClaim(e *queue.Entry) (stop func()) {
+	if e.Worker == nil {
+		return func() {}
+	}
+	done, finished := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(finished)
+		tick := time.NewTicker(e.Worker.LeaseFor() / 3)
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+				if err := queue.Touch(e); err != nil {
+					fmt.Fprintln(os.Stderr, "swim watch: heartbeat "+e.ID+": "+err.Error())
+				}
+			}
+		}
+	}()
+	return func() { close(done); <-finished }
 }
 
 // loadCfg reloads the repo's config (a long-running watch picks up edits).

@@ -39,7 +39,7 @@ const (
 var ChimeStyles = []string{StyleBell, StyleSound, StyleNotify}
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep"}
+var Keys = []string{"chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep", "queue_lease"}
 
 // ParseChime reads true|false|failure (on|off also accepted).
 func ParseChime(s string) (Chime, error) {
@@ -168,6 +168,11 @@ func (c *Config) Get(key string) (string, error) {
 		return c.MsgLogEvery().String(), nil
 	case "outputs_keep":
 		return c.OutputsKeepFor().String(), nil
+	case "queue_lease":
+		if d := c.QueueLeaseFor(); d > 0 {
+			return d.String(), nil
+		}
+		return "2m0s", nil
 	case "interrupt_grace", "term_grace":
 		ig, tg := c.Graces()
 		if key == "term_grace" {
@@ -261,6 +266,12 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.TrimSpace(value)
 		if _, ok := parseDays(v); !ok {
 			return nil, fmt.Errorf("outputs_keep must be a duration like 14d or 36h, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "queue_lease":
+		v := strings.TrimSpace(value)
+		if d, err := time.ParseDuration(v); err != nil || d < 10*time.Second {
+			return nil, fmt.Errorf("queue_lease must be a duration of 10s or more, like 2m, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "interrupt_grace", "term_grace", "msg_log_interval":

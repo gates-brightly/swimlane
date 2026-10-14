@@ -953,7 +953,9 @@ swim wait [--timeout D]                                  # block until idle and 
 - **`swim watch`** waits until swim is idle, runs the oldest batch, and
   then consumes it into `.swim/queue/done/` with its result.
   - **Several workers** can share one queue. Claiming an entry is atomic,
-    and one batch runs at a time per repo.
+    and one batch runs at a time per repo. A worker renews a heartbeat in
+    the entry it runs (`queue_lease`, default 2m), so from another host a
+    dead worker's batch shows as orphaned.
   - **Ctrl-C** stops the current batch gracefully.
   - **`--approved`** also queues scripts as soon as they're fully approved.
   - **On a terminal,** the watch lists every lane's job and the queue while

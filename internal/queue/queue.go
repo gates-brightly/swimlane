@@ -12,6 +12,12 @@
 //
 // Claiming by rename is the mutex: of two workers racing for an entry,
 // exactly one rename succeeds.
+//
+// A claimed entry names its worker: host, pid and the process's start
+// time, and a heartbeat the worker renews every third of its lease while
+// it runs the batch. On the worker's own host, the process tells whether
+// it lives; from another host (the queue on a shared filesystem), a
+// heartbeat older than the lease means the worker is gone.
 package queue
 
 import (
@@ -28,6 +34,9 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/gates-brightly/swimlane/internal/fsutil"
+	"github.com/gates-brightly/swimlane/internal/proc"
 )
 
 // Schema identifies an entry file.
@@ -54,7 +63,21 @@ type Worker struct {
 	PID     int    `yaml:"pid"`
 	User    string `yaml:"user"`
 	Claimed string `yaml:"claimed"`
+	// Start is the worker process's start time (see the proc package): a
+	// pid handed to another process since isn't the worker. "" in entries
+	// from before it was recorded.
+	Start string `yaml:"start,omitempty"`
+	// Heartbeat is when the worker last said it was alive (RFC 3339), and
+	// Lease how long that holds (a duration, 2m by default). An entry
+	// without them (an older worker) is alive as far as another host can
+	// tell.
+	Heartbeat string `yaml:"heartbeat,omitempty"`
+	Lease     string `yaml:"lease,omitempty"`
 }
+
+// DefaultLease is how long a worker's heartbeat holds when swim.yml or
+// the config doesn't set queue_lease.
+const DefaultLease = 2 * time.Minute
 
 // LaneResult is how one lane of a consumed entry ended.
 type LaneResult struct {
@@ -152,14 +175,20 @@ func Add(root string, e *Entry) error {
 			return err
 		}
 		_, werr := f.Write(data)
+		if werr == nil {
+			werr = f.Sync()
+		}
 		cerr := f.Close()
 		if werr != nil {
+			os.Remove(e.Path)
 			return werr
 		}
-		if cerr == nil {
-			os.WriteFile(filepath.Join(Dir(root), ".seq"), []byte(strconv.Itoa(e.Seq)+"\n"), 0o644)
+		if cerr != nil {
+			os.Remove(e.Path)
+			return cerr
 		}
-		return cerr
+		fsutil.WriteAtomic(filepath.Join(Dir(root), ".seq"), []byte(strconv.Itoa(e.Seq)+"\n"), 0o644)
+		return fsutil.SyncDir(Dir(root))
 	}
 }
 
@@ -200,11 +229,7 @@ func write(e *Entry) error {
 	if err != nil {
 		return err
 	}
-	tmp := e.Path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, e.Path)
+	return fsutil.WriteAtomic(e.Path, data, 0o644)
 }
 
 // List returns the entries waiting or running (oldest first), and with
@@ -290,30 +315,67 @@ func Find(root, ref string) (*Entry, error) {
 	return nil, fmt.Errorf("%q matches %d queue entries; give more of the id", ref, len(hits))
 }
 
-func hostname() string {
-	h, _ := os.Hostname()
-	return h
-}
+// hostname and now are variables so tests can play another host and move
+// the clock.
+var (
+	hostname = func() string {
+		h, _ := os.Hostname()
+		return h
+	}
+	now = time.Now
+)
 
 func workerAlive(w *Worker) bool {
-	if w.Host != hostname() {
-		return true // another machine's worker: can't tell, assume alive
+	if w.Host == hostname() {
+		return w.PID > 0 && proc.Same(w.PID, w.Start)
 	}
-	if w.PID <= 0 {
-		return false
+	// Another machine's worker: alive while its heartbeat is fresh.
+	if w.Heartbeat == "" {
+		return true // an older worker with no heartbeat: can't tell, assume alive
 	}
-	err := syscall.Kill(w.PID, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
+	beat, err := time.Parse(time.RFC3339, w.Heartbeat)
+	if err != nil {
+		return true
+	}
+	return now().Sub(beat) <= w.LeaseFor()
+}
+
+// LeaseFor is how long the worker's heartbeat holds.
+func (w *Worker) LeaseFor() time.Duration {
+	if d, err := time.ParseDuration(w.Lease); err == nil && d > 0 {
+		return d
+	}
+	return DefaultLease
+}
+
+// Remote reports whether the worker runs on another host.
+func (w *Worker) Remote() bool { return w.Host != hostname() }
+
+// Touch renews a claimed entry's heartbeat: its worker is alive. It fails
+// once the entry isn't this worker's claim any more (it was requeued or
+// removed from another host after the lease ran out).
+func Touch(e *Entry) error {
+	cur, err := load(e.Path)
+	if err != nil {
+		return err
+	}
+	if cur.Worker == nil || e.Worker == nil || cur.Worker.Host != e.Worker.Host || cur.Worker.PID != e.Worker.PID {
+		return fmt.Errorf("%s isn't this worker's claim any more", e.ID)
+	}
+	cur.Worker.Heartbeat = now().UTC().Format(time.RFC3339)
+	return write(cur)
 }
 
 // ClaimNext claims the oldest waiting entry for this process, by renaming
 // it to .running; it returns nil when nothing waits. A lost race (another
-// worker renamed it first) moves on to the next entry.
-func ClaimNext(root, user string) (*Entry, error) {
+// worker renamed it first) moves on to the next entry. lease is how long
+// the claim's heartbeat holds (0: DefaultLease); the worker renews it with
+// Touch.
+func ClaimNext(root, user string, lease time.Duration) (*Entry, error) {
 	files, _ := filepath.Glob(filepath.Join(Dir(root), "*.queue"))
 	sort.Strings(files)
 	for _, p := range files {
-		e, err := claim(p, user)
+		e, err := claim(p, user, lease)
 		if err != nil {
 			return nil, err
 		}
@@ -327,11 +389,11 @@ func ClaimNext(root, user string) (*Entry, error) {
 // Claim claims one waiting entry, out of turn (swim watch: r on a queued
 // batch). It errors if the entry isn't waiting any more: another worker
 // claimed it, or it was removed.
-func Claim(root string, e *Entry, user string) (*Entry, error) {
+func Claim(root string, e *Entry, user string, lease time.Duration) (*Entry, error) {
 	if e.State != Queued || !strings.HasSuffix(e.Path, ".queue") {
 		return nil, fmt.Errorf("%s is %s, not waiting", e.ID, e.State)
 	}
-	got, err := claim(e.Path, user)
+	got, err := claim(e.Path, user, lease)
 	if err != nil {
 		return nil, err
 	}
@@ -343,9 +405,9 @@ func Claim(root string, e *Entry, user string) (*Entry, error) {
 
 // claim renames a waiting entry to .running and records the worker; nil
 // when another worker renamed it first.
-func claim(p, user string) (*Entry, error) {
+func claim(p, user string, lease time.Duration) (*Entry, error) {
 	running := strings.TrimSuffix(p, ".queue") + ".running"
-	if err := os.Rename(p, running); err != nil {
+	if err := fsutil.Rename(p, running); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil // claimed by another worker
 		}
@@ -356,7 +418,12 @@ func claim(p, user string) (*Entry, error) {
 		return nil, err
 	}
 	e.State = Running
-	e.Worker = &Worker{Host: hostname(), PID: os.Getpid(), User: user, Claimed: time.Now().UTC().Format(time.RFC3339)}
+	if lease <= 0 {
+		lease = DefaultLease
+	}
+	at := now().UTC().Format(time.RFC3339)
+	e.Worker = &Worker{Host: hostname(), PID: os.Getpid(), User: user, Claimed: at,
+		Start: proc.Start(os.Getpid()), Heartbeat: at, Lease: lease.String()}
 	if err := write(e); err != nil {
 		return nil, err
 	}
@@ -373,7 +440,7 @@ func Consume(root string, e *Entry, r Result) error {
 		return err
 	}
 	dst := filepath.Join(DoneDir(root), base(e)+".yml")
-	if err := os.Rename(e.Path, dst); err != nil {
+	if err := fsutil.Rename(e.Path, dst); err != nil {
 		return err
 	}
 	e.Path, e.State = dst, Done

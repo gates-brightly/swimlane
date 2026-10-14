@@ -336,4 +336,8 @@ Test files are under `internal/`. "Pending" names the task in
 | A chain truncated below a checkpoint, or replaced, fails `anchored`; a tampered checkpoint fails its signature. | `TestCheckpointCatchesTruncationAndReplacement` (chain), `TestVerifyAnchoredLevel` (e2e/verifylevels_test.go) |
 | Anchors only go forward: a file anchor refuses a diverged export, the hub a seq that goes back. | `TestFileAnchorAppendsOnly` (anchor), `TestHubCheckpointsGoForward` (hub) |
 | An approval that didn't meet its `lookup.yml` rule fails `authorized`. | `TestVerifyAuthorizedLevel` (e2e/verifylevels_test.go) |
-| A crash never leaves a lane, claim or record half-written. | Pending T6, T7 |
+| `status.yml`, queue entries, approvals files and kept scripts are replaced atomically and synced to disk with their directory; chain appends are synced. | `TestStateWritesAreDurable`, `TestWriteAtomic` (fsutil) |
+| Of several processes claiming one lane at once, exactly one wins; a pid reused by another process doesn't hold a lane. | `TestClaimRace`, `TestRunningChecksStartTime` (lane) |
+| A lane killed mid-step is never reported passed nor rerun on its own: the next `swim run` or `swim watch` records the round as interrupted, in the log and the chain. | `TestReapDeadLane` (e2e/recovery_test.go), `TestReapDead` (launcher) |
+| A queue claim is orphaned once its worker is gone: by pid and start time on its host, by an expired heartbeat lease from another. | `TestWorkerLease` (queue) |
+| A crash at any chosen point (mid-step, mid-claim, mid-write, mid-append) leaves state that a restart reads correctly. | Pending T7 |

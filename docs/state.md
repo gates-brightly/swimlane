@@ -36,7 +36,7 @@ stateDiagram-v2
   running --> passed: summary, exit 0
   running --> failed: a failed step or gate, any other exit
   running --> interrupted: Ctrl-C, SIGTERM, exit 129/130/137/143
-  running --> interrupted: process gone, then swim status --rebuild
+  running --> interrupted: process gone, then swim run, swim watch or swim status --rebuild
   passed --> idle: swim archive
   failed --> idle: swim archive
   skipped --> idle: swim archive
@@ -52,18 +52,30 @@ stateDiagram-v2
 | `running` | Its process is running the round. | `lane_init` (in the lane's process) | `summary`, or the process exits. |
 | `passed` | The round ended with exit 0. | `summary`, or the launcher if the process died before `lane_init` | The lane runs again, or is archived. |
 | `failed` | A step or gate failed, the round exited non-zero, or swim refused to start it (a blocked command, no runner). | `summary`, or the launcher | As `passed`. |
-| `interrupted` | Stopped by a signal, or its process vanished. | `summary` on exit 129, 130, 137 or 143; `swim status --rebuild` for a lane with no live process | As `passed`. |
+| `interrupted` | Stopped by a signal, or its process vanished. | `summary` on exit 129, 130, 137 or 143; for a lane with no live process, the next `swim run` (`all`, `ci`) or `swim watch` (`ReapDead`, exit 137), or `swim status --rebuild` | As `passed`. |
 | `skipped` | Never started: a dependency failed or was skipped, the run was interrupted before it started, or a queued script or env changed since it was queued. | The launcher | As `passed`. |
 
 Notes:
 
 - **A lane run directly** (`bash lane.N.sh`) goes from whatever it was
   straight to `running`.
+- **A lane is claimed** by `lane_init` under a lock on
+  `.swim/laneN.claim`, which records the process's pid and start time;
+  `.swim/laneN.pid` holds the bare pid. Of two processes starting one lane
+  at once, exactly one gets it. A lane counts as running only while that
+  pid is alive with that start time, so a pid the kernel has since given
+  to another process doesn't hold the lane (a pid file from an older swim,
+  with no matching claim, falls back to the pid alone).
 - **A lane whose process died** without a trap (a closed terminal,
-  SIGKILL) stays `running` in the file. `swim status` shows it as
-  `running?`; `swim status --rebuild` reads the log and records it as
-  `interrupted`. A new run of the lane isn't blocked: its dead pid file
-  doesn't count. See [recovery](recovery.md#a-lane-stuck-running).
+  SIGKILL, a crash, a reboot) stays `running` in the file, and `swim
+  status` shows it as `running?`, until the next `swim run`, `swim all`,
+  `swim ci` or `swim watch` starts: each first ends such rounds as the
+  launcher ends a killed lane's (`launcher.ReapDead`): the cut-off step
+  is recovered as failed, the log gets `END INTERRUPTED` (exit 137), the
+  chain a round entry, and the lane is `interrupted`. A matrix or jobs
+  lane is ended once its swim run and every cell are gone. `swim status
+  --rebuild` does the same for status alone. A new run of the lane isn't
+  blocked either way. See [recovery](recovery.md#a-lane-stuck-running).
 - **Passed lanes** are left alone by `swim all` (unless `--rerun`, or an
   Always lane with `Rerun-Children: yes` above them). `swim run N` reruns
   them.
@@ -118,8 +130,8 @@ stateDiagram-v2
 | State | File | Entered by | Notes |
 |---|---|---|---|
 | `queued` | `NNNN-q-<utc>-<hex>.queue` | `swim queue add`, `swim watch --approved`, `swim queue requeue` | Requeue gives a new sequence number, at the back of the queue. |
-| `running` | `NNNN-....running`, with `worker:` (host, pid, user) | `swim watch` claims it (`ClaimNext`, or `r` on a batch in the watch screen) | Of two workers racing, exactly one rename succeeds. |
-| `orphaned` | the same `.running` file | Not written: `swim queue` derives it when the worker's pid on this host is gone | A claim from another host is assumed alive (T6, pending). Never run again on its own. |
+| `running` | `NNNN-....running`, with `worker:` (host, pid and start time, user, heartbeat, lease) | `swim watch` claims it (`ClaimNext`, or `r` on a batch in the watch screen) | Of two workers racing, exactly one rename succeeds. The worker renews `heartbeat` every third of its `lease` (`queue_lease`, default 2m) while the batch runs. |
+| `orphaned` | the same `.running` file | Not written: `swim queue` derives it. On the worker's host: its pid is gone, or now another process (start time). From another host: its heartbeat is older than its lease | A claim by an older worker (no heartbeat) can't be judged from another host and stays `running`. Never run again on its own. |
 | `done` | `done/NNNN-....yml`, with `result:` | `Consume`, when the batch ends: passed, failed or interrupted alike | A half-run batch is never retried on its own. |
 | removed | none | `swim queue rm` | Refused while `running`. |
 

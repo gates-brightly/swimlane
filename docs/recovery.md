@@ -33,11 +33,16 @@ swim queue rm ID            # or drop it
 requeued lane whose script or env files changed since it was queued is
 skipped, as always.
 
-A batch claimed by a worker on **another machine** shows as `running`, not
-orphaned: swim can't see that machine's processes (T6, pending). Check that
-worker; `swim queue requeue` and `swim queue rm` refuse a running entry, so
-run them on the host that claimed it (`swim queue show ID` names it), where
-the entry shows as orphaned once its worker is gone.
+A batch claimed by a worker on **another machine** (a queue on a shared
+filesystem) can't be checked by its process. Instead, the worker renews a
+heartbeat in the entry every third of its lease (`queue_lease`, default
+2m) while the batch runs, and the entry shows as orphaned once the
+heartbeat is older than the lease. Before you requeue it, make sure that
+worker really stopped (a hung machine's batch may still be changing
+things); `swim queue show ID` names its host and pid. A claim by an older
+swim has no heartbeat and shows as `running?`: check that worker, and run
+`swim queue requeue` or `rm` on the host that claimed it, where the entry
+shows as orphaned once its worker is gone.
 
 ## An interrupted round
 
@@ -64,11 +69,20 @@ again with `swim queue requeue ID`.
 
 **You see:** `swim status` shows `running?` (`process gone`), or a lane says
 `running` long after anything could be running. `swim doctor` reports
-`[stale-pid]`.
+`[stale-pid]`. Or `swim run` / `swim watch` starts with
+`swim N: its process died without ending its round (pid P); recorded it
+as interrupted`.
 
 **Why:** the lane's process died without running its traps: a closed
 terminal, SIGKILL, a crash, a reboot. `.swim/status.yml` still says
-`running`, and `.swim/laneN.pid` names a process that's gone.
+`running`, and `.swim/laneN.pid` names a process that's gone (or a pid the
+kernel has since given to another process: the start time in
+`.swim/laneN.claim` tells them apart).
+
+The next `swim run`, `swim all`, `swim ci` or `swim watch` ends such a
+round by itself: the step that was cut off is recorded as failed, the log
+gets `END INTERRUPTED` (exit 137) and the chain a round entry. It never
+reruns anything. Read the log before you run the lane again.
 
 **Fix:**
 
@@ -80,8 +94,9 @@ swim log N                  # what it did before it died
 swim run N                  # rerun it when you're sure it's safe
 ```
 
-A dead pid file doesn't block a rerun on its own; the rebuild just makes
-`swim status` (and the agents reading it) tell the truth.
+A dead pid file doesn't block a rerun on its own; the rebuild (or the
+next run) just makes `swim status` (and the agents reading it) tell the
+truth.
 
 ## `swim verify` fails
 

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/proc"
 )
 
 // A step runs in its own process group, so a time limit (or an interrupt)
@@ -29,7 +31,7 @@ func GroupPath(logPath string) string { return logPath + GroupSuffix }
 // recordGroup writes the step's group record; a start time that can't be
 // read is "-" (the group is then killed only once its leader is gone).
 func recordGroup(logPath string, pid int) {
-	st, err := startTime(pid)
+	st, err := proc.StartTime(pid)
 	if err != nil {
 		st = "-"
 	}
@@ -76,7 +78,7 @@ func KillRecorded(logPath string) bool {
 	if err != nil || pid <= 1 {
 		return false
 	}
-	if st, err := startTime(pid); err == nil {
+	if st, err := proc.StartTime(pid); err == nil {
 		if f[1] == "-" || st != f[1] {
 			return false // the pid now belongs to another process
 		}

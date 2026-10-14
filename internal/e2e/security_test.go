@@ -419,11 +419,9 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 			gap(t, "T1, T2")
 		}},
 		{"a chain record over 256 KiB, then another append", "T24", TestChainLargeEntryAndRepair},
-		{"a worker killed mid-step: no false success, no silent re-run", "T6, T7", func(t *testing.T) {
-			gap(t, "T6, T7")
-		}},
-		{"a worker killed mid-chain-append: the chain is repairable", "T6, T7", func(t *testing.T) {
-			gap(t, "T6, T7")
+		{"a worker killed mid-step: no false success, no silent re-run", "T6", TestReapDeadLane},
+		{"a worker killed mid-chain-append: the chain is repairable", "T7", func(t *testing.T) {
+			gap(t, "T7")
 		}},
 		{"escape sequences in a guard description are shown escaped", "T26", TestUntrustedTextIsSafe},
 		{"-y is loud: swim status, the round's chain entry and swim history name what it approved", "T5", TestAutoApprove},
