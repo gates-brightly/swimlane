@@ -765,7 +765,7 @@ func cmdMark(args []string) error {
 		}
 		if err := record(root, cfg, chain.Entry{Type: "approve", Run: os.Getenv("SWIM_RUN"), Lane: n, Job: os.Getenv("SWIM_JOB"),
 			Script: scriptSHA(root, n), Guard: guardFlag(detail), Action: label, Method: method, Statement: detail,
-			Approvers: []chain.Approver{approver}}); err != nil {
+			Approvers: []chain.Approver{approver}, Lookup: lookupSHA(root)}); err != nil {
 			return err
 		}
 	}

@@ -63,6 +63,9 @@ type Entry struct {
 	Method    string     `json:"method,omitempty"`    // signature | prompt | flag | auto | queue
 	Statement string     `json:"statement,omitempty"` // what a signature's approvers signed
 	Approvers []Approver `json:"approvers,omitempty"`
+	// Lookup is the SHA-256 of lookup.yml when the guard was approved, so
+	// swim verify knows whether today's rules are the ones it met.
+	Lookup string `json:"lookup_sha256,omitempty"`
 	// Observed are the round's Observe: facts when the guard was approved.
 	Observed map[string]string `json:"observed,omitempty"`
 

@@ -740,6 +740,14 @@ swim revoke --auto USER [--key K]
                 bad signature, or signed by a key outside trust.yml, is
                 ignored with a warning. Says nothing about entries after
                 the checkpoint. n/a: no anchors, or no checkpoint yet.
+    authorized  every approval recorded met lookup.yml's rule for its
+                guard: a signed approval's approvers, named by lookup.yml,
+                are enough of the right group; a prompt, flag, -y or queue
+                approval only fails a rule with signed: true (swim keys
+                --help). A failure under the lookup.yml the approval was
+                recorded under (lookup_sha256) says no; under a lookup.yml
+                that changed since, it's a warning (partial). n/a: no
+                lookup.yml, or no approvals.
   Above the levels: each approvals file under approvals/ checked event by
   event (and whether a script approval is stale: the script, or something
   else its manifest pins, changed since), then notes, warnings and what's
@@ -836,9 +844,13 @@ swim keys pin
         - guards: [FIN_ALLOW_*]          # globs; the first matching rule applies
           group: platform-admin
           count: 2                       # distinct users
+          signed: true                   # only signed approvals meet it
         - group: ops                     # no guards: every other guard
   With no rule a signature from any listed user approves; with no
   lookup.yml signatures don't count at all (their keys can't be named).
+  signed: true makes a prompt, FLAG=1, -y or queue approval of the rule's
+  guards fail swim verify's authorized level (the guard still accepts it:
+  the operator's call at the time, recorded as such).
 
   trust.yml (repo root, committed) lists the keys swim verify trusts to
   sign the chain: the runners' and the approvers'. lookup.yml's keys must
@@ -1106,8 +1118,10 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     script 3, log 2, state 2   execution manifests: chain entries, signed
                                approvals and queued batches name the
                                manifest they ran or approved
-                               (manifest_sha256), which a swim of state 1
-                               can't verify; approvals signed by a state 1
+                               (manifest_sha256), and approve entries the
+                               lookup.yml in force (lookup_sha256), which
+                               a swim of state 1 can't verify; approvals
+                               signed by a state 1
                                swim still count (script hash alone)
     script 3, log 2, state 1   since 0.20261014.1; the formats of swim 7.20261013
 

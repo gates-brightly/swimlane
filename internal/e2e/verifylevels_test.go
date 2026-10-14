@@ -128,3 +128,40 @@ func TestVerifyAnchoredLevel(t *testing.T) {
 		t.Errorf("verify --against of a new chain: exit %d\n%s", code, out)
 	}
 }
+
+// authorized: an approval that didn't meet lookup.yml's rule for its guard
+// fails the level, while lookup.yml is the one it was recorded under; once
+// lookup.yml has changed it's a warning.
+func TestVerifyAuthorizedLevel(t *testing.T) {
+	r := newRepo(t, "")
+	rules := "groups:\n  admins: [zach]\nrequire:\n  - guards: [FIN_ALLOW_*]\n    group: admins\n    signed: true\n"
+	keys := people(t, r, rules, "zach", "alice")
+	r.mustSwim("config", "signing", "auto")
+	r.mustSwim("config", "signing_key", keys["zach"])
+	dropLane(t, r)
+
+	// Signed by zach (admins): authorized.
+	r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"])
+	r.mustSwim("run", "1")
+	contains(t, "signed", r.mustSwim("verify"), "authorized  yes", "1 approvals, each met its lookup.yml rule")
+
+	// FLAG=1 for a guard whose rule says signed: it runs, but it isn't
+	// authorized.
+	os.RemoveAll(filepath.Join(r.root, "approvals"))
+	r.swimEnv([]string{"FIN_ALLOW_DROP=1"}, "run", "1")
+	out, code := r.swim("verify")
+	if code != 1 || !strings.Contains(out, "authorized  no") || !strings.Contains(out, "approved by flag, but lookup.yml says FIN_ALLOW_DROP needs signed approvals") {
+		t.Fatalf("flag approval of a signed-only guard: exit %d\n%s", code, out)
+	}
+	y, _ := r.swim("verify", "--yaml")
+	contains(t, "yaml", y, `authorized: "no"`, `consistent: "yes"`)
+
+	// lookup.yml changed since: a warning, and partial.
+	lk, _ := os.ReadFile(filepath.Join(r.root, "lookup.yml"))
+	os.WriteFile(filepath.Join(r.root, "lookup.yml"), append(lk, []byte("# reviewed\n")...), 0o644)
+	out = r.mustSwim("verify")
+	contains(t, "changed lookup.yml", out, "authorized  partial", "it was approved under another")
+	if out, code := r.swim("verify", "--strict"); code != 1 {
+		t.Errorf("--strict with authorized partial: exit %d\n%s", code, out)
+	}
+}

@@ -17,6 +17,7 @@
 //	  - guards: [FIN_ALLOW_*]      # globs; first matching rule applies
 //	    group: platform-admin
 //	    count: 2                   # distinct users from the group
+//	    signed: true               # only signed approvals meet it (swim verify)
 //	  - group: ops                 # no guards: every other guard
 package lookup
 
@@ -51,6 +52,10 @@ type Rule struct {
 	// approve with evidence steps) count, and only while it still matches.
 	// Not checked for batches run by swim watch.
 	Evidence bool `yaml:"evidence,omitempty"`
+	// Signed: only signed approvals meet the rule. A prompt, FLAG=1, -y or
+	// queue approval of one of its guards still runs, but swim verify's
+	// authorized level fails it.
+	Signed bool `yaml:"signed,omitempty"`
 }
 
 // Lookup is lookup.yml.

@@ -168,7 +168,7 @@ func cmdApproveHook(args []string) error {
 					return err
 				}
 				if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Manifest: man, Guard: flag, Action: desc,
-					Method: method, Approvers: approvers, Evidence: evCovered, Observed: facts}); err != nil {
+					Method: method, Approvers: approvers, Evidence: evCovered, Observed: facts, Lookup: lookupSHA(root)}); err != nil {
 					return err
 				}
 				history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", " + method + ": " + strings.Join(d.Users, ", ") + ")"})
@@ -271,7 +271,7 @@ func cmdApproveHook(args []string) error {
 		approver.Key = k.Public // the operator at this terminal: the runner's key
 	}
 	if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Manifest: man, Guard: flag, Action: desc,
-		Method: method, Statement: how, Approvers: []chain.Approver{approver}, Observed: was}); err != nil {
+		Method: method, Statement: how, Approvers: []chain.Approver{approver}, Observed: was, Lookup: lookupSHA(root)}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", by " + by + ")"})

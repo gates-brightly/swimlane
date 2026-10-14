@@ -46,7 +46,9 @@ const Script = 3
 //	1  the state files as of swim 7.20261013
 //	2  execution manifests: chain entries, signed approvals and queued
 //	   batches name manifest_sha256 (a swim reading state 1 can't verify
-//	   them), status records it, and runs stage under .swim/runs/<run>/
+//	   them), approve entries the lookup.yml they were checked under
+//	   (lookup_sha256), status records it, and runs stage under
+//	   .swim/runs/<run>/
 const State = 2
 
 // The lock (version.Check) compares a repo's pinned syntaxes with these.

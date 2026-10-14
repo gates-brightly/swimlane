@@ -90,6 +90,12 @@ To cut a release:
     (new `PUT/GET /api/workers/{id}/checkpoints`; the hub refuses a seq
     that doesn't go forward). Entries removed from the end, or a chain
     replaced wholesale, after a checkpoint left the machine fail the level.
+  - **authorized:** every approval recorded met `lookup.yml`'s rule for
+    its guard. Approve entries now record the `lookup.yml` they were made
+    under (`lookup_sha256`); a failure under that same file is an error,
+    under a `lookup.yml` that changed since a warning. A rule with the new
+    `signed: true` fails prompt, `FLAG=1`, `-y` and queue approvals of its
+    guards (they still run; verify reports them).
   - **`swim chain export --to file:/path`** copies the entries the
     destination doesn't hold yet (refusing if the chain no longer starts
     with them), and `swim verify --against DEST` checks against it, so a

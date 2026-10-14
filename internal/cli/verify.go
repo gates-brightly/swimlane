@@ -68,6 +68,8 @@ type verifier struct {
 //	anchored    the chain still holds the head of the newest checkpoint at
 //	            each anchor (chain_anchors, or --against DEST), and the
 //	            entries exported there
+//	authorized  every approval recorded met lookup.yml's rule for its guard
+//	            (signed ones: by enough of the right people)
 //
 // Exits 1 when a level fails; --strict also when one can't be checked
 // (n/a), on unsigned entries and on any warning.
@@ -112,6 +114,7 @@ func cmdVerify(args []string) error {
 		v.consistent(links),
 		v.trusted(links, or(pinFlag, os.Getenv(trust.PinEnv))),
 		v.anchored(links, against),
+		v.authorized(links),
 	}
 
 	failed := len(v.bad) > 0
@@ -303,6 +306,69 @@ func (v *verifier) anchored(links []chain.Link, against string) level {
 	return level{name, levelNA, "no checkpoint at " + strings.Join(specs, ", ") + " yet (swim chain checkpoint)"}
 }
 
+// signedMethods are how an approval is recorded when signatures (approvals
+// files) approved it.
+var signedMethods = map[string]bool{"signature": true, "standing": true, "signature+standing": true}
+
+// authorized checks each approve entry against lookup.yml's rule for its
+// guard: a signed approval's approvers (named by their keys) must meet
+// it; a prompt, flag, -y or queue approval fails only a rule that says
+// signed: true. A failure under the lookup.yml the entry recorded
+// (lookup_sha256) is an error; under one that has changed since, only a
+// warning: the rules it met then aren't known.
+func (v *verifier) authorized(links []chain.Link) level {
+	const name = "authorized"
+	if v.lk.Path == "" {
+		return level{name, levelNA, "no lookup.yml: no rules to check approvals against"}
+	}
+	current := lookupSHA(v.root)
+	total, failed, unsure := 0, 0, 0
+	for _, l := range links {
+		if l.Type != "approve" {
+			continue
+		}
+		total++
+		rule := v.lk.RuleFor(l.Guard)
+		why := ""
+		if signedMethods[l.Method] {
+			var users []string
+			for _, ap := range l.Approvers {
+				if ap.Sig == "" {
+					continue
+				}
+				if u, ok := v.lk.Who(ap.Key); ok {
+					users = append(users, u)
+				}
+			}
+			if ok, need := v.lk.Satisfied(rule, users); !ok {
+				why = need
+			}
+		} else if rule.Signed {
+			why = fmt.Sprintf("approved by %s, but lookup.yml says %s needs signed approvals", or(l.Method, "an unknown method"), l.Guard)
+		}
+		if why == "" {
+			continue
+		}
+		msg := fmt.Sprintf("entry #%d: %s (swim %d, run %s): %s", l.Seq, l.Guard, l.Lane, l.Run, why)
+		if l.Lookup != "" && l.Lookup == current {
+			failed++
+			v.bad = append(v.bad, msg)
+		} else {
+			unsure++
+			v.warn = append(v.warn, msg+" (under today's lookup.yml; it was approved under another)")
+		}
+	}
+	switch {
+	case total == 0:
+		return level{name, levelNA, "no approvals recorded"}
+	case failed > 0:
+		return level{name, levelNo, fmt.Sprintf("%d of %d approvals didn't meet their lookup.yml rule", failed, total)}
+	case unsure > 0:
+		return level{name, levelPartial, fmt.Sprintf("%d approvals; %d don't meet today's lookup.yml, which changed since they were recorded", total, unsure)}
+	}
+	return level{name, levelYes, fmt.Sprintf("%d approvals, each met its lookup.yml rule", total)}
+}
+
 // note is what the levels together don't prove.
 func (v *verifier) note(levels []level) string {
 	res := map[string]string{}
@@ -360,6 +426,7 @@ type verifyDoc struct {
 	Consistent string            `yaml:"consistent"`
 	Trusted    string            `yaml:"trusted"`
 	Anchored   string            `yaml:"anchored"`
+	Authorized string            `yaml:"authorized"`
 	Details    map[string]string `yaml:"details"` // level -> its line
 	Note       string            `yaml:"note"`
 	Broken     []string          `yaml:"broken"`
@@ -381,6 +448,8 @@ func (v *verifier) writeYAML(links []chain.Link, levels []level, ok bool) error 
 			d.Trusted = l.Result
 		case "anchored":
 			d.Anchored = l.Result
+		case "authorized":
+			d.Authorized = l.Result
 		}
 	}
 	enc := yaml.NewEncoder(os.Stdout)
