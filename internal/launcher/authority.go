@@ -5,6 +5,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,10 +131,19 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	if ask == nil || o.Cfg.ApprovalMode() == config.ApprovalsFlags {
 		return approval.Response{Dry: true, Why: r.Why, Warns: r.Warns, Job: req.Job}
 	}
+	req.Script, req.Run, req.Rules = entry.Script, o.RunID, a.snap.Lookup
 	resp := ask(req, cancel)
 	resp.Job, resp.Observed, resp.Warns = req.Job, req.Observed, r.Warns
 	if !resp.Approved {
 		return resp
+	}
+	if resp.Hub != "" {
+		hr, why := a.hubAnswer(req, resp)
+		if why != "" {
+			a.refused(o, approval.Caller{Lane: req.Lane, Job: req.Job}, req, why)
+			return approval.Response{Dry: true, Why: why, Warns: r.Warns, Job: req.Job}
+		}
+		return grant(resp, hr)
 	}
 	by := or(resp.By, operator())
 	how := "approved at the prompt by " + by
@@ -152,6 +162,56 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	}
 	return grant(resp, authority.Result{How: how, History: req.RawDesc + "  (" + req.Flag + ", by " + by + ")",
 		Entry: chain.Entry{Method: method, Statement: how, Approvers: []chain.Approver{approver}}})
+}
+
+// hubAnswer checks an approval that came through the hub against the
+// run's own rules (lookup.yml as the run started), whatever the asker
+// concluded: signed answers must come from listed keys, over this
+// question, and meet the guard's rule; a button click counts only where no
+// require: rule names the guard and it needs no evidence. It returns the
+// decision to record, or why it doesn't count.
+func (a *runAuthority) hubAnswer(req approval.Request, resp approval.Response) (authority.Result, string) {
+	lk := a.snap.Lookup
+	if lk == nil || lk.Path == "" {
+		return authority.Result{}, "an answer through the hub, but no lookup.yml to check it against"
+	}
+	rule := lk.RuleFor(req.Flag)
+	switch resp.Hub {
+	case approval.HubSigned:
+		var users, names []string
+		var approvers []chain.Approver
+		for _, sa := range resp.Signed {
+			u, ok := lk.Who(sa.Key)
+			if !ok || u != sa.User || approval.StatementField(sa.Statement, "request") != req.ID ||
+				approval.StatementField(sa.Statement, "flag") != req.Flag || approval.StatementField(sa.Statement, "decision") != approval.Approve {
+				return authority.Result{}, "a signed answer through the hub doesn't match this question or lookup.yml"
+			}
+			users = append(users, u)
+			names = append(names, lk.Describe(u))
+			approvers = append(approvers, chain.Approver{Name: u, Key: sa.Key, Statement: sa.Statement, SignedAt: sa.At, Sig: sa.Sig})
+		}
+		if ok, need := lk.Satisfied(rule, users); !ok {
+			return authority.Result{}, "the signed answers through the hub aren't enough: approval " + need
+		}
+		how := "approved through the hub, signed by " + strings.Join(names, ", ")
+		st := ""
+		if len(resp.Signed) > 0 {
+			st = resp.Signed[0].Statement
+		}
+		return authority.Result{How: how, History: req.RawDesc + "  (" + req.Flag + ", hub-signed: " + strings.Join(users, ", ") + ")",
+			Entry: chain.Entry{Method: approval.HubSigned, Statement: st, Approvers: approvers}}, ""
+	case approval.HubButton:
+		switch _, listed := lk.Users[resp.By]; {
+		case !listed:
+			return authority.Result{}, "hub user " + resp.By + " isn't in lookup.yml"
+		case lk.Explicit(req.Flag) || rule.Evidence || req.EvidenceRequired:
+			return authority.Result{}, "a hub button click doesn't count for " + req.Flag + ": lookup.yml's rule for it needs signed answers"
+		}
+		how := "approved through the hub by " + lk.Describe(resp.By) + " (button, unsigned)"
+		return authority.Result{How: how, History: req.RawDesc + "  (" + req.Flag + ", hub-button: " + resp.By + ")",
+			Entry: chain.Entry{Method: approval.HubButton, Statement: how + "; request " + req.ID, Approvers: []chain.Approver{{Name: resp.By}}}}, ""
+	}
+	return authority.Result{}, "an answer through the hub of an unknown kind (" + resp.Hub + ")"
 }
 
 // operator is the operator as an approver, with the runner's key.

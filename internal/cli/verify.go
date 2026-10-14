@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/anchor"
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lookup"
@@ -307,13 +308,14 @@ func (v *verifier) anchored(links []chain.Link, against string) level {
 }
 
 // signedMethods are how an approval is recorded when signatures (approvals
-// files) approved it.
-var signedMethods = map[string]bool{"signature": true, "standing": true, "signature+standing": true}
+// files, or answers signed through the hub) approved it.
+var signedMethods = map[string]bool{"signature": true, "standing": true, "signature+standing": true, approval.HubSigned: true}
 
 // authorized checks each approve entry against lookup.yml's rule for its
 // guard: a signed approval's approvers (named by their keys) must meet
 // it; a prompt, flag, -y or queue approval fails only a rule that says
-// signed: true. A failure under the lookup.yml the entry recorded
+// signed: true, and a hub button click any require: rule for its guard (it
+// counts only where none names it). A failure under the lookup.yml the entry recorded
 // (lookup_sha256) is an error; under one that has changed since, only a
 // warning: the rules it met then aren't known.
 func (v *verifier) authorized(links []chain.Link) level {
@@ -345,6 +347,8 @@ func (v *verifier) authorized(links []chain.Link) level {
 			}
 		} else if rule.Signed {
 			why = fmt.Sprintf("approved by %s, but lookup.yml says %s needs signed approvals", or(l.Method, "an unknown method"), l.Guard)
+		} else if l.Method == approval.HubButton && v.lk.Explicit(l.Guard) {
+			why = fmt.Sprintf("approved by a hub button click, but lookup.yml has a require: rule for %s (only signed answers count)", l.Guard)
 		}
 		if why == "" {
 			continue

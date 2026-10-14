@@ -100,7 +100,7 @@ func hubAdmin(url, token string) (*hub.Admin, string, error) {
 }
 
 // hubWorkerRef finds a worker by id or name.
-func hubWorkerRef(a *hub.Admin, ref string) (hub.View, error) {
+func hubWorkerRef(a interface{ Workers() ([]hub.View, error) }, ref string) (hub.View, error) {
 	ws, err := a.Workers()
 	if err != nil {
 		return hub.View{}, err

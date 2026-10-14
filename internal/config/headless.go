@@ -11,9 +11,10 @@ import (
 // watch --headless) in this repo accepts from its hub. Only the committed
 // swim.yml may set it, so changing it takes a commit, not hub access.
 type Headless struct {
-	// Approvals is how a guard waiting under --headless may be answered
+	// Approvals is how a guard waiting under --headless may be approved
 	// through the hub: signed (the default: an approver's SSH signature) or
-	// hub (a button click by a hub user). Used from stage H3.
+	// hub (also a button click by a hub user listed in lookup.yml, for
+	// guards no require: rule names).
 	Approvals string `yaml:"approvals,omitempty"`
 	// Allow are the hub commands this repo accepts (default
 	// HeadlessDefaultAllow; run must be listed to be allowed).
@@ -25,7 +26,7 @@ type Headless struct {
 	// carried out (default 10m; interrupt is capped at 2m too).
 	CommandTTL string `yaml:"command_ttl,omitempty"`
 	// AnswerTimeout is how long a guard waits for an answer through the hub
-	// (default 30m; H3).
+	// (default 30m); no answer by then is a decline.
 	AnswerTimeout string `yaml:"answer_timeout,omitempty"`
 }
 

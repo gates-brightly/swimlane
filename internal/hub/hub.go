@@ -19,6 +19,7 @@
 //	GET    /api/workers/{id}/checkpoints the worker or admin: its checkpoints
 //	GET    /                            the dashboard
 //	GET    /w/{id}                      one worker (with controls, for a user logged in)
+//	GET    /w/{id}/answer/{req}         how to sign an answer to a guard waiting there
 //
 // Users and commands (users.go, commands.go, logs.go):
 //
@@ -119,6 +120,9 @@ type Snapshot struct {
 	// Headless is set when the worker runs with no terminal (swim watch
 	// --headless): nobody is at it to answer or interrupt.
 	Headless *HeadlessInfo `json:"headless,omitempty"`
+	// Waiting are the guards a headless worker waits on for an answer
+	// through the hub (answers.go).
+	Waiting []PendingApproval `json:"pending,omitempty"`
 }
 
 // HeadlessInfo is how a headless worker runs.
@@ -172,6 +176,9 @@ func (s *Snapshot) Sanitize() {
 	if h := s.Headless; h != nil {
 		h.Mode, h.Since = ui.Safe(h.Mode), ui.Safe(h.Since)
 		h.Allow = safeAll(h.Allow)
+	}
+	for i := range s.Waiting {
+		s.Waiting[i].sanitize()
 	}
 }
 

@@ -229,6 +229,24 @@ func (l *Lookup) GroupsOf(user string) []string {
 // user in lookup.yml.
 func (l *Lookup) RuleFor(flag string) Rule { return MatchRule(l.Require, flag) }
 
+// Explicit reports whether a require: rule names flag (by a glob, or a
+// rule without globs that covers every guard): the repo said who must
+// approve it, so only signed answers count for it, never a hub user's
+// button click.
+func (l *Lookup) Explicit(flag string) bool {
+	for _, r := range l.Require {
+		if len(r.Guards) == 0 {
+			return true
+		}
+		for _, g := range r.Guards {
+			if ok, _ := filepath.Match(g, flag); ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // MatchRule is the rule in rules that flag must meet (see RuleFor).
 func MatchRule(rules []Rule, flag string) Rule {
 	for _, r := range rules {
