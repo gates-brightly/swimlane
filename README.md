@@ -1,5 +1,7 @@
 # swim
 
+[![test](https://github.com/gates-brightly/swimlane/actions/workflows/test.yml/badge.svg)](https://github.com/gates-brightly/swimlane/actions/workflows/test.yml)
+
 **Sane AI ops.**
 
 Run AI-written operational changes safely, with a human in the loop and a
@@ -30,6 +32,70 @@ swim is a flywheel for AI-assisted operations work: every round leaves a
 log, a status and an archive behind, so the next round, session or person
 picks up where the last one stopped instead of starting over.
 
+### Quickstart
+
+Five minutes, no cloud credentials: two harmless lanes in a scratch repo
+([install](#install) swim first). Paste each block into a shell.
+
+<!-- quickstart -->
+```sh
+mkdir swim-quickstart && cd swim-quickstart && git init -q
+swim init                         # config entry, .gitignore block, .swim/status.yml
+swim new 1 "Say hello"            # writes lane.1.sh from a template
+
+# Replace the template with one harmless step:
+cat > lane.1.sh <<'EOF'
+#!/usr/bin/env bash
+# swim: syntax 2
+# Round: Say hello
+_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+lane_init 1
+
+stage check
+run "say hello" echo "hello from swim"
+
+summary
+EOF
+
+swim plan                         # what would run, without running it
+swim run 1 --plain                # run it
+swim log 1                        # the round, step by step
+swim verify                       # check the chain of custody (signed if you have ~/.ssh/id_ed25519)
+```
+
+A destructive step goes behind a guard, and is a dry run until a person
+approves it:
+
+```sh
+swim new 2 "Write hello.txt"
+cat > lane.2.sh <<'EOF'
+#!/usr/bin/env bash
+# swim: syntax 2
+# Round: Write hello.txt
+_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+lane_init 2
+
+stage check
+run "nothing written yet" ls
+
+stage change
+if guard HELLO_ALLOW_WRITE "write hello.txt (quickstart)"; then
+  run "write hello.txt" bash -c 'echo hello > hello.txt'
+fi
+
+summary
+EOF
+
+swim run 2 --plain --no-prompt             # SKIP: a dry run, nothing written
+HELLO_ALLOW_WRITE=1 swim run 2 --plain     # approved up front: the step runs
+cat hello.txt
+swim history --oneline                     # the chain: rounds and the flag's approval, newest first
+```
+<!-- /quickstart -->
+
+Without `--no-prompt` on a terminal, swim asks you instead: `swim 2
+requires human approval of task: write hello.txt (quickstart) Y/N [N]`.
+
 What you get:
 
 - **The AI writes, but never needs your access:** no production
@@ -53,17 +119,86 @@ What you get:
 - **The same rounds from a terminal, a queue, CI, or many machines,**
   watched from one dashboard.
 
+### What swim protects against
+
+Approval, signing and the chain prove **who decided what**. They don't make
+a script safe: an approved script does whatever it says, with the access of
+whoever runs it.
+
+- **In scope:** an AI that writes the work but holds no credentials; changes
+  that are dry runs until a person approves them; approvals bound to the
+  script's exact SHA-256, so an edit after approval voids it; a queued batch
+  pinned to its scripts; and a hash-linked, signed record of every approval
+  and round.
+- **Bypasses are recorded:** `FLAG=1`, `-y` and `swim watch --approved`
+  skip the question, and each leaves a record in the lane's log,
+  `.swim.log` and the chain.
+- **Out of scope:** a malicious or mistaken script that is approved and run
+  with broad credentials. Guards and lint are conventions, not a sandbox:
+  use scoped credentials and OS isolation for that.
+- **Not yet:** a script edited mid-run (T1), lanes forging their own
+  approvals (T3), and a chain truncated or re-signed wholesale (T8) are open
+  in [`tasks.md`](tasks.md).
+
+The details, and the test behind each claim, are in the
+[trust model](docs/trust-model.md).
+
+### How it fits together
+
+```mermaid
+flowchart TD
+  subgraph nocreds["No credentials"]
+    P["Planner (AI session)<br/>and its workers"]
+  end
+  subgraph repo["The repo"]
+    L["Lane scripts<br/>lane.N.sh, lanes.name.sh"]
+    K["lookup.yml (keys, rules)<br/>approvals/ (signed)"]
+    Q[".swim/queue/<br/>batches pinned to scripts"]
+  end
+  subgraph creds["Holds credentials"]
+    O["Operator<br/>swim run / swim all"]
+    W["Watch worker<br/>swim watch"]
+    X["Lane process<br/>runs as the operator or worker"]
+  end
+  subgraph record["The record"]
+    S[".swim/logs/, .swim/status.yml,<br/>.swim.log"]
+    C[".swim/chain.jsonl<br/>hash-linked, SSH-signed"]
+  end
+  H["swim hub<br/>read-only dashboard"]
+
+  P -->|writes| L
+  P -->|swim queue add| Q
+  L --> PL{{"swim plan / swim lint: checks<br/>swim run refuses blocked commands,<br/>cycles, set -e"}}
+  PL --> O
+  Q --> W
+  O --> LK{{"lock check<br/>.swim.lock syntaxes"}}
+  W --> LK
+  LK --> X
+  X --> G{{"guard: advisory, in the lane<br/>FLAG=1, signed approval, prompt, -y<br/>else a dry run"}}
+  K -.->|counted against rules| G
+  O -.->|answers prompts| G
+  X --> SH{{"git shim and step checks<br/>no git push / commit / pull"}}
+  X --> S
+  X --> C
+  S -->|swim log, swim status| P
+  W -.->|reports| H
+```
+
+Credentials live only with the operator and the worker; the guard runs
+inside the lane, so it is advisory. More in
+[the architecture](docs/architecture.md).
+
 The product brief is in [`swimlane.md`](swimlane.md). **AI agents** should
 start with `swim --help`: it is the full guide for planners and workers.
 
 ### Install
 
-swim is one Go binary (Go 1.27 or newer to build):
+swim is one Go binary (Go 1.27.1 or newer to build):
 
 ```sh
 go install github.com/gates-brightly/swimlane/cmd/swim@latest
 export PATH="$(go env GOPATH)/bin:$PATH"      # if ~/go/bin isn't on your PATH yet
-swim --version                                # e.g. swim 7.20261013
+swim --version                                # e.g. swim 0.20261014.1
 ```
 
 More install options are under [Install and versions](#install-and-versions).
@@ -848,6 +983,19 @@ they waited for.
 
 ## Reference
 
+### Docs
+
+- [Trust model](docs/trust-model.md): what swim protects against, what it
+  doesn't, and the test behind each claim.
+- [Architecture](docs/architecture.md): where credentials live and where
+  policy is enforced.
+- [State machines](docs/state.md): lane, job, queue entry, run record and
+  approval states.
+- [Recovery](docs/recovery.md): orphaned queue entries, stuck lanes, a
+  failing `swim verify`, a lost key, a lock mismatch.
+- [Compatibility](docs/compatibility.md): platforms, prerequisites,
+  versions and stability tiers.
+
 ### Commands
 
 | Command | What it does |
@@ -932,7 +1080,7 @@ CI runner with no config gets its settings.
 <a id="install-and-versions"></a>
 
 ```sh
-go install github.com/gates-brightly/swimlane/cmd/swim@latest     # or @v0.7.20261013 to pin
+go install github.com/gates-brightly/swimlane/cmd/swim@latest     # or @v0.20261014.1 to pin
 git clone git@github.com:gates-brightly/swimlane.git && cd swimlane && make install   # from a checkout
 make link / unlink    # symlink this checkout's bin/swim into ~/.local/bin
 make which            # every swim on your PATH, and which one runs
@@ -950,6 +1098,9 @@ swim changelog        # what's new in the version you're running (--since <old v
   log and state syntax the repo uses. Commit it. A swim with other syntaxes
   refuses to run lanes, and says whether to update swim or run `swim lock
   --upgrade`. Releases that change no syntax never touch it.
+- **Platforms and stability:** Linux and macOS, no Windows. What each
+  runtime needs, which outputs are stable, and how deprecations are
+  announced: [compatibility](docs/compatibility.md).
 
 ### Development
 
