@@ -1,6 +1,6 @@
 # Pre-approving lanes in the live view
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -34,7 +34,7 @@ swim 3 · Cut over billing-api · waiting on swim 2
   - A signed approval is meant for teammates elsewhere, not for the person
     already at the terminal.
 - **The view already does most of it.** `←`/`→` already select a lane, and
-  `y`/`n` already answer a lane that's asking (`internal/display/tui.go:194`).
+  `y`/`n` already answer a lane that's asking (`tui.key` in `internal/display/tui.go`).
   This extends `y`/`n` to lanes that haven't asked yet.
 
 ## Behaviour
@@ -108,7 +108,7 @@ swim 3 · Cut over billing-api · waiting on swim 2
     `actPreYes`, `actPreNo` and `actPreClear` with the lane number.
   - `LaneView` gains `Pre` (`approved`, `declined` or empty) and
     `KnownGuards` for the marks and the panel.
-- **Launcher (`internal/launcher/launcher.go:285`):**
+- **Launcher (`Run` in `internal/launcher/launcher.go`, at `approval.Listen`):**
   - The run keeps `pre map[int]preChoice{choice, scriptSHA, by, at}`, set
     from the display's actions.
   - The approval broker's handler checks `pre[req.Lane]` before
@@ -119,20 +119,27 @@ swim 3 · Cut over billing-api · waiting on swim 2
   approvals, so precedence is unchanged.
 - **Summary:** unused pre-approvals are listed.
 
-## Open questions
+## Open questions (answered)
 
-1. **Choosing per guard:** for a lane with several guards, select a guard
-   (`↑`/`↓` in the lane panel) and approve it alone? `↑`/`↓` currently
-   scroll there.
-2. **Single lane:** with one lane, the lane gets the terminal's stdin, so
-   there's no interactive view. Should `swim run 2 --preapprove` ask about
-   each known guard once, before starting?
-3. **A pre-approve-all key:** something like `Y` to pre-approve every
-   remaining lane? That's close to `-y`, but it's recorded per lane and
-   pinned to each script.
-4. **Running lanes before their guard:** allow pre-approving a lane that's
-   already running but hasn't reached its guard (as above), or only lanes
-   that haven't started?
+1. **Per guard:** no. A pre-answer covers all of a lane's known guards,
+   `↑`/`↓` keep scrolling, and per-guard choices are what `FLAG=1` and
+   signed approvals are for.
+2. **Single lane:** no `--preapprove`. A single lane asks at the terminal
+   anyway, which is the same answer with no delay.
+3. **Pre-approve all:** no `Y` key. It's too close to `-y`, and choosing per
+   lane is the point.
+4. **Running lanes:** allowed. A running lane that hasn't reached its guard
+   can be pre-answered, and the answer applies when it gets there.
+
+Decided while building:
+
+- **Evidence-bound guards:** these don't exist yet. When plan approvals
+  ship, a guard whose rule requires evidence will ignore pre-answers.
+- **Where the guards show:** the selected lane's guards and keys appear on
+  the divider under the panel, after any note. The line is cut at the
+  screen's width.
+- **Records:** `approval.Response` gains `Pre` and `At`, and the approve
+  hook records method `preapproved`.
 
 ## Testing
 

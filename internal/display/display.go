@@ -41,6 +41,7 @@ type Display struct {
 	// Approval questions (ask.go).
 	in          *os.File // the terminal to read answers from; nil if none
 	onInterrupt func()
+	onPre       func(lane int, choice string) string
 	askMu       sync.Mutex // line-mode questions go one at a time
 	asking      bool       // a line-mode question is on screen: lane lines are held
 	held        []string   // lines held while asking, printed after the answer
@@ -61,6 +62,10 @@ type Options struct {
 	// LogPath and LogLabel name lane n's log file, read by the lane view,
 	// and how it is shown (".swim/logs/agent3.log").
 	LogPath, LogLabel func(n int) string
+	// OnPre runs when the operator answers a lane's guards ahead of time in
+	// the interactive view: choice is "approved", "declined" or "" (clear).
+	// It returns what to tell them ("swim 3: pre-approved (2 guards)").
+	OnPre func(lane int, choice string) string
 	// OnInterrupt runs when Ctrl-C is typed in the interactive view (raw
 	// mode turns off the terminal's own signal). nil sends SIGINT to the
 	// terminal's foreground process group, as the terminal would have.
@@ -83,6 +88,7 @@ func New(o Options, views []LaneView) *Display {
 		d.in = o.In
 	}
 	d.onInterrupt = o.OnInterrupt
+	d.onPre = o.OnPre
 	if d.title == nil {
 		d.title = func(time.Time) string { return "swim" }
 	}

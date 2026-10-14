@@ -36,6 +36,8 @@ type Response struct {
 	Auto     bool   `json:"auto,omitempty"` // approved by -y, not at a prompt
 	Via      string `json:"via,omitempty"`  // what approved it when Auto ("swim run -y", "queue q-... -y")
 	Why      string `json:"why,omitempty"`  // for a decline without an answer: "the run is stopping", ...
+	Pre      bool   `json:"pre,omitempty"`  // answered ahead of time in the live view (pre-approved / pre-declined)
+	At       string `json:"at,omitempty"`   // when a pre-answer was given (hh:mm:ss)
 }
 
 // Asker asks the operator; it returns false when cancel closes first.

@@ -239,6 +239,9 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
+- **Pre-approve in the live view:** select a lane that hasn't asked yet
+  and press `y` (or `n`) to answer its guards ahead of time, then walk away.
+  The answer is pinned to the script and lasts this run only.
 - **Read-only preview:** `swim plan --check` runs every round's `snapshot`
   and `check` stages for real, stops where `change` would begin, and shows
   which gates pass today (`check PASS`, `stops at gate "..."`). Guards never

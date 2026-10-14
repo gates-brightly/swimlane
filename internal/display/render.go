@@ -47,8 +47,15 @@ type LaneView struct {
 	Stopping  string // while Running after a stop request: the step it is finishing
 	Approval  string // while Running and waiting for the operator to approve a guarded step
 	Message   string // while Running: the round's status message (swim msg), "migrating billing (7/25)"
-	Started   time.Time
-	Finished  time.Time
+	// Pre is the operator's answer, given ahead of time in the live view,
+	// to the lane's guards: "approved", "declined" or "". KnownGuards are
+	// the guards swim knows the lane has; UnknownGuards counts those named
+	// at run time (guard "$FLAG"), which can't be answered ahead.
+	Pre           string
+	KnownGuards   []string
+	UnknownGuards int
+	Started       time.Time
+	Finished      time.Time
 }
 
 // Active reports whether the lane is still queued, waiting or running.
@@ -324,6 +331,9 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 		if msg != "" {
 			line += "  " + p.Paint(ui.Mag, msg)
 		}
+		if mark, color := preMark(v); mark != "" {
+			line += "  " + p.Paint(color, mark)
+		}
 		lines = append(lines, line)
 	}
 	if more != "" {
@@ -425,4 +435,24 @@ func escEnd(s string, i int) int {
 		j++
 	}
 	return j
+}
+
+// preMark is a lane's pre-approval mark in the panel: ✓ pre-approved,
+// ✗ dry run, or ? N guards while it would still ask.
+func preMark(v LaneView) (string, string) {
+	switch {
+	case v.Pre == "approved":
+		return "✓ pre-approved", ui.Green
+	case v.Pre == "declined":
+		return "✗ dry run", ui.Yellow
+	case !(v.Active() || v.State == Starting):
+		return "", ""
+	case v.UnknownGuards > 0 && len(v.KnownGuards) == 0:
+		return fmt.Sprintf("? %d guard not known in advance", v.UnknownGuards), ui.Dim
+	case len(v.KnownGuards) == 1:
+		return "? 1 guard", ui.Dim
+	case len(v.KnownGuards) > 1:
+		return fmt.Sprintf("? %d guards", len(v.KnownGuards)), ui.Dim
+	}
+	return "", ""
 }

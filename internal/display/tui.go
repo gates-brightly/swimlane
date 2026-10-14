@@ -35,6 +35,11 @@ const (
 	actQuit
 	actYes // an approval question answered yes
 	actNo  // ... no (n, Enter, Esc)
+	// On a selected lane that isn't asking: answer its guards ahead of
+	// time (y), decline them ahead (n), or clear the answer (u).
+	actPreYes
+	actPreNo
+	actPreClear
 )
 
 type tui struct {
@@ -59,6 +64,7 @@ type tui struct {
 	pending    map[int][]string
 	pendOrder  []int
 	answerLane int // the lane the last actYes/actNo answers
+	preLane    int // the lane the last actPre* is for
 
 	// Last frame's size, so keys scroll by what's on screen.
 	viewH, cols int
@@ -203,6 +209,19 @@ func (t *tui) key(k Key, views []LaneView) action {
 			return actNo
 		}
 	}
+	if !t.asking() && t.laneN != 0 && k.Code == KeyRune {
+		switch k.Rune {
+		case 'y':
+			t.preLane = t.laneN
+			return actPreYes
+		case 'n':
+			t.preLane = t.laneN
+			return actPreNo
+		case 'u':
+			t.preLane = t.laneN
+			return actPreClear
+		}
+	}
 	v, h, w := t.cur(), t.viewH, t.cols
 	page := h - 1
 	if page < 1 {
@@ -341,7 +360,7 @@ func (t *tui) hints() string {
 		return "y approve  n decline  ← → lane  esc all"
 	}
 	if t.laneN != 0 {
-		return "← → lane  ↑ ↓ scroll  esc all  ? help"
+		return "← → lane  y/n pre-answer  esc all  ? help"
 	}
 	return "← → lane  ↑ ↓ scroll  f filter  ? help"
 }
@@ -355,6 +374,30 @@ func (t *tui) divider(views []LaneView) string {
 		parts = append(parts, fmt.Sprintf("swim %d", t.laneN))
 	} else {
 		parts = append(parts, "all lanes")
+	}
+	// What just happened, and the selected lane's guards, before the rest:
+	// the line is cut at the screen's width.
+	if t.note != "" {
+		parts = append(parts, t.note)
+	}
+	if t.laneN != 0 {
+		for _, lv := range views {
+			if lv.N != t.laneN || len(lv.KnownGuards) == 0 {
+				continue
+			}
+			g := "guards: " + strings.Join(lv.KnownGuards, ", ")
+			switch lv.Pre {
+			case "approved":
+				g += " (pre-approved · u undo)"
+			case "declined":
+				g += " (pre-declined · u undo)"
+			default:
+				if lv.Active() || lv.State == Starting {
+					g += " (y pre-approve · n pre-decline)"
+				}
+			}
+			parts = append(parts, g)
+		}
 	}
 	switch {
 	case t.finished:
@@ -379,9 +422,6 @@ func (t *tui) divider(views []LaneView) string {
 	}
 	if t.digits != "" {
 		parts = append(parts, "go to swim "+t.digits+"_ (Enter)")
-	}
-	if t.note != "" {
-		parts = append(parts, t.note)
 	}
 	return strings.Join(parts, " · ")
 }
@@ -445,6 +485,7 @@ var helpText = []string{
 	"4 2 Enter      jump to swim 42",
 	"Enter          open the lane waiting longest for approval",
 	"y / n          on a lane waiting for approval: approve / decline",
+	"y n u          before it asks: pre-approve, pre-decline, undo",
 	"f              lanes ← → visit: every / running / failed",
 	"Esc            back to all lanes, following",
 	"Ctrl-C         interrupt the run (as without the view)",

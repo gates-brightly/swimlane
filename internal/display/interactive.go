@@ -114,6 +114,19 @@ func (d *Display) startInteractive() bool {
 				}
 			case actQuit:
 				it.quitOnce.Do(func() { close(it.quit) })
+			case actPreYes, actPreNo, actPreClear:
+				choice := map[action]string{actPreYes: "approved", actPreNo: "declined", actPreClear: ""}[act]
+				d.mu.Lock()
+				ln := it.model.preLane
+				d.mu.Unlock()
+				note := "pre-answers aren't available in this run"
+				if d.onPre != nil {
+					note = d.onPre(ln, choice)
+				}
+				d.mu.Lock()
+				it.model.note = note
+				it.dirty = true
+				d.mu.Unlock()
 			case actYes, actNo:
 				d.mu.Lock()
 				ch := it.answers[it.model.answerLane]

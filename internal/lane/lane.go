@@ -100,6 +100,9 @@ type Info struct {
 	// Staged: the script calls stage (bash, or swim stage from another
 	// language), so a read-only check has a place to stop.
 	Staged bool
+	// DynamicGuards counts guard calls whose flag is named at run time
+	// (guard "$FLAG" ...): swim can't know them ahead.
+	DynamicGuards int
 	// Outputs are the files or directories the round promises in
 	// $SWIM_OUT (# Outputs:), for lanes that depend on it (input N name).
 	Outputs []string
@@ -161,6 +164,7 @@ var (
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
 	// check`, or ["swim", "stage", "check"] from another language.
 	stageUseRE = regexp.MustCompile(`(?:^|[\s;&|(])stage\s+["']?(?:snapshot|check|change|verify)\b`)
+	dynGuardRE = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+["']?\$`)
 	stageArgRE = regexp.MustCompile(`['"]stage['"]\s*,\s*['"](?:snapshot|check|change|verify)['"]`)
 	// handlerFnRE is a handler function's first line: on_failure() {
 	handlerFnRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failure|on_exit)\s*\(\s*\)`)
@@ -340,6 +344,9 @@ func ParseScript(src string) Info {
 		if !strings.HasPrefix(line, "#") {
 			if stageUseRE.MatchString(line) || stageArgRE.MatchString(line) {
 				info.Staged = true
+			}
+			if dynGuardRE.MatchString(line) {
+				info.DynamicGuards++
 			}
 			uses := guardUse.FindAllStringSubmatch(line, -1)
 			uses = append(uses, guardArgUse.FindAllStringSubmatch(line, -1)...)

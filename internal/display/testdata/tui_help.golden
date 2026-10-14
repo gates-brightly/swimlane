@@ -1,4 +1,4 @@
-swim · app · main@abc1234 · 1:12          ← → lane  ↑ ↓ scroll  esc all  ? help
+swim · app · main@abc1234 · 1:12      ← → lane  y/n pre-answer  esc all  ? help
  swim 1  - running 1:12             Cut over service X to Terraform 3f2a9c1e
  swim 2  - waiting on swim 1        Diagnose Y
  swim 3    idle                     -

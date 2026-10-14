@@ -92,7 +92,17 @@ CONCEPTS
               On a terminal with more than one lane, the operator's live view is
               interactive: ← → pick a lane to read its log, ↑ ↓ scroll, Esc
               returns to all lanes, ? lists the keys (--no-tui or SWIM_TUI=0:
-              off). It changes nothing a lane sees or records.
+              off). It changes nothing a lane sees or records, except its
+              approvals: y / n answer a lane that's asking, and on a selected
+              lane that hasn't asked yet, y pre-approves its known guards
+              (Guards: and guard calls), n pre-declines them (dry runs), u
+              undoes. Marks show ✓ pre-approved, ✗ dry run or ? N guards. A
+              pre-answer is the operator's prompt answer given early: FLAG=1/0
+              and signed approvals still come first, it comes before -y, it's
+              pinned to the lane's script (a changed script asks again), and
+              it lasts this run only. The log says "pre-approved by <user> at
+              <time> in the live view"; the chain records method preapproved;
+              unused pre-answers are listed after the summary.
   job         One round's unique id, written in the script header as
               `# Job: <id>` by `swim new` (a UUID, or your own with --job).
               It is recorded in the log, status.yml, the live view and the

@@ -31,6 +31,21 @@ To cut a release:
 
 ### Added
 
+- **Pre-approve in the live view:**
+  - **Keys:** on a selected lane that hasn't asked yet, `y` pre-approves
+    its known guards (`Guards:` and `guard` calls), `n` pre-declines them
+    (dry runs) and `u` undoes. Marks show `✓ pre-approved`, `✗ dry run` or
+    `? N guards`, and the selected lane's guards show under the panel.
+  - **Precedence:** a pre-answer is the prompt's answer, given early.
+    `FLAG=1`/`FLAG=0` and signed approvals still come first, and it comes
+    before `-y`.
+  - **Limits:** it's pinned to the lane's script (a changed script asks
+    again) and lasts this run only. Guards named at run time
+    (`guard "$FLAG"`) still ask.
+  - **Records:** the log says `pre-approved by <user> at <time> in the live
+    view`, the chain records method `preapproved`, and unused pre-answers
+    are listed after the summary.
+
 - **Read-only preview, `swim plan --check`:**
   - **What runs:** each selected round's `snapshot` and `check` stages run
     for real, all at once. `After:` is ignored and `Locks:` still apply.

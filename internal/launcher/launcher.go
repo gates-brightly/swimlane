@@ -249,7 +249,8 @@ func Run(o Options) (int, error) {
 	views := make([]display.LaneView, 0, o.Cfg.Lanes)
 	for n := 1; n <= o.Cfg.Lanes; n++ {
 		info, _ := lane.ReadScript(o.Root, n)
-		v := display.LaneView{N: n, State: display.Idle, Round: info.Round, Job: info.Job}
+		v := display.LaneView{N: n, State: display.Idle, Round: info.Round, Job: info.Job,
+			KnownGuards: info.GuardFlags(), UnknownGuards: info.DynamicGuards}
 		if isDone[n] {
 			v.State = display.Done
 		}
@@ -282,6 +283,7 @@ func Run(o Options) (int, error) {
 		}
 		summaryOut = io.Discard
 	}
+	pre := newPreAnswers(selected)
 	disp := display.New(display.Options{
 		Out:   screen,
 		Plain: o.Plain || o.ev != nil,
@@ -301,7 +303,9 @@ func Run(o Options) (int, error) {
 		LogPath:     func(n int) string { return lane.Log(o.Root, n) },
 		LogLabel:    func(n int) string { return fmt.Sprintf(".swim/logs/agent%d.log", n) },
 		OnInterrupt: func() { ir.handle(syscall.SIGINT) },
+		OnPre:       func(n int, choice string) string { return pre.set(o, n, choice) },
 	}, views)
+	pre.disp = disp
 	ir = newInterrupter(o, disp, sl, lt)
 	defer ir.stop()
 	// Lanes this run leaves out may be running in another swim right now.
@@ -319,6 +323,17 @@ func Run(o Options) (int, error) {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
 		}
 		srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
+			// The operator's answer given ahead in the live view (pinned to
+			// the script) comes before -y and instead of asking.
+			if resp, ok := pre.use(o, req); ok {
+				word := "pre-approved"
+				if !resp.Approved {
+					word = "pre-declined"
+				}
+				disp.Message(fmt.Sprintf("%s%s: %s (%s)", display.Prefix(req.Lane, disp.Color()), word, req.Desc, req.Flag))
+				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (" + word + ")", At: now()})
+				return resp
+			}
 			if o.AutoApprove {
 				disp.Message(fmt.Sprintf("%sapproved by -y: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
 				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (-y)", At: now()})
@@ -398,6 +413,9 @@ func Run(o Options) (int, error) {
 	wg.Wait()
 	stopOthers()
 	disp.Stop()
+	if unused := pre.unused(); len(unused) > 0 {
+		fmt.Fprintf(summaryOut, "swim: unused pre-answers (the lane never reached a guard, or its script changed): %s\n", strings.Join(unused, ", "))
+	}
 
 	code := 0
 	for _, n := range sel {
@@ -997,4 +1015,107 @@ func watchOtherRuns(o Options, selected map[int]bool, disp *display.Display) fun
 		close(done)
 		<-finished
 	}
+}
+
+// preAnswers are the operator's answers, given ahead in the live view, to
+// lanes' guards: per lane, approve or decline, pinned to the script it was
+// given for (a changed script asks again), for this run only.
+type preAnswers struct {
+	mu       sync.Mutex
+	selected map[int]bool
+	by       map[int]*preAnswer
+	disp     *display.Display
+}
+
+type preAnswer struct {
+	approve bool
+	sha     string
+	at      string
+	used    bool
+}
+
+func newPreAnswers(selected map[int]bool) *preAnswers {
+	return &preAnswers{selected: selected, by: map[int]*preAnswer{}}
+}
+
+func scriptSum(root string, n int) string {
+	data, err := os.ReadFile(lane.Script(root, n))
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+// set records (choice "approved" / "declined") or clears ("") lane n's
+// pre-answer and says what happened.
+func (p *preAnswers) set(o Options, n int, choice string) string {
+	if !p.selected[n] {
+		return fmt.Sprintf("swim %d isn't in this run", n)
+	}
+	info, _ := lane.ReadScript(o.Root, n)
+	if st, _ := status.Load(o.Root); st != nil {
+		if l := st.Get(n); l != nil && l.Run == o.RunID && (l.State == status.Passed || l.State == status.Failed || l.State == status.Skipped || l.State == status.Interrupted) {
+			return fmt.Sprintf("swim %d already finished", n)
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if choice == "" {
+		delete(p.by, n)
+		p.disp.Set(n, func(v *display.LaneView) { v.Pre = "" })
+		return fmt.Sprintf("swim %d: pre-answer cleared; it will ask", n)
+	}
+	if len(info.Guards) == 0 {
+		return fmt.Sprintf("swim %d has no guards to approve", n)
+	}
+	if prev := p.by[n]; prev != nil && prev.used {
+		return fmt.Sprintf("swim %d already used its pre-answer", n)
+	}
+	p.by[n] = &preAnswer{approve: choice == "approved", sha: scriptSum(o.Root, n), at: time.Now().Format("15:04:05")}
+	p.disp.Set(n, func(v *display.LaneView) { v.Pre = choice })
+	event, word := "preapproved", "pre-approved"
+	if choice == "declined" {
+		event, word = "predeclined", "pre-declined (dry runs)"
+	}
+	o.ev.emit(Event{Event: event, Lane: n, Detail: strings.Join(info.GuardFlags(), " "), At: now()})
+	msg := fmt.Sprintf("swim %d: %s (%d guards)", n, word, len(info.Guards))
+	if info.DynamicGuards > 0 {
+		msg += fmt.Sprintf("; %d named at run time will still ask", info.DynamicGuards)
+	}
+	return msg
+}
+
+// use answers req from its lane's pre-answer, if it has one that covers
+// req's guard and its script hasn't changed.
+func (p *preAnswers) use(o Options, req approval.Request) (approval.Response, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	a := p.by[req.Lane]
+	if a == nil {
+		return approval.Response{}, false
+	}
+	info, _ := lane.ReadScript(o.Root, req.Lane)
+	known := false
+	for _, f := range info.GuardFlags() {
+		known = known || f == req.Flag
+	}
+	if !known || scriptSum(o.Root, req.Lane) != a.sha {
+		return approval.Response{}, false
+	}
+	a.used = true
+	return approval.Response{Approved: a.approve, By: operator(), Pre: true, At: a.at}, true
+}
+
+// unused lists the lanes whose pre-answers were never used.
+func (p *preAnswers) unused() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []string
+	for n, a := range p.by {
+		if !a.used {
+			out = append(out, fmt.Sprintf("swim %d", n))
+		}
+	}
+	sort.Strings(out)
+	return out
 }

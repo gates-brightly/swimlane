@@ -133,7 +133,9 @@ func cmdApproveHook(args []string) error {
 	}, deadline())
 	if !resp.Approved {
 		w := "declined at the prompt"
-		if resp.By != "" {
+		if resp.Pre {
+			w = "pre-declined by " + or(resp.By, operator()) + " at " + resp.At + " in the live view"
+		} else if resp.By != "" {
 			w = "declined at the prompt by " + resp.By
 		} else if resp.Why != "" {
 			w = "not approved: " + resp.Why
@@ -147,6 +149,9 @@ func cmdApproveHook(args []string) error {
 		how = "approved by " + via + " (" + by + ")"
 		by += " with " + via
 	}
+	if resp.Pre {
+		how = "pre-approved by " + by + " at " + resp.At + " in the live view"
+	}
 	approveRecorded = true
 	if err := cmdMark([]string{args[0], logparse.Approved, desc, how}); err != nil {
 		return err
@@ -154,6 +159,9 @@ func cmdApproveHook(args []string) error {
 	method, approver := "prompt", chain.Approver{Name: or(resp.By, operator())}
 	if resp.Auto {
 		method = "auto"
+	}
+	if resp.Pre {
+		method = "preapproved"
 	}
 	if k, _ := runnerKey(cfg); k != nil && (method == "prompt" || resp.By == operator()) {
 		approver.Key = k.Public // the operator at this terminal: the runner's key
