@@ -125,8 +125,6 @@ func TestChimeOnTerminal(t *testing.T) {
 	quiet("CI", must(r.swimTTY("run", "1", "--plain", "--chime")))
 }
 
-func must(out string, _ int) string { return out }
-
 func tail(s string) string {
 	if len(s) > 200 {
 		return "…" + s[len(s)-200:]

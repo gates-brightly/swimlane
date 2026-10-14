@@ -175,6 +175,9 @@ func (r *repo) status() *status.File {
 	return f
 }
 
+// must drops swim's exit code, for checks on its output alone.
+func must(out string, _ int) string { return out }
+
 func contains(t *testing.T, what, s string, wants ...string) {
 	t.Helper()
 	for _, w := range wants {
