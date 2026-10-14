@@ -36,7 +36,9 @@ import (
 // They read the lane from SWIM_LANE, which swim's wrapper (swim _wrap)
 // exports. Ending the round (a failed gate, swim stop, a refused step)
 // signals the wrapper, which stops the program even if it ignores the
-// exit code.
+// exit code. Once a round's end is claimed, the command that claimed it
+// doesn't return to the program until the wrapper has stopped it, and a
+// later step command refuses to run: no step starts after a failed gate.
 
 // laneEnv is the lane number from SWIM_LANE.
 func laneEnv(cmd string) (string, error) {
@@ -99,6 +101,9 @@ func laneStep(cmd string, args []string) error {
 	}
 	if len(command) == 0 {
 		return usagef(`usage: swim %s [options] "<label>" -- cmd [args...]`, cmd)
+	}
+	if err := refuseEnded(cmd, n, label); err != nil {
+		return err
 	}
 	stepArgs := append([]string{"--label", label}, opts...)
 	switch cmd {
@@ -168,11 +173,59 @@ func endRound(root string, n, code int, reason string) error {
 	if lane.ClaimEnd(root, n, code) {
 		cmdMark([]string{ns, logparse.Stop, reason})
 	}
-	if pid, err := strconv.Atoi(os.Getenv("SWIM_PID")); err == nil && pid > 0 {
-		syscall.Kill(pid, syscall.SIGUSR1)
-	}
+	signalEnd()
 	return exitError{code}
 }
+
+// refuseEnded keeps an in-lane step command (swim run/gate/snapshot/
+// evidence/guard) from running once the round's end is claimed: the
+// wrapper is stopping the program, and a step must never start after a
+// failed gate or a stop, however quickly the program got to it. It returns
+// nil if the round goes on (or the command runs in a handler, after the
+// round's end, or in a bash lane, which ends its own round).
+func refuseEnded(cmd, ns, label string) error {
+	if os.Getenv("SWIM_WRAPPED") == "" || os.Getenv("SWIM_IN_HANDLER") != "" {
+		return nil
+	}
+	root, _, n, err := laneCtx(ns)
+	if err != nil {
+		return nil // the command itself reports it
+	}
+	code, ended := lane.EndCode(root, n)
+	if !ended {
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "swim %s: the round has ended; %q not run\n", cmd, label)
+	signalEnd()
+	return exitError{max(code, 1)} // not run is never a pass
+}
+
+// signalEnd tells the wrapper (SWIM_PID) that the round's end is claimed,
+// then waits for it to stop the program that ran this command, so the
+// program can't go on to its next line meanwhile. Run by the wrapper
+// itself (its lane socket, for an SDK), it returns at once: the SDK raises
+// RoundEnded and unwinds. The wait is bounded, should the program outlive
+// its stop.
+func signalEnd() {
+	pid, err := strconv.Atoi(os.Getenv("SWIM_PID"))
+	if err != nil || pid <= 0 {
+		return
+	}
+	syscall.Kill(pid, syscall.SIGUSR1)
+	parent := os.Getppid()
+	if parent == pid || parent == 1 {
+		return
+	}
+	// The wrapper's stop reaches this command too when it leads the
+	// program's process group; otherwise the program's exit reparents it.
+	for deadline := time.Now().Add(endWait); time.Now().Before(deadline) && os.Getppid() == parent; {
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// endWait bounds signalEnd's wait: past the SDK grace period and the
+// wrapper's SIGTERM-to-SIGKILL window.
+const endWait = sdkGrace + 10*time.Second
 
 var flagNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
@@ -190,6 +243,9 @@ func cmdGuard(args []string) error {
 	flag, desc := args[0], args[1]
 	if !flagNameRE.MatchString(flag) {
 		return usagef("bad guard flag name: %s", flag)
+	}
+	if err := refuseEnded("guard", n, desc); err != nil {
+		return err
 	}
 	if lane.CheckMode() {
 		// A read-only check never approves anything, whatever the flag says.
@@ -231,9 +287,7 @@ func cmdStagePublic(args []string) error {
 		cmdMark([]string{n, logparse.Checked, "stopped before stage " + args[0], "swim plan --check runs only snapshot and check"})
 		if os.Getenv("SWIM_WRAPPED") != "" {
 			lane.ClaimEnd(root, ln, 0)
-			if pid, err := strconv.Atoi(os.Getenv("SWIM_PID")); err == nil && pid > 0 {
-				syscall.Kill(pid, syscall.SIGUSR1)
-			}
+			signalEnd()
 		}
 		return exitError{0}
 	}

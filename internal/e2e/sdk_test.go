@@ -176,6 +176,51 @@ open("probe.txt", "w").write("%o|%s|%s" % (mode, bad.get("error"), old.get("erro
 	}
 }
 
+// Once a gate fails, the lane socket refuses every later step, for an SDK
+// that ignores RoundEnded (or hasn't seen it yet): nothing runs, and each
+// answer says the round has ended.
+func TestLaneProtocolNoStepAfterEnd(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	r := newRepo(t, "")
+	r.write("lane.1.py", `#!/usr/bin/env python3
+# Round: ignores RoundEnded
+import json, os, socket
+s = socket.socket(socket.AF_UNIX); s.connect(os.environ["SWIM_SOCKET"]); f = s.makefile("rwb")
+tok = os.environ["SWIM_TOKEN"]
+def call(i, op, **args):
+    f.write((json.dumps({"id": i, "token": tok, "op": op, "args": args}) + "\n").encode()); f.flush()
+    return json.loads(f.readline())
+call(1, "hello", protocol="swim.lane/v1", sdk="test")
+g = call(2, "gate", label="must pass", argv=["false"])
+n = call(3, "run", label="never", argv=["touch", "ran-never"])
+b = call(4, "begin_step", label="never in-process")
+q = call(5, "guard", flag="ALLOW_X", action="never guarded")
+open("probe.txt", "w").write(json.dumps([g, n, b, q]))
+`, 0o755)
+	r.env = append(r.env, "ALLOW_X=1")
+	r.swim("run", "1", "--plain")
+	if _, err := os.Stat(filepath.Join(r.root, "ran-never")); err == nil {
+		t.Error("a step ran after the round's gate failed")
+	}
+	got := readFile(t, r, "probe.txt")
+	for _, want := range []string{
+		`"round_ended": true, "code": 1, "result": {"exit": 1, "passed": false}}`,
+		`"round_ended": true, "code": 1, "result": {"started": false}}`,
+		`"round_ended": true, "code": 1, "result": {"approved": false}}`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("responses: missing %s in\n%s", want, got)
+		}
+	}
+	log := r.log(1)
+	contains(t, "log", log, "FAIL  must pass (exit 1)", "STOP  gate failed: must pass")
+	if strings.Contains(log, "never") {
+		t.Errorf("a refused step is in the log:\n%s", log)
+	}
+}
+
 // An in-process gate that fails ends the round; the SDK's on_failure
 // handler runs soft, in its own section.
 func TestSDKHandlersAndInProcessGate(t *testing.T) {

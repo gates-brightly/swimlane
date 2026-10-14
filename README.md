@@ -564,7 +564,8 @@ if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: repla
   `swim guard FLAG "<action>"` (exit 0 when approved), `swim stage NAME`,
   `swim drift "<what>"` and `swim stop "<why>"`.
 - **Ending the round:** a failed gate, `swim stop`, a blocked `git push` or
-  your Ctrl-C ends the program, even if it ignores the exit code.
+  your Ctrl-C ends the program, even if it ignores the exit code; no later
+  step runs.
 - **No swim calls:** a program that never calls `swim run` is logged as one
   step, with its whole output (secrets masked) and a result from its exit
   code.
