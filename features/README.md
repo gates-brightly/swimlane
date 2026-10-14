@@ -9,7 +9,6 @@ where it would land in the code, open questions, and how to test it.
 | Native SDKs: Python, TypeScript and Go libraries for lane steps, generated from a `swim.lane.v1` protobuf contract and served over a per-lane socket; all decisions stay in the binary | [native-sdk.md](native-sdk.md) | proposed |
 | Plan approvals: `evidence` steps (e.g. `terraform plan`) are signed with the approval and re-compared before `change`; not checked in `swim watch` | [plan-approvals.md](plan-approvals.md) | proposed |
 | Matrix rounds: `# Matrix: SVC=a,b,c` runs one lane script once per value, each cell with its own log, status, result and retry | [matrix-rounds.md](matrix-rounds.md) | proposed |
-| Pre-approve in the live view: select a lane with `←`/`→` and press `y` (or `n`) to answer its guards before it asks; pinned to the script, this run only | [preapprove.md](preapprove.md) | proposed |
 
 ## Staging a feature
 
