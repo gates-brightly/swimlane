@@ -36,7 +36,9 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
   code. The SDK raises `RoundEnded` (in Python it derives from
   `BaseException`, so `except Exception` doesn't swallow it). The program
   then unwinds (its `finally` blocks run) and exits. If it doesn't within 10
-  seconds, swim stops it.
+  seconds, swim stops it. Meanwhile `run`, `gate`, `snapshot`, `evidence`,
+  `begin_step`, `guard` and `confirm` are refused: answered `round_ended`
+  (not passed, not started, not approved) without running.
 
 ## Ops
 

@@ -567,7 +567,9 @@ OTHER LANGUAGES
   (swim run --soft opts out). Both need `# swim: syntax 3` in the header; a
   sidecar with these keys needs none. A failed gate, swim stop, a refused git
   push or the operator's stop ends the program even if it ignores the exit
-  code (SIGTERM to its process group, SIGKILL after 5s). A program that
+  code (SIGTERM to its process group, SIGKILL after 5s): the swim command
+  that ended it doesn't return first, and no swim run/gate/snapshot/guard
+  runs after it. A program that
   never calls swim run is logged as one step: its whole output (masked),
   passed or failed by its exit code. In Python:
       import os, subprocess

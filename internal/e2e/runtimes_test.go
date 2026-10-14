@@ -67,6 +67,38 @@ touch after-gate
 	}
 }
 
+// Once a gate fails no later step runs, even in a program that outlives
+// its stop: this one ignores SIGTERM, so it reaches its next swim run
+// before the wrapper's SIGKILL, every time. That step is refused, not run,
+// and the log shows the gate's FAIL and STOP and nothing after.
+func TestWrappedLaneNoStepAfterEnd(t *testing.T) {
+	r := newRepo(t, "")
+	r.write("lane.1.sh", `#!/usr/bin/env bash
+# Round: ignores its stop
+trap '' TERM
+swim run "first" -- true
+swim gate "must pass" -- false
+swim run "never" -- touch ran-never
+touch after-refusal
+`, 0o755)
+	out, code := r.swim("run", "1", "--plain")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(r.root, "ran-never")); err == nil {
+		t.Error("a step ran after the round's gate failed")
+	}
+	if _, err := os.Stat(filepath.Join(r.root, "after-refusal")); err == nil {
+		t.Error("the refused step returned to the program before it was stopped")
+	}
+	contains(t, "output", out, `swim run: the round has ended; "never" not run`)
+	log := r.log(1)
+	contains(t, "log", log, "PASS  first", "FAIL  must pass (exit 1)", "STOP  gate failed: must pass", "== END FAIL")
+	if strings.Contains(log, "never") {
+		t.Errorf("the refused step is in the log:\n%s", log)
+	}
+}
+
 // A program that never calls swim run is one step: its whole output, with
 // secrets masked, passed or failed by its exit code.
 func TestWrappedLaneWholeRun(t *testing.T) {

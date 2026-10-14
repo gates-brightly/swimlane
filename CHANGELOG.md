@@ -473,6 +473,18 @@ To cut a release:
   - A step whose stdin is the terminal (a lone lane run from a terminal)
     stays in the lane's group so it can read the keyboard; a limit stops only
     its own process, as before.
+- **No step runs after a failed gate in a wrapped lane:** a lane in another
+  language (or a bash script without the library) could start its next
+  step, or run its next line, in the moment between its `swim gate` failing
+  and swim's wrapper stopping it.
+  - The in-lane command that ends the round (a failed `swim gate` or `swim
+    evidence`, `swim stop`, a refused step) no longer returns to the program
+    that ran it: it waits for the wrapper to stop the program.
+  - Once the round's end is claimed, `swim run`, `gate`, `snapshot`,
+    `evidence` and `guard` refuse to run (exit non-zero, nothing logged),
+    and the lane socket answers `run`, `gate`, `snapshot`, `evidence`,
+    `begin_step`, `guard` and `confirm` with `round_ended` without running
+    them, even for a program that ignores its stop.
 
 ### Changed
 

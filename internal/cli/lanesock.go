@@ -143,7 +143,14 @@ func (s *laneServer) conn(c net.Conn) {
 			continue
 		}
 		s.mu.Lock()
-		resp := s.handle(req)
+		var resp laneResponse
+		if c, ok := lane.EndCode(s.root, s.n); ok && startsStep[req.Op] && !s.inHandler.Load() {
+			// The round has ended (its end response may not have reached
+			// the program yet, or it ignored it): no step starts after it.
+			resp = laneResponse{OK: true, RoundEnded: true, Code: c, Result: notRun(req.Op, c)}
+		} else {
+			resp = s.handle(req)
+		}
 		s.mu.Unlock()
 		resp.ID = req.ID
 		if c, ok := lane.EndCode(s.root, s.n); ok && !s.inHandler.Load() {
@@ -151,6 +158,23 @@ func (s *laneServer) conn(c net.Conn) {
 		}
 		enc.Encode(resp)
 	}
+}
+
+// startsStep is the ops that start a step (or ask the operator), refused
+// once the round's end is claimed.
+var startsStep = map[string]bool{"run": true, "gate": true, "snapshot": true, "evidence": true, "begin_step": true, "guard": true, "confirm": true}
+
+// notRun is the result of a step op refused because the round has ended.
+func notRun(op string, code int) map[string]any {
+	switch op {
+	case "begin_step":
+		return map[string]any{"started": false}
+	case "guard":
+		return map[string]any{"approved": false}
+	case "confirm":
+		return map[string]any{"confirmed": false}
+	}
+	return map[string]any{"exit": max(code, 1), "passed": false}
 }
 
 // args reads req's arguments into v.
