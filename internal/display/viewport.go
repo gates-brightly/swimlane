@@ -166,7 +166,7 @@ func textWidth(s string) int {
 	n := 0
 	for i := 0; i < len(s); {
 		if s[i] == 0x1b {
-			i = escEnd(s, i)
+			i = ui.EscEnd(s, i)
 			continue
 		}
 		_, size := utf8.DecodeRuneInString(s[i:])

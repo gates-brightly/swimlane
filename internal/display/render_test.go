@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -18,7 +20,7 @@ func stripANSI(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); {
 		if s[i] == 0x1b {
-			i = escEnd(s, i)
+			i = ui.EscEnd(s, i)
 			continue
 		}
 		b.WriteByte(s[i])
@@ -133,8 +135,12 @@ func TestWrapANSI(t *testing.T) {
 		{"\x1b[32mabcdef\x1b[0mgh", 4, []string{"\x1b[32mabcd", "\x1b[32mef\x1b[0mgh"}},
 		{"a\tb", 20, []string{"a       b"}},
 		{"héllo wörld", 5, []string{"héllo", " wörl", "d"}},
-		// OSC hyperlinks are never split.
-		{"\x1b]8;;http://x\x1b\\link\x1b]8;;\x1b\\", 2, []string{"\x1b]8;;http://x\x1b\\li", "nk\x1b]8;;\x1b\\"}},
+		// Lane output is untrusted: only colour gets through. Hyperlinks
+		// (OSC 8), cursor moves, erases, \r, \b, C1 and bidi controls are
+		// dropped, so a lane can't rewrite the screen or a question on it.
+		{"\x1b]8;;http://x\x1b\\link\x1b]8;;\x1b\\", 2, []string{"li", "nk"}},
+		{"approve\x1b[2K\rx\x1b[1A\b", 20, []string{"approvex"}},
+		{"\x1b[1;31ma\u202Eb\u009bc\x1b[0m\t|", 20, []string{"\x1b[1;31mabc\x1b[0m     |"}},
 	}
 	for _, c := range cases {
 		got := WrapANSI(c.in, c.w)

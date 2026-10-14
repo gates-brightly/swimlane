@@ -28,6 +28,7 @@ func (d *Display) Ask(n int, question []string, cancel <-chan struct{}) bool {
 	if d.in == nil {
 		return false
 	}
+	question = safeLines(question)
 	if d.tui != nil && d.tuiActive() {
 		return d.askTUI(n, question, cancel)
 	}
@@ -138,4 +139,15 @@ func (d *Display) askLine(question []string, cancel <-chan struct{}) bool {
 		d.onInterrupt()
 	}
 	return answer
+}
+
+// safeLines makes each line of a question safe to show (ui.Safe): the
+// lane wrote it, and must not be able to rewrite what the operator is
+// asked to approve.
+func safeLines(lines []string) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = ui.Safe(l)
+	}
+	return out
 }

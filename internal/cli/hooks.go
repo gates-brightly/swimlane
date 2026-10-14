@@ -688,8 +688,12 @@ func cmdMark(args []string) error {
 	default:
 		return usagef("unknown mark kind %q", kind)
 	}
-	line := logparse.ResultLine(kind, label, detail)
-	logLine := logparse.MarkLine(kind, label, detail)
+	// The terminal, the log and status.yml get the text made safe (it's
+	// the lane's: a guard's description, a stop reason); an approval's
+	// chain entry keeps it as given, as evidence.
+	shownLabel, shownDetail := ui.SafeField(label), ui.SafeField(detail)
+	line := logparse.ResultLine(kind, shownLabel, shownDetail)
+	logLine := logparse.MarkLine(kind, shownLabel, shownDetail)
 	p := painter()
 	fmt.Fprintln(os.Stderr, p.Paint(ui.StateColor(kind), line))
 

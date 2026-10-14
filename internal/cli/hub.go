@@ -529,6 +529,7 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 		s.Queue = append(done, s.Queue...)
 	}
 	s.Events = tailLines(history.Path(root), 15)
+	s.Sanitize()
 	return s
 }
 

@@ -113,3 +113,20 @@ func TestQuestionShowsEvidence(t *testing.T) {
 		t.Error("more than 20 evidence lines")
 	}
 }
+
+// A lane can't rewrite its own question: escape sequences, \r, \b and
+// bidi overrides in the description and evidence are removed.
+func TestQuestionIsSafe(t *testing.T) {
+	q := strings.Join(Question(Request{Lane: 3, Flag: "F", Desc: "drop prod\x1b[2K\rlist files\b‮",
+		Evidence: "plan: destroy 1\x1b[1A\x1b[2K\r\nplan: ‮add 0\r\n"}), "\n")
+	for _, bad := range []string{"\x1b", "\r", "\b", "‮"} {
+		if strings.Contains(q, bad) {
+			t.Errorf("question carries %q: %q", bad, q)
+		}
+	}
+	for _, want := range []string{"approval of task: drop prodlist files\n", "  plan: destroy 1\n", "  plan: add 0\n"} {
+		if !strings.Contains(q, want) {
+			t.Errorf("question lacks %q: %q", want, q)
+		}
+	}
+}

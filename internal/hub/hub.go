@@ -35,6 +35,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // Worker identifies one enrolled directory.
@@ -91,6 +93,47 @@ type Snapshot struct {
 	Lanes    []Lane   `json:"lanes"`
 	Queue    []Batch  `json:"queue"`
 	Events   []string `json:"events"` // the end of .swim.log
+}
+
+// Sanitize makes every text field safe to show (ui.Safe): a lane wrote
+// most of it (rounds, steps, messages, log tails), and the hub can't trust
+// a worker either. Worker builds it clean and the hub cleans what it's
+// sent, so its pages, its JSON and the screens reading them never carry
+// escape sequences, controls or bidi overrides.
+func (s *Snapshot) Sanitize() {
+	s.Worker.sanitize()
+	s.Activity, s.At = ui.Safe(s.Activity), ui.Safe(s.At)
+	for i := range s.Lanes {
+		l := &s.Lanes[i]
+		for _, f := range []*string{&l.State, &l.Round, &l.Job, &l.Run, &l.Step, &l.Reason, &l.Started, &l.Finished,
+			&l.Message, &l.Progress, &l.MsgAt, &l.Cells} {
+			*f = ui.Safe(*f)
+		}
+		l.Tail = safeAll(l.Tail)
+	}
+	for i := range s.Queue {
+		b := &s.Queue[i]
+		for _, f := range []*string{&b.ID, &b.State, &b.By, &b.Note, &b.Result} {
+			*f = ui.Safe(*f)
+		}
+	}
+	s.Events = safeAll(s.Events)
+}
+
+// sanitize cleans a worker's display fields (not its key).
+func (w *Worker) sanitize() {
+	w.ID, w.Name, w.Host, w.Root, w.Version = ui.Safe(w.ID), ui.Safe(w.Name), ui.Safe(w.Host), ui.Safe(w.Root), ui.Safe(w.Version)
+}
+
+func safeAll(lines []string) []string {
+	if lines == nil {
+		return nil
+	}
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = ui.Safe(l)
+	}
+	return out
 }
 
 // View is a worker as the hub serves it.
@@ -165,6 +208,7 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wk.ID = IDFor(wk.Host, wk.Root)
+	wk.sanitize()
 	if wk.Name == "" {
 		wk.Name = wk.Host
 	}
@@ -239,6 +283,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown worker; enroll again", http.StatusNotFound)
 		return
 	}
+	snap.Sanitize()
 	snap.Worker.ID = id
 	snap.Worker.Key = v.Key
 	if snap.Name == "" {
