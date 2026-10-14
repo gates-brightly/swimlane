@@ -1,6 +1,6 @@
 # Execution manifest: approve and run one exact operation
 
-Status: proposed
+Status: in progress
 
 ## Summary
 
@@ -157,16 +157,73 @@ manifest_sha256: 3be9...
 
 ## Open questions
 
-- **Should the runner's binary hash be pinned or observed?** An OS update
-  that changes bash would invalidate every approval. Proposal: observed, and
-  the version is pinned only when the sidecar says `runner_pin: true`.
-- **Python, TypeScript, and Go lanes:** `Includes:` covers local modules.
-  Should a lockfile (`requirements.txt` hash, `package-lock.json`) be pinned
-  automatically when it sits next to the lane?
-- **Matrix rounds:** one manifest per cell, or one for the round with a
-  hash for each cell's values?
-- **Garbage collection:** how long to keep `.swim/runs/<run>/`. Proposal: as
-  long as the round's log, archived together.
+Resolved while implementing (the answers are what shipped):
+
+- **Should the runner's binary hash be pinned or observed?** Neither is
+  signed. `pinned.runner` is how the repo says the script runs (`bash`, its
+  `#!` line, a `swim.yml` runner; `local .ts` for a runner from the
+  operator's own config), which is the same on every machine. The binary's
+  path and hash are recorded under `local:` for the run. Pinning the binary
+  would stale every approval on an OS update, and approvals signed on one
+  machine must hold on another. `runner_pin: true` is not built; it's a
+  follow-up if someone needs it.
+- **Python, TypeScript and Go lockfiles:** not pinned automatically. A
+  lockfile doesn't decide what runs (the installed packages do), so pinning
+  it would claim more than it proves; a lane that wants it pinned lists it
+  in `Includes:`. Local modules a lane imports by a literal name are found
+  by the same static scan as bash `source` lines, pinned and staged.
+- **Matrix rounds:** one manifest per lane (per round). Every cell's
+  values come from pinned bytes (the script, `@file` matrix files), and
+  cell-limited approvals already name their cell. A lane of jobs is one
+  manifest too (its file); the scripts swim generates for its jobs are
+  written from the staged file into the stage and checked with it.
+- **Garbage collection:** a run's stages live in `.swim/runs/<run>/` next to
+  its run record. `swim doctor --fix` prunes stages older than
+  `outputs_keep` (default 14d) unless they hold a lane's latest round; the
+  run records stay. `swim verify` checks a stage while it's kept.
+
+Other decisions:
+
+- **The env files' hash is not in `manifest_sha256`.** `.env.swim` and the
+  operator's `env.swim` are personal and git-ignored, so an approval signed
+  on the approver's machine could never match the runner's. The env hash is
+  a local pin (`local.env_sha256`), checked against a queued batch's pin
+  right before exec. Trade-off: an env-only change doesn't stale a signed
+  approval.
+- **Evidence stays on the approval,** not the launcher's manifest: it is
+  produced mid-round, after the manifest is built. Approvals keep binding it
+  as before (`evidence_sha256`).
+- **Undeclared local sources are pinned, not refused, by the launcher.** A
+  literal `source lib/x.sh` (followed to any depth) is pinned and staged
+  whether or not `Includes:` lists it, so the approval covers it either way;
+  `swim lint` reports it (`source`, error), and reports a dynamic
+  `source "$x"`, which can't be pinned. Refusing at run time would break
+  existing lanes for no gain in what's pinned.
+- **`lane_init` redirects `source` and `.`** to the stage for repo files the
+  manifest pinned. A `declare` at the top of such a file is then local to
+  the wrapper; that's documented.
+- **Observed facts** are read by the launcher when it asks (shown with the
+  question), or by the lane for a signed approval, and again by the lane
+  just before the guard returns. A difference marks DRIFT and stops the
+  round. They aren't recorded in the launcher's manifest (probes may be slow
+  or touch remote APIs, so they run only at guards); the approve entry in
+  the chain records them.
+- **Approvals from before manifests** (no `manifest_sha256`) count by the
+  script hash alone, as before; nothing records what else they covered.
+- **The prompt** shows lane, job, guard, manifest and evidence hashes, then
+  "the lane says: ..." with control characters dropped. "Approvers needed"
+  is left out: it describes signed approvals, not the prompt.
+- **Undeclared flags:** a flag the script neither lists in `Guards:` nor
+  uses by name is refused. SDK guard calls (`r.guard("FLAG", ...)`) count
+  as uses. A lane with `guard "$FLAG"` must list its flags.
+- **One-time responses** are consumed through the broker with the lane
+  process's token before the APPROVED mark is written
+  (`_mark ... --request ID --guard FLAG`). A plain `_mark APPROVED` (the
+  `FLAG=1` path) is unchanged; stopping a lane from writing that itself is
+  T3.
+- **State syntax 2:** chain entries, signed approvals and queue entries
+  gain `manifest_sha256`, which an older swim can't verify, so `State` is
+  bumped.
 
 ## Testing
 
