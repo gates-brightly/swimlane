@@ -6,11 +6,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/assets"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
@@ -20,6 +22,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -96,9 +99,11 @@ func cmdStart(args []string) error {
 		lane.RemovePID(root, n)
 		return err
 	}
-	// Chain of custody: the exact script this round runs, kept by hash; and
-	// with signing: required, no round starts unsigned.
-	scriptSum, err := keepScript(root, n)
+	// Chain of custody: the exact script this round runs (the launcher's
+	// staged copy), kept by hash; and with signing: required, no round
+	// starts unsigned.
+	m := manifest.FromEnv(n)
+	scriptSum, err := keepScript(root, n, m)
 	if err != nil {
 		lane.RemovePID(root, n)
 		return err
@@ -188,6 +193,11 @@ func cmdStart(args []string) error {
 		ctx = append(ctx, logparse.KV{K: "check", V: "read-only preview: stops where change begins"})
 	}
 	ctx = append(ctx, logparse.KV{K: "sha256", V: scriptSum[:12]})
+	manSum := ""
+	if m != nil {
+		manSum = m.SHA256
+		ctx = append(ctx, logparse.KV{K: "manifest", V: manSum[:12] + " (staged " + rel(root, m.Dir) + ")"})
+	}
 	// The env files that applied (their values are in the lane's env, and
 	// masked), and their hash for the chain.
 	envSum := ""
@@ -253,6 +263,7 @@ func cmdStart(args []string) error {
 		l.Run = run
 		l.Commit = commit
 		l.ScriptSHA = scriptSum
+		l.ManifestSHA = manSum
 		l.EnvSHA = envSum
 		l.Script = filepath.Base(lane.Script(root, n))
 		l.Pending, l.PendingJob = info.Round, info.Job
@@ -596,7 +607,7 @@ func cmdFinish(args []string) error {
 	if rounds, _ := splitRounds(logPath); len(rounds) > 0 {
 		exit := code
 		if err := record(root, cfg, chain.Entry{Type: "round", Run: r.Run, Lane: n, Job: r.Job, Round: r.Title,
-			Script: scriptSHA(root, n), Result: state, Exit: &exit,
+			Script: scriptSHA(root, n), Manifest: manifestSHA(root, n), Result: state, Exit: &exit,
 			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: roundApprovals(root, r.Run, n),
 			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums, Evidence: roundEvidence(root, r),
 			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs)}); err != nil {
@@ -670,10 +681,34 @@ func cmdFinish(args []string) error {
 
 var dryRunRE = regexp.MustCompile(`^dry run: (?:.*; )?set ([A-Za-z_][A-Za-z0-9_]*)=1 to approve$`)
 
-// swim _mark N KIND label [detail]
+// swim _mark N KIND label [detail] [--request ID --guard FLAG]
+//
+// --request names the launcher's approval an APPROVED mark records: it is
+// consumed (once, by this lane process, for FLAG) before anything is
+// written, and refused if another lane got it or it was already used.
 func cmdMark(args []string) error {
+	var request, guard string
+	if i := slices.Index(args, "--request"); i >= 3 {
+		rest, err := flags{strs: map[string]*string{"request": &request, "guard": &guard}}.parse(args[i:])
+		if err != nil || len(rest) > 0 || request == "" || guard == "" {
+			return usagef("usage: swim _mark N KIND label [detail] [--request ID --guard FLAG]")
+		}
+		args = args[:i]
+	}
 	if len(args) < 3 {
-		return usagef("usage: swim _mark N KIND label [detail]")
+		return usagef("usage: swim _mark N KIND label [detail] [--request ID --guard FLAG]")
+	}
+	if request != "" {
+		if args[1] != logparse.Approved {
+			return usagef("--request is for APPROVED marks")
+		}
+		sock := os.Getenv(approval.EnvVar)
+		if sock == "" {
+			return fmt.Errorf("approval %s: no swim run to check it with", request)
+		}
+		if err := approval.Consume(sock, os.Getenv(approval.TokenEnv), request, guard); err != nil {
+			return fmt.Errorf("refused: %v", err)
+		}
 	}
 	kind, label, detail := args[1], args[2], ""
 	if len(args) > 3 {

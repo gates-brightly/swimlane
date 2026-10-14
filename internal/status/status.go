@@ -36,14 +36,15 @@ const (
 type Lane struct {
 	Lane        int      `yaml:"lane"`
 	State       string   `yaml:"state"`
-	Pending     string   `yaml:"pending"`                 // Round: line of the lane script on disk ("" for stub/none)
-	PendingJob  string   `yaml:"pending_job"`             // Job: id of the lane script on disk
-	Round       string   `yaml:"round"`                   // round of the last or current run
-	Job         string   `yaml:"job"`                     // job id of the last or current run
-	Run         string   `yaml:"run,omitempty"`           // swim run id of the last or current round
-	Commit      string   `yaml:"commit,omitempty"`        // commit the round ran for (swim ci)
-	ScriptSHA   string   `yaml:"script_sha256,omitempty"` // SHA-256 of the lane script the round runs
-	EnvSHA      string   `yaml:"env_sha256,omitempty"`    // SHA-256 of its env from env files ("" for none)
+	Pending     string   `yaml:"pending"`                   // Round: line of the lane script on disk ("" for stub/none)
+	PendingJob  string   `yaml:"pending_job"`               // Job: id of the lane script on disk
+	Round       string   `yaml:"round"`                     // round of the last or current run
+	Job         string   `yaml:"job"`                       // job id of the last or current run
+	Run         string   `yaml:"run,omitempty"`             // swim run id of the last or current round
+	Commit      string   `yaml:"commit,omitempty"`          // commit the round ran for (swim ci)
+	ScriptSHA   string   `yaml:"script_sha256,omitempty"`   // SHA-256 of the lane script the round runs
+	ManifestSHA string   `yaml:"manifest_sha256,omitempty"` // its execution manifest (internal/manifest)
+	EnvSHA      string   `yaml:"env_sha256,omitempty"`      // SHA-256 of its env from env files ("" for none)
 	Script      string   `yaml:"script"`
 	Log         string   `yaml:"log"`
 	WaitingOn   []int    `yaml:"waiting_on,flow"`

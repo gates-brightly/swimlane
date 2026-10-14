@@ -108,15 +108,18 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - Show a live view of every lane, with output prefixed `[N]`, and work without a terminal (plain lines or YAML).
 - Show what would run before running it (`swim plan`), and who waited on whom afterwards (`swim timeline`).
 - Stop gracefully on the first Ctrl-C, interrupt on the second, kill on the third.
+- Run the bytes that were approved: pin each lane's execution manifest (script, the local files it sources or imports, sidecar, runner, the policy in `swim.yml` and `lookup.yml`) before it waits, run a read-only staged copy, and check it again right before exec.
 
 ### Approvals
 - A guard approves in this order: its flag, signed approvals, the person at the terminal, `-y`. Anything else is a dry run.
-- Signed approvals use the approver's SSH key and cover one exact script or, as a standing approval, every job one person queues.
+- Signed approvals use the approver's SSH key and cover one exact execution manifest or, as a standing approval, every job one person queues. A stale approval says what changed.
+- The question comes from swim, not the lane: the launcher names the lane, job and manifest (each lane process has its own token), labels the lane's description as the lane's, refuses undeclared flags, and lets each approval be used once.
+- Facts swim can't pin (the cloud account, binaries on `PATH`) are `Observe:` probes, read at approval and again before the guarded step; a change ends the round as drift.
 - `lookup.yml` maps people to keys and groups, and sets how many approvals, from which group, each guard needs.
 - Approvals are committed files, so approvers can add theirs from anywhere.
 
 ### Chain of custody
-- Record every round (script hash, log-section hash, result, approvals used) and every approval (who, which guard, how).
+- Record every round (script and manifest hashes, log-section hash, result, approvals used) and every approval (who, which guard, how).
 - Sign each entry and link it to the one before. Keep every script that ran, by hash.
 - `swim verify` proves nothing was edited, removed or reordered. Signatures are checkable with plain `ssh-keygen`, without swim.
 
@@ -129,7 +132,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - The planner assigns each worker a lane number. A worker writes **only** its own `lane.N.sh`.
 - Workers never edit shared files (registries, plan docs, config). They report exact lines, and the planner applies them.
 - Workers prefer new modules over changing shared ones while other lanes run. Any change to a shared module must leave existing users unchanged.
-- **Never edit a lane while it may be running.** Bash reads scripts incrementally, so a mid-run edit corrupts the run. swim refuses to edit, archive, stub or rerun a running lane.
+- **Never edit a lane while it may be running.** Under `swim run` a lane runs a staged copy, so an edit no longer reaches it, but a lane run directly with bash still reads its script incrementally. swim refuses to edit, archive, stub or rerun a running lane.
 - Before writing a round, check `swim status` and confirm with the operator which lanes are idle.
 - After a run, the planner reads the log, validates real outcomes (not just PASS lines), records results in the project log, archives the log and stubs the lane.
 - Always lanes (`# Always: yes`) are the repo's standing setup, not rounds: planners never assign, rewrite, archive or stub them. A round that needs one passing says so with `# After:`.

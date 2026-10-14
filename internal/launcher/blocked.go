@@ -20,23 +20,30 @@ import (
 // `blocked: lane.3.sh:41 matches "git push"`.
 func BlockedLanes(root string, cfg *config.Config, sel []int) map[int]string {
 	out := map[int]string{}
-	patterns := cfg.Blocked()
 	for _, n := range sel {
-		data, err := os.ReadFile(lane.Script(root, n))
-		if err != nil || lane.IsBinary(data) {
-			continue
+		if why := blockedIn(root, cfg, n, lane.Script(root, n)); why != "" {
+			out[n] = why
 		}
-		hits := policy.ScanScript(string(data), patterns)
-		if len(hits) == 0 {
-			continue
-		}
-		var parts []string
-		for _, h := range hits {
-			parts = append(parts, fmt.Sprintf("%s:%d matches %q", lane.ScriptName(root, n), h.Line, h.Pattern))
-		}
-		out[n] = "blocked: " + strings.Join(parts, ", ") + " (swim never pushes, commits or pulls)"
 	}
 	return out
+}
+
+// blockedIn is why lane n's script at path (the working tree's, or its
+// staged copy) is refused for a blocked command; "" if it isn't.
+func blockedIn(root string, cfg *config.Config, n int, path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || lane.IsBinary(data) {
+		return ""
+	}
+	hits := policy.ScanScript(string(data), cfg.Blocked())
+	if len(hits) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, h := range hits {
+		parts = append(parts, fmt.Sprintf("%s:%d matches %q", lane.ScriptName(root, n), h.Line, h.Pattern))
+	}
+	return "blocked: " + strings.Join(parts, ", ") + " (swim never pushes, commits or pulls)"
 }
 
 // refuseBlocked fails a lane before it starts: nothing in it runs, and its

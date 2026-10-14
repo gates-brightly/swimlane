@@ -162,8 +162,14 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
   With a guard's flag unset and swim on a terminal, the lane asks instead:
-    swim 2 requires human approval of task: delete the zg items - 2026-10-12
-    (guard FIN_ALLOW_DELETE_ZG_ITEMS; or set FIN_ALLOW_DELETE_ZG_ITEMS=1 to approve without asking)  Y/N [N]
+    swim 2 requires human approval of guard FIN_ALLOW_DELETE_ZG_ITEMS
+      job 3f2a9c1e-... · manifest 3be9a1c07d2e
+      the lane says: delete the zg items - 2026-10-12
+    (or set FIN_ALLOW_DELETE_ZG_ITEMS=1 to approve without asking)  Y/N [N]
+  The first lines are swim's own: the lane, job and manifest the launcher
+  started (each lane process has its own approval token), not what the
+  request claims. A flag the script doesn't declare or use is refused, and
+  an approval is used once, by the lane it was given to.
   The lane's panel row shows "awaiting approval".
     - Interactive view: several lanes can wait at once. A banner names them
       ("▶ swim 2 needs approval · Enter to view it and answer"); Enter opens
@@ -180,6 +186,10 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
                 terminal or not (logged as "approved by swim run -y (<user>)");
                 a flag set to anything but 1 (FLAG=0) still declines
   --no-prompt   never ask; an unset guard flag is a dry run
+  Each lane runs a staged copy of its files (.swim/runs/<run>/<N>/), fixed
+  before it waits for anything and checked again right before it starts;
+  an edit to the working tree after that changes nothing in the run. See
+  EXECUTION MANIFEST in swim --help.
 `,
 	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
          [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
@@ -286,7 +296,10 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   In a lane script in any language: exit 0 if the operator approves the
   action, 1 if not. FLAG=1 approves up front; unset, swim asks the operator
   (or counts signed approvals); anything else records SKIP as a dry run.
-  One flag per destructive action; list it in the header (or lane.N.yml).
+  One flag per destructive action; list it in the header (or lane.N.yml):
+  under swim run, a flag the script neither lists nor uses by name is
+  refused. With # Observe: probes, a fact that changed between approval and
+  now ends the round as drift (exit 3).
 `,
 	"stage": `swim stage snapshot|check|change|verify
 
@@ -486,8 +499,10 @@ swim queue show|rm|requeue ID
   fire when the current work is done.
   add       queue the named lanes, or with none every pending round that
             hasn't passed (as swim all would run). The batch is fixed now:
-            each lane is pinned to the job it holds, so a lane rewritten
-            before the batch runs is skipped, not run.
+            each lane is pinned to the job it holds, its script, its
+            manifest (what it sources, its sidecar, swim.yml's policy) and
+            its env, so a lane changed before the batch runs is skipped, not
+            run.
             --approve FLAG  approve that guard for this batch (repeat, or
                             FLAG,FLAG); it must be a guard of a lane in the
                             batch, so a typo fails here, not at 3am
@@ -620,18 +635,24 @@ swim approve --auto USER [--guards A,B | --all] [--key K]
   file under approvals/, so an approver anywhere (with the repo) can add
   theirs and push it; the files are hash-linked logs of approve and revoke
   events, so their order is attested like commits.
-  swim approve N   approve this exact lane script (its SHA-256): its guards
+  swim approve N   approve this exact lane's execution manifest: the script
+                   and every file it sources or imports, its sidecar, how it
+                   runs, swim.yml's policy keys and lookup.yml's rules (it
+                   lists them, and the file records them). Its guards
                    (--guards, or --all) approve without a prompt or flag when
                    the approvers, named by lookup.yml, meet lookup.yml's rule
                    for each guard. Another approver runs the same command to
                    co-approve (the statement can't change). Writes
-                   approvals/lane.N.<sha12>.signature. If the script changes
-                   it no longer matches: approve the new version.
+                   approvals/lane.N.<sha12>.m<manifest8>.signature. If
+                   anything it pins changes it no longer matches (swim approve
+                   lists it as "stale: <why>"): approve the new version. An
+                   approval from before manifests names the script alone and
+                   counts while the script matches.
   With evidence    a round with evidence steps (evidence "tf plan" ...), or a
                    guard whose lookup.yml rule says evidence: true, is
                    approved with its latest evidence (from swim plan --check N
                    or a run): swim approve shows it and signs its hash too
-                   (approvals/lane.N.<sha12>.e<evidence8>.signature). It
+                   (approvals/lane.N.<sha12>.m<manifest8>.e<evidence8>.signature). It
                    refuses with no evidence, or evidence for another script
                    version. At run time the approval counts only while the
                    run's evidence matches; when the plan changed, the log
@@ -664,12 +685,15 @@ swim revoke --auto USER [--key K]
       a changed, removed or reordered entry breaks every link after it
     - every signature is valid for its signer's key
     - every round's log section still hashes to what was recorded (a log
-      edited after the round ended is caught), and the copy of its script
-      kept under .swim/scripts/<sha256>.sh is unchanged
+      edited after the round ended is caught), the copy of its script
+      kept under .swim/scripts/<sha256>.sh is unchanged, and its staged
+      copy (.swim/runs/<run>/<N>/, until swim doctor --fix prunes it)
+      still matches the manifest it ran
     - every signed approval's signatures check out
   and checks every approvals file under approvals/ event by event (listing
-  each, and whether a script approval is stale: the script changed since). Exits 1 on any break. --strict also fails on unsigned
-  entries and on signers not in lookup.yml.
+  each, and whether a script approval is stale: the script, or something
+  else its manifest pins, changed since). Exits 1 on any break. --strict
+  also fails on unsigned entries and on signers not in lookup.yml.
 `,
 	"history": `swim history [RUN|N|JOB] [--oneline] [-n N | -N] [--reverse] [--no-pager] [--yaml]
 
@@ -814,7 +838,12 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
                            file (lanes.<name>.sh) for a lane another file has
     outputs (warn)         an output whose name suggests secrets (not masked)
     includes (warn)        a Python/TypeScript lane imports a local module its
-                           # Includes: doesn't cover (approvals wouldn't cover it)
+                           # Includes: doesn't list (it's pinned anyway)
+    source (error)         a bash lane sources a local file its # Includes:
+                           doesn't list, or a path built at run time (source
+                           "$x"), which swim can't pin or stage
+    observe (warn)         an # Observe: probe that looks like it writes or
+                           changes something (an error if it's blocked)
     sdk-bypass (info)      an SDK lane runs commands with subprocess or
                            child_process instead of r.run
     check-unsafe (warn)    a destructive-looking command (terraform apply, a
@@ -863,6 +892,9 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     outputs-old (info)        round outputs older than outputs_keep (default
                               14d) that no lane's latest round uses; --fix
                               removes them
+    stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
+                              older than outputs_keep, of no lane's latest
+                              round; --fix removes them (run records stay)
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of
@@ -920,13 +952,19 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
                         an old-form lock)
 
   Syntax versions:
+    script 3, log 2, state 2   execution manifests: chain entries, signed
+                               approvals and queued batches name the
+                               manifest they ran or approved
+                               (manifest_sha256), which a swim of state 1
+                               can't verify; approvals signed by a state 1
+                               swim still count (script hash alone)
     script 3, log 2, state 1   since 0.20261014.1; the formats of swim 7.20261013
 
   Before 0.<date>.<index> the version was <breaking>.<YYYYMMDD> and the lock
   pinned that breaking number. A lock that says breaking: 7 means script 3,
-  log 2, state 1 and needs nothing (swim lock --upgrade rewrites it in the
-  new form); an earlier one is older: swim lock --upgrade after updating the
-  lane scripts.
+  log 2, state 1: swim lock --upgrade once everyone runs a swim with state
+  2; an earlier one is older: swim lock --upgrade after updating the lane
+  scripts.
 `,
 	"help": `swim help [command]
 

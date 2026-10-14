@@ -49,7 +49,7 @@ func TestPromptLineDeclines(t *testing.T) {
 	r := newRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all", "--no-tui")
-	tr.waitFor("swim 1 requires human approval of task: drop table orders - 2026-10-12")
+	tr.waitFor("the lane says: drop table orders - 2026-10-12")
 	tr.send("\r") // Enter: the default, no
 	code, out := tr.wait()
 	if code != 0 {
@@ -69,7 +69,7 @@ func TestPromptSingleLane(t *testing.T) {
 	r := newRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "run", "1")
-	tr.waitFor("requires human approval of task: drop table orders")
+	tr.waitFor("requires human approval of guard ALLOW_DROP")
 	tr.send("Y")
 	if code, out := tr.wait(); code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)

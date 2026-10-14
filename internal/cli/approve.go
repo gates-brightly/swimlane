@@ -18,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -58,10 +59,33 @@ func cmdApproveHook(args []string) error {
 		return exitError{1}
 	}
 
-	// Signed approvals come first: those of this exact script, plus the
-	// standing approvals of whoever signed the queue entry this run came
-	// from (swim approve --auto), counted together against lookup.yml.
-	sha := scriptSHA(root, n)
+	// Signed approvals come first: those of this exact manifest (or, from
+	// before manifests, of this script), plus the standing approvals of
+	// whoever signed the queue entry this run came from (swim approve
+	// --auto), counted together against lookup.yml.
+	m := laneManifest(root, cfg, n)
+	sha, man := scriptSHA(root, n), ""
+	if m != nil {
+		sha, man = m.ScriptSHA, m.SHA256
+	}
+	// Observe: facts are read when the guard is approved and again just
+	// before it returns; a difference ends the round as drift.
+	probes := laneProbes(root, n, m)
+	observe := func() map[string]string { return manifest.Observe(root, probes, nil) }
+	drifted := func(was map[string]string) error {
+		if len(probes) == 0 {
+			return nil
+		}
+		diffs := manifest.ObservedDiff(was, observe())
+		if len(diffs) == 0 {
+			return nil
+		}
+		if err := cmdMark([]string{args[0], logparse.Drift, "drift: " + strings.Join(diffs, "; "), "observed facts changed between approval and the guarded step (" + flag + ")"}); err != nil {
+			return err
+		}
+		history.Log(root, history.Entry{Event: history.Decline, Lane: n, Job: job, Run: run, Detail: desc + "  (drift: " + strings.Join(diffs, "; ") + ")"})
+		return exitError{3}
+	}
 	sigWhy := ""
 	// This run's evidence (its evidence steps' output so far), and whether
 	// the guard's rule needs approvals bound to it. Batches run by swim
@@ -82,6 +106,7 @@ func cmdApproveHook(args []string) error {
 	} else {
 		evRequired = lk.RuleFor(flag).Evidence && !watch
 		files := sigfile.ForCell(sigfile.ForScript(root, sha), lane.CurrentCell())
+		files, stale := sigfile.ForManifest(files, m)
 		files = evidenceFilter(root, args[0], files, live, liveText, evRequired, watch, desc)
 		queuer := verifiedQueuer(root, lk, n, sha)
 		if queuer != "" {
@@ -94,6 +119,10 @@ func cmdApproveHook(args []string) error {
 		if relevant {
 			d := sigfile.Decide(files, lk, flag, time.Now())
 			if d.OK {
+				facts := observe()
+				if err := drifted(facts); err != nil {
+					return err
+				}
 				var names []string
 				for _, u := range d.Users {
 					names = append(names, lk.Describe(u))
@@ -138,14 +167,20 @@ func cmdApproveHook(args []string) error {
 				if err := cmdMark([]string{args[0], logparse.Approved, desc, how}); err != nil {
 					return err
 				}
-				if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Guard: flag, Action: desc,
-					Method: method, Approvers: approvers, Evidence: evCovered}); err != nil {
+				if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Manifest: man, Guard: flag, Action: desc,
+					Method: method, Approvers: approvers, Evidence: evCovered, Observed: facts}); err != nil {
 					return err
 				}
 				history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", " + method + ": " + strings.Join(d.Users, ", ") + ")"})
 				return nil
 			}
 			sigWhy = d.Why
+			if len(stale) > 0 {
+				sigWhy += "; " + strings.Join(stale, "; ")
+			}
+		} else if len(stale) > 0 {
+			// Approvals of this script bound to another manifest: say why.
+			sigWhy = strings.Join(stale, "; ")
 		} else {
 			// An approval of another version of this script: say so.
 			all, _ := sigfile.All(root)
@@ -165,9 +200,29 @@ func cmdApproveHook(args []string) error {
 		return dryRun(why)
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
-	resp := ask(approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc, Evidence: liveText, EvidenceRequired: evRequired}, func() bool {
+	req := approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc, Evidence: liveText, EvidenceRequired: evRequired,
+		Token: os.Getenv(approval.TokenEnv), Manifest: man}
+	if live != nil {
+		req.EvidenceSHA = live.Hash
+	}
+	broker := os.Getenv(approval.EnvVar) != ""
+	if !broker {
+		req.Observed = observe() // the terminal question shows them; swim run's launcher reads its own
+	}
+	resp := ask(req, func() bool {
 		return lane.StopRequested(root, n, run)
 	}, deadline())
+	// Under swim run, the launcher says which lane and job asked: the
+	// approval is theirs, whatever this process claimed.
+	if resp.Lane != 0 && resp.Lane != n {
+		n, args[0] = resp.Lane, strconv.Itoa(resp.Lane)
+		if m := manifest.FromEnv(n); m != nil {
+			sha, man = m.ScriptSHA, m.SHA256
+		}
+	}
+	if resp.Job != "" {
+		job = resp.Job
+	}
 	if !resp.Approved {
 		w := "declined at the prompt"
 		if resp.Pre {
@@ -189,8 +244,20 @@ func cmdApproveHook(args []string) error {
 	if resp.Pre {
 		how = "pre-approved by " + by + " at " + resp.At + " in the live view"
 	}
+	was := resp.Observed
+	if !broker {
+		was = req.Observed
+	}
+	if err := drifted(was); err != nil {
+		return err
+	}
 	approveRecorded = true
-	if err := cmdMark([]string{args[0], logparse.Approved, desc, how}); err != nil {
+	mark := []string{args[0], logparse.Approved, desc, how}
+	if resp.ID != "" {
+		// The launcher's approval is used once, by this lane, for this guard.
+		mark = append(mark, "--request", resp.ID, "--guard", flag)
+	}
+	if err := cmdMark(mark); err != nil {
 		return err
 	}
 	method, approver := "prompt", chain.Approver{Name: or(resp.By, operator())}
@@ -203,8 +270,8 @@ func cmdApproveHook(args []string) error {
 	if k, _ := runnerKey(cfg); k != nil && (method == "prompt" || resp.By == operator()) {
 		approver.Key = k.Public // the operator at this terminal: the runner's key
 	}
-	if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Guard: flag, Action: desc,
-		Method: method, Statement: how, Approvers: []chain.Approver{approver}}); err != nil {
+	if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Manifest: man, Guard: flag, Action: desc,
+		Method: method, Statement: how, Approvers: []chain.Approver{approver}, Observed: was}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", by " + by + ")"})

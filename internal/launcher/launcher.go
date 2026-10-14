@@ -5,7 +5,6 @@
 package launcher
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +27,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/runrec"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -98,6 +98,9 @@ type Options struct {
 	// PinEnv holds the env files' hash (envfile.Resolved.SHA256) a lane
 	// must still resolve to when it starts (queued batches).
 	PinEnv map[int]string
+	// PinManifest holds the execution manifest (manifest_sha256) a lane
+	// must still hold when it starts (queued batches).
+	PinManifest map[int]string
 	// Heartbeat, if set, prints "[N] still running: <step> (<elapsed>)"
 	// for a running lane silent this long, so a CI log never looks hung.
 	Heartbeat time.Duration
@@ -105,8 +108,10 @@ type Options struct {
 	beat         *heartbeat
 	setup        map[int]*setupGate // per lane: open once the lanes after it may start (always.go)
 	approvalSock string
-	secrets      *runSecrets               // the run's decrypted secrets and broker; nil for none
-	env          map[int]*envfile.Resolved // each lane's env from env files
+	approvalSrv  *approval.Server
+	manifests    map[int]*manifest.Manifest // each lane's, staged (stage.go)
+	secrets      *runSecrets                // the run's decrypted secrets and broker; nil for none
+	env          map[int]*envfile.Resolved  // each lane's env from env files
 
 	// Interactive allows the interactive view (keys pick a lane's log) when
 	// more than one lane runs on a terminal; the view then reads Stdin.
@@ -265,6 +270,9 @@ func Run(o Options) (int, error) {
 		}
 		o.env[n] = r
 	}
+	// What each lane runs is fixed here, before any waiting: its manifest is
+	// built and its files staged, and it runs the staged copy.
+	stageLanes(&o, sel, blocked)
 	// Secrets (swim secret): decrypted once, now, before the live view
 	// takes the terminal; a Secrets: entry that won't resolve stops the run.
 	rs, err := openSecrets(&o, sel)
@@ -362,13 +370,27 @@ func Run(o Options) (int, error) {
 		})
 		defer t.Stop()
 	}
+	var ask approval.Asker
 	if o.AutoApprove || o.Prompt && o.ev == nil && disp.CanAsk() {
 		if o.AutoApprove {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
 		}
 		srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
+			// req's lane, job and manifest are the launcher's (the server
+			// replaced the lane's claims). Its Observe: facts are read now,
+			// with the question, and the lane checks them again before the
+			// guarded step.
+			if req.Job == "" {
+				req.Job = runningJob(o, req.Lane, req.Cell)
+			}
+			req.Observed = manifest.Observe(o.Root, probesFor(o, req.Lane, req.Cell), laneEnv(o, req.Lane))
+			resp := ask(req, cancel)
+			resp.Job, resp.Observed = req.Job, req.Observed
+			return resp
+		})
+		ask = func(req approval.Request, cancel <-chan struct{}) approval.Response {
 			// The operator's answer given ahead in the live view (pinned to
-			// the script) comes before -y and instead of asking.
+			// the manifest) comes before -y and instead of asking.
 			if resp, ok := pre.use(o, req); ok {
 				word := "pre-approved"
 				if !resp.Approved {
@@ -387,13 +409,23 @@ func Run(o Options) (int, error) {
 			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
 			yes := disp.Ask(req.Lane, approval.Question(req), cancel)
 			return approval.Response{Approved: yes, By: operator()}
-		})
+		}
 		if err != nil {
 			disp.Message("swim: approvals: " + err.Error() + "; guards without their flag run as dry runs")
 		} else {
 			defer srv.Close()
+			srv.Refused = func(c approval.Caller, req approval.Request, why string) {
+				who := fmt.Sprintf("swim %d", c.Lane)
+				if c.Lane == 0 {
+					who = "a process without a lane token"
+				}
+				disp.Message(fmt.Sprintf("swim: approval refused for %s: %s", who, why))
+				history.Log(o.Root, history.Entry{Event: history.Decline, Lane: c.Lane, Job: c.Job, Run: o.RunID,
+					Detail: fmt.Sprintf("%s  (%s: refused: %s)", approval.Clean(req.Desc), req.Flag, why)})
+			}
 			ir.approvals = srv
 			o.approvalSock = srv.Path()
+			o.approvalSrv = srv
 		}
 	}
 
@@ -617,17 +649,13 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
 	}
 
-	if want := o.PinSHA[n]; want != "" {
-		if data, err := lane.ScriptBytes(o.Root, n); err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != want {
-			return skip(fmt.Sprintf("%s changed since it was queued (queued %s)", lane.ScriptName(o.Root, n), want[:12]))
+	// What a queued batch pinned must be what was staged (checked again,
+	// with the staged files, right before exec).
+	if why, refuse := pinned(o, n); why != "" {
+		if refuse {
+			return stamp(refuseBlocked(o, n, why, disp))
 		}
-	}
-	if want, ok := o.PinEnv[n]; ok && want != o.env[n].SHA256() {
-		was := "no env"
-		if len(want) >= 12 {
-			was = want[:12]
-		}
-		return skip(fmt.Sprintf("its env files changed since it was queued (queued %s)", was))
+		return skip(why)
 	}
 	// A lane named by job id runs only if its script still holds that job.
 	if pin := o.Pins[n]; pin != "" {
@@ -663,11 +691,19 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// How the script runs: bash for lane.N.sh, its #! line, a confirmed
 	// runner, or itself; a script that doesn't load the bash library runs
 	// inside swim's wrapper, which opens and closes its round.
-	plan, perr := runner.Resolve(o.Cfg, lane.Script(o.Root, n))
+	plan, perr := runner.Resolve(o.Cfg, o.manifests[n].Script())
 	if perr != nil {
 		return stamp(refuseStart(o, n, perr, disp))
 	}
-	cmd, ownGroup, w := laneCommand(o, n, sel, plan, nil, "", "", disp, fileLocks)
+	// The last check of what runs: the staged files and every pin, after
+	// the waiting is over.
+	if why, refuse := pinned(o, n); why != "" {
+		if refuse {
+			return stamp(refuseBlocked(o, n, why, disp))
+		}
+		return skip(why)
+	}
+	cmd, ownGroup, w := laneCommand(o, n, sel, plan, nil, "", "", approval.Caller{Job: info.Job}, disp, fileLocks)
 
 	// The last moment to honour a Ctrl-C that came while this lane was
 	// getting ready (runner, env, slot): after this it starts, and gets the
@@ -946,7 +982,7 @@ func operator() string {
 // files under the shell's, the run's SWIM_* variables, extra for a cell),
 // stdin, process group and output (each line prefixed with prefix, for a
 // matrix cell).
-func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, prefix, job string, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter) {
+func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, prefix, job string, who approval.Caller, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter) {
 	argv := plan.Argv
 	if plan.Wrapped {
 		argv = append([]string{o.Self, "_wrap", strconv.Itoa(n), "--"}, argv...)
@@ -975,6 +1011,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 		env = append(env, "SWIM_COLOR=0")
 	}
 	env = append(env, extra...)
+	env = append(env, stageEnv(o, n, who)...)
 	if o.secrets != nil {
 		env = append(env, o.secrets.env(o, n)...)
 	}
@@ -1174,12 +1211,42 @@ func newPreAnswers(selected map[int]bool) *preAnswers {
 	return &preAnswers{selected: selected, by: map[int]*preAnswer{}}
 }
 
-func scriptSum(root string, n int) string {
-	data, err := lane.ScriptBytes(root, n)
-	if err != nil {
+// manifestSum is the manifest lane n runs in this run ("" if none).
+func manifestSum(o Options, n int) string {
+	if m := o.manifests[n]; m != nil {
+		return m.SHA256
+	}
+	return ""
+}
+
+// runningJob is the job id lane n (or its cell) runs in this run, from
+// status, for a round whose script names none (its id is made as it starts).
+func runningJob(o Options, n int, cell string) string {
+	st, _ := status.Load(o.Root)
+	if st == nil || st.Get(n) == nil {
 		return ""
 	}
-	return fmt.Sprintf("%x", sha256.Sum256(data))
+	l := st.Get(n)
+	if cell != "" {
+		if e := l.FindCell(cell); e != nil && e.Run == o.RunID {
+			return e.Job
+		}
+		return ""
+	}
+	if l.Run == o.RunID {
+		return l.Job
+	}
+	return ""
+}
+
+// laneEnv is lane n's environment as its process gets it (env files under
+// the shell), for its Observe: probes.
+func laneEnv(o Options, n int) []string {
+	var env []string
+	if r := o.env[n]; r != nil {
+		env = append(env, r.Env()...)
+	}
+	return append(env, os.Environ()...)
 }
 
 // set records (choice "approved" / "declined") or clears ("") lane n's
@@ -1207,7 +1274,7 @@ func (p *preAnswers) set(o Options, n int, choice string) string {
 	if prev := p.by[n]; prev != nil && prev.used {
 		return fmt.Sprintf("swim %d already used its pre-answer", n)
 	}
-	p.by[n] = &preAnswer{approve: choice == "approved", sha: scriptSum(o.Root, n), at: time.Now().Format("15:04:05")}
+	p.by[n] = &preAnswer{approve: choice == "approved", sha: manifestSum(o, n), at: time.Now().Format("15:04:05")}
 	p.disp.Set(n, func(v *display.LaneView) { v.Pre = choice })
 	event, word := "preapproved", "pre-approved"
 	if choice == "declined" {
@@ -1232,12 +1299,13 @@ func (p *preAnswers) use(o Options, req approval.Request) (approval.Response, bo
 		// existed can't approve the plan.
 		return approval.Response{}, false
 	}
-	info, _ := lane.ReadScript(o.Root, req.Lane)
 	known := false
-	for _, f := range info.GuardFlags() {
-		known = known || f == req.Flag
+	if m := o.manifests[req.Lane]; m != nil {
+		for _, f := range m.Guards {
+			known = known || f == req.Flag
+		}
 	}
-	if !known || scriptSum(o.Root, req.Lane) != a.sha {
+	if !known || manifestSum(o, req.Lane) != a.sha {
 		return approval.Response{}, false
 	}
 	a.used = true

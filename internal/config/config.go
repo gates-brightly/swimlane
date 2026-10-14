@@ -81,6 +81,9 @@ type Config struct {
 	// Its settings apply on top of defaults and under the repos entry, so a
 	// CI runner with no config of its own gets them.
 	RepoFile string
+	// Repo is what swim.yml itself sets (empty without one): the settings
+	// every machine shares, which PolicyHash covers.
+	Repo Settings
 	// RepoLanes reports whether a (no longer used) `lanes:` was set, in the
 	// repos entry, swim.yml or defaults: swim doctor points it out.
 	RepoLanes bool
@@ -144,6 +147,7 @@ func Load(root string) (*Config, error) {
 		return nil, err
 	} else if path != "" {
 		c.RepoFile = path
+		c.Repo = s
 		c.RepoLanes = c.RepoLanes || s.Lanes != 0
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)

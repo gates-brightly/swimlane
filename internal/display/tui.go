@@ -341,9 +341,11 @@ func (t *tui) banner() string {
 	if len(t.pendOrder) == 1 {
 		// The key first, so a narrow terminal cuts the task, not the hint.
 		s := fmt.Sprintf("▶ swim %d needs approval · Enter to view it and answer", first)
-		if q := t.pending[first]; len(q) > 0 {
-			if _, task, ok := strings.Cut(q[0], "approval of task: "); ok {
+		for _, l := range t.pending[first] {
+			// What the lane says the step does (the question labels it so).
+			if _, task, ok := strings.Cut(l, "the lane says: "); ok {
 				s += " · " + task
+				break
 			}
 		}
 		return s

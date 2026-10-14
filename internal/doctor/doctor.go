@@ -23,6 +23,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -97,6 +98,7 @@ var Checks = []Check{
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
 	{"lane-rc", true, "a deprecated .lane.N.rc (env files replace it)", checkLaneRC},
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
+	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
 }
 
 // Run runs every check.
@@ -153,6 +155,10 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 			if removed := outputs.Prune(o.Root, o.Cfg.OutputsKeepFor(), o.keepRound()); len(removed) > 0 {
 				done = append(done, fmt.Sprintf("removed %d old round output dirs from .swim/out/", len(removed)))
 			}
+		case "stages-old":
+			if removed := manifest.PruneStages(o.Root, o.Cfg.OutputsKeepFor(), o.keepRun()); len(removed) > 0 {
+				done = append(done, fmt.Sprintf("removed the staged copies of %d old runs from .swim/runs/", len(removed)))
+			}
 		case "lane-rc":
 			did, err := migrateRC(&o, f.File)
 			if err != nil {
@@ -180,6 +186,37 @@ func (o *Options) keepRound() func(job, run string) bool {
 		}
 		return false
 	}
+}
+
+// keepRun keeps the run of each lane's latest round (swim verify checks its
+// staged copy).
+func (o *Options) keepRun() func(run string) bool {
+	st, _ := status.Load(o.Root)
+	return func(run string) bool {
+		if st == nil {
+			return false
+		}
+		for _, l := range st.Lanes {
+			if l.Run == run {
+				return true
+			}
+			for _, c := range l.Cells {
+				if c.Run == run {
+					return true
+				}
+			}
+		}
+		return false
+	}
+}
+
+func checkOldStages(o *Options) []finding.Finding {
+	old := manifest.OldStages(o.Root, o.Cfg.OutputsKeepFor(), o.keepRun())
+	if len(old) == 0 {
+		return nil
+	}
+	return []finding.Finding{fd(finding.Info, "stages-old", ".swim/runs/", "swim doctor --fix (removes them; the run records stay)",
+		"%d runs' staged lane copies are older than outputs_keep (%s) and no lane's latest round", len(old), o.Cfg.OutputsKeepFor())}
 }
 
 func checkOldOutputs(o *Options) []finding.Finding {

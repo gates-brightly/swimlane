@@ -129,7 +129,7 @@ fi
 ```
 
 ```sh
-swim run 2                                # asks: swim 2 requires human approval of task: ... Y/N [N]
+swim run 2                                # asks: swim 2 requires human approval of guard ORDERS_ALLOW_SST_REMOVE ... Y/N [N]
 ORDERS_ALLOW_SST_REMOVE=1 swim run 2      # approved up front (scripts, CI)
 swim all -y                               # approve every question this run, logged as -y
 ```
@@ -257,8 +257,8 @@ summary
 - **Native SDKs:** Python (`import swim`), TypeScript and Go libraries give
   lane programs swim's steps as calls, plus in-process steps for native
   checks (a `boto3` call logged as a step). They talk to the lane's socket
-  (`swim.lane/v1`), and swim still decides everything. `# Includes:` puts
-  local modules in the script's hash. See the [Python](docs/examples/python.md),
+  (`swim.lane/v1`), and swim still decides everything. Local modules a lane
+  imports are pinned with it; list them in `# Includes:`. See the [Python](docs/examples/python.md),
   [Node](docs/examples/node.md) and [Go](docs/examples/go.md) examples.
 - **Approve the plan, not just the script:** `evidence "tf plan" terraform
   plan ...` in the check stage records what the change will do.
@@ -611,13 +611,15 @@ order:
 
 1. **The flag is set.** `FLAG=1` approves up front, for CI and scripts.
    `FLAG=0` declines without asking.
-2. **A signed approval.** Approvals of this exact script, plus standing
-   approvals for whoever queued the batch, are counted against
-   `lookup.yml`'s rule for the guard.
+2. **A signed approval.** Approvals of this exact execution manifest (see
+   [below](#execution-manifest)), plus standing approvals for whoever queued
+   the batch, are counted against `lookup.yml`'s rule for the guard.
 3. **The person at the terminal** answers
-   `swim 2 requires human approval of task: <action>  Y/N [N]`. Questions
-   from parallel lanes take turns, or wait on their lane in the interactive
-   view.
+   `swim 2 requires human approval of guard FLAG ... the lane says: <action>  Y/N [N]`.
+   swim names the lane, job and manifest itself; the action is the lane's
+   own words, labelled as such. A flag the script doesn't declare is
+   refused. Questions from parallel lanes take turns, or wait on their lane
+   in the interactive view.
 4. **`-y`:** `swim all -y` (or `swim watch -y`) approves every question,
    and logs that `-y` did.
 
@@ -630,7 +632,7 @@ approve and revoke events, so its order is part of what it proves, like git
 commits:
 
 ```sh
-swim approve 4 --guards FIN_ALLOW_DROP     # this exact script (by SHA-256); co-approvers run the same
+swim approve 4 --guards FIN_ALLOW_DROP     # this exact manifest (it lists what it pins); co-approvers run the same
 swim approve --auto bob [--guards A,B]     # every job bob queues, until revoked
 swim revoke 4 / swim revoke --auto bob     # withdraw yours
 swim approve                               # list approvals and who stands behind each
@@ -654,8 +656,40 @@ require:
 
 Script approvals and standing approvals count together: zach's standing
 approval of bob's jobs plus alice's approval of the script make two
-platform-admins. If a script is edited after it was approved, the approval
-no longer matches it. `swim keys` shows who's who.
+platform-admins. If a script, or anything else its manifest pins, changes
+after it was approved, the approval no longer matches it, and swim says why
+(`stale: includes lib/orders.sh changed`). `swim keys` shows who's who.
+
+### Execution manifest
+
+<a id="execution-manifest"></a>
+
+Before a lane waits for anything, `swim run` pins what it will run and
+stages a read-only copy under `.swim/runs/<run>/<N>/`. The lane runs that
+copy, so editing the working tree afterwards (even mid-round) changes
+nothing. The copy is checked again right before the lane starts. The
+manifest pins:
+
+- the script, and every local file it sources or imports (listed in
+  `# Includes:` or found by a literal path; `swim lint` wants them listed,
+  and refuses `source "$x"`, which can't be pinned)
+- its sidecar, and how it runs (`bash`, its `#!` line, a `swim.yml` runner)
+- the policy keys of `swim.yml` (blocked commands, runners, approvals,
+  signing, secret masking, `env`) and `lookup.yml`'s `require:` rules
+
+Approvals sign the manifest's hash. The env files' values and the runner
+binary differ from machine to machine, so they're recorded and checked for
+the run but not signed. Facts swim can't pin, like the cloud account or which
+`terraform` is on `PATH`, can be declared as probes. Each probe is read when
+a guard is approved and again just before it returns, and a difference ends
+the round as drift:
+
+```bash
+# Observe: aws_account = aws sts get-caller-identity --query Account --output text
+# Observe: path terraform aws
+```
+
+Probes narrow the gap between approval and use; they don't close it.
 
 ### Chain of custody
 
@@ -663,11 +697,13 @@ Every approval and every round is recorded in `.swim/chain.jsonl`, one entry
 per line. Each entry is signed with the runner's SSH key and holds the
 SHA-256 of the entry before it:
 
-- **round:** the script's hash, the hash of the round's log section, the
-  result, and the approvals it used. A copy of each script that ran is kept
-  by hash under `.swim/scripts/`.
-- **approve:** who approved which guard of which script, and how: a
-  signature, standing approval, prompt, flag, `-y`, or a queued batch.
+- **round:** the script's and manifest's hashes, the hash of the round's log
+  section, the result, and the approvals it used. A copy of each script
+  that ran is kept by hash under `.swim/scripts/`, and the run's staged
+  copy under `.swim/runs/` (`swim doctor --fix` prunes old ones).
+- **approve:** who approved which guard of which script and manifest, and
+  how: a signature, standing approval, prompt, flag, `-y`, or a queued
+  batch.
 
 ```sh
 swim verify                 # every link, signature, log section and kept script checks out (exit 1 if not)
@@ -895,7 +931,7 @@ they waited for.
 | `.swim/status.yml` | Last state of every lane (`cat` it). | No |
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain of custody, and every script that ran. | No (export it to keep it) |
-| `.swim/queue/`, `.swim/runs/`, `.swim/snapshots/` | Queued batches, run records, snapshot output. | No |
+| `.swim/queue/`, `.swim/runs/`, `.swim/snapshots/` | Queued batches, run records and each run's staged lane copies, snapshot output. | No |
 | `.swim/hub.yml` | This directory's hub enrollment. | No |
 
 ### Config

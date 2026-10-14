@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -43,7 +44,7 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 	var plan runner.Plan
 	if !info.IsGroup() || info.NativeJobs() {
 		var perr error
-		if plan, perr = runner.Resolve(o.Cfg, lane.Script(o.Root, n)); perr != nil {
+		if plan, perr = runner.Resolve(o.Cfg, o.manifests[n].Script()); perr != nil {
 			return refuseStart(o, n, perr, disp)
 		}
 	}
@@ -265,9 +266,9 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 		return skipCell(stopWhy)
 	}
 	if info.IsGroup() && !info.NativeJobs() {
-		path, ok := lane.SubScriptFor(o.Root, n, c.Name)
+		path, ok := o.manifests[n].JobScript(c.Name)
 		if !ok {
-			return skipCell("its group file no longer defines it")
+			return skipCell("its staged file doesn't define it")
 		}
 		p, err := runner.Resolve(o.Cfg, path)
 		if err != nil {
@@ -310,7 +311,14 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 	if job != "" {
 		prefix = ""
 	}
-	cmd, ownGroup, w := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), prefix, job, disp, files)
+	// The staged files, checked again right before this cell starts.
+	if err := o.manifests[n].Verify(); err != nil {
+		line("blocked: " + err.Error())
+		setCell(func(e *status.Lane) { e.State, e.Reason = status.Failed, "blocked: "+err.Error() })
+		return status.Failed
+	}
+	who := approval.Caller{Cell: c.Name, Job: ci.Job}
+	cmd, ownGroup, w := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), prefix, job, who, disp, files)
 	if ir.stopping() {
 		return skipCell("interrupted before start")
 	}

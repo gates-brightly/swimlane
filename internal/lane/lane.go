@@ -148,6 +148,10 @@ type Info struct {
 	RerunChildren bool
 	// Subs are a group lane's sub-jobs (group.go), its cells.
 	Subs []SubJob
+	// Observe are the round's probes (# Observe:): facts swim can't pin,
+	// such as which binary PATH finds or the cloud account, read when a
+	// guard is approved and again just before it returns (observe.go).
+	Observe []Probe
 }
 
 // DefaultHandlerTimeout is the handlers' budget when Handler-Timeout: is unset.
@@ -200,7 +204,7 @@ var (
 	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children):\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children|Observe):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
@@ -216,10 +220,15 @@ var (
 	// guardArgUse is `swim guard FLAG` from another language, the
 	// arguments as a list: ["swim", "guard", "FLAG", ...].
 	guardArgUse = regexp.MustCompile(`['"]guard['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]`)
+	// sdkGuardUse is an SDK's guard call: r.guard("FLAG", ...) (Python,
+	// TypeScript) or r.Guard("FLAG", ...) (Go); sdkDynGuard names its flag
+	// at run time.
+	sdkGuardUse = regexp.MustCompile(`\.[Gg]uard\(\s*["'\x60]([A-Za-z_][A-Za-z0-9_]*)["'\x60]`)
+	sdkDynGuard = regexp.MustCompile(`\.[Gg]uard\(\s*[A-Za-z_]`)
 	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
 		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true,
-		"always": true, "rerun-children": true}
+		"always": true, "rerun-children": true, "observe": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -372,6 +381,11 @@ func ParseScript(src string) Info {
 					}
 				case "Outputs":
 					info.setOutputs(sepRE.Split(v, -1), "Outputs:")
+				case "Observe":
+					info.addProbe(v, "Observe:")
+					if k := len(info.Observe); k > 0 && info.Observe[k-1].Line == 0 {
+						info.Observe[k-1].Line = i + 1
+					}
 				case "Includes":
 					for _, g := range sepRE.Split(v, -1) {
 						if g != "" && g != "-" && !strings.EqualFold(g, "none") {
@@ -432,7 +446,7 @@ func ParseScript(src string) Info {
 			if stageUseRE.MatchString(line) || stageArgRE.MatchString(line) {
 				info.Staged = true
 			}
-			if dynGuardRE.MatchString(line) {
+			if dynGuardRE.MatchString(line) || sdkDynGuard.MatchString(line) {
 				info.DynamicGuards++
 			}
 			if evidenceUseRE.MatchString(line) || evidenceArgRE.MatchString(line) {
@@ -440,6 +454,7 @@ func ParseScript(src string) Info {
 			}
 			uses := guardUse.FindAllStringSubmatch(line, -1)
 			uses = append(uses, guardArgUse.FindAllStringSubmatch(line, -1)...)
+			uses = append(uses, sdkGuardUse.FindAllStringSubmatch(line, -1)...)
 			for _, m := range uses {
 				if inHandler >= 0 {
 					info.Handlers[inHandler].Guards = append(info.Handlers[inHandler].Guards, m[1])

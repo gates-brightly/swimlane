@@ -1,5 +1,9 @@
-# swim lock: the breaking version of swim this repo's lanes use.
-# Written by swim; commit it so everyone runs a compatible swim. See `swim lock --help`.
-breaking: 7
-version: "7.20261013"
-updated_at: "2026-10-13T00:31:11Z"
+# swim lock: the syntax versions of the files this repo's lanes use (lane scripts,
+# logs, swim's state). Written by swim; commit it so everyone runs a compatible swim.
+# See `swim lock --help`.
+syntax:
+    script: 3
+    log: 2
+    state: 2
+version: "0.20261014"
+updated_at: "2026-10-14T16:40:33Z"
