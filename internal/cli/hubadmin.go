@@ -231,13 +231,24 @@ func hubUserCmd(args []string) error {
 // secretGrant encrypts each named secret, from the operator's store as the
 // current repo sees it, to the worker's key and gives the hub only that.
 func secretGrant(args []string) error {
-	var url, token string
-	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token}}.parse(args)
+	var url, token, guardList string
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "guard": &guardList}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) < 2 {
-		return usagef("usage: swim secret grant WORKER NAME... [--hub URL] [--admin-token T]")
+		return usagef("usage: swim secret grant WORKER NAME... [--guard FLAG[,FLAG]] [--hub URL] [--admin-token T]")
+	}
+	// --guard: the worker's runs release it to a lane only once one of
+	// these guards is approved for it (and swim.yml's own guard too).
+	var guard []string
+	for _, g := range strings.Split(guardList, ",") {
+		if g = strings.TrimSpace(g); g != "" {
+			if !config.ValidFlag(g) {
+				return fmt.Errorf("--guard: %q isn't a guard flag", g)
+			}
+			guard = append(guard, g)
+		}
 	}
 	a, hubURL, err := hubAdmin(url, token)
 	if err != nil {
@@ -261,7 +272,7 @@ func secretGrant(args []string) error {
 	if err != nil {
 		return err
 	}
-	v, openErr := openVault(root, cfg, true)
+	v, _, openErr := openVault(root, cfg, true)
 	for _, name := range rest[1:] {
 		s, err := v.Get(name)
 		if err != nil {
@@ -274,10 +285,13 @@ func secretGrant(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := a.Grant(w.ID, name, ct, fp, operator()); err != nil {
+		if err := a.Grant(w.ID, name, ct, fp, operator(), guard); err != nil {
 			return err
 		}
 		fmt.Printf("granted %s (%s scope here) to %s, encrypted to its key %s\n", name, s.Scope, w.Name, fp)
+		if len(guard) > 0 {
+			fmt.Printf("  guarded: released to a lane only once %s is approved for it\n", strings.Join(guard, " or "))
+		}
 	}
 	fmt.Printf("  its runs get them from %s at start: swim secret get NAME / secret.get(NAME)\n", hubURL)
 	return nil
@@ -330,16 +344,17 @@ func secretGrants(args []string) error {
 		fmt.Printf("no grants on %s (swim secret grant WORKER NAME)\n", hubURL)
 		return nil
 	}
-	fmt.Printf("%-16s %-24s %-21s %s\n", "worker", "secret", "granted", "by")
+	fmt.Printf("%-16s %-24s %-21s %-12s %s\n", "worker", "secret", "granted", "by", "guard")
 	for _, g := range gs {
-		fmt.Printf("%-16s %-24s %-21s %s\n", g.Name, g.Secret, g.At, g.By)
+		fmt.Printf("%-16s %-24s %-21s %-12s %s\n", g.Name, g.Secret, g.At, g.By, strings.Join(g.Guard, " or "))
 	}
 	return nil
 }
 
-// hubGrants decrypts the secrets the hub granted to this directory (nil
-// when it isn't enrolled, or the hub has none for it).
-func hubGrants(root string) (map[string]string, error) {
+// hubGrants decrypts the secrets the hub granted to this directory, with
+// the guard each grant carries (nil when it isn't enrolled, or the hub has
+// none for it).
+func hubGrants(root string) (map[string]secrets.Granted, error) {
 	h, err := loadHub(root)
 	if err != nil {
 		return nil, nil
@@ -356,13 +371,13 @@ func hubGrants(root string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]string{}
+	out := map[string]secrets.Granted{}
 	for _, f := range fs {
 		v, err := secrets.DecryptWith(f.Ciphertext, id)
 		if err != nil {
 			return nil, fmt.Errorf("hub secret %s: %v (encrypted to another key: grant it again)", f.Name, err)
 		}
-		out[f.Name] = v
+		out[f.Name] = secrets.Granted{Value: v, Guard: f.Guard}
 	}
 	return out, nil
 }

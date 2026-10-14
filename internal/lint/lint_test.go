@@ -273,3 +273,38 @@ func TestSecretRefs(t *testing.T) {
 		t.Errorf("env-supplied: %+v", fs)
 	}
 }
+
+func TestGuardedSecretLint(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	os.MkdirAll(filepath.Join(xdg, "swim"), 0o700)
+	os.WriteFile(filepath.Join(xdg, "swim", "secrets.yml"), []byte("schema: swim.secrets/v1\nall:\n  PROD_DB: {value: x, key: k, updated: t}\n"), 0o600)
+	cfg := cfg4()
+	cfg.Repo.Secrets = map[string]config.SecretPolicy{"PROD_DB": {Guard: config.Flags{"ALLOW_DROP"}}}
+	cfg.AmbientCredentials = []string{"prod-write"}
+	c := clean(1)
+	lint := func(body string) string {
+		return codes(Lint(cfg, map[int]string{1: before(c, "stage verify\n", body), 2: clean(2)}, 1))
+	}
+	// clean(1) guards ALLOW_DROP in stage change, before stage verify.
+	if got := lint("DB=$(swim secret get PROD_DB) || stop \"no db\"\n"); got != "" {
+		t.Errorf("after its guard: %s", got)
+	}
+	// Before the guard: refused by swim run.
+	early := strings.Replace(c, "stage snapshot\n", "stage snapshot\nDB=$(swim secret get PROD_DB) || stop \"no db\"\n", 1)
+	if got := codes(Lint(cfg, map[int]string{1: early, 2: clean(2)}, 1)); got != "secret-guard" {
+		t.Errorf("before its guard: %s", got)
+	}
+	if got := lint("run \"query\" psql \"$(swim secret get PROD_DB)\" -c 'select 1'\n"); got != "secret-argv" {
+		t.Errorf("inline argument: %s", got)
+	}
+	if got := lint("export DB=\"$(swim secret get PROD_DB)\"\n"); got != "" {
+		t.Errorf("an assignment: %s", got)
+	}
+	if got := lint("run \"apply\" aws --profile prod-write s3 rm s3://x\nAWS_PROFILE=prod-write aws s3 ls\n"); got != "ambient-credential" {
+		t.Errorf("ambient profile: %s", got)
+	}
+	if got := lint("run \"read\" aws --profile prod-read s3 ls\n"); got != "" {
+		t.Errorf("another profile: %s", got)
+	}
+}

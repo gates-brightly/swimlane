@@ -48,6 +48,10 @@ type Grant struct {
 	KeyFP      string `json:"key_fp"`     // the key it's encrypted to
 	At         string `json:"at"`
 	By         string `json:"by,omitempty"`
+	// Guard are guard flags the admin set: the worker's run releases the
+	// secret to a lane only once one of them is approved for it (and
+	// swim.yml's own guard, if it has one).
+	Guard []string `json:"guard,omitempty"`
 }
 
 type state struct {
@@ -303,11 +307,12 @@ func (s *Server) keyAPI(w http.ResponseWriter, r *http.Request) {
 
 // GrantInfo is a grant as listed: never its ciphertext.
 type GrantInfo struct {
-	Worker string `json:"worker"`
-	Name   string `json:"name"`
-	Secret string `json:"secret"`
-	At     string `json:"at"`
-	By     string `json:"by,omitempty"`
+	Worker string   `json:"worker"`
+	Name   string   `json:"name"`
+	Secret string   `json:"secret"`
+	At     string   `json:"at"`
+	By     string   `json:"by,omitempty"`
+	Guard  []string `json:"guard,omitempty"`
 }
 
 func (s *Server) grantsAPI(w http.ResponseWriter, r *http.Request) {
@@ -322,7 +327,7 @@ func (s *Server) grantsAPI(w http.ResponseWriter, r *http.Request) {
 			name = rec.Name
 		}
 		for n, g := range m {
-			out = append(out, GrantInfo{Worker: id, Name: name, Secret: n, At: g.At, By: g.By})
+			out = append(out, GrantInfo{Worker: id, Name: name, Secret: n, At: g.At, By: g.By, Guard: g.Guard})
 		}
 	}
 	s.mu.Unlock()
@@ -383,14 +388,19 @@ func (s *Server) grantAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "hub state: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.audit("granted %s to %s (%s) by %s", name, id, rec.Name, g.By)
+	if len(g.Guard) > 0 {
+		s.audit("granted %s to %s (%s) by %s, guarded by %s", name, id, rec.Name, g.By, strings.Join(g.Guard, " or "))
+	} else {
+		s.audit("granted %s to %s (%s) by %s", name, id, rec.Name, g.By)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // Fetched is one grant as its worker gets it.
 type Fetched struct {
-	Name       string `json:"name"`
-	Ciphertext string `json:"ciphertext"`
+	Name       string   `json:"name"`
+	Ciphertext string   `json:"ciphertext"`
+	Guard      []string `json:"guard,omitempty"`
 }
 
 // fetchAPI gives a worker its own grants: only with its own token, only
@@ -411,7 +421,7 @@ func (s *Server) fetchAPI(w http.ResponseWriter, r *http.Request) {
 	out := []Fetched{}
 	for n, g := range s.grants[id] {
 		if g.KeyFP == rec.KeyFP {
-			out = append(out, Fetched{Name: n, Ciphertext: g.Ciphertext})
+			out = append(out, Fetched{Name: n, Ciphertext: g.Ciphertext, Guard: g.Guard})
 		}
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })

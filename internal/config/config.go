@@ -71,6 +71,14 @@ type Settings struct {
 	// Headless is swim.yml's headless: block (what a headless worker takes
 	// from its hub). Only swim.yml may set it.
 	Headless *Headless `yaml:"headless,omitempty"`
+	// Secrets are swim.yml's guarded secrets (secrets.go): released to a
+	// lane only once one of their guard flags was approved for it. Only
+	// swim.yml may set it, so a guard is removed by a reviewed commit.
+	Secrets map[string]SecretPolicy `yaml:"secrets,omitempty"`
+	// AmbientCredentials name credentials outside swim's vault that grant
+	// what a guarded secret does (AWS profiles): swim lint and swim doctor
+	// point out their use. Only swim.yml may set it.
+	AmbientCredentials []string `yaml:"ambient_credentials,omitempty"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -149,6 +157,9 @@ func Load(root string) (*Config, error) {
 	if f.Defaults.Headless != nil {
 		return nil, fmt.Errorf("%s: headless: belongs in a repo's committed swim.yml, not config.yml (what a worker takes from its hub is the repo's decision)", c.Path)
 	}
+	if f.Defaults.Secrets != nil || f.Defaults.AmbientCredentials != nil {
+		return nil, fmt.Errorf("%s: secrets: and ambient_credentials: belong in a repo's committed swim.yml, not config.yml (a guard on a secret is the repo's decision)", c.Path)
+	}
 	c.Settings = f.Defaults
 	c.RepoLanes = f.Defaults.Lanes != 0
 	c.Runners, c.RunnerFrom = nil, nil
@@ -163,6 +174,10 @@ func Load(root string) (*Config, error) {
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
 		c.Headless = s.Headless
+		if err := validateSecrets(s.Secrets); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		c.Secrets, c.AmbientCredentials = s.Secrets, s.AmbientCredentials
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
 		if repo.Env != nil {
@@ -170,6 +185,9 @@ func Load(root string) (*Config, error) {
 		}
 		if repo.Headless != nil {
 			return nil, fmt.Errorf("%s (repo %s): headless: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
+		}
+		if repo.Secrets != nil || repo.AmbientCredentials != nil {
+			return nil, fmt.Errorf("%s (repo %s): secrets: and ambient_credentials: belong in the repo's committed swim.yml, not config.yml", c.Path, root)
 		}
 		c.HasRepo = true
 		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
@@ -413,8 +431,21 @@ func (c *Config) Validate() error {
 // (git push, git commit, git pull) plus defaults' and this repo's additions.
 func (c *Config) Blocked() []string { return policy.Patterns(c.BlockedCommands) }
 
-// Masker returns the secret masker for env (usually os.Environ()).
+// Masker returns the secret masker for env (usually os.Environ()). Under a
+// swim run it asks the run's broker for the secrets this lane may see, and
+// asks again whenever one is released to the lane.
 func (c *Config) Masker(env []string) *redact.Masker {
+	labeled, refresh := runSecrets(env)
+	return c.masker(env, labeled, refresh)
+}
+
+// MaskerWith is the masker for env with named secrets given (the launcher,
+// which holds every one of the run's): it never asks a broker.
+func (c *Config) MaskerWith(env []string, labeled []redact.Labeled) *redact.Masker {
+	return c.masker(env, labeled, nil)
+}
+
+func (c *Config) masker(env []string, labeled []redact.Labeled, refresh *redact.Refresh) *redact.Masker {
 	on := func(b *bool) bool { return b == nil || *b }
 	names := c.SecretEnv
 	// Values a lane got from env files are masked whatever their names
@@ -429,14 +460,17 @@ func (c *Config) Masker(env []string) *redact.Masker {
 		Auto:         on(c.SecretEnvAuto),
 		Ignore:       c.SecretEnvIgnore,
 		AutoPatterns: on(c.SecretPatternsAuto),
-		Labeled:      runSecrets(env),
+		Labeled:      labeled,
+		Refresh:      refresh,
 	})
 }
 
-// runSecrets are the swim run's secrets (swim secret), from its broker
-// when env names one: every process in a lane masks all of them exactly,
-// whichever the lane uses and however it got them.
-func runSecrets(env []string) []redact.Labeled {
+// runSecrets are the swim run's secrets (swim secret) this lane may see,
+// from its broker when env names one: every unguarded one, and the guarded
+// ones released to the lane. Every process in a lane masks all of them
+// exactly, whichever it uses and however it got them. The refresh asks
+// again when the broker's generation file changes (a release).
+func runSecrets(env []string) ([]redact.Labeled, *redact.Refresh) {
 	getenv := func(k string) string {
 		v := ""
 		for _, kv := range env {
@@ -446,15 +480,43 @@ func runSecrets(env []string) []redact.Labeled {
 		}
 		return v
 	}
-	resp, _, err := secrets.Call(getenv, secrets.Request{Op: "masks"})
-	if err != nil || resp == nil {
-		return nil
+	sock := getenv(secrets.SockEnv)
+	if sock == "" {
+		return nil, nil
 	}
-	out := make([]redact.Labeled, len(resp.Masks))
-	for i, m := range resp.Masks {
-		out[i] = redact.Labeled{Name: m.Name, Value: m.Value}
+	ask := func() []redact.Labeled {
+		resp, _, err := secrets.Call(getenv, secrets.Request{Op: "masks"})
+		if err != nil || resp == nil {
+			return nil
+		}
+		out := make([]redact.Labeled, len(resp.Masks))
+		for i, m := range resp.Masks {
+			out[i] = redact.Labeled{Name: m.Name, Value: m.Value}
+		}
+		return out
 	}
-	return out
+	gen := secrets.GenPath(sock)
+	stamp := func() string {
+		fi, err := os.Stat(gen)
+		if err != nil {
+			return ""
+		}
+		return fmt.Sprint(fi.ModTime().UnixNano(), fi.Size())
+	}
+	last := stamp()
+	labeled := ask()
+	refresh := &redact.Refresh{
+		Changed: func() bool {
+			now := stamp()
+			if now == last {
+				return false
+			}
+			last = now
+			return true
+		},
+		Labeled: ask,
+	}
+	return labeled, refresh
 }
 
 // MsgLogEvery is msg_log_interval: the least time between two MSG lines a

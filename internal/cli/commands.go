@@ -23,6 +23,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/policy"
+	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -452,7 +453,7 @@ func runLanes(rest []string, rf runFlags) error {
 		// The secrets key's passphrase, if it has one, is asked here
 		// before the live view starts (a terminal is needed).
 		SecretsPrompt: passphrasePrompt,
-		HubSecrets:    func() (map[string]string, error) { return hubGrants(root) },
+		HubSecrets:    func() (map[string]secrets.Granted, error) { return hubGrants(root) },
 		Pins:          pins,
 		Cells:         cells,
 		FailedCells:   rf.failed,

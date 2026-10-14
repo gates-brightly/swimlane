@@ -361,3 +361,49 @@ func TestNewKeys(t *testing.T) {
 		t.Error("defaults")
 	}
 }
+
+// secrets: (guarded secrets) and ambient_credentials: are swim.yml's alone,
+// and change the policy hash.
+func TestGuardedSecretsConfig(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	root := t.TempDir()
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := c.PolicyHash()
+	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("secrets:\n  PROD_DB: { guard: ALLOW_DROP }\n  ROLE: { guard: [A, B], release: step }\nambient_credentials: [prod-write]\n"), 0o644)
+	if c, err = Load(root); err != nil {
+		t.Fatal(err)
+	}
+	if g := c.SecretGuard("PROD_DB"); len(g) != 1 || g[0] != "ALLOW_DROP" {
+		t.Errorf("PROD_DB: %v", g)
+	}
+	if p := c.GuardedSecrets()["ROLE"]; strings.Join(p.Guard, ",") != "A,B" || p.Release != ReleaseStep {
+		t.Errorf("ROLE: %+v", p)
+	}
+	if len(c.SecretGuard("other")) != 0 || strings.Join(c.AmbientCredentials, ",") != "prod-write" {
+		t.Errorf("other / ambient: %v %v", c.SecretGuard("other"), c.AmbientCredentials)
+	}
+	if c.PolicyHash() == plain {
+		t.Error("a guard didn't change the policy hash")
+	}
+	for body, want := range map[string]string{
+		"secrets:\n  X: { release: step }\n":              "needs a guard",
+		"secrets:\n  X: { guard: 'not a flag' }\n":        "isn't a guard flag",
+		"secrets:\n  X: { guard: F, release: forever }\n": "want lane or step",
+		"secrets:\n  1x: { guard: F }\n":                  "isn't a secret name",
+	} {
+		os.WriteFile(filepath.Join(root, "swim.yml"), []byte(body), 0o644)
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+	os.WriteFile(filepath.Join(root, "swim.yml"), nil, 0o644)
+	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
+	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  secrets:\n    X: { guard: F }\n"), 0o644)
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "belong in a repo's committed swim.yml") {
+		t.Errorf("secrets: in config.yml: %v", err)
+	}
+}

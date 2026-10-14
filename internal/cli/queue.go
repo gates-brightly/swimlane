@@ -22,6 +22,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/queue"
+	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -911,7 +912,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
 		Unattended: true,
-		HubSecrets: func() (map[string]string, error) { return hubGrants(root) }}
+		HubSecrets: func() (map[string]secrets.Granted, error) { return hubGrants(root) }}
 	if headless {
 		// Plain lines for the log; SIGHUP reopens it rather than forcing
 		// the run as a closed terminal does. A guard nothing else approves

@@ -301,9 +301,11 @@ export const secret = {
     }
     const req = {
       token: process.env.SWIM_SECRETS_TOKEN ?? "",
+      // which lane process asks: a guarded secret goes only to a lane whose
+      // guard was approved
+      lane_token: process.env.SWIM_APPROVAL_TOKEN ?? "",
       op: "get",
       name,
-      lane: Number(process.env.SWIM_LANE || 0),
       how: "sdk",
     };
     return new Promise((resolve, reject) => {

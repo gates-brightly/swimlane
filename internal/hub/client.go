@@ -235,9 +235,10 @@ func (a *Admin) Approve(id string, off bool) (string, error) {
 	return out.Message, err
 }
 
-// Grant stores a secret encrypted to worker id's key.
-func (a *Admin) Grant(id, name, ciphertext, keyFP, by string) error {
-	return a.call("PUT", "/api/grants/"+id+"/"+name, Grant{Ciphertext: ciphertext, KeyFP: keyFP, By: by}, nil)
+// Grant stores a secret encrypted to worker id's key, guarded by guard
+// (none: unguarded).
+func (a *Admin) Grant(id, name, ciphertext, keyFP, by string, guard []string) error {
+	return a.call("PUT", "/api/grants/"+id+"/"+name, Grant{Ciphertext: ciphertext, KeyFP: keyFP, By: by, Guard: guard}, nil)
 }
 
 // Revoke deletes a grant.

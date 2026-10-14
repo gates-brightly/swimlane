@@ -54,7 +54,7 @@ type Script struct {
 var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
-	"guard-unlisted": true, "guard-unused": true, "check-unsafe": true,
+	"guard-unlisted": true, "guard-unused": true, "check-unsafe": true, "secret-argv": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -98,11 +98,14 @@ var Checks = []Check{
 	{"blocked", finding.Error, false, "a blocked command (git push/commit/pull, blocked_commands)", checkBlocked},
 	{"secret-echo", finding.Warn, false, "a secret variable echoed directly", checkSecretEcho},
 	{"secret-ref", finding.Warn, false, "a secret got by name (swim secret get, secret.get) that isn't stored", checkSecretRefs},
+	{"secret-guard", finding.Warn, false, "a guarded secret (swim.yml secrets:) got with no guard of its flag before it", checkGuardedSecret},
+	{"secret-argv", finding.Warn, false, "a secret got inline into a command's arguments ($(swim secret get ...)), readable with ps", checkSecretArgv},
+	{"ambient-credential", finding.Warn, false, "a credential swim.yml lists in ambient_credentials used directly", checkAmbientCredential},
 	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks, Always, Rerun-Children)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
 	{"check-unsafe", finding.Warn, false, "a destructive-looking command before `stage change` (swim plan --check runs it)", checkCheckUnsafe},
-	{"outputs", finding.Warn, false, "an output whose name suggests secrets (outputs aren't masked)", checkOutputs},
+	{"outputs", finding.Warn, false, "an output whose name suggests secrets (output files aren't masked)", checkOutputs},
 	{"input-dep", finding.Error, false, "`input N` of a lane not in After: (or config deps)", checkInputDeps},
 	{"includes", finding.Warn, false, "a Python or TypeScript lane imports a local module its # Includes: doesn't cover", checkIncludes},
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},

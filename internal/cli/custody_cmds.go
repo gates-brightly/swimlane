@@ -772,6 +772,16 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 			field("Approval", a)
 		}
 		field("Flags", strings.Join(l.Flags, " "))
+	case "secret-released":
+		subject = fmt.Sprintf("secret %s released to swim %d (guard %s, approved by %s)", l.Secret, l.Lane, l.Guard, l.Method)
+		field("Job", l.Job)
+		for _, a := range l.Approvals {
+			field("Approval", a)
+		}
+	case "secret-refused":
+		subject = fmt.Sprintf("secret %s refused to swim %d", l.Secret, l.Lane)
+		field("Job", l.Job)
+		field("Why", l.Action)
 	case "repair":
 		subject = "repair: " + l.Action
 		for name := range l.Outputs {
@@ -937,6 +947,14 @@ func (v *verifier) checkEntries(links []chain.Link) {
 					v.warn = append(v.warn, fmt.Sprintf("entry #%d: swim %d's log for run %s is gone (deleted, not archived)", l.Seq, l.Lane, l.Run))
 				case !sums[l.Log]:
 					v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's log for run %s was changed after the round ended", l.Seq, l.Lane, l.Run))
+				}
+			}
+		case "secret-released":
+			// A guarded secret goes out only on an approval swim run
+			// recorded: one its attestation doesn't list wasn't.
+			for _, h := range l.Approvals {
+				if attested && !slices.Contains(att.Approvals, h) {
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: secret %s released to swim %d in run %s on approval %s, which swim run didn't record (its attestation, entry #%d, doesn't list it)", l.Seq, l.Secret, l.Lane, l.Run, short12(h), att.Seq))
 				}
 			}
 		case "repair":

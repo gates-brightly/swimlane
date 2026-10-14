@@ -163,6 +163,9 @@ type Caller struct {
 	// registers a process not started yet (SetPID names it); 0 checks the
 	// token alone (a process swim itself runs for the lane).
 	PID int
+	// Token is the lane process's token (set by Register): what the run's
+	// other brokers (secrets) key a lane process's approvals by.
+	Token string
 }
 
 // AwaitPID is Caller.PID for a lane process about to start.
@@ -232,6 +235,7 @@ func (s *Server) Path() string { return s.ln.Addr().String() }
 // returns its token, for TokenEnv.
 func (s *Server) Register(c Caller) string {
 	tok := newID()
+	c.Token = tok
 	s.mu.Lock()
 	s.callers[tok] = c
 	s.mu.Unlock()
@@ -370,6 +374,20 @@ func (s *Server) consume(req Request) Response {
 		resp.Hash = hash
 	}
 	return resp
+}
+
+// Identify says which lane process sent conn with token tok, for the
+// run's other sockets (the secrets broker): the registered caller, or why
+// it isn't one (an unknown token, a process outside the lane).
+func (s *Server) Identify(conn net.Conn, tok string) (Caller, string) {
+	c, ok := s.caller(tok)
+	if !ok {
+		return c, "not a lane of this run (no or an unknown lane token)"
+	}
+	if why := from(conn, c); why != "" {
+		return c, why
+	}
+	return c, ""
 }
 
 // whoami says which lane, cell, job and run the token is for.

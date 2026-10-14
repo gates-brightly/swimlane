@@ -30,6 +30,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/redact"
+	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/trust"
@@ -123,6 +124,8 @@ var Checks = []Check{
 	{"checkpoint-unsent", false, "a chain anchor hasn't had the latest checkpoint", checkCheckpointUnsent},
 	{"trust-unpinned", false, "trust.yml isn't pinned here, or changed since the pin with no signed change", checkTrustPin},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
+	{"guarded-secrets", false, "lists swim.yml's guarded secrets; warns when the secrets key has no passphrase (a lane could decrypt them itself)", checkGuardedSecrets},
+	{"ambient-credential", false, "a credential swim.yml lists in ambient_credentials is configured on this machine (~/.aws)", checkAmbientCredentials},
 	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
 	{"headless-service", false, "a headless worker installed as a service or running (swim watch --headless)", checkHeadlessService},
 	{"headless-stale", false, "a .swim/headless.pid left by a headless worker that's gone (killed?)", checkHeadlessStale},
@@ -862,6 +865,32 @@ func checkHeadlessService(o *Options) []finding.Finding {
 	return out
 }
 
+// checkGuardedSecrets lists swim.yml's guarded secrets, and warns when the
+// secrets key has no passphrase: a lane runs as the operator, so it could
+// read the key and decrypt secrets.yml itself, guards or not.
+func checkGuardedSecrets(o *Options) []finding.Finding {
+	g := o.Cfg.GuardedSecrets()
+	if len(g) == 0 {
+		return nil
+	}
+	var names []string
+	for n, p := range g {
+		names = append(names, fmt.Sprintf("%s (%s)", n, strings.Join(p.Guard, " or ")))
+	}
+	sort.Strings(names)
+	out := []finding.Finding{fd(finding.Info, "guarded-secrets", "swim.yml", "",
+		"guarded secrets, released to a lane only once its guard is approved: %s", strings.Join(names, ", "))}
+	f, err := secrets.Load(secrets.Path(config.Path()))
+	if err != nil || f.Empty(secrets.RepoKey(o.Root)) {
+		return out
+	}
+	if k, err := secrets.LoadKey(o.Cfg.SecretsKeyPath()); err == nil && secrets.Unprotected(k) {
+		out = append(out, fd(finding.Warn, "guarded-secrets", k.Path, "ssh-keygen -p -f "+k.Path+" (swim run asks for the passphrase once per run)",
+			"the secrets key has no passphrase: a lane could decrypt secrets.yml itself, guarded secrets included"))
+	}
+	return out
+}
+
 // checkHeadlessStale: a headless worker that was killed leaves its pidfile
 // (the lock goes with the process).
 func checkHeadlessStale(o *Options) []finding.Finding {
@@ -929,4 +958,36 @@ func unitHasYes(text string) bool {
 		}
 	}
 	return false
+}
+
+// checkAmbientCredentials: a credential swim.yml names in
+// ambient_credentials (an AWS profile with the access a guarded secret
+// grants) that this machine has: every lane inherits it, guard or not.
+func checkAmbientCredentials(o *Options) []finding.Finding {
+	if len(o.Cfg.AmbientCredentials) == 0 {
+		return nil
+	}
+	home, _ := os.UserHomeDir()
+	files := []string{filepath.Join(home, ".aws", "credentials"), filepath.Join(home, ".aws", "config")}
+	for _, k := range []string{"AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE"} {
+		if p := os.Getenv(k); p != "" {
+			files = append(files, p)
+		}
+	}
+	var out []finding.Finding
+	for _, name := range o.Cfg.AmbientCredentials {
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			re := regexp.MustCompile(`(?m)^\s*\[(?:profile\s+)?` + regexp.QuoteMeta(name) + `\s*\]`)
+			if re.Match(data) {
+				out = append(out, fd(finding.Warn, "ambient-credential", file, "keep only read-only credentials on this machine; put write access in a guarded secret (swim.yml secrets:)",
+					"profile %s (swim.yml ambient_credentials:) is configured here: every lane can use it without a guard", name))
+				break
+			}
+		}
+	}
+	return out
 }

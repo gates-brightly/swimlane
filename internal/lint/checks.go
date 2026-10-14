@@ -533,6 +533,92 @@ func checkSecretRefs(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
+// checkGuardedSecret: a lane that gets a guarded secret (swim.yml
+// secrets:) with no guard of one of its flags before it: the broker will
+// refuse it.
+func checkGuardedSecret(c *Context, s *Script) []finding.Finding {
+	guarded := c.Cfg.GuardedSecrets()
+	if len(guarded) == 0 {
+		return nil
+	}
+	_, used, _ := s.guardFlags()
+	sdk := map[string]bool{}
+	for _, f := range s.Info.GuardFlags() {
+		sdk[f] = true
+	}
+	var out []finding.Finding
+	seen := map[string]bool{}
+	for i, line := range s.v.raw {
+		if s.Lib && s.v.doc[i] {
+			continue
+		}
+		for _, m := range secretUseRE.FindAllStringSubmatch(line, -1) {
+			name := m[1] + m[2] + m[3]
+			p, ok := guarded[name]
+			if !ok || seen[name] {
+				continue
+			}
+			before := false
+			for _, f := range p.Guard {
+				if at, ok := used[f]; (s.Lib && ok && at <= i) || (!s.Lib && sdk[f]) {
+					before = true
+				}
+			}
+			if !before {
+				seen[name] = true
+				out = append(out, f(finding.Warn, "secret-guard", i, fmt.Sprintf("put it inside `if guard %s \"<what it does>\"; then ... fi`", p.Guard[0]),
+					"secret %s is guarded by %s (swim.yml), but no guard of it comes first: swim run refuses it", name, strings.Join(p.Guard, " or ")))
+			}
+		}
+	}
+	return out
+}
+
+// checkAmbientCredential: a lane that uses a credential swim.yml lists in
+// ambient_credentials (an AWS profile with the access a guarded secret
+// grants) directly: no guard stands in its way.
+func checkAmbientCredential(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for _, name := range c.Cfg.AmbientCredentials {
+		re := regexp.MustCompile(`(?:\bAWS_PROFILE=|--profile(?:=|\s+))["']?` + regexp.QuoteMeta(name) + `(?:["'\s;)|&]|$)`)
+		for i, line := range s.v.raw {
+			if (s.Lib && s.v.doc[i]) || !re.MatchString(line) {
+				continue
+			}
+			out = append(out, f(finding.Warn, "ambient-credential", i, "put that access in a guarded secret (swim.yml secrets:) and run with read-only ambient credentials",
+				"uses %s, an ambient credential (swim.yml ambient_credentials:): swim's guards can't stop what it does", name))
+			break
+		}
+	}
+	return out
+}
+
+// secretArgRE is a secret got inline: $(swim secret get ...).
+var secretArgRE = regexp.MustCompile(`\$\(\s*(?:"?\$\{?SWIM_BIN\}?"?|[^\s()]*swim)\s+secret\s+get\b`)
+
+// checkSecretArgv: a secret got inline into a command's arguments, where
+// any process on the machine can read it (ps, /proc/<pid>/cmdline). An
+// assignment first (and an environment variable or stdin for the command)
+// keeps it out.
+func checkSecretArgv(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for i, line := range s.v.code {
+		if s.v.doc[i] {
+			continue
+		}
+		loc := secretArgRE.FindStringIndex(line)
+		if loc == nil {
+			continue
+		}
+		if strings.HasSuffix(strings.TrimRight(line[:loc[0]], `"' `), "=") {
+			continue // NAME=$(swim secret get ...)
+		}
+		out = append(out, f(finding.Warn, "secret-argv", i, "assign it first (V=$(swim secret get NAME)) and pass it in an environment variable or on stdin, not as an argument",
+			"a secret on a command line: any process on the machine can read a command's arguments (ps)"))
+	}
+	return out
+}
+
 func checkHeader(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, p := range s.Info.Problems {
@@ -755,13 +841,13 @@ var (
 	inputUseRE     = regexp.MustCompile(`(?:^|[\s(;&|$])input\s+([0-9]+)\s`)
 )
 
-// checkOutputs: outputs aren't masked, so a name that suggests secrets is
+// checkOutputs: output files aren't masked, so a name that suggests secrets is
 // worth a second look.
 func checkOutputs(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, name := range s.Info.Outputs {
 		if secretOutputRE.MatchString(name) {
-			out = append(out, f(finding.Warn, "outputs", s.headerLine("Outputs"), "never put secret values in outputs: they aren't masked",
+			out = append(out, f(finding.Warn, "outputs", s.headerLine("Outputs"), "never put secret values in outputs: output files aren't masked",
 				"output %s looks like it could hold secrets", name))
 		}
 	}

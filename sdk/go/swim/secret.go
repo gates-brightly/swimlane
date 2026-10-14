@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -50,8 +49,9 @@ func (secrets) Get(name string) (string, error) {
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(10 * time.Second))
-	lane, _ := strconv.Atoi(os.Getenv("SWIM_LANE"))
-	req := map[string]any{"token": os.Getenv("SWIM_SECRETS_TOKEN"), "op": "get", "name": name, "lane": lane, "how": "sdk"}
+	// lane_token says which lane process asks (swim releases a guarded
+	// secret only to a lane whose guard was approved).
+	req := map[string]any{"token": os.Getenv("SWIM_SECRETS_TOKEN"), "lane_token": os.Getenv("SWIM_APPROVAL_TOKEN"), "op": "get", "name": name, "how": "sdk"}
 	if err := json.NewEncoder(c).Encode(req); err != nil {
 		return "", err
 	}

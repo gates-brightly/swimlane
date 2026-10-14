@@ -296,9 +296,11 @@ class _Secrets:
             return r.stdout
         req = {
             "token": os.environ.get("SWIM_SECRETS_TOKEN", ""),
+            # which lane process asks: a guarded secret goes only to a lane
+            # whose guard was approved
+            "lane_token": os.environ.get("SWIM_APPROVAL_TOKEN", ""),
             "op": "get",
             "name": name,
-            "lane": int(os.environ.get("SWIM_LANE") or 0),
             "how": "sdk",
         }
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

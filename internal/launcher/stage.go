@@ -100,6 +100,7 @@ func started(o Options, tok string, pid int) {
 func exited(o Options, tok string) {
 	if o.approvalSrv != nil && tok != "" {
 		o.approvalSrv.Revoke(tok)
+		o.auth.forget(tok)
 	}
 }
 

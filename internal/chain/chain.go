@@ -48,7 +48,7 @@ type Entry struct {
 	Seq  int    `json:"seq"`
 	Prev string `json:"prev"` // SHA-256 of the previous line; "" for the first
 	At   string `json:"at"`
-	Type string `json:"type"` // approve | round | run | grant | revoke | repair | hub (a command from the hub; Method: its kind)
+	Type string `json:"type"` // approve | round | run | grant | revoke | repair | hub (a command from the hub; Method: its kind) | secret-released | secret-refused
 
 	Run    string `json:"run,omitempty"`
 	Lane   int    `json:"lane,omitempty"`
@@ -99,6 +99,13 @@ type Entry struct {
 	Manifests map[string]string `json:"manifests,omitempty"`
 	Scripts   map[string]string `json:"scripts,omitempty"`
 	Flags     []string          `json:"flags,omitempty"`
+
+	// secret-released, secret-refused: a guarded secret the run's broker
+	// handed a lane, or refused it. Secret is its name (never its value),
+	// Guard the flag that released it (or every flag that could have),
+	// Method how that flag was approved, Approvals the approve entry, and
+	// Action why a refusal was refused.
+	Secret string `json:"secret,omitempty"`
 
 	Signer string `json:"signer,omitempty"` // public key of whoever recorded the entry
 	Sig    string `json:"sig,omitempty"`

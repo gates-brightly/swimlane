@@ -300,6 +300,17 @@ func (k *Key) Identity(passphrase func() ([]byte, error)) (age.Identity, error) 
 	return id, nil
 }
 
+// Unprotected reports whether the private key has no passphrase: then any
+// process running as the operator (a lane) can decrypt the store itself.
+func Unprotected(k *Key) bool {
+	pem, err := os.ReadFile(k.Path)
+	if err != nil {
+		return false
+	}
+	_, err = agessh.ParseIdentity(pem)
+	return err == nil
+}
+
 // Secret is a decrypted secret.
 type Secret struct {
 	Name, Value string
@@ -487,6 +498,22 @@ func EncryptTo(recipient, value string) (string, error) {
 
 // DecryptWith decrypts an armored age ciphertext with id.
 func DecryptWith(armored string, id age.Identity) (string, error) { return decrypt(armored, id) }
+
+// Granted is a secret a hub granted: its value, and the guard flags its
+// admin set on the grant (any one releases it; none: unguarded).
+type Granted struct {
+	Value string
+	Guard []string
+}
+
+// Values are granted's values by name, for Add.
+func Values(granted map[string]Granted) map[string]string {
+	out := map[string]string{}
+	for n, g := range granted {
+		out[n] = g.Value
+	}
+	return out
+}
 
 // Add puts secrets from elsewhere (a hub's grants) into the vault as scope,
 // under the ones it already resolves.

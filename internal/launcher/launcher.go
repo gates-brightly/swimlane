@@ -30,6 +30,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/runrec"
+	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -127,7 +128,7 @@ type Options struct {
 	SecretsPrompt func(path string) func() ([]byte, error)
 	// HubSecrets, if set, gets the secrets a hub granted this directory
 	// (decrypted with its worker key): they resolve under the local store's.
-	HubSecrets func() (map[string]string, error)
+	HubSecrets func() (map[string]secrets.Granted, error)
 	// Unattended is a run nobody answers for (a batch swim watch took from
 	// the queue): the view's keys only move around, never pre-answer a
 	// guard, and the view closes when the run ends.
@@ -434,6 +435,7 @@ func Run(o Options) (int, error) {
 		ir.approvals = srv
 		o.approvalSock = srv.Path()
 		o.approvalSrv = srv
+		o.secrets.attach(srv, o.auth, disp)
 	}
 
 	var (
@@ -1040,7 +1042,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 	staged, tok := stageEnv(o, n, who)
 	env = append(env, staged...)
 	if o.secrets != nil {
-		env = append(env, o.secrets.env(o, n)...)
+		env = append(o.secrets.stripGuarded(env), o.secrets.env(o, n)...)
 	}
 	cmd.Env = env
 	// Parallel lanes can't share a keyboard: give them no stdin so
@@ -1057,7 +1059,9 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 	// The lane's process inherits the lock files, so the locks stay held as
 	// long as the lane runs, even if this launcher dies.
 	cmd.ExtraFiles = fileLocks
-	mk := o.Cfg.Masker(env)
+	// The launcher holds every secret of the run: it masks them all itself
+	// (asking its own broker would be asking as the lane).
+	mk := o.Cfg.MaskerWith(env, o.secrets.labeled())
 	w := &lineWriter{emit: func(s string) {
 		o.beat.saw(n)
 		s = prefix + mk.String(s)
