@@ -12,6 +12,7 @@
 package authority
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,7 +71,7 @@ func Record(root string, cfg *config.Config, e chain.Entry) (string, error) {
 		return "", err
 	}
 	hash, err := chain.Append(root, e, key)
-	if err != nil && key != nil && cfg.SigningMode() != config.SigningRequired {
+	if errors.As(err, new(chain.SignError)) && cfg.SigningMode() != config.SigningRequired {
 		// signing: auto and the key couldn't sign (a passphrase and no
 		// agent, a hardware key that wants a PIN): keep the link, unsigned.
 		fmt.Fprintln(os.Stderr, "swim: warning: chain of custody: couldn't sign ("+err.Error()+"); recorded unsigned")

@@ -200,12 +200,21 @@ func link(f *os.File, end int64, e Entry, key *sign.Key) ([]byte, error) {
 		e.Signer = key.Public
 		sig, err := sign.Sign(key, payload(e))
 		if err != nil {
-			return nil, err
+			return nil, SignError{err}
 		}
 		e.Sig = sig
 	}
 	return json.Marshal(e)
 }
+
+// SignError is a key that couldn't sign an entry (a passphrase and no
+// agent, a hardware key that wants a PIN). Nothing was written: the
+// caller may record the entry unsigned instead. Any other error from
+// Append or Repair may have left the file changed.
+type SignError struct{ Err error }
+
+func (e SignError) Error() string { return e.Err.Error() }
+func (e SignError) Unwrap() error { return e.Err }
 
 // writeLine writes line and its newline at offset at and syncs, so a
 // recorded entry survives a crash right after it.
@@ -331,10 +340,16 @@ func Repair(root string, key *sign.Key) (Repaired, error) {
 	if err != nil {
 		return Repaired{}, err
 	}
-	if err := f.Truncate(cut); err != nil {
-		return Repaired{}, err
-	}
+	// The repair entry goes over the incomplete one, then the file is cut
+	// after it: a failure at either step leaves an incomplete final entry
+	// (swim chain repair again), never a cut nothing records.
 	if err := writeLine(f, cut, line); err != nil {
+		return Repaired{}, fmt.Errorf("writing the repair entry: %w (the incomplete entry is kept in %s; run swim chain repair again)", err, r.Backup)
+	}
+	if err := f.Truncate(cut + int64(len(line)) + 1); err != nil {
+		return Repaired{}, fmt.Errorf("cutting the chain after the repair entry: %w (the incomplete entry is kept in %s; run swim chain repair again)", err, r.Backup)
+	}
+	if err := f.Sync(); err != nil {
 		return Repaired{}, err
 	}
 	r.Hash = Hash(line)

@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -153,6 +154,34 @@ func TestRepairIncompleteTail(t *testing.T) {
 	}
 	if p, u := Check(links); len(p) != 0 || len(u) != 0 {
 		t.Fatalf("problems %+v unsigned %v", p, u)
+	}
+}
+
+// A key that can't sign is a SignError and leaves the chain as it was, so
+// the caller can record the repair unsigned instead.
+func TestRepairSignError(t *testing.T) {
+	root, k := t.TempDir(), key(t)
+	if _, err := Append(root, Entry{Type: "round", Lane: 1}, k); err != nil {
+		t.Fatal(err)
+	}
+	f, _ := os.OpenFile(Path(root), os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString(`{"seq":2,"prev":"`)
+	f.Close()
+	before, _ := os.ReadFile(Path(root))
+	broken := *k
+	broken.Path = filepath.Join(root, "no-such-key")
+	_, err := Repair(root, &broken)
+	if !errors.As(err, new(SignError)) {
+		t.Fatalf("repair with a key that can't sign: %v", err)
+	}
+	if after, _ := os.ReadFile(Path(root)); string(after) != string(before) {
+		t.Fatalf("the chain changed:\n%s", after)
+	}
+	if _, err := Append(root, Entry{Type: "round", Lane: 2}, &broken); err == nil {
+		t.Fatal("append after the failed repair")
+	}
+	if r, err := Repair(root, nil); err != nil || r.Bytes == 0 {
+		t.Fatalf("unsigned repair: %+v %v", r, err)
 	}
 }
 
