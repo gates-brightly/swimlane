@@ -392,6 +392,19 @@ To cut a release:
   `swim run`, or `swim watch` running a queued batch) showed as idle in this
   one's live view. It now shows as `running elsewhere` with its round and
   elapsed time, then its result, and is never counted as part of this run.
+- **A time limit stops what the step started:** a step stopped by
+  `--timeout`, `Step-Timeout:` or the round's `Timeout:` could leave its
+  children running (`bash -c 'server & tests'` left the server). Each step
+  now runs in its own process group, which gets SIGTERM, then SIGKILL after
+  5s.
+  - Force quit reaches the group too: swim step passes the SIGINT on, and
+    the kill finds the group in `<log>.partial.pgid`, which swim step keeps
+    while the step runs. A step whose swim step was killed some other way is
+    killed when its log is next written.
+  - What a step leaves running when it ends on its own is left alone.
+  - A step whose stdin is the terminal (a lone lane run from a terminal)
+    stays in the lane's group so it can read the keyboard; a limit stops only
+    its own process, as before.
 
 ### Changed
 

@@ -262,7 +262,10 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   --new         start a fresh log (truncate)
   --snapshot    also save output to .swim/snapshots/laneN-<time>-<label>.txt
   --timeout D   stop the command after D (default: $SWIM_STEP_TIMEOUT, from the
-                script's Step-Timeout:; 0 for none); never past the round's Timeout
+                script's Step-Timeout:; 0 for none); never past the round's Timeout.
+                The command runs in its own process group: SIGTERM to all of
+                it, SIGKILL after 5s (when stdin is a terminal, only to the
+                command: see "TIME LIMITS" in swim --help)
   --retry N, --backoff D, --retry-on CODES, --no-retry-timeout
                 retry on failure (see "WRITING A LANE SCRIPT" in swim --help)
   Lane scripts call this through run/gate/snapshot; you rarely need it directly.

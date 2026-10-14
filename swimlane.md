@@ -90,7 +90,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - Log the command (quoted so it can be re-run), its output, exit code and duration. Keep the command's exit code.
 - Record a header: UTC time, cwd, git branch@sha, and configured env (for example `STAGE`, `AWS_PROFILE`).
 - Strip ANSI colour from the log only. Flush captured output even when interrupted.
-- Support per-step timeouts and retries, for idempotent steps only.
+- Support per-step timeouts and retries, for idempotent steps only. A timeout stops everything the step started (its process group: SIGTERM, then SIGKILL), except a step reading the terminal, which stays in the lane's group.
 
 ### Rounds
 - Declare the goal and metadata in a header. Only the goal is required.

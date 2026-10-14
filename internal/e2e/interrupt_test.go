@@ -170,6 +170,44 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 	noStray(t, "sleep 31.")
 }
 
+// A step stopped by its time limit takes what it started with it: the
+// whole process group gets SIGTERM.
+func TestStepTimeoutLeavesNoSurvivors(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "forks", `run --timeout 500ms "forks" bash -c 'sleep 33.1 & sleep 33.2 & wait'
+run "after" true`)
+	start := time.Now()
+	r.swim("run", "1", "--plain")
+	if took := time.Since(start); took > 5*time.Second {
+		t.Errorf("the step limit took %s to stop the step", took)
+	}
+	contains(t, "agent1.log", r.log(1), "  FAIL  forks (timeout: step limit 500ms)", "  PASS  after")
+	noStray(t, "sleep 33.")
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
+		t.Error("the step's process group record was left behind")
+	}
+}
+
+// Force quit kills a step's process group too: it isn't in the lane's
+// group, and its swim step, killed with the lane, can't stop it.
+func TestForceQuitKillsStepGroup(t *testing.T) {
+	r := newRepo(t, "")
+	r.mustSwim("config", "interrupt_grace", "400ms")
+	// The step and its child ignore SIGINT: only the kill stops them.
+	r.script(1, "deaf", `run "deaf" bash -c 'trap "" INT; sleep 33.3 & wait; wait'`)
+	r.script(2, "other", `run "x" sleep 33.4`)
+	l := r.launch(t, nil, "--interrupt", "immediate")
+	r.waitStep(t, 1, "deaf")
+	r.waitStep(t, 2, "x")
+	l.signal(syscall.SIGINT)
+	l.wait(t, 5*time.Second)
+	contains(t, "output", l.out.String(), "swim: force quitting", "swim: killing 1 lanes now.")
+	noStray(t, "sleep 33.")
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
+		t.Error("the killed step's process group record was left behind")
+	}
+}
+
 func TestTermEscalatesAfterGrace(t *testing.T) {
 	r := newRepo(t, "")
 	r.mustSwim("config", "term_grace", "500ms")

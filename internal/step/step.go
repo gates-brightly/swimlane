@@ -52,6 +52,10 @@ type Options struct {
 	StepTimeout     time.Duration
 	StepTimeoutText string
 	Retry           Retry
+	// KillGrace is how long a step stopped by a time limit or an interrupt
+	// has to exit before its process group is SIGKILLed; 0 means
+	// DefaultKillGrace.
+	KillGrace time.Duration
 	// Blocked are patterns the command line may not contain (git push, ...);
 	// a match is refused without running: BLOCKED, exit policy.ExitBlocked.
 	Blocked []string
@@ -246,9 +250,9 @@ func Run(o Options) (Result, error) {
 		fmt.Fprintln(o.Stderr, p.Paint(ui.Dim, "-- "+text))
 	}
 
-	// The terminal delivers Ctrl-C to the whole process group, so the child
-	// already has it: we only note it, wait, and flush. SIGTERM/SIGHUP may be
-	// aimed at us alone, so those are forwarded.
+	// Signals reach the step through us: it runs in its own process group,
+	// so the terminal's Ctrl-C and a signal to the lane's group don't reach
+	// it directly (see runOnce for a step reading the terminal).
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sigs)
@@ -395,6 +399,16 @@ func runOnce(o Options, plain *lockedWriter, sigs chan os.Signal) attempt {
 	cmd.Stdout = io.MultiWriter(o.Stdout, plain)
 	cmd.Stderr = io.MultiWriter(o.Stderr, plain)
 	cmd.WaitDelay = 2 * time.Second // don't hang on grandchildren holding the pipes
+	// Its own process group, so a time limit stops everything it started.
+	// Not for a step reading the terminal: a background group that reads it
+	// is stopped (SIGTTIN). That step stays in our group, gets Ctrl-C from
+	// the terminal directly, and a time limit stops only its own process.
+	group := !readsTerminal(o.Stdin)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: group}
+	grace := o.KillGrace
+	if grace <= 0 {
+		grace = DefaultKillGrace
+	}
 	if err := cmd.Start(); err != nil {
 		msg := fmt.Sprintf("swim: cannot start %s: %v\n", o.Args[0], err)
 		plain.Write([]byte(msg))
@@ -405,6 +419,18 @@ func runOnce(o Options, plain *lockedWriter, sigs chan os.Signal) attempt {
 		}
 		return at
 	}
+	pid := cmd.Process.Pid
+	// send signals the step: its whole group when it has one.
+	send := func(sig syscall.Signal) {
+		if group {
+			syscall.Kill(-pid, sig)
+		} else {
+			cmd.Process.Signal(sig)
+		}
+	}
+	if group {
+		recordGroup(o.LogPath, pid)
+	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	var deadline, kill <-chan time.Time
@@ -414,6 +440,7 @@ func runOnce(o Options, plain *lockedWriter, sigs chan os.Signal) attempt {
 		deadline = t.C
 	}
 	var waitErr error
+	var killAt time.Time // when the group gets SIGKILL, once it is being stopped
 loop:
 	for {
 		select {
@@ -421,8 +448,12 @@ loop:
 			if at.sig == nil {
 				at.sig = s
 			}
-			if s != syscall.SIGINT && cmd.Process != nil {
-				cmd.Process.Signal(s)
+			// In our group, the step got the terminal's Ctrl-C itself.
+			if group || s != syscall.SIGINT {
+				send(s.(syscall.Signal))
+			}
+			if group && killAt.IsZero() {
+				killAt = time.Now().Add(grace)
 			}
 		case <-deadline:
 			at.why = why
@@ -432,13 +463,24 @@ loop:
 			}
 			plain.Write([]byte(msg))
 			fmt.Fprint(o.Stderr, msg)
-			cmd.Process.Signal(syscall.SIGTERM)
-			kill = time.After(5 * time.Second)
+			send(syscall.SIGTERM)
+			kill = time.After(grace)
+			if killAt.IsZero() {
+				killAt = time.Now().Add(grace)
+			}
 		case <-kill:
-			cmd.Process.Kill()
+			send(syscall.SIGKILL)
 		case waitErr = <-done:
 			break loop
 		}
+	}
+	if group {
+		// The step's own process has exited; what it started may not have.
+		// A stopped step's group gets the rest of the grace, then SIGKILL.
+		if !killAt.IsZero() {
+			endGroup(pid, killAt)
+		}
+		os.Remove(GroupPath(o.LogPath))
 	}
 	at.dur = time.Since(start)
 	at.exit = exitCode(cmd, waitErr)
@@ -608,6 +650,7 @@ func RecordStep(logPath, kind, label, detail, cmdline string, start time.Time, d
 // outright, so it never wrote its block) into the log as a failed step with
 // whatever output it had collected.
 func RecoverSpool(logPath string) {
+	KillRecorded(logPath) // what the killed step started is still running
 	sp := SpoolPath(logPath)
 	f, err := os.Open(sp)
 	if err != nil {
@@ -621,6 +664,12 @@ func RecoverSpool(logPath string) {
 	}
 	f.Close()
 	writeBlock(logPath, logparse.StepLine(logparse.Fail, label, "cut off: swim step was killed, output recovered", "?", clock), "")
+}
+
+// readsTerminal reports whether a step's stdin is a terminal.
+func readsTerminal(r io.Reader) bool {
+	f, ok := r.(*os.File)
+	return ok && ui.IsTTY(f)
 }
 
 func shorten(s string, n int) string {
