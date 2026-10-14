@@ -149,7 +149,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - `swim verify` proves nothing was edited, removed or reordered. Signatures are checkable with plain `ssh-keygen`, without swim.
 
 ### Queue, CI and hub
-- **Queue:** a batch is fixed when queued. Its approvals travel with it, and the worker's own environment approves nothing. Several workers can share one queue safely.
+- **Queue:** a batch is fixed when queued. Its approvals travel with it, and the worker's own environment approves nothing. Several workers can share one queue safely: a claimed batch carries its worker's heartbeat, so a worker on another host that died is seen as gone once its lease runs out.
 - **CI:** `swim ci` never prompts. It folds each lane's log, turns failures into annotations, can run only the rounds a push changed, and never commits results back.
 - **Hub:** a dashboard of many workers. Workers push to it, so they can sit behind NAT. It serves https with `--tls-cert`/`--tls-key`, and plain HTTP only on loopback unless `--insecure`. Hub users (each with their own token and a viewer or operator role) can send headless workers commands: interrupt, drain, run, fetch a log. The hub only relays them; the worker checks each against the repo's committed `headless:` settings and records it.
 
@@ -188,6 +188,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Nothing operational is committed by accident.** Lane scripts, logs and state are git-ignored by default. Shared settings, `lookup.yml`, approvals and `.swim.lock` are committed.
 - **Readable without the planner.** A round's header states its goal, and its log shows every step.
 - **Personal settings stay out of reach.** Config lives outside the repo, so workers can't change it.
+- **Crash semantics.** A crash, a kill or a power cut never leaves a state file half-written: `status.yml`, queue entries, approvals and kept scripts are replaced atomically and synced with their directory, and each chain entry is synced as it's appended (a line cut short is refused until `swim chain repair`). On macOS the sync is `fsync`, which a drive's own cache can still lose on power loss. A lane is claimed by one process, named by pid and start time. A lane whose process died is ended as interrupted by the next `swim run` or `swim watch`, never reported passed and never rerun on its own; a half-run queued batch is orphaned, not retried.
 - **Upgrades are explicit.** `.swim.lock` pins the syntax versions a repo uses (lane scripts, logs, state), and older scripts and logs are migrated with the originals kept. Releases (`0.<date>.<index>`) that change no syntax never touch it.
 
 ## Out of scope

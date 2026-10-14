@@ -47,6 +47,10 @@ var Commands = map[string]string{
                  lane's latest round uses are pruned by swim doctor --fix.
     msg_log_interval  duration            at most one MSG log line per lane per
                  this (default 10s; 0 logs every change of swim msg).
+    queue_lease  duration (10s or more)   a queue worker renews its claim's
+                 heartbeat every third of this while it runs a batch; seen
+                 from another host, a claim with an older heartbeat is
+                 orphaned. Default 2m.
     runners.EXT  a command                the runner for lane.N.EXT scripts with
                  no #! line, e.g. swim config runners.ts tsx. Always written
                  to the repo's section; swim.yml's runners: is the default.
@@ -250,7 +254,8 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   or job id), from .swim/status.yml: state, job id, pending round and job
   (from lane.N.sh on disk), last round, counts,
   current or failed steps, and timing. Running lanes whose process is gone
-  are shown as "running?" (interrupted).
+  are shown as "running?" (interrupted); the next swim run, swim all, swim
+  ci or swim watch ends their round as interrupted.
   --yaml     the status file's fields as YAML, tagged schema: swim.status/v1
              (with N|JOB, just that lane); the file itself is unchanged
              (cat .swim/status.yml)
@@ -526,6 +531,11 @@ swim queue show|rm|requeue ID
   rm ID     remove an entry that isn't running
   requeue ID  put an orphaned (its worker died) or consumed entry back at the
             end of the queue
+  A claimed entry is orphaned when its worker is gone: on the worker's host,
+  its process (pid and start time) is; from another host sharing the queue,
+  its heartbeat is older than its lease (queue_lease, default 2m). A claim by
+  an older swim (no heartbeat) can't be judged from another host and shows
+  as running?.
   Entries are files under .swim/queue/: NNNN-q-<utc>-<hex>.queue while
   waiting, .running once a worker has claimed it (by renaming it, which
   is atomic: two workers can never claim the same entry), then
@@ -544,7 +554,10 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   entry when the run ends (passed, failed or interrupted alike: a half-run
   change is never retried on its own; swim queue requeue does that).
   One batch runs at a time per repo (a worker lock), so several workers
-  can share a queue.
+  can share a queue. While it runs a batch, the worker renews its claim's
+  heartbeat every third of queue_lease (swim config). As it starts, the
+  watch ends the round of any lane whose process died without ending it
+  (as swim run does): END INTERRUPTED in its log, interrupted in status.
   --once         run every queued batch, then exit (non-zero if one failed)
   --approved     also queue, by itself, every lane whose exact script is fully
                  approved (swim approve, meeting lookup.yml's rules), once per

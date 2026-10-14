@@ -663,6 +663,34 @@ To cut a release:
 
 ### Fixed
 
+- **Crashes no longer leave state half-written, or lanes stuck running**
+  (T6):
+  - **Durable writes:** `status.yml`, queue entries (added, claimed,
+    consumed), approvals files and kept scripts are written to a temporary
+    file, synced, renamed into place, and their directory synced; a new
+    chain syncs its directory too. A power cut leaves the old file or the
+    new one, never an empty one. (On macOS this is `fsync`, not
+    `F_FULLFSYNC`: the drive's own cache can still lose the last writes.)
+  - **Lane claims:** `lane_init` claims a lane under a lock
+    (`.swim/laneN.claim`), so of two processes starting one lane at once
+    exactly one wins, and records the process's start time with its pid. A
+    pid the kernel has since given to another process no longer counts as
+    the lane. `.swim/laneN.pid` still holds the bare pid, so an older swim
+    reads it as before.
+  - **Dead lanes are ended:** `swim run`, `swim all`, `swim ci` and `swim
+    watch` start by ending the round of any lane `status.yml` says is
+    running but whose process is gone (SIGKILL, a crash, a reboot): the
+    cut-off step is recovered, the log gets `END INTERRUPTED` (exit 137),
+    the chain a round entry, and the lane is `interrupted`, not
+    `running?` until someone runs `swim status --rebuild`.
+  - **Queue workers on other hosts:** a claimed batch records the worker's
+    start time, a heartbeat and its lease (`queue_lease`, default `2m`;
+    new config key), and `swim watch` renews the heartbeat every third of
+    the lease while the batch runs. From another host, a claim whose
+    heartbeat is older than its lease shows as orphaned, so `swim queue
+    requeue` and `rm` work there; claims by an older worker (no heartbeat)
+    still show as running. On the worker's own host, a reused pid no longer
+    keeps a dead worker's claim running.
 - **The chain of custody accepts entries of any size:** after an entry over
   256 KiB (a round with thousands of outputs), every later append failed,
   so nothing more was recorded.

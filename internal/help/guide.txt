@@ -858,7 +858,8 @@ READING RESULTS
           failed_steps: [<FAIL lines>]
           last_archive: <last archived log name>
   `swim status` shows "running?" when a lane's pid is gone (killed terminal);
-  treat that lane's round as interrupted.
+  treat that lane's round as interrupted. The next swim run, swim all or
+  swim watch records it so (END INTERRUPTED in its log).
 
   YAML for scripts and agents. Prefer these to scraping text: the text layouts
   are for people and may change, the schemas are versioned. Each document
@@ -923,6 +924,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
         msg_log_interval: 10s            # at most one MSG log line per lane per this (0: every change)
         outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
+        queue_lease: 2m                  # a queue worker's heartbeat holds this long (other hosts)
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
         chain_anchors: ["file:/mnt/audit/orders", hub]   # where chain checkpoints go (CHAIN OF CUSTODY)
         # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)
