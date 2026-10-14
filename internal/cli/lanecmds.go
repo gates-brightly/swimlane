@@ -186,6 +186,11 @@ func cmdGuard(args []string) error {
 	if !flagNameRE.MatchString(flag) {
 		return usagef("bad guard flag name: %s", flag)
 	}
+	if lane.CheckMode() {
+		// A read-only check never approves anything, whatever the flag says.
+		cmdMark([]string{n, logparse.Skip, desc, "dry run: swim plan --check never approves; set " + flag + "=1 to approve"})
+		return exitError{1}
+	}
 	val, set := os.LookupEnv(flag)
 	switch {
 	case val == "1":
@@ -211,6 +216,21 @@ func cmdStagePublic(args []string) error {
 	}
 	if len(args) != 1 {
 		return usagef("usage: swim stage snapshot|check|change|verify")
+	}
+	if lane.CheckMode() && (args[0] == "change" || args[0] == "verify") {
+		// A read-only check ends where change would begin, passing.
+		root, _, ln, err := laneCtx(n)
+		if err != nil {
+			return err
+		}
+		cmdMark([]string{n, logparse.Checked, "stopped before stage " + args[0], "swim plan --check runs only snapshot and check"})
+		if os.Getenv("SWIM_WRAPPED") != "" {
+			lane.ClaimEnd(root, ln, 0)
+			if pid, err := strconv.Atoi(os.Getenv("SWIM_PID")); err == nil && pid > 0 {
+				syscall.Kill(pid, syscall.SIGUSR1)
+			}
+		}
+		return exitError{0}
 	}
 	if err := cmdStage([]string{n, args[0]}); err != nil {
 		root, _, ln, cerr := laneCtx(n)

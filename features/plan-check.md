@@ -1,6 +1,6 @@
 # Read-only preview: `swim plan --check`
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -84,17 +84,28 @@ Plan: 3 to run, 1 would stop at a gate. Guarded changes: swim 3 ORDERS_ALLOW_SST
 - **Status, logparse, chain:** the new `CHECKED` result and `check`
   entries, all additive.
 
-## Open questions
+## Open questions (answered)
 
-1. **Trust:** swim can't prove that `snapshot` and `check` are read-only.
-   Should lint go further (for example flag `aws * delete-*` or
-   `terraform apply` before `change`), or is the stage convention enough?
-2. **Respect `After:`?** Optionally (`--ordered`) run checks in dependency
-   order, for rounds whose checks read upstream outputs
-   ([lane-outputs.md](lane-outputs.md))?
-3. **Reuse the result:** should a passing check that's recent enough let the
-   real run skip its `check` stage? Probably not: state can change between
-   check and run.
+1. **Trust:** the stage convention, backed by lint. A new `check-unsafe`
+   warning flags destructive-looking commands (`terraform apply`, a
+   delete, `kubectl apply`, ...) before `stage change`.
+2. **`--ordered`:** not now. A check reads today's state, and lane outputs
+   come only from real rounds, so ordering checks adds nothing yet.
+3. **Reusing a check:** never. State can change between the check and the
+   run.
+
+Decided while building:
+
+- **Mechanism:** the launcher sets `SWIM_CHECK_ONLY=1` in itself and every
+  lane process. With it set, `lane.Log` is the check log and
+  `status.Update` does nothing, so only `status.UpdateCheck` writes the
+  check's own fields.
+- **`confirm`** in a check records SKIP and ends the check as `CHECKED`,
+  since a question for the operator comes before a change.
+- **Results:** `checked` (reached change cleanly, or ran a stage-only round
+  to the end), `stopped` (a gate), `failed`, `interrupted`, or `refused`.
+- **Which lanes:** the lanes the plan would run (not skips). The plan
+  itself always shows the last checks.
 
 ## Testing
 

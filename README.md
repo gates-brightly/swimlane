@@ -239,6 +239,11 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
+- **Read-only preview:** `swim plan --check` runs every round's `snapshot`
+  and `check` stages for real, stops where `change` would begin, and shows
+  which gates pass today (`check PASS`, `stops at gate "..."`). Guards never
+  approve, and lane status is untouched. `swim ci --check` does the same
+  for a pull request.
 - **Outputs between lanes:** `# Outputs: stats.json` promises files in
   `$SWIM_OUT`, and a dependent lane reads them with
   `"$(input 2 stats.json)"` (or `output KEY value` / `$(input 2 KEY)` for

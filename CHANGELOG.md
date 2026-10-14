@@ -31,6 +31,25 @@ To cut a release:
 
 ### Added
 
+- **Read-only preview, `swim plan --check`:**
+  - **What runs:** each selected round's `snapshot` and `check` stages run
+    for real, all at once. `After:` is ignored and `Locks:` still apply.
+    Every round stops where `change` would begin, recorded as `CHECKED`.
+  - **What it never does:** approve a guard (not even with the flag set),
+    run handlers, write the round log or change lane status. It writes
+    `agentN.check.log` and the check fields only.
+  - **The plan:** shows `check PASS`, `stops at gate "<label>"`, `check ~`
+    for lanes that depend on unrun changes, refused lanes (no stages, or
+    compiled), and the guarded changes. It exits 1 if a check didn't pass.
+    A plain `swim plan` shows the last checks too, marked stale once a
+    script changes. `--parallel N` and `--timeout D` cap it.
+  - **Records:** status gets `check_result`, `check_at`, `check_sha256`,
+    `check_stop` and `check_guards`, the chain a `check` entry, and
+    `swim plan --yaml` a `check` block per lane.
+  - **Also:** `swim ci --check` runs a pull request preview. A new lint
+    check, `check-unsafe`, flags a destructive-looking command before
+    `stage change`.
+
 - **Lane outputs:**
   - **Producing:** `# Outputs: stats.json, pages/` promises files in
     `$SWIM_OUT`, a fresh `.swim/out/<job>/<run>/` per round. `output KEY

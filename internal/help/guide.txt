@@ -26,6 +26,7 @@ COMMANDS
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
   plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing
+                           (--check: first run every snapshot and check stage, read-only)
   status [N|JOB] [--yaml] [--run RUN]   last state of every lane, or as of one run
   log [N|JOB] [--all] [--yaml]   print a lane's log (--all: with its archives), a job's
                            rounds, or with no argument the project log .swim.log
@@ -625,6 +626,8 @@ READING RESULTS
         DRIFT  <what>
         STOP  <reason>
         WARN  <what>                                stage order, bad header values
+        CHECKED  stopped before stage change         a read-only check (swim plan --check) ended
+                                                    where change begins; in agentN.check.log
         MSG  <text> (7/25, <hh:mm:ss>)              a status message (msg); never a result.
                                                     One posted during a step is in its
                                                     block: -- MSG  <text> (...)

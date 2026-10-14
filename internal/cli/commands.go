@@ -531,11 +531,16 @@ func joinNums(ns []int) string {
 }
 
 // cmdPlan prints what `swim run` / `swim all` would do, running nothing.
-func cmdPlan(args []string) error {
-	var rerun, asYAML bool
-	rest, err := flags{bools: map[string]*bool{"rerun": &rerun, "yaml": &asYAML}}.parse(args)
+func cmdPlan(args []string) (err error) {
+	var rerun, asYAML, check bool
+	var parallel, timeout string
+	rest, err := flags{bools: map[string]*bool{"rerun": &rerun, "yaml": &asYAML, "check": &check},
+		strs: map[string]*string{"parallel": &parallel, "timeout": &timeout}}.parse(args)
 	if err != nil {
 		return err
+	}
+	if !check && (parallel != "" || timeout != "") {
+		return usagef("--parallel and --timeout are for swim plan --check")
 	}
 	if rerun && len(rest) > 0 {
 		return usagef("--rerun is for planning every pending lane; named lanes always run")
@@ -553,7 +558,21 @@ func cmdPlan(args []string) error {
 		}
 		lanes = append(lanes, n)
 	}
-	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun}
+	// The plan shows each lane's last read-only check (stale once its
+	// script changes); --check runs them first.
+	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun, ShowChecks: true}
+	checkCode := 0
+	if check {
+		if checkCode, err = runChecks(o, parallel, timeout, asYAML); err != nil {
+			return err
+		}
+		o.ChecksRan = true
+	}
+	defer func() {
+		if err == nil && checkCode != 0 {
+			err = exitError{checkCode}
+		}
+	}()
 	if asYAML {
 		doc, err := launcher.Plan(o)
 		if err != nil {
@@ -566,7 +585,62 @@ func cmdPlan(args []string) error {
 		}
 		return enc.Close()
 	}
-	return launcher.WritePlan(os.Stdout, o, ui.ColorEnabled(os.Stdout))
+	err = launcher.WritePlan(os.Stdout, o, ui.ColorEnabled(os.Stdout))
+	return err
+}
+
+// runChecks is swim plan --check's first half: run the snapshot and check
+// stages of every lane the plan would run, all at once, read-only. Their
+// output goes to stderr (stdout is the plan). It returns 1 if any check
+// didn't pass.
+func runChecks(o launcher.Options, parallel, timeout string, quiet bool) (int, error) {
+	doc, err := launcher.Plan(o)
+	if err != nil {
+		return 0, err
+	}
+	var lanes []int
+	for _, l := range doc.Lanes {
+		if l.Action != "skip" {
+			lanes = append(lanes, l.Lane)
+		}
+	}
+	if len(lanes) == 0 {
+		return 0, nil
+	}
+	if err := requireVersion(o.Root, true); err != nil {
+		return 0, err
+	}
+	co := launcher.Options{Root: o.Root, Cfg: o.Cfg, Lanes: lanes, CheckOnly: true, Plain: true, Out: os.Stderr,
+		Self: self(), RunID: lane.NewRunID()}
+	if quiet {
+		if devnull, err := os.Open(os.DevNull); err == nil {
+			defer devnull.Close()
+			co.Out = devnull
+		}
+	}
+	if parallel != "" {
+		n, err := strconv.Atoi(parallel)
+		if err != nil || n < 0 {
+			return 0, usagef("--parallel needs 0 (unlimited) or a positive number, got %q", parallel)
+		}
+		co.Parallel = &n
+	}
+	if timeout != "" {
+		d, err := time.ParseDuration(timeout)
+		if err != nil || d <= 0 {
+			return 0, usagef("--timeout needs a duration like 10m, got %q", timeout)
+		}
+		co.CheckTimeout = d
+	}
+	code, err := launcher.Run(co)
+	os.Unsetenv(lane.CheckEnv)
+	if err != nil {
+		return 0, err
+	}
+	if code != 0 {
+		return 1, nil
+	}
+	return 0, nil
 }
 
 // cmdAll runs every lane holding a pending round: `swim run` with no lanes.

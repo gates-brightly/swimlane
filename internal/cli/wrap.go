@@ -148,7 +148,7 @@ func cmdWrap(args []string) error {
 	}
 
 	// The round's outcome handlers (On-Success:, On-Failure:, On-Exit:).
-	if info, err := lane.ReadScript(root, n); err == nil && len(info.Handlers) > 0 {
+	if info, err := lane.ReadScript(root, n); err == nil && len(info.Handlers) > 0 && !lane.CheckMode() {
 		budget, _ := strconv.Atoi(f[5])
 		runHandlers(root, cfg.Masker(env), n, bin, env, info, code, time.Duration(budget)*time.Second, sigs)
 	}

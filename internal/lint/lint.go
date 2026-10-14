@@ -52,7 +52,7 @@ type Script struct {
 var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
-	"guard-unlisted": true, "guard-unused": true,
+	"guard-unlisted": true, "guard-unused": true, "check-unsafe": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -98,6 +98,7 @@ var Checks = []Check{
 	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
+	{"check-unsafe", finding.Warn, false, "a destructive-looking command before `stage change` (swim plan --check runs it)", checkCheckUnsafe},
 	{"outputs", finding.Warn, false, "an output whose name suggests secrets (outputs aren't masked)", checkOutputs},
 	{"input-dep", finding.Error, false, "`input N` of a lane not in After: (or config deps)", checkInputDeps},
 	{"handler", finding.Error, false, "outcome handlers or Fail: without `# swim: syntax 3`, or a handler name swim never calls", checkHandlers},

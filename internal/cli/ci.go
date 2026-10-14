@@ -35,9 +35,9 @@ func cmdCi(args []string) error {
 		}
 	}
 	var junit, providerName, heartbeat, runID string
-	var requireWork, rerun bool
+	var requireWork, rerun, checkOnly bool
 	rest, err := flags{
-		bools: map[string]*bool{"require-work": &requireWork, "rerun": &rerun},
+		bools: map[string]*bool{"require-work": &requireWork, "rerun": &rerun, "check": &checkOnly},
 		strs:  map[string]*string{"junit": &junit, "provider": &providerName, "heartbeat": &heartbeat, "run-id": &runID},
 	}.parse(rest0)
 	if err != nil {
@@ -125,7 +125,12 @@ func cmdCi(args []string) error {
 		return err
 	}
 	o := launcher.Options{Root: root, Cfg: cfg, Lanes: named, Self: self(), Out: out, Plain: true,
-		RunID: runID, Heartbeat: beat, Rerun: rerun && len(named) == 0}
+		RunID: runID, Heartbeat: beat, Rerun: rerun && len(named) == 0, CheckOnly: checkOnly}
+	if checkOnly {
+		// A pull request preview: snapshot and check only (swim plan --check).
+		o.Rerun = len(named) == 0
+		why += " (--check: snapshot and check stages only, read-only)"
+	}
 	if rerun && !changed && len(rest) == 0 {
 		why = "every pending round (--rerun: including ones that passed)"
 	}

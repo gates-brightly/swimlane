@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -166,6 +167,7 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 
 	labelW := len(fmt.Sprintf("swim %d", o.Cfg.Lanes))
 	shown := map[int]bool{}
+	stopped := 0
 	var walk func(n int, prefix, branch string)
 	walk = func(n int, prefix, branch string) {
 		info := scripts[n]
@@ -193,6 +195,14 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		}
 		if r := skip[n]; r != "" {
 			notes = append(notes, p.Paint(ui.Red, "skip: "+r))
+		}
+		if o.ShowChecks {
+			if c := checkOf(o, n, inRunDeps[n]); c != nil {
+				notes = append(notes, c.text(p))
+				if c.Result == "stopped" {
+					stopped++
+				}
+			}
 		}
 		if len(notes) > 0 {
 			line += "  " + strings.Join(notes, "  ")
@@ -291,6 +301,19 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 			p.Paint(ui.Mag, fmt.Sprint(counts[actRerun])), p.Paint(ui.Red, fmt.Sprint(counts[actSkip])))
 		if len(passed) > 0 {
 			fmt.Fprintln(w, completedLine(len(passed)))
+		}
+		if o.ChecksRan {
+			var guarded []string
+			for _, n := range sel {
+				if actions[n] != actSkip && len(scripts[n].Guards) > 0 {
+					guarded = append(guarded, fmt.Sprintf("swim %d %s", n, strings.Join(scripts[n].GuardFlags(), " ")))
+				}
+			}
+			line := fmt.Sprintf("Checks: %d would stop at a gate.", stopped)
+			if len(guarded) > 0 {
+				line += " Guarded changes: " + strings.Join(guarded, "; ") + "."
+			}
+			fmt.Fprintln(w, p.Paint(ui.Bold, line))
 		}
 	}
 	if len(idle) > 0 {
@@ -426,7 +449,9 @@ type PlanLane struct {
 	Locks   []string    `yaml:"locks,flow,omitempty"`
 	// Handlers are the round's outcome handlers and the guards in them.
 	Handlers []PlanHandler `yaml:"handlers,omitempty"`
-	Fail     string        `yaml:"fail,omitempty"` // hard, when Fail: hard
+	// Check is the lane's last read-only check (swim plan --check).
+	Check *PlanCheck `yaml:"check,omitempty"`
+	Fail  string     `yaml:"fail,omitempty"` // hard, when Fail: hard
 }
 
 // PlanHandler is one outcome handler of a round.
@@ -479,6 +504,9 @@ func Plan(o Options) (*PlanDoc, error) {
 		if info.FailHard {
 			l.Fail = "hard"
 		}
+		if o.ShowChecks {
+			l.Check = checkOf(o, n, pl.inRunDeps[n])
+		}
 		doc.Lanes = append(doc.Lanes, l)
 	}
 	for _, n := range pl.passed {
@@ -502,4 +530,54 @@ func Plan(o Options) (*PlanDoc, error) {
 	}
 	sort.Slice(doc.Idle, func(a, b int) bool { return doc.Idle[a].Lane < doc.Idle[b].Lane })
 	return doc, nil
+}
+
+// PlanCheck is a lane's last read-only check as the plan shows it.
+type PlanCheck struct {
+	Result    string   `yaml:"result"` // checked | stopped | failed | interrupted | refused
+	StoppedAt string   `yaml:"stopped_at,omitempty"`
+	Guards    []string `yaml:"guards,flow,omitempty"` // guards it reached (never approved)
+	At        string   `yaml:"at,omitempty"`
+	Stale     bool     `yaml:"stale,omitempty"`           // the script changed since
+	DependsOn []int    `yaml:"depends_on,flow,omitempty"` // checked against today's state; these lanes' changes haven't run
+}
+
+// checkOf is lane n's last check (nil if it has none).
+func checkOf(o Options, n int, deps []int) *PlanCheck {
+	st, _ := status.Load(o.Root)
+	if st == nil {
+		return nil
+	}
+	l := st.Get(n)
+	if l == nil || l.CheckResult == "" {
+		return nil
+	}
+	c := &PlanCheck{Result: l.CheckResult, StoppedAt: l.CheckStop, Guards: l.CheckGuards, At: l.CheckAt, DependsOn: deps}
+	if l.CheckSHA != "" {
+		if data, err := os.ReadFile(lane.Script(o.Root, n)); err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != l.CheckSHA {
+			c.Stale = true
+		}
+	}
+	return c
+}
+
+func (c *PlanCheck) text(p ui.Painter) string {
+	var s string
+	switch c.Result {
+	case "checked":
+		s = p.Paint(ui.Green, "check PASS")
+		if len(c.DependsOn) > 0 {
+			s = p.Paint(ui.Yellow, "check ~ (depends on unrun changes in "+joinInts(c.DependsOn, ", ")+")")
+		}
+	case "stopped":
+		s = p.Paint(ui.Red, fmt.Sprintf("stops at gate %q", c.StoppedAt))
+	case "refused":
+		s = p.Paint(ui.Yellow, c.StoppedAt)
+	default:
+		s = p.Paint(ui.Red, "check "+strings.ToUpper(c.Result))
+	}
+	if c.Stale {
+		s += p.Paint(ui.Dim, " (stale: the script changed since)")
+	}
+	return s
 }

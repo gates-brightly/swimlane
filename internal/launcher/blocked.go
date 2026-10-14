@@ -84,3 +84,32 @@ func refuseStart(o Options, n int, err error, disp *display.Display) *Outcome {
 	history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
 	return &Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Failed, Exit: 127, Reason: reason, Blocked: true, End: time.Now()}
 }
+
+// uncheckable says why lane n can't be checked read-only ("" if it can): a
+// compiled lane (swim can't see its stages), or a script with no stage
+// calls (nowhere safe to stop).
+func uncheckable(root string, n int) string {
+	data, err := os.ReadFile(lane.Script(root, n))
+	if err != nil {
+		return ""
+	}
+	if lane.IsBinary(data) {
+		return "cannot check: a compiled lane (swim can't see its stages)"
+	}
+	if info := lane.ParseScript(string(data)); !info.Staged {
+		return "cannot check: no stages (nowhere safe to stop before a change)"
+	}
+	return ""
+}
+
+// refuseCheck records a lane a check won't run (it shows in the plan).
+func refuseCheck(o Options, n int, why string, disp *display.Display) *Outcome {
+	info, _ := lane.ReadScript(o.Root, n)
+	disp.Set(n, func(v *display.LaneView) { v.State, v.Reason = display.Skipped, why })
+	disp.Line(n, why)
+	status.UpdateCheck(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
+		l.CheckResult, l.CheckAt, l.CheckStop, l.CheckGuards = "refused", status.Now(), why, nil
+		l.CheckSHA = ""
+	})
+	return &Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Skipped, Exit: -1, Reason: why, End: time.Now()}
+}

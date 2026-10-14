@@ -78,6 +78,18 @@ type Options struct {
 	// PinSHA holds the exact script (SHA-256) a lane must hold when it
 	// starts (queued batches): an edit since it was queued skips it.
 	PinSHA map[int]string
+	// CheckOnly is swim plan --check: every selected lane runs at once (After:
+	// is ignored; Locks: still apply) up to where change would begin, logs
+	// to its check log and leaves lane status alone (lane.CheckEnv is set).
+	// Lanes with no stages, and compiled lanes, are refused.
+	CheckOnly bool
+	// ShowChecks makes the plan show each lane's last check (swim plan
+	// --check, after the checks ran).
+	ShowChecks bool
+	ChecksRan  bool // the checks just ran: the plan sums them up
+	// CheckTimeout caps the whole check (0: none): past it the run is
+	// force-quit like a second Ctrl-C.
+	CheckTimeout time.Duration
 	// PinEnv holds the env files' hash (envfile.Resolved.SHA256) a lane
 	// must still resolve to when it starts (queued batches).
 	PinEnv map[int]string
@@ -208,6 +220,17 @@ func Run(o Options) (int, error) {
 	if err != nil {
 		return 2, err
 	}
+	refusedCheck := map[int]string{}
+	if o.CheckOnly {
+		// Nothing changes, so nothing waits: every check runs at once.
+		os.Setenv(lane.CheckEnv, "1")
+		deps = map[int][]Dep{}
+		for _, n := range sel {
+			if why := uncheckable(o.Root, n); why != "" {
+				refusedCheck[n] = why
+			}
+		}
+	}
 	blocked := BlockedLanes(o.Root, o.Cfg, sel)
 	// Env files: every selected lane's env resolves, and none sets a guard
 	// flag, or nothing starts.
@@ -283,6 +306,14 @@ func Run(o Options) (int, error) {
 	defer ir.stop()
 	// Lanes this run leaves out may be running in another swim right now.
 	stopOthers := watchOtherRuns(o, selected, disp)
+	if o.CheckOnly && o.CheckTimeout > 0 {
+		t := time.AfterFunc(o.CheckTimeout, func() {
+			disp.Message(fmt.Sprintf("swim: the check's --timeout %s ran out", o.CheckTimeout))
+			ir.handle(syscall.SIGINT)
+			ir.handle(syscall.SIGINT)
+		})
+		defer t.Stop()
+	}
 	if o.AutoApprove || o.Prompt && o.ev == nil && disp.CanAsk() {
 		if o.AutoApprove {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
@@ -353,6 +384,8 @@ func Run(o Options) (int, error) {
 			var out *Outcome
 			if reason := blocked[n]; reason != "" {
 				out = refuseBlocked(o, n, reason, disp)
+			} else if why := refusedCheck[n]; why != "" {
+				out = refuseCheck(o, n, why, disp)
 			} else {
 				out = runLane(o, n, sel, selected, deps[n], sl, lt, disp, done, outcomes, &mu, ir)
 			}

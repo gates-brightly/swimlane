@@ -36,7 +36,8 @@ lane_init() {
   SWIM_LANE=$1
   SWIM_ROOT=$(cd "$(dirname "$0")" && pwd -P) || exit 1
   cd "$SWIM_ROOT" || exit 1
-  STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE.log"
+  # A read-only check (swim plan --check) logs apart from the round log.
+  STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE${SWIM_CHECK_ONLY:+.check}.log"
   # The git shim (.swim/bin/git, installed by swim _start) refuses push,
   # commit and pull and signals this script (SWIM_PID) to stop the round.
   SWIM_PID=$$
@@ -138,6 +139,9 @@ _swim_finish() {
 # SWIM_FAILED_STAGE, and runs soft: nothing in it stops it, and its steps
 # share one budget (Handler-Timeout:, default 5m) that starts now.
 _swim_handlers() {
+  if [ -n "${SWIM_CHECK_ONLY:-}" ]; then
+    return # a read-only check changed nothing: nothing to roll back or clean up
+  fi
   if [ -n "$_swim_stop_reason" ]; then
     case "$_swim_stop_reason" in
       "interrupted by operator"*) _swim_outcome=interrupted ;;
@@ -244,11 +248,23 @@ _swim_operator_stop() {
 # order). Steps before the first stage belong to setup. Out of order, twice,
 # or a change stage without a snapshot and check before it records WARN.
 stage() {
+  if [ -n "${SWIM_CHECK_ONLY:-}" ]; then
+    case "$1" in
+      change|verify) _swim_checked "$1" ;;
+    esac
+  fi
   if ! "$SWIM_BIN" _stage "$SWIM_LANE" "$1"; then
     stop "bad stage: ${1:-<none>} (stages are snapshot, check, change, verify)"
   fi
   _swim_stage=$1
   _swim_reached="$_swim_reached $1"
+}
+
+# _swim_checked STAGE — a read-only check (swim plan --check) ends where
+# change would begin: record CHECKED and end the round, passing.
+_swim_checked() {
+  "$SWIM_BIN" _mark "$SWIM_LANE" CHECKED "stopped before stage $1" "swim plan --check runs only snapshot and check"
+  exit 0
 }
 
 # reached STAGE — true if the round started STAGE or a later one. A
@@ -368,6 +384,11 @@ guard() {
   case "$1" in
     ''|[0-9]*|*[!A-Za-z0-9_]*) echo "swim: bad guard flag name: $1" >&2; return 2 ;;
   esac
+  if [ -n "${SWIM_CHECK_ONLY:-}" ]; then
+    # A read-only check never approves anything, whatever the flag says.
+    "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$2" "dry run: swim plan --check never approves; set $1=1 to approve"
+    return 1
+  fi
   eval "_swim_val=\${$1-unset}"
   if [ "$_swim_val" = "1" ] && _swim_from_rc "$1"; then
     # Files never approve guards: ask as if the flag were unset.
@@ -408,6 +429,11 @@ _swim_from_rc() {
 # confirm "<question>" [answer] — ask the operator; anything other than the
 # exact answer (default: yes), including no input, stops the round.
 confirm() {
+  if [ -n "${SWIM_CHECK_ONLY:-}" ]; then
+    # A question for the operator comes before a change: the check ends here.
+    "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$1" "not asked: swim plan --check"
+    _swim_checked "confirm"
+  fi
   _swim_want=${2:-yes}
   printf '%s [type %s to continue]: ' "$1" "$_swim_want" >&2
   _swim_ans=

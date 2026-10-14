@@ -192,7 +192,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
-	"plan": `swim plan [N|JOB ...] [--rerun] [--yaml]
+	"plan": `swim plan [N|JOB ...] [--rerun] [--yaml] [--check [--parallel N] [--timeout D]]
 
   Show what "swim all" (or "swim run N ...", with lanes) would do, without
   running or changing anything, Terraform style:
@@ -213,7 +213,20 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   Fails, like swim run would, on a dependency cycle or an "# After:" that
   doesn't resolve.
   --yaml   the plan as data (schema swim.plan/v1): each lane's action, what it
-           waits on, why it would be skipped, its guards, timeout and locks.
+           waits on, why it would be skipped, its guards, timeout and locks,
+           and its last check.
+  --check  a read-only preview: first run each lane's snapshot and check
+           stages for real, all at once (After: ignored, Locks: kept), and
+           stop every round where change would begin (CHECKED). Guards never
+           approve (not even with the flag set), handlers don't run, logs go
+           to .swim/logs/agentN.check.log and lane status is untouched (only
+           check_result, check_at, check_sha256, check_stop, check_guards). A
+           round with no stages, or a compiled lane, is refused. The plan
+           then shows each lane's check: check PASS, stops at gate "<label>",
+           check ~ (it depends on lanes whose changes haven't run), and the
+           guarded changes; exits 1 if any check didn't pass. A plain swim
+           plan shows the last checks too, marked stale once a script changes.
+           --parallel N caps checks at once; --timeout D caps the whole check.
 `,
 	"status": `swim status [N|JOB] [--yaml] [--rebuild] [--run RUN]
 
@@ -408,7 +421,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
                 waiting on a job: swim log 3f2a9c1e --until-done
 `,
 	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
-        [--require-work] [--heartbeat D] [--run-id ID]
+        [--require-work] [--heartbeat D] [--run-id ID] [--check]
 
   Run rounds in a CI job: swim all, written for a CI log viewer and built for
   commits. Detects GitHub Actions (GITHUB_ACTIONS), GitLab CI (GITLAB_CI) or
@@ -452,6 +465,8 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   as artifacts. "Already passed" lives in .swim/status.yml: a fresh runner
   reruns every pending round unless --changed narrows it (or .swim/ is
   restored from a CI cache).
+  --check  a pull request preview: the snapshot and check stages only, read-only
+           (see swim plan --check), every pending round.
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
 swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
@@ -678,6 +693,8 @@ swim hub leave | status
                            name (on_fail, onfailure, ...) swim would never call
     handler-reached (warn) an on_failure with a guard that never checks reached
     outputs (warn)         an output whose name suggests secrets (not masked)
+    check-unsafe (warn)    a destructive-looking command (terraform apply, a
+                           delete) before stage change: plan --check runs it
     input-dep (error)      input N of a lane not in After: (or config deps)
     cross-lane (info)      uses a path another lane writes (> path, -o path,
                            cp/mv/tee) without either waiting on the other

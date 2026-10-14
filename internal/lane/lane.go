@@ -24,8 +24,25 @@ import (
 const StubMarker = "# swim:stub"
 
 func Log(root string, n int) string {
+	if CheckMode() {
+		return CheckLog(root, n)
+	}
 	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.log", n))
 }
+
+// CheckLog is lane n's check log (swim plan --check), kept apart from its
+// round log.
+func CheckLog(root string, n int) string {
+	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.check.log", n))
+}
+
+// CheckEnv is set (to 1) in swim plan --check and in every lane process it
+// starts: rounds stop where change would begin, guards never approve, logs
+// go to the check log and lane status is left alone.
+const CheckEnv = "SWIM_CHECK_ONLY"
+
+// CheckMode reports whether this process is part of a read-only check.
+func CheckMode() bool { return os.Getenv(CheckEnv) == "1" }
 
 // LogDir holds lane logs and their archives.
 func LogDir(root string) string { return filepath.Join(root, ".swim", "logs") }
@@ -80,6 +97,9 @@ type Info struct {
 	// on_failure and on_exit, or for a lane in another language the
 	// On-Success:, On-Failure: and On-Exit: commands. Script syntax 3.
 	Handlers []Handler
+	// Staged: the script calls stage (bash, or swim stage from another
+	// language), so a read-only check has a place to stop.
+	Staged bool
 	// Outputs are the files or directories the round promises in
 	// $SWIM_OUT (# Outputs:), for lanes that depend on it (input N name).
 	Outputs []string
@@ -138,6 +158,10 @@ var (
 	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
+	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
+	// check`, or ["swim", "stage", "check"] from another language.
+	stageUseRE = regexp.MustCompile(`(?:^|[\s;&|(])stage\s+["']?(?:snapshot|check|change|verify)\b`)
+	stageArgRE = regexp.MustCompile(`['"]stage['"]\s*,\s*['"](?:snapshot|check|change|verify)['"]`)
 	// handlerFnRE is a handler function's first line: on_failure() {
 	handlerFnRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failure|on_exit)\s*\(\s*\)`)
 	guardUse    = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
@@ -314,6 +338,9 @@ func ParseScript(src string) Info {
 		}
 		// Guard flags used in the body count even if the header doesn't list them.
 		if !strings.HasPrefix(line, "#") {
+			if stageUseRE.MatchString(line) || stageArgRE.MatchString(line) {
+				info.Staged = true
+			}
 			uses := guardUse.FindAllStringSubmatch(line, -1)
 			uses = append(uses, guardArgUse.FindAllStringSubmatch(line, -1)...)
 			for _, m := range uses {
