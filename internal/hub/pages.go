@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -112,6 +113,10 @@ pre { background:var(--card); border:1px solid var(--line); border-radius:6px; p
 .msg { color:var(--run); font-style:italic; }
 .bar { display:inline-block; vertical-align:middle; width:80px; height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin-left:6px; }
 .bar > span { display:block; height:100%; background:var(--run); }
+form.inline { display:inline; margin:0; }
+button { font:inherit; font-size:12.5px; padding:1px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); cursor:pointer; }
+button.danger { color:var(--bad); border-color:var(--bad); }
+input[type=password] { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); width:28em; max-width:100%; }
 </style>`
 
 var dashTmpl = template.Must(template.New("dash").Funcs(funcs).Parse(`<!doctype html>
@@ -132,17 +137,26 @@ var dashTmpl = template.Must(template.New("dash").Funcs(funcs).Parse(`<!doctype 
 </div>{{end}}
 </div></body></html>`))
 
+// csrfField is the hidden field every form on a logged-in page carries.
+const csrfField = `<input type="hidden" name="csrf" value="{{$.CSRF}}">`
+
 var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="3"><title>{{.Name}} · swim hub</title>` + style + `</head><body>
-<div><a href="/">← all workers</a></div>
+<div><a href="/">← all workers</a> · {{if .User}}<span class="muted">signed in as <b>{{.User}}</b> ({{.Role}})</span> <form class="inline" method="post" action="/logout">` + csrfField + `<button>log out</button></form>{{else}}<a href="/login">log in</a> <span class="muted">to send commands</span>{{end}}</div>
 <h1>{{.Name}} {{if .Stale}}<span class="pill bad">stale</span>{{else}}<span class="pill {{state .Activity}}">{{.Activity}}</span>{{end}}</h1>
 <div class="muted mono">{{.Host}}:{{.Root}} · pid {{.PID}}</div>
-{{with .Headless}}<div><span class="pill">headless · {{.Mode}}</span>{{if .Since}} <span class="muted">since {{.Since}}</span>{{end}}{{if .Approved}} <span class="muted">· --approved</span>{{end}}{{if .Yes}} <b class="bad">-y: approves every guard in every batch</b>{{end}}</div>{{end}}
+{{with .Headless}}<div><span class="pill">headless · {{.Mode}}</span>{{if .Since}} <span class="muted">since {{.Since}}</span>{{end}}{{if .Approved}} <span class="muted">· --approved</span>{{end}}{{if .Yes}} <b class="bad">-y: approves every guard in every batch</b>{{end}}{{if .Allow}} <span class="muted">· takes from the hub: {{range .Allow}}{{.}} {{end}}{{if .LogsOff}}(logs: off){{end}}</span>{{end}}</div>{{end}}
 <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
+{{if $.Can "drain"}}<div style="margin-top:6px"><form class="inline" method="post" action="/api/workers/{{.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="drain"><button class="danger">Stop the worker after this batch</button></form></div>{{end}}
+{{if and .User (not .Headless)}}<p class="muted">This worker isn't headless (swim watch --headless): it takes no commands from the hub.</p>{{end}}
 <h2>Lanes</h2>
-<div class="wrap"><table><tr><th>lane</th><th>state</th><th>round</th><th>step</th><th>pass</th><th>fail</th><th>skip</th><th>run</th></tr>
-{{range .Lanes}}<tr><td>swim {{.Lane}}</td><td class="{{state .State}}">{{.State}}{{if .Exit}} (exit {{.Exit}}){{end}}{{if .Reason}} <span class="muted">{{.Reason}}</span>{{end}}</td><td>{{.Round}}</td><td class="muted">{{.Step}}{{if .Cells}}<br>cells: {{.Cells}}{{end}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{with msgAge .MsgAt}} · {{.}}{{end}}{{end}}</td><td>{{.Pass}}</td><td>{{.Fail}}</td><td>{{.Skip}}</td><td class="mono muted">{{.Run}}</td></tr>{{end}}
+<div class="wrap"><table><tr><th>lane</th><th>state</th><th>round</th><th>step</th><th>pass</th><th>fail</th><th>skip</th><th>run</th>{{if .User}}<th></th>{{end}}</tr>
+{{range .Lanes}}<tr><td>swim {{.Lane}}</td><td class="{{state .State}}">{{.State}}{{if .Exit}} (exit {{.Exit}}){{end}}{{if .Reason}} <span class="muted">{{.Reason}}</span>{{end}}</td><td>{{.Round}}</td><td class="muted">{{.Step}}{{if .Cells}}<br>cells: {{.Cells}}{{end}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{with msgAge .MsgAt}} · {{.}}{{end}}{{end}}</td><td>{{.Pass}}</td><td>{{.Fail}}</td><td>{{.Skip}}</td><td class="mono muted">{{.Run}}</td>{{if $.User}}<td>
+{{- if and (eq .State "running") .Run ($.Can "interrupt")}}<form class="inline" method="post" action="/api/workers/{{$.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="interrupt"><input type="hidden" name="lane" value="{{.Lane}}"><input type="hidden" name="run" value="{{.Run}}"><button class="danger">Interrupt</button></form> {{end}}
+{{- if and .Run ($.Can "log")}}<form class="inline" method="post" action="/api/workers/{{$.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="log"><input type="hidden" name="lane" value="{{.Lane}}"><input type="hidden" name="run" value="{{.Run}}"><button>Log</button></form> {{end}}
+{{- if and .Script (ne .State "running") ($.Can "run")}}<form class="inline" method="post" action="/api/workers/{{$.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="run"><input type="hidden" name="lane" value="{{.Lane}}"><input type="hidden" name="sha256" value="{{.Script}}"><input type="hidden" name="manifest" value="{{.Manifest}}"><button>Run now</button> <span class="mono muted">{{short .Script}}</span></form>{{end -}}
+</td>{{end}}</tr>{{end}}
 </table></div>
 {{range .Lanes}}{{if .Tail}}<h2>swim {{.Lane}} · {{.Round}}</h2><pre>{{range .Tail}}{{.}}
 {{end}}</pre>{{end}}{{end}}
@@ -150,10 +164,53 @@ var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doct
 {{if .Queue}}<div class="wrap"><table><tr><th>#</th><th>id</th><th>state</th><th>lanes</th><th>by</th><th>note</th></tr>
 {{range .Queue}}<tr><td>{{.Seq}}</td><td class="mono">{{.ID}}</td><td class="{{state .State}}">{{.State}}{{if .Result}}: {{.Result}}{{end}}</td><td>{{range .Lanes}}{{.}} {{end}}</td><td>{{.By}}</td><td class="muted">{{.Note}}</td></tr>{{end}}
 </table></div>{{else}}<p class="muted">empty</p>{{end}}
+{{if .User}}<h2>Commands</h2>
+{{if .Commands}}<div class="wrap"><table><tr><th>#</th><th>command</th><th>by</th><th>sent</th><th>outcome</th></tr>
+{{range .Commands}}{{$st := $.StateOf .}}<tr><td>{{.Seq}}</td><td>{{.Kind}}{{if .Lane}} swim {{.Lane}}{{end}}{{if .Pin.Run}} <span class="mono muted">{{.Pin.Run}}</span>{{end}}{{if .Pin.SHA256}} <span class="mono muted">{{short .Pin.SHA256}}</span>{{end}}{{if and (eq .Kind "log") .Pin.Run}} · <a href="/w/{{$.ID}}/logs/{{.Pin.Run}}/{{.Lane}}">view</a>{{end}}</td><td>{{.By}}</td><td class="muted">{{.At}}</td><td class="{{state $st}}">{{$st}}{{if .Detail}}: <span class="muted">{{.Detail}}</span>{{end}}</td></tr>{{end}}
+</table></div>{{else}}<p class="muted">none sent</p>{{end}}{{end}}
 <h2>Recent events</h2>
 <pre>{{range .Events}}{{.}}
 {{end}}</pre>
 </body></html>`))
+
+var loginTmpl = template.Must(template.New("login").Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>log in · swim hub</title>` + style + `</head><body>
+<div><a href="/">← all workers</a></div>
+<h1>Log in to the swim hub</h1>
+{{if .Failed}}<p class="bad">That token isn't a user's.</p>{{end}}
+<p class="muted">Your token came from <span class="mono">swim hub user add NAME</span> (the hub's admin runs it). The login lasts 12 hours.</p>
+<form method="post" action="/api/login"><input type="password" name="token" placeholder="your hub user token" autocomplete="off" autofocus> <button>Log in</button></form>
+</body></html>`))
+
+var logTmpl = template.Must(template.New("log").Funcs(funcs).Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+{{if not .Have}}<meta http-equiv="refresh" content="2">{{end}}<title>swim {{.Lane}} log · {{.Name}} · swim hub</title>` + style + `</head><body>
+<div><a href="/w/{{.ID}}">← {{.Name}}</a></div>
+<h1>swim {{.Lane}} · run <span class="mono">{{.Run}}</span></h1>
+{{if .Have}}<div class="muted">uploaded {{ago .At}} · masked of secrets by the worker · kept in the hub's memory for 15 minutes</div><pre>{{.Text}}</pre>
+{{else}}<p class="muted">{{.State}}{{if .Detail}}: {{.Detail}}{{end}}{{if eq .State "sent"}} · waiting for the worker to upload it…{{end}}</p>{{end}}
+</body></html>`))
+
+// workerData is what the worker page shows: the worker, and the user
+// logged in ("" for nobody), their CSRF token and the worker's commands.
+type workerData struct {
+	View
+	User, Role, CSRF string
+	Commands         []Command
+	now              time.Time
+}
+
+// Can reports whether the logged-in user may send command kind here and
+// the worker takes it.
+func (d workerData) Can(kind string) bool {
+	if d.User == "" || (kind != KindLog && d.Role != RoleOperator) {
+		return false
+	}
+	return d.Headless.Allows(kind)
+}
+
+// StateOf is a command's state now.
+func (d workerData) StateOf(c Command) string { return c.State(d.now) }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -161,12 +218,70 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) workerPage(w http.ResponseWriter, r *http.Request) {
-	for _, v := range s.Workers() {
-		if v.ID == r.PathValue("id") {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			workerTmpl.Execute(w, v)
-			return
+	v, ok := s.worker(r.PathValue("id"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	d := workerData{View: v, now: s.now()}
+	d.User, d.Role, d.CSRF = s.viewer(r)
+	if d.User != "" {
+		d.Commands = s.Commands(v.ID)
+		if len(d.Commands) > 20 {
+			d.Commands = d.Commands[:20]
 		}
 	}
-	http.NotFound(w, r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	workerTmpl.Execute(w, d)
+}
+
+// worker is one worker as Workers shows it.
+func (s *Server) worker(id string) (View, bool) {
+	for _, v := range s.Workers() {
+		if v.ID == id {
+			return v, true
+		}
+	}
+	return View{}, false
+}
+
+func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	loginTmpl.Execute(w, map[string]bool{"Failed": r.URL.Query().Get("failed") != ""})
+}
+
+// logPage shows a log a user asked for, polling until the worker uploads
+// it (or says why it won't).
+func (s *Server) logPage(w http.ResponseWriter, r *http.Request) {
+	if user, _, _ := s.viewer(r); user == "" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if _, ok := s.requireUser(w, r, RoleViewer); !ok {
+		return
+	}
+	v, ok := s.worker(r.PathValue("id"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	run := r.PathValue("run")
+	lane, _ := strconv.Atoi(r.PathValue("lane"))
+	d := struct {
+		ID, Name, Run, State, Detail, Text string
+		Lane                               int
+		Have                               bool
+		At                                 time.Time
+	}{ID: v.ID, Name: v.Name, Run: run, Lane: lane, State: "not asked for: use the Log button on the worker's page"}
+	for _, c := range s.Commands(v.ID) {
+		if c.Kind == KindLog && c.Pin.Run == run && c.Lane == lane {
+			d.State, d.Detail = c.State(s.now()), c.Detail
+			break
+		}
+	}
+	if data, at, ok := s.logs.get(logKey(v.ID, run, lane)); ok {
+		d.Have, d.Text, d.At = true, string(data), at
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	logTmpl.Execute(w, d)
 }

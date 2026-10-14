@@ -28,9 +28,21 @@ func cmdInterrupt(args []string) error {
 	if err != nil {
 		return err
 	}
+	msg, err := interruptLane(root, n, "")
+	if err != nil {
+		return err
+	}
+	fmt.Println(msg)
+	return nil
+}
+
+// interruptLane asks running lane n to stop at its next step boundary and
+// says what it did. wantRun, when set, is the run the asker saw: a lane
+// now running another run is left alone (the request is stale).
+func interruptLane(root string, n int, wantRun string) (string, error) {
 	pid, ok := lane.Running(root, n)
 	if !ok {
-		return fmt.Errorf("swim %d isn't running", n)
+		return "", fmt.Errorf("swim %d isn't running", n)
 	}
 	run, job, step := "", "", ""
 	if st, _ := status.Load(root); st != nil {
@@ -38,17 +50,19 @@ func cmdInterrupt(args []string) error {
 			run, job, step = l.Run, l.Job, l.CurrentStep
 		}
 	}
+	if wantRun != "" && run != wantRun {
+		return "", fmt.Errorf("stale: swim %d is now run %s, not %s", n, or(run, "(unknown)"), wantRun)
+	}
 	if err := lane.RequestStop(root, n, run); err != nil {
-		return err
+		return "", err
 	}
 	// SIGUSR2 to the lane's bash only: the step command never sees it.
 	if err := syscall.Kill(pid, syscall.SIGUSR2); err != nil {
-		return fmt.Errorf("signal swim %d (pid %d): %w", n, pid, err)
+		return "", fmt.Errorf("signal swim %d (pid %d): %w", n, pid, err)
 	}
 	history.Log(root, history.Entry{Event: history.StopReq, Lane: n, Job: job, Run: run, Detail: "stop requested after: " + step})
 	if step == "" {
 		step = "the current step"
 	}
-	fmt.Printf("swim %d: stopping after %s; no further step will start\n", n, step)
-	return nil
+	return fmt.Sprintf("swim %d: stopping after %s; no further step will start", n, step), nil
 }

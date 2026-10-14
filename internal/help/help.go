@@ -599,6 +599,34 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   signal forces). SIGHUP reopens .swim/headless.log (for logrotate) and
   never touches a running lane. Told to stop, it exits 0, so a service
   manager doesn't restart it.
+  Commands from the hub: a headless worker long-polls its hub for what
+  hub users send (swim hub --help): interrupt a lane, drain (stop after the
+  batch in hand, as SIGTERM), run a lane, or upload a run's log. The hub
+  only relays; the worker checks each one and decides:
+    new         each is taken once: the hub's epoch, the last seq and the
+                ids of recent commands are kept in .swim/hub.yml, so a
+                restarted or replaying hub can't make it act twice
+    in time     past its expiry, or past headless.command_ttl (default
+                10m; 2m for interrupt) after it was sent, it's acknowledged
+                expired and not carried out
+    allowed     swim.yml's headless.allow lists it (default: answer,
+                interrupt, drain, log; run must be added)
+    pinned      interrupt names the run the page showed, run the script
+                and manifest hashes: if the lane has moved on, it's
+                refused as stale. A run is queued unsigned, by
+                "hub:USER via URL", with no approvals of its own: its
+                guards approve only as any unsigned batch's do.
+    logs        a log is masked again with the secrets known now before it
+                goes (only its last 8 MiB); headless.logs: off refuses them
+  Every command, refused or not, is recorded in .swim.log and the chain
+  ("hub <cmd> by <user> via <url>: <outcome>"), and acknowledged to the
+  hub. swim.yml (only; config.yml can't set it):
+    headless:
+      allow: [answer, interrupt, drain, log]   # add run to allow it
+      logs: on                                 # off: logs stay here
+      command_ttl: 10m
+      approvals: signed      # signed | hub: how guards are answered (to come)
+      answer_timeout: 30m    # (to come)
 `,
 	"secret": `swim secret set NAME [--all|--repo]
 swim secret get NAME
@@ -803,6 +831,8 @@ swim hub enroll URL [--token T] [--name N] [--ca FILE] [--insecure]
 swim hub leave | status
 swim hub login URL --admin-token T [--ca FILE] [--insecure]
 swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
+swim hub user add NAME --role viewer|operator | remove NAME | list
+         [--hub URL] [--admin-token T]
 
   A watch hub: one page showing what many swim workers are doing.
   swim hub         serve it (default 127.0.0.1:7700): a dashboard of every
@@ -817,9 +847,10 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
                    tail, its queue and recent events), Esc comes back,
                    Ctrl-C stops the hub; a approves the selected worker for
                    secrets, u withdraws it. --no-tui (or not a terminal)
-                   prints the URL and enroll command instead. The pages are
-                   read-only and unauthenticated, so keep the default
-                   localhost bind or put it behind your own access control.
+                   prints the URL and enroll command instead. Viewing the
+                   pages needs no login, so keep the default localhost bind
+                   or put it behind your own access control; sending
+                   commands and reading full logs needs a hub user.
   TLS: --tls-cert FILE --tls-key FILE (PEM) serve https (TLS 1.2 or later);
                    the certificate reloads when either file changes, so a
                    renewal needs no restart. swim makes no certificates.
@@ -835,7 +866,30 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
   Tokens: the enroll token (--token, else $SWIM_HUB_TOKEN, else a new one
   each start) only enrolls; each worker gets its own token when it enrolls,
   for its reports and secrets, so a hub restart doesn't strand it; the
-  admin token approves workers and manages grants.
+  admin token approves workers, manages grants and manages users, and
+  sends no commands; each hub user's token sends commands as their role
+  allows.
+  swim hub user add NAME --role viewer|operator
+                   add a hub user (admin) and print their token, once: the
+                   hub keeps only its hash. Use the name lookup.yml knows
+                   them by. They log in at URL/login (a 12-hour session
+                   cookie: HttpOnly, SameSite=Strict, Secure under TLS;
+                   every form carries a per-session CSRF token) or send the
+                   token as Authorization: Bearer. Adding a name again gives
+                   a new token and role and ends their sessions. remove
+                   ends them too; list shows every user and role.
+  Commands: on a headless worker's page (swim watch --headless) a user
+  logged in gets controls: Interrupt a running lane (pinned to the run
+  shown), Stop the worker after this batch (drain), Run now an idle lane
+  (pinned to the script and manifest shown; queued unsigned, by
+  hub:USER via URL, with no approvals of its own), and Log (the run's
+  full log, uploaded masked by the worker and kept in the hub's memory
+  only: 8 MiB a log, 64 MiB in all, 15 minutes). viewer may only ask for
+  logs; operator may do all four. The hub keeps commands in --state DIR
+  and only relays them: the worker long-polls for them with its own
+  token, checks each against swim.yml's headless: block, its expiry
+  (10 minutes, interrupt 2) and its pin, and acknowledges done, refused
+  or expired, which the page shows. See swim watch --help.
   swim hub enroll URL --token T [--name N]
                    enroll this directory (name: the directory's): saves
                    .swim/hub.yml (private), and from then on swim watch here

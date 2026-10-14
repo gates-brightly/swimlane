@@ -727,6 +727,12 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 		}
 		subject = fmt.Sprintf("%s %s by %s", verb, what, by)
 		field("Script", l.Script)
+	case "hub":
+		// A command from the hub, as the worker recorded it (refusals too).
+		subject = l.Action
+		field("Run", l.Run)
+		field("Script", l.Script)
+		field("Manifest", l.Manifest)
 	case "repair":
 		subject = "repair: " + l.Action
 		for name := range l.Outputs {

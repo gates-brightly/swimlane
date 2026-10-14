@@ -28,7 +28,8 @@ from another's, and it doesn't sandbox lane scripts.
 | **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Signs every chain entry swim records on this machine. | An SSH key on the operator's or worker's machine (or in ssh-agent). |
 | **Approvers** | Sign approvals of exact scripts, or standing approvals, with `swim approve`. | Their own SSH keys. Their public keys are in the committed `lookup.yml`. |
 | **Secrets** (`swim secret`) | Encrypted to your SSH key with age, decrypted once per run. | Readable by every lane in the run: they keep values out of logs, the hub and git, not out of lane code. |
-| **Hub** (`swim hub`) | Shows workers' status, logs and queues. | Tokens, and only ciphertext for secret grants. TLS (`--tls-cert`/`--tls-key`, clients pin `--ca`); plain HTTP only on loopback or with `--insecure`. |
+| **Hub** (`swim hub`) | Shows workers' status, logs and queues, and relays hub users' commands (interrupt, drain, run, log) to headless workers. It runs nothing itself. | Tokens (only hashes of worker and user tokens), sessions in memory, commands, and only ciphertext for secret grants. TLS (`--tls-cert`/`--tls-key`, clients pin `--ca`; session cookies are `Secure` under it); plain HTTP only on loopback or with `--insecure`. |
+| **Hub users** (`swim hub user add`) | Send commands to headless workers as their role allows: `viewer` fetches logs; `operator` also interrupts, drains and runs. | Their own token, or a 12-hour session cookie (`HttpOnly`, `SameSite=Strict`, CSRF token on every form). The admin token manages users and sends no command. |
 
 ## Authorization
 
@@ -200,8 +201,15 @@ pending): today you find it in the log, `.swim.log` and the chain.
   doesn't stop a process running as you from using what you have.
 - **Tampering by whoever holds the runner key,** or truncation of the chain,
   until T8 lands (above).
-- **The hub's identity.** It serves TLS, but its workers and admin use
-  shared tokens, not per-person identity (headless stage H2, pending).
+- **A compromised hub.** It can show false information and send commands,
+  as any user could. Each command is checked by the worker, not the hub:
+  `swim.yml`'s `headless.allow` (committed; `run` is off by default), the
+  command's expiry capped by `headless.command_ttl`, its pin (the run, or
+  the script and manifest, the page showed), and replay state kept on the
+  worker (the hub's epoch, the last seq and recent command ids). A `run`
+  from the hub queues an unsigned batch with no approvals of its own, and
+  a log goes out only masked, and not at all with `headless.logs: off`.
+  The worker records every command it takes, including refusals.
 
 ## Claims and the tests that prove them
 
@@ -231,6 +239,10 @@ Test files are under `internal/`. "Pending" names the task in
 | A queued lane whose manifest changed is skipped. | `TestManifestQueuePin` (e2e/manifest_test.go) |
 | The broker names the lane that asks; an approval is used once, by its lane. | `TestManifestRequestsFromTheLane`, `TestManifestResponseReuse` (e2e/manifest_test.go) |
 | The hub refuses plain HTTP off loopback, and clients pin its CA. | `TestHubTLS`, `TestHubTLSPolicy` (e2e/hub_tls_test.go) |
+| Hub commands need a user with the right role; the admin and worker tokens send none; a browser session's forms need its CSRF token, and its cookie is `HttpOnly`, `SameSite=Strict` and (under TLS) `Secure`. | `TestCommandRoles`, `TestLoginAndCSRF` (hub) |
+| A worker takes each hub command once (replayed seqs and ids are ignored, a new hub epoch starts over) and never after its own `command_ttl`. | `TestAcceptCommandsReplay`, `TestCommandDeadline` (cli), `TestHeadlessHubCommands` (e2e/headless_cmds_test.go) |
+| A hub command pinned to a run, script or manifest that changed is refused as stale; `run` is refused unless `swim.yml` allows it, and queues an unsigned batch with no approvals; a planted secret never reaches an uploaded log, and `headless.logs: off` refuses logs; every command is recorded in `.swim.log` and the chain. | `TestHeadlessHubCommands` (e2e/headless_cmds_test.go) |
+| The hub keeps uploaded logs in memory only, bounded per log, in all and in time. | `TestLogCacheBounds`, `TestLogUpload` (hub) |
 | A lane can't approve itself. | Pending T3, T25 |
 | Changing, removing or reordering a chain entry is detected. | `TestChainLinksAndDetectsTampering` (chain) |
 | An edited log or chain entry fails `swim verify`. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |

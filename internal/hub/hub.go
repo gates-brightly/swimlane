@@ -16,13 +16,29 @@
 //	DELETE /api/grants/{id}/{name}      admin: revoke it
 //	GET    /api/grants/{id}             the worker itself: its grants, still encrypted
 //	GET    /                            the dashboard
-//	GET    /w/{id}                      one worker
+//	GET    /w/{id}                      one worker (with controls, for a user logged in)
+//
+// Users and commands (users.go, commands.go, logs.go):
+//
+//	POST   /api/users                   admin: add a user {name, role} -> {token}
+//	GET    /api/users                   admin: list them
+//	DELETE /api/users/{name}            admin: remove one
+//	GET    /login, POST /api/login      a user's token -> a session cookie
+//	POST   /logout                      end it
+//	POST   /api/workers/{id}/commands   user: send a command (role-checked)
+//	GET    /api/workers/{id}/commands   worker: long-poll its commands (?after=SEQ&epoch=E&wait=25s)
+//	POST   /api/workers/{id}/commands/{cid}       worker: ack one {outcome, detail}
+//	PUT    /api/workers/{id}/logs/{run}/{lane}    worker: a log a command asked for
+//	GET    /api/workers/{id}/logs/{run}/{lane}    user: read it (also /w/{id}/logs/{run}/{lane})
 //
 // Tokens (Authorization: Bearer <token>): the enroll token, shared, only
 // enrolls (and reports, for workers from before per-worker tokens); each
-// worker's own token, issued at enrollment, reports and fetches its
-// grants; the admin token (kept in the state dir) approves and grants.
-// The pages and GET /api/workers are read-only.
+// worker's own token, issued at enrollment, reports, fetches its grants
+// and polls its commands; the admin token (kept in the state dir)
+// approves, grants and manages users, and sends no commands; each user's
+// own token (or the session cookie it logs in for) sends commands as
+// that user's role allows. Viewing the pages and GET /api/workers needs
+// no login. The hub relays commands; the worker decides whether to act.
 package hub
 
 import (
@@ -71,6 +87,10 @@ type Lane struct {
 	Progress string   `json:"progress,omitempty"` // its progress, "7/25"
 	MsgAt    string   `json:"message_at,omitempty"`
 	Cells    string   `json:"cells,omitempty"` // a matrix round's cells: "2/3 passed · failed: billing"
+	// A headless worker's idle lane holding a pending round: the script's
+	// hash and its manifest's, which a run command from the hub pins.
+	Script   string `json:"script_sha256,omitempty"`
+	Manifest string `json:"manifest_sha256,omitempty"`
 }
 
 // Batch is one queue entry.
@@ -104,6 +124,23 @@ type HeadlessInfo struct {
 	Yes      bool   `json:"yes,omitempty"`      // -y: it approves every guard in every batch
 	Approved bool   `json:"approved,omitempty"` // --approved: it queues fully approved scripts by itself
 	Since    string `json:"since,omitempty"`    // when it started (RFC 3339)
+	// What it takes from the hub (swim.yml's headless: block), so the page
+	// offers only those controls; the worker enforces it either way.
+	Allow   []string `json:"allow,omitempty"`
+	LogsOff bool     `json:"logs_off,omitempty"`
+}
+
+// Allows reports whether the worker accepts command kind from the hub.
+func (h *HeadlessInfo) Allows(kind string) bool {
+	if h == nil {
+		return false
+	}
+	for _, a := range h.Allow {
+		if a == kind {
+			return !(kind == KindLog && h.LogsOff)
+		}
+	}
+	return false
 }
 
 // Sanitize makes every text field safe to show (ui.Safe): a lane wrote
@@ -117,7 +154,7 @@ func (s *Snapshot) Sanitize() {
 	for i := range s.Lanes {
 		l := &s.Lanes[i]
 		for _, f := range []*string{&l.State, &l.Round, &l.Job, &l.Run, &l.Step, &l.Reason, &l.Started, &l.Finished,
-			&l.Message, &l.Progress, &l.MsgAt, &l.Cells} {
+			&l.Message, &l.Progress, &l.MsgAt, &l.Cells, &l.Script, &l.Manifest} {
 			*f = ui.Safe(*f)
 		}
 		l.Tail = safeAll(l.Tail)
@@ -131,6 +168,7 @@ func (s *Snapshot) Sanitize() {
 	s.Events = safeAll(s.Events)
 	if h := s.Headless; h != nil {
 		h.Mode, h.Since = ui.Safe(h.Mode), ui.Safe(h.Since)
+		h.Allow = safeAll(h.Allow)
 	}
 }
 
@@ -176,13 +214,27 @@ type Server struct {
 	records map[string]*Record
 	grants  map[string]map[string]Grant
 	fetched map[string]time.Time
+
+	// Users, sessions and commands (users.go, commands.go, logs.go).
+	users    map[string]*User
+	sessions map[string]*session
+	commands map[string][]*Command
+	nextSeq  map[string]int
+	epoch    string
+	wake     map[string]chan struct{} // closed when a worker gets a new command
+	logs     *logCache
+	secure   bool // served over TLS: session cookies are Secure
 }
 
 // New makes a hub that accepts workers presenting token, keeping nothing
 // on disk (NewWithState keeps approvals and grants).
 func New(token string) *Server {
-	return &Server{token: token, now: time.Now, workers: map[string]*View{},
-		records: map[string]*Record{}, grants: map[string]map[string]Grant{}, fetched: map[string]time.Time{}}
+	s := &Server{token: token, now: time.Now, workers: map[string]*View{},
+		records: map[string]*Record{}, grants: map[string]map[string]Grant{}, fetched: map[string]time.Time{},
+		users: map[string]*User{}, sessions: map[string]*session{}, commands: map[string][]*Command{}, nextSeq: map[string]int{},
+		epoch: newToken()[:16], wake: map[string]chan struct{}{}}
+	s.logs = newLogCache(LogMax, LogCacheMax, LogTTL, func() time.Time { return s.now() })
+	return s
 }
 
 // IDFor is a worker's id: stable for one host and directory.
@@ -211,6 +263,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/grants/{id}/{name}", s.grantAPI)
 	mux.HandleFunc("DELETE /api/grants/{id}/{name}", s.grantAPI)
 	mux.HandleFunc("GET /w/{id}", s.workerPage)
+	s.userRoutes(mux)
+	s.commandRoutes(mux)
 	mux.HandleFunc("GET /{$}", s.dashboard)
 	return mux
 }
@@ -332,6 +386,7 @@ func (s *Server) leave(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(s.records, id)
 	delete(s.grants, id)
+	s.forgetCommands(id)
 	s.save()
 	w.WriteHeader(http.StatusNoContent)
 }

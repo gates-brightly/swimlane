@@ -10,6 +10,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/hub"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 )
 
@@ -154,6 +155,77 @@ func hubApproveCmd(args []string, off bool) error {
 	}
 	fmt.Println(msg)
 	return nil
+}
+
+// hubUserCmd manages the hub's users with the admin token: each gets a
+// token (shown once) to log in with, and a role.
+//
+//	swim hub user add NAME --role viewer|operator
+//	swim hub user remove NAME
+//	swim hub user list
+func hubUserCmd(args []string) error {
+	var url, token, role string
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "role": &role}}.parse(args)
+	if err != nil {
+		return err
+	}
+	usage := usagef("usage: swim hub user add NAME --role viewer|operator | remove NAME | list   [--hub URL] [--admin-token T]")
+	if len(rest) == 0 {
+		return usage
+	}
+	sub, rest := rest[0], rest[1:]
+	switch {
+	case (sub == "add" || sub == "remove" || sub == "rm") && len(rest) != 1,
+		(sub == "list" || sub == "ls") && len(rest) != 0:
+		return usage
+	case sub == "add" && role != hub.RoleViewer && role != hub.RoleOperator:
+		return usagef("swim hub user add needs --role viewer (reads full logs) or --role operator (also interrupts, drains and runs)")
+	}
+	a, hubURL, err := hubAdmin(url, token)
+	if err != nil {
+		return err
+	}
+	switch sub {
+	case "add":
+		name := rest[0]
+		tok, err := a.AddUser(name, role)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("added %s (%s) to %s; their token, shown this once (the hub keeps only its hash):\n  %s\n", name, role, hubURL, tok)
+		fmt.Printf("they log in at %s/login with it (it lasts until swim hub user remove %s), or send it as Authorization: Bearer\n", hubURL, name)
+		// The name should be the one lookup.yml knows them by: it's who a
+		// worker records, and (with hub approvals) whose keys count.
+		if root, _, err := repoNoMigrate(); err == nil {
+			if lk, err := lookup.Load(root); err == nil && lk.Path != "" {
+				if _, ok := lk.Users[name]; !ok {
+					fmt.Fprintf(os.Stderr, "swim hub: note: %s isn't a user in %s: give them the name lookup.yml knows them by\n", name, rel(root, lk.Path))
+				}
+			}
+		}
+		return nil
+	case "remove", "rm":
+		if err := a.RemoveUser(rest[0]); err != nil {
+			return err
+		}
+		fmt.Printf("removed %s from %s: their token and sessions stop working\n", rest[0], hubURL)
+		return nil
+	case "list", "ls":
+		us, err := a.Users()
+		if err != nil {
+			return err
+		}
+		if len(us) == 0 {
+			fmt.Printf("no users on %s (swim hub user add NAME --role viewer|operator)\n", hubURL)
+			return nil
+		}
+		fmt.Printf("%-20s %-9s %s\n", "user", "role", "added")
+		for _, u := range us {
+			fmt.Printf("%-20s %-9s %s\n", u.Name, u.Role, u.Added)
+		}
+		return nil
+	}
+	return usage
 }
 
 // secretGrant encrypts each named secret, from the operator's store as the

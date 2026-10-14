@@ -62,6 +62,8 @@ COMMANDS
                            --status, --stop, --install systemd|launchd, --uninstall
   hub / hub enroll URL     a dashboard of many workers; enroll a directory to report to it
                            (--tls-cert/--tls-key serve https; enroll --ca FILE trusts its cert)
+  hub user add NAME --role viewer|operator   a hub user (token shown once): logged in, they
+                           interrupt, drain, run or fetch logs on headless workers
   wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until it expires or is revoked
@@ -211,7 +213,8 @@ FILES (repo root)
   lookup.yml            who's who: users' SSH keys, groups, approval rules (committed);
                         a rule with evidence: true counts only evidence-bound approvals
   .swim/evidence/       each round's evidence (evidence steps), and blobs by hash for diffs
-  .swim/hub.yml         this directory's hub enrollment (swim hub enroll), private
+  .swim/hub.yml         this directory's hub enrollment (swim hub enroll), private; a
+                        headless worker also keeps the hub commands it took (epoch, seq)
   .swim/headless.*      a headless worker's lock (holds its pid), pidfile and own log
                         (swim watch --headless --detach; rotates at 10 MiB, keeps 3)
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
@@ -929,7 +932,12 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
   (deps, max_parallel, blocked_commands, secret_env, header_env, ...).
   It applies on top of defaults and under the operator's repos entry, so CI
   runners (no config of their own) and every operator share it. Unknown keys
-  are an error. `swim config` shows it as repo_file.
+  are an error. `swim config` shows it as repo_file. Only swim.yml may set
+  headless: (what a headless worker takes from its hub; swim watch --help):
+      headless:
+        allow: [answer, interrupt, drain, log]   # hub commands accepted; add run to allow it
+        logs: on                                 # off: never upload a log to the hub
+        command_ttl: 10m                         # older commands expire (interrupt: 2m at most)
   A lane's dependencies are config `deps` plus its script's `# After:` line.
   Dependencies in the same `swim run` are waited for. A dependency outside
   the run must already be satisfied, otherwise the lane is skipped:

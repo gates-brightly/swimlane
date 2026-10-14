@@ -25,7 +25,7 @@ flowchart TD
     S[".swim/logs/, .swim/status.yml,<br/>.swim.log"]
     C[".swim/chain.jsonl<br/>hash-linked, SSH-signed"]
   end
-  H["swim hub<br/>read-only dashboard"]
+  H["swim hub<br/>dashboard; relays commands"]
 
   P -->|writes| L
   P -->|swim queue add| Q
@@ -74,7 +74,10 @@ Read it top to bottom:
    writes the next round.
 
 The **hub** is a side path: workers push their status, lanes and queue to
-it, and it serves a read-only dashboard. It never runs anything.
+it, and it serves a dashboard. Hub users can also send headless workers
+commands (interrupt, drain, run, fetch a log), which the workers poll for,
+check against their own committed `headless:` settings, carry out and
+record. The hub never runs anything itself.
 
 ## Where credentials live
 

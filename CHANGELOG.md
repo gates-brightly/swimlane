@@ -55,6 +55,10 @@ To cut a release:
     and `swim verify`, until `lookup.yml` sets `standing: {max: ...}`; then
     it stops counting. Revoke it and approve again to renew it on the new
     terms. An older swim can't check a new standing approval's signatures.
+- **Hub state v2:** `swim hub --state DIR` reads a `swim.hub-state/v1`
+  file and saves it as `swim.hub-state/v2` (users and commands added) when
+  it starts; an older swim hub refuses the new file. Workers, approvals and
+  grants carry over.
 
 ### Docs
 
@@ -216,6 +220,33 @@ To cut a release:
   - SIGTERM stops it after the batch in hand, as before. SIGHUP reopens its
     log and leaves running lanes alone (the launcher's new `NoHangup`
     option). Told to stop, it exits 0.
+- **Hub users and commands (headless stage H2):** people, not shared
+  tokens, act on the hub, and a headless worker takes their commands.
+  - `swim hub user add NAME --role viewer|operator` (admin; `remove`,
+    `list`) prints the user's token once; the hub keeps its hash. Users log
+    in at `/login` for a 12-hour session cookie (`HttpOnly`,
+    `SameSite=Strict`, `Secure` under TLS) whose forms carry a CSRF token,
+    or send the token as a bearer token. The admin token manages users
+    and sends no commands.
+  - A logged-in user gets controls on a headless worker's page:
+    Interrupt (pinned to the run shown), Stop the worker after this batch
+    (drain), Run now (pinned to the script and manifest shown) and Log.
+    `viewer` may only fetch logs. Each command's outcome (`done`,
+    `refused: why`, `expired`) shows next to it.
+  - The hub keeps commands in its state (`swim.hub-state/v2`) and only
+    relays them: the worker long-polls with its own token, takes each once
+    (epoch, seq and recent ids in `.swim/hub.yml`), expires it after
+    `headless.command_ttl` (10m, interrupt 2m), checks `swim.yml`'s
+    `headless.allow` and the pin, and records it in `.swim.log` and the
+    chain (`hub <cmd> by <user> via <url>: <outcome>`; `swim verify`
+    accepts the new `hub` entries).
+  - `run` must be allowed in `swim.yml` and queues an unsigned batch, by
+    `hub:<user> via <url>`, with no approvals of its own. Logs are masked
+    again before upload (only the last 8 MiB) and kept in the hub's memory
+    only (64 MiB in all, 15 minutes); `headless.logs: off` refuses them.
+  - New `swim.yml`-only block (an error in `config.yml`): `headless:
+    {allow, logs, command_ttl, approvals, answer_timeout}`; the last two
+    are for hub approvals, still to come.
 - **Jobs:** any lane can be split into jobs, numbered under it and nested
   to any depth (`1.1`, `1.2`, `1.5.9.9`): the lane's header first, then
   each job at a `# swim job N.K` line with its own header and steps.

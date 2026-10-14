@@ -58,8 +58,10 @@ func cmdHub(args []string) error {
 		return hubApproveCmd(args, false)
 	case "unapprove":
 		return hubApproveCmd(args, true)
+	case "user", "users":
+		return hubUserCmd(args)
 	}
-	return usagef("usage: swim hub [serve|enroll|leave|status|login|approve|unapprove] (swim hub --help)")
+	return usagef("usage: swim hub [serve|enroll|leave|status|login|approve|unapprove|user] (swim hub --help)")
 }
 
 func hubServe(args []string) error {
@@ -132,12 +134,13 @@ func hubServe(args []string) error {
 		if !useTLS {
 			note(ui.Yellow, "warning: plain HTTP on the network (--insecure): tokens, logs and secrets cross it unencrypted; serve TLS with --tls-cert/--tls-key")
 		}
-		note(ui.Yellow, "warning: the dashboard is read-only but unauthenticated: anyone who can reach "+url+" sees every worker's lanes, queue and log tails")
+		note(ui.Yellow, "warning: viewing the dashboard needs no login: anyone who can reach "+url+" sees every worker's lanes, queue and log tails (commands and full logs need a hub user: swim hub user add)")
 	}
 	h, err := hub.NewWithState(token, adminToken, stateDir)
 	if err != nil {
 		return err
 	}
+	h.SecureCookies(useTLS)
 	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim hub login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	sigs := make(chan os.Signal, 1)
@@ -247,12 +250,27 @@ type hubFile struct {
 	ID          string `yaml:"id"`
 	Name        string `yaml:"name"`
 	CA          string `yaml:"ca,omitempty"` // PEM the hub's https certificate must chain to (enroll --ca)
+	// What a headless worker has carried out of the hub's commands, so a
+	// restarted (or replaying) hub can't make it act twice: the hub's
+	// epoch, the last seq seen in it, and the ids of recent commands.
+	Epoch      string   `yaml:"epoch,omitempty"`
+	LastSeq    int      `yaml:"last_seq,omitempty"`
+	RecentCIDs []string `yaml:"recent_cids,omitempty"`
 }
+
+// hubFileMu serialises this process's read-modify-writes of .swim/hub.yml
+// (the reporter keeps the token; the command loop the replay state).
+var hubFileMu sync.Mutex
 
 func saveHub(root string, h *hubFile) error {
 	data, _ := yaml.Marshal(h)
 	os.MkdirAll(filepath.Dir(hubPath(root)), 0o755)
-	return os.WriteFile(hubPath(root), data, 0o600)
+	// Whole or not at all: a reader never sees half a file.
+	tmp := fmt.Sprintf("%s.%d.tmp", hubPath(root), os.Getpid())
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, hubPath(root))
 }
 
 // hubClient is this directory's connection to its hub.
@@ -278,7 +296,13 @@ func (b brokenTransport) RoundTrip(*http.Request) (*http.Response, error) { retu
 func keepHubToken(root string, h *hubFile, c *hub.Client) {
 	if c.WorkerToken != h.WorkerToken || c.ID != h.ID {
 		h.WorkerToken, h.ID = c.WorkerToken, c.ID
-		saveHub(root, h)
+		hubFileMu.Lock()
+		defer hubFileMu.Unlock()
+		// Only the token and id: the command loop keeps the rest current.
+		if cur, err := loadHub(root); err == nil {
+			cur.WorkerToken, cur.ID = h.WorkerToken, h.ID
+			saveHub(root, cur)
+		}
 	}
 }
 
@@ -370,7 +394,7 @@ func hubEnroll(args []string) error {
 	if err := saveHub(root, &hubFile{URL: c.URL, Token: token, WorkerToken: c.WorkerToken, ID: id, Name: w.Name, CA: ca}); err != nil {
 		return err
 	}
-	history.Log(root, history.Entry{Event: "hub", Detail: "enrolled with " + c.URL + " as " + w.Name})
+	history.Log(root, history.Entry{Event: history.Hub, Detail: "enrolled with " + c.URL + " as " + w.Name})
 	// Show this directory on the hub now, not only once swim watch starts.
 	if cfg, err := loadCfg(root); err == nil {
 		c.Report(hubSnapshot(root, cfg, w.Name, "enrolled; not watching (start swim watch)", pollEvery))
@@ -395,7 +419,7 @@ func hubLeave(args []string) error {
 		fmt.Fprintln(os.Stderr, "swim hub: "+err.Error()+" (un-enrolled here anyway)")
 	}
 	os.Remove(hubPath(root))
-	history.Log(root, history.Entry{Event: "hub", Detail: "left " + h.URL})
+	history.Log(root, history.Entry{Event: history.Hub, Detail: "left " + h.URL})
 	fmt.Println("left " + h.URL)
 	return nil
 }
@@ -549,6 +573,7 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 		Interval: every.Seconds(), Lanes: []hub.Lane{}, Queue: []hub.Batch{}, Events: []string{}}
 	if headlessInfo != nil {
 		h := *headlessInfo
+		h.Allow, h.LogsOff = cfg.HeadlessAllow(), !cfg.HeadlessLogs()
 		s.Headless = &h
 	}
 	if st, _ := status.Load(root); st != nil {
@@ -575,6 +600,9 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 			}
 			if l.State == status.Running {
 				hl.Tail = laneTail(root, l.Lane, 15)
+			} else if s.Headless != nil && cfg.HeadlessAllows(config.HubRun) {
+				// What a run command from the hub would pin it to.
+				hl.Script, hl.Manifest = runPin(root, cfg, l.Lane)
 			}
 			s.Lanes = append(s.Lanes, hl)
 		}

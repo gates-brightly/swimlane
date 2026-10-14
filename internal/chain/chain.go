@@ -46,7 +46,7 @@ type Entry struct {
 	Seq  int    `json:"seq"`
 	Prev string `json:"prev"` // SHA-256 of the previous line; "" for the first
 	At   string `json:"at"`
-	Type string `json:"type"` // approve | round | grant | revoke | repair
+	Type string `json:"type"` // approve | round | grant | revoke | repair | hub (a command from the hub; Method: its kind)
 
 	Run    string `json:"run,omitempty"`
 	Lane   int    `json:"lane,omitempty"`
