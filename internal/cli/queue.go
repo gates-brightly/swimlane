@@ -20,6 +20,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -225,7 +226,11 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 			return b, err
 		}
 		envSum := r.SHA256()
-		e.Lanes = append(e.Lanes, queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum})
+		m, err := manifest.Build(root, cfg, n, envSum)
+		if err != nil {
+			return b, err
+		}
+		e.Lanes = append(e.Lanes, queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum, Manifest: m.SHA256})
 		for _, g := range info.Guards {
 			b.guards[g.Flag] = true
 		}
@@ -766,16 +771,19 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys b
 		}
 	}()
 
-	pinSHA, pinEnv := map[int]string{}, map[int]string{}
+	pinSHA, pinEnv, pinMan := map[int]string{}, map[int]string{}, map[int]string{}
 	for _, l := range e.Lanes {
 		if l.SHA256 != "" {
 			pinSHA[l.Lane] = l.SHA256
+		}
+		if l.Manifest != "" {
+			pinMan[l.Lane] = l.Manifest
 		}
 		if l.EnvSHA256 != nil {
 			pinEnv[l.Lane] = *l.EnvSHA256
 		}
 	}
-	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, Self: self(), Out: os.Stdout,
+	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, PinManifest: pinMan, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
 		Unattended: true,
@@ -857,6 +865,7 @@ func queueApproved(root string, cfg *config.Config) []string {
 	}
 	var msgs []string
 	now := time.Now()
+	mans := map[int]*manifest.Manifest{}
 	for _, f := range files {
 		if f.Kind != sigfile.Script {
 			continue
@@ -865,9 +874,8 @@ func queueApproved(root string, cfg *config.Config) []string {
 		if done[id] || ran[f.SHA256] || f.Expired(now) {
 			continue
 		}
-		data, err := lane.ScriptBytes(root, f.Lane)
-		if err != nil || chain.Hash(data) != f.SHA256 {
-			continue // stale: the script changed since it was approved
+		if staleWhy(root, cfg, f, mans) != "" {
+			continue // stale: the script, or what its manifest pins, changed since it was approved
 		}
 		info, err := lane.ReadScript(root, f.Lane)
 		if err != nil || !info.Pending() || f.Lane > cfg.Lanes {

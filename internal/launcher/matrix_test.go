@@ -10,6 +10,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
 
@@ -61,7 +62,7 @@ func TestSelectCells(t *testing.T) {
 	}
 }
 
-// A pre-answer is pinned to the script it was given for, covers only the
+// A pre-answer is pinned to the manifest it was given for, covers only the
 // lane's known guards, and never an evidence-bound one.
 func TestPreAnswers(t *testing.T) {
 	root := t.TempDir()
@@ -71,6 +72,10 @@ func TestPreAnswers(t *testing.T) {
 	defer devnull.Close()
 	disp := display.New(display.Options{Out: devnull, Plain: true}, []display.LaneView{{N: 2}, {N: 3}})
 	o := Options{Root: root, Cfg: &config.Config{Settings: config.Settings{Lanes: 4}}, RunID: "r-1"}
+	blocked := map[int]string{}
+	if stageLanes(&o, []int{2, 3}, blocked); len(blocked) > 0 {
+		t.Fatal(blocked)
+	}
 	p := newPreAnswers(map[int]bool{2: true, 3: true})
 	p.disp = disp
 	if msg := p.set(o, 3, "approved"); msg != "swim 3 has no guards to approve" {
@@ -95,7 +100,7 @@ func TestPreAnswers(t *testing.T) {
 	if len(p.unused()) != 0 {
 		t.Error("a used pre-answer listed as unused")
 	}
-	// Re-set after use is refused; a changed script drops a fresh one.
+	// Re-set after use is refused; another manifest drops a fresh one.
 	if msg := p.set(o, 2, "declined"); !strings.Contains(msg, "already used") {
 		t.Errorf("after use: %q", msg)
 	}
@@ -103,8 +108,13 @@ func TestPreAnswers(t *testing.T) {
 	p2.disp = disp
 	p2.set(o, 2, "approved")
 	os.WriteFile(filepath.Join(root, "lane.2.sh"), []byte("# Round: g changed\n# Guards: ALLOW_A  do a\n"), 0o755)
+	m, err := manifest.Build(root, o.Cfg, 2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.manifests[2] = m
 	if _, ok := p2.use(o, approval.Request{Lane: 2, Flag: "ALLOW_A"}); ok {
-		t.Error("a pre-answer applied to a changed script")
+		t.Error("a pre-answer applied to another manifest")
 	}
 	if u := p2.unused(); len(u) != 1 || u[0] != "swim 2" {
 		t.Errorf("unused: %v", u)

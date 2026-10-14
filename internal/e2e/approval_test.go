@@ -49,7 +49,8 @@ if guard PRESET "preset flag"; then run "preset step" true; fi
 if guard OFF "explicitly off"; then run "off step" true; fi`)
 	b := newBroker(t, func(req approval.Request, _ <-chan struct{}) bool { return req.Flag == "DROP_A" })
 	c := r.cmd("bash", "lane.1.sh")
-	c.Env = append(c.Env, approval.EnvVar+"="+b.Path(), "PRESET=1", "OFF=0")
+	tok := b.Register(approval.Caller{Lane: 1, Guards: []string{"DROP_A", "DROP_B", "PRESET", "OFF"}})
+	c.Env = append(c.Env, approval.EnvVar+"="+b.Path(), approval.TokenEnv+"="+tok, "PRESET=1", "OFF=0")
 	out, err := c.CombinedOutput()
 	if err != nil {
 		t.Fatalf("lane: %v\n%s", err, out)
@@ -81,7 +82,7 @@ func TestApprovalGivesUpWhenStopped(t *testing.T) {
 run "after" true`)
 	b := newBroker(t, func(_ approval.Request, cancel <-chan struct{}) bool { <-cancel; return false })
 	c := r.cmd("bash", "lane.1.sh")
-	c.Env = append(c.Env, approval.EnvVar+"="+b.Path())
+	c.Env = append(c.Env, approval.EnvVar+"="+b.Path(), approval.TokenEnv+"="+b.Register(approval.Caller{Lane: 1, Guards: []string{"SLOW"}}))
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}

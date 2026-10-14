@@ -887,13 +887,17 @@ func TestVersionAndLock(t *testing.T) {
 	contains(t, "lock", r.mustSwim("lock"), "lock:  syntax "+version.Current.String(), "ok:")
 	contains(t, ".swim.log", r.mustSwim("log"), "lock         created .swim.lock: syntax "+version.Current.String())
 
-	// An old-form lock (breaking: 7) is today's syntaxes: it runs, and
-	// swim lock --upgrade rewrites it in the new form.
+	// An old-form lock (breaking: 7) is state 1, older than this swim's
+	// (execution manifests): runs are refused until swim lock --upgrade
+	// rewrites it in the new form.
 	os.WriteFile(lockPath, []byte("breaking: 7\nversion: 7.20261013\n"), 0o644)
-	r.mustSwim("run", "1")
+	if out, code := r.swim("run", "1"); code == 0 || !strings.Contains(out, "set up for an older swim") {
+		t.Errorf("run with a breaking 7 lock: %d %s", code, out)
+	}
 	contains(t, "upgrade old form", r.mustSwim("lock", "--upgrade"), "breaking 7")
 	data, _ = os.ReadFile(lockPath)
-	contains(t, "rewritten lock", string(data), fmt.Sprintf("script: %d", version.Current.Script))
+	contains(t, "rewritten lock", string(data), fmt.Sprintf("script: %d", version.Current.Script), fmt.Sprintf("state: %d", version.Current.State))
+	r.mustSwim("run", "1")
 
 	// A lock with a newer syntax: refuse to run, with instructions.
 	os.WriteFile(lockPath, []byte(fmt.Sprintf("syntax: {script: %d, log: %d, state: %d}\nversion: 0.20270101.1\n", version.Current.Script, version.Current.Log, version.Current.State+1)), 0o644)

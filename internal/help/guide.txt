@@ -126,8 +126,13 @@ CONCEPTS
   gate        A step whose failure stops the round before any later step.
   guard flag  An env var that approves one destructive action up front, e.g.
               FIN_ALLOW_DELETE_ZG_ITEMS=1. Unset, swim asks the operator at the
-              terminal ("requires human approval of task: ... Y/N [N]"); with
-              no one to ask (CI, no terminal) or a "no", the step dry-runs.
+              terminal ("requires human approval of guard FLAG ... Y/N [N]");
+              with no one to ask (CI, no terminal) or a "no", the step dry-runs.
+  manifest    What swim pins about a round before it starts: the script, every
+              local file it sources or imports, its sidecar, how it runs, and
+              the policy keys of swim.yml and lookup.yml's rules. The lane runs
+              a staged copy of those files; approvals sign the manifest's hash.
+              See EXECUTION MANIFEST.
   lock        A named resource a round needs exclusively (# Locks:). A lane takes
               all its locks at once, after its dependencies pass and before it
               starts; lanes waiting for one show "locked (name: swim N)". Locks
@@ -197,8 +202,10 @@ FILES (repo root)
   .swim/out/<job>/<run>/  a round's outputs ($SWIM_OUT; Outputs:), read-only once it ends
   .swim/chain.jsonl     chain of custody: hash-linked, signed approvals and rounds
   .swim/scripts/        every lane script a round ran, by SHA-256
-  approvals/            signed approvals (committed): lane.N.<sha12>.signature for one
-                        exact script, auto.USER.signature standing for USER's jobs
+  .swim/runs/<run>/<N>/ lane N's staged copy for a run (read-only) and its
+                        manifest.yml; pruned by swim doctor --fix after outputs_keep
+  approvals/            signed approvals (committed): lane.N.<sha12>.m<manifest8>.signature
+                        for one exact manifest, auto.USER.signature standing for USER's jobs
   lookup.yml            who's who: users' SSH keys, groups, approval rules (committed);
                         a rule with evidence: true counts only evidence-bound approvals
   .swim/evidence/       each round's evidence (evidence steps), and blobs by hash for diffs
@@ -313,8 +320,10 @@ WRITING A LANE SCRIPT
     --retry on read-only or idempotent steps, never on a change that isn't.
   guard FLAG "<action - date, reason>"
                                   true if FLAG=1, or (FLAG unset) the operator answers y
-                                  to "swim N requires human approval of task: <action>
-                                  Y/N [N]" (swim run asks, even for parallel lanes; in
+                                  to "swim N requires human approval of guard FLAG ...
+                                  the lane says: <action> ... Y/N [N]" (swim run asks,
+                                  only for a flag the script declares or uses; even for
+                                  parallel lanes; in
                                   the interactive view Enter opens the waiting lane), or
                                   the run was started with -y; otherwise logs SKIP with the
                                   approval hint and returns false. FLAG set to anything
@@ -399,6 +408,15 @@ WRITING A LANE SCRIPT
                                       Needs syntax 3
       # Handler-Timeout: <5m, ...>    the budget for all outcome handlers together, from
                                       when the round ends. Default: 5m
+      # Includes: <glob> [...]        repo files that are part of the round (local modules,
+                                      sourced files): pinned and staged with the script.
+                                      Files it sources or imports by a literal path are
+                                      pinned anyway; lint wants them listed. Default: none
+      # Observe: NAME = <command>     a fact swim can't pin (the cloud account, ...): read
+      # Observe: path CMD [CMD ...]   when a guard is approved and again just before it
+                                      returns; a difference ends the round as drift. A path
+                                      probe reports the binary PATH finds and its hash. Must
+                                      only read. One per line. Default: none
   Other keys in the header block (e.g. "# Ticket: OPS-42") are kept and shown
   in the log's round header. A value swim can't use (a bad Timeout) is
   recorded as WARN when the round starts, and the default applies.
@@ -593,8 +611,10 @@ OTHER LANGUAGES
   "PASS  <label> (in-process)"), stage, guard, confirm, drift, stop, msg,
   input, output, and outcome handlers (on_success / on_failure / on_exit,
   registered first). Register # Includes: lib/*.py for the local modules a
-  lane imports: they're hashed with the script, so approvals cover them
-  (lint warns about local imports it doesn't cover).
+  lane imports: they're hashed with the script, so approvals cover them.
+  Local imports by name are pinned and staged anyway (lint warns about one
+  # Includes: doesn't list); a lane runs from its staged copy, so a local
+  module that is neither isn't found.
   Header keys are comments, # or //, as in a bash lane. A binary (or any
   lane) can keep them in a sidecar lane.N.yml instead; its keys win:
       round: cut over orders
@@ -606,7 +626,7 @@ OTHER LANGUAGES
       timeout: 30m
       step-timeout: 5m
   Approvals, the queue's pins and the chain of custody hash the script file
-  itself (the binary, for a compiled lane). Env files apply to every lane;
+  itself (the binary, for a compiled lane) as part of its manifest. Env files apply to every lane;
   the deprecated .lane.N.rc only to bash lanes.
 
 LINT
@@ -950,29 +970,64 @@ INTERRUPTING
   while it exists (exit 86) and the library records the STOP. A lane run
   directly with bash has no launcher: Ctrl-C interrupts it at once.
 
+EXECUTION MANIFEST
+  Before any lane waits for anything, swim run builds each lane's manifest
+  and stages its files in .swim/runs/<run>/<N>/ (read-only, the repo's
+  layout). The lane runs the staged copy, in the repo root as before; a
+  file it sources by a repo path is read from the stage. Right before exec
+  (after its dependencies, locks and slot) swim checks the staged files
+  again, and a queued batch's pins: a mismatch refuses the lane ("blocked:
+  manifest changed since staged (...)") or skips it ("changed since it was
+  queued"). An edit to the working tree after staging changes nothing in
+  the run, even mid-round. $SWIM_STAGE and $SWIM_MANIFEST name the stage.
+  Pinned, in manifest_sha256 (what approvals sign):
+    script     the lane's file (a group file for a lane of jobs)
+    includes   # Includes: matches, Matrix: @files, and every local file the
+               script (or a file it pins) sources or imports by a literal path
+    sidecar    lane.N.yml
+    runner     how it runs as the repo says: bash, its #! line, a swim.yml
+               runner ("local .ts" for a runner from your own config)
+    config     swim.yml's blocked_commands, runners, approvals, signing,
+               secret_env*, secret_patterns_auto and env; lookup.yml's require:
+  Recorded but not in the hash (they differ per machine): the env files'
+  hash (checked against a queued batch's pin), the runner binary's path
+  and hash. Not pinned at all: other binaries on PATH, packages, remote
+  state; declare the ones that matter as # Observe: probes, which narrow
+  the gap between approval and use but don't close it. A `declare` at the
+  top of a file a lane sources is local to swim's source wrapper: use plain
+  assignments there.
+  Questions come from swim, not the lane: under swim run each lane process
+  has its own approval token, and the question names the lane, job, guard,
+  manifest and evidence the launcher knows, then "the lane says: <action>".
+  A flag the script doesn't declare or use is refused (and logged), and an
+  approval is used once, by the lane it was given to.
+
 CHAIN OF CUSTODY
   Every approval and every round is recorded in .swim/chain.jsonl, one
   signed entry per line, each carrying the SHA-256 of the line before it
   (like commits: the sequence is the attestation):
-    approve  lane, job, the script's hash, the guard and its action, who
+    approve  lane, job, the script's and manifest's hashes, the guard and
+             its action, the Observe: facts when approved, who
              approved (name, key) and how: signature (approvals of this
              script), standing (a standing approval of the queuer's jobs),
              prompt, flag (FLAG=1), auto (-y) or queue; signed approvals
              carry their approvers' own signed events
-    round    the script's hash, the hash of the round's log section, the
-             result and exit, and the approvals it used
+    round    the script's and manifest's hashes, the hash of the round's
+             log section, the result and exit, and the approvals it used
     grant / revoke   approvals given or withdrawn on this machine
     repair   swim chain repair removed a half-written final line: its size,
              its SHA-256 and the .swim/chain.tail-<time>.bak that keeps it
   The runner signs each entry with its SSH key (config signing_key; default
   ~/.ssh/id_ed25519; signing: auto | required | off). The scripts that ran
-  are kept by hash under .swim/scripts/. Changing a log, a kept script or
-  any entry (or removing or reordering entries) is provable: swim verify.
+  are kept by hash under .swim/scripts/, and each run's staged copy under
+  .swim/runs/. Changing a log, a kept script, a staged copy or any entry (or
+  removing or reordering entries) is provable: swim verify.
   swim history shows the chain by approver. Entries have no size limit, and
   each is synced to disk as it is written. A write cut short (a crash or a
   full disk) leaves a last line with no newline; swim then refuses to
   append until swim chain repair removes it.
-  Approving: swim approve N --guards FLAG approves lane N's exact script;
+  Approving: swim approve N --guards FLAG approves lane N's exact manifest
+  (it lists what that pins);
   co-approvers run the same; swim approve --auto USER approves every job
   USER queues (swim queue add signs the batch with the queuer's key, so
   who queued it is proven, not claimed), until swim revoke --auto USER.
@@ -980,8 +1035,12 @@ CHAIN OF CUSTODY
   signed log of approve and revoke events. A guard approves when the
   approvers of its script plus the standing approvals of its batch's
   queuer, named by lookup.yml, meet lookup.yml's rule for it; swim watch
-  --approved runs fully approved scripts by itself. A script edited after
-  approval no longer matches, so the approval stops counting.
+  --approved runs fully approved scripts by itself. A script, or anything
+  its manifest pins (a sourced file, the sidecar, swim.yml's policy keys,
+  lookup.yml's rules), changed after approval no longer matches, so the
+  approval stops counting; the guard and swim approve say why ("stale:
+  includes lib/orders.sh changed"). An approval from before manifests
+  names the script alone, and counts while the script matches.
   lookup.yml (repo root) names keys and groups them: see swim keys --help.
   Signing uses ssh-keygen -Y (OpenSSH 8.0+); anyone can check a signature
   with it. Signing never prompts: a key with a passphrase needs ssh-agent

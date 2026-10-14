@@ -21,6 +21,8 @@
 package lookup
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -232,4 +234,17 @@ func (l *Lookup) Describe(user string) string {
 		return user + " (" + strings.Join(g, ", ") + ")"
 	}
 	return user
+}
+
+// RulesHash is the SHA-256 of lookup.yml's require: rules ("" for none):
+// part of every lane's manifest, so changing who must approve a guard
+// stales the approvals bound to one. Users and their keys aren't covered:
+// adding a person or a key changes no rule.
+func (l *Lookup) RulesHash() string {
+	if len(l.Require) == 0 {
+		return ""
+	}
+	data, _ := yaml.Marshal(l.Require)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }

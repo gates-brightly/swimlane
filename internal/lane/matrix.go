@@ -351,13 +351,28 @@ func (i *Info) resolveMatrix(root string) {
 // files its matrix reads values from (# Matrix: KEY=@file), so approvals
 // and queue pins cover the cell list too.
 func ScriptBytes(root string, n int) ([]byte, error) {
+	path, files, err := ScriptParts(root, n)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || IsBinary(data) {
+		return data, err
+	}
+	return JoinScript(data, files, func(f string) ([]byte, error) { return os.ReadFile(filepath.Join(root, f)) }), nil
+}
+
+// ScriptParts are the files ScriptBytes hashes: the script's path (a lane
+// of jobs is its file) and, sorted, the repo-relative files it adds: matrix
+// @files and # Includes: matches. A compiled lane adds none.
+func ScriptParts(root string, n int) (string, []string, error) {
 	path := Script(root, n)
 	if _, ok := LaneJobs(root, n); ok {
 		path = Scripts(root, n)[0] // a lane of jobs hashes as its file, from any job
 	}
 	data, err := os.ReadFile(path)
 	if err != nil || IsBinary(data) {
-		return data, err
+		return path, nil, err
 	}
 	info := ParseScript(string(data))
 	var files []string
@@ -383,24 +398,29 @@ func ScriptBytes(root string, n int) ([]byte, error) {
 		for _, m := range matches {
 			if st, err := os.Stat(m); err == nil && !st.IsDir() {
 				if rel, err := filepath.Rel(root, m); err == nil {
-					files = append(files, rel)
+					files = append(files, filepath.ToSlash(rel))
 				}
 			}
 		}
 	}
 	sort.Strings(files)
-	files = dedupe(files)
+	return path, dedupe(files), nil
+}
+
+// JoinScript is ScriptBytes from the script's data and its files, read
+// with read (from the repo, or from a run's staged copy).
+func JoinScript(data []byte, files []string, read func(string) ([]byte, error)) []byte {
 	var b bytes.Buffer
 	b.Write(data)
 	for _, f := range files {
-		fd, err := os.ReadFile(filepath.Join(root, f))
+		fd, err := read(f)
 		if err != nil {
 			fd = []byte("(missing)\n")
 		}
 		fmt.Fprintf(&b, "\n# swim: included file %s\n", f)
 		b.Write(fd)
 	}
-	return b.Bytes(), nil
+	return b.Bytes()
 }
 
 func sideIncludes(root string, n int) []string {

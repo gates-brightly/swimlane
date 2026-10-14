@@ -836,8 +836,6 @@ func checkCheckUnsafe(c *Context, s *Script) []finding.Finding {
 }
 
 var (
-	pyImportRE = regexp.MustCompile(`^\s*(?:from\s+(\.?[A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))`)
-	tsImportRE = regexp.MustCompile(`(?:from|import)\s*\(?\s*["'](\.{1,2}/[^"']+)["']`)
 	pySDKRE    = regexp.MustCompile(`(?m)^\s*(?:import\s+swim\b|from\s+swim\s+import)`)
 	pyBypassRE = regexp.MustCompile(`\b(subprocess\.(?:run|call|check_call|check_output|Popen)|os\.system|os\.popen)\s*\(`)
 	tsSDKRE    = regexp.MustCompile(`["']@gates-brightly/swim["']|/sdk/ts/swim\.ts["']`)
@@ -852,49 +850,20 @@ func checkIncludes(c *Context, s *Script) []finding.Finding {
 		return nil
 	}
 	ext := strings.ToLower(filepath.Ext(s.Name))
-	covered := func(rel string) bool {
-		for _, g := range s.Info.Includes {
-			if ok, _ := filepath.Match(g, rel); ok {
-				return true
-			}
-			if strings.HasSuffix(g, "/**") || strings.HasSuffix(g, "/") {
-				if strings.HasPrefix(rel, strings.TrimSuffix(strings.TrimSuffix(g, "**"), "/")+"/") {
-					return true
-				}
-			}
-		}
-		return false
+	covered := s.included
+	switch ext {
+	case ".py", ".ts", ".mts", ".js", ".mjs":
+	default:
+		return nil
 	}
 	var out []finding.Finding
 	for i, line := range s.v.raw {
-		var cands []string
-		switch ext {
-		case ".py":
-			m := pyImportRE.FindStringSubmatch(line)
-			if m == nil {
-				continue
-			}
-			mod := strings.TrimPrefix(m[1]+m[2], ".")
-			if mod == "swim" {
-				continue
-			}
-			p := strings.ReplaceAll(mod, ".", "/")
-			cands = []string{p + ".py", p + "/__init__.py"}
-		case ".ts", ".mts", ".js", ".mjs":
-			m := tsImportRE.FindStringSubmatch(line)
-			if m == nil {
-				continue
-			}
-			p := filepath.Clean(m[1])
-			cands = []string{p, p + ".ts", p + ".js", p + "/index.ts", p + "/index.js"}
-		default:
-			return nil
-		}
+		cands := lane.ImportCandidates(ext, line)
 		for _, cand := range cands {
 			if st, err := os.Stat(filepath.Join(c.Root, cand)); err == nil && !st.IsDir() {
 				if !covered(cand) {
-					out = append(out, f(finding.Warn, "includes", i, "add `# Includes: "+cand+"` (globs work) so approvals cover it",
-						"imports local %s, which isn't in # Includes: (an approval of the script wouldn't cover it)", cand))
+					out = append(out, f(finding.Warn, "includes", i, "add `# Includes: "+cand+"` (globs work) so the script says what it runs",
+						"imports local %s, which isn't in # Includes: (swim pins and stages it anyway; approvers reading the script won't see it)", cand))
 				}
 				break
 			}
@@ -902,6 +871,80 @@ func checkIncludes(c *Context, s *Script) []finding.Finding {
 	}
 	return out
 }
+
+// included reports whether rel matches one of the script's # Includes:
+// globs (dir/** and dir/ cover everything under dir).
+func (s *Script) included(rel string) bool {
+	for _, g := range s.Info.Includes {
+		if ok, _ := filepath.Match(g, rel); ok {
+			return true
+		}
+		if strings.HasSuffix(g, "/**") || strings.HasSuffix(g, "/") {
+			if strings.HasPrefix(rel, strings.TrimSuffix(strings.TrimSuffix(g, "**"), "/")+"/") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checkSource: a bash lane that sources a local file should list it in #
+// Includes:. swim pins and stages a literal path anyway (the execution
+// manifest), but a path built at run time can't be pinned at all: what it
+// runs is outside what was approved.
+func checkSource(c *Context, s *Script) []finding.Finding {
+	if c.Root == "" {
+		return nil
+	}
+	switch strings.ToLower(filepath.Ext(s.Name)) {
+	case ".sh", ".bash", "":
+	default:
+		return nil
+	}
+	var out []finding.Finding
+	for _, src := range lane.ScanSources(c.Root, s.Name, s.Src) {
+		switch {
+		case src.Dynamic:
+			out = append(out, f(finding.Error, "source", src.Line-1, "source a literal repo path, listed in # Includes:",
+				"sources %s, a path known only at run time: swim can't pin or stage it, so no approval covers what it runs", src.Arg))
+		case !s.included(src.Path):
+			out = append(out, f(finding.Error, "source", src.Line-1, "add `# Includes: "+src.Path+"` (globs work) so the script says what it runs",
+				"sources local %s, which isn't in # Includes:", src.Path))
+		}
+	}
+	return out
+}
+
+// checkObserve: Observe: probes run when a guard is approved and again just
+// before it returns, so they must only read. A probe that looks like it
+// changes something, or is a blocked command, is flagged.
+func checkObserve(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	line := s.headerLine("Observe")
+	for _, p := range s.Info.Observe {
+		if p.Cmd == "" {
+			continue
+		}
+		i := line
+		if p.Line > 0 {
+			i = p.Line - 1
+		}
+		if hits := policy.ScanScript(p.Cmd, c.Cfg.Blocked()); len(hits) > 0 {
+			out = append(out, f(finding.Error, "observe", i, "a probe only reads: remove it",
+				"Observe: %s runs %q, a blocked command", p.Name, hits[0].Pattern))
+			continue
+		}
+		if m := applyRE.FindString(p.Cmd); m != "" || destructiveRE.MatchString(p.Cmd) || observeWriteRE.MatchString(p.Cmd) {
+			out = append(out, f(finding.Warn, "observe", i, "a probe runs at approval and again before the guarded step: make it read-only",
+				"Observe: %s looks like it changes something (%s)", p.Name, p.Cmd))
+		}
+	}
+	return out
+}
+
+// observeWriteRE is a probe that writes: a redirect into a file, or a
+// command that sends or posts something.
+var observeWriteRE = regexp.MustCompile(`(?:^|[^0-9&<>])>>?\s*[^&\s]|(?:^|[\s;&|(])(?:curl\s.*-X\s*(?:POST|PUT|DELETE|PATCH)|mail|sendmail|tee|touch|mkdir|mv|cp)(?:$|[\s;&|)])`)
 
 // checkSDKBypass: in a lane using an SDK, commands run with subprocess or
 // child_process skip swim's logging, timeouts and blocked-command checks.

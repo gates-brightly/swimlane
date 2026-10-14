@@ -7,7 +7,6 @@ where it would land in the code, open questions, and how to test it.
 | feature | file | status |
 |---|---|---|
 | Headless workers, driven from the hub | [headless.md](headless.md) | proposed |
-| Execution manifest: approve and run one exact operation | [execution-manifest.md](execution-manifest.md) | proposed |
 | Guarded secrets: approval enforced by credentials | [guarded-secrets.md](guarded-secrets.md) | proposed |
 | Chain trust anchors: trusted signers and external checkpoints | [chain-anchors.md](chain-anchors.md) | proposed |
 | Lane claims: a lease on a lane while a session writes it | [lane-claims.md](lane-claims.md) | proposed |

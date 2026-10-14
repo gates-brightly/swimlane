@@ -7,13 +7,16 @@
 //
 // Two kinds:
 //
-//	approvals/lane.3.<sha12>.signature  this exact lane script (its SHA-256):
-//	                                    swim approve 3 --guards FLAG
+//	approvals/lane.3.<sha12>.m<man8>.signature
+//	                                    this exact lane script (its SHA-256)
+//	                                    and execution manifest (internal/
+//	                                    manifest): swim approve 3 --guards FLAG
 //	approvals/auto.alice.signature      standing approval of any job alice
 //	                                    queues (never consumed):
 //	                                    swim approve --auto alice
 //
-// A guard counts the approvals for its script, plus the standing approvals
+// A guard counts the approvals for its manifest (or, from before
+// manifests, for its script hash alone), plus the standing approvals
 // for whoever signed the queue entry it runs from, and approves when the
 // signers, named by lookup.yml, meet lookup.yml's rule for it.
 package sigfile
@@ -31,6 +34,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
@@ -82,6 +86,13 @@ type File struct {
 	// script-only approval. A guard counts it only while the run's evidence
 	// still matches.
 	Evidence string `yaml:"evidence_sha256,omitempty"`
+	// Manifest is the execution manifest approved (manifest_sha256): the
+	// script and everything pinned with it. Pinned lists those entries so a
+	// reviewer sees what they approve, and swim can say why an approval went
+	// stale. A file without one (from before manifests) approves the script
+	// hash alone.
+	Manifest string           `yaml:"manifest_sha256,omitempty"`
+	Pinned   *manifest.Pinned `yaml:"pinned,omitempty"`
 
 	Approves []string `yaml:"approves,omitempty"` // guard flags
 	All      bool     `yaml:"approves_all,omitempty"`
@@ -95,15 +106,17 @@ type File struct {
 // Dir holds approvals files (committed, so approvers anywhere can add).
 func Dir(root string) string { return filepath.Join(root, "approvals") }
 
-// ScriptPath is the file approving lane n's script with hash sha.
-func ScriptPath(root string, n int, sha string) string {
-	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s.signature", n, sha[:12]))
+// ScriptPath is the file approving lane n's script with hash sha and
+// execution manifest man ("" for none).
+func ScriptPath(root string, n int, sha, man string) string {
+	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s%s.signature", n, sha[:12], manPart(man)))
 }
 
-// EvidencePath is the file approving lane n's script with hash sha
-// together with evidence ev (and, for a matrix round, one cell or "").
-func EvidencePath(root string, n int, sha, ev, cell string) string {
-	name := fmt.Sprintf("lane.%d.%s.e%s", n, sha[:12], ev[:8])
+// EvidencePath is the file approving lane n's script with hash sha and
+// manifest man together with evidence ev (and, for a matrix round, one
+// cell or "").
+func EvidencePath(root string, n int, sha, man, ev, cell string) string {
+	name := fmt.Sprintf("lane.%d.%s%s.e%s", n, sha[:12], manPart(man), ev[:8])
 	if cell != "" {
 		name += "." + strings.NewReplacer("=", "-", ",", ".", "/", "_").Replace(cell)
 	}
@@ -111,9 +124,17 @@ func EvidencePath(root string, n int, sha, ev, cell string) string {
 }
 
 // CellPath is the file approving one cell of lane n's matrix round.
-func CellPath(root string, n int, sha, cell string) string {
+func CellPath(root string, n int, sha, man, cell string) string {
 	slug := strings.NewReplacer("=", "-", ",", ".", "/", "_").Replace(cell)
-	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s.%s.signature", n, sha[:12], slug))
+	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s%s.%s.signature", n, sha[:12], manPart(man), slug))
+}
+
+// manPart names the manifest in a file name: ".m<8 hex>", or nothing.
+func manPart(man string) string {
+	if len(man) < 8 {
+		return ""
+	}
+	return ".m" + man[:8]
 }
 
 // ForCell keeps the files that cover cell (those limited to other cells
@@ -160,6 +181,9 @@ func (f *File) Statement() string {
 	}
 	if f.Evidence != "" {
 		cells += "evidence-sha256: " + f.Evidence + "\n"
+	}
+	if f.Manifest != "" {
+		cells += "manifest-sha256: " + f.Manifest + "\n" // only when bound, so older statements read the same
 	}
 	return fmt.Sprintf("swim approval v1\nscript: %s\nscript-sha256: %s\nlane: %d\njob: %s\nround: %s\n%sapproves: %s\nexpires: %s\n",
 		f.Script, f.SHA256, f.Lane, f.Job, f.Round, cells, appr, exp)
@@ -250,6 +274,32 @@ func ForScript(root, sha string) []*File {
 		}
 	}
 	return out
+}
+
+// ForManifest keeps the script approvals that still apply to manifest m:
+// those bound to m, and those from before manifests (bound to the script
+// hash alone). For each one bound to another manifest, stale says why:
+// "lane.3.....signature: stale: config policy changed (swim.yml: ...)".
+func ForManifest(files []*File, m *manifest.Manifest) (out []*File, stale []string) {
+	for _, f := range files {
+		if f.Kind != Script || f.Manifest == "" || m == nil || f.Manifest == m.SHA256 {
+			out = append(out, f)
+			continue
+		}
+		stale = append(stale, filepath.Base(f.Path)+": stale: "+f.StaleReason(m))
+	}
+	return out, stale
+}
+
+// StaleReason says how m differs from the manifest f approves.
+func (f *File) StaleReason(m *manifest.Manifest) string {
+	if f.Pinned == nil {
+		return "the manifest changed since"
+	}
+	if why := manifest.Diff(*f.Pinned, m.Pinned); len(why) > 0 {
+		return strings.Join(why, "; ")
+	}
+	return "the manifest changed since"
 }
 
 // StandingFor returns the standing approvals for user's queued jobs.

@@ -71,7 +71,10 @@ func (b *boundary) runLane(n int, broker *broker) string {
 	c := b.cmd("bash", filepath.Base(b.scriptPath(n)))
 	c.SysProcAttr = noTTY()
 	if broker != nil {
-		c.Env = append(c.Env, approval.EnvVar+"="+broker.Path())
+		// As swim run does: the lane process gets its own token, registered
+		// with the guards its script declares.
+		tok := broker.Register(approval.Caller{Lane: n, Guards: []string{boundaryGuard}})
+		c.Env = append(c.Env, approval.EnvVar+"="+broker.Path(), approval.TokenEnv+"="+tok)
 	}
 	out, _ := c.CombinedOutput()
 	return string(out)
@@ -141,7 +144,8 @@ func TestSecurity(t *testing.T) {
 			br := newBroker(t, func(_ approval.Request, cancel <-chan struct{}) bool { <-cancel; return true })
 			c := b.cmd("bash", "lane.1.sh")
 			c.SysProcAttr = noTTY()
-			c.Env = append(c.Env, approval.EnvVar+"="+br.Path())
+			tok := br.Register(approval.Caller{Lane: 1, Guards: []string{boundaryGuard}})
+			c.Env = append(c.Env, approval.EnvVar+"="+br.Path(), approval.TokenEnv+"="+tok)
 			if err := c.Start(); err != nil {
 				t.Fatal(err)
 			}
@@ -176,13 +180,18 @@ func TestSecurity(t *testing.T) {
 			b := newBoundaryRepo(t)
 			b.lane(2, "\nrun \"other\" true")
 			b.approve(2)
-			other := sigfile.ScriptPath(b.root, 2, b.sha(2))
+			// Lane 2's approval file, whatever manifest it names.
+			files, _ := filepath.Glob(filepath.Join(sigfile.Dir(b.root), "lane.2."+b.sha(2)[:12]+"*.signature"))
+			if len(files) != 1 {
+				t.Fatalf("lane 2's approval: %v", files)
+			}
+			other := files[0]
 			data, err := os.ReadFile(other)
 			if err != nil {
 				t.Fatal(err)
 			}
 			// Under lane 1's file name, as is: it names lane 2's script.
-			mine := sigfile.ScriptPath(b.root, 1, b.sha(1))
+			mine := sigfile.ScriptPath(b.root, 1, b.sha(1), "")
 			os.WriteFile(mine, data, 0o644)
 			b.mustSwim("run", "1", "--plain")
 			b.noMarker(t, "lane 2's approval under lane 1's name")

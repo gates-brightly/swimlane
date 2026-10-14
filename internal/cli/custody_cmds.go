@@ -21,6 +21,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -63,7 +64,7 @@ func cmdApprove(args []string) error {
 		return err
 	}
 	if auto == "" && len(rest) == 0 {
-		return listApprovals(root, lk)
+		return listApprovals(root, cfg, lk)
 	}
 	var approves []string
 	for _, g := range strings.Split(guards, ",") {
@@ -103,7 +104,15 @@ func cmdApprove(args []string) error {
 			return err
 		}
 		scriptGuards = info.GuardFlags()
+		// The approval binds the execution manifest: the script and every
+		// file it reads as code, its sidecar, how it runs and the policy in
+		// swim.yml and lookup.yml.
+		m, err := manifest.Build(root, cfg, n, "")
+		if err != nil {
+			return err
+		}
 		sha := chain.Hash(data)
+		man := m.SHA256
 		known := map[string]bool{}
 		for _, g := range scriptGuards {
 			known[g] = true
@@ -113,7 +122,7 @@ func cmdApprove(args []string) error {
 				return fmt.Errorf("--guards %s: %s has no guard %s (its guards: %s)", g, lane.ScriptName(root, n), g, or(strings.Join(scriptGuards, ", "), "none"))
 			}
 		}
-		path := sigfile.ScriptPath(root, n, sha)
+		path := sigfile.ScriptPath(root, n, sha, man)
 		var cells []string
 		if cell != "" {
 			// One cell of a matrix round.
@@ -121,7 +130,7 @@ func cmdApprove(args []string) error {
 			if !info.IsMatrix() || !ok {
 				return fmt.Errorf("--cell %s: swim %d has no such cell (a matrix round's cells: %s)", cell, n, strings.Join(launcher.CellNames(info.Cells()), ", "))
 			}
-			cells, path = []string{c.Name}, sigfile.CellPath(root, n, sha, c.Name)
+			cells, path = []string{c.Name}, sigfile.CellPath(root, n, sha, man, c.Name)
 		}
 		// A round with evidence steps (or a guard whose rule needs it) is
 		// approved together with its latest evidence: the plan, not just
@@ -137,7 +146,7 @@ func cmdApprove(args []string) error {
 			if len(cells) > 0 {
 				cellName = cells[0]
 			}
-			path = sigfile.EvidencePath(root, n, sha, ev.Hash, cellName)
+			path = sigfile.EvidencePath(root, n, sha, man, ev.Hash, cellName)
 			text, _ := ev.Text(root)
 			fmt.Printf("evidence from %s at %s:\n", map[bool]string{true: "swim plan --check", false: "a run"}[ev.Check], ev.At)
 			for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
@@ -146,8 +155,12 @@ func cmdApprove(args []string) error {
 			fmt.Printf("approving %s (script %s, evidence %s)\n", lane.ScriptName(root, n), short12(sha), short12(ev.Hash))
 		}
 		f, err = loadOrNew(path, func() *sigfile.File {
-			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round, Cells: cells, Evidence: evHash}
+			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round, Cells: cells, Evidence: evHash,
+				Manifest: man, Pinned: &m.Pinned}
 		})
+		if err == nil && len(f.Events) == 0 {
+			printPinned(m)
+		}
 	}
 	if err != nil {
 		return err
@@ -313,9 +326,47 @@ func printDecision(lk *lookup.Lookup, f *sigfile.File, scriptGuards []string) {
 	}
 }
 
+// printPinned shows what an approval of manifest m covers.
+func printPinned(m *manifest.Manifest) {
+	fmt.Printf("approving manifest %s:\n", short12(m.SHA256))
+	fmt.Printf("  script   %s %s\n", m.Pinned.Script.Path, short12(m.Pinned.Script.SHA256))
+	for _, f := range m.Pinned.Includes {
+		fmt.Printf("  includes %s %s (%s)\n", f.Path, short12(f.SHA256), f.From)
+	}
+	if sc := m.Pinned.Sidecar; sc != nil {
+		fmt.Printf("  sidecar  %s %s\n", sc.Path, short12(sc.SHA256))
+	}
+	fmt.Printf("  runner   %s\n", m.Pinned.Runner)
+	fmt.Printf("  config   %s (swim.yml: %s)\n", short12(m.Pinned.Config.SHA256), strings.Join(m.Pinned.Config.Keys, ", "))
+	if m.Pinned.Config.Rules != "" {
+		fmt.Printf("  rules    %s (lookup.yml require:)\n", short12(m.Pinned.Config.Rules))
+	}
+}
+
+// staleWhy says why script approval f no longer applies to its lane as it
+// is now ("" if it still does): the script changed, or (bound to a
+// manifest) something else it pins did. mans caches each lane's manifest.
+func staleWhy(root string, cfg *config.Config, f *sigfile.File, mans map[int]*manifest.Manifest) string {
+	if f.Kind != sigfile.Script {
+		return ""
+	}
+	m, ok := mans[f.Lane]
+	if !ok {
+		m, _ = manifest.Build(root, cfg, f.Lane, "")
+		mans[f.Lane] = m
+	}
+	if m == nil || m.ScriptSHA != f.SHA256 {
+		return "the script changed since"
+	}
+	if f.Manifest != "" && f.Manifest != m.SHA256 {
+		return f.StaleReason(m)
+	}
+	return ""
+}
+
 // listApprovals shows every approvals file: what it approves and whose
 // approvals stand.
-func listApprovals(root string, lk *lookup.Lookup) error {
+func listApprovals(root string, cfg *config.Config, lk *lookup.Lookup) error {
 	files, errs := sigfile.All(root)
 	for _, e := range errs {
 		fmt.Fprintln(os.Stderr, "swim approve: "+e.Error())
@@ -324,6 +375,7 @@ func listApprovals(root string, lk *lookup.Lookup) error {
 		fmt.Println("no approvals yet: swim approve N --guards FLAG (this script) or swim approve --auto USER (standing)")
 		return nil
 	}
+	mans := map[int]*manifest.Manifest{}
 	for _, f := range files {
 		signers, bad := f.Standing(lk)
 		var names []string
@@ -331,10 +383,13 @@ func listApprovals(root string, lk *lookup.Lookup) error {
 			names = append(names, or(s.User, "unknown "+sign.Fingerprint(s.Key)))
 		}
 		what := fmt.Sprintf("swim %d (%s %s)", f.Lane, lane.ScriptName(root, f.Lane), short12(f.SHA256))
+		if f.Manifest != "" {
+			what += " manifest " + short12(f.Manifest)
+		}
 		if f.Kind == sigfile.Standing {
 			what = "standing: every job " + f.For + " queues"
-		} else if data, err := lane.ScriptBytes(root, f.Lane); err != nil || chain.Hash(data) != f.SHA256 {
-			what += " · stale: the script changed since"
+		} else if why := staleWhy(root, cfg, f, mans); why != "" {
+			what += " · stale: " + why
 		}
 		fmt.Printf("%s\n  approves %s · approved by %s · %d events (%s)\n", what, approvesText(f), or(strings.Join(names, ", "), "nobody now"), len(f.Events), rel(root, f.Path))
 		for _, b := range bad {
@@ -680,7 +735,7 @@ func cmdVerify(args []string) error {
 	if len(rest) > 0 {
 		return usagef("usage: swim verify [--strict]")
 	}
-	root, _, err := repoNoMigrate()
+	root, cfg, err := repoNoMigrate()
 	if err != nil {
 		return err
 	}
@@ -691,6 +746,7 @@ func cmdVerify(args []string) error {
 	if !sign.Available() {
 		return errors.New("swim verify needs ssh-keygen (OpenSSH 8.0 or later)")
 	}
+	mans := map[int]*manifest.Manifest{}
 	links, rerr := chain.Read(root)
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	var bad, warn []string
@@ -721,6 +777,17 @@ func cmdVerify(args []string) error {
 					warn = append(warn, fmt.Sprintf("entry #%d: the script copy %s.sh is missing", l.Seq, short12(l.Script)))
 				} else if got != l.Script {
 					bad = append(bad, fmt.Sprintf("entry #%d: the kept script %s.sh was changed", l.Seq, short12(l.Script)))
+				}
+			}
+			// The round's staged copy, while it's kept (swim doctor --fix
+			// prunes old stages): its manifest and files as they ran.
+			if l.Manifest != "" {
+				if m, err := manifest.Load(manifest.Dir(root, l.Run, l.Lane)); err == nil {
+					if m.SHA256 != l.Manifest {
+						bad = append(bad, fmt.Sprintf("entry #%d: the staged manifest of swim %d in run %s is %s, not the %s that ran", l.Seq, l.Lane, l.Run, short12(m.SHA256), short12(l.Manifest)))
+					} else if err := m.Verify(); err != nil {
+						bad = append(bad, fmt.Sprintf("entry #%d: swim %d's staged copy in run %s: %v", l.Seq, l.Lane, l.Run, err))
+					}
 				}
 			}
 			// What it read must be what its producers recorded.
@@ -773,10 +840,10 @@ func cmdVerify(args []string) error {
 			bad = append(bad, rel(root, f.Path)+": "+b)
 		}
 		state := ""
-		if f.Kind == sigfile.Script {
-			if data, err := lane.ScriptBytes(root, f.Lane); err != nil || chain.Hash(data) != f.SHA256 {
-				state = "; stale: lane." + strconv.Itoa(f.Lane) + ".sh changed since"
-			}
+		if why := staleWhy(root, cfg, f, mans); why == "the script changed since" {
+			state = "; stale: " + lane.ScriptName(root, f.Lane) + " changed since"
+		} else if why != "" {
+			state = "; stale: " + why
 		}
 		fmt.Printf("approvals %s: %s, approves %s; %d standing of %d events%s\n", rel(root, f.Path), f.Kind, approvesText(f), len(signers), len(f.Events), state)
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
@@ -48,9 +49,17 @@ func runnerKey(cfg *config.Config) (*sign.Key, error) {
 // swim verify can show exactly what ran.
 func scriptsDir(root string) string { return filepath.Join(root, ".swim", "scripts") }
 
-// keepScript hashes lane n's script and keeps a copy under its hash.
-func keepScript(root string, n int) (string, error) {
-	data, err := lane.ScriptBytes(root, n)
+// keepScript hashes lane n's script and keeps a copy under its hash: the
+// staged copy the launcher pinned in m, or with none (a lane run directly
+// with bash) the working tree's.
+func keepScript(root string, n int, m *manifest.Manifest) (string, error) {
+	var data []byte
+	var err error
+	if m != nil {
+		data, err = m.ScriptBytes()
+	} else {
+		data, err = lane.ScriptBytes(root, n)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -69,9 +78,13 @@ func keepScript(root string, n int) (string, error) {
 	return sha, nil
 }
 
-// scriptSHA is the hash of the script lane n's current round runs (from
-// status.yml, recorded at the round's start), or of the script on disk.
+// scriptSHA is the hash of the script lane n's current round runs: from
+// the manifest the launcher staged (SWIM_MANIFEST, read-only), else
+// status.yml (recorded at the round's start), else the script on disk.
 func scriptSHA(root string, n int) string {
+	if m := manifest.FromEnv(n); m != nil {
+		return m.ScriptSHA
+	}
 	if st, _ := status.Load(root); st != nil {
 		if l := st.Mine(n); l != nil && l.ScriptSHA != "" {
 			return l.ScriptSHA
@@ -81,6 +94,52 @@ func scriptSHA(root string, n int) string {
 		return chain.Hash(data)
 	}
 	return ""
+}
+
+// laneManifest is the execution manifest lane n's round runs: the one the
+// launcher staged, or built now from the working tree (a lane run directly
+// with bash); nil if it can't be built.
+func laneManifest(root string, cfg *config.Config, n int) *manifest.Manifest {
+	if m := manifest.FromEnv(n); m != nil {
+		return m
+	}
+	m, err := manifest.Build(root, cfg, n, "")
+	if err != nil {
+		return nil
+	}
+	return m
+}
+
+// manifestSHA is the manifest hash lane n's current round runs ("" for
+// none): the launcher's, else the one status.yml recorded at its start.
+func manifestSHA(root string, n int) string {
+	if m := manifest.FromEnv(n); m != nil {
+		return m.SHA256
+	}
+	if st, _ := status.Load(root); st != nil {
+		if l := st.Mine(n); l != nil {
+			return l.ManifestSHA
+		}
+	}
+	return ""
+}
+
+// laneProbes are the Observe: probes of lane n's round (this cell's or
+// job's): from the staged copy when the launcher staged one.
+func laneProbes(root string, n int, m *manifest.Manifest) []lane.Probe {
+	if m != nil && m.Dir != "" {
+		data, err := os.ReadFile(m.Script())
+		if err != nil {
+			return nil
+		}
+		side := ""
+		if m.Pinned.Sidecar != nil {
+			side = m.Path(m.Pinned.Sidecar.Path)
+		}
+		return lane.ProbesIn(filepath.Base(m.Pinned.Script.Path), data, n, side, lane.CurrentCell())
+	}
+	info, _ := lane.ReadScript(root, n)
+	return info.Observe
 }
 
 // record appends an entry to the chain, signed by the runner's key when

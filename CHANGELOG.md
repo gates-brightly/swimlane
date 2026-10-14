@@ -27,6 +27,29 @@ To cut a release:
 
 ## Unreleased
 
+### Upgrading
+
+- **State syntax 2 (execution manifests):** repos locked at state 1 (or
+  `breaking: 7`) refuse to run until upgraded. Chain entries, signed
+  approvals and queued batches now name the manifest they ran or approved
+  (`manifest_sha256`), which a swim of state 1 can't verify. Once everyone
+  who runs or approves lanes in the repo has this swim: let running lanes
+  finish, run `swim lock --upgrade`, and commit `.swim.lock`. CI reads the
+  committed lock, so it needs that commit before it runs.
+  - **Approvals:** existing `approvals/*.signature` files still count, for
+    the script hash alone. Approve again to bind the manifest.
+  - **Queued batches** from an older swim still run, pinned to their script
+    and env hashes as before.
+  - **Lanes now run a staged copy.** `$0` is the copy under
+    `.swim/runs/<run>/<N>/`, and the working directory is still the repo
+    root. A lane that finds files next to itself with `dirname "$0"` should
+    use the repo root instead. A Python or TypeScript lane that imports a
+    local module by a path swim can't see should list it in `# Includes:`.
+    A `declare` at the top of a file a bash lane sources is now local to
+    swim's `source` wrapper; use plain assignments.
+  - **Undeclared guard flags are refused** under `swim run`: a flag named
+    only at run time (`guard "$FLAG"`) must be listed in `# Guards:`.
+
 ### Docs
 
 - **New pages under `docs/`:** the [trust model](docs/trust-model.md) (what
@@ -106,6 +129,50 @@ To cut a release:
     one to another machine (`hub-http`).
 
 ### Added
+
+- **Execution manifest:** swim pins what a lane runs before it waits, runs
+  a staged copy, and approvals sign the whole operation, not just the
+  script.
+  - **What's pinned:** the script, every local file it sources or imports
+    (by `# Includes:` or a literal path, followed to any depth), its
+    sidecar, how it runs (`bash`, its `#!` line, a `swim.yml` runner), the
+    policy keys of `swim.yml` and `lookup.yml`'s `require:` rules. Its hash
+    is `manifest_sha256`. The env files' hash and the runner binary are
+    recorded and checked for the run, but not signed (they differ per
+    machine).
+  - **Staged runs:** before any lane waits, `swim run` copies its pinned
+    files to `.swim/runs/<run>/<N>/` (read-only) and runs that copy, from
+    the repo root. A sourced repo file is read from the stage. The copy, and
+    a queued batch's script, manifest and env pins, are checked again right
+    before exec: `blocked: manifest changed since staged (...)`, or skipped
+    as changed since it was queued. Editing the working tree, even
+    mid-round, no longer reaches a running lane. `$SWIM_STAGE` and
+    `$SWIM_MANIFEST` name the stage.
+  - **Approvals bind the manifest:** `swim approve N` lists what it pins
+    and signs its hash (`approvals/lane.N.<sha12>.m<manifest8>.signature`).
+    A change to any of it stales the approval, and the guard, `swim
+    approve` and `swim verify` say why: `stale: includes lib/orders.sh
+    changed`, `stale: config policy changed (swim.yml: ...)`.
+  - **Questions come from swim:** each lane process gets its own approval
+    token. The question names the lane, job, guard, manifest and evidence
+    the launcher knows, then `the lane says: <action>` (control characters
+    dropped). A request without a token, or for a flag the script doesn't
+    declare or use, is refused and logged. Each approval is used once, by
+    the lane it was given to (`_mark ... --request ID`); a replay is
+    refused.
+  - **Observed facts:** `# Observe: NAME = <command>` and `# Observe: path
+    CMD ...` declare facts swim can't pin. They're read when a guard is
+    approved (shown with the question) and again just before it returns, and
+    a change ends the round as drift: `drift: aws_account was 1234... at
+    approval, now 2109...`. The approve entry records them.
+  - **Chain:** round and approve entries carry `manifest_sha256`, status
+    records it, the round header shows it, and `swim verify` checks a run's
+    staged copy while it's kept. `swim doctor --fix` prunes staged copies
+    older than `outputs_keep` (`stages-old`).
+  - **Lint:** `source` (error) for a bash lane that sources a local file
+    `# Includes:` doesn't list, or a path built at run time; `observe`
+    (warn) for a probe that looks like it writes. SDK guard calls
+    (`r.guard("FLAG", ...)`) now count as declared guards.
 
 - **Jobs:** any lane can be split into jobs, numbered under it and nested
   to any depth (`1.1`, `1.2`, `1.5.9.9`): the lane's header first, then

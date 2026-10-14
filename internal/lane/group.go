@@ -500,6 +500,9 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 			for p := range always {
 				si.Always = si.Always || PathUnder(sec.path, p)
 			}
+			if len(si.Observe) == 0 {
+				si.Observe = laneInfo.Observe // the lane's probes, unless the job has its own
+			}
 			laneInfo.Subs = append(laneInfo.Subs, SubJob{Name: sec.path, Info: si, Native: true})
 			continue
 		}
@@ -535,6 +538,9 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 		// Always: its own, or a job it sits under.
 		for p := range always {
 			si.Always = si.Always || PathUnder(sec.path, p)
+		}
+		if len(si.Observe) == 0 {
+			si.Observe = laneInfo.Observe
 		}
 		laneInfo.Subs = append(laneInfo.Subs, SubJob{Name: sec.path, Info: si})
 	}
@@ -597,4 +603,20 @@ func codeMatches(lines []string, re *regexp.Regexp) bool {
 		}
 	}
 	return false
+}
+
+// JobsIn reads the jobs of lane n's file called name from its content
+// (a staged copy, not the working tree): ok is false for a file without
+// jobs.
+func JobsIn(name string, data []byte, n int) (Group, bool) {
+	if IsBinary(data) {
+		return Group{}, false
+	}
+	if GroupFileRE.MatchString(name) {
+		return ParseGroup(name, string(data), 0)
+	}
+	if !HasJobs(commentsAsHash(string(data))) {
+		return Group{}, false
+	}
+	return ParseGroup(name, string(data), n)
 }

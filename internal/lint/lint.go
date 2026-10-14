@@ -103,6 +103,8 @@ var Checks = []Check{
 	{"outputs", finding.Warn, false, "an output whose name suggests secrets (outputs aren't masked)", checkOutputs},
 	{"input-dep", finding.Error, false, "`input N` of a lane not in After: (or config deps)", checkInputDeps},
 	{"includes", finding.Warn, false, "a Python or TypeScript lane imports a local module its # Includes: doesn't cover", checkIncludes},
+	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
+	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},
 	{"sdk-bypass", finding.Info, false, "an SDK lane runs commands itself (subprocess, child_process) rather than through r.run", checkSDKBypass},
 	{"handler", finding.Error, false, "outcome handlers or Fail: without `# swim: syntax 3`, or a handler name swim never calls", checkHandlers},
 	{"handler-reached", finding.Warn, false, "an on_failure that uses a guard but never checks `reached`", checkHandlerReached},

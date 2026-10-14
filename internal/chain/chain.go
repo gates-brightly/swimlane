@@ -53,6 +53,9 @@ type Entry struct {
 	Job    string `json:"job,omitempty"`
 	Round  string `json:"round,omitempty"`
 	Script string `json:"script,omitempty"` // SHA-256 of the lane script
+	// Manifest is the round's execution manifest hash (manifest_sha256):
+	// the script and everything else pinned with it (internal/manifest).
+	Manifest string `json:"manifest_sha256,omitempty"`
 
 	// approve
 	Guard     string     `json:"guard,omitempty"`
@@ -60,6 +63,8 @@ type Entry struct {
 	Method    string     `json:"method,omitempty"`    // signature | prompt | flag | auto | queue
 	Statement string     `json:"statement,omitempty"` // what a signature's approvers signed
 	Approvers []Approver `json:"approvers,omitempty"`
+	// Observed are the round's Observe: facts when the guard was approved.
+	Observed map[string]string `json:"observed,omitempty"`
 
 	// round
 	Result    string   `json:"result,omitempty"`

@@ -1,0 +1,147 @@
+package lane
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+// A lane's code isn't only its script: bash lanes source local files, and
+// Python and TypeScript lanes import local modules. The execution manifest
+// pins and stages each local file a script reads this way, found by a
+// static scan, whether or not # Includes: lists it; swim lint wants it
+// listed (and a source whose path is only known at run time can't be
+// pinned at all).
+
+// Source is one local file a script reads as code, or a source line whose
+// file swim can't know ahead (Dynamic).
+type Source struct {
+	Path    string // repo-relative ("" when Dynamic)
+	Line    int    // 1-based
+	Dynamic bool   // source "$x": named at run time
+	Arg     string // the argument as written
+	From    string // "source" (bash) or "import" (Python, TypeScript)
+}
+
+var (
+	sourceRE   = regexp.MustCompile(`(?:^|[;&|({]\s*|\b(?:then|do|else)\s+)(?:source|\.)\s+("[^"]*"|'[^']*'|[^\s;&|)]+)`)
+	pyImportRE = regexp.MustCompile(`^\s*(?:from\s+(\.?[A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))`)
+	tsImportRE = regexp.MustCompile(`(?:from|import)\s*\(?\s*["'](\.{1,2}/[^"']+)["']`)
+)
+
+// ImportCandidates are the repo-relative files an import line of a Python
+// or TypeScript lane may name, most likely first (nil for another line or
+// language, or the swim SDK).
+func ImportCandidates(ext, line string) []string {
+	switch strings.ToLower(ext) {
+	case ".py":
+		m := pyImportRE.FindStringSubmatch(line)
+		if m == nil {
+			return nil
+		}
+		mod := strings.TrimPrefix(m[1]+m[2], ".")
+		if mod == "swim" {
+			return nil
+		}
+		p := strings.ReplaceAll(mod, ".", "/")
+		return []string{p + ".py", p + "/__init__.py"}
+	case ".ts", ".mts", ".js", ".mjs":
+		m := tsImportRE.FindStringSubmatch(line)
+		if m == nil {
+			return nil
+		}
+		p := filepath.ToSlash(filepath.Clean(m[1]))
+		return []string{p, p + ".ts", p + ".js", p + "/index.ts", p + "/index.js"}
+	}
+	return nil
+}
+
+// ScanSources lists the local files src (a script called name) reads as
+// code: bash source and . lines, Python and TypeScript imports. Only files
+// that exist under root count; a bash source of a path built at run time is
+// reported as Dynamic.
+func ScanSources(root, name, src string) []Source {
+	ext := strings.ToLower(filepath.Ext(name))
+	bash := ext == ".sh" || ext == ".bash" || ext == ""
+	var out []Source
+	for i, raw := range strings.Split(src, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+			continue
+		}
+		if !bash {
+			for _, cand := range ImportCandidates(ext, line) {
+				if isFile(filepath.Join(root, cand)) {
+					out = append(out, Source{Path: cand, Line: i + 1, Arg: cand, From: "import"})
+					break
+				}
+			}
+			continue
+		}
+		for _, m := range sourceRE.FindAllStringSubmatch(line, -1) {
+			arg := m[1]
+			word := strings.Trim(arg, `"'`)
+			if strings.ContainsAny(word, "$`*?[") && !strings.HasPrefix(arg, "'") || strings.HasPrefix(word, "~") {
+				if !strings.HasPrefix(word, "~") {
+					out = append(out, Source{Line: i + 1, Dynamic: true, Arg: arg, From: "source"})
+				}
+				continue
+			}
+			if rel, ok := repoRel(root, word); ok && isFile(filepath.Join(root, rel)) {
+				out = append(out, Source{Path: rel, Line: i + 1, Arg: arg, From: "source"})
+			}
+		}
+	}
+	return out
+}
+
+// LocalSources are the files a lane's script reads as code, and those
+// files' own, to any depth (ScanSources, followed): repo-relative and in
+// the order found.
+func LocalSources(root, name string, src []byte) []Source {
+	seen := map[string]bool{}
+	var out []Source
+	var walk func(name string, src []byte, depth int)
+	walk = func(name string, src []byte, depth int) {
+		for _, s := range ScanSources(root, name, string(src)) {
+			if s.Dynamic || seen[s.Path] {
+				continue
+			}
+			seen[s.Path] = true
+			out = append(out, s)
+			if depth < 8 {
+				if data, err := os.ReadFile(filepath.Join(root, s.Path)); err == nil && !IsBinary(data) {
+					walk(s.Path, data, depth+1)
+				}
+			}
+		}
+	}
+	walk(name, src, 0)
+	return out
+}
+
+// repoRel is path relative to root, if it is inside it (a relative path
+// is relative to root: lanes run in the repo root).
+func repoRel(root, path string) (string, bool) {
+	if path == "" {
+		return "", false
+	}
+	if filepath.IsAbs(path) {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+			return "", false
+		}
+		path = rel
+	}
+	path = filepath.ToSlash(filepath.Clean(path))
+	if path == "." || path == ".." || strings.HasPrefix(path, "../") {
+		return "", false
+	}
+	return path, true
+}
+
+func isFile(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}

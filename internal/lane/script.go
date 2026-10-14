@@ -215,6 +215,7 @@ type sideFile struct {
 	Includes       *strList           `yaml:"includes"`
 	Always         *bool              `yaml:"always"`
 	RerunChildren  *bool              `yaml:"rerun-children"`
+	Observe        []string           `yaml:"observe"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -256,7 +257,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs, matrix, matrix-exclude, matrix-parallel, matrix-fail, includes, always, rerun-children)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs, matrix, matrix-exclude, matrix-parallel, matrix-fail, includes, always, rerun-children, observe)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -334,6 +335,12 @@ func applySidecar(path string, info *Info) error {
 	}
 	if sf.Stub != nil {
 		info.Stub = *sf.Stub
+	}
+	if sf.Observe != nil {
+		info.Observe = nil
+		for _, v := range sf.Observe {
+			info.addProbe(v, name+" observe:")
+		}
 	}
 	if sf.Includes != nil {
 		info.Includes = append([]string(nil), *sf.Includes...)

@@ -209,6 +209,11 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 			return fail("guard needs flag and action")
 		}
 		code := s.swim("guard", a.Flag, a.Action)
+		if code == 3 {
+			// An Observe: fact changed between approval and now: the round
+			// ends as drift, as a bash lane's guard ends it.
+			s.swim("stop", "drift: observed facts changed since approval ("+a.Flag+")")
+		}
 		return laneResponse{OK: true, Result: map[string]any{"approved": code == 0}}
 	case "confirm":
 		var a struct{ Question string }

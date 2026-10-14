@@ -34,10 +34,16 @@ lane_init() {
     ''|*[!0-9]*) echo "swim: lane_init needs a lane number, e.g. lane_init 1" >&2; exit 2 ;;
   esac
   SWIM_LANE=$1
-  SWIM_ROOT=$(cd "$(dirname "$0")" && pwd -P) || exit 1
-  # A lane from a group file runs as .swim/groups/lane.N.sh: its repo is
-  # two directories up.
-  case "$SWIM_ROOT" in */.swim/groups) SWIM_ROOT=${SWIM_ROOT%/.swim/groups} ;; esac
+  if [ -n "${SWIM_STAGE:-}" ] && [ -n "${SWIM_ROOT:-}" ]; then
+    # swim run runs the staged copy (.swim/runs/<run>/<lane>/): the repo is
+    # the one the launcher names, not the script's directory.
+    SWIM_ROOT=$(cd "$SWIM_ROOT" && pwd -P) || exit 1
+  else
+    SWIM_ROOT=$(cd "$(dirname "$0")" && pwd -P) || exit 1
+    # A lane from a group file runs as .swim/groups/lane.N.sh: its repo is
+    # two directories up.
+    case "$SWIM_ROOT" in */.swim/groups) SWIM_ROOT=${SWIM_ROOT%/.swim/groups} ;; esac
+  fi
   cd "$SWIM_ROOT" || exit 1
   # A read-only check (swim plan --check) logs apart from the round log.
   STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE${SWIM_CHECK_ONLY:+.check}.log"
@@ -88,6 +94,31 @@ lane_init() {
   trap '_swim_on_signal 130' INT
   trap '_swim_on_signal 143' TERM
 }
+
+# source FILE / . FILE — under swim run, a repo file the manifest pinned is
+# read from the run's stage (the bytes swim checked before the lane
+# started), not the working tree. Anything else is sourced as usual. A
+# `declare` at the top of a file sourced this way is local to this
+# function: use plain assignments there.
+source() {
+  if [ -n "${SWIM_STAGE:-}" ] && [ $# -gt 0 ]; then
+    case $1 in
+      /*) _swim_src=${1#"$SWIM_ROOT"/} ;;
+      *) _swim_src=$1 ;;
+    esac
+    case $_swim_src in
+      /*|../*|*/../*) ;;
+      *)
+        if [ -f "$SWIM_STAGE/$_swim_src" ]; then
+          shift
+          set -- "$SWIM_STAGE/$_swim_src" "$@"
+        fi
+        ;;
+    esac
+  fi
+  builtin source "$@"
+}
+.() { source "$@"; }
 
 # _swim_on_signal CODE — Ctrl-C (130) or SIGTERM (143): end the round; in a
 # handler, skip the handlers' remaining steps instead (the running one has
@@ -394,11 +425,13 @@ any_failed() {
 
 # guard FLAG "<action — date, reason>" — true if the operator approves:
 # FLAG=1 approves up front (CI, scripts). With FLAG unset and an operator
-# at the terminal, swim asks: "swim N requires human approval of task:
-# <action> Y/N [N]"; y approves (recorded with who answered). Anything else
-# (n, Enter, FLAG set to another value, nobody to ask) records SKIP with a
-# dry-run message showing how to approve, and returns false. One flag per
-# destructive action.
+# at the terminal, swim asks: "swim N requires human approval of guard
+# FLAG ... the lane says: <action> Y/N [N]"; y approves (recorded with who
+# answered). Under swim run, a FLAG the script doesn't declare or use is
+# refused, and an Observe: fact that changed since approval stops the round
+# as drift. Anything else (n, Enter, FLAG set to another value, nobody to
+# ask) records SKIP with a dry-run message showing how to approve, and
+# returns false. One flag per destructive action.
 guard() {
   if [ $# -lt 2 ]; then
     echo 'swim: usage: guard FLAG "<action - date, reason>"' >&2
@@ -429,11 +462,16 @@ guard() {
   fi
   if [ "$_swim_val" = "unset" ] && [ -n "$SWIM_LANE" ]; then
     # Nobody set the flag: ask the operator if one is at the terminal
-    # ("requires human approval of task: ... Y/N [N]"); swim _approve
+    # ("requires human approval of guard ... Y/N [N]"); swim _approve
     # records APPROVED, or SKIP as a dry run when declined or no one can be
     # asked (CI, no terminal, approvals: flags).
     "$SWIM_BIN" _approve "$SWIM_LANE" "$1" "$2"
-    return $?
+    _swim_rc=$?
+    if [ "$_swim_rc" -eq 3 ]; then
+      # An Observe: fact changed between approval and now.
+      stop "drift: observed facts changed since approval ($1)"
+    fi
+    return "$_swim_rc"
   fi
   "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$2" "dry run: set $1=1 to approve"
   return 1

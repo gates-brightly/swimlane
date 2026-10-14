@@ -42,6 +42,10 @@ type Lane struct {
 	// EnvSHA256 is the hash of its env from env files when queued ("" for
 	// none); nil in entries from before env files.
 	EnvSHA256 *string `yaml:"env_sha256,omitempty"`
+	// Manifest is its execution manifest when queued (manifest_sha256): the
+	// script and everything pinned with it. "" in entries from before
+	// manifests, which pin the script and env hashes alone.
+	Manifest string `yaml:"manifest_sha256,omitempty"`
 }
 
 // Worker is who claimed an entry.
@@ -431,7 +435,11 @@ func (e *Entry) Statement() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "swim queue v1\nid: %s\n", e.ID)
 	for _, l := range e.Lanes {
-		fmt.Fprintf(&b, "lane: %d %s %s\n", l.Lane, l.Job, l.SHA256)
+		if l.Manifest != "" {
+			fmt.Fprintf(&b, "lane: %d %s %s %s\n", l.Lane, l.Job, l.SHA256, l.Manifest) // only when pinned, so older entries read the same
+		} else {
+			fmt.Fprintf(&b, "lane: %d %s %s\n", l.Lane, l.Job, l.SHA256)
+		}
 	}
 	fmt.Fprintf(&b, "approve: %s\napprove-all: %v\n", strings.Join(e.Approve, ","), e.ApproveAll)
 	return b.String()

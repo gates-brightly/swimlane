@@ -51,7 +51,7 @@ require:
 
 func TestApproveRevokeSequence(t *testing.T) {
 	root, l, k := setup(t)
-	f := &File{Kind: Script, Path: ScriptPath(root, 3, "abc123abc123abc123"), Script: "lane.3.sh", SHA256: "abc123abc123abc123", Lane: 3, Approves: []string{"FIN_ALLOW_DELETE", "OTHER"}}
+	f := &File{Kind: Script, Path: ScriptPath(root, 3, "abc123abc123abc123", ""), Script: "lane.3.sh", SHA256: "abc123abc123abc123", Lane: 3, Approves: []string{"FIN_ALLOW_DELETE", "OTHER"}}
 	now := time.Now()
 	f.Add(k["zach"], Approve, "zach")
 	if d := Decide([]*File{f}, l, "FIN_ALLOW_DELETE", now); d.OK || !strings.Contains(d.Why, "needs 2 signature(s) from platform-admin, has 1") {
@@ -100,7 +100,7 @@ func TestStandingCombinesWithScript(t *testing.T) {
 	root, l, k := setup(t)
 	standing := &File{Kind: Standing, For: "bob", All: true, Path: StandingPath(root, "bob")}
 	standing.Add(k["zach"], Approve, "zach")
-	script := &File{Kind: Script, SHA256: "def456def456def456", Lane: 1, Approves: []string{"FIN_ALLOW_DROP"}, Path: ScriptPath(root, 1, "def456def456def456")}
+	script := &File{Kind: Script, SHA256: "def456def456def456", Lane: 1, Approves: []string{"FIN_ALLOW_DROP"}, Path: ScriptPath(root, 1, "def456def456def456", "")}
 	script.Add(k["alice"], Approve, "alice")
 	now := time.Now()
 	if d := Decide([]*File{standing}, l, "FIN_ALLOW_DROP", now); d.OK {
@@ -140,7 +140,7 @@ func TestCellAndEvidenceStatements(t *testing.T) {
 	if len(ForCell([]*File{base, &cell}, "orders")) != 2 || len(ForCell([]*File{&cell}, "")) != 0 {
 		t.Error("ForCell")
 	}
-	if !strings.HasSuffix(EvidencePath("/r", 1, base.SHA256, ev.Evidence, "ENV=prod,SVC=a"), "/lane.1.aaaaaaaaaaaa.eeeeeeeee.ENV-prod.SVC-a.signature") {
-		t.Errorf("evidence path %s", EvidencePath("/r", 1, base.SHA256, ev.Evidence, "ENV=prod,SVC=a"))
+	if !strings.HasSuffix(EvidencePath("/r", 1, base.SHA256, "", ev.Evidence, "ENV=prod,SVC=a"), "/lane.1.aaaaaaaaaaaa.eeeeeeeee.ENV-prod.SVC-a.signature") {
+		t.Errorf("evidence path %s", EvidencePath("/r", 1, base.SHA256, "", ev.Evidence, "ENV=prod,SVC=a"))
 	}
 }

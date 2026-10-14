@@ -97,7 +97,7 @@ it, and it serves a read-only dashboard. It never runs anything.
 | Blocked commands | `swim run` before a lane starts, the step at run time, the git shim on `PATH` | Enforced for those commands (a text match); other ways to change a remote, like an API call, aren't covered |
 | Lint | `swim lint`, and `swim run`'s preflight | `swim run` refuses `set -e` and `lane_init` errors; every other finding, like `destructive`, is advice |
 | Lock | `swim run`, `swim all`, `swim new`, a lane run directly | Enforced |
-| Queue pins | `swim watch` before a lane starts | Enforced; the pin is checked before the slot wait, not right before exec (T1) |
+| Queue pins | `swim watch` before a lane starts | Enforced; the stage and the pins are checked again right before the lane's process starts |
 | Guard | `guard` in the lane process | Advisory |
 | Approval rules | `lookup.yml`, read by the guard | As strong as the guard and the repo's files (T3) |
 | Chain | `swim verify` | Detects edits; not truncation or re-signing (T8) |

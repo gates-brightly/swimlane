@@ -28,7 +28,7 @@ from another's, and it doesn't sandbox lane scripts.
 | **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Signs every chain entry swim records on this machine. | An SSH key on the operator's or worker's machine (or in ssh-agent). |
 | **Approvers** | Sign approvals of exact scripts, or standing approvals, with `swim approve`. | Their own SSH keys. Their public keys are in the committed `lookup.yml`. |
 | **Secrets** (`swim secret`) | Encrypted to your SSH key with age, decrypted once per run. | Readable by every lane in the run: they keep values out of logs, the hub and git, not out of lane code. |
-| **Hub** (`swim hub`) | Shows workers' status, logs and queues. | Tokens, and only ciphertext for secret grants. Plain HTTP today (T16, pending). |
+| **Hub** (`swim hub`) | Shows workers' status, logs and queues. | Tokens, and only ciphertext for secret grants. TLS (`--tls-cert`/`--tls-key`, clients pin `--ca`); plain HTTP only on loopback or with `--insecure`. |
 
 ## Authorization
 
@@ -79,23 +79,34 @@ else stops it. What is enforced outside the script:
 - **The lock:** a swim with other syntax versions than `.swim.lock` refuses
   to run lanes.
 
+**Partly closed:** under `swim run` each lane process gets its own approval
+token. The broker, not the request, says which lane and job ask, refuses
+guard flags the manifest doesn't declare, and gives each approval a one-time
+id that only that lane can use.
+
 **Gaps still open (T3, pending):** a lane runs as the operator, so a
-hostile lane could write `approvals/`, `lookup.yml` or `.swim/status.yml`,
-call `swim _mark` to record an approval itself, set `FLAG=1` before calling
-`guard`, or send a request for another lane on the approval socket (which
-has no per-lane token yet). See [tasks.md](../tasks.md) T3 and
-[features/execution-manifest.md](../features/execution-manifest.md).
+hostile lane could still write `approvals/`, `lookup.yml` or
+`.swim/status.yml`, call `swim _mark` to record an approval itself, or set
+`FLAG=1` before calling `guard`. See [tasks.md](../tasks.md) T3.
 
 ## Integrity
 
 *What runs matches what was approved.*
 
-- **Approvals are bound to the script's SHA-256.** The hash covers the lane
-  script (or a lane's group file, or a binary), the files its
-  `# Matrix: KEY=@file` reads values from, and the files its `# Includes:`
-  globs match. A script edited after approval no longer matches: its guards
-  ask or dry-run, the log says the approval is for another version, and
-  `swim verify` lists the approval as stale.
+- **Approvals are bound to an execution manifest.** Before a lane starts,
+  swim builds its manifest: the lane script (or its group file, or a
+  binary), the files its `# Matrix: KEY=@file` reads, its `# Includes:`,
+  every local file it sources or imports by a literal path, its sidecar, the
+  runner the repo names, the policy part of `swim.yml` and the `lookup.yml`
+  rules. `swim approve N` signs the manifest's hash and lists what it pins.
+  A change to any of it stales the approval: its guards ask or dry-run, and
+  the guard's SKIP, `swim approve` and `swim verify` say what changed.
+  Approvals made before manifests still count by script hash.
+- **The approved bytes are the bytes that run.** The manifest's files are
+  staged read-only under `.swim/runs/<run>/<N>/` before the lane waits for
+  anything, and the lane runs the staged copy (`source` and `.` read it too).
+  Edits made while it waits or runs don't reach it; the stage is checked
+  again right before the process starts.
 - **A queued batch is pinned to its scripts.** Each lane is pinned to its
   job and its exact script, and to the hash of its env files. A lane edited,
   rewritten or re-environed after it was queued is skipped, not run.
@@ -106,20 +117,13 @@ has no per-lane token yet). See [tasks.md](../tasks.md) T3 and
 
 **Gaps still open:**
 
-- **The script runs from the working tree (T1, pending).** The runner runs
-  the script's path, and bash reads a script as it goes, so an edit made
-  while a round runs changes what runs. The kept copy is for audit only.
-  For queued runs the pin is checked after locks are taken but before the
-  lane waits for a slot.
-- **What the hash covers (T2, pending).** It doesn't cover files pulled in
-  with `source` that `# Includes:` doesn't list, the `lane.N.yml` sidecar
-  itself, the runner chosen by config, or `swim.yml` settings. Env files are
-  pinned only for queued runs (and their hash is recorded in the chain).
-  External binaries and remote state are never covered.
-- **The hash a guard checks** comes from `.swim/status.yml`, which a lane
-  can write (T3, pending).
-
-See [features/execution-manifest.md](../features/execution-manifest.md).
+- **What the manifest can't pin:** env files are pinned for the run and for
+  queued batches, but they're per machine, so they aren't in the signed
+  manifest hash: an env-only change doesn't stale a signed approval. The
+  runner's binary is recorded per machine, not signed. External binaries,
+  remote state and modules found only at run time are never covered; lint's
+  `source` check flags a sourced file it can't pin. `# Observe:` facts are
+  checked again before the guarded step, and drift ends the round.
 
 ## Attribution
 
@@ -193,8 +197,8 @@ pending): today you find it in the log, `.swim.log` and the chain.
   doesn't stop a process running as you from using what you have.
 - **Tampering by whoever holds the runner key,** or truncation of the chain,
   until T8 lands (above).
-- **The hub's transport.** It serves plain HTTP with shared tokens; put it
-  behind a TLS proxy (T16, pending).
+- **The hub's identity.** It serves TLS, but its workers and admin use
+  shared tokens, not per-person identity (headless stage H2, pending).
 
 ## Claims and the tests that prove them
 
@@ -218,8 +222,11 @@ Test files are under `internal/`. "Pending" names the task in
 | A script edited after approval no longer matches its approval. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
 | A lane edited after it was queued is skipped. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
 | A lane whose env files changed after it was queued is skipped. | `TestEnvFileQueuePin` (e2e/envfile_test.go) |
-| The bytes approved are the bytes that run, even if the file changes mid-run. | Pending T1 |
-| An approval covers sourced files, the sidecar, the runner and policy. | Pending T2 |
+| The bytes approved are the bytes that run, even if the file changes mid-run. | `TestManifestStagedBytesRun`, `TestManifestMidRunEdit` (e2e/manifest_test.go) |
+| An approval covers sourced files, the sidecar, the runner and policy. | `TestManifestApprovalBinding` (e2e/manifest_test.go) |
+| A queued lane whose manifest changed is skipped. | `TestManifestQueuePin` (e2e/manifest_test.go) |
+| The broker names the lane that asks; an approval is used once, by its lane. | `TestManifestRequestsFromTheLane`, `TestManifestResponseReuse` (e2e/manifest_test.go) |
+| The hub refuses plain HTTP off loopback, and clients pin its CA. | `TestHubTLS`, `TestHubTLSPolicy` (e2e/hub_tls_test.go) |
 | A lane can't approve itself. | Pending T3, T25 |
 | Changing, removing or reordering a chain entry is detected. | `TestChainLinksAndDetectsTampering` (chain) |
 | An edited log or chain entry fails `swim verify`. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
