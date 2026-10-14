@@ -63,10 +63,11 @@ COMMANDS
   hub / hub enroll URL     a dashboard of many workers; enroll a directory to report to it
                            (--tls-cert/--tls-key serve https; enroll --ca FILE trusts its cert)
   hub user add NAME --role viewer|operator   a hub user (token shown once): logged in, they
-                           interrupt, drain, run or fetch logs on headless workers
+                           interrupt, drain, run, fetch logs or answer guards on headless workers
   wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until it expires or is revoked
+  approve --hub WORKER/QUESTION [--decline]   sign an answer to a guard waiting on a headless worker
   revoke N|JOB / --auto USER   withdraw your approval
   verify [--against DEST]  prove the chain of custody, in levels: consistent, trusted,
                            anchored, authorized (--yaml for CI)
@@ -943,6 +944,8 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         allow: [answer, interrupt, drain, log]   # hub commands accepted; add run to allow it
         logs: on                                 # off: never upload a log to the hub
         command_ttl: 10m                         # older commands expire (interrupt: 2m at most)
+        approvals: signed                        # how a guard is answered through the hub: signed | hub
+        answer_timeout: 30m                      # no answer by then: the guard is a dry run
   A lane's dependencies are config `deps` plus its script's `# After:` line.
   Dependencies in the same `swim run` are waited for. A dependency outside
   the run must already be satisfied, otherwise the lane is skipped:

@@ -997,6 +997,29 @@ swim watch --headless --uninstall
   showed). A run from the hub is queued unsigned, by `hub:<user> via <url>`,
   with no approvals of its own. A log is masked again before it goes.
   Every command, refused or not, lands in `.swim.log` and the chain.
+- **Guards answered through the hub:** a guard nothing else approves (no
+  signed approval, no flag the batch approves, no `-y`) shows on the
+  worker's hub page as a question, and the lane waits up to
+  `headless.answer_timeout` (30m) for an answer:
+  - **Signed** (the default): `swim approve --hub WORKER/QUESTION`, or
+    *Sign an answer* on the page (`ssh-keygen -Y sign` the statement it
+    shows, paste the signature). The statement names the question, the
+    worker, lane, job, run, script, manifest, evidence, guard, decision
+    and expiry. The worker builds it from its own facts and checks the
+    signature against `lookup.yml`, counting signers until the guard's
+    rule is met. A hub that forges, replays or redirects an answer fails
+    that check. Recorded as `hub-signed`, with the signatures.
+  - **Button** (`headless.approvals: hub`): a hub operator's *Approve*
+    counts as their answer, if `lookup.yml` lists them, for guards no
+    `require:` rule names and that need no evidence. Recorded as
+    `hub-button` (unsigned); `swim doctor` warns about the setting.
+  - **No answer is a decline:** the deadline, the round's Timeout, the hub
+    gone or the worker stopping all make the guard a dry run.
+
+```sh
+swim approve --hub billing/3f9c2a          # sign an answer to the question on billing's page
+swim approve --hub billing/3f9c2a --decline
+```
 
 ```yaml
 # swim.yml (only swim.yml: config.yml can't set it)
@@ -1004,6 +1027,8 @@ headless:
   allow: [answer, interrupt, drain, log]   # the default; add run to allow it
   logs: on                                 # off: logs never leave this machine
   command_ttl: 10m
+  approvals: signed                        # or hub: a listed operator's button click, where no require: rule names the guard
+  answer_timeout: 30m
 ```
 
 ### Interrupts
@@ -1115,8 +1140,10 @@ swim hub user add alice --role operator              # a person: token shown onc
   `/login` for a 12-hour session (`HttpOnly`, `SameSite=Strict`, `Secure`
   under TLS, a CSRF token on every form), or sends the token as a bearer
   token. On a headless worker's page they get controls: **Interrupt**,
-  **Stop after this batch**, **Run now** (operator) and **Log** (viewer
-  too). The page shows each command's outcome as the worker acknowledges
+  **Stop after this batch**, **Run now** (operator), **Log** (viewer
+  too), and for a guard waiting for an answer **Sign an answer** (viewer
+  too: the signature is what counts), **Approve** (operator, where the
+  worker takes button answers) and **Decline** (operator). The page shows each command's outcome as the worker acknowledges
   it. Uploaded logs stay in the hub's memory only (8 MiB a log, 64 MiB in
   all, 15 minutes). The admin token manages users and sends no command.
 - **TLS:** `--tls-cert`/`--tls-key` serve https (TLS 1.2+), reloading the
@@ -1197,6 +1224,7 @@ they waited for.
 | `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The worker with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
+| `swim approve --hub WORKER/QUESTION [--decline]` | Sign an answer to a guard waiting on a headless worker. |
 | `swim verify [--strict] [--against DEST] [--yaml]` / `swim history [--oneline]` / `swim chain repair\|checkpoint\|export` / `swim keys [trust\|pin]` | The chain of custody: prove it (in levels), read it, repair a cut-short write, checkpoint and export it, and see and pin who's who. |
 | `swim hub [enroll\|leave\|status]` | The watch hub. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE]` | Run rounds in a CI job. |
