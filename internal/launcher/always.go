@@ -25,15 +25,21 @@ import (
 // downstream of a Rerun-Children lane, moving those out of done.
 func expandAlways(o Options, sel, done []int) ([]int, []int) {
 	scripts := map[int]lane.Info{}
+	anyAlways := false
 	for n := 1; n <= o.Cfg.Lanes; n++ {
 		scripts[n], _ = lane.ReadScript(o.Root, n)
+		anyAlways = anyAlways || scripts[n].Always
 	}
+	if !anyAlways {
+		return sel, done
+	}
+	deps := pendingDeps(o.Root, o.Cfg, scripts)
 	in := map[int]bool{}
 	for _, n := range sel {
 		in[n] = true
 	}
 	for queue := append([]int(nil), sel...); len(queue) > 0; queue = queue[1:] {
-		for _, d := range laneDeps(o.Root, o.Cfg, queue[0]) {
+		for _, d := range deps[queue[0]] {
 			if !in[d] && scripts[d].Always && scripts[d].Pending() {
 				in[d] = true
 				queue = append(queue, d)
@@ -44,7 +50,7 @@ func expandAlways(o Options, sel, done []int) ([]int, []int) {
 	if len(o.Lanes) == 0 && len(done) > 0 {
 		children := map[int][]int{}
 		for _, n := range append(append([]int(nil), sel...), done...) {
-			for _, d := range laneDeps(o.Root, o.Cfg, n) {
+			for _, d := range deps[n] {
 				children[d] = append(children[d], n)
 			}
 		}
@@ -82,12 +88,31 @@ func expandAlways(o Options, sel, done []int) ([]int, []int) {
 	return sel, done
 }
 
-// laneDeps is the lanes lane n waits on (none if they don't resolve).
-func laneDeps(root string, cfg *config.Config, n int) []int {
-	deps, _ := ResolveDeps(root, cfg, []int{n})
-	var out []int
-	for _, d := range deps[n] {
-		out = append(out, d.Lane)
+// pendingDeps is the lanes each pending lane waits on, resolved together
+// (one script read per lane), or lane by lane when that fails, so one bad
+// After: line doesn't hide the rest.
+func pendingDeps(root string, cfg *config.Config, scripts map[int]lane.Info) map[int][]int {
+	var pending []int
+	for n := 1; n <= cfg.Lanes; n++ {
+		if scripts[n].Pending() {
+			pending = append(pending, n)
+		}
+	}
+	resolved, err := ResolveDeps(root, cfg, pending)
+	if err != nil {
+		resolved = map[int][]Dep{}
+		for _, n := range pending {
+			one, _ := ResolveDeps(root, cfg, []int{n})
+			resolved[n] = one[n]
+		}
+	}
+	out := map[int][]int{}
+	for n, ds := range resolved {
+		for _, d := range ds {
+			if !d.Setup {
+				out[n] = append(out[n], d.Lane)
+			}
+		}
 	}
 	return out
 }
@@ -96,10 +121,14 @@ func laneDeps(root string, cfg *config.Config, n int) []int {
 // the nearest such Always lane (swim plan says why a passed lane reruns).
 func rerunBy(root string, cfg *config.Config, sel []int, scripts map[int]lane.Info) map[int]int {
 	out := map[int]int{}
-	deps := map[int][]int{}
-	for _, n := range sel {
-		deps[n] = laneDeps(root, cfg, n)
+	anyRerun := false
+	for _, s := range scripts {
+		anyRerun = anyRerun || s.RerunChildren
 	}
+	if !anyRerun {
+		return out
+	}
+	deps := pendingDeps(root, cfg, scripts)
 	var find func(n int, seen map[int]bool) int
 	find = func(n int, seen map[int]bool) int {
 		if seen[n] {
