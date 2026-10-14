@@ -815,7 +815,8 @@ func approvalEvidence(root string, n int, info lane.Info, sha string, cells []st
 	}
 	ref := fmt.Sprint(n)
 	if len(cells) > 0 {
-		ref = fmt.Sprintf("'%d[%s]'", n, cells[0])
+		info, _ := lane.ReadScript(root, n)
+		ref = "'" + info.SubLabel(n, cells[0]) + "'"
 	}
 	key := evidence.LaneKey(n, "")
 	if len(cells) > 0 {

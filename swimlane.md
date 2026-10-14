@@ -18,6 +18,21 @@ How-to and reference live in the [README](README.md) and `swim --help`. Feature 
 - **Approvals aren't deliberate.** Destructive steps (removing a stack, deleting a table) need a recorded human approval, not an accidental Enter.
 - **There's no proof.** After an AI-assisted change, nobody can show which script actually ran, what it did, or who approved it.
 - **Logs cost tokens.** Streaming raw terminal output to an agent is slow and expensive.
+- **Work keeps restarting from zero.** The state of the work lives in a chat. When the session ends, its context is summarised or another agent takes over, someone has to explain it all again.
+- **Each side waits on the other.** The AI stalls until the operator runs a step and pastes back the result; the operator is interrupted for every step instead of approving a batch.
+
+## Pillars
+
+swim is a flywheel for AI-assisted operations work. Every round leaves behind state that is durable and readable: a log, a status file, an archive. The next round, session or person starts from that state instead of starting over. The control pillars are what make it safe to turn the flywheel fast.
+
+1. **The AI writes but can't reach.** The planner never needs production credentials, network access or authority. The operator's machine, or a worker they control, is the only thing that executes.
+2. **The log closes the loop.** Results go back to the AI as compact plain text it can parse, not as output pasted into chat. That keeps context small and needs no human to carry results.
+3. **State lives in the repo, not the chat.** Lane scripts, dependencies, `.swim/status.yml`, `.swim.log` and archived logs outlive any session. A fresh session catches up with `swim log` and continues.
+4. **Neither side blocks the other.** The AI queues the next batch while the operator is busy or away; the operator approves in batches, or ahead of time, and a worker runs the work.
+5. **Concurrent work stays structured.** Lanes isolate parallel work, dependencies order it and locks keep shared resources from overlapping.
+6. **Approvals are deliberate and exact.** Destructive steps are dry runs until a person approves them, and an approval is signed against the exact script.
+7. **Everything is provable.** Every round and approval is signed and hash-linked into an audit record anyone can verify.
+8. **One workflow everywhere.** The same rounds run from a terminal, a queue, CI or many machines, without being rewritten.
 
 ## Positioning
 
@@ -41,6 +56,8 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - **Lanes isolate parallel work.** Each lane is one script (`lane.N.sh`) and one log, owned by one worker at a time.
 - **One fixed runner.** `swim` runs lanes, orders dependent ones and summarises. Nothing is edited per round except the lane script.
 - **Rounds are disposable; logs are kept.** A finished lane is archived and stubbed, and its log is kept under a descriptive name.
+- **State is files, not memory.** Everything a planner needs to resume, including what ran, what is running, what is queued and what failed, is in the repo, readable with `cat`.
+- **Hand-offs are asynchronous.** The queue, `swim watch` and standing approvals let the planner and operator each work at their own pace.
 - **Safe by default.** Destructive steps sit behind guards, after a snapshot and a gate. Without an approval they are dry runs.
 - **Approvals bind to exact scripts.** Approving a script approves its hash. Editing the script voids the approval.
 - **Everything is provable.** Every round and approval is signed and hash-linked, so tampering is detectable.
@@ -60,7 +77,8 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 - **Always lane:** `# Always: yes` makes a lane standing setup, like a CI `before_script`: lint, fmt, init. It never counts as passed, so every run that includes it runs it fresh, first, and every other lane in that run waits for it to finish. Only lanes that name it in `After:` need it to pass, and naming it pulls it into a run. With `# Rerun-Children: yes`, `swim all` also reruns every lane downstream of it, at any depth, even if they passed. An Always lane waits only on other Always lanes, and isn't stubbed or archived without `--force`.
 - **Batch:** lanes queued together, pinned to their exact scripts, run later by a worker.
 - **Chain of custody:** the signed, hash-linked record of every round and approval.
-- **Group file:** `lanes.<name>.sh` holds several bash lanes, each starting at a `# swim lane N` line, for standing jobs that shouldn't each need a `lane.N.sh`. swim adds the library load, `lane_init` and `summary`, and runs the script it generates per lane under `.swim/groups/`.
+- **Job:** part of a lane. Any bash lane can be split into jobs (`# swim job 1.1`), nested to any depth (`1.5.9.9`). Jobs run in file order and the first failure skips the rest. A job id names it and every job under it, in `swim run 1.5` and `After: 1.5`. Other lanes wait only for a lane's Always jobs.
+- **Group file:** `lanes.<name>.sh`, a lane of jobs with a name instead of a number, for standing jobs worth committing.
 - **Stub / archive:** the placeholder a lane holds between rounds / a finished log kept under a new name.
 
 ---

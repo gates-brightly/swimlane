@@ -143,14 +143,25 @@ CONCEPTS
               # Rerun-Children: yes, `swim all` reruns every lane downstream
               of it, even ones that passed. It isn't a round: never assign,
               rewrite, archive or stub one (swim refuses without --force).
-  group file  Several bash lanes in one file, lanes.<name>.sh at the repo root,
-              for standing jobs (fmt, lint, test). Each lane starts at a
-              "# swim lane N" line, then its header and steps; swim adds the
-              library load, lane_init and summary, and runs the script it
-              generates at .swim/groups/lane.N.sh. Edit the group file, never
-              that script. Comments before the first lane are prose; code
-              there runs in every lane, after lane_init. A grouped lane can't
-              also have a lane.N.sh, and swim new/stub refuse it.
+  job         Part of a lane: any lane can be split into jobs, numbered
+              under it and nested to any depth (1.1, 1.2, 1.5.9.9). The lane's
+              header (Round:, After:, Locks:) comes first; each job starts at
+              a "# swim job N.K" line, then its own header (Round:, Job:,
+              Always:, Timeout:) and steps. Jobs with steps run in file order
+              and the first failure skips the rest; each has its own log
+              (swim log 1.2) and status. A job id names it and every job
+              under it: `swim run 1.5` runs them all, `After: 1.5` waits for
+              them all. Always: on a job covers those under it; other lanes
+              wait only for the lane's Always jobs. swim adds the library
+              load, lane_init and summary, and runs .swim/groups/lane.N.<job>.sh:
+              edit the lane's file, never that. Code before the first job runs
+              in every job, after lane_init.
+              In Python, TypeScript or Go, mark jobs in comments (# or //) the
+              same way: each job runs the whole program, and the SDK's jobs()
+              calls its function (keys "1.2" or "2"; the closest wins).
+  group file  A lane of jobs named lanes.<name>.sh at the repo root, for standing
+              jobs worth committing (fmt, lint, test): it's the lane its jobs
+              name. It can't also have a lane.N.sh; swim new/stub refuse it.
   stub        The placeholder a lane holds between rounds (`swim stub`).
   archive     A finished log renamed agentN.prev-<what>.log (`swim archive`).
               Logs are kept; rounds are not.

@@ -26,15 +26,28 @@ swim · myrepo · main@64a0e07 · 0:04
 [3] PASS  compute stats.json  0.1s
 ```
 
+swim is a flywheel for AI-assisted operations work: every round leaves a
+log, a status and an archive behind, so the next round, session or person
+picks up where the last one stopped instead of starting over.
+
 What you get:
 
+- **The AI writes, but never needs your access:** no production
+  credentials, VPN or authority. Only your machine, or a worker you
+  control, runs anything.
+- **Work survives the session:** scripts, status, queue and logs live in
+  the repo, so a new session or another agent catches up with `swim log`
+  instead of having everything explained again.
+- **Nobody waits on anybody:** the AI queues the next batch while you're
+  busy; you approve in batches or ahead of time, and a worker runs it.
 - **Parallel lanes with dependencies:** independent rounds run at once, and
   dependent ones wait for the rounds they depend on.
 - **Changes are dry runs until a person approves them:** destructive steps
   sit behind guards. You approve at the terminal, with a flag, or with a
   signed approval from a teammate somewhere else.
 - **Logs both people and agents can read:** one plain-text format, readable
-  with `cat` and parseable by an agent.
+  with `cat` and parseable by an agent. Results go back to the AI as compact
+  text, not output pasted into chat, so they cost little context.
 - **A tamper-evident record:** every approval and every round is signed and
   hash-linked, so you can prove what ran and who approved it.
 - **The same rounds from a terminal, a queue, CI, or many machines,**
@@ -284,43 +297,75 @@ summary
 - **Checks:** `swim lint` checks scripts before you run them: header,
   stages, guards, bash 3.2, blocked commands, and secrets echoed to the log.
 
-### Group files
+### Jobs
 
-Standing jobs (fmt, lint, tests) don't need a `lane.N.sh` each. A group
-file, `lanes.<name>.sh` at the repo root, holds several bash lanes. Each one
-starts at a `# swim lane N` line, followed by its usual header and steps:
+Any lane can be split into jobs, numbered under the lane and nested to any
+depth: `1.1`, `1.2`, `1.5.9.9`. The lane's header (`Round:`, `After:`,
+`Locks:`) comes first, then each job starts at a `# swim job N.K` line with
+its own header and steps:
 
 ```bash
 #!/usr/bin/env bash
 # swim: syntax 2
-# Comments before the first lane are prose; code there is shared by every
-# lane (it runs after lane_init).
+# Round: CI
+# Code here (before the first job) runs in every job, after lane_init.
 
-# swim lane 1 ------------------------------------------------------------
-# Round:  CI: fmt
+# swim job 1.1 -----------------------------------------------------------
+# Round:  fmt
 # Always: yes
 gate "gofmt -s" bash -c 'test -z "$(gofmt -s -l .)"'
 
-# swim lane 2 ------------------------------------------------------------
-# Round:  CI: lint
-# Always: yes
-# After:  1
-gate "go vet" go vet ./...
+# swim job 1.2 -----------------------------------------------------------
+# Round:  tests          (no steps: it groups the jobs under it)
+
+# swim job 1.2.1 ---------------------------------------------------------
+# Round:  unit
+run "unit" go test ./...
+
+# swim job 1.2.2 ---------------------------------------------------------
+# Round:  e2e
+run "e2e" go test ./internal/e2e/...
 ```
 
+- **In order:** jobs with steps run one at a time in file order, and the
+  first failure skips the rest of the lane. Each has its own log (`swim log
+  1.2.1`, `.swim/logs/agent1.2.1.log`), status and job id; `swim status`
+  shows the lane with its progress.
+- **A job id names it and everything under it:** `swim run 1.2` runs 1.2.1
+  and 1.2.2, `swim run 1.2.2` just that one, `swim run 1` the whole lane.
+  `After: 1.2` waits for every job under 1.2 to pass (`After: 1` for the
+  lane). `1[2]` works too.
+- **Always per job:** `Always: yes` on a job covers the jobs under it. The
+  other lanes in a run wait for the lane's Always jobs, not the rest of it,
+  and `swim all` runs them every time, plus any job that hasn't passed.
 - **Less ceremony:** swim loads its library and calls `lane_init` and
-  `summary` for a section that doesn't.
-- **Still real lanes:** lane numbers, `After:`, status, logs, approvals and
-  the chain work as for any lane. swim writes each section to
-  `.swim/groups/lane.N.sh`, and that's what runs and is hashed. Edit the
-  group file, never the generated script; a running lane's script is left
-  alone.
-- **One definition per lane:** a lane in a group file and a `lane.N.sh` too,
-  or in two sections, is an error. `swim new` and `swim stub` refuse a
-  grouped lane: edit or remove its section instead.
-- **Lint and CI:** `swim lint` reports findings at the group file's lines,
-  and `swim ci --changed` treats a changed group file as a change to every
-  lane in it.
+  `summary` for a job that doesn't, and runs the script it generates at
+  `.swim/groups/lane.N.<job>.sh`. Edit the lane's file, never that script.
+  A lane's hash (approvals, queue pins, the chain) is its file's.
+- **In Python, TypeScript and Go:** mark jobs in the language's comments
+  (`# swim job 1.2`, `// swim job 1.2`) with their headers. Each job runs
+  the whole program, and the SDK's `jobs()` calls its function: keys are
+  job ids (`"1.2"`) or places under the lane (`"2"`), and the closest wins,
+  so `"1.2"` handles 1.2.1 and 1.2.2 unless they have their own. A job with
+  jobs under it only groups them. `r.job` is the running job's id.
+
+  ```python
+  # Round: checks
+  # swim job 1.1
+  # Round: fmt
+  # swim job 1.2
+  # Round: lint
+  import swim
+  swim.jobs({"1.1": lambda r: r.gate("fmt", ["ruff", "format", "--check"]),
+             "1.2": lambda r: r.gate("lint", ["ruff", "check"])})
+  ```
+- **Group files:** `lanes.<name>.sh` at the repo root is a lane of jobs with
+  a name instead of a number (it's the lane its jobs name), for standing
+  jobs worth committing. A lane in a group file can't also have a
+  `lane.N.sh`, and `swim new` and `swim stub` refuse it.
+- **Lint and CI:** `swim lint` reports findings at the file's lines (`swim
+  1.2.1: ...`), and `swim ci --changed` counts a changed group file as a
+  change to its lane.
 
 ### Lanes in other languages
 
@@ -736,10 +781,10 @@ rounds, an Always lane with `Rerun-Children: yes` at its root does that
 without the flag. A fresh CI checkout has no passed rounds, so everything
 runs there either way. swim never commits results back.
 
-This repo dogfoods it. Its own CI is `swim ci` over the four lanes of one
-committed group file, [`lanes.ci.sh`](lanes.ci.sh). Three Always lanes run
-first, in order: fmt, lint and unit tests. Then e2e runs. `make ci` runs the
-same rounds locally.
+This repo dogfoods it. Its own CI is `swim ci` over lane 1, one committed
+group file: [`lanes.ci.sh`](lanes.ci.sh). Its jobs run in order: fmt (1.1),
+lint (1.2) and unit tests (1.3) are Always, then e2e (1.4). `make ci` runs
+the same jobs locally.
 
 ### The watch hub
 

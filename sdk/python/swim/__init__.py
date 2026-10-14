@@ -13,6 +13,14 @@
         if r.guard("ORDERS_ALLOW_DROP", "drop orders table (tf owns it now)"):
             r.run("drop table", ["aws", "dynamodb", "delete-table", "--table-name", "orders"])
 
+A lane split into jobs ("# swim job 1.1" comments, each with its own header)
+runs once per job; jobs() calls that job's function:
+
+    swim.jobs({
+        "1.1": lambda r: r.gate("fmt", ["gofmt", "-l", "."]),
+        "1.2": lint,
+    })
+
 swim decides everything (logging, masking, approvals, timeouts, the chain);
 this module only talks to it over the lane's socket. Run the script with
 `swim run N`: outside a round there is nothing to talk to.
@@ -23,7 +31,7 @@ import os
 import socket
 import subprocess
 
-__all__ = ["round", "Round", "Step", "RoundEnded", "SwimError", "PROTOCOL", "secret"]
+__all__ = ["round", "jobs", "Round", "Step", "RoundEnded", "SwimError", "PROTOCOL", "secret"]
 
 PROTOCOL = "swim.lane/v1"
 __version__ = "1.0.0"
@@ -99,6 +107,11 @@ class Round:
         self._id = 0
         self._handlers = {}
         self.info = self._call("hello", protocol=PROTOCOL, sdk="python " + __version__)
+
+    @property
+    def job(self):
+        """This round's job in a lane of jobs ("1.5.9"), else None."""
+        return self.info.get("job_path") or None
 
     def _call(self, op, **args):
         self._id += 1
@@ -235,6 +248,32 @@ class Round:
 def round():
     """The lane's round, as a context manager."""
     return Round()
+
+
+def jobs(handlers):
+    """Run this lane's job: the function handlers has for it, called with
+    the round. Keys are job ids ("1.2") or their place under the lane
+    ("2"); the closest one wins, so "1.5" handles 1.5.9 when nothing names
+    1.5.9 itself. A job with no function ends the round as failed."""
+    with round() as r:
+        if r.job is None:
+            raise SwimError("this lane has no jobs (no \"# swim job N.K\" lines): use swim.round()")
+        fn = _job_handler(handlers, r.job)
+        if fn is None:
+            r.stop(f"no function for job {r.job} (jobs() has {', '.join(sorted(handlers)) or 'none'})")
+            return
+        fn(r)
+
+
+def _job_handler(handlers, job):
+    lane, _, path = job.partition(".")
+    parts = path.split(".")
+    for k in range(len(parts), 0, -1):
+        p = ".".join(parts[:k])
+        for key in (f"{lane}.{p}", p):
+            if key in handlers:
+                return handlers[key]
+    return None
 
 
 class _Secrets:

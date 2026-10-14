@@ -149,14 +149,31 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 	c := &Context{Root: root, Cfg: cfg, Scripts: map[int]*Script{}}
 	var out []finding.Finding
 	tooNew := map[int]int{} // lane -> the newer syntax it declares
-	// Group files (lanes.<name>.sh): what's wrong with one as a whole, and
-	// where each grouped lane's findings point (its section, not the
-	// script swim generates from it).
-	groups, problems := lane.Groups(root)
+	// Group files (lanes.<name>.sh): what's wrong with one as a whole. A
+	// group lane's checks run on each sub-job's generated script, and its
+	// findings point at the group file.
+	_, problems := lane.Groups(root)
 	for _, p := range problems {
 		out = append(out, finding.Finding{Level: finding.Error, File: p.File, Line: p.Line, Code: codeGroup, Message: p.Message})
 	}
+	groups := map[int]lane.Group{}
 	for n := 1; n <= cfg.Lanes; n++ {
+		if g, ok := lane.LaneJobs(root, n); ok && len(lane.Scripts(root, n)) == 1 {
+			if !lane.GroupFileRE.MatchString(g.File) {
+				for _, p := range g.Problems {
+					out = append(out, finding.Finding{Level: finding.Error, File: p.File, Line: p.Line, Code: codeGroup, Message: p.Message})
+				}
+			}
+			// A lane in another language is one program: it's checked as its
+			// file, below. A bash lane's jobs are checked one by one.
+			if !g.Native {
+				groups[n] = g
+				s := NewScript(n, "")
+				s.Name, s.Info, s.Lib = g.File, g.Info, true
+				c.Scripts[n] = s
+				continue
+			}
+		}
 		data, err := os.ReadFile(lane.Script(root, n))
 		if os.IsNotExist(err) {
 			continue
@@ -169,9 +186,6 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		}
 		s := NewScript(n, string(data))
 		s.Name = lane.ScriptName(root, n)
-		if g, ok := groups[n]; ok && lane.Script(root, n) == lane.GroupScript(root, n) {
-			s.Name = g.File
-		}
 		if !strings.HasSuffix(s.Name, ".sh") && s.Info.Syntax < syntax.Current {
 			s.Info.Syntax = syntax.Current // syntax 1 was bash only
 		}
@@ -211,6 +225,10 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		if s == nil {
 			continue
 		}
+		if g, ok := groups[n]; ok && s.Name == g.File {
+			out = append(out, lintGroup(c, g, want)...)
+			continue
+		}
 		var fs []finding.Finding
 		if s.Info.Syntax < syntax.Current {
 			fs = append(fs, finding.Finding{Level: finding.Warn, Code: codeSyntax,
@@ -224,17 +242,50 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		for i := range fs {
 			fs[i].File = s.Name
 		}
-		fs = applyIgnores(s, fs)
-		if g, ok := groups[n]; ok && s.Name == g.File {
-			for i := range fs {
-				fs[i].Line = g.GroupLine(fs[i].Line)
-				fs[i].Message = fmt.Sprintf("swim %d: %s", n, fs[i].Message)
-			}
-		}
-		out = append(out, fs...)
+		out = append(out, applyIgnores(s, fs)...)
 	}
 	finding.Sort(out)
 	return out, nil
+}
+
+// laneChecks are about a lane as a whole (its dependencies, env and Round):
+// for a group lane they run once, not per sub-job.
+var laneChecks = map[string]bool{"after": true, "cycle": true, "rerun-guard": true, "env": true, "round": true}
+
+// lintGroup checks a group lane: the lane once, then each sub-job's
+// generated script, with findings at the group file's lines.
+func lintGroup(c *Context, g lane.Group, want func(Check) bool) []finding.Finding {
+	var out []finding.Finding
+	laneS := c.Scripts[g.N]
+	for _, ch := range Checks {
+		if want(ch) && (laneChecks[ch.Code] || ch.Code == "header") {
+			for _, f := range ch.Run(c, laneS) {
+				f.File, f.Line = g.File, 0
+				out = append(out, f)
+			}
+		}
+	}
+	for _, sub := range g.Subs {
+		s := NewScript(g.N, sub.Src)
+		s.Name = g.File
+		s.Info.After = g.Info.After // the lane's, for input N
+		var fs []finding.Finding
+		for _, ch := range Checks {
+			if want(ch) && !laneChecks[ch.Code] && (s.Lib || !bashOnly[ch.Code]) {
+				fs = append(fs, ch.Run(c, s)...)
+			}
+		}
+		for i := range fs {
+			fs[i].File = g.File
+		}
+		fs = applyIgnores(s, fs)
+		for i := range fs {
+			fs[i].Line = sub.GroupLine(fs[i].Line)
+			fs[i].Message = fmt.Sprintf("swim %d.%s: %s", g.N, sub.Path, fs[i].Message)
+		}
+		out = append(out, fs...)
+	}
+	return out
 }
 
 // NewScript parses src as lane n's script.

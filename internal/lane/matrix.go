@@ -62,8 +62,12 @@ func (c Cell) Env(root string, n int) []string {
 // "env-prod.svc-orders".
 func (c Cell) Slug() string { return CellSlug(c.Name) }
 
-// CellSlug is a cell name as a file name fragment.
+// CellSlug is a cell name as a file name fragment (a job's path, 5.9.9, as
+// it is).
 func CellSlug(name string) string {
+	if IsJobPath(name) {
+		return name
+	}
 	parts := strings.Split(name, ",")
 	for i, p := range parts {
 		parts[i] = Slug(p)
@@ -74,13 +78,18 @@ func CellSlug(name string) string {
 var (
 	matrixKeyRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	cellRefRE   = regexp.MustCompile(`^(.+?)\[(.+)\]$`)
+	subRefRE    = regexp.MustCompile(`^([0-9]+)\.([0-9]+(?:\.[0-9]+)*)$`)
 	cellValueRE = regexp.MustCompile(`^[A-Za-z0-9._:/@+-]+$`)
 )
 
-// ParseCellRef splits "3[orders]" into "3" and "orders"; ok is false for a
-// plain lane or job reference.
+// ParseCellRef splits "3[orders]" into "3" and "orders", and a group
+// lane's sub-job "1.2" into "1" and "2"; ok is false for a plain lane or
+// job reference.
 func ParseCellRef(s string) (ref, cell string, ok bool) {
 	if m := cellRefRE.FindStringSubmatch(s); m != nil {
+		return m[1], m[2], true
+	}
+	if m := subRefRE.FindStringSubmatch(s); m != nil {
 		return m[1], m[2], true
 	}
 	return s, "", false
@@ -120,13 +129,20 @@ func matrixFileValues(data []byte) []string {
 }
 
 // IsMatrix reports whether the round is a matrix.
-func (i Info) IsMatrix() bool { return len(i.Matrix) > 0 }
+func (i Info) IsMatrix() bool { return len(i.Matrix) > 0 || len(i.Subs) > 0 }
 
 // Cells expands the matrix into its cells (nil for a plain lane): the cross
 // product of the axes, minus excluded combinations, at most MaxCells.
 func (i Info) Cells() []Cell {
 	if !i.IsMatrix() {
 		return nil
+	}
+	if i.IsGroup() {
+		out := make([]Cell, len(i.Subs))
+		for k, s := range i.Subs {
+			out[k] = Cell{Name: s.Name}
+		}
+		return out
 	}
 	combos := [][]KV{{}}
 	for _, a := range i.Matrix {
@@ -200,6 +216,24 @@ func (i Info) Cell(name string) (Cell, bool) {
 // ForCell is the round as cell c runs it: $KEY (or ${KEY}) in its Round,
 // Locks and Outputs replaced by the cell's values, and its job <job>/<cell>.
 func (i Info) ForCell(c Cell) Info {
+	if i.IsGroup() {
+		// A sub-job: its own header, in the lane's job unless it names one.
+		for _, s := range i.Subs {
+			if s.Name != c.Name {
+				continue
+			}
+			out := s.Info
+			switch {
+			case out.Job != "":
+			case i.Job != "":
+				out.Job = i.Job + "/" + c.Name
+			case os.Getenv(MatrixJobEnv) != "":
+				out.Job = os.Getenv(MatrixJobEnv) + "/" + c.Name
+			}
+			return out
+		}
+		return i
+	}
 	sub := func(s string) string {
 		for _, kv := range c.Vars {
 			s = strings.ReplaceAll(s, "${"+kv.K+"}", kv.V)
@@ -317,7 +351,11 @@ func (i *Info) resolveMatrix(root string) {
 // files its matrix reads values from (# Matrix: KEY=@file), so approvals
 // and queue pins cover the cell list too.
 func ScriptBytes(root string, n int) ([]byte, error) {
-	data, err := os.ReadFile(Script(root, n))
+	path := Script(root, n)
+	if _, ok := LaneJobs(root, n); ok {
+		path = Scripts(root, n)[0] // a lane of jobs hashes as its file, from any job
+	}
+	data, err := os.ReadFile(path)
 	if err != nil || IsBinary(data) {
 		return data, err
 	}

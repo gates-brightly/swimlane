@@ -15,7 +15,10 @@ import (
 type Dep struct {
 	Lane int
 	Job  string // set when pinned by job id in `# After:`: that exact job must pass
-	Cell string // set for one cell of a matrix round (After: 3[orders]): only it must pass
+	// Cell is set for one cell of a matrix round (After: 3[orders]) or a
+	// job of a lane of jobs and every job under it (After: 1.5): only those
+	// must pass.
+	Cell string
 	// Setup is a wait on an Always lane in the same run that the lane
 	// doesn't name: it starts after that lane finishes, whatever its result.
 	Setup bool
@@ -23,6 +26,9 @@ type Dep struct {
 
 func (d Dep) String() string {
 	if d.Cell != "" {
+		if lane.IsJobPath(d.Cell) {
+			return fmt.Sprintf("%d.%s", d.Lane, d.Cell)
+		}
 		return fmt.Sprintf("%d[%s]", d.Lane, d.Cell)
 	}
 	if d.Job != "" {
@@ -88,11 +94,17 @@ func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File
 			return Dep{}, err
 		}
 		info := scripts[d.Lane]
-		c, found := info.Cell(cell)
-		if !info.IsMatrix() || !found {
+		cells := info.CellsUnder(cell)
+		switch {
+		case !info.IsMatrix() || len(cells) == 0 && !info.IsGroup():
 			return Dep{}, fmt.Errorf("swim %d has no cell %q", d.Lane, cell)
+		case len(cells) == 0:
+			return Dep{}, fmt.Errorf("swim %d has no job %d.%s", d.Lane, d.Lane, cell)
+		case info.IsGroup():
+			d.Cell = cell
+		default:
+			d.Cell = cells[0].Name
 		}
-		d.Cell = c.Name
 		return d, nil
 	}
 	if m, err := strconv.Atoi(ref); err == nil {
@@ -197,10 +209,10 @@ func outsideBlocker(root string, d Dep) string {
 		}
 	}
 	if d.Cell != "" {
-		if c := last.FindCell(d.Cell); c != nil && c.State == status.Passed {
-			return ""
+		if why := cellsBlocker(root, d); why != "" {
+			return fmt.Sprintf("%s; run it too: swim run '%s' ...", why, d)
 		}
-		return fmt.Sprintf("%d[%s] has not passed; run it too: swim run '%d[%s]' ...", d.Lane, d.Cell, d.Lane, d.Cell)
+		return ""
 	}
 	if d.Job != "" {
 		if last.Job == d.Job && last.State == status.Passed {
@@ -213,6 +225,34 @@ func outsideBlocker(root string, d Dep) string {
 		return ""
 	}
 	return fmt.Sprintf("swim %d's pending round has not passed; run it too: swim run %d ...", d.Lane, d.Lane)
+}
+
+// cellsBlocker is "" when every cell a dependency names (a matrix cell, or
+// a job and the jobs under it) last passed, else which one hasn't.
+func cellsBlocker(root string, d Dep) string {
+	info, _ := lane.ReadScript(root, d.Lane)
+	cells := info.CellsUnder(d.Cell)
+	if len(cells) == 0 {
+		return d.String() + " no longer exists"
+	}
+	st, _ := status.Load(root)
+	for _, c := range cells {
+		state := "has not run"
+		if st != nil {
+			if l := st.Get(d.Lane); l != nil {
+				if e := l.FindCell(c.Name); e != nil && e.State != "" {
+					state = e.State
+				}
+			}
+		}
+		if state != status.Passed {
+			if state != "has not run" {
+				state = "is " + state
+			}
+			return fmt.Sprintf("%s %s", info.SubLabel(d.Lane, c.Name), state)
+		}
+	}
+	return ""
 }
 
 // AlreadyPassed reports whether the round in a lane's script is the one the

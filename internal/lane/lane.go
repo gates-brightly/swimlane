@@ -147,6 +147,8 @@ type Info struct {
 	// lane downstream of this one, at any depth, run again in swim all even
 	// if it already passed.
 	RerunChildren bool
+	// Subs are a group lane's sub-jobs (group.go), its cells.
+	Subs []SubJob
 }
 
 // DefaultHandlerTimeout is the handlers' budget when Handler-Timeout: is unset.
@@ -230,6 +232,23 @@ func ReadScript(root string, n int) (Info, error) {
 	if err := ScriptConflict(root, n); err != nil {
 		return Info{}, err
 	}
+	// A lane split into jobs (group.go): its header, its jobs as cells.
+	if g, ok := LaneJobs(root, n); ok {
+		info := g.Info
+		if err := syntax.CheckScript(g.File, info.Syntax); err != nil {
+			return Info{}, err
+		}
+		info.Syntax = max(info.Syntax, syntax.Current)
+		info.Subs = append([]SubJob(nil), g.Info.Subs...)
+		if cell := CurrentCell(); cell != "" {
+			c, ok := info.Cell(cell)
+			if !ok {
+				return Info{}, fmt.Errorf("swim %d has no job %d.%s", n, n, cell)
+			}
+			info = info.ForCell(c)
+		}
+		return info, nil
+	}
 	path := Script(root, n)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -267,9 +286,6 @@ func ReadScript(root string, n int) (Info, error) {
 		info.Always, info.RerunChildren = false, false
 	}
 	if info.Created == "" {
-		if g, ok := GroupOf(root, n); ok && path == GroupScript(root, n) {
-			path = filepath.Join(root, g.File)
-		}
 		if st, err := os.Stat(path); err == nil {
 			info.Created = st.ModTime().Format("2006-01-02")
 		}
@@ -717,7 +733,7 @@ func WriteScriptAs(root string, n int, ext, content string, force bool) error {
 		return err
 	}
 	if g, ok := GroupOf(root, n); ok {
-		return fmt.Errorf("swim %d is defined in %s (line %d); edit its section there, or remove the section to free the lane", n, g.File, g.Line)
+		return fmt.Errorf("swim %d is the group file %s; edit it there, or remove the file to free the lane", n, g.File)
 	}
 	if !force {
 		info, err := ReadScript(root, n)

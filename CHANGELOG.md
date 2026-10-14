@@ -31,24 +31,38 @@ To cut a release:
 
 ### Added
 
-- **Group files:** `lanes.<name>.sh` at the repo root holds several bash
-  lanes in one file, each starting at a `# swim lane N` line followed by its
-  header and steps.
+- **Jobs:** any lane can be split into jobs, numbered under it and nested
+  to any depth (`1.1`, `1.2`, `1.5.9.9`): the lane's header first, then
+  each job at a `# swim job N.K` line with its own header and steps.
+  - **SDK languages:** a Python, TypeScript or Go lane marks its jobs in
+    comments (`# swim job 1.2`, `// swim job 1.2`). Each job runs the
+    program; `swim.jobs({...})` (`jobs()`, `swim.Jobs`) calls its function,
+    by job id or place under the lane, closest first, and `r.job` (`Job()`)
+    is its id. `hello` returns `job_path`.
+  - **In order:** jobs with steps run one at a time in file order, and the
+    first failure skips the rest. Each has its own log (`agentN.<job>.log`,
+    `swim log 1.2`), status and job id. A job with only a header groups the
+    jobs under it.
+  - **A job id names it and everything under it:** `swim run 1.5` runs
+    1.5 and every job under it, `swim run 1.5.9.9` just that one; `After:
+    1.5` waits for all of them. `1[5]` works too.
+  - **Always per job:** `Always: yes` covers the jobs under it; other lanes
+    wait only for a lane's Always jobs, and `swim all` runs those every
+    time, plus any job that hasn't passed.
   - **Less ceremony:** swim loads its library and calls `lane_init` and
-    `summary` for a section that doesn't. Code before the first lane is
-    shared by every lane.
-  - **Real lanes:** swim writes each section to `.swim/groups/lane.N.sh`,
-    which runs, is hashed for approvals and is kept in the chain; numbers,
-    `After:`, status and logs work as for any lane.
-  - **One definition per lane:** a lane defined twice (in two sections, or
-    also in a `lane.N.sh`) is an error; `swim new` and `swim stub` refuse a
-    grouped lane.
-  - **Lint and CI:** `swim lint` reports at the group file's lines (and
-    `group` errors for the file itself); `swim ci --changed` counts a
-    changed group file as a change to every lane in it.
-  - This repo's CI rounds (fmt, lint, test, e2e) moved from `lane.1-4.sh`
-    into `lanes.ci.sh`.
-
+    `summary` for a job that doesn't; code before the first job runs in
+    every job. swim runs the script it generates at
+    `.swim/groups/lane.N.<job>.sh`, and the lane's hash is its file's.
+  - **Group files:** `lanes.<name>.sh` at the repo root is a lane of jobs
+    with a name instead of a number. It can't also have a `lane.N.sh`, and
+    `swim new` and `swim stub` refuse it.
+  - **Checks:** `swim lint` reports at the file's lines, plus `group` errors
+    for the jobs themselves; `swim ci --changed` counts a changed group file
+    as a change to its lane.
+  - **CI:** `swim ci` gives each job (and each matrix cell) that ran its own
+    log section, annotations, job summary row and JUnit suite (`swim 1.2`).
+  - This repo's CI (fmt, lint, test, e2e) is lane 1 in `lanes.ci.sh`, jobs
+    1.1-1.4.
 - **Always lanes:** `# Always: yes` (or `always: true` in `lane.N.yml`)
   makes a lane standing setup, like a CI `before_script`.
   - **Every time, first:** it never counts as passed, so `swim all` runs it

@@ -37,9 +37,28 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 	cells := selectCells(o, n, info)
 	start := time.Now()
 	startTS := start.UTC().Format(time.RFC3339)
-	plan, perr := runner.Resolve(o.Cfg, lane.Script(o.Root, n))
-	if perr != nil {
-		return refuseStart(o, n, perr, disp)
+	// A matrix's cells all run the lane's script, and so do the jobs of a
+	// lane in another language; a bash lane's jobs each run their own
+	// (runCell resolves it).
+	var plan runner.Plan
+	if !info.IsGroup() || info.NativeJobs() {
+		var perr error
+		if plan, perr = runner.Resolve(o.Cfg, lane.Script(o.Root, n)); perr != nil {
+			return refuseStart(o, n, perr, disp)
+		}
+	}
+	// The run's other lanes wait for a group lane's Always sub-jobs, not
+	// the rest of it: open the gate once those have finished.
+	setupLeft := map[string]bool{}
+	for _, name := range info.AlwaysCells() {
+		for _, c := range cells {
+			if c.Name == name {
+				setupLeft[name] = true
+			}
+		}
+	}
+	if len(setupLeft) == 0 {
+		o.openSetup(n)
 	}
 	if len(cells) == 0 {
 		why := "no cells to run"
@@ -63,8 +82,12 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 		v.State, v.WaitingOn, v.Started, v.Round, v.Job = display.Running, nil, start, info.Round, info.Job
 	})
 	o.ev.emit(Event{Event: "start", Lane: n, Job: info.Job, Round: info.Round, At: startTS})
+	kind := "matrix: %d cells"
+	if info.IsGroup() {
+		kind = "%d jobs"
+	}
 	history.Log(o.Root, history.Entry{Event: history.Start, Lane: n, Job: info.Job, Run: o.RunID,
-		Detail: fmt.Sprintf("%s (matrix: %d cells)", info.Round, len(cells))})
+		Detail: fmt.Sprintf("%s ("+kind+")", info.Round, len(cells))})
 
 	var mu sync.Mutex
 	results := map[string]string{}
@@ -96,9 +119,14 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 			})
 			mu.Lock()
 			results[c.Name] = state
+			delete(setupLeft, c.Name)
+			setupDone := len(setupLeft) == 0
 			mu.Unlock()
 			if state != status.Passed && state != status.Skipped && info.MatrixFail == "stop" {
 				stopRest.Store(true)
+			}
+			if setupDone {
+				o.openSetup(n)
 			}
 			show()
 		}(idx, c)
@@ -117,17 +145,17 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 			if state != status.Failed {
 				state, exit = status.Interrupted, 130
 			}
-			failed = append(failed, fmt.Sprintf("%d[%s] interrupted", n, c.Name))
+			failed = append(failed, info.SubLabel(n, c.Name)+" interrupted")
 		case status.Skipped:
 			skip++
 			if state == status.Passed {
 				state, exit = status.Failed, 1
 			}
-			failed = append(failed, fmt.Sprintf("%d[%s] skipped", n, c.Name))
+			failed = append(failed, info.SubLabel(n, c.Name)+" skipped")
 		default:
 			fail++
 			state, exit = status.Failed, 1
-			failed = append(failed, fmt.Sprintf("%d[%s] failed", n, c.Name))
+			failed = append(failed, info.SubLabel(n, c.Name)+" failed")
 		}
 	}
 	end := time.Now()
@@ -170,6 +198,27 @@ func selectCells(o Options, n int, info lane.Info) []lane.Cell {
 		}
 		return out
 	}
+	// swim all runs a group lane's Always sub-jobs, and the ones that
+	// haven't passed; named (or --rerun), all of it.
+	if info.IsGroup() && !o.FailedCells && !o.Rerun && !contains(o.Lanes, n) {
+		always := map[string]bool{}
+		for _, name := range info.AlwaysCells() {
+			always[name] = true
+		}
+		st, _ := status.Load(o.Root)
+		var out []lane.Cell
+		for _, c := range all {
+			if !always[c.Name] && st != nil {
+				if l := st.Get(n); l != nil {
+					if e := l.FindCell(c.Name); e != nil && e.State == status.Passed && e.Job != "" && e.Job == info.ForCell(c).Job {
+						continue
+					}
+				}
+			}
+			out = append(out, c)
+		}
+		return out
+	}
 	if !o.FailedCells {
 		return all
 	}
@@ -194,13 +243,29 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 	setCell := func(fn func(*status.Lane)) {
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { fn(l.CellEntry(c.Name)) })
 	}
+	label := c.Name
+	stopWhy := "Matrix-Fail: stop after a failed cell"
+	if info.IsGroup() {
+		label, stopWhy = info.SubLabel(n, c.Name), "an earlier job failed"
+	}
 	skipCell := func(why string) string {
 		setCell(func(e *status.Lane) { e.State, e.Reason = status.Skipped, why })
-		disp.Line(n, fmt.Sprintf("[%s] SKIP (%s)", c.Name, why))
+		disp.Line(n, fmt.Sprintf("[%s] SKIP (%s)", label, why))
 		return status.Skipped
 	}
 	if stopRest.Load() {
-		return skipCell("Matrix-Fail: stop after a failed cell")
+		return skipCell(stopWhy)
+	}
+	if info.IsGroup() && !info.NativeJobs() {
+		path, ok := lane.SubScriptFor(o.Root, n, c.Name)
+		if !ok {
+			return skipCell("its group file no longer defines it")
+		}
+		p, err := runner.Resolve(o.Cfg, path)
+		if err != nil {
+			return skipCell(err.Error())
+		}
+		plan = p
 	}
 	if ir.stopping() {
 		return skipCell("interrupted before start")
@@ -231,15 +296,15 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 	}
 	defer sl.release()
 	if stopRest.Load() {
-		return skipCell("Matrix-Fail: stop after a failed cell")
+		return skipCell(stopWhy)
 	}
-	cmd, ownGroup, w := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), "["+c.Name+"] ", disp, files)
+	cmd, ownGroup, w := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), "["+label+"] ", disp, files)
 	if ir.stopping() {
 		return skipCell("interrupted before start")
 	}
 	launched := time.Now()
 	if err := cmd.Start(); err != nil {
-		disp.Line(n, fmt.Sprintf("[%s] swim: cannot start: %v", c.Name, err))
+		disp.Line(n, fmt.Sprintf("[%s] swim: cannot start: %v", label, err))
 		setCell(func(e *status.Lane) { e.State, e.ExitCode = status.Failed, status.Int(127) })
 		return status.Failed
 	}

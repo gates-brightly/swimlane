@@ -16,6 +16,11 @@
 //     }
 //   });
 //
+// A lane split into jobs ("// swim job 1.1" comments, each with its own
+// header) runs once per job; jobs() calls that job's function:
+//
+//   await jobs({ "1.1": async (r) => { await r.gate("fmt", ["npm", "run", "fmt:check"]); }, "1.2": lint });
+//
 // swim decides everything; this module only talks to it over the lane's
 // socket. Run the lane with `swim run N`. Written with erasable types only,
 // so `node --experimental-strip-types` runs it as is.
@@ -189,6 +194,9 @@ export class Round {
   async drift(what: string) { await this.call("drift", { what }); }
   /** Record STOP and end the round (throws RoundEnded). */
   async stop(reason = "stopped") { await this.call("stop", { reason }); }
+
+  /** This round's job in a lane of jobs ("1.5.9"), else undefined. */
+  get job(): string | undefined { return (this.info.job_path as string) || undefined; }
   async msg(text: string, progress?: [number, number]) {
     await this.call("msg", { text, progress: progress ? `${progress[0]}/${progress[1]}` : "" });
   }
@@ -238,6 +246,37 @@ export async function round(fn: (r: Round) => Promise<void> | void): Promise<voi
     }
   }
   if (ended) process.exit(ended.code);
+}
+
+/**
+ * Run this lane's job: the function handlers has for it, called with the
+ * round. Keys are job ids ("1.2") or their place under the lane ("2"); the
+ * closest one wins, so "1.5" handles 1.5.9 when nothing names 1.5.9 itself.
+ * A job with no function ends the round as failed.
+ */
+export async function jobs(handlers: Record<string, (r: Round) => Promise<void> | void>): Promise<void> {
+  await round(async (r) => {
+    const job = r.job;
+    if (!job) throw new SwimError('this lane has no jobs (no "// swim job N.K" lines): use round()');
+    const fn = jobHandler(handlers, job);
+    if (!fn) {
+      await r.stop(`no function for job ${job} (jobs() has ${Object.keys(handlers).sort().join(", ") || "none"})`);
+      return;
+    }
+    await fn(r);
+  });
+}
+
+function jobHandler<T>(handlers: Record<string, T>, job: string): T | undefined {
+  const dot = job.indexOf(".");
+  const lane = job.slice(0, dot), parts = job.slice(dot + 1).split(".");
+  for (let k = parts.length; k > 0; k--) {
+    const p = parts.slice(0, k).join(".");
+    for (const key of [`${lane}.${p}`, p]) {
+      if (key in handlers) return handlers[key];
+    }
+  }
+  return undefined;
 }
 
 /**

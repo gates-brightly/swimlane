@@ -103,6 +103,7 @@ type Options struct {
 	Heartbeat time.Duration
 
 	beat         *heartbeat
+	setup        map[int]*setupGate // per lane: open once the lanes after it may start (always.go)
 	approvalSock string
 	secrets      *runSecrets               // the run's decrypted secrets and broker; nil for none
 	env          map[int]*envfile.Resolved // each lane's env from env files
@@ -401,6 +402,10 @@ func Run(o Options) (int, error) {
 	for _, n := range sel {
 		done[n] = make(chan struct{})
 	}
+	o.setup = map[int]*setupGate{}
+	for _, n := range sel {
+		o.setup[n] = &setupGate{ch: make(chan struct{})}
+	}
 
 	// Lanes run in their own process groups, so Ctrl-C reaches only swim,
 	// which decides what the lanes get (interrupt.go): the first press stops
@@ -436,6 +441,7 @@ func Run(o Options) (int, error) {
 		go func(n int) {
 			defer wg.Done()
 			defer close(done[n])
+			defer o.openSetup(n)
 			var out *Outcome
 			if reason := blocked[n]; reason != "" {
 				out = refuseBlocked(o, n, reason, disp)
@@ -531,16 +537,21 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		})
 		o.ev.emit(Event{Event: "waiting", Lane: n, On: remaining, At: now()})
 		d := waitOn[0]
-		<-done[d]
+		if g := o.setup[d]; setup[d] && g != nil {
+			<-g.ch // an Always lane's setup part, not necessarily all of it
+		} else {
+			<-done[d]
+		}
 		mu.Lock()
 		dep := outcomes[d]
 		mu.Unlock()
 		if setup[d] {
 			// Setup ran first; its result is for the lanes that name it.
 		} else if c := cellOf[d]; c != "" && dep != nil && dep.Cells != nil {
-			// Waiting on one cell: it must have passed, whatever the others did.
-			if dep.Cells[c] != status.Passed {
-				return skip(fmt.Sprintf("%d[%s] %s", d, c, or(dep.Cells[c], "did not run")))
+			// Waiting on a cell (or a job and those under it): they must
+			// have passed, whatever the others did.
+			if why := cellsBlocker(o.Root, Dep{Lane: d, Cell: c}); why != "" {
+				return skip(why)
 			}
 		} else if dep == nil || dep.State != status.Passed {
 			state := "did not finish"
@@ -830,9 +841,11 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 				names = append(names, c)
 			}
 			sort.Strings(names)
+			info, _ := lane.ReadScript(root, n)
 			for _, c := range names {
 				if s := oc.Cells[c]; s != status.Passed {
-					fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, fmt.Sprintf("%d[%s] %s  (swim log '%d[%s]')", n, c, strings.ToUpper(s), n, c)))
+					ref := info.SubLabel(n, c)
+					fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, fmt.Sprintf("%s %s  (swim log '%s')", ref, strings.ToUpper(s), ref)))
 				}
 			}
 			continue

@@ -16,6 +16,9 @@
 //		}))
 //	}
 //
+// A lane split into jobs ("// swim job 1.1" comments, each with its own
+// header) runs once per job; Jobs calls that job's function.
+//
 // Secrets stored with swim secret set come by name:
 // swim.Secret.Get("db_password").
 //
@@ -31,6 +34,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -77,6 +81,12 @@ func Open() (*R, error) {
 
 // Close ends the connection.
 func (r *R) Close() error { return r.conn.Close() }
+
+// Job is this round's job in a lane of jobs ("1.5.9"), or "".
+func (r *R) Job() string {
+	s, _ := r.Info["job_path"].(string)
+	return s
+}
 
 func (r *R) call(op string, args map[string]any) (map[string]any, error) {
 	r.id++
@@ -297,6 +307,49 @@ func (r *R) runHandlers() {
 		}
 		r.call("handler", map[string]any{"name": ""})
 	}
+}
+
+// Jobs runs this lane's job: the function handlers has for it, called with
+// the round, and returns the exit code for the program (as Round). Keys are
+// job ids ("1.2") or their place under the lane ("2"); the closest one
+// wins, so "1.5" handles 1.5.9 when nothing names 1.5.9 itself. A job with
+// no function ends the round as failed.
+//
+//	os.Exit(swim.Jobs(map[string]func(*swim.R) error{
+//		"1.1": fmt,
+//		"1.2": lint,
+//	}))
+func Jobs(handlers map[string]func(r *R) error) int {
+	return Round(func(r *R) error {
+		job := r.Job()
+		if job == "" {
+			return errors.New(`this lane has no jobs (no "// swim job N.K" lines): use swim.Round`)
+		}
+		fn := jobHandler(handlers, job)
+		if fn == nil {
+			keys := make([]string, 0, len(handlers))
+			for k := range handlers {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			return r.Stop(fmt.Sprintf("no function for job %s (Jobs has %s)", job, strings.Join(keys, ", ")))
+		}
+		return fn(r)
+	})
+}
+
+func jobHandler(handlers map[string]func(r *R) error, job string) func(r *R) error {
+	lane, path, _ := strings.Cut(job, ".")
+	parts := strings.Split(path, ".")
+	for k := len(parts); k > 0; k-- {
+		p := strings.Join(parts[:k], ".")
+		for _, key := range []string{lane + "." + p, p} {
+			if fn, ok := handlers[key]; ok {
+				return fn
+			}
+		}
+	}
+	return nil
 }
 
 // Round runs fn as the lane's round and returns the exit code for the

@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"sort"
+	"sync"
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -153,6 +154,20 @@ func rerunBy(root string, cfg *config.Config, sel []int, scripts map[int]lane.In
 		}
 	}
 	return out
+}
+
+// setupGate opens when the lanes that wait on a lane's setup may start:
+// when an Always lane finishes, or a group lane's Always sub-jobs have.
+type setupGate struct {
+	once sync.Once
+	ch   chan struct{}
+}
+
+// openSetup opens lane n's setup gate (more than once is fine).
+func (o Options) openSetup(n int) {
+	if g := o.setup[n]; g != nil {
+		g.once.Do(func() { close(g.ch) })
+	}
 }
 
 // setupDeps adds to each non-Always lane of a run a Setup dependency on

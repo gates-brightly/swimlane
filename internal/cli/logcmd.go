@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -73,11 +74,16 @@ func cmdLog(args []string) error {
 			return err
 		}
 		info, _ := lane.ReadScript(root, n)
-		c, found := info.Cell(cell)
-		if !found {
-			return fmt.Errorf("swim %d has no cell %q", n, cell)
+		named := info.CellsUnder(cell)
+		switch {
+		case len(named) == 0:
+			return fmt.Errorf("swim %d has no %s", n, map[bool]string{true: "job " + strconv.Itoa(n) + "." + cell, false: "cell " + strconv.Quote(cell)}[info.IsGroup()])
+		case len(named) > 1:
+			// A job with jobs under it: each one's last result.
+			info.Subs = slices.DeleteFunc(append([]lane.SubJob(nil), info.Subs...), func(s lane.SubJob) bool { return !lane.PathUnder(s.Name, cell) })
+			return cellSummary(root, n, info)
 		}
-		os.Setenv(lane.CellEnv, c.Name) // lane.Log is now the cell's log
+		os.Setenv(lane.CellEnv, named[0].Name) // lane.Log is now the cell's log
 		ref = strconv.Itoa(n)
 	}
 	if _, err := strconv.Atoi(ref); err == nil || follow {
@@ -662,7 +668,11 @@ func laneWaiting(root string, n int) bool {
 func cellSummary(root string, n int, info lane.Info) error {
 	st, _ := status.Load(root)
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
-	fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim %d · %s · %d cells", n, info.Round, len(info.Cells()))))
+	kind := "cells"
+	if info.IsGroup() {
+		kind = "jobs"
+	}
+	fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim %d · %s · %d %s", n, info.Round, len(info.Cells()), kind)))
 	for _, c := range info.Cells() {
 		state, detail := "not run", ""
 		if st != nil {
@@ -678,8 +688,9 @@ func cellSummary(root string, n int, info lane.Info) error {
 				}
 			}
 		}
-		fmt.Printf("  %-24s %-12s %-28s %s\n", fmt.Sprintf("%d[%s]", n, c.Name), p.Paint(ui.StateColor(state), state), detail,
-			p.Paint(ui.Dim, "swim log '"+fmt.Sprintf("%d[%s]", n, c.Name)+"'"))
+		label := info.SubLabel(n, c.Name)
+		fmt.Printf("  %-24s %-12s %-28s %s\n", label, p.Paint(ui.StateColor(state), state), detail,
+			p.Paint(ui.Dim, "swim log '"+label+"'"))
 	}
 	return nil
 }

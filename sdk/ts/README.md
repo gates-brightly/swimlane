@@ -23,3 +23,14 @@ The SDK talks to swim over the lane's socket (`swim.lane/v1`, see
 Secrets stored with `swim secret set` come by name:
 `import { secret } from "@gates-brightly/swim"; const password = await secret.get("db_password");`.
 swim masks every secret as `***(name)` in what it writes.
+
+A lane split into jobs marks them in comments (`// swim job 1.1`, each with
+its own `// Round:` and other header lines); each job runs the program
+once, and `jobs()` calls the function for it with the round. Keys are job
+ids (`"1.2"`) or places under the lane (`"2"`); the closest one wins.
+`r.job` is the job's id.
+
+```ts
+import { jobs } from "@gates-brightly/swim";
+await jobs({ "1.1": fmt, "1.2": lint });
+```

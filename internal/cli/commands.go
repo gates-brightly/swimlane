@@ -425,13 +425,22 @@ func runLanes(rest []string, rf runFlags) error {
 		if isCell {
 			info, _ := lane.ReadScript(root, n)
 			if !info.IsMatrix() {
-				return fmt.Errorf("swim %d is not a matrix round; %s names no cell", n, a)
+				return fmt.Errorf("swim %d has no jobs and is not a matrix round; %s names nothing", n, a)
 			}
-			c, ok := info.Cell(cell)
-			if !ok {
-				return fmt.Errorf("swim %d has no cell %q (its cells: %s)", n, cell, strings.Join(launcher.CellNames(info.Cells()), ", "))
+			// A job names it and every job under it (1.5: 1.5, 1.5.9, ...).
+			named := info.CellsUnder(cell)
+			if len(named) == 0 {
+				what := "cell " + strconv.Quote(cell)
+				if info.IsGroup() {
+					what = fmt.Sprintf("job %d.%s", n, cell)
+				}
+				return fmt.Errorf("swim %d has no %s (its %s: %s)", n, what, map[bool]string{true: "jobs", false: "cells"}[info.IsGroup()], strings.Join(launcher.CellNames(info.Cells()), ", "))
 			}
-			cells[n] = append(cells[n], c.Name)
+			for _, c := range named {
+				if !slices.Contains(cells[n], c.Name) {
+					cells[n] = append(cells[n], c.Name)
+				}
+			}
 		}
 		if !slices.Contains(lanes, n) {
 			lanes = append(lanes, n)

@@ -265,7 +265,17 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		if info.FailHard {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "fail: hard (the first failed step ends the round)"))
 		}
-		if cells := info.Cells(); len(cells) > 0 {
+		if info.IsGroup() {
+			var jobs []string
+			for _, s := range info.Subs {
+				j := fmt.Sprintf("%d.%s %s", n, s.Name, s.Info.Round)
+				if s.Info.Always {
+					j += " [*]"
+				}
+				jobs = append(jobs, j)
+			}
+			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "jobs, in order: "+strings.Join(jobs, " → ")))
+		} else if cells := info.Cells(); len(cells) > 0 {
 			text := fmt.Sprintf("matrix: %d cells (%s), %d at once", len(cells), strings.Join(CellNames(cells), ", "), max(info.MatrixParallel, 1))
 			if info.MatrixFail == "stop" {
 				text += ", stop after a failed cell"
@@ -504,9 +514,19 @@ type PlanLane struct {
 	Handlers []PlanHandler `yaml:"handlers,omitempty"`
 	// Cells are a matrix round's cells.
 	Cells []string `yaml:"cells,flow,omitempty"`
+	// Jobs are a group lane's sub-jobs, in the order they run.
+	Jobs []PlanJob `yaml:"jobs,omitempty"`
 	// Check is the lane's last read-only check (swim plan --check).
 	Check *PlanCheck `yaml:"check,omitempty"`
 	Fail  string     `yaml:"fail,omitempty"` // hard, when Fail: hard
+}
+
+// PlanJob is one sub-job of a group lane.
+type PlanJob struct {
+	Job    string `yaml:"job"` // 1.2
+	ID     string `yaml:"id,omitempty"`
+	Round  string `yaml:"round"`
+	Always bool   `yaml:"always,omitempty"`
 }
 
 // PlanHandler is one outcome handler of a round.
@@ -568,7 +588,11 @@ func Plan(o Options) (*PlanDoc, error) {
 		if o.ShowChecks {
 			l.Check = checkOf(o, n, pl.inRunDeps[n])
 		}
-		if cells := info.Cells(); len(cells) > 0 {
+		if info.IsGroup() {
+			for _, s := range info.Subs {
+				l.Jobs = append(l.Jobs, PlanJob{Job: fmt.Sprintf("%d.%s", n, s.Name), ID: s.Info.Job, Round: s.Info.Round, Always: s.Info.Always})
+			}
+		} else if cells := info.Cells(); len(cells) > 0 {
 			l.Cells = CellNames(cells)
 		}
 		doc.Lanes = append(doc.Lanes, l)

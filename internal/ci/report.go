@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -16,7 +17,10 @@ import (
 // LaneReport is one selected lane after the run: its status entry and, if
 // it ran in this run, its round from the log.
 type LaneReport struct {
-	N        int
+	N int
+	// Label names it: "swim 2", or for one job (or matrix cell) of a lane,
+	// "swim 1.2" ("swim 3[orders]"); a lane of those gets one report each.
+	Label    string
 	Job      string
 	Title    string
 	State    string // passed | failed | skipped | interrupted
@@ -33,6 +37,10 @@ func Collect(root string, lanes []int, run string) []LaneReport {
 	st, _ := status.Load(root)
 	var out []LaneReport
 	for _, n := range lanes {
+		if cells := cellReports(root, st, n, run); len(cells) > 0 {
+			out = append(out, cells...)
+			continue
+		}
 		r := LaneReport{N: n, State: status.Skipped, Log: fmt.Sprintf(".swim/logs/agent%d.log", n)}
 		if st != nil {
 			if l := st.Get(n); l != nil {
@@ -53,6 +61,47 @@ func Collect(root string, lanes []int, run string) []LaneReport {
 		out = append(out, r)
 	}
 	return out
+}
+
+// cellReports is a report per job (or matrix cell) of lane n that this run
+// ran or skipped, each from its own log; none for a lane without them.
+func cellReports(root string, st *status.File, n int, run string) []LaneReport {
+	if st == nil {
+		return nil
+	}
+	l := st.Get(n)
+	if l == nil || len(l.Cells) == 0 {
+		return nil
+	}
+	info, _ := lane.ReadScript(root, n)
+	var out []LaneReport
+	for _, c := range l.Cells {
+		if c.Run != run {
+			continue
+		}
+		path := lane.CellLog(root, n, c.Cell)
+		rel := ".swim/logs/" + filepath.Base(path)
+		r := LaneReport{N: n, Label: "swim " + info.SubLabel(n, c.Cell), Job: c.Job, Title: c.Round, State: c.State,
+			Reason: c.Reason, Exit: c.ExitCode, Log: rel}
+		if c.DurationS != nil {
+			r.Duration = *c.DurationS
+		}
+		if lines := lastRound(path); len(lines) > 0 {
+			if round, err := logparse.ParseRound(lines); err == nil && round.Run == run {
+				r.Round, r.Lines = round, lines
+			}
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// name is r's Label, or "swim N".
+func (r LaneReport) name() string {
+	if r.Label != "" {
+		return r.Label
+	}
+	return fmt.Sprintf("swim %d", r.N)
 }
 
 // lastRound returns the lines of the last round in a log.
@@ -98,7 +147,7 @@ func dur(s float64) string {
 
 // Title is a lane's section title, e.g. "swim 3 PASS - Cut over (job 3f2a9c1e, 0:42)".
 func (r LaneReport) SectionTitle() string {
-	t := fmt.Sprintf("swim %d %s - %s", r.N, word(r.State), r.Title)
+	t := fmt.Sprintf("%s %s - %s", r.name(), word(r.State), r.Title)
 	var extra []string
 	if r.Job != "" {
 		extra = append(extra, "job "+lane.ShortJob(r.Job))
@@ -150,16 +199,16 @@ func writeLines(w io.Writer, r LaneReport) {
 // Annotate surfaces failures (error), drift (warning), dry-run skips
 // (notice) and, as one notice, the lanes skipped because of others.
 func Annotate(w io.Writer, p Provider, reps []LaneReport) {
-	skipped := map[string][]int{}
+	skipped := map[string][]string{}
 	var reasons []string
 	for _, r := range reps {
-		title := fmt.Sprintf("swim %d: %s", r.N, r.Title)
+		title := fmt.Sprintf("%s: %s", r.name(), r.Title)
 		if r.Round == nil {
 			if r.State == status.Skipped {
 				if _, ok := skipped[r.Reason]; !ok {
 					reasons = append(reasons, r.Reason)
 				}
-				skipped[r.Reason] = append(skipped[r.Reason], r.N)
+				skipped[r.Reason] = append(skipped[r.Reason], strings.TrimPrefix(r.name(), "swim "))
 			} else if r.State == status.Failed {
 				p.Annotate(w, Error, title, or(r.Reason, "lane failed before its round started"))
 			}
@@ -188,7 +237,7 @@ func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 		for _, why := range reasons {
 			ns := skipped[why]
 			total += len(ns)
-			parts = append(parts, fmt.Sprintf("swim %s (%s)", joinInts(ns), or(why, "not run")))
+			parts = append(parts, fmt.Sprintf("swim %s (%s)", strings.Join(ns, ", "), or(why, "not run")))
 		}
 		noun := "lanes"
 		if total == 1 {
@@ -203,14 +252,6 @@ func or(s, def string) string {
 		return def
 	}
 	return s
-}
-
-func joinInts(ns []int) string {
-	s := make([]string, len(ns))
-	for i, n := range ns {
-		s[i] = fmt.Sprint(n)
-	}
-	return strings.Join(s, ", ")
 }
 
 // Markdown writes the job summary (GitHub's $GITHUB_STEP_SUMMARY).
@@ -242,7 +283,7 @@ func Markdown(w io.Writer, reps []LaneReport, run, commit string, code int) {
 		if r.Round != nil {
 			t = dur(r.Duration)
 		}
-		fmt.Fprintf(w, "| swim %d | `%s` | %s | %d | %d | %d | %d | %s | %s |\n", r.N, lane.ShortJob(r.Job), word(r.State),
+		fmt.Fprintf(w, "| %s | `%s` | %s | %d | %d | %d | %d | %s | %s |\n", r.name(), lane.ShortJob(r.Job), word(r.State),
 			pass, fail, skip, drift, t, strings.Join(failed, "<br>"))
 	}
 	fmt.Fprintln(w, "\nLogs: `.swim/logs/` (upload them as an artifact to keep them).")
@@ -288,8 +329,8 @@ type junitMessage struct {
 func JUnit(w io.Writer, reps []LaneReport) error {
 	all := junitSuites{Name: "swim"}
 	for _, r := range reps {
-		s := junitSuite{Name: fmt.Sprintf("swim %d: %s", r.N, r.Title), Time: fmt.Sprintf("%.1f", r.Duration)}
-		class := fmt.Sprintf("swim.lane%d", r.N)
+		s := junitSuite{Name: fmt.Sprintf("%s: %s", r.name(), r.Title), Time: fmt.Sprintf("%.1f", r.Duration)}
+		class := "swim.lane" + strings.TrimPrefix(r.name(), "swim ")
 		if r.Round == nil {
 			msg := or(r.Reason, "did not run")
 			c := junitCase{Name: "round", ClassName: class, Time: "0"}

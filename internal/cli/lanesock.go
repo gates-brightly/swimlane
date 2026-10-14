@@ -177,11 +177,18 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 		}
 		s.connected.Store(true)
 		deadline, _ := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64)
-		return laneResponse{OK: true, Result: map[string]any{
+		result := map[string]any{
 			"protocol": LaneProtocol, "swim": version.String(), "breaking": version.Breaking,
 			"lane": s.n, "cell": lane.CurrentCell(), "job": envOf(s.env, "SWIM_JOB"), "run": envOf(s.env, "SWIM_RUN"),
 			"deadline": deadline, "check": lane.CheckMode(),
-		}}
+		}
+		// One job of a lane of jobs: its id (1.5.9), for the SDK's jobs().
+		if cell := lane.CurrentCell(); lane.IsJobPath(cell) {
+			if _, ok := lane.LaneJobs(s.root, s.n); ok {
+				result["job_path"] = fmt.Sprintf("%d.%s", s.n, cell)
+			}
+		}
+		return laneResponse{OK: true, Result: result}
 	case "run", "gate", "snapshot", "evidence":
 		var a struct {
 			Label string   `json:"label"`

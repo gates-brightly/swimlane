@@ -78,6 +78,7 @@ var Commands = map[string]string{
          [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see OTHER LANGUAGES)
 swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only the cells that didn't pass)
+swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it and the jobs under it)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -363,7 +364,7 @@ swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only 
 
   Replace lane.N.sh with a "nothing pending" stub carrying <message>. The lane
   shows as idle and "swim run" skips it. Refuses if lane N is running, if a
-  group file defines it (edit or remove its section there), and without
+  group file is the lane (edit or remove it there), and without
   --force if it is an Always lane (standing setup, not a round).
 `,
 	"note": `swim note [--lane N|JOB] "<text>"
@@ -813,8 +814,10 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     handler-reached (warn) an on_failure with a guard that never checks reached
     rerun-guard (warn)     a guarded round downstream of a Rerun-Children lane
                            (swim all reruns it even after it passed)
-    group (error)          a group file (lanes.<name>.sh) with no lanes, a lane
-                           defined twice, or a header key before the first lane
+    group (error)          a lane's jobs: none with steps, one defined twice, one
+                           of another lane, a header key on the wrong side
+                           (Always: on the lane, After: on a job), or a group
+                           file (lanes.<name>.sh) for a lane another file has
     outputs (warn)         an output whose name suggests secrets (not masked)
     includes (warn)        a Python/TypeScript lane imports a local module its
                            # Includes: doesn't cover (approvals wouldn't cover it)

@@ -183,3 +183,26 @@ func TestOutsideARound(t *testing.T) {
 		t.Errorf("a wrong token: %v", err)
 	}
 }
+
+func TestJobHandler(t *testing.T) {
+	h := map[string]func(*R) error{"1.2": nil, "5": nil, "1.5.9": nil}
+	names := map[string]bool{}
+	for k := range h {
+		k := k
+		h[k] = func(*R) error { names[k] = true; return nil }
+	}
+	for job, want := range map[string]string{"1.2": "1.2", "1.5": "5", "1.5.9.9": "1.5.9", "1.5.1": "5", "1.3": ""} {
+		names = map[string]bool{}
+		fn := jobHandler(h, job)
+		if fn == nil {
+			if want != "" {
+				t.Errorf("%s: no handler, want %s", job, want)
+			}
+			continue
+		}
+		fn(nil)
+		if !names[want] {
+			t.Errorf("%s: called %v, want %s", job, names, want)
+		}
+	}
+}
