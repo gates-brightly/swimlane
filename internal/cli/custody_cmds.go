@@ -479,9 +479,19 @@ func listApprovals(root string, cfg *config.Config, lk *lookup.Lookup) error {
 	return nil
 }
 
-// cmdKeys shows who's who: lookup.yml's users, keys and groups, and the
-// key this machine signs with.
+// cmdKeys shows who's who: lookup.yml's users, keys and groups, trust.yml
+// and its pin, and the key this machine signs with. swim keys pin and
+// swim keys trust look after trust.yml (trustcmd.go).
 func cmdKeys(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "pin":
+			return keysPin(args[1:])
+		case "trust":
+			return keysTrust(args[1:])
+		}
+		return usagef("usage: swim keys [pin | trust KEY [--remove] [--sign] [--key K]]")
+	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
 		return err
@@ -531,6 +541,7 @@ func cmdKeys(args []string) error {
 			}
 		}
 	}
+	fmt.Println(trustLine(root))
 	if k, err := sign.LoadKey(cfg.SigningKey); err == nil {
 		who := "not in lookup.yml"
 		if u, ok := lk.Who(k.Public); ok {
@@ -807,62 +818,26 @@ func short12(s string) string {
 	return or(s, "-")
 }
 
-// cmdVerify proves (or disproves) the chain of custody: every link follows
-// the one before it, every signature is valid, every round's log section
-// and script are what was recorded, and every signed approval's signatures
-// check out. Exits 1 on a break; --strict also on unsigned entries and
-// signers not in lookup.yml.
-func cmdVerify(args []string) error {
-	var strict bool
-	rest, err := flags{bools: map[string]*bool{"strict": &strict}}.parse(args)
-	if err != nil {
-		return err
-	}
-	if len(rest) > 0 {
-		return usagef("usage: swim verify [--strict]")
-	}
-	root, cfg, err := repoNoMigrate()
-	if err != nil {
-		return err
-	}
-	lk, err := lookup.Load(root)
-	if err != nil {
-		return err
-	}
-	if !sign.Available() {
-		return errors.New("swim verify needs ssh-keygen (OpenSSH 8.0 or later)")
-	}
-	mans := map[int]*manifest.Manifest{}
-	links, rerr := chain.Read(root)
-	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
-	var bad, warn []string
-	if rerr != nil {
-		bad = append(bad, rerr.Error())
-	}
-	problems, unsigned := chain.Check(links)
-	for _, pr := range problems {
-		bad = append(bad, fmt.Sprintf("entry #%d (line %d): %s", pr.Seq, pr.Line, pr.What))
-	}
-	if len(unsigned) > 0 {
-		warn = append(warn, fmt.Sprintf("%d unsigned entries (linked, but no key vouches for them): #%s", len(unsigned), joinNums(unsigned)))
-	}
-	signers := map[string]bool{}
-	rounds, approvals := 0, 0
-	var notes []string
+// checkEntries checks what each chain entry recorded against what's on
+// disk: every round's kept script, staged copy, inputs and log section,
+// and every signed approval's signatures. A mismatch is a break (the
+// consistent level); something gone is a warning.
+func (v *verifier) checkEntries(links []chain.Link) {
+	root := v.root
 	for _, l := range links {
 		if l.Signer != "" {
-			if _, ok := lk.Who(l.Signer); !ok {
-				signers[sign.Fingerprint(l.Signer)] = true
+			if _, ok := v.lk.Who(l.Signer); !ok {
+				v.unlisted[sign.Fingerprint(l.Signer)] = true
 			}
 		}
 		switch l.Type {
 		case "round":
-			rounds++
+			v.rounds++
 			if l.Script != "" {
 				if got, err := chain.HashFile(filepath.Join(scriptsDir(root), l.Script+".sh")); err != nil {
-					warn = append(warn, fmt.Sprintf("entry #%d: the script copy %s.sh is missing", l.Seq, short12(l.Script)))
+					v.warn = append(v.warn, fmt.Sprintf("entry #%d: the script copy %s.sh is missing", l.Seq, short12(l.Script)))
 				} else if got != l.Script {
-					bad = append(bad, fmt.Sprintf("entry #%d: the kept script %s.sh was changed", l.Seq, short12(l.Script)))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: the kept script %s.sh was changed", l.Seq, short12(l.Script)))
 				}
 			}
 			// The round's staged copy, while it's kept (swim doctor --fix
@@ -870,9 +845,9 @@ func cmdVerify(args []string) error {
 			if l.Manifest != "" {
 				if m, err := manifest.Load(manifest.Dir(root, l.Run, l.Lane)); err == nil {
 					if m.SHA256 != l.Manifest {
-						bad = append(bad, fmt.Sprintf("entry #%d: the staged manifest of swim %d in run %s is %s, not the %s that ran", l.Seq, l.Lane, l.Run, short12(m.SHA256), short12(l.Manifest)))
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: the staged manifest of swim %d in run %s is %s, not the %s that ran", l.Seq, l.Lane, l.Run, short12(m.SHA256), short12(l.Manifest)))
 					} else if err := m.Verify(); err != nil {
-						bad = append(bad, fmt.Sprintf("entry #%d: swim %d's staged copy in run %s: %v", l.Seq, l.Lane, l.Run, err))
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's staged copy in run %s: %v", l.Seq, l.Lane, l.Run, err))
 					}
 				}
 			}
@@ -883,75 +858,63 @@ func cmdVerify(args []string) error {
 				prod, ok := producedBy(links, from)
 				switch {
 				case !ok:
-					warn = append(warn, fmt.Sprintf("entry #%d: input %s came from round %s, which isn't in the chain", l.Seq, key, from))
+					v.warn = append(v.warn, fmt.Sprintf("entry #%d: input %s came from round %s, which isn't in the chain", l.Seq, key, from))
 				case prod.Outputs[name] != sum && prod.Outputs[outputs.ValuePrefix+name] != sum:
-					bad = append(bad, fmt.Sprintf("entry #%d: input %s doesn't match what round %s produced (entry #%d): changed after it was produced", l.Seq, key, from, prod.Seq))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: input %s doesn't match what round %s produced (entry #%d): changed after it was produced", l.Seq, key, from, prod.Seq))
 				}
 			}
 			if l.Log != "" {
 				switch sum, ok := roundLogHash(root, l.Lane, l.Run); {
 				case !ok:
-					warn = append(warn, fmt.Sprintf("entry #%d: swim %d's log for run %s is gone (deleted, not archived)", l.Seq, l.Lane, l.Run))
+					v.warn = append(v.warn, fmt.Sprintf("entry #%d: swim %d's log for run %s is gone (deleted, not archived)", l.Seq, l.Lane, l.Run))
 				case sum != l.Log:
-					bad = append(bad, fmt.Sprintf("entry #%d: swim %d's log for run %s was changed after the round ended", l.Seq, l.Lane, l.Run))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's log for run %s was changed after the round ended", l.Seq, l.Lane, l.Run))
 				}
 			}
 		case "repair":
 			// Not a break: the removed bytes were never a complete entry.
-			notes = append(notes, fmt.Sprintf("entry #%d: swim chain repair %s", l.Seq, l.Action))
+			v.notes = append(v.notes, fmt.Sprintf("entry #%d: swim chain repair %s", l.Seq, l.Action))
 		case "approve":
-			approvals++
+			v.approvals++
 			for _, ap := range l.Approvers {
 				if ap.Statement == "" || ap.Sig == "" {
 					continue
 				}
 				ev := sigfile.Event{Type: sigfile.Approve, Key: ap.Key, At: ap.SignedAt, Prev: ap.Prev, Sig: ap.Sig}
 				if err := sigfile.VerifyEvent(ap.Statement, ev); err != nil {
-					bad = append(bad, fmt.Sprintf("entry #%d: %s's approval signature: %v", l.Seq, or(ap.Name, "an approver"), err))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: %s's approval signature: %v", l.Seq, or(ap.Name, "an approver"), err))
 				}
 			}
 		}
 	}
-	for fp := range signers {
-		warn = append(warn, "entries signed by a key not in lookup.yml: "+fp)
-	}
-	fmt.Printf("chain of custody: %d entries (%d rounds, %d approvals) in %s\n", len(links), rounds, approvals, rel(root, chain.Path(root)))
+}
+
+// checkApprovalFiles checks every approvals file under approvals/ event by
+// event, and lists each (and whether a script approval is stale).
+func (v *verifier) checkApprovalFiles() {
+	root := v.root
 	files, ferrs := sigfile.All(root)
 	for _, e := range ferrs {
-		bad = append(bad, e.Error())
+		v.bad = append(v.bad, e.Error())
 	}
 	for _, f := range files {
-		signers, broken := f.Standing(lk)
+		signers, broken := f.Standing(v.lk)
 		for _, b := range broken {
-			bad = append(bad, rel(root, f.Path)+": "+b)
+			v.bad = append(v.bad, rel(root, f.Path)+": "+b)
 		}
 		state := ""
-		switch st := approvalState(root, cfg, lk, f, mans); {
+		switch st := approvalState(root, v.cfg, v.lk, f, v.mans); {
 		case st.Name == sigfile.Stale && st.Why == "the script changed since":
 			state = "; stale: " + lane.ScriptName(root, f.Lane) + " changed since"
 		case st.Name != sigfile.Active:
 			state = "; " + st.String()
 		default:
 			for _, w := range st.Warnings {
-				warn = append(warn, rel(root, f.Path)+": "+w)
+				v.warn = append(v.warn, rel(root, f.Path)+": "+w)
 			}
 		}
-		fmt.Printf("approvals %s: %s, approves %s; %d standing of %d events%s\n", rel(root, f.Path), f.Kind, approvesText(f), len(signers), len(f.Events), state)
+		v.files = append(v.files, fmt.Sprintf("approvals %s: %s, approves %s; %d standing of %d events%s", rel(root, f.Path), f.Kind, approvesText(f), len(signers), len(f.Events), state))
 	}
-	for _, n := range notes {
-		fmt.Println("note: " + n)
-	}
-	for _, w := range warn {
-		fmt.Println(p.Paint(ui.Yellow, "warning: "+w))
-	}
-	for _, b := range bad {
-		fmt.Println(p.Paint(ui.Red, "BROKEN: "+b))
-	}
-	if len(bad) > 0 || strict && len(warn) > 0 {
-		return exitError{1}
-	}
-	fmt.Println(p.Paint(ui.Green, "verified: every link, signature, log and script checks out"))
-	return nil
 }
 
 // needsEvidence reports whether a lookup.yml rule for any approved guard

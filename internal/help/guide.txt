@@ -68,10 +68,12 @@ COMMANDS
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until it expires or is revoked
   revoke N|JOB / --auto USER   withdraw your approval
-  verify                   prove the chain of custody is intact (logs, scripts, signatures)
+  verify [--against DEST]  prove the chain of custody, in levels: consistent, trusted,
+                           anchored, authorized (--yaml for CI)
   history [RUN|N|JOB] [--oneline]   the chain of custody, like git log: who approved and ran what
   chain repair             remove a half-written last chain entry (kept in a .bak, recorded)
-  keys                     who's who: lookup.yml's users, keys and groups
+  chain checkpoint / export --to DEST   send the chain's signed head (and entries) to an anchor
+  keys [trust KEY --sign | pin]   who's who: lookup.yml, trust.yml and its pin
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
   doctor [--fix]           check the environment: binary platform, PATH, config, .gitignore,
@@ -920,6 +922,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         msg_log_interval: 10s            # at most one MSG log line per lane per this (0: every change)
         outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
+        chain_anchors: ["file:/mnt/audit/orders", hub]   # where chain checkpoints go (CHAIN OF CUSTODY)
         # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)
         runners:                         # how lane.N.<ext> runs without a #! line (OTHER LANGUAGES)
           ts: tsx                        # swim asks the first time, and saves the answer per repo
@@ -1059,3 +1062,23 @@ CHAIN OF CUSTODY
   Signing uses ssh-keygen -Y (OpenSSH 8.0+); anyone can check a signature
   with it. Signing never prompts: a key with a passphrase needs ssh-agent
   (give the .pub path as signing_key).
+  swim verify reports levels, one line each, saying what it rests on:
+    consistent  links, signatures (against the key recorded in each entry),
+                logs, kept scripts, staged copies, signed approvals
+    trusted     every signer is in trust.yml (committed), whose key set is
+                pinned outside the repo (~/.config/swim/trust-pins.yml, on
+                first use or swim keys pin; CI: --trust-pin). Changes count
+                only when signed by a trusted key (swim keys trust --sign).
+                A chain re-signed wholesale with a new key fails here.
+    anchored    the chain still holds the head of the newest checkpoint at
+                each chain_anchors destination (file:/path outside the
+                repo, or hub). Every top-level swim run, swim all, swim ci
+                and swim watch batch sends one. Entries removed from the
+                end, or a chain replaced, after a checkpoint left the
+                machine fail here.
+    authorized  each approval met lookup.yml's rule for its guard
+  Threat model: an anchor proves nothing about entries written after its
+  last checkpoint, and whoever holds the runner key and can write every
+  anchor can rewrite everything: keep anchors out of the operator's reach.
+  The trust pins sit in your config directory, which a lane (running as
+  you) could write; CI's --trust-pin comes from CI's own settings.

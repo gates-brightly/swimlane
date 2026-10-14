@@ -63,6 +63,9 @@ type Entry struct {
 	Method    string     `json:"method,omitempty"`    // signature | prompt | flag | auto | queue
 	Statement string     `json:"statement,omitempty"` // what a signature's approvers signed
 	Approvers []Approver `json:"approvers,omitempty"`
+	// Lookup is the SHA-256 of lookup.yml when the guard was approved, so
+	// swim verify knows whether today's rules are the ones it met.
+	Lookup string `json:"lookup_sha256,omitempty"`
 	// Observed are the round's Observe: facts when the guard was approved.
 	Observed map[string]string `json:"observed,omitempty"`
 
@@ -324,8 +327,12 @@ type Link struct {
 }
 
 // Read returns every entry; a line that doesn't parse is an error.
-func Read(root string) ([]Link, error) {
-	f, err := os.Open(Path(root))
+func Read(root string) ([]Link, error) { return ReadFile(Path(root)) }
+
+// ReadFile reads a chain file at path (an exported copy, say): nothing
+// when there is none.
+func ReadFile(path string) ([]Link, error) {
+	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -345,12 +352,12 @@ func Read(root string) ([]Link, error) {
 			return out, err
 		}
 		if err != nil { // a last line with no newline: a write cut short
-			return out, fmt.Errorf("%s line %d: an incomplete entry (no newline: a write was cut short); swim chain repair removes it", Path(root), n)
+			return out, fmt.Errorf("%s line %d: an incomplete entry (no newline: a write was cut short); swim chain repair removes it", path, n)
 		}
 		raw = bytes.TrimSuffix(raw[:len(raw)-1], []byte("\r"))
 		var e Entry
 		if err := json.Unmarshal(raw, &e); err != nil {
-			return out, fmt.Errorf("%s line %d: not a chain entry: %v", Path(root), n, err)
+			return out, fmt.Errorf("%s line %d: not a chain entry: %v", path, n, err)
 		}
 		out = append(out, Link{Entry: e, Hash: Hash(raw), Line: n})
 	}
@@ -386,4 +393,39 @@ func Check(links []Link) (problems []Problem, unsigned []int) {
 		}
 	}
 	return problems, unsigned
+}
+
+// Untrusted is a signature by a key outside the trusted set.
+type Untrusted struct {
+	Seq  int
+	Line int
+	Key  string // the signer's public key
+	Who  string // "" for the entry's signer, else the approver's name
+}
+
+// Trust checks who signed: Check proves every signature matches the key
+// recorded beside it, which a chain re-signed wholesale with a new key
+// also passes; Trust says which signatures, entries' and their signed
+// approvals', were made by keys trusted doesn't vouch for. Unsigned
+// entries are Check's to report.
+func Trust(links []Link, trusted func(pub string) bool) []Untrusted {
+	var out []Untrusted
+	for _, l := range links {
+		if l.Sig != "" && !trusted(l.Signer) {
+			out = append(out, Untrusted{Seq: l.Seq, Line: l.Line, Key: l.Signer})
+		}
+		for _, ap := range l.Approvers {
+			if ap.Sig != "" && !trusted(ap.Key) {
+				out = append(out, Untrusted{Seq: l.Seq, Line: l.Line, Key: ap.Key, Who: or(ap.Name, "an approver")})
+			}
+		}
+	}
+	return out
+}
+
+func or(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }

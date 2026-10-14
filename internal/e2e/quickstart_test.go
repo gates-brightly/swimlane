@@ -49,7 +49,7 @@ func TestQuickstartRuns(t *testing.T) {
 	qs := filepath.Join(dir, "swim-quickstart")
 	contains(t, "quickstart output", string(out),
 		"hello from swim",     // swim log 1
-		"verified:",           // swim verify
+		"consistent  yes",     // swim verify
 		"dry run",             // the guarded step, unapproved
 		"HELLO_ALLOW_WRITE=1", // the approval, as recorded
 		"via flag",            // swim history

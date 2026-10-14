@@ -107,6 +107,30 @@ func (b *boundary) links() []chain.Link {
 	return links
 }
 
+// resign is an attacker with write access re-signing every entry with a
+// key of their own and swapping the chain file.
+func (b *boundary) resign(t *testing.T) {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "mallory")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "mallory", "-f", p).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	key, err := sign.LoadKey(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := b.links()
+	os.Remove(chain.Path(b.root))
+	for _, l := range links {
+		if _, err := chain.Append(b.root, l.Entry, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if b.links()[0].Signer == links[0].Signer {
+		t.Fatal("the chain wasn't re-signed")
+	}
+}
+
 // noMarker fails when the guarded command ran.
 func (b *boundary) noMarker(t *testing.T, why string) {
 	t.Helper()
@@ -247,7 +271,7 @@ func TestSecurity(t *testing.T) {
 			if len(last.Approvals) != 1 || last.Approvals[0] != appr.Hash {
 				t.Errorf("the round names approvals %v, want [%s]", last.Approvals, appr.Hash)
 			}
-			contains(t, "verify", b.mustSwim("verify"), "verified: every link")
+			contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
 		}},
 		{"a command run without guard has no approval in the chain", "T4", func(t *testing.T) {
 			b := newBoundaryRepo(t)
@@ -278,40 +302,40 @@ func TestSecurity(t *testing.T) {
 		{"a guarded secret is refused without approval", "guarded-secrets", func(t *testing.T) {
 			gap(t, "features/guarded-secrets")
 		}},
-		{"the chain and its signer key replaced: consistent", "T8", func(t *testing.T) {
+		{"the chain and its signer key replaced: consistent, not trusted", "T8", func(t *testing.T) {
 			b := newBoundaryRepo(t)
+			// The runner's key is trusted, and swim verify pins trust.yml.
+			b.mustSwim("keys", "trust")
 			b.approve(1)
 			b.mustSwim("run", "1", "--plain")
-			// An attacker with write access re-signs every entry with a key
-			// of their own and swaps the chain file.
-			p := filepath.Join(t.TempDir(), "mallory")
-			if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "mallory", "-f", p).CombinedOutput(); err != nil {
-				t.Fatalf("%v %s", err, out)
-			}
-			key, err := sign.LoadKey(p)
-			if err != nil {
-				t.Fatal(err)
-			}
-			links := b.links()
-			os.Remove(chain.Path(b.root))
-			for _, l := range links {
-				if _, err := chain.Append(b.root, l.Entry, key); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if b.links()[0].Signer == links[0].Signer {
-				t.Fatal("the chain wasn't re-signed")
-			}
-			// Today verify only checks the chain against itself: it's
-			// consistent, and the new signer is a warning, not a failure.
+			contains(t, "verify", b.mustSwim("verify"), "consistent  yes", "trusted     yes", "pinned now, on first use")
+			b.resign(t)
+			// Checked against itself the chain holds; against the pinned
+			// keys it doesn't.
 			out, code := b.swim("verify")
-			if code != 0 {
+			if code != 1 {
 				t.Fatalf("verify of a re-signed chain: exit %d\n%s", code, out)
 			}
-			contains(t, "verify", out, "verified: every link", "warning: entries signed by a key not in lookup.yml")
+			contains(t, "verify", out, "consistent  yes", "trusted     no", "a key not in trust.yml")
 		}},
-		{"the chain and its signer key replaced: not trusted, not anchored", "T8", func(t *testing.T) {
-			gap(t, "T8")
+		{"the chain and its signer key replaced: not anchored", "T8", func(t *testing.T) {
+			b := newBoundaryRepo(t)
+			b.mustSwim("keys", "trust")
+			anchor := filepath.Join(t.TempDir(), "audit")
+			b.write("swim.yml", "chain_anchors: [\"file:"+anchor+"\"]\n", 0o644)
+			b.approve(1)
+			b.mustSwim("run", "1", "--plain")
+			contains(t, "verify", b.mustSwim("verify"), "consistent  yes", "trusted     yes", "anchored    yes")
+			// Re-signed wholesale, and the entries after the first dropped.
+			b.resign(t)
+			path := chain.Path(b.root)
+			data, _ := os.ReadFile(path)
+			os.WriteFile(path, []byte(strings.SplitAfter(string(data), "\n")[0]), 0o644)
+			out, code := b.swim("verify")
+			if code != 1 {
+				t.Fatalf("verify: exit %d\n%s", code, out)
+			}
+			contains(t, "verify", out, "consistent  yes", "trusted     no", "anchored    no", "chain truncated or replaced after checkpoint")
 		}},
 		{"a planted secret never appears in the log, .swim.log or status", "T9", func(t *testing.T) {
 			r := newRepo(t, "")

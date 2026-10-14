@@ -52,6 +52,9 @@ type Settings struct {
 	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
 	MsgLogInterval     string        `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
 	OutputsKeep        string        `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
+	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
+	// the anchor package). They add up across config.yml and swim.yml.
+	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
 	// Runners maps a lane script's extension (ts, py, ...) to the command
 	// that runs it ("tsx", "/usr/local/bin/python3"). A script's #! line
 	// wins; swim asks the operator for one the first time it meets an
@@ -307,6 +310,12 @@ func (c *Config) merge(r Settings) {
 	// Secret names add up too; the switches override.
 	c.SecretEnv = append(append([]string(nil), c.SecretEnv...), r.SecretEnv...)
 	c.SecretEnvIgnore = append(append([]string(nil), c.SecretEnvIgnore...), r.SecretEnvIgnore...)
+	// Anchors add up: an operator's own on top of the repo's.
+	for _, a := range r.ChainAnchors {
+		if !slices.Contains(c.ChainAnchors, a) {
+			c.ChainAnchors = append(append([]string(nil), c.ChainAnchors...), a)
+		}
+	}
 	if r.SecretEnvAuto != nil {
 		c.SecretEnvAuto = r.SecretEnvAuto
 	}

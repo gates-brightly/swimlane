@@ -781,6 +781,7 @@ func cmdWatch(args []string) error {
 func runClaimed(root string, cfg *config.Config, e *queue.Entry, yes, view, headless bool) (queue.Result, bool) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	res, interrupted := runEntry(root, cfg, e, yes, view, headless)
+	checkpointAfterRun(root, cfg)
 	if err := queue.Consume(root, e, res); err != nil {
 		fmt.Fprintln(os.Stderr, "swim watch: consume "+e.ID+": "+err.Error())
 	}
