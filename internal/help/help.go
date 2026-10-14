@@ -542,7 +542,7 @@ swim queue show|rm|requeue ID
 `,
 	"approve": `swim approve                                    list approvals and standing approvals
 swim approve N|JOB --guards A --cell C              one cell of a matrix round only
-swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K]
+swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K] [--no-evidence]
 swim approve --auto USER [--guards A,B | --all] [--key K]
 
   How approvers act. Every approval is an SSH-signed event in a committed
@@ -556,6 +556,17 @@ swim approve --auto USER [--guards A,B | --all] [--key K]
                    co-approve (the statement can't change). Writes
                    approvals/lane.N.<sha12>.signature. If the script changes
                    it no longer matches: approve the new version.
+  With evidence    a round with evidence steps (evidence "tf plan" ...), or a
+                   guard whose lookup.yml rule says evidence: true, is
+                   approved with its latest evidence (from swim plan --check N
+                   or a run): swim approve shows it and signs its hash too
+                   (approvals/lane.N.<sha12>.e<evidence8>.signature). It
+                   refuses with no evidence, or evidence for another script
+                   version. At run time the approval counts only while the
+                   run's evidence matches; when the plan changed, the log
+                   shows a WARN and a diff, and the guard asks (or dry-runs).
+                   swim watch doesn't compare evidence (and says so).
+                   --no-evidence approves the script only.
   --auto USER      a standing approval: every job USER queues (swim queue add,
                    signed with USER's key) is approved, by you, for the guards
                    given (default every guard). It is never consumed: it

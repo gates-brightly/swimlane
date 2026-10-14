@@ -125,6 +125,9 @@ type Info struct {
 	MatrixExclude  [][]KV
 	MatrixParallel int
 	MatrixFail     string
+	// UsesEvidence: the script has evidence steps (evidence "tf plan" ...),
+	// so its approvals cover the evidence too (see swim approve).
+	UsesEvidence bool
 	// DynamicGuards counts guard calls whose flag is named at run time
 	// (guard "$FLAG" ...): swim can't know them ahead.
 	DynamicGuards int
@@ -188,9 +191,11 @@ var (
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
 	// check`, or ["swim", "stage", "check"] from another language.
-	stageUseRE = regexp.MustCompile(`(?:^|[\s;&|(])stage\s+["']?(?:snapshot|check|change|verify)\b`)
-	dynGuardRE = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+["']?\$`)
-	stageArgRE = regexp.MustCompile(`['"]stage['"]\s*,\s*['"](?:snapshot|check|change|verify)['"]`)
+	stageUseRE    = regexp.MustCompile(`(?:^|[\s;&|(])stage\s+["']?(?:snapshot|check|change|verify)\b`)
+	evidenceUseRE = regexp.MustCompile(`(?:^|[\s;&|(])evidence\s+(?:--\S+\s+\S*\s*)*["']`)
+	evidenceArgRE = regexp.MustCompile(`['"]evidence['"]\s*,`)
+	dynGuardRE    = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+["']?\$`)
+	stageArgRE    = regexp.MustCompile(`['"]stage['"]\s*,\s*['"](?:snapshot|check|change|verify)['"]`)
 	// handlerFnRE is a handler function's first line: on_failure() {
 	handlerFnRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failure|on_exit)\s*\(\s*\)`)
 	guardUse    = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
@@ -386,6 +391,9 @@ func ParseScript(src string) Info {
 			}
 			if dynGuardRE.MatchString(line) {
 				info.DynamicGuards++
+			}
+			if evidenceUseRE.MatchString(line) || evidenceArgRE.MatchString(line) {
+				info.UsesEvidence = true
 			}
 			uses := guardUse.FindAllStringSubmatch(line, -1)
 			uses = append(uses, guardArgUse.FindAllStringSubmatch(line, -1)...)

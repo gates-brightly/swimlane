@@ -13,6 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/ci"
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/evidence"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -62,10 +63,26 @@ func cmdApproveHook(args []string) error {
 	// from (swim approve --auto), counted together against lookup.yml.
 	sha := scriptSHA(root, n)
 	sigWhy := ""
+	// This run's evidence (its evidence steps' output so far), and whether
+	// the guard's rule needs approvals bound to it. Batches run by swim
+	// watch don't check evidence: unattended, a drifted plan would turn every
+	// queued change into a dry run with no one to re-approve.
+	var live *evidence.Index
+	if ev := evidence.Load(root, job); ev != nil && ev.Run == run {
+		live = ev
+	}
+	watch := os.Getenv("SWIM_QUEUE") != ""
+	evRequired := false
+	liveText := ""
+	if live != nil {
+		liveText, _ = live.Text(root)
+	}
 	if lk, err := lookup.Load(root); err != nil {
 		sigWhy = err.Error()
 	} else {
+		evRequired = lk.RuleFor(flag).Evidence && !watch
 		files := sigfile.ForCell(sigfile.ForScript(root, sha), lane.CurrentCell())
+		files = evidenceFilter(root, args[0], files, live, liveText, evRequired, watch, desc)
 		queuer := verifiedQueuer(root, lk, n, sha)
 		if queuer != "" {
 			files = append(files, sigfile.StandingFor(root, queuer)...)
@@ -100,12 +117,29 @@ func cmdApproveHook(args []string) error {
 				default:
 					how += " (signed)"
 				}
+				evCovered := ""
+				for _, g := range d.Grants {
+					if g.File.Evidence != "" {
+						evCovered = g.File.Evidence
+					}
+				}
+				if evCovered != "" {
+					how += "; evidence " + short12(evCovered)
+				}
+				if watch {
+					for _, f := range files {
+						if f.Evidence != "" {
+							how += "; evidence not checked (watch)"
+							break
+						}
+					}
+				}
 				approveRecorded = true
 				if err := cmdMark([]string{args[0], logparse.Approved, desc, how}); err != nil {
 					return err
 				}
 				if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Guard: flag, Action: desc,
-					Method: method, Approvers: approvers}); err != nil {
+					Method: method, Approvers: approvers, Evidence: evCovered}); err != nil {
 					return err
 				}
 				history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", " + method + ": " + strings.Join(d.Users, ", ") + ")"})
@@ -131,7 +165,7 @@ func cmdApproveHook(args []string) error {
 		return dryRun(why)
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
-	resp := ask(approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc}, func() bool {
+	resp := ask(approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc, Evidence: liveText, EvidenceRequired: evRequired}, func() bool {
 		return lane.StopRequested(root, n, run)
 	}, deadline())
 	if !resp.Approved {
@@ -175,6 +209,45 @@ func cmdApproveHook(args []string) error {
 	}
 	history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", by " + by + ")"})
 	return nil
+}
+
+// evidenceFilter keeps the signed approvals that still apply given this
+// run's evidence: one bound to evidence counts only while the evidence
+// matches (a WARN and a diff in the log when it doesn't), and when the
+// guard's rule requires evidence a script-only approval doesn't count. Under
+// swim watch nothing is compared.
+func evidenceFilter(root, laneArg string, files []*sigfile.File, live *evidence.Index, liveText string, required, watch bool, desc string) []*sigfile.File {
+	if watch {
+		return files
+	}
+	var out []*sigfile.File
+	for _, f := range files {
+		switch {
+		case f.Evidence != "" && (live == nil || f.Evidence != live.Hash):
+			now := "no evidence this run"
+			if live != nil {
+				now = short12(live.Hash)
+			}
+			cmdMark([]string{laneArg, logparse.Warn, "evidence changed since approval: " + desc,
+				fmt.Sprintf("%s approved evidence %s; this run has %s", filepath.Base(f.Path), short12(f.Evidence), now)})
+			if old := evidence.Blob(root, f.Evidence); old != "" && liveText != "" {
+				var lines []string
+				for _, l := range evidence.Diff(old, liveText, 40) {
+					lines = append(lines, logparse.Indent+"| "+l)
+				}
+				if ns := os.Getenv("SWIM_LANE"); ns != "" {
+					if n, err := strconv.Atoi(ns); err == nil {
+						appendLog(lane.Log(root, n), strings.Join(lines, "\n")+"\n")
+					}
+				}
+			}
+		case required && f.Evidence == "":
+			// Script-only: doesn't count where the rule needs the plan approved.
+		default:
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 type askFunc func(req approval.Request, stopped func() bool, deadline time.Time) approval.Response

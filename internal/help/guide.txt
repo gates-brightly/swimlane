@@ -37,6 +37,7 @@ COMMANDS
   lib                      print the bash library lane scripts load
   In a lane script in any language (OTHER LANGUAGES); run "<label>" -- cmd is a step too:
   gate "<label>" -- cmd    a step whose failure ends the round (and stops the program)
+  evidence "<label>" -- cmd   a check step whose output an approval can cover (the plan)
   snapshot "<label>" -- cmd   a read-only step whose output is saved
   guard FLAG "<action>"    exit 0 if the operator approves the action, 1 if not
   stage NAME               start a stage: snapshot, check, change, verify
@@ -164,7 +165,9 @@ FILES (repo root)
   .swim/scripts/        every lane script a round ran, by SHA-256
   approvals/            signed approvals (committed): lane.N.<sha12>.signature for one
                         exact script, auto.USER.signature standing for USER's jobs
-  lookup.yml            who's who: users' SSH keys, groups, approval rules (committed)
+  lookup.yml            who's who: users' SSH keys, groups, approval rules (committed);
+                        a rule with evidence: true counts only evidence-bound approvals
+  .swim/evidence/       each round's evidence (evidence steps), and blobs by hash for diffs
   .swim/hub.yml         this directory's hub enrollment (swim hub enroll), private
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
                         .running claimed by a worker, done/ consumed with results
@@ -291,6 +294,13 @@ WRITING A LANE SCRIPT
                                   Never fails the round.
   stop "<reason>"                 record STOP and end the round now (in a handler: record
                                   it, and the handler carries on).
+  evidence [opts] "<label>" cmd   a check stage step whose output shows what the change will
+                                  do (terraform plan, a diff): saved, normalized (ANSI,
+                                  line endings, trailing space) and hashed as the round's
+                                  evidence. swim approve signs it with the script, and a
+                                  guard counts that approval only while this run's evidence
+                                  matches (else a WARN, a diff, and the prompt or a dry
+                                  run). Print stable output. A failure stops the round.
   input N|JOB NAME                print the path of an output of a round this one depends on:
                                   lane N's round this run waited on (it must have passed),
                                   or job JOB's latest passed round, even from an earlier run.

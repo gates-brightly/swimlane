@@ -31,6 +31,26 @@ To cut a release:
 
 ### Added
 
+- **Plan approvals (evidence):**
+  - **Evidence steps:** `evidence "<label>" cmd` (or `swim evidence` from
+    any language) is a check stage step whose output is saved, normalized
+    and hashed as the round's evidence. A failure stops the round, like a
+    gate.
+  - **Approving:** `swim approve N` on a round with evidence steps (or a
+    guard whose `lookup.yml` rule has `evidence: true`) shows the latest
+    evidence from `swim plan --check` or a run, and signs its hash with the
+    script. It refuses when the evidence is missing or stale.
+    `--no-evidence` approves the script only.
+  - **At run time:** the approval counts only while this run's evidence
+    matches. When it doesn't, the log shows `WARN evidence changed since
+    approval` and a diff, and the guard falls through to the prompt (which
+    shows the evidence) or a dry run.
+  - **Rules:** `evidence: true` rules ignore script-only approvals.
+    Pre-answers in the live view don't count for those guards.
+  - **Watch:** `swim watch` doesn't compare evidence, and logs that it
+    didn't.
+  - **Records:** round and approve chain entries carry `evidence_sha256`.
+
 - **Matrix rounds:**
   - **Declaring:** `# Matrix: SVC=orders,billing,users` (or `SVC=@file`)
     runs one lane script once per value. Several lines give the cross

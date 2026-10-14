@@ -73,7 +73,10 @@ type Entry struct {
 	Outputs map[string]string `json:"outputs,omitempty"`
 	// Inputs are the outputs it read: "2:stats.json" -> SHA-256 when read,
 	// and which round produced each: "2" -> "<job> <run>".
-	Inputs      map[string]string `json:"inputs,omitempty"`
+	Inputs map[string]string `json:"inputs,omitempty"`
+	// Evidence is the round's evidence hash (round entries), or the
+	// evidence an approval covered (approve entries).
+	Evidence    string            `json:"evidence_sha256,omitempty"`
 	InputRounds map[string]string `json:"input_rounds,omitempty"`
 
 	Signer string `json:"signer,omitempty"` // public key of whoever recorded the entry

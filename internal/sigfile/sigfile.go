@@ -77,6 +77,11 @@ type File struct {
 	// Cells limits a script approval to these cells of a matrix round
 	// (empty: every cell).
 	Cells []string `yaml:"cells,omitempty"`
+	// Evidence is the round's evidence hash this approval covers (the
+	// output of its evidence steps, e.g. terraform plan); "" for a
+	// script-only approval. A guard counts it only while the run's evidence
+	// still matches.
+	Evidence string `yaml:"evidence_sha256,omitempty"`
 
 	Approves []string `yaml:"approves,omitempty"` // guard flags
 	All      bool     `yaml:"approves_all,omitempty"`
@@ -93,6 +98,16 @@ func Dir(root string) string { return filepath.Join(root, "approvals") }
 // ScriptPath is the file approving lane n's script with hash sha.
 func ScriptPath(root string, n int, sha string) string {
 	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s.signature", n, sha[:12]))
+}
+
+// EvidencePath is the file approving lane n's script with hash sha
+// together with evidence ev (and, for a matrix round, one cell or "").
+func EvidencePath(root string, n int, sha, ev, cell string) string {
+	name := fmt.Sprintf("lane.%d.%s.e%s", n, sha[:12], ev[:8])
+	if cell != "" {
+		name += "." + strings.NewReplacer("=", "-", ",", ".", "/", "_").Replace(cell)
+	}
+	return filepath.Join(Dir(root), name+".signature")
 }
 
 // CellPath is the file approving one cell of lane n's matrix round.
@@ -142,6 +157,9 @@ func (f *File) Statement() string {
 	cells := ""
 	if len(f.Cells) > 0 {
 		cells = "cells: " + strings.Join(f.Cells, ";") + "\n" // only when limited, so older statements read the same
+	}
+	if f.Evidence != "" {
+		cells += "evidence-sha256: " + f.Evidence + "\n"
 	}
 	return fmt.Sprintf("swim approval v1\nscript: %s\nscript-sha256: %s\nlane: %d\njob: %s\nround: %s\n%sapproves: %s\nexpires: %s\n",
 		f.Script, f.SHA256, f.Lane, f.Job, f.Round, cells, appr, exp)

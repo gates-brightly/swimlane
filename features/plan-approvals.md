@@ -1,6 +1,6 @@
 # Approve the plan, not just the script
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -107,18 +107,34 @@ They keep today's behaviour (see [Watch mode](#watch-mode)).
 - **Diff:** a unified diff of the approved and live evidence goes in the log,
   masked.
 
-## Open questions
+## Open questions (answered)
 
-1. **Watch mode and `evidence: true`:** should a guard whose rule requires
-   evidence refuse to run under watch (a dry run), instead of silently
-   applying on the script hash? This is safer, but means such rounds can
-   never run unattended.
-2. **Normalizing:** is the built-in cleanup enough, or should `evidence`
-   take a `--normalize "<cmd>"` filter?
-3. **Several evidence steps:** one hash for the round (as above), or
-   approval per evidence step?
-4. **How long evidence stays valid:** should approvals also expire when the
-   evidence is older than some limit, even if it still matches?
+1. **Watch and `evidence: true`:** as specified, watch doesn't compare
+   evidence and logs `evidence not checked (watch)`. Teams that need
+   evidence-bound approval run those rounds at a terminal or in CI.
+2. **Normalizing:** the built-in cleanup only (ANSI, line endings, trailing
+   whitespace). Rounds print stable output, as the guide says, and a
+   machine form (`terraform show -json` piped through `jq`) is the fix for
+   noisy tools.
+3. **Several evidence steps:** one hash for the round (sorted `label:hash`
+   lines). Approving per step would let half a plan be approved.
+4. **Age:** no separate limit. `swim approve --expires` already bounds an
+   approval, and a mismatch already voids it.
+
+Decided while building:
+
+- **Where evidence lives:** `.swim/evidence/<job>/` (per round, reset by a
+  new run), `lanes/<N>[.<cell>].yml` (the lane's latest, for rounds without
+  a fixed job) and `blobs/<hash>.txt` (the round's evidence text by hash,
+  for diffs). An approval looks up the job's evidence, else the lane's, and
+  insists the evidence is for the script being approved.
+- **Approval files:** `lane.N.<sha12>.e<ev8>[.<cell>].signature`. The
+  statement gains `evidence-sha256:` only when set, so older approvals read
+  and verify as before.
+- **The prompt** (terminal or live view) shows up to 20 lines of this run's
+  evidence. Pre-answers don't count for evidence-required guards.
+- **The approve command** prints the evidence and signs it, with no extra
+  Y/N: running `swim approve` is the decision.
 
 ## Testing
 

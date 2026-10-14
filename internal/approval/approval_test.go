@@ -1,6 +1,8 @@
 package approval
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -92,5 +94,22 @@ func TestClientGivesUp(t *testing.T) {
 	r, err = Ask(s.Path(), Request{Lane: 1}, nil, time.Now().Add(150*time.Millisecond))
 	if err != ErrNoAnswer || r.Why != "the round's Timeout ran out" {
 		t.Fatalf("deadline: %+v %v", r, err)
+	}
+}
+
+// The question shows the evidence it approves, cut to 20 lines.
+func TestQuestionShowsEvidence(t *testing.T) {
+	var lines []string
+	for i := 0; i < 25; i++ {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	q := strings.Join(Question(Request{Lane: 3, Flag: "F", Desc: "apply", Evidence: strings.Join(lines, "\n")}), "\n")
+	for _, want := range []string{"evidence (what it will do):", "  line 0", "  line 19", "... 5 more lines", "Y/N [N]"} {
+		if !strings.Contains(q, want) {
+			t.Errorf("question lacks %q:\n%s", want, q)
+		}
+	}
+	if strings.Contains(q, "line 20") {
+		t.Error("more than 20 evidence lines")
 	}
 }

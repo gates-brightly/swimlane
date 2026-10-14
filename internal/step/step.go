@@ -34,6 +34,7 @@ type Options struct {
 	Label    string
 	New      bool // start a fresh log
 	Snapshot bool // also save output under .swim/snapshots
+	Evidence bool // an evidence step (implies Snapshot): labelled "evidence: ..."
 	LogPath  string
 	Root     string
 	Lane     int // 0 when not run from a lane script
@@ -162,7 +163,10 @@ func Run(o Options) (Result, error) {
 		}()
 	}
 	label := mk.String(o.Label)
-	if o.Snapshot && !strings.HasPrefix(label, "snapshot") {
+	switch {
+	case o.Evidence && !strings.HasPrefix(label, "evidence"):
+		label = "evidence: " + label
+	case o.Snapshot && !o.Evidence && !strings.HasPrefix(label, "snapshot"):
 		label = "snapshot: " + label
 	}
 	cmdline := mk.String(Quote(o.Args))

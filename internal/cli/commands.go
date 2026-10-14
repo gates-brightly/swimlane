@@ -18,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ci"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/evidence"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
@@ -683,7 +684,7 @@ func cmdAll(args []string) error {
 
 func cmdStep(args []string) error {
 	var label, timeout, retry, backoff, retryOn string
-	var fresh, snap, noRetryTimeout bool
+	var fresh, snap, noRetryTimeout, evid bool
 	// Flags only before "--"; everything after is the command.
 	sep := -1
 	for i, a := range args {
@@ -698,7 +699,7 @@ func cmdStep(args []string) error {
 		flagArgs, cmdArgs = args[:sep], args[sep+1:]
 	}
 	rest, err := flags{
-		bools: map[string]*bool{"new": &fresh, "snapshot": &snap, "no-retry-timeout": &noRetryTimeout},
+		bools: map[string]*bool{"new": &fresh, "snapshot": &snap, "no-retry-timeout": &noRetryTimeout, "evidence": &evid},
 		strs:  map[string]*string{"label": &label, "timeout": &timeout, "retry": &retry, "backoff": &backoff, "retry-on": &retryOn},
 	}.parse(flagArgs)
 	if err != nil {
@@ -773,7 +774,7 @@ func cmdStep(args []string) error {
 		logPath = "step.log"
 	}
 	res, err := step.Run(step.Options{
-		Args: cmdArgs, Label: label, New: fresh, Snapshot: snap,
+		Args: cmdArgs, Label: label, New: fresh, Snapshot: snap || evid, Evidence: evid,
 		LogPath: logPath, Root: root, Lane: n, Lanes: cfg.Lanes,
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
 		Color:    ui.ColorEnabled(os.Stderr),
@@ -789,6 +790,18 @@ func cmdStep(args []string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if evid && res.ExitCode == 0 && res.Saved != "" && n > 0 {
+		// The round's evidence: what an approval of the plan covers.
+		if data, err := os.ReadFile(res.Saved); err == nil {
+			key := evidence.LaneKey(n, "")
+			if c := lane.CurrentCell(); c != "" {
+				key = evidence.LaneKey(n, lane.CellSlug(c))
+			}
+			if _, err := evidence.Record(root, key, os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN"), scriptSHA(root, n), label, string(data), lane.CheckMode()); err != nil {
+				fmt.Fprintln(os.Stderr, "swim step: evidence: "+err.Error())
+			}
+		}
 	}
 	if s, ok := res.Signal.(syscall.Signal); ok && (s == syscall.SIGINT || s == syscall.SIGTERM || s == syscall.SIGHUP) {
 		// Die by the same signal so the calling shell stops the lane script

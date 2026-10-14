@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -27,6 +28,12 @@ type Request struct {
 	Job  string `json:"job,omitempty"`
 	Flag string `json:"flag"`
 	Desc string `json:"desc"`
+	// Evidence is what the round's evidence steps showed this run (the plan
+	// being approved), shown with the question; EvidenceRequired: the
+	// guard's rule needs evidence-bound approval, so an answer given ahead
+	// of time (before the plan existed) doesn't count.
+	Evidence         string `json:"evidence,omitempty"`
+	EvidenceRequired bool   `json:"evidence_required,omitempty"`
 }
 
 // Response is the operator's answer.
@@ -205,8 +212,17 @@ func Ask(path string, req Request, stopped func() bool, deadline time.Time) (Res
 
 // Question is how an approval is put to the operator.
 func Question(req Request) []string {
-	return []string{
-		fmt.Sprintf("swim %d requires human approval of task: %s", req.Lane, req.Desc),
-		fmt.Sprintf("(guard %s; or set %s=1 to approve without asking)  Y/N [N]", req.Flag, req.Flag),
+	q := []string{fmt.Sprintf("swim %d requires human approval of task: %s", req.Lane, req.Desc)}
+	if req.Evidence != "" {
+		lines := strings.Split(strings.TrimRight(req.Evidence, "\n"), "\n")
+		q = append(q, "evidence (what it will do):")
+		for i, l := range lines {
+			if i == 20 {
+				q = append(q, fmt.Sprintf("  ... %d more lines (.swim/evidence/)", len(lines)-20))
+				break
+			}
+			q = append(q, "  "+l)
+		}
 	}
+	return append(q, fmt.Sprintf("(guard %s; or set %s=1 to approve without asking)  Y/N [N]", req.Flag, req.Flag))
 }

@@ -101,8 +101,11 @@ func laneStep(cmd string, args []string) error {
 		return usagef(`usage: swim %s [options] "<label>" -- cmd [args...]`, cmd)
 	}
 	stepArgs := append([]string{"--label", label}, opts...)
-	if cmd == "snapshot" {
+	switch cmd {
+	case "snapshot":
 		stepArgs = append(stepArgs, "--snapshot")
+	case "evidence":
+		stepArgs = append(stepArgs, "--evidence")
 	}
 	code := 0
 	if err := cmdStep(append(append(stepArgs, "--"), command...)); err != nil {
@@ -134,6 +137,8 @@ func laneStep(cmd string, args []string) error {
 		return endRound(root, ln, 1, "timeout: the round's Timeout ("+os.Getenv("SWIM_TIMEOUT")+") ran out")
 	case cmd == "gate" && code != 0:
 		return endRound(root, ln, 1, "gate failed: "+label)
+	case cmd == "evidence" && code != 0:
+		return endRound(root, ln, 1, "evidence failed: "+label)
 	case code != 0 && os.Getenv("SWIM_FAIL_MODE") == "hard" && !soft && os.Getenv("SWIM_IN_HANDLER") == "":
 		return endRound(root, ln, 1, "hard failure: "+label)
 	}
@@ -278,6 +283,7 @@ func cmdStop(args []string) error {
 // laneGate and laneSnapshot are swim gate / swim snapshot.
 func laneGate(args []string) error     { return laneStep("gate", args) }
 func laneSnapshot(args []string) error { return laneStep("snapshot", args) }
+func laneEvidence(args []string) error { return laneStep("evidence", args) }
 
 // swim msg [--progress N/M] "<text>": post the lane's status message (the
 // latest wins; "" clears it). It shows in the live view, swim status and

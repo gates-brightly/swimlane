@@ -45,6 +45,10 @@ type Rule struct {
 	Guards []string `yaml:"guards,omitempty"` // globs; empty: any guard
 	Group  string   `yaml:"group,omitempty"`  // empty: any known user
 	Count  int      `yaml:"count,omitempty"`  // distinct users; default 1
+	// Evidence: only approvals that cover the round's evidence (swim
+	// approve with evidence steps) count, and only while it still matches.
+	// Not checked for batches run by swim watch.
+	Evidence bool `yaml:"evidence,omitempty"`
 }
 
 // Lookup is lookup.yml.
