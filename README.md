@@ -678,13 +678,16 @@ This repo dogfoods it. Its own CI is `swim ci` over committed rounds:
 ### The watch hub
 
 ```sh
-swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard
+swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard (and a live screen on a terminal)
 swim hub enroll URL --token T [--name billing]       # in a repo; then swim watch reports to it
 swim hub status | leave
 ```
 
 - **Dashboard:** a card per worker, showing its activity, lanes and queue.
   Workers that stop reporting show as stale.
+- **Live screen:** on a terminal, `swim hub` lists every worker with the
+  selected one's running lanes and queue. Enter opens a worker to show each
+  lane's message and log tail, and Esc comes back. `--no-tui` turns it off.
 - **Worker pages:** each lane's step, the live tail of running lanes, the
   queue, and recent events.
 - **`GET /api/workers`:** the same data as JSON.

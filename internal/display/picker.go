@@ -29,7 +29,17 @@ type Picker struct {
 	Color   bool
 	Sel     string // the selected item's ID
 	Note    string // shown on the bottom line until the next key
+	// Title, if set, is the title line on every redraw (a live count),
+	// instead of Pick's title.
+	Title func() string
 }
+
+// Action keys that aren't printable: put these runes in Pick's keys to
+// have Enter (on an item) and Esc (any time) end it.
+const (
+	PickEnter = '\r'
+	PickEsc   = '\x1b'
+)
 
 // PickResult is how Pick ended.
 type PickResult struct {
@@ -77,7 +87,11 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 			cols, h = 80, 24
 		}
 		p.Sel = pickSel(rows, p.Sel, 0)
-		fmt.Fprint(p.Out, "\x1b[H"+strings.Join(p.render(title, hints, rows, cols, h), "\x1b[K\r\n")+"\x1b[K\x1b[J")
+		t := title
+		if p.Title != nil {
+			t = p.Title()
+		}
+		fmt.Fprint(p.Out, "\x1b[H"+strings.Join(p.render(t, hints, rows, cols, h), "\x1b[K\r\n")+"\x1b[K\x1b[J")
 	}
 	draw()
 	for {
@@ -116,6 +130,14 @@ func (p *Picker) key(k Key, rows []PickRow, keys string) (PickResult, bool) {
 				break
 			}
 		}
+	case k.Code == KeyEsc && strings.ContainsRune(keys, PickEsc):
+		return PickResult{ID: p.Sel, Key: PickEsc}, true
+	case k.Code == KeyEnter && strings.ContainsRune(keys, PickEnter):
+		if p.Sel == "" {
+			p.Note = "nothing selected"
+			return PickResult{}, false
+		}
+		return PickResult{ID: p.Sel, Key: PickEnter}, true
 	case k.Code == KeyRune && strings.ContainsRune(keys, k.Rune):
 		if p.Sel == "" {
 			p.Note = "nothing selected"

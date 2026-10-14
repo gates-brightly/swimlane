@@ -20,11 +20,13 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/hub"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/ui"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -54,12 +56,13 @@ func cmdHub(args []string) error {
 
 func hubServe(args []string) error {
 	var addr, token string
-	rest, err := flags{strs: map[string]*string{"addr": &addr, "token": &token}}.parse(args)
+	var noTUI bool
+	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI}, strs: map[string]*string{"addr": &addr, "token": &token}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--no-tui]")
 	}
 	if addr == "" {
 		addr = "127.0.0.1:7700"
@@ -78,28 +81,105 @@ func hubServe(args []string) error {
 		return err
 	}
 	url := "http://" + ln.Addr().String()
-	fmt.Printf("swim hub · %s\n", url)
-	fmt.Printf("enroll a worker (in its repo):  swim hub enroll %s --token %s\n", url, token)
+	var notes []display.PickRow
+	note := func(color, text string) {
+		notes = append(notes, display.PickRow{Text: text, Color: color})
+	}
+	note(ui.Dim, "enroll a worker (in its repo):  swim hub enroll "+url+" --token "+token)
 	if generated {
-		fmt.Println("  (a new token each start: pass --token or SWIM_HUB_TOKEN to keep workers enrolled across restarts)")
+		note(ui.Dim, "  (a new token each start: pass --token or SWIM_HUB_TOKEN to keep workers enrolled across restarts)")
 	}
 	if host, _, _ := net.SplitHostPort(ln.Addr().String()); !net.ParseIP(host).IsLoopback() {
-		fmt.Println("warning: the dashboard is read-only but unauthenticated: anyone who can reach " + url + " sees every worker's lanes, queue and log tails")
+		note(ui.Yellow, "warning: the dashboard is read-only but unauthenticated: anyone who can reach "+url+" sees every worker's lanes, queue and log tails")
 	}
-	srv := &http.Server{Handler: hub.New(token).Handler(), ReadHeaderTimeout: 5 * time.Second}
+	h := hub.New(token)
+	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
-	go func() {
-		<-sigs
+	stopped := make(chan struct{})
+	shutdown := sync.OnceFunc(func() {
+		close(stopped)
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		srv.Shutdown(ctx)
+	})
+	go func() {
+		select {
+		case <-sigs:
+			shutdown()
+		case <-stopped:
+		}
 	}()
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	served := make(chan error, 1)
+	go func() { served <- srv.Serve(ln) }()
+	if !noTUI && ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) && display.TUIAllowed(os.Getenv) {
+		hubScreen(h, url, notes, stopped)
+		shutdown()
+	} else {
+		fmt.Printf("swim hub · %s\n", url)
+		for _, n := range notes {
+			fmt.Println(n.Text)
+		}
+	}
+	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	fmt.Println("swim hub stopped")
 	return nil
+}
+
+// hubScreen is the hub's live screen: every worker (Enter opens one, Esc
+// comes back) until Ctrl-C, or until stopped closes (a signal).
+func hubScreen(h *hub.Server, url string, notes []display.PickRow, stopped <-chan struct{}) {
+	color := ui.ColorEnabled(os.Stdout)
+	list := &display.Picker{In: os.Stdin, Out: os.Stdout, Color: color,
+		Title: func() string { return "swim hub · " + url + " · " + hub.Summary(h.Workers()) }}
+	detail := &display.Picker{In: os.Stdin, Out: os.Stdout, Color: color}
+	until := func() bool {
+		select {
+		case <-stopped:
+			return true
+		default:
+			return false
+		}
+	}
+	for !until() {
+		res, err := list.Pick("swim hub · "+url, "↑ ↓ pick  enter open  ctrl-c quit",
+			string(display.PickEnter), func() []display.PickRow { return hub.ListRows(h.Workers(), list.Sel, notes, time.Now()) }, time.Second, until)
+		if err != nil || res.Quit || res.ID == "" {
+			return
+		}
+		id := strings.TrimPrefix(res.ID, "w:")
+		detail.Sel = ""
+		for !until() {
+			var v *hub.View
+			for _, w := range h.Workers() {
+				if w.ID == id {
+					w := w
+					v = &w
+				}
+			}
+			if v == nil {
+				list.Note = "that worker left"
+				break
+			}
+			res, err := detail.Pick("swim hub · "+v.Name, "↑ ↓ lane  esc back  ctrl-c quit", string(display.PickEsc), func() []display.PickRow {
+				for _, w := range h.Workers() {
+					if w.ID == id {
+						return hub.WorkerRows(w, detail.Sel, time.Now())
+					}
+				}
+				return []display.PickRow{{Text: "this worker left the hub (esc)"}}
+			}, time.Second, until)
+			if err != nil || res.Quit {
+				return
+			}
+			if res.Key == display.PickEsc {
+				break
+			}
+		}
+	}
 }
 
 // hubFile is this directory's enrollment (.swim/hub.yml, private).

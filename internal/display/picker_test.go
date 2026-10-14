@@ -91,3 +91,16 @@ func TestPickerRender(t *testing.T) {
 		t.Errorf("row is %d runes wide, want 30", n)
 	}
 }
+
+func TestPickerEnterEsc(t *testing.T) {
+	p := &Picker{Sel: "lane:2"}
+	if res, done := p.key(Key{Code: KeyEnter}, pickRows(), "q"); done {
+		t.Errorf("enter isn't an action unless asked: %+v", res)
+	}
+	if res, done := p.key(Key{Code: KeyEnter}, pickRows(), "q\r\x1b"); !done || res.Key != PickEnter || res.ID != "lane:2" {
+		t.Errorf("enter: %+v %v", res, done)
+	}
+	if res, done := (&Picker{}).key(Key{Code: KeyEsc}, nil, "\x1b"); !done || res.Key != PickEsc {
+		t.Errorf("esc with nothing selected: %+v %v", res, done)
+	}
+}

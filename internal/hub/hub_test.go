@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/display"
 )
 
 func TestHubFlow(t *testing.T) {
@@ -99,4 +101,50 @@ func get(t *testing.T, url string) string {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	return string(b)
+}
+
+func TestScreenRows(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	views := []View{
+		{Snapshot: Snapshot{Worker: Worker{ID: "a1", Name: "orders", Host: "mac", Root: "/r/orders"}, Activity: "running q-1 (#4)",
+			Lanes: []Lane{
+				{Lane: 1, State: "running", Round: "Cut over", Step: "plan", Progress: "3/7", Started: now.Add(-42 * time.Second).Format(time.RFC3339), Tail: []string{"| tick"}},
+				{Lane: 2, State: "idle"},
+			},
+			Queue: []Batch{{Seq: 5, State: "queued", Lanes: []int{3, 4}, By: "zach"}}}, Seen: now},
+		{Snapshot: Snapshot{Worker: Worker{ID: "b2", Name: "infra", Host: "box"}, Activity: "idle"}, Seen: now.Add(-2 * time.Minute), Stale: true},
+	}
+	if got := Summary(views); got != "2 workers · 1 lanes running" {
+		t.Errorf("summary: %q", got)
+	}
+	text := func(rows []display.PickRow) string {
+		var b strings.Builder
+		for _, r := range rows {
+			b.WriteString(r.ID + "|" + r.Text + "\n")
+		}
+		return b.String()
+	}
+	list := text(ListRows(views, "", nil, now))
+	for _, want := range []string{"w:a1|orders", "running", "▶·", "w:b2|infra", "stale 2m", "(no report since 11:58)",
+		"── orders · /r/orders", "swim 1  running     Cut over", "plan · 3/7 · 0:42", "queue   #5 queued   swim 3,4  by zach"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("list lacks %q:\n%s", want, list)
+		}
+	}
+	if strings.Contains(list, "swim 2 ") {
+		t.Errorf("the list shows an idle lane:\n%s", list)
+	}
+	// Selecting the other worker shows its lanes instead.
+	if l := text(ListRows(views, "w:b2", nil, now)); !strings.Contains(l, "── infra") || !strings.Contains(l, "every lane idle") {
+		t.Errorf("selected infra:\n%s", l)
+	}
+	detail := text(WorkerRows(views[0], "l:1", now))
+	for _, want := range []string{"orders · mac · /r/orders", "l:1|swim 1", "l:2|swim 2", "── swim 1", "| tick", "── queue"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail lacks %q:\n%s", want, detail)
+		}
+	}
+	if d := text(WorkerRows(views[0], "l:2", now)); !strings.Contains(d, "no log tail") {
+		t.Errorf("an idle lane's detail:\n%s", d)
+	}
 }

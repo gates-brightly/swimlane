@@ -692,7 +692,7 @@ swim revoke --auto USER [--key K]
   With no rule a signature from any listed user approves; with no
   lookup.yml signatures don't count at all (their keys can't be named).
 `,
-	"hub": `swim hub [--addr HOST:PORT] [--token T]
+	"hub": `swim hub [--addr HOST:PORT] [--token T] [--no-tui]
 swim hub enroll URL [--token T] [--name N]
 swim hub leave | status
 
@@ -702,7 +702,13 @@ swim hub leave | status
                    per worker (each lane's state and step, the live tail of
                    running lanes, the queue, recent .swim.log events), and
                    GET /api/workers as JSON (schema swim.hub/v1) for other
-                   services. It prints the enroll command. Workers present
+                   services. On a terminal it shows a live screen: every
+                   worker (state, activity, a mark per lane) with the
+                   selected one's running lanes and queue below; Enter opens
+                   a worker (each lane, the selected lane's message and log
+                   tail, its queue and recent events), Esc comes back,
+                   Ctrl-C stops the hub. --no-tui (or not a terminal)
+                   prints the URL and enroll command instead. Workers present
                    the token (--token, else $SWIM_HUB_TOKEN, else a new random
                    one each start); the pages are read-only and
                    unauthenticated, so keep the default localhost bind or put
