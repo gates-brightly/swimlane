@@ -614,8 +614,12 @@ func checkStalePID(o *Options) []finding.Finding {
 			continue
 		}
 		data, _ := os.ReadFile(lane.PIDFile(o.Root, n))
+		pid := strings.TrimSpace(string(data))
+		if f := strings.Fields(pid); len(f) > 0 {
+			pid = f[0] // pid and start time
+		}
 		out = append(out, fd(finding.Warn, "stale-pid", o.rel(lane.PIDFile(o.Root, n)), "swim doctor --fix (removes it), then swim status --rebuild",
-			"swim %d's pid file names process %s, which is gone (swim status shows the lane as \"running?\")", n, strings.TrimSpace(string(data))))
+			"swim %d's pid file names process %s, which is gone (swim status shows the lane as \"running?\")", n, pid))
 	}
 	return out
 }

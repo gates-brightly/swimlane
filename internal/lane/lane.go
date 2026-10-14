@@ -15,7 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/outputs"
+	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
@@ -645,32 +647,45 @@ func runningIn(path string) (int, bool) {
 	if err != nil {
 		return 0, false
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 0 {
+	pid, start, ok := proc.Parse(string(data))
+	if !ok {
 		return 0, false
 	}
-	return pid, Alive(pid)
+	return pid, proc.Same(pid, start)
 }
 
-// Alive reports whether a process with pid exists.
-func Alive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
+// Alive reports whether a process with pid exists. A pid alone may have
+// been handed to another process since; pid files record the start time
+// too (Running).
+func Alive(pid int) bool { return proc.Alive(pid) }
+
+// claimFile is the lock lane n's claim is taken under.
+func claimFile(root string, n int) string {
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.claim", n, cellPart()))
 }
 
-// WritePID records pid as lane n's running lane script. It refuses if another
-// live process already holds the lane.
+// WritePID records pid as lane n's running lane script: its pid and start
+// time, so a later process given the same pid isn't taken for it. It
+// refuses if another live process already holds the lane. The check and
+// the write happen under a lock, so of two processes claiming a lane at
+// once exactly one wins.
 func WritePID(root string, n, pid int) error {
-	if other, ok := Running(root, n); ok && other != pid {
-		return fmt.Errorf("swim %d is already running (pid %d)", n, other)
-	}
 	if err := os.MkdirAll(filepath.Dir(PIDFile(root, n)), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(PIDFile(root, n), []byte(strconv.Itoa(pid)+"\n"), 0o644)
+	lock, err := os.OpenFile(claimFile(root, n), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("claim swim %d: %w", n, err)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	if other, ok := Running(root, n); ok && other != pid {
+		return fmt.Errorf("swim %d is already running (pid %d)", n, other)
+	}
+	return fsutil.WriteAtomic(PIDFile(root, n), []byte(proc.Record(pid)+"\n"), 0o644)
 }
 
 // RemovePID clears lane n's running marker.
