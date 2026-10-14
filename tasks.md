@@ -14,6 +14,14 @@ Priorities:
 - **P1**: needed before teams rely on it
 - **P2**: adoption
 
+Kinds (the audit's advice: keep these apart in issues and PRs):
+
+- **bug**: a defect reproduced or confirmed in the code
+- **gap**: a missing guarantee or design decision
+- **hypothesis**: an attack scenario nobody has tested yet
+
+The [classification table](#classification) gives each security task's kind.
+
 Larger designs go in `features/`, not here.
 
 The review's main point is the one to keep in mind throughout. Approval,
@@ -115,6 +123,13 @@ chain entry that `swim verify` accepts:
 - a hostile lane that sends a request for another lane on the socket
 - a lane that sends a misleading description or a job id that doesn't match
 - a lane that replays another lane's approval response
+
+Also cover the broker's edge cases (`approval.go`), each of which must end in
+a decline:
+- the client disconnects mid-question
+- the request is cancelled
+- the deadline passes
+- two lanes ask at the same moment
 
 ### T4. Write down the trust model (P0, docs)
 
@@ -254,6 +269,16 @@ the audit's Finding 2.
 
 - **Report three levels in verify:** consistent, trusted (signers pinned
   outside the repo) and anchored.
+- **Stop merging outcomes into one success message (bug, confirmed).**
+  `cmdVerify` prints the green `verified: every link, signature, log and
+  script checks out` even after it has warned about unsigned entries or
+  signers missing from `lookup.yml`. Only `--strict` turns those warnings into
+  failures. Report each level separately and never print `verified` for one
+  that wasn't checked.
+- **Add a fourth level, authorized:** the approvals recorded in the chain must
+  have met the `lookup.yml` rule in force for that guard, with signers whose
+  roles allow it. `internal/chain` itself stays free of policy, and the CLI
+  layers this check on top.
 
 **Done when:** tests that truncate, reorder, re-sign or **replace the whole
 chain with a new key** are each caught by verify with a pin or a checkpoint
@@ -341,6 +366,8 @@ Entries hold output and input hashes, so they grow with large matrix rounds.
   reaching the start of the file.
 - Cap the size of an entry, spilling large lists into a hashed side file
   that the entry references.
+- fsync each append for security events (approvals, round start and end,
+  secret release) before reporting success. The chain's share of T6.
 - Document what to do about an incomplete final record. Today it's refused
   with "swim verify shows where" (`chain.go:182`); add `swim chain repair`,
   which truncates the incomplete tail and records the truncation in a new
@@ -368,8 +395,103 @@ part of finishing that task.
 | A worker killed mid-step and mid-chain-append | No false success; no silent re-run; chain repairable | T6, T7 |
 | A planted secret in every output | Not found in any file swim writes | T9 |
 
+**Execution-boundary fixture (the audit's Patch C).** A temp repo with a
+harmless stand-in for a destructive command (it touches a marker file),
+behind `guard`. These cases cover the path from `guard` to process launch:
+
+1. Without approval, the marker isn't created.
+2. A declined or timed-out approval doesn't create it.
+3. An approval for another script or job doesn't authorize it.
+4. Changing the script after approval invalidates the approval.
+5. A queued job can't run a different script than the one queued.
+6. The final chain entry names the script SHA, approval and outcome that
+   actually ran.
+
 **Done when:** the file exists with every case, and the skips are removed as
 each task lands.
+
+### T26. Sanitize untrusted text in prompts and screens (P1, security)
+
+**Today:**
+- `approval.Question` (`approval.go:214`) puts the lane's `Desc` and
+  `Evidence` into the prompt as-is.
+- `askTerminal` (`cli/approve.go:279`) writes that to stderr raw. A lane can
+  embed escape sequences, `\r` or backspaces to hide or rewrite what the
+  operator approves.
+- The live view's renderer (`display/render.go:394`) handles ESC sequences.
+  It keeps SGR color codes and strips the rest. Whether other control
+  characters (`\r`, `\b`, C1) get through is untested.
+- `step.StripWriter` and `lane/msg.go` strip ANSI from logs and messages.
+
+**Do:**
+- Add one `ui.Safe(string)` helper: drop C0 and C1 controls except `\t`, all
+  ESC sequences, and bidi overrides. Apply it to every place that shows text
+  a lane supplied:
+  - approval questions
+  - `swim msg`
+  - step labels
+  - hub pages and snapshots
+  - YAML output
+- The hub's HTML pages already go through `html/template`, but this needs
+  checking.
+
+**Done when:** a lane whose guard description contains `\x1b[2K\r`, `\b` and
+U+202E produces a prompt that shows them escaped or removed, both at the
+terminal and in the live view.
+
+### T27. CI security gates (P1, testing)
+
+**Today:**
+- `lanes.ci.sh` runs fmt, build, vet, swim lint, unit tests and e2e.
+- It does not run `-race`.
+
+**Do:**
+- Add `go test -race ./...` as an Always lane.
+- Run T7's fault-injection tests and T25's suite as their own lanes, so a
+  failure names the gate.
+- Security tests fail the build on a violation. They never only warn or
+  report.
+
+**Done when:** `lanes.ci.sh` has a race lane, a fault-injection lane and a
+security lane, and reverting a T3 or T24 fix turns CI red.
+
+### Release readiness
+
+Before swim is described as suitable for sensitive production operations,
+each of these needs evidence: a passing test or a documented decision.
+
+The supported threat model comes first (T4). A local developer tool and a
+multi-user production executor need different answers, so not every
+deployment needs every item.
+
+| Criterion | Evidence |
+|---|---|
+| Approval can't be bypassed through supported execution paths when policy requires it | T3, T25 (fixture cases 1–3), guarded-secrets for credentials |
+| Approval is bound to the exact executable inputs and the relevant context | T1, T2, execution-manifest |
+| Signer identity is checked against a trust source independent of the chain | T8, chain-anchors |
+| Audit durability and recovery are documented and tested | T6, T7, T24 |
+| Concurrent workers can't hold conflicting exclusive resources | T6, T7 |
+| Logs and approval prompts handle untrusted content safely | T9, T26 |
+| Docs separate safeguards from enforceable boundaries | T4 |
+
+### Classification
+
+| Task | Kind | Status |
+|---|---|---|
+| T1 run what was approved | gap | confirmed in code |
+| T2 approval coverage | gap | confirmed in code |
+| T3 lanes approving themselves | gap | confirmed in code (`_mark APPROVED`, editable `approvals/`, unauthenticated socket); no exploit written |
+| T6 crash windows | bug | confirmed in code (PID claim, no fsync) |
+| T8 verify merging outcomes | bug | confirmed in code |
+| T8 chain replacement and truncation | gap | confirmed in code |
+| T10 hidden commands taking any lane | gap | confirmed in code |
+| T11 timeout leaves children | bug | confirmed in code |
+| T16 no TLS on the hub | gap | confirmed in code |
+| T24 chain append over 256 KiB | bug | confirmed in code |
+| T26 escape codes in the terminal prompt | bug | confirmed in code (raw write) |
+| T26 control characters in the live view | hypothesis | untested |
+| T9 secret leaks | hypothesis | untested |
+| Concurrent approval requests and disconnects (T3) | hypothesis | untested |
 
 ---
 
