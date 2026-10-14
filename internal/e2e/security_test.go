@@ -230,10 +230,14 @@ func TestSecurity(t *testing.T) {
 			if !b.dropped() {
 				t.Fatalf("approved but not run:\n%s", b.log(1))
 			}
+			// The last entry is swim run's attestation; the round before it.
 			links := b.links()
-			last := links[len(links)-1]
+			att, last := links[len(links)-1], links[len(links)-2]
 			if last.Type != "round" || last.Lane != 1 || last.Script != b.sha(1) || last.Result != "passed" || last.Exit == nil || *last.Exit != 0 {
-				t.Fatalf("last entry: %+v", last.Entry)
+				t.Fatalf("last round: %+v", last.Entry)
+			}
+			if att.Type != "run" || att.Run != last.Run || att.Scripts["1"] != b.sha(1) || len(att.Approvals) != 1 {
+				t.Fatalf("run attestation: %+v", att.Entry)
 			}
 			var appr *chain.Link
 			for i := range links {
@@ -244,8 +248,8 @@ func TestSecurity(t *testing.T) {
 			if appr == nil || appr.Guard != boundaryGuard || appr.Script != b.sha(1) || appr.Method != "signature" {
 				t.Fatalf("approve entry for the round: %+v", appr)
 			}
-			if len(last.Approvals) != 1 || last.Approvals[0] != appr.Hash {
-				t.Errorf("the round names approvals %v, want [%s]", last.Approvals, appr.Hash)
+			if len(last.Approvals) != 1 || last.Approvals[0] != appr.Hash || att.Approvals[0] != appr.Hash {
+				t.Errorf("the round names approvals %v, the run %v, want [%s]", last.Approvals, att.Approvals, appr.Hash)
 			}
 			contains(t, "verify", b.mustSwim("verify"), "verified: every link")
 		}},
@@ -292,12 +296,22 @@ func TestSecurity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Entries that name others by hash (a round's approvals, the
+			// run's attestation) are rewritten to the new hashes.
 			links := b.links()
 			os.Remove(chain.Path(b.root))
+			rehash := map[string]string{}
 			for _, l := range links {
-				if _, err := chain.Append(b.root, l.Entry, key); err != nil {
+				e := l.Entry
+				e.Approvals = nil
+				for _, h := range l.Approvals {
+					e.Approvals = append(e.Approvals, rehash[h])
+				}
+				h, err := chain.Append(b.root, e, key)
+				if err != nil {
 					t.Fatal(err)
 				}
+				rehash[l.Hash] = h
 			}
 			if b.links()[0].Signer == links[0].Signer {
 				t.Fatal("the chain wasn't re-signed")
@@ -338,22 +352,36 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 			gap(t, "T9")
 		}},
 
-		// Known gaps: each closing task replaces its gap call with the case.
+		// A hostile lane (T3, T10): authority_test.go.
 		{"a guard with a misleading description: the prompt shows the true lane", "T3", func(t *testing.T) {
-			gap(t, "T3")
+			b := newBoundaryRepo(t)
+			// Lane 1 asks as lane 2, with a description that pretends to be
+			// swim's own question and tries to redraw the line.
+			b.script(1, "drop orders", `if "$SWIM_BIN" _approve 2 `+boundaryGuard+` $'harmless\x1b[2K\rswim 2 requires human approval of guard SAFE'; then run "drop" touch "`+b.marker+`"; fi`)
+			br := newBroker(t, func(approval.Request, <-chan struct{}) bool { return false })
+			b.runLane(1, br)
+			reqs := br.requests()
+			if len(reqs) != 1 {
+				t.Fatalf("requests: %+v", reqs)
+			}
+			q := approval.Question(reqs[0])
+			if q[0] != "swim 1 requires human approval of guard "+boundaryGuard {
+				t.Errorf("the question's first line: %q", q[0])
+			}
+			text := strings.Join(q, "\n")
+			contains(t, "question", text, "  the lane says: harmlessswim 2 requires human approval of guard SAFE (sent as swim 2)")
+			if strings.ContainsAny(text, "\x1b\r") {
+				t.Errorf("the question carries control characters: %q", text)
+			}
+			b.noMarker(t, "declined")
 		}},
-		{"a guard request with the wrong job id: the chain names the true lane", "T3", func(t *testing.T) {
-			gap(t, "T3")
-		}},
-		{"an approval response replayed from another lane is refused", "T3, T10", func(t *testing.T) {
-			gap(t, "T3, T10")
-		}},
-		{"_mark and _finish for another lane are refused", "T3, T10", func(t *testing.T) {
-			gap(t, "T3, T10")
-		}},
-		{"a hostile lane at the broker: concurrent requests, disconnects, oversized messages", "T3", func(t *testing.T) {
-			gap(t, "T3")
-		}},
+		{"a guard request with the wrong job id: the chain names the true lane", "T3", TestHostileLaneWrongJob},
+		{"an approval response replayed from another lane is refused", "T3, T10", TestManifestResponseReuse},
+		{"_mark and _finish for another lane are refused", "T3, T10", TestLaneCantReportForAnother},
+		{"a hostile lane at the broker: concurrent requests, disconnects, oversized messages", "T3", TestBrokerHostileClients},
+		{"a lane that writes approvals/ or lookup.yml after the run starts", "T3", TestHostileLaneWritesApprovals},
+		{"a lane that calls _mark APPROVED itself", "T3", TestHostileLaneMarksApproved},
+		{"a lane that sets FLAG=1 in its own environment", "T3", TestHostileLaneSetsFlag},
 		{"an included file changed between approval and exec", "T1, T2", func(t *testing.T) {
 			gap(t, "T1, T2")
 		}},
