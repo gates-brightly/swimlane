@@ -1,0 +1,11 @@
+{
+  "name": "@gates-brightly/swim",
+  "version": "1.0.0",
+  "description": "Native steps for swim lane scripts in TypeScript and JavaScript (the swim.lane/v1 protocol)",
+  "type": "module",
+  "main": "swim.ts",
+  "types": "swim.ts",
+  "exports": { ".": "./swim.ts" },
+  "license": "MIT",
+  "engines": { "node": ">=22.6" }
+}

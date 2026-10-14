@@ -190,6 +190,7 @@ type sideFile struct {
 	MatrixExclude  []string           `yaml:"matrix-exclude"`
 	MatrixParallel *int               `yaml:"matrix-parallel"`
 	MatrixFail     *string            `yaml:"matrix-fail"`
+	Includes       *strList           `yaml:"includes"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -231,7 +232,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs, matrix, matrix-exclude, matrix-parallel, matrix-fail)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs, matrix, matrix-exclude, matrix-parallel, matrix-fail, includes)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -309,6 +310,9 @@ func applySidecar(path string, info *Info) error {
 	}
 	if sf.Stub != nil {
 		info.Stub = *sf.Stub
+	}
+	if sf.Includes != nil {
+		info.Includes = append([]string(nil), *sf.Includes...)
 	}
 	if len(sf.Matrix) > 0 {
 		keys := make([]string, 0, len(sf.Matrix))

@@ -338,7 +338,20 @@ func ScriptBytes(root string, n int) ([]byte, error) {
 			}
 		}
 	}
+	// # Includes: (globs): local modules and other files that are part of
+	// the round.
+	for _, g := range append(info.Includes, sideIncludes(root, n)...) {
+		matches, _ := filepath.Glob(filepath.Join(root, g))
+		for _, m := range matches {
+			if st, err := os.Stat(m); err == nil && !st.IsDir() {
+				if rel, err := filepath.Rel(root, m); err == nil {
+					files = append(files, rel)
+				}
+			}
+		}
+	}
 	sort.Strings(files)
+	files = dedupe(files)
 	var b bytes.Buffer
 	b.Write(data)
 	for _, f := range files {
@@ -346,10 +359,32 @@ func ScriptBytes(root string, n int) ([]byte, error) {
 		if err != nil {
 			fd = []byte("(missing)\n")
 		}
-		fmt.Fprintf(&b, "\n# swim: matrix file %s\n", f)
+		fmt.Fprintf(&b, "\n# swim: included file %s\n", f)
 		b.Write(fd)
 	}
 	return b.Bytes(), nil
+}
+
+func sideIncludes(root string, n int) []string {
+	sc := Sidecar(root, n)
+	if !fileExists(sc) {
+		return nil
+	}
+	var side Info
+	if applySidecar(sc, &side) != nil {
+		return nil
+	}
+	return side.Includes
+}
+
+func dedupe(s []string) []string {
+	var out []string
+	for i, v := range s {
+		if i == 0 || v != s[i-1] {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func fileExists(p string) bool {

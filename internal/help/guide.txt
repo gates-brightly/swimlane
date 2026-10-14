@@ -527,6 +527,25 @@ OTHER LANGUAGES
       swim("gate", "target is ours", "--", "aws", "s3api", "head-bucket", "--bucket", "orders")
       if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: replaced)") == 0:
           swim("run", "delete bucket", "--", "aws", "s3", "rb", "s3://orders")
+  Native SDKs: instead of a process per step, a lane can use swim's SDK
+  for its language, over a socket swim's wrapper serves for the lane
+  (protocol swim.lane/v1, proto/swim/lane/v1/README.md). swim still decides
+  everything; the SDK raises RoundEnded when the round is over, and the
+  program has 10s to unwind (finally blocks) before it is stopped.
+      Python      sdk/python (pip install swim-lanes; import swim)
+                    with swim.round() as r:
+                        r.gate("tf plan", ["terraform", "plan"])
+                        with r.step("table is empty", gate=True) as s:   # in-process
+                            s.log("items: 0"); s.require(n == 0, "has items")
+      TypeScript  sdk/ts (@gates-brightly/swim; Node, Bun, Deno)
+                    await round(async (r) => { await r.gate("tf plan", ["terraform", "plan"]); });
+      Go          sdk/go/swim (compiled lanes): os.Exit(swim.Round(func(r *swim.R) error { ... }))
+  Each has run, gate, snapshot, evidence, step (in-process, logged as
+  "PASS  <label> (in-process)"), stage, guard, confirm, drift, stop, msg,
+  input, output, and outcome handlers (on_success / on_failure / on_exit,
+  registered first). Register # Includes: lib/*.py for the local modules a
+  lane imports: they're hashed with the script, so approvals cover them
+  (lint warns about local imports it doesn't cover).
   Header keys are comments, # or //, as in a bash lane. A binary (or any
   lane) can keep them in a sidecar lane.N.yml instead; its keys win:
       round: cut over orders

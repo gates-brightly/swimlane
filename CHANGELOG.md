@@ -31,6 +31,26 @@ To cut a release:
 
 ### Added
 
+- **Native SDKs over a lane protocol:**
+  - **The protocol:** `swim _wrap` serves `swim.lane/v1` (JSON lines over a
+    per-lane Unix socket, mode 0600, with a per-lane token) to lanes in
+    other languages. `proto/swim/lane/v1/README.md` is the contract.
+  - **The SDKs:** Python (`sdk/python`, `swim-lanes`, `import swim`),
+    TypeScript (`sdk/ts`, `@gates-brightly/swim`, runs as is under
+    `node --experimental-strip-types`) and Go (`sdk/go/swim`). Each gives
+    run, gate, snapshot, evidence, stage, guard, confirm, drift, stop, msg,
+    input, output and outcome handlers as calls.
+  - **In-process steps:** checks the program runs itself (`with
+    r.step(...)`) are logged as `<label> (in-process)`. A failed in-process
+    gate ends the round.
+  - **Ending the round:** the SDK raises `RoundEnded`, and the program gets
+    10 seconds to unwind before it's stopped.
+  - **Conformance:** one test round in bash, Python, TypeScript and Go must
+    produce the same log.
+  - **`# Includes:`** puts local modules in the script's hash, so approvals
+    cover them. Lint warns about uncovered local imports (`includes`) and
+    about SDK lanes running commands themselves (`sdk-bypass`).
+
 - **Plan approvals (evidence):**
   - **Evidence steps:** `evidence "<label>" cmd` (or `swim evidence` from
     any language) is a check stage step whose output is saved, normalized

@@ -1,6 +1,6 @@
 # Native SDKs over a lane protocol
 
-Status: proposed
+Status: shipped (unreleased)
 
 ## Summary
 
@@ -167,20 +167,38 @@ exists when swim starts it. The message says to run it with `swim run N`.
   `subprocess` or `child_process` calls that bypass `r.run`.
 - **Not in scope:** full static analysis.
 
-## Open questions
+## Open questions (answered)
 
-1. **Package names:** "Swimlane" is an existing security-automation vendor
-   with its own `swimlane` packages on PyPI and npm. Use something like
-   `swim-lanes`, or a scope such as `@gates-brightly/swim`?
-2. **`Includes` or single-file rounds:** hash declared includes, or require
-   SDK rounds to be one file (plus installed packages)?
-3. **Bash lanes:** keep bash on the subprocess path, or wrap bash lanes too
-   so everything goes through one server?
-4. **Transport weight:** `grpcio` is heavy in Python. Is Connect over a Unix
-   socket (HTTP/1.1, binary or JSON) a lighter choice with the same proto?
-5. **Capturing stdout:** should in-process steps capture the program's
-   stdout and stderr automatically while a step is open, or only what
-   `s.log` sends?
+1. **Package names:** `swim-lanes` on PyPI (imported as `swim`) and
+   `@gates-brightly/swim` on npm. The Go package is
+   `github.com/gates-brightly/swimlane/sdk/go/swim`.
+2. **`Includes` or single-file rounds:** `# Includes:` (globs). The files
+   are hashed with the script (`lane.ScriptBytes`), and lint warns about a
+   local import they don't cover.
+3. **Bash lanes:** they stay on the subprocess path (the library), which
+   already works everywhere.
+4. **Transport:** JSON lines over the Unix socket, not gRPC. The contract
+   (`proto/swim/lane/v1/README.md`) is the same set of calls the spec
+   sketched, and the SDKs have no dependencies (`grpcio` would weigh more
+   than the Python SDK itself).
+5. **Capturing stdout:** only what `s.log` sends. The program's own stdout
+   still reaches the terminal and the wrapper.
+
+Decided while building:
+
+- **One implementation:** a run-type call is the in-lane command (`swim run
+  "<label>" -- ...`) run by the wrapper with the lane's env. Guards, stages,
+  messages, inputs and outputs work the same way, so the SDKs can't drift
+  from the CLI.
+- **Grace:** with an SDK connected, an ended round gives the program 10s to
+  unwind (`RoundEnded`, finally blocks) before the wrapper stops it.
+- **Confirm** asks through the approval path, with flag `SWIM_CONFIRM`,
+  which nobody can preset. No ends the round.
+- **Handlers** registered with the SDK run as the round closes, inside
+  `handler` sections, soft.
+- **Not done:** publishing the SDKs from `make release`, and `buf breaking`
+  (there's no protobuf). The conformance test runs bash, Python, TypeScript
+  (when node can strip types) and Go against one round.
 
 ## Testing
 

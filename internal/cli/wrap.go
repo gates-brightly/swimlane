@@ -100,6 +100,13 @@ func cmdWrap(args []string) error {
 	mw := cfg.Masker(os.Environ()).Writer(capF)
 	capture := &syncWriter{w: &step.StripWriter{W: mw}}
 
+	// The lane protocol for native SDKs (lanesock.go).
+	srv, sockEnv, err := startLaneServer(root, bin, cfg, n, env)
+	if err == nil {
+		defer srv.close()
+		env = append(env, sockEnv...)
+		srv.env = env
+	}
 	child := exec.Command(argv[0], argv[1:]...)
 	child.Dir, child.Env, child.Stdin = root, env, os.Stdin
 	child.Stdout = io.MultiWriter(os.Stdout, capture)
@@ -113,7 +120,7 @@ func cmdWrap(args []string) error {
 	} else {
 		done := make(chan error, 1)
 		go func() { done <- child.Wait() }()
-		code = waitChild(root, n, child, done, sigs)
+		code = waitChild(root, n, child, done, sigs, srv)
 	}
 	dur := time.Since(began)
 	// A step the program started may still be writing its block (it was
@@ -171,8 +178,8 @@ func cmdWrap(args []string) error {
 
 // waitChild waits for the lane's program, acting on signals meanwhile, and
 // returns its exit code (128+signal if a signal killed it).
-func waitChild(root string, n int, child *exec.Cmd, done chan error, sigs chan os.Signal) int {
-	var kill <-chan time.Time
+func waitChild(root string, n int, child *exec.Cmd, done chan error, sigs chan os.Signal, srv *laneServer) int {
+	var kill, grace <-chan time.Time
 	ending := false
 	for {
 		select {
@@ -181,6 +188,11 @@ func waitChild(root string, n int, child *exec.Cmd, done chan error, sigs chan o
 		case <-kill:
 			child.Process.Kill()
 			kill = nil
+		case <-grace:
+			// The SDK's program didn't unwind in time.
+			grace = nil
+			terminate(child)
+			kill = time.After(5 * time.Second)
 		case s := <-sigs:
 			switch s {
 			case syscall.SIGUSR1:
@@ -191,6 +203,11 @@ func waitChild(root string, n int, child *exec.Cmd, done chan error, sigs chan o
 				if _, claimed := lane.EndCode(root, n); !claimed && lane.ClaimEnd(root, n, 1) {
 					// Not an in-lane command: the git shim refused a command.
 					cmdMark([]string{strconv.Itoa(n), logparse.Stop, "blocked command: git push/commit/pull (swim never writes to git)"})
+				}
+				if srv != nil && srv.connected.Load() {
+					// An SDK raises RoundEnded: let the program unwind first.
+					grace = time.After(sdkGrace)
+					continue
 				}
 				terminate(child)
 				kill = time.After(5 * time.Second)
@@ -207,6 +224,10 @@ func waitChild(root string, n int, child *exec.Cmd, done chan error, sigs chan o
 		}
 	}
 }
+
+// sdkGrace is how long a program using a native SDK has to unwind (its
+// finally blocks) after its round ends, before it is stopped.
+const sdkGrace = 10 * time.Second
 
 // terminate asks the lane's program to end: its whole process group when
 // the wrapper leads one (the launcher starts lanes in their own), so the

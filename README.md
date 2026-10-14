@@ -239,6 +239,11 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
+- **Native SDKs:** Python (`import swim`), TypeScript and Go libraries give
+  lane programs swim's steps as calls, plus in-process steps for native
+  checks (a `boto3` call logged as a step). They talk to the lane's socket
+  (`swim.lane/v1`), and swim still decides everything. `# Includes:` puts
+  local modules in the script's hash.
 - **Approve the plan, not just the script:** `evidence "tf plan" terraform
   plan ...` in the check stage records what the change will do.
   `swim approve` shows it and signs its hash with the script, and the

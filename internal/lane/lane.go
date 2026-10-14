@@ -125,6 +125,10 @@ type Info struct {
 	MatrixExclude  [][]KV
 	MatrixParallel int
 	MatrixFail     string
+	// Includes are repo files (globs) that are part of the round, such as
+	// local modules a Python or TypeScript lane imports: they're hashed
+	// with the script (ScriptBytes), so approvals cover them.
+	Includes []string
 	// UsesEvidence: the script has evidence steps (evidence "tf plan" ...),
 	// so its approvals cover the evidence too (see swim approve).
 	UsesEvidence bool
@@ -186,7 +190,7 @@ var (
 	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail):\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
@@ -204,7 +208,7 @@ var (
 	guardArgUse = regexp.MustCompile(`['"]guard['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]`)
 	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
-		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true}
+		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -339,6 +343,12 @@ func ParseScript(src string) Info {
 					}
 				case "Outputs":
 					info.setOutputs(sepRE.Split(v, -1), "Outputs:")
+				case "Includes":
+					for _, g := range sepRE.Split(v, -1) {
+						if g != "" && g != "-" && !strings.EqualFold(g, "none") {
+							info.Includes = append(info.Includes, g)
+						}
+					}
 				case "Matrix", "Matrix-Exclude", "Matrix-Parallel", "Matrix-Fail":
 					if v != "" && v != "-" {
 						info.setMatrixLine(m[1], v)

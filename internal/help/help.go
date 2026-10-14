@@ -706,6 +706,10 @@ swim hub leave | status
                            name (on_fail, onfailure, ...) swim would never call
     handler-reached (warn) an on_failure with a guard that never checks reached
     outputs (warn)         an output whose name suggests secrets (not masked)
+    includes (warn)        a Python/TypeScript lane imports a local module its
+                           # Includes: doesn't cover (approvals wouldn't cover it)
+    sdk-bypass (info)      an SDK lane runs commands with subprocess or
+                           child_process instead of r.run
     check-unsafe (warn)    a destructive-looking command (terraform apply, a
                            delete) before stage change: plan --check runs it
     input-dep (error)      input N of a lane not in After: (or config deps)

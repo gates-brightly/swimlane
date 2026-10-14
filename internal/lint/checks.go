@@ -2,6 +2,8 @@ package lint
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -763,6 +765,99 @@ func checkCheckUnsafe(c *Context, s *Script) []finding.Finding {
 		if m != "" {
 			out = append(out, f(finding.Warn, "check-unsafe", i, "move it after `stage change` (snapshot and check stages must be read-only)",
 				"%q runs before `stage change`, so swim plan --check would run it for real", strings.ToLower(m)))
+		}
+	}
+	return out
+}
+
+var (
+	pyImportRE = regexp.MustCompile(`^\s*(?:from\s+(\.?[A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))`)
+	tsImportRE = regexp.MustCompile(`(?:from|import)\s*\(?\s*["'](\.{1,2}/[^"']+)["']`)
+	pySDKRE    = regexp.MustCompile(`(?m)^\s*(?:import\s+swim\b|from\s+swim\s+import)`)
+	pyBypassRE = regexp.MustCompile(`\b(subprocess\.(?:run|call|check_call|check_output|Popen)|os\.system|os\.popen)\s*\(`)
+	tsSDKRE    = regexp.MustCompile(`["']@gates-brightly/swim["']|/sdk/ts/swim\.ts["']`)
+	tsBypassRE = regexp.MustCompile(`\b(execSync|execFileSync|spawnSync|exec|execFile|spawn)\s*\(`)
+)
+
+// checkIncludes: a lane in Python or TypeScript that imports a local module
+// should list it in # Includes:, or approvals of the script don't cover
+// what it actually runs.
+func checkIncludes(c *Context, s *Script) []finding.Finding {
+	if c.Root == "" {
+		return nil
+	}
+	ext := strings.ToLower(filepath.Ext(s.Name))
+	covered := func(rel string) bool {
+		for _, g := range s.Info.Includes {
+			if ok, _ := filepath.Match(g, rel); ok {
+				return true
+			}
+			if strings.HasSuffix(g, "/**") || strings.HasSuffix(g, "/") {
+				if strings.HasPrefix(rel, strings.TrimSuffix(strings.TrimSuffix(g, "**"), "/")+"/") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	var out []finding.Finding
+	for i, line := range s.v.raw {
+		var cands []string
+		switch ext {
+		case ".py":
+			m := pyImportRE.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			mod := strings.TrimPrefix(m[1]+m[2], ".")
+			if mod == "swim" {
+				continue
+			}
+			p := strings.ReplaceAll(mod, ".", "/")
+			cands = []string{p + ".py", p + "/__init__.py"}
+		case ".ts", ".mts", ".js", ".mjs":
+			m := tsImportRE.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			p := filepath.Clean(m[1])
+			cands = []string{p, p + ".ts", p + ".js", p + "/index.ts", p + "/index.js"}
+		default:
+			return nil
+		}
+		for _, cand := range cands {
+			if st, err := os.Stat(filepath.Join(c.Root, cand)); err == nil && !st.IsDir() {
+				if !covered(cand) {
+					out = append(out, f(finding.Warn, "includes", i, "add `# Includes: "+cand+"` (globs work) so approvals cover it",
+						"imports local %s, which isn't in # Includes: (an approval of the script wouldn't cover it)", cand))
+				}
+				break
+			}
+		}
+	}
+	return out
+}
+
+// checkSDKBypass: in a lane using an SDK, commands run with subprocess or
+// child_process skip swim's logging, timeouts and blocked-command checks.
+func checkSDKBypass(c *Context, s *Script) []finding.Finding {
+	var bypass *regexp.Regexp
+	switch {
+	case pySDKRE.MatchString(s.Src):
+		bypass = pyBypassRE
+	case tsSDKRE.MatchString(s.Src):
+		bypass = tsBypassRE
+	default:
+		return nil
+	}
+	var out []finding.Finding
+	for i, line := range s.v.raw {
+		if t := strings.TrimSpace(line); strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//") {
+			continue
+		}
+		if m := bypass.FindStringSubmatch(line); m != nil {
+			out = append(out, f(finding.Info, "sdk-bypass", i, "use r.run(...) (or r.step for in-process work) so swim logs it",
+				"%s runs a command swim doesn't see: no log block, timeout or blocked-command check", m[1]))
 		}
 	}
 	return out

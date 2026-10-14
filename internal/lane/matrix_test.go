@@ -68,7 +68,7 @@ func TestMatrixFileValuesAndScriptBytes(t *testing.T) {
 	b1, _ := ScriptBytes(root, 1)
 	os.WriteFile(filepath.Join(root, "services.txt"), []byte("orders\n"), 0o644)
 	b2, _ := ScriptBytes(root, 1)
-	if string(b1) == string(b2) || !strings.Contains(string(b1), "# swim: matrix file services.txt\n") {
+	if string(b1) == string(b2) || !strings.Contains(string(b1), "# swim: included file services.txt\n") {
 		t.Errorf("script bytes don't cover the value file:\n%s", b1)
 	}
 	t.Setenv(CellEnv, "orders")

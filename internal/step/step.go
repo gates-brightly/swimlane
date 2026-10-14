@@ -574,6 +574,17 @@ func flushMsgs(root string, n int, spool string) {
 // output, already plain text with secrets masked. It returns the step's
 // result line.
 func RecordOutput(logPath, label, cmdline string, start time.Time, dur time.Duration, exit int, out io.Reader) (string, error) {
+	kind, detail := logparse.Pass, ""
+	if exit != 0 {
+		kind, detail = logparse.Fail, fmt.Sprintf("exit %d", exit)
+	}
+	return RecordStep(logPath, kind, label, detail, cmdline, start, dur, out)
+}
+
+// RecordStep writes a finished step's block (result kind, label, detail,
+// command line and output) into the log: for steps swim didn't run itself
+// (a whole program, an SDK's in-process step).
+func RecordStep(logPath, kind, label, detail, cmdline string, start time.Time, dur time.Duration, out io.Reader) (string, error) {
 	sp, err := os.Create(SpoolPath(logPath))
 	if err != nil {
 		return "", err
@@ -586,10 +597,6 @@ func RecordOutput(logPath, label, cmdline string, start time.Time, dur time.Dura
 	}
 	if err != nil {
 		return "", err
-	}
-	kind, detail := logparse.Pass, ""
-	if exit != 0 {
-		kind, detail = logparse.Fail, fmt.Sprintf("exit %d", exit)
 	}
 	if err := writeBlock(logPath, logparse.StepLine(kind, label, detail, fmt.Sprintf("%.1fs", dur.Seconds()), clock), ""); err != nil {
 		return "", err
