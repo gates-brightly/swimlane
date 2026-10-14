@@ -876,6 +876,7 @@ swim queue add 4 5 --approve FLAG [-y] [--note "..."]   # or: swim queue 4 5 ...
 swim queue                                               # waiting, running, orphaned, done
 swim queue show|rm|requeue ID
 swim watch [--once] [-y] [--approved] [--no-tui]         # the worker
+swim watch --headless [--detach|--status|--stop]        # the worker with no terminal
 swim wait [--timeout D]                                  # block until idle and nothing queued
 ```
 
@@ -895,6 +896,36 @@ swim wait [--timeout D]                                  # block until idle and 
     it waits. Use ↑ ↓ to pick one, `r` to run it now (a job as `swim run N`,
     a waiting batch out of turn) and `q` to queue a job. A batch's live view
     lets ← → pick a lane to read, but never answers its guards.
+
+### Running unattended
+
+```sh
+swim watch --headless                        # foreground: under systemd, docker or tmux
+swim watch --headless --detach               # background; pid in .swim/headless.pid
+swim watch --headless --status | --stop
+swim watch --headless --install systemd      # or launchd: writes a user unit, prints how to enable it
+swim watch --headless --uninstall
+```
+
+- **`--headless`** is the same worker with no terminal: no screen, and it
+  never reads stdin. It needs the directory enrolled with a hub
+  (`swim hub enroll`), which marks it headless on its page.
+- **One per repo.** `.swim/headless.lock` holds the worker's pid; a second
+  `--headless` exits 2 and names it.
+- **`--detach`** starts it in its own session. Its output goes to
+  `.swim/headless.log`, rotated at 10 MiB with 3 kept. `--stop` sends it
+  SIGTERM, but only after checking that the pid is still `swim watch
+  --headless` and still holds the lock.
+- **Signals:** SIGTERM stops it after the batch in hand, like Ctrl-C. SIGHUP
+  only reopens its log, for logrotate; a running lane carries on.
+- **`--install systemd|launchd`** writes
+  `~/.config/systemd/user/swim-<id>.service` or
+  `~/Library/LaunchAgents/com.swim.<id>.plist`, where `<id>` is the repo
+  directory's name plus a hash of its path. The unit pins swim's path, the
+  repo, `PATH` and `SWIM_USER`, restarts on failure, and allows `term_grace`
+  plus 30s to stop. swim prints the `systemctl`/`launchctl` command (and
+  `loginctl enable-linger`) but never runs it. `-y` in a unit needs
+  `--i-mean-it`.
 
 ### Interrupts
 
@@ -1074,6 +1105,7 @@ they waited for.
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run when swim is idle. |
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's worker; on a terminal, pick a job to run (`r`) or queue (`q`). |
+| `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The worker with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
 | `swim verify [--strict]` / `swim history [--oneline]` / `swim chain repair` / `swim keys` | The chain of custody: prove it, read it, repair a cut-short write, and see who's who. |
@@ -1107,6 +1139,7 @@ they waited for.
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain of custody, and every script that ran. | No (export it to keep it) |
 | `.swim/queue/`, `.swim/runs/`, `.swim/snapshots/` | Queued batches, run records and each run's staged lane copies, snapshot output. | No |
 | `.swim/hub.yml` | This directory's hub enrollment. | No |
+| `.swim/headless.lock`, `.pid`, `.log` | A headless worker's lock, pidfile and own log (`swim watch --headless`). | No |
 
 ### Config
 

@@ -126,6 +126,10 @@ type Options struct {
 	// the queue): the view's keys only move around, never pre-answer a
 	// guard, and the view closes when the run ends.
 	Unattended bool
+	// NoHangup leaves SIGHUP to the caller (swim watch --headless reopens
+	// its log on it): it doesn't force the run the way a closed terminal
+	// does.
+	NoHangup bool
 
 	ev *events
 }
@@ -448,7 +452,11 @@ func Run(o Options) (int, error) {
 	// them, the third kills them at once. Lanes not yet started are skipped,
 	// and the summary still prints.
 	sigs := make(chan os.Signal, 4)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	if o.NoHangup {
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	} else {
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	}
 	defer signal.Stop(sigs)
 	go func() {
 		for s := range sigs {

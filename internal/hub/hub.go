@@ -93,6 +93,17 @@ type Snapshot struct {
 	Lanes    []Lane   `json:"lanes"`
 	Queue    []Batch  `json:"queue"`
 	Events   []string `json:"events"` // the end of .swim.log
+	// Headless is set when the worker runs with no terminal (swim watch
+	// --headless): nobody is at it to answer or interrupt.
+	Headless *HeadlessInfo `json:"headless,omitempty"`
+}
+
+// HeadlessInfo is how a headless worker runs.
+type HeadlessInfo struct {
+	Mode     string `json:"mode"`               // foreground, detached, systemd or launchd
+	Yes      bool   `json:"yes,omitempty"`      // -y: it approves every guard in every batch
+	Approved bool   `json:"approved,omitempty"` // --approved: it queues fully approved scripts by itself
+	Since    string `json:"since,omitempty"`    // when it started (RFC 3339)
 }
 
 // Sanitize makes every text field safe to show (ui.Safe): a lane wrote
@@ -118,6 +129,9 @@ func (s *Snapshot) Sanitize() {
 		}
 	}
 	s.Events = safeAll(s.Events)
+	if h := s.Headless; h != nil {
+		h.Mode, h.Since = ui.Safe(h.Mode), ui.Safe(h.Since)
+	}
 }
 
 // sanitize cleans a worker's display fields (not its key).

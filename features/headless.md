@@ -1,6 +1,9 @@
 # Headless workers, driven from the hub
 
-Status: proposed
+Status: in progress. Stage H1 (running headless: the lock, `--detach`,
+`--status`, `--stop`, `--install`, `--uninstall`, and the hub's headless
+marker) is done. H2 (hub users, sessions and commands) and H3 (approvals
+through the hub) remain.
 
 ## Summary
 
@@ -75,8 +78,7 @@ Hub access only lets someone do what the per-worker policy below allows.
 - **Signals:** SIGTERM and SIGINT behave as they do in `swim watch` today: the
   worker finishes the batch in hand, then exits. A second SIGTERM interrupts
   the running lanes (the same as `swim interrupt`) and exits after their
-  handlers run. systemd's `TimeoutStopSec` is set from the longest `Timeout:`
-  plus a margin.
+  handlers run. systemd's `TimeoutStopSec` is `term_grace` plus 30s.
 - **Config reloads** already happen every loop (`loadCfg`). SIGHUP also
   reopens `.swim/headless.log`, so logrotate works.
 - **`-y` and `--approved`** are still allowed, but `--install` refuses `-y`
@@ -242,22 +244,57 @@ POST   /api/login                                       user token -> session co
 
 ## Open questions
 
-- **Which command takes the flag?** Is it `swim watch --headless`, which this
-  spec assumes, or a separate `swim worker` command? `watch` already is the
-  worker, but its name suggests a screen.
-- **Should the default for `approvals:` be `signed`?** Signing in a browser
-  needs a terminal (`ssh-keygen -Y sign`) or the CLI. That's friction, and
-  it's deliberate. Is it acceptable?
-- **Should `run` from the hub ever carry approvals?** In this spec it never
-  does, so its guards ask through the hub at runtime. Should a signed `run`
-  be able to act as a signed queue entry, so standing approvals
-  (`approvals/auto.<user>.signature`) apply?
-- **Log retention on the hub:** in memory only (the proposal), or optionally
-  in the state dir with a TTL?
-- **More than one headless worker per repo:** the existing queue lock
-  (`queue.LockWorker`) already lets only one run at a time. Should the hub
-  show the others as standby?
-- **Windows service:** out of scope until swim supports Windows lanes.
+Answered:
+
+- **Which command takes the flag?** `swim watch --headless`.
+- **Should the default for `approvals:` be `signed`?** Yes (H3). The
+  setting lives in `swim.yml`'s `headless:` block: `approvals: signed|hub`,
+  `allow: [answer, interrupt, drain, log]` (`run` must be added), `logs:
+  on|off`, `command_ttl: 10m`, `answer_timeout: 30m`.
+- **Should `run` from the hub ever carry approvals?** No. It queues an
+  unsigned entry, `By: "hub:<user> via <url>"`, whose guards ask through
+  the hub at runtime (H2).
+- **Log retention on the hub:** in memory only: 8 MiB per log, 64 MiB in
+  all, least recently used first, 15-minute TTL (H2).
+- **More than one headless worker per repo:** no. `.swim/headless.lock`
+  allows one; a second `--headless` exits 2 naming the holder's pid.
+  Plain `swim watch` workers can still share the queue with it.
+- **Windows service:** none.
+
+Decided in H1:
+
+- **A hub enrollment is required** to start a headless worker (foreground,
+  `--detach` or `--install`): without `.swim/hub.yml` it refuses. `--status`,
+  `--stop` and `--uninstall` work without one.
+- **`<id>`** for unit names is the repo directory's name (lowercased,
+  `[a-z0-9-]`, at most 24 characters) plus the first 8 hex digits of the
+  SHA-256 of the repo's absolute path: `swim-billing-1a2b3c4d.service`,
+  `com.swim.billing-1a2b3c4d`. It stays the same while the repo doesn't
+  move.
+- **Stop timeout:** `TimeoutStopSec` (systemd) and `ExitTimeOut` (launchd)
+  are `term_grace` + 30s, not the longest `Timeout:`. SIGTERM already
+  forces the lanes after `term_grace`. systemd uses `KillMode=mixed`, so
+  SIGTERM reaches swim alone and swim stops its own lanes.
+- **Restarts:** `Restart=on-failure` and `KeepAlive: {SuccessfulExit:
+  false}`. A headless worker that is told to stop exits 0 (a failed batch
+  is recorded in its queue entry), so neither manager restarts it after
+  `--stop`.
+- **SIGHUP** reopens `.swim/headless.log` only for `--detach`, the one mode
+  where swim owns its log. Under systemd and launchd the manager owns the
+  output. The launcher's `Options.NoHangup` keeps SIGHUP from forcing a
+  running batch.
+- **`--status`** exits 0 when the worker runs and 3 when it doesn't. A
+  pidfile left by a killed worker is reported as stale.
+- **`--stop`** reads the pid from the lock, and checks the process's
+  command line for `watch --headless` before sending SIGTERM. It waits up
+  to `term_grace` + 30s for the lock to be released.
+- **How it was started** (`foreground`, `detached`, `systemd`, `launchd`) is
+  passed in `SWIM_HEADLESS_MODE`, which `--detach` and the units set. swim
+  unsets it before any lane starts. The hub snapshot reports it as
+  `headless: {mode, yes, approved, since}`.
+- **`--install` writes either kind on any OS.** It only writes a file.
+  `--uninstall` also removes systemd's `default.target.wants` link, and
+  prints `systemctl --user daemon-reload`, or `launchctl bootout`.
 
 ## Testing
 

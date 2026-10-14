@@ -1,0 +1,26 @@
+# swim headless worker for /home/al/src/my repo %1 "q" $X & <b>
+# Written by swim watch --headless --install systemd. Start it now and at
+# every login: systemctl --user enable --now swim-my-repo-1-q-x-b-0a1b2c3d.service
+# Remove it: swim watch --headless --uninstall, in the repo.
+
+[Unit]
+Description=swim headless worker (/home/al/src/my repo %%1 "q" $X & <b>)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/al/src/my repo %%1 "q" $X & <b>
+ExecStart="/opt/swim bin/swim" "watch" "--headless" "--interval" "5s"
+Environment="PATH=/opt/swim bin:/usr/bin:/bin"
+Environment="SWIM_USER=al"
+Environment=SWIM_HEADLESS_MODE=systemd
+Restart=on-failure
+RestartSec=10
+# SIGTERM reaches swim alone: the batch in hand stops at a step boundary,
+# forced after term_grace. What is left after term_grace + 30s is killed.
+KillMode=mixed
+TimeoutStopSec=40
+
+[Install]
+WantedBy=default.target

@@ -124,6 +124,7 @@ var dashTmpl = template.Must(template.New("dash").Funcs(funcs).Parse(`<!doctype 
 {{range .}}<div class="card{{if .Stale}} stale{{end}}">
   <h3><a href="/w/{{.ID}}">{{.Name}}</a> {{if .Stale}}<span class="pill bad">stale</span>{{else}}<span class="pill {{state .Activity}}">{{.Activity}}</span>{{end}}</h3>
   <div class="muted mono">{{.Host}}:{{.Root}}</div>
+  {{with .Headless}}<div><span class="pill">headless · {{.Mode}}</span>{{if .Yes}} <b class="bad">-y</b>{{end}}</div>{{end}}
   <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
   {{with .Counts}}<div style="margin-top:6px">{{range $s, $n := .}}<span class="{{state $s}}">{{$n}} {{$s}}</span> &nbsp;{{end}}</div>{{end}}
   {{with .QueueCounts}}<div class="muted">queue: {{range $s, $n := .}}{{$n}} {{$s}} &nbsp;{{end}}</div>{{end}}
@@ -137,6 +138,7 @@ var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doct
 <div><a href="/">← all workers</a></div>
 <h1>{{.Name}} {{if .Stale}}<span class="pill bad">stale</span>{{else}}<span class="pill {{state .Activity}}">{{.Activity}}</span>{{end}}</h1>
 <div class="muted mono">{{.Host}}:{{.Root}} · pid {{.PID}}</div>
+{{with .Headless}}<div><span class="pill">headless · {{.Mode}}</span>{{if .Since}} <span class="muted">since {{.Since}}</span>{{end}}{{if .Approved}} <span class="muted">· --approved</span>{{end}}{{if .Yes}} <b class="bad">-y: approves every guard in every batch</b>{{end}}</div>{{end}}
 <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
 <h2>Lanes</h2>
 <div class="wrap"><table><tr><th>lane</th><th>state</th><th>round</th><th>step</th><th>pass</th><th>fail</th><th>skip</th><th>run</th></tr>

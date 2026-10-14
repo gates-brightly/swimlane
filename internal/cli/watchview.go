@@ -243,6 +243,6 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 	if err != nil {
 		return err.Error()
 	}
-	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true)
+	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false)
 	return fmt.Sprintf("#%d %s", claimed.Seq, res.Result)
 }

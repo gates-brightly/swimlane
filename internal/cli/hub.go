@@ -547,6 +547,10 @@ func quietHub(on bool) {
 func hubSnapshot(root string, cfg *config.Config, name, activity string, every time.Duration) hub.Snapshot {
 	s := hub.Snapshot{Worker: hubWorker(root, name), Activity: activity, At: time.Now().UTC().Format(time.RFC3339),
 		Interval: every.Seconds(), Lanes: []hub.Lane{}, Queue: []hub.Batch{}, Events: []string{}}
+	if headlessInfo != nil {
+		h := *headlessInfo
+		s.Headless = &h
+	}
 	if st, _ := status.Load(root); st != nil {
 		inUse := map[int]bool{} // now: the worker outlives any one config load
 		for _, n := range lane.Associated(root) {
