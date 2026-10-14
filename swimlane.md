@@ -50,6 +50,17 @@ swim is **a safety and audit layer for letting AI write production operations wo
 
 Lead with the second when it applies. The chain of custody is the hardest part of swim for others to copy.
 
+## What swim protects against
+
+Approval, signing and the chain prove **who** decided **what**. They don't make an arbitrary script safe. Every feature should make that line sharper, not blur it.
+
+- **Authorization:** nothing that needs approval runs without valid authorization for that exact operation. A guard approves by its flag, signed approvals, the person at the terminal or `-y`, and otherwise is a dry run; it fails closed when there's no one to ask, the approval socket fails, the round times out or the run stops. The guard itself is a bash function in the lane: advisory, not enforced.
+- **Integrity:** what runs matches what was approved. Approvals bind to the script's SHA-256, so an approval stops counting once the script is edited, and a queued lane edited after it was queued is skipped. Still open: edits made mid-run (T1) and what the hash covers (T2).
+- **Attribution:** every run traces back to its job, worker, approval and outcome, in a hash-linked, SSH-signed chain that records how each guard was approved. `swim verify` checks each signature against the key stored in that entry; tying signers to keys pinned outside the repo, and detecting truncation, is still open (T8).
+- **Out of scope:** a malicious or mistaken script that is approved and run with broad credentials. That needs scoped credentials and OS isolation; [features/guarded-secrets.md](features/guarded-secrets.md) designs releasing a credential only after its guard is approved.
+
+swim is a tool a person operates, with teammates approving from their own machines, not a multi-user production executor. The full model, with the test behind each claim, is [docs/trust-model.md](docs/trust-model.md).
+
 ## Approach
 
 - **The session writes, the operator runs, the log reports.** The planner never runs anything against the target. It writes a *round*, the operator runs it, and the planner reads the log.
