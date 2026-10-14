@@ -56,6 +56,7 @@ func init() {
 		"revoke":    {run: cmdRevoke},
 		"verify":    {run: cmdVerify},
 		"history":   {run: cmdHistory},
+		"chain":     {run: cmdChain},
 		"keys":      {run: cmdKeys},
 		"doctor":    {run: cmdDoctor},
 		"help":      {run: cmdHelp},

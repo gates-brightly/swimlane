@@ -12,6 +12,7 @@ package chain
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,7 +21,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -46,7 +46,7 @@ type Entry struct {
 	Seq  int    `json:"seq"`
 	Prev string `json:"prev"` // SHA-256 of the previous line; "" for the first
 	At   string `json:"at"`
-	Type string `json:"type"` // approve | round
+	Type string `json:"type"` // approve | round | grant | revoke | repair
 
 	Run    string `json:"run,omitempty"`
 	Lane   int    `json:"lane,omitempty"`
@@ -116,22 +116,50 @@ func payload(e Entry) []byte {
 // Append links e to the end of the chain, signs it with key (nil: an
 // unsigned entry, still linked) and returns the new line's hash.
 func Append(root string, e Entry, key *sign.Key) (string, error) {
-	path := Path(root)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := openLocked(root)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		return "", err
-	}
 	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-	last, seq, err := lastLine(f)
+	st, err := f.Stat()
 	if err != nil {
 		return "", err
+	}
+	line, err := link(f, st.Size(), e, key)
+	if err != nil {
+		return "", err
+	}
+	if err := writeLine(f, st.Size(), line); err != nil {
+		return "", err
+	}
+	return Hash(line), nil
+}
+
+// openLocked opens the chain file (creating it) and takes its exclusive
+// lock; the caller unlocks and closes it.
+func openLocked(root string) (*os.File, error) {
+	path := Path(root)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+// link fills in e's seq, prev hash, time and signature as the entry after
+// the chain's first end bytes, and returns its line (without the newline).
+func link(f *os.File, end int64, e Entry, key *sign.Key) ([]byte, error) {
+	last, seq, err := lastLine(f, end)
+	if err != nil {
+		return nil, err
 	}
 	e.Seq, e.Prev = seq+1, ""
 	if last != nil {
@@ -145,50 +173,142 @@ func Append(root string, e Entry, key *sign.Key) (string, error) {
 		e.Signer = key.Public
 		sig, err := sign.Sign(key, payload(e))
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		e.Sig = sig
 	}
-	line, err := json.Marshal(e)
-	if err != nil {
-		return "", err
-	}
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		return "", err
-	}
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		return "", err
-	}
-	return Hash(line), nil
+	return json.Marshal(e)
 }
 
-// lastLine returns the chain's last line and its seq (nil, 0 when empty).
-func lastLine(f *os.File) ([]byte, int, error) {
-	st, err := f.Stat()
-	if err != nil || st.Size() == 0 {
+// writeLine writes line and its newline at offset at and syncs, so a
+// recorded entry survives a crash right after it.
+func writeLine(f *os.File, at int64, line []byte) error {
+	if _, err := f.WriteAt(append(line, '\n'), at); err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
+// lastLine returns the last line of the chain's first end bytes and its
+// seq (nil, 0 when empty).
+func lastLine(f *os.File, end int64) ([]byte, int, error) {
+	if end == 0 {
+		return nil, 0, nil
+	}
+	nl := make([]byte, 1)
+	if _, err := f.ReadAt(nl, end-1); err != nil {
 		return nil, 0, err
 	}
-	// Read back far enough to hold the last line.
-	size := st.Size()
-	start := size - 256*1024
-	if start < 0 {
-		start = 0
+	if nl[0] != '\n' {
+		return nil, 0, fmt.Errorf("%s: the last entry is incomplete (no newline: a write was cut short); swim chain repair removes it", f.Name())
 	}
-	buf := make([]byte, size-start)
-	if _, err := f.ReadAt(buf, start); err != nil && !errors.Is(err, io.EOF) {
+	start, err := lineStart(f, end-1)
+	if err != nil {
 		return nil, 0, err
 	}
-	if buf[len(buf)-1] != '\n' {
-		return nil, 0, fmt.Errorf("%s: the last entry is incomplete (no newline); swim verify shows where", f.Name())
+	line := make([]byte, end-1-start)
+	if _, err := f.ReadAt(line, start); err != nil {
+		return nil, 0, err
 	}
-	body := buf[:len(buf)-1]
-	i := strings.LastIndexByte(string(body), '\n')
-	line := body[i+1:]
 	var e Entry
 	if err := json.Unmarshal(line, &e); err != nil {
 		return nil, 0, fmt.Errorf("%s: the last entry isn't valid: %v", f.Name(), err)
 	}
 	return line, e.Seq, nil
+}
+
+// lineStart is the offset just after the last newline before end (0 when
+// there is none). It reads backwards in windows that double from 64 KiB,
+// so an entry of any size is found without reading the whole chain.
+func lineStart(f *os.File, end int64) (int64, error) {
+	win := int64(64 * 1024)
+	for hi := end; hi > 0; win *= 2 {
+		lo := max(hi-win, 0)
+		buf := make([]byte, hi-lo)
+		if _, err := f.ReadAt(buf, lo); err != nil {
+			return 0, err
+		}
+		if i := bytes.LastIndexByte(buf, '\n'); i >= 0 {
+			return lo + int64(i) + 1, nil
+		}
+		hi = lo
+	}
+	return 0, nil
+}
+
+// Repaired is what Repair removed: the incomplete final entry's size and
+// hash, and where it was kept ("" and 0 when there was nothing to repair).
+type Repaired struct {
+	Bytes  int64
+	SHA256 string
+	Backup string // .swim/chain.tail-<time>.bak
+	Hash   string // the repair entry's hash
+}
+
+// Repair removes a half-written final line (a write cut short by a crash or
+// a full disk): under the chain's lock it moves the bytes after the last
+// newline into .swim/chain.tail-<time>.bak, truncates the chain there and
+// appends a repair entry, signed with key, recording what was removed.
+// Nothing changes when the chain ends with a complete line. The repair
+// entry is signed before anything is touched, so a key that can't sign
+// leaves the chain as it was.
+func Repair(root string, key *sign.Key) (Repaired, error) {
+	f, err := openLocked(root)
+	if err != nil {
+		return Repaired{}, err
+	}
+	defer f.Close()
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	st, err := f.Stat()
+	if err != nil {
+		return Repaired{}, err
+	}
+	size := st.Size()
+	cut, err := lineStart(f, size)
+	if err != nil || cut == size {
+		return Repaired{}, err
+	}
+	tail := make([]byte, size-cut)
+	if _, err := f.ReadAt(tail, cut); err != nil {
+		return Repaired{}, err
+	}
+	r := Repaired{Bytes: int64(len(tail)), SHA256: Hash(tail)}
+	now := time.Now().UTC()
+	r.Backup = filepath.Join(filepath.Dir(Path(root)), "chain.tail-"+now.Format("20060102T150405Z")+".bak")
+	// Existing fields only: an older swim re-marshals the entry to check
+	// its signature, and would drop a field it doesn't know.
+	e := Entry{
+		Type:    "repair",
+		At:      now.Format(time.RFC3339),
+		Action:  fmt.Sprintf("removed %d bytes of an incomplete final entry (sha256 %s)", r.Bytes, r.SHA256),
+		Outputs: map[string]string{filepath.Base(r.Backup): r.SHA256},
+	}
+	line, err := link(f, cut, e, key)
+	if err != nil {
+		return Repaired{}, err
+	}
+	bak, err := os.OpenFile(r.Backup, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return Repaired{}, err
+	}
+	_, err = bak.Write(tail)
+	if err == nil {
+		err = bak.Sync()
+	}
+	if cerr := bak.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return Repaired{}, err
+	}
+	if err := f.Truncate(cut); err != nil {
+		return Repaired{}, err
+	}
+	if err := writeLine(f, cut, line); err != nil {
+		return Repaired{}, err
+	}
+	r.Hash = Hash(line)
+	return r, nil
 }
 
 // Link is one entry as read back, with its line's hash.
@@ -209,19 +329,26 @@ func Read(root string) ([]Link, error) {
 	}
 	defer f.Close()
 	var out []Link
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
-	n := 0
-	for sc.Scan() {
-		n++
-		raw := append([]byte(nil), sc.Bytes()...)
+	// ReadBytes, not a Scanner: an entry has no size limit.
+	rd := bufio.NewReader(f)
+	for n := 1; ; n++ {
+		raw, err := rd.ReadBytes('\n')
+		if len(raw) == 0 && errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return out, err
+		}
+		if err != nil { // a last line with no newline: a write cut short
+			return out, fmt.Errorf("%s line %d: an incomplete entry (no newline: a write was cut short); swim chain repair removes it", Path(root), n)
+		}
+		raw = bytes.TrimSuffix(raw[:len(raw)-1], []byte("\r"))
 		var e Entry
 		if err := json.Unmarshal(raw, &e); err != nil {
 			return out, fmt.Errorf("%s line %d: not a chain entry: %v", Path(root), n, err)
 		}
 		out = append(out, Link{Entry: e, Hash: Hash(raw), Line: n})
 	}
-	return out, sc.Err()
 }
 
 // Problem is a break in the chain.

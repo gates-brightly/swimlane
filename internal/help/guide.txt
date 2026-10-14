@@ -65,6 +65,7 @@ COMMANDS
   revoke N|JOB / --auto USER   withdraw your approval
   verify                   prove the chain of custody is intact (logs, scripts, signatures)
   history [RUN|N|JOB] [--oneline]   the chain of custody, like git log: who approved and ran what
+  chain repair             remove a half-written last chain entry (kept in a .bak, recorded)
   keys                     who's who: lookup.yml's users, keys and groups
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
@@ -940,11 +941,16 @@ CHAIN OF CUSTODY
     round    the script's hash, the hash of the round's log section, the
              result and exit, and the approvals it used
     grant / revoke   approvals given or withdrawn on this machine
+    repair   swim chain repair removed a half-written final line: its size,
+             its SHA-256 and the .swim/chain.tail-<time>.bak that keeps it
   The runner signs each entry with its SSH key (config signing_key; default
   ~/.ssh/id_ed25519; signing: auto | required | off). The scripts that ran
   are kept by hash under .swim/scripts/. Changing a log, a kept script or
   any entry (or removing or reordering entries) is provable: swim verify.
-  swim history shows the chain by approver.
+  swim history shows the chain by approver. Entries have no size limit, and
+  each is synced to disk as it is written. A write cut short (a crash or a
+  full disk) leaves a last line with no newline; swim then refuses to
+  append until swim chain repair removes it.
   Approving: swim approve N --guards FLAG approves lane N's exact script;
   co-approvers run the same; swim approve --auto USER approves every job
   USER queues (swim queue add signs the batch with the queuer's key, so

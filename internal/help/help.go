@@ -687,6 +687,19 @@ swim revoke --auto USER [--key K]
                  given (schema swim.history/v1)
   swim verify checks the chain.
 `,
+	"chain": `swim chain repair
+
+  Look after the chain of custody file itself (.swim/chain.jsonl).
+  repair   remove a half-written final entry: a write cut short by a crash,
+           a kill or a full disk leaves a last line with no newline, and
+           swim refuses to append after it (and swim verify reports it).
+           repair, under the chain's lock, moves those bytes to
+           .swim/chain.tail-<time>.bak, truncates the chain after its last
+           complete entry, and appends a signed repair entry recording how
+           many bytes were removed and their SHA-256. Complete entries are
+           never touched; with nothing to repair it changes nothing. swim
+           history shows the repair entry, and swim verify notes it.
+`,
 	"keys": `swim keys
 
   Who's who: lookup.yml's users with their key fingerprints, groups (with
@@ -950,7 +963,7 @@ func Names() []string {
 var FullOrder = []string{"init", "config", "env", "secret", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
-	"verify", "history", "keys", "ci", "lint", "doctor"}
+	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
 func Full() string {
 	s := Guide + "\nCOMMAND DETAIL\n"
