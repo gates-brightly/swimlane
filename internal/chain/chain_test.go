@@ -198,3 +198,48 @@ func TestTrustCatchesWholesaleReplacement(t *testing.T) {
 		t.Fatalf("untrusted: %+v", u)
 	}
 }
+
+// A checkpoint proves the chain's head: truncating the chain to before it,
+// or replacing it, is caught; entries after it are only counted. A
+// tampered checkpoint fails its signature.
+func TestCheckpointCatchesTruncationAndReplacement(t *testing.T) {
+	root, k := t.TempDir(), key(t)
+	for i := 0; i < 4; i++ {
+		Append(root, Entry{Type: "round", Lane: 1, Result: "passed"}, k)
+	}
+	links, _ := Read(root)
+	cp := NewCheckpoint(links[:3], "host")
+	if err := SignCheckpoint(&cp, k); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCheckpoint(cp); err != nil {
+		t.Fatalf("a fresh checkpoint: %v", err)
+	}
+	if r := CheckAgainst(links, cp); r.Status != Extends || r.Since != 1 {
+		t.Errorf("one entry past the checkpoint: %+v", r)
+	}
+	// Truncated after the checkpoint: still extends it.
+	if r := CheckAgainst(links[:3], cp); r.Status != Extends || r.Since != 0 {
+		t.Errorf("truncated to the checkpoint: %+v", r)
+	}
+	if r := CheckAgainst(links[:2], cp); r.Status != Truncated {
+		t.Errorf("truncated before the checkpoint: %+v", r)
+	}
+	// Truncated, then new entries appended: another entry at its seq.
+	os.WriteFile(Path(root), nil, 0o644)
+	for i := 0; i < 5; i++ {
+		Append(root, Entry{Type: "round", Lane: 2, Result: "passed"}, k)
+	}
+	again, _ := Read(root)
+	if r := CheckAgainst(again, cp); r.Status != Replaced {
+		t.Errorf("replaced: %+v", r)
+	}
+	forged := cp
+	forged.Seq = 2
+	if err := VerifyCheckpoint(forged); err == nil {
+		t.Error("a checkpoint changed after signing verified")
+	}
+	if err := VerifyCheckpoint(Checkpoint{Seq: 1, Head: "x"}); err != ErrUnsigned {
+		t.Errorf("unsigned: %v", err)
+	}
+}

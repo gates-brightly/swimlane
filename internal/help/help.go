@@ -714,7 +714,7 @@ swim revoke --auto USER [--key K]
   event; your approval stops counting from then on (approving again adds
   another approve event). A round that already ran keeps its record.
 `,
-	"verify": `swim verify [--strict] [--trust-pin SHA256] [--yaml]
+	"verify": `swim verify [--strict] [--trust-pin SHA256] [--against DEST] [--yaml]
 
   Prove the chain of custody (.swim/chain.jsonl), in levels. Each line
   says whether the level holds (yes, no, partial, n/a) and what it rests on:
@@ -733,6 +733,13 @@ swim revoke --auto USER [--key K]
                 the repo (swim keys --help): pinned on first use, or with
                 --trust-pin. partial: some entries are unsigned. n/a: no
                 trust.yml.
+    anchored    the chain still holds the entry the newest checkpoint at
+                each anchor (chain_anchors) recorded: entries removed from
+                its end, or a chain replaced wholesale, after that
+                checkpoint left the machine, fail it. A checkpoint with a
+                bad signature, or signed by a key outside trust.yml, is
+                ignored with a warning. Says nothing about entries after
+                the checkpoint. n/a: no anchors, or no checkpoint yet.
   Above the levels: each approvals file under approvals/ checked event by
   event (and whether a script approval is stale: the script, or something
   else its manifest pins, changed since), then notes, warnings and what's
@@ -742,6 +749,10 @@ swim revoke --auto USER [--key K]
   --trust-pin SHA256   check trust.yml against this hash instead of the pin
                        in ~/.config/swim/trust-pins.yml (CI, which keeps no
                        pins; swim keys pin prints it). Also SWIM_TRUST_PIN.
+  --against DEST       anchor to DEST (file:/path, hub) instead of
+                       chain_anchors: its newest checkpoint, and the entries
+                       swim chain export copied there must be the chain's
+                       first ones (so a lost or wiped repo can be checked).
   --yaml               the result as data (schema swim.verify/v1): each
                        level a field of its own (consistent: "yes"), so CI
                        can require any of them; ok is what the exit code says.
@@ -763,17 +774,45 @@ swim revoke --auto USER [--key K]
   swim verify checks the chain.
 `,
 	"chain": `swim chain repair
+swim chain checkpoint [--to DEST]
+swim chain export --to DEST
 
   Look after the chain of custody file itself (.swim/chain.jsonl).
-  repair   remove a half-written final entry: a write cut short by a crash,
-           a kill or a full disk leaves a last line with no newline, and
-           swim refuses to append after it (and swim verify reports it).
-           repair, under the chain's lock, moves those bytes to
-           .swim/chain.tail-<time>.bak, truncates the chain after its last
-           complete entry, and appends a signed repair entry recording how
-           many bytes were removed and their SHA-256. Complete entries are
-           never touched; with nothing to repair it changes nothing. swim
-           history shows the repair entry, and swim verify notes it.
+  repair       remove a half-written final entry: a write cut short by a
+               crash, a kill or a full disk leaves a last line with no
+               newline, and swim refuses to append after it (and swim verify
+               reports it). repair, under the chain's lock, moves those
+               bytes to .swim/chain.tail-<time>.bak, truncates the chain
+               after its last complete entry, and appends a signed repair
+               entry recording how many bytes were removed and their
+               SHA-256. Complete entries are never touched; with nothing to
+               repair it changes nothing. swim history shows the repair
+               entry, and swim verify notes it.
+  checkpoint   sign the chain's head now ({v, seq, head, at, host,
+               runner_key_fp}, with the runner's key) and send it to each
+               chain_anchors destination (and --to DEST). swim run, swim
+               all, swim ci and each swim watch batch do this as they end
+               (not swim run inside a lane). An anchor refuses a checkpoint
+               that doesn't go past its last. A failed send is a warning; the
+               next checkpoint is sent anyway, and swim doctor lists the
+               anchor until then (checkpoint-unsent). Exits 1 when an anchor
+               didn't take it. Also kept in .swim/checkpoints.jsonl, which
+               proves nothing (a lane can rewrite it).
+  export       copy the entries DEST doesn't hold yet, then a checkpoint.
+               What DEST holds must be the chain's first entries, line for
+               line; if the chain lost entries or was replaced since, nothing
+               is written. swim verify --against DEST checks against it.
+  Destinations (chain_anchors in swim.yml or config.yml; they add up):
+    file:/path   a directory outside the repo: checkpoints.jsonl and
+                 chain.jsonl, only ever appended to (put it on another
+                 volume, mounted append-only, or held by someone else)
+    hub          the hub this directory is enrolled with (swim hub enroll):
+                 it keeps each worker's checkpoints, refuses one whose seq
+                 doesn't go forward, and keeps them after the worker leaves
+                 (with --state). Checkpoints only: export needs file:.
+  An anchor proves nothing about entries written after its last checkpoint,
+  and someone holding the runner key and write access to every anchor can
+  rewrite everything: keep anchors out of the operator's reach.
 `,
 	"keys": `swim keys
 swim keys trust [KEY | FILE.pub] [--remove] [--sign] [--key K]
@@ -999,6 +1038,8 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
                               removes them
     hub-http (warn)           .swim/hub.yml enrolls with a hub over plain
                               http on another machine
+    anchors-none (info)       the repo has a chain but no chain_anchors
+    checkpoint-unsent (warn)  a chain anchor hasn't had the latest checkpoint
     trust-unpinned (warn/error) trust.yml not pinned on this machine yet
                               (warn), or changed since the pin with no
                               signed change (error): swim keys --help

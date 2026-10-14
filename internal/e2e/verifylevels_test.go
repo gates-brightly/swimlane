@@ -75,3 +75,56 @@ func TestVerifyTrustedLevel(t *testing.T) {
 		t.Errorf("verify against another pin: exit %d\n%s", code, out)
 	}
 }
+
+// anchored: each run sends a checkpoint to a file: anchor outside the
+// repo; entries removed from the chain's end, or a chain started over,
+// fail the level, and --against checks an exported copy.
+func TestVerifyAnchoredLevel(t *testing.T) {
+	r, _ := signedRepo(t)
+	contains(t, "no anchors", r.mustSwim("verify"), "anchored    n/a", "no anchors configured")
+	contains(t, "doctor, no anchors", must(r.swim("doctor")), "[anchors-none]")
+
+	dir := filepath.Join(t.TempDir(), "audit")
+	r.write("swim.yml", "chain_anchors: [\"file:"+dir+"\"]\n", 0o644)
+	contains(t, "no checkpoint yet", r.mustSwim("verify"), "anchored    n/a", "no checkpoint at file:"+dir)
+	r.mustSwim("run", "1")
+	r.mustSwim("run", "1")
+	out := r.mustSwim("verify")
+	contains(t, "anchored", out, "anchored    yes", "extends checkpoint seq 3", "from file:"+dir+"; 0 entries since", "anchoring proves this history existed by")
+	if _, err := os.Stat(filepath.Join(dir, "checkpoints.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	if out := must(r.swim("doctor")); strings.Contains(out, "checkpoint-unsent") || strings.Contains(out, "anchors-none") {
+		t.Errorf("doctor with every checkpoint sent:\n%s", out)
+	}
+	contains(t, "export", r.mustSwim("chain", "export", "--to", "file:"+dir), "exported 3 new entries")
+
+	// Remove the last two entries.
+	path := filepath.Join(r.root, ".swim", "chain.jsonl")
+	data, _ := os.ReadFile(path)
+	lines := strings.SplitAfter(string(data), "\n")
+	os.WriteFile(path, []byte(lines[0]), 0o644)
+	out, code := r.swim("verify")
+	if code != 1 || !strings.Contains(out, "anchored    no") || !strings.Contains(out, "chain truncated or replaced after checkpoint seq 3") {
+		t.Fatalf("verify of a truncated chain: exit %d\n%s", code, out)
+	}
+	if out, code := r.swim("verify", "--against", "file:"+dir); code != 1 || !strings.Contains(out, "lost entries from its end") {
+		t.Errorf("verify --against of a truncated chain: exit %d\n%s", code, out)
+	}
+	// The anchor refuses to go back, and so does export.
+	if out, code := r.swim("chain", "checkpoint"); code == 0 || !strings.Contains(out, "not past the last checkpoint") {
+		t.Errorf("checkpoint of a truncated chain: exit %d\n%s", code, out)
+	}
+	contains(t, "doctor, unsent", must(r.swim("doctor")), "[checkpoint-unsent]")
+	if out, code := r.swim("chain", "export", "--to", "file:"+dir); code == 0 || !strings.Contains(out, "nothing exported") {
+		t.Errorf("export of a truncated chain: exit %d\n%s", code, out)
+	}
+
+	// The repo lost and started over: a new chain, checked against the
+	// exported copy.
+	os.Remove(path)
+	r.mustSwim("run", "1")
+	if out, code := r.swim("verify", "--against", "file:"+dir); code != 1 || !strings.Contains(out, "anchored    no") || !strings.Contains(out, "was replaced") {
+		t.Errorf("verify --against of a new chain: exit %d\n%s", code, out)
+	}
+}

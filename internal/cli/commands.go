@@ -470,6 +470,7 @@ func runLanes(rest []string, rf runFlags) error {
 	if err != nil {
 		return err
 	}
+	checkpointAfterRun(root, cfg)
 	if code != 0 {
 		return exitError{code}
 	}

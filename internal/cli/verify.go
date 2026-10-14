@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/anchor"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lookup"
@@ -49,6 +50,12 @@ type verifier struct {
 	unsigned         []int
 	rounds           int
 	approvals        int
+	// trust says whether a key is trusted (nil without trust.yml): for
+	// checkpoint signers too.
+	trust func(pub string) bool
+	// anchoredAt is when the checkpoint anchored proves the chain against
+	// was taken.
+	anchoredAt string
 }
 
 // cmdVerify proves (or disproves) the chain of custody, in levels:
@@ -58,19 +65,22 @@ type verifier struct {
 //	            kept script, staged copy and inputs, and every signed
 //	            approval, are what was recorded
 //	trusted     every signer is a key in trust.yml, pinned outside the repo
+//	anchored    the chain still holds the head of the newest checkpoint at
+//	            each anchor (chain_anchors, or --against DEST), and the
+//	            entries exported there
 //
 // Exits 1 when a level fails; --strict also when one can't be checked
 // (n/a), on unsigned entries and on any warning.
 func cmdVerify(args []string) error {
 	var strict, asYAML bool
-	var pinFlag string
+	var pinFlag, against string
 	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML},
-		strs: map[string]*string{"trust-pin": &pinFlag}}.parse(args)
+		strs: map[string]*string{"trust-pin": &pinFlag, "against": &against}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim verify [--strict] [--trust-pin SHA256] [--yaml]")
+		return usagef("usage: swim verify [--strict] [--trust-pin SHA256] [--against DEST] [--yaml]")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -101,6 +111,7 @@ func cmdVerify(args []string) error {
 	levels := []level{
 		v.consistent(links),
 		v.trusted(links, or(pinFlag, os.Getenv(trust.PinEnv))),
+		v.anchored(links, against),
 	}
 
 	failed := len(v.bad) > 0
@@ -165,6 +176,7 @@ func (v *verifier) trusted(links []chain.Link, pin string) level {
 		return level{name, levelNo, err.Error()}
 	}
 	res := trust.Check(v.root, tf, p)
+	v.trust = res.Trusted
 	pinned := ""
 	switch res.Status {
 	case trust.Unsigned, trust.Malformed:
@@ -223,14 +235,89 @@ func (v *verifier) trusted(links []chain.Link, pin string) level {
 	return level{name, levelYes, fmt.Sprintf("%d signers, all in trust.yml (%s)", len(signers), pinned)}
 }
 
-// note is what the levels together don't prove.
-func verifyNote(levels []level) string {
-	for _, l := range levels {
-		if l.Name == "trusted" && l.Result != levelYes {
-			return "a chain re-signed wholesale with another key is only caught by trusted (trust.yml, pinned outside the repo)."
+// anchored checks the chain against the newest checkpoint at each anchor
+// (chain_anchors; --against DEST checks that one instead, and the entries
+// exported there): it must still hold the checkpointed entry.
+func (v *verifier) anchored(links []chain.Link, against string) level {
+	const name = "anchored"
+	specs := v.cfg.ChainAnchors
+	if against != "" {
+		specs = []string{against}
+	}
+	if len(specs) == 0 {
+		return level{name, levelNA, "no anchors configured (chain_anchors): entries removed from the end, or a chain replaced wholesale, can't be caught"}
+	}
+	exported := 0
+	if against != "" {
+		a, err := openAnchor(v.root, against)
+		if err != nil {
+			return level{name, levelNo, err.Error()}
+		}
+		theirs, err := a.Entries()
+		switch {
+		case errors.Is(err, anchor.ErrNoEntries):
+		case err != nil:
+			return level{name, levelNo, fmt.Sprintf("%s: %v", against, err)}
+		default:
+			local, err := anchor.LocalLines(v.root)
+			if err != nil {
+				return level{name, levelNo, err.Error()}
+			}
+			if err := anchor.Diverged(theirs, local); err != nil {
+				return level{name, levelNo, fmt.Sprintf("%s: %v", against, err)}
+			}
+			exported = len(theirs)
 		}
 	}
-	return "the levels prove who signed this history; they don't prove the scripts were safe, nor catch entries removed from its end."
+	var best *chain.Checkpoint
+	from, reached := "", 0
+	for _, spec := range specs {
+		cp, err := v.latestCheckpoint(spec)
+		if err != nil {
+			v.warn = append(v.warn, fmt.Sprintf("anchor %s: %v", spec, err))
+			continue
+		}
+		reached++
+		if cp == nil {
+			continue
+		}
+		switch r := chain.CheckAgainst(links, *cp); r.Status {
+		case chain.Truncated:
+			return level{name, levelNo, fmt.Sprintf("chain truncated or replaced after checkpoint seq %d (%s, %s): it has %d entries", cp.Seq, cp.At, spec, len(links))}
+		case chain.Replaced:
+			return level{name, levelNo, fmt.Sprintf("chain replaced: entry #%d isn't the one checkpointed at seq %d (%s, %s)", cp.Seq, cp.Seq, cp.At, spec)}
+		}
+		if best == nil || cp.Seq > best.Seq {
+			best, from = cp, spec
+		}
+	}
+	switch {
+	case best != nil:
+		v.anchoredAt = best.At
+		return level{name, levelYes, fmt.Sprintf("extends checkpoint seq %d (%s) from %s; %d entries since", best.Seq, best.At, from, len(links)-best.Seq)}
+	case exported > 0:
+		return level{name, levelYes, fmt.Sprintf("extends the %d entries exported to %s; %d since", exported, against, len(links)-exported)}
+	case reached == 0:
+		return level{name, levelNA, "no anchor could be read (warnings above)"}
+	}
+	return level{name, levelNA, "no checkpoint at " + strings.Join(specs, ", ") + " yet (swim chain checkpoint)"}
+}
+
+// note is what the levels together don't prove.
+func (v *verifier) note(levels []level) string {
+	res := map[string]string{}
+	for _, l := range levels {
+		res[l.Name] = l.Result
+	}
+	switch {
+	case res["anchored"] == levelYes && v.anchoredAt != "":
+		return "anchoring proves this history existed by " + v.anchoredAt + "; it doesn't prove the scripts were safe, nor anything about entries after it."
+	case res["anchored"] == levelYes:
+		return "anchoring proves this history was exported; it doesn't prove the scripts were safe, nor anything about entries after it."
+	case res["trusted"] != levelYes:
+		return "a chain re-signed wholesale with another key is only caught by trusted (trust.yml, pinned outside the repo)."
+	}
+	return "without an anchor, entries removed from the end of the chain can't be caught (chain_anchors)."
 }
 
 func (v *verifier) print(links []chain.Link, levels []level) {
@@ -258,7 +345,7 @@ func (v *verifier) print(links []chain.Link, levels []level) {
 		}
 		fmt.Printf("%-10s  %s  %s\n", l.Name, p.Paint(c, fmt.Sprintf("%-3s", l.Result)), l.Detail)
 	}
-	fmt.Println("note: " + verifyNote(levels))
+	fmt.Println("note: " + v.note(levels))
 }
 
 // verifyDoc is swim verify --yaml (schema swim.verify/v1): each level a
@@ -272,6 +359,7 @@ type verifyDoc struct {
 	OK         bool              `yaml:"ok"` // what the exit code says
 	Consistent string            `yaml:"consistent"`
 	Trusted    string            `yaml:"trusted"`
+	Anchored   string            `yaml:"anchored"`
 	Details    map[string]string `yaml:"details"` // level -> its line
 	Note       string            `yaml:"note"`
 	Broken     []string          `yaml:"broken"`
@@ -282,7 +370,7 @@ type verifyDoc struct {
 
 func (v *verifier) writeYAML(links []chain.Link, levels []level, ok bool) error {
 	d := verifyDoc{Schema: "swim.verify/v1", Chain: rel(v.root, chain.Path(v.root)), Entries: len(links), Rounds: v.rounds, Approvals: v.approvals,
-		OK: ok, Details: map[string]string{}, Note: verifyNote(levels),
+		OK: ok, Details: map[string]string{}, Note: v.note(levels),
 		Broken: nonNil(v.bad), Warnings: nonNil(v.warn), Notes: nonNil(v.notes), Files: nonNil(v.files)}
 	for _, l := range levels {
 		d.Details[l.Name] = l.Detail
@@ -291,6 +379,8 @@ func (v *verifier) writeYAML(links []chain.Link, levels []level, ok bool) error 
 			d.Consistent = l.Result
 		case "trusted":
 			d.Trusted = l.Result
+		case "anchored":
+			d.Anchored = l.Result
 		}
 	}
 	enc := yaml.NewEncoder(os.Stdout)

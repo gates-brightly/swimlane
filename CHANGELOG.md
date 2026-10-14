@@ -82,12 +82,25 @@ To cut a release:
     when signed by a key it already trusts (`swim keys trust KEY --sign`,
     recorded in `trust.yml.sig`); a hand edit fails the level. CI pins by
     hash: `--trust-pin SHA256` or `SWIM_TRUST_PIN`.
-  - Exit 1 when a level says no; `--strict` also on n/a (no `trust.yml`)
-    and partial (unsigned entries). `--yaml` gives each level as a field
+  - **anchored:** the chain still holds the entry the newest checkpoint
+    recorded. Checkpoints (seq, head hash, time, host, signed by the runner)
+    go to each `chain_anchors` destination at the end of every `swim run`,
+    `swim all`, `swim ci` and `swim watch` batch, and on `swim chain
+    checkpoint`. Destinations: `file:/path` outside the repo, and `hub`
+    (new `PUT/GET /api/workers/{id}/checkpoints`; the hub refuses a seq
+    that doesn't go forward). Entries removed from the end, or a chain
+    replaced wholesale, after a checkpoint left the machine fail the level.
+  - **`swim chain export --to file:/path`** copies the entries the
+    destination doesn't hold yet (refusing if the chain no longer starts
+    with them), and `swim verify --against DEST` checks against it, so a
+    lost or wiped repo can still be checked.
+  - Exit 1 when a level says no; `--strict` also on n/a (no `trust.yml`, no
+    anchors) and partial (unsigned entries). `--yaml` gives each level as a field
     (schema `swim.verify/v1`).
   - `swim lint` fails when `lookup.yml` names a key `trust.yml` doesn't
     list; `swim doctor` reports a `trust.yml` that isn't pinned, or changed
-    unsigned (`trust-unpinned`). `swim keys` shows `trust.yml` and its pin.
+    unsigned (`trust-unpinned`), a chain with no anchors (`anchors-none`)
+    and an anchor that missed the latest checkpoint (`checkpoint-unsent`). `swim keys` shows `trust.yml` and its pin.
 - **Text a lane supplies is made safe before it's shown:** a guard's
   description and evidence, step labels, command lines, `swim msg`, the
   live view and the hub can no longer carry escape sequences, `\r`,

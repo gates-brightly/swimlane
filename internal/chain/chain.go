@@ -324,8 +324,12 @@ type Link struct {
 }
 
 // Read returns every entry; a line that doesn't parse is an error.
-func Read(root string) ([]Link, error) {
-	f, err := os.Open(Path(root))
+func Read(root string) ([]Link, error) { return ReadFile(Path(root)) }
+
+// ReadFile reads a chain file at path (an exported copy, say): nothing
+// when there is none.
+func ReadFile(path string) ([]Link, error) {
+	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -345,12 +349,12 @@ func Read(root string) ([]Link, error) {
 			return out, err
 		}
 		if err != nil { // a last line with no newline: a write cut short
-			return out, fmt.Errorf("%s line %d: an incomplete entry (no newline: a write was cut short); swim chain repair removes it", Path(root), n)
+			return out, fmt.Errorf("%s line %d: an incomplete entry (no newline: a write was cut short); swim chain repair removes it", path, n)
 		}
 		raw = bytes.TrimSuffix(raw[:len(raw)-1], []byte("\r"))
 		var e Entry
 		if err := json.Unmarshal(raw, &e); err != nil {
-			return out, fmt.Errorf("%s line %d: not a chain entry: %v", Path(root), n, err)
+			return out, fmt.Errorf("%s line %d: not a chain entry: %v", path, n, err)
 		}
 		out = append(out, Link{Entry: e, Hash: Hash(raw), Line: n})
 	}

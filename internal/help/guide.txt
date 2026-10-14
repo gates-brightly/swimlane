@@ -917,6 +917,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         msg_log_interval: 10s            # at most one MSG log line per lane per this (0: every change)
         outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
+        chain_anchors: ["file:/mnt/audit/orders", hub]   # where chain checkpoints go (CHAIN OF CUSTODY)
         # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)
         runners:                         # how lane.N.<ext> runs without a #! line (OTHER LANGUAGES)
           ts: tsx                        # swim asks the first time, and saves the answer per repo

@@ -165,6 +165,7 @@ func cmdCi(args []string) error {
 	if err != nil {
 		return err
 	}
+	checkpointAfterRun(root, cfg)
 
 	// Reports, from the logs.
 	reps := ci.Collect(root, sel, o.RunID)

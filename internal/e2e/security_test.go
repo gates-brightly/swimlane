@@ -319,7 +319,23 @@ func TestSecurity(t *testing.T) {
 			contains(t, "verify", out, "consistent  yes", "trusted     no", "a key not in trust.yml")
 		}},
 		{"the chain and its signer key replaced: not anchored", "T8", func(t *testing.T) {
-			gap(t, "T8")
+			b := newBoundaryRepo(t)
+			b.mustSwim("keys", "trust")
+			anchor := filepath.Join(t.TempDir(), "audit")
+			b.write("swim.yml", "chain_anchors: [\"file:"+anchor+"\"]\n", 0o644)
+			b.approve(1)
+			b.mustSwim("run", "1", "--plain")
+			contains(t, "verify", b.mustSwim("verify"), "consistent  yes", "trusted     yes", "anchored    yes")
+			// Re-signed wholesale, and the entries after the first dropped.
+			b.resign(t)
+			path := chain.Path(b.root)
+			data, _ := os.ReadFile(path)
+			os.WriteFile(path, []byte(strings.SplitAfter(string(data), "\n")[0]), 0o644)
+			out, code := b.swim("verify")
+			if code != 1 {
+				t.Fatalf("verify: exit %d\n%s", code, out)
+			}
+			contains(t, "verify", out, "consistent  yes", "trusted     no", "anchored    no", "chain truncated or replaced after checkpoint")
 		}},
 		{"a planted secret never appears in the log, .swim.log or status", "T9", func(t *testing.T) {
 			r := newRepo(t, "")
