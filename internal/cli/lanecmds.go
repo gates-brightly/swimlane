@@ -254,6 +254,9 @@ func cmdGuard(args []string) error {
 	}
 	val, set := os.LookupEnv(flag)
 	switch {
+	case val == "1" && launched():
+		// Under swim run the launcher says whether the flag counts.
+		return cmdApproveHook([]string{n, flag, desc, "--flag-set"})
 	case val == "1":
 		detail := flag + "=1"
 		if strings.Contains(" "+os.Getenv("SWIM_QUEUE_APPROVED")+" ", " "+flag+" ") {

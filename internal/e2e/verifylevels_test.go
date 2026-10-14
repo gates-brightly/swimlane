@@ -90,14 +90,14 @@ func TestVerifyAnchoredLevel(t *testing.T) {
 	r.mustSwim("run", "1")
 	r.mustSwim("run", "1")
 	out := r.mustSwim("verify")
-	contains(t, "anchored", out, "anchored    yes", "extends checkpoint seq 3", "from file:"+dir+"; 0 entries since", "anchoring proves this history existed by")
+	contains(t, "anchored", out, "anchored    yes", "extends checkpoint seq 6", "from file:"+dir+"; 0 entries since", "anchoring proves this history existed by")
 	if _, err := os.Stat(filepath.Join(dir, "checkpoints.jsonl")); err != nil {
 		t.Fatal(err)
 	}
 	if out := must(r.swim("doctor")); strings.Contains(out, "checkpoint-unsent") || strings.Contains(out, "anchors-none") {
 		t.Errorf("doctor with every checkpoint sent:\n%s", out)
 	}
-	contains(t, "export", r.mustSwim("chain", "export", "--to", "file:"+dir), "exported 3 new entries")
+	contains(t, "export", r.mustSwim("chain", "export", "--to", "file:"+dir), "exported 6 new entries")
 
 	// Remove the last two entries.
 	path := filepath.Join(r.root, ".swim", "chain.jsonl")
@@ -105,7 +105,7 @@ func TestVerifyAnchoredLevel(t *testing.T) {
 	lines := strings.SplitAfter(string(data), "\n")
 	os.WriteFile(path, []byte(lines[0]), 0o644)
 	out, code := r.swim("verify")
-	if code != 1 || !strings.Contains(out, "anchored    no") || !strings.Contains(out, "chain truncated or replaced after checkpoint seq 3") {
+	if code != 1 || !strings.Contains(out, "anchored    no") || !strings.Contains(out, "chain truncated or replaced after checkpoint seq 6") {
 		t.Fatalf("verify of a truncated chain: exit %d\n%s", code, out)
 	}
 	if out, code := r.swim("verify", "--against", "file:"+dir); code != 1 || !strings.Contains(out, "lost entries from its end") {

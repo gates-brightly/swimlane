@@ -31,7 +31,13 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 	os.Remove(keys["old"])
 	r.mustSwim("config", "signing_key", keys["new"])
 	r.mustSwim("run", "1")
-	links, err := chain.Read(r.root)
+	all, err := chain.Read(r.root)
+	var links []chain.Link
+	for _, l := range all {
+		if l.Type == "round" {
+			links = append(links, l)
+		}
+	}
 	if err != nil || len(links) != 2 || links[0].Signer == "" || links[0].Signer == links[1].Signer {
 		t.Fatalf("want two rounds signed by different keys: %v %+v", err, links)
 	}

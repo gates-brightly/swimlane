@@ -110,6 +110,7 @@ type Options struct {
 	approvalSock string
 	approvalSrv  *approval.Server
 	manifests    map[int]*manifest.Manifest // each lane's, staged (stage.go)
+	auth         *runAuthority              // decides and records the run's approvals (authority.go)
 	secrets      *runSecrets                // the run's decrypted secrets and broker; nil for none
 	env          map[int]*envfile.Resolved  // each lane's env from env files
 
@@ -374,24 +375,15 @@ func Run(o Options) (int, error) {
 		})
 		defer t.Stop()
 	}
+	// The approval broker always runs: every guard asks the launcher, which
+	// decides from what it saw as the run started, or asks the operator
+	// when the display can (or approves with -y). With no one to ask, a
+	// guard nothing else approves is a dry run.
 	var ask approval.Asker
 	if o.AutoApprove || o.Prompt && o.ev == nil && disp.CanAsk() {
 		if o.AutoApprove {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
 		}
-		srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
-			// req's lane, job and manifest are the launcher's (the server
-			// replaced the lane's claims). Its Observe: facts are read now,
-			// with the question, and the lane checks them again before the
-			// guarded step.
-			if req.Job == "" {
-				req.Job = runningJob(o, req.Lane, req.Cell)
-			}
-			req.Observed = manifest.Observe(o.Root, probesFor(o, req.Lane, req.Cell), laneEnv(o, req.Lane))
-			resp := ask(req, cancel)
-			resp.Job, resp.Observed = req.Job, req.Observed
-			return resp
-		})
 		ask = func(req approval.Request, cancel <-chan struct{}) approval.Response {
 			// The operator's answer given ahead in the live view (pinned to
 			// the manifest) comes before -y and instead of asking.
@@ -414,23 +406,14 @@ func Run(o Options) (int, error) {
 			yes := disp.Ask(req.Lane, approval.Question(req), cancel)
 			return approval.Response{Approved: yes, By: operator()}
 		}
-		if err != nil {
-			disp.Message("swim: approvals: " + err.Error() + "; guards without their flag run as dry runs")
-		} else {
-			defer srv.Close()
-			srv.Refused = func(c approval.Caller, req approval.Request, why string) {
-				who := fmt.Sprintf("swim %d", c.Lane)
-				if c.Lane == 0 {
-					who = "a process without a lane token"
-				}
-				disp.Message(fmt.Sprintf("swim: approval refused for %s: %s", who, why))
-				history.Log(o.Root, history.Entry{Event: history.Decline, Lane: c.Lane, Job: c.Job, Run: o.RunID,
-					Detail: fmt.Sprintf("%s  (%s: refused: %s)", approval.Clean(req.Desc), req.Flag, why)})
-			}
-			ir.approvals = srv
-			o.approvalSock = srv.Path()
-			o.approvalSrv = srv
-		}
+	}
+	if srv, err := startAuthority(&o, ask, disp); err != nil {
+		disp.Message("swim: approvals: " + err.Error() + "; every guard runs as a dry run")
+	} else {
+		defer srv.Close()
+		ir.approvals = srv
+		o.approvalSock = srv.Path()
+		o.approvalSrv = srv
 	}
 
 	var (
@@ -502,6 +485,9 @@ func Run(o Options) (int, error) {
 	wg.Wait()
 	stopOthers()
 	disp.Stop()
+	if !o.CheckOnly {
+		o.auth.attest(o, sel)
+	}
 	if unused := pre.unused(); len(unused) > 0 {
 		fmt.Fprintf(summaryOut, "swim: unused pre-answers (the lane never reached a guard, or its script changed): %s\n", strings.Join(unused, ", "))
 	}
@@ -711,7 +697,8 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 		return skip(why)
 	}
-	cmd, ownGroup, w := laneCommand(o, n, sel, plan, nil, "", "", approval.Caller{Job: info.Job}, disp, fileLocks)
+	cmd, ownGroup, w, tok := laneCommand(o, n, sel, plan, nil, "", "", approval.Caller{Job: info.Job}, disp, fileLocks)
+	defer exited(o, tok)
 
 	// The last moment to honour a Ctrl-C that came while this lane was
 	// getting ready (runner, env, slot): after this it starts, and gets the
@@ -730,6 +717,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		oc.Job, oc.Round, oc.Start = info.Job, info.Round, launched
 		return stamp(oc)
 	}
+	started(o, tok, cmd.Process.Pid)
 	o.ev.emit(Event{Event: "start", Lane: n, Job: info.Job, Round: info.Round, At: launchedTS})
 	ir.add(n, &laneProc{proc: cmd.Process, group: ownGroup, started: launched})
 	o.beat.begin(n, launched)
@@ -972,6 +960,13 @@ func closeKilledRound(o Options, n, code int) {
 	cmd := exec.Command(o.Self, "_finish", fmt.Sprint(n), "--exit", fmt.Sprint(code))
 	cmd.Dir = o.Root
 	cmd.Env = append(os.Environ(), "SWIM_COLOR=0")
+	if o.approvalSrv != nil {
+		// The launcher reports for the lane: a token of its own for lane n
+		// (no process tree to check: swim runs it itself).
+		tok := o.approvalSrv.Register(approval.Caller{Lane: n, Run: o.RunID})
+		defer o.approvalSrv.Revoke(tok)
+		cmd.Env = append(cmd.Env, "SWIM_LAUNCHED=1", approval.EnvVar+"="+o.approvalSock, approval.TokenEnv+"="+tok)
+	}
 	cmd.Run()
 }
 
@@ -990,7 +985,7 @@ func operator() string {
 // files under the shell's, the run's SWIM_* variables, extra for a cell),
 // stdin, process group and output (each line prefixed with prefix, for a
 // matrix cell).
-func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, prefix, job string, who approval.Caller, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter) {
+func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, prefix, job string, who approval.Caller, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter, string) {
 	argv := plan.Argv
 	if plan.Wrapped {
 		argv = append([]string{o.Self, "_wrap", strconv.Itoa(n), "--"}, argv...)
@@ -1019,7 +1014,8 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 		env = append(env, "SWIM_COLOR=0")
 	}
 	env = append(env, extra...)
-	env = append(env, stageEnv(o, n, who)...)
+	staged, tok := stageEnv(o, n, who)
+	env = append(env, staged...)
 	if o.secrets != nil {
 		env = append(env, o.secrets.env(o, n)...)
 	}
@@ -1051,7 +1047,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 		}
 	}}
 	cmd.Stdout, cmd.Stderr = w, w
-	return cmd, ownGroup, w
+	return cmd, ownGroup, w, tok
 }
 
 // exitCode is a finished process's exit code (128+signal if a signal

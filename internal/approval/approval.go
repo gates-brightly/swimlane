@@ -8,10 +8,15 @@
 // The launcher, not the request, says who is asking: each lane process
 // gets its own token (SWIM_APPROVAL_TOKEN), registered with the lane, job
 // and manifest it was started for, and the question is built from those.
-// A request without a known token, or for a guard its script doesn't
-// declare, is refused. The lane's description is shown, labelled as the
-// lane's. Each approval carries a request id that the lane must consume,
-// once, before it records the approval.
+// A request without a known token, from a process outside the lane's
+// process tree, or for a guard its script doesn't declare, is refused. The
+// lane's description is shown, labelled as the lane's. Each approval
+// carries a request id that the lane must consume, once, before it records
+// the approval; under swim run the launcher records it in the chain then
+// (Server.Record), so a lane never writes its own approval.
+//
+// The same socket tells swim's hidden commands which lane they run for
+// (op "whoami"), so a lane can't report for another.
 package approval
 
 import (
@@ -21,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -29,6 +35,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/peer"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -54,11 +62,18 @@ type Request struct {
 	Manifest string `json:"-"`
 	Flag     string `json:"flag"`
 	Desc     string `json:"desc"`
-	// Token identifies the lane process (TokenEnv). Op is "" to ask, or
-	// "consume" to use up the approval with request id ID.
+	// Token identifies the lane process (TokenEnv). Op is "" to ask,
+	// "consume" to use up the approval with request id ID, or "whoami" to
+	// learn which lane, cell and run the token is for.
 	Token string `json:"token,omitempty"`
 	Op    string `json:"op,omitempty"`
 	ID    string `json:"id,omitempty"`
+	// FlagSet: the lane's environment has Flag=1. Under swim run that
+	// approves only if swim run's own environment set it.
+	FlagSet bool `json:"flag_set,omitempty"`
+	// RawDesc is the description as the lane sent it, for the chain; Desc
+	// is made safe to show (Clean).
+	RawDesc string `json:"-"`
 	// Observed are the round's Observe: facts, read by the launcher as it
 	// asks (shown with the question).
 	Observed map[string]string `json:"-"`
@@ -86,7 +101,37 @@ type Response struct {
 	ID       string            `json:"id,omitempty"`
 	Lane     int               `json:"lane,omitempty"`
 	Job      string            `json:"job,omitempty"`
+	Cell     string            `json:"cell,omitempty"`
+	Run      string            `json:"run,omitempty"`
 	Observed map[string]string `json:"observed,omitempty"`
+	// Dry: no one was asked (nobody can be, under swim run); the guard is a
+	// dry run, and Why (if set) says why no signed approval counted.
+	Dry bool `json:"dry,omitempty"`
+	// How is the APPROVED line's detail when the launcher decided
+	// ("approved by ... (signed)", "FLAG=1"); "" to build it from By, Auto,
+	// Via, Pre and At.
+	How string `json:"how,omitempty"`
+	// Warns are WARN lines for the lane's log (evidence that changed).
+	Warns []Warn `json:"warns,omitempty"`
+	// Hash is the approve entry the launcher recorded as the approval was
+	// consumed ("" if it leaves recording to the lane).
+	Hash string `json:"hash,omitempty"`
+	// Grant is what the launcher records once the approval is consumed.
+	Grant *Grant `json:"-"`
+}
+
+// Warn is a WARN line for the lane's log, with an optional diff under it.
+type Warn struct {
+	Label  string   `json:"label"`
+	Detail string   `json:"detail,omitempty"`
+	Diff   []string `json:"diff,omitempty"`
+}
+
+// Grant is an approval the launcher records when its lane uses it: the
+// approve entry (from the launcher's own facts) and the .swim.log detail.
+type Grant struct {
+	Entry   chain.Entry
+	History string
 }
 
 // Caller is a lane process the launcher started, registered under its
@@ -95,14 +140,30 @@ type Caller struct {
 	Lane     int
 	Cell     string // a matrix cell or job, "" for the lane itself
 	Job      string // "" if the launcher doesn't know it yet
+	Run      string
 	Manifest string
 	Guards   []string // the flags its script declares or uses
+	// PID is the lane's process: requests must come from it or its
+	// descendants (where the platform can tell, package peer). AwaitPID
+	// registers a process not started yet (SetPID names it); 0 checks the
+	// token alone (a process swim itself runs for the lane).
+	PID int
 }
+
+// AwaitPID is Caller.PID for a lane process about to start.
+const AwaitPID = -1
+
+// MaxRequest caps one request: a lane can't make the launcher buffer more.
+const MaxRequest = 1 << 20
+
+// ReadTimeout is how long a connection may take to send its request.
+var ReadTimeout = 10 * time.Second
 
 // issued is an approval handed out and not yet consumed.
 type issued struct {
 	token, flag string
 	consumed    bool
+	grant       *Grant
 }
 
 // Asker asks the operator; it returns false when cancel closes first.
@@ -114,9 +175,12 @@ type Server struct {
 	dir string
 	ask Asker // called concurrently, once per waiting lane: it decides how to queue them
 	// Refused, if set, is told of each request refused without asking: no
-	// or an unknown token, a guard the script doesn't declare, a reused
-	// response.
+	// or an unknown token, a process outside the lane, a guard the script
+	// doesn't declare, a reused response.
 	Refused func(c Caller, req Request, why string)
+	// Record, if set, records an approval as its lane consumes it (the
+	// approve entry's hash); an error refuses the approval.
+	Record func(c Caller, g *Grant) (string, error)
 
 	mu        sync.Mutex
 	callers   map[string]Caller
@@ -139,6 +203,7 @@ func Listen(ask Asker) (*Server, error) {
 		os.RemoveAll(dir)
 		return nil, err
 	}
+	os.Chmod(filepath.Join(dir, "s"), 0o600)
 	s := &Server{ln: ln, dir: dir, ask: ask, cancel: make(chan struct{}), callers: map[string]Caller{}, issued: map[string]*issued{}}
 	s.wg.Add(1)
 	go s.accept()
@@ -158,18 +223,68 @@ func (s *Server) Register(c Caller) string {
 	return tok
 }
 
+// SetPID names the process a token registered with AwaitPID was given to,
+// once it has started.
+func (s *Server) SetPID(tok string, pid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c, ok := s.callers[tok]; ok {
+		c.PID = pid
+		s.callers[tok] = c
+	}
+}
+
+// Revoke forgets a token: its lane process has exited, so nothing may ask
+// with it again (a process it left behind included).
+func (s *Server) Revoke(tok string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.callers, tok)
+}
+
 func newID() string {
 	var b [16]byte
 	rand.Read(b[:])
 	return hex.EncodeToString(b[:])
 }
 
-// caller is the registered lane for a token.
+// caller is the registered lane for a token (waiting briefly for the
+// pid of one just starting).
 func (s *Server) caller(tok string) (Caller, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.callers[tok]
-	return c, ok && tok != ""
+	for i := 0; ; i++ {
+		s.mu.Lock()
+		c, ok := s.callers[tok]
+		s.mu.Unlock()
+		if !ok || tok == "" {
+			return Caller{}, false
+		}
+		if c.PID != AwaitPID || i >= 250 {
+			return c, true
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// from checks that conn comes from c's lane: its process or one of its
+// descendants. Refused when the platform can tell and it doesn't, or the
+// lane never started; allowed where the platform can't tell (the token
+// alone).
+func from(conn net.Conn, c Caller) string {
+	if c.PID == 0 || !peer.Supported {
+		return ""
+	}
+	if c.PID == AwaitPID {
+		return "swim " + fmt.Sprint(c.Lane) + "'s process never started"
+	}
+	ok, known := peer.FromLane(conn, c.PID)
+	switch {
+	case !known:
+		return "can't tell which process sent it"
+	case !ok:
+		p, _ := peer.PID(conn)
+		return fmt.Sprintf("it came from process %d, outside swim %d's lane (its token was used by another process)", p, c.Lane)
+	}
+	return ""
 }
 
 // refuse declines req without asking, and says so.
@@ -188,12 +303,14 @@ func (s *Server) check(req Request) (Caller, Request, string) {
 	if !ok {
 		return c, req, "the request didn't come from a lane of this run (no or an unknown token)"
 	}
-	req.Desc = Clean(req.Desc)
+	req.RawDesc, req.Desc = req.Desc, Clean(req.Desc)
 	if req.Lane != c.Lane {
 		req.Desc = fmt.Sprintf("%s (sent as swim %d)", req.Desc, req.Lane)
 	}
 	req.Lane, req.Job, req.Cell, req.Manifest = c.Lane, c.Job, c.Cell, c.Manifest
-	declared := req.Flag == ConfirmFlag
+	// A flag the lane has set is checked against swim run's own
+	// environment, which names it: the operator set it, declared or not.
+	declared := req.Flag == ConfirmFlag || req.FlagSet
 	for _, g := range c.Guards {
 		declared = declared || g == req.Flag
 	}
@@ -229,7 +346,24 @@ func (s *Server) consume(req Request) Response {
 	if why != "" {
 		return s.refuse(c, req, "approval "+short(req.ID)+": "+why)
 	}
-	return Response{Approved: true, ID: req.ID, Lane: c.Lane, Job: c.Job}
+	resp := Response{Approved: true, ID: req.ID, Lane: c.Lane, Job: c.Job}
+	if is.grant != nil && s.Record != nil {
+		hash, err := s.Record(c, is.grant)
+		if err != nil {
+			return s.refuse(c, req, "approval "+short(req.ID)+": couldn't record it: "+err.Error())
+		}
+		resp.Hash = hash
+	}
+	return resp
+}
+
+// whoami says which lane, cell, job and run the token is for.
+func (s *Server) whoami(req Request) Response {
+	c, ok := s.caller(req.Token)
+	if !ok {
+		return Response{Why: "not a lane of this run (no or an unknown token)"}
+	}
+	return Response{Approved: true, Lane: c.Lane, Cell: c.Cell, Job: c.Job, Run: c.Run}
 }
 
 func short(id string) string {
@@ -257,11 +391,39 @@ func (s *Server) accept() {
 func (s *Server) serve(c net.Conn) {
 	defer c.Close()
 	var req Request
-	if err := json.NewDecoder(bufio.NewReader(c)).Decode(&req); err != nil {
+	// One request per connection, of at most MaxRequest bytes, sent within
+	// ReadTimeout: a lane can't make the launcher buffer or wait without
+	// limit. Anything else is declined.
+	c.SetReadDeadline(time.Now().Add(ReadTimeout))
+	lr := &io.LimitedReader{R: c, N: MaxRequest + 1}
+	if err := json.NewDecoder(lr).Decode(&req); err != nil {
+		why := "malformed request"
+		var ne net.Error
+		switch {
+		case lr.N <= 0:
+			why = fmt.Sprintf("request too large (over %d bytes)", MaxRequest)
+		case errors.As(err, &ne) && ne.Timeout():
+			why = "the request took too long to arrive"
+		}
+		json.NewEncoder(c).Encode(Response{Why: why})
 		return
 	}
-	if req.Op == "consume" {
+	c.SetReadDeadline(time.Time{})
+	if req.Token != "" {
+		if caller, ok := s.caller(req.Token); ok {
+			if why := from(c, caller); why != "" {
+				resp := s.refuse(caller, req, why)
+				json.NewEncoder(c).Encode(resp)
+				return
+			}
+		}
+	}
+	switch req.Op {
+	case "consume":
 		json.NewEncoder(c).Encode(s.consume(req))
+		return
+	case "whoami":
+		json.NewEncoder(c).Encode(s.whoami(req))
 		return
 	}
 	who, req, why := s.check(req)
@@ -309,7 +471,7 @@ func (s *Server) serve(c net.Conn) {
 	if resp.Approved {
 		resp.ID = newID()
 		s.mu.Lock()
-		s.issued[resp.ID] = &issued{token: req.Token, flag: req.Flag}
+		s.issued[resp.ID] = &issued{token: req.Token, flag: req.Flag, grant: resp.Grant}
 		s.mu.Unlock()
 	}
 	json.NewEncoder(c).Encode(resp)
@@ -347,7 +509,7 @@ var ErrNoAnswer = errors.New("no answer")
 // up, declining, when stopped() reports true (polled every 200ms) or the
 // deadline (if not zero) passes; why says which.
 func Ask(path string, req Request, stopped func() bool, deadline time.Time) (Response, error) {
-	c, err := net.DialTimeout("unix", path, 2*time.Second)
+	c, err := dial(path)
 	if err != nil {
 		return Response{}, fmt.Errorf("approval: %w", err)
 	}
@@ -383,18 +545,49 @@ func Ask(path string, req Request, stopped func() bool, deadline time.Time) (Res
 	}
 }
 
+// dial connects to the server, retrying for a few seconds while it is
+// busy: every hidden command of every lane asks it (whoami), and a burst
+// can fill the socket's backlog (EAGAIN). A socket that's gone fails at
+// once.
+func dial(path string) (net.Conn, error) {
+	end := time.Now().Add(5 * time.Second)
+	for {
+		c, err := net.DialTimeout("unix", path, 2*time.Second)
+		if err == nil || time.Now().After(end) {
+			return c, err
+		}
+		if _, serr := os.Stat(path); serr != nil {
+			return nil, err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // Consume uses up approval id (from an approved Response) for guard flag,
 // with the lane process's token: refused when another lane asked for it,
-// it was for another guard, or it was already used.
-func Consume(path, token, id, flag string) error {
+// it was for another guard, or it was already used. It returns the approve
+// entry the launcher recorded ("" if it left that to the lane).
+func Consume(path, token, id, flag string) (string, error) {
 	resp, err := Ask(path, Request{Op: "consume", Token: token, ID: id, Flag: flag}, nil, time.Now().Add(10*time.Second))
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !resp.Approved {
-		return errors.New(resp.Why)
+		return "", errors.New(resp.Why)
 	}
-	return nil
+	return resp.Hash, nil
+}
+
+// Whoami asks the server which lane, cell, job and run token is for.
+func Whoami(path, token string) (Response, error) {
+	resp, err := Ask(path, Request{Op: "whoami", Token: token}, nil, time.Now().Add(10*time.Second))
+	if err != nil {
+		return resp, err
+	}
+	if !resp.Approved {
+		return resp, errors.New(resp.Why)
+	}
+	return resp, nil
 }
 
 // Question is how an approval is put to the operator. The first lines are

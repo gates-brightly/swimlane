@@ -144,7 +144,12 @@ whoever runs it.
   repo in `trust.yml`), anchored (checkpoints sent to `chain_anchors`, so a
   chain truncated or re-signed wholesale is caught) and authorized (each
   approval met `lookup.yml`'s rule).
-- **Not yet:** lanes forging their own approvals (T3) is open in
+- **A lane can't approve itself:** under `swim run` the launcher decides
+  every guard from what it saw as the run started, records each approval
+  itself, and attests the run; a lane can't mark, stage or finish another
+  lane's round.
+- **Not yet:** lanes run as you, so one can still read the runner key;
+  what it signs on its own fails `swim verify`. See
   [`tasks.md`](tasks.md).
 
 The details, and the test behind each claim, are in the
@@ -759,7 +764,11 @@ A `guard FLAG "<action>"` approves its step in one of these ways, in this
 order:
 
 1. **The flag is set.** `FLAG=1` approves up front, for CI and scripts.
-   `FLAG=0` declines without asking.
+   `FLAG=0` declines without asking. Under `swim run` the flag must come
+   from the environment `swim run` started with (your shell, or a script
+   that runs `swim run`): a lane that sets `FLAG=1` for itself gets a dry
+   run, `FLAG=1 was set inside the lane, not in the environment swim run
+   started with`.
 2. **A signed approval.** Approvals of this exact execution manifest (see
    [below](#execution-manifest)), plus standing approvals for whoever queued
    the batch, are counted against `lookup.yml`'s rule for the guard.
@@ -774,6 +783,12 @@ order:
 
 Anything else is a **dry run**: the step is skipped, and the log says how to
 approve it. A queued batch never asks a question.
+
+Under `swim run` the launcher, not the lane, decides all of this: it reads
+`approvals/` and `lookup.yml` once, as the run starts (an approval signed
+mid-run counts from the next run), and it writes each approval to the chain
+itself. A lane can't record an approval of its own, and once the run ends
+`swim verify` checks every approval against what the run recorded.
 
 Signed approvals are files under `approvals/`. Commit them, so approvers can
 add theirs from anywhere. Each file is an ordered, hash-linked log of SSH-signed

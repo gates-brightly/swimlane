@@ -1,12 +1,20 @@
 package approval
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"net"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/peer"
 )
 
 func TestRoundTripConcurrent(t *testing.T) {
@@ -193,16 +201,184 @@ func TestConsumeOnce(t *testing.T) {
 	a := s.Register(Caller{Lane: 1, Guards: []string{"F", "G"}})
 	b := s.Register(Caller{Lane: 2, Guards: []string{"F"}})
 	r, _ := Ask(s.Path(), Request{Lane: 1, Flag: "F", Token: a}, nil, time.Time{})
-	if err := Consume(s.Path(), b, r.ID, "F"); err == nil || !strings.Contains(err.Error(), "another lane") {
+	if _, err := Consume(s.Path(), b, r.ID, "F"); err == nil || !strings.Contains(err.Error(), "another lane") {
 		t.Errorf("another lane consumed it: %v", err)
 	}
-	if err := Consume(s.Path(), a, r.ID, "G"); err == nil {
+	if _, err := Consume(s.Path(), a, r.ID, "G"); err == nil {
 		t.Error("consumed for another guard")
 	}
-	if err := Consume(s.Path(), a, r.ID, "F"); err != nil {
+	if _, err := Consume(s.Path(), a, r.ID, "F"); err != nil {
 		t.Errorf("first use: %v", err)
 	}
-	if err := Consume(s.Path(), a, r.ID, "F"); err == nil || !strings.Contains(err.Error(), "already used") {
+	if _, err := Consume(s.Path(), a, r.ID, "F"); err == nil || !strings.Contains(err.Error(), "already used") {
 		t.Errorf("second use: %v", err)
+	}
+}
+
+// whoami names the lane, cell, job and run a token was registered for;
+// an unknown token is refused.
+func TestWhoami(t *testing.T) {
+	s, err := Listen(func(Request, <-chan struct{}) Response { return Response{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	tok := s.Register(Caller{Lane: 2, Cell: "orders", Job: "j-1", Run: "r-1"})
+	r, err := Whoami(s.Path(), tok)
+	if err != nil || r.Lane != 2 || r.Cell != "orders" || r.Job != "j-1" || r.Run != "r-1" {
+		t.Fatalf("whoami: %+v %v", r, err)
+	}
+	if _, err := Whoami(s.Path(), "bogus"); err == nil {
+		t.Error("an unknown token was answered")
+	}
+	s.Revoke(tok)
+	if _, err := Whoami(s.Path(), tok); err == nil {
+		t.Error("a revoked token was answered")
+	}
+}
+
+// A token works only from its lane's process tree: here the lane is
+// another process, so this test's requests come from outside it.
+func TestPeerOutsideTheLane(t *testing.T) {
+	if !peer.Supported {
+		t.Skip("no peer credentials on this platform")
+	}
+	asked := false
+	s, err := Listen(func(Request, <-chan struct{}) Response { asked = true; return Response{Approved: true} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var refused []string
+	s.Refused = func(c Caller, req Request, why string) { refused = append(refused, why) }
+	other := exec.Command("sleep", "30")
+	if err := other.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer other.Process.Kill()
+	tok := s.Register(Caller{Lane: 1, Guards: []string{"F"}, PID: AwaitPID})
+	s.SetPID(tok, other.Process.Pid)
+	r, _ := Ask(s.Path(), Request{Flag: "F", Token: tok}, nil, time.Time{})
+	if r.Approved || asked || !strings.Contains(r.Why, "outside swim 1's lane") {
+		t.Errorf("a request from outside the lane: %+v (asked %v)", r, asked)
+	}
+	if _, err := Whoami(s.Path(), tok); err == nil {
+		t.Error("whoami answered a process outside the lane")
+	}
+	// The lane's own process (this one, as the lane) is answered.
+	mine := s.Register(Caller{Lane: 1, Guards: []string{"F"}, PID: AwaitPID})
+	s.SetPID(mine, os.Getpid())
+	if r, _ := Ask(s.Path(), Request{Flag: "F", Token: mine}, nil, time.Time{}); !r.Approved {
+		t.Errorf("the lane's own request: %+v", r)
+	}
+	if len(refused) == 0 {
+		t.Error("the refusal wasn't reported")
+	}
+}
+
+// A request must be one JSON message of at most MaxRequest bytes, sent
+// within ReadTimeout; anything else is declined, unasked.
+func TestHostileRequests(t *testing.T) {
+	asked := 0
+	var mu sync.Mutex
+	s, err := Listen(func(Request, <-chan struct{}) Response {
+		mu.Lock()
+		asked++
+		mu.Unlock()
+		return Response{Approved: true}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	tok := s.Register(Caller{Lane: 1, Guards: []string{"F"}})
+	send := func(t *testing.T, payload []byte) Response {
+		t.Helper()
+		c, err := net.Dial("unix", s.Path())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		go c.Write(payload)
+		var r Response
+		c.SetReadDeadline(time.Now().Add(15 * time.Second))
+		json.NewDecoder(bufio.NewReader(c)).Decode(&r)
+		return r
+	}
+	big, _ := json.Marshal(Request{Flag: "F", Token: tok, Desc: strings.Repeat("x", MaxRequest+10)})
+	if r := send(t, big); r.Approved || !strings.Contains(r.Why, "request too large") {
+		t.Errorf("oversized: %+v", r)
+	}
+	if r := send(t, []byte("{not json\n")); r.Approved || r.Why != "malformed request" {
+		t.Errorf("malformed: %+v", r)
+	}
+	// A client that never finishes its request is cut off.
+	old := ReadTimeout
+	ReadTimeout = 200 * time.Millisecond
+	defer func() { ReadTimeout = old }()
+	if r := send(t, []byte(`{"flag":"F","token":"`)); r.Approved || !strings.Contains(r.Why, "too long") {
+		t.Errorf("slow: %+v", r)
+	}
+	if asked != 0 {
+		t.Errorf("asked %d hostile requests", asked)
+	}
+}
+
+// A lane that hangs up while its question is open is no longer asked for.
+func TestDisconnectCancels(t *testing.T) {
+	cancelled := make(chan struct{})
+	s, err := Listen(func(_ Request, cancel <-chan struct{}) Response {
+		<-cancel
+		close(cancelled)
+		return Response{}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	tok := s.Register(Caller{Lane: 1, Guards: []string{"F"}})
+	c, err := net.Dial("unix", s.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	json.NewEncoder(c).Encode(Request{Flag: "F", Token: tok})
+	time.Sleep(100 * time.Millisecond)
+	c.Close()
+	select {
+	case <-cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the question stayed open after the lane hung up")
+	}
+}
+
+// Under swim run the approval is recorded by the launcher as the lane
+// consumes it (Record), once; a replay records nothing.
+func TestConsumeRecords(t *testing.T) {
+	s, err := Listen(func(req Request, cancel <-chan struct{}) Response {
+		return Response{Approved: true, Grant: &Grant{Entry: chain.Entry{Type: "approve", Guard: req.Flag}}}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var recorded []string
+	s.Record = func(c Caller, g *Grant) (string, error) {
+		recorded = append(recorded, fmt.Sprintf("%d %s", c.Lane, g.Entry.Guard))
+		return "hash-1", nil
+	}
+	a := s.Register(Caller{Lane: 1, Guards: []string{"F"}})
+	b := s.Register(Caller{Lane: 2, Guards: []string{"F"}})
+	r, _ := Ask(s.Path(), Request{Flag: "F", Token: a}, nil, time.Time{})
+	if _, err := Consume(s.Path(), b, r.ID, "F"); err == nil {
+		t.Error("lane 2 replayed lane 1's approval")
+	}
+	if h, err := Consume(s.Path(), a, r.ID, "F"); err != nil || h != "hash-1" {
+		t.Errorf("first use: %q %v", h, err)
+	}
+	if _, err := Consume(s.Path(), a, r.ID, "F"); err == nil {
+		t.Error("used twice")
+	}
+	if len(recorded) != 1 || recorded[0] != "1 F" {
+		t.Errorf("recorded %v", recorded)
 	}
 }

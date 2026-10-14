@@ -5,9 +5,10 @@
 // forged entry fails its signature, so tampering is provable (swim verify).
 //
 // Entries are approvals (who approved which guard of which exact script,
-// and how) and rounds (what ran: the script's hash, the hash of the
-// round's log, the result, the approvals it used), recorded as they
-// happen.
+// and how), rounds (what ran: the script's hash, the hash of the round's
+// log, the result, the approvals it used), recorded as they happen, and
+// runs (swim run's attestation of what its lanes ran and the approvals it
+// recorded).
 package chain
 
 import (
@@ -46,7 +47,7 @@ type Entry struct {
 	Seq  int    `json:"seq"`
 	Prev string `json:"prev"` // SHA-256 of the previous line; "" for the first
 	At   string `json:"at"`
-	Type string `json:"type"` // approve | round | grant | revoke | repair | hub (a command from the hub; Method: its kind)
+	Type string `json:"type"` // approve | round | run | grant | revoke | repair | hub (a command from the hub; Method: its kind)
 
 	Run    string `json:"run,omitempty"`
 	Lane   int    `json:"lane,omitempty"`
@@ -86,6 +87,14 @@ type Entry struct {
 	// evidence an approval covered (approve entries).
 	Evidence    string            `json:"evidence_sha256,omitempty"`
 	InputRounds map[string]string `json:"input_rounds,omitempty"`
+
+	// run: swim run's attestation, recorded once its last lane exited. The
+	// manifest and script each lane ran ("3" -> SHA-256), Approvals (above)
+	// every approve entry the launcher recorded, and Flags the guard flags
+	// approved by swim run's own environment.
+	Manifests map[string]string `json:"manifests,omitempty"`
+	Scripts   map[string]string `json:"scripts,omitempty"`
+	Flags     []string          `json:"flags,omitempty"`
 
 	Signer string `json:"signer,omitempty"` // public key of whoever recorded the entry
 	Sig    string `json:"sig,omitempty"`

@@ -299,6 +299,9 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   In a lane script in any language: exit 0 if the operator approves the
   action, 1 if not. FLAG=1 approves up front; unset, swim asks the operator
   (or counts signed approvals); anything else records SKIP as a dry run.
+  Under swim run the launcher decides: FLAG=1 counts only if swim run's own
+  environment set it (a FLAG=1 the lane sets is a dry run), and signed
+  approvals count as they were when the run started.
   One flag per destructive action; list it in the header (or lane.N.yml):
   under swim run, a flag the script neither lists nor uses by name is
   refused. With # Observe: probes, a fact that changed between approval and

@@ -318,7 +318,8 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 		return status.Failed
 	}
 	who := approval.Caller{Cell: c.Name, Job: ci.Job}
-	cmd, ownGroup, w := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), prefix, job, who, disp, files)
+	cmd, ownGroup, w, tok := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), prefix, job, who, disp, files)
+	defer exited(o, tok)
 	if ir.stopping() {
 		return skipCell("interrupted before start")
 	}
@@ -328,6 +329,7 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 		setCell(func(e *status.Lane) { e.State, e.ExitCode = status.Failed, status.Int(127) })
 		return status.Failed
 	}
+	started(o, tok, cmd.Process.Pid)
 	moving(+1)
 	key := n*1000 + idx + 1
 	ir.add(key, &laneProc{proc: cmd.Process, group: ownGroup, started: launched, lane: n, cell: c.Name})

@@ -38,10 +38,11 @@ func TestChainLargeEntryAndRepair(t *testing.T) {
 	}
 	r.mustSwim("run", "1")
 	links, err := chain.Read(r.root)
-	if err != nil || len(links) != 3 || links[2].Type != "round" || links[2].Lane != 1 {
+	// Each run: its round, then swim run's attestation.
+	if err != nil || len(links) != 5 || links[3].Type != "round" || links[3].Lane != 1 || links[4].Type != "run" {
 		t.Fatalf("the round after the big entry wasn't recorded: %d links, %v", len(links), err)
 	}
-	contains(t, "verify", r.mustSwim("verify"), "3 entries", "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify"), "5 entries", "consistent  yes")
 
 	// A write cut short: half an entry, no newline.
 	f, _ := os.OpenFile(chain.Path(r.root), os.O_APPEND|os.O_WRONLY, 0)
@@ -63,6 +64,6 @@ func TestChainLargeEntryAndRepair(t *testing.T) {
 	}
 	contains(t, "repair again", r.mustSwim("chain", "repair"), "nothing to repair")
 	r.mustSwim("run", "1")
-	contains(t, "verify after repair", r.mustSwim("verify"), "5 entries", "note: entry #4: swim chain repair removed 17 bytes", "consistent  yes")
-	contains(t, "history", r.mustSwim("history", "--oneline", "-n", "2"), "repair: removed 17 bytes of an incomplete final entry")
+	contains(t, "verify after repair", r.mustSwim("verify"), "8 entries", "note: entry #6: swim chain repair removed 17 bytes", "consistent  yes")
+	contains(t, "history", r.mustSwim("history", "--oneline", "-n", "3"), "repair: removed 17 bytes of an incomplete final entry")
 }
