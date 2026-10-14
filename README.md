@@ -200,7 +200,7 @@ swim plan --yaml
 
 | Term | Meaning |
 |---|---|
-| **lane** | A numbered slot, `swim 1..N`, with one script (`lane.N.sh`, or `lane.N.py`, `lane.N.ts`, a binary `lane.N`, ...) and one log. One worker owns it at a time. |
+| **lane** | A numbered slot, `swim 1..99`, with one script (`lane.N.sh`, or `lane.N.py`, `lane.N.ts`, a binary `lane.N`, ...) and one log. One worker owns it at a time. |
 | **round** | What a lane script holds: one goal ("cut over service X"). Disposable. |
 | **job** | A round's unique id (its `# Job:` line). It's recorded everywhere, exported to steps as `$SWIM_JOB`, and usable wherever a lane number is: `swim run 3f2a9c1e`. Naming a job pins the run to that exact round, so a lane rewritten in the meantime is refused. |
 | **step** | One command run through `run`, `gate` or `snapshot`, logged with its command, output and exit code. |
@@ -905,7 +905,6 @@ Personal settings live outside the repo, so workers can't change them:
 ```yaml
 # ~/.config/swim/config.yml  ($XDG_CONFIG_HOME/swim/config.yml)
 defaults:
-  lanes: 4
   header_env: [STAGE, AWS_PROFILE]       # env recorded in every step header (never secrets)
   chime: failure                         # true | false | failure
   approvals: prompt                      # prompt | flags (never ask)
@@ -919,6 +918,10 @@ repos:
     deps: {2: [1], 4: [2, 3]}
     runners: {ts: /usr/local/bin/tsx}    # saved when swim asks; swim.yml's runners: are the default
 ```
+
+There is no lane count to configure: swim shows the lanes in use (a lane
+script that isn't a stub, a current log, or a running lane). `swim new N`
+starts one, and `swim archive N` (with a stub or no script) drops it.
 
 `swim config KEY VALUE` sets a value and keeps the file's comments. A
 committed `swim.yml` takes the same keys as a `repos:` entry, and it's how a

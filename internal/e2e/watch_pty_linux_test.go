@@ -12,6 +12,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "first job", `run "one" echo one-ran`)
 	r.script(2, "second job", `run "two" echo two-ran`)
+	r.write("lane.3.sh", "#!/usr/bin/env bash\n# being written: no Round: line yet\n", 0o755) // in use, nothing pending
 	tr := r.startTUI(nil, "watch")
 	s := tr.waitFor("▸ swim 1")
 	contains(t, "watch screen", s, "pending", "Jobs", "first job", "second job", "Queue", "r run now", "q queue")
@@ -41,10 +42,10 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	}
 
 	// A lane with no pending round says so; Ctrl-C quits.
-	tr.send("\x1b[B\x1b[B\x1b[B")
-	tr.waitFor("▸ swim 4")
+	tr.send("\x1b[B\x1b[B")
+	tr.waitFor("▸ swim 3")
 	tr.send("r")
-	tr.waitFor("swim 4 holds no pending round")
+	tr.waitFor("swim 3 holds no pending round")
 	tr.send("\x03")
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d after ctrl-c", code)

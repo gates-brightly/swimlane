@@ -25,6 +25,7 @@ func TestScenarios(t *testing.T) {
 	for _, d := range dirs {
 		name := filepath.Base(filepath.Dir(d))
 		t.Run(name, func(t *testing.T) {
+			t.Parallel() // each scenario has its own scratch repo and config
 			c := exec.Command("bash", filepath.Join(e2e, "run.sh"), name)
 			c.Env = append(os.Environ(), "SWIM_E2E_BIN="+bin)
 			out, err := c.CombinedOutput()

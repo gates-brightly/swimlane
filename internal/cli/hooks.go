@@ -223,7 +223,7 @@ func cmdStart(args []string) error {
 		return err
 	}
 	p := painter()
-	fmt.Fprintln(os.Stderr, p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d", n))+"  "+p.Paint(ui.Bold, "Round: "+round)+"  "+p.Paint(ui.Dim, "job "+job))
+	fmt.Fprintln(os.Stderr, p.Paint(ui.LaneColor(n)+ui.Bold, laneName(root, n))+"  "+p.Paint(ui.Bold, "Round: "+round)+"  "+p.Paint(ui.Dim, "job "+job))
 	for _, prob := range info.Problems {
 		fmt.Fprintln(os.Stderr, p.Paint(ui.Yellow, "WARN  "+prob))
 	}
@@ -394,7 +394,7 @@ func finishCheck(root string, cfg *config.Config, n int, logPath, exitS string) 
 	if stop != "" {
 		detail = "  stops at gate \"" + stop + "\""
 	}
-	fmt.Fprintf(os.Stderr, "%s %s%s  pass=%d fail=%d skip=%d  %s\n", p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d check:", n)),
+	fmt.Fprintf(os.Stderr, "%s %s%s  pass=%d fail=%d skip=%d  %s\n", p.Paint(ui.LaneColor(n)+ui.Bold, laneName(root, n)+" check:"),
 		p.Paint(ui.StateColor(word)+ui.Bold, word), detail, r.Pass, r.Fail, r.Skip, display.Elapsed(dur))
 	status.UpdateCheck(root, n, cfg.Lanes, func(l *status.Lane) {
 		l.CheckResult, l.CheckAt, l.CheckSHA, l.CheckStop, l.CheckGuards = result, now.UTC().Format(time.RFC3339), sha, stop, guards
@@ -607,7 +607,7 @@ func cmdFinish(args []string) error {
 
 	p := painter()
 	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d drift=%d  exit %d  %s\n",
-		p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d summary:", n)),
+		p.Paint(ui.LaneColor(n)+ui.Bold, laneName(root, n)+" summary:"),
 		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, code, display.Span(now.Add(-dur), now))
 	fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "stages: "+logparse.StagesText(stages)))
 	if hs := r.HandlerResults(); len(hs) > 0 {
@@ -751,4 +751,15 @@ func guardFlag(detail string) string {
 		return detail[:i]
 	}
 	return ""
+}
+
+// laneName is how this process's round reads in its own banners: "swim 2",
+// or for one job of a lane of jobs "swim 1.3".
+func laneName(root string, n int) string {
+	if cell := lane.CurrentCell(); lane.IsJobPath(cell) {
+		if _, ok := lane.LaneJobs(root, n); ok {
+			return fmt.Sprintf("swim %d.%s", n, cell)
+		}
+	}
+	return fmt.Sprintf("swim %d", n)
 }

@@ -29,6 +29,22 @@ To cut a release:
 
 ## Unreleased
 
+### Changed
+
+- **No lane count:** swim shows the lanes in use instead of a configured
+  `lanes`. A lane is in use while it has a lane script that isn't a stub, a
+  current log (`agentN.log`, or a job's or cell's), or a running process.
+  - `swim new 7` just starts lane 7 (any of 1..99); `swim archive N` (with a
+    stub or no script) drops a lane from `swim status`, the live view, the
+    watch view and the hub. Archive now moves a lane's job and matrix cell
+    logs too.
+  - `lanes:` (config.yml or swim.yml) is ignored, and `swim doctor` says so
+    (`lanes-setting`); `swim config lanes` and `--lanes` are gone. So are
+    `swim all`'s offer to raise the lane count and `swim ci`'s "beyond the
+    configured lanes" failure, and `swim plan --yaml`'s `beyond_lanes`.
+  - `# After: 9` for a lane with no script, log or past run is an error (a
+    typo), in `swim run` and `swim lint`.
+
 ### Added
 
 - **Jobs:** any lane can be split into jobs, numbered under it and nested

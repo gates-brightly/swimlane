@@ -9,34 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
-
-// Beyond returns lane scripts numbered above the configured lanes that hold
-// jobs which would run if the lanes existed (not already passed, unless
-// rerun).
-func Beyond(root string, cfg *config.Config, rerun bool) []int {
-	st, _ := status.Load(root)
-	var out []int
-	for _, n := range lane.ScriptsBeyond(root, cfg.Lanes) {
-		info, err := lane.ReadScript(root, n)
-		if err != nil || !info.Pending() {
-			continue
-		}
-		var last *status.Lane
-		if st != nil {
-			last = st.Get(n)
-		}
-		if !rerun && AlreadyPassed(info, last) {
-			continue
-		}
-		out = append(out, n)
-	}
-	return out
-}
 
 // plan is what swim run would do, before it's rendered.
 type plan struct {
@@ -318,9 +294,9 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 	}
 
 	// No-action items are summarised, not listed.
-	var idle, notes []string
+	var idle []string
 	if len(o.Lanes) == 0 {
-		for n := 1; n <= o.Cfg.Lanes; n++ {
+		for _, n := range o.Cfg.Active {
 			if selected[n] || contains(passed, n) {
 				continue
 			}
@@ -332,10 +308,6 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 			default:
 				idle = append(idle, fmt.Sprintf("swim %d (no Round: line)", n))
 			}
-		}
-		for _, n := range Beyond(o.Root, o.Cfg, o.Rerun) {
-			notes = append(notes, fmt.Sprintf("%s holds a job beyond swim %d (%s): swim all will offer to add lanes, or run swim config --lanes %d",
-				lane.ScriptName(o.Root, n), o.Cfg.Lanes, scripts0(o.Root, n).Round, n))
 		}
 	}
 
@@ -391,9 +363,6 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 	sort.Strings(lockNames)
 	for _, name := range lockNames {
 		fmt.Fprintf(w, "%s %s: swim %s take turns (never at the same time)\n", p.Paint(ui.Yellow, "Lock"), name, joinInts(byLock[name], ", "))
-	}
-	for _, n := range notes {
-		fmt.Fprintln(w, p.Paint(ui.Yellow, "Note: ")+n)
 	}
 	return nil
 }
@@ -466,11 +435,6 @@ func actionFor(info lane.Info, last *status.Lane, skipped bool) planAction {
 		}
 	}
 	return actRun
-}
-
-func scripts0(root string, n int) lane.Info {
-	info, _ := lane.ReadScript(root, n)
-	return info
 }
 
 func contains(ns []int, n int) bool {
@@ -548,7 +512,6 @@ type PlanDoc struct {
 	Command string         `yaml:"command"`
 	Lanes   []PlanLane     `yaml:"lanes"`
 	Idle    []PlanIdle     `yaml:"idle"`
-	Beyond  []int          `yaml:"beyond_lanes,flow,omitempty"` // lane scripts past the configured count
 	Counts  map[string]int `yaml:"counts"`
 }
 
@@ -601,7 +564,7 @@ func Plan(o Options) (*PlanDoc, error) {
 		doc.Idle = append(doc.Idle, PlanIdle{Lane: n, Why: "passed"})
 	}
 	if len(o.Lanes) == 0 {
-		for n := 1; n <= o.Cfg.Lanes; n++ {
+		for _, n := range o.Cfg.Active {
 			if pl.selected[n] || contains(pl.passed, n) {
 				continue
 			}
@@ -614,7 +577,6 @@ func Plan(o Options) (*PlanDoc, error) {
 			}
 			doc.Idle = append(doc.Idle, PlanIdle{Lane: n, Why: why})
 		}
-		doc.Beyond = Beyond(o.Root, o.Cfg, o.Rerun)
 	}
 	sort.Slice(doc.Idle, func(a, b int) bool { return doc.Idle[a].Lane < doc.Idle[b].Lane })
 	return doc, nil

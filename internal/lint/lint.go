@@ -349,7 +349,9 @@ func localDeps(cfg *config.Config, scripts map[int]*Script) (map[int][]int, map[
 			case err != nil && m == 0:
 				errs[n] = fmt.Sprintf("`# After: %s`: no lane holds job %s", ref, ref)
 			case !cfg.ValidLane(m):
-				errs[n] = fmt.Sprintf("`# After: %s`: no swim %d (lanes are 1..%d)", ref, m, cfg.Lanes)
+				errs[n] = fmt.Sprintf("`# After: %s`: no swim %d (lanes are 1..%d)", ref, m, lane.MaxLanes)
+			case scripts[m] == nil && !cfg.IsActive(m):
+				errs[n] = fmt.Sprintf("`# After: %s`: no swim %d: it has no lane script, log or past run", ref, m)
 			case m == n:
 				errs[n] = fmt.Sprintf("`# After: %s`: a lane can't wait for itself", ref)
 			default:

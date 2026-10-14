@@ -39,7 +39,7 @@ const (
 var ChimeStyles = []string{StyleBell, StyleSound, StyleNotify}
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"lanes", "chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep"}
+var Keys = []string{"chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep"}
 
 // ParseChime reads true|false|failure (on|off also accepted).
 func ParseChime(s string) (Chime, error) {
@@ -148,8 +148,6 @@ func (c *Config) Get(key string) (string, error) {
 		return c.Runners[ext], nil
 	}
 	switch key {
-	case "lanes":
-		return strconv.Itoa(c.Lanes), nil
 	case "chime":
 		return mode.String(), nil
 	case "chime_style":
@@ -208,15 +206,6 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	}
 	switch key {
-	case "lanes":
-		n, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil || n < 1 || n > 99 {
-			if err != nil {
-				return nil, fmt.Errorf("lanes must be a number 1..99, got %q", value)
-			}
-			return nil, fmt.Errorf("lanes must be 1..99, got %d", n)
-		}
-		return intNode(n), nil
 	case "chime":
 		c, err := ParseChime(value)
 		if err != nil {
@@ -373,8 +362,6 @@ func SetKey(path, root, key, value string, repo bool) error {
 	if v := mapGet(section, key); v != nil {
 		// Replace the value in place so comments on it survive.
 		v.Kind, v.Tag, v.Value, v.Style, v.Content, v.Alias = val.Kind, val.Tag, val.Value, 0, nil, nil
-	} else if key == "lanes" {
-		section.Content = append([]*yaml.Node{scalar(key), val}, section.Content...)
 	} else {
 		section.Content = append(section.Content, scalar(key), val)
 	}

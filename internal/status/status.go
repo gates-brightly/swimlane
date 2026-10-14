@@ -156,13 +156,16 @@ func (f *File) Normalize(n int) {
 // Get returns lane n's entry, or nil.
 // CellsText sums up a matrix lane's cells: "2/3 passed · failed: billing ·
 // running: users" ("" for a plain lane).
-func (l *Lane) CellsText() string {
+func (l *Lane) CellsText() string { return l.CellsTextAs(func(c string) string { return c }) }
+
+// CellsTextAs is CellsText with each cell named by label (a job's id, 1.4).
+func (l *Lane) CellsTextAs(label func(cell string) string) string {
 	if len(l.Cells) == 0 {
 		return ""
 	}
 	by := map[string][]string{}
 	for _, c := range l.Cells {
-		by[c.State] = append(by[c.State], c.Cell)
+		by[c.State] = append(by[c.State], label(c.Cell))
 	}
 	parts := []string{fmt.Sprintf("%d/%d passed", len(by[Passed]), len(l.Cells))}
 	for _, st := range []string{Failed, Interrupted, Skipped, Running, Waiting, Locked} {

@@ -32,7 +32,7 @@ func TestConfigKeys(t *testing.T) {
 		case "chime_style":
 			contains(t, "bad style", out, "bell, sound, notify")
 		case "colour":
-			contains(t, "unknown key", out, "keys: lanes, chime, chime_style, chime_min_s")
+			contains(t, "unknown key", out, "keys: chime, chime_style, chime_min_s")
 		}
 	}
 	if got := strings.TrimSpace(r.mustSwim("config", "chime")); got != "failure" {
@@ -46,18 +46,15 @@ func TestConfigKeys(t *testing.T) {
 		t.Errorf("chime_min_s = %q", got)
 	}
 
-	// lanes works as a key, with --lanes kept as an alias.
-	contains(t, "config lanes", r.mustSwim("config", "lanes", "6"), "lanes: 4 -> 6")
-	if got := strings.TrimSpace(r.mustSwim("config", "lanes")); got != "6" {
-		t.Errorf("lanes = %q", got)
-	}
-	contains(t, "config --lanes", r.mustSwim("config", "--lanes", "5"), "lanes: 6 -> 5")
-	if out, code := r.swim("config", "lanes", "100"); code == 0 || !strings.Contains(out, "1..99") {
-		t.Errorf("lanes 100: %d %s", code, out)
+	// There's no lane count to set: swim finds the lanes in use.
+	for _, args := range [][]string{{"config", "lanes", "6"}, {"config", "--lanes", "5"}} {
+		if out, code := r.swim(args...); code == 0 || !strings.Contains(out, "no longer has a lane count") {
+			t.Errorf("swim %v: %d %s", args, code, out)
+		}
 	}
 
 	cfg, _ := os.ReadFile(filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml"))
-	contains(t, "config file", string(cfg), "# swim configuration", "# Env vars recorded", "chime: failure", "chime_min_s: 30", "chime_min_s: 0", "lanes: 5")
+	contains(t, "config file", string(cfg), "# swim configuration", "# Env vars recorded", "chime: failure", "chime_min_s: 30", "chime_min_s: 0")
 }
 
 // No terminal, no bell: even with chime on and no minimum.

@@ -15,7 +15,6 @@ import (
 // feed.
 func TestAlwaysLanes(t *testing.T) {
 	r := newRepo(t, "")
-	r.mustSwim("config", "--lanes", "6")
 	addHeader := func(n int, line string) {
 		p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
 		data, _ := os.ReadFile(p)

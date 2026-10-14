@@ -276,9 +276,12 @@ func Run(o Options) (int, error) {
 		o.secrets = rs
 	}
 
-	// The panel shows every lane 1..N so numbering never has gaps.
+	// The panel shows the lanes in use (and any this run starts).
 	views := make([]display.LaneView, 0, o.Cfg.Lanes)
 	for n := 1; n <= o.Cfg.Lanes; n++ {
+		if !o.Cfg.IsActive(n) && !selected[n] {
+			continue
+		}
 		info, _ := lane.ReadScript(o.Root, n)
 		v := display.LaneView{N: n, State: display.Idle, Round: info.Round, Job: info.Job,
 			KnownGuards: info.GuardFlags(), UnknownGuards: info.DynamicGuards}
@@ -664,7 +667,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	if perr != nil {
 		return stamp(refuseStart(o, n, perr, disp))
 	}
-	cmd, ownGroup, w := laneCommand(o, n, sel, plan, nil, "", disp, fileLocks)
+	cmd, ownGroup, w := laneCommand(o, n, sel, plan, nil, "", "", disp, fileLocks)
 
 	// The last moment to honour a Ctrl-C that came while this lane was
 	// getting ready (runner, env, slot): after this it starts, and gets the
@@ -835,7 +838,11 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 			for _, s := range oc.Cells {
 				counts[s]++
 			}
-			fmt.Fprintf(out, "  %s %s %4d %5d %5d %5d %6s %7s  cells\n", label, res, oc.Exit, counts[status.Passed], counts[status.Failed]+counts[status.Interrupted], counts[status.Skipped], "-", display.Elapsed(oc.Elapsed))
+			kind := "cells"
+			if info, _ := lane.ReadScript(root, n); info.IsGroup() {
+				kind = "jobs"
+			}
+			fmt.Fprintf(out, "  %s %s %4d %5d %5d %5d %6s %7s  %s\n", label, res, oc.Exit, counts[status.Passed], counts[status.Failed]+counts[status.Interrupted], counts[status.Skipped], "-", display.Elapsed(oc.Elapsed), kind)
 			names := make([]string, 0, len(oc.Cells))
 			for c := range oc.Cells {
 				names = append(names, c)
@@ -939,7 +946,7 @@ func operator() string {
 // files under the shell's, the run's SWIM_* variables, extra for a cell),
 // stdin, process group and output (each line prefixed with prefix, for a
 // matrix cell).
-func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, prefix string, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter) {
+func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, prefix, job string, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter) {
 	argv := plan.Argv
 	if plan.Wrapped {
 		argv = append([]string{o.Self, "_wrap", strconv.Itoa(n), "--"}, argv...)
@@ -990,7 +997,10 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 	w := &lineWriter{emit: func(s string) {
 		o.beat.saw(n)
 		s = prefix + mk.String(s)
-		disp.Line(n, s)
+		disp.JobLine(n, job, s)
+		if job != "" {
+			s = "[" + job + "] " + s // the YAML stream says which job too
+		}
 		if o.ev.wantsOutput() {
 			o.ev.emit(Event{Event: "output", Lane: n, Line: &s})
 		}

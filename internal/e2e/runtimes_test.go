@@ -88,15 +88,15 @@ func TestWrappedLaneWholeRun(t *testing.T) {
 // and the rest.
 func TestBinaryLaneWithSidecar(t *testing.T) {
 	r := newRepo(t, "")
-	echo, err := exec.LookPath("echo")
-	if err != nil || !strings.HasPrefix(echo, "/") {
-		t.Skip("no echo binary")
+	// A program built here, not a copy of a system one: macOS kills a copied
+	// system binary at launch (exit 137); Go signs what it builds.
+	src := filepath.Join(t.TempDir(), "main.go")
+	os.WriteFile(src, []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"compiled lane ran\") }\n"), 0o644)
+	build := exec.Command("go", "build", "-o", filepath.Join(r.root, "lane.3"), src)
+	build.Env = append(os.Environ(), "GOFLAGS=-buildvcs=false")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build the lane: %v %s", err, out)
 	}
-	data, err := os.ReadFile(echo)
-	if err != nil || !(len(data) > 4 && (string(data[:4]) == "\x7fELF" || data[0] == 0xcf || data[0] == 0xca)) {
-		t.Skip("echo is not a compiled program here")
-	}
-	r.write("lane.3", string(data), 0o755)
 	out, _ := r.swim("status")
 	contains(t, "status before sidecar", out, "swim 3")
 	r.write("lane.3.yml", "round: compiled lane\nguards:\n  SHIP_IT: ship the build (2026-10-13)\ntimeout: 5m\nlocks: [deploy]\n", 0o644)

@@ -35,8 +35,8 @@ func TestLoadMissingFileUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Lanes != DefaultLanes || c.HasRepo {
-		t.Fatalf("got lanes=%d hasRepo=%v", c.Lanes, c.HasRepo)
+	if c.Lanes != 1 || len(c.Active) != 0 || c.HasRepo {
+		t.Fatalf("got lanes=%d active=%v hasRepo=%v", c.Lanes, c.Active, c.HasRepo)
 	}
 }
 
@@ -59,7 +59,7 @@ repos:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Lanes != 6 || a.Runtime != "node --version" || strings.Join(a.HeaderEnv, ",") != "STAGE" {
+	if a.Runtime != "node --version" || strings.Join(a.HeaderEnv, ",") != "STAGE" {
 		t.Fatalf("a = %+v", a.Settings)
 	}
 	if got := a.DepsOf(4); len(got) != 1 || got[0] != 2 {
@@ -69,17 +69,16 @@ repos:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.Lanes != 4 || strings.Join(b.HeaderEnv, ",") != "AWS_PROFILE" || len(b.Deps) != 0 {
+	if strings.Join(b.HeaderEnv, ",") != "AWS_PROFILE" || len(b.Deps) != 0 {
 		t.Fatalf("b = %+v", b.Settings)
 	}
 }
 
 func TestValidateRejectsCyclesAndRange(t *testing.T) {
 	cases := map[string]string{
-		"cycle":  "repos:\n  /r:\n    deps: {1: [2], 2: [3], 3: [1]}\n",
-		"range":  "repos:\n  /r:\n    lanes: 2\n    deps: {2: [3]}\n",
-		"self":   "repos:\n  /r:\n    deps: {2: [2]}\n",
-		"lanes0": "defaults:\n  lanes: 100\n",
+		"cycle": "repos:\n  /r:\n    deps: {1: [2], 2: [3], 3: [1]}\n",
+		"range": "repos:\n  /r:\n    deps: {2: [100]}\n",
+		"self":  "repos:\n  /r:\n    deps: {2: [2]}\n",
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -120,47 +119,8 @@ func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
 		}
 	}
 	c, err := Load("/repo/two")
-	if err != nil || !c.HasRepo || c.Lanes != 4 {
+	if err != nil || !c.HasRepo {
 		t.Fatalf("Load after EnsureRepo: %+v err=%v", c, err)
-	}
-}
-
-func TestSetLanesKeepsCommentsAndOtherRepos(t *testing.T) {
-	p := writeConfig(t, `# top comment
-defaults:
-  lanes: 4
-repos:
-  /other:
-    lanes: 2
-  /repo/a:
-    # keep me
-    deps: {2: [1]}
-`)
-	if err := SetLanes(p, "/repo/a", 6); err != nil {
-		t.Fatal(err)
-	}
-	c, err := Load("/repo/a")
-	if err != nil || c.Lanes != 6 || len(c.DepsOf(2)) != 1 {
-		t.Fatalf("after SetLanes: %+v %v", c, err)
-	}
-	if o, _ := Load("/other"); o.Lanes != 2 {
-		t.Errorf("other repo changed: %d", o.Lanes)
-	}
-	data, _ := os.ReadFile(p)
-	for _, want := range []string{"# top comment", "# keep me"} {
-		if !strings.Contains(string(data), want) {
-			t.Errorf("lost %q:\n%s", want, data)
-		}
-	}
-	// A repo without a section gets one.
-	if err := SetLanes(p, "/repo/new", 5); err != nil {
-		t.Fatal(err)
-	}
-	if c, _ := Load("/repo/new"); c.Lanes != 5 || !c.HasRepo {
-		t.Errorf("new repo: %+v", c)
-	}
-	if err := SetLanes(p, "/repo/a", 100); err == nil {
-		t.Error("lanes=100 accepted")
 	}
 }
 
@@ -252,7 +212,7 @@ repos:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, want := range map[string]string{"chime": "failure", "chime_style": "notify", "chime_min_s": "0", "lanes": "4"} {
+	for key, want := range map[string]string{"chime": "failure", "chime_style": "notify", "chime_min_s": "0"} {
 		if got, _ := c.Get(key); got != want {
 			t.Errorf("Get(%s) = %q, want %q", key, got, want)
 		}
@@ -310,13 +270,12 @@ func TestSetKeyRejectsBadKeysAndValues(t *testing.T) {
 	p := writeConfig(t, "defaults:\n  lanes: 4\n")
 	before, _ := os.ReadFile(p)
 	cases := []struct{ key, value, want string }{
-		{"colour", "red", "keys: lanes, chime, chime_style, chime_min_s"},
+		{"colour", "red", "keys: chime, chime_style, chime_min_s"},
 		{"chime", "maybe", "true, false or failure"},
 		{"chime_style", "kazoo", "bell, sound, notify"},
 		{"chime_min_s", "-3", "0 or more"},
 		{"chime_min_s", "ten", "0 or more"},
-		{"lanes", "0", "1..99"},
-		{"lanes", "many", "1..99"},
+		{"lanes", "4", "unknown config key"}, // swim finds the lanes in use
 	}
 	for _, c := range cases {
 		err := SetKey(p, "/r", c.key, c.value, false)
@@ -338,14 +297,15 @@ func TestRepoFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Lanes != 7 || c.Parallel() != 3 || !c.RepoLanes || c.RepoFile == "" {
+	// lanes: is read only to say it's ignored (swim doctor).
+	if c.Lanes != 1 || c.Parallel() != 3 || !c.RepoLanes || c.RepoFile == "" {
 		t.Fatalf("swim.yml not applied: %+v", c)
 	}
 	// The operator's repos entry wins over swim.yml.
 	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
 	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  lanes: 4\nrepos:\n  "+root+":\n    max_parallel: 5\n"), 0o644)
-	if c, _ = Load(root); c.Lanes != 7 || c.Parallel() != 5 {
-		t.Fatalf("precedence: lanes %d parallel %d", c.Lanes, c.Parallel())
+	if c, _ = Load(root); c.Parallel() != 5 {
+		t.Fatalf("precedence: parallel %d", c.Parallel())
 	}
 	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("lanse: 3\n"), 0o644)
 	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "swim.yml") {

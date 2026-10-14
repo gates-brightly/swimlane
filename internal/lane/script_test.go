@@ -1,6 +1,7 @@
 package lane
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,8 +56,8 @@ func TestScriptsDiscovery(t *testing.T) {
 		t.Errorf("sidecar wins: %+v %v", info, err)
 	}
 	write("lane.6.js", "", 0o644)
-	if got := ScriptsBeyond(root, 4); len(got) != 1 || got[0] != 6 {
-		t.Errorf("beyond: %v", got)
+	if got := Associated(root); fmt.Sprint(got) != "[1 6]" {
+		t.Errorf("associated: %v", got)
 	}
 	// WriteScriptAs replaces the lane's script in any language and its sidecar.
 	if err := WriteScriptAs(root, 1, "sh", "# swim:stub\n", true); err != nil {

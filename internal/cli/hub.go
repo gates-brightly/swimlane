@@ -443,10 +443,17 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 	s := hub.Snapshot{Worker: hubWorker(root, name), Activity: activity, At: time.Now().UTC().Format(time.RFC3339),
 		Interval: every.Seconds(), Lanes: []hub.Lane{}, Queue: []hub.Batch{}, Events: []string{}}
 	if st, _ := status.Load(root); st != nil {
+		inUse := map[int]bool{} // now: the worker outlives any one config load
+		for _, n := range lane.Associated(root) {
+			inUse[n] = true
+		}
 		st.Normalize(cfg.Lanes)
 		for _, l := range st.Lanes {
+			if !inUse[l.Lane] {
+				continue // a lane no longer in use (archived, or never was)
+			}
 			hl := hub.Lane{Lane: l.Lane, State: l.State, Round: l.Round, Job: l.Job, Run: l.Run, Step: l.CurrentStep, Reason: l.Reason,
-				Message: l.Message, Progress: l.Progress, MsgAt: l.MessageAt, Cells: l.CellsText(),
+				Message: l.Message, Progress: l.Progress, MsgAt: l.MessageAt, Cells: cellsText(root, l),
 				Pass: l.Pass, Fail: l.Fail, Skip: l.Skip, Drift: l.Drift, Exit: l.ExitCode}
 			if l.Round == "" {
 				hl.Round = l.Pending
@@ -522,4 +529,13 @@ func tailLines(path string, n int) []string {
 		all = all[len(all)-n:]
 	}
 	return all
+}
+
+// cellsText is a lane's cells summary for the hub, a lane of jobs' by job
+// id (1.4).
+func cellsText(root string, l status.Lane) string {
+	if info, _ := lane.ReadScript(root, l.Lane); info.IsGroup() {
+		return l.CellsTextAs(func(c string) string { return info.SubLabel(l.Lane, c) })
+	}
+	return l.CellsText()
 }

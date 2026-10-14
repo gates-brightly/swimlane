@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -67,23 +66,6 @@ func cmdCi(args []string) error {
 		return err
 	}
 	out := os.Stdout
-
-	// Lane scripts past the configured lanes: on a fresh runner with no
-	// lanes setting anywhere, count them in; otherwise fail with the fix
-	// (swim ci never prompts).
-	lanesNote := ""
-	if beyond := lane.ScriptsBeyond(root, cfg.Lanes); len(beyond) > 0 {
-		top := beyond[len(beyond)-1]
-		if !cfg.RepoLanes && top <= 99 {
-			lanesNote = fmt.Sprintf(" (lanes: %d from the highest lane script; no lanes setting)", top)
-			cfg.Lanes = top
-			os.Setenv("SWIM_LANES", strconv.Itoa(top)) // for the lanes' own swim hooks
-		} else {
-			fmt.Fprintf(os.Stderr, "swim ci: %s is beyond the %d configured lanes and would not run.\n", lane.ScriptName(root, top), cfg.Lanes)
-			fmt.Fprintf(os.Stderr, "  fix: set `lanes: %d` in swim.yml (committed), or `swim config --lanes %d`\n", top, top)
-			return exitError{2}
-		}
-	}
 
 	// Which lanes, and why.
 	why := "every pending round that hasn't passed"
@@ -170,7 +152,7 @@ func cmdCi(args []string) error {
 	// Header.
 	fmt.Fprintf(out, "swim ci · swim %s · provider %s\n", version.String(), p.Name())
 	fmt.Fprintf(out, "commit %s  %s\n", or(commit, "-"), ciRef(root))
-	fmt.Fprintf(out, "run %s · lanes %s%s\n", o.RunID, joinNums(sel), lanesNote)
+	fmt.Fprintf(out, "run %s · lanes %s\n", o.RunID, joinNums(sel))
 	fmt.Fprintf(out, "selected: %s\n", why)
 	if len(guardsSet) > 0 {
 		fmt.Fprintf(out, "guard flags set (names only): %s\n", strings.Join(guardsSet, " "))

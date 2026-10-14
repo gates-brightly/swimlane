@@ -166,22 +166,13 @@ func TestCIChanged(t *testing.T) {
 func TestCIPinsAndLanes(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "one", `run "a" true`)
-	// A script beyond the configured lanes with no lanes setting anywhere
-	// is counted in on a runner...
+	// Every lane script counts, whatever its number: there's no lane count.
 	r.script(6, "six", `run "six" true`)
 	cfgDir := filepath.Join(t.TempDir(), "empty")
 	out, code := r.swimEnv([]string{"CI=true", "XDG_CONFIG_HOME=" + cfgDir}, "ci")
-	if code != 0 || !strings.Contains(out, "lanes: 6 from the highest lane script") || !strings.Contains(out, "[6] started: six") {
+	if code != 0 || !strings.Contains(out, "[6] started: six") {
 		t.Errorf("fresh runner: %d\n%s", code, out)
 	}
-	// ...but with lanes set (swim.yml), it fails with the fix.
-	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("lanes: 4\n"), 0o644)
-	r.script(6, "six again", `run "six" true`)
-	out, code = r.swimEnv([]string{"CI=true", "XDG_CONFIG_HOME=" + cfgDir}, "ci")
-	if code != 2 || !strings.Contains(out, "fix: set `lanes: 6` in swim.yml") {
-		t.Errorf("lanes set: %d\n%s", code, out)
-	}
-	os.Remove(filepath.Join(r.root, "swim.yml"))
 
 	// Pinned: a lane rewritten after selection (between the job id it was
 	// named by and its start) is skipped. Simulate with swim run JOB.

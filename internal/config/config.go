@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,17 +18,17 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 )
 
-// DefaultLanes is used when neither the defaults nor the repo set `lanes`.
-const DefaultLanes = 4
-
 // Settings is one block of configuration, either `defaults` or a repo entry.
 // Zero values mean "not set" so a repo block can override field by field.
 type Settings struct {
+	// Lanes was a fixed lane count. swim now finds a repo's lanes on disk
+	// (lane.Associated); a `lanes:` setting is ignored, and doctor says so.
 	Lanes              int           `yaml:"lanes,omitempty"`
 	HeaderEnv          []string      `yaml:"header_env,omitempty"`
 	Runtime            string        `yaml:"runtime,omitempty"`
@@ -80,10 +81,14 @@ type Config struct {
 	// Its settings apply on top of defaults and under the repos entry, so a
 	// CI runner with no config of its own gets them.
 	RepoFile string
-	// RepoLanes reports whether lanes was set explicitly (repos entry or
-	// swim.yml), not defaulted.
+	// RepoLanes reports whether a (no longer used) `lanes:` was set, in the
+	// repos entry, swim.yml or defaults: swim doctor points it out.
 	RepoLanes bool
 	Settings
+	// Active are the lanes the repo is using (lane.Associated): the ones
+	// swim shows. Lanes (in Settings) is the highest of them (at least 1),
+	// so loops over 1..Lanes see every one.
+	Active []int
 }
 
 // Path returns the config file location, honouring XDG_CONFIG_HOME.
@@ -132,13 +137,14 @@ func Load(root string) (*Config, error) {
 		return nil, fmt.Errorf("%s: env: belongs in %s (or a repo's swim.yml), not config.yml", c.Path, filepath.Join(filepath.Dir(c.Path), "env.swim"))
 	}
 	c.Settings = f.Defaults
+	c.RepoLanes = f.Defaults.Lanes != 0
 	c.Runners, c.RunnerFrom = nil, nil
 	c.mergeRunners(f.Defaults.Runners, c.Path)
 	if s, path, err := readRepoFile(root); err != nil {
 		return nil, err
 	} else if path != "" {
 		c.RepoFile = path
-		c.RepoLanes = s.Lanes != 0
+		c.RepoLanes = c.RepoLanes || s.Lanes != 0
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
@@ -152,12 +158,14 @@ func Load(root string) (*Config, error) {
 		c.merge(repo)
 		c.mergeRunners(repo.Runners, c.Path)
 	}
-	if c.Lanes == 0 {
-		c.Lanes = DefaultLanes
+	// The lanes in use, not a setting.
+	c.Active = lane.Associated(root)
+	c.Lanes = 1
+	if len(c.Active) > 0 {
+		c.Lanes = c.Active[len(c.Active)-1]
 	}
-	// swim ci on a runner with no lanes setting counts the lane scripts and
-	// passes that on to the lanes it starts (their swim hooks load config
-	// again).
+	// A run passes its lane count on to the lanes it starts (their swim
+	// hooks load config again).
 	if v := os.Getenv("SWIM_LANES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > c.Lanes {
 			c.Lanes = n
@@ -331,8 +339,8 @@ func (c *Config) merge(r Settings) {
 
 // Validate checks lane numbers are within 1..Lanes and deps form no cycle.
 func (c *Config) Validate() error {
-	if c.Lanes < 1 || c.Lanes > 99 {
-		return fmt.Errorf("lanes must be 1..99, got %d", c.Lanes)
+	if c.Lanes < 1 || c.Lanes > lane.MaxLanes {
+		return fmt.Errorf("lanes must be 1..%d, got %d", lane.MaxLanes, c.Lanes)
 	}
 	for _, b := range c.BlockedCommands {
 		if strings.TrimSpace(b) == "" {
@@ -350,11 +358,11 @@ func (c *Config) Validate() error {
 	}
 	for lane, deps := range c.Deps {
 		if !c.ValidLane(lane) {
-			return fmt.Errorf("deps: swim %d is outside 1..%d", lane, c.Lanes)
+			return fmt.Errorf("deps: swim %d is outside 1..%d", lane, laneMax)
 		}
 		for _, d := range deps {
 			if !c.ValidLane(d) {
-				return fmt.Errorf("deps: swim %d depends on swim %d, outside 1..%d", lane, d, c.Lanes)
+				return fmt.Errorf("deps: swim %d depends on swim %d, outside 1..%d", lane, d, laneMax)
 			}
 			if d == lane {
 				return fmt.Errorf("deps: swim %d depends on itself", lane)
@@ -475,8 +483,15 @@ func (c *Config) Parallel() int {
 	return *c.MaxParallel
 }
 
-// ValidLane reports whether n is a lane number for this repo.
-func (c *Config) ValidLane(n int) bool { return n >= 1 && n <= c.Lanes }
+// ValidLane reports whether n is a lane number (1..99): any lane can be
+// started; the ones in use are Active.
+func (c *Config) ValidLane(n int) bool { return n >= 1 && n <= laneMax }
+
+// laneMax is lane.MaxLanes (named apart from Validate's `lane` variables).
+const laneMax = lane.MaxLanes
+
+// IsActive reports whether lane n is in use (see Active).
+func (c *Config) IsActive(n int) bool { return slices.Contains(c.Active, n) }
 
 // DepsOf returns the lanes n waits on, sorted.
 func (c *Config) DepsOf(n int) []int {
@@ -528,7 +543,6 @@ func (c *Config) findCycle() []int {
 // defaultFile is written by EnsureRepo when no config exists yet.
 const defaultFile = `# swim configuration. Global defaults, overridden per repo (keyed by git toplevel).
 defaults:
-  lanes: 4
   # Env vars recorded in every step header (values printed; never list secrets).
   header_env: [STAGE, AWS_PROFILE, AWS_REGION]
   # Command whose output is recorded as the runtime version in step headers.
@@ -587,7 +601,6 @@ func EnsureRepo(path, root string) (createdFile, addedRepo bool, err error) {
 	}
 
 	entry := &yaml.Node{Kind: yaml.MappingNode}
-	entry.Content = append(entry.Content, scalar("lanes"), scalar(fmt.Sprint(DefaultLanes)))
 	deps := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
 	depsKey := scalar("deps")
 	depsKey.HeadComment = "swim N starts after the listed lanes succeed, e.g. {2: [1], 4: [2]}"
@@ -619,12 +632,6 @@ func writeNode(path string, doc *yaml.Node) error {
 		return err
 	}
 	return os.Rename(tmp, path)
-}
-
-// SetLanes sets `lanes` in root's repo section (creating the file or the
-// section if needed), keeping the rest of the file and its comments.
-func SetLanes(path, root string, lanes int) error {
-	return SetKey(path, root, "lanes", fmt.Sprint(lanes), true)
 }
 
 // Interrupt defaults.

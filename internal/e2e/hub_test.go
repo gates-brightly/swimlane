@@ -64,7 +64,7 @@ func TestHub(t *testing.T) {
 		t.Fatalf("wrong token: %d %s", code, out)
 	}
 	contains(t, "enroll", r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing"), "enrolled", "as billing")
-	if w := hubGet(t, url); len(w.Workers) != 1 || w.Workers[0].Name != "billing" || !strings.Contains(w.Workers[0].Activity, "not watching") || len(w.Workers[0].Lanes) == 0 {
+	if w := hubGet(t, url); len(w.Workers) != 1 || w.Workers[0].Name != "billing" || !strings.Contains(w.Workers[0].Activity, "not watching") || len(w.Workers[0].Lanes) != 0 {
 		t.Fatalf("after enroll: %+v", w)
 	}
 	contains(t, "status", r.mustSwim("hub", "status"), "enrolled with "+url+" as billing", "reachable")

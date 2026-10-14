@@ -65,7 +65,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 
 ## Concepts
 
-- **Lane:** a numbered slot (`swim 1..N`) with one script and one log, worked on by one worker at a time.
+- **Lane:** a numbered slot (`swim 1..99`) with one script and one log, worked on by one worker at a time. A repo's lanes are the ones in use: a script that isn't a stub, a current log, or a running lane. `swim archive N` drops one.
 - **Round:** what a lane script holds: one goal, such as "cut over service X" or "diagnose Y". Rewritten per round.
 - **Job:** a round's unique id. Naming a job pins a run to that exact round.
 - **Step:** one command run through `run`, `gate` or `snapshot`, recorded with its command, output and exit code.
@@ -181,7 +181,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 ### Resolved from v1
 
 - **CLI or copyable files?** A CLI: one Go binary.
-- **Configurable lane count?** Yes: config `lanes`.
+- **Configurable lane count?** It was (config `lanes`); now swim shows the lanes in use, found on disk, and `lanes:` is ignored.
 - **Machine-readable summary?** Yes: versioned YAML for every read command.
 - **Built-in archive and stub?** Yes: `swim archive` and `swim stub`.
 - **Guard registry?** The `Guards` header, guards found from `guard` calls, `swim lint` and `lookup.yml` rules.

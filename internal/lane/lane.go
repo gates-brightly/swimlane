@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -687,35 +686,72 @@ func Slug(s string) string {
 	return s
 }
 
-// Archive renames .swim/logs/agentN.log to agentN.prev-<what>.log there and returns the new
-// path. It never overwrites an existing archive.
+// Archive renames lane n's logs aside, .swim/logs/agentN.log to
+// agentN.prev-<what>.log, and each job's or matrix cell's log
+// (agentN.<job>.log) to agentN.prev-<what>.<job>.log, and returns the
+// first new path. It never overwrites an existing archive. With its logs
+// archived (and a stub or no script) the lane is no longer in use
+// (Associated).
 func Archive(root string, n int, what string) (string, error) {
-	dst, err := ArchiveCheck(root, n, what)
+	moves, err := archiveMoves(root, n, what)
 	if err != nil {
 		return "", err
 	}
-	return dst, os.Rename(Log(root, n), dst)
+	for _, m := range moves {
+		if err := os.Rename(m[0], m[1]); err != nil {
+			return "", err
+		}
+	}
+	return moves[0][1], nil
 }
 
-// ArchiveCheck reports where Archive would move lane n's log, or why it
-// can't (the lane is running, has no log, or the archive name is taken),
-// without moving anything.
+// ArchiveCheck reports where Archive would move lane n's log (the first,
+// when it has several), or why it can't (the lane is running, has no log,
+// or an archive name is taken), without moving anything.
 func ArchiveCheck(root string, n int, what string) (string, error) {
-	if err := refuseRunning(root, n); err != nil {
+	moves, err := archiveMoves(root, n, what)
+	if err != nil {
 		return "", err
+	}
+	return moves[0][1], nil
+}
+
+// archiveMoves is Archive's renames, [from, to], the lane's own log first.
+func archiveMoves(root string, n int, what string) ([][2]string, error) {
+	if err := refuseRunning(root, n); err != nil {
+		return nil, err
 	}
 	slug := Slug(what)
 	if slug == "" {
-		return "", errors.New("archive needs a description, e.g. `swim archive 1 --as cutover-api`")
+		return nil, errors.New("archive needs a description, e.g. `swim archive 1 --as cutover-api`")
 	}
-	if _, err := os.Stat(Log(root, n)); err != nil {
-		return "", fmt.Errorf("swim %d has nothing to archive (no .swim/logs/agent%d.log)", n, n)
+	dir := LogDir(root)
+	var moves [][2]string
+	if _, err := os.Stat(filepath.Join(dir, fmt.Sprintf("agent%d.log", n))); err == nil {
+		moves = append(moves, [2]string{filepath.Join(dir, fmt.Sprintf("agent%d.log", n)), filepath.Join(dir, fmt.Sprintf("agent%d.prev-%s.log", n, slug))})
 	}
-	dst := filepath.Join(LogDir(root), fmt.Sprintf("agent%d.prev-%s.log", n, slug))
-	if _, err := os.Stat(dst); err == nil {
-		return "", fmt.Errorf("%s already exists; choose a different name (--as)", filepath.Base(dst))
+	entries, _ := os.ReadDir(dir)
+	prefix := fmt.Sprintf("agent%d.", n)
+	for _, e := range entries {
+		name := e.Name()
+		if name == prefix+"log" || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".log") || strings.Contains(name, ".prev-") || strings.HasSuffix(name, ".check.log") {
+			continue
+		}
+		cell := strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".log")
+		if cell == "" {
+			continue
+		}
+		moves = append(moves, [2]string{filepath.Join(dir, name), filepath.Join(dir, fmt.Sprintf("agent%d.prev-%s.%s.log", n, slug, cell))})
 	}
-	return dst, nil
+	if len(moves) == 0 {
+		return nil, fmt.Errorf("swim %d has nothing to archive (no .swim/logs/agent%d.log, and no job or cell logs)", n, n)
+	}
+	for _, m := range moves {
+		if _, err := os.Stat(m[1]); err == nil {
+			return nil, fmt.Errorf("%s already exists; choose a different name (--as)", filepath.Base(m[1]))
+		}
+	}
+	return moves, nil
 }
 
 // WriteScript writes content to lane.N.sh (mode 0755) unless the lane is
@@ -829,32 +865,6 @@ func MatchJob(id, ref string) bool {
 		return true
 	}
 	return len(ref) >= 8 && strings.HasPrefix(strings.ToLower(id), strings.ToLower(ref))
-}
-
-// ScriptsBeyond returns the numbers of lane scripts in root numbered above
-// n (e.g. lane.5.sh when only 4 lanes are configured), sorted.
-func ScriptsBeyond(root string, n int) []int {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil
-	}
-	var out []int
-	seen := map[int]bool{}
-	for _, e := range entries {
-		if k, _, ok := ParseScriptName(e.Name()); ok && k > n && !seen[k] && len(Scripts(root, k)) > 0 {
-			seen[k] = true
-			out = append(out, k)
-		}
-	}
-	gs, _ := Groups(root)
-	for k := range gs {
-		if k > n && !seen[k] {
-			seen[k] = true
-			out = append(out, k)
-		}
-	}
-	sort.Ints(out)
-	return out
 }
 
 var oldLogRE = regexp.MustCompile(`^agent([0-9]+)(\.prev-.+)?\.log$`)

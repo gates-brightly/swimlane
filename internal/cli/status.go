@@ -100,7 +100,8 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 	}
 	for i := range f.Lanes {
 		l := &f.Lanes[i]
-		if l.Lane > cfg.Lanes || (only != 0 && l.Lane != only) {
+		// The lanes in use; one named (swim status N) whatever it is.
+		if only != 0 && l.Lane != only || only == 0 && !cfg.IsActive(l.Lane) {
 			continue
 		}
 		state := effectiveState(l)
@@ -185,7 +186,11 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			}
 			detail("msg: "+m, ui.Dim)
 		}
-		if t := l.CellsText(); t != "" {
+		if info, _ := lane.ReadScript(root, l.Lane); info.IsGroup() {
+			if t := l.CellsTextAs(func(c string) string { return info.SubLabel(l.Lane, c) }); t != "" {
+				detail("jobs: "+t, ui.Dim)
+			}
+		} else if t := l.CellsText(); t != "" {
 			detail("cells: "+t, ui.Dim)
 		}
 		if len(l.Locks) > 0 && state == status.Running {

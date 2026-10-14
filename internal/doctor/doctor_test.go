@@ -205,7 +205,7 @@ func TestHeaderEnvSecretAndToolchain(t *testing.T) {
 	}
 }
 
-func TestLockAndLanesBeyond(t *testing.T) {
+func TestLockAndLanesSetting(t *testing.T) {
 	root := t.TempDir()
 	o := opts(root)
 	if l := only(Run(o), "lock"); len(l) != 1 || l[0].Level != finding.Info {
@@ -215,8 +215,11 @@ func TestLockAndLanesBeyond(t *testing.T) {
 	if l := only(Run(o), "lock"); len(l) != 1 || l[0].Level != finding.Warn || !strings.Contains(l[0].Message, "newer swim") {
 		t.Errorf("newer lock: %+v", l)
 	}
-	os.WriteFile(filepath.Join(root, "lane.7.sh"), []byte("#!/bin/bash\n"), 0o755)
-	if l := only(Run(o), "lanes-beyond"); len(l) != 1 || l[0].File != "lane.7.sh" {
-		t.Errorf("beyond: %+v", l)
+	if l := only(Run(o), "lanes-setting"); len(l) != 0 {
+		t.Errorf("no lanes: setting: %+v", l)
+	}
+	o.Cfg.RepoLanes = true
+	if l := only(Run(o), "lanes-setting"); len(l) != 1 || !strings.Contains(l[0].Message, "no longer used") {
+		t.Errorf("lanes: set: %+v", l)
 	}
 }

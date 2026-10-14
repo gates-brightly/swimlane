@@ -66,7 +66,7 @@ func (o *Options) defaults() {
 		o.ToolchainTimeout = 30 * time.Second
 	}
 	if o.Cfg == nil {
-		o.Cfg = &config.Config{Root: o.Root, Settings: config.Settings{Lanes: config.DefaultLanes}}
+		o.Cfg = &config.Config{Root: o.Root, Settings: config.Settings{Lanes: 1}}
 	}
 }
 
@@ -86,7 +86,7 @@ var Checks = []Check{
 	{"swim-bin", false, "$SWIM_BIN, or the swim lanes find on PATH, isn't this swim", checkSwimBin},
 	{"config-parse", false, "the config file doesn't load", checkConfigParse},
 	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
-	{"lanes-beyond", false, "lane scripts numbered above the configured lanes", checkLanesBeyond},
+	{"lanes-setting", false, "a `lanes:` setting (swim finds the lanes in use; it's ignored)", checkLanesSetting},
 	{"gitignore", true, "swim's .gitignore block is missing or out of date", checkGitignore},
 	{"tracked", false, "lane scripts or swim state tracked by git", checkTracked},
 	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
@@ -426,13 +426,16 @@ func checkConfigRepo(o *Options) []finding.Finding {
 		"the config has no section for %s; built-in defaults apply", o.Root)}
 }
 
-func checkLanesBeyond(o *Options) []finding.Finding {
-	var out []finding.Finding
-	for _, n := range lane.ScriptsBeyond(o.Root, o.Cfg.Lanes) {
-		out = append(out, fd(finding.Warn, "lanes-beyond", lane.ScriptName(o.Root, n), fmt.Sprintf("swim config --lanes %d (or stub/remove the script)", n),
-			"only %d lanes are configured, so swim %d never runs", o.Cfg.Lanes, n))
+func checkLanesSetting(o *Options) []finding.Finding {
+	if !o.Cfg.RepoLanes {
+		return nil
 	}
-	return out
+	file := o.Cfg.Path
+	if o.Cfg.RepoFile != "" {
+		file = o.Cfg.RepoFile
+	}
+	return []finding.Finding{fd(finding.Warn, "lanes-setting", file, "remove `lanes:` (from swim.yml, the repo's config section or defaults)",
+		"`lanes:` is no longer used: swim shows the lanes in use (a script, a current log or a running process), and `swim archive N` drops one")}
 }
 
 func lines(s string) []string {

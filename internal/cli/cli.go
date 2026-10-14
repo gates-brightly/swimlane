@@ -322,7 +322,7 @@ func laneArg(cfg *config.Config, s string) (int, error) {
 		return 0, usagef("%q is not a lane number", s)
 	}
 	if !cfg.ValidLane(n) {
-		return 0, fmt.Errorf("no swim %d: lanes are numbered 1..%d (more lanes: swim config --lanes %d)", n, cfg.Lanes, n)
+		return 0, fmt.Errorf("no swim %d: lanes are numbered 1..%d", n, lane.MaxLanes)
 	}
 	return n, nil
 }

@@ -112,11 +112,12 @@ func (t *tui) cur() *viewport {
 // someone is reading a lane's log or has scrolled back.
 func (t *tui) holds() bool { return t.laneN != 0 || !t.all.follow }
 
-// addLine records one line of combined output.
-func (t *tui) addLine(n int, text string) {
+// addLine records one line of combined output: lane n's, or one of its
+// jobs' (job "1.3").
+func (t *tui) addLine(n int, job, text string) {
 	prefix, w := "", 0
 	if n > 0 {
-		prefix, w = Prefix(n, t.color), len(fmt.Sprintf("[%d] ", n))
+		prefix, w = JobPrefix(n, job, t.color), len(prefixText(n, job))
 	}
 	t.all.add(vline{prefix: prefix, prefixW: w, text: text})
 }

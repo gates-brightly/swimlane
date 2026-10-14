@@ -225,12 +225,12 @@ func TestTUIInterruptAndQuit(t *testing.T) {
 func TestTUIDividerPaused(t *testing.T) {
 	m, views := testTUI(t)
 	for i := 0; i < 50; i++ {
-		m.addLine(1, fmt.Sprint("out ", i))
+		m.addLine(1, "", fmt.Sprint("out ", i))
 	}
 	m.render("t", views, nowFixture(), 20, 80)
 	press(m, views, Key{Code: KeyUp})
 	for i := 0; i < 37; i++ {
-		m.addLine(2, "more")
+		m.addLine(2, "", "more")
 	}
 	if d := m.divider(views); d != "all lanes · paused · 37 new lines · End to follow" {
 		t.Fatalf("divider %q", d)
@@ -252,9 +252,9 @@ func TestTUIFrameGolden(t *testing.T) {
 		"\n== END FAIL  pass=0 fail=1 skip=0 drift=0  exit=2  30.0s  2026-10-09T12:00:00Z\n"
 	os.WriteFile(m.logPath(6), []byte(log), 0o644)
 	for i := 1; i <= 4; i++ {
-		m.addLine(i%2+1, fmt.Sprintf("output line %d from a lane that has quite a lot to say about what it is doing", i))
+		m.addLine(i%2+1, "", fmt.Sprintf("output line %d from a lane that has quite a lot to say about what it is doing", i))
 	}
-	m.addLine(0, "a launcher message")
+	m.addLine(0, "", "a launcher message")
 	title := "swim · app · main@abc1234 · 1:12"
 	golden(t, "tui_all.golden", strings.Join(m.render(title, views, now, 18, 80), "\n")+"\n")
 	press(m, views, r('6'), enter)
@@ -334,10 +334,29 @@ func TestLogTail(t *testing.T) {
 // A terminal resized very small still gets a frame of its size.
 func TestTUITinyTerminal(t *testing.T) {
 	m, views := testTUI(t)
-	m.addLine(1, "x")
+	m.addLine(1, "", "x")
 	for _, size := range [][2]int{{3, 10}, {1, 1}, {12, 25}} {
 		if got := m.render("title", views, nowFixture(), size[0], size[1]); len(got) != size[0] {
 			t.Errorf("%dx%d: %d rows", size[0], size[1], len(got))
 		}
+	}
+}
+
+func TestJobLinePrefix(t *testing.T) {
+	if got := JobPrefix(1, "1.3", false); got != "[1.3] " {
+		t.Errorf("job prefix %q", got)
+	}
+	if got := JobPrefix(2, "", false); got != "[2] " {
+		t.Errorf("lane prefix %q", got)
+	}
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := New(Options{Out: f, Plain: true}, nil)
+	d.JobLine(1, "1.3", "ok  github.com/gates-brightly/swimlane/internal/assets")
+	f.Close()
+	if got, _ := os.ReadFile(f.Name()); string(got) != "[1.3] ok  github.com/gates-brightly/swimlane/internal/assets\n" {
+		t.Errorf("plain job line %q", got)
 	}
 }

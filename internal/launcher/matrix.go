@@ -243,14 +243,22 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 	setCell := func(fn func(*status.Lane)) {
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { fn(l.CellEntry(c.Name)) })
 	}
-	label := c.Name
+	// A matrix cell's lines read "[3] [orders] ..."; a job's "[1.3] ...".
+	label, job := c.Name, ""
 	stopWhy := "Matrix-Fail: stop after a failed cell"
 	if info.IsGroup() {
-		label, stopWhy = info.SubLabel(n, c.Name), "an earlier job failed"
+		label, job, stopWhy = info.SubLabel(n, c.Name), info.SubLabel(n, c.Name), "an earlier job failed"
+	}
+	line := func(text string) {
+		if job != "" {
+			disp.JobLine(n, job, text)
+		} else {
+			disp.Line(n, "["+label+"] "+text)
+		}
 	}
 	skipCell := func(why string) string {
 		setCell(func(e *status.Lane) { e.State, e.Reason = status.Skipped, why })
-		disp.Line(n, fmt.Sprintf("[%s] SKIP (%s)", label, why))
+		line(fmt.Sprintf("SKIP (%s)", why))
 		return status.Skipped
 	}
 	if stopRest.Load() {
@@ -298,13 +306,17 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 	if stopRest.Load() {
 		return skipCell(stopWhy)
 	}
-	cmd, ownGroup, w := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), "["+label+"] ", disp, files)
+	prefix := "[" + label + "] "
+	if job != "" {
+		prefix = ""
+	}
+	cmd, ownGroup, w := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), prefix, job, disp, files)
 	if ir.stopping() {
 		return skipCell("interrupted before start")
 	}
 	launched := time.Now()
 	if err := cmd.Start(); err != nil {
-		disp.Line(n, fmt.Sprintf("[%s] swim: cannot start: %v", label, err))
+		line(fmt.Sprintf("swim: cannot start: %v", err))
 		setCell(func(e *status.Lane) { e.State, e.ExitCode = status.Failed, status.Int(127) })
 		return status.Failed
 	}

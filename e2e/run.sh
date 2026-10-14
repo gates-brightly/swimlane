@@ -91,7 +91,6 @@ for s in $selected; do
     LANES=4
     scenario_run() { swim_run $(seq 1 "$LANES"); }
     . "$SCENARIO_DIR/scenario.sh"
-    "$SWIM" config --lanes "$LANES" >/dev/null || exit 1
     scenario_setup || { echo "  setup failed"; exit 1; }
     scenario_run
     if [ -f "$OUT/run.yml" ]; then

@@ -46,18 +46,18 @@ func TestMain(m *testing.M) {
 }
 
 // hermetic strips what the suite may inherit when it runs inside a swim
-// lane (this repo's own CI runs it through swim ci) or a CI runner: the
-// lane's SWIM_* variables and STEP_LOG, the git shim lane_init puts first on
-// PATH (it refuses git commit and stops the outer lane), and the CI
-// provider's variables (tests set the ones they need; inherited, they
-// would change provider detection, turn the TUI off and write to the
-// runner's real job summary).
+// lane (this repo's own CI runs it through swim ci), a CI runner or a
+// developer's shell: the lane's SWIM_* variables and STEP_LOG, the git shim
+// lane_init puts first on PATH (it refuses git commit and stops the outer
+// lane), the CI provider's variables (tests set the ones they need;
+// inherited, they would change provider detection, turn the TUI off and
+// write to the runner's real job summary), and testEnvKeys.
 func hermetic() {
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
 		case strings.HasPrefix(k, "SWIM_"), strings.HasPrefix(k, "GITHUB_"), strings.HasPrefix(k, "GITLAB_"),
-			strings.HasPrefix(k, "CI_"), k == "CI", k == "STEP_LOG", k == "XDG_CONFIG_HOME":
+			strings.HasPrefix(k, "CI_"), k == "CI", k == "STEP_LOG", k == "XDG_CONFIG_HOME", testEnvKeys[k]:
 			os.Unsetenv(k)
 		}
 	}
@@ -69,6 +69,12 @@ func hermetic() {
 	}
 	os.Setenv("PATH", strings.Join(path, string(os.PathListSeparator)))
 }
+
+// testEnvKeys are names the tests give values of their own (env files, a
+// lane's shell, guard flags). A developer's shell may export them (STAGE,
+// OWNER, ...), and swim lets the shell win, so they're cleared first.
+var testEnvKeys = map[string]bool{"STAGE": true, "REGION": true, "PROFILE": true, "TABLE": true, "OWNER": true,
+	"GENERAL_ONLY": true, "SHELL_ONLY": true, "ALLOW_X": true, "AWS_PROFILE": true, "AWS_REGION": true}
 
 // killLanes kills every lane still recorded in root's .swim/lane*.pid,
 // with its process group (the lane's steps).
@@ -195,9 +201,9 @@ func TestInitIsIdempotent(t *testing.T) {
 	if strings.Count(string(gi), "# >>> swim >>>") != 1 {
 		t.Fatalf(".gitignore:\n%s", gi)
 	}
-	f := r.status()
-	if len(f.Lanes) != 4 || f.Lanes[3].State != status.Idle {
-		t.Fatalf("status lanes: %+v", f.Lanes)
+	// No lanes yet: status shows none.
+	if out := r.mustSwim("status"); strings.Contains(out, "swim 1") {
+		t.Fatalf("status of a repo with no lanes:\n%s", out)
 	}
 }
 
@@ -333,7 +339,7 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 	r.mustSwim("stub", "1", "done")
 	r.mustSwim("run", "2")
 
-	if out, code := r.swim("run", "9"); code == 0 || !strings.Contains(out, "lanes are numbered 1..4") {
+	if out, code := r.swim("run", "100"); code == 0 || !strings.Contains(out, "lanes are numbered 1..99") {
 		t.Errorf("run 9: %d %s", code, out)
 	}
 }
@@ -447,7 +453,7 @@ func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer bg.Wait()
-	waitFor(t, func() bool { return r.status().Get(2).State == status.Running })
+	waitFor(t, func() bool { l := r.status().Get(2); return l != nil && l.State == status.Running })
 	os.WriteFile(filepath.Join(r.root, "agent2.log.keep"), nil, 0o644)
 	for _, args := range [][]string{{"archive", "2", "x"}, {"stub", "2", "x"}, {"new", "2", "x", "--force"}, {"run", "2"}} {
 		if out, code := r.swim(args...); code == 0 || !strings.Contains(out, "running") {
@@ -639,7 +645,7 @@ func TestProjectLog(t *testing.T) {
 		events = append(events, strings.Join(f[2:], " "))
 	}
 	want := []string{
-		"init lanes=4",
+		"init status",
 		"new swim 1 job=job-one-0001 first goal",
 		"new swim 2 job=job-two-0002 second goal",
 		fmt.Sprintf("lock created .swim.lock: breaking %d", version.Breaking),
@@ -744,37 +750,32 @@ func TestAllSkipsPassedJobs(t *testing.T) {
 	}
 }
 
-func TestJobsBeyondConfiguredLanes(t *testing.T) {
+// A repo's lanes are the ones in use: a script, a current log or a running
+// lane. There's no count to raise, and archiving drops a lane.
+func TestLanesInUse(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "inside", `run "ok" true`)
-	r.script(6, "beyond", `run "ok" true`)
-	// No terminal: no prompt, no config change, a notice with the command.
+	r.script(1, "one", `run "ok" true`)
+	r.script(6, "six", `run "ok" true`)
 	out := r.mustSwim("all")
-	contains(t, "notice", out, "1 job(s) waiting beyond swim 4", "lane.6.sh  beyond", "swim config --lanes 6")
-	if r.log(6) != "" {
-		t.Fatal("lane 6 ran without lanes being raised")
+	contains(t, "all", out, "[1] started: one", "[6] started: six")
+	st := r.mustSwim("status")
+	contains(t, "status", st, "swim 1", "swim 6")
+	if strings.Contains(st, "swim 3") {
+		t.Errorf("status shows a lane not in use:\n%s", st)
 	}
-	if out, code := r.swim("new", "6", "x"); code == 0 || !strings.Contains(out, "swim config --lanes 6") {
-		t.Errorf("new 6: %d %s", code, out)
+	// Stubbed, lane 6 is still in use while it has a log; archived, it isn't.
+	r.mustSwim("stub", "6", "done")
+	contains(t, "after stub", r.mustSwim("status"), "swim 6")
+	r.mustSwim("archive", "6")
+	if st := r.mustSwim("status"); strings.Contains(st, "swim 6") {
+		t.Errorf("status after archive 6 still shows it:\n%s", st)
 	}
-
-	contains(t, "config --lanes", r.mustSwim("config", "--lanes", "6"), "lanes: 4 -> 6")
-	out = r.mustSwim("all")
-	if !strings.Contains(out, "[6] started: beyond") || strings.Contains(out, "waiting beyond") {
-		t.Errorf("after raising lanes:\n%s", out)
-	}
-	if len(r.status().Lanes) != 6 {
-		t.Errorf("status lanes = %d", len(r.status().Lanes))
-	}
-	// Can't drop a lane holding a pending round; can once it's stubbed.
-	r.mustSwim("new", "5", "pending in five")
-	if out, code := r.swim("config", "--lanes", "4"); code == 0 || !strings.Contains(out, "lane.5.sh holds a pending round") {
-		t.Errorf("reduce over pending: %d %s", code, out)
-	}
-	r.mustSwim("stub", "5", "x")
-	r.mustSwim("stub", "6", "x")
-	r.mustSwim("config", "--lanes", "4")
-	contains(t, ".swim.log", r.mustSwim("log"), "lanes        4 -> 6", "lanes        6 -> 4")
+	// Any lane can start: swim new 9 just works.
+	r.mustSwim("new", "9", "nine")
+	contains(t, "after new 9", r.mustSwim("status"), "swim 9")
+	// A lanes: setting is ignored, and doctor says so.
+	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("lanes: 4\n"), 0o644)
+	contains(t, "doctor", must(r.swim("doctor")), "is no longer used", "[lanes-setting]")
 }
 
 func TestPlan(t *testing.T) {
@@ -1095,7 +1096,6 @@ func TestRunID(t *testing.T) {
 
 func TestParallelLimit(t *testing.T) {
 	r := newRepo(t, "")
-	r.mustSwim("config", "--lanes", "10")
 	for n := 1; n <= 10; n++ {
 		r.script(n, fmt.Sprintf("sleeper %d", n), `run "sleep" sleep 1`)
 	}
@@ -1456,7 +1456,6 @@ run "tear down" terraform  destroy -auto-approve`)
 
 	// 4. The git shim catches git outside run/gate, e.g. git -C . push, and
 	//    leaves read-only git alone.
-	r.mustSwim("config", "--lanes", "5")
 	r.script(5, "shim", `run "git status works" git status --short
 git -C . push origin main
 run "never" true`)
@@ -1524,7 +1523,6 @@ summary`)
 
 func TestTimeline(t *testing.T) {
 	r := newRepo(t, "")
-	r.mustSwim("config", "--lanes", "6")
 	r.script(1, "root", `run "root work" sleep 0.3`)
 	r.script(2, "slow child", `stage check
 run "slow a" sleep 0.6

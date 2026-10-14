@@ -364,7 +364,16 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 
 // Prefix renders the [N] prefix for a lane's output line.
 func Prefix(n int, color bool) string {
-	return ui.Painter{On: color}.Paint(ui.LaneColor(n), fmt.Sprintf("[%d]", n)) + " "
+	return JobPrefix(n, "", color)
+}
+
+// JobPrefix is a line's prefix for job <job> of lane n ("[1.3] ", in the
+// lane's colour), or for the lane itself when job is "" ("[1] ").
+func JobPrefix(n int, job string, color bool) string {
+	if job == "" {
+		job = fmt.Sprint(n)
+	}
+	return ui.Painter{On: color}.Paint(ui.LaneColor(n), "["+job+"]") + " "
 }
 
 // WrapANSI splits s into lines of at most w visible columns. Escape

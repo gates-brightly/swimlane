@@ -114,6 +114,11 @@ func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File
 		if m == n {
 			return Dep{}, fmt.Errorf("a lane can't wait for itself")
 		}
+		// Any lane number is valid, so a typo would wait on nothing: the lane
+		// must have a script, a log or a past run.
+		if !scripts[m].Exists && !cfg.IsActive(m) && st.Get(m) == nil {
+			return Dep{}, fmt.Errorf("no swim %d: it has no lane script, log or past run", m)
+		}
 		return Dep{Lane: m}, nil
 	}
 	var hits []Dep

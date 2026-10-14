@@ -6,6 +6,7 @@ where it would land in the code, open questions, and how to test it.
 
 | feature | file | status |
 |---|---|---|
+| Headless workers, driven from the hub | [headless.md](headless.md) | proposed |
 
 ## Staging a feature
 

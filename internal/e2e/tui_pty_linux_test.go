@@ -404,7 +404,6 @@ func TestTUIOff(t *testing.T) {
 // With more lanes than the panel shows, the selected lane keeps a row.
 func TestTUIManyLanesKeepsSelection(t *testing.T) {
 	r := newRepo(t, "")
-	r.mustSwim("config", "lanes", "40")
 	release := filepath.Join(r.root, "release")
 	for i := 1; i <= 40; i++ {
 		body := `run "quick" true`

@@ -18,8 +18,8 @@ USAGE
 
 COMMANDS
   init                     set up this repo: config entry, .gitignore block, .swim/status.yml
-  config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set lanes,
-                           chime, chime_style, chime_min_s, runners.EXT (--lanes N = `config lanes N`)
+  config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set
+                           chime, chime_style, chime_min_s, runners.EXT, ...
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
   secret set|get|ls|rm NAME   secrets encrypted to your SSH key, for --all repos or this --repo
   secret grant WORKER NAME    give a hub worker a secret, encrypted to its own key (revoke, grants)
@@ -79,10 +79,13 @@ COMMANDS
   help [command]           this guide, or one command's detail
 
 CONCEPTS
-  lane        A numbered slot, swim 1..N (N from config). One script (lane.N.sh,
+  lane        A numbered slot, swim 1..99. One script (lane.N.sh,
               or lane.N.py, lane.N.ts, a binary lane.N, ...: see OTHER LANGUAGES),
               one log (.swim/logs/agentN.log), owned by one worker at a time. Lanes are
-              always numbers; there are no named lanes.
+              always numbers; there are no named lanes. A repo has no lane
+              count: its lanes are the ones in use (a script that isn't a
+              stub, a current log, or a running lane). swim new N starts
+              one; swim archive N (with a stub or no script) drops one.
   round       One lane script's contents: a single goal ("cut over service X",
               "diagnose Y"). Rewritten per round; disposable. A round that
               passed is "done": `swim all` won't run it again (`swim run N`
@@ -212,11 +215,10 @@ PLANNER WORKFLOW
      lanes are idle. Never write to a lane that is running or holds a pending
      round someone else may be about to run.
   2. Assign each worker one lane number. A worker writes only lane.N.sh.
-     Use lanes 1..N from `swim status`, never an Always lane (# Always: yes;
-     `swim plan` marks it [*]): name it in After: if your round needs it to
-     pass. If the work needs more lanes, ask the
-     operator to run `swim config --lanes N` (or write lane.5.sh and let
-     `swim all` offer to add lanes); never edit the config yourself.
+     Use a lane `swim status` shows idle, or a number not in use (any of
+     1..99: there's no lane count to raise). Never an Always lane
+     (# Always: yes; `swim plan` marks it [*]): name it in After: if your
+     round needs it to pass. Never edit the config yourself.
   3. Write the round: `swim new N "<goal>"`, then fill in the steps. Keep the
      header (Round:, Goal, Steps, Guard flags) accurate: the operator reads
      it without you.
@@ -845,13 +847,12 @@ READING RESULTS
                               action (run|retry|rerun|skip), waits_on, reason,
                               running_pid, guards: [{flag, set, description}],
                               timeout, locks}], idle: [{lane, why}],
-                              beyond_lanes, counts {run, retry, rerun, skip}
+                              counts {run, retry, rerun, skip}
     swim status --yaml        swim.status/v1: status.yml's fields (above)
     swim timeline --yaml      swim.timeline/v1 (see swim timeline --help)
 
 CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       defaults:
-        lanes: 4                         # lanes are swim 1..lanes
         max_parallel: 8                  # lanes running at once (0 = unlimited, the default)
         blocked_commands: ["git rebase", "gh pr merge"]   # added to the built-in git push/commit/pull
         secret_env: [GITHUB_TOKEN, DATADOG_API_KEY]       # values masked as *** everywhere swim writes
@@ -876,12 +877,11 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
           ts: tsx                        # swim asks the first time, and saves the answer per repo
       repos:
         /path/to/repo:                   # git toplevel; overrides defaults field by field
-          lanes: 4
           deps:                          # swim N starts after these succeed
             2: [1]
             4: [2]
   A repo may commit swim.yml at its root: the same keys as a repos entry
-  (lanes, deps, max_parallel, blocked_commands, secret_env, header_env, ...).
+  (deps, max_parallel, blocked_commands, secret_env, header_env, ...).
   It applies on top of defaults and under the operator's repos entry, so CI
   runners (no config of their own) and every operator share it. Unknown keys
   are an error. `swim config` shows it as repo_file.
@@ -892,7 +892,8 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       passed (a stubbed or empty lane never blocks);
     - by job id: that job must be the lane's last run, and have passed.
   Unresolvable `# After:` references and cycles stop `swim run` before
-  anything starts. Lanes outside 1..N are rejected.
+  anything starts, and so does an After: lane with no script, log or past
+  run (a typo). Lanes are 1..99.
 
   Chime (operator preference; workers never set it): after `swim run` /
   `swim all` prints its summary, swim rings the bell (twice on failure) if

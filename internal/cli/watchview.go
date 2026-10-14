@@ -53,7 +53,7 @@ func (w *watchView) rows() []display.PickRow {
 	}
 	rows = append(rows, display.PickRow{Text: "Jobs"})
 	st, _ := status.Load(w.root)
-	for n := 1; n <= w.cfg.Lanes; n++ {
+	for _, n := range lane.Associated(w.root) { // the lanes in use now (a long-lived view)
 		var l *status.Lane
 		if st != nil {
 			l = st.Get(n)

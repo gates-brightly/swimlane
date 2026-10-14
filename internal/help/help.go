@@ -25,7 +25,7 @@ var Commands = map[string]string{
       from the block if you want to commit the project's history)
   Safe to run again.
 `,
-	"config": `swim config [KEY [VALUE]] [--repo] [--path] [--lanes N]
+	"config": `swim config [KEY [VALUE]] [--repo] [--path]
 
   With no key, print the effective configuration for this repo (defaults
   merged with the repo's section), or with --path just the config file
@@ -43,9 +43,6 @@ var Commands = map[string]string{
                  desktop notification, falling back to the bell. Default bell.
     chime_min_s  seconds (0 or more)      runs shorter than this never
                  chime. Default 10.
-    lanes        1..99                    this repo's lane count (swim 1..N);
-                 recorded in .swim.log. Refuses to drop a lane that holds a
-                 pending round. Always written to the repo's section.
     outputs_keep duration (14d, 36h)      round outputs older than this that no
                  lane's latest round uses are pruned by swim doctor --fix.
     msg_log_interval  duration            at most one MSG log line per lane per
@@ -55,7 +52,9 @@ var Commands = map[string]string{
                  to the repo's section; swim.yml's runners: is the default.
   Settings go under defaults: (every repo); --repo writes this repo's
   section instead. Unknown keys and bad values are rejected.
-  --lanes N   same as "swim config lanes N".
+  There is no lane count to set: swim shows the lanes in use (a lane script
+  that isn't a stub, a current log, or a running lane). swim new N starts
+  one (1..99); swim archive N drops one. A lanes: setting is ignored.
   Config lives outside the repo, in ~/.config/swim/config.yml
   ($XDG_CONFIG_HOME/swim/config.yml if set). Workers must not edit it; give
   the operator exact YAML lines instead.
@@ -91,7 +90,7 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   every other lane waits for them to finish (whatever their result); a
   named lane pulls in the Always lanes it names in After:.
   Lanes run in parallel as "bash lane.N.sh" from the repo root.
-    - The top of the screen pins one row per lane (swim 1..N): its state and
+    - The top of the screen pins one row per lane in use: its state and
       round. Lanes waiting on a dependency show a throbber and
       "waiting on swim N". Output scrolls below, prefixed [N].
       The panel shows at most 15 lanes. With more, a "… N more" line counts
@@ -191,10 +190,7 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   Always lanes run every time, before the rest; with Rerun-Children: yes,
   so do the passed lanes downstream of one.
   --rerun   run every pending round, including ones that already passed.
-  If lane scripts exist beyond the configured lanes (lane.5.sh with
-  lanes: 4) holding jobs that haven't passed, swim asks whether to raise the
-  lane count so they run. Without a terminal it never asks or changes
-  config; it prints the "swim config --lanes N" command instead. Dependencies ("# After:" lines and config deps), the live
+  Every lane script counts, whatever its number. Dependencies ("# After:" lines and config deps), the live
   view and its keys (--no-tui), guard flags, the summary and the chime (--chime / --no-chime) all
   work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
@@ -218,8 +214,8 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   (approved) or unset (dry run); lanes running right now are flagged.
   Ends with "Plan: N to run, N to retry, N to rerun, N to skip." Jobs with
   nothing left to do are summarised as "N items have completed with no
-  remaining work" ("No changes." when that is everything), followed by idle
-  lanes and jobs in lane scripts beyond the configured lanes.
+  remaining work" ("No changes." when that is everything), followed by the
+  idle lanes in use.
   Fails, like swim run would, on a dependency cycle or an "# After:" that
   doesn't resolve.
   --yaml   the plan as data (schema swim.plan/v1): each lane's action, what it
@@ -240,7 +236,7 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
 `,
 	"status": `swim status [N|JOB] [--yaml] [--rebuild] [--run RUN]
 
-  Show the last state of every lane, swim 1..N (or just one lane, by number
+  Show the last state of every lane in use (or just one lane, by number
   or job id), from .swim/status.yml: state, job id, pending round and job
   (from lane.N.sh on disk), last round, counts,
   current or failed steps, and timing. Running lanes whose process is gone
@@ -451,9 +447,7 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
       Markdown job summary ($GITHUB_STEP_SUMMARY), --junit FILE (one suite
       per lane, one case per step), and the paths to upload as artifacts.
     - Never interactive: lanes get no stdin (confirm fails closed), no
-      prompts; a lane script past the configured lanes fails with the fix,
-      unless no lanes setting exists anywhere (then the highest lane script
-      sets the count).
+      prompts.
     - Pinned: the selected rounds' job ids are fixed up front; a lane
       script rewritten before its lane starts is skipped, not run.
     - Commit-tagged: SWIM_COMMIT (HEAD) goes into each round's context line
@@ -854,7 +848,7 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     swim-bin (warn)           $SWIM_BIN, or the first swim on PATH, isn't this one
     config-parse (error)      the config file doesn't load
     config-repo (warn)        no config section for this repo (swim init)
-    lanes-beyond (warn)       lane scripts above the configured lane count
+    lanes-setting (warn)      a lanes: setting, which swim ignores now
     gitignore (warn)          swim's .gitignore block missing or out of date
     tracked (warn)            git tracks lane scripts, .lane*.rc or .swim/
     stale-pid (warn)          .swim/laneN.pid naming a process that is gone

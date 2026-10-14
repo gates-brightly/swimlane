@@ -225,16 +225,28 @@ func (d *Display) restoreLocked() {
 	}
 }
 
+// prefixText is a line's prefix without colour: "[1] ", "[1.3] ".
+func prefixText(n int, job string) string {
+	if job == "" {
+		return fmt.Sprintf("[%d] ", n)
+	}
+	return "[" + job + "] "
+}
+
 // Line prints one line of lane n's output.
-func (d *Display) Line(n int, text string) {
+func (d *Display) Line(n int, text string) { d.JobLine(n, "", text) }
+
+// JobLine prints one line of a job's output: prefixed with the job's id
+// ("[1.3]", which names its lane too) rather than the lane's.
+func (d *Display) JobLine(n int, job, text string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.tui != nil {
-		d.tui.model.addLine(n, text)
+		d.tui.model.addLine(n, job, text)
 		d.tui.dirty = true
 		return
 	}
-	prefix := Prefix(n, d.color)
+	prefix := JobPrefix(n, job, d.color)
 	if d.asking {
 		d.held = append(d.held, prefix+text)
 		return
@@ -250,7 +262,7 @@ func (d *Display) Line(n int, text string) {
 	// Live: wrap to one column short of the edge so the terminal never
 	// wraps (or holds a pending wrap) itself; continuation lines keep the
 	// lane prefix.
-	prefixW := len(fmt.Sprintf("[%d] ", n))
+	prefixW := len(prefixText(n, job))
 	var b strings.Builder
 	for _, part := range WrapANSI(text, d.cols-1-prefixW) {
 		b.WriteString(prefix + part)
@@ -267,7 +279,7 @@ func (d *Display) Message(text string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.tui != nil {
-		d.tui.model.addLine(0, text)
+		d.tui.model.addLine(0, "", text)
 		d.tui.dirty = true
 		return
 	}
