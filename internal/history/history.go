@@ -41,6 +41,9 @@ const (
 	QueueAdd    = "queue"      // swim queue add: a batch was queued (detail: id, lanes, approvals)
 	QueueRun    = "queue-run"  // swim watch started a queued batch
 	QueueDone   = "queue-done" // ... and consumed it (detail: id, result)
+	SecretSet   = "secret-set" // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)
+	SecretRm    = "secret-rm"  // swim secret rm: ... removed
+	SecretUse   = "secret"     // a lane got a secret (detail: name, scope, how)
 )
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.

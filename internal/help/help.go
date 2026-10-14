@@ -542,6 +542,32 @@ swim queue show|rm|requeue ID
   and the watch exits; between batches, the watch exits at once. Batches
   still waiting stay queued.
 `,
+	"secret": `swim secret set NAME [--all|--repo]
+swim secret get NAME
+swim secret ls [--yaml]
+swim secret rm NAME [--all|--repo]
+
+  Secrets encrypted to your SSH key with age (https://age-encryption.org),
+  kept in secrets.yml next to swim's config (0600). Names are readable;
+  each value is encrypted on its own. Two scopes: --all (every repo) and
+  --repo (this git repo, the default inside one); a repo's own secret
+  wins over an --all one of the same name.
+  set    reads the value from a hidden prompt, or from stdin
+         (echo "$X" | swim secret set NAME), never the command line, so it
+         stays out of shell history and ps
+  get    prints the value: inside a swim run from the run's secrets broker,
+         outside one by decrypting with your key (asking its passphrase
+         on the terminal if it has one)
+  ls     names, scopes and when each was set; never values
+  rm     removes one from a scope
+  The key is secrets_key, else signing_key, else ~/.ssh/id_ed25519
+  (ssh-ed25519 or ssh-rsa). Encrypting needs only its .pub; decrypting
+  needs the private key on disk: ssh-agent can't decrypt.
+  SWIM_SECRET_<NAME> in the environment stands in for a secret (CI, where
+  there is no key) and wins over the store.
+  Names: a letter, then letters, digits and _. A repo-scoped set or rm is
+  recorded in .swim.log by name, never value.
+`,
 	"wait": `swim wait [--interval D] [--timeout D]
 
   Block until swim is idle and nothing new is about to start: no lane
@@ -862,7 +888,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "secret", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "keys", "ci", "lint", "doctor"}

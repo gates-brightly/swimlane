@@ -44,6 +44,7 @@ type Settings struct {
 	Interrupt          string        `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
 	Approvals          string        `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
 	SigningKey         string        `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
+	SecretsKey         string        `yaml:"secrets_key,omitempty"`          // SSH key secrets are encrypted to (default signing_key, then ~/.ssh/id_ed25519)
 	Signing            string        `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
 	InterruptGrace     string        `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
 	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
@@ -312,6 +313,9 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
+	}
+	if r.SecretsKey != "" {
+		c.SecretsKey = r.SecretsKey
 	}
 	if r.Signing != "" {
 		c.Signing = r.Signing
@@ -680,4 +684,13 @@ func (c *Config) SigningMode() string {
 		return SigningAuto
 	}
 	return c.Signing
+}
+
+// SecretsKeyPath is the SSH key swim secret encrypts to: secrets_key, else
+// signing_key, else "" (secrets.LoadKey then tries ~/.ssh/id_ed25519).
+func (c *Config) SecretsKeyPath() string {
+	if c.SecretsKey != "" {
+		return c.SecretsKey
+	}
+	return c.SigningKey
 }
