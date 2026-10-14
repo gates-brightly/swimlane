@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -349,5 +350,54 @@ func TestRepoFile(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("lanse: 3\n"), 0o644)
 	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "swim.yml") {
 		t.Fatalf("unknown key should be an error naming swim.yml: %v", err)
+	}
+}
+
+// Runners merge per extension: config defaults, then the repo's swim.yml,
+// then the operator's repo section; env: is swim.yml's alone.
+func TestRunnersAndEnv(t *testing.T) {
+	xdg, root := t.TempDir(), t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
+	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  runners: {ts: deno, py: python3}\nrepos:\n  "+root+":\n    runners: {ts: tsx}\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("runners: {ts: bun, rb: ruby}\nenv: {STAGE: dev}\n"), 0o644)
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Runners["ts"] != "tsx" || c.Runners["py"] != "python3" || c.Runners["rb"] != "ruby" || filepath.Base(c.RunnerFrom["rb"]) != "swim.yml" {
+		t.Errorf("runners %v from %v", c.Runners, c.RunnerFrom)
+	}
+	if c.Env["STAGE"] != "dev" {
+		t.Errorf("env %v", c.Env)
+	}
+	if v, _ := c.Get("runners.ts"); v != "tsx" {
+		t.Errorf("Get runners.ts = %q", v)
+	}
+	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  env: {A: b}\n"), 0o644)
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "env: belongs in") {
+		t.Errorf("env in config.yml: %v", err)
+	}
+}
+
+func TestNewKeys(t *testing.T) {
+	for key, val := range map[string]string{"runners.ts": "tsx --quiet", "msg_log_interval": "30s", "outputs_keep": "14d"} {
+		if _, err := Normalize(key, val); err != nil {
+			t.Errorf("%s %s: %v", key, val, err)
+		}
+	}
+	for key, val := range map[string]string{"runners.ts": "", "msg_log_interval": "soon", "outputs_keep": "forever", "runners.": "x"} {
+		if _, err := Normalize(key, val); err == nil {
+			t.Errorf("%s %q accepted", key, val)
+		}
+	}
+	for s, want := range map[string]time.Duration{"14d": 14 * 24 * time.Hour, "1d12h": 36 * time.Hour, "36h": 36 * time.Hour} {
+		if got, ok := parseDays(s); !ok || got != want {
+			t.Errorf("parseDays(%s) = %v %v", s, got, ok)
+		}
+	}
+	c := &Config{}
+	if c.MsgLogEvery() != 10*time.Second || c.OutputsKeepFor() != 14*24*time.Hour {
+		t.Error("defaults")
 	}
 }

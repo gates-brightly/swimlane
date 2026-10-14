@@ -194,3 +194,20 @@ func TestReadSpool(t *testing.T) {
 		t.Errorf("RUNNING was parsed as a result: %+v", r.Results)
 	}
 }
+
+// RecordStep writes a finished step (a whole program, an SDK's in-process
+// step) as a block the log parser reads back.
+func TestRecordStep(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "agent1.log")
+	os.WriteFile(log, []byte("# swim lane log | syntax 2 | swim 1\n\n== ROUND 2026-10-14T00:00:00Z  job=j  r\n"), 0o644)
+	line, err := RecordStep(log, logparse.Pass, "native check", "in-process", "(in-process)", time.Now(), 1500*time.Millisecond, strings.NewReader("items: 0\nok\n"))
+	if err != nil || line != "PASS  native check (in-process)" {
+		t.Fatalf("%q %v", line, err)
+	}
+	RecordOutput(log, "lane.1.py", "python3 ./lane.1.py", time.Now(), time.Second, 3, strings.NewReader("boom\n"))
+	r, _ := logparse.ParseFile(log)
+	if len(r.Results) != 2 || r.Results[0].Cmd != "(in-process)" || strings.Join(r.Results[0].Output, "|") != "items: 0|ok" ||
+		r.Results[1].Kind != logparse.Fail || r.Results[1].Detail != "exit 3" || r.Pass != 1 || r.Fail != 1 {
+		t.Errorf("parsed: %+v", r.Results)
+	}
+}

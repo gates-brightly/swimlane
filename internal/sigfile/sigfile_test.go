@@ -113,3 +113,34 @@ func TestStandingCombinesWithScript(t *testing.T) {
 		t.Error("statements")
 	}
 }
+
+// An approval limited to a cell, or bound to evidence, says so in its
+// statement; one that isn't reads exactly as before (old signatures stay
+// valid).
+func TestCellAndEvidenceStatements(t *testing.T) {
+	base := &File{Kind: Script, Script: "lane.1.sh", SHA256: strings.Repeat("a", 64), Lane: 1, Job: "j", Round: "r", Approves: []string{"F"}}
+	plain := base.Statement()
+	if strings.Contains(plain, "cells:") || strings.Contains(plain, "evidence") {
+		t.Errorf("plain statement changed:\n%s", plain)
+	}
+	cell := *base
+	cell.Cells = []string{"orders"}
+	ev := *base
+	ev.Evidence = strings.Repeat("e", 64)
+	if !strings.Contains(cell.Statement(), "cells: orders\n") || !strings.Contains(ev.Statement(), "evidence-sha256: eeee") {
+		t.Errorf("statements:\n%s\n%s", cell.Statement(), ev.Statement())
+	}
+	if cell.StatementHash() == base.StatementHash() || ev.StatementHash() == base.StatementHash() {
+		t.Error("a limited approval hashes like the plain one")
+	}
+	got := ForCell([]*File{base, &cell}, "billing")
+	if len(got) != 1 || got[0] != base {
+		t.Errorf("ForCell(billing) kept %v", got)
+	}
+	if len(ForCell([]*File{base, &cell}, "orders")) != 2 || len(ForCell([]*File{&cell}, "")) != 0 {
+		t.Error("ForCell")
+	}
+	if !strings.HasSuffix(EvidencePath("/r", 1, base.SHA256, ev.Evidence, "ENV=prod,SVC=a"), "/lane.1.aaaaaaaaaaaa.eeeeeeeee.ENV-prod.SVC-a.signature") {
+		t.Errorf("evidence path %s", EvidencePath("/r", 1, base.SHA256, ev.Evidence, "ENV=prod,SVC=a"))
+	}
+}
