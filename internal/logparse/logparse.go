@@ -392,6 +392,9 @@ func parseV2(rd io.Reader) (*Round, error) {
 			ctxNext = true
 			continue
 		case strings.HasPrefix(line, EndMark):
+			if !cur.Found {
+				continue // an END with no ROUND before it ends nothing
+			}
 			cur.Finished = true
 			if m := endV2RE.FindStringSubmatch(line); m != nil {
 				cur.ExitCode, _ = strconv.Atoi(m[2])
@@ -535,7 +538,7 @@ func parseV1(rd io.Reader) (*Round, error) {
 		switch {
 		case strings.HasPrefix(line, "Round: ") && cur.Title == "":
 			cur.Title = strings.TrimSpace(strings.TrimPrefix(line, "Round: "))
-		case strings.HasPrefix(line, v1Summary):
+		case strings.HasPrefix(line, v1Summary) && cur.Found: // a summary with no round ends nothing
 			cur.Finished = true
 			for _, m := range kvRE.FindAllStringSubmatch(line, -1) {
 				switch m[1] {

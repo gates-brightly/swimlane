@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("#swim lane log|syntax 00\n== END ")
