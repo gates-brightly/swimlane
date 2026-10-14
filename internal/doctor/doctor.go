@@ -30,6 +30,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/trust"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -102,6 +103,7 @@ var Checks = []Check{
 	{"lane-rc", true, "a deprecated .lane.N.rc (env files replace it)", checkLaneRC},
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
 	{"hub-http", false, "enrolled with a hub over plain http on another machine", checkHubHTTP},
+	{"trust-unpinned", false, "trust.yml isn't pinned here, or changed since the pin with no signed change", checkTrustPin},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
 }
 
@@ -706,4 +708,31 @@ func checkHubHTTP(o *Options) []finding.Finding {
 	return []finding.Finding{fd(finding.Warn, "hub-http", o.rel(path),
 		"serve the hub with --tls-cert/--tls-key (or behind a TLS proxy), then swim hub enroll https://... again",
 		"enrolled with %s over plain http: its tokens, log tails and secrets cross the network unencrypted", h.URL)}
+}
+
+// checkTrustPin: swim verify trusts trust.yml's keys as pinned in the
+// operator's config. Not pinned yet, the next verify pins whatever trust.yml
+// says then (trust on first use); changed with no signed change leading to
+// it, verify reports trusted: no.
+func checkTrustPin(o *Options) []finding.Finding {
+	tf, err := trust.Load(o.Root)
+	if err != nil {
+		return []finding.Finding{fd(finding.Error, "trust-unpinned", trust.FileName, "fix the file", "%v", err)}
+	}
+	if tf == nil {
+		return nil
+	}
+	pin, err := trust.LoadPin(o.Root)
+	if err != nil {
+		return []finding.Finding{fd(finding.Warn, "trust-unpinned", trust.PinsPath(), "fix or remove the file", "%v", err)}
+	}
+	switch res := trust.Check(o.Root, tf, pin); res.Status {
+	case trust.TOFU:
+		return []finding.Finding{fd(finding.Warn, "trust-unpinned", trust.FileName, "check its keys, then swim keys pin",
+			"trust.yml isn't pinned on this machine: the next swim verify trusts whatever it lists then")}
+	case trust.Unsigned, trust.Malformed:
+		return []finding.Finding{fd(finding.Error, "trust-unpinned", trust.FileName, "find out who changed it; swim keys pin accepts it as it is",
+			"%s: swim verify reports trusted: no", res.Why)}
+	}
+	return nil
 }

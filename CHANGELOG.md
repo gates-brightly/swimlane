@@ -49,6 +49,10 @@ To cut a release:
     swim's `source` wrapper; use plain assignments.
   - **Undeclared guard flags are refused** under `swim run`: a flag named
     only at run time (`guard "$FLAG"`) must be listed in `# Guards:`.
+- **`swim verify` reports levels:** the green `verified: every link,
+  signature, log and script checks out` line is gone. Each level gets a line
+  instead (`consistent  yes  ...`). CI that greps the output should use
+  `swim verify --yaml` and read the level fields.
 
 ### Docs
 
@@ -66,6 +70,24 @@ To cut a release:
 
 ### Security
 
+- **`swim verify` says how far the chain can be believed,** one level per
+  line, each saying what it rests on (T8):
+  - **consistent:** links, signatures against the key recorded in each
+    entry, logs, kept scripts, staged copies and signed approvals: what
+    verify checked before. A chain replaced wholesale and re-signed with a
+    new key still passes this.
+  - **trusted:** every signature is by a key in `trust.yml` (new, committed),
+    whose hash is pinned outside the repo in `~/.config/swim/trust-pins.yml`
+    on first use or by `swim keys pin`. A change to `trust.yml` counts only
+    when signed by a key it already trusts (`swim keys trust KEY --sign`,
+    recorded in `trust.yml.sig`); a hand edit fails the level. CI pins by
+    hash: `--trust-pin SHA256` or `SWIM_TRUST_PIN`.
+  - Exit 1 when a level says no; `--strict` also on n/a (no `trust.yml`)
+    and partial (unsigned entries). `--yaml` gives each level as a field
+    (schema `swim.verify/v1`).
+  - `swim lint` fails when `lookup.yml` names a key `trust.yml` doesn't
+    list; `swim doctor` reports a `trust.yml` that isn't pinned, or changed
+    unsigned (`trust-unpinned`). `swim keys` shows `trust.yml` and its pin.
 - **Text a lane supplies is made safe before it's shown:** a guard's
   description and evidence, step labels, command lines, `swim msg`, the
   live view and the hub can no longer carry escape sequences, `\r`,

@@ -168,3 +168,33 @@ func TestRepairWholeFileIncomplete(t *testing.T) {
 		t.Fatalf("%+v %v", links, err)
 	}
 }
+
+// A chain replaced wholesale, every entry re-signed with a new key, is
+// consistent (Check passes) but not trusted.
+func TestTrustCatchesWholesaleReplacement(t *testing.T) {
+	root, runner, mallory := t.TempDir(), key(t), key(t)
+	for i := 0; i < 3; i++ {
+		if _, err := Append(root, Entry{Type: "round", Lane: i + 1, Result: "passed"}, runner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	links, _ := Read(root)
+	trusted := func(pub string) bool { return sign.KeyOnly(pub) == sign.KeyOnly(runner.Public) }
+	if u := Trust(links, trusted); len(u) != 0 {
+		t.Fatalf("the runner's own chain: %+v", u)
+	}
+	os.Remove(Path(root))
+	for _, l := range links {
+		if _, err := Append(root, l.Entry, mallory); err != nil {
+			t.Fatal(err)
+		}
+	}
+	replaced, _ := Read(root)
+	if p, u := Check(replaced); len(p) != 0 || len(u) != 0 {
+		t.Fatalf("a re-signed chain should be consistent: %+v %v", p, u)
+	}
+	u := Trust(replaced, trusted)
+	if len(u) != 3 || u[0].Seq != 1 || sign.KeyOnly(u[0].Key) != sign.KeyOnly(mallory.Public) {
+		t.Fatalf("untrusted: %+v", u)
+	}
+}

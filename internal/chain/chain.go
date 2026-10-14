@@ -387,3 +387,38 @@ func Check(links []Link) (problems []Problem, unsigned []int) {
 	}
 	return problems, unsigned
 }
+
+// Untrusted is a signature by a key outside the trusted set.
+type Untrusted struct {
+	Seq  int
+	Line int
+	Key  string // the signer's public key
+	Who  string // "" for the entry's signer, else the approver's name
+}
+
+// Trust checks who signed: Check proves every signature matches the key
+// recorded beside it, which a chain re-signed wholesale with a new key
+// also passes; Trust says which signatures, entries' and their signed
+// approvals', were made by keys trusted doesn't vouch for. Unsigned
+// entries are Check's to report.
+func Trust(links []Link, trusted func(pub string) bool) []Untrusted {
+	var out []Untrusted
+	for _, l := range links {
+		if l.Sig != "" && !trusted(l.Signer) {
+			out = append(out, Untrusted{Seq: l.Seq, Line: l.Line, Key: l.Signer})
+		}
+		for _, ap := range l.Approvers {
+			if ap.Sig != "" && !trusted(ap.Key) {
+				out = append(out, Untrusted{Seq: l.Seq, Line: l.Line, Key: ap.Key, Who: or(ap.Name, "an approver")})
+			}
+		}
+	}
+	return out
+}
+
+func or(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}

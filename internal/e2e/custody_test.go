@@ -97,7 +97,7 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 	if len(rev) != 2 || rev[0] != one[1] || rev[1] != one[0] {
 		t.Errorf("history --oneline -2 --reverse: %q, want %q reversed", rev, one)
 	}
-	contains(t, "verify", r.mustSwim("verify"), "verified: every link, signature, log and script checks out", "script, approves FIN_ALLOW_DROP; 3 standing of 5 events")
+	contains(t, "verify", r.mustSwim("verify"), "consistent  yes", "script, approves FIN_ALLOW_DROP; 3 standing of 5 events")
 
 	// Tampering is provable.
 	logPath := filepath.Join(r.root, ".swim", "logs", "agent1.log")
@@ -256,5 +256,5 @@ func TestStandingApproval(t *testing.T) {
 	r.mustSwim("queue", "add", "2", "--key", keys["bob"])
 	r.mustSwim("watch", "--once")
 	contains(t, "revoked", r.log(2), "SKIP  small change 3 (dry run:")
-	contains(t, "verify", r.mustSwim("verify"), "verified: every link")
+	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
 }

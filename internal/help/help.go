@@ -714,22 +714,37 @@ swim revoke --auto USER [--key K]
   event; your approval stops counting from then on (approving again adds
   another approve event). A round that already ran keeps its record.
 `,
-	"verify": `swim verify [--strict]
+	"verify": `swim verify [--strict] [--trust-pin SHA256] [--yaml]
 
-  Prove the chain of custody (.swim/chain.jsonl) is intact:
-    - every entry follows the one before it (sequence and previous-hash):
-      a changed, removed or reordered entry breaks every link after it
-    - every signature is valid for its signer's key
-    - every round's log section still hashes to what was recorded (a log
-      edited after the round ended is caught), the copy of its script
-      kept under .swim/scripts/<sha256>.sh is unchanged, and its staged
-      copy (.swim/runs/<run>/<N>/, until swim doctor --fix prunes it)
-      still matches the manifest it ran
-    - every signed approval's signatures check out
-  and checks every approvals file under approvals/ event by event (listing
-  each, and whether a script approval is stale: the script, or something
-  else its manifest pins, changed since). Exits 1 on any break. --strict
-  also fails on unsigned entries and on signers not in lookup.yml.
+  Prove the chain of custody (.swim/chain.jsonl), in levels. Each line
+  says whether the level holds (yes, no, partial, n/a) and what it rests on:
+    consistent  every entry follows the one before it (sequence and
+                previous-hash: a changed, removed or reordered entry breaks
+                every link after it); every signature is valid for the key
+                recorded beside it; every round's log section still hashes
+                to what was recorded, the copy of its script kept under
+                .swim/scripts/<sha256>.sh is unchanged, and its staged copy
+                (.swim/runs/<run>/<N>/, until swim doctor --fix prunes it)
+                still matches the manifest it ran; every signed approval's
+                signatures check out. A chain replaced wholesale and
+                re-signed with a new key is consistent too: that's what
+                trusted is for.
+    trusted     every signature is by a key in trust.yml, as pinned outside
+                the repo (swim keys --help): pinned on first use, or with
+                --trust-pin. partial: some entries are unsigned. n/a: no
+                trust.yml.
+  Above the levels: each approvals file under approvals/ checked event by
+  event (and whether a script approval is stale: the script, or something
+  else its manifest pins, changed since), then notes, warnings and what's
+  BROKEN.
+  Exits 1 when a level says no or anything is BROKEN; --strict also on n/a,
+  partial and any warning.
+  --trust-pin SHA256   check trust.yml against this hash instead of the pin
+                       in ~/.config/swim/trust-pins.yml (CI, which keeps no
+                       pins; swim keys pin prints it). Also SWIM_TRUST_PIN.
+  --yaml               the result as data (schema swim.verify/v1): each
+                       level a field of its own (consistent: "yes"), so CI
+                       can require any of them; ok is what the exit code says.
 `,
 	"history": `swim history [RUN|N|JOB] [--oneline] [-n N | -N] [--reverse] [--no-pager] [--yaml]
 
@@ -761,10 +776,12 @@ swim revoke --auto USER [--key K]
            history shows the repair entry, and swim verify notes it.
 `,
 	"keys": `swim keys
+swim keys trust [KEY | FILE.pub] [--remove] [--sign] [--key K]
+swim keys pin
 
   Who's who: lookup.yml's users with their key fingerprints, groups (with
-  nested groups expanded), require rules, and the key this machine signs
-  with and whom it maps to.
+  nested groups expanded), require rules, trust.yml and its pin, and the key
+  this machine signs with and whom it maps to.
   lookup.yml (repo root, committed):
       users:
         zach:
@@ -783,6 +800,28 @@ swim revoke --auto USER [--key K]
         - group: ops                     # no guards: every other guard
   With no rule a signature from any listed user approves; with no
   lookup.yml signatures don't count at all (their keys can't be named).
+
+  trust.yml (repo root, committed) lists the keys swim verify trusts to
+  sign the chain: the runners' and the approvers'. lookup.yml's keys must
+  be among them (swim lint). Its key set's SHA-256 is pinned outside the
+  repo, per repo, in ~/.config/swim/trust-pins.yml: the first swim verify
+  pins it (trust on first use), or swim keys pin. After that a change
+  counts only when signed by a key the pinned set trusts; it's recorded in
+  trust.yml.sig (committed), and each operator's next swim verify moves
+  their pin along. An unsigned change makes verify's trusted level fail
+  until that operator runs swim keys pin again.
+  trust     add KEY (a public key line or a .pub file; default this
+            machine's signing key) to trust.yml, creating it; --remove
+            takes it out. --sign records the change in trust.yml.sig,
+            signed with --key K (default signing_key), a key trust.yml
+            already lists. A key removed this way still verifies what it
+            signed before.
+  pin       pin trust.yml as it is now (after checking its keys), and print
+            the hash for CI (swim verify --trust-pin). Also forgets keys
+            earlier pins kept for what they signed before.
+  The pins file is the operator's: a lane can't change it through the
+  repo, but runs as the same user, so it could write it directly. For a
+  pin a lane can't reach, give CI --trust-pin from its own settings.
 `,
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
          [--tls-cert FILE --tls-key FILE] [--insecure]
@@ -960,6 +999,9 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
                               removes them
     hub-http (warn)           .swim/hub.yml enrolls with a hub over plain
                               http on another machine
+    trust-unpinned (warn/error) trust.yml not pinned on this machine yet
+                              (warn), or changed since the pin with no
+                              signed change (error): swim keys --help
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
                               older than outputs_keep, of no lane's latest
                               round; --fix removes them (run records stay)

@@ -35,7 +35,7 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 	if err != nil || len(links) != 2 || links[0].Signer == "" || links[0].Signer == links[1].Signer {
 		t.Fatalf("want two rounds signed by different keys: %v %+v", err, links)
 	}
-	contains(t, "verify", r.mustSwim("verify"), "verified: every link, signature, log and script checks out")
+	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
 
 	// lookup.yml without the old key: a warning, and --strict fails.
 	var kept []string
@@ -45,7 +45,7 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 		}
 	}
 	os.WriteFile(filepath.Join(r.root, "lookup.yml"), []byte(strings.Join(kept, "\n")), 0o644)
-	contains(t, "verify, old key unlisted", r.mustSwim("verify"), "entries signed by a key not in lookup.yml", "verified:")
+	contains(t, "verify, old key unlisted", r.mustSwim("verify"), "entries signed by a key not in lookup.yml", "consistent  yes")
 	if out, code := r.swim("verify", "--strict"); code != 1 {
 		t.Errorf("verify --strict with an unlisted signer: %d %s", code, out)
 	}

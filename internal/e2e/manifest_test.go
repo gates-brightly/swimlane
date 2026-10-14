@@ -59,7 +59,7 @@ run "say" echo "script-v2 $greeting"`)
 	if !found {
 		t.Error("no round entry for swim 3")
 	}
-	contains(t, "verify", r.mustSwim("verify"), "verified")
+	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
 }
 
 // An edit to the working-tree script while it runs changes nothing: bash
