@@ -586,6 +586,11 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 		}
 		subject = fmt.Sprintf("%s %s by %s", verb, what, by)
 		field("Script", l.Script)
+	case "repair":
+		subject = "repair: " + l.Action
+		for name := range l.Outputs {
+			field("Kept", ".swim/"+name)
+		}
 	default:
 		subject = l.Type
 	}
@@ -695,6 +700,7 @@ func cmdVerify(args []string) error {
 	}
 	signers := map[string]bool{}
 	rounds, approvals := 0, 0
+	var notes []string
 	for _, l := range links {
 		if l.Signer != "" {
 			if _, ok := lk.Who(l.Signer); !ok {
@@ -731,6 +737,9 @@ func cmdVerify(args []string) error {
 					bad = append(bad, fmt.Sprintf("entry #%d: swim %d's log for run %s was changed after the round ended", l.Seq, l.Lane, l.Run))
 				}
 			}
+		case "repair":
+			// Not a break: the removed bytes were never a complete entry.
+			notes = append(notes, fmt.Sprintf("entry #%d: swim chain repair %s", l.Seq, l.Action))
 		case "approve":
 			approvals++
 			for _, ap := range l.Approvers {
@@ -764,6 +773,9 @@ func cmdVerify(args []string) error {
 			}
 		}
 		fmt.Printf("approvals %s: %s, approves %s; %d standing of %d events%s\n", rel(root, f.Path), f.Kind, approvesText(f), len(signers), len(f.Events), state)
+	}
+	for _, n := range notes {
+		fmt.Println("note: " + n)
 	}
 	for _, w := range warn {
 		fmt.Println(p.Paint(ui.Yellow, "warning: "+w))

@@ -388,6 +388,17 @@ To cut a release:
 
 ### Fixed
 
+- **The chain of custody accepts entries of any size:** after an entry over
+  256 KiB (a round with thousands of outputs), every later append failed,
+  so nothing more was recorded.
+  - Appending finds the previous entry however long it is, and `swim
+    verify` and `swim history` read entries without a length limit.
+  - Each entry is synced to disk as it's written.
+  - **`swim chain repair`** (new): a write cut short leaves a last line with
+    no newline, and swim refuses to append after it. Repair moves that line
+    to `.swim/chain.tail-<time>.bak`, truncates the chain there and appends
+    a signed `repair` entry with the removed bytes' size and SHA-256.
+    `swim history` shows it and `swim verify` notes it.
 - **Two swims in one repo:** a lane another swim was running (a concurrent
   `swim run`, or `swim watch` running a queued batch) showed as idle in this
   one's live view. It now shows as `running elsewhere` with its round and

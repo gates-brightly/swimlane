@@ -672,6 +672,7 @@ SHA-256 of the entry before it:
 ```sh
 swim verify                 # every link, signature, log section and kept script checks out (exit 1 if not)
 swim history                # the chain, newest first, like git log (--oneline, -n N, --reverse)
+swim chain repair           # remove a half-written last entry left by a crash (kept in a .bak, recorded)
 ```
 
 Editing a log, removing an entry or reordering entries is caught and
@@ -679,6 +680,14 @@ reported. Signing uses `ssh-keygen -Y`, the same format git uses for SSH
 commit signing, so anyone can check a signature without swim. Config:
 `signing_key` (default `~/.ssh/id_ed25519`; a `.pub` path signs through
 ssh-agent) and `signing: auto | required | off`.
+
+Entries have no size limit, and each is synced to disk as it's written. If
+a write is cut short (a crash, a kill, a full disk), the last line has no
+newline, and swim refuses to append after it until you run
+`swim chain repair`. That moves the partial line to
+`.swim/chain.tail-<time>.bak`, truncates the chain after its last complete
+entry, and appends a signed `repair` entry recording the removed bytes' size
+and SHA-256. Complete entries are never touched.
 
 ### Queue, watch and wait
 
@@ -866,7 +875,7 @@ they waited for.
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's worker; on a terminal, pick a job to run (`r`) or queue (`q`). |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
-| `swim verify [--strict]` / `swim history [--oneline]` / `swim keys` | The chain of custody: prove it, read it, and see who's who. |
+| `swim verify [--strict]` / `swim history [--oneline]` / `swim chain repair` / `swim keys` | The chain of custody: prove it, read it, repair a cut-short write, and see who's who. |
 | `swim hub [enroll\|leave\|status]` | The watch hub. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE]` | Run rounds in a CI job. |
 | `swim interrupt N\|JOB` | Stop one lane at its next step boundary. |
