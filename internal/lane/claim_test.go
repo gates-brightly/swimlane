@@ -21,24 +21,34 @@ func TestRunningChecksStartTime(t *testing.T) {
 	if err := WritePID(root, 1, os.Getpid()); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(PIDFile(root, 1))
+	// The pid file holds the bare pid (as older swims read it); the claim
+	// file the pid and its start time.
+	if data, _ := os.ReadFile(PIDFile(root, 1)); string(data) != fmt.Sprintf("%d\n", os.Getpid()) {
+		t.Fatalf("pid file %q", data)
+	}
+	data, _ := os.ReadFile(claimFile(root, 1))
 	if pid, start, ok := proc.Parse(string(data)); !ok || pid != os.Getpid() || start == "" {
-		t.Fatalf("pid file %q: want pid and start time", data)
+		t.Fatalf("claim file %q: want pid and start time", data)
 	}
 	if _, ok := Running(root, 1); !ok {
 		t.Fatal("own claim not running")
 	}
-	os.WriteFile(PIDFile(root, 1), []byte(fmt.Sprintf("%d 1\n", os.Getpid())), 0o644)
+	os.WriteFile(claimFile(root, 1), []byte(fmt.Sprintf("%d 1\n", os.Getpid())), 0o644)
 	if _, ok := Running(root, 1); ok {
 		t.Fatal("a live pid with the wrong start time reported running")
 	}
-	// A bare pid (written by an older swim) falls back to the pid alone.
-	os.WriteFile(PIDFile(root, 1), []byte(fmt.Sprintf("%d\n", os.Getpid())), 0o644)
+	// A pid file written by an older swim (no claim, or another pid's)
+	// falls back to the pid alone.
+	os.WriteFile(claimFile(root, 1), []byte("1 1\n"), 0o644)
+	if _, ok := Running(root, 1); !ok {
+		t.Fatal("legacy pid file of a live process not running")
+	}
+	os.Remove(claimFile(root, 1))
 	if _, ok := Running(root, 1); !ok {
 		t.Fatal("legacy pid file of a live process not running")
 	}
 	// A reused pid doesn't block a new claim.
-	os.WriteFile(PIDFile(root, 1), []byte(fmt.Sprintf("%d 1\n", os.Getpid())), 0o644)
+	os.WriteFile(claimFile(root, 1), []byte(fmt.Sprintf("%d 1\n", os.Getpid())), 0o644)
 	if err := WritePID(root, 1, os.Getpid()); err != nil {
 		t.Fatal(err)
 	}

@@ -40,7 +40,8 @@ func TestReapDead(t *testing.T) {
 	}
 	os.WriteFile(fmt.Sprintf("%s/.swim/lane4.x.pid", root), []byte(fmt.Sprintf("%d\n", os.Getpid())), 0o644)
 	// A pid file whose pid was handed to another process doesn't count.
-	os.WriteFile(lane.PIDFile(root, 1), []byte(fmt.Sprintf("%d 1\n", os.Getpid())), 0o644)
+	os.WriteFile(lane.PIDFile(root, 1), []byte(fmt.Sprintf("%d\n", os.Getpid())), 0o644)
+	os.WriteFile(fmt.Sprintf("%s/.swim/lane1.claim", root), []byte(fmt.Sprintf("%d 1\n", os.Getpid())), 0o644)
 
 	got := ReapDead(root, cfg, "")
 	if len(got) != 3 || got[0].Lane != 1 || got[1].Lane != 3 || got[1].Cell != "a" || got[2].Lane != 3 || got[2].Cell != "" {
