@@ -35,6 +35,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/proc"
 )
@@ -413,6 +414,9 @@ func claim(p, user string, lease time.Duration) (*Entry, error) {
 		}
 		return nil, err
 	}
+	// A worker that dies here leaves a .running entry naming no worker:
+	// orphaned, never run again on its own.
+	failpoint.Hit(failpoint.QueueClaimed)
 	e, err := load(running)
 	if err != nil {
 		return nil, err

@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/policy"
@@ -356,6 +357,9 @@ func Run(o Options) (Result, error) {
 	if o.Lane > 0 {
 		flushMsgs(o.Root, o.Lane, SpoolPath(o.LogPath))
 	}
+	// A crash here (the command ran, its result isn't written) must never
+	// read as a pass: the spool stays, and RecoverSpool writes it as cut off.
+	failpoint.Hit(failpoint.StepAfterExit)
 	if err := writeBlock(o.LogPath, logparse.StepLine(kind, logLabel, detail, ds, clock), saved); err != nil {
 		return res, err
 	}

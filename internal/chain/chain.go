@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
@@ -157,6 +158,14 @@ func Append(root string, e Entry, key *sign.Key) (string, error) {
 	line, err := link(f, st.Size(), e, key)
 	if err != nil {
 		return "", err
+	}
+	if failpoint.Armed(failpoint.ChainMidAppend) {
+		// Half the line on disk, then the crash: an incomplete final
+		// entry, as a power cut mid-write leaves (swim chain repair).
+		if _, err := f.WriteAt(line[:len(line)/2], st.Size()); err == nil {
+			f.Sync()
+		}
+		failpoint.Hit(failpoint.ChainMidAppend)
 	}
 	if err := writeLine(f, st.Size(), line); err != nil {
 		return "", err
@@ -399,12 +408,21 @@ func ReadFile(path string) ([]Link, error) {
 			return out, fmt.Errorf("%s line %d: an incomplete entry (no newline: a write was cut short); swim chain repair removes it", path, n)
 		}
 		raw = bytes.TrimSuffix(raw[:len(raw)-1], []byte("\r"))
-		var e Entry
-		if err := json.Unmarshal(raw, &e); err != nil {
-			return out, fmt.Errorf("%s line %d: not a chain entry: %v", path, n, err)
+		e, err := decodeLine(raw)
+		if err != nil {
+			return out, fmt.Errorf("%s line %d: %v", path, n, err)
 		}
 		out = append(out, Link{Entry: e, Hash: Hash(raw), Line: n})
 	}
+}
+
+// decodeLine reads one chain line (without its newline) as an entry.
+func decodeLine(raw []byte) (Entry, error) {
+	var e Entry
+	if err := json.Unmarshal(raw, &e); err != nil {
+		return Entry{}, fmt.Errorf("not a chain entry: %v", err)
+	}
+	return e, nil
 }
 
 // Problem is a break in the chain.

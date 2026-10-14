@@ -17,6 +17,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 )
 
@@ -229,7 +230,7 @@ func (f *File) Get(n int) *Lane {
 // UpdateCheck applies fn to lane n's entry even in a read-only check: for
 // the check's own fields.
 func UpdateCheck(root string, n, lanes int, fn func(*Lane)) error {
-	return updateFile(root, max(n, lanes), func(f *File) error {
+	return updateFile(root, max(n, lanes), true, func(f *File) error {
 		fn(f.Mine(n))
 		return nil
 	})
@@ -242,10 +243,20 @@ func UpdateFile(root string, n int, fn func(*File) error) error {
 	if os.Getenv("SWIM_CHECK_ONLY") == "1" {
 		return nil
 	}
-	return updateFile(root, n, fn)
+	return updateFile(root, n, true, fn)
 }
 
-func updateFile(root string, n int, fn func(*File) error) error {
+// Rebuild is UpdateFile for swim status --rebuild, which reconstructs
+// every entry from the logs: it may move a lane to any state, so it isn't
+// checked against the state machine (Transition).
+func Rebuild(root string, n int, fn func(*File) error) error {
+	if os.Getenv("SWIM_CHECK_ONLY") == "1" {
+		return nil
+	}
+	return updateFile(root, n, false, fn)
+}
+
+func updateFile(root string, n int, check bool, fn func(*File) error) error {
 	if err := os.MkdirAll(Dir(root), 0o755); err != nil {
 		return err
 	}
@@ -265,8 +276,15 @@ func updateFile(root string, n int, fn func(*File) error) error {
 	}
 	f.Root = root
 	f.Normalize(n)
+	var before *File
+	if check {
+		before = f.clone()
+	}
 	if err := fn(f); err != nil {
 		return err
+	}
+	if check {
+		enforce(checkTransitions(before, f))
 	}
 	f.UpdatedAt = Now()
 	return write(root, f)
@@ -296,7 +314,7 @@ func write(root string, f *File) error {
 	if err := enc.Encode(f); err != nil {
 		return err
 	}
-	return fsutil.WriteAtomic(Path(root), buf.Bytes(), 0o644)
+	return fsutil.WriteAtomicAt(failpoint.StatusMidWrite, Path(root), buf.Bytes(), 0o644)
 }
 
 // ResetRun clears the per-run fields before a lane starts or is reset.

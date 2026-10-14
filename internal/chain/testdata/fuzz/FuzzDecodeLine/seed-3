@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"seq\":3,\"prev\":\"fcd0bb273029212d588b9e8030bf2e6a4b11c13110b19c69a040e904400871df\",\"at\":\"2026-10-14T19:02:52Z\",\"type\":\"round\",\"run\":\"r-20261014T190252Z-9bb5\",\"lane\":1,\"job\":\"03bd9460-e35b-424a-9c81-66035d3e078c\",\"round\":\"charge\",\"script\":\"0cb10c68627d86d992e6648227aa4965819e99bead50fc97781baa963a68a207\",\"manifest_sha256\":\"e16baee2be7a7e8edb4eaaa38621584e6fce394c91a1d8fdcc05a6783afba6ed\",\"result\":\"failed\",\"exit\":1,\"log\":\"eae5009ff6e2950585d7b71defd584074663fe15b8ec57bf163afe70227d8cf5\"}")

@@ -74,11 +74,12 @@ for s in $selected; do
     export SWIM E2E SCENARIO_DIR="$E2E/scenarios/$s" OUT="$dir/out" E2E_FIXTURES="$E2E/fixtures"
     export XDG_CONFIG_HOME="$dir/xdg" PATH="$E2E/lib/fakebin:$base/bin:$(dirname "$SWIM"):$PATH"
     export NO_COLOR=1 SWIM_BIN="$SWIM"
+    export SWIM_CHECK_STATES=1   # an illegal status.yml transition panics (status.Transition)
     # Hermetic: scenarios set what they need. Inside a swim lane (this repo's
     # CI runs through swim ci) or a CI runner, drop the lane's SWIM_* vars,
     # the CI provider's vars and the lane's git shim on PATH.
     for v in $(env | sed -nE 's/^((SWIM|GITHUB|GITLAB|CI)_[A-Za-z0-9_]*)=.*/\1/p'); do
-      [ "$v" = SWIM_BIN ] || unset "$v"
+      [ "$v" = SWIM_BIN ] || [ "$v" = SWIM_CHECK_STATES ] || unset "$v"
     done
     unset CI STEP_LOG E2E_FAIL
     PATH=$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -v '/\.swim/bin$' | paste -s -d: -)

@@ -417,8 +417,11 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 		}},
 		{"a chain record over 256 KiB, then another append", "T24", TestChainLargeEntryAndRepair},
 		{"a worker killed mid-step: no false success, no silent re-run", "T6", TestReapDeadLane},
-		{"a worker killed mid-chain-append: the chain is repairable", "T7", func(t *testing.T) {
-			gap(t, "T7")
+		{"a worker killed mid-chain-append: the chain is repairable", "T7", TestFaultChainMidAppend},
+		{"a worker killed after a step's command exited: no false success, no silent re-run", "T7", TestFaultStepAfterExit},
+		{"a worker killed mid-claim or mid-batch: the claim is orphaned, never rerun on its own", "T7", func(t *testing.T) {
+			t.Run("mid-claim", TestFaultQueueClaimed)
+			t.Run("mid-batch", TestFaultWatchMidBatch)
 		}},
 		{"escape sequences in a guard description are shown escaped", "T26", TestUntrustedTextIsSafe},
 		{"-y is loud: swim status, the round's chain entry and swim history name what it approved", "T5", TestAutoApprove},

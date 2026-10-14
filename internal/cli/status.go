@@ -257,7 +257,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 
 // rebuildStatus reconstructs every lane's entry from its lane script and log.
 func rebuildStatus(root string, cfg *config.Config) error {
-	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
+	return status.Rebuild(root, cfg.Lanes, func(f *status.File) error {
 		for i := range f.Lanes {
 			l := &f.Lanes[i]
 			if l.Lane > cfg.Lanes {

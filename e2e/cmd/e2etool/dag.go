@@ -459,16 +459,38 @@ func cmdAudit([]string) error {
 	}
 	fmt.Printf("values: %d recomputed, %d match\n", vals, vals-vbad)
 
-	// 4. Independent roots in this run start together.
-	var roots []int
+	// 4. Independent roots in this run start together. Roots that share a
+	//    resource lock with another root (dag99-locks) are serialised by
+	//    design: one waits for the other to finish, however long that takes
+	//    on a loaded machine, so they're left out of the spread (the lock
+	//    check below still holds them to never overlapping).
+	locks, err := laneLocks()
+	if err != nil {
+		return err
+	}
+	var roots, serialised []int
 	for _, n := range lanes {
 		if _, have := nodes[n]; have && len(after[n]) == 0 && cur[n] {
 			roots = append(roots, n)
 		}
 	}
-	if len(roots) > 1 {
-		lo, hi := nodes[roots[0]].start, nodes[roots[0]].start
-		for _, r := range roots {
+	var free []int
+	for _, r := range roots {
+		shares := false
+		for _, o := range roots {
+			if o != r && shareLock(locks[r], locks[o]) {
+				shares = true
+			}
+		}
+		if shares {
+			serialised = append(serialised, r)
+		} else {
+			free = append(free, r)
+		}
+	}
+	if len(free) > 1 {
+		lo, hi := nodes[free[0]].start, nodes[free[0]].start
+		for _, r := range free {
 			lo, hi = min(lo, nodes[r].start), max(hi, nodes[r].start)
 		}
 		spread := hi - lo
@@ -477,7 +499,11 @@ func cmdAudit([]string) error {
 			verdict = "SERIALISED?"
 			bad = append(bad, fmt.Sprintf("independent roots started %.2fs apart in one run", spread))
 		}
-		fmt.Printf("roots in this run %s: start spread %.2fs  %s\n", pyList(roots), spread, verdict)
+		note := ""
+		if len(serialised) > 0 {
+			note = fmt.Sprintf(" (%s share locks, not compared)", pyList(serialised))
+		}
+		fmt.Printf("roots in this run %s: start spread %.2fs  %s%s\n", pyList(roots), spread, verdict, note)
 	} else {
 		r := "-"
 		if len(roots) > 0 {
@@ -561,10 +587,6 @@ func cmdAudit([]string) error {
 	}
 
 	// Resource locks: no two lanes of this run that share a lock overlapped.
-	locks, err := laneLocks()
-	if err != nil {
-		return err
-	}
 	holders, pairs, clash := 0, 0, 0
 	for _, n := range lanes {
 		if len(locks[n]) > 0 && cur[n] {

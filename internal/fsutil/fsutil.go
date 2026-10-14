@@ -17,12 +17,21 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/gates-brightly/swimlane/internal/failpoint"
 )
 
 // WriteAtomic replaces path with data: written to a temporary file in the
 // same directory, synced, given perm, renamed over path, and the directory
 // synced. Readers see the old file or the new one, never a partial one.
 func WriteAtomic(path string, data []byte, perm os.FileMode) error {
+	return WriteAtomicAt("", path, data, perm)
+}
+
+// WriteAtomicAt is WriteAtomic with a failpoint (internal/failpoint) named
+// site halfway through writing the temporary file: a crash there must
+// leave the old file whole. site "" is plain WriteAtomic.
+func WriteAtomicAt(site, path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
@@ -36,6 +45,15 @@ func WriteAtomic(path string, data []byte, perm os.FileMode) error {
 			os.Remove(name)
 		}
 	}()
+	if site != "" && failpoint.Armed(site) {
+		half := len(data) / 2
+		if _, err := tmp.Write(data[:half]); err != nil {
+			return err
+		}
+		tmp.Sync()
+		failpoint.Hit(site)
+		data = data[half:]
+	}
 	if _, err := tmp.Write(data); err != nil {
 		return err
 	}

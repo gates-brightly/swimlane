@@ -1,0 +1,2 @@
+go test fuzz v1
+string("#!/usr/bin/env bash\n# swim: syntax 2\n# Round: charge\n_swim_lib=$(\"${SWIM_BIN:-swim}\" lib) || exit 1; eval \"$_swim_lib\"\nlane_init 1\nrun \"charge\" bash -c 'echo charged >> charges'\nrun \"after\" true\nsummary\n")

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -146,18 +147,15 @@ func (s *laneServer) conn(c net.Conn) {
 		json.NewEncoder(c).Encode(laneResponse{Error: "refused: the connection came from a process outside this lane"})
 		return
 	}
-	sc := bufio.NewScanner(c)
-	sc.Buffer(make([]byte, 64*1024), 8*1024*1024)
 	enc := json.NewEncoder(c)
-	for sc.Scan() {
-		var req laneRequest
-		if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
+	readRequests(c, func(req laneRequest, err error) {
+		if err != nil {
 			enc.Encode(laneResponse{Error: "bad request: " + err.Error()})
-			continue
+			return
 		}
 		if req.Token != s.token {
 			enc.Encode(laneResponse{ID: req.ID, Error: "wrong token"})
-			continue
+			return
 		}
 		s.mu.Lock()
 		var resp laneResponse
@@ -174,8 +172,29 @@ func (s *laneServer) conn(c net.Conn) {
 			resp.RoundEnded, resp.Code = true, c
 		}
 		enc.Encode(resp)
-	}
+	})
 }
+
+// readRequests reads the protocol's framing from r: one JSON request per
+// line, up to 8 MiB. Each line is handed to fn decoded, or with the error
+// that kept it from decoding; it stops at the end of r or at a line over
+// the limit.
+func readRequests(r io.Reader, fn func(laneRequest, error)) error {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64*1024), maxRequest)
+	for sc.Scan() {
+		var req laneRequest
+		if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
+			fn(laneRequest{}, err)
+			continue
+		}
+		fn(req, nil)
+	}
+	return sc.Err()
+}
+
+// maxRequest is the longest request line the lane socket reads.
+const maxRequest = 8 * 1024 * 1024
 
 // startsStep is the ops that start a step (or ask the operator), refused
 // once the round's end is claimed.

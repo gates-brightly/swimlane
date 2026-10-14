@@ -22,6 +22,8 @@ Everything runs offline. `lib/fakebin/curl` is first on PATH and serves
 Simulated work in lanes is 0-10ms. To hunt a race that real, slower fetches
 would expose, widen the window: `E2E_CURL_DELAY=0.7 e2e/run.sh dag99`.
 Set `SWIM_E2E_BIN=/path/to/swim` to test a prebuilt binary.
+Scenarios run with `SWIM_CHECK_STATES=1`: an illegal `status.yml` state
+transition panics swim ([state machines](../docs/state.md)).
 
 ## Scenarios
 
@@ -30,7 +32,7 @@ Set `SWIM_E2E_BIN=/path/to/swim` to test a prebuilt binary.
 | `dag99` | 99 lanes: real-work lanes 1-9, generated 10-98 (fan-out, 15-lane chain, 13-parent fan-in, random layers, 5 independent roots), audit at 99. Every edge finished-before-started, every hash value recomputes from the graph, roots start together. Reports scheduler latency and overhead. |
 | `dag99-cascade` | Same graph with lanes 23, 38 and 41 made to fail (`E2E_FAIL`). The skipped set must equal exactly their descendants, and everything else must pass. |
 | `dag99-parallel` | Same graph with `--parallel 8`: the audit measures how many lanes ran at once (never over 8), and every dag99 edge and value check still holds. |
-| `dag99-locks` | Same graph with `# Locks:` from a pool of five on the generated lanes: the audit checks that no two lanes sharing a lock ever overlapped, and every lane must pass (lock waits never cause skips). |
+| `dag99-locks` | Same graph with `# Locks:` from a pool of five on the generated lanes: the audit checks that no two lanes sharing a lock ever overlapped, and every lane must pass (lock waits never cause skips). Roots that share a lock take turns, so they're left out of the roots-start-together check. |
 | `blocked` | swim never pushes, commits or pulls: `git push` refused before the lane starts, `git commit` built at runtime refused at the step, `git -C . pull` refused by the git shim. Blocked lanes fail, dependents are skipped, a read-only git lane passes, and the repo's history and working tree are unchanged. |
 | `flaky` | Steps that fail their first N calls: `--retry 2` passes on attempt 3/3 when N is 2 and fails at 3/3 when N is 3; every attempt is in the log, and the failed lane's dependent is skipped. |
 | `dag99-retry` | Same failures through `swim all`, then a retry with them fixed. `swim plan` must predict the retry (`0 to run, 70 to retry`), `swim all` must rerun exactly the failed and skipped lanes and never one that passed, and a third `swim all` must find nothing to run. |

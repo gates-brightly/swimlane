@@ -27,6 +27,9 @@ import (
 var bin string
 
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "stamp" && os.Getenv(ledgerEnv) != "" {
+		stampMain(os.Args[2:]) // a lane's timestamp (fault_test.go); exits
+	}
 	hermetic()
 	dir, err := os.MkdirTemp("", "swim-e2e-bin")
 	if err != nil {
@@ -109,6 +112,9 @@ func newRepo(t *testing.T, deps string) *repo {
 		"XDG_CONFIG_HOME="+xdg,
 		"PATH="+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"NO_COLOR=1", "SWIM_ROOT=", "SWIM_LANE=", "STEP_LOG=", "SWIM_BIN=",
+		// Every status.yml write is checked against the lane state
+		// machine: an illegal move panics (status.Transition).
+		"SWIM_CHECK_STATES=1",
 	)}
 	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
@@ -283,10 +289,12 @@ run "never" true`)
 		t.Errorf("snapshot content %q", data)
 	}
 
-	// status --yaml is the file's content with a schema tag.
+	// status --yaml is the file's content with a schema tag. It refreshes
+	// the file first (a new updated_at), so the file is read after it.
+	got := r.mustSwim("status", "--yaml")
 	raw, _ := os.ReadFile(status.Path(r.root))
 	body := regexp.MustCompile(`(?m)^#.*\n`).ReplaceAllString(string(raw), "")
-	if got := r.mustSwim("status", "--yaml"); got != "schema: swim.status/v1\n"+body {
+	if got != "schema: swim.status/v1\n"+body {
 		t.Errorf("status --yaml should be the file plus its schema:\n%s\n---\n%s", got, raw)
 	}
 	contains(t, "status", r.mustSwim("status"), "swim 1", "PASS", "swim 3", "FAIL exit 1", "STOP  gate failed: stops")
