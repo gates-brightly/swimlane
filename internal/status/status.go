@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/gates-brightly/swimlane/internal/fsutil"
 )
 
 // Lane states.
@@ -287,23 +289,7 @@ func write(root string, f *File) error {
 	if err := enc.Encode(f); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(Dir(root), "status-*.tmp")
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.Write(buf.Bytes()); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), Path(root))
+	return fsutil.WriteAtomic(Path(root), buf.Bytes(), 0o644)
 }
 
 // ResetRun clears the per-run fields before a lane starts or is reset.

@@ -41,6 +41,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -245,7 +246,7 @@ func (f *File) Save() error {
 	if err := os.MkdirAll(filepath.Dir(f.Path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(f.Path, data, 0o644)
+	return fsutil.WriteAtomic(f.Path, data, 0o644)
 }
 
 // Load reads an approvals file.

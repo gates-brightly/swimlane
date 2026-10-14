@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
@@ -149,6 +150,12 @@ func Append(root string, e Entry, key *sign.Key) (string, error) {
 	}
 	if err := writeLine(f, st.Size(), line); err != nil {
 		return "", err
+	}
+	if st.Size() == 0 {
+		// A new chain: its directory entry must survive a crash too.
+		if err := fsutil.SyncDir(filepath.Dir(f.Name())); err != nil {
+			return "", err
+		}
 	}
 	return Hash(line), nil
 }
@@ -314,6 +321,9 @@ func Repair(root string, key *sign.Key) (Repaired, error) {
 	}
 	if cerr := bak.Close(); err == nil {
 		err = cerr
+	}
+	if err == nil {
+		err = fsutil.SyncDir(filepath.Dir(r.Backup))
 	}
 	if err != nil {
 		return Repaired{}, err

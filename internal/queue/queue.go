@@ -28,6 +28,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/gates-brightly/swimlane/internal/fsutil"
 )
 
 // Schema identifies an entry file.
@@ -152,14 +154,20 @@ func Add(root string, e *Entry) error {
 			return err
 		}
 		_, werr := f.Write(data)
+		if werr == nil {
+			werr = f.Sync()
+		}
 		cerr := f.Close()
 		if werr != nil {
+			os.Remove(e.Path)
 			return werr
 		}
-		if cerr == nil {
-			os.WriteFile(filepath.Join(Dir(root), ".seq"), []byte(strconv.Itoa(e.Seq)+"\n"), 0o644)
+		if cerr != nil {
+			os.Remove(e.Path)
+			return cerr
 		}
-		return cerr
+		fsutil.WriteAtomic(filepath.Join(Dir(root), ".seq"), []byte(strconv.Itoa(e.Seq)+"\n"), 0o644)
+		return fsutil.SyncDir(Dir(root))
 	}
 }
 
@@ -200,11 +208,7 @@ func write(e *Entry) error {
 	if err != nil {
 		return err
 	}
-	tmp := e.Path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, e.Path)
+	return fsutil.WriteAtomic(e.Path, data, 0o644)
 }
 
 // List returns the entries waiting or running (oldest first), and with
@@ -345,7 +349,7 @@ func Claim(root string, e *Entry, user string) (*Entry, error) {
 // when another worker renamed it first.
 func claim(p, user string) (*Entry, error) {
 	running := strings.TrimSuffix(p, ".queue") + ".running"
-	if err := os.Rename(p, running); err != nil {
+	if err := fsutil.Rename(p, running); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil // claimed by another worker
 		}
@@ -373,7 +377,7 @@ func Consume(root string, e *Entry, r Result) error {
 		return err
 	}
 	dst := filepath.Join(DoneDir(root), base(e)+".yml")
-	if err := os.Rename(e.Path, dst); err != nil {
+	if err := fsutil.Rename(e.Path, dst); err != nil {
 		return err
 	}
 	e.Path, e.State = dst, Done

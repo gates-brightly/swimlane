@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/authority"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
@@ -42,11 +42,8 @@ func keepScript(root string, n int, m *manifest.Manifest) (string, error) {
 	dst := filepath.Join(scriptsDir(root), sha+".sh")
 	if _, err := os.Stat(dst); err != nil {
 		os.MkdirAll(scriptsDir(root), 0o755)
-		tmp := fmt.Sprintf("%s.%d.tmp", dst, os.Getpid()) // a matrix's cells start at once
-		if err := os.WriteFile(tmp, data, 0o644); err != nil {
-			return "", err
-		}
-		if err := os.Rename(tmp, dst); err != nil {
+		// A temporary name of its own: a matrix's cells start at once.
+		if err := fsutil.WriteAtomic(dst, data, 0o644); err != nil {
 			return "", err
 		}
 	}
