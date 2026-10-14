@@ -852,7 +852,7 @@ func short12(s string) string {
 // consistent level); something gone is a warning.
 func (v *verifier) checkEntries(links []chain.Link) {
 	root := v.root
-	runs, unattested := attestations(links, &v.bad)
+	runs, unattested := attestations(links)
 	if unattested > 0 {
 		v.notes = append(v.notes, fmt.Sprintf("%d runs have approvals or rounds but no run attestation (lanes run directly with bash, runs from before attestations, or a swim run that didn't finish): their approvals can't be checked against what swim run recorded", unattested))
 	}
@@ -866,16 +866,31 @@ func (v *verifier) checkEntries(links []chain.Link) {
 		switch l.Type {
 		case "round":
 			v.rounds++
-			// What swim run attests its lane ran.
+			// What swim run attests its lane ran. Runs that share an id
+			// (--run-id) each attest their own lanes: one of them must
+			// list this lane, as it ran.
 			if attested {
 				key := strconv.Itoa(l.Lane)
+				var listed []chain.Link
+				for _, a := range att {
+					if a.Manifests[key] != "" || a.Scripts[key] != "" {
+						listed = append(listed, a)
+					}
+				}
+				ran := func(a chain.Link) bool {
+					return (l.Script == "" || a.Scripts[key] == "" || l.Script == a.Scripts[key]) &&
+						(l.Manifest == "" || a.Manifests[key] == "" || l.Manifest == a.Manifests[key])
+				}
 				switch {
-				case att.Manifests[key] == "" && att.Scripts[key] == "":
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: a round of swim %d in run %s, which the run's attestation (entry #%d) doesn't list", l.Seq, l.Lane, l.Run, att.Seq))
-				case l.Script != "" && att.Scripts[key] != "" && l.Script != att.Scripts[key]:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's round in run %s names script %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Script), short12(att.Scripts[key]), att.Seq))
-				case l.Manifest != "" && att.Manifests[key] != "" && l.Manifest != att.Manifests[key]:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's round in run %s names manifest %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Manifest), short12(att.Manifests[key]), att.Seq))
+				case len(listed) == 0:
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: a round of swim %d in run %s, which the run's attestation (entry %s) doesn't list", l.Seq, l.Lane, l.Run, seqs(att)))
+				case !slices.ContainsFunc(listed, ran):
+					a := listed[0]
+					if l.Script != "" && a.Scripts[key] != "" && l.Script != a.Scripts[key] {
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's round in run %s names script %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Script), short12(a.Scripts[key]), a.Seq))
+					} else {
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's round in run %s names manifest %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Manifest), short12(a.Manifests[key]), a.Seq))
+					}
 				}
 			}
 			if l.Script != "" {
@@ -889,10 +904,16 @@ func (v *verifier) checkEntries(links []chain.Link) {
 			// prunes old stages): its manifest and files as they ran.
 			if l.Manifest != "" {
 				if m, err := manifest.Load(manifest.Dir(root, l.Run, l.Lane)); err == nil {
-					if m.SHA256 != l.Manifest {
+					switch {
+					case m.SHA256 != l.Manifest && restaged(links, l, m.SHA256):
+						// The lane ran again under the same run id
+						// (--run-id): the stage is the later round's.
+					case m.SHA256 != l.Manifest:
 						v.bad = append(v.bad, fmt.Sprintf("entry #%d: the staged manifest of swim %d in run %s is %s, not the %s that ran", l.Seq, l.Lane, l.Run, short12(m.SHA256), short12(l.Manifest)))
-					} else if err := m.Verify(); err != nil {
-						v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's staged copy in run %s: %v", l.Seq, l.Lane, l.Run, err))
+					default:
+						if err := m.Verify(); err != nil {
+							v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's staged copy in run %s: %v", l.Seq, l.Lane, l.Run, err))
+						}
 					}
 				}
 			}
@@ -909,10 +930,12 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				}
 			}
 			if l.Log != "" {
-				switch sum, ok := roundLogHash(root, l.Lane, l.Run); {
-				case !ok:
+				// A lane run twice under one run id (--run-id) has a section
+				// for each round: this one's must be among them.
+				switch sums := roundLogHashes(root, l.Lane, l.Run); {
+				case len(sums) == 0:
 					v.warn = append(v.warn, fmt.Sprintf("entry #%d: swim %d's log for run %s is gone (deleted, not archived)", l.Seq, l.Lane, l.Run))
-				case sum != l.Log:
+				case !sums[l.Log]:
 					v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's log for run %s was changed after the round ended", l.Seq, l.Lane, l.Run))
 				}
 			}
@@ -924,8 +947,19 @@ func (v *verifier) checkEntries(links []chain.Link) {
 			// Under swim run only the launcher records approvals: one its
 			// run's attestation doesn't list was written by someone else (a
 			// lane recording its own approval).
-			if attested && !slices.Contains(att.Approvals, l.Hash) {
-				v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for swim %d in run %s that swim run didn't record (its attestation, entry #%d, doesn't list it)", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run, att.Seq))
+			if attested {
+				var by []chain.Link
+				for _, a := range att {
+					if slices.Contains(a.Approvals, l.Hash) {
+						by = append(by, a)
+					}
+				}
+				switch {
+				case len(by) == 0:
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for swim %d in run %s that swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run, seqs(att)))
+				case len(by) > 1:
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for swim %d in run %s that two attestations claim (entries %s): only the swim run that recorded it lists it", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run, seqs(by)))
+				}
 			}
 			for _, ap := range l.Approvers {
 				if ap.Statement == "" || ap.Sig == "" {
@@ -997,20 +1031,16 @@ func (v *verifier) checkApprovalFiles() {
 	}
 }
 
-// attestations are the chain's run attestations by run id. A run attested
-// twice is a break (someone appended a second). unattested counts the runs
-// that have approve or round entries and no attestation.
-func attestations(links []chain.Link, bad *[]string) (runs map[string]chain.Link, unattested int) {
-	runs = map[string]chain.Link{}
+// attestations are the chain's run attestations by run id: one per swim
+// run, so several when runs share an id (--run-id, e.g. a CI pipeline's).
+// unattested counts the runs that have approve or round entries and no
+// attestation.
+func attestations(links []chain.Link) (runs map[string][]chain.Link, unattested int) {
+	runs = map[string][]chain.Link{}
 	for _, l := range links {
-		if l.Type != "run" {
-			continue
+		if l.Type == "run" {
+			runs[l.Run] = append(runs[l.Run], l)
 		}
-		if first, ok := runs[l.Run]; ok {
-			*bad = append(*bad, fmt.Sprintf("entry #%d: run %s is attested twice (entries #%d and #%d)", l.Seq, l.Run, first.Seq, l.Seq))
-			continue
-		}
-		runs[l.Run] = l
 	}
 	seen := map[string]bool{}
 	for _, l := range links {
@@ -1022,6 +1052,27 @@ func attestations(links []chain.Link, bad *[]string) (runs map[string]chain.Link
 		}
 	}
 	return runs, unattested
+}
+
+// restaged reports whether a round after l, of the same lane and run,
+// ran manifest man: the lane ran again under l's run id and staged over
+// l's copy.
+func restaged(links []chain.Link, l chain.Link, man string) bool {
+	for _, o := range links {
+		if o.Seq > l.Seq && o.Type == "round" && o.Lane == l.Lane && o.Run == l.Run && o.Manifest == man {
+			return true
+		}
+	}
+	return false
+}
+
+// seqs lists entries' numbers: "#4" or "#4, #9".
+func seqs(links []chain.Link) string {
+	var s []string
+	for _, l := range links {
+		s = append(s, "#"+strconv.Itoa(l.Seq))
+	}
+	return strings.Join(s, ", ")
 }
 
 // needsEvidence reports whether a lookup.yml rule for any approved guard
@@ -1094,12 +1145,13 @@ func producedBy(links []chain.Link, round string) (chain.Link, bool) {
 
 // roundLogHash is the hash of lane n's round in run, from its current or
 // archived log (ok false if no log holds it).
-func roundLogHash(root string, n int, run string) (string, bool) {
+func roundLogHashes(root string, n int, run string) map[string]bool {
+	sums := map[string]bool{}
 	for _, f := range append(archives(root, n), lane.Log(root, n)) {
 		rounds, _ := roundsOf(f, run)
-		if len(rounds) > 0 {
-			return chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), true
+		for _, r := range rounds {
+			sums[chain.Hash([]byte(roundSection(r)))] = true
 		}
 	}
-	return "", false
+	return sums
 }

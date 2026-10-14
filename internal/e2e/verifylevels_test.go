@@ -165,3 +165,40 @@ func TestVerifyAuthorizedLevel(t *testing.T) {
 		t.Errorf("--strict with authorized partial: exit %d\n%s", code, out)
 	}
 }
+
+// Runs that share an id (--run-id, a CI pipeline's) each attest their own
+// lanes, and the same lane may run twice under it: that isn't a break.
+func TestVerifySharedRunID(t *testing.T) {
+	r, _ := signedRepo(t)
+	r.script(2, "two", `if guard ALLOW_B "change b"; then run "b changed" true; fi`)
+	r.mustSwim("run", "1", "--plain", "--run-id", "pipeline-7")
+	r.mustSwim("run", "2", "-y", "--plain", "--run-id", "pipeline-7")
+	r.script(1, "one", `run "ok again" true`)
+	r.mustSwim("run", "1", "--plain", "--run-id", "pipeline-7")
+	out, code := r.swim("verify")
+	if code != 0 || strings.Contains(out, "BROKEN") {
+		t.Fatalf("verify of runs sharing an id: exit %d\n%s", code, out)
+	}
+	contains(t, "verify", out, "consistent  yes", "authorized  yes")
+}
+
+// swim chain checkpoint says "sent to" only for an anchor that took this
+// checkpoint, not one that took the same seq before.
+func TestCheckpointSendFails(t *testing.T) {
+	r, _ := signedRepo(t)
+	dir := filepath.Join(t.TempDir(), "audit")
+	r.write("swim.yml", "chain_anchors: [\"file:"+dir+"\"]\n", 0o644)
+	contains(t, "checkpoint", r.mustSwim("chain", "checkpoint"), "sent to file:"+dir)
+
+	// The anchor is gone: a file where its directory was.
+	os.RemoveAll(dir)
+	os.WriteFile(dir, []byte("not a directory"), 0o644)
+	out, code := r.swim("chain", "checkpoint")
+	if code != 1 || strings.Contains(out, "sent to") {
+		t.Fatalf("checkpoint to an anchor that's gone: exit %d\n%s", code, out)
+	}
+	contains(t, "doctor", must(r.swim("doctor")), "[checkpoint-unsent]", "the last send to it failed")
+	if out, code := r.swim("chain", "export", "--to", "file:"+dir); code != 1 {
+		t.Errorf("export to an anchor that's gone: exit %d\n%s", code, out)
+	}
+}

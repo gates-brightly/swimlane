@@ -137,9 +137,10 @@ To cut a release:
   - **Run attestation:** once its last lane exits, `swim run` appends a
     `run` entry to the chain (each lane's manifest and script, the approve
     entries it recorded, the flags its environment approved). `swim verify`
-    fails on an approve entry its run didn't record, a round that ran
-    something else, and a run attested twice; runs without one are noted.
-    `swim history` shows it.
+    fails on an approve entry its run didn't record (or two attestations
+    claim) and a round that ran something else; runs without one are noted.
+    Runs that share an id (`--run-id`, e.g. a CI pipeline's) each attest
+    their own lanes. `swim history` shows it.
   - Lanes still run as you and can read the runner key, so a lane that
     hides from `swim run` can sign an entry: `swim verify` reports it. See
     `docs/trust-model.md`.

@@ -215,9 +215,10 @@ levels, each on its own line (and as its own field in `--yaml`):
 - **consistent:** every link, every signature against the key recorded
   **in that same entry**, every round's log section, kept script and staged
   copy, and every signed approval; and each attested run against its
-  attestation: an approve entry the run didn't record, a round whose script
-  or manifest isn't the one it ran, or a run attested twice is a break.
-  Runs without an attestation (lanes run directly with bash, runs from
+  attestation: an approve entry the run didn't record (or that two
+  attestations claim), or a round whose script or manifest isn't the one it
+  ran, is a break. Runs that share an id (`--run-id`) each attest their own
+  lanes. Runs without an attestation (lanes run directly with bash, runs from
   before attestations, a `swim run` that didn't finish) are noted. A chain
   replaced wholesale and re-signed with another key is consistent too.
 - **trusted:** every signature is by a key in `trust.yml` (committed),
