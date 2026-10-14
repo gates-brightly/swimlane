@@ -27,6 +27,23 @@ To cut a release:
 
 ## Unreleased
 
+### Security
+
+- **Text a lane supplies is made safe before it's shown:** a guard's
+  description and evidence, step labels, command lines, `swim msg`, the
+  live view and the hub can no longer carry escape sequences, `\r`,
+  backspaces, other control characters or bidi overrides, so a lane can't
+  hide or rewrite what the operator approves.
+  - Removed: every escape sequence (cursor moves, erases, OSC 8 links,
+    titles), C0 and C1 controls except tab, and bidi controls; invalid
+    UTF-8 shows as U+FFFD. Tabs, colours in lane output in the live view,
+    and UTF-8 text are kept.
+  - Step labels and marks are cleaned where they're made, so the log,
+    status.yml and `--yaml` output are clean too. The chain keeps a guard's
+    description as given (evidence); `swim history` cleans it as it shows it.
+  - The hub cleans each worker's report as it arrives (a worker isn't
+    trusted either); its pages also escape HTML, as before.
+
 ### Changed
 
 - **Versions are `0.<YYYYMMDD>.<index>`,** tagged `v0.<YYYYMMDD>.<index>`:

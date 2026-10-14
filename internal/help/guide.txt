@@ -311,7 +311,10 @@ WRITING A LANE SCRIPT
                                   the run was started with -y; otherwise logs SKIP with the
                                   approval hint and returns false. FLAG set to anything
                                   else (FLAG=0) never asks. Write <action> for the person
-                                  approving it: what it changes, and why.
+                                  approving it: what it changes, and why. The question
+                                  shows <action> and the evidence made safe: escape
+                                  sequences, control characters (\r, backspace) and bidi
+                                  overrides are removed, so a lane can't rewrite it.
   confirm "<question>" [answer]   operator must type the answer (default "yes");
                                   anything else, or no stdin, stops the round.
   last_failed                     true if the previous step failed.

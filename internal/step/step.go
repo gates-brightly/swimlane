@@ -162,14 +162,17 @@ func Run(o Options) (Result, error) {
 			}
 		}()
 	}
-	label := mk.String(o.Label)
+	// The label and command line are the lane's, shown on the terminal and
+	// in the panel and written to the log and status.yml: made safe
+	// (ui.SafeField) so they can't carry escape sequences or controls.
+	label := ui.SafeField(mk.String(o.Label))
 	switch {
 	case o.Evidence && !strings.HasPrefix(label, "evidence"):
 		label = "evidence: " + label
 	case o.Snapshot && !o.Evidence && !strings.HasPrefix(label, "snapshot"):
 		label = "snapshot: " + label
 	}
-	cmdline := mk.String(Quote(o.Args))
+	cmdline := ui.Safe(mk.String(Quote(o.Args)))
 	logLabel := label
 	if logLabel == "" {
 		logLabel = shorten(cmdline, 40)
@@ -585,6 +588,7 @@ func RecordOutput(logPath, label, cmdline string, start time.Time, dur time.Dura
 // command line and output) into the log: for steps swim didn't run itself
 // (a whole program, an SDK's in-process step).
 func RecordStep(logPath, kind, label, detail, cmdline string, start time.Time, dur time.Duration, out io.Reader) (string, error) {
+	label, detail, cmdline = ui.SafeField(label), ui.SafeField(detail), ui.Safe(cmdline)
 	sp, err := os.Create(SpoolPath(logPath))
 	if err != nil {
 		return "", err

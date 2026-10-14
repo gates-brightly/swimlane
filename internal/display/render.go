@@ -303,12 +303,13 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 			label = "▶" + label[1:]
 		}
 		st, stColor := stateText(v, now)
+		st = ui.Safe(st) // a skip reason or approval text can be a lane's
 		stW := stateWidth
 		if labelW+stW > width {
 			stW = width - labelW
 		}
 		st = pad(truncate(st, stW), stW)
-		round := v.Round
+		round := ui.Safe(v.Round)
 		if round == "" {
 			round = "-"
 		}
@@ -332,12 +333,12 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 		if v.Cells != "" {
 			if left := avail - utf8.RuneCountInString(round) - 3; left >= 10 {
 				job = ""
-				msg = truncate(v.Cells, left)
+				msg = truncate(ui.Safe(v.Cells), left)
 			}
 		} else if v.State == Running && v.Message != "" {
 			if left := avail - utf8.RuneCountInString(round) - 3; left >= 10 {
 				job = ""
-				msg = truncate("… "+v.Message, left)
+				msg = truncate("… "+ui.Safe(v.Message), left)
 			}
 		}
 		line := p.Paint(ui.LaneColor(v.N)+ui.Bold, label) + p.Paint(stColor, st)
@@ -377,22 +378,26 @@ func JobPrefix(n int, job string, color bool) string {
 	return p.Paint(ui.LaneColor(n), "[") + p.Job(job, "") + p.Paint(ui.LaneColor(n), "]") + " "
 }
 
-// WrapANSI splits s into lines of at most w visible columns. Escape
+// WrapANSI splits s into lines of at most w visible columns. SGR (colour)
 // sequences take no columns and are never split; the colour active at a
 // break is re-applied at the start of the next line. Tabs expand to 8-column
 // stops. Swim wraps lines itself so the terminal never soft-wraps inside the
 // scroll region (some terminals then join rows when copying or resizing).
+// The text is a lane's, so it goes through ui.SafeKeepSGR first: no other
+// escape sequence, control character (\r, \b, C1) or bidi control reaches
+// the screen to move the cursor or rewrite what is shown.
 func WrapANSI(s string, w int) []string {
 	if w < 1 {
 		w = 1
 	}
+	s = ui.SafeKeepSGR(s)
 	var lines []string
 	var cur strings.Builder
 	active := "" // SGR sequences in effect since the last reset
 	col := 0
 	for i := 0; i < len(s); {
 		if s[i] == 0x1b {
-			j := escEnd(s, i)
+			j := ui.EscEnd(s, i)
 			seq := s[i:j]
 			cur.WriteString(seq)
 			if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
@@ -430,40 +435,6 @@ func WrapANSI(s string, w int) []string {
 		col += width
 	}
 	return append(lines, cur.String())
-}
-
-// escEnd returns the index just past the escape sequence starting at i.
-func escEnd(s string, i int) int {
-	if i+1 >= len(s) {
-		return len(s)
-	}
-	switch s[i+1] {
-	case '[': // CSI: parameters, then a final byte 0x40-0x7e
-		for j := i + 2; j < len(s); j++ {
-			if s[j] >= 0x40 && s[j] <= 0x7e {
-				return j + 1
-			}
-		}
-		return len(s)
-	case ']': // OSC: ends with BEL or ESC \
-		for j := i + 2; j < len(s); j++ {
-			if s[j] == 0x07 {
-				return j + 1
-			}
-			if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
-				return j + 2
-			}
-		}
-		return len(s)
-	}
-	j := i + 1
-	for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2f { // intermediates, as in ESC ( B
-		j++
-	}
-	if j < len(s) {
-		j++
-	}
-	return j
 }
 
 // preMark is a lane's pre-approval mark in the panel: ✓ pre-approved,

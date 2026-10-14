@@ -148,3 +148,37 @@ func TestScreenRows(t *testing.T) {
 		t.Errorf("an idle lane's detail:\n%s", d)
 	}
 }
+
+// A hostile worker's report: its pages escape HTML (html/template) and the
+// hub drops escape sequences, controls and bidi overrides on the way in,
+// from the pages and the JSON alike.
+func TestHubUntrustedText(t *testing.T) {
+	s := New("sekret")
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	c := NewClient(srv.URL, "sekret", "")
+	id, err := c.Enroll(Worker{Name: "evil\x1b]0;pwned\x07<b>", Host: "box", Root: "/r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := "<script>alert(1)</script>\x1b[2K\r\b‮gnp.exe"
+	snap := Snapshot{Worker: Worker{Name: "evil"}, Activity: "running " + bad,
+		Lanes: []Lane{{Lane: 1, State: "running", Round: bad, Step: bad, Message: bad, Tail: []string{bad}}},
+		Queue: []Batch{{Seq: 1, ID: "q-1", State: "queued", Note: bad, Lanes: []int{1}}}, Events: []string{bad}}
+	if err := c.Report(snap); err != nil {
+		t.Fatal(err)
+	}
+	for _, page := range []string{get(t, srv.URL+"/"), get(t, srv.URL+"/w/"+id), get(t, srv.URL+"/api/workers")} {
+		if strings.Contains(page, "<script>") || strings.Contains(page, "<b>") {
+			t.Errorf("unescaped HTML:\n%s", page)
+		}
+		for _, c := range []string{"\x1b", "\r", "\b", "‮", "\\u001b", "\\r", "\\u0008", "\\u202e", "\\u202E"} {
+			if strings.Contains(page, c) {
+				t.Errorf("%q got through:\n%s", c, page)
+			}
+		}
+	}
+	if page := get(t, srv.URL+"/w/"+id); !strings.Contains(page, "&lt;script&gt;alert(1)&lt;/script&gt;gnp.exe") {
+		t.Errorf("the text itself should still show, escaped:\n%s", page)
+	}
+}

@@ -8,8 +8,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
+
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // Msg is a running round's status message (swim msg): one per lane, the
@@ -72,18 +73,18 @@ var progressRE = regexp.MustCompile(`^\d+/\d+$`)
 // ValidProgress reports whether p is N/M.
 func ValidProgress(p string) bool { return progressRE.MatchString(p) }
 
-var ansiRE = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-_])`)
-
-// CleanMsg makes text one clean line: ANSI and control characters removed,
-// whitespace collapsed, at most MsgMax runes.
+// CleanMsg makes text one clean line: escape sequences and control
+// characters removed (ui.Safe; whitespace controls such as newlines become
+// spaces first, so "a\nb" reads "a b"), whitespace collapsed, at most
+// MsgMax runes.
 func CleanMsg(text string) string {
-	text = ansiRE.ReplaceAllString(text, "")
 	text = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if r == '\n' || r == '\r' || r == '\v' || r == '\f' {
 			return ' '
 		}
 		return r
 	}, text)
+	text = ui.Safe(text)
 	text = strings.Join(strings.Fields(text), " ")
 	if utf8.RuneCountInString(text) > MsgMax {
 		text = string([]rune(text)[:MsgMax-1]) + "…"

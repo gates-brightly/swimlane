@@ -519,7 +519,13 @@ func cmdHistory(args []string) error {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	return paged(noPager, func(w io.Writer) {
 		for i, l := range shown {
+			// The chain keeps the lane's text as given (evidence); it's made
+			// safe only here, where it's shown.
 			subject, body := historyEntry(lk, l)
+			subject = ui.Safe(subject)
+			for j := range body {
+				body[j] = ui.Safe(body[j])
+			}
 			if oneline {
 				fmt.Fprintf(w, "%s %s\n", p.Paint(ui.Yellow, short12(l.Hash)), subject)
 				continue

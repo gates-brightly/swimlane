@@ -140,3 +140,38 @@ func TestPromptSeveralLanes(t *testing.T) {
 	contains(t, "first lane", r.log(first), "SKIP  change ", "declined at the prompt")
 	contains(t, "second lane", r.log(second), "APPROVED  change ", "PASS  ")
 }
+
+// A guard's description can't rewrite its own question: the erase, the
+// carriage return, the backspace and the right-to-left override never
+// reach the terminal, at the prompt line or in the live view.
+func TestPromptIsSafe(t *testing.T) {
+	for _, mode := range []string{"--no-tui", "tui"} {
+		t.Run(mode, func(t *testing.T) {
+			r := newRepo(t, "")
+			r.script(1, "hostile", `if guard ALLOW_X `+payload+`; then run "changed" true; fi`)
+			args := []string{"all"}
+			if mode != "tui" {
+				args = append(args, mode)
+			}
+			tr := r.startTUI(nil, args...)
+			tr.waitFor("requires human approval of task: " + payloadSafe)
+			tr.send("n")
+			if mode == "tui" {
+				// The view closes by itself, or holds on the lane's view.
+				s := tr.waitScreen("the run's end", func(s string) bool {
+					return strings.Contains(s, "q to close") || strings.Contains(s, "stages: setup SKIP")
+				})
+				if strings.Contains(s, "q to close") {
+					tr.send("q")
+				}
+			}
+			_, out := tr.wait()
+			for _, bad := range []string{"\x1b[2K\rlist", "\b", "\u202e"} {
+				if strings.Contains(out, bad) {
+					t.Errorf("the terminal got %q:\n%q", bad, out)
+				}
+			}
+			contains(t, "log", r.log(1), "SKIP  "+payloadSafe+" (dry run: declined at the prompt by ")
+		})
+	}
+}

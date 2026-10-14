@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // EnvVar holds the socket path in a lane's environment.
@@ -210,9 +212,14 @@ func Ask(path string, req Request, stopped func() bool, deadline time.Time) (Res
 	}
 }
 
-// Question is how an approval is put to the operator.
+// Question is how an approval is put to the operator. The description and
+// evidence are the lane's, so each line goes through ui.Safe: escape
+// sequences, carriage returns, backspaces or bidi controls in them can't
+// hide or rewrite what the operator approves. (The chain keeps them as
+// given.)
 func Question(req Request) []string {
-	q := []string{fmt.Sprintf("swim %d requires human approval of task: %s", req.Lane, req.Desc)}
+	flag := ui.Safe(req.Flag)
+	q := []string{fmt.Sprintf("swim %d requires human approval of task: %s", req.Lane, ui.Safe(req.Desc))}
 	if req.Evidence != "" {
 		lines := strings.Split(strings.TrimRight(req.Evidence, "\n"), "\n")
 		q = append(q, "evidence (what it will do):")
@@ -221,8 +228,8 @@ func Question(req Request) []string {
 				q = append(q, fmt.Sprintf("  ... %d more lines (.swim/evidence/)", len(lines)-20))
 				break
 			}
-			q = append(q, "  "+l)
+			q = append(q, "  "+ui.Safe(l))
 		}
 	}
-	return append(q, fmt.Sprintf("(guard %s; or set %s=1 to approve without asking)  Y/N [N]", req.Flag, req.Flag))
+	return append(q, fmt.Sprintf("(guard %s; or set %s=1 to approve without asking)  Y/N [N]", flag, flag))
 }

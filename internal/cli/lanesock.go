@@ -23,6 +23,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
+	"github.com/gates-brightly/swimlane/internal/ui"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -271,8 +272,9 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 			return laneResponse{OK: true, Result: map[string]any{"started": false}}
 		}
 		s.nextStep++
-		s.steps[s.nextStep] = &inStep{label: a.Label, gate: a.Gate, start: time.Now()}
-		status.Update(s.root, s.n, s.cfg.Lanes, func(l *status.Lane) { l.CurrentStep = a.Label })
+		label := ui.SafeField(a.Label) // the program's: no escape sequences or controls on screens
+		s.steps[s.nextStep] = &inStep{label: label, gate: a.Gate, start: time.Now()}
+		status.Update(s.root, s.n, s.cfg.Lanes, func(l *status.Lane) { l.CurrentStep = label })
 		return laneResponse{OK: true, Result: map[string]any{"step": s.nextStep, "started": true}}
 	case "step_output":
 		var a struct {
