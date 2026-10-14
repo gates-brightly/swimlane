@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -33,8 +34,8 @@ import (
 
 // cmdHub runs the watch hub, or enrolls this directory with one:
 //
-//	swim hub [--addr HOST:PORT] [--token T]       serve the hub
-//	swim hub enroll URL [--token T] [--name N]    report this directory's swim watch to it
+//	swim hub [--addr HOST:PORT] [--token T] [--tls-cert F --tls-key F]   serve the hub
+//	swim hub enroll URL [--token T] [--name N] [--ca F]  report this directory's swim watch to it
 //	swim hub leave                                stop reporting
 //	swim hub status                               this directory's enrollment
 func cmdHub(args []string) error {
@@ -62,14 +63,18 @@ func cmdHub(args []string) error {
 }
 
 func hubServe(args []string) error {
-	var addr, token, stateDir, adminToken string
-	var noTUI bool
-	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI}, strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken}}.parse(args)
+	var addr, token, stateDir, adminToken, certFile, keyFile string
+	var noTUI, insecure bool
+	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure},
+		strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken, "tls-cert": &certFile, "tls-key": &keyFile}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--insecure] [--no-tui]")
+	}
+	if (certFile == "") != (keyFile == "") {
+		return usagef("--tls-cert and --tls-key go together")
 	}
 	if stateDir == "" {
 		stateDir = filepath.Join(filepath.Dir(config.Path()), "hub")
@@ -89,20 +94,44 @@ func hubServe(args []string) error {
 		rand.Read(b)
 		token, generated = hex.EncodeToString(b), true
 	}
+	useTLS := certFile != ""
+	if err := listenPolicy(addr, useTLS, insecure); err != nil {
+		return err
+	}
+	var certs *certReloader
+	if useTLS {
+		if certs, err = newCertReloader(certFile, keyFile); err != nil {
+			return err
+		}
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 	url := "http://" + ln.Addr().String()
+	if useTLS {
+		ln = tls.NewListener(ln, certs.tlsConfig())
+		url = "https://" + ln.Addr().String()
+	}
 	var notes []display.PickRow
 	note := func(color, text string) {
 		notes = append(notes, display.PickRow{Text: text, Color: color})
 	}
-	note(ui.Dim, "enroll a worker (in its repo):  swim hub enroll "+url+" --token "+token)
+	enroll := "swim hub enroll " + url + " --token " + token
+	if useTLS {
+		enroll += " [--ca CERT.pem]"
+	}
+	note(ui.Dim, "enroll a worker (in its repo):  "+enroll)
 	if generated {
 		note(ui.Dim, "  (a new token each start: pass --token or SWIM_HUB_TOKEN to keep workers enrolled across restarts)")
 	}
-	if host, _, _ := net.SplitHostPort(ln.Addr().String()); !net.ParseIP(host).IsLoopback() {
+	if useTLS {
+		note(ui.Dim, "  (--ca: the hub's certificate or its CA, when workers don't already trust it; "+certFile+" reloads when it changes)")
+	}
+	if host, _, _ := net.SplitHostPort(ln.Addr().String()); !hub.LoopbackHost(host) {
+		if !useTLS {
+			note(ui.Yellow, "warning: plain HTTP on the network (--insecure): tokens, logs and secrets cross it unencrypted; serve TLS with --tls-cert/--tls-key")
+		}
 		note(ui.Yellow, "warning: the dashboard is read-only but unauthenticated: anyone who can reach "+url+" sees every worker's lanes, queue and log tails")
 	}
 	h, err := hub.NewWithState(token, adminToken, stateDir)
@@ -217,6 +246,7 @@ type hubFile struct {
 	WorkerToken string `yaml:"worker_token,omitempty"` // this worker's own, from enrolling
 	ID          string `yaml:"id"`
 	Name        string `yaml:"name"`
+	CA          string `yaml:"ca,omitempty"` // PEM the hub's https certificate must chain to (enroll --ca)
 }
 
 func saveHub(root string, h *hubFile) error {
@@ -227,10 +257,21 @@ func saveHub(root string, h *hubFile) error {
 
 // hubClient is this directory's connection to its hub.
 func hubClient(h *hubFile) *hub.Client {
-	c := hub.NewClient(h.URL, h.Token, h.ID)
+	c, err := hub.NewClientTLS(h.URL, h.Token, h.ID, []byte(h.CA))
+	if err != nil {
+		// A CA that no longer parses: fail closed (no system roots) with
+		// the reason on every call rather than trust something else.
+		c = hub.NewClient(h.URL, h.Token, h.ID)
+		c.HTTP.Transport = brokenTransport{fmt.Errorf("%s: ca: %w", hubPath(""), err)}
+	}
 	c.WorkerToken = h.WorkerToken
 	return c
 }
+
+// brokenTransport fails every request with err.
+type brokenTransport struct{ err error }
+
+func (b brokenTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, b.err }
 
 // keepHubToken saves a new worker token the hub gave out (it enrolled us
 // again after forgetting us).
@@ -274,14 +315,38 @@ func hubWorker(root, name string) hub.Worker {
 	return w
 }
 
+// hubCA reads --ca FILE for a hub URL: "" without one; an http URL with
+// one is a mistake (there is no certificate to check).
+func hubCA(url, file string, insecure bool) (string, error) {
+	if err := hub.CheckURL(url, insecure); err != nil {
+		return "", usageError{err.Error()}
+	}
+	if file == "" {
+		return "", nil
+	}
+	if !strings.HasPrefix(strings.ToLower(url), "https://") {
+		return "", usagef("--ca is for an https:// hub")
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", fmt.Errorf("--ca: %w", err)
+	}
+	return string(data), nil
+}
+
 func hubEnroll(args []string) error {
-	var token, name string
-	rest, err := flags{strs: map[string]*string{"token": &token, "name": &name}}.parse(args)
+	var token, name, caFile string
+	var insecure bool
+	rest, err := flags{bools: map[string]*bool{"insecure": &insecure}, strs: map[string]*string{"token": &token, "name": &name, "ca": &caFile}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return usagef("usage: swim hub enroll URL [--token T] [--name N]")
+		return usagef("usage: swim hub enroll URL [--token T] [--name N] [--ca FILE] [--insecure]")
+	}
+	ca, err := hubCA(rest[0], caFile, insecure)
+	if err != nil {
+		return err
 	}
 	if token == "" {
 		token = os.Getenv("SWIM_HUB_TOKEN")
@@ -294,12 +359,15 @@ func hubEnroll(args []string) error {
 		return err
 	}
 	w := hubWorker(root, name)
-	c := hub.NewClient(rest[0], token, "")
+	c, err := hub.NewClientTLS(rest[0], token, "", []byte(ca))
+	if err != nil {
+		return fmt.Errorf("--ca %s: %w", caFile, err)
+	}
 	id, err := c.Enroll(w)
 	if err != nil {
 		return err
 	}
-	if err := saveHub(root, &hubFile{URL: c.URL, Token: token, WorkerToken: c.WorkerToken, ID: id, Name: w.Name}); err != nil {
+	if err := saveHub(root, &hubFile{URL: c.URL, Token: token, WorkerToken: c.WorkerToken, ID: id, Name: w.Name, CA: ca}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: "hub", Detail: "enrolled with " + c.URL + " as " + w.Name})

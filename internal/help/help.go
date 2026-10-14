@@ -728,9 +728,10 @@ swim revoke --auto USER [--key K]
   lookup.yml signatures don't count at all (their keys can't be named).
 `,
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
-swim hub enroll URL [--token T] [--name N]
+         [--tls-cert FILE --tls-key FILE] [--insecure]
+swim hub enroll URL [--token T] [--name N] [--ca FILE] [--insecure]
 swim hub leave | status
-swim hub login URL --admin-token T
+swim hub login URL --admin-token T [--ca FILE] [--insecure]
 swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
 
   A watch hub: one page showing what many swim workers are doing.
@@ -749,6 +750,14 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
                    prints the URL and enroll command instead. The pages are
                    read-only and unauthenticated, so keep the default
                    localhost bind or put it behind your own access control.
+  TLS: --tls-cert FILE --tls-key FILE (PEM) serve https (TLS 1.2 or later);
+                   the certificate reloads when either file changes, so a
+                   renewal needs no restart. swim makes no certificates.
+                   Without TLS the hub serves plain HTTP only on a loopback
+                   address: an --addr on every interface (0.0.0.0, ::, :PORT)
+                   or another host is refused (exit 2) before it binds,
+                   unless --insecure. Behind a TLS proxy, keep the hub on
+                   127.0.0.1 and point the proxy at it.
                    --state DIR (default ~/.config/swim/hub) keeps the
                    workers, their keys, approvals and grants, and the admin
                    token (DIR/admin-token, made on first start; --admin-token
@@ -765,9 +774,17 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
                    (~/.config/swim/worker-keys/, no passphrase, so swim
                    watch decrypts unattended) and prints its fingerprint:
                    the worker shows as PENDING until approved.
-  swim hub login URL --admin-token T
+                   --ca FILE trusts that certificate (the hub's own, if
+                   self-signed, or its CA) for an https:// hub instead of
+                   the system's roots, and is saved in .swim/hub.yml. An
+                   http:// URL to another machine is refused unless
+                   --insecure (http://127.0.0.1 or localhost is fine);
+                   swim doctor warns about such an enrollment (hub-http).
+  swim hub login URL --admin-token T [--ca FILE]
                    save the hub's URL and admin token (~/.config/swim/
-                   hub-admin.yml, private) for the commands below
+                   hub-admin.yml, private; --ca and --insecure as for
+                   enroll) for the commands below; $SWIM_HUB_CA (a file)
+                   overrides the saved CA
   swim hub approve WORKER
                    approve a worker (by name or id) for secrets: compare the
                    key fingerprint with what its enroll printed. unapprove
@@ -879,6 +896,8 @@ swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
     outputs-old (info)        round outputs older than outputs_keep (default
                               14d) that no lane's latest round uses; --fix
                               removes them
+    hub-http (warn)           .swim/hub.yml enrolls with a hub over plain
+                              http on another machine
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of

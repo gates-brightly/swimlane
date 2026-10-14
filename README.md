@@ -310,8 +310,9 @@ annotations. See [CI](#ci).
 ### 8. Watch many workers from one place
 
 ```sh
-swim hub --addr 0.0.0.0:7700 --token "$SWIM_HUB_TOKEN"          # the dashboard
-swim hub enroll http://hub:7700 --token "$SWIM_HUB_TOKEN"         # in each repo with a worker
+swim hub --addr 0.0.0.0:7700 --token "$SWIM_HUB_TOKEN" \
+  --tls-cert hub.crt --tls-key hub.key                            # the dashboard, over https
+swim hub enroll https://hub:7700 --token "$SWIM_HUB_TOKEN"        # in each repo with a worker
 swim watch                                                        # now reports to the hub
 ```
 
@@ -939,9 +940,10 @@ the same jobs locally.
 
 ```sh
 swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard (and a live screen on a terminal)
-swim hub enroll URL --token T [--name billing]       # in a repo; then swim watch reports to it
+swim hub --addr 0.0.0.0:7700 --tls-cert C --tls-key K   # serve it to the network, over https
+swim hub enroll URL --token T [--name billing] [--ca hub.crt]   # in a repo; then swim watch reports to it
 swim hub status | leave
-swim hub login URL --admin-token T                   # the operator, once
+swim hub login URL --admin-token T [--ca hub.crt]    # the operator, once
 swim hub approve billing                             # or press a on its row in the hub's screen
 swim secret grant billing db_password                # encrypted here to billing's key; the hub keeps ciphertext
 ```
@@ -958,6 +960,13 @@ swim secret grant billing db_password                # encrypted here to billing
   A restarted hub fills back up as workers report.
 - **Access:** workers need the token. The pages are read-only, and bind to
   localhost by default.
+- **TLS:** `--tls-cert`/`--tls-key` serve https (TLS 1.2+), reloading the
+  certificate when its files change. Without them the hub refuses any
+  non-loopback `--addr` (exit 2) unless you pass `--insecure`; behind a TLS
+  proxy, keep the hub on 127.0.0.1. `enroll` and `login` refuse `http://`
+  to another machine unless `--insecure`, and `--ca FILE` trusts a
+  self-signed certificate or private CA (saved with the enrollment).
+  `swim doctor` warns about an existing plain-http enrollment.
 - **Secrets for workers:**
   - **Keys:** enrolling gives each worker its own age key (with no
     passphrase, so `swim watch` can decrypt unattended) and a token of its

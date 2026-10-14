@@ -59,6 +59,7 @@ COMMANDS
                            to run as soon as swim is idle; queue [list|show|rm|requeue]
   watch [--once]           the queue's worker: runs queued batches when idle, consumes them
   hub / hub enroll URL     a dashboard of many workers; enroll a directory to report to it
+                           (--tls-cert/--tls-key serve https; enroll --ca FILE trusts its cert)
   wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until revoked

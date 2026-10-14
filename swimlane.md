@@ -134,7 +134,7 @@ swim is a tool a person operates, with teammates approving from their own machin
 ### Queue, CI and hub
 - **Queue:** a batch is fixed when queued. Its approvals travel with it, and the worker's own environment approves nothing. Several workers can share one queue safely.
 - **CI:** `swim ci` never prompts. It folds each lane's log, turns failures into annotations, can run only the rounds a push changed, and never commits results back.
-- **Hub:** a read-only dashboard of many workers. Workers push to it, so they can sit behind NAT.
+- **Hub:** a read-only dashboard of many workers. Workers push to it, so they can sit behind NAT. It serves https with `--tls-cert`/`--tls-key`, and plain HTTP only on loopback unless `--insecure`.
 
 ### Planner / worker protocol
 - The planner assigns each worker a lane number. A worker writes **only** its own `lane.N.sh`.

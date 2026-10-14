@@ -91,6 +91,19 @@ To cut a release:
     configured lanes" failure, and `swim plan --yaml`'s `beyond_lanes`.
   - `# After: 9` for a lane with no script, log or past run is an error (a
     typo), in `swim run` and `swim lint`.
+- **Hub TLS:** `swim hub --tls-cert FILE --tls-key FILE` serves https (TLS
+  1.2 or later) and reloads the certificate when its files change.
+  - **Plain HTTP stays local:** without TLS, `swim hub` refuses an `--addr`
+    on every interface (`0.0.0.0`, `::`, `:PORT`) or another host, exit 2,
+    before it binds. `--insecure` serves plain HTTP anyway; behind a TLS
+    proxy, keep the hub on 127.0.0.1.
+  - **Workers and operators:** `swim hub enroll` and `swim hub login` refuse
+    an `http://` URL to another machine unless `--insecure`. `--ca FILE`
+    trusts a self-signed certificate or private CA, kept in `.swim/hub.yml`
+    (or `hub-admin.yml`; `$SWIM_HUB_CA` overrides it for admin commands).
+    An unknown certificate's error says to pass `--ca`.
+  - Existing `http://` enrollments keep working; `swim doctor` warns about
+    one to another machine (`hub-http`).
 
 ### Added
 

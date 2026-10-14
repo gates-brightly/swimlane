@@ -182,3 +182,30 @@ func TestHubUntrustedText(t *testing.T) {
 		t.Errorf("the text itself should still show, escaped:\n%s", page)
 	}
 }
+
+func TestCheckURL(t *testing.T) {
+	for _, c := range []struct {
+		url      string
+		insecure bool
+		ok       bool
+	}{
+		{"https://hub.example.com:7700", false, true},
+		{"http://127.0.0.1:7700", false, true},
+		{"http://localhost:7700", false, true},
+		{"http://[::1]:7700", false, true},
+		{"http://10.1.2.3:7700", false, false},
+		{"http://hub:7700", false, false},
+		{"http://0.0.0.0:7700", false, false},
+		{"http://10.1.2.3:7700", true, true},
+		{"ftp://hub", true, false},
+		{"hub:7700", true, false},
+		{"", true, false},
+	} {
+		if err := CheckURL(c.url, c.insecure); (err == nil) != c.ok {
+			t.Errorf("CheckURL(%q, %v) = %v, want ok=%v", c.url, c.insecure, err, c.ok)
+		}
+	}
+	if !PlainRemote("http://hub:7700") || PlainRemote("https://hub:7700") || PlainRemote("http://127.0.0.1:1") {
+		t.Error("PlainRemote")
+	}
+}

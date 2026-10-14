@@ -18,9 +18,12 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
+	"github.com/gates-brightly/swimlane/internal/hub"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/outputs"
@@ -97,6 +100,7 @@ var Checks = []Check{
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
 	{"lane-rc", true, "a deprecated .lane.N.rc (env files replace it)", checkLaneRC},
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
+	{"hub-http", false, "enrolled with a hub over plain http on another machine", checkHubHTTP},
 }
 
 // Run runs every check.
@@ -646,4 +650,23 @@ func checkLock(o *Options) []finding.Finding {
 			"%s is in the old form (breaking: %d); it means syntax %s", version.LockName, l.Breaking, l.Syntaxes())}
 	}
 	return nil
+}
+
+// checkHubHTTP warns about an enrollment (.swim/hub.yml) that talks to a
+// hub on another machine over plain http: the tokens, log tails and
+// grants cross the network unencrypted. Enrollments made before swim
+// refused that still work; this is where they surface.
+func checkHubHTTP(o *Options) []finding.Finding {
+	path := filepath.Join(o.Root, ".swim", "hub.yml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var h struct{ URL string }
+	if yaml.Unmarshal(data, &h) != nil || !hub.PlainRemote(h.URL) {
+		return nil
+	}
+	return []finding.Finding{fd(finding.Warn, "hub-http", o.rel(path),
+		"serve the hub with --tls-cert/--tls-key (or behind a TLS proxy), then swim hub enroll https://... again",
+		"enrolled with %s over plain http: its tokens, log tails and secrets cross the network unencrypted", h.URL)}
 }
