@@ -243,7 +243,8 @@ summary
   lane programs swim's steps as calls, plus in-process steps for native
   checks (a `boto3` call logged as a step). They talk to the lane's socket
   (`swim.lane/v1`), and swim still decides everything. `# Includes:` puts
-  local modules in the script's hash.
+  local modules in the script's hash. See the [Python](docs/examples/python.md),
+  [Node](docs/examples/node.md) and [Go](docs/examples/go.md) examples.
 - **Approve the plan, not just the script:** `evidence "tf plan" terraform
   plan ...` in the check stage records what the change will do.
   `swim approve` shows it and signs its hash with the script, and the
@@ -286,6 +287,10 @@ summary
 A lane script can be any runnable: `lane.N.py`, `lane.N.js`, `lane.N.ts`, a
 compiled `lane.N`, a plain bash script. `swim new 3 "<goal>" --lang py`
 (or `js`, `ts`) writes a template.
+
+Worked examples, each with the native SDK and with the plain CLI:
+[Python](docs/examples/python.md), [Node (TypeScript and
+JavaScript)](docs/examples/node.md) and [Go](docs/examples/go.md).
 
 How swim runs it:
 
