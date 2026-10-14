@@ -6,9 +6,15 @@ code is the source of truth; each section names where.
 [← back to the README](../README.md#reference) ·
 [Architecture](architecture.md) · [Recovery](recovery.md)
 
-Nothing checks these transitions yet: a single `Transition(from, to)`
-check that every writer goes through is planned (T12 in
-[tasks.md](../tasks.md)).
+Every write of `.swim/status.yml` goes through one check,
+`status.Transition` (`internal/status/transition.go`), against the lane
+and cell rules below. An illegal move panics in tests and wherever
+`SWIM_CHECK_STATES=1` is set (both e2e suites set it); elsewhere the write
+goes through, since the file is the last known state and refusing would
+leave a lane stuck. `swim status --rebuild`, which reconstructs every entry
+from the logs, is the one writer that isn't checked. Queue entries need no
+such check: their state is their file name, and `internal/queue` moves
+them only by rename, refusing to requeue or remove a running one.
 
 ## Lane
 
@@ -42,6 +48,19 @@ stateDiagram-v2
   skipped --> idle: swim archive
   interrupted --> idle: swim archive
 ```
+
+What the check enforces (`Transition`), for a lane and for each cell:
+
+- **A running round only ends:** `running` goes to `passed`, `failed` or
+  `interrupted` (or to `running` again, a new `lane_init`), never back to
+  waiting, `skipped` or `idle`.
+- **A lane waiting for its turn** (`waiting`, `locked`, `queued`) moves on
+  or ends, but never goes back to `idle`.
+- **A finished result never changes in place:** `passed`, `failed`,
+  `skipped` and `interrupted` turn into one another only as a new round
+  (another start time or run id). A failure never becomes a pass.
+- At rest (`idle` or finished), anything may follow: a new round, an
+  archive, a refusal, a skip.
 
 | State | Meaning | Entered when | Leaves when |
 |---|---|---|---|

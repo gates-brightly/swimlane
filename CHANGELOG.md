@@ -764,6 +764,35 @@ To cut a release:
     with another key, with only a warning.
   - **Known gaps:** each one is a subtest that skips with `gap: T<n>`,
     naming the task in `tasks.md` that will close it.
+- **Fault-injection, property and fuzz tests (T7):**
+  - **Failpoints:** a swim built with `-tags swimfailpoint` stops or kills
+    itself at a named point (`SWIM_FAILPOINT=step.after-exit:pause`): after
+    a step's command exits but before its result is written, after a queue
+    claim's rename, halfway through writing `status.yml`, and halfway
+    through a chain append. A normal build has no hooks.
+  - **`TestFault*`** (`internal/e2e/fault_test.go`) crash the whole worker
+    at each point and restart with the normal swim: a cut-off step is
+    recovered as failed, never passed, and never rerun on its own; a claim
+    whose worker died is orphaned and not run by the next `swim watch`
+    until requeued; `status.yml` stays whole; a cut chain is refused until
+    `swim chain repair`. `TestFaultManyWatchers` runs 20 batches through
+    four `swim watch` processes: each runs once, and lanes sharing a lock
+    never overlap.
+  - **`TestSchedulerProperties`** runs random lane graphs (up to six lanes,
+    `After:`, locks, failures; `SWIM_QUICK_COUNT` graphs, 15 by default)
+    and checks, from timestamps the lanes write: no lane starts before its
+    `After:` lanes finish, lock holders never overlap, a failure is never
+    reported passed.
+  - **Fuzz targets** for the lane log parser, the script header parser,
+    the chain line decoder and the lane socket's framing, with seed
+    corpora under each package's `testdata/fuzz`.
+- **Lane state transitions are checked (T12):** every write of
+  `status.yml` goes through `status.Transition`: a running round ends only
+  as passed, failed or interrupted; a lane waiting for its turn never goes
+  back to idle; a finished round's result never changes in place (a
+  failure never becomes a pass without a new round). An illegal move
+  panics in tests and the e2e suites (`SWIM_CHECK_STATES=1`); elsewhere the
+  write goes through. `swim status --rebuild` is the one unchecked writer.
 
 ### Fixed
 
@@ -795,6 +824,14 @@ To cut a release:
     requeue` and `rm` work there; claims by an older worker (no heartbeat)
     still show as running. On the worker's own host, a reused pid no longer
     keeps a dead worker's claim running.
+- **A lane killed where nothing reaps orphans no longer stays running:**
+  in a container whose pid 1 isn't an init, a killed lane's process stays
+  a zombie, which swim counted as alive: `swim run` and `swim watch` never
+  ended its round, and the lane refused to start again. A zombie now counts
+  as dead.
+- **A stray `== END` line ends nothing:** a log with an END and no ROUND
+  before it read as a finished round that was never found (found by
+  fuzzing the log parser).
 - **The chain of custody accepts entries of any size:** after an entry over
   256 KiB (a round with thousands of outputs), every later append failed,
   so nothing more was recorded.

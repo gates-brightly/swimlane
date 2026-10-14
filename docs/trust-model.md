@@ -386,4 +386,7 @@ Test files are under `internal/`. "Pending" names the task in
 | Of several processes claiming one lane at once, exactly one wins; a pid reused by another process doesn't hold a lane. | `TestClaimRace`, `TestRunningChecksStartTime` (lane) |
 | A lane killed mid-step is never reported passed nor rerun on its own: the next `swim run` or `swim watch` records the round as interrupted, in the log and the chain. | `TestReapDeadLane` (e2e/recovery_test.go), `TestReapDead` (launcher) |
 | A queue claim is orphaned once its worker is gone: by pid and start time on its host, by an expired heartbeat lease from another. | `TestWorkerLease` (queue) |
-| A crash at any chosen point (mid-step, mid-claim, mid-write, mid-append) leaves state that a restart reads correctly. | Pending T7 |
+| A crash at any chosen point (mid-step, mid-claim, mid-write, mid-append) leaves state that a restart reads correctly: no false success, no silent re-run, a whole `status.yml`, a repairable chain. | `TestFaultStepAfterExit`, `TestFaultQueueClaimed`, `TestFaultWatchMidBatch`, `TestFaultStatusMidWrite`, `TestFaultChainMidAppend` (e2e/fault_test.go) |
+| Several `swim watch` processes on one queue run each batch once, and lanes sharing a lock never overlap. | `TestFaultManyWatchers` (e2e/fault_test.go) |
+| The scheduler never starts a lane before its `After:` lanes finish, never lets lock holders overlap, and never reports a failure as a pass, on random graphs. | `TestSchedulerProperties` (e2e/property_test.go) |
+| A lane's state moves only as the state machine allows; a finished round's result never changes in place. | `TestTransition`, `TestUpdateChecksTransitions` (status) |

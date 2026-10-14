@@ -1397,6 +1397,24 @@ make release V=v0.<YYYYMMDD>.<index>  # tag it (checks the date, index, CHANGELO
   chain's record of a round, and secrets kept out of logs. A known gap is a
   subtest that skips with `gap: T<n>`, naming the task in `tasks.md` that
   closes it; finishing that task replaces the skip with the real check.
+- **Testing crashes and concurrency:**
+  - **Fault injection:** `go test ./internal/e2e -run TestFault` builds a
+    second swim with `-tags swimfailpoint` and crashes it at named points
+    (`internal/failpoint` lists them: mid-step, mid-claim, mid-write,
+    mid-append), then checks what a restart makes of the state. Set
+    `SWIM_FAILPOINT=<point>:kill|pause` on that binary to try one by hand.
+  - **Many workers:** `TestFaultManyWatchers` runs four `swim watch`
+    processes on one queue.
+  - **Scheduler properties:** `TestSchedulerProperties` runs random lane
+    graphs (`SWIM_QUICK_COUNT=100` for more).
+  - **Fuzzing:** `go test ./internal/logparse -fuzz FuzzParse` (also
+    `FuzzParseScript` in `internal/lane`, `FuzzDecodeLine` in
+    `internal/chain`, `FuzzLaneRequests` in `internal/cli`). A crash the
+    fuzzer finds lands in that package's `testdata/fuzz`; commit it with
+    the fix.
+  - **State transitions:** with `SWIM_CHECK_STATES=1` (set by both e2e
+    suites) an illegal `status.yml` transition panics; see
+    [state machines](docs/state.md).
 - **Bash 3.2:** `internal/assets/lib.sh`, `e2e/run.sh` and
   `e2e/lib/common.sh` must stay compatible with macOS's bash 3.2.
 - **Incompatible changes:** bump the syntax version of what changed
