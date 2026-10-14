@@ -584,6 +584,8 @@ func cmdWatch(args []string) error {
 	var view *watchView
 	if !once && watchViewAllowed(noTUI) {
 		view = newWatchView(root, cfg, yes)
+		quietHub(true) // the screen shows the hub link; printing would scroll it
+		defer quietHub(false)
 		sleep = func() {
 			ok := view.wait(func() bool {
 				if stopped() {

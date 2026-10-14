@@ -1,7 +1,9 @@
 # Tasks
 
-Work arising from the external design review (2026-10-14). The review read the
-README, the brief, go.mod and the CI lane. It did not read the code. Each task
+Work arising from two external reviews (2026-10-14): a design review and a
+first-pass security audit. The design review read the
+README, the brief, go.mod and the CI lane. The audit read `internal/chain`,
+`internal/sign` and `internal/approval`. Each task
 below has been checked against the code. **Today** says what exists, with
 file:line references. **Do** says what's missing. **Done when** gives the
 acceptance check.
@@ -24,6 +26,8 @@ arbitrary script safe. Every task should make that line sharper, not blur it.
 
 ### T1. Run the bytes that were approved (P0, security)
 
+Spec: [features/execution-manifest.md](features/execution-manifest.md).
+
 **Today:**
 - The runner execs the script's path in the working tree (`runner.go:132`,
   `launcher.go:950`).
@@ -45,6 +49,10 @@ while the lane waits for a slot, and again mid-run, shows the original bytes
 running and the chain naming the original SHA.
 
 ### T2. Widen what an approval covers (P0, security)
+
+Spec: [features/execution-manifest.md](features/execution-manifest.md),
+which also covers the audit's Finding 4 (observed facts such as `PATH` and the
+cloud account).
 
 **Today:** `lane.ScriptBytes` (`internal/lane/matrix.go:350`) covers the
 script, `Matrix: @file` values and `Includes:` globs. It doesn't cover:
@@ -93,12 +101,20 @@ invalidates a signed approval, and changing anything else does not.
   the socket to its lane.
 - Snapshot `approvals/` and `lookup.yml` at round start, and verify against
   the snapshot.
+- **The audit's Finding 3:** the approval prompt shows `lane`, `job` and
+  `desc` exactly as the caller sent them. Build the question from the
+  launcher's own state instead, refuse flags the script doesn't declare,
+  label the lane's description as the lane's, and accept each response only
+  once. All of this is specified in
+  [features/execution-manifest.md](features/execution-manifest.md).
 
 **Done when:** the e2e tests below each fail to produce an approved guard or a
 chain entry that `swim verify` accepts:
 - a hostile lane that edits `approvals/`
 - a hostile lane that calls `_mark APPROVED`
 - a hostile lane that sends a request for another lane on the socket
+- a lane that sends a misleading description or a job id that doesn't match
+- a lane that replays another lane's approval response
 
 ### T4. Write down the trust model (P0, docs)
 
@@ -121,8 +137,20 @@ chain entry that `swim verify` accepts:
 Say plainly that `-y`, `--approved` and `FLAG=1` bypass prompts, and how each
 one is recorded.
 
+Use the audit's three invariants as the headings:
+
+- **Authorization:** nothing that needs approval runs without valid
+  authorization for that exact operation.
+- **Integrity:** what runs matches what was approved.
+- **Attribution:** every run traces back to its job, worker, approval and
+  outcome.
+
+To move guards from a convention to an enforced boundary for credentials,
+see [features/guarded-secrets.md](features/guarded-secrets.md), which
+answers the audit's Finding 1.
+
 **Done when:** the section exists and the help guide links to it, and each
-in-scope claim names the test that proves it (T1–T3, T6–T8).
+in-scope claim names the test that proves it (T1–T3, T6–T8, T25).
 
 ### T5. Make `-y` loud everywhere it's used (P1, security)
 
@@ -195,7 +223,10 @@ tests.
 **Done when:** these run in `lanes.ci.sh` and fail when T6's fixes are
 reverted.
 
-### T8. Detect a truncated chain, and export it (P1, security)
+### T8. Detect a truncated or replaced chain, and export it (P1, security)
+
+Spec: [features/chain-anchors.md](features/chain-anchors.md), which answers
+the audit's Finding 2.
 
 **Today:**
 - Every entry links to the one before it with a hash, has a seq number and
@@ -203,6 +234,11 @@ reverted.
 - `swim verify` checks links, signatures, kept scripts and log hashes
   (`custody_cmds.go:663`).
 - What it can't catch:
+  - `chain.Check` (`chain.go:238`) checks each signature against the
+    `Signer` recorded **in that same entry**. A chain replaced wholesale,
+    signed with a new key, is internally consistent. `--strict` compares
+    signers against `lookup.yml`, but `lookup.yml` sits in the repo, which a
+    lane can write.
   - Unsigned entries are allowed.
   - Removing entries from the tail is undetectable.
   - Anyone with the runner key can rewrite the whole chain.
@@ -216,9 +252,12 @@ reverted.
 - **`--strict` fails on unsigned entries.**
 - **Close the open question** in `swimlane.md`.
 
-**Done when:** tests that truncate, reorder or re-sign the chain are each
-caught by verify with a checkpoint present, and the docs say what verify can't
-catch without one.
+- **Report three levels in verify:** consistent, trusted (signers pinned
+  outside the repo) and anchored.
+
+**Done when:** tests that truncate, reorder, re-sign or **replace the whole
+chain with a new key** are each caught by verify with a pin or a checkpoint
+present, and the docs say what verify can't catch without one.
 
 ### T9. Prove secrets don't leak (P1, security)
 
@@ -281,6 +320,56 @@ with a test proving it.
 the whole group.
 
 **Done when:** a test whose timed-out step forked children shows no survivors.
+
+### T24. Chain append fails after a record over 256 KiB (P1, bug)
+
+Confirmed in the code.
+
+**Today:** `lastLine` (`internal/chain/chain.go:166`) reads only the last
+256 KiB of the file to find the previous entry. When the final record is
+bigger than that:
+- `LastIndexByte` finds no newline, so it returns the window starting
+  mid-record;
+- `json.Unmarshal` fails;
+- every later append fails, so swim can't record anything until someone
+  repairs the file by hand.
+
+Entries hold output and input hashes, so they grow with large matrix rounds.
+
+**Do:**
+- Scan backwards in growing windows until a newline is found, or until
+  reaching the start of the file.
+- Cap the size of an entry, spilling large lists into a hashed side file
+  that the entry references.
+- Document what to do about an incomplete final record. Today it's refused
+  with "swim verify shows where" (`chain.go:182`); add `swim chain repair`,
+  which truncates the incomplete tail and records the truncation in a new
+  entry.
+
+**Done when:** a regression test appends a 300 KiB entry, appends another
+after it, and then `swim verify` passes. A second test kills the process in
+the middle of an append (T7 failpoint) and shows the repair path.
+
+### T25. Security regression suite (P0, testing)
+
+The audit's checklist, as one e2e file (`internal/e2e/security_test.go`)
+that runs in `lanes.ci.sh`. Each case asserts today's behaviour. When a case
+documents a known gap, it's marked `t.Skip("gap: T<n>")`, so turning it on is
+part of finishing that task.
+
+| Case | Expectation | Closes with |
+|---|---|---|
+| A destructive command run without calling `guard` | Recorded as outside the cooperative model (no approval in the chain); a guarded secret is refused | T4, guarded-secrets |
+| The whole chain and its signer key replaced | verify: consistent yes, trusted no, anchored no | T8 |
+| A guard request with a misleading description or the wrong job id | Prompt shows launcher-derived lane and job; chain attributes to the true lane | T3 |
+| An approval response replayed from another lane | Refused | T3, T10 |
+| An included module, the runner, the env or the evidence changed between approval and exec | Lane refused or approval stale | T1, T2 |
+| A chain record over 256 KiB, then another append | Both appended; verify passes | T24 |
+| A worker killed mid-step and mid-chain-append | No false success; no silent re-run; chain repairable | T6, T7 |
+| A planted secret in every output | Not found in any file swim writes | T9 |
+
+**Done when:** the file exists with every case, and the skips are removed as
+each task lands.
 
 ---
 
@@ -393,8 +482,17 @@ with it. Record the friction here.
 
 ---
 
-## Features staged from this review
+## Features staged from these reviews
 
 - [features/headless.md](features/headless.md): headless workers driven from
   the hub (approvals, interrupts, manual runs, per-job logs). Depends on T3,
   T10 and T16, because it puts approvals on a network path.
+- [features/execution-manifest.md](features/execution-manifest.md): stage and
+  pin everything an approval covers, and generate approval questions from the
+  launcher's own state. Covers T1, T2, and part of T3 and T14.
+- [features/guarded-secrets.md](features/guarded-secrets.md): a vault secret
+  is released only after its guard is approved in this run. This turns guards
+  into enforcement for credentials (audit Finding 1).
+- [features/chain-anchors.md](features/chain-anchors.md): pinned signers,
+  external checkpoints, and verify levels for consistent, trusted and anchored
+  (audit Finding 2). Covers T8.

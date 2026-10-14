@@ -362,6 +362,9 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 		return func(string) {}, func() {}
 	}
 	c := hubClient(h)
+	hubErrMu.Lock()
+	hubURL, hubReported, hubErrLast = h.URL, false, ""
+	hubErrMu.Unlock()
 	var mu sync.Mutex
 	activity := "starting"
 	done := make(chan struct{})
@@ -411,12 +414,16 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 }
 
 var (
-	hubErrMu   sync.Mutex
-	hubErrLast string
+	hubErrMu    sync.Mutex
+	hubErrLast  string
+	hubURL      string    // the hub this watch reports to ("" when not enrolled)
+	hubReported bool      // a report has finished, so hubErrLast says how it went
+	hubSince    time.Time // when the hub last went online or offline
+	hubQuiet    bool      // the watch screen shows the link: don't print over it
 )
 
-// reportHubError says when the hub becomes unreachable, and when it's back,
-// once each (never once per report).
+// reportHubError says when the hub becomes unreachable (offline mode), and
+// when it's back online, once each (never once per report).
 func reportHubError(err error) {
 	hubErrMu.Lock()
 	defer hubErrMu.Unlock()
@@ -424,16 +431,46 @@ func reportHubError(err error) {
 	if err != nil {
 		msg = err.Error()
 	}
-	if msg == hubErrLast {
+	first := !hubReported
+	hubReported = true
+	if msg == hubErrLast && !first {
+		return
+	}
+	hubSince = time.Now()
+	if hubQuiet {
+		hubErrLast = msg
 		return
 	}
 	switch {
 	case msg != "":
-		fmt.Fprintln(os.Stderr, "swim watch: hub unreachable: "+msg+" (still watching; will retry)")
+		fmt.Fprintln(os.Stderr, "swim watch: offline mode: hub unreachable: "+msg+" (still watching; will retry)")
 	case hubErrLast != "":
-		fmt.Fprintln(os.Stderr, "swim watch: hub reachable again")
+		fmt.Fprintln(os.Stderr, "swim watch: hub online again")
 	}
 	hubErrLast = msg
+}
+
+// hubLink is the watch screen's line for the hub link: "" when not
+// enrolled, else whether the hub is online, with its color.
+func hubLink() (string, string) {
+	hubErrMu.Lock()
+	defer hubErrMu.Unlock()
+	switch {
+	case hubURL == "":
+		return "", ""
+	case !hubReported:
+		return "hub: connecting to " + hubURL, ui.Dim
+	case hubErrLast != "":
+		return "(offline mode) hub " + hubURL + " unreachable since " + hubSince.Format("15:04:05") + "; retrying", ui.Yellow
+	}
+	return "(hub online) " + hubURL, ui.Green
+}
+
+// quietHub stops reportHubError printing: the watch screen shows hubLink.
+func quietHub(on bool) {
+	hubErrMu.Lock()
+	hubQuiet = on
+	hubErrMu.Unlock()
 }
 
 // hubSnapshot is what this directory looks like now: lanes (with the end
