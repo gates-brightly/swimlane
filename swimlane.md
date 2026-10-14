@@ -173,10 +173,13 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 ## Open questions
 
 - **Named lanes:** support `lane org` alongside numbers?
-- **Cross-session claims:** should a worker claim a lane before writing it, beyond the `Owner` header and running-lane protection?
 - **Keeping the chain:** `.swim/chain.jsonl` isn't committed. Should swim export or ship it somewhere durable by default?
 - **Hub access:** is a shared token enough, or does the hub need per-user identity from `lookup.yml`?
 - **Beyond bash:** should rounds ever be written in something other than bash, or is bash's universality (and models' fluency in it) the point?
+
+### Resolved since
+
+- **Cross-session claims?** Yes, as an advisory lease: `swim new` claims the lane until it runs, is archived or stubbed, or the lease expires. `Owner` stays authorship. See [features/lane-claims.md](features/lane-claims.md) (proposed).
 
 ### Resolved from v1
 
