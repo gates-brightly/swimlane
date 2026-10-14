@@ -385,6 +385,19 @@ To cut a release:
   `swim queue add N ...`, and `--wait` blocks like `swim wait`, then exits
   with the batch's result. `--timeout D` gives up after D (exit 1), leaving
   the batch queued.
+- **Security regression suite:** `internal/e2e/security_test.go` checks
+  the path from `guard` to the command it protects, using a stand-in that
+  touches a marker file.
+  - **Passing today:** with no approval, a declined approval, a stop or the
+    round's `Timeout:` while waiting, an approval for another script, or a
+    script edited after approval, the command doesn't run. A round's chain
+    entry names its script, approval and result. A lane with no `guard`
+    gets no approval entry. A planted secret stays out of the log,
+    `.swim.log` and status.
+  - **Recorded as it is:** `swim verify` still passes a chain re-signed
+    with another key, with only a warning.
+  - **Known gaps:** each one is a subtest that skips with `gap: T<n>`,
+    naming the task in `tasks.md` that will close it.
 
 ### Fixed
 

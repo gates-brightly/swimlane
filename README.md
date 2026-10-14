@@ -967,6 +967,13 @@ make release V=v0.<YYYYMMDD>.<index>  # tag it (checks the date, index, CHANGELO
   - `e2e/scenarios` runs whole lane DAGs offline: 99 lanes, injected
     failures, retries, interrupts, locks and CI. See
     [`e2e/README.md`](e2e/README.md).
+- **Security regression suite:** `internal/e2e/security_test.go`
+  (`go test ./internal/e2e -run TestSecurity -v`) holds the audit's
+  checklist, one subtest per case: no approval, a declined or timed-out
+  one, an approval for another script, a script edited after approval, the
+  chain's record of a round, and secrets kept out of logs. A known gap is a
+  subtest that skips with `gap: T<n>`, naming the task in `tasks.md` that
+  closes it; finishing that task replaces the skip with the real check.
 - **Bash 3.2:** `internal/assets/lib.sh`, `e2e/run.sh` and
   `e2e/lib/common.sh` must stay compatible with macOS's bash 3.2.
 - **Incompatible changes:** bump the syntax version of what changed
