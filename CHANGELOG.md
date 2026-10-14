@@ -143,6 +143,21 @@ To cut a release:
   - Lanes still run as you and can read the runner key, so a lane that
     hides from `swim run` can sign an entry: `swim verify` reports it. See
     `docs/trust-model.md`.
+- **`-y` is loud everywhere (T5):** guards approved with no one asked are
+  shown wherever a run's result is, not only in the log and the chain.
+  - **`swim status`** lists them under the lane, in yellow for `-y`:
+    `approved without a prompt: DEPLOY (swim run -y)`. `status.yml` (and
+    `swim status --yaml`) gains `auto_approved`, `auto_via` (`swim run -y`,
+    `queue q-... -y`, `swim watch -y`) and `flag_approved` (`FLAG=1`, a
+    batch's `--approve`), cleared when the next round starts.
+  - **The round's chain entry** carries `auto_approved`, the guards among
+    its approvals that `-y` approved; `swim history` shows it as `Auto:` and
+    `swim history --yaml` as `auto_approved`.
+  - **`swim ci`** adds `**Approved without a prompt:**` to the job summary
+    and a warning annotation for each lane with such a guard.
+  - **The hub** shows a `-y` badge on a lane in the dashboard, what
+    approved which guard on the worker page and in `swim hub tui`, and
+    `swim watch -y` on a worker that runs with it.
 - **A lane reports only for itself (T10):** swim's hidden commands
   (`_start`, `_mark`, `_stage`, `_finish`, `_handler`, `_approve`) ask
   `swim run` which lane, cell and run they belong to and refuse another's:

@@ -160,3 +160,33 @@ func TestCheckModeLeavesStatusAlone(t *testing.T) {
 		t.Errorf("after a check: %+v", l)
 	}
 }
+
+// Guards approved without a prompt are listed once each, written as
+// auto_approved / flag_approved, and cleared when the next round starts.
+func TestUnprompted(t *testing.T) {
+	root := t.TempDir()
+	err := Update(root, 1, 1, func(l *Lane) {
+		l.Unprompted("DEPLOY", "swim run -y")
+		l.Unprompted("DEPLOY", "swim run -y")
+		l.Unprompted("SWAP", "swim run -y")
+		l.Unprompted("SEED", "")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(Path(root))
+	for _, want := range []string{"auto_approved: [DEPLOY, SWAP]", "auto_via: swim run -y", "flag_approved: [SEED]"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("status.yml lacks %q:\n%s", want, data)
+		}
+	}
+	f, _ := Load(root)
+	l := f.Get(1)
+	if got := l.UnpromptedText(); got != "DEPLOY, SWAP (swim run -y); SEED (flag set)" {
+		t.Errorf("text: %q", got)
+	}
+	l.ResetRun()
+	if l.UnpromptedText() != "" || l.AutoVia != "" {
+		t.Errorf("a new round keeps the last one's: %+v", l)
+	}
+}

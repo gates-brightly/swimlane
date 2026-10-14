@@ -90,6 +90,12 @@ type Lane struct {
 	Progress string   `json:"progress,omitempty"` // its progress, "7/25"
 	MsgAt    string   `json:"message_at,omitempty"`
 	Cells    string   `json:"cells,omitempty"` // a matrix round's cells: "2/3 passed · failed: billing"
+	// The guards its round's run approved without a prompt: by -y
+	// (AutoVia: "swim run -y", "queue q-... -y", "swim watch -y") and by a
+	// guard flag (FLAG=1, a queue batch's --approve).
+	AutoApproved []string `json:"auto_approved,omitempty"`
+	AutoVia      string   `json:"auto_via,omitempty"`
+	FlagApproved []string `json:"flag_approved,omitempty"`
 	// A headless worker's idle lane holding a pending round: the script's
 	// hash and its manifest's, which a run command from the hub pins.
 	Script   string `json:"script_sha256,omitempty"`
@@ -116,6 +122,9 @@ type Snapshot struct {
 	Lanes    []Lane   `json:"lanes"`
 	Queue    []Batch  `json:"queue"`
 	Events   []string `json:"events"` // the end of .swim.log
+	// AutoApprove is "swim watch -y" when the worker approves every guard
+	// in every batch (a headless worker says so in Headless.Yes).
+	AutoApprove string `json:"auto_approve,omitempty"`
 	// Headless is set when the worker runs with no terminal (swim watch
 	// --headless): nobody is at it to answer or interrupt.
 	Headless *HeadlessInfo `json:"headless,omitempty"`
@@ -153,14 +162,15 @@ func (h *HeadlessInfo) Allows(kind string) bool {
 // escape sequences, controls or bidi overrides.
 func (s *Snapshot) Sanitize() {
 	s.Worker.sanitize()
-	s.Activity, s.At = ui.Safe(s.Activity), ui.Safe(s.At)
+	s.Activity, s.At, s.AutoApprove = ui.Safe(s.Activity), ui.Safe(s.At), ui.Safe(s.AutoApprove)
 	for i := range s.Lanes {
 		l := &s.Lanes[i]
 		for _, f := range []*string{&l.State, &l.Round, &l.Job, &l.Run, &l.Step, &l.Reason, &l.Started, &l.Finished,
-			&l.Message, &l.Progress, &l.MsgAt, &l.Cells, &l.Script, &l.Manifest} {
+			&l.Message, &l.Progress, &l.MsgAt, &l.Cells, &l.Script, &l.Manifest, &l.AutoVia} {
 			*f = ui.Safe(*f)
 		}
 		l.Tail = safeAll(l.Tail)
+		l.AutoApproved, l.FlagApproved = safeAll(l.AutoApproved), safeAll(l.FlagApproved)
 	}
 	for i := range s.Queue {
 		b := &s.Queue[i]

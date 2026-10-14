@@ -132,7 +132,8 @@ whoever runs it.
   and round.
 - **Bypasses are recorded:** `FLAG=1`, `-y` and `swim watch --approved`
   skip the question, and each leaves a record in the lane's log,
-  `.swim.log` and the chain.
+  `.swim.log` and the chain. What `-y` approved also shows in `swim
+  status`, `swim history`, CI summaries and the hub.
 - **Out of scope:** a malicious or mistaken script that is approved and run
   with broad credentials. Guards and lint are conventions, not a sandbox:
   use scoped credentials and OS isolation for that.
@@ -779,7 +780,9 @@ order:
    refused. Questions from parallel lanes take turns, or wait on their lane
    in the interactive view.
 4. **`-y`:** `swim all -y` (or `swim watch -y`) approves every question,
-   and logs that `-y` did.
+   and logs that `-y` did. `swim status` lists the guards under the lane
+   (`approved without a prompt: DEPLOY (swim run -y)`), as do the round's
+   chain entry, `swim ci`'s summary and the hub.
 
 Anything else is a **dry run**: the step is skipped, and the log says how to
 approve it. A queued batch never asks a question.
@@ -1046,7 +1049,8 @@ headless:
 
 - It never prompts.
 - Each lane's log goes in a foldable section.
-- FAIL and DRIFT become annotations.
+- FAIL and DRIFT become annotations, and so does a guard approved with no
+  one asked (by a guard flag the job set, or `-y`).
 - It writes a job summary, plus an optional JUnit report.
 
 It detects GitHub Actions and GitLab CI, and falls back to generic output.

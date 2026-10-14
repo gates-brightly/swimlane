@@ -219,6 +219,14 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		if l.Reason != "" {
 			detail("reason: "+l.Reason, ui.Yellow)
 		}
+		// Loud on purpose: nobody was asked about these guards.
+		if t := l.UnpromptedText(); t != "" {
+			color := ui.Dim
+			if len(l.AutoApproved) > 0 {
+				color = ui.Yellow + ui.Bold
+			}
+			detail("approved without a prompt: "+t, color)
+		}
 		for _, fs := range l.FailedSteps {
 			detail(fs, ui.Red)
 		}

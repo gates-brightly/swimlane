@@ -15,6 +15,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/status"
 )
 
 // runAuthority is the launcher as the only judge of a run's guards: every
@@ -57,11 +58,34 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 			a.flags[g.Entry.Guard] = true
 		}
 		a.mu.Unlock()
+		unprompted(*o, c, g.Entry)
 		history.Log(o.Root, history.Entry{Event: history.Approve, Lane: g.Entry.Lane, Job: g.Entry.Job, Run: g.Entry.Run, Detail: g.History})
 		return hash, nil
 	}
 	o.auth = a
 	return srv, nil
+}
+
+// unprompted lists a guard approved without anyone being asked (-y, or a
+// guard flag) on the lane's status entry, and its cell's, where swim
+// status, swim ci's summary and the hub show it.
+func unprompted(o Options, c approval.Caller, e chain.Entry) {
+	via := ""
+	switch e.Method {
+	case "auto":
+		via = or(o.ApprovedVia, "swim run -y")
+	case "flag", "queue":
+	default:
+		return
+	}
+	status.UpdateFile(o.Root, max(c.Lane, o.Cfg.Lanes), func(f *status.File) error {
+		l := f.Get(c.Lane)
+		l.Unprompted(e.Guard, via)
+		if c.Cell != "" {
+			l.CellEntry(c.Cell).Unprompted(e.Guard, via)
+		}
+		return nil
+	})
 }
 
 func (a *runAuthority) refused(o Options, c approval.Caller, req approval.Request, why string) {
