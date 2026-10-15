@@ -485,11 +485,14 @@ guard() {
 }
 
 # _swim_from_rc FLAG — true if .lane.N.rc set FLAG=1: it names FLAG, and
-# FLAG wasn't already 1 before lane_init sourced it.
+# FLAG wasn't already 1 before lane_init sourced it. declare -p prints
+# `declare -x FLAG="1"` in bash 4+, but a bare `FLAG=1` line in bash 3.2.
 _swim_from_rc() {
   [ -n "${_swim_rc_file:-}" ] || return 1
-  case "$_swim_pre_rc" in
-    *" $1=\"1\""*|*" $1=1"*) return 1 ;;
+  _swim_nl='
+'
+  case "$_swim_nl$_swim_pre_rc$_swim_nl" in
+    *" $1=\"1\"$_swim_nl"*|*"$_swim_nl$1=1$_swim_nl"*|*"$_swim_nl$1='1'$_swim_nl"*) return 1 ;;
   esac
   grep -q "$1" "$_swim_rc_file" 2>/dev/null
 }
