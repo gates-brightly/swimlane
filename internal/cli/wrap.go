@@ -191,7 +191,7 @@ func waitChild(root string, n int, child *exec.Cmd, done chan error, sigs chan o
 		case <-grace:
 			// The SDK's program didn't unwind in time.
 			grace = nil
-			terminate(child)
+			terminate(child, sigs)
 			kill = time.After(5 * time.Second)
 		case s := <-sigs:
 			switch s {
@@ -209,7 +209,7 @@ func waitChild(root string, n int, child *exec.Cmd, done chan error, sigs chan o
 					grace = time.After(sdkGrace)
 					continue
 				}
-				terminate(child)
+				terminate(child, sigs)
 				kill = time.After(5 * time.Second)
 			case syscall.SIGUSR2:
 				// Graceful stop: the stop file refuses the next step.
@@ -231,10 +231,16 @@ const sdkGrace = 10 * time.Second
 
 // terminate asks the lane's program to end: its whole process group when
 // the wrapper leads one (the launcher starts lanes in their own), so the
-// steps it started end too; otherwise the program alone.
-func terminate(child *exec.Cmd) {
+// steps it started end too; otherwise the program alone. The wrapper is in
+// that group: it ignores SIGTERM while it sends it, so its own copy is
+// discarded, then catches it on sigs again. Caught, the copy could arrive
+// after the program had ended and be taken by the handlers that run next
+// for an operator's SIGTERM, stopping them before they began.
+func terminate(child *exec.Cmd, sigs chan os.Signal) {
 	if pg, err := syscall.Getpgid(0); err == nil && pg == os.Getpid() {
-		syscall.Kill(-pg, syscall.SIGTERM) // the wrapper's own TERM is caught and ignored
+		signal.Ignore(syscall.SIGTERM)
+		syscall.Kill(-pg, syscall.SIGTERM)
+		signal.Notify(sigs, syscall.SIGTERM)
 		return
 	}
 	child.Process.Signal(syscall.SIGTERM)
@@ -409,7 +415,7 @@ func waitHandler(c *exec.Cmd, done chan error, sigs chan os.Signal, deadline tim
 			return exitStatus(c.ProcessState), why
 		case <-budget.C:
 			why = "the handlers' budget (Handler-Timeout) ran out"
-			terminate(c)
+			terminate(c, sigs)
 			kill = time.After(5 * time.Second)
 		case <-kill:
 			c.Process.Kill()
