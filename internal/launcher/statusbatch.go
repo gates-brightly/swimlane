@@ -18,8 +18,9 @@ const statusWindow = 50 * time.Millisecond
 // large graph on macOS, where a sync flushes the drive. Writes wait at
 // most statusWindow; flush writes what's left before the run's summary.
 type statusBatch struct {
-	root  string
-	lanes int
+	root   string
+	lanes  int
+	window time.Duration
 
 	mu      sync.Mutex
 	pending map[int][]func(*status.Lane)
@@ -28,7 +29,7 @@ type statusBatch struct {
 }
 
 func newStatusBatch(root string, lanes int) *statusBatch {
-	return &statusBatch{root: root, lanes: lanes, pending: map[int][]func(*status.Lane){}}
+	return &statusBatch{root: root, lanes: lanes, window: statusWindow, pending: map[int][]func(*status.Lane){}}
 }
 
 // update queues fn for lane n's status, as status.Update would apply it.
@@ -46,7 +47,7 @@ func (b *statusBatch) update(n int, fn func(*status.Lane)) {
 		b.lanes = n
 	}
 	if b.timer == nil {
-		b.timer = time.AfterFunc(statusWindow, b.flush)
+		b.timer = time.AfterFunc(b.window, b.flush)
 	}
 }
 
