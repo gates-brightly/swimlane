@@ -24,6 +24,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
+	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/syntax"
@@ -297,7 +298,7 @@ func cmdStart(args []string) error {
 		l.EnvSHA = envSum
 		l.Script = filepath.Base(lane.Script(root, n))
 		l.Pending, l.PendingJob = info.Round, info.Job
-		l.PID = pid
+		l.PID, l.Host = pid, proc.Host()
 		l.StartedAt = status.Str(ts)
 		l.Stage = syntax.Setup
 		return nil
@@ -670,7 +671,7 @@ func cmdFinish(args []string) error {
 		if r.Run != "" {
 			l.Run = r.Run
 		}
-		l.PID = 0
+		l.PID, l.Host = 0, ""
 		l.WaitingOn = []int{}
 		l.Message, l.Progress, l.MessageAt = "", "", ""
 		l.Outputs = outSums

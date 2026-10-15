@@ -19,6 +19,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
+	"github.com/gates-brightly/swimlane/internal/proc"
 )
 
 // Lane states.
@@ -54,6 +55,7 @@ type Lane struct {
 	Reason      string   `yaml:"reason,omitempty"`
 	Locks       []string `yaml:"locks,flow,omitempty"` // locks the running round holds
 	PID         int      `yaml:"pid,omitempty"`
+	Host        string   `yaml:"host,omitempty"` // the machine PID runs on ("" from an older swim: this one)
 	StartedAt   *string  `yaml:"started_at"`
 	FinishedAt  *string  `yaml:"finished_at"`
 	DurationS   *float64 `yaml:"duration_s"`
@@ -333,11 +335,22 @@ func write(root string, f *File) error {
 	return fsutil.WriteAtomicAt(failpoint.StatusMidWrite, Path(root), buf.Bytes(), 0o644)
 }
 
+// Alive reports whether the lane's recorded process (PID, on Host) may
+// still be running: it's alive here, or it's on another machine, which
+// this one can't check, so it counts as alive (swim never ends another
+// machine's round for it).
+func (l *Lane) Alive() bool {
+	if l.PID <= 0 {
+		return false
+	}
+	return !proc.Local(l.Host) || proc.Alive(l.PID)
+}
+
 // ResetRun clears the per-run fields before a lane starts or is reset.
 func (l *Lane) ResetRun() {
 	l.WaitingOn = []int{}
 	l.Reason = ""
-	l.PID = 0
+	l.PID, l.Host = 0, ""
 	l.StartedAt, l.FinishedAt, l.DurationS, l.ExitCode = nil, nil, nil, nil
 	l.Pass, l.Fail, l.Skip, l.Drift = 0, 0, 0, 0
 	l.CurrentStep = ""

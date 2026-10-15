@@ -660,41 +660,76 @@ func MigrateScript(src string) (string, bool) {
 // Outside one of its cells' processes, a lane any of whose cells runs is
 // running.
 func Running(root string, n int) (int, bool) {
-	if pid, ok := runningIn(PIDFile(root, n)); ok || CellOf(n) != "" {
-		return pid, ok
+	pid, _, ok := RunningOn(root, n)
+	return pid, ok
+}
+
+// RunningOn is Running, with the machine the process runs on. A lane
+// another machine claimed counts as running: this one can't see its
+// process (two machines sharing a repo), so it never takes it for dead.
+func RunningOn(root string, n int) (pid int, host string, ok bool) {
+	if pid, host, ok := runningIn(PIDFile(root, n)); ok || CellOf(n) != "" {
+		return pid, host, ok
 	}
 	cells, _ := filepath.Glob(filepath.Join(root, ".swim", fmt.Sprintf("lane%d.*.pid", n)))
 	for _, f := range cells {
-		if pid, ok := runningIn(f); ok {
-			return pid, true
+		if pid, host, ok := runningIn(f); ok {
+			return pid, host, true
 		}
 	}
-	return 0, false
+	return 0, "", false
 }
 
 // CellRunning returns the pid recorded for lane n's matrix cell or job
 // cell if that process is alive.
 func CellRunning(root string, n int, cell string) (int, bool) {
-	return runningIn(filepath.Join(root, ".swim", fmt.Sprintf("lane%d.%s.pid", n, CellSlug(cell))))
+	pid, _, ok := runningIn(filepath.Join(root, ".swim", fmt.Sprintf("lane%d.%s.pid", n, CellSlug(cell))))
+	return pid, ok
 }
 
-func runningIn(path string) (int, bool) {
+func runningIn(path string) (int, string, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return 0, false
+		return 0, "", false
 	}
 	pid, start, ok := proc.Parse(string(data))
 	if !ok {
-		return 0, false
+		return 0, "", false
 	}
-	// The start time is in the claim file next to it, if this pid wrote
-	// it: a pid file from an older swim falls back to the pid alone.
+	// The start time and host are in the claim file next to it, if this
+	// pid wrote it: a pid file from an older swim falls back to the pid
+	// alone, on this machine.
+	host := ""
 	if data, err := os.ReadFile(strings.TrimSuffix(path, ".pid") + ".claim"); err == nil && start == "" {
-		if cp, cs, ok := proc.Parse(string(data)); ok && cp == pid {
-			start = cs
+		if cp, cs, ch, ok := parseClaim(string(data)); ok && cp == pid {
+			start, host = cs, ch
 		}
 	}
-	return pid, proc.Same(pid, start)
+	if !proc.Local(host) {
+		return pid, host, true
+	}
+	return pid, host, proc.Same(pid, start)
+}
+
+// claimRecord is a claim file's content: "pid start host" (proc.Record,
+// then the machine the process runs on).
+func claimRecord(pid int) string {
+	rec := proc.Record(pid)
+	if h := proc.Host(); h != "" && !strings.ContainsAny(h, " \t\n") {
+		rec += " " + h
+	}
+	return rec
+}
+
+// parseClaim reads a claimRecord, or a bare proc.Record from an older swim
+// (host "": this machine).
+func parseClaim(s string) (pid int, start, host string, ok bool) {
+	f := strings.Fields(s)
+	if len(f) == 3 {
+		host, f = f[2], f[:2]
+	}
+	pid, start, ok = proc.Parse(strings.Join(f, " "))
+	return pid, start, host, ok
 }
 
 // Alive reports whether a process with pid exists. A pid alone may have
@@ -733,7 +768,7 @@ func WritePID(root string, n, pid int) error {
 	if err := claim.Truncate(0); err != nil {
 		return err
 	}
-	if _, err := claim.WriteAt([]byte(proc.Record(pid)+"\n"), 0); err != nil {
+	if _, err := claim.WriteAt([]byte(claimRecord(pid)+"\n"), 0); err != nil {
 		return err
 	}
 	if err := claim.Sync(); err != nil {

@@ -28,6 +28,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/runrec"
 	"github.com/gates-brightly/swimlane/internal/secrets"
@@ -654,7 +655,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		remaining := append([]int(nil), waitOn...)
 		disp.Set(n, func(v *display.LaneView) { v.State, v.WaitingOn = display.Waiting, remaining })
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
-			l.State, l.WaitingOn, l.Reason, l.PID = status.Waiting, remaining, "", os.Getpid()
+			l.State, l.WaitingOn, l.Reason, l.PID, l.Host = status.Waiting, remaining, "", os.Getpid(), proc.Host()
 		})
 		o.ev.emit(Event{Event: "waiting", Lane: n, On: remaining, At: now()})
 		d := waitOn[0]
@@ -1266,7 +1267,7 @@ func watchOtherRuns(o Options, selected map[int]bool, disp *display.Display) fun
 				if l == nil {
 					continue
 				}
-				active := l.Run != o.RunID && l.PID > 0 && lane.Alive(l.PID) &&
+				active := l.Run != o.RunID && l.Alive() &&
 					(l.State == status.Running || l.State == status.Waiting || l.State == status.Queued || l.State == status.Locked)
 				switch {
 				case active:

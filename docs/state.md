@@ -81,12 +81,19 @@ Notes:
 - **A lane run directly** (`bash lane.N.sh`) goes from whatever it was
   straight to `running`.
 - **A lane is claimed** by `lane_init` under a lock on
-  `.swim/laneN.claim`, which records the process's pid and start time;
-  `.swim/laneN.pid` holds the bare pid. Of two processes starting one lane
+  `.swim/laneN.claim`, which records the process's pid, start time and
+  host; `.swim/laneN.pid` holds the bare pid. Of two processes starting one lane
   at once, exactly one gets it. A lane counts as running only while that
   pid is alive with that start time, so a pid the kernel has since given
   to another process doesn't hold the lane (a pid file from an older swim,
   with no matching claim, falls back to the pid alone).
+- **A lane claimed on another host** (two machines sharing the repo, such
+  as a laptop and a container mounting it) counts as held: this machine
+  can't see that process, so it never takes it for dead. It doesn't reap
+  it, start it again, or remove its pid file (`swim doctor --fix`); that
+  host's swim does. `status.yml` names the host too (`host:`), and `swim
+  status` shows `running ... on <host>`. If that machine is gone for good,
+  remove `.swim/laneN.pid` and run `swim status --rebuild`.
 - **A lane whose process died** without a trap (a closed terminal,
   SIGKILL, a crash, a reboot) stays `running` in the file, and `swim
   status` shows it as `running?`, until the next `swim run`, `swim all`,

@@ -658,7 +658,7 @@ func laneWaiting(root string, n int) bool {
 	}
 	switch l.State {
 	case status.Waiting, status.Queued, status.Locked, status.Running:
-		return l.PID > 0 && lane.Alive(l.PID)
+		return l.Alive()
 	}
 	return false
 }

@@ -56,7 +56,7 @@ func (w *watchView) stream(n int) []display.PickRow {
 		if _, ok := lane.Running(w.root, l); ok {
 			running = append(running, l)
 		} else if st != nil {
-			if s := st.Get(l); s != nil && s.State == status.Running && s.PID > 0 && lane.Alive(s.PID) {
+			if s := st.Get(l); s != nil && s.State == status.Running && s.Alive() {
 				running = append(running, l) // a matrix lane: its cells hold the pid files
 			}
 		}
@@ -278,7 +278,7 @@ func laneRowState(l *status.Lane, info lane.Info) (string, string) {
 	}
 	state := l.State
 	active := state == status.Running || state == status.Waiting || state == status.Queued || state == status.Locked
-	if active && (l.PID <= 0 || !lane.Alive(l.PID)) {
+	if active && !l.Alive() {
 		return "stale", ui.Yellow
 	}
 	if !active && info.Pending() && (state == "" || state == status.Idle || info.Job != "" && info.Job != l.Job) {

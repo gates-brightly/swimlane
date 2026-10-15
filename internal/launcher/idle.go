@@ -24,7 +24,7 @@ func Busy(root string, cfg *config.Config) string {
 	for _, l := range st.Lanes {
 		switch l.State {
 		case status.Waiting, status.Queued, status.Locked, status.Running:
-			if l.PID > 0 && lane.Alive(l.PID) {
+			if l.Alive() {
 				return fmt.Sprintf("swim %d is %s in another swim run (pid %d)", l.Lane, l.State, l.PID)
 			}
 		}

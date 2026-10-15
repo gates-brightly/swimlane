@@ -203,7 +203,7 @@ func laneBusy(root string, st *status.File, n int) string {
 	if l := st.Get(n); l != nil {
 		switch l.State {
 		case status.Waiting, status.Queued, status.Locked, status.Running:
-			if l.PID > 0 && lane.Alive(l.PID) {
+			if l.Alive() {
 				return fmt.Sprintf("swim %d is %s in another swim run (pid %d)", n, l.State, l.PID)
 			}
 		}

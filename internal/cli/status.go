@@ -13,6 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/schedule"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -81,7 +82,7 @@ func cmdStatus(args []string) error {
 
 // effectiveState flags lanes whose recorded process is gone.
 func effectiveState(l *status.Lane) string {
-	if (l.State == status.Running || l.State == status.Waiting) && l.PID > 0 && !lane.Alive(l.PID) {
+	if (l.State == status.Running || l.State == status.Waiting) && !l.Alive() {
 		return l.State + "?"
 	}
 	return l.State
@@ -111,6 +112,9 @@ func stateWord(l *status.Lane, state string, now time.Time) string {
 			if t, err := time.Parse(time.RFC3339, *l.StartedAt); err == nil {
 				word += " " + display.Elapsed(now.Sub(t))
 			}
+		}
+		if !proc.Local(l.Host) {
+			word += " on " + l.Host // its process is there, not here
 		}
 	case status.Running + "?", status.Waiting + "?":
 		word = state + " (process gone: interrupted)"
@@ -307,8 +311,8 @@ func rebuildStatus(root string, cfg *config.Config) error {
 			}
 			switch {
 			case !r.Finished:
-				if pid, ok := lane.Running(root, l.Lane); ok {
-					l.State, l.PID = status.Running, pid
+				if pid, host, ok := lane.RunningOn(root, l.Lane); ok {
+					l.State, l.PID, l.Host = status.Running, pid, host
 				} else {
 					l.State = status.Interrupted
 				}

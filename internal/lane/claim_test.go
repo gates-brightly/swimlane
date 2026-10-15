@@ -22,13 +22,13 @@ func TestRunningChecksStartTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The pid file holds the bare pid (as older swims read it); the claim
-	// file the pid and its start time.
+	// file the pid, its start time and this machine.
 	if data, _ := os.ReadFile(PIDFile(root, 1)); string(data) != fmt.Sprintf("%d\n", os.Getpid()) {
 		t.Fatalf("pid file %q", data)
 	}
 	data, _ := os.ReadFile(claimFile(root, 1))
-	if pid, start, ok := proc.Parse(string(data)); !ok || pid != os.Getpid() || start == "" {
-		t.Fatalf("claim file %q: want pid and start time", data)
+	if pid, start, host, ok := parseClaim(string(data)); !ok || pid != os.Getpid() || start == "" || host != proc.Host() {
+		t.Fatalf("claim file %q: want pid, start time and host", data)
 	}
 	if _, ok := Running(root, 1); !ok {
 		t.Fatal("own claim not running")

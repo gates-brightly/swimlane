@@ -312,7 +312,7 @@ func cleanPlan(root string, cfg *config.Config, o cleanOpts, stamp string) ([]cl
 		case cl.State == status.Running || cl.State == status.Waiting || cl.State == status.Locked || cl.State == status.Queued:
 			if pid, ok := lane.Running(root, n); ok {
 				cl.Skip = fmt.Sprintf("running (pid %d)", pid)
-			} else if l != nil && l.PID > 0 && lane.Alive(l.PID) {
+			} else if l != nil && l.Alive() {
 				cl.Skip = fmt.Sprintf("%s in a swim run (pid %d)", cl.State, l.PID)
 			} else {
 				cl.State = "stale"
@@ -394,7 +394,7 @@ func cleanScripts(root string, o cleanOpts) []string {
 			continue
 		}
 		if st != nil {
-			if l := st.Get(n); l != nil && l.PID > 0 && lane.Alive(l.PID) && (l.State == status.Running || l.State == status.Waiting) {
+			if l := st.Get(n); l != nil && l.Alive() && (l.State == status.Running || l.State == status.Waiting) {
 				continue
 			}
 		}

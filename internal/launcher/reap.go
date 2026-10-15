@@ -43,7 +43,8 @@ func (r Reaped) String() string {
 // ends as a killed one does (closeKilledRound): the step in flight is
 // recovered as cut off, and _finish records END INTERRUPTED (exit 137),
 // the chain entry and the final state. A lane whose process can't be told
-// dead is left alone. self is the swim binary.
+// dead is left alone, as is one another machine runs (status.yml and its
+// claim name the host). self is the swim binary.
 //
 // swim run and swim watch call it as they start, so a dead lane never
 // stays running until someone runs swim status --rebuild.
@@ -68,6 +69,12 @@ func ReapDead(root string, cfg *config.Config, self string) []Reaped {
 		if l.State != status.Running {
 			continue
 		}
+		if !proc.Local(l.Host) {
+			// Another machine sharing the repo runs it: this one can't see
+			// its process, so it can't tell it died. That machine's swim
+			// reaps it.
+			continue
+		}
 		if len(l.Cells) > 0 {
 			out = append(out, reapCells(root, cfg, self, l)...)
 			continue
@@ -87,7 +94,7 @@ func ReapDead(root string, cfg *config.Config, self string) []Reaped {
 				if s.State != status.Running {
 					return
 				}
-				s.PID = 0
+				s.PID, s.Host = 0, ""
 				switch {
 				case !r.Found || !r.Finished:
 					s.State, s.Reason = status.Interrupted, "its process died"
@@ -141,7 +148,7 @@ func anyRunning(st *status.File) bool {
 // running cells' rounds finished, the cells that never started skipped and
 // the lane marked interrupted.
 func reapCells(root string, cfg *config.Config, self string, l status.Lane) []Reaped {
-	if l.PID > 0 && proc.Alive(l.PID) {
+	if l.Alive() {
 		return nil
 	}
 	for _, c := range l.Cells {
@@ -171,7 +178,7 @@ func reapCells(root string, cfg *config.Config, self string, l status.Lane) []Re
 				c.State, c.Reason = status.Skipped, "its swim run died before it started"
 			}
 		}
-		s.State, s.PID, s.ExitCode = status.Interrupted, 0, status.Int(137)
+		s.State, s.PID, s.Host, s.ExitCode = status.Interrupted, 0, "", status.Int(137)
 		s.Reason = "its swim run died"
 	})
 	return append(out, Reaped{Lane: l.Lane, PID: l.PID})

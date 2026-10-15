@@ -7,10 +7,31 @@ package proc
 
 import (
 	"errors"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
+
+// Host is this machine's name (os.Hostname; "" if it can't be read). A
+// recorded process is named with its host: two machines can share a repo
+// (an operator's laptop and a container mounting it), and a pid means
+// nothing on another host.
+func Host() string {
+	hostOnce.Do(func() { host, _ = os.Hostname() })
+	return host
+}
+
+var (
+	hostOnce sync.Once
+	host     string
+)
+
+// Local reports whether a process recorded on host h runs on this
+// machine, so this one can tell whether it's alive. A record without a
+// host (from an older swim) is taken as local, as it always was.
+func Local(h string) bool { return h == "" || h == Host() }
 
 // Alive reports whether a process with pid exists (whoever it is now). A
 // zombie (exited, never reaped) doesn't count: it keeps its pid and start

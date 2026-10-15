@@ -69,7 +69,7 @@ func Associated(root string) []int {
 	pids, _ := os.ReadDir(filepath.Join(root, ".swim"))
 	for _, e := range pids {
 		if m := pidFileRE.FindStringSubmatch(e.Name()); m != nil {
-			if _, ok := runningIn(filepath.Join(root, ".swim", e.Name())); ok {
+			if _, _, ok := runningIn(filepath.Join(root, ".swim", e.Name())); ok {
 				n, _ := strconv.Atoi(m[1])
 				add(n)
 			}
