@@ -286,6 +286,22 @@ func List(root string, done bool) ([]*Entry, error) {
 	return out, nil
 }
 
+// ClaimGrace is how long after its claim a .running entry that names no
+// worker may still be in the middle of being claimed (the worker writes
+// itself in right after the rename). List says orphaned regardless; a
+// caller waiting for the entry (swim queue --wait) gives it this long.
+const ClaimGrace = 10 * time.Second
+
+// BeingClaimed reports whether e, read as orphaned, names no worker and
+// was claimed within ClaimGrace: its worker may still be writing itself in.
+func (e *Entry) BeingClaimed() bool {
+	if e.State != Orphaned || e.Worker != nil {
+		return false
+	}
+	st, err := os.Stat(e.Path)
+	return err == nil && time.Since(st.ModTime()) < ClaimGrace
+}
+
 // Busy says what the queue still has to run ("" when nothing): a running
 // batch, or batches waiting for a worker. Orphaned entries never run, so
 // they don't count.
@@ -459,6 +475,11 @@ func claim(p, user string, lease time.Duration) (*Entry, error) {
 		}
 		return nil, err
 	}
+	// Stamp the claim (a rename keeps the queued file's old mtime), so a
+	// caller seeing it with no worker yet can tell a claim in progress from
+	// a dead one (BeingClaimed).
+	t := time.Now()
+	os.Chtimes(running, t, t)
 	// A worker that dies here leaves a .running entry naming no worker:
 	// orphaned, never run again on its own.
 	failpoint.Hit(failpoint.QueueClaimed)

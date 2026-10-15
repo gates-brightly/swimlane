@@ -188,17 +188,26 @@ func queueAdd(args []string) error {
 	if !wait {
 		return nil
 	}
-	if err := waitIdle(root, pollEvery, limit); err != nil {
-		// Timed out: the batch stays queued (or running) for a worker.
-		if cur, ferr := queue.Find(root, e.ID); ferr == nil {
-			return fmt.Errorf("%v; %s (#%d) is still %s", err, e.ID, e.Seq, cur.State)
+	var done *queue.Entry
+	for {
+		if err := waitIdle(root, pollEvery, limit); err != nil {
+			// Timed out: the batch stays queued (or running) for a worker.
+			if cur, ferr := queue.Find(root, e.ID); ferr == nil {
+				return fmt.Errorf("%v; %s (#%d) is still %s", err, e.ID, e.Seq, cur.State)
+			}
+			return err
 		}
-		return err
-	}
-	// Exit with the batch's result, like swim log --until-done.
-	done, err := queue.Find(root, e.ID)
-	if err != nil {
-		return fmt.Errorf("%s: %v (removed before it ran?)", e.ID, err)
+		// Exit with the batch's result, like swim log --until-done.
+		var err error
+		if done, err = queue.Find(root, e.ID); err != nil {
+			return fmt.Errorf("%s: %v (removed before it ran?)", e.ID, err)
+		}
+		// Caught between a worker's claim and its writing itself in: the
+		// queue looked idle for a moment. Wait on.
+		if !done.BeingClaimed() {
+			break
+		}
+		time.Sleep(pollEvery)
 	}
 	if done.State != queue.Done || done.Result == nil {
 		return fmt.Errorf("%s is %s, not done", e.ID, done.State)
