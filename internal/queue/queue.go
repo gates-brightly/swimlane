@@ -449,6 +449,9 @@ func Claim(root string, e *Entry, user string, lease time.Duration) (*Entry, err
 // claim renames a waiting entry to .running and records the worker; nil
 // when another worker renamed it first.
 func claim(p, user string, lease time.Duration) (*Entry, error) {
+	if err := move(filepath.Base(p), p, Running); err != nil {
+		return nil, err
+	}
 	running := strings.TrimSuffix(p, ".queue") + ".running"
 	if err := fsutil.Rename(p, running); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -478,6 +481,9 @@ func claim(p, user string, lease time.Duration) (*Entry, error) {
 
 // Consume records the result and moves a claimed entry to done/.
 func Consume(root string, e *Entry, r Result) error {
+	if err := move(e.ID, e.Path, Done); err != nil {
+		return err
+	}
 	e.Result = &r
 	if err := write(e); err != nil {
 		return err
@@ -500,6 +506,9 @@ func Requeue(root string, e *Entry) error {
 		return fmt.Errorf("%s is running (worker pid %d on %s); stop that worker first", e.ID, e.Worker.PID, e.Worker.Host)
 	}
 	old := e.Path
+	if err := move(e.ID, old, Queued); err != nil {
+		return err
+	}
 	e.Worker, e.Result = nil, nil
 	if err := Add(root, e); err != nil {
 		return err
@@ -514,6 +523,9 @@ func Requeue(root string, e *Entry) error {
 func Remove(e *Entry) error {
 	if e.State == Running {
 		return fmt.Errorf("%s is running (worker pid %d on %s); stop that worker first", e.ID, e.Worker.PID, e.Worker.Host)
+	}
+	if err := move(e.ID, e.Path, Removed); err != nil {
+		return err
 	}
 	return os.Remove(e.Path)
 }

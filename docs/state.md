@@ -12,9 +12,11 @@ and cell rules below. An illegal move panics in tests and wherever
 `SWIM_CHECK_STATES=1` is set (both e2e suites set it); elsewhere the write
 goes through, since the file is the last known state and refusing would
 leave a lane stuck. `swim status --rebuild`, which reconstructs every entry
-from the logs, is the one writer that isn't checked. Queue entries need no
-such check: their state is their file name, and `internal/queue` moves
-them only by rename, refusing to requeue or remove a running one.
+from the logs, is the one writer that isn't checked. Queue entries and run
+records are checked too, under the same switch: every move of a queue
+entry's file goes through `queue.Transition`
+(`internal/queue/transition.go`; an illegal move is refused even where it
+doesn't panic), and every run record write through `runrec.Transition`.
 
 ## Lane
 
@@ -155,7 +157,9 @@ stateDiagram-v2
 | removed | none | `swim queue rm` | Refused while `running`. |
 
 `swim queue requeue` refuses a `queued` entry (already waiting) and a
-`running` one (stop that worker first).
+`running` one (stop that worker first). `queue.Transition` holds every move
+to the diagram: consuming an entry no worker claimed, consuming one twice,
+or claiming a consumed one is a bug, and panics under `SWIM_CHECK_STATES`.
 
 ## Run record
 
@@ -177,7 +181,9 @@ stateDiagram-v2
 ```
 
 A lane's final `state` is one of `passed`, `failed`, `skipped` or
-`interrupted`. A point a lane never reached is left out.
+`interrupted`. A point a lane never reached is left out. `runrec.Transition`
+checks every write: each lane has ended, and a rewrite of the same run (the
+same start) never changes a lane's result.
 
 ## Approval
 

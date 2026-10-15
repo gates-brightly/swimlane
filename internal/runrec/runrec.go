@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"testing"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -52,8 +54,49 @@ func Dir(root string) string { return filepath.Join(root, ".swim", "runs") }
 // Path is a run's record file.
 func Path(root, run string) string { return filepath.Join(Dir(root), run+".yml") }
 
+// The run record's rules (docs/state.md): it's written once a run has
+// ended, so every lane in it has ended (passed, failed, skipped or
+// interrupted); rewritten for the same run (the same start), a lane's
+// result never changes in place. A write that breaks them panics in tests
+// and wherever SWIM_CHECK_STATES=1 is set; elsewhere it goes through.
+const checkEnv = "SWIM_CHECK_STATES"
+
+func ended(s string) bool {
+	return s == "passed" || s == "failed" || s == "skipped" || s == "interrupted"
+}
+
+// Transition checks writing record to over record from (nil when there's
+// none yet).
+func Transition(from, to *Run) error {
+	var bad []string
+	for _, l := range to.Lanes {
+		if !ended(l.State) {
+			bad = append(bad, fmt.Sprintf("swim %d is %q in a record of a run that has ended", l.Lane, l.State))
+		}
+	}
+	if from != nil && from.Started.Equal(to.Started) {
+		was := map[int]string{}
+		for _, l := range from.Lanes {
+			was[l.Lane] = l.State
+		}
+		for _, l := range to.Lanes {
+			if w, ok := was[l.Lane]; ok && w != l.State {
+				bad = append(bad, fmt.Sprintf("swim %d's result can't change from %s to %s in the same run", l.Lane, w, l.State))
+			}
+		}
+	}
+	if len(bad) > 0 {
+		return errors.New(strings.Join(bad, "; "))
+	}
+	return nil
+}
+
 // Write saves r atomically.
 func Write(root string, r *Run) error {
+	old, _, _ := Load(root, r.Run)
+	if err := Transition(old, r); err != nil && (testing.Testing() || os.Getenv(checkEnv) == "1") {
+		panic("run record " + r.Run + ": illegal state transition (docs/state.md): " + err.Error())
+	}
 	r.Schema = Schema
 	sort.Slice(r.Lanes, func(a, b int) bool { return r.Lanes[a].Lane < r.Lanes[b].Lane })
 	if err := os.MkdirAll(Dir(root), 0o755); err != nil {

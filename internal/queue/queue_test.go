@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -274,5 +275,45 @@ func TestOccurrenceStatement(t *testing.T) {
 		if c.Statement() == st {
 			t.Errorf("%s edited, the statement still vouches for it", what)
 		}
+	}
+}
+
+// Illegal moves panic in tests (SWIM_CHECK_STATES elsewhere): consuming an
+// entry no worker claimed, consuming one twice, claiming a consumed one.
+func TestIllegalQueueMovesPanic(t *testing.T) {
+	root := t.TempDir()
+	mustPanic := func(what string, f func()) {
+		t.Helper()
+		defer func() {
+			if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "illegal state transition") {
+				t.Errorf("%s: recovered %v, want an illegal-transition panic", what, r)
+			}
+		}()
+		f()
+	}
+	e := &Entry{By: "op", Lanes: []Lane{{Lane: 1, Job: "j"}}}
+	if err := Add(root, e); err != nil {
+		t.Fatal(err)
+	}
+	mustPanic("consume unclaimed", func() { Consume(root, e, Result{Result: "passed"}) })
+	c, err := ClaimNext(root, "op", 0)
+	if err != nil || c == nil {
+		t.Fatalf("claim: %v %v", c, err)
+	}
+	if err := Consume(root, c, Result{Result: "passed"}); err != nil {
+		t.Fatal(err)
+	}
+	mustPanic("consume twice", func() { Consume(root, c, Result{Result: "passed"}) })
+	mustPanic("claim a done entry", func() { claim(c.Path, "op", 0) })
+	// Legal: a done entry requeued, then removed.
+	if err := Requeue(root, c); err != nil {
+		t.Fatal(err)
+	}
+	c.State = Queued
+	if err := Remove(c); err != nil {
+		t.Fatal(err)
+	}
+	if Transition(Queued, Done) == nil || Transition(Running, Done) != nil {
+		t.Error("Transition rules")
 	}
 }
