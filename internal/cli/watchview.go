@@ -39,13 +39,21 @@ type watchView struct {
 const trashConfirm = 5 * time.Second
 
 const (
-	watchKeys  = "rqlod" + string(display.PickEnter)
-	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q queue  d trash  ctrl-c quit"
+	watchKeys  = "rqlodp" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q queue  p pause  d trash  ctrl-c quit"
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
 	w := &watchView{root: root, cfg: cfg, yes: yes, picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
 	w.picker.Tail = w.stream
+	// The repo-wide pause (swim pause --all) is on the title while it holds.
+	w.picker.Title = func() string {
+		t := "swim watch · " + w.root
+		if _, on := lane.RepoPause(w.root); on {
+			t += " · paused: workers claim nothing · swim unpause --all"
+		}
+		return t
+	}
 	return w
 }
 
@@ -276,6 +284,9 @@ func statusTime(s *string) (time.Time, bool) {
 // laneRowState is how a lane's row shows its state: a script holding a job
 // that hasn't run yet is pending, whatever its last round did.
 func laneRowState(l *status.Lane, info lane.Info) (string, string) {
+	if l != nil && l.PausedAt != "" && l.Alive() {
+		return "paused", ui.Yellow
+	}
 	if l == nil {
 		if info.Pending() {
 			return "pending", ""
@@ -335,6 +346,9 @@ func (w *watchView) act(id string, key rune) string {
 			}
 			return fmt.Sprintf("d trashes lanes; swim queue rm %d removes a batch", e.Seq)
 		}
+		if key == 'p' {
+			return "p pauses a lane: pick its row (swim pause --all holds every batch)"
+		}
 		e, err := queue.Find(w.root, ref)
 		if err != nil {
 			return err.Error()
@@ -356,6 +370,9 @@ func (w *watchView) act(id string, key rune) string {
 	n, _ := strconv.Atoi(ref)
 	if key == 'd' {
 		return w.trash(n, pendingTrash == n && time.Since(w.trashAt) < trashConfirm)
+	}
+	if key == 'p' {
+		return w.togglePause(n)
 	}
 	if key == display.PickEnter {
 		return w.showLaneOutput(n)
@@ -396,6 +413,21 @@ func (w *watchView) trash(n int, confirmed bool) string {
 		return fmt.Sprintf("press d again to trash swim %d (%s)", n, strings.Join(t.files, ", "))
 	}
 	return fmt.Sprintf("swim %d trashed (.swim/cleaned/%s/); swim trash --restore %s", n, t.stamp, t.stamp)
+}
+
+// togglePause is p on lane n: pause its running round, or let a paused one
+// go on.
+func (w *watchView) togglePause(n int) string {
+	st, _ := status.Load(w.root)
+	if _, paused := lane.LanePause(w.root, n, ""); paused {
+		msg, _ := unpauseOne(w.root, st, n, operator())
+		return msg
+	}
+	msg, err := pauseOne(w.root, st, n, operator(), "")
+	if err != nil {
+		return err.Error() + " (p pauses a running lane)"
+	}
+	return msg
 }
 
 // toggleStream hides or shows the running output under the queue.

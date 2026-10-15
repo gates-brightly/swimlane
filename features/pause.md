@@ -1,22 +1,21 @@
 # swim pause: hold lanes at their next step, then resume or replace them
 
-Status: in progress (phase 1 shipped: the CLI, the hold in bash and SDK
-lanes and before guards, the deadline, waiting lanes, Ctrl-C, replace,
-`--all` and workers, status, the live view's paused row, docs)
+Status: in progress (phases 1 and 2 shipped: the CLI, the hold in bash and
+SDK lanes and before guards, the deadline, waiting lanes, Ctrl-C, replace,
+`--all` and workers, status, `p`/`P` in the live view and `p` in the watch
+screen with its banner, hub commands, `swim plan`'s note, the chain's
+`paused_s` and `replaced_by`, the run record's and timeline's paused time,
+doctor's `pause_warn`, docs)
 
-### Phase 2 (not built)
+### Not built
 
-- The live view's and watch screen's `p`/`P` keys and the watch banner.
-- `pause`/`unpause` as hub commands; paused lanes on the hub's pages.
-- `swim timeline`'s `paused` segment and the run record's pause spans.
-- The chain: pause records and `replaced_by` on round entries.
-- `swim doctor`'s `pause_warn` (lanes paused over 4h; a repo-wide pause
-  left on).
-- `swim plan` marking lanes it would wait on as paused.
-- The SDK's own deadline (`hello`'s) doesn't move out with paused time;
-  the bash library's and `swim step`'s do.
+- **A paused segment in `swim timeline`'s bars.** The run record keeps
+  each lane's total paused time, shown in its note (`paused 3m`), not
+  when each pause began and ended.
+- **The SDK's own deadline** (`hello`'s) doesn't move out with paused
+  time; the bash library's and `swim step`'s do.
 
-### Where phase 1 differs from below
+### Where it differs from below
 
 - **No `paused` state.** A paused lane stays `running` (or `waiting`) in
   `status.yml`, with `paused_*` fields: its process really is alive, so

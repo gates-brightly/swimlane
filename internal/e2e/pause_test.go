@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
 
@@ -99,6 +100,18 @@ run "three" true`)
 		t.Errorf("after: paused_at %q paused_s %v", l.PausedAt, l.PausedS)
 	}
 	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	// The chain's round entry and the timeline carry the paused time.
+	links, _ := chain.Read(r.root)
+	var paused float64
+	for _, l := range links {
+		if l.Type == "round" && l.Lane == 1 {
+			paused = l.PausedS
+		}
+	}
+	if paused <= 0 {
+		t.Error("the round's chain entry has no paused_s")
+	}
+	contains(t, "timeline", r.mustSwim("timeline"), "paused ")
 	contains(t, "not running", must(r.swim("pause", "1")), "swim 1 isn't running")
 	contains(t, "not paused", r.mustSwim("unpause", "1"), "swim 1 isn't paused")
 }
@@ -158,6 +171,16 @@ run "a2" true`)
 	}
 	all := r.mustSwim("log", "1", "--all")
 	contains(t, "both rounds", all, "job A", "END INTERRUPTED", "job B", "PASS  b1")
+	links, _ := chain.Read(r.root)
+	replaced := ""
+	for _, l := range links {
+		if l.Type == "round" && strings.HasPrefix(l.Job, "aaaaaaaa") {
+			replaced = l.ReplacedBy
+		}
+	}
+	if !strings.HasPrefix(replaced, "bbbbbbbb") {
+		t.Errorf("job A's round entry: replaced_by %q", replaced)
+	}
 	if strings.Contains(all, "PASS  a2") {
 		t.Error("job A went on after it was replaced")
 	}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -165,6 +166,7 @@ func cmdStart(args []string) error {
 		lane.ClearPause(root, n) // a pause left from an earlier run, likewise
 	}
 	os.Remove(lane.ResumedPath(root, n))
+	os.Remove(lane.ReplacedPath(root, n))
 	// The round's outputs directory ($SWIM_OUT), fresh for this run.
 	if err := os.MkdirAll(outputs.Dir(root, job, run), 0o755); err != nil {
 		lane.RemovePID(root, n)
@@ -648,7 +650,8 @@ func cmdFinish(args []string) error {
 			Script: scriptSHA(root, n), Manifest: manifestSHA(root, n), Result: state, Exit: &exit,
 			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: approvals, AutoApproved: auto,
 			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums, Evidence: roundEvidence(root, r),
-			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs), Finally: finallySaw()}); err != nil {
+			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs), Finally: finallySaw(),
+			PausedS: math.Round(pausedSoFar(root, n).Seconds()*10) / 10, ReplacedBy: replacedBy(root, n)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 	}
@@ -892,4 +895,16 @@ func finallySaw() map[string]string {
 		return nil
 	}
 	return out
+}
+
+// replacedBy is the job a paused round of lane n was ended for (swim run
+// --replace), read once: the file is spent.
+func replacedBy(root string, n int) string {
+	p := lane.ReplacedPath(root, n)
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	os.Remove(p)
+	return strings.TrimSpace(string(data))
 }

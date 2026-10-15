@@ -34,11 +34,12 @@ type Lane struct {
 	State   string   `yaml:"state"` // passed | failed | skipped | interrupted
 	Exit    *int     `yaml:"exit,omitempty"`
 	Reason  string   `yaml:"reason,omitempty"`
-	Ready   *float64 `yaml:"ready,omitempty"`  // dependencies met
-	Locked  *float64 `yaml:"locked,omitempty"` // locks taken
-	Slot    *float64 `yaml:"slot,omitempty"`   // parallel slot taken
-	Start   *float64 `yaml:"start,omitempty"`  // lane process started
-	End     *float64 `yaml:"end,omitempty"`    // lane process finished (or skipped)
+	Ready   *float64 `yaml:"ready,omitempty"`    // dependencies met
+	Locked  *float64 `yaml:"locked,omitempty"`   // locks taken
+	Slot    *float64 `yaml:"slot,omitempty"`     // parallel slot taken
+	Start   *float64 `yaml:"start,omitempty"`    // lane process started
+	End     *float64 `yaml:"end,omitempty"`      // lane process finished (or skipped)
+	Paused  float64  `yaml:"paused_s,omitempty"` // time its round was held by swim pause
 }
 
 // Run is a whole run's record.

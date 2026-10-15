@@ -53,6 +53,7 @@ type Settings struct {
 	MsgLogInterval     string        `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
 	OutputsKeep        string        `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
 	QueueLease         string        `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
+	PauseWarn          string        `yaml:"pause_warn,omitempty"`           // swim doctor warns about a lane paused longer than this (default 4h)
 	ClaimLease         string        `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
 	WatchBatches       int           `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
 	ScheduleTZ         string        `yaml:"schedule_tz,omitempty"`          // the zone swim schedule reads times in (default: the machine's)
@@ -381,6 +382,9 @@ func (c *Config) merge(r Settings) {
 	if r.ClaimLease != "" {
 		c.ClaimLease = r.ClaimLease
 	}
+	if r.PauseWarn != "" {
+		c.PauseWarn = r.PauseWarn
+	}
 	if r.WatchBatches != 0 {
 		c.WatchBatches = r.WatchBatches
 	}
@@ -579,6 +583,16 @@ func (c *Config) QueueLeaseFor() time.Duration {
 		return d
 	}
 	return 0
+}
+
+// PauseWarnFor is pause_warn: how long a lane may stay paused (swim pause)
+// before swim doctor warns that it still holds its locks and slot
+// (default 4h). A pause never ends on its own; this only warns.
+func (c *Config) PauseWarnFor() time.Duration {
+	if d, err := time.ParseDuration(c.PauseWarn); err == nil && d >= time.Minute {
+		return d
+	}
+	return 4 * time.Hour
 }
 
 // ClaimLeaseFor is claim_lease: how long a lane claim lasts unless
@@ -845,6 +859,11 @@ func (c *Config) validateInterrupt() error {
 	if c.QueueLease != "" {
 		if d, err := time.ParseDuration(c.QueueLease); err != nil || d < 10*time.Second {
 			return fmt.Errorf("queue_lease must be a duration of 10s or more, like 2m, got %q", c.QueueLease)
+		}
+	}
+	if c.PauseWarn != "" {
+		if d, err := time.ParseDuration(c.PauseWarn); err != nil || d < time.Minute {
+			return fmt.Errorf("pause_warn must be a duration of 1m or more, like 4h, got %q", c.PauseWarn)
 		}
 	}
 	if c.ClaimLease != "" {

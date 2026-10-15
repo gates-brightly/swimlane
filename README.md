@@ -1138,7 +1138,7 @@ swim approve --hub billing/3f9c2a --decline
 ```yaml
 # swim.yml (only swim.yml: config.yml can't set it)
 headless:
-  allow: [answer, interrupt, drain, log]   # the default; add run, trash to allow them
+  allow: [answer, interrupt, drain, log]   # the default; add run, trash, pause, unpause to allow them
   logs: on                                 # off: logs never leave this machine
   command_ttl: 10m
   approvals: signed                        # or hub: a listed operator's button click, where no require: rule names the guard

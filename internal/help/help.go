@@ -51,6 +51,8 @@ var Commands = map[string]string{
                  heartbeat every third of this while it runs a batch; seen
                  from another host, a claim with an older heartbeat is
                  orphaned. Default 2m.
+    pause_warn   duration (1m or more)    swim doctor warns about a lane paused
+                 (swim pause) longer than this. Default 4h.
     claim_lease  duration (1m or more)    how long a lane claim (swim new,
                  swim claim) lasts unless refreshed. Default 2h.
     watch_batches  a number (1 or more)   how many queued batches one swim
@@ -862,8 +864,10 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                 10m; 2m for interrupt) after it was sent, it's acknowledged
                 expired and not carried out
     allowed     swim.yml's headless.allow lists it (default: answer,
-                interrupt, drain, log; run and trash must be added)
-    pinned      interrupt names the run the page showed, run the script
+                interrupt, drain, log; run, trash, pause and unpause
+                must be added)
+    pinned      interrupt, pause and unpause name the run the page
+                showed, run the script
                 and manifest hashes, trash the lane's job (its script's
                 hash when it has no Job: line): if the lane has
                 moved on, it's refused as stale. A run is queued unsigned,
@@ -877,7 +881,7 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   ("hub <cmd> by <user> via <url>: <outcome>"), and acknowledged to the
   hub. swim.yml (only; config.yml can't set it):
     headless:
-      allow: [answer, interrupt, drain, log]   # add run, trash to allow them
+      allow: [answer, interrupt, drain, log]   # add run, trash, pause, unpause to allow them
       logs: on                                 # off: logs stay here
       command_ttl: 10m
       approvals: signed      # signed | hub: how guards are answered
@@ -1550,6 +1554,9 @@ swim resume  N|JOB ... | --all      (the same command)
                               start
     cache-unused (info)       tool caches unused for 30 days, or the repo's
                               caches over cache_max
+    pause-long (warn)         a lane paused (swim pause) longer than
+                              pause_warn (4h), holding its locks and slot;
+                              or the repo-wide pause left on that long
     schedule-no-worker (warn) batches are scheduled, but no swim watch runs
                               here to start them
     guarded-secrets (info/warn) lists swim.yml's guarded secrets (info);

@@ -620,6 +620,21 @@ func planClaimWarnings(o launcher.Options) {
 			fmt.Printf("warning: swim %d: %s; it may still be being written\n", pl.Lane, claimText(c))
 		}
 	}
+	// Paused lanes (swim pause) hold their round, slot and locks: a lane
+	// that waits on one, or needs one of its locks, waits until it goes on.
+	if st, _ := status.Load(o.Root); st != nil {
+		for _, l := range st.Lanes {
+			if l.PausedAt == "" || !l.Alive() {
+				continue
+			}
+			held := ""
+			if len(l.Locks) > 0 {
+				held = ", holding " + strings.Join(l.Locks, ", ")
+			}
+			fmt.Printf("note: swim %d is paused (by %s, after %q%s): lanes that wait on it, or need its locks, wait until swim unpause %d\n",
+				l.Lane, or(l.PausedBy, "?"), l.PausedAfter, held, l.Lane)
+		}
+	}
 }
 
 // runChecks is swim plan --check's first half: run the snapshot and check

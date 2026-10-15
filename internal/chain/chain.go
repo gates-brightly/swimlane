@@ -106,6 +106,10 @@ type Entry struct {
 	// Finally is a finally lane's round (# Finally:): how each lane it
 	// waited for ended, as it started ("1" -> "pass").
 	Finally map[string]string `json:"finally,omitempty"`
+	// PausedS is a round's total time held by swim pause; ReplacedBy the
+	// job a paused round was ended for (swim run --replace).
+	PausedS    float64 `json:"paused_s,omitempty"`
+	ReplacedBy string  `json:"replaced_by,omitempty"`
 	// AuthorityUnavailable says why swim run couldn't start its approvals
 	// (the broker): every guard of the run was a dry run.
 	AuthorityUnavailable string `json:"authority_unavailable,omitempty"`

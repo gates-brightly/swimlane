@@ -89,6 +89,12 @@ func Paused(root string, n int, run string) (*PauseReq, bool) {
 	return RepoPause(root)
 }
 
+// ReplacedPath is the job a paused round of lane n was ended for (swim run
+// --replace), for the round's chain entry.
+func ReplacedPath(root string, n int) string {
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d.replaced", n))
+}
+
 // ClearPause removes lane n's pause request.
 func ClearPause(root string, n int) { os.Remove(PausePath(root, n)) }
 

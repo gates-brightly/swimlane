@@ -1041,6 +1041,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
         queue_lease: 2m                  # a queue worker's heartbeat holds this long (other hosts)
         claim_lease: 2h                  # a lane claim (swim new, swim claim) lasts this long
+        pause_warn: 4h                   # swim doctor warns about a lane paused longer
         watch_batches: 4                 # queued batches one swim watch runs at once
         schedule_tz: America/Chicago     # the zone swim schedule reads times in (default: the machine's)
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
@@ -1068,7 +1069,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       ambient_credentials: [prod-write]          # AWS profiles lint and doctor point out
   and headless: (what a headless worker takes from its hub; swim watch --help):
       headless:
-        allow: [answer, interrupt, drain, log]   # hub commands accepted; add run, trash to allow them
+        allow: [answer, interrupt, drain, log]   # hub commands accepted; add run, trash, pause, unpause to allow them
         logs: on                                 # off: never upload a log to the hub
         command_ttl: 10m                         # older commands expire (interrupt: 2m at most)
         approvals: signed                        # how a guard is answered through the hub: signed | hub

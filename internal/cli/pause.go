@@ -195,19 +195,19 @@ func cmdPause(args []string) error {
 	}
 	var failed bool
 	for _, n := range ns {
-		l := activeLane(root, st, n)
-		if l == nil {
-			fmt.Fprintf(os.Stderr, "swim %d isn't running\n", n)
+		if all {
+			if l := activeLane(root, st, n); l != nil {
+				fmt.Println(pausingText(root, n, l))
+			}
+			continue
+		}
+		msg, err := pauseOne(root, st, n, by, note)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
 			failed = true
 			continue
 		}
-		if !all {
-			if err := lane.RequestPause(root, n, lane.PauseReq{Run: l.Run, By: by, Note: note}); err != nil {
-				return err
-			}
-			history.Log(root, history.Entry{Event: history.Pause, Lane: n, Job: l.Job, Run: l.Run, Detail: strings.TrimSpace(fmt.Sprintf("after %q  %s", l.CurrentStep, note))})
-		}
-		fmt.Println(pausingText(root, n, l))
+		fmt.Println(msg)
 	}
 	if wait {
 		for _, n := range ns {
@@ -218,6 +218,54 @@ func cmdPause(args []string) error {
 		return exitError{1}
 	}
 	return nil
+}
+
+// pauseOne asks lane n to hold before its next step, and says where it
+// will.
+func pauseOne(root string, st *status.File, n int, by, note string) (string, error) {
+	l := activeLane(root, st, n)
+	if l == nil {
+		return "", fmt.Errorf("swim %d isn't running", n)
+	}
+	if err := lane.RequestPause(root, n, lane.PauseReq{Run: l.Run, By: by, Note: note}); err != nil {
+		return "", err
+	}
+	history.Log(root, history.Entry{Event: history.Pause, Lane: n, Job: l.Job, Run: l.Run, Detail: strings.TrimSpace(fmt.Sprintf("after %q  %s", l.CurrentStep, note))})
+	return pausingText(root, n, l), nil
+}
+
+// unpauseOne lifts lane n's pause, if it has one, and says so.
+func unpauseOne(root string, st *status.File, n int, by string) (string, bool) {
+	_, repoPaused := lane.RepoPause(root)
+	if _, ok := lane.LanePause(root, n, ""); !ok {
+		msg := fmt.Sprintf("swim %d isn't paused", n)
+		if repoPaused {
+			msg += " on its own; the repo-wide pause holds it (swim unpause --all)"
+		}
+		return msg, false
+	}
+	resume(root, n, by)
+	var l *status.Lane
+	if st != nil {
+		l = st.Get(n)
+	}
+	job, run, msg := "", "", fmt.Sprintf("swim %d: resumed", n)
+	if l != nil {
+		job, run = l.Job, l.Run
+		if l.PausedAt != "" {
+			if t, err := time.Parse(time.RFC3339, l.PausedAt); err == nil {
+				msg += " (paused " + display.Elapsed(time.Since(t)) + ")"
+			}
+			if l.NextStep != "" {
+				msg += fmt.Sprintf("; next step %q", l.NextStep)
+			}
+		}
+	}
+	history.Log(root, history.Entry{Event: history.Unpause, Lane: n, Job: job, Run: run, Detail: "by " + by})
+	if repoPaused {
+		msg += "; the repo-wide pause still holds it (swim unpause --all)"
+	}
+	return msg, true
 }
 
 // activeLane is lane n's status entry if its round is in flight (running,
@@ -309,42 +357,13 @@ func cmdUnpause(args []string) error {
 		fmt.Printf("unpaused the repo%s: workers claim batches again\n", map[bool]string{true: fmt.Sprintf(" and %d lanes", n), false: ""}[n > 0])
 		return nil
 	}
-	_, repoPaused := lane.RepoPause(root)
 	st, _ := status.Load(root)
 	for _, a := range rest {
 		n, err := laneRef(root, cfg, a, true)
 		if err != nil {
 			return err
 		}
-		if _, ok := lane.LanePause(root, n, ""); !ok {
-			msg := fmt.Sprintf("swim %d isn't paused", n)
-			if repoPaused {
-				msg += " on its own; the repo-wide pause holds it (swim unpause --all)"
-			}
-			fmt.Println(msg)
-			continue
-		}
-		resume(root, n, by)
-		l := (*status.Lane)(nil)
-		if st != nil {
-			l = st.Get(n)
-		}
-		job, run, msg := "", "", fmt.Sprintf("swim %d: resumed", n)
-		if l != nil {
-			job, run = l.Job, l.Run
-			if l.PausedAt != "" {
-				if t, err := time.Parse(time.RFC3339, l.PausedAt); err == nil {
-					msg += " (paused " + display.Elapsed(time.Since(t)) + ")"
-				}
-				if l.NextStep != "" {
-					msg += fmt.Sprintf("; next step %q", l.NextStep)
-				}
-			}
-		}
-		history.Log(root, history.Entry{Event: history.Unpause, Lane: n, Job: job, Run: run, Detail: "by " + by})
-		if repoPaused {
-			msg += "; the repo-wide pause still holds it (swim unpause --all)"
-		}
+		msg, _ := unpauseOne(root, st, n, by)
 		fmt.Println(msg)
 	}
 	return nil
@@ -373,6 +392,7 @@ func pausedLane(root string, n int) (*status.Lane, bool) {
 // new one can start: it asks for the stop, lifts the pause and waits for
 // the round's process to end (its outcome handlers run).
 func replacePaused(root string, n int, l *status.Lane, newJob string) error {
+	os.WriteFile(lane.ReplacedPath(root, n), []byte(newJob+"\n"), 0o644)
 	if err := lane.RequestStop(root, n, l.Run); err != nil {
 		return err
 	}

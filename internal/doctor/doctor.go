@@ -142,6 +142,7 @@ var Checks = []Check{
 	{"hub-unreachable", false, "a headless worker's hub can't be reached: guards waiting for an answer through it decline", checkHubReachable},
 	{"headless-hub-answers", false, "swim.yml's headless.approvals is hub: a hub user's button click approves guards no require: rule names", checkHeadlessHubAnswers},
 	{"headless-yes", false, "a headless service runs with -y: it approves every guard in every batch", checkHeadlessYes},
+	{"pause-long", false, "a lane has been paused (swim pause) longer than pause_warn, holding its locks and slot; or the repo-wide pause is left on", checkPauseLong},
 	{"schedule-no-worker", false, "batches are scheduled, but no swim watch runs to start them", checkScheduleNoWorker},
 	{"schedule-recurring", false, "a recurring schedule is paused, or expires within three days", checkScheduleRecurring},
 	{"prune-reclaim", false, "swim prune --older 30d would free over 100 MB", checkPruneReclaim},
@@ -1014,6 +1015,42 @@ func checkScheduleNoWorker(o *Options) []finding.Finding {
 	}
 	return []finding.Finding{fd(finding.Warn, "schedule-no-worker", ".swim/queue/", "swim watch (or swim watch --headless --detach)",
 		"%d scheduled batches, and no swim watch runs here to start them: %s", len(o.Scheduled), strings.Join(o.Scheduled, "; "))}
+}
+
+// checkPauseLong: a pause never ends on its own, and a paused lane keeps
+// its locks and its slot, so one left paused past pause_warn (default 4h)
+// is worth a look; so is a repo-wide pause that long, which keeps every
+// worker from claiming batches. It only warns.
+func checkPauseLong(o *Options) []finding.Finding {
+	limit := 4 * time.Hour
+	if o.Cfg != nil {
+		limit = o.Cfg.PauseWarnFor()
+	}
+	var out []finding.Finding
+	if st, _ := status.Load(o.Root); st != nil {
+		for _, l := range st.Lanes {
+			if l.PausedAt == "" || !l.Alive() {
+				continue
+			}
+			t, err := time.Parse(time.RFC3339, l.PausedAt)
+			if err != nil || time.Since(t) < limit {
+				continue
+			}
+			what := "holding"
+			if len(l.Locks) > 0 {
+				what += " locks " + strings.Join(l.Locks, ", ") + " and"
+			}
+			out = append(out, fd(finding.Warn, "pause-long", ".swim/status.yml", fmt.Sprintf("swim unpause %d, or swim interrupt %d to end it", l.Lane, l.Lane),
+				"swim %d has been paused for %s by %s (after %q), %s its slot", l.Lane, time.Since(t).Round(time.Minute), l.PausedBy, l.PausedAfter, what))
+		}
+	}
+	if r, on := lane.RepoPause(o.Root); on {
+		if t, err := time.Parse(time.RFC3339, r.At); err == nil && time.Since(t) >= limit {
+			out = append(out, fd(finding.Warn, "pause-long", ".swim/pause", "swim unpause --all",
+				"the repo has been paused for %s (swim pause --all by %s): no worker claims a batch", time.Since(t).Round(time.Minute), r.By))
+		}
+	}
+	return out
 }
 
 // checkScheduleRecurring: a paused recurring schedule makes no

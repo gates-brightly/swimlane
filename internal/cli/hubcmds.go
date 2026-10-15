@@ -18,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/queue"
+	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -224,6 +225,8 @@ func checkAndDo(root string, cfg *config.Config, c *hub.Client, cmd hub.Command,
 		return hubLog(root, cfg, c, cmd)
 	case config.HubTrash:
 		return hubTrash(root, cfg, cmd, by, url)
+	case config.HubPause, config.HubUnpause:
+		return hubPause(root, cmd, by, url)
 	case config.HubAnswer:
 		return answerHub(cmd)
 	}
@@ -271,6 +274,35 @@ func hubRun(root string, cfg *config.Config, cmd hub.Command, by, url string) (s
 	}
 	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: fmt.Sprintf("%s: swim %d  by %s (unsigned, no approvals)", e.ID, n, e.By)})
 	return hub.OutcomeDone, fmt.Sprintf("queued %s (#%d): unsigned, with no approvals of its own", e.ID, e.Seq)
+}
+
+// hubPause pauses lane n, or lets it go on, as the hub's user asked, only
+// while it's still in the run the page showed.
+func hubPause(root string, cmd hub.Command, by, url string) (string, string) {
+	n := cmd.Lane
+	st, _ := status.Load(root)
+	run := ""
+	if st != nil {
+		if l := st.Get(n); l != nil {
+			run = l.Run
+		}
+	}
+	if run != cmd.Pin.Run {
+		return hub.OutcomeRefused, fmt.Sprintf("stale: swim %d is now run %s, not %s", n, or(run, "(none)"), cmd.Pin.Run)
+	}
+	who := "hub:" + by + " via " + url
+	if cmd.Kind == config.HubUnpause {
+		msg, was := unpauseOne(root, st, n, who)
+		if !was {
+			return hub.OutcomeRefused, msg
+		}
+		return hub.OutcomeDone, msg
+	}
+	msg, err := pauseOne(root, st, n, who, "from the hub")
+	if err != nil {
+		return hub.OutcomeRefused, err.Error()
+	}
+	return hub.OutcomeDone, msg
 }
 
 // hubTrash trashes lane n as the hub's user asked, only while it holds

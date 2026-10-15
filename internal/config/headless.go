@@ -38,10 +38,12 @@ const (
 	HubRun       = "run"
 	HubLog       = "log"
 	HubTrash     = "trash"
+	HubPause     = "pause"
+	HubUnpause   = "unpause"
 )
 
 // HubCommands are every command kind, in the order docs list them.
-var HubCommands = []string{HubAnswer, HubInterrupt, HubDrain, HubRun, HubLog, HubTrash}
+var HubCommands = []string{HubAnswer, HubInterrupt, HubDrain, HubRun, HubLog, HubTrash, HubPause, HubUnpause}
 
 // HeadlessDefaultAllow is headless.allow when swim.yml doesn't set it:
 // everything but run, which queues work and so must be enabled on purpose.

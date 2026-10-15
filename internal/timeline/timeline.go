@@ -42,6 +42,7 @@ type Lane struct {
 	DepWait   float64  `yaml:"dep_wait_s"`
 	LockWait  float64  `yaml:"lock_wait_s"`
 	QueueWait float64  `yaml:"queue_wait_s"`
+	Paused    float64  `yaml:"paused_s,omitempty"`      // held by swim pause, within its run time
 	Delay     *float64 `yaml:"start_delay_s,omitempty"` // start after the last parent finished
 	OnChain   bool     `yaml:"longest_chain,omitempty"`
 	Steps     []Step   `yaml:"steps,omitempty"`
@@ -100,7 +101,7 @@ func Build(rec *runrec.Run, rounds func(lane int) *logparse.Round) *Timeline {
 	byLane := map[int]*Lane{}
 	for _, rl := range rec.Lanes {
 		l := Lane{Lane: rl.Lane, Job: rl.Job, Round: rl.Round, State: rl.State, Reason: rl.Reason, Exit: rl.Exit,
-			After: rl.After, Ready: rl.Ready, Start: rl.Start, End: rl.End, locked: rl.Locked, slot: rl.Slot}
+			After: rl.After, Ready: rl.Ready, Start: rl.Start, End: rl.End, locked: rl.Locked, slot: rl.Slot, Paused: rl.Paused}
 		if l.After == nil {
 			l.After = []int{}
 		}

@@ -111,6 +111,8 @@ type Lane struct {
 	// line, the script's SHA-256), which a trash command from the hub pins
 	// ("" when the worker doesn't take trash).
 	TrashJob string `json:"trash_job,omitempty"`
+	// Paused says the round holds (swim pause): after which step, by whom.
+	Paused string `json:"paused,omitempty"`
 }
 
 // Batch is one queue entry.

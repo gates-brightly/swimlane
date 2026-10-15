@@ -399,6 +399,7 @@ func Run(o Options) (int, error) {
 		},
 		OnInterrupt: func() { ir.handle(syscall.SIGINT) },
 		OnPre:       onPre,
+		OnPause:     func(n int) string { return togglePause(o, sel, n) },
 		NoHold:      o.Unattended,
 	}, views)
 	pre.disp = disp
@@ -1051,6 +1052,11 @@ func writeRunRecord(o Options, start time.Time, cap int, sel []int, selected map
 		if info, err := lane.ReadScript(o.Root, n); err == nil {
 			l.Locks = info.Locks
 		}
+		if st, _ := status.Load(o.Root); st != nil {
+			if s := st.Get(n); s != nil && s.Run == o.RunID {
+				l.Paused = s.PausedS
+			}
+		}
 		if oc.Exit >= 0 {
 			e := oc.Exit
 			l.Exit = &e
@@ -1239,6 +1245,65 @@ func watchMsgs(o Options, n int, disp *display.Display) func() {
 		<-finished
 		disp.Set(n, func(v *display.LaneView) { v.Message, v.Paused = "", "" })
 	}
+}
+
+// togglePause is p (lane n) and P (n 0: every lane of this run) in the
+// live view: it pauses running or waiting lanes before their next step, or
+// lets paused ones go on (swim pause, swim unpause).
+func togglePause(o Options, sel []int, n int) string {
+	lanes := sel
+	if n != 0 {
+		lanes = []int{n}
+	}
+	paused := 0
+	for _, l := range lanes {
+		if _, ok := lane.LanePause(o.Root, l, o.RunID); ok {
+			paused++
+		}
+	}
+	by := operator()
+	if paused > 0 {
+		for _, l := range lanes {
+			if _, ok := lane.LanePause(o.Root, l, o.RunID); ok {
+				os.WriteFile(lane.ResumedPath(o.Root, l), []byte(by+"\n"), 0o644)
+				lane.ClearPause(o.Root, l)
+				history.Log(o.Root, history.Entry{Event: history.Unpause, Lane: l, Run: o.RunID, Detail: "by " + by + " (live view)"})
+			}
+		}
+		if n != 0 {
+			return fmt.Sprintf("swim %d: resumed", n)
+		}
+		return fmt.Sprintf("resumed %d paused lanes", paused)
+	}
+	st, _ := status.Load(o.Root)
+	done := 0
+	for _, l := range lanes {
+		s := (*status.Lane)(nil)
+		if st != nil {
+			s = st.Get(l)
+		}
+		if s == nil || s.Run != o.RunID {
+			continue // not started in this run, or already over
+		}
+		switch s.State {
+		case status.Running, status.Waiting, status.Queued, status.Locked:
+		default:
+			continue
+		}
+		if lane.RequestPause(o.Root, l, lane.PauseReq{Run: o.RunID, By: by}) == nil {
+			history.Log(o.Root, history.Entry{Event: history.Pause, Lane: l, Job: s.Job, Run: o.RunID, Detail: fmt.Sprintf("after %q  (live view)", s.CurrentStep)})
+			done++
+		}
+	}
+	switch {
+	case done == 0 && n != 0:
+		return fmt.Sprintf("swim %d isn't running", n)
+	case done == 0:
+		return "no lane of this run is running"
+	case n != 0:
+		return fmt.Sprintf("swim %d: pausing before its next step (p again lets it go on)", n)
+	}
+	return fmt.Sprintf("pausing %d lanes before their next step (P again lets them go on)", done)
 }
 
 // releaseClaim spends lane n's claim (swim claim) as its round starts:

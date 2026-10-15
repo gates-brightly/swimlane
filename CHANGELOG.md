@@ -437,6 +437,14 @@ already pushed to origin's main) with the next tag and pushes that tag.
     it (or `--replace`, without a terminal) and runs the new one.
   - `--all` holds every lane and keeps workers from claiming batches until
     `swim unpause --all`.
+  - `p` pauses or lets go on the selected lane in `swim run`'s live view
+    (`P`: every lane of the run) and in `swim watch` (whose title shows the
+    repo-wide pause); the hub has Pause and Unpause buttons (with `pause`
+    and `unpause` in `headless.allow`, pinned to the run shown).
+  - `swim plan` notes paused lanes; the chain's round entry records
+    `paused_s` (and `replaced_by` for a replaced round), and `swim
+    timeline` the paused time; `swim doctor` warns about a lane paused
+    past `pause_warn` (default 4h) or a repo-wide pause left on.
 - **`swim config chime on` covers queued jobs too.** `swim watch` now
   chimes as each batch it runs finishes, by the same settings as `swim
   run`: every batch with `chime on`, a batch that didn't pass with

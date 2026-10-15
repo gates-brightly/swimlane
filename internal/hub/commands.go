@@ -28,6 +28,8 @@ const (
 	KindRun       = "run"
 	KindLog       = "log"
 	KindTrash     = "trash"
+	KindPause     = "pause"
+	KindUnpause   = "unpause"
 )
 
 // Outcomes a worker acknowledges.
@@ -108,7 +110,7 @@ func (s *Server) commandRoutes(mux *http.ServeMux) {
 // on); the role check is the caller's.
 func (s *Server) Send(id, by string, c Command) (*Command, error) {
 	switch c.Kind {
-	case KindInterrupt, KindLog:
+	case KindInterrupt, KindLog, KindPause, KindUnpause:
 		if c.Lane < 1 || c.Pin.Run == "" {
 			return nil, fmt.Errorf("%s needs a lane and the run it's for", c.Kind)
 		}
@@ -126,7 +128,7 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 			return nil, fmt.Errorf("answer needs the question it answers (pin.request)")
 		}
 	default:
-		return nil, fmt.Errorf("unknown command %q (answer, interrupt, drain, run, log, trash)", c.Kind)
+		return nil, fmt.Errorf("unknown command %q (answer, interrupt, drain, run, log, trash, pause, unpause)", c.Kind)
 	}
 	if c.Kind != KindAnswer {
 		c.Answer = nil

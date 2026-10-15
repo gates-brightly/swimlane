@@ -189,6 +189,9 @@ func Text(w io.Writer, t *Timeline, o Options) {
 		case l.State != status.Passed:
 			note = l.State
 		}
+		if l.Paused > 0 {
+			note = strings.TrimSpace(note + " paused " + secs(l.Paused))
+		}
 		mark := ""
 		if l.OnChain {
 			mark = p.Paint(ui.Yellow, "◆")
