@@ -8,6 +8,7 @@ where it would land in the code, open questions, and how to test it.
 |---|---|---|
 | Lane claims: a lease on a lane while a session writes it | [lane-claims.md](lane-claims.md) | proposed |
 | swim observe: computed observations and knowledge from runs; optional Claude write-up | [observe.md](observe.md) | proposed |
+| swim pause / unpause (or resume): hold lanes at their next step, then resume or replace them | [pause.md](pause.md) | proposed |
 
 ## Staging a feature
 
