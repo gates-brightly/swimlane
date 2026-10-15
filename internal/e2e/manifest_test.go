@@ -215,3 +215,30 @@ run "after" true`)
 		t.Errorf("the round went on after drift:\n%s\n%s", log, out)
 	}
 }
+
+// An approval binds the runner the repo names for the lane: the same
+// script, run by another runner, is another thing to approve (T2).
+func TestManifestRunnerBinding(t *testing.T) {
+	r := newRepo(t, "")
+	keys := people(t, r, "require:\n  - guards: [FIN_ALLOW_*]\n    count: 1\n", "zach")
+	dir := t.TempDir()
+	for _, name := range []string{"pyrun", "pyrun2"} {
+		os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexec bash \"$@\"\n"), 0o755)
+	}
+	r.env = append(r.env, "PATH="+filepath.Dir(bin)+":"+dir+":/usr/bin:/bin")
+	r.write("swim.yml", "runners:\n  py: pyrun\n", 0o644)
+	r.write("lane.1.py", `# Round: drop the old table
+# Guards:  FIN_ALLOW_DROP drop the old table
+if swim guard FIN_ALLOW_DROP "drop the old table"; then swim run "drop" -- true; fi
+`, 0o644)
+	r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"])
+	r.mustSwim("run", "1", "--plain")
+	contains(t, "approved", r.log(1), "APPROVED  drop the old table (approved by ", "PASS  drop")
+
+	r.write("swim.yml", "runners:\n  py: pyrun2\n", 0o644)
+	r.mustSwim("run", "1", "--plain")
+	contains(t, "stale runner", r.log(1), "SKIP  drop the old table (dry run: ", "runner changed (swim.yml pyrun, now swim.yml pyrun2)")
+	if strings.Count(r.log(1), "PASS  drop") != 1 {
+		t.Errorf("the guarded step ran under another runner:\n%s", r.log(1))
+	}
+}

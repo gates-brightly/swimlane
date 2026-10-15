@@ -403,18 +403,10 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 		{"a lane that writes approvals/ or lookup.yml after the run starts", "T3", TestHostileLaneWritesApprovals},
 		{"a lane that calls _mark APPROVED itself", "T3", TestHostileLaneMarksApproved},
 		{"a lane that sets FLAG=1 in its own environment", "T3", TestHostileLaneSetsFlag},
-		{"an included file changed between approval and exec", "T1, T2", func(t *testing.T) {
-			gap(t, "T1, T2")
-		}},
-		{"the runner changed between approval and exec", "T1, T2", func(t *testing.T) {
-			gap(t, "T1, T2")
-		}},
-		{"the env changed between approval and exec", "T1, T2", func(t *testing.T) {
-			gap(t, "T1, T2")
-		}},
-		{"the evidence changed between approval and exec", "T1, T2", func(t *testing.T) {
-			gap(t, "T1, T2")
-		}},
+		{"an included file changed between approval and exec", "T2", TestManifestApprovalBinding},
+		{"the runner changed between approval and exec", "T2", TestManifestRunnerBinding},
+		{"the env changed between approval and exec", "T2", TestEnvFileQueuePin},
+		{"the evidence changed between approval and exec", "T2", TestEvidenceBoundApproval},
 		{"a chain record over 256 KiB, then another append", "T24", TestChainLargeEntryAndRepair},
 		{"a worker killed mid-step: no false success, no silent re-run", "T6", TestReapDeadLane},
 		{"a worker killed mid-chain-append: the chain is repairable", "T7", TestFaultChainMidAppend},

@@ -139,10 +139,12 @@ else stops it. What is enforced outside the script:
   recorded. `swim verify` fails on an approve entry its run didn't record.
 
 **What's still possible, and how it shows:** a lane runs as the operator,
-so it can still do what the operator can. It can hide from the launcher
-(unset `SWIM_LAUNCHED`) and write an approve entry signed with the runner
-key, which it can read; `swim verify` then reports an approval swim run
-didn't record. It can write `.swim/status.yml`, its own log, or a chain
+so it can still do what the operator can. Changing its environment doesn't
+hide it from the launcher: swim's hidden commands tell a lane swim run
+started by who started it, so an `APPROVED` mark is refused and a guard
+whose approvals channel is gone is a dry run. But it can append an approve
+entry to the chain itself, signed with the runner key, which it can read;
+`swim verify` then reports an approval swim run didn't record. It can write `.swim/status.yml`, its own log, or a chain
 entry under a run id it made up (`swim verify` notes runs without an
 attestation). And it can skip `guard` altogether (above). The attestation
 makes a forged entry detectable, not impossible: keeping the runner key
@@ -352,7 +354,7 @@ Test files are under `internal/`. "Pending" names the task in
 | A lane edited after it was queued is skipped. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
 | A lane whose env files changed after it was queued is skipped. | `TestEnvFileQueuePin` (e2e/envfile_test.go) |
 | The bytes approved are the bytes that run, even if the file changes mid-run. | `TestManifestStagedBytesRun`, `TestManifestMidRunEdit` (e2e/manifest_test.go) |
-| An approval covers sourced files, the sidecar, the runner and policy. | `TestManifestApprovalBinding` (e2e/manifest_test.go) |
+| An approval covers sourced files, the sidecar, the runner and policy. | `TestManifestApprovalBinding`, `TestManifestRunnerBinding` (e2e/manifest_test.go) |
 | A queued lane whose manifest changed is skipped. | `TestManifestQueuePin` (e2e/manifest_test.go) |
 | The broker names the lane that asks; an approval is used once, by its lane. | `TestManifestRequestsFromTheLane`, `TestManifestResponseReuse` (e2e/manifest_test.go) |
 | The hub refuses plain HTTP off loopback, and clients pin its CA. | `TestHubTLS`, `TestHubTLSPolicy` (e2e/hub_tls_test.go) |
