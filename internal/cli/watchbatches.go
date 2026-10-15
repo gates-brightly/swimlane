@@ -16,6 +16,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -146,9 +147,9 @@ func (b *batchRunner) full() bool {
 
 // startable lists the waiting batches that may start now, in start-time
 // order (queue.SortWaiting), as many as there's room for: due (a scheduled
-// one not before its time), not held by a schedule, and none of its lanes
-// in a running batch (any worker's), running in another swim, or in a
-// batch picked before it.
+// one not before its time), not held by a schedule, and none of the lanes
+// it runs (its own, and the Always lanes they pull in) in a running batch
+// (any worker's), running in another swim, or in a batch picked before it.
 func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*queue.Entry {
 	b.mu.Lock()
 	room := b.max - len(b.procs)
@@ -157,11 +158,22 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 	queue.SortWaiting(waiting)
 	held := heldBy(b.root, cfg, waiting)
 	now := scheduleNow()
+	// A batch needs its own lanes and the Always lanes its run pulls in
+	// (After: 1 on an Always lane 1): two batches that both pull in lane 1
+	// can't run side by side, or the second finds it already running and
+	// fails at once.
+	needs := func(e *queue.Entry) []int {
+		var ns []int
+		for _, l := range e.Lanes {
+			ns = append(ns, l.Lane)
+		}
+		return launcher.PulledIn(b.root, cfg, ns)
+	}
 	taken := map[int]bool{}
 	for _, e := range waiting {
 		if e.State == queue.Running {
-			for _, l := range e.Lanes {
-				taken[l.Lane] = true
+			for _, n := range needs(e) {
+				taken[n] = true
 			}
 		}
 	}
@@ -175,15 +187,16 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 			continue // a schedule that isn't due holds no lanes yet
 		}
 		free := held[e.ID] == nil
-		for _, l := range e.Lanes {
-			if taken[l.Lane] || laneBusy(b.root, st, l.Lane) != "" {
+		need := needs(e)
+		for _, n := range need {
+			if taken[n] || laneBusy(b.root, st, n) != "" {
 				free = false
 			}
 		}
 		// Its lanes count as taken either way: a later batch doesn't get
 		// ahead of this one on the lanes they share.
-		for _, l := range e.Lanes {
-			taken[l.Lane] = true
+		for _, n := range need {
+			taken[n] = true
 		}
 		if free {
 			out = append(out, e)

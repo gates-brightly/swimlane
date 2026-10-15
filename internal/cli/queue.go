@@ -331,6 +331,9 @@ func pinLane(root string, cfg *config.Config, n int) (queue.Lane, lane.Info, err
 		return queue.Lane{}, info, err
 	}
 	if !info.Pending() {
+		if note := trashedNote(root, n); note != "" {
+			return queue.Lane{}, info, fmt.Errorf("%s", note)
+		}
 		return queue.Lane{}, info, fmt.Errorf("swim %d holds no pending round (a stub, or no Round: line); write one before queueing it", n)
 	}
 	data, err := lane.ScriptBytes(root, n)

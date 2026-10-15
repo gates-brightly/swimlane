@@ -247,16 +247,9 @@ func cmdTrash(args []string) error {
 	return nil
 }
 
-func joinNs(ns []int) string {
-	var s []string
-	for _, n := range ns {
-		s = append(s, strconv.Itoa(n))
-	}
-	return strings.Join(s, " ")
-}
-
-// listTrash lists the trashed lanes under .swim/cleaned/, newest first.
-func listTrash(root string) error {
+// trashEntries are the lanes swim trash has set aside, from their
+// manifests under .swim/cleaned/ (a clean's own entries have no lane).
+func trashEntries(root string) []cleanedManifest {
 	dirs, _ := os.ReadDir(cleanedDir(root))
 	var ms []cleanedManifest
 	for _, d := range dirs {
@@ -269,6 +262,44 @@ func listTrash(root string) error {
 			ms = append(ms, m)
 		}
 	}
+	return ms
+}
+
+// trashedNote says where lane n's round went, for a lane that has no
+// script because it was trashed: "swim 5 was trashed (...); swim trash
+// --restore STAMP puts it back". "" when lane n has a script, or no trash
+// entry of its own.
+func trashedNote(root string, n int) string {
+	if len(lane.Scripts(root, n)) > 0 {
+		return ""
+	}
+	if _, ok := lane.LaneJobs(root, n); ok {
+		return ""
+	}
+	var last *cleanedManifest
+	for _, m := range trashEntries(root) {
+		if m.Lane == n && (last == nil || m.At > last.At) {
+			m := m
+			last = &m
+		}
+	}
+	if last == nil {
+		return ""
+	}
+	return fmt.Sprintf("swim %d was trashed (%s, by %s from %s, %s); swim trash --restore %s puts it back", n, last.Stamp, last.By, last.From, last.At, last.Stamp)
+}
+
+func joinNs(ns []int) string {
+	var s []string
+	for _, n := range ns {
+		s = append(s, strconv.Itoa(n))
+	}
+	return strings.Join(s, " ")
+}
+
+// listTrash lists the trashed lanes under .swim/cleaned/, newest first.
+func listTrash(root string) error {
+	ms := trashEntries(root)
 	if len(ms) == 0 {
 		fmt.Println("nothing trashed (swim trash N moves a lane's files aside)")
 		return nil

@@ -38,6 +38,15 @@ func TestTrash(t *testing.T) {
 	contains(t, "list", r.mustSwim("trash"), stamp, "swim 1", "cli")
 	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
 	contains(t, "log", r.mustSwim("log"), "trash ", stamp)
+	// Queueing or running a trashed lane says where it went, not that a
+	// Round: line is missing.
+	for _, args := range [][]string{{"queue", "add", "1"}, {"run", "1", "--plain"}} {
+		out, code := r.swim(args...)
+		if code == 0 {
+			t.Errorf("swim %v on a trashed lane exited 0:\n%s", args, out)
+		}
+		contains(t, strings.Join(args, " "), out, "swim 1 was trashed ("+stamp, "swim trash --restore "+stamp)
+	}
 
 	contains(t, "restore", r.mustSwim("trash", "--restore", stamp), "restored swim 1", "pending again")
 	if got := readFile(t, r, "lane.1.sh"); got != before {

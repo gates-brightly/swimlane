@@ -89,6 +89,15 @@ func expandAlways(o Options, sel, done []int) ([]int, []int) {
 	return sel, done
 }
 
+// PulledIn is every lane a run of lanes runs: those lanes, plus the
+// Always lanes they name in After: (and the Always lanes those name), as
+// swim run pulls them in. swim watch uses it so two batches that both
+// pull in the same Always lane don't start side by side.
+func PulledIn(root string, cfg *config.Config, lanes []int) []int {
+	sel, _ := expandAlways(Options{Root: root, Cfg: cfg, Lanes: lanes}, append([]int(nil), lanes...), nil)
+	return sel
+}
+
 // pendingDeps is the lanes each pending lane waits on, resolved together
 // (one script read per lane), or lane by lane when that fails, so one bad
 // After: line doesn't hide the rest.

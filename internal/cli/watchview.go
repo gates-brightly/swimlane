@@ -371,6 +371,9 @@ func (w *watchView) act(id string, key rune) string {
 		return err.Error()
 	}
 	if !info.Pending() {
+		if note := trashedNote(w.root, n); note != "" {
+			return note
+		}
 		return fmt.Sprintf("swim %d holds no pending round (a stub, or no Round: line)", n)
 	}
 	if key == 'q' {

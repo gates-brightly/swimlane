@@ -1076,6 +1076,17 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Fixed
 
+- **swim watch no longer starts batches that share an Always lane side
+  by side.** Lanes queued as separate batches that each pull in the same
+  Always lane (`After: 1`, as this repo's CI lanes do) all started at once:
+  the first ran lane 1, the rest found it already running, failed in 0s
+  and skipped their lanes, though each `swim queue add` had exited 0. A
+  batch now waits until every lane it runs is free, including the Always
+  lanes it pulls in (`launcher.PulledIn`).
+- **A trashed lane says so.** `swim queue add`, `swim run` and the watch's
+  `q` on a lane `swim trash` moved aside now say "swim 5 was trashed (...);
+  swim trash --restore STAMP puts it back", instead of asking for a
+  `Round:` line.
 - **Crashes no longer leave state half-written, or lanes stuck running**
   (T6):
   - **Durable writes:** `status.yml`, queue entries (added, claimed,

@@ -476,6 +476,13 @@ func runLanes(rest []string, rf runFlags) error {
 			return err
 		}
 	}
+	// A lane named by number that was trashed says so, and how to restore
+	// it, rather than that its script is missing.
+	for _, n := range lanes {
+		if note := trashedNote(root, n); note != "" {
+			return fmt.Errorf("%s", note)
+		}
+	}
 	// A lane a scheduled batch holds runs then, not now: twice otherwise.
 	for _, n := range lanes {
 		if e := scheduledHolding(root, n); e != nil {
