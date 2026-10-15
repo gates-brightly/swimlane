@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -97,6 +98,36 @@ func killLanes(root string) {
 	}
 }
 
+// parallel runs a top-level test alongside the others: each test drives
+// swim in its own scratch repo and config, so most of the suite's time is
+// processes waiting, which overlaps well. newRepo calls it, so a test opts
+// in by making a repo; subtests, tests in serialTests, tests that use
+// newSerialRepo and runs with SWIM_E2E_SERIAL=1 stay serial. Safe to call
+// more than once per test.
+func parallel(t *testing.T) {
+	if strings.Contains(t.Name(), "/") || serialTests[t.Name()] || os.Getenv("SWIM_E2E_SERIAL") != "" {
+		return
+	}
+	if _, done := parallelTests.LoadOrStore(t, true); done {
+		return
+	}
+	t.Parallel()
+}
+
+var parallelTests sync.Map
+
+// newSerialRepo is newRepo for a test that runs alone: the PTY tests, which
+// wait for a terminal screen to redraw and miss it on a loaded machine.
+func newSerialRepo(t *testing.T, deps string) *repo {
+	t.Helper()
+	parallelTests.LoadOrStore(t, true) // parallel() then leaves it serial
+	return newRepo(t, deps)
+}
+
+// serialTests run alone: their checks time things tightly enough that a
+// loaded machine fails them.
+var serialTests = map[string]bool{}
+
 type repo struct {
 	t    *testing.T
 	root string
@@ -105,6 +136,7 @@ type repo struct {
 
 func newRepo(t *testing.T, deps string) *repo {
 	t.Helper()
+	parallel(t)
 	root := t.TempDir()
 	root, _ = filepath.EvalSymlinks(root)
 	xdg := t.TempDir()

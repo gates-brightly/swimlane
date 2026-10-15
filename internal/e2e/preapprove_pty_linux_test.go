@@ -10,7 +10,7 @@ import (
 // ahead: it runs its guarded step without asking, and the log and chain
 // say who pre-approved it. n pre-declines another lane's (dry runs).
 func TestPreapproveInTUI(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	r.script(1, "first", `run "hold" bash -c 'while [ ! -e release ]; do sleep 0.05; done'`)
 	r.script(2, "guarded", `if guard ALLOW_DROP "drop table orders"; then run "dropped" true; fi`)
 	withHeader(t, r, 2, "# After: 1")
@@ -47,7 +47,7 @@ func TestPreapproveInTUI(t *testing.T) {
 // u clears a pre-answer, and a script changed after it was given asks
 // again (here, with no one to ask: a dry run), listed as unused.
 func TestPreapprovePinnedToScript(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	r.script(1, "first", `run "hold" bash -c 'while [ ! -e release ]; do sleep 0.05; done'`)
 	r.script(2, "guarded", `if guard ALLOW_DROP "drop table orders"; then run "dropped" true; fi`)
 	withHeader(t, r, 2, "# After: 1")
@@ -79,7 +79,7 @@ func TestPreapprovePinnedToScript(t *testing.T) {
 // Precedence: a pre-decline beats -y (the operator's specific answer wins
 // over the run-wide one), and FLAG=0 beats a pre-approval.
 func TestPreanswerPrecedence(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	r.script(1, "first", `run "hold" bash -c 'while [ ! -e release ]; do sleep 0.05; done'`)
 	r.script(2, "declined", `if guard ALLOW_A "do a"; then run "did a" true; fi`)
 	withHeader(t, r, 2, "# After: 1")

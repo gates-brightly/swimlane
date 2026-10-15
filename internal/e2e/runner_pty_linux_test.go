@@ -15,7 +15,7 @@ import (
 // finds the candidates on PATH, asks, and saves the answer for this repo;
 // the next run doesn't ask.
 func TestRunnerConfirmAtTerminal(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	tsx := fakeRunner(t, r, "tsx")
 	r.write("lane.1.ts", "// Round: typescript lane\nconsole.log('hi')\n", 0o644)
 

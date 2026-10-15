@@ -84,6 +84,38 @@ func Elapsed(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", s/60, s%60)
 }
 
+// Took is a short running time for a list row: "42s", "1m5s", "1h4m".
+func Took(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	s := int(d.Round(time.Second).Seconds())
+	switch {
+	case s < 60:
+		return fmt.Sprintf("%ds", s)
+	case s < 3600:
+		return fmt.Sprintf("%dm%ds", s/60, s%60)
+	}
+	return fmt.Sprintf("%dh%dm", s/3600, s/60%60)
+}
+
+// Ago is how long ago something ended, in one unit: "12s ago", "5m ago",
+// "3h ago", "2d ago".
+func Ago(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+}
+
 // Span is a job's start and stop clock times (local) and its duration:
 // "14:02:11 → 14:03:40 (1:29)", with dates when it crossed midnight.
 func Span(start, end time.Time) string {

@@ -9,7 +9,7 @@ import (
 // swim hub on a terminal: a live screen of every worker; Enter opens one,
 // Esc comes back, Ctrl-C stops the hub.
 func TestHubScreen(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

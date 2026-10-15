@@ -14,7 +14,7 @@ run "after" true`)
 }
 
 func TestPromptInTUI(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
 	// From the all view: a banner, not a question that takes the keys.
@@ -46,7 +46,7 @@ func TestPromptInTUI(t *testing.T) {
 }
 
 func TestPromptLineDeclines(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all", "--no-tui")
 	tr.waitFor("the lane says: drop table orders - 2026-10-12")
@@ -66,7 +66,7 @@ func TestPromptLineDeclines(t *testing.T) {
 }
 
 func TestPromptSingleLane(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "run", "1")
 	tr.waitFor("requires human approval of guard ALLOW_DROP")
@@ -78,7 +78,7 @@ func TestPromptSingleLane(t *testing.T) {
 }
 
 func TestPromptOffWithFlag(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all", "--no-prompt")
 	code, out := tr.wait()
@@ -89,7 +89,7 @@ func TestPromptOffWithFlag(t *testing.T) {
 }
 
 func TestPromptCtrlCStops(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
 	tr.waitFor("swim 1 needs approval · Enter to view")
@@ -106,7 +106,7 @@ func TestPromptCtrlCStops(t *testing.T) {
 }
 
 func TestPromptSeveralLanes(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
 	r.script(2, "two", `if guard ALLOW_TWO "change two"; then run "two changed" true; fi`)
 	r.script(3, "busy", `run "work" bash -c 'for i in $(seq 1 30); do echo busy-$i; sleep 0.1; done'`)
@@ -147,7 +147,7 @@ func TestPromptSeveralLanes(t *testing.T) {
 func TestPromptIsSafe(t *testing.T) {
 	for _, mode := range []string{"--no-tui", "tui"} {
 		t.Run(mode, func(t *testing.T) {
-			r := newRepo(t, "")
+			r := newSerialRepo(t, "")
 			r.script(1, "hostile", `if guard ALLOW_X `+payload+`; then run "changed" true; fi`)
 			args := []string{"all"}
 			if mode != "tui" {

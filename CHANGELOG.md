@@ -260,6 +260,21 @@ To cut a release:
 
 ### Changed
 
+- **This repo's CI runs its slow suites side by side.** It's five group
+  files instead of one lane of eight jobs in a row: lane 1
+  (`lanes.ci.sh`: fmt, lint, unit, race) runs first, then e2e (lane 2),
+  fault injection (3), security (4) and fuzzing (6) start together, each
+  `After: 1`. A run takes about as long as the slowest suite instead of the
+  sum. `make ci` runs lanes 1-4 and 6.
+  - **The e2e suite runs its tests in parallel.** Each test drives swim in
+    its own scratch repo, so `newRepo` marks the test `t.Parallel()`, and
+    the scenarios run alongside the Go tests instead of after them.
+    `SWIM_E2E_SERIAL=1` runs them one at a time again; a test that times
+    things too tightly for a loaded machine goes in `serialTests`.
+  - **`-timeout 25m`** on the e2e step (and 12m on fault and security): go
+    test's default 10m panicked the whole package on a slow macOS runner.
+  - **Fuzzing runs 5s per target locally,** 20s in CI (`CI=true`);
+    `FUZZTIME` overrides both.
 - **This repo's CI has security gates (T27):** `lanes.ci.sh` gains a race
   job (`go test -race`, Always), and runs fault injection, the security
   suite and the fuzz targets (20s each) as jobs of their own, so a red run
@@ -391,6 +406,10 @@ To cut a release:
 
 ### Added
 
+- **`swim watch` shows a timer on every row.** A running (or waiting)
+  lane shows how long its round has been going, `1m5s`; a finished one,
+  how long ago it ended, `3h ago`. A running batch shows its time since a
+  worker took it, and a waiting one how long ago it was queued.
 - **Tool caches between rounds, `# Cache:`.** A lane that declares
   `# Cache: terraform @infra/.terraform.lock.hcl` (or `npm`, `pip`, `go`)
   gets the tool's own download cache (`TF_PLUGIN_CACHE_DIR`,

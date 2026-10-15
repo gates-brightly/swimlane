@@ -116,6 +116,7 @@ func (w *watchView) rows() []display.PickRow {
 	}
 	rows = append(rows, display.PickRow{Text: "Jobs"})
 	st, _ := status.Load(w.root)
+	now := time.Now()
 	for _, n := range lane.Associated(w.root) { // the lanes in use now (a long-lived view)
 		var l *status.Lane
 		if st != nil {
@@ -136,7 +137,7 @@ func (w *watchView) rows() []display.PickRow {
 		if l != nil && len(l.DryRun) > 0 && state != "pending" {
 			round = display.DryMark + " " + round
 		}
-		rows = append(rows, display.PickRow{ID: "lane:" + strconv.Itoa(n), Text: fmt.Sprintf("swim %-2d  %-11s %s  %s", n, state, job, round), Color: color})
+		rows = append(rows, display.PickRow{ID: "lane:" + strconv.Itoa(n), Text: fmt.Sprintf("swim %-2d  %-11s %-8s %s  %s", n, state, laneTimer(l, state, now), job, round), Color: color})
 	}
 	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim}, display.PickRow{Text: "Queue"})
 	entries, err := queue.List(w.root, false)
@@ -148,7 +149,7 @@ func (w *watchView) rows() []display.PickRow {
 	}
 	queue.SortWaiting(entries)
 	held := heldBy(w.root, w.cfg, entries)
-	now := scheduleNow()
+	snow := scheduleNow()
 	for _, e := range entries {
 		var ns []string
 		for _, l := range e.Lanes {
@@ -156,9 +157,9 @@ func (w *watchView) rows() []display.PickRow {
 		}
 		state, when := e.State, ""
 		switch {
-		case e.State == queue.Queued && !e.Due(now):
+		case e.State == queue.Queued && !e.Due(snow):
 			at, _ := time.Parse(time.RFC3339, e.NotBefore)
-			state, when = "scheduled", "  at "+scheduledAt(e)+" · "+schedule.Until(at, now)
+			state, when = "scheduled", "  at "+scheduledAt(e)+" · "+schedule.Until(at, snow)
 		case held[e.ID] != nil:
 			state, when = "held", fmt.Sprintf("  until #%d has run", held[e.ID].Seq)
 		}
@@ -166,7 +167,7 @@ func (w *watchView) rows() []display.PickRow {
 		if w.batchDry(e, st) {
 			dry = display.DryMark + " "
 		}
-		text := fmt.Sprintf("#%-4d %-9s %sswim %s  by %s%s", e.Seq, state, dry, strings.Join(ns, ","), e.By, when)
+		text := fmt.Sprintf("#%-4d %-9s %-8s %sswim %s  by %s%s", e.Seq, state, queueTimer(e, state, now), dry, strings.Join(ns, ","), e.By, when)
 		if e.Note != "" {
 			text += "  " + e.Note
 		}
@@ -218,6 +219,52 @@ func (w *watchView) batchDry(e *queue.Entry, st *status.File) bool {
 		}
 	}
 	return false
+}
+
+// laneTimer is a lane row's time: how long it has been running (or
+// waiting) in this round, "1m5s", or how long ago its round finished,
+// "3h ago". A pending lane (a new job not run yet) shows none.
+func laneTimer(l *status.Lane, state string, now time.Time) string {
+	if l == nil || state == "pending" || state == "idle" {
+		return ""
+	}
+	switch l.State {
+	case status.Running, status.Waiting, status.Queued, status.Locked:
+		if t, ok := statusTime(l.StartedAt); ok {
+			return display.Took(now.Sub(t))
+		}
+		return ""
+	}
+	if t, ok := statusTime(l.FinishedAt); ok {
+		return display.Ago(now.Sub(t))
+	}
+	return ""
+}
+
+// queueTimer is a batch row's time: how long it has been running since a
+// worker claimed it, or how long ago it was queued. A scheduled batch's row
+// already says when it starts, so it has none.
+func queueTimer(e *queue.Entry, state string, now time.Time) string {
+	if state == "scheduled" {
+		return ""
+	}
+	if state == queue.Running && e.Worker != nil {
+		if t, err := time.Parse(time.RFC3339, e.Worker.Claimed); err == nil {
+			return display.Took(now.Sub(t))
+		}
+	}
+	if t, err := time.Parse(time.RFC3339, e.Created); err == nil {
+		return display.Ago(now.Sub(t))
+	}
+	return ""
+}
+
+func statusTime(s *string) (time.Time, bool) {
+	if s == nil || *s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, *s)
+	return t, err == nil
 }
 
 // laneRowState is how a lane's row shows its state: a script holding a job

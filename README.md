@@ -1219,11 +1219,13 @@ rounds, an Always lane with `Rerun-Children: yes` at its root does that
 without the flag. A fresh CI checkout has no passed rounds, so everything
 runs there either way. swim never commits results back.
 
-This repo dogfoods it. Its own CI is `swim ci` over lane 1, one committed
-group file: [`lanes.ci.sh`](lanes.ci.sh). Its jobs run in order: fmt (1.1),
-lint (1.2), unit tests (1.3) and race (1.4) are Always, then e2e (1.5),
-fault injection (1.6), the security suite (1.7) and fuzzing (1.8), each its
-own job so a red run names the gate. `make ci` runs the same jobs locally.
+This repo dogfoods it. Its own CI is `swim ci` over five committed group
+files, so the slow suites run side by side. Lane 1
+([`lanes.ci.sh`](lanes.ci.sh)) runs fmt, lint, unit tests and race first,
+as Always jobs. Then e2e (lane 2, `lanes.e2e.sh`), fault injection (3),
+the security suite (4) and fuzzing (6) start together, each its own lane so
+a red run names the gate. A run takes about as long as the slowest suite.
+`make ci` runs the same lanes locally.
 
 ### The watch hub
 

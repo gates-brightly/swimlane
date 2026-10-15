@@ -77,7 +77,7 @@ func (r *repo) swimTTY(args ...string) (string, int) {
 // Under a terminal the bell ends the output: once for a pass, twice for a
 // failure, never when quiet by config, flag, duration or CI.
 func TestChimeOnTerminal(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	r.env = append(r.env, "CI=")
 	r.script(1, "passes", `run "ok" true`)
 	r.script(2, "fails", `run "nope" false`)

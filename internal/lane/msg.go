@@ -35,7 +35,7 @@ const MsgMax = 120
 
 // MsgPath is lane n's message file.
 func MsgPath(root string, n int) string {
-	return filepath.Join(root, ".swim", "msg", fmt.Sprintf("lane%d%s", n, cellPart()))
+	return filepath.Join(root, ".swim", "msg", fmt.Sprintf("lane%d%s", n, cellPart(n)))
 }
 
 // ReadMsg returns lane n's message, if it has one.

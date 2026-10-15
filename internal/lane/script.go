@@ -114,7 +114,7 @@ func scriptFiles(root string, n int) []string {
 // if there are several), or lane.N.sh when there is none.
 func Script(root string, n int) string {
 	// A group lane's sub-job runs the script swim generates for it.
-	if cell := CurrentCell(); cell != "" {
+	if cell := CellOf(n); cell != "" {
 		if p, ok := SubScriptFor(root, n, cell); ok {
 			return p
 		}
@@ -421,7 +421,7 @@ func applySidecar(path string, info *Info) error {
 // step writes the round's exit code there and signals the wrapper
 // (SIGUSR1), which ends the program even if it ignores the failure.
 func EndPath(root string, n int) string {
-	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.end", n, cellPart()))
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.end", n, cellPart(n)))
 }
 
 // ClaimEnd records that lane n's round ends with code. Only the first

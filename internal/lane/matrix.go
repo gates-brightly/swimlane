@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/cache"
@@ -36,6 +37,20 @@ const MaxCells = 256
 
 // CurrentCell is the cell this process runs ("" for a plain lane).
 func CurrentCell() string { return os.Getenv(CellEnv) }
+
+// CellOf is the current process's cell when it belongs to lane n, else "".
+// A command run inside a job or cell of one lane (swim lint in job 1.2)
+// that reads another lane reads that lane whole, not "its" cell 2.
+func CellOf(n int) string {
+	c := CurrentCell()
+	if c == "" {
+		return ""
+	}
+	if l, err := strconv.Atoi(os.Getenv("SWIM_LANE")); err == nil && l != n {
+		return ""
+	}
+	return c
+}
 
 // Axis is one Matrix: line.
 type Axis struct {

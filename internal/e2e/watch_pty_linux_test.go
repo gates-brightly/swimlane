@@ -9,7 +9,7 @@ import (
 // swim watch on a terminal shows the jobs and the queue: ↑ ↓ pick one, r
 // runs it now, q queues it (and the worker then runs it), Ctrl-C quits.
 func TestWatchPickRunAndQueue(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	r.script(1, "first job", `run "one" echo one-ran`)
 	r.script(2, "second job", `run "two" echo two-ran`)
 	r.write("lane.3.sh", "#!/usr/bin/env bash\n# being written: no Round: line yet\n", 0o755) // in use, nothing pending
@@ -56,7 +56,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 // queue shows it running, enter on it follows its output (v: the lanes'
 // verbose output), q comes back.
 func TestWatchBatchOutputView(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
@@ -83,7 +83,7 @@ func TestWatchBatchOutputView(t *testing.T) {
 // Enter on a running lane's row follows its log, with no detour through
 // its batch; v switches to the batch's overview.
 func TestWatchLaneOutputView(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
@@ -109,7 +109,7 @@ func TestWatchLaneOutputView(t *testing.T) {
 // l on a lane shows its log, every round, running or not; l on a batch
 // shows its lanes' logs.
 func TestWatchLogsKey(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	r.script(1, "short lane 1", `run "hello" echo lane1-hello`)
 	r.script(2, "short lane 2", `run "hello" echo lane2-hello`)
 	r.mustSwim("run", "1", "--plain")
@@ -179,7 +179,7 @@ func TestWatchStreamsRunningOutput(t *testing.T) {
 
 // --no-tui keeps the plain worker.
 func TestWatchNoTUI(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	tr := r.startTUI(nil, "watch", "--once", "--no-tui")
 	code, out := tr.wait()
 	if code != 0 || strings.Contains(out, "\x1b[?1049h") {

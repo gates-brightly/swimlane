@@ -146,7 +146,7 @@ run "after" true`)
 			t.Errorf("swim %d = %s", n, st)
 		}
 	}
-	noStray(t, "sleep 31.")
+	noStray(t, `sleep 31\.[12]`) // this test's own steps: tests run in parallel
 }
 
 func TestKillOnThirdCtrlC(t *testing.T) {
@@ -167,7 +167,7 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 		t.Errorf("third Ctrl-C took %s", took)
 	}
 	contains(t, "output", l.out.String(), "swim: killing 1 lanes now.", "swim summary")
-	noStray(t, "sleep 31.")
+	noStray(t, `sleep 31\.[34]`) // this test's own steps: tests run in parallel
 }
 
 // A step stopped by its time limit takes what it started with it: the
@@ -182,7 +182,7 @@ run "after" true`)
 		t.Errorf("the step limit took %s to stop the step", took)
 	}
 	contains(t, "agent1.log", r.log(1), "  FAIL  forks (timeout: step limit 500ms)", "  PASS  after")
-	noStray(t, "sleep 33.")
+	noStray(t, `sleep 33\.[12]`) // this test's own steps: tests run in parallel
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
 		t.Error("the step's process group record was left behind")
 	}
@@ -202,7 +202,7 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 	l.signal(syscall.SIGINT)
 	l.wait(t, 5*time.Second)
 	contains(t, "output", l.out.String(), "swim: force quitting", "swim: killing 1 lanes now.")
-	noStray(t, "sleep 33.")
+	noStray(t, `sleep 33\.[34]`) // this test's own steps: tests run in parallel
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
 		t.Error("the killed step's process group record was left behind")
 	}
@@ -228,7 +228,7 @@ run "never" true`)
 	if strings.Contains(r.log(1), "PASS  never") || r.status().Get(1).State != status.Interrupted {
 		t.Errorf("swim 1 after SIGTERM: %+v", r.status().Get(1))
 	}
-	noStray(t, "sleep 31.")
+	noStray(t, `sleep 31\.[56]`) // this test's own steps: tests run in parallel
 }
 
 func TestHangupForcesAtOnce(t *testing.T) {
@@ -245,7 +245,7 @@ func TestHangupForcesAtOnce(t *testing.T) {
 		t.Errorf("SIGHUP should force at once; took %s", took)
 	}
 	contains(t, "output", l.out.String(), "swim: force quitting")
-	noStray(t, "sleep 31.")
+	noStray(t, `sleep 31\.[78]`) // this test's own steps: tests run in parallel
 }
 
 func TestImmediateInterruptMode(t *testing.T) {

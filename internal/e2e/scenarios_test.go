@@ -16,6 +16,7 @@ func TestScenarios(t *testing.T) {
 	if testing.Short() {
 		t.Skip("scenarios skipped with -short")
 	}
+	parallel(t) // alongside the Go tests, not after them
 	_, file, _, _ := runtime.Caller(0)
 	e2e := filepath.Join(filepath.Dir(file), "..", "..", "e2e")
 	dirs, err := filepath.Glob(filepath.Join(e2e, "scenarios", "*", "scenario.sh"))

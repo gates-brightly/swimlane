@@ -29,13 +29,13 @@ func Log(root string, n int) string {
 	if CheckMode() {
 		return CheckLog(root, n)
 	}
-	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d%s.log", n, cellPart()))
+	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d%s.log", n, cellPart(n)))
 }
 
 // CheckLog is lane n's check log (swim plan --check), kept apart from its
 // round log.
 func CheckLog(root string, n int) string {
-	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d%s.check.log", n, cellPart()))
+	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d%s.check.log", n, cellPart(n)))
 }
 
 // CellLog is the log of lane n's cell (a matrix round); in a read-only
@@ -48,9 +48,10 @@ func CellLog(root string, n int, cell string) string {
 	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.%s%s.log", n, CellSlug(cell), check))
 }
 
-// cellPart is ".<cell>" in a cell's process (file names), else "".
-func cellPart() string {
-	if c := CurrentCell(); c != "" {
+// cellPart is ".<cell>" for lane n's files in one of its cells' processes
+// (file names), else "".
+func cellPart(n int) string {
+	if c := CellOf(n); c != "" {
 		return "." + CellSlug(c)
 	}
 	return ""
@@ -67,7 +68,7 @@ func CheckMode() bool { return os.Getenv(CheckEnv) == "1" }
 // LogDir holds lane logs and their archives.
 func LogDir(root string) string { return filepath.Join(root, ".swim", "logs") }
 func PIDFile(root string, n int) string {
-	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.pid", n, cellPart()))
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.pid", n, cellPart(n)))
 }
 func SnapshotDir(root string) string { return filepath.Join(root, ".swim", "snapshots") }
 func RCFile(root string, n int) string {
@@ -264,7 +265,7 @@ func ReadScript(root string, n int) (Info, error) {
 		}
 		info.Syntax = max(info.Syntax, syntax.Current)
 		info.Subs = append([]SubJob(nil), g.Info.Subs...)
-		if cell := CurrentCell(); cell != "" {
+		if cell := CellOf(n); cell != "" {
 			c, ok := info.Cell(cell)
 			if !ok {
 				return Info{}, fmt.Errorf("swim %d has no job %d.%s", n, n, cell)
@@ -298,7 +299,7 @@ func ReadScript(root string, n int) (Info, error) {
 	}
 	info.resolveMatrix(root)
 	// In a cell's process, the round is that cell's.
-	if cell := CurrentCell(); cell != "" && info.IsMatrix() {
+	if cell := CellOf(n); cell != "" && info.IsMatrix() {
 		c, ok := info.Cell(cell)
 		if !ok {
 			return Info{}, fmt.Errorf("swim %d has no cell %q", n, cell)
@@ -656,9 +657,10 @@ func MigrateScript(src string) (string, bool) {
 }
 
 // Running returns the pid recorded for lane n if that process is alive.
-// Outside a cell's process, a lane any of whose cells runs is running.
+// Outside one of its cells' processes, a lane any of whose cells runs is
+// running.
 func Running(root string, n int) (int, bool) {
-	if pid, ok := runningIn(PIDFile(root, n)); ok || CurrentCell() != "" {
+	if pid, ok := runningIn(PIDFile(root, n)); ok || CellOf(n) != "" {
 		return pid, ok
 	}
 	cells, _ := filepath.Glob(filepath.Join(root, ".swim", fmt.Sprintf("lane%d.*.pid", n)))
@@ -703,7 +705,7 @@ func Alive(pid int) bool { return proc.Alive(pid) }
 // claimFile is lane n's claim: the lock it's claimed under, holding the
 // claimer's pid and start time.
 func claimFile(root string, n int) string {
-	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.claim", n, cellPart()))
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.claim", n, cellPart(n)))
 }
 
 // WritePID records pid as lane n's running lane script, with its start

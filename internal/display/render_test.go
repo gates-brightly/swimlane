@@ -262,3 +262,20 @@ func TestSpan(t *testing.T) {
 		t.Errorf("over midnight: %q", got)
 	}
 }
+
+func TestTookAndAgo(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		0: "0s", 42 * time.Second: "42s", 65 * time.Second: "1m5s", time.Hour + 4*time.Minute + 9*time.Second: "1h4m",
+	} {
+		if got := Took(d); got != want {
+			t.Errorf("Took(%s) = %q, want %q", d, got, want)
+		}
+	}
+	for d, want := range map[time.Duration]string{
+		12 * time.Second: "12s ago", 5*time.Minute + 30*time.Second: "5m ago", 3 * time.Hour: "3h ago", 47 * time.Hour: "47h ago", 72 * time.Hour: "3d ago",
+	} {
+		if got := Ago(d); got != want {
+			t.Errorf("Ago(%s) = %q, want %q", d, got, want)
+		}
+	}
+}

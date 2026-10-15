@@ -200,3 +200,29 @@ func TestNestedJobs(t *testing.T) {
 		t.Errorf("a job of another lane in lane.3.sh parsed")
 	}
 }
+
+// A process in one lane's job (swim lint in job 1.3) that reads another
+// group lane reads that lane whole: the cell is its own lane's.
+func TestCellBelongsToItsLane(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "lanes.ci.sh"), []byte(groupSrc), 0o644)
+	other := "#!/usr/bin/env bash\n# swim: syntax 2\n# Round: e2e\n# After: 1\n\n# swim job 2.1\n# Round: e2e suite\nrun \"e2e\" true\n"
+	os.WriteFile(filepath.Join(root, "lanes.e2e.sh"), []byte(other), 0o644)
+	t.Setenv("SWIM_LANE", "1")
+	t.Setenv(CellEnv, "3")
+	if got := CellOf(1); got != "3" {
+		t.Errorf("CellOf(own lane) = %q", got)
+	}
+	if got := CellOf(2); got != "" {
+		t.Errorf("CellOf(another lane) = %q", got)
+	}
+	if info, err := ReadScript(root, 2); err != nil || info.Round != "e2e" {
+		t.Errorf("ReadScript(2) from job 1.3: %+v %v", info, err)
+	}
+	if info, _ := ReadScript(root, 1); info.Round != "lint" {
+		t.Errorf("ReadScript(1) in job 1.3: %+v", info)
+	}
+	if got := Log(root, 2); filepath.Base(got) != "agent2.log" {
+		t.Errorf("Log(2) from job 1.3 = %s", got)
+	}
+}

@@ -252,7 +252,7 @@ run "hold" bash -c 'while [ ! -f %s ]; do sleep 0.05; done'`, 5+30*(i%2), i, i, 
 }
 
 func TestTUILaneViewAndCtrlC(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	release := tuiLanes(r, 3)
 	tr := r.startTUI(nil, "all")
 	s := tr.waitScreen("all view with lane output", func(s string) bool {
@@ -305,7 +305,7 @@ func TestTUILaneViewAndCtrlC(t *testing.T) {
 }
 
 func TestTUIHoldsOpenAfterRun(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	release := tuiLanes(r, 2)
 	tr := r.startTUI(nil, "all")
 	tr.waitFor("all lanes · following")
@@ -335,7 +335,7 @@ func TestTUIHoldsOpenAfterRun(t *testing.T) {
 func TestTUIRestoresTerminal(t *testing.T) {
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGHUP} {
 		t.Run(sig.String(), func(t *testing.T) {
-			r := newRepo(t, "")
+			r := newSerialRepo(t, "")
 			release := tuiLanes(r, 2)
 			tr := r.startTUI(nil, "all")
 			tr.waitFor("all lanes · following")
@@ -353,7 +353,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 		})
 	}
 	t.Run("panic", func(t *testing.T) {
-		r := newRepo(t, "")
+		r := newSerialRepo(t, "")
 		release := tuiLanes(r, 2)
 		defer os.WriteFile(release, nil, 0o644) // let the orphaned lanes end
 		tr := r.startTUI([]string{"SWIM_TEST_TUI_PANIC=1"}, "all")
@@ -378,7 +378,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 
 // The existing views when the interactive one is ruled out.
 func TestTUIOff(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	release := tuiLanes(r, 2)
 	os.WriteFile(release, nil, 0o644)
 	for _, c := range []struct {
@@ -403,7 +403,7 @@ func TestTUIOff(t *testing.T) {
 
 // With more lanes than the panel shows, the selected lane keeps a row.
 func TestTUIManyLanesKeepsSelection(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "")
 	release := filepath.Join(r.root, "release")
 	for i := 1; i <= 40; i++ {
 		body := `run "quick" true`
