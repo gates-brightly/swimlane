@@ -104,6 +104,11 @@ for s in $selected; do
   rc=$?
   secs=$(( $(date +%s) - start ))
   if [ $rc -eq 0 ]; then result=PASS; else result=FAIL; failed=$((failed + 1)); fi
+  # E2E_KEEP_FAILED=DIR: keep a failed scenario's scratch repo there (CI
+  # uploads it), whatever -k says.
+  if [ $rc -ne 0 ] && [ -n "${E2E_KEEP_FAILED:-}" ]; then
+    mkdir -p "$E2E_KEEP_FAILED" && cp -R "$dir" "$E2E_KEEP_FAILED/$s" && echo "  kept for CI: $E2E_KEEP_FAILED/$s"
+  fi
   [ -f "$dir/out/info" ] && cat "$dir/out/info"
   [ "$keep" = 1 ] && echo "  kept: $repo"
   report="$report$(printf '  %-16s %-4s %4ss' "$s" "$result" "$secs")

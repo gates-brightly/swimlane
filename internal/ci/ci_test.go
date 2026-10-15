@@ -115,7 +115,7 @@ func TestAnnotateAndSections(t *testing.T) {
 	var b bytes.Buffer
 	Annotate(&b, Generic{}, reports())
 	want := "swim: warning: swim 1: deploy: approved without a prompt: ALLOW_A (swim run -y); DEPLOY (flag set)\n" +
-		"swim: error: swim 1: deploy: FAIL  apply (exit 1)\n" +
+		"swim: error: swim 1: deploy: FAIL  apply (exit 1)\nboom <&>\n" + // with the step's last output lines
 		"swim: notice: swim 1: deploy: delete table: dry run: set X=1 to approve\n" +
 		"swim: warning: swim 1: deploy: DRIFT  queue policy differs\n" +
 		"swim: notice: swim: 2 lanes skipped: swim 2, 3 (swim 1 failed)\n"

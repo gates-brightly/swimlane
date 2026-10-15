@@ -43,8 +43,13 @@ jobs:
           go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim
           echo "$RUNNER_TEMP/swim-bin" >> "$GITHUB_PATH"
 
+      # A failed e2e scenario's scratch repo is kept under E2E_KEEP_FAILED
+      # (e2e/run.sh) and uploaded below; the e2e step's annotation names
+      # each failed Go test (e2etool gotest-report).
       - name: swim ci (fmt, lint, test, then e2e)
         run: swim ci --junit swim.xml
+        env:
+          E2E_KEEP_FAILED: ${{ runner.temp }}/swim-e2e-failed
 
       - name: Upload swim logs and JUnit
         if: always()
@@ -55,9 +60,7 @@ jobs:
             .swim/logs
             .swim.log
             swim.xml
+            e2e.xml
+            ${{ runner.temp }}/swim-e2e-failed
           if-no-files-found: ignore
           include-hidden-files: true   # .swim/ and .swim.log start with a dot
-
-      - name: Keep scenario repos on failure
-        if: failure()
-        run: e2e/run.sh -k || true

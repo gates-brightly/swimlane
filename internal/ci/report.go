@@ -231,7 +231,7 @@ func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 			}
 			switch res.Kind {
 			case logparse.Fail, logparse.Blocked, logparse.Stop:
-				p.Annotate(w, Error, title, text)
+				p.Annotate(w, Error, title, text+outputTail(res.Output))
 			case logparse.Drift:
 				p.Annotate(w, Warning, title, text)
 			case logparse.Skip:
@@ -305,7 +305,7 @@ func Markdown(w io.Writer, reps []LaneReport, run, commit string, code int) {
 	if len(unprompted) > 0 {
 		fmt.Fprintf(w, "\n**Approved without a prompt:** %s\n", strings.Join(unprompted, "; "))
 	}
-	fmt.Fprintln(w, "\nLogs: `.swim/logs/` (upload them as an artifact to keep them).")
+	fmt.Fprintln(w, "\nLogs: `.swim/logs/` and `.swim.log` (kept only if the workflow uploads them as an artifact).")
 }
 
 func mdCell(s string) string { return strings.NewReplacer("|", "\\|", "\n", " ").Replace(s) }
@@ -406,4 +406,23 @@ func tail(lines []string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// annotationTail is how many of a failed step's last output lines its
+// annotation carries: enough to name what failed (a Go test's FAILED line)
+// without opening the logs.
+const annotationTail = 12
+
+// outputTail is a failed step's last output lines, for its annotation.
+func outputTail(out []string) string {
+	for len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+		out = out[:len(out)-1]
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	if len(out) > annotationTail {
+		out = out[len(out)-annotationTail:]
+	}
+	return "\n" + strings.Join(out, "\n")
 }

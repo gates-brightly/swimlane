@@ -260,6 +260,13 @@ To cut a release:
 
 ### Changed
 
+- **A red `swim ci` says what failed:** a failed step's annotation carries
+  its last output lines, and this repo's e2e lane runs `go test -json`
+  through `e2etool gotest-report`, so its tail (and the annotation) names
+  each failed Go test with its output, and `e2e.xml` has a JUnit case per
+  test. A failed e2e scenario's scratch repo is kept under
+  `E2E_KEEP_FAILED` and uploaded with the run's artifact (the old "keep
+  scenario repos" step ran every scenario again, after the upload).
 - **`swim watch` runs queued batches side by side:** a batch no longer
   waits for swim to be idle, only for its own lanes.
   - **Up to `--batches N` at once** (`watch_batches`, default 4), each in a

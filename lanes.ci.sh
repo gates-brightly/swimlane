@@ -55,5 +55,9 @@ run "go test (unit)" scripts/hermetic bash -c 'go test $(go list ./... | grep -v
 # in scratch repos, and runs every e2e/scenarios/ scenario as a subtest.
 # scripts/hermetic strips this lane's environment (SWIM_*, the git shim, CI
 # variables) first. Not Always: too slow to be setup.
+# go test -json through e2etool gotest-report: the step's last lines name
+# each failed test with its output (swim ci puts them in the annotation),
+# and e2e.xml has a JUnit case per Go test. E2E_KEEP_FAILED (the workflow
+# sets it) keeps a failed scenario's scratch repo there.
 stage check
-run "go test ./internal/e2e" scripts/hermetic go test -count=1 ./internal/e2e/...
+run "go test ./internal/e2e" scripts/hermetic bash -c 'set -o pipefail; go test -json -count=1 ./internal/e2e/... | go run ./e2e/cmd/e2etool gotest-report --junit e2e.xml'
