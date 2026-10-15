@@ -10,6 +10,7 @@ where it would land in the code, open questions, and how to test it.
 | swim observe: computed observations and knowledge from runs; optional Claude write-up | [observe.md](observe.md) | proposed |
 | swim pause / unpause (or resume): hold lanes at their next step, then resume or replace them | [pause.md](pause.md) | proposed |
 | swim cache: tool download caches that outlive a round, checked against pinned lockfiles | [cache.md](cache.md) | in progress |
+| Trash a lane: `d` in swim watch, a hub button, swim trash N (moved to .swim/cleaned/, restorable) | [trash.md](trash.md) | proposed |
 
 ## Staging a feature
 
