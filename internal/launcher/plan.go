@@ -558,6 +558,9 @@ type PlanLane struct {
 	Jobs []PlanJob `yaml:"jobs,omitempty"`
 	// Check is the lane's last read-only check (swim plan --check).
 	Check *PlanCheck `yaml:"check,omitempty"`
+	// Claim is the lane's live claim (swim claim): a session may still be
+	// writing its round.
+	Claim *lane.Claim `yaml:"claim,omitempty"`
 	Fail  string     `yaml:"fail,omitempty"` // hard, when Fail: hard
 }
 
@@ -631,6 +634,7 @@ func Plan(o Options) (*PlanDoc, error) {
 		if o.ShowChecks {
 			l.Check = checkOf(o, n, pl.inRunDeps[n])
 		}
+		l.Claim = lane.ReadClaim(o.Root, n)
 		if info.IsGroup() {
 			for _, s := range info.Subs {
 				l.Jobs = append(l.Jobs, PlanJob{Job: fmt.Sprintf("%d.%s", n, s.Name), ID: s.Info.Job, Round: s.Info.Round, Always: s.Info.Always})

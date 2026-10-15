@@ -65,9 +65,20 @@ func cmdStatus(args []string) error {
 		doc := struct {
 			Schema      string `yaml:"schema"`
 			status.File `yaml:",inline"`
-		}{"swim.status/v1", *f}
+			// Claims are the lanes' live claims (swim claim), by lane: not in
+			// status.yml itself.
+			Claims map[int]*lane.Claim `yaml:"claims,omitempty"`
+		}{Schema: "swim.status/v1", File: *f}
 		if only > 0 {
 			doc.Lanes = []status.Lane{*f.Get(only)}
+		}
+		for _, l := range doc.Lanes {
+			if c := lane.ReadClaim(root, l.Lane); c != nil {
+				if doc.Claims == nil {
+					doc.Claims = map[int]*lane.Claim{}
+				}
+				doc.Claims[l.Lane] = c
+			}
 		}
 		enc := yaml.NewEncoder(os.Stdout)
 		enc.SetIndent(2)

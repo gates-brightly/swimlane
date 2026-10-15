@@ -334,7 +334,8 @@ swim report --earmarks | --earmark --reset [--name NAME]
   -y) or by a guard flag (flag_approved: FLAG=1, a batch's --approve).
   Guards it didn't approve, whose steps ran as dry runs, show as [DRY]
   (dry_run), here, in the live view, the watch screen and the hub.
-  --yaml     the status file's fields as YAML, tagged schema: swim.status/v1
+  --yaml     the status file's fields as YAML, tagged schema: swim.status/v1;
+             claims: the lanes' live claims (swim claim), by lane
              (with N|JOB, just that lane); the file itself is unchanged
              (cat .swim/status.yml)
   --rebuild  reconstruct status.yml from lane scripts and logs

@@ -32,6 +32,10 @@ func TestLaneClaims(t *testing.T) {
 	}
 	st, _ := r.as("b", "status", "3")
 	contains(t, "status", st, "claimed by", "(a) until")
+	y, _ := r.as("b", "status", "--yaml")
+	contains(t, "status --yaml", y, "claims:", "session: a")
+	y, _ = r.as("b", "plan", "3", "--yaml")
+	contains(t, "plan --yaml", y, "claim:", "session: a")
 	if out, code := r.as("b", "stub", "3", "nothing"); code == 0 || !strings.Contains(out, "claimed by") {
 		t.Errorf("b's stub: exit %d\n%s", code, out)
 	}
