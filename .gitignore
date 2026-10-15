@@ -8,6 +8,9 @@ lane.[0-9]*
 # e2e scenario lane scripts are source, not swim working files
 !/e2e/scenarios/*/lanes/lane.[0-9]*.sh
 
+# demo lane scripts are source, not swim working files
+!/demos/*/lanes/lane.[0-9]*
+
 # Python bytecode (the SDK conformance tests import the SDK)
 __pycache__/
 *.pyc

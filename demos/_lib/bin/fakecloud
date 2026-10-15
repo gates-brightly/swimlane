@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# fakecloud: a stand-in for a cloud CLI, so the demos change something real
+# without credentials. State is plain files under $FAKECLOUD_HOME:
+#   services/<name>   the deployed version
+#   tables/<name>     one row per line
+#   fail/<name>       present: deploys of that service fail
+#
+#   fakecloud ls                         services and tables
+#   fakecloud deploy SVC VERSION [SECS]  deploy (takes SECS, default 1)
+#   fakecloud version SVC                the deployed version
+#   fakecloud health SVC                 ok, or exit 1
+#   fakecloud rows TABLE                 row count
+#   fakecloud select TABLE [PATTERN]     rows (matching PATTERN)
+#   fakecloud delete TABLE PATTERN       delete matching rows
+#   fakecloud drop TABLE                 drop a table (needs FAKECLOUD_ADMIN_PW)
+#   fakecloud break SVC / fix SVC        make deploys of SVC fail / work
+# Bash 3.2 compatible.
+set -u
+: "${FAKECLOUD_HOME:?fakecloud: FAKECLOUD_HOME is not set}"
+S=$FAKECLOUD_HOME
+mkdir -p "$S/services" "$S/tables" "$S/fail"
+
+die() { echo "fakecloud: $*" >&2; exit 1; }
+
+cmd=${1:-ls}; shift || true
+case "$cmd" in
+  ls)
+    echo "services:"
+    for f in "$S"/services/*; do [ -f "$f" ] && printf '  %-12s %s\n' "$(basename "$f")" "$(cat "$f")"; done
+    echo "tables:"
+    for f in "$S"/tables/*; do [ -f "$f" ] && printf '  %-12s %s rows\n' "$(basename "$f")" "$(wc -l <"$f" | tr -d ' ')"; done
+    ;;
+  deploy)
+    svc=${1:?service}; ver=${2:?version}; secs=${3:-1}
+    echo "deploying $svc $ver ..."
+    sleep "$secs"
+    [ -f "$S/fail/$svc" ] && die "$svc: rollout failed: health check timed out (3/3 tasks unhealthy)"
+    echo "$ver" >"$S/services/$svc"
+    echo "$svc is now $ver"
+    ;;
+  version) cat "$S/services/${1:?service}" 2>/dev/null || die "${1}: not deployed" ;;
+  health)
+    [ -f "$S/services/${1:?service}" ] || die "$1: not deployed"
+    echo "$1 $(cat "$S/services/$1"): ok"
+    ;;
+  rows)
+    t=$S/tables/${1:?table}; [ -f "$t" ] || die "$1: no such table"
+    wc -l <"$t" | tr -d ' '
+    ;;
+  select)
+    t=$S/tables/${1:?table}; [ -f "$t" ] || die "$1: no such table"
+    if [ -n "${2:-}" ]; then grep -- "$2" "$t" || true; else cat "$t"; fi
+    ;;
+  delete)
+    t=$S/tables/${1:?table}; pat=${2:?pattern}; [ -f "$t" ] || die "$1: no such table"
+    n=$(grep -c -- "$pat" "$t" || true)
+    grep -v -- "$pat" "$t" >"$t.tmp"; mv "$t.tmp" "$t"
+    echo "deleted $n rows from $1"
+    ;;
+  drop)
+    t=$S/tables/${1:?table}; [ -f "$t" ] || die "$1: no such table"
+    [ "${FAKECLOUD_ADMIN_PW:-}" = "$(cat "$S/admin_pw" 2>/dev/null)" ] && [ -n "${FAKECLOUD_ADMIN_PW:-}" ] \
+      || die "permission denied: drop needs the admin password (FAKECLOUD_ADMIN_PW)"
+    rm -f "$t"; echo "dropped table $1"
+    ;;
+  break) touch "$S/fail/${1:?service}"; echo "deploys of $1 will now fail" ;;
+  fix) rm -f "$S/fail/${1:?service}"; echo "deploys of $1 will work again" ;;
+  seed-table) t=$S/tables/${1:?table}; shift; printf '%s\n' "$@" >"$t" ;;
+  set-admin-pw) printf '%s' "${1:?password}" >"$S/admin_pw" ;;
+  *) die "unknown command: $cmd (see the top of $0)" ;;
+esac
