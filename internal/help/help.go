@@ -253,6 +253,46 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
            plan shows the last checks too, marked stale once a script changes.
            --parallel N caps checks at once; --timeout D caps the whole check.
 `,
+	"report": `swim report [N|JOB ...] [--earmark] [--name NAME] [--since T|RUN|JOB] [--no-logs] [--results] [--yaml]
+swim report --earmark --wait [--timeout D] [--interval D]
+swim report --earmarks | --earmark --reset [--name NAME]
+
+  What changed since you last looked, in one call, untruncated: the lanes
+  whose state or job changed (as swim status words them, with what they
+  were, then one unchanged: line), held locks and the queue, every
+  .swim.log line written since, and every lane-log line written since:
+  the rest of the round that was in progress, then each round after it
+  (cells' and group jobs' logs too), verbatim, as swim log --raw prints
+  them. Steps running now follow, from their spools. It changes nothing.
+  --earmark      then move your earmark to the end of what it printed: the
+                 next report starts there. Lines written while it printed
+                 are in the next one; a running step stays new until it
+                 ends. An earmark is a place in the record, never an edit:
+                 nothing is cut from a log.
+  --name NAME    whose earmark (default $SWIM_SESSION, else "default"):
+                 readers each keep their own, in .swim/earmarks/NAME.yml
+  --since T|RUN|JOB  start at a UTC time, a run's first .swim.log line or a
+                 job's first round, whatever the earmark says
+  N|JOB ...      only these lanes (their .swim.log lines, logs and status);
+                 the earmark still keeps the other lanes' places, so the
+                 next full report misses nothing
+  --no-logs      status and .swim.log only
+  --results      lane logs' result lines only: each step's command and
+                 output are dropped, counted, with where to read them
+  --yaml         swim.report/v1: earmark, status {changed, unchanged, queue},
+                 history (lines), lanes: [{lane, cell, rounds:
+                 [{continues_from, round: swim.log/v1, its results since}]}]
+  --wait         block until there's something new, then report (with
+                 --earmark: the agent loop in one command); --timeout D
+                 gives up, failing as swim wait does
+  --earmarks     list every reader's earmark (name, time, age)
+  --reset        (with --earmark) delete your earmark: the next report is
+                 the work in progress again
+  With no earmark yet the report is the work in progress: every lane's
+  current (not archived) rounds, and .swim.log from the oldest of them.
+  An earmark that lost its place (a round pruned, a log rewritten) says so
+  with a WARN line and shows the rounds since it was set.
+`,
 	"status": `swim status [N|JOB] [--yaml] [--rebuild] [--run RUN]
 
   Show the last state of every lane in use (or just one lane, by number
@@ -1344,7 +1384,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "secret", "new", "plan", "run", "all", "status", "log", "timeline", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "secret", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}

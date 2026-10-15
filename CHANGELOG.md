@@ -361,6 +361,18 @@ To cut a release:
 
 ### Added
 
+- **`swim report`: what changed since you last looked,** in one call and
+  untruncated: the lanes whose state changed (and what they were), every
+  `.swim.log` line and every lane-log line written since the reader's
+  earmark, verbatim, and the steps running now.
+  - **`--earmark`** then moves the reader's earmark (`--name`, else
+    `SWIM_SESSION`, else `default`; `.swim/earmarks/`) to the end of what it
+    printed. Earmarks follow rounds, not files, so an archive doesn't lose
+    the place; one that does (a round pruned, a log rewritten) says so.
+  - **`--wait`** blocks until there's something new: `swim report --earmark
+    --wait` is an agent's catch-up loop in one command.
+  - Narrow to lanes or jobs, `--no-logs`, `--results` (results without step
+    output), `--since T|RUN|JOB`, `--yaml` (`swim.report/v1`), `--earmarks`.
 - **Execution manifest:** swim pins what a lane runs before it waits, runs
   a staged copy, and approvals sign the whole operation, not just the
   script.

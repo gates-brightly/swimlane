@@ -77,6 +77,7 @@ var leakInventory = []struct{ what, re string }{
 	{"the git shim", `^repo/\.swim/bin/`},
 	{"hub enrolment", `^repo/\.swim/(hub\.yml|hub\.key|hub-state\.yml|worker\.key)$`},
 	{"watch state", `^repo/\.swim/watch`},
+	{"report earmarks (places in the logs: round lines and hashes)", `^repo/\.swim/earmarks/`},
 	{"the config", `^config/swim/config\.yml$`},
 	{"the secrets store (ciphertext)", `^config/swim/secrets\.yml$`},
 	{"the trust pins", `^config/swim/trust`},

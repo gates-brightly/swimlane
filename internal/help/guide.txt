@@ -33,6 +33,8 @@ COMMANDS
   status [N|JOB] [--yaml] [--run RUN]   last state of every lane, or as of one run
   log [N|JOB] [--all] [--yaml]   print a lane's log (--all: with its archives), a job's
                            rounds, or with no argument the project log .swim.log
+  report [--earmark] [--wait]   what changed since you last looked: status, .swim.log and
+                           every lane-log line since your earmark, in full (--earmark moves it)
   timeline [RUN|N|JOB]     when each lane of the last run (or RUN) waited, ran and finished,
                            and the longest dependency chain; N/JOB: its rounds across runs
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
@@ -225,11 +227,15 @@ FILES (repo root)
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,
                         locked, started and finished (`swim timeline`)
   .swim/laneN.pid       present while lane N runs
+  .swim/earmarks/NAME.yml  a reader's place in the logs (swim report --earmark)
   ~/.config/swim/config.yml   configuration (outside the repo; see CONFIG)
 
 PLANNER WORKFLOW
-  0. Catch up. Read .swim.log (`swim log`, or `tail -50 .swim.log`), then
-     `swim status`. Don't redo or contradict what it records without asking.
+  0. Catch up: `swim report --earmark` (give each session its own name:
+     SWIM_SESSION or --name). It prints the lanes whose state changed,
+     .swim.log since you last looked and every lane-log line since, in full,
+     and moves your place; `swim report --earmark --wait` blocks until
+     there's more. Don't redo or contradict what it records without asking.
   1. Look before writing. Run `swim status`. Confirm with the operator which
      lanes are idle. Never write to a lane that is running or holds a pending
      round someone else may be about to run.
@@ -249,8 +255,8 @@ PLANNER WORKFLOW
      in the meantime is refused instead of run. Add any guard
      flags they must set to approve destructive steps, e.g.
      `FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2`. Explain what each flag approves.
-  5. After the run, read the log (`swim log N`, or `swim log <job>`) and
-     .swim/status.yml. Validate real
+  5. After the run, read what it wrote with `swim report --earmark` (`swim
+     log N`, or `swim log <job>`, for older rounds). Validate real
      outcomes in the step output (resource ids, counts, plan says "No
      changes"); a PASS line only means exit 0. If the run was slow,
      `swim timeline` shows which lane held it up (the longest chain) and
@@ -936,6 +942,7 @@ READING RESULTS
                               timeout, locks}], idle: [{lane, why}],
                               counts {run, retry, rerun, skip}
     swim status --yaml        swim.status/v1: status.yml's fields (above)
+    swim report --yaml        swim.report/v1 (see swim report --help)
     swim timeline --yaml      swim.timeline/v1 (see swim timeline --help)
 
 CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)

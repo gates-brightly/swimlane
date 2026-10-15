@@ -86,6 +86,37 @@ func effectiveState(l *status.Lane) string {
 	return l.State
 }
 
+// stateWord is how swim status names a lane's state: "PASS", "FAIL exit
+// 1", "waiting on swim 3", "running 0:42".
+func stateWord(l *status.Lane, state string, now time.Time) string {
+	word := state
+	switch state {
+	case status.Passed:
+		word = "PASS"
+	case status.Failed:
+		word = "FAIL"
+		if l.ExitCode != nil {
+			word = fmt.Sprintf("FAIL exit %d", *l.ExitCode)
+		}
+	case status.Skipped:
+		word = "SKIP"
+	case status.Interrupted:
+		word = "INTERRUPTED"
+	case status.Waiting:
+		word = display.WaitingText(l.WaitingOn)
+	case status.Running:
+		word = "running"
+		if l.StartedAt != nil {
+			if t, err := time.Parse(time.RFC3339, *l.StartedAt); err == nil {
+				word += " " + display.Elapsed(now.Sub(t))
+			}
+		}
+	case status.Running + "?", status.Waiting + "?":
+		word = state + " (process gone: interrupted)"
+	}
+	return word
+}
+
 func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui.Painter, now time.Time) {
 	title := fmt.Sprintf("swim status · %s", filepath.Base(root))
 	if f.Branch != "" {
@@ -105,31 +136,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			continue
 		}
 		state := effectiveState(l)
-		word := state
-		switch state {
-		case status.Passed:
-			word = "PASS"
-		case status.Failed:
-			word = "FAIL"
-			if l.ExitCode != nil {
-				word = fmt.Sprintf("FAIL exit %d", *l.ExitCode)
-			}
-		case status.Skipped:
-			word = "SKIP"
-		case status.Interrupted:
-			word = "INTERRUPTED"
-		case status.Waiting:
-			word = display.WaitingText(l.WaitingOn)
-		case status.Running:
-			word = "running"
-			if l.StartedAt != nil {
-				if t, err := time.Parse(time.RFC3339, *l.StartedAt); err == nil {
-					word += " " + display.Elapsed(now.Sub(t))
-				}
-			}
-		case status.Running + "?", status.Waiting + "?":
-			word = state + " (process gone: interrupted)"
-		}
+		word := stateWord(l, state, now)
 		label := p.Paint(ui.LaneColor(l.Lane)+ui.Bold, fmt.Sprintf(" swim %-2d", l.Lane))
 		round := l.Round
 		if state == status.Idle {

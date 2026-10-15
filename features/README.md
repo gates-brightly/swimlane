@@ -8,7 +8,6 @@ where it would land in the code, open questions, and how to test it.
 |---|---|---|
 | Lane claims: a lease on a lane while a session writes it | [lane-claims.md](lane-claims.md) | proposed |
 | swim clean / swim prune: a recoverable clean slate, and a deliberate purge | [clean.md](clean.md) | proposed |
-| swim report: status and every log line since the reader's earmark | [report.md](report.md) | proposed |
 
 ## Staging a feature
 

@@ -245,6 +245,7 @@ worker writes only its own `lane.N.sh`. You run `swim all` and the agents
 read the results back:
 
 ```sh
+swim report --earmark       # everything new since you last looked, in full, then mark your place
 swim status                 # what every lane is doing (or: cat .swim/status.yml)
 swim log 2                  # a lane's log; swim log <job-id> works too
 swim log                    # .swim.log: one line per top-level action, for catching up
