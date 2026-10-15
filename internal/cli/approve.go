@@ -51,6 +51,7 @@ func cmdApproveHook(args []string) error {
 		desc = "[" + cell + "] " + desc // each cell of a matrix asks for itself
 	}
 	job, run := os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN")
+	holdIfPaused(root, n, run, desc) // a paused round holds before its guard too
 	dryRun := func(why string) error {
 		detail := "dry run: set " + flag + "=1 to approve"
 		if why != "" {
@@ -374,10 +375,8 @@ func operator() string {
 
 // deadline is the round's Timeout, from SWIM_DEADLINE (epoch; 0 for none).
 func deadline() time.Time {
-	if s, err := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64); err == nil && s > 0 {
-		return time.Unix(s, 0)
-	}
-	return time.Time{}
+	n, _ := strconv.Atoi(os.Getenv("SWIM_LANE"))
+	return roundDeadline(os.Getenv("SWIM_ROOT"), n)
 }
 
 // approveRecorded is set when swim _approve has put an approval in the

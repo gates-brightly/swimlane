@@ -63,6 +63,8 @@ COMMANDS
   version                  swim's version and the newest release tag in its repo (git ls-remote)
   skill                    how to install the Claude skill for swim (skills/swim)
   interrupt N|JOB          ask one running lane to stop at its next step boundary
+  pause N|JOB [--wait]     hold a running lane before its next step, alive (--all: every lane, no claims)
+  unpause N|JOB            let a paused lane go on (swim resume: the same; --all)
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run once its lanes are free; queue [list|show|rm|requeue]

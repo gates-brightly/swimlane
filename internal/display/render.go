@@ -48,6 +48,7 @@ type LaneView struct {
 	Approval  string // while Running and waiting for the operator to approve a guarded step
 	Message   string // while Running: the round's status message (swim msg), "migrating billing (7/25)"
 	Cells     string // a matrix round's cell counts, "2/4 pass · 1 running · 1 waiting"
+	Paused    string // held by swim pause: after which step, or "before it starts"
 	// Pre is the operator's answer, given ahead of time in the live view,
 	// to the lane's guards: "approved", "declined" or "". KnownGuards are
 	// the guards swim knows the lane has; UnknownGuards counts those named
@@ -153,6 +154,9 @@ const DryMark = "[DRY]"
 
 func laneStateText(v LaneView, now time.Time) (string, string) {
 	thr := Throbber(now)
+	if v.Paused != "" && v.Active() {
+		return "paused " + v.Paused, ui.Yellow
+	}
 	switch v.State {
 	case Starting:
 		return thr + " starting", ui.Cyan

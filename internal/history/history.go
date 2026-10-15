@@ -46,6 +46,10 @@ const (
 	Prune         = "prune"          // swim prune: leftovers deleted (detail: name, counts, bytes)
 	Trash         = "trash"          // swim trash: one lane's files moved aside (detail: stamp, files, from)
 	Untrash       = "untrash"        // swim trash --restore: a trashed lane's files put back
+	Pause         = "pause"          // swim pause N: a lane holds before its next step (detail: after which step, note)
+	Unpause       = "unpause"        // swim unpause N (or swim resume N): ... and goes on
+	PauseAll      = "pause-all"      // swim pause --all: every lane holds, workers claim nothing
+	UnpauseAll    = "unpause-all"    // swim unpause --all
 	Schedule      = "schedule"       // swim schedule: a batch to start no earlier than a time (detail: id, lanes, not_before, zone, approvals)
 	ScheduleStart = "schedule-start" // a worker claimed a scheduled batch (detail: how late)
 	ScheduleRm    = "schedule-rm"    // swim schedule rm: a scheduled batch removed before it ran

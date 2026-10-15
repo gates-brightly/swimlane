@@ -1,6 +1,30 @@
 # swim pause: hold lanes at their next step, then resume or replace them
 
-Status: proposed
+Status: in progress (phase 1 shipped: the CLI, the hold in bash and SDK
+lanes and before guards, the deadline, waiting lanes, Ctrl-C, replace,
+`--all` and workers, status, the live view's paused row, docs)
+
+### Phase 2 (not built)
+
+- The live view's and watch screen's `p`/`P` keys and the watch banner.
+- `pause`/`unpause` as hub commands; paused lanes on the hub's pages.
+- `swim timeline`'s `paused` segment and the run record's pause spans.
+- The chain: pause records and `replaced_by` on round entries.
+- `swim doctor`'s `pause_warn` (lanes paused over 4h; a repo-wide pause
+  left on).
+- `swim plan` marking lanes it would wait on as paused.
+- The SDK's own deadline (`hello`'s) doesn't move out with paused time;
+  the bash library's and `swim step`'s do.
+
+### Where phase 1 differs from below
+
+- **No `paused` state.** A paused lane stays `running` (or `waiting`) in
+  `status.yml`, with `paused_*` fields: its process really is alive, so
+  every check that treats a lane as running (refusals, reaping, busy) stays
+  right with no change. `swim status` shows it as `paused`.
+- **No log syntax bump.** `PAUSE` and `RESUME` lines are skipped by a swim
+  from before them (its parser ignores result kinds it doesn't know), so
+  repos don't need `swim lock --upgrade` for them.
 
 ## Summary
 

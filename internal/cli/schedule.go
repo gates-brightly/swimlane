@@ -499,6 +499,9 @@ func claimDue(root string, cfg *config.Config) (*queue.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if _, paused := lane.RepoPause(root); paused {
+		return nil, nil // swim pause --all: no worker claims a batch
+	}
 	queue.SortWaiting(entries)
 	held := heldBy(root, cfg, entries)
 	now := scheduleNow()

@@ -342,6 +342,7 @@ type runFlags struct {
 	yes              bool
 	failed           bool // matrix lanes: only the cells that didn't pass
 	noFinally        bool // leave out the finally lanes naming the lanes run
+	replace          bool // end a paused round on the lane (swim pause) and run the new one
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
@@ -358,7 +359,7 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
 			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes, "no-finally": &rf.noFinally,
-			"failed": &rf.failed},
+			"failed": &rf.failed, "replace": &rf.replace},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
@@ -459,6 +460,13 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
+	}
+	// A paused lane (swim pause) holds a live round: running anything on it
+	// ends that round first, asked at a terminal or with --replace.
+	for _, n := range lanes {
+		if err := replaceIfPaused(root, n, rf); err != nil {
+			return err
+		}
 	}
 	// A lane a scheduled batch holds runs then, not now: twice otherwise.
 	for _, n := range lanes {
@@ -726,11 +734,11 @@ func cmdStep(args []string) error {
 		}
 	}
 	rt.NoTimeout = noRetryTimeout
-	// lane_init exports the round's deadline (Timeout:) as epoch seconds.
-	var deadline time.Time
-	if d, err := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64); err == nil && d > 0 {
-		deadline = time.Unix(d, 0)
-	}
+	// A paused round (swim pause) holds here, before the step starts.
+	holdIfPaused(root, n, os.Getenv("SWIM_RUN"), label)
+	// lane_init exports the round's deadline (Timeout:) as epoch seconds;
+	// time the round spent paused moves it out.
+	deadline := roundDeadline(root, n)
 	logPath := os.Getenv("STEP_LOG")
 	if logPath == "" {
 		logPath = "step.log"

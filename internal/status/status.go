@@ -74,6 +74,17 @@ type Lane struct {
 	Message   string `yaml:"message,omitempty"`
 	Progress  string `yaml:"progress,omitempty"`
 	MessageAt string `yaml:"message_at,omitempty"`
+	// A paused round (swim pause): its process holds before its next step
+	// (State stays running, or waiting for a lane not started yet). Who
+	// paused it and when, the step it held after and the one it will run
+	// next, and the note given. PausedS is the round's total paused time
+	// so far, which its Timeout: deadline moves out by.
+	PausedAt    string  `yaml:"paused_at,omitempty"`
+	PausedBy    string  `yaml:"paused_by,omitempty"`
+	PausedAfter string  `yaml:"paused_after,omitempty"`
+	NextStep    string  `yaml:"next_step,omitempty"`
+	PauseNote   string  `yaml:"pause_note,omitempty"`
+	PausedS     float64 `yaml:"paused_s,omitempty"`
 	// Outputs are the last round's outputs (# Outputs:, output KEY value):
 	// name -> SHA-256, in .swim/out/<job>/<run>/.
 	Outputs map[string]string `yaml:"outputs,omitempty"`
@@ -358,6 +369,7 @@ func (l *Lane) ResetRun() {
 	l.Stages = nil
 	l.Handlers = nil
 	l.Message, l.Progress, l.MessageAt = "", "", ""
+	l.PausedAt, l.PausedBy, l.PausedAfter, l.NextStep, l.PauseNote, l.PausedS = "", "", "", "", "", 0
 	l.FailedSteps = []string{}
 	l.AutoApproved, l.AutoVia, l.FlagApproved = nil, "", nil
 	l.DryRun = nil

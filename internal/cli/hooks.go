@@ -161,6 +161,10 @@ func cmdStart(args []string) error {
 	if !lane.StopRequested(root, n, run) {
 		lane.ClearStop(root, n)
 	}
+	if _, ok := lane.LanePause(root, n, run); !ok {
+		lane.ClearPause(root, n) // a pause left from an earlier run, likewise
+	}
+	os.Remove(lane.ResumedPath(root, n))
 	// The round's outputs directory ($SWIM_OUT), fresh for this run.
 	if err := os.MkdirAll(outputs.Dir(root, job, run), 0o755); err != nil {
 		lane.RemovePID(root, n)
@@ -583,6 +587,8 @@ func cmdFinish(args []string) error {
 	step.RecoverSpool(logPath)
 	if lane.CurrentCell() == "" {
 		lane.ClearStop(root, n) // the round is over: a stop request is spent (a cell's lane may still be running)
+		lane.ClearPause(root, n)
+		os.Remove(lane.ResumedPath(root, n))
 	}
 	// So is its status message; the latest goes to the log if it isn't there.
 	if m, ok := lane.ReadMsg(root, n); ok && m.Display() != m.Logged && m.Run == os.Getenv("SWIM_RUN") {

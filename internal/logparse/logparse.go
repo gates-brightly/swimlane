@@ -60,6 +60,8 @@ const (
 	Blocked  = "BLOCKED" // a command swim refused to run (counts as a failure)
 	Msg      = "MSG"     // a round's status message (swim msg); never a result
 	Checked  = "CHECKED" // a read-only check stopped where change would begin; never a result
+	Pause    = "PAUSE"   // swim pause held the round before its next step; never a result
+	Resume   = "RESUME"  // ... and swim unpause let it go on; never a result
 )
 
 // Syntax 2 markers and indents.
@@ -362,7 +364,7 @@ func scanner(r io.Reader) *bufio.Scanner {
 }
 
 var (
-	resultV2RE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN|MSG|CHECKED)  (.*)$`)
+	resultV2RE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN|MSG|CHECKED|PAUSE|RESUME)  (.*)$`)
 	timedRE    = regexp.MustCompile(`^(.*?)\s+(\d+(?:\.\d+)?s)\s+(\d\d:\d\d:\d\d)$`)
 	labelRE    = regexp.MustCompile(`^(.*?)(?: \((.*)\))?$`)
 	roundV2RE  = regexp.MustCompile(`^== ROUND (\S+)\s+job=(\S+)\s+(.*)$`)

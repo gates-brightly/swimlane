@@ -1352,6 +1352,7 @@ they waited for.
 | `swim hub [enroll\|leave\|status]` | The watch hub. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE]` | Run rounds in a CI job. |
 | `swim interrupt N\|JOB` | Stop one lane at its next step boundary. |
+| `swim pause N\|JOB` / `swim unpause N\|JOB` | Hold a running lane before its next step without ending it (its process, approvals, slot and locks kept); `swim resume` is the same as unpause. `--all` holds every lane and stops workers claiming batches. |
 | `swim lint [--strict]` / `swim doctor [--fix]` | Check lane scripts / the environment. |
 | `swim config [KEY [VALUE]] [--repo]` | Show or set config, keeping the file's comments. |
 | `swim env [N\|JOB] [--yaml]` | The env a lane gets from env files, masked, with each key's source. |

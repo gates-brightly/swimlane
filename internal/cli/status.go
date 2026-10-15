@@ -119,6 +119,12 @@ func stateWord(l *status.Lane, state string, now time.Time) string {
 	case status.Running + "?", status.Waiting + "?":
 		word = state + " (process gone: interrupted)"
 	}
+	if l.PausedAt != "" && (state == status.Running || state == status.Waiting) {
+		word = "paused"
+		if t, err := time.Parse(time.RFC3339, l.PausedAt); err == nil {
+			word += " " + display.Elapsed(now.Sub(t))
+		}
+	}
 	return word
 }
 
@@ -187,6 +193,20 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 				step = "stage: " + l.Stage + "  " + step
 			}
 			detail(step, ui.Cyan)
+		}
+		if l.PausedAt != "" && (state == status.Running || state == status.Waiting) {
+			p := "paused by " + or(l.PausedBy, "?")
+			if l.PausedAfter != "" {
+				p += fmt.Sprintf(" after %q", l.PausedAfter)
+			}
+			if l.NextStep != "" {
+				p += fmt.Sprintf("; next: %q", l.NextStep)
+			}
+			if l.PauseNote != "" {
+				p += " (" + l.PauseNote + ")"
+			}
+			detail(p, ui.Yellow)
+			detail(fmt.Sprintf("resume: swim unpause %d · end it: swim interrupt %d", l.Lane, l.Lane), ui.Dim)
 		}
 		if state == status.Running && l.Message != "" {
 			m := l.Message

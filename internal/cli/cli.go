@@ -43,6 +43,9 @@ func init() {
 		"clean":     {run: cmdClean},
 		"prune":     {run: cmdPrune},
 		"trash":     {run: cmdTrash},
+		"pause":     {run: cmdPause},
+		"unpause":   {run: cmdUnpause},
+		"resume":    {run: cmdUnpause},
 		"stub":      {run: cmdStub},
 		"note":      {run: cmdNote},
 		"log":       {run: cmdLog},
@@ -120,7 +123,8 @@ func Main(args []string) int {
 	}
 	rest := args[1:]
 	if !cmd.hidden && name != "step" && wantsHelp(rest) {
-		fmt.Print(help.Commands[name])
+		h, _ := help.For(name)
+		fmt.Print(h)
 		return 0
 	}
 	if name == "step" && len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
@@ -135,7 +139,8 @@ func Main(args []string) int {
 		fmt.Fprintln(os.Stderr, "swim "+name+": "+err.Error())
 		var ue usageError
 		if errors.As(err, &ue) {
-			fmt.Fprint(os.Stderr, "\n"+help.Commands[name])
+			h, _ := help.For(name)
+			fmt.Fprint(os.Stderr, "\n"+h)
 			return 2
 		}
 		return 1
@@ -347,7 +352,7 @@ func cmdHelp(args []string) error {
 		fmt.Print(help.Full())
 		return nil
 	}
-	h, ok := help.Commands[args[0]]
+	h, ok := help.For(args[0])
 	if !ok {
 		return usagef("no help for %q", args[0])
 	}

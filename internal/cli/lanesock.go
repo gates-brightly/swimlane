@@ -336,6 +336,9 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 		if err := req.args(&a); err != nil || a.Label == "" {
 			return fail("begin_step needs a label")
 		}
+		if !s.inHandler.Load() {
+			holdIfPaused(s.root, s.n, envOf(s.env, "SWIM_RUN"), a.Label) // a paused round holds here
+		}
 		if lane.StopRequested(s.root, s.n, envOf(s.env, "SWIM_RUN")) && !s.inHandler.Load() {
 			s.swim("stop", "interrupted by operator (before "+a.Label+")")
 			return laneResponse{OK: true, Result: map[string]any{"started": false}}

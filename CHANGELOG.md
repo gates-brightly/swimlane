@@ -413,6 +413,20 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **`swim pause N` / `swim unpause N`: hold a lane without ending it.**
+  The current step finishes, then the round waits before its next one
+  (a `run`, `gate`, `guard`, ..., or an SDK lane's next step), its process,
+  approvals, slot and locks kept; `PAUSE` and `RESUME` lines in the log
+  (which count toward nothing), `paused` in `swim status` and the live
+  view. `swim resume` is the same command as `unpause`. A pause never
+  expires, and the round's `Timeout:` doesn't count paused time.
+  - A lane waiting in a run is held before it starts, holding no lock or
+    slot.
+  - `swim interrupt N` or the first Ctrl-C ends a paused round
+    interrupted, its handlers run; `swim run N` on a new job asks to end
+    it (or `--replace`, without a terminal) and runs the new one.
+  - `--all` holds every lane and keeps workers from claiming batches until
+    `swim unpause --all`.
 - **`swim config chime on` covers queued jobs too.** `swim watch` now
   chimes as each batch it runs finishes, by the same settings as `swim
   run`: every batch with `chime on`, a batch that didn't pass with
