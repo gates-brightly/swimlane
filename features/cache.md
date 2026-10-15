@@ -1,6 +1,6 @@
 # swim cache: keep dependency downloads between rounds
 
-Status: in progress (phase one built: presets, `swim cache`, lint, doctor, docs)
+Status: in progress (phase one shipped in `754315c`: presets, `swim cache`, lint, doctor, docs; snapshots later, if measured)
 
 ## Summary
 

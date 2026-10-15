@@ -11,7 +11,7 @@ where it would land in the code, open questions, and how to test it.
 | Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | proposed |
 | Retry on a match: --retry-if REGEX, --backoff-max, --retry-for, swim.yml policies, stage and lane defaults (wait out Rush's lock) | [retry.md](retry.md) | proposed |
 | swim pause / unpause (or resume): hold lanes at their next step, then resume or replace them | [pause.md](pause.md) | proposed |
-| swim cache: tool download caches that outlive a round, checked against pinned lockfiles | [cache.md](cache.md) | in progress |
+| swim cache: tool download caches that outlive a round, checked against pinned lockfiles | [cache.md](cache.md) | in progress (phase one shipped in `754315c`; snapshots later, if measured) |
 | Trash a lane: `d` in swim watch, a hub button, swim trash N (moved to .swim/cleaned/, restorable) | [trash.md](trash.md) | proposed |
 
 ## Staging a feature
