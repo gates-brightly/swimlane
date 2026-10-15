@@ -15,26 +15,25 @@ import (
 // passphrase prompt) exits there and then.
 const earlyGrace = 2 * time.Second
 
-// earlySignals catches swim run's signals from the moment it has lanes to
+// EarlySignals catches swim run's signals from the moment it has lanes to
 // run. Before, a Ctrl-C during setup (staging every lane's files, opening
 // secrets) was lost when the shell started swim with SIGINT ignored (a
 // background job), or killed it partway through writing its state. Until
 // handOver, a signal only records that the run was interrupted, and the
 // run stops before any lane starts. After, the interrupter gets them.
-type earlySignals struct {
+type EarlySignals struct {
 	ch        chan os.Signal
 	hit       atomic.Value // os.Signal: the first one, during setup
 	handed    chan struct{}
 	stopEarly chan struct{}
 }
 
-func catchSignals(noHangup bool, errw io.Writer) *earlySignals {
-	e := &earlySignals{ch: make(chan os.Signal, 4), handed: make(chan struct{}), stopEarly: make(chan struct{})}
-	if noHangup {
-		signal.Notify(e.ch, syscall.SIGINT, syscall.SIGTERM)
-	} else {
-		signal.Notify(e.ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-	}
+// CatchSignals starts catching SIGINT and SIGTERM for a swim run: as the
+// first thing swim run does (the CLI passes it in Options.Signals), so a
+// Ctrl-C however early is caught, not lost or fatal mid-setup.
+func CatchSignals(errw io.Writer) *EarlySignals {
+	e := &EarlySignals{ch: make(chan os.Signal, 4), handed: make(chan struct{}), stopEarly: make(chan struct{})}
+	signal.Notify(e.ch, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		select {
 		case s := <-e.ch:
@@ -54,7 +53,7 @@ func catchSignals(noHangup bool, errw io.Writer) *earlySignals {
 
 // handOver ends setup: it reports whether a signal came during it (the run
 // must stop now), and otherwise passes every later signal to handle.
-func (e *earlySignals) handOver(handle func(os.Signal)) (interrupted bool) {
+func (e *EarlySignals) handOver(handle func(os.Signal)) (interrupted bool) {
 	close(e.handed)
 	<-e.stopEarly
 	if e.hit.Load() != nil {
@@ -68,5 +67,9 @@ func (e *earlySignals) handOver(handle func(os.Signal)) (interrupted bool) {
 	return false
 }
 
-// stop stops catching signals.
-func (e *earlySignals) stop() { signal.Stop(e.ch) }
+// alsoHangup catches SIGHUP too (a run that ends its lanes when the
+// terminal closes, unless --no-hangup).
+func (e *EarlySignals) alsoHangup() { signal.Notify(e.ch, syscall.SIGHUP) }
+
+// Stop stops catching signals.
+func (e *EarlySignals) Stop() { signal.Stop(e.ch) }

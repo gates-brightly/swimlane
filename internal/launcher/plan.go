@@ -561,7 +561,7 @@ type PlanLane struct {
 	// Claim is the lane's live claim (swim claim): a session may still be
 	// writing its round.
 	Claim *lane.Claim `yaml:"claim,omitempty"`
-	Fail  string     `yaml:"fail,omitempty"` // hard, when Fail: hard
+	Fail  string      `yaml:"fail,omitempty"` // hard, when Fail: hard
 }
 
 // PlanJob is one sub-job of a group lane.

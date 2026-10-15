@@ -388,6 +388,10 @@ func cmdRun(args []string) error {
 // runLanes runs the named lanes (lane numbers or job ids), or with none,
 // every pending lane.
 func runLanes(rest []string, rf runFlags) error {
+	// Catch Ctrl-C from here: one before the run starts (while lanes are
+	// resolved and checked) stops it before any lane does.
+	sigs := launcher.CatchSignals(os.Stderr)
+	defer sigs.Stop()
 	plain, rerun := rf.plain, rf.rerun
 	var parallel *int
 	if rf.parallel != "" {
@@ -518,6 +522,7 @@ func runLanes(rest []string, rf runFlags) error {
 		// explicit say-so for this run; FLAG=0 still declines).
 		AutoApprove: rf.yes,
 		NoFinally:   rf.noFinally,
+		Signals:     sigs,
 	}
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput

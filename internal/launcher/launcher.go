@@ -114,6 +114,10 @@ type Options struct {
 	// for a running lane silent this long, so a CI log never looks hung.
 	Heartbeat time.Duration
 
+	// Signals, if set, is the signal catcher the caller started first thing
+	// (CatchSignals): Run takes it over instead of starting its own.
+	Signals *EarlySignals
+
 	beat         *heartbeat
 	skipped      *statusBatch       // skipped lanes' status, written together (statusbatch.go)
 	setup        map[int]*setupGate // per lane: open once the lanes after it may start (always.go)
@@ -279,8 +283,14 @@ func Run(o Options) (int, error) {
 	}
 	// Signals are caught from here (earlysig.go): one during setup stops
 	// the run before any lane starts, and the interrupter gets the rest.
-	sigs := catchSignals(o.NoHangup, os.Stderr)
-	defer sigs.stop()
+	sigs := o.Signals
+	if sigs == nil {
+		sigs = CatchSignals(os.Stderr)
+	}
+	if !o.NoHangup {
+		sigs.alsoHangup()
+	}
+	defer sigs.Stop()
 	isDone := map[int]bool{}
 	for _, n := range passed {
 		isDone[n] = true

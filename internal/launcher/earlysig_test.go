@@ -11,16 +11,16 @@ import (
 // A signal during swim run's setup stops the run before any lane starts;
 // one after the hand-over goes to the interrupter.
 func TestEarlySignals(t *testing.T) {
-	e := catchSignals(true, io.Discard)
+	e := CatchSignals(io.Discard)
 	syscall.Kill(os.Getpid(), syscall.SIGINT)
 	time.Sleep(100 * time.Millisecond)
 	if !e.handOver(func(os.Signal) { t.Error("a setup signal reached the interrupter") }) {
 		t.Fatal("a Ctrl-C during setup didn't stop the run")
 	}
-	e.stop()
+	e.Stop()
 
-	e = catchSignals(true, io.Discard)
-	defer e.stop()
+	e = CatchSignals(io.Discard)
+	defer e.Stop()
 	got := make(chan os.Signal, 1)
 	if e.handOver(func(s os.Signal) { got <- s }) {
 		t.Fatal("no signal, but the run stopped")
