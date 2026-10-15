@@ -303,6 +303,24 @@ if guard "$F" "dynamic"; then run "dyn ran" true; fi`)
 	contains(t, "agent2.log", r.log(2), "APPROVED  dynamic (approved by swim watch -y (worker))", "PASS  dyn ran")
 }
 
+// A guard nothing approves runs as a dry run, and says so: [DRY] in swim
+// status, dry_run in status.yml, until the lane's next round.
+func TestWatchDryRunMarked(t *testing.T) {
+	r := newRepo(t, "")
+	guardedLanes(t, r)
+	r.mustSwim("queue", "add", "2")
+	r.mustSwim("watch", "--once")
+	if l := r.status().Get(2); strings.Join(l.DryRun, " ") != "ALLOW_OTHER" {
+		t.Errorf("status lane 2 dry_run: %v", l.DryRun)
+	}
+	contains(t, "status", r.mustSwim("status"), "[DRY] dry run (not approved): ALLOW_OTHER")
+	r.mustSwim("queue", "add", "2", "--approve", "ALLOW_OTHER")
+	r.mustSwim("watch", "--once")
+	if l := r.status().Get(2); len(l.DryRun) != 0 {
+		t.Errorf("approved round still marked dry: %v", l.DryRun)
+	}
+}
+
 func TestWaitAndQueueWait(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "long", `run "long" sleep 1.5`)

@@ -264,6 +264,8 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   approved with no one asked are listed as "approved without a prompt": by
   -y (auto_approved, auto_via: swim run -y, queue q-... -y or swim watch
   -y) or by a guard flag (flag_approved: FLAG=1, a batch's --approve).
+  Guards it didn't approve, whose steps ran as dry runs, show as [DRY]
+  (dry_run), here, in the live view, the watch screen and the hub.
   --yaml     the status file's fields as YAML, tagged schema: swim.status/v1
              (with N|JOB, just that lane); the file itself is unchanged
              (cat .swim/status.yml)
@@ -594,7 +596,11 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                    worker takes it when its lanes are free
     r on a batch   starts a waiting batch now, out of turn, if its lanes are
                    free, with its own approvals (and -y's), exactly as in turn
-    enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log)
+    enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log);
+                   v switches to the verbose output (its lanes' logs, the
+                   running step's output included) and back
+  [DRY] marks a lane whose round dry-ran a guard, and a waiting batch with
+  a guard neither it nor -y approves (signed approvals may still cover it).
   The screen stays up while batches run; their output goes to that file.
   With --batches 1 a batch runs in the interactive view instead, as swim
   run does. SWIM_TUI=0, CI and --once turn the screen off: then every

@@ -74,6 +74,9 @@ func (w *watchView) rows() []display.PickRow {
 		} else {
 			color = ui.Dim
 		}
+		if l != nil && len(l.DryRun) > 0 && state != "pending" {
+			round = display.DryMark + " " + round
+		}
 		rows = append(rows, display.PickRow{ID: "lane:" + strconv.Itoa(n), Text: fmt.Sprintf("swim %-2d  %-11s %s  %s", n, state, job, round), Color: color})
 	}
 	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim}, display.PickRow{Text: "Queue"})
@@ -90,6 +93,9 @@ func (w *watchView) rows() []display.PickRow {
 			ns = append(ns, strconv.Itoa(l.Lane))
 		}
 		text := fmt.Sprintf("#%-4d %-9s swim %s  by %s", e.Seq, e.State, strings.Join(ns, ","), e.By)
+		if w.batchDry(e, st) {
+			text = fmt.Sprintf("#%-4d %-9s %s swim %s  by %s", e.Seq, e.State, display.DryMark, strings.Join(ns, ","), e.By)
+		}
 		if e.Note != "" {
 			text += "  " + e.Note
 		}
@@ -103,6 +109,42 @@ func (w *watchView) rows() []display.PickRow {
 		rows = append(rows, display.PickRow{ID: "queue:" + e.ID, Text: text, Color: color})
 	}
 	return rows
+}
+
+// batchDry says whether batch e runs (or ran) a guard as a dry run: while
+// waiting, a guard of its lanes that neither the batch nor the worker's -y
+// approves (signed approvals may still cover it when it runs); once
+// running, a guard its lanes' rounds dry-ran.
+func (w *watchView) batchDry(e *queue.Entry, st *status.File) bool {
+	if e.State != queue.Queued {
+		for _, l := range e.Lanes {
+			if st != nil {
+				if s := st.Get(l.Lane); s != nil && len(s.DryRun) > 0 && e.Result == nil {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if e.ApproveAll || w.yes {
+		return false
+	}
+	approved := map[string]bool{}
+	for _, f := range e.Approve {
+		approved[f] = true
+	}
+	for _, l := range e.Lanes {
+		info, err := lane.ReadScript(w.root, l.Lane)
+		if err != nil {
+			continue
+		}
+		for _, g := range info.GuardFlags() {
+			if !approved[g] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // laneRowState is how a lane's row shows its state: a script holding a job

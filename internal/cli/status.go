@@ -227,6 +227,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			}
 			detail("approved without a prompt: "+t, color)
 		}
+		if len(l.DryRun) > 0 {
+			detail(display.DryMark+" dry run (not approved): "+strings.Join(l.DryRun, ", "), ui.Yellow)
+		}
 		for _, fs := range l.FailedSteps {
 			detail(fs, ui.Red)
 		}

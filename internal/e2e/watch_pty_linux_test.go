@@ -53,7 +53,8 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 }
 
 // A batch the worker takes runs while the watch screen stays up: the
-// queue shows it running, enter on it follows its output, esc comes back.
+// queue shows it running, enter on it follows its output (v: the lanes'
+// verbose output), q comes back.
 func TestWatchBatchOutputView(t *testing.T) {
 	r := newRepo(t, "")
 	release := tuiLanes(r, 2)
@@ -64,6 +65,10 @@ func TestWatchBatchOutputView(t *testing.T) {
 	tr.waitFor("▸ #1")
 	tr.send("\r")
 	tr.waitFor("swim watch · #1")
+	// v: the lanes' own logs, step output included.
+	tr.send("v")
+	tr.waitFor("· verbose")
+	tr.waitFor("lane2-hello")
 	tr.send("q")
 	tr.waitFor("▸ #1")
 	os.WriteFile(release, nil, 0o644)

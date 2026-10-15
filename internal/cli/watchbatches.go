@@ -18,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -475,10 +476,48 @@ func (w *watchView) showOutput(e *queue.Entry) string {
 		}
 	}
 	title := fmt.Sprintf("swim watch · #%d %s (%s)", e.Seq, e.ID, lanesText(laneNums(e)))
-	if err := display.Follow(os.Stdin, os.Stdout, title, path, done); err != nil {
+	views := []display.FollowView{
+		{Name: "overview", Lines: display.FileLines(path)},
+		{Name: "verbose", Lines: func() []string { return verboseLines(w.root, laneNums(e)) }},
+	}
+	if err := display.Follow(os.Stdin, os.Stdout, title, views, done); err != nil {
 		return err.Error()
 	}
 	return ""
+}
+
+// verboseLines are the batch's lanes' current rounds as their logs hold
+// them, each line marked with its lane (or job, or cell), and the running
+// step's output so far (its spool): everything the overview leaves out.
+func verboseLines(root string, lanes []int) []string {
+	var out []string
+	for _, n := range lanes {
+		logs := []string{lane.Log(root, n)}
+		more, _ := filepath.Glob(filepath.Join(filepath.Dir(lane.Log(root, n)), fmt.Sprintf("agent%d.*.log", n)))
+		for _, m := range more {
+			if !strings.Contains(filepath.Base(m), ".prev-") {
+				logs = append(logs, m)
+			}
+		}
+		for _, path := range logs {
+			tag := "[" + strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "agent"), ".log") + "] "
+			if rounds, _ := splitRounds(path); len(rounds) > 0 {
+				for _, l := range rounds[len(rounds)-1] {
+					out = append(out, tag+l)
+				}
+			}
+			if sp, ok := step.ReadSpool(path); ok {
+				out = append(out, tag+"  ==> "+sp.Label+" (running)", tag+"  $ "+sp.Cmd)
+				for _, l := range sp.Output {
+					out = append(out, tag+"  | "+l)
+				}
+				if sp.Partial != "" {
+					out = append(out, tag+"  | "+sp.Partial)
+				}
+			}
+		}
+	}
+	return out
 }
 
 // laneNums are a batch's lane numbers.

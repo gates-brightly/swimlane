@@ -45,13 +45,20 @@ type runAuthority struct {
 func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*approval.Server, error) {
 	a := &runAuthority{snap: authority.Take(o.Root, os.Environ()), disp: disp, flags: map[string]bool{}, granted: map[string]map[string]secrets.Approval{}}
 	srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
-		return a.decide(*o, req, ask, cancel)
+		resp := a.decide(*o, req, ask, cancel)
+		if !resp.Approved {
+			dryRun(*o, disp, req.Lane, req.Cell, req.Flag)
+		}
+		return resp
 	})
 	if err != nil {
 		return nil, err
 	}
 	srv.Refused = func(c approval.Caller, req approval.Request, why string) {
 		a.refused(*o, c, req, why)
+		if c.Lane != 0 {
+			dryRun(*o, disp, c.Lane, c.Cell, req.Flag)
+		}
 	}
 	srv.Record = func(c approval.Caller, g *approval.Grant) (string, error) {
 		hash, err := authority.Record(o.Root, o.Cfg, g.Entry)
@@ -76,6 +83,24 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 	}
 	o.auth = a
 	return srv, nil
+}
+
+// dryRun marks lane n (and its cell) as having dry-run guard flag this
+// round: [DRY] in the live view, dry_run in status (swim status, the
+// watch screen, the hub).
+func dryRun(o Options, disp *display.Display, n int, cell, flag string) {
+	if flag == "" || flag == approval.ConfirmFlag {
+		return
+	}
+	disp.Set(n, func(v *display.LaneView) { v.Dry = true })
+	status.UpdateFile(o.Root, max(n, o.Cfg.Lanes), func(f *status.File) error {
+		l := f.Get(n)
+		l.Dry(flag)
+		if cell != "" {
+			l.CellEntry(cell).Dry(flag)
+		}
+		return nil
+	})
 }
 
 // unprompted lists a guard approved without anyone being asked (-y, or a

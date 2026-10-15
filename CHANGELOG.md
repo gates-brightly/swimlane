@@ -262,6 +262,14 @@ To cut a release:
     Enter on a batch follows its output (`.swim/queue/out/`); `r` starts a
     waiting batch out of turn alongside the others.
   - **Ctrl-C** interrupts every batch in hand gracefully, as it did the one.
+- **`[DRY]` marks guards that ran as dry runs:** a lane whose round
+  dry-ran a guard (declined, not asked, refused) shows `[DRY]` in the live
+  view, `swim status` (with the flags), the watch screen and the hub;
+  `status.yml` lists them as `dry_run`. A waiting batch shows `[DRY]` when
+  a guard of its lanes isn't approved by the batch or the worker's `-y`.
+- **The watch's batch output view has a verbose mode:** `v` switches from
+  the overview to the lanes' own logs, with the running step's output as
+  it comes, and back.
 - **Approval lifecycle:** every signed approval is active, expired,
   revoked, stale (with why) or insufficient (with why), and `swim approve`
   and `swim verify` say which.

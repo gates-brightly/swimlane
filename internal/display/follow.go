@@ -11,10 +11,29 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// Follow shows the end of the file at path under title, following it as
-// it grows (tail -f), until Esc, q, Enter or Ctrl-C. done, if set, says the
-// file is finished: the title then says so.
-func Follow(in, out *os.File, title, path string, done func() bool) error {
+// FollowView is one way Follow shows what it follows: its lines, reloaded
+// on every redraw.
+type FollowView struct {
+	Name  string
+	Lines func() []string
+}
+
+// FileLines reads path's lines for a FollowView.
+func FileLines(path string) func() []string {
+	return func() []string {
+		data, _ := os.ReadFile(path)
+		if len(data) == 0 {
+			return nil
+		}
+		return strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	}
+}
+
+// Follow shows the end of the first view's lines under title, following
+// them as they grow (tail -f), until Esc, q, Enter or Ctrl-C; v switches
+// to the next view (an overview, then the verbose output) and back. done,
+// if set, says what it follows has finished: the title then says so.
+func Follow(in, out *os.File, title string, views []FollowView, done func() bool) error {
 	fd := int(in.Fd())
 	st, err := term.MakeRaw(fd)
 	if err != nil {
@@ -43,20 +62,23 @@ func Follow(in, out *os.File, title, path string, done func() bool) error {
 	}()
 	color := ui.ColorEnabled(out)
 	p := ui.Painter{On: color}
+	cur := 0
 	draw := func() {
 		cols, rows, err := term.GetSize(int(out.Fd()))
 		if err != nil || rows < 4 {
 			cols, rows = 80, 24
 		}
-		data, _ := os.ReadFile(path)
-		lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-		if len(data) == 0 {
+		lines := views[cur].Lines()
+		if len(lines) == 0 {
 			lines = []string{"(no output yet)"}
 		}
 		if n := rows - 2; len(lines) > n {
 			lines = lines[len(lines)-n:]
 		}
 		head := title
+		if len(views) > 1 {
+			head += " · " + views[cur].Name
+		}
 		if done != nil && done() {
 			head += " · finished"
 		}
@@ -67,7 +89,11 @@ func Follow(in, out *os.File, title, path string, done func() bool) error {
 			b.WriteString(clip(l, cols) + "\r\n")
 		}
 		b.WriteString(fmt.Sprintf("\x1b[%d;1H", rows))
-		b.WriteString(p.Paint(ui.Dim, clip("esc back", cols)))
+		hints := "esc back"
+		if len(views) > 1 {
+			hints = "v " + views[(cur+1)%len(views)].Name + "  esc back"
+		}
+		b.WriteString(p.Paint(ui.Dim, clip(hints, cols)))
 		fmt.Fprint(out, b.String())
 	}
 	draw()
@@ -79,6 +105,9 @@ func Follow(in, out *os.File, title, path string, done func() bool) error {
 			switch {
 			case k.Code == KeyEsc, k.Code == KeyEnter, k.Code == KeyCtrlC, k.Code == KeyRune && (k.Rune == 'q' || k.Rune == 'Q'):
 				return nil
+			case k.Code == KeyRune && (k.Rune == 'v' || k.Rune == 'V') && len(views) > 1:
+				cur = (cur + 1) % len(views)
+				draw()
 			}
 		case <-tick.C:
 			draw()

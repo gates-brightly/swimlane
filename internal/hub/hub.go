@@ -97,6 +97,7 @@ type Lane struct {
 	AutoApproved []string `json:"auto_approved,omitempty"`
 	AutoVia      string   `json:"auto_via,omitempty"`
 	FlagApproved []string `json:"flag_approved,omitempty"`
+	DryRun       []string `json:"dry_run,omitempty"` // guards its round ran as dry runs
 	// A headless worker's idle lane holding a pending round: the script's
 	// hash and its manifest's, which a run command from the hub pins.
 	Script   string `json:"script_sha256,omitempty"`
@@ -174,7 +175,7 @@ func (s *Snapshot) Sanitize() {
 			*f = ui.Safe(*f)
 		}
 		l.Tail = safeAll(l.Tail)
-		l.AutoApproved, l.FlagApproved = safeAll(l.AutoApproved), safeAll(l.FlagApproved)
+		l.AutoApproved, l.FlagApproved, l.DryRun = safeAll(l.AutoApproved), safeAll(l.FlagApproved), safeAll(l.DryRun)
 	}
 	for i := range s.Queue {
 		b := &s.Queue[i]

@@ -57,6 +57,7 @@ type LaneView struct {
 	UnknownGuards int
 	Started       time.Time
 	Finished      time.Time
+	Dry           bool // a guard of this round ran as a dry run: [DRY]
 }
 
 // Active reports whether the lane is still queued, waiting or running.
@@ -105,8 +106,20 @@ func WaitingText(deps []int) string {
 	return "waiting on swim " + strings.Join(parts, ", ")
 }
 
-// stateText returns the plain state column text and the colour for it.
+// stateText returns the plain state column text and the colour for it,
+// marked [DRY] when a guard of the round ran as a dry run.
 func stateText(v LaneView, now time.Time) (string, string) {
+	text, color := laneStateText(v, now)
+	if v.Dry {
+		text = DryMark + " " + strings.TrimLeft(text, " ")
+	}
+	return text, color
+}
+
+// DryMark marks a lane, job or batch whose guards run (or ran) as dry runs.
+const DryMark = "[DRY]"
+
+func laneStateText(v LaneView, now time.Time) (string, string) {
 	thr := Throbber(now)
 	switch v.State {
 	case Starting:

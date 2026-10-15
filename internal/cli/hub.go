@@ -592,7 +592,7 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 			hl := hub.Lane{Lane: l.Lane, State: l.State, Round: l.Round, Job: l.Job, Run: l.Run, Step: l.CurrentStep, Reason: l.Reason,
 				Message: l.Message, Progress: l.Progress, MsgAt: l.MessageAt, Cells: cellsText(root, l),
 				Pass: l.Pass, Fail: l.Fail, Skip: l.Skip, Drift: l.Drift, Exit: l.ExitCode,
-				AutoApproved: l.AutoApproved, AutoVia: l.AutoVia, FlagApproved: l.FlagApproved}
+				AutoApproved: l.AutoApproved, AutoVia: l.AutoVia, FlagApproved: l.FlagApproved, DryRun: l.DryRun}
 			if l.Round == "" {
 				hl.Round = l.Pending
 			}

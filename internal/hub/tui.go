@@ -198,6 +198,9 @@ func laneLine(l Lane, now time.Time) string {
 	if l.Reason != "" && l.State != "running" {
 		parts = append(parts, l.Reason)
 	}
+	if len(l.DryRun) > 0 {
+		parts = append(parts, "[DRY] "+strings.Join(l.DryRun, ", "))
+	}
 	if len(l.AutoApproved) > 0 {
 		parts = append(parts, "approved by "+l.AutoVia+": "+strings.Join(l.AutoApproved, ", "))
 	}

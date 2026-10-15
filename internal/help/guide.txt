@@ -889,6 +889,7 @@ READING RESULTS
           auto_approved: [<guards -y approved, no one asked>]
           auto_via: <swim run -y | queue q-... -y | swim watch -y>
           flag_approved: [<guards approved by FLAG=1 or a batch's --approve>]
+          dry_run: [<guards not approved: their steps ran as dry runs>]
           last_archive: <last archived log name>
   `swim status` shows "running?" when a lane's pid is gone (killed terminal);
   treat that lane's round as interrupted. The next swim run, swim all or
