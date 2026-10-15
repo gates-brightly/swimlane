@@ -743,7 +743,7 @@ func cmdMark(args []string) error {
 		return usagef("--request and --confirm are for APPROVED marks")
 	}
 	recorded := false // the launcher put the approval in the chain
-	if args[1] == logparse.Approved && request == "" && !confirmed && launched() {
+	if args[1] == logparse.Approved && request == "" && !confirmed && underSwimRun() {
 		fmt.Fprintf(os.Stderr, "swim: refused: an APPROVED mark under swim run needs the launcher's approval (guard asks for it): a lane can't approve itself\n")
 		return exitError{2}
 	}

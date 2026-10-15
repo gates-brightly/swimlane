@@ -91,6 +91,18 @@ To cut a release:
 
 ### Security
 
+- **A lane can't approve its own guard by changing its environment
+  (T28):** a lane that unset `SWIM_APPROVAL` or `SWIM_LAUNCHED` and set the
+  guard's flag got its guard approved, and when swim run couldn't start its
+  approvals (a `TMPDIR` too long for a unix socket) the forged approval even
+  passed `swim verify`. Whether a lane runs under swim run is now told by
+  who started it, not its environment: swim's hidden commands refuse an
+  `APPROVED` mark there without the launcher's approval, and `_approve`
+  fails closed (a dry run, with a `WARN` saying why). A run whose approvals
+  couldn't start says so in its attestation (`authority_unavailable`), and
+  `swim verify` breaks on an approval in a run swim run started but never
+  attested. Running a lane directly with `FLAG=1 bash lane.N.sh` approves
+  as before.
 - **Guarded secrets:** a secret can be guarded by a guard flag in the
   committed `swim.yml`; the run's broker hands it to a lane only once that
   lane's guard was approved in this run, so a script that skips `guard`

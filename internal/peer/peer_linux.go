@@ -49,3 +49,19 @@ func parent(pid int) (int, bool) {
 	pp, err := strconv.Atoi(f[1])
 	return pp, err == nil
 }
+
+// comm is pid's command name (/proc/<pid>/comm, 15 characters at most).
+func comm(pid int) (string, bool) {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/comm")
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(data)), true
+}
+
+func shortName(name string) string {
+	if len(name) > 15 {
+		return name[:15]
+	}
+	return name
+}

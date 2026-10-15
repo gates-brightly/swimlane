@@ -774,6 +774,7 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 		}
 		field("Flags", strings.Join(l.Flags, " "))
 		field("Scheduled for", l.ScheduledFor)
+		field("Approvals unavailable", l.AuthorityUnavailable)
 	case "secret-released":
 		subject = fmt.Sprintf("secret %s released to swim %d (guard %s, approved by %s)", l.Secret, l.Lane, l.Guard, l.Method)
 		field("Job", l.Job)
@@ -865,6 +866,15 @@ func short12(s string) string {
 func (v *verifier) checkEntries(links []chain.Link) {
 	root := v.root
 	runs, unattested := attestations(links)
+	// Runs swim run started (their rounds ran staged copies), and those
+	// that were cut short (a launcher killed before it could attest).
+	launchedRun, cutShort := map[string]bool{}, map[string]bool{}
+	for _, l := range links {
+		if l.Type == "round" && l.Run != "" {
+			launchedRun[l.Run] = launchedRun[l.Run] || l.Manifest != ""
+			cutShort[l.Run] = cutShort[l.Run] || l.Result == "interrupted"
+		}
+	}
 	if unattested > 0 {
 		v.notes = append(v.notes, fmt.Sprintf("%d runs have approvals or rounds but no run attestation (lanes run directly with bash, runs from before attestations, or a swim run that didn't finish): their approvals can't be checked against what swim run recorded", unattested))
 	}
@@ -971,6 +981,9 @@ func (v *verifier) checkEntries(links []chain.Link) {
 			v.notes = append(v.notes, fmt.Sprintf("entry #%d: swim chain repair %s", l.Seq, l.Action))
 		case "approve":
 			v.approvals++
+			if !attested && launchedRun[l.Run] && !cutShort[l.Run] {
+				v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for swim %d in run %s, which swim run started but never attested: nothing vouches that swim run recorded it", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run))
+			}
 			// Under swim run only the launcher records approvals: one its
 			// run's attestation doesn't list was written by someone else (a
 			// lane recording its own approval).

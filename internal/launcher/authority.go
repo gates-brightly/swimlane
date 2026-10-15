@@ -305,6 +305,23 @@ func (a *runAuthority) operator(cfg *config.Config) chain.Approver {
 	return ap
 }
 
+// attestUnavailable attests a run whose approvals couldn't start: what
+// each lane ran, no approvals, and why, so swim verify can tell it from a
+// run made directly with bash.
+func attestUnavailable(o Options, sel []int, why string) {
+	e := chain.Entry{Type: "run", Run: o.RunID, Manifests: map[string]string{}, Scripts: map[string]string{}, ScheduledFor: o.ScheduledFor,
+		AuthorityUnavailable: why}
+	for _, n := range sel {
+		if m := o.manifests[n]; m != nil {
+			e.Manifests[strconv.Itoa(n)] = m.SHA256
+			e.Scripts[strconv.Itoa(n)] = m.ScriptSHA
+		}
+	}
+	if _, err := authority.Record(o.Root, o.Cfg, e); err != nil {
+		fmt.Fprintln(os.Stderr, "swim: run attestation: "+err.Error())
+	}
+}
+
 // attest records the run in the chain once its last lane has exited: the
 // manifest (and script) each lane ran, every approve entry the launcher
 // recorded and the guard flags its environment approved. swim verify holds

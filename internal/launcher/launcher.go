@@ -446,8 +446,13 @@ func Run(o Options) (int, error) {
 			return approval.Response{Approved: yes, By: operator()}
 		}
 	}
+	authErr := ""
 	if srv, err := startAuthority(&o, ask, disp); err != nil {
-		disp.Message("swim: approvals: " + err.Error() + "; every guard runs as a dry run")
+		// Lanes still run; their guards fail closed (swim _approve sees it
+		// was started by swim run, without the channel), and the
+		// attestation says why.
+		authErr = err.Error()
+		disp.Message("swim: approvals: " + authErr + "; every guard runs as a dry run")
 	} else {
 		defer srv.Close()
 		ir.approvals = srv
@@ -526,7 +531,11 @@ func Run(o Options) (int, error) {
 	stopOthers()
 	disp.Stop()
 	if !o.CheckOnly {
-		o.auth.attest(o, sel)
+		if authErr != "" {
+			attestUnavailable(o, sel, authErr)
+		} else {
+			o.auth.attest(o, sel)
+		}
 	}
 	if unused := pre.unused(); len(unused) > 0 {
 		fmt.Fprintf(summaryOut, "swim: unused pre-answers (the lane never reached a guard, or its script changed): %s\n", strings.Join(unused, ", "))

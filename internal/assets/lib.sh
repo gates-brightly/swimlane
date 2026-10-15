@@ -455,19 +455,11 @@ guard() {
   fi
   _swim_flag_set=
   if [ "$_swim_val" = "1" ]; then
-    if [ "${SWIM_LAUNCHED:-}" = "1" ] && [ -n "$SWIM_LANE" ]; then
-      # Under swim run the launcher says whether the flag counts: set in
-      # the environment swim run started with, not inside the lane.
-      _swim_flag_set=--flag-set
-    else
-      # A queued batch's approvals (swim queue add --approve) say where they
-      # came from.
-      case " ${SWIM_QUEUE_APPROVED:-} " in
-        *" $1 "*) "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1, approved in $SWIM_QUEUE" ;;
-        *) "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$2" "$1=1" ;;
-      esac
-      return 0
-    fi
+    [ -n "$SWIM_LANE" ] || return 0
+    # swim _approve says whether the flag counts: under swim run, only if
+    # swim run's own environment set it; run directly with bash, it does.
+    # Not this script's environment: a lane can change that.
+    _swim_flag_set=--flag-set
   fi
   if [ -n "$_swim_flag_set" ] || { [ "$_swim_val" = "unset" ] && [ -n "$SWIM_LANE" ]; }; then
     # Nobody set the flag: ask the operator if one is at the terminal

@@ -93,6 +93,12 @@ run "use" bash -c "echo db=$DB"`},
 		{"guard not approved", gsApproved + `
 DB=$(swim secret get PROD_DB) || stop "refused"
 run "use" bash -c "echo db=$DB"`},
+		// The lane hides from swim run's approvals and sets the flag (T28).
+		{"lane drops its approval channel", `unset SWIM_APPROVAL SWIM_LAUNCHED
+export ` + gsFlag + `=1
+guard ` + gsFlag + ` "use the prod db"
+DB=$(swim secret get PROD_DB) || stop "refused"
+run "use" bash -c "echo db=$DB"`},
 	}
 	for i, c := range cases {
 		n := i + 1
@@ -108,10 +114,10 @@ run "use" bash -c "echo db=$DB"`},
 		}
 	}
 	// .lane.N.rc setting the flag counts no more than an export.
-	guardedLane(t, r, 4, cases[0].body)
-	r.write(".lane.4.rc", gsFlag+"=1\n", 0o644)
-	r.swim("run", "4", "--plain")
-	contains(t, ".lane.4.rc", r.log(4), "WARN  secret PROD_DB refused")
+	guardedLane(t, r, 5, cases[0].body)
+	r.write(".lane.5.rc", gsFlag+"=1\n", 0o644)
+	r.swim("run", "5", "--plain")
+	contains(t, ".lane.5.rc", r.log(5), "WARN  secret PROD_DB refused")
 
 	refused := secretEntries(t, r, "secret-refused")
 	if len(refused) < 4 {

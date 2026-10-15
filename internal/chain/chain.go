@@ -103,6 +103,9 @@ type Entry struct {
 	// ScheduledFor (UTC) is a scheduled batch's start time (swim schedule):
 	// the run started no earlier.
 	ScheduledFor string `json:"scheduled_for,omitempty"`
+	// AuthorityUnavailable says why swim run couldn't start its approvals
+	// (the broker): every guard of the run was a dry run.
+	AuthorityUnavailable string `json:"authority_unavailable,omitempty"`
 
 	// secret-released, secret-refused: a guarded secret the run's broker
 	// handed a lane, or refused it. Secret is its name (never its value),

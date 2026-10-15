@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/peer"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -88,9 +90,23 @@ func cmdApproveHook(args []string) error {
 	if launched() {
 		return approveLaunched(root, cfg, args[0], n, flag, desc, flagSet, dryRun, drifted)
 	}
+	if underSwimRun() {
+		// Started by swim run, but without its approval channel: the lane
+		// unset it, or swim run couldn't start it. Nobody can decide the
+		// guard, and the lane's own flag doesn't count: fail closed.
+		why := "this lane runs under swim run, but its approvals channel is gone (SWIM_APPROVAL or SWIM_LAUNCHED missing from its environment)"
+		cmdMark([]string{args[0], logparse.Warn, "approval refused: " + flag, why})
+		return dryRun(why)
+	}
 	if flagSet {
-		// Run directly with bash: the flag is the operator's own.
-		return cmdMark([]string{args[0], logparse.Approved, desc, flag + "=1"})
+		// Run directly with bash: the flag is the operator's own. A queued
+		// batch's approvals (swim queue add --approve) say where they came
+		// from.
+		detail := flag + "=1"
+		if strings.Contains(" "+os.Getenv("SWIM_QUEUE_APPROVED")+" ", " "+flag+" ") {
+			detail += ", approved in " + os.Getenv("SWIM_QUEUE")
+		}
+		return cmdMark([]string{args[0], logparse.Approved, desc, detail})
 	}
 
 	// Run directly with bash, the lane decides for itself. Signed approvals
@@ -201,6 +217,26 @@ func cmdApproveHook(args []string) error {
 // its broker to ask: then the launcher decides and records approvals.
 func launched() bool {
 	return os.Getenv("SWIM_LAUNCHED") == "1" && os.Getenv(approval.EnvVar) != ""
+}
+
+// underSwimRun reports whether swim run (swim all, ci, watch) started this
+// process's lane, whatever the lane's environment says: launched, or a
+// swim process is among its ancestors. A lane can unset its environment;
+// it can't change who started it.
+func underSwimRun() bool {
+	if launched() || os.Getenv("SWIM_LAUNCHED") == "1" {
+		return true
+	}
+	names := map[string]bool{filepath.Base(os.Args[0]): true}
+	if exe, err := os.Executable(); err == nil {
+		names[filepath.Base(exe)] = true
+	}
+	for name := range names {
+		if peer.AncestorNamed(os.Getpid(), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // approveLaunched asks swim run's launcher to decide the guard: it alone

@@ -88,9 +88,9 @@ func TestHostileLaneWritesApprovals(t *testing.T) {
 	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
 }
 
-// A lane that calls _mark APPROVED itself is refused under swim run; one
-// that hides from swim run (unsets SWIM_LAUNCHED) gets its entry in the
-// chain, and swim verify says swim run never recorded it.
+// A lane that calls _mark APPROVED itself is refused under swim run, and
+// so is one that hides from swim run (unsets SWIM_LAUNCHED): swim started
+// it, whatever its environment says (T28).
 func TestHostileLaneMarksApproved(t *testing.T) {
 	b := newBoundaryRepo(t)
 	b.hostile(`"$SWIM_BIN" _mark 1 APPROVED "drop table orders" "` + boundaryGuard + `=1" || echo "mark refused: $?"`)
@@ -101,17 +101,70 @@ func TestHostileLaneMarksApproved(t *testing.T) {
 	}
 	b.noMarker(t, "_mark APPROVED")
 
-	b.hostile(`SWIM_LAUNCHED= "$SWIM_BIN" _mark 1 APPROVED "drop table orders" "` + boundaryGuard + `=1"`)
-	b.mustSwim("run", "1", "--plain")
+	b.hostile(`SWIM_LAUNCHED= SWIM_APPROVAL= "$SWIM_BIN" _mark 1 APPROVED "drop table orders" "` + boundaryGuard + `=1" || echo "mark refused: $?"`)
+	out = b.mustSwim("run", "1", "--plain")
+	contains(t, "hidden", out, "a lane can't approve itself", "mark refused: 2")
 	b.noMarker(t, "_mark APPROVED outside swim run's view")
-	if len(b.approvesOf(1)) != 1 {
+	if len(b.approvesOf(1)) != 0 {
 		t.Fatalf("approve entries: %+v", b.approvesOf(1))
 	}
-	out, code := b.swim("verify")
-	if code != 1 {
-		t.Fatalf("verify accepted the lane's own approval:\n%s", out)
+	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
+}
+
+// T28: a lane that drops its approvals channel from its environment
+// (SWIM_APPROVAL, or SWIM_LAUNCHED too) and sets the flag gets a dry run,
+// saying why, and no approval reaches the chain. Run directly with bash,
+// with no swim run, the flag still approves.
+func TestHostileLaneDropsApprovals(t *testing.T) {
+	b := newBoundaryRepo(t)
+	for _, unset := range []string{"SWIM_APPROVAL", "SWIM_APPROVAL SWIM_LAUNCHED"} {
+		b.hostile("unset " + unset + "\nexport " + boundaryGuard + "=1")
+		b.mustSwim("run", "1", "--plain")
+		b.noMarker(t, "unset "+unset)
+		contains(t, "unset "+unset, b.log(1), "WARN  approval refused: "+boundaryGuard, "SKIP  drop table orders (dry run: this lane runs under swim run, but its approvals channel is gone")
+		if len(b.approvesOf(1)) != 0 {
+			t.Fatalf("unset %s: approve entries %+v", unset, b.approvesOf(1))
+		}
 	}
-	contains(t, "verify", out, "BROKEN: entry #", "that swim run didn't record")
+	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
+
+	b.hostile("")
+	b.env = append(b.env, boundaryGuard+"=1")
+	b.runLane(1, nil)
+	if !b.dropped() {
+		t.Fatalf("FLAG=1 bash lane.1.sh didn't approve:\n%s", b.log(1))
+	}
+}
+
+// T28: when swim run can't start its approvals (a TMPDIR too long for a
+// unix socket), every guard is a dry run, the lane's own flag included,
+// and the run's attestation says why; verify holds.
+func TestApprovalsUnavailable(t *testing.T) {
+	b := newBoundaryRepo(t)
+	long := filepath.Join(t.TempDir(), strings.Repeat("x", 110))
+	if err := os.MkdirAll(long, 0o755); err != nil {
+		t.Skip(err)
+	}
+	b.hostile("export " + boundaryGuard + "=1")
+	b.env = append(b.env, "TMPDIR="+long)
+	out := b.mustSwim("run", "1", "--plain")
+	contains(t, "output", out, "every guard runs as a dry run")
+	b.noMarker(t, "the lane's flag with no approvals channel")
+	contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: this lane runs under swim run, but its approvals channel is gone")
+	if len(b.approvesOf(1)) != 0 {
+		t.Fatalf("approve entries: %+v", b.approvesOf(1))
+	}
+	var att *chain.Link
+	for _, l := range b.links() {
+		if l.Type == "run" {
+			l := l
+			att = &l
+		}
+	}
+	if att == nil || att.AuthorityUnavailable == "" {
+		t.Fatalf("attestation: %+v", att)
+	}
+	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
 }
 
 // FLAG=1 set inside the lane doesn't approve; set in the environment swim

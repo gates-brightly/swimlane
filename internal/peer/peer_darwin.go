@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"bytes"
 	"net"
 
 	"golang.org/x/sys/unix"
@@ -34,4 +35,24 @@ func parent(pid int) (int, bool) {
 		return 0, false
 	}
 	return int(kp.Eproc.Ppid), true
+}
+
+// comm is pid's command name (p_comm, 16 characters at most).
+func comm(pid int) (string, bool) {
+	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil || int(kp.Proc.P_pid) != pid {
+		return "", false
+	}
+	b := kp.Proc.P_comm[:]
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		b = b[:i]
+	}
+	return string(b), true
+}
+
+func shortName(name string) string {
+	if len(name) > 16 {
+		return name[:16]
+	}
+	return name
 }

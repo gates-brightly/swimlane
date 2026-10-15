@@ -10,3 +10,7 @@ const supported = false
 func PID(net.Conn) (int, bool) { return 0, false }
 
 func parent(int) (int, bool) { return 0, false }
+
+func comm(int) (string, bool) { return "", false }
+
+func shortName(name string) string { return name }
