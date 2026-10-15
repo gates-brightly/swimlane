@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +80,36 @@ func TestWatchBatchOutputView(t *testing.T) {
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d after ctrl-c", code)
 	}
+}
+
+// Following a running batch, the view gets a header when it ends: the
+// result, the exit code and each lane that didn't pass, with its failed
+// step, above the output.
+func TestWatchFollowEndHeader(t *testing.T) {
+	r := newSerialRepo(t, "")
+	release := tuiLanes(r, 2)
+	body := fmt.Sprintf(`run "hold" bash -c 'while [ ! -f %s ]; do sleep 0.05; done'
+gate "the check" false`, release)
+	r.script(2, "fails after release", body)
+	r.mustSwim("queue", "add", "1", "2")
+	tr := r.startTUI(nil, "watch")
+	tr.waitFor("(#1, swim 1,2)")
+	tr.send("\x1b[B\x1b[B")
+	tr.waitFor("▸ #1")
+	tr.send("\r")
+	s := tr.waitFor("swim watch · #1")
+	if strings.Contains(s, "FAILED") || strings.Contains(s, "PASSED") {
+		t.Errorf("a header while the batch runs:\n%s", s)
+	}
+	os.WriteFile(release, nil, 0o644)
+	s = tr.waitScreen("the end header", func(s string) bool {
+		return strings.Contains(s, "✗ FAILED · exit 1") && strings.Contains(s, "swim 2: FAIL  the check")
+	})
+	contains(t, "follow view after the end", s, "swim summary") // the output is still there, under the header
+	tr.send("q")
+	tr.waitFor("#1 failed")
+	tr.send("\x03")
+	tr.wait()
 }
 
 // Enter on a running lane's row follows its log, with no detour through

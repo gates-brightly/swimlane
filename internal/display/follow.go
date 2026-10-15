@@ -29,11 +29,80 @@ func FileLines(path string) func() []string {
 	}
 }
 
+// FollowEnd is how what Follow shows ended, for the header it draws then:
+// the result (passed, failed, interrupted, skipped, error), the exit code
+// when known, how long it took, and details (failed steps, lanes skipped
+// and why).
+type FollowEnd struct {
+	Result  string
+	Exit    *int
+	Elapsed time.Duration
+	Details []string
+}
+
+// maxEndDetails is how many detail lines the header shows before "… N more".
+const maxEndDetails = 5
+
+// EndHeader is the header Follow draws once what it follows has ended: a
+// full-width bar, green for passed, red for failed, yellow otherwise, then
+// the details. Without color the bar is "== FAILED · exit 1 · 2:13 ==".
+func EndHeader(e *FollowEnd, cols int, color bool) []string {
+	if e == nil {
+		return nil
+	}
+	word, bg := strings.ToUpper(e.Result), "\x1b[43;30m" // yellow
+	switch e.Result {
+	case "passed":
+		word, bg = "✓ PASSED", "\x1b[42;30m"
+	case "failed", "error":
+		word, bg = "✗ "+strings.ToUpper(e.Result), "\x1b[41;97m"
+	case "":
+		word = "FINISHED"
+	}
+	parts := []string{word}
+	if e.Exit != nil && (*e.Exit != 0 || e.Result != "passed") {
+		parts = append(parts, fmt.Sprintf("exit %d", *e.Exit))
+	}
+	if e.Elapsed > 0 {
+		parts = append(parts, Elapsed(e.Elapsed))
+	}
+	text := strings.Join(parts, " · ")
+	var out []string
+	if color {
+		bar := " " + text
+		if pad := cols - len([]rune(bar)); pad > 0 {
+			bar += strings.Repeat(" ", pad)
+		}
+		out = append(out, bg+"\x1b[1m"+clip(bar, cols)+"\x1b[0m")
+	} else {
+		out = append(out, clip("== "+text+" ==", cols))
+	}
+	details := e.Details
+	more := 0
+	if len(details) > maxEndDetails {
+		more = len(details) - maxEndDetails
+		details = details[:maxEndDetails]
+	}
+	p := ui.Painter{On: color}
+	for _, d := range details {
+		c := ui.Yellow
+		if e.Result == "failed" || e.Result == "error" {
+			c = ui.Red
+		}
+		out = append(out, p.Paint(c, clip("  "+d, cols)))
+	}
+	if more > 0 {
+		out = append(out, p.Paint(ui.Dim, clip(fmt.Sprintf("  … %d more", more), cols)))
+	}
+	return out
+}
+
 // Follow shows the end of the first view's lines under title, following
 // them as they grow (tail -f), until Esc, q, Enter or Ctrl-C; v switches
-// to the next view (an overview, then the verbose output) and back. done,
-// if set, says what it follows has finished: the title then says so.
-func Follow(in, out *os.File, title string, views []FollowView, done func() bool) error {
+// to the next view (an overview, then the verbose output) and back. end,
+// if set, says how what it follows ended (nil while it runs): Follow then
+// draws a header with the result under the title (EndHeader).
+func Follow(in, out *os.File, title string, views []FollowView, end func() *FollowEnd) error {
 	fd := int(in.Fd())
 	st, err := term.MakeRaw(fd)
 	if err != nil {
@@ -68,23 +137,27 @@ func Follow(in, out *os.File, title string, views []FollowView, done func() bool
 		if err != nil || rows < 4 {
 			cols, rows = 80, 24
 		}
+		var header []string
+		if end != nil {
+			header = EndHeader(end(), cols, color)
+		}
 		lines := views[cur].Lines()
 		if len(lines) == 0 {
 			lines = []string{"(no output yet)"}
 		}
-		if n := rows - 2; len(lines) > n {
-			lines = lines[len(lines)-n:]
+		if n := rows - 2 - len(header); len(lines) > n {
+			lines = lines[len(lines)-max(n, 0):]
 		}
 		head := title
 		if len(views) > 1 {
 			head += " · " + views[cur].Name
 		}
-		if done != nil && done() {
-			head += " · finished"
-		}
 		var b strings.Builder
 		b.WriteString("\x1b[H\x1b[2J")
 		b.WriteString(p.Paint(ui.Bold, clip(head, cols)) + "\r\n")
+		for _, l := range header {
+			b.WriteString(l + "\r\n")
+		}
 		for _, l := range lines {
 			b.WriteString(clip(l, cols) + "\r\n")
 		}

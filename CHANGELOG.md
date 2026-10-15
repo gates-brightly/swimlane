@@ -413,6 +413,13 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **swim watch's follow view says how the run ended.** Enter on a running
+  job or batch follows its output, as before; when it ends, a bar across
+  the top says PASSED (green), FAILED (red) or INTERRUPTED (yellow), with
+  the exit code and time, and under it the failed steps or the lanes that
+  were skipped and why (five lines, then "… N more"). It replaces the
+  title's easy-to-miss "· finished". `l` (logs) shows the same header for
+  a lane's or batch's last round.
 - **Lane claims: a lease on a lane while a session writes it.** `swim new
   N` takes one (`claim_lease`, default 2h) and `swim lint N` refreshes it;
   while it's live, another session's `swim new`, `stub` and `archive`

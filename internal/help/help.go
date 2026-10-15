@@ -793,7 +793,10 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now,
   q queues it and enter follows its output (esc comes back).
     enter on a job follows its lane's log while it runs, in a batch or not;
-                   v switches to its batch's output
+                   v switches to its batch's output. When it ends, a header
+                   bar says how: PASSED (green), FAILED (red, with the
+                   failed steps) or INTERRUPTED, with the exit code and
+                   time; enter on a batch does the same for the batch
     r on a job     runs it as swim run N does: you're at the terminal, so its
                    guards may ask
     q on a job     queues it as swim queue add N does (no guard approved: its

@@ -489,23 +489,13 @@ func (w *watchView) showOutput(e *queue.Entry) string {
 		}
 		return fmt.Sprintf("#%d has no output here (another worker, or swim watch --batches 1 runs it on the screen)", e.Seq)
 	}
-	done := func() bool {
-		if bp == nil {
-			return e.State != queue.Running
-		}
-		select {
-		case <-bp.done:
-			return true
-		default:
-			return false
-		}
-	}
+	end := func() *display.FollowEnd { return batchEnd(w.root, e.ID, bp) }
 	title := fmt.Sprintf("swim watch · #%d %s (%s)", e.Seq, e.ID, lanesText(laneNums(e)))
 	views := []display.FollowView{
 		{Name: "overview", Lines: display.FileLines(path)},
 		{Name: "verbose", Lines: func() []string { return verboseLines(w.root, laneNums(e)) }},
 	}
-	if err := display.Follow(os.Stdin, os.Stdout, title, views, done); err != nil {
+	if err := display.Follow(os.Stdin, os.Stdout, title, views, end); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -533,7 +523,7 @@ func (w *watchView) showLaneOutput(n int) string {
 	}
 	title := fmt.Sprintf("swim watch · swim %d", n)
 	views := []display.FollowView{{Name: "log", Lines: func() []string { return verboseLines(w.root, []int{n}) }}}
-	done := func() bool { return !running() }
+	end := func() *display.FollowEnd { return laneEnd(w.root, n, running) }
 	if batch != nil {
 		title += fmt.Sprintf(" · #%d %s", batch.Seq, batch.ID)
 		var bp *batchProc
@@ -548,21 +538,21 @@ func (w *watchView) showLaneOutput(n int) string {
 			views = append(views, display.FollowView{Name: "batch", Lines: display.FileLines(path)})
 		}
 		// A lane waiting on others in its batch isn't running yet: follow
-		// until the batch ends, not until the lane next looks idle.
-		done = func() bool {
-			if bp != nil {
-				select {
-				case <-bp.done:
-					return true
-				default:
-					return false
-				}
+		// until the batch ends, not until the lane next looks idle; then
+		// the header says how the lane ended.
+		id := batch.ID
+		end = func() *display.FollowEnd {
+			be := batchEnd(w.root, id, bp)
+			if be == nil {
+				return nil
 			}
-			e, err := queue.Find(w.root, batch.ID)
-			return err != nil || e.State != queue.Running
+			if le := laneEnd(w.root, n, func() bool { return false }); le != nil {
+				return le
+			}
+			return be
 		}
 	}
-	if err := display.Follow(os.Stdin, os.Stdout, title, views, done); err != nil {
+	if err := display.Follow(os.Stdin, os.Stdout, title, views, end); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -581,7 +571,7 @@ func (w *watchView) showLaneLogs(n int) string {
 		{Name: "log", Lines: func() []string { return logLines(w.root, []int{n}, true) }},
 		{Name: "last round", Lines: func() []string { return logLines(w.root, []int{n}, false) }},
 	}
-	if err := display.Follow(os.Stdin, os.Stdout, title, views, func() bool { return !running() }); err != nil {
+	if err := display.Follow(os.Stdin, os.Stdout, title, views, func() *display.FollowEnd { return laneEnd(w.root, n, running) }); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -612,22 +602,108 @@ func (w *watchView) showBatchLogs(e *queue.Entry) string {
 	if _, err := os.Stat(path); err == nil {
 		views = append(views, display.FollowView{Name: "batch", Lines: display.FileLines(path)})
 	}
-	done := func() bool {
-		if bp != nil {
-			select {
-			case <-bp.done:
-				return true
-			default:
-				return false
-			}
+	end := func() *display.FollowEnd {
+		if cur, err := queue.Find(w.root, e.ID); err == nil && cur.State == queue.Queued {
+			return nil // a waiting batch's logs are its lanes' last rounds: no end yet
 		}
-		cur, err := queue.Find(w.root, e.ID)
-		return err != nil || cur.State != queue.Running
+		return batchEnd(w.root, e.ID, bp)
 	}
-	if err := display.Follow(os.Stdin, os.Stdout, title, views, done); err != nil {
+	if err := display.Follow(os.Stdin, os.Stdout, title, views, end); err != nil {
 		return err.Error()
 	}
 	return ""
+}
+
+// batchEnd is how batch id ended, for the follow view's header: nil while
+// it waits or runs (here, or for another worker). The details name each
+// lane that didn't pass, and why: its failed steps, or what skipped it.
+func batchEnd(root, id string, bp *batchProc) *display.FollowEnd {
+	if bp != nil {
+		select {
+		case <-bp.done:
+		default:
+			return nil
+		}
+	}
+	e, err := queue.Find(root, id)
+	if err == nil && (e.State == queue.Queued || e.State == queue.Running) && bp == nil {
+		return nil
+	}
+	end := &display.FollowEnd{}
+	if err != nil || e.Result == nil {
+		if bp == nil {
+			return &display.FollowEnd{Result: "finished"}
+		}
+		code := bp.code
+		end.Result, end.Exit, end.Elapsed = batchOutcome(root, bp), &code, time.Since(bp.started)
+		return end
+	}
+	r := e.Result
+	exit := r.Exit
+	end.Result, end.Exit = r.Result, &exit
+	if a, err := time.Parse(time.RFC3339, r.Started); err == nil {
+		if b, err := time.Parse(time.RFC3339, r.Finished); err == nil {
+			end.Elapsed = b.Sub(a)
+		}
+	}
+	st, _ := status.Load(root)
+	for _, l := range r.Lanes {
+		if l.Result == status.Passed {
+			continue
+		}
+		if l.Reason != "" {
+			end.Details = append(end.Details, fmt.Sprintf("swim %d %s: %s", l.Lane, l.Result, l.Reason))
+			continue
+		}
+		var failed []string
+		if st != nil {
+			if sl := st.Get(l.Lane); sl != nil {
+				failed = sl.FailedSteps
+			}
+		}
+		if len(failed) == 0 {
+			end.Details = append(end.Details, fmt.Sprintf("swim %d %s", l.Lane, l.Result))
+		}
+		for _, f := range failed {
+			end.Details = append(end.Details, fmt.Sprintf("swim %d: %s", l.Lane, strings.TrimSpace(f)))
+		}
+	}
+	if r.Error != "" {
+		end.Details = append(end.Details, r.Error)
+	}
+	return end
+}
+
+// laneEnd is how lane n's round ended, for the follow view's header, from
+// its status: nil while it runs, or when it has no finished round.
+func laneEnd(root string, n int, running func() bool) *display.FollowEnd {
+	if running() {
+		return nil
+	}
+	st, _ := status.Load(root)
+	if st == nil {
+		return nil
+	}
+	l := st.Get(n)
+	if l == nil {
+		return nil
+	}
+	switch l.State {
+	case status.Passed, status.Failed, status.Interrupted, status.Skipped:
+	default:
+		return nil
+	}
+	end := &display.FollowEnd{Result: l.State, Exit: l.ExitCode}
+	if l.DurationS != nil {
+		end.Elapsed = time.Duration(*l.DurationS * float64(time.Second))
+	}
+	for _, f := range l.FailedSteps {
+		end.Details = append(end.Details, strings.TrimSpace(f))
+	}
+	if l.Reason != "" && len(end.Details) == 0 {
+		end.Details = append(end.Details, l.Reason)
+	}
+	return end
 }
 
 // laneLogFiles are lane n's current logs: its own, then its jobs', cells'
