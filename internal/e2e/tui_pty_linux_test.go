@@ -414,6 +414,9 @@ func TestTUIManyLanesKeepsSelection(t *testing.T) {
 	}
 	tr := r.startTUI(nil, "all")
 	tr.waitFor("more:")
+	// Lane 1 holds the run open; until it has started, the panel may give
+	// its row to lanes that started first.
+	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "hold" })
 	tr.send("35\r")
 	s := tr.waitFor("swim 35 · ")
 	contains(t, "panel", s, "▶swim 35", "swim 1 ")
