@@ -126,12 +126,12 @@ lines or command instead. For anything broken, see
 
 1. **Catch up:** `swim report --earmark`, then `swim status`. Don't redo or
    contradict what the record says without asking. If this round continues
-   earlier ones, read them first (section 4).
+   earlier ones, read them first (section 5).
 2. **Pick lanes:** only idle ones (or unused numbers 1–99). Never a lane
    that's running or holds a round someone may be about to run, and never
    an Always lane (`[*]` in `swim plan`). Confirm with the user when it's
    unclear.
-3. **Write:** `swim new N "<goal>"`, then fill it in (see section 5 and
+3. **Write:** `swim new N "<goal>"`, then fill it in (see section 6 and
    [reference/lane-recipe.md](reference/lane-recipe.md)). Write lanes in
    bash unless the user asks for another language or the work is much
    easier in one (an SDK). `swim new N "<goal>" --lang py|ts` starts one.
@@ -142,14 +142,16 @@ lines or command instead. For anything broken, see
    tree, the predicted skips and the guard flags. `swim plan --check` runs
    the read-only stages for real. Run it only if the user says the target is
    reachable from here, which is usually not.
-5. **Hand off:** give the operator the exact command, pinned to job ids,
-   with each guard flag and what it approves
-   ([reference/handoff.md](reference/handoff.md)). Then stop and wait. Don't
-   poll with `swim run`.
-6. **Read results:** `swim report --earmark` (or `swim log N`, `swim log N
-   --yaml`). **PASS only means exit 0.** Check the real outcome in the step
-   output: ids, counts, "No changes", the verify stage. `SKIP ... dry run`
-   means a guard wasn't approved. Nothing changed.
+5. **Dispatch or hand off:** queue the round (section 2), or give the
+   operator the exact command, pinned to job ids, with each guard flag and
+   what it approves ([reference/handoff.md](reference/handoff.md)). Then
+   don't wait: go on to the next task (section 4). Never poll with `swim
+   run`.
+6. **Read results** at your next stopping point: `swim report --earmark`
+   (or `swim log N`, `swim log N --yaml`). **PASS only means exit 0.**
+   Check the real outcome in the step output: ids, counts, "No changes",
+   the verify stage. `SKIP ... dry run` means a guard wasn't approved.
+   Nothing changed.
 7. **Close out:** record results where the project tracks them, `swim note
    "<finding>"` for what the next session needs, then `swim archive N --as
    <what-happened>` and `swim stub N "<why idle>"`. Out-of-scope findings go
@@ -160,7 +162,55 @@ stopped mid-change, an orphaned batch, `swim verify` saying `no`): start
 with [reference/triage.md](reference/triage.md). Read-only first, then tell
 the operator what you found and the exact fix to run.
 
-## 4. Campaigns: rounds that build on each other
+## 4. Concurrent streams: keep working while swim validates
+
+Work several tasks at once. swim runs one task's validation while you write
+the next, and you come back to a task when its results are in. Don't sit
+idle waiting for a run.
+
+1. **List the tasks.** Write them in your task list before starting, each
+   with the lane(s) that will validate it. Give every task its own lanes
+   (section 3, step 2): two streams never share a lane.
+2. **Work the first task** until it's ready to validate.
+3. **Dispatch its validation:** `swim lint N`, then `swim queue add N ...`
+   (no approvals; flag risks as section 2 says). Record the batch number
+   and job ids against the task: "orders: #41, swim 21 (63bdf4a9)".
+4. **Don't wait.** Start the next task.
+5. **At each stopping point** (the next task is ready to dispatch, or
+   blocked): dispatch what's ready, then run `swim report --earmark` and
+   `swim queue` to see what has finished.
+6. **Pick finished tasks back up.** For each task whose batch is done, read
+   its results (`swim log <job>`; PASS only means exit 0) and either close
+   it out or fix it and go back to step 3. Then carry on with the task you
+   were on. Repeat until every task is validated and closed out.
+
+The rules that keep streams apart:
+- **Don't touch a dispatched lane.** A queued batch is pinned to its
+  scripts: an edit makes swim skip that lane rather than run your new
+  version. To change a dispatched lane, `swim queue rm` its batch (if it
+  hasn't started) and dispatch again, or wait for it to finish.
+- **Shared setup takes turns.** Batches that pull in the same Always lane
+  (`After: 1`) run one after another, not side by side. Expect that wait.
+  A swim older than the fix for this (swimlane `8fc50d1`) starts them
+  together, and all but one fail at once with "swim 1 is already
+  running". There, queue such lanes together as one batch (`swim queue
+  add 2 3 4`).
+- **Only block when there's nothing else to do.** Once every task is
+  dispatched or waiting on results, `swim report --earmark --wait` blocks
+  until something new is written. Use it then, and only then.
+- **Keep a few streams open at most,** about as many as the worker runs at
+  once (`watch_batches`, default 4). More just sit in the queue.
+- **No worker, no progress.** If `swim queue` shows batches waiting and
+  nothing running, check that a worker (`swim watch`) is up, and tell the
+  user once.
+- **A guarded change dispatched without approval is a dry run.** Flag it
+  (⚠), keep working, and check later whether the operator approved it.
+  Never treat a dry run as validated.
+
+[reference/streams.md](reference/streams.md) walks through an example and
+shows what to keep in the task list.
+
+## 5. Campaigns: rounds that build on each other
 
 Most real work is several rounds: discover, prepare, change, clean up,
 often with an expensive setup and a few retries. Each round should start
@@ -186,7 +236,7 @@ from what the previous ones left behind.
 - **Each new round re-reads deployed state.** Don't trust the previous
   round's output as current; snapshot again.
 
-## 5. Writing a lane: the rules that matter most
+## 6. Writing a lane: the rules that matter most
 
 - **Stages in order:** `snapshot` (read-only capture), `check` (checks and
   `gate`s), `change` (only behind `guard`), `verify` (prove it worked). End
@@ -220,7 +270,7 @@ from what the previous ones left behind.
 - **Don't edit a lane while it may be running,** because bash reads scripts
   incrementally. `swim status` shows what's running.
 
-## 6. Talking about safety
+## 7. Talking about safety
 
 Be accurate about what swim guarantees. Approvals, signatures and the chain
 prove **who decided what** and that **the approved bytes ran**. They don't

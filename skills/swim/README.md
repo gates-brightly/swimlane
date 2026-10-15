@@ -13,6 +13,9 @@ and read the results back. It never runs or approves anything itself.
   operator: run now, queue, signed approvals.
 - [`reference/workers.md`](reference/workers.md): a planner and its workers,
   or two sessions, in one repo without collisions.
+- [`reference/streams.md`](reference/streams.md): working several tasks
+  at once, dispatching each one's validation and picking it back up when
+  its results are in.
 - [`reference/triage.md`](reference/triage.md): first-line commands when
   something looks wrong, and what to do after a round fails partway through
   a change.
