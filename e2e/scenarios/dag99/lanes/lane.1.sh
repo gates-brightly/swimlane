@@ -18,6 +18,8 @@
 #   (none)
 # Test toggle (not a guard; nothing destructive):
 #   E2E_FAIL="3 5"   space-separated lanes that fail on purpose (to watch skips propagate)
+#   E2E_HOLD=<file>  hold here (after touching <file>.held) until <file> exists, so a
+#                    scenario can signal swim while the run is certainly in progress
 #
 # DAG (each lane's `# After:` line), lanes 1-9:
 #   1 -> 2, 3, 5    2 -> 4, 6    3 -> 4, 7    5 -> 7
@@ -47,6 +49,7 @@ export P
 stage check
 gate "curl available" curl --version
 gate "e2etool available" e2etool version
+run "hold (E2E_HOLD='${E2E_HOLD:-}')" bash -c '[ -z "${E2E_HOLD:-}" ] && exit 0; trap "exit 130" INT TERM; touch "$E2E_HOLD.held"; while [ ! -e "$E2E_HOLD" ]; do sleep 0.05; done'
 stage change
 # swim:lint-ignore destructive scratch dir under .scenario/, recreated every run
 gate "reset $P" bash -c 'rm -rf "$P" && mkdir -p "$P"'

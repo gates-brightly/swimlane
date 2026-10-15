@@ -81,7 +81,7 @@ for s in $selected; do
     for v in $(env | sed -nE 's/^((SWIM|GITHUB|GITLAB|CI)_[A-Za-z0-9_]*)=.*/\1/p'); do
       [ "$v" = SWIM_BIN ] || [ "$v" = SWIM_CHECK_STATES ] || unset "$v"
     done
-    unset CI STEP_LOG E2E_FAIL
+    unset CI STEP_LOG E2E_FAIL E2E_HOLD
     PATH=$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -v '/\.swim/bin$' | paste -s -d: -)
     export SWIM_BIN="$SWIM"
     cd "$repo" || exit 1

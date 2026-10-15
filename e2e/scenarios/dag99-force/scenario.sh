@@ -6,9 +6,10 @@ DESCRIPTION="dag99, Ctrl-C twice: force quit; every process gone within the grac
 
 scenario_run() {
   "$SWIM" config interrupt_grace 1s >/dev/null
-  "$SWIM" all --yaml >"$OUT/run.yml" 2>"$OUT/run.err" &
+  local hold=$PWD/.scenario/hold
+  E2E_HOLD=$hold "$SWIM" all --yaml >"$OUT/run.yml" 2>"$OUT/run.err" &
   local pid=$! t0 i
-  sleep 2
+  dag99_held "$hold" "$pid" || { wait "$pid"; RUN_EXIT=$?; return 1; }
   kill -INT "$pid"
   sleep 0.3
   kill -INT "$pid"
@@ -19,6 +20,7 @@ scenario_run() {
     sleep 0.05
   done
   FORCE_TOOK=$(awk -v a="$t0" -v b="$(e2etool now)" 'BEGIN { printf "%.2f", b - a }')
+  touch "$hold" # a held step force quit missed would end now, not linger
   wait "$pid"
   RUN_EXIT=$?
   sleep 0.3
