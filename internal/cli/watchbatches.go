@@ -549,24 +549,105 @@ func (w *watchView) showLaneOutput(n int) string {
 	return ""
 }
 
+// showLaneLogs (l on a lane) shows lane n's current log, every round in
+// it with its job and cell logs, whether or not it runs; while it runs it
+// follows the log, the running step's output included.
+func (w *watchView) showLaneLogs(n int) string {
+	if len(laneLogFiles(w.root, n)) == 0 {
+		return fmt.Sprintf("swim %d has no current log (swim log %d --all shows its archives)", n, n)
+	}
+	running := func() bool { _, ok := lane.Running(w.root, n); return ok }
+	title := fmt.Sprintf("swim watch · swim %d · %s", n, rel(w.root, lane.Log(w.root, n)))
+	views := []display.FollowView{
+		{Name: "log", Lines: func() []string { return logLines(w.root, []int{n}, true) }},
+		{Name: "last round", Lines: func() []string { return logLines(w.root, []int{n}, false) }},
+	}
+	if err := display.Follow(os.Stdin, os.Stdout, title, views, func() bool { return !running() }); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// showBatchLogs (l on a batch) shows its lanes' logs, their latest round
+// each: the last time they ran for a waiting batch, as they go for a
+// running one. v switches to the batch's own output, when it has one.
+func (w *watchView) showBatchLogs(e *queue.Entry) string {
+	lanes := laneNums(e)
+	has := false
+	for _, n := range lanes {
+		has = has || len(laneLogFiles(w.root, n)) > 0
+	}
+	if !has {
+		return fmt.Sprintf("#%d's lanes (%s) have no logs yet", e.Seq, lanesText(lanes))
+	}
+	title := fmt.Sprintf("swim watch · #%d %s (%s) · logs", e.Seq, e.ID, lanesText(lanes))
+	views := []display.FollowView{{Name: "logs", Lines: func() []string { return logLines(w.root, lanes, false) }}}
+	var bp *batchProc
+	if w.batches != nil {
+		bp = w.batches.proc(e.ID)
+	}
+	path := batchOutPath(w.root, e)
+	if bp != nil {
+		path = bp.out
+	}
+	if _, err := os.Stat(path); err == nil {
+		views = append(views, display.FollowView{Name: "batch", Lines: display.FileLines(path)})
+	}
+	done := func() bool {
+		if bp != nil {
+			select {
+			case <-bp.done:
+				return true
+			default:
+				return false
+			}
+		}
+		cur, err := queue.Find(w.root, e.ID)
+		return err != nil || cur.State != queue.Running
+	}
+	if err := display.Follow(os.Stdin, os.Stdout, title, views, done); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// laneLogFiles are lane n's current logs: its own, then its jobs', cells'
+// and read-only check's (not archives).
+func laneLogFiles(root string, n int) []string {
+	var logs []string
+	if _, err := os.Stat(lane.Log(root, n)); err == nil {
+		logs = append(logs, lane.Log(root, n))
+	}
+	more, _ := filepath.Glob(filepath.Join(filepath.Dir(lane.Log(root, n)), fmt.Sprintf("agent%d.*.log", n)))
+	for _, m := range more {
+		if !strings.Contains(filepath.Base(m), ".prev-") {
+			logs = append(logs, m)
+		}
+	}
+	return logs
+}
+
 // verboseLines are the batch's lanes' current rounds as their logs hold
 // them, each line marked with its lane (or job, or cell), and the running
 // step's output so far (its spool): everything the overview leaves out.
-func verboseLines(root string, lanes []int) []string {
+func verboseLines(root string, lanes []int) []string { return logLines(root, lanes, false) }
+
+// logLines are lanes' current logs (their own, their jobs' and cells'),
+// each line marked with its log, and the running step's output so far:
+// every round in them with all, else the latest.
+func logLines(root string, lanes []int, all bool) []string {
 	var out []string
 	for _, n := range lanes {
-		logs := []string{lane.Log(root, n)}
-		more, _ := filepath.Glob(filepath.Join(filepath.Dir(lane.Log(root, n)), fmt.Sprintf("agent%d.*.log", n)))
-		for _, m := range more {
-			if !strings.Contains(filepath.Base(m), ".prev-") {
-				logs = append(logs, m)
-			}
-		}
-		for _, path := range logs {
+		for _, path := range laneLogFiles(root, n) {
 			tag := "[" + strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "agent"), ".log") + "] "
 			if rounds, _ := splitRounds(path); len(rounds) > 0 {
-				for _, l := range rounds[len(rounds)-1] {
-					out = append(out, tag+l)
+				if !all {
+					rounds = rounds[len(rounds)-1:]
+				}
+				for _, r := range rounds {
+					for _, l := range r {
+						out = append(out, tag+l)
+					}
 				}
 			}
 			if sp, ok := step.ReadSpool(path); ok {

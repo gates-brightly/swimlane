@@ -106,6 +106,77 @@ func TestWatchLaneOutputView(t *testing.T) {
 	}
 }
 
+// l on a lane shows its log, every round, running or not; l on a batch
+// shows its lanes' logs.
+func TestWatchLogsKey(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "short lane 1", `run "hello" echo lane1-hello`)
+	r.script(2, "short lane 2", `run "hello" echo lane2-hello`)
+	r.mustSwim("run", "1", "--plain")
+	r.mustSwim("run", "1", "--plain") // two rounds in its log
+	tr := r.startTUI(nil, "watch")
+	tr.waitFor("l logs")
+	tr.send("l")
+	tr.waitFor("swim watch · swim 1 · .swim/logs/agent1.log")
+	s := tr.waitScreen("both rounds", func(s string) bool { return strings.Count(s, "== ROUND") == 2 })
+	contains(t, "l on a lane", s, "| lane1-hello")
+	tr.send("v")
+	s = tr.waitFor("· last round")
+	if n := strings.Count(s, "== ROUND"); n != 1 {
+		t.Errorf("last round shows %d rounds:\n%s", n, s)
+	}
+	tr.send("q")
+	tr.waitFor("▸ swim 1")
+	// A lane with no log yet says so.
+	tr.send("\x1b[B")
+	tr.waitFor("▸ swim 2")
+	tr.send("l")
+	tr.waitFor("swim 2 has no current log")
+	// A batch (scheduled, so it waits): its lanes' logs, from their last run.
+	r.mustSwim("schedule", "1", "+2h")
+	tr.waitFor("scheduled")
+	tr.send("\x1b[B")
+	tr.waitFor("▸ #1")
+	tr.send("l")
+	tr.waitFor("· logs")
+	tr.waitFor("[1] ")
+	tr.send("q")
+	tr.waitFor("▸ #1")
+	tr.send("\x03")
+	if code, _ := tr.wait(); code != 0 {
+		t.Errorf("exit %d after ctrl-c", code)
+	}
+}
+
+// The main screen streams the running lanes' output under the queue; o
+// hides it.
+func TestWatchStreamsRunningOutput(t *testing.T) {
+	r := newRepo(t, "")
+	release := tuiLanes(r, 2)
+	r.mustSwim("queue", "add", "1")
+	r.mustSwim("queue", "add", "2")
+	tr := r.startTUI(nil, "watch")
+	s := tr.waitScreen("both lanes streaming", func(s string) bool {
+		return strings.Contains(s, "\n  Running") && strings.Contains(s, "swim 1 · hold") && strings.Contains(s, "swim 2 · hold") &&
+			strings.Contains(s, "lane1-hello") && strings.Contains(s, "lane2-hello")
+	})
+	contains(t, "the main screen", s, "Jobs", "Queue", "o stream")
+	tr.send("o")
+	tr.waitScreen("stream hidden", func(s string) bool {
+		return strings.Contains(s, "running output hidden") && !strings.Contains(s, "lane1-hello")
+	})
+	tr.send("o")
+	tr.waitFor("lane1-hello")
+	os.WriteFile(release, nil, 0o644)
+	tr.waitScreen("both done, nothing streaming", func(s string) bool {
+		return strings.Contains(s, "#2 passed") && !strings.Contains(s, "\n  Running") && !strings.Contains(s, "lane1-hello")
+	})
+	tr.send("\x03")
+	if code, _ := tr.wait(); code != 0 {
+		t.Errorf("exit %d after ctrl-c", code)
+	}
+}
+
 // --no-tui keeps the plain worker.
 func TestWatchNoTUI(t *testing.T) {
 	r := newRepo(t, "")

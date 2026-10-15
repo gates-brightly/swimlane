@@ -32,6 +32,11 @@ type Picker struct {
 	// Title, if set, is the title line on every redraw (a live count),
 	// instead of Pick's title.
 	Title func() string
+	// Tail, if set, fills the screen under the rows on every redraw: live
+	// lines (swim watch's running output), at most n of them. While it has
+	// any it gets the room the rows leave, and never less than a third of
+	// the screen; the rows scroll above it.
+	Tail func(n int) []PickRow
 }
 
 // Action keys that aren't printable: put these runes in Pick's keys to
@@ -202,6 +207,18 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 	}
 	out := []string{head, ""}
 	body := h - 3 // title, blank, note
+	var tail []PickRow
+	if p.Tail != nil {
+		room := max(body-len(rows), body/3) - 1 // a blank line above it
+		if room >= 2 {
+			if tail = p.Tail(room); len(tail) > room {
+				tail = tail[len(tail)-room:]
+			}
+		}
+		if len(tail) > 0 {
+			body -= len(tail) + 1
+		}
+	}
 	first := 0
 	for i, r := range rows {
 		if r.ID != "" && r.ID == p.Sel && i >= body {
@@ -226,6 +243,17 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 	}
 	for len(out) < body+2 {
 		out = append(out, "")
+	}
+	if len(tail) > 0 {
+		out = append(out, "")
+		for _, r := range tail {
+			text := truncate("  "+r.Text, cols)
+			if r.Color == "" {
+				out = append(out, text)
+			} else {
+				out = append(out, pt.Paint(r.Color, text))
+			}
+		}
 	}
 	return append(out, bottom)
 }

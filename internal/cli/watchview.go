@@ -29,15 +29,73 @@ type watchView struct {
 	yes      bool         // swim watch -y: approves what a batch doesn't
 	activity string       // what the worker is waiting for
 	batches  *batchRunner // batches running side by side (nil: one at a time)
+	noStream bool         // o: the running output under the queue is hidden
 }
 
 const (
-	watchKeys  = "rq" + string(display.PickEnter)
-	watchHints = "↑ ↓ pick  enter output  r run now  q queue  ctrl-c quit"
+	watchKeys  = "rqlo" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q queue  ctrl-c quit"
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
-	return &watchView{root: root, cfg: cfg, yes: yes, picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
+	w := &watchView{root: root, cfg: cfg, yes: yes, picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
+	w.picker.Tail = w.stream
+	return w
+}
+
+// stream is the screen's live part, under the queue: the latest lines of
+// every running lane's log (its running step's output included), at most
+// n in all, shared between the lanes. o hides it.
+func (w *watchView) stream(n int) []display.PickRow {
+	if w.noStream {
+		return nil
+	}
+	st, _ := status.Load(w.root)
+	var running []int
+	for _, l := range lane.Associated(w.root) {
+		if _, ok := lane.Running(w.root, l); ok {
+			running = append(running, l)
+		} else if st != nil {
+			if s := st.Get(l); s != nil && s.State == status.Running && s.PID > 0 && lane.Alive(s.PID) {
+				running = append(running, l) // a matrix lane: its cells hold the pid files
+			}
+		}
+	}
+	if len(running) == 0 || n < 2 {
+		return nil
+	}
+	rows := []display.PickRow{{Text: "Running"}}
+	n--
+	// Each lane gets a header and an even share of the lines (2 at least);
+	// those that don't fit are counted.
+	shown := min(len(running), n/3)
+	if shown == 0 {
+		shown = 1
+	}
+	per := n/shown - 1
+	for i, l := range running[:shown] {
+		head := fmt.Sprintf("swim %d", l)
+		if st != nil {
+			if s := st.Get(l); s != nil && s.CurrentStep != "" {
+				head += " · " + s.CurrentStep
+			}
+		}
+		rows = append(rows, display.PickRow{Text: head, Color: ui.LaneColor(l) + ui.Bold})
+		lines := logLines(w.root, []int{l}, false)
+		if i == shown-1 {
+			per = n - (len(rows) - 1) // the last lane takes what's left
+		}
+		if len(lines) > per {
+			lines = lines[len(lines)-per:]
+		}
+		for _, line := range lines {
+			rows = append(rows, display.PickRow{Text: "  " + line, Color: ui.Dim})
+		}
+	}
+	if more := len(running) - shown; more > 0 {
+		rows[0].Text = fmt.Sprintf("Running  (+%d more: l on a lane shows its log)", more)
+	}
+	return rows
 }
 
 // watchViewAllowed reports whether swim watch can show its screen: a
@@ -219,6 +277,12 @@ func (w *watchView) act(id string, key rune) string {
 		if key == display.PickEnter {
 			return w.showOutput(e)
 		}
+		if key == 'l' {
+			return w.showBatchLogs(e)
+		}
+		if key == 'o' {
+			return w.toggleStream()
+		}
 		if key == 'q' {
 			return fmt.Sprintf("#%d is already in the queue (r runs it now)", e.Seq)
 		}
@@ -227,6 +291,12 @@ func (w *watchView) act(id string, key rune) string {
 	n, _ := strconv.Atoi(ref)
 	if key == display.PickEnter {
 		return w.showLaneOutput(n)
+	}
+	if key == 'l' {
+		return w.showLaneLogs(n)
+	}
+	if key == 'o' {
+		return w.toggleStream()
 	}
 	info, err := lane.ReadScript(w.root, n)
 	if err != nil {
@@ -239,6 +309,15 @@ func (w *watchView) act(id string, key rune) string {
 		return w.queueLane(n)
 	}
 	return w.runLane(n)
+}
+
+// toggleStream hides or shows the running output under the queue.
+func (w *watchView) toggleStream() string {
+	w.noStream = !w.noStream
+	if w.noStream {
+		return "running output hidden (o shows it)"
+	}
+	return "running output shown"
 }
 
 // queueLane queues lane n as its own batch, as swim queue add N does: no

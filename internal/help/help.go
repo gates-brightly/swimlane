@@ -773,6 +773,13 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
     enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log);
                    v switches to the verbose output (its lanes' logs, the
                    running step's output included) and back
+    l on a job     its lane's current log, every round (v: the last one),
+                   running or not; followed while it runs
+    l on a batch   its lanes' latest rounds, from their last run while it
+                   waits, as they go while it runs (v: the batch's output)
+    o              hide or show the running output: under the queue, the
+                   latest lines of every running lane's log, the running
+                   step's output included (shown by default)
   [DRY] marks a lane whose round dry-ran a guard, and a waiting batch with
   a guard neither it nor -y approves (signed approvals may still cover it).
   The screen stays up while batches run; their output goes to that file.

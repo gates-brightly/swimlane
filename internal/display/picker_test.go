@@ -116,3 +116,39 @@ func TestPickerHintsMoveDown(t *testing.T) {
 		t.Errorf("the note should show: %q", out[7])
 	}
 }
+
+func TestPickerTail(t *testing.T) {
+	var asked int
+	p := &Picker{Tail: func(n int) []PickRow {
+		asked = n
+		var out []PickRow
+		for i := 0; i < 50; i++ {
+			out = append(out, PickRow{Text: "out " + string(rune('a'+i%26))})
+		}
+		return out
+	}}
+	p.Sel = "lane:1"
+	// Room to spare: the tail gets what the rows leave.
+	out := p.render("t", "", pickRows(), 40, 20)
+	if len(out) != 20 || asked != 20-3-len(pickRows())-1 || !strings.Contains(out[len(out)-2], "out") || out[2+len(pickRows())] != "" {
+		t.Fatalf("asked %d:\n%s", asked, strings.Join(out, "\n"))
+	}
+	// Many rows: the tail still gets a third, and the selection stays in view.
+	var many []PickRow
+	for i := 0; i < 40; i++ {
+		many = append(many, PickRow{ID: "lane:" + string(rune('A'+i)), Text: "swim " + string(rune('A'+i))})
+	}
+	p.Sel = many[39].ID
+	out = p.render("t", "", many, 40, 15)
+	if len(out) != 15 || asked != 12/3-1 {
+		t.Fatalf("asked %d, %d lines", asked, len(out))
+	}
+	if !strings.Contains(strings.Join(out, "\n"), "▸ swim "+string(rune('A'+39))) {
+		t.Errorf("selection scrolled out:\n%s", strings.Join(out, "\n"))
+	}
+	// Nothing to show: the rows keep the whole screen.
+	p.Tail = func(int) []PickRow { return nil }
+	if out := p.render("t", "", pickRows(), 40, 10); strings.Contains(strings.Join(out, ""), "out") || len(out) != 10 {
+		t.Errorf("empty tail:\n%s", strings.Join(out, "\n"))
+	}
+}
