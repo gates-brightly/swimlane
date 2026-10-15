@@ -10,7 +10,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # Named images, not -latest: an image change between two runs
+        # shouldn't be what turns main red. ubuntu-latest becomes Ubuntu 26
+        # from 2026-10-19; try ubuntu-26.04 alongside once main is green
+        # (revisit by 2026-12-01). macOS is for bash 3.2 and BSD userland.
+        os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +35,7 @@ jobs:
 
       - name: Tool versions
         run: |
+          echo "runner image: ${ImageOS:-?} ${ImageVersion:-?}"
           bash --version | head -1
           go version
 

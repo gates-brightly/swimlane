@@ -9,7 +9,7 @@ Where swim runs, what it needs, and which parts you can build on.
 
 | | |
 |---|---|
-| **Supported** | Linux and macOS. CI runs every change on `ubuntu-latest` and `macos-latest`, with macOS's own bash 3.2 first on `PATH`. |
+| **Supported** | Linux and macOS. CI runs every change on `ubuntu-24.04` and `macos-15` (named images, so one changing between runs isn't what turns CI red), with macOS's own bash 3.2 first on `PATH`. |
 | **Not supported** | Windows. swim relies on `flock` for locks, on process groups (`Setpgid`) for interrupts, and on unix sockets between swim and its lanes. |
 
 ## Building from source
