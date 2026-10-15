@@ -29,25 +29,21 @@ Found and fixed, run by run:
 | | | `TestCachePresetPersistsBetweenRounds`, macOS | the test assumed TMPDIR under /tmp | `b0db00a` |
 | 38784020382, 38785127202 | `b0db00a`, `df05a6b` | `TestLaneRCDeprecated`, macOS | bash 3.2's `declare -p` format: a shell flag taken for the rc's | `c01bbe5` |
 | | | `dag99-force`, macOS (2.7-4.4s) | one synced status.yml write per skipped lane | `3baf319` |
+| 38788128606, 38790683405 | `3baf319`, `b28c11b` | ubuntu race job: `TestStatusBatch` | the test slept 150ms for a flush that -race on a loaded runner hadn't done | `e0045fc` |
+| 38790683405 | `b28c11b` | `TestWrappedLaneHandlers`, macOS | the wrapper caught its own group SIGTERM and handed it to on_failure (2 in 40 under load) | `4d51ae9` |
 
 Ubuntu was green on `b0db00a` and `df05a6b`; macOS green on `3baf319`
-and `e70fb2b`. Still open (ubuntu):
-
-- `3baf319`: the race job (1.4) failed. `go test -race -count=3` over every
-  non-e2e package is clean here, and `e70fb2b`'s race job passed. Not
-  named yet: the annotation shows only the passing packages' tail.
-- `e70fb2b`: `TestPromptLineDeclines` and `TestPromptIsSafe/tui`. Both pass
-  here, alone and under fuzz load (load average 15). The tui case waits
-  15s for "q to close" or "stages: setup SKIP", and the CI screen shows
-  the TUI closed itself with only the summary: the test's end condition
-  may race the view closing. Neither commit since `df05a6b` touches what
-  these tests run (`c01bbe5`: lanes with a .lane.N.rc only; `3baf319`:
-  lanes the launcher skips).
+and `e70fb2b`. Still open (ubuntu): `e70fb2b`'s `TestPromptLineDeclines`
+and `TestPromptIsSafe/tui`. Both pass here, alone and under fuzz load
+(load average 15). The tui case waits 15s for "q to close" or "stages:
+setup SKIP", and the CI screen shows the TUI closed itself with only the
+summary: the test's end condition may race the view closing. They passed
+on `df05a6b`; nothing since touches what they run.
 
 ## Do
 
-- Read `e70fb2b`'s artifacts (`.ci-runs/38788470783/`) for the two prompt
-  tests' full output, and a red race job's `agent1.log` for the race.
+- If the prompt tests fail again, read that run's artifacts for their full
+  output (`CI_SHA=<sha> swim run 5` fetches a given commit's run).
 - If the prompt tests race the TUI closing, wait for an end the view
   always shows, not one of two it may skip.
 
