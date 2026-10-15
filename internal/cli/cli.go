@@ -75,6 +75,7 @@ func init() {
 		// Called by the lane script library, not by people.
 		"_start":   {run: cmdStart, hidden: true},
 		"_finish":  {run: cmdFinish, hidden: true},
+		"_batch":   {run: cmdBatch, hidden: true},
 		"_mark":    {run: cmdMark, hidden: true},
 		"_approve": {run: cmdApproveHook, hidden: true},
 		"_stage":   {run: cmdStage, hidden: true},

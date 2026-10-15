@@ -197,7 +197,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Secret management.** Rounds use the operator's existing credentials.
 - **Writing to git.** swim never commits, pushes or pulls, including in CI.
 - **Executing on the hub.** The hub relays requests to headless workers, which check, carry out and record them. It never runs anything itself, never holds credentials or secrets, and can't make an approval valid by itself: an answer to a guard counts when the worker verifies the approver's SSH signature against `lookup.yml` (or, where the repo's `swim.yml` allows it, a listed hub user's click for a guard no `require:` rule names).
-- **Scheduling across rounds.** The queue runs batches when swim is idle; there is no cron.
+- **Scheduling across rounds.** The queue runs batches once their lanes are free; there is no cron.
 
 ## Open questions
 

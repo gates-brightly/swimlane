@@ -248,6 +248,20 @@ To cut a release:
 
 ### Changed
 
+- **`swim watch` runs queued batches side by side:** a batch no longer
+  waits for swim to be idle, only for its own lanes.
+  - **Up to `--batches N` at once** (`watch_batches`, default 4), each in a
+    process of its own (`swim _batch`), so one batch's guard flags never
+    reach another's. A batch starts once none of its lanes is in another
+    batch or another swim run; a later batch whose lanes are free starts
+    ahead of one that waits. `After:` and locks across batches work as
+    across swim runs. `--batches 1` keeps one at a time; a headless worker
+    runs one at a time (hub answers reach it in its own process).
+  - **The watch screen stays up while batches run:** the queue shows them
+    as they go, newly queued batches appear (and start) at once, and
+    Enter on a batch follows its output (`.swim/queue/out/`); `r` starts a
+    waiting batch out of turn alongside the others.
+  - **Ctrl-C** interrupts every batch in hand gracefully, as it did the one.
 - **Approval lifecycle:** every signed approval is active, expired,
   revoked, stale (with why) or insufficient (with why), and `swim approve`
   and `swim verify` say which.

@@ -53,6 +53,7 @@ type Settings struct {
 	MsgLogInterval     string        `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
 	OutputsKeep        string        `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
 	QueueLease         string        `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
+	WatchBatches       int           `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
 	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
 	// the anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -365,6 +366,9 @@ func (c *Config) merge(r Settings) {
 	if r.QueueLease != "" {
 		c.QueueLease = r.QueueLease
 	}
+	if r.WatchBatches != 0 {
+		c.WatchBatches = r.WatchBatches
+	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
 	}
@@ -540,6 +544,19 @@ func (c *Config) QueueLeaseFor() time.Duration {
 		return d
 	}
 	return 0
+}
+
+// DefaultWatchBatches is how many batches one swim watch runs at once
+// unless watch_batches or --batches says otherwise.
+const DefaultWatchBatches = 4
+
+// WatchBatchesFor is watch_batches: how many queued batches one swim watch
+// runs at once (batches whose lanes don't overlap).
+func (c *Config) WatchBatchesFor() int {
+	if c.WatchBatches >= 1 {
+		return c.WatchBatches
+	}
+	return DefaultWatchBatches
 }
 
 // OutputsKeepFor is outputs_keep: how long round outputs nothing uses are
@@ -772,6 +789,9 @@ func (c *Config) validateInterrupt() error {
 		if d, err := time.ParseDuration(c.QueueLease); err != nil || d < 10*time.Second {
 			return fmt.Errorf("queue_lease must be a duration of 10s or more, like 2m, got %q", c.QueueLease)
 		}
+	}
+	if c.WatchBatches < 0 {
+		return fmt.Errorf("watch_batches must be 1 or more, got %d", c.WatchBatches)
 	}
 	return nil
 }

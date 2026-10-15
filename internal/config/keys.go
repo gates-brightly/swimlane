@@ -39,7 +39,7 @@ const (
 var ChimeStyles = []string{StyleBell, StyleSound, StyleNotify}
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep", "queue_lease"}
+var Keys = []string{"chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep", "queue_lease", "watch_batches"}
 
 // ParseChime reads true|false|failure (on|off also accepted).
 func ParseChime(s string) (Chime, error) {
@@ -173,6 +173,8 @@ func (c *Config) Get(key string) (string, error) {
 			return d.String(), nil
 		}
 		return "2m0s", nil
+	case "watch_batches":
+		return strconv.Itoa(c.WatchBatchesFor()), nil
 	case "interrupt_grace", "term_grace":
 		ig, tg := c.Graces()
 		if key == "term_grace" {
@@ -274,6 +276,12 @@ func keyValue(key, value string) (*yaml.Node, error) {
 			return nil, fmt.Errorf("queue_lease must be a duration of 10s or more, like 2m, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "watch_batches":
+		v := strings.TrimSpace(value)
+		if n, err := strconv.Atoi(v); err != nil || n < 1 {
+			return nil, fmt.Errorf("watch_batches must be a number, 1 or more, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: v}, nil
 	case "interrupt_grace", "term_grace", "msg_log_interval":
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d < 0 {

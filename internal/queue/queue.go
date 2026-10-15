@@ -367,6 +367,27 @@ func Touch(e *Entry) error {
 	return write(cur)
 }
 
+// Adopt makes this process the worker of an entry claimed for it (swim
+// watch claims a batch, then runs it in a process of its own): liveness
+// and the heartbeat follow the process that runs the batch.
+func Adopt(e *Entry) error {
+	cur, err := load(e.Path)
+	if err != nil {
+		return err
+	}
+	if !strings.HasSuffix(e.Path, ".running") || cur.Worker == nil || cur.Worker.Host != hostname() {
+		return fmt.Errorf("%s isn't claimed on this host", e.ID)
+	}
+	cur.Worker.PID, cur.Worker.Start = os.Getpid(), proc.Start(os.Getpid())
+	cur.Worker.Heartbeat = now().UTC().Format(time.RFC3339)
+	if err := write(cur); err != nil {
+		return err
+	}
+	cur.State = Running
+	*e = *cur
+	return nil
+}
+
 // ClaimNext claims the oldest waiting entry for this process, by renaming
 // it to .running; it returns nil when nothing waits. A lost race (another
 // worker renamed it first) moves on to the next entry. lease is how long

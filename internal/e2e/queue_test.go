@@ -2,9 +2,11 @@ package e2e
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -91,7 +93,9 @@ func TestQueueAndWatchOnce(t *testing.T) {
 	}
 }
 
-func TestWatchWaitsForIdle(t *testing.T) {
+// A queued batch waits only for its own lanes: one that another swim run
+// has waits until that run ends, one whose lanes are free starts now.
+func TestWatchWaitsForBusyLanes(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "long", `run "long" sleep 1.5`)
 	r.script(2, "queued", `run "q" true`)
@@ -100,6 +104,7 @@ func TestWatchWaitsForIdle(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "long" })
+	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "2")
 	w := r.cmd(bin, "watch", "--interval", "100ms")
 	var out bytes.Buffer
@@ -109,16 +114,21 @@ func TestWatchWaitsForIdle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Process.Kill()
-	busy.Wait()
+	// Swim 2's batch doesn't wait for swim run's swim 1.
 	waitFor(t, func() bool { return len(doneEntries(t, r)) == 1 })
+	if r.status().Get(1).CurrentStep != "long" {
+		t.Errorf("swim 2's batch waited for swim run 1 to end:\n%s", out.String())
+	}
+	busy.Wait()
+	waitFor(t, func() bool { return len(doneEntries(t, r)) == 2 })
 	syscall.Kill(-w.Process.Pid, syscall.SIGINT) // the watch stops between batches
 	if err := w.Wait(); err != nil {
 		t.Errorf("watch after Ctrl-C: %v\n%s", err, out.String())
 	}
-	contains(t, "watch", out.String(), "waiting for swim to be idle: swim 1 is running")
-	l1, l2 := r.status().Get(1), r.status().Get(2)
-	if l2.StartedAt == nil || l1.FinishedAt == nil || *l2.StartedAt < *l1.FinishedAt {
-		t.Errorf("the queued lane started before swim was idle: lane 1 finished %v, lane 2 started %v", l1.FinishedAt, l2.StartedAt)
+	contains(t, "watch", out.String(), "1 queued; waiting for their lanes")
+	// Swim 1's batch started only once swim run's round had ended.
+	if n := strings.Count(r.log(1), "== ROUND "); n != 2 {
+		t.Errorf("swim 1 ran %d rounds, want swim run's and the batch's", n)
 	}
 }
 
@@ -155,20 +165,6 @@ func TestWatchWorkersShareTheQueue(t *testing.T) {
 	for n := 1; n <= 3; n++ {
 		if c := strings.Count(r.log(n), "== ROUND "); c != 1 {
 			t.Errorf("swim %d ran %d times", n, c)
-		}
-	}
-	// One batch at a time: no two runs overlapped.
-	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	depth := 0
-	for _, line := range strings.Split(string(hist), "\n") {
-		switch {
-		case strings.Contains(line, "  queue-run "):
-			depth++
-			if depth > 1 {
-				t.Fatalf("two batches ran at once:\n%s", hist)
-			}
-		case strings.Contains(line, "  queue-done "):
-			depth--
 		}
 	}
 }
@@ -217,9 +213,8 @@ func TestWatchCtrlCDuringBatch(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "long", `run "a" sleep 1
 run "b" true`)
-	r.script(2, "later", `run "x" true`)
 	r.mustSwim("queue", "add", "1")
-	r.mustSwim("queue", "add", "2")
+	r.mustSwim("queue", "add", "1") // waits for the first: same lane
 	w := r.cmd(bin, "watch", "--interval", "100ms")
 	var out bytes.Buffer
 	w.Stdout, w.Stderr = &out, &out
@@ -392,5 +387,64 @@ func TestQueueWaitTimeout(t *testing.T) {
 	}
 	if _, code := r.swim("queue", "1", "--timeout", "soon"); code != 2 {
 		t.Errorf("a bad --timeout should be a usage error, got %d", code)
+	}
+}
+
+// swim watch runs queued batches side by side: a batch whose lanes are
+// free starts while another runs (even ahead of an older one that has to
+// wait), batches sharing a lane never overlap, and --batches 1 keeps them
+// one at a time.
+func TestWatchBatchesSideBySide(t *testing.T) {
+	r := newRepo(t, "")
+	stamp := func(name string) string {
+		return fmt.Sprintf(`run "%[1]s start" bash -c 'date +%%s.%%N >> %[1]s.start'
+run "%[1]s work" sleep 2
+run "%[1]s end" bash -c 'date +%%s.%%N >> %[1]s.end'`, name)
+	}
+	r.script(1, "slow one", stamp("one"))
+	r.script(2, "two", stamp("two"))
+	times := func(name string) []float64 {
+		data, _ := os.ReadFile(filepath.Join(r.root, name))
+		var out []float64
+		for _, f := range strings.Fields(string(data)) {
+			v, _ := strconv.ParseFloat(f, 64)
+			out = append(out, v)
+		}
+		return out
+	}
+	reset := func() {
+		for _, f := range []string{"one.start", "one.end", "two.start", "two.end"} {
+			os.Remove(filepath.Join(r.root, f))
+		}
+	}
+
+	// Side by side: 2 starts before 1 ends; a second batch of lane 1 waits
+	// for the first.
+	r.mustSwim("queue", "add", "1")
+	r.mustSwim("queue", "add", "1")
+	r.mustSwim("queue", "add", "2")
+	out := r.mustSwim("watch", "--once")
+	contains(t, "watch", out, "up to 4 at once", "started")
+	one, oneEnd, two := times("one.start"), times("one.end"), times("two.start")
+	if len(one) != 2 || len(oneEnd) != 2 || len(two) != 1 {
+		t.Fatalf("starts %v ends %v two %v\n%s", one, oneEnd, two, out)
+	}
+	if two[0] >= oneEnd[0] {
+		t.Errorf("batch 3 (swim 2) waited for batch 1 (swim 1): started %.1fs after it ended", two[0]-oneEnd[0])
+	}
+	if one[1] < oneEnd[0] {
+		t.Errorf("two batches of swim 1 overlapped: the second started %.1fs before the first ended", oneEnd[0]-one[1])
+	}
+	if done := doneEntries(t, r); len(done) != 3 {
+		t.Fatalf("consumed %d of 3", len(done))
+	}
+
+	// One at a time.
+	reset()
+	r.mustSwim("queue", "add", "1")
+	r.mustSwim("queue", "add", "2")
+	r.mustSwim("watch", "--once", "--batches", "1")
+	if oneEnd, two := times("one.end"), times("two.start"); len(oneEnd) != 1 || len(two) != 1 || two[0] < oneEnd[0] {
+		t.Errorf("--batches 1: swim 2 started at %v, swim 1 ended at %v", two, oneEnd)
 	}
 }

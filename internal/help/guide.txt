@@ -56,8 +56,8 @@ COMMANDS
   interrupt N|JOB          ask one running lane to stop at its next step boundary
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
-                           to run as soon as swim is idle; queue [list|show|rm|requeue]
-  watch [--once]           the queue's worker: runs queued batches when idle, consumes them
+                           to run once its lanes are free; queue [list|show|rm|requeue]
+  watch [--once]           the queue's worker: runs queued batches side by side, consumes them
   watch --headless [--detach]   the worker with no terminal (needs a hub enrollment);
                            --status, --stop, --install systemd|launchd, --uninstall
   hub / hub enroll URL     a dashboard of many workers; enroll a directory to report to it
@@ -270,7 +270,7 @@ PLANNER WORKFLOW
   9. Batches can wait their turn: while lanes are still busy, write the next
      rounds, then have the operator queue them with the approvals they give
      up front (`swim queue add 4 5 --approve FIN_ALLOW_DELETE_ZG_ITEMS`). A
-     worker (`swim watch`) runs the batch as soon as swim is idle. Queue only
+     worker (`swim watch`) runs the batch as soon as its lanes are free. Queue only
      what you'd hand over to run unattended: a queued batch never asks, so
      every guard it doesn't approve is a dry run.
 
@@ -958,6 +958,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         msg_log_interval: 10s            # at most one MSG log line per lane per this (0: every change)
         outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
         queue_lease: 2m                  # a queue worker's heartbeat holds this long (other hosts)
+        watch_batches: 4                 # queued batches one swim watch runs at once
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
         chain_anchors: ["file:/mnt/audit/orders", hub]   # where chain checkpoints go (CHAIN OF CUSTODY)
         # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)

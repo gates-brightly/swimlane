@@ -25,13 +25,14 @@ type watchView struct {
 	root     string
 	cfg      *config.Config
 	picker   *display.Picker
-	yes      bool   // swim watch -y: approves what a batch doesn't
-	activity string // what the worker is waiting for
+	yes      bool         // swim watch -y: approves what a batch doesn't
+	activity string       // what the worker is waiting for
+	batches  *batchRunner // batches running side by side (nil: one at a time)
 }
 
 const (
-	watchKeys  = "rq"
-	watchHints = "↑ ↓ pick  r run now  q queue  ctrl-c quit"
+	watchKeys  = "rq" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  r run now  q queue  ctrl-c quit"
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
@@ -158,6 +159,9 @@ func (w *watchView) act(id string, key rune) string {
 		if err != nil {
 			return err.Error()
 		}
+		if key == display.PickEnter {
+			return w.showOutput(e)
+		}
 		if key == 'q' {
 			return fmt.Sprintf("#%d is already in the queue (r runs it now)", e.Seq)
 		}
@@ -170,6 +174,9 @@ func (w *watchView) act(id string, key rune) string {
 	}
 	if !info.Pending() {
 		return fmt.Sprintf("swim %d holds no pending round (a stub, or no Round: line)", n)
+	}
+	if key == display.PickEnter {
+		return "enter shows a running batch's output: pick it in the queue"
 	}
 	if key == 'q' {
 		return w.queueLane(n)
@@ -198,19 +205,35 @@ func (w *watchView) queueLane(n int) string {
 // runLane runs lane n now, as swim run N does: the operator is here, so its
 // guards may ask.
 func (w *watchView) runLane(n int) string {
-	if why := launcher.Busy(w.root, w.cfg); why != "" {
-		return "not now: " + why
+	if w.batches != nil {
+		// Alongside the batches running: now if the lane is free.
+		st, _ := status.Load(w.root)
+		if why := laneBusy(w.root, st, n); why != "" {
+			return "not now: " + why
+		}
+		running, _ := queue.List(w.root, false)
+		for _, r := range running {
+			for _, l := range r.Lanes {
+				if r.State == queue.Running && l.Lane == n {
+					return fmt.Sprintf("not now: swim %d is in batch #%d", n, r.Seq)
+				}
+			}
+		}
+	} else {
+		if why := launcher.Busy(w.root, w.cfg); why != "" {
+			return "not now: " + why
+		}
+		unlock, ok, err := queue.LockWorker(w.root)
+		if err != nil {
+			return err.Error()
+		}
+		if !ok {
+			return "not now: another worker is running a batch"
+		}
+		defer unlock()
 	}
-	unlock, ok, err := queue.LockWorker(w.root)
-	if err != nil {
-		return err.Error()
-	}
-	if !ok {
-		return "not now: another worker is running a batch"
-	}
-	defer unlock()
 	fmt.Printf("\nswim watch: running swim %d (r)\n", n)
-	err = runLanes([]string{strconv.Itoa(n)}, runFlags{})
+	err := runLanes([]string{strconv.Itoa(n)}, runFlags{})
 	var ee exitError
 	switch {
 	case err == nil:
@@ -228,6 +251,35 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 	if e.State != queue.Queued {
 		return fmt.Sprintf("#%d is %s, not waiting", e.Seq, e.State)
 	}
+	if w.batches != nil {
+		// Alongside the batches running: now if its lanes are free.
+		st, _ := status.Load(w.root)
+		for _, l := range e.Lanes {
+			if why := laneBusy(w.root, st, l.Lane); why != "" {
+				return "not now: " + why
+			}
+		}
+		mine := map[int]bool{}
+		for _, l := range e.Lanes {
+			mine[l.Lane] = true
+		}
+		running, _ := queue.List(w.root, false)
+		for _, r := range running {
+			if r.State != queue.Running {
+				continue
+			}
+			for _, l := range r.Lanes {
+				if mine[l.Lane] {
+					return fmt.Sprintf("not now: swim %d is in batch #%d", l.Lane, r.Seq)
+				}
+			}
+		}
+		bp, err := w.batches.start(w.cfg, e)
+		if err != nil {
+			return err.Error()
+		}
+		return fmt.Sprintf("started #%d (%s) out of turn; enter on it shows its output", bp.e.Seq, lanesText(bp.lanes))
+	}
 	if why := launcher.Busy(w.root, w.cfg); why != "" {
 		return "not now: " + why
 	}
@@ -243,6 +295,6 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 	if err != nil {
 		return err.Error()
 	}
-	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false)
+	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false, false)
 	return fmt.Sprintf("#%d %s", claimed.Seq, res.Result)
 }

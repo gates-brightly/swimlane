@@ -1003,13 +1003,19 @@ swim wait [--timeout D]                                  # block until idle and 
   approves nothing.
 - **The batch is signed by whoever queued it,** so standing approvals for
   that person apply to it.
-- **`swim watch`** waits until swim is idle, runs the oldest batch, and
-  then consumes it into `.swim/queue/done/` with its result.
+- **`swim watch`** runs queued batches side by side, then consumes each
+  into `.swim/queue/done/` with its result.
+  - **A batch starts once its lanes are free:** none in another batch or
+    another swim run. Oldest first, but a later batch whose lanes are free
+    starts ahead of one that has to wait. Up to `--batches N` at once
+    (`watch_batches`, default 4); `--batches 1` runs one at a time.
+  - **The screen stays up** while batches run, with each in the queue list;
+    Enter on one follows its output.
   - **Several workers** can share one queue. Claiming an entry is atomic,
-    and one batch runs at a time per repo. A worker renews a heartbeat in
-    the entry it runs (`queue_lease`, default 2m), so from another host a
-    dead worker's batch shows as orphaned.
-  - **Ctrl-C** stops the current batch gracefully.
+    and workers pick batches under a lock, so two never take the same
+    lanes. A batch renews a heartbeat in its entry (`queue_lease`, default
+    2m), so from another host a dead worker's batch shows as orphaned.
+  - **Ctrl-C** stops the batches in hand gracefully.
   - **`--approved`** also queues scripts as soon as they're fully approved.
   - **On a terminal,** the watch lists every lane's job and the queue while
     it waits. Use ↑ ↓ to pick one, `r` to run it now (a job as `swim run N`,
@@ -1279,7 +1285,7 @@ they waited for.
 | `swim timeline [RUN\|N\|JOB] [--steps] [--yaml] [--html FILE]` | When each lane waited, ran and finished; the longest chain. |
 | `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. An Always lane needs `--force`. |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
-| `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run when swim is idle. |
+| `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's worker; on a terminal, pick a job to run (`r`) or queue (`q`). |
 | `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The worker with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |

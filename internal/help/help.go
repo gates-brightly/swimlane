@@ -51,6 +51,8 @@ var Commands = map[string]string{
                  heartbeat every third of this while it runs a batch; seen
                  from another host, a claim with an older heartbeat is
                  orphaned. Default 2m.
+    watch_batches  a number (1 or more)   how many queued batches one swim
+                 watch runs at once (default 4; swim watch --batches N).
     runners.EXT  a command                the runner for lane.N.EXT scripts with
                  no #! line, e.g. swim config runners.ts tsx. Always written
                  to the repo's section; swim.yml's runners: is the default.
@@ -511,8 +513,8 @@ swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--not
 swim queue N|JOB ... [flags]     (shorthand for swim queue add)
 swim queue show|rm|requeue ID
 
-  Queue a batch of rounds to run as soon as swim is idle, by a worker
-  (swim watch). Get a batch ready, queue it with its approvals, and let it
+  Queue a batch of rounds to run as soon as its lanes are free, by a
+  worker (swim watch). Get a batch ready, queue it with its approvals, and let it
   fire when the current work is done.
   add       queue the named lanes, or with none every pending round that
             hasn't passed (as swim all would run). The batch is fixed now:
@@ -548,20 +550,25 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--no-tui]
+	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui]
 swim watch --headless [--detach] [-y] [--approved] [--interval D]
 swim watch --headless --status | --stop | --uninstall
 swim watch --headless --install systemd|launchd [-y --i-mean-it]
 
-  The queue's worker. Runs each queued batch (swim queue add), oldest
-  first, as soon as swim is idle in this repo: no lane running and no other
-  swim run waiting on lanes. It runs the batch like swim run with the
+  The queue's worker. Runs queued batches (swim queue add) side by side,
+  up to --batches at once (watch_batches, default 4), each in a process
+  of its own: a batch starts as soon as none of its lanes is in another
+  batch or another swim run, oldest first, so a later batch whose lanes
+  are free starts ahead of one that has to wait. Lanes that depend on
+  (After:) or share locks with a lane of another batch wait for it as
+  they do across swim runs. It runs each batch like swim run with the
   batch's lanes pinned and its approvals, never prompts, and consumes the
   entry when the run ends (passed, failed or interrupted alike: a half-run
   change is never retried on its own; swim queue requeue does that).
-  One batch runs at a time per repo (a worker lock), so several workers
-  can share a queue. While it runs a batch, the worker renews its claim's
-  heartbeat every third of queue_lease (swim config). As it starts, the
+  Several workers can share a queue: claims are atomic, and a worker
+  picks batches under a lock, so two never take the same lanes. While a
+  batch runs, its process renews the claim's heartbeat every third of
+  queue_lease (swim config). As it starts, the
   watch ends the round of any lane whose process died without ending it
   (as swim run does): END INTERRUPTED in its log, interrupted in status.
   --once         run every queued batch, then exit (non-zero if one failed)
@@ -573,24 +580,30 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                  watch -y (<user>)", and in the consumed entry as approved_by).
                  The batch's own --approve and -y keep their credit.
   --interval D   how often to check the queue and for idleness (default 2s)
+  --batches N    run up to N batches at once (default watch_batches, 4);
+                 --batches 1 runs one at a time, on the screen. A headless
+                 worker runs one at a time.
   --no-tui       print what the worker waits for instead of the jobs screen
   On a terminal, while it waits, the watch shows every lane's job and the
-  queue: ↑ ↓ (or k j) pick one, r runs it now and q queues it.
+  queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now,
+  q queues it and enter follows a batch's output (esc comes back).
     r on a job     runs it as swim run N does: you're at the terminal, so its
                    guards may ask
     q on a job     queues it as swim queue add N does (no guard approved: its
                    guards dry-run unless standing approvals cover them); the
-                   worker takes it when swim is idle
-    r on a batch   runs a waiting batch now, out of turn, with its own
-                   approvals (and -y's), exactly as in turn
-  A batch of several lanes runs in the interactive view: ← → pick a lane to
-  read, but its keys never answer a guard (a batch never prompts), and the
-  view closes when the batch ends. SWIM_TUI=0, CI and --once turn the screen
-  off. In the screen, Ctrl-C quits the watch.
-  Ctrl-C: during a batch, the usual graceful stop (lanes stop at a step
-  boundary; again to force quit), then the batch is consumed as interrupted
-  and the watch exits; between batches, the watch exits at once. Batches
-  still waiting stay queued.
+                   worker takes it when its lanes are free
+    r on a batch   starts a waiting batch now, out of turn, if its lanes are
+                   free, with its own approvals (and -y's), exactly as in turn
+    enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log)
+  The screen stays up while batches run; their output goes to that file.
+  With --batches 1 a batch runs in the interactive view instead, as swim
+  run does. SWIM_TUI=0, CI and --once turn the screen off: then every
+  batch's lines go to the watch's output as they come. In the screen,
+  Ctrl-C quits the watch.
+  Ctrl-C: the usual graceful stop of every batch in hand (lanes stop at a
+  step boundary; again to force quit), each consumed as interrupted, then
+  the watch exits; between batches, it exits at once. Batches still
+  waiting stay queued.
 
   Headless: the same worker with no terminal at all, for a supervisor, the
   background or a service. It never shows the screen and never reads

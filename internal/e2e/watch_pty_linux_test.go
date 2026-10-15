@@ -52,22 +52,22 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	}
 }
 
-// A batch the worker takes runs in the live view, whose keys move between
-// its lanes but never answer for it; the view closes when the batch ends,
-// even with a lane open, and the watch screen comes back.
-func TestWatchBatchLiveViewKeys(t *testing.T) {
+// A batch the worker takes runs while the watch screen stays up: the
+// queue shows it running, enter on it follows its output, esc comes back.
+func TestWatchBatchOutputView(t *testing.T) {
 	r := newRepo(t, "")
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
-	tr.waitFor("all lanes · following")
-	tr.send("\x1b[C")
-	tr.waitFor("swim 1 · following · .swim/logs/agent1.log")
-	tr.send("y")
-	tr.waitFor("pre-answers aren't available")
+	tr.waitFor("(#1, swim 1,2)")
+	tr.send("\x1b[B\x1b[B")
+	tr.waitFor("▸ #1")
+	tr.send("\r")
+	tr.waitFor("swim watch · #1")
+	tr.send("q")
+	tr.waitFor("▸ #1")
 	os.WriteFile(release, nil, 0o644)
-	tr.waitFor("#1 passed")
-	s := tr.waitFor("▸ swim 1")
+	s := tr.waitFor("#1 passed")
 	contains(t, "watch screen after the batch", s, "Jobs", "Queue")
 	tr.send("\x03")
 	if code, _ := tr.wait(); code != 0 {
