@@ -617,6 +617,14 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 				// What a run command from the hub would pin it to.
 				hl.Script, hl.Manifest = runPin(root, cfg, l.Lane)
 			}
+			if l.State != status.Running && l.State != status.Waiting && s.Headless != nil && cfg.HeadlessAllows(config.HubTrash) {
+				// What a trash command from the hub would pin it to.
+				if info, err := lane.ReadScript(root, l.Lane); err == nil && lane.ScriptName(root, l.Lane) != "" {
+					if _, group := lane.GroupOf(root, l.Lane); !group {
+						hl.TrashJob = trashPin(root, l.Lane, info)
+					}
+				}
+			}
 			s.Lanes = append(s.Lanes, hl)
 		}
 	}

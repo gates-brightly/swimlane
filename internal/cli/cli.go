@@ -42,6 +42,7 @@ func init() {
 		"archive":   {run: cmdArchive},
 		"clean":     {run: cmdClean},
 		"prune":     {run: cmdPrune},
+		"trash":     {run: cmdTrash},
 		"stub":      {run: cmdStub},
 		"note":      {run: cmdNote},
 		"log":       {run: cmdLog},

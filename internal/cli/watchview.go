@@ -30,11 +30,17 @@ type watchView struct {
 	activity string       // what the worker is waiting for
 	batches  *batchRunner // batches running side by side (nil: one at a time)
 	noStream bool         // o: the running output under the queue is hidden
+	// d asks first: the lane a second d within trashConfirm trashes.
+	trashN  int
+	trashAt time.Time
 }
 
+// trashConfirm is how long a second d has to confirm a trash.
+const trashConfirm = 5 * time.Second
+
 const (
-	watchKeys  = "rqlo" + string(display.PickEnter)
-	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q queue  ctrl-c quit"
+	watchKeys  = "rqlod" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q queue  d trash  ctrl-c quit"
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
@@ -316,7 +322,19 @@ func (w *watchView) wait(until func() bool) bool {
 // act does key on item id and says what happened.
 func (w *watchView) act(id string, key rune) string {
 	kind, ref, _ := strings.Cut(id, ":")
+	pendingTrash := w.trashN
+	if key != 'd' {
+		w.trashN = 0 // any other key cancels a trash waiting for its second d
+	}
 	if kind == "queue" {
+		if key == 'd' {
+			w.trashN = 0
+			e, err := queue.Find(w.root, ref)
+			if err != nil {
+				return err.Error()
+			}
+			return fmt.Sprintf("d trashes lanes; swim queue rm %d removes a batch", e.Seq)
+		}
 		e, err := queue.Find(w.root, ref)
 		if err != nil {
 			return err.Error()
@@ -336,6 +354,9 @@ func (w *watchView) act(id string, key rune) string {
 		return w.runQueued(e)
 	}
 	n, _ := strconv.Atoi(ref)
+	if key == 'd' {
+		return w.trash(n, pendingTrash == n && time.Since(w.trashAt) < trashConfirm)
+	}
 	if key == display.PickEnter {
 		return w.showLaneOutput(n)
 	}
@@ -356,6 +377,22 @@ func (w *watchView) act(id string, key rune) string {
 		return w.queueLane(n)
 	}
 	return w.runLane(n)
+}
+
+// trash is d on lane n: the first press says what would move (or why it
+// won't), the second, within trashConfirm, trashes it.
+func (w *watchView) trash(n int, confirmed bool) string {
+	w.trashN = 0
+	r := trashReq{n: n, by: operator(), from: trashFromWatch, dry: !confirmed}
+	t, err := trashLane(w.root, w.cfg, r)
+	if err != nil {
+		return "not trashed: " + err.Error()
+	}
+	if !confirmed {
+		w.trashN, w.trashAt = n, time.Now()
+		return fmt.Sprintf("press d again to trash swim %d (%s)", n, strings.Join(t.files, ", "))
+	}
+	return fmt.Sprintf("swim %d trashed (.swim/cleaned/%s/); swim trash --restore %s", n, t.stamp, t.stamp)
 }
 
 // toggleStream hides or shows the running output under the queue.

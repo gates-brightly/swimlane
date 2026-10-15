@@ -222,6 +222,8 @@ func checkAndDo(root string, cfg *config.Config, c *hub.Client, cmd hub.Command,
 		return hubRun(root, cfg, cmd, by, url)
 	case config.HubLog:
 		return hubLog(root, cfg, c, cmd)
+	case config.HubTrash:
+		return hubTrash(root, cfg, cmd, by, url)
 	case config.HubAnswer:
 		return answerHub(cmd)
 	}
@@ -269,6 +271,20 @@ func hubRun(root string, cfg *config.Config, cmd hub.Command, by, url string) (s
 	}
 	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: fmt.Sprintf("%s: swim %d  by %s (unsigned, no approvals)", e.ID, n, e.By)})
 	return hub.OutcomeDone, fmt.Sprintf("queued %s (#%d): unsigned, with no approvals of its own", e.ID, e.Seq)
+}
+
+// hubTrash trashes lane n as the hub's user asked, only while it holds
+// the job the page showed; every swim trash refusal applies, and an
+// Always lane is never forced from here.
+func hubTrash(root string, cfg *config.Config, cmd hub.Command, by, url string) (string, string) {
+	if cmd.Pin.Job == "" {
+		return hub.OutcomeRefused, "not pinned to a job"
+	}
+	t, err := trashLane(root, cfg, trashReq{n: cmd.Lane, job: cmd.Pin.Job, by: "hub:" + by + " via " + url, from: trashFromHub})
+	if err != nil {
+		return hub.OutcomeRefused, err.Error()
+	}
+	return hub.OutcomeDone, fmt.Sprintf("trashed swim %d (.swim/cleaned/%s/); swim trash --restore %s puts it back", cmd.Lane, t.stamp, t.stamp)
 }
 
 // hubLog uploads the log of lane n's rounds in the command's run. The log

@@ -481,6 +481,27 @@ swim prune
   them. swim doctor says when swim prune --older 30d would free over
   100 MB.
 `,
+	"trash": `swim trash N|JOB ... [--force] [-n]
+swim trash --restore STAMP
+swim trash
+
+  Move one lane out of the way, recoverably: its script (any language) and
+  its sidecar lane.N.yml go to .swim/cleaned/<stamp>-lane<N>/, where swim
+  clean sets scripts aside, its current log is archived (trash-<stamp>),
+  and the lane leaves swim status and swim watch. Nothing is deleted:
+  --restore STAMP puts the files back (swim clean --restore takes the same
+  stamps), its round pending again, and swim prune deletes the entry for
+  good later. A bare swim trash lists the trashed lanes.
+  Refused for a running or waiting lane (swim interrupt N first), a lane in
+  a queued or scheduled batch (swim queue rm, swim schedule rm first: a
+  batch is pinned to its script), a group file's lane (edit the file), and
+  an Always lane unless --force. Files the script includes, swim.yml,
+  lookup.yml and approvals/ are never touched; a signed approval of the
+  script counts again once it's restored unchanged.
+  Recorded in .swim.log (trash, untrash) and the chain with each moved
+  file's SHA-256. swim watch's d (twice) and the hub's Trash button (with
+  trash in swim.yml's headless.allow) do the same. -n says what would move.
+`,
 	"archive": `swim archive N|JOB ... [--as NAME] [--force]
 
   Rename each lane's .swim/logs/agentN.log to agentN.prev-<NAME>.log in the
@@ -768,6 +789,8 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
     q on a job     queues it as swim queue add N does (no guard approved: its
                    guards dry-run unless standing approvals cover them); the
                    worker takes it when its lanes are free
+    d on a job     says what swim trash N would move; d again within 5s
+                   trashes the lane (restorable: swim trash --restore STAMP)
     r on a batch   starts a waiting batch now, out of turn, if its lanes are
                    free, with its own approvals (and -y's), exactly as in turn
     enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log);
@@ -832,19 +855,22 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                 10m; 2m for interrupt) after it was sent, it's acknowledged
                 expired and not carried out
     allowed     swim.yml's headless.allow lists it (default: answer,
-                interrupt, drain, log; run must be added)
+                interrupt, drain, log; run and trash must be added)
     pinned      interrupt names the run the page showed, run the script
-                and manifest hashes: if the lane has moved on, it's
-                refused as stale. A run is queued unsigned, by
-                "hub:USER via URL", with no approvals of its own: its
-                guards approve only as any unsigned batch's do.
+                and manifest hashes, trash the lane's job (its script's
+                hash when it has no Job: line): if the lane has
+                moved on, it's refused as stale. A run is queued unsigned,
+                by "hub:USER via URL", with no approvals of its own: its
+                guards approve only as any unsigned batch's do. A trash
+                (the Trash button, then its confirmation page) is swim
+                trash N with every refusal, never --force.
     logs        a log is masked again with the secrets known now before it
                 goes (only its last 8 MiB); headless.logs: off refuses them
   Every command, refused or not, is recorded in .swim.log and the chain
   ("hub <cmd> by <user> via <url>: <outcome>"), and acknowledged to the
   hub. swim.yml (only; config.yml can't set it):
     headless:
-      allow: [answer, interrupt, drain, log]   # add run to allow it
+      allow: [answer, interrupt, drain, log]   # add run, trash to allow them
       logs: on                                 # off: logs stay here
       command_ttl: 10m
       approvals: signed      # signed | hub: how guards are answered
@@ -1595,7 +1621,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "cache", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "prune", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
+	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
 func Full() string {

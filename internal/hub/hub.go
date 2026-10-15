@@ -107,6 +107,10 @@ type Lane struct {
 	// hash and its manifest's, which a run command from the hub pins.
 	Script   string `json:"script_sha256,omitempty"`
 	Manifest string `json:"manifest_sha256,omitempty"`
+	// TrashJob is the job an idle lane's script holds (or, with no # Job:
+	// line, the script's SHA-256), which a trash command from the hub pins
+	// ("" when the worker doesn't take trash).
+	TrashJob string `json:"trash_job,omitempty"`
 }
 
 // Batch is one queue entry.

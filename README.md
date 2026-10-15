@@ -1137,7 +1137,7 @@ swim approve --hub billing/3f9c2a --decline
 ```yaml
 # swim.yml (only swim.yml: config.yml can't set it)
 headless:
-  allow: [answer, interrupt, drain, log]   # the default; add run to allow it
+  allow: [answer, interrupt, drain, log]   # the default; add run, trash to allow them
   logs: on                                 # off: logs never leave this machine
   command_ttl: 10m
   approvals: signed                        # or hub: a listed operator's button click, where no require: rule names the guard
@@ -1338,6 +1338,7 @@ they waited for.
 | `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. An Always lane needs `--force`. |
 | `swim clean [--all] [-n]` / `swim clean --restore STAMP` | A clean slate, nothing deleted: archive every finished lane at once, then (asked, default no) remove waiting batches and move the lane scripts aside. |
 | `swim prune --older D [--logs] [--confirm]` | Delete leftovers past a cutoff for good (moved-aside scripts, consumed queue entries, old run stages, archived logs with `--logs`), recorded in the chain. |
+| `swim trash N\|JOB` / `swim trash --restore STAMP` | Move one lane out of the way, recoverably: its script to `.swim/cleaned/`, its log archived (`d` in `swim watch`, the hub's Trash button). |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
 | `swim schedule LANES... TIME [--approve F]`, `swim schedule list\|rm ID` | Queue a batch that starts no earlier than TIME (`13:30`, `1:30pm`, `tomorrow 06:00`, `+2h`). |

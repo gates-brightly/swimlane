@@ -55,6 +55,7 @@ COMMANDS
   clean [--all] [-n]       archive every finished lane at once (nothing deleted); asks about
                            the queue and the lane scripts (moved aside: --restore)
   prune --older D          delete leftovers past D for good (moved-aside scripts, old stages)
+  trash N|JOB              move one lane's script aside, recoverably (--restore STAMP; d in watch)
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
   lock [--upgrade]         show swim's version and the repo's .swim.lock; move it up
@@ -1063,7 +1064,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       ambient_credentials: [prod-write]          # AWS profiles lint and doctor point out
   and headless: (what a headless worker takes from its hub; swim watch --help):
       headless:
-        allow: [answer, interrupt, drain, log]   # hub commands accepted; add run to allow it
+        allow: [answer, interrupt, drain, log]   # hub commands accepted; add run, trash to allow them
         logs: on                                 # off: never upload a log to the hub
         command_ttl: 10m                         # older commands expire (interrupt: 2m at most)
         approvals: signed                        # how a guard is answered through the hub: signed | hub

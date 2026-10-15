@@ -413,6 +413,21 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **`swim trash N`: move one lane out of the way, recoverably.** Its
+  script and sidecar go to `.swim/cleaned/<stamp>-lane<N>/` (where `swim
+  clean` sets scripts aside, with their SHA-256s), its log is archived, and
+  it leaves `swim status`, `swim watch` and the hub. `swim trash --restore
+  STAMP` (or `swim clean --restore`) puts it back; `swim prune` deletes it
+  for good later; a bare `swim trash` lists them. Refused for a running
+  lane, one in a queued or scheduled batch, a group file's lane, and an
+  Always lane without `--force`. Recorded as `trash` and `untrash` in
+  `.swim.log` and the chain.
+  - **`d` in `swim watch`** says what would move; `d` again within 5s
+    trashes the lane.
+  - **The hub's Trash button** (operators, with `trash` in `swim.yml`'s
+    `headless.allow`) opens a confirmation page; the command is pinned to
+    the lane's job, so a lane rewritten since is never trashed by an old
+    click.
 - **`swim watch` shows a timer on every row.** A running (or waiting)
   lane shows how long its round has been going, `1m5s`; a finished one,
   how long ago it ended, `3h ago`. A running batch shows its time since a

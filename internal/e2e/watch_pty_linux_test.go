@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -185,4 +186,44 @@ func TestWatchNoTUI(t *testing.T) {
 	if code != 0 || strings.Contains(out, "\x1b[?1049h") {
 		t.Errorf("exit %d, screen used: %v\n%s", code, strings.Contains(out, "\x1b[?1049h"), out)
 	}
+}
+
+// d on a lane says what swim trash would move; d again trashes it and its
+// row goes. d then another key changes nothing, and so does d on a queued
+// batch.
+func TestWatchTrashKey(t *testing.T) {
+	r := newSerialRepo(t, "")
+	r.script(1, "keep me", `run "one" true`)
+	r.script(2, "drop me", `run "two" true`)
+	tr := r.startTUI(nil, "watch")
+	tr.waitFor("▸ swim 1")
+	tr.waitFor("d trash")
+
+	// d, then o: cancelled; swim 1 stays.
+	tr.send("d")
+	tr.waitFor("press d again to trash swim 1 (lane.1.sh)")
+	tr.send("o")
+	tr.waitFor("running output hidden")
+	tr.send("d")
+	tr.waitFor("press d again to trash swim 1")
+	tr.send("o")
+	tr.waitFor("running output shown")
+	if _, err := os.Stat(filepath.Join(r.root, "lane.1.sh")); err != nil {
+		t.Fatal("d then another key trashed swim 1")
+	}
+
+	// d, d on swim 2: trashed, and its row goes.
+	tr.send("\x1b[B")
+	tr.waitFor("▸ swim 2")
+	tr.send("d")
+	tr.waitFor("press d again to trash swim 2")
+	tr.send("d")
+	tr.waitFor("swim 2 trashed (.swim/cleaned/")
+	tr.waitScreen("swim 2's row gone", func(s string) bool { return !strings.Contains(s, "drop me") })
+	if _, err := os.Stat(filepath.Join(r.root, "lane.2.sh")); err == nil {
+		t.Error("lane.2.sh still in place")
+	}
+	contains(t, "log", r.mustSwim("log"), "trash ", "(from watch)")
+	tr.send("\x03")
+	tr.wait()
 }

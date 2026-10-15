@@ -164,6 +164,7 @@ var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doct
 {{- if and (eq .State "running") .Run ($.Can "interrupt")}}<form class="inline" method="post" action="/api/workers/{{$.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="interrupt"><input type="hidden" name="lane" value="{{.Lane}}"><input type="hidden" name="run" value="{{.Run}}"><button class="danger">Interrupt</button></form> {{end}}
 {{- if and .Run ($.Can "log")}}<form class="inline" method="post" action="/api/workers/{{$.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="log"><input type="hidden" name="lane" value="{{.Lane}}"><input type="hidden" name="run" value="{{.Run}}"><button>Log</button></form> {{end}}
 {{- if and .Script (ne .State "running") ($.Can "run")}}<form class="inline" method="post" action="/api/workers/{{$.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="run"><input type="hidden" name="lane" value="{{.Lane}}"><input type="hidden" name="sha256" value="{{.Script}}"><input type="hidden" name="manifest" value="{{.Manifest}}"><button>Run now</button> <span class="mono muted">{{short .Script}}</span></form>{{end -}}
+{{- if and .TrashJob (ne .State "running") ($.Can "trash")}} <a class="danger" href="/w/{{$.ID}}/trash/{{.Lane}}?job={{.TrashJob}}">Trash</a>{{end -}}
 </td>{{end}}</tr>{{end}}
 </table></div>
 {{range .Lanes}}{{if .Tail}}<h2>swim {{.Lane}} · {{.Round}}</h2><pre>{{range .Tail}}{{.}}

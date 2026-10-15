@@ -45,6 +45,12 @@ type cleanedManifest struct {
 	By      string        `yaml:"by"`
 	At      string        `yaml:"at"`
 	Scripts []cleanedFile `yaml:"scripts"`
+	// One lane trashed (swim trash), not a clean: which, its job and
+	// round, and where it was trashed from (cli, watch, hub).
+	Lane  int    `yaml:"lane,omitempty"`
+	Job   string `yaml:"job,omitempty"`
+	Round string `yaml:"round,omitempty"`
+	From  string `yaml:"from,omitempty"`
 }
 
 type cleanedFile struct {
@@ -244,7 +250,7 @@ func cmdClean(args []string) error {
 		take := o.scripts || ask(fmt.Sprintf("\nmove %d lane scripts aside (%s)?\n  they go to .swim/cleaned/%s/ and can be restored", len(scripts), strings.Join(shown, " "), stamp), false)
 		if take {
 			if !o.dryRun {
-				if moved, err = moveScripts(root, stamp, scripts); err != nil {
+				if moved, err = moveScripts(root, stamp, scripts, nil); err != nil {
 					return err
 				}
 			} else {
@@ -424,8 +430,9 @@ func cleanScripts(root string, o cleanOpts) []string {
 }
 
 // moveScripts moves paths (repo-relative) to .swim/cleaned/<stamp>/, the
-// same layout, with cleaned.yml listing each and its SHA-256.
-func moveScripts(root, stamp string, paths []string) ([]cleanedFile, error) {
+// same layout, with cleaned.yml listing each and its SHA-256; fill, if
+// set, adds to that manifest (swim trash: the lane).
+func moveScripts(root, stamp string, paths []string, fill func(*cleanedManifest)) ([]cleanedFile, error) {
 	dir := filepath.Join(cleanedDir(root), stamp)
 	if _, err := os.Stat(dir); err == nil {
 		return nil, fmt.Errorf("%s exists already; wait a minute and clean again", rel(root, dir))
@@ -446,6 +453,9 @@ func moveScripts(root, stamp string, paths []string) ([]cleanedFile, error) {
 		moved = append(moved, cleanedFile{Path: p, SHA256: sum})
 	}
 	m := cleanedManifest{Schema: "swim.cleaned/v1", Stamp: stamp, By: operator(), At: time.Now().UTC().Format(time.RFC3339), Scripts: moved}
+	if fill != nil {
+		fill(&m)
+	}
 	data, _ := yaml.Marshal(m)
 	return moved, fsutil.WriteAtomic(filepath.Join(dir, "cleaned.yml"), data, 0o644)
 }
@@ -481,7 +491,33 @@ func cleanRestore(root string, cfg *config.Config, stamp string) error {
 	}
 	os.RemoveAll(dir)
 	refreshStatus(root, cfg)
+	if m.Lane > 0 {
+		// A trashed lane: recorded as untrash, in the chain too.
+		detail := fmt.Sprintf("%s: swim %d back (%s)", stamp, m.Lane, strings.Join(paths(m.Scripts), " "))
+		history.Log(root, history.Entry{Event: history.Untrash, Lane: m.Lane, Job: m.Job, Detail: detail})
+		record(root, cfg, chain.Entry{Type: "untrash", Lane: m.Lane, Job: m.Job, Action: detail, Outputs: sums(m.Scripts)})
+		fmt.Printf("restored swim %d from .swim/cleaned/%s/ (%s); its round is pending again\n", m.Lane, stamp, strings.Join(paths(m.Scripts), " "))
+		return nil
+	}
 	history.Log(root, history.Entry{Event: history.Clean, Detail: fmt.Sprintf("restored %d scripts from clean %s", len(m.Scripts), stamp)})
 	fmt.Printf("restored %d scripts from .swim/cleaned/%s/\n", len(m.Scripts), stamp)
 	return nil
+}
+
+// paths are the moved files' repo-relative paths.
+func paths(fs []cleanedFile) []string {
+	var out []string
+	for _, f := range fs {
+		out = append(out, f.Path)
+	}
+	return out
+}
+
+// sums are the moved files' SHA-256s, for a chain entry.
+func sums(fs []cleanedFile) map[string]string {
+	out := map[string]string{}
+	for _, f := range fs {
+		out[f.Path] = f.SHA256
+	}
+	return out
 }

@@ -3,6 +3,7 @@ package hub
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -26,6 +27,7 @@ const (
 	KindDrain     = "drain"
 	KindRun       = "run"
 	KindLog       = "log"
+	KindTrash     = "trash"
 )
 
 // Outcomes a worker acknowledges.
@@ -72,6 +74,7 @@ type Pin struct {
 	Manifest string `json:"manifest,omitempty"` // run: its execution manifest's hash
 	Request  string `json:"request,omitempty"`  // answer: the question answered
 	Evidence string `json:"evidence,omitempty"` // answer: the evidence hash it showed
+	Job      string `json:"job,omitempty"`      // trash: the lane's job shown
 }
 
 // State is the command's state for a page: its outcome, else "sent" while
@@ -97,6 +100,7 @@ func (s *Server) commandRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/workers/{id}/logs/{run}/{lane}", s.getLog)
 	mux.HandleFunc("GET /w/{id}/logs/{run}/{lane}", s.logPage)
 	mux.HandleFunc("GET /w/{id}/answer/{req}", s.answerPage)
+	mux.HandleFunc("GET /w/{id}/trash/{lane}", s.trashPage)
 }
 
 // Send queues a command for worker id from user by, after checking its
@@ -112,18 +116,22 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 		if c.Lane < 1 || c.Pin.SHA256 == "" {
 			return nil, fmt.Errorf("run needs a lane and the script hash it's for")
 		}
+	case KindTrash:
+		if c.Lane < 1 || c.Pin.Job == "" {
+			return nil, fmt.Errorf("trash needs a lane and the job it holds")
+		}
 	case KindDrain:
 	case KindAnswer:
 		if c.Pin.Request == "" {
 			return nil, fmt.Errorf("answer needs the question it answers (pin.request)")
 		}
 	default:
-		return nil, fmt.Errorf("unknown command %q (answer, interrupt, drain, run, log)", c.Kind)
+		return nil, fmt.Errorf("unknown command %q (answer, interrupt, drain, run, log, trash)", c.Kind)
 	}
 	if c.Kind != KindAnswer {
 		c.Answer = nil
 	}
-	for _, p := range []string{c.Pin.Run, c.Pin.SHA256, c.Pin.Manifest, c.Pin.Request, c.Pin.Evidence} {
+	for _, p := range []string{c.Pin.Run, c.Pin.SHA256, c.Pin.Manifest, c.Pin.Request, c.Pin.Evidence, c.Pin.Job} {
 		if p != "" && !pinRE.MatchString(p) {
 			return nil, fmt.Errorf("bad pin %q", p)
 		}
@@ -205,7 +213,7 @@ func (s *Server) sendCommand(w http.ResponseWriter, r *http.Request) {
 		c.Kind = r.PostFormValue("kind")
 		c.Lane, _ = strconv.Atoi(r.PostFormValue("lane"))
 		c.Pin = Pin{Run: r.PostFormValue("run"), SHA256: r.PostFormValue("sha256"), Manifest: r.PostFormValue("manifest"),
-			Request: r.PostFormValue("request"), Evidence: r.PostFormValue("evidence")}
+			Request: r.PostFormValue("request"), Evidence: r.PostFormValue("evidence"), Job: r.PostFormValue("job")}
 		if c.Kind == KindAnswer {
 			c.Answer = &Answer{Decision: r.PostFormValue("decision"), Key: r.PostFormValue("key"), Sig: r.PostFormValue("sig")}
 		}
@@ -356,4 +364,53 @@ func (s *Server) ackCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit("%s acked %s %s (seq %d, by %s): %s %s", id, cmd.Kind, laneText(cmd.Lane), cmd.Seq, cmd.By, a.Outcome, a.Detail)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+var trashTmpl = template.Must(template.New("trash").Funcs(funcs).Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>trash · {{.Name}} · swim hub</title>` + style + `</head><body>
+<div><a href="/w/{{.ID}}">← {{.Name}}</a></div>
+<h1>Trash swim {{.L.Lane}}?</h1>
+<p>{{.L.Round}}</p>
+<div class="muted mono">job {{.Job}} · {{.L.State}}</div>
+<p>The worker moves this lane's script and its lane.{{.L.Lane}}.yml to <span class="mono">.swim/cleaned/</span> and archives its log. Nothing is deleted: <span class="mono">swim trash --restore STAMP</span> on the worker puts it back. If the lane holds another job by the time the worker takes this, it refuses and nothing moves.</p>
+<form method="post" action="/api/workers/{{.ID}}/commands"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="kind" value="trash"><input type="hidden" name="lane" value="{{.L.Lane}}"><input type="hidden" name="job" value="{{.Job}}">
+<button class="danger">Trash swim {{.L.Lane}}</button> <a href="/w/{{.ID}}">cancel</a></form>
+</body></html>`))
+
+// trashPage confirms a trash: the lane, its job and round, and what the
+// worker will do. Only its button sends the command.
+func (s *Server) trashPage(w http.ResponseWriter, r *http.Request) {
+	user, role, csrf := s.viewer(r)
+	if user == "" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if role != RoleOperator {
+		http.Error(w, "trashing a lane takes the operator role", http.StatusForbidden)
+		return
+	}
+	v, ok := s.worker(r.PathValue("id"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	n, _ := strconv.Atoi(r.PathValue("lane"))
+	job := r.URL.Query().Get("job")
+	var l *Lane
+	for i := range v.Lanes {
+		if v.Lanes[i].Lane == n {
+			l = &v.Lanes[i]
+		}
+	}
+	if l == nil || l.TrashJob == "" || l.TrashJob != job || !pinRE.MatchString(job) {
+		http.Error(w, "that lane doesn't hold that job now (rewritten, trashed, or running): go back and look again", http.StatusConflict)
+		return
+	}
+	d := struct {
+		ID, Name, CSRF, Job string
+		L                   *Lane
+	}{ID: v.ID, Name: v.Name, CSRF: csrf, Job: job, L: l}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	trashTmpl.Execute(w, d)
 }
