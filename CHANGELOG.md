@@ -284,7 +284,9 @@ To cut a release:
   - **The watch screen stays up while batches run:** the queue shows them
     as they go, newly queued batches appear (and start) at once, and
     Enter on a batch follows its output (`.swim/queue/out/`); `r` starts a
-    waiting batch out of turn alongside the others.
+    waiting batch out of turn alongside the others. Enter on a running
+    lane follows that lane's log directly (`v` shows its batch's output),
+    instead of pointing you to the batch in the queue.
   - **Ctrl-C** interrupts every batch in hand gracefully, as it did the one.
 - **`[DRY]` marks guards that ran as dry runs:** a lane whose round
   dry-ran a guard (declined, not asked, refused) shows `[DRY]` in the live

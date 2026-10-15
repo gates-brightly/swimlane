@@ -80,6 +80,32 @@ func TestWatchBatchOutputView(t *testing.T) {
 	}
 }
 
+// Enter on a running lane's row follows its log, with no detour through
+// its batch; v switches to the batch's overview.
+func TestWatchLaneOutputView(t *testing.T) {
+	r := newRepo(t, "")
+	release := tuiLanes(r, 2)
+	r.mustSwim("queue", "add", "1", "2")
+	tr := r.startTUI(nil, "watch")
+	tr.waitFor("(#1, swim 1,2)")
+	tr.send("\r")
+	tr.waitFor("swim watch · swim 1 · #1")
+	tr.waitFor("lane1-hello")
+	tr.send("v")
+	tr.waitFor("· batch")
+	tr.send("q")
+	tr.waitFor("▸ ")
+	os.WriteFile(release, nil, 0o644)
+	tr.waitFor("#1 passed")
+	// Not running any more: enter says so instead of opening an empty view.
+	tr.send("\r")
+	tr.waitFor("swim 1 isn't running")
+	tr.send("\x03")
+	if code, _ := tr.wait(); code != 0 {
+		t.Errorf("exit %d after ctrl-c", code)
+	}
+}
+
 // --no-tui keeps the plain worker.
 func TestWatchNoTUI(t *testing.T) {
 	r := newRepo(t, "")

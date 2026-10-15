@@ -1017,7 +1017,8 @@ swim wait [--timeout D]                                  # block until idle and 
     starts ahead of one that has to wait. Up to `--batches N` at once
     (`watch_batches`, default 4); `--batches 1` runs one at a time.
   - **The screen stays up** while batches run, with each in the queue list;
-    Enter on one follows its output.
+    Enter on one follows its output, and Enter on a running lane follows
+    that lane's log.
   - **Several workers** can share one queue. Claiming an entry is atomic,
     and workers pick batches under a lock, so two never take the same
     lanes. A batch renews a heartbeat in its entry (`queue_lease`, default

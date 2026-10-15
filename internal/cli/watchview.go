@@ -225,15 +225,15 @@ func (w *watchView) act(id string, key rune) string {
 		return w.runQueued(e)
 	}
 	n, _ := strconv.Atoi(ref)
+	if key == display.PickEnter {
+		return w.showLaneOutput(n)
+	}
 	info, err := lane.ReadScript(w.root, n)
 	if err != nil {
 		return err.Error()
 	}
 	if !info.Pending() {
 		return fmt.Sprintf("swim %d holds no pending round (a stub, or no Round: line)", n)
-	}
-	if key == display.PickEnter {
-		return "enter shows a running batch's output: pick it in the queue"
 	}
 	if key == 'q' {
 		return w.queueLane(n)

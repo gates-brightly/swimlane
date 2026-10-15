@@ -492,6 +492,63 @@ func (w *watchView) showOutput(e *queue.Entry) string {
 	return ""
 }
 
+// showLaneOutput follows lane n's log while it runs: in a batch claimed
+// here or by another worker (v then shows that batch's overview, when it
+// runs here), or on its own (swim run in another terminal).
+func (w *watchView) showLaneOutput(n int) string {
+	var batch *queue.Entry
+	entries, _ := queue.List(w.root, false)
+	for _, e := range entries {
+		if e.State != queue.Running {
+			continue
+		}
+		for _, l := range e.Lanes {
+			if l.Lane == n {
+				batch = e
+			}
+		}
+	}
+	running := func() bool { _, ok := lane.Running(w.root, n); return ok }
+	if batch == nil && !running() {
+		return fmt.Sprintf("swim %d isn't running: enter follows a running lane's log (swim log %d shows its last round)", n, n)
+	}
+	title := fmt.Sprintf("swim watch · swim %d", n)
+	views := []display.FollowView{{Name: "log", Lines: func() []string { return verboseLines(w.root, []int{n}) }}}
+	done := func() bool { return !running() }
+	if batch != nil {
+		title += fmt.Sprintf(" · #%d %s", batch.Seq, batch.ID)
+		var bp *batchProc
+		if w.batches != nil {
+			bp = w.batches.proc(batch.ID)
+		}
+		path := batchOutPath(w.root, batch)
+		if bp != nil {
+			path = bp.out
+		}
+		if _, err := os.Stat(path); err == nil {
+			views = append(views, display.FollowView{Name: "batch", Lines: display.FileLines(path)})
+		}
+		// A lane waiting on others in its batch isn't running yet: follow
+		// until the batch ends, not until the lane next looks idle.
+		done = func() bool {
+			if bp != nil {
+				select {
+				case <-bp.done:
+					return true
+				default:
+					return false
+				}
+			}
+			e, err := queue.Find(w.root, batch.ID)
+			return err != nil || e.State != queue.Running
+		}
+	}
+	if err := display.Follow(os.Stdin, os.Stdout, title, views, done); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
 // verboseLines are the batch's lanes' current rounds as their logs hold
 // them, each line marked with its lane (or job, or cell), and the running
 // step's output so far (its spool): everything the overview leaves out.
