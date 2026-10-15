@@ -65,6 +65,7 @@ COMMANDS
   interrupt N|JOB          ask one running lane to stop at its next step boundary
   pause N|JOB [--wait]     hold a running lane before its next step, alive (--all: every lane, no claims)
   unpause N|JOB            let a paused lane go on (swim resume: the same; --all)
+  claim N [--for D]        hold a lane while this session writes its round (swim new does; --release, --break)
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run once its lanes are free; queue [list|show|rm|requeue]
@@ -1039,6 +1040,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         msg_log_interval: 10s            # at most one MSG log line per lane per this (0: every change)
         outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
         queue_lease: 2m                  # a queue worker's heartbeat holds this long (other hosts)
+        claim_lease: 2h                  # a lane claim (swim new, swim claim) lasts this long
         watch_batches: 4                 # queued batches one swim watch runs at once
         schedule_tz: America/Chicago     # the zone swim schedule reads times in (default: the machine's)
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this

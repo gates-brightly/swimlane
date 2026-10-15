@@ -248,6 +248,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 				}
 			}
 		}
+		if c := lane.ReadClaim(root, l.Lane); c != nil && state != status.Running {
+			detail(claimText(c), ui.Cyan)
+		}
 		if l.Reason != "" {
 			detail("reason: "+l.Reason, ui.Yellow)
 		}

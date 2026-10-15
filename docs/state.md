@@ -114,6 +114,13 @@ Notes:
   request is; `.swim/pause` is the repo-wide pause (`--all`), which also
   keeps queue workers from claiming batches. The log's `PAUSE` and
   `RESUME` lines count toward nothing; a swim from before them skips them.
+- **A claimed lane** (`swim new`, `swim claim`) has a lease in
+  `.swim/claims/lane.N.yml` (owner, session, host, created, expires, job)
+  while a session writes its round. It isn't a lane state: it guards
+  `swim new`, `stub` and `archive` from other sessions, and ends when the
+  lane starts running, is archived or stubbed, is released, or expires (an
+  expired one is removed by the next command that reads it). Changes are
+  serialised by `flock` on `.swim/claims/.lock`.
 - **Passed lanes** are left alone by `swim all` (unless `--rerun`, or an
   Always lane with `Rerun-Children: yes` above them). `swim run N` reruns
   them.

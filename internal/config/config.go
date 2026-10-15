@@ -53,6 +53,7 @@ type Settings struct {
 	MsgLogInterval     string        `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
 	OutputsKeep        string        `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
 	QueueLease         string        `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
+	ClaimLease         string        `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
 	WatchBatches       int           `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
 	ScheduleTZ         string        `yaml:"schedule_tz,omitempty"`          // the zone swim schedule reads times in (default: the machine's)
 	FinallyTimeout     string        `yaml:"finally_timeout,omitempty"`      // a stopped run's finally lanes get this long in all (default 10m)
@@ -377,6 +378,9 @@ func (c *Config) merge(r Settings) {
 	if r.QueueLease != "" {
 		c.QueueLease = r.QueueLease
 	}
+	if r.ClaimLease != "" {
+		c.ClaimLease = r.ClaimLease
+	}
 	if r.WatchBatches != 0 {
 		c.WatchBatches = r.WatchBatches
 	}
@@ -575,6 +579,15 @@ func (c *Config) QueueLeaseFor() time.Duration {
 		return d
 	}
 	return 0
+}
+
+// ClaimLeaseFor is claim_lease: how long a lane claim lasts unless
+// refreshed (default 2h).
+func (c *Config) ClaimLeaseFor() time.Duration {
+	if d, err := time.ParseDuration(c.ClaimLease); err == nil && d >= time.Minute {
+		return d
+	}
+	return lane.DefaultClaimLease
 }
 
 // DefaultFinallyTimeout is how long a stopped run's finally lanes get, in
@@ -832,6 +845,11 @@ func (c *Config) validateInterrupt() error {
 	if c.QueueLease != "" {
 		if d, err := time.ParseDuration(c.QueueLease); err != nil || d < 10*time.Second {
 			return fmt.Errorf("queue_lease must be a duration of 10s or more, like 2m, got %q", c.QueueLease)
+		}
+	}
+	if c.ClaimLease != "" {
+		if d, err := time.ParseDuration(c.ClaimLease); err != nil || d < time.Minute {
+			return fmt.Errorf("claim_lease must be a duration of 1m or more, like 2h, got %q", c.ClaimLease)
 		}
 	}
 	if c.WatchBatches < 0 {

@@ -51,6 +51,8 @@ var Commands = map[string]string{
                  heartbeat every third of this while it runs a batch; seen
                  from another host, a claim with an older heartbeat is
                  orphaned. Default 2m.
+    claim_lease  duration (1m or more)    how long a lane claim (swim new,
+                 swim claim) lasts unless refreshed. Default 2h.
     watch_batches  a number (1 or more)   how many queued batches one swim
                  watch runs at once (default 4; swim watch --batches N).
     schedule_tz  an IANA zone name       the zone swim schedule reads times
@@ -1363,6 +1365,25 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
   lane of a swim run. A paused lane (swim pause) ends the same way, its
   outcome handlers run.
 `,
+	"claim": `swim claim N [--for D]
+swim claim N --release [--force]
+swim claim N --break "<reason>"
+
+  A claim is a lease a session holds on a lane while it writes the lane's
+  round: swim new takes one (claim_lease, default 2h), swim lint refreshes
+  it, and while it's live another session's swim new, stub and archive
+  refuse the lane, naming who holds it. It ends when the lane starts
+  running (swim run, all, watch: a run warns if another session held it,
+  and runs anyway), when it's archived or stubbed, when it's released, or
+  when the lease runs out. swim status shows it; swim plan warns about it.
+  swim claim N takes or refreshes it explicitly (--for D); --release gives
+  it up (--force: another session's); --break takes over a live claim with
+  a reason, and --force on new, stub or archive does too: both are logged
+  as claim-broken. A session is SWIM_SESSION, else user@host: set
+  SWIM_SESSION per session, or two sessions of one user on one machine are
+  one. Claims are advisory: they guard swim's commands, not an editor
+  writing lane.N.sh, and stay in this checkout's .swim/claims/.
+`,
 	"pause": `swim pause N|JOB ... [--wait] [--note TEXT]
 swim pause --all [--wait] [--note TEXT]
 
@@ -1664,7 +1685,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "cache", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
+	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
 func Full() string {

@@ -413,6 +413,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Lane claims: a lease on a lane while a session writes it.** `swim new
+  N` takes one (`claim_lease`, default 2h) and `swim lint N` refreshes it;
+  while it's live, another session's `swim new`, `stub` and `archive`
+  refuse the lane, naming the holder. `swim status` shows it and `swim
+  plan` warns about it. Starting the lane releases it: a run warns when
+  another session held it, and runs anyway. `swim claim N [--for D]`,
+  `--release [--force]` and `--break "<reason>"`; `--force` on new, stub
+  or archive takes one over, logged as `claim-broken`. A session is
+  `SWIM_SESSION`, else `user@host`. Claims are advisory and local to the
+  checkout (`.swim/claims/`).
 - **`swim pause N` / `swim unpause N`: hold a lane without ending it.**
   The current step finishes, then the round waits before its next one
   (a `run`, `gate`, `guard`, ..., or an SDK lane's next step), its process,

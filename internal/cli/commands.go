@@ -315,8 +315,16 @@ func cmdNew(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Another session writing this lane holds its claim (swim claim).
+	sess := lane.SessionID()
+	if err := lane.CheckClaim(root, n, sess); err != nil && !force {
+		return err
+	}
 	if err := lane.WriteScriptAs(root, n, lang, content, force); err != nil {
 		return err
+	}
+	if broke, err := lane.TakeClaim(root, n, sess, cfg.ClaimLeaseFor(), job, true); err == nil && broke != nil {
+		claimBroken(root, n, broke, sess, "new", "")
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
 		l.Pending, l.PendingJob = strings.Join(strings.Fields(goal), " "), job
@@ -582,7 +590,29 @@ func cmdPlan(args []string) (err error) {
 		return enc.Close()
 	}
 	err = launcher.WritePlan(os.Stdout, o, ui.ColorEnabled(os.Stdout))
+	if err == nil {
+		planClaimWarnings(o)
+	}
 	return err
+}
+
+// planClaimWarnings warns about lanes in the plan another session claims:
+// they may still be being written. A warning, not an error: running a
+// lane releases its claim.
+func planClaimWarnings(o launcher.Options) {
+	doc, err := launcher.Plan(o)
+	if err != nil {
+		return
+	}
+	sess := lane.SessionID()
+	for _, pl := range doc.Lanes {
+		if pl.Action == "skip" {
+			continue
+		}
+		if c := lane.ReadClaim(o.Root, pl.Lane); c != nil && c.Session != sess {
+			fmt.Printf("warning: swim %d: %s; it may still be being written\n", pl.Lane, claimText(c))
+		}
+	}
 }
 
 // runChecks is swim plan --check's first half: run the snapshot and check
@@ -839,9 +869,14 @@ func cmdArchive(args []string) error {
 	}
 	var plans []plan
 	var problems []string
+	sess := lane.SessionID()
 	for _, n := range lanes {
 		if err := refuseAlways(root, n, "archive", force); err != nil {
 			problems = append(problems, err.Error())
+			continue
+		}
+		if err := lane.CheckClaim(root, n, sess); err != nil && !force {
+			problems = append(problems, strings.Split(err.Error(), "\n")[0])
 			continue
 		}
 		what := as
@@ -879,6 +914,9 @@ func cmdArchive(args []string) error {
 		})
 		archived, _ := logparse.ParseFile(dst)
 		history.Log(root, history.Entry{Event: history.Archive, Lane: pl.n, Job: archived.Job, Detail: filepath.Base(dst)})
+		if c, _ := lane.ReleaseClaim(root, pl.n, sess, true); c != nil && c.Session != sess {
+			claimBroken(root, pl.n, c, sess, "archive", "")
+		}
 		fmt.Printf("archived %s -> %s\n", rel(root, lane.Log(root, pl.n)), rel(root, dst))
 	}
 	return nil
@@ -907,6 +945,10 @@ func cmdStub(args []string) error {
 	if err := refuseRecurring(root, n, "stub", force); err != nil {
 		return err
 	}
+	sess := lane.SessionID()
+	if err := lane.CheckClaim(root, n, sess); err != nil && !force {
+		return err
+	}
 	msg := strings.Join(args[1:], " ")
 	replaced, _ := lane.ReadScript(root, n)
 	content, err := assets.Stub(n, msg)
@@ -918,6 +960,9 @@ func cmdStub(args []string) error {
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.Pending, l.PendingJob = "", "" })
 	history.Log(root, history.Entry{Event: history.Stub, Lane: n, Job: replaced.Job, Detail: msg})
+	if c, _ := lane.ReleaseClaim(root, n, sess, true); c != nil && c.Session != sess {
+		claimBroken(root, n, c, sess, "stub", "")
+	}
 	fmt.Printf("stubbed %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, msg)
 	return nil
 }

@@ -34,6 +34,8 @@ func cmdLint(args []string) error {
 			return err
 		}
 		lanes = append(lanes, n)
+		// A session writing the lane keeps its claim alive by linting it.
+		lane.RefreshClaim(root, n, lane.SessionID(), cfg.ClaimLeaseFor())
 	}
 	fs, err := lint.Run(root, cfg, lanes)
 	if err != nil {

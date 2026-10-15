@@ -49,6 +49,9 @@ const (
 	Pause         = "pause"          // swim pause N: a lane holds before its next step (detail: after which step, note)
 	Unpause       = "unpause"        // swim unpause N (or swim resume N): ... and goes on
 	PauseAll      = "pause-all"      // swim pause --all: every lane holds, workers claim nothing
+	Claim         = "claim"          // swim claim N: a session took a lane's claim (a lease while it writes the round)
+	ClaimRelease  = "claim-release"  // swim claim N --release
+	ClaimBroken   = "claim-broken"   // another session's live claim taken over (--force, --break; detail: from, by, via, why)
 	UnpauseAll    = "unpause-all"    // swim unpause --all
 	Schedule      = "schedule"       // swim schedule: a batch to start no earlier than a time (detail: id, lanes, not_before, zone, approvals)
 	ScheduleStart = "schedule-start" // a worker claimed a scheduled batch (detail: how late)

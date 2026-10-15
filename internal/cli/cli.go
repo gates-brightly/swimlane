@@ -46,6 +46,7 @@ func init() {
 		"pause":     {run: cmdPause},
 		"unpause":   {run: cmdUnpause},
 		"resume":    {run: cmdUnpause},
+		"claim":     {run: cmdClaim},
 		"stub":      {run: cmdStub},
 		"note":      {run: cmdNote},
 		"log":       {run: cmdLog},

@@ -769,6 +769,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 
 	// A matrix round runs its cells, each in its own process and slot.
 	if info.IsMatrix() {
+		releaseClaim(o, n, disp)
 		oc := runMatrix(o, n, sel, info, sl, lt, disp, ir, fileLocks)
 		return stamp(oc)
 	}
@@ -820,6 +821,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	if ir.stopsLane(n) {
 		return skip("interrupted before start")
 	}
+	releaseClaim(o, n, disp)
 	launched := time.Now()
 	launchedTS := launched.UTC().Format(time.RFC3339)
 	disp.Set(n, func(v *display.LaneView) {
@@ -1237,6 +1239,21 @@ func watchMsgs(o Options, n int, disp *display.Display) func() {
 		<-finished
 		disp.Set(n, func(v *display.LaneView) { v.Message, v.Paused = "", "" })
 	}
+}
+
+// releaseClaim spends lane n's claim (swim claim) as its round starts:
+// running-lane protection takes over. Another session's claim is no bar
+// (the operator decides), but the run says so.
+func releaseClaim(o Options, n int, disp *display.Display) {
+	c := lane.ReadClaim(o.Root, n)
+	if c == nil {
+		return
+	}
+	if c.Session != lane.SessionID() {
+		disp.Line(n, fmt.Sprintf("swim: swim %d was claimed by %s (session %s) until %s: it may still have been being written; running it released the claim",
+			n, c.Owner, c.Session, c.ExpiresAt().Local().Format("15:04")))
+	}
+	lane.DropClaim(o.Root, n)
 }
 
 // pausedText is what lane n's row says while its round holds (swim
