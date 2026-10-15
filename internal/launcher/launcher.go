@@ -115,6 +115,7 @@ type Options struct {
 	Heartbeat time.Duration
 
 	beat         *heartbeat
+	skipped      *statusBatch       // skipped lanes' status, written together (statusbatch.go)
 	setup        map[int]*setupGate // per lane: open once the lanes after it may start (always.go)
 	approvalSock string
 	approvalSrv  *approval.Server
@@ -515,6 +516,7 @@ func Run(o Options) (int, error) {
 		defer stopBeat()
 	}
 
+	o.skipped = newStatusBatch(o.Root, o.Cfg.Lanes)
 	var wg sync.WaitGroup
 	for _, n := range sel {
 		wg.Add(1)
@@ -537,6 +539,7 @@ func Run(o Options) (int, error) {
 		}(n)
 	}
 	wg.Wait()
+	o.skipped.flush()
 	stopOthers()
 	disp.Stop()
 	if !o.CheckOnly {
@@ -612,13 +615,14 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	skip := func(reason string) *Outcome {
 		disp.Set(n, func(v *display.LaneView) { v.State, v.Reason, v.WaitingOn = display.Skipped, reason, nil })
 		info, _ := lane.ReadScript(o.Root, n)
-		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
+		finished := status.Str(status.Now())
+		o.skipped.update(n, func(l *status.Lane) {
 			// Record which round was skipped: a later plan or retry must see
 			// this job as attempted, not new. Counts from an older round go.
 			l.ResetRun()
 			l.State, l.Reason = status.Skipped, reason
 			l.Round, l.Job, l.Run = info.Round, info.Job, o.RunID
-			l.FinishedAt = status.Str(status.Now())
+			l.FinishedAt = finished
 		})
 		history.Log(o.Root, history.Entry{Event: history.Skip, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
 		return stamp(&Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Skipped, Exit: -1, Reason: reason})
