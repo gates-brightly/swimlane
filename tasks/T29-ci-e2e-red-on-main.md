@@ -15,37 +15,41 @@ commit is pushed will name the test. Every run on GitHub up to `8d38adb`
 
 ## What's known
 
-Checked 2026-10-15, on Linux arm64 with Go 1.27.1:
+Since `69212ab` a red run names its failed tests, and `swim run 5` (lane
+5, `74d74e63`) downloads a run's artifacts to `.ci-runs/<run id>/`. The
+public API also gives jobs and annotations without credentials:
+`api.github.com/repos/gates-brightly/swimlane/check-runs/<job>/annotations`.
 
-- **It doesn't reproduce locally at `9bf1a91`.** `scripts/hermetic go test
-  -count=1 ./internal/e2e/...` passes in 267s.
-- **It doesn't reproduce the way CI runs it either.** `swim ci --junit
-  swim.xml` at `9bf1a91`, with a fresh HOME, no `~/.ssh`, no git identity,
-  `CI=true GITHUB_ACTIONS=true` and `GITHUB_STEP_SUMMARY` set, passes. Lane
-  1.4 took 4:27.
-- It passes at HEAD (`3faa776`) too.
-- Both runners took 7–8 minutes, against 4.5 here. Both failed on the same
-  commit, so this is more likely something about the runners than a flake.
-  Candidates, none confirmed:
-  - A timing-sensitive test on slower runners: waits, `--timeout`, lease
-    and heartbeat tests, the pty/TUI tests.
-  - Something the runner image has that this machine doesn't (`TMPDIR`,
-    `RUNNER_TEMP`, a newer git, `ssh-keygen` behaviour, `/bin/sh`).
-  - A test that depends on order or shared state between packages.
+Found and fixed, run by run:
+
+| Run | Commit | Failed | Cause | Fix |
+|---|---|---|---|---|
+| 38778399849 | `72be36b` | 5 approval tests, both OSes | T28's ancestry check took the outer `swim ci` for the nested scratch-repo lanes' launcher | `1a93259` |
+| | | `dag99-interrupt`, `dag99-force` | Ctrl-C sent before swim run's handler: dropped | `f09903a` (and `b28c11b` in swim) |
+| | | `TestCachePresetPersistsBetweenRounds`, macOS | the test assumed TMPDIR under /tmp | `b0db00a` |
+| 38784020382, 38785127202 | `b0db00a`, `df05a6b` | `TestLaneRCDeprecated`, macOS | bash 3.2's `declare -p` format: a shell flag taken for the rc's | `c01bbe5` |
+| | | `dag99-force`, macOS (2.7-4.4s) | one synced status.yml write per skipped lane | `3baf319` |
+
+Ubuntu was green on `b0db00a` and `df05a6b`; macOS green on `3baf319`
+and `e70fb2b`. Still open (ubuntu):
+
+- `3baf319`: the race job (1.4) failed. `go test -race -count=3` over every
+  non-e2e package is clean here, and `e70fb2b`'s race job passed. Not
+  named yet: the annotation shows only the passing packages' tail.
+- `e70fb2b`: `TestPromptLineDeclines` and `TestPromptIsSafe/tui`. Both pass
+  here, alone and under fuzz load (load average 15). The tui case waits
+  15s for "q to close" or "stages: setup SKIP", and the CI screen shows
+  the TUI closed itself with only the summary: the test's end condition
+  may race the view closing. Neither commit since `df05a6b` touches what
+  these tests run (`c01bbe5`: lanes with a .lane.N.rc only; `3baf319`:
+  lanes the launcher skips).
 
 ## Do
 
-- Read the failure from run #44's artifacts: `swim-ubuntu-latest` and
-  `swim-macos-latest` → `.swim/logs/agent1.4.log`. That holds the
-  `go test` output, with the `--- FAIL` lines. Or run
-  `gh run download <run-id> -n swim-ubuntu-latest`.
-- Check whether later pushes are also red. That tells a real regression
-  in `9bf1a91` from a flaky test.
-- Once the test is named, reproduce it with
-  `go test -run '<Name>' -count=20 ./internal/e2e/`, under load
-  (`stress`, or `GOMAXPROCS=2`) if it's timing.
-- Then fix the test or the code. Raise a wait only if that's genuinely the
-  fix, and say so in the commit.
+- Read `e70fb2b`'s artifacts (`.ci-runs/38788470783/`) for the two prompt
+  tests' full output, and a red race job's `agent1.log` for the race.
+- If the prompt tests race the TUI closing, wait for an end the view
+  always shows, not one of two it may skip.
 
 ## Done when
 
