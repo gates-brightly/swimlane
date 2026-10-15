@@ -76,6 +76,7 @@ func cmdDoctor(args []string) error {
 		Headless:     doctorHeadless(root),
 		Scheduled:    scheduledSummary(root),
 		WorkerUp:     func() bool { return workerRunning(root) },
+		Recurring:    recurringWarnings(root),
 	}
 	fs := doctor.Run(o)
 	if fix {

@@ -44,9 +44,14 @@ const (
 	Schedule      = "schedule"       // swim schedule: a batch to start no earlier than a time (detail: id, lanes, not_before, zone, approvals)
 	ScheduleStart = "schedule-start" // a worker claimed a scheduled batch (detail: how late)
 	ScheduleRm    = "schedule-rm"    // swim schedule rm: a scheduled batch removed before it ran
-	SecretSet     = "secret-set"     // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)
-	SecretRm      = "secret-rm"      // swim secret rm: ... removed
-	SecretUse     = "secret"         // a lane got a secret (detail: name, scope, how)
+	// Recurring schedules (swim schedule --daily).
+	ScheduleSkipped = "schedule-skipped" // an occurrence not made: superseded (no worker then) or overlap
+	SchedulePaused  = "schedule-paused"  // a recurring schedule paused (by hand, or a pinned lane changed)
+	ScheduleResumed = "schedule-resumed"
+	ScheduleExpired = "schedule-expired"
+	SecretSet       = "secret-set" // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)
+	SecretRm        = "secret-rm"  // swim secret rm: ... removed
+	SecretUse       = "secret"     // a lane got a secret (detail: name, scope, how)
 	// A guarded secret (swim.yml secrets:) released to a lane once its
 	// guard was approved, or refused (detail: name, flags, how or why).
 	SecretReleased = "secret-released"

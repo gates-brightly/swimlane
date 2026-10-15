@@ -383,6 +383,16 @@ To cut a release:
     batches; `swim schedule list`, `swim schedule rm`; `swim doctor` warns
     when batches are scheduled and no `swim watch` runs.
   - `-y` is refused for a schedule: name each guard with `--approve`.
+  - **Recurring: `swim schedule 4 06:00 --daily [--until DATE | --for D]`.**
+    A template in `.swim/queue/recurring/`; each day a worker makes that
+    day's occurrence once, as an ordinary scheduled batch. 06:00 stays
+    06:00 local across DST. It expires (30 days by default, never past
+    `lookup.yml`'s `standing.max`); a lane whose script or manifest changed
+    pauses it rather than run on the old approvals; after downtime only the
+    latest occurrence runs (earlier days `superseded`), and a day due while
+    the last still runs is skipped (`overlap`). `swim schedule pause|resume`,
+    `swim stub`/`swim new` refused on its lanes without `--force`, and
+    `swim doctor` warns about paused and expiring schedules.
 - **`swim report`: what changed since you last looked,** in one call and
   untruncated: the lanes whose state changed (and what they were), every
   `.swim.log` line and every lane-log line written since the reader's

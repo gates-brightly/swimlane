@@ -246,3 +246,16 @@ func short(d time.Duration) string {
 	}
 	return s
 }
+
+// Latest is the last daily occurrence of clock c in loc at or before now
+// (shifted past a spring-forward gap as Next does).
+func Latest(c Clock, loc *time.Location, now time.Time) (time.Time, bool) {
+	t, shifted := Next(c, loc, now.AddDate(0, 0, -2))
+	for {
+		n, sh := Next(c, loc, t)
+		if n.After(now) {
+			return t, shifted
+		}
+		t, shifted = n, sh
+	}
+}

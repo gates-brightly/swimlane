@@ -66,6 +66,9 @@ type Options struct {
 	// (swim schedule; nil when not known).
 	Scheduled []string
 	WorkerUp  func() bool
+	// Recurring are recurring schedules that need a look: paused, or
+	// expiring within three days.
+	Recurring []string
 }
 
 // Headless is a repo's headless worker as the CLI finds it.
@@ -138,6 +141,7 @@ var Checks = []Check{
 	{"headless-hub-answers", false, "swim.yml's headless.approvals is hub: a hub user's button click approves guards no require: rule names", checkHeadlessHubAnswers},
 	{"headless-yes", false, "a headless service runs with -y: it approves every guard in every batch", checkHeadlessYes},
 	{"schedule-no-worker", false, "batches are scheduled, but no swim watch runs to start them", checkScheduleNoWorker},
+	{"schedule-recurring", false, "a recurring schedule is paused, or expires within three days", checkScheduleRecurring},
 }
 
 // Run runs every check.
@@ -1005,4 +1009,14 @@ func checkScheduleNoWorker(o *Options) []finding.Finding {
 	}
 	return []finding.Finding{fd(finding.Warn, "schedule-no-worker", ".swim/queue/", "swim watch (or swim watch --headless --detach)",
 		"%d scheduled batches, and no swim watch runs here to start them: %s", len(o.Scheduled), strings.Join(o.Scheduled, "; "))}
+}
+
+// checkScheduleRecurring: a paused recurring schedule makes no
+// occurrences; one about to expire needs scheduling again.
+func checkScheduleRecurring(o *Options) []finding.Finding {
+	var out []finding.Finding
+	for _, w := range o.Recurring {
+		out = append(out, fd(finding.Warn, "schedule-recurring", ".swim/queue/recurring/", "swim schedule list; swim schedule resume ID, or schedule it again", "%s", w))
+	}
+	return out
 }

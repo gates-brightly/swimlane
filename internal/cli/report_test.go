@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/earmark"
 	"github.com/gates-brightly/swimlane/internal/history"
@@ -107,5 +108,22 @@ func TestEarmarkName(t *testing.T) {
 	}
 	if _, err := earmark.Name("../x"); err == nil {
 		t.Error("a path as a name")
+	}
+}
+
+// Days a recurring schedule missed (no worker) are superseded by the
+// latest; none after a day it handled.
+func TestMissedDays(t *testing.T) {
+	r := &recurring{First: "2026-10-10", Last: "2026-10-12"}
+	if got := strings.Join(missedDays(r, "2026-10-15", time.UTC), " "); got != "2026-10-13 2026-10-14" {
+		t.Errorf("missed: %q", got)
+	}
+	r.Last = ""
+	if got := strings.Join(missedDays(r, "2026-10-11", time.UTC), " "); got != "2026-10-10" {
+		t.Errorf("from first: %q", got)
+	}
+	r.Last = "2026-10-14"
+	if got := missedDays(r, "2026-10-15", time.UTC); len(got) != 0 {
+		t.Errorf("none: %q", got)
 	}
 }

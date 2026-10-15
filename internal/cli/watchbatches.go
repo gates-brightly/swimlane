@@ -369,6 +369,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 				return code, err
 			}
 			if ok {
+				materializeRecurring(root, cfg) // today's occurrences of recurring schedules
 				// Listed under the lock: another worker picks only after this
 				// one's claims are made.
 				waiting, err := queue.List(root, false)

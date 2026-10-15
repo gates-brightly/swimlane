@@ -230,32 +230,11 @@ type batch struct {
 func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch, error) {
 	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel,
 		NotBefore: o.notBefore, Zone: o.zone, From: o.from, Occurrence: o.occurrence}
-	b := batch{entry: e, guards: map[string]bool{}}
-	for _, n := range lanes {
-		l, info, err := pinLane(root, cfg, n)
-		if err != nil {
-			return b, err
-		}
-		e.Lanes = append(e.Lanes, l)
-		for _, g := range info.Guards {
-			b.guards[g.Flag] = true
-		}
+	b := batch{entry: e}
+	var err error
+	if e.Lanes, e.Approve, b.guards, err = pinBatch(root, cfg, lanes, o.approve); err != nil {
+		return b, err
 	}
-	// An approval must name a guard in the batch: a typo would otherwise
-	// approve nothing, silently.
-	seen := map[string]bool{}
-	for _, f := range o.approve {
-		f = strings.TrimSpace(f)
-		if f == "" || seen[f] {
-			continue
-		}
-		if !b.guards[f] {
-			return b, fmt.Errorf("--approve %s: no lane in this batch has a guard %s (its guards: %s)", f, f, or(strings.Join(sortedKeys(b.guards), ", "), "none"))
-		}
-		seen[f] = true
-		e.Approve = append(e.Approve, f)
-	}
-	sort.Strings(e.Approve)
 	// Sign the batch: it proves who queued it, so standing approvals for
 	// that person (swim approve --auto) apply to it.
 	e.ID = queue.NewID()
@@ -302,6 +281,39 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	}
 	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: detail})
 	return b, nil
+}
+
+// pinBatch pins lanes as a batch holds them, with the guards they hold and
+// approve (each must name one of those guards: a typo would otherwise
+// approve nothing, silently).
+func pinBatch(root string, cfg *config.Config, lanes []int, approve []string) ([]queue.Lane, []string, map[string]bool, error) {
+	var pinned []queue.Lane
+	guards := map[string]bool{}
+	for _, n := range lanes {
+		l, info, err := pinLane(root, cfg, n)
+		if err != nil {
+			return nil, nil, guards, err
+		}
+		pinned = append(pinned, l)
+		for _, g := range info.Guards {
+			guards[g.Flag] = true
+		}
+	}
+	var approved []string
+	seen := map[string]bool{}
+	for _, f := range approve {
+		f = strings.TrimSpace(f)
+		if f == "" || seen[f] {
+			continue
+		}
+		if !guards[f] {
+			return nil, nil, guards, fmt.Errorf("--approve %s: no lane in this batch has a guard %s (its guards: %s)", f, f, or(strings.Join(sortedKeys(guards), ", "), "none"))
+		}
+		seen[f] = true
+		approved = append(approved, f)
+	}
+	sort.Strings(approved)
+	return pinned, approved, guards, nil
 }
 
 // pinLane is lane n as a queue entry holds it: its job and round, pinned
@@ -778,6 +790,7 @@ func cmdWatch(args []string) error {
 				fmt.Println(p.Paint(ui.Cyan, "swim watch: "+msg))
 			}
 		}
+		materializeRecurring(root, cfg) // today's occurrences of recurring schedules
 		waiting, err := queue.List(root, false)
 		if err != nil {
 			return err

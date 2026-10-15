@@ -147,3 +147,91 @@ func TestScheduleTamperedRefused(t *testing.T) {
 		t.Error("the tampered batch ran")
 	}
 }
+
+// soon is a time of day a few seconds from now, in UTC (for --tz UTC).
+func soon(d time.Duration) string { return time.Now().UTC().Add(d).Format("15:04:05") }
+
+// watchUntil runs swim watch until cond holds, then stops it.
+func watchUntil(t *testing.T, r *repo, cond func() bool) string {
+	t.Helper()
+	w := r.cmd(bin, "watch", "--interval", "200ms", "--no-tui")
+	var out strings.Builder
+	w.Stdout, w.Stderr = &out, &out
+	if err := w.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for !cond() && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	w.Process.Signal(os.Interrupt)
+	w.Wait()
+	if !cond() {
+		t.Fatalf("watch: condition not met\n%s", out.String())
+	}
+	return out.String()
+}
+
+// A daily schedule makes today's occurrence once, a scheduled batch the
+// worker runs at its time; a second worker makes nothing more.
+func TestRecurringDaily(t *testing.T) {
+	r := newRepo(t, "")
+	stampLane(r, 1, "one", "")
+	out := r.mustSwim("schedule", "1", soon(3*time.Second), "--daily", "--tz", "UTC")
+	contains(t, "reply", out, "Lane 1 scheduled daily at ", "(UTC), first ", ", until ", "swim schedule pause|resume|rm r-")
+	contains(t, "list", r.mustSwim("schedule", "list"), "r-", "daily at", "· next ")
+	watchUntil(t, r, func() bool { return len(doneEntries(t, r)) == 1 })
+	done := doneEntries(t, r)
+	if !strings.HasPrefix(done[0].From, "r-") || done[0].Occurrence == "" || done[0].Result.Result != "passed" {
+		t.Errorf("occurrence: %+v %+v", done[0], done[0].Result)
+	}
+	ranAt(t, r, "one")
+	r.mustSwim("watch", "--once")
+	if n := len(doneEntries(t, r)); n != 1 {
+		t.Errorf("today's occurrence made %d times", n)
+	}
+	contains(t, ".swim.log", r.mustSwim("log"), "daily=", "from=r-")
+}
+
+// Editing a scheduled lane pauses its recurring schedule instead of
+// running the new script on the old approvals; resume refuses until it's
+// scheduled again. swim stub on it is refused.
+func TestRecurringPausesOnChange(t *testing.T) {
+	r := newRepo(t, "")
+	stampLane(r, 1, "one", "")
+	r.mustSwim("schedule", "1", soon(2*time.Second), "--daily", "--tz", "UTC")
+	if out, code := r.swim("stub", "1", "idle"); code == 0 || !strings.Contains(out, "runs daily on recurring schedule") {
+		t.Errorf("stub of a scheduled lane: exit %d\n%s", code, out)
+	}
+	stampLane(r, 1, "one edited", "")
+	time.Sleep(2500 * time.Millisecond)
+	r.mustSwim("watch", "--once")
+	if n := len(doneEntries(t, r)); n != 0 {
+		t.Fatalf("an occurrence ran on a changed lane (%d)", n)
+	}
+	list := r.mustSwim("schedule", "list")
+	contains(t, "list", list, "paused: swim 1 changed since it was scheduled")
+	id := strings.Fields(list[strings.Index(list, "r-"):])[0]
+	if out, code := r.swim("schedule", "resume", id); code == 0 || !strings.Contains(out, "schedule it again") {
+		t.Errorf("resume over a change: exit %d\n%s", code, out)
+	}
+	contains(t, "doctor", must(r.swim("doctor")), "[schedule-recurring]", "is paused")
+	contains(t, "rm", r.mustSwim("schedule", "rm", id), "removed "+id)
+}
+
+// It expires as standing approvals do: 30 days by default, never past
+// lookup.yml's standing.max; -y is refused.
+func TestRecurringExpiry(t *testing.T) {
+	r := newRepo(t, "")
+	stampLane(r, 1, "one", "")
+	day := func(d int) string { return time.Now().UTC().AddDate(0, 0, d).Format("2006-01-02") }
+	contains(t, "default", r.mustSwim("schedule", "1", "06:00", "--daily", "--tz", "UTC"), "until "+day(30))
+	r.write("lookup.yml", "standing: {max: 7d}\n", 0o644)
+	contains(t, "capped", r.mustSwim("schedule", "1", "07:00", "--daily", "--tz", "UTC"), "until "+day(7))
+	if out, code := r.swim("schedule", "1", "08:00", "--daily", "--until", day(20)); code == 0 || !strings.Contains(out, "standing.max") {
+		t.Errorf("past standing.max: exit %d\n%s", code, out)
+	}
+	if out, code := r.swim("schedule", "1", "08:00", "--daily", "-y"); code == 0 {
+		t.Errorf("-y on a recurring schedule accepted:\n%s", out)
+	}
+}

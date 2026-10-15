@@ -298,6 +298,9 @@ func cmdNew(args []string) error {
 	if goal == "" {
 		return usagef("the round goal must not be empty")
 	}
+	if err := refuseRecurring(root, n, "new", force); err != nil {
+		return err
+	}
 	if job == "" {
 		job = lane.NewJobID()
 	} else if !lane.ValidJobID(job) {
@@ -886,6 +889,9 @@ func cmdStub(args []string) error {
 		return err
 	}
 	if err := refuseAlways(root, n, "stub", force); err != nil {
+		return err
+	}
+	if err := refuseRecurring(root, n, "stub", force); err != nil {
 		return err
 	}
 	msg := strings.Join(args[1:], " ")

@@ -197,7 +197,6 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Secret management.** Rounds use the operator's existing credentials.
 - **Writing to git.** swim never commits, pushes or pulls, including in CI.
 - **Executing on the hub.** The hub relays requests to headless workers, which check, carry out and record them. It never runs anything itself, never holds credentials or secrets, and can't make an approval valid by itself: an answer to a guard counts when the worker verifies the approver's SSH signature against `lookup.yml` (or, where the repo's `swim.yml` allows it, a listed hub user's click for a guard no `require:` rule names).
-- **Scheduling across rounds.** The queue runs batches once their lanes are free; there is no cron.
 
 ## Open questions
 
@@ -209,6 +208,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Hub access?** Per-user identity: the hub's admin adds users (`swim hub user add NAME --role viewer|operator`), named as in `lookup.yml`, each with their own token and a browser session. Every command carries the user who sent it, and the worker records it. The shared tokens only enroll workers and manage the hub. Approving through the hub takes the approver's own SSH signature, checked by the worker: the hub login alone approves only where a repo opts in (`headless.approvals: hub`). See `swim watch --help` and `swim hub --help`.
 - **Keeping the chain?** Opt-in, not by default: `chain_anchors` sends a signed checkpoint of the chain's head to a `file:` path outside the repo or the hub at the end of every run, and `swim chain export` copies the entries; `swim verify` checks against them (anchored). An anchor only helps if someone other than the operator holds it, so swim doesn't pick one.
 - **Cross-session claims?** Yes, as an advisory lease: `swim new` claims the lane until it runs, is archived or stubbed, or the lease expires. `Owner` stays authorship. See [features/lane-claims.md](features/lane-claims.md) (proposed).
+- **Scheduling across rounds?** `swim schedule` starts a queued batch no earlier than a time, and dependents wait for it. Recurring schedules: daily, pinned to exact scripts, expiring like standing approvals, run by a worker you start. swim still runs no daemon of its own.
 - **Do approvals outlive a policy change, and must standing approvals expire?** A rule change stales them; membership is read live; standing approvals expire. See [Approval lifecycle](#approval-lifecycle).
 
 ### Resolved from v1

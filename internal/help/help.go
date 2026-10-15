@@ -595,9 +595,10 @@ swim queue show|rm|requeue ID
   .swim.log records queue, queue-run and queue-done events.
 `,
 	"schedule": `swim schedule LANES... TIME [--tz ZONE] [--approve FLAG]... [--note TEXT] [--parallel N] [--key PATH] [--yaml]
+swim schedule LANES... TIME --daily [--until DATE | --for D] [--tz ZONE] [--approve FLAG]...
 swim schedule list [--all] [--yaml]
-swim schedule rm ID
-swim queue add LANES... --at TIME [flags]     (the same)
+swim schedule rm ID | pause ID | resume ID
+swim queue add LANES... --at TIME [flags]     (the same, one-shot)
 
   Queue a batch that starts no earlier than TIME: swim queue add with a
   start time. The batch is pinned and approved now, exactly as a queued
@@ -637,6 +638,29 @@ swim queue add LANES... --at TIME [flags]     (the same)
            batches it releases (they'll skip unless its lanes pass first)
   --yaml   the reply as swim.schedule/v1 (id, lanes, not_before, zone,
            warnings)
+  --daily  a recurring schedule: the same pinned rounds every day at TIME
+           (a time of day, wall clock in its zone, so 06:00 stays 06:00
+           across DST; a day the clocks skip it runs at the first valid
+           minute after). It's a template in .swim/queue/recurring/: each
+           day a worker (swim watch) makes that day's occurrence, an
+           ordinary scheduled batch (from: r-..., occurrence: the date),
+           once, however many workers share the queue. Rules:
+             it expires: --until DATE or --for D, 30 days by default, and
+               never past lookup.yml's standing.max (as standing approvals);
+               renew by scheduling it again
+             pinned means pinned: an occurrence whose lane's script or
+               manifest changed is skipped and the schedule paused, never
+               run on the old approvals; resume works once they match
+               again, else schedule it again to re-pin
+             no catch-up, no stacking: after downtime only the latest due
+               occurrence runs (late); earlier days are recorded as
+               superseded, and a day due while the last one still runs is
+               skipped as overlap
+             swim stub and swim new on its lanes are refused (--force
+               pauses it)
+           Dependents belong in the same batch (ordered within each
+           occurrence).
+  pause ID, resume ID  stop and restart a recurring schedule's occurrences
 `,
 	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui]
 swim watch --headless [--detach] [-y] [--approved] [--interval D]

@@ -110,3 +110,17 @@ func TestNext(t *testing.T) {
 		t.Errorf("late: %q", u)
 	}
 }
+
+func TestLatest(t *testing.T) {
+	chi := zone(t, "America/Chicago")
+	c := Clock{6, 0, 0}
+	for now, want := range map[time.Time]time.Time{
+		time.Date(2026, 10, 15, 9, 0, 0, 0, chi): time.Date(2026, 10, 15, 6, 0, 0, 0, chi),
+		time.Date(2026, 10, 15, 5, 0, 0, 0, chi): time.Date(2026, 10, 14, 6, 0, 0, 0, chi),
+		time.Date(2026, 10, 15, 6, 0, 0, 0, chi): time.Date(2026, 10, 15, 6, 0, 0, 0, chi),
+	} {
+		if got, _ := Latest(c, chi, now); !got.Equal(want) {
+			t.Errorf("Latest at %v = %v, want %v", now, got, want)
+		}
+	}
+}
