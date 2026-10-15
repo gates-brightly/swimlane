@@ -96,7 +96,14 @@ func TestHeadlessDetachStatusStop(t *testing.T) {
 	if e := doneEntries(t, r); len(e) != 1 || e[0].Result.Result != "passed" {
 		t.Fatalf("the batch after SIGHUP: %+v", e)
 	}
-	data, _ := os.ReadFile(logPath)
+	// The worker writes "passed; consumed" just after it consumes the
+	// entry: wait for the line, not only the entry.
+	var data []byte
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if data, _ = os.ReadFile(logPath); strings.Contains(string(data), "passed; consumed") {
+			break
+		}
+	}
 	contains(t, "the reopened log", string(data), "SIGHUP: reopened .swim/headless.log", "tick-6", "passed; consumed")
 	if !processAlive(pid) {
 		t.Fatal("SIGHUP stopped the worker")
