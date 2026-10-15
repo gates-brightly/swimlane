@@ -19,11 +19,14 @@ one has **Upgrading** notes; read them and `swim lock --help` before running
 lanes. Revisions before versioning existed are named by commit.
 
 To cut a release:
-1. `make next-tag` prints the next tag, `v0.<today>.<index>`.
+1. `make next-tag DRY=1` prints the next tag, `v0.<today>.<index>`.
 2. Rename `## Unreleased` to `## 0.<date>.<index> (v0.<date>.<index>, <date>)`,
    and start a new empty `## Unreleased` above it.
 3. Commit, then run `make release V=v0.<date>.<index>`. It refuses to tag
    unless the date, the index, the changelog and a clean tree all agree.
+
+Or tag what's on main as it is: `make next-tag` tags HEAD (a clean tree,
+already pushed to origin's main) with the next tag and pushes that tag.
 
 ## Unreleased
 
@@ -260,6 +263,10 @@ To cut a release:
 
 ### Changed
 
+- **`make next-tag` tags and pushes.** It tags HEAD with the day's next
+  release tag and pushes only that tag, refusing a tree with changes or a
+  commit origin's main doesn't have yet. `make next-tag DRY=1` prints the
+  tag as it used to.
 - **This repo's CI runs its slow suites side by side.** It's five group
   files instead of one lane of eight jobs in a row: lane 1
   (`lanes.ci.sh`: fmt, lint, unit, race) runs first, then e2e (lane 2),

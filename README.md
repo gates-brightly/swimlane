@@ -1444,7 +1444,7 @@ make test             # unit tests (fast)
 make e2e              # the Go e2e suite and every scenario (S="dag99 ..." for some)
 make check            # gofmt, vet, unit and e2e tests
 make ci               # this repo's CI rounds, through swim ci
-make next-tag                         # the next release tag (today's date, the day's next index)
+make next-tag                         # tag HEAD with the next release tag (today's date, the day's next index) and push it; DRY=1 prints it
 make release V=v0.<YYYYMMDD>.<index>  # tag it (checks the date, index, CHANGELOG, clean tree; never pushes)
 ```
 

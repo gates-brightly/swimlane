@@ -29,8 +29,8 @@ install: ## Install swim from this checkout into $GOBIN (or $GOPATH/bin)
 release: ## Tag a release after checking its date and index, CHANGELOG.md and a clean tree (V=v0.<YYYYMMDD>.<index>); never pushes
 	@./scripts/release.sh $(V)
 
-next-tag: ## Print the next release tag (v0.<today>.<next index>) and the git commands to publish it
-	@./scripts/next-tag.sh
+next-tag: ## Tag HEAD (clean, already on origin/main) with the next release tag, v0.<today>.<index>, and push it (DRY=1: print only)
+	@DRY=$(DRY) ./scripts/next-tag.sh
 
 install-latest: ## go install the published swim (V=v0.20261014.1 to pin; default latest)
 	GOPRIVATE="$$(p=$$(go env GOPRIVATE); echo "$${p:+$$p,}github.com/gates-brightly/*")" go install $(MODULE)/cmd/swim@$(V)
