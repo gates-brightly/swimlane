@@ -413,6 +413,11 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **`swim config chime on` covers queued jobs too.** `swim watch` now
+  chimes as each batch it runs finishes, by the same settings as `swim
+  run`: every batch with `chime on`, a batch that didn't pass with
+  `failure`, twice for a failure, and not below `chime_min_s`. Until now
+  only a `swim run` / `swim all` you started chimed.
 - **`swim trash N`: move one lane out of the way, recoverably.** Its
   script and sidecar go to `.swim/cleaned/<stamp>-lane<N>/` (where `swim
   clean` sets scripts aside, with their SHA-256s), its log is archived, and

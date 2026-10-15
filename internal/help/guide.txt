@@ -1028,7 +1028,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
         runtime: node --version          # recorded as runtime version
         toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
-        chime: false                     # true | false | failure: chime when swim run/all ends
+        chime: false                     # on | off | failure: chime when swim run/all ends, and per swim watch batch
         chime_style: bell                # bell | sound | notify
         chime_min_s: 10                  # don't chime for runs shorter than this
         interrupt: graceful              # graceful | immediate: what the first Ctrl-C does
@@ -1080,12 +1080,14 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
   run (a typo). Lanes are 1..99.
 
   Chime (operator preference; workers never set it): after `swim run` /
-  `swim all` prints its summary, swim rings the bell (twice on failure) if
-  chime is true, or failure and the run didn't fully pass, the run took at
-  least chime_min_s, stdout is a terminal (not needed for notify) and CI
-  isn't true. sound adds a system sound, notify a desktop notification.
-  --chime / --no-chime override it for one run. Set it with
-  `swim config chime true|false|failure` (--repo for this repo only).
+  `swim all` prints its summary, and as `swim watch` finishes each queued
+  batch (a job), swim rings the bell (twice on failure) if chime is on, or
+  failure and the run or batch didn't fully pass, it took at least
+  chime_min_s, stdout is a terminal (not needed for notify) and CI isn't
+  true. sound adds a system sound, notify a desktop notification.
+  --chime / --no-chime override it for one swim run. Set it with
+  `swim config chime on|off|failure` (true/false too; --repo for this repo
+  only).
 
 INTERRUPTING
   Lanes run in their own process groups, so Ctrl-C reaches only swim, which

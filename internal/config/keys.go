@@ -14,7 +14,8 @@ import (
 	"github.com/gates-brightly/swimlane/internal/cache"
 )
 
-// Chime says when swim run / swim all chime as they finish.
+// Chime says when swim run / swim all chime as they finish, and swim watch
+// as each batch it runs finishes.
 type Chime string
 
 const (

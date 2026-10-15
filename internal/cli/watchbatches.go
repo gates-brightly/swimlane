@@ -74,6 +74,8 @@ type batchProc struct {
 	out   string        // its output file ("" when it writes to swim watch's)
 	done  chan struct{} // closed when it exits
 	code  int
+	// started is when the worker started it, for the chime's elapsed time.
+	started time.Time
 }
 
 // batchRunner starts and tracks swim watch's batches.
@@ -226,7 +228,7 @@ func (b *batchRunner) start(cfg *config.Config, e *queue.Entry) (*batchProc, err
 	}
 	cmd := exec.Command(self(), args...)
 	cmd.Dir = b.root
-	p := &batchProc{e: claimed, cmd: cmd, done: make(chan struct{})}
+	p := &batchProc{e: claimed, cmd: cmd, done: make(chan struct{}), started: time.Now()}
 	for _, l := range claimed.Lanes {
 		p.lanes = append(p.lanes, l.Lane)
 	}
@@ -342,6 +344,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 			if view != nil {
 				view.picker.Note = fmt.Sprintf("#%d %s (%s)", bp.e.Seq, word, lanesText(bp.lanes))
 			}
+			chimeBatch(cfg, root, bp, word)
 		}
 	drain:
 		for {

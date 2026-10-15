@@ -634,8 +634,9 @@ lane's state and round; output scrolls underneath, prefixed `[N]`.
 - **No terminal, or `--plain`:** output is plain prefixed lines.
 - **`--yaml`:** output is a stream of YAML events instead (see
   [Scripting](#scripting-and-yaml)).
-- **Chime:** `swim config chime true` rings the bell when a run ends; set
-  it to `failure` to ring only when something went wrong.
+- **Chime:** `swim config chime on` rings the bell when a run ends, and
+  when `swim watch` finishes each queued job; set it to `failure` to ring
+  only when something went wrong.
 
 ### Dependencies, parallelism and locks
 

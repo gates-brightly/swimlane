@@ -125,6 +125,37 @@ func TestChimeOnTerminal(t *testing.T) {
 	quiet("CI", must(r.swimTTY("run", "1", "--plain", "--chime")))
 }
 
+// swim config chime on covers queued jobs too: swim watch chimes as each
+// batch it runs finishes, once for a pass and twice for a failure.
+func TestChimeWatchBatch(t *testing.T) {
+	r := newSerialRepo(t, "")
+	r.env = append(r.env, "CI=")
+	r.script(1, "passes", `run "ok" true`)
+	r.script(2, "fails", `run "nope" false`)
+
+	r.mustSwim("queue", "add", "1")
+	if out := must(r.swimTTY("watch", "--once", "--no-tui")); strings.Contains(out, "\a") {
+		t.Errorf("chime off (default): unexpected bell: %q", tail(out))
+	}
+
+	r.mustSwim("config", "chime", "on")
+	r.mustSwim("config", "chime_min_s", "0")
+	r.mustSwim("queue", "add", "1")
+	if out := must(r.swimTTY("watch", "--once", "--no-tui")); strings.Count(out, "\a") != 1 {
+		t.Errorf("chime on, a passing batch: want one bell: %q", tail(out))
+	}
+	r.mustSwim("queue", "add", "2")
+	if out := must(r.swimTTY("watch", "--once", "--no-tui")); strings.Count(out, "\a") != 2 {
+		t.Errorf("chime on, a failing batch: want two bells: %q", tail(out))
+	}
+
+	r.mustSwim("config", "chime", "failure")
+	r.mustSwim("queue", "add", "1")
+	if out := must(r.swimTTY("watch", "--once", "--no-tui")); strings.Contains(out, "\a") {
+		t.Errorf("chime failure, a passing batch: unexpected bell: %q", tail(out))
+	}
+}
+
 func tail(s string) string {
 	if len(s) > 200 {
 		return "…" + s[len(s)-200:]
