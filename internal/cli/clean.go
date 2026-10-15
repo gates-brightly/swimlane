@@ -101,8 +101,11 @@ func cmdClean(args []string) error {
 	if why := launcher.Busy(root, cfg); why != "" && !o.dryRun {
 		return fmt.Errorf("swim clean: %s; clean when it's done", why)
 	}
-	if err := refreshStatus(root, cfg); err != nil {
-		return err
+	if !o.dryRun {
+		// A dry run changes nothing under .swim/, status.yml included.
+		if err := refreshStatus(root, cfg); err != nil {
+			return err
+		}
 	}
 	interactive := !o.noInput && !o.asYAML && !o.dryRun && ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout)
 	in := bufio.NewReader(os.Stdin)
