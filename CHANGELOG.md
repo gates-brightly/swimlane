@@ -361,6 +361,28 @@ To cut a release:
 
 ### Added
 
+- **`swim schedule`: a batch that starts no earlier than a time.** `swim
+  schedule 1 3 22:00 --approve FLAG` (or `swim queue add ... --at 22:00`)
+  queues the batch pinned and approved now; no worker claims it before
+  22:00, and from then on it runs as soon as its lanes are free (late is
+  late, not cancelled).
+  - **Times:** `13:30`, `1330`, `1:30pm`, `tomorrow 06:00`, `2026-10-20
+    13:30`, `+2h`, in `--tz`, `schedule_tz` or the machine's zone. A bare
+    past time means tomorrow; anything ambiguous, or a time the clocks skip,
+    is refused. The reply says it in both zones: `Lane 1 scheduled for
+    13:30:00(CDT) 18:30:00(UTC)`, then warnings (no worker running, a batch
+    ahead of it, a dependency that hasn't passed).
+  - **Dependents wait with it:** a batch queued later whose lanes depend on
+    a scheduled lane is held until the scheduled batch has run.
+    `swim run N` of a scheduled lane is refused; `swim all` leaves it.
+  - **Recorded and signed:** the start time is in the queue signature (a
+    worker refuses a signed batch whose time was edited), `.swim.log`
+    (`schedule`, `schedule-start` with how late, `schedule-rm`), and the
+    run's chain attestation (`scheduled_for`, which `swim verify` checks).
+  - `swim status` and the watch screen show scheduled and held lanes and
+    batches; `swim schedule list`, `swim schedule rm`; `swim doctor` warns
+    when batches are scheduled and no `swim watch` runs.
+  - `-y` is refused for a schedule: name each guard with `--approve`.
 - **`swim report`: what changed since you last looked,** in one call and
   untruncated: the lanes whose state changed (and what they were), every
   `.swim.log` line and every lane-log line written since the reader's

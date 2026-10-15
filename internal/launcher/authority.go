@@ -313,7 +313,7 @@ func (a *runAuthority) attest(o Options, sel []int) {
 	if a == nil {
 		return
 	}
-	e := chain.Entry{Type: "run", Run: o.RunID, Manifests: map[string]string{}, Scripts: map[string]string{}}
+	e := chain.Entry{Type: "run", Run: o.RunID, Manifests: map[string]string{}, Scripts: map[string]string{}, ScheduledFor: o.ScheduledFor}
 	for _, n := range sel {
 		if m := o.manifests[n]; m != nil {
 			e.Manifests[strconv.Itoa(n)] = m.SHA256

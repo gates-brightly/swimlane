@@ -229,6 +229,9 @@ func outsideBlocker(root string, d Dep) string {
 	if !info.Pending() || AlreadyPassed(info, &last) {
 		return ""
 	}
+	if at := scheduledFor(root, d.Lane); at != "" {
+		return fmt.Sprintf("swim %d's pending round has not passed: it is scheduled for %s", d.Lane, at)
+	}
 	return fmt.Sprintf("swim %d's pending round has not passed; run it too: swim run %d ...", d.Lane, d.Lane)
 }
 
@@ -274,4 +277,54 @@ func AlreadyPassed(info lane.Info, last *status.Lane) bool {
 		return last.Job == info.Job
 	}
 	return last.Round == info.Round
+}
+
+// DepEdges is every lane's direct dependencies, by lane: the config deps
+// table and each script's `# After:` (lane numbers, jobs, cells), as the
+// launcher enforces them. References that don't resolve are left out:
+// swim run reports those.
+func DepEdges(root string, cfg *config.Config) map[int][]int {
+	st, _ := status.Load(root)
+	if st == nil {
+		st = &status.File{}
+	}
+	st.Normalize(cfg.Lanes)
+	scripts := map[int]lane.Info{}
+	for n := 1; n <= cfg.Lanes; n++ {
+		scripts[n], _ = lane.ReadScript(root, n)
+	}
+	out := map[int][]int{}
+	for n := 1; n <= cfg.Lanes; n++ {
+		seen := map[int]bool{}
+		for _, d := range cfg.DepsOf(n) {
+			seen[d] = true
+		}
+		for _, ref := range scripts[n].After {
+			if d, err := resolveAfter(cfg, scripts, st, n, ref); err == nil {
+				seen[d.Lane] = true
+			}
+		}
+		for d := range seen {
+			out[n] = append(out[n], d)
+		}
+		sort.Ints(out[n])
+	}
+	return out
+}
+
+// Upstream is every lane n depends on, at any depth.
+func Upstream(edges map[int][]int, n int) map[int]bool {
+	up := map[int]bool{}
+	var walk func(int)
+	walk = func(m int) {
+		for _, d := range edges[m] {
+			if !up[d] {
+				up[d] = true
+				walk(d)
+			}
+		}
+	}
+	walk(n)
+	delete(up, n)
+	return up
 }

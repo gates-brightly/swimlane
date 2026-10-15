@@ -13,6 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/queue"
+	"github.com/gates-brightly/swimlane/internal/schedule"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -87,20 +88,34 @@ func (w *watchView) rows() []display.PickRow {
 	if len(entries) == 0 && err == nil {
 		rows = append(rows, display.PickRow{Text: "  (empty: q on a job queues it)", Color: ui.Dim})
 	}
+	queue.SortWaiting(entries)
+	held := heldBy(w.root, w.cfg, entries)
+	now := scheduleNow()
 	for _, e := range entries {
 		var ns []string
 		for _, l := range e.Lanes {
 			ns = append(ns, strconv.Itoa(l.Lane))
 		}
-		text := fmt.Sprintf("#%-4d %-9s swim %s  by %s", e.Seq, e.State, strings.Join(ns, ","), e.By)
-		if w.batchDry(e, st) {
-			text = fmt.Sprintf("#%-4d %-9s %s swim %s  by %s", e.Seq, e.State, display.DryMark, strings.Join(ns, ","), e.By)
+		state, when := e.State, ""
+		switch {
+		case e.State == queue.Queued && !e.Due(now):
+			at, _ := time.Parse(time.RFC3339, e.NotBefore)
+			state, when = "scheduled", "  at "+scheduledAt(e)+" · "+schedule.Until(at, now)
+		case held[e.ID] != nil:
+			state, when = "held", fmt.Sprintf("  until #%d has run", held[e.ID].Seq)
 		}
+		dry := ""
+		if w.batchDry(e, st) {
+			dry = display.DryMark + " "
+		}
+		text := fmt.Sprintf("#%-4d %-9s %sswim %s  by %s%s", e.Seq, state, dry, strings.Join(ns, ","), e.By, when)
 		if e.Note != "" {
 			text += "  " + e.Note
 		}
 		color := ""
-		switch e.State {
+		switch state {
+		case "scheduled", "held":
+			color = ui.Dim
 		case queue.Running:
 			color = ui.Cyan
 		case queue.Orphaned:

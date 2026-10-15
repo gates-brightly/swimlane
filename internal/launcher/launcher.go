@@ -70,7 +70,10 @@ type Options struct {
 	// terminal or not; each approval is logged as by -y. ApprovedBy and
 	// ApprovedVia name who and what approved (default: this user, "swim run
 	// -y"; a queued batch: who queued it, "queue <id> -y").
-	AutoApprove             bool
+	AutoApprove bool
+	// ScheduledFor (UTC) is the start time of the scheduled batch this run
+	// is (swim schedule), recorded in its attestation.
+	ScheduledFor            string
 	ApprovedBy, ApprovedVia string
 	// Asker, if set, asks when no one at a terminal can: after a
 	// pre-answer and -y, a guard nothing else approves is put to it (swim
@@ -172,6 +175,18 @@ type Outcome struct {
 // With no explicit lanes it picks every pending round that hasn't already
 // passed (unless Rerun), and returns the passed ones as done. Either way
 // it adds the Always lanes the selection needs (expandAlways).
+// ScheduledFor says when a waiting scheduled batch (swim schedule) starts
+// lane n ("13:30:00(CDT) 18:30:00(UTC) in q-..."), "" when none holds it.
+// The cli sets it (the queue is its business).
+var ScheduledFor func(root string, n int) string
+
+func scheduledFor(root string, n int) string {
+	if ScheduledFor == nil {
+		return ""
+	}
+	return ScheduledFor(root, n)
+}
+
 func Select(o Options) (sel, done []int, err error) {
 	if len(o.Lanes) > 0 {
 		seen := map[int]bool{}
@@ -205,6 +220,9 @@ func Select(o Options) (sel, done []int, err error) {
 			if !o.Rerun && AlreadyPassed(info, last) {
 				done = append(done, n)
 				continue
+			}
+			if scheduledFor(o.Root, n) != "" {
+				continue // its scheduled batch runs it (swim schedule)
 			}
 			sel = append(sel, n)
 		}

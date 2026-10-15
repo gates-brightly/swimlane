@@ -95,6 +95,12 @@ type Lane struct {
 	// asked, refused): their steps ran as dry runs. Cleared when a round
 	// starts.
 	DryRun []string `yaml:"dry_run,flow,omitempty"`
+	// ScheduledFor (UTC) and Schedule (the queue entry id) are set while a
+	// scheduled batch (swim schedule) waits to run the lane; HeldBy while a
+	// batch holding the lane waits for one.
+	ScheduledFor string `yaml:"scheduled_for,omitempty"`
+	Schedule     string `yaml:"schedule,omitempty"`
+	HeldBy       string `yaml:"held_by,omitempty"`
 	// A matrix round's cells, each with its own state (Cell names it).
 	Cell        string `yaml:"cell,omitempty"`
 	Cells       []Lane `yaml:"cells,omitempty"`
@@ -336,6 +342,7 @@ func (l *Lane) ResetRun() {
 	l.FailedSteps = []string{}
 	l.AutoApproved, l.AutoVia, l.FlagApproved = nil, "", nil
 	l.DryRun = nil
+	l.ScheduledFor, l.Schedule, l.HeldBy = "", "", "" // its schedule has come
 }
 
 // Dry records that guard flag's step ran as a dry run (each flag once).

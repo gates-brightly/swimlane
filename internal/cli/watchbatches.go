@@ -142,14 +142,19 @@ func (b *batchRunner) full() bool {
 	return len(b.procs) >= b.max
 }
 
-// startable lists the waiting batches that may start now, oldest first,
-// as many as there's room for: none of a batch's lanes may be in a running
-// batch (any worker's), running in another swim, or in a batch picked
-// before it.
+// startable lists the waiting batches that may start now, in start-time
+// order (queue.SortWaiting), as many as there's room for: due (a scheduled
+// one not before its time), not held by a schedule, and none of its lanes
+// in a running batch (any worker's), running in another swim, or in a
+// batch picked before it.
 func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*queue.Entry {
 	b.mu.Lock()
 	room := b.max - len(b.procs)
 	b.mu.Unlock()
+	waiting = append([]*queue.Entry(nil), waiting...)
+	queue.SortWaiting(waiting)
+	held := heldBy(b.root, cfg, waiting)
+	now := scheduleNow()
 	taken := map[int]bool{}
 	for _, e := range waiting {
 		if e.State == queue.Running {
@@ -164,10 +169,10 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 		if room <= 0 {
 			break
 		}
-		if e.State != queue.Queued {
-			continue
+		if e.State != queue.Queued || !e.Due(now) {
+			continue // a schedule that isn't due holds no lanes yet
 		}
-		free := true
+		free := held[e.ID] == nil
 		for _, l := range e.Lanes {
 			if taken[l.Lane] || laneBusy(b.root, st, l.Lane) != "" {
 				free = false
@@ -408,7 +413,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 		case len(running) > 0:
 			say("running " + strings.Join(parts, ", "))
 		case queued > 0:
-			say(fmt.Sprintf("%d queued; waiting for their lanes to be free", queued))
+			say(fmt.Sprintf("%d queued; waiting for their lanes to be free%s", queued, nextScheduled(root)))
 		default:
 			say("queue empty; waiting for swim queue add")
 		}

@@ -3,6 +3,7 @@ package queue
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -197,5 +198,55 @@ func TestWorkerLease(t *testing.T) {
 	}
 	if err := Touch(e); err == nil {
 		t.Error("Touch on a requeued entry succeeded")
+	}
+}
+
+// A scheduled entry isn't claimed before its start time, and doesn't hold
+// up one behind it; once due, entries go by start time; late is still run.
+func TestClaimByStartTime(t *testing.T) {
+	root := t.TempDir()
+	t0 := time.Date(2026, 10, 15, 13, 0, 0, 0, time.UTC)
+	defer func(old func() time.Time) { now = old }(now)
+	now = func() time.Time { return t0 }
+	at := func(d time.Duration) string { return t0.Add(d).Format(time.RFC3339) }
+	add := func(n int, notBefore string) {
+		if err := Add(root, &Entry{By: "op", NotBefore: notBefore, Lanes: []Lane{{Lane: n, Job: "j", Round: "r"}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(1, at(30*time.Minute)) // #1 at 13:30
+	add(2, "")                 // #2 now
+	add(3, at(10*time.Minute)) // #3 at 13:10
+	if e, _ := ClaimNext(root, "op", 0); e == nil || e.Seq != 2 {
+		t.Fatalf("before 13:10: claimed %+v, want #2", e)
+	}
+	if e, _ := ClaimNext(root, "op", 0); e != nil {
+		t.Fatalf("nothing due yet, claimed #%d", e.Seq)
+	}
+	// Hours later, with no worker in between: both run, by start time.
+	now = func() time.Time { return t0.Add(3 * time.Hour) }
+	if e, _ := ClaimNext(root, "op", 0); e == nil || e.Seq != 3 {
+		t.Fatalf("late: claimed %+v, want #3 (13:10) first", e)
+	}
+	if e, _ := ClaimNext(root, "op", 0); e == nil || e.Seq != 1 {
+		t.Fatalf("late: claimed %+v, want #1", e)
+	}
+}
+
+// The statement signs the start time only when there is one: an
+// unscheduled entry's reads as it always has.
+func TestStatementStartTime(t *testing.T) {
+	e := &Entry{ID: "q-x", Lanes: []Lane{{Lane: 1, Job: "j", SHA256: "abc"}}, Approve: []string{"F"}}
+	if got := e.Statement(); got != "swim queue v1\nid: q-x\nlane: 1 j abc\napprove: F\napprove-all: false\n" {
+		t.Errorf("unscheduled statement changed:\n%q", got)
+	}
+	e.NotBefore = "2026-10-15T18:30:00Z"
+	signed := e.Statement()
+	if !strings.Contains(signed, "not-before: 2026-10-15T18:30:00Z\n") {
+		t.Errorf("scheduled statement: %q", signed)
+	}
+	e.NotBefore = "2026-10-15T08:30:00Z"
+	if e.Statement() == signed {
+		t.Error("moving the start time left the statement the same")
 	}
 }

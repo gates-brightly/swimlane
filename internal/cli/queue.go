@@ -22,6 +22,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/queue"
+	"github.com/gates-brightly/swimlane/internal/schedule"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -59,6 +60,21 @@ func cmdQueue(args []string) error {
 // queueAdd queues a batch: the named lanes (or every pending round that
 // hasn't passed), pinned to the jobs they hold now, with approvals.
 func queueAdd(args []string) error {
+	// --at TIME: the same batch, scheduled (swim schedule).
+	for i, a := range args {
+		at, ok := "", false
+		switch {
+		case a == "--at" && i+1 < len(args):
+			at, ok = args[i+1], true
+			args = append(append([]string(nil), args[:i]...), args[i+2:]...)
+		case strings.HasPrefix(a, "--at="):
+			at, ok = strings.TrimPrefix(a, "--at="), true
+			args = append(append([]string(nil), args[:i]...), args[i+1:]...)
+		}
+		if ok {
+			return scheduleAdd(append(args, strings.Fields(at)...), "swim queue add --at")
+		}
+	}
 	var approve []string
 	var note, parallel, keyPath, timeout string
 	var yes, wait bool
@@ -126,6 +142,7 @@ func queueAdd(args []string) error {
 	if b.warn != "" {
 		fmt.Fprintln(os.Stderr, "swim queue: "+b.warn)
 	}
+	refreshStatus(root, cfg) // a schedule may hold it (held_by)
 	e, guards, signedAs := b.entry, b.guards, b.signedAs
 	seen := map[string]bool{}
 	for _, f := range e.Approve {
@@ -194,6 +211,9 @@ type queueOpts struct {
 	yes      bool
 	parallel *int
 	keyPath  string
+	// notBefore (UTC, RFC 3339) and zone make it a scheduled batch (swim
+	// schedule); from and occurrence a recurring schedule's day.
+	notBefore, zone, from, occurrence string
 }
 
 // batch is a batch just queued: its entry, the guards its lanes hold, who
@@ -208,7 +228,8 @@ type batch struct {
 // addBatch queues lanes as one batch, pinned to the scripts and env they
 // hold now, signed with the operator's key when there is one, and logs it.
 func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch, error) {
-	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel}
+	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel,
+		NotBefore: o.notBefore, Zone: o.zone, From: o.from, Occurrence: o.occurrence}
 	b := batch{entry: e, guards: map[string]bool{}}
 	for _, n := range lanes {
 		l, info, err := pinLane(root, cfg, n)
@@ -270,6 +291,14 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	}
 	if e.Note != "" {
 		detail += "  " + e.Note
+	}
+	if e.NotBefore != "" {
+		detail = fmt.Sprintf("%s: swim %s  not_before=%s  zone=%s", e.ID, strings.Join(ns, ","), e.NotBefore, e.Zone) + strings.TrimPrefix(detail, fmt.Sprintf("%s: swim %s", e.ID, strings.Join(ns, ",")))
+		if e.From != "" {
+			detail += "  from=" + e.From + " " + e.Occurrence
+		}
+		history.Log(root, history.Entry{Event: history.Schedule, Detail: detail})
+		return b, nil
 	}
 	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: detail})
 	return b, nil
@@ -631,6 +660,9 @@ func cmdWatch(args []string) error {
 		}
 		defer release()
 	}
+	if !hf.any() {
+		defer holdWatchLock(root)() // swim schedule can tell a worker is up
+	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	for _, r := range launcher.ReapDead(root, cfg, self()) {
 		fmt.Println(p.Paint(ui.Yellow, "swim watch: "+r.String()))
@@ -781,12 +813,15 @@ func cmdWatch(args []string) error {
 			sleep()
 			continue
 		}
-		e, err := queue.ClaimNext(root, operator(), cfg.QueueLeaseFor())
+		e, err := claimDue(root, cfg)
 		if err != nil || e == nil {
 			unlock()
 			if err != nil {
 				return err
 			}
+			// Waiting, but none due (a schedule) or all held by one.
+			say(fmt.Sprintf("%d queued; none due yet%s", n, nextScheduled(root)))
+			sleep()
 			continue
 		}
 		s.said = ""
@@ -871,6 +906,19 @@ func loadCfg(root string) (*config.Config, error) {
 func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, headless, plain bool) (queue.Result, bool) {
 	started := time.Now().UTC()
 	res := queue.Result{Started: started.Format(time.RFC3339)}
+	if why := scheduleTampered(e); why != "" {
+		res.Finished, res.Exit, res.Result, res.Error = res.Started, 1, "error", why
+		fmt.Println("swim watch: " + why)
+		return res, false
+	}
+	if e.NotBefore != "" {
+		at, _ := time.Parse(time.RFC3339, e.NotBefore)
+		late := ""
+		if d := started.Sub(at); d >= time.Minute {
+			late = ", started " + schedule.Until(at, started) + " (after its scheduled time)"
+		}
+		history.Log(root, history.Entry{Event: history.ScheduleStart, Detail: fmt.Sprintf("%s: %s  scheduled for %s%s", e.ID, lanesText(laneNums(e)), e.NotBefore, late)})
+	}
 	var lanes []int
 	pins := map[int]string{}
 	guards := map[string]bool{}
@@ -941,6 +989,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		Unattended: true,
 		HubSecrets: func() (map[string]secrets.Granted, error) { return hubGrants(root) }}
 	o.Plain = plain // a batch swim watch runs alongside others (_batch)
+	o.ScheduledFor = e.NotBefore
 	if headless {
 		// Plain lines for the log; SIGHUP reopens it rather than forcing
 		// the run as a closed terminal does. A guard nothing else approves

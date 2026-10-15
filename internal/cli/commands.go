@@ -23,6 +23,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/policy"
+	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -115,9 +116,29 @@ func mergeGitignore(path string) (bool, error) {
 
 // refreshStatus records each lane's pending round from the lane scripts on disk.
 func refreshStatus(root string, cfg *config.Config) error {
+	// Scheduled batches waiting, and the batches they hold (swim schedule).
+	entries, _ := queue.List(root, false)
+	held := heldBy(root, cfg, entries)
+	sched, holder := map[int]*queue.Entry{}, map[int]string{}
+	for _, e := range entries {
+		for _, l := range e.Lanes {
+			switch {
+			case e.State == queue.Queued && e.NotBefore != "":
+				if sched[l.Lane] == nil {
+					sched[l.Lane] = e
+				}
+			case held[e.ID] != nil:
+				holder[l.Lane] = held[e.ID].ID
+			}
+		}
+	}
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		for i := range f.Lanes {
 			l := &f.Lanes[i]
+			l.ScheduledFor, l.Schedule, l.HeldBy = "", "", holder[l.Lane]
+			if e := sched[l.Lane]; e != nil {
+				l.ScheduledFor, l.Schedule = e.NotBefore, e.ID
+			}
 			info, err := lane.ReadScript(root, l.Lane)
 			if err != nil {
 				return err
@@ -434,6 +455,12 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
+	}
+	// A lane a scheduled batch holds runs then, not now: twice otherwise.
+	for _, n := range lanes {
+		if e := scheduledHolding(root, n); e != nil {
+			return fmt.Errorf("swim %d is scheduled for %s in %s (#%d); swim schedule rm %s first, or wait for it", n, scheduledAt(e), e.ID, e.Seq, e.ID)
+		}
 	}
 	// Pre-flight: lint's error-level checks the launcher doesn't enforce (lint.go).
 	if err := lintPreflight(root, cfg, lanes, rerun); err != nil {

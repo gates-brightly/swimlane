@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -772,6 +773,7 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 			field("Approval", a)
 		}
 		field("Flags", strings.Join(l.Flags, " "))
+		field("Scheduled for", l.ScheduledFor)
 	case "secret-released":
 		subject = fmt.Sprintf("secret %s released to swim %d (guard %s, approved by %s)", l.Secret, l.Lane, l.Guard, l.Method)
 		field("Job", l.Job)
@@ -957,6 +959,12 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				if attested && !listed {
 					v.bad = append(v.bad, fmt.Sprintf("entry #%d: secret %s released to swim %d in run %s on approval %s, which swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, l.Secret, l.Lane, l.Run, short12(h), seqs(att)))
 				}
+			}
+		case "run":
+			// A scheduled run starts no earlier than its time; its run id
+			// says when it started.
+			if started := runStarted(l.Run); l.ScheduledFor != "" && started != "" && started < l.ScheduledFor {
+				v.bad = append(v.bad, fmt.Sprintf("entry #%d: run %s started at %s, before its scheduled time %s", l.Seq, l.Run, started, l.ScheduledFor))
 			}
 		case "repair":
 			// Not a break: the removed bytes were never a complete entry.
@@ -1173,4 +1181,20 @@ func roundLogHashes(root string, n int, run string) map[string]bool {
 		}
 	}
 	return sums
+}
+
+var runIDTimeRE = regexp.MustCompile(`^r-(\d{8}T\d{6}Z)`)
+
+// runStarted is when a run started, from its id (r-20261015T121857Z-...),
+// as RFC 3339; "" for an id that doesn't say (--run-id).
+func runStarted(run string) string {
+	m := runIDTimeRE.FindStringSubmatch(run)
+	if m == nil {
+		return ""
+	}
+	t, err := time.Parse("20060102T150405Z", m[1])
+	if err != nil {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }

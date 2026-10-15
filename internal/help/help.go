@@ -53,6 +53,8 @@ var Commands = map[string]string{
                  orphaned. Default 2m.
     watch_batches  a number (1 or more)   how many queued batches one swim
                  watch runs at once (default 4; swim watch --batches N).
+    schedule_tz  an IANA zone name       the zone swim schedule reads times
+                 in (default: this machine's), e.g. America/Chicago.
     runners.EXT  a command                the runner for lane.N.EXT scripts with
                  no #! line, e.g. swim config runners.ts tsx. Always written
                  to the repo's section; swim.yml's runners: is the default.
@@ -591,6 +593,50 @@ swim queue show|rm|requeue ID
   is atomic: two workers can never claim the same entry), then
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
+`,
+	"schedule": `swim schedule LANES... TIME [--tz ZONE] [--approve FLAG]... [--note TEXT] [--parallel N] [--key PATH] [--yaml]
+swim schedule list [--all] [--yaml]
+swim schedule rm ID
+swim queue add LANES... --at TIME [flags]     (the same)
+
+  Queue a batch that starts no earlier than TIME: swim queue add with a
+  start time. The batch is pinned and approved now, exactly as a queued
+  batch is (its lanes' jobs and manifests, --approve, signed with your
+  key). No worker (swim watch) claims it before TIME; from then on it is
+  an ordinary waiting batch, run as soon as its lanes are free. Late is
+  late, not cancelled: with its lanes busy or no worker up at TIME, it
+  starts when a worker next can (swim status and .swim.log say how late).
+  To stop it before it starts: swim schedule rm ID.
+  LANES are lane numbers or jobs; the last argument is always the time:
+    13:30, 13:30:00, 1330, 133000   24-hour (no am/pm means 24-hour)
+    1:30pm, 1:30 pm, 1pm, 12am      12-hour
+    tomorrow 06:00, 2026-10-20 13:30
+    +2h, +90m                       from now
+  A bare time already past today means tomorrow (the reply says so); a
+  dated time in the past, a time that doesn't happen (clocks going
+  forward) and anything else ambiguous are refused, never guessed. Times
+  are read in --tz, else schedule_tz (swim config), else this machine's
+  zone; the start is kept in UTC. The reply:
+    Lane 1 scheduled for 13:30:00(CDT) 18:30:00(UTC)
+  then warnings: no swim watch running here, a batch ahead of it on its
+  lanes, a lane it depends on holding a round that hasn't passed.
+  -y is refused: approving every guard of a run hours away, with no one
+  watching, is what -y suits least. Name each with --approve FLAG.
+  Dependents wait with it: a batch queued after it is held while one of
+  its lanes depends (After:, config deps:, at any depth) on a lane the
+  scheduled batch holds, until that batch has run; then the usual After:
+  check applies. swim run N of a scheduled lane is refused (it would run
+  twice), and swim all leaves it to its schedule.
+  The start time is signed with the batch: a worker refuses a signed
+  batch whose file was edited (its time moved). The run's chain
+  attestation records scheduled_for, and swim verify fails a run that
+  started before it.
+  list     scheduled batches by start time, held batches and what holds
+           them (--all: consumed ones too; --yaml: swim.schedule-list/v1)
+  rm ID    remove a scheduled batch that hasn't started; says which held
+           batches it releases (they'll skip unless its lanes pass first)
+  --yaml   the reply as swim.schedule/v1 (id, lanes, not_before, zone,
+           warnings)
 `,
 	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui]
 swim watch --headless [--detach] [-y] [--approved] [--interval D]
@@ -1286,6 +1332,8 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                               user's click approves guards no require:
                               rule names
     headless-yes (warn)       an installed headless service runs with -y
+    schedule-no-worker (warn) batches are scheduled, but no swim watch runs
+                              here to start them
     guarded-secrets (info/warn) lists swim.yml's guarded secrets (info);
                               warns when the secrets key has no passphrase:
                               a lane could decrypt them itself
@@ -1386,7 +1434,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "watch", "hub", "wait", "approve", "revoke",
+	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
 func Full() string {

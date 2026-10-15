@@ -100,6 +100,9 @@ type Entry struct {
 	Manifests map[string]string `json:"manifests,omitempty"`
 	Scripts   map[string]string `json:"scripts,omitempty"`
 	Flags     []string          `json:"flags,omitempty"`
+	// ScheduledFor (UTC) is a scheduled batch's start time (swim schedule):
+	// the run started no earlier.
+	ScheduledFor string `json:"scheduled_for,omitempty"`
 
 	// secret-released, secret-refused: a guarded secret the run's broker
 	// handed a lane, or refused it. Secret is its name (never its value),

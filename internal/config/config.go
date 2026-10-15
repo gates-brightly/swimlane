@@ -54,6 +54,7 @@ type Settings struct {
 	OutputsKeep        string        `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
 	QueueLease         string        `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
 	WatchBatches       int           `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
+	ScheduleTZ         string        `yaml:"schedule_tz,omitempty"`          // the zone swim schedule reads times in (default: the machine's)
 	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
 	// the anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -368,6 +369,9 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.WatchBatches != 0 {
 		c.WatchBatches = r.WatchBatches
+	}
+	if r.ScheduleTZ != "" {
+		c.ScheduleTZ = r.ScheduleTZ
 	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
@@ -792,6 +796,11 @@ func (c *Config) validateInterrupt() error {
 	}
 	if c.WatchBatches < 0 {
 		return fmt.Errorf("watch_batches must be 1 or more, got %d", c.WatchBatches)
+	}
+	if c.ScheduleTZ != "" {
+		if _, err := time.LoadLocation(c.ScheduleTZ); err != nil {
+			return fmt.Errorf("schedule_tz %q: %v (use an IANA name like America/Chicago)", c.ScheduleTZ, err)
+		}
 	}
 	return nil
 }

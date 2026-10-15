@@ -1004,6 +1004,12 @@ swim wait [--timeout D]                                  # block until idle and 
   approves nothing.
 - **The batch is signed by whoever queued it,** so standing approvals for
   that person apply to it.
+- **`swim schedule 1 3 22:00 --approve FLAG`** queues a batch that a
+  worker starts no earlier than 22:00 (a maintenance window, after
+  hours): pinned and approved now, signed with its start time. Batches
+  queued after it that depend on its lanes wait for it. The reply says
+  the time in your zone and UTC, and warns when no `swim watch` runs to
+  start it.
 - **`swim watch`** runs queued batches side by side, then consumes each
   into `.swim/queue/done/` with its result.
   - **A batch starts once its lanes are free:** none in another batch or
@@ -1287,6 +1293,7 @@ they waited for.
 | `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. An Always lane needs `--force`. |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
+| `swim schedule LANES... TIME [--approve F]`, `swim schedule list\|rm ID` | Queue a batch that starts no earlier than TIME (`13:30`, `1:30pm`, `tomorrow 06:00`, `+2h`). |
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's worker; on a terminal, pick a job to run (`r`) or queue (`q`). |
 | `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The worker with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |

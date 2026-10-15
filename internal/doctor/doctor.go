@@ -61,6 +61,11 @@ type Options struct {
 	// Headless is what swim knows of this repo's headless worker (swim
 	// watch --headless); nil skips the headless checks.
 	Headless *Headless
+	// Scheduled lists the scheduled batches waiting ("#3 swim 1 at
+	// 13:30:00(CDT) ..."), and WorkerUp whether a swim watch runs here
+	// (swim schedule; nil when not known).
+	Scheduled []string
+	WorkerUp  func() bool
 }
 
 // Headless is a repo's headless worker as the CLI finds it.
@@ -132,6 +137,7 @@ var Checks = []Check{
 	{"hub-unreachable", false, "a headless worker's hub can't be reached: guards waiting for an answer through it decline", checkHubReachable},
 	{"headless-hub-answers", false, "swim.yml's headless.approvals is hub: a hub user's button click approves guards no require: rule names", checkHeadlessHubAnswers},
 	{"headless-yes", false, "a headless service runs with -y: it approves every guard in every batch", checkHeadlessYes},
+	{"schedule-no-worker", false, "batches are scheduled, but no swim watch runs to start them", checkScheduleNoWorker},
 }
 
 // Run runs every check.
@@ -990,4 +996,13 @@ func checkAmbientCredentials(o *Options) []finding.Finding {
 		}
 	}
 	return out
+}
+
+// checkScheduleNoWorker: scheduled batches start only while a worker runs.
+func checkScheduleNoWorker(o *Options) []finding.Finding {
+	if len(o.Scheduled) == 0 || o.WorkerUp == nil || o.WorkerUp() {
+		return nil
+	}
+	return []finding.Finding{fd(finding.Warn, "schedule-no-worker", ".swim/queue/", "swim watch (or swim watch --headless --detach)",
+		"%d scheduled batches, and no swim watch runs here to start them: %s", len(o.Scheduled), strings.Join(o.Scheduled, "; "))}
 }

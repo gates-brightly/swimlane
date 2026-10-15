@@ -121,6 +121,14 @@ type Entry struct {
 	QueueSig  string  `yaml:"queue_sig,omitempty"`
 	Worker    *Worker `yaml:"worker,omitempty"`
 	Result    *Result `yaml:"result,omitempty"`
+	// NotBefore (UTC, RFC 3339) is a scheduled batch's start time (swim
+	// schedule): no worker claims it before. Zone is the zone it was
+	// written in, for saying it. From and Occurrence name the recurring
+	// schedule and day an entry was made for.
+	NotBefore  string `yaml:"not_before,omitempty"`
+	Zone       string `yaml:"zone,omitempty"`
+	From       string `yaml:"from,omitempty"`
+	Occurrence string `yaml:"occurrence,omitempty"`
 
 	// State and Path are where the entry is now; not stored.
 	State string `yaml:"-"` // queued | running | orphaned | done
@@ -388,16 +396,23 @@ func Adopt(e *Entry) error {
 	return nil
 }
 
-// ClaimNext claims the oldest waiting entry for this process, by renaming
-// it to .running; it returns nil when nothing waits. A lost race (another
+// ClaimNext claims the first waiting entry that's due (SortWaiting's
+// order; a scheduled one not before its start time) for this process, by
+// renaming it to .running; it returns nil when nothing is due. A lost race (another
 // worker renamed it first) moves on to the next entry. lease is how long
 // the claim's heartbeat holds (0: DefaultLease); the worker renews it with
 // Touch.
 func ClaimNext(root, user string, lease time.Duration) (*Entry, error) {
-	files, _ := filepath.Glob(filepath.Join(Dir(root), "*.queue"))
-	sort.Strings(files)
-	for _, p := range files {
-		e, err := claim(p, user, lease)
+	entries, err := List(root, false)
+	if err != nil {
+		return nil, err
+	}
+	SortWaiting(entries)
+	for _, w := range entries {
+		if w.State != Queued || !w.Due(now()) {
+			continue
+		}
+		e, err := claim(w.Path, user, lease)
 		if err != nil {
 			return nil, err
 		}
@@ -534,7 +549,46 @@ func (e *Entry) Statement() string {
 		}
 	}
 	fmt.Fprintf(&b, "approve: %s\napprove-all: %v\n", strings.Join(e.Approve, ","), e.ApproveAll)
+	// Only when set, so an unscheduled entry's statement reads as before.
+	if e.NotBefore != "" {
+		fmt.Fprintf(&b, "not-before: %s\n", e.NotBefore)
+	}
+	if e.From != "" {
+		fmt.Fprintf(&b, "from: %s %s\n", e.From, e.Occurrence)
+	}
 	return b.String()
+}
+
+// StartKey orders waiting entries: a scheduled one by its start time,
+// others by when they were queued (both UTC, RFC 3339).
+func (e *Entry) StartKey() string { return or(e.NotBefore, e.Created) }
+
+// Due reports whether a worker may claim e at t: unscheduled, or its
+// start time has come.
+func (e *Entry) Due(t time.Time) bool {
+	return e.NotBefore == "" || !t.UTC().Before(mustTime(e.NotBefore))
+}
+
+func mustTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	return t
+}
+
+func or(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+// SortWaiting orders entries as workers take them: by StartKey, then seq.
+func SortWaiting(es []*Entry) {
+	sort.SliceStable(es, func(a, b int) bool {
+		if ka, kb := es[a].StartKey(), es[b].StartKey(); ka != kb {
+			return ka < kb
+		}
+		return es[a].Seq < es[b].Seq
+	})
 }
 
 // Has reports whether the batch includes lane n with script hash sha.
