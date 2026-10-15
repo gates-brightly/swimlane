@@ -1558,6 +1558,10 @@ swim resume  N|JOB ... | --all      (the same command)
                               start
     cache-unused (info)       tool caches unused for 30 days, or the repo's
                               caches over cache_max
+    remote-running (warn)     a lane has run on another machine sharing the
+                              repo for over a day; if that machine is gone,
+                              release it (rm .swim/laneN.pid, then swim
+                              status --rebuild)
     pause-long (warn)         a lane paused (swim pause) longer than
                               pause_warn (4h), holding its locks and slot;
                               or the repo-wide pause left on that long

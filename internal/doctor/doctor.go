@@ -29,6 +29,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
+	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
@@ -142,6 +143,7 @@ var Checks = []Check{
 	{"hub-unreachable", false, "a headless worker's hub can't be reached: guards waiting for an answer through it decline", checkHubReachable},
 	{"headless-hub-answers", false, "swim.yml's headless.approvals is hub: a hub user's button click approves guards no require: rule names", checkHeadlessHubAnswers},
 	{"headless-yes", false, "a headless service runs with -y: it approves every guard in every batch", checkHeadlessYes},
+	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 	{"pause-long", false, "a lane has been paused (swim pause) longer than pause_warn, holding its locks and slot; or the repo-wide pause is left on", checkPauseLong},
 	{"schedule-no-worker", false, "batches are scheduled, but no swim watch runs to start them", checkScheduleNoWorker},
 	{"schedule-recurring", false, "a recurring schedule is paused, or expires within three days", checkScheduleRecurring},
@@ -1015,6 +1017,38 @@ func checkScheduleNoWorker(o *Options) []finding.Finding {
 	}
 	return []finding.Finding{fd(finding.Warn, "schedule-no-worker", ".swim/queue/", "swim watch (or swim watch --headless --detach)",
 		"%d scheduled batches, and no swim watch runs here to start them: %s", len(o.Scheduled), strings.Join(o.Scheduled, "; "))}
+}
+
+// remoteRunningFor is how long a lane may run on another machine before
+// checkRemoteRunning asks whether that machine is still there.
+const remoteRunningFor = 24 * time.Hour
+
+// checkRemoteRunning: a lane claimed by another machine sharing the repo
+// is never reaped here (this machine can't see its process), so if that
+// machine is gone for good the lane stays running until someone releases
+// it. Over a day of it is worth a look.
+func checkRemoteRunning(o *Options) []finding.Finding {
+	st, _ := status.Load(o.Root)
+	if st == nil {
+		return nil
+	}
+	var out []finding.Finding
+	for _, l := range st.Lanes {
+		if proc.Local(l.Host) || l.PID <= 0 || l.State != status.Running && l.State != status.Waiting {
+			continue
+		}
+		if l.StartedAt == nil {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, *l.StartedAt)
+		if err != nil || time.Since(t) < remoteRunningFor {
+			continue
+		}
+		out = append(out, fd(finding.Warn, "remote-running", o.rel(lane.PIDFile(o.Root, l.Lane)),
+			fmt.Sprintf("if %s is gone for good: rm .swim/lane%d.pid, then swim status --rebuild", l.Host, l.Lane),
+			"swim %d has been %s on %s for %s (pid %d there); this machine can't tell whether it still is", l.Lane, l.State, l.Host, time.Since(t).Round(time.Hour), l.PID))
+	}
+	return out
 }
 
 // checkPauseLong: a pause never ends on its own, and a paused lane keeps
