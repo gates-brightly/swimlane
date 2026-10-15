@@ -1,6 +1,9 @@
 # Retry on a match: wait out another tool's lock, with a stage or lane default
 
-Status: proposed
+Status: dropped (2026-10-15). Deciding retries by matching a step's output
+against regexes isn't wanted: it's fragile, and it puts a step's meaning in
+patterns over text. `--retry N`, `--backoff` and `--retry-on CODES` stay as
+they are. Kept for the record; not to be built.
 
 ## Summary
 
