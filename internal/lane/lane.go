@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/cache"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/proc"
@@ -162,6 +163,11 @@ type Info struct {
 	// such as which binary PATH finds or the cloud account, read when a
 	// guard is approved and again just before it returns (observe.go).
 	Observe []Probe
+	// Cache are the tool caches the round uses (# Cache: terraform
+	// @infra/.terraform.lock.hcl): swim points each tool's download cache at
+	// a directory that outlives the round, and pins the lockfiles the tool
+	// checks the cache against (internal/cache).
+	Cache []cache.Decl
 }
 
 // DefaultHandlerTimeout is the handlers' budget when Handler-Timeout: is unset.
@@ -214,7 +220,7 @@ var (
 	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children|Observe|Finally):\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children|Observe|Finally|Cache):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
@@ -238,7 +244,7 @@ var (
 	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
 		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true,
-		"always": true, "rerun-children": true, "observe": true, "finally": true}
+		"always": true, "rerun-children": true, "observe": true, "finally": true, "cache": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -418,6 +424,8 @@ func ParseScript(src string) Info {
 						}
 						info.Finally = append(info.Finally, tok)
 					}
+				case "Cache":
+					info.setCache(v, "Cache:")
 				case "Rerun-Children":
 					info.RerunChildren = info.setBool(v, "Rerun-Children:")
 				case "Handler-Timeout":

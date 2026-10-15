@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/gates-brightly/swimlane/internal/cache"
 )
 
 // Chime says when swim run / swim all chime as they finish.
@@ -39,7 +41,7 @@ const (
 var ChimeStyles = []string{StyleBell, StyleSound, StyleNotify}
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep", "queue_lease", "watch_batches", "schedule_tz", "finally_timeout"}
+var Keys = []string{"chime", "chime_style", "chime_min_s", "interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep", "queue_lease", "watch_batches", "schedule_tz", "finally_timeout", "cache_dir", "cache_max", "cache_slug"}
 
 // ParseChime reads true|false|failure (on|off also accepted).
 func ParseChime(s string) (Chime, error) {
@@ -177,6 +179,15 @@ func (c *Config) Get(key string) (string, error) {
 		return strconv.Itoa(c.WatchBatchesFor()), nil
 	case "finally_timeout":
 		return c.FinallyTimeoutFor().String(), nil
+	case "cache_dir":
+		return c.CacheBase()
+	case "cache_max":
+		if n := c.CacheMaxBytes(); n > 0 {
+			return FormatSize(n), nil
+		}
+		return "0 (no cap)", nil
+	case "cache_slug":
+		return c.CacheSlugFor()
 	case "schedule_tz":
 		if c.ScheduleTZ == "" {
 			return "(this machine's: " + time.Local.String() + ")", nil
@@ -287,6 +298,24 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
 			return nil, fmt.Errorf("finally_timeout must be a duration like 10m, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "cache_dir":
+		v := strings.TrimSpace(value)
+		if !filepath.IsAbs(v) && v != "~" && !strings.HasPrefix(v, "~/") {
+			return nil, fmt.Errorf("cache_dir must be an absolute path (or ~/...), got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "cache_max":
+		v := strings.TrimSpace(value)
+		if _, err := ParseSize(v); err != nil {
+			return nil, err
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "cache_slug":
+		v := strings.TrimSpace(value)
+		if _, err := cache.Slug("", v); err != nil {
+			return nil, err
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "schedule_tz":

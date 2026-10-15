@@ -56,6 +56,9 @@ type Settings struct {
 	WatchBatches       int           `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
 	ScheduleTZ         string        `yaml:"schedule_tz,omitempty"`          // the zone swim schedule reads times in (default: the machine's)
 	FinallyTimeout     string        `yaml:"finally_timeout,omitempty"`      // a stopped run's finally lanes get this long in all (default 10m)
+	CacheDir           string        `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
+	CacheMax           string        `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
+	CacheSlug          string        `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
 	// the anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -177,6 +180,12 @@ func Load(root string) (*Config, error) {
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
 		c.Headless = s.Headless
+		if s.CacheDir != "" || s.CacheSlug != "" {
+			// Where a machine keeps its caches, and which repos share one,
+			// is the operator's: a committed swim.yml could otherwise point
+			// two repos at one cache.
+			return nil, fmt.Errorf("%s: cache_dir: and cache_slug: belong in %s, not the repo's swim.yml", path, c.Path)
+		}
 		if err := validateSecrets(s.Secrets); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
@@ -377,6 +386,15 @@ func (c *Config) merge(r Settings) {
 	if r.FinallyTimeout != "" {
 		c.FinallyTimeout = r.FinallyTimeout
 	}
+	if r.CacheDir != "" {
+		c.CacheDir = r.CacheDir
+	}
+	if r.CacheMax != "" {
+		c.CacheMax = r.CacheMax
+	}
+	if r.CacheSlug != "" {
+		c.CacheSlug = r.CacheSlug
+	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
 	}
@@ -406,6 +424,11 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateInterrupt(); err != nil {
 		return err
+	}
+	if c.CacheMax != "" {
+		if _, err := ParseSize(c.CacheMax); err != nil {
+			return err
+		}
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)

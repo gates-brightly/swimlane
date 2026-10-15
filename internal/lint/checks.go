@@ -622,6 +622,9 @@ func checkSecretArgv(c *Context, s *Script) []finding.Finding {
 func checkHeader(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, p := range s.Info.Problems {
+		if isCacheProblem(p) {
+			continue // checkCache
+		}
 		key := strings.TrimSuffix(strings.Fields(p)[0], ":")
 		out = append(out, f(finding.Warn, "header", s.headerLine(key), "fix the value, or leave it empty for the default", "%s", p))
 	}

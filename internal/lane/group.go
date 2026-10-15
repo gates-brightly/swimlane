@@ -73,7 +73,7 @@ var (
 	sectionSumRE  = regexp.MustCompile(`(?:^|[\s;&|(])summary(?:$|[\s;&|)])`)
 	groupLibLines = []string{`_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"`}
 	// Keys that belong to the lane (before the first job), and to a job.
-	laneOnlyKeys = map[string]bool{"after": true, "finally": true, "locks": true, "rerun-children": true, "includes": true,
+	laneOnlyKeys = map[string]bool{"after": true, "finally": true, "locks": true, "rerun-children": true, "includes": true, "cache": true,
 		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true}
 	subOnlyKeys = map[string]bool{"always": true}
 )

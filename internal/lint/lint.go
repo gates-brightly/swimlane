@@ -107,6 +107,8 @@ var Checks = []Check{
 	{"check-unsafe", finding.Warn, false, "a destructive-looking command before `stage change` (swim plan --check runs it)", checkCheckUnsafe},
 	{"outputs", finding.Warn, false, "an output whose name suggests secrets (output files aren't masked)", checkOutputs},
 	{"input-dep", finding.Error, false, "`input N` of a lane not in After: (or config deps)", checkInputDeps},
+	{"cache", finding.Error, false, "a # Cache: with an unknown preset, no lockfile, a lockfile that isn't there, or pip requirements without hashes", checkCache},
+	{"cache-bypass", finding.Warn, false, "a command that takes from a declared cache without checking it against the lockfile (npm install, pip install without --require-hashes)", checkCacheBypass},
 	{"includes", finding.Warn, false, "a Python or TypeScript lane imports a local module its # Includes: doesn't cover", checkIncludes},
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
 	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},

@@ -753,6 +753,15 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 	}
 
+	// The round's caches (# Cache:), held while it runs; its process
+	// inherits the hold with its lock files.
+	held, cerr := holdCaches(o, n, info)
+	if cerr != nil {
+		return stamp(refuseStart(o, n, cerr, disp))
+	}
+	defer held.Release()
+	fileLocks = append(fileLocks, held...)
+
 	// A matrix round runs its cells, each in its own process and slot.
 	if info.IsMatrix() {
 		oc := runMatrix(o, n, sel, info, sl, lt, disp, ir, fileLocks)
@@ -1119,6 +1128,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 		env = append(env, "SWIM_COLOR=0")
 	}
 	env = append(env, extra...)
+	env = append(env, cacheEnv(o, n)...) // # Cache: (cache.go)
 	staged, tok := stageEnv(o, n, who)
 	env = append(env, staged...)
 	if o.secrets != nil {

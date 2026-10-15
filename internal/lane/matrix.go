@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/gates-brightly/swimlane/internal/cache"
 )
 
 // Matrix rounds: one lane script runs once per value (a cell), each cell
@@ -364,7 +366,7 @@ func ScriptBytes(root string, n int) ([]byte, error) {
 
 // ScriptParts are the files ScriptBytes hashes: the script's path (a lane
 // of jobs is its file) and, sorted, the repo-relative files it adds: matrix
-// @files and # Includes: matches. A compiled lane adds none.
+// @files, # Cache: lockfiles and # Includes: matches. A compiled lane adds none.
 func ScriptParts(root string, n int) (string, []string, error) {
 	path := Script(root, n)
 	if _, ok := LaneJobs(root, n); ok {
@@ -389,6 +391,15 @@ func ScriptParts(root string, n int) (string, []string, error) {
 					files = append(files, a.File)
 				}
 			}
+		}
+	}
+	// # Cache: lockfiles: what the tool checks the cache against, so the
+	// approval covers what it may take from the cache.
+	files = append(files, cache.Files(info.Cache)...)
+	if sc := Sidecar(root, n); fileExists(sc) {
+		var side Info
+		if applySidecar(sc, &side) == nil {
+			files = append(files, cache.Files(side.Cache)...)
 		}
 	}
 	// # Includes: (globs): local modules and other files that are part of

@@ -308,6 +308,9 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		if len(info.Locks) > 0 {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "locks "+strings.Join(info.Locks, ", ")))
 		}
+		if len(info.Cache) > 0 {
+			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "cache "+cacheText(info.Cache)))
+		}
 		kids := children[n]
 		sort.Ints(kids)
 		for i, c := range kids {
@@ -541,6 +544,9 @@ type PlanLane struct {
 	Guards  []PlanGuard `yaml:"guards,omitempty"`
 	Timeout string      `yaml:"timeout,omitempty"`
 	Locks   []string    `yaml:"locks,flow,omitempty"`
+	// Cache are the tool caches the round uses (# Cache:), with the
+	// lockfiles each is checked against.
+	Cache []PlanCache `yaml:"cache,omitempty"`
 	// Handlers are the round's outcome handlers and the guards in them.
 	Handlers []PlanHandler `yaml:"handlers,omitempty"`
 	// Cells are a matrix round's cells.
@@ -604,6 +610,9 @@ func Plan(o Options) (*PlanDoc, error) {
 			l.Running = pid
 		}
 		l.Finally = pl.finallyOn[n]
+		for _, d := range info.Cache {
+			l.Cache = append(l.Cache, PlanCache{Preset: d.Preset, Lockfiles: d.Lockfiles})
+		}
 		if !info.Always {
 			l.Setup = pl.setup
 		}

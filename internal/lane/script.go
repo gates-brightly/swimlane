@@ -217,6 +217,7 @@ type sideFile struct {
 	Always         *bool              `yaml:"always"`
 	RerunChildren  *bool              `yaml:"rerun-children"`
 	Observe        []string           `yaml:"observe"`
+	Cache          *strList           `yaml:"cache"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -355,6 +356,10 @@ func applySidecar(path string, info *Info) error {
 	}
 	if sf.Includes != nil {
 		info.Includes = append([]string(nil), *sf.Includes...)
+	}
+	if sf.Cache != nil {
+		info.Cache = nil
+		info.setCache(strings.Join(*sf.Cache, " "), name+" cache:")
 	}
 	if len(sf.Matrix) > 0 {
 		keys := make([]string, 0, len(sf.Matrix))

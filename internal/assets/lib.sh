@@ -64,6 +64,12 @@ lane_init() {
     _swim_pre_rc=$(declare -p 2>/dev/null)
     . "$_swim_rc_file"
   fi
+  # A lane run directly (bash lane.N.sh) gets its caches (# Cache:) here;
+  # under swim run the launcher has set them.
+  if [ -z "${SWIM_LAUNCHED:-}" ]; then
+    _swim_cache=$("$SWIM_BIN" _cache-env "$SWIM_LANE") || exit 1
+    eval "$_swim_cache"
+  fi
   # Before _start marks the lane running: the launcher only signals a lane
   # (SIGUSR2, a stop request) once status shows its pid, so the trap is
   # always in place by then.
