@@ -125,7 +125,10 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 	if err := w.Wait(); err != nil {
 		t.Errorf("watch after Ctrl-C: %v\n%s", err, out.String())
 	}
-	contains(t, "watch", out.String(), "1 queued; waiting for their lanes")
+	// It says it's waiting: with nothing running ("1 queued; waiting for
+	// their lanes to be free") or beside swim 2's batch ("1 queued,
+	// waiting for their lanes or a free slot"), as timing has it.
+	contains(t, "watch", out.String(), "1 queued", "waiting for their lanes")
 	// Swim 1's batch started only once swim run's round had ended.
 	if n := strings.Count(r.log(1), "== ROUND "); n != 2 {
 		t.Errorf("swim 1 ran %d rounds, want swim run's and the batch's", n)
