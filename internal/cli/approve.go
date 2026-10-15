@@ -90,7 +90,7 @@ func cmdApproveHook(args []string) error {
 	if launched() {
 		return approveLaunched(root, cfg, args[0], n, flag, desc, flagSet, dryRun, drifted)
 	}
-	if underSwimRun() {
+	if underSwimRun(root) {
 		// Started by swim run, but without its approval channel: the lane
 		// unset it, or swim run couldn't start it. Nobody can decide the
 		// guard, and the lane's own flag doesn't count: fail closed.
@@ -220,10 +220,13 @@ func launched() bool {
 }
 
 // underSwimRun reports whether swim run (swim all, ci, watch) started this
-// process's lane, whatever the lane's environment says: launched, or a
-// swim process is among its ancestors. A lane can unset its environment;
-// it can't change who started it.
-func underSwimRun() bool {
+// process's lane in root, whatever the lane's environment says: launched,
+// or a swim process is among its ancestors. A lane can unset its
+// environment; it can't change who started it, or where they run. A swim
+// ancestor counts unless it provably works in another swim repo (a test
+// suite run through swim ci, starting lanes of its own scratch repos):
+// one whose working directory can't be read still counts.
+func underSwimRun(root string) bool {
 	if launched() || os.Getenv("SWIM_LAUNCHED") == "1" {
 		return true
 	}
@@ -232,11 +235,40 @@ func underSwimRun() bool {
 		names[filepath.Base(exe)] = true
 	}
 	for name := range names {
-		if peer.AncestorNamed(os.Getpid(), name) {
-			return true
+		for _, pid := range peer.AncestorsNamed(os.Getpid(), name) {
+			if !inOtherRepo(root, pid) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// inOtherRepo reports whether process pid works in a swim repo other than
+// root: its working directory is readable, outside root, and in a
+// directory tree with its own .swim/.
+func inOtherRepo(root string, pid int) bool {
+	cwd, ok := peer.Cwd(pid)
+	if !ok || root == "" {
+		return false
+	}
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	if c, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = c
+	}
+	if cwd == root || strings.HasPrefix(cwd, root+string(filepath.Separator)) {
+		return false
+	}
+	for dir := cwd; ; dir = filepath.Dir(dir) {
+		if st, err := os.Stat(filepath.Join(dir, ".swim")); err == nil && st.IsDir() {
+			return true
+		}
+		if dir == filepath.Dir(dir) {
+			return false
+		}
+	}
 }
 
 // approveLaunched asks swim run's launcher to decide the guard: it alone

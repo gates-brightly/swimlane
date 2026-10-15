@@ -142,7 +142,10 @@ else stops it. What is enforced outside the script:
 so it can still do what the operator can. Changing its environment doesn't
 hide it from the launcher: swim's hidden commands tell a lane swim run
 started by who started it, so an `APPROVED` mark is refused and a guard
-whose approvals channel is gone is a dry run. But it can append an approve
+whose approvals channel is gone is a dry run. A swim process above the lane
+counts unless its working directory is provably in another swim repo (a
+test suite run through `swim ci` starts lanes of its own scratch repos); a
+lane can't change where its launcher runs. But it can append an approve
 entry to the chain itself, signed with the runner key, which it can read;
 `swim verify` then reports an approval swim run didn't record. It can write `.swim/status.yml`, its own log, or a chain
 entry under a run id it made up (`swim verify` notes runs without an

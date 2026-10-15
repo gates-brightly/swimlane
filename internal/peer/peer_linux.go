@@ -3,6 +3,7 @@ package peer
 import (
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -48,6 +49,13 @@ func parent(pid int) (int, bool) {
 	}
 	pp, err := strconv.Atoi(f[1])
 	return pp, err == nil
+}
+
+// Cwd is pid's working directory (/proc/<pid>/cwd; a process of the same
+// user can read it).
+func Cwd(pid int) (string, bool) {
+	dir, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd")
+	return dir, err == nil && filepath.IsAbs(dir)
 }
 
 // comm is pid's command name (/proc/<pid>/comm, 15 characters at most).

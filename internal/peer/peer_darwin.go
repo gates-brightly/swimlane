@@ -3,6 +3,8 @@ package peer
 import (
 	"bytes"
 	"net"
+	"path/filepath"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -35,6 +37,31 @@ func parent(pid int) (int, bool) {
 		return 0, false
 	}
 	return int(kp.Eproc.Ppid), true
+}
+
+// Cwd is pid's working directory: proc_pidinfo(PROC_PIDVNODEPATHINFO),
+// whose struct proc_vnodepathinfo starts with the cwd's vnode_info_path
+// (a 152-byte struct vnode_info, then the path, MAXPATHLEN bytes).
+func Cwd(pid int) (string, bool) {
+	const (
+		callPIDInfo       = 2 // PROC_INFO_CALL_PIDINFO
+		pidVnodePathInfo  = 9 // PROC_PIDVNODEPATHINFO
+		vnodeInfoSize     = 152
+		maxPathLen        = 1024
+		vnodePathInfoSize = 2 * (vnodeInfoSize + maxPathLen)
+	)
+	buf := make([]byte, vnodePathInfoSize)
+	n, _, errno := unix.Syscall6(unix.SYS_PROC_INFO, callPIDInfo, uintptr(pid), pidVnodePathInfo, 0,
+		uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if errno != 0 || int(n) != len(buf) {
+		return "", false
+	}
+	path := buf[vnodeInfoSize : vnodeInfoSize+maxPathLen]
+	if i := bytes.IndexByte(path, 0); i >= 0 {
+		path = path[:i]
+	}
+	dir := string(path)
+	return dir, filepath.IsAbs(dir)
 }
 
 // comm is pid's command name (p_comm, 16 characters at most).

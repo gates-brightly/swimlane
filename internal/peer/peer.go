@@ -38,21 +38,22 @@ func FromLane(c net.Conn, pid int) (from, ok bool) {
 	return Descends(p, pid), true
 }
 
-// AncestorNamed reports whether a process above pid (its parent, theirs,
-// up to init) runs a program called name (the kernel's short command
-// name, cut as the kernel cuts it). A process can't change who started
-// it, so swim's hidden commands use this to tell a lane swim run started
-// (whatever its environment says) from one run directly with bash.
-func AncestorNamed(pid int, name string) bool {
+// AncestorsNamed are the processes above pid (its parent, theirs, up to
+// init) that run a program called name (the kernel's short command name,
+// cut as the kernel cuts it), nearest first. A process can't change who
+// started it, so swim's hidden commands use this to tell a lane swim run
+// started (whatever its environment says) from one run directly with bash.
+func AncestorsNamed(pid int, name string) []int {
+	var out []int
 	for i := 0; i < 4096 && pid > 1; i++ {
 		pp, ok := parent(pid)
 		if !ok || pp == pid || pp <= 1 {
-			return false
+			break
 		}
 		if c, ok := comm(pp); ok && c == shortName(name) {
-			return true
+			out = append(out, pp)
 		}
 		pid = pp
 	}
-	return false
+	return out
 }

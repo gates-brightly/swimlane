@@ -722,6 +722,15 @@ var dryRunRE = regexp.MustCompile(`^dry run: (?:.*; )?set ([A-Za-z_][A-Za-z0-9_]
 // approve itself. --confirm marks a confirm answered at the lane's own
 // terminal: logged, but under swim run not an approval in the chain (swim
 // didn't see it given).
+// markRoot is the repo a mark is for, "" outside one.
+func markRoot() string {
+	root, _, err := repoNoMigrate()
+	if err != nil {
+		return ""
+	}
+	return root
+}
+
 func cmdMark(args []string) error {
 	var request, guard string
 	confirmed := false
@@ -743,7 +752,7 @@ func cmdMark(args []string) error {
 		return usagef("--request and --confirm are for APPROVED marks")
 	}
 	recorded := false // the launcher put the approval in the chain
-	if args[1] == logparse.Approved && request == "" && !confirmed && underSwimRun() {
+	if args[1] == logparse.Approved && request == "" && !confirmed && underSwimRun(markRoot()) {
 		fmt.Fprintf(os.Stderr, "swim: refused: an APPROVED mark under swim run needs the launcher's approval (guard asks for it): a lane can't approve itself\n")
 		return exitError{2}
 	}

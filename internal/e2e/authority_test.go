@@ -136,6 +136,27 @@ func TestHostileLaneDropsApprovals(t *testing.T) {
 	}
 }
 
+// A swim run in another repo above a lane doesn't make it this repo's run:
+// this repo's tests, run through swim ci, start lanes directly with their
+// own flag, and that approves as it would from a shell (T28 refused it).
+func TestOtherRepoRunDoesNotCount(t *testing.T) {
+	b := newBoundaryRepo(t)
+	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	inner := "#!/usr/bin/env bash\ncd " + q(b.root) + " && exec env -i"
+	for _, kv := range b.env {
+		inner += " " + q(kv)
+	}
+	inner += " " + boundaryGuard + "=1 bash lane.1.sh\n"
+	outer := newRepo(t, "")
+	outer.write("inner.sh", inner, 0o755)
+	outer.script(1, "test another repo", `run "inner lane" ./inner.sh`)
+	outer.mustSwim("run", "1", "--plain")
+	if !b.dropped() {
+		t.Fatalf("FLAG=1 bash lane.1.sh under another repo's swim run didn't approve:\n%s\nouter:\n%s", b.log(1), outer.log(1))
+	}
+	contains(t, "inner log", b.log(1), "APPROVED  drop table orders ("+boundaryGuard+"=1)")
+}
+
 // T28: when swim run can't start its approvals (a TMPDIR too long for a
 // unix socket), every guard is a dry run, the lane's own flag included,
 // and the run's attestation says why; verify holds.
