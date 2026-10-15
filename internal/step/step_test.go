@@ -195,6 +195,26 @@ func TestReadSpool(t *testing.T) {
 	}
 }
 
+// A spool written on a machine in another time zone (an operator's Mac,
+// read by a planner in a UTC container sharing the repo) still gives the
+// step's real elapsed time, and shows the writer's wall clock.
+func TestReadSpoolOtherZone(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "agent1.log")
+	start := time.Now().Add(-90 * time.Second).In(time.FixedZone("far", 7*3600+1800))
+	os.WriteFile(SpoolPath(logPath), []byte(spoolHead("wait", start, "sleep 99")), 0o644)
+	sp, ok := ReadSpool(logPath)
+	if !ok || sp.Clock != start.Format("15:04:05") || sp.Cmd != "sleep 99" {
+		t.Fatalf("spool: %+v", sp)
+	}
+	if e := sp.Elapsed(); e < 89*time.Second || e > 100*time.Second {
+		t.Errorf("elapsed %s, want about 90s", e)
+	}
+	RecoverSpool(logPath)
+	if data, _ := os.ReadFile(logPath); !strings.Contains(string(data), start.Format("15:04:05")+"\n") || strings.Contains(string(data), "@") {
+		t.Errorf("recovered block's clock:\n%s", data)
+	}
+}
+
 // RecordStep writes a finished step (a whole program, an SDK's in-process
 // step) as a block the log parser reads back.
 func TestRecordStep(t *testing.T) {

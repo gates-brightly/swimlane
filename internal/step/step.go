@@ -117,6 +117,36 @@ const (
 	spoolMark  = "\x00" // a spool line starting with this is a "-- note" in the log
 )
 
+// spoolHead is a spool's first line: magic, label, start, command. The
+// start is the wall clock the log shows and, after an @, Unix seconds, so a
+// reader in another time zone (a planner on another machine sharing the
+// repo) gets the right elapsed time.
+func spoolHead(label string, start time.Time, cmdline string) string {
+	return fmt.Sprintf("%s\t%s\t%s@%d\t%s\n", spoolMagic, label, start.Format("15:04:05"), start.Unix(), cmdline)
+}
+
+// spoolStart splits a spool head's start field into the clock the log shows
+// and when the step started. A spool from an older swim has only the clock,
+// read as today in local time.
+func spoolStart(field string) (clock string, started time.Time) {
+	if c, u, ok := strings.Cut(field, "@"); ok {
+		if n, err := strconv.ParseInt(u, 10, 64); err == nil {
+			return c, time.Unix(n, 0)
+		}
+		field = c
+	}
+	t, err := time.ParseInLocation("15:04:05", field, time.Local)
+	if err != nil {
+		return field, time.Time{}
+	}
+	now := time.Now()
+	started = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local)
+	if started.After(now.Add(time.Minute)) { // started before midnight
+		started = started.AddDate(0, 0, -1)
+	}
+	return field, started
+}
+
 // Why an attempt ended early.
 const (
 	notTimedOut = iota
@@ -203,7 +233,7 @@ func Run(o Options) (Result, error) {
 			quoted[i] = strconv.Quote(h)
 		}
 		detail := "matched " + strings.Join(quoted, ", ") + "; swim never writes to git"
-		os.WriteFile(SpoolPath(o.LogPath), []byte(fmt.Sprintf("%s\t%s\t%s\t%s\n", spoolMagic, logLabel, clock, cmdline)), 0o644)
+		os.WriteFile(SpoolPath(o.LogPath), []byte(spoolHead(logLabel, start, cmdline)), 0o644)
 		if err := writeBlock(o.LogPath, logparse.StepLine(logparse.Blocked, logLabel, detail, "0.0s", clock), ""); err != nil {
 			return Result{ExitCode: policy.ExitBlocked}, err
 		}
@@ -233,7 +263,7 @@ func Run(o Options) (Result, error) {
 	if err != nil {
 		return Result{ExitCode: 1}, fmt.Errorf("open spool: %w", err)
 	}
-	fmt.Fprintf(spool, "%s\t%s\t%s\t%s\n", spoolMagic, logLabel, clock, cmdline)
+	fmt.Fprint(spool, spoolHead(logLabel, start, cmdline))
 
 	if o.Lane > 0 && label != "" {
 		status.Update(o.Root, o.Lane, o.Lanes, func(l *status.Lane) { l.CurrentStep = label })
@@ -640,7 +670,7 @@ func RecordStep(logPath, kind, label, detail, cmdline string, start time.Time, d
 		return "", err
 	}
 	clock := start.Format("15:04:05")
-	fmt.Fprintf(sp, "%s\t%s\t%s\t%s\n", spoolMagic, label, clock, cmdline)
+	fmt.Fprint(sp, spoolHead(label, start, cmdline))
 	_, err = io.Copy(sp, out)
 	if cerr := sp.Close(); err == nil {
 		err = cerr
@@ -667,7 +697,8 @@ func RecoverSpool(logPath string) {
 	label, clock := "(unknown step)", "--:--:--"
 	if line, err := bufio.NewReader(f).ReadString('\n'); err == nil {
 		if p := strings.SplitN(strings.TrimRight(line, "\n"), "\t", 4); len(p) == 4 && p[0] == spoolMagic {
-			label, clock = p[1], p[2]
+			label = p[1]
+			clock, _ = spoolStart(p[2])
 		}
 	}
 	f.Close()
@@ -786,9 +817,9 @@ const Running = "RUNNING"
 // swim log shows before the step's block reaches the log.
 type Spool struct {
 	Label, Clock, Cmd string
-	Started           time.Time // from Clock (today, local time)
-	Output            []string  // output lines; "-- ..." for notes (attempts, retries)
-	Partial           string    // an unfinished last line, if any
+	Started           time.Time
+	Output            []string // output lines; "-- ..." for notes (attempts, retries)
+	Partial           string   // an unfinished last line, if any
 }
 
 // ReadSpool reads lane log logPath's in-flight step, if one is running.
@@ -803,14 +834,8 @@ func ReadSpool(logPath string) (*Spool, bool) {
 	if len(f) != 4 || f[0] != spoolMagic {
 		return nil, false
 	}
-	s := &Spool{Label: f[1], Clock: f[2], Cmd: f[3]}
-	if t, err := time.ParseInLocation("15:04:05", s.Clock, time.Local); err == nil {
-		now := time.Now()
-		s.Started = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local)
-		if s.Started.After(now.Add(time.Minute)) { // started before midnight
-			s.Started = s.Started.AddDate(0, 0, -1)
-		}
-	}
+	s := &Spool{Label: f[1], Cmd: f[3]}
+	s.Clock, s.Started = spoolStart(f[2])
 	lines := strings.Split(body, "\n")
 	if last := lines[len(lines)-1]; last != "" {
 		s.Partial = last // no newline yet
