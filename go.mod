@@ -16,5 +16,7 @@ require (
 	filippo.io/hpke v0.4.0 // indirect
 )
 
-// Tagged without bumping Breaking: it reports itself as 2.20261009.
-retract v0.3.20261009
+retract (
+	v0.3.20261009 // tagged without bumping Breaking: it reports itself as 2.20261009
+	v0.20261014.1 // doesn't build: internal/cli lost a fix in a rebase
+)
