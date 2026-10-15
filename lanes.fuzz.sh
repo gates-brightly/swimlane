@@ -16,11 +16,13 @@
 # in that package's testdata/fuzz: commit it with the fix.
 # Each target runs 20s in CI (CI=true, set by GitHub Actions and GitLab)
 # and 5s locally, so `swim all` stays quick; FUZZTIME overrides both.
+# Two fuzz workers (-parallel 2), not one per CPU: this lane runs beside
+# e2e, the slowest lane, and shouldn't take the runner's CPUs from it (T32).
 stage check
 fuzztime=5s
 [ "${CI:-}" = true ] && fuzztime=20s
 fuzztime=${FUZZTIME:-$fuzztime}
-run "fuzz logparse" scripts/hermetic go test -run '^$' -fuzz '^FuzzParse$' -fuzztime "$fuzztime" ./internal/logparse
-run "fuzz lane" scripts/hermetic go test -run '^$' -fuzz '^FuzzParseScript$' -fuzztime "$fuzztime" ./internal/lane
-run "fuzz chain" scripts/hermetic go test -run '^$' -fuzz '^FuzzDecodeLine$' -fuzztime "$fuzztime" ./internal/chain
-run "fuzz lane socket" scripts/hermetic go test -run '^$' -fuzz '^FuzzLaneRequests$' -fuzztime "$fuzztime" ./internal/cli
+run "fuzz logparse" scripts/hermetic go test -run '^$' -parallel 2 -fuzz '^FuzzParse$' -fuzztime "$fuzztime" ./internal/logparse
+run "fuzz lane" scripts/hermetic go test -run '^$' -parallel 2 -fuzz '^FuzzParseScript$' -fuzztime "$fuzztime" ./internal/lane
+run "fuzz chain" scripts/hermetic go test -run '^$' -parallel 2 -fuzz '^FuzzDecodeLine$' -fuzztime "$fuzztime" ./internal/chain
+run "fuzz lane socket" scripts/hermetic go test -run '^$' -parallel 2 -fuzz '^FuzzLaneRequests$' -fuzztime "$fuzztime" ./internal/cli
