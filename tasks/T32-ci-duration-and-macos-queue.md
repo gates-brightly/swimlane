@@ -51,9 +51,14 @@ on `50dc82c`, 269s on `df05a6b`: macOS runners vary), and dag99-locks,
 macOS needs the dag99 split below, which trades away macOS coverage of
 those three scenarios: a decision, not a tweak.
 
+Done (2026-10-15, decided by the user): macOS skips dag99-locks, -retry
+and -parallel (`linuxOnlyScenarios` in `internal/e2e/scenarios_test.go`);
+`SWIM_E2E_ALL_SCENARIOS=1` runs them there.
+
 ## Do
 
-- Check the next few runs' `swim ci` step against the 6-7.5m above.
+- Check the next few runs' macOS job against the ~8m target; close T32
+  when it holds.
 - If e2e is still over ~6m, the next steps, cheapest first:
   - Move race (55s) out of lane 1 into its own lane beside e2e: the
     critical path loses it, but the gate before e2e is then fmt, lint and

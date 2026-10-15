@@ -101,6 +101,13 @@ Lane scripts inside a scenario are source files. A `.gitignore` exception keeps
 them tracked, even though swim's own block ignores `lane.N.sh` in working repos.
 Keep `run.sh` and `lib/common.sh` compatible with macOS bash 3.2.
 
+On macOS, `go test ./internal/e2e` (and so CI's macOS job) skips
+`dag99-locks`, `dag99-retry` and `dag99-parallel`: they test the scheduler
+on 99 lanes, which is the same there, and took 100-140s each on a macOS
+runner. Plain `dag99`, `dag99-interrupt` and `dag99-force` still run on
+macOS. `SWIM_E2E_ALL_SCENARIOS=1` runs all of them; `e2e/run.sh` itself
+always does.
+
 ## dag99 internals
 
 - `lanes/lane.1.sh`–`lane.9.sh` do real work: fetch, Markdown, stats, links,

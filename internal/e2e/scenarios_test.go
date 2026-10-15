@@ -26,6 +26,9 @@ func TestScenarios(t *testing.T) {
 	for _, d := range dirs {
 		name := filepath.Base(filepath.Dir(d))
 		t.Run(name, func(t *testing.T) {
+			if linuxOnlyScenarios[name] && runtime.GOOS == "darwin" && os.Getenv("SWIM_E2E_ALL_SCENARIOS") == "" {
+				t.Skip("Linux only (T32): the scheduler under load is the same on macOS; plain dag99, -interrupt and -force cover bash 3.2 and signals there. SWIM_E2E_ALL_SCENARIOS=1 runs it")
+			}
 			t.Parallel() // each scenario has its own scratch repo and config
 			c := exec.Command("bash", filepath.Join(e2e, "run.sh"), name)
 			c.Env = append(os.Environ(), "SWIM_E2E_BIN="+bin)
@@ -42,3 +45,9 @@ func TestScenarios(t *testing.T) {
 		})
 	}
 }
+
+// linuxOnlyScenarios are the dag99 variants that test the scheduler (locks,
+// retries, a parallel cap) on 99 lanes: 100-140s each on a macOS runner,
+// the long pole of CI there (T32). What macOS adds, bash 3.2 and BSD
+// userland, plain dag99, dag99-interrupt and dag99-force still cover.
+var linuxOnlyScenarios = map[string]bool{"dag99-locks": true, "dag99-retry": true, "dag99-parallel": true}
