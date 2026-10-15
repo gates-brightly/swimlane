@@ -181,11 +181,16 @@ func TestServerUsesRegisteredLane(t *testing.T) {
 	if r.Approved || !strings.Contains(r.Why, "guard WIPE isn't declared") {
 		t.Errorf("undeclared flag: %+v", r)
 	}
+	// A script that names a guard's flag at run time may ask for any.
+	dyn := s.Register(Caller{Lane: 4, Guards: []string{"DROP"}, AnyGuard: true})
+	if r, _ = Ask(s.Path(), Request{Lane: 4, Flag: "WIPE", Desc: "d", Token: dyn}, nil, time.Time{}); !r.Approved {
+		t.Errorf("a run-time flag of a script with dynamic guards: %+v", r)
+	}
 	r, _ = Ask(s.Path(), Request{Lane: 3, Flag: "DROP", Desc: "d"}, nil, time.Time{})
 	if r.Approved || !strings.Contains(r.Why, "token") {
 		t.Errorf("no token: %+v", r)
 	}
-	if len(asked) != 1 || len(refused) != 2 {
+	if len(asked) != 2 || len(refused) != 2 {
 		t.Errorf("asked %d, refused %v", len(asked), refused)
 	}
 }

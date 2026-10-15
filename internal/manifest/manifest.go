@@ -110,10 +110,13 @@ type Manifest struct {
 	ScriptSHA string `yaml:"script_sha256"`
 	Pinned    Pinned `yaml:"pinned"`
 	Local     Local  `yaml:"local"`
-	// Guards are the flags the script declares or uses: the only ones its
-	// lane may ask the operator to approve.
-	Guards []string `yaml:"guards,omitempty"`
-	SHA256 string   `yaml:"manifest_sha256"`
+	// Guards are the flags the script, and the files it pins, declare or
+	// use: the only ones its lane may ask the operator to approve, unless
+	// DynamicGuards (a guard whose flag is named at run time, which its
+	// lane may ask for under any name).
+	Guards        []string `yaml:"guards,omitempty"`
+	DynamicGuards bool     `yaml:"dynamic_guards,omitempty"`
+	SHA256        string   `yaml:"manifest_sha256"`
 
 	// Dir is where the manifest is staged ("" before Stage).
 	Dir  string            `yaml:"-"`
@@ -211,6 +214,19 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	}
 	if g, ok := lane.JobsIn(filepath.Base(path), data, n); ok {
 		for _, gd := range g.Info.GuardFlags() {
+			if !seen[gd] {
+				seen[gd] = true
+				m.Guards = append(m.Guards, gd)
+			}
+		}
+	}
+	// The files it pins (# Includes:, sourced helpers) are as reviewed as
+	// the script: their guards are its lane's too.
+	m.DynamicGuards = info.DynamicGuards > 0 || lane.ParseScript(string(data)).DynamicGuards > 0
+	for _, f := range m.Pinned.Includes {
+		inc := lane.ParseScript(string(m.data[f.Path]))
+		m.DynamicGuards = m.DynamicGuards || inc.DynamicGuards > 0
+		for _, gd := range inc.GuardFlags() {
 			if !seen[gd] {
 				seen[gd] = true
 				m.Guards = append(m.Guards, gd)

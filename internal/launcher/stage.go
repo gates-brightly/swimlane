@@ -80,7 +80,7 @@ func stageEnv(o Options, n int, who approval.Caller) ([]string, string) {
 	env := []string{manifest.StageEnv + "=" + m.Dir, manifest.ManifestEnv + "=" + filepath.Join(m.Dir, manifest.FileName), "SWIM_ROOT=" + o.Root}
 	tok := ""
 	if o.approvalSrv != nil {
-		who.Lane, who.Run, who.Manifest, who.Guards, who.PID = n, o.RunID, m.SHA256, m.Guards, approval.AwaitPID
+		who.Lane, who.Run, who.Manifest, who.Guards, who.AnyGuard, who.PID = n, o.RunID, m.SHA256, m.Guards, m.DynamicGuards, approval.AwaitPID
 		tok = o.approvalSrv.Register(who)
 		env = append(env, approval.TokenEnv+"="+tok)
 	}

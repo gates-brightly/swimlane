@@ -1061,8 +1061,10 @@ EXECUTION MANIFEST
   Questions come from swim, not the lane: under swim run each lane process
   has its own approval token, and the question names the lane, job, guard,
   manifest and evidence the launcher knows, then "the lane says: <action>".
-  A flag the script doesn't declare or use is refused (and logged), and an
-  approval is used once, by the lane it was given to.
+  A flag neither the script nor a file it includes (# Includes:, sourced
+  helpers) declares or uses is refused (and logged), unless the script names
+  a guard's flag at run time (guard "$F"); an approval is used once, by the
+  lane it was given to.
 
 CHAIN OF CUSTODY
   Every approval and every round is recorded in .swim/chain.jsonl, one

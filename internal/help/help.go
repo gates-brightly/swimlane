@@ -172,8 +172,9 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
     (or set FIN_ALLOW_DELETE_ZG_ITEMS=1 to approve without asking)  Y/N [N]
   The first lines are swim's own: the lane, job and manifest the launcher
   started (each lane process has its own approval token), not what the
-  request claims. A flag the script doesn't declare or use is refused, and
-  an approval is used once, by the lane it was given to.
+  request claims. A flag neither the script nor a file it includes declares
+  or uses is refused (unless the script names a guard's flag at run time,
+  guard "$F"), and an approval is used once, by the lane it was given to.
   The lane's panel row shows "awaiting approval".
     - Interactive view: several lanes can wait at once. A banner names them
       ("▶ swim 2 needs approval · Enter to view it and answer"); Enter opens

@@ -287,6 +287,27 @@ func TestWatchYes(t *testing.T) {
 	}
 }
 
+// swim watch -y approves a guard in a file the script includes, and one
+// whose flag the script names at run time: both are the lane's own.
+func TestWatchYesIncludedAndDynamicGuards(t *testing.T) {
+	r := newRepo(t, "")
+	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
+	r.write("lib/g.sh", "do_inc() { if guard ALLOW_INC \"included\"; then run \"inc ran\" true; fi; }\n", 0o644)
+	r.script(1, "include", `source lib/g.sh
+do_inc`)
+	withHeader(t, r, 1, "# Includes: lib/g.sh")
+	r.script(2, "dynamic", `F=ALLOW_DYN
+if guard "$F" "dynamic"; then run "dyn ran" true; fi`)
+	r.mustSwim("queue", "add", "1", "2")
+	w := r.cmd(bin, "watch", "--once", "-y")
+	w.Env = append(w.Env, "SWIM_USER=worker")
+	if out, err := w.CombinedOutput(); err != nil {
+		t.Fatalf("watch -y: %v\n%s", err, out)
+	}
+	contains(t, "agent1.log", r.log(1), "APPROVED  included (approved by swim watch -y (worker))", "PASS  inc ran")
+	contains(t, "agent2.log", r.log(2), "APPROVED  dynamic (approved by swim watch -y (worker))", "PASS  dyn ran")
+}
+
 func TestWaitAndQueueWait(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "long", `run "long" sleep 1.5`)

@@ -365,8 +365,9 @@ To cut a release:
   - **Questions come from swim:** each lane process gets its own approval
     token. The question names the lane, job, guard, manifest and evidence
     the launcher knows, then `the lane says: <action>` (control characters
-    dropped). A request without a token, or for a flag the script doesn't
-    declare or use, is refused and logged. Each approval is used once, by
+    dropped). A request without a token, or for a flag neither the script
+    nor a file it includes declares or uses, is refused and logged (a script
+    that names a guard's flag at run time, `guard "$F"`, may ask for any). Each approval is used once, by
     the lane it was given to (`_mark ... --request ID`); a replay is
     refused.
   - **Observed facts:** `# Observe: NAME = <command>` and `# Observe: path

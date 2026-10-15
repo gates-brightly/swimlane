@@ -158,6 +158,9 @@ type Caller struct {
 	Run      string
 	Manifest string
 	Guards   []string // the flags its script declares or uses
+	// AnyGuard: its script names a guard's flag at run time (guard "$F"),
+	// so it may ask for a flag Guards doesn't list.
+	AnyGuard bool
 	// PID is the lane's process: requests must come from it or its
 	// descendants (where the platform can tell, package peer). AwaitPID
 	// registers a process not started yet (SetPID names it); 0 checks the
@@ -329,7 +332,7 @@ func (s *Server) check(req Request) (Caller, Request, string) {
 	req.Lane, req.Job, req.Cell, req.Manifest = c.Lane, c.Job, c.Cell, c.Manifest
 	// A flag the lane has set is checked against swim run's own
 	// environment, which names it: the operator set it, declared or not.
-	declared := req.Flag == ConfirmFlag || req.FlagSet
+	declared := req.Flag == ConfirmFlag || req.FlagSet || c.AnyGuard
 	for _, g := range c.Guards {
 		declared = declared || g == req.Flag
 	}
