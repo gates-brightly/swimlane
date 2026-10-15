@@ -27,6 +27,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/proc"
+	"github.com/gates-brightly/swimlane/internal/schedule"
 )
 
 // Schema identifies an entry file.
@@ -129,6 +131,10 @@ type Entry struct {
 	Zone       string `yaml:"zone,omitempty"`
 	From       string `yaml:"from,omitempty"`
 	Occurrence string `yaml:"occurrence,omitempty"`
+	// FromStatement is the recurring schedule's signed statement, which
+	// QueuedKey and QueueSig sign for an occurrence: it vouches for the
+	// occurrence only while the occurrence is what it describes.
+	FromStatement string `yaml:"from_statement,omitempty"`
 
 	// State and Path are where the entry is now; not stored.
 	State string `yaml:"-"` // queued | running | orphaned | done
@@ -539,6 +545,12 @@ func LockWorker(root string) (unlock func(), ok bool, err error) {
 // Statement is what the queuer signs: the batch's id, each lane's job and
 // exact script, and the approvals it carries.
 func (e *Entry) Statement() string {
+	if e.FromStatement != "" {
+		if why := e.fromMismatch(); why != "" {
+			return "swim queue v1\nid: " + e.ID + "\nnot what " + e.From + " signed: " + why + "\n" // verifies against nothing
+		}
+		return e.FromStatement
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "swim queue v1\nid: %s\n", e.ID)
 	for _, l := range e.Lanes {
@@ -557,6 +569,48 @@ func (e *Entry) Statement() string {
 		fmt.Fprintf(&b, "from: %s %s\n", e.From, e.Occurrence)
 	}
 	return b.String()
+}
+
+var (
+	dailyRE = regexp.MustCompile(`(?m)^daily: (\S+) (\S+)$`)
+	firstRE = regexp.MustCompile(`(?m)^first: (\S+)$`)
+	untilRE = regexp.MustCompile(`(?m)^until: (\S+)$`)
+)
+
+// fromMismatch says how an occurrence differs from the recurring
+// schedule's statement it carries ("" when it is what that describes):
+// the schedule's id, every lane and approval as pinned, a day within it,
+// and that day's time.
+func (e *Entry) fromMismatch() string {
+	st := e.FromStatement
+	if !strings.HasPrefix(st, "swim recurring v1\nid: "+e.From+"\n") {
+		return "another schedule"
+	}
+	if strings.Count(st, "\nlane: ") != len(e.Lanes) {
+		return "its lanes"
+	}
+	for _, l := range e.Lanes {
+		if !strings.Contains(st, fmt.Sprintf("\nlane: %d %s %s %s\n", l.Lane, l.Job, l.SHA256, l.Manifest)) {
+			return fmt.Sprintf("swim %d", l.Lane)
+		}
+	}
+	if !strings.Contains(st, "\napprove: "+strings.Join(e.Approve, ",")+"\n") || e.ApproveAll {
+		return "its approvals"
+	}
+	d, f, u := dailyRE.FindStringSubmatch(st), firstRE.FindStringSubmatch(st), untilRE.FindStringSubmatch(st)
+	if d == nil || f == nil || u == nil || e.Occurrence < f[1] || e.Occurrence > u[1] {
+		return "its day"
+	}
+	loc, err := time.LoadLocation(d[2])
+	c, cerr := schedule.ParseClock(d[1])
+	day, derr := time.ParseInLocation("2006-01-02", e.Occurrence, loc)
+	if err != nil || cerr != nil || derr != nil {
+		return "its time"
+	}
+	if at, _ := schedule.Next(c, loc, day.Add(-time.Second)); at.UTC().Format(time.RFC3339) != e.NotBefore {
+		return "its start time"
+	}
+	return ""
 }
 
 // StartKey orders waiting entries: a scheduled one by its start time,

@@ -101,6 +101,9 @@ type Lane struct {
 	ScheduledFor string `yaml:"scheduled_for,omitempty"`
 	Schedule     string `yaml:"schedule,omitempty"`
 	HeldBy       string `yaml:"held_by,omitempty"`
+	// ScheduleRemoved is the scheduled batch removed (swim schedule rm)
+	// before it ran the lane's pending round, until the lane runs again.
+	ScheduleRemoved string `yaml:"schedule_removed,omitempty"`
 	// A matrix round's cells, each with its own state (Cell names it).
 	Cell        string `yaml:"cell,omitempty"`
 	Cells       []Lane `yaml:"cells,omitempty"`
@@ -342,7 +345,7 @@ func (l *Lane) ResetRun() {
 	l.FailedSteps = []string{}
 	l.AutoApproved, l.AutoVia, l.FlagApproved = nil, "", nil
 	l.DryRun = nil
-	l.ScheduledFor, l.Schedule, l.HeldBy = "", "", "" // its schedule has come
+	l.ScheduledFor, l.Schedule, l.HeldBy, l.ScheduleRemoved = "", "", "", "" // its schedule has come
 }
 
 // Dry records that guard flag's step ran as a dry run (each flag once).

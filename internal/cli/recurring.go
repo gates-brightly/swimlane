@@ -293,6 +293,12 @@ func materializeRecurring(root string, cfg *config.Config) {
 		o := queueOpts{approve: r.Approve, note: r.Note, parallel: r.Parallel, notBefore: occ.UTC().Format(time.RFC3339), zone: r.Zone, from: r.ID, occurrence: date}
 		e := &queue.Entry{By: r.By, Note: o.note, Parallel: o.parallel, Lanes: r.Lanes, Approve: r.Approve,
 			NotBefore: o.notBefore, Zone: o.zone, From: o.from, Occurrence: o.occurrence, ID: queue.NewID()}
+		if r.QueueSig != "" {
+			// The schedule's signature vouches for the occurrence (standing
+			// approvals of whoever scheduled it apply), as long as the
+			// occurrence is what it signed.
+			e.QueuedKey, e.QueueSig, e.FromStatement = r.QueuedKey, r.QueueSig, r.Statement()
+		}
 		if err := queue.Add(root, e); err != nil {
 			continue
 		}

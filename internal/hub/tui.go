@@ -213,11 +213,23 @@ func batchLine(b Batch) string {
 		ns[i] = strconv.Itoa(n)
 	}
 	s := fmt.Sprintf("queue   #%d %-8s swim %s", b.Seq, b.State, strings.Join(ns, ","))
+	if b.Seq == 0 {
+		s = fmt.Sprintf("queue   %s %-8s swim %s", b.ID, b.State, strings.Join(ns, ","))
+	}
 	if b.By != "" {
 		s += "  by " + b.By
 	}
 	if b.Note != "" {
 		s += "  " + b.Note
+	}
+	switch {
+	case b.Daily != "":
+		s += "  " + b.Daily
+	case b.At != "":
+		s += "  at " + b.At
+	}
+	if b.HeldBy != "" {
+		s += "  held until " + b.HeldBy + " has run"
 	}
 	return s
 }

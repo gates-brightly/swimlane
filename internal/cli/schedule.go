@@ -464,6 +464,14 @@ func scheduleRm(args []string) error {
 	if err := queue.Remove(e); err != nil {
 		return err
 	}
+	status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
+		for _, l := range e.Lanes {
+			if sl := f.Get(l.Lane); sl != nil {
+				sl.ScheduleRemoved = e.ID // a dependent's skip says why
+			}
+		}
+		return nil
+	})
 	refreshStatus(root, cfg)
 	history.Log(root, history.Entry{Event: history.ScheduleRm, Detail: fmt.Sprintf("%s: %s, was scheduled for %s", e.ID, lanesText(laneNums(e)), e.NotBefore)})
 	fmt.Printf("removed %s (#%d): %s, scheduled for %s\n", e.ID, e.Seq, lanesText(laneNums(e)), scheduledAt(e))

@@ -226,6 +226,10 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
       [-]    skip   the job won't run (a dependency outside the run hasn't
                     passed, or one in the run won't run)
       [*]    always an Always lane: setup that runs every time, first
+      [@]    scheduled  a scheduled batch (swim schedule) runs it at its
+                    time; swim all leaves it, swim run N refuses it
+      [=]    held   depends on a scheduled lane: it waits for that batch
+                    (run now, it would skip)
   Always lanes come first; a passed lane that a Rerun-Children lane reruns
   shows "rerun (swim N)"; "then, once swim N finish" starts the rest.
   The jobs form a tree: top-level lanes start at once, and each lane sits

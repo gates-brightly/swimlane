@@ -250,3 +250,29 @@ func TestStatementStartTime(t *testing.T) {
 		t.Error("moving the start time left the statement the same")
 	}
 }
+
+// An occurrence carries its recurring schedule's signed statement, which
+// vouches for it only while it is what the statement describes.
+func TestOccurrenceStatement(t *testing.T) {
+	st := "swim recurring v1\nid: r-x\nlane: 4 j sha man\napprove: F\ndaily: 06:00:00 UTC\nfirst: 2026-10-16\nuntil: 2026-11-14\n"
+	e := &Entry{ID: "q-1", From: "r-x", Occurrence: "2026-10-20", NotBefore: "2026-10-20T06:00:00Z", FromStatement: st,
+		Lanes: []Lane{{Lane: 4, Job: "j", SHA256: "sha", Manifest: "man"}}, Approve: []string{"F"}}
+	if e.Statement() != st {
+		t.Fatalf("a matching occurrence: %q", e.Statement())
+	}
+	for what, edit := range map[string]func(*Entry){
+		"start time":   func(e *Entry) { e.NotBefore = "2026-10-20T05:00:00Z" },
+		"day outside":  func(e *Entry) { e.Occurrence, e.NotBefore = "2026-12-01", "2026-12-01T06:00:00Z" },
+		"script":       func(e *Entry) { e.Lanes[0].SHA256 = "other" },
+		"another lane": func(e *Entry) { e.Lanes = append(e.Lanes, Lane{Lane: 5}) },
+		"approvals":    func(e *Entry) { e.Approve = []string{"F", "G"} },
+		"-y":           func(e *Entry) { e.ApproveAll = true },
+	} {
+		c := *e
+		c.Lanes = append([]Lane(nil), e.Lanes...)
+		edit(&c)
+		if c.Statement() == st {
+			t.Errorf("%s edited, the statement still vouches for it", what)
+		}
+	}
+}

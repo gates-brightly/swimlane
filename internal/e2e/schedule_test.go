@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/gates-brightly/swimlane/internal/chain"
 )
 
@@ -79,6 +81,22 @@ func TestScheduleHoldsDependents(t *testing.T) {
 	r.mustSwim("schedule", "1", "+3s")
 	r.mustSwim("queue", "add", "2")
 	contains(t, "list", r.mustSwim("schedule", "list"), "held", "until #1")
+	// swim plan: the scheduled lane, and the lane waiting for it.
+	contains(t, "plan", r.mustSwim("plan"), "[@]", "swim 1", "scheduled for ", "[=]", "held: swim 1's pending round has not passed: it is scheduled for")
+	var plan struct {
+		Lanes []struct {
+			Lane   int    `yaml:"lane"`
+			Action string `yaml:"action"`
+		} `yaml:"lanes"`
+	}
+	yaml.Unmarshal([]byte(r.mustSwim("plan", "--yaml")), &plan)
+	actions := map[int]string{}
+	for _, l := range plan.Lanes {
+		actions[l.Lane] = l.Action
+	}
+	if actions[1] != "scheduled" || actions[2] != "held" {
+		t.Errorf("plan --yaml actions: %v", actions)
+	}
 	if l := r.status().Get(2); l.HeldBy == "" {
 		t.Errorf("status lane 2 held_by: %q", l.HeldBy)
 	}
@@ -98,7 +116,7 @@ func TestScheduleHoldsDependents(t *testing.T) {
 	r.mustSwim("queue", "add", "2")
 	contains(t, "rm", r.mustSwim("schedule", "rm", "3"), "removed", "released #4")
 	r.swim("watch", "--once", "--interval", "200ms") // exits 1: the batch skipped its lane
-	if l := r.status().Get(2); l.State != "skipped" || !strings.Contains(l.Reason, "swim 1's pending round has not passed") {
+	if l := r.status().Get(2); l.State != "skipped" || !strings.Contains(l.Reason, "swim 1's scheduled batch q-") || !strings.Contains(l.Reason, "was removed") {
 		t.Errorf("released dependent: %s (%s)", l.State, l.Reason)
 	}
 }
@@ -233,5 +251,22 @@ func TestRecurringExpiry(t *testing.T) {
 	}
 	if out, code := r.swim("schedule", "1", "08:00", "--daily", "-y"); code == 0 {
 		t.Errorf("-y on a recurring schedule accepted:\n%s", out)
+	}
+}
+
+// A signed daily schedule's occurrences carry its signature: they run as
+// signed batches (standing approvals of whoever scheduled it apply), and
+// one edited off what was signed would be refused.
+func TestRecurringSigned(t *testing.T) {
+	r, _ := signedRepo(t)
+	stampLane(r, 1, "one", "")
+	r.mustSwim("schedule", "1", soon(3*time.Second), "--daily", "--tz", "UTC")
+	watchUntil(t, r, func() bool { return len(doneEntries(t, r)) == 1 })
+	e := doneEntries(t, r)[0]
+	if e.QueueSig == "" || e.FromStatement == "" || e.Result.Result != "passed" {
+		t.Errorf("occurrence: sig %v statement %v result %+v", e.QueueSig != "", e.FromStatement != "", e.Result)
+	}
+	if e.Statement() != e.FromStatement {
+		t.Error("the occurrence isn't what its schedule signed")
 	}
 }

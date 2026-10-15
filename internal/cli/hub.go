@@ -26,6 +26,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/hub"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
+	"github.com/gates-brightly/swimlane/internal/schedule"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -592,7 +593,15 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 			hl := hub.Lane{Lane: l.Lane, State: l.State, Round: l.Round, Job: l.Job, Run: l.Run, Step: l.CurrentStep, Reason: l.Reason,
 				Message: l.Message, Progress: l.Progress, MsgAt: l.MessageAt, Cells: cellsText(root, l),
 				Pass: l.Pass, Fail: l.Fail, Skip: l.Skip, Drift: l.Drift, Exit: l.ExitCode,
-				AutoApproved: l.AutoApproved, AutoVia: l.AutoVia, FlagApproved: l.FlagApproved, DryRun: l.DryRun}
+				AutoApproved: l.AutoApproved, AutoVia: l.AutoVia, FlagApproved: l.FlagApproved, DryRun: l.DryRun, HeldBy: l.HeldBy}
+			if l.ScheduledFor != "" {
+				at, _ := time.Parse(time.RFC3339, l.ScheduledFor)
+				hl.Scheduled = l.ScheduledFor
+				if e, err := queue.Find(root, l.Schedule); err == nil {
+					hl.Scheduled = scheduledAt(e)
+				}
+				hl.Scheduled += " · " + schedule.Until(at, time.Now())
+			}
 			if l.Round == "" {
 				hl.Round = l.Pending
 			}
@@ -613,8 +622,19 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 	}
 	if entries, err := queue.List(root, true); err == nil {
 		var done []hub.Batch
+		held := heldBy(root, cfg, entries)
 		for _, e := range entries {
 			b := hub.Batch{Seq: e.Seq, ID: e.ID, State: e.State, By: e.By, Note: e.Note, Lanes: []int{}}
+			if e.NotBefore != "" {
+				at, _ := time.Parse(time.RFC3339, e.NotBefore)
+				b.At = scheduledAt(e) + " · " + schedule.Until(at, time.Now())
+				if e.State == queue.Queued && !e.Due(time.Now()) {
+					b.State = "scheduled"
+				}
+			}
+			if h := held[e.ID]; h != nil {
+				b.State, b.HeldBy = "held", fmt.Sprintf("#%d", h.Seq)
+			}
 			for _, l := range e.Lanes {
 				b.Lanes = append(b.Lanes, l.Lane)
 			}
@@ -631,6 +651,16 @@ func hubSnapshot(root string, cfg *config.Config, name, activity string, every t
 			done = done[len(done)-5:]
 		}
 		s.Queue = append(done, s.Queue...)
+		// Recurring schedules: their templates, never claimed themselves.
+		rs, _ := loadRecurring(root)
+		for _, r := range rs {
+			b := hub.Batch{ID: r.ID, State: "daily", By: r.By, Note: r.Note, Lanes: r.laneNums(),
+				Daily: fmt.Sprintf("daily at %s, until %s", r.at(time.Now()), r.Until)}
+			if r.Paused != "" {
+				b.State, b.Daily = "paused", b.Daily+"; paused: "+r.Paused
+			}
+			s.Queue = append(s.Queue, b)
+		}
 	}
 	s.Events = tailLines(history.Path(root), 15)
 	s.Sanitize()

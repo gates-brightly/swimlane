@@ -98,6 +98,11 @@ type Lane struct {
 	AutoVia      string   `json:"auto_via,omitempty"`
 	FlagApproved []string `json:"flag_approved,omitempty"`
 	DryRun       []string `json:"dry_run,omitempty"` // guards its round ran as dry runs
+	// Scheduled is when a scheduled batch (swim schedule) runs the lane,
+	// "13:30:00(CDT) 18:30:00(UTC) · in 2h10m"; HeldBy the scheduled batch
+	// its own batch waits for.
+	Scheduled string `json:"scheduled,omitempty"`
+	HeldBy    string `json:"held_by,omitempty"`
 	// A headless worker's idle lane holding a pending round: the script's
 	// hash and its manifest's, which a run command from the hub pins.
 	Script   string `json:"script_sha256,omitempty"`
@@ -113,6 +118,12 @@ type Batch struct {
 	Note   string `json:"note,omitempty"`
 	Lanes  []int  `json:"lanes"`
 	Result string `json:"result,omitempty"`
+	// At is a scheduled batch's start ("13:30:00(CDT) 18:30:00(UTC) · in
+	// 2h10m"), Daily a recurring schedule's template ("daily at ...");
+	// HeldBy the scheduled batch it waits for (#3).
+	At     string `json:"at,omitempty"`
+	Daily  string `json:"daily,omitempty"`
+	HeldBy string `json:"held_by,omitempty"`
 }
 
 // Snapshot is a worker's report.
@@ -171,7 +182,7 @@ func (s *Snapshot) Sanitize() {
 	for i := range s.Lanes {
 		l := &s.Lanes[i]
 		for _, f := range []*string{&l.State, &l.Round, &l.Job, &l.Run, &l.Step, &l.Reason, &l.Started, &l.Finished,
-			&l.Message, &l.Progress, &l.MsgAt, &l.Cells, &l.Script, &l.Manifest, &l.AutoVia} {
+			&l.Message, &l.Progress, &l.MsgAt, &l.Cells, &l.Script, &l.Manifest, &l.AutoVia, &l.Scheduled, &l.HeldBy} {
 			*f = ui.Safe(*f)
 		}
 		l.Tail = safeAll(l.Tail)
@@ -179,7 +190,7 @@ func (s *Snapshot) Sanitize() {
 	}
 	for i := range s.Queue {
 		b := &s.Queue[i]
-		for _, f := range []*string{&b.ID, &b.State, &b.By, &b.Note, &b.Result} {
+		for _, f := range []*string{&b.ID, &b.State, &b.By, &b.Note, &b.Result, &b.At, &b.Daily, &b.HeldBy} {
 			*f = ui.Safe(*f)
 		}
 	}

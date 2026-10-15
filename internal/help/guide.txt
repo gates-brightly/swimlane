@@ -904,6 +904,7 @@ READING RESULTS
           scheduled_for: <UTC>           # a scheduled batch (swim schedule) will run it
           schedule: <q-... the batch>
           held_by: <q-...>               # its batch waits for that scheduled one
+          schedule_removed: <q-...>      # its scheduled batch was removed before it ran
           last_archive: <last archived log name>
   `swim status` shows "running?" when a lane's pid is gone (killed terminal);
   treat that lane's round as interrupted. The next swim run, swim all or
@@ -945,7 +946,7 @@ READING RESULTS
                               step, exit, duration_s, clock, command, output:
                               [lines], saved}], failed_steps
     swim plan --yaml          swim.plan/v1: command, lanes: [{lane, job, round,
-                              action (run|retry|rerun|skip), waits_on, reason,
+                              action (run|retry|rerun|skip|always|scheduled|held), waits_on, reason,
                               running_pid, guards: [{flag, set, description}],
                               timeout, locks}], idle: [{lane, why}],
                               counts {run, retry, rerun, skip}
