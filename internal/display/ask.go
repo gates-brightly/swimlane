@@ -70,14 +70,22 @@ func (d *Display) askTUI(n int, question []string, cancel <-chan struct{}) bool 
 
 func (d *Display) askLine(question []string, cancel <-chan struct{}) bool {
 	p := ui.Painter{On: d.color}
+	// Raw mode first, then the question: a key typed the moment the
+	// question shows is read as the answer, not echoed by the terminal (an
+	// Enter would print a newline before the answer).
+	fd := int(d.in.Fd())
+	st, rawErr := term.MakeRaw(fd)
+	text := "\n" + p.Paint(ui.Yellow+ui.Bold, strings.Join(question, "\n")) + " "
+	if rawErr == nil {
+		text = strings.ReplaceAll(text, "\n", "\r\n") // raw output doesn't return the carriage
+	}
 	d.mu.Lock()
 	d.asking = true
-	fmt.Fprint(d.out, "\n"+p.Paint(ui.Yellow+ui.Bold, strings.Join(question, "\n"))+" ")
+	fmt.Fprint(d.out, text)
 	d.mu.Unlock()
 
 	answer, interrupted := false, false
-	fd := int(d.in.Fd())
-	if st, err := term.MakeRaw(fd); err == nil {
+	if rawErr == nil {
 		stop := make(chan struct{})
 		done := make(chan struct{})
 		go func() {
