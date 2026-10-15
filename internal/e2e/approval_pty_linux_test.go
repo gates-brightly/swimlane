@@ -61,7 +61,12 @@ func TestPromptLineDeclines(t *testing.T) {
 		t.Error("declined step ran")
 	}
 	// Lane 2's output, held while the question was up, still arrives.
-	plain := regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]|\x1b[78]`).ReplaceAllString(out, "")
+	// The panel redraws between a save and a restore of the cursor (ESC 7 ...
+	// ESC 8), at the top of the screen: drop those, as the screen does, so
+	// one landing while the question is up doesn't come between it and its
+	// answer here.
+	plain := regexp.MustCompile(`(?s)\x1b7.*?\x1b8`).ReplaceAllString(out, "")
+	plain = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`).ReplaceAllString(plain, "")
 	contains(t, "output", plain, "Y/N [N] no", "[2] busy-8")
 }
 
