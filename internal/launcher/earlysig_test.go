@@ -1,0 +1,37 @@
+package launcher
+
+import (
+	"io"
+	"os"
+	"syscall"
+	"testing"
+	"time"
+)
+
+// A signal during swim run's setup stops the run before any lane starts;
+// one after the hand-over goes to the interrupter.
+func TestEarlySignals(t *testing.T) {
+	e := catchSignals(true, io.Discard)
+	syscall.Kill(os.Getpid(), syscall.SIGINT)
+	time.Sleep(100 * time.Millisecond)
+	if !e.handOver(func(os.Signal) { t.Error("a setup signal reached the interrupter") }) {
+		t.Fatal("a Ctrl-C during setup didn't stop the run")
+	}
+	e.stop()
+
+	e = catchSignals(true, io.Discard)
+	defer e.stop()
+	got := make(chan os.Signal, 1)
+	if e.handOver(func(s os.Signal) { got <- s }) {
+		t.Fatal("no signal, but the run stopped")
+	}
+	syscall.Kill(os.Getpid(), syscall.SIGINT)
+	select {
+	case s := <-got:
+		if s != syscall.SIGINT {
+			t.Errorf("interrupter got %v", s)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a Ctrl-C after the hand-over didn't reach the interrupter")
+	}
+}

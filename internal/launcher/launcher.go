@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -278,6 +277,10 @@ func Run(o Options) (int, error) {
 		}
 		return 0, nil
 	}
+	// Signals are caught from here (earlysig.go): one during setup stops
+	// the run before any lane starts, and the interrupter gets the rest.
+	sigs := catchSignals(o.NoHangup, os.Stderr)
+	defer sigs.stop()
 	isDone := map[int]bool{}
 	for _, n := range passed {
 		isDone[n] = true
@@ -490,18 +493,10 @@ func Run(o Options) (int, error) {
 	// them at the next step boundary, the second interrupts and then kills
 	// them, the third kills them at once. Lanes not yet started are skipped,
 	// and the summary still prints.
-	sigs := make(chan os.Signal, 4)
-	if o.NoHangup {
-		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	} else {
-		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	if sigs.handOver(ir.handle) {
+		fmt.Fprintln(o.Out, "swim: interrupted before any lane started; nothing ran")
+		return 130, nil
 	}
-	defer signal.Stop(sigs)
-	go func() {
-		for s := range sigs {
-			ir.handle(s)
-		}
-	}()
 
 	status.UpdateFile(o.Root, o.Cfg.Lanes, func(f *status.File) error { f.LastRun = o.RunID; return nil })
 	runDetail := "swim " + joinInts(sel)
