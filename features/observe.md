@@ -160,14 +160,14 @@ an artifact:
 ```bash
 # Round: write up run observations
 # Finally: 1 2 3
+# Modules: writeup
 # Guards: OBSERVE_ALLOW_WRITEUP
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 9
 
 stage verify
 if guard OBSERVE_ALLOW_WRITEUP "send run r-$SWIM_RUN observations and masked log excerpts to the Claude API"; then
-  run "write up observations" ./scripts/writeup.sh "$SWIM_OBSERVATIONS" .swim/out/writeup.md
-  output writeup .swim/out/writeup.md
+  mod writeup --out "$SWIM_OUT/writeup.md"   # reads $SWIM_OBSERVATIONS; the file is a lane output
 fi
 summary
 ```
@@ -197,9 +197,9 @@ summary
   artifact itself, during planner-workflow step 6, with no egress from the
   executor at all. The finally lane is for unattended runs: queued,
   scheduled, recurring, headless.
-- **How it calls Claude is the script's business** for now: the API with
-  no tools, or the CLI with tools turned off. A built-in Go module
-  (modules, not yet specced) is the natural later home, so repos don't each
+- **It calls Claude through the built-in `writeup` module**
+  ([modules.md](modules.md)): the Messages API with no tools, a pinned model,
+  masked excerpts in and one Markdown artifact out, so repos don't each
   write `writeup.sh`.
 
 ## Design
