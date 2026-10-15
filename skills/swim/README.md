@@ -11,6 +11,17 @@ and read the results back. It never runs or approves anything itself.
   (it passes `swim lint`) and patterns.
 - [`reference/handoff.md`](reference/handoff.md): how to hand a round to the
   operator: run now, queue, signed approvals.
+- [`reference/workers.md`](reference/workers.md): a planner and its workers,
+  or two sessions, in one repo without collisions.
+- [`reference/triage.md`](reference/triage.md): first-line commands when
+  something looks wrong, and what to do after a round fails partway through
+  a change.
+
+**Version:** written for swim 0.20261015.2 or newer. The skill checks
+`swim --version` and tells the user when the binary is older, or when a
+command it names is unknown. To update, run `swim skill`: it points at the
+copy that matches the installed swim (its release tag). `swim version`
+says whether a newer swim is out.
 
 The skill defers to `swim --help` from the installed binary for detail, so
 it stays correct as swim changes. Keep it to what the guide doesn't say:
@@ -45,6 +56,8 @@ swim lanes?" to check that it loads: Claude should start with
 
 - A rule that holds for every agent belongs in `internal/help/guide.txt`
   (`swim --help`), not here.
+- Raise the version in SKILL.md section 0 when the skill starts relying on
+  a newer command or behaviour.
 - Check every command and header the skill names against the binary. Lint
   the recipe's lane in a scratch repo after editing it:
 
