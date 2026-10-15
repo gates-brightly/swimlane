@@ -9,10 +9,17 @@ import (
 )
 
 // cacheRepo is a repo whose caches live in a temp directory, never the
-// developer's own.
+// developer's own. It's under /tmp on every OS (macOS's TMPDIR is per user,
+// not shared), so swim gives it the user's id as a suffix everywhere.
 func cacheRepo(t *testing.T) (*repo, string) {
 	r := newRepo(t, "")
-	dir := filepath.Join(t.TempDir(), "cache")
+	tmp, err := os.MkdirTemp("/tmp", "swim-cache-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(tmp) })
+	tmp, _ = filepath.EvalSymlinks(tmp) // macOS: /tmp is /private/tmp
+	dir := filepath.Join(tmp, "cache")
 	r.mustSwim("config", "cache_dir", dir)
 	return r, dir
 }
