@@ -77,6 +77,7 @@ func cmdDoctor(args []string) error {
 		Scheduled:    scheduledSummary(root),
 		WorkerUp:     func() bool { return workerRunning(root) },
 		Recurring:    recurringWarnings(root),
+		Reclaim:      func() (int, int64) { return pruneReclaim(root, cfg) },
 	}
 	fs := doctor.Run(o)
 	if fix {

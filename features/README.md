@@ -7,7 +7,6 @@ where it would land in the code, open questions, and how to test it.
 | feature | file | status |
 |---|---|---|
 | Lane claims: a lease on a lane while a session writes it | [lane-claims.md](lane-claims.md) | proposed |
-| swim clean / swim prune: a recoverable clean slate, and a deliberate purge | [clean.md](clean.md) | proposed |
 | swim observe: computed observations and knowledge from runs; optional Claude write-up | [observe.md](observe.md) | proposed |
 
 ## Staging a feature

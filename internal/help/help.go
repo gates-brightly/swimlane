@@ -57,6 +57,13 @@ var Commands = map[string]string{
                  in (default: this machine's), e.g. America/Chicago.
     finally_timeout  duration             once a run is stopped, how long its
                  finally lanes (# Finally:) still get, in all (default 10m).
+    cache_dir    an absolute path         where tool caches live (# Cache:;
+                 default ~/.cache/swim, macOS ~/Library/Caches/swim; under
+                 /tmp it gets your user id). Not in a repo's swim.yml.
+    cache_max    a size (10GB, 500MB, 0)  a run trims the repo's caches to
+                 this, least recently used first (default 10GB; 0: no cap).
+    cache_slug   a name                   the repo's cache directory (default
+                 its name and a hash of its origin remote). Not in swim.yml.
     runners.EXT  a command                the runner for lane.N.EXT scripts with
                  no #! line, e.g. swim config runners.ts tsx. Always written
                  to the repo's section; swim.yml's runners: is the default.
@@ -428,6 +435,51 @@ swim report --earmarks | --earmark --reset [--name NAME]
     _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
   (eval, not "source <(...)": process-substitution source is broken in
   macOS bash 3.2). See "WRITING A LANE SCRIPT" in swim --help for the functions.
+`,
+	"clean": `swim clean [--queue|--no-queue] [--scripts|--no-scripts] [--all] [--include-always] [--no-input] [-n] [-o yaml]
+swim clean --restore STAMP
+
+  A clean slate, recoverable: nothing is deleted. It archives every lane's
+  finished rounds (passed, failed, interrupted, stale) under one name,
+  clean-YYYYMMDD-HHMM, as swim archive does (their logs become
+  agentN.prev-clean-....log; status shows them idle), all or nothing. It
+  leaves running and waiting lanes, and Always lanes (--include-always
+  cleans them too). Then it asks two questions, each defaulting to no:
+    remove the waiting queue batches?   (a batch someone else queued and
+        signed is asked about separately; orphans are only listed)
+    move the lane scripts aside?        (lane.N.*, group files, lane.N.yml,
+        to .swim/cleaned/<stamp>/ with their SHA-256s; never files they
+        include, swim.yml, lookup.yml or approvals/)
+  Without a terminal (CI, an agent, --no-input) it archives and answers no
+  to both. Answer up front with --queue/--no-queue and --scripts/
+  --no-scripts; --all is both. Not -y: that approves guards.
+  -n, --dry-run   print the plan; change nothing
+  -o yaml         the plan, or what it did, as swim.clean/v1
+  --restore STAMP put a clean's scripts back (refused if a path was reused)
+  Refused while swim is busy (a run or worker holds lanes). Recorded in
+  .swim.log (clean, and archive/queue-rm per item) and the chain (a clean
+  entry: the moved scripts' SHA-256s, the removed batches); swim verify
+  still finds the archived logs. swim prune deletes what clean set aside.
+`,
+	"prune": `swim prune --older D [--logs] [--confirm] [-n]
+swim prune --stamp STAMP [--confirm]
+swim prune
+
+  Delete leftovers for good, older than a cutoff you give: scripts swim
+  clean moved aside (.swim/cleaned/), consumed queue entries
+  (.swim/queue/done/), run stages (.swim/runs/<run>/, never the stage of a
+  lane's latest round, which swim verify checks; run records stay) and,
+  with --logs, archived logs (agentN.prev-*.log). Never the chain,
+  .swim.log, approvals/, lookup.yml or kept script copies (.swim/scripts/).
+  A bare swim prune only says what each category holds. --older D is a
+  duration (30d, 12h); --stamp prunes one clean's moved scripts.
+  At a terminal you type "prune" to confirm; without one, --confirm. -n
+  prints the plan and deletes nothing. Refused while swim is busy.
+  Before deleting an archived log it writes a prune entry in the chain
+  with each of its rounds' hashes: swim verify then reports those rounds
+  as pruned (when, by swim prune), not missing, and says it can't recheck
+  them. swim doctor says when swim prune --older 30d would free over
+  100 MB.
 `,
 	"archive": `swim archive N|JOB ... [--as NAME] [--force]
 
@@ -811,6 +863,37 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   unreachable, or the worker stopping all decline: the guard is a dry
   run. Without lookup.yml nobody can answer. A worker that doesn't allow
   answer never asks: its guards dry-run as in any batch.
+`,
+	"cache": `swim cache [ls] [--yaml]
+swim cache rm PRESET ... | --all [--yes]
+swim cache prune [--older D] [--max SIZE]
+swim cache path [PRESET] [--ci]
+
+  The tool caches this repo's lanes keep between rounds. A lane declares
+  one in its header, with the lockfile the tool checks the cache against:
+      # Cache: terraform @infra/orders/.terraform.lock.hcl
+  and swim points the tool's own download cache (TF_PLUGIN_CACHE_DIR,
+  npm_config_cache, PIP_CACHE_DIR, GOMODCACHE) at the repo's directory for
+  that preset. See CACHE in swim --help.
+  ls       each preset's cache: size, when it was last used and by which
+           lanes, whether a running lane holds it. --yaml: swim.cache/v1
+  rm       delete a preset's cache (asks at a terminal; --yes doesn't). A
+           cache a running lane holds isn't removed. The tools download again
+           what they need
+  prune    delete the caches last used more than D ago (--older 30d), then
+           trim to --max SIZE (default cache_max, 10GB), least recently used
+           first; never one a running lane holds
+  path     the repo's cache directory, or a preset's. --ci prints dir= and a
+           <preset>_key= line per preset the lanes use (from their lockfiles),
+           for a CI cache step around swim ci:
+               - run: swim cache path --ci >> "$GITHUB_OUTPUT"
+                 id: swimcache
+               - uses: actions/cache@v4
+                 with: {path: "${{ steps.swimcache.outputs.dir }}",
+                        key: "${{ steps.swimcache.outputs.terraform_key }}"}
+  Settings (config.yml): cache_dir (default ~/.cache/swim; under /tmp it
+  gets your user id), cache_max, cache_slug (the repo's directory name).
+  cache_dir and cache_slug aren't allowed in a repo's swim.yml.
 `,
 	"secret": `swim secret set NAME [--all|--repo]
 swim secret get NAME
@@ -1289,6 +1372,12 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                            file (lanes.<name>.sh) for a lane another file has
     outputs (warn)         an output whose name suggests secrets (output files
                            aren't masked)
+    cache (error)          a # Cache: with an unknown preset or no lockfile, a
+                           lockfile that isn't there, or pip requirements
+                           without --hash entries (swim run refuses the lane)
+    cache-bypass (warn)    npm install, pip install without --require-hashes or
+                           TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE in a
+                           lane that caches them: the cache isn't checked
     includes (warn)        a Python/TypeScript lane imports a local module its
                            # Includes: doesn't list (it's pinned anyway)
     source (error)         a bash lane sources a local file its # Includes:
@@ -1368,6 +1457,12 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                               user's click approves guards no require:
                               rule names
     headless-yes (warn)       an installed headless service runs with -y
+    prune-reclaim (info)      swim prune --older 30d would free over 100 MB
+    cache-dir (error)         the cache directory is a link, isn't yours, or
+                              others can write it: lanes with # Cache: won't
+                              start
+    cache-unused (info)       tool caches unused for 30 days, or the repo's
+                              caches over cache_max
     schedule-no-worker (warn) batches are scheduled, but no swim watch runs
                               here to start them
     guarded-secrets (info/warn) lists swim.yml's guarded secrets (info);
@@ -1491,9 +1586,9 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "secret", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "secret", "cache", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
+	"archive", "clean", "prune", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
 func Full() string {

@@ -869,6 +869,15 @@ func (v *verifier) checkEntries(links []chain.Link) {
 	// Runs swim run started (their rounds ran staged copies), and those
 	// that were cut short (a launcher killed before it could attest).
 	launchedRun, cutShort := map[string]bool{}, map[string]bool{}
+	// Round log sections swim prune deleted (their archived logs), and when.
+	prunedAt := map[string]string{}
+	for _, l := range links {
+		if l.Type == "prune" {
+			for _, h := range l.Pruned {
+				prunedAt[h] = l.At
+			}
+		}
+	}
 	for _, l := range links {
 		if l.Type == "round" && l.Run != "" {
 			launchedRun[l.Run] = launchedRun[l.Run] || l.Manifest != ""
@@ -955,6 +964,8 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				// A lane run twice under one run id (--run-id) has a section
 				// for each round: this one's must be among them.
 				switch sums := roundLogHashes(root, l.Lane, l.Run); {
+				case !sums[l.Log] && prunedAt[l.Log] != "":
+					v.notes = append(v.notes, fmt.Sprintf("entry #%d: swim %d's log for run %s was pruned on %s (swim prune): its contents can't be rechecked", l.Seq, l.Lane, l.Run, prunedAt[l.Log]))
 				case len(sums) == 0:
 					v.warn = append(v.warn, fmt.Sprintf("entry #%d: swim %d's log for run %s is gone (deleted, not archived)", l.Seq, l.Lane, l.Run))
 				case !sums[l.Log]:

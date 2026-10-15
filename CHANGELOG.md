@@ -387,6 +387,43 @@ To cut a release:
 
 ### Added
 
+- **Tool caches between rounds, `# Cache:`.** A lane that declares
+  `# Cache: terraform @infra/.terraform.lock.hcl` (or `npm`, `pip`, `go`)
+  gets the tool's own download cache (`TF_PLUGIN_CACHE_DIR`,
+  `npm_config_cache`, `PIP_CACHE_DIR`, `GOMODCACHE`) pointed at a per-repo
+  directory under `~/.cache/swim`, so `terraform init`, `npm ci` and
+  `pip install` skip what they already have.
+  - **The tool still checks the cache against the lockfile**, which is
+    required and pinned in the execution manifest: changing it stales
+    approvals, and a lane whose lockfile is missing doesn't start. Installed
+    trees and build caches (`node_modules`, `GOCACHE`) aren't cached.
+  - **Directories are yours, mode 0700:** a cache another user can write,
+    or a symlink, is refused; `cache_dir` under `/tmp` gets your user id.
+    Clones and worktrees of one repo share its cache. `cache_dir` and
+    `cache_slug` go in `config.yml` only.
+  - **Two lanes' `terraform init` take turns** on the plugin cache, which
+    isn't safe for concurrent inits; other steps and presets share.
+  - **`swim cache ls|rm|prune|path`**: sizes, last use and lanes
+    (`swim.cache/v1`); runs trim the repo to `cache_max` (10GB), least
+    recently used first, never a cache a running lane holds. `swim cache
+    path --ci` gives a CI cache step its directory and keys. `swim plan`
+    shows each lane's caches; `swim lint` (`cache`, `cache-bypass`) and
+    `swim doctor` (`cache-dir`, `cache-unused`) check them.
+- **`swim clean` and `swim prune`: a recoverable clean slate, and a
+  deliberate purge.**
+  - `swim clean` archives every lane's finished rounds under one name
+    (`clean-YYYYMMDD-HHMM`), leaving running and Always lanes, then asks,
+    each defaulting to no, whether to remove the waiting queue batches and
+    whether to move the lane scripts aside to `.swim/cleaned/<stamp>/`
+    (`swim clean --restore STAMP` puts them back). It never deletes; without
+    a terminal it archives and answers no. `-n`, `-o yaml`
+    (`swim.clean/v1`), `--all`, `--include-always`.
+  - `swim prune --older D` deletes leftovers past the cutoff for good:
+    moved-aside scripts, consumed queue entries, old run stages, and with
+    `--logs` archived logs. It needs `prune` typed (or `--confirm`), never
+    touches the record, and logs it in the chain first, so `swim verify`
+    reports pruned rounds as pruned, not missing.
+  - `swim doctor` says when `swim prune --older 30d` would free over 100 MB.
 - **Finally lanes and jobs: run once others end, however they ended.**
   `# Finally: 1 2 3` starts a lane once those lanes have passed, failed,
   been skipped or interrupted (where `After:` needs them to pass): cleanup

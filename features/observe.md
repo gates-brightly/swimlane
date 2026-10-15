@@ -111,7 +111,7 @@ A baseline is only as good as its matching across rounds.
 | Path | What |
 |---|---|
 | `.swim/observations/<run>.yml` | `swim.observations/v1`: every observation of that run, with citations |
-| `.swim/observations/index/` | rolling statistics per step key and target (last `window` durations, outcomes, retries), updated at run end, so a run doesn't re-parse old logs. It survives `swim archive`, `swim clean`, and `swim prune` of old run stages ([clean.md](clean.md)). |
+| `.swim/observations/index/` | rolling statistics per step key and target (last `window` durations, outcomes, retries), updated at run end, so a run doesn't re-parse old logs. It survives `swim archive`, `swim clean`, and `swim prune` of old run stages (`swim prune --help`). |
 | `.swim/knowledge/` | accumulated, unreviewed knowledge (below) |
 | `knowledge/` (repo, committed) | knowledge someone accepted |
 

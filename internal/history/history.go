@@ -41,6 +41,9 @@ const (
 	QueueAdd      = "queue"          // swim queue add: a batch was queued (detail: id, lanes, approvals)
 	QueueRun      = "queue-run"      // swim watch started a queued batch
 	QueueDone     = "queue-done"     // ... and consumed it (detail: id, result)
+	QueueRm       = "queue-rm"       // a waiting batch removed (swim clean)
+	Clean         = "clean"          // swim clean: lanes archived, queue and scripts cleared (detail: name, counts)
+	Prune         = "prune"          // swim prune: leftovers deleted (detail: name, counts, bytes)
 	Schedule      = "schedule"       // swim schedule: a batch to start no earlier than a time (detail: id, lanes, not_before, zone, approvals)
 	ScheduleStart = "schedule-start" // a worker claimed a scheduled batch (detail: how late)
 	ScheduleRm    = "schedule-rm"    // swim schedule rm: a scheduled batch removed before it ran

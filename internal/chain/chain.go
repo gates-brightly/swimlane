@@ -109,6 +109,11 @@ type Entry struct {
 	// AuthorityUnavailable says why swim run couldn't start its approvals
 	// (the broker): every guard of the run was a dry run.
 	AuthorityUnavailable string `json:"authority_unavailable,omitempty"`
+	// clean, prune: the queue entries removed, and the round log sections
+	// (their hashes) in the archived logs swim prune deleted, which swim
+	// verify then reports as pruned, not missing.
+	Removed []string `json:"removed,omitempty"`
+	Pruned  []string `json:"pruned,omitempty"`
 
 	// secret-released, secret-refused: a guarded secret the run's broker
 	// handed a lane, or refused it. Secret is its name (never its value),

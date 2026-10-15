@@ -69,6 +69,8 @@ type Options struct {
 	// Recurring are recurring schedules that need a look: paused, or
 	// expiring within three days.
 	Recurring []string
+	// Reclaim is what swim prune --older 30d would free (nil: not known).
+	Reclaim func() (items int, bytes int64)
 }
 
 // Headless is a repo's headless worker as the CLI finds it.
@@ -142,6 +144,9 @@ var Checks = []Check{
 	{"headless-yes", false, "a headless service runs with -y: it approves every guard in every batch", checkHeadlessYes},
 	{"schedule-no-worker", false, "batches are scheduled, but no swim watch runs to start them", checkScheduleNoWorker},
 	{"schedule-recurring", false, "a recurring schedule is paused, or expires within three days", checkScheduleRecurring},
+	{"prune-reclaim", false, "swim prune --older 30d would free over 100 MB", checkPruneReclaim},
+	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
+	{"cache-unused", false, "tool caches unused for 30 days, or the repo's caches over cache_max", checkCacheUnused},
 }
 
 // Run runs every check.
@@ -1019,4 +1024,21 @@ func checkScheduleRecurring(o *Options) []finding.Finding {
 		out = append(out, fd(finding.Warn, "schedule-recurring", ".swim/queue/recurring/", "swim schedule list; swim schedule resume ID, or schedule it again", "%s", w))
 	}
 	return out
+}
+
+// reclaimThreshold is when checkPruneReclaim speaks up.
+const reclaimThreshold = 100 << 20
+
+// checkPruneReclaim: leftovers past 30 days (moved-aside scripts, consumed
+// queue entries, old run stages) take room. swim doctor never prunes.
+func checkPruneReclaim(o *Options) []finding.Finding {
+	if o.Reclaim == nil {
+		return nil
+	}
+	n, b := o.Reclaim()
+	if b < reclaimThreshold {
+		return nil
+	}
+	return []finding.Finding{fd(finding.Info, "prune-reclaim", ".swim/", "swim prune --older 30d (it asks; nothing goes without it)",
+		"%d leftovers older than 30 days take %d MB: scripts swim clean moved aside, consumed queue entries, old run stages", n, b>>20)}
 }

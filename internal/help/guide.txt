@@ -23,6 +23,7 @@ COMMANDS
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
   secret set|get|ls|rm NAME   secrets encrypted to your SSH key, for --all repos or this --repo
   secret grant WORKER NAME    give a hub worker a secret, encrypted to its own key (revoke, grants)
+  cache [ls|rm|prune|path]    the tool caches lanes keep between rounds (# Cache:; see CACHE)
   new N "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
                            template, with a new job id
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
@@ -51,6 +52,9 @@ COMMANDS
   input N|JOB NAME         print the path (or value) of a dependency's output (Outputs:)
   output KEY VALUE         record a small value among the round's outputs
   archive N|JOB ... [--as NAME]   archive lanes' logs as .swim/logs/agentN.prev-<NAME or job id>.log
+  clean [--all] [-n]       archive every finished lane at once (nothing deleted); asks about
+                           the queue and the lane scripts (moved aside: --restore)
+  prune --older D          delete leftovers past D for good (moved-aside scripts, old stages)
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
   lock [--upgrade]         show swim's version and the repo's .swim.lock; move it up
@@ -454,6 +458,10 @@ WRITING A LANE SCRIPT
                                       sourced files): pinned and staged with the script.
                                       Files it sources or imports by a literal path are
                                       pinned anyway; lint wants them listed. Default: none
+      # Cache: <preset> @<lockfile> [...]   keep a tool's download cache between rounds:
+                                      terraform, npm, pip or go, each with the lockfile the
+                                      tool checks the cache against (pinned like Includes:).
+                                      See CACHE. Default: none
       # Observe: NAME = <command>     a fact swim can't pin (the cloud account, ...): read
       # Observe: path CMD [CMD ...]   when a guard is approved and again just before it
                                       returns; a difference ends the round as drift. A path
@@ -723,6 +731,40 @@ ENV FILES
   - .lane.N.rc is deprecated: lane_init still sources it, with a WARN, but a
     guard flag it sets no longer approves (guard asks as if it were unset).
     `swim doctor --fix` moves a plain one into .env.swim.
+
+CACHE
+  A lane that declares a cache gets the tool's own download cache pointed at
+  a directory that outlives the round, so terraform init, npm ci, pip install
+  and go mod download skip what they already have:
+      # Cache: terraform @infra/orders/.terraform.lock.hcl
+      # Cache: npm @web/package-lock.json pip @requirements.txt
+  - Presets, and what the tool checks the cache against:
+      terraform  TF_PLUGIN_CACHE_DIR   provider checksums in .terraform.lock.hcl
+      npm        npm_config_cache      integrity hashes in package-lock.json
+      pip        PIP_CACHE_DIR         --hash entries (a requirements file with hashes)
+      go         GOMODCACHE            go.sum (swim adds GOFLAGS=-mod=readonly)
+    SWIM_CACHE_<PRESET> holds the same path. Only download caches a tool
+    checks are presets: installed trees (node_modules, .terraform/) and build
+    caches (GOCACHE) aren't cached, because nothing checks them on use.
+  - The lockfile is required, and pinned in the execution manifest: changing
+    it stales approvals, so an approval covers exactly what the tool may take
+    from the cache. A lane whose lockfile is missing doesn't start. Use npm ci
+    (not npm install) and pip install --require-hashes; lint warns otherwise.
+  - Where: ~/.cache/swim (macOS ~/Library/Caches/swim), or cache_dir in
+    config.yml, then <repo name>-<hash of its origin remote>/<preset>: clones
+    and worktrees of one repo share a cache, other repos don't. A cache_dir
+    under /tmp gets your user id appended. Every directory must be yours and
+    mode 0700: swim refuses one others can write, or a symlink. cache_dir and
+    cache_slug go in config.yml only, never a repo's swim.yml.
+  - Terraform's plugin cache isn't safe for two inits at once: a step that
+    runs terraform init (or get) in a lane with the cache waits for another
+    lane's init to finish. Other steps, and the other presets, share freely.
+  - Size: a run trims the repo's caches to cache_max (default 10GB), least
+    recently used preset first; a cache a running lane holds is never
+    removed. swim cache ls shows them, swim cache rm PRESET and swim cache
+    prune --older 30d remove them (the tools download again what they need).
+  - CI: swim cache path --ci prints the directory and a key per preset (from
+    its lockfiles) for a CI cache step (actions/cache) around swim ci.
 
 SYNTAX
   Lane scripts and lane logs say which syntax they use ("# swim: syntax 2" near
@@ -997,6 +1039,9 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         watch_batches: 4                 # queued batches one swim watch runs at once
         schedule_tz: America/Chicago     # the zone swim schedule reads times in (default: the machine's)
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
+        cache_dir: ~/.cache/swim         # where tool caches live (CACHE); config.yml only
+        cache_max: 10GB                  # a run trims the repo's caches to this (0: no cap)
+        cache_slug: orders               # the repo's cache directory name (default: name-<remote hash>)
         chain_anchors: ["file:/mnt/audit/orders", hub]   # where chain checkpoints go (CHAIN OF CUSTODY)
         # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)
         runners:                         # how lane.N.<ext> runs without a #! line (OTHER LANGUAGES)
@@ -1081,8 +1126,9 @@ EXECUTION MANIFEST
   the run, even mid-round. $SWIM_STAGE and $SWIM_MANIFEST name the stage.
   Pinned, in manifest_sha256 (what approvals sign):
     script     the lane's file (a group file for a lane of jobs)
-    includes   # Includes: matches, Matrix: @files, and every local file the
-               script (or a file it pins) sources or imports by a literal path
+    includes   # Includes: matches, Matrix: @files, # Cache: lockfiles, and
+               every local file the script (or a file it pins) sources or
+               imports by a literal path
     sidecar    lane.N.yml
     runner     how it runs as the repo says: bash, its #! line, a swim.yml
                runner ("local .ts" for a runner from your own config)

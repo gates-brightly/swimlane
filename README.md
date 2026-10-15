@@ -721,6 +721,36 @@ TABLE=orders-v2
 - **`.lane.N.rc` is deprecated.** A guard flag it sets no longer approves,
   and `swim doctor --fix` moves a plain one into `.env.swim`.
 
+### Caches
+
+A lane can keep a tool's download cache between rounds. It names the
+preset and the lockfile the tool checks the cache against:
+
+```bash
+# Cache: terraform @infra/orders/.terraform.lock.hcl
+# Cache: npm @web/package-lock.json
+```
+
+swim points the tool's own cache (`TF_PLUGIN_CACHE_DIR`, `npm_config_cache`,
+`PIP_CACHE_DIR`, `GOMODCACHE`) at a per-repo directory under
+`~/.cache/swim`, so `terraform init`, `npm ci`, `pip install` and `go mod
+download` skip what they already have.
+
+- **The cache never decides what runs.** Only download caches a tool checks
+  are presets: Terraform against provider checksums, npm against integrity
+  hashes, pip against `--hash` entries, Go against `go.sum`. The lockfile is
+  required and pinned in the execution manifest, so changing it stales
+  approvals. Installed trees (`node_modules`, `.terraform/`) aren't cached.
+- **Yours alone:** every cache directory must be yours and mode `0700`; a
+  `cache_dir` under `/tmp` gets your user id appended. Clones and worktrees
+  of one repo share its cache, and other repos don't.
+- **Safe in parallel:** two lanes' `terraform init` take turns (Terraform's
+  plugin cache isn't safe for concurrent inits); everything else shares.
+- **Bounded:** a run trims the repo's caches to `cache_max` (10GB), least
+  recently used first. `swim cache ls`, `swim cache rm PRESET` and `swim cache
+  prune --older 30d` manage them; `swim cache path --ci` gives a CI cache
+  step its directory and keys.
+
 ### Secrets
 
 Secrets live encrypted to your SSH key, not in env files or the shell:
@@ -1301,6 +1331,8 @@ they waited for.
 | `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml] [-f] [--until-done]` | A lane's or job's log (with the running step), or the project log. |
 | `swim timeline [RUN\|N\|JOB] [--steps] [--yaml] [--html FILE]` | When each lane waited, ran and finished; the longest chain. |
 | `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. An Always lane needs `--force`. |
+| `swim clean [--all] [-n]` / `swim clean --restore STAMP` | A clean slate, nothing deleted: archive every finished lane at once, then (asked, default no) remove waiting batches and move the lane scripts aside. |
+| `swim prune --older D [--logs] [--confirm]` | Delete leftovers past a cutoff for good (moved-aside scripts, consumed queue entries, old run stages, archived logs with `--logs`), recorded in the chain. |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
 | `swim schedule LANES... TIME [--approve F]`, `swim schedule list\|rm ID` | Queue a batch that starts no earlier than TIME (`13:30`, `1:30pm`, `tomorrow 06:00`, `+2h`). |
@@ -1317,6 +1349,7 @@ they waited for.
 | `swim config [KEY [VALUE]] [--repo]` | Show or set config, keeping the file's comments. |
 | `swim env [N\|JOB] [--yaml]` | The env a lane gets from env files, masked, with each key's source. |
 | `swim secret set\|get\|ls\|rm NAME [--all\|--repo]` | Secrets encrypted to your SSH key, for lanes. |
+| `swim cache [ls\|rm PRESET\|prune --older D\|path --ci]` | The tool caches lanes keep between rounds (`# Cache:`). |
 | `swim lock [--upgrade]` / `swim changelog` | The repo's syntax lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
 | `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
@@ -1335,6 +1368,7 @@ they waited for.
 | `.swim.log` | The project log: one line per top-level action. | No |
 | `.env.swim` | Lane-scoped env (`[lane N]` sections). | No |
 | `~/.config/swim/secrets.yml` | Your secrets, encrypted (`swim secret`). | Never |
+| `~/.cache/swim/<repo>-<hash>/` | Tool caches lanes keep between rounds (`# Cache:`, `cache_dir`). | Never |
 | `.swim/status.yml` | Last state of every lane (`cat` it). | No |
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain of custody, and every script that ran. | No (export it to keep it) |
