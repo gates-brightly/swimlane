@@ -1395,6 +1395,29 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
   version has Upgrading notes: read them, and swim lock --help, before
   running lanes.
 `,
+	"skill": `swim skill
+
+  How to install the Claude skill for swim: where it lives (skills/swim in
+  swim's repo, at this binary's release tag, else main) and the line to
+  paste into a Claude Code session to install it. The skill teaches Claude
+  to read this guide, write and lint lanes, hand runs and approvals to the
+  operator, and read results back. Works anywhere; it needs no repo.
+`,
+	"version": `swim version
+
+  swim's version (as swim --version prints it), then the newest release
+  tag in swim's repo and how this build stands against it. It asks with
+  git ls-remote, so your own git credentials apply (https, then ssh; it
+  never prompts and gives up after a few seconds). When it can't reach the
+  repo it says why. It always exits 0. swim --version prints only the
+  first line and never touches the network. SWIM_RELEASES_URL names
+  another remote (a fork or a mirror).
+
+      swim 0.20261014.1 (64a0e07)
+      latest release: v0.20261015.2, newer than this swim
+        update: go install github.com/gates-brightly/swimlane/cmd/swim@v0.20261015.2
+        then:   swim changelog --since 0.20261014.1
+`,
 	"lock": `swim lock [--upgrade]
 
   swim's version is 0.<YYYYMMDD>.<index> (swim --version), e.g. 0.20261014.2:
@@ -1462,7 +1485,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "stub", "note", "lock", "changelog", "interrupt", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
+	"archive", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
 func Full() string {

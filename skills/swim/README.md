@@ -18,6 +18,10 @@ Claude's role and boundaries.
 
 ## Install
 
+`swim skill` prints the skill's URL (at the installed swim's release tag)
+and a line to paste into Claude Code: "Install the Claude skill at <url>".
+Claude does the rest. Or copy it yourself:
+
 For one repo that uses swim (teammates get it with the repo):
 
 ```sh

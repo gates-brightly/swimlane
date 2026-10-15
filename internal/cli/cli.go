@@ -45,6 +45,8 @@ func init() {
 		"log":       {run: cmdLog},
 		"lock":      {run: cmdLock},
 		"changelog": {run: cmdChangelog},
+		"skill":     {run: cmdSkill},
+		"version":   {run: cmdVersion},
 		"lint":      {run: cmdLint},
 		"interrupt": {run: cmdInterrupt},
 		"ci":        {run: cmdCi},
@@ -97,7 +99,7 @@ func Main(args []string) int {
 		fmt.Print(help.Full())
 		return 0
 	}
-	if args[0] == "--version" || args[0] == "version" {
+	if args[0] == "--version" { // offline and one line, for scripts; swim version also checks the latest release
 		fmt.Println("swim", version.Long())
 		return 0
 	}

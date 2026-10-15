@@ -36,6 +36,9 @@ var (
 // InstallCmd is how users get a current swim.
 const InstallCmd = "go install github.com/gates-brightly/swimlane/cmd/swim@latest"
 
+// RepoWeb is swim's repository on the web.
+const RepoWeb = "https://github.com/gates-brightly/swimlane"
+
 var (
 	pseudoRE = regexp.MustCompile(`-(\d{8})\d{6}-[0-9a-f]{12}`)
 	tagRE    = regexp.MustCompile(`^v0\.(\d{8})\.([1-9]\d*)$`)
@@ -62,6 +65,15 @@ func release() (date, index string, ok bool) {
 		return ParseTag(bi.Main.Version)
 	}
 	return "", "", false
+}
+
+// ReleaseTag is the release tag this binary was built from
+// ("v0.20261009.2"), or "" for a build between releases.
+func ReleaseTag() string {
+	if d, i, ok := release(); ok {
+		return "v0." + d + "." + i
+	}
+	return ""
 }
 
 // Date returns the build date as YYYYMMDD: the release's, the Makefile's,

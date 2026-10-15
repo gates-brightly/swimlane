@@ -55,6 +55,8 @@ COMMANDS
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
   lock [--upgrade]         show swim's version and the repo's .swim.lock; move it up
   changelog [-n N] [--since VERSION] [--all]   what changed in swim (newest revision first)
+  version                  swim's version and the newest release tag in its repo (git ls-remote)
+  skill                    how to install the Claude skill for swim (skills/swim)
   interrupt N|JOB          ask one running lane to stop at its next step boundary
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)

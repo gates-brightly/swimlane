@@ -385,6 +385,17 @@ To cut a release:
 
 ### Added
 
+- **`swim version` checks for a newer release.** It prints the version,
+  then the newest `v0.<date>.<n>` tag in swim's repo (from `git ls-remote`,
+  with your own git credentials: https, then ssh, never prompting, a few
+  seconds at most) and how this build stands against it, with the
+  `go install` line and `swim changelog --since` when there's a newer one.
+  It says why when it can't reach the repo, and always exits 0.
+  `swim --version` is unchanged: one line, offline. `SWIM_RELEASES_URL`
+  points it at a fork or a mirror.
+- **`swim skill`: install the Claude skill for swim.** It prints where the
+  skill lives (`skills/swim`, at this binary's release tag, else main) and
+  the line to paste into a Claude Code session to install it.
 - **`swim schedule`: a batch that starts no earlier than a time.** `swim
   schedule 1 3 22:00 --approve FLAG` (or `swim queue add ... --at 22:00`)
   queues the batch pinned and approved now; no worker claims it before
