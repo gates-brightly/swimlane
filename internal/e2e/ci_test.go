@@ -213,7 +213,7 @@ func jobOf(t *testing.T, r *repo, n int) string {
 }
 
 func TestCIHeartbeat(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "") // a lane must print within 400ms: alone, not beside the parallel tests
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
 	r.script(1, "quiet", `run "wait" sleep 1.2`)
 	r.script(2, "chatty", `run "talk" bash -c 'for i in 1 2 3 4 5 6; do echo tick; sleep 0.2; done'`)

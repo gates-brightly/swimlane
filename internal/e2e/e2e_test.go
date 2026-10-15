@@ -1147,7 +1147,7 @@ func TestRunID(t *testing.T) {
 }
 
 func TestParallelLimit(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "") // it times the run: alone, not beside the parallel tests
 	for n := 1; n <= 10; n++ {
 		r.script(n, fmt.Sprintf("sleeper %d", n), `run "sleep" sleep 1`)
 	}
