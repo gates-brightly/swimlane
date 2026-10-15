@@ -44,6 +44,13 @@ security and fuzz; `go test -fuzz` starts a worker per CPU.
 Done: fuzz runs two workers (`-parallel 2`), so it no longer takes every
 CPU from e2e while it runs.
 
+After it (`0e71baf`, `50dc82c`): ubuntu's job 6.4m and 4.6m (e2e lane 367s
+→ 226s). macOS 7.9m and 9.7m: its e2e lane is still the long pole (470s
+on `50dc82c`, 269s on `df05a6b`: macOS runners vary), and dag99-locks,
+-retry and -parallel are 106-138s of it. Ubuntu meets the ~8m target;
+macOS needs the dag99 split below, which trades away macOS coverage of
+those three scenarios: a decision, not a tweak.
+
 ## Do
 
 - Check the next few runs' `swim ci` step against the 6-7.5m above.
