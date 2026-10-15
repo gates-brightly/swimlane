@@ -82,6 +82,27 @@ swim --help | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit
 `swim stub`, `swim note`. These touch only lane files and logs, and they
 refuse to touch a running lane.
 
+**Queueing you may do**, when the user asks or the round is ready to hand
+over: `swim queue add`, and `swim queue rm` of a batch you queued. Queue
+without approving anything (no `--approve`, `-y` or `--auto`): the batch's
+guards then dry-run unless something else approves them. Before you queue,
+read `swim plan` for the lanes and `swim queue` / `swim status` for the
+workers, and **flag every item with meaningful risk**, each on its own
+line marked ⚠, saying what it does and what will happen to it:
+
+- a guarded step that changes or destroys something outside the repo
+  (apply, delete, migrate, publish, rotate): name the guard and the action;
+- a worker that approves guards without asking (`swim watch -y`, or
+  `--approved` with standing approvals): say which guards it will approve,
+  because then "queued without approval" still changes things;
+- production or shared targets, an Always lane the batch pulls in, and
+  anything that can't be undone.
+
+If the round only does what it should with a guard approved, queue it
+without the approval and give the operator the `--approve FLAG` command
+(or `swim approve`) to decide on, with the risk spelled out. Never queue a
+batch whose risk you haven't read.
+
 **Hand to the operator; never do these yourself:**
 - Running rounds that touch anything outside the repo: `swim run`, `swim
   all`, `swim N`, `swim watch`, `swim ci`. The operator's environment is the
@@ -92,9 +113,8 @@ refuse to touch a running lane.
   pass `-y`, `--approve` or `--auto`, never run `swim approve` or `swim
   revoke`. Approval is a person's decision, and the record attributes it to
   them.
-- `swim queue add`, `swim schedule`, `swim interrupt`, `swim secret ...`,
-  `swim keys trust`, `swim chain ...`, `swim doctor --fix`, `swim config` /
-  config edits.
+- `swim schedule`, `swim interrupt`, `swim secret ...`, `swim keys trust`,
+  `swim chain ...`, `swim doctor --fix`, `swim config` / config edits.
 
 **Never edit by hand:** `.swim/` (status, logs, chain, runs, queue),
 `.swim.log`, `approvals/`, `lookup.yml`, `trust.yml`, the user's

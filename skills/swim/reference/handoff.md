@@ -47,6 +47,20 @@ and 5 are free. If either script changes after you queue it, that lane is
 skipped, not run.
 ````
 
+When you queue it yourself (you may; you never approve), say what you
+queued and flag the risk:
+
+````markdown
+Queued #41: swim 22 and 23, no approvals.
+
+⚠ swim 22, `L22_ALLOW_ZG_SMOKE`: applies tf/smoke under zg in sbx1, reads it
+  back, then destroys it (the zg-tf-smoke-* role, security group and
+  parameter).
+⚠ A `swim watch -y` worker is up: it approves every guard, so the step above
+  runs. Without that worker it would dry-run; to approve it yourself:
+  `swim queue add 63bdf4a9 0c9210bf --approve L22_ALLOW_ZG_SMOKE`.
+````
+
 ## Needs signed approvals
 
 When `lookup.yml` requires approvals from a group, name who needs to sign
