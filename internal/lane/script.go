@@ -193,6 +193,7 @@ type sideFile struct {
 	Round       *string           `yaml:"round"`
 	Job         *string           `yaml:"job"`
 	After       *strList          `yaml:"after"`
+	Finally     *strList          `yaml:"finally"`
 	Owner       *string           `yaml:"owner"`
 	Created     *string           `yaml:"created"`
 	Guards      map[string]string `yaml:"guards"`
@@ -275,6 +276,16 @@ func applySidecar(path string, info *Info) error {
 				continue
 			}
 			info.After = append(info.After, tok)
+		}
+	}
+	if sf.Finally != nil {
+		info.Finally = nil
+		for _, tok := range *sf.Finally {
+			switch strings.ToLower(tok) {
+			case "", "swim", "-", "none":
+				continue
+			}
+			info.Finally = append(info.Finally, tok)
 		}
 	}
 	if sf.Owner != nil {

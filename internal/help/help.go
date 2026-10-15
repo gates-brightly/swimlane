@@ -55,6 +55,8 @@ var Commands = map[string]string{
                  watch runs at once (default 4; swim watch --batches N).
     schedule_tz  an IANA zone name       the zone swim schedule reads times
                  in (default: this machine's), e.g. America/Chicago.
+    finally_timeout  duration             once a run is stopped, how long its
+                 finally lanes (# Finally:) still get, in all (default 10m).
     runners.EXT  a command                the runner for lane.N.EXT scripts with
                  no #! line, e.g. swim config runners.ts tsx. Always written
                  to the repo's section; swim.yml's runners: is the default.
@@ -197,6 +199,8 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
                 approved stays loud: swim status (auto_approved), the round's
                 chain entry and swim history, swim ci's summary and the hub
   --no-prompt   never ask; an unset guard flag is a dry run
+  --no-finally  leave out the finally lanes (# Finally:) naming the lanes
+                run, which a run of named lanes otherwise pulls in
   Each lane runs a staged copy of its files (.swim/runs/<run>/<N>/), fixed
   before it waits for anything and checked again right before it starts;
   an edit to the working tree after that changes nothing in the run. See
@@ -216,7 +220,7 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
-	"plan": `swim plan [N|JOB ...] [--rerun] [--yaml] [--check [--parallel N] [--timeout D]]
+	"plan": `swim plan [N|JOB ...] [--rerun] [--no-finally] [--yaml] [--check [--parallel N] [--timeout D]]
 
   Show what "swim all" (or "swim run N ...", with lanes) would do, without
   running or changing anything, Terraform style:
@@ -230,6 +234,8 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
                     time; swim all leaves it, swim run N refuses it
       [=]    held   depends on a scheduled lane: it waits for that batch
                     (run now, it would skip)
+  A finally lane (# Finally:) is marked [F] with the lanes it waits for to
+  end, however they end.
   Always lanes come first; a passed lane that a Rerun-Children lane reruns
   shows "rerun (swim N)"; "then, once swim N finish" starts the rest.
   The jobs form a tree: top-level lanes start at once, and each lane sits
@@ -557,7 +563,7 @@ swim report --earmarks | --earmark --reset [--name NAME]
            (see swim plan --check), every pending round.
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
-swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
+swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D] [--no-finally]
 swim queue N|JOB ... [flags]     (shorthand for swim queue add)
 swim queue show|rm|requeue ID
 

@@ -341,6 +341,7 @@ type runFlags struct {
 	noPrompt         bool
 	yes              bool
 	failed           bool // matrix lanes: only the cells that didn't pass
+	noFinally        bool // leave out the finally lanes naming the lanes run
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
@@ -356,7 +357,7 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 	}
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
-			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes,
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes, "no-finally": &rf.noFinally,
 			"failed": &rf.failed},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
@@ -493,6 +494,7 @@ func runLanes(rest []string, rf runFlags) error {
 		// -y approves every guard question without asking (the operator's
 		// explicit say-so for this run; FLAG=0 still declines).
 		AutoApprove: rf.yes,
+		NoFinally:   rf.noFinally,
 	}
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput
@@ -518,9 +520,9 @@ func joinNums(ns []int) string {
 
 // cmdPlan prints what `swim run` / `swim all` would do, running nothing.
 func cmdPlan(args []string) (err error) {
-	var rerun, asYAML, check bool
+	var rerun, asYAML, check, noFinally bool
 	var parallel, timeout string
-	rest, err := flags{bools: map[string]*bool{"rerun": &rerun, "yaml": &asYAML, "check": &check},
+	rest, err := flags{bools: map[string]*bool{"rerun": &rerun, "yaml": &asYAML, "check": &check, "no-finally": &noFinally},
 		strs: map[string]*string{"parallel": &parallel, "timeout": &timeout}}.parse(args)
 	if err != nil {
 		return err
@@ -546,7 +548,7 @@ func cmdPlan(args []string) (err error) {
 	}
 	// The plan shows each lane's last read-only check (stale once its
 	// script changes); --check runs them first.
-	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun, ShowChecks: true}
+	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun, ShowChecks: true, NoFinally: noFinally}
 	checkCode := 0
 	if check {
 		if checkCode, err = runChecks(o, parallel, timeout, asYAML); err != nil {

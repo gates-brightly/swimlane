@@ -15,7 +15,7 @@ Observations that keep recurring accumulate into **knowledge** per step and
 per target. They retire on their own when behaviour changes. An operator
 can promote one into a committed `knowledge/` file the next session reads.
 
-Optionally, a [finally lane](finally.md) hands the run's observations to
+Optionally, a [finally lane](../README.md#dependencies-parallelism-and-locks) hands the run's observations to
 Claude to **write them up** (a run report, a runbook note) as one of the
 lane's outputs. Claude only writes artifacts. It never decides what a round
 does.
@@ -128,7 +128,7 @@ A baseline is only as good as its matching across rounds.
   (`known: orders-api flaky (retry 255)`). That's the moment a planner or
   operator can still act on it: add `--retry`, raise a step limit.
 - **Finally lanes** get `SWIM_OBSERVATIONS`, the path to the observations
-  for every upstream lane that has ended (see [finally.md](finally.md)).
+  for every upstream lane that has ended (see [finally.md](../README.md#dependencies-parallelism-and-locks)).
 
 ### Knowledge
 
@@ -233,7 +233,7 @@ summary
 6. **Surfaces:** `swim report`, `swim status`, `swim plan`.
 7. **Knowledge:** accumulate, retire, accept into committed `knowledge/`,
    reject; `swim plan` shows accepted entries.
-8. **Finally integration** (after [finally.md](finally.md) ships):
+8. **Finally integration** (after [finally.md](../README.md#dependencies-parallelism-and-locks) ships):
    `SWIM_OBSERVATIONS`, per-observation masked excerpts, `swim observe
    check`. Add an example write-up lane under `docs/` (not built in).
 9. **Docs.**

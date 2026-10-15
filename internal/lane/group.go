@@ -67,12 +67,13 @@ var GroupFileRE = regexp.MustCompile(`^lanes\.([A-Za-z0-9_-]+)\.sh$`)
 
 var (
 	groupMarkRE   = regexp.MustCompile(`^#[ \t]*swim job[ \t]+([0-9]+)((?:\.[0-9]+)+)(?:$|[^.0-9])`)
+	finallyMarkRE = regexp.MustCompile(`(?i)^#[ \t]*swim job[ \t]+[0-9]+(?:\.[0-9]+)+[ \t]+finally(?:$|[^A-Za-z0-9_])`)
 	jobPathRE     = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)*$`)
 	sectionLibRE  = regexp.MustCompile(`(?:^|[\s;&|(])lane_init\b`)
 	sectionSumRE  = regexp.MustCompile(`(?:^|[\s;&|(])summary(?:$|[\s;&|)])`)
 	groupLibLines = []string{`_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"`}
 	// Keys that belong to the lane (before the first job), and to a job.
-	laneOnlyKeys = map[string]bool{"after": true, "locks": true, "rerun-children": true, "includes": true,
+	laneOnlyKeys = map[string]bool{"after": true, "finally": true, "locks": true, "rerun-children": true, "includes": true,
 		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true}
 	subOnlyKeys = map[string]bool{"always": true}
 )
@@ -455,8 +456,10 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 			}
 			body++
 		}
-		secs = append(secs, section{path: path, line: m, body: body, end: end,
-			info: ParseScript(strings.Join(lines[m+1:body], "\n") + "\n"), steps: body < end})
+		si := ParseScript(strings.Join(lines[m+1:body], "\n") + "\n")
+		// "# swim job 1.9 finally": it runs after its earlier siblings end.
+		si.FinallyJob = finallyMarkRE.MatchString(strings.TrimSpace(lines[m]))
+		secs = append(secs, section{path: path, line: m, body: body, end: end, info: si, steps: body < end})
 	}
 	if g.Native {
 		// The program's code isn't the job's: a job runs unless it has jobs
@@ -535,6 +538,7 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 		g.Subs = append(g.Subs, s)
 		si := ParseScript(s.Src)
 		si.After, si.Locks, si.Matrix, si.RerunChildren = nil, nil, nil, false
+		si.FinallyJob = sec.info.FinallyJob
 		// Always: its own, or a job it sits under.
 		for p := range always {
 			si.Always = si.Always || PathUnder(sec.path, p)

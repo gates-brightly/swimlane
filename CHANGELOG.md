@@ -387,6 +387,24 @@ To cut a release:
 
 ### Added
 
+- **Finally lanes and jobs: run once others end, however they ended.**
+  `# Finally: 1 2 3` starts a lane once those lanes have passed, failed,
+  been skipped or interrupted (where `After:` needs them to pass): cleanup
+  and run reports as ordinary pinned, approved, logged rounds.
+  - Naming an upstream lane pulls the finally lane into the run, a queued
+    batch or a schedule (`--no-finally` leaves it out); `swim all` runs it
+    like any pending lane.
+  - It sees `SWIM_FINALLY_<N>` (pass, fail, skip, interrupted),
+    `SWIM_FINALLY_<N>_JOB` and `SWIM_FINALLY`, and SDK lanes get them in
+    `hello`; `swim status`, the run record and its chain round entry
+    record what it saw.
+  - The first Ctrl-C doesn't stop it, and it still starts, within
+    `finally_timeout` (default 10m); a second skips or interrupts it.
+  - Its result never changes another lane's: the summary reports it on its
+    own line, `run-done` counts it, and the run exits 89 when an ordinary
+    and a finally lane both failed.
+  - `# swim job 1.9 finally` does the same inside a lane of jobs.
+  - `swim plan` marks finally lanes `[F]` (`finally:` in `--yaml`).
 - **`swim version` checks for a newer release.** It prints the version,
   then the newest `v0.<date>.<n>` tag in swim's repo (from `git ls-remote`,
   with your own git credentials: https, then ssh, never prompting, a few

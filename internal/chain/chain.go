@@ -103,6 +103,9 @@ type Entry struct {
 	// ScheduledFor (UTC) is a scheduled batch's start time (swim schedule):
 	// the run started no earlier.
 	ScheduledFor string `json:"scheduled_for,omitempty"`
+	// Finally is a finally lane's round (# Finally:): how each lane it
+	// waited for ended, as it started ("1" -> "pass").
+	Finally map[string]string `json:"finally,omitempty"`
 	// AuthorityUnavailable says why swim run couldn't start its approvals
 	// (the broker): every guard of the run was a dry run.
 	AuthorityUnavailable string `json:"authority_unavailable,omitempty"`

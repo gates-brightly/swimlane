@@ -31,6 +31,8 @@ type plan struct {
 	// scheduled are the pending lanes swim all leaves to their scheduled
 	// batch (swim schedule), with when it starts them.
 	scheduled map[int]string
+	// finallyOn are each finally lane's waits (# Finally:).
+	finallyOn map[int][]int
 }
 
 func computePlan(o Options) (*plan, error) {
@@ -56,6 +58,7 @@ func computePlan(o Options) (*plan, error) {
 	var setup []int
 	children := map[int][]int{}
 	inRunDeps := map[int][]int{}
+	finallyOn := map[int][]int{} // a finally lane's waits: never a reason to skip
 	blocked := map[int]string{}
 	for _, n := range sel {
 		if scripts[n].Always {
@@ -64,6 +67,14 @@ func computePlan(o Options) (*plan, error) {
 		for _, d := range deps[n] {
 			if d.Setup {
 				continue // drawn as the setup phase, not as tree edges
+			}
+			if d.Finally {
+				finallyOn[n] = append(finallyOn[n], d.Lane)
+				if selected[d.Lane] {
+					children[d.Lane] = append(children[d.Lane], n)
+					inRunDeps[n] = append(inRunDeps[n], d.Lane)
+				}
+				continue
 			}
 			if selected[d.Lane] {
 				children[d.Lane] = append(children[d.Lane], n)
@@ -86,6 +97,9 @@ func computePlan(o Options) (*plan, error) {
 		r := blocked[n]
 		if r == "" {
 			for _, d := range inRunDeps[n] {
+				if contains(finallyOn[n], d) {
+					continue // it runs however d ends
+				}
 				if skipReason(d) != "" {
 					r = fmt.Sprintf("swim %d won't run", d)
 					break
@@ -146,7 +160,7 @@ func computePlan(o Options) (*plan, error) {
 
 	return &plan{what: what, sel: sel, passed: passed, selected: selected, scripts: scripts, children: children,
 		inRunDeps: inRunDeps, setup: setup, rerunBy: rerunBy(o.Root, o.Cfg, sel, scripts), skip: skip, actions: actions, counts: counts,
-		scheduled: scheduled}, nil
+		scheduled: scheduled, finallyOn: finallyOn}, nil
 }
 
 // WritePlan prints what `swim run` with these options would do, without
@@ -205,6 +219,9 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		}
 		if pid, ok := lane.Running(o.Root, n); ok {
 			notes = append(notes, p.Paint(ui.Red, fmt.Sprintf("RUNNING NOW (pid %d): swim run would refuse", pid)))
+		}
+		if f := pl.finallyOn[n]; len(f) > 0 {
+			notes = append(notes, p.Paint(ui.Cyan, "[F] finally, once swim "+joinInts(f, " ")+" end (however they end)"))
 		}
 		switch r := skip[n]; {
 		case r == "":
@@ -528,6 +545,9 @@ type PlanLane struct {
 	Handlers []PlanHandler `yaml:"handlers,omitempty"`
 	// Cells are a matrix round's cells.
 	Cells []string `yaml:"cells,flow,omitempty"`
+	// Finally are the lanes a finally lane (# Finally:) waits for to end,
+	// however they end.
+	Finally []int `yaml:"finally,flow,omitempty"`
 	// Jobs are a group lane's sub-jobs, in the order they run.
 	Jobs []PlanJob `yaml:"jobs,omitempty"`
 	// Check is the lane's last read-only check (swim plan --check).
@@ -583,6 +603,7 @@ func Plan(o Options) (*PlanDoc, error) {
 		if pid, ok := lane.Running(o.Root, n); ok {
 			l.Running = pid
 		}
+		l.Finally = pl.finallyOn[n]
 		if !info.Always {
 			l.Setup = pl.setup
 		}

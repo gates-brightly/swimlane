@@ -77,7 +77,7 @@ func queueAdd(args []string) error {
 	}
 	var approve []string
 	var note, parallel, keyPath, timeout string
-	var yes, wait bool
+	var yes, wait, noFinally bool
 	// --approve repeats; -y is the short --yes.
 	var rest0 []string
 	for i := 0; i < len(args); i++ {
@@ -93,7 +93,7 @@ func queueAdd(args []string) error {
 			rest0 = append(rest0, a)
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"yes": &yes, "wait": &wait}, strs: map[string]*string{"note": &note, "parallel": &parallel, "key": &keyPath, "timeout": &timeout}}.parse(rest0)
+	rest, err := flags{bools: map[string]*bool{"yes": &yes, "wait": &wait, "no-finally": &noFinally}, strs: map[string]*string{"note": &note, "parallel": &parallel, "key": &keyPath, "timeout": &timeout}}.parse(rest0)
 	if err != nil {
 		return err
 	}
@@ -119,10 +119,14 @@ func queueAdd(args []string) error {
 		}
 		lanes = append(lanes, n)
 	}
+	var pulled []int
 	if len(lanes) == 0 {
 		if lanes, _, err = launcher.Select(launcher.Options{Root: root, Cfg: cfg, DryRun: true}); err != nil {
 			return err
 		}
+	} else if !noFinally {
+		// The finally lanes naming a queued lane go with it (# Finally:).
+		lanes, pulled = launcher.WithFinally(root, cfg, lanes)
 	}
 	if len(lanes) == 0 {
 		return fmt.Errorf("nothing to queue: no lane holds a pending round that hasn't passed (name lanes to queue them anyway)")
@@ -149,6 +153,9 @@ func queueAdd(args []string) error {
 		seen[f] = true
 	}
 	fmt.Printf("queued %s (#%d): %d lanes\n", e.ID, e.Seq, len(e.Lanes))
+	if len(pulled) > 0 {
+		fmt.Printf("  with the finally lanes naming them: %s (--no-finally leaves them out)\n", lanesText(pulled))
+	}
 	if signedAs != "" {
 		fmt.Printf("  signed by %s (standing approvals for %s apply)\n", signedAs, signedAs)
 	} else {
@@ -1001,7 +1008,8 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
 		Unattended: true,
 		HubSecrets: func() (map[string]secrets.Granted, error) { return hubGrants(root) }}
-	o.Plain = plain // a batch swim watch runs alongside others (_batch)
+	o.Plain = plain    // a batch swim watch runs alongside others (_batch)
+	o.NoFinally = true // the batch pinned its lanes, finally lanes included
 	o.ScheduledFor = e.NotBefore
 	if headless {
 		// Plain lines for the log; SIGHUP reopens it rather than forcing

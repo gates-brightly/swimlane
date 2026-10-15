@@ -70,10 +70,19 @@ type interrupter struct {
 	level  int
 	procs  map[int]*laneProc
 	timers []*time.Timer
+
+	// finally are the run's finally lanes (# Finally:): cleanup, so the
+	// first stop doesn't stop them, and they still start once what they
+	// wait for has ended, within finallyTimeout of that stop.
+	finally        map[int]bool
+	finallyCells   map[string]bool // finally jobs ("# swim job 1.9 finally"), by "lane/job"
+	finallyTimeout time.Duration
+	finallyOver    bool // the budget ran out: they stop like any lane
 }
 
 func newInterrupter(o Options, disp *display.Display, sl *slots, lt *lockTable) *interrupter {
-	ir := &interrupter{o: o, disp: disp, sl: sl, lt: lt, mode: o.Cfg.InterruptMode(), procs: map[int]*laneProc{}}
+	ir := &interrupter{o: o, disp: disp, sl: sl, lt: lt, mode: o.Cfg.InterruptMode(), procs: map[int]*laneProc{},
+		finally: map[int]bool{}, finallyCells: map[string]bool{}, finallyTimeout: o.Cfg.FinallyTimeoutFor()}
 	ir.grace, ir.termGrace = o.Cfg.Graces()
 	if o.Interrupt != "" {
 		ir.mode = o.Interrupt
@@ -87,6 +96,50 @@ func (ir *interrupter) stopping() bool {
 	ir.mu.Lock()
 	defer ir.mu.Unlock()
 	return ir.level > levelRunning
+}
+
+// stopsLane reports whether lane n may no longer start, or must stop: any
+// stop for an ordinary lane; for a finally lane, only a second (forced)
+// stop, or the first one's finally_timeout running out.
+func (ir *interrupter) stopsLane(n int) bool {
+	ir.mu.Lock()
+	defer ir.mu.Unlock()
+	return ir.stopsLocked(n)
+}
+
+func (ir *interrupter) stopsLocked(n int) bool {
+	switch {
+	case ir.level == levelRunning:
+		return false
+	case ir.finally[n] && ir.level == levelGraceful && !ir.finallyOver:
+		return false
+	}
+	return true
+}
+
+// stopsFinallyJob is stopsLane for a finally job of lane n.
+func (ir *interrupter) stopsFinallyJob() bool {
+	ir.mu.Lock()
+	defer ir.mu.Unlock()
+	return ir.level > levelGraceful || ir.level == levelGraceful && ir.finallyOver
+}
+
+// markFinallyJob registers lane n's job as a finally job, exempt from the
+// first stop as finally lanes are.
+func (ir *interrupter) markFinallyJob(n int, job string) {
+	ir.mu.Lock()
+	defer ir.mu.Unlock()
+	ir.finallyCells[fmt.Sprintf("%d/%s", n, job)] = true
+}
+
+// exemptLocked reports whether a registered process is finally work the
+// first stop leaves running.
+func (ir *interrupter) exemptLocked(key int, lp *laneProc) bool {
+	n := lp.laneOf(key)
+	if lp.cell != "" && ir.finallyCells[fmt.Sprintf("%d/%s", n, lp.cell)] {
+		return ir.level == levelGraceful && !ir.finallyOver
+	}
+	return !ir.stopsLocked(n)
 }
 
 // Notice is the panel title's interrupt state ("" while running).
@@ -115,7 +168,9 @@ func (ir *interrupter) add(n int, lp *laneProc) {
 	ir.procs[n] = lp
 	switch ir.level {
 	case levelGraceful:
-		ir.requestStopLocked(n, lp, syscall.SIGINT)
+		if !ir.exemptLocked(n, lp) {
+			ir.requestStopLocked(n, lp, syscall.SIGINT)
+		}
 	case levelForce:
 		ir.signalLocked(lp, syscall.SIGINT)
 	case levelKill:
@@ -196,9 +251,29 @@ func (ir *interrupter) gracefulLocked(s os.Signal) {
 	ir.disp.Message(fmt.Sprintf("swim: stopping after current steps (%d running). %s", len(ns), how))
 	ir.o.ev.emit(Event{Event: "stop_requested", Run: ir.o.RunID, Lanes: ns, At: now()})
 	st, _ := status.Load(ir.o.Root)
+	if len(ir.finally) > 0 || len(ir.finallyCells) > 0 {
+		// Finally lanes run on, and still start, for finally_timeout.
+		ir.after(ir.finallyTimeout, func() {
+			ir.mu.Lock()
+			defer ir.mu.Unlock()
+			if ir.level != levelGraceful {
+				return
+			}
+			ir.finallyOver = true
+			for key, lp := range ir.procs {
+				if ir.finally[lp.laneOf(key)] || lp.cell != "" && ir.finallyCells[fmt.Sprintf("%d/%s", lp.laneOf(key), lp.cell)] {
+					ir.disp.Message(fmt.Sprintf("swim: swim %d (finally) ran past finally_timeout %s: interrupting it", lp.laneOf(key), ir.finallyTimeout))
+					ir.signalLocked(lp, syscall.SIGINT)
+				}
+			}
+		})
+	}
 	for _, key := range ns {
 		lp := ir.procs[key]
 		n := lp.laneOf(key)
+		if ir.exemptLocked(key, lp) {
+			continue // finally work: cleanup runs on
+		}
 		ir.requestStopLocked(key, lp, s)
 		step := ""
 		if st != nil {

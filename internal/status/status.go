@@ -104,6 +104,9 @@ type Lane struct {
 	// ScheduleRemoved is the scheduled batch removed (swim schedule rm)
 	// before it ran the lane's pending round, until the lane runs again.
 	ScheduleRemoved string `yaml:"schedule_removed,omitempty"`
+	// FinallySaw is how the lanes a finally lane (# Finally:) waited for
+	// ended, as it started: "1 pass, 2 fail, 3 skip".
+	FinallySaw string `yaml:"finally,omitempty"`
 	// A matrix round's cells, each with its own state (Cell names it).
 	Cell        string `yaml:"cell,omitempty"`
 	Cells       []Lane `yaml:"cells,omitempty"`

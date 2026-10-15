@@ -105,14 +105,32 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 	var stopRest atomic.Bool
 	var wg sync.WaitGroup
 	perCell, _ := lane.CellLocks(info.Locks)
+	// Finally jobs ("# swim job 1.9 finally"): they run after their
+	// earlier siblings, however those ended, and the first stop doesn't
+	// stop them (finally.go).
+	finJob := map[string]bool{}
+	if info.IsGroup() {
+		for _, c := range cells {
+			if info.ForCell(c).FinallyJob {
+				finJob[c.Name] = true
+				ir.markFinallyJob(n, c.Name)
+			}
+		}
+	}
 	for idx, c := range cells {
 		// Cells start in order (so Matrix-Fail: stop skips the later ones).
 		sem <- struct{}{}
 		wg.Add(1)
-		go func(idx int, c lane.Cell) {
+		var finEnv []string
+		if finJob[c.Name] {
+			mu.Lock()
+			finEnv = finallyJobEnv(n, c.Name, cells[:idx], results)
+			mu.Unlock()
+		}
+		go func(idx int, c lane.Cell, finEnv []string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			state := runCell(o, n, idx, c, sel, info, plan, perCell, sl, lt, disp, ir, laneLocks, &stopRest, func(delta int) {
+			state := runCell(o, n, idx, c, sel, info, plan, perCell, sl, lt, disp, ir, laneLocks, &stopRest, finJob[c.Name], finEnv, func(delta int) {
 				mu.Lock()
 				running += delta
 				mu.Unlock()
@@ -130,7 +148,7 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 				o.openSetup(n)
 			}
 			show()
-		}(idx, c)
+		}(idx, c, finEnv)
 	}
 	wg.Wait()
 
@@ -138,7 +156,22 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 	state, exit := status.Passed, 0
 	var failed []string
 	pass, fail, skip := 0, 0, 0
+	finFailed := false
 	for _, c := range cells {
+		if finJob[c.Name] {
+			// A finally job doesn't decide the lane, but its failure shows.
+			switch results[c.Name] {
+			case status.Passed:
+				pass++
+			case status.Skipped:
+				skip++
+			default:
+				fail++
+				finFailed = true
+				failed = append(failed, "finally: "+info.SubLabel(n, c.Name)+" "+strings.ToUpper(results[c.Name]))
+			}
+			continue
+		}
 		switch results[c.Name] {
 		case status.Passed:
 			pass++
@@ -158,6 +191,12 @@ func runMatrix(o Options, n int, sel []int, info lane.Info, sl *slots, lt *lockT
 			state, exit = status.Failed, 1
 			failed = append(failed, info.SubLabel(n, c.Name)+" failed")
 		}
+	}
+	switch {
+	case finFailed && state == status.Passed:
+		state, exit = status.Failed, 1
+	case finFailed:
+		exit = 89 // failed, and the cleanup failed too
 	}
 	end := time.Now()
 	status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
@@ -240,7 +279,14 @@ func selectCells(o Options, n int, info lane.Info) []lane.Cell {
 
 // runCell runs one cell and returns how it ended.
 func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan runner.Plan, perCell []string,
-	sl *slots, lt *lockTable, disp *display.Display, ir *interrupter, laneLocks lane.FileLocks, stopRest *atomic.Bool, moving func(int)) string {
+	sl *slots, lt *lockTable, disp *display.Display, ir *interrupter, laneLocks lane.FileLocks, stopRest *atomic.Bool,
+	finJob bool, finEnv []string, moving func(int)) string {
+	// A finally job runs after an earlier job failed, and through the
+	// first stop.
+	stopped := ir.stopping
+	if finJob {
+		stopped = ir.stopsFinallyJob
+	}
 	setCell := func(fn func(*status.Lane)) {
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { fn(l.CellEntry(c.Name)) })
 	}
@@ -262,7 +308,7 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 		line(fmt.Sprintf("SKIP (%s)", why))
 		return status.Skipped
 	}
-	if stopRest.Load() {
+	if stopRest.Load() && !finJob {
 		return skipCell(stopWhy)
 	}
 	if info.IsGroup() && !info.NativeJobs() {
@@ -276,7 +322,7 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 		}
 		plan = p
 	}
-	if ir.stopping() {
+	if stopped() {
 		return skipCell("interrupted before start")
 	}
 	ci := info.ForCell(c)
@@ -300,11 +346,14 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 		defer fl.Release()
 		files = append(files, fl...)
 	}
-	if !sl.acquire(n, func(int) {}) {
+	if finJob && ir.stopping() {
+		// The slots are closed once a run stops; finally work needs none.
+	} else if !sl.acquire(n, func(int) {}) {
 		return skipCell("interrupted before start")
+	} else {
+		defer sl.release()
 	}
-	defer sl.release()
-	if stopRest.Load() {
+	if stopRest.Load() && !finJob {
 		return skipCell(stopWhy)
 	}
 	prefix := "[" + label + "] "
@@ -318,9 +367,9 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 		return status.Failed
 	}
 	who := approval.Caller{Cell: c.Name, Job: ci.Job}
-	cmd, ownGroup, w, tok := laneCommand(o, n, sel, plan, append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), prefix, job, who, disp, files)
+	cmd, ownGroup, w, tok := laneCommand(o, n, sel, plan, append(append(c.Env(o.Root, n), lane.MatrixJobEnv+"="+info.Job), finEnv...), prefix, job, who, disp, files)
 	defer exited(o, tok)
-	if ir.stopping() {
+	if stopped() {
 		return skipCell("interrupted before start")
 	}
 	launched := time.Now()
@@ -394,4 +443,31 @@ func CellNames(cells []lane.Cell) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// finallyJobEnv is a finally job's context: how each earlier sibling (a
+// job under the same parent, and those under it) ended, as
+// SWIM_FINALLY_<N>_<K> (K the job's path, dots as underscores), and
+// SWIM_FINALLY.
+func finallyJobEnv(n int, name string, earlier []lane.Cell, results map[string]string) []string {
+	parent := ""
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		parent = name[:i]
+	}
+	all := true
+	var env []string
+	for _, c := range earlier {
+		if parent != "" && !lane.PathUnder(c.Name, parent) {
+			continue
+		}
+		word := finallyWord(results[c.Name])
+		if word != "pass" {
+			all = false
+		}
+		env = append(env, fmt.Sprintf("SWIM_FINALLY_%d_%s=%s", n, strings.ReplaceAll(c.Name, ".", "_"), word))
+	}
+	if all {
+		return append(env, "SWIM_FINALLY=pass")
+	}
+	return append(env, "SWIM_FINALLY=fail")
 }

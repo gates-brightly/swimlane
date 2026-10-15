@@ -23,19 +23,22 @@ const Schema = "swim.runrec/v1"
 // Lane is one lane's part in the run. Times are seconds since the run
 // started; a lane that never reached a point leaves it nil.
 type Lane struct {
-	Lane   int      `yaml:"lane"`
-	Job    string   `yaml:"job,omitempty"`
-	Round  string   `yaml:"round,omitempty"`
-	After  []int    `yaml:"after,flow"` // dependencies inside this run
-	Locks  []string `yaml:"locks,flow,omitempty"`
-	State  string   `yaml:"state"` // passed | failed | skipped | interrupted
-	Exit   *int     `yaml:"exit,omitempty"`
-	Reason string   `yaml:"reason,omitempty"`
-	Ready  *float64 `yaml:"ready,omitempty"`  // dependencies met
-	Locked *float64 `yaml:"locked,omitempty"` // locks taken
-	Slot   *float64 `yaml:"slot,omitempty"`   // parallel slot taken
-	Start  *float64 `yaml:"start,omitempty"`  // lane process started
-	End    *float64 `yaml:"end,omitempty"`    // lane process finished (or skipped)
+	Lane  int    `yaml:"lane"`
+	Job   string `yaml:"job,omitempty"`
+	Round string `yaml:"round,omitempty"`
+	After []int  `yaml:"after,flow"` // dependencies inside this run
+	// Finally marks a finally lane (# Finally:): its After lists the lanes
+	// it waited for to end, however they ended.
+	Finally bool     `yaml:"finally,omitempty"`
+	Locks   []string `yaml:"locks,flow,omitempty"`
+	State   string   `yaml:"state"` // passed | failed | skipped | interrupted
+	Exit    *int     `yaml:"exit,omitempty"`
+	Reason  string   `yaml:"reason,omitempty"`
+	Ready   *float64 `yaml:"ready,omitempty"`  // dependencies met
+	Locked  *float64 `yaml:"locked,omitempty"` // locks taken
+	Slot    *float64 `yaml:"slot,omitempty"`   // parallel slot taken
+	Start   *float64 `yaml:"start,omitempty"`  // lane process started
+	End     *float64 `yaml:"end,omitempty"`    // lane process finished (or skipped)
 }
 
 // Run is a whole run's record.

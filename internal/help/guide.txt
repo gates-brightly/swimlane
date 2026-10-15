@@ -158,6 +158,22 @@ CONCEPTS
               header, `# After: A` (lane numbers or job ids), or for ordering
               that holds every round, in config `deps`. If A fails or is
               skipped, B is skipped.
+  finally lane Cleanup or a report, the run's after_script (# Finally: A B):
+              it starts once A and B have ended, however (passed, failed,
+              skipped, interrupted), and is never skipped for them; a lane
+              not in the run has ended. Running A pulls it in (--no-finally
+              leaves it out; a queued batch takes it along). It sees each
+              outcome: SWIM_FINALLY_<N> (pass, fail, skip, interrupted; empty
+              when not in the run), SWIM_FINALLY_<N>_JOB, and SWIM_FINALLY
+              (pass if all passed, else fail). The first Ctrl-C doesn't stop
+              it, and it still starts, within finally_timeout (default 10m);
+              a second skips or interrupts it. Its result never changes
+              another lane's: the summary reports it on its own line, a
+              failed one fails the run, and with an ordinary lane failing too
+              the run exits 89. Not on an Always lane. In a lane of jobs,
+              `# swim job 1.9 finally` runs after its earlier siblings even
+              when one failed, sees SWIM_FINALLY_<N>_<K> for each, and fails
+              the lane only by its own failure (89 with another job's).
   always lane Standing setup, like a CI before_script (# Always: yes): lint,
               fmt, init. It never counts as passed, so `swim all` runs it
               every time, first, and every other lane in the run waits for it
@@ -907,6 +923,7 @@ READING RESULTS
           schedule: <q-... the batch>
           held_by: <q-...>               # its batch waits for that scheduled one
           schedule_removed: <q-...>      # its scheduled batch was removed before it ran
+          finally: "1 pass, 2 fail"      # a finally lane: how the lanes it waited for ended
           last_archive: <last archived log name>
   `swim status` shows "running?" when a lane's pid is gone (killed terminal);
   treat that lane's round as interrupted. The next swim run, swim all or

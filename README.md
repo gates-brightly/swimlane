@@ -643,6 +643,14 @@ lane's state and round; output scrolls underneath, prefixed `[N]`.
   the round if one fails. A job id waits for that exact round. Ordering that
   holds for every round can go in config `deps`. A cycle stops the run
   before anything starts.
+- **`# Finally: 1 2 3`** waits for those lanes to end, however they end, and
+  never skips: cleanup and run reports, the run's `after_script`. Running
+  one of them pulls the finally lane in (`--no-finally` leaves it out), and
+  it sees each outcome as `SWIM_FINALLY_<N>`. The first Ctrl-C doesn't stop
+  it (`finally_timeout`). Its result never changes another lane's; a failed
+  one fails the run, and with an ordinary lane failing too, the run exits
+  89. In a lane of jobs, `# swim job 1.9 finally` runs after a failed
+  sibling.
 - **`--parallel N`** (or config `max_parallel`) caps how many lanes run at
   once. Lanes ready to start queue for a slot, longest chain first.
 - **`# Locks: orders-table`:** lanes that share a lock never run at the same

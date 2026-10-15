@@ -235,6 +235,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			}
 			detail("approved without a prompt: "+t, color)
 		}
+		if l.FinallySaw != "" && state != status.Running {
+			detail("finally: "+l.FinallySaw, ui.Dim)
+		}
 		if l.ScheduledFor != "" {
 			at, _ := time.Parse(time.RFC3339, l.ScheduledFor)
 			when := l.ScheduledFor

@@ -243,6 +243,10 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 			"lane": s.n, "cell": lane.CurrentCell(), "job": envOf(s.env, "SWIM_JOB"), "run": envOf(s.env, "SWIM_RUN"),
 			"deadline": deadline, "check": lane.CheckMode(),
 		}
+		// A finally lane: how each lane it waited for ended (1: pass).
+		if saw := finallySaw(); saw != nil {
+			result["finally"] = saw
+		}
 		// One job of a lane of jobs: its id (1.5.9), for the SDK's jobs().
 		if cell := lane.CurrentCell(); lane.IsJobPath(cell) {
 			if _, ok := lane.LaneJobs(s.root, s.n); ok {

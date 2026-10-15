@@ -78,6 +78,7 @@ type scheduleFlags struct {
 	note, parallel, keyPath string
 	tz, until, forD         string
 	yes, asYAML, daily      bool
+	noFinally               bool
 }
 
 // parseScheduleFlags reads swim schedule's flags (--approve repeats).
@@ -97,7 +98,7 @@ func parseScheduleFlags(args []string) ([]string, scheduleFlags, error) {
 			rest0 = append(rest0, a)
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"yes": &f.yes, "yaml": &f.asYAML, "daily": &f.daily},
+	rest, err := flags{bools: map[string]*bool{"yes": &f.yes, "yaml": &f.asYAML, "daily": &f.daily, "no-finally": &f.noFinally},
 		strs: map[string]*string{"note": &f.note, "parallel": &f.parallel, "key": &f.keyPath, "tz": &f.tz, "until": &f.until, "for": &f.forD}}.parse(rest0)
 	return rest, f, err
 }
@@ -135,6 +136,11 @@ func scheduleAdd(args []string, cmd string) error {
 			return err
 		}
 		lanes = append(lanes, n)
+	}
+	var pulled []int
+	if !f.noFinally {
+		// The finally lanes naming a scheduled lane go with it (# Finally:).
+		lanes, pulled = launcher.WithFinally(root, cfg, lanes)
 	}
 	if f.daily {
 		return recurringAdd(root, cfg, lanes, when, loc, f)
@@ -188,6 +194,9 @@ func scheduleAdd(args []string, cmd string) error {
 	}
 	fmt.Println(schedule.Reply(lanes, at, now, loc))
 	fmt.Printf("  %s (#%d) · swim schedule rm %s cancels\n", e.ID, e.Seq, e.ID)
+	if len(pulled) > 0 {
+		fmt.Printf("  with the finally lanes naming them: %s (--no-finally leaves them out)\n", lanesText(pulled))
+	}
 	for _, w := range warns {
 		fmt.Println("  warning: " + w)
 	}

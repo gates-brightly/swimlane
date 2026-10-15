@@ -144,6 +144,14 @@ type Info struct {
 	// includes it runs it fresh, and every other lane in that run waits for
 	// it to finish. A lane that names it in After: pulls it into the run.
 	Always bool
+	// Finally (# Finally: 1 2) are lanes (or jobs, cells) this lane starts
+	// after once they have ended, in whatever state, where After: needs
+	// them to pass: cleanup, a run report. Naming one of them in a run
+	// pulls this lane in. FinallyJob marks a job of a lane of jobs ("# swim
+	// job 1.9 finally"): it runs after its earlier siblings, even when one
+	// failed.
+	Finally    []string
+	FinallyJob bool
 	// RerunChildren (# Rerun-Children: yes, Always lanes only) makes every
 	// lane downstream of this one, at any depth, run again in swim all even
 	// if it already passed.
@@ -206,7 +214,7 @@ var (
 	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children|Observe):\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children|Observe|Finally):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
@@ -230,7 +238,7 @@ var (
 	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
 		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true,
-		"always": true, "rerun-children": true, "observe": true}
+		"always": true, "rerun-children": true, "observe": true, "finally": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -293,7 +301,7 @@ func ReadScript(root string, n int) (Info, error) {
 	}
 	if info.Stub {
 		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers, info.Outputs, info.Matrix = "", "", nil, nil, nil, nil, nil, nil
-		info.Always, info.RerunChildren = false, false
+		info.Always, info.RerunChildren, info.Finally = false, false, nil
 	}
 	if info.Created == "" {
 		if st, err := os.Stat(path); err == nil {
@@ -402,6 +410,14 @@ func ParseScript(src string) Info {
 					info.setFail(v, "Fail:")
 				case "Always":
 					info.Always = info.setBool(v, "Always:")
+				case "Finally":
+					for _, tok := range sepRE.Split(v, -1) {
+						switch strings.ToLower(tok) {
+						case "", "swim", "-", "none", "(none)":
+							continue
+						}
+						info.Finally = append(info.Finally, tok)
+					}
 				case "Rerun-Children":
 					info.RerunChildren = info.setBool(v, "Rerun-Children:")
 				case "Handler-Timeout":
@@ -471,7 +487,7 @@ func ParseScript(src string) Info {
 	info.checkAlways("Rerun-Children:")
 	if info.Stub {
 		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Handlers, info.Outputs, info.Matrix = "", "", nil, nil, nil, nil, nil, nil
-		info.Always, info.RerunChildren = false, false
+		info.Always, info.RerunChildren, info.Finally = false, false, nil
 	}
 	return info
 }
@@ -519,6 +535,10 @@ func (i *Info) setBool(v, where string) bool {
 // checkAlways drops Rerun-Children from a lane that isn't Always: only
 // setup work decides that what runs after it is stale.
 func (i *Info) checkAlways(where string) {
+	if i.Always && len(i.Finally) > 0 {
+		i.Problems = append(i.Problems, "`Finally:` on an Always lane: every other lane waits for an Always lane, so it can't wait for them to end; ignored")
+		i.Finally = nil
+	}
 	if i.RerunChildren && !i.Always {
 		i.Problems = append(i.Problems, fmt.Sprintf("%s yes needs `Always: yes` (only an Always lane reruns its children); ignored", where))
 		i.RerunChildren = false

@@ -22,6 +22,10 @@ type Dep struct {
 	// Setup is a wait on an Always lane in the same run that the lane
 	// doesn't name: it starts after that lane finishes, whatever its result.
 	Setup bool
+	// Finally is a wait from # Finally: (finally.go): the lane starts once
+	// this one has ended, in whatever state, and is never skipped for it;
+	// one not in the run has ended.
+	Finally bool
 }
 
 func (d Dep) String() string {
@@ -72,6 +76,17 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 			if prev, ok := byLane[d.Lane]; !ok || prev.Job == "" {
 				byLane[d.Lane] = d
 			}
+		}
+		for _, ref := range scripts[n].Finally {
+			d, err := resolveAfter(cfg, scripts, st, n, ref)
+			if err != nil {
+				return nil, fmt.Errorf("%s `Finally: %s`: %w", lane.ScriptName(cfg.Root, n), ref, err)
+			}
+			if _, ok := byLane[d.Lane]; ok {
+				continue // After: on the same lane is the stronger wait
+			}
+			d.Finally = true
+			byLane[d.Lane] = d
 		}
 		var deps []Dep
 		for _, d := range byLane {
@@ -302,7 +317,7 @@ func DepEdges(root string, cfg *config.Config) map[int][]int {
 		for _, d := range cfg.DepsOf(n) {
 			seen[d] = true
 		}
-		for _, ref := range scripts[n].After {
+		for _, ref := range append(append([]string(nil), scripts[n].After...), scripts[n].Finally...) {
 			if d, err := resolveAfter(cfg, scripts, st, n, ref); err == nil {
 				seen[d.Lane] = true
 			}

@@ -122,6 +122,11 @@ type Options struct {
 	auth         *runAuthority              // decides and records the run's approvals (authority.go)
 	secrets      *runSecrets                // the run's decrypted secrets and broker; nil for none
 	env          map[int]*envfile.Resolved  // each lane's env from env files
+	finally      *finallyCtx                // what each finally lane saw (finally.go)
+
+	// NoFinally leaves out the finally lanes naming a selected lane, which
+	// a run of named lanes otherwise pulls in (finally.go).
+	NoFinally bool
 
 	// Interactive allows the interactive view (keys pick a lane's log) when
 	// more than one lane runs on a terminal; the view then reads Stdin.
@@ -228,6 +233,7 @@ func Select(o Options) (sel, done []int, err error) {
 		}
 	}
 	sel, done = expandAlways(o, sel, done)
+	sel = expandFinally(o, sel)
 	for _, n := range sel {
 		if pid, ok := lane.Running(o.Root, n); ok && !o.DryRun {
 			return nil, nil, lane.ErrRunning{Lane: n, PID: pid}
@@ -394,7 +400,10 @@ func Run(o Options) (int, error) {
 	if o.secrets != nil && o.secrets.note != "" {
 		disp.Message(o.secrets.note)
 	}
+	o.finally = &finallyCtx{env: map[int][]string{}, saw: map[int]string{}}
+	fin := finallyLanes(o, sel)
 	ir = newInterrupter(o, disp, sl, lt)
+	ir.finally = fin
 	defer ir.stop()
 	// Lanes this run leaves out may be running in another swim right now.
 	stopOthers := watchOtherRuns(o, selected, disp)
@@ -541,23 +550,46 @@ func Run(o Options) (int, error) {
 		fmt.Fprintf(summaryOut, "swim: unused pre-answers (the lane never reached a guard, or its script changed): %s\n", strings.Join(unused, ", "))
 	}
 
+	// The ordinary lanes decide the run; a finally lane's failure fails it
+	// too, and with an ordinary lane's is 89 ("failed, and the cleanup
+	// failed"), as a failed rollback is.
 	code := 0
-	for _, n := range sel {
-		if outcomes[n].State != status.Passed {
-			code = 1
-		}
-	}
+	ordFail, finFail := false, false
 	counts := map[string]int{}
 	for _, n := range sel {
-		counts[outcomes[n].State]++
+		st := outcomes[n].State
+		if fin[n] {
+			finFail = finFail || st == status.Failed || st == status.Interrupted
+			continue
+		}
+		counts[st]++
+		if st != status.Passed {
+			ordFail = true
+		}
 	}
-	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d  %s",
-		joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted], display.Elapsed(time.Since(start)))})
+	switch {
+	case ordFail && finFail:
+		code = 89
+	case ordFail || finFail:
+		code = 1
+	}
+	runDone := fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d", joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted])
+	finText := ""
+	if len(fin) > 0 {
+		var fp, ff int
+		finText, fp, ff = finallyCounts(fin, outcomes)
+		runDone += fmt.Sprintf(" finally_passed=%d finally_failed=%d", fp, ff)
+	}
+	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: runDone + "  " + display.Elapsed(time.Since(start))})
 	elapsed := time.Since(start)
 	if err := writeRunRecord(o, start, cap, sel, selected, deps, outcomes); err != nil {
 		fmt.Fprintln(os.Stderr, "swim: run record: "+err.Error())
 	}
 	printSummary(summaryOut, o.Root, sel, outcomes, start, elapsed, disp.Color())
+	if finText != "" {
+		p := ui.Painter{On: disp.Color()}
+		fmt.Fprintln(summaryOut, p.Paint(ui.Dim, fmt.Sprintf("  finally: %s; the run exits %d", finText, code)))
+	}
 	stopped := ir.stopping()
 	o.ev.summary(o, sel, outcomes, code, stopped, elapsed)
 	if o.Finished != nil {
@@ -593,16 +625,23 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	}
 	// Dependencies outside this run must already be satisfied (see
 	// outsideBlocker); those inside it are waited for.
-	var waitOn []int
+	var waitOn, finOrder []int
 	cellOf := map[int]string{} // a dependency on one cell of a matrix lane
 	setup := map[int]bool{}    // an Always lane it only waits for (always.go)
+	fin := map[int]bool{}      // a lane it waits for to end, however (finally.go)
+	saw := map[int]*Outcome{}  // how those ended
 	for _, d := range deps {
 		if d.Cell != "" {
 			cellOf[d.Lane] = d.Cell
 		}
-		setup[d.Lane] = d.Setup
+		setup[d.Lane], fin[d.Lane] = d.Setup, d.Finally
+		if d.Finally {
+			finOrder = append(finOrder, d.Lane)
+		}
 		if selected[d.Lane] {
 			waitOn = append(waitOn, d.Lane)
+		} else if d.Finally {
+			// Not in this run: it has ended.
 		} else if why := outsideBlocker(o.Root, d); why != "" {
 			return skip(why)
 		}
@@ -625,6 +664,8 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		mu.Unlock()
 		if setup[d] {
 			// Setup ran first; its result is for the lanes that name it.
+		} else if fin[d] {
+			saw[d] = dep // ended, however: a finally lane runs on
 		} else if c := cellOf[d]; c != "" && dep != nil && dep.Cells != nil {
 			// Waiting on a cell (or a job and those under it): they must
 			// have passed, whatever the others did.
@@ -641,7 +682,12 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		waitOn = waitOn[1:]
 	}
 	ready = time.Now()
-	if ir.stopping() {
+	if len(finOrder) > 0 {
+		env, text := finallyEnv(saw, finOrder)
+		o.finally.set(n, env, text)
+		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.FinallySaw = text })
+	}
+	if ir.stopsLane(n) {
 		return skip("interrupted before start")
 	}
 	// Take the round's resource locks (# Locks:), all at once: first from the
@@ -712,9 +758,13 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		oc := runMatrix(o, n, sel, info, sl, lt, disp, ir, fileLocks)
 		return stamp(oc)
 	}
-	// Wait for a free slot (max_parallel); queued lanes don't hold one.
+	// Wait for a free slot (max_parallel); queued lanes don't hold one. A
+	// finally lane starting in a stopped run needs none: the slots are
+	// closed, and cleanup is the point.
 	loggedQueue := false
-	if !sl.acquire(n, func(ahead int) {
+	if ir.stopping() && !ir.stopsLane(n) {
+		// no slot
+	} else if !sl.acquire(n, func(ahead int) {
 		disp.Set(n, func(v *display.LaneView) { v.State, v.QueuePos, v.WaitingOn = display.Queued, ahead, nil })
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
 			l.State, l.WaitingOn, l.Reason = status.Queued, []int{}, fmt.Sprintf("%d ahead", ahead)
@@ -727,8 +777,9 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 	}) {
 		return skip("interrupted before start")
+	} else {
+		defer sl.release()
 	}
-	defer sl.release()
 	slotted = time.Now()
 
 	// How the script runs: bash for lane.N.sh, its #! line, a confirmed
@@ -752,7 +803,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// The last moment to honour a Ctrl-C that came while this lane was
 	// getting ready (runner, env, slot): after this it starts, and gets the
 	// stop request as a running lane.
-	if ir.stopping() {
+	if ir.stopsLane(n) {
 		return skip("interrupted before start")
 	}
 	launched := time.Now()
@@ -979,6 +1030,7 @@ func writeRunRecord(o Options, start time.Time, cap int, sel []int, selected map
 			if selected[d.Lane] {
 				l.After = append(l.After, d.Lane)
 			}
+			l.Finally = l.Finally || d.Finally
 		}
 		if info, err := lane.ReadScript(o.Root, n); err == nil {
 			l.Locks = info.Locks
@@ -1057,6 +1109,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 		env = append(env, r.Env()...)
 	}
 	env = append(env, os.Environ()...)
+	env = append(env, o.finally.envOf(n)...) // a finally lane's context (finally.go)
 	env = append(env, config.EnvKeysVar+"="+strings.Join(fileKeys, " "))
 	env = append(env, "SWIM_BIN="+o.Self, "SWIM_LAUNCHED=1",
 		"SWIM_RUN="+o.RunID, "SWIM_RUN_LANES="+joinInts(sel, " "), approval.EnvVar+"="+o.approvalSock)
@@ -1304,6 +1357,7 @@ func laneEnv(o Options, n int) []string {
 	if r := o.env[n]; r != nil {
 		env = append(env, r.Env()...)
 	}
+	env = append(env, o.finally.envOf(n)...)
 	return append(env, os.Environ()...)
 }
 

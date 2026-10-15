@@ -641,7 +641,7 @@ func cmdFinish(args []string) error {
 			Script: scriptSHA(root, n), Manifest: manifestSHA(root, n), Result: state, Exit: &exit,
 			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: approvals, AutoApproved: auto,
 			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums, Evidence: roundEvidence(root, r),
-			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs)}); err != nil {
+			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs), Finally: finallySaw()}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 	}
@@ -856,4 +856,24 @@ func laneName(root string, n int) string {
 func laneBanner(p ui.Painter, root string, n int, suffix string) string {
 	id := strings.TrimPrefix(laneName(root, n), "swim ")
 	return p.Paint(ui.LaneColor(n)+ui.Bold, "swim ") + p.Job(id, ui.Bold) + p.Paint(ui.LaneColor(n)+ui.Bold, suffix)
+}
+
+// finallySaw is how the lanes a finally lane waited for ended, from the
+// SWIM_FINALLY_<N> swim run gave it ("1" -> "pass"); nil for other lanes.
+func finallySaw() map[string]string {
+	out := map[string]string{}
+	for _, kv := range os.Environ() {
+		k, v, _ := strings.Cut(kv, "=")
+		n, ok := strings.CutPrefix(k, "SWIM_FINALLY_")
+		if !ok || strings.Contains(n, "_") {
+			continue // SWIM_FINALLY_<N>_JOB, a job's SWIM_FINALLY_<N>_<K>
+		}
+		if _, err := strconv.Atoi(n); err == nil {
+			out[n] = or(v, "not in the run")
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
