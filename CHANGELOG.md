@@ -260,6 +260,11 @@ To cut a release:
 
 ### Changed
 
+- **This repo's CI has security gates (T27):** `lanes.ci.sh` gains a race
+  job (`go test -race`, Always), and runs fault injection, the security
+  suite and the fuzz targets (20s each) as jobs of their own, so a red run
+  names the gate. The race job's first run found a data race in the
+  approval broker's tests (the read timeout, now atomic).
 - **A red `swim ci` says what failed:** a failed step's annotation carries
   its last output lines, and this repo's e2e lane runs `go test -json`
   through `e2etool gotest-report`, so its tail (and the annotation) names

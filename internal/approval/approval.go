@@ -33,6 +33,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
@@ -177,8 +178,17 @@ const AwaitPID = -1
 // MaxRequest caps one request: a lane can't make the launcher buffer more.
 const MaxRequest = 1 << 20
 
-// ReadTimeout is how long a connection may take to send its request.
-var ReadTimeout = 10 * time.Second
+// readTimeout is how long a connection may take to send its request
+// (nanoseconds; atomic, since a test shortens it while the server runs).
+var readTimeout atomic.Int64
+
+func init() { readTimeout.Store(int64(10 * time.Second)) }
+
+// SetReadTimeout sets how long a connection may take to send its request,
+// and returns what it was.
+func SetReadTimeout(d time.Duration) time.Duration {
+	return time.Duration(readTimeout.Swap(int64(d)))
+}
 
 // issued is an approval handed out and not yet consumed.
 type issued struct {
@@ -428,9 +438,9 @@ func (s *Server) serve(c net.Conn) {
 	defer c.Close()
 	var req Request
 	// One request per connection, of at most MaxRequest bytes, sent within
-	// ReadTimeout: a lane can't make the launcher buffer or wait without
-	// limit. Anything else is declined.
-	c.SetReadDeadline(time.Now().Add(ReadTimeout))
+	// the read timeout: a lane can't make the launcher buffer or wait
+	// without limit. Anything else is declined.
+	c.SetReadDeadline(time.Now().Add(time.Duration(readTimeout.Load())))
 	lr := &io.LimitedReader{R: c, N: MaxRequest + 1}
 	if err := json.NewDecoder(lr).Decode(&req); err != nil {
 		why := "malformed request"

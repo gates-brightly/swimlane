@@ -282,7 +282,7 @@ func TestPeerOutsideTheLane(t *testing.T) {
 }
 
 // A request must be one JSON message of at most MaxRequest bytes, sent
-// within ReadTimeout; anything else is declined, unasked.
+// within the read timeout; anything else is declined, unasked.
 func TestHostileRequests(t *testing.T) {
 	asked := 0
 	var mu sync.Mutex
@@ -318,9 +318,7 @@ func TestHostileRequests(t *testing.T) {
 		t.Errorf("malformed: %+v", r)
 	}
 	// A client that never finishes its request is cut off.
-	old := ReadTimeout
-	ReadTimeout = 200 * time.Millisecond
-	defer func() { ReadTimeout = old }()
+	defer SetReadTimeout(SetReadTimeout(200 * time.Millisecond))
 	if r := send(t, []byte(`{"flag":"F","token":"`)); r.Approved || !strings.Contains(r.Why, "too long") {
 		t.Errorf("slow: %+v", r)
 	}

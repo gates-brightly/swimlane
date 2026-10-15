@@ -403,6 +403,8 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 		{"a lane that writes approvals/ or lookup.yml after the run starts", "T3", TestHostileLaneWritesApprovals},
 		{"a lane that calls _mark APPROVED itself", "T3", TestHostileLaneMarksApproved},
 		{"a lane that sets FLAG=1 in its own environment", "T3", TestHostileLaneSetsFlag},
+		{"a lane that drops its approvals channel and sets the flag", "T28", TestHostileLaneDropsApprovals},
+		{"swim run can't start its approvals: every guard is a dry run, attested", "T28", TestApprovalsUnavailable},
 		{"an included file changed between approval and exec", "T2", TestManifestApprovalBinding},
 		{"the runner changed between approval and exec", "T2", TestManifestRunnerBinding},
 		{"the env changed between approval and exec", "T2", TestEnvFileQueuePin},

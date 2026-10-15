@@ -42,7 +42,8 @@ jobs:
       # swim tests itself: the CI is lane 1, the committed group file
       # lanes.ci.sh, run by the swim built from this checkout (settings in
       # swim.yml). Its jobs run in order: fmt (1.1), lint (1.2) and unit
-      # tests (1.3) are Always, then e2e (1.4). Same as `make ci` locally.
+      # tests (1.3) and race (1.4) are Always, then e2e (1.5), fault injection
+      # (1.6), security (1.7) and fuzzing (1.8). Same as `make ci` locally.
       - name: Build swim from this checkout
         run: |
           go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim
@@ -65,7 +66,7 @@ jobs:
             .swim/logs
             .swim.log
             swim.xml
-            e2e.xml
+            e2e*.xml
             ${{ runner.temp }}/swim-e2e-failed
           if-no-files-found: ignore
           include-hidden-files: true   # .swim/ and .swim.log start with a dot

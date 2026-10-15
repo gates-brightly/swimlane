@@ -17,4 +17,4 @@ __pycache__/
 
 # JUnit reports swim ci and the e2e lane write
 swim.xml
-e2e.xml
+e2e*.xml

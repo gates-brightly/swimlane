@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # swim: syntax 2
-# Round:   CI: fmt, lint, test, e2e
+# Round:   CI: fmt, lint, test, race, e2e, fault, security, fuzz
 # Owner:   swim CI
 #
 # This repo's CI: lane 1, as one group file. Its jobs run in order, and the
-# first failure skips the rest. fmt, lint and test (1.1-1.3) are Always:
-# swim ci (GitHub Actions) and swim all run them first, every time, and
-# every other lane waits for them; e2e (1.4) runs after them, alongside the
-# other lanes. `swim run 1.2` runs one job; `make ci` runs them all.
+# first failure skips the rest. fmt, lint, test and race (1.1-1.4) are
+# Always jobs: swim ci (GitHub Actions) and swim all run them first, every
+# time, and every other lane waits for them; then e2e (1.5), fault injection
+# (1.6), the security suite (1.7) and fuzzing (1.8), each its own job so a
+# failure names the gate. `swim run 1.7` runs one job; `make ci` runs them
+# all. Security tests fail the build on a violation; they never only warn.
 #
 # Each job starts at its "# swim job 1.K" line. swim loads its library,
 # calls lane_init and summary, and runs .swim/groups/lane.1.K.sh.
@@ -47,6 +49,17 @@ stage check
 run "go test (unit)" scripts/hermetic bash -c 'go test $(go list ./... | grep -v /internal/e2e)'
 
 # swim job 1.4 -----------------------------------------------------------------
+# Round:   CI: race (go test -race, unit)
+# Job:     5c1a0015-11a7-4c1e-8d00-000000000015
+# Always:  yes
+# Timeout: 15m
+#
+# Goal: no data race in any package's unit tests (the e2e suite drives the
+# swim binary, which -race here doesn't instrument).
+stage check
+run "go test -race (unit)" scripts/hermetic bash -c 'go test -race $(go list ./... | grep -v /internal/e2e)'
+
+# swim job 1.5 -----------------------------------------------------------------
 # Round:   CI: e2e (Go suite and e2e/ scenarios)
 # Job:     5c1a0014-11a7-4c1e-8d00-000000000014
 # Timeout: 30m
@@ -58,6 +71,44 @@ run "go test (unit)" scripts/hermetic bash -c 'go test $(go list ./... | grep -v
 # go test -json through e2etool gotest-report: the step's last lines name
 # each failed test with its output (swim ci puts them in the annotation),
 # and e2e.xml has a JUnit case per Go test. E2E_KEEP_FAILED (the workflow
-# sets it) keeps a failed scenario's scratch repo there.
+# sets it) keeps a failed scenario's scratch repo there. The fault and
+# security suites run in their own jobs below.
 stage check
-run "go test ./internal/e2e" scripts/hermetic bash -c 'set -o pipefail; go test -json -count=1 ./internal/e2e/... | go run ./e2e/cmd/e2etool gotest-report --junit e2e.xml'
+run "go test ./internal/e2e" scripts/hermetic bash -c 'set -o pipefail; go test -json -count=1 -skip "^(TestSecurity|TestFault|TestNoSecretLeaks)" ./internal/e2e/... | go run ./e2e/cmd/e2etool gotest-report --junit e2e.xml'
+
+# swim job 1.6 -----------------------------------------------------------------
+# Round:   CI: fault injection (crashes at named points)
+# Job:     5c1a0016-11a7-4c1e-8d00-000000000016
+# Timeout: 15m
+#
+# Goal: a crash at any failpoint (mid-step, mid-claim, mid-write,
+# mid-append) leaves state a restart recovers: TestFault* build a swim with
+# -tags swimfailpoint and kill it there.
+stage check
+run "go test -run TestFault" scripts/hermetic bash -c 'set -o pipefail; go test -json -count=1 -run "^TestFault" ./internal/e2e/ | go run ./e2e/cmd/e2etool gotest-report --junit e2e-fault.xml'
+
+# swim job 1.7 -----------------------------------------------------------------
+# Round:   CI: security (the security regression suite)
+# Job:     5c1a0017-11a7-4c1e-8d00-000000000017
+# Timeout: 15m
+#
+# Goal: every claim in docs/trust-model.md's claims table holds: a lane
+# can't approve itself (T3, T28), a changed manifest input stales its
+# approval, the chain catches tampering, no secret leaks. A violation fails
+# the build.
+stage check
+run "go test -run TestSecurity" scripts/hermetic bash -c 'set -o pipefail; go test -json -count=1 -run "^(TestSecurity|TestNoSecretLeaks)$" ./internal/e2e/ | go run ./e2e/cmd/e2etool gotest-report --junit e2e-security.xml'
+
+# swim job 1.8 -----------------------------------------------------------------
+# Round:   CI: fuzz (each target, 20s)
+# Job:     5c1a0018-11a7-4c1e-8d00-000000000018
+# Timeout: 10m
+#
+# Goal: the parsers of what lanes write (logs, script headers, chain lines,
+# the lane socket) don't panic on any input. A crash the fuzzer finds lands
+# in that package's testdata/fuzz: commit it with the fix.
+stage check
+run "fuzz logparse" scripts/hermetic go test -run '^$' -fuzz '^FuzzParse$' -fuzztime 20s ./internal/logparse
+run "fuzz lane" scripts/hermetic go test -run '^$' -fuzz '^FuzzParseScript$' -fuzztime 20s ./internal/lane
+run "fuzz chain" scripts/hermetic go test -run '^$' -fuzz '^FuzzDecodeLine$' -fuzztime 20s ./internal/chain
+run "fuzz lane socket" scripts/hermetic go test -run '^$' -fuzz '^FuzzLaneRequests$' -fuzztime 20s ./internal/cli

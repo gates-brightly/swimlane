@@ -1179,8 +1179,9 @@ runs there either way. swim never commits results back.
 
 This repo dogfoods it. Its own CI is `swim ci` over lane 1, one committed
 group file: [`lanes.ci.sh`](lanes.ci.sh). Its jobs run in order: fmt (1.1),
-lint (1.2) and unit tests (1.3) are Always, then e2e (1.4). `make ci` runs
-the same jobs locally.
+lint (1.2), unit tests (1.3) and race (1.4) are Always, then e2e (1.5),
+fault injection (1.6), the security suite (1.7) and fuzzing (1.8), each its
+own job so a red run names the gate. `make ci` runs the same jobs locally.
 
 ### The watch hub
 
