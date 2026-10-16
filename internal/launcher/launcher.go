@@ -27,6 +27,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/observe"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/runrec"
@@ -594,6 +595,12 @@ func Run(o Options) (int, error) {
 	elapsed := time.Since(start)
 	if err := writeRunRecord(o, start, cap, sel, selected, deps, outcomes); err != nil {
 		fmt.Fprintln(os.Stderr, "swim: run record: "+err.Error())
+	} else if !o.CheckOnly {
+		// The run's observations (swim observe): derived, kept beside the
+		// logs; one that can't be computed never fails the run.
+		if _, err := observe.Record(o.Root, o.RunID, o.Cfg.ObserveThresholds()); err != nil {
+			history.Log(o.Root, history.Entry{Event: history.Warn, Run: o.RunID, Detail: "observations not recorded: " + err.Error()})
+		}
 	}
 	printSummary(summaryOut, o.Root, sel, outcomes, start, elapsed, disp.Color())
 	if finText != "" {

@@ -456,6 +456,17 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **`swim observe`: what the runs say, computed.** At the end of each run,
+  swim computes observations from what it records: a step that hit its
+  time limit (and how often), passed only after retries, took much longer
+  (or far less) than its usual time, failed in each of its last runs; a
+  guard nobody approved in its last runs; a DRIFT that came back; a lane
+  that waited long for its lanes, locks or a slot. Each has its numbers
+  and the runs it cites, in `.swim/observations/<run>.yml` (beside the
+  logs, never in them, so the chain is untouched). `swim observe [RUN|N|JOB]
+  [--yaml]` shows them, and `swim report` has a section for the runs that
+  ended since your earmark. Thresholds: `swim.yml` `observe:`. They decide
+  nothing.
 - **Fetched modules.** A lane can use a module from another git
   repository, by source address and version: `# Modules:
   github.com/org/swim-modules//pager@2`. `swim modules get` resolves it to

@@ -35,6 +35,7 @@ func init() {
 		"all":       {run: cmdAll},
 		"plan":      {run: cmdPlan},
 		"timeline":  {run: cmdTimeline},
+		"observe":   {run: cmdObserve},
 		"status":    {run: cmdStatus},
 		"report":    {run: cmdReport},
 		"step":      {run: cmdStep},

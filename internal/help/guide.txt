@@ -41,6 +41,8 @@ COMMANDS
                            every lane-log line since your earmark, in full (--earmark moves it)
   timeline [RUN|N|JOB]     when each lane of the last run (or RUN) waited, ran and finished,
                            and the longest dependency chain; N/JOB: its rounds across runs
+  observe [RUN|N|JOB]      a run's observations: slow steps, timeouts, retries, long waits,
+                           steps that keep failing, guards nobody approves (also in report)
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
   lib                      print the bash library lane scripts load
   In a lane script in any language (OTHER LANGUAGES); run "<label>" -- cmd is a step too:

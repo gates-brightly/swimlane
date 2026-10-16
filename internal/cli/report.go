@@ -22,9 +22,11 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/observe"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // swim report: what changed since a reader last looked (features/report.md
@@ -370,6 +372,7 @@ type report struct {
 	queue                    string
 	history                  []string
 	historyWarn              string
+	observations             []observe.Observation // of the runs that ended since the earmark
 	lanes                    []laneReport
 	inFlight                 [][]string
 	next                     *earmark.Cursor // where the earmark goes
@@ -573,6 +576,16 @@ func buildReport(root string, cfg *config.Config, name string, cur *earmark.Curs
 			}
 		}
 		r.history = append(r.history, l)
+		// A run that ended: its observations (swim observe).
+		if strings.Contains(l, " run-done ") {
+			if f, ok, _ := observe.Load(root, historyField(l, "run")); ok {
+				for _, ob := range f.Observations {
+					if o.only == nil || o.only[ob.Lane] {
+						r.observations = append(r.observations, ob)
+					}
+				}
+			}
+		}
 	}
 	if o.only == nil {
 		// Narrowed, the next unnarrowed report still shows the other
@@ -725,6 +738,12 @@ func (r *report) writeText(w io.Writer) {
 			fmt.Fprintln(w, l)
 		}
 	}
+	if len(r.observations) > 0 {
+		fmt.Fprintf(w, "\nobservations  %d (swim observe)\n", len(r.observations))
+		for _, o := range r.observations {
+			printObservationTo(w, ui.Painter{}, o, "")
+		}
+	}
 	if !r.opts.noLogs {
 		for _, l := range r.lanes {
 			if l.warn != "" {
@@ -780,10 +799,11 @@ type reportDoc struct {
 		Queue     string         `yaml:"queue,omitempty"`
 		Locks     []string       `yaml:"locks,omitempty"`
 	} `yaml:"status"`
-	History  []string        `yaml:"history"`
-	Warnings []string        `yaml:"warnings,omitempty"`
-	Lanes    []laneReportDoc `yaml:"lanes"`
-	InFlight [][]string      `yaml:"in_flight,omitempty"`
+	History      []string              `yaml:"history"`
+	Observations []observe.Observation `yaml:"observations,omitempty"`
+	Warnings     []string              `yaml:"warnings,omitempty"`
+	Lanes        []laneReportDoc       `yaml:"lanes"`
+	InFlight     [][]string            `yaml:"in_flight,omitempty"`
 }
 
 type laneReportDoc struct {
@@ -817,6 +837,7 @@ func (r *report) writeYAML(w io.Writer) error {
 	if d.History == nil {
 		d.History = []string{}
 	}
+	d.Observations = r.observations
 	if r.historyWarn != "" {
 		d.Warnings = append(d.Warnings, r.historyWarn)
 	}

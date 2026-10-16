@@ -380,6 +380,27 @@ swim report --earmarks | --earmark --reset [--name NAME]
   lane, use the library's
   gate.)
 `,
+	"observe": `swim observe [RUN|N|JOB] [--yaml]
+
+  A run's observations: facts computed from what swim records, each with
+  its numbers and the runs it cites. The last run's by default; for N or
+  JOB, that lane's or job's in the last run it ran in. swim run computes
+  them as it ends, into .swim/observations/<run>.yml (beside the logs,
+  never in them), and swim report shows the ones of runs that ended since
+  your earmark. They decide nothing: acting on one is a script change.
+    timeout   a step hit its time limit, and how often it has
+    retried   a step passed only after retries
+    waited    a lane waited 2m+ for its lanes, its locks or a slot
+    slow      a step took over 1.5x its p90 and 30s+ over its median (with 5+
+              earlier runs of it)
+    fast      a step took under a quarter of its median: did it skip its work?
+    failing   a step failed in each of its last 3 runs
+    dry       a guard ran as a dry run in each of its last 3 runs
+    drift     the same DRIFT came back
+  The thresholds are swim.yml's observe: (slow_factor, slow_min_s,
+  baseline_min, window, wait_min_s, failing_streak, dry_streak); they're
+  not policy and stale nothing. --yaml: swim.observations/v1.
+`,
 	"mod": `swim mod [--label L] [--gate|--evidence] [options] CMD [args...]
 
   In a lane program with no SDK (a script that runs swim run ... -- for
@@ -1797,7 +1818,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "timeline", "observe", "step", "lib",
 	"gate", "snapshot", "mod", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
