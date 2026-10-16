@@ -54,7 +54,9 @@ func KnowledgePath(root string) string { return filepath.Join(root, "knowledge",
 
 // rejectedPath lists the entries someone rejected (not committed: it's
 // one operator's say).
-func rejectedPath(root string) string { return filepath.Join(root, ".swim", "knowledge", "rejected.yml") }
+func rejectedPath(root string) string {
+	return filepath.Join(root, ".swim", "knowledge", "rejected.yml")
+}
 
 // knowledgeMin and retireAfter: an entry is proposed once seen in this
 // many runs, and retired after this many of the lane's runs without it.
