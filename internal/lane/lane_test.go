@@ -290,3 +290,16 @@ func TestModuleEvidenceUse(t *testing.T) {
 		}
 	}
 }
+
+// Quoted text that mentions a guard isn't a guard call.
+func TestGuardInQuotes(t *testing.T) {
+	src := "#!/usr/bin/env bash\n# Round: r\n" +
+		`if guard ALLOW_X "do x, unless the guard was declined"; then run "x" true; fi` + "\n" +
+		`run "say" bash -c 'echo "no report: the guard was declined"'` + "\n" +
+		`echo "guard WHO \"guard ESCAPED\""` + "\n" +
+		"guard ALLOW_Y 'y'\n"
+	got := ParseScript(src).GuardFlags()
+	if strings.Join(got, " ") != "ALLOW_X ALLOW_Y" {
+		t.Errorf("guards: %v", got)
+	}
+}

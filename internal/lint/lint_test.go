@@ -74,6 +74,11 @@ func replace(s, old, new string) string {
 
 func before(s, anchor, add string) string { return replace(s, anchor, add+anchor) }
 
+// mods is a script that uses modules: syntax 4 and its # Modules: line.
+func mods(s, line string) string {
+	return before(replace(s, "# swim: syntax 2", "# swim: syntax 4"), "# Timeout:", line+"\n")
+}
+
 func TestEachCheck(t *testing.T) {
 	c := clean(1)
 	cases := []struct {
@@ -111,12 +116,12 @@ func TestEachCheck(t *testing.T) {
 		{name: "Cache no lockfile", script: before(c, "# Timeout:", "# Cache: terraform\n"), code: "cache", level: finding.Error, line: 7, message: "terraform needs its lockfile"},
 		{name: "npm install with a cache", script: before(before(c, "# Timeout:", "# Cache: npm @package-lock.json\n"), "stage verify\n", "run \"deps\" npm install\n"), code: "cache-bypass", level: finding.Warn, message: "npm install"},
 		{name: "pip without hashes", script: before(before(c, "# Timeout:", "# Cache: pip @requirements.txt\n"), "stage verify\n", "run \"deps\" pip install requests\n"), code: "cache-bypass", level: finding.Warn, message: "--require-hashes"},
-		{name: "module not declared", script: before(c, "stage verify\n", "mod notify - \"done\"\n"), code: "module", level: finding.Error, message: "module notify isn't declared"},
-		{name: "no such module", script: before(c, "# Timeout:", "# Modules: nope\n"), code: "module", level: finding.Error, line: 7, message: "module nope: no such module"},
-		{name: "no such module command", script: before(before(c, "# Timeout:", "# Modules: notify\n"), "stage verify\n", "mod --label x notify_thread - hi\n"), code: "module", level: finding.Error, message: "no module has a command notify_thread"},
-		{name: "credentials without mod_env", script: before(before(c, "# Timeout:", "# Modules: aws-session\n"), "stage verify\n", "mod aws-session --profile p\n"), code: "module-effects", level: finding.Warn, message: "mod drops them"},
-		{name: "module before change", script: before(before(c, "# Timeout:", "# Modules: notify\n"), "stage change\n", "if true; then mod notify - \"starting\"; fi\n"), code: "module-effects", level: finding.Warn, message: "isn't read-only"},
-		{name: "module apply outside a guard", script: before(before(c, "# Timeout:", "# Modules: tf\n"), "stage verify\n", "mod tf apply infra\n"), code: "module-effects", level: finding.Warn, message: "tf apply changes things, and runs outside a guard"},
+		{name: "module not declared", script: before(replace(c, "# swim: syntax 2", "# swim: syntax 4"), "stage verify\n", "mod notify - \"done\"\n"), code: "module", level: finding.Error, message: "module notify isn't declared"},
+		{name: "no such module", script: mods(c, "# Modules: nope"), code: "module", level: finding.Error, line: 7, message: "module nope: no such module"},
+		{name: "no such module command", script: before(mods(c, "# Modules: notify"), "stage verify\n", "mod --label x notify_thread - hi\n"), code: "module", level: finding.Error, message: "no module has a command notify_thread"},
+		{name: "credentials without mod_env", script: before(mods(c, "# Modules: aws-session"), "stage verify\n", "mod aws-session --profile p\n"), code: "module-effects", level: finding.Warn, message: "mod drops them"},
+		{name: "module before change", script: before(mods(c, "# Modules: notify"), "stage change\n", "if true; then mod notify - \"starting\"; fi\n"), code: "module-effects", level: finding.Warn, message: "isn't read-only"},
+		{name: "module apply outside a guard", script: before(mods(c, "# Modules: tf"), "stage verify\n", "mod tf apply infra\n"), code: "module-effects", level: finding.Warn, message: "tf apply changes things, and runs outside a guard"},
 		{name: "destructive outside guard", script: before(c, "stage verify\n", "run \"clean\" rm -rf build\n"), code: "destructive", level: finding.Warn},
 		{name: "destructive after else", script: replace(c, "fi\n", "else\n  run \"destroy\" terraform destroy\nfi\n"), code: "destructive", level: finding.Warn},
 		{name: "blocked", script: before(c, "stage verify\n", "run \"ship\" git push origin main\n"), code: "blocked", level: finding.Error},
@@ -319,10 +324,19 @@ func TestGuardedSecretLint(t *testing.T) {
 	}
 }
 
+// A lane that uses modules must say syntax 4.
+func TestModulesNeedSyntax4(t *testing.T) {
+	c := before(clean(1), "# Timeout:", "# Modules: notify\n")
+	fs := Lint(cfg4(), map[int]string{1: c, 2: clean(2)}, 1)
+	if len(fs) != 1 || fs[0].Code != "module" || !strings.Contains(fs[0].Message, "declares syntax 2") || fs[0].Line != 7 {
+		t.Errorf("findings: %+v", fs)
+	}
+}
+
 // go mod download isn't a module call; declared modules used after stage
 // change, and a read-only one before it, are clean.
 func TestModulesClean(t *testing.T) {
-	c := before(clean(1), "# Timeout:", "# Modules: notify clone@1 aws-session tf\n")
+	c := mods(clean(1), "# Modules: notify clone@1 aws-session tf")
 	c = before(c, "stage change\n", "mod --evidence tf plan infra\n")
 	c = replace(c, "  run \"drop table\"", "  mod tf apply infra\n  run \"drop table\"")
 	c = before(c, "stage change\n", "run \"deps\" go mod download\nmod_env aws-session --profile p\nmod clone https://x/y 3f2a9c1e0b7d4e2a9c1e0b7d4e2a9c1e0b7d4e2a \"$SWIM_OUT/y\"\n")

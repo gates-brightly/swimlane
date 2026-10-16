@@ -111,7 +111,7 @@ var Checks = []Check{
 	{"cache-bypass", finding.Warn, false, "a command that takes from a declared cache without checking it against the lockfile (npm install, pip install without --require-hashes)", checkCacheBypass},
 	{"includes", finding.Warn, false, "a Python or TypeScript lane imports a local module its # Includes: doesn't cover", checkIncludes},
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
-	{"module", finding.Error, false, "a # Modules: entry that doesn't resolve or swim.yml doesn't allow, or a module command the script doesn't declare", checkModules},
+	{"module", finding.Error, false, "a # Modules: entry that doesn't resolve or swim.yml doesn't allow, a module command the script doesn't declare, or modules without `# swim: syntax 4`", checkModules},
 	{"module-effects", finding.Warn, false, "a module used against its declared effects: credentials without mod_env, not read-only before `stage change`", checkModuleEffects},
 	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},
 	{"sdk-bypass", finding.Info, false, "an SDK lane runs commands itself (subprocess, child_process) rather than through r.run", checkSDKBypass},

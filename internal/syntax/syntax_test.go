@@ -43,7 +43,7 @@ func TestCheckLimits(t *testing.T) {
 	}
 	err := CheckScript("lane.1.sh", Script+1)
 	var tooNew ErrTooNew
-	if !errors.As(err, &tooNew) || !strings.Contains(err.Error(), "reads up to syntax 3") {
+	if !errors.As(err, &tooNew) || !strings.Contains(err.Error(), "reads up to syntax 4") {
 		t.Errorf("CheckScript: %v", err)
 	}
 }

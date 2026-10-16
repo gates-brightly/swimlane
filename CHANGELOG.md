@@ -32,6 +32,13 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Upgrading
 
+- **Script syntax 4 (modules):** a lane that uses `# Modules:`, `mod` or
+  `mod_env` declares `# swim: syntax 4` (lint errors without it), so a swim
+  without modules refuses it instead of running it with every module call
+  failing. Repos locked at script 3 refuse to run until upgraded: once
+  everyone who runs lanes in the repo has this swim, run `swim lock
+  --upgrade` and commit `.swim.lock`. Existing syntax 2 and 3 scripts run
+  as they are.
 - **Approvals bound to a manifest go stale once.** swim.yml's `modules:`
   joined the policy hash (policy version 3), so every manifest's hash
   changes with this swim, whatever the repo's swim.yml says. Approve the
@@ -419,6 +426,17 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **A command that fails outside any step is logged.** `WARN  outside a
+  step: <command> (exit N)`, with "command not found" for exit 127. Before,
+  only the terminal saw it (an undefined `mod` on an older swim left no
+  trace). It changes nothing in the round; steps, conditions and `&&` /
+  `||` lists aren't reported.
+- **The claude module shows the CLI's stderr only when the call fails**
+  (a wrapper's container start-up output no longer fills a passing step),
+  and says how many lines it held back.
+- **Guard detection ignores quoted text.** `echo "the guard was declined"`
+  no longer made `was` one of the lane's guards in `swim plan`, the
+  manifest and approvals.
 - **Built-in module `report`.** `mod report report.md` prints a round's
   artifact from `$SWIM_OUT` into the step log, headed by its size and
   SHA-256 (the hash the END block records for an output), masked like any

@@ -114,6 +114,12 @@ func shellWords(s string) []string {
 func checkModules(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	at := max(s.headerLine("Modules"), 0)
+	// Syntax 4, or an older swim runs the round with every module call
+	// failing outside a step.
+	if len(s.Info.Modules) > 0 && s.Info.Syntax < 4 {
+		out = append(out, f(finding.Error, "module", at, "change the syntax line to `# swim: syntax 4`",
+			"uses modules but declares syntax %d: an older swim would run the round without them", s.Info.Syntax))
+	}
 	mods, err := module.Resolve(c.Root, c.Cfg.Modules, s.Info.Modules)
 	if err != nil {
 		for _, e := range strings.Split(err.Error(), "\n") {

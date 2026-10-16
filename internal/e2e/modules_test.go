@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,15 @@ import (
 	"sync/atomic"
 	"testing"
 )
+
+// modScript is r.script for a lane that uses modules: syntax 4.
+func (r *repo) modScript(n int, round, body string) {
+	r.t.Helper()
+	r.script(n, round, body)
+	p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
+	data, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# swim: syntax 2", "# swim: syntax 4", 1)), 0o755)
+}
 
 // gitRepo makes a repository with one commit and returns its path and the
 // commit id.
@@ -44,7 +54,7 @@ func gitRepo(t *testing.T) (string, string) {
 func TestModuleClone(t *testing.T) {
 	r := newRepo(t, "")
 	src, sha := gitRepo(t)
-	r.script(1, "clone at a commit", `# Modules: clone
+	r.modScript(1, "clone at a commit", `# Modules: clone
 mod clone "`+src+`" `+sha+` "$SWIM_OUT/src"
 run "read it" cat "$SWIM_OUT/src/README"
 mod --label "clone a branch" clone "`+src+`" main "$SWIM_OUT/branch"
@@ -72,7 +82,7 @@ func TestModuleNotify(t *testing.T) {
 	}))
 	defer srv.Close()
 	r.env = append(r.env, "SWIM_SECRET_SLACK_WEBHOOK_URL="+srv.URL+"/hook/secret-path")
-	r.script(1, "tell the channel", `# Modules: notify
+	r.modScript(1, "tell the channel", `# Modules: notify
 mod notify "#orders" "deployed \"orders\" from C:\\deploy in $SWIM_JOB"`)
 	r.mustSwim("run", "1", "--plain")
 	mu.Lock()
@@ -86,7 +96,7 @@ mod notify "#orders" "deployed \"orders\" from C:\\deploy in $SWIM_JOB"`)
 	}
 
 	srv.Close()
-	r.script(2, "tell it again", `# Modules: notify
+	r.modScript(2, "tell it again", `# Modules: notify
 mod notify - "soft"
 mod --label strict notify --strict - "strict"`)
 	r.swim("run", "2", "--plain")
@@ -110,7 +120,7 @@ func TestModuleRepoAndEnv(t *testing.T) {
 greet_env() { echo "GREET_TARGET=world" >>"$SWIM_MODULE_OUT"; echo "GREET_LONG=value-to-mask-123" >>"$SWIM_MODULE_OUT"; }
 greet_bad() { echo "AWS_SECRET_ACCESS_KEY=abcdefabcdef" >>"$SWIM_MODULE_OUT"; }
 `)
-	r.script(1, "use a repo module", `# Modules: greet
+	r.modScript(1, "use a repo module", `# Modules: greet
 mod greet there
 mod_env greet_env
 run "see it" bash -c 'echo "target=$GREET_TARGET long=$GREET_LONG"'
@@ -166,7 +176,7 @@ esac
 `), 0o755)
 	r.env = append(r.env, "PATH="+fake+string(os.PathListSeparator)+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"AWS_FAKE_LOG="+filepath.Join(fake, "calls"))
-	r.script(1, "with a session", `# Modules: aws-session
+	r.modScript(1, "with a session", `# Modules: aws-session
 mod aws-session --profile p
 mod_env aws-session --profile orders --role arn:aws:iam::123456789012:role/deploy --duration 30m
 run "use it" bash -c 'echo "key=$AWS_ACCESS_KEY_ID secret=$AWS_SECRET_ACCESS_KEY until=$AWS_CREDENTIAL_EXPIRATION"'`)
@@ -203,6 +213,7 @@ kit_secret() { "$SWIM_BIN" secret get "$1" >/dev/null && echo "got $1"; }
 					t.Skip("python3 not installed")
 				}
 				r.write("lane.1.py", `#!/usr/bin/env python3
+# swim: syntax 4
 # Round: modules from python
 # Modules: ./modules/kit
 import os, swim
@@ -218,7 +229,8 @@ with swim.round() as r:
 				if out, err := exec.Command("node", "--experimental-strip-types", "-e", "1").CombinedOutput(); err != nil {
 					t.Skipf("node can't run TypeScript: %v %s", err, out)
 				}
-				r.write("lane.1.ts", strings.Replace(`// Round: modules from ts
+				r.write("lane.1.ts", strings.Replace(`// swim: syntax 4
+// Round: modules from ts
 // Modules: ./modules/kit
 import { round } from "SDK";
 await round(async (r) => {
@@ -265,7 +277,7 @@ func main() {
 	}
 }
 `, 0o644)
-	r.script(1, "go module", `# Modules: stamp
+	r.modScript(1, "go module", `# Modules: stamp
 mod stamp a b
 mod_env stamp
 run "see" bash -c 'echo "stamp=$STAMP"'`)
@@ -290,7 +302,7 @@ func TestModuleApprovalStale(t *testing.T) {
 	os.MkdirAll(d, 0o755)
 	os.WriteFile(filepath.Join(d, "module.yml"), []byte("schema: swim.module/v1\nname: say\nversion: 1.0.0\nkind: bash\ncommands: [say]\n"), 0o644)
 	os.WriteFile(filepath.Join(d, "say.sh"), []byte("say() { echo \"say-v1 $*\"; }\n"), 0o644)
-	r.script(1, "say it", `if guard MOD_ALLOW_SAY "say it"; then mod say hello; fi`)
+	r.modScript(1, "say it", `if guard MOD_ALLOW_SAY "say it"; then mod say hello; fi`)
 	withHeader(t, r, 1, "# Modules: ./modules/say notify\n# Guards: MOD_ALLOW_SAY say it")
 	contains(t, "approve", r.mustSwim("approve", "1", "--guards", "MOD_ALLOW_SAY", "--key", keys["zach"]),
 		"includes modules/say/say.sh", "(module)", "module   say 1.0.0 ./modules/say", "module   notify 1.0.0 builtin", "secret SLACK_WEBHOOK_URL")
@@ -327,7 +339,7 @@ esac
 	defer srv.Close()
 	r.env = append(r.env, "PATH="+fake+string(os.PathListSeparator)+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"AWS_FAKE_DIR="+fake)
-	r.script(1, "back up, change, wait", `# Modules: target backup wait
+	r.modScript(1, "back up, change, wait", `# Modules: target backup wait
 # Outputs: -
 mod target aws --account 123456789012
 stage change
@@ -336,7 +348,7 @@ run "same round" bash -c 'echo "kind=$BACKUP_KIND source=$BACKUP_SOURCE id-set=$
 mod wait http "`+srv.URL+`/health" --every 50ms --for 20s`)
 	r.script(2, "reads the backup id", `run "restore point" echo "from $(input 1 backup.rds.orders-prod)"`)
 	withHeader(t, r, 2, "# After: 1")
-	r.script(3, "wrong account", `# Modules: target
+	r.modScript(3, "wrong account", `# Modules: target
 mod target aws --account 999999999999
 run "never" echo should-not-run`)
 	contains(t, "lint", must(r.swim("lint", "1", "2", "3")), "")
@@ -368,6 +380,7 @@ func TestModuleGateSDK(t *testing.T) {
 	r.env = append(r.env, "PATH="+fake+string(os.PathListSeparator)+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
 	r.write("lane.1.py", `#!/usr/bin/env python3
+# swim: syntax 4
 # Round: wrong account from python
 # Modules: target
 import swim
@@ -408,7 +421,7 @@ func TestModuleTF(t *testing.T) {
   apply) echo "Apply complete! $(head -1 "${@: -1}")"; touch "$SWIM_ROOT/applied" ;;
 esac
 `)
-	r.script(1, "apply the orders plan", `# Modules: tf
+	r.modScript(1, "apply the orders plan", `# Modules: tf
 # Guards: ORDERS_ALLOW_APPLY  apply the orders plan
 stage check
 mod --evidence tf plan infra
@@ -454,10 +467,10 @@ func TestModuleSmoke(t *testing.T) {
 	r.env = append(r.env, "ORDERS_URL="+srv.URL)
 	os.MkdirAll(filepath.Join(r.root, "smoke"), 0o755)
 	r.write("smoke/orders.yml", "base: ${ORDERS_URL}\nchecks:\n  - get: /health\n  - name: api\n    get: /api\n", 0o644)
-	r.script(1, "smoke it", `# Modules: smoke
+	r.modScript(1, "smoke it", `# Modules: smoke
 # Includes: smoke/orders.yml
 mod smoke smoke/orders.yml`)
-	r.script(2, "smoke without pinning", `# Modules: smoke
+	r.modScript(2, "smoke without pinning", `# Modules: smoke
 mod smoke smoke/orders.yml`)
 	r.swim("run", "1", "2", "--plain")
 	contains(t, "lane 1", r.log(1), "FAIL  smoke smoke/orders.yml", "ok   get /health: HTTP 200", "FAIL api: HTTP 500, want 2xx", "1 of 2 checks failed")
@@ -479,7 +492,7 @@ echo "All steps passed."
 	r.env = append(r.env, "MY_CLI="+cli, "DEPLOY_TOKEN=tok-abcdef-123456")
 	os.MkdirAll(filepath.Join(r.root, "prompts"), 0o755)
 	r.write("prompts/report.md", "Write a short run report.\n", 0o644)
-	r.script(1, "report", `# Modules: claude report
+	r.modScript(1, "report", `# Modules: claude report
 # Includes: prompts/report.md
 # Outputs: report.md
 run "uses a token" bash -c 'echo "token=$DEPLOY_TOKEN"'
@@ -500,5 +513,26 @@ mod report --optional missing.md`)
 	contains(t, "sent", string(stdin), "Write a short run report.", "PASS  uses a token", "token=***")
 	if strings.Contains(string(stdin), "tok-abcdef") {
 		t.Errorf("an unmasked secret was sent:\n%s", stdin)
+	}
+}
+
+// A command that fails outside any step (round 1 of the claude test: mod
+// wasn't defined by an older swim) leaves a WARN in the log; steps,
+// conditions and && / || lists don't.
+func TestFailureOutsideStepWarns(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "outside steps", `nosuch_command_xyz --flag
+cd /nonexistent/dir
+run "a failing step" false
+if false; then echo never; fi
+false || true
+[ -f /nope ] && echo hi
+run "after" echo "still runs"`)
+	r.swim("run", "1", "--plain")
+	log := r.log(1)
+	contains(t, "log", log, "WARN  outside a step: nosuch_command_xyz --flag (exit 127: command not found",
+		"WARN  outside a step: cd /nonexistent/dir (exit 1", "FAIL  a failing step", "PASS  after", "| still runs")
+	if n := strings.Count(log, "WARN  outside a step"); n != 2 {
+		t.Errorf("%d outside-a-step WARNs, want 2:\n%s", n, log)
 	}
 }

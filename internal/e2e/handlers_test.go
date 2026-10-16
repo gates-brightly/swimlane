@@ -163,9 +163,9 @@ run "y" true`)
 	contains(t, "plan", r.mustSwim("plan", "1"), "handler on_failure  (guards: ALLOW_UNDO)")
 	contains(t, "plan --yaml", r.mustSwim("plan", "1", "--yaml"), "name: on_failure", "guards: [ALLOW_UNDO]")
 
-	r.write("lane.1.sh", "#!/usr/bin/env bash\n# swim: syntax 4\n# Round: future\n", 0o755)
-	if out, code := r.swim("run", "1", "--plain"); code == 0 || !strings.Contains(out, "reads up to syntax 3") {
-		t.Errorf("syntax 4: exit %d\n%s", code, out)
+	r.write("lane.1.sh", "#!/usr/bin/env bash\n# swim: syntax 5\n# Round: future\n", 0o755)
+	if out, code := r.swim("run", "1", "--plain"); code == 0 || !strings.Contains(out, "reads up to syntax 4") {
+		t.Errorf("syntax 5: exit %d\n%s", code, out)
 	}
 }
 

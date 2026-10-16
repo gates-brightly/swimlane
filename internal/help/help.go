@@ -1477,6 +1477,12 @@ swim resume  N|JOB ... | --all      (the same command)
     handler (error)        handlers or Fail: without syntax 3; a near-miss handler
                            name (on_fail, onfailure, ...) swim would never call
     handler-reached (warn) an on_failure with a guard that never checks reached
+    module (error)         a # Modules: entry that doesn't resolve or swim.yml
+                           doesn't allow, a module command the script doesn't
+                           declare, or modules without syntax 4
+    module-effects (warn)  a module used against its declared effects:
+                           credentials without mod_env, not read-only before
+                           stage change, destructive outside a guard
     rerun-guard (warn)     a guarded round downstream of a Rerun-Children lane
                            (swim all reruns it even after it passed)
     group (error)          a lane's jobs: none with steps, one defined twice, one
@@ -1646,7 +1652,7 @@ swim resume  N|JOB ... | --all      (the same command)
   swim's version is 0.<YYYYMMDD>.<index> (swim --version), e.g. 0.20261014.2:
   the release's date and its number that day; a build between releases is
   0.<YYYYMMDD>. The version says nothing about compatibility: syntax
-  versions do. Lane scripts (# swim: syntax 3) and logs (# swim lane log |
+  versions do. Lane scripts (# swim: syntax 4) and logs (# swim lane log |
   syntax 2) say theirs in the file; swim's state files (status, the chain,
   queued batches, approvals) have one too, which they don't record.
 
@@ -1671,6 +1677,10 @@ swim resume  N|JOB ... | --all      (the same command)
                         an old-form lock)
 
   Syntax versions:
+    script 4, log 2, state 2   modules: a lane script that uses # Modules:,
+                               mod or mod_env declares # swim: syntax 4,
+                               so a swim without modules refuses it
+                               instead of running it without them
     script 3, log 2, state 2   execution manifests: chain entries, signed
                                approvals and queued batches name the
                                manifest they ran or approved

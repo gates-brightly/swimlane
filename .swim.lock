@@ -2,8 +2,8 @@
 # logs, swim's state). Written by swim; commit it so everyone runs a compatible swim.
 # See `swim lock --help`.
 syntax:
-    script: 3
+    script: 4
     log: 2
     state: 2
-version: "0.20261014"
-updated_at: "2026-10-14T16:40:33Z"
+version: 0.dev
+updated_at: "2026-10-16T15:05:57Z"

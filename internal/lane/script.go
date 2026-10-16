@@ -417,6 +417,9 @@ func applySidecar(path string, info *Info) error {
 	if sf.Fail != nil || sf.HandlerTimeout != nil || sf.OnSuccess != nil || sf.OnFailure != nil || sf.OnExit != nil {
 		info.Syntax = max(info.Syntax, 3)
 	}
+	if sf.Modules != nil {
+		info.Syntax = max(info.Syntax, 4)
+	}
 	sort.SliceStable(info.Handlers, func(a, b int) bool { return handlerOrder(info.Handlers[a].Name) < handlerOrder(info.Handlers[b].Name) })
 	return nil
 }

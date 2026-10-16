@@ -32,11 +32,14 @@ const Current = 2
 // Script is the newest lane script syntax this swim reads. Script syntax 3
 // adds outcome handlers (on_success, on_failure, on_exit) and Fail: hard: a
 // script that uses them declares it, so an older swim, which would skip its
-// rollback, refuses it. Syntax 2 scripts are read as they are; nothing is
-// migrated to 3, and logs stay at Current.
+// rollback, refuses it. Syntax 4 adds modules (# Modules:, mod, mod_env):
+// an older swim would run the round with every module call failing outside
+// a step. Syntax 2 and 3 scripts are read as they are; nothing is migrated,
+// and logs stay at Current.
 //
 //	3  outcome handlers and Fail: (lane scripts only)
-const Script = 3
+//	4  modules: # Modules:, mod and mod_env (lane scripts only)
+const Script = 4
 
 // State is the syntax of swim's state files: .swim/status.yml, the chain
 // (.swim/chain.jsonl), queued batches and signed approvals. Unlike lane

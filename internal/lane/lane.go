@@ -488,7 +488,9 @@ func ParseScript(src string) Info {
 			if evidenceUseRE.MatchString(line) || evidenceArgRE.MatchString(line) || modEvidenceRE.MatchString(line) {
 				info.UsesEvidence = true
 			}
-			uses := guardUse.FindAllStringSubmatch(line, -1)
+			// A bash guard call's flag is a bare word: quoted text that
+			// says "the guard was declined" is prose, not a call.
+			uses := guardUse.FindAllStringSubmatch(blankQuoted(line), -1)
 			uses = append(uses, guardArgUse.FindAllStringSubmatch(line, -1)...)
 			uses = append(uses, sdkGuardUse.FindAllStringSubmatch(line, -1)...)
 			for _, m := range uses {
@@ -508,6 +510,29 @@ func ParseScript(src string) Info {
 		info.Always, info.RerunChildren, info.Finally = false, false, nil
 	}
 	return info
+}
+
+// blankQuoted replaces what's inside '...' and "..." (backslash escapes
+// in double quotes honoured) with spaces, keeping the quotes and the
+// line's length.
+func blankQuoted(line string) string {
+	b := []byte(line)
+	var in byte
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		switch {
+		case in == 0 && (c == '\'' || c == '"'):
+			in = c
+		case in != 0 && c == in:
+			in = 0
+		case in == '"' && c == '\\' && i+1 < len(b):
+			b[i], b[i+1] = ' ', ' '
+			i++
+		case in != 0:
+			b[i] = ' '
+		}
+	}
+	return string(b)
 }
 
 // setOutputs reads Outputs: names: relative paths inside $SWIM_OUT.

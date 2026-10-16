@@ -126,9 +126,11 @@ func Run(c *gomod.Ctx) error {
 		}
 	}
 	cmd.Stdin = strings.NewReader(in.String())
-	var reply strings.Builder
+	var reply, stderr strings.Builder
 	cmd.Stdout = &reply
-	cmd.Stderr = c.Stderr
+	// What the CLI (or a wrapper starting a container) says on stderr is
+	// shown only when the call fails.
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("claude: %w", err)
 	}
@@ -139,14 +141,20 @@ func Run(c *gomod.Ctx) error {
 	case <-time.After(a.budget):
 		cmd.Process.Kill()
 		<-done
+		showStderr(c, stderr.String())
 		return fmt.Errorf("claude: no reply within %s", a.budget)
 	}
 	if err != nil {
+		showStderr(c, stderr.String())
 		return fmt.Errorf("claude: %s exited: %v", filepath.Base(bin), err)
 	}
 	text := strings.TrimSpace(reply.String())
 	if text == "" {
+		showStderr(c, stderr.String())
 		return errors.New("claude: an empty reply; nothing written")
+	}
+	if n := lineCount(stderr.String()); n > 0 {
+		fmt.Fprintf(c.Stdout, "claude: the CLI wrote %d line(s) to stderr (shown only when it fails)\n", n)
 	}
 	// Output files aren't masked by swim: this one is, before it's written.
 	text = c.Mask(text) + "\n"
@@ -305,6 +313,27 @@ func secret(c *gomod.Ctx) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// showStderr shows the CLI's stderr, its last 80 lines, when the call
+// failed.
+func showStderr(c *gomod.Ctx, text string) {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	if len(lines) > 80 {
+		fmt.Fprintf(c.Stderr, "claude: the CLI's stderr, its last 80 of %d lines:\n", len(lines))
+		lines = lines[len(lines)-80:]
+	}
+	fmt.Fprintln(c.Stderr, strings.Join(lines, "\n"))
+}
+
+func lineCount(text string) int {
+	if strings.TrimSpace(text) == "" {
+		return 0
+	}
+	return len(strings.Split(strings.TrimRight(text, "\n"), "\n"))
 }
 
 // emptyDir is <tmp>/swim-claude-<uid>/empty: made if missing, and used

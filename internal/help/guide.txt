@@ -471,7 +471,8 @@ WRITING A LANE SCRIPT
                                       See CACHE. Default: none
       # Modules: <name>[@major] [...]  modules the round calls with mod and mod_env:
                                       built in (notify, clone@1) or ./modules/<name>,
-                                      pinned like Includes:. See MODULES. Default: none
+                                      pinned like Includes:. Needs syntax 4. See
+                                      MODULES. Default: none
       # Observe: NAME = <command>     a fact swim can't pin (the cloud account, ...): read
       # Observe: path CMD [CMD ...]   when a guard is approved and again just before it
                                       returns; a difference ends the round as drift. A path
@@ -534,6 +535,9 @@ WRITING A LANE SCRIPT
 
   Rules for lane scripts:
   - Do not use `set -e`. Failed checks keep going; only gates stop the round.
+    A command outside any step that fails (a typo, a missing program, a cd
+    that didn't happen) is logged as "WARN  outside a step: <command>
+    (exit N)" and changes nothing; put anything that matters in a step.
   - run/gate/snapshot take argv, not a shell string. For pipes or redirects:
       run "count items" bash -c 'aws dynamodb scan --table-name T --select COUNT | jq .Count'
   - Load the pinned toolchain yourself (the template does it from config):
@@ -794,7 +798,10 @@ CACHE
 MODULES
   A module is a small, versioned utility a lane calls as a step: a bash file
   of functions, or a Go program, with a module.yml that says what it does.
-  The lane declares the ones it uses, and calls their commands:
+  The lane declares the ones it uses, with `# swim: syntax 4` (a swim
+  without modules then refuses the lane instead of running it without them),
+  and calls their commands:
+      # swim: syntax 4
       # Modules: aws-session clone@1 notify
       mod_env aws-session --profile orders-prod --role arn:aws:iam::123456789012:role/deploy
       mod clone https://github.com/org/orders 3f2a9c1e0b7d4e2a9c1e0b7d4e2a9c1e0b7d4e2a "$SWIM_OUT/orders"
@@ -895,7 +902,7 @@ SYNTAX
   Lane scripts and lane logs say which syntax they use ("# swim: syntax 2" near
   a script's top, "# swim lane log | syntax 2" as a log's first line; none
   means syntax 1). This swim writes syntax 2, reads lane logs in syntax 1
-  and 2, and lane scripts in syntax 1 to 3.
+  and 2, and lane scripts in syntax 1 to 4.
   - Older files are migrated automatically when any swim command loads the
     repo: rewritten in place, originals copied to .swim/migrations/<time>/,
     the migration recorded in .swim.log. A running lane's files wait until
@@ -904,6 +911,9 @@ SYNTAX
   - A file in a newer syntax stops swim with an update prompt
     (go install github.com/gates-brightly/swimlane/cmd/swim@latest).
   Syntaxes:
+    4   (lane scripts only) modules: # Modules:, mod and mod_env (or a
+        sidecar's modules:). Declare it when a lane uses modules, so a swim
+        without them refuses the lane rather than running it without them.
     3   (lane scripts only) outcome handlers (on_success, on_failure, on_exit,
         or On-*: commands) and Fail:. Declare it only when you use them; a
         syntax 2 script is never rewritten to 3, and logs stay syntax 2.

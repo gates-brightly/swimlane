@@ -99,6 +99,29 @@ lane_init() {
   trap 'stop "blocked command: git push/commit/pull (swim never writes to git)"' USR1
   trap '_swim_on_signal 130' INT
   trap '_swim_on_signal 143' TERM
+  trap '_swim_on_err' ERR
+}
+
+# _swim_on_err — a command outside any step failed (a typo, a command that
+# isn't there, a cd that didn't happen): nothing else records it, so say
+# so in the log as a WARN. It changes nothing in the round. A function that
+# returns non-zero (run, gate, mod, guard, ...) recorded its own result:
+# bash names its return, which is skipped. Commands in an if, while, && or
+# || never get here.
+_swim_on_err() {
+  _swim_err=$?
+  case "$BASH_COMMAND" in
+    return|return\ *) return ;;
+  esac
+  if [ -z "$SWIM_LANE" ] || [ -n "$_swim_done" ] || [ -n "$_swim_in_handler" ]; then
+    return
+  fi
+  if [ "$_swim_err" -eq 127 ]; then
+    _swim_err_why="exit 127: command not found"
+  else
+    _swim_err_why="exit $_swim_err"
+  fi
+  "$SWIM_BIN" _mark "$SWIM_LANE" WARN "outside a step: $BASH_COMMAND" "$_swim_err_why; it isn't a step, so this line is its only record"
 }
 
 # source FILE / . FILE — under swim run, a repo file the manifest pinned is

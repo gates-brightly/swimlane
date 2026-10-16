@@ -17,6 +17,7 @@ printf '%s\n' "$@" >"$FAKE_DIR/args"
 pwd >"$FAKE_DIR/pwd"
 cat >"$FAKE_DIR/stdin"
 echo "key=${ANTHROPIC_API_KEY:-none}" >"$FAKE_DIR/key"
+echo "container noise 1" >&2; echo "container noise 2" >&2
 [ -n "$EMPTY" ] && exit 0
 echo "# Report"
 echo "The secret is hunter2-secret."`
@@ -61,15 +62,19 @@ func TestClaude(t *testing.T) {
 	if pwd, _ := os.ReadFile(filepath.Join(dir, "pwd")); strings.HasPrefix(string(pwd), root) {
 		t.Errorf("ran in the repo: %s", pwd)
 	}
-	if !strings.Contains(f.StdoutB.String(), "9.9.9 (fake), sha256 ") || !strings.Contains(f.StdoutB.String(), "wrote notes/report.md") {
+	if !strings.Contains(f.StdoutB.String(), "9.9.9 (fake), sha256 ") || !strings.Contains(f.StdoutB.String(), "wrote notes/report.md") ||
+		!strings.Contains(f.StdoutB.String(), "wrote 2 line(s) to stderr (shown only when it fails)") {
 		t.Errorf("log: %s", f.StdoutB.String())
+	}
+	if strings.Contains(f.StderrB.String(), "container noise") {
+		t.Errorf("a passing call showed the CLI's stderr: %s", f.StderrB.String())
 	}
 
 	// An empty reply fails; nothing is written.
 	env["EMPTY"] = "1"
 	f = gomodtest.NewFake(dir, env, false, "--prompt", "x", "--out", "empty.md", "--bin", cli)
-	if err := Run(&f.Ctx); err == nil || !strings.Contains(err.Error(), "empty reply") {
-		t.Errorf("empty: %v", err)
+	if err := Run(&f.Ctx); err == nil || !strings.Contains(err.Error(), "empty reply") || !strings.Contains(f.StderrB.String(), "container noise 2") {
+		t.Errorf("empty: %v, stderr %q", err, f.StderrB.String())
 	}
 	delete(env, "EMPTY")
 	// --bin wins; a missing one says how to fix it.
