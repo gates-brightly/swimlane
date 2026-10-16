@@ -340,7 +340,7 @@ func (m *Manifest) Stage(root, run string) (string, error) {
 		if p.Kind != module.Go || p.Source == module.BuiltinSource {
 			continue
 		}
-		rel := strings.TrimPrefix(p.Source, "./")
+		rel := module.PinDir(p.Source, p.SHA256)
 		mod, err := module.FromStage(dir, rel, p.SHA256)
 		if err != nil {
 			return "", fmt.Errorf("module %s: %w", p.Name, err)

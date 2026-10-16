@@ -915,6 +915,18 @@ MODULES
     or swim modules lock to move the repo to this swim's. swim modules
     check compares the lanes, the lock and this swim; doctor (module-version)
     and lint (module-lock) check it too, and swim approve warns.
+  - Fetched modules live in another git repository, named by source
+    address and version: # Modules: github.com/org/swim-modules//pager@2.
+    swim modules get resolves the version to the newest tag that meets it
+    (pager/vX.Y.Z; vX.Y.Z for a module at the repository's root), fetches
+    it, and pins it in .swim.lock (version, commit, files' hash), with the
+    files in .swim/modules/<hash>/. Run time only reads the lock and that
+    copy, checked against the hash: nothing is fetched while a lane runs,
+    and a lane whose module isn't there doesn't start. A pinned version
+    stays until swim modules get --upgrade [NAME]; a moved tag is refused.
+    swim.yml must allow the address (modules: allow: with the address or a
+    glob, github.com/org/swim-modules//*). git fetches it with your
+    credentials; url.<base>.insteadOf points an address at a mirror.
   - Effects are declared, not enforced: network, secrets, writes,
     credentials, read_only. swim plan, swim approve and lint show them; lint
     warns about a module that isn't read_only before `stage change`. A

@@ -159,6 +159,12 @@ func TestParseRef(t *testing.T) {
 		{in: "tf@=1.2", bad: true},
 		{in: "tf@+1", bad: true},
 		{in: "tf@1.", bad: true},
+		{in: "github.com/org/mods//pager@2", name: "pager", major: 2},
+		{in: "github.com/org/pager@1.2", name: "pager", major: 1},
+		{in: "github.com/org/mods//pager", bad: true},  // a fetched module takes a version
+		{in: "github.com/org//pager@1", bad: true},     // host/owner/repo
+		{in: "github.com/org/mods//../x@1", bad: true}, // no .. in the directory
+		{in: "localhost/org/mods//pager@1", bad: true}, // a host has a dot
 	} {
 		r, err := ParseRef(c.in)
 		if c.bad != (err != nil) || (!c.bad && (r.Name != c.name || r.Path != c.path || r.Major != c.major)) {

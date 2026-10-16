@@ -230,6 +230,27 @@ type Lock struct {
 // LockModules is the lock's modules: section.
 type LockModules struct {
 	Builtin map[string]LockedModule `yaml:"builtin,omitempty"`
+	// Fetched are the modules fetched from outside the repo (swim modules
+	// get), by source address.
+	Fetched map[string]FetchedModule `yaml:"fetched,omitempty"`
+}
+
+// FetchedModule is a fetched module's pin: the version (its tag), the
+// commit the tag named, and its files' hash, which run time checks the
+// copy in .swim/modules/ against.
+type FetchedModule struct {
+	Version string `yaml:"version"`
+	Commit  string `yaml:"commit"`
+	SHA256  string `yaml:"sha256"`
+}
+
+// Fetched is the lock's pin of the module at address (ok false: none).
+func (l Lock) Fetched(address string) (FetchedModule, bool) {
+	if l.Modules == nil {
+		return FetchedModule{}, false
+	}
+	m, ok := l.Modules.Fetched[address]
+	return m, ok
 }
 
 // LockedModule is one pinned module: its version and its files' hash.
@@ -298,14 +319,31 @@ func WriteLock(root string) error {
 // none), keeping the syntaxes the lock pins, or this swim's if there's no
 // lock.
 func WriteLockModules(root string, builtin map[string]LockedModule) error {
+	return writeModules(root, func(m *LockModules) { m.Builtin = builtin })
+}
+
+// WriteLockFetched pins the fetched modules (nil: none), keeping the rest
+// of the lock.
+func WriteLockFetched(root string, fetched map[string]FetchedModule) error {
+	return writeModules(root, func(m *LockModules) { m.Fetched = fetched })
+}
+
+// writeModules changes the lock's modules: section with set, keeping the
+// syntaxes it pins (or this swim's, with no lock) and the rest.
+func writeModules(root string, set func(*LockModules)) error {
 	l := Lock{Syntax: Current}
+	mods := LockModules{}
 	if old, ok, err := ReadLock(root); err != nil {
 		return err
 	} else if ok {
 		l.Syntax, l.Breaking = old.Syntax, old.Breaking
+		if old.Modules != nil {
+			mods = *old.Modules
+		}
 	}
-	if len(builtin) > 0 {
-		l.Modules = &LockModules{Builtin: builtin}
+	set(&mods)
+	if len(mods.Builtin) > 0 || len(mods.Fetched) > 0 {
+		l.Modules = &mods
 	}
 	return writeLock(root, l)
 }

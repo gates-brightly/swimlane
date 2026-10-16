@@ -13,7 +13,7 @@ import (
 // approvals bound to a manifest.
 //
 //	modules:
-//	  allow: [aws-session, clone, notify, ./modules/*]
+//	  allow: [aws-session, clone, notify, ./modules/*, github.com/org/swim-modules//*]
 //	  dir: modules          # a bare name finds modules/<name>/ too
 //	  override: [notify]    # a repo module may shadow these built-ins
 type ModulesPolicy struct {
@@ -36,6 +36,13 @@ func (p *ModulesPolicy) validate() error {
 		return nil
 	}
 	for _, a := range p.Allow {
+		if !strings.HasPrefix(a, "./") && strings.Contains(a, "/") {
+			// A fetched modules' source address, or a glob of them.
+			if _, err := path.Match(a, "x"); err != nil || strings.Contains(a, "..") {
+				return fmt.Errorf("modules: allow: %q isn't a source address or a glob of them", a)
+			}
+			continue
+		}
 		if strings.HasPrefix(a, "./") {
 			if _, err := path.Match(a, "./x"); err != nil || strings.Contains(a, "..") {
 				return fmt.Errorf("modules: allow: %q isn't a ./path glob inside the repo", a)
@@ -71,6 +78,24 @@ func (p *ModulesPolicy) ModuleAllowed(builtin bool, name, dir string) bool {
 			if ok, _ := path.Match(a, "./"+dir); ok {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// FetchedAllowed says whether the policy lets lanes use the fetched module
+// at address: allow: names it, or a glob that matches it
+// (github.com/org/swim-modules//*). Without allow:, none is.
+func (p *ModulesPolicy) FetchedAllowed(address string) bool {
+	if p == nil {
+		return false
+	}
+	for _, a := range p.Allow {
+		if strings.HasPrefix(a, "./") || !strings.Contains(a, "/") {
+			continue
+		}
+		if ok, _ := path.Match(a, address); ok || a == address {
+			return true
 		}
 	}
 	return false

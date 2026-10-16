@@ -2,16 +2,17 @@
 
 Status: in progress. Built and documented (MODULES in `swim --help`, the
 README's Modules section): `# Modules:` (script syntax 4), `mod`,
-`mod_env`, `mod --evidence`, gate modules, per-call effects
-(`read_only_for`, `destructive_for`), repo modules in bash and Go, the
-manifest pins, `swim.yml` `modules:`, `swim modules ls|show|new`, plan,
-approve, lint (`module`, `module-effects`), doctor (`module-go`), op
-`module` in the SDKs, and ten built-ins: `aws-session`, `backup`,
-`claude`, `clone`, `notify`, `report`, `smoke`, `target`, `tf`, `wait`.
-The design record of what's built is in git (`12bff61` to `31a16a5`).
+`mod_env`, `mod --evidence`, `swim mod`, gate modules, per-call effects
+(`read_only_for`, `destructive_for`), repo modules in bash and Go (built
+as the lane is staged), the manifest pins, `swim.yml` `modules:`, `swim
+modules ls|show|new|check|lock|get`, version minimums and the lock's pins
+of built-ins, plan, approve, lint (`module`, `module-effects`,
+`module-lock`), doctor (`module-go`, `module-version`, `module-fetched`),
+op `module` in the SDKs, ten built-ins, and fetched modules (phase three,
+below) except signatures.
 
-Left: fetching modules from outside the repo (phase three), and the gaps
-below.
+Left: signed versions of fetched modules (`modules.require_signed`), and
+the gap below.
 
 ## Rules phase three keeps
 
@@ -26,6 +27,12 @@ below.
   decides. A Claude call only writes an artifact.
 
 ## Phase three: fetched just in time
+
+Built: source addresses, `swim modules get [--upgrade]`, the lock's
+`modules: fetched:` pins (version, commit, files' hash), the store under
+`.swim/modules/<hash>/` checked at run time, address globs in `allow:`,
+the manifest pinning a fetched module like a repo one (so an upgrade
+stales its approvals), and doctor's `module-fetched`. Not yet: signatures.
 
 Like Terraform modules: a source address, a fetch step before anything
 runs, and a lockfile. Never a fetch at run time.

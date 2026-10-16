@@ -169,8 +169,11 @@ type Module struct {
 	// Ref is how the lane declared it (notify, clone@1, ./modules/x).
 	Ref     string
 	Builtin bool
-	// Dir is a repo module's directory, repo-relative ("" if built in).
+	// Dir is a repo module's directory, repo-relative ("" if built in; a
+	// fetched module's copy in the store).
 	Dir string
+	// Address is a fetched module's source address ("" otherwise).
+	Address string
 	// Files are its files, relative to its directory.
 	Files  map[string][]byte
 	SHA256 string // TreeHash(Files)
@@ -180,6 +183,9 @@ type Module struct {
 func (m *Module) Source() string {
 	if m.Builtin {
 		return BuiltinSource
+	}
+	if m.Address != "" {
+		return m.Address
 	}
 	return "./" + m.Dir
 }
@@ -358,12 +364,13 @@ func ReadDir(dir string) (map[string][]byte, error) {
 // module's ./path. notify@1 is any 1.x; tf@1.2 is 1.2 or later within 1;
 // tf@=1.2.0 is exactly 1.2.0.
 type Ref struct {
-	Text  string // as written
-	Name  string // notify ("" for a path)
-	Path  string // modules/notify, repo-relative ("" for a name)
-	Major int    // -1: any
-	Minor int    // the least minor within Major, -1: any
-	Exact string // the exact version (@=X.Y.Z), "" for none
+	Text    string // as written
+	Name    string // notify ("" for a path; a fetched module's directory name)
+	Path    string // modules/notify, repo-relative ("" for a name)
+	Address string // a fetched module's source address, github.com/org/mods//notify
+	Major   int    // -1: any
+	Minor   int    // the least minor within Major, -1: any
+	Exact   string // the exact version (@=X.Y.Z), "" for none
 }
 
 // unmet says which version the ref needs that m isn't ("" if m meets it).
@@ -438,6 +445,19 @@ func ParseRef(s string) (Ref, error) {
 			r.Minor = n[1]
 		}
 	}
+	if IsAddress(body) {
+		if _, _, err := splitAddress(body); err != nil {
+			return r, err
+		}
+		if r.Major < 0 {
+			return r, fmt.Errorf("%q: a fetched module takes a version (%s@1, %s@1.2 or %s@=1.2.0)", s, body, body, body)
+		}
+		r.Address, r.Name = body, addressName(body)
+		if !ValidName(r.Name) {
+			return r, fmt.Errorf("%q: %s isn't a module name", s, r.Name)
+		}
+		return r, nil
+	}
 	if strings.HasPrefix(body, "./") {
 		p := path.Clean(body)
 		if p == "." || p == ".." || strings.HasPrefix(p, "../") {
@@ -495,6 +515,10 @@ func Lookup(root string, pol *config.ModulesPolicy, ref string) (*Module, error)
 	}
 	var m *Module
 	switch {
+	case r.Address != "":
+		if m, err = fetchedModule(root, r.Address); err != nil {
+			return nil, fmt.Errorf("module %s: %w", ref, err)
+		}
 	case r.Path != "":
 		if m, err = repoModule(root, r.Path); err != nil {
 			return nil, fmt.Errorf("module %s: %w", ref, err)
@@ -534,7 +558,10 @@ func Lookup(root string, pol *config.ModulesPolicy, ref string) (*Module, error)
 		}
 		return nil, fmt.Errorf("module %s: %s %s is %s; the lane needs %s (%s)", ref, sourceText(m), m.Name, m.Version, why, fix)
 	}
-	if !pol.ModuleAllowed(m.Builtin, m.Name, m.Dir) {
+	if m.Address != "" && !pol.FetchedAllowed(m.Address) {
+		return nil, fmt.Errorf("module %s isn't allowed: add %s (or a glob matching it) to swim.yml modules: allow:", ref, m.Address)
+	}
+	if m.Address == "" && !pol.ModuleAllowed(m.Builtin, m.Name, m.Dir) {
 		what := m.Name
 		if !m.Builtin {
 			what = "./" + m.Dir

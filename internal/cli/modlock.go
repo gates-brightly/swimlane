@@ -229,3 +229,110 @@ func intsText(ns []int) string {
 	}
 	return strings.Join(parts, ",")
 }
+
+// modulesGet is swim modules get [--upgrade [NAME|ADDRESS]]: fetch the
+// modules the lanes name by source address (# Modules:
+// github.com/org/mods//pagerduty@2), into .swim/modules/, and pin each in
+// .swim.lock: its version (a tag), commit and files' hash. A version the
+// lock already pins that the lanes accept is kept; --upgrade takes the
+// newest tag they accept, for every fetched module or the one named.
+func modulesGet(root string, cfg *config.Config, args []string) error {
+	upgrade, only := false, ""
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--upgrade":
+			upgrade = true
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				only = args[i+1]
+				i++
+			}
+		default:
+			return usagef("usage: swim modules get [--upgrade [NAME|ADDRESS]]")
+		}
+	}
+	// The fetched modules the lanes name, one ref per address.
+	refs := map[string]module.Ref{}
+	var order []string
+	for _, n := range lane.Associated(root) {
+		for _, text := range laneRefs(root, n) {
+			r, err := module.ParseRef(text)
+			if err != nil || r.Address == "" {
+				continue
+			}
+			if prev, ok := refs[r.Address]; ok && prev.Text != r.Text {
+				return fmt.Errorf("lanes name %s two ways (%s and %s): name it one way", r.Address, prev.Text, r.Text)
+			}
+			if _, ok := refs[r.Address]; !ok {
+				order = append(order, r.Address)
+			}
+			refs[r.Address] = r
+		}
+	}
+	if len(refs) == 0 {
+		fmt.Println("no lane names a fetched module (# Modules: host/owner/repo//dir@VERSION)")
+		return nil
+	}
+	if only != "" {
+		found := false
+		for _, a := range order {
+			found = found || a == only || refs[a].Name == only
+		}
+		if !found {
+			return fmt.Errorf("--upgrade %s: no lane names that fetched module", only)
+		}
+	}
+	sort.Strings(order)
+	lock, _, err := version.ReadLock(root)
+	if err != nil {
+		return err
+	}
+	pins := map[string]version.FetchedModule{}
+	if lock.Modules != nil {
+		for a, p := range lock.Modules.Fetched {
+			if _, used := refs[a]; used {
+				pins[a] = p // one no lane names any more is dropped
+			}
+		}
+	}
+	var changes []string
+	for _, a := range order {
+		r := refs[a]
+		up := upgrade && (only == "" || only == a || only == r.Name)
+		if !cfg.Modules.FetchedAllowed(a) {
+			return fmt.Errorf("%s isn't allowed: add it (or a glob matching it) to swim.yml modules: allow:", a)
+		}
+		f, err := module.Get(root, r, up)
+		if err != nil {
+			return err
+		}
+		pins[a] = f.Pin
+		switch {
+		case f.Was.SHA256 == "":
+			changes = append(changes, fmt.Sprintf("%s %s (new, commit %s)", a, f.Pin.Version, short12(f.Pin.Commit)))
+		case f.Was.SHA256 != f.Pin.SHA256:
+			changes = append(changes, fmt.Sprintf("%s %s -> %s", a, f.Was.Version, f.Pin.Version))
+		default:
+			fmt.Printf("%s %s: pinned, and here\n", a, f.Pin.Version)
+		}
+	}
+	if lock.Modules != nil {
+		for a, p := range lock.Modules.Fetched {
+			if _, used := refs[a]; !used {
+				changes = append(changes, fmt.Sprintf("%s %s (removed: no lane names it)", a, p.Version))
+			}
+		}
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+	if err := version.WriteLockFetched(root, pins); err != nil {
+		return err
+	}
+	sort.Strings(changes)
+	for _, c := range changes {
+		fmt.Printf("%s: %s\n", version.LockName, c)
+	}
+	history.Log(root, history.Entry{Event: history.Lock, Detail: "fetched modules: " + strings.Join(changes, ", ")})
+	fmt.Println("commit it; the lanes that use a changed module need approving again")
+	return nil
+}

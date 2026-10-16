@@ -7,7 +7,7 @@ where it would land in the code, open questions, and how to test it.
 | feature | file | status |
 |---|---|---|
 | swim observe: computed observations and knowledge from runs; an optional write-up with the claude module | [observe.md](observe.md) | proposed |
-| Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in and repo modules, ten built-ins and swim mod shipped; fetched modules left) |
+| Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in, repo and fetched modules shipped; signed fetched versions left) |
 
 ## Staging a feature
 

@@ -796,14 +796,17 @@ mod notify "#orders" "orders deploy: done (job $SWIM_JOB)"
   point, waited for, its id recorded), `wait` (until an HTTP status, a TCP
   port, a command's exit code or a kube rollout says ready), `aws-session`,
   `clone` and `notify`.
-- **Bash or Go**, built in or in the repo (`modules/<name>/`, `swim modules
-  new`). Each has a `module.yml` that declares its effects (network,
+- **Bash or Go**, built in, in the repo (`modules/<name>/`, `swim modules
+  new`), or fetched from another git repository by address
+  (`github.com/org/swim-modules//pager@2`, `swim modules get`, pinned in
+  `.swim.lock`). Each has a `module.yml` that declares its effects (network,
   secrets, writes, credentials); `swim plan`, `swim approve` and lint show
   them. They're declared, not enforced: a module runs as the lane.
 - **Pinned and allowed:** editing a module stales the approvals of lanes
   that use it, and `swim.yml` `modules: allow:` decides which modules lanes
   may use (built-ins only by default). A module is never fetched at run
-  time.
+  time: `swim modules get` fetches ahead, and the run checks the copy
+  against the lock.
 
 ### Secrets
 

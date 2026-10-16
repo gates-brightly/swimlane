@@ -955,6 +955,7 @@ swim modules show NAME|./DIR
 swim modules new NAME [--kind bash|go] [--dir DIR]
 swim modules check [--yaml]
 swim modules lock
+swim modules get [--upgrade [NAME|ADDRESS]]
 
   The modules this repo's lanes can declare (# Modules:) and call with mod
   and mod_env: the built-in ones, and the repo's in swim.yml's modules: dir.
@@ -978,6 +979,13 @@ swim modules lock
            whose built-in differs then refuses those lanes. swim lock
            --upgrade does it too. Commit the lock; lanes using a changed
            module need approving again.
+  get      fetch the modules the lanes name by source address
+           (github.com/org/swim-modules//pager@2) into .swim/modules/, and
+           pin each in .swim.lock: the newest tag the lanes accept, its
+           commit and files' hash. A pinned version is kept (and fetched
+           again if its copy is gone or changed); --upgrade takes the newest
+           accepted tag, for all or the one named. swim.yml must allow the
+           address. See MODULES in swim --help.
 `,
 	"cache": `swim cache [ls] [--yaml]
 swim cache rm PRESET ... | --all [--yes]

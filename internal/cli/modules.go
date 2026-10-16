@@ -60,9 +60,12 @@ func laneModules(root string, cfg *config.Config, n int) ([]*module.Module, *man
 			out = append(out, b)
 			continue
 		}
-		mod, err := module.FromStage(m.Dir, strings.TrimPrefix(p.Source, "./"), p.SHA256)
+		mod, err := module.FromStage(m.Dir, module.PinDir(p.Source, p.SHA256), p.SHA256)
 		if err != nil {
 			return nil, m, fmt.Errorf("module %s: %w", p.Name, err)
+		}
+		if !strings.HasPrefix(p.Source, "./") {
+			mod.Address = p.Source // fetched
 		}
 		out = append(out, mod)
 	}
@@ -362,8 +365,10 @@ func cmdModules(args []string) error {
 		return modulesCheck(root, cfg, args)
 	case "lock":
 		return modulesLock(root, cfg, args)
+	case "get":
+		return modulesGet(root, cfg, args)
 	}
-	return usagef("usage: swim modules [ls] [--yaml] | show NAME|./DIR | new NAME [--kind bash|go] [--dir DIR] | check [--yaml] | lock")
+	return usagef("usage: swim modules [ls] [--yaml] | show NAME|./DIR | new NAME [--kind bash|go] [--dir DIR] | check [--yaml] | lock | get [--upgrade [NAME|ADDRESS]]")
 }
 
 // moduleDoc is one module in swim modules --yaml.

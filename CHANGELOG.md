@@ -456,6 +456,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Fetched modules.** A lane can use a module from another git
+  repository, by source address and version: `# Modules:
+  github.com/org/swim-modules//pager@2`. `swim modules get` resolves it to
+  the newest tag that meets the version (`pager/vX.Y.Z`), fetches it, and
+  pins it in `.swim.lock` (version, commit, files' hash), with the files in
+  `.swim/modules/<hash>/`. Run time only reads the lock and that copy,
+  checked against the hash; nothing is fetched while a lane runs. A pinned
+  version stays until `swim modules get --upgrade`, a moved tag is refused,
+  and `swim.yml` must allow the address (`modules: allow:` takes address
+  globs). Doctor's `module-fetched` checks the copies.
 - **`swim version` says when `go install ...@latest` lags.** It asks the
   Go module proxy (GOPROXY's first http(s) entry) for @latest, and when
   that's older than the newest tag (the proxy caches it for a while after
