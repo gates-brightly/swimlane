@@ -23,12 +23,16 @@ mod target aws --account 123456789012`)
 		t.Fatalf("check before lock: %d %s", code, out)
 	}
 	contains(t, "check unpinned", out, "target", "lock -", "this swim 1.0.0", "asked target@1", "not pinned: swim modules lock pins it")
+	contains(t, "lint unpinned", must(r.swim("lint", "1")), "[module-lock]", "built-in target 1.0.0 isn't pinned in .swim.lock")
 	contains(t, "modules lock", r.mustSwim("modules", "lock"), ".swim.lock: target 1.0.0 (new)")
 	lockPath := filepath.Join(r.root, ".swim.lock")
 	lock, _ := os.ReadFile(lockPath)
 	contains(t, "lock file", string(lock), "modules:", "builtin:", "target:", "version: 1.0.0")
 	contains(t, "modules lock again", r.mustSwim("modules", "lock"), "already pins")
 	contains(t, "check pinned", r.mustSwim("modules", "check"), "lock 1.0.0", "this swim 1.0.0")
+	if out := must(r.swim("lint", "1")); strings.Contains(out, "module-lock") {
+		t.Errorf("lint after lock:\n%s", out)
+	}
 
 	pin := func(ver string) {
 		data := regexp.MustCompile(`(?s)(target:\s*\n\s*version: )\S+(\s*\n\s*sha256: )\S+`).ReplaceAll(lock, []byte("${1}"+ver+"${2}"+strings.Repeat("0", 64)))
@@ -44,6 +48,8 @@ mod target aws --account 123456789012`)
 	const newer = ".swim.lock pins built-in target 1.5.0, and this swim's is 1.0.0: update swim"
 	contains(t, "check newer", out, newer)
 	contains(t, "plan", r.mustSwim("plan", "1"), "blocked: "+newer)
+	contains(t, "lint newer", must(r.swim("lint", "1")), "[module-lock]", newer)
+	contains(t, "approve newer", must(r.swim("approve", "1", "--all")), "swim approve: warning: this swim can't run swim 1 as the repo is locked: "+newer)
 	r.swim("run", "1", "--plain")
 	if l := r.status().Get(1); l.State != "failed" || !strings.Contains(l.Reason, newer) {
 		t.Errorf("run with a newer pin: %s %q", l.State, l.Reason)

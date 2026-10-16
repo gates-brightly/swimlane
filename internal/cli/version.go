@@ -18,6 +18,14 @@ func cmdVersion(args []string) error {
 	fmt.Println("swim", version.Long())
 	tag, err := version.LatestTag(5 * time.Second)
 	fmt.Print(latestText(tag, err))
+	if err == nil {
+		// go install @latest asks the module proxy, which lags a new tag.
+		if proxied, ok := version.ProxyLatest(5 * time.Second); ok {
+			if note := version.ProxyBehind(tag, proxied); note != "" {
+				fmt.Print("  note: " + note)
+			}
+		}
+	}
 	return nil
 }
 

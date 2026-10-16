@@ -1698,7 +1698,10 @@ swim resume  N|JOB ... | --all      (the same command)
   never prompts and gives up after a few seconds). When it can't reach the
   repo it says why. It always exits 0. swim --version prints only the
   first line and never touches the network. SWIM_RELEASES_URL names
-  another remote (a fork or a mirror).
+  another remote (a fork or a mirror). It also asks the Go module proxy
+  (GOPROXY's first http(s) entry) what @latest is: the proxy caches it, so
+  for a while after a release go install ...@latest still installs the one
+  before. Then it says so, with the line that installs the tag by name.
 
       swim 0.20261014.1 (64a0e07)
       latest release: v0.20261015.2, newer than this swim

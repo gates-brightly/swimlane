@@ -913,8 +913,8 @@ MODULES
     built-in differs then refuses those lanes up front (swim plan says so,
     and a worker leaves their batches queued), with the fix: update swim,
     or swim modules lock to move the repo to this swim's. swim modules
-    check compares the lanes, the lock and this swim; doctor checks it too
-    (module-version).
+    check compares the lanes, the lock and this swim; doctor (module-version)
+    and lint (module-lock) check it too, and swim approve warns.
   - Effects are declared, not enforced: network, secrets, writes,
     credentials, read_only. swim plan, swim approve and lint show them; lint
     warns about a module that isn't read_only before `stage change`. A

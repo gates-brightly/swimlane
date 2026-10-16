@@ -138,6 +138,11 @@ func cmdApprove(args []string) error {
 		if err != nil {
 			return err
 		}
+		// A warning, not a refusal: the swim that runs it may well be the
+		// one the lock pins; this one isn't.
+		if why := moduleLockProblem(root, cfg, n); why != "" {
+			fmt.Fprintf(os.Stderr, "swim approve: warning: this swim can't run swim %d as the repo is locked: %s\n", n, why)
+		}
 		sha := chain.Hash(data)
 		man := m.SHA256
 		known := map[string]bool{}

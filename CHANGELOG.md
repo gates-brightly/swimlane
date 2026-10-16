@@ -445,6 +445,13 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **`swim version` says when `go install ...@latest` lags.** It asks the
+  Go module proxy (GOPROXY's first http(s) entry) for @latest, and when
+  that's older than the newest tag (the proxy caches it for a while after
+  a release) it says so, with the line that installs the tag by name.
+- **Lint's `module-lock`** warns about a built-in module `.swim.lock`
+  doesn't pin, or pins at another version than this swim's; **`swim
+  approve`** warns when this swim couldn't run the lane it's approving.
 - **Module versions: the same built-in on every machine, or a clear
   refusal.** `swim modules lock` pins the built-in modules the lanes use in
   `.swim.lock` (`modules: builtin:`, version and hash; `swim lock

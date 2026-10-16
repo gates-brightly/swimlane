@@ -6,6 +6,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/module"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 var (
@@ -157,6 +158,35 @@ func checkModuleEffects(c *Context, s *Script) []finding.Finding {
 		if s.Info.Staged && call.Line < change && !m.ReadOnlyCall(call.Args) {
 			out = append(out, f(finding.Warn, "module-effects", call.Line, "move it after `stage change`, or use a module whose module.yml says read_only: true",
 				"module %s isn't read-only, and runs before `stage change`, so swim plan --check would run it for real", m.Name))
+		}
+	}
+	return out
+}
+
+// checkModuleLock: a built-in module the lane uses that the repo's
+// .swim.lock doesn't pin, so another machine's swim may run another
+// version of it; or one it pins at another version than this swim's,
+// which swim run refuses here. Repos without a lock aren't judged.
+func checkModuleLock(c *Context, s *Script) []finding.Finding {
+	if c.Root == "" || len(s.Info.Modules) == 0 {
+		return nil
+	}
+	lock, ok, err := version.ReadLock(c.Root)
+	if err != nil || !ok {
+		return nil
+	}
+	mods, _ := module.Resolve(c.Root, c.Cfg.Modules, s.Info.Modules)
+	at := max(s.headerLine("Modules"), 0)
+	var out []finding.Finding
+	for _, m := range mods {
+		if !m.Builtin {
+			continue
+		}
+		if why := module.LockProblem(lock, m); why != "" {
+			out = append(out, f(finding.Warn, "module-lock", at, "see the message: update swim, or swim modules lock", "%s", why))
+		} else if _, pinned := lock.Builtin(m.Name); !pinned {
+			out = append(out, f(finding.Warn, "module-lock", at, "swim modules lock (and commit .swim.lock)",
+				"built-in %s %s isn't pinned in %s: another machine's swim may run another version", m.Name, m.Version, version.LockName))
 		}
 	}
 	return out

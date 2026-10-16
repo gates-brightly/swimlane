@@ -114,6 +114,7 @@ var Checks = []Check{
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
 	{"module", finding.Error, false, "a # Modules: entry that doesn't resolve or swim.yml doesn't allow, a module command the script doesn't declare, or modules without `# swim: syntax 4`", checkModules},
 	{"module-effects", finding.Warn, false, "a module used against its declared effects: credentials without mod_env, not read-only before `stage change`", checkModuleEffects},
+	{"module-lock", finding.Warn, false, "a built-in module .swim.lock doesn't pin yet, or pins at another version than this swim's (swim run refuses that lane here)", checkModuleLock},
 	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},
 	{"sdk-bypass", finding.Info, false, "an SDK lane runs commands itself (subprocess, child_process) rather than through r.run", checkSDKBypass},
 	{"handler", finding.Error, false, "outcome handlers or Fail: without `# swim: syntax 3`, or a handler name swim never calls", checkHandlers},
