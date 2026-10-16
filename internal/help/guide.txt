@@ -616,7 +616,10 @@ MATRIX ROUNDS
     lane; After: 3[orders] needs only that cell to pass.
   - Rerun: swim run 3 --failed runs only the cells that didn't pass; swim run
     '3[billing]' (or <job>/billing) runs one cell.
-  - Read: swim log 3 lists the cells; swim log '3[orders]' shows one.
+  - Read: swim log 3 lists the cells, then the ones that didn't pass with
+    their first failed step and its first output line (only those: swim log
+    3 --failures; the end of swim run shows the same); swim log '3[orders]'
+    shows one.
   - The value file (@services.txt) is part of the script's hash: approvals,
     queue pins and the chain cover the list. Each cell asks its own guard
     questions, naming its cell.

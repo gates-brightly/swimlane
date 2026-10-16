@@ -972,18 +972,9 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 				kind = "jobs"
 			}
 			fmt.Fprintf(out, "  %s %s %4d %5d %5d %5d %6s %7s  %s\n", label, res, oc.Exit, counts[status.Passed], counts[status.Failed]+counts[status.Interrupted], counts[status.Skipped], "-", display.Elapsed(oc.Elapsed), kind)
-			names := make([]string, 0, len(oc.Cells))
-			for c := range oc.Cells {
-				names = append(names, c)
-			}
-			sort.Strings(names)
+			// The cells that didn't pass, each with why (the rest passed).
 			info, _ := lane.ReadScript(root, n)
-			for _, c := range names {
-				if s := oc.Cells[c]; s != status.Passed {
-					ref := info.SubLabel(n, c)
-					fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, fmt.Sprintf("%s %s  (swim log '%s')", ref, strings.ToUpper(s), ref)))
-				}
-			}
+			PrintCellFailures(out, p, fmt.Sprintf("  %-17s ", ""), CellFailures(root, n, info, oc.Cells))
 			continue
 		}
 		fmt.Fprintf(out, "  %s %s %4d %5d %5d %5d %6d %7s\n", label, res, oc.Exit, r.Pass, r.Fail, r.Skip, r.Drift, display.Elapsed(oc.Elapsed))

@@ -38,7 +38,7 @@ rm .running/$SVC
 	if code == 0 {
 		t.Fatalf("passed with a failing cell:\n%s", out)
 	}
-	contains(t, "summary", out, "cells", "1[billing] FAILED  (swim log '1[billing]')")
+	contains(t, "summary", out, "cells", "1[billing] FAILED  FAIL  plan billing (exit 1)", "swim log '1[billing]'")
 	for _, c := range []string{"orders", "billing", "users", "search"} {
 		if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1."+c+".log")); err != nil {
 			t.Errorf("no log for cell %s", c)
@@ -84,6 +84,43 @@ rm .running/$SVC
 	}
 	if _, code := r.swim("run", "1[nope]", "--plain"); code == 0 {
 		t.Error("an unknown cell ran")
+	}
+}
+
+// A failed matrix round says which cells failed and why: the end of the
+// run and swim log N list only the cells that didn't pass, each with its
+// first failed step and the line its command printed.
+func TestMatrixFailuresSummary(t *testing.T) {
+	r := newRepo(t, "")
+	matrixLane(t, r, 1, "# Matrix: SVC=orders,billing,users,search", `run "fetch $SVC" true
+run "deploy $SVC" bash -c 'case $SVC in billing|search) echo "deploy: no capacity in $SVC"; echo second; exit 4 ;; esac'
+run "after $SVC" true`)
+	out, code := r.swim("run", "1", "--plain")
+	if code == 0 {
+		t.Fatalf("passed with failing cells:\n%s", out)
+	}
+	summary := out[strings.LastIndex(out, "swim summary"):]
+	for _, view := range []struct{ name, text string }{
+		{"run summary", summary},
+		{"swim log 1", r.mustSwim("log", "1")},
+		{"swim log 1 --failures", r.mustSwim("log", "1", "--failures")},
+	} {
+		contains(t, view.name, view.text,
+			"1[billing] FAILED  FAIL  deploy billing (exit 4)", "| deploy: no capacity in billing",
+			"1[search] FAILED  FAIL  deploy search (exit 4)", "| deploy: no capacity in search")
+		if strings.Contains(view.text, "| second") {
+			t.Errorf("%s: more than the first line:\n%s", view.name, view.text)
+		}
+	}
+	only := r.mustSwim("log", "1", "--failures")
+	contains(t, "--failures", only, "2 of 4 cells didn't pass")
+	for _, c := range []string{"orders", "users"} {
+		if strings.Contains(only, c) || strings.Contains(summary, "1["+c+"]") {
+			t.Errorf("a passing cell (%s) is listed:\n%s\n%s", c, summary, only)
+		}
+	}
+	if out, code := r.swim("log", "1[orders]", "--failures"); code != 2 {
+		t.Errorf("--failures on one cell: exit %d\n%s", code, out)
 	}
 }
 

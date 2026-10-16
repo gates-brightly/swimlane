@@ -445,6 +445,11 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **A failed matrix round says which cells failed and why.** The end of
+  `swim run` and `swim log N` list only the cells that didn't pass, each
+  with its first failed step and the first line its command printed, and
+  `swim log N --failures` shows just that. Before, the run listed failed
+  cells by name only, and finding why meant opening each cell's log.
 - **A step expected to fail: `run --expect-fail [=CODES]`.** A negative
   test (a bad token is refused, a lock is held) passes on a non-zero exit,
   one of CODES if given, and is logged `PASS  label (failed as expected:

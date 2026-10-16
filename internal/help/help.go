@@ -570,6 +570,7 @@ swim trash
   N or JOB: that lane's (or job's) rounds across recorded runs, one bar each.
 `,
 	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]
+         [--failures]
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
@@ -580,6 +581,10 @@ swim trash
     swim log JOB        just the rounds of that job (full id or 8+ characters),
                         from whichever current or archived log holds them
     swim log RUN        every lane's round from that swim run, in lane order
+    swim log N          for a matrix lane: each cell's last result, then the cells
+                        that didn't pass, each with its first failed step and the
+                        first line its command printed
+    swim log N --failures   only those cells
   On a terminal the log is rendered: round and stage headers stand out,
   results are coloured, times show how far into the round they were, and
   step output longer than 40 lines is folded to its first and last 15.
@@ -604,6 +609,7 @@ swim trash
                 the round's exit status (0 passed); on an idle lane, print its
                 last round and exit with that. For scripts and services
                 waiting on a job: swim log 3f2a9c1e --until-done
+  --failures    a matrix lane's cells that didn't pass, and why (see above)
 `,
 	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
         [--require-work] [--heartbeat D] [--run-id ID] [--check]
