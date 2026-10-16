@@ -553,6 +553,15 @@ output() {
   "$SWIM_BIN" output "$@"
 }
 
+# cache restore|save TREE [--with STRING]... — an installed tree's snapshot
+# (# Cache: snap:TREE @files), keyed by those files, the OS, the
+# architecture and the --with strings. restore returns 1 on a miss (or when
+# TREE is there already), so the script installs instead:
+#   cache restore web/node_modules || { run "npm ci" npm ci --prefix web && cache save web/node_modules; }
+cache() {
+  "$SWIM_BIN" cache "$@"
+}
+
 # drift "<what differs>" — record a DRIFT line (deployed state differs from code).
 drift() {
   "$SWIM_BIN" _mark "$SWIM_LANE" DRIFT "$1"

@@ -110,6 +110,9 @@ type Entry struct {
 	// job a paused round was ended for (swim run --replace).
 	PausedS    float64 `json:"paused_s,omitempty"`
 	ReplacedBy string  `json:"replaced_by,omitempty"`
+	// Cache are the snapshots (# Cache: snap:) a round restored: files
+	// that ran without being approved or checked.
+	Cache []SnapRef `json:"cache,omitempty"`
 	// AuthorityUnavailable says why swim run couldn't start its approvals
 	// (the broker): every guard of the run was a dry run.
 	AuthorityUnavailable string `json:"authority_unavailable,omitempty"`
@@ -508,4 +511,13 @@ func or(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// SnapRef is a snapshot a round restored: its key, tree, the tree's hash,
+// and the job that saved it.
+type SnapRef struct {
+	Key        string `json:"key" yaml:"key"`
+	Tree       string `json:"tree" yaml:"tree"`
+	TreeSHA256 string `json:"tree_sha256" yaml:"tree_sha256"`
+	SavedByJob string `json:"saved_by_job,omitempty" yaml:"saved_by_job,omitempty"`
 }

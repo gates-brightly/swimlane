@@ -167,6 +167,7 @@ func cmdStart(args []string) error {
 	}
 	os.Remove(lane.ResumedPath(root, n))
 	os.Remove(lane.ReplacedPath(root, n))
+	os.Remove(snapsPath(lane.Log(root, n))) // an earlier round's restores
 	// The round's outputs directory ($SWIM_OUT), fresh for this run.
 	if err := os.MkdirAll(outputs.Dir(root, job, run), 0o755); err != nil {
 		lane.RemovePID(root, n)
@@ -651,7 +652,7 @@ func cmdFinish(args []string) error {
 			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: approvals, AutoApproved: auto,
 			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums, Evidence: roundEvidence(root, r),
 			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs), Finally: finallySaw(),
-			PausedS: math.Round(pausedSoFar(root, n).Seconds()*10) / 10, ReplacedBy: replacedBy(root, n)}); err != nil {
+			PausedS: math.Round(pausedSoFar(root, n).Seconds()*10) / 10, ReplacedBy: replacedBy(root, n), Cache: roundSnaps(logPath)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 	}

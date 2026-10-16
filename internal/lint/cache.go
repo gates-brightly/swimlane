@@ -37,7 +37,7 @@ func checkCache(c *Context, s *Script) []finding.Finding {
 			data, err := os.ReadFile(filepath.Join(c.Root, lf))
 			if err != nil {
 				out = append(out, f(finding.Error, "cache", line, "commit the lockfile, or fix the path (relative to the repo root)",
-					"Cache: %s's lockfile %s doesn't exist; swim run refuses the lane", d.Preset, lf))
+					"Cache: %s's lockfile %s doesn't exist; swim run refuses the lane", d.Label(), lf))
 				continue
 			}
 			if d.Preset == "pip" && !strings.Contains(string(data), "--hash=") {

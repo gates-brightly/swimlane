@@ -37,8 +37,10 @@ func cmdCache(args []string) error {
 		return cachePrune(cfg, args)
 	case "path":
 		return cachePath(root, cfg, args)
+	case "restore", "save":
+		return cacheSnap(root, cfg, sub, args)
 	}
-	return usagef("usage: swim cache [ls] [--yaml] | rm PRESET|--all | prune [--older D] [--max SIZE] | path [PRESET] [--ci]")
+	return usagef("usage: swim cache [ls] [--yaml] | rm PRESET|snap.TREE|--all | prune [--older D] [--max SIZE] | path [PRESET] [--ci] | restore|save TREE [--with S]")
 }
 
 // cacheDoc is swim cache ls --yaml.
@@ -133,7 +135,7 @@ func cacheRemove(cfg *config.Config, args []string) error {
 		return err
 	}
 	if all == (len(rest) > 0) {
-		return usagef("usage: swim cache rm PRESET ... | --all")
+		return usagef("usage: swim cache rm PRESET|snap:TREE ... | --all")
 	}
 	r, err := cfg.OpenCache()
 	if err != nil {
@@ -154,9 +156,13 @@ func cacheRemove(cfg *config.Config, args []string) error {
 			return nil
 		}
 	}
-	for _, n := range names {
-		if _, ok := cache.Lookup(n); !ok {
-			return fmt.Errorf("no cache preset %q (presets: %s)", n, strings.Join(cache.Names(), ", "))
+	for i, n := range names {
+		if tree, ok := strings.CutPrefix(n, cache.SnapPreset+":"); ok {
+			names[i] = cache.SnapName(tree) // snap:web/node_modules, as the header names it
+			continue
+		}
+		if !cache.Known(n) {
+			return fmt.Errorf("no cache %q (presets: %s; snapshots: snap.<tree>, see swim cache ls)", n, strings.Join(cache.Names(), ", "))
 		}
 	}
 	if !yes && ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) {
@@ -262,6 +268,9 @@ func cacheCIKeys(root string, cfg *config.Config, r *cache.Repo) error {
 			continue
 		}
 		for _, d := range info.Cache {
+			if d.Preset == cache.SnapPreset {
+				continue // installed trees aren't a CI cache step's to share
+			}
 			if _, ok := files[d.Preset]; !ok {
 				order = append(order, d.Preset)
 			}

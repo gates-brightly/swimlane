@@ -119,7 +119,37 @@ func terraformWrites(argv []string) bool {
 // Decl is one cache a lane declares: a preset and its lockfiles.
 type Decl struct {
 	Preset    string
-	Lockfiles []string // repo-relative
+	Lockfiles []string // repo-relative; a snapshot's: the files its key hashes
+	// Tree is a snapshot's installed tree (Preset "snap"): a repo-relative
+	// directory, saved and restored whole (cache save, cache restore).
+	Tree string
+}
+
+// String is how a declaration prints: {terraform [infra/.terraform.lock.hcl]},
+// {snap:web/node_modules [web/package-lock.json]}.
+func (d Decl) String() string {
+	kind := d.Preset
+	if d.Preset == SnapPreset {
+		kind += ":" + d.Tree
+	}
+	return fmt.Sprintf("{%s %v}", kind, d.Lockfiles)
+}
+
+// Label is how messages name it: the preset, or snap:<tree>.
+func (d Decl) Label() string {
+	if d.Preset == SnapPreset {
+		return SnapPreset + ":" + d.Tree
+	}
+	return d.Preset
+}
+
+// Name is the cache's name in the repo's cache directory: the preset, or
+// snap.<tree> for a snapshot.
+func (d Decl) Name() string {
+	if d.Preset == SnapPreset {
+		return SnapName(d.Tree)
+	}
+	return d.Preset
 }
 
 // ParseDecl parses a # Cache: value, "terraform @infra/.terraform.lock.hcl
@@ -131,6 +161,23 @@ func ParseDecl(v string) (decls []Decl, problems []string) {
 	for _, tok := range strings.FieldsFunc(v, func(r rune) bool { return r == ' ' || r == '\t' || r == ',' }) {
 		switch {
 		case tok == "-" || strings.EqualFold(tok, "none"):
+		case strings.HasPrefix(tok, SnapPreset+":"):
+			cur = -1
+			tree := filepath.ToSlash(filepath.Clean(strings.TrimPrefix(tok, SnapPreset+":")))
+			if tree == "." || tree == "" || filepath.IsAbs(tree) || tree == ".." || strings.HasPrefix(tree, "../") || strings.HasPrefix(tree, ".swim") || strings.HasPrefix(tree, ".git") {
+				problems = append(problems, fmt.Sprintf("%s: a snapshot names a directory in the repo (snap:node_modules), not %q", tok, tree))
+				continue
+			}
+			dup := false
+			for _, d := range decls {
+				dup = dup || d.Preset == SnapPreset && d.Tree == tree
+			}
+			if dup {
+				problems = append(problems, fmt.Sprintf("%s is named twice", tok))
+				continue
+			}
+			decls = append(decls, Decl{Preset: SnapPreset, Tree: tree})
+			cur = len(decls) - 1
 		case strings.HasPrefix(tok, "@"):
 			f := filepath.ToSlash(filepath.Clean(strings.TrimPrefix(tok, "@")))
 			switch {
@@ -162,6 +209,12 @@ func ParseDecl(v string) (decls []Decl, problems []string) {
 		}
 	}
 	for _, d := range decls {
+		if d.Preset == SnapPreset {
+			if len(d.Lockfiles) == 0 {
+				problems = append(problems, fmt.Sprintf("snap:%s needs the files its key hashes (snap:%s @package-lock.json): an installed tree is only as good as what it was installed from", d.Tree, d.Tree))
+			}
+			continue
+		}
 		p, _ := Lookup(d.Preset)
 		if len(d.Lockfiles) == 0 {
 			problems = append(problems, fmt.Sprintf("%s needs its lockfile (%s @path/%s): without one the tool has nothing to check the cache against", d.Preset, d.Preset, p.Lockfiles[0]))
@@ -317,9 +370,10 @@ func Open(base, slug string) (*Repo, error) {
 	return r, nil
 }
 
-// Path is preset name's directory, created if missing.
+// Path is cache name's directory (a preset, or snap.<tree>), created if
+// missing.
 func (r *Repo) Path(name string) (string, error) {
-	if _, ok := Lookup(name); !ok {
+	if !known(name) {
 		return "", fmt.Errorf("no cache preset %q (presets: %s)", name, strings.Join(Names(), ", "))
 	}
 	d := filepath.Join(r.Dir, name)
@@ -343,6 +397,9 @@ func ensureDir(dir string) error {
 func (r *Repo) Env(decls []Decl, environ []string) ([]string, error) {
 	var env []string
 	for _, d := range decls {
+		if d.Preset == SnapPreset {
+			continue // restored and saved by the lane (cache restore, cache save)
+		}
 		p, ok := Lookup(d.Preset)
 		if !ok {
 			return nil, fmt.Errorf("no cache preset %q", d.Preset)
@@ -393,7 +450,15 @@ func (r *Repo) List() ([]Info, error) {
 		return nil, err
 	}
 	var out []Info
-	for _, name := range Names() {
+	names := Names()
+	if ents, err := os.ReadDir(r.Dir); err == nil {
+		for _, e := range ents {
+			if e.IsDir() && strings.HasPrefix(e.Name(), SnapPreset+".") {
+				names = append(names, e.Name())
+			}
+		}
+	}
+	for _, name := range names {
 		dir := filepath.Join(r.Dir, name)
 		if _, err := os.Lstat(dir); err != nil {
 			continue
@@ -424,7 +489,7 @@ func Size(dir string) int64 {
 
 // Remove deletes preset name's cache, unless a running lane holds it.
 func (r *Repo) Remove(name string) error {
-	if _, ok := Lookup(name); !ok {
+	if !known(name) {
 		return fmt.Errorf("no cache preset %q (presets: %s)", name, strings.Join(Names(), ", "))
 	}
 	unlock, ok, err := r.tryExclusiveUse(name)

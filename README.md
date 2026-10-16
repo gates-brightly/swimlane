@@ -752,6 +752,21 @@ download` skip what they already have.
   prune --older 30d` manage them; `swim cache path --ci` gives a CI cache
   step its directory and keys.
 
+An installed tree (`node_modules`, a virtualenv) nothing checks on use is a
+**snapshot**: the lane saves it whole and restores it in a later round,
+keyed by the files it was installed from.
+
+```bash
+# Cache: snap:web/node_modules @web/package-lock.json
+cache restore web/node_modules || { run "npm ci" npm ci --prefix web && cache save web/node_modules; }
+```
+
+The key hashes the tree, its `@` files (pinned like lockfiles), the OS, the
+architecture and any `--with` strings. A miss passes and returns 1; a key is
+written once; an outcome handler never saves; a save from a round with
+failed steps is marked, and its restores say so. A restored tree runs
+unchecked, so every restore is recorded in the round's chain entry.
+
 ### Secrets
 
 Secrets live encrypted to your SSH key, not in env files or the shell:

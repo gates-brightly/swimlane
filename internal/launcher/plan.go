@@ -614,7 +614,7 @@ func Plan(o Options) (*PlanDoc, error) {
 		}
 		l.Finally = pl.finallyOn[n]
 		for _, d := range info.Cache {
-			l.Cache = append(l.Cache, PlanCache{Preset: d.Preset, Lockfiles: d.Lockfiles})
+			l.Cache = append(l.Cache, PlanCache{Preset: d.Label(), Lockfiles: d.Lockfiles})
 		}
 		if !info.Always {
 			l.Setup = pl.setup

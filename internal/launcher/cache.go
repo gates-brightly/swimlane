@@ -38,17 +38,17 @@ func holdCaches(o Options, n int, info lane.Info) (lane.FileLocks, error) {
 	}
 	var held lane.FileLocks
 	for _, d := range info.Cache {
-		if _, err := r.Path(d.Preset); err != nil {
+		if _, err := r.Path(d.Name()); err != nil {
 			held.Release()
 			return nil, err
 		}
-		f, err := r.Use(d.Preset)
+		f, err := r.Use(d.Name())
 		if err != nil {
 			held.Release()
-			return nil, fmt.Errorf("cache %s: %w", d.Preset, err)
+			return nil, fmt.Errorf("cache %s: %w", d.Label(), err)
 		}
 		held = append(held, f)
-		r.Touch(d.Preset, n)
+		r.Touch(d.Name(), n)
 	}
 	// Over cache_max: trim the caches no running lane holds, least
 	// recently used first, without holding the lane up.
@@ -84,7 +84,7 @@ func CacheEnvFor(cfg *config.Config, root string, n int, info lane.Info) ([]stri
 	}
 	names := make([]string, len(info.Cache))
 	for i, d := range info.Cache {
-		names[i] = d.Preset
+		names[i] = d.Name()
 	}
 	return append(env, CacheRepoEnv+"="+r.Dir, CachePresetsEnv+"="+strings.Join(names, " ")), nil
 }
@@ -93,10 +93,13 @@ func CacheEnvFor(cfg *config.Config, root string, n int, info lane.Info) ([]stri
 func checkLockfiles(root string, n int, info lane.Info) error {
 	for _, d := range info.Cache {
 		if len(d.Lockfiles) == 0 {
-			return fmt.Errorf("Cache: %s names no lockfile (Cache: %s @path/to/lockfile); see swim lint %d", d.Preset, d.Preset, n)
+			return fmt.Errorf("Cache: %s names no lockfile (Cache: %s @path/to/lockfile); see swim lint %d", d.Label(), d.Label(), n)
 		}
 		for _, f := range d.Lockfiles {
 			if fi, err := os.Stat(filepath.Join(root, f)); err != nil || !fi.Mode().IsRegular() {
+				if d.Preset == cache.SnapPreset {
+					return fmt.Errorf("Cache: %s's key file %s is missing; the snapshot is keyed by it", d.Label(), f)
+				}
 				return fmt.Errorf("Cache: %s's lockfile %s is missing; the tool needs it to check what it takes from the cache", d.Preset, f)
 			}
 		}
@@ -114,7 +117,7 @@ type PlanCache struct {
 func cacheText(decls []cache.Decl) string {
 	parts := make([]string, len(decls))
 	for i, d := range decls {
-		parts[i] = d.Preset + " (" + strings.Join(d.Lockfiles, ", ") + ")"
+		parts[i] = d.Label() + " (" + strings.Join(d.Lockfiles, ", ") + ")"
 	}
 	return strings.Join(parts, ", ")
 }

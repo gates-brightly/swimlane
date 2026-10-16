@@ -413,6 +413,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Cache snapshots: an installed tree kept between rounds.** `# Cache:
+  snap:web/node_modules @web/package-lock.json`, then `cache restore
+  web/node_modules || { run "npm ci" ...; cache save web/node_modules; }`.
+  Keyed by the tree, its `@` files (pinned like lockfiles), the OS, the
+  architecture and `--with` strings; a miss passes and returns 1; a key is
+  written once; never saved from an outcome handler; a save from a round
+  with failed steps is marked and its restores say so; a tree in place is
+  never replaced. Each restore goes in the round's chain entry (`cache:`),
+  since a restored tree runs unchecked. `swim cache ls` / `rm snap:TREE`
+  see them.
 - **swim watch's follow view says how the run ended.** Enter on a running
   job or batch follows its output, as before; when it ends, a bar across
   the top says PASSED (green), FAILED (red) or INTERRUPTED (yellow), with

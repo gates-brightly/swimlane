@@ -24,6 +24,7 @@ COMMANDS
   secret set|get|ls|rm NAME   secrets encrypted to your SSH key, for --all repos or this --repo
   secret grant WORKER NAME    give a hub worker a secret, encrypted to its own key (revoke, grants)
   cache [ls|rm|prune|path]    the tool caches lanes keep between rounds (# Cache:; see CACHE)
+  cache restore|save TREE     inside a lane: an installed tree's snapshot (# Cache: snap:TREE)
   new N "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
                            template, with a new job id
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
@@ -748,8 +749,8 @@ CACHE
       pip        PIP_CACHE_DIR         --hash entries (a requirements file with hashes)
       go         GOMODCACHE            go.sum (swim adds GOFLAGS=-mod=readonly)
     SWIM_CACHE_<PRESET> holds the same path. Only download caches a tool
-    checks are presets: installed trees (node_modules, .terraform/) and build
-    caches (GOCACHE) aren't cached, because nothing checks them on use.
+    checks are presets. An installed tree (node_modules, a virtualenv) is a
+    snapshot instead (below), because nothing checks it on use.
   - The lockfile is required, and pinned in the execution manifest: changing
     it stales approvals, so an approval covers exactly what the tool may take
     from the cache. A lane whose lockfile is missing doesn't start. Use npm ci
@@ -769,6 +770,21 @@ CACHE
     prune --older 30d remove them (the tools download again what they need).
   - CI: swim cache path --ci prints the directory and a key per preset (from
     its lockfiles) for a CI cache step (actions/cache) around swim ci.
+  - Snapshots: an installed tree the lane saves whole and restores in a
+    later round, keyed by the files it was installed from:
+      # Cache: snap:web/node_modules @web/package-lock.json
+      cache restore web/node_modules || { run "npm ci" npm ci --prefix web && cache save web/node_modules; }
+    The key hashes the tree's name, each @ file, the OS, the architecture and
+    any --with strings (cache restore TREE --with "$(node --version)"); the @
+    files are pinned like lockfiles. cache restore is a step: "hit KEY", or
+    "miss" (it still passes, and returns 1 so the script installs); a tree
+    already in place is left alone (returns 1). cache save writes a key once
+    (copied, hashed, renamed into place), never from an outcome handler; a
+    save from a round with failed steps is marked, and a restore of it says
+    so. A restored tree runs unchecked, so each restore goes in the round's
+    chain entry (cache: key, tree, tree hash, the job that saved it).
+    Snapshots are per repo; swim cache ls lists them (snap.<tree>), swim
+    cache rm snap:TREE removes them, and they count toward cache_max.
 
 SYNTAX
   Lane scripts and lane logs say which syntax they use ("# swim: syntax 2" near
