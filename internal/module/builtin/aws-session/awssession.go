@@ -11,10 +11,11 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
 )
 
@@ -24,8 +25,6 @@ type creds struct {
 	SessionToken    string `json:"SessionToken"`
 	Expiration      string `json:"Expiration"`
 }
-
-var sessionRE = regexp.MustCompile(`[^\w+=,.@-]`)
 
 // Run is mod_env aws-session --profile P [--role ARN] [--duration D]
 // [--region R] [--session-name N].
@@ -68,7 +67,13 @@ func Run(c *gomod.Ctx) error {
 				name = "swim"
 			}
 		}
-		name = sessionRE.ReplaceAllString(name, "-")
+		// What AWS takes in a session name: letters, digits, _ + = , . @ -
+		name = strings.Map(func(r rune) rune {
+			if chars.Alnum(r) || strings.ContainsRune("_+=,.@-", r) {
+				return r
+			}
+			return '-'
+		}, name)
 		if len(name) > 64 {
 			name = name[:64]
 		}

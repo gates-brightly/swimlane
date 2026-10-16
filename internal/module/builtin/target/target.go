@@ -10,15 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
 )
 
 const usage = "usage: mod --gate target aws --account ID [--region R] [--profile P] | kube --context C [--namespace N] [--server URL] | gcp --project P [--account A]"
-
-var accountRE = regexp.MustCompile(`^[0-9]{12}$`)
 
 // Run is mod target aws|kube|gcp ...
 func Run(c *gomod.Ctx) error {
@@ -66,7 +64,7 @@ type check struct{ what, want, got string }
 
 func awsChecks(c *gomod.Ctx, a gomod.Args) ([]check, error) {
 	want := a.Flag("account", "")
-	if !accountRE.MatchString(want) {
+	if len(want) != 12 || !chars.Digits(want) {
 		return nil, gomod.Usage{Msg: "target aws needs --account, a 12-digit account id"}
 	}
 	var prof []string

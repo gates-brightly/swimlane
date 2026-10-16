@@ -23,7 +23,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -31,6 +30,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 )
 
@@ -86,15 +86,31 @@ type Spec struct {
 	Usage []string `yaml:"usage,omitempty"`
 }
 
-var (
-	nameRE    = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-	cmdRE     = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
-	versionRE = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
-	flagRE    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-)
-
 // ValidName reports whether s is a module name (notify, aws-session).
-func ValidName(s string) bool { return nameRE.MatchString(s) }
+func ValidName(s string) bool {
+	return chars.Word(s, chars.Lower, chars.Or(chars.Lower, chars.Digit, chars.In("-")))
+}
+
+// validCmd reports whether s can be a module command: a lower-case letter,
+// then lower-case letters, digits, _ and -.
+func validCmd(s string) bool {
+	return chars.Word(s, chars.Lower, chars.Or(chars.Lower, chars.Digit, chars.In("_-")))
+}
+
+// validVersion reports whether s is MAJOR.MINOR.PATCH, each a number with
+// no leading zero.
+func validVersion(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, p := range parts {
+		if !chars.Digits(p) || len(p) > 1 && p[0] == '0' {
+			return false
+		}
+	}
+	return true
+}
 
 // ParseSpec reads and checks a module.yml.
 func ParseSpec(data []byte) (Spec, error) {
@@ -107,10 +123,10 @@ func ParseSpec(data []byte) (Spec, error) {
 	if s.Schema != Schema {
 		return s, fmt.Errorf("%s: schema %q, want %s", SpecFile, s.Schema, Schema)
 	}
-	if !nameRE.MatchString(s.Name) {
+	if !ValidName(s.Name) {
 		return s, fmt.Errorf("%s: name %q isn't a module name (lower case letters, digits and -)", SpecFile, s.Name)
 	}
-	if !versionRE.MatchString(s.Version) {
+	if !validVersion(s.Version) {
 		return s, fmt.Errorf("%s: version %q isn't MAJOR.MINOR.PATCH", SpecFile, s.Version)
 	}
 	switch s.Kind {
@@ -122,7 +138,7 @@ func ParseSpec(data []byte) (Spec, error) {
 		return s, fmt.Errorf("%s: no commands", SpecFile)
 	}
 	for _, c := range s.Commands {
-		if !cmdRE.MatchString(c) {
+		if !validCmd(c) {
 			return s, fmt.Errorf("%s: command %q isn't a command name", SpecFile, c)
 		}
 		// Commands are namespaced by the module: notify, notify_thread.
@@ -134,7 +150,7 @@ func ParseSpec(data []byte) (Spec, error) {
 		return s, fmt.Errorf("%s: a go module is one program: commands: [%s]", SpecFile, s.Name)
 	}
 	for _, g := range s.Guards {
-		if !flagRE.MatchString(g) {
+		if !chars.Ident(g) {
 			return s, fmt.Errorf("%s: guard %q isn't a guard flag", SpecFile, g)
 		}
 	}
@@ -274,14 +290,25 @@ func New(files map[string][]byte) (*Module, error) {
 	return m, nil
 }
 
-var funcRE = regexp.MustCompile(`(?m)^\s*(?:function\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*\(\s*\)`)
-
 // BashFunctions lists the functions a bash file defines at the start of a
-// line.
+// line: name() or function name ().
 func BashFunctions(src []byte) []string {
 	var out []string
-	for _, m := range funcRE.FindAllSubmatch(src, -1) {
-		out = append(out, string(m[1]))
+	for _, l := range strings.Split(string(src), "\n") {
+		t := strings.TrimSpace(l)
+		t = strings.TrimSpace(strings.TrimPrefix(t, "function "))
+		end := 0
+		for end < len(t) && (chars.Alnum(rune(t[end])) || t[end] == '_' || t[end] == '-') {
+			end++
+		}
+		name := t[:end]
+		rest := strings.TrimLeft(t[end:], " \t")
+		if name == "" || chars.Digit(rune(name[0])) || name[0] == '-' || !strings.HasPrefix(rest, "(") {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimLeft(rest[1:], " \t"), ")") {
+			out = append(out, name)
+		}
 	}
 	return out
 }
@@ -355,7 +382,7 @@ func ParseRef(s string) (Ref, error) {
 		r.Path = p
 		return r, nil
 	}
-	if !nameRE.MatchString(body) {
+	if !ValidName(body) {
 		return r, fmt.Errorf("%q isn't a module name or a ./path", s)
 	}
 	r.Name = body

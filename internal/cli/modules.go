@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
@@ -254,8 +254,6 @@ func buildModule(root string, m *module.Module, src string) (string, error) {
 	return bin, os.Rename(tmp, bin)
 }
 
-var envKeyRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
 // reservedEnv are names no module may set for the lane: swim's own, and
 // the ones that change how a shell or the loader runs everything after.
 func reservedEnv(k string) bool {
@@ -305,7 +303,7 @@ func checkModuleEnv(m *module.Module, path string) ([]string, error) {
 		}
 		k, v, ok := strings.Cut(line, "=")
 		switch {
-		case !ok || !envKeyRE.MatchString(k):
+		case !ok || !chars.Ident(k):
 			return nil, fmt.Errorf("module %s wrote %q to %s: want KEY=VALUE lines", m.Name, truncText(k, 40), moduleOutEnv)
 		case reservedEnv(k):
 			return nil, fmt.Errorf("module %s may not set %s for the lane", m.Name, k)
@@ -336,7 +334,7 @@ func readModuleEnv(path string) ([][2]string, error) {
 	}
 	var out [][2]string
 	for _, line := range strings.Split(string(data), "\n") {
-		if k, v, ok := strings.Cut(line, "="); ok && envKeyRE.MatchString(k) && !reservedEnv(k) {
+		if k, v, ok := strings.Cut(line, "="); ok && chars.Ident(k) && !reservedEnv(k) {
 			out = append(out, [2]string{k, v})
 		}
 	}

@@ -3,8 +3,9 @@ package config
 import (
 	"fmt"
 	"path"
-	"regexp"
 	"strings"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
 )
 
 // ModulesPolicy is swim.yml's modules: which modules lanes may declare
@@ -26,7 +27,9 @@ type ModulesPolicy struct {
 	Override []string `yaml:"override,omitempty"`
 }
 
-var modNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+func modName(s string) bool {
+	return chars.Word(s, chars.Lower, chars.Or(chars.Lower, chars.Digit, chars.In("-")))
+}
 
 func (p *ModulesPolicy) validate() error {
 	if p == nil {
@@ -39,7 +42,7 @@ func (p *ModulesPolicy) validate() error {
 			}
 			continue
 		}
-		if !modNameRE.MatchString(a) {
+		if !modName(a) {
 			return fmt.Errorf("modules: allow: %q isn't a module name or a ./path glob", a)
 		}
 	}
@@ -47,7 +50,7 @@ func (p *ModulesPolicy) validate() error {
 		return fmt.Errorf("modules: dir: %q isn't a directory inside the repo", d)
 	}
 	for _, o := range p.Override {
-		if !modNameRE.MatchString(o) {
+		if !modName(o) {
 			return fmt.Errorf("modules: override: %q isn't a module name", o)
 		}
 	}

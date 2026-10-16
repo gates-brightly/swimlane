@@ -24,11 +24,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
 )
 
@@ -60,8 +60,8 @@ func Run(c *gomod.Ctx) error {
 	if out == "" {
 		return errors.New("tf: SWIM_OUT is unset (tf runs inside a lane's round)")
 	}
-	slug := regexp.MustCompile(`[^A-Za-z0-9]+`).ReplaceAllString(filepath.ToSlash(filepath.Clean(dir)), "_")
-	if slug == "_" {
+	slug := chars.Squash(filepath.ToSlash(filepath.Clean(dir)), chars.Alnum, "_")
+	if slug == "" {
 		slug = "root"
 	}
 	base := filepath.Join(out, ".swim-tf", slug)

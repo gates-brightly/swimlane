@@ -12,19 +12,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
 )
 
 const usage = "usage: mod backup rds INSTANCE | rds-cluster CLUSTER | dynamodb TABLE [--for 60m] [--every 15s] [--key K]"
-
-var (
-	nameRE   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	keyClean = regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
-)
 
 // kind is one kind of backup: how to start one and how to see its state.
 type kind struct {
@@ -108,7 +103,7 @@ func Run(c *gomod.Ctx) error {
 	if !ok {
 		return gomod.Usage{Msg: usage}
 	}
-	if !nameRE.MatchString(source) {
+	if !chars.Word(source, chars.Alnum, chars.Or(chars.Alnum, chars.In("._-"))) {
 		return gomod.Usage{Msg: fmt.Sprintf("backup: %q isn't a resource name", source)}
 	}
 	budget, err := duration(a, "for", 60*time.Minute)
@@ -119,7 +114,7 @@ func Run(c *gomod.Ctx) error {
 	if err != nil {
 		return err
 	}
-	key := a.Flag("key", "backup."+a.Pos[0]+"."+keyClean.ReplaceAllString(source, "_"))
+	key := a.Flag("key", "backup."+a.Pos[0]+"."+chars.Squash(source, chars.Or(chars.Alnum, chars.In("_.-")), "_"))
 	if c.Getenv("SWIM_CHECK_ONLY") == "1" {
 		fmt.Fprintf(c.Stdout, "backup: not taken: swim plan --check changes nothing (it would back up %s %s)\n", a.Pos[0], source)
 		return nil
@@ -177,7 +172,7 @@ func backupName(c *gomod.Ctx, now time.Time) string {
 	if n := c.Getenv("SWIM_LANE"); n != "" {
 		parts = append(parts, n)
 	}
-	job := strings.ToLower(regexp.MustCompile(`[^A-Za-z0-9]+`).ReplaceAllString(c.Getenv("SWIM_JOB"), ""))
+	job := strings.ToLower(chars.Squash(c.Getenv("SWIM_JOB"), chars.Alnum, ""))
 	if job != "" {
 		parts = append(parts, job[:min(8, len(job))])
 	}
