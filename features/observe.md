@@ -5,14 +5,15 @@ Status: in progress. Built: the detectors `timeout`, `retried`, `waited`,
 table-tested), computed at run end into `.swim/observations/<run>.yml`
 (a failure is a `warn` in `.swim.log`, never a failed run), `swim
 observe [RUN|N|JOB] [--yaml]`, `swim report`'s observations section, and
-`swim.yml` `observe:` thresholds. Baselines come from each lane's own log
-and archives (by step label), read at run end.
+`swim.yml` `observe:` thresholds, `SWIM_OBSERVATIONS` for finally lanes
+(the observations of the lanes each waited for) and `swim observe check`.
+Baselines come from each lane's own log and archives (by step label),
+read at run end.
 
 Left: step keys and targets (`--key`, `--target`, `# Targets:`), an index
 instead of re-reading logs, matrix cells and jobs, `held-up` and `trend`,
 `swim status` and `swim plan` lines, knowledge (accumulate, retire,
-accept, reject), and the finally-lane write-up (`SWIM_OBSERVATIONS`,
-`swim observe check`).
+accept, reject), and per-observation masked excerpts for a write-up.
 
 ## Summary
 

@@ -179,7 +179,9 @@ CONCEPTS
               leaves it out; a queued batch takes it along). It sees each
               outcome: SWIM_FINALLY_<N> (pass, fail, skip, interrupted; empty
               when not in the run), SWIM_FINALLY_<N>_JOB, and SWIM_FINALLY
-              (pass if all passed, else fail). The first Ctrl-C doesn't stop
+              (pass if all passed, else fail), and SWIM_OBSERVATIONS: a file
+              of the observations of the lanes it waited for (swim observe),
+              for a write-up. The first Ctrl-C doesn't stop
               it, and it still starts, within finally_timeout (default 10m);
               a second skips or interrupts it. Its result never changes
               another lane's: the summary reports it on its own line, a

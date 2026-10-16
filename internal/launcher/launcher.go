@@ -672,6 +672,19 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	ready = time.Now()
 	if len(finOrder) > 0 {
 		env, text := finallyEnv(saw, finOrder)
+		// The observations of the lanes it waited for (swim observe), for a
+		// write-up: SWIM_OBSERVATIONS names the file.
+		var ended []int
+		for _, d := range finOrder {
+			if saw[d] != nil {
+				ended = append(ended, d)
+			}
+		}
+		if path, err := observe.RecordFor(o.Root, o.RunID, n, ended, o.Cfg.ObserveThresholds()); err == nil {
+			env = append(env, "SWIM_OBSERVATIONS="+path)
+		} else {
+			history.Log(o.Root, history.Entry{Event: history.Warn, Run: o.RunID, Lane: n, Detail: "observations for a finally lane not recorded: " + err.Error()})
+		}
 		o.finally.set(n, env, text)
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.FinallySaw = text })
 	}

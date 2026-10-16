@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,9 @@ import (
 // last run it ran in). Facts computed from the record, with their
 // numbers and the runs they cite; they decide nothing.
 func cmdObserve(args []string) error {
+	if len(args) > 0 && args[0] == "check" {
+		return observeCheck(args[1:])
+	}
 	var asYAML bool
 	rest, err := flags{bools: map[string]*bool{"yaml": &asYAML}}.parse(args)
 	if err != nil {
@@ -130,4 +134,60 @@ func printObservationTo(w io.Writer, p ui.Painter, o observe.Observation, indent
 		cites = " · runs " + strings.Join(o.Cites, ", ")
 	}
 	fmt.Fprintf(w, "%s%-8s swim %-3d %s  %s\n", indent, p.Paint(ui.Yellow, o.Kind), o.Lane, o.Text, p.Paint(ui.Dim, o.ID+cites))
+}
+
+// observeCheck is swim observe check FILE [RUN]: the observation ids a
+// write-up (FILE) cites that the run (the last one by default) doesn't
+// have, so a reviewer can spot an invented citation. Exit 1 on any.
+func observeCheck(args []string) error {
+	if len(args) < 1 || len(args) > 2 {
+		return usagef("usage: swim observe check FILE [RUN]")
+	}
+	root, _, err := repo()
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(args[0])
+	if err != nil {
+		return err
+	}
+	run := ""
+	if len(args) == 2 {
+		run = args[1]
+	} else if st, _ := status.Load(root); st != nil {
+		run = st.LastRun
+	}
+	if run == "" {
+		return fmt.Errorf("no run to check against: name one (swim observe check FILE RUN)")
+	}
+	// The run's observations, and those its finally lanes were given
+	// (SWIM_OBSERVATIONS: a write-up cites those).
+	have := map[string]bool{}
+	files, _ := filepath.Glob(filepath.Join(observe.Dir(root), run+".for-*.yml"))
+	for _, path := range append(files, observe.Path(root, run)) {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var f observe.File
+		if yaml.Unmarshal(b, &f) == nil {
+			for _, o := range f.Observations {
+				have[o.ID] = true
+			}
+		}
+	}
+	cited := observe.Cited(string(data))
+	var bad []string
+	for _, id := range cited {
+		if !have[id] {
+			bad = append(bad, id)
+		}
+	}
+	fmt.Printf("%s cites %d observations of run %s", args[0], len(cited), run)
+	if len(bad) == 0 {
+		fmt.Println(": each one is there")
+		return nil
+	}
+	fmt.Printf("; not in the run: %s\n", strings.Join(bad, ", "))
+	return exitError{1}
 }

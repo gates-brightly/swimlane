@@ -381,6 +381,7 @@ swim report --earmarks | --earmark --reset [--name NAME]
   gate.)
 `,
 	"observe": `swim observe [RUN|N|JOB] [--yaml]
+swim observe check FILE [RUN]
 
   A run's observations: facts computed from what swim records, each with
   its numbers and the runs it cites. The last run's by default; for N or
@@ -400,6 +401,11 @@ swim report --earmarks | --earmark --reset [--name NAME]
   The thresholds are swim.yml's observe: (slow_factor, slow_min_s,
   baseline_min, window, wait_min_s, failing_streak, dry_streak); they're
   not policy and stale nothing. --yaml: swim.observations/v1.
+  Each has an id (slow-2-3). A finally lane gets those of the lanes it
+  waited for in a file, SWIM_OBSERVATIONS, for a write-up (mod claude
+  --input "$SWIM_OBSERVATIONS" ...). check lists the ids a write-up (FILE)
+  cites that the run (the last one by default) doesn't have: a citation
+  someone made up. Exit 1 on any.
 `,
 	"mod": `swim mod [--label L] [--gate|--evidence] [options] CMD [args...]
 
