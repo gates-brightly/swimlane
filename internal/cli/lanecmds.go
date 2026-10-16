@@ -71,18 +71,18 @@ func laneStep(cmd string, args []string) error {
 	i := 0
 	for ; i < len(args); i++ {
 		a := args[i]
-		switch a {
-		case "--timeout", "--retry", "--backoff", "--retry-on":
+		switch {
+		case a == "--timeout" || a == "--retry" || a == "--backoff" || a == "--retry-on":
 			if i+1 >= len(args) {
 				return usagef("%s needs a value", a)
 			}
 			opts = append(opts, a, args[i+1])
 			i++
 			continue
-		case "--no-retry-timeout":
+		case a == "--no-retry-timeout" || a == "--expect-fail" || strings.HasPrefix(a, "--expect-fail="):
 			opts = append(opts, a)
 			continue
-		case "--soft":
+		case a == "--soft":
 			soft = true
 			continue
 		}

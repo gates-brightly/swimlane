@@ -126,6 +126,10 @@ type Opts struct {
 	Retry            int
 	RetryOn          []int
 	Soft             bool
+	// ExpectFail: the step should fail (swim run --expect-fail). It passes
+	// on a non-zero exit, one of ExpectCodes if any, and fails on exit 0.
+	ExpectFail  bool
+	ExpectCodes []int
 }
 
 func (o Opts) flags() []string {
@@ -148,6 +152,17 @@ func (o Opts) flags() []string {
 	}
 	if o.Soft {
 		out = append(out, "--soft")
+	}
+	if o.ExpectFail || len(o.ExpectCodes) > 0 {
+		f := "--expect-fail"
+		if len(o.ExpectCodes) > 0 {
+			codes := make([]string, len(o.ExpectCodes))
+			for i, c := range o.ExpectCodes {
+				codes[i] = fmt.Sprint(c)
+			}
+			f += "=" + strings.Join(codes, ",")
+		}
+		out = append(out, f)
 	}
 	return out
 }

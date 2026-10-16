@@ -373,6 +373,9 @@ reached() {
 #   --retry-on CODES   retry only on these exit codes (e.g. 1,255)
 #   --no-retry-timeout don't retry an attempt the step limit stopped
 #   --soft             in a Fail: hard round, a failure doesn't end it
+#   --expect-fail[=CODES]  the step should fail: it passes on a non-zero
+#                      exit (one of CODES, e.g. =1,2), and fails on exit 0
+#                      or another code; logged "failed as expected"
 _swim_run_step() {
   _swim_mode=$1
   shift
@@ -388,7 +391,7 @@ _swim_run_step() {
         fi
         _swim_o="$_swim_o $1 $2"
         shift 2 ;;
-      --no-retry-timeout) _swim_o="$_swim_o $1"; shift ;;
+      --no-retry-timeout|--expect-fail|--expect-fail=*) _swim_o="$_swim_o $1"; shift ;;
       --) shift; break ;;
       --*) echo "swim: unknown step option $1" >&2; return 2 ;;
       *) break ;;

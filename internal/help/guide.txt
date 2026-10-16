@@ -358,6 +358,11 @@ WRITING A LANE SCRIPT
       --retry-on CODES            retry only on these exit codes, e.g. 1,255
       --no-retry-timeout          don't retry an attempt the step limit stopped
       --soft                      in a Fail: hard round, this step's failure doesn't end it
+      --expect-fail[=CODES]       the command should fail (a negative test: the
+                                  bad token is refused): PASS on a non-zero exit,
+                                  one of CODES if given, logged "failed as
+                                  expected: exit N"; FAIL on exit 0 or another
+                                  code. Timeouts and signals still fail. Not with --retry.
     The round's Timeout: always wins: no attempt runs past it, and a retry that
     couldn't start before it isn't attempted (the round stops, as for a timeout).
     TIME LIMITS: a step runs in its own process group, and a limit stops all of
@@ -646,7 +651,7 @@ OTHER LANGUAGES
     swim msg [--progress N/M] "<text>"                a status message (live view, status, hub)
     swim input N|JOB NAME    swim output KEY VALUE    outputs between lanes (Outputs:)
   (options as for run in a bash lane: --timeout, --retry, --backoff,
-  --retry-on, --no-retry-timeout, --soft). Outcome handlers are commands:
+  --retry-on, --no-retry-timeout, --soft, --expect-fail). Outcome handlers are commands:
       # On-Failure: python3 rollback.py           (on-failure: in lane.N.yml)
       # On-Exit:    swim run "remove tmp" -- rm -rf /tmp/orders
   run with sh -c when the round ends; in them swim gate and swim stop record a

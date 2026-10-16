@@ -445,6 +445,14 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **A step expected to fail: `run --expect-fail [=CODES]`.** A negative
+  test (a bad token is refused, a lock is held) passes on a non-zero exit,
+  one of CODES if given, and is logged `PASS  label (failed as expected:
+  exit N)`. Exit 0, another code, a command that didn't start, a time
+  limit or a signal fail it. Before, a negative test was `run "x" bash -c
+  '! cmd'`, which hid the exit code. In-lane `swim run/gate`, and the SDKs:
+  Python `expect_fail=True` or `[1, 2]`, TypeScript `expectFail`, Go
+  `Opts.ExpectFail` / `ExpectCodes`. Not with `--retry`.
 - **A command that fails outside any step is logged.** `WARN  outside a
   step: <command> (exit N)`, with "command not found" for exit 127. Before,
   only the terminal saw it (an undefined `mod` on an older swim left no

@@ -53,6 +53,12 @@ type Options struct {
 	StepTimeout     time.Duration
 	StepTimeoutText string
 	Retry           Retry
+	// ExpectFail: the step is expected to fail. It passes when the command
+	// exits non-zero (with one of ExpectCodes, if any), and fails when it
+	// exits 0 or with another code. A time limit or a signal is still a
+	// failure. The exit code decides, never the output.
+	ExpectFail  bool
+	ExpectCodes []int
 	// KillGrace is how long a step stopped by a time limit or an interrupt
 	// has to exit before its process group is SIGKILLed; 0 means
 	// DefaultKillGrace.
@@ -160,6 +166,9 @@ type attempt struct {
 	sig  os.Signal
 	why  int
 	dur  time.Duration
+	// unstarted: the command never ran (not found, not executable): never
+	// a failure that was expected.
+	unstarted bool
 }
 
 // Run executes the step, retrying as configured. Output streams to the
@@ -366,8 +375,19 @@ func Run(o Options) (Result, error) {
 		kind, detail = logparse.Fail, "timeout: Timeout "+o.TimeoutText+" reached"
 	case stepLimit:
 		kind, detail = logparse.Fail, "timeout: step limit "+o.StepTimeoutText
-	default:
-		if res.ExitCode != 0 {
+	case notTimedOut:
+		switch {
+		case o.ExpectFail && last.unstarted:
+			kind, detail = logparse.Fail, fmt.Sprintf("exit %d: the command didn't start, so it didn't fail as expected", res.ExitCode)
+		case o.ExpectFail && res.Signal == nil && res.ExitCode != 0 && (len(o.ExpectCodes) == 0 || containsInt(o.ExpectCodes, res.ExitCode)):
+			detail = fmt.Sprintf("failed as expected: exit %d", res.ExitCode)
+			res.ExitCode = 0
+		case o.ExpectFail && res.ExitCode == 0:
+			kind, detail = logparse.Fail, "exit 0, but it was expected to fail"
+			res.ExitCode = 1
+		case o.ExpectFail && res.Signal == nil:
+			kind, detail = logparse.Fail, fmt.Sprintf("exit %d, expected to fail with %s", res.ExitCode, joinInts(o.ExpectCodes))
+		case res.ExitCode != 0:
 			kind, detail = logparse.Fail, fmt.Sprintf("exit %d", res.ExitCode)
 			if res.Signal != nil {
 				detail += ", interrupted"
@@ -454,6 +474,7 @@ func runOnce(o Options, plain *lockedWriter, sigs chan os.Signal) attempt {
 		if errors.Is(err, os.ErrPermission) {
 			at.exit = 126
 		}
+		at.unstarted = true
 		return at
 	}
 	pid := cmd.Process.Pid
@@ -878,4 +899,13 @@ func (s *Spool) Block(detail string) []string {
 		out = append(out, logparse.OutPrefix+s.Partial)
 	}
 	return out
+}
+
+// joinInts is codes as "1,255".
+func joinInts(codes []int) string {
+	parts := make([]string, len(codes))
+	for i, c := range codes {
+		parts[i] = strconv.Itoa(c)
+	}
+	return strings.Join(parts, ",")
 }

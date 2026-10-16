@@ -129,7 +129,8 @@ class Round:
         return resp.get("result") or {}
 
     # Steps run by swim.
-    def _step(self, op, label, argv, timeout=None, retry=None, backoff=None, retry_on=None, soft=False):
+    def _step(self, op, label, argv, timeout=None, retry=None, backoff=None, retry_on=None, soft=False,
+              expect_fail=None):
         opts = []
         if timeout is not None:
             opts += ["--timeout", str(timeout)]
@@ -141,6 +142,12 @@ class Round:
             opts += ["--retry-on", ",".join(str(c) for c in retry_on)]
         if soft:
             opts.append("--soft")
+        # expect_fail=True: the step should fail (any non-zero exit);
+        # expect_fail=[1, 2]: with one of these codes.
+        if expect_fail is True:
+            opts.append("--expect-fail")
+        elif expect_fail:
+            opts.append("--expect-fail=" + ",".join(str(c) for c in expect_fail))
         return self._call(op, label=label, argv=[str(a) for a in argv], opts=opts).get("passed", False)
 
     def run(self, label, argv, **opts):

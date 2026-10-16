@@ -24,6 +24,9 @@ func main() {
 		}); err != nil {
 			return err
 		}
+		if _, err := r.RunWith("refused", swim.Opts{ExpectFail: true, ExpectCodes: []int{3}}, "sh", "-c", "exit 3"); err != nil {
+			return err
+		}
 		ok, err := r.Guard("ALLOW_X", "do x")
 		if err != nil {
 			return err

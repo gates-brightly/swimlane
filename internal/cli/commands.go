@@ -725,6 +725,11 @@ func cmdStep(args []string) error {
 	if sep >= 0 {
 		flagArgs, cmdArgs = args[:sep], args[sep+1:]
 	}
+	// --expect-fail, or --expect-fail=CODES (1,255): a step that should fail.
+	expectFail, expectCodes, flagArgs, err := expectFailFlag(flagArgs)
+	if err != nil {
+		return err
+	}
 	rest, err := flags{
 		bools: map[string]*bool{"new": &fresh, "snapshot": &snap, "no-retry-timeout": &noRetryTimeout, "evidence": &evid},
 		strs:  map[string]*string{"label": &label, "timeout": &timeout, "retry": &retry, "backoff": &backoff, "retry-on": &retryOn},
@@ -791,6 +796,9 @@ func cmdStep(args []string) error {
 		}
 	}
 	rt.NoTimeout = noRetryTimeout
+	if expectFail && rt.Max > 0 {
+		return usagef("--expect-fail and --retry don't go together: a step expected to fail is run once")
+	}
 	// A paused round (swim pause) holds here, before the step starts.
 	holdIfPaused(root, n, os.Getenv("SWIM_RUN"), label)
 	// lane_init exports the round's deadline (Timeout:) as epoch seconds;
@@ -810,6 +818,7 @@ func cmdStep(args []string) error {
 		Color:    ui.ColorEnabled(os.Stderr),
 		Deadline: deadline, TimeoutText: os.Getenv("SWIM_TIMEOUT"),
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
+		ExpectFail: expectFail, ExpectCodes: expectCodes,
 		Blocked: cfg.Blocked(),
 		Mask:    cfg.Masker(os.Environ()),
 		// A stop request ends the round at its next step, but a handler's
@@ -842,6 +851,33 @@ func cmdStep(args []string) error {
 		return exitError{res.ExitCode}
 	}
 	return nil
+}
+
+// expectFailFlag takes --expect-fail and --expect-fail=CODES out of a
+// step's flags.
+func expectFailFlag(args []string) (bool, []int, []string, error) {
+	var rest []string
+	var codes []int
+	on := false
+	for _, a := range args {
+		v, isFlag := strings.CutPrefix(a, "--expect-fail")
+		if !isFlag || v != "" && !strings.HasPrefix(v, "=") {
+			rest = append(rest, a)
+			continue
+		}
+		on = true
+		if v == "" {
+			continue
+		}
+		for _, c := range strings.Split(strings.TrimPrefix(v, "="), ",") {
+			n, err := strconv.Atoi(strings.TrimSpace(c))
+			if err != nil || n <= 0 || n > 255 {
+				return false, nil, nil, usagef("--expect-fail=%s: use non-zero exit codes, e.g. --expect-fail=1,2", strings.TrimPrefix(v, "="))
+			}
+			codes = append(codes, n)
+		}
+	}
+	return on, codes, rest, nil
 }
 
 func cmdLib(args []string) error {

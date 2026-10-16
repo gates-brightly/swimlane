@@ -39,6 +39,7 @@ trap 'touch finally.sh.txt' EXIT
 swim stage check
 swim run "probe" -- echo probing
 swim run "native check" -- echo "items: 0"
+swim run --expect-fail=3 "refused" -- sh -c 'exit 3'
 if swim guard ALLOW_X "do x"; then swim run "x" -- true; fi
 swim msg "almost done"
 swim stage change
@@ -55,6 +56,7 @@ try:
         r.run("probe", ["echo", "probing"])
         with r.step("native check") as s:
             s.log("items: 0")
+        r.run("refused", ["sh", "-c", "exit 3"], expect_fail=[3])
         if r.guard("ALLOW_X", "do x"):
             r.run("x", ["true"])
         r.msg("almost done")
@@ -74,6 +76,7 @@ try {
       await r.stage("check");
       await r.run("probe", ["echo", "probing"]);
       await r.step("native check", async (s) => { s.log("items: 0"); });
+      await r.run("refused", ["sh", "-c", "exit 3"], { expectFail: [3] });
       if (await r.guard("ALLOW_X", "do x")) await r.run("x", ["true"]);
       await r.msg("almost done");
       await r.stage("change");
@@ -127,7 +130,7 @@ func TestSDKConformance(t *testing.T) {
 			} else if got != want {
 				t.Errorf("%s results differ:\n got:\n%s\nwant:\n%s", lang, got, want)
 			}
-			contains(t, "results", got, "PASS probe", "PASS native check", "APPROVED do x", "PASS x", "FAIL must pass", "STOP gate failed: must pass")
+			contains(t, "results", got, "PASS probe", "PASS native check", "PASS refused", "APPROVED do x", "PASS x", "FAIL must pass", "STOP gate failed: must pass")
 			if strings.Contains(got, "never") {
 				t.Error("the round went on after its gate failed")
 			}
@@ -135,7 +138,7 @@ func TestSDKConformance(t *testing.T) {
 				t.Errorf("the program didn't unwind (no finally.%s.txt)", lang)
 			}
 			log := r.log(1)
-			contains(t, "log", log, "MSG  almost done")
+			contains(t, "log", log, "MSG  almost done", "PASS  refused (failed as expected: exit 3)")
 			if lang != "sh" {
 				contains(t, "in-process marker", log, "PASS  native check (in-process)", "| items: 0")
 			}

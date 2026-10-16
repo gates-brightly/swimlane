@@ -52,6 +52,8 @@ export interface StepOptions {
   backoff?: string;
   retryOn?: number[];
   soft?: boolean;
+  /** The step should fail: true for any non-zero exit, or the codes it may exit with. */
+  expectFail?: boolean | number[];
 }
 
 /** A module call's options: a step's, plus its label, gate and env. */
@@ -161,6 +163,8 @@ export class Round {
     if (o.backoff) opts.push("--backoff", o.backoff);
     if (o.retryOn) opts.push("--retry-on", o.retryOn.join(","));
     if (o.soft) opts.push("--soft");
+    if (o.expectFail === true) opts.push("--expect-fail");
+    else if (Array.isArray(o.expectFail) && o.expectFail.length) opts.push("--expect-fail=" + o.expectFail.join(","));
     const res = await this.call(op, { label, argv: argv.map(String), opts });
     return Boolean(res.passed);
   }

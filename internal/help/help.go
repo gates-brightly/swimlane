@@ -343,7 +343,8 @@ swim report --earmarks | --earmark --reset [--name NAME]
              included, and .swim.log for lanes skipped before they started)
 `,
 	"step": `swim step [--label L] [--new] [--snapshot] [--timeout D] [--retry N]
-          [--backoff D] [--retry-on CODES] [--no-retry-timeout] -- cmd [args...]
+          [--backoff D] [--retry-on CODES] [--no-retry-timeout]
+          [--expect-fail[=CODES]] -- cmd [args...]
 
   Run one command. Its output streams to the terminal unchanged; a framed copy
   goes to the log chosen by $STEP_LOG (default step.log):
@@ -362,6 +363,11 @@ swim report --earmarks | --earmark --reset [--name NAME]
                 command: see "TIME LIMITS" in swim --help)
   --retry N, --backoff D, --retry-on CODES, --no-retry-timeout
                 retry on failure (see "WRITING A LANE SCRIPT" in swim --help)
+  --expect-fail[=CODES]
+                the command should fail: the step passes on a non-zero exit
+                (one of CODES, e.g. =1,2, if given) and is logged "failed as
+                expected: exit N"; exit 0 or another code fails it. A time
+                limit or a signal still fails it. Not with --retry.
   Lane scripts call this through run/gate/snapshot; you rarely need it directly.
 `,
 	"gate": `swim gate [options] "<label>" -- cmd [args...]
@@ -370,7 +376,8 @@ swim report --earmarks | --earmark --reset [--name NAME]
   one step like swim run "<label>" -- cmd; if it fails, record STOP and end
   the round, stopping the program even if it carries on. Options as for
   swim run's in-lane form: --timeout D, --retry N, --backoff D,
-  --retry-on CODES, --no-retry-timeout. (In a bash lane, use the library's
+  --retry-on CODES, --no-retry-timeout, --expect-fail[=CODES]. (In a bash
+  lane, use the library's
   gate.)
 `,
 	"snapshot": `swim snapshot [options] "<label>" -- cmd [args...]
