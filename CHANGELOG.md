@@ -32,6 +32,12 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Upgrading
 
+- **Approvals bound to a manifest go stale once.** swim.yml's `modules:`
+  joined the policy hash (policy version 3), so every manifest's hash
+  changes with this swim, whatever the repo's swim.yml says. Approve the
+  lanes you need again once everyone runs this swim; queued batches pinned
+  to a manifest are skipped as changed, so queue them again.
+
 - **State syntax 2 (execution manifests):** repos locked at state 1 (or
   `breaking: 7`) refuse to run until upgraded. Chain entries, signed
   approvals and queued batches now name the manifest they ran or approved
@@ -413,6 +419,27 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Modules: reusable utilities lanes declare and call as steps.** `#
+  Modules: aws-session clone@1 notify ./modules/x`, then `mod notify
+  "#orders" "done"` or `mod_env aws-session --profile p --role ARN`. A
+  module is a bash file of functions or a Go program with a `module.yml`
+  (`swim.module/v1`: version, commands, declared effects). Each call is a
+  step through `swim step`; `mod_env` exports what the module gives the lane
+  and masks every value from then on (a credential name needs
+  `credentials: true`; `PATH` and `SWIM_*` never). The manifest pins each
+  module (`pinned.modules`: name, version, source, hash; a repo module's
+  files are staged as includes `from: module`), so editing one, or a swim
+  release that changes a built-in, stales approvals of the lanes that use
+  it. Built in: `aws-session` (Go, through the aws CLI), `clone` (a full
+  commit id only), `notify` (the webhook in the secret
+  `SLACK_WEBHOOK_URL`, fails soft). Repo modules live in `modules/<name>/`;
+  swim builds Go ones offline with your Go, once per source.
+  `swim.yml` `modules: {allow, dir, override}` says which modules lanes may use
+  (built-ins only without it). `swim modules [ls|show|new]`; `swim plan`
+  and `swim approve` show each module's effects; lint `module` and
+  `module-effects`; doctor `module-go`; SDKs `r.module(...)` /
+  `module_env` / `moduleEnv` / `Module` / `ModuleEnv` over op `module` of
+  `swim.lane/v1`.
 - **Cache snapshots: an installed tree kept between rounds.** `# Cache:
   snap:web/node_modules @web/package-lock.json`, then `cache restore
   web/node_modules || { run "npm ci" ...; cache save web/node_modules; }`.

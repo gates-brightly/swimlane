@@ -198,7 +198,7 @@ const maxRequest = 8 * 1024 * 1024
 
 // startsStep is the ops that start a step (or ask the operator), refused
 // once the round's end is claimed.
-var startsStep = map[string]bool{"run": true, "gate": true, "snapshot": true, "evidence": true, "begin_step": true, "guard": true, "confirm": true}
+var startsStep = map[string]bool{"module": true, "run": true, "gate": true, "snapshot": true, "evidence": true, "begin_step": true, "guard": true, "confirm": true}
 
 // notRun is the result of a step op refused because the round has ended.
 func notRun(op string, code int) map[string]any {
@@ -271,6 +271,8 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 		args = append(append(args, a.Label, "--"), a.Argv...)
 		code := s.swim(args...)
 		return laneResponse{OK: true, Result: map[string]any{"exit": code, "passed": code == 0}}
+	case "module":
+		return s.module(req)
 	case "guard":
 		var a struct{ Flag, Action string }
 		if err := req.args(&a); err != nil || a.Flag == "" {
@@ -463,8 +465,13 @@ func (s *laneServer) swim(args ...string) int {
 func (s *laneServer) swimOut(args ...string) (string, int) { return s.swimRun(true, args...) }
 
 func (s *laneServer) swimRun(capture bool, args ...string) (string, int) {
+	return s.swimEnv(capture, nil, args...)
+}
+
+// swimEnv is swimRun with extra KEY, VALUE pairs in the command's env.
+func (s *laneServer) swimEnv(capture bool, extra []string, args ...string) (string, int) {
 	c := exec.Command(s.bin, args...)
-	c.Dir, c.Env, c.Stderr = s.root, s.env, os.Stderr
+	c.Dir, c.Env, c.Stderr = s.root, setEnv(s.env, extra...), os.Stderr
 	if s.inHandler.Load() {
 		c.Env = setEnv(c.Env, "SWIM_IN_HANDLER", "1")
 	}
@@ -485,6 +492,70 @@ func (s *laneServer) swimRun(capture bool, args ...string) (string, int) {
 		return out.String(), ee.ExitCode()
 	}
 	return out.String(), 1
+}
+
+// module is op module: a command of a module the lane declares, run as a
+// step (swim run/gate ... swim _module CMD args), as a bash lane's mod
+// runs it. With env, the variables the module gave are set for the lane's
+// later steps, masked from then on, and returned for the program's own
+// environment.
+func (s *laneServer) module(req laneRequest) laneResponse {
+	var a struct {
+		Name  string   `json:"name"`
+		Args  []string `json:"args"`
+		Opts  []string `json:"opts"`
+		Label string   `json:"label"`
+		Gate  bool     `json:"gate"`
+		Env   bool     `json:"env"`
+	}
+	if err := req.args(&a); err != nil || a.Name == "" {
+		return fail("module needs name")
+	}
+	label := a.Label
+	if label == "" {
+		label = strings.Join(append([]string{a.Name}, a.Args...), " ")
+	}
+	op := "run"
+	if a.Gate {
+		op = "gate"
+	}
+	args := append([]string{op}, a.Opts...)
+	args = append(append(args, label, "--", s.bin, "_module", a.Name), a.Args...)
+	var extra []string
+	var out string
+	if a.Env {
+		f, err := os.CreateTemp("", "swim-mod.")
+		if err != nil {
+			return fail("module %s: %v", a.Name, err)
+		}
+		out = f.Name()
+		f.Close()
+		defer os.Remove(out)
+		extra = []string{moduleOutEnv, out}
+	}
+	_, code := s.swimEnv(false, extra, args...)
+	result := map[string]any{"exit": code, "passed": code == 0}
+	if a.Env && code == 0 {
+		vars, err := readModuleEnv(out)
+		if err != nil {
+			return fail("module %s: %v", a.Name, err)
+		}
+		env := map[string]any{}
+		var names []string
+		for _, kv := range vars {
+			s.env = setEnv(s.env, kv[0], kv[1])
+			env[kv[0]] = kv[1]
+			names = append(names, kv[0])
+		}
+		if len(names) > 0 {
+			// Every later step, and this server's own masking, hides them.
+			keys := strings.TrimSpace(envOf(s.env, config.EnvKeysVar) + " " + strings.Join(names, " "))
+			s.env = setEnv(s.env, config.EnvKeysVar, keys)
+			s.mkOnce, s.mk = sync.Once{}, nil
+		}
+		result["env"] = env
+	}
+	return laneResponse{OK: true, Result: result}
 }
 
 func envOf(env []string, key string) string {

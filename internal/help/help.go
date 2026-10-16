@@ -912,6 +912,24 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   run. Without lookup.yml nobody can answer. A worker that doesn't allow
   answer never asks: its guards dry-run as in any batch.
 `,
+	"modules": `swim modules [ls] [--yaml]
+swim modules show NAME|./DIR
+swim modules new NAME [--kind bash|go] [--dir DIR]
+
+  The modules this repo's lanes can declare (# Modules:) and call with mod
+  and mod_env: the built-in ones, and the repo's in swim.yml's modules: dir.
+  See MODULES in swim --help.
+  ls       each module: version, kind, where it comes from, what it does,
+           its declared effects, and whether swim.yml allows it.
+           --yaml: swim.modules/v1
+  show     a module's module.yml and its source (a built-in Go module's is
+           compiled into swim), for reading before approving a lane that
+           uses it
+  new      write a repo module's skeleton: DIR/NAME/ (default swim.yml's
+           modules: dir, else modules) with a module.yml and NAME.sh, or
+           main.go and go.mod with --kind go; it says what to add to
+           swim.yml to allow it
+`,
 	"cache": `swim cache [ls] [--yaml]
 swim cache rm PRESET ... | --all [--yes]
 swim cache prune [--older D] [--max SIZE]
@@ -1698,7 +1716,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "secret", "cache", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}

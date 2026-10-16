@@ -141,6 +141,10 @@ _swim_on_signal() {
 # stop, a typo) still runs its handlers and gets a summary and a final state.
 _swim_on_exit() {
   _swim_code=$?
+  # A mod_env step the round ended during leaves its variables' file.
+  if [ -n "${_swim_mod_out:-}" ]; then
+    rm -f "$_swim_mod_out"
+  fi
   if [ -z "$SWIM_LANE" ]; then
     return
   fi
@@ -560,6 +564,90 @@ output() {
 #   cache restore web/node_modules || { run "npm ci" npm ci --prefix web && cache save web/node_modules; }
 cache() {
   "$SWIM_BIN" cache "$@"
+}
+
+# mod [options] CMD [args...] — run a command of a module the script
+# declares (# Modules: notify clone@1) as a step labelled "CMD args":
+#   mod notify "#orders" "deployed $SWIM_JOB"
+# Options: run's (--timeout, --retry, --backoff, --retry-on,
+# --no-retry-timeout, --soft), --label "<label>", and --gate (a failure
+# stops the round, as gate does). The module's bytes are the ones the
+# manifest pinned; swim modules lists what's available.
+mod() {
+  _swim_mod "" "$@"
+}
+
+# mod_env [options] CMD [args...] — mod for a module that gives the lane
+# variables (credentials: aws-session): once the step passes, what it
+# wrote is exported for the steps after it, and every value is masked
+# from then on.
+mod_env() {
+  _swim_mod 1 "$@"
+}
+
+_swim_mod() {
+  _swim_mod_env=$1
+  shift
+  _swim_mod_o=
+  _swim_mod_label=
+  _swim_mod_gate=
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --label|--timeout|--retry|--backoff|--retry-on)
+        if [ $# -lt 2 ]; then
+          echo "swim: $1 needs a value" >&2
+          return 2
+        fi
+        if [ "$1" = --label ]; then
+          _swim_mod_label=$2
+        else
+          _swim_mod_o="$_swim_mod_o $1 $2"
+        fi
+        shift 2 ;;
+      --soft|--no-retry-timeout) _swim_mod_o="$_swim_mod_o $1"; shift ;;
+      --gate) _swim_mod_gate=1; shift ;;
+      --) shift; break ;;
+      --*) echo "swim: unknown mod option $1" >&2; return 2 ;;
+      *) break ;;
+    esac
+  done
+  if [ $# -lt 1 ]; then
+    echo 'swim: usage: mod|mod_env [options] CMD [args...]' >&2
+    return 2
+  fi
+  if [ -z "$_swim_mod_label" ]; then
+    _swim_mod_label="$*"
+  fi
+  _swim_mod_out=
+  if [ -n "$_swim_mod_env" ]; then
+    _swim_mod_out=$(mktemp "${TMPDIR:-/tmp}/swim-mod.XXXXXX") || return 1
+    SWIM_MODULE_OUT=$_swim_mod_out
+    export SWIM_MODULE_OUT
+  fi
+  if [ -n "$_swim_mod_gate" ]; then
+    _swim_no_hard=1
+  fi
+  # $_swim_mod_o is unquoted on purpose, as in _swim_run_step.
+  _swim_run_step "" $_swim_mod_o "$_swim_mod_label" "$SWIM_BIN" _module "$@"
+  _swim_mod_rc=$?
+  _swim_no_hard=
+  if [ -n "$_swim_mod_out" ]; then
+    unset SWIM_MODULE_OUT
+    if [ "$_swim_mod_rc" -eq 0 ]; then
+      if _swim_mod_vars=$("$SWIM_BIN" _module-env "$_swim_mod_out"); then
+        eval "$_swim_mod_vars"
+      else
+        _swim_mod_rc=1
+      fi
+      _swim_mod_vars=
+    fi
+    rm -f "$_swim_mod_out"
+    _swim_mod_out=
+  fi
+  if [ -n "$_swim_mod_gate" ] && [ "$_swim_mod_rc" -ne 0 ]; then
+    stop "gate failed: $_swim_mod_label"
+  fi
+  return "$_swim_mod_rc"
 }
 
 # drift "<what differs>" — record a DRIFT line (deployed state differs from code).

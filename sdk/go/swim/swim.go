@@ -152,6 +152,45 @@ func (o Opts) flags() []string {
 	return out
 }
 
+// ModuleOpts are a module call's options: a step's, plus its label, Gate
+// (a failure ends the round) and Env (take the variables it gives).
+type ModuleOpts struct {
+	Opts
+	Label string
+	Gate  bool
+	Env   bool
+}
+
+// Module runs a command of a module the lane declares (# Modules:) as a
+// step: true if it passed.
+func (r *R) Module(name string, args ...string) (bool, error) {
+	return r.ModuleWith(ModuleOpts{}, name, args...)
+}
+
+// ModuleEnv is Module for a module that gives the lane variables
+// (credentials): they're set in this program's environment and every
+// later step's, masked.
+func (r *R) ModuleEnv(name string, args ...string) (bool, error) {
+	return r.ModuleWith(ModuleOpts{Env: true}, name, args...)
+}
+
+// ModuleWith is Module with options.
+func (r *R) ModuleWith(o ModuleOpts, name string, args ...string) (bool, error) {
+	if args == nil {
+		args = []string{}
+	}
+	res, err := r.call("module", map[string]any{"name": name, "args": args, "opts": o.flags(), "label": o.Label, "gate": o.Gate, "env": o.Env})
+	if env, ok := res["env"].(map[string]any); ok {
+		for k, v := range env {
+			if s, ok := v.(string); ok {
+				os.Setenv(k, s)
+			}
+		}
+	}
+	passed, _ := res["passed"].(bool)
+	return passed, err
+}
+
 func (r *R) step(op, label string, o Opts, argv []string) (bool, error) {
 	res, err := r.call(op, map[string]any{"label": label, "argv": argv, "opts": o.flags()})
 	passed, _ := res["passed"].(bool)

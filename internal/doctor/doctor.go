@@ -149,6 +149,7 @@ var Checks = []Check{
 	{"schedule-recurring", false, "a recurring schedule is paused, or expires within three days", checkScheduleRecurring},
 	{"prune-reclaim", false, "swim prune --older 30d would free over 100 MB", checkPruneReclaim},
 	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
+	{"module-go", false, "a lane uses a Go module from the repo, and there's no Go toolchain here to build it", checkModuleGo},
 	{"cache-unused", false, "tool caches unused for 30 days, or the repo's caches over cache_max", checkCacheUnused},
 }
 

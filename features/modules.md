@@ -1,6 +1,11 @@
 # Modules: reusable Go and bash utilities for lanes, pinned like the script
 
-Status: proposed
+Status: in progress. Phases one and two are built: `# Modules:`, `mod` and
+`mod_env`, the built-in `aws-session`, `clone` and `notify`, repo modules
+(bash and Go), the manifest pins, `swim.yml` `modules:`, `swim modules
+ls|show|new`, plan, approve, lint, doctor, and op `module` in the SDKs.
+Left: `writeup` (step 7, after observe.md's phase one) and phase three
+(fetched modules, `swim modules get`, the lock). See "As built" below.
 
 ## Summary
 
@@ -318,22 +323,74 @@ runs, and a lockfile. Never a fetch at run time.
    signatures, doctor.
 10. **Docs** at each phase.
 
+## As built (phases one and two)
+
+Where the build differs from the design above, or settles it:
+
+- **Bash modules aren't sourced into the lane.** Each `mod` call runs the
+  module in its own bash (`bash -c '<module>; "$@"'` through `swim _module`
+  under `swim step`), so nothing a module defines reaches the lane, and the
+  load-time collision check isn't needed. Two declared modules with one
+  command name are refused when they resolve.
+- **Commands are namespaced:** a module's commands are `<name>` or
+  `<name>_<more>`, and `module.yml` must list each one the `.sh` defines.
+  A Go module is one command, its name.
+- **`swim _module CMD args`** (hidden) resolves CMD among the lane's
+  modules as pinned by the staged manifest (a built-in must have the pinned
+  hash; a repo module is read from the stage and rehashed), then runs it.
+  Run directly with bash, it resolves from the working tree.
+- **`mod_env`:** the module writes `KEY=VALUE` lines to
+  `$SWIM_MODULE_OUT`; swim refuses `PATH`, `SWIM_*`, the shell's and the
+  loader's variables, and credential names (`AWS_*`, `*_TOKEN`, `*_KEY`,
+  ...) unless `credentials: true`, then exports them and adds the names to
+  `SWIM_ENV_KEYS`, so every later swim process masks them. A value the
+  script echoes itself, outside a step, isn't masked (the lane's wrapper
+  built its masker before the value existed).
+- **Secrets:** `swim secret get` inside a module refuses a name its
+  `module.yml` doesn't list; the broker still decides.
+- **`aws-session` asks the AWS CLI** (`aws configure export-credentials`,
+  `aws sts assume-role`), so it works with any profile (keys, SSO, a
+  credential process) and swim needs no AWS SDK.
+- **Policy:** `modules:` joined the policy hash as policy version 3, which
+  stales every manifest-bound approval once (CHANGELOG Upgrading). Without
+  `allow:`, built-ins are allowed and repo modules aren't; with it, only
+  what it lists (`./path` globs for repo modules).
+- **Go repo modules** build offline (`GOPROXY=off`, `GOFLAGS` cleared) into
+  `.swim/modules/build/<tree sha>-<go version>-<os>-<arch>`. The binary
+  isn't recorded under `local:` yet: it's keyed by the pinned source hash
+  and rebuilt when that or Go changes.
+
+Answers to the open questions, for what's built:
+
+- **Remote Go modules:** build, as repo modules do; `swim doctor`
+  (`module-go`) flags a lane whose Go module this machine can't build.
+  Prebuilt binaries stay open for phase three.
+- **Versions in the header:** majors (`clone@1`); `swim plan` and `swim
+  approve` show the exact version.
+- **Effects enforcement:** no. Lint warns (`module-effects`) about a module
+  that isn't `read_only` before `stage change`; `swim plan --check` treats a
+  module like any step.
+- **Built-in upgrades:** one version of each built-in per swim release for
+  now. A release that changes a built-in stales the approvals of lanes that
+  use it, and says why ("module notify changed"). Revisit if that's noisy.
+
 ## Open questions
 
-- **Remote Go modules: build or download?** Building needs a Go toolchain
+- **Remote Go modules: build or download?** (Answered above for what's
+  built; still open for prebuilt binaries in phase three.) Building needs a Go toolchain
   on every machine that runs the lane. Prebuilt binaries per platform, each
   hashed in the lock, need none, but the approval then covers a binary
   nobody reviewed, only its source's claim. Leaning: build, and say so in
   `swim doctor`.
-- **Versions in the header.** `notify@1` (a major, with the exact version in
+- **Versions in the header.** (Answered above.) `notify@1` (a major, with the exact version in
   the lock) or the exact version (`notify@1.2.0`) in every script? Majors
   keep scripts stable across patch releases; exact pins make the script
   self-describing. Leaning majors, with `swim plan` showing the exact one.
-- **Effects enforcement.** Declared effects are advice. Should a lane with
+- **Effects enforcement.** (Answered above.) Declared effects are advice. Should a lane with
   only `read_only` modules and no `stage change` be allowed to run under
   `swim plan --check` without the usual caution? It's tempting, and wrong
   if a module lies. Leaning no.
-- **Built-in module upgrades.** A swim release that changes `notify` stales
+- **Built-in module upgrades.** (Answered above, for now.) A swim release that changes `notify` stales
   every approval of a lane using it, which is correct but noisy. Should
   built-in modules be versioned independently of swim, with old versions
   kept in the binary for a release or two?

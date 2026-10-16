@@ -1,0 +1,12 @@
+schema: swim.module/v1
+name: clone
+version: 1.0.0
+kind: bash
+summary: clone a repository and check out exactly one commit
+commands: [clone]
+usage:
+  - mod clone URL SHA DIR    SHA is a full commit id (a branch or tag is refused); DIR must be new or empty
+effects:
+  network: [the URL's host]
+  writes: [DIR]
+  read_only: true

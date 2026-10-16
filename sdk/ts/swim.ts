@@ -54,6 +54,13 @@ export interface StepOptions {
   soft?: boolean;
 }
 
+/** A module call's options: a step's, plus its label, gate and env. */
+export interface ModuleOptions extends StepOptions {
+  label?: string;
+  gate?: boolean;
+  env?: boolean;
+}
+
 type Result = Record<string, unknown>;
 type Handler = (outcome: Result) => Promise<void> | void;
 
@@ -164,6 +171,23 @@ export class Round {
   snapshot(label: string, argv: string[], o?: StepOptions) { return this.swimStep("snapshot", label, argv, o); }
   /** A check step whose output an approval can cover (the plan). */
   evidence(label: string, argv: string[], o?: StepOptions) { return this.swimStep("evidence", label, argv, o); }
+
+  /** A command of a module the lane declares (# Modules:), as a step: true if it passed. */
+  module(name: string, ...args: string[]) { return this.moduleWith({}, name, ...args); }
+  /** module, taking the variables it gives the lane (credentials) into process.env and every later step's, masked. */
+  moduleEnv(name: string, ...args: string[]) { return this.moduleWith({ env: true }, name, ...args); }
+  /** module with options: run's, plus label, gate and env. */
+  async moduleWith(o: ModuleOptions, name: string, ...args: string[]): Promise<boolean> {
+    const opts: string[] = [];
+    if (o.timeout) opts.push("--timeout", o.timeout);
+    if (o.retry !== undefined) opts.push("--retry", String(o.retry));
+    if (o.backoff) opts.push("--backoff", o.backoff);
+    if (o.retryOn) opts.push("--retry-on", o.retryOn.join(","));
+    if (o.soft) opts.push("--soft");
+    const res = await this.call("module", { name, args: args.map(String), opts, label: o.label ?? "", gate: Boolean(o.gate), env: Boolean(o.env) });
+    for (const [k, v] of Object.entries((res.env as Record<string, string>) ?? {})) process.env[k] = v;
+    return Boolean(res.passed);
+  }
 
   /** An in-process step: fn runs here, swim logs it. */
   async step(label: string, fn: (s: Step) => Promise<void> | void, o: { gate?: boolean } = {}): Promise<boolean> {

@@ -282,6 +282,23 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 			}
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, text))
 		}
+		// Modules, with what they declare they do: an approver reads them
+		// next to the guards.
+		if len(info.Modules) > 0 {
+			mods, err := planModules(o.Root, o.Cfg, info.Modules)
+			for k, m := range mods {
+				label := "        "
+				if k == 0 {
+					label = "modules "
+				}
+				fmt.Fprintf(w, "%s%s%s %s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, label), moduleText(m))
+			}
+			if err != nil {
+				for _, e := range strings.Split(err.Error(), "\n") {
+					fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Red, "blocked: "+e))
+				}
+			}
+		}
 		if info.FailHard {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "fail: hard (the first failed step ends the round)"))
 		}
@@ -547,6 +564,10 @@ type PlanLane struct {
 	// Cache are the tool caches the round uses (# Cache:), with the
 	// lockfiles each is checked against.
 	Cache []PlanCache `yaml:"cache,omitempty"`
+	// Modules are the modules the round declares (# Modules:), and
+	// ModuleError why they don't resolve (the lane won't start).
+	Modules     []PlanModule `yaml:"modules,omitempty"`
+	ModuleError string       `yaml:"module_error,omitempty"`
 	// Handlers are the round's outcome handlers and the guards in them.
 	Handlers []PlanHandler `yaml:"handlers,omitempty"`
 	// Cells are a matrix round's cells.
@@ -627,6 +648,12 @@ func Plan(o Options) (*PlanDoc, error) {
 		}
 		for _, h := range info.Handlers {
 			l.Handlers = append(l.Handlers, PlanHandler{Name: h.Name, Command: h.Cmd, Guards: h.Guards})
+		}
+		if len(info.Modules) > 0 {
+			var err error
+			if l.Modules, err = planModules(o.Root, o.Cfg, info.Modules); err != nil {
+				l.ModuleError = err.Error()
+			}
 		}
 		if info.FailHard {
 			l.Fail = "hard"

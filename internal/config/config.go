@@ -87,6 +87,9 @@ type Settings struct {
 	// what a guarded secret does (AWS profiles): swim lint and swim doctor
 	// point out their use. Only swim.yml may set it.
 	AmbientCredentials []string `yaml:"ambient_credentials,omitempty"`
+	// Modules is swim.yml's modules: which modules lanes may declare
+	// (modules.go). Only swim.yml may set it.
+	Modules *ModulesPolicy `yaml:"modules,omitempty"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -168,6 +171,9 @@ func Load(root string) (*Config, error) {
 	if f.Defaults.Secrets != nil || f.Defaults.AmbientCredentials != nil {
 		return nil, fmt.Errorf("%s: secrets: and ambient_credentials: belong in a repo's committed swim.yml, not config.yml (a guard on a secret is the repo's decision)", c.Path)
 	}
+	if f.Defaults.Modules != nil {
+		return nil, fmt.Errorf("%s: modules: belongs in a repo's committed swim.yml, not config.yml (which modules lanes may use is the repo's decision)", c.Path)
+	}
 	c.Settings = f.Defaults
 	c.RepoLanes = f.Defaults.Lanes != 0
 	c.Runners, c.RunnerFrom = nil, nil
@@ -192,6 +198,10 @@ func Load(root string) (*Config, error) {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 		c.Secrets, c.AmbientCredentials = s.Secrets, s.AmbientCredentials
+		if err := s.Modules.validate(); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		c.Modules = s.Modules
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
 		if repo.Env != nil {
@@ -202,6 +212,9 @@ func Load(root string) (*Config, error) {
 		}
 		if repo.Secrets != nil || repo.AmbientCredentials != nil {
 			return nil, fmt.Errorf("%s (repo %s): secrets: and ambient_credentials: belong in the repo's committed swim.yml, not config.yml", c.Path, root)
+		}
+		if repo.Modules != nil {
+			return nil, fmt.Errorf("%s (repo %s): modules: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
 		}
 		c.HasRepo = true
 		c.RepoLanes = c.RepoLanes || repo.Lanes != 0

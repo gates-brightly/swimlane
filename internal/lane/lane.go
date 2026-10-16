@@ -169,6 +169,10 @@ type Info struct {
 	// a directory that outlives the round, and pins the lockfiles the tool
 	// checks the cache against (internal/cache).
 	Cache []cache.Decl
+	// Modules are the modules the round uses (# Modules: notify clone@1
+	// ./modules/x), as written: the only ones its mod and mod_env may call
+	// (internal/module resolves them).
+	Modules []string
 }
 
 // DefaultHandlerTimeout is the handlers' budget when Handler-Timeout: is unset.
@@ -221,7 +225,7 @@ var (
 	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
 	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
 	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children|Observe|Finally|Cache):\s*(.*)$`)
+	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children|Observe|Finally|Cache|Modules):\s*(.*)$`)
 	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
 	sepRE   = regexp.MustCompile(`[\s,]+`)
 	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
@@ -245,7 +249,7 @@ var (
 	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
 		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true,
-		"always": true, "rerun-children": true, "observe": true, "finally": true, "cache": true}
+		"always": true, "rerun-children": true, "observe": true, "finally": true, "cache": true, "modules": true}
 )
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
@@ -427,6 +431,8 @@ func ParseScript(src string) Info {
 					}
 				case "Cache":
 					info.setCache(v, "Cache:")
+				case "Modules":
+					info.setModules(sepRE.Split(v, -1))
 				case "Rerun-Children":
 					info.RerunChildren = info.setBool(v, "Rerun-Children:")
 				case "Handler-Timeout":

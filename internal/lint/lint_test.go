@@ -111,6 +111,11 @@ func TestEachCheck(t *testing.T) {
 		{name: "Cache no lockfile", script: before(c, "# Timeout:", "# Cache: terraform\n"), code: "cache", level: finding.Error, line: 7, message: "terraform needs its lockfile"},
 		{name: "npm install with a cache", script: before(before(c, "# Timeout:", "# Cache: npm @package-lock.json\n"), "stage verify\n", "run \"deps\" npm install\n"), code: "cache-bypass", level: finding.Warn, message: "npm install"},
 		{name: "pip without hashes", script: before(before(c, "# Timeout:", "# Cache: pip @requirements.txt\n"), "stage verify\n", "run \"deps\" pip install requests\n"), code: "cache-bypass", level: finding.Warn, message: "--require-hashes"},
+		{name: "module not declared", script: before(c, "stage verify\n", "mod notify - \"done\"\n"), code: "module", level: finding.Error, message: "module notify isn't declared"},
+		{name: "no such module", script: before(c, "# Timeout:", "# Modules: nope\n"), code: "module", level: finding.Error, line: 7, message: "module nope: no such module"},
+		{name: "no such module command", script: before(before(c, "# Timeout:", "# Modules: notify\n"), "stage verify\n", "mod --label x notify_thread - hi\n"), code: "module", level: finding.Error, message: "no module has a command notify_thread"},
+		{name: "credentials without mod_env", script: before(before(c, "# Timeout:", "# Modules: aws-session\n"), "stage verify\n", "mod aws-session --profile p\n"), code: "module-effects", level: finding.Warn, message: "mod drops them"},
+		{name: "module before change", script: before(before(c, "# Timeout:", "# Modules: notify\n"), "stage change\n", "if true; then mod notify - \"starting\"; fi\n"), code: "module-effects", level: finding.Warn, message: "isn't read-only"},
 		{name: "destructive outside guard", script: before(c, "stage verify\n", "run \"clean\" rm -rf build\n"), code: "destructive", level: finding.Warn},
 		{name: "destructive after else", script: replace(c, "fi\n", "else\n  run \"destroy\" terraform destroy\nfi\n"), code: "destructive", level: finding.Warn},
 		{name: "blocked", script: before(c, "stage verify\n", "run \"ship\" git push origin main\n"), code: "blocked", level: finding.Error},
@@ -310,5 +315,16 @@ func TestGuardedSecretLint(t *testing.T) {
 	}
 	if got := lint("run \"read\" aws --profile prod-read s3 ls\n"); got != "" {
 		t.Errorf("another profile: %s", got)
+	}
+}
+
+// go mod download isn't a module call; declared modules used after stage
+// change, and a read-only one before it, are clean.
+func TestModulesClean(t *testing.T) {
+	c := before(clean(1), "# Timeout:", "# Modules: notify clone@1 aws-session\n")
+	c = before(c, "stage change\n", "run \"deps\" go mod download\nmod_env aws-session --profile p\nmod clone https://x/y 3f2a9c1e0b7d4e2a9c1e0b7d4e2a9c1e0b7d4e2a \"$SWIM_OUT/y\"\n")
+	c = before(c, "summary\n", "mod --timeout 30s notify \"#c\" \"done\" && echo sent\n")
+	if fs := Lint(cfg4(), map[int]string{1: c, 2: clean(2)}, 1); len(fs) != 0 {
+		t.Errorf("findings: %+v", fs)
 	}
 }

@@ -38,6 +38,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/runner"
 )
 
@@ -58,7 +59,19 @@ const (
 	FromIncludes = "includes" // # Includes: or a Matrix: @file: part of the script hash too
 	FromSource   = "source"   // a bash source line, found by a static scan
 	FromImport   = "import"   // a Python or TypeScript import of a local module
+	FromModule   = "module"   // a file of a repo module the lane declares (# Modules:)
 )
+
+// ModulePin is one module a lane declares (# Modules:), pinned: a built-in
+// by the hash of its embedded files, a repo module by its tree's hash (its
+// files are also staged, as includes from: module).
+type ModulePin struct {
+	Name    string `yaml:"name"`
+	Version string `yaml:"version"`
+	Source  string `yaml:"source"` // builtin, or ./<dir>
+	Kind    string `yaml:"kind"`
+	SHA256  string `yaml:"sha256"`
+}
 
 // File is one pinned file.
 type File struct {
@@ -81,6 +94,8 @@ type Pinned struct {
 	Script   File   `yaml:"script"`
 	Includes []File `yaml:"includes,omitempty"`
 	Sidecar  *File  `yaml:"sidecar,omitempty"`
+	// Modules are the modules the lane declares, in its order.
+	Modules []ModulePin `yaml:"modules,omitempty"`
 	// Runner is how the script runs, as the repo says it: bash, its #!
 	// line, a swim.yml runner, direct; "local .ts" for a runner from the
 	// operator's own config (which differs per machine).
@@ -179,6 +194,28 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 			m.Pinned.Includes = append(m.Pinned.Includes, File{Path: s.Path, SHA256: hash(d), From: s.From})
 		}
 	}
+	info, _ := lane.ReadScript(root, n)
+	// The modules it declares, as swim.yml allows them: a module that
+	// doesn't resolve keeps the lane from starting.
+	mods, err := module.Resolve(root, cfg.Modules, info.Modules)
+	if err != nil {
+		return nil, fmt.Errorf("swim %d: %w", n, err)
+	}
+	for _, mod := range mods {
+		m.Pinned.Modules = append(m.Pinned.Modules, ModulePin{Name: mod.Name, Version: mod.Version, Source: mod.Source(), Kind: mod.Kind, SHA256: mod.SHA256})
+		if mod.Builtin {
+			continue
+		}
+		for rel, d := range mod.Files {
+			f := mod.Dir + "/" + rel
+			if pinned[f] {
+				continue
+			}
+			pinned[f] = true
+			m.data[f] = d
+			m.Pinned.Includes = append(m.Pinned.Includes, File{Path: f, SHA256: hash(d), From: FromModule})
+		}
+	}
 	sort.Slice(m.Pinned.Includes, func(i, j int) bool { return m.Pinned.Includes[i].Path < m.Pinned.Includes[j].Path })
 	if sc := lane.Sidecar(root, n); isFile(sc) {
 		d, err := os.ReadFile(sc)
@@ -203,7 +240,6 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	}
 	m.Pinned.Config = Policy{SHA256: cfg.PolicyHash(), Version: config.PolicyVersion, Keys: config.PolicyKeys, Rules: rules}
 	m.Local.Env = envSHA
-	info, _ := lane.ReadScript(root, n)
 	m.Job = info.Job
 	seen := map[string]bool{}
 	for _, g := range append(info.GuardFlags(), lane.ParseScript(string(data)).GuardFlags()...) {
@@ -248,6 +284,9 @@ func (p Pinned) Hash(n int) string {
 	}
 	if p.Sidecar != nil {
 		fmt.Fprintf(&b, "sidecar: %s %s\n", p.Sidecar.Path, p.Sidecar.SHA256)
+	}
+	for _, mod := range p.Modules {
+		fmt.Fprintf(&b, "module: %s %s %s %s %s\n", mod.Name, mod.Version, mod.Source, mod.Kind, mod.SHA256)
 	}
 	fmt.Fprintf(&b, "runner: %s\nconfig: v%d %s\nlookup-rules: %s\n", p.Runner, p.Config.Version, p.Config.SHA256, p.Config.Rules)
 	return hash([]byte(b.String()))
@@ -463,6 +502,7 @@ func Diff(old, new Pinned) []string {
 	case old.Sidecar != nil && *old.Sidecar != *new.Sidecar:
 		out = append(out, "sidecar "+new.Sidecar.Path+" changed")
 	}
+	out = append(out, diffModules(old.Modules, new.Modules)...)
 	if old.Runner != new.Runner {
 		out = append(out, fmt.Sprintf("runner changed (%s, now %s)", or(old.Runner, "none"), or(new.Runner, "none")))
 	}
@@ -471,6 +511,36 @@ func Diff(old, new Pinned) []string {
 	}
 	if old.Config.Rules != new.Config.Rules {
 		out = append(out, "approval rules changed (lookup.yml require:)")
+	}
+	return out
+}
+
+// diffModules says how a lane's modules changed: "module notify added",
+// "module notify changed (1.0.0, now 1.1.0)".
+func diffModules(old, new []ModulePin) []string {
+	var out []string
+	was := map[string]ModulePin{}
+	for _, p := range old {
+		was[p.Name] = p
+	}
+	now := map[string]bool{}
+	for _, p := range new {
+		now[p.Name] = true
+		switch o, ok := was[p.Name]; {
+		case !ok:
+			out = append(out, "module "+p.Name+" added")
+		case o.Version != p.Version:
+			out = append(out, fmt.Sprintf("module %s changed (%s, now %s)", p.Name, o.Version, p.Version))
+		case o.Source != p.Source:
+			out = append(out, fmt.Sprintf("module %s changed (%s, now %s)", p.Name, o.Source, p.Source))
+		case o != p:
+			out = append(out, "module "+p.Name+" changed")
+		}
+	}
+	for _, p := range old {
+		if !now[p.Name] {
+			out = append(out, "module "+p.Name+" removed")
+		}
 	}
 	return out
 }

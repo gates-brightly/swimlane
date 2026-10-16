@@ -206,3 +206,42 @@ func TestJobHandler(t *testing.T) {
 		}
 	}
 }
+
+// Module sends op module; ModuleEnv takes the variables swim returns into
+// the program's environment.
+func TestModule(t *testing.T) {
+	f := serve(t, func(op string, args map[string]any) map[string]any {
+		if op == "module" {
+			res := map[string]any{"passed": true}
+			if args["env"] == true {
+				res["env"] = map[string]any{"SDK_MOD_VAR": "from-module"}
+			}
+			return map[string]any{"result": res}
+		}
+		return nil
+	})
+	t.Setenv("SDK_MOD_VAR", "")
+	Round(func(r *R) error {
+		if ok, err := r.Module("notify", "#c", "hi"); !ok || err != nil {
+			t.Errorf("module: %v %v", ok, err)
+		}
+		if ok, err := r.ModuleWith(ModuleOpts{Env: true, Label: "creds", Opts: Opts{Timeout: "1m"}}, "creds"); !ok || err != nil {
+			t.Errorf("module env: %v %v", ok, err)
+		}
+		return nil
+	})
+	if os.Getenv("SDK_MOD_VAR") != "from-module" {
+		t.Errorf("env: %q", os.Getenv("SDK_MOD_VAR"))
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var mods []map[string]any
+	for _, r := range f.reqs {
+		if r["op"] == "module" {
+			mods = append(mods, r["args"].(map[string]any))
+		}
+	}
+	if len(mods) != 2 || mods[0]["name"] != "notify" || len(mods[0]["args"].([]any)) != 2 || mods[1]["label"] != "creds" || mods[1]["opts"].([]any)[1] != "1m" {
+		t.Errorf("requests: %v", mods)
+	}
+}

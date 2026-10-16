@@ -25,6 +25,8 @@ COMMANDS
   secret grant WORKER NAME    give a hub worker a secret, encrypted to its own key (revoke, grants)
   cache [ls|rm|prune|path]    the tool caches lanes keep between rounds (# Cache:; see CACHE)
   cache restore|save TREE     inside a lane: an installed tree's snapshot (# Cache: snap:TREE)
+  modules [ls|show|new]    the modules lanes can use (# Modules:; see MODULES): show NAME
+                           prints one, new NAME [--kind bash|go] writes a repo module
   new N "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
                            template, with a new job id
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
@@ -467,6 +469,9 @@ WRITING A LANE SCRIPT
                                       terraform, npm, pip or go, each with the lockfile the
                                       tool checks the cache against (pinned like Includes:).
                                       See CACHE. Default: none
+      # Modules: <name>[@major] [...]  modules the round calls with mod and mod_env:
+                                      built in (notify, clone@1) or ./modules/<name>,
+                                      pinned like Includes:. See MODULES. Default: none
       # Observe: NAME = <command>     a fact swim can't pin (the cloud account, ...): read
       # Observe: path CMD [CMD ...]   when a guard is approved and again just before it
                                       returns; a difference ends the round as drift. A path
@@ -666,7 +671,7 @@ OTHER LANGUAGES
       Go          sdk/go/swim (compiled lanes): os.Exit(swim.Round(func(r *swim.R) error { ... }))
   Each has run, gate, snapshot, evidence, step (in-process, logged as
   "PASS  <label> (in-process)"), stage, guard, confirm, drift, stop, msg,
-  input, output, and outcome handlers (on_success / on_failure / on_exit,
+  input, output, module (see MODULES), and outcome handlers (on_success / on_failure / on_exit,
   registered first). Register # Includes: lib/*.py for the local modules a
   lane imports: they're hashed with the script, so approvals cover them.
   Local imports by name are pinned and staged anyway (lint warns about one
@@ -785,6 +790,62 @@ CACHE
     chain entry (cache: key, tree, tree hash, the job that saved it).
     Snapshots are per repo; swim cache ls lists them (snap.<tree>), swim
     cache rm snap:TREE removes them, and they count toward cache_max.
+
+MODULES
+  A module is a small, versioned utility a lane calls as a step: a bash file
+  of functions, or a Go program, with a module.yml that says what it does.
+  The lane declares the ones it uses, and calls their commands:
+      # Modules: aws-session clone@1 notify
+      mod_env aws-session --profile orders-prod --role arn:aws:iam::123456789012:role/deploy
+      mod clone https://github.com/org/orders 3f2a9c1e0b7d4e2a9c1e0b7d4e2a9c1e0b7d4e2a "$SWIM_OUT/orders"
+      mod notify "#orders" "orders deploy: done (job $SWIM_JOB)"
+  - mod [options] CMD [args...] runs a module command as a step labelled
+    "CMD args": logged, masked, timed and counted like run. Options: run's
+    (--timeout, --retry, ...), --label "<label>", --gate (a failure stops
+    the round). A command of a module the header doesn't declare is refused
+    at the step, and lint errors first.
+  - mod_env is mod for a module that gives the lane variables (credentials):
+    once the step passes they're exported for the steps after it, and every
+    value is masked from then on. A module whose module.yml doesn't say
+    credentials: true may not set credential names (AWS_*, *_TOKEN, ...), and
+    no module may set PATH, SWIM_* or the shell's own variables. A value
+    echoed by the script itself, outside a step, isn't masked.
+  - SDK lanes: r.module("notify", "#orders", "done"), r.module_env(...)
+    (Python), r.moduleEnv(...) (TypeScript), r.Module / r.ModuleEnv (Go): op
+    module of swim.lane/v1. With env the variables are also set in the
+    program's own environment.
+  - Built in: aws-session (go: credentials from your AWS profile or SSO
+    through the aws CLI, optionally assuming --role; needs mod_env), clone
+    (bash: URL SHA DIR, a full commit id only, HEAD checked), notify (bash:
+    CHANNEL TEXT to the webhook in the secret SLACK_WEBHOOK_URL; fails soft
+    unless --strict). swim modules lists them with their effects; swim
+    modules show NAME prints a module's module.yml and source.
+  - Repo modules: modules/<name>/ with a module.yml (swim modules new NAME
+    [--kind bash|go] writes one). Declare one by path (# Modules:
+    ./modules/x), or by name with dir: in swim.yml. A bash module is
+    <name>.sh, bash 3.2, its commands functions named <name> or
+    <name>_<more>; each call runs it in its own bash, so nothing it defines
+    reaches the lane. A Go module is one program (main.go, go.mod): swim
+    builds it with your Go, offline (vendor what it imports), into
+    .swim/modules/build/, once per source and Go version.
+  - Pinned: the manifest records each module's name, version, source and
+    hash (a built-in's embedded files; a repo module's tree, whose files are
+    also staged as includes from: module). Editing a repo module, or a swim
+    release that changes a built-in, stales the approvals of the lanes that
+    use it; swim approve shows the modules and their effects.
+  - Effects are declared, not enforced: network, secrets, writes,
+    credentials, read_only. swim plan, swim approve and lint show them; lint
+    warns about a module that isn't read_only before `stage change`. A
+    module runs as the lane, with its permissions. It asks only for the
+    secrets its module.yml lists (swim secret get refuses others), and the
+    broker still decides whether the lane gets them.
+  - Policy, in swim.yml (part of the policy hash):
+      modules:
+        allow: [aws-session, clone, notify, ./modules/*]   # without allow: built-ins only
+        dir: modules            # a bare name finds modules/<name>/ too
+        override: [notify]      # a repo module may shadow these built-ins
+    A lane naming a module that doesn't resolve, or isn't allowed, doesn't
+    start ("blocked: can't stage the lane's files: ...").
 
 SYNTAX
   Lane scripts and lane logs say which syntax they use ("# swim: syntax 2" near
@@ -1083,6 +1144,9 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         PROD_DB_ADMIN_URL: { guard: ORDERS_ALLOW_DROP }       # released after that guard is approved
         AWS_PROD_WRITE_ROLE: { guard: [INFRA_APPLY, INFRA_DESTROY], release: step }
       ambient_credentials: [prod-write]          # AWS profiles lint and doctor point out
+  modules: (which modules lanes may use; see MODULES)
+      modules:
+        allow: [notify, clone, ./modules/*]
   and headless: (what a headless worker takes from its hub; swim watch --help):
       headless:
         allow: [answer, interrupt, drain, log]   # hub commands accepted; add run, trash, pause, unpause to allow them
@@ -1154,11 +1218,13 @@ EXECUTION MANIFEST
                every local file the script (or a file it pins) sources or
                imports by a literal path
     sidecar    lane.N.yml
+    modules    # Modules:: each one's name, version, source and hash (a repo
+               module's files are among the includes, from: module)
     runner     how it runs as the repo says: bash, its #! line, a swim.yml
                runner ("local .ts" for a runner from your own config)
     config     swim.yml's blocked_commands, runners, approvals, signing,
-               secret_env*, secret_patterns_auto, env, secrets and
-               ambient_credentials; lookup.yml's require:
+               secret_env*, secret_patterns_auto, env, secrets,
+               ambient_credentials and modules; lookup.yml's require:
   Recorded but not in the hash (they differ per machine): the env files'
   hash (checked against a queued batch's pin), the runner binary's path
   and hash. Not pinned at all: other binaries on PATH, packages, remote

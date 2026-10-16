@@ -159,6 +159,32 @@ class Round:
         """A check step whose output an approval can cover (the plan)."""
         return self._step("evidence", label, argv, **opts)
 
+    def module(self, name, *args, env=False, label=None, gate=False, **opts):
+        """A command of a module the lane declares (# Modules:), as a step:
+        True if it passed. env=True takes the variables it gives the lane
+        (credentials: aws-session) into this program's environment and every
+        later step's, masked. Options as for run, and gate=True."""
+        o = []
+        if opts.get("timeout") is not None:
+            o += ["--timeout", str(opts["timeout"])]
+        if opts.get("retry") is not None:
+            o += ["--retry", str(opts["retry"])]
+        if opts.get("backoff") is not None:
+            o += ["--backoff", str(opts["backoff"])]
+        if opts.get("retry_on") is not None:
+            o += ["--retry-on", ",".join(str(c) for c in opts["retry_on"])]
+        if opts.get("soft"):
+            o.append("--soft")
+        res = self._call("module", name=name, args=[str(a) for a in args], opts=o,
+                         label=label or "", gate=bool(gate), env=bool(env))
+        for k, v in (res.get("env") or {}).items():
+            os.environ[k] = v
+        return res.get("passed", False)
+
+    def module_env(self, name, *args, **kw):
+        """module(name, *args, env=True)."""
+        return self.module(name, *args, env=True, **kw)
+
     def step(self, label, gate=False):
         """An in-process step, as a context manager (see Step)."""
         return Step(self, label, gate)

@@ -24,6 +24,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -402,6 +403,15 @@ func printPinned(m *manifest.Manifest) {
 	}
 	if sc := m.Pinned.Sidecar; sc != nil {
 		fmt.Printf("  sidecar  %s %s\n", sc.Path, short12(sc.SHA256))
+	}
+	// Modules, with what they declare they do (a repo module's files are
+	// among the includes above).
+	for _, p := range m.Pinned.Modules {
+		effects := ""
+		if b := module.Builtin(p.Name); b != nil && p.Source == module.BuiltinSource && b.SHA256 == p.SHA256 {
+			effects = " (" + b.EffectsText() + ")"
+		}
+		fmt.Printf("  module   %s %s %s %s%s\n", p.Name, p.Version, p.Source, short12(p.SHA256), effects)
 	}
 	fmt.Printf("  runner   %s\n", m.Pinned.Runner)
 	fmt.Printf("  config   %s (swim.yml: %s)\n", short12(m.Pinned.Config.SHA256), strings.Join(m.Pinned.Config.Keys, ", "))
