@@ -32,7 +32,6 @@ should make that line sharper, not blur it.
 | [T21](#t21-repo-landing-page-p2) repo landing page | P2 | gap |
 | [T23](#t23-outside-feedback-p2) outside feedback | P2 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
-| [T32](tasks/T32-ci-duration-and-macos-queue.md) CI duration, macOS queueing | P2 | gap |
 
 ---
 
