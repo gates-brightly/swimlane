@@ -88,18 +88,17 @@ func cmdApproveHook(args []string) error {
 		history.Log(root, history.Entry{Event: history.Decline, Lane: n, Job: job, Run: run, Detail: desc + "  (drift: " + strings.Join(diffs, "; ") + ")"})
 		return exitError{3}
 	}
-	if launched() {
+	switch guardRoute(launched(), func() bool { return underSwimRun(root) }, flagSet) {
+	case routeLauncher:
 		return approveLaunched(root, cfg, args[0], n, flag, desc, flagSet, dryRun, drifted)
-	}
-	if underSwimRun(root) {
+	case routeRefuse:
 		// Started by swim run, but without its approval channel: the lane
 		// unset it, or swim run couldn't start it. Nobody can decide the
 		// guard, and the lane's own flag doesn't count: fail closed.
 		why := "this lane runs under swim run, but its approvals channel is gone (SWIM_APPROVAL or SWIM_LAUNCHED missing from its environment)"
 		cmdMark([]string{args[0], logparse.Warn, "approval refused: " + flag, why})
 		return dryRun(why)
-	}
-	if flagSet {
+	case routeFlag:
 		// Run directly with bash: the flag is the operator's own. A queued
 		// batch's approvals (swim queue add --approve) say where they came
 		// from.
@@ -212,6 +211,34 @@ func cmdApproveHook(args []string) error {
 	}
 	history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", by " + by + ")"})
 	return nil
+}
+
+// Who decides a lane's guard (guardRoute).
+type route int
+
+const (
+	routeLauncher route = iota // swim run's launcher, through its approvals channel
+	routeRefuse                // nobody: under swim run without the channel; fail closed
+	routeFlag                  // the operator's own FLAG=1, for a lane run directly with bash
+	routeSelf                  // the lane: signed approvals, then the terminal (or a dry run)
+)
+
+// guardRoute decides who decides a guard, from how the lane's process was
+// started. A lane swim run started is decided by swim run's launcher; one
+// under swim run that lost the channel to it is refused, whatever its
+// environment says (its own FLAG=1 never counts there); only a lane run
+// directly with bash takes FLAG=1 as the operator's. underRun is asked
+// only when it matters (it walks the process tree).
+func guardRoute(launched bool, underRun func() bool, flagSet bool) route {
+	switch {
+	case launched:
+		return routeLauncher
+	case underRun():
+		return routeRefuse
+	case flagSet:
+		return routeFlag
+	}
+	return routeSelf
 }
 
 // launched reports whether this process is a lane swim run started, with

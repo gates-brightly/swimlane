@@ -78,10 +78,12 @@ func (d propDAG) want() []string {
 // checks, from timestamps the lanes write themselves: a lane never starts
 // before every lane in its After: has finished; lanes sharing a lock never
 // overlap; a failing lane is never reported passed, its dependents are
-// skipped, and every other lane passes. SWIM_QUICK_COUNT sets how many
-// graphs (default 15).
+// skipped, and every other lane passes. The scheduler's own parts are
+// checked over hundreds of graphs in memory (internal/launcher,
+// sched_test.go); this checks a few end to end, with real lanes.
+// SWIM_QUICK_COUNT sets how many graphs (default 3).
 func TestSchedulerProperties(t *testing.T) {
-	count := 15
+	count := 3
 	if n, err := strconv.Atoi(os.Getenv("SWIM_QUICK_COUNT")); err == nil && n > 0 {
 		count = n
 	}

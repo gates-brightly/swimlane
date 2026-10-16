@@ -634,63 +634,33 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		history.Log(o.Root, history.Entry{Event: history.Skip, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
 		return stamp(&Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Skipped, Exit: -1, Reason: reason})
 	}
-	// Dependencies outside this run must already be satisfied (see
-	// outsideBlocker); those inside it are waited for.
-	var waitOn, finOrder []int
-	cellOf := map[int]string{} // a dependency on one cell of a matrix lane
-	setup := map[int]bool{}    // an Always lane it only waits for (always.go)
-	fin := map[int]bool{}      // a lane it waits for to end, however (finally.go)
-	saw := map[int]*Outcome{}  // how those ended
-	for _, d := range deps {
-		if d.Cell != "" {
-			cellOf[d.Lane] = d.Cell
-		}
-		setup[d.Lane], fin[d.Lane] = d.Setup, d.Finally
-		if d.Finally {
-			finOrder = append(finOrder, d.Lane)
-		}
-		if selected[d.Lane] {
-			waitOn = append(waitOn, d.Lane)
-		} else if d.Finally {
-			// Not in this run: it has ended.
-		} else if why := outsideBlocker(o.Root, d); why != "" {
-			return skip(why)
-		}
+	// Its dependencies: those outside this run must already be satisfied
+	// (outsideBlocker); those inside it are waited for (sched.go).
+	dw := depWaiter{
+		selected: selected,
+		wait: func(d int, setup bool) *Outcome {
+			if g := o.setup[d]; setup && g != nil {
+				<-g.ch // an Always lane's setup part, not necessarily all of it
+			} else {
+				<-done[d]
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			return outcomes[d]
+		},
+		outside: func(d Dep) string { return outsideBlocker(o.Root, d) },
+		cells:   func(d Dep) string { return cellsBlocker(o.Root, d) },
+		waiting: func(remaining []int) {
+			disp.Set(n, func(v *display.LaneView) { v.State, v.WaitingOn = display.Waiting, remaining })
+			status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
+				l.State, l.WaitingOn, l.Reason, l.PID, l.Host, l.Run = status.Waiting, remaining, "", os.Getpid(), proc.Host(), o.RunID
+			})
+			o.ev.emit(Event{Event: "waiting", Lane: n, On: remaining, At: now()})
+		},
 	}
-	for len(waitOn) > 0 {
-		remaining := append([]int(nil), waitOn...)
-		disp.Set(n, func(v *display.LaneView) { v.State, v.WaitingOn = display.Waiting, remaining })
-		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
-			l.State, l.WaitingOn, l.Reason, l.PID, l.Host, l.Run = status.Waiting, remaining, "", os.Getpid(), proc.Host(), o.RunID
-		})
-		o.ev.emit(Event{Event: "waiting", Lane: n, On: remaining, At: now()})
-		d := waitOn[0]
-		if g := o.setup[d]; setup[d] && g != nil {
-			<-g.ch // an Always lane's setup part, not necessarily all of it
-		} else {
-			<-done[d]
-		}
-		mu.Lock()
-		dep := outcomes[d]
-		mu.Unlock()
-		if setup[d] {
-			// Setup ran first; its result is for the lanes that name it.
-		} else if fin[d] {
-			saw[d] = dep // ended, however: a finally lane runs on
-		} else if c := cellOf[d]; c != "" && dep != nil && dep.Cells != nil {
-			// Waiting on a cell (or a job and those under it): they must
-			// have passed, whatever the others did.
-			if why := cellsBlocker(o.Root, Dep{Lane: d, Cell: c}); why != "" {
-				return skip(why)
-			}
-		} else if dep == nil || dep.State != status.Passed {
-			state := "did not finish"
-			if dep != nil {
-				state = dep.State
-			}
-			return skip(fmt.Sprintf("swim %d %s", d, state))
-		}
-		waitOn = waitOn[1:]
+	why, saw, finOrder := dw.await(deps)
+	if why != "" {
+		return skip(why)
 	}
 	ready = time.Now()
 	if len(finOrder) > 0 {

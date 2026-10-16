@@ -43,15 +43,21 @@ should make that line sharper, not blur it.
 
 ### T13. Separate the parts that hold guarantees (P2, maintainability)
 
-**Do:**
-- Pull the scheduling and approval decisions in `internal/launcher` and
-  `internal/cli` into pure functions that take state in and return decisions,
-  with no filesystem or exec.
-- Start where the property tests need it: `plan.go` and `deps.go` in the
-  launcher, and the approval decision in `cli/approve.go`. Today
-  `internal/e2e/property_test.go` drives the scheduler through real runs.
+**Today:** the scheduler's dependency decisions are pure: `depWaiter.await`
+and `depVerdict` (`internal/launcher/sched.go`) take the run's state as
+functions, and `runLane` uses them. Their property test
+(`internal/launcher/sched_test.go`) checks hundreds of random graphs in
+memory, on a logical clock, with `After:`, `Finally:` and locks; the e2e
+one checks three end to end. `selectedCycle` has a property test of its
+own. Who decides a guard is `guardRoute` (`internal/cli/approve.go`),
+tested for every way a lane can be started.
 
-**Done when:** those tests run without a temp dir.
+**Do:** the same for `computePlan` (`internal/launcher/plan.go`): what
+`swim plan` and `swim run` decide per lane (run, retry, rerun, skip,
+always, held) from scripts, status and the queue, taken as data rather
+than read from the repo, so plan and run can be checked to agree.
+
+**Done when:** a property test checks plan decisions without a temp dir.
 
 ---
 
