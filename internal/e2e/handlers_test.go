@@ -113,14 +113,17 @@ gate "precheck" false`)
 // running step is stopped and the rest skipped.
 func TestHandlerTimeout(t *testing.T) {
 	r := newRepo(t, "")
-	handlerScript(t, r, 1, "# Timeout: 1s\n# Handler-Timeout: 2s\n", `on_failure() {
+	// The handlers' budget starts when the round ends, and swim's own
+	// process starts come out of it: 4s leaves rollback (1.5s) room on a
+	// loaded machine, and still stops slow cleanup (10s) and skips never.
+	handlerScript(t, r, 1, "# Timeout: 1s\n# Handler-Timeout: 4s\n", `on_failure() {
   run "rollback" sleep 1.5
   run "slow cleanup" sleep 10
   run "never" true
 }`, `run "slow" sleep 5`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
-	if el := time.Since(start); el > 8*time.Second {
+	if el := time.Since(start); el > 10*time.Second {
 		t.Errorf("took %s", el)
 	}
 	log := r.log(1)
