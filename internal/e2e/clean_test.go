@@ -24,10 +24,11 @@ func TestClean(t *testing.T) {
 	r.mustSwim("queue", "add", "1")
 
 	// A dry run changes nothing under .swim/.
-	before := treeHash(t, filepath.Join(r.root, ".swim"))
+	swimDir := filepath.Join(r.root, ".swim")
+	before := treeFiles(swimDir)
 	contains(t, "dry run", r.mustSwim("clean", "-n"), "nothing is deleted", "archive  swim 1", "skip     swim 3  Always lane", "dry run: nothing changed")
-	if treeHash(t, filepath.Join(r.root, ".swim")) != before {
-		t.Error("swim clean -n changed .swim/")
+	if changed := treeChanges(swimDir, before, treeFiles(swimDir)); len(changed) > 0 {
+		t.Errorf("swim clean -n changed .swim/: %s", strings.Join(changed, ", "))
 	}
 
 	out := r.mustSwim("clean")

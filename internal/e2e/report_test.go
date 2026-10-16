@@ -14,23 +14,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// treeHash hashes every file under dir (paths and contents).
-func treeHash(t *testing.T, dir string) string {
-	t.Helper()
-	var paths []string
+// treeFiles hashes every file under dir, by path.
+func treeFiles(dir string) map[string]string {
+	out := map[string]string{}
 	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
-			paths = append(paths, p)
+			data, _ := os.ReadFile(p)
+			out[p] = fmt.Sprintf("%x", sha256.Sum256(data))
 		}
 		return nil
 	})
-	sort.Strings(paths)
-	h := sha256.New()
-	for _, p := range paths {
-		data, _ := os.ReadFile(p)
-		fmt.Fprintf(h, "%s\n%x\n", p, sha256.Sum256(data))
+	return out
+}
+
+// treeChanges lists the files added, removed or changed between two
+// treeFiles, relative to dir.
+func treeChanges(dir string, before, after map[string]string) []string {
+	var out []string
+	for p, h := range after {
+		if b, ok := before[p]; !ok {
+			out = append(out, "added "+strings.TrimPrefix(p, dir+"/"))
+		} else if b != h {
+			out = append(out, "changed "+strings.TrimPrefix(p, dir+"/"))
+		}
 	}
-	return fmt.Sprintf("%x", h.Sum(nil))
+	for p := range before {
+		if _, ok := after[p]; !ok {
+			out = append(out, "removed "+strings.TrimPrefix(p, dir+"/"))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // swim report shows what's new since the reader's earmark: the first
@@ -49,7 +63,8 @@ func TestReportLoop(t *testing.T) {
 
 	r.script(1, "one again", `run "first" echo one-output-b`)
 	r.mustSwim("run", "1")
-	before := treeHash(t, filepath.Join(r.root, ".swim"))
+	swimDir := filepath.Join(r.root, ".swim")
+	before := treeFiles(swimDir)
 	out = r.mustSwim("report")
 	contains(t, "second report", out, "since ", "(earmark default)", "==> swim 1", "| one-output-b", "unchanged: swim 2 PASS",
 		"(new round)", "earmark default not moved (peek")
@@ -58,8 +73,8 @@ func TestReportLoop(t *testing.T) {
 			t.Errorf("second report repeats %q:\n%s", old, out)
 		}
 	}
-	if after := treeHash(t, filepath.Join(r.root, ".swim")); after != before {
-		t.Error("swim report without --earmark changed .swim/")
+	if changed := treeChanges(swimDir, before, treeFiles(swimDir)); len(changed) > 0 {
+		t.Errorf("swim report without --earmark changed .swim/: %s", strings.Join(changed, ", "))
 	}
 	if again := r.mustSwim("report"); !strings.Contains(again, "one-output-b") {
 		t.Errorf("a peek moved the earmark:\n%s", again)

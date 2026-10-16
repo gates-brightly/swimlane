@@ -1185,6 +1185,11 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Fixed
 
+- **A command that only looks no longer rewrites status.yml.** Status
+  updates that change nothing (swim report and swim status refresh it)
+  leave the file alone, so its `updated_at` (swim status's "updated") is
+  when status last changed. Before, a peek could rewrite the file with a
+  new timestamp, once the clock had ticked past the last write.
 - **swim watch no longer starts batches that share an Always lane side
   by side.** Lanes queued as separate batches that each pull in the same
   Always lane (`After: 1`, as this repo's CI lanes do) all started at once:

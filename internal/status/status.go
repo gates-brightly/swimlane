@@ -301,6 +301,7 @@ func updateFile(root string, n int, check bool, fn func(*File) error) error {
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 
+	old, _ := os.ReadFile(Path(root))
 	f, err := Load(root)
 	if err != nil {
 		return err
@@ -316,6 +317,11 @@ func updateFile(root string, n int, check bool, fn func(*File) error) error {
 	}
 	if check {
 		enforce(checkTransitions(before, f))
+	}
+	// Nothing changed: leave the file (and its updated_at) as it is, so a
+	// command that only looks (swim report, swim status) writes nothing.
+	if data, err := render(f); err == nil && bytes.Equal(data, old) {
+		return nil
 	}
 	f.UpdatedAt = Now()
 	return write(root, f)
@@ -338,14 +344,23 @@ func Update(root string, n, lanes int, fn func(*Lane)) error {
 }
 
 func write(root string, f *File) error {
+	data, err := render(f)
+	if err != nil {
+		return err
+	}
+	return fsutil.WriteAtomicAt(failpoint.StatusMidWrite, Path(root), data, 0o644)
+}
+
+// render is status.yml's bytes for f.
+func render(f *File) ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString("# swim status — last known state of every lane. Written by swim; do not edit.\n")
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	if err := enc.Encode(f); err != nil {
-		return err
+		return nil, err
 	}
-	return fsutil.WriteAtomicAt(failpoint.StatusMidWrite, Path(root), buf.Bytes(), 0o644)
+	return buf.Bytes(), nil
 }
 
 // PauseSpan is one pause of a round (swim pause): when it began
