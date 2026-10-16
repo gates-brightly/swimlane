@@ -180,6 +180,9 @@ func queueAdd(args []string) error {
 	if len(unapproved) > 0 {
 		fmt.Println("  not approved (dry runs; a queued batch never asks): " + strings.Join(unapproved, ", "))
 	}
+	if !e.ApproveAll && len(e.Approve) == 0 {
+		warnUnapproved(root, e, signedAs)
+	}
 	if why := launcher.Busy(root, cfg); why != "" {
 		fmt.Printf("  runs when swim is idle (now: %s) and a worker is up: swim watch\n", why)
 	} else {
@@ -230,6 +233,53 @@ type queueOpts struct {
 	// notBefore (UTC, RFC 3339) and zone make it a scheduled batch (swim
 	// schedule); from and occurrence a recurring schedule's day.
 	notBefore, zone, from, occurrence string
+}
+
+// warnUnapproved says, on stderr, which lanes of a batch that approves
+// nothing will dry-run their guards: a round that "passes" while changing
+// nothing is easy to miss in the listing above. A guard a standing
+// approval of the queuer's covers isn't counted. It warns rather than
+// refuses: queuing a guarded round unapproved, for the operator to
+// decide, is how a planner hands one over.
+func warnUnapproved(root string, e *queue.Entry, signedAs string) {
+	var standing []*sigfile.File
+	if signedAs != "" {
+		standing = sigfile.StandingFor(root, signedAs)
+	}
+	covered := func(flag string) bool {
+		for _, f := range standing {
+			if f.Covers(flag) {
+				return true
+			}
+		}
+		return false
+	}
+	var lines []string
+	var first, firstFlag string
+	for _, l := range e.Lanes {
+		info, err := lane.ReadScript(root, l.Lane)
+		if err != nil {
+			continue
+		}
+		var flags []string
+		for _, g := range info.GuardFlags() {
+			if !covered(g) {
+				flags = append(flags, g)
+			}
+		}
+		if len(flags) == 0 {
+			continue
+		}
+		if first == "" {
+			first, firstFlag = strconv.Itoa(l.Lane), flags[0]
+		}
+		lines = append(lines, fmt.Sprintf("  swim %d  %s", l.Lane, strings.Join(flags, ", ")))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "swim queue: warning: #%d approves no guards, so these dry-run when it runs (a queued batch never asks):\n%s\n", e.Seq, strings.Join(lines, "\n"))
+	fmt.Fprintf(os.Stderr, "  to approve: swim queue add %s --approve %s (each flag), -y (every guard), or swim approve %s (a signed approval)\n", first, firstFlag, first)
 }
 
 // batch is a batch just queued: its entry, the guards its lanes hold, who

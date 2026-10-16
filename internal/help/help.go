@@ -670,6 +670,9 @@ swim queue show|rm|requeue ID
             A queued batch never asks: guards it doesn't approve are dry
             runs, and a guard flag in the worker's own environment does not
             count (the queue entry alone says what may change).
+            A batch that approves none of its lanes' guards (and no
+            standing approval of yours covers) warns on stderr, naming
+            each lane and the guards that will dry-run.
   list      waiting, running and orphaned entries, and the last 5 consumed
             (--all: every one); --yaml for scripts (schema swim.queue-list/v1)
   show ID   the entry file; ID is its id, a 4+ character prefix, or #seq

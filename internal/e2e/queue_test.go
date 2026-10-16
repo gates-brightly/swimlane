@@ -498,3 +498,29 @@ run "%[1]s end" bash -c 'date +%%s.%%N >> %[1]s.end'`, name)
 		t.Errorf("--batches 1: swim 2 started at %v, swim 1 ended at %v", two, oneEnd)
 	}
 }
+
+// T39: a batch that approves none of its lanes' guards warns on stderr,
+// naming each lane and the guards that will dry-run, and how to approve
+// them; --approve or -y doesn't warn.
+func TestQueueWarnsUnapprovedGuards(t *testing.T) {
+	r := newRepo(t, "")
+	guardedLanes(t, r)
+	queueErr := func(args ...string) (string, string) {
+		t.Helper()
+		c := r.cmd(bin, append([]string{"queue", "add"}, args...)...)
+		var out, errb strings.Builder
+		c.Stdout, c.Stderr = &out, &errb
+		if err := c.Run(); err != nil {
+			t.Fatalf("queue add %v: %v\n%s%s", args, err, out.String(), errb.String())
+		}
+		return out.String(), errb.String()
+	}
+	_, stderr := queueErr("1", "2")
+	contains(t, "warning", stderr, "approves no guards, so these dry-run", "swim 1  ALLOW_DROP", "swim 2  ALLOW_OTHER",
+		"to approve: swim queue add 1 --approve ALLOW_DROP", "-y (every guard)")
+	for _, args := range [][]string{{"1", "--approve", "ALLOW_DROP"}, {"1", "2", "-y"}} {
+		if _, stderr := queueErr(args...); strings.Contains(stderr, "approves no guards") {
+			t.Errorf("queue add %v warned:\n%s", args, stderr)
+		}
+	}
+}
