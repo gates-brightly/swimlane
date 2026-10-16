@@ -1408,7 +1408,7 @@ run --timeout 0 "unlimited" sleep 1.5`)
 }
 
 func TestRetryRespectsRoundDeadline(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "") // a 2s round Timeout: alone, not beside the parallel tests
 	r.script(1, "deadline", `run --retry 5 --backoff 1.5s "keeps failing" false
 run "after" true`)
 	p := filepath.Join(r.root, "lane.1.sh")

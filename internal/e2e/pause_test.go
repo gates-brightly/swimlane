@@ -190,7 +190,7 @@ run "a2" true`)
 // A lane paused while it waits in a run doesn't start until unpaused; the
 // round's Timeout: doesn't count paused time.
 func TestPauseBeforeStartAndTimeout(t *testing.T) {
-	r := newRepo(t, "")
+	r := newSerialRepo(t, "") // a 3s round Timeout: alone, not beside the parallel tests
 	r.script(1, "first", `run "first" sleep 0.5`)
 	r.script(2, "second", `run "s1" sleep 1
 run "s2" true`)
