@@ -112,6 +112,11 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Docs
 
+- **[docs/README.md](docs/README.md)**, an index of the docs in reading
+  order, and **[docs/quickstart.md](docs/quickstart.md)**, swim in an hour:
+  a first round, a gate, a guard and its dry run, a signed approval and
+  what voids it, a dependency, a queue and a worker, a module, and reading
+  the record. Its commands run in the test suite, so the page can't rot.
 - **New pages under `docs/`:** the [trust model](docs/trust-model.md) (what
   swim protects against, what it doesn't, and the test behind each claim),
   the [architecture](docs/architecture.md) (where credentials live and where

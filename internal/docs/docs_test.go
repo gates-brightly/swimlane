@@ -188,3 +188,20 @@ func TestReadmeDiagramMatchesArchitecture(t *testing.T) {
 		t.Error("README.md's diagram differs from docs/architecture.md's: copy it over")
 	}
 }
+
+// docs/README.md is the index: every page in docs/ (and each SDK example)
+// is listed in it.
+func TestDocsIndexListsEveryPage(t *testing.T) {
+	index := read(t, "docs/README.md")
+	pages, _ := filepath.Glob(filepath.Join(root(t), "docs", "*.md"))
+	examples, _ := filepath.Glob(filepath.Join(root(t), "docs", "examples", "*.md"))
+	for _, p := range append(pages, examples...) {
+		rel, _ := filepath.Rel(filepath.Join(root(t), "docs"), p)
+		if rel == "README.md" {
+			continue
+		}
+		if !strings.Contains(index, "]("+filepath.ToSlash(rel)+")") {
+			t.Errorf("docs/README.md doesn't list %s", rel)
+		}
+	}
+}

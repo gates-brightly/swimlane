@@ -96,6 +96,10 @@ swim history --oneline                     # the chain: rounds and the flag's ap
 Without `--no-prompt` on a terminal, swim asks you instead: `swim 2
 requires human approval of task: write hello.txt (quickstart) Y/N [N]`.
 
+Next: [swim in an hour](docs/quickstart.md), a tested walk from a first
+round to guards, signed approvals, a queue and a module; and
+[the docs](docs/README.md), in reading order.
+
 What you get:
 
 - **The AI writes, but never needs your access:** no production
@@ -1362,6 +1366,10 @@ they waited for.
 
 ### Docs
 
+- [The docs index](docs/README.md): every page, in reading order.
+- [swim in an hour](docs/quickstart.md): a tested walk through a first
+  round, a gate, a guard, a signed approval, a dependency, a queue, a
+  module and the record.
 - [Trust model](docs/trust-model.md): what swim protects against, what it
   doesn't, and the test behind each claim.
 - [Architecture](docs/architecture.md): where credentials live and where
