@@ -445,6 +445,9 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **swim watch says what a waiting lane waits on**: `· waiting on swim 2,
+  3` (as `swim status` says it), `· waiting for lock db`, `· 2 ahead`. A
+  matrix lane's cells are said once when they agree.
 - **swim queue add refuses a batch no running worker can run.** Each
   `swim watch` says which swim it is and the syntaxes it reads
   (`.swim/workers/<host>-<pid>.yml`). With workers up and none able to run

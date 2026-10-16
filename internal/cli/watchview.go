@@ -151,7 +151,11 @@ func (w *watchView) rows() []display.PickRow {
 		if l != nil && len(l.DryRun) > 0 && state != "pending" {
 			round = display.DryMark + " " + round
 		}
-		rows = append(rows, display.PickRow{ID: "lane:" + strconv.Itoa(n), Text: fmt.Sprintf("swim %-2d  %-11s %-8s %s  %s", n, state, laneTimer(l, state, now), job, round), Color: color})
+		text := fmt.Sprintf("swim %-2d  %-11s %-8s %s  %s", n, state, laneTimer(l, state, now), job, round)
+		if d := laneRowDetail(l, state); d != "" {
+			text += "  · " + d
+		}
+		rows = append(rows, display.PickRow{ID: "lane:" + strconv.Itoa(n), Text: text, Color: color})
 	}
 	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim}, display.PickRow{Text: "Queue"})
 	entries, err := queue.List(w.root, false)
@@ -305,6 +309,38 @@ func laneRowState(l *status.Lane, info lane.Info) (string, string) {
 		state = "idle"
 	}
 	return state, ui.StateColor(state)
+}
+
+// laneRowDetail is what a waiting, locked or queued lane waits on, for
+// the end of its row, as swim status and swim run's view say it: "waiting
+// on swim 2, 3", "waiting for lock db", "2 ahead". A matrix lane's cells
+// wait apart: said once when they agree. "" for any other state (a stale
+// row's waiting process is gone).
+func laneRowDetail(l *status.Lane, state string) string {
+	if l == nil {
+		return ""
+	}
+	switch state {
+	case status.Waiting:
+		if len(l.WaitingOn) > 0 {
+			return display.WaitingText(l.WaitingOn)
+		}
+		same := ""
+		for _, c := range l.Cells {
+			if c.State != status.Waiting || len(c.WaitingOn) == 0 {
+				continue
+			}
+			t := display.WaitingText(c.WaitingOn)
+			if same != "" && t != same {
+				return "cells wait on different lanes"
+			}
+			same = t
+		}
+		return same
+	case status.Locked, status.Queued:
+		return l.Reason
+	}
+	return ""
 }
 
 // wait shows the screen until until() is true (the worker has a batch to
