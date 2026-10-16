@@ -7,6 +7,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
@@ -49,6 +50,18 @@ func cantRunHere(root string, e *queue.Entry) string {
 	script, _ := batchScript(root, e)
 	why := version.Current.CantRun(lock.Syntaxes(), locked, script)
 	if why == "" {
+		// Its lanes' built-in modules, as the lock pins them.
+		if cfg, err := loadCfg(root); err == nil {
+			var whys []string
+			for _, l := range e.Lanes {
+				if w := moduleLockProblem(root, cfg, l.Lane); w != "" {
+					whys = append(whys, fmt.Sprintf("swim %d: %s", l.Lane, w))
+				}
+			}
+			why = strings.Join(whys, "; ")
+		}
+	}
+	if why == "" {
 		return ""
 	}
 	return fmt.Sprintf("this worker, swim %s, can't run it: %s (queued by %s). Update this worker's swim and restart swim watch",
@@ -83,9 +96,13 @@ func checkWorkers(root string, e *queue.Entry) (refuse error, warn string) {
 		return nil, ""
 	}
 	script, n := batchScript(root, e)
+	builtins := batchBuiltins(root, e)
 	var whys []string
 	for _, p := range live {
 		why := p.Syntax.CantRun(lock.Syntaxes(), locked, script)
+		if why == "" {
+			why = workerModules(lock, p, builtins)
+		}
 		if why == "" {
 			return nil, ""
 		}
@@ -107,4 +124,47 @@ func heldReasons(root string) map[string]string {
 		}
 	}
 	return out
+}
+
+// batchBuiltins are the built-in modules a batch's lanes use.
+func batchBuiltins(root string, e *queue.Entry) []string {
+	cfg, err := loadCfg(root)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, l := range e.Lanes {
+		mods, _ := module.Resolve(root, cfg.Modules, uniq(laneRefs(root, l.Lane)))
+		for _, m := range mods {
+			if m.Builtin && !seen[m.Name] {
+				seen[m.Name] = true
+				out = append(out, m.Name)
+			}
+		}
+	}
+	return out
+}
+
+// workerModules says why worker p's built-in modules can't run a batch
+// using builtins in a repo whose lock pins them ("" if they can, or the
+// worker doesn't say which it has).
+func workerModules(lock version.Lock, p *queue.Presence, builtins []string) string {
+	if p.Builtins == nil {
+		return ""
+	}
+	var whys []string
+	for _, name := range builtins {
+		have, ok := p.Builtins[name]
+		if !ok {
+			if _, pinned := lock.Builtin(name); pinned {
+				whys = append(whys, "its swim has no built-in "+name)
+			}
+			continue
+		}
+		if why := module.PinProblem(lock, name, have.Version, have.SHA256); why != "" {
+			whys = append(whys, why)
+		}
+	}
+	return strings.Join(whys, "; ")
 }

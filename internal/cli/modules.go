@@ -358,8 +358,12 @@ func cmdModules(args []string) error {
 		return modulesShow(root, cfg, args)
 	case "new":
 		return modulesNew(root, cfg, args)
+	case "check":
+		return modulesCheck(root, cfg, args)
+	case "lock":
+		return modulesLock(root, cfg, args)
 	}
-	return usagef("usage: swim modules [ls] [--yaml] | show NAME|./DIR | new NAME [--kind bash|go] [--dir DIR]")
+	return usagef("usage: swim modules [ls] [--yaml] | show NAME|./DIR | new NAME [--kind bash|go] [--dir DIR] | check [--yaml] | lock")
 }
 
 // moduleDoc is one module in swim modules --yaml.

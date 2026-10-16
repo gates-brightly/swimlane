@@ -445,6 +445,19 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Module versions: the same built-in on every machine, or a clear
+  refusal.** `swim modules lock` pins the built-in modules the lanes use in
+  `.swim.lock` (`modules: builtin:`, version and hash; `swim lock
+  --upgrade` does it too). A swim whose built-in differs refuses those
+  lanes before they start, with the fix ("update swim", or "swim modules
+  lock moves the repo to tf 1.3.0"): `swim run` (a not-started round),
+  a lane run directly with bash, `swim plan` (`blocked:`), a worker (it
+  leaves the batch queued) and `swim queue add` (workers' presence files
+  list their built-ins). `swim modules check [--yaml]` compares the lanes,
+  the lock and this swim; doctor's `module-version` too. An older swim
+  ignores the lock's new key.
+- **`# Modules:` takes minimum versions**: `tf@1.2` is 1.2 or later within
+  1, `tf@=1.2.0` exactly 1.2.0 (`@1` is still any 1.x).
 - **`swim mod`: modules from a lane program with no SDK.** `swim mod
   [--label L] [--gate|--evidence] CMD [args...]` runs a module command as a
   step, as a bash lane's `mod` does; a failed gate module ends the round.

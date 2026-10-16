@@ -24,6 +24,9 @@ type Presence struct {
 	Worker  `yaml:",inline"`
 	Version string           `yaml:"version"`
 	Syntax  version.Syntaxes `yaml:"syntax"`
+	// Builtins are its swim's built-in modules (name: version and hash),
+	// to check against .swim.lock's modules: pins.
+	Builtins map[string]version.LockedModule `yaml:"builtins,omitempty"`
 	// Holding are the batches it leaves queued because it can't run them,
 	// each with why.
 	Holding map[string]string `yaml:"holding,omitempty"`
@@ -42,9 +45,10 @@ type Announcer struct {
 	done sync.WaitGroup
 }
 
-// Announce writes this swim watch's presence file and renews its
-// heartbeat every third of lease until Stop, which removes it.
-func Announce(root, user string, lease time.Duration) *Announcer {
+// Announce writes this swim watch's presence file, with its swim's
+// built-in modules, and renews its heartbeat every third of lease until
+// Stop, which removes it.
+func Announce(root, user string, lease time.Duration, builtins map[string]version.LockedModule) *Announcer {
 	if lease <= 0 {
 		lease = DefaultLease
 	}
@@ -52,7 +56,7 @@ func Announce(root, user string, lease time.Duration) *Announcer {
 	a := &Announcer{stop: make(chan struct{}), p: Presence{
 		Worker: Worker{Host: hostname(), PID: pid, User: user, Start: proc.Start(pid),
 			Claimed: now().UTC().Format(time.RFC3339), Lease: lease.String()},
-		Version: version.String(), Syntax: version.Current,
+		Version: version.String(), Syntax: version.Current, Builtins: builtins,
 		path: filepath.Join(WorkersDir(root), fmt.Sprintf("%s-%d.yml", hostname(), pid)),
 	}}
 	os.MkdirAll(WorkersDir(root), 0o755)

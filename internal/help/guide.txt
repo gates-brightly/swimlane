@@ -906,6 +906,15 @@ MODULES
     also staged as includes from: module). Editing a repo module, or a swim
     release that changes a built-in, stales the approvals of the lanes that
     use it; swim approve shows the modules and their effects.
+  - Versions: notify@1 is any 1.x, tf@1.2 is 1.2 or later within 1,
+    tf@=1.2.0 exactly that; a module that isn't keeps the lane from
+    starting, saying which it is. swim modules lock pins the built-ins the
+    lanes use in .swim.lock (version and hash; commit it): a swim whose
+    built-in differs then refuses those lanes up front (swim plan says so,
+    and a worker leaves their batches queued), with the fix: update swim,
+    or swim modules lock to move the repo to this swim's. swim modules
+    check compares the lanes, the lock and this swim; doctor checks it too
+    (module-version).
   - Effects are declared, not enforced: network, secrets, writes,
     credentials, read_only. swim plan, swim approve and lint show them; lint
     warns about a module that isn't read_only before `stage change`. A

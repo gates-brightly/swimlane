@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/module"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // stageLanes builds each selected lane's execution manifest and stages its
@@ -28,6 +31,11 @@ func stageLanes(o *Options, sel []int, blocked map[int]string) {
 		}
 		m, err := manifest.Build(o.Root, o.Cfg, n, envSHA)
 		if err == nil {
+			// Its built-in modules as .swim.lock pins them (swim modules lock).
+			if why := lockedModules(o.Root, m); why != "" {
+				blocked[n] = "blocked: " + why
+				continue
+			}
 			_, err = m.Stage(o.Root, o.RunID)
 		}
 		if err != nil {
@@ -120,4 +128,23 @@ func probesFor(o Options, n int, cell string) []lane.Probe {
 		side = m.Path(m.Pinned.Sidecar.Path)
 	}
 	return lane.ProbesIn(filepath.Base(m.Pinned.Script.Path), data, n, side, cell)
+}
+
+// lockedModules says why m's built-in modules aren't the ones the repo's
+// .swim.lock pins ("" if they are, or the lock pins none).
+func lockedModules(root string, m *manifest.Manifest) string {
+	lock, ok, err := version.ReadLock(root)
+	if err != nil || !ok || lock.Modules == nil {
+		return ""
+	}
+	var whys []string
+	for _, p := range m.Pinned.Modules {
+		if p.Source != module.BuiltinSource {
+			continue
+		}
+		if why := module.PinProblem(lock, p.Name, p.Version, p.SHA256); why != "" {
+			whys = append(whys, why)
+		}
+	}
+	return strings.Join(whys, "; ")
 }

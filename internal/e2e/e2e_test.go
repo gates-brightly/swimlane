@@ -1485,8 +1485,10 @@ run "publish" git push origin main`)
 		t.Fatalf("blocked lane passed:\n%s", out)
 	}
 	contains(t, "summary", out, `blocked: lane.1.sh:7 matches "git push"`, "[2] SKIP (swim 1 failed)")
-	if r.log(1) != "" {
-		t.Errorf("a refused lane must not start (its log has a round):\n%s", r.log(1))
+	// A refused lane doesn't start: its log's one round is the refusal,
+	// with no step.
+	if log := r.log(1); strings.Count(log, "== ROUND ") != 1 || !strings.Contains(log, `STOP  not started: blocked: lane.1.sh:7 matches "git push"`) || strings.Contains(log, "PASS  ") {
+		t.Errorf("a refused lane must not start (its log has only the refusal):\n%s", log)
 	}
 	l := r.status().Get(1)
 	if l.State != status.Failed || l.ExitCode == nil || *l.ExitCode != 87 || len(l.FailedSteps) != 1 || !strings.HasPrefix(l.FailedSteps[0], "BLOCKED  publish") {

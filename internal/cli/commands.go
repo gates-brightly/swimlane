@@ -1089,7 +1089,7 @@ func cmdLock(args []string) error {
 	if len(rest) > 0 {
 		return usagef("usage: swim lock [--upgrade]")
 	}
-	root, _, err := repo()
+	root, cfg, err := repo()
 	if err != nil {
 		return err
 	}
@@ -1134,6 +1134,14 @@ func cmdLock(args []string) error {
 	}
 	history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("syntax %s -> %s (swim %s)", from, version.Current, version.String())})
 	fmt.Printf("%s: syntax %s -> %s\n", version.LockName, from, version.Current)
+	// ... and the built-in modules the lanes use, as this swim has them.
+	if changes, err := lockModules(root, cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "swim lock: warning: modules not pinned: %v (swim modules lock, once fixed)\n", err)
+	} else {
+		for _, c := range changes {
+			fmt.Printf("%s: modules: %s\n", version.LockName, c)
+		}
+	}
 	// A worker up now that reads other syntaxes leaves every batch queued
 	// from here on (or, from before presence files, fails them).
 	for _, p := range queue.LiveWorkers(root) {

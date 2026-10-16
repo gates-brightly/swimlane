@@ -354,25 +354,89 @@ func ReadDir(dir string) (map[string][]byte, error) {
 	return files, err
 }
 
-// Ref is a # Modules: entry: a name (with an optional @major), or a repo
-// module's ./path.
+// Ref is a # Modules: entry: a name (with an optional version), or a repo
+// module's ./path. notify@1 is any 1.x; tf@1.2 is 1.2 or later within 1;
+// tf@=1.2.0 is exactly 1.2.0.
 type Ref struct {
 	Text  string // as written
 	Name  string // notify ("" for a path)
 	Path  string // modules/notify, repo-relative ("" for a name)
 	Major int    // -1: any
+	Minor int    // the least minor within Major, -1: any
+	Exact string // the exact version (@=X.Y.Z), "" for none
+}
+
+// unmet says which version the ref needs that m isn't ("" if m meets it).
+func (r Ref) unmet(m *Module) string {
+	v := versionParts(m.Version)
+	switch {
+	case r.Exact != "" && m.Version != r.Exact:
+		return "exactly " + r.Exact
+	case r.Major >= 0 && v[0] != r.Major:
+		if r.Minor >= 0 {
+			return fmt.Sprintf("%d.%d or later within %d", r.Major, r.Minor, r.Major)
+		}
+		return fmt.Sprintf("major %d", r.Major)
+	case r.Minor >= 0 && v[1] < r.Minor:
+		return fmt.Sprintf("%d.%d or later within %d", r.Major, r.Minor, r.Major)
+	}
+	return ""
+}
+
+// versionParts is a module version's major, minor and patch.
+func versionParts(v string) [3]int {
+	var out [3]int
+	for i, p := range strings.SplitN(v, ".", 3) {
+		out[i], _ = strconv.Atoi(p)
+	}
+	return out
+}
+
+// CompareVersions is -1, 0 or 1 as module version a is older than, the
+// same as, or newer than b.
+func CompareVersions(a, b string) int {
+	x, y := versionParts(a), versionParts(b)
+	for i := range x {
+		switch {
+		case x[i] < y[i]:
+			return -1
+		case x[i] > y[i]:
+			return 1
+		}
+	}
+	return 0
 }
 
 // ParseRef reads a # Modules: entry.
 func ParseRef(s string) (Ref, error) {
-	r := Ref{Text: s, Major: -1}
+	r := Ref{Text: s, Major: -1, Minor: -1}
 	body := s
 	if i := strings.LastIndex(s, "@"); i >= 0 {
-		maj, err := strconv.Atoi(s[i+1:])
-		if err != nil || maj < 0 || strings.HasPrefix(s[i+1:], "+") {
-			return r, fmt.Errorf("%q: @ takes a major version (notify@1)", s)
+		v := s[i+1:]
+		bad := fmt.Errorf("%q: @ takes a version: notify@1 (any 1.x), tf@1.2 (1.2 or later), tf@=1.2.0 (exactly)", s)
+		if exact, ok := strings.CutPrefix(v, "="); ok {
+			if !validVersion(exact) {
+				return r, bad
+			}
+			r.Exact = exact
+			v = exact[:strings.LastIndex(exact, ".")]
 		}
-		r.Major, body = maj, s[:i]
+		parts := strings.Split(v, ".")
+		if len(parts) > 2 {
+			return r, bad
+		}
+		var n [2]int
+		for k, p := range parts {
+			x, err := strconv.Atoi(p)
+			if err != nil || !chars.Digits(p) {
+				return r, bad
+			}
+			n[k] = x
+		}
+		r.Major, body = n[0], s[:i]
+		if len(parts) == 2 {
+			r.Minor = n[1]
+		}
 	}
 	if strings.HasPrefix(body, "./") {
 		p := path.Clean(body)
@@ -463,8 +527,12 @@ func Lookup(root string, pol *config.ModulesPolicy, ref string) (*Module, error)
 	if r.Name != "" && m.Name != r.Name {
 		return nil, fmt.Errorf("module %s: %s/%s names it %s", ref, m.Dir, SpecFile, m.Name)
 	}
-	if r.Major >= 0 && m.Major() != r.Major {
-		return nil, fmt.Errorf("module %s: %s is %s %s, not major %d", ref, m.Name, sourceText(m), m.Version, r.Major)
+	if why := r.unmet(m); why != "" {
+		fix := "change the module.yml's version, or the lane's"
+		if m.Builtin {
+			fix = "update swim, or ask for less"
+		}
+		return nil, fmt.Errorf("module %s: %s %s is %s; the lane needs %s (%s)", ref, sourceText(m), m.Name, m.Version, why, fix)
 	}
 	if !pol.ModuleAllowed(m.Builtin, m.Name, m.Dir) {
 		what := m.Name
@@ -480,9 +548,9 @@ func Lookup(root string, pol *config.ModulesPolicy, ref string) (*Module, error)
 
 func sourceText(m *Module) string {
 	if m.Builtin {
-		return "built in at"
+		return "this swim's built-in"
 	}
-	return "./" + m.Dir + " at"
+	return "./" + m.Dir + ","
 }
 
 // repoModule reads the module in dir (repo-relative).

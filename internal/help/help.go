@@ -953,6 +953,8 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
 	"modules": `swim modules [ls] [--yaml]
 swim modules show NAME|./DIR
 swim modules new NAME [--kind bash|go] [--dir DIR]
+swim modules check [--yaml]
+swim modules lock
 
   The modules this repo's lanes can declare (# Modules:) and call with mod
   and mod_env: the built-in ones, and the repo's in swim.yml's modules: dir.
@@ -967,6 +969,15 @@ swim modules new NAME [--kind bash|go] [--dir DIR]
            modules: dir, else modules) with a module.yml and NAME.sh, or
            main.go and go.mod with --kind go; it says what to add to
            swim.yml to allow it
+  check    for each module the lanes declare: the lanes, the version they
+           ask for (tf@1.2), what .swim.lock pins and what this swim has,
+           and the fix for a mismatch. Exit 1 on one, or on a lane whose
+           modules don't resolve. --yaml: swim.modules-check/v1
+  lock     pin in .swim.lock the built-in modules the lanes use, as this
+           swim has them (version and hash), and say what changed. A swim
+           whose built-in differs then refuses those lanes. swim lock
+           --upgrade does it too. Commit the lock; lanes using a changed
+           module need approving again.
 `,
 	"cache": `swim cache [ls] [--yaml]
 swim cache rm PRESET ... | --all [--yes]

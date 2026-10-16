@@ -65,7 +65,7 @@ func TestResolve(t *testing.T) {
 	if _, err := Resolve(root, nil, []string{"./modules/hello"}); err == nil || !strings.Contains(err.Error(), "add ./modules/hello to swim.yml modules: allow:") {
 		t.Errorf("a repo module without a policy: %v", err)
 	}
-	if _, err := Resolve(root, nil, []string{"notify@2"}); err == nil || !strings.Contains(err.Error(), "not major 2") {
+	if _, err := Resolve(root, nil, []string{"notify@2"}); err == nil || !strings.Contains(err.Error(), "the lane needs major 2") {
 		t.Errorf("a major the built-in isn't: %v", err)
 	}
 	if _, err := Resolve(root, nil, []string{"nope"}); err == nil || !strings.Contains(err.Error(), "no such module") {
@@ -153,10 +153,46 @@ func TestParseRef(t *testing.T) {
 		{in: "./../x", bad: true},
 		{in: "x@one", bad: true},
 		{in: "X", bad: true},
+		{in: "tf@1.2", name: "tf", major: 1},
+		{in: "tf@=1.2.0", name: "tf", major: 1},
+		{in: "tf@1.2.3", bad: true},
+		{in: "tf@=1.2", bad: true},
+		{in: "tf@+1", bad: true},
+		{in: "tf@1.", bad: true},
 	} {
 		r, err := ParseRef(c.in)
 		if c.bad != (err != nil) || (!c.bad && (r.Name != c.name || r.Path != c.path || r.Major != c.major)) {
 			t.Errorf("%s: %+v %v", c.in, r, err)
 		}
+	}
+}
+
+// A version in # Modules: is met by a module's version, or not: @1 any
+// 1.x, @1.2 1.2 or later within 1, @=1.2.0 exactly.
+func TestRefVersions(t *testing.T) {
+	for _, c := range []struct {
+		ref, have string
+		ok        bool
+	}{
+		{"tf@1.2", "1.1.0", false},
+		{"tf@1.2", "1.2.0", true},
+		{"tf@1.2", "1.9.0", true},
+		{"tf@1.2", "2.0.0", false},
+		{"tf@1", "1.0.0", true},
+		{"tf@1", "2.0.0", false},
+		{"tf@=1.2.0", "1.2.0", true},
+		{"tf@=1.2.0", "1.2.1", false},
+		{"tf", "9.0.0", true},
+	} {
+		r, err := ParseRef(c.ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if why := r.unmet(&Module{Spec: Spec{Name: "tf", Version: c.have}}); (why == "") != c.ok {
+			t.Errorf("%s against %s: %q", c.ref, c.have, why)
+		}
+	}
+	if CompareVersions("1.10.0", "1.9.3") != 1 || CompareVersions("1.2.0", "1.2.0") != 0 || CompareVersions("0.9.9", "1.0.0") != -1 {
+		t.Error("CompareVersions")
 	}
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -184,6 +185,13 @@ func cmdStart(args []string) error {
 	// staged copy), kept by hash; and with signing: required, no round
 	// starts unsigned.
 	m := manifest.FromEnv(n)
+	if m == nil {
+		// Run directly with bash: its built-in modules as .swim.lock pins
+		// them (swim run's launcher checked a staged lane's).
+		if why := moduleLockProblem(root, cfg, n); why != "" {
+			return startFailed(root, cfg, n, errors.New(why))
+		}
+	}
 	scriptSum, err := keepScript(root, n, m)
 	if err != nil {
 		return startFailed(root, cfg, n, err)

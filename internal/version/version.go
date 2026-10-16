@@ -203,6 +203,29 @@ type Lock struct {
 	UpdatedAt string   `yaml:"updated_at"` // when it was written
 	// Breaking is a lock from before syntax pinning (swim 7 and earlier).
 	Breaking int `yaml:"breaking,omitempty"`
+	// Modules pins the built-in modules the repo's lanes use (swim modules
+	// lock). An older swim ignores the key.
+	Modules *LockModules `yaml:"modules,omitempty"`
+}
+
+// LockModules is the lock's modules: section.
+type LockModules struct {
+	Builtin map[string]LockedModule `yaml:"builtin,omitempty"`
+}
+
+// LockedModule is one pinned module: its version and its files' hash.
+type LockedModule struct {
+	Version string `yaml:"version"`
+	SHA256  string `yaml:"sha256"`
+}
+
+// Builtin is the lock's pin of built-in module name (ok false: none).
+func (l Lock) Builtin(name string) (LockedModule, bool) {
+	if l.Modules == nil {
+		return LockedModule{}, false
+	}
+	m, ok := l.Modules.Builtin[name]
+	return m, ok
 }
 
 // Syntaxes are the syntaxes the lock pins (a legacy lock's, translated:
@@ -245,10 +268,35 @@ func ReadLock(root string) (l Lock, ok bool, err error) {
 
 // WriteLock records this swim's syntaxes in root's lock.
 func WriteLock(root string) error {
-	l := Lock{Syntax: Current, Version: String(), UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+	l := Lock{Syntax: Current}
+	if old, ok, err := ReadLock(root); err == nil && ok {
+		l.Modules = old.Modules // what it pins of modules stays
+	}
+	return writeLock(root, l)
+}
+
+// WriteLockModules pins the built-in modules the repo's lanes use (nil:
+// none), keeping the syntaxes the lock pins, or this swim's if there's no
+// lock.
+func WriteLockModules(root string, builtin map[string]LockedModule) error {
+	l := Lock{Syntax: Current}
+	if old, ok, err := ReadLock(root); err != nil {
+		return err
+	} else if ok {
+		l.Syntax, l.Breaking = old.Syntax, old.Breaking
+	}
+	if len(builtin) > 0 {
+		l.Modules = &LockModules{Builtin: builtin}
+	}
+	return writeLock(root, l)
+}
+
+func writeLock(root string, l Lock) error {
+	l.Version, l.UpdatedAt = String(), time.Now().UTC().Format(time.RFC3339)
 	data, _ := yaml.Marshal(l)
 	head := "# swim lock: the syntax versions of the files this repo's lanes use (lane scripts,\n" +
-		"# logs, swim's state). Written by swim; commit it so everyone runs a compatible swim.\n" +
+		"# logs, swim's state), and the built-in modules they use (swim modules lock).\n" +
+		"# Written by swim; commit it so everyone runs a compatible swim.\n" +
 		"# See `swim lock --help`.\n"
 	tmp := LockPath(root) + ".tmp"
 	if err := os.WriteFile(tmp, []byte(head+string(data)), 0o644); err != nil {

@@ -3,6 +3,7 @@ package launcher
 import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/module"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // PlanModule is one module a lane declares, for swim plan --yaml.
@@ -16,16 +17,20 @@ type PlanModule struct {
 	// belong behind a guard.
 	ReadOnlyFor    []string `yaml:"read_only_for,omitempty,flow"`
 	DestructiveFor []string `yaml:"destructive_for,omitempty,flow"`
+	// Lock says why .swim.lock's pin of this built-in keeps the lane from
+	// running with this swim ("" if it doesn't).
+	Lock string `yaml:"lock,omitempty"`
 }
 
 // planModules resolves a lane's # Modules: for swim plan: what each is and
 // does, or why one doesn't resolve (the lane won't start).
 func planModules(root string, cfg *config.Config, refs []string) ([]PlanModule, error) {
 	mods, err := module.Resolve(root, cfg.Modules, refs)
+	lock, _, _ := version.ReadLock(root)
 	var out []PlanModule
 	for _, m := range mods {
 		out = append(out, PlanModule{Name: m.Name, Version: m.Version, Source: m.Source(), Effects: m.Effects, Gate: m.Gate,
-			ReadOnlyFor: m.ReadOnlyFor, DestructiveFor: m.DestructiveFor})
+			ReadOnlyFor: m.ReadOnlyFor, DestructiveFor: m.DestructiveFor, Lock: module.LockProblem(lock, m)})
 	}
 	return out, err
 }

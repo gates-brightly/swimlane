@@ -1,6 +1,21 @@
 # Module version checks: the same module on every machine, or a clear refusal
 
-Status: proposed
+Status: in progress. Shipped: the lock's `modules: builtin:` pins (`swim
+modules lock`, and `swim lock --upgrade`), `@MAJOR.MINOR` and `@=X.Y.Z`
+in `# Modules:`, `swim modules check [--yaml]`, doctor's `module-version`,
+and the refusals: `swim run` before staging (a not-started round with the
+fix), a lane run directly with bash, `swim plan` (`blocked:`), a worker
+(leaves the batch queued) and `swim queue add` (each worker's presence
+file lists its built-ins). Decided: a mismatch refuses to run and shows
+in plan; no old built-in versions are kept; repo modules stay out of the
+lock (the commit pins them).
+
+Left:
+- `swim version` says when `go install ...@latest` would give an older
+  release than the latest tag.
+- `swim approve` says so before approving a lane the lock refuses (the
+  run refuses it anyway).
+- Lint: a built-in the lock doesn't pin (doctor warns today).
 
 ## Summary
 

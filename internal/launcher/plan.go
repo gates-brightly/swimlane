@@ -292,6 +292,9 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 					label = "modules "
 				}
 				fmt.Fprintf(w, "%s%s%s %s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, label), moduleText(m))
+				if m.Lock != "" {
+					fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Red, "blocked: "+m.Lock))
+				}
 			}
 			if err != nil {
 				for _, e := range strings.Split(err.Error(), "\n") {

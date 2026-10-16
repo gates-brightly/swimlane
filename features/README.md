@@ -7,8 +7,8 @@ where it would land in the code, open questions, and how to test it.
 | feature | file | status |
 |---|---|---|
 | swim observe: computed observations and knowledge from runs; an optional write-up with the claude module | [observe.md](observe.md) | proposed |
-| Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in and repo modules and ten built-ins shipped; fetched modules and a few gaps left) |
-| Module version checks: built-in modules pinned in .swim.lock, minimum versions (tf@1.2), swim modules check, early refusals on every machine | [module-versions.md](module-versions.md) | proposed |
+| Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in and repo modules, ten built-ins and swim mod shipped; fetched modules left) |
+| Module version checks: built-in modules pinned in .swim.lock, minimum versions (tf@1.2), swim modules check, early refusals on every machine | [module-versions.md](module-versions.md) | in progress (lock pins, minimums, check, refusals shipped; swim version's proxy note, approve and lint left) |
 | A docs index (docs/README.md) and a tested, hour-long quickstart (docs/quickstart.md) | [docs.md](docs.md) | proposed |
 
 ## Staging a feature
