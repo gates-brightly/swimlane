@@ -54,7 +54,12 @@ const Script = 4
 const State = 2
 
 // The lock (version.Check) compares a repo's pinned syntaxes with these.
-func init() { version.Current = version.Syntaxes{Script: Script, Log: Current, State: State} }
+func init() {
+	version.Current = version.Syntaxes{Script: Script, Log: Current, State: State}
+	if s, ok := version.ParseSyntaxes(version.TestSyntaxes); ok {
+		version.Current = s // a test build standing in for another swim
+	}
+}
 
 // scriptSyntax reads a script's syntax line, "# swim: syntax N" (spaces
 // free around each part), from a trimmed line.

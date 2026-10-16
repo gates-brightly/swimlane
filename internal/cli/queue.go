@@ -320,8 +320,26 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	} else if o.keyPath != "" {
 		return b, err
 	}
+	// A worker up now that can't run it: refuse, rather than queue a batch
+	// that waits on (or used to fail in) the wrong swim. A scheduled batch
+	// runs later, maybe on another worker: warn.
+	refuse, warnWorkers := checkWorkers(root, e)
+	switch {
+	case refuse != nil && o.notBefore == "":
+		return b, refuse
+	case refuse != nil:
+		warnWorkers = refuse.Error()
+	case o.notBefore != "":
+		warnWorkers = "" // swim schedule says when no worker is up
+	}
 	if err := queue.Add(root, e); err != nil {
 		return b, err
+	}
+	if warnWorkers != "" {
+		if b.warn != "" {
+			b.warn += "; "
+		}
+		b.warn += warnWorkers
 	}
 	var ns []string
 	for _, l := range e.Lanes {
@@ -552,6 +570,7 @@ func queueList(args []string) error {
 		fmt.Println("queue is empty. Queue a batch: swim queue add [N|JOB ...] [--approve FLAG] [-y]")
 		return nil
 	}
+	held := heldReasons(root)
 	for _, e := range entries {
 		var ns []string
 		for _, l := range e.Lanes {
@@ -582,6 +601,9 @@ func queueList(args []string) error {
 			appr = "  approve " + strings.Join(e.Approve, ",")
 		}
 		fmt.Printf("#%-3d %s  %s  swim %s%s  %s\n", e.Seq, e.ID, p.Paint(color, state), strings.Join(ns, ","), appr, p.Paint(ui.Dim, e.Note))
+		if why := held[e.ID]; why != "" && e.State == queue.Queued {
+			fmt.Println("     " + p.Paint(ui.Red, "left queued: "+why))
+		}
 	}
 	return nil
 }
@@ -743,6 +765,9 @@ func cmdWatch(args []string) error {
 	}
 	if !hf.any() {
 		defer holdWatchLock(root)() // swim schedule can tell a worker is up
+		// ... and swim queue add which swim it is (.swim/workers/).
+		watchPresence = queue.Announce(root, operator(), cfg.QueueLeaseFor())
+		defer func() { watchPresence.Stop(); watchPresence = nil }()
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	for _, r := range launcher.ReapDead(root, cfg, self()) {

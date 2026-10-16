@@ -546,6 +546,9 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 		return "not now: another worker is running a batch"
 	}
 	defer unlock()
+	if why := cantRunHere(w.root, e); why != "" {
+		return why
+	}
 	claimed, err := queue.Claim(w.root, e, operator(), w.cfg.QueueLeaseFor())
 	if err != nil {
 		return err.Error()

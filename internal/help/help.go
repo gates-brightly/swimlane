@@ -686,8 +686,15 @@ swim queue show|rm|requeue ID
             A batch that approves none of its lanes' guards (and no
             standing approval of yours covers) warns on stderr, naming
             each lane and the guards that will dry-run.
+            Workers say which swim they are (.swim/workers/): with workers
+            up and none able to run the batch (its swim reads other
+            syntaxes than .swim.lock pins, or older than a lane's script),
+            add refuses, naming each worker's swim and this one; with no
+            worker up it queues and warns. The entry records the swim that
+            queued it (swim, syntax).
   list      waiting, running and orphaned entries, and the last 5 consumed
-            (--all: every one); --yaml for scripts (schema swim.queue-list/v1)
+            (--all: every one); --yaml for scripts (schema swim.queue-list/v1).
+            A batch a worker leaves queued says why ("left queued: ...")
   show ID   the entry file; ID is its id, a 4+ character prefix, or #seq
   rm ID     remove an entry that isn't running
   requeue ID  put an orphaned (its worker died) or consumed entry back at the
@@ -789,7 +796,11 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   Several workers can share a queue: claims are atomic, and a worker
   picks batches under a lock, so two never take the same lanes. While a
   batch runs, its process renews the claim's heartbeat every third of
-  queue_lease (swim config). As it starts, the
+  queue_lease (swim config). A batch this worker's swim can't run (the
+  lock was upgraded after it started, or a lane's script is newer than it
+  reads) is left queued for a worker that can, with why, in swim queue and
+  .swim/workers/<host>-<pid>.yml, which says which swim the worker is. As
+  it starts, the
   watch ends the round of any lane whose process died without ending it
   (as swim run does): END INTERRUPTED in its log, interrupted in status.
   --once         run every queued batch, then exit (non-zero if one failed)
@@ -1696,6 +1707,8 @@ swim resume  N|JOB ... | --all      (the same command)
       changed. Read swim changelog for what changed, update the lane scripts
       (swim new writes the current template), let running lanes finish, then
       record that the repo is ready with: swim lock --upgrade
+      (it warns about a worker up now that reads other syntaxes: that
+      worker leaves batches queued until it's updated and restarted)
 
   swim lock             show this swim's version and syntaxes, and the repo's lock
   swim lock --upgrade   move the lock up to this swim's syntaxes (and rewrite

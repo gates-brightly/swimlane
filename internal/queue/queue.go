@@ -40,6 +40,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/schedule"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // Schema identifies an entry file.
@@ -135,6 +136,13 @@ type Entry struct {
 	// QueuedKey and QueueSig sign for an occurrence: it vouches for the
 	// occurrence only while the occurrence is what it describes.
 	FromStatement string `yaml:"from_statement,omitempty"`
+	// Swim and Syntax are the swim that queued the batch and the syntaxes
+	// it read, for saying why a worker can't run it. Not part of the
+	// signed statement: a worker decides from its own syntaxes and the
+	// repo's lock, never from these, and leaving them out keeps the
+	// statement every swim of the same state syntax verifies.
+	Swim   string            `yaml:"swim,omitempty"`
+	Syntax *version.Syntaxes `yaml:"syntax,omitempty"`
 
 	// State and Path are where the entry is now; not stored.
 	State string `yaml:"-"` // queued | running | orphaned | done
@@ -170,6 +178,10 @@ func Add(root string, e *Entry) error {
 	e.Schema = Schema
 	if e.ID == "" {
 		e.ID = NewID()
+	}
+	if e.Swim == "" {
+		cur := version.Current
+		e.Swim, e.Syntax = version.String(), &cur
 	}
 	if e.Created == "" {
 		e.Created = time.Now().UTC().Format(time.RFC3339)

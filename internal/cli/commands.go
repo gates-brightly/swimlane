@@ -1134,5 +1134,12 @@ func cmdLock(args []string) error {
 	}
 	history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("syntax %s -> %s (swim %s)", from, version.Current, version.String())})
 	fmt.Printf("%s: syntax %s -> %s\n", version.LockName, from, version.Current)
+	// A worker up now that reads other syntaxes leaves every batch queued
+	// from here on (or, from before presence files, fails them).
+	for _, p := range queue.LiveWorkers(root) {
+		if p.Syntax != version.Current {
+			fmt.Fprintf(os.Stderr, "swim lock: warning: %s reads %s: it leaves batches queued until its swim is updated and swim watch restarted\n", p.Name(), p.Syntax)
+		}
+	}
 	return nil
 }

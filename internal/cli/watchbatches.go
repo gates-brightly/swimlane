@@ -186,6 +186,11 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 		if e.State != queue.Queued || !e.Due(now) {
 			continue // a schedule that isn't due holds no lanes yet
 		}
+		if why := cantRunHere(b.root, e); why != "" {
+			holdHere(e, why) // queued for a worker that can; holds no lanes here
+			continue
+		}
+		holdHere(e, "")
 		free := held[e.ID] == nil
 		need := needs(e)
 		for _, n := range need {

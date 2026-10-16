@@ -445,6 +445,17 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **swim queue add refuses a batch no running worker can run.** Each
+  `swim watch` says which swim it is and the syntaxes it reads
+  (`.swim/workers/<host>-<pid>.yml`). With workers up and none able to run
+  the batch (the lock was upgraded under them, or a lane's script is newer
+  than they read), `queue add` refuses, naming each worker's swim and this
+  one; with none up it queues and warns. A worker that finds a batch it
+  can't run leaves it queued for one that can, saying why in `swim queue`
+  ("left queued: ..."), instead of consuming it as an error. Entries
+  record the swim that queued them (`swim`, `syntax`; not signed: the
+  worker decides from its own swim and the lock). `swim lock --upgrade`
+  warns about a worker up now that reads other syntaxes.
 - **A failed matrix round says which cells failed and why.** The end of
   `swim run` and `swim log N` list only the cells that didn't pass, each
   with its first failed step and the first line its command printed, and

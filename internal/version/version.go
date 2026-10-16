@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,28 @@ var (
 	Commit    = ""
 	BuildTag  = ""
 )
+
+// TestSyntaxes, set at build time ("script,log,state", e.g. 3,2,2), builds
+// a swim that says it reads those syntaxes instead of its own: the tests
+// run it as a worker of an older build. A release never sets it.
+var TestSyntaxes = ""
+
+// ParseSyntaxes reads "script,log,state" (3,2,2).
+func ParseSyntaxes(s string) (Syntaxes, bool) {
+	parts := strings.Split(s, ",")
+	if len(parts) != 3 {
+		return Syntaxes{}, false
+	}
+	var n [3]int
+	for i, p := range parts {
+		v, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || v < 1 {
+			return Syntaxes{}, false
+		}
+		n[i] = v
+	}
+	return Syntaxes{Script: n[0], Log: n[1], State: n[2]}, true
+}
 
 // InstallCmd is how users get a current swim.
 const InstallCmd = "go install github.com/gates-brightly/swimlane/cmd/swim@latest"
@@ -151,6 +174,21 @@ var Current Syntaxes
 var legacy7 = Syntaxes{Script: 3, Log: 2, State: 1}
 
 // newer reports whether s is newer than o in any syntax.
+// CantRun says why a swim reading s can't run a queued batch in a repo
+// whose .swim.lock pins lock (locked false: there's none) and whose lanes'
+// scripts declare up to syntax script; "" when it can. It's the rule swim
+// applies to itself: the lock pins exactly s (Check), and no lane script
+// is newer than s.Script.
+func (s Syntaxes) CantRun(lock Syntaxes, locked bool, script int) string {
+	switch {
+	case locked && lock != s:
+		return fmt.Sprintf("it reads %s, and %s pins %s", s, LockName, lock)
+	case script > s.Script:
+		return fmt.Sprintf("a lane script in the batch declares syntax %d, and it reads up to %d", script, s.Script)
+	}
+	return ""
+}
+
 func (s Syntaxes) newer(o Syntaxes) bool {
 	return s.Script > o.Script || s.Log > o.Log || s.State > o.State
 }
