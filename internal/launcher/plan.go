@@ -35,23 +35,84 @@ type plan struct {
 	finallyOn map[int][]int
 }
 
+// planFacts are what a plan is decided from, as gatherPlan reads them from
+// the repo (scripts, status, the queue, the config). decidePlan reads
+// nothing else, so plan decisions can be checked without a repo.
+type planFacts struct {
+	what        string
+	sel, passed []int
+	lanes       int  // the config's lane count
+	named       bool // lanes were named (swim run N), not swim all
+	scripts     map[int]lane.Info
+	status      map[int]*status.Lane // nil for a lane with no status
+	deps        map[int][]Dep        // each selected lane's dependencies
+	blocked     map[int]string       // selected lanes refused before they run (BlockedLanes)
+	outside     map[Dep]string       // why a dependency outside the run blocks ("" if it doesn't)
+	scheduled   map[int]string       // when each lane's scheduled batch starts ("" for none)
+	rerunBy     map[int]int
+}
+
 func computePlan(o Options) (*plan, error) {
+	f, err := gatherPlan(o)
+	if err != nil {
+		return nil, err
+	}
+	return decidePlan(f), nil
+}
+
+// gatherPlan reads what a plan is decided from.
+func gatherPlan(o Options) (planFacts, error) {
 	o.DryRun = true
-	sel, passed, err := Select(o)
-	if err != nil {
-		return nil, err
+	f := planFacts{lanes: o.Cfg.Lanes, named: len(o.Lanes) > 0, scripts: map[int]lane.Info{}, status: map[int]*status.Lane{},
+		outside: map[Dep]string{}, scheduled: map[int]string{}}
+	var err error
+	if f.sel, f.passed, err = Select(o); err != nil {
+		return f, err
 	}
-	deps, err := ResolveDeps(o.Root, o.Cfg, sel)
-	if err != nil {
-		return nil, err
+	if f.deps, err = ResolveDeps(o.Root, o.Cfg, f.sel); err != nil {
+		return f, err
 	}
+	st, _ := status.Load(o.Root)
+	for n := 1; n <= o.Cfg.Lanes; n++ {
+		f.scripts[n], _ = lane.ReadScript(o.Root, n)
+		if st != nil {
+			f.status[n] = st.Get(n)
+		}
+		f.scheduled[n] = scheduledFor(o.Root, n)
+	}
+	selected := map[int]bool{}
+	for _, n := range f.sel {
+		selected[n] = true
+	}
+	for _, n := range f.sel {
+		for _, d := range f.deps[n] {
+			if !d.Setup && !d.Finally && !selected[d.Lane] {
+				f.outside[d] = outsideBlocker(o.Root, d)
+			}
+		}
+	}
+	f.blocked = BlockedLanes(o.Root, o.Cfg, f.sel)
+	f.rerunBy = rerunBy(o.Root, o.Cfg, f.sel, f.scripts)
+	f.what = "swim all"
+	if len(o.Lanes) > 0 {
+		parts := make([]string, len(o.Lanes))
+		for i, n := range o.Lanes {
+			parts[i] = fmt.Sprint(n)
+		}
+		f.what = "swim run " + strings.Join(parts, " ")
+	} else if o.Rerun {
+		f.what = "swim all --rerun"
+	}
+	return f, nil
+}
+
+// decidePlan decides, from f alone, what swim run would do with each lane:
+// the tree, the predicted skips and each lane's action.
+func decidePlan(f planFacts) *plan {
+	sel, scripts := f.sel, f.scripts
 	selected := map[int]bool{}
 	for _, n := range sel {
 		selected[n] = true
-	}
-	scripts := map[int]lane.Info{}
-	for n := 1; n <= o.Cfg.Lanes; n++ {
-		scripts[n], _ = lane.ReadScript(o.Root, n)
 	}
 
 	// Edges inside the run, and lanes predicted to be skipped.
@@ -64,7 +125,7 @@ func computePlan(o Options) (*plan, error) {
 		if scripts[n].Always {
 			setup = append(setup, n)
 		}
-		for _, d := range deps[n] {
+		for _, d := range f.deps[n] {
 			if d.Setup {
 				continue // drawn as the setup phase, not as tree edges
 			}
@@ -79,12 +140,12 @@ func computePlan(o Options) (*plan, error) {
 			if selected[d.Lane] {
 				children[d.Lane] = append(children[d.Lane], n)
 				inRunDeps[n] = append(inRunDeps[n], d.Lane)
-			} else if why := outsideBlocker(o.Root, d); why != "" && blocked[n] == "" {
+			} else if why := f.outside[d]; why != "" && blocked[n] == "" {
 				blocked[n] = why
 			}
 		}
 	}
-	for n, why := range BlockedLanes(o.Root, o.Cfg, sel) {
+	for n, why := range f.blocked {
 		blocked[n] = why
 	}
 	skip := map[int]string{}
@@ -113,31 +174,15 @@ func computePlan(o Options) (*plan, error) {
 		skipReason(n)
 	}
 
-	what := "swim all"
-	if len(o.Lanes) > 0 {
-		parts := make([]string, len(o.Lanes))
-		for i, n := range o.Lanes {
-			parts[i] = fmt.Sprint(n)
-		}
-		what = "swim run " + strings.Join(parts, " ")
-	} else if o.Rerun {
-		what = "swim all --rerun"
-	}
-
 	// Each lane in the run gets a Terraform-style action.
-	st, _ := status.Load(o.Root)
 	actions := map[int]planAction{}
 	counts := map[planAction]int{}
 	for _, n := range sel {
-		var last *status.Lane
-		if st != nil {
-			last = st.Get(n)
-		}
-		a := actionFor(scripts[n], last, skip[n] != "")
+		a := actionFor(scripts[n], f.status[n], skip[n] != "")
 		if a != actSkip && scripts[n].Always {
 			a = actAlways
 		}
-		switch at := scheduledFor(o.Root, n); {
+		switch at := f.scheduled[n]; {
 		case at != "":
 			// Named, but its scheduled batch runs it (swim run refuses).
 			a, skip[n] = actScheduled, "scheduled for "+at
@@ -149,18 +194,18 @@ func computePlan(o Options) (*plan, error) {
 	}
 	// Lanes swim all leaves to their schedule.
 	scheduled := map[int]string{}
-	if len(o.Lanes) == 0 {
-		for n := 1; n <= o.Cfg.Lanes; n++ {
-			if at := scheduledFor(o.Root, n); at != "" && !selected[n] && scripts[n].Pending() {
+	if !f.named {
+		for n := 1; n <= f.lanes; n++ {
+			if at := f.scheduled[n]; at != "" && !selected[n] && scripts[n].Pending() {
 				scheduled[n] = at
 				counts[actScheduled]++
 			}
 		}
 	}
 
-	return &plan{what: what, sel: sel, passed: passed, selected: selected, scripts: scripts, children: children,
-		inRunDeps: inRunDeps, setup: setup, rerunBy: rerunBy(o.Root, o.Cfg, sel, scripts), skip: skip, actions: actions, counts: counts,
-		scheduled: scheduled, finallyOn: finallyOn}, nil
+	return &plan{what: f.what, sel: sel, passed: f.passed, selected: selected, scripts: scripts, children: children,
+		inRunDeps: inRunDeps, setup: setup, rerunBy: f.rerunBy, skip: skip, actions: actions, counts: counts,
+		scheduled: scheduled, finallyOn: finallyOn}
 }
 
 // WritePlan prints what `swim run` with these options would do, without
