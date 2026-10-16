@@ -27,15 +27,11 @@ should make that line sharper, not blur it.
 
 | Task | Priority | Kind |
 |---|---|---|
-| [T13](#t13-separate-the-parts-that-hold-guarantees-p2-maintainability) pure decision functions | P2 | gap |
+| [T13](#t13-separate-the-parts-that-hold-guarantees-p2-maintainability) plan decisions as data (scheduler and guard routing done) | P2 | gap |
 | [T18](#t18-add-a-license-p2) LICENSE | P2 | gap |
 | [T21](#t21-repo-landing-page-p2) repo landing page | P2 | gap |
 | [T23](#t23-outside-feedback-p2) outside feedback | P2 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
-
----
-
-## Proving the guarantees
 
 ---
 

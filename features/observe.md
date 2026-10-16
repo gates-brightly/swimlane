@@ -128,7 +128,7 @@ A baseline is only as good as its matching across rounds.
   (`known: orders-api flaky (retry 255)`). That's the moment a planner or
   operator can still act on it: add `--retry`, raise a step limit.
 - **Finally lanes** get `SWIM_OBSERVATIONS`, the path to the observations
-  for every upstream lane that has ended (see [finally.md](../README.md#dependencies-parallelism-and-locks)).
+  for every upstream lane that has ended (see [finally lanes](../README.md#dependencies-parallelism-and-locks)).
 
 ### Knowledge
 
@@ -155,20 +155,25 @@ Observations are per run. Knowledge is what keeps being true.
 ### The write-up (Claude, optional)
 
 A repo that wants prose adds a finally lane that turns observations into
-an artifact:
+an artifact, with the built-in `claude` and `report` modules (already
+built; see MODULES in `swim --help`):
 
 ```bash
+# swim: syntax 4
 # Round: write up run observations
 # Finally: 1 2 3
-# Modules: writeup
-# Guards: OBSERVE_ALLOW_WRITEUP
+# Modules: claude report
+# Includes: prompts/run-writeup.md
+# Outputs: writeup.md
+# Guards: OBSERVE_ALLOW_WRITEUP  send this run's observations and masked excerpts to Claude
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 9
 
 stage verify
-if guard OBSERVE_ALLOW_WRITEUP "send run r-$SWIM_RUN observations and masked log excerpts to the Claude API"; then
-  mod writeup --out "$SWIM_OUT/writeup.md"   # reads $SWIM_OBSERVATIONS; the file is a lane output
+if guard OBSERVE_ALLOW_WRITEUP "send run $SWIM_RUN's observations and masked excerpts to Claude"; then
+  mod claude --prompt-file prompts/run-writeup.md --input "$SWIM_OBSERVATIONS" --out writeup.md -- claude
 fi
+mod report --optional writeup.md
 summary
 ```
 
@@ -181,9 +186,10 @@ summary
   excerpts swim selects for each observation: the cited step's command and
   the last lines of its output, already masked (swim's masker runs before
   anything is written). Not whole logs.
-- **The credential is a guarded secret** (`swim.yml` `secrets:`, released
-  only after the lane's guard is approved), so a write-up never runs on a
-  key that leaked into the environment.
+- **The credential can be a guarded secret** (`swim.yml` `secrets:`,
+  released only after the lane's guard is approved): the `claude` module
+  asks swim's secrets for `ANTHROPIC_API_KEY` when the lane hasn't one,
+  else the CLI uses its own login.
 - **Write-only to swim.** Its output is an artifact for people and
   planners. swim never reads it back: not into knowledge, not into
   decisions. A write-up may propose knowledge in its text; only `swim
@@ -197,10 +203,12 @@ summary
   artifact itself, during planner-workflow step 6, with no egress from the
   executor at all. The finally lane is for unattended runs: queued,
   scheduled, recurring, headless.
-- **It calls Claude through the built-in `writeup` module**
-  ([modules.md](modules.md)): the Messages API with no tools, a pinned model,
-  masked excerpts in and one Markdown artifact out, so repos don't each
-  write `writeup.sh`.
+- **It calls Claude through the built-in `claude` module**: the Claude
+  Code CLI the call names, with no tools, no MCP, a fixed system prompt
+  and the model the call pins, from an empty directory; masked inputs in,
+  one Markdown artifact out, never read back. `mod report` prints it into
+  the log. What's left for observe is the input: `$SWIM_OBSERVATIONS` and
+  the excerpts swim selects, as files the call passes with `--input`.
 
 ## Design
 
@@ -233,9 +241,10 @@ summary
 6. **Surfaces:** `swim report`, `swim status`, `swim plan`.
 7. **Knowledge:** accumulate, retire, accept into committed `knowledge/`,
    reject; `swim plan` shows accepted entries.
-8. **Finally integration** (after [finally.md](../README.md#dependencies-parallelism-and-locks) ships):
-   `SWIM_OBSERVATIONS`, per-observation masked excerpts, `swim observe
-   check`. Add an example write-up lane under `docs/` (not built in).
+8. **Finally integration:** `SWIM_OBSERVATIONS` (a file a finally lane
+   reads, and passes to `mod claude --input`), per-observation masked
+   excerpts beside it, `swim observe check`. Add an example write-up lane
+   under `docs/`.
 9. **Docs.**
 
 ## Open questions
