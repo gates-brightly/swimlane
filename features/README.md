@@ -8,6 +8,8 @@ where it would land in the code, open questions, and how to test it.
 |---|---|---|
 | swim observe: computed observations and knowledge from runs; an optional write-up with the claude module | [observe.md](observe.md) | proposed |
 | Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in and repo modules and ten built-ins shipped; fetched modules and a few gaps left) |
+| Module version checks: built-in modules pinned in .swim.lock, minimum versions (tf@1.2), swim modules check, early refusals on every machine | [module-versions.md](module-versions.md) | proposed |
+| A docs index (docs/README.md) and a tested, hour-long quickstart (docs/quickstart.md) | [docs.md](docs.md) | proposed |
 | Retry on a match: --retry-if REGEX, --backoff-max, --retry-for, swim.yml policies, stage and lane defaults (wait out Rush's lock) | [retry.md](retry.md) | dropped (matching retries on output with regexes isn't wanted) |
 
 ## Staging a feature

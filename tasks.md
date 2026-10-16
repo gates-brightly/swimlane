@@ -32,6 +32,8 @@ should make that line sharper, not blur it.
 | [T21](#t21-repo-landing-page-p2) repo landing page | P2 | gap |
 | [T23](#t23-outside-feedback-p2) outside feedback | P2 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
+| [T33](tasks/T33-failures-outside-the-record.md) failures that don't reach the record | P1 | gap |
+| [T34](tasks/T34-script-parsing.md) reconsider reading lane scripts with regexes | P2 | gap |
 
 ---
 
