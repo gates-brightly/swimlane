@@ -10,8 +10,12 @@
 //	# Outputs: report.md
 //	mod claude --prompt-file prompts/run-report.md --log --input "$SWIM_OUT/plan.txt" --out report.md
 //
-// The CLI is --bin, else $SWIM_CLAUDE_BIN (set it in an env file: a
-// machine's path), else claude on PATH; the log names the binary, its
+// The call says which CLI runs: everything after -- is its command, with
+// any arguments a wrapper needs (-- "$CODE_CONTAINER_PATH/bin/run" --agent
+// claude --), and swim's own flags follow it; --bin PATH is the short form
+// for a plain binary; with neither, claude on PATH. Nothing outside the
+// call (no swim setting, no environment variable) chooses it, so the
+// approved script says exactly what runs. The log names the program, its
 // version and its hash. It runs with no tools, no MCP servers, no slash
 // commands, no saved session, a fixed system prompt, and from an empty
 // directory (so no CLAUDE.md or project settings reach it). The prompt and
@@ -26,7 +30,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -34,7 +37,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
 )
 
-const usage = "usage: mod claude --out NAME (--prompt-file FILE | --prompt TEXT) [--input FILE]... [--log] [--model M] [--bin PATH] [--for 10m]"
+const usage = "usage: mod claude --out NAME (--prompt-file FILE | --prompt TEXT) [--input FILE]... [--log] [--model M] [--for 10m] [--bin PATH | -- CMD [ARGS...]]"
 
 // systemPrompt frames every call: material in, one document out.
 const systemPrompt = `You write one document for the people who run and review an operational change: a report, a note or a summary, as the request asks. Use only the material given. Cite the material for every factual claim (a step's label, a file name), and label anything you infer as a hypothesis. Never invent output, numbers or results. Reply with the document alone, in Markdown.`
@@ -78,11 +81,18 @@ func Run(c *gomod.Ctx) error {
 	if err != nil {
 		return err
 	}
-	bin, err := resolve(c, a.bin)
+	cli := a.cli
+	if len(cli) == 0 {
+		cli = []string{"claude"}
+		if a.bin != "" {
+			cli = []string{a.bin}
+		}
+	}
+	bin, err := resolve(c, cli[0])
 	if err != nil {
 		return err
 	}
-	ver, _ := c.Capture(bin, "--version")
+	ver, _ := c.Capture(bin, append(cli[1:len(cli):len(cli)], "--version")...)
 	fmt.Fprintf(c.Stdout, "claude: %s (%s, sha256 %s)\n", bin, strings.TrimSpace(string(ver)), fileHash(bin)[:12])
 	for _, n := range notes {
 		fmt.Fprintln(c.Stdout, "claude: "+n)
@@ -98,7 +108,7 @@ func Run(c *gomod.Ctx) error {
 	if a.model != "" {
 		args = append(args, "--model", a.model)
 	}
-	cmd := c.Command(bin, args...)
+	cmd := c.Command(bin, append(cli[1:len(cli):len(cli)], args...)...)
 	// An empty directory: no CLAUDE.md, no project settings.
 	tmp, err := os.MkdirTemp("", "swim-claude-")
 	if err != nil {
@@ -149,6 +159,7 @@ func Run(c *gomod.Ctx) error {
 
 type args struct {
 	out, prompt, promptFile, model, bin string
+	cli                                 []string // after --: the CLI's command and its own arguments
 	inputs                              []string
 	log                                 bool
 	budget                              time.Duration
@@ -170,6 +181,15 @@ func parse(in []string) (args, error) {
 		}
 		var err error
 		var v string
+		if in[i] == "--" {
+			if a.cli = in[i+1:]; len(a.cli) == 0 {
+				return a, gomod.Usage{Msg: "claude: -- needs the CLI's command after it"}
+			}
+			if a.bin != "" {
+				return a, gomod.Usage{Msg: "claude: --bin or -- CMD, not both"}
+			}
+			return a, nil
+		}
 		switch name {
 		case "--out":
 			a.out, err = take()
@@ -251,30 +271,23 @@ func gather(c *gomod.Ctx, a args) (string, []string, error) {
 	return b.String(), notes, nil
 }
 
-// resolve finds the CLI: --bin, $SWIM_CLAUDE_BIN, or claude on the lane's PATH.
+// resolve finds the CLI's program: a path as given, or a name on the
+// lane's PATH.
 func resolve(c *gomod.Ctx, bin string) (string, error) {
-	if bin == "" {
-		bin = c.Getenv("SWIM_CLAUDE_BIN")
-	}
-	if bin == "" {
-		bin = "claude"
-	}
 	if strings.ContainsRune(bin, '/') {
 		if st, err := os.Stat(bin); err != nil || st.IsDir() {
 			return "", fmt.Errorf("claude: %s isn't a program", bin)
 		}
 		return bin, nil
 	}
+	// The lane's PATH only: what its steps would run.
 	for _, d := range filepath.SplitList(c.Getenv("PATH")) {
 		p := filepath.Join(d, bin)
 		if st, err := os.Stat(p); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
 			return p, nil
 		}
 	}
-	if p, err := exec.LookPath(bin); err == nil {
-		return p, nil
-	}
-	return "", fmt.Errorf("claude: no %s on PATH: install Claude Code, or say where it is (--bin, or SWIM_CLAUDE_BIN in an env file)", bin)
+	return "", fmt.Errorf("claude: no %s on PATH: install Claude Code, or name it in the call (--bin PATH, or -- CMD ARGS...)", bin)
 }
 
 // secret is ANTHROPIC_API_KEY from swim's secrets, if the lane may have it.

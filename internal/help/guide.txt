@@ -842,10 +842,12 @@ MODULES
                    headers, body; tcp HOST:PORT), ${VAR} from the lane's env,
                    run once; FILE must be pinned (# Includes: FILE)
       claude       mod claude --out NAME (--prompt-file FILE | --prompt TEXT)
-                   [--input FILE]... [--log] [--model M] [--bin PATH]: write an
-                   artifact in $SWIM_OUT with the Claude Code CLI (--bin, else
-                   $SWIM_CLAUDE_BIN from an env file, else claude on PATH): no
-                   tools, no MCP, an empty directory, a fixed system prompt;
+                   [--input FILE]... [--log] [--model M] [--bin PATH | -- CMD
+                   ARGS...]: write an artifact in $SWIM_OUT with the Claude Code
+                   CLI the call names (after --, a wrapper with its own
+                   arguments, swim's flags appended; or --bin; else claude on
+                   PATH; never a setting): no tools, no MCP, an empty
+                   directory, a fixed system prompt;
                    prompt and inputs masked, the reply masked too. It passes or
                    fails on whether a reply came, never on what it says, and
                    swim never reads the artifact back

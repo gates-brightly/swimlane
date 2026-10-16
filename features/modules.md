@@ -368,7 +368,8 @@ Where the build differs from the design above, or settles it:
   all through the tools' own CLIs.
 - **`tf`, `smoke` and `claude`** (Go). `claude` is the spec's `writeup`
   in another form: it runs the Claude Code CLI (a binary the operator
-  chooses: `--bin`, `SWIM_CLAUDE_BIN`) rather than calling the API, with
+  names in the call: `-- CMD ARGS...` or `--bin`; never a swim setting,
+  so the approved script says what runs) rather than calling the API, with
   no tools, no MCP and a fixed system prompt, from an empty directory, on a
   pinned prompt and masked inputs. It doesn't wait on observe.md: the lane
   passes what it wants written up (`--log`, `--input`). `mod --evidence`

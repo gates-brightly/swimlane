@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
 )
@@ -34,10 +35,19 @@ func NewFake(dir string, env map[string]string, withOut bool, args ...string) *F
 		f.Out = &f.OutB
 	}
 	f.Command = func(name string, a ...string) *exec.Cmd {
-		c := exec.Command(name, a...)
-		if p := filepath.Join(dir, name); fileExists(p) {
-			c = exec.Command(p, a...)
+		// A fake tool from Dir, or a basic system command (test, sh): never
+		// a real aws, terraform or claude from the developer's PATH.
+		path := name
+		if !strings.ContainsRune(name, '/') {
+			path = filepath.Join(dir, name)
+			for _, d := range []string{dir, "/usr/bin", "/bin"} {
+				if p := filepath.Join(d, name); fileExists(p) {
+					path = p
+					break
+				}
+			}
 		}
+		c := exec.Command(path, a...)
 		c.Env = append(os.Environ(), "FAKE_DIR="+dir)
 		for k, v := range f.Env {
 			c.Env = append(c.Env, k+"="+v)

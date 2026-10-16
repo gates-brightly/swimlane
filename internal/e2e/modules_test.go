@@ -476,14 +476,14 @@ cat >"`+dir+`/stdin"
 echo "# Run report"
 echo "All steps passed."
 `), 0o755)
-	r.env = append(r.env, "SWIM_CLAUDE_BIN="+cli, "DEPLOY_TOKEN=tok-abcdef-123456")
+	r.env = append(r.env, "MY_CLI="+cli, "DEPLOY_TOKEN=tok-abcdef-123456")
 	os.MkdirAll(filepath.Join(r.root, "prompts"), 0o755)
 	r.write("prompts/report.md", "Write a short run report.\n", 0o644)
 	r.script(1, "report", `# Modules: claude
 # Includes: prompts/report.md
 # Outputs: report.md
 run "uses a token" bash -c 'echo "token=$DEPLOY_TOKEN"'
-mod claude --prompt-file prompts/report.md --log --out report.md`)
+mod claude --prompt-file prompts/report.md --log --out report.md -- "$MY_CLI"`)
 	contains(t, "lint", must(r.swim("lint", "1")), "no problems found")
 	r.mustSwim("run", "1", "--plain")
 	log := r.log(1)

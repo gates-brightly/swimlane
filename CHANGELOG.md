@@ -428,7 +428,8 @@ already pushed to origin's main) with the next tag and pushes that tag.
   YAML list of HTTP and TCP checks once, judged by status and time; the
   file must be pinned (`# Includes:`). `mod claude --prompt-file F --out
   report.md [--input F] [--log]` writes an artifact with the Claude Code
-  CLI (`--bin`, else `SWIM_CLAUDE_BIN`, else `claude` on PATH), with no
+  CLI the call names (`-- CMD ARGS...` for a wrapper, or `--bin PATH`,
+  else `claude` on PATH; never a setting), with no
   tools, no MCP and a fixed system prompt, everything sent masked; it never
   decides anything. New: `mod --evidence` (and `evidence` in op `module`),
   and `read_only_for` / `destructive_for` in `module.yml`, which lint uses
