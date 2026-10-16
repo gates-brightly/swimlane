@@ -456,6 +456,15 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Observations for write-ups, and knowledge.** A finally lane gets the
+  observations of the lanes it waited for (`SWIM_OBSERVATIONS`, a file
+  for `mod claude --input`), and `swim observe check FILE` lists the ids a
+  write-up cites that the run doesn't have. What keeps being true (the
+  same observation in 3 of a lane's last runs) is proposed by `swim
+  observe knowledge`; `swim observe accept ID` copies it into the
+  committed `knowledge/steps.yml`, and `swim plan` shows it beside the
+  lane (`known: ...`); `reject` stops proposing it; doctor's
+  `knowledge-retired` lists accepted entries the runs stopped showing.
 - **`swim observe`: what the runs say, computed.** At the end of each run,
   swim computes observations from what it records: a step that hit its
   time limit (and how often), passed only after retries, took much longer

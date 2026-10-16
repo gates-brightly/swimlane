@@ -70,3 +70,27 @@ func TestObservationsForFinally(t *testing.T) {
 	r.write("writeup.md", "The call was flaky (retried-1-1).\n", 0o644)
 	contains(t, "check ok", r.mustSwim("observe", "check", "writeup.md"), "each one is there")
 }
+
+// Knowledge: a step retried in three runs is proposed; accepted, it's in
+// the committed knowledge/steps.yml and swim plan shows it beside the
+// lane; rejected, it's not proposed again.
+func TestObservationKnowledge(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "call", `run --retry 2 --backoff 0.1s "flaky call" bash -c 'n=$(cat tries 2>/dev/null || echo 0); echo $((n+1)) > tries; [ "$n" -ge 1 ]'`)
+	for i := 0; i < 3; i++ {
+		os.Remove(filepath.Join(r.root, "tries"))
+		r.mustSwim("run", "1", "--plain")
+	}
+	list := r.mustSwim("observe", "knowledge")
+	contains(t, "proposed", list, "1 proposed", `swim 1 "flaky call" needs retries to pass: 3 of its last 3 runs`, "swim observe accept k-retried-1-")
+	id := list[strings.Index(list, "k-retried-1-"):]
+	id = id[:strings.IndexAny(id, " \n")]
+	contains(t, "accept", r.mustSwim("observe", "accept", id, "--note", "the api drops the first call"), "accepted "+id+" into knowledge/steps.yml")
+	k, _ := os.ReadFile(filepath.Join(r.root, "knowledge", "steps.yml"))
+	contains(t, "knowledge file", string(k), "schema: swim.knowledge/v1", "kind: retried", "note: the api drops the first call", "accepted_by:")
+	contains(t, "plan", r.mustSwim("plan", "1"), `known: "flaky call" needs retries to pass`)
+	contains(t, "listed", r.mustSwim("observe", "knowledge"), "0 proposed · 1 accepted")
+	if out, code := r.swim("observe", "reject", "k-nope"); code == 0 {
+		t.Errorf("rejected an unknown id:\n%s", out)
+	}
+}

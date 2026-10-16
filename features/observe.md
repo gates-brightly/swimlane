@@ -6,14 +6,20 @@ table-tested), computed at run end into `.swim/observations/<run>.yml`
 (a failure is a `warn` in `.swim.log`, never a failed run), `swim
 observe [RUN|N|JOB] [--yaml]`, `swim report`'s observations section, and
 `swim.yml` `observe:` thresholds, `SWIM_OBSERVATIONS` for finally lanes
-(the observations of the lanes each waited for) and `swim observe check`.
+(the observations of the lanes each waited for), `swim observe check`,
+and knowledge: proposed from the runs' observations (3 of a lane's last
+runs), accepted into the committed `knowledge/steps.yml` or rejected,
+shown in `swim plan` (`known:`), retired after 5 clean runs (doctor's
+`knowledge-retired`).
 Baselines come from each lane's own log and archives (by step label),
 read at run end.
 
 Left: step keys and targets (`--key`, `--target`, `# Targets:`), an index
 instead of re-reading logs, matrix cells and jobs, `held-up` and `trend`,
-`swim status` and `swim plan` lines, knowledge (accumulate, retire,
-accept, reject), and per-observation masked excerpts for a write-up.
+the `swim status` line, knowledge by target (steps only today), and
+per-observation masked excerpts for a write-up. Decided: knowledge lives
+in `knowledge/steps.yml` (one file; targets would add `targets.yml`), and
+isn't signed (it decides nothing).
 
 ## Summary
 

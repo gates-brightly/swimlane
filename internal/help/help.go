@@ -382,6 +382,8 @@ swim report --earmarks | --earmark --reset [--name NAME]
 `,
 	"observe": `swim observe [RUN|N|JOB] [--yaml]
 swim observe check FILE [RUN]
+swim observe knowledge [--yaml]
+swim observe accept ID [--note TEXT] | reject ID
 
   A run's observations: facts computed from what swim records, each with
   its numbers and the runs it cites. The last run's by default; for N or
@@ -406,6 +408,14 @@ swim observe check FILE [RUN]
   --input "$SWIM_OBSERVATIONS" ...). check lists the ids a write-up (FILE)
   cites that the run (the last one by default) doesn't have: a citation
   someone made up. Exit 1 on any.
+  knowledge  what keeps being true: an observation of the same kind for the
+             same lane and step in 3 or more of the lane's last runs (window,
+             default 20) is proposed. accept copies one into knowledge/steps.yml
+             (commit it), with who and when, and swim plan shows it beside the
+             lane (known: ...); reject keeps it from being proposed again. An
+             accepted entry not seen in the lane's last 5 runs is retired:
+             knowledge lists it, and doctor (knowledge-retired). Knowledge
+             decides nothing: acting on it is a script change.
 `,
 	"mod": `swim mod [--label L] [--gate|--evidence] [options] CMD [args...]
 

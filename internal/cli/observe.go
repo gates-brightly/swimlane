@@ -22,8 +22,15 @@ import (
 // last run it ran in). Facts computed from the record, with their
 // numbers and the runs they cite; they decide nothing.
 func cmdObserve(args []string) error {
-	if len(args) > 0 && args[0] == "check" {
-		return observeCheck(args[1:])
+	if len(args) > 0 {
+		switch args[0] {
+		case "check":
+			return observeCheck(args[1:])
+		case "knowledge":
+			return observeKnowledge(args[1:])
+		case "accept", "reject":
+			return observeDecide(args[0], args[1:])
+		}
 	}
 	var asYAML bool
 	rest, err := flags{bools: map[string]*bool{"yaml": &asYAML}}.parse(args)
@@ -190,4 +197,113 @@ func observeCheck(args []string) error {
 	}
 	fmt.Printf("; not in the run: %s\n", strings.Join(bad, ", "))
 	return exitError{1}
+}
+
+// observeKnowledge is swim observe knowledge [--yaml]: what the runs keep
+// showing (proposed, for someone to accept or reject), and what people
+// accepted (knowledge/steps.yml), with any that no longer holds.
+func observeKnowledge(args []string) error {
+	var asYAML bool
+	if rest, err := (flags{bools: map[string]*bool{"yaml": &asYAML}}).parse(args); err != nil {
+		return err
+	} else if len(rest) > 0 {
+		return usagef("usage: swim observe knowledge [--yaml]")
+	}
+	root, cfg, err := repo()
+	if err != nil {
+		return err
+	}
+	runs, err := observe.History(root)
+	if err != nil {
+		return err
+	}
+	k, err := observe.LoadKnowledge(root)
+	if err != nil {
+		return err
+	}
+	accepted, rejected := map[string]bool{}, observe.Rejected(root)
+	for _, e := range k.Entries {
+		accepted[e.ID] = true
+	}
+	var proposed []observe.Entry
+	for _, e := range observe.Propose(runs, cfg.ObserveThresholds().Window) {
+		if !accepted[e.ID] && !rejected[e.ID] {
+			proposed = append(proposed, e)
+		}
+	}
+	type acceptedDoc struct {
+		observe.Entry `yaml:",inline"`
+		Retired       string `yaml:"retired,omitempty"`
+	}
+	var acc []acceptedDoc
+	for _, e := range k.Entries {
+		acc = append(acc, acceptedDoc{e, observe.Retired(e, runs)})
+	}
+	if asYAML {
+		if proposed == nil {
+			proposed = []observe.Entry{}
+		}
+		if acc == nil {
+			acc = []acceptedDoc{}
+		}
+		return yaml.NewEncoder(os.Stdout).Encode(map[string]any{"schema": "swim.knowledge-list/v1", "proposed": proposed, "accepted": acc})
+	}
+	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim observe knowledge · %d proposed · %d accepted", len(proposed), len(acc))))
+	for _, e := range proposed {
+		fmt.Printf("  proposed  %s  %s\n", e.Claim, p.Paint(ui.Dim, e.ID+" · swim observe accept "+e.ID))
+	}
+	for _, a := range acc {
+		line := fmt.Sprintf("  accepted  %s  %s", a.Claim, p.Paint(ui.Dim, a.ID+" · by "+a.AcceptedBy))
+		if a.Retired != "" {
+			line += p.Paint(ui.Yellow, "  retired: "+a.Retired+" (remove it from "+rel(root, observe.KnowledgePath(root))+")")
+		}
+		fmt.Println(line)
+	}
+	return nil
+}
+
+// observeDecide is swim observe accept ID [--note TEXT] (into the
+// committed knowledge/steps.yml) and swim observe reject ID (not proposed
+// again).
+func observeDecide(what string, args []string) error {
+	var note string
+	rest, err := flags{strs: map[string]*string{"note": &note}}.parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || what == "reject" && note != "" {
+		return usagef("usage: swim observe accept ID [--note TEXT] | swim observe reject ID")
+	}
+	id := rest[0]
+	root, cfg, err := repo()
+	if err != nil {
+		return err
+	}
+	runs, err := observe.History(root)
+	if err != nil {
+		return err
+	}
+	var entry *observe.Entry
+	for _, e := range observe.Propose(runs, cfg.ObserveThresholds().Window) {
+		if e.ID == id {
+			e := e
+			entry = &e
+		}
+	}
+	if entry == nil {
+		return fmt.Errorf("no proposed knowledge %s (swim observe knowledge lists them)", id)
+	}
+	if what == "reject" {
+		if err := observe.Reject(root, id); err != nil {
+			return err
+		}
+		fmt.Printf("rejected %s: it won't be proposed again\n", id)
+		return nil
+	}
+	if err := observe.Accept(root, *entry, operator(), note); err != nil {
+		return err
+	}
+	fmt.Printf("accepted %s into %s: %s\ncommit it; swim plan shows it beside swim %d\n", id, rel(root, observe.KnowledgePath(root)), entry.Claim, entry.Lane)
+	return nil
 }

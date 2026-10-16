@@ -151,6 +151,7 @@ var Checks = []Check{
 	{"prune-reclaim", false, "swim prune --older 30d would free over 100 MB", checkPruneReclaim},
 	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
 	{"module-go", false, "a lane uses a Go module from the repo, and there's no Go toolchain here to build it", checkModuleGo},
+	{"knowledge-retired", false, "knowledge someone accepted (knowledge/steps.yml) that the runs no longer show", checkKnowledgeRetired},
 	{"module-fetched", false, "a fetched module .swim.lock pins is missing from .swim/modules/ or changed there (swim modules get), or no lane names it", checkModuleFetched},
 	{"module-version", false, "a lane uses a built-in module .swim.lock pins at another version than this swim's, or that no swim modules lock has pinned", checkModuleVersion},
 	{"cache-unused", false, "tool caches unused for 30 days, or the repo's caches over cache_max", checkCacheUnused},

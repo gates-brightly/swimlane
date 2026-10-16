@@ -78,3 +78,36 @@ func TestDetectors(t *testing.T) {
 		})
 	}
 }
+
+// Knowledge: proposed once seen in 3 of a lane's runs, and an accepted
+// entry retires after 5 of the lane's runs without it.
+func TestKnowledge(t *testing.T) {
+	obs := func(run string, ran bool, kinds ...string) RunObs {
+		r := RunObs{Run: run, Lanes: map[int]bool{1: ran}}
+		for _, k := range kinds {
+			r.Obs = append(r.Obs, Observation{Kind: k, Lane: 1, Step: "call api", Text: "x"})
+		}
+		return r
+	}
+	runs := []RunObs{obs("r1", true, Retried), obs("r2", true), obs("r3", true, Retried), obs("r4", false), obs("r5", true, Retried)}
+	got := Propose(runs, 20)
+	if len(got) != 1 || got[0].Kind != Retried || got[0].Seen != 3 || got[0].Of != 4 || got[0].First != "r1" || got[0].Latest != "r5" {
+		t.Fatalf("proposed: %+v", got)
+	}
+	if !strings.Contains(got[0].Claim, `swim 1 "call api" needs retries to pass: 3 of its last 4 runs`) {
+		t.Errorf("claim: %q", got[0].Claim)
+	}
+	if p := Propose(runs[:3], 20); len(p) != 0 {
+		t.Errorf("proposed after 2 sightings: %+v", p)
+	}
+	e := got[0]
+	if why := Retired(e, runs); why != "" {
+		t.Errorf("retired while still seen: %s", why)
+	}
+	for i := 0; i < 5; i++ {
+		runs = append(runs, obs(fmt.Sprintf("c%d", i), true))
+	}
+	if why := Retired(e, runs); !strings.Contains(why, "last 5 runs") {
+		t.Errorf("not retired after 5 clean runs: %q", why)
+	}
+}
