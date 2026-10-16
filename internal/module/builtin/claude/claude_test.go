@@ -44,7 +44,7 @@ func TestClaude(t *testing.T) {
 		t.Errorf("artifact: %q", got)
 	}
 	args, _ := os.ReadFile(filepath.Join(dir, "args"))
-	for _, want := range []string{"-p\n", "--tools\n\n", "--strict-mcp-config", "--no-session-persistence", "--disable-slash-commands", "--model\nclaude-sonnet-5", "--system-prompt\nYou write one document"} {
+	for _, want := range []string{"--print\n", "--tools\n\n", "--strict-mcp-config", "--no-session-persistence", "--disable-slash-commands", "--model\nclaude-sonnet-5", "--system-prompt\nYou write one document"} {
 		if !strings.Contains(string(args), want) {
 			t.Errorf("args lack %q:\n%s", want, args)
 		}

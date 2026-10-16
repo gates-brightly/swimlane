@@ -103,19 +103,23 @@ func Run(c *gomod.Ctx) error {
 	if material != "" {
 		in.WriteString("\n\n# Material\n\n" + material)
 	}
-	args := []string{"-p", "--output-format", "text", "--no-session-persistence", "--tools", "",
+	// Long flags only: a wrapper in front of the CLI may have short options
+	// of its own (-p).
+	args := []string{"--print", "--output-format", "text", "--no-session-persistence", "--tools", "",
 		"--strict-mcp-config", "--disable-slash-commands", "--system-prompt", systemPrompt}
 	if a.model != "" {
 		args = append(args, "--model", a.model)
 	}
 	cmd := c.Command(bin, append(cli[1:len(cli):len(cli)], args...)...)
-	// An empty directory: no CLAUDE.md, no project settings.
-	tmp, err := os.MkdirTemp("", "swim-claude-")
+	// An empty directory outside any repo: no CLAUDE.md (the CLI looks in
+	// parent directories too), no project settings. The same one each
+	// time, so a CLI or wrapper that keeps data per directory keeps one.
+	dir, cleanup, err := emptyDir()
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
-	cmd.Dir = tmp
+	defer cleanup()
+	cmd.Dir = dir
 	if c.Getenv("ANTHROPIC_API_KEY") == "" {
 		if key := secret(c); key != "" {
 			cmd.Env = append(cmd.Env, "ANTHROPIC_API_KEY="+key)
@@ -301,6 +305,22 @@ func secret(c *gomod.Ctx) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// emptyDir is <tmp>/swim-claude-<uid>/empty: made if missing, and used
+// only while it's empty and this user's own; else a fresh one, which done
+// removes.
+func emptyDir() (dir string, done func(), err error) {
+	dir = filepath.Join(os.TempDir(), fmt.Sprintf("swim-claude-%d", os.Getuid()), "empty")
+	if err := os.MkdirAll(dir, 0o700); err == nil {
+		if st, err := os.Lstat(dir); err == nil && st.IsDir() && st.Mode().Perm() == 0o700 {
+			if entries, err := os.ReadDir(dir); err == nil && len(entries) == 0 {
+				return dir, func() {}, nil
+			}
+		}
+	}
+	tmp, err := os.MkdirTemp("", "swim-claude-")
+	return tmp, func() { os.RemoveAll(tmp) }, err
 }
 
 func fileHash(p string) string {
