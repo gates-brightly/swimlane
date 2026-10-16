@@ -57,8 +57,8 @@ const (
 // Where an included file came from.
 const (
 	FromIncludes = "includes" // # Includes: or a Matrix: @file: part of the script hash too
-	FromSource   = "source"   // a bash source line, found by a static scan
-	FromImport   = "import"   // a Python or TypeScript import of a local module
+	FromSource   = "source"   // a bash source line, found by a static scan (manifests before header-only pinning)
+	FromImport   = "import"   // a Python or TypeScript import of a local module (likewise)
 	FromModule   = "module"   // a file of a repo module the lane declares (# Modules:)
 )
 
@@ -181,19 +181,9 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 		m.Pinned.Includes = append(m.Pinned.Includes, File{Path: f, SHA256: hash(d), From: FromIncludes})
 	}
 	m.ScriptSHA = hash(lane.JoinScript(data, files, read))
-	if !lane.IsBinary(data) {
-		for _, s := range lane.LocalSources(root, filepath.Base(path), data) {
-			if pinned[s.Path] {
-				continue
-			}
-			d, err := read(s.Path)
-			if err != nil {
-				continue
-			}
-			pinned[s.Path] = true
-			m.Pinned.Includes = append(m.Pinned.Includes, File{Path: s.Path, SHA256: hash(d), From: s.From})
-		}
-	}
+	// What it pins is what its header names (# Includes:, Matrix: @files,
+	// # Cache: lockfiles, # Modules:): nothing is found by reading its body.
+	// A repo file it sources without naming it is refused at run time.
 	info, _ := lane.ReadScript(root, n)
 	// The modules it declares, as swim.yml allows them: a module that
 	// doesn't resolve keeps the lane from starting.
@@ -256,19 +246,10 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 			}
 		}
 	}
-	// The files it pins (# Includes:, sourced helpers) are as reviewed as
-	// the script: their guards are its lane's too.
+	// The guards it may ask for are the ones its header (or sidecar)
+	// declares, and any at all with "# Guards: *": a guard the body uses
+	// without declaring it is refused when it asks.
 	m.DynamicGuards = info.DynamicGuards > 0 || lane.ParseScript(string(data)).DynamicGuards > 0
-	for _, f := range m.Pinned.Includes {
-		inc := lane.ParseScript(string(m.data[f.Path]))
-		m.DynamicGuards = m.DynamicGuards || inc.DynamicGuards > 0
-		for _, gd := range inc.GuardFlags() {
-			if !seen[gd] {
-				seen[gd] = true
-				m.Guards = append(m.Guards, gd)
-			}
-		}
-	}
 	sort.Strings(m.Guards)
 	m.SHA256 = m.Pinned.Hash(n)
 	return m, nil

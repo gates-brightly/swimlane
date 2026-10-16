@@ -110,7 +110,8 @@ func TestEachCheck(t *testing.T) {
 		{name: "stage out of order", script: replace(replace(c, "stage snapshot\n", ""), "stage verify", "stage verify\nstage snapshot"), code: "stage-order", level: finding.Warn, message: "snapshot after verify"},
 		{name: "bash 4", script: before(c, "stage snapshot\n", "declare -A seen\n"), code: "bash4", level: finding.Warn, line: 13},
 		{name: "bash 4 in double quotes", script: before(c, "stage snapshot\n", "echo \"${NAME^^}\"\n"), code: "bash4", level: finding.Warn},
-		{name: "guard not listed", script: before(c, "stage verify\n", "if guard ALLOW_X \"x\"; then run \"x\" true; fi\n"), code: "guard-unlisted", level: finding.Warn},
+		{name: "guard not listed", script: before(c, "stage verify\n", "if guard ALLOW_X \"x\"; then run \"x\" true; fi\n"), code: "guard-unlisted", level: finding.Error, message: "swim refuses it when it asks"},
+		{name: "guard named at run time", script: before(c, "stage verify\n", "if guard \"$FLAG\" \"x\"; then run \"x\" true; fi\n"), code: "guard-dynamic", level: finding.Error, message: "# Guards: *"},
 		{name: "guard not used", script: before(c, "# Timeout:", "# Guards: ALLOW_Z  never used\n"), code: "guard-unused", level: finding.Warn, line: 7},
 		{name: "Cache unknown preset", script: before(c, "# Timeout:", "# Cache: maven @pom.xml\n"), code: "cache", level: finding.Error, line: 7, message: `unknown preset "maven"`},
 		{name: "Cache no lockfile", script: before(c, "# Timeout:", "# Cache: terraform\n"), code: "cache", level: finding.Error, line: 7, message: "terraform needs its lockfile"},
@@ -343,5 +344,54 @@ func TestModulesClean(t *testing.T) {
 	c = before(c, "summary\n", "mod --timeout 30s notify \"#c\" \"done\" && echo sent\n")
 	if fs := Lint(cfg4(), map[int]string{1: c, 2: clean(2)}, 1); len(fs) != 0 {
 		t.Errorf("findings: %+v", fs)
+	}
+}
+
+// --fix adds the header lines the body needs, after the header block,
+// with a guard's own action as its description; then the script lints
+// clean of them. It never touches what's there.
+func TestFix(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "lib"), 0o755)
+	os.WriteFile(filepath.Join(root, "lib", "x.sh"), []byte("x=1\n"), 0o644)
+	src := `#!/usr/bin/env bash
+# swim: syntax 2
+# Round: fix me
+# Guards: ALLOW_A  a
+#
+# Goal: prose
+_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+lane_init 1
+source lib/x.sh
+if guard ALLOW_A "a"; then run a true; fi
+if guard ALLOW_B "drop the old table"; then run b true; fi
+guard "$F" "dynamic" && run c true
+summary
+`
+	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte(src), 0o755)
+	cfg := &config.Config{Root: root, Settings: config.Settings{Lanes: 1}}
+	fixed, err := Fix(root, cfg, []int{1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fixed) != 1 || strings.Join(fixed[0].Added, "|") != "# Guards: ALLOW_B  drop the old table|# Guards: *  flags named at run time (say which, and why)|# Includes: lib/x.sh" {
+		t.Fatalf("fixed: %+v", fixed)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, "lane.1.sh"))
+	if !strings.Contains(string(got), "# Guards: ALLOW_A  a\n# Guards: ALLOW_B  drop the old table\n# Guards: *") || !strings.Contains(string(got), "# Includes: lib/x.sh\n#\n# Goal: prose") {
+		t.Errorf("script:\n%s", got)
+	}
+	if st, _ := os.Stat(filepath.Join(root, "lane.1.sh")); st.Mode().Perm() != 0o755 {
+		t.Errorf("mode %v", st.Mode())
+	}
+	fs, _ := Run(root, cfg, []int{1})
+	for _, f := range fs {
+		if f.Code == "guard-unlisted" || f.Code == "guard-dynamic" || f.Code == "source" {
+			t.Errorf("after --fix: %+v", f)
+		}
+	}
+	// Nothing left to add: nothing changes.
+	if fixed, _ := Fix(root, cfg, []int{1}); len(fixed) != 0 {
+		t.Errorf("second fix: %+v", fixed)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -88,7 +89,8 @@ func cmdApproveHook(args []string) error {
 		history.Log(root, history.Entry{Event: history.Decline, Lane: n, Job: job, Run: run, Detail: desc + "  (drift: " + strings.Join(diffs, "; ") + ")"})
 		return exitError{3}
 	}
-	switch guardRoute(launched(), func() bool { return underSwimRun(root) }, flagSet) {
+	route := guardRoute(launched(), func() bool { return underSwimRun(root) }, flagSet)
+	switch route {
 	case routeLauncher:
 		return approveLaunched(root, cfg, args[0], n, flag, desc, flagSet, dryRun, drifted)
 	case routeRefuse:
@@ -98,6 +100,17 @@ func cmdApproveHook(args []string) error {
 		why := "this lane runs under swim run, but its approvals channel is gone (SWIM_APPROVAL or SWIM_LAUNCHED missing from its environment)"
 		cmdMark([]string{args[0], logparse.Warn, "approval refused: " + flag, why})
 		return dryRun(why)
+	}
+	// Run directly with bash: only a guard the header declares can be
+	// approved, as under swim run. With an approvals broker, it decides
+	// that, knowing which lane really asks (a lane may claim another's
+	// number).
+	if info, err := lane.ReadScript(root, n); os.Getenv(approval.EnvVar) == "" && err == nil && info.DynamicGuards == 0 && !slices.Contains(info.GuardFlags(), flag) {
+		why := flag + " isn't declared in " + lane.ScriptName(root, n) + " (list it in # Guards:)"
+		cmdMark([]string{args[0], logparse.Warn, "approval refused: " + flag, why})
+		return dryRun(why)
+	}
+	switch route {
 	case routeFlag:
 		// Run directly with bash: the flag is the operator's own. A queued
 		// batch's approvals (swim queue add --approve) say where they came

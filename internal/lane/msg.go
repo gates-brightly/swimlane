@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -68,10 +67,11 @@ func WriteMsg(root string, n int, m Msg) error {
 // ClearMsg removes lane n's message (the round is over).
 func ClearMsg(root string, n int) { os.Remove(MsgPath(root, n)) }
 
-var progressRE = regexp.MustCompile(`^\d+/\d+$`)
-
 // ValidProgress reports whether p is N/M.
-func ValidProgress(p string) bool { return progressRE.MatchString(p) }
+func ValidProgress(p string) bool {
+	n, m, ok := strings.Cut(p, "/")
+	return ok && isDigits(n) && isDigits(m)
+}
 
 // CleanMsg makes text one clean line: escape sequences and control
 // characters removed (ui.Safe; whitespace controls such as newlines become

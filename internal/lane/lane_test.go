@@ -140,7 +140,9 @@ summary
 	if i.Owner != "zach" || i.Created != "2026-10-01" || i.Timeout != 90*time.Minute || i.TimeoutText != "1h30m" {
 		t.Fatalf("ops: %+v", i)
 	}
-	if len(i.Guards) != 2 || i.Guards[0].Flag != "ORDERS_ALLOW_REMOVE" || !strings.HasPrefix(i.Guards[0].Desc, "remove SST") || i.Guards[1].Flag != "EXTRA_FLAG" || i.Guards[1].Desc != "" {
+	// The header is the lane's guards: EXTRA_FLAG, used but not declared,
+	// isn't one (it's refused when it asks).
+	if len(i.Guards) != 1 || i.Guards[0].Flag != "ORDERS_ALLOW_REMOVE" || !strings.HasPrefix(i.Guards[0].Desc, "remove SST") {
 		t.Fatalf("guards: %+v", i.Guards)
 	}
 	if len(i.Extra) != 1 || i.Extra[0].K != "Ticket" || i.Extra[0].V != "OPS-42" {
@@ -291,15 +293,41 @@ func TestModuleEvidenceUse(t *testing.T) {
 	}
 }
 
-// Quoted text that mentions a guard isn't a guard call.
-func TestGuardInQuotes(t *testing.T) {
-	src := "#!/usr/bin/env bash\n# Round: r\n" +
+// A lane's guards are its header's: nothing in the body adds one, quoted
+// or not, and "*" lets it name flags at run time.
+func TestGuardsFromHeaderOnly(t *testing.T) {
+	src := "#!/usr/bin/env bash\n# Round: r\n# Guards: ALLOW_X  do x\n" +
 		`if guard ALLOW_X "do x, unless the guard was declined"; then run "x" true; fi` + "\n" +
 		`run "say" bash -c 'echo "no report: the guard was declined"'` + "\n" +
-		`echo "guard WHO \"guard ESCAPED\""` + "\n" +
-		"guard ALLOW_Y 'y'\n"
-	got := ParseScript(src).GuardFlags()
-	if strings.Join(got, " ") != "ALLOW_X ALLOW_Y" {
-		t.Errorf("guards: %v", got)
+		"guard ALLOW_Y 'y'\n" +
+		`guard "$FLAG" "dynamic"` + "\n"
+	info := ParseScript(src)
+	if got := strings.Join(info.GuardFlags(), " "); got != "ALLOW_X" || info.DynamicGuards != 0 {
+		t.Errorf("guards: %v, dynamic %d", got, info.DynamicGuards)
+	}
+	info = ParseScript("#!/usr/bin/env bash\n# Round: r\n# Guards: *  flags from the inventory\n" + `guard "$FLAG" "x"` + "\n")
+	if len(info.Guards) != 0 || info.DynamicGuards != 1 {
+		t.Errorf("Guards: *: %+v, dynamic %d", info.Guards, info.DynamicGuards)
+	}
+}
+
+// The body is read for stages and handlers, quotes and comments aside.
+func TestBodyStagesAndHandlers(t *testing.T) {
+	for src, staged := range map[string]bool{
+		"stage check\n":                                     true,
+		"  if true; then stage change; fi\n":                true,
+		`"$SWIM_BIN" stage verify` + "\n":                   true,
+		`subprocess.run(["swim", "stage", "check"])` + "\n": true,
+		`echo "next: stage change"` + "\n":                  false,
+		"# stage check\n":                                   false,
+		"stage nonsense\n":                                  false,
+	} {
+		if got := ParseScript("#!/usr/bin/env bash\n# Round: r\n" + src).Staged; got != staged {
+			t.Errorf("%q: Staged %v, want %v", src, got, staged)
+		}
+	}
+	info := ParseScript("#!/usr/bin/env bash\n# Round: r\non_failure() {\n  if guard ALLOW_UNDO \"undo\"; then run u true; fi\n}\nfunction on_exit () {\n  run x true\n}\necho 'on_success() {'\n")
+	if len(info.Handlers) != 2 || info.Handlers[0].Name != "on_failure" || strings.Join(info.Handlers[0].Guards, ",") != "ALLOW_UNDO" || info.Handlers[1].Name != "on_exit" {
+		t.Errorf("handlers: %+v", info.Handlers)
 	}
 }

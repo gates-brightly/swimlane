@@ -15,10 +15,10 @@ import (
 	"github.com/gates-brightly/swimlane/internal/status"
 )
 
-// swim lint [N|JOB ...] [--strict] [--yaml]
+// swim lint [N|JOB ...] [--strict] [--yaml] [--fix]
 func cmdLint(args []string) error {
-	var strict, asYAML bool
-	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML}}.parse(args)
+	var strict, asYAML, fix bool
+	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML, "fix": &fix}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -36,6 +36,25 @@ func cmdLint(args []string) error {
 		lanes = append(lanes, n)
 		// A session writing the lane keeps its claim alive by linting it.
 		lane.RefreshClaim(root, n, lane.SessionID(), cfg.ClaimLeaseFor())
+	}
+	if fix {
+		// The header lines the body needs (# Guards:, # Includes:), added
+		// for review; then the report, as after any edit.
+		fixed, err := lint.Fix(root, cfg, lanes)
+		if err != nil {
+			return err
+		}
+		for _, fx := range fixed {
+			switch {
+			case fx.Skip != "":
+				fmt.Fprintf(os.Stderr, "swim lint --fix: %s: left alone: %s\n", fx.File, fx.Skip)
+			case len(fx.Added) > 0:
+				fmt.Fprintf(os.Stderr, "swim lint --fix: %s: added\n", fx.File)
+				for _, l := range fx.Added {
+					fmt.Fprintf(os.Stderr, "  %s\n", l)
+				}
+			}
+		}
 	}
 	fs, err := lint.Run(root, cfg, lanes)
 	if err != nil {

@@ -54,7 +54,7 @@ type Script struct {
 var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
-	"guard-unlisted": true, "guard-unused": true, "check-unsafe": true, "secret-argv": true,
+	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true, "secret-argv": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -92,7 +92,8 @@ var Checks = []Check{
 	{"stage", finding.Error, false, "an unknown stage name", checkStage},
 	{"stage-order", finding.Warn, false, "stages out of order or repeated", checkStageOrder},
 	{"bash4", finding.Warn, false, "a bash 4 feature macOS bash 3.2 can't run", checkBash4},
-	{"guard-unlisted", finding.Warn, false, "a guard flag used but not listed in `# Guards:`", checkGuardUnlisted},
+	{"guard-unlisted", finding.Error, false, "a guard flag used but not declared in `# Guards:` (refused when it asks; a warning with `# Guards: *`)", checkGuardUnlisted},
+	{"guard-dynamic", finding.Error, false, "a guard whose flag is named at run time, without `# Guards: *`", checkGuardDynamic},
 	{"guard-unused", finding.Warn, false, "a flag listed in `# Guards:` but never used", checkGuardUnused},
 	{"destructive", finding.Warn, false, "a destructive-looking command outside a guard block", checkDestructive},
 	{"blocked", finding.Error, false, "a blocked command (git push/commit/pull, blocked_commands)", checkBlocked},
@@ -109,7 +110,7 @@ var Checks = []Check{
 	{"input-dep", finding.Error, false, "`input N` of a lane not in After: (or config deps)", checkInputDeps},
 	{"cache", finding.Error, false, "a # Cache: with an unknown preset, no lockfile, a lockfile that isn't there, or pip requirements without hashes", checkCache},
 	{"cache-bypass", finding.Warn, false, "a command that takes from a declared cache without checking it against the lockfile (npm install, pip install without --require-hashes)", checkCacheBypass},
-	{"includes", finding.Warn, false, "a Python or TypeScript lane imports a local module its # Includes: doesn't cover", checkIncludes},
+	{"includes", finding.Error, false, "a Python or TypeScript lane imports a local module its # Includes: doesn't cover (not staged: the import fails)", checkIncludes},
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
 	{"module", finding.Error, false, "a # Modules: entry that doesn't resolve or swim.yml doesn't allow, a module command the script doesn't declare, or modules without `# swim: syntax 4`", checkModules},
 	{"module-effects", finding.Warn, false, "a module used against its declared effects: credentials without mod_env, not read-only before `stage change`", checkModuleEffects},
@@ -174,7 +175,7 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 	groups := map[int]lane.Group{}
 	for n := 1; n <= cfg.Lanes; n++ {
 		if g, ok := lane.LaneJobs(root, n); ok && len(lane.Scripts(root, n)) == 1 {
-			if !lane.GroupFileRE.MatchString(g.File) {
+			if !lane.IsGroupFile(g.File) {
 				for _, p := range g.Problems {
 					out = append(out, finding.Finding{Level: finding.Error, File: p.File, Line: p.Line, Code: codeGroup, Message: p.Message})
 				}

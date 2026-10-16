@@ -435,8 +435,11 @@ WRITING A LANE SCRIPT
       # Owner:   <who wrote it>       Default: - (swim new fills in $USER)
       # Created: <YYYY-MM-DD>         Default: the file's modification date
       # Guards:  FLAG  <what it approves (date, reason)>
-                                      one line per flag. Flags the body uses are found
-                                      anyway; list them to explain them. Default: none
+                                      one line per flag: the only guards the round can
+                                      have approved (a guard it uses without listing it
+                                      is refused when it asks: a dry run). "# Guards: *
+                                      <why>" lets it name flags at run time (guard "$F").
+                                      swim lint --fix adds the lines. Default: none
       # Locks:   <name>[, <name> ...] resources this round needs to itself (letters,
                                       digits, . _ - /, e.g. orders-table, tf/orders).
                                       Lanes sharing a lock never run at the same time,
@@ -462,9 +465,11 @@ WRITING A LANE SCRIPT
       # Handler-Timeout: <5m, ...>    the budget for all outcome handlers together, from
                                       when the round ends. Default: 5m
       # Includes: <glob> [...]        repo files that are part of the round (local modules,
-                                      sourced files): pinned and staged with the script.
-                                      Files it sources or imports by a literal path are
-                                      pinned anyway; lint wants them listed. Default: none
+                                      sourced files): pinned and staged with the script, and
+                                      the only repo files it may read as code: under swim
+                                      run, sourcing one it doesn't list stops the round,
+                                      and an import of one isn't found. swim lint --fix
+                                      adds the lines. Default: none
       # Cache: <preset> @<lockfile> [...]   keep a tool's download cache between rounds:
                                       terraform, npm, pip or go, each with the lockfile the
                                       tool checks the cache against (pinned like Includes:).
@@ -1268,9 +1273,8 @@ EXECUTION MANIFEST
   the run, even mid-round. $SWIM_STAGE and $SWIM_MANIFEST name the stage.
   Pinned, in manifest_sha256 (what approvals sign):
     script     the lane's file (a group file for a lane of jobs)
-    includes   # Includes: matches, Matrix: @files, # Cache: lockfiles, and
-               every local file the script (or a file it pins) sources or
-               imports by a literal path
+    includes   # Includes: matches, Matrix: @files and # Cache: lockfiles:
+               what the header names, never what its body seems to read
     sidecar    lane.N.yml
     modules    # Modules:: each one's name, version, source and hash (a repo
                module's files are among the includes, from: module)
@@ -1289,10 +1293,15 @@ EXECUTION MANIFEST
   Questions come from swim, not the lane: under swim run each lane process
   has its own approval token, and the question names the lane, job, guard,
   manifest and evidence the launcher knows, then "the lane says: <action>".
-  A flag neither the script nor a file it includes (# Includes:, sourced
-  helpers) declares or uses is refused (and logged), unless the script names
-  a guard's flag at run time (guard "$F"); an approval is used once, by the
-  lane it was given to.
+  A flag the lane's header (or sidecar) doesn't declare in # Guards: is
+  refused (and logged), unless the header says "# Guards: *" (it names
+  flags at run time, guard "$F"); a lane run directly with bash refuses it
+  too. An approval is used once, by the lane it was given to.
+  The header is the lane's contract: swim reads what a lane may do (its
+  guards, the files it reads, its modules) from its header, never from its
+  body, and refuses at run time whatever the body does beyond it. The body
+  is read only for where its stages and handlers are and whether it shows
+  evidence.
 
 CHAIN OF CUSTODY
   Every approval and every round is recorded in .swim/chain.jsonl, one

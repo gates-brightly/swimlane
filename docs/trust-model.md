@@ -162,8 +162,9 @@ name a socket's peer the token alone decides.
 
 - **Approvals are bound to an execution manifest.** Before a lane starts,
   swim builds its manifest: the lane script (or its group file, or a
-  binary), the files its `# Matrix: KEY=@file` reads, its `# Includes:`,
-  every local file it sources or imports by a literal path, its sidecar, the
+  binary), the files its `# Matrix: KEY=@file` reads, its `# Includes:`
+  (the only repo files it may source or import: under `swim run` a bash
+  lane that sources one it doesn't list stops), its sidecar, the
   runner the repo names, the policy part of `swim.yml` and the `lookup.yml`
   rules. `swim approve N` signs the manifest's hash and lists what it pins.
   A change to any of it stales the approval: its guards ask or dry-run, and

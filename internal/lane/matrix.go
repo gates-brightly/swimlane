@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -92,22 +91,23 @@ func CellSlug(name string) string {
 	return strings.Join(parts, ".")
 }
 
-var (
-	matrixKeyRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	cellRefRE   = regexp.MustCompile(`^(.+?)\[(.+)\]$`)
-	subRefRE    = regexp.MustCompile(`^([0-9]+)\.([0-9]+(?:\.[0-9]+)*)$`)
-	cellValueRE = regexp.MustCompile(`^[A-Za-z0-9._:/@+-]+$`)
-)
+// cellValue reports whether v can be a matrix value: letters, digits and
+// . _ : / @ + -.
+func cellValue(v string) bool {
+	return v != "" && allOf(v, func(r rune) bool { return isLetter(r) || isDigit(r) || strings.ContainsRune("._:/@+-", r) })
+}
 
 // ParseCellRef splits "3[orders]" into "3" and "orders", and a group
 // lane's sub-job "1.2" into "1" and "2"; ok is false for a plain lane or
 // job reference.
 func ParseCellRef(s string) (ref, cell string, ok bool) {
-	if m := cellRefRE.FindStringSubmatch(s); m != nil {
-		return m[1], m[2], true
+	// "3[orders]": the reference, then the cell in brackets.
+	if i := strings.IndexByte(s, '['); i > 0 && strings.HasSuffix(s, "]") && len(s)-1 > i+1 {
+		return s[:i], s[i+1 : len(s)-1], true
 	}
-	if m := subRefRE.FindStringSubmatch(s); m != nil {
-		return m[1], m[2], true
+	// "1.2": a lane of jobs and a job's place under it.
+	if n, path, ok := strings.Cut(s, "."); ok && isDigits(n) && IsJobPath(path) {
+		return n, path, true
 	}
 	return s, "", false
 }
@@ -116,7 +116,7 @@ func ParseCellRef(s string) (ref, cell string, ok bool) {
 func parseAxis(v string) (Axis, error) {
 	k, vals, ok := strings.Cut(v, "=")
 	k = strings.TrimSpace(k)
-	if !ok || !matrixKeyRE.MatchString(k) {
+	if !ok || !isIdent(k) {
 		return Axis{}, fmt.Errorf("Matrix %q: write KEY=a,b,c or KEY=@file", v)
 	}
 	vals = strings.TrimSpace(vals)
@@ -353,7 +353,7 @@ func (i *Info) resolveMatrix(root string) {
 			i.Problems = append(i.Problems, fmt.Sprintf("Matrix %s has no values", a.Key))
 		}
 		for _, v := range a.Values {
-			if !cellValueRE.MatchString(v) {
+			if !cellValue(v) {
 				i.Problems = append(i.Problems, fmt.Sprintf("Matrix %s value %q: use letters, digits and . _ : / @ + -", a.Key, v))
 			}
 		}

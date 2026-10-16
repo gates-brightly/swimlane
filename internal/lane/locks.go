@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"syscall"
@@ -18,12 +17,11 @@ import (
 // killed launcher doesn't release a lock its lane still uses, and a killed
 // lane never leaves a stale one. The file's text says who holds it.
 
-var lockNameRE = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
-
 // ValidLockName reports whether name can be a lock: letters, digits, '.',
 // '_', '-' and '/'.
 func ValidLockName(name string) bool {
-	return lockNameRE.MatchString(name) && !strings.Contains(name, "..")
+	return name != "" && allOf(name, func(r rune) bool { return isLetter(r) || isDigit(r) || strings.ContainsRune("._/-", r) }) &&
+		!strings.Contains(name, "..")
 }
 
 // LockDir holds the lock files.

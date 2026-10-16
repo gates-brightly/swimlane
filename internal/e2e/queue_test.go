@@ -321,7 +321,8 @@ func TestWatchYesIncludedAndDynamicGuards(t *testing.T) {
 	r.write("lib/g.sh", "do_inc() { if guard ALLOW_INC \"included\"; then run \"inc ran\" true; fi; }\n", 0o644)
 	r.script(1, "include", `source lib/g.sh
 do_inc`)
-	withHeader(t, r, 1, "# Includes: lib/g.sh")
+	// A guard in an included file is the lane's: its header declares it.
+	withHeader(t, r, 1, "# Includes: lib/g.sh\n# Guards: ALLOW_INC  included")
 	r.script(2, "dynamic", `F=ALLOW_DYN
 if guard "$F" "dynamic"; then run "dyn ran" true; fi`)
 	r.mustSwim("queue", "add", "1", "2")

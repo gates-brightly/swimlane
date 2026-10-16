@@ -18,6 +18,8 @@ import (
 	// The tests run a built binary; importing its code makes `go test`
 	// rerun them (instead of reusing a cached pass) when that code changes.
 	_ "github.com/gates-brightly/swimlane/internal/cli"
+	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/lint"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/timeline"
@@ -196,11 +198,17 @@ func (r *repo) mustSwim(args ...string) string {
 	return out
 }
 
-// lane script writes lane.N.sh with the given round and body.
+// lane script writes lane.N.sh with the given round and body, with the
+// header lines its body needs (# Guards:, # Includes:) added as swim lint
+// --fix adds them: a lane as an author would leave it. A test of what
+// happens without them writes the file itself.
 func (r *repo) script(n int, round, body string) {
 	r.t.Helper()
 	s := fmt.Sprintf("#!/usr/bin/env bash\n# swim: syntax 2\n# Round: %s\n_swim_lib=$(\"${SWIM_BIN:-swim}\" lib) || exit 1; eval \"$_swim_lib\"\nlane_init %d\n%s\nsummary\n", round, n, body)
 	if err := os.WriteFile(filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n)), []byte(s), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	if _, err := lint.Fix(r.root, &config.Config{Root: r.root, Settings: config.Settings{Lanes: n}}, []int{n}); err != nil {
 		r.t.Fatal(err)
 	}
 }

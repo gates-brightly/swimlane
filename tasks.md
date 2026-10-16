@@ -33,7 +33,7 @@ should make that line sharper, not blur it.
 | [T23](#t23-outside-feedback-p2) outside feedback | P2 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
 | [T33](tasks/T33-failures-outside-the-record.md) failures that don't reach the record | P1 | gap |
-| [T34](tasks/T34-script-parsing.md) reconsider reading lane scripts with regexes | P2 | gap |
+| [T34](tasks/T34-script-parsing.md) regexes left after the header contract (lint, log parsers) | P2 | gap |
 
 ---
 

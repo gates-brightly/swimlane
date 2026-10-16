@@ -1,4 +1,4 @@
-package lane
+package lint
 
 import (
 	"os"
@@ -8,11 +8,12 @@ import (
 )
 
 // A lane's code isn't only its script: bash lanes source local files, and
-// Python and TypeScript lanes import local modules. The execution manifest
-// pins and stages each local file a script reads this way, found by a
-// static scan, whether or not # Includes: lists it; swim lint wants it
-// listed (and a source whose path is only known at run time can't be
-// pinned at all).
+// Python and TypeScript lanes import local modules. # Includes: is what the
+// manifest pins and stages, and the run refuses a repo file it didn't (a
+// bash source of one) or can't find (an import). This static scan is
+// lint's: it finds the files a script reads, so lint can say which # Includes:
+// misses (and swim lint --fix can add them). It's advice; nothing in a run
+// depends on it.
 
 // Source is one local file a script reads as code, or a source line whose
 // file swim can't know ahead (Dynamic).
@@ -33,7 +34,7 @@ var (
 // ImportCandidates are the repo-relative files an import line of a Python
 // or TypeScript lane may name, most likely first (nil for another line or
 // language, or the swim SDK).
-func ImportCandidates(ext, line string) []string {
+func importCandidates(ext, line string) []string {
 	switch strings.ToLower(ext) {
 	case ".py":
 		m := pyImportRE.FindStringSubmatch(line)
@@ -61,7 +62,7 @@ func ImportCandidates(ext, line string) []string {
 // code: bash source and . lines, Python and TypeScript imports. Only files
 // that exist under root count; a bash source of a path built at run time is
 // reported as Dynamic.
-func ScanSources(root, name, src string) []Source {
+func scanSources(root, name, src string) []Source {
 	ext := strings.ToLower(filepath.Ext(name))
 	bash := ext == ".sh" || ext == ".bash" || ext == ""
 	var out []Source
@@ -71,7 +72,7 @@ func ScanSources(root, name, src string) []Source {
 			continue
 		}
 		if !bash {
-			for _, cand := range ImportCandidates(ext, line) {
+			for _, cand := range importCandidates(ext, line) {
 				if isFile(filepath.Join(root, cand)) {
 					out = append(out, Source{Path: cand, Line: i + 1, Arg: cand, From: "import"})
 					break
@@ -93,31 +94,6 @@ func ScanSources(root, name, src string) []Source {
 			}
 		}
 	}
-	return out
-}
-
-// LocalSources are the files a lane's script reads as code, and those
-// files' own, to any depth (ScanSources, followed): repo-relative and in
-// the order found.
-func LocalSources(root, name string, src []byte) []Source {
-	seen := map[string]bool{}
-	var out []Source
-	var walk func(name string, src []byte, depth int)
-	walk = func(name string, src []byte, depth int) {
-		for _, s := range ScanSources(root, name, string(src)) {
-			if s.Dynamic || seen[s.Path] {
-				continue
-			}
-			seen[s.Path] = true
-			out = append(out, s)
-			if depth < 8 {
-				if data, err := os.ReadFile(filepath.Join(root, s.Path)); err == nil && !IsBinary(data) {
-					walk(s.Path, data, depth+1)
-				}
-			}
-		}
-	}
-	walk(name, src, 0)
 	return out
 }
 

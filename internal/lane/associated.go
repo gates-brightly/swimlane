@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,13 +25,25 @@ const MaxLanes = 99
 // aside) with a stub or no script drops it again. Archived logs
 // (agentN.prev-*.log) and check logs don't count.
 
-var (
-	// currentLogRE is a lane's current log, or a job's or matrix cell's
-	// (agent3.log, agent1.2.log, agent3.orders.log); not an archive
-	// (.prev-) or a check log (.check.log).
-	currentLogRE = regexp.MustCompile(`^agent([0-9]+)(?:\.[^/]+)?\.log$`)
-	pidFileRE    = regexp.MustCompile(`^lane([0-9]+)(?:\.[^/]+)?\.pid$`)
-)
+// laneOfFile reads the lane number from a file named prefix N[.more]
+// suffix: a lane's current log, or a job's or matrix cell's (agent3.log,
+// agent1.2.log, agent3.orders.log), or a pid file (lane3.pid,
+// lane3.orders.pid).
+func laneOfFile(name, prefix, suffix string) (int, bool) {
+	mid, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return 0, false
+	}
+	if mid, ok = strings.CutSuffix(mid, suffix); !ok {
+		return 0, false
+	}
+	num, more, dotted := strings.Cut(mid, ".")
+	if !isDigits(num) || dotted && (more == "" || strings.Contains(more, "/")) {
+		return 0, false
+	}
+	n, err := strconv.Atoi(num)
+	return n, err == nil
+}
 
 // Associated lists the lanes root is using, in order (see above).
 func Associated(root string) []int {
@@ -61,16 +72,14 @@ func Associated(root string) []int {
 		if strings.Contains(name, ".prev-") || strings.HasSuffix(name, ".check.log") {
 			continue
 		}
-		if m := currentLogRE.FindStringSubmatch(name); m != nil {
-			n, _ := strconv.Atoi(m[1])
+		if n, ok := laneOfFile(name, "agent", ".log"); ok {
 			add(n)
 		}
 	}
 	pids, _ := os.ReadDir(filepath.Join(root, ".swim"))
 	for _, e := range pids {
-		if m := pidFileRE.FindStringSubmatch(e.Name()); m != nil {
+		if n, ok := laneOfFile(e.Name(), "lane", ".pid"); ok {
 			if _, _, ok := runningIn(filepath.Join(root, ".swim", e.Name())); ok {
-				n, _ := strconv.Atoi(m[1])
 				add(n)
 			}
 		}

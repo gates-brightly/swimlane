@@ -79,7 +79,7 @@ func TestSlashHeaderAndSidecar(t *testing.T) {
 	if info.Round != "js round" || info.Job != "job-abcdef12" || strings.Join(info.After, ",") != "1,2" || info.Timeout.String() != "5m0s" || info.Syntax != 2 {
 		t.Errorf("header: %+v", info)
 	}
-	if got := strings.Join(info.GuardFlags(), ","); got != "ALLOW_X,BODY_FLAG" {
+	if got := strings.Join(info.GuardFlags(), ","); got != "ALLOW_X" {
 		t.Errorf("guards = %s", got)
 	}
 

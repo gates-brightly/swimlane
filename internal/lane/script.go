@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,22 +34,28 @@ var notScripts = map[string]bool{
 	"bak": true, "orig": true, "swp": true, "rc": true, "lock": true, "pid": true, "signature": true,
 }
 
-var scriptFileRE = regexp.MustCompile(`^lane\.([0-9]+)(?:\.([A-Za-z0-9]+))?$`)
-
 // ParseScriptName reports whether a file name (no directory) names a lane
 // script by its form: lane.N or lane.N.<ext> for a runner or unknown
 // extension (not lane.N.yml, lane.N.sh.tmp, ...). Without the file at hand
 // it can't check the executable bit; Scripts does.
 func ParseScriptName(name string) (n int, ext string, ok bool) {
-	m := scriptFileRE.FindStringSubmatch(name)
-	if m == nil || notScripts[strings.ToLower(m[2])] {
+	// lane.N or lane.N.<ext>, ext letters and digits.
+	rest, found := strings.CutPrefix(name, "lane.")
+	if !found {
 		return 0, "", false
 	}
-	n, err := strconv.Atoi(m[1])
+	num, ext, _ := strings.Cut(rest, ".")
+	if !isDigits(num) || strings.Contains(rest, ".") && (ext == "" || !allOf(ext, func(r rune) bool { return isLetter(r) || isDigit(r) })) {
+		return 0, "", false
+	}
+	if notScripts[strings.ToLower(ext)] {
+		return 0, "", false
+	}
+	n, err := strconv.Atoi(num)
 	if err != nil || n <= 0 {
 		return 0, "", false
 	}
-	return n, strings.ToLower(m[2]), true
+	return n, strings.ToLower(ext), true
 }
 
 // ParseLaneFile reports whether name is one of a lane's committed files:
@@ -59,16 +64,16 @@ func ParseLaneFile(name string) (int, bool) {
 	if n, _, ok := ParseScriptName(name); ok {
 		return n, true
 	}
-	if m := sidecarRE.FindStringSubmatch(name); m != nil {
-		n, err := strconv.Atoi(m[1])
-		return n, err == nil && n > 0
+	// lane.N.yml or lane.N.yaml
+	if rest, ok := strings.CutPrefix(name, "lane."); ok {
+		num, ext, _ := strings.Cut(rest, ".")
+		if isDigits(num) && (ext == "yml" || ext == "yaml") {
+			n, err := strconv.Atoi(num)
+			return n, err == nil && n > 0
+		}
 	}
 	return 0, false
 }
-
-var guardNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
-var sidecarRE = regexp.MustCompile(`^lane\.([0-9]+)\.ya?ml$`)
 
 // Scripts returns the files in root that are lane n's script, sorted with
 // lane.N.sh first, and a group file that defines the lane (group.go) last.
@@ -180,7 +185,7 @@ func IsBinary(data []byte) bool {
 // inside swim's wrapper.
 func UsesLib(src string) bool {
 	for _, l := range strings.Split(src, "\n") {
-		if laneInitRE.MatchString(l) {
+		if firstWordIs(l, "lane_init") {
 			return true
 		}
 	}
@@ -228,11 +233,7 @@ func (s *strList) UnmarshalYAML(n *yaml.Node) error {
 	switch n.Kind {
 	case yaml.ScalarNode:
 		*s = nil
-		for _, tok := range sepRE.Split(n.Value, -1) {
-			if tok != "" {
-				*s = append(*s, tok)
-			}
-		}
+		*s = append(*s, splitList(n.Value)...)
 		return nil
 	case yaml.SequenceNode:
 		*s = nil
@@ -334,7 +335,14 @@ func applySidecar(path string, info *Info) error {
 		}
 		var front []Guard
 		for _, f := range flags {
-			if !guardNameRE.MatchString(f) {
+			if f == "*" {
+				// Flags named at run time (guard "$FLAG"): any may be asked.
+				if info.DynamicGuards == 0 {
+					info.DynamicGuards = 1
+				}
+				continue
+			}
+			if !isIdent(f) {
 				info.Problems = append(info.Problems, fmt.Sprintf("%s guards: %q is not a flag name (letters, digits, _); ignored", name, f))
 				continue
 			}

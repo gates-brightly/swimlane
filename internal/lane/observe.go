@@ -2,7 +2,6 @@ package lane
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 )
 
@@ -27,7 +26,12 @@ type Probe struct {
 	Line int      // where it is declared (1-based; 0 in a sidecar)
 }
 
-var probeNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
+// probeName reports whether s names a probe or a command: a letter or _,
+// then letters, digits, _ . and -.
+func probeName(s string) bool {
+	return s != "" && (isLetter(rune(s[0])) || s[0] == '_') &&
+		allOf(s, func(r rune) bool { return isLetter(r) || isDigit(r) || strings.ContainsRune("_.-", r) })
+}
 
 // ParseProbe reads one Observe: value: "NAME = COMMAND" or "path CMD...".
 func ParseProbe(v string) (Probe, error) {
@@ -37,7 +41,7 @@ func ParseProbe(v string) (Probe, error) {
 			return Probe{}, fmt.Errorf("Observe: path needs command names, e.g. `path terraform aws`")
 		}
 		for _, c := range f[1:] {
-			if !probeNameRE.MatchString(c) {
+			if !probeName(c) {
 				return Probe{}, fmt.Errorf("Observe: path %q is not a command name", c)
 			}
 		}
@@ -45,7 +49,7 @@ func ParseProbe(v string) (Probe, error) {
 	}
 	name, cmd, ok := strings.Cut(v, "=")
 	name, cmd = strings.TrimSpace(name), strings.TrimSpace(cmd)
-	if !ok || cmd == "" || !probeNameRE.MatchString(name) {
+	if !ok || cmd == "" || !probeName(name) {
 		return Probe{}, fmt.Errorf("Observe: %q is not `NAME = command` or `path CMD...`", v)
 	}
 	return Probe{Name: name, Cmd: cmd}, nil

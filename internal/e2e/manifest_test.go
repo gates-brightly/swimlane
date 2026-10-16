@@ -86,7 +86,7 @@ run "second" echo two-v1`)
 }
 
 // A queued lane whose included file changed since it was queued is
-// skipped: its manifest no longer matches the pin.
+// skipped: a file it declares (# Includes:) is part of its script's hash.
 func TestManifestQueuePin(t *testing.T) {
 	r := newRepo(t, "")
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
@@ -96,7 +96,7 @@ run "x" echo "x=$x"`)
 	r.mustSwim("queue", "add", "1")
 	os.WriteFile(filepath.Join(r.root, "lib", "x.sh"), []byte("x=2\n"), 0o644)
 	r.swim("watch", "--once")
-	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "its manifest changed since it was queued") {
+	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "lane.1.sh changed since it was queued") {
 		t.Errorf("swim 1 after its include changed: %s %q", st.State, st.Reason)
 	}
 }
@@ -112,14 +112,16 @@ func TestManifestApprovalBinding(t *testing.T) {
 if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop the old table")
 	contains(t, "approve", r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"]),
-		"approving manifest", "includes lib/tables.sh", "(source)", "approved: FIN_ALLOW_DROP")
+		"approving manifest", "includes lib/tables.sh", "(includes)", "approved: FIN_ALLOW_DROP")
 	r.mustSwim("run", "1")
 	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (approved by ", "PASS  drop")
 
 	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=orders\n"), 0o644)
 	r.mustSwim("run", "1")
-	contains(t, "stale include", r.log(1), "SKIP  drop table orders (dry run: ", "stale: includes lib/tables.sh changed")
-	contains(t, "approve --list", r.mustSwim("approve"), "stale: includes lib/tables.sh changed")
+	// The file is declared (# Includes:), so it's part of the script's hash:
+	// the approval is of another version of the script.
+	contains(t, "stale include", r.log(1), "SKIP  drop table orders (dry run: ", "approves another version of lane.1.sh")
+	contains(t, "approve --list", r.mustSwim("approve"), "stale: the script changed since")
 
 	// Approve the new manifest; then change only swim.yml's policy.
 	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=old_orders\n"), 0o644)

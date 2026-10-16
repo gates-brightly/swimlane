@@ -32,6 +32,25 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Upgrading
 
+- **A lane's header is its contract: undeclared guards and sources are
+  refused.** swim no longer reads a lane's body to find what it may do.
+  - A guard the body uses without a `# Guards:` line is refused when it
+    asks: a dry run, with "isn't declared ... (list it in # Guards:)". This
+    holds under swim run and for a lane run directly with bash. A lane that
+    names flags at run time (`guard "$F"`) declares `# Guards: *  <why>`.
+  - A repo file a bash lane sources without listing it in `# Includes:` is
+    no longer pinned and staged by a scan: under swim run the source stops
+    the round ("not pinned with the lane (add # Includes: ...)"). A Python
+    or TypeScript lane's local imports are likewise only staged when
+    listed. Files outside the repo, `.swim/` and `.lane.N.rc` are sourced
+    as before.
+  - `swim lint` makes both errors (`guard-unlisted`, `guard-dynamic`,
+    `source`, `includes`), and **`swim lint --fix` adds the missing
+    lines** for review. Run it over your lanes once:
+    `swim lint --fix && git diff`.
+  - A file the header lists is part of the script's hash, so editing one
+    reads "approves another version of the script" (it read "includes ...
+    changed" when the scan had found it).
 - **Script syntax 4 (modules):** a lane that uses `# Modules:`, `mod` or
   `mod_env` declares `# swim: syntax 4` (lint errors without it), so a swim
   without modules refuses it instead of running it with every module call

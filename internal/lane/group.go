@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -62,15 +61,54 @@ import (
 // path, and the SDK's jobs() calls that job's function. Every job with no
 // job under it runs; one with jobs under it only groups them.
 
-// GroupFileRE matches a group file's name.
-var GroupFileRE = regexp.MustCompile(`^lanes\.([A-Za-z0-9_-]+)\.sh$`)
+// IsGroupFile reports whether name is a group file's: lanes.<name>.sh,
+// the name letters, digits, _ and -.
+func IsGroupFile(name string) bool {
+	mid, ok := strings.CutPrefix(name, "lanes.")
+	if !ok {
+		return false
+	}
+	mid, ok = strings.CutSuffix(mid, ".sh")
+	return ok && mid != "" && allOf(mid, func(r rune) bool { return isLetter(r) || isDigit(r) || r == '_' || r == '-' })
+}
+
+// jobMark reads a job's marker line (trimmed): "# swim job 1.2", with
+// "finally" after it for a finally job ("# swim job 1.9 finally"). n is the
+// lane, path the job's place under it (2, 5.9).
+func jobMark(line string) (n int, path string, finally, ok bool) {
+	rest, found := strings.CutPrefix(line, "#")
+	if !found {
+		return 0, "", false, false
+	}
+	rest, found = strings.CutPrefix(strings.TrimLeft(rest, " \t"), "swim job")
+	if !found || rest == "" || (rest[0] != ' ' && rest[0] != '\t') {
+		return 0, "", false, false
+	}
+	rest = strings.TrimLeft(rest, " \t")
+	end := 0
+	for end < len(rest) && (isDigit(rune(rest[end])) || rest[end] == '.') {
+		end++
+	}
+	id, after := rest[:end], rest[end:]
+	first, sub, dotted := strings.Cut(id, ".")
+	if !dotted || !isDigits(first) || !IsJobPath(sub) {
+		return 0, "", false, false
+	}
+	n, _ = strconv.Atoi(first)
+	if t := strings.TrimLeft(after, " \t"); len(t) < len(after) && len(t) >= len("finally") && strings.EqualFold(t[:len("finally")], "finally") {
+		next := strings.TrimPrefix(strings.ToLower(t), "finally")
+		finally = next == "" || !(isLetter(rune(next[0])) || isDigit(rune(next[0])) || next[0] == '_')
+	}
+	return n, sub, finally, true
+}
+
+// isJobMark reports whether a (trimmed) line is a job's marker.
+func isJobMark(line string) bool {
+	_, _, _, ok := jobMark(line)
+	return ok
+}
 
 var (
-	groupMarkRE   = regexp.MustCompile(`^#[ \t]*swim job[ \t]+([0-9]+)((?:\.[0-9]+)+)(?:$|[^.0-9])`)
-	finallyMarkRE = regexp.MustCompile(`(?i)^#[ \t]*swim job[ \t]+[0-9]+(?:\.[0-9]+)+[ \t]+finally(?:$|[^A-Za-z0-9_])`)
-	jobPathRE     = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)*$`)
-	sectionLibRE  = regexp.MustCompile(`(?:^|[\s;&|(])lane_init\b`)
-	sectionSumRE  = regexp.MustCompile(`(?:^|[\s;&|(])summary(?:$|[\s;&|)])`)
 	groupLibLines = []string{`_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"`}
 	// Keys that belong to the lane (before the first job), and to a job.
 	laneOnlyKeys = map[string]bool{"after": true, "finally": true, "locks": true, "rerun-children": true, "includes": true, "cache": true,
@@ -80,12 +118,19 @@ var (
 
 // IsJobPath reports whether s is a job's place under its lane: "2",
 // "5.9.9".
-func IsJobPath(s string) bool { return jobPathRE.MatchString(s) }
+func IsJobPath(s string) bool {
+	for _, part := range strings.Split(s, ".") {
+		if !isDigits(part) {
+			return false
+		}
+	}
+	return true
+}
 
 // HasJobs reports whether a lane script's source is split into jobs.
 func HasJobs(src string) bool {
 	for _, l := range strings.Split(src, "\n") {
-		if groupMarkRE.MatchString(strings.TrimSpace(l)) {
+		if isJobMark(strings.TrimSpace(l)) {
 			return true
 		}
 	}
@@ -213,7 +258,7 @@ func GroupFiles(root string) []string {
 	entries, _ := os.ReadDir(root)
 	var out []string
 	for _, e := range entries {
-		if !e.IsDir() && GroupFileRE.MatchString(e.Name()) {
+		if !e.IsDir() && IsGroupFile(e.Name()) {
 			out = append(out, e.Name())
 		}
 	}
@@ -361,7 +406,7 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 	lines := strings.Split(strings.TrimSuffix(src, "\n"), "\n")
 	var marks []int // 0-based lines of the markers
 	for i, l := range lines {
-		if groupMarkRE.MatchString(strings.TrimSpace(l)) {
+		if isJobMark(strings.TrimSpace(l)) {
 			marks = append(marks, i)
 		}
 	}
@@ -381,8 +426,8 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 		case t == "" || i == 0 && strings.HasPrefix(t, "#!"):
 		case strings.HasPrefix(t, "#"):
 			header = append(header, lines[i])
-			if m := keyRE.FindStringSubmatch(t); m != nil && subOnlyKeys[strings.ToLower(m[1])] {
-				g.Problems = append(g.Problems, GroupProblem{name, i + 1, fmt.Sprintf("`%s:` belongs on a job (under its \"# swim job\" line), not on the lane", m[1])})
+			if k, _, ok := headerKey(t, false); ok && subOnlyKeys[strings.ToLower(k)] {
+				g.Problems = append(g.Problems, GroupProblem{name, i + 1, fmt.Sprintf("`%s:` belongs on a job (under its \"# swim job\" line), not on the lane", k)})
 			}
 		default:
 			shared = append(shared, i)
@@ -399,13 +444,13 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 	}
 	laneInfo.Problems = problems
 	for _, h := range header {
-		if m := metaRE.FindStringSubmatch(strings.TrimSpace(h)); m != nil && m[1] == "Rerun-Children" {
-			laneInfo.RerunChildren = laneInfo.setBool(m[2], "Rerun-Children:")
+		if k, v, ok := headerKey(strings.TrimSpace(h), false); ok && k == "Rerun-Children" {
+			laneInfo.RerunChildren = laneInfo.setBool(v, "Rerun-Children:")
 		}
 	}
 	laneInfo.Matrix, laneInfo.MatrixExclude = nil, nil
 	laneInfo.MatrixParallel, laneInfo.MatrixFail = 1, "stop"
-	if laneInfo.Round == "" && GroupFileRE.MatchString(name) {
+	if laneInfo.Round == "" && IsGroupFile(name) {
 		laneInfo.Round = strings.TrimSuffix(strings.TrimPrefix(name, "lanes."), ".sh")
 	}
 
@@ -424,9 +469,7 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 		if k+1 < len(marks) {
 			end = marks[k+1]
 		}
-		mm := groupMarkRE.FindStringSubmatch(strings.TrimSpace(lines[m]))
-		n, _ := strconv.Atoi(mm[1])
-		path := strings.TrimPrefix(mm[2], ".")
+		n, path, finally, _ := jobMark(strings.TrimSpace(lines[m]))
 		id := fmt.Sprintf("%d.%s", n, path)
 		if n <= 0 || zeroPart(path) {
 			g.Problems = append(g.Problems, GroupProblem{name, m + 1, fmt.Sprintf("swim job %s: lanes and jobs are numbered from 1", id)})
@@ -451,14 +494,14 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 			if t != "" && !strings.HasPrefix(t, "#") {
 				break
 			}
-			if m2 := keyRE.FindStringSubmatch(t); m2 != nil && laneOnlyKeys[strings.ToLower(m2[1])] {
-				g.Problems = append(g.Problems, GroupProblem{name, body + 1, fmt.Sprintf("`%s:` belongs on the lane (before the first \"# swim job\" line); jobs run in file order", m2[1])})
+			if k, _, ok := headerKey(t, false); ok && laneOnlyKeys[strings.ToLower(k)] {
+				g.Problems = append(g.Problems, GroupProblem{name, body + 1, fmt.Sprintf("`%s:` belongs on the lane (before the first \"# swim job\" line); jobs run in file order", k)})
 			}
 			body++
 		}
 		si := ParseScript(strings.Join(lines[m+1:body], "\n") + "\n")
 		// "# swim job 1.9 finally": it runs after its earlier siblings end.
-		si.FinallyJob = finallyMarkRE.MatchString(strings.TrimSpace(lines[m]))
+		si.FinallyJob = finally
 		secs = append(secs, section{path: path, line: m, body: body, end: end, info: si, steps: body < end})
 	}
 	if g.Native {
@@ -520,7 +563,7 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 			add(lines[i], i+1)
 		}
 		add(fmt.Sprintf("# Generated by swim from %s (swim job %s): edit that file, not this one.", name, id), 0)
-		if !codeMatches(lines[sec.line+1:sec.end], sectionLibRE) {
+		if !runsCommand(lines[sec.line+1:sec.end], "lane_init") {
 			for _, l := range groupLibLines {
 				add(l, 0)
 			}
@@ -532,7 +575,7 @@ func ParseGroup(name, src string, lane int) (Group, bool) {
 		for i := sec.body; i < sec.end; i++ {
 			add(lines[i], i+1)
 		}
-		if !codeMatches(lines[sec.line+1:sec.end], sectionSumRE) {
+		if !runsCommand(lines[sec.line+1:sec.end], "summary") {
 			add("summary", 0)
 		}
 		g.Subs = append(g.Subs, s)
@@ -599,11 +642,14 @@ func zeroPart(path string) bool {
 	return false
 }
 
-// codeMatches reports whether a line of code (not a comment) matches re.
-func codeMatches(lines []string, re *regexp.Regexp) bool {
+// runsCommand reports whether any line runs the command name (a
+// simple command whose first word it is; comments and quoted text aside).
+func runsCommand(lines []string, name string) bool {
 	for _, l := range lines {
-		if t := strings.TrimSpace(l); !strings.HasPrefix(t, "#") && re.MatchString(t) {
-			return true
+		for _, c := range Commands(l) {
+			if c[0].Text == name {
+				return true
+			}
 		}
 	}
 	return false
@@ -616,7 +662,7 @@ func JobsIn(name string, data []byte, n int) (Group, bool) {
 	if IsBinary(data) {
 		return Group{}, false
 	}
-	if GroupFileRE.MatchString(name) {
+	if IsGroupFile(name) {
 		return ParseGroup(name, string(data), 0)
 	}
 	if !HasJobs(commentsAsHash(string(data))) {

@@ -242,7 +242,11 @@ from what the previous ones left behind.
   `gate`s), `change` (only behind `guard`), `verify` (prove it worked). End
   with `summary`.
 - **Every destructive or irreversible step goes behind its own `guard
-  FLAG "<action, date, reason>"`.** List it in the header (`# Guards:`).
+  FLAG "<action, date, reason>"`.** Declare it in the header (`# Guards:
+  FLAG  <what it approves>`): swim reads a lane's guards, includes and
+  modules from its header only, and refuses one it doesn't declare (a guard
+  dry-runs; an unlisted `source` stops the round). `swim lint --fix` adds
+  missing header lines.
   With no approval it's a dry run, which is the safe default. Never default
   a flag on, and never set one in the script: swim refuses that.
 - **Gates fail closed.** An empty or unknown answer stops the round before

@@ -1437,14 +1437,19 @@ swim resume  N|JOB ... | --all      (the same command)
   again. The record says unpause whichever name is typed. A lane that
   isn't paused is left alone (exit 0).
 `,
-	"lint": `swim lint [N|JOB ...] [--strict] [--yaml]
+	"lint": `swim lint [N|JOB ...] [--strict] [--yaml] [--fix]
 
-  Check lane scripts before they run; changes nothing. With no lanes, lints
+  Check lane scripts before they run; changes nothing (but --fix). With no lanes, lints
   every lane script (stubs skipped). Each finding is printed as
       lane.2.sh:5  error  <what is wrong>  [code]
                           fix: <how to fix it>
   then a summary line ("2 errors, 1 warning"). Exit 1 on any error; with
   --strict (for CI), on warnings too. --yaml prints a swim.lint/v1 document.
+  --fix adds the header lines a script's body needs, for you to review:
+  # Guards: for each guard it uses without declaring (with the guard's own
+  action as the description), # Guards: * for a flag it names at run time,
+  # Includes: for a repo file it sources or imports. It never removes or
+  rewrites a line, and skips running lanes and lanes of jobs.
 
   Checks [code] (level):
     round (error)          no # Round: line
@@ -1458,7 +1463,9 @@ swim resume  N|JOB ... | --all      (the same command)
     stage-order (warn)     stages out of order, repeated, or change first
     bash4 (warn)           declare -A, mapfile, ${x,,}, |&, coproc, ... (macOS
                            has bash 3.2)
-    guard-unlisted (warn)  a guard flag used but not listed in # Guards:
+    guard-unlisted (error) a guard flag used but not declared in # Guards:
+                           (refused when it asks; a warning with # Guards: *)
+    guard-dynamic (error)  guard "$FLAG" without # Guards: *
     guard-unused (warn)    a # Guards: flag no guard uses
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
     blocked (error)        git push/commit/pull or a blocked_commands pattern
@@ -1497,11 +1504,13 @@ swim resume  N|JOB ... | --all      (the same command)
     cache-bypass (warn)    npm install, pip install without --require-hashes or
                            TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE in a
                            lane that caches them: the cache isn't checked
-    includes (warn)        a Python/TypeScript lane imports a local module its
-                           # Includes: doesn't list (it's pinned anyway)
+    includes (error)       a Python/TypeScript lane imports a local module its
+                           # Includes: doesn't list (it isn't staged: the
+                           import fails under swim run)
     source (error)         a bash lane sources a local file its # Includes:
-                           doesn't list, or a path built at run time (source
-                           "$x"), which swim can't pin or stage
+                           doesn't list (the round stops there under swim
+                           run), or a path built at run time (source "$x"),
+                           which swim can't pin or stage
     observe (warn)         an # Observe: probe that looks like it writes or
                            changes something (an error if it's blocked)
     sdk-bypass (info)      an SDK lane runs commands with subprocess or

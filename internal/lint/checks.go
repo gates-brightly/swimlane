@@ -337,13 +337,45 @@ func (s *Script) guardFlags() (listed, used map[string]int, order []string) {
 	return
 }
 
+// checkGuardUnlisted: a lane's guards are what its header declares, so a
+// guard it uses without declaring is refused when it asks (a dry run). With
+// "# Guards: *" any flag may be asked for, and an unlisted one only lacks
+// its description.
 func checkGuardUnlisted(c *Context, s *Script) []finding.Finding {
 	listed, used, order := s.guardFlags()
 	var out []finding.Finding
 	for _, flag := range order {
-		if _, ok := listed[flag]; !ok {
-			out = append(out, f(finding.Warn, "guard-unlisted", used[flag], fmt.Sprintf("add `# Guards: %s  <what it approves, date, reason>` to the header", flag),
+		if _, ok := listed[flag]; ok {
+			continue
+		}
+		fix := fmt.Sprintf("add `# Guards: %s  <what it approves, date, reason>` to the header (swim lint --fix adds it)", flag)
+		if s.Info.DynamicGuards > 0 {
+			out = append(out, f(finding.Warn, "guard-unlisted", used[flag], fix,
 				"guard flag %s is used but not listed in `# Guards:`; the operator reads the header to know what it approves", flag))
+			continue
+		}
+		out = append(out, f(finding.Error, "guard-unlisted", used[flag], fix,
+			"guard flag %s is used but not declared in `# Guards:`: swim refuses it when it asks (a dry run)", flag))
+	}
+	return out
+}
+
+// checkGuardDynamic: a guard whose flag is named at run time (guard
+// "$FLAG") may ask for any flag only if the header says so: # Guards: *.
+func checkGuardDynamic(c *Context, s *Script) []finding.Finding {
+	if s.Info.DynamicGuards > 0 {
+		return nil
+	}
+	var out []finding.Finding
+	for i, line := range s.v.code {
+		if s.v.doc[i] {
+			continue
+		}
+		for _, cmd := range lane.Commands(line) {
+			if len(cmd) > 1 && cmd[0].Text == "guard" && cmd[1].Expands {
+				out = append(out, f(finding.Error, "guard-dynamic", i, "add `# Guards: *  <which flags, and why they're named at run time>` (swim lint --fix adds it), or name the flag",
+					"guard %s names its flag at run time, but the header doesn't say `# Guards: *`: swim refuses it when it asks", cmd[1].Text))
+			}
 		}
 	}
 	return out
@@ -947,12 +979,12 @@ func checkIncludes(c *Context, s *Script) []finding.Finding {
 	}
 	var out []finding.Finding
 	for i, line := range s.v.raw {
-		cands := lane.ImportCandidates(ext, line)
+		cands := importCandidates(ext, line)
 		for _, cand := range cands {
 			if st, err := os.Stat(filepath.Join(c.Root, cand)); err == nil && !st.IsDir() {
 				if !covered(cand) {
-					out = append(out, f(finding.Warn, "includes", i, "add `# Includes: "+cand+"` (globs work) so the script says what it runs",
-						"imports local %s, which isn't in # Includes: (swim pins and stages it anyway; approvers reading the script won't see it)", cand))
+					out = append(out, f(finding.Error, "includes", i, "add `# Includes: "+cand+"` (globs work; swim lint --fix adds it)",
+						"imports local %s, which isn't in # Includes:: it isn't staged, so the import fails under swim run", cand))
 				}
 				break
 			}
@@ -977,10 +1009,10 @@ func (s *Script) included(rel string) bool {
 	return false
 }
 
-// checkSource: a bash lane that sources a local file should list it in #
-// Includes:. swim pins and stages a literal path anyway (the execution
-// manifest), but a path built at run time can't be pinned at all: what it
-// runs is outside what was approved.
+// checkSource: a bash lane that sources a local file must list it in #
+// Includes:, which is what swim pins and stages: under swim run, sourcing a
+// repo file the header doesn't list stops the round. A path built at run
+// time can't be pinned at all: what it runs is outside what was approved.
 func checkSource(c *Context, s *Script) []finding.Finding {
 	if c.Root == "" {
 		return nil
@@ -991,14 +1023,14 @@ func checkSource(c *Context, s *Script) []finding.Finding {
 		return nil
 	}
 	var out []finding.Finding
-	for _, src := range lane.ScanSources(c.Root, s.Name, s.Src) {
+	for _, src := range scanSources(c.Root, s.Name, s.Src) {
 		switch {
 		case src.Dynamic:
 			out = append(out, f(finding.Error, "source", src.Line-1, "source a literal repo path, listed in # Includes:",
 				"sources %s, a path known only at run time: swim can't pin or stage it, so no approval covers what it runs", src.Arg))
 		case !s.included(src.Path):
-			out = append(out, f(finding.Error, "source", src.Line-1, "add `# Includes: "+src.Path+"` (globs work) so the script says what it runs",
-				"sources local %s, which isn't in # Includes:", src.Path))
+			out = append(out, f(finding.Error, "source", src.Line-1, "add `# Includes: "+src.Path+"` (globs work; swim lint --fix adds it)",
+				"sources local %s, which isn't in # Includes:: under swim run that stops the round", src.Path))
 		}
 	}
 	return out

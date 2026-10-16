@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -219,41 +218,15 @@ func (i Info) GuardFlags() []string {
 	return out
 }
 
-var (
-	// Header keys are "# Key: value" with at most one space after the #;
-	// indented comment lines ("#   After: ...") are prose, not keys.
-	roundRE = regexp.MustCompile(`^#?[ \t]?Round:\s*(.*)$`)
-	jobRE   = regexp.MustCompile(`^#[ \t]?Job:\s*(\S+)`)
-	afterRE = regexp.MustCompile(`^#[ \t]?After:\s*(.*)$`)
-	metaRE  = regexp.MustCompile(`^#[ \t]?(Owner|Created|Guards|Timeout|Step-Timeout|Locks|Fail|Handler-Timeout|On-Success|On-Failure|On-Exit|Outputs|Matrix|Matrix-Exclude|Matrix-Parallel|Matrix-Fail|Includes|Always|Rerun-Children|Observe|Finally|Cache|Modules):\s*(.*)$`)
-	keyRE   = regexp.MustCompile(`^#[ \t]?([A-Za-z][A-Za-z0-9 _-]*?):\s*(.*)$`)
-	sepRE   = regexp.MustCompile(`[\s,]+`)
-	// stageUseRE / stageArgRE are a stage call: `stage check`, `swim stage
-	// check`, or ["swim", "stage", "check"] from another language.
-	stageUseRE    = regexp.MustCompile(`(?:^|[\s;&|(])stage\s+["']?(?:snapshot|check|change|verify)\b`)
-	evidenceUseRE = regexp.MustCompile(`(?:^|[\s;&|(])evidence\s+(?:--\S+\s+\S*\s*)*["']`)
-	evidenceArgRE = regexp.MustCompile(`['"]evidence['"]\s*,`)
-	// modEvidenceRE is a module call as an evidence step: mod --evidence
-	// tf plan ..., or an SDK's r.module(..., evidence=True).
-	modEvidenceRE = regexp.MustCompile(`(?:(?:^|[\s;&|(])mod\s+(?:--\S+\s+(?:"[^"]*"\s+|'[^']*'\s+)?)*--evidence\b|\.[Mm]odule\w*\(.*\b[Ee]vidence\s*[=:]\s*(?:True|true)\b)`)
-	dynGuardRE    = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+["']?\$`)
-	stageArgRE    = regexp.MustCompile(`['"]stage['"]\s*,\s*['"](?:snapshot|check|change|verify)['"]`)
-	// handlerFnRE is a handler function's first line: on_failure() {
-	handlerFnRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failure|on_exit)\s*\(\s*\)`)
-	guardUse    = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	// guardArgUse is `swim guard FLAG` from another language, the
-	// arguments as a list: ["swim", "guard", "FLAG", ...].
-	guardArgUse = regexp.MustCompile(`['"]guard['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]`)
-	// sdkGuardUse is an SDK's guard call: r.guard("FLAG", ...) (Python,
-	// TypeScript) or r.Guard("FLAG", ...) (Go); sdkDynGuard names its flag
-	// at run time.
-	sdkGuardUse = regexp.MustCompile(`\.[Gg]uard\(\s*["'\x60]([A-Za-z_][A-Za-z0-9_]*)["'\x60]`)
-	sdkDynGuard = regexp.MustCompile(`\.[Gg]uard\(\s*[A-Za-z_]`)
-	knownKeys   = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
-		"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
-		"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true,
-		"always": true, "rerun-children": true, "observe": true, "finally": true, "cache": true, "modules": true}
-)
+// knownKeys are the header keys swim reads (lower case); any other key in
+// the header block is kept as an extra and shown.
+var knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
+	"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
+	"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true,
+	"always": true, "rerun-children": true, "observe": true, "finally": true, "cache": true, "modules": true}
+
+// stageNames are the stages, in order.
+var stageNames = map[string]bool{"snapshot": true, "check": true, "change": true, "verify": true}
 
 // ReadScript inspects lane n's script and its sidecar lane.N.yml. A lane
 // script without a Round (in its header or sidecar) is treated as not
@@ -330,6 +303,12 @@ func ReadScript(root string, n int) (Info, error) {
 // keys are collected from the metadata block at the top (the `# Key: value`
 // lines straight after the shebang and syntax line). Header comments are
 // "#" or "//" (lane.N.js, lane.N.ts, lane.N.go, ...).
+//
+// The header is the lane's contract: its guards (# Guards:, "*" for flags
+// named at run time), the files it reads (# Includes:) and its modules
+// (# Modules:) are what the run allows. The body is read only for where
+// its stages and outcome handlers are, and whether it shows evidence (see
+// text.go).
 func ParseScript(src string) Info {
 	lines := strings.Split(src, "\n")
 	for i, l := range lines {
@@ -344,162 +323,58 @@ func ParseScript(src string) Info {
 	for i, raw := range lines {
 		line := strings.TrimSpace(raw)
 		if i < 200 {
-			if i == 0 && strings.HasPrefix(line, "#!") || syntaxLineRE.MatchString(line) {
+			if i == 0 && strings.HasPrefix(line, "#!") || syntax.IsScriptLine(line) {
 				continue
 			}
 			if line == StubMarker {
 				info.Stub = true
 				continue
 			}
-			if m := afterRE.FindStringSubmatch(line); m != nil {
-				for _, tok := range sepRE.Split(m[1], -1) {
-					switch strings.ToLower(tok) {
-					case "", "swim", "-", "none", "(none)":
-						continue
-					}
-					info.After = append(info.After, tok)
-				}
-				continue
-			}
-			if m := jobRE.FindStringSubmatch(line); m != nil {
-				if info.Job == "" {
-					info.Job = m[1]
-				}
-				continue
-			}
-			if m := metaRE.FindStringSubmatch(line); m != nil {
-				v := strings.TrimSpace(m[2])
-				switch m[1] {
-				case "Owner":
-					info.Owner = v
-				case "Created":
-					info.Created = v
-				case "Timeout":
-					info.TimeoutText = v
-					if v != "" && v != "-" && !strings.EqualFold(v, "none") {
-						d, err := time.ParseDuration(v)
-						if err != nil || d <= 0 {
-							info.Problems = append(info.Problems, fmt.Sprintf("Timeout %q is not a duration like 30m or 1h30m; no timeout applies", v))
-						} else {
-							info.Timeout = d
-						}
-					}
-				case "Step-Timeout":
-					if v != "" && v != "-" && !strings.EqualFold(v, "none") {
-						d, err := time.ParseDuration(v)
-						if err != nil || d <= 0 {
-							info.Problems = append(info.Problems, fmt.Sprintf("Step-Timeout %q is not a duration like 2m or 30s; no default step limit applies", v))
-						} else {
-							info.StepTimeout, info.StepTimeoutText = d, v
-						}
-					}
-				case "Locks":
-					for _, tok := range sepRE.Split(v, -1) {
-						switch {
-						case tok == "" || tok == "-" || strings.EqualFold(tok, "none"):
-						case !ValidLockName(strings.NewReplacer("${", "", "}", "", "$", "").Replace(tok)):
-							info.Problems = append(info.Problems, fmt.Sprintf("Locks: %q is not a lock name (letters, digits, . _ - /); ignored", tok))
-						default:
-							info.Locks = append(info.Locks, tok)
-						}
-					}
-				case "Outputs":
-					info.setOutputs(sepRE.Split(v, -1), "Outputs:")
-				case "Observe":
-					info.addProbe(v, "Observe:")
-					if k := len(info.Observe); k > 0 && info.Observe[k-1].Line == 0 {
-						info.Observe[k-1].Line = i + 1
-					}
-				case "Includes":
-					for _, g := range sepRE.Split(v, -1) {
-						if g != "" && g != "-" && !strings.EqualFold(g, "none") {
-							info.Includes = append(info.Includes, g)
-						}
-					}
-				case "Matrix", "Matrix-Exclude", "Matrix-Parallel", "Matrix-Fail":
-					if v != "" && v != "-" {
-						info.setMatrixLine(m[1], v)
-					}
-				case "Fail":
-					info.setFail(v, "Fail:")
-				case "Always":
-					info.Always = info.setBool(v, "Always:")
-				case "Finally":
-					for _, tok := range sepRE.Split(v, -1) {
-						switch strings.ToLower(tok) {
-						case "", "swim", "-", "none", "(none)":
-							continue
-						}
-						info.Finally = append(info.Finally, tok)
-					}
-				case "Cache":
-					info.setCache(v, "Cache:")
-				case "Modules":
-					info.setModules(sepRE.Split(v, -1))
-				case "Rerun-Children":
-					info.RerunChildren = info.setBool(v, "Rerun-Children:")
-				case "Handler-Timeout":
-					info.setHandlerTimeout(v, "Handler-Timeout")
-				case "On-Success", "On-Failure", "On-Exit":
-					if v != "" && v != "-" && !strings.EqualFold(v, "none") {
-						info.setHandlerCmd(strings.ReplaceAll(strings.ToLower(m[1]), "-", "_"), v, i+1)
-					}
-				case "Guards":
-					if f := strings.Fields(v); len(f) > 0 && f[0] != "-" && !strings.EqualFold(f[0], "none") && !listed[f[0]] {
-						listed[f[0]] = true
-						info.Guards = append(info.Guards, Guard{Flag: f[0], Desc: strings.TrimSpace(strings.TrimPrefix(v, f[0]))})
-					}
-				}
+			key, v, isKey := headerKey(line, false)
+			roundKey, roundVal, _ := headerKey(line, true)
+			isRound := roundKey == "Round"
+			if isKey && info.setHeader(key, v, i+1, listed) {
 				continue
 			}
 			if inBlock {
-				if m := keyRE.FindStringSubmatch(line); m != nil && !knownKeys[strings.ToLower(m[1])] && !strings.HasPrefix(line, "#!") {
-					info.Extra = append(info.Extra, KV{m[1], strings.TrimSpace(m[2])})
+				if isKey && !knownKeys[strings.ToLower(key)] && !strings.HasPrefix(line, "#!") {
+					info.Extra = append(info.Extra, KV{key, v})
 					continue
 				}
-				if !roundRE.MatchString(line) {
+				if !isRound {
 					inBlock = false
 				}
 			}
-			if info.Stub && strings.HasPrefix(line, "# ") && info.Message == "" && !roundRE.MatchString(line) && i > 0 {
+			if info.Stub && strings.HasPrefix(line, "# ") && info.Message == "" && !isRound && i > 0 {
 				info.Message = strings.TrimPrefix(line, "# ")
 			}
-			if m := roundRE.FindStringSubmatch(line); m != nil && info.Round == "" {
-				info.Round = strings.TrimSpace(m[1])
+			if isRound && info.Round == "" {
+				info.Round = roundVal
 			}
 		}
 		// Outcome handler functions, and the guards inside them.
-		if m := handlerFnRE.FindStringSubmatch(raw); m != nil {
-			if _, dup := info.Handler(m[1]); !dup {
-				info.Handlers = append(info.Handlers, Handler{Name: m[1], Line: i + 1})
+		if name, ok := handlerDef(raw); ok {
+			if _, dup := info.Handler(name); !dup {
+				info.Handlers = append(info.Handlers, Handler{Name: name, Line: i + 1})
 				inHandler = len(info.Handlers) - 1
 			}
 		} else if inHandler >= 0 && strings.TrimRight(raw, " \t") == "}" {
 			inHandler = -1
 		}
-		// Guard flags used in the body count even if the header doesn't list them.
-		if !strings.HasPrefix(line, "#") {
-			if stageUseRE.MatchString(line) || stageArgRE.MatchString(line) {
-				info.Staged = true
-			}
-			if dynGuardRE.MatchString(line) || sdkDynGuard.MatchString(line) {
-				info.DynamicGuards++
-			}
-			if evidenceUseRE.MatchString(line) || evidenceArgRE.MatchString(line) || modEvidenceRE.MatchString(line) {
-				info.UsesEvidence = true
-			}
-			// A bash guard call's flag is a bare word: quoted text that
-			// says "the guard was declined" is prose, not a call.
-			uses := guardUse.FindAllStringSubmatch(blankQuoted(line), -1)
-			uses = append(uses, guardArgUse.FindAllStringSubmatch(line, -1)...)
-			uses = append(uses, sdkGuardUse.FindAllStringSubmatch(line, -1)...)
-			for _, m := range uses {
-				if inHandler >= 0 {
-					info.Handlers[inHandler].Guards = append(info.Handlers[inHandler].Guards, m[1])
-				}
-				if !listed[m[1]] {
-					listed[m[1]] = true
-					info.Guards = append(info.Guards, Guard{Flag: m[1]})
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		cmds := Commands(line)
+		if !info.Staged && stagesIn(line, cmds) {
+			info.Staged = true
+		}
+		if !info.UsesEvidence && evidenceIn(line, cmds) {
+			info.UsesEvidence = true
+		}
+		if inHandler >= 0 {
+			for _, c := range cmds {
+				if len(c) > 1 && c[0].Text == "guard" && !c[1].Expands && isIdent(c[1].Text) {
+					info.Handlers[inHandler].Guards = append(info.Handlers[inHandler].Guards, c[1].Text)
 				}
 			}
 		}
@@ -512,27 +387,225 @@ func ParseScript(src string) Info {
 	return info
 }
 
-// blankQuoted replaces what's inside '...' and "..." (backslash escapes
-// in double quotes honoured) with spaces, keeping the quotes and the
-// line's length.
-func blankQuoted(line string) string {
-	b := []byte(line)
-	var in byte
-	for i := 0; i < len(b); i++ {
-		c := b[i]
-		switch {
-		case in == 0 && (c == '\'' || c == '"'):
-			in = c
-		case in != 0 && c == in:
-			in = 0
-		case in == '"' && c == '\\' && i+1 < len(b):
-			b[i], b[i+1] = ' ', ' '
-			i++
-		case in != 0:
-			b[i] = ' '
+// setHeader applies a header key the script sets (line is 1-based), and
+// reports whether swim reads the key there. Round is read apart (it may
+// come without its #).
+func (info *Info) setHeader(key, v string, line int, listed map[string]bool) bool {
+	switch key {
+	case "After":
+		for _, tok := range splitList(v) {
+			switch strings.ToLower(tok) {
+			case "swim", "-", "none", "(none)":
+				continue
+			}
+			info.After = append(info.After, tok)
+		}
+	case "Job":
+		f := strings.Fields(v)
+		if len(f) == 0 {
+			return false
+		}
+		if info.Job == "" {
+			info.Job = f[0]
+		}
+	case "Owner":
+		info.Owner = v
+	case "Created":
+		info.Created = v
+	case "Timeout":
+		info.TimeoutText = v
+		if v != "" && v != "-" && !strings.EqualFold(v, "none") {
+			d, err := time.ParseDuration(v)
+			if err != nil || d <= 0 {
+				info.Problems = append(info.Problems, fmt.Sprintf("Timeout %q is not a duration like 30m or 1h30m; no timeout applies", v))
+			} else {
+				info.Timeout = d
+			}
+		}
+	case "Step-Timeout":
+		if v != "" && v != "-" && !strings.EqualFold(v, "none") {
+			d, err := time.ParseDuration(v)
+			if err != nil || d <= 0 {
+				info.Problems = append(info.Problems, fmt.Sprintf("Step-Timeout %q is not a duration like 2m or 30s; no default step limit applies", v))
+			} else {
+				info.StepTimeout, info.StepTimeoutText = d, v
+			}
+		}
+	case "Locks":
+		for _, tok := range splitList(v) {
+			switch {
+			case tok == "-" || strings.EqualFold(tok, "none"):
+			case !ValidLockName(strings.NewReplacer("${", "", "}", "", "$", "").Replace(tok)):
+				info.Problems = append(info.Problems, fmt.Sprintf("Locks: %q is not a lock name (letters, digits, . _ - /); ignored", tok))
+			default:
+				info.Locks = append(info.Locks, tok)
+			}
+		}
+	case "Outputs":
+		info.setOutputs(splitList(v), "Outputs:")
+	case "Observe":
+		info.addProbe(v, "Observe:")
+		if k := len(info.Observe); k > 0 && info.Observe[k-1].Line == 0 {
+			info.Observe[k-1].Line = line
+		}
+	case "Includes":
+		for _, g := range splitList(v) {
+			if g != "-" && !strings.EqualFold(g, "none") {
+				info.Includes = append(info.Includes, g)
+			}
+		}
+	case "Matrix", "Matrix-Exclude", "Matrix-Parallel", "Matrix-Fail":
+		if v != "" && v != "-" {
+			info.setMatrixLine(key, v)
+		}
+	case "Fail":
+		info.setFail(v, "Fail:")
+	case "Always":
+		info.Always = info.setBool(v, "Always:")
+	case "Finally":
+		for _, tok := range splitList(v) {
+			switch strings.ToLower(tok) {
+			case "swim", "-", "none", "(none)":
+				continue
+			}
+			info.Finally = append(info.Finally, tok)
+		}
+	case "Cache":
+		info.setCache(v, "Cache:")
+	case "Modules":
+		info.setModules(splitList(v))
+	case "Rerun-Children":
+		info.RerunChildren = info.setBool(v, "Rerun-Children:")
+	case "Handler-Timeout":
+		info.setHandlerTimeout(v, "Handler-Timeout")
+	case "On-Success", "On-Failure", "On-Exit":
+		if v != "" && v != "-" && !strings.EqualFold(v, "none") {
+			info.setHandlerCmd(strings.ReplaceAll(strings.ToLower(key), "-", "_"), v, line)
+		}
+	case "Guards":
+		info.addGuard(v, listed)
+	default:
+		return false
+	}
+	return true
+}
+
+// addGuard reads a # Guards: line: "FLAG  what it approves", or "*  why"
+// for a lane that names flags at run time (guard "$FLAG"), which may then
+// ask for any.
+func (info *Info) addGuard(v string, listed map[string]bool) {
+	f := strings.Fields(v)
+	if len(f) == 0 || f[0] == "-" || strings.EqualFold(f[0], "none") {
+		return
+	}
+	if f[0] == "*" {
+		if info.DynamicGuards == 0 {
+			info.DynamicGuards = 1
+		}
+		return
+	}
+	if !listed[f[0]] {
+		listed[f[0]] = true
+		info.Guards = append(info.Guards, Guard{Flag: f[0], Desc: strings.TrimSpace(strings.TrimPrefix(v, f[0]))})
+	}
+}
+
+// handlerDef reports whether a line starts an outcome handler function:
+// on_failure() {, function on_exit () {.
+func handlerDef(raw string) (string, bool) {
+	t := strings.TrimSpace(raw)
+	t = strings.TrimSpace(strings.TrimPrefix(t, "function "))
+	for _, name := range HandlerNames {
+		rest, ok := strings.CutPrefix(t, name)
+		if !ok {
+			continue
+		}
+		rest = strings.TrimLeft(rest, " \t")
+		if after, ok := strings.CutPrefix(rest, "("); ok && strings.HasPrefix(strings.TrimLeft(after, " \t"), ")") {
+			return name, true
 		}
 	}
-	return string(b)
+	return "", false
+}
+
+// stagesIn reports whether a line starts a stage: `stage check`, `swim
+// stage check`, or ["swim", "stage", "check"] from another language.
+func stagesIn(line string, cmds [][]Word) bool {
+	for _, c := range cmds {
+		if len(c) > 1 && c[0].Text == "stage" && stageNames[c[1].Text] {
+			return true
+		}
+		if rest, ok := swimCall(c); ok && len(rest) > 1 && rest[0].Text == "stage" && stageNames[rest[1].Text] {
+			return true
+		}
+	}
+	for _, s := range quotedAfter(line, "stage") {
+		if stageNames[s] {
+			return true
+		}
+	}
+	return false
+}
+
+// modValueOpts are mod's options that take a value.
+var modValueOpts = map[string]bool{"--label": true, "--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true}
+
+// evidenceIn reports whether a line has an evidence step: `evidence
+// "<label>" ...`, `swim evidence`, `mod --evidence ...`, ["evidence", ...]
+// from another language, or an SDK's module call with evidence on.
+func evidenceIn(line string, cmds [][]Word) bool {
+	for _, c := range cmds {
+		if len(c) > 1 && c[0].Text == "evidence" {
+			return true
+		}
+		if rest, ok := swimCall(c); ok && len(rest) > 0 && rest[0].Text == "evidence" {
+			return true
+		}
+		if len(c) > 1 && c[0].Text == "mod" {
+			for k := 1; k < len(c) && strings.HasPrefix(c[k].Text, "--"); k++ {
+				if c[k].Text == "--evidence" {
+					return true
+				}
+				if modValueOpts[c[k].Text] {
+					k++
+				}
+			}
+		}
+	}
+	if quotedThen(line, "evidence", ',') {
+		return true
+	}
+	return sdkModuleEvidence(line)
+}
+
+// sdkModuleEvidence reports whether a line calls an SDK's module (or
+// moduleWith, ModuleWith) with evidence on: evidence=True, evidence: true,
+// Evidence: true.
+func sdkModuleEvidence(line string) bool {
+	i := strings.Index(line, ".module")
+	if j := strings.Index(line, ".Module"); i < 0 || j >= 0 && j < i {
+		i = j
+	}
+	if i < 0 {
+		return false
+	}
+	rest := line[i:]
+	for {
+		k := strings.Index(rest, "vidence")
+		if k < 1 {
+			return false
+		}
+		if e := rest[k-1]; e == 'e' || e == 'E' {
+			after := strings.TrimLeft(rest[k+len("vidence"):], " \t")
+			if after != "" && (after[0] == '=' || after[0] == ':') {
+				val := strings.TrimLeft(after[1:], " \t")
+				if strings.HasPrefix(val, "True") || strings.HasPrefix(val, "true") {
+					return true
+				}
+			}
+		}
+		rest = rest[k+len("vidence"):]
+	}
 }
 
 // setOutputs reads Outputs: names: relative paths inside $SWIM_OUT.
@@ -622,16 +695,54 @@ func (i Info) HandlerBudget() time.Duration {
 	return DefaultHandlerTimeout
 }
 
-var syntaxLineRE = regexp.MustCompile(`^#\s*swim:\s*syntax\s+\d+\s*$`)
+// The syntax 1 template's lines MigrateScript reads.
+var v1StageNames = map[string]string{"1": "snapshot", "2": "check", "3": "change", "4": "verify"}
 
-var (
-	lane1RE      = regexp.MustCompile(`^#\s*Lane:.*Written:\s*(\S+)`)
-	headKeyRE    = regexp.MustCompile(`^#\s*(Round|Job|After):`)
-	v1StageRE    = regexp.MustCompile(`^# ([1-4])\. (Snapshot|Checks?|Change|Verify)\b`)
-	stageCallRE  = regexp.MustCompile(`^\s*stage\s+\w+`)
-	laneInitRE   = regexp.MustCompile(`^\s*lane_init\s`)
-	v1StageNames = map[string]string{"1": "snapshot", "2": "check", "3": "change", "4": "verify"}
-)
+// v1Written is the old template's "# Lane: ... Written: DATE" date.
+func v1Written(l string) (string, bool) {
+	rest, ok := strings.CutPrefix(l, "#")
+	if !ok || !strings.HasPrefix(strings.TrimSpace(rest), "Lane:") {
+		return "", false
+	}
+	_, after, ok := strings.Cut(rest, "Written:")
+	if f := strings.Fields(after); ok && len(f) > 0 {
+		return f[0], true
+	}
+	return "", false
+}
+
+// v1HeadKey reports whether a trimmed line is a Round, Job or After line.
+func v1HeadKey(t string) bool {
+	rest, ok := strings.CutPrefix(t, "#")
+	rest = strings.TrimSpace(rest)
+	return ok && (strings.HasPrefix(rest, "Round:") || strings.HasPrefix(rest, "Job:") || strings.HasPrefix(rest, "After:"))
+}
+
+// v1Stage reads the old template's numbered section line, "# 2. Checks".
+func v1Stage(l string) (string, bool) {
+	rest, ok := strings.CutPrefix(l, "# ")
+	if !ok || len(rest) < 4 || rest[1:3] != ". " {
+		return "", false
+	}
+	name, ok := v1StageNames[rest[:1]]
+	if !ok {
+		return "", false
+	}
+	w := rest[3:]
+	for _, t := range []string{"Snapshot", "Checks", "Check", "Change", "Verify"} {
+		if after, ok := strings.CutPrefix(w, t); ok && (after == "" || !(isLetter(rune(after[0])) || isDigit(rune(after[0])) || after[0] == '_')) {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// firstWordIs reports whether a line's first word is cmd, with something
+// after it.
+func firstWordIs(l, cmd string) bool {
+	f := strings.Fields(l)
+	return len(f) > 1 && f[0] == cmd
+}
 
 // MigrateScript rewrites a syntax 1 lane script as syntax 2: it adds the
 // syntax line, a Created: date from the old template's "Written:" field, and
@@ -653,20 +764,20 @@ func MigrateScript(src string) (string, bool) {
 
 	created, hasCreated, hasStages := "", false, false
 	for _, l := range lines {
-		if m := lane1RE.FindStringSubmatch(l); m != nil {
-			created = m[1]
+		if d, ok := v1Written(l); ok {
+			created = d
 		}
 		if strings.HasPrefix(strings.TrimSpace(l), "# Created:") {
 			hasCreated = true
 		}
-		if stageCallRE.MatchString(l) {
+		if firstWordIs(l, "stage") {
 			hasStages = true
 		}
 	}
 	// Created: goes after the leading Round/Job/After lines.
 	insertAt := -1
 	for k := i; k < len(lines) && k < i+8; k++ {
-		if headKeyRE.MatchString(strings.TrimSpace(lines[k])) {
+		if v1HeadKey(strings.TrimSpace(lines[k])) {
 			insertAt = k
 		} else if insertAt >= 0 {
 			break
@@ -678,12 +789,12 @@ func MigrateScript(src string) (string, bool) {
 		if k == insertAt && created != "" && !hasCreated {
 			out = append(out, "# Created: "+created)
 		}
-		if laneInitRE.MatchString(lines[k]) {
+		if firstWordIs(lines[k], "lane_init") {
 			afterInit = true
 		}
 		if afterInit && !hasStages {
-			if m := v1StageRE.FindStringSubmatch(lines[k]); m != nil {
-				out = append(out, "stage "+v1StageNames[m[1]])
+			if name, ok := v1Stage(lines[k]); ok {
+				out = append(out, "stage "+name)
 			}
 		}
 	}
@@ -828,11 +939,23 @@ func refuseRunning(root string, n int) error {
 	return nil
 }
 
-var slugRE = regexp.MustCompile(`[^a-z0-9]+`)
-
-// Slug turns free text into a file-name fragment.
+// Slug turns free text into a file-name fragment: lower-case letters and
+// digits, every other run of characters one "-".
 func Slug(s string) string {
-	s = strings.Trim(slugRE.ReplaceAllString(strings.ToLower(s), "-"), "-")
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(s) {
+		if r >= 'a' && r <= 'z' || isDigit(r) {
+			if dash && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r)
+			dash = false
+		} else {
+			dash = true
+		}
+	}
+	s = b.String()
 	if len(s) > 60 {
 		s = strings.TrimRight(s[:60], "-")
 	}
@@ -983,13 +1106,11 @@ func NewRunID() string {
 // --run-id): the same characters as a job id.
 func ValidRunID(id string) bool { return ValidJobID(id) }
 
-var jobIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$`)
-
 // ValidJobID reports whether id can be used as a job id: 8-64 characters of
 // letters, digits, '.', '_' or '-', not all digits (so it can't be mistaken
 // for a lane number).
 func ValidJobID(id string) bool {
-	if !jobIDRE.MatchString(id) {
+	if !validJobID(id) {
 		return false
 	}
 	for _, r := range id {
@@ -1020,7 +1141,32 @@ func MatchJob(id, ref string) bool {
 	return len(ref) >= 8 && strings.HasPrefix(strings.ToLower(id), strings.ToLower(ref))
 }
 
-var oldLogRE = regexp.MustCompile(`^agent([0-9]+)(\.prev-.+)?\.log$`)
+// oldLog reads an old root-level lane log's name: agentN.log, or an
+// archive agentN.prev-<name>.log.
+func oldLog(name string) (int, bool) {
+	mid, ok := strings.CutPrefix(name, "agent")
+	if !ok {
+		return 0, false
+	}
+	if mid, ok = strings.CutSuffix(mid, ".log"); !ok {
+		return 0, false
+	}
+	num, archive, dotted := strings.Cut(mid, ".")
+	if !isDigits(num) || dotted && (!strings.HasPrefix(archive, "prev-") || archive == "prev-") {
+		return 0, false
+	}
+	n, err := strconv.Atoi(num)
+	return n, err == nil
+}
+
+// validJobID reports whether id is a job id: 8 to 64 characters, letters,
+// digits, . _ and -, starting with a letter or digit.
+func validJobID(id string) bool {
+	if len(id) < 8 || len(id) > 64 || !(isLetter(rune(id[0])) || isDigit(rune(id[0]))) {
+		return false
+	}
+	return allOf(id, func(r rune) bool { return isLetter(r) || isDigit(r) || r == '.' || r == '_' || r == '-' })
+}
 
 // MigrateLogs moves lane logs written by older versions of swim to the repo
 // root (agentN.log, agentN.prev-*.log) into .swim/logs/. Logs of a running
@@ -1033,11 +1179,10 @@ func MigrateLogs(root string) []string {
 	}
 	var moved []string
 	for _, e := range entries {
-		m := oldLogRE.FindStringSubmatch(e.Name())
-		if m == nil || e.IsDir() {
+		n, ok := oldLog(e.Name())
+		if !ok || e.IsDir() {
 			continue
 		}
-		n, _ := strconv.Atoi(m[1])
 		if _, running := Running(root, n); running {
 			continue
 		}

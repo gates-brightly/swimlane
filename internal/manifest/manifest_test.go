@@ -12,11 +12,12 @@ import (
 
 const lane3 = `#!/usr/bin/env bash
 # Round: drop orders
-# Includes: lib/inc.sh
+# Includes: lib/inc.sh lib/orders.sh lib/deep.sh
 # Guards: DROP  drop the table
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 3
 source lib/orders.sh
+source lib/undeclared.sh
 if guard DROP "drop orders"; then run "drop" true; fi
 summary
 `
@@ -28,16 +29,17 @@ func repo(t *testing.T) string {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
 	files := map[string]string{
-		"lane.3.sh":      lane3,
-		"lib/inc.sh":     "inc=1\n",
-		"lib/orders.sh":  ". lib/deep.sh\n",
-		"lib/deep.sh":    "deep=1\n",
-		"lane.3.yml":     "owner: ops\n",
-		"data/rows.csv":  "a,b\n",
-		"swim.yml":       "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 2\n",
-		"lookup.yml":     "users: {}\nrequire:\n  - guards: [DROP]\n    count: 1\n",
-		"lanes.ci.sh":    "#!/usr/bin/env bash\n# Round: ci\n\n# swim job 5.1\n# Round: fmt\nrun \"fmt\" true\n\n# swim job 5.2\n# Round: test\nif guard SHIP \"ship\"; then run \"ship\" true; fi\n",
-		"notes/other.md": "not code\n",
+		"lane.3.sh":         lane3,
+		"lib/inc.sh":        "inc=1\n",
+		"lib/orders.sh":     ". lib/deep.sh\n",
+		"lib/deep.sh":       "deep=1\n",
+		"lib/undeclared.sh": "undeclared=1\n",
+		"lane.3.yml":        "owner: ops\n",
+		"data/rows.csv":     "a,b\n",
+		"swim.yml":          "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 2\n",
+		"lookup.yml":        "users: {}\nrequire:\n  - guards: [DROP]\n    count: 1\n",
+		"lanes.ci.sh":       "#!/usr/bin/env bash\n# Round: ci\n\n# swim job 5.1\n# Round: fmt\nrun \"fmt\" true\n\n# swim job 5.2\n# Round: test\n# Guards: SHIP  ship it\nif guard SHIP \"ship\"; then run \"ship\" true; fi\n",
+		"notes/other.md":    "not code\n",
 	}
 	for p, data := range files {
 		write(t, root, p, data)
@@ -78,7 +80,7 @@ func TestBuildPins(t *testing.T) {
 	for _, f := range m.Pinned.Includes {
 		inc = append(inc, f.Path+":"+f.From)
 	}
-	if got := strings.Join(inc, " "); got != "lib/deep.sh:source lib/inc.sh:includes lib/orders.sh:source" {
+	if got := strings.Join(inc, " "); got != "lib/deep.sh:includes lib/inc.sh:includes lib/orders.sh:includes" {
 		t.Errorf("includes: %s", got)
 	}
 	if m.Pinned.Sidecar == nil || m.Pinned.Sidecar.Path != "lane.3.yml" || m.Pinned.Runner != "bash" || m.Pinned.Config.Rules == "" {
@@ -112,6 +114,9 @@ func TestCoverage(t *testing.T) {
 		{"swim.yml other key", "swim.yml", "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 5\n", false, ""},
 		{"lookup.yml users", "lookup.yml", "users: {bob: {keys: []}}\nrequire:\n  - guards: [DROP]\n    count: 1\n", false, ""},
 		{"a data file", "data/rows.csv", "c,d\n", false, ""},
+		// Only what the header names is pinned: a file the script sources
+		// without # Includes: is refused when the lane runs, not pinned.
+		{"a file sourced but not declared", "lib/undeclared.sh", "undeclared=2\n", false, ""},
 		{"another lane", "lanes.ci.sh", "#!/usr/bin/env bash\n# Round: ci\n\n# swim job 5.1\n# Round: fmt2\nrun \"fmt\" true\n", false, ""},
 	}
 	for _, c := range cases {

@@ -124,11 +124,13 @@ _swim_on_err() {
   "$SWIM_BIN" _mark "$SWIM_LANE" WARN "outside a step: $BASH_COMMAND" "$_swim_err_why; it isn't a step, so this line is its only record"
 }
 
-# source FILE / . FILE — under swim run, a repo file the manifest pinned is
-# read from the run's stage (the bytes swim checked before the lane
-# started), not the working tree. Anything else is sourced as usual. A
-# `declare` at the top of a file sourced this way is local to this
-# function: use plain assignments there.
+# source FILE / . FILE — under swim run, a repo file the header lists
+# (# Includes:) is read from the run's stage (the bytes swim checked before
+# the lane started), not the working tree. A repo file it doesn't list is
+# refused: the round stops, saying which # Includes: line to add, since the
+# approval doesn't cover it. Files outside the repo, swim's own (.swim/)
+# and .lane.N.rc are sourced as usual. A `declare` at the top of a file
+# sourced this way is local to this function: use plain assignments there.
 source() {
   if [ -n "${SWIM_STAGE:-}" ] && [ $# -gt 0 ]; then
     case $1 in
@@ -136,11 +138,18 @@ source() {
       *) _swim_src=$1 ;;
     esac
     case $_swim_src in
-      /*|../*|*/../*) ;;
+      /*|../*|*/../*|.swim/*|.lane.*.rc) ;;
       *)
         if [ -f "$SWIM_STAGE/$_swim_src" ]; then
           shift
           set -- "$SWIM_STAGE/$_swim_src" "$@"
+        elif [ -f "$SWIM_ROOT/$_swim_src" ]; then
+          if [ -z "$SWIM_LANE" ]; then
+            echo "swim: source $1: not pinned with the lane; add # Includes: $_swim_src" >&2
+            return 1
+          fi
+          stop "source $1: not pinned with the lane (add # Includes: $_swim_src)"
+          return 1
         fi
         ;;
     esac

@@ -379,6 +379,7 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 			// Lane 1 asks as lane 2, with a description that pretends to be
 			// swim's own question and tries to redraw the line.
 			b.script(1, "drop orders", `if "$SWIM_BIN" _approve 2 `+boundaryGuard+` $'harmless\x1b[2K\rswim 2 requires human approval of guard SAFE'; then run "drop" touch "`+b.marker+`"; fi`)
+			withHeader(t, b.repo, 1, "# Guards:  "+boundaryGuard+" drop table orders")
 			br := newBroker(t, func(approval.Request, <-chan struct{}) bool { return false })
 			b.runLane(1, br)
 			reqs := br.requests()

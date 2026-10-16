@@ -1,4 +1,4 @@
-# T34. Reconsider reading lane scripts with regexes (P2, gap)
+# T34. Regexes left after the header contract (P2, gap)
 
 Source: bugs found while building modules, 2026-10-16.
 
@@ -32,29 +32,40 @@ regular expressions, about 75 of them across `internal/lane` and
   invented.
 - Each fix is local to one regex, and the two readers drift apart.
 
-## Do
+## Decided (2026-10-16): the header is the contract
 
-Decide, and record the decision here, between:
+Not "which parser": take body reading out of the trust path.
 
-1. **One scanner, then regexes.** Every reader (the launcher's too) works
-   on lint's views (code without comments; bare without quoted text and
-   heredocs), with continued lines joined. Smallest change; still regexes
-   for commands.
-2. **A real shell parser.** `mvdan.cc/sh/v3/syntax` parses bash (3.2's
-   features included) into an AST: commands, their words, `if`, `&&`,
-   functions, heredocs. Guards, stages, `mod` calls and `source` lines
-   become call expressions with literal arguments; anything built at run
-   time is visible as such. A new dependency, and parse errors to handle
-   (a script that doesn't parse still runs).
-3. **Keep regexes,** with the quote-blanking applied everywhere and a
-   corpus test.
+- **Header only for what a lane may do.** `lane.ParseScript` reads guards
+  (`# Guards:`, `*` for flags named at run time), includes and modules
+  from the header (and sidecar) alone. The manifest pins only what the
+  header names. At run time, the approval broker and the guard hook refuse
+  an undeclared flag, and the library's `source` stops the round on a repo
+  file the header doesn't list. `swim lint --fix` writes the lines.
+- **The body only places things.** Stages, outcome handlers (and the
+  guards inside them, for display) and evidence steps are found by a
+  quote-aware tokenizer (`lane.Commands`, `internal/lane/text.go`); a miss
+  errs safe (no stages: `swim plan --check` refuses the lane).
+- **No regexes in `internal/lane` or `internal/syntax`;** names, numbers and
+  slugs are checked with `internal/chars`. The static source scan moved to
+  lint (`internal/lint/sources.go`): advice, not trust.
 
-Whichever: a **corpus** of tricky scripts (quotes, heredocs, continued
-lines, nested `if`, `bash -c '...'` bodies, functions, comments that look
-like code), with what each reader must find, run against the launcher's
-reader and lint's, so they can't disagree.
+Count: about 170 regexp declarations before, 117 after.
+
+## Left
+
+- **Lint** (53 of the 117: `checks.go`, `sources.go`, `modules.go`,
+  `cache.go`, `lint.go`, `shell.go`): rewrite its checks on `lane.Commands`
+  and its views. Its findings are advice now, so this is about accuracy,
+  not trust.
+- **Log and text parsers:** `logparse` (9), `cli/logcmd.go` (7),
+  `redact` (6, secret value patterns: likely to stay), `doctor` (5),
+  `changelog` (5), `queue`, `schedule`, `hub`, `envfile` and others with
+  one to three each.
+- **A corpus test** of tricky scripts (quotes, heredocs, continued lines,
+  `bash -c` bodies) for what the tokenizer and lint must find.
 
 ## Done when
 
-The decision and its reasons are recorded here, the corpus test exists,
-and the launcher and lint read every script in it the same way.
+The remaining regexes are gone or each kept for a reason recorded here
+(redact's credential shapes, say), and the corpus test exists.

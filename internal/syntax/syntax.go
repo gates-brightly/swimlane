@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -57,10 +56,43 @@ const State = 2
 // The lock (version.Check) compares a repo's pinned syntaxes with these.
 func init() { version.Current = version.Syntaxes{Script: Script, Log: Current, State: State} }
 
-var (
-	scriptRE = regexp.MustCompile(`^#\s*swim:\s*syntax\s+(\d+)\s*$`)
-	logRE    = regexp.MustCompile(`^#\s*swim lane log\s*\|\s*syntax\s+(\d+)`)
-)
+// scriptSyntax reads a script's syntax line, "# swim: syntax N" (spaces
+// free around each part), from a trimmed line.
+func scriptSyntax(line string) (int, bool) {
+	rest, ok := strings.CutPrefix(line, "#")
+	if !ok {
+		return 0, false
+	}
+	rest, ok = strings.CutPrefix(strings.TrimLeft(rest, " \t"), "swim:")
+	if !ok {
+		return 0, false
+	}
+	f := strings.Fields(rest)
+	if len(f) != 2 || f[0] != "syntax" {
+		return 0, false
+	}
+	return number(f[1])
+}
+
+// number reads a run of ASCII digits.
+func number(s string) (int, bool) {
+	if s == "" {
+		return 0, false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(s)
+	return n, err == nil
+}
+
+// IsScriptLine reports whether a (trimmed) line is a script's syntax line.
+func IsScriptLine(line string) bool {
+	_, ok := scriptSyntax(line)
+	return ok
+}
 
 // ScriptLine is the line that marks a lane script's syntax.
 func ScriptLine() string { return fmt.Sprintf("# swim: syntax %d", Current) }
@@ -75,8 +107,7 @@ func LogHeader(n int) string {
 func OfScript(src string) int {
 	sc := bufio.NewScanner(strings.NewReader(src))
 	for i := 0; i < 5 && sc.Scan(); i++ {
-		if m := scriptRE.FindStringSubmatch(strings.TrimSpace(sc.Text())); m != nil {
-			n, _ := strconv.Atoi(m[1])
+		if n, ok := scriptSyntax(strings.TrimSpace(sc.Text())); ok {
 			return n
 		}
 	}
@@ -87,8 +118,20 @@ func OfScript(src string) int {
 // no header, including an empty log).
 func OfLog(r io.Reader) int {
 	line, _ := bufio.NewReader(r).ReadString('\n')
-	if m := logRE.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
-		n, _ := strconv.Atoi(m[1])
+	// "# swim lane log | syntax N | swim M"
+	rest, ok := strings.CutPrefix(strings.TrimSpace(line), "#")
+	if !ok {
+		return 1
+	}
+	parts := strings.Split(rest, "|")
+	if len(parts) < 2 || strings.Join(strings.Fields(parts[0]), " ") != "swim lane log" {
+		return 1
+	}
+	f := strings.Fields(parts[1])
+	if len(f) < 2 || f[0] != "syntax" {
+		return 1
+	}
+	if n, ok := number(f[1]); ok {
 		return n
 	}
 	return 1
