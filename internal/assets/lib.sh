@@ -570,8 +570,9 @@ cache() {
 # declares (# Modules: notify clone@1) as a step labelled "CMD args":
 #   mod notify "#orders" "deployed $SWIM_JOB"
 # Options: run's (--timeout, --retry, --backoff, --retry-on,
-# --no-retry-timeout, --soft), --label "<label>", and --gate (a failure
-# stops the round, as gate does). The module's bytes are the ones the
+# --no-retry-timeout, --soft), --label "<label>", --gate (a failure stops
+# the round, as gate does) and --evidence (its output is the round's
+# evidence, as evidence's is: mod --evidence tf plan infra/orders). The module's bytes are the ones the
 # manifest pinned; swim modules lists what's available.
 mod() {
   _swim_mod "" "$@"
@@ -591,6 +592,7 @@ _swim_mod() {
   _swim_mod_o=
   _swim_mod_label=
   _swim_mod_gate=
+  _swim_mod_ev=
   while [ $# -gt 0 ]; do
     case "$1" in
       --label|--timeout|--retry|--backoff|--retry-on)
@@ -606,6 +608,7 @@ _swim_mod() {
         shift 2 ;;
       --soft|--no-retry-timeout) _swim_mod_o="$_swim_mod_o $1"; shift ;;
       --gate) _swim_mod_gate=1; shift ;;
+      --evidence) _swim_mod_ev=1; shift ;;
       --) shift; break ;;
       --*) echo "swim: unknown mod option $1" >&2; return 2 ;;
       *) break ;;
@@ -624,11 +627,11 @@ _swim_mod() {
     SWIM_MODULE_OUT=$_swim_mod_out
     export SWIM_MODULE_OUT
   fi
-  if [ -n "$_swim_mod_gate" ]; then
+  if [ -n "$_swim_mod_gate" ] || [ -n "$_swim_mod_ev" ]; then
     _swim_no_hard=1
   fi
   # $_swim_mod_o is unquoted on purpose, as in _swim_run_step.
-  _swim_run_step "" $_swim_mod_o "$_swim_mod_label" "$SWIM_BIN" _module "$@"
+  _swim_run_step "${_swim_mod_ev:+--evidence}" $_swim_mod_o "$_swim_mod_label" "$SWIM_BIN" _module "$@"
   _swim_mod_rc=$?
   _swim_no_hard=
   # 88: a gate module (gate: true in its module.yml) failed.
@@ -647,6 +650,9 @@ _swim_mod() {
     fi
     rm -f "$_swim_mod_out"
     _swim_mod_out=
+  fi
+  if [ -n "$_swim_mod_ev" ] && [ "$_swim_mod_rc" -ne 0 ]; then
+    stop "evidence failed: $_swim_mod_label"
   fi
   if [ -n "$_swim_mod_gate" ] && [ "$_swim_mod_rc" -ne 0 ]; then
     stop "gate failed: $_swim_mod_label"

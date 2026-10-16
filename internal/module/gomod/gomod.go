@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -24,6 +26,28 @@ type Ctx struct {
 	// Output records a small value among the round's outputs (swim output
 	// KEY VALUE), for later lanes ($(input N KEY)).
 	Output func(key, value string) error
+	// Mask hides the lane's secrets in text, as swim's logs do.
+	Mask func(string) string
+}
+
+// ReadPinned reads a repo file the module takes as input (a smoke file, a
+// prompt): under swim run, the copy the manifest pinned and staged, so the
+// approval covers it; a lane run directly with bash reads the working
+// tree. A file the manifest didn't pin is refused, with the fix.
+func (c *Ctx) ReadPinned(rel string) ([]byte, error) {
+	clean := filepath.ToSlash(filepath.Clean(rel))
+	if filepath.IsAbs(rel) || clean == ".." || strings.HasPrefix(clean, "../") {
+		return nil, fmt.Errorf("%s: name a file inside the repo (relative to its root)", rel)
+	}
+	if stage := c.Getenv("SWIM_STAGE"); stage != "" {
+		data, err := os.ReadFile(filepath.Join(stage, filepath.FromSlash(clean)))
+		if err != nil {
+			return nil, fmt.Errorf("%s isn't pinned with the lane: add `# Includes: %s` so the approval covers it", clean, clean)
+		}
+		return data, nil
+	}
+	root := c.Getenv("SWIM_ROOT")
+	return os.ReadFile(filepath.Join(root, filepath.FromSlash(clean)))
 }
 
 // Set writes one variable for the lane (mod_env).

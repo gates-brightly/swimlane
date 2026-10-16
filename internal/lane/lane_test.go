@@ -274,3 +274,19 @@ func TestNewJobIDPrefixNeverNumeric(t *testing.T) {
 		}
 	}
 }
+
+// A module call as an evidence step makes approvals cover the evidence.
+func TestModuleEvidenceUse(t *testing.T) {
+	for src, want := range map[string]bool{
+		"mod --evidence tf plan infra\n":                             true,
+		"mod --label \"the plan\" --evidence tf plan infra\n":        true,
+		"    r.module(\"tf\", \"plan\", \"infra\", evidence=True)\n": true,
+		"await r.moduleWith({ evidence: true }, \"tf\", \"plan\")\n": true,
+		"mod tf plan infra\n":                                        false,
+		"# mod --evidence tf plan\n":                                 false,
+	} {
+		if got := ParseScript("#!/usr/bin/env bash\n# Round: r\n" + src).UsesEvidence; got != want {
+			t.Errorf("%q: UsesEvidence %v, want %v", src, got, want)
+		}
+	}
+}

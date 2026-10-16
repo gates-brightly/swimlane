@@ -419,6 +419,20 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Built-in modules `tf`, `smoke` and `claude`.** `mod --evidence tf plan
+  DIR` runs init (lockfile read-only) and plan quietly, saves the plan in
+  the round's `$SWIM_OUT/.swim-tf/`, and prints only its `terraform show`,
+  so an evidence-bound approval covers the plan itself; `mod tf apply DIR`
+  (inside a guard) applies that saved plan and refuses one that's missing
+  or changed (`--bin tofu` for OpenTofu). `mod smoke FILE` runs a committed
+  YAML list of HTTP and TCP checks once, judged by status and time; the
+  file must be pinned (`# Includes:`). `mod claude --prompt-file F --out
+  report.md [--input F] [--log]` writes an artifact with the Claude Code
+  CLI (`--bin`, else `SWIM_CLAUDE_BIN`, else `claude` on PATH), with no
+  tools, no MCP and a fixed system prompt, everything sent masked; it never
+  decides anything. New: `mod --evidence` (and `evidence` in op `module`),
+  and `read_only_for` / `destructive_for` in `module.yml`, which lint uses
+  (`tf apply` outside a guard warns).
 - **Built-in modules `target`, `backup` and `wait`.** `mod target aws
   --account ID` (or `kube --context C`, `gcp --project P`) stops the round
   unless the tools point where the lane says; it's a gate module (`gate:

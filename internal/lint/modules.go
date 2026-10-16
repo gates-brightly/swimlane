@@ -13,7 +13,7 @@ var (
 	// go mod download); the rest of the line follows.
 	modUseRE = regexp.MustCompile(`(?:^\s*|[;&|({!]\s*|\b(?:then|do|else|if|while|until)\s+)(mod|mod_env)\s+(.*)$`)
 	// sdkModuleRE is an SDK's r.module("notify", ...) or r.Module("notify", ...).
-	sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(Env|_env)?\(\s*["'\x60]([a-z][a-z0-9_-]*)["'\x60]`)
+	sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(Env|_env)?\(\s*["'\x60]([a-z][a-z0-9_-]*)["'\x60](?:\s*,\s*["'\x60]([^"'\x60]*)["'\x60])?`)
 	// sdkModuleEnvRE is the SDKs' env form: env=True, env: true, Env: true.
 	sdkModuleEnvRE = regexp.MustCompile(`\b[Ee]nv\s*[=:]\s*(?:True|true)\b`)
 )
@@ -25,7 +25,8 @@ var modOptsWithValue = map[string]bool{"--label": true, "--timeout": true, "--re
 type modCall struct {
 	Line int // 0-based
 	Cmd  string
-	Env  bool // mod_env (or an SDK call with env)
+	Args []string // the literal arguments that follow (up to the first built at run time)
+	Env  bool     // mod_env (or an SDK call with env)
 }
 
 // modCalls lists the module commands the script calls by a literal name.
@@ -47,13 +48,24 @@ func (s *Script) modCalls() []modCall {
 					continue
 				}
 				if !strings.ContainsAny(w, "$`") {
-					out = append(out, modCall{Line: i, Cmd: w, Env: m[1] == "mod_env"})
+					call := modCall{Line: i, Cmd: w, Env: m[1] == "mod_env"}
+					for _, a := range words[k+1:] {
+						if strings.ContainsAny(a, "$`") {
+							break
+						}
+						call.Args = append(call.Args, a)
+					}
+					out = append(out, call)
 				}
 				break
 			}
 		}
 		for _, m := range sdkModuleRE.FindAllStringSubmatch(line, -1) {
-			out = append(out, modCall{Line: i, Cmd: m[2], Env: m[1] != "" || sdkModuleEnvRE.MatchString(line)})
+			call := modCall{Line: i, Cmd: m[2], Env: m[1] != "" || sdkModuleEnvRE.MatchString(line)}
+			if m[3] != "" {
+				call.Args = []string{m[3]}
+			}
+			out = append(out, call)
 		}
 	}
 	return out
@@ -155,17 +167,25 @@ func checkModuleEffects(c *Context, s *Script) []finding.Finding {
 			}
 		}
 	}
+	var guarded []bool
+	if s.Lib {
+		guarded = s.guardedLines()
+	}
 	var out []finding.Finding
 	for _, call := range s.modCalls() {
 		m := module.ForCommand(mods, call.Cmd)
 		if m == nil {
 			continue
 		}
+		if m.DestructiveCall(call.Args) && guarded != nil && !guarded[call.Line] {
+			out = append(out, f(finding.Warn, "module-effects", call.Line, "put it inside `if guard FLAG \"<action>\"; then ... fi`",
+				"%s %s changes things, and runs outside a guard", call.Cmd, call.Args[0]))
+		}
 		if m.Effects.Credentials && !call.Env {
 			out = append(out, f(finding.Warn, "module-effects", call.Line, "use mod_env "+call.Cmd+" (the SDKs: env=True)",
 				"module %s gives the lane credentials, but mod drops them (the step fails)", m.Name))
 		}
-		if s.Info.Staged && call.Line < change && !m.Effects.ReadOnly {
+		if s.Info.Staged && call.Line < change && !m.ReadOnlyCall(call.Args) {
 			out = append(out, f(finding.Warn, "module-effects", call.Line, "move it after `stage change`, or use a module whose module.yml says read_only: true",
 				"module %s isn't read-only, and runs before `stage change`, so swim plan --check would run it for real", m.Name))
 		}

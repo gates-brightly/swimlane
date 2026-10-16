@@ -1,0 +1,11 @@
+schema: swim.module/v1
+name: smoke
+version: 1.0.0
+kind: go
+summary: run a committed list of HTTP and TCP checks once, judged by status codes and time, never by matching output
+commands: [smoke]
+usage:
+  - "mod smoke FILE [--base URL] [--timeout 10s]    FILE (YAML) is pinned: list it in # Includes:"
+effects:
+  network: [the checks' hosts]
+  read_only: true

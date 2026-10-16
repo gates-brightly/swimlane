@@ -156,9 +156,10 @@ func (o Opts) flags() []string {
 // (a failure ends the round) and Env (take the variables it gives).
 type ModuleOpts struct {
 	Opts
-	Label string
-	Gate  bool
-	Env   bool
+	Label    string
+	Gate     bool
+	Evidence bool // its output is the round's evidence (tf plan)
+	Env      bool
 }
 
 // Module runs a command of a module the lane declares (# Modules:) as a
@@ -179,7 +180,7 @@ func (r *R) ModuleWith(o ModuleOpts, name string, args ...string) (bool, error) 
 	if args == nil {
 		args = []string{}
 	}
-	res, err := r.call("module", map[string]any{"name": name, "args": args, "opts": o.flags(), "label": o.Label, "gate": o.Gate, "env": o.Env})
+	res, err := r.call("module", map[string]any{"name": name, "args": args, "opts": o.flags(), "label": o.Label, "gate": o.Gate, "evidence": o.Evidence, "env": o.Env})
 	if env, ok := res["env"].(map[string]any); ok {
 		for k, v := range env {
 			if s, ok := v.(string); ok {

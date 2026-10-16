@@ -58,6 +58,8 @@ export interface StepOptions {
 export interface ModuleOptions extends StepOptions {
   label?: string;
   gate?: boolean;
+  /** Its output is the round's evidence (mod --evidence): tf plan. */
+  evidence?: boolean;
   env?: boolean;
 }
 
@@ -184,7 +186,7 @@ export class Round {
     if (o.backoff) opts.push("--backoff", o.backoff);
     if (o.retryOn) opts.push("--retry-on", o.retryOn.join(","));
     if (o.soft) opts.push("--soft");
-    const res = await this.call("module", { name, args: args.map(String), opts, label: o.label ?? "", gate: Boolean(o.gate), env: Boolean(o.env) });
+    const res = await this.call("module", { name, args: args.map(String), opts, label: o.label ?? "", gate: Boolean(o.gate), evidence: Boolean(o.evidence), env: Boolean(o.env) });
     for (const [k, v] of Object.entries((res.env as Record<string, string>) ?? {})) process.env[k] = v;
     return Boolean(res.passed);
   }

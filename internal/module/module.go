@@ -73,6 +73,12 @@ type Spec struct {
 	Commands []string `yaml:"commands"`
 	Effects  Effects  `yaml:"effects"`
 	Guards   []string `yaml:"guards,omitempty"`
+	// ReadOnlyFor are first arguments that make a call change nothing (tf
+	// plan), for a module that isn't read_only as a whole; DestructiveFor
+	// are ones that change something, which lint wants behind a guard (tf
+	// apply).
+	ReadOnlyFor    []string `yaml:"read_only_for,omitempty"`
+	DestructiveFor []string `yaml:"destructive_for,omitempty"`
 	// Gate: a failure stops the round, as mod --gate does, however the
 	// lane calls it (a check that the round must not go on without).
 	Gate bool `yaml:"gate,omitempty"`
@@ -168,6 +174,19 @@ func (m *Module) Has(cmd string) bool { return slices.Contains(m.Commands, cmd) 
 // Script is a bash module's source.
 func (m *Module) Script() []byte { return m.Files[m.Name+".sh"] }
 
+// ReadOnlyCall reports whether a call with these arguments changes
+// nothing: the module is read_only, or its first argument is in
+// read_only_for.
+func (m *Module) ReadOnlyCall(args []string) bool {
+	return m.Effects.ReadOnly || len(args) > 0 && slices.Contains(m.ReadOnlyFor, args[0])
+}
+
+// DestructiveCall reports whether a call with these arguments is one
+// module.yml's destructive_for says belongs behind a guard.
+func (m *Module) DestructiveCall(args []string) bool {
+	return len(args) > 0 && slices.Contains(m.DestructiveFor, args[0])
+}
+
 // EffectsText is the module's effects in a line: "credentials, network
 // sts.amazonaws.com; secret SLACK_WEBHOOK_URL".
 func (m *Module) EffectsText() string {
@@ -187,6 +206,12 @@ func (m *Module) EffectsText() string {
 	}
 	if e.ReadOnly {
 		parts = append(parts, "read-only")
+	}
+	if len(m.ReadOnlyFor) > 0 {
+		parts = append(parts, "read-only for "+strings.Join(m.ReadOnlyFor, " "))
+	}
+	if len(m.DestructiveFor) > 0 {
+		parts = append(parts, "guard "+strings.Join(m.DestructiveFor, " "))
 	}
 	if len(m.Guards) > 0 {
 		parts = append(parts, "guards "+strings.Join(m.Guards, " "))

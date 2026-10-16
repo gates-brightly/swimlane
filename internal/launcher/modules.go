@@ -12,6 +12,10 @@ type PlanModule struct {
 	Source  string         `yaml:"source"` // builtin, or ./<dir>
 	Effects module.Effects `yaml:"effects"`
 	Gate    bool           `yaml:"gate,omitempty"` // a failure stops the round
+	// The calls (by first argument) that change nothing, and those that
+	// belong behind a guard.
+	ReadOnlyFor    []string `yaml:"read_only_for,omitempty,flow"`
+	DestructiveFor []string `yaml:"destructive_for,omitempty,flow"`
 }
 
 // planModules resolves a lane's # Modules: for swim plan: what each is and
@@ -20,7 +24,8 @@ func planModules(root string, cfg *config.Config, refs []string) ([]PlanModule, 
 	mods, err := module.Resolve(root, cfg.Modules, refs)
 	var out []PlanModule
 	for _, m := range mods {
-		out = append(out, PlanModule{Name: m.Name, Version: m.Version, Source: m.Source(), Effects: m.Effects, Gate: m.Gate})
+		out = append(out, PlanModule{Name: m.Name, Version: m.Version, Source: m.Source(), Effects: m.Effects, Gate: m.Gate,
+			ReadOnlyFor: m.ReadOnlyFor, DestructiveFor: m.DestructiveFor})
 	}
 	return out, err
 }
@@ -32,6 +37,6 @@ func moduleText(p PlanModule) string {
 	if p.Source != module.BuiltinSource {
 		src = p.Source
 	}
-	m := &module.Module{Spec: module.Spec{Effects: p.Effects, Gate: p.Gate}}
+	m := &module.Module{Spec: module.Spec{Effects: p.Effects, Gate: p.Gate, ReadOnlyFor: p.ReadOnlyFor, DestructiveFor: p.DestructiveFor}}
 	return p.Name + " " + p.Version + " (" + src + ": " + m.EffectsText() + ")"
 }

@@ -7,7 +7,7 @@ where it would land in the code, open questions, and how to test it.
 | feature | file | status |
 |---|---|---|
 | swim observe: computed observations and knowledge from runs; optional Claude write-up | [observe.md](observe.md) | proposed |
-| Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in and repo modules built; `writeup` and fetched modules left) |
+| Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in and repo modules, nine built-ins; fetched modules left) |
 | Retry on a match: --retry-if REGEX, --backoff-max, --retry-for, swim.yml policies, stage and lane defaults (wait out Rush's lock) | [retry.md](retry.md) | dropped (matching retries on output with regexes isn't wanted) |
 
 ## Staging a feature

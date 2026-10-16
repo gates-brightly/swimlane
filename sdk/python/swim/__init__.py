@@ -159,11 +159,12 @@ class Round:
         """A check step whose output an approval can cover (the plan)."""
         return self._step("evidence", label, argv, **opts)
 
-    def module(self, name, *args, env=False, label=None, gate=False, **opts):
+    def module(self, name, *args, env=False, label=None, gate=False, evidence=False, **opts):
         """A command of a module the lane declares (# Modules:), as a step:
         True if it passed. env=True takes the variables it gives the lane
         (credentials: aws-session) into this program's environment and every
-        later step's, masked. Options as for run, and gate=True."""
+        later step's, masked. Options as for run, gate=True, and
+        evidence=True (its output is the round's evidence: tf plan)."""
         o = []
         if opts.get("timeout") is not None:
             o += ["--timeout", str(opts["timeout"])]
@@ -176,7 +177,7 @@ class Round:
         if opts.get("soft"):
             o.append("--soft")
         res = self._call("module", name=name, args=[str(a) for a in args], opts=o,
-                         label=label or "", gate=bool(gate), env=bool(env))
+                         label=label or "", gate=bool(gate), evidence=bool(evidence), env=bool(env))
         for k, v in (res.get("env") or {}).items():
             os.environ[k] = v
         return res.get("passed", False)

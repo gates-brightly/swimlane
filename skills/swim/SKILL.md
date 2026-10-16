@@ -266,6 +266,11 @@ from what the previous ones left behind.
   Start a change against cloud resources with `mod target aws --account
   ID` (it stops the round on the wrong account), take `mod backup ...` as
   the first step of `stage change`, and replace sleep loops with `mod wait`.
+  For Terraform: `mod --evidence tf plan DIR` in the check stage and `mod
+  tf apply DIR` inside the guard (never a raw `terraform apply`). Verify
+  with `mod smoke smoke/<svc>.yml` (list the file in `# Includes:`). A
+  report goes through `mod claude ... --out report.md`, which only writes
+  an artifact.
   An undeclared module is refused.
 - **Keep output streaming,** so the operator and the live view see
   progress. Don't capture a long command with `out=$(cmd); echo "$out"`.

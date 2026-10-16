@@ -10,7 +10,10 @@ import (
 
 	awssession "github.com/gates-brightly/swimlane/internal/module/builtin/aws-session"
 	"github.com/gates-brightly/swimlane/internal/module/builtin/backup"
+	"github.com/gates-brightly/swimlane/internal/module/builtin/claude"
+	"github.com/gates-brightly/swimlane/internal/module/builtin/smoke"
 	"github.com/gates-brightly/swimlane/internal/module/builtin/target"
+	"github.com/gates-brightly/swimlane/internal/module/builtin/tf"
 	"github.com/gates-brightly/swimlane/internal/module/builtin/wait"
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
 )
@@ -25,7 +28,10 @@ var builtinFS embed.FS
 var goBuiltins = map[string]func(*gomod.Ctx) error{
 	"aws-session": awssession.Run,
 	"backup":      backup.Run,
+	"claude":      claude.Run,
+	"smoke":       smoke.Run,
 	"target":      target.Run,
+	"tf":          tf.Run,
 	"wait":        wait.Run,
 }
 

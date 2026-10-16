@@ -233,6 +233,9 @@ var (
 	stageUseRE    = regexp.MustCompile(`(?:^|[\s;&|(])stage\s+["']?(?:snapshot|check|change|verify)\b`)
 	evidenceUseRE = regexp.MustCompile(`(?:^|[\s;&|(])evidence\s+(?:--\S+\s+\S*\s*)*["']`)
 	evidenceArgRE = regexp.MustCompile(`['"]evidence['"]\s*,`)
+	// modEvidenceRE is a module call as an evidence step: mod --evidence
+	// tf plan ..., or an SDK's r.module(..., evidence=True).
+	modEvidenceRE = regexp.MustCompile(`(?:(?:^|[\s;&|(])mod\s+(?:--\S+\s+(?:"[^"]*"\s+|'[^']*'\s+)?)*--evidence\b|\.[Mm]odule\w*\(.*\b[Ee]vidence\s*[=:]\s*(?:True|true)\b)`)
 	dynGuardRE    = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+["']?\$`)
 	stageArgRE    = regexp.MustCompile(`['"]stage['"]\s*,\s*['"](?:snapshot|check|change|verify)['"]`)
 	// handlerFnRE is a handler function's first line: on_failure() {
@@ -482,7 +485,7 @@ func ParseScript(src string) Info {
 			if dynGuardRE.MatchString(line) || sdkDynGuard.MatchString(line) {
 				info.DynamicGuards++
 			}
-			if evidenceUseRE.MatchString(line) || evidenceArgRE.MatchString(line) {
+			if evidenceUseRE.MatchString(line) || evidenceArgRE.MatchString(line) || modEvidenceRE.MatchString(line) {
 				info.UsesEvidence = true
 			}
 			uses := guardUse.FindAllStringSubmatch(line, -1)

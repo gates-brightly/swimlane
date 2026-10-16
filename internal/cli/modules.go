@@ -172,7 +172,8 @@ func runModule(root string, cfg *config.Config, m *module.Module, cmd string, ar
 					return errors.New("SWIM_OUT is unset")
 				}
 				return outputs.SetValue(dir, key, cfg.Masker(env).String(value))
-			}}
+			},
+			Mask: cfg.Masker(env).String}
 		if out != "" {
 			f, err := os.OpenFile(out, os.O_WRONLY|os.O_APPEND, 0o600)
 			if err != nil {
@@ -387,16 +388,18 @@ func cmdModules(args []string) error {
 
 // moduleDoc is one module in swim modules --yaml.
 type moduleDoc struct {
-	Name     string         `yaml:"name"`
-	Version  string         `yaml:"version"`
-	Kind     string         `yaml:"kind"`
-	Source   string         `yaml:"source"`
-	Summary  string         `yaml:"summary,omitempty"`
-	Commands []string       `yaml:"commands,flow"`
-	Effects  module.Effects `yaml:"effects"`
-	Gate     bool           `yaml:"gate,omitempty"`
-	Allowed  bool           `yaml:"allowed"`
-	SHA256   string         `yaml:"sha256"`
+	Name           string         `yaml:"name"`
+	Version        string         `yaml:"version"`
+	Kind           string         `yaml:"kind"`
+	Source         string         `yaml:"source"`
+	Summary        string         `yaml:"summary,omitempty"`
+	Commands       []string       `yaml:"commands,flow"`
+	Effects        module.Effects `yaml:"effects"`
+	Gate           bool           `yaml:"gate,omitempty"`
+	ReadOnlyFor    []string       `yaml:"read_only_for,omitempty,flow"`
+	DestructiveFor []string       `yaml:"destructive_for,omitempty,flow"`
+	Allowed        bool           `yaml:"allowed"`
+	SHA256         string         `yaml:"sha256"`
 }
 
 func modulesList(root string, cfg *config.Config, args []string) error {
@@ -410,7 +413,7 @@ func modulesList(root string, cfg *config.Config, args []string) error {
 	var docs []moduleDoc
 	for _, m := range mods {
 		docs = append(docs, moduleDoc{Name: m.Name, Version: m.Version, Kind: m.Kind, Source: m.Source(), Summary: m.Summary,
-			Commands: m.Commands, Effects: m.Effects, Gate: m.Gate, Allowed: cfg.Modules.ModuleAllowed(m.Builtin, m.Name, m.Dir), SHA256: m.SHA256})
+			Commands: m.Commands, Effects: m.Effects, Gate: m.Gate, ReadOnlyFor: m.ReadOnlyFor, DestructiveFor: m.DestructiveFor, Allowed: cfg.Modules.ModuleAllowed(m.Builtin, m.Name, m.Dir), SHA256: m.SHA256})
 	}
 	if asYAML {
 		enc := yaml.NewEncoder(os.Stdout)
@@ -431,7 +434,7 @@ func modulesList(root string, cfg *config.Config, args []string) error {
 			allowed = "  " + p.Paint(ui.Yellow, "not allowed by swim.yml modules: allow:")
 		}
 		fmt.Printf("%-12s %-7s %-4s %-10s %s%s\n", d.Name, d.Version, d.Kind, src, d.Summary, allowed)
-		m := &module.Module{Spec: module.Spec{Effects: d.Effects, Gate: d.Gate}}
+		m := &module.Module{Spec: module.Spec{Effects: d.Effects, Gate: d.Gate, ReadOnlyFor: d.ReadOnlyFor, DestructiveFor: d.DestructiveFor}}
 		fmt.Printf("%s\n", p.Paint(ui.Dim, "             "+m.EffectsText()))
 	}
 	for _, e := range errs {

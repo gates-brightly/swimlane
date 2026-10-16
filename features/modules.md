@@ -4,8 +4,10 @@ Status: in progress. Phases one and two are built: `# Modules:`, `mod` and
 `mod_env`, the built-in `aws-session`, `clone` and `notify`, repo modules
 (bash and Go), the manifest pins, `swim.yml` `modules:`, `swim modules
 ls|show|new`, plan, approve, lint, doctor, and op `module` in the SDKs.
-Left: `writeup` (step 7, after observe.md's phase one) and phase three
-(fetched modules, `swim modules get`, the lock). See "As built" below.
+More built-ins since: `target`, `backup`, `wait`, `tf`, `smoke` and
+`claude` (which covers `writeup`'s job; see "As built"). Left: phase three
+(fetched modules, `swim modules get`, the lock), and `writeup` reading
+observe.md's observations once they exist.
 
 ## Summary
 
@@ -364,6 +366,14 @@ Where the build differs from the design above, or settles it:
   project check), `backup` (RDS, Aurora, DynamoDB restore points; the id as
   an output) and `wait` (HTTP status, TCP, exit code, kube rollout), all Go,
   all through the tools' own CLIs.
+- **`tf`, `smoke` and `claude`** (Go). `claude` is the spec's `writeup`
+  in another form: it runs the Claude Code CLI (a binary the operator
+  chooses: `--bin`, `SWIM_CLAUDE_BIN`) rather than calling the API, with
+  no tools, no MCP and a fixed system prompt, from an empty directory, on a
+  pinned prompt and masked inputs. It doesn't wait on observe.md: the lane
+  passes what it wants written up (`--log`, `--input`). `mod --evidence`
+  makes a module call an evidence step, and `module.yml` gained
+  `read_only_for` and `destructive_for` (effects per first argument).
 - **`gate: true`** in `module.yml`: every failure of the module stops the
   round, as `mod --gate` does. `swim _module` exits 88 for a failed gate
   module; `mod` and op `module` stop the round on it. `target` is one.

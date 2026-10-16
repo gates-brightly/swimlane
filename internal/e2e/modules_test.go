@@ -382,3 +382,120 @@ with swim.round() as r:
 		t.Errorf("the round went on:\n%s", log)
 	}
 }
+
+// fakeBin puts a fake tool first on the repo's PATH.
+func fakeBin(t *testing.T, r *repo, name, script string) string {
+	t.Helper()
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, name), []byte("#!/usr/bin/env bash\n"+script), 0o755)
+	r.env = append(r.env, "PATH="+dir+string(os.PathListSeparator)+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return dir
+}
+
+// tf: the plan is the round's evidence, so a signed approval covers it;
+// apply runs only the saved plan, only when the guard is approved, and not
+// once the plan changed.
+func TestModuleTF(t *testing.T) {
+	r := newRepo(t, "")
+	keys := people(t, r, "", "alice")
+	os.MkdirAll(filepath.Join(r.root, "infra"), 0o755)
+	r.write("infra/main.tf", "# fake\n", 0o644)
+	r.write("plan.txt", "# aws_dynamodb_table.orders will be destroyed\n", 0o644)
+	fakeBin(t, r, "terraform", `case "$2" in
+  init) echo "init noise $RANDOM" ;;
+  plan) for a in "$@"; do case "$a" in -out=*) cat "$SWIM_ROOT/plan.txt" >"${a#-out=}" ;; esac; done; echo "refresh noise $RANDOM"; exit 2 ;;
+  show) cat "$4" ;;
+  apply) echo "Apply complete! $(head -1 "${@: -1}")"; touch "$SWIM_ROOT/applied" ;;
+esac
+`)
+	r.script(1, "apply the orders plan", `# Modules: tf
+# Guards: ORDERS_ALLOW_APPLY  apply the orders plan
+stage check
+mod --evidence tf plan infra
+stage change
+if guard ORDERS_ALLOW_APPLY "apply the orders plan"; then mod tf apply infra; fi`)
+	contains(t, "lint", must(r.swim("lint", "1")), "no problems found")
+	contains(t, "plan", r.mustSwim("plan", "1"), "tf 1.0.0 (built in: ", "read-only for plan, guard apply")
+
+	r.swim("plan", "--check", "1")
+	contains(t, "approve", r.mustSwim("approve", "1", "--guards", "ORDERS_ALLOW_APPLY", "--key", keys["alice"]),
+		"evidence from swim plan --check", "aws_dynamodb_table.orders will be destroyed")
+	if _, err := os.Stat(filepath.Join(r.root, "applied")); err == nil {
+		t.Fatal("swim plan --check applied")
+	}
+	r.mustSwim("run", "1", "--plain", "--no-prompt")
+	log := r.log(1)
+	contains(t, "approved", log, "PASS  evidence: tf plan infra", "APPROVED  apply the orders plan (approved by alice", "PASS  tf apply infra",
+		"applying the plan of infra saved this round", "Apply complete! # aws_dynamodb_table.orders will be destroyed")
+	if strings.Contains(log, "noise") {
+		t.Errorf("init or plan chatter reached the evidence step:\n%s", log)
+	}
+
+	// The plan changed: the approval doesn't count, and nothing is applied.
+	os.Remove(filepath.Join(r.root, "applied"))
+	r.write("plan.txt", "# aws_dynamodb_table.orders will be destroyed\n# aws_s3_bucket.orders will be destroyed\n", 0o644)
+	r.swim("run", "1", "--plain", "--no-prompt")
+	last := r.log(1)[strings.LastIndex(r.log(1), "== ROUND"):]
+	contains(t, "changed plan", last, "WARN  evidence changed since approval", "SKIP  apply the orders plan (dry run")
+	if _, err := os.Stat(filepath.Join(r.root, "applied")); err == nil {
+		t.Error("applied a plan nobody approved")
+	}
+}
+
+// smoke runs the pinned checks file once; an unpinned file is refused.
+func TestModuleSmoke(t *testing.T) {
+	r := newRepo(t, "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/health" {
+			w.WriteHeader(500)
+		}
+	}))
+	defer srv.Close()
+	r.env = append(r.env, "ORDERS_URL="+srv.URL)
+	os.MkdirAll(filepath.Join(r.root, "smoke"), 0o755)
+	r.write("smoke/orders.yml", "base: ${ORDERS_URL}\nchecks:\n  - get: /health\n  - name: api\n    get: /api\n", 0o644)
+	r.script(1, "smoke it", `# Modules: smoke
+# Includes: smoke/orders.yml
+mod smoke smoke/orders.yml`)
+	r.script(2, "smoke without pinning", `# Modules: smoke
+mod smoke smoke/orders.yml`)
+	r.swim("run", "1", "2", "--plain")
+	contains(t, "lane 1", r.log(1), "FAIL  smoke smoke/orders.yml", "ok   get /health: HTTP 200", "FAIL api: HTTP 500, want 2xx", "1 of 2 checks failed")
+	contains(t, "lane 2", r.log(2), "add `# Includes: smoke/orders.yml`")
+}
+
+// claude writes an artifact with the CLI swim is told to use, from the
+// pinned prompt and the round's masked log; it never decides anything.
+func TestModuleClaude(t *testing.T) {
+	r := newRepo(t, "")
+	dir := t.TempDir()
+	cli := filepath.Join(dir, "my-claude")
+	os.WriteFile(cli, []byte(`#!/usr/bin/env bash
+[ "$1" = --version ] && { echo "1.2.3 (Claude Code)"; exit 0; }
+cat >"`+dir+`/stdin"
+echo "# Run report"
+echo "All steps passed."
+`), 0o755)
+	r.env = append(r.env, "SWIM_CLAUDE_BIN="+cli, "DEPLOY_TOKEN=tok-abcdef-123456")
+	os.MkdirAll(filepath.Join(r.root, "prompts"), 0o755)
+	r.write("prompts/report.md", "Write a short run report.\n", 0o644)
+	r.script(1, "report", `# Modules: claude
+# Includes: prompts/report.md
+# Outputs: report.md
+run "uses a token" bash -c 'echo "token=$DEPLOY_TOKEN"'
+mod claude --prompt-file prompts/report.md --log --out report.md`)
+	contains(t, "lint", must(r.swim("lint", "1")), "no problems found")
+	r.mustSwim("run", "1", "--plain")
+	log := r.log(1)
+	contains(t, "log", log, "PASS  claude --prompt-file", "claude: "+cli+" (1.2.3 (Claude Code), sha256 ", "wrote report.md")
+	st := r.status().Get(1)
+	report, err := os.ReadFile(filepath.Join(r.root, ".swim", "out", st.Job, st.Run, "report.md"))
+	if err != nil || !strings.Contains(string(report), "All steps passed.") {
+		t.Errorf("report: %q %v", report, err)
+	}
+	stdin, _ := os.ReadFile(filepath.Join(dir, "stdin"))
+	contains(t, "sent", string(stdin), "Write a short run report.", "PASS  uses a token", "token=***")
+	if strings.Contains(string(stdin), "tok-abcdef") {
+		t.Errorf("an unmasked secret was sent:\n%s", stdin)
+	}
+}

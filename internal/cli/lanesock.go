@@ -502,12 +502,13 @@ func (s *laneServer) swimEnv(capture bool, extra []string, args ...string) (stri
 // environment.
 func (s *laneServer) module(req laneRequest) laneResponse {
 	var a struct {
-		Name  string   `json:"name"`
-		Args  []string `json:"args"`
-		Opts  []string `json:"opts"`
-		Label string   `json:"label"`
-		Gate  bool     `json:"gate"`
-		Env   bool     `json:"env"`
+		Name     string   `json:"name"`
+		Args     []string `json:"args"`
+		Opts     []string `json:"opts"`
+		Label    string   `json:"label"`
+		Gate     bool     `json:"gate"`
+		Evidence bool     `json:"evidence"`
+		Env      bool     `json:"env"`
 	}
 	if err := req.args(&a); err != nil || a.Name == "" {
 		return fail("module needs name")
@@ -517,7 +518,10 @@ func (s *laneServer) module(req laneRequest) laneResponse {
 		label = strings.Join(append([]string{a.Name}, a.Args...), " ")
 	}
 	op := "run"
-	if a.Gate {
+	switch {
+	case a.Evidence:
+		op = "evidence"
+	case a.Gate:
 		op = "gate"
 	}
 	args := append([]string{op}, a.Opts...)
@@ -535,7 +539,7 @@ func (s *laneServer) module(req laneRequest) laneResponse {
 		extra = []string{moduleOutEnv, out}
 	}
 	_, code := s.swimEnv(false, extra, args...)
-	if code == module.GateExit && !a.Gate && !s.inHandler.Load() {
+	if code == module.GateExit && op == "run" && !s.inHandler.Load() {
 		// A gate module failed: the round stops, as a bash lane's mod stops it.
 		s.swim("stop", "gate failed: "+label)
 	}

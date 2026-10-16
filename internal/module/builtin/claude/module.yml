@@ -1,0 +1,13 @@
+schema: swim.module/v1
+name: claude
+version: 1.0.0
+kind: go
+summary: write an artifact (a report, a note) with the Claude Code CLI from a pinned prompt and the round's masked material; never decides anything
+commands: [claude]
+usage:
+  - mod claude --out NAME.md (--prompt-file FILE | --prompt TEXT) [--input FILE]... [--log] [--model M] [--bin PATH] [--for 10m]
+  - the CLI is --bin, else $SWIM_CLAUDE_BIN (an env file), else claude on PATH
+effects:
+  network: [api.anthropic.com]
+  secrets: [ANTHROPIC_API_KEY]
+  writes: [$SWIM_OUT/NAME]

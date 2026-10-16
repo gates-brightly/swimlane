@@ -45,6 +45,7 @@ func NewFake(dir string, env map[string]string, withOut bool, args ...string) *F
 		return c
 	}
 	f.Output = func(k, v string) error { f.Outputs[k] = v; return nil }
+	f.Mask = func(s string) string { return s }
 	return f
 }
 

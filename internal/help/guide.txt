@@ -802,7 +802,8 @@ MODULES
   - mod [options] CMD [args...] runs a module command as a step labelled
     "CMD args": logged, masked, timed and counted like run. Options: run's
     (--timeout, --retry, ...), --label "<label>", --gate (a failure stops
-    the round). A command of a module the header doesn't declare is refused
+    the round), --evidence (its output is the round's evidence, as an
+    evidence step's: mod --evidence tf plan infra/orders). A command of a module the header doesn't declare is refused
     at the step, and lint errors first.
   - mod_env is mod for a module that gives the lane variables (credentials):
     once the step passes they're exported for the steps after it, and every
@@ -830,13 +831,33 @@ MODULES
                    cmd -- CMD ... | kube-rollout RES [--namespace N]
                    [--for 10m] [--every 5s]: until ready, judged by a status
                    or an exit code, never by matching output
+      tf           mod --evidence tf plan DIR [--var-file F] [--var K=V]
+                   [--bin tofu]: init (lockfile read-only) and plan quietly,
+                   save the plan in $SWIM_OUT/.swim-tf/, print only its
+                   terraform show, so an approval covers the plan itself.
+                   mod tf apply DIR, inside a guard: applies that saved plan,
+                   refused if it's missing or changed since; same round only
+      smoke        mod smoke FILE [--base URL]: a committed YAML list of
+                   checks (get/post/put/delete/head PATH with status, within,
+                   headers, body; tcp HOST:PORT), ${VAR} from the lane's env,
+                   run once; FILE must be pinned (# Includes: FILE)
+      claude       mod claude --out NAME (--prompt-file FILE | --prompt TEXT)
+                   [--input FILE]... [--log] [--model M] [--bin PATH]: write an
+                   artifact in $SWIM_OUT with the Claude Code CLI (--bin, else
+                   $SWIM_CLAUDE_BIN from an env file, else claude on PATH): no
+                   tools, no MCP, an empty directory, a fixed system prompt;
+                   prompt and inputs masked, the reply masked too. It passes or
+                   fails on whether a reply came, never on what it says, and
+                   swim never reads the artifact back
       aws-session  mod_env aws-session --profile P [--role ARN]: credentials
                    from your AWS profile or SSO through the aws CLI
       clone        mod clone URL SHA DIR: a full commit id only, HEAD checked
       notify       mod notify CHANNEL TEXT: to the webhook in the secret
                    SLACK_WEBHOOK_URL; fails soft unless --strict
   - A module.yml with gate: true makes every failure of the module stop the
-    round, as mod --gate does.
+    round, as mod --gate does. read_only_for: [plan] marks calls (by first
+    argument) that change nothing; destructive_for: [apply] marks ones lint
+    wants inside a guard.
   - Repo modules: modules/<name>/ with a module.yml (swim modules new NAME
     [--kind bash|go] writes one). Declare one by path (# Modules:
     ./modules/x), or by name with dir: in swim.yml. A bash module is
