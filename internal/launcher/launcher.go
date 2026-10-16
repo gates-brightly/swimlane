@@ -1065,6 +1065,11 @@ func writeRunRecord(o Options, start time.Time, cap int, sel []int, selected map
 		if st, _ := status.Load(o.Root); st != nil {
 			if s := st.Get(n); s != nil && s.Run == o.RunID {
 				l.Paused = s.PausedS
+				for _, p := range s.Pauses {
+					if at, err := time.Parse(time.RFC3339Nano, p.At); err == nil {
+						l.Pauses = append(l.Pauses, runrec.Span{Start: *runrec.Since(start, at), Dur: p.S})
+					}
+				}
 			}
 		}
 		if oc.Exit >= 0 {

@@ -40,6 +40,14 @@ type Lane struct {
 	Start   *float64 `yaml:"start,omitempty"`    // lane process started
 	End     *float64 `yaml:"end,omitempty"`      // lane process finished (or skipped)
 	Paused  float64  `yaml:"paused_s,omitempty"` // time its round was held by swim pause
+	Pauses  []Span   `yaml:"pauses,omitempty"`   // each pause: start, seconds since the run started, and length
+}
+
+// Span is a stretch of a lane's time: its start (seconds since the run
+// started) and length.
+type Span struct {
+	Start float64 `yaml:"start"`
+	Dur   float64 `yaml:"duration_s"`
 }
 
 // Run is a whole run's record.

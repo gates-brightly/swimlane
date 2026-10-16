@@ -26,6 +26,12 @@ type Step struct {
 	Dur   float64 `yaml:"duration_s"`
 }
 
+// Span is a stretch of a lane's run time: a pause (swim pause).
+type Span struct {
+	Start float64 `yaml:"start"`
+	Dur   float64 `yaml:"duration_s"`
+}
+
 // Lane is one lane's row. Times are seconds since the run started.
 type Lane struct {
 	Lane      int      `yaml:"lane"`
@@ -43,6 +49,7 @@ type Lane struct {
 	LockWait  float64  `yaml:"lock_wait_s"`
 	QueueWait float64  `yaml:"queue_wait_s"`
 	Paused    float64  `yaml:"paused_s,omitempty"`      // held by swim pause, within its run time
+	Pauses    []Span   `yaml:"pauses,omitempty"`        // each pause, within its run time
 	Delay     *float64 `yaml:"start_delay_s,omitempty"` // start after the last parent finished
 	OnChain   bool     `yaml:"longest_chain,omitempty"`
 	Steps     []Step   `yaml:"steps,omitempty"`
@@ -102,6 +109,9 @@ func Build(rec *runrec.Run, rounds func(lane int) *logparse.Round) *Timeline {
 	for _, rl := range rec.Lanes {
 		l := Lane{Lane: rl.Lane, Job: rl.Job, Round: rl.Round, State: rl.State, Reason: rl.Reason, Exit: rl.Exit,
 			After: rl.After, Ready: rl.Ready, Start: rl.Start, End: rl.End, locked: rl.Locked, slot: rl.Slot, Paused: rl.Paused}
+		for _, p := range rl.Pauses {
+			l.Pauses = append(l.Pauses, Span{Start: r3(p.Start), Dur: r3(p.Dur)})
+		}
 		if l.After == nil {
 			l.After = []int{}
 		}

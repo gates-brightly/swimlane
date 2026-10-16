@@ -52,6 +52,9 @@ func HTML(w io.Writer, t *Timeline) error {
 			for _, st := range l.Steps {
 				add(st.Start, st.Start+st.Dur, "step", fmt.Sprintf("%s %s (%.2fs)", st.Kind, st.Label, st.Dur))
 			}
+			for _, p := range l.Pauses {
+				add(p.Start, p.Start+p.Dur, "paused", fmt.Sprintf("paused (swim pause): %.2fs", p.Dur))
+			}
 		}
 		if l.OnChain {
 			r.Note = "◆"
@@ -75,12 +78,12 @@ var htmlTmpl = template.Must(template.New("timeline").Parse(`<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>swim timeline {{.T.Run}}</title>
 <style>
-:root { --bg:#fff; --fg:#1d1d1f; --muted:#6e6e73; --run:#2f80ed; --fail:#d93025; --deps:#e3e8ef; --queue:#c7d0db; --lock:#9aa5b1; --step:rgba(255,255,255,.45); }
+:root { --bg:#fff; --fg:#1d1d1f; --muted:#6e6e73; --run:#2f80ed; --fail:#d93025; --deps:#e3e8ef; --queue:#c7d0db; --lock:#9aa5b1; --paused:#f2c94c; --step:rgba(255,255,255,.45); }
 @media (prefers-color-scheme: dark) { :root { --bg:#16181c; --fg:#e8e8ea; --muted:#9a9aa1; --deps:#2a2f37; --queue:#3a414b; --lock:#59626e; --step:rgba(0,0,0,.35); } }
 body { background:var(--bg); color:var(--fg); font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; margin:16px; }
 h1 { font-size:16px; margin:0 0 4px; } p { margin:2px 0; color:var(--muted); }
 .wrap { overflow-x:auto; } svg text { fill:var(--fg); font-size:12px; }
-.deps { fill:var(--deps); } .queue { fill:var(--queue); } .lock { fill:var(--lock); }
+.deps { fill:var(--deps); } .queue { fill:var(--queue); } .lock { fill:var(--lock); } .paused { fill:var(--paused); }
 .run { fill:var(--run); } .run.failed, .run.interrupted { fill:var(--fail); } .step { fill:var(--step); stroke:var(--bg); stroke-width:.5; }
 g.skipped text { fill:var(--muted); }
 </style></head><body>

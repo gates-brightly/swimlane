@@ -17,6 +17,7 @@ const (
 	cellDeps  = "░"
 	cellQueue = "▒"
 	cellLock  = "▓"
+	cellPause = "╌"
 )
 
 // Options shape the text view.
@@ -109,6 +110,9 @@ func (s scale) bar(l *Lane) string {
 	}
 	if l.Ran() {
 		fill(*l.Start, *l.End, cellRun, true)
+	}
+	for _, p := range l.Pauses {
+		fill(p.Start, p.Start+p.Dur, cellPause, false)
 	}
 	return strings.Join(cells, "")
 }
@@ -225,8 +229,8 @@ func Text(w io.Writer, t *Timeline, o Options) {
 	}
 	fmt.Fprintf(w, "waiting on dependencies: %s of lane-time · queued: %s · lock waits: %s\n",
 		pct(t.Waiting.Deps), pct(t.Waiting.Queued), pct(t.Waiting.Locks))
-	fmt.Fprintf(w, "legend: %s running  %s waiting on dependencies  %s queued (max_parallel)  %s waiting for a lock  ◆ longest chain\n",
-		cellRun, cellDeps, cellQueue, cellLock)
+	fmt.Fprintf(w, "legend: %s running  %s paused  %s waiting on dependencies  %s queued (max_parallel)  %s waiting for a lock  ◆ longest chain\n",
+		cellRun, cellPause, cellDeps, cellQueue, cellLock)
 }
 
 // HistoryText renders a lane's or job's rounds across runs: one bar per

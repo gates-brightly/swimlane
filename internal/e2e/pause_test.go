@@ -111,7 +111,8 @@ run "three" true`)
 	if paused <= 0 {
 		t.Error("the round's chain entry has no paused_s")
 	}
-	contains(t, "timeline", r.mustSwim("timeline"), "paused ")
+	contains(t, "timeline", r.mustSwim("timeline"), "paused ", "╌ paused")
+	contains(t, "timeline --yaml", r.mustSwim("timeline", "--yaml"), "pauses:", "duration_s:")
 	contains(t, "not running", must(r.swim("pause", "1")), "swim 1 isn't running")
 	contains(t, "not paused", r.mustSwim("unpause", "1"), "swim 1 isn't paused")
 }
@@ -270,4 +271,30 @@ with swim.round() as r:
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
 	contains(t, "log", r.log(1), "PAUSE  by ", "RESUME  by ", "PASS  two", "PASS  three")
+}
+
+// An SDK lane's in-process step doesn't start past its round's Timeout:
+// the round ends as a timeout, as swim step ends a bash lane's.
+func TestSDKStepHonoursTimeout(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	r := newRepo(t, "")
+	r.env = append(r.env, "PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
+	r.write("lane.1.py", `#!/usr/bin/env python3
+# Round: sdk timeout
+# Timeout: 1s
+import swim, time
+with swim.round() as r:
+    r.run("one", ["true"])
+    time.sleep(1.5)  # the program's own work: not a step
+    with r.step("two") as s:
+        s.log("never")
+`, 0o755)
+	r.swim("run", "1", "--plain")
+	log := r.log(1)
+	contains(t, "log", log, "PASS  one", "STOP  timeout: the round's Timeout (1s) ran out (before two)")
+	if strings.Contains(log, "PASS  two") {
+		t.Errorf("an in-process step started past the round's Timeout:\n%s", log)
+	}
 }

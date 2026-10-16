@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -105,6 +106,7 @@ func holdIfPaused(root string, n int, run, next string) {
 	updatePaused(root, n, cell, lanes, func(l *status.Lane) {
 		l.PausedAt, l.PausedBy, l.PausedAfter, l.NextStep, l.PauseNote = "", "", "", "", ""
 		l.PausedS += held.Seconds()
+		l.Pauses = append(l.Pauses, status.PauseSpan{At: began.UTC().Format(time.RFC3339Nano), S: math.Round(held.Seconds()*1000) / 1000})
 	})
 }
 
@@ -148,7 +150,13 @@ func pausedSoFar(root string, n int) time.Duration {
 // roundDeadline is the round's Timeout: deadline (SWIM_DEADLINE, epoch; the
 // zero time for none), moved out by the time it has been paused.
 func roundDeadline(root string, n int) time.Time {
-	s, err := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64)
+	return deadlineOf(root, n, os.Getenv("SWIM_DEADLINE"))
+}
+
+// deadlineOf is roundDeadline for a lane whose SWIM_DEADLINE is env (the
+// lane socket's, which serves a program with its own environment).
+func deadlineOf(root string, n int, env string) time.Time {
+	s, err := strconv.ParseInt(env, 10, 64)
 	if err != nil || s <= 0 {
 		return time.Time{}
 	}

@@ -237,7 +237,11 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 			return fail("this swim (%s) speaks %s, the SDK %s: update the SDK, or swim (%s)", version.String(), LaneProtocol, a.Protocol, version.InstallCmd)
 		}
 		s.connected.Store(true)
-		deadline, _ := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64)
+		// The round's deadline as of now: paused time (swim pause) moves it.
+		var deadline int64
+		if d := deadlineOf(s.root, s.n, envOf(s.env, "SWIM_DEADLINE")); !d.IsZero() {
+			deadline = d.Unix()
+		}
 		result := map[string]any{
 			"protocol": LaneProtocol, "swim": version.String(), "syntax": version.Current,
 			"lane": s.n, "cell": lane.CurrentCell(), "job": envOf(s.env, "SWIM_JOB"), "run": envOf(s.env, "SWIM_RUN"),
@@ -338,6 +342,12 @@ func (s *laneServer) handle(req laneRequest) laneResponse {
 		}
 		if !s.inHandler.Load() {
 			holdIfPaused(s.root, s.n, envOf(s.env, "SWIM_RUN"), a.Label) // a paused round holds here
+		}
+		// The round's Timeout: an in-process step doesn't start past it, as
+		// swim step doesn't (paused time not counted).
+		if d := deadlineOf(s.root, s.n, envOf(s.env, "SWIM_DEADLINE")); !d.IsZero() && time.Now().After(d) && !s.inHandler.Load() {
+			s.swim("stop", "timeout: the round's Timeout ("+envOf(s.env, "SWIM_TIMEOUT")+") ran out (before "+a.Label+")")
+			return laneResponse{OK: true, Result: map[string]any{"started": false}}
 		}
 		if lane.StopRequested(s.root, s.n, envOf(s.env, "SWIM_RUN")) && !s.inHandler.Load() {
 			s.swim("stop", "interrupted by operator (before "+a.Label+")")

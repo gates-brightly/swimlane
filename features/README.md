@@ -9,7 +9,6 @@ where it would land in the code, open questions, and how to test it.
 | swim observe: computed observations and knowledge from runs; optional Claude write-up | [observe.md](observe.md) | proposed |
 | Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | proposed |
 | Retry on a match: --retry-if REGEX, --backoff-max, --retry-for, swim.yml policies, stage and lane defaults (wait out Rush's lock) | [retry.md](retry.md) | dropped (matching retries on output with regexes isn't wanted) |
-| swim pause / unpause (or resume): hold lanes at their next step, then resume or replace them | [pause.md](pause.md) | in progress (phases 1 and 2 shipped; two small items left, in the spec) |
 | swim cache: tool download caches that outlive a round, checked against pinned lockfiles | [cache.md](cache.md) | in progress (phase one shipped in `754315c`; snapshots later, if measured) |
 
 ## Staging a feature

@@ -452,6 +452,10 @@ already pushed to origin's main) with the next tag and pushes that tag.
     `paused_s` (and `replaced_by` for a replaced round), and `swim
     timeline` the paused time; `swim doctor` warns about a lane paused
     past `pause_warn` (default 4h) or a repo-wide pause left on.
+  - `swim timeline` draws each pause in the lane's bar (`╌`; amber in
+    `--html`), from the run record's `pauses`.
+  - An SDK lane's in-process steps honour the round's `Timeout:` (paused
+    time not counted), and `hello` reports the deadline as it stands.
 - **`swim config chime on` covers queued jobs too.** `swim watch` now
   chimes as each batch it runs finishes, by the same settings as `swim
   run`: every batch with `chime on`, a batch that didn't pass with
