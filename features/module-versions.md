@@ -30,7 +30,8 @@ This adds version checks for modules:
 On 2026-10-16, building and testing modules:
 
 - The Mac ran a swim from before modules. A lane using `mod` ran, every
-  module call failed outside a step, and the log didn't say why (T33).
+  module call failed outside a step, and the log didn't say why (since
+  `31a16a5` such a failure is a WARN in the log).
   Script syntax 4 now makes such a swim refuse the lane, but only after a
   `swim lock --upgrade` every repo has to do, and the refusal reached only
   the worker's terminal.
@@ -83,8 +84,10 @@ modules:
 - `swim plan`, `swim approve` and `swim queue add` refuse, or warn, before a
   mismatched lane is approved or queued.
 - `swim watch` checks at start and before claiming each batch: a worker
-  that can't run a batch's modules leaves it queued, with the reason in the
-  entry and `.swim.log` (T33), rather than failing it.
+  that can't run a batch's modules leaves it queued, with the reason in
+  its presence file (`swim queue`, `swim queue show`) and `.swim.log`,
+  rather than failing it: the same path as a worker whose swim reads
+  other syntaxes (`da66427`, `50f667a`).
 
 ### `swim version` and the proxy
 
