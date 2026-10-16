@@ -851,6 +851,10 @@ MODULES
                    prompt and inputs masked, the reply masked too. It passes or
                    fails on whether a reply came, never on what it says, and
                    swim never reads the artifact back
+      report       mod report NAME... [--optional] [--max 256KiB]: print a
+                   round's artifact (report.md from mod claude, a plan) into
+                   the step log, headed by its size and sha256; NAME is in
+                   $SWIM_OUT. A missing file fails it unless --optional
       aws-session  mod_env aws-session --profile P [--role ARN]: credentials
                    from your AWS profile or SSO through the aws CLI
       clone        mod clone URL SHA DIR: a full commit id only, HEAD checked

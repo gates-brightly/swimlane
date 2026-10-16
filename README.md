@@ -786,7 +786,8 @@ mod notify "#orders" "orders deploy: done (job $SWIM_JOB)"
 - **Built in:** `tf` (the plan is the round's evidence, so the approval
   covers it, and apply runs exactly that saved plan), `smoke` (a committed
   list of HTTP and TCP checks), `claude` (a report written with the Claude
-  Code CLI from masked material, never a decision), `target` (stop unless
+  Code CLI from masked material, never a decision), `report` (print an
+  artifact into the log), `target` (stop unless
   the AWS account, kube context or GCP project is the one the lane says), `backup` (an RDS or DynamoDB restore
   point, waited for, its id recorded), `wait` (until an HTTP status, a TCP
   port, a command's exit code or a kube rollout says ready), `aws-session`,

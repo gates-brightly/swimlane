@@ -38,7 +38,7 @@ func TestBuiltins(t *testing.T) {
 			t.Errorf("%s: %+v", m.Name, m)
 		}
 	}
-	if got := strings.Join(names, " "); got != "aws-session backup claude clone notify smoke target tf wait" {
+	if got := strings.Join(names, " "); got != "aws-session backup claude clone notify report smoke target tf wait" {
 		t.Errorf("built-ins: %s", got)
 	}
 	// Built-in hashes are stable within a binary, and a Go module's covers

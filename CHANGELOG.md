@@ -419,6 +419,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Built-in module `report`.** `mod report report.md` prints a round's
+  artifact from `$SWIM_OUT` into the step log, headed by its size and
+  SHA-256 (the hash the END block records for an output), masked like any
+  step output. A missing file fails the step unless `--optional`; `--max`
+  caps what's shown. It only shows the file: nothing depends on what it
+  says.
+- **The claude module names its CLI in the call** (`-- CMD ARGS...` or
+  `--bin`); `SWIM_CLAUDE_BIN` is gone. It passes long flags only
+  (`--print`), so a wrapper's own short options can't take them, and runs
+  in one empty directory outside any repo.
 - **Built-in modules `tf`, `smoke` and `claude`.** `mod --evidence tf plan
   DIR` runs init (lockfile read-only) and plan quietly, saves the plan in
   the round's `$SWIM_OUT/.swim-tf/`, and prints only its `terraform show`,

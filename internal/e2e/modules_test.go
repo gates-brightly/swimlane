@@ -479,15 +479,18 @@ echo "All steps passed."
 	r.env = append(r.env, "MY_CLI="+cli, "DEPLOY_TOKEN=tok-abcdef-123456")
 	os.MkdirAll(filepath.Join(r.root, "prompts"), 0o755)
 	r.write("prompts/report.md", "Write a short run report.\n", 0o644)
-	r.script(1, "report", `# Modules: claude
+	r.script(1, "report", `# Modules: claude report
 # Includes: prompts/report.md
 # Outputs: report.md
 run "uses a token" bash -c 'echo "token=$DEPLOY_TOKEN"'
-mod claude --prompt-file prompts/report.md --log --out report.md -- "$MY_CLI"`)
+mod claude --prompt-file prompts/report.md --log --out report.md -- "$MY_CLI"
+mod report report.md
+mod report --optional missing.md`)
 	contains(t, "lint", must(r.swim("lint", "1")), "no problems found")
 	r.mustSwim("run", "1", "--plain")
 	log := r.log(1)
-	contains(t, "log", log, "PASS  claude --prompt-file", "claude: "+cli+" (1.2.3 (Claude Code), sha256 ", "wrote report.md")
+	contains(t, "log", log, "PASS  claude --prompt-file", "claude: "+cli+" (1.2.3 (Claude Code), sha256 ", "wrote report.md",
+		"PASS  report report.md", "| == report.md  ", "| # Run report", "| All steps passed.", "PASS  report --optional missing.md", "== missing.md: not there")
 	st := r.status().Get(1)
 	report, err := os.ReadFile(filepath.Join(r.root, ".swim", "out", st.Job, st.Run, "report.md"))
 	if err != nil || !strings.Contains(string(report), "All steps passed.") {

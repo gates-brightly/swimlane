@@ -270,7 +270,7 @@ from what the previous ones left behind.
   tf apply DIR` inside the guard (never a raw `terraform apply`). Verify
   with `mod smoke smoke/<svc>.yml` (list the file in `# Includes:`). A
   report goes through `mod claude ... --out report.md`, which only writes
-  an artifact.
+  an artifact; `mod report report.md` prints it into the log.
   An undeclared module is refused.
 - **Keep output streaming,** so the operator and the live view see
   progress. Don't capture a long command with `out=$(cmd); echo "$out"`.

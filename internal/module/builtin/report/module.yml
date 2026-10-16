@@ -1,0 +1,10 @@
+schema: swim.module/v1
+name: report
+version: 1.0.0
+kind: go
+summary: print a round's artifact (report.md, a plan, a summary) into the step log, with its size and hash
+commands: [report]
+usage:
+  - "mod report NAME... [--optional] [--max 256KiB]    NAME is a file in $SWIM_OUT (or an absolute path); masked like any step output"
+effects:
+  read_only: true
