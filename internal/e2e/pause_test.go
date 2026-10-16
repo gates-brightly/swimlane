@@ -279,21 +279,23 @@ func TestSDKStepHonoursTimeout(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not installed")
 	}
-	r := newRepo(t, "")
+	// Python's start-up and the SDK's hello come out of the round's
+	// Timeout: 3s, and alone, leaves step one room on a loaded machine.
+	r := newSerialRepo(t, "")
 	r.env = append(r.env, "PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
 	r.write("lane.1.py", `#!/usr/bin/env python3
 # Round: sdk timeout
-# Timeout: 1s
+# Timeout: 3s
 import swim, time
 with swim.round() as r:
     r.run("one", ["true"])
-    time.sleep(1.5)  # the program's own work: not a step
+    time.sleep(3.5)  # the program's own work: not a step
     with r.step("two") as s:
         s.log("never")
 `, 0o755)
 	r.swim("run", "1", "--plain")
 	log := r.log(1)
-	contains(t, "log", log, "PASS  one", "STOP  timeout: the round's Timeout (1s) ran out (before two)")
+	contains(t, "log", log, "PASS  one", "STOP  timeout: the round's Timeout (3s) ran out (before two)")
 	if strings.Contains(log, "PASS  two") {
 		t.Errorf("an in-process step started past the round's Timeout:\n%s", log)
 	}
