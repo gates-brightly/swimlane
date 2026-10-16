@@ -275,10 +275,17 @@ func TestSecretRefs(t *testing.T) {
 	}
 	for _, tc := range []struct{ name, line string }{
 		{"cli", "T=$(swim secret get gone)\n"},
-		{"python sdk", "# t = swim.secret.get(\"gone\")\n"},
-		{"go sdk", "# t, err := swim.Secret.Get(\"gone\")\n"},
+		{"cli in quotes", "T=\"$(swim secret get gone)\"\n"},
+		{"python sdk", "t = swim.secret.get(\"gone\")\n"},
+		{"go sdk", "t, err := swim.Secret.Get(\"gone\")\n"},
 	} {
-		fs := Lint(cfg4(), map[int]string{1: before(c, "stage verify\n", tc.line), 2: clean(2)}, 1)
+		s := NewScript(1, before(c, "stage verify\n", tc.line))
+		if strings.HasSuffix(tc.name, "sdk") {
+			// An SDK lane: read as written (lane.1.py, lane.1.go).
+			s = NewScript(1, "# Round: sdk\n"+tc.line)
+			s.Name = "lane.1.py"
+		}
+		fs := lintScripts(cfg4(), map[int]*Script{1: s, 2: NewScript(2, clean(2))}, 1)
 		if len(fs) != 1 || fs[0].Code != "secret-ref" || !strings.Contains(fs[0].Message, "secret gone isn't stored") {
 			t.Errorf("%s: %+v", tc.name, fs)
 		}

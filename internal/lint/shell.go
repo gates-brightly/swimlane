@@ -3,6 +3,8 @@ package lint
 import (
 	"regexp"
 	"strings"
+
+	"github.com/gates-brightly/swimlane/internal/lane"
 )
 
 // view is a lane script split into lines, three ways, so checks can tell
@@ -13,12 +15,17 @@ import (
 //	bare  comments and the contents of quoted strings blanked (the quotes
 //	      stay, and so do ${...} expansions inside double quotes, which
 //	      bash still evaluates)
+//	exp   what bash expands: comments, single-quoted text and heredoc
+//	      bodies blanked; double-quoted text kept, $(...) and all
 //
 // Heredoc bodies are kept in code, blanked in bare, and flagged in doc.
 // Blanking keeps every line's length, so columns and line numbers match.
 type view struct {
-	raw, code, bare []string
-	doc             []bool
+	raw, code, bare, exp []string
+	doc                  []bool
+	// inQuote: the line starts inside a quoted string that began on an
+	// earlier line, so it holds no command of its own.
+	inQuote []bool
 }
 
 var heredocRE = regexp.MustCompile(`^<<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)['"]?`)
@@ -27,6 +34,7 @@ func scan(src string) *view {
 	v := &view{raw: strings.Split(src, "\n")}
 	code := []byte(src)
 	bare := []byte(src)
+	exp := []byte(src)
 	blank := func(i int) {
 		if code[i] != '\n' {
 			bare[i] = ' '
@@ -45,6 +53,8 @@ func scan(src string) *view {
 		tabs bool
 	}
 	lineStart := func(i int) bool { return i == 0 || src[i-1] == '\n' }
+	quotedNL := map[int]bool{} // newlines inside a quoted string
+
 	for i := 0; i < len(src); i++ {
 		c := src[i]
 		switch state {
@@ -57,6 +67,7 @@ func scan(src string) *view {
 			line := src[i : i+end]
 			for k := i; k < i+end; k++ {
 				blank(k)
+				exp[k] = ' '
 			}
 			p := pending[0]
 			check := line
@@ -71,12 +82,21 @@ func scan(src string) *view {
 			}
 			i += end // at the newline (or the end)
 		case single:
+			if c == '\n' {
+				quotedNL[i] = true
+			}
 			if c == '\'' {
 				state = normal
 			} else {
 				blank(i)
+				if c != '\n' {
+					exp[i] = ' '
+				}
 			}
 		case double:
+			if c == '\n' {
+				quotedNL[i] = true
+			}
 			switch {
 			case c == '\\' && i+1 < len(src):
 				if braces == 0 {
@@ -84,6 +104,9 @@ func scan(src string) *view {
 					if src[i+1] != '\n' {
 						blank(i + 1)
 					}
+				}
+				if src[i+1] == '\n' {
+					quotedNL[i+1] = true
 				}
 				i++
 			case c == '$' && i+1 < len(src) && src[i+1] == '{':
@@ -112,7 +135,7 @@ func scan(src string) *view {
 					end = len(src) - i
 				}
 				for k := i; k < i+end; k++ {
-					code[k], bare[k] = ' ', ' '
+					code[k], bare[k], exp[k] = ' ', ' ', ' '
 				}
 				i += end - 1
 			case c == '<' && strings.HasPrefix(src[i:], "<<") && !strings.HasPrefix(src[i:], "<<<"):
@@ -128,8 +151,16 @@ func scan(src string) *view {
 			}
 		}
 	}
+	v.inQuote = make([]bool, len(v.raw))
+	for i, line := 0, 0; i < len(src); i++ {
+		if src[i] == '\n' {
+			line++
+			v.inQuote[line] = quotedNL[i]
+		}
+	}
 	v.code = strings.Split(string(code), "\n")
 	v.bare = strings.Split(string(bare), "\n")
+	v.exp = strings.Split(string(exp), "\n")
 	v.doc = make([]bool, len(v.raw))
 	// Mark heredoc bodies: lines whose bare text was blanked but whose code
 	// wasn't, and that aren't inside a multi-line quoted string.
@@ -183,3 +214,95 @@ func (v *view) lastCode() int {
 	}
 	return -1
 }
+
+// A lineCmd is one simple command of a bash script and the line it's on.
+// Sub: it runs in a shell of its own (a bash -c body), where the lane
+// library's functions (stage, guard, mod, ...) aren't defined.
+type lineCmd struct {
+	Line  int
+	Words []lane.Word
+	Sub   bool
+}
+
+// commands lists the simple commands a bash script runs, read with the
+// quote-aware tokenizer (lane.Commands): never a word in quoted text, a
+// comment or a heredoc body. The commands inside a $(...) are listed too,
+// quoted or not, and those of a bash -c (or sh -c) body, marked Sub. A
+// command continued onto the next line is read up to the end of its first.
+func (v *view) commands() []lineCmd {
+	var out []lineCmd
+	for i, line := range v.code {
+		if !v.isCode(i) || v.inQuote[i] {
+			continue
+		}
+		subCommands(lane.Commands(line), false, func(c []lane.Word, sub bool) {
+			out = append(out, lineCmd{Line: i, Words: c, Sub: sub})
+		})
+	}
+	return out
+}
+
+// subCommands calls fn with each of cmds, then the commands inside its
+// words' $(...) and its bash -c body (sub: in a shell of their own).
+func subCommands(cmds [][]lane.Word, sub bool, fn func([]lane.Word, bool)) {
+	for _, c := range cmds {
+		fn(c, sub)
+		for k, w := range c {
+			if w.Expands {
+				for _, inner := range substitutions(w.Text) {
+					subCommands(lane.Commands(inner), sub, fn)
+				}
+			}
+			if k > 0 && w.Text == "-c" && k+1 < len(c) && isShell(c[k-1].Text) {
+				for _, line := range strings.Split(c[k+1].Text, "\n") {
+					subCommands(lane.Commands(line), true, fn)
+				}
+			}
+		}
+	}
+}
+
+// isShell reports whether a command word runs a POSIX shell.
+func isShell(word string) bool {
+	switch word[strings.LastIndexByte(word, '/')+1:] {
+	case "bash", "sh", "zsh", "dash":
+		return true
+	}
+	return false
+}
+
+// substitutions are the texts of the outermost $(...) in s.
+func substitutions(s string) []string {
+	var out []string
+	for {
+		at := strings.Index(s, "$(")
+		if at < 0 {
+			return out
+		}
+		depth, end := 0, -1
+		for k := at + 1; k < len(s) && end < 0; k++ {
+			switch s[k] {
+			case '(':
+				depth++
+			case ')':
+				if depth--; depth == 0 {
+					end = k
+				}
+			}
+		}
+		if end < 0 {
+			return append(out, s[at+2:])
+		}
+		out = append(out, s[at+2:end])
+		s = s[end+1:]
+	}
+}
+
+// isSwim reports whether a command's first word runs swim: swim,
+// "$SWIM_BIN" (or ${SWIM_BIN:-swim}), or a path ending in /swim.
+func isSwim(w lane.Word) bool {
+	return w.Text == "swim" || strings.HasSuffix(w.Text, "/swim") || strings.Contains(w.Text, "SWIM_BIN")
+}
+
+// literal reports whether a word's value is known before the run.
+func literal(w lane.Word) bool { return !w.Expands }

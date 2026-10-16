@@ -65,10 +65,8 @@ func checkCacheBypass(c *Context, s *Script) []finding.Finding {
 		return nil
 	}
 	var out []finding.Finding
-	for i, line := range s.v.code {
-		if s.v.doc[i] {
-			continue
-		}
+	for _, r := range s.ranCommands() {
+		i, line := r.Line, r.Text
 		switch {
 		case has["npm"] && npmInstallRE.MatchString(line):
 			out = append(out, f(finding.Warn, "cache-bypass", i, "use npm ci, which installs exactly the lockfile",

@@ -1217,6 +1217,15 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Fixed
 
+- **Lint no longer reads commands out of quoted text, comments or
+  heredocs.** `echo "stage change"` hid every check-unsafe finding after
+  it; `echo "mod clone x"`, `"input 2 x"`, `"swim secret get T"` and
+  `"AWS_PROFILE=prod"` made module, input-dep, secret-ref, secret-guard
+  and ambient-credential findings; a destructive word on the second line
+  of a quoted string was flagged. Those checks now read the commands a
+  script runs (the tokenizer the header contract uses), including the
+  commands in `$(...)` and in `bash -c` bodies. `secret-argv` reads what
+  bash expands, so a `$(swim secret get ...)` in single quotes is text.
 - **A command that only looks no longer rewrites status.yml.** Status
   updates that change nothing (swim report and swim status refresh it)
   leave the file alone, so its `updated_at` (swim status's "updated") is

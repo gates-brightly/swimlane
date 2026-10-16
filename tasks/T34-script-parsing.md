@@ -54,16 +54,21 @@ Count: about 170 regexp declarations before, 117 after.
 
 ## Left
 
-- **Lint** (53 of the 117: `checks.go`, `sources.go`, `modules.go`,
-  `cache.go`, `lint.go`, `shell.go`): rewrite its checks on `lane.Commands`
-  and its views. Its findings are advice now, so this is about accuracy,
-  not trust.
+- **Lint** (`checks.go`, `sources.go`, `modules.go`, `cache.go`,
+  `lint.go`, `shell.go`): T40 moved the checks that look for a command
+  onto `lane.Commands` (stages, mod, input, secrets, ambient credentials,
+  destructive and check-unsafe, cache), and those that keep reading raw
+  text say why. Patterns matched within a command's text (`applyRE`,
+  `destructiveRE`, the bash 4 forms, redirects) are still regexes. Its
+  findings are advice, so this is about accuracy, not trust.
 - **Log and text parsers:** `logparse` (9), `cli/logcmd.go` (7),
   `redact` (6, secret value patterns: likely to stay), `doctor` (5),
   `changelog` (5), `queue`, `schedule`, `hub`, `envfile` and others with
   one to three each.
-- **A corpus test** of tricky scripts (quotes, heredocs, continued lines,
-  `bash -c` bodies) for what the tokenizer and lint must find.
+- **The corpus** (`internal/lint/testdata/corpus/`, from T40) covers
+  quotes, heredocs, multi-line strings and comments for lint. Still to
+  add: continued lines (`\`), and the tokenizer's own cases (stages,
+  handlers, evidence) beside it.
 
 ## Done when
 

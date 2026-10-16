@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
@@ -28,7 +29,7 @@ func f(level, code string, i int, fix, format string, a ...any) finding.Finding 
 // headerLine returns the 0-based line of the `# Key:` header, or -1.
 func (s *Script) headerLine(key string) int {
 	re := regexp.MustCompile(`^#?[ \t]?` + regexp.QuoteMeta(key) + `:`)
-	for i, raw := range s.v.raw {
+	for i, raw := range s.v.raw { // raw: header lines are comments
 		if i >= 200 {
 			break
 		}
@@ -57,7 +58,7 @@ var placeholderRE = regexp.MustCompile(`\{\{[^}]*\}\}|<round goal>|replace with 
 
 func checkPlaceholder(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
-	for i, raw := range s.v.raw {
+	for i, raw := range s.v.raw { // raw: a placeholder is wrong wherever it is
 		if m := placeholderRE.FindString(raw); m != "" {
 			out = append(out, f(finding.Error, "placeholder", i, "replace it with the round's real content",
 				"template placeholder left in: %s", m))
@@ -213,22 +214,21 @@ func checkSummary(c *Context, s *Script) []finding.Finding {
 	return nil
 }
 
-var (
-	stageRE     = regexp.MustCompile(`^\s*stage(?:\s+["']?([^\s"';&|)]*))?`)
-	stageWordRE = regexp.MustCompile(`^\s*stage(\s|$)`)
-)
-
 // stages lists the script's literal `stage NAME` calls (0-based line, name).
 func (s *Script) stages() (lines []int, names []string) {
-	for i, line := range s.v.code {
-		if s.v.doc[i] {
+	for _, c := range s.v.commands() {
+		w := c.Words
+		if c.Sub || w[0].Text != "stage" || w[0].Quoted {
 			continue
 		}
-		m := stageRE.FindStringSubmatch(line)
-		if m == nil || strings.HasPrefix(m[1], "$") || !stageWordRE.MatchString(line) {
-			continue
+		name := ""
+		if len(w) > 1 {
+			if !literal(w[1]) {
+				continue
+			}
+			name = w[1].Text
 		}
-		lines, names = append(lines, i), append(names, m[1])
+		lines, names = append(lines, c.Line), append(names, name)
 	}
 	return
 }
@@ -313,7 +313,7 @@ var (
 // code, each with the 0-based line it first appears on.
 func (s *Script) guardFlags() (listed, used map[string]int, order []string) {
 	listed, used = map[string]int{}, map[string]int{}
-	for i, raw := range s.v.raw {
+	for i, raw := range s.v.raw { // raw for the header lines; uses are read from bare
 		if i < 200 {
 			if m := guardHeaderRE.FindStringSubmatch(strings.TrimSpace(raw)); m != nil {
 				flag := m[1]
@@ -367,15 +367,11 @@ func checkGuardDynamic(c *Context, s *Script) []finding.Finding {
 		return nil
 	}
 	var out []finding.Finding
-	for i, line := range s.v.code {
-		if s.v.doc[i] {
-			continue
-		}
-		for _, cmd := range lane.Commands(line) {
-			if len(cmd) > 1 && cmd[0].Text == "guard" && cmd[1].Expands {
-				out = append(out, f(finding.Error, "guard-dynamic", i, "add `# Guards: *  <which flags, and why they're named at run time>` (swim lint --fix adds it), or name the flag",
-					"guard %s names its flag at run time, but the header doesn't say `# Guards: *`: swim refuses it when it asks", cmd[1].Text))
-			}
+	for _, lc := range s.v.commands() {
+		i, cmd := lc.Line, lc.Words
+		if !lc.Sub && len(cmd) > 1 && cmd[0].Text == "guard" && cmd[1].Expands {
+			out = append(out, f(finding.Error, "guard-dynamic", i, "add `# Guards: *  <which flags, and why they're named at run time>` (swim lint --fix adds it), or name the flag",
+				"guard %s names its flag at run time, but the header doesn't say `# Guards: *`: swim refuses it when it asks", cmd[1].Text))
 		}
 	}
 	return out
@@ -401,10 +397,71 @@ func checkGuardUnused(c *Context, s *Script) []finding.Finding {
 var (
 	destructiveRE = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])(delete|destroy|drop)(?:$|[^A-Za-z0-9_])|(?:^|[\s;&|('"])rm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b`)
 	// Lines that only say or record something.
-	talkRE  = regexp.MustCompile(`^\s*(?:echo|printf|stop|drift|confirm|guard|:|swim\s+note|if\s+!?\s*guard)\b`)
-	labelRE = regexp.MustCompile(`^(\s*(?:run|gate|snapshot)\s+(?:--\S+(?:\s+[^-"'\s]\S*)?\s+)*)("(?:[^"\\]|\\.)*"|'[^']*')`)
 	blockRE = regexp.MustCompile(`[A-Za-z0-9_]+|&&|!`)
 )
+
+// talk are the commands that only say something: a destructive word in
+// their arguments is prose.
+var talk = map[string]bool{"echo": true, "printf": true, "stop": true, "drift": true, "confirm": true, "guard": true, ":": true, "msg": true, "note": true}
+
+// stepCommand is the command a step runs: run/gate/snapshot/evidence
+// [options] "<label>" cmd... gives cmd...; any other command is itself.
+func stepCommand(words []lane.Word) []lane.Word {
+	if len(words) == 0 {
+		return nil
+	}
+	switch words[0].Text {
+	case "run", "gate", "snapshot", "evidence":
+	default:
+		return words
+	}
+	k := 1
+	for k < len(words) && strings.HasPrefix(words[k].Text, "--") {
+		if stepValueOpts[words[k].Text] {
+			k++
+		}
+		k++
+	}
+	if k < len(words) {
+		k++ // the label
+	}
+	if k < len(words) && words[k].Text == "--" {
+		k++
+	}
+	return words[k:]
+}
+
+// A ran is a command the script runs, as text: the step's command for
+// run/gate/snapshot/evidence (its label and options dropped), with any
+// bash -c body as one of its words. Commands that only talk (echo, stop,
+// swim note, ...) aren't listed.
+type ran struct {
+	Line int
+	Text string
+}
+
+// ranCommands lists the commands the bash script runs (ran).
+func (s *Script) ranCommands() []ran {
+	var out []ran
+	for _, lc := range s.v.commands() {
+		if lc.Sub {
+			continue // in its bash -c word's text already
+		}
+		words := stepCommand(lc.Words)
+		if len(words) == 0 || talk[words[0].Text] || len(words) > 1 && isSwim(words[0]) && words[1].Text == "note" {
+			continue
+		}
+		texts := make([]string, len(words))
+		for k, w := range words {
+			texts[k] = w.Text
+		}
+		out = append(out, ran{lc.Line, strings.Join(texts, " ")})
+	}
+	return out
+}
+
+// stepValueOpts are a step's options that take a value.
+var stepValueOpts = map[string]bool{"--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true}
 
 // guardedLines marks lines inside `if guard FLAG ...; then ... fi` (the
 // then branch only) or after `guard FLAG "..." &&` on the same line.
@@ -467,19 +524,14 @@ func (s *Script) guardedLines() []bool {
 func checkDestructive(c *Context, s *Script) []finding.Finding {
 	guarded := s.guardedLines()
 	var out []finding.Finding
-	for i, line := range s.v.code {
-		if !s.v.isCode(i) || guarded[i] || talkRE.MatchString(line) || strings.HasPrefix(strings.TrimSpace(line), "#!") {
+	flagged := map[int]bool{}
+	for _, r := range s.ranCommands() {
+		i := r.Line
+		if guarded[i] || flagged[i] {
 			continue
 		}
-		cmd := line
-		if m := labelRE.FindStringSubmatch(line); m != nil {
-			// run "<label>" cmd...: judge the command, not the label.
-			cmd = line[len(m[0]):]
-			if talkRE.MatchString(cmd) {
-				continue
-			}
-		}
-		if m := destructiveRE.FindStringSubmatch(cmd); m != nil {
+		if m := destructiveRE.FindStringSubmatch(r.Text); m != nil {
+			flagged[i] = true
 			what := m[1]
 			if what == "" {
 				what = "rm -r"
@@ -551,15 +603,41 @@ func checkSecretRefs(c *Context, s *Script) []finding.Finding {
 	}
 	repo := secrets.RepoKey(c.Root)
 	seen := map[string]bool{}
+	for _, u := range s.secretUses() {
+		name := u.Name
+		if seen[name] || store.Has(repo, name) || os.Getenv(secrets.EnvPrefix+secrets.EnvName(name)) != "" {
+			continue
+		}
+		seen[name] = true
+		out = append(out, f(finding.Warn, "secret-ref", u.Line, "swim secret set "+name+" (or --all)",
+			"secret %s isn't stored for this repo; getting it will fail", name))
+	}
+	return out
+}
+
+// A secretUse is a secret a script gets by a literal name.
+type secretUse struct {
+	Line int
+	Name string
+}
+
+// secretUses lists the secrets the script gets by name: in bash, swim
+// secret get NAME commands (in a $(...) too, never in quoted text or a
+// comment); in another language, the SDK's calls as written.
+func (s *Script) secretUses() []secretUse {
+	var out []secretUse
+	if s.bash() {
+		for _, c := range s.v.commands() {
+			w := c.Words
+			if len(w) > 3 && isSwim(w[0]) && w[1].Text == "secret" && w[2].Text == "get" && literal(w[3]) {
+				out = append(out, secretUse{c.Line, w[3].Text})
+			}
+		}
+		return out
+	}
 	for i, line := range s.v.raw {
 		for _, m := range secretUseRE.FindAllStringSubmatch(line, -1) {
-			name := m[1] + m[2] + m[3]
-			if seen[name] || store.Has(repo, name) || os.Getenv(secrets.EnvPrefix+secrets.EnvName(name)) != "" {
-				continue
-			}
-			seen[name] = true
-			out = append(out, f(finding.Warn, "secret-ref", i, "swim secret set "+name+" (or --all)",
-				"secret %s isn't stored for this repo; getting it will fail", name))
+			out = append(out, secretUse{i, m[1] + m[2] + m[3]})
 		}
 	}
 	return out
@@ -580,27 +658,22 @@ func checkGuardedSecret(c *Context, s *Script) []finding.Finding {
 	}
 	var out []finding.Finding
 	seen := map[string]bool{}
-	for i, line := range s.v.raw {
-		if s.Lib && s.v.doc[i] {
+	for _, u := range s.secretUses() {
+		name, i := u.Name, u.Line
+		p, ok := guarded[name]
+		if !ok || seen[name] {
 			continue
 		}
-		for _, m := range secretUseRE.FindAllStringSubmatch(line, -1) {
-			name := m[1] + m[2] + m[3]
-			p, ok := guarded[name]
-			if !ok || seen[name] {
-				continue
+		before := false
+		for _, f := range p.Guard {
+			if at, ok := used[f]; (s.Lib && ok && at <= i) || (!s.Lib && sdk[f]) {
+				before = true
 			}
-			before := false
-			for _, f := range p.Guard {
-				if at, ok := used[f]; (s.Lib && ok && at <= i) || (!s.Lib && sdk[f]) {
-					before = true
-				}
-			}
-			if !before {
-				seen[name] = true
-				out = append(out, f(finding.Warn, "secret-guard", i, fmt.Sprintf("put it inside `if guard %s \"<what it does>\"; then ... fi`", p.Guard[0]),
-					"secret %s is guarded by %s (swim.yml), but no guard of it comes first: swim run refuses it", name, strings.Join(p.Guard, " or ")))
-			}
+		}
+		if !before {
+			seen[name] = true
+			out = append(out, f(finding.Warn, "secret-guard", i, fmt.Sprintf("put it inside `if guard %s \"<what it does>\"; then ... fi`", p.Guard[0]),
+				"secret %s is guarded by %s (swim.yml), but no guard of it comes first: swim run refuses it", name, strings.Join(p.Guard, " or ")))
 		}
 	}
 	return out
@@ -612,6 +685,15 @@ func checkGuardedSecret(c *Context, s *Script) []finding.Finding {
 func checkAmbientCredential(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, name := range c.Cfg.AmbientCredentials {
+		if s.bash() {
+			// AWS_PROFILE=name or --profile name in a command, never in
+			// quoted text or a comment.
+			if i, ok := s.usesProfile(name); ok {
+				out = append(out, f(finding.Warn, "ambient-credential", i, "put that access in a guarded secret (swim.yml secrets:) and run with read-only ambient credentials",
+					"uses %s, an ambient credential (swim.yml ambient_credentials:): swim's guards can't stop what it does", name))
+			}
+			continue
+		}
 		re := regexp.MustCompile(`(?:\bAWS_PROFILE=|--profile(?:=|\s+))["']?` + regexp.QuoteMeta(name) + `(?:["'\s;)|&]|$)`)
 		for i, line := range s.v.raw {
 			if (s.Lib && s.v.doc[i]) || !re.MatchString(line) {
@@ -625,6 +707,24 @@ func checkAmbientCredential(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
+// usesProfile reports the first line where a bash command uses the
+// credential name: AWS_PROFILE=name (an assignment or export), or
+// --profile name / --profile=name.
+func (s *Script) usesProfile(name string) (int, bool) {
+	for _, c := range s.v.commands() {
+		for k, w := range c.Words {
+			if !literal(w) {
+				continue
+			}
+			if w.Text == "AWS_PROFILE="+name || w.Text == "--profile="+name ||
+				w.Text == "--profile" && k+1 < len(c.Words) && c.Words[k+1].Text == name {
+				return c.Line, true
+			}
+		}
+	}
+	return 0, false
+}
+
 // secretArgRE is a secret got inline: $(swim secret get ...).
 var secretArgRE = regexp.MustCompile(`\$\(\s*(?:"?\$\{?SWIM_BIN\}?"?|[^\s()]*swim)\s+secret\s+get\b`)
 
@@ -634,7 +734,8 @@ var secretArgRE = regexp.MustCompile(`\$\(\s*(?:"?\$\{?SWIM_BIN\}?"?|[^\s()]*swi
 // keeps it out.
 func checkSecretArgv(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
-	for i, line := range s.v.code {
+	// What bash expands: a $(...) in single quotes or a comment is text.
+	for i, line := range s.v.exp {
 		if s.v.doc[i] {
 			continue
 		}
@@ -718,6 +819,7 @@ func (s *Script) writes() map[string]int {
 // mentions returns the first 0-based code line of s that contains path as a
 // whole path, or -1.
 func (s *Script) mentions(path string) int {
+	// code: a path in quotes is still the path a command reads or writes.
 	for i, line := range s.v.code {
 		if !s.v.isCode(i) {
 			continue
@@ -814,7 +916,6 @@ var (
 	// helperHandlerRE are generic names that are a typo only when the round
 	// defines no handler at all (otherwise they're helpers a handler calls).
 	helperHandlerRE = regexp.MustCompile(`^\s*(?:function\s+)?(always|cleanup|rollback)\s*\(\s*\)`)
-	reachedRE       = regexp.MustCompile(`(?:^|[\s;&|(!])reached\s`)
 )
 
 // checkHandlers: a round with outcome handlers or Fail: must declare script
@@ -833,7 +934,7 @@ func checkHandlers(c *Context, s *Script) []finding.Finding {
 	if !s.Lib {
 		return out
 	}
-	for i, raw := range s.v.raw {
+	for i, raw := range s.v.raw { // raw: a function definition starts its line
 		if m := nearHandlerRE.FindStringSubmatch(raw); m != nil {
 			out = append(out, f(finding.Error, "handler", i, "rename it on_success, on_failure or on_exit",
 				"function %s is not an outcome handler: swim calls only on_success, on_failure and on_exit", m[1]))
@@ -863,8 +964,13 @@ func checkHandlerReached(c *Context, s *Script) []finding.Finding {
 		if i > start && strings.TrimRight(s.v.raw[i], " \t") == "}" {
 			break
 		}
-		if reachedRE.MatchString(s.v.raw[i]) {
-			return nil
+		if s.v.doc[i] || s.v.inQuote[i] {
+			continue
+		}
+		for _, cmd := range lane.Commands(s.v.code[i]) {
+			if cmd[0].Text == "reached" && !cmd[0].Quoted {
+				return nil
+			}
 		}
 	}
 	return []finding.Finding{f(finding.Warn, "handler-reached", start, "start it with: reached change || return 0",
@@ -901,23 +1007,53 @@ func checkInputDeps(c *Context, s *Script) []finding.Finding {
 		}
 	}
 	var out []finding.Finding
+	report := func(i int, n string) {
+		if !deps[n] {
+			out = append(out, f(finding.Error, "input-dep", i, "add "+n+" to the round's After:",
+				"input %s reads swim %s's outputs, but swim %s isn't in After: (or config deps)", n, n, n))
+		}
+	}
+	if s.bash() {
+		// input N NAME, or swim input N NAME: a command, never quoted text.
+		for _, lc := range s.v.commands() {
+			w := lc.Words
+			if len(w) > 0 && isSwim(w[0]) {
+				w = w[1:]
+			}
+			if len(w) > 2 && w[0].Text == "input" && !w[0].Quoted && chars.Word(w[1].Text, chars.Digit, chars.Digit) {
+				report(lc.Line, w[1].Text)
+			}
+		}
+		return out
+	}
 	for i, line := range s.v.raw {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
 		for _, m := range inputUseRE.FindAllStringSubmatch(line+" ", -1) {
-			if !deps[m[1]] {
-				out = append(out, f(finding.Error, "input-dep", i, "add "+m[1]+" to the round's After:",
-					"input %s reads swim %s's outputs, but swim %s isn't in After: (or config deps)", m[1], m[1], m[1]))
-			}
+			report(i, m[1])
 		}
 	}
 	return out
 }
 
+// changeLine is the line of the script's first `stage change` (or
+// verify) command, or the line count if it has none.
+func (s *Script) changeLine() int {
+	for _, c := range s.v.commands() {
+		w := c.Words
+		if len(w) > 0 && isSwim(w[0]) {
+			w = w[1:]
+		}
+		if !c.Sub && len(w) > 1 && w[0].Text == "stage" && !w[0].Quoted && (w[1].Text == "change" || w[1].Text == "verify") {
+			return c.Line
+		}
+	}
+	return len(s.v.code)
+}
+
 var (
-	stageChangeRE = regexp.MustCompile(`(?:^|[\s;&|(])stage\s+(?:change|verify)\b`)
-	applyRE       = regexp.MustCompile(`(?i)\b(terraform\s+(?:apply|destroy|import)|kubectl\s+(?:apply|delete|scale|rollout)|helm\s+(?:install|upgrade|uninstall)|aws\s+\S+\s+(?:delete|put|update|create)-\S+|sst\s+(?:deploy|remove))\b`)
+	applyRE = regexp.MustCompile(`(?i)\b(terraform\s+(?:apply|destroy|import)|kubectl\s+(?:apply|delete|scale|rollout)|helm\s+(?:install|upgrade|uninstall)|aws\s+\S+\s+(?:delete|put|update|create)-\S+|sst\s+(?:deploy|remove))\b`)
 )
 
 // checkCheckUnsafe: swim plan --check runs everything before the first
@@ -928,20 +1064,19 @@ func checkCheckUnsafe(c *Context, s *Script) []finding.Finding {
 		return nil // never checked: swim plan --check refuses a round with no stages
 	}
 	var out []finding.Finding
-	for i, line := range s.v.code {
-		if !s.v.isCode(i) {
-			continue
-		}
-		if stageChangeRE.MatchString(line) {
+	change := s.changeLine()
+	flagged := map[int]bool{}
+	for _, r := range s.ranCommands() {
+		i, cmd := r.Line, r.Text
+		if i >= change {
 			break
 		}
-		cmd := line
-		if m := labelRE.FindStringSubmatch(line); m != nil {
-			cmd = line[len(m[0]):]
+		if flagged[i] {
+			continue
 		}
 		m := applyRE.FindString(cmd)
 		if m == "" {
-			if d := destructiveRE.FindStringSubmatch(cmd); d != nil && !talkRE.MatchString(cmd) {
+			if d := destructiveRE.FindStringSubmatch(cmd); d != nil {
 				m = d[1]
 				if m == "" {
 					m = "rm -r"
@@ -949,6 +1084,7 @@ func checkCheckUnsafe(c *Context, s *Script) []finding.Finding {
 			}
 		}
 		if m != "" {
+			flagged[i] = true
 			out = append(out, f(finding.Warn, "check-unsafe", i, "move it after `stage change` (snapshot and check stages must be read-only)",
 				"%q runs before `stage change`, so swim plan --check would run it for real", strings.ToLower(m)))
 		}

@@ -9,9 +9,6 @@ import (
 )
 
 var (
-	// modUseRE is a bash mod or mod_env call, where a command starts (not
-	// go mod download); the rest of the line follows.
-	modUseRE = regexp.MustCompile(`(?:^\s*|[;&|({!]\s*|\b(?:then|do|else|if|while|until)\s+)(mod|mod_env)\s+(.*)$`)
 	// sdkModuleRE is an SDK's r.module("notify", ...) or r.Module("notify", ...).
 	sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(Env|_env)?\(\s*["'\x60]([a-z][a-z0-9_-]*)["'\x60](?:\s*,\s*["'\x60]([^"'\x60]*)["'\x60])?`)
 	// sdkModuleEnvRE is the SDKs' env form: env=True, env: true, Env: true.
@@ -32,33 +29,40 @@ type modCall struct {
 // modCalls lists the module commands the script calls by a literal name.
 func (s *Script) modCalls() []modCall {
 	var out []modCall
-	for i, line := range s.v.code {
-		if !s.v.isCode(i) {
-			continue
-		}
-		if m := modUseRE.FindStringSubmatch(line); m != nil && s.Lib {
-			words := shellWords(m[2])
+	if s.Lib {
+		// mod / mod_env commands: never a word in quoted text or a comment.
+		for _, c := range s.v.commands() {
+			if c.Sub || len(c.Words) == 0 || c.Words[0].Quoted || c.Words[0].Text != "mod" && c.Words[0].Text != "mod_env" {
+				continue
+			}
+			words := c.Words[1:]
 			for k := 0; k < len(words); k++ {
 				w := words[k]
-				if modOptsWithValue[w] {
+				if modOptsWithValue[w.Text] {
 					k++
 					continue
 				}
-				if strings.HasPrefix(w, "--") {
+				if strings.HasPrefix(w.Text, "--") {
 					continue
 				}
-				if !strings.ContainsAny(w, "$`") {
-					call := modCall{Line: i, Cmd: w, Env: m[1] == "mod_env"}
+				if literal(w) {
+					call := modCall{Line: c.Line, Cmd: w.Text, Env: c.Words[0].Text == "mod_env"}
 					for _, a := range words[k+1:] {
-						if strings.ContainsAny(a, "$`") {
+						if !literal(a) {
 							break
 						}
-						call.Args = append(call.Args, a)
+						call.Args = append(call.Args, a.Text)
 					}
 					out = append(out, call)
 				}
 				break
 			}
+		}
+		return out
+	}
+	for i, line := range s.v.code {
+		if !s.v.isCode(i) {
+			continue
 		}
 		for _, m := range sdkModuleRE.FindAllStringSubmatch(line, -1) {
 			call := modCall{Line: i, Cmd: m[2], Env: m[1] != "" || sdkModuleEnvRE.MatchString(line)}
@@ -67,42 +71,6 @@ func (s *Script) modCalls() []modCall {
 			}
 			out = append(out, call)
 		}
-	}
-	return out
-}
-
-// shellWords splits a line into words, keeping quoted parts together (and
-// dropping the quotes). Enough for mod's options and command name.
-func shellWords(s string) []string {
-	var out []string
-	var cur strings.Builder
-	in, has := byte(0), false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case in != 0 && c == in:
-			in = 0
-		case in != 0:
-			cur.WriteByte(c)
-		case c == '\'' || c == '"':
-			in, has = c, true
-		case c == ' ' || c == '\t':
-			if cur.Len() > 0 || has {
-				out = append(out, cur.String())
-				cur.Reset()
-				has = false
-			}
-		case c == ';' || c == '&' || c == '|' || c == ')' || c == '}':
-			if cur.Len() > 0 || has {
-				out = append(out, cur.String())
-			}
-			return out
-		default:
-			cur.WriteByte(c)
-		}
-	}
-	if cur.Len() > 0 || has {
-		out = append(out, cur.String())
 	}
 	return out
 }
@@ -166,12 +134,7 @@ func checkModuleEffects(c *Context, s *Script) []finding.Finding {
 	}
 	change := len(s.v.code)
 	if s.Info.Staged {
-		for i, line := range s.v.code {
-			if s.v.isCode(i) && stageChangeRE.MatchString(line) {
-				change = i
-				break
-			}
-		}
+		change = s.changeLine()
 	}
 	var guarded []bool
 	if s.Lib {

@@ -354,6 +354,10 @@ func NewScript(n int, src string) *Script {
 	return &Script{N: n, Name: fmt.Sprintf("lane.%d.sh", n), Src: src, Info: lane.ParseScript(src), Lib: loadsLib(src), v: scan(src)}
 }
 
+// bash reports whether the script is bash (lane.N.sh, or one that loads
+// swim's library), which lint reads command by command.
+func (s *Script) bash() bool { return s.Lib || strings.HasSuffix(s.Name, ".sh") }
+
 var libLoadRE = regexp.MustCompile(`(?:swim|SWIM_BIN[^"]*)"?\s+lib\b`)
 
 // loadsLib reports whether src loads swim's bash library (or calls
@@ -363,9 +367,19 @@ func loadsLib(src string) bool { return lane.UsesLib(src) || libLoadRE.MatchStri
 // Lint runs every check on one script outside a repo (for tests): deps are
 // resolved against the other scripts given, with cfg's lane count.
 func Lint(cfg *config.Config, scripts map[int]string, n int) []finding.Finding {
-	c := &Context{Cfg: cfg, Scripts: map[int]*Script{}}
+	ss := map[int]*Script{}
 	for k, src := range scripts {
-		if s := NewScript(k, src); !s.Info.Stub {
+		ss[k] = NewScript(k, src)
+	}
+	return lintScripts(cfg, ss, n)
+}
+
+// lintScripts is Lint for scripts already read (a test names one
+// lane.N.py).
+func lintScripts(cfg *config.Config, scripts map[int]*Script, n int) []finding.Finding {
+	c := &Context{Cfg: cfg, Scripts: map[int]*Script{}}
+	for k, s := range scripts {
+		if !s.Info.Stub {
 			c.Scripts[k] = s
 		}
 	}
@@ -377,7 +391,9 @@ func Lint(cfg *config.Config, scripts map[int]string, n int) []finding.Finding {
 	}
 	var fs []finding.Finding
 	for _, ch := range Checks {
-		fs = append(fs, ch.Run(c, s)...)
+		if s.Lib || !bashOnly[ch.Code] {
+			fs = append(fs, ch.Run(c, s)...)
+		}
 	}
 	for i := range fs {
 		fs[i].File = s.Name
