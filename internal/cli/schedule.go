@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -55,10 +55,7 @@ func cmdSchedule(args []string) error {
 	return scheduleAdd(args, "swim schedule")
 }
 
-var (
-	ampmRE  = regexp.MustCompile(`^(?i)[ap]\.?m\.?$`)
-	dateArg = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-)
+var ()
 
 // splitTime takes the time off the end of args: the last argument, or the
 // last two when they're "1:30 pm", "tomorrow 06:00" or "2026-10-20 13:30".
@@ -67,7 +64,7 @@ func splitTime(args []string) (lanes []string, when string, err error) {
 		return nil, "", usagef("usage: swim schedule LANES... TIME (e.g. swim schedule 1 13:30)")
 	}
 	n := len(args)
-	if n >= 3 && (ampmRE.MatchString(args[n-1]) || strings.EqualFold(args[n-2], "tomorrow") || dateArg.MatchString(args[n-2])) {
+	if n >= 3 && (ampm(args[n-1]) || strings.EqualFold(args[n-2], "tomorrow") || isDate(args[n-2])) {
 		return args[:n-2], args[n-2] + " " + args[n-1], nil
 	}
 	return args[:n-1], args[n-1], nil
@@ -547,4 +544,18 @@ func scheduledSummary(root string) []string {
 		}
 	}
 	return out
+}
+
+// ampm reports whether s is am or pm, dotted or not (a.m., PM, ...).
+func ampm(s string) bool {
+	switch strings.ToLower(s) {
+	case "am", "pm", "a.m.", "p.m.", "a.m", "p.m", "am.", "pm.":
+		return true
+	}
+	return false
+}
+
+// isDate reports whether s is YYYY-MM-DD in form.
+func isDate(s string) bool {
+	return len(s) == 10 && s[4] == '-' && s[7] == '-' && chars.Digits(s[:4]) && chars.Digits(s[5:7]) && chars.Digits(s[8:])
 }

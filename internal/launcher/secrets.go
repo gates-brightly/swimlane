@@ -41,7 +41,8 @@ type runSecrets struct {
 
 // UsesSecretsRE spots a script that gets secrets: swim secret get NAME
 // (bash, or ["swim", "secret", "get", ...]), or an SDK's secret.get /
-// Secret.Get.
+// Secret.Get. A regular expression, kept: it reads any language's source,
+// and a miss only means the secrets broker isn't started early.
 var UsesSecretsRE = regexp.MustCompile(`\bsecret\s+get\b|['"]secret['"]\s*,\s*['"]get['"]|\bsecret\.get\(|\bSecret\.Get\(`)
 
 // openSecrets decrypts the secrets the run's repo sees and starts their

@@ -1,8 +1,8 @@
 package logparse
 
 import (
-	"regexp"
 	"strconv"
+	"strings"
 )
 
 // DocSchema identifies the YAML form of a round (swim log --yaml).
@@ -53,7 +53,20 @@ type Doc struct {
 	Failed    []string          `yaml:"failed_steps"`
 }
 
-var exitDetailRE = regexp.MustCompile(`(?:^|, )exit (-?\d+)`)
+// detailExit is the exit code a step's detail names ("exit 2", "timeout:
+// ..., exit 124"), ok false if none.
+func detailExit(detail string) (int, bool) {
+	for _, part := range strings.Split(detail, ", ") {
+		if v, ok := strings.CutPrefix(part, "exit "); ok {
+			if f := strings.Fields(v); len(f) > 0 {
+				if n, err := strconv.Atoi(strings.TrimRight(f[0], ":;")); err == nil {
+					return n, true
+				}
+			}
+		}
+	}
+	return 0, false
+}
 
 // Doc renders the round as data for lane n.
 func (r *Round) Doc(n int) Doc {
@@ -90,8 +103,8 @@ func (r *Round) Doc(n int) Doc {
 			dur := res.Dur
 			rd.Duration = &dur
 			e := 0
-			if m := exitDetailRE.FindStringSubmatch(res.Detail); m != nil {
-				e, _ = strconv.Atoi(m[1])
+			if code, ok := detailExit(res.Detail); ok {
+				e = code
 			} else if res.Kind != Pass {
 				e = -1
 			}

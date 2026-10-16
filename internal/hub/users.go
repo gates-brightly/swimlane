@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
 )
 
 // Hub users: a person behind every command. The admin adds them (swim hub
@@ -51,9 +52,8 @@ type session struct {
 	expires time.Time
 }
 
-// userNameRE: a user name is what lookup.yml names people by, and lands in
+// A user name is what lookup.yml names people by, and lands in
 // worker logs, so it is plain.
-var userNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // SecureCookies marks session cookies Secure: the hub serves TLS.
 func (s *Server) SecureCookies(on bool) { s.secure = on }
@@ -70,7 +70,7 @@ func (s *Server) userRoutes(mux *http.ServeMux) {
 // AddUser adds a user, or replaces one (a new token and role, its sessions
 // ended), and returns the token: shown once, never kept.
 func (s *Server) AddUser(name, role string) (string, error) {
-	if !userNameRE.MatchString(name) {
+	if !chars.Name(name, 64) {
 		return "", fmt.Errorf("user name %q: letters, digits, '.', '_' and '-' only (the name lookup.yml gives them)", name)
 	}
 	if role != RoleViewer && role != RoleOperator {

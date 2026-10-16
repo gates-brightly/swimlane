@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
 )
 
 // Snapshots: an installed tree (node_modules, a virtualenv) a lane saves
@@ -38,7 +40,7 @@ const SnapSchema = "swim.cache-snapshot/v1"
 // SnapName is the cache name (a directory in the repo's caches) holding
 // tree's snapshots, one per key.
 func SnapName(tree string) string {
-	return SnapPreset + "." + strings.Trim(slugRE.ReplaceAllString(strings.ReplaceAll(filepath.ToSlash(tree), "/", "_"), "-"), "-")
+	return SnapPreset + "." + strings.Trim(chars.Squash(strings.ReplaceAll(filepath.ToSlash(tree), "/", "_"), slugChar, "-"), "-")
 }
 
 // Known reports whether name is a cache a repo keeps: a preset, or a

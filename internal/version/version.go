@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
 )
 
 // A release is tagged v0.<YYYYMMDD>.<index>: the day, and the release's
@@ -62,20 +63,38 @@ const InstallCmd = "go install github.com/gates-brightly/swimlane/cmd/swim@lates
 // RepoWeb is swim's repository on the web.
 const RepoWeb = "https://github.com/gates-brightly/swimlane"
 
-var (
-	pseudoRE = regexp.MustCompile(`-(\d{8})\d{6}-[0-9a-f]{12}`)
-	tagRE    = regexp.MustCompile(`^v0\.(\d{8})\.([1-9]\d*)$`)
-)
-
 // Tag is the git tag of release index on date, e.g. "v0.20261009.2".
 func Tag(date string, index int) string { return fmt.Sprintf("v0.%s.%d", date, index) }
 
 // ParseTag splits a release tag ("v0.20261009.2") into its date and index.
 func ParseTag(tag string) (date string, index string, ok bool) {
-	if m := tagRE.FindStringSubmatch(tag); m != nil {
-		return m[1], m[2], true
+	v, isTag := strings.CutPrefix(tag, "v")
+	if !isTag {
+		return "", "", false
 	}
-	return "", "", false
+	return ParseVersion(v)
+}
+
+// ParseVersion splits a release version ("0.20261009.2") into its date and
+// index (no leading zero, 1 or more).
+func ParseVersion(v string) (date string, index string, ok bool) {
+	p := strings.Split(v, ".")
+	if len(p) != 3 || p[0] != "0" || len(p[1]) != 8 || !chars.Digits(p[1]) || !chars.Digits(p[2]) || p[2][0] == '0' {
+		return "", "", false
+	}
+	return p[1], p[2], true
+}
+
+// pseudoDate is the date of a Go pseudo-version
+// (v0.0.0-20261015123456-abcdef123456), "" if it isn't one.
+func pseudoDate(v string) string {
+	p := strings.Split(v, "-")
+	for i := 1; i+1 < len(p); i++ {
+		if len(p[i]) == 14 && chars.Digits(p[i]) && len(p[i+1]) >= 12 && chars.All(p[i+1][:12], chars.Or(chars.Digit, chars.In("abcdef"))) {
+			return p[i][:8]
+		}
+	}
+	return ""
 }
 
 // release is the release tag this binary was built from: the Makefile's
@@ -117,8 +136,8 @@ func Date() string {
 				}
 			}
 		}
-		if m := pseudoRE.FindStringSubmatch(bi.Main.Version); m != nil {
-			return m[1]
+		if d := pseudoDate(bi.Main.Version); d != "" {
+			return d
 		}
 	}
 	return "dev"

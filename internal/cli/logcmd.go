@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -252,8 +251,6 @@ func firstRoundTime(path string) string {
 	return ""
 }
 
-var roundJobRE = regexp.MustCompile(` job=(\S+)`)
-
 // roundsOf returns the rounds in path (each from its round start to the
 // next) that belong to job ref or, given a run id, to that swim run.
 func roundsOf(path, ref string) ([][]string, error) {
@@ -335,7 +332,7 @@ func inFlight(root string, n int) (*step.Spool, string) {
 
 // roundMatches reports whether a round's lines belong to job or run ref.
 func roundMatches(r []string, ref string) bool {
-	if m := roundJobRE.FindStringSubmatch(r[0]); m != nil && lane.MatchJob(m[1], ref) {
+	if job, ok := logparse.RoundJob(r[0]); ok && lane.MatchJob(job, ref) {
 		return true
 	}
 	if len(r) > 1 && strings.HasPrefix(r[1], "   ") && !strings.HasPrefix(r[1], logparse.Indent) {
@@ -392,13 +389,6 @@ func (lw logWriter) file(path string, withHeader bool) error {
 const (
 	foldOver = 40
 	foldKeep = 15
-)
-
-var (
-	resultKindRE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN|MSG|CHECKED|RUNNING)  (.*)$`)
-	timedTailRE  = regexp.MustCompile(`^(.*?)(\s+\d+(?:\.\d+)?s\s+)(\d\d:\d\d:\d\d)$`)
-	stageLineRE  = regexp.MustCompile(`^-- stage (\S+)(?:\s+(\d\d:\d\d:\d\d))?`)
-	stageWordRE  = regexp.MustCompile(`(\w+) (PASS|FAIL|SKIP|none)`)
 )
 
 // lines writes log lines, rendered if colour is on.
@@ -472,17 +462,19 @@ func (lw logWriter) lines(lines []string) {
 			}
 			fmt.Fprintln(lw.w, p.Paint(ui.Bold+ui.StateColor(state), l))
 		case strings.HasPrefix(l, "   stages: "):
-			fmt.Fprintln(lw.w, "   stages: "+stageWordRE.ReplaceAllStringFunc(strings.TrimPrefix(l, "   stages: "), func(m string) string {
-				name, st, _ := strings.Cut(m, " ")
-				return name + " " + p.Paint(ui.StateColor(st), st)
-			}))
+			parts := strings.Split(strings.TrimPrefix(l, "   stages: "), " | ")
+			for i, part := range parts {
+				if name, st, ok := strings.Cut(part, " "); ok {
+					parts[i] = name + " " + p.Paint(ui.StateColor(st), st)
+				}
+			}
+			fmt.Fprintln(lw.w, "   stages: "+strings.Join(parts, " | "))
 		case strings.HasPrefix(l, "   failed: "):
 			fmt.Fprintln(lw.w, p.Paint(ui.Red, l))
 		case strings.HasPrefix(l, logparse.StageMark):
-			m := stageLineRE.FindStringSubmatch(l)
 			text := p.Paint(ui.Bold+ui.Blue, l)
-			if m != nil && m[2] != "" {
-				text += p.Paint(ui.Dim, rel(m[2]))
+			if f := strings.Fields(strings.TrimPrefix(l, logparse.StageMark)); len(f) > 1 {
+				text += p.Paint(ui.Dim, rel(f[1]))
 			}
 			fmt.Fprintln(lw.w, text)
 		case strings.HasPrefix(l, logparse.Indent):
@@ -490,15 +482,14 @@ func (lw logWriter) lines(lines []string) {
 		case strings.HasPrefix(l, "   "):
 			fmt.Fprintln(lw.w, p.Paint(ui.Dim, l))
 		default:
-			m := resultKindRE.FindStringSubmatch(l)
-			if m == nil {
+			kind, rest, ok := logparse.SplitResult(l, "RUNNING")
+			if !ok {
 				fmt.Fprintln(lw.w, l)
 				continue
 			}
-			kind, rest := m[1], m[2]
 			tail := ""
-			if t := timedTailRE.FindStringSubmatch(rest); t != nil {
-				rest, tail = t[1], p.Paint(ui.Dim, t[2]+t[3]+rel(t[3]))
+			if head, _, clock, ok := logparse.SplitTimed(rest); ok {
+				rest, tail = head, p.Paint(ui.Dim, strings.TrimRight(rest, " ")[len(head):]+rel(clock))
 			}
 			fmt.Fprintln(lw.w, "  "+p.Paint(ui.StateColor(kind)+ui.Bold, kind)+"  "+p.Paint(ui.StateColor(kind), rest)+tail)
 		}
@@ -519,7 +510,8 @@ func syntaxOneLog(lines []string) bool {
 	return false
 }
 
-var resultKindV1RE = regexp.MustCompile(`^(PASS|FAIL|SKIP|DRIFT|APPROVED|STOP)  `)
+// v1Kinds are a syntax 1 log's result kinds.
+var v1Kinds = map[string]bool{"PASS": true, "FAIL": true, "SKIP": true, "DRIFT": true, "APPROVED": true, "STOP": true}
 
 // linesV1 renders a syntax 1 log (one that couldn't be migrated yet because
 // its lane is running).
@@ -538,15 +530,13 @@ func (lw logWriter) linesV1(lines []string) {
 			inOutput = false
 			color = ui.Bold
 		case !inOutput:
-			if m := resultKindV1RE.FindStringSubmatch(l); m != nil {
-				color = ui.StateColor(m[1])
+			if kind, _, ok := strings.Cut(l, "  "); ok && v1Kinds[kind] {
+				color = ui.StateColor(kind)
 			}
 		}
 		fmt.Fprintln(lw.w, lw.p.Paint(color, l))
 	}
 }
-
-var endExitRE = regexp.MustCompile(`^== END \S+\s.*\bexit=(-?\d+)`)
 
 // followLog prints lane n's current round and then follows it, like
 // tail -f: lines as the log gains them, and the running step's output as
@@ -573,8 +563,8 @@ func followLog(root string, n int, untilDone bool, out logWriter) error {
 		last := rounds[len(rounds)-1]
 		emit(last)
 		for _, l := range last {
-			if m := endExitRE.FindStringSubmatch(l); m != nil {
-				endExit, _ = strconv.Atoi(m[1])
+			if code, ok := logparse.EndExit(l); ok {
+				endExit = code
 			}
 		}
 	} else {
@@ -615,8 +605,8 @@ func followLog(root string, n int, untilDone bool, out logWriter) error {
 				case strings.HasPrefix(l, logparse.RoundMark):
 					endExit = -1
 				}
-				if m := endExitRE.FindStringSubmatch(l); m != nil {
-					endExit, _ = strconv.Atoi(m[1])
+				if code, ok := logparse.EndExit(l); ok {
+					endExit = code
 				}
 				show = append(show, l)
 			}

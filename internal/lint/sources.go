@@ -25,6 +25,8 @@ type Source struct {
 	From    string // "source" (bash) or "import" (Python, TypeScript)
 }
 
+// Regular expressions, kept: lint reads Python and TypeScript source as
+// text, and these are advice (# Includes: is what pins a file).
 var (
 	sourceRE   = regexp.MustCompile(`(?:^|[;&|({]\s*|\b(?:then|do|else)\s+)(?:source|\.)\s+("[^"]*"|'[^']*'|[^\s;&|)]+)`)
 	pyImportRE = regexp.MustCompile(`^\s*(?:from\s+(\.?[A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))`)

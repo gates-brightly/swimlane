@@ -9,9 +9,11 @@ package changelog
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
+	swimversion "github.com/gates-brightly/swimlane/internal/version"
 )
 
 // Unreleased is the id of the section for changes not yet in a release.
@@ -55,15 +57,33 @@ func Parse(md string) []Entry {
 	return out
 }
 
-var (
-	versionRE = regexp.MustCompile(`^0\.(\d{8})\.([1-9]\d*)$`)  // 0.20261014.2
-	tagRE     = regexp.MustCompile(`^v0\.(\d{8})\.([1-9]\d*)$`) // v0.20261014.2
-	// Before 0.<date>.<index>: <breaking>.<date>, tagged v0.<breaking>.<date>.
-	oldVersionRE = regexp.MustCompile(`^(\d+)\.(\d{8})$`)
-	// A commit prefix names a revision from before versioning.
-	commitRE = regexp.MustCompile(`^[0-9a-f]{7,}$`)
-	oldTagRE = regexp.MustCompile(`^v0\.(\d{1,7})\.(\d{8})$`)
-)
+// Before 0.<date>.<index>, versions were <breaking>.<date>, tagged
+// v0.<breaking>.<date>.
+func oldVersion(s string) (breaking, date string, ok bool) {
+	b, d, found := strings.Cut(s, ".")
+	if !found || !chars.Digits(b) || len(d) != 8 || !chars.Digits(d) {
+		return "", "", false
+	}
+	return b, d, true
+}
+
+func oldTag(s string) (breaking, date string, ok bool) {
+	rest, isTag := strings.CutPrefix(s, "v0.")
+	if !isTag {
+		return "", "", false
+	}
+	b, d, ok := oldVersion(rest)
+	if !ok || len(b) > 7 {
+		return "", "", false
+	}
+	return b, d, true
+}
+
+// commitPrefix: a commit prefix (7+ hex digits) names a revision from
+// before versioning.
+func commitPrefix(s string) bool {
+	return len(s) >= 7 && chars.All(s, chars.Or(chars.Digit, chars.In("abcdef")))
+}
 
 // order is a version's place in time: its date, then its release that day
 // (the index; for the old scheme, the breaking version, which also rose
@@ -74,16 +94,17 @@ func (a order) after(b order) bool { return a.date > b.date || a.date == b.date 
 
 // version parses a version or its tag, in either scheme.
 func version(s string) (order, bool) {
-	if m := versionRE.FindStringSubmatch(s); m != nil {
-		return orderOf(m[1], m[2]), true
+	if d, i, ok := swimversion.ParseVersion(s); ok {
+		return orderOf(d, i), true
 	}
-	if m := tagRE.FindStringSubmatch(s); m != nil {
-		return orderOf(m[1], m[2]), true
+	if d, i, ok := swimversion.ParseTag(s); ok {
+		return orderOf(d, i), true
 	}
-	for _, re := range []*regexp.Regexp{oldVersionRE, oldTagRE} {
-		if m := re.FindStringSubmatch(s); m != nil {
-			return orderOf(m[2], m[1]), true
-		}
+	if b, d, ok := oldVersion(s); ok {
+		return orderOf(d, b), true
+	}
+	if b, d, ok := oldTag(s); ok {
+		return orderOf(d, b), true
 	}
 	return order{}, false
 }
@@ -97,11 +118,11 @@ func orderOf(date, n string) order {
 // Normalize turns a tag ("v0.20261014.2", or "v0.2.20261009") into its
 // version ("0.20261014.2", "2.20261009"); other ids are returned unchanged.
 func Normalize(id string) string {
-	if m := tagRE.FindStringSubmatch(id); m != nil {
-		return "0." + m[1] + "." + m[2]
+	if d, i, ok := swimversion.ParseTag(id); ok {
+		return "0." + d + "." + i
 	}
-	if m := oldTagRE.FindStringSubmatch(id); m != nil {
-		return m[1] + "." + m[2]
+	if b, d, ok := oldTag(id); ok {
+		return b + "." + d
 	}
 	return id
 }
@@ -113,7 +134,7 @@ func Normalize(id string) string {
 func Since(entries []Entry, ref string) ([]Entry, error) {
 	ref = Normalize(strings.TrimSpace(ref))
 	for i, e := range entries {
-		if e.ID == ref || (commitRE.MatchString(ref) && strings.HasPrefix(e.ID, ref)) {
+		if e.ID == ref || (commitPrefix(ref) && strings.HasPrefix(e.ID, ref)) {
 			return entries[:i], nil
 		}
 	}

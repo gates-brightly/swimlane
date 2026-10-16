@@ -26,14 +26,25 @@ func f(level, code string, i int, fix, format string, a ...any) finding.Finding 
 	return finding.Finding{Level: level, Code: code, Line: i + 1, Message: fmt.Sprintf(format, a...), Fix: fix}
 }
 
+// Lint's regular expressions, kept: each matches a pattern inside text
+// (rm -r, terraform apply, a bash 4 form, a redirect, an SDK call in
+// another language). The commands themselves are read with lane.Commands
+// (shell.go: commands, ranCommands); lint's findings are advice.
+
 // headerLine returns the 0-based line of the `# Key:` header, or -1.
 func (s *Script) headerLine(key string) int {
-	re := regexp.MustCompile(`^#?[ \t]?` + regexp.QuoteMeta(key) + `:`)
+	isKey := func(line string) bool {
+		line = strings.TrimPrefix(line, "#")
+		if line != "" && (line[0] == ' ' || line[0] == '\t') {
+			line = line[1:]
+		}
+		return strings.HasPrefix(line, key+":")
+	}
 	for i, raw := range s.v.raw { // raw: header lines are comments
 		if i >= 200 {
 			break
 		}
-		if re.MatchString(strings.TrimSpace(raw)) {
+		if isKey(strings.TrimSpace(raw)) {
 			return i
 		}
 	}

@@ -49,6 +49,8 @@ func checkCache(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
+// Regular expressions, kept: patterns within a command's text (ranCommands
+// gives the command; these find npm install or pip install in it).
 var (
 	npmInstallRE = regexp.MustCompile(`(?:^|[\s;&|('"])npm\s+(?:install|i|add)(?:\s|$|['"])`)
 	pipInstallRE = regexp.MustCompile(`(?:^|[\s;&|('"/])pip3?\s+install\b|python3?\s+-m\s+pip\s+install\b`)

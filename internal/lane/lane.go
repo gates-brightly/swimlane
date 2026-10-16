@@ -320,8 +320,17 @@ func ParseScript(src string) Info {
 	inBlock := true
 	inHandler := -1 // index in info.Handlers of the function being read
 	listed := map[string]bool{}
+	// In a bash lane, heredoc bodies and the lines of a string over several
+	// lines hold no code: they aren't read for stages, evidence or handlers.
+	var text []bool
+	if bashScript(src) {
+		text = textLines(src)
+	}
 	for i, raw := range lines {
 		line := strings.TrimSpace(raw)
+		if i < len(text) && text[i] {
+			continue
+		}
 		if i < 200 {
 			if i == 0 && strings.HasPrefix(line, "#!") || syntax.IsScriptLine(line) {
 				continue

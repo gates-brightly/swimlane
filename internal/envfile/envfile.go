@@ -17,11 +17,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
@@ -62,10 +62,7 @@ type Section struct {
 	Entries []Entry
 }
 
-var (
-	keyRE     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	sectionRE = regexp.MustCompile(`^\[\s*(repo|lane)\s+(.+?)\s*\]$`)
-)
+var ()
 
 // Parse reads an env file. user is the operator's file (general keys and
 // [repo PATH] sections); otherwise it's a repo's .env.swim ([lane N]
@@ -87,7 +84,7 @@ func Parse(path string, data []byte, user bool) (*File, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if m := sectionRE.FindStringSubmatch(line); m != nil {
+		if m := section(line); m != nil {
 			switch {
 			case m[1] == "repo" && user:
 				f.Repos = append(f.Repos, Section{Path: m[2]})
@@ -116,7 +113,7 @@ func Parse(path string, data []byte, user bool) (*File, error) {
 		}
 		k, v, ok := strings.Cut(line, "=")
 		k = strings.TrimSpace(k)
-		if !ok || !keyRE.MatchString(k) {
+		if !ok || !chars.Ident(k) {
 			return nil, bad(n, "expected KEY=VALUE (letters, digits and _ in the key)")
 		}
 		val, err := value(strings.TrimSpace(v))
@@ -212,7 +209,7 @@ func Resolve(root string, cfg *config.Config, n int) (*Resolved, error) {
 	if len(cfg.Env) > 0 {
 		var entries []Entry
 		for k, v := range cfg.Env {
-			if !keyRE.MatchString(k) {
+			if !chars.Ident(k) {
 				return nil, fmt.Errorf("%s env: %q is not a variable name", config.RepoFileName, k)
 			}
 			entries = append(entries, Entry{Key: k, Value: v})
@@ -368,7 +365,7 @@ func MigrateRC(data []byte) ([]Entry, []string) {
 		}
 		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
 		k, v, ok := strings.Cut(line, "=")
-		if !ok || !keyRE.MatchString(k) {
+		if !ok || !chars.Ident(k) {
 			problems = append(problems, fmt.Sprintf("line %d is not a plain assignment: %s", n, sc.Text()))
 			continue
 		}
@@ -417,4 +414,19 @@ func AppendLane(root string, n int, entries []Entry, comment string) error {
 		fmt.Fprintf(&b, "%s=%s\n", e.Key, Quote(e.Value))
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o600)
+}
+
+// section reads a "[repo PATH]" or "[lane N]" line: the kind and its
+// argument, or nil.
+func section(line string) []string {
+	body, ok := chars.Between(line, "[", "]")
+	if !ok {
+		return nil
+	}
+	kind, arg, ok := strings.Cut(strings.TrimSpace(body), " ")
+	arg = strings.TrimSpace(arg)
+	if !ok || arg == "" || kind != "repo" && kind != "lane" {
+		return nil
+	}
+	return []string{line, kind, arg}
 }

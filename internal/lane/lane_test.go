@@ -331,3 +331,21 @@ func TestBodyStagesAndHandlers(t *testing.T) {
 		t.Errorf("handlers: %+v", info.Handlers)
 	}
 }
+
+// The corpus: stages, evidence steps and handlers named where bash never
+// runs them (a heredoc, a string over several lines, a comment) aren't
+// any of them.
+func TestBodyTextIsNotCode(t *testing.T) {
+	src := "#!/usr/bin/env bash\n# Round: r\n" +
+		"cat <<'EOF'\nstage change\nevidence \"plan\" tf plan\nmod --evidence tf plan\non_failure() {\nEOF\n" +
+		"cat <<EOF\nstage verify\nEOF\n" +
+		"echo \"over\nstage check\nevidence \\\"x\\\" true\non_exit() {\"\n" +
+		"# stage check; evidence \"x\" true\n"
+	info := ParseScript(src)
+	if info.Staged || info.UsesEvidence || len(info.Handlers) != 0 {
+		t.Errorf("text read as code: staged %v, evidence %v, handlers %+v", info.Staged, info.UsesEvidence, info.Handlers)
+	}
+	if info := ParseScript(src + "stage check\nevidence \"plan\" true\n"); !info.Staged || !info.UsesEvidence {
+		t.Errorf("code after the text: staged %v, evidence %v", info.Staged, info.UsesEvidence)
+	}
+}

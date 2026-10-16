@@ -15,6 +15,8 @@ import (
 // Forms lists what ParseTime accepts, for error messages.
 const Forms = `13:30, 13:30:00, 1330, 133000, 9:30, 1:30pm, 1pm, 12am, tomorrow 06:00, 2026-10-20 13:30, +2h, +90m`
 
+// Regular expressions, kept: the grammar of times people type (4pm,
+// 16:30, 1330, 2026-10-20 9am) is what they describe best.
 var (
 	clockRE   = regexp.MustCompile(`^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*([ap]\.?m\.?)?$`)
 	compactRE = regexp.MustCompile(`^(\d{3,6})\s*([ap]\.?m\.?)?$`)

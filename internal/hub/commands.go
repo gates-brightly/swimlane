@@ -6,10 +6,10 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strconv"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -91,8 +91,10 @@ func (c Command) State(now time.Time) string {
 	return "sent"
 }
 
-// pinRE: pins are hashes and run ids.
-var pinRE = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
+// validPin: pins are hashes and run ids.
+func validPin(s string) bool {
+	return s != "" && len(s) <= 128 && chars.All(s, chars.Or(chars.Alnum, chars.In("._:-")))
+}
 
 func (s *Server) commandRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/workers/{id}/commands", s.sendCommand)
@@ -134,7 +136,7 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 		c.Answer = nil
 	}
 	for _, p := range []string{c.Pin.Run, c.Pin.SHA256, c.Pin.Manifest, c.Pin.Request, c.Pin.Evidence, c.Pin.Job} {
-		if p != "" && !pinRE.MatchString(p) {
+		if p != "" && !validPin(p) {
 			return nil, fmt.Errorf("bad pin %q", p)
 		}
 	}
@@ -405,7 +407,7 @@ func (s *Server) trashPage(w http.ResponseWriter, r *http.Request) {
 			l = &v.Lanes[i]
 		}
 	}
-	if l == nil || l.TrashJob == "" || l.TrashJob != job || !pinRE.MatchString(job) {
+	if l == nil || l.TrashJob == "" || l.TrashJob != job || !validPin(job) {
 		http.Error(w, "that lane doesn't hold that job now (rewritten, trashed, or running): go back and look again", http.StatusConflict)
 		return
 	}

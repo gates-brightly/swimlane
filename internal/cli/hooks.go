@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/assets"
 	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/envfile"
@@ -468,8 +468,8 @@ func finishCheck(root string, cfg *config.Config, n int, logPath, exitS string) 
 	var guards []string
 	for _, res := range r.Results {
 		if res.Kind == logparse.Skip {
-			if m := dryRunRE.FindStringSubmatch(res.Detail); m != nil {
-				guards = append(guards, m[1])
+			if flag := dryRunFlag(res.Detail); flag != "" {
+				guards = append(guards, flag)
 			}
 		}
 	}
@@ -772,7 +772,23 @@ func cmdFinish(args []string) error {
 	return nil
 }
 
-var dryRunRE = regexp.MustCompile(`^dry run: (?:.*; )?set ([A-Za-z_][A-Za-z0-9_]*)=1 to approve$`)
+// dryRunFlag is the guard flag a dry run's detail says to set ("dry run:
+// ...; set FLAG=1 to approve"), "" if it doesn't.
+func dryRunFlag(detail string) string {
+	body, ok := strings.CutPrefix(detail, "dry run: ")
+	body, ok2 := strings.CutSuffix(body, "=1 to approve")
+	if !ok || !ok2 {
+		return ""
+	}
+	if i := strings.LastIndex(body, "; "); i >= 0 {
+		body = body[i+2:]
+	}
+	flag, ok := strings.CutPrefix(body, "set ")
+	if !ok || !chars.Ident(flag) {
+		return ""
+	}
+	return flag
+}
 
 // swim _mark N KIND label [detail] [--request ID --guard FLAG] [--confirm]
 //
@@ -865,8 +881,8 @@ func cmdMark(args []string) error {
 	if err != nil {
 		return err
 	}
-	if m := dryRunRE.FindStringSubmatch(detail); m != nil {
-		fmt.Fprintln(os.Stderr, p.Paint(ui.Dim, fmt.Sprintf("  to approve: %s=1 swim run %d", m[1], n)))
+	if flag := dryRunFlag(detail); flag != "" {
+		fmt.Fprintln(os.Stderr, p.Paint(ui.Dim, fmt.Sprintf("  to approve: %s=1 swim run %d", flag, n)))
 	}
 	if err := appendLog(lane.Log(root, n), logLine+"\n"); err != nil {
 		return err

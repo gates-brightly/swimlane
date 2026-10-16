@@ -4,7 +4,6 @@
 package policy
 
 import (
-	"regexp"
 	"strings"
 )
 
@@ -15,10 +14,8 @@ var Builtins = []string{"git push", "git commit", "git pull"}
 // shim). It is distinct from 126/127 and signal codes.
 const ExitBlocked = 87
 
-var spaces = regexp.MustCompile(`\s+`)
-
 // Normalize collapses runs of whitespace to one space.
-func Normalize(s string) string { return strings.TrimSpace(spaces.ReplaceAllString(s, " ")) }
+func Normalize(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // Patterns returns the built-ins plus extra, normalised and de-duplicated.
 func Patterns(extra []string) []string {

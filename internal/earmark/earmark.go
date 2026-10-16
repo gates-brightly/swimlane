@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 )
 
@@ -59,8 +59,6 @@ type Pos struct {
 // Dir holds root's earmarks.
 func Dir(root string) string { return filepath.Join(root, ".swim", "earmarks") }
 
-var nameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
-
 // Name is the reader's name: flag, else $SWIM_SESSION, else Default.
 func Name(flag string) (string, error) {
 	n := flag
@@ -70,7 +68,7 @@ func Name(flag string) (string, error) {
 	if n == "" {
 		return Default, nil
 	}
-	if !nameRE.MatchString(n) {
+	if !chars.Name(n, 64) {
 		return "", fmt.Errorf("earmark name %q: use letters, digits, '.', '_' or '-' (up to 64)", n)
 	}
 	return n, nil

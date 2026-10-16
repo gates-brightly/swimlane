@@ -45,6 +45,8 @@ type Labeled struct {
 	Name, Value string
 }
 
+// Regular expressions, kept: these describe credentials by their shape
+// (a prefix, an alphabet, a length), which is what a pattern is for.
 var autoNameRE = regexp.MustCompile(`(?i)(_TOKEN$|_SECRET$|_SECRET_|_PASSWORD$|_PASSWD$|_API_KEY$|_PRIVATE_KEY$|^AWS_SECRET_ACCESS_KEY$|^AWS_SESSION_TOKEN$)`)
 
 // AutoName reports whether a variable name matches the built-in patterns.

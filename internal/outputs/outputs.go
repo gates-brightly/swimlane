@@ -17,10 +17,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
 )
 
 // Internal entries in $SWIM_OUT, never outputs themselves.
@@ -38,10 +39,10 @@ func Dir(root, job, run string) string {
 	return filepath.Join(root, ".swim", "out", job, run)
 }
 
-var keyRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
-
 // ValidKey reports whether key can name a small value.
-func ValidKey(key string) bool { return keyRE.MatchString(key) }
+func ValidKey(key string) bool {
+	return chars.Word(key, chars.Or(chars.Letter, chars.In("_")), chars.Or(chars.Alnum, chars.In("_.-")))
+}
 
 // ValidName reports whether an Outputs: entry is a relative path inside
 // $SWIM_OUT (no absolute paths, no "..").

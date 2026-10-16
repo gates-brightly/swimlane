@@ -48,6 +48,7 @@ func splitList(s string) []string {
 var (
 	isLetter = chars.Letter
 	isDigit  = chars.Digit
+	isAlnum  = chars.Alnum
 	isIdent  = chars.Ident
 	allOf    = chars.All
 	isDigits = chars.Digits
@@ -191,4 +192,130 @@ func quotedAfter(line, name string) []string {
 		}
 	}
 	return out
+}
+
+// textLines marks the lines of a bash script that hold no code of their
+// own: heredoc bodies (and their end line), and lines that start inside a
+// quoted string begun on an earlier line. Comments and quotes are
+// followed as bash reads them; $(...) inside double quotes isn't.
+func textLines(src string) []bool {
+	lines := strings.Count(src, "\n") + 1
+	out := make([]bool, lines)
+	const (
+		normal = iota
+		single
+		double
+	)
+	state, line := normal, 0
+	var docs []struct {
+		word string
+		tabs bool
+	}
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		if c == '\n' {
+			line++
+			if state != normal && line < lines {
+				out[line] = true
+			}
+			// Heredoc bodies start on the next line: skip them whole.
+			for len(docs) > 0 && state == normal {
+				d := docs[0]
+				docs = docs[1:]
+				for line < lines {
+					end := strings.IndexByte(src[i+1:], '\n')
+					body := src[i+1:]
+					if end >= 0 {
+						body = body[:end]
+					}
+					out[line] = true
+					if d.tabs {
+						body = strings.TrimLeft(body, "\t")
+					}
+					if end < 0 {
+						i = len(src)
+						break
+					}
+					i += end + 1
+					line++
+					if body == d.word {
+						break
+					}
+				}
+			}
+			continue
+		}
+		switch state {
+		case single:
+			if c == '\'' {
+				state = normal
+			}
+		case double:
+			switch c {
+			case '\\':
+				i++
+				if i < len(src) && src[i] == '\n' {
+					line++
+					if line < lines {
+						out[line] = true
+					}
+				}
+			case '"':
+				state = normal
+			}
+		default:
+			switch {
+			case c == '\\':
+				i++
+				if i < len(src) && src[i] == '\n' {
+					line++
+				}
+			case c == '\'':
+				state = single
+			case c == '"':
+				state = double
+			case c == '#' && (i == 0 || strings.IndexByte(" \t\n;&|(", src[i-1]) >= 0):
+				for i+1 < len(src) && src[i+1] != '\n' {
+					i++
+				}
+			case c == '<' && strings.HasPrefix(src[i:], "<<") && !strings.HasPrefix(src[i:], "<<<"):
+				j := i + 2
+				tabs := j < len(src) && src[j] == '-'
+				if tabs {
+					j++
+				}
+				for j < len(src) && (src[j] == ' ' || src[j] == '\t') {
+					j++
+				}
+				if j < len(src) && (src[j] == '\'' || src[j] == '"') {
+					j++
+				}
+				k := j
+				for k < len(src) && (k == j && (isLetter(rune(src[k])) || src[k] == '_') || k > j && (isAlnum(rune(src[k])) || src[k] == '_')) {
+					k++
+				}
+				if k > j {
+					docs = append(docs, struct {
+						word string
+						tabs bool
+					}{src[j:k], tabs})
+					i = k - 1
+					if i+1 < len(src) && (src[i+1] == '\'' || src[i+1] == '"') {
+						i++
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+// bashScript reports whether src is a bash lane (a bash or sh shebang, or
+// one that loads the library), whose text textLines can tell from code.
+func bashScript(src string) bool {
+	first, _, _ := strings.Cut(src, "\n")
+	if strings.HasPrefix(first, "#!") {
+		return strings.Contains(first, "bash") || strings.HasSuffix(strings.TrimSpace(first), "/sh") || strings.Contains(first, "/sh ")
+	}
+	return UsesLib(src)
 }

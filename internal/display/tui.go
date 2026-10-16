@@ -2,7 +2,6 @@ package display
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -556,8 +555,6 @@ func overlay(body, text []string, w int, p ui.Painter) []string {
 	return out
 }
 
-var logKindRE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN)  `)
-
 // colorLogLine colours a log line the way swim log does, lightly: round and
 // END banners, stage headers and result kinds. The text is unchanged.
 func colorLogLine(l string, color bool) string {
@@ -581,8 +578,8 @@ func colorLogLine(l string, color bool) string {
 	case strings.HasPrefix(l, logparse.Indent), strings.HasPrefix(l, "   "), strings.HasPrefix(l, "# swim lane log"):
 		return p.Paint(ui.Dim, l)
 	}
-	if m := logKindRE.FindStringSubmatch(l); m != nil {
-		return "  " + p.Paint(ui.StateColor(m[1])+ui.Bold, m[1]) + l[2+len(m[1]):]
+	if kind, _, ok := logparse.SplitResult(l); ok {
+		return "  " + p.Paint(ui.StateColor(kind)+ui.Bold, kind) + l[2+len(kind):]
 	}
 	return l
 }

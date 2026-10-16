@@ -2,11 +2,11 @@ package config
 
 import (
 	"fmt"
-	"regexp"
 	"sort"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 )
 
@@ -48,8 +48,6 @@ func (f *Flags) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-var flagRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
 // validateSecrets checks swim.yml's secrets: every name a secret name,
 // every guard a flag, release lane or step.
 func validateSecrets(m map[string]SecretPolicy) error {
@@ -62,7 +60,7 @@ func validateSecrets(m map[string]SecretPolicy) error {
 			return fmt.Errorf("secrets: %s needs a guard: (a flag, or a list of them)", name)
 		}
 		for _, g := range p.Guard {
-			if !flagRE.MatchString(g) {
+			if !chars.Ident(g) {
 				return fmt.Errorf("secrets: %s: %q isn't a guard flag", name, g)
 			}
 		}
@@ -102,4 +100,4 @@ func sortedKeys[V any](m map[string]V) []string {
 }
 
 // ValidFlag reports whether s can be a guard flag (a shell variable name).
-func ValidFlag(s string) bool { return flagRE.MatchString(s) }
+func ValidFlag(s string) bool { return chars.Ident(s) }

@@ -28,6 +28,8 @@ type view struct {
 	inQuote []bool
 }
 
+// heredocRE: a heredoc's start and delimiter (a regular expression, kept:
+// lint's views follow lane's textLines, which reads the same by hand).
 var heredocRE = regexp.MustCompile(`^<<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)['"]?`)
 
 func scan(src string) *view {
@@ -228,18 +230,33 @@ type lineCmd struct {
 // quote-aware tokenizer (lane.Commands): never a word in quoted text, a
 // comment or a heredoc body. The commands inside a $(...) are listed too,
 // quoted or not, and those of a bash -c (or sh -c) body, marked Sub. A
-// command continued onto the next line is read up to the end of its first.
+// command continued onto the next lines (a trailing \) is read whole, on
+// its first line.
 func (v *view) commands() []lineCmd {
 	var out []lineCmd
-	for i, line := range v.code {
+	for i := 0; i < len(v.code); i++ {
 		if !v.isCode(i) || v.inQuote[i] {
 			continue
 		}
+		first, line := i, v.code[i]
+		for continued(line) && i+1 < len(v.code) && !v.doc[i+1] {
+			i++
+			line = strings.TrimSuffix(strings.TrimRight(line, " \t"), "\\") + " " + v.code[i]
+		}
 		subCommands(lane.Commands(line), false, func(c []lane.Word, sub bool) {
-			out = append(out, lineCmd{Line: i, Words: c, Sub: sub})
+			out = append(out, lineCmd{Line: first, Words: c, Sub: sub})
 		})
 	}
 	return out
+}
+
+// continued reports whether a line of code ends with a \ that continues
+// it (an odd number of them, outside quotes: the code view keeps quotes,
+// so a \ at the end of a quoted line's text isn't one).
+func continued(line string) bool {
+	t := strings.TrimRight(line, " \t")
+	n := len(t) - len(strings.TrimRight(t, "\\"))
+	return n%2 == 1
 }
 
 // subCommands calls fn with each of cmds, then the commands inside its

@@ -359,6 +359,8 @@ func NewScript(n int, src string) *Script {
 // swim's library), which lint reads command by command.
 func (s *Script) bash() bool { return s.Lib || strings.HasSuffix(s.Name, ".sh") }
 
+// libLoadRE: the line that loads swim's library, in any of its spellings
+// (a regular expression, kept: it is matched within a line of text).
 var libLoadRE = regexp.MustCompile(`(?:swim|SWIM_BIN[^"]*)"?\s+lib\b`)
 
 // loadsLib reports whether src loads swim's bash library (or calls
@@ -503,6 +505,8 @@ type ignore struct {
 	reason string
 }
 
+// ignoreRE: a swim:lint-ignore comment (a regular expression, kept: it is
+// matched within a comment's text).
 var ignoreRE = regexp.MustCompile(`#\s*swim:lint-ignore(-file)?(?:\s+(.*))?$`)
 
 // ignores parses a script's disable comments, returning them and findings

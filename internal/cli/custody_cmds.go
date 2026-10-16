@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -1222,16 +1221,14 @@ func roundLogHashes(root string, n int, run string) map[string]bool {
 	return sums
 }
 
-var runIDTimeRE = regexp.MustCompile(`^r-(\d{8}T\d{6}Z)`)
-
 // runStarted is when a run started, from its id (r-20261015T121857Z-...),
 // as RFC 3339; "" for an id that doesn't say (--run-id).
 func runStarted(run string) string {
-	m := runIDTimeRE.FindStringSubmatch(run)
-	if m == nil {
+	stamp, ok := strings.CutPrefix(run, "r-")
+	if !ok || len(stamp) < 16 {
 		return ""
 	}
-	t, err := time.Parse("20060102T150405Z", m[1])
+	t, err := time.Parse("20060102T150405Z", stamp[:16])
 	if err != nil {
 		return ""
 	}

@@ -62,3 +62,35 @@ func TestCorpusLoudScript(t *testing.T) {
 		}
 	}
 }
+
+// A command continued onto the next lines (a trailing \) is read whole:
+// what it runs on its later lines is found, on its first.
+func TestCorpusContinuedLines(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src := replace(clean(1), "stage verify\n", `run "wipe" \
+  bash -c \
+  'rm -rf /tmp/x'
+input \
+  2 name
+stage verify
+`)
+	got := map[string]int{}
+	for _, f := range Lint(cfg4(), map[int]string{1: src, 2: clean(2)}, 1) {
+		got[f.Code] = f.Line
+	}
+	lines := strings.Split(src, "\n")
+	at := func(prefix string) int {
+		for i, l := range lines {
+			if strings.HasPrefix(l, prefix) {
+				return i + 1
+			}
+		}
+		return -1
+	}
+	if got["destructive"] != at(`run "wipe"`) {
+		t.Errorf("destructive at %d, want %d (%v)", got["destructive"], at(`run "wipe"`), got)
+	}
+	if got["input-dep"] != at("input \\") {
+		t.Errorf("input-dep at %d, want %d (%v)", got["input-dep"], at("input \\"), got)
+	}
+}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -228,8 +228,6 @@ func signalEnd() {
 // wrapper's SIGTERM-to-SIGKILL window.
 const endWait = sdkGrace + 10*time.Second
 
-var flagNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
 // swim guard FLAG "<action>": exit 0 if the operator approves the action,
 // 1 if not (recorded as a dry run). As the library's guard: FLAG=1 approves
 // up front; unset, swim asks the operator (or uses signed approvals).
@@ -242,7 +240,7 @@ func cmdGuard(args []string) error {
 		return usagef(`usage: swim guard FLAG "<action - date, reason>"`)
 	}
 	flag, desc := args[0], args[1]
-	if !flagNameRE.MatchString(flag) {
+	if !chars.Ident(flag) {
 		return usagef("bad guard flag name: %s", flag)
 	}
 	if err := refuseEnded("guard", n, desc); err != nil {

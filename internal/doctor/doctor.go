@@ -21,6 +21,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
@@ -281,7 +282,13 @@ func checkOldOutputs(o *Options) []finding.Finding {
 		"%d round output dirs are older than outputs_keep (%s) and no lane's latest round", len(old), o.Cfg.OutputsKeepFor())}
 }
 
-var rcNameRE = regexp.MustCompile(`^\.lane\.([0-9]+)\.rc$`)
+// rcLane is the lane of a .lane.N.rc file name ("" if it isn't one).
+func rcLane(name string) string {
+	if n, ok := chars.Between(name, ".lane.", ".rc"); ok && chars.Digits(n) {
+		return n
+	}
+	return ""
+}
 
 func checkEnvFiles(o *Options) []finding.Finding {
 	var out []finding.Finding
@@ -312,15 +319,15 @@ func checkLaneRC(o *Options) []finding.Finding {
 	files, _ := filepath.Glob(filepath.Join(o.Root, ".lane.*.rc"))
 	var out []finding.Finding
 	for _, f := range files {
-		m := rcNameRE.FindStringSubmatch(filepath.Base(f))
-		if m == nil {
+		ln := rcLane(filepath.Base(f))
+		if ln == "" {
 			continue
 		}
 		data, err := os.ReadFile(f)
 		if err != nil {
 			continue
 		}
-		fix := "swim doctor --fix (moves it into .env.swim [lane " + m[1] + "])"
+		fix := "swim doctor --fix (moves it into .env.swim [lane " + ln + "])"
 		if _, problems := envfile.MigrateRC(data); len(problems) > 0 {
 			fix = "move it to .env.swim by hand: " + problems[0]
 		}
@@ -334,11 +341,11 @@ func checkLaneRC(o *Options) []finding.Finding {
 // keeping a copy under .swim/migrations/. One that sets a guard flag, or
 // isn't plain assignments, is left alone.
 func migrateRC(o *Options, name string) (string, error) {
-	m := rcNameRE.FindStringSubmatch(name)
-	if m == nil {
+	ln := rcLane(name)
+	if ln == "" {
 		return "", nil
 	}
-	n, _ := strconv.Atoi(m[1])
+	n, _ := strconv.Atoi(ln)
 	if _, running := lane.Running(o.Root, n); running {
 		return "", nil
 	}
@@ -595,10 +602,20 @@ func checkGitignore(o *Options) []finding.Finding {
 		"swim's block is out of date (%s)", strings.Join(why, "; "))}
 }
 
-var (
-	trackedRE  = regexp.MustCompile(`^(lane\.[0-9]+(\.[A-Za-z0-9]+)?|\.lane.*\.rc|\.swim/.*)$`)
-	laneFileRE = regexp.MustCompile(`^lane\.[0-9]+(\.[A-Za-z0-9]+)?$`)
-)
+// laneFile reports whether p is a lane script: lane.N, or lane.N.EXT.
+func laneFile(p string) bool {
+	rest, ok := strings.CutPrefix(p, "lane.")
+	if !ok {
+		return false
+	}
+	n, ext, hasExt := strings.Cut(rest, ".")
+	return chars.Digits(n) && (!hasExt || ext != "" && chars.All(ext, chars.Alnum))
+}
+
+// tracked reports whether p is a lane script, a .lane*.rc or swim state.
+func tracked(p string) bool {
+	return laneFile(p) || strings.HasPrefix(p, ".lane") && strings.HasSuffix(p, ".rc") || strings.HasPrefix(p, ".swim/")
+}
 
 func checkTracked(o *Options) []finding.Finding {
 	cmd := exec.Command("git", "ls-files", "--", "lane.[0-9]*", ".lane*.rc", ".swim")
@@ -612,7 +629,7 @@ func checkTracked(o *Options) []finding.Finding {
 	ciRepo := o.Cfg != nil && o.Cfg.RepoFile != ""
 	var files []string
 	for _, l := range lines(string(out)) {
-		if trackedRE.MatchString(l) && !(ciRepo && laneFileRE.MatchString(l)) {
+		if tracked(l) && !(ciRepo && laneFile(l)) {
 			files = append(files, l)
 		}
 	}
@@ -627,14 +644,12 @@ func checkTracked(o *Options) []finding.Finding {
 		"git tracks %s; lane scripts and swim state are per-operator and meant to be ignored", strings.Join(shown, ", "))}
 }
 
-var pidRE = regexp.MustCompile(`^lane([0-9]+)\.pid$`)
-
 func pidLane(name string) (int, bool) {
-	m := pidRE.FindStringSubmatch(name)
-	if m == nil {
+	ln, ok := chars.Between(name, "lane", ".pid")
+	if !ok || !chars.Digits(ln) {
 		return 0, false
 	}
-	n, err := strconv.Atoi(m[1])
+	n, err := strconv.Atoi(ln)
 	return n, err == nil
 }
 

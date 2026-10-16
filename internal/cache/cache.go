@@ -31,9 +31,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
 )
 
 // Preset is a tool cache swim knows how to point at its directory.
@@ -279,8 +280,6 @@ func sharedTmp(dir string) bool {
 	return false
 }
 
-var slugRE = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
-
 // Slug names root's cache directory: its base name and 6 hex digits of a
 // hash of its origin remote, so worktrees and clones of one repo share a
 // cache and two repos called api don't. A repo with no remote hashes its
@@ -288,7 +287,7 @@ var slugRE = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 // cache_slug) wins.
 func Slug(root, override string) (string, error) {
 	if override != "" {
-		if s := slugRE.ReplaceAllString(override, "-"); s != override || strings.HasPrefix(s, ".") {
+		if !chars.All(override, slugChar) || strings.HasPrefix(override, ".") {
 			return "", fmt.Errorf("cache_slug %q: use letters, digits, . _ - (not starting with .)", override)
 		}
 		return override, nil
@@ -302,7 +301,7 @@ func Slug(root, override string) (string, error) {
 		id = abs
 	}
 	sum := sha256.Sum256([]byte(id))
-	name := strings.Trim(slugRE.ReplaceAllString(filepath.Base(root), "-"), ".-")
+	name := strings.Trim(chars.Squash(filepath.Base(root), slugChar, "-"), ".-")
 	if name == "" {
 		name = "repo"
 	}
@@ -571,3 +570,6 @@ func FilesKey(root string, files []string) string {
 	}
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
+
+// slugChar is a rune a cache directory's name keeps.
+var slugChar = chars.Or(chars.Alnum, chars.In("._-"))

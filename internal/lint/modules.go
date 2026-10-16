@@ -9,6 +9,8 @@ import (
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
+// Regular expressions, kept: an SDK lane's module calls, read from Python,
+// TypeScript or Go source as text (bash lanes are read with lane.Commands).
 var (
 	// sdkModuleRE is an SDK's r.module("notify", ...) or r.Module("notify", ...).
 	sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(Env|_env)?\(\s*["'\x60]([a-z][a-z0-9_-]*)["'\x60](?:\s*,\s*["'\x60]([^"'\x60]*)["'\x60])?`)

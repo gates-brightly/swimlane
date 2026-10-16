@@ -83,3 +83,18 @@ func Squash(s string, keep func(rune) bool, sep string) string {
 	}
 	return b.String()
 }
+
+// Between is s without prefix and suffix, when it has both with something
+// between them ("lane.12.pid" with "lane" and ".pid": "12").
+func Between(s, prefix, suffix string) (string, bool) {
+	if len(s) <= len(prefix)+len(suffix) || !strings.HasPrefix(s, prefix) || !strings.HasSuffix(s, suffix) {
+		return "", false
+	}
+	return s[len(prefix) : len(s)-len(suffix)], true
+}
+
+// Name reports whether s is a name people and files are known by: a letter
+// or digit, then letters, digits, '.', '_' and '-', at most max long.
+func Name(s string, max int) bool {
+	return len(s) <= max && Word(s, Alnum, Or(Alnum, In("._-")))
+}

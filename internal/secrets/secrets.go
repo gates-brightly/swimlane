@@ -28,7 +28,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -38,6 +37,8 @@ import (
 	"filippo.io/age/armor"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
 )
 
 // Schema identifies the store file.
@@ -54,11 +55,11 @@ const (
 	ScopeHub  = "hub" // granted to this directory by its hub
 )
 
-var nameRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
-
 // ValidName reports whether name can name a secret: a letter, then letters,
 // digits and underscores (so _swim.<name> ends where the name does).
-func ValidName(name string) bool { return nameRE.MatchString(name) }
+func ValidName(name string) bool {
+	return chars.Word(name, chars.Letter, chars.Or(chars.Alnum, chars.In("_")))
+}
 
 // EnvName is the environment variable a bare secret name exports as.
 func EnvName(name string) string { return strings.ToUpper(name) }

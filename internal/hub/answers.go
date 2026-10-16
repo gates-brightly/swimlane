@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -78,10 +78,24 @@ func (a *Answer) Signed() bool { return a != nil && a.Sig != "" }
 
 // A public key line, and a signature (one line of base64); each at most
 // 16 KiB.
-var (
-	keyRE = regexp.MustCompile(`^[a-z0-9@.-]{3,64} [A-Za-z0-9+/=]{16,}( [ -~]{0,200})?$`)
-	sigRE = regexp.MustCompile(`^[A-Za-z0-9+/=]{16,}$`)
-)
+var base64Char = chars.Or(chars.Alnum, chars.In("+/="))
+
+// validKey: "<type> <base64>[ <comment>]", the type 3-64 of [a-z0-9@.-],
+// the comment at most 200 printable ASCII characters.
+func validKey(s string) bool {
+	typ, rest, ok := strings.Cut(s, " ")
+	if !ok || len(typ) < 3 || len(typ) > 64 || !chars.All(typ, chars.Or(chars.Lower, chars.Digit, chars.In("@.-"))) {
+		return false
+	}
+	b64, comment, hasComment := strings.Cut(rest, " ")
+	if !validSig(b64) {
+		return false
+	}
+	return !hasComment || len(comment) <= 200 && chars.All(comment, func(r rune) bool { return r >= ' ' && r <= '~' })
+}
+
+// validSig: one line of base64, 16 characters or more.
+func validSig(s string) bool { return len(s) >= 16 && chars.All(s, base64Char) }
 
 // checkAnswer validates an answer command against worker v's waiting
 // questions: it must name one, and carry a decision (and a well-formed key
@@ -99,9 +113,9 @@ func checkAnswer(v *View, c *Command) error {
 		return fmt.Errorf("a key without a signature")
 	case len(a.Key) > 16<<10 || len(a.Sig) > 16<<10:
 		return fmt.Errorf("the key or signature is too long")
-	case a.Sig != "" && !keyRE.MatchString(a.Key):
+	case a.Sig != "" && !validKey(a.Key):
 		return fmt.Errorf("a signed answer needs the signer's public key (one line: type, base64, comment)")
-	case a.Sig != "" && !sigRE.MatchString(a.Sig):
+	case a.Sig != "" && !validSig(a.Sig):
 		return fmt.Errorf("the signature isn't ssh-keygen -Y sign output")
 	}
 	if v == nil {

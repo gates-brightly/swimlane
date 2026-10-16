@@ -41,10 +41,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
@@ -385,18 +387,120 @@ func scanner(r io.Reader) *bufio.Scanner {
 	return sc
 }
 
-var (
-	resultV2RE = regexp.MustCompile(`^  (PASS|FAIL|BLOCKED|SKIP|DRIFT|APPROVED|STOP|WARN|MSG|CHECKED|PAUSE|RESUME)  (.*)$`)
-	timedRE    = regexp.MustCompile(`^(.*?)\s+(\d+(?:\.\d+)?s)\s+(\d\d:\d\d:\d\d)$`)
-	labelRE    = regexp.MustCompile(`^(.*?)(?: \((.*)\))?$`)
-	roundV2RE  = regexp.MustCompile(`^== ROUND (\S+)\s+job=(\S+)\s+(.*)$`)
-	endV2RE    = regexp.MustCompile(`^== END (\S+)\s+pass=\d+ fail=\d+ skip=\d+ drift=\d+\s+exit=(-?\d+)\s+(\S+)`)
-)
+// The lines swim writes, read with string functions: the formats are
+// swim's own (StepLine, MarkLine, RoundHeader, EndBlock).
 
-// splitLabel separates "label (detail)".
+// v2Kinds are the result kinds of a syntax 2 result line.
+var v2Kinds = map[string]bool{Pass: true, Fail: true, Blocked: true, Skip: true, Drift: true, Approved: true, Stop: true,
+	Warn: true, Msg: true, Checked: true, Pause: true, Resume: true}
+
+// resultV2 reads "  KIND  rest": the kind and the rest.
+func resultV2(line string) (kind, rest string, ok bool) { return SplitResult(line) }
+
+// SplitResult reads a result line, "  KIND  rest": its kind (one a log
+// holds, or one of extra: RUNNING, which swim log shows) and the rest.
+func SplitResult(line string, extra ...string) (kind, rest string, ok bool) {
+	body, ok := strings.CutPrefix(line, "  ")
+	if !ok {
+		return "", "", false
+	}
+	kind, rest, ok = strings.Cut(body, "  ")
+	if !ok || !v2Kinds[kind] && !slices.Contains(extra, kind) {
+		return "", "", false
+	}
+	return kind, rest, true
+}
+
+// SplitTimed is timed: a step result's text, duration and clock time.
+func SplitTimed(s string) (head, dur, clock string, ok bool) { return timed(s) }
+
+// EndExit is the exit code an END line records.
+func EndExit(line string) (int, bool) {
+	if !strings.HasPrefix(line, EndMark) {
+		return 0, false
+	}
+	for _, f := range strings.Fields(line) {
+		if v, ok := strings.CutPrefix(f, "exit="); ok {
+			n, err := strconv.Atoi(v)
+			return n, err == nil
+		}
+	}
+	return 0, false
+}
+
+// RoundJob is the job a ROUND line names.
+func RoundJob(line string) (string, bool) {
+	_, job, _, ok := roundV2(line)
+	return job, ok
+}
+
+// timed splits a step's "label (detail)    1.2s  12:04:10" into the text,
+// its duration ("1.2s") and its clock time.
+func timed(s string) (head, dur, clock string, ok bool) {
+	f := strings.Fields(s)
+	if len(f) < 3 {
+		return "", "", "", false
+	}
+	clock, dur = f[len(f)-1], f[len(f)-2]
+	if len(clock) != 8 || clock[2] != ':' || clock[5] != ':' || !chars.Digits(clock[:2]) || !chars.Digits(clock[3:5]) || !chars.Digits(clock[6:]) {
+		return "", "", "", false
+	}
+	num, isDur := strings.CutSuffix(dur, "s")
+	whole, frac, dotted := strings.Cut(num, ".")
+	if !isDur || !chars.Digits(whole) || dotted && !chars.Digits(frac) {
+		return "", "", "", false
+	}
+	head = strings.TrimRight(s, " \t")
+	head = strings.TrimRight(strings.TrimSuffix(head, clock), " \t")
+	head, cut := strings.CutSuffix(head, dur)
+	if !cut || head == "" || !strings.ContainsAny(head[len(head)-1:], " \t") {
+		return "", "", "", false
+	}
+	return strings.TrimRight(head, " \t"), dur, clock, true
+}
+
+// splitLabel separates "label (detail)": the detail is what follows the
+// first " (" when the text ends with ")".
 func splitLabel(s string) (string, string) {
-	m := labelRE.FindStringSubmatch(strings.TrimRight(s, " "))
-	return m[1], m[2]
+	s = strings.TrimRight(s, " ")
+	if i := strings.Index(s, " ("); i >= 0 && strings.HasSuffix(s, ")") {
+		return s[:i], s[i+2 : len(s)-1]
+	}
+	return s, ""
+}
+
+// roundV2 reads "== ROUND <ts>  job=<job>  <title>".
+func roundV2(line string) (ts, job, title string, ok bool) {
+	rest, _ := strings.CutPrefix(line, RoundMark)
+	ts, rest, ok = strings.Cut(rest, " ")
+	rest = strings.TrimLeft(rest, " \t")
+	if !ok || ts == "" || !strings.HasPrefix(rest, "job=") {
+		return "", "", "", false
+	}
+	job, title, ok = strings.Cut(strings.TrimPrefix(rest, "job="), " ")
+	if !ok || job == "" {
+		return "", "", "", false
+	}
+	return ts, job, strings.TrimSpace(title), true
+}
+
+// endV2 reads "== END <state>  pass=N fail=N skip=N drift=N  exit=N  <dur> ...".
+func endV2(line string) (state string, exit int, dur string, ok bool) {
+	f := strings.Fields(strings.TrimPrefix(line, EndMark))
+	if len(f) < 7 {
+		return "", 0, "", false
+	}
+	for i, k := range []string{"pass=", "fail=", "skip=", "drift="} {
+		if n, has := strings.CutPrefix(f[1+i], k); !has || !chars.Digits(n) {
+			return "", 0, "", false
+		}
+	}
+	code, has := strings.CutPrefix(f[5], "exit=")
+	exit, err := strconv.Atoi(code)
+	if !has || err != nil {
+		return "", 0, "", false
+	}
+	return f[0], exit, f[6], true
 }
 
 func parseV2(rd io.Reader) (*Round, error) {
@@ -410,8 +514,8 @@ func parseV2(rd io.Reader) (*Round, error) {
 		switch {
 		case strings.HasPrefix(line, RoundMark):
 			cur = &Round{Syntax: 2, Found: true, Stage: syntax.Setup}
-			if m := roundV2RE.FindStringSubmatch(line); m != nil {
-				cur.StartedAt, cur.Job, cur.Title = m[1], m[2], strings.TrimSpace(m[3])
+			if ts, job, title, ok := roundV2(line); ok {
+				cur.StartedAt, cur.Job, cur.Title = ts, job, title
 			}
 			ctxNext = true
 			continue
@@ -420,10 +524,9 @@ func parseV2(rd io.Reader) (*Round, error) {
 				continue // an END with no ROUND before it ends nothing
 			}
 			cur.Finished = true
-			if m := endV2RE.FindStringSubmatch(line); m != nil {
-				cur.ExitCode, _ = strconv.Atoi(m[2])
-				cur.Duration = m[3]
-				if m[1] == "INTERRUPTED" {
+			if state, exit, dur, ok := endV2(line); ok {
+				cur.ExitCode, cur.Duration = exit, dur
+				if state == "INTERRUPTED" {
 					cur.Interrupt = true
 				}
 			}
@@ -462,15 +565,14 @@ func parseV2(rd io.Reader) (*Round, error) {
 		case strings.HasPrefix(line, ctxIndent):
 			// round context or END detail: not a result
 		default:
-			m := resultV2RE.FindStringSubmatch(line)
-			if m == nil {
+			kind, rest, ok := resultV2(line)
+			if !ok {
 				continue
 			}
-			res := Result{Kind: m[1], Stage: cur.Stage, Handler: cur.handler}
-			rest := m[2]
-			if t := timedRE.FindStringSubmatch(rest); t != nil {
-				res.Step, rest, res.Clock = true, t[1], t[3]
-				res.Dur, _ = strconv.ParseFloat(strings.TrimSuffix(t[2], "s"), 64)
+			res := Result{Kind: kind, Stage: cur.Stage, Handler: cur.handler}
+			if head, dur, clock, ok := timed(rest); ok {
+				res.Step, rest, res.Clock = true, head, clock
+				res.Dur, _ = strconv.ParseFloat(strings.TrimSuffix(dur, "s"), 64)
 			}
 			res.Label, res.Detail = splitLabel(rest)
 			if res.Kind == Checked {
@@ -516,6 +618,8 @@ const (
 	v1Intr       = "--- interrupted"
 )
 
+// Syntax 1 logs are read only to convert them: the format is frozen, and
+// its readers keep the patterns they were written with.
 var (
 	resultV1RE = regexp.MustCompile(`^(PASS|FAIL|SKIP|DRIFT|APPROVED|STOP)  (.*?)(?: \((.*)\))?$`)
 	kvRE       = regexp.MustCompile(`(\w+)=(\S+)`)

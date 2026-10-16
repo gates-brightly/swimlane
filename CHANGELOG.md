@@ -295,6 +295,12 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Changed
 
+- **Fewer regular expressions:** names, flags, tags, versions, lane file
+  names and swim's own log lines are read with `internal/chars` and string
+  functions (about 110 regexes before, 59 now). Those left match patterns
+  inside text (credential shapes, lint's command patterns, the time
+  grammar people type, other languages' source, frozen syntax 1 logs), each
+  with its reason beside it.
 - **`make next-tag` tags and pushes.** It tags HEAD with the day's next
   release tag and pushes only that tag, refusing a tree with changes or a
   commit origin's main doesn't have yet. `make next-tag DRY=1` prints the
@@ -1276,6 +1282,12 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Fixed
 
+- **A heredoc or a multi-line string no longer counts as a lane's code.**
+  `stage change` (or an evidence step, or `on_failure() {`) inside a
+  heredoc body, or on a later line of a quoted string, made a bash lane
+  read as staged (or as having evidence or handlers). A lane whose only
+  `stage` was text could then pass for one `swim plan --check` can stop,
+  and run whole. Lint also reads a command continued with `\` whole.
 - **Lint no longer reads commands out of quoted text, comments or
   heredocs.** `echo "stage change"` hid every check-unsafe finding after
   it; `echo "mod clone x"`, `"input 2 x"`, `"swim secret get T"` and

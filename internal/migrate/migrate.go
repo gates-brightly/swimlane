@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -28,11 +28,6 @@ type Result struct {
 	Skipped []string // files left alone because their lane is running
 }
 
-var (
-	scriptRE = regexp.MustCompile(`^lane\.(\d+)\.sh$`)
-	logRE    = regexp.MustCompile(`^agent(\d+)(\.prev-.+)?\.log$`)
-)
-
 type file struct {
 	rel  string // relative to root
 	lane int
@@ -44,8 +39,8 @@ func files(root string) []file {
 	var out []file
 	if es, err := os.ReadDir(root); err == nil {
 		for _, e := range es {
-			if m := scriptRE.FindStringSubmatch(e.Name()); m != nil && !e.IsDir() {
-				n, _ := strconv.Atoi(m[1])
+			if ln, ok := chars.Between(e.Name(), "lane.", ".sh"); ok && chars.Digits(ln) && !e.IsDir() {
+				n, _ := strconv.Atoi(ln)
 				out = append(out, file{rel: e.Name(), lane: n})
 			}
 		}
@@ -53,8 +48,8 @@ func files(root string) []file {
 	logDir := lane.LogDir(root)
 	if es, err := os.ReadDir(logDir); err == nil {
 		for _, e := range es {
-			if m := logRE.FindStringSubmatch(e.Name()); m != nil && !e.IsDir() {
-				n, _ := strconv.Atoi(m[1])
+			if ln := logLane(e.Name()); ln != "" && !e.IsDir() {
+				n, _ := strconv.Atoi(ln)
 				rel, _ := filepath.Rel(root, filepath.Join(logDir, e.Name()))
 				out = append(out, file{rel: rel, lane: n, log: true})
 			}
@@ -155,4 +150,18 @@ func Run(root string) (Result, error) {
 			Detail: fmt.Sprintf("%d file(s) to syntax %d (originals in %s): %s", len(res.Files), syntax.Current, res.Backup, strings.Join(res.Files, " "))})
 	}
 	return res, nil
+}
+
+// logLane is the lane of a lane log's name: agentN.log, or an archive
+// agentN.prev-<name>.log ("" if it isn't one).
+func logLane(name string) string {
+	body, ok := chars.Between(name, "agent", ".log")
+	if !ok {
+		return ""
+	}
+	n, prev, archived := strings.Cut(body, ".")
+	if !chars.Digits(n) || archived && (!strings.HasPrefix(prev, "prev-") || len(prev) == len("prev-")) {
+		return ""
+	}
+	return n
 }

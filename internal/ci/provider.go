@@ -8,9 +8,10 @@ package ci
 import (
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/chars"
 )
 
 // Annotation levels.
@@ -95,11 +96,9 @@ type GitLab struct {
 func (*GitLab) Name() string { return "gitlab" }
 func (*GitLab) Folds() bool  { return true }
 
-var sectionNameRE = regexp.MustCompile(`[^a-z0-9_]+`)
-
 func (g *GitLab) Group(w io.Writer, title string, collapsed bool) {
 	g.n++
-	name := fmt.Sprintf("swim_%d_%s", g.n, strings.Trim(sectionNameRE.ReplaceAllString(strings.ToLower(title), "_"), "_"))
+	name := fmt.Sprintf("swim_%d_%s", g.n, strings.Trim(chars.Squash(strings.ToLower(title), chars.Or(chars.Lower, chars.Digit, chars.In("_")), "_"), "_"))
 	if len(name) > 60 {
 		name = name[:60]
 	}

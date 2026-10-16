@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/earmark"
@@ -149,7 +149,18 @@ func listEarmarks(root string) error {
 	return nil
 }
 
-var historyRunRE = regexp.MustCompile(`  run=(\S+)`)
+// historyField is the value of key=VALUE in a .swim.log line ("" if none).
+func historyField(line, key string) string {
+	i := strings.Index(line, "  "+key+"=")
+	if i < 0 {
+		return ""
+	}
+	v := line[i+len(key)+3:]
+	if j := strings.IndexAny(v, " \t"); j >= 0 {
+		v = v[:j]
+	}
+	return v
+}
 
 // sinceTime resolves --since: a UTC time, a run id (its first .swim.log
 // line) or a job (its first round's start).
@@ -159,14 +170,14 @@ func sinceTime(root string, cfg *config.Config, ref string) (string, error) {
 	}
 	data, _ := os.ReadFile(history.Path(root))
 	for _, l := range strings.Split(string(data), "\n") {
-		if m := historyRunRE.FindStringSubmatch(l); m != nil && m[1] == ref {
+		if run := historyField(l, "run"); run != "" && run == ref {
 			return strings.Fields(l)[0], nil
 		}
 	}
 	for _, n := range lane.Associated(root) {
 		for _, s := range laneStreams(root, n) {
 			for _, rd := range s.rounds() {
-				if m := roundJobRE.FindStringSubmatch(rd.lines[0]); m != nil && lane.MatchJob(m[1], ref) {
+				if job, ok := logparse.RoundJob(rd.lines[0]); ok && lane.MatchJob(job, ref) {
 					return rd.start, nil
 				}
 			}
@@ -397,7 +408,21 @@ func (r *report) anyNew() bool {
 	return false
 }
 
-var historyLaneRE = regexp.MustCompile(`  swim (\d+)(  |$)`)
+// historyLane is the lane a .swim.log line names ("  swim N  "), ok
+// false if none.
+func historyLane(line string) (int, bool) {
+	i := strings.Index(line, "  swim ")
+	if i < 0 {
+		return 0, false
+	}
+	rest := line[i+len("  swim "):]
+	num, after, _ := strings.Cut(rest, " ")
+	if !chars.Digits(num) || after != "" && !strings.HasPrefix(after, " ") {
+		return 0, false
+	}
+	n, err := strconv.Atoi(num)
+	return n, err == nil
+}
 
 func buildReport(root string, cfg *config.Config, name string, cur *earmark.Cursor, o reportOpts) (*report, error) {
 	r := &report{root: root, name: name, cursor: cur, now: time.Now().UTC(), opts: o}
@@ -543,10 +568,8 @@ func buildReport(root string, cfg *config.Config, name string, cur *earmark.Curs
 	r.historyWarn = warn
 	for _, l := range lines {
 		if o.only != nil {
-			if m := historyLaneRE.FindStringSubmatch(l); m != nil {
-				if n, _ := strconv.Atoi(m[1]); !o.only[n] {
-					continue
-				}
+			if n, ok := historyLane(l); ok && !o.only[n] {
+				continue
 			}
 		}
 		r.history = append(r.history, l)
@@ -709,8 +732,8 @@ func (r *report) writeText(w io.Writer) {
 			}
 			for _, sl := range l.slices {
 				head := "==> swim " + l.key
-				if m := roundJobRE.FindStringSubmatch(sl.round.lines[0]); m != nil {
-					head += " · job=" + lane.ShortJob(m[1])
+				if job, ok := logparse.RoundJob(sl.round.lines[0]); ok {
+					head += " · job=" + lane.ShortJob(job)
 				}
 				lines := sl.round.lines
 				if sl.from > 0 {

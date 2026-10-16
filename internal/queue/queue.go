@@ -27,7 +27,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -616,11 +616,19 @@ func (e *Entry) Statement() string {
 	return b.String()
 }
 
-var (
-	dailyRE = regexp.MustCompile(`(?m)^daily: (\S+) (\S+)$`)
-	firstRE = regexp.MustCompile(`(?m)^first: (\S+)$`)
-	untilRE = regexp.MustCompile(`(?m)^until: (\S+)$`)
-)
+// stmtField is the fields of a statement's "key: a b" line, if it has
+// exactly n of them.
+func stmtField(st, key string, n int) []string {
+	for _, l := range strings.Split(st, "\n") {
+		if v, ok := strings.CutPrefix(l, key+": "); ok {
+			if f := strings.Split(v, " "); len(f) == n && !slices.Contains(f, "") {
+				return f
+			}
+			return nil
+		}
+	}
+	return nil
+}
 
 // fromMismatch says how an occurrence differs from the recurring
 // schedule's statement it carries ("" when it is what that describes):
@@ -642,12 +650,12 @@ func (e *Entry) fromMismatch() string {
 	if !strings.Contains(st, "\napprove: "+strings.Join(e.Approve, ",")+"\n") || e.ApproveAll {
 		return "its approvals"
 	}
-	d, f, u := dailyRE.FindStringSubmatch(st), firstRE.FindStringSubmatch(st), untilRE.FindStringSubmatch(st)
-	if d == nil || f == nil || u == nil || e.Occurrence < f[1] || e.Occurrence > u[1] {
+	d, f, u := stmtField(st, "daily", 2), stmtField(st, "first", 1), stmtField(st, "until", 1)
+	if d == nil || f == nil || u == nil || e.Occurrence < f[0] || e.Occurrence > u[0] {
 		return "its day"
 	}
-	loc, err := time.LoadLocation(d[2])
-	c, cerr := schedule.ParseClock(d[1])
+	loc, err := time.LoadLocation(d[1])
+	c, cerr := schedule.ParseClock(d[0])
 	day, derr := time.ParseInLocation("2006-01-02", e.Occurrence, loc)
 	if err != nil || cerr != nil || derr != nil {
 		return "its time"
