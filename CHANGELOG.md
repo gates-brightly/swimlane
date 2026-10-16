@@ -419,6 +419,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Built-in modules `target`, `backup` and `wait`.** `mod target aws
+  --account ID` (or `kube --context C`, `gcp --project P`) stops the round
+  unless the tools point where the lane says; it's a gate module (`gate:
+  true` in `module.yml`, new), so a failure stops the round even under
+  plain `mod`. `mod backup rds|rds-cluster|dynamodb NAME` takes a snapshot
+  named after the lane and job, waits until it's usable, and records its id
+  as output `backup.<kind>.<name>` (and, under `mod_env`, `BACKUP_ID` for
+  `on_failure`); `swim plan --check` skips it. `mod wait http URL|tcp
+  HOST:PORT|cmd -- CMD|kube-rollout RES` waits until ready, judged by a
+  status or an exit code, never by matching output.
 - **Modules: reusable utilities lanes declare and call as steps.** `#
   Modules: aws-session clone@1 notify ./modules/x`, then `mod notify
   "#orders" "done"` or `mod_env aws-session --profile p --role ARN`. A

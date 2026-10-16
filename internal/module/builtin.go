@@ -9,6 +9,9 @@ import (
 	"sync"
 
 	awssession "github.com/gates-brightly/swimlane/internal/module/builtin/aws-session"
+	"github.com/gates-brightly/swimlane/internal/module/builtin/backup"
+	"github.com/gates-brightly/swimlane/internal/module/builtin/target"
+	"github.com/gates-brightly/swimlane/internal/module/builtin/wait"
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
 )
 
@@ -21,6 +24,9 @@ var builtinFS embed.FS
 // goBuiltins are the built-in Go modules, compiled into swim.
 var goBuiltins = map[string]func(*gomod.Ctx) error{
 	"aws-session": awssession.Run,
+	"backup":      backup.Run,
+	"target":      target.Run,
+	"wait":        wait.Run,
 }
 
 // GoBuiltin is a built-in Go module's code (nil if name isn't one).

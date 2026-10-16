@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -299,4 +300,85 @@ func TestModuleApprovalStale(t *testing.T) {
 	os.WriteFile(filepath.Join(d, "say.sh"), []byte("say() { echo \"say-v2 $*\"; }\n"), 0o644)
 	r.mustSwim("run", "1")
 	contains(t, "stale", r.log(1), "stale: includes modules/say/say.sh changed; module say changed")
+}
+
+// target, backup and wait in a round: target passes for the right account
+// and stops the round for a wrong one (a gate module, even under plain
+// mod); backup's id reaches the same round (mod_env) and a later lane
+// (input); wait polls until the service answers.
+func TestModuleTargetBackupWait(t *testing.T) {
+	r := newRepo(t, "")
+	fake := t.TempDir()
+	os.WriteFile(filepath.Join(fake, "aws"), []byte(`#!/usr/bin/env bash
+n=$(cat "$AWS_FAKE_DIR/n" 2>/dev/null || echo 0); n=$((n+1)); echo $n >"$AWS_FAKE_DIR/n"
+case "$1 $2" in
+  "sts get-caller-identity") echo '{"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/ops"}' ;;
+  "rds create-db-snapshot") echo '{}' ;;
+  "rds describe-db-snapshots") st=creating; [ "$n" -ge 4 ] && st=available; echo "{\"DBSnapshots\": [{\"Status\": \"$st\"}]}" ;;
+  *) echo "unexpected: $*" >&2; exit 1 ;;
+esac
+`), 0o755)
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if hits.Add(1) < 3 {
+			w.WriteHeader(502)
+		}
+	}))
+	defer srv.Close()
+	r.env = append(r.env, "PATH="+fake+string(os.PathListSeparator)+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"AWS_FAKE_DIR="+fake)
+	r.script(1, "back up, change, wait", `# Modules: target backup wait
+# Outputs: -
+mod target aws --account 123456789012
+stage change
+mod_env backup rds orders-prod --every 50ms
+run "same round" bash -c 'echo "kind=$BACKUP_KIND source=$BACKUP_SOURCE id-set=${BACKUP_ID:+yes}"'
+mod wait http "`+srv.URL+`/health" --every 50ms --for 20s`)
+	r.script(2, "reads the backup id", `run "restore point" echo "from $(input 1 backup.rds.orders-prod)"`)
+	withHeader(t, r, 2, "# After: 1")
+	r.script(3, "wrong account", `# Modules: target
+mod target aws --account 999999999999
+run "never" echo should-not-run`)
+	contains(t, "lint", must(r.swim("lint", "1", "2", "3")), "")
+
+	r.swim("run", "1", "2", "--plain")
+	log1, log2 := r.log(1), r.log(2)
+	contains(t, "lane 1", log1, "PASS  target aws --account 123456789012", "AWS account 123456789012, as the lane says",
+		"PASS  backup rds orders-prod", "backup: available", "recorded as output backup.rds.orders-prod",
+		"kind=rds source=*** id-set=yes", "PASS  wait http", "wait: ready after")
+	contains(t, "lane 2", log2, "PASS  restore point", "from swim-1-")
+
+	r.swim("run", "3", "--plain")
+	log3 := r.log(3)
+	contains(t, "lane 3", log3, "FAIL  target aws --account 999999999999", "AWS account is 123456789012, not 999999999999", "STOP  gate failed: target aws")
+	if strings.Contains(log3, "should-not-run") {
+		t.Errorf("the round went on after a wrong target:\n%s", log3)
+	}
+}
+
+// A gate module stops an SDK lane's round too: a wrong target through op
+// module ends it before the next step.
+func TestModuleGateSDK(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not installed")
+	}
+	r := newRepo(t, "")
+	fake := t.TempDir()
+	os.WriteFile(filepath.Join(fake, "aws"), []byte("#!/usr/bin/env bash\necho '{\"Account\": \"123456789012\"}'\n"), 0o755)
+	r.env = append(r.env, "PATH="+fake+string(os.PathListSeparator)+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
+	r.write("lane.1.py", `#!/usr/bin/env python3
+# Round: wrong account from python
+# Modules: target
+import swim
+with swim.round() as r:
+    r.module("target", "aws", "--account", "999999999999")
+    r.run("never", ["echo", "should-not-run"])
+`, 0o755)
+	r.swim("run", "1", "--plain")
+	log := r.log(1)
+	contains(t, "log", log, "FAIL  target aws --account 999999999999", "STOP  gate failed: target aws")
+	if strings.Contains(log, "should-not-run") {
+		t.Errorf("the round went on:\n%s", log)
+	}
 }

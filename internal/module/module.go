@@ -46,6 +46,10 @@ const (
 	Go   = "go"   // one Go program (main.go and go.mod in the repo)
 )
 
+// GateExit is how swim _module exits when a gate module (gate: true)
+// fails: mod and the SDKs' op module then stop the round.
+const GateExit = 88
+
 // Sources of a module, as a manifest pins them.
 const BuiltinSource = "builtin"
 
@@ -69,6 +73,9 @@ type Spec struct {
 	Commands []string `yaml:"commands"`
 	Effects  Effects  `yaml:"effects"`
 	Guards   []string `yaml:"guards,omitempty"`
+	// Gate: a failure stops the round, as mod --gate does, however the
+	// lane calls it (a check that the round must not go on without).
+	Gate bool `yaml:"gate,omitempty"`
 	// Usage is a line per command, shown by swim modules show.
 	Usage []string `yaml:"usage,omitempty"`
 }
@@ -183,6 +190,9 @@ func (m *Module) EffectsText() string {
 	}
 	if len(m.Guards) > 0 {
 		parts = append(parts, "guards "+strings.Join(m.Guards, " "))
+	}
+	if m.Gate {
+		parts = append(parts, "gate")
 	}
 	if len(parts) == 0 {
 		return "no declared effects"

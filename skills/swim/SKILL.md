@@ -259,10 +259,14 @@ from what the previous ones left behind.
 - **Secrets:** use `$(swim secret get NAME)`. Never print values, only
   lengths. Never list a secret in `header_env`.
 - **Reuse modules instead of rewriting plumbing.** `swim modules` lists
-  them (built in: `aws-session`, `clone`, `notify`; the repo's in
-  `modules/`). Declare what you use, `# Modules: aws-session notify`, and
-  call it as a step: `mod notify "#orders" "done"`; `mod_env aws-session
-  --profile P --role ARN` for credentials. An undeclared module is refused.
+  them (built in: `target`, `backup`, `wait`, `aws-session`, `clone`,
+  `notify`; the repo's in `modules/`). Declare what you use, `# Modules:
+  target backup notify`, and call it as a step: `mod notify "#orders"
+  "done"`; `mod_env aws-session --profile P --role ARN` for credentials.
+  Start a change against cloud resources with `mod target aws --account
+  ID` (it stops the round on the wrong account), take `mod backup ...` as
+  the first step of `stage change`, and replace sleep loops with `mod wait`.
+  An undeclared module is refused.
 - **Keep output streaming,** so the operator and the live view see
   progress. Don't capture a long command with `out=$(cmd); echo "$out"`.
   Check its output while it streams instead:

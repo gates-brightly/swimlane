@@ -360,6 +360,14 @@ Where the build differs from the design above, or settles it:
   isn't recorded under `local:` yet: it's keyed by the pinned source hash
   and rebuilt when that or Go changes.
 
+- **More built-ins** (after phase two): `target` (account, context or
+  project check), `backup` (RDS, Aurora, DynamoDB restore points; the id as
+  an output) and `wait` (HTTP status, TCP, exit code, kube rollout), all Go,
+  all through the tools' own CLIs.
+- **`gate: true`** in `module.yml`: every failure of the module stops the
+  round, as `mod --gate` does. `swim _module` exits 88 for a failed gate
+  module; `mod` and op `module` stop the round on it. `target` is one.
+
 Answers to the open questions, for what's built:
 
 - **Remote Go modules:** build, as repo modules do; `swim doctor`

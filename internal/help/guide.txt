@@ -814,12 +814,29 @@ MODULES
     (Python), r.moduleEnv(...) (TypeScript), r.Module / r.ModuleEnv (Go): op
     module of swim.lane/v1. With env the variables are also set in the
     program's own environment.
-  - Built in: aws-session (go: credentials from your AWS profile or SSO
-    through the aws CLI, optionally assuming --role; needs mod_env), clone
-    (bash: URL SHA DIR, a full commit id only, HEAD checked), notify (bash:
-    CHANNEL TEXT to the webhook in the secret SLACK_WEBHOOK_URL; fails soft
-    unless --strict). swim modules lists them with their effects; swim
-    modules show NAME prints a module's module.yml and source.
+  - Built in (swim modules lists them with their effects; swim modules
+    show NAME prints a module's module.yml and source):
+      target       mod target aws --account ID [--region R] | kube --context C
+                   [--namespace N] [--server URL] | gcp --project P: stop the
+                   round unless the tools point where the lane says (a gate
+                   module: a failure stops the round even without --gate)
+      backup       mod backup rds INSTANCE | rds-cluster CLUSTER | dynamodb
+                   TABLE [--for 60m]: snapshot it, wait until usable, record
+                   the id as output backup.<kind>.<name> (--key K); under
+                   mod_env also BACKUP_ID, BACKUP_KIND, BACKUP_SOURCE for
+                   on_failure. Not read-only: put it in stage change, before
+                   the change (swim plan --check skips it)
+      wait         mod wait http URL [--status 2xx|200,204] | tcp HOST:PORT |
+                   cmd -- CMD ... | kube-rollout RES [--namespace N]
+                   [--for 10m] [--every 5s]: until ready, judged by a status
+                   or an exit code, never by matching output
+      aws-session  mod_env aws-session --profile P [--role ARN]: credentials
+                   from your AWS profile or SSO through the aws CLI
+      clone        mod clone URL SHA DIR: a full commit id only, HEAD checked
+      notify       mod notify CHANNEL TEXT: to the webhook in the secret
+                   SLACK_WEBHOOK_URL; fails soft unless --strict
+  - A module.yml with gate: true makes every failure of the module stop the
+    round, as mod --gate does.
   - Repo modules: modules/<name>/ with a module.yml (swim modules new NAME
     [--kind bash|go] writes one). Declare one by path (# Modules:
     ./modules/x), or by name with dir: in swim.yml. A bash module is

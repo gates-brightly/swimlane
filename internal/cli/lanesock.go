@@ -22,6 +22,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/peer"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -534,6 +535,10 @@ func (s *laneServer) module(req laneRequest) laneResponse {
 		extra = []string{moduleOutEnv, out}
 	}
 	_, code := s.swimEnv(false, extra, args...)
+	if code == module.GateExit && !a.Gate && !s.inHandler.Load() {
+		// A gate module failed: the round stops, as a bash lane's mod stops it.
+		s.swim("stop", "gate failed: "+label)
+	}
 	result := map[string]any{"exit": code, "passed": code == 0}
 	if a.Env && code == 0 {
 		vars, err := readModuleEnv(out)

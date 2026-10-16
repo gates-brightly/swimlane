@@ -631,6 +631,10 @@ _swim_mod() {
   _swim_run_step "" $_swim_mod_o "$_swim_mod_label" "$SWIM_BIN" _module "$@"
   _swim_mod_rc=$?
   _swim_no_hard=
+  # 88: a gate module (gate: true in its module.yml) failed.
+  if [ "$_swim_mod_rc" -eq 88 ]; then
+    _swim_mod_gate=1
+  fi
   if [ -n "$_swim_mod_out" ]; then
     unset SWIM_MODULE_OUT
     if [ "$_swim_mod_rc" -eq 0 ]; then

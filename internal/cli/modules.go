@@ -21,6 +21,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
+	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -113,11 +114,16 @@ func cmdModule(args []string) error {
 			return err
 		}
 	}
-	code, err := runModule(root, m, cmd, rest, env, out)
+	code, err := runModule(root, cfg, m, cmd, rest, env, out)
 	if err != nil {
 		return err
 	}
-	if code != 0 {
+	switch {
+	case code != 0 && m.Gate:
+		return exitError{module.GateExit}
+	case code == module.GateExit:
+		return exitError{1} // only a gate module stops the round this way
+	case code != 0:
 		return exitError{code}
 	}
 	if out == "" {
@@ -144,7 +150,7 @@ func undeclared(root string, cfg *config.Config, n int, cmd string) error {
 }
 
 // runModule runs one module command and returns its exit code.
-func runModule(root string, m *module.Module, cmd string, args, env []string, out string) (int, error) {
+func runModule(root string, cfg *config.Config, m *module.Module, cmd string, args, env []string, out string) (int, error) {
 	switch {
 	case m.Kind == module.Bash:
 		// The module's functions, then the command: its own bash process,
@@ -158,6 +164,14 @@ func runModule(root string, m *module.Module, cmd string, args, env []string, ou
 				c := exec.Command(name, a...)
 				c.Dir, c.Env = root, env
 				return c
+			},
+			// As swim output KEY VALUE: masked, kept with the round's outputs.
+			Output: func(key, value string) error {
+				dir := envOf(env, "SWIM_OUT")
+				if dir == "" {
+					return errors.New("SWIM_OUT is unset")
+				}
+				return outputs.SetValue(dir, key, cfg.Masker(env).String(value))
 			}}
 		if out != "" {
 			f, err := os.OpenFile(out, os.O_WRONLY|os.O_APPEND, 0o600)
@@ -380,6 +394,7 @@ type moduleDoc struct {
 	Summary  string         `yaml:"summary,omitempty"`
 	Commands []string       `yaml:"commands,flow"`
 	Effects  module.Effects `yaml:"effects"`
+	Gate     bool           `yaml:"gate,omitempty"`
 	Allowed  bool           `yaml:"allowed"`
 	SHA256   string         `yaml:"sha256"`
 }
@@ -395,7 +410,7 @@ func modulesList(root string, cfg *config.Config, args []string) error {
 	var docs []moduleDoc
 	for _, m := range mods {
 		docs = append(docs, moduleDoc{Name: m.Name, Version: m.Version, Kind: m.Kind, Source: m.Source(), Summary: m.Summary,
-			Commands: m.Commands, Effects: m.Effects, Allowed: cfg.Modules.ModuleAllowed(m.Builtin, m.Name, m.Dir), SHA256: m.SHA256})
+			Commands: m.Commands, Effects: m.Effects, Gate: m.Gate, Allowed: cfg.Modules.ModuleAllowed(m.Builtin, m.Name, m.Dir), SHA256: m.SHA256})
 	}
 	if asYAML {
 		enc := yaml.NewEncoder(os.Stdout)
@@ -416,7 +431,7 @@ func modulesList(root string, cfg *config.Config, args []string) error {
 			allowed = "  " + p.Paint(ui.Yellow, "not allowed by swim.yml modules: allow:")
 		}
 		fmt.Printf("%-12s %-7s %-4s %-10s %s%s\n", d.Name, d.Version, d.Kind, src, d.Summary, allowed)
-		m := &module.Module{Spec: module.Spec{Effects: d.Effects}}
+		m := &module.Module{Spec: module.Spec{Effects: d.Effects, Gate: d.Gate}}
 		fmt.Printf("%s\n", p.Paint(ui.Dim, "             "+m.EffectsText()))
 	}
 	for _, e := range errs {

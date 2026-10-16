@@ -783,6 +783,11 @@ mod notify "#orders" "orders deploy: done (job $SWIM_JOB)"
 
 - **Every call is a step**, logged, masked and timed like `run`. `mod_env`
   gives the lane what the module exports (credentials), masked from then on.
+- **Built in:** `target` (stop unless the AWS account, kube context or GCP
+  project is the one the lane says), `backup` (an RDS or DynamoDB restore
+  point, waited for, its id recorded), `wait` (until an HTTP status, a TCP
+  port, a command's exit code or a kube rollout says ready), `aws-session`,
+  `clone` and `notify`.
 - **Bash or Go**, built in or in the repo (`modules/<name>/`, `swim modules
   new`). Each has a `module.yml` that declares its effects (network,
   secrets, writes, credentials); `swim plan`, `swim approve` and lint show

@@ -5,7 +5,6 @@
 package awssession
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,7 +13,6 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/module/gomod"
@@ -55,7 +53,7 @@ func Run(c *gomod.Ctx) error {
 	var cr creds
 	if *role == "" {
 		fmt.Fprintf(c.Stdout, "aws-session: profile %s\n", *profile)
-		out, err := aws(c, "configure", "export-credentials", "--profile", *profile, "--format", "process")
+		out, err := c.Capture("aws", "configure", "export-credentials", "--profile", *profile, "--format", "process")
 		if err != nil {
 			return err
 		}
@@ -80,7 +78,7 @@ func Run(c *gomod.Ctx) error {
 		if *region != "" {
 			args = append(args, "--region", *region)
 		}
-		out, err := aws(c, args...)
+		out, err := c.Capture("aws", args...)
 		if err != nil {
 			return err
 		}
@@ -112,19 +110,4 @@ func Run(c *gomod.Ctx) error {
 		fmt.Fprintf(c.Stdout, "aws-session: credentials until %s\n", cr.Expiration)
 	}
 	return nil
-}
-
-// aws runs the AWS CLI and returns its output; its errors go to the step.
-func aws(c *gomod.Ctx, args ...string) ([]byte, error) {
-	cmd := c.Command("aws", args...)
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(errb.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("aws %s: %s", strings.Join(args[:2], " "), msg)
-	}
-	return out.Bytes(), nil
 }
