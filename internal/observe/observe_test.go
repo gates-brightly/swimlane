@@ -111,3 +111,58 @@ func TestKnowledge(t *testing.T) {
 		t.Errorf("not retired after 5 clean runs: %q", why)
 	}
 }
+
+// A step's --key carries its history across a relabel; a target whose
+// steps keep needing retries is flaky, across lanes.
+func TestKeysAndTargets(t *testing.T) {
+	withMeta := func(line string, meta ...string) string {
+		for _, m := range meta {
+			line += "\n" + logparse.Indent + m
+		}
+		return line
+	}
+	var past []Past
+	for i := 0; i < 6; i++ {
+		run := fmt.Sprintf("r-%d", i)
+		past = append(past, Past{Run: run, Round: round(t, run, withMeta(step("PASS", "apply (old label)", "", 10), "key: apply"))})
+	}
+	now := round(t, "r", withMeta(step("PASS", "apply, renamed", "", 100), "key: apply"))
+	obs := Compute(Input{Run: &runrec.Run{Run: "r"}, Rounds: map[int]*logparse.Round{1: now}, History: map[int][]Past{1: past}}, Thresholds{})
+	if kinds(obs) != "slow" {
+		t.Errorf("a relabelled step with its key: %q", kinds(obs))
+	}
+
+	// Target api: troubled in 2 of its 4 runs, lanes 1 and 2.
+	call := func(retried bool) string {
+		detail := ""
+		if retried {
+			detail = "attempt 2/3"
+		}
+		return withMeta(step("PASS", "call", detail, 1), "target: api")
+	}
+	in := Input{Run: &runrec.Run{Run: "r"},
+		Rounds: map[int]*logparse.Round{1: round(t, "r", call(true)), 2: round(t, "r", call(false))},
+		History: map[int][]Past{
+			1: {{Run: "a", Round: round(t, "a", call(false))}, {Run: "b", Round: round(t, "b", call(true))}},
+			2: {{Run: "c", Round: round(t, "c", call(false))}},
+		}}
+	obs = Compute(in, Thresholds{})
+	var fl *Observation
+	for i := range obs {
+		if obs[i].Kind == Flaky {
+			fl = &obs[i]
+		}
+	}
+	if fl == nil || fl.Step != "target api" || !strings.Contains(fl.Text, "2 of its last 4 runs") || fl.Lane != 1 {
+		t.Errorf("flaky: %+v", obs)
+	}
+	// Under the share (1 in 4): not flaky.
+	in.History[1][1].Round = round(t, "b", call(false))
+	in.Rounds[1] = round(t, "r", call(true))
+	in.History[2] = append(in.History[2], Past{Run: "d", Round: round(t, "d", call(false))})
+	for _, o := range Compute(in, Thresholds{FlakyShare: 0.3}) {
+		if o.Kind == Flaky {
+			t.Errorf("flaky under its share: %+v", o)
+		}
+	}
+}

@@ -59,6 +59,10 @@ type Options struct {
 	// failure. The exit code decides, never the output.
 	ExpectFail  bool
 	ExpectCodes []int
+	// Key and Target go on the step's block (key:, target:) for swim
+	// observe: the name its history is matched by across rounds (default
+	// its label), and what it talks to.
+	Key, Target string
 	// KillGrace is how long a step stopped by a time limit or an interrupt
 	// has to exit before its process group is SIGKILLed; 0 means
 	// DefaultKillGrace.
@@ -410,7 +414,7 @@ func Run(o Options) (Result, error) {
 	// A crash here (the command ran, its result isn't written) must never
 	// read as a pass: the spool stays, and RecoverSpool writes it as cut off.
 	failpoint.Hit(failpoint.StepAfterExit)
-	if err := writeBlock(o.LogPath, logparse.StepLine(kind, logLabel, detail, ds, clock), saved); err != nil {
+	if err := writeBlock(o.LogPath, logparse.StepLine(kind, logLabel, detail, ds, clock), saved, meta(o)...); err != nil {
 		return res, err
 	}
 
@@ -599,7 +603,7 @@ func containsInt(xs []int, x int) bool {
 // writeBlock appends a step's block to the log: its result line, then the
 // command and output from the spool, then the snapshot path. The spool is
 // removed afterwards.
-func writeBlock(logPath, resultLine, saved string) error {
+func writeBlock(logPath, resultLine, saved string, meta ...string) error {
 	sp := SpoolPath(logPath)
 	in, err := os.Open(sp)
 	if err != nil {
@@ -634,6 +638,9 @@ func writeBlock(logPath, resultLine, saved string) error {
 	}
 	if saved != "" {
 		w.WriteString(logparse.Indent + "saved: " + saved + "\n")
+	}
+	for _, m := range meta {
+		w.WriteString(logparse.Indent + m + "\n")
 	}
 	if err := w.Flush(); err != nil {
 		return err
@@ -908,4 +915,16 @@ func joinInts(codes []int) string {
 		parts[i] = strconv.Itoa(c)
 	}
 	return strings.Join(parts, ",")
+}
+
+// meta are a step block's key: and target: lines, for swim observe.
+func meta(o Options) []string {
+	var out []string
+	if o.Key != "" {
+		out = append(out, "key: "+o.Key)
+	}
+	if o.Target != "" {
+		out = append(out, "target: "+o.Target)
+	}
+	return out
 }

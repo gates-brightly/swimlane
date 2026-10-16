@@ -387,6 +387,9 @@ reached() {
 #   --expect-fail[=CODES]  the step should fail: it passes on a non-zero
 #                      exit (one of CODES, e.g. =1,2), and fails on exit 0
 #                      or another code; logged "failed as expected"
+#   --key K            the step's name across rounds, for swim observe (no spaces)
+#   --target T         what it talks to (orders-api), for swim observe; the
+#                      lane's # Targets: by default
 _swim_run_step() {
   _swim_mode=$1
   shift
@@ -395,7 +398,7 @@ _swim_run_step() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --soft) _swim_soft=1; shift ;;
-      --timeout|--retry|--backoff|--retry-on)
+      --timeout|--retry|--backoff|--retry-on|--key|--target)
         if [ $# -lt 2 ]; then
           echo "swim: $1 needs a value" >&2
           return 2
@@ -641,7 +644,7 @@ _swim_mod() {
   _swim_mod_ev=
   while [ $# -gt 0 ]; do
     case "$1" in
-      --label|--timeout|--retry|--backoff|--retry-on)
+      --label|--timeout|--retry|--backoff|--retry-on|--key|--target)
         if [ $# -lt 2 ]; then
           echo "swim: $1 needs a value" >&2
           return 2

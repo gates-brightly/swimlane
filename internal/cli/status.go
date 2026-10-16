@@ -13,6 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/observe"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/schedule"
@@ -151,6 +152,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 	for _, h := range lane.HeldLocks(root) {
 		fmt.Println(p.Paint(ui.Yellow, "lock "+h.Name+" held by "+h.By))
 	}
+	observed := map[string][]observe.Observation{} // by run, read once
 	for i := range f.Lanes {
 		l := &f.Lanes[i]
 		// The lanes in use; one named (swim status N) whatever it is.
@@ -292,6 +294,21 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		}
 		for _, fs := range l.FailedSteps {
 			detail(fs, ui.Red)
+		}
+		// What its last run showed (swim observe), when it isn't running.
+		if l.Run != "" && state != status.Running {
+			obs, ok := observed[l.Run]
+			if !ok {
+				if f, found, _ := observe.Load(root, l.Run); found {
+					obs = f.Observations
+				}
+				observed[l.Run] = obs
+			}
+			for _, o := range obs {
+				if o.Lane == l.Lane {
+					detail("observed: "+o.Kind+" "+o.Text, ui.Yellow)
+				}
+			}
 		}
 		if l.LastArchive != "" && state == status.Idle {
 			detail("last archive: "+l.LastArchive, ui.Dim)

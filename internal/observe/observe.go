@@ -28,6 +28,7 @@ const (
 	Failing = "failing" // a step failed in each of its last runs
 	Dry     = "dry"     // a guard ran as a dry run in each of its last runs
 	Drift   = "drift"   // the same DRIFT came back
+	Flaky   = "flaky"   // a target's steps needed retries, or failed, in a share of its runs
 )
 
 // An Observation is one fact about a run.
@@ -58,6 +59,8 @@ type Thresholds struct {
 	WaitMin       float64 `yaml:"wait_min_s,omitempty"`     // a wait worth saying (120)
 	FailingStreak int     `yaml:"failing_streak,omitempty"` // failed in this many runs in a row (3)
 	DryStreak     int     `yaml:"dry_streak,omitempty"`     // dry runs in a row (3)
+	FlakyShare    float64 `yaml:"flaky_share,omitempty"`    // a target troubled in this share of its runs (0.25)
+	FlakyMin      int     `yaml:"flaky_min,omitempty"`      // runs of the target needed to judge (4)
 }
 
 func (t Thresholds) withDefaults() Thresholds {
@@ -78,6 +81,8 @@ func (t Thresholds) withDefaults() Thresholds {
 	def(&t.WaitMin, 120)
 	defi(&t.FailingStreak, 3)
 	defi(&t.DryStreak, 3)
+	def(&t.FlakyShare, 0.25)
+	defi(&t.FlakyMin, 4)
 	return t
 }
 
@@ -124,7 +129,7 @@ func Compute(in Input, t Thresholds) []Observation {
 			case res.Step && res.Kind == logparse.Fail && strings.Contains(res.Detail, "timeout"):
 				times := 1
 				for _, p := range past {
-					if timedOut(p.Round, res.Label) {
+					if timedOut(p.Round, stepKey(res)) {
 						times++
 					}
 				}
@@ -138,7 +143,7 @@ func Compute(in Input, t Thresholds) []Observation {
 				}
 			}
 			// A step that timed out is said once, as a timeout (with how often).
-			if res.Step && res.Kind == logparse.Fail && !strings.Contains(res.Detail, "timeout") && streak(past, t.FailingStreak-1, func(p *logparse.Round) bool { return failed(p, res.Label) }) {
+			if res.Step && res.Kind == logparse.Fail && !strings.Contains(res.Detail, "timeout") && streak(past, t.FailingStreak-1, func(p *logparse.Round) bool { return failed(p, stepKey(res)) }) {
 				add(Failing, res.Label, fmt.Sprintf("%q failed in each of the last %d runs (now: %s)", res.Label, t.FailingStreak, res.Detail), citeRuns(past, t.FailingStreak-1, run)...)
 			}
 			if res.Kind == logparse.Skip && strings.HasPrefix(res.Detail, "dry run") && streak(past, t.DryStreak-1, func(p *logparse.Round) bool { return dryRun(p, res.Label) }) {
@@ -168,10 +173,90 @@ func Compute(in Input, t Thresholds) []Observation {
 			}
 		}
 	}
+	out = append(out, flaky(in, run, t)...)
 	for i := range out {
 		out[i].ID = fmt.Sprintf("%s-%d-%d", out[i].Kind, out[i].Lane, i+1)
 	}
 	return out
+}
+
+// flaky: a target (what steps talk to: --target, # Targets:) whose steps
+// needed retries or failed in this run, and in at least FlakyShare of the
+// runs it appeared in (FlakyMin or more, across lanes, the last Window).
+func flaky(in Input, run string, t Thresholds) []Observation {
+	type tally struct {
+		appeared, troubled map[string]bool
+		lanes              []int
+	}
+	targets := map[string]*tally{}
+	note := func(runID string, lane int, r *logparse.Round, now bool) {
+		for _, res := range r.Results {
+			if !res.Step || res.Target == "" || res.Handler != "" {
+				continue
+			}
+			tl := targets[res.Target]
+			if tl == nil {
+				tl = &tally{appeared: map[string]bool{}, troubled: map[string]bool{}}
+				targets[res.Target] = tl
+			}
+			tl.appeared[runID] = true
+			if res.Kind == logparse.Fail || attempts(res.Detail) > 1 {
+				tl.troubled[runID] = true
+				if now && !containsInt(tl.lanes, lane) {
+					tl.lanes = append(tl.lanes, lane)
+				}
+			}
+		}
+	}
+	var lanes []int
+	for n := range in.Rounds {
+		lanes = append(lanes, n)
+	}
+	sort.Ints(lanes)
+	for _, n := range lanes {
+		past := in.History[n]
+		if len(past) > t.Window {
+			past = past[len(past)-t.Window:]
+		}
+		for _, p := range past {
+			note(p.Run, n, p.Round, false)
+		}
+		note(run, n, in.Rounds[n], true)
+	}
+	var names []string
+	for name := range targets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var out []Observation
+	for _, name := range names {
+		tl := targets[name]
+		if !tl.troubled[run] || len(tl.appeared) < t.FlakyMin {
+			continue
+		}
+		share := float64(len(tl.troubled)) / float64(len(tl.appeared))
+		if share < t.FlakyShare {
+			continue
+		}
+		var cites []string
+		for r := range tl.troubled {
+			cites = append(cites, r)
+		}
+		sort.Strings(cites)
+		out = append(out, Observation{Kind: Flaky, Lane: tl.lanes[0], Step: "target " + name,
+			Text:  fmt.Sprintf("target %s: its steps needed retries or failed in %d of its last %d runs (swim %s this run)", name, len(tl.troubled), len(tl.appeared), joinInts(tl.lanes)),
+			Cites: cites})
+	}
+	return out
+}
+
+func containsInt(ns []int, n int) bool {
+	for _, x := range ns {
+		if x == n {
+			return true
+		}
+	}
+	return false
 }
 
 // attempts is the attempt a step's detail says it ended on ("attempt 3/4":
@@ -201,7 +286,7 @@ func pace(res logparse.Result, past []Past, t Thresholds) (Observation, bool) {
 	var durs []float64
 	for _, p := range past {
 		for _, pr := range p.Round.Results {
-			if pr.Step && pr.Kind == logparse.Pass && pr.Label == res.Label && pr.Handler == "" {
+			if pr.Step && pr.Kind == logparse.Pass && stepKey(pr) == stepKey(res) && pr.Handler == "" {
 				durs = append(durs, pr.Dur)
 			}
 		}
@@ -270,18 +355,27 @@ func has(r *logparse.Round, kind, label string) bool {
 	return false
 }
 
-func failed(r *logparse.Round, label string) bool {
+// stepKey is what a step's history is matched by: its --key, else its
+// label.
+func stepKey(r logparse.Result) string {
+	if r.Key != "" {
+		return r.Key
+	}
+	return r.Label
+}
+
+func failed(r *logparse.Round, key string) bool {
 	for _, res := range r.Results {
-		if res.Step && res.Kind == logparse.Fail && res.Label == label && res.Handler == "" {
+		if res.Step && res.Kind == logparse.Fail && stepKey(res) == key && res.Handler == "" {
 			return true
 		}
 	}
 	return false
 }
 
-func timedOut(r *logparse.Round, label string) bool {
+func timedOut(r *logparse.Round, key string) bool {
 	for _, res := range r.Results {
-		if res.Step && res.Kind == logparse.Fail && res.Label == label && strings.Contains(res.Detail, "timeout") {
+		if res.Step && res.Kind == logparse.Fail && stepKey(res) == key && strings.Contains(res.Detail, "timeout") {
 			return true
 		}
 	}

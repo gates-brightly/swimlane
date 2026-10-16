@@ -130,6 +130,9 @@ type Opts struct {
 	// on a non-zero exit, one of ExpectCodes if any, and fails on exit 0.
 	ExpectFail  bool
 	ExpectCodes []int
+	// Key and Target are for swim observe: the step's name across rounds,
+	// and what it talks to.
+	Key, Target string
 }
 
 func (o Opts) flags() []string {
@@ -152,6 +155,12 @@ func (o Opts) flags() []string {
 	}
 	if o.Soft {
 		out = append(out, "--soft")
+	}
+	if o.Key != "" {
+		out = append(out, "--key", o.Key)
+	}
+	if o.Target != "" {
+		out = append(out, "--target", o.Target)
 	}
 	if o.ExpectFail || len(o.ExpectCodes) > 0 {
 		f := "--expect-fail"

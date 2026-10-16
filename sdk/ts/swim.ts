@@ -54,6 +54,9 @@ export interface StepOptions {
   soft?: boolean;
   /** The step should fail: true for any non-zero exit, or the codes it may exit with. */
   expectFail?: boolean | number[];
+  /** For swim observe: the step's name across rounds, and what it talks to. */
+  key?: string;
+  target?: string;
 }
 
 /** A module call's options: a step's, plus its label, gate and env. */
@@ -163,6 +166,8 @@ export class Round {
     if (o.backoff) opts.push("--backoff", o.backoff);
     if (o.retryOn) opts.push("--retry-on", o.retryOn.join(","));
     if (o.soft) opts.push("--soft");
+    if (o.key) opts.push("--key", o.key);
+    if (o.target) opts.push("--target", o.target);
     if (o.expectFail === true) opts.push("--expect-fail");
     else if (Array.isArray(o.expectFail) && o.expectFail.length) opts.push("--expect-fail=" + o.expectFail.join(","));
     const res = await this.call(op, { label, argv: argv.map(String), opts });

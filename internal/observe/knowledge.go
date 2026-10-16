@@ -143,7 +143,7 @@ func claim(e Entry) string {
 	what := map[string]string{
 		Timeout: "hits its time limit", Retried: "needs retries to pass", Slow: "runs much slower than its usual time",
 		Fast: "runs far faster than its usual time", Failing: "keeps failing", Dry: "runs as a dry run (nobody approves it)",
-		Drift: "drifts",
+		Drift: "drifts", Flaky: "is flaky (its steps need retries or fail)",
 	}[e.Kind]
 	if what == "" {
 		what = e.Kind

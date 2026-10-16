@@ -456,6 +456,13 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Steps say what they are and what they talk to.** `run --key K` names a
+  step across rounds (its history follows a relabel), and `--target T`
+  (or the lane's `# Targets: T`) says what it talks to; both go on the
+  step's block (`key:`, `target:`), in bash, the in-lane commands and the
+  SDKs. `swim observe` reports a `flaky` target (its steps needed retries
+  or failed in 25%+ of its last runs, across lanes), and `swim status`
+  shows each lane's last observations (`observed: ...`).
 - **Observations for write-ups, and knowledge.** A finally lane gets the
   observations of the lanes it waited for (`SWIM_OBSERVATIONS`, a file
   for `mod claude --input`), and `swim observe check FILE` lists the ids a

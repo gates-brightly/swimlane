@@ -472,7 +472,7 @@ func (s *Script) ranCommands() []ran {
 }
 
 // stepValueOpts are a step's options that take a value.
-var stepValueOpts = map[string]bool{"--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true}
+var stepValueOpts = map[string]bool{"--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true, "--key": true, "--target": true}
 
 // guardedLines marks lines inside `if guard FLAG ...; then ... fi` (the
 // then branch only) or after `guard FLAG "..." &&` on the same line.

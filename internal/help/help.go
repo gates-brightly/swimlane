@@ -400,8 +400,14 @@ swim observe accept ID [--note TEXT] | reject ID
     failing   a step failed in each of its last 3 runs
     dry       a guard ran as a dry run in each of its last 3 runs
     drift     the same DRIFT came back
+    flaky     a target's steps needed retries or failed in 25%+ of its last
+              runs (4 or more, across lanes): run --target T, # Targets: T
+  A step's history is matched by its label, or its --key when it has one
+  (so a relabelled step keeps it). swim status shows a lane's observations
+  from its last run (observed: ...).
   The thresholds are swim.yml's observe: (slow_factor, slow_min_s,
-  baseline_min, window, wait_min_s, failing_streak, dry_streak); they're
+  baseline_min, window, wait_min_s, failing_streak, dry_streak,
+  flaky_share, flaky_min); they're
   not policy and stale nothing. --yaml: swim.observations/v1.
   Each has an id (slow-2-3). A finally lane gets those of the lanes it
   waited for in a file, SWIM_OBSERVATIONS, for a write-up (mod claude

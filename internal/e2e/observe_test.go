@@ -34,6 +34,7 @@ run --retry 2 --backoff 0.1s "flaky call" bash -c 'n=$(cat tries 2>/dev/null || 
 	contains(t, "observe --yaml", r.mustSwim("observe", "--yaml"), "schema: swim.observations/v1", "kind: slow", "lane: 1")
 	contains(t, "report", r.mustSwim("report"), "observations  2 (swim observe)", "slow", `"nap" took 2.`)
 	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "status", r.mustSwim("status"), "observed: slow", `"nap" took 2.`)
 	if log := r.log(1); strings.Contains(log, "usually") {
 		t.Errorf("an observation reached the lane log:\n%s", log)
 	}
@@ -92,5 +93,29 @@ func TestObservationKnowledge(t *testing.T) {
 	contains(t, "listed", r.mustSwim("observe", "knowledge"), "0 proposed · 1 accepted")
 	if out, code := r.swim("observe", "reject", "k-nope"); code == 0 {
 		t.Errorf("rejected an unknown id:\n%s", out)
+	}
+}
+
+// Steps say what they talk to: --target, or the lane's # Targets: default,
+// on the step's block; a target whose steps keep needing retries is flaky.
+func TestObservationTargets(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "calls", `run --retry 2 --backoff 0.1s "call the api" bash -c 'n=$(cat tries 2>/dev/null || echo 0); echo $((n+1)) > tries; [ "$n" -ge "${FAILS:-0}" ]'
+run --target db --key db-ping "ping the db" true`)
+	withHeader(t, r, 1, "# Targets: orders-api")
+	for i, fails := range []string{"1", "0", "1", "0"} {
+		os.Remove(filepath.Join(r.root, "tries"))
+		r.env = append(r.env, "FAILS="+fails)
+		r.mustSwim("run", "1", "--plain")
+		if i == 0 {
+			contains(t, "block lines", r.log(1), "        target: orders-api", "        key: db-ping", "        target: db")
+		}
+	}
+	os.Remove(filepath.Join(r.root, "tries"))
+	r.env = append(r.env, "FAILS=1")
+	r.mustSwim("run", "1", "--plain")
+	contains(t, "flaky", r.mustSwim("observe"), "flaky", "target orders-api: its steps needed retries or failed in 3 of its last 5 runs")
+	if out := must(r.swim("lint", "1")); strings.Contains(out, "error") {
+		t.Errorf("lint:\n%s", out)
 	}
 }

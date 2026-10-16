@@ -172,6 +172,9 @@ type Info struct {
 	// ./modules/x), as written: the only ones its mod and mod_env may call
 	// (internal/module resolves them).
 	Modules []string
+	// Target is what the lane's steps talk to, by default (# Targets:
+	// orders-api), for swim observe; a step's --target overrides it.
+	Target string
 }
 
 // DefaultHandlerTimeout is the handlers' budget when Handler-Timeout: is unset.
@@ -223,7 +226,7 @@ func (i Info) GuardFlags() []string {
 var knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 	"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
 	"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true,
-	"always": true, "rerun-children": true, "observe": true, "finally": true, "cache": true, "modules": true}
+	"always": true, "rerun-children": true, "observe": true, "finally": true, "cache": true, "modules": true, "targets": true}
 
 // stageNames are the stages, in order.
 var stageNames = map[string]bool{"snapshot": true, "check": true, "change": true, "verify": true}
@@ -419,6 +422,12 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 		}
 	case "Owner":
 		info.Owner = v
+	case "Targets":
+		// The lane's default target for its steps (swim observe groups
+		// retries and failures by what a step talks to).
+		if f := splitList(v); len(f) > 0 && info.Target == "" {
+			info.Target = f[0]
+		}
 	case "Created":
 		info.Created = v
 	case "Timeout":
@@ -557,7 +566,7 @@ func stagesIn(line string, cmds [][]Word) bool {
 }
 
 // modValueOpts are mod's options that take a value.
-var modValueOpts = map[string]bool{"--label": true, "--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true}
+var modValueOpts = map[string]bool{"--label": true, "--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true, "--key": true, "--target": true}
 
 // evidenceIn reports whether a line has an evidence step: `evidence
 // "<label>" ...`, `swim evidence`, `mod --evidence ...`, ["evidence", ...]

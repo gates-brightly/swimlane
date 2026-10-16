@@ -73,7 +73,7 @@ func laneStep(cmd string, args []string) error {
 	for ; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == "--timeout" || a == "--retry" || a == "--backoff" || a == "--retry-on":
+		case a == "--timeout" || a == "--retry" || a == "--backoff" || a == "--retry-on" || a == "--key" || a == "--target":
 			if i+1 >= len(args) {
 				return usagef("%s needs a value", a)
 			}
@@ -352,7 +352,7 @@ func laneMod(args []string) error {
 loop:
 	for ; i < len(args); i++ {
 		switch a := args[i]; {
-		case a == "--label" || a == "--timeout" || a == "--retry" || a == "--backoff" || a == "--retry-on":
+		case a == "--label" || a == "--timeout" || a == "--retry" || a == "--backoff" || a == "--retry-on" || a == "--key" || a == "--target":
 			if i+1 >= len(args) {
 				return usagef("%s needs a value", a)
 			}

@@ -363,6 +363,10 @@ WRITING A LANE SCRIPT
       --retry-on CODES            retry only on these exit codes, e.g. 1,255
       --no-retry-timeout          don't retry an attempt the step limit stopped
       --soft                      in a Fail: hard round, this step's failure doesn't end it
+      --key K                     the step's name across rounds, for swim observe: its
+                                  history follows K when its label changes
+      --target T                  what it talks to (orders-api), for swim observe's
+                                  flaky; the round's # Targets: by default
       --expect-fail[=CODES]       the command should fail (a negative test: the
                                   bad token is refused): PASS on a non-zero exit,
                                   one of CODES if given, logged "failed as
@@ -460,6 +464,8 @@ WRITING A LANE SCRIPT
       # Timeout: <30m, 1h30m, ...>    limit for the whole round. A step still running
                                       at the limit is stopped (FAIL, timeout) and the
                                       round ends. Default: none
+      # Targets: <name>                what the round's steps talk to by default (orders-api),
+                                      for swim observe (a step's --target overrides it)
       # Outputs: <name>[, <name> ...]  files or directories the round promises in $SWIM_OUT
                                       (.swim/out/<job>/<run>/, fresh each round), for the
                                       lanes that depend on it (input N name). A promised one

@@ -19,7 +19,7 @@ var (
 )
 
 // modOptsWithValue are mod's options that take a value.
-var modOptsWithValue = map[string]bool{"--label": true, "--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true}
+var modOptsWithValue = map[string]bool{"--label": true, "--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true, "--key": true, "--target": true}
 
 // modCall is one mod or mod_env call a script makes.
 type modCall struct {

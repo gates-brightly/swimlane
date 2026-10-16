@@ -14,10 +14,13 @@ shown in `swim plan` (`known:`), retired after 5 clean runs (doctor's
 Baselines come from each lane's own log and archives (by step label),
 read at run end.
 
-Left: step keys and targets (`--key`, `--target`, `# Targets:`), an index
-instead of re-reading logs, matrix cells and jobs, `held-up` and `trend`,
-the `swim status` line, knowledge by target (steps only today), and
-per-observation masked excerpts for a write-up. Decided: knowledge lives
+Also built: step keys and targets (`run --key`, `--target`, `# Targets:`,
+the block's `key:` / `target:` lines), `flaky` by target, and `swim
+status`'s `observed:` lines.
+
+Left: per-observation masked excerpts for a write-up, an index instead of
+re-reading logs at run end, matrix cells and jobs, `held-up` and
+`trend`, and target inference from argv (declared targets only today). Decided: knowledge lives
 in `knowledge/steps.yml` (one file; targets would add `targets.yml`), and
 isn't signed (it decides nothing).
 

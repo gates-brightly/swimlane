@@ -710,7 +710,7 @@ func cmdAll(args []string) error {
 }
 
 func cmdStep(args []string) error {
-	var label, timeout, retry, backoff, retryOn string
+	var label, timeout, retry, backoff, retryOn, key, target string
 	var fresh, snap, noRetryTimeout, evid bool
 	// Flags only before "--"; everything after is the command.
 	sep := -1
@@ -732,7 +732,7 @@ func cmdStep(args []string) error {
 	}
 	rest, err := flags{
 		bools: map[string]*bool{"new": &fresh, "snapshot": &snap, "no-retry-timeout": &noRetryTimeout, "evidence": &evid},
-		strs:  map[string]*string{"label": &label, "timeout": &timeout, "retry": &retry, "backoff": &backoff, "retry-on": &retryOn},
+		strs:  map[string]*string{"label": &label, "timeout": &timeout, "retry": &retry, "backoff": &backoff, "retry-on": &retryOn, "key": &key, "target": &target},
 	}.parse(flagArgs)
 	if err != nil {
 		return err
@@ -811,6 +811,12 @@ func cmdStep(args []string) error {
 	// A step that writes a cache two writers can't share (terraform init
 	// and its plugin cache, # Cache: terraform) holds its write lock.
 	defer cacheWriteLock(cmdArgs, label)()
+	// What it talks to: --target, else the lane's # Targets: default.
+	if target == "" && n > 0 {
+		if info, err := lane.ReadScript(root, n); err == nil {
+			target = info.Target
+		}
+	}
 	res, err := step.Run(step.Options{
 		Args: cmdArgs, Label: label, New: fresh, Snapshot: snap || evid, Evidence: evid,
 		LogPath: logPath, Root: root, Lane: n, Lanes: cfg.Lanes,
@@ -819,6 +825,7 @@ func cmdStep(args []string) error {
 		Deadline: deadline, TimeoutText: os.Getenv("SWIM_TIMEOUT"),
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
 		ExpectFail: expectFail, ExpectCodes: expectCodes,
+		Key: key, Target: target,
 		Blocked: cfg.Blocked(),
 		Mask:    cfg.Masker(os.Environ()),
 		// A stop request ends the round at its next step, but a handler's

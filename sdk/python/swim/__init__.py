@@ -130,7 +130,7 @@ class Round:
 
     # Steps run by swim.
     def _step(self, op, label, argv, timeout=None, retry=None, backoff=None, retry_on=None, soft=False,
-              expect_fail=None):
+              expect_fail=None, key=None, target=None):
         opts = []
         if timeout is not None:
             opts += ["--timeout", str(timeout)]
@@ -144,6 +144,12 @@ class Round:
             opts.append("--soft")
         # expect_fail=True: the step should fail (any non-zero exit);
         # expect_fail=[1, 2]: with one of these codes.
+        # key and target are for swim observe: the step's name across
+        # rounds, and what it talks to.
+        if key:
+            opts += ["--key", str(key)]
+        if target:
+            opts += ["--target", str(target)]
         if expect_fail is True:
             opts.append("--expect-fail")
         elif expect_fail:

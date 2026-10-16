@@ -198,6 +198,9 @@ type Result struct {
 	Cmd    string
 	Output []string
 	Saved  string
+	// Key and Target are the step's own (run --key, --target, # Targets:),
+	// for swim observe: what its history is matched by, what it talks to.
+	Key, Target string
 	// Messages are the status messages (swim msg) posted while the step ran.
 	Messages []string
 }
@@ -555,6 +558,10 @@ func parseV2(rd io.Reader) (*Round, error) {
 					res.Output = append(res.Output, strings.TrimPrefix(strings.TrimPrefix(body, "|"), " "))
 				case strings.HasPrefix(body, "saved: "):
 					res.Saved = strings.TrimPrefix(body, "saved: ")
+				case strings.HasPrefix(body, "key: "):
+					res.Key = strings.TrimPrefix(body, "key: ")
+				case strings.HasPrefix(body, "target: "):
+					res.Target = strings.TrimPrefix(body, "target: ")
 				case strings.HasPrefix(body, "-- "+Msg+"  "):
 					res.Messages = append(res.Messages, strings.TrimPrefix(body, "-- "+Msg+"  "))
 					res.Output = append(res.Output, body)
