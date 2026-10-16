@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -114,7 +113,7 @@ func cmdModule(args []string) error {
 			return err
 		}
 	}
-	code, err := runModule(root, cfg, m, cmd, rest, env, out)
+	code, err := runModule(root, cfg, m, staged, cmd, rest, env, out)
 	if err != nil {
 		return err
 	}
@@ -150,7 +149,7 @@ func undeclared(root string, cfg *config.Config, n int, cmd string) error {
 }
 
 // runModule runs one module command and returns its exit code.
-func runModule(root string, cfg *config.Config, m *module.Module, cmd string, args, env []string, out string) (int, error) {
+func runModule(root string, cfg *config.Config, m *module.Module, staged *manifest.Manifest, cmd string, args, env []string, out string) (int, error) {
 	switch {
 	case m.Kind == module.Bash:
 		// The module's functions, then the command: its own bash process,
@@ -198,6 +197,14 @@ func runModule(root string, cfg *config.Config, m *module.Module, cmd string, ar
 	if err != nil {
 		return 1, err
 	}
+	// The binary staging built and recorded (local: built:), unchanged.
+	if staged != nil {
+		for _, b := range staged.Local.Built {
+			if b.Module == m.Name && module.Hash(mustRead(bin)) != b.SHA256 {
+				return 1, fmt.Errorf("module %s: %s isn't the binary staging built (%s): it changed since", m.Name, rel(root, bin), b.SHA256[:12])
+			}
+		}
+	}
 	return runCmd(exec.Command(bin, args...), root, env)
 }
 
@@ -219,39 +226,10 @@ func getenvFrom(env []string) func(string) string {
 	return func(k string) string { return envOf(env, k) }
 }
 
-// buildModule builds a repo Go module from src (its staged directory) into
-// .swim/modules/build/<tree sha>-<go version>-<goos>-<goarch>, once per
-// source and toolchain: with the operator's Go, offline (GOPROXY=off:
-// vendor what it imports).
+// buildModule is module.BuildGo, saying on stderr when it builds.
 func buildModule(root string, m *module.Module, src string) (string, error) {
-	gobin, err := exec.LookPath("go")
-	if err != nil {
-		return "", fmt.Errorf("module %s is a Go module: building it needs a Go toolchain on PATH", m.Name)
-	}
-	ver, err := exec.Command(gobin, "env", "GOVERSION").Output()
-	if err != nil {
-		return "", fmt.Errorf("module %s: go env GOVERSION: %w", m.Name, err)
-	}
-	dir := filepath.Join(root, ".swim", "modules", "build")
-	bin := filepath.Join(dir, fmt.Sprintf("%s-%s-%s-%s", m.SHA256[:32], strings.TrimSpace(string(ver)), runtime.GOOS, runtime.GOARCH))
-	if st, err := os.Stat(bin); err == nil && st.Mode().IsRegular() {
-		return bin, nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	tmp := fmt.Sprintf("%s.%d.tmp", bin, os.Getpid())
-	c := exec.Command(gobin, "build", "-trimpath", "-o", tmp, ".")
-	c.Dir = src
-	c.Env = setEnv(os.Environ(), "GOPROXY", "off", "GOFLAGS", "", "GOWORK", "off")
-	var errb bytes.Buffer
-	c.Stdout, c.Stderr = &errb, &errb
-	fmt.Fprintf(os.Stderr, "%s: building ./%s (%s)\n", m.Name, m.Dir, m.SHA256[:12])
-	if err := c.Run(); err != nil {
-		os.Remove(tmp)
-		return "", fmt.Errorf("module %s: go build: %s", m.Name, strings.TrimSpace(errb.String()))
-	}
-	return bin, os.Rename(tmp, bin)
+	bin, _, err := module.BuildGo(root, m, src, os.Stderr)
+	return bin, err
 }
 
 // reservedEnv are names no module may set for the lane: swim's own, and
@@ -579,4 +557,10 @@ func truncText(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// mustRead is a file's bytes, nil if it can't be read.
+func mustRead(path string) []byte {
+	data, _ := os.ReadFile(path)
+	return data
 }

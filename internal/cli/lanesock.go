@@ -82,6 +82,7 @@ type laneServer struct {
 	nextStep           int
 	mkOnce             sync.Once
 	mk                 *redact.Masker // the lane's secrets (refreshed as guarded ones are released)
+	onMask             func(*redact.Masker)
 }
 
 // masker masks what the program reports (step labels, output, details)
@@ -89,6 +90,16 @@ type laneServer struct {
 func (s *laneServer) masker() *redact.Masker {
 	s.mkOnce.Do(func() { s.mk = s.cfg.Masker(s.env) })
 	return s.mk
+}
+
+// remask rebuilds the masker from the lane's env as it is now, and hands
+// it to onMask (the wrapper's capture of the program's own output), so a
+// value learned mid-round is masked there too.
+func (s *laneServer) remask() {
+	s.mkOnce, s.mk = sync.Once{}, nil
+	if s.onMask != nil {
+		s.onMask(s.masker())
+	}
 }
 
 // inStep is an in-process step: one the program runs itself (a native
@@ -560,7 +571,7 @@ func (s *laneServer) module(req laneRequest) laneResponse {
 			// Every later step, and this server's own masking, hides them.
 			keys := strings.TrimSpace(envOf(s.env, config.EnvKeysVar) + " " + strings.Join(names, " "))
 			s.env = setEnv(s.env, config.EnvKeysVar, keys)
-			s.mkOnce, s.mk = sync.Once{}, nil
+			s.remask()
 		}
 		result["env"] = env
 	}

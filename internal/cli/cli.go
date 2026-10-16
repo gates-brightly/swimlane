@@ -78,6 +78,7 @@ func init() {
 		"gate":     {run: laneGate},
 		"snapshot": {run: laneSnapshot},
 		"evidence": {run: laneEvidence},
+		"mod":      {run: laneMod},
 		"guard":    {run: cmdGuard},
 		"stage":    {run: cmdStagePublic},
 		"drift":    {run: cmdDrift},

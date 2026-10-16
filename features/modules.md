@@ -63,18 +63,16 @@ runs, and a lockfile. Never a fetch at run time.
 
 ## Gaps found while building
 
-- **A compiled Go SDK lane calling a module** has unit tests (the SDK
-  against a fake swim) but no e2e test; nor has a sidecar's `modules:`.
-- **No `swim mod` for programs without an SDK.** A lane in another language
-  that runs `swim run ... --` can't call a module. `mod_env` couldn't work
-  that way (a child can't set its parent's environment); plain `mod` could.
-- **A Go repo module's binary** is keyed by its pinned source hash and the
-  Go version, but not recorded under the manifest's `local:`.
-- **A `mod_env` value the script echoes itself**, outside a step, isn't
-  masked: the lane's wrapper built its masker before the value existed.
-- **Quoted text in other header scans.** Guard detection ignores quoted
-  text now; stage and evidence detection (`lane.ParseScript`) still match
-  inside quotes. Harmless today.
+- **A `mod_env` value a program echoes itself**, outside a step, isn't
+  masked on the terminal or in swim run's view, like any secret a script
+  prints itself (the guide says so). The wrapper's capture of a program's
+  own output picks up `mod_env`'s values (since the commit that closed the
+  other gaps), though it's logged only for a program that runs no steps.
+
+Closed: `swim mod` for programs without an SDK; e2e tests for a compiled
+Go SDK lane and a sidecar's `modules:`; a Go repo module built as the lane
+is staged and recorded under the manifest's `local: built:`; stage and
+evidence detection reading quoted text (the header contract, `e186f33`).
 
 ## Design (phase three)
 

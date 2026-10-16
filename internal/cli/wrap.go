@@ -106,6 +106,7 @@ func cmdWrap(args []string) error {
 		defer srv.close()
 		env = append(env, sockEnv...)
 		srv.env = env
+		srv.onMask = mw.SetMasker // mod_env's values, masked in the capture from then on
 	}
 	child := exec.Command(argv[0], argv[1:]...)
 	child.Dir, child.Env, child.Stdin = root, env, os.Stdin

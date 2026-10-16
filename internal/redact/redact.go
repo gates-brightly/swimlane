@@ -231,11 +231,11 @@ type Writer struct {
 }
 
 func (mw *Writer) Write(p []byte) (int, error) {
-	if !mw.m.Active() {
-		return mw.w.Write(p)
-	}
 	mw.mu.Lock()
 	defer mw.mu.Unlock()
+	if !mw.m.Active() && len(mw.buf) == 0 {
+		return mw.w.Write(p)
+	}
 	mw.buf = append(mw.buf, p...)
 	for {
 		i := bytes.IndexAny(mw.buf, "\n\r")
@@ -254,6 +254,14 @@ func (mw *Writer) Write(p []byte) (int, error) {
 		mw.buf = mw.buf[:0]
 	}
 	return len(p), nil
+}
+
+// SetMasker masks with m from the next line on: values the run learned
+// since the writer was made (mod_env's, a released secret's).
+func (mw *Writer) SetMasker(m *Masker) {
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+	mw.m = m
 }
 
 // Flush writes any partial line.

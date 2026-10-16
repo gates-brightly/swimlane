@@ -47,6 +47,7 @@ COMMANDS
   gate "<label>" -- cmd    a step whose failure ends the round (and stops the program)
   evidence "<label>" -- cmd   a check step whose output an approval can cover (the plan)
   snapshot "<label>" -- cmd   a read-only step whose output is saved
+  mod [options] CMD [args...]   a module command (# Modules:) as a step, no SDK needed
   guard FLAG "<action>"    exit 0 if the operator approves the action, 1 if not
   stage NAME               start a stage: snapshot, check, change, verify
   drift "<what differs>"   record DRIFT
@@ -653,6 +654,7 @@ OTHER LANGUAGES
     swim run [options] "<label>" -- cmd [args...]     a step (PASS/FAIL)
     swim gate [options] "<label>" -- cmd [args...]    a step that ends the round on failure
     swim snapshot [options] "<label>" -- cmd ...      a step whose output is saved
+    swim mod [--gate|--evidence] CMD [args...]        a module command as a step (no mod_env)
     swim guard FLAG "<action - date, reason>"         exit 0 if approved, 1 if not (dry run)
     swim stage snapshot|check|change|verify
     swim drift "<what differs>"    swim stop "<reason>"
@@ -896,7 +898,9 @@ MODULES
     <name>_<more>; each call runs it in its own bash, so nothing it defines
     reaches the lane. A Go module is one program (main.go, go.mod): swim
     builds it with your Go, offline (vendor what it imports), into
-    .swim/modules/build/, once per source and Go version.
+    .swim/modules/build/, once per source and Go version, as the lane is
+    staged: one that doesn't build keeps the lane from starting, and the
+    manifest records the binary (local: built:), which a call checks.
   - Pinned: the manifest records each module's name, version, source and
     hash (a built-in's embedded files; a repo module's tree, whose files are
     also staged as includes from: module). Editing a repo module, or a swim

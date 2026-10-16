@@ -17,6 +17,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -338,6 +339,71 @@ func cmdStop(args []string) error {
 }
 
 // laneGate and laneSnapshot are swim gate / swim snapshot.
+// laneMod is swim mod [options] CMD [args...]: a command of a module the
+// lane declares (# Modules:), run as a step, for a lane program with no
+// SDK (bash lanes use the library's mod, SDK lanes r.module). Options as
+// for mod: --label L, --gate (its failure ends the round), --evidence
+// (its output is the round's evidence), and a step's. A gate module (gate:
+// true in its module.yml) that fails ends the round, as mod does. There's
+// no swim mod_env: a command can't set its caller's environment; use an
+// SDK's module(..., env=True), or bash's mod_env.
+func laneMod(args []string) error {
+	op, label := "run", ""
+	var opts []string
+	i := 0
+loop:
+	for ; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--label" || a == "--timeout" || a == "--retry" || a == "--backoff" || a == "--retry-on":
+			if i+1 >= len(args) {
+				return usagef("%s needs a value", a)
+			}
+			if a == "--label" {
+				label = args[i+1]
+			} else {
+				opts = append(opts, a, args[i+1])
+			}
+			i++
+		case a == "--soft" || a == "--no-retry-timeout":
+			opts = append(opts, a)
+		case a == "--gate":
+			op = "gate"
+		case a == "--evidence":
+			op = "evidence"
+		case a == "--":
+			i++
+			break loop
+		case strings.HasPrefix(a, "--"):
+			return usagef("unknown mod option %s", a)
+		default:
+			break loop
+		}
+	}
+	rest := args[i:]
+	if len(rest) == 0 {
+		return usagef("usage: swim mod [--label L] [--gate|--evidence] [step options] CMD [args...]")
+	}
+	if label == "" {
+		label = strings.Join(rest, " ")
+	}
+	stepArgs := append(append(opts, label, "--", self(), "_module"), rest...)
+	err := laneStep(op, stepArgs)
+	var ee exitError
+	if op == "run" && errors.As(err, &ee) && ee.code == module.GateExit {
+		// A gate module failed: the round ends, as a bash lane's mod ends it.
+		n, nerr := laneEnv("mod")
+		if nerr != nil {
+			return err
+		}
+		root, _, ln, cerr := laneCtx(n)
+		if cerr != nil {
+			return err
+		}
+		return endRound(root, ln, 1, "gate failed: "+label)
+	}
+	return err
+}
+
 func laneGate(args []string) error     { return laneStep("gate", args) }
 func laneSnapshot(args []string) error { return laneStep("snapshot", args) }
 func laneEvidence(args []string) error { return laneStep("evidence", args) }

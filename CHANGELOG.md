@@ -445,6 +445,17 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **`swim mod`: modules from a lane program with no SDK.** `swim mod
+  [--label L] [--gate|--evidence] CMD [args...]` runs a module command as a
+  step, as a bash lane's `mod` does; a failed gate module ends the round.
+  (No `swim mod_env`: a command can't set its caller's environment.)
+- **A repo Go module is built as the lane is staged**, not at its first
+  call: one that doesn't build keeps the lane from starting, with the
+  error in its status and log, and the manifest records the binary
+  (`local: built:` with the Go version and hash), which each call checks.
+- **A lane swim blocks before it starts** (it can't stage its files, a
+  blocked command, a runner it can't start) gets a `not started` round in
+  its log too.
 - **A lane that never started reaches the record.** A lane swim refused
   at `lane_init` (the lock pins syntaxes this swim doesn't read, its script
   or manifest couldn't be kept, no signing key) and one that exited before

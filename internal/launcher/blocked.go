@@ -8,7 +8,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
-	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/policy"
@@ -63,7 +62,7 @@ func refuseBlocked(o Options, n int, reason string, disp *display.Display) *Outc
 		l.FailedSteps = []string{line}
 		l.FinishedAt = status.Str(status.Now())
 	})
-	history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
+	NotStarted(o.Root, n, lane.Log(o.Root, n), info.Job, info.Round, o.RunID, reason, nil, policy.ExitBlocked)
 	return &Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Failed, Exit: policy.ExitBlocked, Reason: reason, Blocked: true, End: time.Now()}
 }
 
@@ -88,7 +87,7 @@ func refuseStart(o Options, n int, err error, disp *display.Display) *Outcome {
 		l.FailedSteps = []string{reason}
 		l.FinishedAt = status.Str(status.Now())
 	})
-	history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID, Detail: reason + "  " + info.Round})
+	NotStarted(o.Root, n, lane.Log(o.Root, n), info.Job, info.Round, o.RunID, reason, lines[1:], 127)
 	return &Outcome{N: n, Job: info.Job, Round: info.Round, State: status.Failed, Exit: 127, Reason: reason, Blocked: true, End: time.Now()}
 }
 

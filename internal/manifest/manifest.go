@@ -112,6 +112,17 @@ type Local struct {
 	// Jobs are the scripts swim generates for a lane of jobs, from the
 	// staged file.
 	Jobs []File `yaml:"jobs,omitempty"`
+	// Built are the repo Go modules' binaries, built from the stage with
+	// this machine's Go: what a module call runs.
+	Built []Built `yaml:"built,omitempty"`
+}
+
+// Built is a repo Go module's binary as staging built it.
+type Built struct {
+	Module string `yaml:"module"`
+	Go     string `yaml:"go"`     // the Go version that built it
+	Path   string `yaml:"path"`   // repo-relative, under .swim/modules/build/
+	SHA256 string `yaml:"sha256"` // the binary's
 }
 
 // Manifest is one lane's execution manifest.
@@ -320,6 +331,26 @@ func (m *Manifest) Stage(root, run string) (string, error) {
 			}
 			m.Local.Jobs = append(m.Local.Jobs, File{Path: rel, SHA256: hash([]byte(s.Src)), Exec: true})
 		}
+	}
+	// Repo Go modules are built now, from the stage: a module that doesn't
+	// build keeps the lane from starting, and the binary is in the
+	// manifest.
+	m.Local.Built = nil
+	for _, p := range m.Pinned.Modules {
+		if p.Kind != module.Go || p.Source == module.BuiltinSource {
+			continue
+		}
+		rel := strings.TrimPrefix(p.Source, "./")
+		mod, err := module.FromStage(dir, rel, p.SHA256)
+		if err != nil {
+			return "", fmt.Errorf("module %s: %w", p.Name, err)
+		}
+		bin, gov, err := module.BuildGo(root, mod, filepath.Join(dir, filepath.FromSlash(rel)), os.Stderr)
+		if err != nil {
+			return "", err
+		}
+		binRel, _ := relTo(root, bin)
+		m.Local.Built = append(m.Local.Built, Built{Module: p.Name, Go: gov, Path: binRel, SHA256: fileHash(bin)})
 	}
 	data, err := yaml.Marshal(m)
 	if err != nil {

@@ -282,13 +282,20 @@ mod stamp a b
 mod_env stamp
 run "see" bash -c 'echo "stamp=$STAMP"'`)
 	contains(t, "lint", must(r.swim("lint", "1")), "")
-	r.swim("run", "1", "--plain")
-	r.swim("run", "1", "--plain")
+	// Built once, as the lane is staged (not at its first call), and the
+	// binary recorded in the manifest.
+	out1, _ := r.swim("run", "1", "--plain")
+	out2, _ := r.swim("run", "1", "--plain")
 	log := r.log(1)
 	contains(t, "log", log, "PASS  stamp a b", "stamp: [a b] module stamp 0.1.0", "PASS  see", "stamp=***")
-	if n := strings.Count(log, "stamp: building ./modules/stamp"); n != 1 {
-		t.Errorf("built %d times, want once:\n%s", n, log)
+	if n := strings.Count(out1+out2, "stamp: building ./modules/stamp"); n != 1 {
+		t.Errorf("built %d times, want once:\n%s\n%s", n, out1, out2)
 	}
+	mans, _ := filepath.Glob(filepath.Join(r.root, ".swim", "runs", "*", "1", "manifest.yml"))
+	if len(mans) == 0 {
+		t.Fatal("no staged manifest")
+	}
+	contains(t, "manifest", readFile(t, r, strings.TrimPrefix(mans[0], r.root+"/")), "built:", "module: stamp", "go: go1.", "path: .swim/modules/build/")
 	contains(t, "show", r.mustSwim("modules", "show", "stamp"), "# stamp 0.1.0, ./modules/stamp", "# --- main.go")
 }
 
@@ -534,5 +541,67 @@ run "after" echo "still runs"`)
 		"WARN  outside a step: cd /nonexistent/dir (exit 1", "FAIL  a failing step", "PASS  after", "| still runs")
 	if n := strings.Count(log, "WARN  outside a step"); n != 2 {
 		t.Errorf("%d outside-a-step WARNs, want 2:\n%s", n, log)
+	}
+}
+
+// A lane program with no SDK calls modules with swim mod: a step, as a
+// bash lane's mod runs it, and a failed gate module ends the round.
+func TestModuleFromAPlainProgram(t *testing.T) {
+	r := newRepo(t, "")
+	fakeBin(t, r, "aws", `echo '{"Account": "123456789012"}'`+"\n")
+	r.write("lane.1.sh", `#!/usr/bin/env bash
+# swim: syntax 4
+# Round: modules with no SDK
+# Modules: target
+swim mod target aws --account 123456789012
+swim mod --label "right account, labelled" target aws --account 123456789012
+swim mod target aws --account 999999999999
+swim run "never" -- echo should-not-run
+`, 0o755)
+	r.swim("run", "1", "--plain")
+	log := r.log(1)
+	contains(t, "log", log, "PASS  target aws --account 123456789012", "PASS  right account, labelled",
+		"FAIL  target aws --account 999999999999", "STOP  gate failed: target aws --account 999999999999")
+	if strings.Contains(log, "should-not-run") {
+		t.Errorf("the round went on after a failed gate module:\n%s", log)
+	}
+	if out, code := r.swim("mod", "target", "aws"); code == 0 || !strings.Contains(out, "runs inside a lane's round") {
+		t.Errorf("swim mod outside a round: %d %s", code, out)
+	}
+}
+
+// A compiled Go SDK lane whose sidecar declares its modules (lane.N.yml
+// modules:): its module calls are steps, mod_env's variables reach its own
+// environment and its later steps masked, and a failed gate module ends
+// the round.
+func TestModuleGoSDKSidecar(t *testing.T) {
+	r := newRepo(t, "")
+	for name, files := range map[string][2]string{
+		"kit": {"schema: swim.module/v1\nname: kit\nversion: 1.0.0\nkind: bash\ncommands: [kit, kit_env]\n",
+			"kit() { echo \"kit says $*\"; }\nkit_env() { echo \"KIT_REGION=eu-west-9-region\" >>\"$SWIM_MODULE_OUT\"; }\n"},
+		"kitgate": {"schema: swim.module/v1\nname: kitgate\nversion: 1.0.0\nkind: bash\ngate: true\ncommands: [kitgate]\n",
+			"kitgate() { echo \"not ready\"; return 1; }\n"},
+	} {
+		d := filepath.Join(r.root, "modules", name)
+		os.MkdirAll(d, 0o755)
+		os.WriteFile(filepath.Join(d, "module.yml"), []byte(files[0]), 0o644)
+		os.WriteFile(filepath.Join(d, name+".sh"), []byte(files[1]), 0o644)
+	}
+	r.write("swim.yml", "modules:\n  allow: [./modules/*]\n", 0o644)
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", filepath.Join(r.root, "lane.1"), "./internal/e2e/testdata/golane")
+	build.Dir = repoRoot()
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v %s", err, out)
+	}
+	r.write("lane.1.yml", "round: modules from go\nmodules: [./modules/kit, ./modules/kitgate]\n", 0o644)
+	contains(t, "plan", r.mustSwim("plan", "1"), "./modules/kit", "./modules/kitgate")
+	r.swim("run", "1", "--plain")
+	log := r.log(1)
+	contains(t, "log", log, "PASS  kit hello from go", "kit says hello from go", "PASS  kit_env", "region=***", "mine=***",
+		"FAIL  kitgate", "STOP  gate failed: kitgate")
+	for _, leak := range []string{"eu-west-9-region", "should-not-run"} {
+		if strings.Contains(log, leak) {
+			t.Errorf("log has %q:\n%s", leak, log)
+		}
 	}
 }

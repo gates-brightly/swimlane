@@ -380,6 +380,17 @@ swim report --earmarks | --earmark --reset [--name NAME]
   lane, use the library's
   gate.)
 `,
+	"mod": `swim mod [--label L] [--gate|--evidence] [options] CMD [args...]
+
+  In a lane program with no SDK (a script that runs swim run ... -- for
+  its steps): run a command of a module the lane declares (# Modules:) as
+  a step, as a bash lane's mod does. --gate: its failure ends the round;
+  --evidence: its output is the round's evidence (tf plan). A gate module
+  (gate: true in its module.yml) that fails ends the round. Step options
+  as for swim run's in-lane form. There is no swim mod_env (a command
+  can't set its caller's environment): use an SDK's module(..., env=True),
+  or mod_env in a bash lane.
+`,
 	"snapshot": `swim snapshot [options] "<label>" -- cmd [args...]
 
   In a lane script in any language: run a read-only step and save its output
@@ -1765,7 +1776,7 @@ func Names() []string {
 // FullOrder is the order of the command details in swim --help; every
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "timeline", "step", "lib",
-	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
+	"gate", "snapshot", "mod", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
