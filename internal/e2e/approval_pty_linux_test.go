@@ -162,9 +162,11 @@ func TestPromptIsSafe(t *testing.T) {
 			tr.waitFor("the lane says: " + payloadSafe)
 			tr.send("n")
 			if mode == "tui" {
-				// The view closes by itself, or holds on the lane's view.
+				// The view closes by itself (swim exits, the main screen
+				// back), or holds on the lane's view: which one depends on
+				// how fast the round ends after the answer.
 				s := tr.waitScreen("the run's end", func(s string) bool {
-					return strings.Contains(s, "q to close") || strings.Contains(s, "stages: setup SKIP")
+					return tr.exited.Load() || strings.Contains(s, "q to close") || strings.Contains(s, "stages: setup SKIP")
 				})
 				if strings.Contains(s, "q to close") {
 					tr.send("q")

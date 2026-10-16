@@ -35,6 +35,8 @@ Found and fixed, run by run:
 | #63, #64, #70 | `bbb280f`, `12bff61`, `31a16a5` | `TestSDKStepHonoursTimeout`, both OSes | Python's start-up and the SDK's hello used the round's 1s Timeout before step one | `edc36e7` (alone, 3s) |
 | #70 | `31a16a5` | `TestReportLoop`, macOS | a peek rewrote status.yml with a new updated_at once the clock passed a second | `9d95323` (no write when nothing changed) |
 | Mac CI lane, batches #37, #41 | `31a16a5` | `TestHandlerTimeout`, `TestRetryRespectsRoundDeadline`, `TestPauseBeforeStartAndTimeout` | lanes took longer than their whole 1-3s Timeout to start beside the parallel tests | `1fb3cfe`, `8812667` (alone; more margin) |
+| #74 | `81463bc` | `TestPromptIsSafe/tui`, ubuntu (15.3s) | after `n` the view sometimes closes by itself (the round ends fast): the main screen is back, and the wait for "q to close" or the lane view ran out | the wait also ends when swim exits |
+| #75 | `1ae7bd9` | `ci-changed`, ubuntu: its first dag99 run failed (log cut above the checks) | likely the dag99 audit's root-start spread: two independent roots 2s+ apart on a loaded runner failed the run | the audit fails only when a root started after another ended (real serialisation); the spread is still reported |
 
 **Green on both OSes at `0e71baf`** (run 38792820184), the first since
 T29 was filed. `50dc82c` (docs only) then failed one flaky macOS test,

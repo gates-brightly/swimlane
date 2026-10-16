@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -35,6 +36,7 @@ type tuiRun struct {
 	read   chan struct{}
 	before termios
 	exit   chan error
+	exited atomic.Bool // swim has exited (wait still reads its error)
 }
 
 type termios struct{ Iflag, Oflag, Cflag, Lflag uint32 }
@@ -80,7 +82,11 @@ func (r *repo) startTUI(env []string, args ...string) *tuiRun {
 			}
 		}
 	}()
-	go func() { tr.exit <- c.Wait() }()
+	go func() {
+		err := c.Wait()
+		tr.exited.Store(true)
+		tr.exit <- err
+	}()
 	r.t.Cleanup(func() {
 		c.Process.Kill()
 		ptm.Close()

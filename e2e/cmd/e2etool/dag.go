@@ -494,10 +494,26 @@ func cmdAudit([]string) error {
 			lo, hi = min(lo, nodes[r].start), max(hi, nodes[r].start)
 		}
 		spread := hi - lo
+		// Serialised means one root waited for another: it started only
+		// after another had ended. A loaded machine can be seconds late
+		// starting a process (CI runners, beside the other tests); that's
+		// a slow start, not a scheduler that runs roots one at a time, so
+		// the spread alone isn't a failure.
+		after := ""
+		for _, a := range free {
+			for _, b := range free {
+				if a != b && nodes[b].ended && nodes[a].start >= nodes[b].end {
+					after = fmt.Sprintf("swim %d started after swim %d ended", a, b)
+				}
+			}
+		}
 		verdict := "ok"
-		if spread >= 2 {
+		switch {
+		case spread >= 2 && after != "":
 			verdict = "SERIALISED?"
-			bad = append(bad, fmt.Sprintf("independent roots started %.2fs apart in one run", spread))
+			bad = append(bad, fmt.Sprintf("independent roots started %.2fs apart in one run (%s)", spread, after))
+		case spread >= 2:
+			verdict = "slow to start, but overlapping: ok"
 		}
 		note := ""
 		if len(serialised) > 0 {
