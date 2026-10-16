@@ -70,6 +70,8 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 		t.Errorf("the batch was consumed:\n%s\n%s", list, out.String())
 	}
 	contains(t, "watch", out.String(), "#1 left queued")
+	contains(t, ".swim.log", r.mustSwim("log"), "queue-held", "#1 q-", "this worker, swim 0.20261001.1, can't run it")
+	contains(t, "queue show", r.mustSwim("queue", "show", "#1"), "# left queued: this worker, swim 0.20261001.1, can't run it")
 
 	// A new batch is refused at queue add, naming both swims.
 	msg, code := r.swim("queue", "add", "1")

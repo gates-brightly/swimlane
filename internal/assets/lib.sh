@@ -107,13 +107,19 @@ lane_init() {
 # so in the log as a WARN. It changes nothing in the round. A function that
 # returns non-zero (run, gate, mod, guard, ...) recorded its own result:
 # bash names its return, which is skipped. Commands in an if, while, && or
-# || never get here.
+# || never get here. In an outcome handler (run with errtrace, so the trap
+# reaches into it) only the handler's own commands count, not those of
+# the functions it calls (the library's steps among them) or the handler's
+# own non-zero return.
 _swim_on_err() {
   _swim_err=$?
   case "$BASH_COMMAND" in
     return|return\ *) return ;;
   esac
-  if [ -z "$SWIM_LANE" ] || [ -n "$_swim_done" ] || [ -n "$_swim_in_handler" ]; then
+  if [ -z "$SWIM_LANE" ] || { [ -n "$_swim_done" ] && [ -z "$_swim_in_handler" ]; }; then
+    return
+  fi
+  if [ -n "$_swim_in_handler" ] && [ "${FUNCNAME[1]:-}" != "$_swim_h" ]; then
     return
   fi
   if [ "$_swim_err" -eq 127 ]; then
@@ -257,7 +263,12 @@ _swim_handlers() {
       trap '' USR2 # a stop request now only skips the handlers' remaining steps (see run)
     fi
     "$SWIM_BIN" _handler "$SWIM_LANE" "$_swim_h"
+    # The ERR trap's WARN reaches the handler's commands: set again here
+    # (this function was entered without it) and inherited (errtrace).
+    trap '_swim_on_err' ERR
+    set -o errtrace
     "$_swim_h"
+    set +o errtrace
   done
   _swim_in_handler=
   unset SWIM_IN_HANDLER

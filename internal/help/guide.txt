@@ -548,6 +548,11 @@ WRITING A LANE SCRIPT
     A command outside any step that fails (a typo, a missing program, a cd
     that didn't happen) is logged as "WARN  outside a step: <command>
     (exit N)" and changes nothing; put anything that matters in a step.
+    The same goes for an outcome handler's own commands (not those of the
+    functions it calls). Output outside steps goes to the terminal (and
+    swim run's view) only; a lane that exits before lane_init's round
+    starts gets a round of its own in its log, "STOP  not started: <why>",
+    with the last lines it printed, and the reason in swim status.
   - run/gate/snapshot take argv, not a shell string. For pipes or redirects:
       run "count items" bash -c 'aws dynamodb scan --table-name T --select COUNT | jq .Count'
   - Load the pinned toolchain yourself (the template does it from config):

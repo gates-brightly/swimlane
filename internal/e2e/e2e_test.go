@@ -961,8 +961,11 @@ func TestVersionAndLock(t *testing.T) {
 	// Read-only commands still work, with a warning.
 	contains(t, "status", r.mustSwim("status"), "warning: this repo needs a newer swim", "swim 1")
 	contains(t, "plan", r.mustSwim("plan"), "warning: this repo needs a newer swim")
-	if strings.Count(r.log(1), "== ROUND ") != 3 {
-		t.Error("a lane ran despite the lock mismatch")
+	// The direct run's refusal is a round of its own that says so; no
+	// other round ran.
+	log := r.log(1)
+	if refused := strings.Count(log, "\n  STOP  not started: this repo needs a newer swim"); refused != 1 || strings.Count(log, "== ROUND ")-refused != 3 {
+		t.Errorf("a lane ran despite the lock mismatch, or its refusal isn't recorded once:\n%s", log)
 	}
 }
 

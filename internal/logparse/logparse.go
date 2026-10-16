@@ -157,6 +157,28 @@ func EndBlock(state string, r *Round, exit int, dur, ts string) string {
 	return b.String()
 }
 
+// NotStartedRound is a round that ended before its script got going: a
+// lane swim refused to start (its lock, its manifest), or one that exited
+// before lane_init's round header. It says why in a STOP line, with the
+// last lines the lane printed (masked by the caller) as its output, so swim
+// log and swim report show it like any failed round.
+func NotStartedRound(ts, job, title, run, why string, printed []string, exit int) string {
+	if job == "" {
+		job = "-"
+	}
+	var ctx []KV
+	if run != "" {
+		ctx = append(ctx, KV{K: "run", V: run})
+	}
+	text := RoundHeader(ts, job, title, ctx)
+	stop := Result{Kind: Stop, Label: "not started: " + why, Stage: "setup"}
+	text += MarkLine(stop.Kind, stop.Label, "") + "\n"
+	for _, l := range printed {
+		text += OutPrefix + l + "\n"
+	}
+	return text + EndBlock("FAIL", &Round{Results: []Result{stop}, Run: run}, exit, "0.0s", ts)
+}
+
 // Result is one parsed result line.
 type Result struct {
 	Kind   string

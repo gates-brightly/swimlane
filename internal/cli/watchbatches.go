@@ -15,6 +15,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/queue"
@@ -187,10 +188,10 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 			continue // a schedule that isn't due holds no lanes yet
 		}
 		if why := cantRunHere(b.root, e); why != "" {
-			holdHere(e, why) // queued for a worker that can; holds no lanes here
+			holdHere(b.root, e, why) // queued for a worker that can; holds no lanes here
 			continue
 		}
-		holdHere(e, "")
+		holdHere(b.root, e, "")
 		free := held[e.ID] == nil
 		need := needs(e)
 		for _, n := range need {
@@ -296,7 +297,9 @@ func (b *batchRunner) start(cfg *config.Config, e *queue.Entry) (*batchProc, err
 // fail consumes a claimed batch that couldn't start, with the reason.
 func (b *batchRunner) fail(e *queue.Entry, err error) {
 	at := time.Now().UTC().Format(time.RFC3339)
-	queue.Consume(b.root, e, queue.Result{Started: at, Finished: at, Exit: 1, Result: "error", Error: "swim watch couldn't start the batch: " + err.Error()})
+	why := "swim watch couldn't start the batch: " + err.Error()
+	queue.Consume(b.root, e, queue.Result{Started: at, Finished: at, Exit: 1, Result: "error", Error: why})
+	history.Log(b.root, history.Entry{Event: history.QueueDone, Detail: fmt.Sprintf("%s: error: %s", e.ID, why)})
 }
 
 // signal sends sig to every running batch's process.

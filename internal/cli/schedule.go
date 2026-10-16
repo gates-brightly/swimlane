@@ -510,10 +510,10 @@ func claimDue(root string, cfg *config.Config) (*queue.Entry, error) {
 			continue
 		}
 		if why := cantRunHere(root, w); why != "" {
-			holdHere(w, why)
+			holdHere(root, w, why)
 			continue
 		}
-		holdHere(w, "")
+		holdHere(root, w, "")
 		if e, err := queue.Claim(root, w, operator(), cfg.QueueLeaseFor()); err == nil {
 			return e, nil
 		}

@@ -42,6 +42,7 @@ const (
 	QueueRun      = "queue-run"      // swim watch started a queued batch
 	QueueDone     = "queue-done"     // ... and consumed it (detail: id, result)
 	QueueRm       = "queue-rm"       // a waiting batch removed (swim clean)
+	QueueHeld     = "queue-held"     // a worker left a batch queued: its swim can't run it (detail: id, why)
 	Clean         = "clean"          // swim clean: lanes archived, queue and scripts cleared (detail: name, counts)
 	Prune         = "prune"          // swim prune: leftovers deleted (detail: name, counts, bytes)
 	Trash         = "trash"          // swim trash: one lane's files moved aside (detail: stamp, files, from)

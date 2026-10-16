@@ -624,7 +624,11 @@ func queueShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("# %s (%s)\n%s", rel(root, e.Path), e.State, data)
+	fmt.Printf("# %s (%s)\n", rel(root, e.Path), e.State)
+	if why := heldReasons(root)[e.ID]; why != "" && e.State == queue.Queued {
+		fmt.Printf("# left queued: %s\n", why)
+	}
+	fmt.Print(string(data))
 	return nil
 }
 

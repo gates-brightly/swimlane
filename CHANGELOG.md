@@ -445,6 +445,20 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **A lane that never started reaches the record.** A lane swim refused
+  at `lane_init` (the lock pins syntaxes this swim doesn't read, its script
+  or manifest couldn't be kept, no signing key) and one that exited before
+  `lane_init` (a setup line that failed, a broken library line) get a
+  round of their own in their log, `STOP  not started: <why>`, with the
+  last lines they printed (masked), the reason in `swim status` (and a
+  matrix cell's), and a `.swim.log` entry. Before, status said only
+  "lane script exited before lane_init" and the cause was on a terminal.
+- **A failure inside an outcome handler is a WARN** in the log, as one
+  outside a step in the body is: the handler's own commands, not those of
+  the functions it calls.
+- **A batch a worker leaves queued or couldn't start is in `.swim.log`**
+  (`queue-held`, and `queue-done` with the error), and `swim queue show`
+  says why it's held.
 - **swim watch says what a waiting lane waits on**: `· waiting on swim 2,
   3` (as `swim status` says it), `· waiting for lock db`, `· 2 ahead`. A
   matrix lane's cells are said once when they agree.

@@ -810,7 +810,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	})
 	if err := cmd.Start(); err != nil {
 		disp.Line(n, "swim: cannot start lane script: "+err.Error())
-		oc := finish(o, n, disp, launched, launchedTS, 127)
+		oc := finish(o, n, disp, launched, launchedTS, 127, []string{"swim: cannot start lane script: " + err.Error()})
 		oc.Job, oc.Round, oc.Start = info.Job, info.Round, launched
 		return stamp(oc)
 	}
@@ -838,12 +838,16 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 	}
 	end := time.Now()
-	oc := finish(o, n, disp, launched, launchedTS, code)
+	oc := finish(o, n, disp, launched, launchedTS, code, w.printed)
 	oc.Job, oc.Round, oc.Start, oc.End = info.Job, info.Round, launched, end
 	return stamp(oc)
 }
 
-func finish(o Options, n int, disp *display.Display, started time.Time, startedTS string, code int) *Outcome {
+// finish records how lane n's process ended: a round the script ended
+// itself is already recorded; one that exited before lane_init's round
+// header gets its reason, from the last line it printed (printed), in
+// status and a round of its own in the log.
+func finish(o Options, n int, disp *display.Display, started time.Time, startedTS string, code int, printed []string) *Outcome {
 	state := status.Passed
 	switch {
 	case code == 130 || code == 143 || code == 129 || code == 137:
@@ -865,6 +869,7 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 	})
 	// The lane script records its own final state. If it died before
 	// lane_init (syntax error, missing swim), record it here instead.
+	why := notStartedWhy(code, printed)
 	died := false
 	status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
 		if l.StartedAt != nil && *l.StartedAt >= startedTS {
@@ -877,23 +882,44 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 		l.FinishedAt = status.Str(status.Now())
 		l.DurationS = status.Float(now.Sub(started).Round(100 * time.Millisecond).Seconds())
 		l.ExitCode = status.Int(code)
-		l.Reason = "lane script exited before lane_init"
+		l.Reason = "not started: " + why
+		l.FailedSteps = []string{logparse.ResultLine(logparse.Stop, "not started: "+why, "")}
 	})
 	if !died && code > 128 {
 		closeKilledRound(o, n, code)
 	}
 	if died {
 		info, _ := lane.ReadScript(o.Root, n)
-		history.Log(o.Root, history.Entry{Event: history.Fail, Lane: n, Job: info.Job, Run: o.RunID,
-			Detail: fmt.Sprintf("exit=%d  lane script exited before lane_init  %s", code, info.Round)})
+		NotStarted(o.Root, n, lane.Log(o.Root, n), info.Job, info.Round, o.RunID, why, printed, code)
 	}
 	return &Outcome{N: n, State: state, Exit: code, Elapsed: now.Sub(started)}
+}
+
+// notStartedWhy is the reason for a lane process that exited (code) before
+// its round started: the last line it printed says most.
+func notStartedWhy(code int, printed []string) string {
+	why := fmt.Sprintf("the lane script exited before lane_init (exit %d)", code)
+	if l := lastLine(printed); l != "" {
+		why += ": " + l
+	}
+	return why
 }
 
 // lineWriter splits a byte stream into lines for the display.
 type lineWriter struct {
 	buf  []byte
 	emit func(string)
+	// printed are the last lines the lane printed, as shown (masked), for
+	// a round that never starts.
+	printed []string
+}
+
+// keep records a line the lane printed, keeping the last printedKept.
+func (w *lineWriter) keep(s string) {
+	w.printed = append(w.printed, s)
+	if len(w.printed) > printedKept {
+		w.printed = w.printed[len(w.printed)-printedKept:]
+	}
 }
 
 func (w *lineWriter) Write(p []byte) (int, error) {
@@ -1141,8 +1167,10 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 	// The launcher holds every secret of the run: it masks them all itself
 	// (asking its own broker would be asking as the lane).
 	mk := o.Cfg.MaskerWith(env, o.secrets.labeled())
-	w := &lineWriter{emit: func(s string) {
+	w := &lineWriter{}
+	w.emit = func(s string) {
 		o.beat.saw(n)
+		w.keep(mk.String(s))
 		s = prefix + mk.String(s)
 		disp.JobLine(n, job, s)
 		if job != "" {
@@ -1151,7 +1179,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 		if o.ev.wantsOutput() {
 			o.ev.emit(Event{Event: "output", Lane: n, Line: &s})
 		}
-	}}
+	}
 	cmd.Stdout, cmd.Stderr = w, w
 	return cmd, ownGroup, w, tok
 }

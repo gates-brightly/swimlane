@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/version"
@@ -54,11 +55,12 @@ func cantRunHere(root string, e *queue.Entry) string {
 		version.String(), why, queuedBy(e))
 }
 
-// holdHere leaves e queued with why, saying so the first time; why ""
-// takes the hold back.
-func holdHere(e *queue.Entry, why string) {
+// holdHere leaves e queued with why, saying so the first time (on the
+// worker's output and in .swim.log); why "" takes the hold back.
+func holdHere(root string, e *queue.Entry, why string) {
 	if watchPresence.Hold(e.ID, why) && why != "" {
 		fmt.Fprintf(os.Stderr, "swim watch: #%d left queued: %s\n", e.Seq, why)
+		history.Log(root, history.Entry{Event: history.QueueHeld, Detail: fmt.Sprintf("#%d %s: %s", e.Seq, e.ID, why)})
 	}
 }
 

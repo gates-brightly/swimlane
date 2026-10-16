@@ -22,6 +22,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/evidence"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
@@ -101,6 +102,52 @@ func appendLog(path, text string) error {
 
 func painter() ui.Painter { return ui.Painter{On: ui.ColorEnabled(os.Stderr)} }
 
+// startFailed releases lane n's claim after _start refused its round, and
+// records why (startRefused).
+func startFailed(root string, cfg *config.Config, n int, err error) error {
+	lane.RemovePID(root, n)
+	startRefused(root, cfg, n, err)
+	return err
+}
+
+// startRefused records a round _start refused (the lock pins other
+// syntaxes, its script or manifest can't be kept, no signing key, ...) so
+// it reaches the record, not only the terminal: failed in status (the
+// lane's, or the cell's) with "not started: <why>", and a round of its
+// own in the log saying so.
+func startRefused(root string, cfg *config.Config, n int, err error) {
+	// The reason is the error's first paragraph; the rest (the fix) goes
+	// in the log under it.
+	lines := strings.Split(strings.TrimSpace(err.Error()), "\n")
+	k := 1
+	for k < len(lines) && strings.TrimSpace(lines[k]) != "" {
+		k++
+	}
+	why := strings.Join(strings.Fields(strings.Join(lines[:k], " ")), " ")
+	if k < len(lines) {
+		lines = lines[k:]
+	} else {
+		lines = lines[:1]
+	}
+	info, _ := lane.ReadScript(root, n)
+	job, run := info.Job, os.Getenv("SWIM_RUN")
+	if c := lane.CurrentCell(); c != "" && job != "" {
+		job += "/" + c
+	}
+	launcher.NotStarted(root, n, lane.Log(root, n), job, info.Round, run, why, lines[1:], 1)
+	stop := logparse.ResultLine(logparse.Stop, "not started: "+why, "")
+	status.UpdateFile(root, max(n, cfg.Lanes), func(f *status.File) error {
+		l := f.Mine(n)
+		l.ResetRun()
+		l.State, l.Reason, l.FailedSteps = status.Failed, "not started: "+why, []string{stop}
+		l.Round, l.Job, l.Run = info.Round, job, run
+		l.ExitCode = status.Int(1)
+		l.StartedAt = status.Str(status.Now())
+		l.FinishedAt = l.StartedAt
+		return nil
+	})
+}
+
 // swim _start N --pid P --script PATH
 func cmdStart(args []string) error {
 	var pidS, script string
@@ -114,6 +161,9 @@ func cmdStart(args []string) error {
 	}
 	// Lane scripts run directly with bash honour the lock too.
 	if err := requireVersion(root, true); err != nil {
+		if _, running := lane.Running(root, n); !running {
+			startRefused(root, cfg, n, err)
+		}
 		return err
 	}
 	pid, _ := strconv.Atoi(pidS)
@@ -128,8 +178,7 @@ func cmdStart(args []string) error {
 	}
 	info, err := lane.ReadScript(root, n)
 	if err != nil {
-		lane.RemovePID(root, n)
-		return err
+		return startFailed(root, cfg, n, err)
 	}
 	// Chain of custody: the exact script this round runs (the launcher's
 	// staged copy), kept by hash; and with signing: required, no round
@@ -137,12 +186,10 @@ func cmdStart(args []string) error {
 	m := manifest.FromEnv(n)
 	scriptSum, err := keepScript(root, n, m)
 	if err != nil {
-		lane.RemovePID(root, n)
-		return err
+		return startFailed(root, cfg, n, err)
 	}
 	if _, err := runnerKey(cfg); err != nil {
-		lane.RemovePID(root, n)
-		return fmt.Errorf("swim %d: %w (set signing_key, or signing: auto)", n, err)
+		return startFailed(root, cfg, n, fmt.Errorf("swim %d: %w (set signing_key, or signing: auto)", n, err))
 	}
 	round := info.Round
 	if round == "" {
@@ -170,8 +217,7 @@ func cmdStart(args []string) error {
 	os.Remove(snapsPath(lane.Log(root, n))) // an earlier round's restores
 	// The round's outputs directory ($SWIM_OUT), fresh for this run.
 	if err := os.MkdirAll(outputs.Dir(root, job, run), 0o755); err != nil {
-		lane.RemovePID(root, n)
-		return err
+		return startFailed(root, cfg, n, err)
 	}
 	// The git shim lane_init puts first on PATH (swim never writes to git).
 	shim := filepath.Join(root, ".swim", "bin", "git")
@@ -182,8 +228,7 @@ func cmdStart(args []string) error {
 	logPath := lane.Log(root, n)
 	// This lane's own log is safe to convert: bash never reads it.
 	if err := logparse.EnsureV2(logPath, n); err != nil {
-		lane.RemovePID(root, n)
-		return err
+		return startFailed(root, cfg, n, err)
 	}
 	step.RecoverSpool(logPath)
 
@@ -240,8 +285,7 @@ func cmdStart(args []string) error {
 	// masked), and their hash for the chain.
 	envSum := ""
 	if r, err := envfile.Resolve(root, cfg, n); err != nil {
-		lane.RemovePID(root, n)
-		return err
+		return startFailed(root, cfg, n, err)
 	} else if len(r.Sources) > 0 {
 		envSum = r.SHA256()
 		ctx = append(ctx, logparse.KV{K: "env-files", V: strings.Join(r.Sources, ", ")})
@@ -267,8 +311,7 @@ func cmdStart(args []string) error {
 		header += logparse.MarkLine(logparse.Warn, prob, "") + "\n"
 	}
 	if err := appendLog(logPath, header); err != nil {
-		lane.RemovePID(root, n)
-		return err
+		return startFailed(root, cfg, n, err)
 	}
 	p := painter()
 	fmt.Fprintln(os.Stderr, laneBanner(p, root, n, "")+"  "+p.Paint(ui.Bold, "Round: "+round)+"  "+p.Paint(ui.Dim, "job "+job))

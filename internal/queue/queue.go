@@ -345,7 +345,7 @@ func Find(root, ref string) (*Entry, error) {
 	}
 	var hits []*Entry
 	for _, e := range all {
-		if e.ID == ref || strings.HasPrefix(e.ID, ref) && len(ref) >= 4 || strconv.Itoa(e.Seq) == strings.TrimLeft(ref, "0") {
+		if e.ID == ref || strings.HasPrefix(e.ID, ref) && len(ref) >= 4 || strconv.Itoa(e.Seq) == strings.TrimLeft(strings.TrimPrefix(ref, "#"), "0") {
 			hits = append(hits, e)
 		}
 	}

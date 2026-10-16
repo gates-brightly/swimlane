@@ -13,6 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
@@ -406,10 +407,13 @@ func runCell(o Options, n, idx int, c lane.Cell, sel []int, info lane.Info, plan
 	case code != 0:
 		state = status.Failed
 	}
+	why := notStartedWhy(code, w.printed)
 	setCell(func(e *status.Lane) {
 		e.State, e.ExitCode = state, status.Int(code)
-		e.Reason = "the cell's script exited before its round started"
+		e.Reason = "not started: " + why
+		e.FailedSteps = []string{logparse.ResultLine(logparse.Stop, "not started: "+why, "")}
 	})
+	NotStarted(o.Root, n, lane.CellLog(o.Root, n, c.Name), info.Job+"/"+c.Name, info.Round, o.RunID, why, w.printed, code)
 	return state
 }
 
