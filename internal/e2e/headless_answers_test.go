@@ -87,6 +87,7 @@ func waitDone(t *testing.T, r *repo, n int) {
 // require: rule names the guard), with headless.approvals: hub a listed
 // user's click approves the others, and no answer is a decline.
 func TestHeadlessHubApprovals(t *testing.T) {
+	long(t)
 	r, url, id, keys, tokens, stopHub := answerRepo(t)
 	r.mustSwim("config", "signing", "off")
 	dropLane(t, r)

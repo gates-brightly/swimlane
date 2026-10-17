@@ -112,6 +112,7 @@ gate "precheck" false`)
 // The handlers share a budget that starts when the round ends: past it, the
 // running step is stopped and the rest skipped.
 func TestHandlerTimeout(t *testing.T) {
+	long(t)
 	r := newSerialRepo(t, "") // 1s and 4s budgets: alone, not beside the parallel tests
 	// The handlers' budget starts when the round ends, and swim's own
 	// process starts come out of it: 4s leaves rollback (1.5s) room on a

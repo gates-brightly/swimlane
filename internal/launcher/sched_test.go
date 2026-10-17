@@ -168,6 +168,9 @@ func runSched(d schedDAG) (states []string, spans map[int]span) {
 // SWIM_QUICK_COUNT sets how many graphs (default 500).
 func TestSchedulerProperties(t *testing.T) {
 	count := 500
+	if testing.Short() {
+		count = 50 // the short batch (make test); the long batch checks 500
+	}
 	if n, err := strconv.Atoi(os.Getenv("SWIM_QUICK_COUNT")); err == nil && n > 0 {
 		count = n
 	}

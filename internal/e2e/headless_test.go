@@ -52,6 +52,7 @@ func TestHeadlessNeedsAHub(t *testing.T) {
 }
 
 func TestHeadlessDetachStatusStop(t *testing.T) {
+	long(t)
 	r, url := headlessRepo(t)
 	out := r.mustSwim("watch", "--headless", "--detach", "--interval", "200ms")
 	pid := headlessPid(r)

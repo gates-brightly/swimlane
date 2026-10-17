@@ -40,6 +40,7 @@ func hubGet(t *testing.T, url string) hubWorkers {
 }
 
 func TestHub(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	hub := exec.Command(bin, "hub", "--addr", "127.0.0.1:0", "--token", "t0ken")
 	hub.Env = r.env
