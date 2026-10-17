@@ -95,6 +95,7 @@ run "ok" true`)
 // Terraform's plugin cache isn't safe for two inits at once: lanes that
 // share it take turns, and only for the steps that write it.
 func TestCacheTerraformInitsTakeTurns(t *testing.T) {
+	long(t)
 	r, _ := cacheRepo(t)
 	r.write(".terraform.lock.hcl", "# providers\n", 0o644)
 	os.MkdirAll(filepath.Join(r.root, "tools"), 0o755)

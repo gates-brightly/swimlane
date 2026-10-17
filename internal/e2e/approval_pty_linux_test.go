@@ -111,6 +111,7 @@ func TestPromptCtrlCStops(t *testing.T) {
 }
 
 func TestPromptSeveralLanes(t *testing.T) {
+	long(t)
 	r := newSerialRepo(t, "")
 	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
 	r.script(2, "two", `if guard ALLOW_TWO "change two"; then run "two changed" true; fi`)

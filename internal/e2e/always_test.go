@@ -14,6 +14,7 @@ import (
 // other lane in the run waits for them; Rerun-Children reruns what they
 // feed.
 func TestAlwaysLanes(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	addHeader := func(n int, line string) {
 		p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))

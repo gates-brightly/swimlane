@@ -88,6 +88,7 @@ var leakInventory = []struct{ what, re string }{
 }
 
 func TestNoSecretLeaks(t *testing.T) {
+	long(t)
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not installed (the lane URL-encodes with it)")
 	}

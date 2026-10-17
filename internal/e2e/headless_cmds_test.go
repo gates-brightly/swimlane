@@ -86,6 +86,7 @@ func laneOnHub(t *testing.T, url, id string, n int) hub.Lane {
 }
 
 func TestHeadlessHubCommands(t *testing.T) {
+	long(t)
 	r, url, state, id, alice, vic := commandRepo(t)
 	const planted = "planted-s3cr3t-value-9f8e7d"
 	r.env = append(r.env, "DEPLOY_TOKEN="+planted)

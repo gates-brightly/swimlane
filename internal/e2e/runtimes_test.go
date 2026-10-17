@@ -72,6 +72,7 @@ touch after-gate
 // before the wrapper's SIGKILL, every time. That step is refused, not run,
 // and the log shows the gate's FAIL and STOP and nothing after.
 func TestWrappedLaneNoStepAfterEnd(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: ignores its stop

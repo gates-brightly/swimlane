@@ -399,6 +399,7 @@ func TestFaultChainMidAppend(t *testing.T) {
 // once (each run's lanes stamp a shared ledger), and lanes sharing a lock
 // never overlap, within a batch or across them.
 func TestFaultManyWatchers(t *testing.T) {
+	long(t)
 	const watchers, batches = 4, 20
 	r := newRepo(t, "")
 	ledger, stampLine := withLedger(t, r)

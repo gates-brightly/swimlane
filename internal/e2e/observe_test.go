@@ -12,6 +12,7 @@ import (
 // verifies), shown by swim observe and swim report; one that can't be
 // recorded never fails the run.
 func TestObservations(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.write("swim.yml", "observe:\n  slow_min_s: 0.5\n", 0o644)
 	r.script(1, "nap", `run "nap" bash -c 'sleep ${NAP:-0.1}'

@@ -14,7 +14,7 @@ LDFLAGS := -s -w -X github.com/gates-brightly/swimlane/internal/version.BuildDat
 
 .DEFAULT_GOAL := help
 
-.PHONY: help release next-tag build install install-latest uninstall link unlink which run test e2e cover fmt vet tidy check clean
+.PHONY: help release next-tag build install install-latest uninstall link unlink which run test test-short test-long e2e cover fmt vet tidy check clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -76,6 +76,12 @@ run: build ## Build and run swim (pass args with ARGS="...")
 
 test: ## Run the unit tests (fast; no e2e)
 	go test $$(go list ./... | grep -v /internal/e2e)
+
+test-short: ## The short batch (~1 min): unit tests and the quick e2e tests (go test -short); 50 property graphs
+	go test -short -count=1 ./...
+
+test-long: ## The long batch (~4 min): every test, e2e/ scenarios and slow e2e tests included, as CI runs them
+	go test -count=1 ./...
 
 e2e: ## Run the end-to-end tests: Go e2e suite + e2e/ scenarios; S="dag99 ..." runs just those scenarios
 ifdef S

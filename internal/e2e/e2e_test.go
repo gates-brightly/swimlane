@@ -470,6 +470,7 @@ run "after confirm" true`)
 }
 
 func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.mustSwim("new", "1", "first round")
 	if out, code := r.swim("new", "1", "second"); code == 0 || !strings.Contains(out, "pending round") {
@@ -1158,6 +1159,7 @@ func TestRunID(t *testing.T) {
 }
 
 func TestParallelLimit(t *testing.T) {
+	long(t)
 	r := newSerialRepo(t, "") // it times the run: alone, not beside the parallel tests
 	for n := 1; n <= 10; n++ {
 		r.script(n, fmt.Sprintf("sleeper %d", n), `run "sleep" sleep 1`)
@@ -1269,6 +1271,7 @@ func overlapWatcher(r *repo, stop chan struct{}) <-chan map[[2]int]bool {
 }
 
 func TestResourceLocksWithinARun(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.script(1, "migrate table", `run "work" bash -c 'sleep 1; exit 1'`)
 	r.script(2, "back up table", `run "work" sleep 1`)
@@ -1326,6 +1329,7 @@ func TestResourceLocksWithinARun(t *testing.T) {
 }
 
 func TestResourceLocksAcrossRuns(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.script(1, "one", `run "work" sleep 1.5`)
 	r.script(2, "two", `run "work" sleep 0.2`)
@@ -1378,6 +1382,7 @@ func TestBadLockNameWarns(t *testing.T) {
 }
 
 func TestStepTimeoutAndRetry(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.script(1, "timeouts and retries", `run --timeout 1s "slow" sleep 5
 run --retry 2 --backoff 0.1s "flaky" bash -c 'test -f ok || { touch ok; exit 1; }'
@@ -1809,4 +1814,13 @@ func TestArchiveSeveralLanes(t *testing.T) {
 	contains(t, "--as", r.mustSwim("archive", "1", "2", "--as", "batch"), "agent1.prev-batch.log", "agent2.prev-batch.log")
 	// A job id is a lane too, and the older "name after the lane" form still works.
 	contains(t, "job id + old form", r.mustSwim("archive", "aaaa0003", "cut", "over"), "agent3.prev-cut-over.log")
+}
+
+// long puts a test in the long batch (make test-long, and CI): go test
+// -short (make test) skips it. Tests that take 2s or more go there.
+func long(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("in the long batch: make test-long")
+	}
 }

@@ -11,6 +11,7 @@ import (
 // swim watch on a terminal shows the jobs and the queue: ↑ ↓ pick one, r
 // runs it now, q queues it (and the worker then runs it), Ctrl-C quits.
 func TestWatchPickRunAndQueue(t *testing.T) {
+	long(t)
 	r := newSerialRepo(t, "")
 	r.script(1, "first job", `run "one" echo one-ran`)
 	r.script(2, "second job", `run "two" echo two-ran`)
@@ -183,6 +184,7 @@ func TestWatchLogsKey(t *testing.T) {
 // The main screen streams the running lanes' output under the queue; o
 // hides it.
 func TestWatchStreamsRunningOutput(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1")
@@ -262,6 +264,7 @@ func TestWatchTrashKey(t *testing.T) {
 // p on a running lane's row pauses it (the row says paused), p again lets
 // it go on; the repo-wide pause shows on the title.
 func TestWatchPauseKey(t *testing.T) {
+	long(t)
 	r := newSerialRepo(t, "")
 	r.script(1, "held", `run "one" sleep 0.5
 run "two" true`)

@@ -34,6 +34,7 @@ func ranAt(t *testing.T, r *repo, name string) time.Time {
 // status says when, swim run refuses the lane and swim all leaves it; a
 // worker then starts it and records the start.
 func TestScheduleStartsNoEarlier(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	stampLane(r, 1, "one", "")
 	out := r.mustSwim("schedule", "1", "+3s", "--tz", "UTC")
@@ -74,6 +75,7 @@ func TestScheduleStartsNoEarlier(t *testing.T) {
 // is held until that batch has run; then it runs. Removing the schedule
 // releases it, and it's skipped (its dependency never ran).
 func TestScheduleHoldsDependents(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	stampLane(r, 1, "one", "")
 	stampLane(r, 2, "two", "")
@@ -193,6 +195,7 @@ func watchUntil(t *testing.T, r *repo, cond func() bool) string {
 // A daily schedule makes today's occurrence once, a scheduled batch the
 // worker runs at its time; a second worker makes nothing more.
 func TestRecurringDaily(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	stampLane(r, 1, "one", "")
 	out := r.mustSwim("schedule", "1", soon(3*time.Second), "--daily", "--tz", "UTC")
@@ -215,6 +218,7 @@ func TestRecurringDaily(t *testing.T) {
 // running the new script on the old approvals; resume refuses until it's
 // scheduled again. swim stub on it is refused.
 func TestRecurringPausesOnChange(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	stampLane(r, 1, "one", "")
 	r.mustSwim("schedule", "1", soon(2*time.Second), "--daily", "--tz", "UTC")
@@ -258,6 +262,7 @@ func TestRecurringExpiry(t *testing.T) {
 // signed batches (standing approvals of whoever scheduled it apply), and
 // one edited off what was signed would be refused.
 func TestRecurringSigned(t *testing.T) {
+	long(t)
 	r, _ := signedRepo(t)
 	stampLane(r, 1, "one", "")
 	r.mustSwim("schedule", "1", soon(3*time.Second), "--daily", "--tz", "UTC")

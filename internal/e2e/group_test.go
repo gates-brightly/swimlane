@@ -37,6 +37,7 @@ run "slow" bash -c 'sleep 1.5; touch e2e.done'
 // A group file is one lane; its sub-jobs (1.1, 1.2, ...) run in file
 // order, and the other lanes wait only for its Always ones.
 func TestGroupLane(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	if err := os.WriteFile(filepath.Join(r.root, "lanes.ci.sh"), []byte(ciGroup), 0o644); err != nil {
 		t.Fatal(err)

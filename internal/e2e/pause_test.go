@@ -190,6 +190,7 @@ run "a2" true`)
 // A lane paused while it waits in a run doesn't start until unpaused; the
 // round's Timeout: doesn't count paused time.
 func TestPauseBeforeStartAndTimeout(t *testing.T) {
+	long(t)
 	r := newSerialRepo(t, "") // a 3s round Timeout: alone, not beside the parallel tests
 	r.script(1, "first", `run "first" sleep 0.5`)
 	r.script(2, "second", `run "s1" sleep 1
@@ -276,6 +277,7 @@ with swim.round() as r:
 // An SDK lane's in-process step doesn't start past its round's Timeout:
 // the round ends as a timeout, as swim step ends a bash lane's.
 func TestSDKStepHonoursTimeout(t *testing.T) {
+	long(t)
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not installed")
 	}

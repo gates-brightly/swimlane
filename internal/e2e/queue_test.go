@@ -96,6 +96,7 @@ func TestQueueAndWatchOnce(t *testing.T) {
 // A queued batch waits only for its own lanes: one that another swim run
 // has waits until that run ends, one whose lanes are free starts now.
 func TestWatchWaitsForBusyLanes(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.script(1, "long", `run "long" sleep 1.5`)
 	r.script(2, "queued", `run "q" true`)
@@ -354,6 +355,7 @@ func TestWatchDryRunMarked(t *testing.T) {
 }
 
 func TestWaitAndQueueWait(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.script(1, "long", `run "long" sleep 1.5`)
 	r.script(2, "queued", `run "q" true`)
@@ -445,6 +447,7 @@ func TestQueueWaitTimeout(t *testing.T) {
 // wait), batches sharing a lane never overlap, and --batches 1 keeps them
 // one at a time.
 func TestWatchBatchesSideBySide(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	stamp := func(name string) string {
 		return fmt.Sprintf(`run "%[1]s start" bash -c 'date +%%s.%%N >> %[1]s.start'

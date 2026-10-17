@@ -1504,7 +1504,9 @@ swim changelog        # what's new in the version you're running (--since <old v
 ### Development
 
 ```sh
-make test             # unit tests (fast)
+make test             # unit tests (seconds)
+make test-short       # the short batch: unit tests and the quick e2e tests (~1 min)
+make test-long        # the long batch: every test and scenario, as CI runs them (~4 min)
 make e2e              # the Go e2e suite and every scenario (S="dag99 ..." for some)
 make check            # gofmt, vet, unit and e2e tests
 make ci               # this repo's CI rounds, through swim ci

@@ -57,6 +57,7 @@ func TestLogShowsRunningStep(t *testing.T) {
 }
 
 func TestLogFollowUntilDone(t *testing.T) {
+	long(t)
 	r := newRepo(t, "")
 	r.script(1, "slow then fail", slowLane+`
 run "fails" false`)
