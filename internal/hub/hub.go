@@ -18,7 +18,8 @@
 //	GET    /api/workers/{id}/checkpoints the worker or admin: its checkpoints
 //	PUT    /api/workers/{id}/runs/{run} the worker: a finished run, its record and rounds (runs.go)
 //	GET    /api/enrollments ...         the read API, and GET /api/events (api.go, events.go)
-//	GET    /                            the dashboard, a tab per namespace (?ns=NS; namespace.go)
+//	GET    /, /e/..., /approvals, /assets/... the app (web.go)
+//	GET    /classic                     the classic dashboard, a tab per namespace (?ns=NS; namespace.go)
 //	GET    /w/{id}                      one worker (with controls, for a user logged in)
 //	GET    /w/{id}/answer/{req}         how to sign an answer to a guard waiting there
 //
@@ -301,7 +302,7 @@ func (s *Server) authorized(r *http.Request) bool {
 	return s.token != "" && subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1
 }
 
-// Handler serves the hub.
+// Handler serves the hub, every response with its security headers (web.go).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/enroll", s.enroll)
@@ -321,8 +322,9 @@ func (s *Server) Handler() http.Handler {
 	s.apiRoutes(mux)
 	s.userRoutes(mux)
 	s.commandRoutes(mux)
-	mux.HandleFunc("GET /{$}", s.dashboard)
-	return mux
+	mux.HandleFunc("GET /classic", s.dashboard)
+	s.webRoutes(mux)
+	return secured(mux)
 }
 
 func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {

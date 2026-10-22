@@ -16,6 +16,7 @@ import (
 // user (a session or a user's token).
 //
 //	GET /api/health                                        no login, no data: the hub answers
+//	GET /api/me                                            who's logged in (user, role, the session's CSRF token)
 //	GET /api/enrollments                                   the namespace tabs and every worker (?ns=NS: one namespace's)
 //	GET /api/enrollments/{id}                              one worker's latest snapshot
 //	GET /api/enrollments/{id}/runs                         its kept runs, newest first (?before=RUN&limit=N; next: the RUN for the page after)
@@ -49,6 +50,7 @@ type JobSummary struct {
 
 func (s *Server) apiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", s.healthAPI)
+	mux.HandleFunc("GET /api/me", s.meAPI)
 	mux.HandleFunc("GET /api/enrollments", s.enrollmentsAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}", s.enrollmentAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}/runs", s.runsAPI)

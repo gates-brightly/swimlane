@@ -60,9 +60,9 @@ func TestHubFlow(t *testing.T) {
 		t.Fatalf("workers: %+v", got)
 	}
 	// Pages: escaped, with the live tail.
-	page := get(t, srv.URL+"/")
+	page := get(t, srv.URL+"/classic")
 	for _, want := range []string{"billing", "/srv/billing", "running q-1", "swim 1 running", "cut over &lt;api&gt;", "1 failed",
-		"… migrating billing (7/28)", `style="width:25%"`, "9m ago",
+		"… migrating billing (7/28)", `<progress class="bar" max="100" value="25">`, "9m ago",
 		`<span class="pill bad" title="approved by swim run -y: DEPLOY SWAP ">-y</span>`, `<b class="bad">swim watch -y</b>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
@@ -173,7 +173,7 @@ func TestHubUntrustedText(t *testing.T) {
 	if err := c.Report(snap); err != nil {
 		t.Fatal(err)
 	}
-	for _, page := range []string{get(t, srv.URL+"/"), get(t, srv.URL+"/w/"+id), get(t, srv.URL+"/api/enrollments")} {
+	for _, page := range []string{get(t, srv.URL+"/classic"), get(t, srv.URL+"/w/"+id), get(t, srv.URL+"/api/enrollments")} {
 		if strings.Contains(page, "<script>") || strings.Contains(page, "<b>") {
 			t.Errorf("unescaped HTML:\n%s", page)
 		}

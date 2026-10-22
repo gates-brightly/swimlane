@@ -92,56 +92,27 @@ var funcs = template.FuncMap{"ago": ago, "state": stateClass, "pct": pct, "msgAg
 	return s
 }}
 
-const style = `<style>
-:root { --bg:#fbfbfa; --fg:#1d1d1f; --muted:#6e6e73; --line:#e3e3e0; --card:#fff; --ok:#1a7f37; --bad:#cf222e; --run:#0969da; --wait:#9a6700; }
-@media (prefers-color-scheme: dark) { :root { --bg:#111214; --fg:#e8e8ea; --muted:#9a9aa1; --line:#2a2c30; --card:#18191c; --ok:#3fb950; --bad:#f85149; --run:#58a6ff; --wait:#d29922; } }
-* { box-sizing: border-box; }
-body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:15px; margin:20px 0 8px; }
-a { color:var(--run); text-decoration:none; } a:hover { text-decoration:underline; }
-.muted, .dim { color:var(--muted); } .ok { color:var(--ok); } .bad { color:var(--bad); } .run { color:var(--run); } .wait { color:var(--wait); }
-.grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); margin-top:12px; }
-.card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
-.card.stale { opacity:.55; }
-.card h3 { margin:0 0 2px; font-size:15px; display:flex; justify-content:space-between; gap:8px; }
-.mono, pre, td.mono { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; }
-table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-th { font-weight:600; color:var(--muted); font-size:12px; }
-pre { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:8px 10px; overflow-x:auto; margin:6px 0 0; white-space:pre-wrap; word-break:break-word; }
-.pill { display:inline-block; padding:0 6px; border-radius:9px; border:1px solid currentColor; font-size:11.5px; }
-.wrap { overflow-x:auto; }
-.msg { color:var(--run); font-style:italic; }
-.bar { display:inline-block; vertical-align:middle; width:80px; height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin-left:6px; }
-.bar > span { display:block; height:100%; background:var(--run); }
-form.inline { display:inline; margin:0; }
-button { font:inherit; font-size:12.5px; padding:1px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); cursor:pointer; }
-button.danger { color:var(--bad); border-color:var(--bad); }
-nav.tabs { display:flex; flex-wrap:wrap; gap:4px; margin-top:12px; border-bottom:1px solid var(--line); }
-nav.tabs a { padding:5px 12px; border:1px solid transparent; border-bottom:none; border-radius:6px 6px 0 0; color:var(--muted); margin-bottom:-1px; }
-nav.tabs a:hover { text-decoration:none; color:var(--fg); }
-nav.tabs a.on { background:var(--card); border-color:var(--line); color:var(--fg); font-weight:600; }
-nav.tabs .n { font-size:11.5px; color:var(--muted); font-weight:400; margin-left:4px; }
-input[type=password] { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); width:28em; max-width:100%; }
-</style>`
+// style links the classic pages' stylesheet (web/classic.css).
+const style = `<link rel="stylesheet" href="/assets/classic.css"><link rel="icon" href="/assets/favicon.svg">`
 
 var dashTmpl = template.Must(template.New("dash").Funcs(funcs).Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="3"><title>{{if .NS}}{{.Label}} · {{end}}swim hub</title>` + style + `</head><body>
 <h1>swim hub</h1>
 <div class="muted">{{len .Workers}} worker(s){{if .NS}} in {{.Label}}{{end}} · refreshes every 3s · <a href="/api/enrollments{{if .NS}}?ns={{.NS}}{{end}}">JSON</a></div>
-{{if or (gt (len .Tabs) 2) .NS}}<nav class="tabs">{{range .Tabs}}<a href="/{{if .Key}}?ns={{.Key}}{{end}}"{{if .Active}} class="on"{{end}}>{{.Label}}<span class="n">{{.Workers}}{{if .Running}} · <span class="run">{{.Running}} running</span>{{end}}{{if .Waiting}} · <span class="wait">{{.Waiting}} waiting</span>{{end}}</span></a>{{end}}</nav>{{end}}
-{{if not .Workers}}{{if .NS}}<p class="muted">No workers in {{.Label}} now. <a href="/">All workers</a></p>{{else}}<p class="muted">No workers yet. In a repo: <span class="mono">swim hub enroll &lt;this hub's URL&gt; --token &lt;token&gt;</span>, then <span class="mono">swim watch</span>.</p>{{end}}{{end}}
+{{if or (gt (len .Tabs) 2) .NS}}<nav class="tabs">{{range .Tabs}}<a href="/classic{{if .Key}}?ns={{.Key}}{{end}}"{{if .Active}} class="on"{{end}}>{{.Label}}<span class="n">{{.Workers}}{{if .Running}} · <span class="run">{{.Running}} running</span>{{end}}{{if .Waiting}} · <span class="wait">{{.Waiting}} waiting</span>{{end}}</span></a>{{end}}</nav>{{end}}
+{{if not .Workers}}{{if .NS}}<p class="muted">No workers in {{.Label}} now. <a href="/classic">All workers</a></p>{{else}}<p class="muted">No workers yet. In a repo: <span class="mono">swim hub enroll &lt;this hub's URL&gt; --token &lt;token&gt;</span>, then <span class="mono">swim watch</span>.</p>{{end}}{{end}}
 <div class="grid">
 {{range .Workers}}<div class="card{{if .Stale}} stale{{end}}">
   <h3><a href="/w/{{.ID}}">{{.Name}}</a> {{if .Stale}}<span class="pill bad">stale</span>{{else}}<span class="pill {{state .Activity}}">{{.Activity}}</span>{{end}}</h3>
-  {{if and (not $.NS) .Namespace}}<div class="mono"><a class="muted" href="/?ns={{.Namespace}}">{{.Namespace}}</a></div>{{end}}
+  {{if and (not $.NS) .Namespace}}<div class="mono"><a class="muted" href="/classic?ns={{.Namespace}}">{{.Namespace}}</a></div>{{end}}
   <div class="muted mono">{{.Host}}:{{.Root}}</div>
   {{with .Headless}}<div><span class="pill">headless · {{.Mode}}</span>{{if .Yes}} <b class="bad">-y</b>{{end}}</div>{{end}}
   {{with .AutoApprove}}<div><b class="bad">{{.}}</b></div>{{end}}
   <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
-  {{with .Counts}}<div style="margin-top:6px">{{range $s, $n := .}}<span class="{{state $s}}">{{$n}} {{$s}}</span> &nbsp;{{end}}</div>{{end}}
+  {{with .Counts}}<div class="mt6">{{range $s, $n := .}}<span class="{{state $s}}">{{$n}} {{$s}}</span> &nbsp;{{end}}</div>{{end}}
   {{with .QueueCounts}}<div class="muted">queue: {{range $s, $n := .}}{{$n}} {{$s}} &nbsp;{{end}}</div>{{end}}
-  {{range .Active}}<div class="mono" style="margin-top:4px"><span class="{{state .State}}">swim {{.Lane}} {{.State}}</span>{{if .AutoApproved}} <span class="pill bad" title="approved by {{.AutoVia}}: {{range .AutoApproved}}{{.}} {{end}}">-y</span>{{end}}{{if .DryRun}} <span class="pill" title="dry run: {{range .DryRun}}{{.}} {{end}}">[DRY]</span>{{end}} {{.Round}}{{if .Step}} <span class="muted">· {{.Step}}</span>{{end}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{if .Progress}}<span class="bar"><span style="width:{{pct .Progress}}%"></span></span>{{end}}{{with msgAge .MsgAt}} <span class="muted">· {{.}}</span>{{end}}{{end}}</div>{{end}}
+  {{range .Active}}<div class="mono mt4"><span class="{{state .State}}">swim {{.Lane}} {{.State}}</span>{{if .AutoApproved}} <span class="pill bad" title="approved by {{.AutoVia}}: {{range .AutoApproved}}{{.}} {{end}}">-y</span>{{end}}{{if .DryRun}} <span class="pill" title="dry run: {{range .DryRun}}{{.}} {{end}}">[DRY]</span>{{end}} {{.Round}}{{if .Step}} <span class="muted">· {{.Step}}</span>{{end}}{{if .Message}}<br><span class="msg">… {{.Message}}{{if .Progress}} ({{.Progress}}){{end}}</span>{{if .Progress}}<progress class="bar" max="100" value="{{pct .Progress}}"></progress>{{end}}{{with msgAge .MsgAt}} <span class="muted">· {{.}}</span>{{end}}{{end}}</div>{{end}}
 </div>{{end}}
 </div></body></html>`))
 
@@ -151,13 +122,13 @@ const csrfField = `<input type="hidden" name="csrf" value="{{$.CSRF}}">`
 var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="3"><title>{{.Name}} · swim hub</title>` + style + `</head><body>
-<div><a href="/">← all workers</a>{{if .Namespace}} · <a href="/?ns={{.Namespace}}">{{.Namespace}}</a>{{end}} · {{if .User}}<span class="muted">signed in as <b>{{.User}}</b> ({{.Role}})</span> <form class="inline" method="post" action="/logout">` + csrfField + `<button>log out</button></form>{{else}}<a href="/login">log in</a> <span class="muted">to send commands</span>{{end}}</div>
+<div><a href="/classic">← all workers</a>{{if .Namespace}} · <a href="/classic?ns={{.Namespace}}">{{.Namespace}}</a>{{end}} · {{if .User}}<span class="muted">signed in as <b>{{.User}}</b> ({{.Role}})</span> <form class="inline" method="post" action="/logout">` + csrfField + `<button>log out</button></form>{{else}}<a href="/login">log in</a> <span class="muted">to send commands</span>{{end}}</div>
 <h1>{{.Name}} {{if .Stale}}<span class="pill bad">stale</span>{{else}}<span class="pill {{state .Activity}}">{{.Activity}}</span>{{end}}</h1>
 <div class="muted mono">{{.Host}}:{{.Root}} · pid {{.PID}}</div>
 {{with .Headless}}<div><span class="pill">headless · {{.Mode}}</span>{{if .Since}} <span class="muted">since {{.Since}}</span>{{end}}{{if .Approved}} <span class="muted">· --approved</span>{{end}}{{if .Yes}} <b class="bad">-y: approves every guard in every batch</b>{{end}}{{if .Allow}} <span class="muted">· takes from the hub: {{range .Allow}}{{.}} {{end}}{{if .LogsOff}}(logs: off){{end}}</span>{{end}}</div>{{end}}
 {{with .AutoApprove}}<div><b class="bad">{{.}}: approves every guard in every batch</b></div>{{end}}
 <div class="muted">seen {{ago .Seen}}{{if .Version}} · swim {{.Version}}{{end}}</div>
-{{if $.Can "drain"}}<div style="margin-top:6px"><form class="inline" method="post" action="/api/workers/{{.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="drain"><button class="danger">Stop the worker after this batch</button></form></div>{{end}}
+{{if $.Can "drain"}}<div class="mt6"><form class="inline" method="post" action="/api/workers/{{.ID}}/commands">` + csrfField + `<input type="hidden" name="kind" value="drain"><button class="danger">Stop the worker after this batch</button></form></div>{{end}}
 {{if and .User (not .Headless)}}<p class="muted">This worker isn't headless (swim watch --headless): it takes no commands from the hub.</p>{{end}}
 {{if .Waiting}}<h2>Waiting for an answer</h2>
 <div class="wrap"><table><tr><th>lane</th><th>guard</th><th>the lane says</th><th>pinned to</th><th>waits until</th>{{if .User}}<th></th>{{end}}</tr>

@@ -103,14 +103,14 @@ func TestNamespaceTabs(t *testing.T) {
 		t.Errorf("tab counts: %+v", tb)
 	}
 
-	page := get(t, srv.URL+"/?ns=github.com/org/billing")
+	page := get(t, srv.URL+"/classic?ns=github.com/org/billing")
 	if !strings.Contains(page, `class="on">github.com/org/billing`) || strings.Contains(page, "api-mac") || !strings.Contains(page, "billing") {
 		t.Errorf("billing tab:\n%s", page)
 	}
-	if all := get(t, srv.URL+"/"); !strings.Contains(all, "api-mac") || !strings.Contains(all, `href="/?ns=github.com%2forg%2fapi"`) {
+	if all := get(t, srv.URL+"/classic"); !strings.Contains(all, "api-mac") || !strings.Contains(all, `href="/classic?ns=github.com%2forg%2fapi"`) {
 		t.Errorf("all tab lacks the workers or the namespace links:\n%s", all)
 	}
-	if empty := get(t, srv.URL+"/?ns=nobody/here"); !strings.Contains(empty, "No workers in nobody/here") {
+	if empty := get(t, srv.URL+"/classic?ns=nobody/here"); !strings.Contains(empty, "No workers in nobody/here") {
 		t.Errorf("empty namespace page:\n%s", empty)
 	}
 }
