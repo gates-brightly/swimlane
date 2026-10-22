@@ -17,6 +17,7 @@
 //	GET    /api/grants/{id}             the worker itself: its grants, still encrypted
 //	PUT    /api/workers/{id}/checkpoints the worker: a checkpoint of its chain (409: seq not past the last)
 //	GET    /api/workers/{id}/checkpoints the worker or admin: its checkpoints
+//	PUT    /api/workers/{id}/runs/{run} the worker: a finished run, its record and rounds (runs.go)
 //	GET    /                            the dashboard, a tab per namespace (?ns=NS; namespace.go)
 //	GET    /w/{id}                      one worker (with controls, for a user logged in)
 //	GET    /w/{id}/answer/{req}         how to sign an answer to a guard waiting there
@@ -267,9 +268,10 @@ type Server struct {
 	epoch    string
 	wake     map[string]chan struct{} // closed when a worker gets a new command
 	logs     *logCache
-	secure   bool // served over TLS: session cookies are Secure
-	private  bool // viewing needs a login too (Private)
-	proxied  bool // served through a proxy on this host (BehindProxy)
+	runs     *runStore // finished runs workers report (runs.go)
+	secure   bool      // served over TLS: session cookies are Secure
+	private  bool      // viewing needs a login too (Private)
+	proxied  bool      // served through a proxy on this host (BehindProxy)
 	// checkpoints are each worker's chain checkpoints (checkpoints.go).
 	checkpoints map[string][]chain.Checkpoint
 }
@@ -282,6 +284,7 @@ func New(token string) *Server {
 		users: map[string]*User{}, sessions: map[string]*session{}, commands: map[string][]*Command{}, nextSeq: map[string]int{},
 		epoch: newToken()[:16], wake: map[string]chan struct{}{}, checkpoints: map[string][]chain.Checkpoint{}}
 	s.logs = newLogCache(LogMax, LogCacheMax, LogTTL, func() time.Time { return s.now() })
+	s.runs = newRunStore(func() time.Time { return s.now() })
 	return s
 }
 
@@ -312,6 +315,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/grants/{id}/{name}", s.grantAPI)
 	mux.HandleFunc("PUT /api/workers/{id}/checkpoints", s.checkpointsAPI)
 	mux.HandleFunc("GET /api/workers/{id}/checkpoints", s.checkpointsAPI)
+	mux.HandleFunc("PUT /api/workers/{id}/runs/{run}", s.putRun)
 	mux.HandleFunc("GET /w/{id}", s.workerPage)
 	s.userRoutes(mux)
 	s.commandRoutes(mux)

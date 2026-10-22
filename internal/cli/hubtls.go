@@ -10,7 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/hub"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 )
 
 // listenPolicy decides, before anything binds, whether swim hub may serve
@@ -41,6 +43,29 @@ func checkPublicURL(raw string) (string, error) {
 		return "", usagef("--public-url %s: the hub serves from its root: give the scheme and host only", raw)
 	}
 	return u.Scheme + "://" + u.Host, nil
+}
+
+// runRetention is --retain and --retain-bytes: how long the hub keeps
+// finished runs and how many bytes of them, "0" for no limit, "" for the
+// defaults (30 days, 2 GB).
+func runRetention(age, size string) (time.Duration, int64, error) {
+	keepAge, keepBytes := hub.DefaultRunRetain, int64(hub.DefaultRunRetainBytes)
+	var err error
+	switch strings.TrimSpace(age) {
+	case "":
+	case "0":
+		keepAge = 0
+	default:
+		if keepAge, err = lookup.ParseLifetime(age); err != nil || keepAge <= 0 {
+			return 0, 0, usagef("--retain %s: an age like 30d or 12h, or 0 to keep runs however old", age)
+		}
+	}
+	if strings.TrimSpace(size) != "" {
+		if keepBytes, err = config.ParseSize(size); err != nil {
+			return 0, 0, usagef("--retain-bytes %s: a size like 2GB or 500MB, or 0 for no cap", size)
+		}
+	}
+	return keepAge, keepBytes, nil
 }
 
 // certReloader serves the certificate in certFile/keyFile, loading it again

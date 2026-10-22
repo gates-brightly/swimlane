@@ -78,6 +78,7 @@ var leakInventory = []struct{ what, re string }{
 	{"scripts swim clean moved aside (the test's own)", `^repo/\.swim/cleaned/`},
 	{"the git shim", `^repo/\.swim/bin/`},
 	{"hub enrolment", `^repo/\.swim/(hub\.yml|hub\.key|hub-state\.yml|worker\.key)$`},
+	{"runs the hub took (ids, mtimes, a token's hash)", `^repo/\.swim/hub-runs\.yml$`},
 	{"watch state", `^repo/\.swim/watch`},
 	{"report earmarks (places in the logs: round lines and hashes)", `^repo/\.swim/earmarks/`},
 	{"the config", `^config/swim/config\.yml$`},
@@ -103,7 +104,8 @@ func TestNoSecretLeaks(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(tmp) })
 	secretsKey(t, r)
 	r.env = append(r.env, "HOME="+home, "TMPDIR="+tmp, "MY_LEAK_VAR="+leakSecrets["env"], "SWIM_SECRET_CI_LEAK="+leakSecrets["ci"])
-	r.write("swim.yml", "secret_env: [MY_LEAK_VAR]\nsecrets:\n  LEAK_GUARD: { guard: LEAK_OK }\n", 0o644)
+	// hub.logs: stream, so finished runs reach the hub with their output.
+	r.write("swim.yml", "secret_env: [MY_LEAK_VAR]\nsecrets:\n  LEAK_GUARD: { guard: LEAK_OK }\nhub:\n  logs: stream\n", 0o644)
 	r.setSecret("leak_vault", leakSecrets["vault"])
 	r.setSecret("leak_pem", leakSecrets["pem"])
 	r.setSecret("LEAK_GUARD", leakSecrets["guarded"])
@@ -254,6 +256,13 @@ with swim.round() as r:
 	o, _ := r.swim("archive", "1")
 	check("swim archive", o)
 	stopHub()
+	// The hub took the batch's run, with step output (hub.logs: stream),
+	// so the scan below checks what it keeps.
+	if runs, _ := filepath.Glob(filepath.Join(hubState, "runs", "*", "*.json")); len(runs) == 0 {
+		t.Error("the hub kept no run")
+	} else if data, _ := os.ReadFile(runs[0]); !strings.Contains(string(data), `"output":["`) {
+		t.Errorf("the hub's run has no step output: %.300s", data)
+	}
 
 	// Every file swim wrote.
 	roots := map[string]string{"repo": r.root, "config": envOf(r, "XDG_CONFIG_HOME"), "home": home, "tmp": tmp, "hub": hubState}

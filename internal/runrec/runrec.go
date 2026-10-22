@@ -23,41 +23,41 @@ const Schema = "swim.runrec/v1"
 // Lane is one lane's part in the run. Times are seconds since the run
 // started; a lane that never reached a point leaves it nil.
 type Lane struct {
-	Lane  int    `yaml:"lane"`
-	Job   string `yaml:"job,omitempty"`
-	Round string `yaml:"round,omitempty"`
-	After []int  `yaml:"after,flow"` // dependencies inside this run
+	Lane  int    `yaml:"lane" json:"lane"`
+	Job   string `yaml:"job,omitempty" json:"job,omitempty"`
+	Round string `yaml:"round,omitempty" json:"round,omitempty"`
+	After []int  `yaml:"after,flow" json:"after"` // dependencies inside this run
 	// Finally marks a finally lane (# Finally:): its After lists the lanes
 	// it waited for to end, however they ended.
-	Finally bool     `yaml:"finally,omitempty"`
-	Locks   []string `yaml:"locks,flow,omitempty"`
-	State   string   `yaml:"state"` // passed | failed | skipped | interrupted
-	Exit    *int     `yaml:"exit,omitempty"`
-	Reason  string   `yaml:"reason,omitempty"`
-	Ready   *float64 `yaml:"ready,omitempty"`    // dependencies met
-	Locked  *float64 `yaml:"locked,omitempty"`   // locks taken
-	Slot    *float64 `yaml:"slot,omitempty"`     // parallel slot taken
-	Start   *float64 `yaml:"start,omitempty"`    // lane process started
-	End     *float64 `yaml:"end,omitempty"`      // lane process finished (or skipped)
-	Paused  float64  `yaml:"paused_s,omitempty"` // time its round was held by swim pause
-	Pauses  []Span   `yaml:"pauses,omitempty"`   // each pause: start, seconds since the run started, and length
+	Finally bool     `yaml:"finally,omitempty" json:"finally,omitempty"`
+	Locks   []string `yaml:"locks,flow,omitempty" json:"locks,omitempty"`
+	State   string   `yaml:"state" json:"state"` // passed | failed | skipped | interrupted
+	Exit    *int     `yaml:"exit,omitempty" json:"exit,omitempty"`
+	Reason  string   `yaml:"reason,omitempty" json:"reason,omitempty"`
+	Ready   *float64 `yaml:"ready,omitempty" json:"ready,omitempty"`       // dependencies met
+	Locked  *float64 `yaml:"locked,omitempty" json:"locked,omitempty"`     // locks taken
+	Slot    *float64 `yaml:"slot,omitempty" json:"slot,omitempty"`         // parallel slot taken
+	Start   *float64 `yaml:"start,omitempty" json:"start,omitempty"`       // lane process started
+	End     *float64 `yaml:"end,omitempty" json:"end,omitempty"`           // lane process finished (or skipped)
+	Paused  float64  `yaml:"paused_s,omitempty" json:"paused_s,omitempty"` // time its round was held by swim pause
+	Pauses  []Span   `yaml:"pauses,omitempty" json:"pauses,omitempty"`     // each pause: start, seconds since the run started, and length
 }
 
 // Span is a stretch of a lane's time: its start (seconds since the run
 // started) and length.
 type Span struct {
-	Start float64 `yaml:"start"`
-	Dur   float64 `yaml:"duration_s"`
+	Start float64 `yaml:"start" json:"start"`
+	Dur   float64 `yaml:"duration_s" json:"duration_s"`
 }
 
 // Run is a whole run's record.
 type Run struct {
-	Schema      string    `yaml:"schema"`
-	Run         string    `yaml:"run"`
-	Started     time.Time `yaml:"started"`
-	Finished    time.Time `yaml:"finished"`
-	MaxParallel int       `yaml:"max_parallel,omitempty"`
-	Lanes       []Lane    `yaml:"lanes"`
+	Schema      string    `yaml:"schema" json:"schema"`
+	Run         string    `yaml:"run" json:"run"`
+	Started     time.Time `yaml:"started" json:"started"`
+	Finished    time.Time `yaml:"finished" json:"finished"`
+	MaxParallel int       `yaml:"max_parallel,omitempty" json:"max_parallel,omitempty"`
+	Lanes       []Lane    `yaml:"lanes" json:"lanes"`
 }
 
 // Dir holds run records.

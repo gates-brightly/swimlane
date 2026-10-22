@@ -1,6 +1,6 @@
 # T44. A read API for the app: enrollments, runs, jobs and events (P1, hub, gap)
 
-Part of [swim.plan.md](../swim.plan.md) Phase 2. Needs T42; logs need T43.
+Part of [swim.plan.md](../swim.plan.md) Phase 2. Logs need T43.
 
 **Today:** `GET /api/workers` (`swim.hub/v1`) is the one read endpoint,
 the latest snapshot of each worker; pages poll by reloading.
@@ -15,9 +15,9 @@ admin CLI's `Admin.Workers`, `internal/hub/client.go`) in the same change.
 |---|---|
 | `GET /api/enrollments` | workers by namespace: name, host, state, counts, stale, pending approvals |
 | `GET /api/enrollments/{id}` | one worker's snapshot (lanes, queue, events) |
-| `GET /api/enrollments/{id}/runs?before=RUN&limit=N` | runs, newest first: id, start, duration, result, lanes |
-| `GET /api/enrollments/{id}/runs/{run}` | the run record: lanes, `After` graph, timings |
-| `GET /api/enrollments/{id}/runs/{run}/jobs/{lane}` | the lane's Doc: stages, steps, results |
+| `GET /api/enrollments/{id}/runs?before=RUN&limit=N` | runs, newest first (`Server.Runs`: `RunInfo`) |
+| `GET /api/enrollments/{id}/runs/{run}` | the run record: lanes, `After` graph, timings (`Server.Run`) |
+| `GET /api/enrollments/{id}/runs/{run}/jobs/{lane}` | the lane's Doc: stages, steps, results (`RunReport.Jobs`) |
 | `GET /api/enrollments/{id}/runs/{run}/jobs/{lane}/log` | raw log, `Range: bytes=` honored |
 | `GET /api/events?enrollment=ID` | SSE: `snapshot`, `run`, `log` (run, lane, new offset) |
 

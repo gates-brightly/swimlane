@@ -101,9 +101,9 @@ lane's round (its `# Job:` id) a job, its stages and steps the steps.
 - [x] Phase 1's proxy items first (`--public-url`, `X-Forwarded-For`,
       `--private`, T41), since full output must never be on a page anyone
       can view.
-- [ ] [T42](tasks/T42-hub-run-history.md): workers report each finished
-      run (its `runrec` record and every lane's `logparse.Doc`); the hub
-      keeps them on disk under `--state`, with retention.
+- [x] Workers report each finished run (its `runrec` record and every
+      lane's `logparse.Doc`, step output under `hub: {logs: stream}`); the
+      hub keeps them on disk under `--state`, with retention (T42).
 - [ ] [T43](tasks/T43-hub-log-stream.md): a running lane's log streams to
       the hub by offset, for repos whose committed `swim.yml` says
       `hub: {logs: stream}`. The default stays `request` (today's Log

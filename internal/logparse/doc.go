@@ -10,47 +10,47 @@ const DocSchema = "swim.log/v1"
 
 // ResultDoc is one result line of a round, with its step's block.
 type ResultDoc struct {
-	Result   string   `yaml:"result"` // PASS | FAIL | BLOCKED | SKIP | DRIFT | APPROVED | STOP | WARN
-	Label    string   `yaml:"label"`
-	Detail   string   `yaml:"detail,omitempty"`
-	Stage    string   `yaml:"stage"`
-	Handler  string   `yaml:"handler,omitempty"` // the outcome handler it ran in
-	Step     bool     `yaml:"step"`              // a step that ran a command (not a mark)
-	Exit     *int     `yaml:"exit,omitempty"`
-	Duration *float64 `yaml:"duration_s,omitempty"`
-	Clock    string   `yaml:"clock,omitempty"`
-	Command  string   `yaml:"command,omitempty"`
-	Output   []string `yaml:"output,omitempty"`
-	Saved    string   `yaml:"saved,omitempty"`
-	Messages []string `yaml:"messages,omitempty"` // status messages posted during the step (swim msg)
+	Result   string   `yaml:"result" json:"result"` // PASS | FAIL | BLOCKED | SKIP | DRIFT | APPROVED | STOP | WARN
+	Label    string   `yaml:"label" json:"label"`
+	Detail   string   `yaml:"detail,omitempty" json:"detail,omitempty"`
+	Stage    string   `yaml:"stage" json:"stage"`
+	Handler  string   `yaml:"handler,omitempty" json:"handler,omitempty"` // the outcome handler it ran in
+	Step     bool     `yaml:"step" json:"step"`                           // a step that ran a command (not a mark)
+	Exit     *int     `yaml:"exit,omitempty" json:"exit,omitempty"`
+	Duration *float64 `yaml:"duration_s,omitempty" json:"duration_s,omitempty"`
+	Clock    string   `yaml:"clock,omitempty" json:"clock,omitempty"`
+	Command  string   `yaml:"command,omitempty" json:"command,omitempty"`
+	Output   []string `yaml:"output,omitempty" json:"output,omitempty"`
+	Saved    string   `yaml:"saved,omitempty" json:"saved,omitempty"`
+	Messages []string `yaml:"messages,omitempty" json:"messages,omitempty"` // status messages posted during the step (swim msg)
 }
 
 // Counts are a round's result totals.
 type Counts struct {
-	Pass  int `yaml:"pass"`
-	Fail  int `yaml:"fail"`
-	Skip  int `yaml:"skip"`
-	Drift int `yaml:"drift"`
+	Pass  int `yaml:"pass" json:"pass"`
+	Fail  int `yaml:"fail" json:"fail"`
+	Skip  int `yaml:"skip" json:"skip"`
+	Drift int `yaml:"drift" json:"drift"`
 }
 
 // Doc is one round as data.
 type Doc struct {
-	Schema    string            `yaml:"schema"`
-	Lane      int               `yaml:"lane"`
-	Job       string            `yaml:"job"`
-	Round     string            `yaml:"round"`
-	StartedAt string            `yaml:"started_at"`
-	Run       string            `yaml:"run,omitempty"`
-	Context   map[string]string `yaml:"context,omitempty"`
-	Finished  bool              `yaml:"finished"`
-	Result    string            `yaml:"result"` // passed | failed | interrupted | running (no END yet)
-	Exit      *int              `yaml:"exit,omitempty"`
-	Duration  string            `yaml:"duration,omitempty"`
-	Counts    Counts            `yaml:"counts"`
-	Stages    map[string]string `yaml:"stages"`
-	Handlers  map[string]string `yaml:"handlers,omitempty"` // outcome handlers that ran: PASS | FAIL | SKIP | none
-	Results   []ResultDoc       `yaml:"results"`
-	Failed    []string          `yaml:"failed_steps"`
+	Schema    string            `yaml:"schema" json:"schema"`
+	Lane      int               `yaml:"lane" json:"lane"`
+	Job       string            `yaml:"job" json:"job"`
+	Round     string            `yaml:"round" json:"round"`
+	StartedAt string            `yaml:"started_at" json:"started_at"`
+	Run       string            `yaml:"run,omitempty" json:"run,omitempty"`
+	Context   map[string]string `yaml:"context,omitempty" json:"context,omitempty"`
+	Finished  bool              `yaml:"finished" json:"finished"`
+	Result    string            `yaml:"result" json:"result"` // passed | failed | interrupted | running (no END yet)
+	Exit      *int              `yaml:"exit,omitempty" json:"exit,omitempty"`
+	Duration  string            `yaml:"duration,omitempty" json:"duration,omitempty"`
+	Counts    Counts            `yaml:"counts" json:"counts"`
+	Stages    map[string]string `yaml:"stages" json:"stages"`
+	Handlers  map[string]string `yaml:"handlers,omitempty" json:"handlers,omitempty"` // outcome handlers that ran: PASS | FAIL | SKIP | none
+	Results   []ResultDoc       `yaml:"results" json:"results"`
+	Failed    []string          `yaml:"failed_steps" json:"failed_steps"`
 }
 
 // detailExit is the exit code a step's detail names ("exit 2", "timeout:

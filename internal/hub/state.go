@@ -152,6 +152,9 @@ func NewWithState(token, admin, dir string) (*Server, error) {
 	if err := s.save(); err != nil {
 		return nil, err
 	}
+	if err := s.runs.open(filepath.Join(dir, "runs")); err != nil {
+		return nil, err
+	}
 	// Known workers show (stale) until they report again.
 	for id, r := range s.records {
 		s.workers[id] = &View{Snapshot: Snapshot{Worker: r.Worker, Activity: "known; no report since the hub started",

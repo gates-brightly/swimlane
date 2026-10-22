@@ -462,6 +462,20 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **The hub keeps finished runs.** `swim watch` sends its hub each
+  finished run as well as snapshots: the run record and every lane's
+  round in it (the `swim log --yaml` document, as JSON), with steps,
+  commands, exits and durations. The hub keeps them on disk under
+  `--state DIR/runs/` for `--retain AGE` (default 30d) and at most
+  `--retain-bytes SIZE` (default 2GB, the oldest first). Step output goes
+  only where the repo's `swim.yml` opts in with the new `hub:` block:
+  `hub: {logs: stream}`; the default, `request`, keeps today's
+  behavior (a log only when a hub user asks), and `off` sends no output
+  at all and refuses log requests too. Like `headless:`, only the
+  committed `swim.yml` may set it. `.swim/hub-runs.yml` remembers what
+  the hub took. Run records and round documents now also have JSON
+  field names, the same as their YAML ones.
+
 - **The hub behind a TLS proxy: `--public-url` and `--private`.**
   `swim hub --public-url https://...` names the address clients reach it
   at through a proxy on the same host (`tailscale serve`, Caddy): the
