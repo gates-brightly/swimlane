@@ -12,9 +12,10 @@ import (
 type HubSettings struct {
 	// Logs is how much lane output leaves this machine for the hub:
 	// request (the default: a log only when a hub user asks a headless
-	// worker for it), stream (also each finished run's step output), or
-	// off (none). Finished runs go either way, with their steps, commands,
-	// exits and durations; their output only under stream.
+	// worker for it), stream (also each round's log as it grows, and each
+	// finished run's step output), or off (none). Finished runs go either
+	// way, with their steps, commands, exits and durations; their output
+	// only under stream.
 	Logs string `yaml:"logs,omitempty"`
 }
 

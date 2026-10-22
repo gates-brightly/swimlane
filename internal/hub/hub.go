@@ -17,6 +17,7 @@
 //	PUT    /api/workers/{id}/checkpoints the worker: a checkpoint of its chain (409: seq not past the last)
 //	GET    /api/workers/{id}/checkpoints the worker or admin: its checkpoints
 //	PUT    /api/workers/{id}/runs/{run} the worker: a finished run, its record and rounds (runs.go)
+//	PUT    /api/workers/{id}/stream/{run}/{lane}?offset=N the worker: a round's log as it grows (stream.go)
 //	GET    /api/enrollments ...         the read API, and GET /api/events (api.go, events.go)
 //	GET    /, /e/..., /approvals, /assets/... the app (web.go)
 //	GET    /classic                     the classic dashboard, a tab per namespace (?ns=NS; namespace.go)
@@ -157,6 +158,9 @@ type Snapshot struct {
 	// Waiting are the guards a headless worker waits on for an answer
 	// through the hub (answers.go).
 	Waiting []PendingApproval `json:"pending,omitempty"`
+	// Logs is the repo's hub.logs: request, stream or off (what of its
+	// lanes' output reaches the hub; "" from a swim before it).
+	Logs string `json:"logs,omitempty"`
 }
 
 // HeadlessInfo is how a headless worker runs.
@@ -191,7 +195,7 @@ func (h *HeadlessInfo) Allows(kind string) bool {
 // escape sequences, controls or bidi overrides.
 func (s *Snapshot) Sanitize() {
 	s.Worker.sanitize()
-	s.Activity, s.At, s.AutoApprove = ui.Safe(s.Activity), ui.Safe(s.At), ui.Safe(s.AutoApprove)
+	s.Activity, s.At, s.AutoApprove, s.Logs = ui.Safe(s.Activity), ui.Safe(s.At), ui.Safe(s.AutoApprove), ui.Safe(s.Logs)
 	for i := range s.Lanes {
 		l := &s.Lanes[i]
 		for _, f := range []*string{&l.State, &l.Round, &l.Job, &l.Run, &l.Step, &l.Reason, &l.Started, &l.Finished,
@@ -269,11 +273,12 @@ type Server struct {
 	epoch    string
 	wake     map[string]chan struct{} // closed when a worker gets a new command
 	logs     *logCache
-	runs     *runStore // finished runs workers report (runs.go)
-	events   *eventHub // what changed, for GET /api/events (events.go)
-	secure   bool      // served over TLS: session cookies are Secure
-	private  bool      // viewing needs a login too (Private)
-	proxied  bool      // served through a proxy on this host (BehindProxy)
+	runs     *runStore   // finished runs workers report (runs.go)
+	events   *eventHub   // what changed, for GET /api/events (events.go)
+	streams  streamState // streamed logs' received counts (stream.go)
+	secure   bool        // served over TLS: session cookies are Secure
+	private  bool        // viewing needs a login too (Private)
+	proxied  bool        // served through a proxy on this host (BehindProxy)
 	// checkpoints are each worker's chain checkpoints (checkpoints.go).
 	checkpoints map[string][]chain.Checkpoint
 }
@@ -288,6 +293,7 @@ func New(token string) *Server {
 	s.logs = newLogCache(LogMax, LogCacheMax, LogTTL, func() time.Time { return s.now() })
 	s.runs = newRunStore(func() time.Time { return s.now() })
 	s.events = newEventHub()
+	s.streams.received = map[string]int{}
 	return s
 }
 
@@ -318,6 +324,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/workers/{id}/checkpoints", s.checkpointsAPI)
 	mux.HandleFunc("GET /api/workers/{id}/checkpoints", s.checkpointsAPI)
 	mux.HandleFunc("PUT /api/workers/{id}/runs/{run}", s.putRun)
+	mux.HandleFunc("PUT /api/workers/{id}/stream/{run}/{lane}", s.putStream)
 	mux.HandleFunc("GET /w/{id}", s.workerPage)
 	s.apiRoutes(mux)
 	s.userRoutes(mux)

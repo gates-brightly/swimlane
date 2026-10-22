@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -85,6 +86,39 @@ func (c *Client) PutRun(rep *RunReport) (permanent bool, err error) {
 		return true, failure(resp)
 	}
 	return false, failure(resp)
+}
+
+// ErrStreamOffset is a streamed log's append at an offset the hub doesn't
+// have: send the log again from 0.
+var ErrStreamOffset = errors.New("the hub has another offset of this log")
+
+// StreamLog appends data to a round's streamed log, offset bytes into what
+// this worker has sent of it (0 replaces it); final marks the round's end.
+func (c *Client) StreamLog(run string, lane, offset int, data []byte, final bool) error {
+	u := c.URL + "/api/workers/" + url.PathEscape(c.ID) + "/stream/" + url.PathEscape(run) + "/" + strconv.Itoa(lane) + "?offset=" + strconv.Itoa(offset)
+	if final {
+		u += "&final=1"
+	}
+	req, err := http.NewRequest("PUT", u, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.own())
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	hc := *c.HTTP
+	hc.Timeout = time.Minute
+	resp, err := hc.Do(req)
+	if err != nil {
+		return Explain(err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil
+	case http.StatusConflict:
+		return ErrStreamOffset
+	}
+	return failure(resp)
 }
 
 // UploadLog sends the log a log command asked for (at most LogMax).

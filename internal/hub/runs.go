@@ -122,6 +122,12 @@ func (rs *runStore) path(worker, run string) string {
 	return filepath.Join(rs.dir, worker, run+".json")
 }
 
+// streamFiles are a run's streamed logs (stream.go).
+func (rs *runStore) streamFiles(worker, run string) []string {
+	files, _ := filepath.Glob(filepath.Join(rs.dir, worker, run+".lane.*.log"))
+	return files
+}
+
 // open keeps runs under dir, indexing those already there.
 func (rs *runStore) open(dir string) error {
 	rs.mu.Lock()
@@ -156,6 +162,11 @@ func (rs *runStore) add(worker string, rep *RunReport, size int64) {
 	if old := runs[rep.Run.Run]; old != nil {
 		rs.total -= old.Bytes
 	}
+	for _, f := range rs.streamFiles(worker, rep.Run.Run) {
+		if fi, err := os.Stat(f); err == nil {
+			size += fi.Size()
+		}
+	}
 	info := &RunInfo{Worker: worker, Run: rep.Run.Run, Started: rep.Run.Started, Finished: rep.Run.Finished,
 		Result: RunResult(&rep.Run), Lanes: []int{}, Bytes: size}
 	for _, l := range rep.Run.Lanes {
@@ -165,9 +176,13 @@ func (rs *runStore) add(worker string, rep *RunReport, size int64) {
 	rs.total += size
 }
 
-// drop forgets a run and deletes its file. rs.mu is held.
+// drop forgets a run and deletes its files (its report and streamed
+// logs). rs.mu is held.
 func (rs *runStore) drop(info *RunInfo) {
 	os.Remove(rs.path(info.Worker, info.Run))
+	for _, f := range rs.streamFiles(info.Worker, info.Run) {
+		os.Remove(f)
+	}
 	delete(rs.index[info.Worker], info.Run)
 	if len(rs.index[info.Worker]) == 0 {
 		delete(rs.index, info.Worker)
@@ -195,6 +210,18 @@ func (rs *runStore) prune() {
 	}
 	sort.Slice(all, func(a, b int) bool { return all[a].ended().Before(all[b].ended()) })
 	cutoff := rs.now().Add(-rs.retain)
+	// Streamed logs of a run that never arrived (it never ended, or its
+	// worker left) go by age.
+	if rs.retain > 0 {
+		logs, _ := filepath.Glob(filepath.Join(rs.dir, "*", "*.lane.*.log"))
+		for _, f := range logs {
+			fi, err := os.Stat(f)
+			run, _, _ := strings.Cut(filepath.Base(f), ".lane.")
+			if err == nil && fi.ModTime().Before(cutoff) && rs.index[filepath.Base(filepath.Dir(f))][run] == nil {
+				os.Remove(f)
+			}
+		}
+	}
 	for _, info := range all {
 		if (rs.retain > 0 && info.ended().Before(cutoff)) || (rs.maxBytes > 0 && rs.total > rs.maxBytes) {
 			rs.drop(info)

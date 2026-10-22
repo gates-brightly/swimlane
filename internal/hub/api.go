@@ -22,7 +22,7 @@ import (
 //	GET /api/enrollments/{id}/runs                         its kept runs, newest first (?before=RUN&limit=N; next: the RUN for the page after)
 //	GET /api/enrollments/{id}/runs/{run}                   a run's record and a summary of each lane's round in it
 //	GET /api/enrollments/{id}/runs/{run}/jobs/{lane}       user: a lane's round in it (stages, steps, output under hub.logs: stream)
-//	GET /api/enrollments/{id}/runs/{run}/jobs/{lane}/log   user: its log, as text (Range honored), when it's on the hub
+//	GET /api/enrollments/{id}/runs/{run}/jobs/{lane}/log   user: its log, as text (Range honored): streamed (hub.logs: stream, as it runs) or asked for
 //	GET /api/events                                        server-sent events (events.go)
 
 // APISchema identifies the read API's documents.
@@ -213,11 +213,17 @@ func (s *Server) jobLogAPI(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if f, fi, ok := s.streamedLog(r.PathValue("id"), r.PathValue("run"), n); ok {
+		defer f.Close()
+		http.ServeContent(w, r, "", fi.ModTime(), f)
+		return
+	}
 	data, at, ok := s.logs.get(logKey(r.PathValue("id"), r.PathValue("run"), n))
 	if !ok {
+		w.Header().Del("Content-Type")
 		http.Error(w, "that log isn't on the hub: ask the worker for it (a log command)", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	http.ServeContent(w, r, "", at, bytes.NewReader(data))
 }

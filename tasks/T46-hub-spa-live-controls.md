@@ -12,7 +12,9 @@ gives the app the session's CSRF token.
 
 **Do:**
 - A running job's log appends and follows (pauses when scrolled up, with
-  a "jump to end"), from T43's stream and its `log` events; a run or job
+  a "jump to end"), from the streamed log (`internal/hub/stream.go`,
+  hub.logs: stream) and its `log` events (`bytes`, `final`); a running
+  lane on the Lanes page links to it; a run or job
   page open while its run arrives updates in place.
 - Controls in the app, shown only where `Can(kind)` allows today: pause,
   unpause, interrupt, run now (pinned to the script hash), trash, drain,
