@@ -6,25 +6,27 @@ import (
 	"encoding/hex"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
 // The hub's app: a single page (web/index.html) and its ES modules, CSS
 // and the vendored Preact and htm (web/vendor), embedded in the binary,
 // with no build step. It reads the read API (api.go) and the event stream
-// (events.go); the server renders nothing of a worker's into it. Any path
-// that isn't the API, an asset or one of the classic pages gets
-// index.html, and the app routes it in the browser:
+// (events.go), and sends commands (commands.go); the server renders
+// nothing of a worker's into it. Any path that isn't the API, an asset or
+// /login gets index.html, and the app routes it in the browser:
 //
 //	/                                  every enrollment
 //	/approvals                         every guard waiting for an answer
 //	/e/{id}/runs                       an enrollment's runs
 //	/e/{id}/runs/{run}                 a run: its lanes as a graph
 //	/e/{id}/runs/{run}/jobs/{lane}     a job: its stages, steps and output
-//	/e/{id}/lanes, /e/{id}/queue       its lanes and queue now
+//	/e/{id}/lanes, /e/{id}/queue       its lanes (with their controls) and queue now
+//	/e/{id}/questions/{req}            a guard waiting for an answer: answer it
 //
-// The classic pages (pages.go) stay at /classic and /w/{id} until the app
-// sends commands too.
+// /w/{id}, where a worker's page was, redirects to its lanes. Logging in
+// (/login, pages.go) is the one server-rendered page.
 //
 // Every response carries a strict Content-Security-Policy: scripts,
 // styles and connections from the hub itself only, no inline script or
@@ -89,6 +91,9 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such API: see swim hub --help", http.StatusNotFound)
+	})
+	mux.HandleFunc("GET /w/{id}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/e/"+url.PathEscape(r.PathValue("id"))+"/lanes", http.StatusMovedPermanently)
 	})
 	mux.HandleFunc("GET /", s.app)
 }

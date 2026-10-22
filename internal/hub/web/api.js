@@ -19,6 +19,41 @@ export async function post(path, csrf, form = {}) {
   return fetch(path, { method: 'POST', body, credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf } });
 }
 
+// getText fetches text, from byte `from` on when it's set: {status, text}.
+export async function getText(path, from = 0) {
+  try {
+    const headers = from > 0 ? { Range: 'bytes=' + from + '-' } : {};
+    const r = await fetch(path, { headers, credentials: 'same-origin' });
+    return { status: r.status, text: r.ok ? await r.text() : '' };
+  } catch (e) {
+    return { status: 0, text: '' };
+  }
+}
+
+// send sends worker id a command as the logged-in user: {ok, command} or
+// {ok: false, error}.
+export async function send(id, cmd) {
+  try {
+    const r = await fetch('/api/workers/' + encodeURIComponent(id) + '/commands', {
+      method: 'POST', credentials: 'same-origin', body: JSON.stringify(cmd),
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (state.me && state.me.csrf) || '' },
+    });
+    const text = await r.text();
+    if (!r.ok) return { ok: false, error: text.trim() || r.statusText };
+    return { ok: true, command: JSON.parse(text) };
+  } catch (e) {
+    return { ok: false, error: 'the hub is unreachable' };
+  }
+}
+
+// onLog calls f with each log event ({enrollment, run, lane, bytes,
+// final}); it returns the function that stops it.
+const logListeners = new Set();
+export function onLog(f) {
+  logListeners.add(f);
+  return () => logListeners.delete(f);
+}
+
 // The store: who's logged in, every enrollment and namespace, the event
 // stream's state, and a counter per enrollment that ticks when a run
 // arrives (views keyed on it fetch again).
@@ -29,6 +64,7 @@ const state = {
   error: '',
   live: 'connecting', // connecting | live | offline
   runs: {}, // enrollment id -> runs seen arrive
+  commands: {}, // enrollment id -> commands sent or acknowledged
 };
 const subs = new Set();
 function changed() {
@@ -92,6 +128,15 @@ function connect() {
     }
     state.enrollments = list.map((e, j) => (j === i ? v : e));
     changed();
+  });
+  source.addEventListener('command', (ev) => {
+    const c = JSON.parse(ev.data);
+    state.commands = { ...state.commands, [c.enrollment]: (state.commands[c.enrollment] || 0) + 1 };
+    changed();
+  });
+  source.addEventListener('log', (ev) => {
+    const l = JSON.parse(ev.data);
+    for (const f of logListeners) f(l);
   });
   source.addEventListener('run', (ev) => {
     const r = JSON.parse(ev.data);

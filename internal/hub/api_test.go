@@ -221,7 +221,10 @@ func TestEvents(t *testing.T) {
 		t.Errorf("run: %s %s", k, d)
 	}
 	v, _ := NewUser(srv.URL, vic, nil)
-	v.Send(worker.ID, Command{Kind: KindLog, Lane: 1, Pin: Pin{Run: "r-1"}})
+	sent, _ := v.Send(worker.ID, Command{Kind: KindLog, Lane: 1, Pin: Pin{Run: "r-1"}})
+	if k, d := mine.next(t); k != "command" || d != `{"enrollment":"`+worker.ID+`","cid":"`+sent.CID+`"}` {
+		t.Errorf("command: %s %s", k, d)
+	}
 	worker.UploadLog("r-1", 1, []byte("abc\n"))
 	if k, d := mine.next(t); k != "log" || d != `{"enrollment":"`+worker.ID+`","run":"r-1","lane":1,"bytes":4}` {
 		t.Errorf("log: %s %s", k, d)
@@ -286,4 +289,37 @@ func TestSlowEventClientDropped(t *testing.T) {
 		t.Errorf("the slow client got %d events (want %d, then closed); %d clients left", n, eventBuffer, e.clients())
 	}
 	e.unsubscribe(slow) // after a drop: no double close
+}
+
+func TestCommandsAPI(t *testing.T) {
+	s, srv, worker, alice, vic := commandHub(t)
+	worker.Report(Snapshot{Worker: Worker{Name: "billing", Host: "box", Root: "/r"}, Activity: "idle"})
+	u, _ := NewUser(srv.URL, alice, nil)
+	first, _ := u.Send(worker.ID, Command{Kind: KindDrain})
+	second, _ := u.Send(worker.ID, Command{Kind: KindInterrupt, Lane: 2, Pin: Pin{Run: "r-1"}})
+	if err := worker.Ack(first.CID, OutcomeRefused, "drain isn't in headless.allow"); err != nil {
+		t.Fatal(err)
+	}
+	api := srv.URL + "/api/enrollments/" + worker.ID + "/commands"
+	if code, _ := call(t, api, ""); code != 401 {
+		t.Errorf("anonymous: %d", code)
+	}
+	var got struct{ Commands []CommandView }
+	_, body := call(t, api, vic)
+	json.Unmarshal([]byte(body), &got)
+	if len(got.Commands) != 2 || got.Commands[0].CID != second.CID || got.Commands[0].State != "sent" ||
+		got.Commands[1].State != OutcomeRefused || got.Commands[1].Detail != "drain isn't in headless.allow" {
+		t.Errorf("commands: %s", body)
+	}
+	for i := 0; i < RecentCommands+5; i++ {
+		u.Send(worker.ID, Command{Kind: KindDrain})
+	}
+	json.Unmarshal([]byte(func() string { _, b := call(t, api, vic); return b }()), &got)
+	if len(got.Commands) != RecentCommands {
+		t.Errorf("%d commands listed, want %d", len(got.Commands), RecentCommands)
+	}
+	if code, _ := call(t, srv.URL+"/api/enrollments/nope/commands", vic); code != 404 {
+		t.Errorf("no such enrollment: %d", code)
+	}
+	_ = s
 }

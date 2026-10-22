@@ -14,6 +14,7 @@ import (
 //	snapshot   a worker reported: its View, as GET /api/enrollments/{id} gives it
 //	run        a worker sent a finished run: its RunInfo
 //	log        a log reached the hub, or grew: {enrollment, run, lane, bytes, final}
+//	command    a command was sent or acknowledged: {enrollment, cid}
 //
 // ?enrollment=ID keeps one worker's. A client that falls behind is
 // dropped rather than slowing a report down: it reconnects (the stream

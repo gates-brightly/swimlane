@@ -23,7 +23,7 @@ import (
 func approveHub(ref, keyPath, url, token string, decline bool) error {
 	worker, qid, ok := strings.Cut(ref, "/")
 	if !ok || worker == "" || qid == "" {
-		return usagef("usage: swim approve --hub WORKER/QUESTION [--decline] [--key K] [--url URL] [--token T]   (both are on the worker's hub page)")
+		return usagef("usage: swim approve --hub WORKER/QUESTION [--decline] [--key K] [--url URL] [--token T]   (both are in the hub's Approvals inbox)")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -83,7 +83,7 @@ func approveHub(ref, keyPath, url, token string, decline bool) error {
 		return err
 	}
 	fmt.Printf("sent: %s %s's %s, signed with %s (command %s, seq %d)\n", decision, fmt.Sprintf("swim %d", p.Lane), p.Flag, keyComment(key.Public), cmd.CID, cmd.Seq)
-	fmt.Printf("the worker checks it against its lookup.yml; its outcome shows on %s/w/%s\n", strings.TrimRight(url, "/"), w.ID)
+	fmt.Printf("the worker checks it against its lookup.yml; its outcome shows on %s/e/%s/lanes\n", strings.TrimRight(url, "/"), w.ID)
 	return nil
 }
 

@@ -181,7 +181,7 @@ func (a *hubAsk) take(cmd hub.Command, q approval.HubQuestion, lk *lookup.Lookup
 		return approval.Response{Dry: true, By: user, Why: "declined through the hub by " + user}, true, hub.OutcomeDone, "declined " + what
 	}
 	if signedOnly != "" {
-		return refuse("only a signed answer approves " + q.Flag + " here (" + signedOnly + "): swim approve --hub, or Sign an answer on the page")
+		return refuse("only a signed answer approves " + q.Flag + " here (" + signedOnly + "): swim approve --hub, or a signed answer in the hub's inbox")
 	}
 	return approval.Response{Approved: true, By: user, Via: "hub button by " + user, Hub: approval.HubButton},
 		true, hub.OutcomeDone, "approved " + what + " (button, unsigned)"

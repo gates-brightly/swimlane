@@ -59,20 +59,13 @@ func TestHubFlow(t *testing.T) {
 	if got.Schema != APISchema || len(got.Workers) != 1 || got.Workers[0].Activity != "running q-1" || got.Workers[0].Stale {
 		t.Fatalf("workers: %+v", got)
 	}
-	// Pages: escaped, with the live tail.
-	page := get(t, srv.URL+"/classic")
-	for _, want := range []string{"billing", "/srv/billing", "running q-1", "swim 1 running", "cut over &lt;api&gt;", "1 failed",
-		"… migrating billing (7/28)", `<progress class="bar" max="100" value="25">`, "9m ago",
-		`<span class="pill bad" title="approved by swim run -y: DEPLOY SWAP ">-y</span>`, `<b class="bad">swim watch -y</b>`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("dashboard missing %q", want)
-		}
-	}
-	detail := get(t, srv.URL+"/w/"+id)
-	for _, want := range []string{"RUNNING  deploy (in progress)", "| step 3/5", "q-1", "queue-run", "(exit 1)",
-		"approved by swim run -y, no one asked: DEPLOY, SWAP", "flag set: MIGRATE", "swim watch -y: approves every guard in every batch"} {
+	// One worker: the live tail, the queue, events, and every approval.
+	detail := get(t, srv.URL+"/api/enrollments/"+id)
+	for _, want := range []string{`"  RUNNING  deploy (in progress)"`, `"        | step 3/5"`, `"id":"q-1"`, "queue-run", `"exit":1`,
+		`"auto_approved":["DEPLOY","SWAP"]`, `"auto_via":"swim run -y"`, `"flag_approved":["MIGRATE"]`, `"auto_approve":"swim watch -y"`,
+		`"round":"cut over \u003capi\u003e"`} {
 		if !strings.Contains(detail, want) {
-			t.Errorf("worker page missing %q", want)
+			t.Errorf("enrollment missing %s:\n%s", want, detail)
 		}
 	}
 
@@ -154,9 +147,9 @@ func TestScreenRows(t *testing.T) {
 	}
 }
 
-// A hostile worker's report: its pages escape HTML (html/template) and the
-// hub drops escape sequences, controls and bidi overrides on the way in,
-// from the pages and the JSON alike.
+// A hostile worker's report: the hub drops escape sequences, controls and
+// bidi overrides on the way in, and its JSON escapes HTML (the app renders
+// text as text either way: web_test.go).
 func TestHubUntrustedText(t *testing.T) {
 	s := New("sekret")
 	srv := httptest.NewServer(s.Handler())
@@ -173,7 +166,7 @@ func TestHubUntrustedText(t *testing.T) {
 	if err := c.Report(snap); err != nil {
 		t.Fatal(err)
 	}
-	for _, page := range []string{get(t, srv.URL+"/classic"), get(t, srv.URL+"/w/"+id), get(t, srv.URL+"/api/enrollments")} {
+	for _, page := range []string{get(t, srv.URL+"/api/enrollments/"+id), get(t, srv.URL+"/api/enrollments")} {
 		if strings.Contains(page, "<script>") || strings.Contains(page, "<b>") {
 			t.Errorf("unescaped HTML:\n%s", page)
 		}
@@ -183,7 +176,7 @@ func TestHubUntrustedText(t *testing.T) {
 			}
 		}
 	}
-	if page := get(t, srv.URL+"/w/"+id); !strings.Contains(page, "&lt;script&gt;alert(1)&lt;/script&gt;gnp.exe") {
+	if page := get(t, srv.URL+"/api/enrollments/"+id); !strings.Contains(page, `\u003cscript\u003ealert(1)\u003c/script\u003egnp.exe`) {
 		t.Errorf("the text itself should still show, escaped:\n%s", page)
 	}
 }

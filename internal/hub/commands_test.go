@@ -212,18 +212,15 @@ func TestLoginAndCSRF(t *testing.T) {
 	if strings.Contains(ck, "Secure") {
 		t.Errorf("Secure on a plain-HTTP hub: %s", ck)
 	}
-	// The page shows the controls, with the CSRF token in each form.
-	snap := Snapshot{Worker: Worker{Name: "billing", Host: "box", Root: "/r"}, Activity: "running",
+	// The app reads who's logged in, and the session's CSRF token.
+	worker.Report(Snapshot{Worker: Worker{Name: "billing", Host: "box", Root: "/r"}, Activity: "running",
 		Headless: &HeadlessInfo{Mode: "systemd", Allow: []string{"interrupt", "drain", "log"}},
-		Lanes:    []Lane{{Lane: 1, State: "running", Run: "r-9"}, {Lane: 2, State: "idle", Script: strings.Repeat("c", 64), Manifest: strings.Repeat("d", 64)}}}
-	worker.Report(snap)
-	page := getWith(t, br, srv.URL+"/w/"+worker.ID)
-	csrf := csrfOf(page)
-	if csrf == "" || !strings.Contains(page, "signed in as <b>alice</b>") || !strings.Contains(page, ">Interrupt<") || !strings.Contains(page, "Stop the worker after this batch") {
-		t.Fatalf("worker page:\n%s", page)
-	}
-	if strings.Contains(page, "Run now") {
-		t.Error("Run now shows though the worker doesn't allow run")
+		Lanes:    []Lane{{Lane: 1, State: "running", Run: "r-9"}}})
+	var me struct{ User, Role, CSRF string }
+	json.Unmarshal([]byte(getWith(t, br, srv.URL+"/api/me")), &me)
+	csrf := me.CSRF
+	if me.User != "alice" || me.Role != RoleOperator || csrf == "" {
+		t.Fatalf("/api/me: %+v", me)
 	}
 	// Without the token, or with another, a form POST is refused.
 	for _, bad := range []string{"", "0000"} {
@@ -236,8 +233,8 @@ func TestLoginAndCSRF(t *testing.T) {
 		}
 	}
 	resp = post("/api/workers/"+worker.ID+"/commands", url.Values{"kind": {"interrupt"}, "lane": {"1"}, "run": {"r-9"}, "csrf": {csrf}})
-	if resp.StatusCode != http.StatusSeeOther || len(s.Commands(worker.ID)) != 1 {
-		t.Fatalf("with the token: %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/e/"+worker.ID+"/lanes" || len(s.Commands(worker.ID)) != 1 {
+		t.Fatalf("with the token: %d %s", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	if c := s.Commands(worker.ID)[0]; c.Kind != KindInterrupt || c.By != "alice" || c.Pin.Run != "r-9" {
 		t.Errorf("command: %+v", c)
@@ -248,10 +245,16 @@ func TestLoginAndCSRF(t *testing.T) {
 	if resp, _ := br.Do(req); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("cookie JSON without X-CSRF-Token: %d", resp.StatusCode)
 	}
+	req, _ = http.NewRequest("POST", srv.URL+"/api/workers/"+worker.ID+"/commands", strings.NewReader(`{"kind":"drain"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-Token", csrf)
+	if resp, _ := br.Do(req); resp.StatusCode != http.StatusCreated {
+		t.Errorf("cookie JSON with X-CSRF-Token: %d", resp.StatusCode)
+	}
 	// Logged out (or never in): no controls, and a POST is refused.
 	post("/logout", url.Values{"csrf": {csrf}})
-	if page := getWith(t, br, srv.URL+"/w/"+worker.ID); strings.Contains(page, ">Interrupt<") || !strings.Contains(page, "log in") {
-		t.Error("controls after logout")
+	if body := getWith(t, br, srv.URL+"/api/me"); !strings.Contains(body, `"user":""`) {
+		t.Errorf("/api/me after logout: %s", body)
 	}
 	if resp := post("/api/workers/"+worker.ID+"/commands", url.Values{"kind": {"drain"}, "csrf": {csrf}}); resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("after logout: %d", resp.StatusCode)
@@ -281,16 +284,6 @@ func getWith(t *testing.T, c *http.Client, u string) string {
 	return b.String()
 }
 
-// csrfOf is the CSRF token in a page's first form.
-func csrfOf(s string) string {
-	i := strings.Index(s, `name="csrf" value="`)
-	if i < 0 {
-		return ""
-	}
-	s = s[i+len(`name="csrf" value="`):]
-	return s[:strings.IndexByte(s, '"')]
-}
-
 // Logs: only one asked for, at most 8 MiB, made safe; read by users only.
 func TestLogUpload(t *testing.T) {
 	_, srv, worker, _, vic := commandHub(t)
@@ -316,10 +309,7 @@ func TestLogUpload(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("anonymous read: %d", resp.StatusCode)
 	}
-	resp, _ = http.Get(srv.URL + "/w/" + worker.ID + "/logs/r-1/2")
-	if resp.Request.URL.Path != "/login" {
-		t.Errorf("the log page without a login went to %s", resp.Request.URL.Path)
-	}
+
 }
 
 func TestLogCacheBounds(t *testing.T) {

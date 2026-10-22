@@ -1168,12 +1168,12 @@ swim watch --headless --uninstall
   with no approvals of its own. A log is masked again before it goes.
   Every command, refused or not, lands in `.swim.log` and the chain.
 - **Guards answered through the hub:** a guard nothing else approves (no
-  signed approval, no flag the batch approves, no `-y`) shows on the
-  worker's hub page as a question, and the lane waits up to
+  signed approval, no flag the batch approves, no `-y`) shows in the
+  hub's Approvals inbox as a question, and the lane waits up to
   `headless.answer_timeout` (30m) for an answer:
   - **Signed** (the default): `swim approve --hub WORKER/QUESTION`, or
-    *Sign an answer* on the page (`ssh-keygen -Y sign` the statement it
-    shows, paste the signature). The statement names the question, the
+    *Answer* in the inbox (`ssh-keygen -Y sign` the statement it shows,
+    paste your key and the signature). The statement names the question, the
     worker, lane, job, run, script, manifest, evidence, guard, decision
     and expiry. The worker builds it from its own facts and checks the
     signature against `lookup.yml`, counting signers until the guard's
@@ -1308,9 +1308,13 @@ swim hub user add alice --role operator              # a person: token shown onc
   waiting for an answer on every enrollment update as reports arrive.
   Workers that stop reporting show as stale. It's embedded in the binary
   (no build step) and served under a strict Content-Security-Policy.
-- **Classic pages:** the server-rendered dashboard at `/classic` and a
-  page per worker at `/w/ID`, with the controls for headless workers,
-  until the app has them too.
+- **Controls:** a headless worker's Lanes page has, for a logged-in user
+  and as its `swim.yml` allows, **Pause**/**Unpause**, **Interrupt**,
+  **Run now** (pinned to the script shown), **Trash**, **Fetch log** and
+  **Stop after this batch**, the destructive ones behind a confirmation,
+  and a Commands panel with each one's outcome as the worker
+  acknowledges it. A running lane links to its log, which follows the
+  end as it grows (`hub: {logs: stream}`).
 - **Live screen:** on a terminal, `swim hub` lists every worker with the
   selected one's running lanes and queue. Enter opens a worker to show each
   lane's message and log tail, and Esc comes back. `--no-tui` turns it off.
@@ -1334,13 +1338,12 @@ swim hub user add alice --role operator              # a person: token shown onc
   prints a token, once; the hub keeps its hash. The user logs in at
   `/login` for a 12-hour session (`HttpOnly`, `SameSite=Strict`, `Secure`
   under TLS, a CSRF token on every form), or sends the token as a bearer
-  token. On a headless worker's page they get controls: **Interrupt**,
-  **Stop after this batch**, **Run now** (operator), **Log** (viewer
-  too), and for a guard waiting for an answer **Sign an answer** (viewer
-  too: the signature is what counts), **Approve** (operator, where the
-  worker takes button answers) and **Decline** (operator). The page shows each command's outcome as the worker acknowledges
-  it. Uploaded logs stay in the hub's memory only (8 MiB a log, 64 MiB in
-  all, 15 minutes). The admin token manages users and sends no command.
+  token. A viewer may fetch logs and send signed answers (the signature
+  is what counts); an operator may send every command, and answer with
+  **Approve** (where the worker takes button answers) or **Decline**.
+  Logs fetched on request stay in the hub's memory only (8 MiB a log,
+  64 MiB in all, 15 minutes). The admin token manages users and sends no
+  command.
 - **TLS:** `--tls-cert`/`--tls-key` serve https (TLS 1.2+), reloading the
   certificate when its files change. Without them the hub refuses any
   non-loopback `--addr` (exit 2) unless you pass `--insecure`; behind a TLS

@@ -11,6 +11,7 @@ export function route(path) {
     if (parts.length === 2) return { name: 'runs', id };
     if (parts.length === 3 && ['runs', 'lanes', 'queue'].includes(parts[2])) return { name: parts[2], id };
     if (parts[2] === 'runs' && parts.length === 4) return { name: 'run', id, run: parts[3] };
+    if (parts[2] === 'questions' && parts.length === 4) return { name: 'question', id, req: parts[3] };
     if (parts[2] === 'runs' && parts.length === 6 && parts[4] === 'jobs' && /^\d+$/.test(parts[5])) {
       return { name: 'job', id, run: parts[3], lane: Number(parts[5]) };
     }
@@ -65,6 +66,34 @@ export function ago(t, now = Date.now()) {
   if (d < 3600) return Math.floor(d / 60) + 'm ago';
   if (d < 86400) return Math.floor(d / 3600) + 'h ago';
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// until writes how long until t: in 25m, in 1h05m, expired.
+export function until(t, now = Date.now()) {
+  const ms = Date.parse(t);
+  if (!isFinite(ms)) return '';
+  const d = (ms - now) / 1000;
+  if (d <= 0) return 'expired';
+  if (d < 60) return 'in ' + Math.ceil(d) + 's';
+  const m = Math.floor(d / 60);
+  return m < 60 ? 'in ' + m + 'm' : 'in ' + Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0') + 'm';
+}
+
+// utf8Length is how many bytes s is in UTF-8 (a log's offset).
+export function utf8Length(s) {
+  return new TextEncoder().encode(s).length;
+}
+
+// can reports whether the logged-in user me may send command kind to
+// enrollment e and e takes it (as the worker's swim.yml headless.allow
+// says; the worker checks again): a log, or an answer, takes a viewer
+// (the worker counts an answer's signature; a button answer still needs
+// an operator, which the hub checks); everything else an operator.
+export function can(me, e, kind) {
+  if (!me || !me.user || !e || !e.headless) return false;
+  if (kind !== 'log' && kind !== 'answer' && me.role !== 'operator') return false;
+  if (kind === 'log' && e.headless.logs_off) return false;
+  return (e.headless.allow || []).includes(kind);
 }
 
 // layoutGraph places a run's lanes in columns by dependency depth: a lane

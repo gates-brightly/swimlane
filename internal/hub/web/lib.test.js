@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ago, api, between, byNamespace, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
+  can, until, utf8Length, ago, api, between, byNamespace, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
   lineMatches, matchEnrollment, route, stateClass, steps,
 } from './lib.js';
 
@@ -17,6 +17,7 @@ test('route', () => {
   assert.deepEqual(route('/e/abc/runs/r-1'), { name: 'run', id: 'abc', run: 'r-1' });
   assert.deepEqual(route('/e/abc/runs/r-1/jobs/3'), { name: 'job', id: 'abc', run: 'r-1', lane: 3 });
   assert.deepEqual(route('/e/a%2Fb/runs'), { name: 'runs', id: 'a/b' });
+  assert.deepEqual(route('/e/abc/questions/q1'), { name: 'question', id: 'abc', req: 'q1' });
   for (const p of ['/e', '/e/abc/runs/r-1/jobs/x', '/e/abc/nope', '/nope']) assert.equal(route(p).name, 'notfound', p);
 });
 
@@ -45,6 +46,11 @@ test('durations and times', () => {
   assert.equal(ago('2026-10-22T11:55:00Z', now), '5m ago');
   assert.equal(ago('2026-10-22T09:00:00Z', now), '3h ago');
   assert.equal(ago('', now), '');
+  assert.equal(until('2026-10-22T12:25:00Z', now), 'in 25m');
+  assert.equal(until('2026-10-22T13:05:30Z', now), 'in 1h05m');
+  assert.equal(until('2026-10-22T12:00:20Z', now), 'in 20s');
+  assert.equal(until('2026-10-22T11:00:00Z', now), 'expired');
+  assert.equal(utf8Length('aé…'), 6);
 });
 
 test('layoutGraph places lanes by dependency depth', () => {
@@ -91,4 +97,18 @@ test('enrollments', () => {
   assert.equal(matchEnrollment({ name: 'billing', host: 'mac' }, 'MAC'), true);
   assert.equal(matchEnrollment({ name: 'billing', host: 'mac' }, 'spiff'), false);
   assert.equal(matchEnrollment({ name: 'billing' }, '  '), true);
+});
+
+test('can: the worker takes it, and the user may send it', () => {
+  const e = { headless: { allow: ['answer', 'interrupt', 'log', 'run'] } };
+  const op = { user: 'a', role: 'operator' }, viewer = { user: 'v', role: 'viewer' };
+  assert.equal(can(op, e, 'interrupt'), true);
+  assert.equal(can(op, e, 'trash'), false, 'not in headless.allow');
+  assert.equal(can(viewer, e, 'interrupt'), false, 'a viewer');
+  assert.equal(can(viewer, e, 'log'), true);
+  assert.equal(can(viewer, e, 'answer'), true);
+  assert.equal(can(op, { headless: { allow: ['log'], logs_off: true } }, 'log'), false, 'logs off');
+  assert.equal(can(op, {}, 'log'), false, 'not headless');
+  assert.equal(can({ user: '' }, e, 'log'), false, 'nobody');
+  assert.equal(can(null, e, 'log'), false);
 });

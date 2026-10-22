@@ -3,10 +3,10 @@
 // API and event stream (api.js) and renders everything through htm, which
 // escapes text: nothing a worker sends is ever parsed as HTML.
 import { html, render, useEffect, useMemo, useRef, useState } from './vendor/preact-htm.module.js';
-import { get, post, start, useFetch, useStore } from './api.js';
+import { get, getText, onLog, post, send, start, useFetch, useStore } from './api.js';
 import {
-  ago, api, between, byNamespace, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
-  lineMatches, matchEnrollment, route, stateClass, steps,
+  ago, api, between, byNamespace, can, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
+  lineMatches, matchEnrollment, route, stateClass, steps, until, utf8Length,
 } from './lib.js';
 
 // ---- navigation ------------------------------------------------------
@@ -28,14 +28,14 @@ function usePath() {
   }, []);
   return p;
 }
-// The app's own links navigate in place; the classic pages, login and
-// the API load as pages.
+// The app's own links navigate in place; login, the API and old /w/
+// links (a redirect) load as pages.
 document.addEventListener('click', (e) => {
   const a = e.target.closest && e.target.closest('a');
   if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   if (a.target || a.hasAttribute('download') || a.origin !== location.origin) return;
   const p = a.pathname;
-  if (p.startsWith('/api/') || p.startsWith('/classic') || p.startsWith('/w/') || p === '/login' || p.startsWith('/assets/')) return;
+  if (p.startsWith('/api/') || p.startsWith('/w/') || p === '/login' || p.startsWith('/assets/')) return;
   e.preventDefault();
   navigate(p + a.search + a.hash);
 });
@@ -81,6 +81,45 @@ function when(t) {
 }
 
 function useTitle(t) { useEffect(() => { document.title = t ? t + ' · swim hub' : 'swim hub'; }, [t]); }
+
+// Confirm asks before a command: c is {title, body, label, danger, run}.
+function Confirm({ c, close }) {
+  const ok = useRef(null);
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') close(); };
+    addEventListener('keydown', k);
+    if (ok.current) ok.current.focus();
+    return () => removeEventListener('keydown', k);
+  }, []);
+  return html`<div class="modal-bg" onClick=${(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-t">
+      <h2 id="modal-t">${c.title}</h2>
+      <div class="modal-b">${c.body}</div>
+      <div class="modal-f"><button class="btn" onClick=${close}>Cancel</button>
+        <button ref=${ok} class="btn ${c.danger ? 'danger' : 'primary'}" onClick=${() => { close(); c.run(); }}>${c.label}</button></div>
+    </div></div>`;
+}
+
+// useCommand sends enrollment e commands, asking first when there's a
+// confirm, and says how the sending went: {run, dialog, note}.
+function useCommand(e) {
+  const [ask, setAsk] = useState(null);
+  const [note, setNote] = useState(null);
+  const go = async (cmd, what, link) => {
+    setNote({ cls: 'wait', text: what + ': sending…' });
+    const r = await send(e.id, cmd);
+    setNote(r.ok
+      ? { cls: 'ok', text: what + ': sent. The worker takes it at its next poll; its outcome shows under Commands.', link }
+      : { cls: 'bad', text: what + ': ' + r.error });
+  };
+  return {
+    run: (cmd, what, confirm, link) => (confirm ? setAsk({ ...confirm, run: () => go(cmd, what, link) }) : go(cmd, what, link)),
+    dialog: ask && html`<${Confirm} c=${ask} close=${() => setAsk(null)}/>`,
+    note: note && html`<div class="note ${note.cls}" role="status">${note.text}${note.link ? html` <a href=${note.link.href}>${note.link.text}</a>` : ''}</div>`,
+  };
+}
+
+function short(h) { return String(h || '').slice(0, 8); }
 
 // ---- top bar ----------------------------------------------------------
 
@@ -303,8 +342,9 @@ function Step({ s, open, query }) {
 function Job({ r, store }) {
   const e = useEnrollment(store, r.id);
   useTitle('swim ' + r.lane + ' · ' + r.run);
-  const run = useFetch(api('enrollments', r.id, 'runs', r.run));
-  const job = useFetch(api('enrollments', r.id, 'runs', r.run, 'jobs', r.lane));
+  const arrived = store.runs[r.id] || 0; // a run arriving may be this one
+  const run = useFetch(api('enrollments', r.id, 'runs', r.run), [arrived]);
+  const job = useFetch(api('enrollments', r.id, 'runs', r.run, 'jobs', r.lane), [arrived]);
   const [query, setQuery] = useState('');
   const [all, setAll] = useState(null); // null: failed steps and the linked line open
   const target = location.hash.startsWith('#L') ? Number(location.hash.slice(2)) : 0;
@@ -319,6 +359,9 @@ function Job({ r, store }) {
 
   const jobs = run.data ? run.data.jobs : [];
   const d = job.data && job.data.job;
+  if (!job.loading && !run.loading && !d && job.status === 404 && run.status === 404) {
+    return html`<${Crumbs} e=${e}><span>/</span><span>${r.run}</span><span>/</span><span>swim ${r.lane}</span></${Crumbs}><${LiveLog} r=${r} store=${store}/>`;
+  }
   let hits = 0;
   if (query) for (const g of groups) for (const s of g.items) for (const l of s.lines) if (lineMatches(l.text, query)) hits++;
   const isOpen = (s) => {
@@ -363,14 +406,81 @@ function Job({ r, store }) {
     </div>`;
 }
 
+// LaneControls are the commands a lane takes now, from this user, on
+// this worker (can), each pinned to what the page shows.
+function LaneControls({ e, l, me, cmd }) {
+  const running = l.state === 'running';
+  const lane = 'swim ' + l.lane;
+  const b = [];
+  if (running && l.run && !l.paused && can(me, e, 'pause')) {
+    b.push(html`<button class="btn sm" onClick=${() => cmd.run({ kind: 'pause', lane: l.lane, pin: { run: l.run } }, 'Pause ' + lane)}>Pause</button>`);
+  }
+  if (l.paused && l.run && can(me, e, 'unpause')) {
+    b.push(html`<button class="btn sm" onClick=${() => cmd.run({ kind: 'unpause', lane: l.lane, pin: { run: l.run } }, 'Unpause ' + lane)}>Unpause</button>`);
+  }
+  if (running && l.run && can(me, e, 'interrupt')) {
+    b.push(html`<button class="btn sm danger" onClick=${() => cmd.run({ kind: 'interrupt', lane: l.lane, pin: { run: l.run } }, 'Interrupt ' + lane, {
+      title: 'Interrupt ' + lane + '?', label: 'Interrupt', danger: true,
+      body: html`<p>${l.round || ''}</p><p class="muted">Stops run <code>${l.run}</code> on ${e.name}. The worker refuses it if that run has ended by the time it takes the command.</p>`,
+    })}>Interrupt</button>`);
+  }
+  if (l.run && can(me, e, 'log') && e.logs !== 'stream') {
+    b.push(html`<button class="btn sm" onClick=${() => cmd.run({ kind: 'log', lane: l.lane, pin: { run: l.run } }, 'Fetch the log of ' + lane, null,
+      { href: href('e', e.id, 'runs', l.run, 'jobs', l.lane), text: 'Open it' })}>Fetch log</button>`);
+  }
+  if (l.script_sha256 && !running && can(me, e, 'run')) {
+    b.push(html`<button class="btn sm" onClick=${() => cmd.run({ kind: 'run', lane: l.lane, pin: { sha256: l.script_sha256, manifest: l.manifest_sha256 } }, 'Run ' + lane, {
+      title: 'Run ' + lane + ' now?', label: 'Run now',
+      body: html`<p>${l.round || ''}</p><p class="muted">Queues ${lane}'s script <code>${short(l.script_sha256)}</code> (manifest <code>${short(l.manifest_sha256)}</code>) on ${e.name}, unsigned, by hub:${me.user}, with no approvals of its own: its guards approve only as any unsigned batch's do. If the script has changed, the worker refuses it.</p>`,
+    })}>Run now</button>`);
+  }
+  if (l.trash_job && !running && can(me, e, 'trash')) {
+    b.push(html`<button class="btn sm danger" onClick=${() => cmd.run({ kind: 'trash', lane: l.lane, pin: { job: l.trash_job } }, 'Trash ' + lane, {
+      title: 'Trash ' + lane + '?', label: 'Trash ' + lane, danger: true,
+      body: html`<p>${l.round || ''}</p><p class="muted">job <code>${short(l.trash_job)}</code> · ${l.state}</p>
+        <p class="muted">The worker moves this lane's script and its lane.${l.lane}.yml to <code>.swim/cleaned/</code> and archives its log. Nothing is deleted: <code>swim trash --restore STAMP</code> on the worker puts it back. If the lane holds another job by then, it refuses and nothing moves.</p>`,
+    })}>Trash</button>`);
+  }
+  return b.length ? html`<div class="actions">${b}</div>` : null;
+}
+
+// Commands are an enrollment's recent commands and their outcomes, for a user.
+function Commands({ e, store }) {
+  const res = useFetch(api('enrollments', e.id, 'commands'), [store.commands[e.id] || 0]);
+  if (!res.data) return null;
+  const list = res.data.commands;
+  return html`<div class="panel"><div class="panel-h"><h2>Commands</h2><span class="muted">sent to ${e.name} from the hub</span></div>
+    ${list.length === 0 ? html`<div class="empty">None sent.</div>` : html`<div class="tw"><table>
+      <thead><tr><th>#</th><th>Command</th><th>By</th><th>Sent</th><th>Outcome</th></tr></thead>
+      <tbody>${list.map((c) => html`<tr>
+        <td class="mono">${c.seq}</td>
+        <td>${c.kind}${c.answer ? ' ' + c.answer.decision + (c.answer.sig ? ' (signed)' : '') : ''}${c.lane ? ' swim ' + c.lane : ''}
+          ${c.pin.run ? html` <span class="mono muted">${c.pin.run}</span>` : ''}${c.pin.sha256 ? html` <span class="mono muted">${short(c.pin.sha256)}</span>` : ''}
+          ${c.kind === 'log' && c.state === 'done' ? html` · <a href=${href('e', e.id, 'runs', c.pin.run, 'jobs', c.lane)}>view</a>` : ''}</td>
+        <td>${c.by}</td><td class="nowrap"><${Ago} t=${c.at}/></td>
+        <td><${Pill} state=${c.state.startsWith('expired') ? 'skipped' : c.state === 'sent' ? 'queued' : c.state === 'done' ? 'passed' : 'failed'} label=${c.state}/>
+          ${c.detail ? html`<div class="sub">${c.detail}</div>` : ''}</td></tr>`)}
+      </tbody></table></div>`}</div>`;
+}
+
 function Lanes({ r, store }) {
   const e = useEnrollment(store, r.id);
+  const me = store.me;
+  const cmd = useCommand(e || { id: r.id });
   useTitle(e ? e.name + ' lanes' : '');
   if (store.enrollments === null) return html`<${Loading}/>`;
   if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This enrollment"/>`;
+  const drain = can(me, e, 'drain') && html`<button class="btn sm danger" onClick=${() => cmd.run({ kind: 'drain' }, 'Stop ' + e.name + ' after this batch', {
+    title: 'Stop ' + e.name + ' after this batch?', label: 'Stop after this batch', danger: true,
+    body: html`<p class="muted">The worker finishes the batch it's running, then exits; nothing new starts. Start it again on its machine.</p>`,
+  })}>Stop after this batch</button>`;
   return html`<${Crumbs} e=${e}><span>/</span><span>lanes</span></${Crumbs}>
     <div class="head"><h1>Lanes</h1><${Pill} state=${enrollmentState(e).cls === 'run' ? 'running' : e.activity} label=${e.activity}/>
-      <div class="meta"><span>reported <${Ago} t=${e.at}/></span>${e.headless ? html`<span>headless (${e.headless.mode})</span>` : ''}</div></div>
+      <div class="meta"><span>reported <${Ago} t=${e.at}/></span>${e.headless ? html`<span>headless (${e.headless.mode})</span>` : ''}
+        ${e.logs ? html`<span>logs: ${e.logs}</span>` : ''}</div>
+      <span class="spacer"></span>${drain}</div>
+    ${cmd.note}${cmd.dialog}
+    ${me && me.user && !e.headless ? html`<div class="note">This worker isn't headless (someone is at its terminal), so it takes no commands from the hub.</div>` : ''}
     <div class="panel">${(e.lanes || []).length === 0 ? html`<div class="empty">No lanes in use.</div>` : html`<div class="tw"><table>
       <thead><tr><th class="i"></th><th>Lane</th><th>State</th><th>Step</th><th>Steps</th></tr></thead>
       <tbody>${e.lanes.map((l) => html`<tr>
@@ -380,9 +490,12 @@ function Lanes({ r, store }) {
           ${l.reason ? html`<div class="sub">${l.reason}</div>` : ''}</td>
         <td>${l.step || ''}${l.progress ? html` <progress max="100" value=${pct(l.progress)}></progress> <span class="sub">${l.progress}</span>` : ''}
           ${l.message ? html`<div class="sub">${l.message}</div>` : ''}${l.cells ? html`<div class="sub">${l.cells}</div>` : ''}</td>
-        <td class="nowrap"><span class="ok">${l.pass}</span> / <span class="bad">${l.fail}</span> / <span class="wait">${l.skip}</span></td></tr>
-        ${(l.tail || []).length ? html`<tr class="tail-row"><td colspan="5"><pre class="tail">${l.tail.join('\n')}</pre></td></tr>` : ''}`)}
+        <td class="nowrap"><span class="ok">${l.pass}</span> / <span class="bad">${l.fail}</span> / <span class="wait">${l.skip}</span>
+          ${l.run && e.logs === 'stream' && l.state !== 'waiting' ? html`<div><a href=${href('e', e.id, 'runs', l.run, 'jobs', l.lane)}>${l.state === 'running' ? 'Follow log' : 'Log'}</a></div>` : ''}</td></tr>
+        ${(l.tail || []).length ? html`<tr class="tail-row"><td colspan="5"><pre class="tail">${l.tail.join('\n')}</pre></td></tr>` : ''}
+        ${(() => { const c = LaneControls({ e, l, me, cmd }); return c ? html`<tr class="ctl-row"><td></td><td colspan="4">${c}</td></tr>` : ''; })()}`)}
       </tbody></table></div>`}</div>
+    ${me && me.user ? html`<${Commands} e=${e} store=${store}/>` : ''}
     ${(e.events || []).length > 0 && html`<div class="panel"><div class="panel-h"><h2>Recent events</h2></div><pre class="tail">${e.events.join('\n')}</pre></div>`}`;
 }
 
@@ -416,14 +529,140 @@ function Approvals({ store }) {
   const waiting = store.enrollments.flatMap((e) => (e.pending || []).map((p) => ({ e, p })));
   return html`<div class="head"><h1>Approvals</h1><span class="muted">guards waiting for an answer, on every enrollment</span></div>
     <div class="panel">${waiting.length === 0 ? html`<div class="empty">Nothing is waiting for an answer.</div>` : html`<div class="tw"><table>
-      <thead><tr><th>Enrollment</th><th>Guard</th><th>Lane</th><th>Expires</th><th></th></tr></thead>
+      <thead><tr><th>Enrollment</th><th>Guard</th><th>Lane</th><th>Waits</th><th></th></tr></thead>
       <tbody>${waiting.map(({ e, p }) => html`<tr>
         <td><a href=${href('e', e.id, 'lanes')}>${e.name}</a><div class="sub">${e.host}</div></td>
         <td><span class="mono">${p.flag}</span><div class="sub">${p.desc}</div>${p.need ? html`<div class="sub">needs ${p.need}</div>` : ''}</td>
         <td>swim ${p.lane}${p.cell ? ' · ' + p.cell : ''}</td>
-        <td class="nowrap" title=${p.expires}>${when(p.expires)}</td>
-        <td><a class="btn sm" href=${'/w/' + encodeURIComponent(e.id) + '/answer/' + encodeURIComponent(p.id)}>Answer</a></td></tr>`)}
+        <td class="nowrap" title=${'until ' + when(p.expires) + '; no answer by then is a decline'}>expires ${until(p.expires)}</td>
+        <td><a class="btn sm primary" href=${href('e', e.id, 'questions', p.id)}>Answer</a></td></tr>`)}
       </tbody></table></div>`}</div>`;
+}
+
+// Question answers a guard waiting on a headless worker: by a signature
+// (any user: the signature is what the worker counts), or by a button
+// (an operator, where the worker takes button answers).
+function Question({ r, store }) {
+  const e = useEnrollment(store, r.id);
+  const me = store.me;
+  const [decision, setDecision] = useState('approve');
+  const [key, setKey] = useState('');
+  const [sig, setSig] = useState('');
+  const [sent, setSent] = useState(false);
+  const cmd = useCommand(e || { id: r.id });
+  const q = useFetch(api('enrollments', r.id, 'questions', r.req) + '?decision=' + decision);
+  useTitle('Answer ' + r.req);
+  const waiting = e && (e.pending || []).some((p) => p.id === r.req);
+  const head = html`<${Crumbs} e=${e}><span>/</span><a href="/approvals">approvals</a><span>/</span><span>${r.req}</span></${Crumbs}>`;
+  if (e && !waiting) {
+    return html`${head}<div class="panel"><div class="empty">${sent ? 'Answered: ' : ''}this guard isn't waiting any more (answered, timed out, or withdrawn).
+      <a href=${href('e', e.id, 'lanes')}>Back to the lanes</a></div></div>${cmd.note}`;
+  }
+  if (q.loading && !q.data) return html`${head}<${Loading}/>`;
+  if (!q.data) return html`${head}<${Problem} r=${q} what="This question"/>`;
+  const p = q.data.question;
+  const answer = (dec, signed) => {
+    setSent(true);
+    const c = { kind: 'answer', pin: { request: p.id, evidence: p.evidence_sha256 || '' }, answer: { decision: dec } };
+    if (signed) Object.assign(c.answer, { key: key.trim(), sig: sig.trim() });
+    cmd.run(c, (signed ? 'Signed ' : '') + dec);
+  };
+  const operator = me && me.role === 'operator' && can(me, e, 'answer');
+  return html`${head}
+    <div class="head"><${Icon} state="waiting"/><h1>swim ${p.lane}${p.cell ? ' [' + p.cell + ']' : ''} asks to approve <code>${p.flag}</code></h1></div>
+    ${cmd.note}${cmd.dialog}
+    <div class="panel">
+      <div class="sum">
+        <div><div class="k">Worker</div><div class="v">${e ? e.name : r.id}</div></div>
+        <div><div class="k">Run</div><div class="v mono" title=${p.run}>${p.run || '—'}</div></div>
+        <div><div class="k">Script</div><div class="v mono" title=${p.script_sha256}>${short(p.script_sha256) || '—'}</div></div>
+        <div><div class="k">Evidence</div><div class="v mono" title=${p.evidence_sha256}>${short(p.evidence_sha256) || '—'}</div></div>
+        <div><div class="k">Expires</div><div class="v" title=${when(p.expires)}>${until(p.expires)}</div></div>
+      </div>
+      <div class="panel-b"><p>The lane says: ${p.desc}</p>
+        ${(p.signers || []).length ? html`<p class="muted">Signed so far: ${p.signers.join(', ')}${p.need ? ' · still ' + p.need : ''}</p>` : ''}
+        ${p.evidence ? html`<h2>Evidence: what it will do</h2><pre class="tail">${p.evidence}</pre>` : ''}</div>
+    </div>
+    ${!me || !me.user ? html`<div class="panel"><div class="empty">Answering takes a hub user. <a href="/login">Log in</a></div></div>` : !can(me, e, 'answer') ? html`<div class="note">This worker doesn't take answers from the hub (swim.yml headless.allow).</div>` : html`
+    ${operator ? html`<div class="panel"><div class="panel-h"><h2>Answer with a button</h2><span class="muted">as ${me.user}, an operator</span></div>
+      <div class="panel-b actions">
+        ${!p.signed_only ? html`<button class="btn primary" onClick=${() => answer('approve', false)}>Approve</button>` : html`<span class="muted">Only a signed answer approves this guard.</span>`}
+        <button class="btn danger" onClick=${() => cmd.run({ kind: 'answer', pin: { request: p.id, evidence: p.evidence_sha256 || '' }, answer: { decision: 'decline' } }, 'Decline', {
+          title: 'Decline ' + p.flag + '?', label: 'Decline', danger: true, body: html`<p class="muted">The guarded step runs as a dry run.</p>` })}>Decline</button>
+      </div></div>` : ''}
+    <div class="panel"><div class="panel-h"><h2>Sign your answer</h2>
+      <div class="seg" role="radiogroup" aria-label="Decision">${['approve', 'decline'].map((d) => html`<button role="radio" aria-checked=${decision === d} class=${decision === d ? 'on' : ''} onClick=${() => setDecision(d)}>${d}</button>`)}</div></div>
+      <div class="panel-b">
+        <p class="muted">The worker checks your signature of exactly this statement against its lookup.yml. Run this with your key, then paste your public key and <code>answer.txt.sig</code>. Or from a terminal: <code>${q.data.terminal}</code></p>
+        <pre class="tail">${q.data.command}</pre>
+        <button class="btn sm" onClick=${() => navigator.clipboard && navigator.clipboard.writeText(q.data.command)}>Copy</button>
+        <label class="field">Your public key<textarea rows="2" value=${key} onInput=${(ev) => setKey(ev.target.value)} placeholder="ssh-ed25519 AAAA… you@host (your .pub)"></textarea></label>
+        <label class="field">The signature<textarea rows="7" value=${sig} onInput=${(ev) => setSig(ev.target.value)} placeholder="-----BEGIN SSH SIGNATURE-----"></textarea></label>
+        <button class="btn primary sign-send" disabled=${!key.trim() || !sig.trim()} onClick=${() => answer(decision, true)}>Send the signed ${decision}</button>
+      </div></div>`}`;
+}
+
+// LiveLog is a job's log while its run isn't on the hub yet: what the
+// worker streamed (hub.logs: stream) or uploaded when asked, growing with
+// each log event, following the end unless you've scrolled up.
+function LiveLog({ r, store }) {
+  const e = useEnrollment(store, r.id);
+  const me = store.me;
+  const path = api('enrollments', r.id, 'runs', r.run, 'jobs', r.lane, 'log');
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState(0);
+  const [final, setFinal] = useState(false);
+  const [follow, setFollow] = useState(true);
+  const bytes = useRef(0);
+  const busy = useRef(false);
+  const load = async (from) => {
+    if (busy.current) return;
+    busy.current = true;
+    const res = await getText(path, from);
+    busy.current = false;
+    if (from > 0 && res.status === 206) {
+      bytes.current += utf8Length(res.text);
+      setText((t) => t + res.text);
+    } else if (res.status === 200) {
+      bytes.current = utf8Length(res.text);
+      setText(res.text);
+    }
+    if (res.status !== 416 && res.status !== 206) setStatus(res.status);
+    else setStatus(200);
+  };
+  useEffect(() => { load(0); }, [path]);
+  useEffect(() => onLog((l) => {
+    if (l.enrollment !== r.id || l.run !== r.run || l.lane !== r.lane) return;
+    if (l.final) setFinal(true);
+    load(l.bytes < bytes.current ? 0 : bytes.current);
+  }), [path]);
+  useEffect(() => {
+    const f = () => setFollow(innerHeight + scrollY >= document.documentElement.scrollHeight - 48);
+    addEventListener('scroll', f, { passive: true });
+    return () => removeEventListener('scroll', f);
+  }, []);
+  useEffect(() => { if (follow && text) scrollTo(0, document.documentElement.scrollHeight); }, [text]);
+  const l = e && (e.lanes || []).find((x) => x.lane === r.lane && x.run === r.run);
+  const lines = text ? text.replace(/\n$/, '').split('\n') : [];
+  const cmd = useCommand(e || { id: r.id });
+  return html`<div class="head"><${Icon} state=${l ? l.state : final ? 'done' : 'running'}/><h1>${(l && l.round) || 'swim ' + r.lane}</h1>
+      ${l ? html`<${Pill} state=${l.state}/>` : ''}<span class="muted">run ${r.run}</span></div>
+    ${cmd.note}
+    <div class="panel">
+      <div class="toolbar">
+        ${l && l.state === 'running' ? html`<span class="live"><span class="dot run"></span>${l.step ? 'running: ' + l.step : 'running'}${l.progress ? ' · ' + l.progress : ''}</span>`
+          : html`<span class="muted">${final ? 'The round has ended; its full record shows here once the run reaches the hub.' : 'The log as the hub has it.'}</span>`}
+        <span class="spacer"></span>
+        <a class="btn sm" href=${path} target="_blank" rel="noopener">Raw log</a>
+      </div>
+      ${status === 404 ? html`<div class="panel-b"><div class="note">${e && e.logs === 'stream'
+        ? 'Nothing yet: the worker sends the log as each step ends.'
+        : html`This run isn't on the hub yet, and neither is its log: this repo sends logs only when asked.
+          ${can(me, e, 'log') ? html` <button class="btn sm" onClick=${() => cmd.run({ kind: 'log', lane: r.lane, pin: { run: r.run } }, 'Fetch the log')}>Fetch log</button>` : ''}`}</div></div>`
+        : status === 401 ? html`<div class="empty">A job's log needs a hub user. <a href="/login">Log in</a></div>` : ''}
+      ${lines.length > 0 && html`<div class="log">${lines.map((t, i) => html`<div id=${'L' + (i + 1)} class="ln"><a href=${'#L' + (i + 1)}>${i + 1}</a><span>${t}</span></div>`)}</div>`}
+    </div>
+    ${!follow && lines.length > 0 && html`<button class="btn jump" onClick=${() => { setFollow(true); scrollTo(0, document.documentElement.scrollHeight); }}>Jump to end ↓</button>`}`;
 }
 
 function NotFound() {
@@ -433,7 +672,7 @@ function NotFound() {
 
 // ---- the app ------------------------------------------------------------
 
-const views = { home: Home, runs: Runs, run: Run, job: Job, lanes: Lanes, queue: Queue, approvals: Approvals, notfound: NotFound };
+const views = { home: Home, runs: Runs, run: Run, job: Job, lanes: Lanes, queue: Queue, approvals: Approvals, question: Question, notfound: NotFound };
 
 function App() {
   const path = usePath();
