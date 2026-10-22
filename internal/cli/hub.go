@@ -36,7 +36,7 @@ import (
 
 // cmdHub runs the watch hub, or enrolls this directory with one:
 //
-//	swim hub [--addr HOST:PORT] [--token T] [--tls-cert F --tls-key F]   serve the hub
+//	swim hub [--addr HOST:PORT] [--token T] [--tls-cert F --tls-key F] [--public-url URL] [--private]   serve the hub
 //	swim hub enroll URL [--token T] [--name N] [--ca F]  report this directory's swim watch to it
 //	swim hub leave                                stop reporting
 //	swim hub status                               this directory's enrollment
@@ -67,18 +67,24 @@ func cmdHub(args []string) error {
 }
 
 func hubServe(args []string) error {
-	var addr, token, stateDir, adminToken, certFile, keyFile string
-	var noTUI, insecure bool
-	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure},
-		strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken, "tls-cert": &certFile, "tls-key": &keyFile}}.parse(args)
+	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL string
+	var noTUI, insecure, private bool
+	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure, "private": &private},
+		strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken, "tls-cert": &certFile, "tls-key": &keyFile,
+			"public-url": &publicURL}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--insecure] [--no-tui]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--insecure] [--no-tui]")
 	}
 	if (certFile == "") != (keyFile == "") {
 		return usagef("--tls-cert and --tls-key go together")
+	}
+	if publicURL != "" {
+		if publicURL, err = checkPublicURL(publicURL); err != nil {
+			return err
+		}
 	}
 	if stateDir == "" {
 		stateDir = filepath.Join(filepath.Dir(config.Path()), "hub")
@@ -117,6 +123,10 @@ func hubServe(args []string) error {
 		ln = tls.NewListener(ln, certs.tlsConfig())
 		url = "https://" + ln.Addr().String()
 	}
+	listening := url
+	if publicURL != "" {
+		url = publicURL
+	}
 	var notes []display.PickRow
 	note := func(color, text string) {
 		notes = append(notes, display.PickRow{Text: text, Color: color})
@@ -132,17 +142,23 @@ func hubServe(args []string) error {
 	if useTLS {
 		note(ui.Dim, "  (--ca: the hub's certificate or its CA, when workers don't already trust it; "+certFile+" reloads when it changes)")
 	}
-	if host, _, _ := net.SplitHostPort(ln.Addr().String()); !hub.LoopbackHost(host) {
-		if !useTLS {
-			note(ui.Yellow, "warning: plain HTTP on the network (--insecure): tokens, logs and secrets cross it unencrypted; serve TLS with --tls-cert/--tls-key")
-		}
-		note(ui.Yellow, "warning: viewing the dashboard needs no login: anyone who can reach "+url+" sees every worker's lanes, queue and log tails (commands and full logs need a hub user: swim hub user add)")
+	if publicURL != "" {
+		note(ui.Dim, "listening on "+listening+", reached at "+publicURL+" (through a proxy on this host)")
+	}
+	host, _, _ := net.SplitHostPort(ln.Addr().String())
+	if !hub.LoopbackHost(host) && !useTLS {
+		note(ui.Yellow, "warning: plain HTTP on the network (--insecure): tokens, logs and secrets cross it unencrypted; serve TLS with --tls-cert/--tls-key")
+	}
+	if !private && (!hub.LoopbackHost(host) || publicURL != "") {
+		note(ui.Yellow, "warning: viewing the dashboard needs no login: anyone who can reach "+url+" sees every worker's lanes, queue and log tails (--private makes it need a hub user: swim hub user add)")
 	}
 	h, err := hub.NewWithState(token, adminToken, stateDir)
 	if err != nil {
 		return err
 	}
-	h.SecureCookies(useTLS)
+	h.SecureCookies(useTLS || strings.HasPrefix(publicURL, "https://"))
+	h.BehindProxy(publicURL != "")
+	h.Private(private)
 	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim hub login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	sigs := make(chan os.Signal, 1)

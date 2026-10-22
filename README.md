@@ -1289,6 +1289,7 @@ a red run names the gate. A run takes about as long as the slowest suite.
 ```sh
 swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard (and a live screen on a terminal)
 swim hub --addr 0.0.0.0:7700 --tls-cert C --tls-key K   # serve it to the network, over https
+swim hub --public-url https://swim.example.ts.net --private   # behind a TLS proxy on this host, login to view
 swim hub enroll URL --token T [--name billing] [--ca hub.crt]   # in a repo; then swim watch reports to it (a dashboard tab per repo)
 swim hub status | leave
 swim hub login URL --admin-token T [--ca hub.crt]    # the operator, once
@@ -1308,7 +1309,8 @@ swim hub user add alice --role operator              # a person: token shown onc
 - **Push, not pull:** workers report to the hub, so they can sit behind NAT.
   A restarted hub fills back up as workers report.
 - **Access:** workers need the token. Viewing the pages needs no login, so
-  the hub binds to localhost by default.
+  the hub binds to localhost by default; `--private` makes the pages and
+  `GET /api/workers` need a hub user too.
 - **Users:** `swim hub user add NAME --role viewer|operator` (the admin)
   prints a token, once; the hub keeps its hash. The user logs in at
   `/login` for a 12-hour session (`HttpOnly`, `SameSite=Strict`, `Secure`
@@ -1323,7 +1325,10 @@ swim hub user add alice --role operator              # a person: token shown onc
 - **TLS:** `--tls-cert`/`--tls-key` serve https (TLS 1.2+), reloading the
   certificate when its files change. Without them the hub refuses any
   non-loopback `--addr` (exit 2) unless you pass `--insecure`; behind a TLS
-  proxy, keep the hub on 127.0.0.1. `enroll` and `login` refuse `http://`
+  proxy, keep the hub on 127.0.0.1 and pass `--public-url https://...`:
+  cookies are `Secure`, the hints print that address, and the audit log
+  names the client from the proxy's `X-Forwarded-For` (trusted from a
+  loopback peer only). `enroll` and `login` refuse `http://`
   to another machine unless `--insecure`, and `--ca FILE` trusts a
   self-signed certificate or private CA (saved with the enrollment).
   `swim doctor` warns about an existing plain-http enrollment.

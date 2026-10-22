@@ -240,6 +240,10 @@ type dashData struct {
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
+	if !s.canView(r) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 	views := s.Workers()
 	d := dashData{NS: nsQuery(r)}
 	d.Tabs = tabs(views, d.NS)
@@ -257,6 +261,10 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) workerPage(w http.ResponseWriter, r *http.Request) {
+	if !s.canView(r) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 	v, ok := s.worker(r.PathValue("id"))
 	if !ok {
 		http.NotFound(w, r)

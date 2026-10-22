@@ -41,7 +41,9 @@
 // approves, grants and manages users, and sends no commands; each user's
 // own token (or the session cookie it logs in for) sends commands as
 // that user's role allows. Viewing the pages and GET /api/workers needs
-// no login. The hub relays commands; the worker decides whether to act.
+// no login, unless the hub is private (Private): then a user (or, for
+// GET /api/workers, the admin). The hub relays commands; the worker
+// decides whether to act.
 package hub
 
 import (
@@ -266,6 +268,8 @@ type Server struct {
 	wake     map[string]chan struct{} // closed when a worker gets a new command
 	logs     *logCache
 	secure   bool // served over TLS: session cookies are Secure
+	private  bool // viewing needs a login too (Private)
+	proxied  bool // served through a proxy on this host (BehindProxy)
 	// checkpoints are each worker's chain checkpoints (checkpoints.go).
 	checkpoints map[string][]chain.Checkpoint
 }
@@ -473,6 +477,10 @@ func (s *Server) Workers() []View {
 }
 
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
+	if !s.canView(r) {
+		http.Error(w, "this hub is private: log in first (/login), or send a user's token", http.StatusUnauthorized)
+		return
+	}
 	views := s.Workers()
 	if r.URL.Query().Has("ns") {
 		views = inNamespace(views, nsQuery(r))

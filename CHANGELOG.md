@@ -462,6 +462,17 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **The hub behind a TLS proxy: `--public-url` and `--private`.**
+  `swim hub --public-url https://...` names the address clients reach it
+  at through a proxy on the same host (`tailscale serve`, Caddy): the
+  enroll and login hints print it, session cookies are `Secure` for an
+  https URL, and the audit log records the client from the proxy's
+  `X-Forwarded-For` (the last address, trusted only from a loopback peer)
+  instead of 127.0.0.1. `--private` makes viewing need a login: the pages
+  redirect to `/login` and `GET /api/workers` answers 401 without a hub
+  user's session or token (the admin token still lists workers, for
+  `swim hub approve` and friends).
+
 - **Hub namespaces: a dashboard tab per repo.** `swim hub enroll` puts a
   directory under its repo's namespace, from the origin remote
   (`git@github.com:org/api.git` and `https://github.com/org/api` are both

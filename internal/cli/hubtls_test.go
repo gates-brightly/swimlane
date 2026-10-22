@@ -101,3 +101,21 @@ func TestCertReloader(t *testing.T) {
 		t.Fatal("a bad certificate loads at start")
 	}
 }
+
+func TestCheckPublicURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://swim.example.ts.net":       "https://swim.example.ts.net",
+		"https://swim.example.ts.net/":      "https://swim.example.ts.net",
+		" http://127.0.0.1:3024 ":           "http://127.0.0.1:3024",
+		"https://swim.example.ts.net:8443/": "https://swim.example.ts.net:8443",
+	} {
+		if got, err := checkPublicURL(in); err != nil || got != want {
+			t.Errorf("%q: %q %v, want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"swim.example.ts.net", "ftp://h", "https://", "https://h/swim", "https://h/?a=1", "https://u:p@h", "https://h/#x"} {
+		if got, err := checkPublicURL(bad); err == nil {
+			t.Errorf("%q accepted as %q", bad, got)
+		}
+	}
+}
