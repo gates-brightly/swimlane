@@ -300,7 +300,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Changed
 
-<<<<<<< HEAD
 - **The hub's controls moved into its app; the classic pages are gone.**
   A headless worker's Lanes page has Pause, Unpause, Interrupt, Run now,
   Trash, Fetch log and Stop after this batch, for the users and commands
@@ -328,8 +327,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
   `GET /api/workers` reads `GET /api/enrollments`'s `enrollments` list;
   a log a command fetched is at `.../runs/RUN/jobs/LANE/log`.
 
-=======
->>>>>>> 30d208b (feat: justfile)
 - **A justfile replaces the Makefile.** The same recipes, run with
   [`just`](https://just.systems) (the flake's dev shell has it): `just
   install`, `just link`, `just which`, `just test`, `just check`, `just ci`.
