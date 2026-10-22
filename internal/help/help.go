@@ -973,6 +973,7 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
       answer_timeout: 30m    # no answer by then: a decline
     hub:
       logs: request          # request (a log when asked) | stream (also
+                             # each round's log as its steps end, and
                              # finished runs' step output) | off (none;
                              # headless.logs: off is off too)
   Guards through the hub: a guard that nothing else approves (no signed
@@ -1524,6 +1525,10 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
   (default 30d) and at most --retain-bytes SIZE (default 2GB; the oldest
   go first); 0 for no limit. .swim/hub-runs.yml remembers what the hub
   took; a new enrollment (a hub that lost its state) gets them again.
+  Under hub.logs: stream, swim watch also sends each lane's round as its
+  log grows (a step's block once the step ends; the running step is in
+  the report's tail), masked, kept with its run (DIR/runs/), and read at
+  .../runs/RUN/jobs/LANE/log while the lane runs and after.
   Secrets: swim secret grant WORKER NAME encrypts a secret on your machine
   to that worker's key; the hub keeps only the ciphertext, and the worker's
   runs fetch and decrypt it at start (see swim secret --help).

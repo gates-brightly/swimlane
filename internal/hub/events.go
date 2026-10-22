@@ -13,7 +13,7 @@ import (
 //
 //	snapshot   a worker reported: its View, as GET /api/enrollments/{id} gives it
 //	run        a worker sent a finished run: its RunInfo
-//	log        a log reached the hub: {enrollment, run, lane, bytes}
+//	log        a log reached the hub, or grew: {enrollment, run, lane, bytes, final}
 //
 // ?enrollment=ID keeps one worker's. A client that falls behind is
 // dropped rather than slowing a report down: it reconnects (the stream
@@ -42,6 +42,7 @@ type LogEvent struct {
 	Run        string `json:"run"`
 	Lane       int    `json:"lane"`
 	Bytes      int    `json:"bytes"`
+	Final      bool   `json:"final,omitempty"` // a streamed round's end
 }
 
 type eventSub struct {

@@ -474,6 +474,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Live logs on the hub, where a repo opts in.** Under `swim.yml`'s
+  `hub: {logs: stream}`, `swim watch` sends its hub each lane's round as
+  its log grows (a step's block once the step ends), masked with the
+  secrets known then, a few lines at a time by offset; a worker or hub
+  that restarted sends or takes it again from the start. The hub keeps
+  it with its run (`--state DIR/runs/`, the same retention) and serves
+  it at `.../runs/RUN/jobs/LANE/log` while the lane runs and after, with
+  a `log` event for each append. A report says which mode its repo is in
+  (`logs`). Without `stream`, nothing streams.
+
 - **The hub is an app.** `swim hub` serves a single-page app at `/`: a top
   bar to switch enrollments (`Ctrl-K`), each enrollment's runs, a run's
   lanes as a graph of what waited for what, and a job's stages and steps

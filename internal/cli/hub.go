@@ -509,6 +509,7 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 	activity := "starting"
 	done := make(chan struct{})
 	finished := make(chan struct{})
+	streamer := newHubStreamer()
 	send := func() {
 		mu.Lock()
 		act := activity
@@ -522,8 +523,9 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 		} else {
 			reportHubError(nil)
 			keepHubToken(root, h, c)
-			// Finished runs after the snapshot; one the hub didn't take
-			// goes again next report.
+			// Streamed logs (hub.logs: stream), then finished runs; what
+			// the hub didn't take goes again next report.
+			streamer.send(root, cfg, c)
 			sendHubRuns(root, cfg, h, c)
 		}
 	}
@@ -724,6 +726,7 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 		}
 	}
 	s.Events = tailLines(history.Path(root), 15)
+	s.Logs = cfg.HubLogs()
 	s.Sanitize()
 	return s
 }

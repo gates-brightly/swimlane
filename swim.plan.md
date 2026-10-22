@@ -104,10 +104,9 @@ lane's round (its `# Job:` id) a job, its stages and steps the steps.
 - [x] Workers report each finished run (its `runrec` record and every
       lane's `logparse.Doc`, step output under `hub: {logs: stream}`); the
       hub keeps them on disk under `--state`, with retention (T42).
-- [ ] [T43](tasks/T43-hub-log-stream.md): a running lane's log streams to
-      the hub by offset, for repos whose committed `swim.yml` says
-      `hub: {logs: stream}`. The default stays `request` (today's Log
-      button).
+- [x] A running lane's log streams to the hub by offset, for repos whose
+      committed `swim.yml` says `hub: {logs: stream}`; the default stays
+      `request` (the Log button) (T43).
 - [x] A read-only API under `/api/enrollments` (enrollments, runs, jobs,
       logs by byte range; it replaced `GET /api/workers`) and `GET
       /api/events` (server-sent events), the one API the app and other
