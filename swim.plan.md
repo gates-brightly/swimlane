@@ -38,6 +38,8 @@ Gaps:
   record 127.0.0.1 (`users.go:263,280`), and the enroll hint prints the
   internal address (`cli/hub.go:111-122`).
 - Pages are Go string constants (`pages.go`), with no embedded assets.
+- A whole log reaches the hub only when a user asks for it (headless
+  workers only), and stays in memory for 15 minutes (`logs.go`).
 - No Nix packaging.
 
 ## Boundaries (keep these through every phase)
@@ -46,6 +48,11 @@ Gaps:
   make an approval valid on its own.
 - The hub never writes a repo's `.swim/` state. Changes go through worker
   commands, so `status.Transition` and the chain stay authoritative.
+- Full output on the hub is the repo's choice, in its committed
+  `swim.yml` (`hub.logs`), and only a logged-in user reads it. The worker
+  masks it before it leaves; the hub sanitizes it again.
+- The app is served with a strict CSP (`default-src 'self'`): no inline
+  script, nothing from another origin.
 - Never render what lanes produce without masking: `.swim/out/`,
   `evidence/`, `snapshots/` and kept scripts aren't redacted. Escape and
   sanitize all lane text (`hub.Sanitize`, `ui.Safe`).
@@ -74,29 +81,57 @@ Done when `just ts-test` shows `swim 200` and the dashboard lists a worker.
 
 ## Phase 1: at home behind `tailscale serve`
 
-- [ ] `--public-url URL`: the address clients use. Marks cookies `Secure`
+- [x] `--public-url URL`: the address clients use. Marks cookies `Secure`
       and prints it in the enroll hint.
-- [ ] Trust `X-Forwarded-For` from loopback only, so audit logs name the
+- [x] Trust `X-Forwarded-For` from loopback only, so audit logs name the
       real client.
-- [ ] `--private`: viewing pages and `GET /api/workers` needs a login.
+- [x] `--private`: viewing pages and `GET /api/workers` needs a login.
 - [ ] Sign in with Tailscale: with the hub reachable only through
       `tailscale serve`, map its `Tailscale-User-Login` header to a hub user
       (viewer or operator by mapping, never an approver). Off unless
       `--trust-tailscale-identity`; refused on a non-loopback listener.
 - [ ] Sessions survive a restart (kept in the state file, hashed).
 
-## Phase 2: a web app, not a polled page
+## Phase 2: history and full output on the hub
 
-- [ ] Server-sent events (`GET /api/events`, per worker): fan out each
-      report as it arrives; replace the meta refresh; a live log tail.
-- [ ] Workers report more: recent run records, `plan`, `verify` status, and
-      the timeline (`internal/timeline` already renders SVG).
-- [ ] `--json` next to `--yaml` for status, log, plan, timeline and verify,
-      the same schemas, so the CLI and the hub share one format.
-- [ ] Pages move to embedded templates and static files (`embed.FS`),
-      still server-rendered with no build step.
+The hub becomes somewhere to browse runs after they end, not only a view
+of now. GitHub Actions is the model: swim's run is the workflow run, each
+lane's round (its `# Job:` id) a job, its stages and steps the steps.
 
-## Phase 3: run work from the browser
+- [x] Phase 1's proxy items first (`--public-url`, `X-Forwarded-For`,
+      `--private`, T41), since full output must never be on a page anyone
+      can view.
+- [ ] [T42](tasks/T42-hub-run-history.md): workers report each finished
+      run (its `runrec` record and every lane's `logparse.Doc`); the hub
+      keeps them on disk under `--state`, with retention.
+- [ ] [T43](tasks/T43-hub-log-stream.md): a running lane's log streams to
+      the hub by offset, for repos whose committed `swim.yml` says
+      `hub: {logs: stream}`. The default stays `request` (today's Log
+      button).
+- [ ] [T44](tasks/T44-hub-api-events.md): a read-only API (enrollments,
+      runs, jobs, logs by byte range, changed in place: pre-release) and `GET /api/events`
+      (server-sent events), the one API the app and other tools read.
+
+## Phase 3: the hub as a single-page app
+
+- [ ] [T45](tasks/T45-hub-spa-shell.md): an app embedded with `embed.FS`
+      (Preact and htm vendored as ES modules, no build step, one binary):
+      a top bar (enrollment switcher, Runs, Lanes, Queue, Approvals, live
+      indicator, user), a runs list, a run page with its lanes as a graph,
+      and a job page with folding stages and steps over the full log.
+      Today's pages move to `/classic` until the app does what they do.
+- [ ] [T46](tasks/T46-hub-spa-live-controls.md): live updates from events
+      (no more meta refresh), a log that follows, the commands (pause,
+      interrupt, run, trash, answer) from the app, and an approvals inbox
+      across every enrollment.
+
+Next, once the above ships (each a task when it starts): a verify badge
+per run (signed by whom, anchored), "slower than usual" from `swim
+observe`'s p90, re-run pinned to the script's hash with a diff when the
+lane changed since, browser notifications for a failure or a guard
+waiting, and keyboard navigation.
+
+## Phase 4: run work from the browser
 
 - [ ] A headless worker on spiff (`swim watch --headless --install systemd`)
       for repos checked out there. Their runs use spiff's user and
