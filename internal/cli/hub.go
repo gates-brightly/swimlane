@@ -20,6 +20,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/cache"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
@@ -250,7 +251,10 @@ type hubFile struct {
 	WorkerToken string `yaml:"worker_token,omitempty"` // this worker's own, from enrolling
 	ID          string `yaml:"id"`
 	Name        string `yaml:"name"`
-	CA          string `yaml:"ca,omitempty"` // PEM the hub's https certificate must chain to (enroll --ca)
+	// Namespace is the hub tab this directory shows under (enroll
+	// --namespace, else its origin remote's; hubNamespace).
+	Namespace string `yaml:"namespace,omitempty"`
+	CA        string `yaml:"ca,omitempty"` // PEM the hub's https certificate must chain to (enroll --ca)
 	// What a headless worker has carried out of the hub's commands, so a
 	// restarted (or replaying) hub can't make it act twice: the hub's
 	// epoch, the last seq seen in it, and the ids of recent commands.
@@ -328,16 +332,26 @@ func loadHub(root string) (*hubFile, error) {
 	return &h, nil
 }
 
-func hubWorker(root, name string) hub.Worker {
+func hubWorker(root, name, ns string) hub.Worker {
 	host, _ := os.Hostname()
 	if name == "" {
 		name = filepath.Base(root)
 	}
-	w := hub.Worker{Name: name, Host: host, Root: root, Version: version.String(), PID: os.Getpid()}
+	w := hub.Worker{Name: name, Host: host, Root: root, Namespace: ns, Version: version.String(), PID: os.Getpid()}
 	if id, err := secrets.WorkerKey(workerKeyPath(root)); err == nil {
 		w.Key = id.Recipient().String()
 	}
 	return w
+}
+
+// hubNamespace is the namespace root reports under: hub.yml's (enroll
+// --namespace, or what enroll worked out), else its origin remote's, for
+// a directory enrolled before namespaces.
+func hubNamespace(root string, h *hubFile) string {
+	if h != nil && h.Namespace != "" {
+		return h.Namespace
+	}
+	return hub.NamespaceFor(cache.Origin(root), root)
 }
 
 // hubCA reads --ca FILE for a hub URL: "" without one; an http URL with
@@ -360,14 +374,14 @@ func hubCA(url, file string, insecure bool) (string, error) {
 }
 
 func hubEnroll(args []string) error {
-	var token, name, caFile string
+	var token, name, ns, caFile string
 	var insecure bool
-	rest, err := flags{bools: map[string]*bool{"insecure": &insecure}, strs: map[string]*string{"token": &token, "name": &name, "ca": &caFile}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"insecure": &insecure}, strs: map[string]*string{"token": &token, "name": &name, "namespace": &ns, "ca": &caFile}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return usagef("usage: swim hub enroll URL [--token T] [--name N] [--ca FILE] [--insecure]")
+		return usagef("usage: swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]")
 	}
 	ca, err := hubCA(rest[0], caFile, insecure)
 	if err != nil {
@@ -383,7 +397,14 @@ func hubEnroll(args []string) error {
 	if err != nil {
 		return err
 	}
-	w := hubWorker(root, name)
+	if ns != "" {
+		if ns = hub.CleanNamespace(ns); ns == "" {
+			return usagef("--namespace: give a name, e.g. github.com/org/api")
+		}
+	} else {
+		ns = hubNamespace(root, nil)
+	}
+	w := hubWorker(root, name, ns)
 	c, err := hub.NewClientTLS(rest[0], token, "", []byte(ca))
 	if err != nil {
 		return fmt.Errorf("--ca %s: %w", caFile, err)
@@ -392,15 +413,15 @@ func hubEnroll(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := saveHub(root, &hubFile{URL: c.URL, Token: token, WorkerToken: c.WorkerToken, ID: id, Name: w.Name, CA: ca}); err != nil {
+	if err := saveHub(root, &hubFile{URL: c.URL, Token: token, WorkerToken: c.WorkerToken, ID: id, Name: w.Name, Namespace: ns, CA: ca}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Hub, Detail: "enrolled with " + c.URL + " as " + w.Name})
 	// Show this directory on the hub now, not only once swim watch starts.
 	if cfg, err := loadCfg(root); err == nil {
-		c.Report(hubSnapshot(root, cfg, w.Name, "enrolled; not watching (start swim watch)", pollEvery))
+		c.Report(hubSnapshot(root, cfg, w.Name, ns, "enrolled; not watching (start swim watch)", pollEvery))
 	}
-	fmt.Printf("enrolled %s with %s as %s (id %s)\nswim watch here now reports to it: %s/w/%s\n", root, c.URL, w.Name, id, c.URL, id)
+	fmt.Printf("enrolled %s with %s as %s (id %s) in namespace %s\nswim watch here now reports to it: %s/w/%s\n", root, c.URL, w.Name, id, ns, c.URL, id)
 	if w.Key != "" {
 		fmt.Printf("its key for secrets: %s (approve it on the hub: a on its row, or swim hub approve %s)\n", hub.KeyFingerprint(w.Key), w.Name)
 	}
@@ -435,9 +456,10 @@ func hubStatus(args []string) error {
 		fmt.Println("not enrolled with a hub (swim hub enroll URL --token T)")
 		return nil
 	}
-	fmt.Printf("enrolled with %s as %s (id %s)\n", h.URL, h.Name, h.ID)
+	ns := hubNamespace(root, h)
+	fmt.Printf("enrolled with %s as %s (id %s) in namespace %s\n", h.URL, h.Name, h.ID, ns)
 	c := hubClient(h)
-	if err := c.Report(hubSnapshot(root, cfg, h.Name, "checked by swim hub status", pollEvery)); err != nil {
+	if err := c.Report(hubSnapshot(root, cfg, h.Name, ns, "checked by swim hub status", pollEvery)); err != nil {
 		return fmt.Errorf("hub unreachable: %w", err)
 	}
 	keepHubToken(root, h, c)
@@ -455,6 +477,7 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 		return func(string) {}, func() {}
 	}
 	c := hubClient(h)
+	ns := hubNamespace(root, h)
 	hubErrMu.Lock()
 	hubURL, hubReported, hubErrLast = h.URL, false, ""
 	hubErrMu.Unlock()
@@ -470,7 +493,7 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 		if err != nil {
 			return
 		}
-		if err := c.Report(hubSnapshot(root, cfg, h.Name, act, every)); err != nil {
+		if err := c.Report(hubSnapshot(root, cfg, h.Name, ns, act, every)); err != nil {
 			reportHubError(err)
 		} else {
 			reportHubError(nil)
@@ -569,8 +592,8 @@ func quietHub(on bool) {
 // hubSnapshot is what this directory looks like now: lanes (with the end
 // of each running lane's log, its running step included), the queue, and
 // the end of .swim.log. Logs are already masked of secrets.
-func hubSnapshot(root string, cfg *config.Config, name, activity string, every time.Duration) hub.Snapshot {
-	s := hub.Snapshot{Worker: hubWorker(root, name), Activity: activity, At: time.Now().UTC().Format(time.RFC3339),
+func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, every time.Duration) hub.Snapshot {
+	s := hub.Snapshot{Worker: hubWorker(root, name, ns), Activity: activity, At: time.Now().UTC().Format(time.RFC3339),
 		Interval: every.Seconds(), Lanes: []hub.Lane{}, Queue: []hub.Batch{}, Events: []string{}}
 	if headlessInfo != nil {
 		h := *headlessInfo

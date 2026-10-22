@@ -27,7 +27,7 @@ func TestHubSnapshotUnprompted(t *testing.T) {
 	})
 	watchYes = true
 	defer func() { watchYes = false }()
-	s := hubSnapshot(root, &config.Config{Lanes: 1}, "w", "idle", time.Second)
+	s := hubSnapshot(root, &config.Config{Lanes: 1}, "w", "", "idle", time.Second)
 	if s.AutoApprove != "swim watch -y" {
 		t.Errorf("auto_approve %q", s.AutoApprove)
 	}
@@ -52,7 +52,7 @@ func TestHubSnapshotSchedules(t *testing.T) {
 	queue.Add(root, &queue.Entry{ID: "q-after", By: "op", Lanes: []queue.Lane{{Lane: 2, Job: "j2"}}})
 	(&recurring{ID: "r-daily", Lanes: []queue.Lane{{Lane: 1}}, Clock: "06:00:00", Zone: "UTC", First: "2026-10-16", Until: "2099-01-01",
 		path: filepath.Join(recurringDir(root), "r-daily.yml")}).save()
-	s := hubSnapshot(root, cfg, "w", "idle", time.Second)
+	s := hubSnapshot(root, cfg, "w", "", "idle", time.Second)
 	byID := map[string]hub.Batch{}
 	for _, b := range s.Queue {
 		byID[b.ID] = b
