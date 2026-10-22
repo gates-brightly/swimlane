@@ -18,7 +18,7 @@ valid. This plan grows the hub instead of building a second web app.
   workers, grants, checkpoints, users, login/logout, commands, logs.
 - **Auth**: bearer tokens (enroll, per-worker, admin, per-user). A browser
   logs in with a user token and gets an HttpOnly, SameSite=Strict cookie
-  that lasts 12 hours; sessions live in memory only (`users.go`). Viewing
+  that lasts 12 hours, kept hashed in the state file (`users.go`). Viewing
   the pages and the read API need no login unless `--private`.
 - **Approvals from the hub**: a pasted SSH signature checked against
   `lookup.yml`, or a button press under `headless.approvals: hub` for guards
@@ -90,7 +90,7 @@ Done when `just ts-test` shows `swim 200` and the dashboard lists a worker.
       `tailscale serve`, map its `Tailscale-User-Login` header to a hub user
       (viewer or operator by mapping, never an approver). Off unless
       `--trust-tailscale-identity`; refused on a non-loopback listener.
-- [ ] Sessions survive a restart (kept in the state file, hashed).
+- [x] Sessions survive a restart (kept in the state file, hashed).
 
 ## Phase 2: history and full output on the hub
 

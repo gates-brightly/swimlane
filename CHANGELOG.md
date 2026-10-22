@@ -489,6 +489,12 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Hub logins survive a restart.** A session is kept in the hub's state
+  file under a hash of its id (the file holds no id a browser could
+  present), so restarting `swim hub` no longer logs everyone out.
+  Logging out, an expired session, and a user removed or given a new
+  token still end it.
+
 - **Live logs on the hub, where a repo opts in.** Under `swim.yml`'s
   `hub: {logs: stream}`, `swim watch` sends its hub each lane's round as
   its log grows (a step's block once the step ends), masked with the

@@ -47,10 +47,12 @@ type UserInfo struct {
 	Added string `json:"added,omitempty"`
 }
 
+// session is one login, kept in the state (keyed by its id's hash, so the
+// file holds no id a browser could present) so a restart doesn't end it.
 type session struct {
-	user    string
-	csrf    string // a form POST with this session must carry it
-	expires time.Time
+	User    string    `json:"user"`
+	CSRF    string    `json:"csrf"` // a form POST with this session must carry it
+	Expires time.Time `json:"expires"`
 }
 
 // A user name is what lookup.yml names people by, and lands in
@@ -178,7 +180,7 @@ func (s *Server) Users() []UserInfo {
 // endSessions logs a user out everywhere. s.mu is held.
 func (s *Server) endSessions(name string) {
 	for id, se := range s.sessions {
-		if se.user == name {
+		if se.User == name {
 			delete(s.sessions, id)
 		}
 	}
@@ -233,15 +235,16 @@ func (s *Server) sessionOf(r *http.Request) (*session, *User) {
 	if err != nil {
 		return nil, nil
 	}
-	se := s.sessions[c.Value]
+	key := hashToken(c.Value)
+	se := s.sessions[key]
 	if se == nil {
 		return nil, nil
 	}
-	if s.now().After(se.expires) {
-		delete(s.sessions, c.Value)
+	if s.now().After(se.Expires) {
+		delete(s.sessions, key)
 		return nil, nil
 	}
-	u := s.users[se.user]
+	u := s.users[se.User]
 	if u == nil {
 		return nil, nil
 	}
@@ -283,7 +286,7 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request, role string
 			if sent == "" {
 				sent = r.PostFormValue("csrf")
 			}
-			if !tokenIs(sent, se.csrf) {
+			if !tokenIs(sent, se.CSRF) {
 				http.Error(w, "missing or stale CSRF token: reload the page", http.StatusForbidden)
 				return nil, false
 			}
@@ -321,15 +324,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad or missing token", http.StatusUnauthorized)
 		return
 	}
-	now := s.now()
-	for id, se := range s.sessions {
-		if now.After(se.expires) {
-			delete(s.sessions, id)
-		}
-	}
 	sid, csrf := newToken(), newToken()
-	s.sessions[sid] = &session{user: u.Name, csrf: csrf, expires: now.Add(SessionTTL)}
+	s.sessions[hashToken(sid)] = &session{User: u.Name, CSRF: csrf, Expires: s.now().Add(SessionTTL)}
 	s.audit("%s logged in (%s) from %s", u.Name, u.Role, s.clientAddr(r))
+	s.save() // a restart keeps the login (save drops expired ones)
 	name, role := u.Name, u.Role
 	s.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: sid, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
@@ -350,8 +348,9 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		s.mu.Lock()
-		delete(s.sessions, c.Value)
+		delete(s.sessions, hashToken(c.Value))
 		s.audit("%s logged out", u.Name)
+		s.save()
 		s.mu.Unlock()
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.secure, MaxAge: -1})
@@ -367,5 +366,5 @@ func (s *Server) viewer(r *http.Request) (name, role, csrf string) {
 	if se == nil {
 		return "", "", ""
 	}
-	return u.Name, u.Role, se.csrf
+	return u.Name, u.Role, se.CSRF
 }
