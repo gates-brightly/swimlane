@@ -489,6 +489,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Sign in to the hub with Tailscale.** `swim hub --trust-tailscale-identity`
+  (on a loopback `--addr`, behind `tailscale serve`) signs a hub user in
+  by the proxy's `Tailscale-User-Login` header, for users given that
+  login: `swim hub user add NAME --role R --tailscale LOGIN`. Loading the
+  app or `/login` starts a session, as the user's token would; the
+  header authorizes nothing by itself, so commands still take the
+  session and its CSRF token, and such a session can't answer a guard
+  with a button (a signed answer still can). From a non-loopback peer the
+  header is ignored.
+
 - **Hub logins survive a restart.** A session is kept in the hub's state
   file under a hash of its id (the file holds no id a browser could
   present), so restarting `swim hub` no longer logs everyone out.

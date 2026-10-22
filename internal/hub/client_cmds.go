@@ -143,9 +143,12 @@ func (c *Client) UploadLog(run string, lane int, data []byte) error {
 }
 
 // AddUser adds (or replaces) a hub user and returns their token.
-func (a *Admin) AddUser(name, role string) (string, error) {
+func (a *Admin) AddUser(name, role string) (string, error) { return a.AddUserTailscale(name, role, "") }
+
+// AddUserTailscale is AddUser, with the Tailscale login that signs them in.
+func (a *Admin) AddUserTailscale(name, role, tailscale string) (string, error) {
 	var out struct{ Token string }
-	err := a.call("POST", "/api/users", UserInfo{Name: name, Role: role}, &out)
+	err := a.call("POST", "/api/users", UserInfo{Name: name, Role: role, Tailscale: tailscale}, &out)
 	return out.Token, err
 }
 

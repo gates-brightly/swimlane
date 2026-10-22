@@ -276,6 +276,8 @@ type Server struct {
 	secure   bool        // served over TLS: session cookies are Secure
 	private  bool        // viewing needs a login too (Private)
 	proxied  bool        // served through a proxy on this host (BehindProxy)
+	// trustTailscale signs users in by Tailscale-User-Login (tailscale.go).
+	trustTailscale bool
 	// checkpoints are each worker's chain checkpoints (checkpoints.go).
 	checkpoints map[string][]chain.Checkpoint
 }

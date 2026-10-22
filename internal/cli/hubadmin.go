@@ -164,12 +164,12 @@ func hubApproveCmd(args []string, off bool) error {
 //	swim hub user remove NAME
 //	swim hub user list
 func hubUserCmd(args []string) error {
-	var url, token, role string
-	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "role": &role}}.parse(args)
+	var url, token, role, tailscale string
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "role": &role, "tailscale": &tailscale}}.parse(args)
 	if err != nil {
 		return err
 	}
-	usage := usagef("usage: swim hub user add NAME --role viewer|operator | remove NAME | list   [--hub URL] [--admin-token T]")
+	usage := usagef("usage: swim hub user add NAME --role viewer|operator [--tailscale LOGIN] | remove NAME | list   [--hub URL] [--admin-token T]")
 	if len(rest) == 0 {
 		return usage
 	}
@@ -188,11 +188,14 @@ func hubUserCmd(args []string) error {
 	switch sub {
 	case "add":
 		name := rest[0]
-		tok, err := a.AddUser(name, role)
+		tok, err := a.AddUserTailscale(name, role, tailscale)
 		if err != nil {
 			return err
 		}
 		fmt.Printf("added %s (%s) to %s; their token, shown this once (the hub keeps only its hash):\n  %s\n", name, role, hubURL, tok)
+		if tailscale != "" {
+			fmt.Printf("on a hub run with --trust-tailscale-identity, tailnet user %s is signed in as %s too\n", tailscale, name)
+		}
 		fmt.Printf("they log in at %s/login with it (it lasts until swim hub user remove %s), or send it as Authorization: Bearer\n", hubURL, name)
 		// The name should be the one lookup.yml knows them by: it's who a
 		// worker records, and (with hub approvals) whose keys count.
@@ -221,7 +224,11 @@ func hubUserCmd(args []string) error {
 		}
 		fmt.Printf("%-20s %-9s %s\n", "user", "role", "added")
 		for _, u := range us {
-			fmt.Printf("%-20s %-9s %s\n", u.Name, u.Role, u.Added)
+			ts := ""
+			if u.Tailscale != "" {
+				ts = "  tailscale " + u.Tailscale
+			}
+			fmt.Printf("%-20s %-9s %s%s\n", u.Name, u.Role, u.Added, ts)
 		}
 		return nil
 	}
