@@ -55,8 +55,6 @@ func cmdSchedule(args []string) error {
 	return scheduleAdd(args, "swim schedule")
 }
 
-var ()
-
 // splitTime takes the time off the end of args: the last argument, or the
 // last two when they're "1:30 pm", "tomorrow 06:00" or "2026-10-20 13:30".
 func splitTime(args []string) (lanes []string, when string, err error) {

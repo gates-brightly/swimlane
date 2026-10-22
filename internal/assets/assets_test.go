@@ -9,7 +9,8 @@ import (
 )
 
 // Every template renders and is valid for its language: bash -n for the
-// scripts and the library, python3 and node checks when they're installed.
+// scripts and the library, python3 and node checks when they run (a
+// version manager's shim with no version set is on PATH but doesn't).
 func TestTemplatesRenderAndParse(t *testing.T) {
 	dir := t.TempDir()
 	check := func(name, src string, cmd ...string) {
@@ -20,6 +21,10 @@ func TestTemplatesRenderAndParse(t *testing.T) {
 		p := filepath.Join(dir, name)
 		os.WriteFile(p, []byte(src), 0o644)
 		if _, err := exec.LookPath(cmd[0]); err != nil {
+			return
+		}
+		if err := exec.Command(cmd[0], "--version").Run(); err != nil {
+			t.Logf("%s: skipped, %s doesn't run: %v", name, cmd[0], err)
 			return
 		}
 		if out, err := exec.Command(cmd[0], append(cmd[1:], p)...).CombinedOutput(); err != nil {
