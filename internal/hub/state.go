@@ -23,7 +23,8 @@ import (
 // operator before they reach the hub. The hub never holds a secret's value
 // or a key that could decrypt one. Since v2 it also keeps its users (a hash
 // of each one's token) and the commands sent to workers, with each
-// worker's next command seq and the hub's epoch.
+// worker's next command seq and the hub's epoch, and the logins not yet
+// expired (a hash of each session id, its user, CSRF token and expiry).
 
 // StateSchema identifies the state file.
 const StateSchema = "swim.hub-state/v2"
@@ -65,6 +66,8 @@ type state struct {
 	// Epoch names this hub's command sequence: a worker that sees another
 	// one (the state was lost, or it's another hub) starts its seq over.
 	Epoch string `json:"epoch,omitempty"`
+	// Sessions are the logins not yet expired, by their id's hash.
+	Sessions map[string]*session `json:"sessions,omitempty"`
 }
 
 // KeyFingerprint is a short, stable name for a worker's public key.
@@ -147,6 +150,11 @@ func NewWithState(token, admin, dir string) (*Server, error) {
 		if st.Epoch != "" {
 			s.epoch = st.Epoch
 		}
+		for k, se := range st.Sessions {
+			if se != nil && s.now().Before(se.Expires) && s.users[se.User] != nil {
+				s.sessions[k] = se
+			}
+		}
 	}
 	// Keep the epoch from the first start (and a v1 file as v2).
 	if err := s.save(); err != nil {
@@ -171,8 +179,14 @@ func (s *Server) save() error {
 	if s.dir == "" {
 		return nil
 	}
+	now := s.now()
+	for k, se := range s.sessions {
+		if now.After(se.Expires) {
+			delete(s.sessions, k)
+		}
+	}
 	data, err := json.MarshalIndent(state{Schema: StateSchema, Workers: s.records, Grants: s.grants,
-		Users: s.users, Commands: s.commands, NextSeq: s.nextSeq, Epoch: s.epoch}, "", "  ")
+		Users: s.users, Commands: s.commands, NextSeq: s.nextSeq, Epoch: s.epoch, Sessions: s.sessions}, "", "  ")
 	if err != nil {
 		return err
 	}

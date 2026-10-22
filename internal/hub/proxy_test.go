@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPrivateHub(t *testing.T) {
@@ -113,4 +115,72 @@ func TestLoginAuditNamesForwardedClient(t *testing.T) {
 	if !strings.Contains(string(data), "vic logged in (viewer) from 100.64.0.5") {
 		t.Errorf("audit log:\n%s", data)
 	}
+}
+
+// A login outlives a restart; the state holds only its id's hash, and
+// a logout or an expiry still ends it.
+func TestSessionsSurviveRestart(t *testing.T) {
+	s, srv, _, alice, _ := commandHub(t)
+	jar, _ := cookiejar.New(nil)
+	br := &http.Client{Jar: jar}
+	resp, err := br.PostForm(srv.URL+"/api/login", url.Values{"token": {alice}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	u, _ := url.Parse(srv.URL)
+	sid := jar.Cookies(u)[0].Value
+	saved, _ := os.ReadFile(s.statePath())
+	if strings.Contains(string(saved), sid) || !strings.Contains(string(saved), hashToken(sid)) {
+		t.Fatalf("the state should hold the session's hash, not its id:\n%s", saved)
+	}
+	restart := func() *httptest.Server {
+		t.Helper()
+		s2, err := NewWithState("sekret", "adm1n", s.dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv2 := httptest.NewServer(s2.Handler())
+		t.Cleanup(srv2.Close)
+		jar.SetCookies(mustURL(srv2.URL), []*http.Cookie{{Name: sessionCookie, Value: sid, Path: "/"}})
+		return srv2
+	}
+	me := func(base string) string { return getWith(t, br, base+"/api/me") }
+	srv2 := restart()
+	if body := me(srv2.URL); !strings.Contains(body, `"user":"alice"`) {
+		t.Fatalf("after a restart: %s", body)
+	}
+	// Expired in the file: not loaded.
+	data, _ := os.ReadFile(s.statePath())
+	var st state
+	json.Unmarshal(data, &st)
+	st.Sessions[hashToken(sid)].Expires = time.Now().Add(-time.Minute)
+	data, _ = json.Marshal(st)
+	os.WriteFile(s.statePath(), data, 0o600)
+	if body := me(restart().URL); !strings.Contains(body, `"user":""`) {
+		t.Errorf("an expired session came back: %s", body)
+	}
+	// Logged out: gone after a restart too.
+	st.Sessions[hashToken(sid)].Expires = time.Now().Add(time.Hour)
+	data, _ = json.Marshal(st)
+	os.WriteFile(s.statePath(), data, 0o600)
+	srv3 := restart()
+	var csrf struct{ CSRF string }
+	json.Unmarshal([]byte(me(srv3.URL)), &csrf)
+	req, _ := http.NewRequest("POST", srv3.URL+"/logout", nil)
+	req.Header.Set("X-CSRF-Token", csrf.CSRF)
+	if resp, err := br.Do(req); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("logout: %v %v", resp, err)
+	}
+	if body := me(restart().URL); !strings.Contains(body, `"user":""`) {
+		t.Errorf("a logged-out session came back: %s", body)
+	}
+}
+
+func mustURL(s string) *url.URL {
+	u, err := url.Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return u
 }

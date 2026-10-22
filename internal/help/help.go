@@ -1458,7 +1458,8 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
   swim hub user add NAME --role viewer|operator
                    add a hub user (admin) and print their token, once: the
                    hub keeps only its hash. Use the name lookup.yml knows
-                   them by. They log in at URL/login (a 12-hour session
+                   them by. They log in at URL/login (a 12-hour session,
+                   kept hashed in --state, so a restart keeps it; its
                    cookie: HttpOnly, SameSite=Strict, Secure under TLS;
                    every form carries a per-session CSRF token) or send the
                    token as Authorization: Bearer. Adding a name again gives

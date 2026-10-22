@@ -1336,7 +1336,8 @@ swim hub user add alice --role operator              # a person: token shown onc
   the read API need a hub user too.
 - **Users:** `swim hub user add NAME --role viewer|operator` (the admin)
   prints a token, once; the hub keeps its hash. The user logs in at
-  `/login` for a 12-hour session (`HttpOnly`, `SameSite=Strict`, `Secure`
+  `/login` for a 12-hour session that outlives a hub restart (kept hashed
+  in `--state`; `HttpOnly`, `SameSite=Strict`, `Secure`
   under TLS, a CSRF token on every form), or sends the token as a bearer
   token. A viewer may fetch logs and send signed answers (the signature
   is what counts); an operator may send every command, and answer with
