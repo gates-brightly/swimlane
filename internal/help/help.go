@@ -1382,7 +1382,7 @@ swim keys pin
 `,
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
          [--tls-cert FILE --tls-key FILE] [--insecure]
-swim hub enroll URL [--token T] [--name N] [--ca FILE] [--insecure]
+swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]
 swim hub leave | status
 swim hub login URL --admin-token T [--ca FILE] [--insecure]
 swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
@@ -1391,11 +1391,12 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
 
   A watch hub: one page showing what many swim workers are doing.
   swim hub         serve it (default 127.0.0.1:7700): a dashboard of every
-                   enrolled worker (activity, lanes, queue, staleness), a page
+                   enrolled worker (activity, lanes, queue, staleness), with a
+                   tab per namespace (its repo, see enroll; /?ns=NS), a page
                    per worker (each lane's state and step, the live tail of
                    running lanes, the queue, recent .swim.log events), and
-                   GET /api/workers as JSON (schema swim.hub/v1) for other
-                   services. On a terminal it shows a live screen: every
+                   GET /api/workers as JSON (schema swim.hub/v1; ?ns=NS for one
+                   namespace's) for other services. On a terminal it shows a live screen: every
                    worker (state, activity, a mark per lane) with the
                    selected one's running lanes and queue below; Enter opens
                    a worker (each lane, the selected lane's message and log
@@ -1449,8 +1450,14 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
   token, checks each against swim.yml's headless: block, its expiry
   (10 minutes, interrupt 2) and its pin, and acknowledges done, refused
   or expired, which the page shows. See swim watch --help.
-  swim hub enroll URL --token T [--name N]
-                   enroll this directory (name: the directory's): saves
+  swim hub enroll URL --token T [--name N] [--namespace NS]
+                   enroll this directory (name: the directory's) under a
+                   namespace, the dashboard tab it shows in: its repo, from
+                   the origin remote ("github.com/org/api" for
+                   git@github.com:org/api.git), so clones of one repo on
+                   different machines share a tab; the directory's name
+                   with no remote. --namespace NS names it instead. It
+                   groups the pages and grants nothing. Enroll saves
                    .swim/hub.yml (private), and from then on swim watch here
                    reports to the hub every --interval, also during batches.
                    It makes this directory's own age key for secrets

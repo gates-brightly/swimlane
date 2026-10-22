@@ -456,6 +456,18 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Hub namespaces: a dashboard tab per repo.** `swim hub enroll` puts a
+  directory under its repo's namespace, from the origin remote
+  (`git@github.com:org/api.git` and `https://github.com/org/api` are both
+  `github.com/org/api`; the directory's name with no remote), so clones of
+  one repo on different machines share a tab. `--namespace NS` names it
+  instead. The dashboard has a tab per namespace with its workers, how many
+  are running and how many wait for an answer (`/?ns=NS`), a worker's page
+  links back to its tab, and `GET /api/workers?ns=NS` lists one
+  namespace's workers. Directories enrolled before take their namespace
+  from their remote at the next report; workers from an older swim show
+  under "no namespace". A namespace only groups the pages: it grants
+  nothing.
 - **Steps say what they are and what they talk to.** `run --key K` names a
   step across rounds (its history follows a relabel), and `--target T`
   (or the lane's `# Targets: T`) says what it talks to; both go on the

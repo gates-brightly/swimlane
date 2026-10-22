@@ -116,18 +116,25 @@ pre { background:var(--card); border:1px solid var(--line); border-radius:6px; p
 form.inline { display:inline; margin:0; }
 button { font:inherit; font-size:12.5px; padding:1px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); cursor:pointer; }
 button.danger { color:var(--bad); border-color:var(--bad); }
+nav.tabs { display:flex; flex-wrap:wrap; gap:4px; margin-top:12px; border-bottom:1px solid var(--line); }
+nav.tabs a { padding:5px 12px; border:1px solid transparent; border-bottom:none; border-radius:6px 6px 0 0; color:var(--muted); margin-bottom:-1px; }
+nav.tabs a:hover { text-decoration:none; color:var(--fg); }
+nav.tabs a.on { background:var(--card); border-color:var(--line); color:var(--fg); font-weight:600; }
+nav.tabs .n { font-size:11.5px; color:var(--muted); font-weight:400; margin-left:4px; }
 input[type=password] { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); width:28em; max-width:100%; }
 </style>`
 
 var dashTmpl = template.Must(template.New("dash").Funcs(funcs).Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="3"><title>swim hub</title>` + style + `</head><body>
+<meta http-equiv="refresh" content="3"><title>{{if .NS}}{{.Label}} · {{end}}swim hub</title>` + style + `</head><body>
 <h1>swim hub</h1>
-<div class="muted">{{len .}} worker(s) · refreshes every 3s · <a href="/api/workers">JSON</a></div>
-{{if not .}}<p class="muted">No workers yet. In a repo: <span class="mono">swim hub enroll &lt;this hub's URL&gt; --token &lt;token&gt;</span>, then <span class="mono">swim watch</span>.</p>{{end}}
+<div class="muted">{{len .Workers}} worker(s){{if .NS}} in {{.Label}}{{end}} · refreshes every 3s · <a href="/api/workers{{if .NS}}?ns={{.NS}}{{end}}">JSON</a></div>
+{{if or (gt (len .Tabs) 2) .NS}}<nav class="tabs">{{range .Tabs}}<a href="/{{if .Key}}?ns={{.Key}}{{end}}"{{if .Active}} class="on"{{end}}>{{.Label}}<span class="n">{{.Workers}}{{if .Running}} · <span class="run">{{.Running}} running</span>{{end}}{{if .Waiting}} · <span class="wait">{{.Waiting}} waiting</span>{{end}}</span></a>{{end}}</nav>{{end}}
+{{if not .Workers}}{{if .NS}}<p class="muted">No workers in {{.Label}} now. <a href="/">All workers</a></p>{{else}}<p class="muted">No workers yet. In a repo: <span class="mono">swim hub enroll &lt;this hub's URL&gt; --token &lt;token&gt;</span>, then <span class="mono">swim watch</span>.</p>{{end}}{{end}}
 <div class="grid">
-{{range .}}<div class="card{{if .Stale}} stale{{end}}">
+{{range .Workers}}<div class="card{{if .Stale}} stale{{end}}">
   <h3><a href="/w/{{.ID}}">{{.Name}}</a> {{if .Stale}}<span class="pill bad">stale</span>{{else}}<span class="pill {{state .Activity}}">{{.Activity}}</span>{{end}}</h3>
+  {{if and (not $.NS) .Namespace}}<div class="mono"><a class="muted" href="/?ns={{.Namespace}}">{{.Namespace}}</a></div>{{end}}
   <div class="muted mono">{{.Host}}:{{.Root}}</div>
   {{with .Headless}}<div><span class="pill">headless · {{.Mode}}</span>{{if .Yes}} <b class="bad">-y</b>{{end}}</div>{{end}}
   {{with .AutoApprove}}<div><b class="bad">{{.}}</b></div>{{end}}
@@ -144,7 +151,7 @@ const csrfField = `<input type="hidden" name="csrf" value="{{$.CSRF}}">`
 var workerTmpl = template.Must(template.New("worker").Funcs(funcs).Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="3"><title>{{.Name}} · swim hub</title>` + style + `</head><body>
-<div><a href="/">← all workers</a> · {{if .User}}<span class="muted">signed in as <b>{{.User}}</b> ({{.Role}})</span> <form class="inline" method="post" action="/logout">` + csrfField + `<button>log out</button></form>{{else}}<a href="/login">log in</a> <span class="muted">to send commands</span>{{end}}</div>
+<div><a href="/">← all workers</a>{{if .Namespace}} · <a href="/?ns={{.Namespace}}">{{.Namespace}}</a>{{end}} · {{if .User}}<span class="muted">signed in as <b>{{.User}}</b> ({{.Role}})</span> <form class="inline" method="post" action="/logout">` + csrfField + `<button>log out</button></form>{{else}}<a href="/login">log in</a> <span class="muted">to send commands</span>{{end}}</div>
 <h1>{{.Name}} {{if .Stale}}<span class="pill bad">stale</span>{{else}}<span class="pill {{state .Activity}}">{{.Activity}}</span>{{end}}</h1>
 <div class="muted mono">{{.Host}}:{{.Root}} · pid {{.PID}}</div>
 {{with .Headless}}<div><span class="pill">headless · {{.Mode}}</span>{{if .Since}} <span class="muted">since {{.Since}}</span>{{end}}{{if .Approved}} <span class="muted">· --approved</span>{{end}}{{if .Yes}} <b class="bad">-y: approves every guard in every batch</b>{{end}}{{if .Allow}} <span class="muted">· takes from the hub: {{range .Allow}}{{.}} {{end}}{{if .LogsOff}}(logs: off){{end}}</span>{{end}}</div>{{end}}
@@ -223,9 +230,30 @@ func (d workerData) Can(kind string) bool {
 // StateOf is a command's state now.
 func (d workerData) StateOf(c Command) string { return c.State(d.now) }
 
+// dashData is the dashboard: the namespace tabs and the selected one's
+// workers (NS "" is every worker).
+type dashData struct {
+	Tabs    []Tab
+	Workers []View
+	NS      string
+	Label   string
+}
+
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
+	views := s.Workers()
+	d := dashData{NS: nsQuery(r)}
+	d.Tabs = tabs(views, d.NS)
+	d.Workers = inNamespace(views, d.NS)
+	for _, t := range d.Tabs {
+		if t.Active {
+			d.Label = t.Label
+		}
+	}
+	if d.Label == "" { // a namespace with no workers now
+		d.Label = d.NS
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	dashTmpl.Execute(w, s.Workers())
+	dashTmpl.Execute(w, d)
 }
 
 func (s *Server) workerPage(w http.ResponseWriter, r *http.Request) {

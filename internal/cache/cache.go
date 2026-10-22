@@ -347,6 +347,10 @@ func originURL(config string) string {
 
 func remote(root string) string { return strings.TrimSuffix(remoteFn(root), ".git") }
 
+// Origin is root's origin remote URL as git's config has it ("" without
+// one), for what else names a repo by it (the hub's namespaces).
+func Origin(root string) string { return remoteFn(root) }
+
 // Repo is one repo's caches.
 type Repo struct {
 	Dir  string // <base>/<slug>

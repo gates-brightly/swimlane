@@ -5,10 +5,10 @@
 // each worker in memory (workers re-report every few seconds, so a
 // restarted hub fills back up by itself).
 //
-//	POST   /api/enroll                  a worker joins: {name, host, root, version, key} -> {id, token}
+//	POST   /api/enroll                  a worker joins: {name, host, root, namespace, version, key} -> {id, token}
 //	POST   /api/report/{id}             its latest snapshot (404: enroll again)
 //	DELETE /api/workers/{id}            it leaves
-//	GET    /api/workers                 every worker, as JSON (for other services)
+//	GET    /api/workers                 every worker, as JSON (for other services); ?ns=NS one namespace's
 //	POST   /api/workers/{id}/approve    admin: approve it for secrets (DELETE: withdraw)
 //	GET    /api/workers/{id}/key        admin: its public key, to encrypt a grant to
 //	GET    /api/grants                  admin: every grant (names, never values)
@@ -17,7 +17,7 @@
 //	GET    /api/grants/{id}             the worker itself: its grants, still encrypted
 //	PUT    /api/workers/{id}/checkpoints the worker: a checkpoint of its chain (409: seq not past the last)
 //	GET    /api/workers/{id}/checkpoints the worker or admin: its checkpoints
-//	GET    /                            the dashboard
+//	GET    /                            the dashboard, a tab per namespace (?ns=NS; namespace.go)
 //	GET    /w/{id}                      one worker (with controls, for a user logged in)
 //	GET    /w/{id}/answer/{req}         how to sign an answer to a guard waiting there
 //
@@ -61,13 +61,16 @@ import (
 
 // Worker identifies one enrolled directory.
 type Worker struct {
-	ID      string `json:"id,omitempty"`
-	Name    string `json:"name"`
-	Host    string `json:"host"`
-	Root    string `json:"root"`
-	Version string `json:"version,omitempty"`
-	PID     int    `json:"pid,omitempty"`
-	Key     string `json:"key,omitempty"` // its age public key, for secrets granted to it
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name"`
+	Host string `json:"host"`
+	Root string `json:"root"`
+	// Namespace is the dashboard tab it shows under: its repo
+	// ("github.com/org/api", NamespaceFor), "" from a swim before namespaces.
+	Namespace string `json:"namespace,omitempty"`
+	Version   string `json:"version,omitempty"`
+	PID       int    `json:"pid,omitempty"`
+	Key       string `json:"key,omitempty"` // its age public key, for secrets granted to it
 }
 
 // Lane is one lane as the worker sees it.
@@ -213,6 +216,7 @@ func (s *Snapshot) Sanitize() {
 // sanitize cleans a worker's display fields (not its key).
 func (w *Worker) sanitize() {
 	w.ID, w.Name, w.Host, w.Root, w.Version = ui.Safe(w.ID), ui.Safe(w.Name), ui.Safe(w.Host), ui.Safe(w.Root), ui.Safe(w.Version)
+	w.Namespace = CleanNamespace(w.Namespace)
 }
 
 func safeAll(lines []string) []string {
@@ -399,6 +403,9 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 	if snap.Name == "" {
 		snap.Name = v.Name
 	}
+	if snap.Namespace == "" {
+		snap.Namespace = v.Namespace
+	}
 	// JSON readers get lists, never null.
 	if snap.Lanes == nil {
 		snap.Lanes = []Lane{}
@@ -466,6 +473,23 @@ func (s *Server) Workers() []View {
 }
 
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
+	views := s.Workers()
+	if r.URL.Query().Has("ns") {
+		views = inNamespace(views, nsQuery(r))
+		if views == nil {
+			views = []View{}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"schema": "swim.hub/v1", "workers": s.Workers()})
+	json.NewEncoder(w).Encode(map[string]any{"schema": "swim.hub/v1", "workers": views})
+}
+
+// nsQuery is the tab a request asks for (?ns=): "" for every worker,
+// NoNamespace for those without one.
+func nsQuery(r *http.Request) string {
+	ns := r.URL.Query().Get("ns")
+	if ns == NoNamespace {
+		return ns
+	}
+	return CleanNamespace(ns)
 }

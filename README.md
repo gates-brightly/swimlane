@@ -1289,7 +1289,7 @@ a red run names the gate. A run takes about as long as the slowest suite.
 ```sh
 swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard (and a live screen on a terminal)
 swim hub --addr 0.0.0.0:7700 --tls-cert C --tls-key K   # serve it to the network, over https
-swim hub enroll URL --token T [--name billing] [--ca hub.crt]   # in a repo; then swim watch reports to it
+swim hub enroll URL --token T [--name billing] [--ca hub.crt]   # in a repo; then swim watch reports to it (a dashboard tab per repo)
 swim hub status | leave
 swim hub login URL --admin-token T [--ca hub.crt]    # the operator, once
 swim hub approve billing                             # or press a on its row in the hub's screen
