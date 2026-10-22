@@ -150,7 +150,7 @@ func (u *UserClient) Workers() ([]View, error) { return u.a.Workers() }
 
 // Log reads a log a command had uploaded (an error until it is).
 func (u *UserClient) Log(id, run string, lane int) (string, error) {
-	resp, err := u.a.c.do("GET", "/api/workers/"+url.PathEscape(id)+"/logs/"+url.PathEscape(run)+"/"+strconv.Itoa(lane), nil)
+	resp, err := u.a.c.do("GET", "/api/enrollments/"+url.PathEscape(id)+"/runs/"+url.PathEscape(run)+"/jobs/"+strconv.Itoa(lane)+"/log", nil)
 	if err != nil {
 		return "", err
 	}

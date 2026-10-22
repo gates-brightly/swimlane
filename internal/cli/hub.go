@@ -166,6 +166,9 @@ func hubServe(args []string) error {
 	h.RetainRuns(keepAge, keepBytes)
 	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim hub login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	// Open event streams would hold Shutdown to its deadline (quitting
+	// the live screen waits on it).
+	srv.RegisterOnShutdown(h.CloseEvents)
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)

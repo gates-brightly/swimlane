@@ -101,7 +101,6 @@ func (s *Server) commandRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/workers/{id}/commands", s.pollCommands)
 	mux.HandleFunc("POST /api/workers/{id}/commands/{cid}", s.ackCommand)
 	mux.HandleFunc("PUT /api/workers/{id}/logs/{run}/{lane}", s.putLog)
-	mux.HandleFunc("GET /api/workers/{id}/logs/{run}/{lane}", s.getLog)
 	mux.HandleFunc("GET /w/{id}/logs/{run}/{lane}", s.logPage)
 	mux.HandleFunc("GET /w/{id}/answer/{req}", s.answerPage)
 	mux.HandleFunc("GET /w/{id}/trash/{lane}", s.trashPage)

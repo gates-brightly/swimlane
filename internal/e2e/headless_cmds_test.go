@@ -66,12 +66,14 @@ func waitLog(t *testing.T, r *repo, want string) {
 // laneOnHub is lane n as the hub has it from the worker's last report.
 func laneOnHub(t *testing.T, url, id string, n int) hub.Lane {
 	t.Helper()
-	resp, err := http.Get(url + "/api/workers")
+	resp, err := http.Get(url + "/api/enrollments")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var out struct{ Workers []hub.View }
+	var out struct {
+		Workers []hub.View `json:"enrollments"`
+	}
 	json.NewDecoder(resp.Body).Decode(&out)
 	for _, w := range out.Workers {
 		if w.ID == id {

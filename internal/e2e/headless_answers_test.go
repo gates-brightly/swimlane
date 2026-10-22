@@ -51,8 +51,10 @@ func waiting(t *testing.T, url, id string, n int) hub.PendingApproval {
 	t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if resp, err := http.Get(url + "/api/workers"); err == nil {
-			var out struct{ Workers []hub.View }
+		if resp, err := http.Get(url + "/api/enrollments"); err == nil {
+			var out struct {
+				Workers []hub.View `json:"enrollments"`
+			}
 			json.NewDecoder(resp.Body).Decode(&out)
 			resp.Body.Close()
 			for _, w := range out.Workers {

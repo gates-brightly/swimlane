@@ -71,7 +71,7 @@ func TestHeadlessDetachStatusStop(t *testing.T) {
 	contains(t, "--status", r.mustSwim("watch", "--headless", "--status"), fmt.Sprintf("running, pid %d", pid), "service: none installed")
 	// The hub knows nobody is at this worker's terminal.
 	waitFor(t, func() bool {
-		resp, err := http.Get(url + "/api/workers")
+		resp, err := http.Get(url + "/api/enrollments")
 		if err != nil {
 			return false
 		}

@@ -7,7 +7,7 @@ Part of [swim.plan.md](../swim.plan.md) Phase 3. Needs T45.
 headless worker are listed only on that worker's page.
 
 **Do:**
-- One `EventSource` per tab (T44): runs, run and job views update in
+- One `EventSource` per tab (`GET /api/events`, `internal/hub/events.go`): runs, run and job views update in
   place; a running job's log appends and follows (pauses when scrolled
   up, with a "jump to end"); the live dot shows reconnecting.
 - Controls in the app, shown only where `Can(kind)` allows today: pause,

@@ -38,8 +38,8 @@ func TestPrivateHub(t *testing.T) {
 		}
 	}
 	for tok, want := range map[string]int{"": 401, "wrong": 401, "sekret": 401, vic: 200, "adm1n": 200} {
-		if resp := get("/api/workers", tok); resp.StatusCode != want {
-			t.Errorf("/api/workers with token %q: %d, want %d", tok, resp.StatusCode, want)
+		if resp := get("/api/enrollments", tok); resp.StatusCode != want {
+			t.Errorf("/api/enrollments with token %q: %d, want %d", tok, resp.StatusCode, want)
 		}
 	}
 	if resp := get("/login", ""); resp.StatusCode != http.StatusOK {
@@ -50,15 +50,15 @@ func TestPrivateHub(t *testing.T) {
 		t.Fatalf("login: %v %v", resp, err)
 	}
 	resp.Body.Close()
-	for _, p := range []string{"/", "/w/" + worker.ID, "/api/workers"} {
+	for _, p := range []string{"/", "/w/" + worker.ID, "/api/enrollments"} {
 		if resp := get(p, ""); resp.StatusCode != http.StatusOK {
 			t.Errorf("%s logged in: %d", p, resp.StatusCode)
 		}
 	}
 	// Not private: viewing needs nothing, as before.
 	s.Private(false)
-	if resp := get("/api/workers", "wrong"); resp.StatusCode != http.StatusOK {
-		t.Errorf("/api/workers on an open hub: %d", resp.StatusCode)
+	if resp := get("/api/enrollments", "wrong"); resp.StatusCode != http.StatusOK {
+		t.Errorf("/api/enrollments on an open hub: %d", resp.StatusCode)
 	}
 }
 

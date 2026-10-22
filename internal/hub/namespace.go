@@ -75,12 +75,12 @@ func nsKey(ns string) string {
 
 // Tab is one namespace on the dashboard.
 type Tab struct {
-	Key     string // the ?ns= value; "" is every worker
-	Label   string
-	Workers int
-	Running int // workers with a lane running
-	Waiting int // workers waiting for an answer or approval
-	Active  bool
+	Key     string `json:"key"` // the ?ns= value; "" is every worker
+	Label   string `json:"label"`
+	Workers int    `json:"workers"`
+	Running int    `json:"running"` // workers with a lane running
+	Waiting int    `json:"waiting"` // workers waiting for an answer or approval
+	Active  bool   `json:"active"`
 }
 
 // tabs are "all" and each namespace in views, by name (workers with none

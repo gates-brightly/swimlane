@@ -1400,8 +1400,8 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                    tab per namespace (its repo, see enroll; /?ns=NS), a page
                    per worker (each lane's state and step, the live tail of
                    running lanes, the queue, recent .swim.log events), and
-                   GET /api/workers as JSON (schema swim.hub/v1; ?ns=NS for one
-                   namespace's) for other services. On a terminal it shows a live screen: every
+                   the read API below for other services. On a terminal it
+                   shows a live screen: every
                    worker (state, activity, a mark per lane) with the
                    selected one's running lanes and queue below; Enter opens
                    a worker (each lane, the selected lane's message and log
@@ -1413,8 +1413,22 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                    or pass --private; sending commands and reading full
                    logs needs a hub user either way.
   --private        viewing needs a login too: the pages redirect to /login
-                   and GET /api/workers answers 401 without a hub user's
+                   and the read API answers 401 without a hub user's
                    session or token (or, for the list, the admin token).
+  Read API (JSON, schema swim.hub/v2):
+    GET /api/health                     no login, no data: the hub answers
+    GET /api/enrollments                the namespace tabs and every worker
+                                        (?ns=NS: one namespace's)
+    GET /api/enrollments/ID             one worker's latest snapshot
+    GET /api/enrollments/ID/runs        its kept runs, newest first
+                                        (?limit=N&before=RUN; next: the page after)
+    GET /api/enrollments/ID/runs/RUN    a run's record, result and jobs
+    GET .../runs/RUN/jobs/LANE          a lane's round: stages, steps, output (a user)
+    GET .../runs/RUN/jobs/LANE/log      its log as text, once on the hub (a user)
+    GET /api/events                     server-sent events: snapshot, run and
+                                        log, as they happen (?enrollment=ID);
+                                        nothing is replayed, so a client reads
+                                        the state when it (re)connects
   TLS: --tls-cert FILE --tls-key FILE (PEM) serve https (TLS 1.2 or later);
                    the certificate reloads when either file changes, so a
                    renewal needs no restart. swim makes no certificates.

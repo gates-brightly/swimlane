@@ -1,6 +1,8 @@
 # T45. The hub as a single-page app: shell, runs, run, job (P1, hub, gap)
 
-Part of [swim.plan.md](../swim.plan.md) Phase 3. Needs T44.
+Part of [swim.plan.md](../swim.plan.md) Phase 3. The app reads the API
+in `internal/hub/api.go` and `events.go` (`swim hub --help` lists it);
+a job's live log needs T43.
 
 **Today:** three server-rendered pages built from Go string constants
 (`internal/hub/pages.go`), reloaded every 2-3s.

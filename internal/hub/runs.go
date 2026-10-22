@@ -319,6 +319,12 @@ func (s *Server) putRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), code)
 		return
 	}
+	s.runs.mu.Lock()
+	info := s.runs.index[id][run] // nil when retention dropped it at once
+	s.runs.mu.Unlock()
+	if info != nil {
+		s.events.publish("run", id, *info)
+	}
 	s.mu.Lock()
 	s.audit("%s reported run %s (%s; lanes %s)", id, run, RunResult(&rep.Run), strings.Trim(fmt.Sprint(laneNums(&rep.Run)), "[]"))
 	s.mu.Unlock()

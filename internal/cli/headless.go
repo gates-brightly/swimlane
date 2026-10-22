@@ -741,7 +741,7 @@ func doctorHeadless(root string) *doctor.Headless {
 			c := hubClient(h)
 			hc := *c.HTTP
 			hc.Timeout = 5 * time.Second
-			resp, err := hc.Get(strings.TrimRight(h.URL, "/") + "/api/workers")
+			resp, err := hc.Get(strings.TrimRight(h.URL, "/") + "/api/health")
 			if err != nil {
 				return hub.Explain(err)
 			}

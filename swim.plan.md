@@ -19,7 +19,7 @@ valid. This plan grows the hub instead of building a second web app.
 - **Auth**: bearer tokens (enroll, per-worker, admin, per-user). A browser
   logs in with a user token and gets an HttpOnly, SameSite=Strict cookie
   that lasts 12 hours; sessions live in memory only (`users.go`). Viewing
-  the pages and `GET /api/workers` needs no login (`hub.go:43`).
+  the pages and the read API need no login unless `--private`.
 - **Approvals from the hub**: a pasted SSH signature checked against
   `lookup.yml`, or a button press under `headless.approvals: hub` for guards
   no `require:` rule names, recorded as `hub-button` (`launcher/authority.go:252-298`).
@@ -65,7 +65,7 @@ Gaps:
 
 No changes to swim's behavior.
 
-- [ ] `flake.nix` here: `packages.<system>.swim` (built with `buildGo127Module`,
+- [x] `flake.nix` here: `packages.<system>.swim` (built with `buildGo127Module`,
       `cmd/swim` only, the justfile's version ldflags) and a dev shell.
 - [ ] In the nix repo: swimlane as a flake input; `hosts/spiff/swim.nix` runs
       `swim hub --addr 127.0.0.1:3024 --state /var/lib/swim-hub --no-tui`,
@@ -85,7 +85,7 @@ Done when `just ts-test` shows `swim 200` and the dashboard lists a worker.
       and prints it in the enroll hint.
 - [x] Trust `X-Forwarded-For` from loopback only, so audit logs name the
       real client.
-- [x] `--private`: viewing pages and `GET /api/workers` needs a login.
+- [x] `--private`: viewing pages and the read API needs a login.
 - [ ] Sign in with Tailscale: with the hub reachable only through
       `tailscale serve`, map its `Tailscale-User-Login` header to a hub user
       (viewer or operator by mapping, never an approver). Off unless
@@ -108,9 +108,10 @@ lane's round (its `# Job:` id) a job, its stages and steps the steps.
       the hub by offset, for repos whose committed `swim.yml` says
       `hub: {logs: stream}`. The default stays `request` (today's Log
       button).
-- [ ] [T44](tasks/T44-hub-api-events.md): a read-only API (enrollments,
-      runs, jobs, logs by byte range, changed in place: pre-release) and `GET /api/events`
-      (server-sent events), the one API the app and other tools read.
+- [x] A read-only API under `/api/enrollments` (enrollments, runs, jobs,
+      logs by byte range; it replaced `GET /api/workers`) and `GET
+      /api/events` (server-sent events), the one API the app and other
+      tools read (T44).
 
 ## Phase 3: the hub as a single-page app
 

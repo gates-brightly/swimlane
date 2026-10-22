@@ -60,8 +60,8 @@ type session struct {
 // proxy serves it over https.
 func (s *Server) SecureCookies(on bool) { s.secure = on }
 
-// Private makes viewing need a login: the pages and GET /api/workers
-// take a user's session or token (the admin token too, for the list).
+// Private makes viewing need a login: the pages and the read API take a
+// user's session or token (the admin token too, for the list).
 func (s *Server) Private(on bool) { s.private = on }
 
 // BehindProxy says the hub is served through a proxy on this host

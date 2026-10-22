@@ -300,6 +300,18 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Changed
 
+- **The hub's read API: `/api/enrollments` replaces `GET /api/workers`.**
+  `GET /api/enrollments` gives the namespace tabs and every worker
+  (schema `swim.hub/v2`; `?ns=NS` as before), and under it each worker,
+  its kept runs a page at a time (`?limit=N&before=RUN`), a run with a
+  summary of each job, and, for a hub user, a job's round and its log
+  (with `Range`). `GET /api/events` streams server-sent events
+  (`snapshot`, `run`, `log`) as they arrive, so a page needn't poll.
+  `GET /api/health` answers with no login, and `swim doctor`'s hub check
+  uses it, so a `--private` hub no longer reads as down. A tool that read
+  `GET /api/workers` reads `GET /api/enrollments`'s `enrollments` list;
+  a log a command fetched is at `.../runs/RUN/jobs/LANE/log`.
+
 - **A justfile replaces the Makefile.** The same recipes, run with
   [`just`](https://just.systems) (the flake's dev shell has it): `just
   install`, `just link`, `just which`, `just test`, `just check`, `just ci`.

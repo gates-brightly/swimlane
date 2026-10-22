@@ -312,7 +312,7 @@ func TestLogUpload(t *testing.T) {
 	if err != nil || got != "== ROUND\nstep ok\n" {
 		t.Errorf("log: %q %v", got, err)
 	}
-	resp, _ := http.Get(srv.URL + "/api/workers/" + worker.ID + "/logs/r-1/2")
+	resp, _ := http.Get(srv.URL + "/api/enrollments/" + worker.ID + "/runs/r-1/jobs/2/log")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("anonymous read: %d", resp.StatusCode)
 	}
