@@ -43,7 +43,7 @@ jobs:
       # swim built from this checkout (settings in swim.yml). Lane 1
       # (lanes.ci.sh: fmt, lint, unit tests, race) is Always and runs first;
       # then e2e (2), fault injection (3), security (4) and fuzzing (6) run
-      # side by side. Same as `make ci` locally.
+      # side by side. Same as `just ci` locally.
       - name: Build swim from this checkout
         run: |
           go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim

@@ -434,14 +434,14 @@ func checkPlatform(o *Options) []finding.Finding {
 			continue
 		}
 		if err != nil {
-			out = append(out, fd(finding.Warn, "binary-platform", o.rel(p), "reinstall swim (make install, or go install ...)", "can't read it as a binary: %v", err))
+			out = append(out, fd(finding.Warn, "binary-platform", o.rel(p), "reinstall swim (just install, or go install ...)", "can't read it as a binary: %v", err))
 			continue
 		}
 		ok, emulated := Runs(plats, o.Host)
 		switch {
 		case !ok:
 			out = append(out, fd(finding.Error, "binary-platform", o.rel(p),
-				fmt.Sprintf("rebuild it for %s (e.g. make build, or GOOS=%s GOARCH=%s go build ./cmd/swim)", o.Host, strings.Split(o.Host, "/")[0], strings.Split(o.Host, "/")[1]),
+				fmt.Sprintf("rebuild it for %s (e.g. just build, or GOOS=%s GOARCH=%s go build ./cmd/swim)", o.Host, strings.Split(o.Host, "/")[0], strings.Split(o.Host, "/")[1]),
 				"built for %s, but this host is %s: running it fails with \"exec format error\"", strings.Join(plats, ", "), o.Host))
 		case emulated:
 			out = append(out, fd(finding.Info, "binary-platform", o.rel(p), "build a native arm64 swim",
@@ -455,7 +455,7 @@ func checkPathMissing(o *Options) []finding.Finding {
 	if len(LookPathAll("swim", o.PATH)) > 0 {
 		return nil
 	}
-	return []finding.Finding{fd(finding.Warn, "path-missing", "", "make link or make install, and put its directory on PATH",
+	return []finding.Finding{fd(finding.Warn, "path-missing", "", "just link or just install, and put its directory on PATH",
 		"no swim on PATH; a lane script run directly with bash can't load the library")}
 }
 
@@ -480,7 +480,7 @@ func checkPathMultiple(o *Options) []finding.Finding {
 	for _, p := range distinct[1:] {
 		parts = append(parts, p+" (hidden)")
 	}
-	return []finding.Finding{fd(finding.Warn, "path-multiple", "", "remove the ones you don't use, or reorder PATH (make which shows where each came from)",
+	return []finding.Finding{fd(finding.Warn, "path-multiple", "", "remove the ones you don't use, or reorder PATH (just which shows where each came from)",
 		"%d different swims on PATH, in order: %s", len(distinct), strings.Join(parts, ", "))}
 }
 

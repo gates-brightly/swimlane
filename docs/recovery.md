@@ -209,7 +209,7 @@ lanes use, and this swim reads and writes others.
 ```sh
 go install github.com/gates-brightly/swimlane/cmd/swim@latest
 swim --version
-make which                  # in a swimlane checkout: every swim on PATH, and which one runs
+just which                  # in a swimlane checkout: every swim on PATH, and which one runs
 ```
 
 When the lock is older than your swim:

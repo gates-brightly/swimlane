@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tag the current commit with the next release tag and push that tag:
-#   scripts/next-tag.sh            (make next-tag)
-#   DRY=1 scripts/next-tag.sh      (make next-tag DRY=1: print the tag, change nothing)
+#   scripts/next-tag.sh            (just next-tag)
+#   DRY=1 scripts/next-tag.sh      (DRY=1 just next-tag: print the tag, change nothing)
 #
 # It refuses a working tree with changes, and a commit origin's main
 # doesn't have yet (push it first): the tag names what's already
@@ -40,7 +40,7 @@ for t in $(git tag --points-at HEAD 'v0.*'); do
   esac
 done
 if [ -n "${DRY:-}" ]; then
-  echo "$tag  (would tag $head and push it: make next-tag)"
+  echo "$tag  (would tag $head and push it: just next-tag)"
   exit 0
 fi
 

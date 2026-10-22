@@ -24,7 +24,7 @@ import (
 // major stays 0. Compatibility isn't in the version: it's the syntax
 // versions .swim.lock pins (see Syntaxes).
 
-// Set at build time by the Makefile:
+// Set at build time by the justfile:
 //
 //	-X github.com/gates-brightly/swimlane/internal/version.BuildDate=20261009
 //	-X github.com/gates-brightly/swimlane/internal/version.Commit=64a0e07
@@ -97,7 +97,7 @@ func pseudoDate(v string) string {
 	return ""
 }
 
-// release is the release tag this binary was built from: the Makefile's
+// release is the release tag this binary was built from: the justfile's
 // BuildTag, or Go's build info (`go install ...@v0.20261009.2` or @latest).
 func release() (date, index string, ok bool) {
 	if d, i, ok := ParseTag(BuildTag); ok {
@@ -118,7 +118,7 @@ func ReleaseTag() string {
 	return ""
 }
 
-// Date returns the build date as YYYYMMDD: the release's, the Makefile's,
+// Date returns the build date as YYYYMMDD: the release's, the justfile's,
 // else from Go's build info (VCS time for a checkout build, or a
 // pseudo-version's timestamp for an untagged commit), else "dev".
 func Date() string {
@@ -388,7 +388,7 @@ func (e ErrMismatch) Error() string {
 		fmt.Fprintf(&b, "but this swim is %s (syntax %s).\n\n", String(), Current)
 		b.WriteString("Update swim, then run again:\n")
 		fmt.Fprintf(&b, "  %s\n", InstallCmd)
-		b.WriteString("  (or, in a checkout of swimlane: git pull && make install)\n")
+		b.WriteString("  (or, in a checkout of swimlane: git pull && just install)\n")
 		b.WriteString("Check with: swim --version")
 		return b.String()
 	}

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tag a swim release: scripts/release.sh v0.<YYYYMMDD>.<index>  (make release V=...)
+# Tag a swim release: scripts/release.sh v0.<YYYYMMDD>.<index>  (just release v0...)
 #
 # Refuses unless everything agrees:
 #   - V is v0.<YYYYMMDD>.<index>, the date is today, the tag doesn't exist,
-#     the index is the day's next (make next-tag DRY=1 prints it), and no
+#     the index is the day's next (DRY=1 just next-tag prints it), and no
 #     release tag is newer
 #   - CHANGELOG.md's newest revision is 0.<date>.<index> (v0.<date>.<index>, <date>),
 #     and ## Unreleased above it is empty
@@ -17,7 +17,7 @@ set -u
 die() { echo "release: $*" >&2; exit 1; }
 
 V=${1:-}
-[ -n "$V" ] && [ "$V" != latest ] || die "usage: make release V=v0.<YYYYMMDD>.<index>  (make next-tag DRY=1 prints it)"
+[ -n "$V" ] && [ "$V" != latest ] || die "usage: just release v0.<YYYYMMDD>.<index>  (DRY=1 just next-tag prints it)"
 case "$V" in v0.*) ;; *) die "$V: release tags are v0.<YYYYMMDD>.<index>" ;; esac
 rest=${V#v0.}
 D=${rest%%.*}
@@ -32,7 +32,7 @@ today=$(date +%Y%m%d)
 today_utc=$(date -u +%Y%m%d)
 [ "$D" = "$today" ] || [ "$D" = "$today_utc" ] || die "$V is dated $D, but today is $today (UTC $today_utc)"
 
-git rev-parse -q --verify "refs/tags/$V" >/dev/null && die "tag $V already exists; the next one: make next-tag DRY=1"
+git rev-parse -q --verify "refs/tags/$V" >/dev/null && die "tag $V already exists; the next one: DRY=1 just next-tag"
 top=0
 for t in $(git tag -l 'v0.*'); do
   tr=${t#v0.}; td=${tr%%.*}; ti=${tr#*.}
@@ -41,7 +41,7 @@ for t in $(git tag -l 'v0.*'); do
   [ "$td" -gt "$D" ] && die "tag $t is newer than $V; releases only move forward"
   [ "$td" = "$D" ] && [ "$ti" -gt "$top" ] && top=$ti
 done
-[ "$I" -eq $((top + 1)) ] || die "$V: today's next index is $((top + 1)) (make next-tag DRY=1)"
+[ "$I" -eq $((top + 1)) ] || die "$V: today's next index is $((top + 1)) (DRY=1 just next-tag)"
 
 first=$(awk '/^## /{ if ($2 == "Unreleased") { u = 1; next } print; exit } u && NF { print "UNRELEASED-NOT-EMPTY"; exit }' CHANGELOG.md)
 [ "$first" != UNRELEASED-NOT-EMPTY ] || die "CHANGELOG.md: ## Unreleased still has content. Rename it to ## 0.$D.$I ($V, $iso) and add an empty ## Unreleased above"

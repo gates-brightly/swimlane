@@ -164,7 +164,7 @@ type ErrTooNew struct {
 
 func (e ErrTooNew) Error() string {
 	return fmt.Sprintf("%s uses swim syntax %d, but this swim (%s) reads up to syntax %d.\n\n"+
-		"Update swim, then run again:\n  %s\n  (or, in a checkout of swimlane: git pull && make install)\n"+
+		"Update swim, then run again:\n  %s\n  (or, in a checkout of swimlane: git pull && just install)\n"+
 		"Check with: swim --version",
 		e.File, e.Got, version.String(), max(e.Max, Current), version.InstallCmd)
 }

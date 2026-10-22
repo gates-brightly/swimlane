@@ -19,13 +19,13 @@ one has **Upgrading** notes; read them and `swim lock --help` before running
 lanes. Revisions before versioning existed are named by commit.
 
 To cut a release:
-1. `make next-tag DRY=1` prints the next tag, `v0.<today>.<index>`.
+1. `DRY=1 just next-tag` prints the next tag, `v0.<today>.<index>`.
 2. Rename `## Unreleased` to `## 0.<date>.<index> (v0.<date>.<index>, <date>)`,
    and start a new empty `## Unreleased` above it.
-3. Commit, then run `make release V=v0.<date>.<index>`. It refuses to tag
+3. Commit, then run `just release v0.<date>.<index>`. It refuses to tag
    unless the date, the index, the changelog and a clean tree all agree.
 
-Or tag what's on main as it is: `make next-tag` tags HEAD (a clean tree,
+Or tag what's on main as it is: `just next-tag` tags HEAD (a clean tree,
 already pushed to origin's main) with the next tag and pushes that tag.
 
 ## Unreleased
@@ -300,22 +300,28 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Changed
 
+- **A justfile replaces the Makefile.** The same recipes, run with
+  [`just`](https://just.systems) (the flake's dev shell has it): `just
+  install`, `just link`, `just which`, `just test`, `just check`, `just ci`.
+  Arguments are positional now: `just e2e dag99` (was `make e2e S=dag99`),
+  `just release v0.<date>.<index>` (was `V=`), `just install-latest
+  v0.20261014.1`, `just run <args>`; `DRY=1 just next-tag` prints the tag.
 - **Fewer regular expressions:** names, flags, tags, versions, lane file
   names and swim's own log lines are read with `internal/chars` and string
   functions (about 110 regexes before, 59 now). Those left match patterns
   inside text (credential shapes, lint's command patterns, the time
   grammar people type, other languages' source, frozen syntax 1 logs), each
   with its reason beside it.
-- **`make next-tag` tags and pushes.** It tags HEAD with the day's next
+- **`just next-tag` tags and pushes.** It tags HEAD with the day's next
   release tag and pushes only that tag, refusing a tree with changes or a
-  commit origin's main doesn't have yet. `make next-tag DRY=1` prints the
+  commit origin's main doesn't have yet. `DRY=1 just next-tag` prints the
   tag as it used to.
 - **This repo's CI runs its slow suites side by side.** It's five group
   files instead of one lane of eight jobs in a row: lane 1
   (`lanes.ci.sh`: fmt, lint, unit, race) runs first, then e2e (lane 2),
   fault injection (3), security (4) and fuzzing (6) start together, each
   `After: 1`. A run takes about as long as the slowest suite instead of the
-  sum. `make ci` runs lanes 1-4 and 6.
+  sum. `just ci` runs lanes 1-4 and 6.
   - **The e2e suite runs its tests in parallel.** Each test drives swim in
     its own scratch repo, so `newRepo` marks the test `t.Parallel()`, and
     the scenarios run alongside the Go tests instead of after them.
@@ -389,7 +395,7 @@ already pushed to origin's main) with the next tag and pushes that tag.
     and (new) state syntax a repo uses, so a release that changes no format
     never touches it. A lock that says `breaking: 7` means today's syntaxes
     and needs nothing (`swim lock --upgrade` rewrites it in the new form).
-  - `make next-tag` prints the day's next tag; `make release` checks it.
+  - `just next-tag` prints the day's next tag; `just release` checks it.
     The lane protocol's `hello` returns `syntax` instead of `breaking`.
   - `swim --version` no longer warns about mis-tagged releases (a tag can't
     disagree with the code any more).
