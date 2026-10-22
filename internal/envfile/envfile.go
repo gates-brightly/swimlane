@@ -62,8 +62,6 @@ type Section struct {
 	Entries []Entry
 }
 
-var ()
-
 // Parse reads an env file. user is the operator's file (general keys and
 // [repo PATH] sections); otherwise it's a repo's .env.swim ([lane N]
 // sections only). A line that doesn't parse is an error naming the file
