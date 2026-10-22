@@ -11,7 +11,7 @@
 #   lane 6  lanes.fuzz.sh      fuzzing
 # Lanes 2-6 wait for lane 1 (After: 1) and run at the same time, so a run
 # takes about as long as the slowest suite. swim ci (GitHub Actions) and
-# `make ci` run them all; `swim run 2` runs one suite, `swim run 1.2` one job.
+# `just ci` run them all; `swim run 2` runs one suite, `swim run 1.2` one job.
 # Lane 5 isn't CI's. Security tests fail the build on a violation; they
 # never only warn.
 #
@@ -24,9 +24,9 @@
 # Always:  yes
 # Timeout: 5m
 #
-# Goal: every Go file is gofmt -s clean. It only checks; `make fmt` rewrites.
+# Goal: every Go file is gofmt -s clean. It only checks; `just fmt` rewrites.
 stage check
-gate "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gofmt -s (make fmt):"; echo "$out"; exit 1; }'
+gate "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gofmt -s (just fmt):"; echo "$out"; exit 1; }'
 
 # swim job 1.2 -----------------------------------------------------------------
 # Round:   CI: lint (build, vet, swim lint, shell syntax)

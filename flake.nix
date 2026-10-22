@@ -23,7 +23,7 @@
           # Only the binary; `go test ./...` would run the e2e suite (~7 min).
           subPackages = [ "cmd/swim" ];
           env.CGO_ENABLED = 0;
-          # The Makefile's version stamps (internal/version/version.go:27).
+          # The justfile's version stamps (internal/version/version.go:27).
           ldflags = [
             "-s"
             "-w"
@@ -39,7 +39,7 @@
       });
 
       devShells = forAll (pkgs: {
-        default = pkgs.mkShell { packages = [ pkgs.go_1_27 pkgs.gnumake pkgs.jq ]; };
+        default = pkgs.mkShell { packages = [ pkgs.go_1_27 pkgs.just pkgs.jq ]; };
       });
     };
 }

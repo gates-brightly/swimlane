@@ -1282,7 +1282,7 @@ files, so the slow suites run side by side. Lane 1
 as Always jobs. Then e2e (lane 2, `lanes.e2e.sh`), fault injection (3),
 the security suite (4) and fuzzing (6) start together, each its own lane so
 a red run names the gate. A run takes about as long as the slowest suite.
-`make ci` runs the same lanes locally.
+`just ci` runs the same lanes locally.
 
 ### The watch hub
 
@@ -1480,9 +1480,9 @@ CI runner with no config gets its settings.
 
 ```sh
 go install github.com/gates-brightly/swimlane/cmd/swim@latest     # or @v0.20261014.1 to pin
-git clone git@github.com:gates-brightly/swimlane.git && cd swimlane && make install   # from a checkout
-make link / unlink    # symlink this checkout's bin/swim into ~/.local/bin
-make which            # every swim on your PATH, and which one runs
+git clone git@github.com:gates-brightly/swimlane.git && cd swimlane && just install   # from a checkout
+just link / unlink    # symlink this checkout's bin/swim into ~/.local/bin
+just which            # every swim on your PATH, and which one runs
 swim changelog        # what's new in the version you're running (--since <old version>)
 ```
 
@@ -1504,14 +1504,12 @@ swim changelog        # what's new in the version you're running (--since <old v
 ### Development
 
 ```sh
-make test             # unit tests (seconds)
-make test-short       # the short batch: unit tests and the quick e2e tests (~1 min)
-make test-long        # the long batch: every test and scenario, as CI runs them (~4 min)
-make e2e              # the Go e2e suite and every scenario (S="dag99 ..." for some)
-make check            # gofmt, vet, unit and e2e tests
-make ci               # this repo's CI rounds, through swim ci
-make next-tag                         # tag HEAD with the next release tag (today's date, the day's next index) and push it; DRY=1 prints it
-make release V=v0.<YYYYMMDD>.<index>  # tag it (checks the date, index, CHANGELOG, clean tree; never pushes)
+just test             # unit tests (fast)
+just e2e              # the Go e2e suite and every scenario (just e2e dag99 ... for some)
+just check            # gofmt, vet, unit and e2e tests
+just ci               # this repo's CI rounds, through swim ci
+just next-tag                         # tag HEAD with the next release tag (today's date, the day's next index) and push it; DRY=1 just next-tag prints it
+just release v0.<YYYYMMDD>.<index>    # tag it (checks the date, index, CHANGELOG, clean tree; never pushes)
 ```
 
 - **Two layers of end-to-end tests:**

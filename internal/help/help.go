@@ -1785,7 +1785,7 @@ swim resume  N|JOB ... | --all      (the same command)
   new ones (swim plan / status / log still work, with a warning):
     - lock is newer than this swim: update swim, then run again:
         go install github.com/gates-brightly/swimlane/cmd/swim@latest
-        (or in a swimlane checkout: git pull && make install)
+        (or in a swimlane checkout: git pull && just install)
     - lock is older than this swim: the repo was set up before a syntax
       changed. Read swim changelog for what changed, update the lane scripts
       (swim new writes the current template), let running lanes finish, then
