@@ -1388,11 +1388,12 @@ swim keys pin
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
          [--tls-cert FILE --tls-key FILE] [--insecure] [--public-url URL] [--private]
          [--retain AGE] [--retain-bytes SIZE] [--trust-tailscale-identity]
+         [--admin-tailscale LOGIN[,LOGIN]]
 swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]
 swim hub leave | status
 swim hub login URL --admin-token T [--ca FILE] [--insecure]
 swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
-swim hub user add NAME --role viewer|operator [--tailscale LOGIN] | remove NAME | list
+swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove NAME | list
          [--hub URL] [--admin-token T]
 
   A watch hub: one page showing what many swim workers are doing.
@@ -1453,6 +1454,14 @@ swim hub user add NAME --role viewer|operator [--tailscale LOGIN] | remove NAME 
                    loopback peer. The header authorizes nothing itself
                    (commands still take the session and its CSRF token), and
                    such a session can't answer a guard with a button.
+  --admin-tailscale LOGIN[,LOGIN]
+                   with --trust-tailscale-identity: these logins sign in as
+                   admin users. The first sign-in by one adds them (named
+                   after the login, zgates for zgates@example.com, with no
+                   token anyone holds) and a later one makes them admin
+                   again if their role changed, so the hub's command line
+                   says who runs it. Nobody becomes admin just by being
+                   first: a login not named here has to be added.
                    --state DIR (default ~/.config/swim/hub) keeps the
                    workers, their keys, approvals and grants, and the admin
                    token (DIR/admin-token, made on first start; --admin-token
@@ -1462,8 +1471,9 @@ swim hub user add NAME --role viewer|operator [--tailscale LOGIN] | remove NAME 
   for its reports and secrets, so a hub restart doesn't strand it; the
   admin token approves workers, manages grants and manages users, and
   sends no commands; each hub user's token sends commands as their role
-  allows.
-  swim hub user add NAME --role viewer|operator
+  allows, and an admin user's also does what the admin token does (swim
+  hub login URL --admin-token THEIR-TOKEN for the CLI's admin commands).
+  swim hub user add NAME --role viewer|operator|admin
                    add a hub user (admin) and print their token, once: the
                    hub keeps only its hash. Use the name lookup.yml knows
                    them by. They log in at URL/login (a 12-hour session,
@@ -1485,7 +1495,10 @@ swim hub user add NAME --role viewer|operator [--tailscale LOGIN] | remove NAME 
   --hub), Approve (a button, where the worker's swim.yml says
   headless.approvals: hub) and Decline. viewer may
   ask for logs and send signed answers (the signature is what counts);
-  operator may do all of it. The hub keeps commands in --state DIR
+  operator may do all of it; admin is an operator who also manages users,
+  approves workers' keys and revokes grants on the app's Admin page (a
+  grant is made with swim secret grant, which encrypts the value to the
+  worker's key on the admin's machine, so the hub never sees it). The hub keeps commands in --state DIR
   and only relays them: the worker long-polls for them with its own
   token, checks each against swim.yml's headless: block, its expiry
   (10 minutes, interrupt 2) and its pin, and acknowledges done, refused
