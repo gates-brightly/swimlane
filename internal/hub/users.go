@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -55,8 +56,59 @@ type session struct {
 // A user name is what lookup.yml names people by, and lands in
 // worker logs, so it is plain.
 
-// SecureCookies marks session cookies Secure: the hub serves TLS.
+// SecureCookies marks session cookies Secure: the hub serves TLS, or a
+// proxy serves it over https.
 func (s *Server) SecureCookies(on bool) { s.secure = on }
+
+// Private makes viewing need a login: the pages and GET /api/workers
+// take a user's session or token (the admin token too, for the list).
+func (s *Server) Private(on bool) { s.private = on }
+
+// BehindProxy says the hub is served through a proxy on this host
+// (swim hub --public-url): X-Forwarded-For from a loopback peer then
+// names the client in the audit log. From any other peer it's ignored.
+func (s *Server) BehindProxy(on bool) { s.proxied = on }
+
+// canView reports whether r may see the pages and the workers list.
+func (s *Server) canView(r *http.Request) bool {
+	if !s.private {
+		return true
+	}
+	got := bearer(r.Header)
+	if got != "" && s.isAdmin(got) {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if got != "" {
+		return s.userByToken(got) != nil
+	}
+	se, _ := s.sessionOf(r)
+	return se != nil
+}
+
+// clientAddr is who sent r, for the audit log: the peer, or, behind a
+// proxy on this host, the client it forwarded. The proxy appends the
+// address it saw to X-Forwarded-For, so the last one is the one to trust;
+// anything before it came from the client.
+func (s *Server) clientAddr(r *http.Request) string {
+	if !s.proxied {
+		return r.RemoteAddr
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err != nil || !LoopbackHost(host) {
+		return r.RemoteAddr
+	}
+	xff := r.Header.Values("X-Forwarded-For")
+	if len(xff) == 0 {
+		return r.RemoteAddr
+	}
+	parts := strings.Split(xff[len(xff)-1], ",")
+	ip := strings.TrimSpace(parts[len(parts)-1])
+	if net.ParseIP(ip) == nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
 
 func (s *Server) userRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/users", s.usersAPI)
@@ -260,7 +312,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	u := s.userByToken(tok)
 	if u == nil {
-		s.audit("failed login from %s", r.RemoteAddr)
+		s.audit("failed login from %s", s.clientAddr(r))
 		s.mu.Unlock()
 		if form {
 			http.Redirect(w, r, "/login?failed=1", http.StatusSeeOther)
@@ -277,7 +329,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	sid, csrf := newToken(), newToken()
 	s.sessions[sid] = &session{user: u.Name, csrf: csrf, expires: now.Add(SessionTTL)}
-	s.audit("%s logged in (%s) from %s", u.Name, u.Role, r.RemoteAddr)
+	s.audit("%s logged in (%s) from %s", u.Name, u.Role, s.clientAddr(r))
 	name, role := u.Name, u.Role
 	s.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: sid, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,

@@ -4,7 +4,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +28,19 @@ func listenPolicy(addr string, useTLS, insecure bool) error {
 		"  serve TLS: --tls-cert FILE --tls-key FILE\n"+
 		"  or keep the hub on 127.0.0.1 behind a TLS proxy\n"+
 		"  or pass --insecure (a trusted network only)", addr)
+}
+
+// checkPublicURL is --public-url made canonical: http or https, a host,
+// no path (the hub serves from its root), no query, no trailing slash.
+func checkPublicURL(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", usagef("--public-url %s: want http(s)://HOST[:PORT], the address clients reach the hub at", raw)
+	}
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return "", usagef("--public-url %s: the hub serves from its root: give the scheme and host only", raw)
+	}
+	return u.Scheme + "://" + u.Host, nil
 }
 
 // certReloader serves the certificate in certFile/keyFile, loading it again

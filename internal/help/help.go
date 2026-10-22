@@ -1381,7 +1381,7 @@ swim keys pin
   pin a lane can't reach, give CI --trust-pin from its own settings.
 `,
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
-         [--tls-cert FILE --tls-key FILE] [--insecure]
+         [--tls-cert FILE --tls-key FILE] [--insecure] [--public-url URL] [--private]
 swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]
 swim hub leave | status
 swim hub login URL --admin-token T [--ca FILE] [--insecure]
@@ -1405,8 +1405,11 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                    secrets, u withdraws it. --no-tui (or not a terminal)
                    prints the URL and enroll command instead. Viewing the
                    pages needs no login, so keep the default localhost bind
-                   or put it behind your own access control; sending
-                   commands and reading full logs needs a hub user.
+                   or pass --private; sending commands and reading full
+                   logs needs a hub user either way.
+  --private        viewing needs a login too: the pages redirect to /login
+                   and GET /api/workers answers 401 without a hub user's
+                   session or token (or, for the list, the admin token).
   TLS: --tls-cert FILE --tls-key FILE (PEM) serve https (TLS 1.2 or later);
                    the certificate reloads when either file changes, so a
                    renewal needs no restart. swim makes no certificates.
@@ -1415,6 +1418,12 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                    or another host is refused (exit 2) before it binds,
                    unless --insecure. Behind a TLS proxy, keep the hub on
                    127.0.0.1 and point the proxy at it.
+  --public-url URL the address clients reach the hub at through a proxy on
+                   this host (https://swim.example.ts.net): the enroll and
+                   login hints print it, an https URL makes session cookies
+                   Secure, and the audit log names the client from the
+                   proxy's X-Forwarded-For (trusted only from a loopback
+                   peer; the last address, the one the proxy added).
                    --state DIR (default ~/.config/swim/hub) keeps the
                    workers, their keys, approvals and grants, and the admin
                    token (DIR/admin-token, made on first start; --admin-token
