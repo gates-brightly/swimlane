@@ -83,6 +83,9 @@ type Settings struct {
 	// Headless is swim.yml's headless: block (what a headless worker takes
 	// from its hub). Only swim.yml may set it.
 	Headless *Headless `yaml:"headless,omitempty"`
+	// Hub is swim.yml's hub: block (what workers send their hub). Only
+	// swim.yml may set it.
+	Hub *HubSettings `yaml:"hub,omitempty"`
 	// Secrets are swim.yml's guarded secrets (secrets.go): released to a
 	// lane only once one of their guard flags was approved for it. Only
 	// swim.yml may set it, so a guard is removed by a reviewed commit.
@@ -172,6 +175,9 @@ func Load(root string) (*Config, error) {
 	if f.Defaults.Headless != nil {
 		return nil, fmt.Errorf("%s: headless: belongs in a repo's committed swim.yml, not config.yml (what a worker takes from its hub is the repo's decision)", c.Path)
 	}
+	if f.Defaults.Hub != nil {
+		return nil, fmt.Errorf("%s: hub: belongs in a repo's committed swim.yml, not config.yml (what leaves the machine for a hub is the repo's decision)", c.Path)
+	}
 	if f.Defaults.Secrets != nil || f.Defaults.AmbientCredentials != nil {
 		return nil, fmt.Errorf("%s: secrets: and ambient_credentials: belong in a repo's committed swim.yml, not config.yml (a guard on a secret is the repo's decision)", c.Path)
 	}
@@ -191,7 +197,7 @@ func Load(root string) (*Config, error) {
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
-		c.Headless = s.Headless
+		c.Headless, c.Hub = s.Headless, s.Hub
 		if s.CacheDir != "" || s.CacheSlug != "" {
 			// Where a machine keeps its caches, and which repos share one,
 			// is the operator's: a committed swim.yml could otherwise point
@@ -213,6 +219,9 @@ func Load(root string) (*Config, error) {
 		}
 		if repo.Headless != nil {
 			return nil, fmt.Errorf("%s (repo %s): headless: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
+		}
+		if repo.Hub != nil {
+			return nil, fmt.Errorf("%s (repo %s): hub: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
 		}
 		if repo.Secrets != nil || repo.AmbientCredentials != nil {
 			return nil, fmt.Errorf("%s (repo %s): secrets: and ambient_credentials: belong in the repo's committed swim.yml, not config.yml", c.Path, root)
@@ -465,6 +474,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := c.Headless.validate(); err != nil {
+		return err
+	}
+	if err := c.Hub.validate(); err != nil {
 		return err
 	}
 	for lane, deps := range c.Deps {

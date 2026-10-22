@@ -971,6 +971,10 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
       command_ttl: 10m
       approvals: signed      # signed | hub: how guards are answered
       answer_timeout: 30m    # no answer by then: a decline
+    hub:
+      logs: request          # request (a log when asked) | stream (also
+                             # finished runs' step output) | off (none;
+                             # headless.logs: off is off too)
   Guards through the hub: a guard that nothing else approves (no signed
   approval, no flag the batch approves, no -y) is shown on the worker's
   hub page as a question, and the lane waits for an answer up to
@@ -1382,6 +1386,7 @@ swim keys pin
 `,
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
          [--tls-cert FILE --tls-key FILE] [--insecure] [--public-url URL] [--private]
+         [--retain AGE] [--retain-bytes SIZE]
 swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]
 swim hub leave | status
 swim hub login URL --admin-token T [--ca FILE] [--insecure]
@@ -1494,6 +1499,14 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
   hub keeps only each worker's latest report in memory (a restarted hub
   fills back up as workers report). A worker silent for 3 intervals shows
   as stale. Lane output in reports is the logs' text, secrets masked.
+  Runs: swim watch also sends each finished run (its newest 20 the hub
+  hasn't taken): the run record (lanes, After, timings, results) and every
+  lane's round in it (stages, steps, commands, exits, durations), with the
+  steps' output only where the repo's swim.yml says hub.logs: stream. The
+  hub keeps them in --state DIR/runs/, through restarts, for --retain AGE
+  (default 30d) and at most --retain-bytes SIZE (default 2GB; the oldest
+  go first); 0 for no limit. .swim/hub-runs.yml remembers what the hub
+  took; a new enrollment (a hub that lost its state) gets them again.
   Secrets: swim secret grant WORKER NAME encrypts a secret on your machine
   to that worker's key; the hub keeps only the ciphertext, and the worker's
   runs fetch and decrypt it at start (see swim secret --help).

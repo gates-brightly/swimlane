@@ -58,6 +58,35 @@ func (c *Client) Ack(cid, outcome, detail string) error {
 	return nil
 }
 
+// PutRun sends a finished run. A refusal that sending it again won't
+// change (a bad or oversized report) is permanent.
+func (c *Client) PutRun(rep *RunReport) (permanent bool, err error) {
+	data, err := json.Marshal(rep)
+	if err != nil {
+		return true, err
+	}
+	req, err := http.NewRequest("PUT", c.URL+"/api/workers/"+url.PathEscape(c.ID)+"/runs/"+url.PathEscape(rep.Run.Run), bytes.NewReader(data))
+	if err != nil {
+		return true, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.own())
+	req.Header.Set("Content-Type", "application/json")
+	hc := *c.HTTP
+	hc.Timeout = time.Minute
+	resp, err := hc.Do(req)
+	if err != nil {
+		return false, Explain(err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return false, nil
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
+		return true, failure(resp)
+	}
+	return false, failure(resp)
+}
+
 // UploadLog sends the log a log command asked for (at most LogMax).
 func (c *Client) UploadLog(run string, lane int, data []byte) error {
 	req, err := http.NewRequest("PUT", c.URL+"/api/workers/"+url.PathEscape(c.ID)+"/logs/"+url.PathEscape(run)+"/"+strconv.Itoa(lane), bytes.NewReader(data))

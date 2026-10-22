@@ -105,8 +105,11 @@ func (c *Config) HeadlessAllow() []string {
 func (c *Config) HeadlessAllows(kind string) bool { return slices.Contains(c.HeadlessAllow(), kind) }
 
 // HeadlessLogs reports whether a headless worker may upload logs to its hub
-// (headless.logs, default on).
+// (headless.logs, default on; hub.logs: off turns it off too).
 func (c *Config) HeadlessLogs() bool {
+	if c.Hub != nil && strings.EqualFold(c.Hub.Logs, HubLogsOff) {
+		return false
+	}
 	if c.Headless == nil {
 		return true
 	}

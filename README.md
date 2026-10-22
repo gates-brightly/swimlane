@@ -1199,6 +1199,8 @@ headless:
   command_ttl: 10m
   approvals: signed                        # or hub: a listed operator's button click, where no require: rule names the guard
   answer_timeout: 30m
+hub:
+  logs: request    # request: a log only when asked; stream: finished runs' step output too; off: no output at all
 ```
 
 ### Interrupts
@@ -1306,6 +1308,12 @@ swim hub user add alice --role operator              # a person: token shown onc
 - **Worker pages:** each lane's step, the live tail of running lanes, the
   queue, and recent events.
 - **`GET /api/workers`:** the same data as JSON.
+- **Runs:** `swim watch` also sends each finished run: its record (lanes,
+  `After`, timings, results) and every lane's round, with stages, steps,
+  commands, exits and durations. Step output goes only where the repo's
+  `swim.yml` says `hub: {logs: stream}`. The hub keeps runs on disk under
+  `--state`, through restarts, for `--retain 30d` and at most
+  `--retain-bytes 2GB` (the oldest go first).
 - **Push, not pull:** workers report to the hub, so they can sit behind NAT.
   A restarted hub fills back up as workers report.
 - **Access:** workers need the token. Viewing the pages needs no login, so

@@ -36,7 +36,7 @@ import (
 
 // cmdHub runs the watch hub, or enrolls this directory with one:
 //
-//	swim hub [--addr HOST:PORT] [--token T] [--tls-cert F --tls-key F] [--public-url URL] [--private]   serve the hub
+//	swim hub [--addr HOST:PORT] [--token T] [--tls-cert F --tls-key F] [--public-url URL] [--private] [--retain AGE] [--retain-bytes SIZE]   serve the hub
 //	swim hub enroll URL [--token T] [--name N] [--ca F]  report this directory's swim watch to it
 //	swim hub leave                                stop reporting
 //	swim hub status                               this directory's enrollment
@@ -67,16 +67,16 @@ func cmdHub(args []string) error {
 }
 
 func hubServe(args []string) error {
-	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL string
+	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL, retain, retainBytes string
 	var noTUI, insecure, private bool
 	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure, "private": &private},
 		strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken, "tls-cert": &certFile, "tls-key": &keyFile,
-			"public-url": &publicURL}}.parse(args)
+			"public-url": &publicURL, "retain": &retain, "retain-bytes": &retainBytes}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--insecure] [--no-tui]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--retain AGE] [--retain-bytes SIZE] [--insecure] [--no-tui]")
 	}
 	if (certFile == "") != (keyFile == "") {
 		return usagef("--tls-cert and --tls-key go together")
@@ -85,6 +85,10 @@ func hubServe(args []string) error {
 		if publicURL, err = checkPublicURL(publicURL); err != nil {
 			return err
 		}
+	}
+	keepAge, keepBytes, err := runRetention(retain, retainBytes)
+	if err != nil {
+		return err
 	}
 	if stateDir == "" {
 		stateDir = filepath.Join(filepath.Dir(config.Path()), "hub")
@@ -159,6 +163,7 @@ func hubServe(args []string) error {
 	h.SecureCookies(useTLS || strings.HasPrefix(publicURL, "https://"))
 	h.BehindProxy(publicURL != "")
 	h.Private(private)
+	h.RetainRuns(keepAge, keepBytes)
 	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim hub login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	sigs := make(chan os.Signal, 1)
@@ -514,6 +519,9 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 		} else {
 			reportHubError(nil)
 			keepHubToken(root, h, c)
+			// Finished runs after the snapshot; one the hub didn't take
+			// goes again next report.
+			sendHubRuns(root, cfg, h, c)
 		}
 	}
 	go func() {
