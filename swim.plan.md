@@ -86,7 +86,7 @@ Done when `just ts-test` shows `swim 200` and the dashboard lists a worker.
 - [x] Trust `X-Forwarded-For` from loopback only, so audit logs name the
       real client.
 - [x] `--private`: viewing pages and the read API needs a login.
-- [ ] Sign in with Tailscale: with the hub reachable only through
+- [x] Sign in with Tailscale: with the hub reachable only through
       `tailscale serve`, map its `Tailscale-User-Login` header to a hub user
       (viewer or operator by mapping, never an approver). Off unless
       `--trust-tailscale-identity`; refused on a non-loopback listener.

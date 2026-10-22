@@ -68,15 +68,15 @@ func cmdHub(args []string) error {
 
 func hubServe(args []string) error {
 	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL, retain, retainBytes string
-	var noTUI, insecure, private bool
-	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure, "private": &private},
+	var noTUI, insecure, private, trustTailscale bool
+	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure, "private": &private, "trust-tailscale-identity": &trustTailscale},
 		strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken, "tls-cert": &certFile, "tls-key": &keyFile,
 			"public-url": &publicURL, "retain": &retain, "retain-bytes": &retainBytes}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--retain AGE] [--retain-bytes SIZE] [--insecure] [--no-tui]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--trust-tailscale-identity] [--retain AGE] [--retain-bytes SIZE] [--insecure] [--no-tui]")
 	}
 	if (certFile == "") != (keyFile == "") {
 		return usagef("--tls-cert and --tls-key go together")
@@ -84,6 +84,11 @@ func hubServe(args []string) error {
 	if publicURL != "" {
 		if publicURL, err = checkPublicURL(publicURL); err != nil {
 			return err
+		}
+	}
+	if trustTailscale {
+		if host, _, err := net.SplitHostPort(addr); err != nil || !hub.LoopbackHost(host) {
+			return usagef("--trust-tailscale-identity needs the hub on a loopback --addr (127.0.0.1:PORT) behind tailscale serve: from anywhere else, anyone could send the header")
 		}
 	}
 	keepAge, keepBytes, err := runRetention(retain, retainBytes)
@@ -149,6 +154,9 @@ func hubServe(args []string) error {
 	if publicURL != "" {
 		note(ui.Dim, "listening on "+listening+", reached at "+publicURL+" (through a proxy on this host)")
 	}
+	if trustTailscale {
+		note(ui.Dim, "signing in by Tailscale identity: a hub user given a login (swim hub user add NAME --tailscale LOGIN) is signed in by tailscale serve's "+hub.TailscaleHeader)
+	}
 	host, _, _ := net.SplitHostPort(ln.Addr().String())
 	if !hub.LoopbackHost(host) && !useTLS {
 		note(ui.Yellow, "warning: plain HTTP on the network (--insecure): tokens, logs and secrets cross it unencrypted; serve TLS with --tls-cert/--tls-key")
@@ -163,6 +171,7 @@ func hubServe(args []string) error {
 	h.SecureCookies(useTLS || strings.HasPrefix(publicURL, "https://"))
 	h.BehindProxy(publicURL != "")
 	h.Private(private)
+	h.TrustTailscaleIdentity(trustTailscale)
 	h.RetainRuns(keepAge, keepBytes)
 	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim hub login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}

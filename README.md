@@ -1292,6 +1292,8 @@ a red run names the gate. A run takes about as long as the slowest suite.
 swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard (and a live screen on a terminal)
 swim hub --addr 0.0.0.0:7700 --tls-cert C --tls-key K   # serve it to the network, over https
 swim hub --public-url https://swim.example.ts.net --private   # behind a TLS proxy on this host, login to view
+swim hub ... --trust-tailscale-identity              # behind tailscale serve: users sign in as their tailnet login
+swim hub user add zach --role operator --tailscale zach@github
 swim hub enroll URL --token T [--name billing] [--ca hub.crt]   # in a repo; then swim watch reports to it (a dashboard tab per repo)
 swim hub status | leave
 swim hub login URL --admin-token T [--ca hub.crt]    # the operator, once

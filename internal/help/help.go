@@ -1387,12 +1387,12 @@ swim keys pin
 `,
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
          [--tls-cert FILE --tls-key FILE] [--insecure] [--public-url URL] [--private]
-         [--retain AGE] [--retain-bytes SIZE]
+         [--retain AGE] [--retain-bytes SIZE] [--trust-tailscale-identity]
 swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]
 swim hub leave | status
 swim hub login URL --admin-token T [--ca FILE] [--insecure]
 swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
-swim hub user add NAME --role viewer|operator | remove NAME | list
+swim hub user add NAME --role viewer|operator [--tailscale LOGIN] | remove NAME | list
          [--hub URL] [--admin-token T]
 
   A watch hub: one page showing what many swim workers are doing.
@@ -1445,6 +1445,14 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                    Secure, and the audit log names the client from the
                    proxy's X-Forwarded-For (trusted only from a loopback
                    peer; the last address, the one the proxy added).
+  --trust-tailscale-identity
+                   sign hub users in by tailscale serve's Tailscale-User-Login
+                   header: a user given that login (user add --tailscale)
+                   gets a session on loading the app or /login, as their
+                   token would. Only on a loopback --addr, and only from a
+                   loopback peer. The header authorizes nothing itself
+                   (commands still take the session and its CSRF token), and
+                   such a session can't answer a guard with a button.
                    --state DIR (default ~/.config/swim/hub) keeps the
                    workers, their keys, approvals and grants, and the admin
                    token (DIR/admin-token, made on first start; --admin-token
