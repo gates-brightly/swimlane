@@ -244,7 +244,7 @@ with swim.round() as r:
 	w.SysProcAttr = noTTY()
 	wout, _ := w.CombinedOutput()
 	check("swim watch --once", string(wout))
-	for _, p := range []string{"/api/enrollments", "/"} {
+	for _, p := range []string{"/api/enrollments", "/", "/classic"} {
 		resp, err := http.Get(hubURL + p)
 		if err != nil {
 			t.Fatal(err)

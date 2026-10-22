@@ -1300,13 +1300,20 @@ swim secret grant billing db_password                # encrypted here to billing
 swim hub user add alice --role operator              # a person: token shown once; viewer or operator
 ```
 
-- **Dashboard:** a card per worker, showing its activity, lanes and queue.
-  Workers that stop reporting show as stale.
+- **The app:** a single-page app at the hub's root, like a CI system's:
+  a top bar to switch enrollments (`⌘K`/`Ctrl-K`), each enrollment's
+  runs, a run's lanes as a graph of what waited for what, and a job's
+  stages and steps with their commands, exit codes, durations and output
+  (searchable, each line linkable). Lanes, the queue and the guards
+  waiting for an answer on every enrollment update as reports arrive.
+  Workers that stop reporting show as stale. It's embedded in the binary
+  (no build step) and served under a strict Content-Security-Policy.
+- **Classic pages:** the server-rendered dashboard at `/classic` and a
+  page per worker at `/w/ID`, with the controls for headless workers,
+  until the app has them too.
 - **Live screen:** on a terminal, `swim hub` lists every worker with the
   selected one's running lanes and queue. Enter opens a worker to show each
   lane's message and log tail, and Esc comes back. `--no-tui` turns it off.
-- **Worker pages:** each lane's step, the live tail of running lanes, the
-  queue, and recent events.
 - **Read API:** the same data as JSON, under `/api/enrollments` (the
   namespace tabs and workers, one worker, its runs a page at a time, a
   run, and for a hub user a job's round and log), plus `GET /api/events`,

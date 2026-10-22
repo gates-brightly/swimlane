@@ -115,12 +115,11 @@ lane's round (its `# Job:` id) a job, its stages and steps the steps.
 
 ## Phase 3: the hub as a single-page app
 
-- [ ] [T45](tasks/T45-hub-spa-shell.md): an app embedded with `embed.FS`
-      (Preact and htm vendored as ES modules, no build step, one binary):
-      a top bar (enrollment switcher, Runs, Lanes, Queue, Approvals, live
-      indicator, user), a runs list, a run page with its lanes as a graph,
-      and a job page with folding stages and steps over the full log.
-      Today's pages move to `/classic` until the app does what they do.
+- [x] An app embedded with `embed.FS` (Preact and htm vendored, no build
+      step): a top bar (enrollment switcher, Runs, Lanes, Queue,
+      Approvals, live state, user), runs, a run's lanes as a graph, and a
+      job's stages and steps over its output. The old pages are at
+      `/classic` and `/w/{id}` (T45).
 - [ ] [T46](tasks/T46-hub-spa-live-controls.md): live updates from events
       (no more meta refresh), a log that follows, the commands (pause,
       interrupt, run, trash, answer) from the app, and an approvals inbox

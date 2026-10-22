@@ -96,7 +96,7 @@ func TestHub(t *testing.T) {
 	if w.Activity != "stopped" || len(w.Queue) != 1 || w.Queue[0].State != "done" || w.Queue[0].Result != "passed" {
 		t.Errorf("after the batch: %+v", w)
 	}
-	resp, _ := http.Get(url + "/")
+	resp, _ := http.Get(url + "/classic")
 	sc2 := bufio.NewScanner(resp.Body)
 	page := ""
 	for sc2.Scan() {

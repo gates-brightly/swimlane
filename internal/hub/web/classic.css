@@ -1,0 +1,34 @@
+/* The classic pages (/classic, /w/...): served from here so the hub's
+   Content-Security-Policy can refuse inline styles. */
+:root { --bg:#fbfbfa; --fg:#1d1d1f; --muted:#6e6e73; --line:#e3e3e0; --card:#fff; --ok:#1a7f37; --bad:#cf222e; --run:#0969da; --wait:#9a6700; }
+@media (prefers-color-scheme: dark) { :root { --bg:#111214; --fg:#e8e8ea; --muted:#9a9aa1; --line:#2a2c30; --card:#18191c; --ok:#3fb950; --bad:#f85149; --run:#58a6ff; --wait:#d29922; } }
+* { box-sizing: border-box; }
+body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:15px; margin:20px 0 8px; }
+a { color:var(--run); text-decoration:none; } a:hover { text-decoration:underline; }
+.muted, .dim { color:var(--muted); } .ok { color:var(--ok); } .bad { color:var(--bad); } .run { color:var(--run); } .wait { color:var(--wait); }
+.grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); margin-top:12px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+.card.stale { opacity:.55; }
+.card h3 { margin:0 0 2px; font-size:15px; display:flex; justify-content:space-between; gap:8px; }
+.mono, pre, td.mono { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; }
+table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { font-weight:600; color:var(--muted); font-size:12px; }
+pre { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:8px 10px; overflow-x:auto; margin:6px 0 0; white-space:pre-wrap; word-break:break-word; }
+.pill { display:inline-block; padding:0 6px; border-radius:9px; border:1px solid currentColor; font-size:11.5px; }
+.wrap { overflow-x:auto; }
+.msg { color:var(--run); font-style:italic; }
+progress.bar { vertical-align:middle; width:80px; height:6px; margin-left:6px; border:0; border-radius:3px; background:var(--line); overflow:hidden; appearance:none; }
+progress.bar::-webkit-progress-bar { background:var(--line); }
+progress.bar::-webkit-progress-value { background:var(--run); }
+progress.bar::-moz-progress-bar { background:var(--run); }
+form.inline { display:inline; margin:0; }
+button { font:inherit; font-size:12.5px; padding:1px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); cursor:pointer; }
+button.danger { color:var(--bad); border-color:var(--bad); }
+nav.tabs { display:flex; flex-wrap:wrap; gap:4px; margin-top:12px; border-bottom:1px solid var(--line); }
+nav.tabs a { padding:5px 12px; border:1px solid transparent; border-bottom:none; border-radius:6px 6px 0 0; color:var(--muted); margin-bottom:-1px; }
+nav.tabs a:hover { text-decoration:none; color:var(--fg); }
+nav.tabs a.on { background:var(--card); border-color:var(--line); color:var(--fg); font-weight:600; }
+nav.tabs .n { font-size:11.5px; color:var(--muted); font-weight:400; margin-left:4px; }
+input[type=password] { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); width:28em; max-width:100%; }
+.mt6 { margin-top:6px; } .mt4 { margin-top:4px; }

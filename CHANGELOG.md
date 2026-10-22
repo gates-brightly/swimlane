@@ -474,6 +474,18 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **The hub is an app.** `swim hub` serves a single-page app at `/`: a top
+  bar to switch enrollments (`Ctrl-K`), each enrollment's runs, a run's
+  lanes as a graph of what waited for what, and a job's stages and steps
+  with commands, exit codes, durations and output (searchable, each line
+  linkable as `#L120`, failed steps open). Lanes, the queue and an inbox
+  of guards waiting on every enrollment update live from `GET
+  /api/events`. It's embedded in the binary with no build step (Preact
+  and htm, vendored), and every response the hub serves now carries a
+  strict Content-Security-Policy, so the classic pages lost their inline
+  styles too. The previous dashboard is at `/classic`; worker pages stay
+  at `/w/ID`. `GET /api/me` says who's logged in.
+
 - **The hub keeps finished runs.** `swim watch` sends its hub each
   finished run as well as snapshots: the run record and every lane's
   round in it (the `swim log --yaml` document, as JSON), with steps,

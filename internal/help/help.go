@@ -1395,11 +1395,14 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
          [--hub URL] [--admin-token T]
 
   A watch hub: one page showing what many swim workers are doing.
-  swim hub         serve it (default 127.0.0.1:7700): a dashboard of every
-                   enrolled worker (activity, lanes, queue, staleness), with a
-                   tab per namespace (its repo, see enroll; /?ns=NS), a page
-                   per worker (each lane's state and step, the live tail of
-                   running lanes, the queue, recent .swim.log events), and
+  swim hub         serve it (default 127.0.0.1:7700): an app at / of every
+                   enrolled worker (switch with Ctrl-K), its runs, a run's
+                   lanes as a graph, a job's stages, steps and output, its
+                   lanes now (the live tail of running ones), its queue, and
+                   every guard waiting for an answer, updating as reports
+                   arrive; the classic pages at /classic (a tab per
+                   namespace, /classic?ns=NS) and /w/ID (each worker, with
+                   its controls for a logged-in user), and
                    the read API below for other services. On a terminal it
                    shows a live screen: every
                    worker (state, activity, a mark per lane) with the
