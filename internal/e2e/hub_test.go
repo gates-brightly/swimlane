@@ -22,12 +22,12 @@ type hubWorkers struct {
 			Tail        []string
 		}
 		Queue []struct{ State, Result string }
-	}
+	} `json:"enrollments"`
 }
 
 func hubGet(t *testing.T, url string) hubWorkers {
 	t.Helper()
-	resp, err := http.Get(url + "/api/workers")
+	resp, err := http.Get(url + "/api/enrollments")
 	if err != nil {
 		t.Fatal(err)
 	}

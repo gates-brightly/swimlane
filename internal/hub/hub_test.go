@@ -24,7 +24,7 @@ func TestHubFlow(t *testing.T) {
 	// A worker that enrolled but hasn't reported: lists, not null.
 	idle := NewClient(srv.URL, "sekret", "")
 	idle.Enroll(Worker{Name: "quiet", Host: "box2", Root: "/srv/quiet"})
-	if body := get(t, srv.URL+"/api/workers"); strings.Contains(body, "null") {
+	if body := get(t, srv.URL+"/api/enrollments"); strings.Contains(body, "null") {
 		t.Errorf("null in the JSON: %s", body)
 	}
 	idle.Leave()
@@ -47,16 +47,16 @@ func TestHubFlow(t *testing.T) {
 	}
 
 	// JSON for services.
-	resp, _ := http.Get(srv.URL + "/api/workers")
+	resp, _ := http.Get(srv.URL + "/api/enrollments")
 	var got struct {
 		Schema  string
-		Workers []View
+		Workers []View `json:"enrollments"`
 	}
 	json.NewDecoder(resp.Body).Decode(&got)
-	if body := get(t, srv.URL+"/api/workers"); !strings.Contains(body, `"message":"migrating billing"`) || !strings.Contains(body, `"progress":"7/28"`) {
+	if body := get(t, srv.URL+"/api/enrollments"); !strings.Contains(body, `"message":"migrating billing"`) || !strings.Contains(body, `"progress":"7/28"`) {
 		t.Errorf("api lacks the message: %s", body)
 	}
-	if got.Schema != "swim.hub/v1" || len(got.Workers) != 1 || got.Workers[0].Activity != "running q-1" || got.Workers[0].Stale {
+	if got.Schema != APISchema || len(got.Workers) != 1 || got.Workers[0].Activity != "running q-1" || got.Workers[0].Stale {
 		t.Fatalf("workers: %+v", got)
 	}
 	// Pages: escaped, with the live tail.
@@ -173,7 +173,7 @@ func TestHubUntrustedText(t *testing.T) {
 	if err := c.Report(snap); err != nil {
 		t.Fatal(err)
 	}
-	for _, page := range []string{get(t, srv.URL+"/"), get(t, srv.URL+"/w/"+id), get(t, srv.URL+"/api/workers")} {
+	for _, page := range []string{get(t, srv.URL+"/"), get(t, srv.URL+"/w/"+id), get(t, srv.URL+"/api/enrollments")} {
 		if strings.Contains(page, "<script>") || strings.Contains(page, "<b>") {
 			t.Errorf("unescaped HTML:\n%s", page)
 		}

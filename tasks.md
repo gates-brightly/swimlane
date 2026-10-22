@@ -32,7 +32,6 @@ should make that line sharper, not blur it.
 | [T23](#t23-outside-feedback-p2) outside feedback | P2 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
 | [T43](tasks/T43-hub-log-stream.md) stream lane logs to the hub | P1 | gap |
-| [T44](tasks/T44-hub-api-events.md) hub read API and events | P1 | gap |
 | [T45](tasks/T45-hub-spa-shell.md) hub app: shell, runs, run, job | P1 | gap |
 | [T46](tasks/T46-hub-spa-live-controls.md) hub app: live, controls, approvals | P1 | gap |
 

@@ -8,7 +8,6 @@
 //	POST   /api/enroll                  a worker joins: {name, host, root, namespace, version, key} -> {id, token}
 //	POST   /api/report/{id}             its latest snapshot (404: enroll again)
 //	DELETE /api/workers/{id}            it leaves
-//	GET    /api/workers                 every worker, as JSON (for other services); ?ns=NS one namespace's
 //	POST   /api/workers/{id}/approve    admin: approve it for secrets (DELETE: withdraw)
 //	GET    /api/workers/{id}/key        admin: its public key, to encrypt a grant to
 //	GET    /api/grants                  admin: every grant (names, never values)
@@ -18,6 +17,7 @@
 //	PUT    /api/workers/{id}/checkpoints the worker: a checkpoint of its chain (409: seq not past the last)
 //	GET    /api/workers/{id}/checkpoints the worker or admin: its checkpoints
 //	PUT    /api/workers/{id}/runs/{run} the worker: a finished run, its record and rounds (runs.go)
+//	GET    /api/enrollments ...         the read API, and GET /api/events (api.go, events.go)
 //	GET    /                            the dashboard, a tab per namespace (?ns=NS; namespace.go)
 //	GET    /w/{id}                      one worker (with controls, for a user logged in)
 //	GET    /w/{id}/answer/{req}         how to sign an answer to a guard waiting there
@@ -41,9 +41,9 @@
 // and polls its commands; the admin token (kept in the state dir)
 // approves, grants and manages users, and sends no commands; each user's
 // own token (or the session cookie it logs in for) sends commands as
-// that user's role allows. Viewing the pages and GET /api/workers needs
-// no login, unless the hub is private (Private): then a user (or, for
-// GET /api/workers, the admin). The hub relays commands; the worker
+// that user's role allows. Viewing the pages and the read API needs no
+// login, unless the hub is private (Private): then a user (or, for
+// GET /api/enrollments, the admin). The hub relays commands; the worker
 // decides whether to act.
 package hub
 
@@ -269,6 +269,7 @@ type Server struct {
 	wake     map[string]chan struct{} // closed when a worker gets a new command
 	logs     *logCache
 	runs     *runStore // finished runs workers report (runs.go)
+	events   *eventHub // what changed, for GET /api/events (events.go)
 	secure   bool      // served over TLS: session cookies are Secure
 	private  bool      // viewing needs a login too (Private)
 	proxied  bool      // served through a proxy on this host (BehindProxy)
@@ -285,6 +286,7 @@ func New(token string) *Server {
 		epoch: newToken()[:16], wake: map[string]chan struct{}{}, checkpoints: map[string][]chain.Checkpoint{}}
 	s.logs = newLogCache(LogMax, LogCacheMax, LogTTL, func() time.Time { return s.now() })
 	s.runs = newRunStore(func() time.Time { return s.now() })
+	s.events = newEventHub()
 	return s
 }
 
@@ -305,7 +307,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/enroll", s.enroll)
 	mux.HandleFunc("POST /api/report/{id}", s.report)
 	mux.HandleFunc("DELETE /api/workers/{id}", s.leave)
-	mux.HandleFunc("GET /api/workers", s.list)
 	mux.HandleFunc("POST /api/workers/{id}/approve", s.approveAPI)
 	mux.HandleFunc("DELETE /api/workers/{id}/approve", s.approveAPI)
 	mux.HandleFunc("GET /api/workers/{id}/key", s.keyAPI)
@@ -317,6 +318,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workers/{id}/checkpoints", s.checkpointsAPI)
 	mux.HandleFunc("PUT /api/workers/{id}/runs/{run}", s.putRun)
 	mux.HandleFunc("GET /w/{id}", s.workerPage)
+	s.apiRoutes(mux)
 	s.userRoutes(mux)
 	s.commandRoutes(mux)
 	mux.HandleFunc("GET /{$}", s.dashboard)
@@ -399,9 +401,9 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	v, ok := s.workers[id]
 	if !ok {
+		s.mu.Unlock()
 		http.Error(w, "unknown worker; enroll again", http.StatusNotFound)
 		return
 	}
@@ -425,6 +427,10 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		snap.Events = []string{}
 	}
 	v.Snapshot, v.Seen = snap, s.now()
+	s.mu.Unlock()
+	if view, ok := s.worker(id); ok {
+		s.events.publish("snapshot", id, view)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -478,22 +484,6 @@ func (s *Server) Workers() []View {
 		return out[a].ID < out[b].ID
 	})
 	return out
-}
-
-func (s *Server) list(w http.ResponseWriter, r *http.Request) {
-	if !s.canView(r) {
-		http.Error(w, "this hub is private: log in first (/login), or send a user's token", http.StatusUnauthorized)
-		return
-	}
-	views := s.Workers()
-	if r.URL.Query().Has("ns") {
-		views = inNamespace(views, nsQuery(r))
-		if views == nil {
-			views = []View{}
-		}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"schema": "swim.hub/v1", "workers": views})
 }
 
 // nsQuery is the tab a request asks for (?ns=): "" for every worker,

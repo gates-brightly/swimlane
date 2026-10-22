@@ -3,6 +3,7 @@ package e2e
 import (
 	"bufio"
 	"encoding/json"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,6 +88,20 @@ func TestHubKeepsRuns(t *testing.T) {
 	rep = batch(2)
 	contains(t, "steps", rep.steps(), "say hello: hello-from-lane-1", "count: one|two")
 	// The worker remembers what the hub took.
+	// The read API lists them, newest first, with the run's result.
+	id := filepath.Base(filepath.Dir(seenFile(seen)))
+	resp, err := http.Get(url + "/api/enrollments/" + id + "/runs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var page struct {
+		Runs []struct{ Run, Result string }
+	}
+	json.NewDecoder(resp.Body).Decode(&page)
+	resp.Body.Close()
+	if len(page.Runs) != 2 || page.Runs[0].Run != rep.Run.Run || page.Runs[0].Result != "passed" {
+		t.Errorf("GET .../runs: %+v (newest %s)", page, rep.Run.Run)
+	}
 	sent, _ := os.ReadFile(filepath.Join(r.root, ".swim", "hub-runs.yml"))
 	contains(t, "hub-runs.yml", string(sent), rep.Run.Run)
 }
@@ -118,4 +133,12 @@ func (h hubRun) steps() string {
 		}
 	}
 	return all
+}
+
+// seenFile is any one of the kept runs' files.
+func seenFile(seen map[string]bool) string {
+	for f := range seen {
+		return f
+	}
+	return ""
 }

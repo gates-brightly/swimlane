@@ -128,7 +128,7 @@ var dashTmpl = template.Must(template.New("dash").Funcs(funcs).Parse(`<!doctype 
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="3"><title>{{if .NS}}{{.Label}} · {{end}}swim hub</title>` + style + `</head><body>
 <h1>swim hub</h1>
-<div class="muted">{{len .Workers}} worker(s){{if .NS}} in {{.Label}}{{end}} · refreshes every 3s · <a href="/api/workers{{if .NS}}?ns={{.NS}}{{end}}">JSON</a></div>
+<div class="muted">{{len .Workers}} worker(s){{if .NS}} in {{.Label}}{{end}} · refreshes every 3s · <a href="/api/enrollments{{if .NS}}?ns={{.NS}}{{end}}">JSON</a></div>
 {{if or (gt (len .Tabs) 2) .NS}}<nav class="tabs">{{range .Tabs}}<a href="/{{if .Key}}?ns={{.Key}}{{end}}"{{if .Active}} class="on"{{end}}>{{.Label}}<span class="n">{{.Workers}}{{if .Running}} · <span class="run">{{.Running}} running</span>{{end}}{{if .Waiting}} · <span class="wait">{{.Waiting}} waiting</span>{{end}}</span></a>{{end}}</nav>{{end}}
 {{if not .Workers}}{{if .NS}}<p class="muted">No workers in {{.Label}} now. <a href="/">All workers</a></p>{{else}}<p class="muted">No workers yet. In a repo: <span class="mono">swim hub enroll &lt;this hub's URL&gt; --token &lt;token&gt;</span>, then <span class="mono">swim watch</span>.</p>{{end}}{{end}}
 <div class="grid">

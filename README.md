@@ -1307,7 +1307,10 @@ swim hub user add alice --role operator              # a person: token shown onc
   lane's message and log tail, and Esc comes back. `--no-tui` turns it off.
 - **Worker pages:** each lane's step, the live tail of running lanes, the
   queue, and recent events.
-- **`GET /api/workers`:** the same data as JSON.
+- **Read API:** the same data as JSON, under `/api/enrollments` (the
+  namespace tabs and workers, one worker, its runs a page at a time, a
+  run, and for a hub user a job's round and log), plus `GET /api/events`,
+  server-sent events as reports, runs and logs arrive (`swim hub --help`).
 - **Runs:** `swim watch` also sends each finished run: its record (lanes,
   `After`, timings, results) and every lane's round, with stages, steps,
   commands, exits and durations. Step output goes only where the repo's
@@ -1318,7 +1321,7 @@ swim hub user add alice --role operator              # a person: token shown onc
   A restarted hub fills back up as workers report.
 - **Access:** workers need the token. Viewing the pages needs no login, so
   the hub binds to localhost by default; `--private` makes the pages and
-  `GET /api/workers` need a hub user too.
+  the read API need a hub user too.
 - **Users:** `swim hub user add NAME --role viewer|operator` (the admin)
   prints a token, once; the hub keeps its hash. The user logs in at
   `/login` for a 12-hour session (`HttpOnly`, `SameSite=Strict`, `Secure`

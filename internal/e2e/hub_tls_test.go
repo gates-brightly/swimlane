@@ -89,7 +89,7 @@ func TestHubTLS(t *testing.T) {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(caPEM)
 	c := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}
-	resp, err := c.Get(url + "/api/workers")
+	resp, err := c.Get(url + "/api/enrollments")
 	if err != nil {
 		t.Fatal(err)
 	}

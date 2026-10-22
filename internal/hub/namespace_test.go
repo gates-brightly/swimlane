@@ -66,12 +66,14 @@ func TestNamespaceTabs(t *testing.T) {
 	}
 
 	names := func(q string) []string {
-		resp, err := http.Get(srv.URL + "/api/workers" + q)
+		resp, err := http.Get(srv.URL + "/api/enrollments" + q)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer resp.Body.Close()
-		var got struct{ Workers []View }
+		var got struct {
+			Workers []View `json:"enrollments"`
+		}
 		json.NewDecoder(resp.Body).Decode(&got)
 		var out []string
 		for _, v := range got.Workers {

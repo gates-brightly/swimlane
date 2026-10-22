@@ -208,8 +208,10 @@ func (a *Admin) call(method, path string, body, out any) error {
 
 // Workers lists the hub's workers.
 func (a *Admin) Workers() ([]View, error) {
-	var out struct{ Workers []View }
-	return out.Workers, a.call("GET", "/api/workers", nil, &out)
+	var out struct {
+		Enrollments []View `json:"enrollments"`
+	}
+	return out.Enrollments, a.call("GET", "/api/enrollments", nil, &out)
 }
 
 // WorkerKey is a worker's public key (to encrypt a grant to), its

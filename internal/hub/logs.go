@@ -148,19 +148,6 @@ func (s *Server) putLog(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.audit("%s uploaded the log of swim %d run %s (%d bytes)", id, lane, run, len(clean))
 	s.mu.Unlock()
+	s.events.publish("log", id, LogEvent{Enrollment: id, Run: run, Lane: lane, Bytes: len(clean)})
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) getLog(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r, RoleViewer); !ok {
-		return
-	}
-	lane, _ := strconv.Atoi(r.PathValue("lane"))
-	data, _, ok := s.logs.get(logKey(r.PathValue("id"), r.PathValue("run"), lane))
-	if !ok {
-		http.Error(w, "not uploaded (yet): send a log command", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write(data)
 }
