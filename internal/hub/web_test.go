@@ -36,7 +36,7 @@ func TestAppRoutes(t *testing.T) {
 	}
 	// Assets, with ETags and their types; nothing else under /assets/.
 	for p, typ := range map[string]string{"/assets/app.js": "javascript", "/assets/app.css": "text/css",
-		"/assets/vendor/preact-htm.module.js": "javascript", "/assets/favicon.svg": "image/svg+xml", "/assets/classic.css": "text/css"} {
+		"/assets/vendor/preact-htm.module.js": "javascript", "/assets/favicon.svg": "image/svg+xml", "/assets/login.css": "text/css"} {
 		resp, _ := page(p)
 		if resp.StatusCode != 200 || !strings.Contains(resp.Header.Get("Content-Type"), typ) || resp.Header.Get("ETag") == "" {
 			t.Errorf("%s: %d %s etag %q", p, resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("ETag"))
@@ -58,12 +58,13 @@ func TestAppRoutes(t *testing.T) {
 			t.Errorf("%s served Go source", p)
 		}
 	}
-	// The classic dashboard moved; its pages link to it.
-	if resp, body := page("/classic"); resp.StatusCode != 200 || !strings.Contains(body, "billing") || !strings.Contains(body, `href="/assets/classic.css"`) {
-		t.Errorf("/classic: %d\n%s", resp.StatusCode, body)
+	// The old pages are gone: a worker page's link goes to its lanes.
+	nofollow0 := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if resp, err := nofollow0.Get(srv.URL + "/w/" + worker.ID); err != nil || resp.StatusCode != http.StatusMovedPermanently || resp.Header.Get("Location") != "/e/"+worker.ID+"/lanes" {
+		t.Errorf("/w/ID: %v %v", resp, err)
 	}
-	if _, body := page("/w/" + worker.ID); !strings.Contains(body, `href="/classic">← all workers`) {
-		t.Errorf("worker page's back link:\n%s", body)
+	if _, body := page("/login"); !strings.Contains(body, `href="/assets/login.css"`) {
+		t.Errorf("login page:\n%s", body)
 	}
 	// Who's logged in.
 	if code, body := call(t, srv.URL+"/api/me", ""); code != 200 || !strings.Contains(body, `"user":""`) {
@@ -95,8 +96,8 @@ func TestCSPEverywhere(t *testing.T) {
 	u.Send(worker.ID, Command{Kind: KindLog, Lane: 1, Pin: Pin{Run: "r-9"}})
 	jar := loginJar(t, srv.URL, alice)
 	inline := regexp.MustCompile(`(?i)<style|\sstyle=|\son[a-z]+=|<script(?:\s[^>]*)?>[^<]|javascript:`)
-	for _, p := range []string{"/", "/e/x/runs", "/classic", "/w/" + worker.ID, "/w/" + worker.ID + "/answer/q1",
-		"/w/" + worker.ID + "/trash/2?job=j", "/w/" + worker.ID + "/logs/r-9/1", "/login", "/api/enrollments", "/api/health", "/assets/app.js", "/api/nope"} {
+	for _, p := range []string{"/", "/e/x/runs", "/e/" + worker.ID + "/questions/q1", "/login", "/api/enrollments", "/api/enrollments/" + worker.ID + "/questions/q1",
+		"/api/enrollments/" + worker.ID + "/commands", "/api/health", "/assets/app.js", "/api/nope"} {
 		resp, err := jar.Get(srv.URL + p)
 		if err != nil {
 			t.Fatal(err)

@@ -68,7 +68,7 @@ ways that applies:
 4. **`-y`.** Every guard still unanswered is approved, and logged as `-y`.
 5. **An answer through the hub** (`swim watch --headless`, where no one is
    at a terminal and `swim.yml`'s `headless.allow` takes `answer`). The
-   question is published on the worker's hub page and the lane waits up
+   question is published in the hub's Approvals inbox and the lane waits up
    to `headless.answer_timeout`. A **signed** answer (`swim approve --hub`,
    or a pasted `ssh-keygen -Y sign`) covers a statement the worker builds
    from its own facts: the question's id, the worker, lane, job, run,

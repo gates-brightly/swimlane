@@ -32,7 +32,7 @@ func TestPrivateHub(t *testing.T) {
 		resp.Body.Close()
 		return resp
 	}
-	for _, p := range []string{"/", "/w/" + worker.ID} {
+	for _, p := range []string{"/", "/e/" + worker.ID + "/lanes"} {
 		if resp := get(p, ""); resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/login" {
 			t.Errorf("%s with no login: %d %s", p, resp.StatusCode, resp.Header.Get("Location"))
 		}
@@ -50,7 +50,7 @@ func TestPrivateHub(t *testing.T) {
 		t.Fatalf("login: %v %v", resp, err)
 	}
 	resp.Body.Close()
-	for _, p := range []string{"/", "/w/" + worker.ID, "/api/enrollments"} {
+	for _, p := range []string{"/", "/e/" + worker.ID + "/lanes", "/api/enrollments", "/api/enrollments/" + worker.ID} {
 		if resp := get(p, ""); resp.StatusCode != http.StatusOK {
 			t.Errorf("%s logged in: %d", p, resp.StatusCode)
 		}

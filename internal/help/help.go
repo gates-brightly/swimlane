@@ -977,12 +977,12 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                              # finished runs' step output) | off (none;
                              # headless.logs: off is off too)
   Guards through the hub: a guard that nothing else approves (no signed
-  approval, no flag the batch approves, no -y) is shown on the worker's
-  hub page as a question, and the lane waits for an answer up to
+  approval, no flag the batch approves, no -y) is shown in the hub's
+  Approvals inbox as a question, and the lane waits for an answer up to
   headless.answer_timeout (or its round's Timeout). An approver answers:
-    signed      swim approve --hub WORKER/QUESTION (or Sign an answer on
-                the page: ssh-keygen -Y sign the statement shown, paste the
-                signature). The statement names the question, this worker,
+    signed      swim approve --hub WORKER/QUESTION (or Answer in the inbox:
+                ssh-keygen -Y sign the statement shown, paste your key and
+                the signature). The statement names the question, this worker,
                 the lane, job, run, script, manifest, evidence, guard,
                 approve or decline, and when it expires; the worker builds
                 it from its own facts and checks the signature against
@@ -1209,8 +1209,8 @@ swim approve --hub WORKER/QUESTION [--decline] [--key K] [--url URL] [--token T]
   --hub WORKER/QUESTION
              answer a guard waiting on a headless worker (swim watch
              --help): fetch the question from the hub (WORKER by name or
-             id; QUESTION its id, or 6+ leading characters, both on the
-             worker's page), show it, sign its statement with your key and
+             id; QUESTION its id, or 6+ leading characters, both in the
+             hub's Approvals inbox), show it, sign its statement with your key and
              send it as your hub user. --decline signs a decline. The hub
              is --url, else $SWIM_HUB_URL, swim hub login's, or this
              repo's enrollment; your hub user token is --token, else
@@ -1401,9 +1401,7 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                    lanes as a graph, a job's stages, steps and output, its
                    lanes now (the live tail of running ones), its queue, and
                    every guard waiting for an answer, updating as reports
-                   arrive; the classic pages at /classic (a tab per
-                   namespace, /classic?ns=NS) and /w/ID (each worker, with
-                   its controls for a logged-in user), and
+                   arrive, with the controls below for a logged-in user; and
                    the read API below for other services. On a terminal it
                    shows a live screen: every
                    worker (state, activity, a mark per lane) with the
@@ -1466,22 +1464,23 @@ swim hub user add NAME --role viewer|operator | remove NAME | list
                    token as Authorization: Bearer. Adding a name again gives
                    a new token and role and ends their sessions. remove
                    ends them too; list shows every user and role.
-  Commands: on a headless worker's page (swim watch --headless) a user
-  logged in gets controls: Interrupt a running lane (pinned to the run
-  shown), Stop the worker after this batch (drain), Run now an idle lane
-  (pinned to the script and manifest shown; queued unsigned, by
-  hub:USER via URL, with no approvals of its own), Log (the run's full
-  log, uploaded masked by the worker and kept in the hub's memory only:
-  8 MiB a log, 64 MiB in all, 15 minutes), and for a guard waiting for an
-  answer, Sign an answer (a page with the statement to sign, for
-  ssh-keygen -Y sign or swim approve --hub), Approve (a button, where the
-  worker's swim.yml says headless.approvals: hub) and Decline. viewer may
+  Commands: on a headless worker's Lanes page (swim watch --headless) a
+  user logged in gets controls: Pause and Unpause, Interrupt a running
+  lane (pinned to the run shown), Stop the worker after this batch
+  (drain), Run now an idle lane (pinned to the script and manifest shown;
+  queued unsigned, by hub:USER via URL, with no approvals of its own),
+  Trash, Fetch log (the run's full log, uploaded masked by the worker and
+  kept in the hub's memory only: 8 MiB a log, 64 MiB in all, 15 minutes),
+  and in the Approvals inbox, for a guard waiting for an answer: a signed
+  answer (the statement to sign, for ssh-keygen -Y sign or swim approve
+  --hub), Approve (a button, where the worker's swim.yml says
+  headless.approvals: hub) and Decline. viewer may
   ask for logs and send signed answers (the signature is what counts);
   operator may do all of it. The hub keeps commands in --state DIR
   and only relays them: the worker long-polls for them with its own
   token, checks each against swim.yml's headless: block, its expiry
   (10 minutes, interrupt 2) and its pin, and acknowledges done, refused
-  or expired, which the page shows. See swim watch --help.
+  or expired, which the Commands panel shows. See swim watch --help.
   swim hub enroll URL --token T [--name N] [--namespace NS]
                    enroll this directory (name: the directory's) under a
                    namespace, the dashboard tab it shows in: its repo, from

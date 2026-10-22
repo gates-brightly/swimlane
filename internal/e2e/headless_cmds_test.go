@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -198,10 +197,8 @@ run "after" sleep 10`)
 	contains(t, "verify", out, "chain of custody")
 	hist := r.mustSwim("history", "--oneline", "--no-pager")
 	contains(t, "history", hist, "hub interrupt by alice", "hub run by alice", "hub log by vic")
-	resp, _ := http.Get(url + "/w/" + id)
-	page, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if strings.Contains(string(page), "Interrupt</button>") {
-		t.Error("controls shown to nobody logged in")
+	// Nobody logged in reads no commands.
+	if resp, err := http.Get(url + "/api/enrollments/" + id + "/commands"); err != nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("commands for nobody: %v %v", resp, err)
 	}
 }

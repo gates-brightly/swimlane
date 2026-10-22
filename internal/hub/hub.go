@@ -20,9 +20,6 @@
 //	PUT    /api/workers/{id}/stream/{run}/{lane}?offset=N the worker: a round's log as it grows (stream.go)
 //	GET    /api/enrollments ...         the read API, and GET /api/events (api.go, events.go)
 //	GET    /, /e/..., /approvals, /assets/... the app (web.go)
-//	GET    /classic                     the classic dashboard, a tab per namespace (?ns=NS; namespace.go)
-//	GET    /w/{id}                      one worker (with controls, for a user logged in)
-//	GET    /w/{id}/answer/{req}         how to sign an answer to a guard waiting there
 //
 // Users and commands (users.go, commands.go, logs.go):
 //
@@ -35,7 +32,7 @@
 //	GET    /api/workers/{id}/commands   worker: long-poll its commands (?after=SEQ&epoch=E&wait=25s)
 //	POST   /api/workers/{id}/commands/{cid}       worker: ack one {outcome, detail}
 //	PUT    /api/workers/{id}/logs/{run}/{lane}    worker: a log a command asked for
-//	GET    /api/workers/{id}/logs/{run}/{lane}    user: read it (also /w/{id}/logs/{run}/{lane})
+//	GET    /api/enrollments/{id}/runs/{run}/jobs/{lane}/log   user: read it (api.go)
 //
 // Tokens (Authorization: Bearer <token>): the enroll token, shared, only
 // enrolls (and reports, for workers from before per-worker tokens); each
@@ -325,11 +322,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/workers/{id}/checkpoints", s.checkpointsAPI)
 	mux.HandleFunc("PUT /api/workers/{id}/runs/{run}", s.putRun)
 	mux.HandleFunc("PUT /api/workers/{id}/stream/{run}/{lane}", s.putStream)
-	mux.HandleFunc("GET /w/{id}", s.workerPage)
 	s.apiRoutes(mux)
 	s.userRoutes(mux)
 	s.commandRoutes(mux)
-	mux.HandleFunc("GET /classic", s.dashboard)
 	s.webRoutes(mux)
 	return secured(mux)
 }

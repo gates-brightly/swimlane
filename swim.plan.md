@@ -117,12 +117,10 @@ lane's round (its `# Job:` id) a job, its stages and steps the steps.
 - [x] An app embedded with `embed.FS` (Preact and htm vendored, no build
       step): a top bar (enrollment switcher, Runs, Lanes, Queue,
       Approvals, live state, user), runs, a run's lanes as a graph, and a
-      job's stages and steps over its output. The old pages are at
-      `/classic` and `/w/{id}` (T45).
-- [ ] [T46](tasks/T46-hub-spa-live-controls.md): live updates from events
-      (no more meta refresh), a log that follows, the commands (pause,
-      interrupt, run, trash, answer) from the app, and an approvals inbox
-      across every enrollment.
+      job's stages and steps over its output (T45).
+- [x] Live updates, a log that follows, the commands (pause, interrupt,
+      run, trash, drain, answer) from the app, an approvals inbox across
+      every enrollment, and the classic pages gone (T46).
 
 Next, once the above ships (each a task when it starts): a verify badge
 per run (signed by whom, anchored), "slower than usual" from `swim

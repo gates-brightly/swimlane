@@ -2,7 +2,6 @@ package hub
 
 import (
 	"fmt"
-	"html/template"
 	"net/http"
 	"strings"
 
@@ -139,37 +138,16 @@ func SignCommand(statement string) string {
 	return "cat > answer.txt <<'EOF'\n" + statement + "EOF\nssh-keygen -Y sign -n " + sign.Namespace + " -f ~/.ssh/id_ed25519 answer.txt   # writes answer.txt.sig"
 }
 
-var answerTmpl = template.Must(template.New("answer").Funcs(funcs).Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>answer · {{.Name}} · swim hub</title>` + style + `</head><body>
-<div><a href="/w/{{.ID}}">← {{.Name}}</a></div>
-{{with .P}}<h1>swim {{.Lane}}{{if .Cell}} [{{.Cell}}]{{end}} asks to approve <span class="mono">{{.Flag}}</span></h1>
-<div class="muted mono">{{if .Job}}job {{.Job}} · {{end}}run {{.Run}} · script {{short .Script}} · manifest {{short .Manifest}}{{if .EvidenceSHA}} · evidence {{short .EvidenceSHA}}{{end}} · waits until {{.Expires}}</div>
-<p>the lane says: {{.Desc}}</p>
-{{if .Evidence}}<h2>Evidence (what it will do)</h2><pre>{{.Evidence}}</pre>{{end}}
-{{if .Signers}}<p>signed so far: {{range .Signers}}{{.}} {{end}}{{if .Need}}<span class="muted">· still {{.Need}}</span>{{end}}</p>{{end}}{{end}}
-<h2>Sign your answer: {{.Decision}}</h2>
-<p class="muted">{{if eq .Decision "approve"}}<a href="?decision=decline">decline instead</a>{{else}}<a href="?decision=approve">approve instead</a>{{end}} · or from a terminal: <span class="mono">swim approve --hub {{.ID}}/{{.P.ID}}{{if eq .Decision "decline"}} --decline{{end}}</span></p>
-<p>The worker checks your signature of exactly this statement against its <span class="mono">lookup.yml</span>. Run this (with your key), then paste your public key and <span class="mono">answer.txt.sig</span>:</p>
-<pre>{{.Command}}</pre>
-<form method="post" action="/api/workers/{{.ID}}/commands"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<input type="hidden" name="kind" value="answer"><input type="hidden" name="request" value="{{.P.ID}}"><input type="hidden" name="evidence" value="{{.P.EvidenceSHA}}"><input type="hidden" name="decision" value="{{.Decision}}">
-<p><textarea name="key" rows="2" cols="80" placeholder="ssh-ed25519 AAAA... you@host (your .pub)"></textarea></p>
-<p><textarea name="sig" rows="8" cols="80" placeholder="-----BEGIN SSH SIGNATURE-----"></textarea></p>
-<button>Send the signed answer</button></form>
-</body></html>`))
-
-// answerPage shows a waiting question and how to sign an answer to it:
-// the statement, the ssh-keygen command, and a form for the signature.
-// It doesn't refresh (a paste would be lost).
-func (s *Server) answerPage(w http.ResponseWriter, r *http.Request) {
-	user, _, csrf := s.viewer(r)
-	if user == "" {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+// questionAPI is a question waiting on worker id, for a user to answer:
+// the question, and the statement an answer signs and the command that
+// signs it, for ?decision= (approve, the default, or decline).
+func (s *Server) questionAPI(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUser(w, r, RoleViewer); !ok {
 		return
 	}
 	v, ok := s.worker(r.PathValue("id"))
 	if !ok {
-		http.NotFound(w, r)
+		http.Error(w, "no such enrollment", http.StatusNotFound)
 		return
 	}
 	var p *PendingApproval
@@ -186,10 +164,7 @@ func (s *Server) answerPage(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("decision") == approval.Decline {
 		decision = approval.Decline
 	}
-	d := struct {
-		ID, Name, CSRF, Decision, Command string
-		P                                 *PendingApproval
-	}{ID: v.ID, Name: v.Name, CSRF: csrf, Decision: decision, P: p, Command: SignCommand(p.Question(v.ID).Statement(decision))}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	answerTmpl.Execute(w, d)
+	statement := p.Question(v.ID).Statement(decision)
+	writeJSON(w, map[string]any{"schema": APISchema, "question": p, "decision": decision, "statement": statement,
+		"command": SignCommand(statement), "terminal": "swim approve --hub " + v.ID + "/" + p.ID + map[bool]string{true: " --decline"}[decision == approval.Decline]})
 }

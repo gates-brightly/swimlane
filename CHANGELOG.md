@@ -300,6 +300,21 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Changed
 
+- **The hub's controls moved into its app; the classic pages are gone.**
+  A headless worker's Lanes page has Pause, Unpause, Interrupt, Run now,
+  Trash, Fetch log and Stop after this batch, for the users and commands
+  the old page allowed, the destructive ones behind a confirmation, and a
+  Commands panel showing each outcome as the worker acknowledges it
+  (`GET /api/enrollments/ID/commands`, and a `command` event). Guards
+  waiting for an answer are answered from the Approvals inbox: a signed
+  answer (the statement comes from `GET .../questions/REQ`) or, where
+  the worker takes them, Approve and Decline buttons. A running lane's
+  log follows its end in the job view as it streams. `/classic`,
+  `/w/ID/answer/...`, `/w/ID/trash/...` and `/w/ID/logs/...` are gone;
+  `/w/ID` redirects to the worker's lanes, and the URLs `swim hub` and
+  `swim watch` print point at the app. `/login` is the one page the
+  server renders.
+
 - **The hub's read API: `/api/enrollments` replaces `GET /api/workers`.**
   `GET /api/enrollments` gives the namespace tabs and every worker
   (schema `swim.hub/v2`; `?ns=NS` as before), and under it each worker,

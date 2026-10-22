@@ -445,7 +445,7 @@ func hubEnroll(args []string) error {
 	if cfg, err := loadCfg(root); err == nil {
 		c.Report(hubSnapshot(root, cfg, w.Name, ns, "enrolled; not watching (start swim watch)", pollEvery))
 	}
-	fmt.Printf("enrolled %s with %s as %s (id %s) in namespace %s\nswim watch here now reports to it: %s/w/%s\n", root, c.URL, w.Name, id, ns, c.URL, id)
+	fmt.Printf("enrolled %s with %s as %s (id %s) in namespace %s\nswim watch here now reports to it: %s/e/%s/lanes\n", root, c.URL, w.Name, id, ns, c.URL, id)
 	if w.Key != "" {
 		fmt.Printf("its key for secrets: %s (approve it on the hub: a on its row, or swim hub approve %s)\n", hub.KeyFingerprint(w.Key), w.Name)
 	}
@@ -487,7 +487,7 @@ func hubStatus(args []string) error {
 		return fmt.Errorf("hub unreachable: %w", err)
 	}
 	keepHubToken(root, h, c)
-	fmt.Printf("reachable: %s/w/%s\n", h.URL, h.ID)
+	fmt.Printf("reachable: %s/e/%s/lanes\n", h.URL, h.ID)
 	return nil
 }
 
@@ -543,7 +543,7 @@ func hubReporter(root string, every time.Duration) (setActivity func(string), st
 			}
 		}
 	}()
-	fmt.Printf("swim watch: reporting to %s/w/%s\n", h.URL, h.ID)
+	fmt.Printf("swim watch: reporting to %s/e/%s/lanes\n", h.URL, h.ID)
 	return func(a string) {
 			mu.Lock()
 			activity = a

@@ -2,9 +2,7 @@ package hub
 
 import (
 	"context"
-	"net/http"
-	"net/http/cookiejar"
-	"net/url"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -62,27 +60,33 @@ func TestAnswerCommands(t *testing.T) {
 		t.Errorf("a drain carried an answer: %+v", d.Answer)
 	}
 
-	// The page lists the question; a logged-in user gets a page to sign
-	// an answer: the statement, bound to this worker, and the command.
-	jar, _ := cookiejar.New(nil)
-	br := &http.Client{Jar: jar}
-	br.PostForm(srv.URL+"/api/login", url.Values{"token": {vic}})
-	page := getWith(t, br, srv.URL+"/w/"+worker.ID)
-	if !strings.Contains(page, "Waiting for an answer") || !strings.Contains(page, "drop table &lt;b&gt;old&lt;/b&gt;") || !strings.Contains(page, "Sign an answer") ||
-		strings.Contains(page, ">Approve<") || !strings.Contains(page, "only signed answers approve it") {
-		t.Errorf("worker page:\n%s", page)
+	// The question is listed (its lane text made safe); a user gets the
+	// statement to sign, bound to this worker, and the command.
+	if _, body := call(t, srv.URL+"/api/enrollments/"+worker.ID, ""); !strings.Contains(body, `"pending":[{"id":"`+q.ID) || !strings.Contains(body, `drop table \u003cb\u003eold\u003c/b\u003e`) {
+		t.Errorf("enrollment:\n%s", body)
 	}
-	ap := getWith(t, br, srv.URL+"/w/"+worker.ID+"/answer/"+q.ID)
-	stmt := q.Question(worker.ID).Statement(approval.Approve)
-	if !strings.Contains(ap, "request: "+q.ID) || !strings.Contains(ap, "worker: "+worker.ID) || !strings.Contains(ap, "decision: approve") ||
-		!strings.Contains(ap, "ssh-keygen -Y sign -n swim@gates-brightly") || !strings.Contains(stmt, "evidence-sha256: "+q.EvidenceSHA+"\n") {
-		t.Errorf("answer page:\n%s", ap)
+	qa := srv.URL + "/api/enrollments/" + worker.ID + "/questions/" + q.ID
+	var got struct {
+		Question  PendingApproval
+		Decision  string
+		Statement string
+		Command   string
+		Terminal  string
 	}
-	if ap := getWith(t, br, srv.URL+"/w/"+worker.ID+"/answer/"+q.ID+"?decision=decline"); !strings.Contains(ap, "decision: decline") {
-		t.Error("the decline statement")
+	_, body := call(t, qa, vic)
+	json.Unmarshal([]byte(body), &got)
+	if got.Question.ID != q.ID || got.Statement != q.Question(worker.ID).Statement(approval.Approve) || !strings.Contains(got.Statement, "worker: "+worker.ID) ||
+		!strings.Contains(got.Command, "ssh-keygen -Y sign -n swim@gates-brightly") || got.Terminal != "swim approve --hub "+worker.ID+"/"+q.ID {
+		t.Errorf("question:\n%s", body)
 	}
-	if resp, _ := http.Get(srv.URL + "/w/" + worker.ID + "/answer/" + q.ID); resp.Request.URL.Path != "/login" {
-		t.Errorf("the answer page without a login: %s", resp.Request.URL.Path)
+	if _, body := call(t, qa+"?decision=decline", vic); !strings.Contains(body, `decision: decline`) || !strings.Contains(body, " --decline") {
+		t.Errorf("the decline statement:\n%s", body)
+	}
+	if code, _ := call(t, qa, ""); code != 401 {
+		t.Errorf("a question without a login: %d", code)
+	}
+	if code, _ := call(t, srv.URL+"/api/enrollments/"+worker.ID+"/questions/nope", vic); code != 404 {
+		t.Errorf("no such question: %d", code)
 	}
 	_ = s
 }

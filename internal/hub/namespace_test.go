@@ -103,14 +103,16 @@ func TestNamespaceTabs(t *testing.T) {
 		t.Errorf("tab counts: %+v", tb)
 	}
 
-	page := get(t, srv.URL+"/classic?ns=github.com/org/billing")
-	if !strings.Contains(page, `class="on">github.com/org/billing`) || strings.Contains(page, "api-mac") || !strings.Contains(page, "billing") {
-		t.Errorf("billing tab:\n%s", page)
+	// The API gives the tabs, and one namespace's workers.
+	var got struct {
+		Namespaces  []Tab
+		Enrollments []View
 	}
-	if all := get(t, srv.URL+"/classic"); !strings.Contains(all, "api-mac") || !strings.Contains(all, `href="/classic?ns=github.com%2forg%2fapi"`) {
-		t.Errorf("all tab lacks the workers or the namespace links:\n%s", all)
+	json.Unmarshal([]byte(get(t, srv.URL+"/api/enrollments?ns=github.com/org/billing")), &got)
+	if len(got.Namespaces) != 4 || !got.Namespaces[2].Active || len(got.Enrollments) != 1 || got.Enrollments[0].Name != "billing" {
+		t.Errorf("billing tab: %+v", got)
 	}
-	if empty := get(t, srv.URL+"/classic?ns=nobody/here"); !strings.Contains(empty, "No workers in nobody/here") {
-		t.Errorf("empty namespace page:\n%s", empty)
+	if body := get(t, srv.URL+"/api/enrollments?ns=nobody/here"); !strings.Contains(body, `"enrollments":[]`) {
+		t.Errorf("empty namespace: %s", body)
 	}
 }

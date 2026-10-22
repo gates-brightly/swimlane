@@ -3,7 +3,6 @@ package hub
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -101,9 +100,7 @@ func (s *Server) commandRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/workers/{id}/commands", s.pollCommands)
 	mux.HandleFunc("POST /api/workers/{id}/commands/{cid}", s.ackCommand)
 	mux.HandleFunc("PUT /api/workers/{id}/logs/{run}/{lane}", s.putLog)
-	mux.HandleFunc("GET /w/{id}/logs/{run}/{lane}", s.logPage)
-	mux.HandleFunc("GET /w/{id}/answer/{req}", s.answerPage)
-	mux.HandleFunc("GET /w/{id}/trash/{lane}", s.trashPage)
+	mux.HandleFunc("GET /api/enrollments/{id}/commands", s.commandsAPI)
 }
 
 // Send queues a command for worker id from user by, after checking its
@@ -167,12 +164,51 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 		return nil, err
 	}
 	s.audit("%s sent %s %s to %s (%s): seq %d %s", by, c.Kind, laneText(c.Lane), id, rec.Name, cmd.Seq, cmd.CID)
+	s.events.publish("command", id, CommandEvent{Enrollment: id, CID: cmd.CID})
 	if ch, ok := s.wake[id]; ok {
 		close(ch)
 		delete(s.wake, id)
 	}
 	cp := *cmd
 	return &cp, nil
+}
+
+// CommandEvent says a command was sent or acknowledged: no more, since
+// anyone who can view the hub sees events; a user reads the command from
+// GET /api/enrollments/{id}/commands.
+type CommandEvent struct {
+	Enrollment string `json:"enrollment"`
+	CID        string `json:"cid"`
+}
+
+// CommandView is a command as a user reads it, with its state now.
+type CommandView struct {
+	Command
+	State string `json:"state"` // done | refused | expired | sent | expired (never picked up)
+}
+
+// RecentCommands is how many commands GET .../commands lists.
+const RecentCommands = 30
+
+// commandsAPI lists worker id's recent commands, newest first, for a user.
+func (s *Server) commandsAPI(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUser(w, r, RoleViewer); !ok {
+		return
+	}
+	id := r.PathValue("id")
+	if _, ok := s.worker(id); !ok {
+		http.Error(w, "no such enrollment", http.StatusNotFound)
+		return
+	}
+	now := s.now()
+	out := []CommandView{}
+	for i, c := range s.Commands(id) {
+		if i == RecentCommands {
+			break
+		}
+		out = append(out, CommandView{Command: c, State: c.State(now)})
+	}
+	writeJSON(w, map[string]any{"schema": APISchema, "commands": out})
 }
 
 func laneText(n int) string {
@@ -245,11 +281,7 @@ func (s *Server) sendCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if form {
-		to := "/w/" + url.PathEscape(id)
-		if cmd.Kind == KindLog {
-			to += "/logs/" + url.PathEscape(cmd.Pin.Run) + "/" + strconv.Itoa(cmd.Lane)
-		}
-		http.Redirect(w, r, to, http.StatusSeeOther)
+		http.Redirect(w, r, "/e/"+url.PathEscape(id)+"/lanes", http.StatusSeeOther)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -366,54 +398,6 @@ func (s *Server) ackCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit("%s acked %s %s (seq %d, by %s): %s %s", id, cmd.Kind, laneText(cmd.Lane), cmd.Seq, cmd.By, a.Outcome, a.Detail)
+	s.events.publish("command", id, CommandEvent{Enrollment: id, CID: cmd.CID})
 	w.WriteHeader(http.StatusNoContent)
-}
-
-var trashTmpl = template.Must(template.New("trash").Funcs(funcs).Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>trash · {{.Name}} · swim hub</title>` + style + `</head><body>
-<div><a href="/w/{{.ID}}">← {{.Name}}</a></div>
-<h1>Trash swim {{.L.Lane}}?</h1>
-<p>{{.L.Round}}</p>
-<div class="muted mono">job {{.Job}} · {{.L.State}}</div>
-<p>The worker moves this lane's script and its lane.{{.L.Lane}}.yml to <span class="mono">.swim/cleaned/</span> and archives its log. Nothing is deleted: <span class="mono">swim trash --restore STAMP</span> on the worker puts it back. If the lane holds another job by the time the worker takes this, it refuses and nothing moves.</p>
-<form method="post" action="/api/workers/{{.ID}}/commands"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<input type="hidden" name="kind" value="trash"><input type="hidden" name="lane" value="{{.L.Lane}}"><input type="hidden" name="job" value="{{.Job}}">
-<button class="danger">Trash swim {{.L.Lane}}</button> <a href="/w/{{.ID}}">cancel</a></form>
-</body></html>`))
-
-// trashPage confirms a trash: the lane, its job and round, and what the
-// worker will do. Only its button sends the command.
-func (s *Server) trashPage(w http.ResponseWriter, r *http.Request) {
-	user, role, csrf := s.viewer(r)
-	if user == "" {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-	if role != RoleOperator {
-		http.Error(w, "trashing a lane takes the operator role", http.StatusForbidden)
-		return
-	}
-	v, ok := s.worker(r.PathValue("id"))
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	n, _ := strconv.Atoi(r.PathValue("lane"))
-	job := r.URL.Query().Get("job")
-	var l *Lane
-	for i := range v.Lanes {
-		if v.Lanes[i].Lane == n {
-			l = &v.Lanes[i]
-		}
-	}
-	if l == nil || l.TrashJob == "" || l.TrashJob != job || !validPin(job) {
-		http.Error(w, "that lane doesn't hold that job now (rewritten, trashed, or running): go back and look again", http.StatusConflict)
-		return
-	}
-	d := struct {
-		ID, Name, CSRF, Job string
-		L                   *Lane
-	}{ID: v.ID, Name: v.Name, CSRF: csrf, Job: job, L: l}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	trashTmpl.Execute(w, d)
 }

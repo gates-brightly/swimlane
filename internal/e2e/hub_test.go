@@ -96,14 +96,14 @@ func TestHub(t *testing.T) {
 	if w.Activity != "stopped" || len(w.Queue) != 1 || w.Queue[0].State != "done" || w.Queue[0].Result != "passed" {
 		t.Errorf("after the batch: %+v", w)
 	}
-	resp, _ := http.Get(url + "/classic")
+	resp, _ := http.Get(url + "/api/enrollments/" + w.ID)
 	sc2 := bufio.NewScanner(resp.Body)
 	page := ""
 	for sc2.Scan() {
 		page += sc2.Text() + "\n"
 	}
 	resp.Body.Close()
-	contains(t, "dashboard", page, "swim hub", "billing", "stopped")
+	contains(t, "enrollment", page, `"name":"billing"`, `"activity":"stopped"`)
 
 	contains(t, "leave", r.mustSwim("hub", "leave"), "left "+url)
 	if w := hubGet(t, url); len(w.Workers) != 0 {

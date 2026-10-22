@@ -23,6 +23,8 @@ import (
 //	GET /api/enrollments/{id}/runs/{run}                   a run's record and a summary of each lane's round in it
 //	GET /api/enrollments/{id}/runs/{run}/jobs/{lane}       user: a lane's round in it (stages, steps, output under hub.logs: stream)
 //	GET /api/enrollments/{id}/runs/{run}/jobs/{lane}/log   user: its log, as text (Range honored): streamed (hub.logs: stream, as it runs) or asked for
+//	GET /api/enrollments/{id}/commands                     user: its recent commands and their outcomes (commands.go)
+//	GET /api/enrollments/{id}/questions/{req}              user: a guard waiting for an answer, and the statement to sign (answers.go)
 //	GET /api/events                                        server-sent events (events.go)
 
 // APISchema identifies the read API's documents.
@@ -57,6 +59,7 @@ func (s *Server) apiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/enrollments/{id}/runs/{run}", s.runAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}/runs/{run}/jobs/{lane}", s.jobAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}/runs/{run}/jobs/{lane}/log", s.jobLogAPI)
+	mux.HandleFunc("GET /api/enrollments/{id}/questions/{req}", s.questionAPI)
 	mux.HandleFunc("GET /api/events", s.eventsAPI)
 }
 
