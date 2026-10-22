@@ -65,7 +65,11 @@ Gaps:
 
 No changes to swim's behavior.
 
+<<<<<<< HEAD
 - [x] `flake.nix` here: `packages.<system>.swim` (built with `buildGo127Module`,
+=======
+- [ ] `flake.nix` here: `packages.<system>.swim` (built with `buildGo127Module`,
+>>>>>>> 30d208b (feat: justfile)
       `cmd/swim` only, the justfile's version ldflags) and a dev shell.
 - [ ] In the nix repo: swimlane as a flake input; `hosts/spiff/swim.nix` runs
       `swim hub --addr 127.0.0.1:3024 --state /var/lib/swim-hub --no-tui`,
