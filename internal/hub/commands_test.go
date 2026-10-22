@@ -166,7 +166,7 @@ func TestCommandRoles(t *testing.T) {
 	if _, err := NewAdmin(srv.URL, "adm1n").AddUser("bad name", RoleViewer); err == nil {
 		t.Error("a name with a space")
 	}
-	if _, err := NewAdmin(srv.URL, "adm1n").AddUser("bob", "admin"); err == nil {
+	if _, err := NewAdmin(srv.URL, "adm1n").AddUser("bob", "root"); err == nil {
 		t.Error("an unknown role")
 	}
 	// Removed: its token stops working.

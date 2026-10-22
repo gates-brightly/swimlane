@@ -278,16 +278,37 @@ func (s *Server) grantNames(id string) []string {
 	return out
 }
 
+// adminOnly lets r through when it carries the admin token, or comes from
+// an admin user (their token, or their session with its CSRF token for a
+// change); it writes the refusal otherwise.
 func (s *Server) adminOnly(w http.ResponseWriter, r *http.Request) bool {
 	if s.admin == "" {
 		http.Error(w, "this hub keeps no state (swim hub --state DIR): nothing to approve or grant", http.StatusNotImplemented)
 		return false
 	}
-	if !s.isAdmin(bearer(r.Header)) {
-		http.Error(w, "needs the hub's admin token", http.StatusUnauthorized)
+	got := bearer(r.Header)
+	if got != "" && s.isAdmin(got) {
+		return true
+	}
+	if got == "" && !s.hasSession(r) {
+		http.Error(w, "needs the hub's admin token, or an admin user", http.StatusUnauthorized)
 		return false
 	}
-	return true
+	u, ok := s.requireUser(w, r, RoleAdmin)
+	if ok {
+		s.mu.Lock()
+		s.audit("%s (admin) %s %s from %s", u.Name, r.Method, r.URL.Path, s.clientAddr(r))
+		s.mu.Unlock()
+	}
+	return ok
+}
+
+// hasSession reports whether r carries a live session.
+func (s *Server) hasSession(r *http.Request) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	se, _ := s.sessionOf(r)
+	return se != nil
 }
 
 func (s *Server) approveAPI(w http.ResponseWriter, r *http.Request) {

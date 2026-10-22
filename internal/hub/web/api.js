@@ -46,6 +46,21 @@ export async function send(id, cmd) {
   }
 }
 
+// adminCall sends an admin request (users, approvals, grants) as the
+// logged-in admin, JSON both ways: {ok, data} or {ok: false, error}.
+export async function adminCall(method, path, body) {
+  try {
+    const headers = { Accept: 'application/json', 'X-CSRF-Token': (state.me && state.me.csrf) || '' };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const r = await fetch(path, { method, credentials: 'same-origin', headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    const text = await r.text();
+    if (!r.ok) return { ok: false, error: text.trim() || r.statusText };
+    return { ok: true, data: text ? JSON.parse(text) : null };
+  } catch (e) {
+    return { ok: false, error: 'the hub is unreachable' };
+  }
+}
+
 // onLog calls f with each log event ({enrollment, run, lane, bytes,
 // final}); it returns the function that stops it.
 const logListeners = new Set();

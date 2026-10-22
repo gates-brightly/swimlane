@@ -6,6 +6,7 @@ export function route(path) {
   const parts = path.replace(/\/+$/, '').split('/').filter(Boolean).map(decodeURIComponent);
   if (parts.length === 0) return { name: 'home' };
   if (parts.length === 1 && parts[0] === 'approvals') return { name: 'approvals' };
+  if (parts.length === 1 && parts[0] === 'admin') return { name: 'admin' };
   if (parts[0] === 'e' && parts.length >= 2) {
     const id = parts[1];
     if (parts.length === 2) return { name: 'runs', id };
@@ -84,6 +85,12 @@ export function utf8Length(s) {
   return new TextEncoder().encode(s).length;
 }
 
+// isOperator: me may send commands (an operator, or an admin, who is one too).
+export function isOperator(me) { return !!me && (me.role === 'operator' || me.role === 'admin'); }
+
+// isAdmin: me manages users, approvals and grants.
+export function isAdmin(me) { return !!me && me.role === 'admin'; }
+
 // can reports whether the logged-in user me may send command kind to
 // enrollment e and e takes it (as the worker's swim.yml headless.allow
 // says; the worker checks again): a log, or an answer, takes a viewer
@@ -91,7 +98,7 @@ export function utf8Length(s) {
 // an operator, which the hub checks); everything else an operator.
 export function can(me, e, kind) {
   if (!me || !me.user || !e || !e.headless) return false;
-  if (kind !== 'log' && kind !== 'answer' && me.role !== 'operator') return false;
+  if (kind !== 'log' && kind !== 'answer' && !isOperator(me)) return false;
   if (kind === 'log' && e.headless.logs_off) return false;
   return (e.headless.allow || []).includes(kind);
 }

@@ -3,10 +3,10 @@
 // API and event stream (api.js) and renders everything through htm, which
 // escapes text: nothing a worker sends is ever parsed as HTML.
 import { html, render, useEffect, useMemo, useRef, useState } from './vendor/preact-htm.module.js';
-import { get, getText, onLog, post, send, start, useFetch, useStore } from './api.js';
+import { adminCall, get, getText, onLog, post, send, start, useFetch, useStore } from './api.js';
 import {
-  ago, api, between, byNamespace, can, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
-  lineMatches, matchEnrollment, route, stateClass, steps, until, utf8Length,
+  ago, api, between, byNamespace, can, enrollmentState, fmtDuration, hasOutput, href, isAdmin, isOperator,
+  layoutGraph, lineMatches, matchEnrollment, route, stateClass, steps, until, utf8Length,
 } from './lib.js';
 
 // ---- navigation ------------------------------------------------------
@@ -195,6 +195,7 @@ function TopBar({ r, store }) {
       ${id && tab('lanes', 'Lanes', href('e', id, 'lanes'))}
       ${id && tab('queue', 'Queue', href('e', id, 'queue'))}
       <a class=${r.name === 'approvals' ? 'on' : ''} href="/approvals">Approvals <span class="count ${waiting ? 'hot' : ''}">${waiting}</span></a>
+      ${isAdmin(store.me) && html`<a class=${r.name === 'admin' ? 'on' : ''} href="/admin">Admin</a>`}
     </nav>
     <span class="spacer"></span>
     <span class="live" title="Updates from the hub as they happen"><span class="dot ${live[0]}"></span><span class="t">${live[1]}</span></span>
@@ -567,7 +568,7 @@ function Question({ r, store }) {
     if (signed) Object.assign(c.answer, { key: key.trim(), sig: sig.trim() });
     cmd.run(c, (signed ? 'Signed ' : '') + dec);
   };
-  const operator = me && me.role === 'operator' && can(me, e, 'answer');
+  const operator = isOperator(me) && can(me, e, 'answer');
   return html`${head}
     <div class="head"><${Icon} state="waiting"/><h1>swim ${p.lane}${p.cell ? ' [' + p.cell + ']' : ''} asks to approve <code>${p.flag}</code></h1></div>
     ${cmd.note}${cmd.dialog}
@@ -665,6 +666,92 @@ function LiveLog({ r, store }) {
     ${!follow && lines.length > 0 && html`<button class="btn jump" onClick=${() => { setFollow(true); scrollTo(0, document.documentElement.scrollHeight); }}>Jump to end ↓</button>`}`;
 }
 
+// Admin is what the admin token does, for an admin user: the hub's users,
+// which workers' keys are approved for secrets, and the grants made to
+// them. A grant itself is made with swim secret grant, which encrypts the
+// value to the worker's key on the admin's machine: the hub never holds a
+// secret's value, so the browser never sends one.
+function Admin({ store }) {
+  useTitle('Admin');
+  const me = store.me;
+  const users = useFetch('/api/users');
+  const grants = useFetch('/api/grants');
+  const [note, setNote] = useState(null);
+  const [ask, setAsk] = useState(null);
+  const [form, setForm] = useState({ name: '', role: 'viewer', tailscale: '' });
+  if (!me || me.user === undefined) return html`<${Loading}/>`;
+  if (!isAdmin(me)) {
+    return html`<div class="panel"><div class="empty">This page is for the hub's admins. <a href="/">All enrollments</a></div></div>`;
+  }
+  const act = async (what, method, path, body, after) => {
+    setNote({ cls: 'wait', text: what + '…' });
+    const r = await adminCall(method, path, body);
+    if (!r.ok) {
+      setNote({ cls: 'bad', text: what + ': ' + r.error });
+      return;
+    }
+    setNote(after ? after(r.data) : { cls: 'ok', text: what + ': done.' });
+    users.reload();
+    grants.reload();
+  };
+  const confirm = (c) => setAsk(c);
+  const addUser = (ev) => {
+    ev.preventDefault();
+    const body = { name: form.name.trim(), role: form.role, tailscale: form.tailscale.trim() };
+    act('Add ' + body.name, 'POST', '/api/users', body, (d) => ({
+      cls: 'ok', text: (body.tailscale ? d.name + ' signs in with Tailscale as ' + body.tailscale + '. ' : '') + d.name + "'s token (shown once; they log in with it at /login, or use it with swim hub):",
+      token: d.token,
+    }));
+    setForm({ name: '', role: 'viewer', tailscale: '' });
+  };
+  const list = (users.data && users.data.users) || [];
+  const workers = store.enrollments || [];
+  const gs = (grants.data && grants.data.grants) || [];
+  return html`<div class="head"><h1>Admin</h1><span class="muted">users, worker approvals and secret grants</span></div>
+    ${ask && html`<${Confirm} c=${ask} close=${() => setAsk(null)}/>`}
+    ${note && html`<div class="note ${note.cls}" role="status">${note.text}${note.token ? html` <code class="mono">${note.token}</code>` : ''}</div>`}
+    <h2>Users</h2>
+    <div class="panel">${users.loading && !users.data ? html`<${Loading}/>` : users.error ? html`<div class="err">${users.error}</div>` : html`<div class="tw"><table>
+      <thead><tr><th>Name</th><th>Role</th><th>Tailscale</th><th>Added</th><th></th></tr></thead>
+      <tbody>${list.map((u) => html`<tr>
+        <td><b>${u.name}</b>${u.name === me.user ? html` <span class="muted">(you)</span>` : ''}</td>
+        <td><span class="pill">${u.role}</span></td><td class="mono">${u.tailscale || ''}</td><td class="muted">${u.added ? when(u.added) : ''}</td>
+        <td>${u.name !== me.user ? html`<button class="btn sm danger" onClick=${() => confirm({
+          title: 'Remove ' + u.name, body: 'Their token stops working and their sessions end.', label: 'Remove', danger: true,
+          run: () => act('Remove ' + u.name, 'DELETE', api('users', u.name)) })}>Remove</button>` : ''}</td></tr>`)}
+      </tbody></table></div>`}
+      <form class="admin-add" onSubmit=${addUser}>
+        <input required placeholder="name (as lookup.yml knows them)" value=${form.name} onInput=${(e) => setForm({ ...form, name: e.target.value })}/>
+        <select value=${form.role} onChange=${(e) => setForm({ ...form, role: e.target.value })}>
+          <option value="viewer">viewer</option><option value="operator">operator</option><option value="admin">admin</option></select>
+        <input placeholder="Tailscale login (optional)" value=${form.tailscale} onInput=${(e) => setForm({ ...form, tailscale: e.target.value })}/>
+        <button class="btn primary">Add user</button>
+      </form>
+      <div class="sub">Adding a name again gives them a new token and role, and ends their sessions.</div></div>
+    <h2>Workers</h2>
+    <div class="panel">${workers.length === 0 ? html`<div class="empty">No enrollments yet.</div>` : html`<div class="tw"><table>
+      <thead><tr><th>Worker</th><th>Key for secrets</th><th>Approved</th><th>Grants</th><th></th></tr></thead>
+      <tbody>${workers.map((e) => html`<tr>
+        <td><a href=${href('e', e.id, 'lanes')}>${e.name}</a><div class="sub">${e.host} · ${e.namespace || 'no namespace'}</div></td>
+        <td class="mono">${e.key_fp || html`<span class="muted">none</span>`}</td>
+        <td>${e.approved ? html`<span class="pill ok">approved</span>` : e.key_fp ? html`<span class="pill wait">pending</span>` : ''}</td>
+        <td>${(e.grants || []).join(', ')}</td>
+        <td>${e.key_fp && (e.approved
+          ? html`<button class="btn sm danger" onClick=${() => confirm({ title: 'Withdraw ' + e.name, body: 'Its approval ends and its grants are deleted.', label: 'Withdraw', danger: true,
+              run: () => act('Withdraw ' + e.name, 'DELETE', api('workers', e.id, 'approve')) })}>Withdraw</button>`
+          : html`<button class="btn sm primary" onClick=${() => confirm({ title: 'Approve ' + e.name, body: html`Approve key <code>${e.key_fp}</code> on ${e.host} for secrets? Check the fingerprint against what <code>swim hub enroll</code> printed there.`, label: 'Approve',
+              run: () => act('Approve ' + e.name, 'POST', api('workers', e.id, 'approve')) })}>Approve</button>`)}</td></tr>`)}
+      </tbody></table></div>`}</div>
+    <h2>Secret grants</h2>
+    <div class="panel">${grants.loading && !grants.data ? html`<${Loading}/>` : grants.error ? html`<div class="err">${grants.error}</div>` : gs.length === 0 ? html`<div class="empty">No grants.</div>` : html`<div class="tw"><table>
+      <thead><tr><th>Worker</th><th>Secret</th><th>Guard</th><th>By</th><th>When</th><th></th></tr></thead>
+      <tbody>${gs.map((g) => html`<tr><td>${g.name}</td><td class="mono">${g.secret}</td><td class="mono">${(g.guard || []).join(', ')}</td><td>${g.by || ''}</td><td class="muted">${g.at ? when(g.at) : ''}</td>
+        <td><button class="btn sm danger" onClick=${() => confirm({ title: 'Revoke ' + g.secret, body: g.name + ' loses it at its next fetch.', label: 'Revoke', danger: true,
+          run: () => act('Revoke ' + g.secret, 'DELETE', api('grants', g.worker, g.secret)) })}>Revoke</button></td></tr>`)}
+      </tbody></table></div>`}
+      <div class="sub">To grant a secret: <code>swim secret grant WORKER NAME</code> (log in first with <code>swim hub login ${location.origin} --admin-token</code> and your token). It encrypts the value to the worker's key on your machine, so the hub never sees it.</div></div>`;
+}
+
 function NotFound() {
   useTitle('Not found');
   return html`<div class="panel"><div class="empty">No such page. <a href="/">All enrollments</a></div></div>`;
@@ -672,7 +759,7 @@ function NotFound() {
 
 // ---- the app ------------------------------------------------------------
 
-const views = { home: Home, runs: Runs, run: Run, job: Job, lanes: Lanes, queue: Queue, approvals: Approvals, question: Question, notfound: NotFound };
+const views = { home: Home, runs: Runs, run: Run, job: Job, lanes: Lanes, queue: Queue, approvals: Approvals, question: Question, admin: Admin, notfound: NotFound };
 
 function App() {
   const path = usePath();

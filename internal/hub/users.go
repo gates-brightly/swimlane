@@ -15,16 +15,34 @@ import (
 )
 
 // Hub users: a person behind every command. The admin adds them (swim hub
-// user add NAME --role viewer|operator) and each gets a token; the hub
-// keeps only its hash, as for worker tokens. A browser trades the token
+// user add NAME --role viewer|operator|admin) and each gets a token; the
+// hub keeps only its hash, as for worker tokens. A browser trades the token
 // for a session cookie (POST /api/login); scripts send it as a bearer
-// token. The admin token manages users and sends no command itself.
+// token. The admin token manages users and sends no command itself; an
+// admin user does both (adminOnly), from the CLI with their token or from
+// the app with their session.
 
 // Roles.
 const (
 	RoleViewer   = "viewer"   // reads full logs, sends signed answers
 	RoleOperator = "operator" // also interrupts, drains, runs, and answers with a button
+	RoleAdmin    = "admin"    // an operator who also does what the admin token does: users, approvals, grants
 )
+
+// validRole: one of the roles.
+func validRole(r string) bool { return r == RoleViewer || r == RoleOperator || r == RoleAdmin }
+
+// covers reports whether a user with role has want's rights: an admin is
+// an operator too, and both are viewers.
+func covers(role, want string) bool {
+	switch want {
+	case RoleViewer:
+		return validRole(role)
+	case RoleOperator:
+		return role == RoleOperator || role == RoleAdmin
+	}
+	return role == want
+}
 
 // SessionTTL is how long a login lasts.
 const SessionTTL = 12 * time.Hour
@@ -141,8 +159,8 @@ func (s *Server) AddUserTailscale(name, role, tailscale string) (string, error) 
 	if !chars.Name(name, 64) {
 		return "", fmt.Errorf("user name %q: letters, digits, '.', '_' and '-' only (the name lookup.yml gives them)", name)
 	}
-	if role != RoleViewer && role != RoleOperator {
-		return "", fmt.Errorf("role %q: viewer or operator", role)
+	if !validRole(role) {
+		return "", fmt.Errorf("role %q: viewer, operator or admin", role)
 	}
 	if s.dir == "" {
 		return "", errors.New("this hub keeps no state (swim hub --state DIR): it can't keep users")
@@ -315,8 +333,8 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request, role string
 			}
 		}
 	}
-	if role == RoleOperator && u.Role != RoleOperator {
-		http.Error(w, u.Name+" is a "+u.Role+": this needs the operator role", http.StatusForbidden)
+	if !covers(u.Role, role) {
+		http.Error(w, u.Name+" is a "+u.Role+": this needs the "+role+" role", http.StatusForbidden)
 		return nil, false
 	}
 	return u, true

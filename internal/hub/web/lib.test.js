@@ -3,13 +3,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  can, until, utf8Length, ago, api, between, byNamespace, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
+  can, isAdmin, isOperator, until, utf8Length, ago, api, between, byNamespace, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
   lineMatches, matchEnrollment, route, stateClass, steps,
 } from './lib.js';
 
 test('route', () => {
   assert.deepEqual(route('/'), { name: 'home' });
   assert.deepEqual(route('/approvals'), { name: 'approvals' });
+  assert.deepEqual(route('/admin'), { name: 'admin' });
   assert.deepEqual(route('/e/abc'), { name: 'runs', id: 'abc' });
   assert.deepEqual(route('/e/abc/runs/'), { name: 'runs', id: 'abc' });
   assert.deepEqual(route('/e/abc/lanes'), { name: 'lanes', id: 'abc' });
@@ -111,4 +112,15 @@ test('can: the worker takes it, and the user may send it', () => {
   assert.equal(can(op, {}, 'log'), false, 'not headless');
   assert.equal(can({ user: '' }, e, 'log'), false, 'nobody');
   assert.equal(can(null, e, 'log'), false);
+});
+
+test('an admin is an operator too', () => {
+  const e = { headless: { allow: ['interrupt', 'log'] } };
+  const admin = { user: 'zach', role: 'admin' };
+  assert.equal(isAdmin(admin), true);
+  assert.equal(isOperator(admin), true);
+  assert.equal(can(admin, e, 'interrupt'), true);
+  assert.equal(isAdmin({ user: 'op', role: 'operator' }), false);
+  assert.equal(isOperator({ user: 'v', role: 'viewer' }), false);
+  assert.equal(isAdmin(null), false);
 });

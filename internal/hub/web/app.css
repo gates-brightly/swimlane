@@ -227,3 +227,8 @@ tr.tail-row td { padding-top: 0; }
   .brand span { display: none; }
   th, td { padding: 8px 12px; }
 }
+
+/* admin */
+.admin-add { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.admin-add input, .admin-add select { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+.admin-add input { min-width:14em; flex:1; }

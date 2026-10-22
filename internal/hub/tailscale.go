@@ -1,9 +1,11 @@
 package hub
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chars"
 )
@@ -24,6 +26,12 @@ import (
 // A session it starts may never answer a guard with a button (an
 // unsigned answer rests on the hub's login alone, so it takes a token's);
 // a signed answer is the signature's, not the login's, and is fine.
+//
+// The hub's admins can be named by login (swim hub --admin-tailscale
+// LOGIN): the first sign-in by one makes them an admin user (named after
+// the login, no token anyone holds) and a later one makes them admin again
+// if their role was changed, so the hub's own command line, not its state,
+// says who runs it. There is no "first visitor becomes admin".
 
 // TailscaleHeader names the tailnet user tailscale serve proxied.
 const TailscaleHeader = "Tailscale-User-Login"
@@ -34,6 +42,69 @@ const ViaTailscale = "tailscale"
 // TrustTailscaleIdentity turns signing in by Tailscale-User-Login on; the
 // caller makes sure the hub listens on loopback only.
 func (s *Server) TrustTailscaleIdentity(on bool) { s.trustTailscale = on }
+
+// AdminTailscale names the Tailscale logins that sign in as admins.
+func (s *Server) AdminTailscale(logins ...string) error {
+	for _, l := range logins {
+		if !validTailscaleLogin(l) {
+			return fmt.Errorf("--admin-tailscale %q: one word of printable characters, like you@github or you@example.com", l)
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.adminLogins = append([]string(nil), logins...)
+	return nil
+}
+
+// adminLogin reports whether login is one AdminTailscale named. s.mu is held.
+func (s *Server) adminLogin(login string) bool {
+	for _, l := range s.adminLogins {
+		if strings.EqualFold(l, login) {
+			return true
+		}
+	}
+	return false
+}
+
+// provisionAdmin is the admin user for login, made (or made admin again)
+// when AdminTailscale names it: nil when it doesn't, or the hub keeps no
+// state. s.mu is held.
+func (s *Server) provisionAdmin(login string, u *User) *User {
+	if !s.adminLogin(login) || s.dir == "" {
+		return u
+	}
+	if u != nil {
+		if u.Role != RoleAdmin {
+			s.audit("user %s made admin again: %s is named by --admin-tailscale (was %s)", u.Name, login, u.Role)
+			u.Role = RoleAdmin
+			s.save()
+		}
+		return u
+	}
+	name := s.freeUserName(login)
+	u = &User{Name: name, Role: RoleAdmin, TokenHash: hashToken(newToken()), Added: s.now().UTC().Format(time.RFC3339), Tailscale: login}
+	s.users[name] = u
+	s.audit("user %s added (admin, tailscale %s): its first sign-in, named by --admin-tailscale", name, login)
+	s.save()
+	return u
+}
+
+// freeUserName is a user name for login: its part before "@", in the
+// characters a name may have, made unique. s.mu is held.
+func (s *Server) freeUserName(login string) string {
+	base, _, _ := strings.Cut(login, "@")
+	base = strings.Trim(chars.Squash(base, func(r rune) bool {
+		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-'
+	}, "-"), ".-")
+	if base == "" || !chars.Name(base, 60) {
+		base = "admin"
+	}
+	name := base
+	for i := 2; s.users[name] != nil; i++ {
+		name = fmt.Sprintf("%s-%d", base, i)
+	}
+	return name
+}
 
 // validTailscaleLogin: a login name or an email, printable ASCII, no spaces.
 func validTailscaleLogin(s string) bool {
@@ -75,7 +146,7 @@ func (s *Server) signInTailscale(w http.ResponseWriter, r *http.Request) bool {
 			u = x
 		}
 	}
-	if u == nil {
+	if u = s.provisionAdmin(login, u); u == nil {
 		return false
 	}
 	sid, csrf := newToken(), newToken()

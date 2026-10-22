@@ -67,16 +67,16 @@ func cmdHub(args []string) error {
 }
 
 func hubServe(args []string) error {
-	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL, retain, retainBytes string
+	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL, retain, retainBytes, adminLogins string
 	var noTUI, insecure, private, trustTailscale bool
 	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure, "private": &private, "trust-tailscale-identity": &trustTailscale},
 		strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken, "tls-cert": &certFile, "tls-key": &keyFile,
-			"public-url": &publicURL, "retain": &retain, "retain-bytes": &retainBytes}}.parse(args)
+			"public-url": &publicURL, "retain": &retain, "retain-bytes": &retainBytes, "admin-tailscale": &adminLogins}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--trust-tailscale-identity] [--retain AGE] [--retain-bytes SIZE] [--insecure] [--no-tui]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--trust-tailscale-identity [--admin-tailscale LOGIN[,LOGIN]]] [--retain AGE] [--retain-bytes SIZE] [--insecure] [--no-tui]")
 	}
 	if (certFile == "") != (keyFile == "") {
 		return usagef("--tls-cert and --tls-key go together")
@@ -90,6 +90,15 @@ func hubServe(args []string) error {
 		if host, _, err := net.SplitHostPort(addr); err != nil || !hub.LoopbackHost(host) {
 			return usagef("--trust-tailscale-identity needs the hub on a loopback --addr (127.0.0.1:PORT) behind tailscale serve: from anywhere else, anyone could send the header")
 		}
+	}
+	var admins []string
+	for _, l := range strings.Split(adminLogins, ",") {
+		if l = strings.TrimSpace(l); l != "" {
+			admins = append(admins, l)
+		}
+	}
+	if len(admins) > 0 && !trustTailscale {
+		return usagef("--admin-tailscale names logins that sign in by Tailscale identity: it needs --trust-tailscale-identity")
 	}
 	keepAge, keepBytes, err := runRetention(retain, retainBytes)
 	if err != nil {
@@ -172,6 +181,12 @@ func hubServe(args []string) error {
 	h.BehindProxy(publicURL != "")
 	h.Private(private)
 	h.TrustTailscaleIdentity(trustTailscale)
+	if err := h.AdminTailscale(admins...); err != nil {
+		return usagef("%v", err)
+	}
+	if len(admins) > 0 {
+		note(ui.Dim, "admins by Tailscale login: "+strings.Join(admins, ", ")+" (an admin user on their first sign-in)")
+	}
 	h.RetainRuns(keepAge, keepBytes)
 	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim hub login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}

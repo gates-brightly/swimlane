@@ -160,7 +160,7 @@ func hubApproveCmd(args []string, off bool) error {
 // hubUserCmd manages the hub's users with the admin token: each gets a
 // token (shown once) to log in with, and a role.
 //
-//	swim hub user add NAME --role viewer|operator
+//	swim hub user add NAME --role viewer|operator|admin
 //	swim hub user remove NAME
 //	swim hub user list
 func hubUserCmd(args []string) error {
@@ -169,7 +169,7 @@ func hubUserCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	usage := usagef("usage: swim hub user add NAME --role viewer|operator [--tailscale LOGIN] | remove NAME | list   [--hub URL] [--admin-token T]")
+	usage := usagef("usage: swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove NAME | list   [--hub URL] [--admin-token T]")
 	if len(rest) == 0 {
 		return usage
 	}
@@ -178,8 +178,8 @@ func hubUserCmd(args []string) error {
 	case (sub == "add" || sub == "remove" || sub == "rm") && len(rest) != 1,
 		(sub == "list" || sub == "ls") && len(rest) != 0:
 		return usage
-	case sub == "add" && role != hub.RoleViewer && role != hub.RoleOperator:
-		return usagef("swim hub user add needs --role viewer (reads full logs) or --role operator (also interrupts, drains and runs)")
+	case sub == "add" && role != hub.RoleViewer && role != hub.RoleOperator && role != hub.RoleAdmin:
+		return usagef("swim hub user add needs --role viewer (reads full logs), --role operator (also interrupts, drains and runs) or --role admin (also manages users, approvals and grants)")
 	}
 	a, hubURL, err := hubAdmin(url, token)
 	if err != nil {
@@ -219,7 +219,7 @@ func hubUserCmd(args []string) error {
 			return err
 		}
 		if len(us) == 0 {
-			fmt.Printf("no users on %s (swim hub user add NAME --role viewer|operator)\n", hubURL)
+			fmt.Printf("no users on %s (swim hub user add NAME --role viewer|operator|admin)\n", hubURL)
 			return nil
 		}
 		fmt.Printf("%-20s %-9s %s\n", "user", "role", "added")
