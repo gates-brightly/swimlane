@@ -210,7 +210,7 @@ func answerHub(cmd hub.Command) (string, string) {
 // hubAskerFor is the asker for a batch on a headless worker: nil when the
 // directory isn't enrolled or swim.yml doesn't take answers from the hub.
 func hubAskerFor(root string, cfg *config.Config) approval.Asker {
-	if !cfg.HeadlessAllows(config.HubAnswer) {
+	if !cfg.HubAllows(hubAccessOf(root), config.HubAnswer) {
 		return nil
 	}
 	h, err := loadHub(root)

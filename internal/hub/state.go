@@ -48,6 +48,12 @@ type Record struct {
 	From       string `json:"from,omitempty"`
 	AdmittedAt string `json:"admitted_at,omitempty"`
 	AdmittedBy string `json:"admitted_by,omitempty"`
+	// Addr is the address its last report came from (no port).
+	Addr string `json:"addr,omitempty"`
+	// Runs is how many runs it has reported since it enrolled (the hub
+	// keeps fewer: RetainRuns); LastRun is when the latest was.
+	Runs    int    `json:"runs,omitempty"`
+	LastRun string `json:"last_run,omitempty"`
 }
 
 // Grant is one secret granted to a worker, encrypted to its key.

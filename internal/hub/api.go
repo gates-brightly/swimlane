@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/runrec"
@@ -19,6 +20,7 @@ import (
 //	GET /api/me                                            who's logged in (user, role, the session's CSRF token)
 //	GET /api/enrollments                                   the namespace tabs and every worker (?ns=NS: one namespace's)
 //	GET /api/enrollments/{id}                              one worker's latest snapshot
+//	GET /api/enrollments/{id}/config                       user: its effective configuration, read only (masked)
 //	GET /api/enrollments/{id}/runs                         its kept runs, newest first (?before=RUN&limit=N; next: the RUN for the page after)
 //	GET /api/enrollments/{id}/runs/{run}                   a run's record and a summary of each lane's round in it
 //	GET /api/enrollments/{id}/runs/{run}/jobs/{lane}       user: a lane's round in it (stages, steps, output under hub.logs: stream)
@@ -55,6 +57,7 @@ func (s *Server) apiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/me", s.meAPI)
 	mux.HandleFunc("GET /api/enrollments", s.enrollmentsAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}", s.enrollmentAPI)
+	mux.HandleFunc("GET /api/enrollments/{id}/config", s.configAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}/runs", s.runsAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}/runs/{run}", s.runAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}/runs/{run}/jobs/{lane}", s.jobAPI)
@@ -191,11 +194,58 @@ func (s *Server) jobAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, d := range rep.Jobs {
 		if d.Lane == n {
-			writeJSON(w, map[string]any{"schema": APISchema, "job": d, "lane": laneOf(&rep.Run, n)})
+			from := ""
+			if !hasOutput(&d) && s.fetchedOutput(r.PathValue("id"), r.PathValue("run"), n, &d) {
+				from = "log" // the output came from a log the hub asked the worker for
+			}
+			writeJSON(w, map[string]any{"schema": APISchema, "job": d, "lane": laneOf(&rep.Run, n), "output_from": from})
 			return
 		}
 	}
 	http.Error(w, "that lane has no round in this run", http.StatusNotFound)
+}
+
+// hasOutput reports whether any of d's steps carry output.
+func hasOutput(d *logparse.Doc) bool {
+	for _, res := range d.Results {
+		if len(res.Output) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchedOutput fills d's steps' output from lane n's log for run, when a
+// hub user asked the worker for it (a log command: the worker masked it):
+// a run sent without step output (hub.logs: request) shows it once
+// fetched. It reports whether it found the round.
+func (s *Server) fetchedOutput(id, run string, n int, d *logparse.Doc) bool {
+	data, _, ok := s.logs.get(logKey(id, run, n))
+	if !ok {
+		return false
+	}
+	var round *logparse.Round
+	for _, rd := range logparse.RoundsIn(string(data)) {
+		if rd.Run == run {
+			round = rd
+		}
+	}
+	if round == nil {
+		return false
+	}
+	got := round.Doc(n).Results
+	if len(got) != len(d.Results) {
+		return false
+	}
+	for i := range got {
+		if got[i].Label != d.Results[i].Label {
+			return false
+		}
+	}
+	for i := range got {
+		d.Results[i].Output = safeAll(got[i].Output)
+	}
+	return true
 }
 
 // laneOf is lane n's part in run r (nil if it had none).
@@ -229,4 +279,30 @@ func (s *Server) jobLogAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeContent(w, r, "", at, bytes.NewReader(data))
+}
+
+// WorkerConfig is worker id's configuration as its last report gave it
+// (masked of secrets), and when that report came.
+func (s *Server) WorkerConfig(id string) (string, time.Time, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.workers[id]
+	if !ok {
+		return "", time.Time{}, false
+	}
+	return v.Config, v.Seen, true
+}
+
+// configAPI is a worker's configuration, read only, for a hub user: it
+// names paths, runners and env defaults, as a log might.
+func (s *Server) configAPI(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUser(w, r, RoleViewer); !ok {
+		return
+	}
+	text, at, ok := s.WorkerConfig(r.PathValue("id"))
+	if !ok {
+		http.Error(w, "no such enrollment", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]any{"schema": APISchema, "config": text, "at": at.UTC().Format(time.RFC3339)})
 }

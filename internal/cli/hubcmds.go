@@ -201,8 +201,15 @@ func checkAndDo(root string, cfg *config.Config, c *hub.Client, cmd hub.Command,
 	if now.After(end) {
 		return hub.OutcomeExpired, fmt.Sprintf("it expired at %s (headless.command_ttl %s)", end.UTC().Format(time.RFC3339), cfg.CommandTTL(cmd.Kind))
 	}
-	if !cfg.HeadlessAllows(cmd.Kind) {
-		return hub.OutcomeRefused, fmt.Sprintf("not allowed here: swim.yml's headless.allow is [%s]", strings.Join(cfg.HeadlessAllow(), ", "))
+	if access := hubAccessOf(root); !cfg.HubAllows(access, cmd.Kind) {
+		why := fmt.Sprintf("swim.yml's headless.allow is [%s]", strings.Join(cfg.HeadlessAllow(), ", "))
+		switch {
+		case access == config.AccessRead:
+			why = "this enrollment's access is read (swim hub access readwrite lets the hub send commands)"
+		case access == config.AccessReadWrite:
+			why = fmt.Sprintf("swim.yml's headless.allow narrows readwrite to [%s]", strings.Join(cfg.HubAllow(access), ", "))
+		}
+		return hub.OutcomeRefused, "not allowed here: " + why
 	}
 	switch cmd.Kind {
 	case config.HubDrain, config.HubDequeue, config.HubRequeue:

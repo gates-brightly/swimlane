@@ -7,10 +7,14 @@ export function route(path) {
   if (parts.length === 0) return { name: 'home' };
   if (parts.length === 1 && parts[0] === 'approvals') return { name: 'approvals' };
   if (parts.length === 1 && parts[0] === 'admin') return { name: 'admin' };
+  if (parts.length === 2 && parts[0] === 'r') return { name: 'repo', ns: parts[1] === '-' ? '' : parts[1] };
   if (parts[0] === 'e' && parts.length >= 2) {
     const id = parts[1];
-    if (parts.length === 2) return { name: 'runs', id };
-    if (parts.length === 3 && ['runs', 'lanes', 'queue'].includes(parts[2])) return { name: parts[2], id };
+    // A runner opens on its lanes; its old Runs list is gone (a run's own
+    // page stays, linked from the lanes), and Config is part of Runner.
+    if (parts.length === 2 || (parts.length === 3 && parts[2] === 'runs')) return { name: 'lanes', id };
+    if (parts.length === 3 && parts[2] === 'config') return { name: 'runner', id };
+    if (parts.length === 3 && ['lanes', 'queue', 'runner'].includes(parts[2])) return { name: parts[2], id };
     if (parts[2] === 'runs' && parts.length === 4) return { name: 'run', id, run: parts[3] };
     if (parts[2] === 'questions' && parts.length === 4) return { name: 'question', id, req: parts[3] };
     if (parts[2] === 'runs' && parts.length === 6 && parts[4] === 'jobs' && /^\d+$/.test(parts[5])) {
@@ -63,9 +67,11 @@ export function ago(t, now = Date.now()) {
   const ms = Date.parse(t);
   if (!isFinite(ms) || ms <= 0) return '';
   const d = Math.max(0, (now - ms) / 1000);
+  const two = (big, bu, small, su) => big + bu + (small ? ' ' + small + su : '') + ' ago';
   if (d < 60) return Math.floor(d) + 's ago';
   if (d < 3600) return Math.floor(d / 60) + 'm ago';
-  if (d < 86400) return Math.floor(d / 3600) + 'h ago';
+  if (d < 86400) return two(Math.floor(d / 3600), 'h', Math.floor((d % 3600) / 60), 'm');
+  if (d < 7 * 86400) return two(Math.floor(d / 86400), 'd', Math.floor((d % 86400) / 3600), 'h');
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
@@ -169,6 +175,33 @@ export function hasOutput(results) {
 // lineMatches reports whether a line holds the query, ignoring case.
 export function lineMatches(text, query) {
   return query !== '' && String(text).toLowerCase().includes(query.toLowerCase());
+}
+
+// repoHref is a repo's page: its namespace, or '-' for runners with none.
+export function repoHref(ns) {
+  return href('r', ns || '-');
+}
+
+// lastRun is the latest of runners' last runs ('' if none ran).
+export function lastRun(es) {
+  return es.map((e) => (e.runner || {}).last_run || '').reduce((a, b) => (b > a ? b : a), '');
+}
+
+// repoSummary counts a repo's runners by state: {runners, running,
+// waiting, failed, stale, lanes}, and its headline {cls, label}.
+export function repoSummary(es) {
+  const out = { runners: es.length, running: 0, waiting: 0, failed: 0, stale: 0, lanes: 0 };
+  for (const e of es) {
+    const c = enrollmentState(e).cls;
+    if (e.stale) out.stale++;
+    else if (c === 'run') out.running++;
+    else if (c === 'wait') out.waiting++;
+    else if (c === 'bad') out.failed++;
+    out.lanes += (e.lanes || []).length;
+  }
+  [out.cls, out.label] = out.running ? ['run', out.running + ' running'] : out.waiting ? ['wait', out.waiting + ' waiting']
+    : out.failed ? ['bad', out.failed + ' failed'] : out.stale === out.runners ? ['dim', 'offline'] : ['ok', 'idle'];
+  return out;
 }
 
 // byNamespace groups enrollments by namespace (those with none last).

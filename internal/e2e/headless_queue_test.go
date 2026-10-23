@@ -40,11 +40,13 @@ func TestHeadlessHubQueue(t *testing.T) {
 	r.mustSwim("watch", "--headless", "--detach", "--interval", "200ms")
 	via := " via " + url + ": "
 
-	// Off until swim.yml allows it.
+	// Off under read access; on with readwrite (no swim.yml list needed).
+	r.mustSwim("hub", "access", "read")
 	sha := strings.Repeat("a", 64)
 	alice.Send(id, hub.Command{Kind: hub.KindQueue, Lanes: []hub.LanePin{{Lane: 1, SHA256: sha, Manifest: sha}}})
-	waitLog(t, r, "hub queue by alice"+via+"refused: not allowed here")
-	r.write("swim.yml", "watch_batches: 1\nheadless:\n  allow: [queue, dequeue, requeue]\n", 0o644)
+	waitLog(t, r, "hub queue by alice"+via+"refused: not allowed here: this enrollment's access is read")
+	r.mustSwim("hub", "access", "readwrite")
+	r.write("swim.yml", "watch_batches: 1\n", 0o644)
 	var l1, l2 hub.Lane
 	waitFor(t, func() bool {
 		l1, l2 = laneOnHub(t, url, id, 1), laneOnHub(t, url, id, 2)

@@ -19,12 +19,14 @@ import (
 // nothing of a worker's into it. Any path that isn't the API, an asset or
 // /login gets index.html, and the app routes it in the browser:
 //
-//	/                                  every enrollment
+//	/                                  the repos (namespaces), each with its runners
+//	/r/{ns}                            a repo's runners ('-': runners with no namespace)
 //	/approvals                         every guard waiting for an answer
-//	/e/{id}/runs                       an enrollment's runs
+//	/e/{id}, /e/{id}/lanes             a runner's lanes (with their controls) now
+//	/e/{id}/queue                      its queue
+//	/e/{id}/runner                     what the hub knows of it, and its configuration (read only)
 //	/e/{id}/runs/{run}                 a run: its lanes as a graph
 //	/e/{id}/runs/{run}/jobs/{lane}     a job: its stages, steps and output
-//	/e/{id}/lanes, /e/{id}/queue       its lanes (with their controls) and queue now
 //	/e/{id}/questions/{req}            a guard waiting for an answer: answer it
 //
 // /w/{id}, where a worker's page was, redirects to its lanes. Logging in

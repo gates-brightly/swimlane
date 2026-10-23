@@ -1256,7 +1256,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         allow: [notify, clone, ./modules/*]
   and headless: (what a headless worker takes from its hub; swim watch --help):
       headless:
-        allow: [answer, interrupt, drain, log]   # hub commands accepted; add run, trash, pause, unpause, queue, dequeue, requeue to allow them
+        allow: [answer, interrupt, drain, log]   # optional: narrows what the enrollment's access (swim hub enroll --access) lets the hub send
         logs: on                                 # off: never upload a log to the hub
         command_ttl: 10m                         # older commands expire (interrupt: 2m at most)
         approvals: signed                        # how a guard is answered through the hub: signed | hub

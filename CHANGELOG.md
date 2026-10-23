@@ -32,6 +32,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Upgrading
 
+- **Hub access is per enrollment: read or readwrite.** `swim hub enroll
+  URL --access read|readwrite` sets what the hub may do with this
+  directory: `read` shows it and fetches its logs; `readwrite` also sends
+  every command (run, queue, dequeue, requeue, interrupt, drain, pause,
+  unpause, trash, answers). Enroll asks at a terminal and is `read`
+  elsewhere, so add `--access readwrite` to scripts that enroll workers the
+  hub should drive. `swim hub access [read|readwrite]` shows or changes it.
+  There's no per-repo list to keep: a committed `swim.yml` `headless.allow`
+  now only narrows the access, and enrollments from before keep going by
+  `headless.allow` alone until you set their access.
 - **Hubs admit workers.** Any swim may now enroll with a hub, with no
   enroll token, but it waits until the hub's admin admits it: on the app's
   Admin page (a new "Waiting to join" list) or with `swim hub admit
@@ -497,6 +507,29 @@ already pushed to origin's main) with the next tag and pushes that tag.
     works.
 
 ### Added
+
+- **The hub is organized by repo.** Its home page lists repos (each
+  runner's namespace: its origin remote, or `HOST:IP` for a runner outside
+  a git repo, the address it reaches the hub from), and a repo's page
+  lists its runners: address, state, lanes, runs, when it first
+  connected, its last report. The Runs list is gone; a lane links to its
+  last run, and run and job pages stay as they were.
+- **Runner page** (`/e/{id}/runner`): what the hub knows of a runner (the
+  address its reports come from and the one it enrolled from, when it
+  first connected and was admitted, how many runs it has sent and how
+  many the hub keeps, its access, mode, version, key) and its effective
+  configuration as `swim config` shows it there, with its access and the
+  hub commands it takes. Read only, masked of secrets, and for a hub user
+  (`GET /api/enrollments/{id}/config`); the lists and events don't carry
+  it. Each report carries it, cut at 64 KiB.
+- **A job's output, fetched.** A run sent without step output (the
+  default, `hub.logs: request`) has a "Fetch output" button on its job
+  page: the runner uploads that run's log, masked, and its steps fill in
+  with their output.
+- **Every run says when.** Run and job pages lead with how long ago
+  (`1h 39m ago`) and the date and time; lanes say when they started or
+  ended, queue batches when they were queued, started or ended (linking
+  their run), and repos and runners when they last ran.
 
 - **The hub says its version.** The app's footer and the login page show
   the swim the hub runs (`0.20261023.1 (86778de)`), and `GET /api/me`

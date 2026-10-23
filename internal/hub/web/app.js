@@ -6,7 +6,7 @@ import { html, render, useEffect, useMemo, useRef, useState } from './vendor/pre
 import { adminCall, get, getText, onLog, post, send, start, useFetch, useStore } from './api.js';
 import {
   ago, api, between, byNamespace, can, enrollmentState, fmtDuration, hasOutput, href, isAdmin, isOperator,
-  layoutGraph, lineMatches, matchEnrollment, route, stateClass, steps, until, utf8Length,
+  lastRun, layoutGraph, lineMatches, matchEnrollment, repoHref, repoSummary, route, stateClass, steps, until, utf8Length,
 } from './lib.js';
 
 // ---- navigation ------------------------------------------------------
@@ -72,6 +72,14 @@ function Ago({ t }) {
   const [, tick] = useState(0);
   useEffect(() => { const i = setInterval(() => tick((x) => x + 1), 15000); return () => clearInterval(i); }, []);
   return html`<span title=${t}>${ago(t)}</span>`;
+}
+
+// When is a run's time, prominent: how long ago, then the date and time.
+function When({ t, label, big }) {
+  const [, tick] = useState(0);
+  useEffect(() => { const i = setInterval(() => tick((x) => x + 1), 15000); return () => clearInterval(i); }, []);
+  if (!t || !ago(t)) return '';
+  return html`<span class="when ${big ? 'big' : ''}" title=${t}>${label ? label + ' ' : ''}<b>${ago(t)}</b> <span class="abs">${when(t)}</span></span>`;
 }
 
 // when writes a time for people, in local time ('—' if it isn't one).
@@ -145,7 +153,7 @@ function Switcher({ store, current }) {
   }, []);
   useEffect(() => { if (open) { setQ(''); setSel(0); setTimeout(() => input.current && input.current.focus()); } }, [open]);
 
-  const pick = (e) => { setOpen(false); navigate(href('e', e.id, 'runs')); };
+  const pick = (e) => { setOpen(false); navigate(href('e', e.id, 'lanes')); };
   const keys = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(flat.length - 1, s + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
@@ -155,19 +163,19 @@ function Switcher({ store, current }) {
   const st = cur && enrollmentState(cur);
   return html`<div class="switch" ref=${box}>
     <button class="switch-btn" onClick=${() => setOpen(!open)} aria-haspopup="listbox" aria-expanded=${open}>
-      ${cur ? html`<span class="dot ${st.cls}"></span><span class="name">${cur.name}</span>` : html`<span class="name">All enrollments</span>`}
+      ${cur ? html`<span class="dot ${st.cls}"></span><span class="name">${cur.name}</span>` : html`<span class="name">All repos</span>`}
       <span class="kbd">⌘K</span>
     </button>
     ${open && html`<div class="pop" role="listbox">
-      <input ref=${input} value=${q} placeholder="Find an enrollment…" onInput=${(e) => { setQ(e.target.value); setSel(0); }} onKeyDown=${keys} aria-label="Find an enrollment"/>
+      <input ref=${input} value=${q} placeholder="Find a runner…" onInput=${(e) => { setQ(e.target.value); setSel(0); }} onKeyDown=${keys} aria-label="Find a runner"/>
       <div class="pop-list">
-        <a class="pop-item" href="/" onClick=${() => setOpen(false)}>All enrollments</a>
-        ${flat.length === 0 && html`<div class="pop-empty">No enrollment matches.</div>`}
+        <a class="pop-item" href="/" onClick=${() => setOpen(false)}>All repos</a>
+        ${flat.length === 0 && html`<div class="pop-empty">No runner matches.</div>`}
         ${groups.map(([ns, es]) => html`
           <div class="pop-ns">${ns || 'no namespace'}</div>
           ${es.map((e) => {
             const s = enrollmentState(e);
-            return html`<a class="pop-item ${flat[sel] === e ? 'sel' : ''}" href=${href('e', e.id, 'runs')} onClick=${() => setOpen(false)}>
+            return html`<a class="pop-item ${flat[sel] === e ? 'sel' : ''}" href=${href('e', e.id, 'lanes')} onClick=${() => setOpen(false)}>
               <span class="dot ${s.cls}" title=${s.label}></span><span>${e.name}</span><span class="sub">${e.host}</span></a>`;
           })}`)}
       </div></div>`}
@@ -185,15 +193,16 @@ function User({ me }) {
 function TopBar({ r, store }) {
   const id = r.id;
   const waiting = (store.enrollments || []).reduce((n, e) => n + (e.pending || []).length, 0);
-  const tab = (name, label, to) => html`<a class=${r.name === name || (name === 'runs' && ['run', 'job'].includes(r.name)) ? 'on' : ''} href=${to}>${label}</a>`;
+  const tab = (name, label, to) => html`<a class=${r.name === name || (name === 'lanes' && ['run', 'job'].includes(r.name)) ? 'on' : ''} href=${to}>${label}</a>`;
   const live = { live: ['ok', 'Live'], connecting: ['wait', 'Connecting'], offline: ['bad', 'Offline'] }[store.live];
   return html`<header class="top"><div class="top-in">
     <a class="brand" href="/"><img src="/assets/favicon.svg" alt=""/><span>swim hub</span></a>
     <${Switcher} store=${store} current=${id}/>
     <nav class="tabs">
-      ${id && tab('runs', 'Runs', href('e', id, 'runs'))}
+      <a class=${['home', 'repo'].includes(r.name) ? 'on' : ''} href="/">Repos</a>
       ${id && tab('lanes', 'Lanes', href('e', id, 'lanes'))}
       ${id && tab('queue', 'Queue', href('e', id, 'queue'))}
+      ${id && tab('runner', 'Runner', href('e', id, 'runner'))}
       <a class=${r.name === 'approvals' ? 'on' : ''} href="/approvals">Approvals <span class="count ${waiting ? 'hot' : ''}">${waiting}</span></a>
       ${isAdmin(store.me) && html`<a class=${r.name === 'admin' ? 'on' : ''} href="/admin">Admin</a>`}
     </nav>
@@ -205,65 +214,62 @@ function TopBar({ r, store }) {
 
 // ---- views ------------------------------------------------------------
 
+// Home is the repos: every namespace the hub's runners report under (a
+// repo's remote, or HOST:IP for a runner outside git), with its runners.
 function Home({ store }) {
   useTitle('');
   if (store.enrollments === null) return store.error ? html`<div class="err">${store.error}</div>` : html`<${Loading}/>`;
   if (store.enrollments.length === 0) {
-    return html`<div class="panel"><div class="empty">No enrollments yet. In a repo:
-      <code>swim hub enroll ${location.origin} --token …</code>, then <code>swim watch</code>.</div></div>`;
+    return html`<div class="panel"><div class="empty">No runners yet. In a repo:
+      <code>swim hub enroll ${location.origin}</code>, then <code>swim watch</code>.</div></div>`;
   }
-  return html`<div class="head"><h1>Enrollments</h1><span class="muted">${store.enrollments.length}</span></div>
-    ${byNamespace(store.enrollments).map(([ns, es]) => html`
-      <div class="ns-h">${ns || 'no namespace'}</div>
-      <div class="cards">${es.map((e) => {
-        const s = enrollmentState(e);
-        return html`<a class="card ${e.stale ? 'stale' : ''}" href=${href('e', e.id, 'runs')}>
-          <div class="card-t"><span class="dot ${s.cls}"></span>${e.name}<span class="pill ${s.cls}">${s.label}</span></div>
-          <div class="card-s">${e.host} · ${e.activity}</div>
-          <div class="card-l">${(e.lanes || []).map((l) => html`<span class="chip ${stateClass(l.state)}" title=${'swim ' + l.lane + ' ' + l.state + (l.round ? ': ' + l.round : '')}>swim ${l.lane}</span>`)}</div>
-        </a>`;
-      })}</div>`)}`;
+  const repos = byNamespace(store.enrollments);
+  return html`<div class="head"><h1>Repos</h1><span class="muted">${repos.length}</span></div>
+    <div class="cards">${repos.map(([ns, es]) => {
+      const n = repoSummary(es);
+      const { cls, label } = n;
+      return html`<a class="card" href=${repoHref(ns)}>
+        <div class="card-t"><span class="dot ${cls}"></span><span class="ell" title=${ns}>${ns || 'no repo'}</span><span class="pill ${cls}">${label}</span></div>
+        <div class="card-s">${n.runners} runner${n.runners === 1 ? '' : 's'} · ${n.lanes} lane${n.lanes === 1 ? '' : 's'}${n.stale ? ' · ' + n.stale + ' offline' : ''}</div>
+        ${lastRun(es) ? html`<div class="card-w"><${When} t=${lastRun(es)} label="last run"/></div>` : ''}
+        <div class="card-l">${es.map((e) => html`<span class="chip ${e.stale ? 'dim' : enrollmentState(e).cls}" title=${e.host + ' · ' + e.activity}>${e.name}</span>`)}</div>
+      </a>`;
+    })}</div>`;
+}
+
+// Repo is one repo's runners, with what the hub knows of each.
+function Repo({ r, store }) {
+  useTitle(r.ns || 'no repo');
+  if (store.enrollments === null) return html`<${Loading}/>`;
+  const es = store.enrollments.filter((e) => (e.namespace || '') === r.ns);
+  const head = html`<div class="crumbs"><a href="/">Repos</a><span>/</span><span>${r.ns || 'no repo'}</span></div>`;
+  if (es.length === 0) return html`${head}<div class="panel"><div class="empty">No runner reports under ${r.ns || 'no repo'}.</div></div>`;
+  return html`${head}
+    <div class="head"><h1 class="ell">${r.ns || 'no repo'}</h1><span class="muted">${es.length} runner${es.length === 1 ? '' : 's'}</span></div>
+    <div class="panel"><div class="tw"><table>
+      <thead><tr><th class="i"></th><th>Runner</th><th>Address</th><th>State</th><th>Lanes</th><th>Last run</th><th>Runs</th><th>First connected</th><th>Last report</th></tr></thead>
+      <tbody>${es.map((e) => {
+        const st = enrollmentState(e);
+        return html`<tr class="link" onClick=${go(href('e', e.id, 'lanes'))}>
+          <td class="i"><span class="dot ${st.cls}"></span></td>
+          <td><a href=${href('e', e.id, 'lanes')}>${e.name}</a><div class="sub mono">${e.root}</div></td>
+          <td class="nowrap">${e.host}<div class="sub mono">${(e.runner || {}).addr || '—'}</div></td>
+          <td><span class="pill ${st.cls}">${st.label}</span><div class="sub">${e.activity}</div></td>
+          <td><div class="lanes-cell">${(e.lanes || []).map((l) => html`<span class="chip ${stateClass(l.state)}" title=${'swim ' + l.lane + ' ' + l.state}>swim ${l.lane}</span>`)}</div></td>
+          <td class="nowrap">${(e.runner || {}).last_run ? html`<${When} t=${e.runner.last_run}/>` : '—'}</td>
+          <td class="nowrap">${(e.runner || {}).runs || 0}</td>
+          <td class="nowrap">${(e.runner || {}).enrolled_at ? html`<span title=${when(e.runner.enrolled_at)}>${ago(e.runner.enrolled_at)}</span>` : '—'}</td>
+          <td class="nowrap"><${Ago} t=${e.seen}/></td></tr>`;
+      })}</tbody></table></div></div>`;
 }
 
 function Crumbs({ e, children }) {
-  return html`<div class="crumbs"><a href="/">Enrollments</a><span>/</span>
-    ${e ? html`<a href=${href('e', e.id, 'runs')}>${e.name}</a>` : html`<span>…</span>`}${children}</div>`;
+  return html`<div class="crumbs"><a href="/">Repos</a><span>/</span>
+    ${e ? html`<a href=${repoHref(e.namespace)}>${e.namespace || 'no repo'}</a><span>/</span><a href=${href('e', e.id, 'lanes')}>${e.name}</a>` : html`<span>…</span>`}${children}</div>`;
 }
 
 function useEnrollment(store, id) {
   return (store.enrollments || []).find((e) => e.id === id);
-}
-
-function Runs({ r, store }) {
-  const e = useEnrollment(store, r.id);
-  useTitle(e ? e.name : '');
-  const [older, setOlder] = useState([]);
-  const [next, setNext] = useState(null);
-  const res = useFetch(api('enrollments', r.id, 'runs') + '?limit=50', [store.runs[r.id] || 0]);
-  useEffect(() => { setOlder([]); setNext(null); }, [r.id]);
-  if (res.loading && !res.data) return html`<${Loading}/>`;
-  if (!res.data) return html`<${Crumbs} e=${e}/><${Problem} r=${res} what="This enrollment"/>`;
-  const runs = [...res.data.runs, ...older];
-  const more = next === null ? res.data.next : next;
-  const loadMore = async () => {
-    const p = await get(api('enrollments', r.id, 'runs') + '?limit=50&before=' + encodeURIComponent(more));
-    if (p.data) { setOlder([...older, ...p.data.runs]); setNext(p.data.next); }
-  };
-  return html`<${Crumbs} e=${e}/>
-    <div class="head"><h1>Runs</h1><span class="muted">${e ? e.host + ' · ' + e.root : ''}</span></div>
-    <div class="panel">${runs.length === 0
-      ? html`<div class="empty">No runs on the hub yet. A run shows here once <code>swim watch</code> has run a batch.</div>`
-      : html`<div class="tw"><table>
-        <thead><tr><th class="i"></th><th>Run</th><th>Lanes</th><th>Started</th><th>Duration</th></tr></thead>
-        <tbody>${runs.map((x) => html`<tr class="link" onClick=${go(href('e', r.id, 'runs', x.run))}>
-          <td class="i"><${Icon} state=${x.result}/></td>
-          <td><a href=${href('e', r.id, 'runs', x.run)}>${x.run}</a><div class="sub">${x.result}</div></td>
-          <td><div class="lanes-cell">${x.lanes.map((l) => html`<span class="chip">swim ${l}</span>`)}</div></td>
-          <td class="nowrap"><${Ago} t=${x.started}/></td>
-          <td class="nowrap mono">${fmtDuration(between(x.started, x.finished))}</td></tr>`)}
-        </tbody></table></div>
-        ${more && html`<div class="panel-b"><button class="btn" onClick=${loadMore}>Load older runs</button></div>`}`}
-    </div>`;
 }
 
 function Graph({ r, run, jobs }) {
@@ -324,9 +330,10 @@ function Run({ r, store }) {
     }, { href: href('e', r.id, 'queue'), text: 'See the queue' })}>Re-run ${ready.length} failed</button>`;
   return html`<${Crumbs} e=${e}><span>/</span><span>${run.run}</span></${Crumbs}>
     <div class="head"><${Icon} state=${result}/><h1>${run.run}</h1><${Pill} state=${result}/>
-      <div class="meta"><span>started <${Ago} t=${run.started}/></span><span>${fmtDuration(between(run.started, run.finished))}</span>
+      <div class="meta"><span>${fmtDuration(between(run.started, run.finished))}</span>
       <span>${run.lanes.length} lane${run.lanes.length === 1 ? '' : 's'}</span>${run.max_parallel ? html`<span>at most ${run.max_parallel} at once</span>` : ''}</div>
       <span class="spacer"></span>${rerun}</div>
+    <div class="when-row"><${When} big t=${run.finished && !String(run.finished).startsWith('0001') ? run.finished : run.started} label=${run.finished && !String(run.finished).startsWith('0001') ? 'Finished' : 'Started'}/></div>
     ${cmd.note}${cmd.dialog}
     ${failed.length > 0 && e ? html`<${WhyNoRun} me=${me} e=${e} kind="queue"/>` : ''}
     <div class="panel"><div class="panel-h"><h2>Lanes</h2></div><${Graph} r=${r} run=${run} jobs=${jobs}/></div>
@@ -364,7 +371,12 @@ function Job({ r, store }) {
   useTitle('swim ' + r.lane + ' · ' + r.run);
   const arrived = store.runs[r.id] || 0; // a run arriving may be this one
   const run = useFetch(api('enrollments', r.id, 'runs', r.run), [arrived]);
-  const job = useFetch(api('enrollments', r.id, 'runs', r.run, 'jobs', r.lane), [arrived]);
+  const [fetched, setFetched] = useState(0); // a log fetched from the worker fills in the output
+  const job = useFetch(api('enrollments', r.id, 'runs', r.run, 'jobs', r.lane), [arrived, fetched]);
+  const cmd = useCommand(e || { id: r.id });
+  useEffect(() => onLog((l) => {
+    if (l.enrollment === r.id && l.run === r.run && l.lane === r.lane) setFetched((x) => x + 1);
+  }), [r.id, r.run, r.lane]);
   const [query, setQuery] = useState('');
   const [all, setAll] = useState(null); // null: failed steps and the linked line open
   const target = location.hash.startsWith('#L') ? Number(location.hash.slice(2)) : 0;
@@ -399,6 +411,7 @@ function Job({ r, store }) {
       </nav>
       <div>${job.loading && !job.data ? html`<${Loading}/>` : !d ? html`<${Problem} r=${job} what="This job's steps"/>` : html`
         <div class="head"><${Icon} state=${d.result}/><h1>${d.round || 'swim ' + r.lane}</h1><${Pill} state=${d.result}/></div>
+        <div class="when-row"><${When} big t=${d.started_at} label="Started"/>${run.data && run.data.run ? html` <span class="muted">· run ${r.run}</span>` : ''}</div>
         <div class="panel">
           <div class="sum">
             <div><div class="k">Lane</div><div class="v">swim ${d.lane}</div></div>
@@ -415,7 +428,13 @@ function Job({ r, store }) {
             <button class="btn sm" onClick=${() => setAll(false)}>Collapse all</button>
             <a class="btn sm" href=${api('enrollments', r.id, 'runs', r.run, 'jobs', r.lane, 'log')} target="_blank" rel="noopener">Raw log</a>
           </div>
-          ${!hasOutput(d.results) && html`<div class="panel-b"><div class="note">No step output on the hub: this repo sends steps without their output. <code>hub: {logs: stream}</code> in its swim.yml sends it.</div></div>`}
+          ${!hasOutput(d.results) ? html`<div class="panel-b"><div class="note">No step output on the hub yet: this repo sends steps without their output.
+            ${e && can(store.me, e, 'log')
+              ? html`<button class="btn sm primary" onClick=${() => cmd.run({ kind: 'log', lane: r.lane, pin: { run: r.run } }, 'Fetch the output of swim ' + r.lane)}>Fetch output from ${e.name}</button>
+                <span class="muted">(the runner sends this run's log, masked; it fills in here)</span>`
+              : html`<span class="muted">${store.me && store.me.user ? "This runner doesn't take log requests from the hub." : 'Log in to fetch it from the runner.'}</span>`}
+            <code>hub: {logs: stream}</code> in its swim.yml sends output with every run.</div>${cmd.note}</div>`
+          : job.data.output_from === 'log' ? html`<div class="panel-b"><div class="note">The output is from the log fetched from the runner.</div></div>` : ''}
           <div class="log">${groups.map((g) => html`
             <div class="stage-h"><span class=${g.failed ? 'bad' : ''}>${g.stage || 'steps'}</span>${d.stages && d.stages[g.stage] ? html`<span>· ${d.stages[g.stage]}</span>` : ''}</div>
             ${g.items.map((s) => html`<${Step} key=${s.i} s=${s} open=${isOpen(s)} query=${query}/>`)}`)}
@@ -443,7 +462,9 @@ function WhyNoRun({ me, e, kind }) {
   if (!isOperator(me)) return null;
   const need = kind === 'queue' ? ['queue'] : ['run', 'queue'];
   if (need.some((k) => can(me, e, k))) return null;
-  return html`<div class="note">To run lanes from the hub, add ${need.map((k, i) => html`${i ? ' or ' : ''}<code>${k}</code>`)} to <code>headless.allow</code> in this repo's committed <code>swim.yml</code> (e.g. <code>headless: {allow: [answer, interrupt, drain, log, run, queue, dequeue, requeue]}</code>).</div>`;
+  if (e.access === 'read') return html`<div class="note">${e.name} enrolled with <b>read</b> access: the hub shows it and fetches its logs, and sends no commands. On its machine: <code>swim hub access readwrite</code>.</div>`;
+  if (e.access === 'readwrite') return html`<div class="note">This repo's committed <code>swim.yml</code> narrows what the hub may send (<code>headless.allow</code>): add ${need.map((k, i) => html`${i ? ' or ' : ''}<code>${k}</code>`)} there, or drop the list to take everything readwrite allows.</div>`;
+  return html`<div class="note">${e.name} enrolled before access levels, so its <code>swim.yml</code>'s <code>headless.allow</code> decides: on its machine, <code>swim hub access readwrite</code> lets the hub send every command.</div>`;
 }
 
 function LaneControls({ e, l, me, cmd }) {
@@ -514,7 +535,7 @@ function Lanes({ r, store }) {
   const [picked, setPicked] = useState({});
   useTitle(e ? e.name + ' lanes' : '');
   if (store.enrollments === null) return html`<${Loading}/>`;
-  if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This enrollment"/>`;
+  if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This runner"/>`;
   // Lanes the hub may queue as one batch: idle ones holding a pending round
   // (the worker reports the script and manifest a queue command pins).
   const canQueue = can(me, e, 'queue');
@@ -533,7 +554,7 @@ function Lanes({ r, store }) {
   })}>Stop after this batch</button>`;
   return html`<${Crumbs} e=${e}><span>/</span><span>lanes</span></${Crumbs}>
     <div class="head"><h1>Lanes</h1><${Pill} state=${enrollmentState(e).cls === 'run' ? 'running' : e.activity} label=${e.activity}/>
-      <div class="meta"><span>reported <${Ago} t=${e.at}/></span>${e.headless ? html`<span>headless (${e.headless.mode})</span>` : ''}
+      <div class="meta"><span>reported <${Ago} t=${e.at}/></span>${e.headless ? html`<span>headless (${e.headless.mode})</span>` : ''}${e.access ? html`<span>access: ${e.access}</span>` : ''}
         ${e.logs ? html`<span>logs: ${e.logs}</span>` : ''}</div>
       <span class="spacer"></span>${queueBatch}${drain}</div>
     ${cmd.note}${cmd.dialog}
@@ -544,8 +565,11 @@ function Lanes({ r, store }) {
         <td class="i">${canQueue && queueable.includes(l)
           ? html`<input type="checkbox" aria-label=${'Queue swim ' + l.lane} checked=${!!picked[l.lane]} onChange=${() => toggle(l.lane)}/>`
           : html`<${Icon} state=${l.state}/>`}</td>
-        <td>swim ${l.lane}<div class="sub">${l.round || ''}</div></td>
-        <td><${Pill} state=${l.state}/>${l.paused ? html`<div class="sub">paused ${l.paused}</div>` : ''}${l.scheduled ? html`<div class="sub">${l.scheduled}</div>` : ''}
+        <td>swim ${l.lane}<div class="sub">${l.round || ''}</div>
+          ${l.run && l.state !== 'running' && l.state !== 'waiting' ? html`<div class="sub"><a href=${href('e', e.id, 'runs', l.run)}>run ${l.run}</a></div>` : ''}</td>
+        <td><${Pill} state=${l.state}/>
+          ${l.state === 'running' ? html`<div><${When} t=${l.started} label="started"/></div>` : l.finished ? html`<div><${When} t=${l.finished} label="ended"/></div>` : ''}
+          ${l.paused ? html`<div class="sub">paused ${l.paused}</div>` : ''}${l.scheduled ? html`<div class="sub">${l.scheduled}</div>` : ''}
           ${l.reason ? html`<div class="sub">${l.reason}</div>` : ''}</td>
         <td>${l.step || ''}${l.progress ? html` <progress max="100" value=${pct(l.progress)}></progress> <span class="sub">${l.progress}</span>` : ''}
           ${l.message ? html`<div class="sub">${l.message}</div>` : ''}${l.cells ? html`<div class="sub">${l.cells}</div>` : ''}</td>
@@ -569,7 +593,7 @@ function Queue({ r, store }) {
   const cmd = useCommand(e || { id: r.id });
   useTitle(e ? e.name + ' queue' : '');
   if (store.enrollments === null) return html`<${Loading}/>`;
-  if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This enrollment"/>`;
+  if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This runner"/>`;
   const canRm = can(me, e, 'dequeue'), canAgain = can(me, e, 'requeue');
   // A real entry (not a recurring schedule's template, seq 0), not running.
   const actions = (b) => {
@@ -589,15 +613,50 @@ function Queue({ r, store }) {
     <div class="head"><h1>Queue</h1></div>
     ${cmd.note}${cmd.dialog}
     <div class="panel">${(e.queue || []).length === 0 ? html`<div class="empty">The queue is empty.${can(me, e, 'queue') ? html` Queue lanes from the <a href=${href('e', e.id, 'lanes')}>Lanes</a> page.` : ''}</div>` : html`<div class="tw"><table>
-      <thead><tr><th>#</th><th>Batch</th><th>State</th><th>Lanes</th><th>By</th><th>Note</th>${ctl ? html`<th></th>` : ''}</tr></thead>
+      <thead><tr><th>#</th><th>Batch</th><th>State</th><th>When</th><th>Lanes</th><th>By</th><th>Note</th>${ctl ? html`<th></th>` : ''}</tr></thead>
       <tbody>${e.queue.map((b) => html`<tr>
         <td class="mono">${b.seq || ''}</td><td class="mono">${b.id}</td>
         <td><${Pill} state=${b.state === 'done' && b.result ? b.result : b.state} label=${b.state + (b.result ? ': ' + b.result : '')}/>
           ${b.daily ? html`<div class="sub">${b.daily}</div>` : b.at ? html`<div class="sub">at ${b.at}</div>` : ''}
           ${b.held_by ? html`<div class="sub">held until ${b.held_by} has run</div>` : ''}</td>
+        <td>${b.finished ? html`<${When} t=${b.finished} label="ended"/>` : b.started ? html`<${When} t=${b.started} label="started"/>` : b.queued ? html`<${When} t=${b.queued} label="queued"/>` : ''}
+          ${b.run ? html`<div class="sub"><a href=${href('e', e.id, 'runs', b.run)}>${b.run}</a></div>` : ''}</td>
         <td><div class="lanes-cell">${(b.lanes || []).map((l) => html`<span class="chip">swim ${l}</span>`)}</div></td>
         <td>${b.by || ''}</td><td class="muted">${b.note || ''}</td>${ctl ? html`<td class="nowrap">${actions(b)}</td>` : ''}</tr>`)}
       </tbody></table></div>`}</div>`;
+}
+
+// Runner is what the hub knows of a runner: where it reports from, when
+// it first connected, its runs; then its effective configuration, as swim
+// config shows it there, from its last report. All read only: the hub
+// can't change any of it. The config is for a hub user (masked of secrets,
+// it still names paths and env defaults).
+function Runner({ r, store }) {
+  const e = useEnrollment(store, r.id);
+  const q = useFetch(api('enrollments', r.id, 'config'));
+  useTitle(e ? e.name + ' runner' : '');
+  if (store.enrollments === null) return html`<${Loading}/>`;
+  if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This runner"/>`;
+  const ri = e.runner || {};
+  const at = (t) => (t ? html`<span title=${when(t)}>${when(t)}</span>` : '—');
+  const kv = [
+    ['Host', e.host], ['Address', ri.addr || '—'], ['Enrolled from', ri.from || '—'],
+    ['First connected', at(ri.enrolled_at)], ['Admitted', ri.admitted_at ? html`${at(ri.admitted_at)}${ri.admitted_by ? html`<div class="sub">by ${ri.admitted_by}</div>` : ''}` : '—'],
+    ['Last report', html`<${Ago} t=${e.seen}/>`], ['Runs', html`${ri.runs || 0}${ri.kept_runs !== ri.runs ? html`<div class="sub">${ri.kept_runs || 0} kept on the hub</div>` : ''}`],
+    ['Last run', ri.last_run ? html`<${Ago} t=${ri.last_run}/>` : '—'],
+    ['Access', e.access || '—'], ['Mode', e.headless ? 'headless (' + e.headless.mode + ')' : 'swim watch'],
+    ['Version', e.version || '—'], ['PID', e.pid || '—'], ['Key', e.key_fp ? html`<span class="mono">${e.key_fp}</span>${e.approved ? '' : html`<div class="sub">not approved</div>`}` : '—'],
+  ];
+  return html`<${Crumbs} e=${e}><span>/</span><span>runner</span></${Crumbs}>
+    <div class="head"><h1>Runner</h1><span class="muted mono">${e.root}</span></div>
+    <div class="panel"><dl class="kv">${kv.map(([k, v]) => html`<div><dt>${k}</dt><dd>${v}</dd></div>`)}</dl></div>
+    <div class="head sub-head"><h2>Configuration</h2><span class="muted">as <code>swim config</code> shows it on ${e.host}, read only</span>
+      <span class="spacer"></span><button class="btn sm" onClick=${q.reload}>Refresh</button></div>
+    ${q.loading && !q.data ? html`<${Loading}/>` : !q.data ? html`<${Problem} r=${q} what="This runner's configuration"/>` : html`
+    <div class="panel">${q.data.config
+      ? html`<pre class="config">${q.data.config}</pre>`
+      : html`<div class="empty">This runner hasn't reported its configuration (a swim from before the hub showed it, or no report yet).</div>`}</div>`}
+    <p class="muted">Change it on the runner: its config.yml, or a commit to the repo's swim.yml; <code>swim hub access</code> sets what the hub may do.</p>`;
 }
 
 function Approvals({ store }) {
@@ -758,7 +817,7 @@ function Admin({ store }) {
   const [form, setForm] = useState({ name: '', role: 'viewer', tailscale: '' });
   if (!me || me.user === undefined) return html`<${Loading}/>`;
   if (!isAdmin(me)) {
-    return html`<div class="panel"><div class="empty">This page is for the hub's admins. <a href="/">All enrollments</a></div></div>`;
+    return html`<div class="panel"><div class="empty">This page is for the hub's admins. <a href="/">All repos</a></div></div>`;
   }
   const act = async (what, method, path, body, after) => {
     setNote({ cls: 'wait', text: what + '…' });
@@ -791,13 +850,14 @@ function Admin({ store }) {
     ${note && html`<div class="note ${note.cls}" role="status">${note.text}${note.token ? html` <code class="mono">${note.token}</code>` : ''}</div>`}
     <h2>Waiting to join <span class="count ${waiting.length ? 'hot' : ''}">${waiting.length}</span></h2>
     <div class="panel">${pending.loading && !pending.data ? html`<${Loading}/>` : pending.error ? html`<div class="err">${pending.error}</div>` : waiting.length === 0 ? html`<div class="empty">No one is waiting. A swim enrolls with <code>swim hub enroll ${location.origin}</code> and shows here until you admit it.</div>` : html`<div class="tw"><table>
-      <thead><tr><th>Worker</th><th>Namespace</th><th>Key</th><th>From</th><th>Since</th><th></th></tr></thead>
+      <thead><tr><th>Worker</th><th>Access</th><th>Namespace</th><th>Key</th><th>From</th><th>Since</th><th></th></tr></thead>
       <tbody>${waiting.map((p) => html`<tr>
         <td><b>${p.name}</b><div class="sub mono">${p.host}:${p.root}</div></td>
+        <td>${p.access ? html`<span class="pill ${p.access === 'readwrite' ? 'wait' : ''}">${p.access}</span>` : ''}</td>
         <td class="mono">${p.namespace || ''}</td><td class="mono">${p.key_fp || html`<span class="muted">none</span>`}</td>
         <td class="mono muted">${p.from || ''}</td><td class="muted">${p.enrolled_at ? when(p.enrolled_at) : ''}</td>
         <td class="nowrap"><button class="btn sm primary" onClick=${() => confirm({ title: 'Admit ' + p.name,
-          body: html`Let <b>${p.name}</b> (${p.host}:${p.root}) report to this hub and take commands its swim.yml allows? ${p.key_fp ? html`Its key is <code>${p.key_fp}</code>: check it against what <code>swim hub enroll</code> printed there.` : ''}`,
+          body: html`Let <b>${p.name}</b> (${p.host}:${p.root}) report to this hub? It enrolled with <b>${p.access || 'unknown'}</b> access${p.access === 'readwrite' ? ': it takes every command from this hub (run, queue, interrupt, answers…) its swim.yml allows' : p.access === 'read' ? ': the hub only shows it and fetches its logs' : ''}. ${p.key_fp ? html`Its key is <code>${p.key_fp}</code>: check it against what <code>swim hub enroll</code> printed there.` : ''}`,
           label: 'Admit', run: () => act('Admit ' + p.name, 'POST', api('workers', p.id, 'admit')) })}>Admit</button>
           <button class="btn sm danger" onClick=${() => confirm({ title: 'Turn away ' + p.name, body: 'Its enrollment is forgotten; it can enroll and wait again.', label: 'Turn away', danger: true,
             run: () => act('Turn away ' + p.name, 'DELETE', api('workers', p.id, 'admit')) })}>Turn away</button></td></tr>`)}
@@ -824,7 +884,7 @@ function Admin({ store }) {
     <div class="panel">${workers.length === 0 ? html`<div class="empty">No enrollments yet.</div>` : html`<div class="tw"><table>
       <thead><tr><th>Worker</th><th>Key for secrets</th><th>Approved</th><th>Grants</th><th></th></tr></thead>
       <tbody>${workers.map((e) => html`<tr>
-        <td><a href=${href('e', e.id, 'lanes')}>${e.name}</a><div class="sub">${e.host} · ${e.namespace || 'no namespace'}</div></td>
+        <td><a href=${href('e', e.id, 'lanes')}>${e.name}</a><div class="sub">${e.host} · ${e.namespace || 'no namespace'}${e.access ? ' · ' + e.access : ''}</div></td>
         <td class="mono">${e.key_fp || html`<span class="muted">none</span>`}</td>
         <td>${e.approved ? html`<span class="pill ok">approved</span>` : e.key_fp ? html`<span class="pill wait">pending</span>` : ''}</td>
         <td>${(e.grants || []).join(', ')}</td>
@@ -846,12 +906,12 @@ function Admin({ store }) {
 
 function NotFound() {
   useTitle('Not found');
-  return html`<div class="panel"><div class="empty">No such page. <a href="/">All enrollments</a></div></div>`;
+  return html`<div class="panel"><div class="empty">No such page. <a href="/">All repos</a></div></div>`;
 }
 
 // ---- the app ------------------------------------------------------------
 
-const views = { home: Home, runs: Runs, run: Run, job: Job, lanes: Lanes, queue: Queue, approvals: Approvals, question: Question, admin: Admin, notfound: NotFound };
+const views = { home: Home, repo: Repo, run: Run, job: Job, lanes: Lanes, queue: Queue, runner: Runner, approvals: Approvals, question: Question, admin: Admin, notfound: NotFound };
 
 function App() {
   const path = usePath();

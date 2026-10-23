@@ -320,6 +320,9 @@ lane and on a worker running `swim watch -y`. Guards approved by a flag
   prevented.
 - **A compromised hub.** It can show false information and send commands,
   as any user could. Each command is checked by the worker, not the hub:
+  the enrollment's access (`swim hub enroll --access`: `read` takes only
+  log requests, `readwrite` every command; kept in the worker's
+  `.swim/hub.yml`, so the hub can't raise it), then
   `swim.yml`'s `headless.allow` (committed; `run`, `trash`, `pause`, `unpause`,
   `queue`, `dequeue` and `requeue` are off by default), the command's expiry capped by `headless.command_ttl`, its pin
   (the run, the script and manifest, or the lane's job the page showed), and replay state kept on the

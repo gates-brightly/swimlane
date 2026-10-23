@@ -7,4 +7,6 @@
 # GitHub Actions runs them with `swim ci`, and `just ci` runs the same
 # rounds locally.
 header_env: [GOFLAGS, GITHUB_REF_NAME, RUNNER_OS]
+headless:
+  allow: [answer, interrupt, drain, log, run, queue, dequeue, requeue]
 term_grace: 30s

@@ -51,6 +51,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -70,9 +71,12 @@ type Worker struct {
 	// Namespace is the dashboard tab it shows under: its repo
 	// ("github.com/org/api", NamespaceFor), "" from a swim before namespaces.
 	Namespace string `json:"namespace,omitempty"`
-	Version   string `json:"version,omitempty"`
-	PID       int    `json:"pid,omitempty"`
-	Key       string `json:"key,omitempty"` // its age public key, for secrets granted to it
+	// Access is what its enrollment lets the hub do: read or readwrite
+	// ("" from a swim before access levels). The worker enforces it.
+	Access  string `json:"access,omitempty"`
+	Version string `json:"version,omitempty"`
+	PID     int    `json:"pid,omitempty"`
+	Key     string `json:"key,omitempty"` // its age public key, for secrets granted to it
 }
 
 // Lane is one lane as the worker sees it.
@@ -135,6 +139,12 @@ type Batch struct {
 	At     string `json:"at,omitempty"`
 	Daily  string `json:"daily,omitempty"`
 	HeldBy string `json:"held_by,omitempty"`
+	// When it was queued, and its run's id, start and end once it ran
+	// (RFC 3339).
+	Queued   string `json:"queued,omitempty"`
+	Run      string `json:"run,omitempty"`
+	Started  string `json:"started,omitempty"`
+	Finished string `json:"finished,omitempty"`
 }
 
 // Snapshot is a worker's report.
@@ -158,7 +168,15 @@ type Snapshot struct {
 	// Logs is the repo's hub.logs: request, stream or off (what of its
 	// lanes' output reaches the hub; "" from a swim before it).
 	Logs string `json:"logs,omitempty"`
+	// Config is the worker's effective configuration (as swim config
+	// shows it, with its enrollment's access), masked of secrets. The hub
+	// shows it read only; nothing on the hub changes it. It's served alone
+	// (GET .../config, for a hub user), never in the lists or events.
+	Config string `json:"config,omitempty"`
 }
+
+// MaxConfig is how much of a worker's configuration the hub keeps.
+const MaxConfig = 64 << 10
 
 // HeadlessInfo is how a headless worker runs.
 type HeadlessInfo struct {
@@ -204,11 +222,15 @@ func (s *Snapshot) Sanitize() {
 	}
 	for i := range s.Queue {
 		b := &s.Queue[i]
-		for _, f := range []*string{&b.ID, &b.State, &b.By, &b.Note, &b.Result, &b.At, &b.Daily, &b.HeldBy} {
+		for _, f := range []*string{&b.ID, &b.State, &b.By, &b.Note, &b.Result, &b.At, &b.Daily, &b.HeldBy, &b.Queued, &b.Run, &b.Started, &b.Finished} {
 			*f = ui.Safe(*f)
 		}
 	}
 	s.Events = safeAll(s.Events)
+	if len(s.Config) > MaxConfig {
+		s.Config = s.Config[:MaxConfig] + "\n# (cut at 64 KiB)\n"
+	}
+	s.Config = ui.SafeLines(s.Config)
 	if h := s.Headless; h != nil {
 		h.Mode, h.Since = ui.Safe(h.Mode), ui.Safe(h.Since)
 		h.Allow = safeAll(h.Allow)
@@ -222,6 +244,11 @@ func (s *Snapshot) Sanitize() {
 func (w *Worker) sanitize() {
 	w.ID, w.Name, w.Host, w.Root, w.Version = ui.Safe(w.ID), ui.Safe(w.Name), ui.Safe(w.Host), ui.Safe(w.Root), ui.Safe(w.Version)
 	w.Namespace = CleanNamespace(w.Namespace)
+	switch w.Access {
+	case "read", "readwrite":
+	default:
+		w.Access = ""
+	}
 }
 
 func safeAll(lines []string) []string {
@@ -244,6 +271,30 @@ type View struct {
 	Approved bool      `json:"approved"`
 	Grants   []string  `json:"grants,omitempty"`  // secrets granted to it, by name
 	Fetched  string    `json:"fetched,omitempty"` // when it last fetched them
+	// HasConfig: its last report carried its configuration (WorkerConfig).
+	HasConfig bool       `json:"has_config,omitempty"`
+	Runner    RunnerInfo `json:"runner"`
+}
+
+// RunnerInfo is what the hub knows of a worker beyond its reports: where
+// it reports from, when it first enrolled, how many runs it has sent.
+type RunnerInfo struct {
+	Addr       string `json:"addr,omitempty"`        // its last report's address (no port)
+	From       string `json:"from,omitempty"`        // the address it enrolled from
+	EnrolledAt string `json:"enrolled_at,omitempty"` // its first enrollment ("" before the hub kept it)
+	AdmittedAt string `json:"admitted_at,omitempty"`
+	AdmittedBy string `json:"admitted_by,omitempty"`
+	Runs       int    `json:"runs"`      // runs reported since it enrolled
+	KeptRuns   int    `json:"kept_runs"` // of them, the ones the hub still keeps
+	LastRun    string `json:"last_run,omitempty"`
+}
+
+// hostOnly is addr without its port.
+func hostOnly(addr string) string {
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
+	}
+	return addr
 }
 
 // Pending: it has a key and waits for the operator's approval.
@@ -368,9 +419,9 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rec == nil {
-		rec = &Record{}
+		rec = &Record{EnrolledAt: s.now().UTC().Format(time.RFC3339), From: s.clientAddr(r)}
 		if s.admitting() && !admin {
-			rec.Pending, rec.EnrolledAt, rec.From = true, s.now().UTC().Format(time.RFC3339), s.clientAddr(r)
+			rec.Pending = true
 			s.audit("%s (%s on %s:%s) enrolled from %s: waiting to be admitted", wk.ID, wk.Name, wk.Host, wk.Root, rec.From)
 		}
 		s.records[wk.ID] = rec
@@ -461,6 +512,12 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		snap.Events = []string{}
 	}
 	v.Snapshot, v.Seen = snap, s.now()
+	if rec := s.records[id]; rec != nil {
+		if addr := hostOnly(s.clientAddr(r)); rec.Addr != addr {
+			rec.Addr = addr
+			s.save()
+		}
+	}
 	s.mu.Unlock()
 	if view, ok := s.worker(id); ok {
 		s.events.publish("snapshot", id, view)
@@ -490,6 +547,7 @@ func (s *Server) leave(w http.ResponseWriter, r *http.Request) {
 
 // Workers returns every worker, by name, with staleness worked out.
 func (s *Server) Workers() []View {
+	kept := s.keptRuns()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
@@ -503,8 +561,15 @@ func (s *Server) Workers() []View {
 		cp.Stale = now.Sub(cp.Seen) > 3*every+5*time.Second
 		if rec := s.records[cp.ID]; rec != nil {
 			cp.KeyFP, cp.Approved = rec.KeyFP, rec.Approved
+			cp.Runner = RunnerInfo{Addr: rec.Addr, From: hostOnly(rec.From), EnrolledAt: rec.EnrolledAt, AdmittedAt: rec.AdmittedAt,
+				AdmittedBy: rec.AdmittedBy, Runs: rec.Runs, LastRun: rec.LastRun}
+		}
+		cp.Runner.KeptRuns = kept[cp.ID]
+		if cp.Runner.Runs < cp.Runner.KeptRuns {
+			cp.Runner.Runs = cp.Runner.KeptRuns // runs from before the hub counted them
 		}
 		cp.Worker.Key = ""
+		cp.HasConfig, cp.Config = cp.Config != "", "" // served alone: WorkerConfig
 		cp.Grants = s.grantNames(cp.ID)
 		if t, ok := s.fetched[cp.ID]; ok {
 			cp.Fetched = t.UTC().Format(time.RFC3339)

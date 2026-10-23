@@ -4,20 +4,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   can, isAdmin, isOperator, until, utf8Length, ago, api, between, byNamespace, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
-  lineMatches, matchEnrollment, route, stateClass, steps,
+  lineMatches, lastRun, matchEnrollment, repoSummary, route, stateClass, steps,
 } from './lib.js';
 
 test('route', () => {
   assert.deepEqual(route('/'), { name: 'home' });
   assert.deepEqual(route('/approvals'), { name: 'approvals' });
   assert.deepEqual(route('/admin'), { name: 'admin' });
-  assert.deepEqual(route('/e/abc'), { name: 'runs', id: 'abc' });
-  assert.deepEqual(route('/e/abc/runs/'), { name: 'runs', id: 'abc' });
+  assert.deepEqual(route('/e/abc'), { name: 'lanes', id: 'abc' });
+  assert.deepEqual(route('/e/abc/runs/'), { name: 'lanes', id: 'abc' });
+  assert.deepEqual(route('/e/abc/runner'), { name: 'runner', id: 'abc' });
+  assert.deepEqual(route('/r/github.com%2Forg%2Fapi'), { name: 'repo', ns: 'github.com/org/api' });
+  assert.deepEqual(route('/r/-'), { name: 'repo', ns: '' });
   assert.deepEqual(route('/e/abc/lanes'), { name: 'lanes', id: 'abc' });
   assert.deepEqual(route('/e/abc/queue'), { name: 'queue', id: 'abc' });
+  assert.deepEqual(route('/e/abc/config'), { name: 'runner', id: 'abc' });
   assert.deepEqual(route('/e/abc/runs/r-1'), { name: 'run', id: 'abc', run: 'r-1' });
   assert.deepEqual(route('/e/abc/runs/r-1/jobs/3'), { name: 'job', id: 'abc', run: 'r-1', lane: 3 });
-  assert.deepEqual(route('/e/a%2Fb/runs'), { name: 'runs', id: 'a/b' });
+  assert.deepEqual(route('/e/a%2Fb/lanes'), { name: 'lanes', id: 'a/b' });
   assert.deepEqual(route('/e/abc/questions/q1'), { name: 'question', id: 'abc', req: 'q1' });
   for (const p of ['/e', '/e/abc/runs/r-1/jobs/x', '/e/abc/nope', '/nope']) assert.equal(route(p).name, 'notfound', p);
 });
@@ -46,6 +50,8 @@ test('durations and times', () => {
   assert.equal(ago('2026-10-22T11:59:50Z', now), '10s ago');
   assert.equal(ago('2026-10-22T11:55:00Z', now), '5m ago');
   assert.equal(ago('2026-10-22T09:00:00Z', now), '3h ago');
+  assert.equal(ago('2026-10-22T10:21:00Z', now), '1h 39m ago');
+  assert.equal(ago('2026-10-20T08:00:00Z', now), '2d 4h ago');
   assert.equal(ago('', now), '');
   assert.equal(until('2026-10-22T12:25:00Z', now), 'in 25m');
   assert.equal(until('2026-10-22T13:05:30Z', now), 'in 1h05m');
@@ -123,4 +129,15 @@ test('an admin is an operator too', () => {
   assert.equal(isAdmin({ user: 'op', role: 'operator' }), false);
   assert.equal(isOperator({ user: 'v', role: 'viewer' }), false);
   assert.equal(isAdmin(null), false);
+});
+
+test('repoSummary', () => {
+  const n = repoSummary([{ lanes: [{ state: 'failed' }] }, { stale: true, lanes: [] }, { lanes: [{ state: 'passed' }, { state: 'passed' }] }]);
+  assert.deepEqual([n.runners, n.failed, n.stale, n.lanes, n.cls, n.label], [3, 1, 1, 3, 'bad', '1 failed']);
+  assert.equal(repoSummary([{ stale: true }]).label, 'offline');
+});
+
+test('lastRun', () => {
+  assert.equal(lastRun([{ runner: { last_run: '2026-10-22T10:00:00Z' } }, { runner: { last_run: '2026-10-22T11:00:00Z' } }, {}]), '2026-10-22T11:00:00Z');
+  assert.equal(lastRun([{}]), '');
 });

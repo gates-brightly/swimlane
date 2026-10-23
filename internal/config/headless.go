@@ -158,3 +158,55 @@ func (c *Config) AnswerTimeout() time.Duration {
 	}
 	return DefaultAnswerTimeout
 }
+
+// Hub access: what an enrollment (swim hub enroll --access, kept in
+// .swim/hub.yml) lets its hub do, chosen once per enrollment rather than
+// per repo. read: the hub shows the worker and fetches its logs, and
+// nothing else (no commands, no answers). readwrite: every hub command.
+// A committed swim.yml headless.allow still narrows either; "" (an
+// enrollment from before access levels) is headless.allow as it was.
+const (
+	AccessRead      = "read"
+	AccessReadWrite = "readwrite"
+)
+
+// ValidAccess: read or readwrite.
+func ValidAccess(a string) bool { return a == AccessRead || a == AccessReadWrite }
+
+// AccessGrants is the hub commands access lets through ("" for an
+// enrollment from before access levels: nil, see HubAllow).
+func AccessGrants(access string) []string {
+	switch access {
+	case AccessRead:
+		return []string{HubLog}
+	case AccessReadWrite:
+		return HubCommands
+	}
+	return nil
+}
+
+// HubAllow is the hub commands a headless worker takes under access: what
+// access grants, narrowed to swim.yml's headless.allow when swim.yml sets
+// one. An enrollment from before access levels ("") takes HeadlessAllow.
+func (c *Config) HubAllow(access string) []string {
+	grants := AccessGrants(access)
+	if grants == nil {
+		return c.HeadlessAllow()
+	}
+	if c.Headless == nil || c.Headless.Allow == nil {
+		return grants
+	}
+	var out []string
+	for _, k := range grants {
+		if slices.Contains(c.Headless.Allow, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// HubAllows reports whether a headless worker takes hub command kind
+// under access.
+func (c *Config) HubAllows(access, kind string) bool {
+	return slices.Contains(c.HubAllow(access), kind)
+}

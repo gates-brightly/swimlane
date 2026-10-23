@@ -28,14 +28,15 @@ func TestHeadlessHubTrash(t *testing.T) {
 		t.Errorf("an unpinned trash was accepted: %v", err)
 	}
 
-	// Not in headless.allow: refused, and the hub isn't offered a pin.
+	// Under read access: refused, and the hub isn't offered a pin.
+	contains(t, "access read", r.mustSwim("hub", "access", "read"), "access: read", "the hub may send: log")
 	alice.Send(id, hub.Command{Kind: hub.KindTrash, Lane: 2, Pin: hub.Pin{Job: "0123456789abcdef"}})
-	waitLog(t, r, "hub trash by alice"+via+"refused: not allowed here")
+	waitLog(t, r, "hub trash by alice"+via+"refused: not allowed here: this enrollment's access is read")
 	if l := laneOnHub(t, url, id, 2); l.TrashJob != "" {
 		t.Errorf("trash_job published while trash isn't allowed: %q", l.TrashJob)
 	}
 
-	r.write("swim.yml", "headless:\n  allow: [answer, interrupt, drain, log, trash]\n", 0o644)
+	r.mustSwim("hub", "access", "readwrite")
 	waitFor(t, func() bool { return laneOnHub(t, url, id, 2).TrashJob != "" })
 	pin := laneOnHub(t, url, id, 2).TrashJob
 

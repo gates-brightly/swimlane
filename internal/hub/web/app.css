@@ -212,6 +212,7 @@ progress::-moz-progress-bar { background: var(--run); }
 
 /* Lanes tail */
 tr.tail-row td { padding-top: 0; }
+.config { margin: 0; padding: 12px 14px; background: var(--code-bg); color: var(--code-fg); border-radius: 10px; white-space: pre-wrap; word-break: break-word; overflow: auto; }
 .tail { margin: 6px 0 0; padding: 8px 10px; background: var(--code-bg); color: var(--code-fg); border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; }
 
 @media (max-width: 860px) {
@@ -235,3 +236,15 @@ tr.tail-row td { padding-top: 0; }
 
 /* footer: the hub's swim version */
 .foot { max-width: 1400px; margin: 0 auto; padding: 0 16px 24px; color: var(--muted); font-size: 12px; text-align: center; }
+.ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin: 0; padding: 6px 0; }
+.kv > div { display: flex; gap: 12px; padding: 7px 16px; border-bottom: 1px solid var(--line); }
+.kv dt { flex: 0 0 120px; color: var(--muted); font-size: 12.5px; }
+.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.head.sub-head { margin-top: 22px; }
+.when { white-space: nowrap; color: var(--muted); font-size: 12.5px; }
+.when b { color: var(--fg); font-weight: 600; }
+.when .abs { color: var(--muted); }
+.when.big { font-size: 15px; }
+.when-row { margin: -6px 0 14px; }
+.card-w { margin-top: 6px; }

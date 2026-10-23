@@ -331,7 +331,7 @@ annotations. See [CI](#ci).
 
 ```sh
 swim hub --addr 0.0.0.0:7700 --tls-cert hub.crt --tls-key hub.key   # the dashboard, over https
-swim hub enroll https://hub:7700                                     # in each repo with a worker
+swim hub enroll https://hub:7700 --access readwrite                  # in each repo with a worker (read: view only)
 swim hub admit billing                                               # the hub's admin lets it in
 swim watch                                                           # now reports to the hub
 ```
@@ -1294,7 +1294,7 @@ swim hub --addr 0.0.0.0:7700 --tls-cert C --tls-key K   # serve it to the networ
 swim hub --public-url https://swim.example.ts.net --private   # behind a TLS proxy on this host, login to view
 swim hub ... --trust-tailscale-identity              # behind tailscale serve: users sign in as their tailnet login
 swim hub user add zach --role operator --tailscale zach@github
-swim hub enroll URL [--name billing] [--ca hub.crt]   # in a repo; once the hub's admin admits it (swim hub admit), swim watch reports to it (a dashboard tab per repo)
+swim hub enroll URL --access read|readwrite [--name billing] [--ca hub.crt]   # in a repo; once the hub's admin admits it (swim hub admit), swim watch reports to it (a dashboard tab per repo)
 swim hub status | leave
 swim hub login URL --admin-token T [--ca hub.crt]    # the operator, once
 swim hub approve billing                             # or press a on its row in the hub's screen
@@ -1321,8 +1321,9 @@ swim hub user add alice --role operator              # a person: token shown onc
   selected one's running lanes and queue. Enter opens a worker to show each
   lane's message and log tail, and Esc comes back. `--no-tui` turns it off.
 - **Read API:** the same data as JSON, under `/api/enrollments` (the
-  namespace tabs and workers, one worker, its runs a page at a time, a
-  run, and for a hub user a job's round and log), plus `GET /api/events`,
+  repos (namespaces) and runners, one runner and what the hub knows of it,
+  its runs a page at a time, a run, and for a hub user a job's round and
+  log, and the runner's configuration, read only), plus `GET /api/events`,
   server-sent events as reports, runs and logs arrive (`swim hub --help`).
 - **Runs:** `swim watch` also sends each finished run: its record (lanes,
   `After`, timings, results) and every lane's round, with stages, steps,

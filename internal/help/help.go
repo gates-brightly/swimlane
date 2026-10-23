@@ -948,9 +948,12 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
     in time     past its expiry, or past headless.command_ttl (default
                 10m; 2m for interrupt) after it was sent, it's acknowledged
                 expired and not carried out
-    allowed     swim.yml's headless.allow lists it (default: answer,
-                interrupt, drain, log; run, trash, pause, unpause, queue,
-                dequeue and requeue must be added)
+    allowed     the enrollment's access lets it (read: log only;
+                readwrite: every command; see swim hub enroll --access),
+                and a committed swim.yml headless.allow, if it has one,
+                lists it. An enrollment from before access levels goes by
+                headless.allow alone (default: answer, interrupt, drain,
+                log)
     pinned      interrupt, pause and unpause name the run the page
                 showed, run the script
                 and manifest hashes, trash the lane's job (its script's
@@ -972,7 +975,7 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   ("hub <cmd> by <user> via <url>: <outcome>"), and acknowledged to the
   hub. swim.yml (only; config.yml can't set it):
     headless:
-      allow: [answer, interrupt, drain, log]   # add run, trash, pause, unpause, queue, dequeue, requeue to allow them
+      allow: [answer, interrupt, drain, log]   # optional: narrows the enrollment's access (read or readwrite)
       logs: on                                 # off: logs stay here
       command_ttl: 10m
       approvals: signed      # signed | hub: how guards are answered
@@ -1395,7 +1398,8 @@ swim keys pin
          [--tls-cert FILE --tls-key FILE] [--insecure] [--public-url URL] [--private]
          [--retain AGE] [--retain-bytes SIZE] [--trust-tailscale-identity]
          [--admin-tailscale LOGIN[,LOGIN]]
-swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]
+swim hub enroll URL [--access read|readwrite] [--name N] [--namespace NS] [--ca FILE] [--insecure]
+swim hub access [read|readwrite]
 swim hub leave | status
 swim hub login URL --admin-token T [--ca FILE] [--insecure]
 swim hub admit | reject [WORKER] [--hub URL] [--admin-token T]
@@ -1522,8 +1526,20 @@ swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove
   token, checks each against swim.yml's headless: block, its expiry
   (10 minutes, interrupt 2) and its pin, and acknowledges done, refused
   or expired, which the Commands panel shows. See swim watch --help.
-  swim hub enroll URL [--name N] [--namespace NS]
-                   enroll this directory, to wait until the hub's admin
+  swim hub enroll URL [--access read|readwrite] [--name N] [--namespace NS]
+                   enroll this directory with an access level for the hub:
+                   read (it shows this directory and fetches its logs) or
+                   readwrite (it also sends every command: run, queue,
+                   dequeue, requeue, interrupt, drain, pause, unpause,
+                   trash and answers). Without --access, enroll asks at a
+                   terminal and is read elsewhere; enrolling again keeps it.
+                   It's this enrollment's, not the repo's: no per-repo
+                   setup. A committed swim.yml headless.allow still narrows
+                   it; one enrolled before access levels goes by
+                   headless.allow alone. swim hub access shows it, and
+                   swim hub access read|readwrite changes it (the hub sees
+                   it at the next report; the Admin page shows it too).
+                   Enroll then waits until the hub's admin
                    admits it (see Admission; swim hub status says whether it
                    waits), as name (the directory's) under a
                    namespace, the dashboard tab it shows in: its repo, from

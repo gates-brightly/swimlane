@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -60,6 +61,8 @@ func cmdHub(args []string) error {
 		return hubApproveCmd(args, false)
 	case "unapprove":
 		return hubApproveCmd(args, true)
+	case "access":
+		return hubAccessCmd(args)
 	case "admit":
 		return hubAdmitCmd(args, false)
 	case "reject":
@@ -67,7 +70,7 @@ func cmdHub(args []string) error {
 	case "user", "users":
 		return hubUserCmd(args)
 	}
-	return usagef("usage: swim hub [serve|enroll|leave|status|login|admit|reject|approve|unapprove|user] (swim hub --help)")
+	return usagef("usage: swim hub [serve|enroll|access|leave|status|login|admit|reject|approve|unapprove|user] (swim hub --help)")
 }
 
 func hubServe(args []string) error {
@@ -304,7 +307,10 @@ type hubFile struct {
 	// Namespace is the hub tab this directory shows under (enroll
 	// --namespace, else its origin remote's; hubNamespace).
 	Namespace string `yaml:"namespace,omitempty"`
-	CA        string `yaml:"ca,omitempty"` // PEM the hub's https certificate must chain to (enroll --ca)
+	// Access is what this enrollment lets the hub do (read or readwrite;
+	// enroll --access, swim hub access); "" from before access levels.
+	Access string `yaml:"access,omitempty"`
+	CA     string `yaml:"ca,omitempty"` // PEM the hub's https certificate must chain to (enroll --ca)
 	// What a headless worker has carried out of the hub's commands, so a
 	// restarted (or replaying) hub can't make it act twice: the hub's
 	// epoch, the last seq seen in it, and the ids of recent commands.
@@ -382,12 +388,12 @@ func loadHub(root string) (*hubFile, error) {
 	return &h, nil
 }
 
-func hubWorker(root, name, ns string) hub.Worker {
+func hubWorker(root, name, ns, access string) hub.Worker {
 	host, _ := os.Hostname()
 	if name == "" {
 		name = filepath.Base(root)
 	}
-	w := hub.Worker{Name: name, Host: host, Root: root, Namespace: ns, Version: version.String(), PID: os.Getpid()}
+	w := hub.Worker{Name: name, Host: host, Root: root, Namespace: ns, Access: access, Version: version.String(), PID: os.Getpid()}
 	if id, err := secrets.WorkerKey(workerKeyPath(root)); err == nil {
 		w.Key = id.Recipient().String()
 	}
@@ -402,6 +408,103 @@ func hubNamespace(root string, h *hubFile) string {
 		return h.Namespace
 	}
 	return hub.NamespaceFor(cache.Origin(root), root)
+}
+
+// enrollNamespace is the namespace a new enrollment reports under: its
+// repo's (hubNamespace), or for a directory outside git, the machine it
+// runs on as HOST:IP (the address it reaches the hub from).
+func enrollNamespace(root, hubURL string) string {
+	if inGitRepo(root) {
+		return hubNamespace(root, nil)
+	}
+	host, _ := os.Hostname()
+	if host = strings.Split(host, ".")[0]; host == "" {
+		host = "unknown"
+	}
+	if ip := localIP(hubURL); ip != "" {
+		return hub.CleanNamespace(host + ":" + ip)
+	}
+	return hub.CleanNamespace(host)
+}
+
+// localIP is the address this machine reaches hubURL's host from ("" if
+// it can't tell): a UDP dial sends nothing, it only picks the route.
+func localIP(hubURL string) string {
+	u, err := neturl.Parse(hubURL)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		port = "443"
+	}
+	c, err := net.DialTimeout("udp", net.JoinHostPort(u.Hostname(), port), 2*time.Second)
+	if err != nil {
+		return ""
+	}
+	defer c.Close()
+	if a, ok := c.LocalAddr().(*net.UDPAddr); ok && !a.IP.IsUnspecified() {
+		return a.IP.String()
+	}
+	return ""
+}
+
+// hubAccessOf is what this directory's enrollment lets its hub do ("" when
+// it isn't enrolled, or enrolled before access levels).
+func hubAccessOf(root string) string {
+	if h, err := loadHub(root); err == nil {
+		return h.Access
+	}
+	return ""
+}
+
+// askAccess asks at a terminal what the hub may do here; elsewhere it's
+// read, said so.
+func askAccess() (string, error) {
+	if !ui.IsTTY(os.Stdin) || !ui.IsTTY(os.Stdout) {
+		fmt.Println("access: read (the hub shows this directory and fetches its logs; --access readwrite lets it send commands too)")
+		return config.AccessRead, nil
+	}
+	fmt.Print("What may the hub do here?\n  read       show this directory and fetch its logs\n  readwrite  also send commands: run, queue, interrupt, answer, ...\naccess [read]: ")
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	switch a := strings.ToLower(strings.TrimSpace(line)); a {
+	case "", "r", config.AccessRead:
+		return config.AccessRead, nil
+	case "rw", "w", "write", config.AccessReadWrite:
+		return config.AccessReadWrite, nil
+	default:
+		return "", usagef("access %q: read or readwrite", a)
+	}
+}
+
+// hubAccessCmd shows what this directory's enrollment lets its hub do, or
+// changes it (read or readwrite); the next report tells the hub.
+func hubAccessCmd(args []string) error {
+	root, cfg, err := repoNoMigrate()
+	if err != nil {
+		return err
+	}
+	h, err := loadHub(root)
+	if err != nil {
+		return fmt.Errorf("not enrolled with a hub (swim hub enroll URL --access read|readwrite)")
+	}
+	if len(args) == 0 {
+		a := or(h.Access, "from before access levels: swim.yml's headless.allow")
+		fmt.Printf("access: %s\nthe hub may send: %s\n", a, or(strings.Join(cfg.HubAllow(h.Access), ", "), "nothing"))
+		return nil
+	}
+	if len(args) != 1 || !config.ValidAccess(args[0]) {
+		return usagef("usage: swim hub access [read|readwrite]")
+	}
+	h.Access = args[0]
+	if err := saveHub(root, h); err != nil {
+		return err
+	}
+	history.Log(root, history.Entry{Event: history.Hub, Detail: "hub access " + h.Access + " for " + h.URL})
+	c := hubClient(h)
+	c.Report(hubSnapshot(root, cfg, h.Name, hubNamespace(root, h), "access changed to "+h.Access, pollEvery))
+	fmt.Printf("access: %s\nthe hub may send: %s\n", h.Access, or(strings.Join(cfg.HubAllow(h.Access), ", "), "nothing"))
+	return nil
 }
 
 // hubCA reads --ca FILE for a hub URL: "" without one; an http URL with
@@ -424,14 +527,17 @@ func hubCA(url, file string, insecure bool) (string, error) {
 }
 
 func hubEnroll(args []string) error {
-	var token, name, ns, caFile string
+	var token, name, ns, caFile, access string
 	var insecure bool
-	rest, err := flags{bools: map[string]*bool{"insecure": &insecure}, strs: map[string]*string{"token": &token, "name": &name, "namespace": &ns, "ca": &caFile}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"insecure": &insecure}, strs: map[string]*string{"token": &token, "name": &name, "namespace": &ns, "ca": &caFile, "access": &access}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return usagef("usage: swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]")
+		return usagef("usage: swim hub enroll URL --access read|readwrite [--name N] [--namespace NS] [--ca FILE] [--insecure]")
+	}
+	if access != "" && !config.ValidAccess(access) {
+		return usagef("--access is read (the hub shows this directory and fetches its logs) or readwrite (it also sends every command)")
 	}
 	ca, err := hubCA(rest[0], caFile, insecure)
 	if err != nil {
@@ -449,9 +555,16 @@ func hubEnroll(args []string) error {
 			return usagef("--namespace: give a name, e.g. github.com/org/api")
 		}
 	} else {
-		ns = hubNamespace(root, nil)
+		ns = enrollNamespace(root, rest[0])
 	}
-	w := hubWorker(root, name, ns)
+	if access == "" {
+		if old, err := loadHub(root); err == nil && config.ValidAccess(old.Access) {
+			access = old.Access
+		} else if access, err = askAccess(); err != nil {
+			return err
+		}
+	}
+	w := hubWorker(root, name, ns, access)
 	c, err := hub.NewClientTLS(rest[0], token, "", []byte(ca))
 	if err != nil {
 		return fmt.Errorf("--ca %s: %w", caFile, err)
@@ -465,7 +578,7 @@ func hubEnroll(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := saveHub(root, &hubFile{URL: c.URL, Token: token, WorkerToken: c.WorkerToken, ID: id, Name: w.Name, Namespace: ns, CA: ca}); err != nil {
+	if err := saveHub(root, &hubFile{URL: c.URL, Token: token, WorkerToken: c.WorkerToken, ID: id, Name: w.Name, Namespace: ns, Access: access, CA: ca}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Hub, Detail: "enrolled with " + c.URL + " as " + w.Name})
@@ -658,16 +771,18 @@ func quietHub(on bool) {
 // of each running lane's log, its running step included), the queue, and
 // the end of .swim.log. Logs are already masked of secrets.
 func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, every time.Duration) hub.Snapshot {
-	s := hub.Snapshot{Worker: hubWorker(root, name, ns), Activity: activity, At: time.Now().UTC().Format(time.RFC3339),
+	access := hubAccessOf(root)
+	s := hub.Snapshot{Worker: hubWorker(root, name, ns, access), Activity: activity, At: time.Now().UTC().Format(time.RFC3339),
 		Interval: every.Seconds(), Lanes: []hub.Lane{}, Queue: []hub.Batch{}, Events: []string{}}
 	if headlessInfo != nil {
 		h := *headlessInfo
-		h.Allow, h.LogsOff = cfg.HeadlessAllow(), !cfg.HeadlessLogs()
+		h.Allow, h.LogsOff = cfg.HubAllow(access), !cfg.HeadlessLogs()
 		s.Headless = &h
 		s.Waiting = waitingApprovals()
 	} else if watchYes {
 		s.AutoApprove = "swim watch -y"
 	}
+	s.Config = hubConfigDoc(cfg, access)
 	if st, _ := status.Load(root); st != nil {
 		inUse := map[int]bool{} // now: the worker outlives any one config load
 		for _, n := range lane.Associated(root) {
@@ -701,14 +816,14 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 			}
 			if l.State == status.Running {
 				hl.Tail = laneTail(root, l.Lane, 15)
-			} else if s.Headless != nil && (cfg.HeadlessAllows(config.HubRun) || cfg.HeadlessAllows(config.HubQueue)) {
+			} else if s.Headless != nil && (cfg.HubAllows(access, config.HubRun) || cfg.HubAllows(access, config.HubQueue)) {
 				// What a run or queue command from the hub would pin it to.
 				hl.Script, hl.Manifest = runPin(root, cfg, l.Lane)
 			}
 			if l.PausedAt != "" && l.Alive() {
 				hl.Paused = fmt.Sprintf("by %s after %q", or(l.PausedBy, "?"), l.PausedAfter)
 			}
-			if l.State != status.Running && l.State != status.Waiting && s.Headless != nil && cfg.HeadlessAllows(config.HubTrash) {
+			if l.State != status.Running && l.State != status.Waiting && s.Headless != nil && cfg.HubAllows(access, config.HubTrash) {
 				// What a trash command from the hub would pin it to.
 				if info, err := lane.ReadScript(root, l.Lane); err == nil && lane.ScriptName(root, l.Lane) != "" {
 					if _, group := lane.GroupOf(root, l.Lane); !group {
@@ -723,7 +838,7 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 		var done []hub.Batch
 		held := heldBy(root, cfg, entries)
 		for _, e := range entries {
-			b := hub.Batch{Seq: e.Seq, ID: e.ID, State: e.State, By: e.By, Note: e.Note, Lanes: []int{}}
+			b := hub.Batch{Seq: e.Seq, ID: e.ID, State: e.State, By: e.By, Note: e.Note, Lanes: []int{}, Queued: e.Created}
 			if e.NotBefore != "" {
 				at, _ := time.Parse(time.RFC3339, e.NotBefore)
 				b.At = scheduledAt(e) + " · " + schedule.Until(at, time.Now())
@@ -738,7 +853,7 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 				b.Lanes = append(b.Lanes, l.Lane)
 			}
 			if e.Result != nil {
-				b.Result = e.Result.Result
+				b.Result, b.Run, b.Started, b.Finished = e.Result.Result, e.Result.Run, e.Result.Started, e.Result.Finished
 			}
 			if e.State == queue.Done {
 				done = append(done, b)
@@ -810,4 +925,19 @@ func cellsText(root string, l status.Lane) string {
 		return l.CellsTextAs(func(c string) string { return info.SubLabel(l.Lane, c) })
 	}
 	return l.CellsText()
+}
+
+// hubConfigDoc is the configuration a worker shows its hub (read only):
+// swim config's, then what its enrollment lets the hub do, masked of
+// secrets.
+func hubConfigDoc(cfg *config.Config, access string) string {
+	var b strings.Builder
+	b.WriteString(configDoc(cfg))
+	shown := access
+	if shown == "" {
+		shown = "(none: enrolled before access levels; swim.yml's headless.allow)"
+	}
+	fmt.Fprintf(&b, "hub_access: %s   # swim hub access [read|readwrite]\n", shown)
+	fmt.Fprintf(&b, "hub_commands: [%s]   # what a headless worker takes from the hub\n", strings.Join(cfg.HubAllow(access), ", "))
+	return cfg.Masker(os.Environ()).String(b.String())
 }

@@ -211,6 +211,14 @@ func showConfig() error {
 	if err != nil {
 		return err
 	}
+	fmt.Print(configDoc(cfg))
+	return nil
+}
+
+// configDoc is the effective configuration as swim config shows it (and a
+// hub shows it, masked, from the worker's reports).
+func configDoc(cfg *config.Config) string {
+	var b strings.Builder
 	out, _ := yaml.Marshal(map[string]any{
 		"config_file":  cfg.Path,
 		"repo":         cfg.Root,
@@ -218,21 +226,21 @@ func showConfig() error {
 		"repo_file":    cfg.RepoFile,
 		"effective":    cfg.Settings,
 	})
-	fmt.Print(string(out))
+	b.Write(out)
 	ig, tg := cfg.Graces()
-	fmt.Printf("interrupt: %s   # first Ctrl-C; interrupt_grace %s, term_grace %s\n", cfg.InterruptMode(), ig, tg)
-	fmt.Println("blocked_commands:            # no lane command may contain these")
-	for _, b := range cfg.Blocked() {
+	fmt.Fprintf(&b, "interrupt: %s   # first Ctrl-C; interrupt_grace %s, term_grace %s\n", cfg.InterruptMode(), ig, tg)
+	b.WriteString("blocked_commands:            # no lane command may contain these\n")
+	for _, bl := range cfg.Blocked() {
 		mark := ""
-		if policy.IsBuiltin(b) {
+		if policy.IsBuiltin(bl) {
 			mark = "   # built-in, always on"
 		}
-		fmt.Printf("  - %q%s\n", b, mark)
+		fmt.Fprintf(&b, "  - %q%s\n", bl, mark)
 	}
 	if !cfg.HasRepo {
-		fmt.Println("# no section for this repo; run `swim init` to add one")
+		b.WriteString("# no section for this repo; run `swim init` to add one\n")
 	}
-	return nil
+	return b.String()
 }
 
 // errNoLaneCount answers `swim config lanes N`: there's no lane count.

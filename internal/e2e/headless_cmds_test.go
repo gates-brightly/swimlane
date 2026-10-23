@@ -25,7 +25,7 @@ func commandRepo(t *testing.T) (r *repo, url, state, id string, alice, vic *hub.
 	state = t.TempDir()
 	url, stop := startHub(t, r, state, "127.0.0.1:0")
 	t.Cleanup(stop)
-	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "headless")
+	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "headless", "--access", "readwrite")
 	r.admit(t, url, "headless")
 	t.Cleanup(func() {
 		if pid := headlessPid(r); pid > 0 {
@@ -128,10 +128,12 @@ run "after" sleep 10`)
 		t.Fatalf("the planted secret reached the hub:\n%s", text)
 	}
 
-	// run is refused until swim.yml allows it.
+	// readwrite lets the hub send every command; a committed swim.yml
+	// headless.allow narrows it, and run is refused until it lists run.
+	r.write("swim.yml", "headless:\n  allow: [answer, interrupt, drain, log]\n", 0o644)
 	sha := strings.Repeat("a", 64)
 	alice.Send(id, hub.Command{Kind: hub.KindRun, Lane: 2, Pin: hub.Pin{SHA256: sha, Manifest: sha}})
-	waitLog(t, r, "hub run by alice"+via+"refused: not allowed here: swim.yml's headless.allow is [answer, interrupt, drain, log]")
+	waitLog(t, r, "hub run by alice"+via+"refused: not allowed here: swim.yml's headless.allow narrows readwrite to [answer, interrupt, drain, log]")
 	r.write("swim.yml", "headless:\n  allow: [interrupt, drain, log, run]\n", 0o644)
 	var l2 hub.Lane
 	waitFor(t, func() bool { l2 = laneOnHub(t, url, id, 2); return l2.Script != "" && l2.Manifest != "" })

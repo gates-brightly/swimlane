@@ -613,6 +613,11 @@ func RoundsInFile(path string) ([]*Round, error) {
 	if err != nil {
 		return nil, err
 	}
+	return RoundsIn(string(data)), nil
+}
+
+// RoundsIn parses every syntax 2 round in a log's text, oldest first.
+func RoundsIn(text string) []*Round {
 	var out []*Round
 	var cur []string
 	flush := func() {
@@ -623,7 +628,7 @@ func RoundsInFile(path string) ([]*Round, error) {
 		}
 		cur = nil
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(text, "\n") {
 		if strings.HasPrefix(line, RoundMark) {
 			flush()
 		}
@@ -632,7 +637,7 @@ func RoundsInFile(path string) ([]*Round, error) {
 		}
 	}
 	flush()
-	return out, nil
+	return out
 }
 
 // ParseContext reads a round's context line, "   k: v | k: v | ...".

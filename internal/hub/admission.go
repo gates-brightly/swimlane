@@ -29,6 +29,7 @@ type PendingWorker struct {
 	Host       string `json:"host"`
 	Root       string `json:"root"`
 	Namespace  string `json:"namespace,omitempty"`
+	Access     string `json:"access,omitempty"` // what its enrollment lets the hub do: read or readwrite
 	Version    string `json:"version,omitempty"`
 	KeyFP      string `json:"key_fp,omitempty"`
 	EnrolledAt string `json:"enrolled_at,omitempty"`
@@ -67,7 +68,7 @@ func (s *Server) Pending() []PendingWorker {
 	out := []PendingWorker{}
 	for id, r := range s.records {
 		if r.Pending {
-			out = append(out, PendingWorker{ID: id, Name: r.Name, Host: r.Host, Root: r.Root, Namespace: r.Namespace,
+			out = append(out, PendingWorker{ID: id, Name: r.Name, Host: r.Host, Root: r.Root, Namespace: r.Namespace, Access: r.Access,
 				Version: r.Version, KeyFP: r.KeyFP, EnrolledAt: r.EnrolledAt, From: r.From})
 		}
 	}

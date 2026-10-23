@@ -275,6 +275,17 @@ func (s *Server) Runs(id string) []RunInfo {
 	return out
 }
 
+// keptRuns is how many runs the hub keeps of each worker.
+func (s *Server) keptRuns() map[string]int {
+	s.runs.mu.Lock()
+	defer s.runs.mu.Unlock()
+	out := map[string]int{}
+	for id, runs := range s.runs.index {
+		out[id] = len(runs)
+	}
+	return out
+}
+
 // Run is one kept run of worker id.
 func (s *Server) Run(id, run string) (*RunReport, bool) {
 	s.runs.mu.Lock()
@@ -338,6 +349,9 @@ func (s *Server) putRun(w http.ResponseWriter, r *http.Request) {
 		rep.Jobs = []logparse.Doc{}
 	}
 	clean, _ := json.Marshal(&rep)
+	s.runs.mu.Lock()
+	again := s.runs.index[id][run] != nil
+	s.runs.mu.Unlock()
 	if err := s.runs.put(id, &rep, clean); err != nil {
 		code := http.StatusInternalServerError
 		if errors.Is(err, errNoState) {
@@ -353,6 +367,11 @@ func (s *Server) putRun(w http.ResponseWriter, r *http.Request) {
 		s.events.publish("run", id, *info)
 	}
 	s.mu.Lock()
+	if rec := s.records[id]; rec != nil && !again {
+		rec.Runs++
+		rec.LastRun = s.now().UTC().Format(time.RFC3339)
+		s.save()
+	}
 	s.audit("%s reported run %s (%s; lanes %s)", id, run, RunResult(&rep.Run), strings.Trim(fmt.Sprint(laneNums(&rep.Run)), "[]"))
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)

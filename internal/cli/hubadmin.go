@@ -179,7 +179,7 @@ func hubAdmitCmd(args []string, reject bool) error {
 			return nil
 		}
 		for _, p := range waiting {
-			fmt.Printf("%-16s %s  %s:%s  %s  key %s  from %s\n", p.Name, p.ID, p.Host, p.Root, or(p.Namespace, "-"), or(p.KeyFP, "none"), or(p.From, "?"))
+			fmt.Printf("%-16s %s  %s:%s  %s  access %s  key %s  from %s\n", p.Name, p.ID, p.Host, p.Root, or(p.Namespace, "-"), or(p.Access, "?"), or(p.KeyFP, "none"), or(p.From, "?"))
 		}
 		fmt.Println("admit one: swim hub admit NAME (or its id); turn it away: swim hub reject NAME")
 		return nil
@@ -202,7 +202,7 @@ func hubAdmitCmd(args []string, reject bool) error {
 	}
 	p := match[0]
 	if !reject {
-		fmt.Printf("%s (%s:%s, namespace %s) key %s: check it matches what swim hub enroll printed there\n", p.Name, p.Host, p.Root, or(p.Namespace, "-"), or(p.KeyFP, "none"))
+		fmt.Printf("%s (%s:%s, namespace %s, access %s) key %s: check it matches what swim hub enroll printed there\n", p.Name, p.Host, p.Root, or(p.Namespace, "-"), or(p.Access, "?"), or(p.KeyFP, "none"))
 	}
 	msg, err := a.Admit(p.ID, reject)
 	if err != nil {
