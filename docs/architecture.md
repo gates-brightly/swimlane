@@ -18,8 +18,8 @@ flowchart TD
   end
   subgraph creds["Holds credentials"]
     O["Operator<br/>swim run / swim all"]
-    W["Watch worker<br/>swim watch"]
-    X["Lane process<br/>runs as the operator or worker"]
+    W["Swimmer<br/>swim watch"]
+    X["Lane process<br/>runs as the operator or swimmer"]
   end
   subgraph record["The record"]
     S[".swim/logs/, .swim/status.yml,<br/>.swim.log"]
@@ -54,10 +54,10 @@ Read it top to bottom:
    `blocked_commands`), dependency cycles, `set -e` and a missing
    `lane_init`. `swim lint` also warns about a delete or drop outside an
    `if guard` block, but nothing stops it.
-3. **A person runs it, or a worker does.** The operator runs `swim run` or
+3. **A person runs it, or a swimmer does.** The operator runs `swim run` or
    `swim all` with their own credentials. A queued batch is pinned to its
-   exact scripts, and `swim watch` runs it with the worker's credentials;
-   the worker's environment approves nothing.
+   exact scripts, and `swim watch` runs it with the swimmer's credentials;
+   the swimmer's environment approves nothing.
 4. **The lock check.** A swim whose syntax versions differ from the repo's
    `.swim.lock` refuses to run lanes.
 5. **Guards ask for approval.** A guard asks the launcher, which approves
@@ -78,19 +78,19 @@ Read it top to bottom:
 8. **The planner reads it back** with `swim log` and `swim status`, and
    writes the next round.
 
-The **hub** is a side path: workers push their status, lanes and queue to
+The **hub** is a side path: swimmers push their status, lanes and queue to
 it, and it serves a dashboard. Hub users can also send headless swimmers
 commands (interrupt, drain, run, fetch a log, answer a waiting guard),
-which the workers poll for, check against their own committed `headless:`
-settings, carry out and record. An answer approves only when the worker
-verifies it: an approver's SSH signature over the worker's own statement
+which the swimmers poll for, check against their own committed `headless:`
+settings, carry out and record. An answer approves only when the swimmer
+verifies it: an approver's SSH signature over the swimmer's own statement
 of the question, against `lookup.yml`, or where `swim.yml` allows a
 button. The hub never runs anything itself.
 
 ## Where credentials live
 
 - **Cloud credentials, VPN, production access:** the operator's shell, or
-  the worker's environment. Lanes inherit them, so every lane in a run can
+  the swimmer's environment. Lanes inherit them, so every lane in a run can
   use them.
 - **The runner's SSH key** (`signing_key`): on the machine that runs the
   rounds. It signs the chain.

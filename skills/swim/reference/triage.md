@@ -23,7 +23,7 @@ swim verify            # only when the record itself is in question
 |---|---|---|
 | `running?` / `process gone`, or `[stale-pid]` in doctor | The lane's process died without ending its round. The next `swim run`, `swim all`, `swim ci` or `swim watch` records it as interrupted by itself, and never reruns anything. | `swim status --rebuild` (or just the next run), then decide on a rerun after reading `swim log N` |
 | `interrupted`, `END INTERRUPTED` | Ctrl-C, `swim interrupt`, a CI cancel, or a closed terminal | Read the log first. `swim run N` reruns it; `swim run N --failed` reruns a matrix's failed cells. A queued batch: `swim queue requeue ID` |
-| An `orphaned` batch in `swim queue` | Its worker stopped renewing its lease | `swim queue requeue ID`, or `swim queue rm ID` |
+| An `orphaned` batch in `swim queue` | Its swimmer stopped renewing its lease | `swim queue requeue ID`, or `swim queue rm ID` |
 | `SKIP ... (dry run ...)` | A guard wasn't approved. Nothing changed. | Nothing is broken. Re-hand the command with the flag explained (handoff.md) |
 | `BLOCKED` (exit 87) | The step's text matched a blocked command (`git push`, ...) | Rewrite the step; even an `echo "git push"` matches |
 | `DRIFT` / `drift: observed facts changed` | An `Observe:` probe changed between approval and use (another account, another binary) | Find out why before anything else. Never re-approve blindly |

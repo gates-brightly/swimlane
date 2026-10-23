@@ -12,7 +12,7 @@ person approves them, and the record says who decided what.
 1. [The README's quickstart](../README.md#quickstart): five minutes, two
    harmless lanes.
 2. [quickstart.md](quickstart.md): an hour, from a first round to a guard,
-   a signed approval, a dependency, a queue and a worker, a module, and
+   a signed approval, a dependency, a queue and a swimmer, a module, and
    reading the record. Every command is tested.
 3. [The README's usage patterns](../README.md#common-usage-patterns): the
    ways people run swim day to day.
@@ -33,7 +33,7 @@ Each one line, and where it's explained:
   ([README](../README.md#execution-manifest)).
 - **Modules**: small, versioned utilities a lane declares and calls as
   steps ([README](../README.md#modules)).
-- **The queue and workers**: batches pinned to their scripts, run by `swim
+- **The queue and swimmers**: batches pinned to their scripts, run by `swim
   watch` ([README](../README.md#queue-watch-and-wait)).
 - **The chain of custody**: every round and approval, hash-linked and
   signed ([README](../README.md#chain-of-custody)).

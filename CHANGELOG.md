@@ -581,7 +581,7 @@ already pushed to origin's main) with the next tag and pushes that tag.
   lowest free lane with a `# Task: renew-certs` line. Then `swim run
   renew-certs` (or `swim renew-certs`), and `approve`, `log`, `status`,
   `queue`, `schedule`, `history`, `pause` and the rest, find the lane by
-  name. The name is an alias: the lane number stays what signatures, the
+  name, and so do `# After:` and `# Finally:`. The name is an alias: the lane number stays what signatures, the
   chain and the hub record, so nothing about approvals changes. `swim
   status` and the hub show the name. `swim lint` (task) refuses a name
   that is a swim command, a group file's name, only hex digits, or

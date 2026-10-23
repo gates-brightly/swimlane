@@ -92,7 +92,7 @@ line marked ⚠, saying what it does and what will happen to it:
 
 - a guarded step that changes or destroys something outside the repo
   (apply, delete, migrate, publish, rotate): name the guard and the action;
-- a worker that approves guards without asking (`swim watch -y`, or
+- a swimmer that approves guards without asking (`swim watch -y`, or
   `--approved` with standing approvals): say which guards it will approve,
   because then "queued without approval" still changes things;
 - production or shared targets, an Always lane the batch pulls in, and
@@ -198,10 +198,10 @@ The rules that keep streams apart:
 - **Only block when there's nothing else to do.** Once every task is
   dispatched or waiting on results, `swim report --earmark --wait` blocks
   until something new is written. Use it then, and only then.
-- **Keep a few streams open at most,** about as many as the worker runs at
+- **Keep a few streams open at most,** about as many as the swimmer runs at
   once (`watch_batches`, default 4). More just sit in the queue.
-- **No worker, no progress.** If `swim queue` shows batches waiting and
-  nothing running, check that a worker (`swim watch`) is up, and tell the
+- **No swimmer, no progress.** If `swim queue` shows batches waiting and
+  nothing running, check that a swimmer (`swim watch`) is up, and tell the
   user once.
 - **A guarded change dispatched without approval is a dry run.** Flag it
   (⚠), keep working, and check later whether the operator approved it.

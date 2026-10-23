@@ -98,6 +98,8 @@ order:
 3. A task name, matched exactly.
 4. A job id, or a prefix of 8 or more characters.
 
+`# After:` and `# Finally:` read a task name the same way.
+
 `swim lint` keeps these unambiguous. A task name may not be:
 - a swim command;
 - a group file's name (`lanes.<name>.sh`);

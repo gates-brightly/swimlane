@@ -60,3 +60,16 @@ if guard CERT_ALLOW "renew"; then run "renew" true; fi`)
 		t.Errorf("an unknown name: exit %d\n%s", code, out)
 	}
 }
+
+// # After: and # Finally: take a task name as they take a lane number.
+func TestTaskAfter(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "build", "# Task: build\n"+`run "build" true`)
+	r.script(2, "ship", "# After: build\n"+`run "ship" true`)
+	contains(t, "lint", must(r.swim("lint")), "no problems found")
+	// Lane 2 waits on the lane named build, as on swim 1.
+	contains(t, "alone", must(r.swim("run", "2", "--plain")), "swim 1's pending round has not passed")
+	contains(t, "both", r.mustSwim("run", "build", "2", "--plain"), "swim 1", "swim 2", "PASS")
+	r.script(2, "ship", "# After: nope\n"+`run "ship" true`)
+	contains(t, "lint unknown", must(r.swim("lint", "2")), "no lane is task nope")
+}

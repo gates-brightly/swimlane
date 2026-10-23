@@ -189,7 +189,7 @@ swim run 3 4 --plain
 failing, lane 4 is **skipped**. `swim plan` shows the tree before anything
 runs; independent lanes run at once.
 
-## 7. A queue and a worker
+## 7. A queue and a swimmer
 
 ```sh
 swim queue add 3 4
@@ -200,7 +200,7 @@ swim queue
 
 `swim queue add` pins a **batch** to the scripts as they are now, with the
 approvals you give it (none here: a queued batch never asks, so its guards
-dry-run unless approved). A **worker** (`swim watch`) runs batches as their
+dry-run unless approved). A **swimmer** (`swim watch`) runs batches as their
 lanes come free; `--once` runs what's queued and exits. This is how a
 session that writes rounds hands them to a machine that runs them.
 

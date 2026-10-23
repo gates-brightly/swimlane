@@ -14,7 +14,7 @@ cut off halfway may have left work half done.
 ## An orphaned queue entry
 
 **You see:** `swim queue` lists an entry as
-`orphaned: its worker is gone (swim queue requeue N)`.
+`orphaned: its swimmer is gone (swim queue requeue N)`.
 
 **Why:** a `swim watch` claimed the batch and then died (killed, a crash,
 the machine went down) before it finished. swim never runs an orphaned
@@ -23,7 +23,7 @@ batch again on its own.
 **Fix:**
 
 ```sh
-swim queue show ID          # the entry: its lanes, approvals, and the worker that claimed it
+swim queue show ID          # the entry: its lanes, approvals, and the swimmer that claimed it
 swim log N                  # for each lane in it: how far did it get?
 swim queue requeue ID       # run it again: back of the queue, same lanes, pins and approvals
 swim queue rm ID            # or drop it
@@ -33,16 +33,16 @@ swim queue rm ID            # or drop it
 requeued lane whose script or env files changed since it was queued is
 skipped, as always.
 
-A batch claimed by a worker on **another machine** (a queue on a shared
-filesystem) can't be checked by its process. Instead, the worker renews a
+A batch claimed by a swimmer on **another machine** (a queue on a shared
+filesystem) can't be checked by its process. Instead, the swimmer renews a
 heartbeat in the entry every third of its lease (`queue_lease`, default
 2m) while the batch runs, and the entry shows as orphaned once the
 heartbeat is older than the lease. Before you requeue it, make sure that
-worker really stopped (a hung machine's batch may still be changing
+swimmer really stopped (a hung machine's batch may still be changing
 things); `swim queue show ID` names its host and pid. A claim by an older
-swim has no heartbeat and shows as `running?`: check that worker, and run
+swim has no heartbeat and shows as `running?`: check that swimmer, and run
 `swim queue requeue` or `rm` on the host that claimed it, where the entry
-shows as orphaned once its worker is gone.
+shows as orphaned once its swimmer is gone.
 
 ## An interrupted round
 

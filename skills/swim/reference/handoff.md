@@ -42,7 +42,7 @@ swim schedule 4 5 22:00 --approve SESSIONS_ALLOW_PURGE
 ```
 
 `SESSIONS_ALLOW_PURGE` approves deleting sessions marked stale (about 3,100
-rows; the snapshot keeps them). A worker (`swim watch`) runs it once lanes 4
+rows; the snapshot keeps them). A swimmer (`swim watch`) runs it once lanes 4
 and 5 are free. If either script changes after you queue it, that lane is
 skipped, not run.
 ````
@@ -56,8 +56,8 @@ Queued #41: swim 22 and 23, no approvals.
 ⚠ swim 22, `L22_ALLOW_ZG_SMOKE`: applies tf/smoke under zg in sbx1, reads it
   back, then destroys it (the zg-tf-smoke-* role, security group and
   parameter).
-⚠ A `swim watch -y` worker is up: it approves every guard, so the step above
-  runs. Without that worker it would dry-run; to approve it yourself:
+⚠ A `swim watch -y` swimmer is up: it approves every guard, so the step above
+  runs. Without that swimmer it would dry-run; to approve it yourself:
   `swim queue add 63bdf4a9 0c9210bf --approve L22_ALLOW_ZG_SMOKE`.
 ````
 

@@ -112,7 +112,7 @@ Notes:
   deadline moves out by. The request is `.swim/laneN.pause` (the run,
   who, when, the note), ignored and cleared for another run as a stop
   request is; `.swim/pause` is the repo-wide pause (`--all`), which also
-  keeps queue workers from claiming batches. The log's `PAUSE` and
+  keeps swimmers from claiming batches. The log's `PAUSE` and
   `RESUME` lines count toward nothing; a swim from before them skips them.
 - **A claimed lane** (`swim new`, `swim claim`) has a lease in
   `.swim/claims/lane.N.yml` (owner, session, host, created, expires, job)
@@ -161,9 +161,9 @@ A queued batch is one file under `.swim/queue/`, and its name is its state
 ```mermaid
 stateDiagram-v2
   [*] --> queued: swim queue add
-  queued --> running: a worker claims it (rename to .running)
+  queued --> running: a swimmer claims it (rename to .running)
   running --> done: the batch ends (Consume, to done/)
-  running --> orphaned: its worker's process is gone (derived)
+  running --> orphaned: its swimmer's process is gone (derived)
   orphaned --> queued: swim queue requeue
   done --> queued: swim queue requeue
   queued --> removed: swim queue rm
@@ -176,13 +176,13 @@ stateDiagram-v2
 |---|---|---|---|
 | `queued` | `NNNN-q-<utc>-<hex>.queue` | `swim queue add`, `swim watch --approved`, `swim queue requeue` | Requeue gives a new sequence number, at the back of the queue. |
 | `running` | `NNNN-....running`, with `worker:` (host, pid and start time, user, heartbeat, lease) | `swim watch` claims it (`ClaimNext`, or `r` on a batch in the watch screen) | Of two workers racing, exactly one rename succeeds. The worker renews `heartbeat` every third of its `lease` (`queue_lease`, default 2m) while the batch runs. |
-| `orphaned` | the same `.running` file | Not written: `swim queue` derives it. On the worker's host: its pid is gone, or now another process (start time). From another host: its heartbeat is older than its lease | A claim by an older worker (no heartbeat) can't be judged from another host and stays `running`. Never run again on its own. |
+| `orphaned` | the same `.running` file | Not written: `swim queue` derives it. On the swimmer's host: its pid is gone, or now another process (start time). From another host: its heartbeat is older than its lease | A claim by an older worker (no heartbeat) can't be judged from another host and stays `running`. Never run again on its own. |
 | `done` | `done/NNNN-....yml`, with `result:` | `Consume`, when the batch ends: passed, failed or interrupted alike | A half-run batch is never retried on its own. |
 | removed | none | `swim queue rm` | Refused while `running`. |
 
 `swim queue requeue` refuses a `queued` entry (already waiting) and a
-`running` one (stop that worker first). `queue.Transition` holds every move
-to the diagram: consuming an entry no worker claimed, consuming one twice,
+`running` one (stop that swimmer first). `queue.Transition` holds every move
+to the diagram: consuming an entry no swimmer claimed, consuming one twice,
 or claiming a consumed one is a bug, and panics under `SWIM_CHECK_STATES`.
 
 ## Run record

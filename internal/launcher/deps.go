@@ -136,6 +136,22 @@ func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File
 		}
 		return Dep{Lane: m}, nil
 	}
+	// A task name (# Task:) is its lane.
+	if lane.ValidTaskName(ref) {
+		var named []int
+		for m := 1; m <= cfg.Lanes; m++ {
+			if scripts[m].Task == ref {
+				named = append(named, m)
+			}
+		}
+		switch len(named) {
+		case 1:
+			return resolveAfter(cfg, scripts, st, n, strconv.Itoa(named[0]))
+		case 0:
+		default:
+			return Dep{}, fmt.Errorf("task %s is ambiguous: lanes %v both say # Task: %s", ref, named, ref)
+		}
+	}
 	var hits []Dep
 	for m := 1; m <= cfg.Lanes; m++ {
 		if info := scripts[m]; info.Pending() && lane.MatchJob(info.Job, ref) {
@@ -151,6 +167,8 @@ func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File
 		}
 	}
 	switch {
+	case len(hits) == 0 && lane.ValidTaskName(ref):
+		return Dep{}, fmt.Errorf("no lane holds or last ran job %s, and no lane is task %s", ref, ref)
 	case len(hits) == 0:
 		return Dep{}, fmt.Errorf("no lane holds or last ran job %s", ref)
 	case len(hits) > 1:

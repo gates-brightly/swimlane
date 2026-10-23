@@ -421,7 +421,7 @@ func localDeps(cfg *config.Config, scripts map[int]*Script) (map[int][]int, map[
 			if err != nil {
 				m = 0
 				for k, o := range scripts {
-					if o.Info.Pending() && lane.MatchJob(o.Info.Job, ref) {
+					if o.Info.Task == ref && lane.ValidTaskName(ref) || o.Info.Pending() && lane.MatchJob(o.Info.Job, ref) {
 						m = k
 					}
 				}
@@ -429,6 +429,9 @@ func localDeps(cfg *config.Config, scripts map[int]*Script) (map[int][]int, map[
 			switch {
 			case err != nil && m == 0:
 				errs[n] = fmt.Sprintf("`# After: %s`: no lane holds job %s", ref, ref)
+				if lane.ValidTaskName(ref) {
+					errs[n] += " or is task " + ref
+				}
 			case !cfg.ValidLane(m):
 				errs[n] = fmt.Sprintf("`# After: %s`: no swim %d (lanes are 1..%d)", ref, m, lane.MaxLanes)
 			case scripts[m] == nil && !cfg.IsActive(m):

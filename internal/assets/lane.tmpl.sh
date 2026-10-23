@@ -9,7 +9,7 @@
 # Timeout:
 #
 # Header keys (empty means the default):
-#   After:   lanes (or job ids) that must pass first, e.g. "1" or "2 3"   (default: none)
+#   After:   lanes (numbers, task names or job ids) that must pass first, e.g. "1" or "build 3"   (default: none)
 #   Guards:  one line per guard flag: "FLAG  what it approves (date, reason)"
 #            (only these can be approved: a guard not listed here dry-runs)
 #   Timeout: limit for the whole round, e.g. 30m or 1h30m   (default: none)

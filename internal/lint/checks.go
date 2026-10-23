@@ -126,7 +126,7 @@ func checkAfter(c *Context, s *Script) []finding.Finding {
 	if !ok {
 		return nil
 	}
-	fix := "name a configured lane number or a job id a lane holds"
+	fix := "name a configured lane number, a task (# Task:) or a job id a lane holds"
 	if s.Info.Always {
 		fix = "an Always lane waits only on other Always lanes: drop the dependency, or mark that lane `# Always: yes` too"
 	}

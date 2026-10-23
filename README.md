@@ -135,13 +135,13 @@ round to guards, signed approvals, a queue and a module; and
 What you get:
 
 - **The AI writes, but never needs your access:** no production
-  credentials, VPN or authority. Only your machine, or a worker you
+  credentials, VPN or authority. Only your machine, or a swimmer you
   control, runs anything.
 - **Work survives the session:** scripts, status, queue and logs live in
   the repo, so a new session or another agent catches up with `swim log`
   instead of having everything explained again.
 - **Nobody waits on anybody:** the AI queues the next batch while you're
-  busy; you approve in batches or ahead of time, and a worker runs it.
+  busy; you approve in batches or ahead of time, and a swimmer runs it.
 - **Parallel lanes with dependencies:** independent rounds run at once, and
   dependent ones wait for the rounds they depend on.
 - **Changes are dry runs until a person approves them:** destructive steps
@@ -208,8 +208,8 @@ flowchart TD
   end
   subgraph creds["Holds credentials"]
     O["Operator<br/>swim run / swim all"]
-    W["Watch worker<br/>swim watch"]
-    X["Lane process<br/>runs as the operator or worker"]
+    W["Swimmer<br/>swim watch"]
+    X["Lane process<br/>runs as the operator or swimmer"]
   end
   subgraph record["The record"]
     S[".swim/logs/, .swim/status.yml,<br/>.swim.log"]
@@ -235,7 +235,7 @@ flowchart TD
   W -.->|reports| H
 ```
 
-Credentials live only with the operator and the worker; the guard runs
+Credentials live only with the operator and the swimmer; the guard runs
 inside the lane, so it is advisory. More in
 [the architecture](docs/architecture.md).
 
@@ -321,14 +321,14 @@ ORDERS_ALLOW_SST_REMOVE=1 swim run 2      # approved up front (scripts, CI)
 swim all -y                               # approve every question this run, logged as -y
 ```
 
-### 5. Queue work and let a worker fire it
+### 5. Queue work and let a swimmer fire it
 
 Get a batch ready while other work runs, then let it start as soon as swim
 is idle:
 
 ```sh
 swim queue 4 5 --approve ORDERS_ALLOW_SST_REMOVE --note "cutover batch"
-swim watch                                # the worker: runs queued batches when idle
+swim watch                                # the swimmer: runs queued batches when idle
 swim queue 6 --wait --timeout 30m         # queue, then block until it finishes (exit = its result)
 swim wait                                 # block until nothing runs and nothing is queued
 swim log 3f2a9c1e --until-done            # wait for one job; exits with its round's status
@@ -1123,19 +1123,19 @@ and SHA-256. Complete entries are never touched.
 swim queue add 4 5 --approve FLAG [-y] [--note "..."]   # or: swim queue 4 5 ...
 swim queue                                               # waiting, running, orphaned, done
 swim queue show|rm|requeue ID
-swim watch [--once] [-y] [--approved] [--no-tui]         # the worker
-swim watch --headless [--detach|--status|--stop]        # the worker with no terminal
+swim watch [--once] [-y] [--approved] [--no-tui]         # the swimmer
+swim watch --headless [--detach|--status|--stop]        # the swimmer with no terminal
 swim wait [--timeout D]                                  # block until idle and nothing queued
 ```
 
 - **A batch is fixed when you queue it:** each lane is pinned to its job and
   its exact script. A lane edited afterwards is skipped, not run.
-  Approvals travel with the batch, and the worker's own environment
+  Approvals travel with the batch, and the swimmer's own environment
   approves nothing.
 - **The batch is signed by whoever queued it,** so standing approvals for
   that person apply to it.
 - **`swim schedule 1 3 22:00 --approve FLAG`** queues a batch that a
-  worker starts no earlier than 22:00 (a maintenance window, after
+  swimmer starts no earlier than 22:00 (a maintenance window, after
   hours): pinned and approved now, signed with its start time. Batches
   queued after it that depend on its lanes wait for it. The reply says
   the time in your zone and UTC, and warns when no `swim watch` runs to
@@ -1152,10 +1152,10 @@ swim wait [--timeout D]                                  # block until idle and 
     its current log), or a batch's lanes' logs, whether or not they run.
     Under the queue, the screen streams the latest output of every running
     lane; `o` hides it.
-  - **Several workers** can share one queue. Claiming an entry is atomic,
-    and workers pick batches under a lock, so two never take the same
+  - **Several swimmers** can share one queue. Claiming an entry is atomic,
+    and swimmers pick batches under a lock, so two never take the same
     lanes. A batch renews a heartbeat in its entry (`queue_lease`, default
-    2m), so from another host a dead worker's batch shows as orphaned.
+    2m), so from another host a dead swimmer's batch shows as orphaned.
   - **Ctrl-C** stops the batches in hand gracefully.
   - **`--approved`** also queues scripts as soon as they're fully approved.
   - **On a terminal,** the watch lists every lane's job and the queue while
@@ -1194,7 +1194,7 @@ swim watch --headless --uninstall
   `--i-mean-it`.
 - **Commands from the hub:** a headless swimmer long-polls its hub for what
   hub users send: interrupt a lane, drain (stop after the batch in hand),
-  run a lane, upload a run's log. The worker, not the hub, decides. It takes
+  run a lane, upload a run's log. The swimmer, not the hub, decides. It takes
   each command once (the hub's epoch, last seq and recent ids are kept in
   `.swim/hub.yml`), lets it expire after `headless.command_ttl` (10m;
   interrupt 2m), takes only what `swim.yml` allows, and refuses a command
@@ -1206,11 +1206,11 @@ swim watch --headless --uninstall
   signed approval, no flag the batch approves, no `-y`) shows in the
   hub's Approvals inbox as a question, and the lane waits up to
   `headless.answer_timeout` (30m) for an answer:
-  - **Signed** (the default): `swim approve --hub WORKER/QUESTION`, or
+  - **Signed** (the default): `swim approve --hub SWIMMER/QUESTION`, or
     *Answer* in the inbox (`ssh-keygen -Y sign` the statement it shows,
     paste your key and the signature). The statement names the question, the
-    worker, lane, job, run, script, manifest, evidence, guard, decision
-    and expiry. The worker builds it from its own facts and checks the
+    swimmer, lane, job, run, script, manifest, evidence, guard, decision
+    and expiry. The swimmer builds it from its own facts and checks the
     signature against `lookup.yml`, counting signers until the guard's
     rule is met. A hub that forges, replays or redirects an answer fails
     that check. Recorded as `hub-signed`, with the signatures.
@@ -1219,7 +1219,7 @@ swim watch --headless --uninstall
     `require:` rule names and that need no evidence. Recorded as
     `hub-button` (unsigned); `swim doctor` warns about the setting.
   - **No answer is a decline:** the deadline, the round's Timeout, the hub
-    gone or the worker stopping all make the guard a dry run.
+    gone or the swimmer stopping all make the guard a dry run.
 
 ```sh
 swim approve --hub billing/3f9c2a          # sign an answer to the question on billing's page
@@ -1414,7 +1414,7 @@ can name it: `hub: {name: billing, namespace: acme/billing}`.
     start. Lanes get them the usual way (`swim secret get`, `secret.get`),
     masked by name. A grant made with `--guard FLAG` is a
     [guarded secret](#guarded-secrets) there.
-  - **Changes:** `swim secret revoke` removes a grant. A worker that comes
+  - **Changes:** `swim secret revoke` removes a grant. A swimmer that comes
     back with a new key drops to pending and loses its grants. The hub's
     `audit.log` records approvals, grants and fetches.
 
@@ -1478,11 +1478,11 @@ they waited for.
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
 | `swim schedule LANES... TIME [--approve F]`, `swim schedule list\|rm ID` | Queue a batch that starts no earlier than TIME (`13:30`, `1:30pm`, `tomorrow 06:00`, `+2h`). |
-| `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's worker; on a terminal, pick a job to run (`r`) or queue (`q`). |
-| `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The worker with no terminal, in the background or as a service. |
+| `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's swimmer; on a terminal, pick a job to run (`r`) or queue (`q`). |
+| `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The swimmer with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
-| `swim approve --hub WORKER/QUESTION [--decline]` | Sign an answer to a guard waiting on a headless swimmer. |
+| `swim approve --hub SWIMMER/QUESTION [--decline]` | Sign an answer to a guard waiting on a headless swimmer. |
 | `swim verify [--strict] [--against DEST] [--yaml]` / `swim history [--oneline]` / `swim chain repair\|checkpoint\|export` / `swim keys [trust\|pin]` | The chain of custody: prove it (in levels), read it, repair a cut-short write, checkpoint and export it, and see and pin who's who. |
 | `swim hub` | Serve the watch hub. |
 | `swim auth login\|status\|logout\|admit\|approve\|users` | Join a hub as a swimmer, and the hub admin's side. |
@@ -1606,7 +1606,7 @@ just release v0.<YYYYMMDD>.<index>    # tag it (checks the date, index, CHANGELO
     (`internal/failpoint` lists them: mid-step, mid-claim, mid-write,
     mid-append), then checks what a restart makes of the state. Set
     `SWIM_FAILPOINT=<point>:kill|pause` on that binary to try one by hand.
-  - **Many workers:** `TestFaultManyWatchers` runs four `swim watch`
+  - **Many swimmers:** `TestFaultManyWatchers` runs four `swim watch`
     processes on one queue.
   - **Scheduler properties:** `TestSchedulerProperties` runs random lane
     graphs (`SWIM_QUICK_COUNT=100` for more).

@@ -182,7 +182,7 @@ CONCEPTS
               run directly with bash takes none. Use After: for order; Locks:
               when either order is fine but overlap isn't.
   dependency  "swim B starts after swim A succeeds". Declare it in B's script
-              header, `# After: A` (lane numbers or job ids), or for ordering
+              header, `# After: A` (lane numbers, task names or job ids), or for ordering
               that holds every round, in config `deps`. If A fails or is
               skipped, B is skipped.
   finally lane Cleanup or a report, the run's after_script (# Finally: A B):
