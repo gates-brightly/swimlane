@@ -468,9 +468,22 @@ function Lanes({ r, store }) {
   const e = useEnrollment(store, r.id);
   const me = store.me;
   const cmd = useCommand(e || { id: r.id });
+  const [picked, setPicked] = useState({});
   useTitle(e ? e.name + ' lanes' : '');
   if (store.enrollments === null) return html`<${Loading}/>`;
   if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This enrollment"/>`;
+  // Lanes the hub may queue as one batch: idle ones holding a pending round
+  // (the worker reports the script and manifest a queue command pins).
+  const canQueue = can(me, e, 'queue');
+  const queueable = (e.lanes || []).filter((l) => l.script_sha256 && l.manifest_sha256 && !String(l.state).startsWith('running'));
+  const chosen = queueable.filter((l) => picked[l.lane]);
+  const toggle = (n) => setPicked({ ...picked, [n]: !picked[n] });
+  const queueBatch = chosen.length > 0 && html`<button class="btn sm primary" onClick=${() => cmd.run(
+    { kind: 'queue', lanes: chosen.map((l) => ({ lane: l.lane, sha256: l.script_sha256, manifest: l.manifest_sha256 })) },
+    'Queue swim ' + chosen.map((l) => l.lane).join(', '), {
+      title: 'Queue ' + chosen.length + ' lane' + (chosen.length > 1 ? 's' : '') + ' as one batch?', label: 'Queue',
+      body: html`<p>swim ${chosen.map((l) => l.lane).join(', ')}, pinned to the scripts shown. The batch is unsigned and carries no approvals: a guard in it waits for an answer, or dry-runs, as the worker's swim.yml says.</p>`,
+    }, { href: href('e', e.id, 'queue'), text: 'See the queue' })}>Queue ${chosen.length} as one batch</button>`;
   const drain = can(me, e, 'drain') && html`<button class="btn sm danger" onClick=${() => cmd.run({ kind: 'drain' }, 'Stop ' + e.name + ' after this batch', {
     title: 'Stop ' + e.name + ' after this batch?', label: 'Stop after this batch', danger: true,
     body: html`<p class="muted">The worker finishes the batch it's running, then exits; nothing new starts. Start it again on its machine.</p>`,
@@ -479,13 +492,15 @@ function Lanes({ r, store }) {
     <div class="head"><h1>Lanes</h1><${Pill} state=${enrollmentState(e).cls === 'run' ? 'running' : e.activity} label=${e.activity}/>
       <div class="meta"><span>reported <${Ago} t=${e.at}/></span>${e.headless ? html`<span>headless (${e.headless.mode})</span>` : ''}
         ${e.logs ? html`<span>logs: ${e.logs}</span>` : ''}</div>
-      <span class="spacer"></span>${drain}</div>
+      <span class="spacer"></span>${queueBatch}${drain}</div>
     ${cmd.note}${cmd.dialog}
     ${me && me.user && !e.headless ? html`<div class="note">This worker isn't headless (someone is at its terminal), so it takes no commands from the hub.</div>` : ''}
     <div class="panel">${(e.lanes || []).length === 0 ? html`<div class="empty">No lanes in use.</div>` : html`<div class="tw"><table>
       <thead><tr><th class="i"></th><th>Lane</th><th>State</th><th>Step</th><th>Steps</th></tr></thead>
       <tbody>${e.lanes.map((l) => html`<tr>
-        <td class="i"><${Icon} state=${l.state}/></td>
+        <td class="i">${canQueue && queueable.includes(l)
+          ? html`<input type="checkbox" aria-label=${'Queue swim ' + l.lane} checked=${!!picked[l.lane]} onChange=${() => toggle(l.lane)}/>`
+          : html`<${Icon} state=${l.state}/>`}</td>
         <td>swim ${l.lane}<div class="sub">${l.round || ''}</div></td>
         <td><${Pill} state=${l.state}/>${l.paused ? html`<div class="sub">paused ${l.paused}</div>` : ''}${l.scheduled ? html`<div class="sub">${l.scheduled}</div>` : ''}
           ${l.reason ? html`<div class="sub">${l.reason}</div>` : ''}</td>
@@ -507,20 +522,38 @@ function pct(p) {
 
 function Queue({ r, store }) {
   const e = useEnrollment(store, r.id);
+  const me = store.me;
+  const cmd = useCommand(e || { id: r.id });
   useTitle(e ? e.name + ' queue' : '');
   if (store.enrollments === null) return html`<${Loading}/>`;
   if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This enrollment"/>`;
+  const canRm = can(me, e, 'dequeue'), canAgain = can(me, e, 'requeue');
+  // A real entry (not a recurring schedule's template, seq 0), not running.
+  const actions = (b) => {
+    if (!b.seq || b.state === 'running') return '';
+    const done = b.state === 'done' || b.state === 'orphaned';
+    return html`${canAgain && done ? html`<button class="btn sm" onClick=${() => cmd.run({ kind: 'requeue', pin: { batch: b.id } }, 'Queue ' + b.id + ' again', {
+        title: 'Queue ' + b.id + ' again?', label: 'Queue again',
+        body: html`<p>swim ${(b.lanes || []).join(', ')} as a new batch, if their scripts haven't changed since. It's unsigned and carries none of the old batch's approvals.</p>`,
+      })}>Queue again</button>` : ''}
+      ${canRm ? html` <button class="btn sm danger" onClick=${() => cmd.run({ kind: 'dequeue', pin: { batch: b.id } }, 'Remove ' + b.id, {
+        title: 'Remove ' + b.id + ' from the queue?', label: 'Remove', danger: true,
+        body: html`<p>${b.state === 'queued' ? "It won't run." : 'Its record leaves the queue.'} The lanes and their scripts stay as they are.</p>`,
+      })}>Remove</button>` : ''}`;
+  };
+  const ctl = canRm || canAgain;
   return html`<${Crumbs} e=${e}><span>/</span><span>queue</span></${Crumbs}>
     <div class="head"><h1>Queue</h1></div>
-    <div class="panel">${(e.queue || []).length === 0 ? html`<div class="empty">The queue is empty.</div>` : html`<div class="tw"><table>
-      <thead><tr><th>#</th><th>Batch</th><th>State</th><th>Lanes</th><th>By</th><th>Note</th></tr></thead>
+    ${cmd.note}${cmd.dialog}
+    <div class="panel">${(e.queue || []).length === 0 ? html`<div class="empty">The queue is empty.${can(me, e, 'queue') ? html` Queue lanes from the <a href=${href('e', e.id, 'lanes')}>Lanes</a> page.` : ''}</div>` : html`<div class="tw"><table>
+      <thead><tr><th>#</th><th>Batch</th><th>State</th><th>Lanes</th><th>By</th><th>Note</th>${ctl ? html`<th></th>` : ''}</tr></thead>
       <tbody>${e.queue.map((b) => html`<tr>
         <td class="mono">${b.seq || ''}</td><td class="mono">${b.id}</td>
         <td><${Pill} state=${b.state} label=${b.state + (b.result ? ': ' + b.result : '')}/>
           ${b.daily ? html`<div class="sub">${b.daily}</div>` : b.at ? html`<div class="sub">at ${b.at}</div>` : ''}
           ${b.held_by ? html`<div class="sub">held until ${b.held_by} has run</div>` : ''}</td>
         <td><div class="lanes-cell">${(b.lanes || []).map((l) => html`<span class="chip">swim ${l}</span>`)}</div></td>
-        <td>${b.by || ''}</td><td class="muted">${b.note || ''}</td></tr>`)}
+        <td>${b.by || ''}</td><td class="muted">${b.note || ''}</td>${ctl ? html`<td class="nowrap">${actions(b)}</td>` : ''}</tr>`)}
       </tbody></table></div>`}</div>`;
 }
 
@@ -676,6 +709,7 @@ function Admin({ store }) {
   const me = store.me;
   const users = useFetch('/api/users');
   const grants = useFetch('/api/grants');
+  const pending = useFetch('/api/pending', [store.enrollments]);
   const [note, setNote] = useState(null);
   const [ask, setAsk] = useState(null);
   const [form, setForm] = useState({ name: '', role: 'viewer', tailscale: '' });
@@ -693,6 +727,7 @@ function Admin({ store }) {
     setNote(after ? after(r.data) : { cls: 'ok', text: what + ': done.' });
     users.reload();
     grants.reload();
+    pending.reload();
   };
   const confirm = (c) => setAsk(c);
   const addUser = (ev) => {
@@ -707,9 +742,23 @@ function Admin({ store }) {
   const list = (users.data && users.data.users) || [];
   const workers = store.enrollments || [];
   const gs = (grants.data && grants.data.grants) || [];
+  const waiting = (pending.data && pending.data.pending) || [];
   return html`<div class="head"><h1>Admin</h1><span class="muted">users, worker approvals and secret grants</span></div>
     ${ask && html`<${Confirm} c=${ask} close=${() => setAsk(null)}/>`}
     ${note && html`<div class="note ${note.cls}" role="status">${note.text}${note.token ? html` <code class="mono">${note.token}</code>` : ''}</div>`}
+    <h2>Waiting to join <span class="count ${waiting.length ? 'hot' : ''}">${waiting.length}</span></h2>
+    <div class="panel">${pending.loading && !pending.data ? html`<${Loading}/>` : pending.error ? html`<div class="err">${pending.error}</div>` : waiting.length === 0 ? html`<div class="empty">No one is waiting. A swim enrolls with <code>swim hub enroll ${location.origin}</code> and shows here until you admit it.</div>` : html`<div class="tw"><table>
+      <thead><tr><th>Worker</th><th>Namespace</th><th>Key</th><th>From</th><th>Since</th><th></th></tr></thead>
+      <tbody>${waiting.map((p) => html`<tr>
+        <td><b>${p.name}</b><div class="sub mono">${p.host}:${p.root}</div></td>
+        <td class="mono">${p.namespace || ''}</td><td class="mono">${p.key_fp || html`<span class="muted">none</span>`}</td>
+        <td class="mono muted">${p.from || ''}</td><td class="muted">${p.enrolled_at ? when(p.enrolled_at) : ''}</td>
+        <td class="nowrap"><button class="btn sm primary" onClick=${() => confirm({ title: 'Admit ' + p.name,
+          body: html`Let <b>${p.name}</b> (${p.host}:${p.root}) report to this hub and take commands its swim.yml allows? ${p.key_fp ? html`Its key is <code>${p.key_fp}</code>: check it against what <code>swim hub enroll</code> printed there.` : ''}`,
+          label: 'Admit', run: () => act('Admit ' + p.name, 'POST', api('workers', p.id, 'admit')) })}>Admit</button>
+          <button class="btn sm danger" onClick=${() => confirm({ title: 'Turn away ' + p.name, body: 'Its enrollment is forgotten; it can enroll and wait again.', label: 'Turn away', danger: true,
+            run: () => act('Turn away ' + p.name, 'DELETE', api('workers', p.id, 'admit')) })}>Turn away</button></td></tr>`)}
+      </tbody></table></div>`}</div>
     <h2>Users</h2>
     <div class="panel">${users.loading && !users.data ? html`<${Loading}/>` : users.error ? html`<div class="err">${users.error}</div>` : html`<div class="tw"><table>
       <thead><tr><th>Name</th><th>Role</th><th>Tailscale</th><th>Added</th><th></th></tr></thead>

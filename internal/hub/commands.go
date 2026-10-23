@@ -29,7 +29,15 @@ const (
 	KindTrash     = "trash"
 	KindPause     = "pause"
 	KindUnpause   = "unpause"
+	// The worker's queue, as swim watch works it: lanes queued as one
+	// batch, a batch taken off the queue, a finished batch queued again.
+	KindQueue   = "queue"
+	KindDequeue = "dequeue"
+	KindRequeue = "requeue"
 )
+
+// MaxQueueLanes is how many lanes one queue command may hold.
+const MaxQueueLanes = 64
 
 // Outcomes a worker acknowledges.
 const (
@@ -51,15 +59,18 @@ const (
 
 // Command is one request to a worker.
 type Command struct {
-	CID     string `json:"cid"`
-	Seq     int    `json:"seq"`   // per worker, increasing
-	Epoch   string `json:"epoch"` // the hub's (see state)
-	Kind    string `json:"kind"`
-	Lane    int    `json:"lane,omitempty"`
-	Pin     Pin    `json:"pin"`
-	By      string `json:"by"` // the hub user who sent it
-	At      string `json:"at"`
-	Expires string `json:"expires"`
+	CID   string `json:"cid"`
+	Seq   int    `json:"seq"`   // per worker, increasing
+	Epoch string `json:"epoch"` // the hub's (see state)
+	Kind  string `json:"kind"`
+	Lane  int    `json:"lane,omitempty"`
+	Pin   Pin    `json:"pin"`
+	// Lanes are a queue command's lanes, each pinned to what the page
+	// showed.
+	Lanes   []LanePin `json:"lanes,omitempty"`
+	By      string    `json:"by"` // the hub user who sent it
+	At      string    `json:"at"`
+	Expires string    `json:"expires"`
 	// Answer is an answer command's decision (and signature).
 	Answer  *Answer `json:"answer,omitempty"`
 	Outcome string  `json:"outcome,omitempty"` // done | refused | expired, once acknowledged
@@ -76,6 +87,15 @@ type Pin struct {
 	Request  string `json:"request,omitempty"`  // answer: the question answered
 	Evidence string `json:"evidence,omitempty"` // answer: the evidence hash it showed
 	Job      string `json:"job,omitempty"`      // trash: the lane's job shown
+	Batch    string `json:"batch,omitempty"`    // dequeue, requeue: the queue batch's id shown
+}
+
+// LanePin is one lane of a queue command, pinned to the script and
+// manifest the page showed for it.
+type LanePin struct {
+	Lane     int    `json:"lane"`
+	SHA256   string `json:"sha256"`
+	Manifest string `json:"manifest"`
 }
 
 // State is the command's state for a page: its outcome, else "sent" while
@@ -120,18 +140,39 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 		if c.Lane < 1 || c.Pin.Job == "" {
 			return nil, fmt.Errorf("trash needs a lane and the job it holds")
 		}
+	case KindQueue:
+		if len(c.Lanes) == 0 || len(c.Lanes) > MaxQueueLanes {
+			return nil, fmt.Errorf("queue needs 1 to %d lanes, each with the script and manifest it's for", MaxQueueLanes)
+		}
+		seen := map[int]bool{}
+		for _, l := range c.Lanes {
+			if l.Lane < 1 || l.SHA256 == "" || l.Manifest == "" || seen[l.Lane] {
+				return nil, fmt.Errorf("queue: each lane once, with the script and manifest hashes it's for")
+			}
+			if !validPin(l.SHA256) || !validPin(l.Manifest) {
+				return nil, fmt.Errorf("queue: bad pin for swim %d", l.Lane)
+			}
+			seen[l.Lane] = true
+		}
+	case KindDequeue, KindRequeue:
+		if c.Pin.Batch == "" {
+			return nil, fmt.Errorf("%s needs the queue batch it's for (pin.batch)", c.Kind)
+		}
 	case KindDrain:
 	case KindAnswer:
 		if c.Pin.Request == "" {
 			return nil, fmt.Errorf("answer needs the question it answers (pin.request)")
 		}
 	default:
-		return nil, fmt.Errorf("unknown command %q (answer, interrupt, drain, run, log, trash, pause, unpause)", c.Kind)
+		return nil, fmt.Errorf("unknown command %q (answer, interrupt, drain, run, log, trash, pause, unpause, queue, dequeue, requeue)", c.Kind)
 	}
 	if c.Kind != KindAnswer {
 		c.Answer = nil
 	}
-	for _, p := range []string{c.Pin.Run, c.Pin.SHA256, c.Pin.Manifest, c.Pin.Request, c.Pin.Evidence, c.Pin.Job} {
+	if c.Kind != KindQueue {
+		c.Lanes = nil
+	}
+	for _, p := range []string{c.Pin.Run, c.Pin.SHA256, c.Pin.Manifest, c.Pin.Request, c.Pin.Evidence, c.Pin.Job, c.Pin.Batch} {
 		if p != "" && !validPin(p) {
 			return nil, fmt.Errorf("bad pin %q", p)
 		}
@@ -139,7 +180,7 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec := s.records[id]
-	if rec == nil {
+	if rec == nil || rec.Pending {
 		return nil, fmt.Errorf("no such worker")
 	}
 	if c.Kind == KindAnswer {
@@ -153,7 +194,7 @@ func (s *Server) Send(id, by string, c Command) (*Command, error) {
 		ttl = InterruptTTL
 	}
 	s.nextSeq[id]++
-	cmd := &Command{CID: newToken()[:16], Seq: s.nextSeq[id], Epoch: s.epoch, Kind: c.Kind, Lane: c.Lane, Pin: c.Pin, Answer: c.Answer, By: by,
+	cmd := &Command{CID: newToken()[:16], Seq: s.nextSeq[id], Epoch: s.epoch, Kind: c.Kind, Lane: c.Lane, Pin: c.Pin, Lanes: c.Lanes, Answer: c.Answer, By: by,
 		At: now.Format(time.RFC3339), Expires: now.Add(ttl).Format(time.RFC3339)}
 	list := append(s.commands[id], cmd)
 	if len(list) > keepCommands {

@@ -327,6 +327,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/workers/{id}/stream/{run}/{lane}", s.putStream)
 	s.apiRoutes(mux)
 	s.userRoutes(mux)
+	s.admissionRoutes(mux)
 	s.commandRoutes(mux)
 	s.webRoutes(mux)
 	return secured(mux)
@@ -346,15 +347,32 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 	got := bearer(r.Header)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// The enroll token or the admin's enrolls anyone; a worker's own token
-	// enrolls it again (after a hub restart).
-	if !tokenIs(got, s.token) && !s.isAdmin(got) && !s.isWorker(wk.ID, got) {
-		http.Error(w, "bad or missing token", http.StatusUnauthorized)
+	rec := s.records[wk.ID]
+	own, admin := s.isEnrolled(wk.ID, got), s.isAdmin(got)
+	switch {
+	case !s.admitting():
+		// No state, no admission: the enroll token or the admin's enrolls
+		// anyone; a worker's own token enrolls it again.
+		if !tokenIs(got, s.token) && !admin && !own {
+			http.Error(w, "bad or missing token", http.StatusUnauthorized)
+			return
+		}
+	case rec != nil && !own && !admin:
+		// This host and directory are enrolled already: only their own
+		// token (in .swim/hub.yml) enrolls them again, so nobody can take
+		// an admitted worker's place, or knock it back to waiting.
+		http.Error(w, "this directory is already enrolled with the hub: enroll again with its own token (.swim/hub.yml), or have the admin remove it (swim hub leave, or the Admin page) first", http.StatusConflict)
+		return
+	case rec == nil && !admin && s.pendingCount() >= MaxPending:
+		http.Error(w, "too many workers are waiting to join this hub: try again once the admin has admitted or turned some away", http.StatusTooManyRequests)
 		return
 	}
-	rec := s.records[wk.ID]
 	if rec == nil {
 		rec = &Record{}
+		if s.admitting() && !admin {
+			rec.Pending, rec.EnrolledAt, rec.From = true, s.now().UTC().Format(time.RFC3339), s.clientAddr(r)
+			s.audit("%s (%s on %s:%s) enrolled from %s: waiting to be admitted", wk.ID, wk.Name, wk.Host, wk.Root, rec.From)
+		}
 		s.records[wk.ID] = rec
 	}
 	key := strings.TrimSpace(wk.Key)
@@ -370,12 +388,16 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 		rec.KeyFP = KeyFingerprint(key)
 	}
 	token := got
-	if !s.isWorker(wk.ID, got) {
+	if !own {
 		token = newToken()
 		rec.TokenHash = hashToken(token)
 	}
 	if err := s.save(); err != nil {
 		http.Error(w, "hub state: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if rec.Pending {
+		json.NewEncoder(w).Encode(map[string]any{"id": wk.ID, "token": token, "pending": true})
 		return
 	}
 	if v, ok := s.workers[wk.ID]; ok {
@@ -384,15 +406,20 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 		s.workers[wk.ID] = &View{Snapshot: Snapshot{Worker: wk, Activity: "enrolled", At: s.now().UTC().Format(time.RFC3339),
 			Lanes: []Lane{}, Queue: []Batch{}, Events: []string{}}, Seen: s.now()}
 	}
-	json.NewEncoder(w).Encode(map[string]string{"id": wk.ID, "token": token})
+	json.NewEncoder(w).Encode(map[string]any{"id": wk.ID, "token": token})
 }
 
 func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	s.mu.Lock()
 	_, known := s.workers[id]
-	ok := s.authorized(r) || s.isWorker(id, bearer(r.Header))
+	ok := (s.authorized(r) && !s.admitting()) || s.isWorker(id, bearer(r.Header))
+	waiting := s.records[id] != nil && s.records[id].Pending && s.isEnrolled(id, bearer(r.Header))
 	s.mu.Unlock()
+	if waiting {
+		http.Error(w, errPending, http.StatusForbidden)
+		return
+	}
 	if !known {
 		// A hub that forgot it (restarted without state): enroll again.
 		http.Error(w, "unknown worker; enroll again", http.StatusNotFound)
@@ -446,7 +473,7 @@ func (s *Server) leave(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	got := bearer(r.Header)
-	if !s.authorized(r) && !s.isWorker(id, got) && !s.isAdmin(got) {
+	if !(s.authorized(r) && !s.admitting()) && !s.isEnrolled(id, got) && !s.isAdmin(got) {
 		http.Error(w, "bad or missing token", http.StatusUnauthorized)
 		return
 	}

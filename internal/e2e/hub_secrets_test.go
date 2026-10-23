@@ -46,6 +46,7 @@ func TestHubSecrets(t *testing.T) {
 	admin := []string{"--hub", url, "--admin-token", "adm1n"}
 
 	out := wk.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "worker")
+	wk.admit(t, url, "worker")
 	fp := regexp.MustCompile(`SHA256:\S+`).FindString(out)
 	if fp == "" {
 		t.Fatalf("enroll printed no key:\n%s", out)
@@ -113,6 +114,7 @@ run "use" bash -c "echo v=$V"`)
 		t.Fatalf("worker keys: %v", keys)
 	}
 	os.Remove(keys[0])
+	// Enrolled already (its own token): it stays admitted, its key approval goes.
 	wk.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "worker")
 	if out, code := op.swim(append([]string{"secret", "grant", "worker", "db_password"}, admin...)...); code == 0 || !strings.Contains(out, "isn't approved") {
 		t.Errorf("after a key change: exit %d\n%s", code, out)

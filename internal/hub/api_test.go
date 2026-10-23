@@ -193,6 +193,7 @@ func TestEvents(t *testing.T) {
 	s, srv, worker, _, vic := commandHub(t)
 	other := NewClient(srv.URL, "sekret", "")
 	other.Enroll(Worker{Name: "other", Host: "box", Root: "/o"})
+	s.Admit(other.ID, "test")
 	all := openStream(t, srv.URL+"/api/events")
 	mine := openStream(t, srv.URL+"/api/events?enrollment="+worker.ID)
 	waitClients := func(n int) {

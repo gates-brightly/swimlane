@@ -26,6 +26,7 @@ func commandRepo(t *testing.T) (r *repo, url, state, id string, alice, vic *hub.
 	url, stop := startHub(t, r, state, "127.0.0.1:0")
 	t.Cleanup(stop)
 	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "headless")
+	r.admit(t, url, "headless")
 	t.Cleanup(func() {
 		if pid := headlessPid(r); pid > 0 {
 			syscall.Kill(pid, syscall.SIGKILL)

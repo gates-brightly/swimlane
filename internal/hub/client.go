@@ -22,6 +22,8 @@ type Client struct {
 	WorkerToken string // this worker's own token, from enrolling
 	ID          string
 	HTTP        *http.Client
+	// Pending: the last enrollment waits for the hub's admin to admit it.
+	Pending bool
 }
 
 // NewClient makes a client with a short timeout: a slow hub never holds
@@ -131,9 +133,11 @@ func failure(resp *http.Response) error {
 // Enroll joins the hub (with the enroll token, else our own) and returns
 // the worker's id; its own token is in c.WorkerToken after.
 func (c *Client) Enroll(w Worker) (string, error) {
-	tok := c.Token
+	// Its own token first: the only one an admitting hub lets enroll this
+	// directory again.
+	tok := c.WorkerToken
 	if tok == "" {
-		tok = c.WorkerToken
+		tok = c.Token
 	}
 	resp, err := c.doAs(tok, "POST", "/api/enroll", w)
 	if err != nil {
@@ -143,11 +147,14 @@ func (c *Client) Enroll(w Worker) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", failure(resp)
 	}
-	var out struct{ ID, Token string }
+	var out struct {
+		ID, Token string
+		Pending   bool
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || out.ID == "" {
 		return "", errors.New("hub: enroll returned no id")
 	}
-	c.ID = out.ID
+	c.ID, c.Pending = out.ID, out.Pending
 	if out.Token != "" {
 		c.WorkerToken = out.Token
 	}
@@ -237,6 +244,24 @@ func (a *Admin) Approve(id string, off bool) (string, error) {
 	return out.Message, err
 }
 
+// Pending lists the workers waiting to join.
+func (a *Admin) Pending() ([]PendingWorker, error) {
+	var out struct{ Pending []PendingWorker }
+	err := a.call("GET", "/api/pending", nil, &out)
+	return out.Pending, err
+}
+
+// Admit lets waiting worker id join; reject turns it away.
+func (a *Admin) Admit(id string, reject bool) (string, error) {
+	var out struct{ Message string }
+	method := "POST"
+	if reject {
+		method = "DELETE"
+	}
+	err := a.call(method, "/api/workers/"+id+"/admit", nil, &out)
+	return out.Message, err
+}
+
 // Grant stores a secret encrypted to worker id's key, guarded by guard
 // (none: unguarded).
 func (a *Admin) Grant(id, name, ciphertext, keyFP, by string, guard []string) error {
@@ -261,7 +286,7 @@ func (c *Client) Report(s Snapshot) error {
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusNoContent:
 		return nil
@@ -269,14 +294,15 @@ func (c *Client) Report(s Snapshot) error {
 		if _, err := c.Enroll(s.Worker); err != nil {
 			return err
 		}
-		resp, err = c.do("POST", "/api/report/"+c.ID, s)
+		again, err := c.do("POST", "/api/report/"+c.ID, s)
 		if err != nil {
 			return err
 		}
-		resp.Body.Close()
-		if resp.StatusCode == http.StatusNoContent {
+		defer again.Body.Close()
+		if again.StatusCode == http.StatusNoContent {
 			return nil
 		}
+		return failure(again)
 	}
 	return failure(resp)
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -203,8 +204,18 @@ func checkAndDo(root string, cfg *config.Config, c *hub.Client, cmd hub.Command,
 	if !cfg.HeadlessAllows(cmd.Kind) {
 		return hub.OutcomeRefused, fmt.Sprintf("not allowed here: swim.yml's headless.allow is [%s]", strings.Join(cfg.HeadlessAllow(), ", "))
 	}
-	if cmd.Kind != config.HubDrain && !cfg.ValidLane(cmd.Lane) {
-		return hub.OutcomeRefused, fmt.Sprintf("no lane %d", cmd.Lane)
+	switch cmd.Kind {
+	case config.HubDrain, config.HubDequeue, config.HubRequeue:
+	case config.HubQueue:
+		for _, l := range cmd.Lanes {
+			if !cfg.ValidLane(l.Lane) {
+				return hub.OutcomeRefused, fmt.Sprintf("no lane %d", l.Lane)
+			}
+		}
+	default:
+		if !cfg.ValidLane(cmd.Lane) {
+			return hub.OutcomeRefused, fmt.Sprintf("no lane %d", cmd.Lane)
+		}
 	}
 	switch cmd.Kind {
 	case config.HubInterrupt:
@@ -229,6 +240,12 @@ func checkAndDo(root string, cfg *config.Config, c *hub.Client, cmd hub.Command,
 		return hubPause(root, cmd, by, url)
 	case config.HubAnswer:
 		return answerHub(cmd)
+	case config.HubQueue:
+		return hubQueue(root, cfg, cmd, by, url)
+	case config.HubDequeue:
+		return hubDequeue(root, cmd, by, url)
+	case config.HubRequeue:
+		return hubRequeue(root, cfg, cmd, by, url)
 	}
 	return hub.OutcomeRefused, "unknown command"
 }
@@ -274,6 +291,103 @@ func hubRun(root string, cfg *config.Config, cmd hub.Command, by, url string) (s
 	}
 	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: fmt.Sprintf("%s: swim %d  by %s (unsigned, no approvals)", e.ID, n, e.By)})
 	return hub.OutcomeDone, fmt.Sprintf("queued %s (#%d): unsigned, with no approvals of its own", e.ID, e.Seq)
+}
+
+// hubQueue queues the command's lanes as one batch, as swim queue add
+// would but as the hub's user asked: unsigned, by "hub:<user> via <url>",
+// with no approvals of its own, and only while each lane's script and
+// manifest are the ones the page showed.
+func hubQueue(root string, cfg *config.Config, cmd hub.Command, by, url string) (string, string) {
+	if len(cmd.Lanes) == 0 {
+		return hub.OutcomeRefused, "no lanes to queue"
+	}
+	var lanes []queue.Lane
+	var ns []string
+	for _, p := range cmd.Lanes {
+		l, err := pinnedAsShown(root, cfg, p.Lane, p.SHA256, p.Manifest)
+		if err != nil {
+			return hub.OutcomeRefused, err.Error()
+		}
+		lanes = append(lanes, l)
+		ns = append(ns, strconv.Itoa(p.Lane))
+	}
+	e := &queue.Entry{By: "hub:" + by + " via " + url, Note: "queued from the hub", Lanes: lanes}
+	if err := queue.Add(root, e); err != nil {
+		return hub.OutcomeRefused, err.Error()
+	}
+	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: fmt.Sprintf("%s: swim %s  by %s (unsigned, no approvals)", e.ID, strings.Join(ns, ","), e.By)})
+	return hub.OutcomeDone, fmt.Sprintf("queued %s (#%d): swim %s, unsigned, with no approvals of its own", e.ID, e.Seq, strings.Join(ns, ","))
+}
+
+// pinnedAsShown is lane n pinned as a queue entry holds it, refused when
+// its script or manifest isn't the one the page showed.
+func pinnedAsShown(root string, cfg *config.Config, n int, sha, mf string) (queue.Lane, error) {
+	l, _, err := pinLane(root, cfg, n)
+	if err != nil {
+		return l, err
+	}
+	switch {
+	case l.SHA256 != sha:
+		return l, fmt.Errorf("stale: swim %d's script is now %s, not the %s the page showed", n, short12(l.SHA256), short12(sha))
+	case l.Manifest != mf:
+		return l, fmt.Errorf("stale: swim %d's manifest is now %s, not the %s the page showed (what it sources, its runner or policy changed)", n, short12(l.Manifest), short12(mf))
+	}
+	return l, nil
+}
+
+// hubDequeue takes the batch the page showed off the queue, as swim queue
+// rm would: not while it runs.
+func hubDequeue(root string, cmd hub.Command, by, url string) (string, string) {
+	e, err := queue.Find(root, cmd.Pin.Batch)
+	if err != nil {
+		return hub.OutcomeRefused, err.Error()
+	}
+	if e.ID != cmd.Pin.Batch {
+		return hub.OutcomeRefused, fmt.Sprintf("no queue batch %s", cmd.Pin.Batch)
+	}
+	if err := queue.Remove(e); err != nil {
+		return hub.OutcomeRefused, err.Error()
+	}
+	who := "hub:" + by + " via " + url
+	history.Log(root, history.Entry{Event: history.QueueRm, Detail: fmt.Sprintf("%s (%s)  by %s", e.ID, e.State, who)})
+	return hub.OutcomeDone, fmt.Sprintf("removed %s (#%d, %s) from the queue", e.ID, e.Seq, e.State)
+}
+
+// hubRequeue queues a finished (or orphaned) batch's lanes again as a new
+// batch, by the hub's user: unsigned and with no approvals, unlike swim
+// queue requeue, which keeps the batch's own approvals and signature (the
+// hub mustn't bring those back). Each lane must still hold the script the
+// batch ran; one that changed since is queued fresh instead.
+func hubRequeue(root string, cfg *config.Config, cmd hub.Command, by, url string) (string, string) {
+	old, err := queue.Find(root, cmd.Pin.Batch)
+	if err != nil {
+		return hub.OutcomeRefused, err.Error()
+	}
+	if old.ID != cmd.Pin.Batch {
+		return hub.OutcomeRefused, fmt.Sprintf("no queue batch %s", cmd.Pin.Batch)
+	}
+	if old.State != queue.Done && old.State != queue.Orphaned {
+		return hub.OutcomeRefused, fmt.Sprintf("%s is %s: only a finished batch is queued again", old.ID, old.State)
+	}
+	var lanes []queue.Lane
+	var ns []string
+	for _, ol := range old.Lanes {
+		l, _, err := pinLane(root, cfg, ol.Lane)
+		if err != nil {
+			return hub.OutcomeRefused, err.Error()
+		}
+		if l.SHA256 != ol.SHA256 {
+			return hub.OutcomeRefused, fmt.Sprintf("swim %d's script changed since %s ran it (%s, then %s): queue it fresh instead", ol.Lane, old.ID, short12(ol.SHA256), short12(l.SHA256))
+		}
+		lanes = append(lanes, l)
+		ns = append(ns, strconv.Itoa(l.Lane))
+	}
+	e := &queue.Entry{By: "hub:" + by + " via " + url, Note: "queued again from the hub (was " + old.ID + ")", Lanes: lanes}
+	if err := queue.Add(root, e); err != nil {
+		return hub.OutcomeRefused, err.Error()
+	}
+	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: fmt.Sprintf("%s: swim %s  by %s (again, was %s; unsigned, no approvals)", e.ID, strings.Join(ns, ","), e.By, old.ID)})
+	return hub.OutcomeDone, fmt.Sprintf("queued %s (#%d) again as %s (#%d): unsigned, with no approvals of its own", old.ID, old.Seq, e.ID, e.Seq)
 }
 
 // hubPause pauses lane n, or lets it go on, as the hub's user asked, only

@@ -32,6 +32,15 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Upgrading
 
+- **Hubs admit workers.** Any swim may now enroll with a hub, with no
+  enroll token, but it waits until the hub's admin admits it: on the app's
+  Admin page (a new "Waiting to join" list) or with `swim hub admit
+  WORKER` (`swim hub admit` lists who waits; `swim hub reject` turns one
+  away). A waiting worker shows nowhere else, and its reports, runs, logs
+  and grants are refused, so add the admit step wherever you enroll
+  (scripts, CI). Workers enrolled before stay admitted. A directory already
+  enrolled is enrolled again only with its own token from `.swim/hub.yml`,
+  and `--token` no longer admits anything. At most 50 wait at once.
 - **A lane's header is its contract: undeclared guards and sources are
   refused.** swim no longer reads a lane's body to find what it may do.
   - A guard the body uses without a `# Guards:` line is refused when it
@@ -489,6 +498,24 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **The hub works the queue.** Three hub commands do what `swim watch`'s
+  queue does, for repos whose `swim.yml` adds them to `headless.allow`:
+  `queue` (pick lanes on the Lanes page, Queue them as one batch, each
+  pinned to the script and manifest shown), `dequeue` (Remove a batch on
+  the Queue page; never a running one) and `requeue` (Queue a finished
+  batch again). Every batch the hub queues is unsigned, by `hub:USER via
+  URL`, with no approvals of its own: a requeued batch doesn't carry the
+  old one's approvals or signature, and is refused when a script changed
+  since it ran.
+- **Hub admins.** A hub user can be an `admin`: an operator who also does
+  what the admin token does, managing users, approving workers' keys and
+  managing grants, from the CLI with their own token (`swim hub login URL
+  --admin-token THEIR-TOKEN`) or from the app's new **Admin** page (users
+  added and removed, keys approved and withdrawn, grants revoked; granting
+  stays `swim secret grant`, which encrypts on your machine).
+  `swim hub --admin-tailscale LOGIN` (with `--trust-tailscale-identity`)
+  names admins by Tailscale login: the first sign-in by one adds them as
+  an admin user. Nobody becomes admin by being first to sign in.
 - **Sign in to the hub with Tailscale.** `swim hub --trust-tailscale-identity`
   (on a loopback `--addr`, behind `tailscale serve`) signs a hub user in
   by the proxy's `Tailscale-User-Login` header, for users given that

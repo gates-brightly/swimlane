@@ -189,6 +189,16 @@ func (r *repo) swim(args ...string) (string, int) {
 	return string(out), code
 }
 
+// admit lets the worker named name, waiting to join the hub at url, in
+// (the hub runs with --admin-token adm1n). env: extra environment, e.g.
+// SWIM_HUB_CA for a TLS hub.
+func (r *repo) admit(t *testing.T, url, name string, env ...string) {
+	t.Helper()
+	if out, code := r.swimEnv(env, "hub", "admit", name, "--hub", url, "--admin-token", "adm1n"); code != 0 {
+		t.Fatalf("swim hub admit %s: exit %d\n%s", name, code, out)
+	}
+}
+
 func (r *repo) mustSwim(args ...string) string {
 	r.t.Helper()
 	out, code := r.swim(args...)

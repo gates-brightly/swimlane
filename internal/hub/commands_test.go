@@ -29,6 +29,9 @@ func commandHub(t *testing.T) (s *Server, srv *httptest.Server, worker *Client, 
 	if _, err := worker.Enroll(Worker{Name: "billing", Host: "box", Root: "/r"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.Admit(worker.ID, "test"); err != nil {
+		t.Fatal(err)
+	}
 	admin := NewAdmin(srv.URL, "adm1n")
 	if alice, err = admin.AddUser("alice", RoleOperator); err != nil {
 		t.Fatal(err)
@@ -362,5 +365,34 @@ func TestStateV1Migrates(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "state.json"), []byte(`{"schema":"swim.hub-state/v9"}`), 0o600)
 	if _, err := NewWithState("t", "a", dir); err == nil {
 		t.Error("an unknown schema loaded")
+	}
+}
+
+// queue, dequeue and requeue: what the hub checks before a worker sees them.
+func TestQueueCommands(t *testing.T) {
+	s, _, worker, _, _ := commandHub(t)
+	sha := strings.Repeat("a", 64)
+	for _, c := range []Command{
+		{Kind: KindQueue},
+		{Kind: KindQueue, Lanes: []LanePin{{Lane: 1, SHA256: sha}}},
+		{Kind: KindQueue, Lanes: []LanePin{{Lane: 1, SHA256: sha, Manifest: sha}, {Lane: 1, SHA256: sha, Manifest: sha}}},
+		{Kind: KindQueue, Lanes: []LanePin{{Lane: 0, SHA256: sha, Manifest: sha}}},
+		{Kind: KindQueue, Lanes: []LanePin{{Lane: 1, SHA256: "bad pin!", Manifest: sha}}},
+		{Kind: KindDequeue},
+		{Kind: KindRequeue, Pin: Pin{Batch: "bad pin!"}},
+	} {
+		if _, err := s.Send(worker.ID, "alice", c); err == nil {
+			t.Errorf("accepted %+v", c)
+		}
+	}
+	got, err := s.Send(worker.ID, "alice", Command{Kind: KindQueue, Lanes: []LanePin{{Lane: 1, SHA256: sha, Manifest: sha}, {Lane: 2, SHA256: sha, Manifest: sha}}})
+	if err != nil || len(got.Lanes) != 2 {
+		t.Fatalf("a queue of two lanes: %+v %v", got, err)
+	}
+	if got, err := s.Send(worker.ID, "alice", Command{Kind: KindDequeue, Pin: Pin{Batch: "q-1"}, Lanes: []LanePin{{Lane: 1}}}); err != nil || got.Lanes != nil {
+		t.Errorf("dequeue: %+v %v (lanes are a queue's only)", got, err)
+	}
+	if _, err := s.Send(worker.ID, "alice", Command{Kind: KindRequeue, Pin: Pin{Batch: "q-1"}}); err != nil {
+		t.Errorf("requeue: %v", err)
 	}
 }

@@ -23,6 +23,9 @@ func TestHubCheckpointsGoForward(t *testing.T) {
 	if _, err := c.Enroll(Worker{Name: "w", Host: "h", Root: "/r"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.Admit(c.ID, "test"); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.PutCheckpoint(chain.Checkpoint{V: 1, Seq: 5, Head: "aaa"}); err != nil {
 		t.Fatal(err)
 	}

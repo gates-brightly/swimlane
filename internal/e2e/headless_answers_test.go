@@ -30,6 +30,7 @@ func answerRepo(t *testing.T) (r *repo, url, id string, keys, tokens map[string]
 	url, stop = startHub(t, r, t.TempDir(), "127.0.0.1:0")
 	t.Cleanup(stop)
 	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "headless")
+	r.admit(t, url, "headless")
 	t.Cleanup(func() { r.swim("watch", "--headless", "--stop") })
 	var hf struct{ ID string }
 	data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "hub.yml"))

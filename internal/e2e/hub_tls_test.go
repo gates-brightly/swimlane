@@ -56,7 +56,7 @@ func selfSigned(t *testing.T, dir string) (certFile, keyFile string, pemData []b
 func TestHubTLS(t *testing.T) {
 	r := newRepo(t, "")
 	certFile, keyFile, caPEM := selfSigned(t, t.TempDir())
-	hub := exec.Command(bin, "hub", "--addr", "127.0.0.1:0", "--token", "t0ken", "--tls-cert", certFile, "--tls-key", keyFile, "--no-tui")
+	hub := exec.Command(bin, "hub", "--addr", "127.0.0.1:0", "--token", "t0ken", "--tls-cert", certFile, "--tls-key", keyFile, "--admin-token", "adm1n", "--no-tui")
 	hub.Env = r.env
 	hub.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	out, _ := hub.StdoutPipe()
@@ -82,6 +82,7 @@ func TestHubTLS(t *testing.T) {
 	caFile := filepath.Join(t.TempDir(), "ca.pem")
 	noErr(t, os.WriteFile(caFile, caPEM, 0o600))
 	contains(t, "enroll --ca", r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing", "--ca", caFile), "enrolled", "as billing")
+	r.admit(t, url, "billing", "SWIM_HUB_CA="+caFile)
 	// The CA is kept with the enrollment: later reports trust it too.
 	noErr(t, os.Remove(caFile))
 	contains(t, "status", r.mustSwim("hub", "status"), "enrolled with "+url+" as billing", "reachable")

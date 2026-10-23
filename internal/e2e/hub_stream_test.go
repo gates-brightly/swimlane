@@ -19,6 +19,7 @@ func TestHubStreamsLogs(t *testing.T) {
 	url, stop := startHub(t, r, state, "127.0.0.1:0")
 	defer stop()
 	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing")
+	r.admit(t, url, "billing")
 	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("secret_env: [STREAM_SECRET]\nhub:\n  logs: stream\n"), 0o644)
 	r.script(1, "three steps", `run "one" bash -c 'echo first-$STREAM_SECRET'
 run "two" bash -c 'sleep 1.5; echo second'
@@ -65,6 +66,7 @@ func TestHubStreamsNothingByDefault(t *testing.T) {
 		url, stop := startHub(t, r, state, "127.0.0.1:0")
 		defer stop()
 		r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing")
+		r.admit(t, url, "billing")
 		os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte(cfg), 0o644)
 		r.script(1, "one step", `run "one" echo hello`)
 		r.mustSwim("queue", "1")
@@ -90,6 +92,7 @@ func TestHubLiveLogEvents(t *testing.T) {
 	url, stop := startHub(t, r, t.TempDir(), "127.0.0.1:0")
 	defer stop()
 	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing")
+	r.admit(t, url, "billing")
 	t.Cleanup(func() { r.swim("watch", "--headless", "--stop") })
 	r.write("swim.yml", "hub:\n  logs: stream\n", 0o644)
 	r.script(1, "three steps", `run "one" echo first

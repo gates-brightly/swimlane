@@ -949,15 +949,21 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                 10m; 2m for interrupt) after it was sent, it's acknowledged
                 expired and not carried out
     allowed     swim.yml's headless.allow lists it (default: answer,
-                interrupt, drain, log; run, trash, pause and unpause
-                must be added)
+                interrupt, drain, log; run, trash, pause, unpause, queue,
+                dequeue and requeue must be added)
     pinned      interrupt, pause and unpause name the run the page
                 showed, run the script
                 and manifest hashes, trash the lane's job (its script's
                 hash when it has no Job: line): if the lane has
                 moved on, it's refused as stale. A run is queued unsigned,
                 by "hub:USER via URL", with no approvals of its own: its
-                guards approve only as any unsigned batch's do. A trash
+                guards approve only as any unsigned batch's do. queue
+                queues several lanes as one batch the same way, each
+                pinned to its script and manifest; dequeue takes a batch
+                off the queue (swim queue rm, never a running one);
+                requeue queues a finished batch's lanes again as a new
+                unsigned batch, without the old one's approvals or
+                signature, refused when a script changed since. A trash
                 (the Trash button, then its confirmation page) is swim
                 trash N with every refusal, never --force.
     logs        a log is masked again with the secrets known now before it
@@ -966,7 +972,7 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   ("hub <cmd> by <user> via <url>: <outcome>"), and acknowledged to the
   hub. swim.yml (only; config.yml can't set it):
     headless:
-      allow: [answer, interrupt, drain, log]   # add run, trash, pause, unpause to allow them
+      allow: [answer, interrupt, drain, log]   # add run, trash, pause, unpause, queue, dequeue, requeue to allow them
       logs: on                                 # off: logs stay here
       command_ttl: 10m
       approvals: signed      # signed | hub: how guards are answered
@@ -1392,6 +1398,7 @@ swim keys pin
 swim hub enroll URL [--token T] [--name N] [--namespace NS] [--ca FILE] [--insecure]
 swim hub leave | status
 swim hub login URL --admin-token T [--ca FILE] [--insecure]
+swim hub admit | reject [WORKER] [--hub URL] [--admin-token T]
 swim hub approve | unapprove WORKER [--hub URL] [--admin-token T]
 swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove NAME | list
          [--hub URL] [--admin-token T]
@@ -1466,8 +1473,20 @@ swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove
                    workers, their keys, approvals and grants, and the admin
                    token (DIR/admin-token, made on first start; --admin-token
                    or $SWIM_HUB_ADMIN_TOKEN overrides), plus DIR/audit.log.
+  Admission: any swim may enroll, with no token; it then waits until the
+  hub's admin admits it (the app's Admin page, or swim hub admit WORKER;
+  swim hub admit alone lists who waits, with each one's host, directory,
+  namespace, key fingerprint and the address it enrolled from; swim hub
+  reject WORKER turns one away, and it may enroll and wait again). While
+  it waits it shows nowhere else: its reports, runs, logs, checkpoints and
+  grants are refused and it gets no commands. At most 50 wait at once. A
+  directory enrolled already is enrolled again only with its own token
+  (its .swim/hub.yml), so nobody takes an admitted worker's place; an
+  admin's enrollment (the admin token) admits it at once. Workers enrolled
+  before admission stay admitted.
   Tokens: the enroll token (--token, else $SWIM_HUB_TOKEN, else a new one
-  each start) only enrolls; each worker gets its own token when it enrolls,
+  each start) no longer admits anything (workers from before admission
+  still send it); each worker gets its own token when it enrolls,
   for its reports and secrets, so a hub restart doesn't strand it; the
   admin token approves workers, manages grants and manages users, and
   sends no commands; each hub user's token sends commands as their role
@@ -1503,8 +1522,10 @@ swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove
   token, checks each against swim.yml's headless: block, its expiry
   (10 minutes, interrupt 2) and its pin, and acknowledges done, refused
   or expired, which the Commands panel shows. See swim watch --help.
-  swim hub enroll URL --token T [--name N] [--namespace NS]
-                   enroll this directory (name: the directory's) under a
+  swim hub enroll URL [--name N] [--namespace NS]
+                   enroll this directory, to wait until the hub's admin
+                   admits it (see Admission; swim hub status says whether it
+                   waits), as name (the directory's) under a
                    namespace, the dashboard tab it shows in: its repo, from
                    the origin remote ("github.com/org/api" for
                    git@github.com:org/api.git), so clones of one repo on

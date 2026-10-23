@@ -16,15 +16,17 @@ func TestHubScreen(t *testing.T) {
 	}
 	addr := ln.Addr().String()
 	ln.Close()
-	tr := r.startTUI(nil, "hub", "--addr", addr, "--token", "t0ken")
+	tr := r.startTUI(nil, "hub", "--addr", addr, "--token", "t0ken", "--admin-token", "adm1n")
 	url := "http://" + addr
 	s := tr.waitFor("swim hub · " + url)
-	contains(t, "empty hub", s, "0 workers", "no workers yet", "swim hub enroll "+url+" --token t0ken")
+	contains(t, "empty hub", s, "0 workers", "no workers yet", "swim hub enroll "+url)
 
 	r.script(1, "billing cutover", `run "x" true`)
 	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing")
+	r.admit(t, url, "billing")
+	r.mustSwim("hub", "status") // its first report since it was admitted
 	s = tr.waitFor("▸ billing")
-	contains(t, "worker row", s, "1 worker ·", "WORKER", "enrolled; not watching", "── billing · "+r.root)
+	contains(t, "worker row", s, "1 worker ·", "WORKER", "checked by swim hub status", "── billing · "+r.root)
 
 	// A worker with a key waits for approval: a approves it, here.
 	contains(t, "pending", s, "PENDING", "pending: key SHA256:")

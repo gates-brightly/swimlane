@@ -330,10 +330,10 @@ annotations. See [CI](#ci).
 ### 8. Watch many workers from one place
 
 ```sh
-swim hub --addr 0.0.0.0:7700 --token "$SWIM_HUB_TOKEN" \
-  --tls-cert hub.crt --tls-key hub.key                            # the dashboard, over https
-swim hub enroll https://hub:7700 --token "$SWIM_HUB_TOKEN"        # in each repo with a worker
-swim watch                                                        # now reports to the hub
+swim hub --addr 0.0.0.0:7700 --tls-cert hub.crt --tls-key hub.key   # the dashboard, over https
+swim hub enroll https://hub:7700                                     # in each repo with a worker
+swim hub admit billing                                               # the hub's admin lets it in
+swim watch                                                           # now reports to the hub
 ```
 
 ### 9. Drive swim from scripts and agents
@@ -1294,7 +1294,7 @@ swim hub --addr 0.0.0.0:7700 --tls-cert C --tls-key K   # serve it to the networ
 swim hub --public-url https://swim.example.ts.net --private   # behind a TLS proxy on this host, login to view
 swim hub ... --trust-tailscale-identity              # behind tailscale serve: users sign in as their tailnet login
 swim hub user add zach --role operator --tailscale zach@github
-swim hub enroll URL --token T [--name billing] [--ca hub.crt]   # in a repo; then swim watch reports to it (a dashboard tab per repo)
+swim hub enroll URL [--name billing] [--ca hub.crt]   # in a repo; once the hub's admin admits it (swim hub admit), swim watch reports to it (a dashboard tab per repo)
 swim hub status | leave
 swim hub login URL --admin-token T [--ca hub.crt]    # the operator, once
 swim hub approve billing                             # or press a on its row in the hub's screen

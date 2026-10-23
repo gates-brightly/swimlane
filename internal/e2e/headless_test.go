@@ -24,6 +24,7 @@ func headlessRepo(t *testing.T) (*repo, string) {
 	url, stop := startHub(t, r, t.TempDir(), "127.0.0.1:0")
 	t.Cleanup(stop)
 	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "headless")
+	r.admit(t, url, "headless")
 	// Whatever a test leaves running, it doesn't outlive it.
 	t.Cleanup(func() {
 		if pid := headlessPid(r); pid > 0 {

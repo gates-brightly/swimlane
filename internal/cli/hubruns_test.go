@@ -45,6 +45,9 @@ func TestSendHubRuns(t *testing.T) {
 	if _, err := c.Enroll(hub.Worker{Name: "w", Host: "box", Root: root}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := h.Admit(c.ID, "test"); err != nil {
+		t.Fatal(err)
+	}
 	hf := &hubFile{URL: srv.URL, ID: c.ID, WorkerToken: c.WorkerToken}
 	send := func(want int32, why string) {
 		t.Helper()
@@ -67,8 +70,9 @@ func TestSendHubRuns(t *testing.T) {
 	later := time.Now().Add(time.Minute)
 	os.Chtimes(runrec.Path(root, "r-20261022T120002Z-abcd"), later, later)
 	send(1, "a record that changed")
-	// A new enrollment (a hub that lost its state) gets them all again.
-	c.WorkerToken = ""
+	// A new enrollment (here by the admin, who may enroll it again without
+	// its token) gets them all again.
+	c.Token, c.WorkerToken = "adm1n", ""
 	if _, err := c.Enroll(hub.Worker{Name: "w", Host: "box", Root: root}); err != nil {
 		t.Fatal(err)
 	}

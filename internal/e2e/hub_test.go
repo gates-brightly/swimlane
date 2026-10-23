@@ -42,7 +42,7 @@ func hubGet(t *testing.T, url string) hubWorkers {
 func TestHub(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	hub := exec.Command(bin, "hub", "--addr", "127.0.0.1:0", "--token", "t0ken")
+	hub := exec.Command(bin, "hub", "--addr", "127.0.0.1:0", "--token", "t0ken", "--admin-token", "adm1n")
 	hub.Env = r.env
 	hub.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	out, _ := hub.StdoutPipe()
@@ -61,12 +61,16 @@ func TestHub(t *testing.T) {
 		}
 	}()
 
-	if out, code := r.swim("hub", "enroll", url, "--token", "wrong"); code == 0 || !strings.Contains(out, "401") {
-		t.Fatalf("wrong token: %d %s", code, out)
+	// Anyone may enroll, any token or none; it waits until admitted.
+	contains(t, "enroll", r.mustSwim("hub", "enroll", url, "--name", "billing"), "enrolled", "as billing", "waiting for the hub's admin to admit it")
+	if w := hubGet(t, url); len(w.Workers) != 0 {
+		t.Fatalf("a worker waiting to be admitted is listed: %+v", w)
 	}
-	contains(t, "enroll", r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing"), "enrolled", "as billing")
-	if w := hubGet(t, url); len(w.Workers) != 1 || w.Workers[0].Name != "billing" || !strings.Contains(w.Workers[0].Activity, "not watching") || len(w.Workers[0].Lanes) != 0 {
-		t.Fatalf("after enroll: %+v", w)
+	contains(t, "waiting", r.mustSwim("hub", "admit", "--hub", url, "--admin-token", "adm1n"), "billing", "admit one:")
+	contains(t, "status", r.mustSwim("hub", "status"), "enrolled with "+url+" as billing", "waiting for the hub's admin")
+	contains(t, "admit", r.mustSwim("hub", "admit", "billing", "--hub", url, "--admin-token", "adm1n"), "billing admitted")
+	if w := hubGet(t, url); len(w.Workers) != 1 || w.Workers[0].Name != "billing" || !strings.Contains(w.Workers[0].Activity, "admitted") || len(w.Workers[0].Lanes) != 0 {
+		t.Fatalf("after admit: %+v", w)
 	}
 	contains(t, "status", r.mustSwim("hub", "status"), "enrolled with "+url+" as billing", "reachable")
 

@@ -41,6 +41,13 @@ type Record struct {
 	Approved   bool   `json:"approved"`
 	ApprovedAt string `json:"approved_at,omitempty"`
 	TokenHash  string `json:"token_hash"`
+	// Pending: it enrolled and waits for the admin to admit it
+	// (admission.go). A record from before admission has none: admitted.
+	Pending    bool   `json:"pending,omitempty"`
+	EnrolledAt string `json:"enrolled_at,omitempty"`
+	From       string `json:"from,omitempty"`
+	AdmittedAt string `json:"admitted_at,omitempty"`
+	AdmittedBy string `json:"admitted_by,omitempty"`
 }
 
 // Grant is one secret granted to a worker, encrypted to its key.
@@ -163,8 +170,11 @@ func NewWithState(token, admin, dir string) (*Server, error) {
 	if err := s.runs.open(filepath.Join(dir, "runs")); err != nil {
 		return nil, err
 	}
-	// Known workers show (stale) until they report again.
+	// Known workers show (stale) until they report again; waiting ones don't.
 	for id, r := range s.records {
+		if r.Pending {
+			continue
+		}
 		s.workers[id] = &View{Snapshot: Snapshot{Worker: r.Worker, Activity: "known; no report since the hub started",
 			At: s.now().UTC().Format(time.RFC3339), Lanes: []Lane{}, Queue: []Batch{}, Events: []string{}}, Seen: s.now().Add(-time.Hour)}
 	}
@@ -222,9 +232,10 @@ func bearer(r interface{ Get(string) string }) string {
 func (s *Server) isAdmin(got string) bool { return tokenIs(got, s.admin) }
 
 // isWorker: the request carries worker id's own token. s.mu is held.
+// isWorker reports whether got is admitted worker id's own token: a worker
+// waiting to join has one, and can do nothing with it (isEnrolled).
 func (s *Server) isWorker(id, got string) bool {
-	r := s.records[id]
-	return r != nil && r.TokenHash != "" && tokenIs(hashToken(got), r.TokenHash)
+	return s.isEnrolled(id, got) && !s.records[id].Pending
 }
 
 // Approve marks worker id approved for secrets; false if unknown or it has

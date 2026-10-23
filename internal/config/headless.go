@@ -40,13 +40,18 @@ const (
 	HubTrash     = "trash"
 	HubPause     = "pause"
 	HubUnpause   = "unpause"
+	HubQueue     = "queue"   // queue lanes as one batch (unsigned, no approvals)
+	HubDequeue   = "dequeue" // take a batch off the queue
+	HubRequeue   = "requeue" // queue a finished batch's lanes again (unsigned, no approvals)
 )
 
 // HubCommands are every command kind, in the order docs list them.
-var HubCommands = []string{HubAnswer, HubInterrupt, HubDrain, HubRun, HubLog, HubTrash, HubPause, HubUnpause}
+var HubCommands = []string{HubAnswer, HubInterrupt, HubDrain, HubRun, HubLog, HubTrash, HubPause, HubUnpause, HubQueue, HubDequeue, HubRequeue}
 
 // HeadlessDefaultAllow is headless.allow when swim.yml doesn't set it:
-// everything but run, which queues work and so must be enabled on purpose.
+// the commands that only stop, watch or answer; the ones that queue, run,
+// remove or change work (run, trash, pause, unpause, queue, dequeue,
+// requeue) must be enabled on purpose.
 var HeadlessDefaultAllow = []string{HubAnswer, HubInterrupt, HubDrain, HubLog}
 
 // Headless approval modes.

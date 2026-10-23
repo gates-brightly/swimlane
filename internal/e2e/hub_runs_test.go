@@ -19,7 +19,7 @@ func TestHubKeepsRuns(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
 	state := t.TempDir()
-	hub := exec.Command(bin, "hub", "--addr", "127.0.0.1:0", "--token", "t0ken", "--state", state, "--no-tui")
+	hub := exec.Command(bin, "hub", "--addr", "127.0.0.1:0", "--token", "t0ken", "--state", state, "--admin-token", "adm1n", "--no-tui")
 	hub.Env = r.env
 	hub.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	out, _ := hub.StdoutPipe()
@@ -38,6 +38,7 @@ func TestHubKeepsRuns(t *testing.T) {
 		}
 	}()
 	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing")
+	r.admit(t, url, "billing")
 	r.script(1, "greet", `run "say hello" echo hello-from-lane-1`)
 	r.script(2, "count", `run "count" bash -c 'echo one; echo two'`)
 	seen := map[string]bool{}

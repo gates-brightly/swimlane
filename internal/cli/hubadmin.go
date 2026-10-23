@@ -157,6 +157,61 @@ func hubApproveCmd(args []string, off bool) error {
 	return nil
 }
 
+// hubAdmitCmd lets a worker waiting to join the hub in (admit), or turns it
+// away (reject), with the admin token or an admin user's.
+func hubAdmitCmd(args []string, reject bool) error {
+	var url, token string
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token}}.parse(args)
+	if err != nil {
+		return err
+	}
+	a, hubURL, err := hubAdmin(url, token)
+	if err != nil {
+		return err
+	}
+	waiting, err := a.Pending()
+	if err != nil {
+		return err
+	}
+	if len(rest) == 0 {
+		if len(waiting) == 0 {
+			fmt.Printf("no workers waiting to join %s\n", hubURL)
+			return nil
+		}
+		for _, p := range waiting {
+			fmt.Printf("%-16s %s  %s:%s  %s  key %s  from %s\n", p.Name, p.ID, p.Host, p.Root, or(p.Namespace, "-"), or(p.KeyFP, "none"), or(p.From, "?"))
+		}
+		fmt.Println("admit one: swim hub admit NAME (or its id); turn it away: swim hub reject NAME")
+		return nil
+	}
+	if len(rest) != 1 {
+		return usagef("usage: swim hub admit|reject [WORKER] [--hub URL] [--admin-token T]   (no WORKER: list those waiting)")
+	}
+	var match []hub.PendingWorker
+	for _, p := range waiting {
+		if p.ID == rest[0] || p.Name == rest[0] {
+			match = append(match, p)
+		}
+	}
+	switch len(match) {
+	case 0:
+		return fmt.Errorf("no worker %q waiting to join %s (swim hub admit lists them)", rest[0], hubURL)
+	case 1:
+	default:
+		return fmt.Errorf("%d workers named %s are waiting: give its id (swim hub admit lists them)", len(match), rest[0])
+	}
+	p := match[0]
+	if !reject {
+		fmt.Printf("%s (%s:%s, namespace %s) key %s: check it matches what swim hub enroll printed there\n", p.Name, p.Host, p.Root, or(p.Namespace, "-"), or(p.KeyFP, "none"))
+	}
+	msg, err := a.Admit(p.ID, reject)
+	if err != nil {
+		return err
+	}
+	fmt.Println(msg)
+	return nil
+}
+
 // hubUserCmd manages the hub's users with the admin token: each gets a
 // token (shown once) to log in with, and a role.
 //

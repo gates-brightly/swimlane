@@ -239,6 +239,7 @@ with swim.round() as r:
 	hubURL, stopHub := startHub(t, r, hubState, "127.0.0.1:0")
 	defer stopHub()
 	r.mustSwim("hub", "enroll", hubURL, "--token", "t0ken", "--name", "leaky")
+	r.admit(t, hubURL, "leaky")
 	r.mustSwim("queue", "add", "1", "-y")
 	w := r.cmd(bin, "watch", "--once", "--interval", "200ms")
 	w.SysProcAttr = noTTY()

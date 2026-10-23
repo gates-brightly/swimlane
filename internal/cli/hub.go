@@ -37,7 +37,7 @@ import (
 // cmdHub runs the watch hub, or enrolls this directory with one:
 //
 //	swim hub [--addr HOST:PORT] [--token T] [--tls-cert F --tls-key F] [--public-url URL] [--private] [--retain AGE] [--retain-bytes SIZE]   serve the hub
-//	swim hub enroll URL [--token T] [--name N] [--ca F]  report this directory's swim watch to it
+//	swim hub enroll URL [--token T] [--name N] [--ca F]  report this directory's swim watch to it (once admitted)
 //	swim hub leave                                stop reporting
 //	swim hub status                               this directory's enrollment
 func cmdHub(args []string) error {
@@ -60,10 +60,14 @@ func cmdHub(args []string) error {
 		return hubApproveCmd(args, false)
 	case "unapprove":
 		return hubApproveCmd(args, true)
+	case "admit":
+		return hubAdmitCmd(args, false)
+	case "reject":
+		return hubAdmitCmd(args, true)
 	case "user", "users":
 		return hubUserCmd(args)
 	}
-	return usagef("usage: swim hub [serve|enroll|leave|status|login|approve|unapprove|user] (swim hub --help)")
+	return usagef("usage: swim hub [serve|enroll|leave|status|login|admit|reject|approve|unapprove|user] (swim hub --help)")
 }
 
 func hubServe(args []string) error {
@@ -149,14 +153,12 @@ func hubServe(args []string) error {
 	note := func(color, text string) {
 		notes = append(notes, display.PickRow{Text: text, Color: color})
 	}
-	enroll := "swim hub enroll " + url + " --token " + token
+	enroll := "swim hub enroll " + url
 	if useTLS {
 		enroll += " [--ca CERT.pem]"
 	}
-	note(ui.Dim, "enroll a worker (in its repo):  "+enroll)
-	if generated {
-		note(ui.Dim, "  (a new token each start: pass --token or SWIM_HUB_TOKEN to keep workers enrolled across restarts)")
-	}
+	note(ui.Dim, "enroll a worker (in its repo):  "+enroll+"  (no token needed: it waits until an admin admits it, on the Admin page or with swim hub admit NAME)")
+	_ = generated // the enroll token only matters to workers from before admission
 	if useTLS {
 		note(ui.Dim, "  (--ca: the hub's certificate or its CA, when workers don't already trust it; "+certFile+" reloads when it changes)")
 	}
@@ -438,9 +440,6 @@ func hubEnroll(args []string) error {
 	if token == "" {
 		token = os.Getenv("SWIM_HUB_TOKEN")
 	}
-	if token == "" {
-		return usagef("swim hub enroll needs the hub's token: --token T (swim hub prints it)")
-	}
 	root, _, err := repoNoMigrate()
 	if err != nil {
 		return err
@@ -457,6 +456,11 @@ func hubEnroll(args []string) error {
 	if err != nil {
 		return fmt.Errorf("--ca %s: %w", caFile, err)
 	}
+	// Enrolled with this hub already: its own token enrolls it again (the
+	// hub refuses anyone else this directory's place).
+	if old, err := loadHub(root); err == nil && strings.TrimRight(old.URL, "/") == c.URL && old.WorkerToken != "" {
+		c.Token, c.WorkerToken = "", old.WorkerToken
+	}
 	id, err := c.Enroll(w)
 	if err != nil {
 		return err
@@ -469,7 +473,11 @@ func hubEnroll(args []string) error {
 	if cfg, err := loadCfg(root); err == nil {
 		c.Report(hubSnapshot(root, cfg, w.Name, ns, "enrolled; not watching (start swim watch)", pollEvery))
 	}
-	fmt.Printf("enrolled %s with %s as %s (id %s) in namespace %s\nswim watch here now reports to it: %s/e/%s/lanes\n", root, c.URL, w.Name, id, ns, c.URL, id)
+	if c.Pending {
+		fmt.Printf("enrolled %s with %s as %s (id %s) in namespace %s\nwaiting for the hub's admin to admit it: on the hub's Admin page, or swim hub admit %s\nswim watch here reports to it once admitted: %s/e/%s/lanes\n", root, c.URL, w.Name, id, ns, w.Name, c.URL, id)
+	} else {
+		fmt.Printf("enrolled %s with %s as %s (id %s) in namespace %s\nswim watch here now reports to it: %s/e/%s/lanes\n", root, c.URL, w.Name, id, ns, c.URL, id)
+	}
 	if w.Key != "" {
 		fmt.Printf("its key for secrets: %s (approve it on the hub: a on its row, or swim hub approve %s)\n", hub.KeyFingerprint(w.Key), w.Name)
 	}
@@ -508,6 +516,10 @@ func hubStatus(args []string) error {
 	fmt.Printf("enrolled with %s as %s (id %s) in namespace %s\n", h.URL, h.Name, h.ID, ns)
 	c := hubClient(h)
 	if err := c.Report(hubSnapshot(root, cfg, h.Name, ns, "checked by swim hub status", pollEvery)); err != nil {
+		if strings.Contains(err.Error(), "waiting for the hub's admin") {
+			fmt.Println("waiting for the hub's admin to admit it (the hub's Admin page, or swim hub admit " + h.Name + ")")
+			return nil
+		}
 		return fmt.Errorf("hub unreachable: %w", err)
 	}
 	keepHubToken(root, h, c)
@@ -689,8 +701,8 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 			}
 			if l.State == status.Running {
 				hl.Tail = laneTail(root, l.Lane, 15)
-			} else if s.Headless != nil && cfg.HeadlessAllows(config.HubRun) {
-				// What a run command from the hub would pin it to.
+			} else if s.Headless != nil && (cfg.HeadlessAllows(config.HubRun) || cfg.HeadlessAllows(config.HubQueue)) {
+				// What a run or queue command from the hub would pin it to.
 				hl.Script, hl.Manifest = runPin(root, cfg, l.Lane)
 			}
 			if l.PausedAt != "" && l.Alive() {
