@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // The hub's app: a single page (web/index.html) and its ES modules, CSS
@@ -121,9 +123,9 @@ func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 }
 
 // meAPI is who the request is logged in as ({"user": ""} for nobody),
-// with the session's CSRF token for the app's POSTs, and whether viewing
-// needs a login.
+// with the session's CSRF token for the app's POSTs, whether viewing
+// needs a login, and the hub's swim version (the app's footer).
 func (s *Server) meAPI(w http.ResponseWriter, r *http.Request) {
 	user, role, csrf := s.viewer(r)
-	writeJSON(w, map[string]any{"schema": APISchema, "user": user, "role": role, "csrf": csrf, "private": s.private})
+	writeJSON(w, map[string]any{"schema": APISchema, "user": user, "role": role, "csrf": csrf, "private": s.private, "version": version.Long()})
 }

@@ -300,16 +300,35 @@ function Graph({ r, run, jobs }) {
 
 function Run({ r, store }) {
   const e = useEnrollment(store, r.id);
+  const me = store.me;
+  const cmd = useCommand(e || { id: r.id });
   useTitle(r.run);
   const res = useFetch(api('enrollments', r.id, 'runs', r.run));
   if (res.loading && !res.data) return html`<${Loading}/>`;
   if (!res.data) return html`<${Crumbs} e=${e}/><${Problem} r=${res} what="This run"/>`;
   const { run, jobs, result } = res.data;
   const byLane = new Map(jobs.map((j) => [j.lane, j]));
+  // Its failed lanes, queued again as one batch, pinned to the scripts they
+  // hold now (the worker reports them).
+  const failed = run.lanes.filter((l) => failedState(l.state));
+  const now = new Map(((e && e.lanes) || []).map((l) => [l.lane, l]));
+  const ready = failed.map((l) => ({ was: l, now: now.get(l.lane) })).filter((x) => x.now && x.now.script_sha256 && x.now.manifest_sha256 && x.now.state !== 'running');
+  const changed = ready.filter((x) => x.was.job && x.now.job && x.was.job !== x.now.job);
+  const rerun = e && failed.length > 0 && can(me, e, 'queue') && ready.length > 0 && html`<button class="btn sm primary" onClick=${() => cmd.run(
+    { kind: 'queue', lanes: ready.map((x) => ({ lane: x.now.lane, sha256: x.now.script_sha256, manifest: x.now.manifest_sha256 })) },
+    'Re-run swim ' + ready.map((x) => x.now.lane).join(', '), {
+      title: 'Re-run ' + ready.length + ' failed lane' + (ready.length > 1 ? 's' : '') + '?', label: 'Re-run',
+      body: html`<p>swim ${ready.map((x) => x.now.lane).join(', ')} as one new batch, with the scripts they hold now. It's unsigned and carries no approvals: a guard in it waits for an answer, or dry-runs, as the worker's swim.yml says.</p>
+        ${changed.length ? html`<p class="bad">swim ${changed.map((x) => x.now.lane).join(', ')} hold${changed.length === 1 ? 's' : ''} a different job than in this run: the re-run runs the new one.</p>` : ''}
+        ${ready.length < failed.length ? html`<p class="muted">Not re-run (running now, or no pending round to queue): swim ${failed.filter((l) => !ready.some((x) => x.was === l)).map((l) => l.lane).join(', ')}.</p>` : ''}`,
+    }, { href: href('e', r.id, 'queue'), text: 'See the queue' })}>Re-run ${ready.length} failed</button>`;
   return html`<${Crumbs} e=${e}><span>/</span><span>${run.run}</span></${Crumbs}>
     <div class="head"><${Icon} state=${result}/><h1>${run.run}</h1><${Pill} state=${result}/>
       <div class="meta"><span>started <${Ago} t=${run.started}/></span><span>${fmtDuration(between(run.started, run.finished))}</span>
-      <span>${run.lanes.length} lane${run.lanes.length === 1 ? '' : 's'}</span>${run.max_parallel ? html`<span>at most ${run.max_parallel} at once</span>` : ''}</div></div>
+      <span>${run.lanes.length} lane${run.lanes.length === 1 ? '' : 's'}</span>${run.max_parallel ? html`<span>at most ${run.max_parallel} at once</span>` : ''}</div>
+      <span class="spacer"></span>${rerun}</div>
+    ${cmd.note}${cmd.dialog}
+    ${failed.length > 0 && e ? html`<${WhyNoRun} me=${me} e=${e} kind="queue"/>` : ''}
     <div class="panel"><div class="panel-h"><h2>Lanes</h2></div><${Graph} r=${r} run=${run} jobs=${jobs}/></div>
     <div class="panel"><div class="tw"><table>
       <thead><tr><th class="i"></th><th>Lane</th><th>Result</th><th>Steps</th><th>Duration</th><th>Failed steps</th></tr></thead>
@@ -409,6 +428,24 @@ function Job({ r, store }) {
 
 // LaneControls are the commands a lane takes now, from this user, on
 // this worker (can), each pinned to what the page shows.
+// failedState: a lane's round ended without passing, so it may be run again.
+function failedState(s) {
+  s = String(s || '').toLowerCase();
+  return s.startsWith('fail') || s.startsWith('interrupt') || s === 'error' || s === 'orphaned';
+}
+
+// WhyNoRun says, to a user who could act, why the page offers no way to run
+// lanes on e: nobody at it takes hub commands, or its swim.yml doesn't let
+// the hub queue work (headless.allow).
+function WhyNoRun({ me, e, kind }) {
+  if (!me || !me.user) return null;
+  if (!e.headless) return html`<div class="note">This worker isn't headless (someone is at its terminal, or it runs <code>swim watch</code> without <code>--headless</code>), so it takes no commands from the hub. On its machine: <code>swim watch --headless --detach</code>.</div>`;
+  if (!isOperator(me)) return null;
+  const need = kind === 'queue' ? ['queue'] : ['run', 'queue'];
+  if (need.some((k) => can(me, e, k))) return null;
+  return html`<div class="note">To run lanes from the hub, add ${need.map((k, i) => html`${i ? ' or ' : ''}<code>${k}</code>`)} to <code>headless.allow</code> in this repo's committed <code>swim.yml</code> (e.g. <code>headless: {allow: [answer, interrupt, drain, log, run, queue, dequeue, requeue]}</code>).</div>`;
+}
+
 function LaneControls({ e, l, me, cmd }) {
   const running = l.state === 'running';
   const lane = 'swim ' + l.lane;
@@ -429,11 +466,17 @@ function LaneControls({ e, l, me, cmd }) {
     b.push(html`<button class="btn sm" onClick=${() => cmd.run({ kind: 'log', lane: l.lane, pin: { run: l.run } }, 'Fetch the log of ' + lane, null,
       { href: href('e', e.id, 'runs', l.run, 'jobs', l.lane), text: 'Open it' })}>Fetch log</button>`);
   }
-  if (l.script_sha256 && !running && can(me, e, 'run')) {
-    b.push(html`<button class="btn sm" onClick=${() => cmd.run({ kind: 'run', lane: l.lane, pin: { sha256: l.script_sha256, manifest: l.manifest_sha256 } }, 'Run ' + lane, {
-      title: 'Run ' + lane + ' now?', label: 'Run now',
+  const runKind = can(me, e, 'run') ? 'run' : can(me, e, 'queue') ? 'queue' : '';
+  if (l.script_sha256 && l.manifest_sha256 && !running && runKind) {
+    const again = failedState(l.state);
+    const label = again ? 'Run again' : 'Run now';
+    const c = runKind === 'run'
+      ? { kind: 'run', lane: l.lane, pin: { sha256: l.script_sha256, manifest: l.manifest_sha256 } }
+      : { kind: 'queue', lanes: [{ lane: l.lane, sha256: l.script_sha256, manifest: l.manifest_sha256 }] };
+    b.push(html`<button class="btn sm ${again ? 'primary' : ''}" onClick=${() => cmd.run(c, label + ': ' + lane, {
+      title: label + ': ' + lane + '?', label,
       body: html`<p>${l.round || ''}</p><p class="muted">Queues ${lane}'s script <code>${short(l.script_sha256)}</code> (manifest <code>${short(l.manifest_sha256)}</code>) on ${e.name}, unsigned, by hub:${me.user}, with no approvals of its own: its guards approve only as any unsigned batch's do. If the script has changed, the worker refuses it.</p>`,
-    })}>Run now</button>`);
+    }, { href: href('e', e.id, 'queue'), text: 'See the queue' })}>${label}</button>`);
   }
   if (l.trash_job && !running && can(me, e, 'trash')) {
     b.push(html`<button class="btn sm danger" onClick=${() => cmd.run({ kind: 'trash', lane: l.lane, pin: { job: l.trash_job } }, 'Trash ' + lane, {
@@ -455,8 +498,8 @@ function Commands({ e, store }) {
       <thead><tr><th>#</th><th>Command</th><th>By</th><th>Sent</th><th>Outcome</th></tr></thead>
       <tbody>${list.map((c) => html`<tr>
         <td class="mono">${c.seq}</td>
-        <td>${c.kind}${c.answer ? ' ' + c.answer.decision + (c.answer.sig ? ' (signed)' : '') : ''}${c.lane ? ' swim ' + c.lane : ''}
-          ${c.pin.run ? html` <span class="mono muted">${c.pin.run}</span>` : ''}${c.pin.sha256 ? html` <span class="mono muted">${short(c.pin.sha256)}</span>` : ''}
+        <td>${c.kind}${c.answer ? ' ' + c.answer.decision + (c.answer.sig ? ' (signed)' : '') : ''}${c.lane ? ' swim ' + c.lane : ''}${(c.lanes || []).length ? ' swim ' + c.lanes.map((l) => l.lane).join(', ') : ''}
+          ${c.pin.batch ? html` <span class="mono muted">${c.pin.batch}</span>` : ''}${c.pin.run ? html` <span class="mono muted">${c.pin.run}</span>` : ''}${c.pin.sha256 ? html` <span class="mono muted">${short(c.pin.sha256)}</span>` : ''}
           ${c.kind === 'log' && c.state === 'done' ? html` · <a href=${href('e', e.id, 'runs', c.pin.run, 'jobs', c.lane)}>view</a>` : ''}</td>
         <td>${c.by}</td><td class="nowrap"><${Ago} t=${c.at}/></td>
         <td><${Pill} state=${c.state.startsWith('expired') ? 'skipped' : c.state === 'sent' ? 'queued' : c.state === 'done' ? 'passed' : 'failed'} label=${c.state}/>
@@ -494,7 +537,7 @@ function Lanes({ r, store }) {
         ${e.logs ? html`<span>logs: ${e.logs}</span>` : ''}</div>
       <span class="spacer"></span>${queueBatch}${drain}</div>
     ${cmd.note}${cmd.dialog}
-    ${me && me.user && !e.headless ? html`<div class="note">This worker isn't headless (someone is at its terminal), so it takes no commands from the hub.</div>` : ''}
+    <${WhyNoRun} me=${me} e=${e}/>
     <div class="panel">${(e.lanes || []).length === 0 ? html`<div class="empty">No lanes in use.</div>` : html`<div class="tw"><table>
       <thead><tr><th class="i"></th><th>Lane</th><th>State</th><th>Step</th><th>Steps</th></tr></thead>
       <tbody>${e.lanes.map((l) => html`<tr>
@@ -549,7 +592,7 @@ function Queue({ r, store }) {
       <thead><tr><th>#</th><th>Batch</th><th>State</th><th>Lanes</th><th>By</th><th>Note</th>${ctl ? html`<th></th>` : ''}</tr></thead>
       <tbody>${e.queue.map((b) => html`<tr>
         <td class="mono">${b.seq || ''}</td><td class="mono">${b.id}</td>
-        <td><${Pill} state=${b.state} label=${b.state + (b.result ? ': ' + b.result : '')}/>
+        <td><${Pill} state=${b.state === 'done' && b.result ? b.result : b.state} label=${b.state + (b.result ? ': ' + b.result : '')}/>
           ${b.daily ? html`<div class="sub">${b.daily}</div>` : b.at ? html`<div class="sub">at ${b.at}</div>` : ''}
           ${b.held_by ? html`<div class="sub">held until ${b.held_by} has run</div>` : ''}</td>
         <td><div class="lanes-cell">${(b.lanes || []).map((l) => html`<span class="chip">swim ${l}</span>`)}</div></td>
@@ -815,7 +858,9 @@ function App() {
   const store = useStore();
   const r = route(path);
   const View = views[r.name];
-  return html`<${TopBar} r=${r} store=${store}/><main><${View} key=${path} r=${r} store=${store}/></main>`;
+  const v = store.me && store.me.version;
+  return html`<${TopBar} r=${r} store=${store}/><main><${View} key=${path} r=${r} store=${store}/></main>
+    ${v && html`<footer class="foot">swim hub · swim ${v}</footer>`}`;
 }
 
 start();

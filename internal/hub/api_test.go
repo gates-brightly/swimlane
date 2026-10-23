@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // call is a GET as token ("" for nobody): its status and body.
@@ -323,4 +325,15 @@ func TestCommandsAPI(t *testing.T) {
 		t.Errorf("no such enrollment: %d", code)
 	}
 	_ = s
+}
+
+// The app's footer and the login page say which swim the hub runs.
+func TestHubVersion(t *testing.T) {
+	_, srv, _, _, _ := commandHub(t)
+	if body := get(t, srv.URL+"/api/me"); !strings.Contains(body, `"version":"`+version.Long()+`"`) {
+		t.Errorf("/api/me lacks the version: %s", body)
+	}
+	if body := get(t, srv.URL+"/login"); !strings.Contains(body, "swim hub · swim "+version.Long()) {
+		t.Errorf("the login page lacks the version:\n%s", body)
+	}
 }

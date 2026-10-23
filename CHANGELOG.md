@@ -498,6 +498,9 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **The hub says its version.** The app's footer and the login page show
+  the swim the hub runs (`0.20261023.1 (86778de)`), and `GET /api/me`
+  gives it as `version`.
 - **The hub works the queue.** Three hub commands do what `swim watch`'s
   queue does, for repos whose `swim.yml` adds them to `headless.allow`:
   `queue` (pick lanes on the Lanes page, Queue them as one batch, each
@@ -507,6 +510,12 @@ already pushed to origin's main) with the next tag and pushes that tag.
   URL`, with no approvals of its own: a requeued batch doesn't carry the
   old one's approvals or signature, and is refused when a script changed
   since it ran.
+  - A failed or interrupted lane's button on the Lanes page reads **Run
+    again** (it queues the lane with `run`, or with `queue` where only that
+    is allowed), and a run's page has **Re-run N failed**: its failed lanes
+    as one new batch, saying so when a lane holds another job since.
+  - When neither can be offered, the page says why: the worker isn't
+    headless, or `swim.yml`'s `headless.allow` lacks `run` and `queue`.
 - **Hub admins.** A hub user can be an `admin`: an operator who also does
   what the admin token does, managing users, approving workers' keys and
   managing grants, from the CLI with their own token (`swim hub login URL
