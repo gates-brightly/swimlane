@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -94,4 +95,55 @@ func TestAuthMachineEnrollment(t *testing.T) {
 	}
 	contains(t, "status after", a.mustSwim("auth", "status"), "not logged in to a hub")
 	a.mustSwim("stop", "--all")
+}
+
+// The admin's side takes an admin user's token as well as the admin token;
+// swim.yml's hub: {name, namespace} names a directory as it joins; and
+// logging in again with another --access changes it for directories that
+// joined already.
+func TestAuthAdminUserNamesAndAccess(t *testing.T) {
+	long(t)
+	r := newRepo(t, "")
+	r.env = append(r.env, "HOME="+t.TempDir())
+	url, stop := startHub(t, r, t.TempDir(), "127.0.0.1:0")
+	t.Cleanup(stop)
+
+	out := r.mustSwim("auth", "users", "add", "root", "--role", "admin", "--hub", url, "--admin-token", "adm1n")
+	tok := regexp.MustCompile(`(?m)^  ([0-9a-f]{48})$`).FindStringSubmatch(out)
+	if tok == nil {
+		t.Fatalf("no token in:\n%s", out)
+	}
+	contains(t, "admin login", r.mustSwim("auth", "login", url, "--token", tok[1]), "as its admin", "isn't a swimmer")
+	contains(t, "login", r.mustSwim("auth", "login", url, "--access", "read", "--name", "box"), "waiting for the hub's admin")
+	contains(t, "admit by an admin user", r.mustSwim("auth", "admit", "box"), "box admitted")
+	contains(t, "status", r.mustSwim("auth", "status"), "admin:   logged in to "+url, "state:   admitted", "access:  read")
+
+	r.write("swim.yml", "hub:\n  name: billing\n  namespace: acme/billing\n", 0o644)
+	r.mustSwim("watch", "--once")
+	var w struct {
+		Workers []hub.View `json:"enrollments"`
+	}
+	resp, err := http.Get(url + "/api/enrollments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	json.NewDecoder(resp.Body).Decode(&w)
+	resp.Body.Close()
+	if len(w.Workers) != 1 || w.Workers[0].Name != "billing" || w.Workers[0].Namespace != "acme/billing" || w.Workers[0].Access != "read" {
+		t.Fatalf("joined as: %+v", w.Workers)
+	}
+
+	contains(t, "access", r.mustSwim("auth", "login", url, "--access", "readwrite"), "access is now readwrite")
+	r.mustSwim("watch", "--once")
+	resp, err = http.Get(url + "/api/enrollments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	json.NewDecoder(resp.Body).Decode(&w)
+	resp.Body.Close()
+	if len(w.Workers) != 1 || w.Workers[0].Access != "readwrite" {
+		t.Errorf("after logging in with readwrite: %+v", w.Workers)
+	}
+	r.mustSwim("auth", "logout", "--admin")
+	contains(t, "status after", r.mustSwim("auth", "status"), "not logged in to a hub as a swimmer")
 }

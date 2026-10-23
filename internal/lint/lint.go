@@ -83,6 +83,7 @@ type Check struct {
 // Checks is the table of lint checks, in report order.
 var Checks = []Check{
 	{"round", finding.Error, false, "no `# Round:` line", checkRound},
+	{"task", finding.Error, false, "a `# Task:` name that isn't one, is a swim command or a group file's name, or another lane's too", checkTask},
 	{"placeholder", finding.Error, false, "a template placeholder left in", checkPlaceholder},
 	{"after", finding.Error, false, "`# After:` names an unknown lane or job, or the lane itself", checkAfter},
 	{"cycle", finding.Error, false, "lanes wait on each other in a cycle", checkCycle},

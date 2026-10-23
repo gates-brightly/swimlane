@@ -51,7 +51,7 @@ func cmdObserve(args []string) error {
 	if len(runs) == 0 {
 		return fmt.Errorf("no recorded runs yet: run some lanes with swim run first")
 	}
-	ref := strings.Join(rest, "")
+	ref := taskRef(root, cfg, strings.Join(rest, ""))
 	var rec *runrec.Run
 	keep := func(observe.Observation) bool { return true }
 	switch {

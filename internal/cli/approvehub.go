@@ -83,13 +83,13 @@ func approveHub(ref, keyPath, url, token string, decline bool) error {
 		return err
 	}
 	fmt.Printf("sent: %s %s's %s, signed with %s (command %s, seq %d)\n", decision, fmt.Sprintf("swim %d", p.Lane), p.Flag, keyComment(key.Public), cmd.CID, cmd.Seq)
-	fmt.Printf("the worker checks it against its lookup.yml; its outcome shows on %s/e/%s/lanes\n", strings.TrimRight(url, "/"), w.ID)
+	fmt.Printf("the swimmer checks it against its lookup.yml; its outcome shows on %s/e/%s/lanes\n", strings.TrimRight(url, "/"), w.ID)
 	return nil
 }
 
 // hubUserClient is a hub user's client: the hub from --url, else
-// SWIM_HUB_URL, swim hub login's or this repo's enrollment; the user's
-// token from --token, else SWIM_HUB_USER_TOKEN (swim hub user add printed
+// SWIM_HUB_URL, swim auth login's or this repo's enrollment; the user's
+// token from --token, else SWIM_HUB_USER_TOKEN (swim auth users add printed
 // it); the CA from SWIM_HUB_CA, else the saved one for that hub.
 func hubUserClient(root, url, token string) (*hub.UserClient, string, error) {
 	url = or(url, os.Getenv("SWIM_HUB_URL"))
@@ -121,7 +121,7 @@ func hubUserClient(root, url, token string) (*hub.UserClient, string, error) {
 	case url == "":
 		return nil, "", fmt.Errorf("which hub? --url URL (or SWIM_HUB_URL)")
 	case token == "":
-		return nil, "", fmt.Errorf("no hub user token: --token T or SWIM_HUB_USER_TOKEN (the hub's admin gives it: swim hub user add NAME)")
+		return nil, "", fmt.Errorf("no hub user token: --token T or SWIM_HUB_USER_TOKEN (the hub's admin gives it: swim auth users add NAME)")
 	}
 	if err := hub.CheckURL(url, false); err != nil {
 		return nil, "", err

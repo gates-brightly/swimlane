@@ -50,7 +50,7 @@ func cmdTimeline(args []string) error {
 		return err
 	}
 
-	ref := strings.Join(rest, "")
+	ref := taskRef(root, cfg, strings.Join(rest, ""))
 	var rec *runrec.Run
 	switch {
 	case ref == "":

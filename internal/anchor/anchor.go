@@ -5,7 +5,7 @@
 //	file:/mnt/audit/swim/orders   checkpoints.jsonl and chain.jsonl in that
 //	                              directory, appended to, never rewritten
 //	hub                           the hub this directory is enrolled with
-//	                              (swim hub enroll): checkpoints only
+//	                              (swim auth login): checkpoints only
 //
 // An anchor only helps if what's written there can't be taken back by
 // whoever controls the repo: another volume mounted append-only, or held
@@ -78,7 +78,7 @@ func Open(spec string, o Options) (Anchor, error) {
 		return &fileAnchor{spec: spec, dir: dir}, nil
 	case spec == "hub":
 		if o.Hub == nil {
-			return nil, errors.New("anchor hub: this directory isn't enrolled with a hub (swim hub enroll)")
+			return nil, errors.New("anchor hub: this directory hasn't joined a hub (swim auth login URL, then swim watch here)")
 		}
 		c, err := o.Hub()
 		if err != nil {

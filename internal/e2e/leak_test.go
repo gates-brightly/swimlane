@@ -85,6 +85,7 @@ var leakInventory = []struct{ what, re string }{
 	{"the secrets store (ciphertext)", `^config/swim/secrets\.yml$`},
 	{"the trust pins", `^config/swim/trust`},
 	{"hub worker keys (age keys, not secret values)", `^config/swim/worker-keys/[^/]+\.key$`},
+	{"hub logins (the machine's and the admin's tokens, private; no lane values)", `^config/swim/(auth|hub-admin)\.yml$`},
 	{"the hub's state", `^hub/`},
 }
 
@@ -238,8 +239,7 @@ with swim.round() as r:
 	hubState := t.TempDir()
 	hubURL, stopHub := startHub(t, r, hubState, "127.0.0.1:0")
 	defer stopHub()
-	r.mustSwim("hub", "enroll", hubURL, "--token", "t0ken", "--name", "leaky")
-	r.admit(t, hubURL, "leaky")
+	r.join(t, hubURL, "leaky", "read")
 	r.mustSwim("queue", "add", "1", "-y")
 	w := r.cmd(bin, "watch", "--once", "--interval", "200ms")
 	w.SysProcAttr = noTTY()

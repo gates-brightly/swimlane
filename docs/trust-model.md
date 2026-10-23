@@ -28,8 +28,8 @@ from another's, and it doesn't sandbox lane scripts.
 | **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Signs every chain entry swim records on this machine. | An SSH key on the operator's or worker's machine (or in ssh-agent). |
 | **Approvers** | Sign approvals of exact scripts, or standing approvals, with `swim approve`. | Their own SSH keys. Their public keys are in the committed `lookup.yml`. |
 | **Secrets** (`swim secret`) | Encrypted to your SSH key with age, decrypted once per run and served to lanes by the run's broker, which knows each lane process by its token. | An unguarded secret is readable by every lane in the run: it keeps values out of logs, the hub and git, not out of lane code. A guarded one (`swim.yml` `secrets:`) goes only to a lane whose guard of it was approved in this run. With a key that has no passphrase, a lane can decrypt the store itself. |
-| **Hub** (`swim hub`) | Admits workers: any swim may enroll, but it shows nothing and takes no command until the hub's admin admits it, and a directory already enrolled is enrolled again only with its own token. Shows workers' status, logs and queues, and relays hub users' commands (interrupt, drain, run, log, and answers to waiting guards) to headless workers. It runs nothing itself and can't make an answer valid. Viewing a non-private hub shows a job's steps, commands and exit codes (masked as logs are); output needs a hub user. With `--webhook`, alerts (worker, repo, lane and round names, run ids, why) go to the URLs given: a chat service then holds them. | Tokens (only hashes of worker and user tokens), sessions (by their ids' hashes), commands, and only ciphertext for secret grants. TLS (`--tls-cert`/`--tls-key`, clients pin `--ca`; session cookies are `Secure` under it); plain HTTP only on loopback or with `--insecure`. |
-| **Hub users** (`swim hub user add`) | Send commands to headless workers as their role allows: `viewer` fetches logs and sends signed answers; `operator` also interrupts, drains, runs, and answers with a button; `admin` is an operator who also does what the admin token does (users, worker approvals, grants), from the CLI with their token or the app's Admin page with their session. | Their own token, or a 12-hour session cookie (`HttpOnly`, `SameSite=Strict`, CSRF token on every form). With `--trust-tailscale-identity` (loopback only, behind `tailscale serve`), a user given a Tailscale login is signed in by the proxy's `Tailscale-User-Login`: it starts a session and authorizes nothing by itself, and such a session can't answer a guard with a button (a signed answer is the signature's). The admin token manages users and sends no command. `--admin-tailscale LOGIN` names admins by login: the first sign-in by one adds them as an admin user; no one becomes admin by being first. An admin session's changes need its CSRF token like any command; it never sends a secret's value (grants are encrypted to the worker's key on the admin's machine). |
+| **Hub** (`swim hub`) | Admits swimmers: any machine may join (`swim auth login`), but it shows nothing and takes no command until the hub's admin admits it, and a swimmer that joined already joins again only with its own token. Shows swimmers' status, logs and queues, and relays hub users' commands (interrupt, drain, run, log, and answers to waiting guards) to headless swimmers. It runs nothing itself and can't make an answer valid. Viewing a non-private hub shows a job's steps, commands and exit codes (masked as logs are); output needs a hub user. With `--webhook`, alerts (worker, repo, lane and round names, run ids, why) go to the URLs given: a chat service then holds them. | Tokens (only hashes of worker and user tokens), sessions (by their ids' hashes), commands, and only ciphertext for secret grants. TLS (`--tls-cert`/`--tls-key`, clients pin `--ca`; session cookies are `Secure` under it); plain HTTP only on loopback or with `--insecure`. |
+| **Hub users** (`swim auth users add`) | Send commands to headless swimmers as their role allows: `viewer` fetches logs and sends signed answers; `operator` also interrupts, drains, runs, and answers with a button; `admin` is an operator who also does what the admin token does (users, swimmer approvals, grants), from the CLI with their token or the app's Admin page with their session. | Their own token, or a 12-hour session cookie (`HttpOnly`, `SameSite=Strict`, CSRF token on every form). With `--trust-tailscale-identity` (loopback only, behind `tailscale serve`), a user given a Tailscale login is signed in by the proxy's `Tailscale-User-Login`: it starts a session and authorizes nothing by itself, and such a session can't answer a guard with a button (a signed answer is the signature's). The admin token manages users and sends no command. `--admin-tailscale LOGIN` names admins by login: the first sign-in by one adds them as an admin user; no one becomes admin by being first. An admin session's changes need its CSRF token like any command; it never sends a secret's value (grants are encrypted to the worker's key on the admin's machine). |
 
 ## Authorization
 
@@ -84,7 +84,7 @@ Anything else is a **dry run**: the step is skipped with `SKIP`, and the log
 says how to approve it.
 
 **It fails closed.** No one is asked in CI, without a terminal, under
-`swim watch` (a headless worker asks only through its hub), with
+`swim watch` (a headless swimmer asks only through its hub), with
 `--no-prompt` or `--yaml`, or with `approvals: flags`. A question is
 declined when the approval socket can't be reached, when the run or the
 lane is stopping (Ctrl-C, `swim interrupt`), when the round's `Timeout`
@@ -289,7 +289,7 @@ These skip the question on purpose. Each leaves a record.
 | `swim queue add -y` | The same, for one batch. | `approved by queue q-... -y (<queuer>)`; chain method `auto`. |
 | `swim watch -y` | The worker approves every guard in every batch, beyond what each batch approves. | `approved by swim watch -y (<user>)`; chain method `auto`; the consumed entry's `approved_by`. |
 | `swim watch --approved` | Queues and runs a script as soon as its signed approvals meet `lookup.yml`'s rules, with no one choosing when. | A queue entry by `approval (<names>)` and a `.swim.log` queue event; the guards are approved by `signature`. |
-| `headless.approvals: hub` in `swim.yml` | On a headless worker, a hub operator's button click approves a guard that no `lookup.yml` `require:` rule names: the decision rests on the hub's login, as the terminal prompt rests on the operator's. | `approved through the hub by <user> (button, unsigned)`; chain method `hub-button`; the `hub answer` command in `.swim.log` and the chain; `swim doctor` warns (`headless-hub-answers`). |
+| `headless.approvals: hub` in `swim.yml` | On a headless swimmer, a hub operator's button click approves a guard that no `lookup.yml` `require:` rule names: the decision rests on the hub's login, as the terminal prompt rests on the operator's. | `approved through the hub by <user> (button, unsigned)`; chain method `hub-button`; the `hub answer` command in `.swim.log` and the chain; `swim doctor` warns (`headless-hub-answers`). |
 
 What `-y` approved is also loud where a run's result is read, so it shows
 without reading the chain: `swim status` lists the guards under the lane
@@ -309,7 +309,7 @@ lane and on a worker running `swim watch -y`. Guards approved by a flag
   change, and running workers as a separate OS user, in a container or a
   VM. A guarded secret (above) releases a credential only after its guard
   is approved, but only for credentials that exist nowhere else; and a
-  lane can read an unprotected secrets key, or a headless worker's own key
+  lane can read an unprotected secrets key, or a headless swimmer's own key
   and hub token, as easily as you can.
 - **An AI that shares your OS user.** swim gives the planner nothing, but it
   doesn't stop a process running as you from using what you have.
@@ -320,9 +320,10 @@ lane and on a worker running `swim watch -y`. Guards approved by a flag
   prevented.
 - **A compromised hub.** It can show false information and send commands,
   as any user could. Each command is checked by the worker, not the hub:
-  the enrollment's access (`swim hub enroll --access`: `read` takes only
-  log requests, `readwrite` every command; kept in the worker's
-  `.swim/hub.yml`, so the hub can't raise it), then
+  the swimmer's access (`swim auth login --access`: `read` takes only
+  log requests, `readwrite` every command; kept on the swimmer, in
+  `~/.config/swim/auth.yml` or an older enrollment's `.swim/hub.yml`, so
+  the hub can't raise it), then
   `swim.yml`'s `headless.allow` (committed; `run`, `trash`, `pause`, `unpause`,
   `queue`, `dequeue` and `requeue` are off by default), the command's expiry capped by `headless.command_ttl`, its pin
   (the run, the script and manifest, or the lane's job the page showed), and replay state kept on the

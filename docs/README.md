@@ -40,13 +40,15 @@ Each one line, and where it's explained:
 
 ## Reference
 
-- `swim --help`: the full guide, compiled into the binary, and `swim
+- `swim guide`: the full guide, compiled into the binary, and `swim
   <command> --help` for one command. One section of the guide:
-  `swim --help | awk '/^READING RESULTS$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit} p'`
+  `swim guide | awk '/^READING RESULTS$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit} p'`
 - [The command list](../README.md#commands) and [the files swim
   keeps](../README.md#files).
 - [compatibility.md](compatibility.md): where swim runs, what it needs, and
   which outputs and files you can build on (each `--yaml` schema).
+- [formats.md](formats.md): exactly what an approval signs and a manifest
+  hash covers, and why upgrading swim never stales an approval.
 
 ## Deep dives
 

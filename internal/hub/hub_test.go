@@ -112,7 +112,7 @@ func TestScreenRows(t *testing.T) {
 			Queue: []Batch{{Seq: 5, State: "queued", Lanes: []int{3, 4}, By: "zach"}}}, Seen: now},
 		{Snapshot: Snapshot{Worker: Worker{ID: "b2", Name: "infra", Host: "box"}, Activity: "idle"}, Seen: now.Add(-2 * time.Minute), Stale: true},
 	}
-	if got := Summary(views); got != "2 workers · 1 lanes running" {
+	if got := Summary(views); got != "2 swimmers · 1 lanes running" {
 		t.Errorf("summary: %q", got)
 	}
 	text := func(rows []display.PickRow) string {

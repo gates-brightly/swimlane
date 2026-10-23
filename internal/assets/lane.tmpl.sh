@@ -39,7 +39,7 @@ lane_init {{.Lane}}
 {{end}}
 # Outcome handlers (change the syntax line above to "# swim: syntax 3"):
 # swim calls them when the round ends, however it ends; their steps run
-# soft. on_success or on_failure, then on_exit. See swim --help.
+# soft. on_success or on_failure, then on_exit. See swim guide.
 # on_failure() {
 #   reached change || return 0   # it failed before changing anything
 #   if guard EXAMPLE_ALLOW_ROLLBACK "undo X ({{.Date}}: why it is safe)"; then

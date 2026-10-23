@@ -178,7 +178,7 @@ Observations are per run. Knowledge is what keeps being true.
 
 A repo that wants prose adds a finally lane that turns observations into
 an artifact, with the built-in `claude` and `report` modules (already
-built; see MODULES in `swim --help`):
+built; see MODULES in `swim guide`):
 
 ```bash
 # swim: syntax 4

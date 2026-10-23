@@ -159,7 +159,7 @@ func (c *Config) AnswerTimeout() time.Duration {
 	return DefaultAnswerTimeout
 }
 
-// Hub access: what an enrollment (swim hub enroll --access, kept in
+// Hub access: what an enrollment (swim auth login --access, kept in
 // .swim/hub.yml) lets its hub do, chosen once per enrollment rather than
 // per repo. read: the hub shows the worker and fetches its logs, and
 // nothing else (no commands, no answers). readwrite: every hub command.

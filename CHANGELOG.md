@@ -16,7 +16,9 @@ were `<breaking>.<YYYYMMDD>`, tagged `v0.<breaking>.<YYYYMMDD>`. The version
 says nothing about compatibility: lane scripts, logs and swim's state have
 syntax versions, which a repo's `.swim.lock` pins. A revision that changes
 one has **Upgrading** notes; read them and `swim lock --help` before running
-lanes. Revisions before versioning existed are named by commit.
+lanes. Upgrading swim never stales an approval or a pin: only changes to
+your script, includes, modules, runner or the swim.yml keys you set do
+([formats](docs/formats.md)). Revisions before versioning existed are named by commit.
 
 To cut a release:
 1. `DRY=1 just next-tag` prints the next tag, `v0.<today>.<index>`.
@@ -32,6 +34,41 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Upgrading
 
+- **`swim auth` replaces the `swim hub` subcommands; machines that run
+  lanes are *swimmers*.** `swim hub` now only serves the hub. Joining one,
+  and the admin's side, moved to `swim auth`:
+  - `swim hub enroll` and `swim hub access` become `swim auth login URL
+    --access read|readwrite`. It runs once per machine, and every
+    directory where `swim watch` runs joins as it starts. A directory's
+    name and dashboard tab come from `swim.yml`'s `hub: {name,
+    namespace}`, which replaces `enroll --name/--namespace`. Logging in
+    again with another `--access` changes it for every directory that
+    joined.
+  - `swim hub login` becomes `swim auth login URL --admin-token T`, or
+    `--token T` for an admin user. `admit`, `reject`, `approve`,
+    `unapprove` and `user` become `swim auth admit|reject|approve|unapprove|users`,
+    and accept an admin user's `--token` as well as the admin token.
+  - `swim hub leave` and `swim hub status` become `swim auth logout` and
+    `swim auth status`.
+
+  The old subcommands exit 2 and name their replacement. A machine logs in
+  to one hub, so a different hub per directory is no longer possible.
+  Directories enrolled with `swim hub enroll` keep reporting; `swim
+  doctor` (hub-enrolled) says how to move them to `swim auth`. The hub's
+  API, its JSON and `.swim/` files keep their names, so swimmers on an
+  older swim still talk to a new hub. The hub's pages and swim's messages
+  say *swimmer* where they said worker; *worker* now means only an AI
+  subagent.
+- **Upgrading swim no longer stales approvals (manifest v2).** The policy
+  part of a manifest now hashes only the swim.yml policy keys your repo
+  sets, without a version number, so a key swim adds later changes
+  nothing for a repo that doesn't set it. Every pin made before this, in
+  approvals, queued batches, recurring schedules and hub commands, keeps
+  matching: manifests record the old (v1) hash too, and every check
+  accepts either. A co-approver on this swim signs the existing approval
+  file. A stale approval now names the policy keys that changed. The hash
+  text is frozen and pinned by tests; see
+  [docs/formats.md](docs/formats.md).
 - **A guard no one can answer fails the round on a headless worker.**
   Before, it dry-ran its change and the lane passed. Now a guard that
   nobody may answer there (its script doesn't declare it, the repo has no
@@ -150,6 +187,13 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Docs
 
+- **The README leads with what swim is for:** your AI writes the ops
+  change, you sign the exact bytes, and swim runs it and gives you a
+  receipt anyone can verify. A 90-second tamper story follows. The hub's
+  Access note no longer says workers need the token: since admission,
+  the admin admits them.
+- **swim is MIT-licensed.** [LICENSE](LICENSE) is at the repo root, the
+  README has a license badge, and the Nix package sets `meta.license`.
 - **[docs/README.md](docs/README.md)**, an index of the docs in reading
   order, and **[docs/quickstart.md](docs/quickstart.md)**, swim in an hour:
   a first round, a gate, a guard and its dry run, a signed approval and
@@ -338,6 +382,12 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Changed
 
+- **`swim --help` is short on a terminal; `swim guide` is the full manual.**
+  On a terminal, `swim --help` (and `swim help`) lists the core commands
+  in about 50 lines. `swim guide` prints the full guide with every
+  command's detail. When its output isn't a terminal (an agent, a pipe),
+  `swim --help` still prints the full guide, so agents that read it lose
+  nothing. The docs and the swim skill now point to `swim guide`.
 - **The hub's controls moved into its app; the classic pages are gone.**
   A headless worker's Lanes page has Pause, Unpause, Interrupt, Run now,
   Trash, Fetch log and Stop after this batch, for the users and commands
@@ -527,6 +577,15 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **Named tasks.** `swim new renew-certs "Renew the certs"` writes the
+  lowest free lane with a `# Task: renew-certs` line. Then `swim run
+  renew-certs` (or `swim renew-certs`), and `approve`, `log`, `status`,
+  `queue`, `schedule`, `history`, `pause` and the rest, find the lane by
+  name. The name is an alias: the lane number stays what signatures, the
+  chain and the hub record, so nothing about approvals changes. `swim
+  status` and the hub show the name. `swim lint` (task) refuses a name
+  that is a swim command, a group file's name, only hex digits, or
+  another lane's. See [docs/formats.md](docs/formats.md#task-names).
 - **The hub says when a change didn't happen.** A lane that passed with a
   guarded step dry-run is "dry run", amber, everywhere the hub shows it
   (lanes, runs, the lane history's dots, Activity, Jobs, repo cards),

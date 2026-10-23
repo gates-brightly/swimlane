@@ -321,7 +321,7 @@ func (s *Server) jobLogAPI(w http.ResponseWriter, r *http.Request) {
 	data, at, ok := s.logs.get(logKey(r.PathValue("id"), r.PathValue("run"), n))
 	if !ok {
 		w.Header().Del("Content-Type")
-		http.Error(w, "that log isn't on the hub: ask the worker for it (a log command)", http.StatusNotFound)
+		http.Error(w, "that log isn't on the hub: ask the swimmer for it (a log command)", http.StatusNotFound)
 		return
 	}
 	http.ServeContent(w, r, "", at, bytes.NewReader(data))

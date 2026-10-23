@@ -81,7 +81,7 @@ func stateColor(state string) string {
 	return ""
 }
 
-// Summary is the screen's title line count: "3 workers · 2 lanes running".
+// Summary is the screen's title line count: "3 swimmers · 2 lanes running".
 func Summary(views []View) string {
 	running := 0
 	for _, v := range views {
@@ -91,9 +91,9 @@ func Summary(views []View) string {
 			}
 		}
 	}
-	w := "workers"
+	w := "swimmers"
 	if len(views) == 1 {
-		w = "worker"
+		w = "swimmer"
 	}
 	return fmt.Sprintf("%d %s · %d lanes running", len(views), w, running)
 }
@@ -106,9 +106,9 @@ func ListRows(views []View, sel string, notes []display.PickRow, now time.Time) 
 		rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim})
 	}
 	if len(views) == 0 {
-		return append(rows, display.PickRow{Text: "no workers yet: enroll one with swim hub enroll (above)", Color: ui.Dim})
+		return append(rows, display.PickRow{Text: "no swimmers yet: join one with swim auth login (above)", Color: ui.Dim})
 	}
-	rows = append(rows, display.PickRow{Text: fmt.Sprintf("%-14s %-16s %-10s %-9s %-40s %s", "WORKER", "HOST", "STATE", "SECRETS", "ACTIVITY", "LANES")})
+	rows = append(rows, display.PickRow{Text: fmt.Sprintf("%-14s %-16s %-10s %-9s %-40s %s", "SWIMMER", "HOST", "STATE", "SECRETS", "ACTIVITY", "LANES")})
 	var chosen *View
 	for i := range views {
 		v := &views[i]
@@ -138,7 +138,7 @@ func ListRows(views []View, sel string, notes []display.PickRow, now time.Time) 
 	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim},
 		display.PickRow{Text: "── " + chosen.Name + " · " + chosen.Root})
 	if chosen.Pending() {
-		rows = append(rows, display.PickRow{Text: "  pending: key " + chosen.KeyFP + " (check it matches what swim hub enroll printed, then a to approve)", Color: ui.Yellow})
+		rows = append(rows, display.PickRow{Text: "  pending: key " + chosen.KeyFP + " (check it matches what swim printed when it joined, then a to approve)", Color: ui.Yellow})
 	}
 	rows = append(rows, laneRows(*chosen, now, false)...)
 	return rows

@@ -117,7 +117,7 @@ function useCommand(e) {
     setNote({ cls: 'wait', text: what + ': sending…' });
     const r = await send(e.id, cmd);
     setNote(r.ok
-      ? { cls: 'ok', text: what + ': sent. The worker takes it at its next poll; its outcome shows under Commands.', link }
+      ? { cls: 'ok', text: what + ': sent. The swimmer takes it at its next poll; its outcome shows under Commands.', link }
       : { cls: 'bad', text: what + ': ' + r.error });
   };
   return {
@@ -223,8 +223,8 @@ function Home({ store }) {
   useTitle('');
   if (store.enrollments === null) return store.error ? html`<div class="err">${store.error}</div>` : html`<${Loading}/>`;
   if (store.enrollments.length === 0) {
-    return html`<div class="panel"><div class="empty">No runners yet. In a repo:
-      <code>swim hub enroll ${location.origin}</code>, then <code>swim watch</code>.</div></div>`;
+    return html`<div class="panel"><div class="empty">No swimmers yet. On a machine:
+      <code>swim auth login ${location.origin} --access read</code>, then <code>swim watch</code> in a repo there.</div></div>`;
   }
   const repos = byNamespace(store.enrollments);
   return html`<div class="head"><h1>Repos</h1><span class="muted">${repos.length}</span></div>
@@ -392,7 +392,7 @@ function RunView({ id, run: runId, e, store, jobLane, to }) {
     { kind: 'queue', lanes: ready.map((x) => ({ lane: x.now.lane, sha256: x.now.script_sha256, manifest: x.now.manifest_sha256 })) },
     'Re-run lanes ' + ready.map((x) => x.now.lane).join(', '), {
       title: 'Re-run ' + ready.length + ' failed lane' + (ready.length > 1 ? 's' : '') + '?', label: 'Re-run',
-      body: html`<p>Lanes ${ready.map((x) => x.now.lane).join(', ')} as one new batch, with the scripts they hold now. It's unsigned and carries no approvals: a guard in it waits for an answer, or dry-runs, as the worker's swim.yml says.</p>
+      body: html`<p>Lanes ${ready.map((x) => x.now.lane).join(', ')} as one new batch, with the scripts they hold now. It's unsigned and carries no approvals: a guard in it waits for an answer, or dry-runs, as the swimmer's swim.yml says.</p>
         ${changed.length ? html`<p class="bad">Lanes ${changed.map((x) => x.now.lane).join(', ')} hold${changed.length === 1 ? 's' : ''} a different job than in this run: the re-run runs the new one.</p>` : ''}
         ${ready.length < failed.length ? html`<p class="muted">Not re-run (running now, or no pending round to queue): lanes ${failed.filter((l) => !ready.some((x) => x.was === l)).map((l) => l.lane).join(', ')}.</p>` : ''}`,
     }, { href: href('e', id, 'queue'), text: 'See the queue' })}>Re-run ${ready.length} failed</button>`;
@@ -414,7 +414,7 @@ function RunView({ id, run: runId, e, store, jobLane, to }) {
         const st = laneState(l.state, j && j.dry_run);
         return html`<tr class="link ${jobLane === l.lane ? 'sel' : ''}" onClick=${go(dest)}>
           <td class="i"><${Icon} state=${st}/></td>
-          <td><a href=${dest}>${l.lane}</a><div class="sub">${l.round || ''}</div>
+          <td><a href=${dest}>${l.task ? l.task + ' (' + l.lane + ')' : l.lane}</a><div class="sub">${l.round || ''}</div>
             ${l.reason ? html`<div class="sub">${l.reason}</div>` : ''}
             ${st === 'dry run' ? html`<div class="sub wait">its change didn't run: ${j.dry_run.join('; ')}</div>` : ''}</td>
           <td><${Pill} state=${st}/>${l.exit != null && l.exit !== 0 ? html` <span class="mono muted">exit ${l.exit}</span>` : ''}</td>
@@ -527,13 +527,13 @@ function failedState(s) {
 // the hub queue work (headless.allow).
 function WhyNoRun({ me, e, kind }) {
   if (!me || !me.user) return null;
-  if (!e.headless) return html`<div class="note">This worker isn't headless (someone is at its terminal, or it runs <code>swim watch</code> without <code>--headless</code>), so it takes no commands from the hub. On its machine: <code>swim watch --headless --detach</code>.</div>`;
+  if (!e.headless) return html`<div class="note">This swimmer isn't headless (someone is at its terminal, or it runs <code>swim watch</code> without <code>--headless</code>), so it takes no commands from the hub. On its machine: <code>swim watch --headless --detach</code>.</div>`;
   if (!isOperator(me)) return null;
   const need = kind === 'queue' ? ['queue'] : ['run', 'queue'];
   if (need.some((k) => can(me, e, k))) return null;
-  if (e.access === 'read') return html`<div class="note">${e.name} enrolled with <b>read</b> access: the hub shows it and fetches its logs, and sends no commands. On its machine: <code>swim hub access readwrite</code>.</div>`;
+  if (e.access === 'read') return html`<div class="note">${e.name} joined with <b>read</b> access: the hub shows it and fetches its logs, and sends no commands. On its machine: <code>swim auth login ${location.origin} --access readwrite</code>.</div>`;
   if (e.access === 'readwrite') return html`<div class="note">This repo's committed <code>swim.yml</code> narrows what the hub may send (<code>headless.allow</code>): add ${need.map((k, i) => html`${i ? ' or ' : ''}<code>${k}</code>`)} there, or drop the list to take everything readwrite allows.</div>`;
-  return html`<div class="note">${e.name} enrolled before access levels, so its <code>swim.yml</code>'s <code>headless.allow</code> decides: on its machine, <code>swim hub access readwrite</code> lets the hub send every command.</div>`;
+  return html`<div class="note">${e.name} joined before access levels, so its <code>swim.yml</code>'s <code>headless.allow</code> decides: on its machine, <code>swim auth login ${location.origin} --access readwrite</code> lets the hub send every command.</div>`;
 }
 
 function LaneControls({ e, l, me, cmd }) {
@@ -549,7 +549,7 @@ function LaneControls({ e, l, me, cmd }) {
   if (running && l.run && can(me, e, 'interrupt')) {
     b.push(html`<button class="btn sm danger" onClick=${() => cmd.run({ kind: 'interrupt', lane: l.lane, pin: { run: l.run } }, 'Interrupt ' + lane, {
       title: 'Interrupt ' + lane + '?', label: 'Interrupt', danger: true,
-      body: html`<p>${l.round || ''}</p><p class="muted">Stops run <code>${l.run}</code> on ${e.name}. The worker refuses it if that run has ended by the time it takes the command.</p>`,
+      body: html`<p>${l.round || ''}</p><p class="muted">Stops run <code>${l.run}</code> on ${e.name}. The swimmer refuses it if that run has ended by the time it takes the command.</p>`,
     })}>Interrupt</button>`);
   }
   if (l.run && can(me, e, 'log') && e.logs !== 'stream') {
@@ -565,14 +565,14 @@ function LaneControls({ e, l, me, cmd }) {
       : { kind: 'queue', lanes: [{ lane: l.lane, sha256: l.script_sha256, manifest: l.manifest_sha256 }] };
     b.push(html`<button class="btn sm ${again ? 'primary' : ''}" onClick=${() => cmd.run(c, label + ': ' + lane, {
       title: label + ': ' + lane + '?', label,
-      body: html`<p>${l.round || ''}</p><p class="muted">Queues ${lane}'s script <code>${short(l.script_sha256)}</code> (manifest <code>${short(l.manifest_sha256)}</code>) on ${e.name}, unsigned, by hub:${me.user}, with no approvals of its own: its guards approve only as any unsigned batch's do. If the script has changed, the worker refuses it.</p>`,
+      body: html`<p>${l.round || ''}</p><p class="muted">Queues ${lane}'s script <code>${short(l.script_sha256)}</code> (manifest <code>${short(l.manifest_sha256)}</code>) on ${e.name}, unsigned, by hub:${me.user}, with no approvals of its own: its guards approve only as any unsigned batch's do. If the script has changed, the swimmer refuses it.</p>`,
     }, { href: href('e', e.id, 'queue'), text: 'See the queue' })}>${label}</button>`);
   }
   if (l.trash_job && !running && can(me, e, 'trash')) {
     b.push(html`<button class="btn sm danger" onClick=${() => cmd.run({ kind: 'trash', lane: l.lane, pin: { job: l.trash_job } }, 'Trash ' + lane, {
       title: 'Trash ' + lane + '?', label: 'Trash ' + lane, danger: true,
       body: html`<p>${l.round || ''}</p><p class="muted">job <code>${short(l.trash_job)}</code> · ${l.state}</p>
-        <p class="muted">The worker moves this lane's script and its lane.${l.lane}.yml to <code>.swim/cleaned/</code> and archives its log. Nothing is deleted: <code>swim trash --restore STAMP</code> on the worker puts it back. If the lane holds another job by then, it refuses and nothing moves.</p>`,
+        <p class="muted">The swimmer moves this lane's script and its lane.${l.lane}.yml to <code>.swim/cleaned/</code> and archives its log. Nothing is deleted: <code>swim trash --restore STAMP</code> on the swimmer puts it back. If the lane holds another job by then, it refuses and nothing moves.</p>`,
     })}>Trash</button>`);
   }
   return b.length ? html`<div class="actions">${b}</div>` : null;
@@ -615,11 +615,11 @@ function Lanes({ r, store }) {
     { kind: 'queue', lanes: chosen.map((l) => ({ lane: l.lane, sha256: l.script_sha256, manifest: l.manifest_sha256 })) },
     'Queue lanes ' + chosen.map((l) => l.lane).join(', '), {
       title: 'Queue ' + chosen.length + ' lane' + (chosen.length > 1 ? 's' : '') + ' as one batch?', label: 'Queue',
-      body: html`<p>Lanes ${chosen.map((l) => l.lane).join(', ')}, pinned to the scripts shown. The batch is unsigned and carries no approvals: a guard in it waits for an answer, or dry-runs, as the worker's swim.yml says.</p>`,
+      body: html`<p>Lanes ${chosen.map((l) => l.lane).join(', ')}, pinned to the scripts shown. The batch is unsigned and carries no approvals: a guard in it waits for an answer, or dry-runs, as the swimmer's swim.yml says.</p>`,
     }, { href: href('e', e.id, 'queue'), text: 'See the queue' })}>Queue ${chosen.length} as one batch</button>`;
   const drain = can(me, e, 'drain') && html`<button class="btn sm danger" onClick=${() => cmd.run({ kind: 'drain' }, 'Stop ' + e.name + ' after this batch', {
     title: 'Stop ' + e.name + ' after this batch?', label: 'Stop after this batch', danger: true,
-    body: html`<p class="muted">The worker finishes the batch it's running, then exits; nothing new starts. Start it again on its machine.</p>`,
+    body: html`<p class="muted">The swimmer finishes the batch it's running, then exits; nothing new starts. Start it again on its machine.</p>`,
   })}>Stop after this batch</button>`;
   return html`<${Crumbs} e=${e}><span>/</span><span>lanes</span></${Crumbs}>
     <div class="head"><h1>Lanes</h1><${Pill} state=${enrollmentState(e).cls === 'run' ? 'running' : e.activity} label=${e.activity}/>
@@ -636,7 +636,7 @@ function Lanes({ r, store }) {
         <td class="i">${canQueue && queueable.includes(l)
           ? html`<input type="checkbox" aria-label=${'Queue lane ' + l.lane} checked=${!!picked[l.lane]} onChange=${() => toggle(l.lane)}/>`
           : html`<${Icon} state=${l.state}/>`}</td>
-        <td><a class="lane-link" href=${href('e', e.id, 'lanes', l.lane)}><b>${l.lane}</b><div class="sub">${l.round || ''}</div></a></td>
+        <td><a class="lane-link" href=${href('e', e.id, 'lanes', l.lane)}><b>${l.task ? l.task + ' (' + l.lane + ')' : l.lane}</b><div class="sub">${l.round || ''}</div></a></td>
         <td><${Pill} state=${laneState(l.state, l.dry_run)}/>
           ${laneState(l.state, l.dry_run) === 'dry run' ? html`<div class="sub wait">its change didn't run: ${l.dry_run.join('; ')}</div>` : ''}
           ${l.state === 'running' ? html`<div><${When} t=${l.started} label="started"/></div>` : l.finished ? html`<div><${When} t=${l.finished} label="ended"/></div>` : ''}
@@ -727,7 +727,7 @@ function Runner({ r, store }) {
     <div class="panel">${q.data.config
       ? html`<pre class="config">${q.data.config}</pre>`
       : html`<div class="empty">This runner hasn't reported its configuration (a swim from before the hub showed it, or no report yet).</div>`}</div>`}
-    <p class="muted">Change it on the runner: its config.yml, or a commit to the repo's swim.yml; <code>swim hub access</code> sets what the hub may do.</p>`;
+    <p class="muted">Change it on the runner: its config.yml, or a commit to the repo's swim.yml; <code>swim auth login --access</code> sets what the hub may do.</p>`;
 }
 
 // Activity is every runner's runs, newest first: what failed (or only
@@ -844,9 +844,9 @@ function Approvals({ store }) {
   useTitle('Approvals');
   if (store.enrollments === null) return html`<${Loading}/>`;
   const waiting = store.enrollments.flatMap((e) => (e.pending || []).map((p) => ({ e, p })));
-  return html`<div class="head"><h1>Approvals</h1><span class="muted">guards waiting for an answer, on every enrollment</span></div>
+  return html`<div class="head"><h1>Approvals</h1><span class="muted">guards waiting for an answer, on every swimmer</span></div>
     <div class="panel">${waiting.length === 0 ? html`<div class="empty">Nothing is waiting for an answer.</div>` : html`<div class="tw"><table>
-      <thead><tr><th>Enrollment</th><th>Guard</th><th>Lane</th><th>Waits</th><th></th></tr></thead>
+      <thead><tr><th>Swimmer</th><th>Guard</th><th>Lane</th><th>Waits</th><th></th></tr></thead>
       <tbody>${waiting.map(({ e, p }) => html`<tr>
         <td><a href=${href('e', e.id, 'lanes')}>${e.name}</a><div class="sub">${e.host}</div></td>
         <td><span class="mono">${p.flag}</span><div class="sub">${p.desc}</div>${p.need ? html`<div class="sub">needs ${p.need}</div>` : ''}</td>
@@ -890,7 +890,7 @@ function Question({ r, store }) {
     ${cmd.note}${cmd.dialog}
     <div class="panel">
       <div class="sum">
-        <div><div class="k">Worker</div><div class="v">${e ? e.name : r.id}</div></div>
+        <div><div class="k">Swimmer</div><div class="v">${e ? e.name : r.id}</div></div>
         <div><div class="k">Run</div><div class="v mono" title=${p.run}>${p.run || '—'}</div></div>
         <div><div class="k">Script</div><div class="v mono" title=${p.script_sha256}>${short(p.script_sha256) || '—'}</div></div>
         <div><div class="k">Evidence</div><div class="v mono" title=${p.evidence_sha256}>${short(p.evidence_sha256) || '—'}</div></div>
@@ -900,7 +900,7 @@ function Question({ r, store }) {
         ${(p.signers || []).length ? html`<p class="muted">Signed so far: ${p.signers.join(', ')}${p.need ? ' · still ' + p.need : ''}</p>` : ''}
         ${p.evidence ? html`<h2>Evidence: what it will do</h2><pre class="tail">${p.evidence}</pre>` : ''}</div>
     </div>
-    ${!me || !me.user ? html`<div class="panel"><div class="empty">Answering takes a hub user. <a href="/login">Log in</a></div></div>` : !can(me, e, 'answer') ? html`<div class="note">This worker doesn't take answers from the hub (swim.yml headless.allow).</div>` : html`
+    ${!me || !me.user ? html`<div class="panel"><div class="empty">Answering takes a hub user. <a href="/login">Log in</a></div></div>` : !can(me, e, 'answer') ? html`<div class="note">This swimmer doesn't take answers from the hub (swim.yml headless.allow).</div>` : html`
     ${operator ? html`<div class="panel"><div class="panel-h"><h2>Answer with a button</h2><span class="muted">as ${me.user}, an operator</span></div>
       <div class="panel-b actions">
         ${!p.signed_only ? html`<button class="btn primary" onClick=${() => answer('approve', false)}>Approve</button>` : html`<span class="muted">Only a signed answer approves this guard.</span>`}
@@ -910,7 +910,7 @@ function Question({ r, store }) {
     <div class="panel"><div class="panel-h"><h2>Sign your answer</h2>
       <div class="seg" role="radiogroup" aria-label="Decision">${['approve', 'decline'].map((d) => html`<button role="radio" aria-checked=${decision === d} class=${decision === d ? 'on' : ''} onClick=${() => setDecision(d)}>${d}</button>`)}</div></div>
       <div class="panel-b">
-        <p class="muted">The worker checks your signature of exactly this statement against its lookup.yml. Run this with your key, then paste your public key and <code>answer.txt.sig</code>. Or from a terminal: <code>${q.data.terminal}</code></p>
+        <p class="muted">The swimmer checks your signature of exactly this statement against its lookup.yml. Run this with your key, then paste your public key and <code>answer.txt.sig</code>. Or from a terminal: <code>${q.data.terminal}</code></p>
         <pre class="tail">${q.data.command}</pre>
         <button class="btn sm" onClick=${() => navigator.clipboard && navigator.clipboard.writeText(q.data.command)}>Copy</button>
         <label class="field">Your public key<textarea rows="2" value=${key} onInput=${(ev) => setKey(ev.target.value)} placeholder="ssh-ed25519 AAAA… you@host (your .pub)"></textarea></label>
@@ -973,7 +973,7 @@ function LiveLog({ r, store }) {
         <a class="btn sm" href=${path} target="_blank" rel="noopener">Raw log</a>
       </div>
       ${status === 404 ? html`<div class="panel-b"><div class="note">${e && e.logs === 'stream'
-        ? 'Nothing yet: the worker sends the log as each step ends.'
+        ? 'Nothing yet: the swimmer sends the log as each step ends.'
         : html`This run isn't on the hub yet, and neither is its log: this repo sends logs only when asked.
           ${can(me, e, 'log') ? html` <button class="btn sm" onClick=${() => cmd.run({ kind: 'log', lane: r.lane, pin: { run: r.run } }, 'Fetch the log')}>Fetch log</button>` : ''}`}</div></div>`
         : status === 401 ? html`<div class="empty">A job's log needs a hub user. <a href="/login">Log in</a></div>` : ''}
@@ -1026,21 +1026,21 @@ function Admin({ store }) {
   const workers = store.enrollments || [];
   const gs = (grants.data && grants.data.grants) || [];
   const waiting = (pending.data && pending.data.pending) || [];
-  return html`<div class="head"><h1>Admin</h1><span class="muted">users, worker approvals and secret grants</span></div>
+  return html`<div class="head"><h1>Admin</h1><span class="muted">users, swimmer approvals and secret grants</span></div>
     ${ask && html`<${Confirm} c=${ask} close=${() => setAsk(null)}/>`}
     ${note && html`<div class="note ${note.cls}" role="status">${note.text}${note.token ? html` <code class="mono">${note.token}</code>` : ''}</div>`}
     <h2>Waiting to join <span class="count ${waiting.length ? 'hot' : ''}">${waiting.length}</span></h2>
-    <div class="panel">${pending.loading && !pending.data ? html`<${Loading}/>` : pending.error ? html`<div class="err">${pending.error}</div>` : waiting.length === 0 ? html`<div class="empty">No one is waiting. A swim enrolls with <code>swim hub enroll ${location.origin}</code> and shows here until you admit it.</div>` : html`<div class="tw"><table>
-      <thead><tr><th>Worker</th><th>Access</th><th>Namespace</th><th>Key</th><th>From</th><th>Since</th><th></th></tr></thead>
+    <div class="panel">${pending.loading && !pending.data ? html`<${Loading}/>` : pending.error ? html`<div class="err">${pending.error}</div>` : waiting.length === 0 ? html`<div class="empty">No one is waiting. A machine joins with <code>swim auth login ${location.origin}</code> and shows here until you admit it.</div>` : html`<div class="tw"><table>
+      <thead><tr><th>Swimmer</th><th>Access</th><th>Namespace</th><th>Key</th><th>From</th><th>Since</th><th></th></tr></thead>
       <tbody>${waiting.map((p) => html`<tr>
         <td><b>${p.name}</b>${p.kind === 'machine' ? html` <span class="pill">machine</span>` : ''}<div class="sub mono">${p.kind === 'machine' ? p.user + '@' + p.host + ': every directory of ' + p.user + ' there' : p.host + ':' + p.root}</div></td>
         <td>${p.access ? html`<span class="pill ${p.access === 'readwrite' ? 'wait' : ''}">${p.access}</span>` : ''}</td>
         <td class="mono">${p.namespace || ''}</td><td class="mono">${p.key_fp || html`<span class="muted">none</span>`}</td>
         <td class="mono muted">${p.from || ''}</td><td class="muted">${p.enrolled_at ? when(p.enrolled_at) : ''}</td>
         <td class="nowrap"><button class="btn sm primary" onClick=${() => confirm({ title: 'Admit ' + p.name,
-          body: html`Let <b>${p.name}</b> (${p.host}:${p.root}) report to this hub? It enrolled with <b>${p.access || 'unknown'}</b> access${p.access === 'readwrite' ? ': it takes every command from this hub (run, queue, interrupt, answers…) its swim.yml allows' : p.access === 'read' ? ': the hub only shows it and fetches its logs' : ''}. ${p.key_fp ? html`Its key is <code>${p.key_fp}</code>: check it against what <code>swim hub enroll</code> printed there.` : ''}`,
+          body: html`Let <b>${p.name}</b> (${p.host}:${p.root}) report to this hub? It joined with <b>${p.access || 'unknown'}</b> access${p.access === 'readwrite' ? ': it takes every command from this hub (run, queue, interrupt, answers…) its swim.yml allows' : p.access === 'read' ? ': the hub only shows it and fetches its logs' : ''}. ${p.key_fp ? html`Its key is <code>${p.key_fp}</code>: check it against what swim printed there when it joined.` : ''}`,
           label: 'Admit', run: () => act('Admit ' + p.name, 'POST', api('workers', p.id, 'admit')) })}>Admit</button>
-          <button class="btn sm danger" onClick=${() => confirm({ title: 'Turn away ' + p.name, body: 'Its enrollment is forgotten; it can enroll and wait again.', label: 'Turn away', danger: true,
+          <button class="btn sm danger" onClick=${() => confirm({ title: 'Turn away ' + p.name, body: 'It is forgotten; it can join and wait again.', label: 'Turn away', danger: true,
             run: () => act('Turn away ' + p.name, 'DELETE', api('workers', p.id, 'admit')) })}>Turn away</button></td></tr>`)}
       </tbody></table></div>`}</div>
     <h2>Users</h2>
@@ -1061,9 +1061,9 @@ function Admin({ store }) {
         <button class="btn primary">Add user</button>
       </form>
       <div class="sub">Adding a name again gives them a new token and role, and ends their sessions.</div></div>
-    <h2>Workers</h2>
-    <div class="panel">${workers.length === 0 ? html`<div class="empty">No enrollments yet.</div>` : html`<div class="tw"><table>
-      <thead><tr><th>Worker</th><th>Key for secrets</th><th>Approved</th><th>Grants</th><th></th></tr></thead>
+    <h2>Swimmers</h2>
+    <div class="panel">${workers.length === 0 ? html`<div class="empty">No swimmers yet.</div>` : html`<div class="tw"><table>
+      <thead><tr><th>Swimmer</th><th>Key for secrets</th><th>Approved</th><th>Grants</th><th></th></tr></thead>
       <tbody>${workers.map((e) => html`<tr>
         <td><a href=${href('e', e.id, 'lanes')}>${e.name}</a><div class="sub">${e.host} · ${e.namespace || 'no namespace'}${e.access ? ' · ' + e.access : ''}</div></td>
         <td class="mono">${e.key_fp || html`<span class="muted">none</span>`}</td>
@@ -1072,17 +1072,17 @@ function Admin({ store }) {
         <td>${e.key_fp && (e.approved
           ? html`<button class="btn sm danger" onClick=${() => confirm({ title: 'Withdraw ' + e.name, body: 'Its approval ends and its grants are deleted.', label: 'Withdraw', danger: true,
               run: () => act('Withdraw ' + e.name, 'DELETE', api('workers', e.id, 'approve')) })}>Withdraw</button>`
-          : html`<button class="btn sm primary" onClick=${() => confirm({ title: 'Approve ' + e.name, body: html`Approve key <code>${e.key_fp}</code> on ${e.host} for secrets? Check the fingerprint against what <code>swim hub enroll</code> printed there.`, label: 'Approve',
+          : html`<button class="btn sm primary" onClick=${() => confirm({ title: 'Approve ' + e.name, body: html`Approve key <code>${e.key_fp}</code> on ${e.host} for secrets? Check the fingerprint against what swim printed there when it joined.`, label: 'Approve',
               run: () => act('Approve ' + e.name, 'POST', api('workers', e.id, 'approve')) })}>Approve</button>`)}</td></tr>`)}
       </tbody></table></div>`}</div>
     <h2>Secret grants</h2>
     <div class="panel">${grants.loading && !grants.data ? html`<${Loading}/>` : grants.error ? html`<div class="err">${grants.error}</div>` : gs.length === 0 ? html`<div class="empty">No grants.</div>` : html`<div class="tw"><table>
-      <thead><tr><th>Worker</th><th>Secret</th><th>Guard</th><th>By</th><th>When</th><th></th></tr></thead>
+      <thead><tr><th>Swimmer</th><th>Secret</th><th>Guard</th><th>By</th><th>When</th><th></th></tr></thead>
       <tbody>${gs.map((g) => html`<tr><td>${g.name}</td><td class="mono">${g.secret}</td><td class="mono">${(g.guard || []).join(', ')}</td><td>${g.by || ''}</td><td class="muted">${g.at ? when(g.at) : ''}</td>
         <td><button class="btn sm danger" onClick=${() => confirm({ title: 'Revoke ' + g.secret, body: g.name + ' loses it at its next fetch.', label: 'Revoke', danger: true,
           run: () => act('Revoke ' + g.secret, 'DELETE', api('grants', g.worker, g.secret)) })}>Revoke</button></td></tr>`)}
       </tbody></table></div>`}
-      <div class="sub">To grant a secret: <code>swim secret grant WORKER NAME</code> (log in first with <code>swim hub login ${location.origin} --admin-token</code> and your token). It encrypts the value to the worker's key on your machine, so the hub never sees it.</div></div>`;
+      <div class="sub">To grant a secret: <code>swim secret grant SWIMMER NAME</code> (log in first with <code>swim auth login ${location.origin} --admin-token</code> and your token, or <code>--token</code> and an admin user's). It encrypts the value to the swimmer's key on your machine, so the hub never sees it.</div></div>`;
 }
 
 function NotFound() {

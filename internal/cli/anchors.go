@@ -36,7 +36,7 @@ func openAnchor(root, spec string) (anchor.Anchor, error) {
 	return anchor.Open(spec, anchor.Options{Root: root, Hub: func() (*hub.Client, error) {
 		h, err := loadHub(root)
 		if err != nil {
-			return nil, errors.New("this directory isn't enrolled with a hub (swim hub enroll)")
+			return nil, errors.New("this directory hasn't joined a hub (swim auth login URL, then swim watch here)")
 		}
 		return hubClient(h), nil
 	}})

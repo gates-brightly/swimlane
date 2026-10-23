@@ -6,7 +6,7 @@ swim is a single Go binary for **operator-in-the-loop automation**. An AI sessio
 
 The pattern grew out of the SST → Terraform migration on `feature/tf-migration`, where it ran four parallel lanes across ~25 services as three copyable shell files (`next.sh`, `step.sh`, `nextN.sh`). swim is that pattern packaged as a CLI. Its own CI runs through it.
 
-How-to and reference live in the [README](README.md) and `swim --help`. Feature specs live in [`features/`](features/README.md). This brief covers why swim exists and what it must guarantee.
+How-to and reference live in the [README](README.md) and `swim guide`. Feature specs live in [`features/`](features/README.md). This brief covers why swim exists and what it must guarantee.
 
 ---
 
@@ -151,7 +151,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 ### Queue, CI and hub
 - **Queue:** a batch is fixed when queued. Its approvals travel with it, and the worker's own environment approves nothing. Several workers can share one queue safely: a claimed batch carries its worker's heartbeat, so a worker on another host that died is seen as gone once its lease runs out.
 - **CI:** `swim ci` never prompts. It folds each lane's log, turns failures into annotations, can run only the rounds a push changed, and never commits results back.
-- **Hub:** a dashboard of many workers. Workers push to it, so they can sit behind NAT. It serves https with `--tls-cert`/`--tls-key`, and plain HTTP only on loopback unless `--insecure`. Hub users (each with their own token and a viewer or operator role) can send headless workers commands: interrupt, drain, run, fetch a log. The hub only relays them; the worker checks each against the repo's committed `headless:` settings and records it.
+- **Hub:** a dashboard of many workers. Workers push to it, so they can sit behind NAT. It serves https with `--tls-cert`/`--tls-key`, and plain HTTP only on loopback unless `--insecure`. Hub users (each with their own token and a viewer or operator role) can send headless swimmers commands: interrupt, drain, run, fetch a log. The hub only relays them; the worker checks each against the repo's committed `headless:` settings and records it.
 
 ### Planner / worker protocol
 - The planner assigns each worker a lane number. A worker writes **only** its own `lane.N.sh`.
@@ -162,7 +162,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - After a run, the planner reads the log, validates real outcomes (not just PASS lines), records results in the project log, archives the log and stubs the lane.
 - Always lanes (`# Always: yes`) are the repo's standing setup, not rounds: planners never assign, rewrite, archive or stub them. A round that needs one passing says so with `# After:`.
 - Out-of-scope findings go to a follow-up list, not into the round.
-- The full protocol for agents is `swim --help`.
+- The full protocol for agents is `swim guide`.
 
 ### Safety
 - swim never pushes, commits or pulls. It blocks those commands in scripts, at runtime and through a git shim, and a repo can block more.
@@ -196,7 +196,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Running from the planner's side.** The operator's machine, or a worker they control, stays the only executor.
 - **Secret management.** Rounds use the operator's existing credentials.
 - **Writing to git.** swim never commits, pushes or pulls, including in CI.
-- **Executing on the hub.** The hub relays requests to headless workers, which check, carry out and record them. It never runs anything itself, never holds credentials or secrets, and can't make an approval valid by itself: an answer to a guard counts when the worker verifies the approver's SSH signature against `lookup.yml` (or, where the repo's `swim.yml` allows it, a listed hub user's click for a guard no `require:` rule names).
+- **Executing on the hub.** The hub relays requests to headless swimmers, which check, carry out and record them. It never runs anything itself, never holds credentials or secrets, and can't make an approval valid by itself: an answer to a guard counts when the worker verifies the approver's SSH signature against `lookup.yml` (or, where the repo's `swim.yml` allows it, a listed hub user's click for a guard no `require:` rule names).
 
 ## Open questions
 
@@ -205,7 +205,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 
 ### Resolved since
 
-- **Hub access?** Per-user identity: the hub's admin adds users (`swim hub user add NAME --role viewer|operator`), named as in `lookup.yml`, each with their own token and a browser session. Every command carries the user who sent it, and the worker records it. The shared tokens only enroll workers and manage the hub. Approving through the hub takes the approver's own SSH signature, checked by the worker: the hub login alone approves only where a repo opts in (`headless.approvals: hub`). See `swim watch --help` and `swim hub --help`.
+- **Hub access?** Per-user identity: the hub's admin adds users (`swim auth users add NAME --role viewer|operator|admin`), named as in `lookup.yml`, each with their own token and a browser session. Every command carries the user who sent it, and the worker records it. The shared tokens only enroll workers and manage the hub. Approving through the hub takes the approver's own SSH signature, checked by the worker: the hub login alone approves only where a repo opts in (`headless.approvals: hub`). See `swim watch --help` and `swim hub --help`.
 - **Keeping the chain?** Opt-in, not by default: `chain_anchors` sends a signed checkpoint of the chain's head to a `file:` path outside the repo or the hub at the end of every run, and `swim chain export` copies the entries; `swim verify` checks against them (anchored). An anchor only helps if someone other than the operator holds it, so swim doesn't pick one.
 - **Cross-session claims?** Yes, as an advisory lease: `swim new` claims the lane until it runs, is archived or stubbed, or the lease expires; another session's `new`, `stub` and `archive` refuse it, and `swim run` warns and runs. `Owner` stays authorship. See `swim claim --help`.
 - **Scheduling across rounds?** `swim schedule` starts a queued batch no earlier than a time, and dependents wait for it. Recurring schedules: daily, pinned to exact scripts, expiring like standing approvals, run by a worker you start. swim still runs no daemon of its own.

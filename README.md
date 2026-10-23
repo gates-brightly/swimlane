@@ -1,15 +1,47 @@
 # swim
 
 [![test](https://github.com/gates-brightly/swimlane/actions/workflows/test.yml/badge.svg)](https://github.com/gates-brightly/swimlane/actions/workflows/test.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Sane AI ops.**
+**Your AI writes the ops change. You sign the exact bytes. swim runs it and
+gives you a receipt anyone can verify.**
 
-Run AI-written operational changes safely, with a human in the loop and a
-provable record of what happened.
+swim is a single-binary runner for small, guarded ops scripts. Every
+destructive step is a dry run until a person approves it, and every
+approval goes into a signed, hash-linked log.
+
+### The 90-second tamper story
+
+```sh
+# The AI wrote lane.1.sh: one guarded step that replaces the live cert.
+swim approve 1 --guards CERT_ALLOW_ROTATE    # you sign this exact script, its inputs and policy
+
+echo '# one byte' >> lane.1.sh               # anyone changes anything after you signed
+swim run 1 --no-prompt
+#   SKIP  replace the live cert (dry run: ...signature approves another version of lane.1.sh
+#         (approved 8ad7e02d993e, running dacbf1a31f05))
+
+sed -i '$d' lane.1.sh && swim run 1           # back to the bytes you signed
+#   APPROVED  replace the live cert (approved by me (signed))
+#   PASS  install the new cert
+
+sed -i 's/new cert/old cert/' .swim/logs/agent1.log   # someone edits the record afterwards
+swim verify
+#   BROKEN: entry #5: swim 1's log for run r-20261023T182450Z-bfb0 was changed after the round ended
+#   consistent  no   1 problems (BROKEN, above)
+```
+
+A changed script falls back to a dry run, and a changed record fails
+`swim verify`. The approval binds the script, every file it sources, how it
+runs and the repo's policy. See [the trust model](docs/trust-model.md) for
+what swim does and doesn't protect against.
+
+### How it works
 
 An AI session (the *planner*) and its subagents (the *workers*) write
 operational work as small scripts (bash, Python, TypeScript, or any
-program), one per numbered *lane*. A person
+program), one per *lane*: numbered, and named if you like (`swim new
+renew-certs "Renew the certs"`, then `swim run renew-certs`). A person
 runs them with `swim`, in places the AI can't reach: a VPN-only account,
 their own credentials, production. Every step, result and approval lands in
 plain-text logs the AI reads back to decide what to do next.
@@ -208,7 +240,7 @@ inside the lane, so it is advisory. More in
 [the architecture](docs/architecture.md).
 
 The product brief is in [`swimlane.md`](swimlane.md). **AI agents** should
-start with `swim --help`: it is the full guide for planners and workers.
+start with `swim guide`: it is the full guide for planners and workers.
 
 ### Install
 
@@ -255,7 +287,7 @@ swim log 2                  # a lane's log; swim log <job-id> works too
 swim log                    # .swim.log: one line per top-level action, for catching up
 ```
 
-The conventions agents follow live in `swim --help`: which lanes to use,
+The conventions agents follow live in `swim guide`: which lanes to use,
 never editing a running lane, gates before changes, and how to read results.
 
 ### 3. Run a DAG in parallel
@@ -327,13 +359,16 @@ swim ci --changed --junit swim.xml        # only the rounds this push changed
 Each lane's log gets its own foldable section, and failures become
 annotations. See [CI](#ci).
 
-### 8. Watch many workers from one place
+### 8. Watch many swimmers from one place
+
+A *swimmer* is a machine that runs lanes (`swim watch`). The hub shows
+every swimmer that joined it.
 
 ```sh
 swim hub --addr 0.0.0.0:7700 --tls-cert hub.crt --tls-key hub.key   # the dashboard, over https
-swim hub enroll https://hub:7700 --access readwrite                  # in each repo with a worker (read: view only)
-swim hub admit billing                                               # the hub's admin lets it in
-swim watch                                                           # now reports to the hub
+swim auth login https://hub:7700 --access readwrite                  # once per machine (read: view only)
+swim auth admit box                                                  # the hub's admin lets it in
+swim watch                                                           # in a repo: it joins and reports to the hub
 ```
 
 ### 9. Drive swim from scripts and agents
@@ -1138,10 +1173,10 @@ swim watch --headless --install systemd      # or launchd: writes a user unit, p
 swim watch --headless --uninstall
 ```
 
-- **`--headless`** is the same worker with no terminal: no screen, and it
-  never reads stdin. It needs the directory enrolled with a hub
-  (`swim hub enroll`), which marks it headless on its page.
-- **One per repo.** `.swim/headless.lock` holds the worker's pid; a second
+- **`--headless`** is the same swimmer with no terminal: no screen, and it
+  never reads stdin. It needs the machine logged in to a hub
+  (`swim auth login`), which marks it headless on its page.
+- **One per repo.** `.swim/headless.lock` holds the swimmer's pid; a second
   `--headless` exits 2 and names it.
 - **`--detach`** starts it in its own session. Its output goes to
   `.swim/headless.log`, rotated at 10 MiB with 3 kept. `--stop` sends it
@@ -1157,7 +1192,7 @@ swim watch --headless --uninstall
   plus 30s to stop. swim prints the `systemctl`/`launchctl` command (and
   `loginctl enable-linger`) but never runs it. `-y` in a unit needs
   `--i-mean-it`.
-- **Commands from the hub:** a headless worker long-polls its hub for what
+- **Commands from the hub:** a headless swimmer long-polls its hub for what
   hub users send: interrupt a lane, drain (stop after the batch in hand),
   run a lane, upload a run's log. The worker, not the hub, decides. It takes
   each command once (the hub's epoch, last seq and recent ids are kept in
@@ -1293,32 +1328,37 @@ swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard (and
 swim hub --addr 0.0.0.0:7700 --tls-cert C --tls-key K   # serve it to the network, over https
 swim hub --public-url https://swim.example.ts.net --private   # behind a TLS proxy on this host, login to view
 swim hub ... --trust-tailscale-identity              # behind tailscale serve: users sign in as their tailnet login
-swim hub user add zach --role operator --tailscale zach@github
-swim hub enroll URL --access read|readwrite [--name billing] [--ca hub.crt]   # in a repo; once the hub's admin admits it (swim hub admit), swim watch reports to it (a dashboard tab per repo)
-swim hub status | leave
-swim hub login URL --admin-token T [--ca hub.crt]    # the operator, once
-swim hub approve billing                             # or press a on its row in the hub's screen
+swim auth login URL --admin-token T [--ca hub.crt]   # the operator, once: an admin login for the commands below
+swim auth login URL --access read|readwrite [--ca hub.crt]   # each machine that runs lanes: a swimmer, once the admin admits it
+swim auth admit box                                  # or on the hub's Admin page
+swim auth status | logout
+swim auth approve billing                            # its key, for secrets; or press a on its row in the hub's screen
 swim secret grant billing db_password                # encrypted here to billing's key; the hub keeps ciphertext
-swim hub user add alice --role operator              # a person: token shown once; viewer or operator
+swim auth users add alice --role operator            # a person: token shown once; viewer, operator or admin
+swim auth users add zach --role operator --tailscale zach@github
 ```
 
+Each directory where `swim watch` runs on a logged-in machine joins the
+hub as it starts, under its repo's tab (the origin remote). `swim.yml`
+can name it: `hub: {name: billing, namespace: acme/billing}`.
+
 - **The app:** a single-page app at the hub's root, like a CI system's:
-  a top bar to switch enrollments (`⌘K`/`Ctrl-K`), each enrollment's
+  a top bar to switch swimmers (`⌘K`/`Ctrl-K`), each swimmer's
   runs, a run's lanes as a graph of what waited for what, and a job's
   stages and steps with their commands, exit codes, durations and output
   (searchable, each line linkable). Lanes, the queue and the guards
-  waiting for an answer on every enrollment update as reports arrive.
-  Workers that stop reporting show as stale. It's embedded in the binary
+  waiting for an answer on every swimmer update as reports arrive.
+  Swimmers that stop reporting show as stale. It's embedded in the binary
   (no build step) and served under a strict Content-Security-Policy.
-- **Controls:** a headless worker's Lanes page has, for a logged-in user
+- **Controls:** a headless swimmer's Lanes page has, for a logged-in user
   and as its `swim.yml` allows, **Pause**/**Unpause**, **Interrupt**,
   **Run now** (pinned to the script shown), **Trash**, **Fetch log** and
   **Stop after this batch**, the destructive ones behind a confirmation,
-  and a Commands panel with each one's outcome as the worker
+  and a Commands panel with each one's outcome as the swimmer
   acknowledges it. A running lane links to its log, which follows the
   end as it grows (`hub: {logs: stream}`).
-- **Live screen:** on a terminal, `swim hub` lists every worker with the
-  selected one's running lanes and queue. Enter opens a worker to show each
+- **Live screen:** on a terminal, `swim hub` lists every swimmer with the
+  selected one's running lanes and queue. Enter opens a swimmer to show each
   lane's message and log tail, and Esc comes back. `--no-tui` turns it off.
 - **Read API:** the same data as JSON, under `/api/enrollments` (the
   repos (namespaces) and runners, one runner and what the hub knows of it,
@@ -1332,41 +1372,45 @@ swim hub user add alice --role operator              # a person: token shown onc
   log to the hub as its steps end. The hub keeps runs on disk under
   `--state`, through restarts, for `--retain 30d` and at most
   `--retain-bytes 2GB` (the oldest go first).
-- **Push, not pull:** workers report to the hub, so they can sit behind NAT.
-  A restarted hub fills back up as workers report.
-- **Access:** workers need the token. Viewing the pages needs no login, so
-  the hub binds to localhost by default; `--private` makes the pages and
+- **Push, not pull:** swimmers report to the hub, so they can sit behind
+  NAT. A restarted hub fills back up as swimmers report.
+- **Access:** a new swimmer waits until the hub's admin admits it
+  (`swim auth admit`); `--token` admits nothing. What the hub may send a
+  swimmer is its `--access` (read or readwrite), narrowed by `swim.yml`'s
+  `headless.allow`. Viewing the pages needs no
+  login, so the hub binds to localhost by default; `--private` makes the pages and
   the read API need a hub user too.
-- **Users:** `swim hub user add NAME --role viewer|operator` (the admin)
+- **Users:** `swim auth users add NAME --role viewer|operator|admin` (the admin)
   prints a token, once; the hub keeps its hash. The user logs in at
   `/login` for a 12-hour session that outlives a hub restart (kept hashed
   in `--state`; `HttpOnly`, `SameSite=Strict`, `Secure`
   under TLS, a CSRF token on every form), or sends the token as a bearer
   token. A viewer may fetch logs and send signed answers (the signature
   is what counts); an operator may send every command, and answer with
-  **Approve** (where the worker takes button answers) or **Decline**.
+  **Approve** (where the swimmer takes button answers) or **Decline**.
   Logs fetched on request stay in the hub's memory only (8 MiB a log,
   64 MiB in all, 15 minutes). The admin token manages users and sends no
-  command.
+  command; an admin user's token does what the admin token does
+  (`swim auth login URL --token T`).
 - **TLS:** `--tls-cert`/`--tls-key` serve https (TLS 1.2+), reloading the
   certificate when its files change. Without them the hub refuses any
   non-loopback `--addr` (exit 2) unless you pass `--insecure`; behind a TLS
   proxy, keep the hub on 127.0.0.1 and pass `--public-url https://...`:
   cookies are `Secure`, the hints print that address, and the audit log
   names the client from the proxy's `X-Forwarded-For` (trusted from a
-  loopback peer only). `enroll` and `login` refuse `http://`
+  loopback peer only). `swim auth login` refuses `http://`
   to another machine unless `--insecure`, and `--ca FILE` trusts a
-  self-signed certificate or private CA (saved with the enrollment).
+  self-signed certificate or private CA (saved with the login).
   `swim doctor` warns about an existing plain-http enrollment.
-- **Secrets for workers:**
-  - **Keys:** enrolling gives each worker its own age key (with no
+- **Secrets for swimmers:**
+  - **Keys:** joining gives each directory its own age key (with no
     passphrase, so `swim watch` can decrypt unattended) and a token of its
-    own. A worker stays *pending* until you approve its key fingerprint on
-    the hub.
+    own. It stays *pending* until you approve its key fingerprint
+    (`swim auth approve`, or on the hub).
   - **Grants:** `swim secret grant` encrypts a secret on your machine to
-    that worker's key. The hub keeps only ciphertext, in `--state DIR`, and
+    that swimmer's key. The hub keeps only ciphertext, in `--state DIR`, and
     never holds a key that could decrypt it.
-  - **At run time:** the worker's runs fetch and decrypt their grants at
+  - **At run time:** the swimmer's runs fetch and decrypt their grants at
     start. Lanes get them the usual way (`swim secret get`, `secret.get`),
     masked by name. A grant made with `--guard FLAG` is a
     [guarded secret](#guarded-secrets) there.
@@ -1438,9 +1482,10 @@ they waited for.
 | `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The worker with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
-| `swim approve --hub WORKER/QUESTION [--decline]` | Sign an answer to a guard waiting on a headless worker. |
+| `swim approve --hub WORKER/QUESTION [--decline]` | Sign an answer to a guard waiting on a headless swimmer. |
 | `swim verify [--strict] [--against DEST] [--yaml]` / `swim history [--oneline]` / `swim chain repair\|checkpoint\|export` / `swim keys [trust\|pin]` | The chain of custody: prove it (in levels), read it, repair a cut-short write, checkpoint and export it, and see and pin who's who. |
-| `swim hub [enroll\|leave\|status]` | The watch hub. |
+| `swim hub` | Serve the watch hub. |
+| `swim auth login\|status\|logout\|admit\|approve\|users` | Join a hub as a swimmer, and the hub admin's side. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE]` | Run rounds in a CI job. |
 | `swim interrupt N\|JOB` | Stop one lane at its next step boundary. |
 | `swim claim N` | Hold a lane while this session writes its round (`swim new` does it): another session's `new`, `stub` and `archive` refuse the lane until it runs, is released, or the lease (2h) runs out. Set `SWIM_SESSION` per session. |
@@ -1453,7 +1498,7 @@ they waited for.
 | `swim lock [--upgrade]` / `swim changelog` | The repo's syntax lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
 | `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
-| `swim --help` / `swim <cmd> --help` | The full guide, or one command's detail. |
+| `swim --help` / `swim guide` / `swim <cmd> --help` | The commands at a glance, the full guide, or one command's detail. (`swim --help` prints the full guide when its output isn't a terminal.) |
 
 ### Files
 
@@ -1473,8 +1518,8 @@ they waited for.
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain of custody, and every script that ran. | No (export it to keep it) |
 | `.swim/queue/`, `.swim/runs/`, `.swim/snapshots/` | Queued batches, run records and each run's staged lane copies, snapshot output. | No |
-| `.swim/hub.yml` | This directory's hub enrollment. | No |
-| `.swim/headless.lock`, `.pid`, `.log` | A headless worker's lock, pidfile and own log (`swim watch --headless`). | No |
+| `.swim/hub.yml` | This directory's place on its hub (from `swim auth login`). | No |
+| `.swim/headless.lock`, `.pid`, `.log` | A headless swimmer's lock, pidfile and own log (`swim watch --headless`). | No |
 
 ### Config
 
@@ -1579,3 +1624,7 @@ just release v0.<YYYYMMDD>.<index>    # tag it (checks the date, index, CHANGELO
   (`Script`, `Current` for logs, or `State` in `internal/syntax`), add it to
   `swim lock --help` and `CHANGELOG.md` (with Upgrading notes), and follow
   the release steps at the top of the changelog.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

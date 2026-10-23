@@ -14,10 +14,12 @@ import (
 	"github.com/gates-brightly/swimlane/internal/secrets"
 )
 
-// The operator's side of a hub: approving workers and granting them
-// secrets, with the hub's admin token. swim hub login saves the URL and
-// token (and --ca's PEM); --hub / --admin-token (or SWIM_HUB_URL /
-// SWIM_HUB_ADMIN_TOKEN, and SWIM_HUB_CA, a file) override it.
+// The operator's side of a hub: admitting swimmers, approving their keys,
+// granting them secrets and managing users, with the hub's admin token or
+// an admin user's. swim auth login URL --admin-token T (or --token T)
+// saves the URL and token (and --ca's PEM); --hub / --admin-token / --token
+// (or SWIM_HUB_URL / SWIM_HUB_ADMIN_TOKEN, and SWIM_HUB_CA, a file)
+// override it.
 
 type hubLogin struct {
 	URL        string `yaml:"url"`
@@ -27,38 +29,37 @@ type hubLogin struct {
 
 func hubLoginPath() string { return filepath.Join(filepath.Dir(config.Path()), "hub-admin.yml") }
 
-func hubLoginCmd(args []string) error {
-	var token, caFile string
-	var insecure bool
-	rest, err := flags{bools: map[string]*bool{"insecure": &insecure}, strs: map[string]*string{"admin-token": &token, "ca": &caFile}}.parse(args)
+// saveHubAdmin checks token against the hub at url (the admin token, or an
+// admin user's) and saves both for swim auth admit, users, approve and
+// swim secret grant.
+func saveHubAdmin(url, token, ca string) error {
+	a, err := hub.NewAdminTLS(url, token, []byte(ca))
 	if err != nil {
-		return err
-	}
-	if len(rest) != 1 || token == "" {
-		return usagef("usage: swim hub login URL --admin-token T [--ca FILE] [--insecure]   (the hub keeps it in its state dir: admin-token)")
-	}
-	ca, err := hubCA(rest[0], caFile, insecure)
-	if err != nil {
-		return err
-	}
-	a, err := hub.NewAdminTLS(rest[0], token, []byte(ca))
-	if err != nil {
-		return fmt.Errorf("--ca %s: %w", caFile, err)
+		return fmt.Errorf("hub CA: %w", err)
 	}
 	if _, err := a.Grants(); err != nil {
-		return fmt.Errorf("the hub refused the admin token: %w", err)
+		return fmt.Errorf("the hub refused that token as an admin's (the admin token, or an admin user's): %w", err)
 	}
-	data, _ := yaml.Marshal(hubLogin{URL: strings.TrimRight(rest[0], "/"), AdminToken: token, CA: ca})
+	data, _ := yaml.Marshal(hubLogin{URL: strings.TrimRight(url, "/"), AdminToken: token, CA: ca})
 	os.MkdirAll(filepath.Dir(hubLoginPath()), 0o700)
-	if err := os.WriteFile(hubLoginPath(), data, 0o600); err != nil {
-		return err
+	return os.WriteFile(hubLoginPath(), data, 0o600)
+}
+
+// readHubAdmin is the saved admin login, if any.
+func readHubAdmin() (*hubLogin, error) {
+	data, err := os.ReadFile(hubLoginPath())
+	if err != nil {
+		return nil, err
 	}
-	fmt.Printf("logged in to %s as its admin (%s)\n", rest[0], hubLoginPath())
-	return nil
+	var l hubLogin
+	if err := yaml.Unmarshal(data, &l); err != nil {
+		return nil, err
+	}
+	return &l, nil
 }
 
 // hubAdmin is the operator's admin client: from flags, the env, or swim
-// hub login.
+// auth login --admin-token.
 func hubAdmin(url, token string) (*hub.Admin, string, error) {
 	if url == "" {
 		url = os.Getenv("SWIM_HUB_URL")
@@ -90,7 +91,7 @@ func hubAdmin(url, token string) (*hub.Admin, string, error) {
 		}
 	}
 	if url == "" || token == "" {
-		return nil, "", fmt.Errorf("no hub admin: swim hub login URL --admin-token T (or --hub URL --admin-token T)")
+		return nil, "", fmt.Errorf("no hub admin: swim auth login URL --admin-token T (or an admin user's --token T), or pass --hub URL --admin-token T")
 	}
 	a, err := hub.NewAdminTLS(url, token, []byte(ca))
 	if err != nil {
@@ -120,23 +121,23 @@ func hubWorkerRef(a interface{ Workers() ([]hub.View, error) }, ref string) (hub
 	case 1:
 		return byName[0], nil
 	case 0:
-		return hub.View{}, fmt.Errorf("no worker %q on the hub (workers: %s)", ref, or(strings.Join(names, ", "), "none"))
+		return hub.View{}, fmt.Errorf("no swimmer %q on the hub (swimmers: %s)", ref, or(strings.Join(names, ", "), "none"))
 	}
 	var ids []string
 	for _, w := range byName {
 		ids = append(ids, w.ID+" ("+w.Host+":"+w.Root+")")
 	}
-	return hub.View{}, fmt.Errorf("%d workers are called %s: name one by id: %s", len(byName), ref, strings.Join(ids, ", "))
+	return hub.View{}, fmt.Errorf("%d swimmers are called %s: name one by id: %s", len(byName), ref, strings.Join(ids, ", "))
 }
 
 func hubApproveCmd(args []string, off bool) error {
 	var url, token string
-	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token}}.parse(args)
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "token": &token}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return usagef("usage: swim hub approve|unapprove WORKER [--hub URL] [--admin-token T]")
+		return usagef("usage: swim auth approve|unapprove SWIMMER [--hub URL] [--admin-token T | --token T]")
 	}
 	a, _, err := hubAdmin(url, token)
 	if err != nil {
@@ -147,7 +148,7 @@ func hubApproveCmd(args []string, off bool) error {
 		return err
 	}
 	if !off && w.KeyFP != "" {
-		fmt.Printf("%s (%s:%s) key %s: check it matches what swim hub enroll printed there\n", w.Name, w.Host, w.Root, w.KeyFP)
+		fmt.Printf("%s (%s:%s) key %s: check it matches what swim printed there when it joined\n", w.Name, w.Host, w.Root, w.KeyFP)
 	}
 	msg, err := a.Approve(w.ID, off)
 	if err != nil {
@@ -161,7 +162,7 @@ func hubApproveCmd(args []string, off bool) error {
 // away (reject), with the admin token or an admin user's.
 func hubAdmitCmd(args []string, reject bool) error {
 	var url, token string
-	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token}}.parse(args)
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "token": &token}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -175,17 +176,17 @@ func hubAdmitCmd(args []string, reject bool) error {
 	}
 	if len(rest) == 0 {
 		if len(waiting) == 0 {
-			fmt.Printf("no workers waiting to join %s\n", hubURL)
+			fmt.Printf("no swimmers waiting to join %s\n", hubURL)
 			return nil
 		}
 		for _, p := range waiting {
 			fmt.Printf("%-16s %s  %s:%s  %s  access %s  key %s  from %s\n", p.Name, p.ID, p.Host, p.Root, or(p.Namespace, "-"), or(p.Access, "?"), or(p.KeyFP, "none"), or(p.From, "?"))
 		}
-		fmt.Println("admit one: swim hub admit NAME (or its id); turn it away: swim hub reject NAME")
+		fmt.Println("admit one: swim auth admit NAME (or its id); turn it away: swim auth reject NAME")
 		return nil
 	}
 	if len(rest) != 1 {
-		return usagef("usage: swim hub admit|reject [WORKER] [--hub URL] [--admin-token T]   (no WORKER: list those waiting)")
+		return usagef("usage: swim auth admit|reject [SWIMMER] [--hub URL] [--admin-token T | --token T]   (no SWIMMER: list those waiting)")
 	}
 	var match []hub.PendingWorker
 	for _, p := range waiting {
@@ -195,14 +196,14 @@ func hubAdmitCmd(args []string, reject bool) error {
 	}
 	switch len(match) {
 	case 0:
-		return fmt.Errorf("no worker %q waiting to join %s (swim hub admit lists them)", rest[0], hubURL)
+		return fmt.Errorf("no swimmer %q waiting to join %s (swim auth admit lists them)", rest[0], hubURL)
 	case 1:
 	default:
-		return fmt.Errorf("%d workers named %s are waiting: give its id (swim hub admit lists them)", len(match), rest[0])
+		return fmt.Errorf("%d swimmers named %s are waiting: give its id (swim auth admit lists them)", len(match), rest[0])
 	}
 	p := match[0]
 	if !reject {
-		fmt.Printf("%s (%s:%s, namespace %s, access %s) key %s: check it matches what swim hub enroll printed there\n", p.Name, p.Host, p.Root, or(p.Namespace, "-"), or(p.Access, "?"), or(p.KeyFP, "none"))
+		fmt.Printf("%s (%s:%s, namespace %s, access %s) key %s: check it matches what swim printed there when it joined\n", p.Name, p.Host, p.Root, or(p.Namespace, "-"), or(p.Access, "?"), or(p.KeyFP, "none"))
 	}
 	msg, err := a.Admit(p.ID, reject)
 	if err != nil {
@@ -215,16 +216,16 @@ func hubAdmitCmd(args []string, reject bool) error {
 // hubUserCmd manages the hub's users with the admin token: each gets a
 // token (shown once) to log in with, and a role.
 //
-//	swim hub user add NAME --role viewer|operator|admin
-//	swim hub user remove NAME
-//	swim hub user list
+//	swim auth users add NAME --role viewer|operator|admin
+//	swim auth users remove NAME
+//	swim auth users list
 func hubUserCmd(args []string) error {
 	var url, token, role, tailscale string
-	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "role": &role, "tailscale": &tailscale}}.parse(args)
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "token": &token, "role": &role, "tailscale": &tailscale}}.parse(args)
 	if err != nil {
 		return err
 	}
-	usage := usagef("usage: swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove NAME | list   [--hub URL] [--admin-token T]")
+	usage := usagef("usage: swim auth users add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove NAME | list   [--hub URL] [--admin-token T | --token T]")
 	if len(rest) == 0 {
 		return usage
 	}
@@ -234,7 +235,7 @@ func hubUserCmd(args []string) error {
 		(sub == "list" || sub == "ls") && len(rest) != 0:
 		return usage
 	case sub == "add" && role != hub.RoleViewer && role != hub.RoleOperator && role != hub.RoleAdmin:
-		return usagef("swim hub user add needs --role viewer (reads full logs), --role operator (also interrupts, drains and runs) or --role admin (also manages users, approvals and grants)")
+		return usagef("swim auth users add needs --role viewer (reads full logs), --role operator (also interrupts, drains and runs) or --role admin (also manages users, approvals and grants)")
 	}
 	a, hubURL, err := hubAdmin(url, token)
 	if err != nil {
@@ -251,13 +252,13 @@ func hubUserCmd(args []string) error {
 		if tailscale != "" {
 			fmt.Printf("on a hub run with --trust-tailscale-identity, tailnet user %s is signed in as %s too\n", tailscale, name)
 		}
-		fmt.Printf("they log in at %s/login with it (it lasts until swim hub user remove %s), or send it as Authorization: Bearer\n", hubURL, name)
+		fmt.Printf("they log in at %s/login with it (it lasts until swim auth users remove %s), or send it as Authorization: Bearer\n", hubURL, name)
 		// The name should be the one lookup.yml knows them by: it's who a
 		// worker records, and (with hub approvals) whose keys count.
 		if root, _, err := repoNoMigrate(); err == nil {
 			if lk, err := lookup.Load(root); err == nil && lk.Path != "" {
 				if _, ok := lk.Users[name]; !ok {
-					fmt.Fprintf(os.Stderr, "swim hub: note: %s isn't a user in %s: give them the name lookup.yml knows them by\n", name, rel(root, lk.Path))
+					fmt.Fprintf(os.Stderr, "swim auth: note: %s isn't a user in %s: give them the name lookup.yml knows them by\n", name, rel(root, lk.Path))
 				}
 			}
 		}
@@ -274,7 +275,7 @@ func hubUserCmd(args []string) error {
 			return err
 		}
 		if len(us) == 0 {
-			fmt.Printf("no users on %s (swim hub user add NAME --role viewer|operator|admin)\n", hubURL)
+			fmt.Printf("no users on %s (swim auth users add NAME --role viewer|operator|admin)\n", hubURL)
 			return nil
 		}
 		fmt.Printf("%-20s %-9s %s\n", "user", "role", "added")
@@ -294,12 +295,12 @@ func hubUserCmd(args []string) error {
 // current repo sees it, to the worker's key and gives the hub only that.
 func secretGrant(args []string) error {
 	var url, token, guardList string
-	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "guard": &guardList}}.parse(args)
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "token": &token, "guard": &guardList}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) < 2 {
-		return usagef("usage: swim secret grant WORKER NAME... [--guard FLAG[,FLAG]] [--hub URL] [--admin-token T]")
+		return usagef("usage: swim secret grant SWIMMER NAME... [--guard FLAG[,FLAG]] [--hub URL] [--admin-token T | --token T]")
 	}
 	// --guard: the worker's runs release it to a lane only once one of
 	// these guards is approved for it (and swim.yml's own guard too).
@@ -325,10 +326,10 @@ func secretGrant(args []string) error {
 		return err
 	}
 	if key == "" {
-		return fmt.Errorf("%s enrolled without a key: run swim hub enroll there again (a current swim)", w.Name)
+		return fmt.Errorf("%s joined without a key: run swim watch there again with a current swim", w.Name)
 	}
 	if !approved {
-		return fmt.Errorf("%s isn't approved on the hub: approve it first (a on its row, or swim hub approve %s), after checking its key %s", w.Name, w.Name, fp)
+		return fmt.Errorf("%s isn't approved on the hub: approve it first (a on its row, or swim auth approve %s), after checking its key %s", w.Name, w.Name, fp)
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -361,12 +362,12 @@ func secretGrant(args []string) error {
 
 func secretRevoke(args []string) error {
 	var url, token string
-	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token}}.parse(args)
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "token": &token}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) < 2 {
-		return usagef("usage: swim secret revoke WORKER NAME... [--hub URL] [--admin-token T]")
+		return usagef("usage: swim secret revoke SWIMMER NAME... [--hub URL] [--admin-token T | --token T]")
 	}
 	a, _, err := hubAdmin(url, token)
 	if err != nil {
@@ -387,12 +388,12 @@ func secretRevoke(args []string) error {
 
 func secretGrants(args []string) error {
 	var url, token string
-	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token}}.parse(args)
+	rest, err := flags{strs: map[string]*string{"hub": &url, "admin-token": &token, "token": &token}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim secret grants [--hub URL] [--admin-token T]")
+		return usagef("usage: swim secret grants [--hub URL] [--admin-token T | --token T]")
 	}
 	a, hubURL, err := hubAdmin(url, token)
 	if err != nil {
@@ -403,10 +404,10 @@ func secretGrants(args []string) error {
 		return err
 	}
 	if len(gs) == 0 {
-		fmt.Printf("no grants on %s (swim secret grant WORKER NAME)\n", hubURL)
+		fmt.Printf("no grants on %s (swim secret grant SWIMMER NAME)\n", hubURL)
 		return nil
 	}
-	fmt.Printf("%-16s %-24s %-21s %-12s %s\n", "worker", "secret", "granted", "by", "guard")
+	fmt.Printf("%-16s %-24s %-21s %-12s %s\n", "swimmer", "secret", "granted", "by", "guard")
 	for _, g := range gs {
 		fmt.Printf("%-16s %-24s %-21s %-12s %s\n", g.Name, g.Secret, g.At, g.By, strings.Join(g.Guard, " or "))
 	}

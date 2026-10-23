@@ -76,16 +76,16 @@ func TestHubTLS(t *testing.T) {
 	}()
 
 	// Without --ca the hub's self-signed certificate is unknown.
-	if out, code := r.swim("hub", "enroll", url, "--token", "t0ken"); code == 0 || !strings.Contains(out, "unknown authority") || !strings.Contains(out, "--ca") {
-		t.Fatalf("enroll without --ca: %d %s", code, out)
+	if out, code := r.swim("auth", "login", url, "--access", "read"); code == 0 || !strings.Contains(out, "unknown authority") || !strings.Contains(out, "--ca") {
+		t.Fatalf("login without --ca: %d %s", code, out)
 	}
 	caFile := filepath.Join(t.TempDir(), "ca.pem")
 	noErr(t, os.WriteFile(caFile, caPEM, 0o600))
-	contains(t, "enroll --ca", r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing", "--ca", caFile), "enrolled", "as billing")
-	r.admit(t, url, "billing", "SWIM_HUB_CA="+caFile)
-	// The CA is kept with the enrollment: later reports trust it too.
+	contains(t, "login --ca", r.join(t, url, "billing", "read", "--ca", caFile), "logged in to "+url, "joined")
+	// The CA is kept with the login: later reports trust it too.
 	noErr(t, os.Remove(caFile))
-	contains(t, "status", r.mustSwim("hub", "status"), "enrolled with "+url+" as billing", "reachable")
+	r.mustSwim("watch", "--once")
+	contains(t, "status", r.mustSwim("auth", "status"), "hub:     "+url, "state:   admitted", "billing")
 
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(caPEM)
@@ -97,7 +97,7 @@ func TestHubTLS(t *testing.T) {
 	var w hubWorkers
 	json.NewDecoder(resp.Body).Decode(&w)
 	resp.Body.Close()
-	if len(w.Workers) != 1 || w.Workers[0].Name != "billing" || w.Workers[0].Activity != "checked by swim hub status" {
+	if len(w.Workers) != 1 || w.Workers[0].Name != "billing" || w.Workers[0].Activity != "stopped" {
 		t.Fatalf("over https: %+v", w)
 	}
 	if out, _ := r.swim("doctor"); strings.Contains(out, "hub-http") {
@@ -118,17 +118,17 @@ func TestHubTLSPolicy(t *testing.T) {
 	// Plain http to another machine: refused with no network call (the
 	// address is unroutable in tests; a dial would take seconds, not fail fast).
 	start := time.Now()
-	out, code = r.swim("hub", "enroll", "http://10.1.2.3:7700", "--token", "t")
+	out, code = r.swim("auth", "login", "http://10.1.2.3:7700", "--access", "read")
 	if code != 2 || !strings.Contains(out, "plain http") || !strings.Contains(out, "--insecure") {
-		t.Fatalf("enroll http to another machine: %d %s", code, out)
+		t.Fatalf("login http to another machine: %d %s", code, out)
 	}
 	if time.Since(start) > 2*time.Second {
 		t.Errorf("the refusal took %v: it tried the network", time.Since(start))
 	}
-	if out, code := r.swim("hub", "enroll", "http://127.0.0.1:1", "--token", "t", "--ca", "x.pem"); code != 2 || !strings.Contains(out, "--ca is for an https") {
+	if out, code := r.swim("auth", "login", "http://127.0.0.1:1", "--access", "read", "--ca", "x.pem"); code != 2 || !strings.Contains(out, "--ca is for an https") {
 		t.Fatalf("--ca with http: %d %s", code, out)
 	}
-	if out, code := r.swim("hub", "login", "http://10.1.2.3:7700", "--admin-token", "a"); code != 2 || !strings.Contains(out, "plain http") {
+	if out, code := r.swim("auth", "login", "http://10.1.2.3:7700", "--admin-token", "a"); code != 2 || !strings.Contains(out, "plain http") {
 		t.Fatalf("login http to another machine: %d %s", code, out)
 	}
 

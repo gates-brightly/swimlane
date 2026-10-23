@@ -301,7 +301,7 @@ func ForScript(root, sha string) []*File {
 // "lane.3.....signature: stale: config policy changed (swim.yml: ...)".
 func ForManifest(files []*File, m *manifest.Manifest) (out []*File, stale []string) {
 	for _, f := range files {
-		if f.Kind != Script || f.Manifest == "" || m == nil || f.Manifest == m.SHA256 {
+		if f.Kind != Script || f.Manifest == "" || m == nil || m.Matches(f.Manifest) {
 			out = append(out, f)
 			continue
 		}
@@ -512,7 +512,7 @@ func (f *File) State(l *lookup.Lookup, now time.Time, cur Current) State {
 		if cur.Script != "" && cur.Script != f.SHA256 {
 			return State{Name: Stale, Why: "the script changed since"}
 		}
-		if cur.Manifest != nil && f.Manifest != "" && f.Manifest != cur.Manifest.SHA256 {
+		if cur.Manifest != nil && f.Manifest != "" && !cur.Manifest.Matches(f.Manifest) {
 			return State{Name: Stale, Why: f.StaleReason(cur.Manifest)}
 		}
 	case Standing:

@@ -1,4 +1,4 @@
-// Command swim runs operator-in-the-loop automation lanes. See `swim --help`.
+// Command swim runs operator-in-the-loop automation lanes. See `swim guide`.
 package main
 
 import (

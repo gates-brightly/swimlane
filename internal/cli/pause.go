@@ -186,7 +186,7 @@ func cmdPause(args []string) error {
 			return err
 		}
 		history.Log(root, history.Entry{Event: history.PauseAll, Detail: strings.TrimSpace("by " + by + "  " + note)})
-		fmt.Println("paused the repo: no lane starts another step, no worker claims a batch, until swim unpause --all")
+		fmt.Println("paused the repo: no lane starts another step, no swimmer claims a batch, until swim unpause --all")
 		for _, n := range lane.Associated(root) {
 			if l := activeLane(root, st, n); l != nil {
 				ns = append(ns, n)
@@ -362,7 +362,7 @@ func cmdUnpause(args []string) error {
 			return nil
 		}
 		history.Log(root, history.Entry{Event: history.UnpauseAll, Detail: "by " + by})
-		fmt.Printf("unpaused the repo%s: workers claim batches again\n", map[bool]string{true: fmt.Sprintf(" and %d lanes", n), false: ""}[n > 0])
+		fmt.Printf("unpaused the repo%s: swimmers claim batches again\n", map[bool]string{true: fmt.Sprintf(" and %d lanes", n), false: ""}[n > 0])
 		return nil
 	}
 	st, _ := status.Load(root)

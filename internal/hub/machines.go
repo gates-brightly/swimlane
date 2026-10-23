@@ -69,7 +69,7 @@ func (s *Server) machineEnrollAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.admitting() {
-		http.Error(w, "this hub keeps no state (swim hub --state DIR): it can't keep machines; enroll each directory (swim hub enroll)", http.StatusServiceUnavailable)
+		http.Error(w, "this hub keeps no state: swimmers can join only a hub run with --state DIR (swim hub --state DIR)", http.StatusServiceUnavailable)
 		return
 	}
 	in.Name, in.Host, in.User, in.Version = ui.Safe(in.Name), ui.Safe(in.Host), ui.Safe(in.User), ui.Safe(in.Version)

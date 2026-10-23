@@ -25,8 +25,7 @@ func commandRepo(t *testing.T) (r *repo, url, state, id string, alice, vic *hub.
 	state = t.TempDir()
 	url, stop := startHub(t, r, state, "127.0.0.1:0")
 	t.Cleanup(stop)
-	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "headless", "--access", "readwrite")
-	r.admit(t, url, "headless")
+	r.join(t, url, "headless", "readwrite")
 	t.Cleanup(func() {
 		if pid := headlessPid(r); pid > 0 {
 			syscall.Kill(pid, syscall.SIGKILL)
@@ -36,7 +35,7 @@ func commandRepo(t *testing.T) (r *repo, url, state, id string, alice, vic *hub.
 	data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "hub.yml"))
 	yaml.Unmarshal(data, &hf)
 	user := func(name, role string) *hub.UserClient {
-		out := r.mustSwim("hub", "user", "add", name, "--role", role, "--hub", url, "--admin-token", "adm1n")
+		out := r.mustSwim("auth", "users", "add", name, "--role", role, "--hub", url, "--admin-token", "adm1n")
 		tok := regexp.MustCompile(`(?m)^  ([0-9a-f]{48})$`).FindStringSubmatch(out)
 		if tok == nil {
 			t.Fatalf("no token in:\n%s", out)
@@ -166,7 +165,7 @@ run "after" sleep 10`)
 	waitFor(t, func() bool { return r.status().Get(3).CurrentStep == "short" })
 	pid := headlessPid(r)
 	alice.Send(id, hub.Command{Kind: hub.KindDrain})
-	waitLog(t, r, "hub drain by alice"+via+"done: the worker stops after the batch in hand")
+	waitLog(t, r, "hub drain by alice"+via+"done: the swimmer stops after the batch in hand")
 	deadline := time.Now().Add(10 * time.Second)
 	for processAlive(pid) && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)

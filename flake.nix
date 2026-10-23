@@ -32,6 +32,7 @@
           ];
           meta = {
             description = "Run AI-written operational changes safely, with a human in the loop";
+            license = pkgs.lib.licenses.mit;
             mainProgram = "swim";
           };
         };

@@ -69,7 +69,7 @@ func cmdLog(args []string) error {
 		return out.file(history.Path(root), false)
 	}
 
-	ref := rest[0]
+	ref := taskRef(root, cfg, rest[0])
 	// One cell of a matrix round: 3[orders] (or <job>/<cell>) reads its log.
 	if base, cell, ok := lane.ParseCellRef(ref); ok {
 		n, err := laneRef(root, cfg, base, true)

@@ -8,6 +8,7 @@ where it would land in the code, open questions, and how to test it.
 |---|---|---|
 | swim observe: computed observations and knowledge from runs; an optional write-up with the claude module | [observe.md](observe.md) | in progress (detectors, keys and targets, swim observe, report, status, finally input and knowledge shipped; an index, cells and jobs, excerpts left) |
 | Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in, repo and fetched modules shipped; signed fetched versions left) |
+| Sandboxed lanes: a throwaway copy of the repo per lane, so concurrent jobs don't clobber each other's files (only $SWIM_OUT is kept); and a container with its network off or allowlisted, opened per stage only once its guard is approved; image and policy signed in the manifest; no access to the operator's keys | [sandbox.md](sandbox.md) | proposed |
 
 ## Staging a feature
 
@@ -17,6 +18,6 @@ where it would land in the code, open questions, and how to test it.
 3. When work starts, set the status to `in progress` and link the branch or PR.
    Resolve the open questions in the spec first: answers go in the spec, not a chat.
 4. When it ships, delete the spec and its row; git history keeps the design record.
-   The user-facing docs are `swim --help` (`internal/help/guide.txt`) and the README.
+   The user-facing docs are `swim guide` (`internal/help/guide.txt`) and the README.
 
 Statuses: `proposed`, `accepted`, `in progress`, `dropped (<why>)`.

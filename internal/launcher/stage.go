@@ -63,7 +63,7 @@ func pinned(o Options, n int) (why string, refuse bool) {
 	if want := o.PinSHA[n]; want != "" && m.ScriptSHA != want {
 		return fmt.Sprintf("%s changed since it was queued (queued %s)", lane.ScriptName(o.Root, n), want[:min(12, len(want))]), false
 	}
-	if want := o.PinManifest[n]; want != "" && m.SHA256 != want {
+	if want := o.PinManifest[n]; want != "" && !m.Matches(want) {
 		return fmt.Sprintf("its manifest changed since it was queued (queued %s, now %s): its includes, sidecar, runner or swim.yml policy", want[:min(12, len(want))], m.SHA256[:12]), false
 	}
 	if want, ok := o.PinEnv[n]; ok && want != m.Local.Env {

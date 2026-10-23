@@ -47,7 +47,7 @@ func (s *Server) putStream(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	switch {
 	case !ok:
-		http.Error(w, "needs this worker's own token", http.StatusUnauthorized)
+		http.Error(w, "needs this swimmer's own token", http.StatusUnauthorized)
 		return
 	case !chars.Name(run, 128) || err != nil || lane < 1:
 		http.Error(w, "a run id and a lane number", http.StatusBadRequest)

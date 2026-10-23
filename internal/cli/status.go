@@ -170,6 +170,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		if round != "" {
 			line += " " + round
 		}
+		if info, _ := lane.ReadScript(root, l.Lane); info.Task != "" {
+			line += p.Paint(ui.Dim, "  ["+info.Task+"]")
+		}
 		fmt.Println(line)
 
 		indent := strings.Repeat(" ", 10)
@@ -330,7 +333,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		if orphaned > 0 {
 			line += fmt.Sprintf(", %d orphaned", orphaned)
 		}
-		fmt.Println(p.Paint(ui.Yellow, line+"   (swim queue; a worker: swim watch)"))
+		fmt.Println(p.Paint(ui.Yellow, line+"   (swim queue; a swimmer: swim watch)"))
 	}
 	fmt.Println(p.Paint(ui.Dim, "raw: "+rel(root, status.Path(root))+"   logs: swim log N"))
 }

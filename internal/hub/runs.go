@@ -377,7 +377,7 @@ func (s *Server) putRun(w http.ResponseWriter, r *http.Request) {
 	ok := s.isWorker(id, bearer(r.Header))
 	s.mu.Unlock()
 	if !ok {
-		http.Error(w, "needs this worker's own token", http.StatusUnauthorized)
+		http.Error(w, "needs this swimmer's own token", http.StatusUnauthorized)
 		return
 	}
 	if !chars.Name(run, 128) {

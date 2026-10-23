@@ -18,9 +18,9 @@ func TestRunnersPsStop(t *testing.T) {
 			b.env = append(b.env, kv)
 		}
 	}
-	b.mustSwim("hub", "status") // still enrolled under the shared config
+	b.mustSwim("auth", "status") // logged in under the shared config
 
-	if out := a.mustSwim("ps"); !strings.Contains(out, "no headless workers running") {
+	if out := a.mustSwim("ps"); !strings.Contains(out, "no headless swimmers running") {
 		t.Errorf("ps with none:\n%s", out)
 	}
 	a.mustSwim("watch", "--headless", "--detach", "--interval", "200ms")
@@ -47,7 +47,7 @@ func TestRunnersPsStop(t *testing.T) {
 	if processAlive(pa) || processAlive(pb) {
 		t.Errorf("still running after stop --all")
 	}
-	contains(t, "stop again", a.mustSwim("stop"), "no headless worker running")
+	contains(t, "stop again", a.mustSwim("stop"), "no headless swimmer running")
 	if out, code := a.swim("stop", "now"); code != 2 {
 		t.Errorf("stop with an argument outside a lane: exit %d\n%s", code, out)
 	}

@@ -495,7 +495,7 @@ func (w *watchView) showOutput(e *queue.Entry) string {
 		if e.State == queue.Queued {
 			return fmt.Sprintf("#%d hasn't started yet", e.Seq)
 		}
-		return fmt.Sprintf("#%d has no output here (another worker, or swim watch --batches 1 runs it on the screen)", e.Seq)
+		return fmt.Sprintf("#%d has no output here (another swimmer, or swim watch --batches 1 runs it on the screen)", e.Seq)
 	}
 	end := func() *display.FollowEnd { return batchEnd(w.root, e.ID, bp) }
 	title := fmt.Sprintf("swim watch · #%d %s (%s)", e.Seq, e.ID, lanesText(laneNums(e)))

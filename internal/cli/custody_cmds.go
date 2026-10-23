@@ -166,14 +166,13 @@ func cmdApprove(args []string) error {
 		// A round with evidence steps (or a guard whose rule needs it) is
 		// approved together with its latest evidence: the plan, not just
 		// the script.
-		evHash := ""
+		evHash, cellName := "", ""
 		if !noEvidence && (info.UsesEvidence || needsEvidence(lk, approves, all, scriptGuards)) {
 			ev, err := approvalEvidence(root, n, info, sha, cells)
 			if err != nil {
 				return err
 			}
 			evHash = ev.Hash
-			cellName := ""
 			if len(cells) > 0 {
 				cellName = cells[0]
 			}
@@ -184,6 +183,21 @@ func cmdApprove(args []string) error {
 				fmt.Println("  " + l)
 			}
 			fmt.Printf("approving %s (script %s, evidence %s)\n", lane.ScriptName(root, n), short12(sha), short12(ev.Hash))
+		}
+		// An approval file a swim before manifest v2 started for these same
+		// pins (its v1 hash) is the one to co-approve: a second file would
+		// split the approvers between two statements.
+		if m.LegacySHA256 != "" {
+			legacy := sigfile.ScriptPath(root, n, sha, m.LegacySHA256)
+			switch {
+			case evHash != "":
+				legacy = sigfile.EvidencePath(root, n, sha, m.LegacySHA256, evHash, cellName)
+			case len(cells) > 0:
+				legacy = sigfile.CellPath(root, n, sha, m.LegacySHA256, cells[0])
+			}
+			if _, serr := os.Stat(legacy); serr == nil {
+				path, man = legacy, m.LegacySHA256
+			}
 		}
 		f, err = loadOrNew(path, func() *sigfile.File {
 			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round, Cells: cells, Evidence: evHash,
@@ -418,7 +432,7 @@ func printPinned(m *manifest.Manifest) {
 		fmt.Printf("  module   %s %s %s %s%s\n", p.Name, p.Version, p.Source, short12(p.SHA256), effects)
 	}
 	fmt.Printf("  runner   %s\n", m.Pinned.Runner)
-	fmt.Printf("  config   %s (swim.yml: %s)\n", short12(m.Pinned.Config.SHA256), strings.Join(m.Pinned.Config.Keys, ", "))
+	fmt.Printf("  config   %s (swim.yml: %s)\n", short12(m.Pinned.Config.SHA256), or(strings.Join(m.Pinned.Config.Keys, ", "), "no policy keys set"))
 	if m.Pinned.Config.Rules != "" {
 		fmt.Printf("  rules    %s (lookup.yml require:)\n", short12(m.Pinned.Config.Rules))
 	}
@@ -439,7 +453,7 @@ func staleWhy(root string, cfg *config.Config, f *sigfile.File, mans map[int]*ma
 	if m == nil || m.ScriptSHA != f.SHA256 {
 		return "the script changed since"
 	}
-	if f.Manifest != "" && f.Manifest != m.SHA256 {
+	if f.Manifest != "" && !m.Matches(f.Manifest) {
 		return f.StaleReason(m)
 	}
 	return ""
@@ -650,7 +664,7 @@ func cmdHistory(args []string) error {
 	}
 	match := func(l chain.Link) bool { return true }
 	if len(rest) == 1 {
-		ref := rest[0]
+		ref := taskRef(root, cfg, rest[0])
 		if n, err := strconv.Atoi(ref); err == nil {
 			if _, err := laneArg(cfg, ref); err != nil {
 				return err

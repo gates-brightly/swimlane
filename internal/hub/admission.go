@@ -39,7 +39,7 @@ type PendingWorker struct {
 }
 
 // errPending answers a waiting worker's every request.
-const errPending = "waiting for the hub's admin to admit this worker (the hub's Admin page, or swim hub admit NAME)"
+const errPending = "waiting for the hub's admin to admit this swimmer (the hub's Admin page, or swim auth admit NAME)"
 
 // admitting reports whether new workers wait to be admitted: the hub keeps
 // state to keep the admissions in.
@@ -143,7 +143,7 @@ func (s *Server) Reject(id, by string) (string, error) {
 	}
 	r := s.records[id]
 	if r == nil || !r.Pending {
-		return "", errors.New("no worker waiting with that id")
+		return "", errors.New("no swimmer waiting with that id")
 	}
 	delete(s.records, id)
 	if err := s.save(); err != nil {

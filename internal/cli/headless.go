@@ -68,7 +68,7 @@ func headlessPath(root, name string) string { return filepath.Join(root, ".swim"
 // a hub.
 func headlessNoHub(err error) error {
 	if errors.Is(err, os.ErrNotExist) {
-		return errors.New("--headless needs a hub: this directory isn't enrolled and this machine isn't logged in to one (swim auth login URL for every directory here, or swim hub enroll URL for this one). With no terminal, the hub is the only place the worker can be seen")
+		return errors.New("--headless needs a hub: this machine isn't logged in to one (swim auth login URL --access read|readwrite). With no terminal, the hub is the only place the swimmer can be seen")
 	}
 	return err
 }
@@ -190,7 +190,7 @@ func headlessStart(root string, yes, approved bool) (release func(), err error) 
 		return nil, err
 	}
 	if unlock == nil {
-		fmt.Fprintf(os.Stderr, "swim watch: a headless worker already runs in this repo: pid %d holds .swim/headless.lock (swim watch --headless --status)\n", holder)
+		fmt.Fprintf(os.Stderr, "swim watch: a headless swimmer already runs in this repo: pid %d holds .swim/headless.lock (swim watch --headless --status)\n", holder)
 		return nil, exitError{2}
 	}
 	pidPath := headlessPath(root, "pid")
@@ -299,7 +299,7 @@ func (l *headlessLog) rotateIfBig() error {
 // .swim/headless.log, and waits up to 5s for it to take the lock.
 func headlessDetach(root string, args []string) error {
 	if pid, held := headlessHolder(root); held {
-		fmt.Fprintf(os.Stderr, "swim watch: a headless worker already runs in this repo: pid %d holds .swim/headless.lock (swim watch --headless --status)\n", pid)
+		fmt.Fprintf(os.Stderr, "swim watch: a headless swimmer already runs in this repo: pid %d holds .swim/headless.lock (swim watch --headless --status)\n", pid)
 		return exitError{2}
 	}
 	lw := &headlessLog{path: headlessPath(root, "log"), max: headlessLogMax, keep: headlessLogKeep}
@@ -329,7 +329,7 @@ func headlessDetach(root string, args []string) error {
 	for {
 		select {
 		case err := <-exited:
-			fmt.Fprintf(os.Stderr, "swim watch: the headless worker exited at once (%v); the end of %s:\n", err, rel(root, lw.path))
+			fmt.Fprintf(os.Stderr, "swim watch: the headless swimmer exited at once (%v); the end of %s:\n", err, rel(root, lw.path))
 			for _, l := range tailLines(lw.path, 10) {
 				fmt.Fprintln(os.Stderr, "  "+l)
 			}
@@ -340,10 +340,10 @@ func headlessDetach(root string, args []string) error {
 			}
 			return exitError{code}
 		case <-deadline:
-			return fmt.Errorf("the headless worker (pid %d) didn't take .swim/headless.lock within 5s; see %s", pid, rel(root, lw.path))
+			return fmt.Errorf("the headless swimmer (pid %d) didn't take .swim/headless.lock within 5s; see %s", pid, rel(root, lw.path))
 		case <-tick.C:
 			if pidFile(root) == pid {
-				fmt.Printf("swim watch: headless worker started, pid %d (in .swim/headless.pid); its output goes to %s\n", pid, rel(root, lw.path))
+				fmt.Printf("swim watch: headless swimmer started, pid %d (in .swim/headless.pid); its output goes to %s\n", pid, rel(root, lw.path))
 				fmt.Println("  swim watch --headless --status    is it running?")
 				fmt.Println("  swim watch --headless --stop      stop it after the batch in hand")
 				return nil
@@ -400,10 +400,10 @@ func headlessStop(root string, cfg *config.Config) error {
 	if !held {
 		if pp := pidFile(root); pp != 0 {
 			os.Remove(headlessPath(root, "pid"))
-			fmt.Printf("swim watch: no headless worker running (removed a stale .swim/headless.pid naming pid %d)\n", pp)
+			fmt.Printf("swim watch: no headless swimmer running (removed a stale .swim/headless.pid naming pid %d)\n", pp)
 			return nil
 		}
-		fmt.Println("swim watch: no headless worker running")
+		fmt.Println("swim watch: no headless swimmer running")
 		return nil
 	}
 	if ok, cmdline := headlessProcess(pid); !ok {
@@ -414,7 +414,7 @@ func headlessStop(root string, cfg *config.Config) error {
 	}
 	_, term := cfg.Graces()
 	wait := term + 30*time.Second
-	fmt.Printf("swim watch: sent SIGTERM to the headless worker (pid %d): it stops after the batch in hand (its lanes stop at the next step boundary, forced after term_grace %s); waiting up to %s\n", pid, term, wait)
+	fmt.Printf("swim watch: sent SIGTERM to the headless swimmer (pid %d): it stops after the batch in hand (its lanes stop at the next step boundary, forced after term_grace %s); waiting up to %s\n", pid, term, wait)
 	for end := time.Now().Add(wait); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
 		if _, held := headlessHolder(root); !held {
 			fmt.Println("swim watch: stopped")

@@ -270,7 +270,7 @@ approve and run; the session reads the log and writes the next round.
 ## Where next
 
 - [docs/README.md](README.md): the rest of the docs, in reading order.
-- `swim --help`: the full guide. One section:
-  `swim --help | awk '/^WRITING A LANE SCRIPT$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit} p'`
+- `swim guide`: the full guide. One section:
+  `swim guide | awk '/^WRITING A LANE SCRIPT$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit} p'`
 - [demos/](../demos/README.md): six scripted scenarios, from a guarded change
   to tamper evidence.

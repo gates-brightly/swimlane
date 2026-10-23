@@ -309,7 +309,7 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request, role string
 	var u *User
 	switch {
 	case got != "" && s.isAdmin(got):
-		http.Error(w, "the admin token manages users only: send commands as a user (swim hub user add NAME --role operator)", http.StatusForbidden)
+		http.Error(w, "the admin token manages users only: send commands as a user (swim auth users add NAME --role operator)", http.StatusForbidden)
 		return nil, false
 	case got != "":
 		if u = s.userByToken(got); u == nil {

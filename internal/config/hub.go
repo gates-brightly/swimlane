@@ -17,6 +17,28 @@ type HubSettings struct {
 	// way, with their steps, commands, exits and durations; their output
 	// only under stream.
 	Logs string `yaml:"logs,omitempty"`
+	// Name is what this directory is called on the hub when it joins
+	// through swim auth (default: the directory's name).
+	Name string `yaml:"name,omitempty"`
+	// Namespace is the hub tab it shows under (default: its origin
+	// remote's, e.g. github.com/org/api).
+	Namespace string `yaml:"namespace,omitempty"`
+}
+
+// HubName is hub.name ("" for the default).
+func (c *Config) HubName() string {
+	if c.Hub == nil {
+		return ""
+	}
+	return strings.TrimSpace(c.Hub.Name)
+}
+
+// HubNamespace is hub.namespace ("" for the default).
+func (c *Config) HubNamespace() string {
+	if c.Hub == nil {
+		return ""
+	}
+	return strings.TrimSpace(c.Hub.Namespace)
 }
 
 // hub.logs values.

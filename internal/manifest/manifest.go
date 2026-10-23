@@ -83,11 +83,23 @@ type File struct {
 
 // Policy is the policy part of the config.
 type Policy struct {
-	SHA256  string   `yaml:"sha256"` // config.PolicyHash: swim.yml's policy keys
+	SHA256  string   `yaml:"sha256"` // config.PolicyHash: the swim.yml policy keys it sets
 	Version int      `yaml:"version"`
 	Keys    []string `yaml:"keys"`
 	Rules   string   `yaml:"lookup_rules,omitempty"` // lookup.yml's require: rules
+	// Format is the manifest hash text this policy was pinned for: 0 for
+	// manifest v1 (SHA256 is then the v1 policy hash), 2 for manifest v2.
+	Format int `yaml:"format,omitempty"`
+	// LegacySHA256 is config.LegacyPolicyHash, for the v1 manifest hash
+	// (Format 2 only; "" when no v1 hash can stand for this policy).
+	LegacySHA256 string `yaml:"legacy_sha256,omitempty"`
+	// Set is each policy key swim.yml sets, with its value's hash, so a
+	// stale approval can say which changed (Format 2 only; not hashed).
+	Set map[string]string `yaml:"set,omitempty"`
 }
+
+// legacyPolicyVersion is the policy version the v1 manifest hash wrote.
+const legacyPolicyVersion = 3
 
 // Pinned is what manifest_sha256 covers.
 type Pinned struct {
@@ -143,6 +155,10 @@ type Manifest struct {
 	Guards        []string `yaml:"guards,omitempty"`
 	DynamicGuards bool     `yaml:"dynamic_guards,omitempty"`
 	SHA256        string   `yaml:"manifest_sha256"`
+	// LegacySHA256 is the manifest v1 hash of the same pins: approvals,
+	// queue entries, schedules and hub commands pinned before manifest v2
+	// match it (Matches). "" when no v1 hash can stand for them.
+	LegacySHA256 string `yaml:"legacy_manifest_sha256,omitempty"`
 
 	// Dir is where the manifest is staged ("" before Stage).
 	Dir  string            `yaml:"-"`
@@ -239,7 +255,14 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	if lk, err := lookup.Load(root); err == nil {
 		rules = lk.RulesHash()
 	}
-	m.Pinned.Config = Policy{SHA256: cfg.PolicyHash(), Version: config.PolicyVersion, Keys: config.PolicyKeys, Rules: rules}
+	set := cfg.PolicySet()
+	keys := make([]string, 0, len(set))
+	for k := range set {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	m.Pinned.Config = Policy{SHA256: cfg.PolicyHash(), Version: config.PolicyVersion, Keys: keys, Rules: rules,
+		Format: 2, LegacySHA256: cfg.LegacyPolicyHash(), Set: set}
 	m.Local.Env = envSHA
 	m.Job = info.Job
 	seen := map[string]bool{}
@@ -263,14 +286,45 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	m.DynamicGuards = info.DynamicGuards > 0 || lane.ParseScript(string(data)).DynamicGuards > 0
 	sort.Strings(m.Guards)
 	m.SHA256 = m.Pinned.Hash(n)
+	m.LegacySHA256 = m.Pinned.HashV1(n)
 	return m, nil
 }
 
+// Matches reports whether pin, a manifest_sha256 an approval, queue entry,
+// schedule or hub command recorded, pins this manifest: its v2 hash, or
+// the v1 hash of the same pins (pinned by a swim before manifest v2).
+func (m *Manifest) Matches(pin string) bool {
+	return pin != "" && (pin == m.SHA256 || pin == m.LegacySHA256)
+}
+
 // Hash is manifest_sha256: the SHA-256 of the lane number and the pinned
-// entries, in a fixed text form. (The job id is in the script or sidecar.)
+// entries, in a fixed text form (docs/formats.md). (The job id is in the
+// script or sidecar.) A manifest pinned before v2 hashes as v1.
 func (p Pinned) Hash(n int) string {
+	if p.Config.Format < 2 {
+		return p.HashV1(n)
+	}
+	return hash([]byte(p.text("swim manifest v2", n, "config: "+p.Config.SHA256)))
+}
+
+// HashV1 is the manifest v1 hash of the same pins (policy version 3), ""
+// when no v1 hash can stand for them. Frozen: v1 pins must keep matching.
+func (p Pinned) HashV1(n int) string {
+	sha, version := p.Config.SHA256, p.Config.Version
+	if p.Config.Format >= 2 {
+		sha, version = p.Config.LegacySHA256, legacyPolicyVersion
+	}
+	if sha == "" {
+		return ""
+	}
+	return hash([]byte(p.text("swim manifest v1", n, fmt.Sprintf("config: v%d %s", version, sha))))
+}
+
+// text is the hashed form of the pins: head, then the lane, script,
+// includes, sidecar, modules, runner, config line and lookup rules.
+func (p Pinned) text(head string, n int, config string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "swim manifest v1\nlane: %d\nscript: %s %s\n", n, p.Script.Path, p.Script.SHA256)
+	fmt.Fprintf(&b, "%s\nlane: %d\nscript: %s %s\n", head, n, p.Script.Path, p.Script.SHA256)
 	for _, f := range p.Includes {
 		fmt.Fprintf(&b, "include: %s %s\n", f.Path, f.SHA256)
 	}
@@ -280,8 +334,8 @@ func (p Pinned) Hash(n int) string {
 	for _, mod := range p.Modules {
 		fmt.Fprintf(&b, "module: %s %s %s %s %s\n", mod.Name, mod.Version, mod.Source, mod.Kind, mod.SHA256)
 	}
-	fmt.Fprintf(&b, "runner: %s\nconfig: v%d %s\nlookup-rules: %s\n", p.Runner, p.Config.Version, p.Config.SHA256, p.Config.Rules)
-	return hash([]byte(b.String()))
+	fmt.Fprintf(&b, "runner: %s\n%s\nlookup-rules: %s\n", p.Runner, config, p.Config.Rules)
+	return b.String()
 }
 
 // Stage copies the pinned files into the run's stage for the lane,
@@ -518,13 +572,42 @@ func Diff(old, new Pinned) []string {
 	if old.Runner != new.Runner {
 		out = append(out, fmt.Sprintf("runner changed (%s, now %s)", or(old.Runner, "none"), or(new.Runner, "none")))
 	}
-	if old.Config.SHA256 != new.Config.SHA256 || old.Config.Version != new.Config.Version {
-		out = append(out, "config policy changed (swim.yml: "+strings.Join(new.Config.Keys, ", ")+")")
-	}
+	out = append(out, diffPolicy(old.Config, new.Config)...)
 	if old.Config.Rules != new.Config.Rules {
 		out = append(out, "approval rules changed (lookup.yml require:)")
 	}
 	return out
+}
+
+// diffPolicy says how swim.yml's policy changed between an approval's pins
+// and now, naming the keys when both sides recorded them.
+func diffPolicy(old, new Policy) []string {
+	if old.Format < 2 {
+		// A v1 pin: compare like with like.
+		if old.SHA256 == new.LegacySHA256 && new.LegacySHA256 != "" {
+			return nil
+		}
+		return []string{"config policy changed (swim.yml: " + or(strings.Join(new.Keys, ", "), "no policy keys set") + ")"}
+	}
+	if old.SHA256 == new.SHA256 {
+		return nil
+	}
+	var keys []string
+	for k, sum := range new.Set {
+		if old.Set[k] != sum {
+			keys = append(keys, k)
+		}
+	}
+	for k := range old.Set {
+		if _, ok := new.Set[k]; !ok {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return []string{"config policy changed (swim.yml)"}
+	}
+	return []string{"config policy changed (swim.yml: " + strings.Join(keys, ", ") + ")"}
 }
 
 // diffModules says how a lane's modules changed: "module notify added",

@@ -72,7 +72,7 @@ func cmdApproveHook(args []string) error {
 	blocked := func(why string) error {
 		cmdMark([]string{args[0], logparse.Blocked, desc, "can't be answered here: " + why})
 		history.Log(root, history.Entry{Event: history.Decline, Lane: n, Job: job, Run: run, Detail: desc + "  (blocked: " + why + ")"})
-		return endRound(root, n, 1, "guard "+flag+" can't be answered on this worker: "+why)
+		return endRound(root, n, 1, "guard "+flag+" can't be answered on this swimmer: "+why)
 	}
 	m := laneManifest(root, cfg, n)
 	sha, man := scriptSHA(root, n), ""

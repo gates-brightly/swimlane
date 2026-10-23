@@ -56,7 +56,7 @@ When you need one section of the guide, extract it instead of reading
 all of it (headings are uppercase, at column 0):
 
 ```sh
-swim --help | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit} p'
+swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit} p'
 ```
 
 | Before you... | Read section |

@@ -84,6 +84,7 @@ type Lane struct {
 	Lane     int      `json:"lane"`
 	State    string   `json:"state"`
 	Round    string   `json:"round,omitempty"`
+	Task     string   `json:"task,omitempty"` // its # Task: name; "" for none (and from older swimmers)
 	Job      string   `json:"job,omitempty"`
 	Run      string   `json:"run,omitempty"`
 	Step     string   `json:"step,omitempty"`
@@ -421,7 +422,7 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 	// once the machine is: a directory it enrolled again too.
 	m := s.machineByToken(got)
 	if m != nil && m.Pending {
-		http.Error(w, "this machine waits for the hub's admin to admit it (the hub's Admin page, or swim hub admit "+m.Name+")", http.StatusForbidden)
+		http.Error(w, "this machine waits for the hub's admin to admit it (the hub's Admin page, or swim auth admit "+m.Name+")", http.StatusForbidden)
 		return
 	}
 	byMachine := m != nil && (rec == nil || rec.Machine == m.ID)
@@ -437,10 +438,10 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 		// This host and directory are enrolled already: only their own
 		// token (in .swim/hub.yml) enrolls them again, so nobody can take
 		// an admitted worker's place, or knock it back to waiting.
-		http.Error(w, "this directory is already enrolled with the hub: enroll again with its own token (.swim/hub.yml), or have the admin remove it (swim hub leave, or the Admin page) first", http.StatusConflict)
+		http.Error(w, "this directory is already on the hub: join again with its own token (.swim/hub.yml), or have the admin remove it (swim auth logout, or the Admin page) first", http.StatusConflict)
 		return
 	case rec == nil && !admin && !byMachine && s.pendingCount() >= MaxPending:
-		http.Error(w, "too many workers are waiting to join this hub: try again once the admin has admitted or turned some away", http.StatusTooManyRequests)
+		http.Error(w, "too many swimmers are waiting to join this hub: try again once the admin has admitted or turned some away", http.StatusTooManyRequests)
 		return
 	}
 	if rec == nil {
@@ -501,7 +502,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 	}
 	if !known {
 		// A hub that forgot it (restarted without state): enroll again.
-		http.Error(w, "unknown worker; enroll again", http.StatusNotFound)
+		http.Error(w, "unknown swimmer; join again (swim watch)", http.StatusNotFound)
 		return
 	}
 	if !ok {
@@ -517,7 +518,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.workers[id]
 	if !ok {
 		s.mu.Unlock()
-		http.Error(w, "unknown worker; enroll again", http.StatusNotFound)
+		http.Error(w, "unknown swimmer; join again (swim watch)", http.StatusNotFound)
 		return
 	}
 	snap.Sanitize()

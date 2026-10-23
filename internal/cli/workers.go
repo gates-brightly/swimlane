@@ -64,7 +64,7 @@ func cantRunHere(root string, e *queue.Entry) string {
 	if why == "" {
 		return ""
 	}
-	return fmt.Sprintf("this worker, swim %s, can't run it: %s (queued by %s). Update this worker's swim and restart swim watch",
+	return fmt.Sprintf("this swimmer, swim %s, can't run it: %s (queued by %s). Update this swimmer's swim and restart swim watch",
 		version.String(), why, queuedBy(e))
 }
 
@@ -86,7 +86,7 @@ func checkWorkers(root string, e *queue.Entry) (refuse error, warn string) {
 	live := queue.LiveWorkers(root)
 	if len(live) == 0 {
 		if !workerRunning(root) {
-			return nil, fmt.Sprintf("no worker is running: the batch waits for a swim watch that reads %s (as this swim, %s, does)",
+			return nil, fmt.Sprintf("no swimmer is running: the batch waits for a swim watch that reads %s (as this swim, %s, does)",
 				version.Current, version.String())
 		}
 		return nil, ""
@@ -111,7 +111,7 @@ func checkWorkers(root string, e *queue.Entry) (refuse error, warn string) {
 		}
 		whys = append(whys, "  "+p.Name()+": "+why)
 	}
-	return fmt.Errorf("no worker running now can run this batch:\n%s\nthis swim is %s (%s). Update the worker's swim (%s, or the build that matches this one) and restart its swim watch, or run swim watch with this build",
+	return fmt.Errorf("no swimmer running now can run this batch:\n%s\nthis swim is %s (%s). Update the swimmer's swim (%s, or the build that matches this one) and restart its swim watch, or run swim watch with this build",
 		strings.Join(whys, "\n"), version.String(), version.Current, version.InstallCmd), ""
 }
 

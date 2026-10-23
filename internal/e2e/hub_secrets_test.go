@@ -45,21 +45,20 @@ func TestHubSecrets(t *testing.T) {
 	defer func() { stop() }()
 	admin := []string{"--hub", url, "--admin-token", "adm1n"}
 
-	out := wk.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "worker")
-	wk.admit(t, url, "worker")
+	out := wk.join(t, url, "worker", "read")
 	fp := regexp.MustCompile(`SHA256:\S+`).FindString(out)
 	if fp == "" {
-		t.Fatalf("enroll printed no key:\n%s", out)
+		t.Fatalf("joining printed no key:\n%s", out)
 	}
 
 	// Not approved yet: no grant.
 	if out, code := op.swim(append([]string{"secret", "grant", "worker", "db_password"}, admin...)...); code == 0 || !strings.Contains(out, "isn't approved") {
 		t.Fatalf("grant before approval: exit %d\n%s", code, out)
 	}
-	if out, code := op.swim(append([]string{"hub", "approve", "worker"}, "--hub", url, "--admin-token", "wrong")...); code == 0 || !strings.Contains(out, "401") {
+	if out, code := op.swim(append([]string{"auth", "approve", "worker"}, "--hub", url, "--admin-token", "wrong")...); code == 0 || !strings.Contains(out, "401") {
 		t.Fatalf("approve with a bad admin token: exit %d\n%s", code, out)
 	}
-	contains(t, "approve", op.mustSwim(append([]string{"hub", "approve", "worker"}, admin...)...), fp, "approved worker")
+	contains(t, "approve", op.mustSwim(append([]string{"auth", "approve", "worker"}, admin...)...), fp, "approved worker")
 	contains(t, "grant", op.mustSwim(append([]string{"secret", "grant", "worker", "db_password"}, admin...)...), "granted db_password", fp)
 
 	// The hub holds only ciphertext.
@@ -114,14 +113,16 @@ run "use" bash -c "echo v=$V"`)
 		t.Fatalf("worker keys: %v", keys)
 	}
 	os.Remove(keys[0])
-	// Enrolled already (its own token): it stays admitted, its key approval goes.
-	wk.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "worker")
+	// It joins again (its machine's token): it stays admitted, its key
+	// approval goes.
+	os.Remove(filepath.Join(wk.root, ".swim", "hub.yml"))
+	wk.mustSwim("watch", "--once")
 	if out, code := op.swim(append([]string{"secret", "grant", "worker", "db_password"}, admin...)...); code == 0 || !strings.Contains(out, "isn't approved") {
 		t.Errorf("after a key change: exit %d\n%s", code, out)
 	}
 }
 
-// workerID is the id swim hub enroll saved for r.
+// workerID is the id r saved when it joined the hub.
 func workerID(t *testing.T, r *repo) string {
 	data, err := os.ReadFile(filepath.Join(r.root, ".swim", "hub.yml"))
 	if err != nil {

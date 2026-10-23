@@ -59,6 +59,16 @@ type Lane struct {
 	// script and everything pinned with it. "" in entries from before
 	// manifests, which pin the script and env hashes alone.
 	Manifest string `yaml:"manifest_sha256,omitempty"`
+	// LegacyManifest is the manifest v1 hash of the same pins, when the
+	// lane was pinned just now (never stored): a pin recorded by a swim
+	// before manifest v2 matches it.
+	LegacyManifest string `yaml:"-"`
+}
+
+// PinsManifest reports whether pin, a manifest_sha256 recorded earlier,
+// is this lane's manifest now (v2, or v1 for a pin from before v2).
+func (l Lane) PinsManifest(pin string) bool {
+	return pin != "" && (pin == l.Manifest || pin == l.LegacyManifest)
 }
 
 // Worker is who claimed an entry.

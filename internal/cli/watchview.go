@@ -50,7 +50,7 @@ func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
 	w.picker.Title = func() string {
 		t := "swim watch · " + w.root
 		if _, on := lane.RepoPause(w.root); on {
-			t += " · paused: workers claim nothing · swim unpause --all"
+			t += " · paused: swimmers claim nothing · swim unpause --all"
 		}
 		return t
 	}
@@ -519,7 +519,7 @@ func (w *watchView) runLane(n int) string {
 			return err.Error()
 		}
 		if !ok {
-			return "not now: another worker is running a batch"
+			return "not now: another swimmer is running a batch"
 		}
 		defer unlock()
 	}
@@ -579,7 +579,7 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 		return err.Error()
 	}
 	if !ok {
-		return "not now: another worker is running a batch"
+		return "not now: another swimmer is running a batch"
 	}
 	defer unlock()
 	if why := cantRunHere(w.root, e); why != "" {

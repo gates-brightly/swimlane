@@ -359,7 +359,7 @@ func (s *Server) pollCommands(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	if !s.isWorker(id, bearer(r.Header)) {
 		s.mu.Unlock()
-		http.Error(w, "needs this worker's own token", http.StatusUnauthorized)
+		http.Error(w, "needs this swimmer's own token", http.StatusUnauthorized)
 		return
 	}
 	if q.Get("epoch") != s.epoch {
@@ -416,7 +416,7 @@ func (s *Server) ackCommand(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.isWorker(id, bearer(r.Header)) {
-		http.Error(w, "needs this worker's own token", http.StatusUnauthorized)
+		http.Error(w, "needs this swimmer's own token", http.StatusUnauthorized)
 		return
 	}
 	var cmd *Command

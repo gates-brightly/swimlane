@@ -29,15 +29,14 @@ func answerRepo(t *testing.T) (r *repo, url, id string, keys, tokens map[string]
 	keys = people(t, r, "groups:\n  ops: [alice, bob]\nrequire:\n  - guards: [FIN_ALLOW_*]\n    group: ops\n    count: 2\n", "alice", "bob")
 	url, stop = startHub(t, r, t.TempDir(), "127.0.0.1:0")
 	t.Cleanup(stop)
-	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "headless", "--access", "readwrite")
-	r.admit(t, url, "headless")
+	r.join(t, url, "headless", "readwrite")
 	t.Cleanup(func() { r.swim("watch", "--headless", "--stop") })
 	var hf struct{ ID string }
 	data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "hub.yml"))
 	yaml.Unmarshal(data, &hf)
 	tokens = map[string]string{}
 	for name, role := range map[string]string{"alice": "operator", "bob": "viewer"} {
-		out := r.mustSwim("hub", "user", "add", name, "--role", role, "--hub", url, "--admin-token", "adm1n")
+		out := r.mustSwim("auth", "users", "add", name, "--role", role, "--hub", url, "--admin-token", "adm1n")
 		tok := regexp.MustCompile(`(?m)^  ([0-9a-f]{48})$`).FindStringSubmatch(out)
 		if tok == nil {
 			t.Fatalf("no token in:\n%s", out)

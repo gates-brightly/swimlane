@@ -37,8 +37,7 @@ func TestHubKeepsRuns(t *testing.T) {
 		for sc.Scan() {
 		}
 	}()
-	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "billing")
-	r.admit(t, url, "billing")
+	r.join(t, url, "billing", "read")
 	r.script(1, "greet", `run "say hello" echo hello-from-lane-1`)
 	r.script(2, "count", `run "count" bash -c 'echo one; echo two'`)
 	seen := map[string]bool{}

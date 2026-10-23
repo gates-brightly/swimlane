@@ -124,7 +124,7 @@ func (s *Server) putLog(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	switch {
 	case !ok:
-		http.Error(w, "needs this worker's own token", http.StatusUnauthorized)
+		http.Error(w, "needs this swimmer's own token", http.StatusUnauthorized)
 		return
 	case !asked:
 		http.Error(w, "nobody asked for that log", http.StatusConflict)

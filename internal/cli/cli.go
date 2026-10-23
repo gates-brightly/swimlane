@@ -15,6 +15,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/migrate"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/syntax"
+	"github.com/gates-brightly/swimlane/internal/ui"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -76,6 +77,7 @@ func init() {
 		"keys":      {run: cmdKeys},
 		"doctor":    {run: cmdDoctor},
 		"help":      {run: cmdHelp},
+		"guide":     {run: cmdGuide},
 		// In-lane commands, for lane scripts in any language (lanecmds.go);
 		// swim run "<label>" -- cmd is the in-lane form of run.
 		"gate":     {run: laneGate},
@@ -112,7 +114,7 @@ func (e exitError) Error() string { return fmt.Sprintf("exit %d", e.code) }
 // Main runs swim with args (without the program name) and returns the exit code.
 func Main(args []string) int {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Print(help.Full())
+		fmt.Print(helpText())
 		return 0
 	}
 	if args[0] == "--version" { // offline and one line, for scripts; swim version also checks the latest release
@@ -120,7 +122,7 @@ func Main(args []string) int {
 		return 0
 	}
 	name := args[0]
-	if _, ok := commands[name]; !ok && looksLikeLaneRef(name) {
+	if _, ok := commands[name]; !ok && (looksLikeLaneRef(name) || isTaskHere(name)) {
 		// `swim 1 2` / `swim 3f2a9c1e` is shorthand for `swim run ...`.
 		name, args = "run", append([]string{"run"}, args...)
 	}
@@ -262,7 +264,33 @@ func repoNoMigrate() (string, *config.Config, error) {
 	return root, cfg, nil
 }
 
-// laneRef resolves a lane number or a pinned job id to a lane. A job id
+// isTaskHere reports whether s names a lane (# Task:) in the repo here:
+// `swim renew-certs` is then `swim run renew-certs`.
+func isTaskHere(s string) bool {
+	if !lane.ValidTaskName(s) {
+		return false
+	}
+	root, cfg, err := repo()
+	if err != nil {
+		return false
+	}
+	return len(taskLanes(root, cfg, s)) > 0
+}
+
+// taskLanes are the lanes whose # Task: is name (one, unless swim lint
+// has something to say).
+func taskLanes(root string, cfg *config.Config, name string) []int {
+	var out []int
+	for n := 1; n <= cfg.Lanes; n++ {
+		if info, err := lane.ReadScript(root, n); err == nil && info.Task == name {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// laneRef resolves a lane number, a task name (# Task:) or a pinned job id
+// to a lane, in that order. A job id
 // (exact, or a prefix of 8+ characters) matches the job in a lane's script on
 // disk; with lastRun it also matches the job a lane last ran. Pinning by job
 // means the command acts on exactly that job, or refuses if no lane holds it
@@ -270,6 +298,15 @@ func repoNoMigrate() (string, *config.Config, error) {
 func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, error) {
 	if _, err := strconv.Atoi(s); err == nil {
 		return laneArg(cfg, s)
+	}
+	if lane.ValidTaskName(s) {
+		switch ns := taskLanes(root, cfg, s); len(ns) {
+		case 1:
+			return ns[0], nil
+		case 0:
+		default:
+			return 0, fmt.Errorf("task %s is ambiguous: lanes %v both say # Task: %s (swim lint)", s, ns, s)
+		}
 	}
 	var st *status.File
 	if lastRun {
@@ -300,7 +337,10 @@ func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, erro
 		return hits[0], nil
 	case 0:
 		if len(s) < 8 && !lane.ValidJobID(s) {
-			return 0, usagef("%q is neither a lane number nor a job id (job ids need 8+ characters)", s)
+			return 0, usagef("%q is neither a lane number, a task (# Task:) nor a job id (job ids need 8+ characters)%s", s, taskHint(root, cfg))
+		}
+		if lane.ValidTaskName(s) {
+			return 0, fmt.Errorf("no lane is task %s, and no lane holds job %s%s", s, s, taskHint(root, cfg))
 		}
 		msg := fmt.Sprintf("no lane holds job %s", s)
 		if len(held) > 0 {
@@ -309,6 +349,32 @@ func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, erro
 		return 0, errors.New(msg)
 	}
 	return 0, fmt.Errorf("job %s is ambiguous: matches lanes %v; use more characters", s, hits)
+}
+
+// taskRef is ref with a task name (# Task:) replaced by its lane's
+// number, for commands that tell a lane number from a job id by its form;
+// anything else comes back as it was.
+func taskRef(root string, cfg *config.Config, ref string) string {
+	if lane.ValidTaskName(ref) {
+		if ns := taskLanes(root, cfg, ref); len(ns) == 1 {
+			return strconv.Itoa(ns[0])
+		}
+	}
+	return ref
+}
+
+// taskHint lists the repo's tasks for an error: " (tasks: a, b)", or "".
+func taskHint(root string, cfg *config.Config) string {
+	var names []string
+	for n := 1; n <= cfg.Lanes; n++ {
+		if info, err := lane.ReadScript(root, n); err == nil && info.Task != "" {
+			names = append(names, info.Task)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return " (tasks: " + strings.Join(names, ", ") + ")"
 }
 
 // requireVersion refuses to continue when the repo's .swim.lock pins
@@ -355,9 +421,26 @@ func self() string {
 	return "swim"
 }
 
+// helpText is swim --help: the short overview on a terminal, and the full
+// guide anywhere else, so an agent or a pipe still gets the manual.
+func helpText() string {
+	if ui.IsTTY(os.Stdout) {
+		return help.Short()
+	}
+	return help.Full()
+}
+
+func cmdGuide(args []string) error {
+	if len(args) > 0 {
+		return usagef("usage: swim guide")
+	}
+	fmt.Print(help.Full())
+	return nil
+}
+
 func cmdHelp(args []string) error {
 	if len(args) == 0 {
-		fmt.Print(help.Full())
+		fmt.Print(helpText())
 		return nil
 	}
 	h, ok := help.For(args[0])

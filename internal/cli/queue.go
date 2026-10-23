@@ -185,9 +185,9 @@ func queueAdd(args []string) error {
 		warnUnapproved(root, e, signedAs)
 	}
 	if why := launcher.Busy(root, cfg); why != "" {
-		fmt.Printf("  runs when swim is idle (now: %s) and a worker is up: swim watch\n", why)
+		fmt.Printf("  runs when swim is idle (now: %s) and a swimmer is up: swim watch\n", why)
 	} else {
-		fmt.Println("  runs when a worker takes it: swim watch (or swim watch --once)")
+		fmt.Println("  runs when a swimmer takes it: swim watch (or swim watch --once)")
 	}
 	if !wait {
 		return nil
@@ -427,7 +427,7 @@ func pinLane(root string, cfg *config.Config, n int) (queue.Lane, lane.Info, err
 	if err != nil {
 		return queue.Lane{}, info, err
 	}
-	return queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum, Manifest: m.SHA256}, info, nil
+	return queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum, Manifest: m.SHA256, LegacyManifest: m.LegacySHA256}, info, nil
 }
 
 // cmdWait blocks until swim is idle and nothing is about to start: no lane
@@ -584,11 +584,11 @@ func queueList(args []string) error {
 			if e.Worker.Remote() {
 				state = fmt.Sprintf("running (pid %d on %s)", e.Worker.PID, e.Worker.Host)
 				if e.Worker.Heartbeat == "" {
-					state = fmt.Sprintf("running? (pid %d on %s; an older worker with no heartbeat: can't tell)", e.Worker.PID, e.Worker.Host)
+					state = fmt.Sprintf("running? (pid %d on %s; an older swimmer with no heartbeat: can't tell)", e.Worker.PID, e.Worker.Host)
 				}
 			}
 		case queue.Orphaned:
-			state, color = "orphaned: its worker is gone (swim queue requeue "+strconv.Itoa(e.Seq)+")", ui.Red
+			state, color = "orphaned: its swimmer is gone (swim queue requeue "+strconv.Itoa(e.Seq)+")", ui.Red
 		case queue.Done:
 			state, color = "done: "+e.Result.Result, ui.StateColor(e.Result.Result)
 		case queue.Queued:
@@ -821,7 +821,7 @@ func cmdWatch(args []string) error {
 		fmt.Println(p.Paint(ui.Yellow+ui.Bold, "swim watch: -y: every guard in every batch is approved, beyond what each batch approves (logged as approved by swim watch -y ("+operator()+"))"))
 	}
 	code, s := 0, sayer{p: p, prefix: "swim watch: "}
-	// Enrolled with a hub (swim hub enroll): report there as we go.
+	// Joined to a hub (swim auth login): report there as we go.
 	setActivity, stopReporting := hubReporter(root, every)
 	defer stopReporting()
 	if headless {
@@ -867,7 +867,7 @@ func cmdWatch(args []string) error {
 	say := func(msg string) {
 		setActivity(msg)
 		if view != nil {
-			view.activity = "worker: " + msg
+			view.activity = "swimmer: " + msg
 			return
 		}
 		s.say(msg)
@@ -921,7 +921,7 @@ func cmdWatch(args []string) error {
 			return err
 		}
 		if !ok {
-			say(fmt.Sprintf("%d queued; another worker is running a batch", n))
+			say(fmt.Sprintf("%d queued; another swimmer is running a batch", n))
 			sleep()
 			continue
 		}

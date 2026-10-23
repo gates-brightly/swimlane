@@ -205,7 +205,7 @@ func checkAndDo(root string, cfg *config.Config, c *hub.Client, cmd hub.Command,
 		why := fmt.Sprintf("swim.yml's headless.allow is [%s]", strings.Join(cfg.HeadlessAllow(), ", "))
 		switch {
 		case access == config.AccessRead:
-			why = "this enrollment's access is read (swim hub access readwrite lets the hub send commands)"
+			why = "this swimmer's access is read (swim auth login URL --access readwrite lets the hub send commands)"
 		case access == config.AccessReadWrite:
 			why = fmt.Sprintf("swim.yml's headless.allow narrows readwrite to [%s]", strings.Join(cfg.HubAllow(access), ", "))
 		}
@@ -236,7 +236,7 @@ func checkAndDo(root string, cfg *config.Config, c *hub.Client, cmd hub.Command,
 		return hub.OutcomeDone, msg
 	case config.HubDrain:
 		drain()
-		return hub.OutcomeDone, "the worker stops after the batch in hand"
+		return hub.OutcomeDone, "the swimmer stops after the batch in hand"
 	case config.HubRun:
 		return hubRun(root, cfg, cmd, by, url)
 	case config.HubLog:
@@ -289,7 +289,7 @@ func hubRun(root string, cfg *config.Config, cmd hub.Command, by, url string) (s
 	switch {
 	case l.SHA256 != cmd.Pin.SHA256:
 		return hub.OutcomeRefused, fmt.Sprintf("stale: swim %d's script is now %s, not the %s the page showed", n, short12(l.SHA256), short12(cmd.Pin.SHA256))
-	case l.Manifest != cmd.Pin.Manifest:
+	case !l.PinsManifest(cmd.Pin.Manifest):
 		return hub.OutcomeRefused, fmt.Sprintf("stale: swim %d's manifest is now %s, not the %s the page showed (what it sources, its runner or policy changed)", n, short12(l.Manifest), short12(cmd.Pin.Manifest))
 	}
 	e := &queue.Entry{By: "hub:" + by + " via " + url, Note: "run from the hub", Lanes: []queue.Lane{l}}
@@ -336,7 +336,7 @@ func pinnedAsShown(root string, cfg *config.Config, n int, sha, mf string) (queu
 	switch {
 	case l.SHA256 != sha:
 		return l, fmt.Errorf("stale: swim %d's script is now %s, not the %s the page showed", n, short12(l.SHA256), short12(sha))
-	case l.Manifest != mf:
+	case !l.PinsManifest(mf):
 		return l, fmt.Errorf("stale: swim %d's manifest is now %s, not the %s the page showed (what it sources, its runner or policy changed)", n, short12(l.Manifest), short12(mf))
 	}
 	return l, nil

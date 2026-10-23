@@ -13,6 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
+	"github.com/gates-brightly/swimlane/internal/help"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/policy"
@@ -63,6 +64,47 @@ func checkRound(c *Context, s *Script) []finding.Finding {
 	}
 	return []finding.Finding{f(finding.Error, "round", -1, fmt.Sprintf("add `# Round: <goal>` to the header (or round: to lane.%d.yml)", s.N),
 		"no `# Round:` line; swim treats the lane as having nothing pending and won't run it")}
+}
+
+// checkTask checks the lane's name (# Task:): swim run NAME must find this
+// lane and nothing else.
+func checkTask(c *Context, s *Script) []finding.Finding {
+	t := s.Info.Task
+	if t == "" {
+		return nil
+	}
+	line := -1
+	for i, raw := range s.v.raw {
+		if strings.Contains(raw, "Task:") {
+			line = i
+			break
+		}
+	}
+	switch {
+	case !lane.ValidTaskName(t):
+		return []finding.Finding{f(finding.Error, "task", line, "use a-z, 0-9 and -, starting with a letter, at most 40 (and not only hex digits and -, which reads as a job id)",
+			"# Task: %q isn't a task name: swim run can't find the lane by it", t)}
+	case isCommand(t):
+		return []finding.Finding{f(finding.Error, "task", line, "pick another name",
+			"# Task: %s is a swim command: swim %s runs the command, not this lane", t, t)}
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, "lanes."+t+".sh")); err == nil {
+		return []finding.Finding{f(finding.Error, "task", line, "rename one of them",
+			"# Task: %s is also the group file lanes.%s.sh's name", t, t)}
+	}
+	for n, o := range c.Scripts {
+		if n != s.N && o.Info.Task == t {
+			return []finding.Finding{f(finding.Error, "task", line, "give each lane its own name",
+				"# Task: %s is swim %d's name too: swim run %s can't tell them apart", t, n, t)}
+		}
+	}
+	return nil
+}
+
+// isCommand reports whether name is a swim command.
+func isCommand(name string) bool {
+	_, ok := help.Commands[name]
+	return ok || name == "help" || name == "guide"
 }
 
 var placeholderRE = regexp.MustCompile(`\{\{[^}]*\}\}|<round goal>|replace with a read-only describe/list command`)
@@ -306,7 +348,7 @@ func checkBash4(c *Context, s *Script) []finding.Finding {
 		}
 		for _, b := range bash4 {
 			if b.re.MatchString(line) {
-				out = append(out, f(finding.Warn, "bash4", i, "rewrite it for bash 3.2 (see `swim --help`, WRITING A LANE SCRIPT)",
+				out = append(out, f(finding.Warn, "bash4", i, "rewrite it for bash 3.2 (see `swim guide`, WRITING A LANE SCRIPT)",
 					"%s is bash 4; macOS bash 3.2 can't run it", b.what))
 				break
 			}

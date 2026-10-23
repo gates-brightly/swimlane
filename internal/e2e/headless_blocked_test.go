@@ -23,7 +23,7 @@ func TestHeadlessUnanswerableGuardFails(t *testing.T) {
 	if st := r.status().Get(1).State; st != "failed" {
 		t.Errorf("lane 1 with no one to answer: %s\n%s", st, r.log(1))
 	}
-	contains(t, "lane 1", r.log(1), "BLOCKED  renew the certs (can't be answered here: no one may answer it through the hub", "STOP  guard RENEW can't be answered on this worker")
+	contains(t, "lane 1", r.log(1), "BLOCKED  renew the certs (can't be answered here: no one may answer it through the hub", "STOP  guard RENEW can't be answered on this swimmer")
 	if strings.Contains(r.log(1), "renewed") {
 		t.Errorf("lane 1 renewed without an answer:\n%s", r.log(1))
 	}

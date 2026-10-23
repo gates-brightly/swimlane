@@ -129,7 +129,7 @@ func checkAnswer(v *View, c *Command) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("no question %s waits on this worker (answered, timed out, or never asked)", c.Pin.Request)
+	return fmt.Errorf("no question %s waits on this swimmer (answered, timed out, or never asked)", c.Pin.Request)
 }
 
 // SignCommand is the shell an approver runs to sign statement: it writes
@@ -157,7 +157,7 @@ func (s *Server) questionAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if p == nil {
-		http.Error(w, "no such question waits on this worker (answered, timed out, or never asked)", http.StatusNotFound)
+		http.Error(w, "no such question waits on this swimmer (answered, timed out, or never asked)", http.StatusNotFound)
 		return
 	}
 	decision := approval.Approve

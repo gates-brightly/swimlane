@@ -226,7 +226,7 @@ func TestQueueYesOrphanRemove(t *testing.T) {
 	data = append(data, []byte("worker:\n  host: "+hostname()+"\n  pid: 999999\n  user: x\n  claimed: now\n")...)
 	os.WriteFile(running, data, 0o644)
 	os.Remove(files[0])
-	contains(t, "orphaned", r.mustSwim("queue"), "orphaned: its worker is gone")
+	contains(t, "orphaned", r.mustSwim("queue"), "orphaned: its swimmer is gone")
 	contains(t, "requeue", r.mustSwim("queue", "requeue", "2"), "requeued", "(was orphaned) as #3")
 	contains(t, "rm", r.mustSwim("queue", "rm", "3"), "removed")
 	if out := r.mustSwim("queue"); strings.Contains(out, "queued") {

@@ -1,6 +1,6 @@
 # Modules: fetched modules, and what's left
 
-Status: in progress. Built and documented (MODULES in `swim --help`, the
+Status: in progress. Built and documented (MODULES in `swim guide`, the
 README's Modules section): `# Modules:` (script syntax 4), `mod`,
 `mod_env`, `mod --evidence`, `swim mod`, gate modules, per-call effects
 (`read_only_for`, `destructive_for`), repo modules in bash and Go (built

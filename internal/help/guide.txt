@@ -14,7 +14,8 @@ USAGE
   swim <command> [flags] [args]
   swim N|JOB [N|JOB ...]       shorthand for `swim run N|JOB ...`, e.g. `swim 1 2`
   swim <command> --help        detail for one command
-  swim --help                  this guide (written for AI planners/workers)
+  swim guide                   this guide (written for AI planners/workers); swim --help
+                               prints it too when its output isn't a terminal
 
 COMMANDS
   init                     set up this repo: config entry, .gitignore block, .swim/status.yml
@@ -22,13 +23,14 @@ COMMANDS
                            chime, chime_style, chime_min_s, runners.EXT, ...
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
   secret set|get|ls|rm NAME   secrets encrypted to your SSH key, for --all repos or this --repo
-  secret grant WORKER NAME    give a hub worker a secret, encrypted to its own key (revoke, grants)
+  secret grant SWIMMER NAME   give a swimmer a secret, encrypted to its own key (revoke, grants)
   cache [ls|rm|prune|path]    the tool caches lanes keep between rounds (# Cache:; see CACHE)
   cache restore|save TREE     inside a lane: an installed tree's snapshot (# Cache: snap:TREE)
   modules [ls|show|new]    the modules lanes can use (# Modules:; see MODULES): show NAME
                            prints one, new NAME [--kind bash|go] writes a repo module
-  new N "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
-                           template, with a new job id
+  new N|TASK "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
+                           template, with a new job id; a TASK name (renew-certs) picks the
+                           lowest free lane and names it (# Task:), for swim run TASK etc.
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
                            N[cell] runs one cell of a matrix round, --failed its failed cells
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
@@ -77,22 +79,23 @@ COMMANDS
                            to run once its lanes are free; queue [list|show|rm|requeue]
   schedule LANES... TIME   queue a batch that starts no earlier than TIME (13:30, 1:30pm,
                            tomorrow 06:00, +2h); schedule list | rm ID
-  watch [--once]           the queue's worker: runs queued batches side by side, consumes them
-  watch --headless [--detach]   the worker with no terminal (needs a hub enrollment);
+  watch [--once]           run queued batches side by side, consuming them (this machine is the swimmer)
+  watch --headless [--detach]   a swimmer with no terminal (needs swim auth login);
                            --status, --stop, --install systemd|launchd, --uninstall
-  ps                       the headless workers running on this machine, in any directory
-  stop [--all]             outside a lane: stop this directory's headless worker after the
+  ps                       the headless swimmers running on this machine, in any directory
+  stop [--all]             outside a lane: stop this directory's headless swimmer after the
                            batch in hand; --all stops every one on this machine
-  hub / hub enroll URL     a dashboard of many workers; enroll a directory to report to it
-  auth login URL | status | logout   this machine's hub, for every directory of this user:
-                           each where swim watch runs enrolls itself (~/.config/swim/auth.yml)
-                           (--tls-cert/--tls-key serve https; enroll --ca FILE trusts its cert)
-  hub user add NAME --role viewer|operator   a hub user (token shown once): logged in, they
-                           interrupt, drain, run, fetch logs or answer guards on headless workers
+  hub                      serve a dashboard of many swimmers (--tls-cert/--tls-key: https)
+  auth login URL --access read|readwrite   join this machine to a hub as a swimmer: each
+                           directory where swim watch runs joins too (--ca FILE trusts its cert);
+                           auth status | logout; the admin's side: auth admit | reject |
+                           approve | users (auth login URL --admin-token T saves an admin login)
+  auth users add NAME --role viewer|operator|admin   a hub user (token shown once): logged in,
+                           they interrupt, drain, run, fetch logs or answer guards on swimmers
   wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until it expires or is revoked
-  approve --hub WORKER/QUESTION [--decline]   sign an answer to a guard waiting on a headless worker
+  approve --hub SWIMMER/QUESTION [--decline]   sign an answer to a guard waiting on a headless swimmer
   revoke N|JOB / --auto USER   withdraw your approval
   verify [--against DEST]  prove the chain of custody, in levels: consistent, trusted,
                            anchored, authorized (--yaml for CI)
@@ -111,15 +114,20 @@ COMMANDS
   run, all, plan, log, status, timeline, lint and doctor take --yaml: versioned YAML for
   scripts and agents (see READING RESULTS).
   help [command]           this guide, or one command's detail
+  guide                    this guide, the full manual
 
 CONCEPTS
   lane        A numbered slot, swim 1..99. One script (lane.N.sh,
               or lane.N.py, lane.N.ts, a binary lane.N, ...: see OTHER LANGUAGES),
               one log (.swim/logs/agentN.log), owned by one worker at a time. Lanes are
-              always numbers; there are no named lanes. A repo has no lane
+              numbered; a # Task: line names one (swim new renew-certs), and
+              every command that takes N takes the name too. A repo has no lane
               count: its lanes are the ones in use (a script that isn't a
               stub, a current log, or a running lane). swim new N starts
               one; swim archive N (with a stub or no script) drops one.
+  swimmer     A machine that runs lanes for the queue: swim watch, with or without
+              --headless. swim auth login joins it to a hub, which shows every
+              swimmer. Not a worker: a worker is an AI subagent writing a lane.
   round       One lane script's contents: a single goal ("cut over service X",
               "diagnose Y"). Rewritten per round; disposable. A round that
               passed is "done": `swim all` won't run it again (`swim run N`
@@ -259,12 +267,12 @@ FILES (repo root)
   lookup.yml            who's who: users' SSH keys, groups, approval rules (committed);
                         a rule with evidence: true counts only evidence-bound approvals
   .swim/evidence/       each round's evidence (evidence steps), and blobs by hash for diffs
-  .swim/hub.yml         this directory's hub enrollment (swim hub enroll), private; a
-                        headless worker also keeps the hub commands it took (epoch, seq)
-  .swim/headless.*      a headless worker's lock (holds its pid), pidfile and own log
+  .swim/hub.yml         this directory's place on its hub (swim auth login), private; a
+                        headless swimmer also keeps the hub commands it took (epoch, seq)
+  .swim/headless.*      a headless swimmer's lock (holds its pid), pidfile and own log
                         (swim watch --headless --detach; rotates at 10 MiB, keeps 3)
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
-                        .running claimed by a worker, done/ consumed with results
+                        .running claimed by a swimmer, done/ consumed with results
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,
                         locked, started and finished (`swim timeline`)
   .swim/laneN.pid       present while lane N runs
@@ -317,7 +325,7 @@ PLANNER WORKFLOW
   9. Batches can wait their turn: while lanes are still busy, write the next
      rounds, then have the operator queue them with the approvals they give
      up front (`swim queue add 4 5 --approve FIN_ALLOW_DELETE_ZG_ITEMS`). A
-     worker (`swim watch`) runs the batch as soon as its lanes are free. Queue only
+     swimmer (`swim watch`) runs the batch as soon as its lanes are free. Queue only
      what you'd hand over to run unattended: a queued batch never asks, so
      every guard it doesn't approve is a dry run. A change with a window
      (after hours, a maintenance slot) is scheduled instead:
@@ -926,7 +934,7 @@ MODULES
     starting, saying which it is. swim modules lock pins the built-ins the
     lanes use in .swim.lock (version and hash; commit it): a swim whose
     built-in differs then refuses those lanes up front (swim plan says so,
-    and a worker leaves their batches queued), with the fix: update swim,
+    and a swimmer leaves their batches queued), with the fix: update swim,
     or swim modules lock to move the repo to this swim's. swim modules
     check compares the lanes, the lock and this swim; doctor (module-version)
     and lint (module-lock) check it too, and swim approve warns.
@@ -1228,7 +1236,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
         msg_log_interval: 10s            # at most one MSG log line per lane per this (0: every change)
         outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
-        queue_lease: 2m                  # a queue worker's heartbeat holds this long (other hosts)
+        queue_lease: 2m                  # a swimmer's heartbeat holds this long (other hosts)
         claim_lease: 2h                  # a lane claim (swim new, swim claim) lasts this long
         pause_warn: 4h                   # swim doctor warns about a lane paused longer
         watch_batches: 4                 # queued batches one swim watch runs at once
@@ -1259,9 +1267,9 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
   modules: (which modules lanes may use; see MODULES)
       modules:
         allow: [notify, clone, ./modules/*]
-  and headless: (what a headless worker takes from its hub; swim watch --help):
+  and headless: (what a headless swimmer takes from its hub; swim watch --help):
       headless:
-        allow: [answer, interrupt, drain, log]   # optional: narrows what the enrollment's access (swim hub enroll --access) lets the hub send
+        allow: [answer, interrupt, drain, log]   # optional: narrows what the enrollment's access (swim auth login --access) lets the hub send
         logs: on                                 # off: never upload a log to the hub
         command_ttl: 10m                         # older commands expire (interrupt: 2m at most)
         approvals: signed                        # how a guard is answered through the hub: signed | hub

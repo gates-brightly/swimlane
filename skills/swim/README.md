@@ -26,7 +26,7 @@ command it names is unknown. To update, run `swim skill`: it points at the
 copy that matches the installed swim (its release tag). `swim version`
 says whether a newer swim is out.
 
-The skill defers to `swim --help` from the installed binary for detail, so
+The skill defers to `swim guide` from the installed binary for detail, so
 it stays correct as swim changes. Keep it to what the guide doesn't say:
 Claude's role and boundaries.
 
@@ -58,7 +58,7 @@ swim lanes?" to check that it loads: Claude should start with
 ## Changing it
 
 - A rule that holds for every agent belongs in `internal/help/guide.txt`
-  (`swim --help`), not here.
+  (`swim guide`), not here.
 - Raise the version in SKILL.md section 0 when the skill starts relying on
   a newer command or behaviour.
 - Check every command and header the skill names against the binary. Lint

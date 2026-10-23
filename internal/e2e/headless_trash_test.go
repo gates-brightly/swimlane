@@ -29,14 +29,14 @@ func TestHeadlessHubTrash(t *testing.T) {
 	}
 
 	// Under read access: refused, and the hub isn't offered a pin.
-	contains(t, "access read", r.mustSwim("hub", "access", "read"), "access: read", "the hub may send: log")
+	contains(t, "access read", r.mustSwim("auth", "login", url, "--access", "read"), "access read", "access is now read")
 	alice.Send(id, hub.Command{Kind: hub.KindTrash, Lane: 2, Pin: hub.Pin{Job: "0123456789abcdef"}})
-	waitLog(t, r, "hub trash by alice"+via+"refused: not allowed here: this enrollment's access is read")
+	waitLog(t, r, "hub trash by alice"+via+"refused: not allowed here: this swimmer's access is read")
 	if l := laneOnHub(t, url, id, 2); l.TrashJob != "" {
 		t.Errorf("trash_job published while trash isn't allowed: %q", l.TrashJob)
 	}
 
-	r.mustSwim("hub", "access", "readwrite")
+	r.mustSwim("auth", "login", url, "--access", "readwrite")
 	waitFor(t, func() bool { return laneOnHub(t, url, id, 2).TrashJob != "" })
 	pin := laneOnHub(t, url, id, 2).TrashJob
 

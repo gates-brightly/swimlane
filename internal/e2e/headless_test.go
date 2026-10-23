@@ -23,8 +23,7 @@ func headlessRepo(t *testing.T) (*repo, string) {
 	r.env = append(r.env, "HOME="+t.TempDir())
 	url, stop := startHub(t, r, t.TempDir(), "127.0.0.1:0")
 	t.Cleanup(stop)
-	r.mustSwim("hub", "enroll", url, "--token", "t0ken", "--name", "headless", "--access", "readwrite")
-	r.admit(t, url, "headless")
+	r.join(t, url, "headless", "readwrite")
 	// Whatever a test leaves running, it doesn't outlive it.
 	t.Cleanup(func() {
 		if pid := headlessPid(r); pid > 0 {
@@ -112,7 +111,7 @@ func TestHeadlessDetachStatusStop(t *testing.T) {
 	}
 
 	out = r.mustSwim("watch", "--headless", "--stop")
-	contains(t, "--stop", out, fmt.Sprintf("SIGTERM to the headless worker (pid %d)", pid), "stopped")
+	contains(t, "--stop", out, fmt.Sprintf("SIGTERM to the headless swimmer (pid %d)", pid), "stopped")
 	if headlessPid(r) != 0 {
 		t.Error("the pidfile outlived a clean stop")
 	}
@@ -120,7 +119,7 @@ func TestHeadlessDetachStatusStop(t *testing.T) {
 	if code != 3 || !strings.Contains(out, "not running") {
 		t.Errorf("--status after --stop: exit %d\n%s", code, out)
 	}
-	contains(t, "--stop again", r.mustSwim("watch", "--headless", "--stop"), "no headless worker running")
+	contains(t, "--stop again", r.mustSwim("watch", "--headless", "--stop"), "no headless swimmer running")
 }
 
 // A worker killed outright leaves its pidfile behind: --status calls it

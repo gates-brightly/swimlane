@@ -472,7 +472,7 @@ func (s *Server) fetchAPI(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.isWorker(id, bearer(r.Header)) {
-		http.Error(w, "needs this worker's own token", http.StatusUnauthorized)
+		http.Error(w, "needs this swimmer's own token", http.StatusUnauthorized)
 		return
 	}
 	rec := s.records[id]

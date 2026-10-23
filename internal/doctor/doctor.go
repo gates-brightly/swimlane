@@ -132,6 +132,7 @@ var Checks = []Check{
 	{"lane-rc", true, "a deprecated .lane.N.rc (env files replace it)", checkLaneRC},
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
 	{"hub-http", false, "enrolled with a hub over plain http on another machine", checkHubHTTP},
+	{"hub-enrolled", false, "this directory is enrolled with a hub on its own (swim hub enroll, before swim auth)", checkHubEnrolled},
 	{"anchors-none", false, "the repo has a chain of custody but no chain_anchors to checkpoint it to", checkAnchorsNone},
 	{"checkpoint-unsent", false, "a chain anchor hasn't had the latest checkpoint", checkCheckpointUnsent},
 	{"trust-unpinned", false, "trust.yml isn't pinned here, or changed since the pin with no signed change", checkTrustPin},
@@ -774,8 +775,26 @@ func checkHubHTTP(o *Options) []finding.Finding {
 		return nil
 	}
 	return []finding.Finding{fd(finding.Warn, "hub-http", o.rel(path),
-		"serve the hub with --tls-cert/--tls-key (or behind a TLS proxy), then swim hub enroll https://... again",
+		"serve the hub with --tls-cert/--tls-key (or behind a TLS proxy), then swim auth login https://... again",
 		"enrolled with %s over plain http: its tokens, log tails and secrets cross the network unencrypted", h.URL)}
+}
+
+// checkHubEnrolled notes a directory enrolled with a hub on its own, by
+// the swim hub enroll that swim auth login replaced: it still reports,
+// but nothing changes it any more.
+func checkHubEnrolled(o *Options) []finding.Finding {
+	path := filepath.Join(o.Root, ".swim", "hub.yml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var h struct{ URL, Via string }
+	if yaml.Unmarshal(data, &h) != nil || h.URL == "" || h.Via == "auth" {
+		return nil
+	}
+	return []finding.Finding{fd(finding.Info, "hub-enrolled", o.rel(path),
+		"swim auth login "+h.URL+" --access read|readwrite once on this machine, then delete "+o.rel(path)+": swim watch here joins through it",
+		"enrolled with %s by swim hub enroll, which swim auth login replaced: it still reports, but its name and access can't change", h.URL)}
 }
 
 // checkStandingApprovals warns of the standing approvals still counting
@@ -946,7 +965,7 @@ func checkHubReachable(o *Options) []finding.Finding {
 		return nil
 	}
 	if err := h.HubCheck(); err != nil {
-		return []finding.Finding{fd(finding.Warn, "hub-unreachable", ".swim/hub.yml", "check the hub runs and the network; swim hub status",
+		return []finding.Finding{fd(finding.Warn, "hub-unreachable", ".swim/hub.yml", "check the hub runs and the network; swim auth status",
 			"the headless worker's hub is unreachable (%v): guards waiting for an answer through it decline, and it takes no commands", err)}
 	}
 	return nil

@@ -90,6 +90,7 @@ type Info struct {
 	Stub    bool
 	Syntax  int      // the script's syntax (1 if it declares none)
 	Round   string   // Round: (required for the lane to run)
+	Task    string   // Task: the lane's name (swim run NAME); "" for none
 	Job     string   // Job: id ("" if the script has none; one is made at start)
 	After   []string // After: lanes or job ids this round waits for (default none)
 	Owner   string   // Owner: who wrote the round (default "")
@@ -223,7 +224,7 @@ func (i Info) GuardFlags() []string {
 
 // knownKeys are the header keys swim reads (lower case); any other key in
 // the header block is kept as an extra and shown.
-var knownKeys = map[string]bool{"round": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
+var knownKeys = map[string]bool{"round": true, "task": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 	"fail": true, "handler-timeout": true, "on-success": true, "on-failure": true, "on-exit": true, "outputs": true,
 	"matrix": true, "matrix-exclude": true, "matrix-parallel": true, "matrix-fail": true, "includes": true,
 	"always": true, "rerun-children": true, "observe": true, "finally": true, "cache": true, "modules": true, "targets": true}
@@ -422,6 +423,13 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 		}
 	case "Owner":
 		info.Owner = v
+	case "Task":
+		if f := strings.Fields(v); len(f) > 0 && info.Task == "" {
+			info.Task = f[0]
+			if !ValidTaskName(f[0]) {
+				info.Problems = append(info.Problems, fmt.Sprintf("Task %q is not a task name (a-z, 0-9 and -, starting with a letter, at most 40; not only hex digits and -); swim run can't find it by name", f[0]))
+			}
+		}
 	case "Targets":
 		// The lane's default target for its steps (swim observe groups
 		// retries and failures by what a step talks to).
@@ -1245,3 +1253,24 @@ func StopRequested(root string, n int, run string) bool {
 
 // ClearStop removes lane n's stop request.
 func ClearStop(root string, n int) { os.Remove(StopPath(root, n)) }
+
+// ValidTaskName reports whether s can name a lane (# Task:): a lower-case
+// letter, then letters, digits and -, at most 40 in all, and not only hex
+// digits and - (a job id's prefix could be that).
+func ValidTaskName(s string) bool {
+	if len(s) == 0 || len(s) > 40 || s[0] < 'a' || s[0] > 'z' {
+		return false
+	}
+	hexOnly := true
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+		default:
+			return false
+		}
+		if !(r >= 'a' && r <= 'f' || r >= '0' && r <= '9' || r == '-') {
+			hexOnly = false
+		}
+	}
+	return !hexOnly
+}

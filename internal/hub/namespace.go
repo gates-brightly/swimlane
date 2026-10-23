@@ -10,12 +10,12 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// A namespace groups workers on the dashboard, one tab each: the repo a
-// worker runs in, so clones of one repo on different machines sit
-// together. A worker says its own at enrollment (swim hub enroll
-// --namespace, else NamespaceFor its origin remote) and in every report.
+// A namespace groups swimmers on the dashboard, one tab each: the repo a
+// swimmer runs in, so clones of one repo on different machines sit
+// together. A swimmer says its own when it joins (swim.yml's hub:
+// {namespace}, else NamespaceFor its origin remote) and in every report.
 // It only groups the pages: it grants nothing and the hub trusts it no
-// more than a worker's name.
+// more than a swimmer's name.
 
 // NoNamespace is the tab key for workers that report none (enrolled by a
 // swim from before namespaces).

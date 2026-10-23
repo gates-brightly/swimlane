@@ -64,21 +64,21 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 	waitFor(t, func() bool { return strings.Contains(r.mustSwim("queue"), "left queued") })
 	time.Sleep(300 * time.Millisecond) // a few more polls: still not run
 	list := r.mustSwim("queue")
-	contains(t, "queue", list, "#1", "queued", "left queued: this worker, swim 0.20261001.1, can't run it",
+	contains(t, "queue", list, "#1", "queued", "left queued: this swimmer, swim 0.20261001.1, can't run it",
 		"it reads script 3, log 2, state 2, and .swim.lock pins "+version.Current.String(), "queued by swim 0.20261001.1, reading script 3, log 2, state 2")
 	if len(doneEntries(t, r)) != 0 {
 		t.Errorf("the batch was consumed:\n%s\n%s", list, out.String())
 	}
 	contains(t, "watch", out.String(), "#1 left queued")
-	contains(t, ".swim.log", r.mustSwim("log"), "queue-held", "#1 q-", "this worker, swim 0.20261001.1, can't run it")
-	contains(t, "queue show", r.mustSwim("queue", "show", "#1"), "# left queued: this worker, swim 0.20261001.1, can't run it")
+	contains(t, ".swim.log", r.mustSwim("log"), "queue-held", "#1 q-", "this swimmer, swim 0.20261001.1, can't run it")
+	contains(t, "queue show", r.mustSwim("queue", "show", "#1"), "# left queued: this swimmer, swim 0.20261001.1, can't run it")
 
 	// A new batch is refused at queue add, naming both swims.
 	msg, code := r.swim("queue", "add", "1")
 	if code == 0 {
 		t.Fatalf("queue add with only a worker that can't run it:\n%s", msg)
 	}
-	contains(t, "queue add", msg, "no worker running now can run this batch",
+	contains(t, "queue add", msg, "no swimmer running now can run this batch",
 		"pid", "swim 0.20261001.1): it reads script 3, log 2, state 2, and .swim.lock pins "+version.Current.String(),
 		"this swim is "+version.String()+" ("+version.Current.String()+")", "restart its swim watch")
 
@@ -89,7 +89,7 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("queue add with no worker: exit %d\n%s", code, msg)
 	}
-	contains(t, "no worker", msg, "no worker is running: the batch waits for a swim watch that reads "+version.Current.String())
+	contains(t, "no worker", msg, "no swimmer is running: the batch waits for a swim watch that reads "+version.Current.String())
 }
 
 func mustRun(t *testing.T, r *repo, swim string, args ...string) string {

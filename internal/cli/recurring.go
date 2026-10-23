@@ -372,10 +372,10 @@ func materializeRecurring(root string, cfg *config.Config) {
 		superseded := missedDays(r, date, loc)
 		r.Last = date
 		for _, d := range superseded {
-			r.skip(d, "no worker ran then")
+			r.skip(d, "no swimmer ran then")
 		}
 		if len(superseded) > 0 {
-			history.Log(root, history.Entry{Event: history.ScheduleSkipped, Detail: fmt.Sprintf("%s: skipped: superseded (no worker then): %s", r.ID, strings.Join(superseded, ", "))})
+			history.Log(root, history.Entry{Event: history.ScheduleSkipped, Detail: fmt.Sprintf("%s: skipped: superseded (no swimmer then): %s", r.ID, strings.Join(superseded, ", "))})
 		}
 		if why := recurringBlocked(root, cfg, r); why != "" {
 			r.skip(date, why)
@@ -578,7 +578,7 @@ func recurringDrift(root string, cfg *config.Config, r *recurring) string {
 			return fmt.Sprintf("swim %d: %v", l.Lane, err)
 		case cur.SHA256 != l.SHA256:
 			return fmt.Sprintf("%s changed since it was scheduled", lanesText([]int{l.Lane}))
-		case l.Manifest != "" && cur.Manifest != l.Manifest:
+		case l.Manifest != "" && !cur.PinsManifest(l.Manifest):
 			return fmt.Sprintf("swim %d's manifest (what it sources, its sidecar, the runner or swim.yml's policy) changed since it was scheduled", l.Lane)
 		}
 	}

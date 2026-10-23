@@ -3,7 +3,7 @@
 Start from `swim new N "<goal>"`, which writes the header, a fresh `# Job:`
 id and the library line. Keep the `# Job:` line, and never copy a job id
 into another script. Then shape the body like this. Check the details
-against `swim --help` (`WRITING A LANE SCRIPT`).
+against `swim guide` (`WRITING A LANE SCRIPT`).
 
 ```bash
 #!/usr/bin/env bash
@@ -101,7 +101,7 @@ Prefer bash. Reach for another language when the user asks, or when the
 work is much easier with a native library (boto3, a database driver,
 parsing JSON). `swim new N "<goal>" --lang py` (or `ts`) writes the
 template. The SDK gives you the same stages, steps, guards and log. Its
-setup and the other languages are in `swim --help` (`OTHER LANGUAGES`)
+setup and the other languages are in `swim guide` (`OTHER LANGUAGES`)
 and in `docs/examples/` in the swimlane repo.
 
 ```python

@@ -63,7 +63,7 @@ func (s *Server) checkpointsAPI(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	got := bearer(r.Header)
 	if !s.isWorker(id, got) && !(r.Method == http.MethodGet && s.isAdmin(got)) {
-		http.Error(w, "needs this worker's own token", http.StatusUnauthorized)
+		http.Error(w, "needs this swimmer's own token", http.StatusUnauthorized)
 		return
 	}
 	cps, err := s.checkpointsOf(id)

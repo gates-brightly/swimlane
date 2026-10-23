@@ -78,7 +78,7 @@ func cmdInit(args []string) error {
 	}
 	history.Log(root, history.Entry{Event: history.Init, Detail: "status " + rel(root, status.Path(root))})
 	fmt.Printf("status: %s   project log: %s   (lanes: the ones in use; start one with swim new N)\n", rel(root, status.Path(root)), history.FileName)
-	fmt.Println(`next: swim new 1 "<round goal>"   (AI agents: read swim --help first)`)
+	fmt.Println(`next: swim new 1 "<round goal>"   (AI agents: read swim guide first)`)
 	return nil
 }
 
@@ -282,7 +282,7 @@ func cmdNew(args []string) error {
 		return err
 	}
 	if len(rest) < 2 {
-		return usagef(`usage: swim new N "<round goal>" [--lang sh|py|js|ts]`)
+		return usagef(`usage: swim new N|TASK "<round goal>" [--lang sh|py|js|ts]`)
 	}
 	lang = strings.TrimPrefix(strings.ToLower(lang), ".")
 	if lang == "" {
@@ -297,6 +297,34 @@ func cmdNew(args []string) error {
 	}
 	if err := requireVersion(root, false); err != nil {
 		return err
+	}
+	// A task name: the lowest lane not in use, named by # Task:.
+	task := ""
+	if _, aerr := strconv.Atoi(rest[0]); aerr != nil {
+		task = rest[0]
+		if !lane.ValidTaskName(task) {
+			return usagef("%q is neither a lane number nor a task name (a-z, 0-9 and -, starting with a letter, at most 40; not only hex digits and -)", task)
+		}
+		if _, ok := commands[task]; ok {
+			return usagef("task %q is a swim command: swim %s would run the command, not the task; pick another name", task, task)
+		}
+		if ns := taskLanes(root, cfg, task); len(ns) > 0 {
+			return fmt.Errorf("task %s is lane %d already (%s): edit it there, or pick another name", task, ns[0], lane.ScriptName(root, ns[0]))
+		}
+		used := map[int]bool{}
+		for _, m := range lane.Associated(root) {
+			used[m] = true
+		}
+		free := 0
+		for m := 1; m <= lane.MaxLanes && free == 0; m++ {
+			if !used[m] {
+				free = m
+			}
+		}
+		if free == 0 {
+			return fmt.Errorf("no free lane for task %s: all %d are in use", task, lane.MaxLanes)
+		}
+		rest[0] = strconv.Itoa(free)
 	}
 	n, err := laneArg(cfg, rest[0])
 	if err != nil {
@@ -323,6 +351,9 @@ func cmdNew(args []string) error {
 	if err != nil {
 		return err
 	}
+	if task != "" {
+		content = withTask(content, task)
+	}
 	// Another session writing this lane holds its claim (swim claim).
 	sess := lane.SessionID()
 	if err := lane.CheckClaim(root, n, sess); err != nil && !force {
@@ -338,11 +369,30 @@ func cmdNew(args []string) error {
 		l.Pending, l.PendingJob = strings.Join(strings.Fields(goal), " "), job
 	})
 	history.Log(root, history.Entry{Event: history.New, Lane: n, Job: job, Detail: goal})
-	fmt.Printf("wrote %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, goal)
+	ref := strconv.Itoa(n)
+	if task != "" {
+		ref = task
+		fmt.Printf("wrote %s (task %s, swim %d): %s\n", rel(root, lane.Script(root, n)), task, n, goal)
+	} else {
+		fmt.Printf("wrote %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, goal)
+	}
 	fmt.Printf("job: %s\n", job)
-	fmt.Printf("edit its steps, then the operator runs: swim run %d   (or pinned: swim run %s)\n", n, job)
-	fmt.Printf("check it after editing: swim lint %d\n", n)
+	fmt.Printf("edit its steps, then the operator runs: swim run %s   (or pinned: swim run %s)\n", ref, job)
+	fmt.Printf("check it after editing: swim lint %s\n", ref)
 	return nil
+}
+
+// withTask adds a # Task: line under a new script's Round: line, in its
+// comment style.
+func withTask(content, task string) string {
+	lines := strings.SplitAfter(content, "\n")
+	for i, l := range lines {
+		if at := strings.Index(l, "Round:"); at >= 0 {
+			line := l[:at] + "Task:    " + task + "\n"
+			return strings.Join(lines[:i+1], "") + line + strings.Join(lines[i+1:], "")
+		}
+	}
+	return content
 }
 
 // runFlags are the options swim run and swim all share.
@@ -447,6 +497,7 @@ func runLanes(rest []string, rf runFlags) error {
 				ref, cell, isCell = j, c, true
 			}
 		}
+		ref = taskRef(root, cfg, ref) // a task is its lane, not a job pin
 		n, err := laneRef(root, cfg, ref, false)
 		if err != nil {
 			return err

@@ -16,8 +16,8 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!doctype html>
 <main class="login"><a class="brand" href="/"><img src="/assets/favicon.svg" alt=""> swim hub</a>
 <h1>Log in</h1>
 {{if .Failed}}<p class="bad">That token isn't a user's.</p>{{end}}
-{{if .Tailscale}}<p class="muted">Tailscale says you're <code>{{.Tailscale}}</code>, but no hub user has that login: the hub's admin can add it (<code>swim hub user add NAME --role viewer --tailscale {{.Tailscale}}</code>).</p>{{end}}
-<p class="muted">Your token came from <code>swim hub user add NAME</code> (the hub's admin runs it). The login lasts 12 hours.</p>
+{{if .Tailscale}}<p class="muted">Tailscale says you're <code>{{.Tailscale}}</code>, but no hub user has that login: the hub's admin can add it (<code>swim auth users add NAME --role viewer --tailscale {{.Tailscale}}</code>).</p>{{end}}
+<p class="muted">Your token came from <code>swim auth users add NAME</code> (the hub's admin runs it). The login lasts 12 hours.</p>
 <form method="post" action="/api/login"><input type="password" name="token" placeholder="your hub user token" autocomplete="off" autofocus aria-label="your hub user token"> <button>Log in</button></form>
 </main><footer class="foot">swim hub · swim {{.Version}}</footer></body></html>`))
 

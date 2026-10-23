@@ -13,7 +13,7 @@ import (
 // Signing in with Tailscale (swim hub --trust-tailscale-identity): with the
 // hub reachable only through tailscale serve on the same machine, the
 // proxy names the tailnet user it served in Tailscale-User-Login. A hub
-// user given that login (swim hub user add NAME --tailscale LOGIN) is
+// user given that login (swim auth users add NAME --tailscale LOGIN) is
 // signed in by it: loading the app or /login with the header, from a
 // loopback peer, starts a session for them, as their token would.
 //

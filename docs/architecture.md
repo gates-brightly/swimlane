@@ -79,7 +79,7 @@ Read it top to bottom:
    writes the next round.
 
 The **hub** is a side path: workers push their status, lanes and queue to
-it, and it serves a dashboard. Hub users can also send headless workers
+it, and it serves a dashboard. Hub users can also send headless swimmers
 commands (interrupt, drain, run, fetch a log, answer a waiting guard),
 which the workers poll for, check against their own committed `headless:`
 settings, carry out and record. An answer approves only when the worker

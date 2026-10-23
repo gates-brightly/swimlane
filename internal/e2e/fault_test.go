@@ -276,7 +276,7 @@ func TestFaultQueueClaimed(t *testing.T) {
 	waitHit(t, dir, failpoint.QueueClaimed, out)
 	crash(r, c, 0)
 
-	contains(t, "queue", r.mustSwim("queue"), "orphaned: its worker is gone")
+	contains(t, "queue", r.mustSwim("queue"), "orphaned: its swimmer is gone")
 	r.mustSwim("watch", "--once")
 	if _, err := os.Stat(filepath.Join(r.root, "charges")); err == nil {
 		t.Fatal("a new watch ran the orphaned entry")
@@ -301,7 +301,7 @@ run "after" touch after`)
 	pid := waitHit(t, dir, failpoint.StepAfterExit, out)
 	crash(r, c, pid)
 
-	contains(t, "queue", r.mustSwim("queue"), "orphaned: its worker is gone")
+	contains(t, "queue", r.mustSwim("queue"), "orphaned: its swimmer is gone")
 	restart := r.mustSwim("watch", "--once")
 	contains(t, "restart", restart, "swim 1: its process died without ending its round")
 	if l := r.status().Get(1); l.State != status.Interrupted {

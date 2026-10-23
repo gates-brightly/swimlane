@@ -281,7 +281,7 @@ run "two" true`)
 		t.Fatalf("the run after p, p: exit %d\n%s", code, r.log(1))
 	}
 	r.mustSwim("pause", "--all")
-	tr.waitFor("paused: workers claim nothing")
+	tr.waitFor("paused: swimmers claim nothing")
 	r.mustSwim("unpause", "--all")
 	tr.send("\x03")
 	tr.wait()

@@ -89,7 +89,7 @@ func hubAsker(cfg *config.Config, worker string) approval.Asker {
 		expires := time.Now().Add(wait).UTC().Add(time.Second - 1).Truncate(time.Second)
 		ev := req.Evidence
 		if len(ev) > maxEvidence {
-			ev = ev[:maxEvidence] + "\n… (cut: the rest is in .swim/evidence/ on the worker)"
+			ev = ev[:maxEvidence] + "\n… (cut: the rest is in .swim/evidence/ on the swimmer)"
 		}
 		a := &hubAsk{answers: make(chan hubAnswer), done: make(chan struct{}), p: hub.PendingApproval{
 			ID: req.ID, Lane: req.Lane, Cell: req.Cell, Job: req.Job, Run: req.Run, Flag: req.Flag, Desc: req.Desc,
@@ -232,7 +232,7 @@ func hubAskerFor(root string, cfg *config.Config) approval.Asker {
 func hubAnswerOff(root string, cfg *config.Config) string {
 	access := hubAccessOf(root)
 	if access == config.AccessRead {
-		return "this enrollment's access is read; swim hub access readwrite"
+		return "this swimmer's access is read; swim auth login URL --access readwrite"
 	}
 	if cfg.Headless != nil && cfg.Headless.Allow != nil {
 		return "swim.yml's headless.allow doesn't list answer"

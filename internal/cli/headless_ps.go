@@ -165,7 +165,7 @@ func cmdPs(args []string) error {
 		return nil
 	}
 	if len(rows) == 0 {
-		fmt.Println("swim ps: no headless workers running (swim watch --headless --detach starts one in a repo)")
+		fmt.Println("swim ps: no headless swimmers running (swim watch --headless --detach starts one in a repo)")
 		return nil
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -236,7 +236,7 @@ func runnerStop(args []string) error {
 	}
 	rs := runningRunners()
 	if len(rs) == 0 {
-		fmt.Println("swim stop: no headless workers running")
+		fmt.Println("swim stop: no headless swimmers running")
 		return nil
 	}
 	var wg sync.WaitGroup

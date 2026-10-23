@@ -164,7 +164,7 @@ func cmdClean(args []string) error {
 			fmt.Printf("archive  swim %-2d %-8s %-18s -> %s\n", l.N, l.State, lane.ShortJob(l.Job), l.To)
 		}
 		for _, e := range orphans {
-			fmt.Printf("orphan   #%d %s: its worker is gone; swim queue requeue %d or swim queue rm %d\n", e.Seq, e.ID, e.Seq, e.Seq)
+			fmt.Printf("orphan   #%d %s: its swimmer is gone; swim queue requeue %d or swim queue rm %d\n", e.Seq, e.ID, e.Seq, e.Seq)
 		}
 		fmt.Println()
 	}

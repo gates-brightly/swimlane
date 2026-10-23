@@ -61,18 +61,21 @@ func TestHub(t *testing.T) {
 		}
 	}()
 
-	// Anyone may enroll, any token or none; it waits until admitted.
-	contains(t, "enroll", r.mustSwim("hub", "enroll", url, "--name", "billing"), "enrolled", "as billing", "waiting for the hub's admin to admit it")
+	// Any machine may join, with no token; it waits until admitted.
+	contains(t, "login", r.mustSwim("auth", "login", url, "--access", "read", "--name", "box"), "logged in to "+url+" as swimmer box", "waiting for the hub's admin to admit this machine")
 	if w := hubGet(t, url); len(w.Workers) != 0 {
-		t.Fatalf("a worker waiting to be admitted is listed: %+v", w)
+		t.Fatalf("a swimmer waiting to be admitted is listed: %+v", w)
 	}
-	contains(t, "waiting", r.mustSwim("hub", "admit", "--hub", url, "--admin-token", "adm1n"), "billing", "admit one:")
-	contains(t, "status", r.mustSwim("hub", "status"), "enrolled with "+url+" as billing", "waiting for the hub's admin")
-	contains(t, "admit", r.mustSwim("hub", "admit", "billing", "--hub", url, "--admin-token", "adm1n"), "billing admitted")
-	if w := hubGet(t, url); len(w.Workers) != 1 || w.Workers[0].Name != "billing" || !strings.Contains(w.Workers[0].Activity, "admitted") || len(w.Workers[0].Lanes) != 0 {
-		t.Fatalf("after admit: %+v", w)
+	contains(t, "waiting", r.mustSwim("auth", "admit", "--hub", url, "--admin-token", "adm1n"), "box", "admit one:")
+	contains(t, "status", r.mustSwim("auth", "status"), "swimmer: box", "waiting for the hub's admin")
+	contains(t, "admit", r.mustSwim("auth", "admit", "box", "--hub", url, "--admin-token", "adm1n"), "box admitted")
+	contains(t, "status", r.mustSwim("auth", "status"), "swimmer: box", "state:   admitted")
+	// The directory joins as swim watch starts, named by swim.yml.
+	r.hubName("billing")
+	contains(t, "join", r.mustSwim("watch", "--once"), "joined", "as billing")
+	if w := hubGet(t, url); len(w.Workers) != 1 || w.Workers[0].Name != "billing" || len(w.Workers[0].Lanes) != 0 {
+		t.Fatalf("after joining: %+v", w)
 	}
-	contains(t, "status", r.mustSwim("hub", "status"), "enrolled with "+url+" as billing", "reachable")
 
 	r.script(1, "slow", `run "slow" bash -c 'for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.4; done'`)
 	r.mustSwim("queue", "1")
@@ -109,9 +112,13 @@ func TestHub(t *testing.T) {
 	resp.Body.Close()
 	contains(t, "enrollment", page, `"name":"billing"`, `"activity":"stopped"`)
 
-	contains(t, "leave", r.mustSwim("hub", "leave"), "left "+url)
+	contains(t, "logout", r.mustSwim("auth", "logout"), "logged out of "+url, "1 directories")
 	if w := hubGet(t, url); len(w.Workers) != 0 {
-		t.Errorf("still listed after leave: %+v", w)
+		t.Errorf("still listed after logout: %+v", w)
+	}
+	// swim hub serves only: its old subcommands say where they went.
+	if out, code := r.swim("hub", "enroll", url); code != 2 || !strings.Contains(out, "swim auth login") {
+		t.Errorf("swim hub enroll: exit %d\n%s", code, out)
 	}
 	time.Sleep(10 * time.Millisecond)
 }
