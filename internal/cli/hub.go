@@ -324,6 +324,10 @@ type hubFile struct {
 	// enroll --access, swim hub access); "" from before access levels.
 	Access string `yaml:"access,omitempty"`
 	CA     string `yaml:"ca,omitempty"` // PEM the hub's https certificate must chain to (enroll --ca)
+	// Via is "auth" for an enrollment made through swim auth: it lasts
+	// while this machine stays logged in to that hub, and enrolls again
+	// with the machine's token.
+	Via string `yaml:"via,omitempty"`
 	// What a headless worker has carried out of the hub's commands, so a
 	// restarted (or replaying) hub can't make it act twice: the hub's
 	// epoch, the last seq seen in it, and the ids of recent commands.
@@ -349,7 +353,13 @@ func saveHub(root string, h *hubFile) error {
 
 // hubClient is this directory's connection to its hub.
 func hubClient(h *hubFile) *hub.Client {
-	c, err := hub.NewClientTLS(h.URL, h.Token, h.ID, []byte(h.CA))
+	token := h.Token
+	if h.Via == viaAuth {
+		if a, err := loadAuth(); err == nil {
+			token = a.Token // the machine's: enrolls it again if the hub forgot it
+		}
+	}
+	c, err := hub.NewClientTLS(h.URL, token, h.ID, []byte(h.CA))
 	if err != nil {
 		// A CA that no longer parses: fail closed (no system roots) with
 		// the reason on every call rather than trust something else.
@@ -389,7 +399,23 @@ func workerKeyPath(root string) string {
 
 func hubPath(root string) string { return filepath.Join(root, ".swim", "hub.yml") }
 
+// loadHub is root's enrollment. One made through swim auth counts only
+// while this machine is still logged in to that hub.
 func loadHub(root string) (*hubFile, error) {
+	h, err := readHub(root)
+	if err != nil {
+		return nil, err
+	}
+	if h.Via == viaAuth {
+		if a, err := loadAuth(); err != nil || strings.TrimRight(a.URL, "/") != strings.TrimRight(h.URL, "/") {
+			return nil, fmt.Errorf("%s: enrolled through swim auth with %s, and this machine is no longer logged in to it: %w", hubPath(root), h.URL, os.ErrNotExist)
+		}
+	}
+	return h, nil
+}
+
+// readHub is root's .swim/hub.yml as it is.
+func readHub(root string) (*hubFile, error) {
 	data, err := os.ReadFile(hubPath(root))
 	if err != nil {
 		return nil, err
@@ -635,7 +661,11 @@ func hubStatus(args []string) error {
 	}
 	h, err := loadHub(root)
 	if err != nil {
-		fmt.Println("not enrolled with a hub (swim hub enroll URL --token T)")
+		if a, aerr := loadAuth(); aerr == nil {
+			fmt.Printf("not enrolled yet: this machine is logged in to %s (swim auth status), so swim watch here enrolls through it as it starts\n", a.URL)
+		} else {
+			fmt.Println("not enrolled with a hub (swim hub enroll URL here, or swim auth login URL for every directory on this machine)")
+		}
 		return nil
 	}
 	ns := hubNamespace(root, h)
@@ -658,7 +688,7 @@ func hubStatus(args []string) error {
 // nothing when the directory isn't enrolled. setActivity says what the
 // watch is doing; stop sends a last report and ends it.
 func hubReporter(root string, every time.Duration) (setActivity func(string), stop func()) {
-	h, err := loadHub(root)
+	h, err := ensureHub(root)
 	if err != nil {
 		return func(string) {}, func() {}
 	}

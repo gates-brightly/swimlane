@@ -84,6 +84,8 @@ COMMANDS
   stop [--all]             outside a lane: stop this directory's headless worker after the
                            batch in hand; --all stops every one on this machine
   hub / hub enroll URL     a dashboard of many workers; enroll a directory to report to it
+  auth login URL | status | logout   this machine's hub, for every directory of this user:
+                           each where swim watch runs enrolls itself (~/.config/swim/auth.yml)
                            (--tls-cert/--tls-key serve https; enroll --ca FILE trusts its cert)
   hub user add NAME --role viewer|operator   a hub user (token shown once): logged in, they
                            interrupt, drain, run, fetch logs or answer guards on headless workers

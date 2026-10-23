@@ -747,7 +747,7 @@ func cmdWatch(args []string) error {
 		case hf.uninstall:
 			return headlessUninstall(root, cfg)
 		}
-		if _, err := loadHub(root); err != nil {
+		if _, err := ensureHub(root); err != nil {
 			return headlessNoHub(err)
 		}
 		switch {

@@ -68,7 +68,7 @@ func headlessPath(root, name string) string { return filepath.Join(root, ".swim"
 // a hub.
 func headlessNoHub(err error) error {
 	if errors.Is(err, os.ErrNotExist) {
-		return errors.New("--headless needs a hub: this directory isn't enrolled (swim hub enroll URL --token T). With no terminal, the hub is the only place the worker can be seen")
+		return errors.New("--headless needs a hub: this directory isn't enrolled and this machine isn't logged in to one (swim auth login URL for every directory here, or swim hub enroll URL for this one). With no terminal, the hub is the only place the worker can be seen")
 	}
 	return err
 }

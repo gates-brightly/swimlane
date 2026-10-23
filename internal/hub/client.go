@@ -319,3 +319,58 @@ func (c *Client) Leave() error {
 	}
 	return nil
 }
+
+// EnrollMachine enrolls this machine and user (swim auth login) with
+// token (its own, to enroll again; "" the first time). It returns the
+// machine's id and token, and whether it waits to be admitted.
+func (c *Client) EnrollMachine(m Machine, token string) (id, tok string, pending bool, err error) {
+	resp, err := c.doAs(token, "POST", "/api/machines", m)
+	if err != nil {
+		return "", "", false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", false, failure(resp)
+	}
+	var out struct {
+		ID, Token string
+		Pending   bool
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || out.ID == "" || out.Token == "" {
+		return "", "", false, errors.New("hub: machine enroll returned no id")
+	}
+	return out.ID, out.Token, out.Pending, nil
+}
+
+// Machine is how the machine with token stands on the hub.
+func (c *Client) Machine(token string) (*MachineStatus, error) {
+	resp, err := c.doAs(token, "GET", "/api/machines/me", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, failure(resp)
+	}
+	var st MachineStatus
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// LeaveMachine removes the machine with token, and every directory that
+// joined through it; it returns how many.
+func (c *Client) LeaveMachine(token string) (int, error) {
+	resp, err := c.doAs(token, "DELETE", "/api/machines/me", nil)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, failure(resp)
+	}
+	var out struct{ Workers int }
+	json.NewDecoder(resp.Body).Decode(&out)
+	return out.Workers, nil
+}

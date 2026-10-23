@@ -557,6 +557,13 @@ already pushed to origin's main) with the next tag and pushes that tag.
   add`, or `swim run` (`trigger` on each run the hub keeps), shown on the
   run and in Activity.
 
+- **`swim auth login URL | status | logout`:** a machine-wide hub
+  enrollment for every directory of this user (`~/.config/swim/auth.yml`).
+  The machine is admitted once; then each directory where `swim watch`
+  runs enrolls itself, admitted at once, and reports (a directory's own
+  `swim hub enroll` still wins). `swim auth logout` removes the machine
+  from the hub with every directory that joined through it. The hub's
+  Admin page lists a waiting machine with the workers waiting to join.
 - **`swim ps` and `swim stop [--all]`.** `swim ps` lists the headless
   workers running on this machine, in any directory: pid, mode
   (detached, foreground, systemd, launchd), uptime, running lanes and

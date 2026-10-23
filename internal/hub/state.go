@@ -48,6 +48,8 @@ type Record struct {
 	From       string `json:"from,omitempty"`
 	AdmittedAt string `json:"admitted_at,omitempty"`
 	AdmittedBy string `json:"admitted_by,omitempty"`
+	// Machine is the machine it joined through (swim auth), if it did.
+	Machine string `json:"machine,omitempty"`
 	// Addr is the address its last report came from (no port).
 	Addr string `json:"addr,omitempty"`
 	// Runs is how many runs it has reported since it enrolled (the hub
@@ -81,6 +83,8 @@ type state struct {
 	Epoch string `json:"epoch,omitempty"`
 	// Sessions are the logins not yet expired, by their id's hash.
 	Sessions map[string]*session `json:"sessions,omitempty"`
+	// Machines are the machine-wide enrollments (machines.go).
+	Machines map[string]*Machine `json:"machines,omitempty"`
 }
 
 // KeyFingerprint is a short, stable name for a worker's public key.
@@ -163,6 +167,9 @@ func NewWithState(token, admin, dir string) (*Server, error) {
 		if st.Epoch != "" {
 			s.epoch = st.Epoch
 		}
+		if st.Machines != nil {
+			s.machines = st.Machines
+		}
 		for k, se := range st.Sessions {
 			if se != nil && s.now().Before(se.Expires) && s.users[se.User] != nil {
 				s.sessions[k] = se
@@ -202,7 +209,7 @@ func (s *Server) save() error {
 		}
 	}
 	data, err := json.MarshalIndent(state{Schema: StateSchema, Workers: s.records, Grants: s.grants,
-		Users: s.users, Commands: s.commands, NextSeq: s.nextSeq, Epoch: s.epoch, Sessions: s.sessions}, "", "  ")
+		Users: s.users, Commands: s.commands, NextSeq: s.nextSeq, Epoch: s.epoch, Sessions: s.sessions, Machines: s.machines}, "", "  ")
 	if err != nil {
 		return err
 	}

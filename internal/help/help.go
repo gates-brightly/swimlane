@@ -476,6 +476,35 @@ swim stop [--all]
   a systemd or launchd service runs starts again at login; swim watch
   --headless --uninstall removes the service.
 `,
+	"auth": `swim auth login URL [--access read|readwrite] [--name N] [--ca FILE] [--insecure]
+swim auth status
+swim auth logout
+
+  This machine's enrollment with a hub, for every directory of this user,
+  kept in the config directory (~/.config/swim/auth.yml, private).
+  login    enrolls the machine (and user) with the hub at URL; like a
+           directory, it waits for the hub's admin to admit it (the Admin
+           page, or swim hub admit NAME), once. --access is what each
+           directory lets the hub do (read, the default off a terminal:
+           show it and fetch its logs; readwrite: also send commands);
+           swim.yml's headless.allow still narrows it, and swim hub access
+           changes one directory's. --name names the machine (default the
+           host's short name). Logging in again to the same hub keeps the
+           machine's token; to another hub moves the machine to it.
+  Logged in, any directory where swim watch runs (with or without
+  --headless) and that has no enrollment of its own enrolls itself with
+  the machine's token, admitted at once, under its repo's namespace
+  (HOST:IP outside git), and reports; its .swim/hub.yml says via: auth.
+  A directory enrolled with swim hub enroll keeps its own enrollment.
+  status   the hub, the machine, whether it's admitted, and the
+           directories that joined through it
+  logout   removes the machine from the hub with every directory that
+           joined through it (their grants and commands too), and here
+           forgets it; their workers stop reporting (swim stop --all ends
+           them).
+  The hub's admin can remove a machine too (DELETE /api/machines/ID with
+  the admin token), with the same effect.
+`,
 	"ps": `swim ps [--yaml]
 
   The headless workers (swim watch --headless) running on this machine, in
@@ -2001,7 +2030,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "timeline", "observe", "step", "lib",
 	"gate", "snapshot", "mod", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "ps", "hub", "wait", "approve", "revoke",
+	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "ps", "hub", "auth", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
 func Full() string {

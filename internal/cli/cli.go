@@ -66,6 +66,7 @@ func init() {
 		"watch":     {run: cmdWatch},
 		"ps":        {run: cmdPs},
 		"hub":       {run: cmdHub},
+		"auth":      {run: cmdAuth},
 		"wait":      {run: cmdWait},
 		"approve":   {run: cmdApprove},
 		"revoke":    {run: cmdRevoke},

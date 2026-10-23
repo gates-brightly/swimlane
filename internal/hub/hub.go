@@ -342,6 +342,8 @@ type Server struct {
 	adminLogins    []string // Tailscale logins that sign in as admins (AdminTailscale)
 	// checkpoints are each worker's chain checkpoints (checkpoints.go).
 	checkpoints map[string][]chain.Checkpoint
+	// machines are the machine-wide enrollments (machines.go).
+	machines map[string]*Machine
 	// notify sends alerts to webhooks (notify.go); nil without any.
 	notify *notifier
 	// publicURL is where people reach the hub, for links in alerts.
@@ -354,7 +356,7 @@ func New(token string) *Server {
 	s := &Server{token: token, now: time.Now, workers: map[string]*View{},
 		records: map[string]*Record{}, grants: map[string]map[string]Grant{}, fetched: map[string]time.Time{},
 		users: map[string]*User{}, sessions: map[string]*session{}, commands: map[string][]*Command{}, nextSeq: map[string]int{},
-		epoch: newToken()[:16], wake: map[string]chan struct{}{}, checkpoints: map[string][]chain.Checkpoint{}}
+		epoch: newToken()[:16], wake: map[string]chan struct{}{}, checkpoints: map[string][]chain.Checkpoint{}, machines: map[string]*Machine{}}
 	s.logs = newLogCache(LogMax, LogCacheMax, LogTTL, func() time.Time { return s.now() })
 	s.runs = newRunStore(func() time.Time { return s.now() })
 	s.events = newEventHub()
@@ -393,6 +395,7 @@ func (s *Server) Handler() http.Handler {
 	s.apiRoutes(mux)
 	s.userRoutes(mux)
 	s.admissionRoutes(mux)
+	s.machineRoutes(mux)
 	s.commandRoutes(mux)
 	s.webRoutes(mux)
 	return secured(mux)
@@ -414,6 +417,14 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	rec := s.records[wk.ID]
 	own, admin := s.isEnrolled(wk.ID, got), s.isAdmin(got)
+	// A machine's token (swim auth) enrolls its directories, admitted
+	// once the machine is: a directory it enrolled again too.
+	m := s.machineByToken(got)
+	if m != nil && m.Pending {
+		http.Error(w, "this machine waits for the hub's admin to admit it (the hub's Admin page, or swim hub admit "+m.Name+")", http.StatusForbidden)
+		return
+	}
+	byMachine := m != nil && (rec == nil || rec.Machine == m.ID)
 	switch {
 	case !s.admitting():
 		// No state, no admission: the enroll token or the admin's enrolls
@@ -422,19 +433,22 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad or missing token", http.StatusUnauthorized)
 			return
 		}
-	case rec != nil && !own && !admin:
+	case rec != nil && !own && !admin && !byMachine:
 		// This host and directory are enrolled already: only their own
 		// token (in .swim/hub.yml) enrolls them again, so nobody can take
 		// an admitted worker's place, or knock it back to waiting.
 		http.Error(w, "this directory is already enrolled with the hub: enroll again with its own token (.swim/hub.yml), or have the admin remove it (swim hub leave, or the Admin page) first", http.StatusConflict)
 		return
-	case rec == nil && !admin && s.pendingCount() >= MaxPending:
+	case rec == nil && !admin && !byMachine && s.pendingCount() >= MaxPending:
 		http.Error(w, "too many workers are waiting to join this hub: try again once the admin has admitted or turned some away", http.StatusTooManyRequests)
 		return
 	}
 	if rec == nil {
 		rec = &Record{EnrolledAt: s.now().UTC().Format(time.RFC3339), From: s.clientAddr(r)}
-		if s.admitting() && !admin {
+		if byMachine {
+			rec.Machine, rec.AdmittedAt, rec.AdmittedBy = m.ID, rec.EnrolledAt, "machine "+m.Name
+			s.audit("%s (%s on %s:%s) enrolled through machine %s (%s): admitted", wk.ID, wk.Name, wk.Host, wk.Root, m.ID, m.Name)
+		} else if s.admitting() && !admin {
 			rec.Pending = true
 			s.audit("%s (%s on %s:%s) enrolled from %s: waiting to be admitted", wk.ID, wk.Name, wk.Host, wk.Root, rec.From)
 		}

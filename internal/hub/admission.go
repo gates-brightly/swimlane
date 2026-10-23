@@ -25,6 +25,8 @@ const MaxPending = 50
 // PendingWorker is a worker waiting to join, as the admin lists it.
 type PendingWorker struct {
 	ID         string `json:"id"`
+	Kind       string `json:"kind,omitempty"` // "machine" for a machine-wide enrollment (swim auth); "" for a directory
+	User       string `json:"user,omitempty"` // a machine's user
 	Name       string `json:"name"`
 	Host       string `json:"host"`
 	Root       string `json:"root"`
@@ -58,6 +60,11 @@ func (s *Server) pendingCount() int {
 			n++
 		}
 	}
+	for _, m := range s.machines {
+		if m.Pending {
+			n++
+		}
+	}
 	return n
 }
 
@@ -70,6 +77,12 @@ func (s *Server) Pending() []PendingWorker {
 		if r.Pending {
 			out = append(out, PendingWorker{ID: id, Name: r.Name, Host: r.Host, Root: r.Root, Namespace: r.Namespace, Access: r.Access,
 				Version: r.Version, KeyFP: r.KeyFP, EnrolledAt: r.EnrolledAt, From: r.From})
+		}
+	}
+	for id, m := range s.machines {
+		if m.Pending {
+			out = append(out, PendingWorker{ID: id, Kind: "machine", Name: m.Name, Host: m.Host, User: m.User, Root: "every directory of " + m.User,
+				Access: m.Access, Version: m.Version, EnrolledAt: m.EnrolledAt, From: m.From})
 		}
 	}
 	sort.Slice(out, func(a, b int) bool {
@@ -85,6 +98,17 @@ func (s *Server) Pending() []PendingWorker {
 func (s *Server) Admit(id, by string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if m := s.machines[id]; m != nil {
+		if !m.Pending {
+			return m.Name + " is already admitted", nil
+		}
+		m.Pending, m.AdmittedAt, m.AdmittedBy = false, s.now().UTC().Format(time.RFC3339), by
+		if err := s.save(); err != nil {
+			return "", err
+		}
+		s.audit("%s (machine %s, %s@%s) admitted by %s", id, m.Name, m.User, m.Host, by)
+		return "machine " + m.Name + " admitted: every directory of " + m.User + " there joins as it runs swim watch", nil
+	}
 	r := s.records[id]
 	if r == nil {
 		return "", errors.New("no such worker")
@@ -109,6 +133,14 @@ func (s *Server) Admit(id, by string) (string, error) {
 func (s *Server) Reject(id, by string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if m := s.machines[id]; m != nil && m.Pending {
+		delete(s.machines, id)
+		if err := s.save(); err != nil {
+			return "", err
+		}
+		s.audit("%s (machine %s, %s@%s) turned away by %s", id, m.Name, m.User, m.Host, by)
+		return "machine " + m.Name + " turned away", nil
+	}
 	r := s.records[id]
 	if r == nil || !r.Pending {
 		return "", errors.New("no worker waiting with that id")

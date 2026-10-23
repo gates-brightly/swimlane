@@ -1033,7 +1033,7 @@ function Admin({ store }) {
     <div class="panel">${pending.loading && !pending.data ? html`<${Loading}/>` : pending.error ? html`<div class="err">${pending.error}</div>` : waiting.length === 0 ? html`<div class="empty">No one is waiting. A swim enrolls with <code>swim hub enroll ${location.origin}</code> and shows here until you admit it.</div>` : html`<div class="tw"><table>
       <thead><tr><th>Worker</th><th>Access</th><th>Namespace</th><th>Key</th><th>From</th><th>Since</th><th></th></tr></thead>
       <tbody>${waiting.map((p) => html`<tr>
-        <td><b>${p.name}</b><div class="sub mono">${p.host}:${p.root}</div></td>
+        <td><b>${p.name}</b>${p.kind === 'machine' ? html` <span class="pill">machine</span>` : ''}<div class="sub mono">${p.kind === 'machine' ? p.user + '@' + p.host + ': every directory of ' + p.user + ' there' : p.host + ':' + p.root}</div></td>
         <td>${p.access ? html`<span class="pill ${p.access === 'readwrite' ? 'wait' : ''}">${p.access}</span>` : ''}</td>
         <td class="mono">${p.namespace || ''}</td><td class="mono">${p.key_fp || html`<span class="muted">none</span>`}</td>
         <td class="mono muted">${p.from || ''}</td><td class="muted">${p.enrolled_at ? when(p.enrolled_at) : ''}</td>
