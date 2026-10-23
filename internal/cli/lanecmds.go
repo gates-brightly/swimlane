@@ -316,8 +316,12 @@ func cmdDrift(args []string) error {
 	return cmdMark([]string{n, logparse.Drift, args[0]})
 }
 
-// swim stop "<reason>": record STOP and end the round now (exit 1).
+// swim stop "<reason>": record STOP and end the round now (exit 1). Outside
+// a lane, swim stop [--all] stops headless workers (runners.go).
 func cmdStop(args []string) error {
+	if os.Getenv("SWIM_LANE") == "" {
+		return runnerStop(args)
+	}
 	n, err := laneEnv("stop")
 	if err != nil {
 		return err

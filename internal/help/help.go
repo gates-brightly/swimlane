@@ -463,9 +463,29 @@ swim observe accept ID [--note TEXT] | reject ID
   from code).
 `,
 	"stop": `swim stop "<reason>"
+swim stop [--all]
 
   In a lane script in any language: record STOP <reason> and end the round
   now (exit 1); the program is stopped.
+
+  Outside a lane (SWIM_LANE unset): stop this directory's headless worker
+  (swim watch --headless), as swim watch --headless --stop does. It gets
+  SIGTERM and stops after the batch in hand: its lanes stop at the next
+  step boundary, forced after term_grace. --all stops every headless
+  worker on this machine (swim ps lists them), waiting for each. A worker
+  a systemd or launchd service runs starts again at login; swim watch
+  --headless --uninstall removes the service.
+`,
+	"ps": `swim ps [--yaml]
+
+  The headless workers (swim watch --headless) running on this machine, in
+  any directory: pid, how it runs (foreground, detached, systemd,
+  launchd), how long it's been up, its running lanes and queued batches,
+  the hub it reports to, and its directory. Each worker registers its
+  directory when it starts (~/.config/swim/runners/); one started by an
+  older swim shows once it restarts. A directory's .swim/headless.lock
+  says whether a worker runs there. --yaml: a swim.ps/v1 document. swim
+  stop [--all] stops them.
 `,
 	"env": `swim env [N|JOB] [--yaml]
 
@@ -1951,7 +1971,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "timeline", "observe", "step", "lib",
 	"gate", "snapshot", "mod", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "hub", "wait", "approve", "revoke",
+	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "ps", "hub", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor"}
 
 func Full() string {

@@ -508,6 +508,17 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **`swim ps` and `swim stop [--all]`.** `swim ps` lists the headless
+  workers running on this machine, in any directory: pid, mode
+  (detached, foreground, systemd, launchd), uptime, running lanes and
+  queued batches, hub, directory (`--yaml`: `swim.ps/v1`). Each worker
+  registers its directory when it starts (`~/.config/swim/runners/`), so
+  one started by an older swim shows once it restarts. Outside a lane,
+  `swim stop` stops this directory's worker after the batch in hand (as
+  `swim watch --headless --stop`), and `--all` stops every one; in a lane
+  script `swim stop "<reason>"` still ends the round.
+- **The hub shows lanes by number:** `2`, not `swim 2`, in its lists and
+  chips ("lane 2" in titles and sentences).
 - **The hub is organized by repo.** Its home page lists repos (each
   runner's namespace: its origin remote, or `HOST:IP` for a runner outside
   a git repo, the address it reaches the hub from), and a repo's page

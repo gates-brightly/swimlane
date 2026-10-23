@@ -210,6 +210,7 @@ func headlessStart(root string, yes, approved bool) (release func(), err error) 
 	}
 	os.Unsetenv(headlessModeEnv)
 	os.Unsetenv(headlessLogEnv)
+	registerRunner(root, mode)
 	headlessInfo = &hub.HeadlessInfo{Mode: mode, Yes: yes, Approved: approved, Since: time.Now().UTC().Format(time.RFC3339)}
 
 	hups := make(chan os.Signal, 1)

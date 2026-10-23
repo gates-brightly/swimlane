@@ -64,6 +64,7 @@ func init() {
 		"cache":     {run: cmdCache},
 		"modules":   {run: cmdModules},
 		"watch":     {run: cmdWatch},
+		"ps":        {run: cmdPs},
 		"hub":       {run: cmdHub},
 		"wait":      {run: cmdWait},
 		"approve":   {run: cmdApprove},
