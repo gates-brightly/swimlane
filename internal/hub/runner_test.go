@@ -110,3 +110,29 @@ func TestJobOutputFromFetchedLog(t *testing.T) {
 		t.Errorf("output from the fetched log: %q %q", from, o)
 	}
 }
+
+// A lane's history: the runs it was in, each with how every lane ended.
+func TestRunsForALane(t *testing.T) {
+	s, srv, worker, _, _ := commandHub(t)
+	worker.PutRun(testRun("r-1", s.now().Add(-time.Hour), "passed", "failed"))
+	worker.PutRun(testRun("r-2", s.now(), "passed"))
+	resp, err := http.Get(srv.URL + "/api/enrollments/" + worker.ID + "/runs?lane=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct{ Runs []RunInfo }
+	json.NewDecoder(resp.Body).Decode(&out)
+	if len(out.Runs) != 1 || out.Runs[0].Run != "r-1" || len(out.Runs[0].LaneResults) != 2 || out.Runs[0].LaneResults[1].State != "failed" {
+		t.Fatalf("lane 2's runs: %+v", out.Runs)
+	}
+	resp2, err := http.Get(srv.URL + "/api/enrollments/" + worker.ID + "/runs?lane=9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	b, _ := io.ReadAll(resp2.Body)
+	if !strings.Contains(string(b), `"runs":[]`) {
+		t.Errorf("no runs for lane 9: %s", b)
+	}
+}

@@ -66,6 +66,14 @@ func cmdApproveHook(args []string) error {
 		}
 		return exitError{1}
 	}
+	// blocked ends the round failed: a guard no one here can ever answer
+	// (the launcher says so) would otherwise dry-run its change on every
+	// run, and the lane would look passed.
+	blocked := func(why string) error {
+		cmdMark([]string{args[0], logparse.Blocked, desc, "can't be answered here: " + why})
+		history.Log(root, history.Entry{Event: history.Decline, Lane: n, Job: job, Run: run, Detail: desc + "  (blocked: " + why + ")"})
+		return endRound(root, n, 1, "guard "+flag+" can't be answered on this worker: "+why)
+	}
 	m := laneManifest(root, cfg, n)
 	sha, man := scriptSHA(root, n), ""
 	if m != nil {
@@ -92,7 +100,7 @@ func cmdApproveHook(args []string) error {
 	route := guardRoute(launched(), func() bool { return underSwimRun(root) }, flagSet)
 	switch route {
 	case routeLauncher:
-		return approveLaunched(root, cfg, args[0], n, flag, desc, flagSet, dryRun, drifted)
+		return approveLaunched(root, cfg, args[0], n, flag, desc, flagSet, dryRun, blocked, drifted)
 	case routeRefuse:
 		// Started by swim run, but without its approval channel: the lane
 		// unset it, or swim run couldn't start it. Nobody can decide the
@@ -180,6 +188,9 @@ func cmdApproveHook(args []string) error {
 		job = resp.Job
 	}
 	if !resp.Approved {
+		if resp.Fail {
+			return blocked(resp.Why)
+		}
 		return dryRun(declined(resp))
 	}
 	by := or(resp.By, operator())
@@ -315,7 +326,7 @@ func inOtherRepo(root string, pid int) bool {
 // approveLaunched asks swim run's launcher to decide the guard: it alone
 // approves (from what it saw as the run started, or the operator), and it
 // records the approval in the chain as this lane uses it (_mark --request).
-func approveLaunched(root string, cfg *config.Config, laneArg string, n int, flag, desc string, flagSet bool, dryRun func(string) error, drifted func(map[string]string) error) error {
+func approveLaunched(root string, cfg *config.Config, laneArg string, n int, flag, desc string, flagSet bool, dryRun, blocked func(string) error, drifted func(map[string]string) error) error {
 	if !flagSet {
 		status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
 	}
@@ -328,6 +339,9 @@ func approveLaunched(root string, cfg *config.Config, laneArg string, n int, fla
 	}
 	laneWarns(root, n, laneArg, resp.Warns)
 	if !resp.Approved {
+		if resp.Fail {
+			return blocked(resp.Why)
+		}
 		return dryRun(declined(resp))
 	}
 	if err := drifted(resp.Observed); err != nil {

@@ -72,7 +72,7 @@ func hubAsker(cfg *config.Config, worker string) approval.Asker {
 	return func(req approval.Request, cancel <-chan struct{}) approval.Response {
 		lk := req.Rules
 		if lk == nil || lk.Path == "" {
-			return approval.Response{Dry: true, Why: "no answer: an answer through the hub counts only from a user in lookup.yml, and there is none"}
+			return approval.Response{Dry: true, Fail: true, Why: "no one may answer it through the hub: an answer counts only from a user in lookup.yml, and the repo has no lookup.yml (swim keys --help)"}
 		}
 		rule := lk.RuleFor(req.Flag)
 		signedOnly := ""
@@ -207,17 +207,37 @@ func answerHub(cmd hub.Command) (string, string) {
 	}
 }
 
-// hubAskerFor is the asker for a batch on a headless worker: nil when the
-// directory isn't enrolled or swim.yml doesn't take answers from the hub.
+// hubAskerFor is the asker for a batch on a headless worker. When the hub
+// may not answer guards here (the enrollment's access, swim.yml's
+// headless.allow) or the directory isn't enrolled, no one can: each guard
+// nothing else approves fails its round (Fail) instead of dry-running.
 func hubAskerFor(root string, cfg *config.Config) approval.Asker {
-	if !cfg.HubAllows(hubAccessOf(root), config.HubAnswer) {
-		return nil
-	}
+	why := ""
 	h, err := loadHub(root)
-	if err != nil {
-		return nil
+	switch {
+	case err != nil:
+		why = "this directory isn't enrolled with a hub"
+	case !cfg.HubAllows(hubAccessOf(root), config.HubAnswer):
+		why = "the hub may not answer guards here (" + hubAnswerOff(root, cfg) + ")"
+	}
+	if why != "" {
+		return func(approval.Request, <-chan struct{}) approval.Response {
+			return approval.Response{Dry: true, Fail: true, Why: why + "; approve it with its flag in the queue entry (swim queue add --approve FLAG) or a signed approval"}
+		}
 	}
 	return hubAsker(cfg, h.ID)
+}
+
+// hubAnswerOff says why the hub may not answer guards here.
+func hubAnswerOff(root string, cfg *config.Config) string {
+	access := hubAccessOf(root)
+	if access == config.AccessRead {
+		return "this enrollment's access is read; swim hub access readwrite"
+	}
+	if cfg.Headless != nil && cfg.Headless.Allow != nil {
+		return "swim.yml's headless.allow doesn't list answer"
+	}
+	return "headless.allow"
 }
 
 func short(id string) string {

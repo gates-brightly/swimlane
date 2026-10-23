@@ -63,7 +63,7 @@ func TestHubSnapshotSchedules(t *testing.T) {
 	if b := byID["q-after"]; b.State != "held" || b.HeldBy != "#1" {
 		t.Errorf("held batch: %+v", b)
 	}
-	if b := byID["r-daily"]; b.State != "daily" || !strings.Contains(b.Daily, "daily at 06:00:00(UTC)") {
+	if b := byID["r-daily"]; b.State != "recurring" || !strings.Contains(b.Daily, "daily at 06:00:00 (UTC), until 2099-01-01; next 06:00:00(UTC)") {
 		t.Errorf("recurring: %+v", b)
 	}
 }

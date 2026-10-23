@@ -17,6 +17,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/hub"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/runrec"
 )
 
@@ -67,7 +68,11 @@ func sendHubRuns(root string, cfg *config.Config, h *hubFile, c *hub.Client) err
 		if err != nil || !ok {
 			continue
 		}
-		permanent, err := c.PutRun(hubRunReport(root, r, cfg.HubLogs() == config.HubLogsStream))
+		rep := hubRunReport(root, r, cfg.HubLogs() == config.HubLogsStream)
+		if rep.Trigger.Kind == hub.TriggerCLI && batchRunning(root) {
+			continue // its batch may not have recorded it yet: the next report sends it
+		}
+		permanent, err := c.PutRun(rep)
 		if err != nil && !permanent {
 			failed = fmt.Errorf("run %s: %w", id, err)
 			break
@@ -114,7 +119,7 @@ func recentRuns(root string, n int) []string {
 // log: with step output only when output is set (hub.logs: stream), and
 // without it when the report would be over hub.RunMax.
 func hubRunReport(root string, r *runrec.Run, output bool) *hub.RunReport {
-	rep := &hub.RunReport{Run: *r, Jobs: []logparse.Doc{}}
+	rep := &hub.RunReport{Run: *r, Jobs: []logparse.Doc{}, Trigger: runTrigger(root, r.Run)}
 	for _, l := range r.Lanes {
 		rounds, err := logparse.RoundsInFile(lane.Log(root, l.Lane))
 		if err != nil {
@@ -149,4 +154,36 @@ func hubRunReport(root string, r *runrec.Run, output bool) *hub.RunReport {
 func reportSize(rep *hub.RunReport) int {
 	data, _ := json.Marshal(rep)
 	return len(data)
+}
+
+// runTrigger is what started run: the queue entry that ran it (a
+// recurring schedule's occurrence, a hub user's command, swim queue add),
+// or none (swim run, swim all, swim ci).
+func runTrigger(root, run string) *hub.Trigger {
+	entries, _ := queue.List(root, true)
+	for _, e := range entries {
+		if e.Result == nil || e.Result.Run != run {
+			continue
+		}
+		t := &hub.Trigger{Kind: hub.TriggerQueue, By: e.By, Batch: e.ID}
+		switch {
+		case e.From != "":
+			t.Kind, t.Schedule = hub.TriggerSchedule, e.From
+		case strings.HasPrefix(e.By, "hub:"):
+			t.Kind = hub.TriggerHub
+		}
+		return t
+	}
+	return &hub.Trigger{Kind: hub.TriggerCLI}
+}
+
+// batchRunning reports whether a queue batch runs here now.
+func batchRunning(root string) bool {
+	entries, _ := queue.List(root, false)
+	for _, e := range entries {
+		if e.State == queue.Running {
+			return true
+		}
+	}
+	return false
 }

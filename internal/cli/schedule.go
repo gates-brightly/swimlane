@@ -71,7 +71,7 @@ func splitTime(args []string) (lanes []string, when string, err error) {
 type scheduleFlags struct {
 	approve                 []string
 	note, parallel, keyPath string
-	tz, until, forD         string
+	tz, until, forD, cron   string
 	yes, asYAML, daily      bool
 	noFinally               bool
 }
@@ -94,7 +94,7 @@ func parseScheduleFlags(args []string) ([]string, scheduleFlags, error) {
 		}
 	}
 	rest, err := flags{bools: map[string]*bool{"yes": &f.yes, "yaml": &f.asYAML, "daily": &f.daily, "no-finally": &f.noFinally},
-		strs: map[string]*string{"note": &f.note, "parallel": &f.parallel, "key": &f.keyPath, "tz": &f.tz, "until": &f.until, "for": &f.forD}}.parse(rest0)
+		strs: map[string]*string{"note": &f.note, "parallel": &f.parallel, "key": &f.keyPath, "tz": &f.tz, "until": &f.until, "for": &f.forD, "cron": &f.cron}}.parse(rest0)
 	return rest, f, err
 }
 
@@ -106,8 +106,14 @@ func scheduleAdd(args []string, cmd string) error {
 	if f.yes {
 		return usagef("%s doesn't take -y: approving every guard of a run hours away, with no one watching, is what -y suits least; name each with --approve FLAG", cmd)
 	}
-	refs, when, err := splitTime(rest)
-	if err != nil {
+	if f.cron != "" && f.daily {
+		return usagef("give --daily TIME or --cron EXPR, not both")
+	}
+	var refs []string
+	var when string
+	if f.cron != "" {
+		refs = rest // every argument is a lane: the expression is --cron's
+	} else if refs, when, err = splitTime(rest); err != nil {
 		return err
 	}
 	if len(refs) == 0 {
@@ -137,11 +143,11 @@ func scheduleAdd(args []string, cmd string) error {
 		// The finally lanes naming a scheduled lane go with it (# Finally:).
 		lanes, pulled = launcher.WithFinally(root, cfg, lanes)
 	}
-	if f.daily {
+	if f.daily || f.cron != "" {
 		return recurringAdd(root, cfg, lanes, when, loc, f)
 	}
 	if f.until != "" || f.forD != "" {
-		return usagef("--until and --for go with --daily")
+		return usagef("--until and --for go with --daily or --cron")
 	}
 	now := scheduleNow()
 	at, _, err := schedule.ParseTime(when, now, loc)

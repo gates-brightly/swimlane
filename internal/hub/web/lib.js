@@ -7,6 +7,9 @@ export function route(path) {
   if (parts.length === 0) return { name: 'home' };
   if (parts.length === 1 && parts[0] === 'approvals') return { name: 'approvals' };
   if (parts.length === 1 && parts[0] === 'admin') return { name: 'admin' };
+  if (parts.length === 1 && parts[0] === 'schedules') return { name: 'schedules' };
+  if (parts.length === 1 && parts[0] === 'activity') return { name: 'activity' };
+  if (parts.length === 1 && parts[0] === 'jobs') return { name: 'jobs' };
   if (parts.length === 2 && parts[0] === 'r') return { name: 'repo', ns: parts[1] === '-' ? '' : parts[1] };
   if (parts[0] === 'e' && parts.length >= 2) {
     const id = parts[1];
@@ -15,10 +18,20 @@ export function route(path) {
     if (parts.length === 2 || (parts.length === 3 && parts[2] === 'runs')) return { name: 'lanes', id };
     if (parts.length === 3 && parts[2] === 'config') return { name: 'runner', id };
     if (parts.length === 3 && ['lanes', 'queue', 'runner'].includes(parts[2])) return { name: parts[2], id };
-    if (parts[2] === 'runs' && parts.length === 4) return { name: 'run', id, run: parts[3] };
+    // A lane's runs (its history), one of them, and a lane's log in it;
+    // a run without a lane is the runner's history.
+    const num = (x) => /^\d+$/.test(x);
+    if (parts[2] === 'lanes' && num(parts[3] || '')) {
+      const lane = Number(parts[3]);
+      if (parts.length === 4) return { name: 'history', id, lane };
+      if (parts.length === 6 && parts[4] === 'runs') return { name: 'history', id, lane, run: parts[5] };
+      if (parts.length === 8 && parts[4] === 'runs' && parts[6] === 'jobs' && num(parts[7])) return { name: 'history', id, lane, run: parts[5], job: Number(parts[7]) };
+      return { name: 'notfound' };
+    }
+    if (parts[2] === 'runs' && parts.length === 4) return { name: 'history', id, run: parts[3] };
     if (parts[2] === 'questions' && parts.length === 4) return { name: 'question', id, req: parts[3] };
     if (parts[2] === 'runs' && parts.length === 6 && parts[4] === 'jobs' && /^\d+$/.test(parts[5])) {
-      return { name: 'job', id, run: parts[3], lane: Number(parts[5]) };
+      return { name: 'history', id, run: parts[3], job: Number(parts[5]) };
     }
   }
   return { name: 'notfound' };
@@ -34,6 +47,22 @@ export function api(...parts) {
   return '/api/' + parts.map((p) => encodeURIComponent(String(p))).join('/');
 }
 
+// exitClass is the dot for how a lane (or run) ended: ok for passed,
+// bad for failed, interrupted or a nonzero exit, dim for skipped.
+export function exitClass(state, exit) {
+  if (exit != null && exit !== 0) return 'bad';
+  if (String(state || '').startsWith('dry')) return 'wait';
+  const c = stateClass(state);
+  return c === 'wait' ? 'dim' : c;
+}
+
+// laneState is a lane's state as the hub shows it: a lane that passed but
+// dry-ran a guarded step (dry is the steps) is "dry run", amber: its
+// change didn't happen.
+export function laneState(state, dry) {
+  return String(state || '').startsWith('pass') && (dry || []).length > 0 ? 'dry run' : state;
+}
+
 // stateClass is a state's color: ok, bad, run, wait or dim (as the
 // classic pages' stateClass in pages.go).
 export function stateClass(s) {
@@ -41,7 +70,7 @@ export function stateClass(s) {
   if (s.startsWith('pass') || s === 'done' || s === 'approved') return 'ok';
   if (s.startsWith('fail') || s.startsWith('interrupt') || s === 'orphaned' || s === 'error' || s === 'blocked') return 'bad';
   if (s.startsWith('running')) return 'run';
-  if (s.startsWith('skip') || ['waiting', 'queued', 'locked', 'held', 'scheduled', 'paused', 'drift', 'warn', 'stop'].includes(s)) return 'wait';
+  if (s.startsWith('skip') || s.startsWith('dry') || ['waiting', 'queued', 'locked', 'held', 'scheduled', 'paused', 'drift', 'warn', 'stop'].includes(s)) return 'wait';
   return 'dim';
 }
 
@@ -177,6 +206,43 @@ export function lineMatches(text, query) {
   return query !== '' && String(text).toLowerCase().includes(query.toLowerCase());
 }
 
+// scheduleClass is a schedule status's color: missed, failed, skipped
+// and expired are bad, paused and expiring wait, running runs.
+export function scheduleClass(status) {
+  switch (status) {
+    case 'missed': case 'failed': case 'skipped': case 'expired': return 'bad';
+    case 'paused': case 'expiring': return 'wait';
+    case 'running': return 'run';
+    case 'ok': return 'ok';
+  }
+  return 'dim';
+}
+
+// badSchedules are runners es's schedules that need someone: bad or
+// waiting statuses.
+export function badSchedules(es) {
+  const out = [];
+  for (const e of es) for (const s of e.schedules || []) if (['bad', 'wait'].includes(scheduleClass(s.status))) out.push({ e, s });
+  return out;
+}
+
+// triggerText says what started a run: "schedule r-…", "hub:alice", …
+export function triggerText(t) {
+  if (!t) return '';
+  switch (t.kind) {
+    case 'schedule': return 'schedule ' + (t.schedule || '');
+    case 'hub': return (t.by || 'hub').replace(/ via .*/, '');
+    case 'queue': return 'queued by ' + (t.by || '?').replace(/ via .*/, '');
+    case 'cli': return 'swim run';
+  }
+  return t.kind || '';
+}
+
+// successRate is passed/runs as a whole percent ('' with no runs).
+export function successRate(passed, runs) {
+  return runs > 0 ? Math.round((100 * passed) / runs) + '%' : '';
+}
+
 // repoHref is a repo's page: its namespace, or '-' for runners with none.
 export function repoHref(ns) {
   return href('r', ns || '-');
@@ -187,20 +253,35 @@ export function lastRun(es) {
   return es.map((e) => (e.runner || {}).last_run || '').reduce((a, b) => (b > a ? b : a), '');
 }
 
+// problems are the lanes failing or dry-running now, across runners
+// es, worst first: {e, l, state, cls}.
+export function problems(es) {
+  const out = [];
+  for (const e of es) {
+    for (const l of e.lanes || []) {
+      const state = laneState(l.state, l.dry_run);
+      const cls = stateClass(state);
+      if (cls === 'bad' || state === 'dry run') out.push({ e, l, state, cls });
+    }
+  }
+  return out.sort((a, b) => (a.cls === 'bad' ? 0 : 1) - (b.cls === 'bad' ? 0 : 1));
+}
+
 // repoSummary counts a repo's runners by state: {runners, running,
 // waiting, failed, stale, lanes}, and its headline {cls, label}.
 export function repoSummary(es) {
-  const out = { runners: es.length, running: 0, waiting: 0, failed: 0, stale: 0, lanes: 0 };
+  const out = { runners: es.length, running: 0, waiting: 0, failed: 0, dry: 0, stale: 0, lanes: 0 };
   for (const e of es) {
     const c = enrollmentState(e).cls;
     if (e.stale) out.stale++;
     else if (c === 'run') out.running++;
+    else if (enrollmentState(e).label === 'dry run') out.dry++;
     else if (c === 'wait') out.waiting++;
     else if (c === 'bad') out.failed++;
     out.lanes += (e.lanes || []).length;
   }
   [out.cls, out.label] = out.running ? ['run', out.running + ' running'] : out.waiting ? ['wait', out.waiting + ' waiting']
-    : out.failed ? ['bad', out.failed + ' failed'] : out.stale === out.runners ? ['dim', 'offline'] : ['ok', 'idle'];
+    : out.failed ? ['bad', out.failed + ' failed'] : out.dry ? ['wait', out.dry + ' dry run'] : out.stale === out.runners ? ['dim', 'offline'] : ['ok', 'idle'];
   return out;
 }
 
@@ -222,6 +303,7 @@ export function enrollmentState(e) {
   if ((e.pending || []).length > 0) return { label: 'waiting', cls: 'wait' };
   if ((e.lanes || []).some((l) => String(l.state).startsWith('running'))) return { label: 'running', cls: 'run' };
   if ((e.lanes || []).some((l) => stateClass(l.state) === 'bad')) return { label: 'failed', cls: 'bad' };
+  if ((e.lanes || []).some((l) => laneState(l.state, l.dry_run) === 'dry run')) return { label: 'dry run', cls: 'wait' };
   return { label: 'idle', cls: 'ok' };
 }
 

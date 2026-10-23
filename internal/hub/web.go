@@ -25,8 +25,9 @@ import (
 //	/e/{id}, /e/{id}/lanes             a runner's lanes (with their controls) now
 //	/e/{id}/queue                      its queue
 //	/e/{id}/runner                     what the hub knows of it, and its configuration (read only)
-//	/e/{id}/runs/{run}                 a run: its lanes as a graph
-//	/e/{id}/runs/{run}/jobs/{lane}     a job: its stages, steps and output
+//	/e/{id}/lanes/{n}[/runs/{run}[/jobs/{m}]]   lane n's history: its runs down the side (a dot for
+//	                                   how each ended), the chosen one's lanes, and lane m's full log
+//	/e/{id}/runs/{run}[/jobs/{m}]      the same for every run of the runner
 //	/e/{id}/questions/{req}            a guard waiting for an answer: answer it
 //
 // /w/{id}, where a worker's page was, redirects to its lanes. Logging in

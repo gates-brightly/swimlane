@@ -904,7 +904,7 @@ func cmdWatch(args []string) error {
 			if once {
 				break
 			}
-			say("queue empty; waiting for swim queue add")
+			say("queue empty; waiting for swim queue add" + nextRecurring(root))
 			sleep()
 			continue
 		}
@@ -1109,6 +1109,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		// asks through the hub (hubanswers.go).
 		o.Plain, o.NoHangup = true, true
 		o.Asker = hubAskerFor(root, cfg)
+		o.FailUnanswerable = true
 	}
 	if keys && len(lanes) > 1 {
 		// The live view's keys move between the batch's lanes. Parallel

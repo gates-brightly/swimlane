@@ -117,6 +117,10 @@ type Response struct {
 	// Dry: no one was asked (nobody can be, under swim run); the guard is a
 	// dry run, and Why (if set) says why no signed approval counted.
 	Dry bool `json:"dry,omitempty"`
+	// Fail: no one can ever answer this guard here (its script doesn't
+	// declare it, or the worker has no one who may answer), so the round
+	// fails, BLOCKED with Why, rather than dry-running the change unseen.
+	Fail bool `json:"fail,omitempty"`
 	// How is the APPROVED line's detail when the launcher decided
 	// ("approved by ... (signed)", "FLAG=1"); "" to build it from By, Auto,
 	// Via, Pre and At.
@@ -212,6 +216,10 @@ type Server struct {
 	// Record, if set, records an approval as its lane consumes it (the
 	// approve entry's hash); an error refuses the approval.
 	Record func(c Caller, g *Grant) (string, error)
+	// FailUndeclared refuses a guard its script doesn't declare with
+	// Fail (the round fails) instead of a plain decline (a dry run): for
+	// an unattended worker, where the dry run would go unseen.
+	FailUndeclared bool
 
 	mu        sync.Mutex
 	callers   map[string]Caller
@@ -330,10 +338,10 @@ func (s *Server) refuse(c Caller, req Request, why string) Response {
 // check refuses a request that doesn't come from a registered lane process
 // or names a guard its script doesn't declare; otherwise it returns req
 // with the launcher's facts in place of the lane's.
-func (s *Server) check(req Request) (Caller, Request, string) {
+func (s *Server) check(req Request) (Caller, Request, string, bool) {
 	c, ok := s.caller(req.Token)
 	if !ok {
-		return c, req, "the request didn't come from a lane of this run (no or an unknown token)"
+		return c, req, "the request didn't come from a lane of this run (no or an unknown token)", false
 	}
 	req.RawDesc, req.Desc = req.Desc, Clean(req.Desc)
 	if req.Lane != c.Lane {
@@ -347,9 +355,9 @@ func (s *Server) check(req Request) (Caller, Request, string) {
 		declared = declared || g == req.Flag
 	}
 	if !declared {
-		return c, req, fmt.Sprintf("guard %s isn't declared in swim %d's script (list it in # Guards:)", req.Flag, c.Lane)
+		return c, req, fmt.Sprintf("guard %s isn't declared in swim %d's script (list it in # Guards:)", req.Flag, c.Lane), true
 	}
-	return c, req, ""
+	return c, req, "", false
 }
 
 // consume uses up approval id for the lane process with token tok and
@@ -472,10 +480,11 @@ func (s *Server) serve(c net.Conn) {
 		json.NewEncoder(c).Encode(s.whoami(req))
 		return
 	}
-	who, req, why := s.check(req)
+	who, req, why, undeclared := s.check(req)
 	if why != "" {
 		resp := s.refuse(who, req, why)
 		resp.Lane, resp.Job = who.Lane, who.Job // a refusal is the true lane's too
+		resp.Fail = undeclared && s.FailUndeclared
 		json.NewEncoder(c).Encode(resp)
 		return
 	}

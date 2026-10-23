@@ -74,16 +74,17 @@ func cmdHub(args []string) error {
 }
 
 func hubServe(args []string) error {
-	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL, retain, retainBytes, adminLogins string
+	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL, retain, retainBytes, adminLogins, webhook, webhookFile string
 	var noTUI, insecure, private, trustTailscale bool
 	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure, "private": &private, "trust-tailscale-identity": &trustTailscale},
 		strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken, "tls-cert": &certFile, "tls-key": &keyFile,
-			"public-url": &publicURL, "retain": &retain, "retain-bytes": &retainBytes, "admin-tailscale": &adminLogins}}.parse(args)
+			"public-url": &publicURL, "retain": &retain, "retain-bytes": &retainBytes, "admin-tailscale": &adminLogins,
+			"webhook": &webhook, "webhook-file": &webhookFile}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--trust-tailscale-identity [--admin-tailscale LOGIN[,LOGIN]]] [--retain AGE] [--retain-bytes SIZE] [--insecure] [--no-tui]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--trust-tailscale-identity [--admin-tailscale LOGIN[,LOGIN]]] [--retain AGE] [--retain-bytes SIZE] [--webhook URL[,URL] | --webhook-file FILE] [--insecure] [--no-tui]")
 	}
 	if (certFile == "") != (keyFile == "") {
 		return usagef("--tls-cert and --tls-key go together")
@@ -193,6 +194,18 @@ func hubServe(args []string) error {
 		note(ui.Dim, "admins by Tailscale login: "+strings.Join(admins, ", ")+" (an admin user on their first sign-in)")
 	}
 	h.RetainRuns(keepAge, keepBytes)
+	h.PublicURL(url)
+	hooks, err := webhookURLs(webhook, webhookFile)
+	if err != nil {
+		return err
+	}
+	if err := h.Webhooks(hooks...); err != nil {
+		return usagef("%v", err)
+	}
+	defer h.CloseAlerts()
+	if len(hooks) > 0 {
+		note(ui.Dim, fmt.Sprintf("alerts: %d webhook(s): failed and dry-run runs, missed schedules, stale workers, waiting guards", len(hooks)))
+	}
 	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim hub login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	// Open event streams would hold Shutdown to its deadline (quitting
@@ -868,14 +881,19 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 		// Recurring schedules: their templates, never claimed themselves.
 		rs, _ := loadRecurring(root)
 		for _, r := range rs {
-			b := hub.Batch{ID: r.ID, State: "daily", By: r.By, Note: r.Note, Lanes: r.laneNums(),
-				Daily: fmt.Sprintf("daily at %s, until %s", r.at(time.Now()), r.Until)}
+			b := hub.Batch{ID: r.ID, State: "recurring", By: r.By, Note: r.Note, Lanes: r.laneNums(),
+				Daily: fmt.Sprintf("%s, %s; next %s", r.cadence(), r.untilText(), r.at(time.Now()))}
 			if r.Paused != "" {
 				b.State, b.Daily = "paused", b.Daily+"; paused: "+r.Paused
 			}
 			s.Queue = append(s.Queue, b)
 		}
 	}
+	rounds := map[int]string{}
+	for _, l := range s.Lanes {
+		rounds[l.Lane] = l.Round
+	}
+	s.Schedules = recurringReport(root, rounds)
 	s.Events = tailLines(history.Path(root), 15)
 	s.Logs = cfg.HubLogs()
 	s.Sanitize()
@@ -940,4 +958,28 @@ func hubConfigDoc(cfg *config.Config, access string) string {
 	fmt.Fprintf(&b, "hub_access: %s   # swim hub access [read|readwrite]\n", shown)
 	fmt.Fprintf(&b, "hub_commands: [%s]   # what a headless worker takes from the hub\n", strings.Join(cfg.HubAllow(access), ", "))
 	return cfg.Masker(os.Environ()).String(b.String())
+}
+
+// webhookURLs are --webhook's URLs (comma-separated) and --webhook-file's
+// (one a line, # comments): a file keeps a secret URL out of the process
+// list and the unit file.
+func webhookURLs(flag, file string) ([]string, error) {
+	var out []string
+	for _, u := range strings.Split(flag, ",") {
+		if u = strings.TrimSpace(u); u != "" {
+			out = append(out, u)
+		}
+	}
+	if file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("--webhook-file: %w", err)
+		}
+		for _, l := range strings.Split(string(data), "\n") {
+			if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+				out = append(out, l)
+			}
+		}
+	}
+	return out, nil
 }

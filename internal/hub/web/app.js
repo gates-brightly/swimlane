@@ -6,7 +6,7 @@ import { html, render, useEffect, useMemo, useRef, useState } from './vendor/pre
 import { adminCall, get, getText, onLog, post, send, start, useFetch, useStore } from './api.js';
 import {
   ago, api, between, byNamespace, can, enrollmentState, fmtDuration, hasOutput, href, isAdmin, isOperator,
-  lastRun, layoutGraph, lineMatches, matchEnrollment, repoHref, repoSummary, route, stateClass, steps, until, utf8Length,
+  badSchedules, successRate, triggerText, exitClass, laneState, scheduleClass, lastRun, layoutGraph, problems, lineMatches, matchEnrollment, repoHref, repoSummary, route, stateClass, steps, until, utf8Length,
 } from './lib.js';
 
 // ---- navigation ------------------------------------------------------
@@ -193,7 +193,7 @@ function User({ me }) {
 function TopBar({ r, store }) {
   const id = r.id;
   const waiting = (store.enrollments || []).reduce((n, e) => n + (e.pending || []).length, 0);
-  const tab = (name, label, to) => html`<a class=${r.name === name || (name === 'lanes' && ['run', 'job'].includes(r.name)) ? 'on' : ''} href=${to}>${label}</a>`;
+  const tab = (name, label, to) => html`<a class=${r.name === name || (name === 'lanes' && r.name === 'history') ? 'on' : ''} href=${to}>${label}</a>`;
   const live = { live: ['ok', 'Live'], connecting: ['wait', 'Connecting'], offline: ['bad', 'Offline'] }[store.live];
   return html`<header class="top"><div class="top-in">
     <a class="brand" href="/"><img src="/assets/favicon.svg" alt=""/><span>swim hub</span></a>
@@ -203,6 +203,9 @@ function TopBar({ r, store }) {
       ${id && tab('lanes', 'Lanes', href('e', id, 'lanes'))}
       ${id && tab('queue', 'Queue', href('e', id, 'queue'))}
       ${id && tab('runner', 'Runner', href('e', id, 'runner'))}
+      <a class=${r.name === 'activity' ? 'on' : ''} href="/activity">Activity</a>
+      <a class=${r.name === 'jobs' ? 'on' : ''} href="/jobs">Jobs</a>
+      <a class=${r.name === 'schedules' ? 'on' : ''} href="/schedules">Schedules${(() => { const n = badSchedules(store.enrollments || []).filter((x) => scheduleClass(x.s.status) === 'bad').length; return n ? html` <span class="count hot">${n}</span>` : ''; })()}</a>
       <a class=${r.name === 'approvals' ? 'on' : ''} href="/approvals">Approvals <span class="count ${waiting ? 'hot' : ''}">${waiting}</span></a>
       ${isAdmin(store.me) && html`<a class=${r.name === 'admin' ? 'on' : ''} href="/admin">Admin</a>`}
     </nav>
@@ -232,6 +235,8 @@ function Home({ store }) {
         <div class="card-t"><span class="dot ${cls}"></span><span class="ell" title=${ns}>${ns || 'no repo'}</span><span class="pill ${cls}">${label}</span></div>
         <div class="card-s">${n.runners} runner${n.runners === 1 ? '' : 's'} · ${n.lanes} lane${n.lanes === 1 ? '' : 's'}${n.stale ? ' · ' + n.stale + ' offline' : ''}</div>
         ${lastRun(es) ? html`<div class="card-w"><${When} t=${lastRun(es)} label="last run"/></div>` : ''}
+        ${badSchedules(es).slice(0, 2).map(({ e, s }) => html`<div class="card-p ${scheduleClass(s.status)}"><span class="dot ${scheduleClass(s.status)}"></span><span class="lbl">schedule ${s.status} · lane${s.lanes.length > 1 ? 's' : ''} ${s.lanes.join(', ')}</span><span class="sub">${s.why || s.cadence}</span></div>`)}
+        ${problems(es).slice(0, 3).map((p) => html`<div class="card-p ${p.cls}"><span class="dot ${p.cls}"></span><span class="lbl">${es.length > 1 ? p.e.name + ' · ' : ''}lane ${p.l.lane} ${p.state}${p.l.finished ? ' ' + ago(p.l.finished) : ''}</span><span class="sub">${p.l.round || ''}</span></div>`)}
         <div class="card-l">${es.map((e) => html`<span class="chip ${e.stale ? 'dim' : enrollmentState(e).cls}" title=${e.host + ' · ' + e.activity}>${e.name}</span>`)}</div>
       </a>`;
     })}</div>`;
@@ -272,11 +277,10 @@ function useEnrollment(store, id) {
   return (store.enrollments || []).find((e) => e.id === id);
 }
 
-function Graph({ r, run, jobs }) {
+function Graph({ run, jobs, to, sel }) {
   const lanes = run.lanes.map((l) => ({ lane: l.lane, after: l.after || [] }));
   const g = useMemo(() => layoutGraph(lanes), [run.run]);
   const info = new Map(run.lanes.map((l) => [l.lane, l]));
-  const hasJob = new Set(jobs.map((j) => j.lane));
   const { w, h } = g.size;
   const pos = new Map(g.nodes.map((n) => [n.lane, n]));
   return html`<div class="graph"><svg width=${g.width + 2} height=${g.height + 2} viewBox="-1 -1 ${g.width + 2} ${g.height + 2}" role="img" aria-label="The run's lanes and what each waited for">
@@ -290,30 +294,94 @@ function Graph({ r, run, jobs }) {
       const c = stateClass(l.state);
       const dur = l.start != null && l.end != null ? fmtDuration(l.end - l.start) : '';
       const label = (l.round || 'lane ' + n.lane);
-      const node = html`<g class="node" transform="translate(${n.x},${n.y})">
+      return html`<a href=${to(n.lane)}><g class="node ${sel === n.lane ? 'sel' : ''}" transform="translate(${n.x},${n.y})">
         <title>lane ${n.lane}: ${l.round || ''} (${l.state})</title>
         <rect width=${w} height=${h} rx="8"/>
         <rect class="bar ${c}" width="4" height=${h - 16} x="0" y="8" rx="2"/>
         <circle class=${c} cx="18" cy=${h / 2 - 8} r="4.5"/>
         <text x="30" y=${h / 2 - 4}>${label.length > 24 ? label.slice(0, 23) + '…' : label}</text>
-        <text class="sub" x="30" y=${h / 2 + 13}>${n.lane} · ${l.state}${dur ? ' · ' + dur : ''}</text></g>`;
-      return hasJob.has(n.lane)
-        ? html`<a href=${href('e', r.id, 'runs', run.run, 'jobs', n.lane)}>${node}</a>`
-        : node;
+        <text class="sub" x="30" y=${h / 2 + 13}>${n.lane} · ${l.state}${dur ? ' · ' + dur : ''}</text></g></a>`;
     })}
   </svg></div>`;
 }
 
-function Run({ r, store }) {
+// History is a lane's runs (r.lane) or a runner's (none), newest first, in
+// a side bar with a dot for how each ended, and the chosen run: its lanes,
+// and the chosen lane's full log under them. Batches still waiting for the
+// lane head the list: a queued batch becomes a run once it runs.
+function History({ r, store }) {
   const e = useEnrollment(store, r.id);
+  const arrived = store.runs[r.id] || 0; // a run arriving may belong here
+  const lane = r.lane != null ? r.lane : null;
+  const laneQ = lane != null ? '&lane=' + lane : '';
+  const list = useFetch(api('enrollments', r.id, 'runs') + '?limit=50' + laneQ, [arrived]);
+  const [older, setOlder] = useState([]);
+  const [next, setNext] = useState(null);
+  useEffect(() => { setOlder([]); setNext(null); }, [r.id, lane]);
+  const runs = list.data ? [...list.data.runs, ...older] : [];
+  const more = next === null ? list.data && list.data.next : next;
+  const loadMore = async () => {
+    const p = await get(api('enrollments', r.id, 'runs') + '?limit=50&before=' + encodeURIComponent(more) + laneQ);
+    if (p.data) { setOlder([...older, ...p.data.runs]); setNext(p.data.next || ''); }
+  };
+  const now = lane != null && e ? (e.lanes || []).find((l) => l.lane === lane) : null;
+  // A run going on now isn't on the hub until it ends: it heads the list.
+  const liveRun = now && now.run && now.state === 'running' && !runs.some((x) => x.run === now.run) ? now.run : '';
+  const runId = r.run || liveRun || (runs[0] && runs[0].run) || '';
+  const jobLane = r.job != null ? r.job : lane;
+  const to = (run, job) => (lane != null
+    ? href('e', r.id, 'lanes', lane, 'runs', run, ...(job != null ? ['jobs', job] : []))
+    : href('e', r.id, 'runs', run, ...(job != null ? ['jobs', job] : [])));
+  const queued = lane != null && e ? (e.queue || []).filter((b) => b.seq && ['queued', 'scheduled', 'held'].includes(b.state) && (b.lanes || []).includes(lane)) : [];
+  useTitle((lane != null ? 'lane ' + lane : 'runs') + (e ? ' · ' + e.name : ''));
+  const head = html`<${Crumbs} e=${e}><span>/</span>${lane != null
+    ? html`<a href=${href('e', r.id, 'lanes')}>lanes</a><span>/</span><span>${lane}${now && now.round ? ' · ' + now.round : ''}</span>`
+    : html`<span>runs</span>`}</${Crumbs}>`;
+  return html`${head}
+    <div class="job">
+      <nav class="panel jobs-nav runs-nav" aria-label=${lane != null ? 'Runs of lane ' + lane : 'Runs'}>
+        <div class="panel-h"><h2>${lane != null ? 'Lane ' + lane : 'Runs'}</h2><span class="muted">${runs.length}${more ? '+' : ''} run${runs.length === 1 ? '' : 's'}</span></div>
+        ${queued.map((b) => html`<a href=${href('e', r.id, 'queue')} title=${'batch ' + b.id}>
+          <span class="dot wait"></span><span class="t"><b>${b.state} #${b.seq}</b><span class="sub">${b.queued ? 'queued ' + ago(b.queued) : b.at || ''}</span></span><span class="d">next</span></a>`)}
+        ${liveRun && html`<a class=${runId === liveRun ? 'on' : ''} href=${to(liveRun, jobLane)} title=${liveRun}>
+          <span class="dot run"></span><span class="t"><b>running now</b><span class="sub mono">${liveRun}</span></span><span class="d">${now.step || ''}</span></a>`}
+        ${runs.map((x) => {
+          const lr = lane != null ? (x.lane_results || []).find((l) => l.lane === lane) : null;
+          const lst = lr && laneState(lr.state, lr.dry_run);
+          const anyDry = (x.lane_results || []).some((l) => laneState(l.state, l.dry_run) === 'dry run');
+          const cls = lr ? exitClass(lst, lr.exit) : exitClass(x.result === 'passed' && anyDry ? 'dry run' : x.result);
+          const t = x.finished && !String(x.finished).startsWith('0001') ? x.finished : x.started;
+          return html`<a class=${x.run === runId ? 'on' : ''} href=${to(x.run, lane)} title=${x.run + ' · ' + when(t)}>
+            <span class="dot ${cls}"></span><span class="t"><b>${ago(t)}</b><span class="sub mono">${x.run}</span></span>
+            <span class="d ${cls}">${lr ? (lst === 'dry run' ? 'dry run' : lr.exit != null ? 'exit ' + lr.exit : lr.state) : x.result}</span></a>`;
+        })}
+        ${list.loading && !list.data ? html`<div class="empty">…</div>` : !list.data ? html`<${Problem} r=${list} what="These runs"/>`
+          : runs.length === 0 && !liveRun ? html`<div class="empty">No runs ${lane != null ? 'of this lane ' : ''}on the hub yet.</div>` : ''}
+        ${more ? html`<div class="panel-b"><button class="btn sm" onClick=${loadMore}>Older runs</button></div>` : ''}
+      </nav>
+      <div>${runId
+        ? html`<${RunView} key=${runId} id=${r.id} run=${runId} e=${e} store=${store} jobLane=${jobLane} to=${to}/>`
+        : list.data ? html`<div class="panel"><div class="empty">${lane != null ? 'Lane ' + lane + " hasn't run on the hub yet." : 'Nothing has run on the hub yet.'}
+          A run shows here once <code>swim watch</code> has run a batch.</div></div>` : ''}</div>
+    </div>`;
+}
+
+// RunView is one run: when, how it ended, its lanes as a graph and a
+// table (each opens its log), and the chosen lane's log under them.
+function RunView({ id, run: runId, e, store, jobLane, to }) {
   const me = store.me;
-  const cmd = useCommand(e || { id: r.id });
-  useTitle(r.run);
-  const res = useFetch(api('enrollments', r.id, 'runs', r.run));
+  const cmd = useCommand(e || { id });
+  const arrived = store.runs[id] || 0;
+  const res = useFetch(api('enrollments', id, 'runs', runId), [arrived]);
   if (res.loading && !res.data) return html`<${Loading}/>`;
-  if (!res.data) return html`<${Crumbs} e=${e}/><${Problem} r=${res} what="This run"/>`;
-  const { run, jobs, result } = res.data;
+  if (!res.data) {
+    // Not on the hub (yet): the lane's log as it streams or once fetched.
+    if (res.status === 404 && jobLane != null) return html`<${LiveLog} r=${{ id, run: runId, lane: jobLane }} store=${store}/>`;
+    return html`<${Problem} r=${res} what="This run"/>`;
+  }
+  const { run, jobs } = res.data;
   const byLane = new Map(jobs.map((j) => [j.lane, j]));
+  const result = res.data.result === 'passed' && jobs.some((j) => (j.dry_run || []).length) ? 'dry run' : res.data.result;
   // Its failed lanes, queued again as one batch, pinned to the scripts they
   // hold now (the worker reports them).
   const failed = run.lanes.filter((l) => failedState(l.state));
@@ -327,30 +395,110 @@ function Run({ r, store }) {
       body: html`<p>Lanes ${ready.map((x) => x.now.lane).join(', ')} as one new batch, with the scripts they hold now. It's unsigned and carries no approvals: a guard in it waits for an answer, or dry-runs, as the worker's swim.yml says.</p>
         ${changed.length ? html`<p class="bad">Lanes ${changed.map((x) => x.now.lane).join(', ')} hold${changed.length === 1 ? 's' : ''} a different job than in this run: the re-run runs the new one.</p>` : ''}
         ${ready.length < failed.length ? html`<p class="muted">Not re-run (running now, or no pending round to queue): lanes ${failed.filter((l) => !ready.some((x) => x.was === l)).map((l) => l.lane).join(', ')}.</p>` : ''}`,
-    }, { href: href('e', r.id, 'queue'), text: 'See the queue' })}>Re-run ${ready.length} failed</button>`;
-  return html`<${Crumbs} e=${e}><span>/</span><span>${run.run}</span></${Crumbs}>
-    <div class="head"><${Icon} state=${result}/><h1>${run.run}</h1><${Pill} state=${result}/>
+    }, { href: href('e', id, 'queue'), text: 'See the queue' })}>Re-run ${ready.length} failed</button>`;
+  const ended = run.finished && !String(run.finished).startsWith('0001');
+  return html`
+    <div class="head"><${Icon} state=${result}/><h1 class="mono">${run.run}</h1><${Pill} state=${result}/>
       <div class="meta"><span>${fmtDuration(between(run.started, run.finished))}</span>
-      <span>${run.lanes.length} lane${run.lanes.length === 1 ? '' : 's'}</span>${run.max_parallel ? html`<span>at most ${run.max_parallel} at once</span>` : ''}</div>
+      <span>${run.lanes.length} lane${run.lanes.length === 1 ? '' : 's'}</span>${res.data.trigger ? html`<span>${triggerText(res.data.trigger)}</span>` : ''}${run.max_parallel ? html`<span>at most ${run.max_parallel} at once</span>` : ''}</div>
       <span class="spacer"></span>${rerun}</div>
-    <div class="when-row"><${When} big t=${run.finished && !String(run.finished).startsWith('0001') ? run.finished : run.started} label=${run.finished && !String(run.finished).startsWith('0001') ? 'Finished' : 'Started'}/></div>
+    <div class="when-row"><${When} big t=${ended ? run.finished : run.started} label=${ended ? 'Finished' : 'Started'}/></div>
     ${cmd.note}${cmd.dialog}
-    ${failed.length > 0 && e ? html`<${WhyNoRun} me=${me} e=${e} kind="queue"/>` : ''}
-    <div class="panel"><div class="panel-h"><h2>Lanes</h2></div><${Graph} r=${r} run=${run} jobs=${jobs}/></div>
-    <div class="panel"><div class="tw"><table>
+    ${failed.length > 0 && e ? html`<${WhyNoRun} me=${me} e=${e}/>` : ''}
+    <div class="panel">${run.lanes.length > 1 ? html`<${Graph} run=${{ ...run, lanes: run.lanes.map((l) => ({ ...l, state: laneState(l.state, (byLane.get(l.lane) || {}).dry_run) })) }} jobs=${jobs} to=${(n) => to(run.run, n)} sel=${jobLane}/>` : ''}
+      <div class="tw"><table>
       <thead><tr><th class="i"></th><th>Lane</th><th>Result</th><th>Steps</th><th>Duration</th><th>Failed steps</th></tr></thead>
       <tbody>${run.lanes.map((l) => {
         const j = byLane.get(l.lane);
-        const to = href('e', r.id, 'runs', run.run, 'jobs', l.lane);
-        return html`<tr class=${j ? 'link' : ''} onClick=${j ? go(to) : null}>
-          <td class="i"><${Icon} state=${l.state}/></td>
-          <td>${j ? html`<a href=${to}>${l.lane}</a>` : l.lane}<div class="sub">${l.round || ''}</div>
-            ${l.reason ? html`<div class="sub">${l.reason}</div>` : ''}</td>
-          <td><${Pill} state=${l.state}/>${l.exit != null && l.exit !== 0 ? html` <span class="mono muted">exit ${l.exit}</span>` : ''}</td>
+        const dest = to(run.run, l.lane);
+        const st = laneState(l.state, j && j.dry_run);
+        return html`<tr class="link ${jobLane === l.lane ? 'sel' : ''}" onClick=${go(dest)}>
+          <td class="i"><${Icon} state=${st}/></td>
+          <td><a href=${dest}>${l.lane}</a><div class="sub">${l.round || ''}</div>
+            ${l.reason ? html`<div class="sub">${l.reason}</div>` : ''}
+            ${st === 'dry run' ? html`<div class="sub wait">its change didn't run: ${j.dry_run.join('; ')}</div>` : ''}</td>
+          <td><${Pill} state=${st}/>${l.exit != null && l.exit !== 0 ? html` <span class="mono muted">exit ${l.exit}</span>` : ''}</td>
           <td class="nowrap">${j ? html`<span class="ok">${j.counts.pass} passed</span>${j.counts.fail ? html` · <span class="bad">${j.counts.fail} failed</span>` : ''}${j.counts.skip ? html` · <span class="wait">${j.counts.skip} skipped</span>` : ''}` : html`<span class="muted">no round</span>`}</td>
           <td class="nowrap mono">${l.start != null && l.end != null ? fmtDuration(l.end - l.start) : ''}</td>
           <td>${j && j.failed_steps.length ? j.failed_steps.map((f) => html`<div class="mono bad">${f}</div>`) : ''}</td></tr>`;
-      })}</tbody></table></div></div>`;
+      })}</tbody></table></div></div>
+    ${jobLane != null && run.lanes.some((l) => l.lane === jobLane)
+      ? (byLane.has(jobLane)
+        ? html`<${JobLog} key=${run.run + '/' + jobLane} id=${id} run=${run.run} lane=${jobLane} e=${e} store=${store}/>`
+        : html`<div class="panel"><div class="empty">Lane ${jobLane} ran no round in this run (${(run.lanes.find((l) => l.lane === jobLane) || {}).state || 'skipped'}).</div></div>`)
+      : ''}`;
+}
+
+// asked are the logs this page has asked runners for, so a lane opened
+// again doesn't ask twice.
+const asked = new Set();
+
+// JobLog is one lane's round in a run: its steps and their output. When
+// the run came without step output (hub.logs: request), it asks the runner
+// for the lane's log at once (where the runner takes log requests) and
+// fills in as it arrives; if the steps can't be matched to it, the full
+// log shows under them.
+function JobLog({ id, run, lane, e, store }) {
+  const [fetched, setFetched] = useState(0);
+  const job = useFetch(api('enrollments', id, 'runs', run, 'jobs', lane), [fetched]);
+  const cmd = useCommand(e || { id });
+  const [raw, setRaw] = useState('');
+  const [query, setQuery] = useState('');
+  const [all, setAll] = useState(null); // null: failed steps open
+  const logPath = api('enrollments', id, 'runs', run, 'jobs', lane, 'log');
+  useEffect(() => onLog((l) => {
+    if (l.enrollment === id && l.run === run && l.lane === lane) setFetched((x) => x + 1);
+  }), [id, run, lane]);
+  const d = job.data && job.data.job;
+  const hidden = !!(job.data && job.data.output_hidden); // not logged in: steps and exits, no output
+  const bare = !!d && !hidden && !hasOutput(d.results);
+  const mayAsk = !!e && can(store.me, e, 'log');
+  useEffect(() => {
+    if (!bare) return;
+    getText(logPath).then((res) => { if (res.status === 200) setRaw(res.text); });
+    const key = id + '/' + run + '/' + lane;
+    if (mayAsk && !asked.has(key)) {
+      asked.add(key);
+      cmd.run({ kind: 'log', lane, pin: { run } }, 'Asking ' + e.name + ' for the full log of lane ' + lane);
+    }
+  }, [bare, fetched]);
+  const groups = useMemo(() => (d ? steps(d.results) : []), [job.data]);
+  if (job.loading && !job.data) return html`<${Loading}/>`;
+  if (!d) return html`<${Problem} r=${job} what="This lane's log"/>`;
+  let hits = 0;
+  if (query) for (const g of groups) for (const s of g.items) for (const l of s.lines) if (lineMatches(l.text, query)) hits++;
+  const isOpen = (s) => {
+    if (all !== null) return all;
+    if (query) return s.lines.some((l) => lineMatches(l.text, query));
+    return stateClass(s.result) === 'bad';
+  };
+  const dry = (d.results || []).filter((x) => x.result === 'SKIP' && String(x.detail || '').startsWith('dry run')).map((x) => x.label + ': ' + x.detail);
+  const dstate = laneState(d.result, dry);
+  const rawLines = bare && raw ? raw.replace(/\n$/, '').split('\n') : [];
+  return html`<div class="panel joblog">
+    <div class="panel-h"><${Icon} state=${dstate}/><h2>Lane ${lane}${d.round ? ' · ' + d.round : ''}</h2><${Pill} state=${dstate}/>
+      <span class="muted">${[d.exit != null ? 'exit ' + d.exit : '', d.duration || ''].filter(Boolean).join(' · ')}</span>
+      <span class="spacer"></span><${When} t=${d.started_at} label="started"/></div>
+    <div class="toolbar">
+      <input class="search" type="search" placeholder="Search the output…" value=${query} onInput=${(ev) => { setQuery(ev.target.value); setAll(null); }} aria-label="Search the output"/>
+      ${query && html`<span class="muted">${hits} line${hits === 1 ? '' : 's'}</span>`}
+      <button class="btn sm" onClick=${() => setAll(true)}>Expand all</button>
+      <button class="btn sm" onClick=${() => setAll(false)}>Collapse all</button>
+      <a class="btn sm" href=${logPath} target="_blank" rel="noopener">Raw log</a>
+    </div>
+    ${hidden ? html`<div class="panel-b"><div class="note">The steps, their commands and exit codes are below; their output needs a hub user. <a href="/login">Log in</a></div></div>` : ''}
+    ${bare ? html`<div class="panel-b"><div class="note">${raw
+        ? 'The steps show no output of their own; the full log the runner sent is under them.'
+        : mayAsk ? html`Asking ${e.name} for this lane's log: it fills in here when it arrives.`
+        : html`No output on the hub for this lane, and ${store.me && store.me.user ? "this runner doesn't take log requests from the hub" : html`<a href="/login">log in</a> to ask the runner for it`}. <code>hub: {logs: stream}</code> in its swim.yml sends output with every run.`}</div>${cmd.note}</div>`
+      : job.data.output_from === 'log' ? html`<div class="panel-b"><div class="note">The output is from the log fetched from the runner.</div></div>` : ''}
+    <div class="log">${groups.map((g) => html`
+      <div class="stage-h"><span class=${g.failed ? 'bad' : ''}>${g.stage || 'steps'}</span>${d.stages && d.stages[g.stage] ? html`<span>· ${d.stages[g.stage]}</span>` : ''}</div>
+      ${g.items.map((s) => html`<${Step} key=${s.i} s=${s} open=${isOpen(s)} query=${query}/>`)}`)}
+      ${groups.length === 0 ? html`<div class="mark">No steps recorded.</div>` : ''}
+    </div>
+    ${rawLines.length > 0 && html`<div class="panel-h"><h2>Full log</h2></div><div class="log">${rawLines.map((t, i) => html`<div class="ln ${lineMatches(t, query) ? 'hit' : ''}"><a>${i + 1}</a><span>${t}</span></div>`)}</div>`}
+  </div>`;
 }
 
 function Step({ s, open, query }) {
@@ -364,85 +512,6 @@ function Step({ s, open, query }) {
     <div class="body">${s.lines.map((l) => html`<div id=${'L' + l.n} class="ln ${l.kind} ${lineMatches(l.text, query) ? 'hit' : ''}"><a href=${'#L' + l.n}>${l.n}</a><span>${l.text}</span></div>`)}
       ${s.lines.length === 0 ? html`<div class="mark">no output</div>` : ''}</div>
   </details>`;
-}
-
-function Job({ r, store }) {
-  const e = useEnrollment(store, r.id);
-  useTitle('lane ' + r.lane + ' · ' + r.run);
-  const arrived = store.runs[r.id] || 0; // a run arriving may be this one
-  const run = useFetch(api('enrollments', r.id, 'runs', r.run), [arrived]);
-  const [fetched, setFetched] = useState(0); // a log fetched from the worker fills in the output
-  const job = useFetch(api('enrollments', r.id, 'runs', r.run, 'jobs', r.lane), [arrived, fetched]);
-  const cmd = useCommand(e || { id: r.id });
-  useEffect(() => onLog((l) => {
-    if (l.enrollment === r.id && l.run === r.run && l.lane === r.lane) setFetched((x) => x + 1);
-  }), [r.id, r.run, r.lane]);
-  const [query, setQuery] = useState('');
-  const [all, setAll] = useState(null); // null: failed steps and the linked line open
-  const target = location.hash.startsWith('#L') ? Number(location.hash.slice(2)) : 0;
-  const groups = useMemo(() => (job.data ? steps(job.data.job.results) : []), [job.data]);
-  useEffect(() => { setAll(null); setQuery(''); }, [r.run, r.lane]);
-  useEffect(() => {
-    if (target && job.data) {
-      const el = document.getElementById('L' + target);
-      if (el) el.scrollIntoView({ block: 'center' });
-    }
-  }, [job.data, target]);
-
-  const jobs = run.data ? run.data.jobs : [];
-  const d = job.data && job.data.job;
-  if (!job.loading && !run.loading && !d && job.status === 404 && run.status === 404) {
-    return html`<${Crumbs} e=${e}><span>/</span><span>${r.run}</span><span>/</span><span>lane ${r.lane}</span></${Crumbs}><${LiveLog} r=${r} store=${store}/>`;
-  }
-  let hits = 0;
-  if (query) for (const g of groups) for (const s of g.items) for (const l of s.lines) if (lineMatches(l.text, query)) hits++;
-  const isOpen = (s) => {
-    if (all !== null) return all;
-    if (query) return s.lines.some((l) => lineMatches(l.text, query));
-    return stateClass(s.result) === 'bad' || s.lines.some((l) => l.n === target);
-  };
-  return html`<${Crumbs} e=${e}><span>/</span><a href=${href('e', r.id, 'runs', r.run)}>${r.run}</a><span>/</span><span>lane ${r.lane}</span></${Crumbs}>
-    <div class="job">
-      <nav class="panel jobs-nav" aria-label="Jobs in this run">
-        <div class="panel-h"><h2>Jobs</h2></div>
-        ${jobs.map((j) => html`<a class=${j.lane === r.lane ? 'on' : ''} href=${href('e', r.id, 'runs', r.run, 'jobs', j.lane)}>
-          <${Icon} state=${j.result}/><span class="t">${j.lane} · ${j.round}</span><span class="d">${j.duration || ''}</span></a>`)}
-        ${run.loading && !run.data ? html`<div class="empty">…</div>` : ''}
-      </nav>
-      <div>${job.loading && !job.data ? html`<${Loading}/>` : !d ? html`<${Problem} r=${job} what="This job's steps"/>` : html`
-        <div class="head"><${Icon} state=${d.result}/><h1>${d.round || 'lane ' + r.lane}</h1><${Pill} state=${d.result}/></div>
-        <div class="when-row"><${When} big t=${d.started_at} label="Started"/>${run.data && run.data.run ? html` <span class="muted">· run ${r.run}</span>` : ''}</div>
-        <div class="panel">
-          <div class="sum">
-            <div><div class="k">Lane</div><div class="v">${d.lane}</div></div>
-            <div><div class="k">Duration</div><div class="v">${d.duration || '—'}</div></div>
-            <div><div class="k">Exit</div><div class="v">${d.exit != null ? d.exit : '—'}</div></div>
-            <div><div class="k">Steps</div><div class="v"><span class="ok">${d.counts.pass}</span> / <span class="bad">${d.counts.fail}</span> / <span class="wait">${d.counts.skip}</span></div></div>
-            <div><div class="k">Job</div><div class="v mono" title=${d.job}>${(d.job || '').slice(0, 8)}</div></div>
-            <div><div class="k">Started</div><div class="v" title=${d.started_at}>${when(d.started_at)}</div></div>
-          </div>
-          <div class="toolbar">
-            <input class="search" type="search" placeholder="Search the output…" value=${query} onInput=${(ev) => { setQuery(ev.target.value); setAll(null); }} aria-label="Search the output"/>
-            ${query && html`<span class="muted">${hits} line${hits === 1 ? '' : 's'}</span>`}
-            <button class="btn sm" onClick=${() => setAll(true)}>Expand all</button>
-            <button class="btn sm" onClick=${() => setAll(false)}>Collapse all</button>
-            <a class="btn sm" href=${api('enrollments', r.id, 'runs', r.run, 'jobs', r.lane, 'log')} target="_blank" rel="noopener">Raw log</a>
-          </div>
-          ${!hasOutput(d.results) ? html`<div class="panel-b"><div class="note">No step output on the hub yet: this repo sends steps without their output.
-            ${e && can(store.me, e, 'log')
-              ? html`<button class="btn sm primary" onClick=${() => cmd.run({ kind: 'log', lane: r.lane, pin: { run: r.run } }, 'Fetch the output of lane ' + r.lane)}>Fetch output from ${e.name}</button>
-                <span class="muted">(the runner sends this run's log, masked; it fills in here)</span>`
-              : html`<span class="muted">${store.me && store.me.user ? "This runner doesn't take log requests from the hub." : 'Log in to fetch it from the runner.'}</span>`}
-            <code>hub: {logs: stream}</code> in its swim.yml sends output with every run.</div>${cmd.note}</div>`
-          : job.data.output_from === 'log' ? html`<div class="panel-b"><div class="note">The output is from the log fetched from the runner.</div></div>` : ''}
-          <div class="log">${groups.map((g) => html`
-            <div class="stage-h"><span class=${g.failed ? 'bad' : ''}>${g.stage || 'steps'}</span>${d.stages && d.stages[g.stage] ? html`<span>· ${d.stages[g.stage]}</span>` : ''}</div>
-            ${g.items.map((s) => html`<${Step} key=${s.i} s=${s} open=${isOpen(s)} query=${query}/>`)}`)}
-            ${groups.length === 0 ? html`<div class="mark">No steps recorded.</div>` : ''}
-          </div>
-        </div>`}
-      </div>
-    </div>`;
 }
 
 // LaneControls are the commands a lane takes now, from this user, on
@@ -559,22 +628,24 @@ function Lanes({ r, store }) {
       <span class="spacer"></span>${queueBatch}${drain}</div>
     ${cmd.note}${cmd.dialog}
     <${WhyNoRun} me=${me} e=${e}/>
-    <div class="panel">${(e.lanes || []).length === 0 ? html`<div class="empty">No lanes in use.</div>` : html`<div class="tw"><table>
+    <div class="panel">${(e.lanes || []).length === 0 ? html`<div class="empty">No lanes in use on ${e.name}.
+      A new op reaches the hub from the runner: <code>swim new N</code> writes its lane script there (commit it if it's shared), and once ${e.name} reports it,
+      the hub can run it, pinned to that script. The hub never sends a script of its own.</div>` : html`<div class="tw"><table>
       <thead><tr><th class="i"></th><th>Lane</th><th>State</th><th>Step</th><th>Steps</th></tr></thead>
       <tbody>${e.lanes.map((l) => html`<tr>
         <td class="i">${canQueue && queueable.includes(l)
           ? html`<input type="checkbox" aria-label=${'Queue lane ' + l.lane} checked=${!!picked[l.lane]} onChange=${() => toggle(l.lane)}/>`
           : html`<${Icon} state=${l.state}/>`}</td>
-        <td>${l.lane}<div class="sub">${l.round || ''}</div>
-          ${l.run && l.state !== 'running' && l.state !== 'waiting' ? html`<div class="sub"><a href=${href('e', e.id, 'runs', l.run)}>run ${l.run}</a></div>` : ''}</td>
-        <td><${Pill} state=${l.state}/>
+        <td><a class="lane-link" href=${href('e', e.id, 'lanes', l.lane)}><b>${l.lane}</b><div class="sub">${l.round || ''}</div></a></td>
+        <td><${Pill} state=${laneState(l.state, l.dry_run)}/>
+          ${laneState(l.state, l.dry_run) === 'dry run' ? html`<div class="sub wait">its change didn't run: ${l.dry_run.join('; ')}</div>` : ''}
           ${l.state === 'running' ? html`<div><${When} t=${l.started} label="started"/></div>` : l.finished ? html`<div><${When} t=${l.finished} label="ended"/></div>` : ''}
           ${l.paused ? html`<div class="sub">paused ${l.paused}</div>` : ''}${l.scheduled ? html`<div class="sub">${l.scheduled}</div>` : ''}
           ${l.reason ? html`<div class="sub">${l.reason}</div>` : ''}</td>
         <td>${l.step || ''}${l.progress ? html` <progress max="100" value=${pct(l.progress)}></progress> <span class="sub">${l.progress}</span>` : ''}
           ${l.message ? html`<div class="sub">${l.message}</div>` : ''}${l.cells ? html`<div class="sub">${l.cells}</div>` : ''}</td>
         <td class="nowrap"><span class="ok">${l.pass}</span> / <span class="bad">${l.fail}</span> / <span class="wait">${l.skip}</span>
-          ${l.run && e.logs === 'stream' && l.state !== 'waiting' ? html`<div><a href=${href('e', e.id, 'runs', l.run, 'jobs', l.lane)}>${l.state === 'running' ? 'Follow log' : 'Log'}</a></div>` : ''}</td></tr>
+          ${l.run && l.state !== 'waiting' ? html`<div><a href=${href('e', e.id, 'lanes', l.lane, 'runs', l.run, 'jobs', l.lane)}>${l.state === 'running' ? 'Follow log' : 'Log'}</a></div>` : ''}</td></tr>
         ${(l.tail || []).length ? html`<tr class="tail-row"><td colspan="5"><pre class="tail">${l.tail.join('\n')}</pre></td></tr>` : ''}
         ${(() => { const c = LaneControls({ e, l, me, cmd }); return c ? html`<tr class="ctl-row"><td></td><td colspan="4">${c}</td></tr>` : ''; })()}`)}
       </tbody></table></div>`}</div>
@@ -657,6 +728,116 @@ function Runner({ r, store }) {
       ? html`<pre class="config">${q.data.config}</pre>`
       : html`<div class="empty">This runner hasn't reported its configuration (a swim from before the hub showed it, or no report yet).</div>`}</div>`}
     <p class="muted">Change it on the runner: its config.yml, or a commit to the repo's swim.yml; <code>swim hub access</code> sets what the hub may do.</p>`;
+}
+
+// Activity is every runner's runs, newest first: what failed (or only
+// dry-ran its change) in the last day across everything, filterable by
+// status, repo, trigger and time.
+function Activity({ store }) {
+  useTitle('Activity');
+  const [f, setF] = useState({ since: '24h', status: '', ns: '', trigger: '' });
+  const q = new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
+  const res = useFetch('/api/activity?' + q, [Object.values(store.runs || {}).reduce((a, b) => a + b, 0)]);
+  const repos = byNamespace(store.enrollments || []).map(([ns]) => ns);
+  const sel = (k, opts) => html`<select value=${f[k]} onChange=${(ev) => setF({ ...f, [k]: ev.target.value })} aria-label=${k}>
+    ${opts.map(([v, l]) => html`<option value=${v}>${l}</option>`)}</select>`;
+  const rows = res.data ? res.data.runs : [];
+  return html`<div class="head"><h1>Activity</h1><span class="muted">${res.data ? rows.length + (res.data.more ? '+' : '') + ' runs' : ''}</span></div>
+    <div class="filters">
+      ${sel('status', [['', 'any result'], ['failed', 'failed'], ['dry run', 'dry run'], ['passed', 'passed']])}
+      ${sel('since', [['1h', 'last hour'], ['24h', 'last 24 hours'], ['7d', 'last 7 days'], ['30d', 'last 30 days'], ['all', 'everything kept']])}
+      ${sel('ns', [['', 'every repo'], ...repos.map((ns) => [ns || '-', ns || 'no repo'])])}
+      ${sel('trigger', [['', 'any trigger'], ['schedule', 'schedule'], ['hub', 'hub'], ['queue', 'queue'], ['cli', 'swim run']])}
+    </div>
+    <div class="panel">${res.loading && !res.data ? html`<${Loading}/>` : !res.data ? html`<${Problem} r=${res} what="Activity"/>`
+      : rows.length === 0 ? html`<div class="empty">No runs match.</div>` : html`<div class="tw"><table>
+      <thead><tr><th class="i"></th><th>When</th><th>Result</th><th>Repo · runner</th><th>Run</th><th>Lanes</th><th>Trigger</th></tr></thead>
+      <tbody>${rows.map((x) => {
+        const t = x.finished && !String(x.finished).startsWith('0001') ? x.finished : x.started;
+        const to = href('e', x.worker, 'runs', x.run);
+        return html`<tr class="link" onClick=${go(to)}>
+          <td class="i"><span class="dot ${exitClass(x.status)}"></span></td>
+          <td class="nowrap"><${When} t=${t}/></td>
+          <td><${Pill} state=${x.status}/></td>
+          <td>${x.namespace || 'no repo'}<div class="sub">${x.name} · ${x.host}</div></td>
+          <td class="mono"><a href=${to}>${x.run}</a></td>
+          <td><div class="lanes-cell">${(x.lane_results || []).map((l) => html`<a class="chip ${exitClass(laneState(l.state, l.dry_run), l.exit)}" href=${href('e', x.worker, 'lanes', l.lane, 'runs', x.run, 'jobs', l.lane)} title=${'lane ' + l.lane + ' ' + laneState(l.state, l.dry_run) + (l.round ? ': ' + l.round : '')}>${l.lane}</a>`)}</div></td>
+          <td class="sub">${triggerText(x.trigger)}</td></tr>`;
+      })}</tbody></table></div>`}</div>`;
+}
+
+// Trend is a job's recent durations as bars, colored by how each run ended.
+function Trend({ points }) {
+  const max = Math.max(1, ...points.map((p) => p.duration_s || 0));
+  const w = 6, gap = 2, h = 22;
+  return html`<svg class="trend" width=${points.length * (w + gap)} height=${h} role="img" aria-label="recent durations">
+    ${points.map((p, i) => {
+      const bh = Math.max(2, Math.round(((p.duration_s || 0) / max) * h));
+      return html`<rect class=${exitClass(p.status)} x=${i * (w + gap)} y=${h - bh} width=${w} height=${bh} rx="1"><title>${p.run}: ${p.status}, ${fmtDuration(p.duration_s || 0)}</title></rect>`;
+    })}</svg>`;
+}
+
+// Jobs are every job across the runners (a runner's lane running one round
+// title), failing first: last result, success rate, duration trend.
+function Jobs({ store }) {
+  useTitle('Jobs');
+  const [ns, setNs] = useState('');
+  const [query, setQuery] = useState('');
+  const res = useFetch('/api/jobs' + (ns ? '?ns=' + encodeURIComponent(ns) : ''), [Object.values(store.runs || {}).reduce((a, b) => a + b, 0)]);
+  const repos = byNamespace(store.enrollments || []).map(([n]) => n);
+  const ql = query.trim().toLowerCase();
+  const rows = res.data ? res.data.jobs.filter((j) => !ql || [j.round, j.name, j.namespace, String(j.lane)].some((v) => String(v || '').toLowerCase().includes(ql))) : [];
+  return html`<div class="head"><h1>Jobs</h1><span class="muted">${res.data ? rows.length + ' jobs, from the runs the hub keeps' : ''}</span></div>
+    <div class="filters">
+      <select value=${ns} onChange=${(ev) => setNs(ev.target.value)} aria-label="repo"><option value="">every repo</option>${repos.map((n) => html`<option value=${n || '-'}>${n || 'no repo'}</option>`)}</select>
+      <input class="search" type="search" placeholder="Find a job…" value=${query} onInput=${(ev) => setQuery(ev.target.value)} aria-label="Find a job"/>
+    </div>
+    <div class="panel">${res.loading && !res.data ? html`<${Loading}/>` : !res.data ? html`<${Problem} r=${res} what="Jobs"/>`
+      : rows.length === 0 ? html`<div class="empty">No jobs have run on the hub${ql || ns ? ' that match' : ' yet'}.</div>` : html`<div class="tw"><table>
+      <thead><tr><th class="i"></th><th>Job</th><th>Repo · runner</th><th>Last</th><th>Success</th><th>Last passed</th><th>Recent</th></tr></thead>
+      <tbody>${rows.map((j) => {
+        const to = href('e', j.worker, 'lanes', j.lane);
+        return html`<tr class="link" onClick=${go(to)}>
+          <td class="i"><span class="dot ${exitClass(j.last_status, j.last_exit)}"></span></td>
+          <td><a href=${to}><b>${j.lane}</b></a> ${j.round || ''}</td>
+          <td>${j.namespace || 'no repo'}<div class="sub">${j.name} · ${j.host}</div></td>
+          <td class="nowrap"><${Pill} state=${j.last_status}/><div class="sub">${ago(j.last_at)}${j.last_exit != null && j.last_exit !== 0 ? ' · exit ' + j.last_exit : ''}</div></td>
+          <td class="nowrap"><b>${successRate(j.passed, j.runs)}</b><div class="sub">${j.passed}/${j.runs} runs</div></td>
+          <td class="nowrap">${j.last_pass && !String(j.last_pass).startsWith('0001') ? ago(j.last_pass) : html`<span class="muted">never</span>`}</td>
+          <td><${Trend} points=${j.recent || []}/></td></tr>`;
+      })}</tbody></table></div>`}</div>`;
+}
+
+// Schedules are every runner's recurring schedules, worst first: what
+// runs when, how its last occurrence went, its last success, when it
+// expires, and the hub's verdict: missed (due and not started: the
+// runner was down, or busy), failed, skipped, expired, paused, expiring.
+function Schedules({ store }) {
+  useTitle('Schedules');
+  const res = useFetch('/api/schedules', [store.enrollments]);
+  if (res.loading && !res.data) return html`<${Loading}/>`;
+  if (!res.data) return html`<${Problem} r=${res} what="The schedules"/>`;
+  const rows = res.data.schedules;
+  const bad = rows.filter((s) => scheduleClass(s.status) === 'bad').length;
+  return html`<div class="head"><h1>Schedules</h1><span class="muted">${rows.length} recurring${bad ? html` · <span class="bad">${bad} need${bad === 1 ? 's' : ''} attention</span>` : ''}</span></div>
+    <div class="panel">${rows.length === 0 ? html`<div class="empty">No recurring schedules. On a runner: <code>swim schedule LANES 02:00 --daily</code> or <code>swim schedule LANES --cron "0 */6 * * *"</code>.</div>` : html`<div class="tw"><table>
+      <thead><tr><th>Status</th><th>Job</th><th>Runner</th><th>Cadence</th><th>Next</th><th>Last</th><th>Last success</th><th>Expires</th></tr></thead>
+      <tbody>${rows.map((s) => {
+        const cls = scheduleClass(s.status);
+        const last = s.last;
+        return html`<tr>
+          <td class="why"><span class="pill ${cls}">${s.status}</span>${s.why ? html`<div class="sub ${cls}">${s.why}</div>` : ''}</td>
+          <td title=${s.id}>${s.lanes.map((n, i) => html`<div><a href=${href('e', s.worker, 'lanes', n)}><b>${n}</b></a> <span class="sub">${(s.rounds || [])[i] || ''}</span></div>`)}
+            ${s.note ? html`<div class="sub">${s.note}</div>` : ''}</td>
+          <td><a href=${href('e', s.worker, 'lanes')}>${s.name}</a><div class="sub">${s.namespace || s.host}</div></td>
+          <td class="nowrap">${s.cadence}</td>
+          <td class="nowrap">${s.next ? html`<span title=${when(s.next)}><b>${Date.parse(s.next) < Date.now() ? 'due ' + ago(s.next) : until(s.next)}</b></span><div class="sub">${when(s.next)}</div>` : html`<span class="muted">—</span>`}</td>
+          <td class="nowrap">${last ? html`<${Pill} state=${last.result || last.state} label=${last.result || last.state}/>
+            <div class="sub">${last.run ? html`<a href=${href('e', s.worker, 'lanes', s.lanes[0], 'runs', last.run)}>${last.occurrence}</a>` : last.occurrence}${last.finished ? ' · ' + ago(last.finished) : ''}</div>` : html`<span class="muted">never ran</span>`}</td>
+          <td class="nowrap">${s.last_success ? html`<${When} t=${s.last_success}/>` : html`<span class="muted">never</span>`}</td>
+          <td class="nowrap ${s.status === 'expiring' || s.status === 'expired' ? cls : ''}">${s.until ? (s.expired ? 'expired ' : '') + s.until : html`<span class="muted">never</span>`}${s.paused ? html`<div class="sub wait">paused</div>` : ''}</td></tr>`;
+      })}</tbody></table></div>`}</div>
+    <p class="muted">A schedule is <b>missed</b> when an occurrence is ${Math.round((res.data.grace_s || 600) / 60)} minutes past due and hasn't started: its runner was down then, or busy. Each occurrence is an ordinary batch on the runner's queue.</p>`;
 }
 
 function Approvals({ store }) {
@@ -911,7 +1092,7 @@ function NotFound() {
 
 // ---- the app ------------------------------------------------------------
 
-const views = { home: Home, repo: Repo, run: Run, job: Job, lanes: Lanes, queue: Queue, runner: Runner, approvals: Approvals, question: Question, admin: Admin, notfound: NotFound };
+const views = { activity: Activity, jobs: Jobs, schedules: Schedules, home: Home, repo: Repo, history: History, lanes: Lanes, queue: Queue, runner: Runner, approvals: Approvals, question: Question, admin: Admin, notfound: NotFound };
 
 function App() {
   const path = usePath();

@@ -176,7 +176,7 @@ progress::-moz-progress-bar { background: var(--run); }
 
 /* Job page */
 .job { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
-.jobs-nav { position: sticky; top: 68px; }
+.jobs-nav { position: sticky; top: 68px; max-height: calc(100vh - 84px); overflow: auto; }
 .jobs-nav a { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--fg); border-left: 2px solid transparent; }
 .jobs-nav a:hover { background: var(--panel-2); text-decoration: none; }
 .jobs-nav a.on { background: var(--panel-2); border-left-color: var(--accent); font-weight: 600; }
@@ -248,3 +248,26 @@ tr.tail-row td { padding-top: 0; }
 .when.big { font-size: 15px; }
 .when-row { margin: -6px 0 14px; }
 .card-w { margin-top: 6px; }
+.runs-nav .t { display: flex; flex-direction: column; min-width: 0; }
+.runs-nav .t b { font-weight: 600; }
+.runs-nav .t .sub { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; }
+.runs-nav .d.ok { color: var(--ok); } .runs-nav .d.bad { color: var(--bad); }
+tr.sel td { background: var(--panel-2); }
+tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.node.sel rect:first-child { stroke: var(--accent); stroke-width: 2; }
+.joblog .panel-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lane-link { color: inherit; display: block; }
+.lane-link b { color: var(--accent); }
+.card-p { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; font-size: 12.5px; }
+.card-p .dot { align-self: center; }
+.card-p .lbl { white-space: nowrap; }
+.card-p .sub { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.card-p.bad { color: var(--bad); } .card-p.wait { color: var(--wait); }
+.sub.wait { color: var(--wait); }
+.runs-nav .d.wait { color: var(--wait); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.filters select, .filters .search { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--fg); font: inherit; }
+.filters .search { flex: 1; min-width: 180px; }
+.trend rect { fill: var(--dim); } .trend rect.ok { fill: var(--ok); } .trend rect.bad { fill: var(--bad); } .trend rect.wait { fill: var(--wait); }
+a.chip { text-decoration: none; }
+td.why { min-width: 220px; max-width: 320px; }

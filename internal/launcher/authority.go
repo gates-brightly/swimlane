@@ -54,6 +54,7 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 	if err != nil {
 		return nil, err
 	}
+	srv.FailUndeclared = o.FailUnanswerable
 	srv.Refused = func(c approval.Caller, req approval.Request, why string) {
 		a.refused(*o, c, req, why)
 		if c.Lane != 0 {

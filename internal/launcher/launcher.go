@@ -81,6 +81,11 @@ type Options struct {
 	// watch --headless: the hub). The launcher still decides: what it
 	// answers is checked against the run's rules (authority.go).
 	Asker approval.Asker
+	// FailUnanswerable fails a guard no one can ever answer in this run (a
+	// guard its script doesn't declare; the Asker says so for the rest)
+	// rather than dry-running it: for a headless worker, where a dry run
+	// would look like a passed change.
+	FailUnanswerable bool
 	// Pins holds the job each lane must still hold when it starts (lanes
 	// named by job id, and every lane swim ci selects): a lane script
 	// rewritten in the meantime is skipped, not run.

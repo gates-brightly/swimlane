@@ -4,13 +4,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   can, isAdmin, isOperator, until, utf8Length, ago, api, between, byNamespace, enrollmentState, fmtDuration, hasOutput, href, layoutGraph,
-  lineMatches, lastRun, matchEnrollment, repoSummary, route, stateClass, steps,
+  lineMatches, badSchedules, successRate, triggerText, exitClass, laneState, scheduleClass, lastRun, matchEnrollment, problems, repoSummary, route, stateClass, steps,
 } from './lib.js';
 
 test('route', () => {
   assert.deepEqual(route('/'), { name: 'home' });
   assert.deepEqual(route('/approvals'), { name: 'approvals' });
   assert.deepEqual(route('/admin'), { name: 'admin' });
+  assert.deepEqual(route('/schedules'), { name: 'schedules' });
+  assert.deepEqual(route('/activity'), { name: 'activity' });
+  assert.deepEqual(route('/jobs'), { name: 'jobs' });
   assert.deepEqual(route('/e/abc'), { name: 'lanes', id: 'abc' });
   assert.deepEqual(route('/e/abc/runs/'), { name: 'lanes', id: 'abc' });
   assert.deepEqual(route('/e/abc/runner'), { name: 'runner', id: 'abc' });
@@ -19,11 +22,14 @@ test('route', () => {
   assert.deepEqual(route('/e/abc/lanes'), { name: 'lanes', id: 'abc' });
   assert.deepEqual(route('/e/abc/queue'), { name: 'queue', id: 'abc' });
   assert.deepEqual(route('/e/abc/config'), { name: 'runner', id: 'abc' });
-  assert.deepEqual(route('/e/abc/runs/r-1'), { name: 'run', id: 'abc', run: 'r-1' });
-  assert.deepEqual(route('/e/abc/runs/r-1/jobs/3'), { name: 'job', id: 'abc', run: 'r-1', lane: 3 });
+  assert.deepEqual(route('/e/abc/runs/r-1'), { name: 'history', id: 'abc', run: 'r-1' });
+  assert.deepEqual(route('/e/abc/runs/r-1/jobs/3'), { name: 'history', id: 'abc', run: 'r-1', job: 3 });
+  assert.deepEqual(route('/e/abc/lanes/7'), { name: 'history', id: 'abc', lane: 7 });
+  assert.deepEqual(route('/e/abc/lanes/7/runs/r-1'), { name: 'history', id: 'abc', lane: 7, run: 'r-1' });
+  assert.deepEqual(route('/e/abc/lanes/7/runs/r-1/jobs/2'), { name: 'history', id: 'abc', lane: 7, run: 'r-1', job: 2 });
   assert.deepEqual(route('/e/a%2Fb/lanes'), { name: 'lanes', id: 'a/b' });
   assert.deepEqual(route('/e/abc/questions/q1'), { name: 'question', id: 'abc', req: 'q1' });
-  for (const p of ['/e', '/e/abc/runs/r-1/jobs/x', '/e/abc/nope', '/nope']) assert.equal(route(p).name, 'notfound', p);
+  for (const p of ['/e', '/e/abc/runs/r-1/jobs/x', '/e/abc/nope', '/nope', '/e/abc/lanes/7/x', '/e/abc/lanes/7/runs/r-1/jobs/x']) assert.equal(route(p).name, 'notfound', p);
 });
 
 test('href and api escape each part', () => {
@@ -140,4 +146,42 @@ test('repoSummary', () => {
 test('lastRun', () => {
   assert.equal(lastRun([{ runner: { last_run: '2026-10-22T10:00:00Z' } }, { runner: { last_run: '2026-10-22T11:00:00Z' } }, {}]), '2026-10-22T11:00:00Z');
   assert.equal(lastRun([{}]), '');
+});
+
+test('exitClass', () => {
+  assert.equal(exitClass('passed', 0), 'ok');
+  assert.equal(exitClass('failed', 1), 'bad');
+  assert.equal(exitClass('passed', 2), 'bad');
+  assert.equal(exitClass('interrupted'), 'bad');
+  assert.equal(exitClass('skipped'), 'dim');
+});
+
+test('dry runs are amber, not green', () => {
+  assert.equal(laneState('passed', ['renew certs: dry run: set RENEW=1 to approve']), 'dry run');
+  assert.equal(laneState('passed', []), 'passed');
+  assert.equal(laneState('failed', ['x']), 'failed');
+  assert.equal(stateClass('dry run'), 'wait');
+  assert.equal(exitClass('dry run'), 'wait');
+  const e = { lanes: [{ lane: 1, state: 'passed', dry_run: ['x'] }] };
+  assert.deepEqual(enrollmentState(e), { label: 'dry run', cls: 'wait' });
+  assert.equal(repoSummary([e]).label, '1 dry run');
+  const p = problems([e, { lanes: [{ lane: 2, state: 'failed' }] }]);
+  assert.deepEqual(p.map((x) => [x.l.lane, x.state]), [[2, 'failed'], [1, 'dry run']]);
+});
+
+test('schedules', () => {
+  assert.equal(scheduleClass('missed'), 'bad');
+  assert.equal(scheduleClass('expiring'), 'wait');
+  assert.equal(scheduleClass('ok'), 'ok');
+  const es = [{ schedules: [{ id: 'a', status: 'ok' }, { id: 'b', status: 'missed' }, { id: 'c', status: 'paused' }] }];
+  assert.deepEqual(badSchedules(es).map((x) => x.s.id), ['b', 'c']);
+});
+
+test('triggers and rates', () => {
+  assert.equal(triggerText({ kind: 'schedule', schedule: 'r-1' }), 'schedule r-1');
+  assert.equal(triggerText({ kind: 'hub', by: 'hub:alice via https://h' }), 'hub:alice');
+  assert.equal(triggerText({ kind: 'cli' }), 'swim run');
+  assert.equal(triggerText(null), '');
+  assert.equal(successRate(2, 3), '67%');
+  assert.equal(successRate(0, 0), '');
 });

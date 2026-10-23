@@ -173,6 +173,10 @@ type Snapshot struct {
 	// shows it read only; nothing on the hub changes it. It's served alone
 	// (GET .../config, for a hub user), never in the lists or events.
 	Config string `json:"config,omitempty"`
+	// Schedules are its recurring schedules (swim schedule --daily,
+	// --cron), with what came of them: the hub watches them for missed
+	// runs (schedules.go).
+	Schedules []Schedule `json:"schedules,omitempty"`
 }
 
 // MaxConfig is how much of a worker's configuration the hub keeps.
@@ -237,6 +241,12 @@ func (s *Snapshot) Sanitize() {
 	}
 	for i := range s.Waiting {
 		s.Waiting[i].sanitize()
+	}
+	if len(s.Schedules) > MaxSchedules {
+		s.Schedules = s.Schedules[:MaxSchedules]
+	}
+	for i := range s.Schedules {
+		s.Schedules[i].sanitize()
 	}
 }
 
@@ -332,6 +342,10 @@ type Server struct {
 	adminLogins    []string // Tailscale logins that sign in as admins (AdminTailscale)
 	// checkpoints are each worker's chain checkpoints (checkpoints.go).
 	checkpoints map[string][]chain.Checkpoint
+	// notify sends alerts to webhooks (notify.go); nil without any.
+	notify *notifier
+	// publicURL is where people reach the hub, for links in alerts.
+	publicURL string
 }
 
 // New makes a hub that accepts workers presenting token, keeping nothing
@@ -573,6 +587,14 @@ func (s *Server) Workers() []View {
 		cp.Grants = s.grantNames(cp.ID)
 		if t, ok := s.fetched[cp.ID]; ok {
 			cp.Fetched = t.UTC().Format(time.RFC3339)
+		}
+		if len(cp.Schedules) > 0 {
+			scs := make([]Schedule, len(cp.Schedules))
+			for i, sc := range cp.Schedules {
+				sc.Status, sc.Why = ScheduleStatus(sc, cp, now)
+				scs[i] = sc
+			}
+			cp.Schedules = scs
 		}
 		out = append(out, cp)
 	}

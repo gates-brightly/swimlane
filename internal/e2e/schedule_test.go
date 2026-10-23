@@ -222,7 +222,7 @@ func TestRecurringPausesOnChange(t *testing.T) {
 	r := newRepo(t, "")
 	stampLane(r, 1, "one", "")
 	r.mustSwim("schedule", "1", soon(2*time.Second), "--daily", "--tz", "UTC")
-	if out, code := r.swim("stub", "1", "idle"); code == 0 || !strings.Contains(out, "runs daily on recurring schedule") {
+	if out, code := r.swim("stub", "1", "idle"); code == 0 || !strings.Contains(out, "runs on recurring schedule") {
 		t.Errorf("stub of a scheduled lane: exit %d\n%s", code, out)
 	}
 	stampLane(r, 1, "one edited", "")
@@ -241,13 +241,14 @@ func TestRecurringPausesOnChange(t *testing.T) {
 	contains(t, "rm", r.mustSwim("schedule", "rm", id), "removed "+id)
 }
 
-// It expires as standing approvals do: 30 days by default, never past
-// lookup.yml's standing.max; -y is refused.
+// It runs until removed unless --until or --for ends it, never past
+// lookup.yml's standing.max (which then caps it by default); -y is refused.
 func TestRecurringExpiry(t *testing.T) {
 	r := newRepo(t, "")
 	stampLane(r, 1, "one", "")
 	day := func(d int) string { return time.Now().UTC().AddDate(0, 0, d).Format("2006-01-02") }
-	contains(t, "default", r.mustSwim("schedule", "1", "06:00", "--daily", "--tz", "UTC"), "until "+day(30))
+	contains(t, "default", r.mustSwim("schedule", "1", "06:00", "--daily", "--tz", "UTC"), "until removed")
+	contains(t, "--for", r.mustSwim("schedule", "1", "06:30", "--daily", "--tz", "UTC", "--for", "10d"), "until "+day(10))
 	r.write("lookup.yml", "standing: {max: 7d}\n", 0o644)
 	contains(t, "capped", r.mustSwim("schedule", "1", "07:00", "--daily", "--tz", "UTC"), "until "+day(7))
 	if out, code := r.swim("schedule", "1", "08:00", "--daily", "--until", day(20)); code == 0 || !strings.Contains(out, "standing.max") {
@@ -273,5 +274,21 @@ func TestRecurringSigned(t *testing.T) {
 	}
 	if e.Statement() != e.FromStatement {
 		t.Error("the occurrence isn't what its schedule signed")
+	}
+}
+
+// --cron: any cadence, in its zone. Each occurrence is its own scheduled
+// batch, keyed by its minute, carrying the schedule's signature check.
+func TestRecurringCron(t *testing.T) {
+	r := newRepo(t, "")
+	stampLane(r, 1, "one", "")
+	out := r.mustSwim("schedule", "1", "--cron", "*/5 * * * *", "--tz", "UTC")
+	contains(t, "cron", out, "scheduled cron */5 * * * * (UTC)", "until removed")
+	contains(t, "list", r.mustSwim("schedule", "list"), "cron */5 * * * * (UTC), until removed · next ")
+	if out, code := r.swim("schedule", "1", "--cron", "61 * * * *"); code != 2 || !strings.Contains(out, "out of range") {
+		t.Errorf("a bad expression: exit %d\n%s", code, out)
+	}
+	if out, code := r.swim("schedule", "1", "06:00", "--daily", "--cron", "@daily"); code != 2 {
+		t.Errorf("--daily and --cron: exit %d\n%s", code, out)
 	}
 }

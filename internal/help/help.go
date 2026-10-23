@@ -786,6 +786,7 @@ swim queue show|rm|requeue ID
 `,
 	"schedule": `swim schedule LANES... TIME [--tz ZONE] [--approve FLAG]... [--note TEXT] [--parallel N] [--key PATH] [--yaml]
 swim schedule LANES... TIME --daily [--until DATE | --for D] [--tz ZONE] [--approve FLAG]...
+swim schedule LANES... --cron "EXPR" [--until DATE | --for D] [--tz ZONE] [--approve FLAG]...
 swim schedule list [--all] [--yaml]
 swim schedule rm ID | pause ID | resume ID
 swim queue add LANES... --at TIME [flags]     (the same, one-shot)
@@ -835,9 +836,12 @@ swim queue add LANES... --at TIME [flags]     (the same, one-shot)
            day a worker (swim watch) makes that day's occurrence, an
            ordinary scheduled batch (from: r-..., occurrence: the date),
            once, however many workers share the queue. Rules:
-             it expires: --until DATE or --for D, 30 days by default, and
-               never past lookup.yml's standing.max (as standing approvals);
-               renew by scheduling it again
+             it runs until removed (swim schedule rm), or until --until
+               DATE or --for D; lookup.yml's standing.max, which caps
+               standing approvals, caps it too (and is then its default
+               end). Expiring and expired schedules show on the hub's
+               Schedules page and in swim doctor; renew by scheduling it
+               again
              pinned means pinned: an occurrence whose lane's script or
                manifest changed is skipped and the schedule paused, never
                run on the old approvals; resume works once they match
@@ -848,6 +852,17 @@ swim queue add LANES... --at TIME [flags]     (the same, one-shot)
                skipped as overlap
              swim stub and swim new on its lanes are refused (--force
                pauses it)
+             the hub watches it: each report carries its cadence, next
+               occurrence, last result and success and skipped days, and
+               the hub's Schedules page (and its --webhook) says when one
+               is missed (due 10m and not started: no worker then, or a
+               busy one), failed, skipped or expiring
+  --cron "EXPR"  the same, on any cadence: a five-field cron expression
+           (minute hour day-of-month month day-of-week: *, numbers, a-b,
+           lists, */N steps, jan..dec, sun..sat; @hourly, @daily, @weekly,
+           @monthly) in --tz's zone, e.g. "0 */6 * * *" or "30 2 * * mon-fri".
+           Each occurrence is keyed by its minute (2026-10-23T02:30); every
+           LANES argument is a lane (there is no TIME).
            Dependents belong in the same batch (ordered within each
            occurrence).
   pause ID, resume ID  stop and restart a recurring schedule's occurrences
@@ -1417,7 +1432,7 @@ swim keys pin
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
          [--tls-cert FILE --tls-key FILE] [--insecure] [--public-url URL] [--private]
          [--retain AGE] [--retain-bytes SIZE] [--trust-tailscale-identity]
-         [--admin-tailscale LOGIN[,LOGIN]]
+         [--admin-tailscale LOGIN[,LOGIN]] [--webhook URL[,URL] | --webhook-file FILE]
 swim hub enroll URL [--access read|readwrite] [--name N] [--namespace NS] [--ca FILE] [--insecure]
 swim hub access [read|readwrite]
 swim hub leave | status
@@ -1449,6 +1464,18 @@ swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove
   --private        viewing needs a login too: the pages redirect to /login
                    and the read API answers 401 without a hub user's
                    session or token (or, for the list, the admin token).
+  --webhook URL[,URL]  POST an alert (JSON) to each URL when a run fails, or
+                   passes with its change only dry-run; a recurring schedule
+                   is missed (due 10m and not started: its worker was down
+                   or busy), fails, is skipped, expires or is about to; a
+                   worker stops reporting; a guard waits for an answer. Each
+                   is sent once. The body is {event, severity, text, content,
+                   worker, name, host, namespace, lane, run, schedule, url,
+                   at}: "text" and "content" make it a message in a Slack,
+                   Mattermost or Discord incoming webhook as it is.
+                   --webhook-file FILE reads the URLs from FILE, one a line
+                   (# comments), to keep a secret URL out of ps and unit
+                   files. Links use --public-url when given.
   Read API (JSON, schema swim.hub/v2):
     GET /api/health                     no login, no data: the hub answers
     GET /api/enrollments                the namespace tabs and every worker
@@ -1459,6 +1486,9 @@ swim hub user add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove
     GET /api/enrollments/ID/runs/RUN    a run's record, result and jobs
     GET .../runs/RUN/jobs/LANE          a lane's round: stages, steps, output (a user)
     GET .../runs/RUN/jobs/LANE/log      its log as text, once on the hub (a user)
+    GET /api/schedules                  every worker's recurring schedules: cadence,
+                                        next, last occurrence and success, expiry,
+                                        and status (missed, failed, skipped, ...)
     GET /api/events                     server-sent events: snapshot, run and
                                         log, as they happen (?enrollment=ID);
                                         nothing is replayed, so a client reads

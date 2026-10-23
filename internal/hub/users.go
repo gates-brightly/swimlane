@@ -414,3 +414,15 @@ func (s *Server) viewer(r *http.Request) (name, role, csrf string) {
 	}
 	return u.Name, u.Role, se.CSRF
 }
+
+// isUser reports whether r comes from a hub user: a user's token, or a
+// session.
+func (s *Server) isUser(r *http.Request) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if got := bearer(r.Header); got != "" {
+		return s.userByToken(got) != nil
+	}
+	se, _ := s.sessionOf(r)
+	return se != nil
+}

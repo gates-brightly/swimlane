@@ -650,8 +650,30 @@ func (e *Entry) fromMismatch() string {
 	if !strings.Contains(st, "\napprove: "+strings.Join(e.Approve, ",")+"\n") || e.ApproveAll {
 		return "its approvals"
 	}
-	d, f, u := stmtField(st, "daily", 2), stmtField(st, "first", 1), stmtField(st, "until", 1)
-	if d == nil || f == nil || u == nil || e.Occurrence < f[0] || e.Occurrence > u[0] {
+	f, until := stmtField(st, "first", 1), stmtLine(st, "until")
+	// A schedule with no end has an empty until:.
+	if f == nil || e.Occurrence < f[0] || (until != "" && e.Occurrence[:min(len(e.Occurrence), 10)] > until) {
+		return "its day"
+	}
+	if cr := stmtLine(st, "cron"); cr != "" {
+		// cron: EXPR ZONE; the occurrence is its minute, 2026-10-23T02:00.
+		i := strings.LastIndex(cr, " ")
+		if i < 0 {
+			return "its time"
+		}
+		loc, err := time.LoadLocation(cr[i+1:])
+		c, cerr := schedule.ParseCron(cr[:i])
+		if err != nil || cerr != nil {
+			return "its time"
+		}
+		t, terr := time.ParseInLocation("2006-01-02T15:04", e.Occurrence, loc)
+		if terr != nil || !c.Next(loc, t.Add(-time.Second)).Equal(t) || t.UTC().Format(time.RFC3339) != e.NotBefore {
+			return "its start time"
+		}
+		return ""
+	}
+	d := stmtField(st, "daily", 2)
+	if d == nil {
 		return "its day"
 	}
 	loc, err := time.LoadLocation(d[1])
@@ -662,6 +684,17 @@ func (e *Entry) fromMismatch() string {
 	}
 	if at, _ := schedule.Next(c, loc, day.Add(-time.Second)); at.UTC().Format(time.RFC3339) != e.NotBefore {
 		return "its start time"
+	}
+	return ""
+}
+
+// stmtLine is the value of a statement's "key: ..." line ("" if none or
+// empty).
+func stmtLine(st, key string) string {
+	for _, l := range strings.Split(st, "\n") {
+		if v, ok := strings.CutPrefix(l, key+": "); ok {
+			return strings.TrimSpace(v)
+		}
 	}
 	return ""
 }

@@ -181,6 +181,16 @@ func TestServerUsesRegisteredLane(t *testing.T) {
 	if r.Approved || !strings.Contains(r.Why, "guard WIPE isn't declared") {
 		t.Errorf("undeclared flag: %+v", r)
 	}
+	// An unattended worker's server fails it instead (the round ends
+	// BLOCKED); a refusal for anything else is still a plain decline.
+	s.FailUndeclared = true
+	if r, _ = Ask(s.Path(), Request{Lane: 3, Flag: "WIPE", Desc: "d", Token: tok}, nil, time.Time{}); r.Approved || !r.Fail {
+		t.Errorf("undeclared flag on an unattended worker: %+v", r)
+	}
+	if r, _ = Ask(s.Path(), Request{Lane: 3, Flag: "DROP", Desc: "d"}, nil, time.Time{}); r.Fail {
+		t.Errorf("no token fails the round: %+v", r)
+	}
+	s.FailUndeclared = false
 	// A script that names a guard's flag at run time may ask for any.
 	dyn := s.Register(Caller{Lane: 4, Guards: []string{"DROP"}, AnyGuard: true})
 	if r, _ = Ask(s.Path(), Request{Lane: 4, Flag: "WIPE", Desc: "d", Token: dyn}, nil, time.Time{}); !r.Approved {
@@ -190,7 +200,7 @@ func TestServerUsesRegisteredLane(t *testing.T) {
 	if r.Approved || !strings.Contains(r.Why, "token") {
 		t.Errorf("no token: %+v", r)
 	}
-	if len(asked) != 2 || len(refused) != 2 {
+	if len(asked) != 2 || len(refused) != 4 {
 		t.Errorf("asked %d, refused %v", len(asked), refused)
 	}
 }

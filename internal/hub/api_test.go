@@ -90,9 +90,10 @@ func TestReadAPI(t *testing.T) {
 		t.Errorf("unknown run: %d", code)
 	}
 
-	// A job: its round, steps and output, for a user only.
-	if code, _ := call(t, api+"/runs/r-2/jobs/1", ""); code != 401 {
-		t.Errorf("anonymous job: %d", code)
+	// A job: its round and steps for anyone who may view; their output
+	// for a user only.
+	if code, body := call(t, api+"/runs/r-2/jobs/1", ""); code != 200 || !strings.Contains(body, `"label":"say"`) || strings.Contains(body, "hi there") || !strings.Contains(body, `"output_hidden":true`) {
+		t.Errorf("anonymous job: %d %s", code, body)
 	}
 	if code, body := call(t, api+"/runs/r-2/jobs/1", vic); code != 200 || !strings.Contains(body, `"label":"say"`) || !strings.Contains(body, `"output":["hi there"]`) {
 		t.Errorf("job: %d %s", code, body)

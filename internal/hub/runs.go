@@ -38,7 +38,28 @@ const (
 type RunReport struct {
 	Run  runrec.Run     `json:"run"`
 	Jobs []logparse.Doc `json:"jobs"` // the round each lane ran in it (lanes with none, such as skipped ones, have none)
+	// Trigger is what started it (nil from a swim before triggers).
+	Trigger *Trigger `json:"trigger,omitempty"`
 }
+
+// Trigger is what started a run.
+type Trigger struct {
+	// Kind is schedule (a recurring schedule's occurrence), hub (a hub
+	// user's command), queue (swim queue add, or a one-off swim schedule)
+	// or cli (swim run, swim all, swim ci: no batch).
+	Kind     string `json:"kind"`
+	By       string `json:"by,omitempty"`       // who queued it: hub:alice via URL, an operator
+	Batch    string `json:"batch,omitempty"`    // its queue entry
+	Schedule string `json:"schedule,omitempty"` // the recurring schedule, for kind schedule
+}
+
+// Trigger kinds.
+const (
+	TriggerSchedule = "schedule"
+	TriggerHub      = "hub"
+	TriggerQueue    = "queue"
+	TriggerCLI      = "cli"
+)
 
 // RunInfo is a kept run as listed.
 type RunInfo struct {
@@ -49,6 +70,31 @@ type RunInfo struct {
 	Result   string    `json:"result"` // passed | failed | interrupted | skipped
 	Lanes    []int     `json:"lanes"`
 	Bytes    int64     `json:"bytes"`
+	// LaneResults are how each lane ended in it, for a lane's history.
+	LaneResults []LaneResult `json:"lane_results"`
+	Trigger     *Trigger     `json:"trigger,omitempty"`
+}
+
+// LaneResult is how one lane ended in a run.
+type LaneResult struct {
+	Lane  int    `json:"lane"`
+	State string `json:"state"` // passed | failed | skipped | interrupted
+	Exit  *int   `json:"exit,omitempty"`
+	Round string `json:"round,omitempty"`
+	// DryRun are its guarded steps that ran as dry runs (JobSummary).
+	DryRun []string `json:"dry_run,omitempty"`
+	// Duration is how long its process ran, in seconds (0 if it didn't).
+	Duration float64 `json:"duration_s,omitempty"`
+}
+
+// HasLane reports whether lane n was in the run.
+func (i *RunInfo) HasLane(n int) bool {
+	for _, l := range i.Lanes {
+		if l == n {
+			return true
+		}
+	}
+	return false
 }
 
 // RunResult is a run's overall result from its lanes': failed over
@@ -70,6 +116,9 @@ func RunResult(r *runrec.Run) string {
 
 // Sanitize makes every text field safe to show (ui.Safe), as Snapshot's.
 func (r *RunReport) Sanitize() {
+	if t := r.Trigger; t != nil {
+		t.Kind, t.By, t.Batch, t.Schedule = ui.Safe(t.Kind), ui.Safe(t.By), ui.Safe(t.Batch), ui.Safe(t.Schedule)
+	}
 	r.Run.Run = ui.Safe(r.Run.Run)
 	for i := range r.Run.Lanes {
 		l := &r.Run.Lanes[i]
@@ -168,9 +217,19 @@ func (rs *runStore) add(worker string, rep *RunReport, size int64) {
 		}
 	}
 	info := &RunInfo{Worker: worker, Run: rep.Run.Run, Started: rep.Run.Started, Finished: rep.Run.Finished,
-		Result: RunResult(&rep.Run), Lanes: []int{}, Bytes: size}
+		Result: RunResult(&rep.Run), Lanes: []int{}, Bytes: size, LaneResults: []LaneResult{}, Trigger: rep.Trigger}
 	for _, l := range rep.Run.Lanes {
 		info.Lanes = append(info.Lanes, l.Lane)
+		lr := LaneResult{Lane: l.Lane, State: l.State, Exit: l.Exit, Round: l.Round}
+		if l.Start != nil && l.End != nil && *l.End > *l.Start {
+			lr.Duration = *l.End - *l.Start
+		}
+		for i := range rep.Jobs {
+			if rep.Jobs[i].Lane == l.Lane {
+				lr.DryRun = DryRuns(&rep.Jobs[i])
+			}
+		}
+		info.LaneResults = append(info.LaneResults, lr)
 	}
 	runs[rep.Run.Run] = info
 	rs.total += size
@@ -365,6 +424,9 @@ func (s *Server) putRun(w http.ResponseWriter, r *http.Request) {
 	s.runs.mu.Unlock()
 	if info != nil {
 		s.events.publish("run", id, *info)
+	}
+	if !again {
+		s.runAlert(id, &rep)
 	}
 	s.mu.Lock()
 	if rec := s.records[id]; rec != nil && !again {

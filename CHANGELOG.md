@@ -32,6 +32,25 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Upgrading
 
+- **A guard no one can answer fails the round on a headless worker.**
+  Before, it dry-ran its change and the lane passed. Now a guard that
+  nobody may answer there (its script doesn't declare it, the repo has no
+  `lookup.yml` for answers through the hub, or the enrollment can't take
+  answers: `read` access, `headless.allow` without `answer`) ends the
+  round `BLOCKED` with why, so the hub shows it failed. A guard that could
+  be answered but wasn't (`headless.answer_timeout`) is still a dry run,
+  now shown amber. To keep a guard that should run unattended, approve it
+  with `--approve FLAG` on the queue entry or schedule, or a signed
+  approval.
+- **Recurring schedules no longer expire after 30 days.** They run until
+  `swim schedule rm`, `--until` or `--for`, unless `lookup.yml`'s
+  `standing.max` caps them (then that is the default end, as before).
+  Existing schedules keep the end they were made with.
+- **A job's steps are visible to anyone who may view the hub.** Logged-out
+  viewers of a non-private hub now see a job's steps, commands and exit
+  codes (masked as logs are); the output still needs a hub user.
+  `--private` hubs are unchanged.
+
 - **Hub access is per enrollment: read or readwrite.** `swim hub enroll
   URL --access read|readwrite` sets what the hub may do with this
   directory: `read` shows it and fetches its logs; `readwrite` also sends
@@ -508,6 +527,36 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
+- **The hub says when a change didn't happen.** A lane that passed with a
+  guarded step dry-run is "dry run", amber, everywhere the hub shows it
+  (lanes, runs, the lane history's dots, Activity, Jobs, repo cards),
+  with the step and why; repo cards list what is failing or dry-running
+  now, lane by lane, not just the repo.
+- **Schedules page and missed runs.** Each worker reports its recurring
+  schedules; the hub's Schedules page lists them all, worst first:
+  cadence, next occurrence, last result and last success, expiry, and a
+  verdict: **missed** (due 10 minutes and not started: the worker was
+  down, or busy), failed, skipped, expired, paused or expiring. Repo cards
+  and the Schedules tab's count flag the bad ones. `GET /api/schedules`.
+  An idle worker says when its next recurring run is.
+- **`swim schedule --cron "EXPR"`:** recurring schedules on any cadence
+  (five-field cron with ranges, lists, steps, names and `@hourly`,
+  `@daily`, `@weekly`, `@monthly`), in the schedule's zone.
+- **Alerts:** `swim hub --webhook URL[,URL]` (or `--webhook-file FILE`)
+  POSTs a JSON alert once per event: a run failed or only dry-ran its
+  change; a schedule missed, failed, skipped, expired or about to; a
+  worker stopped reporting; a guard waits for an answer. Its `text` makes
+  it a message in a Slack, Mattermost or Discord incoming webhook as is.
+- **Activity and Jobs.** Activity lists every runner's runs, newest
+  first, filterable by result (failed, dry run, passed), time (an hour to
+  everything kept), repo and trigger. Jobs lists every job (a runner's
+  lane and round title, so a lane rewritten for another job starts a new
+  row) with its last result and exit, success rate, last pass and a bar
+  trend of its recent durations. `GET /api/activity`, `GET /api/jobs`.
+- **Runs say what started them:** a schedule, a hub user, `swim queue
+  add`, or `swim run` (`trigger` on each run the hub keeps), shown on the
+  run and in Activity.
+
 - **`swim ps` and `swim stop [--all]`.** `swim ps` lists the headless
   workers running on this machine, in any directory: pid, mode
   (detached, foreground, systemd, launchd), uptime, running lanes and
@@ -517,6 +566,15 @@ already pushed to origin's main) with the next tag and pushes that tag.
   `swim stop` stops this directory's worker after the batch in hand (as
   `swim watch --headless --stop`), and `--all` stops every one; in a lane
   script `swim stop "<reason>"` still ends the round.
+- **A lane's history on the hub.** Clicking a lane opens its runs down
+  the side, newest first, each with how long ago it ran and a dot for how
+  it ended (green passed, red failed or a nonzero exit, grey skipped),
+  under any batch still queued for it and the run going on now. The main
+  area shows the chosen run's lanes (graph and table); clicking one shows
+  its full log under them. A run sent without step output asks the runner
+  for the lane's log at once (where it takes log requests) and fills in
+  as it arrives. `GET /api/enrollments/{id}/runs?lane=N` lists a lane's
+  runs, and each listed run carries `lane_results` (state and exit).
 - **The hub shows lanes by number:** `2`, not `swim 2`, in its lists and
   chips ("lane 2" in titles and sentences).
 - **The hub is organized by repo.** Its home page lists repos (each

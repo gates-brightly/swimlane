@@ -278,6 +278,28 @@ func TestOccurrenceStatement(t *testing.T) {
 	}
 }
 
+// A cron schedule's occurrence is keyed by its minute; one with no end
+// (an empty until:) vouches for any later occurrence.
+func TestCronOccurrenceStatement(t *testing.T) {
+	st := "swim recurring v1\nid: r-c\nlane: 2 j sha man\napprove: \ncron: */30 * * * * UTC\nfirst: 2026-10-16T00:00\nuntil: \n"
+	e := &Entry{ID: "q-2", From: "r-c", Occurrence: "2027-03-01T13:30", NotBefore: "2027-03-01T13:30:00Z", FromStatement: st,
+		Lanes: []Lane{{Lane: 2, Job: "j", SHA256: "sha", Manifest: "man"}}}
+	if e.Statement() != st {
+		t.Fatalf("a matching occurrence: %q", e.Statement())
+	}
+	for what, edit := range map[string]func(*Entry){
+		"off the expression": func(e *Entry) { e.Occurrence, e.NotBefore = "2027-03-01T13:31", "2027-03-01T13:31:00Z" },
+		"start time":         func(e *Entry) { e.NotBefore = "2027-03-01T14:00:00Z" },
+		"before first":       func(e *Entry) { e.Occurrence, e.NotBefore = "2026-10-15T23:30", "2026-10-15T23:30:00Z" },
+	} {
+		c := *e
+		edit(&c)
+		if c.Statement() == st {
+			t.Errorf("%s, the statement still vouches for it", what)
+		}
+	}
+}
+
 // Illegal moves panic in tests (SWIM_CHECK_STATES elsewhere): consuming an
 // entry no worker claimed, consuming one twice, claiming a consumed one.
 func TestIllegalQueueMovesPanic(t *testing.T) {
