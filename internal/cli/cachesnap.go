@@ -72,7 +72,10 @@ func cacheSnap(root string, cfg *config.Config, sub string, args []string) error
 	if logPath == "" {
 		logPath = lane.Log(root, n)
 	}
-	key := cache.SnapKey(root, tree, decl.Lockfiles, with)
+	// The tree and its key files are the lane's: in its staged copy (which
+	// holds the lockfiles) unless it runs live.
+	ws := or(os.Getenv("SWIM_WORKSPACE"), root)
+	key := cache.SnapKey(ws, tree, decl.Lockfiles, with)
 	short := key[:12]
 	label := "cache " + sub + " " + tree
 	start := time.Now()
@@ -114,7 +117,7 @@ func cacheSnap(root string, cfg *config.Config, sub string, args []string) error
 			record(logparse.Pass, "miss")
 			return exitError{1}
 		}
-		switch err := r.RestoreSnap(root, s); {
+		switch err := r.RestoreSnap(ws, s); {
 		case errors.Is(err, cache.ErrTreeExists):
 			out = append(out, tree+" is there already: left as it is (restore never deletes)")
 			record(logparse.Pass, "kept: "+tree+" exists")
@@ -142,11 +145,6 @@ func cacheSnap(root string, cfg *config.Config, sub string, args []string) error
 	}
 
 	// save
-	if os.Getenv("SWIM_IN_HANDLER") != "" {
-		out = append(out, "an outcome handler never saves a snapshot: what the round left may be half done")
-		record(logparse.Skip, "not from an outcome handler")
-		return exitError{1}
-	}
 	if s := r.FindSnap(tree, key); s != nil {
 		out = append(out, fmt.Sprintf("snapshot %s is saved already (by job %s at %s); keys are written once", short, or(s.SavedByJob, "-"), s.SavedAt))
 		record(logparse.Pass, "already saved "+short)
@@ -160,14 +158,9 @@ func cacheSnap(root string, cfg *config.Config, sub string, args []string) error
 	if st, _ := status.Load(root); st != nil {
 		if l := st.Get(n); l != nil {
 			failed = l.Fail > 0
-			if cell := lane.CellOf(n); cell != "" {
-				if c := l.FindCell(cell); c != nil {
-					failed = c.Fail > 0
-				}
-			}
 		}
 	}
-	s, err := r.SaveSnap(root, cache.Snapshot{Key: key, Tree: tree, With: with, SavedBy: operator(),
+	s, err := r.SaveSnap(ws, cache.Snapshot{Key: key, Tree: tree, With: with, SavedBy: operator(),
 		SavedByJob: os.Getenv("SWIM_JOB"), SavedRun: os.Getenv("SWIM_RUN"), Failed: failed})
 	switch {
 	case errors.Is(err, cache.ErrSnapExists):

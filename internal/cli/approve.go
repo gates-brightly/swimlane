@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,7 +18,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/manifest"
-	"github.com/gates-brightly/swimlane/internal/peer"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -48,9 +46,6 @@ func cmdApproveHook(args []string) error {
 		return err
 	}
 	flag, desc := args[1], cfg.Masker(os.Environ()).String(args[2])
-	if cell := lane.CurrentCell(); cell != "" {
-		desc = "[" + cell + "] " + desc // each cell of a matrix asks for itself
-	}
 	job, run := os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN")
 	holdIfPaused(root, n, run, desc) // a paused round holds before its guard too
 	dryRun := func(why string) error {
@@ -136,7 +131,7 @@ func cmdApproveHook(args []string) error {
 	// queue entry this run came from (swim approve --auto), counted
 	// together against lookup.yml.
 	snap := authority.Take(root, os.Environ())
-	d := snap.Signed(authority.Ask{Root: root, Lane: n, Cell: lane.CurrentCell(), Flag: flag, Desc: desc, Job: job, Run: run, Script: sha, Manifest: m}, time.Now())
+	d := snap.Signed(authority.Ask{Root: root, Lane: n, Flag: flag, Desc: desc, Job: job, Run: run, Script: sha, Manifest: m}, time.Now())
 	laneWarns(root, n, args[0], d.Warns)
 	if d.OK {
 		facts := observe()
@@ -272,55 +267,12 @@ func launched() bool {
 }
 
 // underSwimRun reports whether swim run (swim all, ci, watch) started this
-// process's lane in root, whatever the lane's environment says: launched,
-// or a swim process is among its ancestors. A lane can unset its
-// environment; it can't change who started it, or where they run. A swim
-// ancestor counts unless it provably works in another swim repo (a test
-// suite run through swim ci, starting lanes of its own scratch repos):
-// one whose working directory can't be read still counts.
-func underSwimRun(root string) bool {
-	if launched() || os.Getenv("SWIM_LAUNCHED") == "1" {
-		return true
-	}
-	names := map[string]bool{filepath.Base(os.Args[0]): true}
-	if exe, err := os.Executable(); err == nil {
-		names[filepath.Base(exe)] = true
-	}
-	for name := range names {
-		for _, pid := range peer.AncestorsNamed(os.Getpid(), name) {
-			if !inOtherRepo(root, pid) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// inOtherRepo reports whether process pid works in a swim repo other than
-// root: its working directory is readable, outside root, and in a
-// directory tree with its own .swim/.
-func inOtherRepo(root string, pid int) bool {
-	cwd, ok := peer.Cwd(pid)
-	if !ok || root == "" {
-		return false
-	}
-	if r, err := filepath.EvalSymlinks(root); err == nil {
-		root = r
-	}
-	if c, err := filepath.EvalSymlinks(cwd); err == nil {
-		cwd = c
-	}
-	if cwd == root || strings.HasPrefix(cwd, root+string(filepath.Separator)) {
-		return false
-	}
-	for dir := cwd; ; dir = filepath.Dir(dir) {
-		if st, err := os.Stat(filepath.Join(dir, ".swim")); err == nil && st.IsDir() {
-			return true
-		}
-		if dir == filepath.Dir(dir) {
-			return false
-		}
-	}
+// process's lane, as its environment says. A lane runs as the operator,
+// so it can change its environment, or anything else the operator can:
+// this tells an honest lane's guards to ask the launcher, and isn't a
+// boundary against a hostile one (docs/trust-model.md).
+func underSwimRun(string) bool {
+	return launched() || os.Getenv("SWIM_LAUNCHED") == "1"
 }
 
 // approveLaunched asks swim run's launcher to decide the guard: it alone

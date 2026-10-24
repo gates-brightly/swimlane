@@ -58,16 +58,11 @@ type trashed struct {
 func trashLane(root string, cfg *config.Config, r trashReq) (*trashed, error) {
 	n := r.n
 	if _, err := os.Stat(lane.Script(root, n)); errors.Is(err, os.ErrNotExist) {
-		if _, group := lane.GroupOf(root, n); !group {
-			return nil, fmt.Errorf("swim %d has no lane script to trash", n)
-		}
+		return nil, fmt.Errorf("swim %d has no lane script to trash", n)
 	}
 	info, err := lane.ReadScript(root, n)
 	if err != nil {
 		return nil, err
-	}
-	if _, ok := lane.GroupOf(root, n); ok {
-		return nil, fmt.Errorf("swim %d is a group file's lane: its jobs are committed, standing work; edit %s instead", n, lane.ScriptName(root, n))
 	}
 	script := lane.ScriptName(root, n)
 	if script == "" {
@@ -96,13 +91,6 @@ func trashLane(root string, cfg *config.Config, r trashReq) (*trashed, error) {
 				return nil, fmt.Errorf("swim %d is in %s, #%d, which is pinned to its script: %s first", n, what, e.Seq, rm)
 			}
 		}
-	}
-	if info.Always && !r.force {
-		how := "swim trash " + strconv.Itoa(n) + " --force does it"
-		if r.from != trashFromCLI {
-			how = "only swim trash --force at a terminal does it"
-		}
-		return nil, fmt.Errorf("swim %d is an Always lane (# Always: yes): %s", n, how)
 	}
 
 	files := []string{script}
@@ -271,9 +259,6 @@ func trashEntries(root string) []cleanedManifest {
 // entry of its own.
 func trashedNote(root string, n int) string {
 	if len(lane.Scripts(root, n)) > 0 {
-		return ""
-	}
-	if _, ok := lane.LaneJobs(root, n); ok {
 		return ""
 	}
 	var last *cleanedManifest

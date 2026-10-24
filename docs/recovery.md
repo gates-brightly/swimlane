@@ -59,7 +59,6 @@ terminal (SIGHUP).
 swim log N                  # the last step that ran, and whether it finished
 swim plan                   # what swim all would run now: interrupted and skipped rounds are retried
 swim all                    # run them (or: swim run N for one lane)
-swim run N --failed         # a matrix round: only the cells that didn't pass
 ```
 
 A queued batch that was interrupted is consumed as `interrupted`; run it

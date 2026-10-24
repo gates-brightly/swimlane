@@ -348,35 +348,6 @@ func Duplicates(root string) []string {
 	return out
 }
 
-// MigrateRC reads a .lane.N.rc as plain assignments (KEY=VALUE, or export
-// KEY=VALUE; comments and blank lines), for moving it into a [lane N]
-// section. Anything else (commands, expansion, conditionals) is returned
-// as a problem: that rc needs migrating by hand.
-func MigrateRC(data []byte) ([]Entry, []string) {
-	var out []Entry
-	var problems []string
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	for n := 1; sc.Scan(); n++ {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-		k, v, ok := strings.Cut(line, "=")
-		if !ok || !chars.Ident(k) {
-			problems = append(problems, fmt.Sprintf("line %d is not a plain assignment: %s", n, sc.Text()))
-			continue
-		}
-		val, err := value(v)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("line %d: %s: %v", n, k, err))
-			continue
-		}
-		out = append(out, Entry{Key: k, Value: val, Line: n})
-	}
-	return out, problems
-}
-
 // Quote writes a value so Parse reads it back unchanged.
 func Quote(v string) string {
 	if v == "" || strings.ContainsAny(v, " \t#$`\"'") {

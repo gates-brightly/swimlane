@@ -34,9 +34,6 @@ func cmdClaim(args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, group := lane.GroupOf(root, n); group {
-		return fmt.Errorf("swim %d is a group file's lane: group files are committed, standing work, not a round a session writes", n)
-	}
 	sess := lane.SessionID()
 	if release {
 		c, err := lane.ReleaseClaim(root, n, sess, force)

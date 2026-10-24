@@ -136,34 +136,6 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 	}
 }
 
-// Two batches whose lanes both pull in the same Always lane (After: 1)
-// take turns: started side by side, the second would find swim 1 already
-// running and fail at once, skipping its lane.
-func TestWatchBatchesSharingAnAlwaysLane(t *testing.T) {
-	r := newRepo(t, "")
-	r.script(1, "setup", `run "setup" sleep 0.5`)
-	withHeader(t, r, 1, "# Always: yes")
-	r.script(2, "suite a", `run "a" true`)
-	withHeader(t, r, 2, "# After: 1")
-	r.script(3, "suite b", `run "b" true`)
-	withHeader(t, r, 3, "# After: 1")
-	r.mustSwim("queue", "add", "2")
-	r.mustSwim("queue", "add", "3")
-	out := r.mustSwim("watch", "--once")
-	if strings.Contains(out, "already running") {
-		t.Errorf("the batches ran swim 1 side by side:\n%s", out)
-	}
-	contains(t, "watch", out, "waiting for their lanes")
-	for _, e := range doneEntries(t, r) {
-		if e.Result == nil || e.Result.Result != "passed" {
-			t.Errorf("batch %s: %+v\n%s", e.ID, e.Result, out)
-		}
-	}
-	if n := strings.Count(r.log(1), "== ROUND "); n != 2 {
-		t.Errorf("swim 1 ran %d rounds, want one per batch, in turn", n)
-	}
-}
-
 func TestWatchWorkersShareTheQueue(t *testing.T) {
 	r := newRepo(t, "")
 	for n := 1; n <= 3; n++ {
@@ -450,9 +422,9 @@ func TestWatchBatchesSideBySide(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
 	stamp := func(name string) string {
-		return fmt.Sprintf(`run "%[1]s start" bash -c 'date +%%s.%%N >> %[1]s.start'
+		return fmt.Sprintf(`run "%[1]s start" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.start"'
 run "%[1]s work" sleep 2
-run "%[1]s end" bash -c 'date +%%s.%%N >> %[1]s.end'`, name)
+run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name)
 	}
 	r.script(1, "slow one", stamp("one"))
 	r.script(2, "two", stamp("two"))

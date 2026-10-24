@@ -25,8 +25,8 @@ func signedRepo(t *testing.T) (*repo, map[string]string) {
 // signed by a trusted key moves the pin along; CI pins by hash.
 func TestVerifyTrustedLevel(t *testing.T) {
 	r, keys := signedRepo(t)
-	contains(t, "no trust.yml", r.mustSwim("verify"), "consistent  yes", "trusted     n/a", "no trust.yml")
-	if out, code := r.swim("verify", "--strict"); code != 1 {
+	contains(t, "no trust.yml", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes", "trusted     n/a", "no trust.yml")
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned", "--strict"); code != 1 {
 		t.Errorf("--strict with trusted n/a: exit %d\n%s", code, out)
 	}
 
@@ -35,8 +35,8 @@ func TestVerifyTrustedLevel(t *testing.T) {
 	if out, code := r.swim("lint"); code == 0 || !strings.Contains(out, "alice's key alice isn't in trust.yml") {
 		t.Errorf("lint, lookup.yml key outside trust.yml: exit %d\n%s", code, out)
 	}
-	contains(t, "first verify", r.mustSwim("verify"), "trusted     yes", "1 signers, all in trust.yml (pinned now, on first use)")
-	contains(t, "pinned", r.mustSwim("verify"), "trusted     yes", "(pinned 20")
+	contains(t, "first verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "trusted     yes", "1 signers, all in trust.yml (pinned now, on first use)")
+	contains(t, "pinned", r.mustSwim("verify", "--levels", "--allow-unsigned"), "trusted     yes", "(pinned 20")
 	contains(t, "keys", r.mustSwim("keys"), "trust.yml: 1 keys", "; pinned")
 
 	// A hand edit (mallory's key added) is refused until pinned again.
@@ -46,7 +46,7 @@ func TestVerifyTrustedLevel(t *testing.T) {
 	exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "mallory", "-f", mallory).Run()
 	pub, _ := os.ReadFile(mallory + ".pub")
 	os.WriteFile(tf, append(append([]byte(nil), orig...), []byte("  - "+strings.TrimSpace(string(pub))+"\n")...), 0o644)
-	out, code := r.swim("verify")
+	out, code := r.swim("verify", "--levels", "--allow-unsigned")
 	if code != 1 || !strings.Contains(out, "trusted     no") || !strings.Contains(out, "changed since it was pinned") {
 		t.Fatalf("unsigned trust.yml edit: exit %d\n%s", code, out)
 	}
@@ -54,8 +54,8 @@ func TestVerifyTrustedLevel(t *testing.T) {
 
 	// Signed by zach (trusted): alice joins, and every pin follows.
 	contains(t, "signed change", r.mustSwim("keys", "trust", keys["alice"]+".pub", "--sign", "--key", keys["zach"]), "added", "signed in trust.yml.sig")
-	contains(t, "after a signed change", r.mustSwim("verify"), "trusted     yes", "1 signed changes since the pin")
-	contains(t, "pin moved", r.mustSwim("verify"), "trusted     yes", "(pinned 20")
+	contains(t, "after a signed change", r.mustSwim("verify", "--levels", "--allow-unsigned"), "trusted     yes", "1 signed changes since the pin")
+	contains(t, "pin moved", r.mustSwim("verify", "--levels", "--allow-unsigned"), "trusted     yes", "(pinned 20")
 	r.mustSwim("lint")
 
 	// A change signed by a key trust.yml doesn't hold is refused.
@@ -71,7 +71,7 @@ func TestVerifyTrustedLevel(t *testing.T) {
 	if code != 0 || !strings.Contains(y, "schema: swim.verify/v1") || !strings.Contains(y, `trusted: "yes"`) || !strings.Contains(y, `consistent: "yes"`) {
 		t.Errorf("verify --yaml with SWIM_TRUST_PIN: exit %d\n%s", code, y)
 	}
-	if out, code := r.swim("verify", "--trust-pin", strings.Repeat("0", 64)); code != 1 || !strings.Contains(out, "trusted     no") {
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned", "--trust-pin", strings.Repeat("0", 64)); code != 1 || !strings.Contains(out, "trusted     no") {
 		t.Errorf("verify against another pin: exit %d\n%s", code, out)
 	}
 }
@@ -81,15 +81,15 @@ func TestVerifyTrustedLevel(t *testing.T) {
 // fail the level, and --against checks an exported copy.
 func TestVerifyAnchoredLevel(t *testing.T) {
 	r, _ := signedRepo(t)
-	contains(t, "no anchors", r.mustSwim("verify"), "anchored    n/a", "no anchors configured")
+	contains(t, "no anchors", r.mustSwim("verify", "--levels", "--allow-unsigned"), "anchored    n/a", "no anchors configured")
 	contains(t, "doctor, no anchors", must(r.swim("doctor")), "[anchors-none]")
 
 	dir := filepath.Join(t.TempDir(), "audit")
 	r.write("swim.yml", "chain_anchors: [\"file:"+dir+"\"]\n", 0o644)
-	contains(t, "no checkpoint yet", r.mustSwim("verify"), "anchored    n/a", "no checkpoint at file:"+dir)
+	contains(t, "no checkpoint yet", r.mustSwim("verify", "--levels", "--allow-unsigned"), "anchored    n/a", "no checkpoint at file:"+dir)
 	r.mustSwim("run", "1")
 	r.mustSwim("run", "1")
-	out := r.mustSwim("verify")
+	out := r.mustSwim("verify", "--levels", "--allow-unsigned")
 	contains(t, "anchored", out, "anchored    yes", "extends checkpoint seq 6", "from file:"+dir+"; 0 entries since", "anchoring proves this history existed by")
 	if _, err := os.Stat(filepath.Join(dir, "checkpoints.jsonl")); err != nil {
 		t.Fatal(err)
@@ -104,11 +104,11 @@ func TestVerifyAnchoredLevel(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	lines := strings.SplitAfter(string(data), "\n")
 	os.WriteFile(path, []byte(lines[0]), 0o644)
-	out, code := r.swim("verify")
+	out, code := r.swim("verify", "--levels", "--allow-unsigned")
 	if code != 1 || !strings.Contains(out, "anchored    no") || !strings.Contains(out, "chain truncated or replaced after checkpoint seq 6") {
 		t.Fatalf("verify of a truncated chain: exit %d\n%s", code, out)
 	}
-	if out, code := r.swim("verify", "--against", "file:"+dir); code != 1 || !strings.Contains(out, "lost entries from its end") {
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned", "--against", "file:"+dir); code != 1 || !strings.Contains(out, "lost entries from its end") {
 		t.Errorf("verify --against of a truncated chain: exit %d\n%s", code, out)
 	}
 	// The anchor refuses to go back, and so does export.
@@ -124,7 +124,7 @@ func TestVerifyAnchoredLevel(t *testing.T) {
 	// exported copy.
 	os.Remove(path)
 	r.mustSwim("run", "1")
-	if out, code := r.swim("verify", "--against", "file:"+dir); code != 1 || !strings.Contains(out, "anchored    no") || !strings.Contains(out, "was replaced") {
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned", "--against", "file:"+dir); code != 1 || !strings.Contains(out, "anchored    no") || !strings.Contains(out, "was replaced") {
 		t.Errorf("verify --against of a new chain: exit %d\n%s", code, out)
 	}
 }
@@ -143,25 +143,25 @@ func TestVerifyAuthorizedLevel(t *testing.T) {
 	// Signed by zach (admins): authorized.
 	r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"])
 	r.mustSwim("run", "1")
-	contains(t, "signed", r.mustSwim("verify"), "authorized  yes", "1 approvals, each met its lookup.yml rule")
+	contains(t, "signed", r.mustSwim("verify", "--levels", "--allow-unsigned"), "authorized  yes", "1 approvals, each met its lookup.yml rule")
 
 	// FLAG=1 for a guard whose rule says signed: it runs, but it isn't
 	// authorized.
 	os.RemoveAll(filepath.Join(r.root, "approvals"))
 	r.swimEnv([]string{"FIN_ALLOW_DROP=1"}, "run", "1")
-	out, code := r.swim("verify")
+	out, code := r.swim("verify", "--levels", "--allow-unsigned")
 	if code != 1 || !strings.Contains(out, "authorized  no") || !strings.Contains(out, "approved by flag, but lookup.yml says FIN_ALLOW_DROP needs signed approvals") {
 		t.Fatalf("flag approval of a signed-only guard: exit %d\n%s", code, out)
 	}
-	y, _ := r.swim("verify", "--yaml")
+	y, _ := r.swim("verify", "--levels", "--allow-unsigned", "--yaml")
 	contains(t, "yaml", y, `authorized: "no"`, `consistent: "yes"`)
 
 	// lookup.yml changed since: a warning, and partial.
 	lk, _ := os.ReadFile(filepath.Join(r.root, "lookup.yml"))
 	os.WriteFile(filepath.Join(r.root, "lookup.yml"), append(lk, []byte("# reviewed\n")...), 0o644)
-	out = r.mustSwim("verify")
+	out = r.mustSwim("verify", "--levels", "--allow-unsigned")
 	contains(t, "changed lookup.yml", out, "authorized  partial", "it was approved under another")
-	if out, code := r.swim("verify", "--strict"); code != 1 {
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned", "--strict"); code != 1 {
 		t.Errorf("--strict with authorized partial: exit %d\n%s", code, out)
 	}
 }
@@ -175,7 +175,7 @@ func TestVerifySharedRunID(t *testing.T) {
 	r.mustSwim("run", "2", "-y", "--plain", "--run-id", "pipeline-7")
 	r.script(1, "one", `run "ok again" true`)
 	r.mustSwim("run", "1", "--plain", "--run-id", "pipeline-7")
-	out, code := r.swim("verify")
+	out, code := r.swim("verify", "--levels", "--allow-unsigned")
 	if code != 0 || strings.Contains(out, "BROKEN") {
 		t.Fatalf("verify of runs sharing an id: exit %d\n%s", code, out)
 	}

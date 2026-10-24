@@ -101,31 +101,31 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 	if len(rev) != 3 || rev[0] != one[2] || rev[2] != one[0] {
 		t.Errorf("history --oneline -3 --reverse: %q, want %q reversed", rev, one)
 	}
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes", "script, approves FIN_ALLOW_DROP; 3 standing of 5 events")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes", "script, approves FIN_ALLOW_DROP; 3 standing of 5 events")
 
 	// Tampering is provable.
 	logPath := filepath.Join(r.root, ".swim", "logs", "agent1.log")
 	orig, _ := os.ReadFile(logPath)
 	os.WriteFile(logPath, []byte(strings.Replace(string(orig), "PASS  drop", "PASS  dorp", 1)), 0o644)
-	if out, code := r.swim("verify"); code != 1 || !strings.Contains(out, "log for run") || !strings.Contains(out, "was changed after the round ended") {
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned"); code != 1 || !strings.Contains(out, "log for run") || !strings.Contains(out, "was changed after the round ended") {
 		t.Errorf("edited log: %d %s", code, out)
 	}
 	os.WriteFile(logPath, orig, 0o644)
 	cp := chain.Path(r.root)
 	corig, _ := os.ReadFile(cp)
 	os.WriteFile(cp, []byte(strings.Replace(string(corig), `"FIN_ALLOW_DROP"`, `"FIN_ALLOW_OTHER"`, 1)), 0o644)
-	if out, code := r.swim("verify"); code != 1 || !strings.Contains(out, "signature doesn't match the entry") || !strings.Contains(out, "prev hash doesn't match") {
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned"); code != 1 || !strings.Contains(out, "signature doesn't match the entry") || !strings.Contains(out, "prev hash doesn't match") {
 		t.Errorf("edited chain: %d %s", code, out)
 	}
 	os.WriteFile(cp, corig, 0o644)
-	r.mustSwim("verify")
+	r.mustSwim("verify", "--levels", "--allow-unsigned")
 
 	// Changing the script makes the signature stale: the guard says so.
 	r.script(1, "drop old table v2", `if guard FIN_ALLOW_DROP "drop table old_orders"; then run "drop" true; fi`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop table old_orders")
 	r.mustSwim("run", "1")
 	contains(t, "stale", r.log(1), "approves another version of lane.1.sh")
-	contains(t, "stale verify", r.mustSwim("verify"), "stale: lane.1.sh changed since")
+	contains(t, "stale verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "stale: lane.1.sh changed since")
 }
 
 func TestChainRecordsEveryApproval(t *testing.T) {
@@ -175,10 +175,10 @@ func TestChainRecordsEveryApproval(t *testing.T) {
 	// signing: off records unsigned links; verify --strict flags them.
 	r.mustSwim("config", "signing", "off")
 	r.mustSwim("run", "1", "-y")
-	if out, code := r.swim("verify", "--strict"); code != 1 || !strings.Contains(out, "unsigned entries") {
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned", "--strict"); code != 1 || !strings.Contains(out, "unsigned entries") {
 		t.Errorf("--strict with unsigned entries: %d %s", code, out)
 	}
-	r.mustSwim("verify")
+	r.mustSwim("verify", "--levels", "--allow-unsigned")
 }
 
 func TestWatchSigned(t *testing.T) {
@@ -260,7 +260,7 @@ func TestStandingApproval(t *testing.T) {
 	r.mustSwim("queue", "add", "2", "--key", keys["bob"])
 	r.mustSwim("watch", "--once")
 	contains(t, "revoked", r.log(2), "SKIP  small change 3 (dry run:")
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 }
 
 // The approval lifecycle: standing approvals expire (30d by default,
@@ -339,7 +339,7 @@ func TestApprovalLifecycle(t *testing.T) {
 	legacy.Save()
 	contains(t, "legacy listed", r.mustSwim("approve"), "standing: every job bob queues · active", "warning: never expires", "warning: made before approvals bound lookup.yml's rules")
 	contains(t, "legacy doctor", r.mustSwim("doctor"), "standing-approval", "never expires")
-	contains(t, "legacy verify", r.mustSwim("verify"), "warning: approvals/auto.bob.signature: never expires")
+	contains(t, "legacy verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "warning: approvals/auto.bob.signature: never expires")
 	contains(t, "legacy counts", runQueued(), "APPROVED  drop table old_orders (approved by zach (platform-admin) (standing")
 	setLookup("groups:", "standing: {max: 90d}\ngroups:")
 	contains(t, "legacy capped", r.mustSwim("approve"), "insufficient: it never expires, which is longer than lookup.yml's standing.max (90d)")

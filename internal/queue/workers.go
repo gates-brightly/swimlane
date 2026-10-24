@@ -134,7 +134,7 @@ func LiveWorkers(root string) []*Presence {
 		if yaml.Unmarshal(data, p) != nil || p.PID == 0 {
 			continue
 		}
-		if !workerAlive(&p.Worker) {
+		if !workerAlive(root, "presence/"+filepath.Base(f), &p.Worker, p.Worker.Heartbeat) {
 			if !p.Remote() {
 				os.Remove(f)
 			}

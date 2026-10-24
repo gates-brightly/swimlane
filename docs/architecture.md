@@ -12,7 +12,7 @@ flowchart TD
     P["Planner (AI session)<br/>and its workers"]
   end
   subgraph repo["The repo"]
-    L["Lane scripts<br/>lane.N.sh, lanes.name.sh"]
+    L["Lane scripts<br/>lane.N.sh"]
     K["lookup.yml (keys, rules)<br/>approvals/ (signed)"]
     Q[".swim/queue/<br/>batches pinned to scripts"]
   end

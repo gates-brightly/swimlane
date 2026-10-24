@@ -135,10 +135,8 @@ type Batch struct {
 	Lanes  []int  `json:"lanes"`
 	Result string `json:"result,omitempty"`
 	// At is a scheduled batch's start ("13:30:00(CDT) 18:30:00(UTC) · in
-	// 2h10m"), Daily a recurring schedule's template ("daily at ...");
-	// HeldBy the scheduled batch it waits for (#3).
+	// 2h10m"); HeldBy the scheduled batch it waits for (#3).
 	At     string `json:"at,omitempty"`
-	Daily  string `json:"daily,omitempty"`
 	HeldBy string `json:"held_by,omitempty"`
 	// When it was queued, and its run's id, start and end once it ran
 	// (RFC 3339).
@@ -174,10 +172,6 @@ type Snapshot struct {
 	// shows it read only; nothing on the hub changes it. It's served alone
 	// (GET .../config, for a hub user), never in the lists or events.
 	Config string `json:"config,omitempty"`
-	// Schedules are its recurring schedules (swim schedule --daily,
-	// --cron), with what came of them: the hub watches them for missed
-	// runs (schedules.go).
-	Schedules []Schedule `json:"schedules,omitempty"`
 }
 
 // MaxConfig is how much of a worker's configuration the hub keeps.
@@ -227,7 +221,7 @@ func (s *Snapshot) Sanitize() {
 	}
 	for i := range s.Queue {
 		b := &s.Queue[i]
-		for _, f := range []*string{&b.ID, &b.State, &b.By, &b.Note, &b.Result, &b.At, &b.Daily, &b.HeldBy, &b.Queued, &b.Run, &b.Started, &b.Finished} {
+		for _, f := range []*string{&b.ID, &b.State, &b.By, &b.Note, &b.Result, &b.At, &b.HeldBy, &b.Queued, &b.Run, &b.Started, &b.Finished} {
 			*f = ui.Safe(*f)
 		}
 	}
@@ -242,12 +236,6 @@ func (s *Snapshot) Sanitize() {
 	}
 	for i := range s.Waiting {
 		s.Waiting[i].sanitize()
-	}
-	if len(s.Schedules) > MaxSchedules {
-		s.Schedules = s.Schedules[:MaxSchedules]
-	}
-	for i := range s.Schedules {
-		s.Schedules[i].sanitize()
 	}
 }
 
@@ -338,17 +326,11 @@ type Server struct {
 	secure   bool        // served over TLS: session cookies are Secure
 	private  bool        // viewing needs a login too (Private)
 	proxied  bool        // served through a proxy on this host (BehindProxy)
-	// trustTailscale signs users in by Tailscale-User-Login (tailscale.go).
-	trustTailscale bool
-	adminLogins    []string // Tailscale logins that sign in as admins (AdminTailscale)
 	// checkpoints are each worker's chain checkpoints (checkpoints.go).
 	checkpoints map[string][]chain.Checkpoint
 	// machines are the machine-wide enrollments (machines.go).
 	machines map[string]*Machine
 	// notify sends alerts to webhooks (notify.go); nil without any.
-	notify *notifier
-	// publicURL is where people reach the hub, for links in alerts.
-	publicURL string
 }
 
 // New makes a hub that accepts workers presenting token, keeping nothing
@@ -602,14 +584,6 @@ func (s *Server) Workers() []View {
 		cp.Grants = s.grantNames(cp.ID)
 		if t, ok := s.fetched[cp.ID]; ok {
 			cp.Fetched = t.UTC().Format(time.RFC3339)
-		}
-		if len(cp.Schedules) > 0 {
-			scs := make([]Schedule, len(cp.Schedules))
-			for i, sc := range cp.Schedules {
-				sc.Status, sc.Why = ScheduleStatus(sc, cp, now)
-				scs[i] = sc
-			}
-			cp.Schedules = scs
 		}
 		out = append(out, cp)
 	}

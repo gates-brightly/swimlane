@@ -2,8 +2,8 @@ package e2e
 
 // A hostile lane under swim run (tasks.md T3, T10): it runs as the
 // operator, so it can write approvals/ and lookup.yml, call swim's hidden
-// commands and set guard flags in its own environment. None of that may
-// produce an approved guard, or a chain entry swim verify accepts.
+// commands and set guard flags in its own environment. What swim run can
+// refuse it refuses; what it can't, swim verify fails.
 
 import (
 	"os"
@@ -45,7 +45,7 @@ func TestHostileLaneWritesApprovals(t *testing.T) {
 	// The lane puts a valid approval of itself in place as it starts.
 	saved := filepath.Join(t.TempDir(), "saved")
 	os.Mkdir(saved, 0o755)
-	b.hostile(`cp "` + saved + `"/*.signature approvals/`)
+	b.hostile(`cp "` + saved + `"/*.signature "$SWIM_ROOT/approvals/"`)
 	b.approve(1)
 	files, _ := filepath.Glob(filepath.Join(sigfile.Dir(b.root), "*.signature"))
 	if len(files) != 1 {
@@ -73,7 +73,7 @@ func TestHostileLaneWritesApprovals(t *testing.T) {
 	fullLookup := filepath.Join(t.TempDir(), "lookup.yml")
 	os.WriteFile(fullLookup, lk, 0o644)
 	os.WriteFile(filepath.Join(b.root, "lookup.yml"), []byte("users: {}\n"), 0o644)
-	b.hostile(`cp "` + fullLookup + `" lookup.yml`)
+	b.hostile(`cp "` + fullLookup + `" "$SWIM_ROOT/lookup.yml"`)
 	b.approve(1)
 	os.WriteFile(filepath.Join(b.root, "lookup.yml"), []byte("users: {}\n"), 0o644)
 	b.mustSwim("run", "1", "--plain")
@@ -85,12 +85,13 @@ func TestHostileLaneWritesApprovals(t *testing.T) {
 	if !b.dropped() {
 		t.Fatalf("a real approval didn't run it:\n%s", b.log(1))
 	}
-	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 }
 
-// A lane that calls _mark APPROVED itself is refused under swim run, and
-// so is one that hides from swim run (unsets SWIM_LAUNCHED): swim started
-// it, whatever its environment says (T28).
+// A lane that calls _mark APPROVED itself is refused under swim run. One
+// that hides from swim run (unsets SWIM_LAUNCHED) can mark itself
+// approved: it runs as you, so it can do what you can. swim verify is
+// what catches it: the round claims an approval no one signed.
 func TestHostileLaneMarksApproved(t *testing.T) {
 	b := newBoundaryRepo(t)
 	b.hostile(`"$SWIM_BIN" _mark 1 APPROVED "drop table orders" "` + boundaryGuard + `=1" || echo "mark refused: $?"`)
@@ -100,33 +101,40 @@ func TestHostileLaneMarksApproved(t *testing.T) {
 		t.Fatalf("the lane approved itself:\n%s", b.log(1))
 	}
 	b.noMarker(t, "_mark APPROVED")
+	contains(t, "verify", b.mustSwim("verify"), "VERIFIED")
 
 	b.hostile(`SWIM_LAUNCHED= SWIM_APPROVAL= "$SWIM_BIN" _mark 1 APPROVED "drop table orders" "` + boundaryGuard + `=1" || echo "mark refused: $?"`)
-	out = b.mustSwim("run", "1", "--plain")
-	contains(t, "hidden", out, "a lane can't approve itself", "mark refused: 2")
-	b.noMarker(t, "_mark APPROVED outside swim run's view")
-	if len(b.approvesOf(1)) != 0 {
-		t.Fatalf("approve entries: %+v", b.approvesOf(1))
+	b.mustSwim("run", "1", "--plain")
+	out, code := b.swim("verify")
+	if code == 0 {
+		t.Fatalf("verify passed a round that marked itself approved:\n%s\n%s", out, b.log(1))
 	}
-	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", out, "that swim run didn't record", "NOT VERIFIED")
 }
 
 // T28: a lane that drops its approvals channel from its environment
-// (SWIM_APPROVAL, or SWIM_LAUNCHED too) and sets the flag gets a dry run,
-// saying why, and no approval reaches the chain. Run directly with bash,
-// with no swim run, the flag still approves.
+// (SWIM_APPROVAL) and sets the flag gets a dry run, saying why. One that
+// drops SWIM_LAUNCHED too looks like a lane run with bash, where the flag
+// approves: swim can't stop a lane that runs as you, but swim verify
+// fails the run, whose attestation granted no approval.
 func TestHostileLaneDropsApprovals(t *testing.T) {
 	b := newBoundaryRepo(t)
-	for _, unset := range []string{"SWIM_APPROVAL", "SWIM_APPROVAL SWIM_LAUNCHED"} {
-		b.hostile("unset " + unset + "\nexport " + boundaryGuard + "=1")
-		b.mustSwim("run", "1", "--plain")
-		b.noMarker(t, "unset "+unset)
-		contains(t, "unset "+unset, b.log(1), "WARN  approval refused: "+boundaryGuard, "SKIP  drop table orders (dry run: this lane runs under swim run, but its approvals channel is gone")
-		if len(b.approvesOf(1)) != 0 {
-			t.Fatalf("unset %s: approve entries %+v", unset, b.approvesOf(1))
-		}
+	b.hostile("unset SWIM_APPROVAL\nexport " + boundaryGuard + "=1")
+	b.mustSwim("run", "1", "--plain")
+	b.noMarker(t, "unset SWIM_APPROVAL")
+	contains(t, "unset SWIM_APPROVAL", b.log(1), "WARN  approval refused: "+boundaryGuard, "SKIP  drop table orders (dry run: this lane runs under swim run, but its approvals channel is gone")
+	if len(b.approvesOf(1)) != 0 {
+		t.Fatalf("approve entries %+v", b.approvesOf(1))
 	}
-	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", b.mustSwim("verify"), "VERIFIED")
+
+	b.hostile("unset SWIM_APPROVAL SWIM_LAUNCHED\nexport " + boundaryGuard + "=1")
+	b.mustSwim("run", "1", "--plain")
+	out, code := b.swim("verify")
+	if code == 0 {
+		t.Fatalf("verify passed a run whose lane approved itself by flag:\n%s\n%s", out, b.log(1))
+	}
+	contains(t, "verify", out, "that swim run didn't record", "NOT VERIFIED")
 
 	b.hostile("")
 	b.env = append(b.env, boundaryGuard+"=1")
@@ -150,6 +158,7 @@ func TestOtherRepoRunDoesNotCount(t *testing.T) {
 	outer := newRepo(t, "")
 	outer.write("inner.sh", inner, 0o755)
 	outer.script(1, "test another repo", `run "inner lane" ./inner.sh`)
+	withHeader(t, outer, 1, "# Includes: inner.sh")
 	outer.mustSwim("run", "1", "--plain")
 	if !b.dropped() {
 		t.Fatalf("FLAG=1 bash lane.1.sh under another repo's swim run didn't approve:\n%s\nouter:\n%s", b.log(1), outer.log(1))
@@ -185,7 +194,7 @@ func TestApprovalsUnavailable(t *testing.T) {
 	if att == nil || att.AuthorityUnavailable == "" {
 		t.Fatalf("attestation: %+v", att)
 	}
-	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 }
 
 // FLAG=1 set inside the lane doesn't approve; set in the environment swim
@@ -222,7 +231,7 @@ func TestHostileLaneSetsFlag(t *testing.T) {
 		att.Manifests["1"] != apps[0].Manifest {
 		t.Fatalf("run attestation: %+v", att)
 	}
-	contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 }
 
 // A lane that claims another job: the chain names the job swim run knows.
@@ -250,21 +259,21 @@ func TestHostileLaneWrongJob(t *testing.T) {
 // process tree).
 func TestLaneCantReportForAnother(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(2, "victim", `echo $$ > lane2.pid
-while [ ! -e lane1.done ]; do sleep 0.1; done
+	r.script(2, "victim", `echo $$ > "$SWIM_ROOT/lane2.pid"
+while [ ! -e "$SWIM_ROOT/lane1.done" ]; do sleep 0.1; done
 run "work" true`)
 	steal := ""
 	if runtime.GOOS == "linux" {
 		steal = `
-tok=$(tr '\0' '\n' < /proc/$(cat lane2.pid)/environ | sed -n 's/^SWIM_APPROVAL_TOKEN=//p')
+tok=$(tr '\0' '\n' < /proc/$(cat "$SWIM_ROOT/lane2.pid")/environ | sed -n 's/^SWIM_APPROVAL_TOKEN=//p')
 [ -n "$tok" ] && echo "stole a token"
 SWIM_APPROVAL_TOKEN=$tok "$SWIM_BIN" _mark 2 FAIL "forged with a stolen token" || echo "stolen mark refused: $?"`
 	}
-	r.script(1, "attacker", `while [ ! -e lane2.pid ]; do sleep 0.1; done
+	r.script(1, "attacker", `while [ ! -e "$SWIM_ROOT/lane2.pid" ]; do sleep 0.1; done
 "$SWIM_BIN" _mark 2 FAIL "forged failure" || echo "mark refused: $?"
 "$SWIM_BIN" _stage 2 change || echo "stage refused: $?"
 "$SWIM_BIN" _finish 2 --exit 1 || echo "finish refused: $?"`+steal+`
-touch lane1.done
+touch "$SWIM_ROOT/lane1.done"
 run "own work" true`)
 	out, code := r.swim("run", "1", "2", "--plain")
 	if code != 0 {

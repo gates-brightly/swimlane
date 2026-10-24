@@ -3,7 +3,6 @@ package e2e
 import (
 	"bytes"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -99,7 +98,7 @@ run "three" true`)
 	if l := laneOf(r, 1); l.PausedAt != "" || l.PausedS <= 0 {
 		t.Errorf("after: paused_at %q paused_s %v", l.PausedAt, l.PausedS)
 	}
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 	// The chain's round entry and the timeline carry the paused time.
 	links, _ := chain.Read(r.root)
 	var paused float64
@@ -117,16 +116,15 @@ run "three" true`)
 	contains(t, "not paused", r.mustSwim("unpause", "1"), "swim 1 isn't paused")
 }
 
-// swim interrupt on a paused round ends it as interrupted, its handlers
-// run; nothing after the pause runs.
+// swim interrupt on a paused round ends it as interrupted; nothing after
+// the pause runs.
 func TestPauseThenInterrupt(t *testing.T) {
 	r := newRepo(t, "")
 	r.write("lane.1.sh", `#!/usr/bin/env bash
-# swim: syntax 3
+# swim: syntax 2
 # Round: paused, then ended
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 1
-on_failure() { run "rollback" true; }
 run "one" sleep 0.5
 run "two" true
 summary
@@ -140,7 +138,7 @@ summary
 		t.Fatalf("exit 0 after an interrupt:\n%s", out)
 	}
 	log := r.log(1)
-	contains(t, "log", log, "PAUSE  by ", "PASS  rollback", "END INTERRUPTED")
+	contains(t, "log", log, "PAUSE  by ", "END INTERRUPTED")
 	if strings.Contains(log, "PASS  two") || strings.Contains(log, "RESUME") {
 		t.Errorf("the paused round went on:\n%s", log)
 	}
@@ -238,67 +236,4 @@ func TestPauseAllHoldsWorkers(t *testing.T) {
 		t.Fatalf("after unpause --all: %+v", e[0].Result)
 	}
 	contains(t, ".swim.log", r.mustSwim("log"), "pause-all", "unpause-all")
-}
-
-// An SDK lane holds at its next in-process step (begin_step) as a bash
-// lane holds at its next run.
-func TestPauseSDKLane(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not installed")
-	}
-	r := newRepo(t, "")
-	r.env = append(r.env, "PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
-	r.write("lane.1.py", `#!/usr/bin/env python3
-# Round: sdk pause
-import swim
-with swim.round() as r:
-    r.run("one", ["sleep", "0.5"])
-    with r.step("two") as s:
-        s.log("in process")
-    r.run("three", ["true"])
-`, 0o755)
-	wait := startRun(t, r, "run", "1", "--plain")
-	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
-	r.mustSwim("pause", "1", "--wait")
-	if l := laneOf(r, 1); l.NextStep != "two" {
-		t.Errorf("held before %q, want the in-process step two", l.NextStep)
-	}
-	time.Sleep(500 * time.Millisecond)
-	if strings.Contains(r.log(1), "two") && !strings.Contains(r.log(1), `next: "two"`) {
-		t.Fatal("the in-process step ran while paused")
-	}
-	r.mustSwim("unpause", "1")
-	if out, code := wait(); code != 0 {
-		t.Fatalf("exit %d:\n%s", code, out)
-	}
-	contains(t, "log", r.log(1), "PAUSE  by ", "RESUME  by ", "PASS  two", "PASS  three")
-}
-
-// An SDK lane's in-process step doesn't start past its round's Timeout:
-// the round ends as a timeout, as swim step ends a bash lane's.
-func TestSDKStepHonoursTimeout(t *testing.T) {
-	long(t)
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not installed")
-	}
-	// Python's start-up and the SDK's hello come out of the round's
-	// Timeout: 3s, and alone, leaves step one room on a loaded machine.
-	r := newSerialRepo(t, "")
-	r.env = append(r.env, "PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
-	r.write("lane.1.py", `#!/usr/bin/env python3
-# Round: sdk timeout
-# Timeout: 3s
-import swim, time
-with swim.round() as r:
-    r.run("one", ["true"])
-    time.sleep(3.5)  # the program's own work: not a step
-    with r.step("two") as s:
-        s.log("never")
-`, 0o755)
-	r.swim("run", "1", "--plain")
-	log := r.log(1)
-	contains(t, "log", log, "PASS  one", "STOP  timeout: the round's Timeout (3s) ran out (before two)")
-	if strings.Contains(log, "PASS  two") {
-		t.Errorf("an in-process step started past the round's Timeout:\n%s", log)
-	}
 }

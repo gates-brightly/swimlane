@@ -96,25 +96,6 @@ func TestResolvePrecedenceAndGuards(t *testing.T) {
 	}
 }
 
-func TestMigrateRC(t *testing.T) {
-	entries, problems := MigrateRC([]byte("# rc\nexport STAGE=dev\nTABLE='a b'\n"))
-	if len(problems) != 0 || len(entries) != 2 || entries[1].Value != "a b" {
-		t.Errorf("%+v %q", entries, problems)
-	}
-	if _, problems := MigrateRC([]byte("source ~/.nvm/nvm.sh\nX=$(date)\n")); len(problems) != 2 {
-		t.Errorf("problems %q", problems)
-	}
-	root := t.TempDir()
-	if err := AppendLane(root, 3, []Entry{{Key: "A", Value: "it's \"q\""}, {Key: "B", Value: "x y"}}, "moved"); err != nil {
-		t.Fatal(err)
-	}
-	data, _ := os.ReadFile(filepath.Join(root, RepoFile))
-	f, err := Parse(RepoFile, data, false)
-	if err != nil || len(f.LaneEntries(3)) != 2 || f.LaneEntries(3)[0].Value != `it's "q"` || f.LaneEntries(3)[1].Value != "x y" {
-		t.Errorf("round trip: %v\n%s", err, data)
-	}
-}
-
 func TestDuplicates(t *testing.T) {
 	xdg, root := t.TempDir(), t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdg)

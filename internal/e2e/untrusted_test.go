@@ -37,7 +37,7 @@ func TestUntrustedTextIsSafe(t *testing.T) {
 	r.env = append(r.env, "ALLOW_X=1")
 	r.script(1, "hostile", `P=`+payload+`
 if guard ALLOW_X "$P"; then run "$P" true; fi
-run "post" bash -c 'swim msg "$0"; touch posted; while [ ! -e release ]; do sleep 0.05; done' "$P"`)
+run "post" bash -c 'swim msg "$0"; touch "$SWIM_ROOT/posted"; while [ ! -e "$SWIM_ROOT/release" ]; do sleep 0.05; done' "$P"`)
 	l := r.launch(t, nil)
 	waitFor(t, func() bool { _, err := os.Stat(filepath.Join(r.root, "posted")); return err == nil })
 	time.Sleep(100 * time.Millisecond)

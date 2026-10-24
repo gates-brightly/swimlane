@@ -25,8 +25,8 @@ func TestActivityAndJobs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	run("r-1", now.Add(-48*time.Hour), "renew certs", "passed", false, TriggerSchedule)
-	run("r-2", now.Add(-3*time.Hour), "renew certs", "passed", true, TriggerSchedule)
+	run("r-1", now.Add(-48*time.Hour), "renew certs", "passed", false, TriggerQueue)
+	run("r-2", now.Add(-3*time.Hour), "renew certs", "passed", true, TriggerQueue)
 	run("r-3", now.Add(-2*time.Hour), "renew certs", "failed", false, TriggerHub)
 	run("r-4", now.Add(-1*time.Hour), "backup", "passed", false, TriggerCLI) // lane 1 rewritten: another job
 
@@ -37,8 +37,8 @@ func TestActivityAndJobs(t *testing.T) {
 	if f := s.Activity(ActivityFilter{Status: "failed"}); len(f) != 1 || f[0].Run != "r-3" {
 		t.Errorf("failed: %+v", f)
 	}
-	if f := s.Activity(ActivityFilter{Trigger: TriggerSchedule}); len(f) != 2 {
-		t.Errorf("by schedule: %+v", f)
+	if f := s.Activity(ActivityFilter{Trigger: TriggerQueue}); len(f) != 2 {
+		t.Errorf("by queue: %+v", f)
 	}
 	if f := s.Activity(ActivityFilter{Namespace: "github.com/org/other"}); len(f) != 0 {
 		t.Errorf("another repo: %+v", f)

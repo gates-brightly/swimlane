@@ -32,7 +32,7 @@ _swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exi
 eval "$_swim_lib"
 lane_init 4
 
-D=.scenario/dag
+D=$SWIM_ROOT/.scenario/dag
 N=4
 PARENTS="2 3"
 NODE_START=$(e2etool now)

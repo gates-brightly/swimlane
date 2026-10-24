@@ -27,7 +27,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,7 +38,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/proc"
-	"github.com/gates-brightly/swimlane/internal/schedule"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -59,16 +57,12 @@ type Lane struct {
 	// script and everything pinned with it. "" in entries from before
 	// manifests, which pin the script and env hashes alone.
 	Manifest string `yaml:"manifest_sha256,omitempty"`
-	// LegacyManifest is the manifest v1 hash of the same pins, when the
-	// lane was pinned just now (never stored): a pin recorded by a swim
-	// before manifest v2 matches it.
-	LegacyManifest string `yaml:"-"`
 }
 
 // PinsManifest reports whether pin, a manifest_sha256 recorded earlier,
-// is this lane's manifest now (v2, or v1 for a pin from before v2).
+// is this lane's manifest now.
 func (l Lane) PinsManifest(pin string) bool {
-	return pin != "" && (pin == l.Manifest || pin == l.LegacyManifest)
+	return pin != "" && pin == l.Manifest
 }
 
 // Worker is who claimed an entry.
@@ -136,16 +130,9 @@ type Entry struct {
 	Result    *Result `yaml:"result,omitempty"`
 	// NotBefore (UTC, RFC 3339) is a scheduled batch's start time (swim
 	// schedule): no worker claims it before. Zone is the zone it was
-	// written in, for saying it. From and Occurrence name the recurring
-	// schedule and day an entry was made for.
-	NotBefore  string `yaml:"not_before,omitempty"`
-	Zone       string `yaml:"zone,omitempty"`
-	From       string `yaml:"from,omitempty"`
-	Occurrence string `yaml:"occurrence,omitempty"`
-	// FromStatement is the recurring schedule's signed statement, which
-	// QueuedKey and QueueSig sign for an occurrence: it vouches for the
-	// occurrence only while the occurrence is what it describes.
-	FromStatement string `yaml:"from_statement,omitempty"`
+	// written in, for saying it.
+	NotBefore string `yaml:"not_before,omitempty"`
+	Zone      string `yaml:"zone,omitempty"`
 	// Swim and Syntax are the swim that queued the batch and the syntaxes
 	// it read, for saying why a worker can't run it. Not part of the
 	// signed statement: a worker decides from its own syntaxes and the
@@ -287,7 +274,7 @@ func List(root string, done bool) ([]*Entry, error) {
 		e.State = Queued
 		if strings.HasSuffix(p, ".running") {
 			e.State = Running
-			if e.Worker == nil || !workerAlive(e.Worker) {
+			if e.Worker == nil || !alive(root, e) {
 				e.State = Orphaned
 			}
 		}
@@ -378,19 +365,69 @@ var (
 	now = time.Now
 )
 
-func workerAlive(w *Worker) bool {
+// alive reports whether e's worker is alive. On this host: its process.
+// On another: its heartbeat (the entry's beat file) has changed within the
+// lease, as this host's clock measures it, so clocks that disagree by more
+// than the lease don't make a live worker look dead. The first look at a
+// beat can't tell, and counts as alive.
+func alive(root string, e *Entry) bool {
+	beat := readBeat(root, e.ID)
+	if beat == "" {
+		beat = e.Worker.Heartbeat
+	}
+	return workerAlive(root, e.ID, e.Worker, beat)
+}
+
+// workerAlive reports whether w is alive: on this host its process; on
+// another, beat (its latest heartbeat) has changed within its lease by
+// this host's clock. key names it in this host's record of beats seen.
+func workerAlive(root, key string, w *Worker, beat string) bool {
 	if w.Host == hostname() {
 		return w.PID > 0 && proc.Same(w.PID, w.Start)
 	}
-	// Another machine's worker: alive while its heartbeat is fresh.
-	if w.Heartbeat == "" {
+	if beat == "" {
 		return true // an older worker with no heartbeat: can't tell, assume alive
 	}
-	beat, err := time.Parse(time.RFC3339, w.Heartbeat)
-	if err != nil {
-		return true
+	return sinceBeatChanged(root, key, beat) <= w.LeaseFor()
+}
+
+// beatPath is entry id's heartbeat file: the worker writes it, never the
+// entry itself, so a renewal can't bring back a claim that was requeued
+// or removed meanwhile.
+func beatPath(root, id string) string { return filepath.Join(Dir(root), id+".beat") }
+
+func readBeat(root, id string) string {
+	data, _ := os.ReadFile(beatPath(root, id))
+	return strings.TrimSpace(string(data))
+}
+
+// seenPath is this host's record of when it last saw each remote beat
+// change, by its own clock.
+func seenPath(root string) string {
+	return filepath.Join(Dir(root), ".beats-seen."+hostname()+".yml")
+}
+
+type seenBeat struct {
+	Beat string    `yaml:"beat"`
+	At   time.Time `yaml:"at"`
+}
+
+// sinceBeatChanged is how long ago, by this host's clock, beat was first
+// seen for id (0 the first time it's seen).
+func sinceBeatChanged(root, id, beat string) time.Duration {
+	seen := map[string]seenBeat{}
+	if data, err := os.ReadFile(seenPath(root)); err == nil {
+		yaml.Unmarshal(data, &seen)
 	}
-	return now().Sub(beat) <= w.LeaseFor()
+	t := now()
+	if s, ok := seen[id]; ok && s.Beat == beat {
+		return t.Sub(s.At)
+	}
+	seen[id] = seenBeat{Beat: beat, At: t}
+	if data, err := yaml.Marshal(seen); err == nil {
+		fsutil.WriteAtomic(seenPath(root), data, 0o644)
+	}
+	return 0
 }
 
 // LeaseFor is how long the worker's heartbeat holds.
@@ -404,19 +441,29 @@ func (w *Worker) LeaseFor() time.Duration {
 // Remote reports whether the worker runs on another host.
 func (w *Worker) Remote() bool { return w.Host != hostname() }
 
-// Touch renews a claimed entry's heartbeat: its worker is alive. It fails
-// once the entry isn't this worker's claim any more (it was requeued or
-// removed from another host after the lease ran out).
+// ErrClaimLost: the entry isn't this worker's claim any more (it was
+// requeued or removed from another host after the lease ran out). The
+// worker must stop the batch: another may run it.
+var ErrClaimLost = errors.New("isn't this worker's claim any more")
+
+// Touch renews a claimed entry's heartbeat: its worker is alive. It
+// writes the entry's beat file only, never the entry, so it can't undo a
+// requeue that happened meanwhile. It fails with ErrClaimLost once the
+// entry isn't this worker's claim.
 func Touch(e *Entry) error {
 	cur, err := load(e.Path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%s %w", e.ID, ErrClaimLost)
+	}
 	if err != nil {
 		return err
 	}
 	if cur.Worker == nil || e.Worker == nil || cur.Worker.Host != e.Worker.Host || cur.Worker.PID != e.Worker.PID {
-		return fmt.Errorf("%s isn't this worker's claim any more", e.ID)
+		return fmt.Errorf("%s %w", e.ID, ErrClaimLost)
 	}
-	cur.Worker.Heartbeat = now().UTC().Format(time.RFC3339)
-	return write(cur)
+	// The entry sits in the queue directory: its beat file goes beside it.
+	beat := fmt.Sprintf("%s %d %s", hostname(), os.Getpid(), now().UTC().Format(time.RFC3339Nano))
+	return fsutil.WriteAtomic(filepath.Join(filepath.Dir(e.Path), e.ID+".beat"), []byte(beat+"\n"), 0o644)
 }
 
 // Adopt makes this process the worker of an entry claimed for it (swim
@@ -527,6 +574,7 @@ func Consume(root string, e *Entry, r Result) error {
 	if err := move(e.ID, e.Path, Done); err != nil {
 		return err
 	}
+	os.Remove(beatPath(root, e.ID))
 	e.Result = &r
 	if err := write(e); err != nil {
 		return err
@@ -552,6 +600,7 @@ func Requeue(root string, e *Entry) error {
 	if err := move(e.ID, old, Queued); err != nil {
 		return err
 	}
+	os.Remove(beatPath(root, e.ID))
 	e.Worker, e.Result = nil, nil
 	if err := Add(root, e); err != nil {
 		return err
@@ -600,12 +649,6 @@ func LockWorker(root string) (unlock func(), ok bool, err error) {
 // Statement is what the queuer signs: the batch's id, each lane's job and
 // exact script, and the approvals it carries.
 func (e *Entry) Statement() string {
-	if e.FromStatement != "" {
-		if why := e.fromMismatch(); why != "" {
-			return "swim queue v1\nid: " + e.ID + "\nnot what " + e.From + " signed: " + why + "\n" // verifies against nothing
-		}
-		return e.FromStatement
-	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "swim queue v1\nid: %s\n", e.ID)
 	for _, l := range e.Lanes {
@@ -620,93 +663,7 @@ func (e *Entry) Statement() string {
 	if e.NotBefore != "" {
 		fmt.Fprintf(&b, "not-before: %s\n", e.NotBefore)
 	}
-	if e.From != "" {
-		fmt.Fprintf(&b, "from: %s %s\n", e.From, e.Occurrence)
-	}
 	return b.String()
-}
-
-// stmtField is the fields of a statement's "key: a b" line, if it has
-// exactly n of them.
-func stmtField(st, key string, n int) []string {
-	for _, l := range strings.Split(st, "\n") {
-		if v, ok := strings.CutPrefix(l, key+": "); ok {
-			if f := strings.Split(v, " "); len(f) == n && !slices.Contains(f, "") {
-				return f
-			}
-			return nil
-		}
-	}
-	return nil
-}
-
-// fromMismatch says how an occurrence differs from the recurring
-// schedule's statement it carries ("" when it is what that describes):
-// the schedule's id, every lane and approval as pinned, a day within it,
-// and that day's time.
-func (e *Entry) fromMismatch() string {
-	st := e.FromStatement
-	if !strings.HasPrefix(st, "swim recurring v1\nid: "+e.From+"\n") {
-		return "another schedule"
-	}
-	if strings.Count(st, "\nlane: ") != len(e.Lanes) {
-		return "its lanes"
-	}
-	for _, l := range e.Lanes {
-		if !strings.Contains(st, fmt.Sprintf("\nlane: %d %s %s %s\n", l.Lane, l.Job, l.SHA256, l.Manifest)) {
-			return fmt.Sprintf("swim %d", l.Lane)
-		}
-	}
-	if !strings.Contains(st, "\napprove: "+strings.Join(e.Approve, ",")+"\n") || e.ApproveAll {
-		return "its approvals"
-	}
-	f, until := stmtField(st, "first", 1), stmtLine(st, "until")
-	// A schedule with no end has an empty until:.
-	if f == nil || e.Occurrence < f[0] || (until != "" && e.Occurrence[:min(len(e.Occurrence), 10)] > until) {
-		return "its day"
-	}
-	if cr := stmtLine(st, "cron"); cr != "" {
-		// cron: EXPR ZONE; the occurrence is its minute, 2026-10-23T02:00.
-		i := strings.LastIndex(cr, " ")
-		if i < 0 {
-			return "its time"
-		}
-		loc, err := time.LoadLocation(cr[i+1:])
-		c, cerr := schedule.ParseCron(cr[:i])
-		if err != nil || cerr != nil {
-			return "its time"
-		}
-		t, terr := time.ParseInLocation("2006-01-02T15:04", e.Occurrence, loc)
-		if terr != nil || !c.Next(loc, t.Add(-time.Second)).Equal(t) || t.UTC().Format(time.RFC3339) != e.NotBefore {
-			return "its start time"
-		}
-		return ""
-	}
-	d := stmtField(st, "daily", 2)
-	if d == nil {
-		return "its day"
-	}
-	loc, err := time.LoadLocation(d[1])
-	c, cerr := schedule.ParseClock(d[0])
-	day, derr := time.ParseInLocation("2006-01-02", e.Occurrence, loc)
-	if err != nil || cerr != nil || derr != nil {
-		return "its time"
-	}
-	if at, _ := schedule.Next(c, loc, day.Add(-time.Second)); at.UTC().Format(time.RFC3339) != e.NotBefore {
-		return "its start time"
-	}
-	return ""
-}
-
-// stmtLine is the value of a statement's "key: ..." line ("" if none or
-// empty).
-func stmtLine(st, key string) string {
-	for _, l := range strings.Split(st, "\n") {
-		if v, ok := strings.CutPrefix(l, key+": "); ok {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 // StartKey orders waiting entries: a scheduled one by its start time,

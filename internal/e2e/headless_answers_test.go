@@ -169,14 +169,14 @@ func TestHeadlessHubApprovals(t *testing.T) {
 	if methods[approval.HubSigned] != 1 || methods[approval.HubButton] != 1 {
 		t.Errorf("approve entries by method: %v", methods)
 	}
-	ver := r.mustSwim("verify")
+	ver := r.mustSwim("verify", "--levels", "--allow-unsigned")
 	contains(t, "verify", ver, "consistent  yes", "authorized  yes")
 	contains(t, "history", r.mustSwim("history", "--oneline", "--no-pager"), "approve FIN_ALLOW_DROP for swim 1 by alice, bob via hub-signed", "hub answer by bob")
 	// An edited statement in the chain is caught.
 	cp := chain.Path(r.root)
 	orig, _ := os.ReadFile(cp)
 	os.WriteFile(cp, []byte(strings.Replace(string(orig), `decision: approve\nexpires`, `decision: approve \nexpires`, -1)), 0o644)
-	if out, code := r.swim("verify"); code == 0 || !strings.Contains(out, "answer through the hub") {
+	if out, code := r.swim("verify", "--levels", "--allow-unsigned"); code == 0 || !strings.Contains(out, "answer through the hub") {
 		t.Errorf("an edited hub statement: %d\n%s", code, out)
 	}
 	os.WriteFile(cp, orig, 0o644)

@@ -62,7 +62,10 @@ mod notify - "not declared"`)
 	out, _ := r.swim("lint", "1")
 	contains(t, "lint", out, "module notify isn't declared")
 	contains(t, "plan", r.mustSwim("plan", "1"), "modules", "clone 1.0.0 (built in")
-	r.swim("run", "1", "--plain")
+	if out, code := r.swim("run", "1", "--plain"); code == 0 || !strings.Contains(out, "module notify isn't declared") {
+		t.Errorf("swim run of a lane with an undeclared module: %d\n%s", code, out)
+	}
+	r.cmd("bash", "lane.1.sh").Run() // run directly, the step itself is refused
 	log := r.log(1)
 	contains(t, "log", log, "PASS  clone "+src+" "+sha, "clone: HEAD is "+sha, "| v1", "FAIL  clone a branch",
 		"isn't a full commit id", "FAIL  notify - not declared", "module notify isn't declared in lane.1.sh: add `# Modules: notify`")
@@ -191,71 +194,6 @@ run "use it" bash -c 'echo "key=$AWS_ACCESS_KEY_ID secret=$AWS_SECRET_ACCESS_KEY
 	contains(t, "aws calls", string(calls), "--role-session-name swim-", "--duration-seconds 1800")
 }
 
-// SDK lanes call modules through op module: a Python and a TypeScript lane
-// run a repo module's command, and with env get its variables, masked in
-// later steps; a module asks only for the secrets it declares.
-func TestModuleSDK(t *testing.T) {
-	for _, lang := range []string{"py", "ts"} {
-		t.Run(lang, func(t *testing.T) {
-			r := newRepo(t, "")
-			d := filepath.Join(r.root, "modules", "kit")
-			os.MkdirAll(d, 0o755)
-			os.WriteFile(filepath.Join(d, "module.yml"), []byte("schema: swim.module/v1\nname: kit\nversion: 1.2.0\nkind: bash\ncommands: [kit, kit_env, kit_secret]\neffects:\n  secrets: [KIT_TOKEN]\n"), 0o644)
-			os.WriteFile(filepath.Join(d, "kit.sh"), []byte(`kit() { echo "kit says $*"; }
-kit_env() { echo "KIT_REGION=eu-west-9-region" >>"$SWIM_MODULE_OUT"; }
-kit_secret() { "$SWIM_BIN" secret get "$1" >/dev/null && echo "got $1"; }
-`), 0o644)
-			r.write("swim.yml", "modules:\n  allow: [./modules/*]\n", 0o644)
-			r.env = append(r.env, "PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"), "SWIM_SECRET_KIT_TOKEN=kit-token-value", "SWIM_SECRET_OTHER=other-value")
-			switch lang {
-			case "py":
-				if _, err := exec.LookPath("python3"); err != nil {
-					t.Skip("python3 not installed")
-				}
-				r.write("lane.1.py", `#!/usr/bin/env python3
-# swim: syntax 4
-# Round: modules from python
-# Modules: ./modules/kit
-import os, swim
-with swim.round() as r:
-    r.module("kit", "hello", "there")
-    r.module_env("kit_env")
-    r.run("see", ["bash", "-c", "echo region=$KIT_REGION"])
-    r.run("own env", ["echo", "mine=" + os.environ.get("KIT_REGION", "unset")])
-    r.module("kit_secret", "KIT_TOKEN")
-    r.module("kit_secret", "OTHER", label="other secret")
-`, 0o755)
-			case "ts":
-				if out, err := exec.Command("node", "--experimental-strip-types", "-e", "1").CombinedOutput(); err != nil {
-					t.Skipf("node can't run TypeScript: %v %s", err, out)
-				}
-				r.write("lane.1.ts", strings.Replace(`// swim: syntax 4
-// Round: modules from ts
-// Modules: ./modules/kit
-import { round } from "SDK";
-await round(async (r) => {
-  await r.module("kit", "hello", "there");
-  await r.moduleEnv("kit_env");
-  await r.run("see", ["bash", "-c", "echo region=$KIT_REGION"]);
-  await r.run("own env", ["echo", "mine=" + (process.env.KIT_REGION ?? "unset")]);
-  await r.module("kit_secret", "KIT_TOKEN");
-  await r.moduleWith({ label: "other secret" }, "kit_secret", "OTHER");
-});
-`, "SDK", filepath.Join(repoRoot(), "sdk", "ts", "swim.ts"), 1), 0o644)
-				r.write("swim.yml", "modules:\n  allow: [./modules/*]\nrunners:\n  ts: node --experimental-strip-types --no-warnings\n", 0o644)
-			}
-			contains(t, "lint", must(r.swim("lint", "1")), "")
-			r.swim("run", "1", "--plain")
-			log := r.log(1)
-			contains(t, "log", log, "PASS  kit hello there", "kit says hello there", "PASS  kit_env", "PASS  see", "region=***", "mine=***",
-				"PASS  kit_secret KIT_TOKEN", "got KIT_TOKEN", "FAIL  other secret", "module kit doesn't declare it")
-			if strings.Contains(log, "eu-west-9-region") {
-				t.Errorf("a module's variable reached the log:\n%s", log)
-			}
-		})
-	}
-}
-
 // A repo Go module: swim modules new writes one, swim builds it (once per
 // source) with the operator's Go and runs it from the stage; under mod_env
 // it gives the lane variables like a bash module.
@@ -372,34 +310,6 @@ run "never" echo should-not-run`)
 	contains(t, "lane 3", log3, "FAIL  target aws --account 999999999999", "AWS account is 123456789012, not 999999999999", "STOP  gate failed: target aws")
 	if strings.Contains(log3, "should-not-run") {
 		t.Errorf("the round went on after a wrong target:\n%s", log3)
-	}
-}
-
-// A gate module stops an SDK lane's round too: a wrong target through op
-// module ends it before the next step.
-func TestModuleGateSDK(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not installed")
-	}
-	r := newRepo(t, "")
-	fake := t.TempDir()
-	os.WriteFile(filepath.Join(fake, "aws"), []byte("#!/usr/bin/env bash\necho '{\"Account\": \"123456789012\"}'\n"), 0o755)
-	r.env = append(r.env, "PATH="+fake+string(os.PathListSeparator)+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
-	r.write("lane.1.py", `#!/usr/bin/env python3
-# swim: syntax 4
-# Round: wrong account from python
-# Modules: target
-import swim
-with swim.round() as r:
-    r.module("target", "aws", "--account", "999999999999")
-    r.run("never", ["echo", "should-not-run"])
-`, 0o755)
-	r.swim("run", "1", "--plain")
-	log := r.log(1)
-	contains(t, "log", log, "FAIL  target aws --account 999999999999", "STOP  gate failed: target aws")
-	if strings.Contains(log, "should-not-run") {
-		t.Errorf("the round went on:\n%s", log)
 	}
 }
 
@@ -567,41 +477,5 @@ swim run "never" -- echo should-not-run
 	}
 	if out, code := r.swim("mod", "target", "aws"); code == 0 || !strings.Contains(out, "runs inside a lane's round") {
 		t.Errorf("swim mod outside a round: %d %s", code, out)
-	}
-}
-
-// A compiled Go SDK lane whose sidecar declares its modules (lane.N.yml
-// modules:): its module calls are steps, mod_env's variables reach its own
-// environment and its later steps masked, and a failed gate module ends
-// the round.
-func TestModuleGoSDKSidecar(t *testing.T) {
-	r := newRepo(t, "")
-	for name, files := range map[string][2]string{
-		"kit": {"schema: swim.module/v1\nname: kit\nversion: 1.0.0\nkind: bash\ncommands: [kit, kit_env]\n",
-			"kit() { echo \"kit says $*\"; }\nkit_env() { echo \"KIT_REGION=eu-west-9-region\" >>\"$SWIM_MODULE_OUT\"; }\n"},
-		"kitgate": {"schema: swim.module/v1\nname: kitgate\nversion: 1.0.0\nkind: bash\ngate: true\ncommands: [kitgate]\n",
-			"kitgate() { echo \"not ready\"; return 1; }\n"},
-	} {
-		d := filepath.Join(r.root, "modules", name)
-		os.MkdirAll(d, 0o755)
-		os.WriteFile(filepath.Join(d, "module.yml"), []byte(files[0]), 0o644)
-		os.WriteFile(filepath.Join(d, name+".sh"), []byte(files[1]), 0o644)
-	}
-	r.write("swim.yml", "modules:\n  allow: [./modules/*]\n", 0o644)
-	build := exec.Command("go", "build", "-buildvcs=false", "-o", filepath.Join(r.root, "lane.1"), "./internal/e2e/testdata/golane")
-	build.Dir = repoRoot()
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v %s", err, out)
-	}
-	r.write("lane.1.yml", "round: modules from go\nmodules: [./modules/kit, ./modules/kitgate]\n", 0o644)
-	contains(t, "plan", r.mustSwim("plan", "1"), "./modules/kit", "./modules/kitgate")
-	r.swim("run", "1", "--plain")
-	log := r.log(1)
-	contains(t, "log", log, "PASS  kit hello from go", "kit says hello from go", "PASS  kit_env", "region=***", "mine=***",
-		"FAIL  kitgate", "STOP  gate failed: kitgate")
-	for _, leak := range []string{"eu-west-9-region", "should-not-run"} {
-		if strings.Contains(log, leak) {
-			t.Errorf("log has %q:\n%s", leak, log)
-		}
 	}
 }

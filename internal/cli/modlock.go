@@ -21,11 +21,7 @@ func laneRefs(root string, n int) []string {
 	if err != nil {
 		return nil
 	}
-	refs := append([]string(nil), info.Modules...)
-	for _, s := range info.Subs {
-		refs = append(refs, s.Info.Modules...)
-	}
-	return refs
+	return append([]string(nil), info.Modules...)
 }
 
 // lanesModules resolves the modules each lane in use declares: by lane,

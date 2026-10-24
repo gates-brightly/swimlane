@@ -95,7 +95,7 @@ func TestEverySchemaHasATier(t *testing.T) {
 func TestCitedTestsExist(t *testing.T) {
 	funcs := map[string]bool{}
 	re := regexp.MustCompile(`(?m)^func (Test\w+)\(`)
-	for _, dir := range []string{"internal", "cmd", "sdk"} {
+	for _, dir := range []string{"internal", "cmd"} {
 		goFiles(t, dir, true, func(_, src string) {
 			for _, m := range re.FindAllStringSubmatch(src, -1) {
 				funcs[m[1]] = true

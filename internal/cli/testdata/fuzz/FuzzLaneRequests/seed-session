@@ -1,2 +1,0 @@
-go test fuzz v1
-[]byte("{\"id\":1,\"token\":\"t\",\"op\":\"hello\",\"args\":{\"sdk\":\"go\",\"protocol\":\"swim.lane/v1\"}}\n{\"id\":2,\"token\":\"t\",\"op\":\"begin_step\",\"args\":{\"label\":\"build\"}}\n{\"id\":3,\"token\":\"t\",\"op\":\"end_step\",\"args\":{\"id\":1,\"ok\":true,\"output\":\"done\\n\"}}\n")

@@ -12,9 +12,8 @@ lane.[0-9]*
 # demo lane scripts are source, not swim working files
 !/demos/*/lanes/lane.[0-9]*
 
-# Python bytecode (the SDK conformance tests import the SDK)
-__pycache__/
-*.pyc
+# this repo's CI lanes (lane.1.sh lists them) are committed
+!/lane.[12346].sh
 
 # JUnit reports swim ci and the e2e lane write
 swim.xml

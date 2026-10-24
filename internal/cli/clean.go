@@ -31,8 +31,8 @@ import (
 // by swim clean --restore). It never deletes anything; swim prune does.
 
 type cleanOpts struct {
-	queue, noQueue, scripts, noScripts, all, includeAlways, noInput, dryRun, asYAML bool
-	restore                                                                         string
+	queue, noQueue, scripts, noScripts, all, noInput, dryRun, asYAML bool
+	restore                                                          string
 }
 
 // cleanedDir holds the scripts swim clean moved aside.
@@ -75,7 +75,7 @@ func cmdClean(args []string) error {
 		}
 	}
 	rest, err := flags{bools: map[string]*bool{"queue": &o.queue, "no-queue": &o.noQueue, "scripts": &o.scripts, "no-scripts": &o.noScripts,
-		"all": &o.all, "include-always": &o.includeAlways, "no-input": &o.noInput, "dry-run": &o.dryRun, "yaml": &o.asYAML},
+		"all": &o.all, "no-input": &o.noInput, "dry-run": &o.dryRun, "yaml": &o.asYAML},
 		strs: map[string]*string{"restore": &o.restore, "o": &out}}.parse(args)
 	if err != nil {
 		return err
@@ -86,7 +86,7 @@ func cmdClean(args []string) error {
 		return usagef("-o takes yaml")
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim clean [--queue|--no-queue] [--scripts|--no-scripts] [--all] [--include-always] [--no-input] [-n] [-o yaml] | --restore STAMP")
+		return usagef("usage: swim clean [--queue|--no-queue] [--scripts|--no-scripts] [--all] [--no-input] [-n] [-o yaml] | --restore STAMP")
 	}
 	if o.all {
 		o.queue, o.scripts = true, true
@@ -306,7 +306,6 @@ func cleanPlan(root string, cfg *config.Config, o cleanOpts, stamp string) ([]cl
 	st, _ := status.Load(root)
 	var out []cleanLane
 	for _, n := range lane.Associated(root) {
-		info, _ := lane.ReadScript(root, n)
 		var l *status.Lane
 		if st != nil {
 			l = st.Get(n)
@@ -326,8 +325,6 @@ func cleanPlan(root string, cfg *config.Config, o cleanOpts, stamp string) ([]cl
 			} else {
 				cl.State = "stale"
 			}
-		case info.Always && !o.includeAlways:
-			cl.Skip = "Always lane (standing setup; --include-always to clean it)"
 		}
 		if cl.State == "" || cl.State == status.Idle {
 			cl.State = "finished"
@@ -393,8 +390,7 @@ func archiveLane(root string, cfg *config.Config, n int, name string) (string, e
 }
 
 // cleanScripts are the lane scripts the scripts question covers: lane.N.*
-// in every runtime, group files and lane.N.yml sidecars, not of a running
-// lane, nor (unless --include-always) an Always lane's.
+// and lane.N.yml sidecars, not of a running lane.
 func cleanScripts(root string, o cleanOpts) []string {
 	st, _ := status.Load(root)
 	var out []string
@@ -406,10 +402,6 @@ func cleanScripts(root string, o cleanOpts) []string {
 			if l := st.Get(n); l != nil && l.Alive() && (l.State == status.Running || l.State == status.Waiting) {
 				continue
 			}
-		}
-		info, _ := lane.ReadScript(root, n)
-		if info.Always && !o.includeAlways {
-			continue
 		}
 		if s := lane.ScriptName(root, n); s != "" {
 			if _, err := os.Stat(filepath.Join(root, s)); err == nil {

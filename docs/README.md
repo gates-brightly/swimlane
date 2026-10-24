@@ -48,7 +48,7 @@ Each one line, and where it's explained:
 - [compatibility.md](compatibility.md): where swim runs, what it needs, and
   which outputs and files you can build on (each `--yaml` schema).
 - [formats.md](formats.md): exactly what an approval signs and a manifest
-  hash covers, and why upgrading swim never stales an approval.
+  hash covers, and when upgrading swim stales one.
 
 ## Deep dives
 
@@ -59,14 +59,6 @@ Each one line, and where it's explained:
 - [state.md](state.md): every state swim records, and what moves it.
 - [recovery.md](recovery.md): when something goes wrong, what you see and
   the commands that fix it.
-
-## SDKs
-
-Lanes in other languages, with the same steps, guards and record:
-
-- [Python](examples/python.md)
-- [TypeScript](examples/node.md)
-- [Go](examples/go.md)
 
 ## Demos
 

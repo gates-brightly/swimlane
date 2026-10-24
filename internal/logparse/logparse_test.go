@@ -1,7 +1,6 @@
 package logparse
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -66,57 +65,10 @@ func checkFixture(t *testing.T, r *Round, wantSyntax int) {
 	}
 }
 
-func TestParseV1(t *testing.T) {
-	r, err := Parse(strings.NewReader(fixtureV1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkFixture(t, r, 1)
-	if r.Duration != "60.0s" {
-		t.Fatalf("duration %q", r.Duration)
-	}
-}
-
-func TestConvertV1ThenParse(t *testing.T) {
-	var out bytes.Buffer
-	if err := ConvertV1(strings.NewReader(fixtureV1), &out, 1); err != nil {
-		t.Fatal(err)
-	}
-	s := out.String()
-	if !strings.HasPrefix(s, "# swim lane log | syntax 2 | swim 1\n") {
-		t.Fatalf("no v2 header:\n%s", s)
-	}
-	for _, want := range []string{
-		"== ROUND 2026-10-08T09:00:00Z  job=old-job  Old round",
-		"== ROUND 2026-10-09T12:00:00Z  job=3f2a9c1e  Cut over service X",
-		"   script: lane.1.sh | pid: 42 | migrated: from syntax 1",
-		"  PASS  go tests",
-		"        $ go test ./...",
-		"        | PASS",
-		"        | FAIL  this is command output (exit 9)",
-		"  FAIL  deploy api (exit 2)",
-		"        | boom",
-		"  SKIP  delete table (dry run: set FIN_ALLOW_DELETE=1 to approve)",
-		"  STOP  gate failed: target is ours",
-		"== END FAIL  pass=1 fail=1 skip=1 drift=1  exit=1  60.0s  2026-10-09T12:01:00Z",
-		"   stages: setup FAIL | snapshot none | check none | change none | verify none",
-		"   failed: FAIL  deploy api (exit 2); STOP  gate failed: target is ours",
-	} {
-		if !strings.Contains(s, want) {
-			t.Errorf("converted log missing %q:\n%s", want, s)
-		}
-	}
-	if strings.Contains(s, "cwd: /repo") || strings.Contains(s, "=== ") || strings.Contains(s, "--- ") {
-		t.Errorf("syntax 1 framing left in the converted log:\n%s", s)
-	}
-	r, err := Parse(strings.NewReader(s))
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkFixture(t, r, 2)
-	// Converting again is a no-op only via the syntax check, not ConvertV1.
-	if syntax.OfLog(strings.NewReader(s)) != 2 {
-		t.Fatal("converted log does not declare syntax 2")
+// A syntax 1 log (from before swim versioned its files) is refused.
+func TestParseV1Refused(t *testing.T) {
+	if _, err := Parse(strings.NewReader(fixtureV1)); err == nil || !strings.Contains(err.Error(), "syntax 1") {
+		t.Errorf("Parse(syntax 1) = %v", err)
 	}
 }
 

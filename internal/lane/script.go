@@ -76,18 +76,8 @@ func ParseLaneFile(name string) (int, bool) {
 }
 
 // Scripts returns the files in root that are lane n's script, sorted with
-// lane.N.sh first, and a group file that defines the lane (group.go) last.
-// More than one is a conflict (see ScriptConflict).
+// lane.N.sh first. More than one is a conflict (see ScriptConflict).
 func Scripts(root string, n int) []string {
-	out := scriptFiles(root, n)
-	if g, ok := GroupOf(root, n); ok {
-		out = append(out, filepath.Join(root, g.File))
-	}
-	return out
-}
-
-// scriptFiles is Scripts without group files: lane n's lane.N[.ext] files.
-func scriptFiles(root string, n int) []string {
 	var out []string
 	cands, _ := filepath.Glob(filepath.Join(root, fmt.Sprintf("lane.%d", n)))
 	more, _ := filepath.Glob(filepath.Join(root, fmt.Sprintf("lane.%d.*", n)))
@@ -118,20 +108,14 @@ func scriptFiles(root string, n int) []string {
 // Script is lane n's script: the lane.N[.ext] file on disk (lane.N.sh first
 // if there are several), or lane.N.sh when there is none.
 func Script(root string, n int) string {
-	// A group lane's sub-job runs the script swim generates for it.
-	if cell := CellOf(n); cell != "" {
-		if p, ok := SubScriptFor(root, n, cell); ok {
-			return p
-		}
-	}
 	if s := Scripts(root, n); len(s) > 0 {
 		return s[0]
 	}
 	return filepath.Join(root, fmt.Sprintf("lane.%d.sh", n))
 }
 
-// ScriptName is the base name of lane n's script (lane.3.py, or a group
-// file, lanes.ci.sh), for messages.
+// ScriptName is the base name of lane n's script (lane.3.sh, lane.3.py),
+// for messages.
 func ScriptName(root string, n int) string {
 	if s := Scripts(root, n); len(s) > 0 {
 		return filepath.Base(s[0])
@@ -198,7 +182,6 @@ type sideFile struct {
 	Round       *string           `yaml:"round"`
 	Job         *string           `yaml:"job"`
 	After       *strList          `yaml:"after"`
-	Finally     *strList          `yaml:"finally"`
 	Owner       *string           `yaml:"owner"`
 	Created     *string           `yaml:"created"`
 	Guards      map[string]string `yaml:"guards"`
@@ -206,24 +189,13 @@ type sideFile struct {
 	StepTimeout *string           `yaml:"step-timeout"`
 	Locks       *strList          `yaml:"locks"`
 	Stub        *bool             `yaml:"stub"`
-	// Outcome handlers (script syntax 3).
-	Fail           *string  `yaml:"fail"`
-	HandlerTimeout *string  `yaml:"handler-timeout"`
-	OnSuccess      *string  `yaml:"on-success"`
-	OnFailure      *string  `yaml:"on-failure"`
-	OnExit         *string  `yaml:"on-exit"`
-	Outputs        *strList `yaml:"outputs"`
-	// Matrix: KEY -> values (a list, "a,b,c", or "@file").
-	Matrix         map[string]strList `yaml:"matrix"`
-	MatrixExclude  []string           `yaml:"matrix-exclude"`
-	MatrixParallel *int               `yaml:"matrix-parallel"`
-	MatrixFail     *string            `yaml:"matrix-fail"`
-	Includes       *strList           `yaml:"includes"`
-	Always         *bool              `yaml:"always"`
-	RerunChildren  *bool              `yaml:"rerun-children"`
-	Observe        []string           `yaml:"observe"`
-	Cache          *strList           `yaml:"cache"`
-	Modules        *strList           `yaml:"modules"`
+	// Fail: hard (script syntax 3).
+	Fail     *string  `yaml:"fail"`
+	Outputs  *strList `yaml:"outputs"`
+	Includes *strList `yaml:"includes"`
+	Observe  []string `yaml:"observe"`
+	Cache    *strList `yaml:"cache"`
+	Modules  *strList `yaml:"modules"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -261,7 +233,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, handler-timeout, on-success, on-failure, on-exit, outputs, matrix, matrix-exclude, matrix-parallel, matrix-fail, includes, always, rerun-children, observe)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, outputs, includes, observe, cache, modules)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -279,16 +251,6 @@ func applySidecar(path string, info *Info) error {
 				continue
 			}
 			info.After = append(info.After, tok)
-		}
-	}
-	if sf.Finally != nil {
-		info.Finally = nil
-		for _, tok := range *sf.Finally {
-			switch strings.ToLower(tok) {
-			case "", "swim", "-", "none":
-				continue
-			}
-			info.Finally = append(info.Finally, tok)
 		}
 	}
 	if sf.Owner != nil {
@@ -374,61 +336,20 @@ func applySidecar(path string, info *Info) error {
 		info.Cache = nil
 		info.setCache(strings.Join(*sf.Cache, " "), name+" cache:")
 	}
-	if len(sf.Matrix) > 0 {
-		keys := make([]string, 0, len(sf.Matrix))
-		for k := range sf.Matrix {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		info.Matrix = nil
-		for _, k := range keys {
-			info.setMatrixLine("Matrix", k+"="+strings.Join(sf.Matrix[k], ","))
-		}
-	}
-	for _, rule := range sf.MatrixExclude {
-		info.setMatrixLine("Matrix-Exclude", rule)
-	}
-	if sf.MatrixParallel != nil {
-		info.setMatrixLine("Matrix-Parallel", fmt.Sprint(*sf.MatrixParallel))
-	}
-	if sf.MatrixFail != nil {
-		info.setMatrixLine("Matrix-Fail", *sf.MatrixFail)
-	}
 	if sf.Outputs != nil {
 		info.setOutputs(*sf.Outputs, name+" outputs:")
-	}
-	if sf.Always != nil {
-		info.Always = *sf.Always
-	}
-	if sf.RerunChildren != nil {
-		info.RerunChildren = *sf.RerunChildren
-	}
-	if sf.Always != nil || sf.RerunChildren != nil {
-		info.checkAlways(name + " rerun-children:")
 	}
 	if sf.Fail != nil {
 		info.setFail(*sf.Fail, name+" fail:")
 	}
-	if sf.HandlerTimeout != nil {
-		info.setHandlerTimeout(*sf.HandlerTimeout, name+" handler-timeout")
-	}
-	for _, h := range []struct {
-		name string
-		cmd  *string
-	}{{OnSuccess, sf.OnSuccess}, {OnFailure, sf.OnFailure}, {OnExit, sf.OnExit}} {
-		if h.cmd != nil && strings.TrimSpace(*h.cmd) != "" {
-			info.setHandlerCmd(h.name, strings.TrimSpace(*h.cmd), 0)
-		}
-	}
 	// An older swim refuses a sidecar with keys it doesn't know, so these
 	// keys need no syntax line: the round is syntax 3.
-	if sf.Fail != nil || sf.HandlerTimeout != nil || sf.OnSuccess != nil || sf.OnFailure != nil || sf.OnExit != nil {
+	if sf.Fail != nil {
 		info.Syntax = max(info.Syntax, 3)
 	}
 	if sf.Modules != nil {
 		info.Syntax = max(info.Syntax, 4)
 	}
-	sort.SliceStable(info.Handlers, func(a, b int) bool { return handlerOrder(info.Handlers[a].Name) < handlerOrder(info.Handlers[b].Name) })
 	return nil
 }
 
@@ -437,7 +358,7 @@ func applySidecar(path string, info *Info) error {
 // step writes the round's exit code there and signals the wrapper
 // (SIGUSR1), which ends the program even if it ignores the failure.
 func EndPath(root string, n int) string {
-	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d%s.end", n, cellPart(n)))
+	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d.end", n))
 }
 
 // ClaimEnd records that lane n's round ends with code. Only the first
@@ -471,12 +392,3 @@ func EndCode(root string, n int) (int, bool) {
 
 // ClearEnd removes lane n's end request.
 func ClearEnd(root string, n int) { os.Remove(EndPath(root, n)) }
-
-func handlerOrder(name string) int {
-	for i, n := range HandlerNames {
-		if n == name {
-			return i
-		}
-	}
-	return len(HandlerNames)
-}

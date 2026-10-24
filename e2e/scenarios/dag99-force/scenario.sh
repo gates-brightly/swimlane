@@ -24,7 +24,7 @@ scenario_run() {
   wait "$pid"
   RUN_EXIT=$?
   sleep 0.3
-  STRAY=$(pgrep -f "$PWD/lane\." | tr '\n' ' ')
+  STRAY=$(pgrep -f "$PWD/\.swim/runs/" | tr '\n' ' ')
 }
 
 scenario_check() {

@@ -20,7 +20,7 @@ var Commands = map[string]string{
     - creates ~/.config/swim/config.yml if missing and adds a section for this
       repo (keyed by git toplevel) with lanes and an empty deps table;
       existing content and comments are kept
-    - adds a marked block to .gitignore: lane.[0-9]*, .lane*.rc, .env.swim, .swim/,
+    - adds a marked block to .gitignore: lane.[0-9]*, .env.swim, .swim/,
       .swim.log
     - creates .swim/status.yml with every lane idle
     - records "init" in .swim.log, the project log (git-ignored too; drop it
@@ -61,8 +61,6 @@ var Commands = map[string]string{
                  watch runs at once (default 4; swim watch --batches N).
     schedule_tz  an IANA zone name       the zone swim schedule reads times
                  in (default: this machine's), e.g. America/Chicago.
-    finally_timeout  duration             once a run is stopped, how long its
-                 finally lanes (# Finally:) still get, in all (default 10m).
     cache_dir    an absolute path         where tool caches live (# Cache:;
                  default ~/.cache/swim, macOS ~/Library/Caches/swim; under
                  /tmp it gets your user id). Not in a repo's swim.yml.
@@ -82,7 +80,7 @@ var Commands = map[string]string{
   ($XDG_CONFIG_HOME/swim/config.yml if set). Swimmers must not edit it; give
   the operator exact YAML lines instead.
 `,
-	"new": `swim new N|TASK "<round goal>" [--lang sh|py|js|ts] [--job ID] [--force]
+	"new": `swim new N|TASK "<round goal>" [--job ID] [--force]
 
   swim new TASK (a name: renew-certs) writes the lowest lane not in use
   and names it with a # Task: line, so swim run TASK, approve TASK, log
@@ -92,7 +90,7 @@ var Commands = map[string]string{
   digits and -), not a swim command, and one lane's alone (swim lint).
   Where swim takes a lane it reads a number as a lane, then a name as a
   task, then a job id; swim run "<label>" -- cmd (in a lane) is a step.
-  Write lane.N.sh (or lane.N.py, .js, .ts with --lang) from the template: the goal on its Round: line, a new job
+  Write lane.N.sh from the template: the goal on its Round: line, a new job
   id on its Job: line, the toolchain preamble from config, and example
   snapshot/gate/guard/verify steps to replace. Prints the job id. Marks the
   lane's pending round and job in status.yml.
@@ -100,15 +98,10 @@ var Commands = map[string]string{
   --force to replace a pending round you own).
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
-  --lang L   sh (default), py, js or ts. The lane's script in another
-             language, and its lane.N.yml, are replaced. A ts template has
-             no #! line: swim asks which runner once (see OTHER LANGUAGES).
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
          [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt] [--replace]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see OTHER LANGUAGES)
-swim run 'N[cell]' ... | swim run N --failed     (matrix rounds: one cell; only the cells that didn't pass)
-swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it and the jobs under it)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -116,11 +109,8 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   even if their round already passed (rounds are rerunnable).
   With no arguments (or "swim all"), runs every lane whose lane.N.sh holds a
   pending round (a Round: line, not a stub) that hasn't passed yet; rounds
-  that passed show as "done". --rerun runs them too. Always lanes
-  (# Always: yes) never count as passed: they run every time, first, and
-  every other lane waits for them to finish (whatever their result); a
-  named lane pulls in the Always lanes it names in After:.
-  Lanes run in parallel as "bash lane.N.sh" from the repo root.
+  that passed show as "done". --rerun runs them too.
+  Lanes run in parallel as "bash lane.N.sh", each in its staged copy.
     - The top of the screen pins one row per lane in use: its state and
       round. Lanes waiting on a dependency show a throbber and
       "waiting on swim N". Output scrolls below, prefixed [N].
@@ -225,8 +215,6 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
                 approved stays loud: swim status (auto_approved), the round's
                 chain entry and swim history, swim ci's summary and the hub
   --no-prompt   never ask; an unset guard flag is a dry run
-  --no-finally  leave out the finally lanes (# Finally:) naming the lanes
-                run, which a run of named lanes otherwise pulls in
   Each lane runs a staged copy of its files (.swim/runs/<run>/<N>/), fixed
   before it waits for anything and checked again right before it starts;
   an edit to the working tree after that changes nothing in the run. See
@@ -238,15 +226,13 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
   "done" and not run again; failed, interrupted, skipped and new rounds run.
-  Always lanes run every time, before the rest; with Rerun-Children: yes,
-  so do the passed lanes downstream of one.
   --rerun   run every pending round, including ones that already passed.
   Every lane script counts, whatever its number. Dependencies ("# After:" lines and config deps), the live
   view and its keys (--no-tui), guard flags, the summary and the chime (--chime / --no-chime) all
   work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
-	"plan": `swim plan [N|JOB ...] [--rerun] [--no-finally] [--yaml] [--check [--parallel N] [--timeout D]]
+	"plan": `swim plan [N|JOB ...] [--rerun] [--yaml] [--check [--parallel N] [--timeout D]]
 
   Show what "swim all" (or "swim run N ...", with lanes) would do, without
   running or changing anything, Terraform style:
@@ -255,15 +241,10 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
       [+/-]  rerun  the job already passed and runs again (named lane, --rerun)
       [-]    skip   the job won't run (a dependency outside the run hasn't
                     passed, or one in the run won't run)
-      [*]    always an Always lane: setup that runs every time, first
       [@]    scheduled  a scheduled batch (swim schedule) runs it at its
                     time; swim all leaves it, swim run N refuses it
       [=]    held   depends on a scheduled lane: it waits for that batch
                     (run now, it would skip)
-  A finally lane (# Finally:) is marked [F] with the lanes it waits for to
-  end, however they end.
-  Always lanes come first; a passed lane that a Rerun-Children lane reruns
-  shows "rerun (swim N)"; "then, once swim N finish" starts the rest.
   The jobs form a tree: top-level lanes start at once, and each lane sits
   under the lanes it waits for ("# After:" and config deps); a lane waiting
   for several shows "wait [2,3]" and appears in full once,
@@ -281,7 +262,7 @@ swim run N.K[.K...] ...                          (a job, e.g. 1.2 or 1.5.9.9: it
   --check  a read-only preview: first run each lane's snapshot and check
            stages for real, all at once (After: ignored, Locks: kept), and
            stop every round where change would begin (CHECKED). Guards never
-           approve (not even with the flag set), handlers don't run, logs go
+           approve (not even with the flag set), logs go
            to .swim/logs/agentN.check.log and lane status is untouched (only
            check_result, check_at, check_sha256, check_stop, check_guards). A
            round with no stages, or a compiled lane, is refused. The plan
@@ -300,7 +281,7 @@ swim report --earmarks | --earmark --reset [--name NAME]
   were, then one unchanged: line), held locks and the queue, every
   .swim.log line written since, and every lane-log line written since:
   the rest of the round that was in progress, then each round after it
-  (cells' and group jobs' logs too), verbatim, as swim log --raw prints
+  verbatim, as swim log --raw prints
   them. Steps running now follow, from their spools. It changes nothing.
   --earmark      then move your earmark to the end of what it printed: the
                  next report starts there. Lines written while it printed
@@ -318,7 +299,7 @@ swim report --earmarks | --earmark --reset [--name NAME]
   --results      lane logs' result lines only: each step's command and
                  output are dropped, counted, with where to read them
   --yaml         swim.report/v1: earmark, status {changed, unchanged, queue},
-                 history (lines), lanes: [{lane, cell, rounds:
+                 history (lines), lanes: [{lane, rounds:
                  [{continues_from, round: swim.log/v1, its results since}]}]
   --wait         block until there's something new, then report (with
                  --earmark: the agent loop in one command); --timeout D
@@ -419,9 +400,7 @@ swim observe accept ID [--note TEXT] | reject ID
   baseline_min, window, wait_min_s, failing_streak, dry_streak,
   flaky_share, flaky_min); they're
   not policy and stale nothing. --yaml: swim.observations/v1.
-  Each has an id (slow-2-3). A finally lane gets those of the lanes it
-  waited for in a file, SWIM_OBSERVATIONS, for a write-up (mod claude
-  --input "$SWIM_OBSERVATIONS" ...). check lists the ids a write-up (FILE)
+  Each has an id (slow-2-3). check lists the ids a write-up (FILE)
   cites that the run (the last one by default) doesn't have: a citation
   someone made up. Exit 1 on any.
   knowledge  what keeps being true: an observation of the same kind for the
@@ -435,14 +414,13 @@ swim observe accept ID [--note TEXT] | reject ID
 `,
 	"mod": `swim mod [--label L] [--gate|--evidence] [options] CMD [args...]
 
-  In a lane program with no SDK (a script that runs swim run ... -- for
+  In a lane program in another language (one that runs swim run ... -- for
   its steps): run a command of a module the lane declares (# Modules:) as
   a step, as a bash lane's mod does. --gate: its failure ends the round;
   --evidence: its output is the round's evidence (tf plan). A gate module
   (gate: true in its module.yml) that fails ends the round. Step options
   as for swim run's in-lane form. There is no swim mod_env (a command
-  can't set its caller's environment): use an SDK's module(..., env=True),
-  or mod_env in a bash lane.
+  can't set its caller's environment): use mod_env in a bash lane.
 `,
 	"snapshot": `swim snapshot [options] "<label>" -- cmd [args...]
 
@@ -491,7 +469,7 @@ swim auth status
 swim auth logout [--admin]
 swim auth admit | reject [SWIMMER] [--hub URL] [--admin-token T | --token T]
 swim auth approve | unapprove SWIMMER [--hub URL] [--admin-token T | --token T]
-swim auth users add NAME --role viewer|operator|admin [--tailscale LOGIN] | remove NAME | list
+swim auth users add NAME --role viewer|operator|admin | remove NAME | list
          [--hub URL] [--admin-token T | --token T]
 
   Everything about a hub but serving it (swim hub). A swimmer is a
@@ -552,8 +530,6 @@ swim auth users add NAME --role viewer|operator|admin [--tailscale LOGIN] | remo
                    the token as Authorization: Bearer. Adding a name again
                    gives a new token and role and ends their sessions.
                    remove ends them too; list shows every user and role.
-                   --tailscale LOGIN signs them in by Tailscale identity on
-                   a hub run with --trust-tailscale-identity.
 `,
 	"ps": `swim ps [--yaml]
 
@@ -606,18 +582,17 @@ swim auth users add NAME --role viewer|operator|admin [--tailscale LOGIN] | remo
   (eval, not "source <(...)": process-substitution source is broken in
   macOS bash 3.2). See "WRITING A LANE SCRIPT" in swim guide for the functions.
 `,
-	"clean": `swim clean [--queue|--no-queue] [--scripts|--no-scripts] [--all] [--include-always] [--no-input] [-n] [-o yaml]
+	"clean": `swim clean [--queue|--no-queue] [--scripts|--no-scripts] [--all] [--no-input] [-n] [-o yaml]
 swim clean --restore STAMP
 
   A clean slate, recoverable: nothing is deleted. It archives every lane's
   finished rounds (passed, failed, interrupted, stale) under one name,
   clean-YYYYMMDD-HHMM, as swim archive does (their logs become
   agentN.prev-clean-....log; status shows them idle), all or nothing. It
-  leaves running and waiting lanes, and Always lanes (--include-always
-  cleans them too). Then it asks two questions, each defaulting to no:
+  leaves running and waiting lanes. Then it asks two questions, each defaulting to no:
     remove the waiting queue batches?   (a batch someone else queued and
         signed is asked about separately; orphans are only listed)
-    move the lane scripts aside?        (lane.N.*, group files, lane.N.yml,
+    move the lane scripts aside?        (lane.N.*, lane.N.yml,
         to .swim/cleaned/<stamp>/ with their SHA-256s; never files they
         include, swim.yml, lookup.yml or approvals/)
   Without a terminal (CI, an agent, --no-input) it archives and answers no
@@ -664,8 +639,7 @@ swim trash
   good later. A bare swim trash lists the trashed lanes.
   Refused for a running or waiting lane (swim interrupt N first), a lane in
   a queued or scheduled batch (swim queue rm, swim schedule rm first: a
-  batch is pinned to its script), a group file's lane (edit the file), and
-  an Always lane unless --force. Files the script includes, swim.yml,
+  batch is pinned to its script). Files the script includes, swim.yml,
   lookup.yml and approvals/ are never touched; a signed approval of the
   script counts again once it's restored unchanged.
   Recorded in .swim.log (trash, untrash) and the chain with each moved
@@ -683,14 +657,11 @@ swim trash
   All or nothing: if any lane is running, has no log, or its archive name
   exists, nothing is archived and every problem is listed.
   The older form, a name after one lane, still works: swim archive 1 cutover.
-  An Always lane is standing setup, not a round: it needs --force.
 `,
 	"stub": `swim stub N|JOB "<message>" [--force]
 
   Replace lane.N.sh with a "nothing pending" stub carrying <message>. The lane
-  shows as idle and "swim run" skips it. Refuses if lane N is running, if a
-  group file is the lane (edit or remove it there), and without
-  --force if it is an Always lane (standing setup, not a round).
+  shows as idle and "swim run" skips it. Refuses if lane N is running.
 `,
 	"note": `swim note [--lane N|JOB] "<text>"
 
@@ -734,10 +705,6 @@ swim trash
     swim log JOB        just the rounds of that job (full id or 8+ characters),
                         from whichever current or archived log holds them
     swim log RUN        every lane's round from that swim run, in lane order
-    swim log N          for a matrix lane: each cell's last result, then the cells
-                        that didn't pass, each with its first failed step and the
-                        first line its command printed
-    swim log N --failures   only those cells
   On a terminal the log is rendered: round and stage headers stand out,
   results are coloured, times show how far into the round they were, and
   step output longer than 40 lines is folded to its first and last 15.
@@ -762,7 +729,6 @@ swim trash
                 the round's exit status (0 passed); on an idle lane, print its
                 last round and exit with that. For scripts and services
                 waiting on a job: swim log 3f2a9c1e --until-done
-  --failures    a matrix lane's cells that didn't pass, and why (see above)
 `,
 	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
         [--require-work] [--heartbeat D] [--run-id ID] [--check]
@@ -795,9 +761,7 @@ swim trash
                     origin/$GITHUB_BASE_REF; GitLab: CI_MERGE_REQUEST_DIFF_BASE_SHA
                     or CI_COMMIT_BEFORE_SHA. An all-zero SHA (new branch) runs
                     every pending round. Needs the history (fetch-depth: 0).
-  --rerun           also rounds that already passed. A test suite as rounds
-                    doesn't need it: an Always lane with Rerun-Children: yes
-                    at its root reruns the rest
+  --rerun           also rounds that already passed
   --require-work    exit 1 when there is nothing to run (default: a notice, 0)
   Exit codes: 0 every selected lane passed, 1 a lane failed or was skipped,
   2 usage, config or an unresolvable # After:.
@@ -812,7 +776,7 @@ swim trash
            (see swim plan --check), every pending round.
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
-swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D] [--no-finally]
+swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
 swim queue N|JOB ... [flags]     (shorthand for swim queue add)
 swim queue show|rm|requeue ID
 
@@ -864,10 +828,8 @@ swim queue show|rm|requeue ID
   .swim.log records queue, queue-run and queue-done events.
 `,
 	"schedule": `swim schedule LANES... TIME [--tz ZONE] [--approve FLAG]... [--note TEXT] [--parallel N] [--key PATH] [--yaml]
-swim schedule LANES... TIME --daily [--until DATE | --for D] [--tz ZONE] [--approve FLAG]...
-swim schedule LANES... --cron "EXPR" [--until DATE | --for D] [--tz ZONE] [--approve FLAG]...
 swim schedule list [--all] [--yaml]
-swim schedule rm ID | pause ID | resume ID
+swim schedule rm ID
 swim queue add LANES... --at TIME [flags]     (the same, one-shot)
 
   Queue a batch that starts no earlier than TIME: swim queue add with a
@@ -908,43 +870,6 @@ swim queue add LANES... --at TIME [flags]     (the same, one-shot)
            batches it releases (they'll skip unless its lanes pass first)
   --yaml   the reply as swim.schedule/v1 (id, lanes, not_before, zone,
            warnings)
-  --daily  a recurring schedule: the same pinned rounds every day at TIME
-           (a time of day, wall clock in its zone, so 06:00 stays 06:00
-           across DST; a day the clocks skip it runs at the first valid
-           minute after). It's a template in .swim/queue/recurring/: each
-           day a swimmer (swim watch) makes that day's occurrence, an
-           ordinary scheduled batch (from: r-..., occurrence: the date),
-           once, however many swimmers share the queue. Rules:
-             it runs until removed (swim schedule rm), or until --until
-               DATE or --for D; lookup.yml's standing.max, which caps
-               standing approvals, caps it too (and is then its default
-               end). Expiring and expired schedules show on the hub's
-               Schedules page and in swim doctor; renew by scheduling it
-               again
-             pinned means pinned: an occurrence whose lane's script or
-               manifest changed is skipped and the schedule paused, never
-               run on the old approvals; resume works once they match
-               again, else schedule it again to re-pin
-             no catch-up, no stacking: after downtime only the latest due
-               occurrence runs (late); earlier days are recorded as
-               superseded, and a day due while the last one still runs is
-               skipped as overlap
-             swim stub and swim new on its lanes are refused (--force
-               pauses it)
-             the hub watches it: each report carries its cadence, next
-               occurrence, last result and success and skipped days, and
-               the hub's Schedules page (and its --webhook) says when one
-               is missed (due 10m and not started: no swimmer then, or a
-               busy one), failed, skipped or expiring
-  --cron "EXPR"  the same, on any cadence: a five-field cron expression
-           (minute hour day-of-month month day-of-week: *, numbers, a-b,
-           lists, */N steps, jan..dec, sun..sat; @hourly, @daily, @weekly,
-           @monthly) in --tz's zone, e.g. "0 */6 * * *" or "30 2 * * mon-fri".
-           Each occurrence is keyed by its minute (2026-10-23T02:30); every
-           LANES argument is a lane (there is no TIME).
-           Dependents belong in the same batch (ordered within each
-           occurrence).
-  pause ID, resume ID  stop and restart a recurring schedule's occurrences
 `,
 	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui]
 swim watch --headless [--detach] [-y] [--approved] [--interval D]
@@ -1273,7 +1198,6 @@ swim secret grants [--hub URL] [--admin-token T | --token T]
   --timeout D    give up after D (exit 1, saying what is still busy)
 `,
 	"approve": `swim approve                                    list approvals and standing approvals
-swim approve N|JOB --guards A --cell C              one cell of a matrix round only
 swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K] [--no-evidence]
 swim approve --auto USER [--guards A,B | --all] [--expires D] [--key K]
 swim approve --hub SWIMMER/QUESTION [--decline] [--key K] [--url URL] [--token T]
@@ -1348,10 +1272,14 @@ swim revoke --auto USER [--key K]
   event; your approval stops counting from then on (approving again adds
   another approve event). A round that already ran keeps its record.
 `,
-	"verify": `swim verify [--strict] [--trust-pin SHA256] [--against DEST] [--yaml]
+	"verify": `swim verify [--strict] [--allow-unsigned] [--levels] [--trust-pin SHA256] [--against DEST] [--yaml]
 
-  Prove the chain of custody (.swim/chain.jsonl), in levels. Each line
-  says whether the level holds (yes, no, partial, n/a) and what it rests on:
+  Prove the chain of custody (.swim/chain.jsonl). It prints one answer,
+  VERIFIED or NOT VERIFIED (exit 1), with what failed or what it couldn't
+  check. Every entry must be signed: an unsigned one fails (nothing
+  vouches for it, and a chain rewritten with no key looks the same) unless
+  --allow-unsigned. Under it are four levels (--levels prints each: yes,
+  no, partial, n/a, and what it rests on); any one saying no fails:
     consistent  every entry follows the one before it (sequence and
                 previous-hash: a changed, removed or reordered entry breaks
                 every link after it); every signature is valid for the key
@@ -1367,10 +1295,11 @@ swim revoke --auto USER [--key K]
                 the repo (swim keys --help): pinned on first use, or with
                 --trust-pin. partial: some entries are unsigned. n/a: no
                 trust.yml.
-    anchored    the chain still holds the entry the newest checkpoint at
-                each anchor (chain_anchors) recorded: entries removed from
-                its end, or a chain replaced wholesale, after that
-                checkpoint left the machine, fail it. A checkpoint with a
+    anchored    the chain still holds the entry every checkpoint at each
+                anchor (chain_anchors) recorded, oldest to newest: entries
+                removed from its end, or a chain replaced or rewritten,
+                after a checkpoint left the machine, fail it, whatever
+                checkpoints were sent since. A checkpoint with a
                 bad signature, or signed by a key outside trust.yml, is
                 ignored with a warning. Says nothing about entries after
                 the checkpoint. n/a: no anchors, or no checkpoint yet.
@@ -1386,13 +1315,14 @@ swim revoke --auto USER [--key K]
   event (and whether a script approval is stale: the script, or something
   else its manifest pins, changed since), then notes, warnings and what's
   BROKEN.
-  Exits 1 when a level says no or anything is BROKEN; --strict also on n/a,
-  partial and any warning.
+  Exits 1 when a level says no, anything is BROKEN or an entry is
+  unsigned (without --allow-unsigned); --strict also on n/a, partial and
+  any warning.
   --trust-pin SHA256   check trust.yml against this hash instead of the pin
                        in ~/.config/swim/trust-pins.yml (CI, which keeps no
                        pins; swim keys pin prints it). Also SWIM_TRUST_PIN.
   --against DEST       anchor to DEST (file:/path, hub) instead of
-                       chain_anchors: its newest checkpoint, and the entries
+                       chain_anchors: its checkpoints, and the entries
                        swim chain export copied there must be the chain's
                        first ones (so a lost or wiped repo can be checked).
   --yaml               the result as data (schema swim.verify/v1): each
@@ -1510,8 +1440,7 @@ swim keys pin
 `,
 	"hub": `swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--no-tui]
          [--tls-cert FILE --tls-key FILE] [--insecure] [--public-url URL] [--private]
-         [--retain AGE] [--retain-bytes SIZE] [--trust-tailscale-identity]
-         [--admin-tailscale LOGIN[,LOGIN]] [--webhook URL[,URL] | --webhook-file FILE]
+         [--retain AGE] [--retain-bytes SIZE]
 
   A watch hub: one page showing what many swimmers are doing. Joining
   one, and its admin's side (admit, approve, users), are swim auth.
@@ -1536,18 +1465,6 @@ swim keys pin
   --private        viewing needs a login too: the pages redirect to /login
                    and the read API answers 401 without a hub user's
                    session or token (or, for the list, the admin token).
-  --webhook URL[,URL]  POST an alert (JSON) to each URL when a run fails, or
-                   passes with its change only dry-run; a recurring schedule
-                   is missed (due 10m and not started: its swimmer was down
-                   or busy), fails, is skipped, expires or is about to; a
-                   swimmer stops reporting; a guard waits for an answer. Each
-                   is sent once. The body is {event, severity, text, content,
-                   worker, name, host, namespace, lane, run, schedule, url,
-                   at}: "text" and "content" make it a message in a Slack,
-                   Mattermost or Discord incoming webhook as it is.
-                   --webhook-file FILE reads the URLs from FILE, one a line
-                   (# comments), to keep a secret URL out of ps and unit
-                   files. Links use --public-url when given.
   Read API (JSON, schema swim.hub/v2):
     GET /api/health                     no login, no data: the hub answers
     GET /api/enrollments                the namespace tabs and every swimmer
@@ -1558,9 +1475,6 @@ swim keys pin
     GET /api/enrollments/ID/runs/RUN    a run's record, result and jobs
     GET .../runs/RUN/jobs/LANE          a lane's round: stages, steps, output (a user)
     GET .../runs/RUN/jobs/LANE/log      its log as text, once on the hub (a user)
-    GET /api/schedules                  every swimmer's recurring schedules: cadence,
-                                        next, last occurrence and success, expiry,
-                                        and status (missed, failed, skipped, ...)
     GET /api/events                     server-sent events: snapshot, run and
                                         log, as they happen (?enrollment=ID);
                                         nothing is replayed, so a client reads
@@ -1579,23 +1493,7 @@ swim keys pin
                    Secure, and the audit log names the client from the
                    proxy's X-Forwarded-For (trusted only from a loopback
                    peer; the last address, the one the proxy added).
-  --trust-tailscale-identity
-                   sign hub users in by tailscale serve's Tailscale-User-Login
-                   header: a user given that login (user add --tailscale)
-                   gets a session on loading the app or /login, as their
-                   token would. Only on a loopback --addr, and only from a
-                   loopback peer. The header authorizes nothing itself
-                   (commands still take the session and its CSRF token), and
-                   such a session can't answer a guard with a button.
-  --admin-tailscale LOGIN[,LOGIN]
-                   with --trust-tailscale-identity: these logins sign in as
-                   admin users. The first sign-in by one adds them (named
-                   after the login, zgates for zgates@example.com, with no
-                   token anyone holds) and a later one makes them admin
-                   again if their role changed, so the hub's command line
-                   says who runs it. Nobody becomes admin just by being
-                   first: a login not named here has to be added.
-                   --state DIR (default ~/.config/swim/hub) keeps the
+  --state DIR      (default ~/.config/swim/hub) keeps the
                    swimmers, their keys, approvals and grants, and the admin
                    token (DIR/admin-token, made on first start; --admin-token
                    or $SWIM_HUB_ADMIN_TOKEN overrides), plus DIR/audit.log.
@@ -1664,8 +1562,7 @@ swim keys pin
   terminal: its current step finishes, no further step starts, and the round
   ends interrupted (STOP  interrupted by operator (after: <step>), exit 130).
   Other lanes keep running. The same thing the first Ctrl-C does to every
-  lane of a swim run. A paused lane (swim pause) ends the same way, its
-  outcome handlers run.
+  lane of a swim run. A paused lane (swim pause) ends the same way.
 `,
 	"claim": `swim claim N [--for D]
 swim claim N --release [--force]
@@ -1694,9 +1591,7 @@ swim pause --all [--wait] [--note TEXT]
   approvals, slot and locks all kept. The log gets
   PAUSE  by <who> after "<step>" (next: "<step>"); swim status shows it
   paused. A lane still waiting in a run is held before it starts. It holds
-  before a run, gate, snapshot, evidence, guard or confirm, and an SDK
-  lane before its next step; never inside a step, and never in an outcome
-  handler. A pause doesn't expire. The round's Timeout: doesn't count the
+  before a run, gate, snapshot, evidence, guard or confirm; never inside a step. A pause doesn't expire. The round's Timeout: doesn't count the
   paused time. --wait returns once the lane holds; --note says why.
   --all holds every lane in the repo and stops queue swimmers claiming
   batches (a scheduled batch due meanwhile waits), until swim unpause --all.
@@ -1754,24 +1649,15 @@ swim resume  N|JOB ... | --all      (the same command)
     ambient-credential (warn) a credential swim.yml lists in
                            ambient_credentials (AWS_PROFILE=, --profile) used
                            directly: no guard stands in its way
-    header (warn)          a Timeout, Step-Timeout, Locks, Always or
-                           Rerun-Children value swim ignores
+    header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag
-    handler (error)        handlers or Fail: without syntax 3; a near-miss handler
-                           name (on_fail, onfailure, ...) swim would never call
-    handler-reached (warn) an on_failure with a guard that never checks reached
+    fail (error)           Fail: without syntax 3
     module (error)         a # Modules: entry that doesn't resolve or swim.yml
                            doesn't allow, a module command the script doesn't
                            declare, or modules without syntax 4
     module-effects (warn)  a module used against its declared effects:
                            credentials without mod_env, not read-only before
                            stage change, destructive outside a guard
-    rerun-guard (warn)     a guarded round downstream of a Rerun-Children lane
-                           (swim all reruns it even after it passed)
-    group (error)          a lane's jobs: none with steps, one defined twice, one
-                           of another lane, a header key on the wrong side
-                           (Always: on the lane, After: on a job), or a group
-                           file (lanes.<name>.sh) for a lane another file has
     outputs (warn)         an output whose name suggests secrets (output files
                            aren't masked)
     cache (error)          a # Cache: with an unknown preset or no lockfile, a
@@ -1789,8 +1675,6 @@ swim resume  N|JOB ... | --all      (the same command)
                            which swim can't pin or stage
     observe (warn)         an # Observe: probe that looks like it writes or
                            changes something (an error if it's blocked)
-    sdk-bypass (info)      an SDK lane runs commands with subprocess or
-                           child_process instead of r.run
     check-unsafe (warn)    a destructive-looking command (terraform apply, a
                            delete) before stage change: plan --check runs it
     input-dep (error)      input N of a lane not in After: (or config deps)
@@ -1824,7 +1708,7 @@ swim resume  N|JOB ... | --all      (the same command)
     config-repo (warn)        no config section for this repo (swim init)
     lanes-setting (warn)      a lanes: setting, which swim ignores now
     gitignore (warn)          swim's .gitignore block missing or out of date
-    tracked (warn)            git tracks lane scripts, .lane*.rc or .swim/
+    tracked (warn)            git tracks lane scripts or .swim/
     stale-pid (warn)          .swim/laneN.pid naming a process that is gone
     toolchain (error)         config toolchain fails in bash -c (30s limit)
     git (error)               git missing, or not inside a git repo
@@ -1833,16 +1717,11 @@ swim resume  N|JOB ... | --all      (the same command)
                               invalid or pinning other syntaxes (warn)
     env-file (error)          an env file that doesn't parse, or sets a
                               lane's guard flag
-    lane-rc (warn)            a deprecated .lane.N.rc
     outputs-old (info)        round outputs older than outputs_keep (default
                               14d) that no lane's latest round uses; --fix
                               removes them
     hub-http (warn)           .swim/hub.yml enrolls with a hub over plain
                               http on another machine
-    hub-enrolled (info)       .swim/hub.yml is an enrollment of this
-                              directory's own (swim hub enroll, before swim
-                              auth): it still reports; swim auth login
-                              replaces it
     anchors-none (info)       the repo has a chain but no chain_anchors
     checkpoint-unsent (warn)  a chain anchor hasn't had the latest checkpoint
     trust-unpinned (warn/error) trust.yml not pinned on this machine yet
@@ -1888,9 +1767,7 @@ swim resume  N|JOB ... | --all      (the same command)
                               every lane can use it without a guard
 
   --fix applies only safe local repairs, then checks again: it rewrites
-  swim's .gitignore block, removes stale pid files, and moves a .lane.N.rc of
-  plain KEY=VALUE lines into .env.swim [lane N] (the original is kept under
-  .swim/migrations/; one that sets a guard flag is refused). It never edits
+  swim's .gitignore block and removes stale pid files. It never edits
   config, lane scripts or git.
 `,
 	"changelog": `swim changelog [-n N] [--since VERSION] [--all]
@@ -2060,7 +1937,7 @@ CORE
 
 UNATTENDED
   queue add N ...              queue a batch to run once its lanes are free
-  schedule N ... TIME          queue a batch for later (or on a recurring schedule)
+  schedule N ... TIME          queue a batch for later
   watch [--headless]           run queued batches
   ps                           headless swimmers on this machine
 

@@ -97,7 +97,6 @@ func cmdDoctor(args []string) error {
 		Headless:     doctorHeadless(root),
 		Scheduled:    scheduledSummary(root),
 		WorkerUp:     func() bool { return workerRunning(root) },
-		Recurring:    recurringWarnings(root),
 		Reclaim:      func() (int, int64) { return pruneReclaim(root, cfg) },
 	}
 	fs := doctor.Run(o)
@@ -137,9 +136,8 @@ func cmdDoctor(args []string) error {
 }
 
 // lintPreflight is swim run's pre-flight: it refuses to start (exit 2) when
-// a lane about to run fails a lint check swim run doesn't enforce elsewhere
-// (set -e, a missing or wrong lane_init). Blocked commands, After: and
-// cycles are left to the launcher, which already refuses them.
+// a lane about to run fails any error-level lint check. Blocked commands,
+// After: and cycles are left to the launcher, which already refuses them.
 func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) error {
 	var lanes []int
 	st, _ := status.Load(root)

@@ -91,16 +91,13 @@ func TestLintExitCodes(t *testing.T) {
 	}
 	contains(t, "--yaml", out, "schema: swim.lint/v1", "errors: 1", "warnings: 1", "code: set-e", "file: lane.3.sh", "line: 6", "level: error")
 
-	// Read-only: a syntax 1 script is reported, not migrated.
+	// Read-only: a syntax 1 script is reported, not rewritten.
 	v1 := "#!/usr/bin/env bash\n# Round: old style\n_swim_lib=$(\"${SWIM_BIN:-swim}\" lib) || exit 1; eval \"$_swim_lib\"\nlane_init 4\nrun \"x\" true\nsummary\n"
 	writeLane(t, r, 4, v1)
 	out, _ = r.swim("lint", "4")
 	contains(t, "syntax 1", out, "[syntax]")
 	if data, _ := os.ReadFile(filepath.Join(r.root, "lane.4.sh")); string(data) != v1 {
 		t.Errorf("lint changed lane.4.sh:\n%s", data)
-	}
-	if _, err := os.Stat(filepath.Join(r.root, ".swim", "migrations")); err == nil {
-		t.Error("lint migrated files")
 	}
 }
 

@@ -8,8 +8,6 @@ _swim_last=0
 _swim_label=
 _swim_prev_label=
 _swim_done=
-_swim_rc_file=
-_swim_pre_rc=
 _swim_soft=
 _swim_no_hard=
 _swim_stage=
@@ -17,13 +15,10 @@ _swim_reached=
 _swim_stop_reason=
 _swim_first_failed=
 _swim_first_failed_stage=
-_swim_in_handler=
-_swim_handler_abort=
-_swim_round_code=
 SWIM_LANE=
 
-# lane_init N — claim lane N: cd to the repo root, point STEP_LOG at
-# .swim/logs/agentN.log, source .lane.N.rc if present, write the round marker and mark
+# lane_init N — claim lane N: cd to its workspace (its staged copy under
+# swim run), point STEP_LOG at .swim/logs/agentN.log, write the round marker and mark
 # the lane running in .swim/status.yml. Exports SWIM_JOB (the job id from
 # the script's Job: line), and SWIM_DEADLINE / SWIM_TIMEOUT from its
 # Timeout: line, and SWIM_RUN / SWIM_RUN_LANES (the swim run and the lanes
@@ -44,7 +39,10 @@ lane_init() {
     # two directories up.
     case "$SWIM_ROOT" in */.swim/groups) SWIM_ROOT=${SWIM_ROOT%/.swim/groups} ;; esac
   fi
-  cd "$SWIM_ROOT" || exit 1
+  # swim run runs a lane in its staged copy ($SWIM_WORKSPACE), so relative
+  # paths read only what its manifest pinned; # Workspace: live, or a lane
+  # run directly with bash, runs in the repo.
+  cd "${SWIM_WORKSPACE:-$SWIM_ROOT}" || exit 1
   # A read-only check (swim plan --check) logs apart from the round log.
   STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE${SWIM_CHECK_ONLY:+.check}.log"
   # A matrix cell logs to its own file (swim passes it).
@@ -56,14 +54,6 @@ lane_init() {
   SWIM_PID=$$
   PATH="$SWIM_ROOT/.swim/bin:$PATH"
   export SWIM_LANE SWIM_ROOT STEP_LOG SWIM_PID PATH
-  # .lane.N.rc is deprecated (env files replace it; swim _start logs a
-  # WARN). What the shell held before it is kept so that a guard flag it
-  # sets is refused (see _swim_from_rc).
-  if [ -f "$SWIM_ROOT/.lane.$SWIM_LANE.rc" ]; then
-    _swim_rc_file="$SWIM_ROOT/.lane.$SWIM_LANE.rc"
-    _swim_pre_rc=$(declare -p 2>/dev/null)
-    . "$_swim_rc_file"
-  fi
   # A lane run directly (bash lane.N.sh) gets its caches (# Cache:) here;
   # under swim run the launcher has set them.
   if [ -z "${SWIM_LAUNCHED:-}" ]; then
@@ -88,13 +78,11 @@ lane_init() {
   SWIM_STEP_TIMEOUT=${_swim_start%% *}
   _swim_start=${_swim_start#* }
   SWIM_FAIL_MODE=${_swim_start%% *}
-  _swim_start=${_swim_start#* }
-  SWIM_HANDLER_TIMEOUT=${_swim_start%% *}
   SWIM_TIMEOUT=${_swim_start#* }
   SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
   # Where the round's outputs go (# Outputs:), fresh for each round.
   SWIM_OUT="$SWIM_ROOT/.swim/out/$SWIM_JOB/$SWIM_RUN"
-  export SWIM_OUT SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE SWIM_HANDLER_TIMEOUT
+  export SWIM_OUT SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE
   trap '_swim_on_exit' EXIT
   trap 'stop "blocked command: git push/commit/pull (swim never writes to git)"' USR1
   trap '_swim_on_signal 130' INT
@@ -107,19 +95,13 @@ lane_init() {
 # so in the log as a WARN. It changes nothing in the round. A function that
 # returns non-zero (run, gate, mod, guard, ...) recorded its own result:
 # bash names its return, which is skipped. Commands in an if, while, && or
-# || never get here. In an outcome handler (run with errtrace, so the trap
-# reaches into it) only the handler's own commands count, not those of
-# the functions it calls (the library's steps among them) or the handler's
-# own non-zero return.
+# || never get here.
 _swim_on_err() {
   _swim_err=$?
   case "$BASH_COMMAND" in
     return|return\ *) return ;;
   esac
-  if [ -z "$SWIM_LANE" ] || { [ -n "$_swim_done" ] && [ -z "$_swim_in_handler" ]; }; then
-    return
-  fi
-  if [ -n "$_swim_in_handler" ] && [ "${FUNCNAME[1]:-}" != "$_swim_h" ]; then
+  if [ -z "$SWIM_LANE" ] || [ -n "$_swim_done" ]; then
     return
   fi
   if [ "$_swim_err" -eq 127 ]; then
@@ -135,7 +117,7 @@ _swim_on_err() {
 # the lane started), not the working tree. A repo file it doesn't list is
 # refused: the round stops, saying which # Includes: line to add, since the
 # approval doesn't cover it. Files outside the repo, swim's own (.swim/)
-# and .lane.N.rc are sourced as usual. A `declare` at the top of a file
+# are sourced as usual. A `declare` at the top of a file
 # sourced this way is local to this function: use plain assignments there.
 source() {
   if [ -n "${SWIM_STAGE:-}" ] && [ $# -gt 0 ]; then
@@ -144,7 +126,7 @@ source() {
       *) _swim_src=$1 ;;
     esac
     case $_swim_src in
-      /*|../*|*/../*|.swim/*|.lane.*.rc) ;;
+      /*|../*|*/../*|.swim/*) ;;
       *)
         if [ -f "$SWIM_STAGE/$_swim_src" ]; then
           shift
@@ -164,19 +146,13 @@ source() {
 }
 .() { source "$@"; }
 
-# _swim_on_signal CODE — Ctrl-C (130) or SIGTERM (143): end the round; in a
-# handler, skip the handlers' remaining steps instead (the running one has
-# the signal too).
+# _swim_on_signal CODE — Ctrl-C (130) or SIGTERM (143): end the round.
 _swim_on_signal() {
-  if [ -n "$_swim_in_handler" ]; then
-    _swim_handler_abort="interrupted"
-    return
-  fi
   exit "$1"
 }
 
 # Runs on any exit: a round that ends without `summary` (Ctrl-C, gate,
-# stop, a typo) still runs its handlers and gets a summary and a final state.
+# stop, a typo) still gets a summary and a final state.
 _swim_on_exit() {
   _swim_code=$?
   # A mod_env step the round ended during leaves its variables' file.
@@ -186,14 +162,6 @@ _swim_on_exit() {
   if [ -z "$SWIM_LANE" ]; then
     return
   fi
-  if [ -n "$_swim_in_handler" ]; then
-    # A handler called exit: the rest of the handlers are skipped, and the
-    # round ends as it would have.
-    "$SWIM_BIN" _mark "$SWIM_LANE" STOP "handler exited (exit $_swim_code); remaining handlers skipped"
-    _swim_in_handler=
-    _swim_finish "$_swim_round_code"
-    exit $?
-  fi
   if [ -n "$_swim_done" ]; then
     return
   fi
@@ -201,13 +169,10 @@ _swim_on_exit() {
   exit $?
 }
 
-# _swim_end [CODE] — end the round: run its outcome handlers, then record
-# the summary and final state. CODE is how the script exited ("" from
-# summary: the log decides).
+# _swim_end [CODE] — end the round: record the summary and final state.
+# CODE is how the script exited ("" from summary: the log decides).
 _swim_end() {
   _swim_done=1
-  _swim_round_code=$1
-  _swim_handlers "${1:-0}"
   _swim_finish "$1"
 }
 
@@ -219,74 +184,11 @@ _swim_finish() {
   fi
 }
 
-# _swim_handlers CODE — call the round's outcome handlers: on_success if it
-# passed, else on_failure; then on_exit. Each gets SWIM_OUTCOME (pass, fail,
-# stopped, interrupted, timeout), SWIM_STOP_REASON, SWIM_FAILED_STEP and
-# SWIM_FAILED_STAGE, and runs soft: nothing in it stops it, and its steps
-# share one budget (Handler-Timeout:, default 5m) that starts now.
-_swim_handlers() {
-  if [ -n "${SWIM_CHECK_ONLY:-}" ]; then
-    return # a read-only check changed nothing: nothing to roll back or clean up
-  fi
-  if [ -n "$_swim_stop_reason" ]; then
-    case "$_swim_stop_reason" in
-      "interrupted by operator"*) _swim_outcome=interrupted ;;
-      timeout:*) _swim_outcome=timeout ;;
-      *) _swim_outcome=stopped ;;
-    esac
-  elif [ "$1" -eq 130 ] || [ "$1" -eq 143 ] || [ "$1" -eq 129 ]; then
-    _swim_outcome=interrupted
-  elif [ "$1" -ne 0 ] || [ "$_swim_fail" -gt 0 ]; then
-    _swim_outcome=fail
-  else
-    _swim_outcome=pass
-  fi
-  if [ "$_swim_outcome" = pass ]; then
-    _swim_first=on_success
-  else
-    _swim_first=on_failure
-  fi
-  for _swim_h in $_swim_first on_exit; do
-    declare -F "$_swim_h" >/dev/null 2>&1 || continue
-    if [ -z "$_swim_in_handler" ]; then
-      _swim_in_handler=1
-      SWIM_OUTCOME=$_swim_outcome
-      SWIM_STOP_REASON=$_swim_stop_reason
-      SWIM_FAILED_STEP=$_swim_first_failed
-      SWIM_FAILED_STAGE=$_swim_first_failed_stage
-      # The handlers' own deadline replaces the round's; steps in them start
-      # even after a stop request (SWIM_IN_HANDLER).
-      SWIM_DEADLINE=$(( $(date +%s) + ${SWIM_HANDLER_TIMEOUT:-300} ))
-      SWIM_TIMEOUT="Handler-Timeout ${SWIM_HANDLER_TIMEOUT:-300}s"
-      SWIM_IN_HANDLER=1
-      export SWIM_OUTCOME SWIM_STOP_REASON SWIM_FAILED_STEP SWIM_FAILED_STAGE SWIM_DEADLINE SWIM_TIMEOUT SWIM_IN_HANDLER
-      trap '' USR2 # a stop request now only skips the handlers' remaining steps (see run)
-    fi
-    "$SWIM_BIN" _handler "$SWIM_LANE" "$_swim_h"
-    # The ERR trap's WARN reaches the handler's commands: set again here
-    # (this function was entered without it) and inherited (errtrace).
-    trap '_swim_on_err' ERR
-    set -o errtrace
-    "$_swim_h"
-    set +o errtrace
-  done
-  _swim_in_handler=
-  unset SWIM_IN_HANDLER
-}
-
 # _swim_after_step CODE — count a failure; stop the round if the round's
 # Timeout: ran out. swim step exits 124 for any time limit, and leaves
 # $STEP_LOG.round-timeout when it was the round's (not the step's own).
 _swim_after_step() {
   _swim_last=$1
-  if [ -n "$_swim_in_handler" ]; then
-    # Nothing stops a handler; its budget running out skips the rest.
-    if [ "$_swim_last" -eq 124 ] && [ -e "$STEP_LOG.round-timeout" ]; then
-      rm -f "$STEP_LOG.round-timeout"
-      _swim_handler_abort="the handlers' budget ($SWIM_TIMEOUT) ran out"
-    fi
-    return "$_swim_last"
-  fi
   if [ "$_swim_last" -eq 86 ]; then
     # swim step refused to start: the lane is stopping.
     _swim_operator_stop "$_swim_prev_label"
@@ -358,9 +260,7 @@ _swim_checked() {
   exit 0
 }
 
-# reached STAGE — true if the round started STAGE or a later one. A
-# failure before the change stage changed nothing, so an on_failure handler
-# usually starts with: reached change || return 0
+# reached STAGE — true if the round started STAGE or a later one.
 reached() {
   _swim_later=
   for _swim_s in snapshot check change verify; do
@@ -417,11 +317,6 @@ _swim_run_step() {
   fi
   _swim_label=$1
   shift
-  if [ -n "$_swim_in_handler" ] && [ -n "$_swim_handler_abort" ]; then
-    "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$_swim_label" "not run: $_swim_handler_abort"
-    _swim_last=1
-    return 1
-  fi
   # $_swim_o is unquoted on purpose: option values (durations, codes) have no spaces.
   "$SWIM_BIN" step $_swim_mode $_swim_o --label "$_swim_label" -- "$@"
   _swim_after_step $?
@@ -507,11 +402,6 @@ guard() {
     return 1
   fi
   eval "_swim_val=\${$1-unset}"
-  if [ "$_swim_val" = "1" ] && _swim_from_rc "$1"; then
-    # Files never approve guards: ask as if the flag were unset.
-    "$SWIM_BIN" _mark "$SWIM_LANE" WARN "$1=1 from .lane.$SWIM_LANE.rc ignored" "files can't approve guards; set it in the shell or approve"
-    _swim_val=unset
-  fi
   _swim_flag_set=
   if [ "$_swim_val" = "1" ]; then
     [ -n "$SWIM_LANE" ] || return 0
@@ -537,19 +427,6 @@ guard() {
   return 1
 }
 
-# _swim_from_rc FLAG — true if .lane.N.rc set FLAG=1: it names FLAG, and
-# FLAG wasn't already 1 before lane_init sourced it. declare -p prints
-# `declare -x FLAG="1"` in bash 4+, but a bare `FLAG=1` line in bash 3.2.
-_swim_from_rc() {
-  [ -n "${_swim_rc_file:-}" ] || return 1
-  _swim_nl='
-'
-  case "$_swim_nl$_swim_pre_rc$_swim_nl" in
-    *" $1=\"1\"$_swim_nl"*|*"$_swim_nl$1=1$_swim_nl"*|*"$_swim_nl$1='1'$_swim_nl"*) return 1 ;;
-  esac
-  grep -q "$1" "$_swim_rc_file" 2>/dev/null
-}
-
 # confirm "<question>" [answer] — ask the operator; anything other than the
 # exact answer (default: yes), including no input, stops the round.
 confirm() {
@@ -573,7 +450,7 @@ confirm() {
     if [ "$SECONDS" -eq "$_swim_t" ]; then
       break
     fi
-    if [ -z "$_swim_in_handler" ] && [ -e "$SWIM_ROOT/.swim/lane$SWIM_LANE.stop" ]; then
+    if [ -e "$SWIM_ROOT/.swim/lane$SWIM_LANE.stop" ]; then
       _swim_operator_stop
     fi
   done
@@ -714,19 +591,14 @@ drift() {
   "$SWIM_BIN" _mark "$SWIM_LANE" DRIFT "$1"
 }
 
-# stop "<reason>" — record STOP <reason> and end the round now. In a
-# handler it records the STOP (the handler fails) and returns 1 instead:
-# nothing stops a rollback halfway.
+# stop "<reason>" — record STOP <reason> and end the round now.
 stop() {
   "$SWIM_BIN" _mark "$SWIM_LANE" STOP "${1:-stopped}"
-  if [ -n "$_swim_in_handler" ]; then
-    return 1
-  fi
   _swim_stop_reason=${1:-stopped}
   exit 1
 }
 
-# summary — run the round's outcome handlers, print the round summary,
+# summary — print the round summary,
 # append it to the log, record the final state. Exits non-zero if any step
 # failed. Put it last.
 summary() {

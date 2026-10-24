@@ -108,18 +108,7 @@ func ChangedLanes(root string, b Base) ([]int, []string, error) {
 	}
 	var lanes []int
 	var files []string
-	groups, _ := lane.Groups(root)
 	for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		// A changed group file changes every lane it defines.
-		if lane.IsGroupFile(f) {
-			for n, g := range groups {
-				if g.File == f && !slices.Contains(lanes, n) {
-					lanes = append(lanes, n)
-				}
-			}
-			files = append(files, f)
-			continue
-		}
 		if n, ok := lane.ParseLaneFile(f); ok && !strings.Contains(f, "/") {
 			if !slices.Contains(lanes, n) {
 				lanes = append(lanes, n)

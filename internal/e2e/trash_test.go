@@ -36,7 +36,7 @@ func TestTrash(t *testing.T) {
 		t.Errorf("swim status still lists swim 1:\n%s", st)
 	}
 	contains(t, "list", r.mustSwim("trash"), stamp, "swim 1", "cli")
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 	contains(t, "log", r.mustSwim("log"), "trash ", stamp)
 	// Queueing or running a trashed lane says where it went, not that a
 	// Round: line is missing.
@@ -61,39 +61,19 @@ func TestTrash(t *testing.T) {
 	r.mustSwim("trash", "2")
 	dirs, _ = os.ReadDir(filepath.Join(r.root, ".swim", "cleaned"))
 	contains(t, "prune", r.mustSwim("prune", "--stamp", dirs[0].Name(), "--confirm"), "pruned 1 items")
-	contains(t, "verify after", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify after", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 }
 
-// What swim trash refuses, and why: a lane in a queued batch, an Always
-// lane (unless --force), a group file's lane, a lane with no script.
+// What swim trash refuses, and why: a lane in a queued batch, a lane with
+// no script.
 func TestTrashRefuses(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "queued", `run "a" true`)
-	r.script(2, "always", `run "b" true`)
-	withHeader(t, r, 2, "# Always: yes")
 	r.mustSwim("queue", "add", "1")
 	if out, code := r.swim("trash", "1"); code == 0 || !strings.Contains(out, "in a queued batch, #1") || !strings.Contains(out, "swim queue rm 1 first") {
 		t.Errorf("queued lane: exit %d\n%s", code, out)
 	}
-	if out, code := r.swim("trash", "2"); code == 0 || !strings.Contains(out, "an Always lane") || !strings.Contains(out, "--force") {
-		t.Errorf("Always lane: exit %d\n%s", code, out)
-	}
-	contains(t, "--force", r.mustSwim("trash", "2", "--force"), "trashed swim 2")
 	if out, code := r.swim("trash", "9"); code == 0 || !strings.Contains(out, "no lane script") {
 		t.Errorf("no script: exit %d\n%s", code, out)
-	}
-	r.write("lanes.stack.sh", `#!/usr/bin/env bash
-# swim: syntax 2
-# Round: a stack
-
-# swim job 5.1 -----
-# Round: provision
-run "provision" true
-`, 0o644)
-	if out, code := r.swim("trash", "5"); code == 0 || !strings.Contains(out, "group file") {
-		t.Errorf("group file lane: exit %d\n%s", code, out)
-	}
-	if _, err := os.Stat(filepath.Join(r.root, "lanes.stack.sh")); err != nil {
-		t.Error("the group file moved")
 	}
 }

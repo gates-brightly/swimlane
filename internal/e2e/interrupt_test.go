@@ -73,7 +73,7 @@ func noStray(t *testing.T, marker string) {
 func TestGracefulInterrupt(t *testing.T) {
 	r := newRepo(t, "")
 	// Step "a" notes any SIGINT it gets; it must get none.
-	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > int1.txt" INT; sleep 1.5 & wait; true'
+	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; sleep 1.5 & wait; true'
 run "b" true`)
 	r.script(2, "after 1", `run "x" true`)
 	r.script(3, "other", `run "c" sleep 1.2
@@ -116,7 +116,7 @@ func TestForceQuit(t *testing.T) {
 	r.mustSwim("config", "interrupt_grace", "600ms")
 	// A terraform-like tool: cleans up and exits on its first SIGINT, and
 	// counts how many it got.
-	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > ints1.txt; sleep 0.2; exit 1" INT; sleep 31.1 & wait'
+	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; sleep 0.2; exit 1" INT; sleep 31.1 & wait'
 run "after" true`)
 	// Ignores its SIGINT for longer than the grace: killed.
 	r.script(2, "stubborn", `run "hang" bash -c 'trap "echo got-int; sleep 5; exit 3" INT; echo started; sleep 31.2 & wait; wait'`)

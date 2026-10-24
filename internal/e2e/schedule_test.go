@@ -14,7 +14,7 @@ import (
 
 // stampLane writes a lane that records when it ran (UTC, RFC 3339).
 func stampLane(r *repo, n int, name, extra string) {
-	r.script(n, name, `run "stamp" bash -c 'date -u +%Y-%m-%dT%H:%M:%SZ > `+name+`.ran'`+extra)
+	r.script(n, name, `run "stamp" bash -c 'date -u +%Y-%m-%dT%H:%M:%SZ > "$SWIM_ROOT/`+name+`.ran"'`+extra)
 }
 
 func ranAt(t *testing.T, r *repo, name string) time.Time {
@@ -68,7 +68,7 @@ func TestScheduleStartsNoEarlier(t *testing.T) {
 	if !found {
 		t.Error("the run's attestation doesn't record its scheduled time")
 	}
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 }
 
 // A batch queued after a schedule, whose lane depends on a scheduled lane,
@@ -190,105 +190,4 @@ func watchUntil(t *testing.T, r *repo, cond func() bool) string {
 		t.Fatalf("watch: condition not met\n%s", out.String())
 	}
 	return out.String()
-}
-
-// A daily schedule makes today's occurrence once, a scheduled batch the
-// worker runs at its time; a second worker makes nothing more.
-func TestRecurringDaily(t *testing.T) {
-	long(t)
-	r := newRepo(t, "")
-	stampLane(r, 1, "one", "")
-	out := r.mustSwim("schedule", "1", soon(3*time.Second), "--daily", "--tz", "UTC")
-	contains(t, "reply", out, "Lane 1 scheduled daily at ", "(UTC), first ", ", until ", "swim schedule pause|resume|rm r-")
-	contains(t, "list", r.mustSwim("schedule", "list"), "r-", "daily at", "· next ")
-	watchUntil(t, r, func() bool { return len(doneEntries(t, r)) == 1 })
-	done := doneEntries(t, r)
-	if !strings.HasPrefix(done[0].From, "r-") || done[0].Occurrence == "" || done[0].Result.Result != "passed" {
-		t.Errorf("occurrence: %+v %+v", done[0], done[0].Result)
-	}
-	ranAt(t, r, "one")
-	r.mustSwim("watch", "--once")
-	if n := len(doneEntries(t, r)); n != 1 {
-		t.Errorf("today's occurrence made %d times", n)
-	}
-	contains(t, ".swim.log", r.mustSwim("log"), "daily=", "from=r-")
-}
-
-// Editing a scheduled lane pauses its recurring schedule instead of
-// running the new script on the old approvals; resume refuses until it's
-// scheduled again. swim stub on it is refused.
-func TestRecurringPausesOnChange(t *testing.T) {
-	long(t)
-	r := newRepo(t, "")
-	stampLane(r, 1, "one", "")
-	r.mustSwim("schedule", "1", soon(2*time.Second), "--daily", "--tz", "UTC")
-	if out, code := r.swim("stub", "1", "idle"); code == 0 || !strings.Contains(out, "runs on recurring schedule") {
-		t.Errorf("stub of a scheduled lane: exit %d\n%s", code, out)
-	}
-	stampLane(r, 1, "one edited", "")
-	time.Sleep(2500 * time.Millisecond)
-	r.mustSwim("watch", "--once")
-	if n := len(doneEntries(t, r)); n != 0 {
-		t.Fatalf("an occurrence ran on a changed lane (%d)", n)
-	}
-	list := r.mustSwim("schedule", "list")
-	contains(t, "list", list, "paused: swim 1 changed since it was scheduled")
-	id := strings.Fields(list[strings.Index(list, "r-"):])[0]
-	if out, code := r.swim("schedule", "resume", id); code == 0 || !strings.Contains(out, "schedule it again") {
-		t.Errorf("resume over a change: exit %d\n%s", code, out)
-	}
-	contains(t, "doctor", must(r.swim("doctor")), "[schedule-recurring]", "is paused")
-	contains(t, "rm", r.mustSwim("schedule", "rm", id), "removed "+id)
-}
-
-// It runs until removed unless --until or --for ends it, never past
-// lookup.yml's standing.max (which then caps it by default); -y is refused.
-func TestRecurringExpiry(t *testing.T) {
-	r := newRepo(t, "")
-	stampLane(r, 1, "one", "")
-	day := func(d int) string { return time.Now().UTC().AddDate(0, 0, d).Format("2006-01-02") }
-	contains(t, "default", r.mustSwim("schedule", "1", "06:00", "--daily", "--tz", "UTC"), "until removed")
-	contains(t, "--for", r.mustSwim("schedule", "1", "06:30", "--daily", "--tz", "UTC", "--for", "10d"), "until "+day(10))
-	r.write("lookup.yml", "standing: {max: 7d}\n", 0o644)
-	contains(t, "capped", r.mustSwim("schedule", "1", "07:00", "--daily", "--tz", "UTC"), "until "+day(7))
-	if out, code := r.swim("schedule", "1", "08:00", "--daily", "--until", day(20)); code == 0 || !strings.Contains(out, "standing.max") {
-		t.Errorf("past standing.max: exit %d\n%s", code, out)
-	}
-	if out, code := r.swim("schedule", "1", "08:00", "--daily", "-y"); code == 0 {
-		t.Errorf("-y on a recurring schedule accepted:\n%s", out)
-	}
-}
-
-// A signed daily schedule's occurrences carry its signature: they run as
-// signed batches (standing approvals of whoever scheduled it apply), and
-// one edited off what was signed would be refused.
-func TestRecurringSigned(t *testing.T) {
-	long(t)
-	r, _ := signedRepo(t)
-	stampLane(r, 1, "one", "")
-	r.mustSwim("schedule", "1", soon(3*time.Second), "--daily", "--tz", "UTC")
-	watchUntil(t, r, func() bool { return len(doneEntries(t, r)) == 1 })
-	e := doneEntries(t, r)[0]
-	if e.QueueSig == "" || e.FromStatement == "" || e.Result.Result != "passed" {
-		t.Errorf("occurrence: sig %v statement %v result %+v", e.QueueSig != "", e.FromStatement != "", e.Result)
-	}
-	if e.Statement() != e.FromStatement {
-		t.Error("the occurrence isn't what its schedule signed")
-	}
-}
-
-// --cron: any cadence, in its zone. Each occurrence is its own scheduled
-// batch, keyed by its minute, carrying the schedule's signature check.
-func TestRecurringCron(t *testing.T) {
-	r := newRepo(t, "")
-	stampLane(r, 1, "one", "")
-	out := r.mustSwim("schedule", "1", "--cron", "*/5 * * * *", "--tz", "UTC")
-	contains(t, "cron", out, "scheduled cron */5 * * * * (UTC)", "until removed")
-	contains(t, "list", r.mustSwim("schedule", "list"), "cron */5 * * * * (UTC), until removed · next ")
-	if out, code := r.swim("schedule", "1", "--cron", "61 * * * *"); code != 2 || !strings.Contains(out, "out of range") {
-		t.Errorf("a bad expression: exit %d\n%s", code, out)
-	}
-	if out, code := r.swim("schedule", "1", "06:00", "--daily", "--cron", "@daily"); code != 2 {
-		t.Errorf("--daily and --cron: exit %d\n%s", code, out)
-	}
 }

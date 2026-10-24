@@ -44,7 +44,7 @@ swim run "first" -- echo one
 if swim guard ALLOW_X "do x"; then swim run "x" -- echo did-x; fi
 swim drift "config differs"
 swim gate "must pass" -- false
-touch after-gate
+touch "$SWIM_ROOT/after-gate"
 `, 0o755)
 	r.env = append(r.env, "ALLOW_X=1")
 	out, code := r.swim("run", "1", "--plain")
@@ -79,8 +79,8 @@ func TestWrappedLaneNoStepAfterEnd(t *testing.T) {
 trap '' TERM
 swim run "first" -- true
 swim gate "must pass" -- false
-swim run "never" -- touch ran-never
-touch after-refusal
+swim run "never" -- touch "$SWIM_ROOT/ran-never"
+touch "$SWIM_ROOT/after-refusal"
 `, 0o755)
 	out, code := r.swim("run", "1", "--plain")
 	if code != 1 {
@@ -186,40 +186,6 @@ func TestTwoScriptsConflict(t *testing.T) {
 	}
 }
 
-// swim new --lang writes a lane in that language, replacing the lane's
-// script in another one.
-func TestNewLang(t *testing.T) {
-	r := newRepo(t, "")
-	r.mustSwim("new", "1", "first in bash")
-	r.mustSwim("stub", "1", "done")
-	out := r.mustSwim("new", "1", "now in python", "--lang", "py")
-	contains(t, "new", out, "wrote lane.1.py")
-	if _, err := os.Stat(filepath.Join(r.root, "lane.1.sh")); err == nil {
-		t.Error("lane.1.sh is still there")
-	}
-	data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.py"))
-	contains(t, "lane.1.py", string(data), "#!/usr/bin/env python3", "# Round:   now in python", `swim("gate", "target is ours (tagged)", "--", "true")`)
-	out = r.mustSwim("new", "2", "in typescript", "--lang", "ts")
-	contains(t, "new ts", out, "wrote lane.2.ts")
-	data, _ = os.ReadFile(filepath.Join(r.root, "lane.2.ts"))
-	if strings.HasPrefix(string(data), "#!") {
-		t.Errorf("lane.2.ts has a #! line (runners differ; swim asks):\n%s", data)
-	}
-	contains(t, "lane.2.ts", string(data), "// Round:   in typescript", "args: string[]")
-	if _, code := r.swim("new", "3", "x", "--lang", "cobol"); code != 2 {
-		t.Errorf("--lang cobol: exit %d", code)
-	}
-
-	if py, err := exec.LookPath("python3"); err == nil {
-		_ = py
-		src := strings.Replace(string(mustRead(t, filepath.Join(r.root, "lane.1.py"))), "replace with a read-only describe/list command", "state", 1)
-		r.write("lane.1.py", src, 0o755)
-		r.mustSwim("lint", "1")
-		r.mustSwim("run", "1", "--plain")
-		contains(t, "python lane log", r.log(1), "-- stage snapshot", "PASS  snapshot: current state", "PASS  target is ours (tagged)", "-- stage verify", "== END PASS")
-	}
-}
-
 func mustRead(t *testing.T, path string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -237,7 +203,7 @@ func TestWrappedLaneGracefulStop(t *testing.T) {
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: interrupt me
 for i in 1 2 3; do swim run "step $i" -- sleep 1; done
-touch carried-on
+touch "$SWIM_ROOT/carried-on"
 `, 0o755)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "step 1")
@@ -258,7 +224,7 @@ touch carried-on
 func TestWrappedLaneGitShim(t *testing.T) {
 	r := newRepo(t, "")
 	// (Spelled so swim run's scan of the script doesn't refuse it first.)
-	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: pushes\nsub=push\ngit $sub origin main\nsleep 2\ntouch carried-on\n", 0o755)
+	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: pushes\nsub=push\ngit $sub origin main\nsleep 2\ntouch \"$SWIM_ROOT/carried-on\"\n", 0o755)
 	out, code := r.swim("run", "1", "--plain")
 	if code == 0 {
 		t.Fatalf("exit 0:\n%s", out)

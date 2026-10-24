@@ -57,19 +57,3 @@ func Cwd(pid int) (string, bool) {
 	dir, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd")
 	return dir, err == nil && filepath.IsAbs(dir)
 }
-
-// comm is pid's command name (/proc/<pid>/comm, 15 characters at most).
-func comm(pid int) (string, bool) {
-	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/comm")
-	if err != nil {
-		return "", false
-	}
-	return strings.TrimSpace(string(data)), true
-}
-
-func shortName(name string) string {
-	if len(name) > 15 {
-		return name[:15]
-	}
-	return name
-}

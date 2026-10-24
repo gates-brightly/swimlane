@@ -223,8 +223,6 @@ func batchLine(b Batch) string {
 		s += "  " + b.Note
 	}
 	switch {
-	case b.Daily != "":
-		s += "  " + b.Daily
 	case b.At != "":
 		s += "  at " + b.At
 	}

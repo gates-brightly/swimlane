@@ -85,11 +85,9 @@ swim is a tool a person operates, with teammates approving from their own machin
 - **Guard:** a named approval in front of a destructive step, for example `FIN_ALLOW_DELETE`.
 - **Dependency:** `# After: 2 3` starts a lane once those lanes pass, and skips it if one fails.
 - **Lock:** `# Locks: name` keeps lanes that share a resource from overlapping, without ordering them.
-- **Always lane:** `# Always: yes` makes a lane standing setup, like a CI `before_script`: lint, fmt, init. It never counts as passed, so every run that includes it runs it fresh, first, and every other lane in that run waits for it to finish. Only lanes that name it in `After:` need it to pass, and naming it pulls it into a run. With `# Rerun-Children: yes`, `swim all` also reruns every lane downstream of it, at any depth, even if they passed. An Always lane waits only on other Always lanes, and isn't stubbed or archived without `--force`.
 - **Batch:** lanes queued together, pinned to their exact scripts, run later by a swimmer.
 - **Chain of custody:** the signed, hash-linked record of every round and approval.
-- **Job:** part of a lane. Any bash lane can be split into jobs (`# swim job 1.1`), nested to any depth (`1.5.9.9`). Jobs run in file order and the first failure skips the rest. A job id names it and every job under it, in `swim run 1.5` and `After: 1.5`. Other lanes wait only for a lane's Always jobs.
-- **Group file:** `lanes.<name>.sh`, a lane of jobs with a name instead of a number, for standing jobs worth committing.
+- **Job id:** names one round of a lane (`# Job:`): `swim run <job>` and `After: <job>` pin that exact round.
 - **Stub / archive:** the placeholder a lane holds between rounds / a finished log kept under a new name.
 
 ---
@@ -160,7 +158,6 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Never edit a lane while it may be running.** Under `swim run` a lane runs a staged copy, so an edit no longer reaches it, but a lane run directly with bash still reads its script incrementally. swim refuses to edit, archive, stub or rerun a running lane.
 - Before writing a round, check `swim status` and confirm with the operator which lanes are idle.
 - After a run, the planner reads the log, validates real outcomes (not just PASS lines), records results in the project log, archives the log and stubs the lane.
-- Always lanes (`# Always: yes`) are the repo's standing setup, not rounds: planners never assign, rewrite, archive or stub them. A round that needs one passing says so with `# After:`.
 - Out-of-scope findings go to a follow-up list, not into the round.
 - The full protocol for agents is `swim guide`.
 
@@ -208,7 +205,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Hub access?** Per-user identity: the hub's admin adds users (`swim auth users add NAME --role viewer|operator|admin`), named as in `lookup.yml`, each with their own token and a browser session. Every command carries the user who sent it, and the swimmer records it. The shared tokens only enroll swimmers and manage the hub. Approving through the hub takes the approver's own SSH signature, checked by the swimmer: the hub login alone approves only where a repo opts in (`headless.approvals: hub`). See `swim watch --help` and `swim hub --help`.
 - **Keeping the chain?** Opt-in, not by default: `chain_anchors` sends a signed checkpoint of the chain's head to a `file:` path outside the repo or the hub at the end of every run, and `swim chain export` copies the entries; `swim verify` checks against them (anchored). An anchor only helps if someone other than the operator holds it, so swim doesn't pick one.
 - **Cross-session claims?** Yes, as an advisory lease: `swim new` claims the lane until it runs, is archived or stubbed, or the lease expires; another session's `new`, `stub` and `archive` refuse it, and `swim run` warns and runs. `Owner` stays authorship. See `swim claim --help`.
-- **Scheduling across rounds?** `swim schedule` starts a queued batch no earlier than a time, and dependents wait for it. Recurring schedules: daily, pinned to exact scripts, expiring like standing approvals, run by a swimmer you start. swim still runs no daemon of its own.
+- **Scheduling across rounds?** `swim schedule` starts a queued batch no earlier than a time, and dependents wait for it. swim still runs no daemon of its own.
 - **Do approvals outlive a policy change, and must standing approvals expire?** A rule change stales them; membership is read live; standing approvals expire. See [Approval lifecycle](#approval-lifecycle).
 
 ### Resolved from v1

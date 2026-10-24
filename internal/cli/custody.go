@@ -109,7 +109,7 @@ func laneProbes(root string, n int, m *manifest.Manifest) []lane.Probe {
 		if m.Pinned.Sidecar != nil {
 			side = m.Path(m.Pinned.Sidecar.Path)
 		}
-		return lane.ProbesIn(filepath.Base(m.Pinned.Script.Path), data, n, side, lane.CurrentCell())
+		return lane.ProbesIn(data, side)
 	}
 	info, _ := lane.ReadScript(root, n)
 	return info.Observe

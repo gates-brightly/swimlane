@@ -16,9 +16,8 @@ were `<breaking>.<YYYYMMDD>`, tagged `v0.<breaking>.<YYYYMMDD>`. The version
 says nothing about compatibility: lane scripts, logs and swim's state have
 syntax versions, which a repo's `.swim.lock` pins. A revision that changes
 one has **Upgrading** notes; read them and `swim lock --help` before running
-lanes. Upgrading swim never stales an approval or a pin: only changes to
-your script, includes, modules, runner or the swim.yml keys you set do
-([formats](docs/formats.md)). Revisions before versioning existed are named by commit.
+lanes. A release that changes what an approval or pin hashes says so under
+**Upgrading** ([formats](docs/formats.md)). Revisions before versioning existed are named by commit.
 
 To cut a release:
 1. `DRY=1 just next-tag` prints the next tag, `v0.<today>.<index>`.
@@ -33,6 +32,58 @@ already pushed to origin's main) with the next tag and pushes that tag.
 ## Unreleased
 
 ### Upgrading
+
+- **Lanes run in their staged copy.** A lane's working directory is now
+  `.swim/runs/<run>/<N>/`, which holds only what its approval covers: the
+  script and its `# Includes:`. A file it reads but doesn't pin isn't
+  there, so it can't change under an approval. List such files in
+  `# Includes:`, or add `# Workspace: live` to run in the working tree as
+  before; that line is part of the manifest, so the approval says so, and
+  `swim lint` warns (`workspace-live`). A lane's own outputs go in
+  `$SWIM_OUT`; `$SWIM_ROOT` is still the repo root, for the files a round
+  acts on. Module commands and `cache restore|save` work in the same
+  directory as the lane's steps, and an included file keeps its
+  executable bit in the stage.
+- **`swim verify` is strict.** It fails on an unsigned entry, and prints
+  one answer: `VERIFIED` or `NOT VERIFIED: <why>`. `--allow-unsigned`
+  accepts unsigned entries again, and `--levels` prints the four levels
+  (consistent, trusted, anchored, authorized). Anchored now checks every
+  checkpoint, not only the newest, so a chain rewritten and checkpointed
+  again still fails the earlier ones.
+- **swim no longer tells a lane it started by its process name.** A lane
+  runs as you, so it can do what you can: unset its environment, call
+  swim's hidden commands, read your key. swim run refuses what it can see
+  (a lane marking its own guard approved, an approvals channel dropped
+  while `SWIM_LAUNCHED` is set). What it can't see, `swim verify` fails:
+  an approval the run's attestation doesn't list. The README and
+  [trust model](docs/trust-model.md) say this plainly.
+- **Removed: lane kinds.** `# Always:`, `# Rerun-Children:`, `# Finally:`
+  (and `finally_timeout`, `--no-finally`), `# Matrix:` rounds and `swim run
+  N --failed`, outcome handlers (`on_success`, `on_failure`, `on_exit`,
+  `# Handler-Timeout:`, `# On-*:`, exit code 89), jobs inside a lane
+  (`# swim job N.K`) and group files (`lanes.<name>.sh`). `swim lint`
+  refuses a lane that still uses one (`removed`), since swim would
+  otherwise skip a cleanup or rollback it counts on. Put that work in its
+  own lane, ordered with `# After:`. `swim clean --include-always` is gone.
+  This repo's CI is now `lane.1.sh` to `lane.6.sh`.
+- **Removed: the SDKs and the lane socket.** `sdk/` (Go, Python,
+  TypeScript), `swim new --lang` and the `_wrap` socket protocol are gone.
+  A lane in another language calls swim's steps as commands (`swim run
+  "label" -- cmd`), as before.
+- **Removed: hub extras.** Tailscale serving, `--webhook` alerts and
+  recurring schedules (`swim schedule --every`) are gone. One-shot
+  `swim schedule` stays; use cron or CI for repetition.
+- **Removed: back-compat code.** swim no longer moves root-level lane logs
+  into `.swim/logs/` or rewrites syntax 1 scripts and logs: a syntax 1
+  file stops the command and says how to replace it.
+- **`swim run` refuses a lane with any lint error,** not only some. The
+  template's placeholder snapshot is one: fill it in first. `swim new`
+  writes the current script syntax (4), and its template is shorter.
+- **A swimmer whose claim was taken over stops its batch.** A worker that
+  lost its queue claim (another took it over after the lease) used to run
+  on; it now interrupts its lanes. A lease is judged by when this host last
+  saw the heartbeat change, so another machine's clock can't make a live
+  worker look dead.
 
 - **`swim auth` replaces the `swim hub` subcommands; machines that run
   lanes are *swimmers*.** `swim hub` now only serves the hub. Joining one,
@@ -59,14 +110,12 @@ already pushed to origin's main) with the next tag and pushes that tag.
   older swim still talk to a new hub. The hub's pages and swim's messages
   say *swimmer* where they said worker; *worker* now means only an AI
   subagent.
-- **Upgrading swim no longer stales approvals (manifest v2).** The policy
-  part of a manifest now hashes only the swim.yml policy keys your repo
-  sets, without a version number, so a key swim adds later changes
-  nothing for a repo that doesn't set it. Every pin made before this, in
-  approvals, queued batches, recurring schedules and hub commands, keeps
-  matching: manifests record the old (v1) hash too, and every check
-  accepts either. A co-approver on this swim signs the existing approval
-  file. A stale approval now names the policy keys that changed. The hash
+- **Approvals bound to a manifest go stale once more (manifest v2), then
+  stop going stale on upgrades.** The policy part of a manifest now
+  hashes only the swim.yml policy keys your repo sets, without a version
+  number, so a key swim adds later changes nothing for a repo that
+  doesn't set it. Approve again, and queue again, once everyone runs this
+  swim. A stale approval now names the policy keys that changed. The hash
   text is frozen and pinned by tests; see
   [docs/formats.md](docs/formats.md).
 - **A guard no one can answer fails the round on a headless worker.**
@@ -79,10 +128,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
   now shown amber. To keep a guard that should run unattended, approve it
   with `--approve FLAG` on the queue entry or schedule, or a signed
   approval.
-- **Recurring schedules no longer expire after 30 days.** They run until
-  `swim schedule rm`, `--until` or `--for`, unless `lookup.yml`'s
-  `standing.max` caps them (then that is the default end, as before).
-  Existing schedules keep the end they were made with.
 - **A job's steps are visible to anyone who may view the hub.** Logged-out
   viewers of a non-private hub now see a job's steps, commands and exit
   codes (masked as logs are); the output still needs a hub user.
@@ -151,8 +196,8 @@ already pushed to origin's main) with the next tag and pushes that tag.
   - **Queued batches** from an older swim still run, pinned to their script
     and env hashes as before.
   - **Lanes now run a staged copy.** `$0` is the copy under
-    `.swim/runs/<run>/<N>/`, and the working directory is still the repo
-    root. A lane that finds files next to itself with `dirname "$0"` should
+    `.swim/runs/<run>/<N>/`, which is also the working directory (see
+    above). A lane that finds files next to itself with `dirname "$0"` should
     use the repo root instead. A Python or TypeScript lane that imports a
     local module by a path swim can't see should list it in `# Includes:`.
     A `declare` at the top of a file a bash lane sources is now local to
@@ -175,15 +220,11 @@ already pushed to origin's main) with the next tag and pushes that tag.
   manifest stop counting (approve again: `swim approve N`), and a queued
   batch pinned to a manifest is skipped (queue it again). Approvals of the
   script alone, from before manifests, are unaffected.
-- **SDKs and the secrets broker:** the broker no longer believes the lane a
-  request names; it asks swim run, from the lane process's own token
-  (`SWIM_APPROVAL_TOKEN`, sent as `lane_token`). The SDKs in this release
-  send it. An older SDK still gets unguarded secrets; a guarded one is
-  refused to it.
-- **`swim verify` reports levels:** the green `verified: every link,
-  signature, log and script checks out` line is gone. Each level gets a line
-  instead (`consistent  yes  ...`). CI that greps the output should use
-  `swim verify --yaml` and read the level fields.
+- **The secrets broker** no longer believes the lane a request names; it
+  asks swim run, from the lane process's own token (`SWIM_APPROVAL_TOKEN`,
+  sent as `lane_token`).
+- **`swim verify` reports levels** with `--levels` (see above). CI that
+  reads the output should use `swim verify --yaml` and its level fields.
 
 ### Docs
 

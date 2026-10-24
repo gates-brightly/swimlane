@@ -63,23 +63,3 @@ func Cwd(pid int) (string, bool) {
 	dir := string(path)
 	return dir, filepath.IsAbs(dir)
 }
-
-// comm is pid's command name (p_comm, 16 characters at most).
-func comm(pid int) (string, bool) {
-	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
-	if err != nil || int(kp.Proc.P_pid) != pid {
-		return "", false
-	}
-	b := kp.Proc.P_comm[:]
-	if i := bytes.IndexByte(b, 0); i >= 0 {
-		b = b[:i]
-	}
-	return string(b), true
-}
-
-func shortName(name string) string {
-	if len(name) > 16 {
-		return name[:16]
-	}
-	return name
-}

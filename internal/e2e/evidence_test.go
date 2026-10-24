@@ -13,9 +13,9 @@ func evidenceLane(t *testing.T, r *repo) {
 	t.Helper()
 	r.write("plan.txt", "# aws_dynamodb_table.orders will be destroyed   \r\nPlan: 0 to add, 1 to change, 1 to destroy.\n", 0o644)
 	r.script(1, "apply orders plan", `stage check
-evidence "tf plan" cat plan.txt
+evidence "tf plan" cat "$SWIM_ROOT/plan.txt"
 stage change
-if guard ORDERS_ALLOW_APPLY "apply orders plan"; then run "tf apply" touch applied; fi`)
+if guard ORDERS_ALLOW_APPLY "apply orders plan"; then run "tf apply" touch "$SWIM_ROOT/applied"; fi`)
 }
 
 // An approval covers the plan: swim approve shows the evidence from
@@ -62,7 +62,7 @@ func TestEvidenceBoundApproval(t *testing.T) {
 	r.mustSwim("approve", "1", "--guards", "ORDERS_ALLOW_APPLY", "--no-evidence", "--key", keys["alice"])
 	r.mustSwim("run", "1", "--plain", "--no-prompt")
 	contains(t, "script-only", r.log(1)[strings.LastIndex(r.log(1), "== ROUND"):], "PASS  tf apply")
-	r.mustSwim("verify") // old-style and evidence-bound entries verify together
+	r.mustSwim("verify", "--levels", "--allow-unsigned") // old-style and evidence-bound entries verify together
 }
 
 // A lookup.yml rule with evidence: true ignores script-only approvals at a

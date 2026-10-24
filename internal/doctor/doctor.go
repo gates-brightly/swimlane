@@ -68,9 +68,6 @@ type Options struct {
 	// (swim schedule; nil when not known).
 	Scheduled []string
 	WorkerUp  func() bool
-	// Recurring are recurring schedules that need a look: paused, or
-	// expiring within three days.
-	Recurring []string
 	// Reclaim is what swim prune --older 30d would free (nil: not known).
 	Reclaim func() (items int, bytes int64)
 }
@@ -129,10 +126,8 @@ var Checks = []Check{
 	{"header-env-secret", false, "header_env lists a secret", checkHeaderEnvSecret},
 	{"lock", false, ".swim.lock missing, invalid or for another breaking version", checkLock},
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
-	{"lane-rc", true, "a deprecated .lane.N.rc (env files replace it)", checkLaneRC},
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
 	{"hub-http", false, "enrolled with a hub over plain http on another machine", checkHubHTTP},
-	{"hub-enrolled", false, "this directory is enrolled with a hub on its own (swim hub enroll, before swim auth)", checkHubEnrolled},
 	{"anchors-none", false, "the repo has a chain of custody but no chain_anchors to checkpoint it to", checkAnchorsNone},
 	{"checkpoint-unsent", false, "a chain anchor hasn't had the latest checkpoint", checkCheckpointUnsent},
 	{"trust-unpinned", false, "trust.yml isn't pinned here, or changed since the pin with no signed change", checkTrustPin},
@@ -148,7 +143,6 @@ var Checks = []Check{
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 	{"pause-long", false, "a lane has been paused (swim pause) longer than pause_warn, holding its locks and slot; or the repo-wide pause is left on", checkPauseLong},
 	{"schedule-no-worker", false, "batches are scheduled, but no swim watch runs to start them", checkScheduleNoWorker},
-	{"schedule-recurring", false, "a recurring schedule is paused, or expires within three days", checkScheduleRecurring},
 	{"prune-reclaim", false, "swim prune --older 30d would free over 100 MB", checkPruneReclaim},
 	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
 	{"module-go", false, "a lane uses a Go module from the repo, and there's no Go toolchain here to build it", checkModuleGo},
@@ -216,14 +210,6 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 			if removed := manifest.PruneStages(o.Root, o.Cfg.OutputsKeepFor(), o.keepRun()); len(removed) > 0 {
 				done = append(done, fmt.Sprintf("removed the staged copies of %d old runs from .swim/runs/", len(removed)))
 			}
-		case "lane-rc":
-			did, err := migrateRC(&o, f.File)
-			if err != nil {
-				return done, err
-			}
-			if did != "" {
-				done = append(done, did)
-			}
 		}
 	}
 	return done, nil
@@ -285,14 +271,6 @@ func checkOldOutputs(o *Options) []finding.Finding {
 		"%d round output dirs are older than outputs_keep (%s) and no lane's latest round", len(old), o.Cfg.OutputsKeepFor())}
 }
 
-// rcLane is the lane of a .lane.N.rc file name ("" if it isn't one).
-func rcLane(name string) string {
-	if n, ok := chars.Between(name, ".lane.", ".rc"); ok && chars.Digits(n) {
-		return n
-	}
-	return ""
-}
-
 func checkEnvFiles(o *Options) []finding.Finding {
 	var out []finding.Finding
 	lk, _ := lookup.Load(o.Root)
@@ -316,70 +294,6 @@ func checkEnvFiles(o *Options) []finding.Finding {
 		}
 	}
 	return out
-}
-
-func checkLaneRC(o *Options) []finding.Finding {
-	files, _ := filepath.Glob(filepath.Join(o.Root, ".lane.*.rc"))
-	var out []finding.Finding
-	for _, f := range files {
-		ln := rcLane(filepath.Base(f))
-		if ln == "" {
-			continue
-		}
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		fix := "swim doctor --fix (moves it into .env.swim [lane " + ln + "])"
-		if _, problems := envfile.MigrateRC(data); len(problems) > 0 {
-			fix = "move it to .env.swim by hand: " + problems[0]
-		}
-		out = append(out, fd(finding.Warn, "lane-rc", filepath.Base(f), fix,
-			"%s is deprecated: env files replace it, and a guard flag it sets no longer approves", filepath.Base(f)))
-	}
-	return out
-}
-
-// migrateRC moves a plain .lane.N.rc into a [lane N] section of .env.swim,
-// keeping a copy under .swim/migrations/. One that sets a guard flag, or
-// isn't plain assignments, is left alone.
-func migrateRC(o *Options, name string) (string, error) {
-	ln := rcLane(name)
-	if ln == "" {
-		return "", nil
-	}
-	n, _ := strconv.Atoi(ln)
-	if _, running := lane.Running(o.Root, n); running {
-		return "", nil
-	}
-	path := filepath.Join(o.Root, name)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", nil
-	}
-	entries, problems := envfile.MigrateRC(data)
-	if len(problems) > 0 {
-		return "", nil
-	}
-	info, _ := lane.ReadScript(o.Root, n)
-	lk, _ := lookup.Load(o.Root)
-	if c := envfile.GuardConflicts(&envfile.Resolved{Vars: toVars(entries, name)}, info, lk); len(c) > 0 {
-		return "", fmt.Errorf("%s sets guard flag %s: env files can't approve guards, so it isn't moved; remove that line and approve another way, then run swim doctor --fix again", name, c[0].Key)
-	}
-	bak := filepath.Join(o.Root, ".swim", "migrations", time.Now().UTC().Format("20060102T150405Z"), name)
-	if err := os.MkdirAll(filepath.Dir(bak), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(bak, data, 0o600); err != nil {
-		return "", err
-	}
-	if err := envfile.AppendLane(o.Root, n, entries, "moved from "+name); err != nil {
-		return "", err
-	}
-	if err := os.Remove(path); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("moved %s into .env.swim [lane %d] (original in %s)", name, n, o.rel(bak)), nil
 }
 
 func toVars(entries []envfile.Entry, file string) []envfile.Var {
@@ -562,7 +476,7 @@ func checkGitignore(o *Options) []finding.Finding {
 	i := strings.Index(s, o.GitignoreBegin)
 	if i < 0 {
 		return []finding.Finding{fd(finding.Warn, "gitignore", file, fix,
-			"no swim block; lane scripts, .lane*.rc and .swim/ would show up in git status")}
+			"no swim block; lane scripts and .swim/ would show up in git status")}
 	}
 	j := strings.Index(s[i:], o.GitignoreEnd)
 	if j < 0 {
@@ -615,13 +529,13 @@ func laneFile(p string) bool {
 	return chars.Digits(n) && (!hasExt || ext != "" && chars.All(ext, chars.Alnum))
 }
 
-// tracked reports whether p is a lane script, a .lane*.rc or swim state.
+// tracked reports whether p is a lane script or swim state.
 func tracked(p string) bool {
 	return laneFile(p) || strings.HasPrefix(p, ".lane") && strings.HasSuffix(p, ".rc") || strings.HasPrefix(p, ".swim/")
 }
 
 func checkTracked(o *Options) []finding.Finding {
-	cmd := exec.Command("git", "ls-files", "--", "lane.[0-9]*", ".lane*.rc", ".swim")
+	cmd := exec.Command("git", "ls-files", "--", "lane.[0-9]*", ".swim")
 	cmd.Dir = o.Root
 	out, err := cmd.Output()
 	if err != nil {
@@ -777,24 +691,6 @@ func checkHubHTTP(o *Options) []finding.Finding {
 	return []finding.Finding{fd(finding.Warn, "hub-http", o.rel(path),
 		"serve the hub with --tls-cert/--tls-key (or behind a TLS proxy), then swim auth login https://... again",
 		"enrolled with %s over plain http: its tokens, log tails and secrets cross the network unencrypted", h.URL)}
-}
-
-// checkHubEnrolled notes a directory enrolled with a hub on its own, by
-// the swim hub enroll that swim auth login replaced: it still reports,
-// but nothing changes it any more.
-func checkHubEnrolled(o *Options) []finding.Finding {
-	path := filepath.Join(o.Root, ".swim", "hub.yml")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var h struct{ URL, Via string }
-	if yaml.Unmarshal(data, &h) != nil || h.URL == "" || h.Via == "auth" {
-		return nil
-	}
-	return []finding.Finding{fd(finding.Info, "hub-enrolled", o.rel(path),
-		"swim auth login "+h.URL+" --access read|readwrite once on this machine, then delete "+o.rel(path)+": swim watch here joins through it",
-		"enrolled with %s by swim hub enroll, which swim auth login replaced: it still reports, but its name and access can't change", h.URL)}
 }
 
 // checkStandingApprovals warns of the standing approvals still counting
@@ -1121,16 +1017,6 @@ func checkPauseLong(o *Options) []finding.Finding {
 			out = append(out, fd(finding.Warn, "pause-long", ".swim/pause", "swim unpause --all",
 				"the repo has been paused for %s (swim pause --all by %s): no worker claims a batch", time.Since(t).Round(time.Minute), r.By))
 		}
-	}
-	return out
-}
-
-// checkScheduleRecurring: a paused recurring schedule makes no
-// occurrences; one about to expire needs scheduling again.
-func checkScheduleRecurring(o *Options) []finding.Finding {
-	var out []finding.Finding
-	for _, w := range o.Recurring {
-		out = append(out, fd(finding.Warn, "schedule-recurring", ".swim/queue/recurring/", "swim schedule list; swim schedule resume ID, or schedule it again", "%s", w))
 	}
 	return out
 }

@@ -226,8 +226,8 @@ func crash(r *repo, c *exec.Cmd, paused int) {
 // swim run.
 func TestFaultStepAfterExit(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "charge", `run "charge" bash -c 'echo charged >> charges'
-run "after" touch after`)
+	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
+run "after" touch "$SWIM_ROOT/after"`)
 	c, out, dir := faultRun(t, r, failpoint.StepAfterExit+":pause", "run", "1")
 	pid := waitHit(t, dir, failpoint.StepAfterExit, out)
 	crash(r, c, pid)
@@ -270,7 +270,7 @@ run "after" touch after`)
 // watch doesn't run it. It runs again only when requeued.
 func TestFaultQueueClaimed(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "charge", `run "charge" bash -c 'echo charged >> charges'`)
+	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'`)
 	r.mustSwim("queue", "add", "1")
 	c, out, dir := faultRun(t, r, failpoint.QueueClaimed+":kill", "watch", "--once", "--no-tui")
 	waitHit(t, dir, failpoint.QueueClaimed, out)
@@ -294,8 +294,8 @@ func TestFaultQueueClaimed(t *testing.T) {
 // watch ends the dead lane's round and doesn't rerun the batch.
 func TestFaultWatchMidBatch(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "charge", `run "charge" bash -c 'echo charged >> charges'
-run "after" touch after`)
+	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
+run "after" touch "$SWIM_ROOT/after"`)
 	r.mustSwim("queue", "add", "1")
 	c, out, dir := faultRun(t, r, failpoint.StepAfterExit+":pause", "watch", "--once", "--no-tui")
 	pid := waitHit(t, dir, failpoint.StepAfterExit, out)
@@ -366,7 +366,7 @@ func TestFaultChainMidAppend(t *testing.T) {
 	if _, err := chain.Read(r.root); err == nil || !strings.Contains(err.Error(), "incomplete entry") {
 		t.Fatalf("reading the chain after the crash: %v", err)
 	}
-	vout, code := r.swim("verify")
+	vout, code := r.swim("verify", "--levels", "--allow-unsigned")
 	if code == 0 {
 		t.Fatalf("verify passed a chain cut mid-append:\n%s", vout)
 	}
@@ -374,9 +374,9 @@ func TestFaultChainMidAppend(t *testing.T) {
 	// The next append refuses rather than link to a broken line.
 	contains(t, "run before repair", must(r.swim("run", "1")), "the last entry is incomplete")
 	contains(t, "repair", r.mustSwim("chain", "repair"), "removed", "of an incomplete final entry")
-	contains(t, "verify after repair", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify after repair", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 	r.mustSwim("run", "1")
-	contains(t, "verify after the next run", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify after the next run", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 	links, err := chain.Read(r.root)
 	if err != nil {
 		t.Fatal(err)

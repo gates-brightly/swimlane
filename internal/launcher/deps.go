@@ -15,26 +15,9 @@ import (
 type Dep struct {
 	Lane int
 	Job  string // set when pinned by job id in `# After:`: that exact job must pass
-	// Cell is set for one cell of a matrix round (After: 3[orders]) or a
-	// job of a lane of jobs and every job under it (After: 1.5): only those
-	// must pass.
-	Cell string
-	// Setup is a wait on an Always lane in the same run that the lane
-	// doesn't name: it starts after that lane finishes, whatever its result.
-	Setup bool
-	// Finally is a wait from # Finally: (finally.go): the lane starts once
-	// this one has ended, in whatever state, and is never skipped for it;
-	// one not in the run has ended.
-	Finally bool
 }
 
 func (d Dep) String() string {
-	if d.Cell != "" {
-		if lane.IsJobPath(d.Cell) {
-			return fmt.Sprintf("%d.%s", d.Lane, d.Cell)
-		}
-		return fmt.Sprintf("%d[%s]", d.Lane, d.Cell)
-	}
 	if d.Job != "" {
 		return fmt.Sprintf("swim %d (job %s)", d.Lane, lane.ShortJob(d.Job))
 	}
@@ -69,24 +52,9 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 			if err != nil {
 				return nil, fmt.Errorf("%s `After: %s`: %w", lane.ScriptName(cfg.Root, n), ref, err)
 			}
-			if scripts[n].Always && !scripts[d.Lane].Always {
-				return nil, fmt.Errorf("%s `After: %s`: swim %d is an Always lane, so it waits only on other Always lanes (setup runs before everything else); swim %d isn't one",
-					lane.ScriptName(cfg.Root, n), ref, n, d.Lane)
-			}
 			if prev, ok := byLane[d.Lane]; !ok || prev.Job == "" {
 				byLane[d.Lane] = d
 			}
-		}
-		for _, ref := range scripts[n].Finally {
-			d, err := resolveAfter(cfg, scripts, st, n, ref)
-			if err != nil {
-				return nil, fmt.Errorf("%s `Finally: %s`: %w", lane.ScriptName(cfg.Root, n), ref, err)
-			}
-			if _, ok := byLane[d.Lane]; ok {
-				continue // After: on the same lane is the stronger wait
-			}
-			d.Finally = true
-			byLane[d.Lane] = d
 		}
 		var deps []Dep
 		for _, d := range byLane {
@@ -95,7 +63,6 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 		sort.Slice(deps, func(a, b int) bool { return deps[a].Lane < deps[b].Lane })
 		out[n] = deps
 	}
-	setupDeps(sel, scripts, out)
 	if cyc := selectedCycle(out); cyc != "" {
 		return nil, fmt.Errorf("dependency cycle among the lanes being run: %s", cyc)
 	}
@@ -103,25 +70,6 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 }
 
 func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File, n int, ref string) (Dep, error) {
-	if base, cell, ok := lane.ParseCellRef(ref); ok {
-		d, err := resolveAfter(cfg, scripts, st, n, base)
-		if err != nil {
-			return Dep{}, err
-		}
-		info := scripts[d.Lane]
-		cells := info.CellsUnder(cell)
-		switch {
-		case !info.IsMatrix() || len(cells) == 0 && !info.IsGroup():
-			return Dep{}, fmt.Errorf("swim %d has no cell %q", d.Lane, cell)
-		case len(cells) == 0:
-			return Dep{}, fmt.Errorf("swim %d has no job %d.%s", d.Lane, d.Lane, cell)
-		case info.IsGroup():
-			d.Cell = cell
-		default:
-			d.Cell = cells[0].Name
-		}
-		return d, nil
-	}
 	if m, err := strconv.Atoi(ref); err == nil {
 		if !cfg.ValidLane(m) {
 			return Dep{}, fmt.Errorf("no swim %d (lanes are 1..%d)", m, cfg.Lanes)
@@ -246,12 +194,6 @@ func outsideBlocker(root string, d Dep) string {
 			last = *l
 		}
 	}
-	if d.Cell != "" {
-		if why := cellsBlocker(root, d); why != "" {
-			return fmt.Sprintf("%s; run it too: swim run '%s' ...", why, d)
-		}
-		return ""
-	}
 	if d.Job != "" {
 		if last.Job == d.Job && last.State == status.Passed {
 			return ""
@@ -271,41 +213,10 @@ func outsideBlocker(root string, d Dep) string {
 	return fmt.Sprintf("swim %d's pending round has not passed; run it too: swim run %d ...", d.Lane, d.Lane)
 }
 
-// cellsBlocker is "" when every cell a dependency names (a matrix cell, or
-// a job and the jobs under it) last passed, else which one hasn't.
-func cellsBlocker(root string, d Dep) string {
-	info, _ := lane.ReadScript(root, d.Lane)
-	cells := info.CellsUnder(d.Cell)
-	if len(cells) == 0 {
-		return d.String() + " no longer exists"
-	}
-	st, _ := status.Load(root)
-	for _, c := range cells {
-		state := "has not run"
-		if st != nil {
-			if l := st.Get(d.Lane); l != nil {
-				if e := l.FindCell(c.Name); e != nil && e.State != "" {
-					state = e.State
-				}
-			}
-		}
-		if state != status.Passed {
-			if state != "has not run" {
-				state = "is " + state
-			}
-			return fmt.Sprintf("%s %s", info.SubLabel(d.Lane, c.Name), state)
-		}
-	}
-	return ""
-}
-
 // AlreadyPassed reports whether the round in a lane's script is the one the
 // lane last ran, and that run passed. Rounds are matched by job id, or by
-// Round: line for scripts without a Job: line. An Always lane never has.
+// Round: line for scripts without a Job: line.
 func AlreadyPassed(info lane.Info, last *status.Lane) bool {
-	if info.Always {
-		return false
-	}
 	if last == nil || last.State != status.Passed || !info.Pending() {
 		return false
 	}
@@ -335,7 +246,7 @@ func DepEdges(root string, cfg *config.Config) map[int][]int {
 		for _, d := range cfg.DepsOf(n) {
 			seen[d] = true
 		}
-		for _, ref := range append(append([]string(nil), scripts[n].After...), scripts[n].Finally...) {
+		for _, ref := range scripts[n].After {
 			if d, err := resolveAfter(cfg, scripts, st, n, ref); err == nil {
 				seen[d.Lane] = true
 			}

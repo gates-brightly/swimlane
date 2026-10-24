@@ -66,6 +66,23 @@ func checkRound(c *Context, s *Script) []finding.Finding {
 		"no `# Round:` line; swim treats the lane as having nothing pending and won't run it")}
 }
 
+// checkWorkspaceLive warns about a lane that runs in the working tree: a
+// file it reads that its manifest doesn't pin can change after approval.
+func checkWorkspaceLive(c *Context, s *Script) []finding.Finding {
+	if s.Info.Workspace != lane.WorkspaceLive {
+		return nil
+	}
+	line := -1
+	for i, raw := range s.v.raw {
+		if strings.Contains(raw, "Workspace:") {
+			line = i
+			break
+		}
+	}
+	return []finding.Finding{f(finding.Warn, "workspace-live", line, "pin the files it reads (# Includes:) and drop the line, so it runs in its staged copy",
+		"runs in the working tree (# Workspace: live): files it reads but doesn't pin can change after it's approved")}
+}
+
 // checkTask checks the lane's name (# Task:): swim run NAME must find this
 // lane and nothing else.
 func checkTask(c *Context, s *Script) []finding.Finding {
@@ -87,10 +104,6 @@ func checkTask(c *Context, s *Script) []finding.Finding {
 	case isCommand(t):
 		return []finding.Finding{f(finding.Error, "task", line, "pick another name",
 			"# Task: %s is a swim command: swim %s runs the command, not this lane", t, t)}
-	}
-	if _, err := os.Stat(filepath.Join(c.Root, "lanes."+t+".sh")); err == nil {
-		return []finding.Finding{f(finding.Error, "task", line, "rename one of them",
-			"# Task: %s is also the group file lanes.%s.sh's name", t, t)}
 	}
 	for n, o := range c.Scripts {
 		if n != s.N && o.Info.Task == t {
@@ -127,36 +140,7 @@ func checkAfter(c *Context, s *Script) []finding.Finding {
 		return nil
 	}
 	fix := "name a configured lane number, a task (# Task:) or a job id a lane holds"
-	if s.Info.Always {
-		fix = "an Always lane waits only on other Always lanes: drop the dependency, or mark that lane `# Always: yes` too"
-	}
 	return []finding.Finding{f(finding.Error, "after", s.headerLine("After"), fix, "%s; swim run refuses this lane", msg)}
-}
-
-// checkRerunGuard warns about a guarded lane that a Rerun-Children lane
-// reruns: swim all runs it again after it passed, and asks for its
-// approvals again (or, unattended, dry-runs them).
-func checkRerunGuard(c *Context, s *Script) []finding.Finding {
-	if len(s.Info.Guards) == 0 && s.Info.DynamicGuards == 0 {
-		return nil
-	}
-	var by []int
-	for n, o := range c.Scripts {
-		if n != s.N && o.Info.Always && o.Info.RerunChildren && c.reaches(s.N, n) {
-			by = append(by, n)
-		}
-	}
-	if len(by) == 0 {
-		return nil
-	}
-	sort.Ints(by)
-	parts := make([]string, len(by))
-	for i, n := range by {
-		parts[i] = fmt.Sprintf("swim %d", n)
-	}
-	return []finding.Finding{f(finding.Warn, "rerun-guard", s.headerLine("After"),
-		"keep guarded rounds out from under Rerun-Children lanes, or archive and stub this lane once it has done its work",
-		"this guarded round sits downstream of %s (Rerun-Children: yes): swim all reruns it every time, even after it passed", strings.Join(parts, ", "))}
 }
 
 // checkCycle reports lanes on a dependency cycle (strongly connected
@@ -963,77 +947,19 @@ func checkEnv(c *Context, s *Script) []finding.Finding {
 }
 
 var (
-	// nearHandlerRE are function names that look like an outcome handler
-	// but aren't one: swim would never call them.
-	nearHandlerRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_fail|on_failed|onfailure|onfail|on_error|onerror|on_succes|on_succeed|onsuccess|onexit|on_finally|finally)\s*\(\s*\)`)
-	// helperHandlerRE are generic names that are a typo only when the round
-	// defines no handler at all (otherwise they're helpers a handler calls).
-	helperHandlerRE = regexp.MustCompile(`^\s*(?:function\s+)?(always|cleanup|rollback)\s*\(\s*\)`)
-)
-
-// checkHandlers: a round with outcome handlers or Fail: must declare script
-// syntax 3, or an older swim would run it without them; and a near-miss
-// handler name means the rollback silently never runs.
-func checkHandlers(c *Context, s *Script) []finding.Finding {
-	var out []finding.Finding
-	if (len(s.Info.Handlers) > 0 || s.Info.FailText != "") && s.Info.Syntax < syntax.Script {
-		what := "Fail:"
-		if len(s.Info.Handlers) > 0 {
-			what = "outcome handlers (" + s.Info.Handlers[0].Name + ")"
-		}
-		out = append(out, f(finding.Error, "handler", -1, "change the syntax line to `# swim: syntax 3`",
-			"uses %s but declares syntax %d: an older swim would run the round without them", what, s.Info.Syntax))
-	}
-	if !s.Lib {
-		return out
-	}
-	for i, raw := range s.v.raw { // raw: a function definition starts its line
-		if m := nearHandlerRE.FindStringSubmatch(raw); m != nil {
-			out = append(out, f(finding.Error, "handler", i, "rename it on_success, on_failure or on_exit",
-				"function %s is not an outcome handler: swim calls only on_success, on_failure and on_exit", m[1]))
-		} else if m := helperHandlerRE.FindStringSubmatch(raw); m != nil && len(s.Info.Handlers) == 0 {
-			out = append(out, f(finding.Error, "handler", i, "call it from on_failure or on_exit (or rename it)",
-				"function %s is never called when the round ends: swim calls only on_success, on_failure and on_exit", m[1]))
-		}
-	}
-	for _, h := range s.Info.Handlers {
-		if h.Cmd != "" {
-			out = append(out, f(finding.Warn, "handler", h.Line-1, "define a bash function "+h.Name+"() instead",
-				"a bash lane's handlers are functions; the %s: header key is for lanes in other languages", map[string]string{lane.OnSuccess: "On-Success", lane.OnFailure: "On-Failure", lane.OnExit: "On-Exit"}[h.Name]))
-		}
-	}
-	return out
-}
-
-// checkHandlerReached: an on_failure that can approve something (a guard)
-// should first check that the round got far enough to have changed it.
-func checkHandlerReached(c *Context, s *Script) []finding.Finding {
-	h, ok := s.Info.Handler(lane.OnFailure)
-	if !ok || h.Cmd != "" || len(h.Guards) == 0 {
-		return nil
-	}
-	start := h.Line - 1
-	for i := start; i < len(s.v.raw); i++ {
-		if i > start && strings.TrimRight(s.v.raw[i], " \t") == "}" {
-			break
-		}
-		if s.v.doc[i] || s.v.inQuote[i] {
-			continue
-		}
-		for _, cmd := range lane.Commands(s.v.code[i]) {
-			if cmd[0].Text == "reached" && !cmd[0].Quoted {
-				return nil
-			}
-		}
-	}
-	return []finding.Finding{f(finding.Warn, "handler-reached", start, "start it with: reached change || return 0",
-		"on_failure uses guard %s but never checks `reached`: it would roll back even when the round failed before changing anything", h.Guards[0])}
-}
-
-var (
 	secretOutputRE = regexp.MustCompile(`(?i)(^|/|[._-])(\.?env|secrets?|credentials?|passwords?|tokens?|id_rsa|id_ed25519|.*\.pem|.*\.key)($|[._/-])`)
 	inputUseRE     = regexp.MustCompile(`(?:^|[\s(;&|$])input\s+([0-9]+)\s`)
 )
+
+// checkFailSyntax: a round with Fail: must declare script syntax 3, or an
+// older swim would run it soft.
+func checkFailSyntax(c *Context, s *Script) []finding.Finding {
+	if s.Info.FailText == "" || s.Info.Syntax >= 3 {
+		return nil
+	}
+	return []finding.Finding{f(finding.Error, "fail", -1, "change the syntax line to `# swim: syntax 3`",
+		"uses Fail: but declares syntax %d: an older swim would run the round without it", s.Info.Syntax)}
+}
 
 // checkOutputs: output files aren't masked, so a name that suggests secrets is
 // worth a second look.
@@ -1256,31 +1182,6 @@ func checkObserve(c *Context, s *Script) []finding.Finding {
 // command that sends or posts something.
 var observeWriteRE = regexp.MustCompile(`(?:^|[^0-9&<>])>>?\s*[^&\s]|(?:^|[\s;&|(])(?:curl\s.*-X\s*(?:POST|PUT|DELETE|PATCH)|mail|sendmail|tee|touch|mkdir|mv|cp)(?:$|[\s;&|)])`)
 
-// checkSDKBypass: in a lane using an SDK, commands run with subprocess or
-// child_process skip swim's logging, timeouts and blocked-command checks.
-func checkSDKBypass(c *Context, s *Script) []finding.Finding {
-	var bypass *regexp.Regexp
-	switch {
-	case pySDKRE.MatchString(s.Src):
-		bypass = pyBypassRE
-	case tsSDKRE.MatchString(s.Src):
-		bypass = tsBypassRE
-	default:
-		return nil
-	}
-	var out []finding.Finding
-	for i, line := range s.v.raw {
-		if t := strings.TrimSpace(line); strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//") {
-			continue
-		}
-		if m := bypass.FindStringSubmatch(line); m != nil {
-			out = append(out, f(finding.Info, "sdk-bypass", i, "use r.run(...) (or r.step for in-process work) so swim logs it",
-				"%s runs a command swim doesn't see: no log block, timeout or blocked-command check", m[1]))
-		}
-	}
-	return out
-}
-
 // firstLane is the lowest lane number with a script being linted.
 func firstLane(c *Context) int {
 	first := 0
@@ -1290,4 +1191,27 @@ func firstLane(c *Context) int {
 		}
 	}
 	return first
+}
+
+var handlerDefRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failure|on_exit)\s*(?:\(\s*\))?\s*\{?\s*$`)
+
+// checkRemoved: a header key or outcome handler of a lane kind swim no
+// longer has. swim would ignore it, so a cleanup or rollback the script
+// counts on would never run: refuse the lane instead.
+func checkRemoved(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for _, k := range s.Info.Removed {
+		out = append(out, f(finding.Error, "removed", s.headerLine(k), "put the work in its own lane (After: for order) and drop the line",
+			"# %s: is a lane kind swim no longer has; swim would ignore it", k))
+	}
+	for i, line := range s.v.bare {
+		if s.v.doc[i] {
+			continue
+		}
+		if m := handlerDefRE.FindStringSubmatch(line); m != nil {
+			out = append(out, f(finding.Error, "removed", i, "put the rollback in its own lane (After: for order), or a guarded step of this one",
+				"%s is an outcome handler, which swim no longer calls: it would never run", m[1]))
+		}
+	}
+	return out
 }

@@ -75,10 +75,6 @@ func ReapDead(root string, cfg *config.Config, self string) []Reaped {
 			// reaps it.
 			continue
 		}
-		if len(l.Cells) > 0 {
-			out = append(out, reapCells(root, cfg, self, l)...)
-			continue
-		}
 		if _, alive := lane.Running(root, l.Lane); alive {
 			continue
 		}
@@ -87,7 +83,7 @@ func ReapDead(root string, cfg *config.Config, self string) []Reaped {
 			continue
 		}
 		if r.Found && !r.Finished {
-			finishDead(root, self, l.Lane, "")
+			finishDead(root, self, l.Lane)
 		} else {
 			// No round in the log, or it ended and only status.yml missed it.
 			status.Update(root, l.Lane, cfg.Lanes, func(s *status.Lane) {
@@ -142,72 +138,22 @@ func anyRunning(st *status.File) bool {
 	return false
 }
 
-// reapCells closes a matrix (or jobs) lane whose swim run died: status.yml
-// records the launcher's pid for the lane, and each cell's process in its
-// own pid file. Only when the launcher and every cell are gone are the
-// running cells' rounds finished, the cells that never started skipped and
-// the lane marked interrupted.
-func reapCells(root string, cfg *config.Config, self string, l status.Lane) []Reaped {
-	if l.Alive() {
-		return nil
-	}
-	for _, c := range l.Cells {
-		if _, alive := lane.CellRunning(root, l.Lane, c.Cell); alive {
-			return nil
-		}
-	}
-	var out []Reaped
-	for _, c := range l.Cells {
-		if c.State != status.Running {
-			continue
-		}
-		if r, err := logparse.ParseFile(cellLog(root, l.Lane, c.Cell)); err == nil && r.Found && !r.Finished {
-			finishDead(root, self, l.Lane, c.Cell)
-		}
-		out = append(out, Reaped{Lane: l.Lane, Cell: c.Cell, PID: c.PID})
-	}
-	status.Update(root, l.Lane, cfg.Lanes, func(s *status.Lane) {
-		if s.State != status.Running {
-			return
-		}
-		for i := range s.Cells {
-			switch c := &s.Cells[i]; c.State {
-			case status.Running:
-				c.State, c.PID = status.Interrupted, 0 // its round ended above, if it had one
-			case status.Waiting, status.Locked, status.Queued:
-				c.State, c.Reason = status.Skipped, "its swim run died before it started"
-			}
-		}
-		s.State, s.PID, s.Host, s.ExitCode = status.Interrupted, 0, "", status.Int(137)
-		s.Reason = "its swim run died"
-	})
-	return append(out, Reaped{Lane: l.Lane, PID: l.PID})
-}
-
-// cellLog is the log of lane n's cell.
-func cellLog(root string, n int, cell string) string {
-	return filepath.Join(lane.LogDir(root), fmt.Sprintf("agent%d.%s.log", n, lane.CellSlug(cell)))
-}
-
-// finishDead ends a dead lane's (or cell's) round with swim _finish, as
+// finishDead ends a dead lane's round with swim _finish, as
 // the launcher does for a lane it saw killed. It runs as an outside
 // command, not as any lane's process, and its summary isn't shown.
-func finishDead(root, self string, n int, cell string) {
+func finishDead(root, self string, n int) {
 	cmd := exec.Command(self, "_finish", fmt.Sprint(n), "--exit", "137")
 	cmd.Dir = root
 	var env []string
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch k {
-		case "SWIM_LAUNCHED", approval.EnvVar, approval.TokenEnv, lane.CellEnv, "SWIM_RUN", lane.CheckEnv:
+		case "SWIM_LAUNCHED", approval.EnvVar, approval.TokenEnv, "SWIM_RUN", lane.CheckEnv:
 			continue
 		}
 		env = append(env, kv)
 	}
 	env = append(env, "SWIM_COLOR=0")
-	if cell != "" {
-		env = append(env, lane.CellEnv+"="+cell)
-	}
 	cmd.Env = env
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out

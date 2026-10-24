@@ -48,8 +48,6 @@ func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
 		switch {
 		case lane.IsBinary(data):
 			continue
-		case lane.HasJobs(string(data)):
-			fx.Skip = "a lane of jobs: add each job's # Guards: and # Includes: under its \"# swim job\" line"
 		default:
 			if _, running := lane.Running(root, n); running {
 				fx.Skip = "running: fix it once the round ends"

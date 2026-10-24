@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,7 +16,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -26,7 +24,7 @@ import (
 
 // swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]
 func cmdLog(args []string) error {
-	var all, full, raw, asYAML, follow, untilDone, failures bool
+	var all, full, raw, asYAML, follow, untilDone bool
 	args = append([]string(nil), args...)
 	for i, a := range args {
 		if a == "-f" {
@@ -34,15 +32,12 @@ func cmdLog(args []string) error {
 		}
 	}
 	rest, err := flags{bools: map[string]*bool{"all": &all, "full": &full, "raw": &raw, "yaml": &asYAML,
-		"follow": &follow, "until-done": &untilDone, "failures": &failures}}.parse(args)
+		"follow": &follow, "until-done": &untilDone}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done] [--failures]")
-	}
-	if failures && (len(rest) == 0 || asYAML || follow || all) {
-		return usagef("--failures takes one matrix lane, and no --yaml, --follow or --all: swim log N --failures")
+		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]")
 	}
 	if asYAML && len(rest) == 0 {
 		return usagef("--yaml needs a lane or job: swim log N --yaml")
@@ -70,28 +65,6 @@ func cmdLog(args []string) error {
 	}
 
 	ref := taskRef(root, cfg, rest[0])
-	// One cell of a matrix round: 3[orders] (or <job>/<cell>) reads its log.
-	if base, cell, ok := lane.ParseCellRef(ref); ok {
-		n, err := laneRef(root, cfg, base, true)
-		if err != nil {
-			return err
-		}
-		info, _ := lane.ReadScript(root, n)
-		named := info.CellsUnder(cell)
-		switch {
-		case len(named) == 0:
-			return fmt.Errorf("swim %d has no %s", n, map[bool]string{true: "job " + strconv.Itoa(n) + "." + cell, false: "cell " + strconv.Quote(cell)}[info.IsGroup()])
-		case len(named) > 1:
-			// A job with jobs under it: each one's last result.
-			info.Subs = slices.DeleteFunc(append([]lane.SubJob(nil), info.Subs...), func(s lane.SubJob) bool { return !lane.PathUnder(s.Name, cell) })
-			return cellSummary(root, n, info, failures)
-		}
-		if failures {
-			return usagef("--failures is for a matrix lane's cells: swim log %d --failures", n)
-		}
-		os.Setenv(lane.CellEnv, named[0].Name) // lane.Log is now the cell's log
-		ref = strconv.Itoa(n)
-	}
 	if _, err := strconv.Atoi(ref); err == nil || follow {
 		n, err := laneRef(root, cfg, ref, true)
 		if err != nil {
@@ -100,24 +73,12 @@ func cmdLog(args []string) error {
 		if follow {
 			return followLog(root, n, untilDone, out)
 		}
-		if failures {
-			info, _ := lane.ReadScript(root, n)
-			if !info.IsMatrix() || lane.CurrentCell() != "" {
-				return usagef("--failures is for a matrix lane's cells: swim %d isn't one (its failed steps: swim log %d)", n, n)
-			}
-			return cellSummary(root, n, info, true)
-		}
 		files := []string{}
 		if all {
 			files = append(files, archives(root, n)...)
 		}
 		if _, err := os.Stat(lane.Log(root, n)); err == nil {
 			files = append(files, lane.Log(root, n))
-		}
-		if len(files) == 0 && lane.CurrentCell() == "" {
-			if info, _ := lane.ReadScript(root, n); info.IsMatrix() {
-				return cellSummary(root, n, info, false)
-			}
 		}
 		if len(files) == 0 {
 			if all {
@@ -665,57 +626,4 @@ func laneWaiting(root string, n int) bool {
 		return l.Alive()
 	}
 	return false
-}
-
-// cellSummary is swim log N for a matrix round: each cell's last result and
-// how to read its log, then the cells that didn't pass with why (only
-// those, with onlyFailures: swim log N --failures).
-func cellSummary(root string, n int, info lane.Info, onlyFailures bool) error {
-	st, _ := status.Load(root)
-	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
-	kind := "cells"
-	if info.IsGroup() {
-		kind = "jobs"
-	}
-	states := map[string]string{}
-	if st != nil {
-		if l := st.Get(n); l != nil {
-			for _, c := range info.Cells() {
-				if e := l.FindCell(c.Name); e != nil {
-					states[c.Name] = e.State
-				}
-			}
-		}
-	}
-	failed := launcher.CellFailures(root, n, info, states)
-	if onlyFailures {
-		fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim %d · %s · %d of %d %s didn't pass", n, info.Round, len(failed), len(info.Cells()), kind)))
-		launcher.PrintCellFailures(os.Stdout, p, "  ", failed)
-		return nil
-	}
-	fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim %d · %s · %d %s", n, info.Round, len(info.Cells()), kind)))
-	for _, c := range info.Cells() {
-		state, detail := "not run", ""
-		if st != nil {
-			if l := st.Get(n); l != nil {
-				if e := l.FindCell(c.Name); e != nil {
-					state = e.State
-					if e.State != status.Running && e.State != status.Waiting {
-						detail = fmt.Sprintf("pass=%d fail=%d skip=%d", e.Pass, e.Fail, e.Skip)
-					}
-					if e.CurrentStep != "" && e.State == status.Running {
-						detail = "step: " + e.CurrentStep
-					}
-				}
-			}
-		}
-		label := info.SubLabel(n, c.Name)
-		fmt.Printf("  %-24s %-12s %-28s %s\n", label, p.Paint(ui.StateColor(state), state), detail,
-			p.Paint(ui.Dim, "swim log '"+label+"'"))
-	}
-	if len(failed) > 0 {
-		fmt.Println(p.Paint(ui.Bold, "didn't pass:"))
-		launcher.PrintCellFailures(os.Stdout, p, "  ", failed)
-	}
-	return nil
 }

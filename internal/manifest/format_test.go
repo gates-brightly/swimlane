@@ -7,40 +7,23 @@ import (
 
 // The manifest hash text is frozen (docs/formats.md): approvals, queue
 // entries, schedules and hub commands pin these hashes, so a change here
-// stales every one of them. Change it only with a dual-hash transition,
-// as v1 to v2 was (Matches, HashV1).
-const (
-	goldenV2 = "7ced577be71ab4bc4701b0d1ccc3d6b0935e26b67143ffc28a4795fd3ce8fd32"
-	// goldenV1 is what swim before manifest v2 computed for the same repo.
-	goldenV1 = "72cd40405c466024b39e19c6c8ff9c408b0b8004da92846d92dc4b40bd4df9a4"
-)
+// stales every one of them. Change it only with a dual-hash transition
+// (docs/formats.md).
+const goldenV2 = "7ced577be71ab4bc4701b0d1ccc3d6b0935e26b67143ffc28a4795fd3ce8fd32"
 
 func TestManifestHashFrozen(t *testing.T) {
 	m := build(t, repo(t), 3)
 	if m.SHA256 != goldenV2 {
 		t.Errorf("manifest v2 hash is %s, want %s: the hash text changed (docs/formats.md)", m.SHA256, goldenV2)
 	}
-	if m.LegacySHA256 != goldenV1 {
-		t.Errorf("manifest v1 hash is %s, want %s: v1 pins would stop matching", m.LegacySHA256, goldenV1)
-	}
-	if !m.Matches(goldenV1) || !m.Matches(goldenV2) || m.Matches("") || m.Matches("other") {
-		t.Error("Matches should accept the v1 and v2 hashes, and nothing else")
+	if !m.Matches(goldenV2) || m.Matches("") || m.Matches("other") {
+		t.Error("Matches should accept the manifest's hash and nothing else")
 	}
 	text := m.Pinned.text("swim manifest v2", 3, "config: "+m.Pinned.Config.SHA256)
 	for _, line := range []string{"swim manifest v2\nlane: 3\nscript: lane.3.sh ", "\ninclude: lib/deep.sh ", "\nsidecar: lane.3.yml ", "\nrunner: ", "\nconfig: " + m.Pinned.Config.SHA256 + "\nlookup-rules: "} {
 		if !strings.Contains(text, line) {
 			t.Errorf("hash text lacks %q:\n%s", line, text)
 		}
-	}
-}
-
-// A staged manifest from before v2 still verifies, and still hashes as v1.
-func TestOldManifestStillVerifies(t *testing.T) {
-	m := build(t, repo(t), 3)
-	old := m.Pinned
-	old.Config = Policy{SHA256: m.Pinned.Config.LegacySHA256, Version: 3, Keys: m.Pinned.Config.Keys, Rules: m.Pinned.Config.Rules}
-	if got := old.Hash(3); got != goldenV1 {
-		t.Errorf("a v1 manifest hashes as %s, want %s", got, goldenV1)
 	}
 }
 

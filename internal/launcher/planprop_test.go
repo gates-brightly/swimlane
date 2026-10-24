@@ -1,7 +1,6 @@
 package launcher
 
 import (
-	"math/rand"
 	"os"
 	"strconv"
 	"testing"
@@ -25,14 +24,13 @@ func TestPlanAgreesWithRun(t *testing.T) {
 	if n, err := strconv.Atoi(os.Getenv("SWIM_QUICK_COUNT")); err == nil && n > 0 {
 		count = n
 	}
-	check := func(d schedDAG, seed int64) bool {
-		rnd := rand.New(rand.NewSource(seed))
+	check := func(d schedDAG) bool {
 		f := planFacts{lanes: len(d.Lanes), scripts: map[int]lane.Info{}, status: map[int]*status.Lane{},
 			deps: map[int][]Dep{}, blocked: map[int]string{}, outside: map[Dep]string{}, scheduled: map[int]string{}}
 		for i, l := range d.Lanes {
 			n := i + 1
 			f.sel = append(f.sel, n)
-			f.scripts[n] = lane.Info{Exists: true, Round: "r", Always: rnd.Intn(5) == 0}
+			f.scripts[n] = lane.Info{Exists: true, Round: "r"}
 			f.deps[n] = d.deps(n)
 			if l.Fail {
 				f.blocked[n] = "blocked: refused before it starts"
@@ -67,9 +65,7 @@ func TestPlanAgreesWithRun(t *testing.T) {
 			switch {
 			case refused && (pl.actions[n] != actSkip || states[i] == status.Passed):
 				fail("swim %d is refused: plan %s, run %s", n, pl.actions[n].name(), states[i])
-			case !refused && pl.skip[n] == "" && f.scripts[n].Always && pl.actions[n] != actAlways:
-				fail("swim %d is an Always lane that runs: plan %s", n, pl.actions[n].name())
-			case !refused && pl.skip[n] == "" && !f.scripts[n].Always && pl.actions[n] != actRun:
+			case !refused && pl.skip[n] == "" && pl.actions[n] != actRun:
 				fail("swim %d runs, never ran before: plan %s", n, pl.actions[n].name())
 			}
 		}

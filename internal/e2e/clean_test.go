@@ -10,23 +10,20 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chain"
 )
 
-// swim clean archives every finished lane under one name, leaves Always
-// lanes, removes waiting batches and moves scripts aside only when asked
+// swim clean archives every finished lane under one name, removes waiting batches and moves scripts aside only when asked
 // (no terminal: archive, and no to both), and --restore puts the scripts
 // back; verify still passes.
 func TestClean(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "one", `run "a" true`)
 	r.script(2, "two", `run "b" true`)
-	r.script(3, "setup", `run "c" true`)
-	withHeader(t, r, 3, "# Always: yes")
 	r.mustSwim("all")
 	r.mustSwim("queue", "add", "1")
 
 	// A dry run changes nothing under .swim/.
 	swimDir := filepath.Join(r.root, ".swim")
 	before := treeFiles(swimDir)
-	contains(t, "dry run", r.mustSwim("clean", "-n"), "nothing is deleted", "archive  swim 1", "skip     swim 3  Always lane", "dry run: nothing changed")
+	contains(t, "dry run", r.mustSwim("clean", "-n"), "nothing is deleted", "archive  swim 1", "dry run: nothing changed")
 	if changed := treeChanges(swimDir, before, treeFiles(swimDir)); len(changed) > 0 {
 		t.Errorf("swim clean -n changed .swim/: %s", strings.Join(changed, ", "))
 	}
@@ -38,14 +35,11 @@ func TestClean(t *testing.T) {
 			t.Errorf("swim %d after clean: %s %q", n, l.State, l.LastArchive)
 		}
 	}
-	if l := r.status().Get(3); l.State != "passed" {
-		t.Errorf("the Always lane was cleaned: %s", l.State)
-	}
 	contains(t, "queue kept", r.mustSwim("queue"), "#1")
 	if _, err := os.Stat(filepath.Join(r.root, "lane.1.sh")); err != nil {
 		t.Error("scripts moved without --scripts")
 	}
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 
 	// --all: the queue and the scripts too; --restore brings them back.
 	r.mustSwim("run", "1")
@@ -53,9 +47,6 @@ func TestClean(t *testing.T) {
 	contains(t, "all", out, "moved 2 scripts to .swim/cleaned/", "swim clean --restore")
 	if _, err := os.Stat(filepath.Join(r.root, "lane.1.sh")); err == nil {
 		t.Error("lane.1.sh still in place")
-	}
-	if _, err := os.Stat(filepath.Join(r.root, "lane.3.sh")); err != nil {
-		t.Error("the Always lane's script was moved")
 	}
 	if out := r.mustSwim("queue"); strings.Contains(out, "#1") {
 		t.Errorf("the waiting batch survived --all:\n%s", out)
@@ -111,7 +102,7 @@ func TestPrune(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "scripts")); err != nil {
 		t.Error("kept script copies were deleted")
 	}
-	v := r.mustSwim("verify")
+	v := r.mustSwim("verify", "--levels", "--allow-unsigned")
 	contains(t, "verify", v, "consistent  yes", "was pruned on", "swim prune")
 	if strings.Contains(v, "deleted, not archived") {
 		t.Errorf("a pruned log reported missing:\n%s", v)

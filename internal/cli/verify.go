@@ -72,18 +72,21 @@ type verifier struct {
 //	authorized  every approval recorded met lookup.yml's rule for its guard
 //	            (signed ones: by enough of the right people)
 //
-// Exits 1 when a level fails; --strict also when one can't be checked
-// (n/a), on unsigned entries and on any warning.
+// It prints one answer, VERIFIED or NOT VERIFIED, and exits 1 for the
+// second: when a level fails, or any entry is unsigned (nothing vouches
+// for it, and a chain rewritten without a key looks the same) unless
+// --allow-unsigned. --strict also fails when a level can't be checked
+// (n/a) and on any warning; --levels prints each level.
 func cmdVerify(args []string) error {
-	var strict, asYAML bool
+	var strict, asYAML, allowUnsigned, showLevels bool
 	var pinFlag, against string
-	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML},
+	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML, "allow-unsigned": &allowUnsigned, "levels": &showLevels},
 		strs: map[string]*string{"trust-pin": &pinFlag, "against": &against}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim verify [--strict] [--trust-pin SHA256] [--against DEST] [--yaml]")
+		return usagef("usage: swim verify [--strict] [--allow-unsigned] [--levels] [--trust-pin SHA256] [--against DEST] [--yaml]")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -106,8 +109,11 @@ func cmdVerify(args []string) error {
 		v.bad = append(v.bad, fmt.Sprintf("entry #%d (line %d): %s", pr.Seq, pr.Line, pr.What))
 	}
 	v.unsigned = unsigned
-	if len(unsigned) > 0 {
+	switch {
+	case len(unsigned) > 0 && allowUnsigned:
 		v.warn = append(v.warn, fmt.Sprintf("%d unsigned entries (linked, but no key vouches for them): #%s", len(unsigned), joinNums(unsigned)))
+	case len(unsigned) > 0:
+		v.bad = append(v.bad, fmt.Sprintf("%d unsigned entries: #%s. Nothing vouches for them, and a chain rewritten with no key looks the same (set a signing key, ~/.ssh/id_ed25519 or signing_key; --allow-unsigned accepts them)", len(unsigned), joinNums(unsigned)))
 	}
 	v.checkEntries(links)
 	v.checkApprovalFiles()
@@ -135,7 +141,7 @@ func cmdVerify(args []string) error {
 			return err
 		}
 	} else {
-		v.print(links, levels)
+		v.print(links, levels, showLevels, !failed)
 	}
 	if failed {
 		return exitError{1}
@@ -276,23 +282,28 @@ func (v *verifier) anchored(links []chain.Link, against string) level {
 	var best *chain.Checkpoint
 	from, reached := "", 0
 	for _, spec := range specs {
-		cp, err := v.latestCheckpoint(spec)
+		cps, err := v.checkpoints(spec)
 		if err != nil {
 			v.warn = append(v.warn, fmt.Sprintf("anchor %s: %v", spec, err))
 			continue
 		}
 		reached++
-		if cp == nil {
-			continue
-		}
-		switch r := chain.CheckAgainst(links, *cp); r.Status {
-		case chain.Truncated:
-			return level{name, levelNo, fmt.Sprintf("chain truncated or replaced after checkpoint seq %d (%s, %s): it has %d entries", cp.Seq, cp.At, spec, len(links))}
-		case chain.Replaced:
-			return level{name, levelNo, fmt.Sprintf("chain replaced: entry #%d isn't the one checkpointed at seq %d (%s, %s)", cp.Seq, cp.Seq, cp.At, spec)}
-		}
-		if best == nil || cp.Seq > best.Seq {
-			best, from = cp, spec
+		// Every checkpoint, not only the newest: a chain rewritten and
+		// padded past the last one, then checkpointed again, still fails
+		// every checkpoint taken before the rewrite. Newest first, so a
+		// failure names the newest checkpoint the chain falls short of.
+		sort.Slice(cps, func(i, j int) bool { return cps[i].Seq > cps[j].Seq })
+		for i := range cps {
+			cp := &cps[i]
+			switch r := chain.CheckAgainst(links, *cp); r.Status {
+			case chain.Truncated:
+				return level{name, levelNo, fmt.Sprintf("chain truncated or replaced after checkpoint seq %d (%s, %s): it has %d entries", cp.Seq, cp.At, spec, len(links))}
+			case chain.Replaced:
+				return level{name, levelNo, fmt.Sprintf("chain replaced: entry #%d isn't the one checkpointed at seq %d (%s, %s)", cp.Seq, cp.Seq, cp.At, spec)}
+			}
+			if best == nil || cp.Seq > best.Seq {
+				best, from = cp, spec
+			}
 		}
 	}
 	switch {
@@ -390,7 +401,7 @@ func (v *verifier) note(levels []level) string {
 	return "without an anchor, entries removed from the end of the chain can't be caught (chain_anchors)."
 }
 
-func (v *verifier) print(links []chain.Link, levels []level) {
+func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	fmt.Printf("chain of custody: %d entries (%d rounds, %d approvals) in %s\n", len(links), v.rounds, v.approvals, rel(v.root, chain.Path(v.root)))
 	for _, f := range v.files {
@@ -405,17 +416,48 @@ func (v *verifier) print(links []chain.Link, levels []level) {
 	for _, b := range v.bad {
 		fmt.Println(p.Paint(ui.Red, "BROKEN: "+b))
 	}
-	for _, l := range levels {
-		c := ui.Yellow
-		switch l.Result {
-		case levelYes:
-			c = ui.Green
-		case levelNo:
-			c = ui.Red
+	if showLevels {
+		for _, l := range levels {
+			c := ui.Yellow
+			switch l.Result {
+			case levelYes:
+				c = ui.Green
+			case levelNo:
+				c = ui.Red
+			}
+			fmt.Printf("%-10s  %s  %s\n", l.Name, p.Paint(c, fmt.Sprintf("%-3s", l.Result)), l.Detail)
 		}
-		fmt.Printf("%-10s  %s  %s\n", l.Name, p.Paint(c, fmt.Sprintf("%-3s", l.Result)), l.Detail)
+		fmt.Println("note: " + v.note(levels))
 	}
-	fmt.Println("note: " + v.note(levels))
+	// One answer, and what it can't vouch for.
+	if !ok {
+		why := ""
+		for _, l := range levels {
+			if l.Result == levelNo {
+				why = l.Name + ": " + l.Detail
+				break
+			}
+		}
+		if why == "" && len(v.bad) > 0 {
+			why = v.bad[0]
+		}
+		fmt.Println(p.Paint(ui.Red+ui.Bold, "NOT VERIFIED") + ": " + or(why, "see above"))
+		return
+	}
+	var caveats []string
+	for _, l := range levels {
+		if l.Result == levelNA || l.Result == levelPartial {
+			caveats = append(caveats, l.Name+" "+string(l.Result)+": "+l.Detail)
+		}
+	}
+	signed := "every one signed and linked"
+	if len(v.unsigned) > 0 {
+		signed = fmt.Sprintf("linked, %d unsigned (accepted: --allow-unsigned)", len(v.unsigned))
+	}
+	fmt.Printf("%s: %d entries, %s; logs, scripts and approvals as recorded\n", p.Paint(ui.Green+ui.Bold, "VERIFIED"), len(links), signed)
+	for _, c := range caveats {
+		fmt.Println("  not checked: " + c)
+	}
 }
 
 // verifyDoc is swim verify --yaml (schema swim.verify/v1): each level a

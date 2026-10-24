@@ -234,13 +234,6 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 			}
 			detail("msg: "+m, ui.Dim)
 		}
-		if info, _ := lane.ReadScript(root, l.Lane); info.IsGroup() {
-			if t := l.CellsTextAs(func(c string) string { return info.SubLabel(l.Lane, c) }); t != "" {
-				detail("jobs: "+t, ui.Dim)
-			}
-		} else if t := l.CellsText(); t != "" {
-			detail("cells: "+t, ui.Dim)
-		}
 		if len(l.Locks) > 0 && state == status.Running {
 			detail("locks: "+strings.Join(l.Locks, ", "), ui.Dim)
 		}
@@ -277,9 +270,6 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 				color = ui.Yellow + ui.Bold
 			}
 			detail("approved without a prompt: "+t, color)
-		}
-		if l.FinallySaw != "" && state != status.Running {
-			detail("finally: "+l.FinallySaw, ui.Dim)
 		}
 		if l.ScheduledFor != "" {
 			at, _ := time.Parse(time.RFC3339, l.ScheduledFor)

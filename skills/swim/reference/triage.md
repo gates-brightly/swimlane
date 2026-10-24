@@ -22,7 +22,7 @@ swim verify            # only when the record itself is in question
 | You see | What it means | Hand the operator |
 |---|---|---|
 | `running?` / `process gone`, or `[stale-pid]` in doctor | The lane's process died without ending its round. The next `swim run`, `swim all`, `swim ci` or `swim watch` records it as interrupted by itself, and never reruns anything. | `swim status --rebuild` (or just the next run), then decide on a rerun after reading `swim log N` |
-| `interrupted`, `END INTERRUPTED` | Ctrl-C, `swim interrupt`, a CI cancel, or a closed terminal | Read the log first. `swim run N` reruns it; `swim run N --failed` reruns a matrix's failed cells. A queued batch: `swim queue requeue ID` |
+| `interrupted`, `END INTERRUPTED` | Ctrl-C, `swim interrupt`, a CI cancel, or a closed terminal | Read the log first. `swim run N` reruns it. A queued batch: `swim queue requeue ID` |
 | An `orphaned` batch in `swim queue` | Its swimmer stopped renewing its lease | `swim queue requeue ID`, or `swim queue rm ID` |
 | `SKIP ... (dry run ...)` | A guard wasn't approved. Nothing changed. | Nothing is broken. Re-hand the command with the flag explained (handoff.md) |
 | `BLOCKED` (exit 87) | The step's text matched a blocked command (`git push`, ...) | Rewrite the step; even an `echo "git push"` matches |
@@ -38,9 +38,7 @@ before writing anything:
 1. **Reconstruct what happened from the log** (`swim log N`):
    - which steps in the `change` stage passed;
    - which one failed, with its exit code and output;
-   - whether a guard was approved;
-   - whether `on_failure` / `on_exit` handlers ran (syntax 3), and how they
-     ended.
+   - whether a guard was approved.
 2. **Find the before state:** the round's `snapshot` steps saved their
    output (`saved: .swim/snapshots/...` in the log).
 3. **Don't rerun blindly.** Rerunning is safe only if the round's gates tell
@@ -57,6 +55,5 @@ before writing anything:
 5. **Say plainly what state the target is probably in,** with the log lines
    that show it, and what's unknown. If something is unknown, the next
    round reads it before it changes anything.
-6. **For the next time:** add `on_failure` handlers (`# swim: syntax 3`) that
-   undo the steps of the change stage, and gates that make the round
-   rerunnable.
+6. **For the next time:** write the rollback as its own guarded lane before
+   the change runs, and add gates that make the round rerunnable.

@@ -80,19 +80,11 @@ func (i *Info) addProbe(v, where string) {
 	i.Observe = append(i.Observe, p)
 }
 
-// ProbesIn are the Observe: probes of lane n's file called name, from its
-// content (a staged copy) and its sidecar at sidecar ("" for none): those of
-// job or cell cell, if it names a job with its own.
-func ProbesIn(name string, data []byte, n int, sidecar, cell string) []Probe {
+// ProbesIn are the Observe: probes of a lane script, from its content (a
+// staged copy) and its sidecar at sidecar ("" for none).
+func ProbesIn(data []byte, sidecar string) []Probe {
 	var info Info
-	if g, ok := JobsIn(name, data, n); ok {
-		info = g.Info
-		for _, s := range g.Info.Subs {
-			if s.Name == cell {
-				info.Observe = s.Info.Observe
-			}
-		}
-	} else if !IsBinary(data) {
+	if !IsBinary(data) {
 		info = ParseScript(string(data))
 	}
 	if sidecar != "" {

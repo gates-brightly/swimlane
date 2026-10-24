@@ -45,9 +45,15 @@ var (
 	laneRE  = regexp.MustCompile(`^lane\.(\d+)\.sh$`)
 )
 
-// graph reads every non-stub lane.N.sh in the cwd: lane -> its # After: parents.
+// laneScripts are the repo's lane.N.sh files: under $SWIM_ROOT inside a
+// lane (which runs in its staged copy), else in the cwd.
+func laneScripts() ([]string, error) {
+	return filepath.Glob(filepath.Join(os.Getenv("SWIM_ROOT"), "lane.*.sh"))
+}
+
+// graph reads every non-stub lane.N.sh in the repo: lane -> its # After: parents.
 func graph() (map[int][]int, error) {
-	paths, err := filepath.Glob("lane.*.sh")
+	paths, err := laneScripts()
 	if err != nil {
 		return nil, err
 	}
@@ -720,7 +726,7 @@ func cmdAudit([]string) error {
 
 // laneLocks reads each lane script's # Locks: line.
 func laneLocks() (map[int][]string, error) {
-	paths, err := filepath.Glob("lane.*.sh")
+	paths, err := laneScripts()
 	if err != nil {
 		return nil, err
 	}

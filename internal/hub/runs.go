@@ -44,21 +44,18 @@ type RunReport struct {
 
 // Trigger is what started a run.
 type Trigger struct {
-	// Kind is schedule (a recurring schedule's occurrence), hub (a hub
-	// user's command), queue (swim queue add, or a one-off swim schedule)
-	// or cli (swim run, swim all, swim ci: no batch).
-	Kind     string `json:"kind"`
-	By       string `json:"by,omitempty"`       // who queued it: hub:alice via URL, an operator
-	Batch    string `json:"batch,omitempty"`    // its queue entry
-	Schedule string `json:"schedule,omitempty"` // the recurring schedule, for kind schedule
+	// Kind is hub (a hub user's command), queue (swim queue add, or swim
+	// schedule) or cli (swim run, swim all, swim ci: no batch).
+	Kind  string `json:"kind"`
+	By    string `json:"by,omitempty"`    // who queued it: hub:alice via URL, an operator
+	Batch string `json:"batch,omitempty"` // its queue entry
 }
 
 // Trigger kinds.
 const (
-	TriggerSchedule = "schedule"
-	TriggerHub      = "hub"
-	TriggerQueue    = "queue"
-	TriggerCLI      = "cli"
+	TriggerHub   = "hub"
+	TriggerQueue = "queue"
+	TriggerCLI   = "cli"
 )
 
 // RunInfo is a kept run as listed.
@@ -117,7 +114,7 @@ func RunResult(r *runrec.Run) string {
 // Sanitize makes every text field safe to show (ui.Safe), as Snapshot's.
 func (r *RunReport) Sanitize() {
 	if t := r.Trigger; t != nil {
-		t.Kind, t.By, t.Batch, t.Schedule = ui.Safe(t.Kind), ui.Safe(t.By), ui.Safe(t.Batch), ui.Safe(t.Schedule)
+		t.Kind, t.By, t.Batch = ui.Safe(t.Kind), ui.Safe(t.By), ui.Safe(t.Batch)
 	}
 	r.Run.Run = ui.Safe(r.Run.Run)
 	for i := range r.Run.Lanes {
@@ -424,9 +421,6 @@ func (s *Server) putRun(w http.ResponseWriter, r *http.Request) {
 	s.runs.mu.Unlock()
 	if info != nil {
 		s.events.publish("run", id, *info)
-	}
-	if !again {
-		s.runAlert(id, &rep)
 	}
 	s.mu.Lock()
 	if rec := s.records[id]; rec != nil && !again {

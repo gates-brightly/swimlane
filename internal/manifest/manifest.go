@@ -78,7 +78,7 @@ type File struct {
 	Path   string `yaml:"path"` // repo-relative
 	SHA256 string `yaml:"sha256"`
 	From   string `yaml:"from,omitempty"`
-	Exec   bool   `yaml:"exec,omitempty"` // staged executable (a compiled or direct lane)
+	Exec   bool   `yaml:"exec,omitempty"` // staged executable (a compiled or direct lane, a helper it runs)
 }
 
 // Policy is the policy part of the config.
@@ -87,19 +87,10 @@ type Policy struct {
 	Version int      `yaml:"version"`
 	Keys    []string `yaml:"keys"`
 	Rules   string   `yaml:"lookup_rules,omitempty"` // lookup.yml's require: rules
-	// Format is the manifest hash text this policy was pinned for: 0 for
-	// manifest v1 (SHA256 is then the v1 policy hash), 2 for manifest v2.
-	Format int `yaml:"format,omitempty"`
-	// LegacySHA256 is config.LegacyPolicyHash, for the v1 manifest hash
-	// (Format 2 only; "" when no v1 hash can stand for this policy).
-	LegacySHA256 string `yaml:"legacy_sha256,omitempty"`
 	// Set is each policy key swim.yml sets, with its value's hash, so a
-	// stale approval can say which changed (Format 2 only; not hashed).
+	// stale approval can say which changed (not hashed).
 	Set map[string]string `yaml:"set,omitempty"`
 }
-
-// legacyPolicyVersion is the policy version the v1 manifest hash wrote.
-const legacyPolicyVersion = 3
 
 // Pinned is what manifest_sha256 covers.
 type Pinned struct {
@@ -113,6 +104,9 @@ type Pinned struct {
 	// operator's own config (which differs per machine).
 	Runner string `yaml:"runner"`
 	Config Policy `yaml:"config"`
+	// Workspace is "live" for a lane that runs in the working tree (#
+	// Workspace: live), "" for one that runs in its staged copy.
+	Workspace string `yaml:"workspace,omitempty"`
 }
 
 // Local is what's pinned for this run on this machine but left out of
@@ -121,9 +115,6 @@ type Local struct {
 	Env        string `yaml:"env_sha256,omitempty"` // the lane's env from env files
 	RunnerPath string `yaml:"runner_path,omitempty"`
 	RunnerSHA  string `yaml:"runner_sha256,omitempty"`
-	// Jobs are the scripts swim generates for a lane of jobs, from the
-	// staged file.
-	Jobs []File `yaml:"jobs,omitempty"`
 	// Built are the repo Go modules' binaries, built from the stage with
 	// this machine's Go: what a module call runs.
 	Built []Built `yaml:"built,omitempty"`
@@ -155,10 +146,6 @@ type Manifest struct {
 	Guards        []string `yaml:"guards,omitempty"`
 	DynamicGuards bool     `yaml:"dynamic_guards,omitempty"`
 	SHA256        string   `yaml:"manifest_sha256"`
-	// LegacySHA256 is the manifest v1 hash of the same pins: approvals,
-	// queue entries, schedules and hub commands pinned before manifest v2
-	// match it (Matches). "" when no v1 hash can stand for them.
-	LegacySHA256 string `yaml:"legacy_manifest_sha256,omitempty"`
 
 	// Dir is where the manifest is staged ("" before Stage).
 	Dir  string            `yaml:"-"`
@@ -205,11 +192,17 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 			continue
 		}
 		pinned[f] = true
-		m.Pinned.Includes = append(m.Pinned.Includes, File{Path: f, SHA256: hash(d), From: FromIncludes})
+		// Staged executable as it is in the tree (a helper script the lane
+		// runs); like the script's, the mode isn't in the hash.
+		exec := false
+		if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(f))); err == nil {
+			exec = st.Mode()&0o111 != 0
+		}
+		m.Pinned.Includes = append(m.Pinned.Includes, File{Path: f, SHA256: hash(d), From: FromIncludes, Exec: exec})
 	}
 	m.ScriptSHA = hash(lane.JoinScript(data, files, read))
-	// What it pins is what its header names (# Includes:, Matrix: @files,
-	// # Cache: lockfiles, # Modules:): nothing is found by reading its body.
+	// What it pins is what its header names (# Includes:, # Cache:
+	// lockfiles, # Modules:): nothing is found by reading its body.
 	// A repo file it sources without naming it is refused at run time.
 	info, _ := lane.ReadScript(root, n)
 	// The modules it declares, as swim.yml allows them: a module that
@@ -261,9 +254,9 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	m.Pinned.Config = Policy{SHA256: cfg.PolicyHash(), Version: config.PolicyVersion, Keys: keys, Rules: rules,
-		Format: 2, LegacySHA256: cfg.LegacyPolicyHash(), Set: set}
+	m.Pinned.Config = Policy{SHA256: cfg.PolicyHash(), Version: config.PolicyVersion, Keys: keys, Rules: rules, Set: set}
 	m.Local.Env = envSHA
+	m.Pinned.Workspace = info.Workspace
 	m.Job = info.Job
 	seen := map[string]bool{}
 	for _, g := range append(info.GuardFlags(), lane.ParseScript(string(data)).GuardFlags()...) {
@@ -272,52 +265,26 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 			m.Guards = append(m.Guards, g)
 		}
 	}
-	if g, ok := lane.JobsIn(filepath.Base(path), data, n); ok {
-		for _, gd := range g.Info.GuardFlags() {
-			if !seen[gd] {
-				seen[gd] = true
-				m.Guards = append(m.Guards, gd)
-			}
-		}
-	}
 	// The guards it may ask for are the ones its header (or sidecar)
 	// declares, and any at all with "# Guards: *": a guard the body uses
 	// without declaring it is refused when it asks.
 	m.DynamicGuards = info.DynamicGuards > 0 || lane.ParseScript(string(data)).DynamicGuards > 0
 	sort.Strings(m.Guards)
 	m.SHA256 = m.Pinned.Hash(n)
-	m.LegacySHA256 = m.Pinned.HashV1(n)
 	return m, nil
 }
 
 // Matches reports whether pin, a manifest_sha256 an approval, queue entry,
-// schedule or hub command recorded, pins this manifest: its v2 hash, or
-// the v1 hash of the same pins (pinned by a swim before manifest v2).
+// schedule or hub command recorded, pins this manifest.
 func (m *Manifest) Matches(pin string) bool {
-	return pin != "" && (pin == m.SHA256 || pin == m.LegacySHA256)
+	return pin != "" && pin == m.SHA256
 }
 
 // Hash is manifest_sha256: the SHA-256 of the lane number and the pinned
 // entries, in a fixed text form (docs/formats.md). (The job id is in the
-// script or sidecar.) A manifest pinned before v2 hashes as v1.
+// script or sidecar.)
 func (p Pinned) Hash(n int) string {
-	if p.Config.Format < 2 {
-		return p.HashV1(n)
-	}
 	return hash([]byte(p.text("swim manifest v2", n, "config: "+p.Config.SHA256)))
-}
-
-// HashV1 is the manifest v1 hash of the same pins (policy version 3), ""
-// when no v1 hash can stand for them. Frozen: v1 pins must keep matching.
-func (p Pinned) HashV1(n int) string {
-	sha, version := p.Config.SHA256, p.Config.Version
-	if p.Config.Format >= 2 {
-		sha, version = p.Config.LegacySHA256, legacyPolicyVersion
-	}
-	if sha == "" {
-		return ""
-	}
-	return hash([]byte(p.text("swim manifest v1", n, fmt.Sprintf("config: v%d %s", version, sha))))
 }
 
 // text is the hashed form of the pins: head, then the lane, script,
@@ -335,12 +302,15 @@ func (p Pinned) text(head string, n int, config string) string {
 		fmt.Fprintf(&b, "module: %s %s %s %s %s\n", mod.Name, mod.Version, mod.Source, mod.Kind, mod.SHA256)
 	}
 	fmt.Fprintf(&b, "runner: %s\n%s\nlookup-rules: %s\n", p.Runner, config, p.Config.Rules)
+	// Only when live, so a staged lane's hash reads as it always has.
+	if p.Workspace != "" {
+		fmt.Fprintf(&b, "workspace: %s\n", p.Workspace)
+	}
 	return b.String()
 }
 
 // Stage copies the pinned files into the run's stage for the lane,
-// read-only, writes the scripts of a lane of jobs and the manifest, and
-// returns the stage directory. A stage left by an earlier attempt of the
+// read-only, writes the manifest, and returns the stage directory. A stage left by an earlier attempt of the
 // same run is replaced.
 func (m *Manifest) Stage(root, run string) (string, error) {
 	if m.data == nil {
@@ -371,19 +341,6 @@ func (m *Manifest) Stage(root, run string) (string, error) {
 	for _, f := range files {
 		if err := write(f.Path, m.data[f.Path], f.Exec); err != nil {
 			return "", err
-		}
-	}
-	// A bash lane of jobs runs the script swim generates for each job: from
-	// the staged file, into the stage.
-	m.Local.Jobs = nil
-	script := m.data[m.Pinned.Script.Path]
-	if g, ok := lane.JobsIn(filepath.Base(m.Pinned.Script.Path), script, m.Lane); ok && !g.Native {
-		for _, s := range g.Subs {
-			rel := filepath.ToSlash(filepath.Join(".swim", "groups", filepath.Base(lane.SubScript("", m.Lane, s.Path))))
-			if err := write(rel, []byte(s.Src), true); err != nil {
-				return "", err
-			}
-			m.Local.Jobs = append(m.Local.Jobs, File{Path: rel, SHA256: hash([]byte(s.Src)), Exec: true})
 		}
 	}
 	// Repo Go modules are built now, from the stage: a module that doesn't
@@ -441,20 +398,17 @@ func (m *Manifest) Path(rel string) string {
 	return filepath.Join(m.Dir, filepath.FromSlash(rel))
 }
 
+// Workspace is the directory the lane runs in: its stage, or the repo
+// (root) for # Workspace: live.
+func (m *Manifest) Workspace(root string) string {
+	if m.Pinned.Workspace == lane.WorkspaceLive || m.Dir == "" {
+		return root
+	}
+	return m.Dir
+}
+
 // Script is the staged script's path.
 func (m *Manifest) Script() string { return m.Path(m.Pinned.Script.Path) }
-
-// JobScript is the staged script of job path of a bash lane of jobs
-// ("", false if there is none).
-func (m *Manifest) JobScript(path string) (string, bool) {
-	want := filepath.Base(lane.SubScript("", m.Lane, path))
-	for _, j := range m.Local.Jobs {
-		if filepath.Base(j.Path) == want {
-			return m.Path(j.Path), true
-		}
-	}
-	return "", false
-}
 
 // Load reads the manifest staged in dir.
 func Load(dir string) (*Manifest, error) {
@@ -508,9 +462,6 @@ func (m *Manifest) Verify() error {
 	}
 	if m.Pinned.Sidecar != nil {
 		check("sidecar", *m.Pinned.Sidecar)
-	}
-	for _, f := range m.Local.Jobs {
-		check("job script", f)
 	}
 	if len(changed) > 0 {
 		return fmt.Errorf("manifest changed since staged (%s)", strings.Join(changed, ", "))
@@ -582,13 +533,6 @@ func Diff(old, new Pinned) []string {
 // diffPolicy says how swim.yml's policy changed between an approval's pins
 // and now, naming the keys when both sides recorded them.
 func diffPolicy(old, new Policy) []string {
-	if old.Format < 2 {
-		// A v1 pin: compare like with like.
-		if old.SHA256 == new.LegacySHA256 && new.LegacySHA256 != "" {
-			return nil
-		}
-		return []string{"config policy changed (swim.yml: " + or(strings.Join(new.Keys, ", "), "no policy keys set") + ")"}
-	}
 	if old.SHA256 == new.SHA256 {
 		return nil
 	}

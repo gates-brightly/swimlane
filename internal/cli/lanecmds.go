@@ -145,7 +145,7 @@ func laneStep(cmd string, args []string) error {
 		return endRound(root, ln, 1, "gate failed: "+label)
 	case cmd == "evidence" && code != 0:
 		return endRound(root, ln, 1, "evidence failed: "+label)
-	case code != 0 && os.Getenv("SWIM_FAIL_MODE") == "hard" && !soft && os.Getenv("SWIM_IN_HANDLER") == "":
+	case code != 0 && os.Getenv("SWIM_FAIL_MODE") == "hard" && !soft:
 		return endRound(root, ln, 1, "hard failure: "+label)
 	}
 	if code != 0 {
@@ -166,7 +166,7 @@ func exists(path string) bool {
 // way the command exits with code.
 func endRound(root string, n, code int, reason string) error {
 	ns := strconv.Itoa(n)
-	if os.Getenv("SWIM_WRAPPED") == "" || os.Getenv("SWIM_IN_HANDLER") != "" {
+	if os.Getenv("SWIM_WRAPPED") == "" {
 		// A bash lane ends its own round; in a handler, nothing ends it.
 		cmdMark([]string{ns, logparse.Stop, reason})
 		return exitError{code}
@@ -185,7 +185,7 @@ func endRound(root string, n, code int, reason string) error {
 // nil if the round goes on (or the command runs in a handler, after the
 // round's end, or in a bash lane, which ends its own round).
 func refuseEnded(cmd, ns, label string) error {
-	if os.Getenv("SWIM_WRAPPED") == "" || os.Getenv("SWIM_IN_HANDLER") != "" {
+	if os.Getenv("SWIM_WRAPPED") == "" {
 		return nil
 	}
 	root, _, n, err := laneCtx(ns)
@@ -224,9 +224,9 @@ func signalEnd() {
 	}
 }
 
-// endWait bounds signalEnd's wait: past the SDK grace period and the
-// wrapper's SIGTERM-to-SIGKILL window.
-const endWait = sdkGrace + 10*time.Second
+// endWait bounds signalEnd's wait: past the wrapper's SIGTERM-to-SIGKILL
+// window.
+const endWait = 10 * time.Second
 
 // swim guard FLAG "<action>": exit 0 if the operator approves the action,
 // 1 if not (recorded as a dry run). As the library's guard: FLAG=1 approves

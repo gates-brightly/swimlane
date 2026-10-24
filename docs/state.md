@@ -8,7 +8,7 @@ code is the source of truth; each section names where.
 
 Every write of `.swim/status.yml` goes through one check,
 `status.Transition` (`internal/status/transition.go`), against the lane
-and cell rules below. An illegal move panics in tests and wherever
+rules below. An illegal move panics in tests and wherever
 `SWIM_CHECK_STATES=1` is set (both e2e suites set it); elsewhere the write
 goes through, since the file is the last known state and refusing would
 leave a lane stuck. `swim status --rebuild`, which reconstructs every entry
@@ -51,7 +51,7 @@ stateDiagram-v2
   interrupted --> idle: swim archive
 ```
 
-What the check enforces (`Transition`), for a lane and for each cell:
+What the check enforces (`Transition`) for a lane:
 
 - **A running round only ends:** `running` goes to `passed`, `failed` or
   `interrupted` (or to `running` again, a new `lane_init`), never back to
@@ -100,8 +100,7 @@ Notes:
   `swim ci` or `swim watch` starts: each first ends such rounds as the
   launcher ends a killed lane's (`launcher.ReapDead`): the cut-off step
   is recovered as failed, the log gets `END INTERRUPTED` (exit 137), the
-  chain a round entry, and the lane is `interrupted`. A matrix or jobs
-  lane is ended once its swim run and every cell are gone. `swim status
+  chain a round entry, and the lane is `interrupted`. `swim status
   --rebuild` does the same for status alone. A new run of the lane isn't
   blocked either way. See [recovery](recovery.md#a-lane-stuck-running).
 - **A paused lane** (`swim pause`) stays `running` (or `waiting`, paused
@@ -121,37 +120,8 @@ Notes:
   lane starts running, is archived or stubbed, is released, or expires (an
   expired one is removed by the next command that reads it). Changes are
   serialised by `flock` on `.swim/claims/.lock`.
-- **Passed lanes** are left alone by `swim all` (unless `--rerun`, or an
-  Always lane with `Rerun-Children: yes` above them). `swim run N` reruns
-  them.
-
-## Job and matrix cell
-
-A lane of jobs (`# swim job 1.2`) or a matrix round (`# Matrix:`) runs each
-job or cell as its own process, with its own entry under the lane's
-`cells:` in `.swim/status.yml` and the same states
-(`internal/launcher/matrix.go`).
-
-```mermaid
-stateDiagram-v2
-  [*] --> waiting: the lane starts (the lane is running)
-  waiting --> locked: a per-cell lock held elsewhere
-  locked --> running: lock taken, lane_init
-  waiting --> running: its turn, lane_init
-  waiting --> skipped: an earlier job failed, Matrix-Fail stop, or interrupted
-  running --> passed
-  running --> failed
-  running --> interrupted
-  waiting --> failed: its process couldn't start or exited before its round
-```
-
-- **Jobs** run one at a time in file order; the first failure skips the
-  rest (`an earlier job failed`).
-- **Cells** run up to `Matrix-Parallel` at a time; `Matrix-Fail: stop`
-  skips the cells not yet started after a failure.
-- **The lane's own result** is `passed` when every job or cell passed,
-  `interrupted` when one was interrupted (and none failed), and `failed`
-  otherwise (a skipped one counts as a failure).
+- **Passed lanes** are left alone by `swim all` (unless `--rerun`). `swim
+  run N` reruns them.
 
 ## Queue entry
 

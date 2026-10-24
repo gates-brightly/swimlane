@@ -28,15 +28,15 @@ import (
 //	2  header metadata and fixed stages in lane scripts; grouped, fenced logs
 const Current = 2
 
-// Script is the newest lane script syntax this swim reads. Script syntax 3
-// adds outcome handlers (on_success, on_failure, on_exit) and Fail: hard: a
-// script that uses them declares it, so an older swim, which would skip its
-// rollback, refuses it. Syntax 4 adds modules (# Modules:, mod, mod_env):
-// an older swim would run the round with every module call failing outside
-// a step. Syntax 2 and 3 scripts are read as they are; nothing is migrated,
-// and logs stay at Current.
+// Script is the newest lane script syntax this swim reads, and the one
+// swim new writes. Script syntax 3 adds Fail: hard (and once added outcome
+// handlers, which swim no longer has: swim lint refuses a script that
+// defines one). Syntax 4 adds modules (# Modules:, mod, mod_env): an older
+// swim would run the round with every module call failing outside a step.
+// Syntax 2 and 3 scripts are read as they are; nothing is migrated, and
+// logs stay at Current.
 //
-//	3  outcome handlers and Fail: (lane scripts only)
+//	3  Fail: (lane scripts only)
 //	4  modules: # Modules:, mod and mod_env (lane scripts only)
 const Script = 4
 

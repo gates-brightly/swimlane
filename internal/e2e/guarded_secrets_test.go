@@ -5,7 +5,6 @@ package e2e
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -167,7 +166,7 @@ run "use" bash -c "echo db=$DB"`)
 	}
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 	contains(t, ".swim.log", string(hist), "secret-released  swim 1", "PROD_DB (guarded by "+gsFlag+", approved by auto)")
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 	contains(t, "chain", r.mustSwim("history"), "secret PROD_DB released to swim 1 (guard "+gsFlag+", approved by auto)", "secret PROD_DB refused to swim 2")
 	noValue(t, r)
 
@@ -255,28 +254,4 @@ func TestGuardedSecretOutsideRun(t *testing.T) {
 	out, _ := c.CombinedOutput()
 	contains(t, "bash lane", string(out), "refused: PROD_DB is guarded by "+gsFlag+": a lane gets it only from its swim run")
 	contains(t, "agent1.log", r.log(1), "WARN  secret PROD_DB refused", "STOP  refused")
-}
-
-// An SDK lane gets the same refusal, as its language's error.
-func TestGuardedSecretSDKRefusal(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not installed")
-	}
-	r := guardedRepo(t, "")
-	r.env = append(r.env, "PYTHONPATH="+filepath.Join(repoRoot(), "sdk", "python"))
-	r.write("lane.1.py", `#!/usr/bin/env python3
-# Round: python guarded secret
-import swim
-with swim.round() as r:
-    try:
-        swim.secret.get("PROD_DB")
-        r.run("got it", ["echo", "released"])
-    except swim.SwimError as e:
-        r.run("refused", ["echo", "error: " + str(e)])
-`, 0o755)
-	r.swim("run", "1", "--plain")
-	contains(t, "agent1.log", r.log(1), "error: secret PROD_DB: refused: PROD_DB is guarded by "+gsFlag+", which isn't approved in this run")
-	if strings.Contains(r.log(1), "released") {
-		t.Errorf("released to an SDK lane without a guard:\n%s", r.log(1))
-	}
 }

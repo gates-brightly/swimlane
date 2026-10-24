@@ -21,19 +21,19 @@ func TestPlanCheck(t *testing.T) {
 	r.script(1, "fetch", `stage snapshot
 snapshot "state" echo hi
 stage check
-run "probe" touch probed
+run "probe" touch "$SWIM_ROOT/probed"
 stage change
-run "the change" touch changed
+run "the change" touch "$SWIM_ROOT/changed"
 stage verify
-run "verify" touch verified`)
+run "verify" touch "$SWIM_ROOT/verified"`)
 	r.script(2, "cutover", `stage check
 gate "DeletionPolicy is Retain" false
 stage change
-run "x" touch x`)
+run "x" touch "$SWIM_ROOT/x"`)
 	withHeader(t, r, 2, "# After: 1")
-	r.script(3, "unstaged", `run "something" touch unstaged`)
+	r.script(3, "unstaged", `run "something" touch "$SWIM_ROOT/unstaged"`)
 	r.script(4, "early guard", `stage check
-if guard ALLOW_EARLY "an early change"; then run "early" touch early; fi
+if guard ALLOW_EARLY "an early change"; then run "early" touch "$SWIM_ROOT/early"; fi
 stage change`)
 	withHeader(t, r, 4, "# After: 1")
 	r.env = append(r.env, "ALLOW_EARLY=1")
@@ -82,7 +82,7 @@ stage change`)
 // A lane in another language stops at swim stage change too.
 func TestPlanCheckWrapped(t *testing.T) {
 	r := newRepo(t, "")
-	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped\nswim stage check\nswim run \"probe\" -- touch probed\nswim stage change\ntouch changed\nsleep 2\n", 0o755)
+	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped\nswim stage check\nswim run \"probe\" -- touch \"$SWIM_ROOT/probed\"\nswim stage change\ntouch \"$SWIM_ROOT/changed\"\nsleep 2\n", 0o755)
 	r.mustSwim("plan", "--check")
 	if !exists(t, r, "probed") || exists(t, r, "changed") {
 		t.Errorf("probed=%v changed=%v", exists(t, r, "probed"), exists(t, r, "changed"))
@@ -98,9 +98,9 @@ run "apply too early" terraform apply -auto-approve
 stage change`)
 	contains(t, "lint", must(r.swim("lint", "1")), `"terraform apply" runs before`, "[check-unsafe]")
 	r.script(1, "ok", `stage check
-run "probe" touch probed
+run "probe" touch "$SWIM_ROOT/probed"
 stage change
-run "change" touch changed`)
+run "change" touch "$SWIM_ROOT/changed"`)
 	r.env = append(r.env, "CI=true", "GITHUB_ACTIONS=true")
 	r.swim("ci", "--check", "--provider", "generic")
 	if !exists(t, r, "probed") || exists(t, r, "changed") {

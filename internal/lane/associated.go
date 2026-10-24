@@ -62,10 +62,6 @@ func Associated(root string) []int {
 			add(n)
 		}
 	}
-	gs, _ := Groups(root)
-	for n := range gs {
-		add(n)
-	}
 	logs, _ := os.ReadDir(LogDir(root))
 	for _, e := range logs {
 		name := e.Name()

@@ -1,11 +1,12 @@
 # Frozen formats
 
-What swim signs and pins, byte for byte. Approvals, queued batches,
-recurring schedules and hub commands all record these hashes, so changing
-how one is computed would void every one of them. **Upgrading swim never
-stales an approval or a pin.** Only changes to what you pinned do: your
-script, the files it includes, its sidecar, its modules, how it runs, the
-`swim.yml` policy keys you set, or `lookup.yml`'s `require:` rules.
+What swim signs and pins, byte for byte. Approvals, queued and
+scheduled batches and hub commands all record these hashes, so changing
+how one is computed would void every one of them. **Upgrading swim
+doesn't stale an approval or a pin** while these formats hold. Only
+changes to what you pinned do: your script, the files it includes, its
+sidecar, its modules, how it runs, the `swim.yml` policy keys you set, or
+`lookup.yml`'s `require:` rules.
 
 [← back to the docs](README.md) · [trust model](trust-model.md)
 
@@ -22,7 +23,7 @@ script-sha256: <sha256 of the script with its # Includes: files>
 lane: 3
 job: <job id>
 round: <round goal>
-cells: <cell;cell>            (only for one cell of a matrix round)
+cells: <cell;cell>            (only in statements older swims wrote for a matrix cell)
 evidence-sha256: <sha256>     (only when approved with evidence)
 manifest-sha256: <manifest_sha256>   (only when bound to a manifest)
 approves: <FLAG,FLAG | all>
@@ -64,27 +65,6 @@ values, and the runner binary's path and hash (an OS update would
 otherwise stale every approval). These are recorded under `local:` in the
 staged manifest and checked before exec.
 
-### Manifest v1, still accepted
-
-Before v2, the hash text began `swim manifest v1` and its config line was
-`config: v3 <sha256 of the YAML of all twelve policy keys, set or not>`.
-Adding a key meant bumping that version, which staled every approval.
-
-A manifest built today records both hashes: `manifest_sha256` (v2) and
-`legacy_manifest_sha256` (v1, the same pins hashed the old way). Every
-check of a recorded pin accepts either one (`Manifest.Matches`,
-`queue.Lane.PinsManifest`):
-- approvals
-- queued batches
-- recurring schedules
-- hub run and queue commands
-- `swim verify`
-
-A pin made by an older swim therefore keeps matching until something it
-pins really changes. A co-approver running a newer swim signs the existing
-v1 approval file instead of starting a second one. When `swim.yml` sets a
-key that v1 didn't cover, there is no v1 hash, and only v2 pins match.
-
 ## Task names
 
 A `# Task: renew-certs` header names a lane. The name is an alias: the
@@ -98,11 +78,10 @@ order:
 3. A task name, matched exactly.
 4. A job id, or a prefix of 8 or more characters.
 
-`# After:` and `# Finally:` read a task name the same way.
+`# After:` reads a task name the same way.
 
 `swim lint` keeps these unambiguous. A task name may not be:
 - a swim command;
-- a group file's name (`lanes.<name>.sh`);
 - only hex digits and `-` (that could be a job id's prefix);
 - another lane's name.
 
@@ -110,10 +89,11 @@ order:
 
 Don't change one in place. Golden tests pin each hash
 (`internal/manifest/format_test.go`, `internal/config/policy_test.go`).
-If a format must change, do it as v1 to v2 did:
+If a format must change once there are approvals to keep:
 1. Keep the old hash function, frozen.
 2. Record both hashes.
-3. Make every comparison accept either.
+3. Make every comparison accept either (`Manifest.Matches`,
+   `queue.Lane.PinsManifest`).
 4. Say so in the CHANGELOG.
 
 One known exception: a swim release that changes a **built-in module**

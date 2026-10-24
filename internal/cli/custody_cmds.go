@@ -20,7 +20,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/evidence"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/module"
@@ -50,16 +49,16 @@ func laneFile(arg string) (int, bool) {
 // otherwise co-signed). --key picks the key, --expires D and --note T
 // describe a new approval.
 func cmdApprove(args []string) error {
-	var guards, expires, keyPath, note, auto, cell, hubRef, hubURL, hubToken string
+	var guards, expires, keyPath, note, auto, hubRef, hubURL, hubToken string
 	var all, noEvidence, decline bool
 	rest, err := flags{bools: map[string]*bool{"all": &all, "no-evidence": &noEvidence, "decline": &decline},
-		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto, "cell": &cell,
+		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto,
 			"hub": &hubRef, "url": &hubURL, "token": &hubToken}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if hubRef != "" {
-		if len(rest) > 0 || auto != "" || guards != "" || all || cell != "" || expires != "" {
+		if len(rest) > 0 || auto != "" || guards != "" || all || expires != "" {
 			return usagef("swim approve --hub WORKER/QUESTION answers one question: it takes only --decline, --key, --url and --token")
 		}
 		return approveHub(hubRef, keyPath, hubURL, hubToken, decline)
@@ -154,29 +153,17 @@ func cmdApprove(args []string) error {
 			}
 		}
 		path := sigfile.ScriptPath(root, n, sha, man)
-		var cells []string
-		if cell != "" {
-			// One cell of a matrix round.
-			c, ok := info.Cell(cell)
-			if !info.IsMatrix() || !ok {
-				return fmt.Errorf("--cell %s: swim %d has no such cell (a matrix round's cells: %s)", cell, n, strings.Join(launcher.CellNames(info.Cells()), ", "))
-			}
-			cells, path = []string{c.Name}, sigfile.CellPath(root, n, sha, man, c.Name)
-		}
 		// A round with evidence steps (or a guard whose rule needs it) is
 		// approved together with its latest evidence: the plan, not just
 		// the script.
-		evHash, cellName := "", ""
+		evHash := ""
 		if !noEvidence && (info.UsesEvidence || needsEvidence(lk, approves, all, scriptGuards)) {
-			ev, err := approvalEvidence(root, n, info, sha, cells)
+			ev, err := approvalEvidence(root, n, info, sha)
 			if err != nil {
 				return err
 			}
 			evHash = ev.Hash
-			if len(cells) > 0 {
-				cellName = cells[0]
-			}
-			path = sigfile.EvidencePath(root, n, sha, man, ev.Hash, cellName)
+			path = sigfile.EvidencePath(root, n, sha, man, ev.Hash, "")
 			text, _ := ev.Text(root)
 			fmt.Printf("evidence from %s at %s:\n", map[bool]string{true: "swim plan --check", false: "a run"}[ev.Check], ev.At)
 			for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
@@ -184,23 +171,8 @@ func cmdApprove(args []string) error {
 			}
 			fmt.Printf("approving %s (script %s, evidence %s)\n", lane.ScriptName(root, n), short12(sha), short12(ev.Hash))
 		}
-		// An approval file a swim before manifest v2 started for these same
-		// pins (its v1 hash) is the one to co-approve: a second file would
-		// split the approvers between two statements.
-		if m.LegacySHA256 != "" {
-			legacy := sigfile.ScriptPath(root, n, sha, m.LegacySHA256)
-			switch {
-			case evHash != "":
-				legacy = sigfile.EvidencePath(root, n, sha, m.LegacySHA256, evHash, cellName)
-			case len(cells) > 0:
-				legacy = sigfile.CellPath(root, n, sha, m.LegacySHA256, cells[0])
-			}
-			if _, serr := os.Stat(legacy); serr == nil {
-				path, man = legacy, m.LegacySHA256
-			}
-		}
 		f, err = loadOrNew(path, func() *sigfile.File {
-			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round, Cells: cells, Evidence: evHash,
+			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round, Evidence: evHash,
 				Manifest: man, Pinned: &m.Pinned}
 		})
 		if err == nil && len(f.Events) == 0 {
@@ -1172,32 +1144,17 @@ func needsEvidence(lk *lookup.Lookup, approves []string, all bool, scriptGuards 
 // approvalEvidence is the latest evidence of lane n's round, for an
 // approval of the script with hash sha: refused when there's none, or it
 // was gathered for another version of the script.
-func approvalEvidence(root string, n int, info lane.Info, sha string, cells []string) (*evidence.Index, error) {
+func approvalEvidence(root string, n int, info lane.Info, sha string) (*evidence.Index, error) {
 	job := info.Job
-	if len(cells) > 0 {
-		if c, ok := info.Cell(cells[0]); ok {
-			job = info.ForCell(c).Job
-		}
-	}
 	if job == "" {
 		if st, _ := status.Load(root); st != nil {
 			if l := st.Get(n); l != nil {
 				job = l.Job
-				if len(cells) > 0 {
-					job = l.CellEntry(cells[0]).Job
-				}
 			}
 		}
 	}
 	ref := fmt.Sprint(n)
-	if len(cells) > 0 {
-		info, _ := lane.ReadScript(root, n)
-		ref = "'" + info.SubLabel(n, cells[0]) + "'"
-	}
 	key := evidence.LaneKey(n, "")
-	if len(cells) > 0 {
-		key = evidence.LaneKey(n, lane.CellSlug(cells[0]))
-	}
 	ev := evidence.Load(root, job)
 	if lv := evidence.LoadLane(root, key); lv != nil && (ev == nil || ev.Script != sha || lv.At > ev.At) {
 		ev = lv // the lane's latest (a round with no fixed job)

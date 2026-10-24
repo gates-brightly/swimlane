@@ -60,12 +60,3 @@ func TestPolicyHashFrozen(t *testing.T) {
 		t.Error("blocked_commands: [] should count as set")
 	}
 }
-
-// The v1 policy hash is what swim before manifest v2 computed: v1 pins
-// match only while it is.
-func TestLegacyPolicyHashFrozen(t *testing.T) {
-	const empty = "48dd9621d956e6a5fb846357507fbe83e22384fc11179b1c85405ad5872837a8"
-	if got := loadWith(t, "").LegacyPolicyHash(); got != empty {
-		t.Errorf("v1 policy hash of an empty swim.yml is %s, want %s", got, empty)
-	}
-}

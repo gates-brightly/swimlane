@@ -30,7 +30,7 @@ if guard CERT_ALLOW "renew"; then run "renew" true; fi`)
 	contains(t, "log", r.mustSwim("log", "renew-certs"), "APPROVED  renew")
 	contains(t, "status", r.mustSwim("status"), "[renew-certs]")
 	contains(t, "history", r.mustSwim("history", "renew-certs", "--oneline"), "round swim 2 passed")
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 	// The approval is the lane's, as any is.
 	files, _ := filepath.Glob(filepath.Join(r.root, "approvals", "lane.2.*.signature"))
 	if len(files) != 1 {
@@ -61,7 +61,7 @@ if guard CERT_ALLOW "renew"; then run "renew" true; fi`)
 	}
 }
 
-// # After: and # Finally: take a task name as they take a lane number.
+// # After: takes a task name as it takes a lane number.
 func TestTaskAfter(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "build", "# Task: build\n"+`run "build" true`)

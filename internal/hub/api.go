@@ -28,9 +28,8 @@ import (
 //	GET /api/enrollments/{id}/runs/{run}/jobs/{lane}/log   user: its log, as text (Range honored): streamed (hub.logs: stream, as it runs) or asked for
 //	GET /api/enrollments/{id}/commands                     user: its recent commands and their outcomes (commands.go)
 //	GET /api/enrollments/{id}/questions/{req}              user: a guard waiting for an answer, and the statement to sign (answers.go)
-//	GET /api/activity                                      every worker's runs, newest first (?since=24h|7d|all&status=failed|passed|dry run&ns=NS&trigger=schedule|hub|queue|cli&worker=ID)
+//	GET /api/activity                                      every worker's runs, newest first (?since=24h|7d|all&status=failed|passed|dry run&ns=NS&trigger=hub|queue|cli&worker=ID)
 //	GET /api/jobs                                          every job (a worker's lane and round title) with its last result, success rate and recent durations (?ns=NS)
-//	GET /api/schedules                                     every worker's recurring schedules, with the hub's verdict (missed, failed, ...), worst first
 //	GET /api/events                                        server-sent events (events.go)
 
 // APISchema identifies the read API's documents.
@@ -77,7 +76,6 @@ func (s *Server) apiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/enrollments", s.enrollmentsAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}", s.enrollmentAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}/config", s.configAPI)
-	mux.HandleFunc("GET /api/schedules", s.schedulesAPI)
 	mux.HandleFunc("GET /api/activity", s.activityAPI)
 	mux.HandleFunc("GET /api/jobs", s.jobsAPI)
 	mux.HandleFunc("GET /api/enrollments/{id}/runs", s.runsAPI)

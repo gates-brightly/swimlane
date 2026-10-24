@@ -130,27 +130,31 @@ func saveSent(root string, m map[string]int) {
 	}
 }
 
-// latestCheckpoint reads spec's newest checkpoint and checks it: a bad
-// signature, or a signer trusted doesn't vouch for (when trust.yml is in
-// use), and it's ignored with a warning.
-func (v *verifier) latestCheckpoint(spec string) (*chain.Checkpoint, error) {
+// checkpoints reads every checkpoint at spec and checks each: one with a
+// bad signature, or a signer trusted doesn't vouch for (when trust.yml is
+// in use), is ignored with a warning.
+func (v *verifier) checkpoints(spec string) ([]chain.Checkpoint, error) {
 	a, err := openAnchor(v.root, spec)
 	if err != nil {
 		return nil, err
 	}
-	cp, err := a.Latest()
-	if err != nil || cp == nil {
+	all, err := a.All()
+	if err != nil {
 		return nil, err
 	}
-	switch err := chain.VerifyCheckpoint(*cp); {
-	case errors.Is(err, chain.ErrUnsigned) && v.trust == nil:
-		v.warn = append(v.warn, fmt.Sprintf("anchor %s: checkpoint %s is unsigned", spec, cp))
-	case err != nil:
-		v.warn = append(v.warn, fmt.Sprintf("anchor %s: checkpoint %s ignored: %v", spec, cp, err))
-		return nil, nil
-	case v.trust != nil && !v.trust(cp.Signer):
-		v.warn = append(v.warn, fmt.Sprintf("anchor %s: checkpoint %s ignored: signed by %s, a key not in trust.yml", spec, cp, sign.Fingerprint(cp.Signer)))
-		return nil, nil
+	var out []chain.Checkpoint
+	for _, cp := range all {
+		switch err := chain.VerifyCheckpoint(cp); {
+		case errors.Is(err, chain.ErrUnsigned) && v.trust == nil:
+			v.warn = append(v.warn, fmt.Sprintf("anchor %s: checkpoint %s is unsigned", spec, &cp))
+		case err != nil:
+			v.warn = append(v.warn, fmt.Sprintf("anchor %s: checkpoint %s ignored: %v", spec, &cp, err))
+			continue
+		case v.trust != nil && !v.trust(cp.Signer):
+			v.warn = append(v.warn, fmt.Sprintf("anchor %s: checkpoint %s ignored: signed by %s, a key not in trust.yml", spec, &cp, sign.Fingerprint(cp.Signer)))
+			continue
+		}
+		out = append(out, cp)
 	}
-	return cp, nil
+	return out, nil
 }

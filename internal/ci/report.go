@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -40,10 +39,6 @@ func Collect(root string, lanes []int, run string) []LaneReport {
 	st, _ := status.Load(root)
 	var out []LaneReport
 	for _, n := range lanes {
-		if cells := cellReports(root, st, n, run); len(cells) > 0 {
-			out = append(out, cells...)
-			continue
-		}
 		r := LaneReport{N: n, State: status.Skipped, Log: fmt.Sprintf(".swim/logs/agent%d.log", n)}
 		if st != nil {
 			if l := st.Get(n); l != nil {
@@ -62,39 +57,6 @@ func Collect(root string, lanes []int, run string) []LaneReport {
 				if r.Title == "" {
 					r.Title = round.Title
 				}
-			}
-		}
-		out = append(out, r)
-	}
-	return out
-}
-
-// cellReports is a report per job (or matrix cell) of lane n that this run
-// ran or skipped, each from its own log; none for a lane without them.
-func cellReports(root string, st *status.File, n int, run string) []LaneReport {
-	if st == nil {
-		return nil
-	}
-	l := st.Get(n)
-	if l == nil || len(l.Cells) == 0 {
-		return nil
-	}
-	info, _ := lane.ReadScript(root, n)
-	var out []LaneReport
-	for _, c := range l.Cells {
-		if c.Run != run {
-			continue
-		}
-		path := lane.CellLog(root, n, c.Cell)
-		rel := ".swim/logs/" + filepath.Base(path)
-		r := LaneReport{N: n, Label: "swim " + info.SubLabel(n, c.Cell), Job: c.Job, Title: c.Round, State: c.State,
-			Reason: c.Reason, Exit: c.ExitCode, Log: rel, Unprompted: c.UnpromptedText()}
-		if c.DurationS != nil {
-			r.Duration = *c.DurationS
-		}
-		if lines := lastRound(path); len(lines) > 0 {
-			if round, err := logparse.ParseRound(lines); err == nil && round.Run == run {
-				r.Round, r.Lines = round, lines
 			}
 		}
 		out = append(out, r)

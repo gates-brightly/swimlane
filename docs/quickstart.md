@@ -56,7 +56,10 @@ swim status
 
 Every `run` is a **step**: its command, output, exit code and time go to
 the lane's log (`.swim/logs/agent1.log`). **PASS means exit 0, nothing
-more**: read the output to know what happened. The **stages** (snapshot,
+more**: read the output to know what happened. The snapshot lists one
+file: a round runs in a **staged copy** of what it pins (its script, and
+the files its `# Includes:` names), so what runs is what was approved.
+The repo itself is `$SWIM_ROOT`. The **stages** (snapshot,
 check, change, verify) say where the round is; a read-only preview
 (`swim plan --check`) stops where `change` begins.
 
@@ -99,15 +102,15 @@ _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 2
 
 stage check
-gate "scratch.txt is there" test -f scratch.txt
+gate "scratch.txt is there" test -f "$SWIM_ROOT/scratch.txt"
 
 stage change
 if guard HOUR_ALLOW_RM "remove scratch.txt (quickstart)"; then
-  run "remove it" rm scratch.txt
+  run "remove it" rm "$SWIM_ROOT/scratch.txt"
 fi
 
 stage verify
-run "what's left" ls
+run "what's left" ls "$SWIM_ROOT"
 
 summary
 EOF
@@ -123,7 +126,8 @@ run** (`SKIP ... dry run`), and nothing changes. On a terminal, `swim run 2`
 asks you (`Y/N [N]`); `HOUR_ALLOW_RM=1` approves up front, and the log
 records which it was (`APPROVED ... (HOUR_ALLOW_RM=1)`). The header's
 `# Guards:` line is the lane's contract: a guard it doesn't declare is
-refused.
+refused. The file it removes is the round's target, so the script names
+it in the repo, `$SWIM_ROOT/scratch.txt`.
 
 ## 5. Approve ahead, and what voids it
 
@@ -163,7 +167,7 @@ cat > lane.3.sh <<'EOF'
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 3
 stage check
-run "build" bash -c 'test -f ok.flag && echo built'
+run "build" bash -c 'test -f "$SWIM_ROOT/ok.flag" && echo built'
 summary
 EOF
 swim new 4 "Ship the build"
@@ -242,7 +246,7 @@ round wrote into the log (`$SWIM_OUT`, the round's outputs, declared in
 swim report
 swim log | tail -5
 swim timeline
-swim verify
+swim verify --allow-unsigned
 ```
 
 `swim report` is everything written since you last looked (with
@@ -250,7 +254,9 @@ swim verify
 lane) is the project log, one line per action. `swim timeline` shows when
 each lane waited and ran. `swim verify` checks the **chain of custody**:
 every round and approval, hash-linked, so the record can't be quietly
-rewritten.
+rewritten. This repo signs approvals with `hour-key` but not its record;
+with a signing key (`swim config signing_key`), drop `--allow-unsigned`
+and an unsigned entry fails it.
 
 <!-- /quickstart -->
 

@@ -72,7 +72,7 @@ func TestCacheLockfileIsPinnedAndRequired(t *testing.T) {
 run "ok" true`)
 	// No lockfile on disk: the lane doesn't start.
 	out, code := r.swim("run", "1", "--plain")
-	if code == 0 || !strings.Contains(out, "lockfile go.sum is missing") {
+	if code == 0 || !strings.Contains(out, "lockfile go.sum doesn't exist") {
 		t.Fatalf("missing lockfile: exit %d\n%s", code, out)
 	}
 	r.write("go.sum", "example.com/m v1.0.0 h1:abc=\n", 0o644)
@@ -110,6 +110,7 @@ touch "$busy"; sleep 1; rm -f "$busy"; echo "init ok"
 		r.script(n, "tf", `# Cache: terraform @.terraform.lock.hcl
 run "tf init" ./tools/terraform init
 run "tf plan" ./tools/terraform plan`)
+		withHeader(t, r, n, "# Includes: tools/terraform")
 	}
 	out, code := r.swim("run", "1", "2", "--plain")
 	if code != 0 {

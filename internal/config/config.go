@@ -59,12 +59,11 @@ type Settings struct {
 	WatchBatches       int           `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
 	// Observe tunes swim observe's detectors (thresholds, not policy: it
 	// stales no approval).
-	Observe        *observe.Thresholds `yaml:"observe,omitempty"`
-	ScheduleTZ     string              `yaml:"schedule_tz,omitempty"`     // the zone swim schedule reads times in (default: the machine's)
-	FinallyTimeout string              `yaml:"finally_timeout,omitempty"` // a stopped run's finally lanes get this long in all (default 10m)
-	CacheDir       string              `yaml:"cache_dir,omitempty"`       // where tool caches live (default ~/.cache/swim); config.yml only
-	CacheMax       string              `yaml:"cache_max,omitempty"`       // a repo's caches are trimmed to this (default 10GB; 0: no cap)
-	CacheSlug      string              `yaml:"cache_slug,omitempty"`      // the repo's cache directory name (default: name + remote hash); config.yml only
+	Observe    *observe.Thresholds `yaml:"observe,omitempty"`
+	ScheduleTZ string              `yaml:"schedule_tz,omitempty"` // the zone swim schedule reads times in (default: the machine's)
+	CacheDir   string              `yaml:"cache_dir,omitempty"`   // where tool caches live (default ~/.cache/swim); config.yml only
+	CacheMax   string              `yaml:"cache_max,omitempty"`   // a repo's caches are trimmed to this (default 10GB; 0: no cap)
+	CacheSlug  string              `yaml:"cache_slug,omitempty"`  // the repo's cache directory name (default: name + remote hash); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
 	// the anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -420,9 +419,6 @@ func (c *Config) merge(r Settings) {
 	if r.ScheduleTZ != "" {
 		c.ScheduleTZ = r.ScheduleTZ
 	}
-	if r.FinallyTimeout != "" {
-		c.FinallyTimeout = r.FinallyTimeout
-	}
 	if r.CacheDir != "" {
 		c.CacheDir = r.CacheDir
 	}
@@ -634,19 +630,6 @@ func (c *Config) ClaimLeaseFor() time.Duration {
 		return d
 	}
 	return lane.DefaultClaimLease
-}
-
-// DefaultFinallyTimeout is how long a stopped run's finally lanes get, in
-// all, unless finally_timeout says otherwise.
-const DefaultFinallyTimeout = 10 * time.Minute
-
-// FinallyTimeoutFor is finally_timeout: once a run is stopped, how long its
-// finally lanes (# Finally:) still get to start and run.
-func (c *Config) FinallyTimeoutFor() time.Duration {
-	if d, err := time.ParseDuration(c.FinallyTimeout); err == nil && d > 0 {
-		return d
-	}
-	return DefaultFinallyTimeout
 }
 
 // DefaultWatchBatches is how many batches one swim watch runs at once
@@ -905,11 +888,6 @@ func (c *Config) validateInterrupt() error {
 	}
 	if c.WatchBatches < 0 {
 		return fmt.Errorf("watch_batches must be 1 or more, got %d", c.WatchBatches)
-	}
-	if c.FinallyTimeout != "" {
-		if d, err := time.ParseDuration(c.FinallyTimeout); err != nil || d <= 0 {
-			return fmt.Errorf("finally_timeout must be a duration like 10m, got %q", c.FinallyTimeout)
-		}
 	}
 	if c.ScheduleTZ != "" {
 		if _, err := time.LoadLocation(c.ScheduleTZ); err != nil {

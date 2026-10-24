@@ -56,17 +56,13 @@ type User struct {
 	Role      string `json:"role"`
 	TokenHash string `json:"token_hash"`
 	Added     string `json:"added,omitempty"`
-	// Tailscale is the Tailscale login (Tailscale-User-Login) that signs
-	// them in on a hub run with --trust-tailscale-identity (tailscale.go).
-	Tailscale string `json:"tailscale,omitempty"`
 }
 
 // UserInfo is a user as listed: never the token's hash.
 type UserInfo struct {
-	Name      string `json:"name"`
-	Role      string `json:"role"`
-	Added     string `json:"added,omitempty"`
-	Tailscale string `json:"tailscale,omitempty"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+	Added string `json:"added,omitempty"`
 }
 
 // session is one login, kept in the state (keyed by its id's hash, so the
@@ -75,7 +71,6 @@ type session struct {
 	User    string    `json:"user"`
 	CSRF    string    `json:"csrf"` // a form POST with this session must carry it
 	Expires time.Time `json:"expires"`
-	Via     string    `json:"via,omitempty"` // "tailscale": signed in by its identity header, not a token
 }
 
 // A user name is what lookup.yml names people by, and lands in
@@ -147,15 +142,6 @@ func (s *Server) userRoutes(mux *http.ServeMux) {
 // AddUser adds a user, or replaces one (a new token and role, its sessions
 // ended), and returns the token: shown once, never kept.
 func (s *Server) AddUser(name, role string) (string, error) {
-	return s.AddUserTailscale(name, role, "")
-}
-
-// AddUserTailscale is AddUser, with the Tailscale login that signs them
-// in ("" for none).
-func (s *Server) AddUserTailscale(name, role, tailscale string) (string, error) {
-	if tailscale != "" && !validTailscaleLogin(tailscale) {
-		return "", fmt.Errorf("tailscale login %q: one word of printable characters, like you@github or you@example.com", tailscale)
-	}
 	if !chars.Name(name, 64) {
 		return "", fmt.Errorf("user name %q: letters, digits, '.', '_' and '-' only (the name lookup.yml gives them)", name)
 	}
@@ -167,26 +153,17 @@ func (s *Server) AddUserTailscale(name, role, tailscale string) (string, error) 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, u := range s.users {
-		if tailscale != "" && u.Name != name && strings.EqualFold(u.Tailscale, tailscale) {
-			return "", fmt.Errorf("tailscale login %s is %s's already", tailscale, u.Name)
-		}
-	}
 	token := newToken()
 	verb := "added"
 	if _, ok := s.users[name]; ok {
 		verb = "replaced"
 	}
-	s.users[name] = &User{Name: name, Role: role, TokenHash: hashToken(token), Added: s.now().UTC().Format(time.RFC3339), Tailscale: tailscale}
+	s.users[name] = &User{Name: name, Role: role, TokenHash: hashToken(token), Added: s.now().UTC().Format(time.RFC3339)}
 	s.endSessions(name)
 	if err := s.save(); err != nil {
 		return "", err
 	}
-	if tailscale != "" {
-		s.audit("user %s %s (%s, tailscale %s)", name, verb, role, tailscale)
-	} else {
-		s.audit("user %s %s (%s)", name, verb, role)
-	}
+	s.audit("user %s %s (%s)", name, verb, role)
 	return token, nil
 }
 
@@ -212,7 +189,7 @@ func (s *Server) Users() []UserInfo {
 	defer s.mu.Unlock()
 	out := []UserInfo{}
 	for _, u := range s.users {
-		out = append(out, UserInfo{Name: u.Name, Role: u.Role, Added: u.Added, Tailscale: u.Tailscale})
+		out = append(out, UserInfo{Name: u.Name, Role: u.Role, Added: u.Added})
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })
 	return out
@@ -220,6 +197,7 @@ func (s *Server) Users() []UserInfo {
 
 // endSessions logs a user out everywhere. s.mu is held.
 func (s *Server) endSessions(name string) {
+	s.events.closeUser(name) // their open event streams end too
 	for id, se := range s.sessions {
 		if se.User == name {
 			delete(s.sessions, id)
@@ -246,7 +224,7 @@ func (s *Server) usersAPI(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "a user needs {name, role}", http.StatusBadRequest)
 			return
 		}
-		token, err := s.AddUserTailscale(in.Name, in.Role, in.Tailscale)
+		token, err := s.AddUser(in.Name, in.Role)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

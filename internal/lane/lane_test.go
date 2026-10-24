@@ -165,69 +165,6 @@ summary
 	}
 }
 
-const v1Template = `#!/usr/bin/env bash
-# Round: Old template round
-# Job:   old-job-0001
-# Lane:  swim 1    Written: 2026-10-01
-#
-# Steps:
-#   1. Snapshot current state (read-only, saved under .swim/snapshots/)
-
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
-eval "$_swim_lib"
-lane_init 1
-
-# 1. Snapshot (read-only)
-snapshot "current state" echo state
-
-# 2. Checks
-run "precheck" true
-
-# 3. Change — one guard flag per destructive action
-# if guard X "y"; then run z true; fi
-
-# 4. Verify
-run "verify" true
-
-summary
-`
-
-func TestMigrateScript(t *testing.T) {
-	got, ok := MigrateScript(v1Template)
-	if !ok {
-		t.Fatal("not migrated")
-	}
-	for _, want := range []string{
-		"#!/usr/bin/env bash\n# swim: syntax 2\n# Round: Old template round\n# Job:   old-job-0001\n# Created: 2026-10-01\n# Lane:",
-		"# 1. Snapshot (read-only)\nstage snapshot\nsnapshot",
-		"# 2. Checks\nstage check\n",
-		"# 3. Change — one guard flag per destructive action\nstage change\n",
-		"# 4. Verify\nstage verify\nrun \"verify\" true",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("migrated script missing %q:\n%s", want, got)
-		}
-	}
-	// The header's "#   1. Snapshot" step list is prose, not a section.
-	if strings.Count(got, "stage snapshot") != 1 {
-		t.Errorf("stage snapshot inserted %d times", strings.Count(got, "stage snapshot"))
-	}
-	if again, ok := MigrateScript(got); ok || again != got {
-		t.Error("migrating a syntax 2 script must be a no-op")
-	}
-	i := ParseScript(got)
-	if i.Syntax != 2 || i.Round != "Old template round" || i.Created != "2026-10-01" {
-		t.Fatalf("parsed after migration: %+v", i)
-	}
-	stub, ok := MigrateScript("#!/usr/bin/env bash\n# swim:stub\n# Round: (none) - nothing pending\n# done\necho x\n")
-	if !ok || !strings.HasPrefix(stub, "#!/usr/bin/env bash\n# swim: syntax 2\n# swim:stub\n") {
-		t.Fatalf("stub: %q", stub)
-	}
-	if s := ParseScript(stub); !s.Stub || s.Message != "done" {
-		t.Fatalf("stub after migration: %+v", s)
-	}
-}
-
 func TestIndentedProseIsNotAHeaderKey(t *testing.T) {
 	src := "#!/usr/bin/env bash\n# swim: syntax 2\n# Round:   r\n# After:\n# Timeout:\n#\n#   After:   lanes that must pass first, e.g. \"1\"\n#   Timeout: limit for the whole round\n#   Guards:  one line per flag\nlane_init 1\n"
 	i := ParseScript(src)
@@ -312,7 +249,7 @@ func TestGuardsFromHeaderOnly(t *testing.T) {
 }
 
 // The body is read for stages and handlers, quotes and comments aside.
-func TestBodyStagesAndHandlers(t *testing.T) {
+func TestBodyStages(t *testing.T) {
 	for src, staged := range map[string]bool{
 		"stage check\n":                                     true,
 		"  if true; then stage change; fi\n":                true,
@@ -326,10 +263,6 @@ func TestBodyStagesAndHandlers(t *testing.T) {
 			t.Errorf("%q: Staged %v, want %v", src, got, staged)
 		}
 	}
-	info := ParseScript("#!/usr/bin/env bash\n# Round: r\non_failure() {\n  if guard ALLOW_UNDO \"undo\"; then run u true; fi\n}\nfunction on_exit () {\n  run x true\n}\necho 'on_success() {'\n")
-	if len(info.Handlers) != 2 || info.Handlers[0].Name != "on_failure" || strings.Join(info.Handlers[0].Guards, ",") != "ALLOW_UNDO" || info.Handlers[1].Name != "on_exit" {
-		t.Errorf("handlers: %+v", info.Handlers)
-	}
 }
 
 // The corpus: stages, evidence steps and handlers named where bash never
@@ -342,8 +275,8 @@ func TestBodyTextIsNotCode(t *testing.T) {
 		"echo \"over\nstage check\nevidence \\\"x\\\" true\non_exit() {\"\n" +
 		"# stage check; evidence \"x\" true\n"
 	info := ParseScript(src)
-	if info.Staged || info.UsesEvidence || len(info.Handlers) != 0 {
-		t.Errorf("text read as code: staged %v, evidence %v, handlers %+v", info.Staged, info.UsesEvidence, info.Handlers)
+	if info.Staged || info.UsesEvidence {
+		t.Errorf("text read as code: staged %v, evidence %v", info.Staged, info.UsesEvidence)
 	}
 	if info := ParseScript(src + "stage check\nevidence \"plan\" true\n"); !info.Staged || !info.UsesEvidence {
 		t.Errorf("code after the text: staged %v, evidence %v", info.Staged, info.UsesEvidence)

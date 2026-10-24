@@ -34,14 +34,13 @@ var pausePoll = 200 * time.Millisecond
 // next is the step it holds before. A handler's steps and a read-only
 // check never hold.
 func holdIfPaused(root string, n int, run, next string) {
-	if n <= 0 || os.Getenv("SWIM_IN_HANDLER") != "" || lane.CheckMode() {
+	if n <= 0 || lane.CheckMode() {
 		return
 	}
 	req, ok := lane.Paused(root, n, run)
 	if !ok || lane.StopRequested(root, n, run) {
 		return
 	}
-	cell := lane.CellOf(n)
 	logPath := os.Getenv("STEP_LOG")
 	if logPath == "" {
 		logPath = lane.Log(root, n)
@@ -55,11 +54,6 @@ func holdIfPaused(root string, n int, run, next string) {
 	if st, _ := status.Load(root); st != nil {
 		if l := st.Get(n); l != nil {
 			after = l.CurrentStep
-			if cell != "" {
-				if c := l.FindCell(cell); c != nil {
-					after = c.CurrentStep
-				}
-			}
 		}
 	}
 	began := time.Now()
@@ -77,7 +71,7 @@ func holdIfPaused(root string, n int, run, next string) {
 	line := logparse.MarkLine(logparse.Pause, label, detail)
 	appendLog(logPath, line+"\n")
 	fmt.Fprintln(os.Stderr, strings.TrimLeft(line, " "))
-	updatePaused(root, n, cell, lanes, func(l *status.Lane) {
+	updatePaused(root, n, lanes, func(l *status.Lane) {
 		l.PausedAt, l.PausedBy, l.PausedAfter, l.NextStep, l.PauseNote = status.Now(), req.By, after, next, req.Note
 	})
 
@@ -103,7 +97,7 @@ func holdIfPaused(root string, n int, run, next string) {
 		appendLog(logPath, line+"\n")
 		fmt.Fprintln(os.Stderr, strings.TrimLeft(line, " "))
 	}
-	updatePaused(root, n, cell, lanes, func(l *status.Lane) {
+	updatePaused(root, n, lanes, func(l *status.Lane) {
 		l.PausedAt, l.PausedBy, l.PausedAfter, l.NextStep, l.PauseNote = "", "", "", "", ""
 		l.PausedS += held.Seconds()
 		l.Pauses = append(l.Pauses, status.PauseSpan{At: began.UTC().Format(time.RFC3339Nano), S: math.Round(held.Seconds()*1000) / 1000})
@@ -111,21 +105,11 @@ func holdIfPaused(root string, n int, run, next string) {
 }
 
 // updatePaused updates the paused fields of lane n, or of its cell.
-func updatePaused(root string, n int, cell string, lanes int, fn func(*status.Lane)) {
-	if cell == "" {
-		status.Update(root, n, lanes, fn)
-		return
-	}
-	if n > lanes {
-		lanes = n
-	}
-	status.UpdateFile(root, lanes, func(f *status.File) error {
-		fn(f.Mine(n).CellEntry(cell))
-		return nil
-	})
+func updatePaused(root string, n int, lanes int, fn func(*status.Lane)) {
+	status.Update(root, n, lanes, fn)
 }
 
-// pausedSoFar is how long lane n's round (or its cell) has been paused in
+// pausedSoFar is how long lane n's round has been paused in
 // all, which its Timeout: deadline moves out by.
 func pausedSoFar(root string, n int) time.Duration {
 	if root == "" || n <= 0 {
@@ -138,11 +122,6 @@ func pausedSoFar(root string, n int) time.Duration {
 	l := st.Get(n)
 	if l == nil {
 		return 0
-	}
-	if cell := lane.CellOf(n); cell != "" {
-		if c := l.FindCell(cell); c != nil {
-			return time.Duration(c.PausedS * float64(time.Second))
-		}
 	}
 	return time.Duration(l.PausedS * float64(time.Second))
 }
@@ -406,11 +385,7 @@ func replacePaused(root string, n int, l *status.Lane, newJob string) error {
 	}
 	lane.ClearPause(root, n)
 	history.Log(root, history.Entry{Event: history.StopReq, Lane: n, Job: l.Job, Run: l.Run, Detail: "paused, replaced by job " + or(newJob, "?")})
-	budget := lane.DefaultHandlerTimeout
-	if info, err := lane.ReadScript(root, n); err == nil && info.HandlerTimeout > 0 {
-		budget = info.HandlerTimeout
-	}
-	deadline := time.Now().Add(budget + 30*time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, ok := lane.Running(root, n); !ok {
 			return nil

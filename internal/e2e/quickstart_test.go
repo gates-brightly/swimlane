@@ -54,7 +54,7 @@ func TestQuickstartRuns(t *testing.T) {
 	qs := filepath.Join(dir, "swim-quickstart")
 	contains(t, "quickstart output", string(out),
 		"hello from swim",     // swim log 1
-		"consistent  yes",     // swim verify
+		"VERIFIED",            // swim verify
 		"dry run",             // the guarded step, unapproved
 		"HELLO_ALLOW_WRITE=1", // the approval, as recorded
 		"via flag",            // swim history
@@ -88,7 +88,7 @@ func TestDocsQuickstartRuns(t *testing.T) {
 		"approves another version of lane.2.sh",          // 5: the edit voids it
 		"SKIP (swim 3 failed)",                           // 6
 		"PASS  report report.md", "The service came up.", // 8
-		"consistent  yes", // 9
+		"VERIFIED", // 9
 	)
 	if strings.Contains(string(out), "undeclared files") {
 		t.Errorf("a step left an undeclared output:\n%s", out)

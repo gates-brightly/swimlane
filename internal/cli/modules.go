@@ -153,18 +153,21 @@ func undeclared(root string, cfg *config.Config, n int, cmd string) error {
 
 // runModule runs one module command and returns its exit code.
 func runModule(root string, cfg *config.Config, m *module.Module, staged *manifest.Manifest, cmd string, args, env []string, out string) (int, error) {
+	// Where the lane runs (its staged copy, unless it runs live), as its
+	// steps do.
+	wd := or(envOf(env, "SWIM_WORKSPACE"), root)
 	switch {
 	case m.Kind == module.Bash:
 		// The module's functions, then the command: its own bash process,
 		// so nothing it defines reaches the lane.
 		c := exec.Command("bash", "-c", string(m.Script())+"\n\"$@\"", m.Name, cmd)
 		c.Args = append(c.Args, args...)
-		return runCmd(c, root, env)
+		return runCmd(c, wd, env)
 	case m.Builtin:
 		ctx := &gomod.Ctx{Args: args, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: getenvFrom(env),
 			Command: func(name string, a ...string) *exec.Cmd {
 				c := exec.Command(name, a...)
-				c.Dir, c.Env = root, env
+				c.Dir, c.Env = wd, env
 				return c
 			},
 			// As swim output KEY VALUE: masked, kept with the round's outputs.
@@ -208,7 +211,7 @@ func runModule(root string, cfg *config.Config, m *module.Module, staged *manife
 			}
 		}
 	}
-	return runCmd(exec.Command(bin, args...), root, env)
+	return runCmd(exec.Command(bin, args...), wd, env)
 }
 
 func runCmd(c *exec.Cmd, dir string, env []string) (int, error) {
@@ -572,4 +575,15 @@ func truncText(s string, n int) string {
 func mustRead(path string) []byte {
 	data, _ := os.ReadFile(path)
 	return data
+}
+
+// envOf is key's value in env (the last one wins), "" if unset.
+func envOf(env []string, key string) string {
+	v := ""
+	for _, kv := range env {
+		if k, val, ok := strings.Cut(kv, "="); ok && k == key {
+			v = val
+		}
+	}
+	return v
 }

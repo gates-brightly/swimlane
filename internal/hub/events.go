@@ -48,8 +48,12 @@ type LogEvent struct {
 
 type eventSub struct {
 	ch         chan Event
-	enrollment string // "" for every worker
+	enrollment string // "" for every swimmer
+	user       string // the hub user who opened it ("" for none)
 }
+
+// MaxEventStreams is how many event streams may be open at once.
+const MaxEventStreams = 64
 
 type eventHub struct {
 	mu     sync.Mutex
@@ -80,14 +84,15 @@ func (e *eventHub) publish(kind, enrollment string, data any) {
 	}
 }
 
-// subscribe is a new client (nil once the hub is shutting down).
-func (e *eventHub) subscribe(enrollment string) *eventSub {
+// subscribe is a new client for user (nil once the hub is shutting down,
+// or MaxEventStreams are open).
+func (e *eventHub) subscribe(enrollment, user string) *eventSub {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.closed {
+	if e.closed || len(e.subs) >= MaxEventStreams {
 		return nil
 	}
-	s := &eventSub{ch: make(chan Event, eventBuffer), enrollment: enrollment}
+	s := &eventSub{ch: make(chan Event, eventBuffer), enrollment: enrollment, user: user}
 	e.subs[s] = struct{}{}
 	return s
 }
@@ -98,6 +103,19 @@ func (e *eventHub) unsubscribe(s *eventSub) {
 	if _, ok := e.subs[s]; ok {
 		delete(e.subs, s)
 		close(s.ch)
+	}
+}
+
+// closeUser ends every stream user opened: their sessions ended (removed,
+// or given a new token).
+func (e *eventHub) closeUser(user string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for s := range e.subs {
+		if s.user == user {
+			delete(e.subs, s)
+			close(s.ch)
+		}
 	}
 }
 
@@ -130,9 +148,9 @@ func (s *Server) eventsAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	sub := s.events.subscribe(r.URL.Query().Get("enrollment"))
+	sub := s.events.subscribe(r.URL.Query().Get("enrollment"), s.streamUser(r))
 	if sub == nil {
-		http.Error(w, "the hub is shutting down", http.StatusServiceUnavailable)
+		http.Error(w, "the hub is shutting down, or too many event streams are open", http.StatusServiceUnavailable)
 		return
 	}
 	defer s.events.unsubscribe(sub)
@@ -163,4 +181,17 @@ func (s *Server) eventsAPI(w http.ResponseWriter, r *http.Request) {
 			fl.Flush()
 		}
 	}
+}
+
+// streamUser is the hub user r comes from, by token or session ("" for none).
+func (s *Server) streamUser(r *http.Request) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if u := s.userByToken(bearer(r.Header)); u != nil {
+		return u.Name
+	}
+	if _, u := s.sessionOf(r); u != nil {
+		return u.Name
+	}
+	return ""
 }

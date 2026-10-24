@@ -68,7 +68,7 @@ func cmdInit(args []string) error {
 		return err
 	}
 	if changed {
-		fmt.Println("updated .gitignore (lane.[0-9]*, .lane*.rc, .swim/, .swim.log)")
+		fmt.Println("updated .gitignore (lane.[0-9]*, .env.swim, .swim/, .swim.log)")
 	} else {
 		fmt.Println(".gitignore already has the swim block")
 	}
@@ -276,20 +276,13 @@ func setConfigKey(key, value string, toRepo bool) error {
 
 func cmdNew(args []string) error {
 	var force bool
-	var job, lang string
-	rest, err := flags{bools: map[string]*bool{"force": &force}, strs: map[string]*string{"job": &job, "lang": &lang}}.parse(args)
+	var job string
+	rest, err := flags{bools: map[string]*bool{"force": &force}, strs: map[string]*string{"job": &job}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) < 2 {
-		return usagef(`usage: swim new N|TASK "<round goal>" [--lang sh|py|js|ts]`)
-	}
-	lang = strings.TrimPrefix(strings.ToLower(lang), ".")
-	if lang == "" {
-		lang = "sh"
-	}
-	if !slices.Contains(assets.Langs, lang) {
-		return usagef("--lang %q: use one of %s", lang, strings.Join(assets.Langs, ", "))
+		return usagef(`usage: swim new N|TASK "<round goal>"`)
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -334,9 +327,6 @@ func cmdNew(args []string) error {
 	if goal == "" {
 		return usagef("the round goal must not be empty")
 	}
-	if err := refuseRecurring(root, n, "new", force); err != nil {
-		return err
-	}
 	if job == "" {
 		job = lane.NewJobID()
 	} else if !lane.ValidJobID(job) {
@@ -347,7 +337,7 @@ func cmdNew(args []string) error {
 			return fmt.Errorf("job %s is already in %s; job ids must be unique", job, lane.ScriptName(root, m))
 		}
 	}
-	content, err := assets.ScriptIn(lang, n, goal, cfg.Toolchain, job, os.Getenv("USER"))
+	content, err := assets.Script(n, goal, cfg.Toolchain, job, os.Getenv("USER"))
 	if err != nil {
 		return err
 	}
@@ -359,7 +349,7 @@ func cmdNew(args []string) error {
 	if err := lane.CheckClaim(root, n, sess); err != nil && !force {
 		return err
 	}
-	if err := lane.WriteScriptAs(root, n, lang, content, force); err != nil {
+	if err := lane.WriteScriptAs(root, n, "sh", content, force); err != nil {
 		return err
 	}
 	if broke, err := lane.TakeClaim(root, n, sess, cfg.ClaimLeaseFor(), job, true); err == nil && broke != nil {
@@ -406,8 +396,6 @@ type runFlags struct {
 	noTUI            bool
 	noPrompt         bool
 	yes              bool
-	failed           bool // matrix lanes: only the cells that didn't pass
-	noFinally        bool // leave out the finally lanes naming the lanes run
 	replace          bool // end a paused round on the lane (swim pause) and run the new one
 }
 
@@ -424,8 +412,8 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 	}
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
-			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes, "no-finally": &rf.noFinally,
-			"failed": &rf.failed, "replace": &rf.replace},
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes,
+			"replace": &rf.replace},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
@@ -488,39 +476,11 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	var lanes []int
 	pins := map[int]string{}
-	cells := map[int][]string{}
 	for _, a := range rest {
-		// A matrix cell: 3[orders], or <job>/<cell>.
-		ref, cell, isCell := lane.ParseCellRef(a)
-		if !isCell {
-			if j, c, ok := strings.Cut(a, "/"); ok && lane.ValidJobID(j) {
-				ref, cell, isCell = j, c, true
-			}
-		}
-		ref = taskRef(root, cfg, ref) // a task is its lane, not a job pin
+		ref := taskRef(root, cfg, a) // a task is its lane, not a job pin
 		n, err := laneRef(root, cfg, ref, false)
 		if err != nil {
 			return err
-		}
-		if isCell {
-			info, _ := lane.ReadScript(root, n)
-			if !info.IsMatrix() {
-				return fmt.Errorf("swim %d has no jobs and is not a matrix round; %s names nothing", n, a)
-			}
-			// A job names it and every job under it (1.5: 1.5, 1.5.9, ...).
-			named := info.CellsUnder(cell)
-			if len(named) == 0 {
-				what := "cell " + strconv.Quote(cell)
-				if info.IsGroup() {
-					what = fmt.Sprintf("job %d.%s", n, cell)
-				}
-				return fmt.Errorf("swim %d has no %s (its %s: %s)", n, what, map[bool]string{true: "jobs", false: "cells"}[info.IsGroup()], strings.Join(launcher.CellNames(info.Cells()), ", "))
-			}
-			for _, c := range named {
-				if !slices.Contains(cells[n], c.Name) {
-					cells[n] = append(cells[n], c.Name)
-				}
-			}
 		}
 		if !slices.Contains(lanes, n) {
 			lanes = append(lanes, n)
@@ -572,15 +532,12 @@ func runLanes(rest []string, rf runFlags) error {
 		SecretsPrompt: passphrasePrompt,
 		HubSecrets:    func() (map[string]secrets.Granted, error) { return hubGrants(root) },
 		Pins:          pins,
-		Cells:         cells,
-		FailedCells:   rf.failed,
 		// Guards without their flag may ask the operator (not in CI, where
 		// nobody is at the terminal, nor with approvals: flags).
 		Prompt: !rf.noPrompt && cfg.ApprovalMode() == config.ApprovalsPrompt && !ci.InCI(os.Getenv),
 		// -y approves every guard question without asking (the operator's
 		// explicit say-so for this run; FLAG=0 still declines).
 		AutoApprove: rf.yes,
-		NoFinally:   rf.noFinally,
 		Signals:     sigs,
 	}
 	if rf.yaml {
@@ -607,9 +564,9 @@ func joinNums(ns []int) string {
 
 // cmdPlan prints what `swim run` / `swim all` would do, running nothing.
 func cmdPlan(args []string) (err error) {
-	var rerun, asYAML, check, noFinally bool
+	var rerun, asYAML, check bool
 	var parallel, timeout string
-	rest, err := flags{bools: map[string]*bool{"rerun": &rerun, "yaml": &asYAML, "check": &check, "no-finally": &noFinally},
+	rest, err := flags{bools: map[string]*bool{"rerun": &rerun, "yaml": &asYAML, "check": &check},
 		strs: map[string]*string{"parallel": &parallel, "timeout": &timeout}}.parse(args)
 	if err != nil {
 		return err
@@ -635,7 +592,7 @@ func cmdPlan(args []string) (err error) {
 	}
 	// The plan shows each lane's last read-only check (stale once its
 	// script changes); --check runs them first.
-	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun, ShowChecks: true, NoFinally: noFinally}
+	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Rerun: rerun, ShowChecks: true}
 	checkCode := 0
 	if check {
 		if checkCode, err = runChecks(o, parallel, timeout, asYAML); err != nil {
@@ -887,10 +844,9 @@ func cmdStep(args []string) error {
 		Key: key, Target: target,
 		Blocked: cfg.Blocked(),
 		Mask:    cfg.Masker(os.Environ()),
-		// A stop request ends the round at its next step, but a handler's
-		// steps (rollback, cleanup) still run: SWIM_IN_HANDLER.
+		// A stop request ends the round at its next step.
 		Stopped: func() bool {
-			return n > 0 && os.Getenv("SWIM_IN_HANDLER") == "" && lane.StopRequested(root, n, os.Getenv("SWIM_RUN"))
+			return n > 0 && lane.StopRequested(root, n, os.Getenv("SWIM_RUN"))
 		},
 	})
 	if err != nil {
@@ -900,9 +856,6 @@ func cmdStep(args []string) error {
 		// The round's evidence: what an approval of the plan covers.
 		if data, err := os.ReadFile(res.Saved); err == nil {
 			key := evidence.LaneKey(n, "")
-			if c := lane.CurrentCell(); c != "" {
-				key = evidence.LaneKey(n, lane.CellSlug(c))
-			}
 			if _, err := evidence.Record(root, key, os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN"), scriptSHA(root, n), label, string(data), lane.CheckMode()); err != nil {
 				fmt.Fprintln(os.Stderr, "swim step: evidence: "+err.Error())
 			}
@@ -1000,10 +953,6 @@ func cmdArchive(args []string) error {
 	var problems []string
 	sess := lane.SessionID()
 	for _, n := range lanes {
-		if err := refuseAlways(root, n, "archive", force); err != nil {
-			problems = append(problems, err.Error())
-			continue
-		}
 		if err := lane.CheckClaim(root, n, sess); err != nil && !force {
 			problems = append(problems, strings.Split(err.Error(), "\n")[0])
 			continue
@@ -1068,12 +1017,6 @@ func cmdStub(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := refuseAlways(root, n, "stub", force); err != nil {
-		return err
-	}
-	if err := refuseRecurring(root, n, "stub", force); err != nil {
-		return err
-	}
 	sess := lane.SessionID()
 	if err := lane.CheckClaim(root, n, sess); err != nil && !force {
 		return err
@@ -1093,15 +1036,6 @@ func cmdStub(args []string) error {
 		claimBroken(root, n, c, sess, "stub", "")
 	}
 	fmt.Printf("stubbed %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, msg)
-	return nil
-}
-
-// refuseAlways keeps archive and stub off an Always lane, which is the
-// repo's standing setup, not a disposable round, unless forced.
-func refuseAlways(root string, n int, verb string, force bool) error {
-	if info, _ := lane.ReadScript(root, n); info.Always && !force {
-		return fmt.Errorf("swim %d is an Always lane (standing setup, not a round); %s it anyway with --force", n, verb)
-	}
 	return nil
 }
 

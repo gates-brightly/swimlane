@@ -40,8 +40,8 @@ func TestHubSnapshotUnprompted(t *testing.T) {
 	}
 }
 
-// The hub sees schedules: a scheduled batch with its time, a batch it
-// holds, and a recurring schedule's template.
+// The hub sees schedules: a scheduled batch with its time, and a batch it
+// holds.
 func TestHubSnapshotSchedules(t *testing.T) {
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte("#!/usr/bin/env bash\n# Round: upstream\nrun \"x\" true\n"), 0o755)
@@ -50,8 +50,6 @@ func TestHubSnapshotSchedules(t *testing.T) {
 	at := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
 	queue.Add(root, &queue.Entry{ID: "q-sched", By: "op", NotBefore: at, Zone: "UTC", Lanes: []queue.Lane{{Lane: 1, Job: "j1"}}})
 	queue.Add(root, &queue.Entry{ID: "q-after", By: "op", Lanes: []queue.Lane{{Lane: 2, Job: "j2"}}})
-	(&recurring{ID: "r-daily", Lanes: []queue.Lane{{Lane: 1}}, Clock: "06:00:00", Zone: "UTC", First: "2026-10-16", Until: "2099-01-01",
-		path: filepath.Join(recurringDir(root), "r-daily.yml")}).save()
 	s := hubSnapshot(root, cfg, "w", "", "idle", time.Second)
 	byID := map[string]hub.Batch{}
 	for _, b := range s.Queue {
@@ -62,8 +60,5 @@ func TestHubSnapshotSchedules(t *testing.T) {
 	}
 	if b := byID["q-after"]; b.State != "held" || b.HeldBy != "#1" {
 		t.Errorf("held batch: %+v", b)
-	}
-	if b := byID["r-daily"]; b.State != "recurring" || !strings.Contains(b.Daily, "daily at 06:00:00 (UTC), until 2099-01-01; next 06:00:00(UTC)") {
-		t.Errorf("recurring: %+v", b)
 	}
 }

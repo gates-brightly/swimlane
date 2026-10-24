@@ -285,7 +285,7 @@ func TestSecurity(t *testing.T) {
 			if len(last.Approvals) != 1 || last.Approvals[0] != appr.Hash || att.Approvals[0] != appr.Hash {
 				t.Errorf("the round names approvals %v, the run %v, want [%s]", last.Approvals, att.Approvals, appr.Hash)
 			}
-			contains(t, "verify", b.mustSwim("verify"), "consistent  yes")
+			contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 		}},
 		{"a command run without guard has no approval in the chain", "T4", func(t *testing.T) {
 			b := newBoundaryRepo(t)
@@ -321,11 +321,11 @@ func TestSecurity(t *testing.T) {
 			b.mustSwim("keys", "trust")
 			b.approve(1)
 			b.mustSwim("run", "1", "--plain")
-			contains(t, "verify", b.mustSwim("verify"), "consistent  yes", "trusted     yes", "pinned now, on first use")
+			contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes", "trusted     yes", "pinned now, on first use")
 			b.resign(t)
 			// Checked against itself the chain holds; against the pinned
 			// keys it doesn't.
-			out, code := b.swim("verify")
+			out, code := b.swim("verify", "--levels", "--allow-unsigned")
 			if code != 1 {
 				t.Fatalf("verify of a re-signed chain: exit %d\n%s", code, out)
 			}
@@ -338,13 +338,13 @@ func TestSecurity(t *testing.T) {
 			b.write("swim.yml", "chain_anchors: [\"file:"+anchor+"\"]\n", 0o644)
 			b.approve(1)
 			b.mustSwim("run", "1", "--plain")
-			contains(t, "verify", b.mustSwim("verify"), "consistent  yes", "trusted     yes", "anchored    yes")
+			contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes", "trusted     yes", "anchored    yes")
 			// Re-signed wholesale, and the entries after the first dropped.
 			b.resign(t)
 			path := chain.Path(b.root)
 			data, _ := os.ReadFile(path)
 			os.WriteFile(path, []byte(strings.SplitAfter(string(data), "\n")[0]), 0o644)
-			out, code := b.swim("verify")
+			out, code := b.swim("verify", "--levels", "--allow-unsigned")
 			if code != 1 {
 				t.Fatalf("verify: exit %d\n%s", code, out)
 			}

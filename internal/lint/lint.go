@@ -83,7 +83,8 @@ type Check struct {
 // Checks is the table of lint checks, in report order.
 var Checks = []Check{
 	{"round", finding.Error, false, "no `# Round:` line", checkRound},
-	{"task", finding.Error, false, "a `# Task:` name that isn't one, is a swim command or a group file's name, or another lane's too", checkTask},
+	{"workspace-live", finding.Warn, false, "`# Workspace: live`: the lane runs in the working tree and reads files no approval covers", checkWorkspaceLive},
+	{"task", finding.Error, false, "a `# Task:` name that isn't one, is a swim command, or another lane's too", checkTask},
 	{"placeholder", finding.Error, false, "a template placeholder left in", checkPlaceholder},
 	{"after", finding.Error, false, "`# After:` names an unknown lane or job, or the lane itself", checkAfter},
 	{"cycle", finding.Error, false, "lanes wait on each other in a cycle", checkCycle},
@@ -103,7 +104,7 @@ var Checks = []Check{
 	{"secret-guard", finding.Warn, false, "a guarded secret (swim.yml secrets:) got with no guard of its flag before it", checkGuardedSecret},
 	{"secret-argv", finding.Warn, false, "a secret got inline into a command's arguments ($(swim secret get ...)), readable with ps", checkSecretArgv},
 	{"ambient-credential", finding.Warn, false, "a credential swim.yml lists in ambient_credentials used directly", checkAmbientCredential},
-	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks, Always, Rerun-Children)", checkHeader},
+	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks, Workspace, Task)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
 	{"check-unsafe", finding.Warn, false, "a destructive-looking command before `stage change` (swim plan --check runs it)", checkCheckUnsafe},
@@ -117,17 +118,14 @@ var Checks = []Check{
 	{"module-effects", finding.Warn, false, "a module used against its declared effects: credentials without mod_env, not read-only before `stage change`", checkModuleEffects},
 	{"module-lock", finding.Warn, false, "a built-in module .swim.lock doesn't pin yet, or pins at another version than this swim's (swim run refuses that lane here)", checkModuleLock},
 	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},
-	{"sdk-bypass", finding.Info, false, "an SDK lane runs commands itself (subprocess, child_process) rather than through r.run", checkSDKBypass},
-	{"handler", finding.Error, false, "outcome handlers or Fail: without `# swim: syntax 3`, or a handler name swim never calls", checkHandlers},
-	{"handler-reached", finding.Warn, false, "an on_failure that uses a guard but never checks `reached`", checkHandlerReached},
-	{"rerun-guard", finding.Warn, false, "a guarded lane downstream of a `Rerun-Children: yes` lane (swim all reruns it after it passed)", checkRerunGuard},
+	{"fail", finding.Error, false, "Fail: without `# swim: syntax 3`", checkFailSyntax},
+	{"removed", finding.Error, false, "a lane kind this swim no longer has: Matrix:, Always:, Finally:, Rerun-Children: or an outcome handler (on_success, on_failure, on_exit)", checkRemoved},
 }
 
 // Codes of findings that come from outside the table.
 const (
 	codeSyntax = "syntax"
 	codeIgnore = "lint-ignore"
-	codeGroup  = "group"
 	codeTrust  = "trust"
 )
 
@@ -147,10 +145,16 @@ func Run(root string, cfg *config.Config, lanes []int) ([]finding.Finding, error
 	return run(root, cfg, lanes, func(Check) bool { return true })
 }
 
-// Errors runs only the pre-flight checks `swim run` refuses on, and returns
-// their error-level findings.
+// launcherRefuses are the error-level checks the launcher already refuses
+// as the run starts (with its own message), so the pre-flight leaves them.
+var launcherRefuses = map[string]bool{"after": true, "cycle": true, "blocked": true}
+
+// Errors runs every error-level check `swim run` refuses on, and returns
+// their findings: a lane swim lint calls wrong doesn't run.
 func Errors(root string, cfg *config.Config, lanes []int) ([]finding.Finding, error) {
-	fs, err := run(root, cfg, lanes, func(c Check) bool { return c.Preflight })
+	fs, err := run(root, cfg, lanes, func(c Check) bool {
+		return c.Preflight || c.Level == finding.Error && !launcherRefuses[c.Code]
+	})
 	var out []finding.Finding
 	for _, f := range fs {
 		if f.Level == finding.Error && f.Code != codeIgnore && f.Code != codeSyntax {
@@ -164,34 +168,10 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 	c := &Context{Root: root, Cfg: cfg, Scripts: map[int]*Script{}}
 	var out []finding.Finding
 	tooNew := map[int]int{} // lane -> the newer syntax it declares
-	// Group files (lanes.<name>.sh): what's wrong with one as a whole. A
-	// group lane's checks run on each sub-job's generated script, and its
-	// findings point at the group file.
-	_, problems := lane.Groups(root)
-	for _, p := range problems {
-		out = append(out, finding.Finding{Level: finding.Error, File: p.File, Line: p.Line, Code: codeGroup, Message: p.Message})
-	}
 	if want(Check{Code: codeTrust}) {
 		out = append(out, checkTrust(root)...)
 	}
-	groups := map[int]lane.Group{}
 	for n := 1; n <= cfg.Lanes; n++ {
-		if g, ok := lane.LaneJobs(root, n); ok && len(lane.Scripts(root, n)) == 1 {
-			if !lane.IsGroupFile(g.File) {
-				for _, p := range g.Problems {
-					out = append(out, finding.Finding{Level: finding.Error, File: p.File, Line: p.Line, Code: codeGroup, Message: p.Message})
-				}
-			}
-			// A lane in another language is one program: it's checked as its
-			// file, below. A bash lane's jobs are checked one by one.
-			if !g.Native {
-				groups[n] = g
-				s := NewScript(n, "")
-				s.Name, s.Info, s.Lib = g.File, g.Info, true
-				c.Scripts[n] = s
-				continue
-			}
-		}
 		data, err := os.ReadFile(lane.Script(root, n))
 		if os.IsNotExist(err) {
 			continue
@@ -243,10 +223,6 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		if s == nil {
 			continue
 		}
-		if g, ok := groups[n]; ok && s.Name == g.File {
-			out = append(out, lintGroup(c, g, want)...)
-			continue
-		}
 		var fs []finding.Finding
 		if s.Info.Syntax < syntax.Current {
 			fs = append(fs, finding.Finding{Level: finding.Warn, Code: codeSyntax,
@@ -264,46 +240,6 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 	}
 	finding.Sort(out)
 	return out, nil
-}
-
-// laneChecks are about a lane as a whole (its dependencies, env and Round):
-// for a group lane they run once, not per sub-job.
-var laneChecks = map[string]bool{"after": true, "cycle": true, "rerun-guard": true, "env": true, "round": true}
-
-// lintGroup checks a group lane: the lane once, then each sub-job's
-// generated script, with findings at the group file's lines.
-func lintGroup(c *Context, g lane.Group, want func(Check) bool) []finding.Finding {
-	var out []finding.Finding
-	laneS := c.Scripts[g.N]
-	for _, ch := range Checks {
-		if want(ch) && (laneChecks[ch.Code] || ch.Code == "header") {
-			for _, f := range ch.Run(c, laneS) {
-				f.File, f.Line = g.File, 0
-				out = append(out, f)
-			}
-		}
-	}
-	for _, sub := range g.Subs {
-		s := NewScript(g.N, sub.Src)
-		s.Name = g.File
-		s.Info.After = g.Info.After // the lane's, for input N
-		var fs []finding.Finding
-		for _, ch := range Checks {
-			if want(ch) && !laneChecks[ch.Code] && (s.Lib || !bashOnly[ch.Code]) {
-				fs = append(fs, ch.Run(c, s)...)
-			}
-		}
-		for i := range fs {
-			fs[i].File = g.File
-		}
-		fs = applyIgnores(s, fs)
-		for i := range fs {
-			fs[i].Line = sub.GroupLine(fs[i].Line)
-			fs[i].Message = fmt.Sprintf("swim %d.%s: %s", g.N, sub.Path, fs[i].Message)
-		}
-		out = append(out, fs...)
-	}
-	return out
 }
 
 // checkTrust: once trust.yml lists the keys swim verify trusts, every key

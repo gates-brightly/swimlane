@@ -195,7 +195,7 @@ run "after" sleep 10`)
 
 	// The worker's own record: every command in .swim.log and the chain,
 	// and swim verify accepts the hub entries.
-	out := r.mustSwim("verify")
+	out := r.mustSwim("verify", "--levels", "--allow-unsigned")
 	contains(t, "verify", out, "chain of custody")
 	hist := r.mustSwim("history", "--oneline", "--no-pager")
 	contains(t, "history", hist, "hub interrupt by alice", "hub run by alice", "hub log by vic")

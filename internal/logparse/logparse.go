@@ -40,7 +40,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -370,7 +369,7 @@ func ParseFile(path string) (*Round, error) {
 	return r, nil
 }
 
-// Parse reads a whole log (either syntax) and returns its last round.
+// Parse reads a whole log and returns its last round.
 func Parse(rd io.Reader) (*Round, error) {
 	br := bufio.NewReader(rd)
 	first, _ := br.Peek(64)
@@ -379,7 +378,7 @@ func Parse(rd io.Reader) (*Round, error) {
 		return nil, err
 	}
 	if v == 1 {
-		return parseV1(br)
+		return nil, fmt.Errorf("lane log is swim syntax 1, from before swim versioned its files, which this swim doesn't read")
 	}
 	return parseV2(br)
 }
@@ -651,307 +650,8 @@ func ParseContext(line string) map[string]string {
 	return ctx
 }
 
-// Syntax 1 markers, kept for reading and converting old logs.
-const (
-	v1RoundStart = "=== ROUND START"
-	v1StepStart  = "=== STEP"
-	v1Summary    = "=== SUMMARY"
-	v1End        = "=== END"
-	v1Output     = "--- output"
-	v1Exit       = "--- exit"
-	v1Intr       = "--- interrupted"
-)
-
-// Syntax 1 logs are read only to convert them: the format is frozen, and
-// its readers keep the patterns they were written with.
-var (
-	resultV1RE = regexp.MustCompile(`^(PASS|FAIL|SKIP|DRIFT|APPROVED|STOP)  (.*?)(?: \((.*)\))?$`)
-	kvRE       = regexp.MustCompile(`(\w+)=(\S+)`)
-)
-
-func parseV1(rd io.Reader) (*Round, error) {
-	sc := scanner(rd)
-	cur := &Round{Syntax: 1, Stage: syntax.Setup}
-	inOutput, inStep := false, false
-	for sc.Scan() {
-		line := sc.Text()
-		switch {
-		case strings.HasPrefix(line, v1RoundStart):
-			cur = &Round{Syntax: 1, Found: true, Stage: syntax.Setup}
-			if f := strings.Fields(line); len(f) >= 4 {
-				cur.StartedAt = f[3]
-			}
-			if m := kvRE.FindAllStringSubmatch(line, -1); m != nil {
-				for _, kv := range m {
-					if kv[1] == "job" {
-						cur.Job = kv[2]
-					}
-				}
-			}
-			inOutput, inStep = false, false
-			continue
-		case strings.HasPrefix(line, v1StepStart):
-			inOutput, inStep = false, true
-			continue
-		case line == v1Output:
-			inOutput = true
-			continue
-		case strings.HasPrefix(line, v1Exit):
-			inOutput = false
-			continue
-		case strings.HasPrefix(line, v1Intr):
-			inOutput = false
-			cur.Interrupt = true
-			continue
-		}
-		if inOutput {
-			continue
-		}
-		switch {
-		case strings.HasPrefix(line, "Round: ") && cur.Title == "":
-			cur.Title = strings.TrimSpace(strings.TrimPrefix(line, "Round: "))
-		case strings.HasPrefix(line, v1Summary) && cur.Found: // a summary with no round ends nothing
-			cur.Finished = true
-			for _, m := range kvRE.FindAllStringSubmatch(line, -1) {
-				switch m[1] {
-				case "exit":
-					cur.ExitCode, _ = strconv.Atoi(m[2])
-				case "duration":
-					cur.Duration = m[2]
-				}
-			}
-		default:
-			if m := resultV1RE.FindStringSubmatch(line); m != nil {
-				step := inStep && (m[1] == Pass || m[1] == Fail)
-				cur.add(Result{Kind: m[1], Label: m[2], Detail: m[3], Stage: syntax.Setup, Step: step})
-				if step {
-					inStep = false
-				}
-			}
-		}
-	}
-	return cur, sc.Err()
-}
-
-// ConvertV1 rewrites a syntax 1 log as syntax 2. Every round, step, output
-// line and result is kept; steps land in the setup stage (syntax 1 had no
-// stages), and a missing END is left missing (an unfinished round).
-func ConvertV1(rd io.Reader, w io.Writer, lane int) error {
-	sc := scanner(rd)
-	bw := bufio.NewWriter(w)
-	fmt.Fprintln(bw, syntax.LogHeader(lane))
-
-	type step struct {
-		label, ts, cmd, exit, dur string
-		output                    []string
-		inOutput, haveExit        bool
-		interrupted               bool
-	}
-	var (
-		round      *Round // results so far, for the END block
-		pendingHdr struct {
-			ts, job, title, script, pid string
-			open                        bool
-		}
-		st      *step
-		inEnd   bool
-		endLine string
-	)
-	clockOf := func(ts string) string {
-		if len(ts) >= 19 {
-			return ts[11:19]
-		}
-		return "--:--:--"
-	}
-	flushHeader := func() {
-		if !pendingHdr.open {
-			return
-		}
-		var ctx []KV
-		if pendingHdr.script != "" {
-			ctx = append(ctx, KV{"script", pendingHdr.script})
-		}
-		if pendingHdr.pid != "" {
-			ctx = append(ctx, KV{"pid", pendingHdr.pid})
-		}
-		ctx = append(ctx, KV{"migrated", "from syntax 1"})
-		title := pendingHdr.title
-		if title == "" {
-			title = "(no Round: line)"
-		}
-		bw.WriteString(RoundHeader(pendingHdr.ts, pendingHdr.job, title, ctx))
-		pendingHdr.open = false
-	}
-	// emitStep writes a step block; kind/label/detail come from its result
-	// line, or from the exit code for an unlabelled step.
-	emitStep := func(kind, label, detail string) {
-		if st == nil {
-			return
-		}
-		flushHeader()
-		if kind == "" {
-			kind, detail = Pass, ""
-			if st.exit != "0" && st.exit != "" {
-				kind, detail = Fail, "exit "+st.exit
-			}
-			if label = st.label; label == "" {
-				label = "(unlabelled step)"
-			}
-		}
-		dur := st.dur
-		if dur == "" {
-			dur = "?"
-		}
-		bw.WriteString(StepLine(kind, label, detail, dur, clockOf(st.ts)) + "\n")
-		if st.cmd != "" {
-			bw.WriteString(CmdPrefix + st.cmd + "\n")
-		}
-		for _, o := range st.output {
-			bw.WriteString(OutPrefix + o + "\n")
-		}
-		round.add(Result{Kind: kind, Label: label, Detail: detail, Stage: syntax.Setup, Step: true})
-		st = nil
-	}
-	exitRE := regexp.MustCompile(`exit (-?\d+) \(([\d.]+s)\)$`)
-
-	for sc.Scan() {
-		line := sc.Text()
-		if st != nil && st.inOutput {
-			switch {
-			case strings.HasPrefix(line, v1Exit), strings.HasPrefix(line, v1Intr):
-				st.inOutput, st.haveExit = false, true
-				st.interrupted = strings.HasPrefix(line, v1Intr)
-				if m := exitRE.FindStringSubmatch(line); m != nil {
-					st.exit, st.dur = m[1], m[2]
-				}
-			default:
-				st.output = append(st.output, line)
-			}
-			continue
-		}
-		switch {
-		case strings.HasPrefix(line, v1RoundStart):
-			emitStep("", "", "")
-			if inEnd {
-				bw.WriteString(endLine)
-				inEnd = false
-			}
-			f := strings.Fields(line)
-			pendingHdr.ts, pendingHdr.job, pendingHdr.title, pendingHdr.script, pendingHdr.pid = "", "-", "", "", ""
-			if len(f) >= 4 {
-				pendingHdr.ts = f[3]
-			}
-			for _, kv := range kvRE.FindAllStringSubmatch(line, -1) {
-				if kv[1] == "job" {
-					pendingHdr.job = kv[2]
-				}
-			}
-			pendingHdr.open = true
-			round = &Round{}
-		case pendingHdr.open && strings.HasPrefix(line, "Round: "):
-			pendingHdr.title = strings.TrimSpace(strings.TrimPrefix(line, "Round: "))
-		case pendingHdr.open && strings.HasPrefix(line, "script: ") || pendingHdr.open && strings.HasPrefix(line, "runbook: "):
-			for _, part := range strings.Split(line, "   ") {
-				k, v, ok := strings.Cut(strings.TrimSpace(part), ": ")
-				if !ok {
-					continue
-				}
-				switch k {
-				case "script", "runbook":
-					pendingHdr.script = v
-				case "pid":
-					pendingHdr.pid = v
-				}
-			}
-		case strings.HasPrefix(line, v1StepStart):
-			emitStep("", "", "")
-			if round == nil {
-				round = &Round{}
-			}
-			f := strings.SplitN(line, " ", 4)
-			st = &step{}
-			if len(f) >= 3 {
-				st.ts = f[2]
-			}
-			if len(f) == 4 {
-				st.label = f[3]
-			}
-		case st != nil && !st.haveExit && strings.HasPrefix(line, "$ "):
-			st.cmd = strings.TrimPrefix(line, "$ ")
-		case st != nil && !st.haveExit && line == v1Output:
-			st.inOutput = true
-		case st != nil && !st.haveExit:
-			// cwd:/git:/env: step context lines: dropped (the round context
-			// in syntax 2 carries what's needed)
-		case strings.HasPrefix(line, "saved: "):
-			bw.WriteString(Indent + line + "\n")
-		case strings.HasPrefix(line, v1Summary):
-			emitStep("", "", "")
-			flushHeader()
-			exit, dur, ts := 0, "?", ""
-			if f := strings.Fields(line); len(f) >= 3 {
-				ts = f[2]
-			}
-			for _, kv := range kvRE.FindAllStringSubmatch(line, -1) {
-				switch kv[1] {
-				case "exit":
-					exit, _ = strconv.Atoi(kv[2])
-				case "duration":
-					dur = kv[2]
-				}
-			}
-			state := "PASS"
-			switch {
-			case exit == 130 || exit == 143 || exit == 129:
-				state = "INTERRUPTED"
-			case exit != 0:
-				state = "FAIL"
-			}
-			if round == nil {
-				round = &Round{}
-			}
-			endLine = EndBlock(state, round, exit, dur, ts)
-			inEnd = true
-		case inEnd && strings.HasPrefix(line, "failed: "):
-			// the END block recomputes failures from the results
-		case line == v1End:
-			if inEnd {
-				bw.WriteString(endLine)
-				inEnd = false
-			}
-		case strings.TrimSpace(line) == "":
-		default:
-			m := resultV1RE.FindStringSubmatch(line)
-			if m == nil {
-				continue
-			}
-			if st != nil && st.haveExit && (m[1] == Pass || m[1] == Fail) {
-				emitStep(m[1], m[2], m[3])
-				continue
-			}
-			emitStep("", "", "")
-			flushHeader()
-			if round == nil {
-				round = &Round{}
-			}
-			bw.WriteString(MarkLine(m[1], m[2], m[3]) + "\n")
-			round.add(Result{Kind: m[1], Label: m[2], Detail: m[3], Stage: syntax.Setup})
-		}
-	}
-	emitStep("", "", "")
-	flushHeader()
-	if inEnd {
-		bw.WriteString(endLine)
-	}
-	if err := sc.Err(); err != nil {
-		return err
-	}
-	return bw.Flush()
-}
-
 // EnsureV2 makes path ready for syntax 2 lines: a missing or empty log gets
-// the header; a syntax 1 log is converted in place (the original is kept as
-// path.syntax1.bak); a log in a newer syntax is an error.
+// the header; a syntax 1 log, or one in a newer syntax, is an error.
 func EnsureV2(path string, lane int) error {
 	switch v := syntax.OfLogFile(path); {
 	case v == 0:
@@ -960,34 +660,8 @@ func EnsureV2(path string, lane int) error {
 		}
 		return os.WriteFile(path, []byte(syntax.LogHeader(lane)+"\n"), 0o644)
 	case v == 1:
-		return convertInPlace(path, lane, path+".syntax1.bak")
+		return fmt.Errorf("%s is swim syntax 1, from before swim versioned its files, which this swim doesn't read: archive it (swim archive %d) or delete it", path, lane)
 	default:
 		return syntax.Check(path, v)
 	}
 }
-
-// convertInPlace rewrites a syntax 1 log as syntax 2, copying the original to
-// backup first (if backup isn't "").
-func convertInPlace(path string, lane int, backup string) error {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	if backup != "" {
-		if err := os.WriteFile(backup, src, 0o644); err != nil {
-			return err
-		}
-	}
-	var out strings.Builder
-	if err := ConvertV1(strings.NewReader(string(src)), &out, lane); err != nil {
-		return err
-	}
-	tmp := path + ".migrating"
-	if err := os.WriteFile(tmp, []byte(out.String()), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-// ConvertFile rewrites a syntax 1 log file as syntax 2 in place.
-func ConvertFile(path string, lane int) error { return convertInPlace(path, lane, "") }

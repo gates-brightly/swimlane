@@ -43,34 +43,22 @@ func cmdHub(args []string) error {
 		args = args[1:]
 	}
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		if to, ok := hubMoved[args[0]]; ok {
-			return usagef("swim hub %s is now %s (swim auth --help)", args[0], to)
-		}
 		return usagef("usage: swim hub [serve] [flags]   (joining a hub and its admin's side: swim auth --help)")
 	}
 	return hubServe(args)
 }
 
-// hubMoved is where each former swim hub subcommand went.
-var hubMoved = map[string]string{
-	"enroll": "swim auth login URL --access read|readwrite (once per machine; swim.yml's hub: {name, namespace} names a directory)",
-	"login":  "swim auth login URL --admin-token T", "leave": "swim auth logout", "status": "swim auth status",
-	"access": "swim auth login URL --access read|readwrite", "admit": "swim auth admit", "reject": "swim auth reject",
-	"approve": "swim auth approve", "unapprove": "swim auth unapprove", "user": "swim auth users", "users": "swim auth users",
-}
-
 func hubServe(args []string) error {
-	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL, retain, retainBytes, adminLogins, webhook, webhookFile string
-	var noTUI, insecure, private, trustTailscale bool
-	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure, "private": &private, "trust-tailscale-identity": &trustTailscale},
+	var addr, token, stateDir, adminToken, certFile, keyFile, publicURL, retain, retainBytes string
+	var noTUI, insecure, private bool
+	rest, err := flags{bools: map[string]*bool{"no-tui": &noTUI, "insecure": &insecure, "private": &private},
 		strs: map[string]*string{"addr": &addr, "token": &token, "state": &stateDir, "admin-token": &adminToken, "tls-cert": &certFile, "tls-key": &keyFile,
-			"public-url": &publicURL, "retain": &retain, "retain-bytes": &retainBytes, "admin-tailscale": &adminLogins,
-			"webhook": &webhook, "webhook-file": &webhookFile}}.parse(args)
+			"public-url": &publicURL, "retain": &retain, "retain-bytes": &retainBytes}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--trust-tailscale-identity [--admin-tailscale LOGIN[,LOGIN]]] [--retain AGE] [--retain-bytes SIZE] [--webhook URL[,URL] | --webhook-file FILE] [--insecure] [--no-tui]")
+		return usagef("usage: swim hub [--addr HOST:PORT] [--token T] [--state DIR] [--admin-token T] [--tls-cert FILE --tls-key FILE] [--public-url URL] [--private] [--retain AGE] [--retain-bytes SIZE] [--insecure] [--no-tui]")
 	}
 	if (certFile == "") != (keyFile == "") {
 		return usagef("--tls-cert and --tls-key go together")
@@ -79,20 +67,6 @@ func hubServe(args []string) error {
 		if publicURL, err = checkPublicURL(publicURL); err != nil {
 			return err
 		}
-	}
-	if trustTailscale {
-		if host, _, err := net.SplitHostPort(addr); err != nil || !hub.LoopbackHost(host) {
-			return usagef("--trust-tailscale-identity needs the hub on a loopback --addr (127.0.0.1:PORT) behind tailscale serve: from anywhere else, anyone could send the header")
-		}
-	}
-	var admins []string
-	for _, l := range strings.Split(adminLogins, ",") {
-		if l = strings.TrimSpace(l); l != "" {
-			admins = append(admins, l)
-		}
-	}
-	if len(admins) > 0 && !trustTailscale {
-		return usagef("--admin-tailscale names logins that sign in by Tailscale identity: it needs --trust-tailscale-identity")
 	}
 	keepAge, keepBytes, err := runRetention(retain, retainBytes)
 	if err != nil {
@@ -155,9 +129,6 @@ func hubServe(args []string) error {
 	if publicURL != "" {
 		note(ui.Dim, "listening on "+listening+", reached at "+publicURL+" (through a proxy on this host)")
 	}
-	if trustTailscale {
-		note(ui.Dim, "signing in by Tailscale identity: a hub user given a login (swim auth users add NAME --tailscale LOGIN) is signed in by tailscale serve's "+hub.TailscaleHeader)
-	}
 	host, _, _ := net.SplitHostPort(ln.Addr().String())
 	if !hub.LoopbackHost(host) && !useTLS {
 		note(ui.Yellow, "warning: plain HTTP on the network (--insecure): tokens, logs and secrets cross it unencrypted; serve TLS with --tls-cert/--tls-key")
@@ -172,26 +143,7 @@ func hubServe(args []string) error {
 	h.SecureCookies(useTLS || strings.HasPrefix(publicURL, "https://"))
 	h.BehindProxy(publicURL != "")
 	h.Private(private)
-	h.TrustTailscaleIdentity(trustTailscale)
-	if err := h.AdminTailscale(admins...); err != nil {
-		return usagef("%v", err)
-	}
-	if len(admins) > 0 {
-		note(ui.Dim, "admins by Tailscale login: "+strings.Join(admins, ", ")+" (an admin user on their first sign-in)")
-	}
 	h.RetainRuns(keepAge, keepBytes)
-	h.PublicURL(url)
-	hooks, err := webhookURLs(webhook, webhookFile)
-	if err != nil {
-		return err
-	}
-	if err := h.Webhooks(hooks...); err != nil {
-		return usagef("%v", err)
-	}
-	defer h.CloseAlerts()
-	if len(hooks) > 0 {
-		note(ui.Dim, fmt.Sprintf("alerts: %d webhook(s): failed and dry-run runs, missed schedules, stale swimmers, waiting guards", len(hooks)))
-	}
 	note(ui.Dim, "state: "+stateDir+" · admin token: "+hub.AdminTokenPath(stateDir)+" (swim auth login "+url+" --admin-token \"$(cat "+hub.AdminTokenPath(stateDir)+")\")")
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	// Open event streams would hold Shutdown to its deadline (quitting
@@ -679,7 +631,7 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 				continue // a lane no longer in use (archived, or never was)
 			}
 			hl := hub.Lane{Lane: l.Lane, State: l.State, Round: l.Round, Job: l.Job, Run: l.Run, Step: l.CurrentStep, Reason: l.Reason,
-				Message: l.Message, Progress: l.Progress, MsgAt: l.MessageAt, Cells: cellsText(root, l),
+				Message: l.Message, Progress: l.Progress, MsgAt: l.MessageAt,
 				Pass: l.Pass, Fail: l.Fail, Skip: l.Skip, Drift: l.Drift, Exit: l.ExitCode,
 				AutoApproved: l.AutoApproved, AutoVia: l.AutoVia, FlagApproved: l.FlagApproved, DryRun: l.DryRun, HeldBy: l.HeldBy}
 			if info, err := lane.ReadScript(root, l.Lane); err == nil {
@@ -714,9 +666,7 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 			if l.State != status.Running && l.State != status.Waiting && s.Headless != nil && cfg.HubAllows(access, config.HubTrash) {
 				// What a trash command from the hub would pin it to.
 				if info, err := lane.ReadScript(root, l.Lane); err == nil && lane.ScriptName(root, l.Lane) != "" {
-					if _, group := lane.GroupOf(root, l.Lane); !group {
-						hl.TrashJob = trashPin(root, l.Lane, info)
-					}
+					hl.TrashJob = trashPin(root, l.Lane, info)
 				}
 			}
 			s.Lanes = append(s.Lanes, hl)
@@ -753,22 +703,7 @@ func hubSnapshot(root string, cfg *config.Config, name, ns, activity string, eve
 			done = done[len(done)-5:]
 		}
 		s.Queue = append(done, s.Queue...)
-		// Recurring schedules: their templates, never claimed themselves.
-		rs, _ := loadRecurring(root)
-		for _, r := range rs {
-			b := hub.Batch{ID: r.ID, State: "recurring", By: r.By, Note: r.Note, Lanes: r.laneNums(),
-				Daily: fmt.Sprintf("%s, %s; next %s", r.cadence(), r.untilText(), r.at(time.Now()))}
-			if r.Paused != "" {
-				b.State, b.Daily = "paused", b.Daily+"; paused: "+r.Paused
-			}
-			s.Queue = append(s.Queue, b)
-		}
 	}
-	rounds := map[int]string{}
-	for _, l := range s.Lanes {
-		rounds[l.Lane] = l.Round
-	}
-	s.Schedules = recurringReport(root, rounds)
 	s.Events = tailLines(history.Path(root), 15)
 	s.Logs = cfg.HubLogs()
 	s.Sanitize()
@@ -811,15 +746,6 @@ func tailLines(path string, n int) []string {
 	return all
 }
 
-// cellsText is a lane's cells summary for the hub, a lane of jobs' by job
-// id (1.4).
-func cellsText(root string, l status.Lane) string {
-	if info, _ := lane.ReadScript(root, l.Lane); info.IsGroup() {
-		return l.CellsTextAs(func(c string) string { return info.SubLabel(l.Lane, c) })
-	}
-	return l.CellsText()
-}
-
 // hubConfigDoc is the configuration a worker shows its hub (read only):
 // swim config's, then what its enrollment lets the hub do, masked of
 // secrets.
@@ -833,28 +759,4 @@ func hubConfigDoc(cfg *config.Config, access string) string {
 	fmt.Fprintf(&b, "hub_access: %s   # swim auth login URL --access read|readwrite\n", shown)
 	fmt.Fprintf(&b, "hub_commands: [%s]   # what a headless swimmer takes from the hub\n", strings.Join(cfg.HubAllow(access), ", "))
 	return cfg.Masker(os.Environ()).String(b.String())
-}
-
-// webhookURLs are --webhook's URLs (comma-separated) and --webhook-file's
-// (one a line, # comments): a file keeps a secret URL out of the process
-// list and the unit file.
-func webhookURLs(flag, file string) ([]string, error) {
-	var out []string
-	for _, u := range strings.Split(flag, ",") {
-		if u = strings.TrimSpace(u); u != "" {
-			out = append(out, u)
-		}
-	}
-	if file != "" {
-		data, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("--webhook-file: %w", err)
-		}
-		for _, l := range strings.Split(string(data), "\n") {
-			if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
-				out = append(out, l)
-			}
-		}
-	}
-	return out, nil
 }

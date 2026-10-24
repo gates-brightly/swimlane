@@ -48,8 +48,6 @@ func cmdSchedule(args []string) error {
 			return scheduleList(args[1:])
 		case "rm":
 			return scheduleRm(args[1:])
-		case "pause", "resume":
-			return scheduleSetPaused(args[0] == "pause", args[1:])
 		}
 	}
 	return scheduleAdd(args, "swim schedule")
@@ -71,9 +69,8 @@ func splitTime(args []string) (lanes []string, when string, err error) {
 type scheduleFlags struct {
 	approve                 []string
 	note, parallel, keyPath string
-	tz, until, forD, cron   string
-	yes, asYAML, daily      bool
-	noFinally               bool
+	tz                      string
+	yes, asYAML             bool
 }
 
 // parseScheduleFlags reads swim schedule's flags (--approve repeats).
@@ -93,8 +90,8 @@ func parseScheduleFlags(args []string) ([]string, scheduleFlags, error) {
 			rest0 = append(rest0, a)
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"yes": &f.yes, "yaml": &f.asYAML, "daily": &f.daily, "no-finally": &f.noFinally},
-		strs: map[string]*string{"note": &f.note, "parallel": &f.parallel, "key": &f.keyPath, "tz": &f.tz, "until": &f.until, "for": &f.forD, "cron": &f.cron}}.parse(rest0)
+	rest, err := flags{bools: map[string]*bool{"yes": &f.yes, "yaml": &f.asYAML},
+		strs: map[string]*string{"note": &f.note, "parallel": &f.parallel, "key": &f.keyPath, "tz": &f.tz}}.parse(rest0)
 	return rest, f, err
 }
 
@@ -106,14 +103,8 @@ func scheduleAdd(args []string, cmd string) error {
 	if f.yes {
 		return usagef("%s doesn't take -y: approving every guard of a run hours away, with no one watching, is what -y suits least; name each with --approve FLAG", cmd)
 	}
-	if f.cron != "" && f.daily {
-		return usagef("give --daily TIME or --cron EXPR, not both")
-	}
-	var refs []string
-	var when string
-	if f.cron != "" {
-		refs = rest // every argument is a lane: the expression is --cron's
-	} else if refs, when, err = splitTime(rest); err != nil {
+	refs, when, err := splitTime(rest)
+	if err != nil {
 		return err
 	}
 	if len(refs) == 0 {
@@ -137,17 +128,6 @@ func scheduleAdd(args []string, cmd string) error {
 			return err
 		}
 		lanes = append(lanes, n)
-	}
-	var pulled []int
-	if !f.noFinally {
-		// The finally lanes naming a scheduled lane go with it (# Finally:).
-		lanes, pulled = launcher.WithFinally(root, cfg, lanes)
-	}
-	if f.daily || f.cron != "" {
-		return recurringAdd(root, cfg, lanes, when, loc, f)
-	}
-	if f.until != "" || f.forD != "" {
-		return usagef("--until and --for go with --daily or --cron")
 	}
 	now := scheduleNow()
 	at, _, err := schedule.ParseTime(when, now, loc)
@@ -195,9 +175,6 @@ func scheduleAdd(args []string, cmd string) error {
 	}
 	fmt.Println(schedule.Reply(lanes, at, now, loc))
 	fmt.Printf("  %s (#%d) · swim schedule rm %s cancels\n", e.ID, e.Seq, e.ID)
-	if len(pulled) > 0 {
-		fmt.Printf("  with the finally lanes naming them: %s (--no-finally leaves them out)\n", lanesText(pulled))
-	}
 	for _, w := range warns {
 		fmt.Println("  warning: " + w)
 	}
@@ -389,7 +366,6 @@ func scheduleList(args []string) error {
 	}
 	queue.SortWaiting(sched)
 	held := heldBy(root, cfg, entries)
-	recs, _ := loadRecurring(root)
 	if asYAML {
 		type row struct {
 			ID        string `yaml:"id"`
@@ -398,18 +374,13 @@ func scheduleList(args []string) error {
 			Lanes     []int  `yaml:"lanes"`
 			NotBefore string `yaml:"not_before"`
 			Zone      string `yaml:"zone"`
-			From      string `yaml:"from,omitempty"`
 		}
 		doc := struct {
-			Schema    string       `yaml:"schema"`
-			Batches   []row        `yaml:"batches"`
-			Recurring []*recurring `yaml:"recurring"`
-		}{Schema: "swim.schedule-list/v1", Batches: []row{}, Recurring: recs}
+			Schema  string `yaml:"schema"`
+			Batches []row  `yaml:"batches"`
+		}{Schema: "swim.schedule-list/v1", Batches: []row{}}
 		for _, e := range sched {
-			doc.Batches = append(doc.Batches, row{e.ID, e.Seq, e.State, laneNums(e), e.NotBefore, e.Zone, e.From})
-		}
-		if doc.Recurring == nil {
-			doc.Recurring = []*recurring{}
+			doc.Batches = append(doc.Batches, row{e.ID, e.Seq, e.State, laneNums(e), e.NotBefore, e.Zone})
 		}
 		enc := yaml.NewEncoder(os.Stdout)
 		enc.SetIndent(2)
@@ -418,7 +389,7 @@ func scheduleList(args []string) error {
 		}
 		return enc.Close()
 	}
-	if len(sched) == 0 && len(recs) == 0 {
+	if len(sched) == 0 {
 		fmt.Println("nothing scheduled (swim schedule LANES... TIME)")
 		return nil
 	}
@@ -438,9 +409,6 @@ func scheduleList(args []string) error {
 			fmt.Printf("#%-4d %-24s %s  held     until #%d (%s) has run\n", e.Seq, e.ID, lanesText(laneNums(e)), s.Seq, s.ID)
 		}
 	}
-	for _, r := range recs {
-		fmt.Println(r.line(now))
-	}
 	return nil
 }
 
@@ -451,9 +419,6 @@ func scheduleRm(args []string) error {
 	root, cfg, err := repo()
 	if err != nil {
 		return err
-	}
-	if strings.HasPrefix(args[0], recurringPrefix) {
-		return recurringRm(root, args[0])
 	}
 	e, err := queue.Find(root, args[0])
 	if err != nil {

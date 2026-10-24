@@ -95,7 +95,7 @@ line marked ⚠, saying what it does and what will happen to it:
 - a swimmer that approves guards without asking (`swim watch -y`, or
   `--approved` with standing approvals): say which guards it will approve,
   because then "queued without approval" still changes things;
-- production or shared targets, an Always lane the batch pulls in, and
+- production or shared targets, a setup lane the batch pulls in, and
   anything that can't be undone.
 
 If the round only does what it should with a guard approved, queue it
@@ -129,12 +129,13 @@ lines or command instead. For anything broken, see
    earlier ones, read them first (section 5).
 2. **Pick lanes:** only idle ones (or unused numbers 1–99). Never a lane
    that's running or holds a round someone may be about to run, and never
-   an Always lane (`[*]` in `swim plan`). Confirm with the user when it's
+   a lane the repo commits (its CI or setup). Confirm with the user when it's
    unclear.
 3. **Write:** `swim new N "<goal>"`, then fill it in (see section 6 and
    [reference/lane-recipe.md](reference/lane-recipe.md)). Write lanes in
    bash unless the user asks for another language or the work is much
-   easier in one (an SDK). `swim new N "<goal>" --lang py|ts` starts one.
+   easier in one; it calls swim's steps as commands (`swim guide`, OTHER
+   LANGUAGES).
    With subagents, follow [reference/workers.md](reference/workers.md):
    the planner assigns each worker exactly one lane number, and nobody
    touches a lane they weren't given.
@@ -189,7 +190,7 @@ The rules that keep streams apart:
   scripts: an edit makes swim skip that lane rather than run your new
   version. To change a dispatched lane, `swim queue rm` its batch (if it
   hasn't started) and dispatch again, or wait for it to finish.
-- **Shared setup takes turns.** Batches that pull in the same Always lane
+- **Shared setup takes turns.** Batches that pull in the same setup lane
   (`After: 1`) run one after another, not side by side. Expect that wait.
   A swim older than the fix for this (swimlane `8fc50d1`) starts them
   together, and all but one fail at once with "swim 1 is already
@@ -231,8 +232,8 @@ from what the previous ones left behind.
   belongs in the project's own docs or tracker. Ask the user where before
   creating a file.
 - **Don't redo expensive setup:** put it in its own lane and depend on its
-  exact job (`# After: <job>`), pass results with `# Outputs:` / `input`,
-  or make it an `# Always: yes` lane if it must run every time.
+  exact job (`# After: <job>`), and pass results with `# Outputs:` /
+  `input`.
 - **Each new round re-reads deployed state.** Don't trust the previous
   round's output as current; snapshot again.
 

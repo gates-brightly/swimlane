@@ -312,10 +312,6 @@ func (s *Server) sendCommand(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if c.Kind == KindAnswer && !c.Answer.Signed() && bearer(r.Header) == "" && s.viaTailscale(r) {
-		http.Error(w, "a login by Tailscale identity can't answer with a button: sign the answer, or log in with your token", http.StatusForbidden)
-		return
-	}
 	cmd, err := s.Send(id, u.Name, c)
 	if err != nil {
 		code := http.StatusBadRequest

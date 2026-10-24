@@ -157,7 +157,7 @@ func reportSize(rep *hub.RunReport) int {
 }
 
 // runTrigger is what started run: the queue entry that ran it (a
-// recurring schedule's occurrence, a hub user's command, swim queue add),
+// hub user's command, swim queue add),
 // or none (swim run, swim all, swim ci).
 func runTrigger(root, run string) *hub.Trigger {
 	entries, _ := queue.List(root, true)
@@ -166,10 +166,7 @@ func runTrigger(root, run string) *hub.Trigger {
 			continue
 		}
 		t := &hub.Trigger{Kind: hub.TriggerQueue, By: e.By, Batch: e.ID}
-		switch {
-		case e.From != "":
-			t.Kind, t.Schedule = hub.TriggerSchedule, e.From
-		case strings.HasPrefix(e.By, "hub:"):
+		if strings.HasPrefix(e.By, "hub:") {
 			t.Kind = hub.TriggerHub
 		}
 		return t

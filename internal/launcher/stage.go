@@ -85,7 +85,8 @@ func stageEnv(o Options, n int, who approval.Caller) ([]string, string) {
 	if m == nil {
 		return nil, ""
 	}
-	env := []string{manifest.StageEnv + "=" + m.Dir, manifest.ManifestEnv + "=" + filepath.Join(m.Dir, manifest.FileName), "SWIM_ROOT=" + o.Root}
+	env := []string{manifest.StageEnv + "=" + m.Dir, manifest.ManifestEnv + "=" + filepath.Join(m.Dir, manifest.FileName), "SWIM_ROOT=" + o.Root,
+		WorkspaceEnv + "=" + m.Workspace(o.Root)}
 	tok := ""
 	if o.approvalSrv != nil {
 		who.Lane, who.Run, who.Manifest, who.Guards, who.AnyGuard, who.PID = n, o.RunID, m.SHA256, m.Guards, m.DynamicGuards, approval.AwaitPID
@@ -127,7 +128,7 @@ func probesFor(o Options, n int, cell string) []lane.Probe {
 	if m.Pinned.Sidecar != nil {
 		side = m.Path(m.Pinned.Sidecar.Path)
 	}
-	return lane.ProbesIn(filepath.Base(m.Pinned.Script.Path), data, n, side, cell)
+	return lane.ProbesIn(data, side)
 }
 
 // lockedModules says why m's built-in modules aren't the ones the repo's
@@ -148,3 +149,7 @@ func lockedModules(root string, m *manifest.Manifest) string {
 	}
 	return strings.Join(whys, "; ")
 }
+
+// WorkspaceEnv names the directory a lane runs in: its staged copy, or the
+// working tree for # Workspace: live.
+const WorkspaceEnv = "SWIM_WORKSPACE"

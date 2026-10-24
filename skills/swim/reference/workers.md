@@ -9,7 +9,7 @@ These rules make it hold. They extend the guide's `PLANNER WORKFLOW` and
 
 1. **Survey:** run `swim report --earmark` and `swim status`. Free lanes are
    idle, stubbed, or numbers not in use (1–99). A lane that is running,
-   pending or queued isn't free, and neither is an Always lane.
+   pending or queued isn't free, and neither is a lane the repo commits.
 2. **Assign one lane number to each worker,** before any worker starts. Put
    it in the worker's prompt, along with:
    - the goal;

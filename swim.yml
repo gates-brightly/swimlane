@@ -1,9 +1,9 @@
 # swim.yml: this repo's committed swim settings (the same keys as a repos
 # entry in ~/.config/swim/config.yml; your own repos entry overrides them).
-# The CI is five group files (lanes.ci.sh lists them): lane 1's fmt, lint,
-# unit tests and race are Always and run first; then e2e (2), fault
-# injection (3), security (4) and fuzzing (6) run side by side. Other lanes
-# are for rounds (swim shows the lanes in use; there's no count).
+# The CI is five lanes (lane.1.sh lists them): lane 1's fmt, lint, unit
+# tests and race run first; then e2e (2), fault injection (3), security (4)
+# and fuzzing (6) run side by side. Other lanes are for rounds (swim shows
+# the lanes in use; there's no count).
 # GitHub Actions runs them with `swim ci`, and `just ci` runs the same
 # rounds locally.
 header_env: [GOFLAGS, GITHUB_REF_NAME, RUNNER_OS]

@@ -33,7 +33,7 @@ func TestEnvFiles(t *testing.T) {
 		"STAGE=general-stage\nREGION=general-region\nGENERAL_ONLY=general-value\n[repo REPO]\nPROFILE=orders-prod-profile\nREGION=repo-region\n",
 		"[lane 1]\nTABLE=orders-v2-table\nSTAGE=lane-stage\n[lane 2]\nTABLE=other-lane-table\n",
 		"env:\n  REGION: yml-region\n  OWNER: platform-team\n")
-	r.script(1, "env", `run "env" bash -c 'echo "$STAGE $REGION $PROFILE $TABLE $OWNER $GENERAL_ONLY $SHELL_ONLY" > env.out'`)
+	r.script(1, "env", `run "env" bash -c 'echo "$STAGE $REGION $PROFILE $TABLE $OWNER $GENERAL_ONLY $SHELL_ONLY" > "$SWIM_ROOT/env.out"'`)
 	r.env = append(r.env, "SHELL_ONLY=typed", "OWNER=shell-owner")
 	r.mustSwim("run", "1", "--plain")
 	data, _ := os.ReadFile(filepath.Join(r.root, "env.out"))
@@ -116,50 +116,12 @@ func TestEnvFileQueuePin(t *testing.T) {
 	}
 }
 
-// .lane.N.rc still loads, with a WARN, but a guard flag it sets no longer
-// approves; swim doctor --fix moves a plain one into .env.swim.
-func TestLaneRCDeprecated(t *testing.T) {
-	r := newRepo(t, "")
-	r.script(1, "rc lane", `if guard ALLOW_X "do x"; then run "did x" true; fi
-run "stage" bash -c 'echo "stage=$STAGE" > stage.out'`)
-	r.write(".lane.1.rc", "export STAGE=from-rc\nALLOW_X=1\n", 0o644)
-	r.mustSwim("run", "1", "--plain")
-	data, _ := os.ReadFile(filepath.Join(r.root, "stage.out"))
-	contains(t, "rc env", string(data), "stage=from-rc")
-	log := r.log(1)
-	contains(t, "log", log, "WARN  .lane.1.rc is deprecated", "WARN  ALLOW_X=1 from .lane.1.rc ignored", "SKIP  do x (dry run")
-	if strings.Contains(log, "PASS  did x") {
-		t.Error("the rc's guard flag approved")
-	}
-	// The same flag typed in the shell still approves.
-	r.env = append(r.env, "ALLOW_X=1")
-	r.mustSwim("run", "1", "--plain")
-	contains(t, "shell flag", r.log(1), "APPROVED  do x (ALLOW_X=1)", "PASS  did x")
-
-	// doctor --fix refuses an rc that sets a guard flag, and moves a plain one.
-	contains(t, "doctor", must(r.swim("doctor")), ".lane.1.rc is deprecated", "[lane-rc]")
-	out, code := r.swim("doctor", "--fix")
-	if code == 0 || !strings.Contains(out, "sets guard flag ALLOW_X") {
-		t.Errorf("doctor --fix with a guard flag: exit %d\n%s", code, out)
-	}
-	r.write(".lane.1.rc", "export STAGE=from-rc\n", 0o644)
-	contains(t, "doctor --fix", must(r.swim("doctor", "--fix")), "moved .lane.1.rc into .env.swim [lane 1]")
-	if _, err := os.Stat(filepath.Join(r.root, ".lane.1.rc")); err == nil {
-		t.Error(".lane.1.rc still there")
-	}
-	data, _ = os.ReadFile(filepath.Join(r.root, ".env.swim"))
-	contains(t, ".env.swim", string(data), "[lane 1]", "STAGE=from-rc")
-	r.mustSwim("run", "1", "--plain")
-	data, _ = os.ReadFile(filepath.Join(r.root, "stage.out"))
-	contains(t, "migrated env", string(data), "stage=from-rc")
-}
-
 // Lint warns about a key set twice in one env file section; a lane in
 // another language gets the env files too, masked in its log.
 func TestEnvFileDuplicatesAndWrappedLane(t *testing.T) {
 	r := newRepo(t, "")
 	envFiles(t, r, "", "[lane 1]\nTABLE=first-table\nTABLE=orders-v2-table\n", "")
-	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped env\nswim run \"show\" -- bash -c 'echo \"table=$TABLE\"; echo \"$TABLE\" > table.txt'\n", 0o755)
+	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped env\nswim run \"show\" -- bash -c 'echo \"table=$TABLE\"; echo \"$TABLE\" > \"$SWIM_ROOT/table.txt\"'\n", 0o755)
 	contains(t, "lint", must(r.swim("lint", "1")), ".env.swim:3 sets TABLE again in [lane 1] (first at line 2; the last wins)")
 	r.mustSwim("run", "1", "--plain")
 	if got := readFile(t, r, "table.txt"); got != "orders-v2-table" {

@@ -89,67 +89,45 @@ and `--retry-on 1,255` before the label. Retry only idempotent steps.
     `bash -o pipefail -c 'slow_cmd | awk "{print} / both\$/{bad=1} END{exit bad}"'`.
   - Python-based CLIs (aws, gcloud) buffer when piped: run them with
     `PYTHONUNBUFFERED=1`.
-- **Many similar targets:** use one matrix round
-  (`# Matrix: SVC=orders,billing,users`), not copy-pasted lanes. Retry only
-  the failed cells with `swim run N --failed`.
-- **Standing setup** (lint, init): an `# Always: yes` lane. Other lanes name
-  it in `After:` only if they need it to pass.
+- **Many similar targets:** loop over them inside one round, one step
+  each, so the log names the one that failed.
+- **Standing setup** (lint, init): its own lane, which the others name in
+  `After:`.
 
 ## The same shape in Python
 
 Prefer bash. Reach for another language when the user asks, or when the
 work is much easier with a native library (boto3, a database driver,
-parsing JSON). `swim new N "<goal>" --lang py` (or `ts`) writes the
-template. The SDK gives you the same stages, steps, guards and log. Its
-setup and the other languages are in `swim guide` (`OTHER LANGUAGES`)
-and in `docs/examples/` in the swimlane repo.
+parsing JSON). There is no SDK: the program calls swim's steps as
+commands, and swim's wrapper opens and closes the round
+(`swim guide`, `OTHER LANGUAGES`).
 
 ```python
 #!/usr/bin/env python3
-# swim: syntax 3
+# swim: syntax 4
 # Round:  Archive sessions older than 30 days
 # Guards: SESSIONS_ALLOW_ARCHIVE  move sessions older than 30 days to sessions_archive
-import sqlite3
-import swim
+import os, subprocess
 
-DB = "data/sessions.db"
+def swim(*a):
+    return subprocess.run([os.environ.get("SWIM_BIN", "swim"), *a]).returncode
+
+DB = os.path.join(os.environ["SWIM_ROOT"], "data/sessions.db")
 OLD = "created < datetime('now', '-30 days')"
+q = lambda sql: ["sqlite3", DB, sql]
 
-def count_old():
-    return sqlite3.connect(DB).execute(f"select count(*) from sessions where {OLD}").fetchone()[0]
-
-with swim.round() as r:
-    r.stage("snapshot")
-    r.snapshot("sessions before", ["python3", "-c", f"import sqlite3; print(sqlite3.connect('{DB}').execute('select * from sessions').fetchall())"])
-
-    r.stage("check")
-    with r.step("count old sessions", gate=True) as s:   # in-process, logged as a step; gate: failing ends the round
-        n = count_old()
-        s.log(f"{n} sessions older than 30 days")
-        s.require(n < 10000, "suspiciously many: check the cutoff")
-
-    r.stage("change")
-    if r.guard("SESSIONS_ALLOW_ARCHIVE", "move sessions older than 30 days to sessions_archive"):
-        with r.step("archive old sessions") as s:
-            db = sqlite3.connect(DB)
-            db.execute(f"insert into sessions_archive select * from sessions where {OLD}")
-            s.log(f"deleted {db.execute(f'delete from sessions where {OLD}').rowcount} rows")
-            db.commit()
-
-    r.stage("verify")
-    with r.step("none left") as s:
-        n = count_old()
-        s.require(n == 0, f"{n} old sessions remain")
+swim("stage", "snapshot")
+swim("snapshot", "sessions before", "--", *q("select count(*) from sessions"))
+swim("stage", "check")
+swim("gate", "not suspiciously many", "--", "sh", "-c",
+     f"test $(sqlite3 {DB} \"select count(*) from sessions where {OLD}\") -lt 10000")
+swim("stage", "change")
+if swim("guard", "SESSIONS_ALLOW_ARCHIVE", "move sessions older than 30 days to sessions_archive") == 0:
+    swim("run", "archive old sessions", "--",
+         *q(f"insert into sessions_archive select * from sessions where {OLD}; delete from sessions where {OLD};"))
+swim("stage", "verify")
+swim("gate", "none left", "--", "sh", "-c", f"test $(sqlite3 {DB} \"select count(*) from sessions where {OLD}\") -eq 0")
 ```
-
-- **`r.run(...)` for commands, `with r.step(...)` for in-process work.**
-  Both are logged as steps. A bare `subprocess.run` is invisible to swim:
-  no log block, no timeout, no blocked-command check, and `swim lint` flags
-  it.
-- **`gate=True`** makes an in-process step a gate. `s.require(cond, why)`
-  fails the step with that reason.
-- **The guard works exactly as in bash:** a dry run until a person
-  approves.
 
 ## Before handing it over
 

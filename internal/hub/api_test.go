@@ -272,7 +272,7 @@ func TestEventsHeartbeatAndPrivate(t *testing.T) {
 // A client that falls behind is dropped, never waited for.
 func TestSlowEventClientDropped(t *testing.T) {
 	e := newEventHub()
-	slow := e.subscribe("")
+	slow := e.subscribe("", "")
 	done := make(chan struct{})
 	go func() {
 		for i := 0; i < eventBuffer+10; i++ {
@@ -336,5 +336,27 @@ func TestHubVersion(t *testing.T) {
 	}
 	if body := get(t, srv.URL+"/login"); !strings.Contains(body, "swim hub · swim "+version.Long()) {
 		t.Errorf("the login page lacks the version:\n%s", body)
+	}
+}
+
+// A removed user's event streams end; at most MaxEventStreams are open.
+func TestEventStreamsEndAndCap(t *testing.T) {
+	e := newEventHub()
+	alice := e.subscribe("", "alice")
+	bob := e.subscribe("", "bob")
+	e.closeUser("alice")
+	if _, ok := <-alice.ch; ok {
+		t.Error("alice's stream still open")
+	}
+	select {
+	case <-bob.ch:
+		t.Error("bob's stream closed")
+	default:
+	}
+	for e.clients() < MaxEventStreams {
+		e.subscribe("", "")
+	}
+	if e.subscribe("", "") != nil {
+		t.Errorf("a stream past the cap of %d", MaxEventStreams)
 	}
 }

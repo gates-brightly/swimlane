@@ -65,23 +65,3 @@ func TestLockRefusalIsRecorded(t *testing.T) {
 		t.Errorf("the refused round ran its step:\n%s", log)
 	}
 }
-
-// A command that fails inside an outcome handler, outside its steps, is a
-// WARN in the log: here ls, and the call to cleanup (which bash names by
-// its last command, false). A failed step isn't one, and neither is the
-// false inside cleanup a second time.
-func TestHandlerFailureOutsideAStepWarns(t *testing.T) {
-	r := newRepo(t, "")
-	handlerScript(t, r, 1, "", `cleanup() { false; }
-on_failure() {
-  run "rollback" false
-  cleanup
-  ls /no-such-dir-for-swim
-}`, `run "probe" false`)
-	r.swim("run", "1", "--plain")
-	log := r.log(1)
-	contains(t, "log", log, "WARN  outside a step: ls /no-such-dir-for-swim", "WARN  outside a step: false", "FAIL  rollback")
-	if n := strings.Count(log, "outside a step"); n != 2 {
-		t.Errorf("%d outside-a-step WARNs, want 2 (the handler's own commands):\n%s", n, log)
-	}
-}

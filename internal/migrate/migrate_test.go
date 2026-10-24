@@ -5,37 +5,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
-func TestMigrateSyntax1Script(t *testing.T) {
+// A syntax 1 script is refused, not rewritten; a plain program has no
+// swim syntax and passes.
+func TestCheckRefusesSyntax1(t *testing.T) {
 	root := t.TempDir()
 	old := "#!/usr/bin/env bash\n# Round: old round\neval \"$(swim lib)\"\nlane_init 1\nrun \"x\" true\nsummary\n"
+	os.WriteFile(filepath.Join(root, "lane.2.sh"), []byte("#!/usr/bin/env bash\necho hi\n"), 0o755)
+	if err := Check(root); err != nil {
+		t.Errorf("a plain program: %v", err)
+	}
 	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte(old), 0o755)
-	// A plain program (no lane_init) has no swim syntax: never rewritten.
-	plain := "#!/usr/bin/env bash\necho hi\n"
-	os.WriteFile(filepath.Join(root, "lane.2.sh"), []byte(plain), 0o755)
-	res, err := Run(root)
-	if err != nil {
-		t.Fatal(err)
+	if err := Check(root); err == nil || !strings.Contains(err.Error(), "lane.1.sh is swim syntax 1") {
+		t.Errorf("a syntax 1 script: %v", err)
 	}
-	if len(res.Files) != 1 || res.Files[0] != "lane.1.sh" || res.Backup == "" {
-		t.Fatalf("result: %+v", res)
-	}
-	data, _ := os.ReadFile(filepath.Join(root, "lane.1.sh"))
-	if syntax.OfScript(string(data)) != syntax.Current || !strings.Contains(string(data), "run \"x\" true") {
-		t.Errorf("migrated:\n%s", data)
-	}
-	if b, _ := os.ReadFile(filepath.Join(root, res.Backup, "lane.1.sh")); string(b) != old {
-		t.Error("no backup of the original")
-	}
-	if p, _ := os.ReadFile(filepath.Join(root, "lane.2.sh")); string(p) != plain {
-		t.Error("a plain program was rewritten")
-	}
-	again, _ := Run(root)
-	if len(again.Files) != 0 {
-		t.Errorf("a second run migrated again: %+v", again)
+	if data, _ := os.ReadFile(filepath.Join(root, "lane.1.sh")); string(data) != old {
+		t.Error("Check rewrote it")
 	}
 }
 

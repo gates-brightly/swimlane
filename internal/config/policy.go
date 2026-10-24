@@ -23,12 +23,6 @@ var PolicyKeys = []string{"blocked_commands", "runners", "approvals", "signing",
 	"secret_env", "secret_env_auto", "secret_env_ignore", "secret_patterns_auto", "env",
 	"secrets", "ambient_credentials", "modules"}
 
-// legacyPolicyKeys are the keys manifest v1's policy hash covered (policy
-// version 3). Frozen: LegacyPolicyHash must keep hashing exactly these.
-var legacyPolicyKeys = []string{"blocked_commands", "runners", "approvals", "signing",
-	"secret_env", "secret_env_auto", "secret_env_ignore", "secret_patterns_auto", "env",
-	"secrets", "ambient_credentials", "modules"}
-
 // policyValues is each policy key swim.yml can set, with its value.
 func (c *Config) policyValues() map[string]any {
 	r := c.Repo
@@ -93,45 +87,5 @@ func (c *Config) PolicyHash() string {
 		text += k + " " + set[k] + "\n"
 	}
 	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
-}
-
-// policySubset is the part of swim.yml the v1 hash covered, in
-// legacyPolicyKeys order. Frozen.
-type policySubset struct {
-	Version            int                     `yaml:"version"`
-	BlockedCommands    []string                `yaml:"blocked_commands"`
-	Runners            map[string]string       `yaml:"runners"`
-	Approvals          string                  `yaml:"approvals"`
-	Signing            string                  `yaml:"signing"`
-	SecretEnv          []string                `yaml:"secret_env"`
-	SecretEnvAuto      *bool                   `yaml:"secret_env_auto"`
-	SecretEnvIgnore    []string                `yaml:"secret_env_ignore"`
-	SecretPatternsAuto *bool                   `yaml:"secret_patterns_auto"`
-	Env                map[string]string       `yaml:"env"`
-	Secrets            map[string]SecretPolicy `yaml:"secrets"`
-	AmbientCredentials []string                `yaml:"ambient_credentials"`
-	Modules            *ModulesPolicy          `yaml:"modules"`
-}
-
-// LegacyPolicyHash is the policy hash manifest v1 used (policy version 3),
-// so approvals and pins made before manifest v2 keep matching. "" when
-// swim.yml sets a key v1 didn't cover: no v1 pin can vouch for that.
-func (c *Config) LegacyPolicyHash() string {
-	legacy := map[string]bool{}
-	for _, k := range legacyPolicyKeys {
-		legacy[k] = true
-	}
-	for k := range c.PolicySet() {
-		if !legacy[k] {
-			return ""
-		}
-	}
-	r := c.Repo
-	data, _ := yaml.Marshal(policySubset{Version: 3, BlockedCommands: r.BlockedCommands, Runners: r.Runners,
-		Approvals: r.Approvals, Signing: r.Signing, SecretEnv: r.SecretEnv, SecretEnvAuto: r.SecretEnvAuto,
-		SecretEnvIgnore: r.SecretEnvIgnore, SecretPatternsAuto: r.SecretPatternsAuto, Env: r.Env,
-		Secrets: r.Secrets, AmbientCredentials: r.AmbientCredentials, Modules: r.Modules})
-	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }

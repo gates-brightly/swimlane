@@ -28,11 +28,10 @@ COMMANDS
   cache restore|save TREE     inside a lane: an installed tree's snapshot (# Cache: snap:TREE)
   modules [ls|show|new]    the modules lanes can use (# Modules:; see MODULES): show NAME
                            prints one, new NAME [--kind bash|go] writes a repo module
-  new N|TASK "<round goal>" [--lang py|js|ts]   write lane.N.sh (or .py/.js/.ts) from the
+  new N|TASK "<round goal>"   write lane.N.sh from the
                            template, with a new job id; a TASK name (renew-certs) picks the
                            lowest free lane and names it (# Task:), for swim run TASK etc.
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
-                           N[cell] runs one cell of a matrix round, --failed its failed cells
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
   plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing
                            (--check: first run every snapshot and check stage, read-only)
@@ -51,7 +50,7 @@ COMMANDS
   gate "<label>" -- cmd    a step whose failure ends the round (and stops the program)
   evidence "<label>" -- cmd   a check step whose output an approval can cover (the plan)
   snapshot "<label>" -- cmd   a read-only step whose output is saved
-  mod [options] CMD [args...]   a module command (# Modules:) as a step, no SDK needed
+  mod [options] CMD [args...]   a module command (# Modules:) as a step, from any language
   guard FLAG "<action>"    exit 0 if the operator approves the action, 1 if not
   stage NAME               start a stage: snapshot, check, change, verify
   drift "<what differs>"   record DRIFT
@@ -185,51 +184,6 @@ CONCEPTS
               header, `# After: A` (lane numbers, task names or job ids), or for ordering
               that holds every round, in config `deps`. If A fails or is
               skipped, B is skipped.
-  finally lane Cleanup or a report, the run's after_script (# Finally: A B):
-              it starts once A and B have ended, however (passed, failed,
-              skipped, interrupted), and is never skipped for them; a lane
-              not in the run has ended. Running A pulls it in (--no-finally
-              leaves it out; a queued batch takes it along). It sees each
-              outcome: SWIM_FINALLY_<N> (pass, fail, skip, interrupted; empty
-              when not in the run), SWIM_FINALLY_<N>_JOB, and SWIM_FINALLY
-              (pass if all passed, else fail), and SWIM_OBSERVATIONS: a file
-              of the observations of the lanes it waited for (swim observe),
-              for a write-up. The first Ctrl-C doesn't stop
-              it, and it still starts, within finally_timeout (default 10m);
-              a second skips or interrupts it. Its result never changes
-              another lane's: the summary reports it on its own line, a
-              failed one fails the run, and with an ordinary lane failing too
-              the run exits 89. Not on an Always lane. In a lane of jobs,
-              `# swim job 1.9 finally` runs after its earlier siblings even
-              when one failed, sees SWIM_FINALLY_<N>_<K> for each, and fails
-              the lane only by its own failure (89 with another job's).
-  always lane Standing setup, like a CI before_script (# Always: yes): lint,
-              fmt, init. It never counts as passed, so `swim all` runs it
-              every time, first, and every other lane in the run waits for it
-              to finish; only lanes that name it in After: need it to pass.
-              `swim run N` pulls in the Always lanes N names, no others. With
-              # Rerun-Children: yes, `swim all` reruns every lane downstream
-              of it, even ones that passed. It isn't a round: never assign,
-              rewrite, archive or stub one (swim refuses without --force).
-  job         Part of a lane: any lane can be split into jobs, numbered
-              under it and nested to any depth (1.1, 1.2, 1.5.9.9). The lane's
-              header (Round:, After:, Locks:) comes first; each job starts at
-              a "# swim job N.K" line, then its own header (Round:, Job:,
-              Always:, Timeout:) and steps. Jobs with steps run in file order
-              and the first failure skips the rest; each has its own log
-              (swim log 1.2) and status. A job id names it and every job
-              under it: `swim run 1.5` runs them all, `After: 1.5` waits for
-              them all. Always: on a job covers those under it; other lanes
-              wait only for the lane's Always jobs. swim adds the library
-              load, lane_init and summary, and runs .swim/groups/lane.N.<job>.sh:
-              edit the lane's file, never that. Code before the first job runs
-              in every job, after lane_init.
-              In Python, TypeScript or Go, mark jobs in comments (# or //) the
-              same way: each job runs the whole program, and the SDK's jobs()
-              calls its function (keys "1.2" or "2"; the closest wins).
-  group file  A lane of jobs named lanes.<name>.sh at the repo root, for standing
-              jobs worth committing (fmt, lint, test): it's the lane its jobs
-              name. It can't also have a lane.N.sh; swim new/stub refuse it.
   stub        The placeholder a lane holds between rounds (`swim stub`).
   archive     A finished log renamed agentN.prev-<what>.log (`swim archive`).
               Logs are kept; rounds are not.
@@ -251,7 +205,6 @@ FILES (repo root)
   lane.N.yml             optional metadata for lane N's script (round, job, after,
                          guards, locks, timeout, ...), over its header (OTHER LANGUAGES)
   .env.swim              lane-scoped env: [lane N] sections of KEY=VALUE (ENV FILES)
-  .lane.N.rc             deprecated: operator-local env sourced by lane_init (ENV FILES)
   .swim/status.yml      last state of every lane (see READING RESULTS)
   .swim/logs/agentN.log         lane N's log, append-only, plain text (ANSI
                                 stripped); read it with `swim log N`
@@ -290,9 +243,7 @@ PLANNER WORKFLOW
      round someone else may be about to run.
   2. Assign each worker one lane number. A worker writes only lane.N.sh.
      Use a lane `swim status` shows idle, or a number not in use (any of
-     1..99: there's no lane count to raise). Never an Always lane
-     (# Always: yes; `swim plan` marks it [*]): name it in After: if your
-     round needs it to pass. Never edit the config yourself.
+     1..99: there's no lane count to raise). Never edit the config yourself.
   3. Write the round: `swim new N "<goal>"`, then fill in the steps. Keep the
      header (Round:, Goal, Steps, Guard flags) accurate: the operator reads
      it without you.
@@ -349,8 +300,8 @@ WORKER RULES
 WRITING A LANE SCRIPT
   Start from `swim new N "<goal>"`. The library functions:
 
-  lane_init N                     claim lane N: cd to repo root, STEP_LOG=.swim/logs/agentN.log,
-                                  source .lane.N.rc (deprecated), write the round header, mark running,
+  lane_init N                     claim lane N: cd to its workspace (its staged copy under swim run),
+                                  STEP_LOG=.swim/logs/agentN.log, write the round header, mark running,
                                   export SWIM_JOB (the script's job id), SWIM_DEADLINE and
                                   SWIM_TIMEOUT (from Timeout:). Refuses if lane N is already
                                   running. Call it first.
@@ -424,8 +375,7 @@ WRITING A LANE SCRIPT
                                   changes only; the latest when a step or the round ends).
                                   A command inside a step can post too: swim msg "...".
                                   Never fails the round.
-  stop "<reason>"                 record STOP and end the round now (in a handler: record
-                                  it, and the handler carries on).
+  stop "<reason>"                 record STOP and end the round now.
   evidence [opts] "<label>" cmd   a check stage step whose output shows what the change will
                                   do (terraform plan, a diff): saved, normalized (ANSI,
                                   line endings, trailing space) and hashed as the round's
@@ -442,9 +392,8 @@ WRITING A LANE SCRIPT
                                   goes in the chain. A failure records FAIL.
   output KEY VALUE                record a small value (an id, a version) among the round's
                                   outputs; dependents read it with $(input N KEY).
-  reached STAGE                   true if the round started STAGE or a later one; an
-                                  on_failure usually starts with: reached change || return 0
-  summary                         run the outcome handlers, print + log the summary, record
+  reached STAGE                   true if the round started STAGE or a later one
+  summary                         print + log the summary, record
                                   final state. Exits non-zero if any step failed. Put it last.
 
   Header (the `# Key: value` lines at the top; one space at most after the
@@ -454,11 +403,6 @@ WRITING A LANE SCRIPT
       # Job:     <id>                 written by swim new; keep it. Default: one is made
                                       when the round starts (then it can't be pinned)
       # After:   <lane|job> [...]     wait for these to pass first, e.g. "2 3". Default: none
-      # Always:  yes                  standing setup: runs every time, before every other
-                                      lane in the run (see "always lane"). Waits only on
-                                      other Always lanes. Default: no
-      # Rerun-Children: yes           (Always lanes) swim all reruns every lane downstream
-                                      of this one, even ones that passed. Default: no
       # Owner:   <who wrote it>       Default: - (swim new fills in $USER)
       # Created: <YYYY-MM-DD>         Default: the file's modification date
       # Guards:  FLAG  <what it approves (date, reason)>
@@ -487,12 +431,9 @@ WRITING A LANE SCRIPT
                                       status, the END block and the chain, and made read-only.
                                       Files aren't masked (swim output values are): never
                                       put secrets in outputs. Default: none
-      # Matrix: KEY=a,b,c              run the round once per value (a cell); see MATRIX ROUNDS
       # Fail: soft|hard               hard: the first failed step ends the round (STOP
-                                      hard failure) and goes to on_failure. Default: soft.
+                                      hard failure). Default: soft.
                                       Needs syntax 3
-      # Handler-Timeout: <5m, ...>    the budget for all outcome handlers together, from
-                                      when the round ends. Default: 5m
       # Includes: <glob> [...]        repo files that are part of the round (local modules,
                                       sourced files): pinned and staged with the script, and
                                       the only repo files it may read as code: under swim
@@ -528,52 +469,12 @@ WRITING A LANE SCRIPT
   continues). An unknown stage name stops the round. The log's END block and
   status.yml record each stage's result: PASS, FAIL, SKIP (only skipped) or none.
 
-  OUTCOME HANDLERS (script syntax 3: `# swim: syntax 3`). A round may define
-  bash functions swim calls when it ends, however it ends (the end of the
-  script, summary, a gate, stop, a hard failure, a blocked command, Ctrl-C,
-  a timeout, a bash error), like try / catch / finally:
-      on_success() { run "tag migrated" aws ... ; }      # the round passed
-      on_failure() {                                    # anything else
-        reached change || return 0                      # nothing changed, nothing to undo
-        if guard ORDERS_ALLOW_ROLLBACK "redeploy SST stack orders-prod"; then
-          run "sst deploy" npx sst deploy --stage prod
-        fi
-      }
-      on_exit() { run "remove temp bucket" aws s3 rb s3://orders-tmp --force ; }
-  - Order: on_success or on_failure, then on_exit. Each has its own log
-    section (-- handler on_failure). Their results never change the round's:
-    a failed round stays FAIL, and the END block, status.yml, --yaml and the
-    chain record each handler (handlers: on_failure PASS | on_exit PASS).
-  - Handlers run soft: a failed step, a gate, stop or a declined confirm in
-    a handler records the failure and the handler carries on, so every
-    rollback step gets its attempt. A round whose on_failure failed exits 89
-    ("failed, and the rollback failed"), not 1.
-  - Context: SWIM_OUTCOME (pass, fail, stopped, interrupted, timeout),
-    SWIM_STOP_REASON, SWIM_FAILED_STEP and SWIM_FAILED_STAGE (the first
-    failed step).
-  - Guards in handlers approve as anywhere else; an unapproved rollback is a
-    dry run. After a Ctrl-C nobody is asked: approve rollbacks up front
-    (queue --approve, a signed approval). swim plan lists each handler and
-    the guards in it.
-  - Ctrl-C: the first stops the round at a step boundary and runs its
-    handlers (SWIM_OUTCOME=interrupted; return early if a rollback shouldn't
-    follow an interrupt). Their steps start even though a stop was asked
-    for. The second interrupts the running handler step and skips the rest;
-    a third kills everything.
-  - Handler-Timeout: (default 5m) is their budget together, from when the
-    round ends, so a round that ran out its Timeout still gets time to roll
-    back. Past it, the running step is stopped and the rest skipped.
-  Lanes in other languages name commands instead: # On-Success:, # On-Failure:,
-  # On-Exit: (or on-success:, ... in lane.N.yml), run with sh -c in a handler
-  section with the same context and budget (see OTHER LANGUAGES).
-
   Rules for lane scripts:
   - Do not use `set -e`. Failed checks keep going; only gates stop the round.
     A command outside any step that fails (a typo, a missing program, a cd
     that didn't happen) is logged as "WARN  outside a step: <command>
     (exit N)" and changes nothing; put anything that matters in a step.
-    The same goes for an outcome handler's own commands (not those of the
-    functions it calls). Output outside steps goes to the terminal (and
+    Output outside steps goes to the terminal (and
     swim run's view) only; a lane that exits before lane_init's round
     starts gets a round of its own in its log, "STOP  not started: <why>",
     with the last lines it printed, and the reason in swim status.
@@ -624,39 +525,10 @@ WRITING A LANE SCRIPT
       run "verify: re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
       summary
 
-MATRIX ROUNDS
-  One lane script runs once per value, each run a cell with its own log,
-  status, job and result:
-      # Round:  Cut over $SVC from SST to Terraform
-      # Matrix: SVC=orders,billing,users     (or SVC=@services.txt: one per line)
-      # Matrix-Parallel: 2                   cells at once (default 1), each in a
-                                             slot of the run's --parallel
-      # Matrix-Fail: stop                    skip cells not started after a failure
-                                             (default continue: every cell runs)
-      # Locks:  tf/$SVC                      $KEY in Round, Locks and Outputs is
-                                             each cell's value
-  - Several Matrix: lines give the cross product (cells named
-    ENV=prod,SVC=orders); # Matrix-Exclude: ENV=prod,SVC=search drops
-    combinations. At most 256 cells.
-  - A cell's process gets each key as an env var ($SVC) and SWIM_CELL. Its log
-    is .swim/logs/agentN.<cell>.log; its job <job>/<cell>; status.yml lists
-    it under its lane's cells:.
-  - The lane passes only if every cell does. After: 3 waits for the whole
-    lane; After: 3[orders] needs only that cell to pass.
-  - Rerun: swim run 3 --failed runs only the cells that didn't pass; swim run
-    '3[billing]' (or <job>/billing) runs one cell.
-  - Read: swim log 3 lists the cells, then the ones that didn't pass with
-    their first failed step and its first output line (only those: swim log
-    3 --failures; the end of swim run shows the same); swim log '3[orders]'
-    shows one.
-  - The value file (@services.txt) is part of the script's hash: approvals,
-    queue pins and the chain cover the list. Each cell asks its own guard
-    questions, naming its cell.
-
 OTHER LANGUAGES
   A lane script can be any runnable: lane.N.py, lane.N.js, lane.N.ts, lane.N.rb,
   a compiled program lane.N, a plain bash script. Exactly one per lane (two
-  is an error). `swim new N "<goal>" --lang py|js|ts` writes a template.
+  is an error).
   How it runs (decided before the lane starts):
     1. lane.N.sh: bash, as always.
     2. A #! line: that command (no question asked).
@@ -684,13 +556,9 @@ OTHER LANGUAGES
     swim msg [--progress N/M] "<text>"                a status message (live view, status, hub)
     swim input N|JOB NAME    swim output KEY VALUE    outputs between lanes (Outputs:)
   (options as for run in a bash lane: --timeout, --retry, --backoff,
-  --retry-on, --no-retry-timeout, --soft, --expect-fail). Outcome handlers are commands:
-      # On-Failure: python3 rollback.py           (on-failure: in lane.N.yml)
-      # On-Exit:    swim run "remove tmp" -- rm -rf /tmp/orders
-  run with sh -c when the round ends; in them swim gate and swim stop record a
-  failure and end nothing. # Fail: hard makes a failed swim run end the round
-  (swim run --soft opts out). Both need `# swim: syntax 3` in the header; a
-  sidecar with these keys needs none. A failed gate, swim stop, a refused git
+  --retry-on, --no-retry-timeout, --soft, --expect-fail). # Fail: hard makes a
+  failed swim run end the round (swim run --soft opts out); it needs
+  `# swim: syntax 3` in the header (a sidecar's fail: needs none). A failed gate, swim stop, a refused git
   push or the operator's stop ends the program even if it ignores the exit
   code (SIGTERM to its process group, SIGKILL after 5s): the swim command
   that ended it doesn't return first, and no swim run/gate/snapshot/guard
@@ -703,23 +571,8 @@ OTHER LANGUAGES
       swim("gate", "target is ours", "--", "aws", "s3api", "head-bucket", "--bucket", "orders")
       if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: replaced)") == 0:
           swim("run", "delete bucket", "--", "aws", "s3", "rb", "s3://orders")
-  Native SDKs: instead of a process per step, a lane can use swim's SDK
-  for its language, over a socket swim's wrapper serves for the lane
-  (protocol swim.lane/v1, proto/swim/lane/v1/README.md). swim still decides
-  everything; the SDK raises RoundEnded when the round is over, and the
-  program has 10s to unwind (finally blocks) before it is stopped.
-      Python      sdk/python (pip install swim-lanes; import swim)
-                    with swim.round() as r:
-                        r.gate("tf plan", ["terraform", "plan"])
-                        with r.step("table is empty", gate=True) as s:   # in-process
-                            s.log("items: 0"); s.require(n == 0, "has items")
-      TypeScript  sdk/ts (@gates-brightly/swim; Node, Bun, Deno)
-                    await round(async (r) => { await r.gate("tf plan", ["terraform", "plan"]); });
-      Go          sdk/go/swim (compiled lanes): os.Exit(swim.Round(func(r *swim.R) error { ... }))
-  Each has run, gate, snapshot, evidence, step (in-process, logged as
-  "PASS  <label> (in-process)"), stage, guard, confirm, drift, stop, msg,
-  input, output, module (see MODULES), and outcome handlers (on_success / on_failure / on_exit,
-  registered first). Register # Includes: lib/*.py for the local modules a
+  There is no SDK: steps are swim commands, as above. Register
+  # Includes: lib/*.py for the local modules a
   lane imports: they're hashed with the script, so approvals cover them.
   Local imports by name are pinned and staged anyway (lint warns about one
   # Includes: doesn't list); a lane runs from its staged copy, so a local
@@ -735,8 +588,7 @@ OTHER LANGUAGES
       timeout: 30m
       step-timeout: 5m
   Approvals, the queue's pins and the chain of custody hash the script file
-  itself (the binary, for a compiled lane) as part of its manifest. Env files apply to every lane;
-  the deprecated .lane.N.rc only to bash lanes.
+  itself (the binary, for a compiled lane) as part of its manifest. Env files apply to every lane.
 
 LINT
   `swim lint` reads lane scripts and reports problems as error, warn or info
@@ -749,8 +601,7 @@ LINT
       # swim:lint-ignore-file cross-lane reads lane 1's output from yesterday's run
   `swim doctor` checks the environment the same way; it never changes config,
   lane scripts or git. `swim doctor --fix` only rewrites swim's .gitignore
-  block, removes stale .swim/laneN.pid files and moves plain .lane.N.rc files
-  into .env.swim.
+  block and removes stale .swim/laneN.pid files.
 
 ENV FILES
   Lanes get non-secret context (STAGE, AWS_PROFILE, table names) from
@@ -785,9 +636,6 @@ ENV FILES
     was queued is skipped. `swim env N` shows what a lane gets.
   - Lanes started by swim run (any language) get them; a bash lane run
     directly with bash doesn't (its round still records the hash).
-  - .lane.N.rc is deprecated: lane_init still sources it, with a WARN, but a
-    guard flag it sets no longer approves (guard asks as if it were unset).
-    `swim doctor --fix` moves a plain one into .env.swim.
 
 CACHE
   A lane that declares a cache gets the tool's own download cache pointed at
@@ -831,8 +679,7 @@ CACHE
     files are pinned like lockfiles. cache restore is a step: "hit KEY", or
     "miss" (it still passes, and returns 1 so the script installs); a tree
     already in place is left alone (returns 1). cache save writes a key once
-    (copied, hashed, renamed into place), never from an outcome handler; a
-    save from a round with failed steps is marked, and a restore of it says
+    (copied, hashed, renamed into place); a save from a round with failed steps is marked, and a restore of it says
     so. A restored tree runs unchecked, so each restore goes in the round's
     chain entry (cache: key, tree, tree hash, the job that saved it).
     Snapshots are per repo; swim cache ls lists them (snap.<tree>), swim
@@ -861,10 +708,6 @@ MODULES
     credentials: true may not set credential names (AWS_*, *_TOKEN, ...), and
     no module may set PATH, SWIM_* or the shell's own variables. A value
     echoed by the script itself, outside a step, isn't masked.
-  - SDK lanes: r.module("notify", "#orders", "done"), r.module_env(...)
-    (Python), r.moduleEnv(...) (TypeScript), r.Module / r.ModuleEnv (Go): op
-    module of swim.lane/v1. With env the variables are also set in the
-    program's own environment.
   - Built in (swim modules lists them with their effects; swim modules
     show NAME prints a module's module.yml and source):
       target       mod target aws --account ID [--region R] | kube --context C
@@ -874,8 +717,8 @@ MODULES
       backup       mod backup rds INSTANCE | rds-cluster CLUSTER | dynamodb
                    TABLE [--for 60m]: snapshot it, wait until usable, record
                    the id as output backup.<kind>.<name> (--key K); under
-                   mod_env also BACKUP_ID, BACKUP_KIND, BACKUP_SOURCE for
-                   on_failure. Not read-only: put it in stage change, before
+                   mod_env also BACKUP_ID, BACKUP_KIND, BACKUP_SOURCE.
+                   Not read-only: put it in stage change, before
                    the change (swim plan --check skips it)
       wait         mod wait http URL [--status 2xx|200,204] | tcp HOST:PORT |
                    cmd -- CMD ... | kube-rollout RES [--namespace N]
@@ -980,9 +823,8 @@ SYNTAX
     4   (lane scripts only) modules: # Modules:, mod and mod_env (or a
         sidecar's modules:). Declare it when a lane uses modules, so a swim
         without them refuses the lane rather than running it without them.
-    3   (lane scripts only) outcome handlers (on_success, on_failure, on_exit,
-        or On-*: commands) and Fail:. Declare it only when you use them; a
-        syntax 2 script is never rewritten to 3, and logs stay syntax 2.
+    3   (lane scripts only) Fail:. Declare it only when you use it; logs
+        stay syntax 2.
     2   header metadata (Owner, Created, Guards, Timeout, ...), the four
         stages, and logs grouped by round and stage with output fenced by "| "
     1   no syntax line, no stages, === STEP / --- output log framing
@@ -998,8 +840,8 @@ SAFETY RULES
     "masked: N vars (NAMES)". Masking does NOT cover output a step pipes or
     writes elsewhere, or values split or transformed. The rule stands: never
     print secrets; print keys or lengths only.
-  - Secrets from swim secret (bash: $(swim secret get NAME); the SDKs:
-    secret.get("NAME")) are masked exactly, by name: ***(db_password).
+  - Secrets from swim secret (bash: $(swim secret get NAME); any
+    language: the same command) are masked exactly, by name: ***(db_password).
     A swim run decrypts them once at start (asking the key's passphrase, if
     any, before the live view) and every process in a lane masks every
     secret that lane may get, whichever it uses (swim run's own stream masks
@@ -1098,11 +940,8 @@ READING RESULTS
         MSG  <text> (7/25, <hh:mm:ss>)              a status message (msg); never a result.
                                                     One posted during a step is in its
                                                     block: -- MSG  <text> (...)
-      -- handler on_failure  <hh:mm:ss>             an outcome handler's section: its
-                                                    results never count toward the round's
       == END <PASS|FAIL|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>  run=<run id>
          stages: snapshot PASS | check PASS | change SKIP | verify PASS
-         handlers: on_failure PASS | on_exit PASS     (if any ran)
          outputs: stats.json 2.1 KB 3f2a9c1e0b7d | pages 14 files, 1.2 MB 9d8e...  (if any)
          failed: FAIL  <label> (exit <code>); ...
   Results are the lines starting "  KIND  " (grep -E '^  (FAIL|BLOCKED)' finds
@@ -1166,7 +1005,6 @@ READING RESULTS
           schedule: <q-... the batch>
           held_by: <q-...>               # its batch waits for that scheduled one
           schedule_removed: <q-...>      # its scheduled batch was removed before it ran
-          finally: "1 pass, 2 fail"      # a finally lane: how the lanes it waited for ended
           last_archive: <last archived log name>
   `swim status` shows "running?" when a lane's pid is gone (killed terminal);
   treat that lane's round as interrupted. The next swim run, swim all or
@@ -1208,7 +1046,7 @@ READING RESULTS
                               step, exit, duration_s, clock, command, output:
                               [lines], saved}], failed_steps
     swim plan --yaml          swim.plan/v1: command, lanes: [{lane, job, round,
-                              action (run|retry|rerun|skip|always|scheduled|held), waits_on, reason,
+                              action (run|retry|rerun|skip|scheduled|held), waits_on, reason,
                               running_pid, guards: [{flag, set, description}],
                               timeout, locks}], idle: [{lane, why}],
                               counts {run, retry, rerun, skip}
@@ -1333,8 +1171,8 @@ EXECUTION MANIFEST
   queued"). An edit to the working tree after staging changes nothing in
   the run, even mid-round. $SWIM_STAGE and $SWIM_MANIFEST name the stage.
   Pinned, in manifest_sha256 (what approvals sign):
-    script     the lane's file (a group file for a lane of jobs)
-    includes   # Includes: matches, Matrix: @files and # Cache: lockfiles:
+    script     the lane's file
+    includes   # Includes: matches and # Cache: lockfiles:
                what the header names, never what its body seems to read
     sidecar    lane.N.yml
     modules    # Modules:: each one's name, version, source and hash (a repo
@@ -1361,7 +1199,7 @@ EXECUTION MANIFEST
   The header is the lane's contract: swim reads what a lane may do (its
   guards, the files it reads, its modules) from its header, never from its
   body, and refuses at run time whatever the body does beyond it. The body
-  is read only for where its stages and handlers are and whether it shows
+  is read only for where its stages are and whether it shows
   evidence.
 
 CHAIN OF CUSTODY
@@ -1422,7 +1260,7 @@ CHAIN OF CUSTODY
                 first use or swim keys pin; CI: --trust-pin). Changes count
                 only when signed by a trusted key (swim keys trust --sign).
                 A chain re-signed wholesale with a new key fails here.
-    anchored    the chain still holds the head of the newest checkpoint at
+    anchored    the chain still holds the head of every checkpoint at
                 each chain_anchors destination (file:/path outside the
                 repo, or hub). Every top-level swim run, swim all, swim ci
                 and swim watch batch sends one. Entries removed from the

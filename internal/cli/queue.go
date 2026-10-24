@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -78,7 +79,7 @@ func queueAdd(args []string) error {
 	}
 	var approve []string
 	var note, parallel, keyPath, timeout string
-	var yes, wait, noFinally bool
+	var yes, wait bool
 	// --approve repeats; -y is the short --yes.
 	var rest0 []string
 	for i := 0; i < len(args); i++ {
@@ -94,7 +95,7 @@ func queueAdd(args []string) error {
 			rest0 = append(rest0, a)
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"yes": &yes, "wait": &wait, "no-finally": &noFinally}, strs: map[string]*string{"note": &note, "parallel": &parallel, "key": &keyPath, "timeout": &timeout}}.parse(rest0)
+	rest, err := flags{bools: map[string]*bool{"yes": &yes, "wait": &wait}, strs: map[string]*string{"note": &note, "parallel": &parallel, "key": &keyPath, "timeout": &timeout}}.parse(rest0)
 	if err != nil {
 		return err
 	}
@@ -120,14 +121,10 @@ func queueAdd(args []string) error {
 		}
 		lanes = append(lanes, n)
 	}
-	var pulled []int
 	if len(lanes) == 0 {
 		if lanes, _, err = launcher.Select(launcher.Options{Root: root, Cfg: cfg, DryRun: true}); err != nil {
 			return err
 		}
-	} else if !noFinally {
-		// The finally lanes naming a queued lane go with it (# Finally:).
-		lanes, pulled = launcher.WithFinally(root, cfg, lanes)
 	}
 	if len(lanes) == 0 {
 		return fmt.Errorf("nothing to queue: no lane holds a pending round that hasn't passed (name lanes to queue them anyway)")
@@ -154,9 +151,6 @@ func queueAdd(args []string) error {
 		seen[f] = true
 	}
 	fmt.Printf("queued %s (#%d): %d lanes\n", e.ID, e.Seq, len(e.Lanes))
-	if len(pulled) > 0 {
-		fmt.Printf("  with the finally lanes naming them: %s (--no-finally leaves them out)\n", lanesText(pulled))
-	}
 	if signedAs != "" {
 		fmt.Printf("  signed by %s (standing approvals for %s apply)\n", signedAs, signedAs)
 	} else {
@@ -232,8 +226,8 @@ type queueOpts struct {
 	parallel *int
 	keyPath  string
 	// notBefore (UTC, RFC 3339) and zone make it a scheduled batch (swim
-	// schedule); from and occurrence a recurring schedule's day.
-	notBefore, zone, from, occurrence string
+	// schedule).
+	notBefore, zone string
 }
 
 // warnUnapproved says, on stderr, which lanes of a batch that approves
@@ -296,7 +290,7 @@ type batch struct {
 // hold now, signed with the operator's key when there is one, and logs it.
 func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch, error) {
 	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel,
-		NotBefore: o.notBefore, Zone: o.zone, From: o.from, Occurrence: o.occurrence}
+		NotBefore: o.notBefore, Zone: o.zone}
 	b := batch{entry: e}
 	var err error
 	if e.Lanes, e.Approve, b.guards, err = pinBatch(root, cfg, lanes, o.approve); err != nil {
@@ -358,9 +352,6 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	}
 	if e.NotBefore != "" {
 		detail = fmt.Sprintf("%s: swim %s  not_before=%s  zone=%s", e.ID, strings.Join(ns, ","), e.NotBefore, e.Zone) + strings.TrimPrefix(detail, fmt.Sprintf("%s: swim %s", e.ID, strings.Join(ns, ",")))
-		if e.From != "" {
-			detail += "  from=" + e.From + " " + e.Occurrence
-		}
 		history.Log(root, history.Entry{Event: history.Schedule, Detail: detail})
 		return b, nil
 	}
@@ -427,7 +418,7 @@ func pinLane(root string, cfg *config.Config, n int) (queue.Lane, lane.Info, err
 	if err != nil {
 		return queue.Lane{}, info, err
 	}
-	return queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum, Manifest: m.SHA256, LegacyManifest: m.LegacySHA256}, info, nil
+	return queue.Lane{Lane: n, Job: info.Job, Round: info.Round, SHA256: chain.Hash(data), EnvSHA256: &envSum, Manifest: m.SHA256}, info, nil
 }
 
 // cmdWait blocks until swim is idle and nothing is about to start: no lane
@@ -889,7 +880,6 @@ func cmdWatch(args []string) error {
 				fmt.Println(p.Paint(ui.Cyan, "swim watch: "+msg))
 			}
 		}
-		materializeRecurring(root, cfg) // today's occurrences of recurring schedules
 		waiting, err := queue.List(root, false)
 		if err != nil {
 			return err
@@ -904,7 +894,7 @@ func cmdWatch(args []string) error {
 			if once {
 				break
 			}
-			say("queue empty; waiting for swim queue add" + nextRecurring(root))
+			say("queue empty; waiting for swim queue add")
 			sleep()
 			continue
 		}
@@ -995,7 +985,16 @@ func heartbeatClaim(e *queue.Entry) (stop func()) {
 			case <-done:
 				return
 			case <-tick.C:
-				if err := queue.Touch(e); err != nil {
+				err := queue.Touch(e)
+				switch {
+				case errors.Is(err, queue.ErrClaimLost):
+					// Requeued or removed from another host: another
+					// swimmer may run it now. Stop this run, as Ctrl-C
+					// would (lanes stop at their next step boundary).
+					fmt.Fprintln(os.Stderr, "swim watch: "+err.Error()+": stopping this batch (another swimmer may run it)")
+					syscall.Kill(os.Getpid(), syscall.SIGINT)
+					return
+				case err != nil:
 					fmt.Fprintln(os.Stderr, "swim watch: heartbeat "+e.ID+": "+err.Error())
 				}
 			}
@@ -1100,8 +1099,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
 		Unattended: true,
 		HubSecrets: func() (map[string]secrets.Granted, error) { return hubGrants(root) }}
-	o.Plain = plain    // a batch swim watch runs alongside others (_batch)
-	o.NoFinally = true // the batch pinned its lanes, finally lanes included
+	o.Plain = plain // a batch swim watch runs alongside others (_batch)
 	o.ScheduledFor = e.NotBefore
 	if headless {
 		// Plain lines for the log; SIGHUP reopens it rather than forcing

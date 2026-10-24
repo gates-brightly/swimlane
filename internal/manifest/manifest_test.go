@@ -38,7 +38,6 @@ func repo(t *testing.T) string {
 		"data/rows.csv":     "a,b\n",
 		"swim.yml":          "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 2\n",
 		"lookup.yml":        "users: {}\nrequire:\n  - guards: [DROP]\n    count: 1\n",
-		"lanes.ci.sh":       "#!/usr/bin/env bash\n# Round: ci\n\n# swim job 5.1\n# Round: fmt\nrun \"fmt\" true\n\n# swim job 5.2\n# Round: test\n# Guards: SHIP  ship it\nif guard SHIP \"ship\"; then run \"ship\" true; fi\n",
 		"notes/other.md":    "not code\n",
 	}
 	for p, data := range files {
@@ -117,7 +116,7 @@ func TestCoverage(t *testing.T) {
 		// Only what the header names is pinned: a file the script sources
 		// without # Includes: is refused when the lane runs, not pinned.
 		{"a file sourced but not declared", "lib/undeclared.sh", "undeclared=2\n", false, ""},
-		{"another lane", "lanes.ci.sh", "#!/usr/bin/env bash\n# Round: ci\n\n# swim job 5.1\n# Round: fmt2\nrun \"fmt\" true\n", false, ""},
+		{"another lane", "lane.5.sh", "#!/usr/bin/env bash\n# Round: ci\nrun \"fmt\" true\n", false, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -189,29 +188,6 @@ func TestStageAndVerify(t *testing.T) {
 	}
 	if err := Remove(filepath.Join(root, ".swim", "runs", "r-1")); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// A bash lane of jobs stages the script swim generates for each job.
-func TestStageJobs(t *testing.T) {
-	root := repo(t)
-	m := build(t, root, 5)
-	if m.Pinned.Script.Path != "lanes.ci.sh" || strings.Join(m.Guards, ",") != "SHIP" {
-		t.Fatalf("group manifest: %+v %v", m.Pinned.Script, m.Guards)
-	}
-	if _, err := m.Stage(root, "r-2"); err != nil {
-		t.Fatal(err)
-	}
-	p, ok := m.JobScript("2")
-	if !ok {
-		t.Fatal("no staged script for job 5.2")
-	}
-	data, err := os.ReadFile(p)
-	if err != nil || !strings.Contains(string(data), "lane_init 5") || !strings.Contains(string(data), `guard SHIP`) {
-		t.Fatalf("job script: %v\n%s", err, data)
-	}
-	if !strings.HasPrefix(p, filepath.Join(root, ".swim", "runs", "r-2", "5", ".swim", "groups")) {
-		t.Errorf("job script at %s", p)
 	}
 }
 

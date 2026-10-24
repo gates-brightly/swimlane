@@ -6,7 +6,7 @@ import { html, render, useEffect, useMemo, useRef, useState } from './vendor/pre
 import { adminCall, get, getText, onLog, post, send, start, useFetch, useStore } from './api.js';
 import {
   ago, api, between, byNamespace, can, enrollmentState, fmtDuration, hasOutput, href, isAdmin, isOperator,
-  badSchedules, successRate, triggerText, exitClass, laneState, scheduleClass, lastRun, layoutGraph, problems, lineMatches, matchEnrollment, repoHref, repoSummary, route, stateClass, steps, until, utf8Length,
+  successRate, triggerText, exitClass, laneState, lastRun, layoutGraph, problems, lineMatches, matchEnrollment, repoHref, repoSummary, route, stateClass, steps, until, utf8Length,
 } from './lib.js';
 
 // ---- navigation ------------------------------------------------------
@@ -205,7 +205,6 @@ function TopBar({ r, store }) {
       ${id && tab('runner', 'Runner', href('e', id, 'runner'))}
       <a class=${r.name === 'activity' ? 'on' : ''} href="/activity">Activity</a>
       <a class=${r.name === 'jobs' ? 'on' : ''} href="/jobs">Jobs</a>
-      <a class=${r.name === 'schedules' ? 'on' : ''} href="/schedules">Schedules${(() => { const n = badSchedules(store.enrollments || []).filter((x) => scheduleClass(x.s.status) === 'bad').length; return n ? html` <span class="count hot">${n}</span>` : ''; })()}</a>
       <a class=${r.name === 'approvals' ? 'on' : ''} href="/approvals">Approvals <span class="count ${waiting ? 'hot' : ''}">${waiting}</span></a>
       ${isAdmin(store.me) && html`<a class=${r.name === 'admin' ? 'on' : ''} href="/admin">Admin</a>`}
     </nav>
@@ -235,7 +234,6 @@ function Home({ store }) {
         <div class="card-t"><span class="dot ${cls}"></span><span class="ell" title=${ns}>${ns || 'no repo'}</span><span class="pill ${cls}">${label}</span></div>
         <div class="card-s">${n.runners} runner${n.runners === 1 ? '' : 's'} · ${n.lanes} lane${n.lanes === 1 ? '' : 's'}${n.stale ? ' · ' + n.stale + ' offline' : ''}</div>
         ${lastRun(es) ? html`<div class="card-w"><${When} t=${lastRun(es)} label="last run"/></div>` : ''}
-        ${badSchedules(es).slice(0, 2).map(({ e, s }) => html`<div class="card-p ${scheduleClass(s.status)}"><span class="dot ${scheduleClass(s.status)}"></span><span class="lbl">schedule ${s.status} · lane${s.lanes.length > 1 ? 's' : ''} ${s.lanes.join(', ')}</span><span class="sub">${s.why || s.cadence}</span></div>`)}
         ${problems(es).slice(0, 3).map((p) => html`<div class="card-p ${p.cls}"><span class="dot ${p.cls}"></span><span class="lbl">${es.length > 1 ? p.e.name + ' · ' : ''}lane ${p.l.lane} ${p.state}${p.l.finished ? ' ' + ago(p.l.finished) : ''}</span><span class="sub">${p.l.round || ''}</span></div>`)}
         <div class="card-l">${es.map((e) => html`<span class="chip ${e.stale ? 'dim' : enrollmentState(e).cls}" title=${e.host + ' · ' + e.activity}>${e.name}</span>`)}</div>
       </a>`;
@@ -666,7 +664,7 @@ function Queue({ r, store }) {
   if (store.enrollments === null) return html`<${Loading}/>`;
   if (!e) return html`<${Crumbs}/><${Problem} r=${{ status: 404 }} what="This runner"/>`;
   const canRm = can(me, e, 'dequeue'), canAgain = can(me, e, 'requeue');
-  // A real entry (not a recurring schedule's template, seq 0), not running.
+  // A real entry, not running.
   const actions = (b) => {
     if (!b.seq || b.state === 'running') return '';
     const done = b.state === 'done' || b.state === 'orphaned';
@@ -747,7 +745,7 @@ function Activity({ store }) {
       ${sel('status', [['', 'any result'], ['failed', 'failed'], ['dry run', 'dry run'], ['passed', 'passed']])}
       ${sel('since', [['1h', 'last hour'], ['24h', 'last 24 hours'], ['7d', 'last 7 days'], ['30d', 'last 30 days'], ['all', 'everything kept']])}
       ${sel('ns', [['', 'every repo'], ...repos.map((ns) => [ns || '-', ns || 'no repo'])])}
-      ${sel('trigger', [['', 'any trigger'], ['schedule', 'schedule'], ['hub', 'hub'], ['queue', 'queue'], ['cli', 'swim run']])}
+      ${sel('trigger', [['', 'any trigger'], ['hub', 'hub'], ['queue', 'queue'], ['cli', 'swim run']])}
     </div>
     <div class="panel">${res.loading && !res.data ? html`<${Loading}/>` : !res.data ? html`<${Problem} r=${res} what="Activity"/>`
       : rows.length === 0 ? html`<div class="empty">No runs match.</div>` : html`<div class="tw"><table>
@@ -808,37 +806,6 @@ function Jobs({ store }) {
       })}</tbody></table></div>`}</div>`;
 }
 
-// Schedules are every runner's recurring schedules, worst first: what
-// runs when, how its last occurrence went, its last success, when it
-// expires, and the hub's verdict: missed (due and not started: the
-// runner was down, or busy), failed, skipped, expired, paused, expiring.
-function Schedules({ store }) {
-  useTitle('Schedules');
-  const res = useFetch('/api/schedules', [store.enrollments]);
-  if (res.loading && !res.data) return html`<${Loading}/>`;
-  if (!res.data) return html`<${Problem} r=${res} what="The schedules"/>`;
-  const rows = res.data.schedules;
-  const bad = rows.filter((s) => scheduleClass(s.status) === 'bad').length;
-  return html`<div class="head"><h1>Schedules</h1><span class="muted">${rows.length} recurring${bad ? html` · <span class="bad">${bad} need${bad === 1 ? 's' : ''} attention</span>` : ''}</span></div>
-    <div class="panel">${rows.length === 0 ? html`<div class="empty">No recurring schedules. On a runner: <code>swim schedule LANES 02:00 --daily</code> or <code>swim schedule LANES --cron "0 */6 * * *"</code>.</div>` : html`<div class="tw"><table>
-      <thead><tr><th>Status</th><th>Job</th><th>Runner</th><th>Cadence</th><th>Next</th><th>Last</th><th>Last success</th><th>Expires</th></tr></thead>
-      <tbody>${rows.map((s) => {
-        const cls = scheduleClass(s.status);
-        const last = s.last;
-        return html`<tr>
-          <td class="why"><span class="pill ${cls}">${s.status}</span>${s.why ? html`<div class="sub ${cls}">${s.why}</div>` : ''}</td>
-          <td title=${s.id}>${s.lanes.map((n, i) => html`<div><a href=${href('e', s.worker, 'lanes', n)}><b>${n}</b></a> <span class="sub">${(s.rounds || [])[i] || ''}</span></div>`)}
-            ${s.note ? html`<div class="sub">${s.note}</div>` : ''}</td>
-          <td><a href=${href('e', s.worker, 'lanes')}>${s.name}</a><div class="sub">${s.namespace || s.host}</div></td>
-          <td class="nowrap">${s.cadence}</td>
-          <td class="nowrap">${s.next ? html`<span title=${when(s.next)}><b>${Date.parse(s.next) < Date.now() ? 'due ' + ago(s.next) : until(s.next)}</b></span><div class="sub">${when(s.next)}</div>` : html`<span class="muted">—</span>`}</td>
-          <td class="nowrap">${last ? html`<${Pill} state=${last.result || last.state} label=${last.result || last.state}/>
-            <div class="sub">${last.run ? html`<a href=${href('e', s.worker, 'lanes', s.lanes[0], 'runs', last.run)}>${last.occurrence}</a>` : last.occurrence}${last.finished ? ' · ' + ago(last.finished) : ''}</div>` : html`<span class="muted">never ran</span>`}</td>
-          <td class="nowrap">${s.last_success ? html`<${When} t=${s.last_success}/>` : html`<span class="muted">never</span>`}</td>
-          <td class="nowrap ${s.status === 'expiring' || s.status === 'expired' ? cls : ''}">${s.until ? (s.expired ? 'expired ' : '') + s.until : html`<span class="muted">never</span>`}${s.paused ? html`<div class="sub wait">paused</div>` : ''}</td></tr>`;
-      })}</tbody></table></div>`}</div>
-    <p class="muted">A schedule is <b>missed</b> when an occurrence is ${Math.round((res.data.grace_s || 600) / 60)} minutes past due and hasn't started: its runner was down then, or busy. Each occurrence is an ordinary batch on the runner's queue.</p>`;
-}
 
 function Approvals({ store }) {
   useTitle('Approvals');
@@ -995,7 +962,7 @@ function Admin({ store }) {
   const pending = useFetch('/api/pending', [store.enrollments]);
   const [note, setNote] = useState(null);
   const [ask, setAsk] = useState(null);
-  const [form, setForm] = useState({ name: '', role: 'viewer', tailscale: '' });
+  const [form, setForm] = useState({ name: '', role: 'viewer' });
   if (!me || me.user === undefined) return html`<${Loading}/>`;
   if (!isAdmin(me)) {
     return html`<div class="panel"><div class="empty">This page is for the hub's admins. <a href="/">All repos</a></div></div>`;
@@ -1015,12 +982,12 @@ function Admin({ store }) {
   const confirm = (c) => setAsk(c);
   const addUser = (ev) => {
     ev.preventDefault();
-    const body = { name: form.name.trim(), role: form.role, tailscale: form.tailscale.trim() };
+    const body = { name: form.name.trim(), role: form.role };
     act('Add ' + body.name, 'POST', '/api/users', body, (d) => ({
-      cls: 'ok', text: (body.tailscale ? d.name + ' signs in with Tailscale as ' + body.tailscale + '. ' : '') + d.name + "'s token (shown once; they log in with it at /login, or use it with swim hub):",
+      cls: 'ok', text: d.name + "'s token (shown once; they log in with it at /login, or use it with swim auth):",
       token: d.token,
     }));
-    setForm({ name: '', role: 'viewer', tailscale: '' });
+    setForm({ name: '', role: 'viewer' });
   };
   const list = (users.data && users.data.users) || [];
   const workers = store.enrollments || [];
@@ -1045,10 +1012,10 @@ function Admin({ store }) {
       </tbody></table></div>`}</div>
     <h2>Users</h2>
     <div class="panel">${users.loading && !users.data ? html`<${Loading}/>` : users.error ? html`<div class="err">${users.error}</div>` : html`<div class="tw"><table>
-      <thead><tr><th>Name</th><th>Role</th><th>Tailscale</th><th>Added</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Role</th><th>Added</th><th></th></tr></thead>
       <tbody>${list.map((u) => html`<tr>
         <td><b>${u.name}</b>${u.name === me.user ? html` <span class="muted">(you)</span>` : ''}</td>
-        <td><span class="pill">${u.role}</span></td><td class="mono">${u.tailscale || ''}</td><td class="muted">${u.added ? when(u.added) : ''}</td>
+        <td><span class="pill">${u.role}</span></td><td class="muted">${u.added ? when(u.added) : ''}</td>
         <td>${u.name !== me.user ? html`<button class="btn sm danger" onClick=${() => confirm({
           title: 'Remove ' + u.name, body: 'Their token stops working and their sessions end.', label: 'Remove', danger: true,
           run: () => act('Remove ' + u.name, 'DELETE', api('users', u.name)) })}>Remove</button>` : ''}</td></tr>`)}
@@ -1057,7 +1024,6 @@ function Admin({ store }) {
         <input required placeholder="name (as lookup.yml knows them)" value=${form.name} onInput=${(e) => setForm({ ...form, name: e.target.value })}/>
         <select value=${form.role} onChange=${(e) => setForm({ ...form, role: e.target.value })}>
           <option value="viewer">viewer</option><option value="operator">operator</option><option value="admin">admin</option></select>
-        <input placeholder="Tailscale login (optional)" value=${form.tailscale} onInput=${(e) => setForm({ ...form, tailscale: e.target.value })}/>
         <button class="btn primary">Add user</button>
       </form>
       <div class="sub">Adding a name again gives them a new token and role, and ends their sessions.</div></div>
@@ -1092,7 +1058,7 @@ function NotFound() {
 
 // ---- the app ------------------------------------------------------------
 
-const views = { activity: Activity, jobs: Jobs, schedules: Schedules, home: Home, repo: Repo, history: History, lanes: Lanes, queue: Queue, runner: Runner, approvals: Approvals, question: Question, admin: Admin, notfound: NotFound };
+const views = { activity: Activity, jobs: Jobs, home: Home, repo: Repo, history: History, lanes: Lanes, queue: Queue, runner: Runner, approvals: Approvals, question: Question, admin: Admin, notfound: NotFound };
 
 function App() {
   const path = usePath();

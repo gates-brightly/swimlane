@@ -245,6 +245,20 @@ func (r *repo) mustSwim(args ...string) string {
 	return out
 }
 
+// newLane is swim new N ..., with the template's placeholder snapshot
+// filled in, as an author would before running it.
+func (r *repo) newLane(n string, args ...string) string {
+	r.t.Helper()
+	out := r.mustSwim(append([]string{"new", n}, args...)...)
+	p := filepath.Join(r.root, "lane."+n+".sh")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	os.WriteFile(p, []byte(strings.Replace(string(data), `echo "replace with a read-only describe/list command"`, `echo "nothing to describe"`, 1)), 0o755)
+	return out
+}
+
 // lane script writes lane.N.sh with the given round and body, with the
 // header lines its body needs (# Guards:, # Includes:) added as swim lint
 // --fix adds them: a lane as an author would leave it. A test of what
@@ -441,9 +455,9 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 
 func TestAfterHeaderDiamond(t *testing.T) {
 	r := newRepo(t, "") // no config deps: the scripts declare them
-	r.script(1, "root", `run "write" bash -c 'sleep 0.5; echo root > out1'`)
-	r.script(2, "child a", `gate "root output" test -s out1`)
-	r.script(3, "child b", `gate "root output" test -s out1`)
+	r.script(1, "root", `run "write" bash -c 'sleep 0.5; echo root > "$SWIM_ROOT/out1"'`)
+	r.script(2, "child a", `gate "root output" test -s "$SWIM_ROOT/out1"`)
+	r.script(3, "child b", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(4, "join", `gate "children" true`)
 	addHeader := func(n int, line string) {
 		p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
@@ -474,7 +488,7 @@ func TestAfterHeaderDiamond(t *testing.T) {
 
 func TestAfterPinnedToJob(t *testing.T) {
 	r := newRepo(t, "")
-	r.mustSwim("new", "1", "root", "--job", "root-job-0001")
+	r.newLane("1", "root", "--job", "root-job-0001")
 	r.script(2, "child", `run "ok" true`)
 	p := filepath.Join(r.root, "lane.2.sh")
 	data, _ := os.ReadFile(p)
@@ -493,7 +507,7 @@ func TestAfterPinnedToJob(t *testing.T) {
 	r.mustSwim("run", "2")
 	// After lane 1 is rewritten, the pin still refers to the job that ran
 	// (from status), which passed.
-	r.mustSwim("new", "1", "next root", "--force")
+	r.newLane("1", "next root", "--force")
 	r.mustSwim("run", "2")
 }
 
@@ -519,7 +533,7 @@ run "after confirm" true`)
 func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	r.mustSwim("new", "1", "first round")
+	r.newLane("1", "first round")
 	if out, code := r.swim("new", "1", "second"); code == 0 || !strings.Contains(out, "pending round") {
 		t.Fatalf("new over pending: %d %s", code, out)
 	}
@@ -653,20 +667,20 @@ var jobLineRE = regexp.MustCompile(`(?m)^job: (\S+)$`)
 
 func TestJobIDsAndPinning(t *testing.T) {
 	r := newRepo(t, "")
-	out := r.mustSwim("new", "1", "pinned round")
+	out := r.newLane("1", "pinned round")
 	m := jobLineRE.FindStringSubmatch(out)
 	if m == nil {
 		t.Fatalf("new printed no job id:\n%s", out)
 	}
 	job := m[1]
 	script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	contains(t, "lane.1.sh", string(script), "# swim: syntax 2", "# Job:     "+job)
+	contains(t, "lane.1.sh", string(script), "# swim: syntax 4", "# Job:     "+job)
 	if l := r.status().Get(1); l.PendingJob != job {
 		t.Errorf("pending_job = %q", l.PendingJob)
 	}
 
 	// Steps see the job id, so they can tag resources as "ours".
-	body := strings.Replace(string(script), `run "precheck" true`, `run "tag" bash -c 'echo "tag=$SWIM_JOB"'`, 1)
+	body := strings.Replace(string(script), `run "verify" true`, `run "tag" bash -c 'echo "tag=$SWIM_JOB"'`, 1)
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(body), 0o755)
 
 	// Pin by an 8-character prefix.
@@ -680,7 +694,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 	contains(t, "status by job", r.mustSwim("status", job), "swim 1", "job: "+job)
 
 	// Rewriting the lane replaces the job; the old pin must refuse to run.
-	r.mustSwim("new", "1", "different round", "--force", "--job", "orders-cutover-2")
+	r.newLane("1", "different round", "--force", "--job", "orders-cutover-2")
 	if out, code := r.swim("run", job); code == 0 || !strings.Contains(out, "no lane holds job") || !strings.Contains(out, "orders-cutover-2") {
 		t.Errorf("stale pin: %d %s", code, out)
 	}
@@ -711,10 +725,10 @@ func TestScriptWithoutJobLineGetsOne(t *testing.T) {
 
 func TestProjectLog(t *testing.T) {
 	r := newRepo(t, "{2: [1]}")
-	r.mustSwim("new", "1", "first goal", "--job", "job-one-0001")
+	r.newLane("1", "first goal", "--job", "job-one-0001")
 	body, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(body), `run "precheck" true`, `run "precheck" false`, 1)), 0o755)
-	r.mustSwim("new", "2", "second goal", "--job", "job-two-0002")
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(body), `gate "target is ours (tagged)" true`, `run "precheck" false`, 1)), 0o755)
+	r.newLane("2", "second goal", "--job", "job-two-0002")
 	r.swim("run")
 	r.script(3, "direct run", `run "ok" true`)
 	if out, err := r.cmd("bash", "lane.3.sh").CombinedOutput(); err != nil {
@@ -774,10 +788,10 @@ func TestProjectLog(t *testing.T) {
 
 func TestLogCommand(t *testing.T) {
 	r := newRepo(t, "")
-	r.mustSwim("new", "1", "first round", "--job", "first-job-01")
+	r.newLane("1", "first round", "--job", "first-job-01")
 	r.mustSwim("run", "1")
 	r.mustSwim("archive", "1", "first")
-	r.mustSwim("new", "1", "second round", "--force", "--job", "second-job-02")
+	r.newLane("1", "second round", "--force", "--job", "second-job-02")
 	r.mustSwim("run", "1")
 
 	// Current log only.
@@ -817,8 +831,8 @@ func TestLogCommand(t *testing.T) {
 
 func TestAllSkipsPassedJobs(t *testing.T) {
 	r := newRepo(t, "")
-	r.mustSwim("new", "1", "passes")
-	r.script(2, "fails until fixed", `run "check" test -e fixed`)
+	r.newLane("1", "passes")
+	r.script(2, "fails until fixed", `run "check" test -e "$SWIM_ROOT/fixed"`)
 	if _, code := r.swim("all"); code != 1 {
 		t.Fatalf("first run should fail (lane 2)")
 	}
@@ -841,7 +855,7 @@ func TestAllSkipsPassedJobs(t *testing.T) {
 		t.Errorf("lane 1 ran %d times, want 3", n)
 	}
 	// A new round in the lane is pending again.
-	r.mustSwim("new", "1", "next round", "--force")
+	r.newLane("1", "next round", "--force")
 	if out := r.mustSwim("all"); !strings.Contains(out, "[1] started: next round") || strings.Contains(out, "[2] started") {
 		t.Errorf("new round not picked up:\n%s", out)
 	}
@@ -868,7 +882,7 @@ func TestLanesInUse(t *testing.T) {
 		t.Errorf("status after archive 6 still shows it:\n%s", st)
 	}
 	// Any lane can start: swim new 9 just works.
-	r.mustSwim("new", "9", "nine")
+	r.newLane("9", "nine")
 	contains(t, "after new 9", r.mustSwim("status"), "swim 9")
 	// A lanes: setting is ignored, and doctor says so.
 	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("lanes: 4\n"), 0o644)
@@ -937,29 +951,6 @@ func TestPlan(t *testing.T) {
 	head(1, "4")
 	if out, code := r.swim("plan", "--rerun"); code == 0 || !strings.Contains(out, "dependency cycle") {
 		t.Errorf("cycle: %d %s", code, out)
-	}
-}
-
-func TestOldRootLogsMigrate(t *testing.T) {
-	r := newRepo(t, "")
-	os.WriteFile(filepath.Join(r.root, "agent1.log"), []byte("=== ROUND START 2026-10-01T00:00:00Z swim 1 job=old-job-0001\nRound: old\n"), 0o644)
-	os.WriteFile(filepath.Join(r.root, "agent1.prev-earlier.log"), []byte("old archive\n"), 0o644)
-	out := r.mustSwim("status")
-	contains(t, "status", out, "moved 2 lane log(s) to .swim/logs/")
-	for _, f := range []string{"agent1.log", "agent1.prev-earlier.log"} {
-		if _, err := os.Stat(filepath.Join(r.root, f)); err == nil {
-			t.Errorf("%s still at the root", f)
-		}
-		if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", f)); err != nil {
-			t.Errorf("%s not in .swim/logs: %v", f, err)
-		}
-	}
-	contains(t, "log 1 --all", r.mustSwim("log", "1", "--all"), "==> agent1.prev-earlier.log <==", "job=old-job-0001  old")
-	// Nothing operational left at the root after a run.
-	r.script(2, "x", `run "ok" true`)
-	r.mustSwim("run", "2")
-	if m, _ := filepath.Glob(filepath.Join(r.root, "agent*.log")); len(m) > 0 {
-		t.Errorf("logs at root: %v", m)
 	}
 }
 
@@ -1048,37 +1039,23 @@ PASS  precheck
 === END
 `
 
-func TestSyntaxMigration(t *testing.T) {
+// A syntax 1 script or log (from before swim versioned its files) is
+// refused, not rewritten.
+func TestSyntax1Refused(t *testing.T) {
 	r := newRepo(t, "")
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(v1Lane), 0o755)
+	out, code := r.swim("status")
+	if code == 0 || !strings.Contains(out, "lane.1.sh is swim syntax 1") {
+		t.Errorf("a syntax 1 script: exit %d\n%s", code, out)
+	}
+	if script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh")); string(script) != v1Lane {
+		t.Error("the script was rewritten")
+	}
+	os.Remove(filepath.Join(r.root, "lane.1.sh"))
 	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
 	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent1.log"), []byte(v1Log), 0o644)
-
-	out := r.mustSwim("status")
-	contains(t, "status", out, "migrated 2 file(s) to syntax 2 (originals in .swim/migrations/", "lane.1.sh", ".swim/logs/agent1.log")
-	script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	contains(t, "migrated lane.1.sh", string(script), "#!/usr/bin/env bash\n# swim: syntax 2\n", "# Created: 2026-10-01", "# 1. Snapshot (read-only)\nstage snapshot\n", "# 2. Checks\nstage check\n", "# 4. Verify\nstage verify\n")
-	if !strings.HasPrefix(r.log(1), "# swim lane log | syntax 2 | swim 1\n") || !strings.Contains(r.log(1), "== END PASS") {
-		t.Fatalf("migrated log:\n%s", r.log(1))
-	}
-	baks, _ := filepath.Glob(filepath.Join(r.root, ".swim", "migrations", "*", "lane.1.sh"))
-	if len(baks) != 1 {
-		t.Fatalf("backups: %v", baks)
-	}
-	if b, _ := os.ReadFile(baks[0]); string(b) != v1Lane {
-		t.Fatal("backup is not the original")
-	}
-	contains(t, ".swim.log", r.mustSwim("log"), "migrate      2 file(s) to syntax 2")
-	if out := r.mustSwim("status"); strings.Contains(out, "migrated") {
-		t.Errorf("second load migrated again:\n%s", out)
-	}
-
-	// The migrated round runs, with its stages.
-	r.mustSwim("run", "1")
-	log := r.log(1)
-	contains(t, "run after migration", log, "-- stage snapshot", "-- stage check", "-- stage verify", "stages: snapshot PASS | check PASS | change none | verify PASS")
-	if l := r.status().Get(1); strings.Join(l.Stages, ",") != "snapshot PASS,check PASS,change none,verify PASS" {
-		t.Errorf("status stages: %v", l.Stages)
+	if out, code := r.swim("status"); code == 0 || !strings.Contains(out, "agent1.log is swim syntax 1") {
+		t.Errorf("a syntax 1 log: exit %d\n%s", code, out)
 	}
 }
 
@@ -1116,9 +1093,14 @@ run "verify" true`)
 
 	r.script(2, "bad stage", `stage deploy
 run "never" true`)
+	// swim lint refuses it before it starts; run directly, it stops there.
 	out, code := r.swim("run", "2")
-	if code == 0 || !strings.Contains(r.log(2), "  STOP  bad stage: deploy") || strings.Contains(r.log(2), "never") {
-		t.Fatalf("unknown stage: %d %s\n%s", code, out, r.log(2))
+	if code == 0 || !strings.Contains(out, `unknown stage "deploy"`) {
+		t.Fatalf("unknown stage: %d %s", code, out)
+	}
+	r.cmd("bash", "lane.2.sh").Run()
+	if !strings.Contains(r.log(2), "  STOP  bad stage: deploy") || strings.Contains(r.log(2), "never") {
+		t.Fatalf("unknown stage, run directly:\n%s", r.log(2))
 	}
 }
 
@@ -1433,9 +1415,9 @@ func TestStepTimeoutAndRetry(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
 	r.script(1, "timeouts and retries", `run --timeout 1s "slow" sleep 5
-run --retry 2 --backoff 0.1s "flaky" bash -c 'test -f ok || { touch ok; exit 1; }'
+run --retry 2 --backoff 0.1s "flaky" bash -c 'test -f "$SWIM_ROOT/ok" || { touch "$SWIM_ROOT/ok"; exit 1; }'
 run --retry 3 --backoff 0.1s --retry-on 7 "wrong code" bash -c 'exit 1'
-gate --retry 1 --backoff 0.1s "gate passes on retry" bash -c 'test -f ok2 || { touch ok2; exit 1; }'
+gate --retry 1 --backoff 0.1s "gate passes on retry" bash -c 'test -f "$SWIM_ROOT/ok2" || { touch "$SWIM_ROOT/ok2"; exit 1; }'
 run "after" true`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
@@ -1871,4 +1853,17 @@ func long(t *testing.T) {
 	if testing.Short() {
 		t.Skip("in the long batch: make test-long")
 	}
+}
+
+// repoRoot is the swim repository's root (for test programs it builds).
+func repoRoot() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(file), "..", "..")
+}
+
+// readFile is a file in r's working tree, trimmed ("" if it isn't there).
+func readFile(t *testing.T, r *repo, name string) string {
+	t.Helper()
+	data, _ := os.ReadFile(filepath.Join(r.root, name))
+	return strings.TrimSpace(string(data))
 }

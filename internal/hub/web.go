@@ -110,7 +110,6 @@ func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	s.signInTailscale(w, r)
 	if !s.canView(r) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return

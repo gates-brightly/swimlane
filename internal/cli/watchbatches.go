@@ -17,7 +17,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -168,7 +167,7 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 		for _, l := range e.Lanes {
 			ns = append(ns, l.Lane)
 		}
-		return launcher.PulledIn(b.root, cfg, ns)
+		return ns
 	}
 	taken := map[int]bool{}
 	for _, e := range waiting {
@@ -393,7 +392,6 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 				return code, err
 			}
 			if ok {
-				materializeRecurring(root, cfg) // today's occurrences of recurring schedules
 				// Listed under the lock: another worker picks only after this
 				// one's claims are made.
 				waiting, err := queue.List(root, false)
@@ -443,7 +441,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 		case queued > 0:
 			say(fmt.Sprintf("%d queued; waiting for their lanes to be free%s", queued, nextScheduled(root)))
 		default:
-			say("queue empty; waiting for swim queue add" + nextRecurring(root))
+			say("queue empty; waiting for swim queue add")
 		}
 		if view == nil {
 			select {

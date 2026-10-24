@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -183,7 +184,17 @@ func TestWorkerLease(t *testing.T) {
 	if s := state(); s != Running {
 		t.Errorf("after Touch: %s", s)
 	}
+	// The other host's clock is an hour off: its beats still change, so
+	// it's alive whatever their times say.
+	for i := 1; i <= 3; i++ {
+		now = func() time.Time { return t0.Add(time.Duration(2+i) * time.Minute) }
+		os.WriteFile(beatPath(root, e.ID), []byte(fmt.Sprintf("another-host 1 %s\n", t0.Add(-time.Hour+time.Duration(i)*time.Second).Format(time.RFC3339Nano))), 0o644)
+		if s := state(); s != Running {
+			t.Errorf("changing beats from a skewed clock: %s", s)
+		}
+	}
 	// An older worker's claim (no heartbeat) can't be judged: alive.
+	os.Remove(beatPath(root, e.ID))
 	e.Worker.Heartbeat, e.Worker.Lease = "", ""
 	write(e)
 	now = func() time.Time { return t0.Add(time.Hour) }
@@ -193,12 +204,18 @@ func TestWorkerLease(t *testing.T) {
 	// Once orphaned and requeued elsewhere, the old worker's Touch fails.
 	e.Worker.Heartbeat = t0.UTC().Format(time.RFC3339)
 	write(e)
+	state() // seen now; unchanged a lease later, it's orphaned
+	now = func() time.Time { return t0.Add(3 * time.Hour) }
 	all, _ := List(root, false)
 	if err := Requeue(root, all[0]); err != nil {
 		t.Fatal(err)
 	}
-	if err := Touch(e); err == nil {
-		t.Error("Touch on a requeued entry succeeded")
+	if err := Touch(e); !errors.Is(err, ErrClaimLost) {
+		t.Errorf("Touch on a requeued entry: %v", err)
+	}
+	// And it didn't bring the claim back.
+	if all, _ := List(root, false); len(all) != 1 || all[0].State != Queued {
+		t.Errorf("after a lost claim's Touch: %+v", all)
 	}
 }
 
@@ -249,54 +266,6 @@ func TestStatementStartTime(t *testing.T) {
 	e.NotBefore = "2026-10-15T08:30:00Z"
 	if e.Statement() == signed {
 		t.Error("moving the start time left the statement the same")
-	}
-}
-
-// An occurrence carries its recurring schedule's signed statement, which
-// vouches for it only while it is what the statement describes.
-func TestOccurrenceStatement(t *testing.T) {
-	st := "swim recurring v1\nid: r-x\nlane: 4 j sha man\napprove: F\ndaily: 06:00:00 UTC\nfirst: 2026-10-16\nuntil: 2026-11-14\n"
-	e := &Entry{ID: "q-1", From: "r-x", Occurrence: "2026-10-20", NotBefore: "2026-10-20T06:00:00Z", FromStatement: st,
-		Lanes: []Lane{{Lane: 4, Job: "j", SHA256: "sha", Manifest: "man"}}, Approve: []string{"F"}}
-	if e.Statement() != st {
-		t.Fatalf("a matching occurrence: %q", e.Statement())
-	}
-	for what, edit := range map[string]func(*Entry){
-		"start time":   func(e *Entry) { e.NotBefore = "2026-10-20T05:00:00Z" },
-		"day outside":  func(e *Entry) { e.Occurrence, e.NotBefore = "2026-12-01", "2026-12-01T06:00:00Z" },
-		"script":       func(e *Entry) { e.Lanes[0].SHA256 = "other" },
-		"another lane": func(e *Entry) { e.Lanes = append(e.Lanes, Lane{Lane: 5}) },
-		"approvals":    func(e *Entry) { e.Approve = []string{"F", "G"} },
-		"-y":           func(e *Entry) { e.ApproveAll = true },
-	} {
-		c := *e
-		c.Lanes = append([]Lane(nil), e.Lanes...)
-		edit(&c)
-		if c.Statement() == st {
-			t.Errorf("%s edited, the statement still vouches for it", what)
-		}
-	}
-}
-
-// A cron schedule's occurrence is keyed by its minute; one with no end
-// (an empty until:) vouches for any later occurrence.
-func TestCronOccurrenceStatement(t *testing.T) {
-	st := "swim recurring v1\nid: r-c\nlane: 2 j sha man\napprove: \ncron: */30 * * * * UTC\nfirst: 2026-10-16T00:00\nuntil: \n"
-	e := &Entry{ID: "q-2", From: "r-c", Occurrence: "2027-03-01T13:30", NotBefore: "2027-03-01T13:30:00Z", FromStatement: st,
-		Lanes: []Lane{{Lane: 2, Job: "j", SHA256: "sha", Manifest: "man"}}}
-	if e.Statement() != st {
-		t.Fatalf("a matching occurrence: %q", e.Statement())
-	}
-	for what, edit := range map[string]func(*Entry){
-		"off the expression": func(e *Entry) { e.Occurrence, e.NotBefore = "2027-03-01T13:31", "2027-03-01T13:31:00Z" },
-		"start time":         func(e *Entry) { e.NotBefore = "2027-03-01T14:00:00Z" },
-		"before first":       func(e *Entry) { e.Occurrence, e.NotBefore = "2026-10-15T23:30", "2026-10-15T23:30:00Z" },
-	} {
-		c := *e
-		edit(&c)
-		if c.Statement() == st {
-			t.Errorf("%s, the statement still vouches for it", what)
-		}
 	}
 }
 

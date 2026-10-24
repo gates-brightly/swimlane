@@ -17,7 +17,7 @@ import (
 // nothing in the round, and the chain names the original script.
 func TestManifestStagedBytesRun(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(2, "goes first", `run "hold" bash -c 'until [ -e release ]; do sleep 0.05; done'`)
+	r.script(2, "goes first", `run "hold" bash -c 'until [ -e "$SWIM_ROOT/release" ]; do sleep 0.05; done'`)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "greet.sh"), []byte("greeting=greet-v1\n"), 0o644)
 	r.script(3, "waits for 2", `source lib/greet.sh
@@ -59,7 +59,7 @@ run "say" echo "script-v2 $greeting"`)
 	if !found {
 		t.Error("no round entry for swim 3")
 	}
-	contains(t, "verify", r.mustSwim("verify"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 }
 
 // An edit to the working-tree script while it runs changes nothing: bash
@@ -67,7 +67,7 @@ run "say" echo "script-v2 $greeting"`)
 func TestManifestMidRunEdit(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "long", `run "first" echo one-v1
-run "wait" bash -c 'until [ -e go1 ]; do sleep 0.05; done'
+run "wait" bash -c 'until [ -e "$SWIM_ROOT/go1" ]; do sleep 0.05; done'
 run "second" echo two-v1`)
 	l := r.launch(t, nil)
 	waitFor(t, func() bool { l := r.status().Get(1); return l != nil && l.CurrentStep == "wait" })
@@ -132,7 +132,7 @@ if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("blocked_commands: [\"terraform destroy\"]\n"), 0o644)
 	r.mustSwim("run", "1")
 	contains(t, "stale policy", r.log(1), "stale: config policy changed (swim.yml: blocked_commands")
-	contains(t, "verify", r.mustSwim("verify"), "stale: config policy changed")
+	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "stale: config policy changed")
 	// A key outside the policy list (max_parallel) changes nothing.
 	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("max_parallel: 3\n"), 0o644)
 	r.mustSwim("run", "1")
@@ -189,11 +189,11 @@ import json, os, socket
 s = socket.socket(socket.AF_UNIX); s.connect(os.environ["SWIM_APPROVAL"])
 s.sendall(json.dumps({"lane": 1, "flag": "DROP", "desc": "x", "token": os.environ["SWIM_APPROVAL_TOKEN"]}).encode() + b"\n")
 resp = json.loads(s.makefile().readline())
-open("approval-id", "w").write(resp["id"])'
-"$SWIM_BIN" _mark 1 APPROVED "drop" "approved" --request "$(cat approval-id)" --guard DROP && echo first-use-ok
-"$SWIM_BIN" _mark 1 APPROVED "drop" "approved" --request "$(cat approval-id)" --guard DROP || echo second-use-refused`)
+open(os.environ["SWIM_ROOT"] + "/approval-id", "w").write(resp["id"])'
+"$SWIM_BIN" _mark 1 APPROVED "drop" "approved" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP && echo first-use-ok
+"$SWIM_BIN" _mark 1 APPROVED "drop" "approved" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP || echo second-use-refused`)
 	withHeader(t, r, 1, "# Guards:  DROP drop the table")
-	r.script(2, "replays it", `if "$SWIM_BIN" _mark 2 APPROVED "drop" "approved at the prompt" --request "$(cat approval-id)" --guard DROP; then run "replayed" true; fi`)
+	r.script(2, "replays it", `if "$SWIM_BIN" _mark 2 APPROVED "drop" "approved at the prompt" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP; then run "replayed" true; fi`)
 	withHeader(t, r, 2, "# Guards:  DROP drop the table")
 	withHeader(t, r, 2, "# After: 1")
 	out, _ := r.swim("run", "1", "2", "-y")

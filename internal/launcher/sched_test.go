@@ -17,17 +17,16 @@ import (
 )
 
 // schedDAG is a random lane graph: up to eight lanes, each naming earlier
-// lanes in After: (or Finally:), taking locks from a pool of two, some
+// lanes in After:, taking locks from a pool of two, some
 // failing.
 type schedDAG struct {
 	Lanes []schedLane
 }
 
 type schedLane struct {
-	After   []int // earlier lanes it needs to pass
-	Finally []int // earlier lanes it waits for to end, however
-	Locks   []string
-	Fail    bool
+	After []int // earlier lanes it needs to pass
+	Locks []string
+	Fail  bool
 }
 
 func (schedDAG) Generate(rnd *rand.Rand, _ int) reflect.Value {
@@ -35,11 +34,8 @@ func (schedDAG) Generate(rnd *rand.Rand, _ int) reflect.Value {
 	for i := range d.Lanes {
 		l := &d.Lanes[i]
 		for j := 0; j < i; j++ {
-			switch rnd.Intn(6) {
-			case 0, 1:
+			if rnd.Intn(3) == 0 {
 				l.After = append(l.After, j+1)
-			case 2:
-				l.Finally = append(l.Finally, j+1)
 			}
 		}
 		for _, lk := range []string{"a", "b"} {
@@ -55,7 +51,7 @@ func (schedDAG) Generate(rnd *rand.Rand, _ int) reflect.Value {
 func (d schedDAG) String() string {
 	var b strings.Builder
 	for i, l := range d.Lanes {
-		fmt.Fprintf(&b, "swim %d after %v finally %v locks %v fail %v; ", i+1, l.After, l.Finally, l.Locks, l.Fail)
+		fmt.Fprintf(&b, "swim %d after %v locks %v fail %v; ", i+1, l.After, l.Locks, l.Fail)
 	}
 	return b.String()
 }
@@ -67,15 +63,11 @@ func (d schedDAG) deps(n int) []Dep {
 	for _, p := range l.After {
 		out = append(out, Dep{Lane: p})
 	}
-	for _, p := range l.Finally {
-		out = append(out, Dep{Lane: p, Finally: true})
-	}
 	return out
 }
 
 // want is what each lane must end as: skipped if a lane in its After:
-// didn't pass, else failed if it fails, else passed. A Finally: lane runs
-// however the lanes it waits for ended.
+// didn't pass, else failed if it fails, else passed.
 func (d schedDAG) want() []string {
 	out := make([]string, len(d.Lanes))
 	for i, l := range d.Lanes {
@@ -126,16 +118,15 @@ func runSched(d schedDAG) (states []string, spans map[int]span) {
 			}()
 			w := depWaiter{
 				selected: selected,
-				wait: func(dep int, _ bool) *Outcome {
+				wait: func(dep int) *Outcome {
 					<-done[dep]
 					mu.Lock()
 					defer mu.Unlock()
 					return outcomes[dep]
 				},
 				outside: func(Dep) string { return "outside the run" },
-				cells:   func(Dep) string { return "" },
 			}
-			if why, _, _ := w.await(d.deps(i)); why != "" {
+			if why := w.await(d.deps(i)); why != "" {
 				oc.State, oc.Reason = status.Skipped, why
 				return
 			}
@@ -161,10 +152,10 @@ func runSched(d schedDAG) (states []string, spans map[int]span) {
 }
 
 // The scheduler's properties, over random graphs, with no repo, process
-// or wall clock: a lane never starts before every lane in its After: and
-// Finally: has ended; lanes sharing a lock never overlap; a failing lane
-// is never reported passed, the lanes after it are skipped, a finally
-// lane runs however its lanes ended, and every other lane passes.
+// or wall clock: a lane never starts before every lane in its After: has
+// ended; lanes sharing a lock never overlap; a failing lane is never
+// reported passed, the lanes after it are skipped, and every other lane
+// passes.
 // SWIM_QUICK_COUNT sets how many graphs (default 500).
 func TestSchedulerProperties(t *testing.T) {
 	count := 500
@@ -191,7 +182,7 @@ func TestSchedulerProperties(t *testing.T) {
 			if ran != (want[i] != status.Skipped) {
 				fail("swim %d: ran %v, but it should end %s", n, ran, want[i])
 			}
-			for _, p := range append(append([]int(nil), l.After...), l.Finally...) {
+			for _, p := range l.After {
 				if pv, ok := spans[p]; ran && ok && sp.start < pv.end {
 					fail("swim %d started before swim %d, which it waits for, ended", n, p)
 				}
@@ -225,7 +216,6 @@ func sharesLock(a, b []string) bool {
 // depVerdict's rules, one by one.
 func TestDepVerdict(t *testing.T) {
 	passed, failed := &Outcome{State: status.Passed}, &Outcome{State: status.Failed}
-	cellsBlocked := func(d Dep) string { return "cell " + d.Cell + " failed" }
 	for _, c := range []struct {
 		dep  Dep
 		out  *Outcome
@@ -234,33 +224,26 @@ func TestDepVerdict(t *testing.T) {
 		{Dep{Lane: 2}, passed, ""},
 		{Dep{Lane: 2}, failed, "swim 2 failed"},
 		{Dep{Lane: 2}, nil, "swim 2 did not finish"},
-		{Dep{Lane: 2, Setup: true}, failed, ""},
-		{Dep{Lane: 2, Finally: true}, failed, ""},
-		{Dep{Lane: 2, Finally: true}, nil, ""},
-		{Dep{Lane: 2, Cell: "x"}, &Outcome{State: status.Failed, Cells: map[string]string{}}, "cell x failed"},
-		{Dep{Lane: 2, Cell: "x"}, &Outcome{State: status.Failed}, "swim 2 failed"},
 	} {
-		if got := depVerdict(c.dep, c.out, cellsBlocked); got != c.want {
+		if got := depVerdict(c.dep, c.out); got != c.want {
 			t.Errorf("%+v ended %+v: %q, want %q", c.dep, c.out, got, c.want)
 		}
 	}
 }
 
-// A dependency outside the run is checked, never waited for; a finally
-// one outside the run has ended.
+// A dependency outside the run is checked, never waited for.
 func TestAwaitOutside(t *testing.T) {
 	waited := false
 	w := depWaiter{
 		selected: map[int]bool{1: true},
-		wait:     func(int, bool) *Outcome { waited = true; return &Outcome{State: status.Passed} },
+		wait:     func(int) *Outcome { waited = true; return &Outcome{State: status.Passed} },
 		outside:  func(d Dep) string { return fmt.Sprintf("swim %d hasn't passed", d.Lane) },
-		cells:    func(Dep) string { return "" },
 	}
-	if why, _, _ := w.await([]Dep{{Lane: 5, Finally: true}, {Lane: 1}}); why != "" || !waited {
-		t.Errorf("finally outside the run: %q waited %v", why, waited)
+	if why := w.await([]Dep{{Lane: 1}}); why != "" || !waited {
+		t.Errorf("in the run: %q waited %v", why, waited)
 	}
 	waited = false
-	if why, _, _ := w.await([]Dep{{Lane: 9}, {Lane: 1}}); why != "swim 9 hasn't passed" || waited {
+	if why := w.await([]Dep{{Lane: 9}, {Lane: 1}}); why != "swim 9 hasn't passed" || waited {
 		t.Errorf("outside the run: %q waited %v", why, waited)
 	}
 }

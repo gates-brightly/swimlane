@@ -23,17 +23,15 @@ func TestAssociated(t *testing.T) {
 	write("lane.3.sh", "# swim:stub\n# done\n") // a stub: not in use
 	write("lane.4.notes", "not a script")       // not executable, so not a script
 	os.Chmod(filepath.Join(root, "lane.4.notes"), 0o644)
-	write(".swim/logs/agent5.log", "")                                // a current log
-	write(".swim/logs/agent6.prev-cutover.log", "")                   // archived: no
-	write(".swim/logs/agent7.check.log", "")                          // a check log: no
-	write(".swim/logs/agent8.2.log", "")                              // a job's log
-	write("lanes.ci.sh", "# Round: CI\n# swim job 9.1\nrun x true\n") // a group file
-	if got := Associated(root); fmt.Sprint(got) != "[2 5 8 9]" {
-		t.Errorf("associated: %v, want [2 5 8 9]", got)
+	write(".swim/logs/agent5.log", "")              // a current log
+	write(".swim/logs/agent6.prev-cutover.log", "") // archived: no
+	write(".swim/logs/agent7.check.log", "")        // a check log: no
+	if got := Associated(root); fmt.Sprint(got) != "[2 5]" {
+		t.Errorf("associated: %v, want [2 5]", got)
 	}
 	// Archiving the log drops lane 5.
 	os.Rename(filepath.Join(root, ".swim/logs/agent5.log"), filepath.Join(root, ".swim/logs/agent5.prev-x.log"))
-	if got := Associated(root); fmt.Sprint(got) != "[2 8 9]" {
+	if got := Associated(root); fmt.Sprint(got) != "[2]" {
 		t.Errorf("after archive: %v", got)
 	}
 }

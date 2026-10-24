@@ -3,38 +3,47 @@
 [![test](https://github.com/gates-brightly/swimlane/actions/workflows/test.yml/badge.svg)](https://github.com/gates-brightly/swimlane/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Your AI writes the ops change. You sign the exact bytes. swim runs it and
-gives you a receipt anyone can verify.**
+**Your AI writes the ops change. You approve the exact script swim will
+run. swim runs that copy and keeps a signed, hash-linked record of it.**
 
 swim is a single-binary runner for small, guarded ops scripts. Every
-destructive step is a dry run until a person approves it, and every
-approval goes into a signed, hash-linked log.
+destructive step is a dry run until a person approves it. An approval
+binds the script and every file it pins (its *manifest*), and the lane
+runs in a staged copy holding only those files, so what ran is what was
+approved. `swim verify` checks the record: every entry signed, linked to
+the one before, and still matching what's on disk.
+
+**What it doesn't do:** a lane runs as you, so it can do anything you can,
+including read your signing key. Approvals and the record show what an
+honest lane did and who approved it; they don't confine a hostile script.
+Review what you approve. See [the trust model](docs/trust-model.md).
 
 ### The 90-second tamper story
 
 ```sh
-# The AI wrote lane.1.sh: one guarded step that replaces the live cert.
-swim approve 1 --guards CERT_ALLOW_ROTATE    # you sign this exact script, its inputs and policy
+# The AI wrote lane.1.sh: one guarded step that runs install.sh, which
+# its header pins (# Includes: install.sh).
+swim approve 1 --guards CERT_ALLOW_ROTATE    # you sign the script, install.sh, how it runs and the policy
 
-echo '# one byte' >> lane.1.sh               # anyone changes anything after you signed
+echo 'echo DROP EVERYTHING' > install.sh     # anyone changes a file it uses after you signed
 swim run 1 --no-prompt
 #   SKIP  replace the live cert (dry run: ...signature approves another version of lane.1.sh
-#         (approved 8ad7e02d993e, running dacbf1a31f05))
+#         (approved c4d0cc7ede49, running 12a561d369b4))
 
-sed -i '$d' lane.1.sh && swim run 1           # back to the bytes you signed
+git checkout install.sh && swim run 1         # back to the bytes you signed
 #   APPROVED  replace the live cert (approved by me (signed))
 #   PASS  install the new cert
 
 sed -i 's/new cert/old cert/' .swim/logs/agent1.log   # someone edits the record afterwards
 swim verify
-#   BROKEN: entry #5: swim 1's log for run r-20261023T182450Z-bfb0 was changed after the round ended
-#   consistent  no   1 problems (BROKEN, above)
+#   BROKEN: entry #5: swim 1's log for run r-20261023T224837Z-a11f was changed after the round ended
+#   NOT VERIFIED: consistent: 1 problems (BROKEN, above)
 ```
 
-A changed script falls back to a dry run, and a changed record fails
-`swim verify`. The approval binds the script, every file it sources, how it
-runs and the repo's policy. See [the trust model](docs/trust-model.md) for
-what swim does and doesn't protect against.
+A changed script, or a file it pins, falls back to a dry run. A file it
+uses but doesn't pin isn't there when it runs: the lane runs in a staged
+copy of what it pins (`# Workspace: live` runs it in the working tree,
+and the approval says so). A changed record fails `swim verify`.
 
 ### How it works
 
@@ -92,7 +101,7 @@ EOF
 swim plan                         # what would run, without running it
 swim run 1 --plain                # run it
 swim log 1                        # the round, step by step
-swim verify                       # check the chain of custody (signed if you have ~/.ssh/id_ed25519)
+swim verify --allow-unsigned      # check the chain of custody (drop the flag once you sign: ~/.ssh/id_ed25519)
 ```
 
 A destructive step goes behind a guard, and is a dry run until a person
@@ -104,6 +113,7 @@ cat > lane.2.sh <<'EOF'
 #!/usr/bin/env bash
 # swim: syntax 2
 # Round: Write hello.txt
+# Guards: HELLO_ALLOW_WRITE  write hello.txt in the repo (quickstart)
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 2
 
@@ -112,7 +122,7 @@ run "nothing written yet" ls
 
 stage change
 if guard HELLO_ALLOW_WRITE "write hello.txt (quickstart)"; then
-  run "write hello.txt" bash -c 'echo hello > hello.txt'
+  run "write hello.txt" bash -c 'echo hello > "$SWIM_ROOT/hello.txt"'
 fi
 
 summary
@@ -202,7 +212,7 @@ flowchart TD
     P["Planner (AI session)<br/>and its workers"]
   end
   subgraph repo["The repo"]
-    L["Lane scripts<br/>lane.N.sh, lanes.name.sh"]
+    L["Lane scripts<br/>lane.N.sh"]
     K["lookup.yml (keys, rules)<br/>approvals/ (signed)"]
     Q[".swim/queue/<br/>batches pinned to scripts"]
   end
@@ -450,21 +460,11 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
-- **Native SDKs:** Python (`import swim`), TypeScript and Go libraries give
-  lane programs swim's steps as calls, plus in-process steps for native
-  checks (a `boto3` call logged as a step). They talk to the lane's socket
-  (`swim.lane/v1`), and swim still decides everything. Local modules a lane
-  imports are pinned with it; list them in `# Includes:`. See the [Python](docs/examples/python.md),
-  [Node](docs/examples/node.md) and [Go](docs/examples/go.md) examples.
 - **Approve the plan, not just the script:** `evidence "tf plan" terraform
   plan ...` in the check stage records what the change will do.
   `swim approve` shows it and signs its hash with the script, and the
   approval counts only while the run's plan still matches. If it drifted,
   the log shows a diff and the guard asks again.
-- **Matrix rounds:** `# Matrix: SVC=orders,billing,users` runs one script
-  once per value. Each cell has its own log, status and result.
-  `# Matrix-Parallel: 2` runs cells two at a time, `swim run 3 --failed`
-  retries only the failed cells, and `After: 3[orders]` waits for one cell.
 - **Pre-approve in the live view:** select a lane that hasn't asked yet
   and press `y` (or `n`) to answer its guards ahead of time, then walk away.
   The answer is pinned to the script and lasts this run only.
@@ -482,96 +482,18 @@ summary
   `swim msg` from any language, even inside a step) shows where a long job
   is now, in the live view, `swim status` and the hub. The latest wins, and
   the log keeps throttled `MSG` lines.
-- **Outcome handlers** (`# swim: syntax 3`): `on_success`, `on_failure` and
-  `on_exit` functions run however the round ends, like try / catch /
-  finally. They run soft, so every rollback step gets its attempt, and
-  `reached change || return 0` skips a rollback when nothing changed. A
-  failed round whose `on_failure` failed exits 89. `# Fail: hard` ends the
-  round at the first failed step (`run --soft` opts one out), and
-  `# Handler-Timeout:` (default 5m) is the handlers' budget. Lanes in other
-  languages name commands: `# On-Failure: python3 rollback.py`.
+- **Fail hard** (`# swim: syntax 3`): `# Fail: hard` ends the round at the
+  first failed step (`run --soft` opts one out). A rollback is its own
+  lane, run when you decide to, or a guarded step of this one.
 - **Checks:** `swim lint` checks scripts before you run them: header,
   stages, guards, bash 3.2, blocked commands, and secrets echoed to the log.
-
-### Jobs
-
-Any lane can be split into jobs, numbered under the lane and nested to any
-depth: `1.1`, `1.2`, `1.5.9.9`. The lane's header (`Round:`, `After:`,
-`Locks:`) comes first, then each job starts at a `# swim job N.K` line with
-its own header and steps:
-
-```bash
-#!/usr/bin/env bash
-# swim: syntax 2
-# Round: CI
-# Code here (before the first job) runs in every job, after lane_init.
-
-# swim job 1.1 -----------------------------------------------------------
-# Round:  fmt
-# Always: yes
-gate "gofmt -s" bash -c 'test -z "$(gofmt -s -l .)"'
-
-# swim job 1.2 -----------------------------------------------------------
-# Round:  tests          (no steps: it groups the jobs under it)
-
-# swim job 1.2.1 ---------------------------------------------------------
-# Round:  unit
-run "unit" go test ./...
-
-# swim job 1.2.2 ---------------------------------------------------------
-# Round:  e2e
-run "e2e" go test ./internal/e2e/...
-```
-
-- **In order:** jobs with steps run one at a time in file order, and the
-  first failure skips the rest of the lane. Each has its own log (`swim log
-  1.2.1`, `.swim/logs/agent1.2.1.log`), status and job id; `swim status`
-  shows the lane with its progress.
-- **A job id names it and everything under it:** `swim run 1.2` runs 1.2.1
-  and 1.2.2, `swim run 1.2.2` just that one, `swim run 1` the whole lane.
-  `After: 1.2` waits for every job under 1.2 to pass (`After: 1` for the
-  lane). `1[2]` works too.
-- **Always per job:** `Always: yes` on a job covers the jobs under it. The
-  other lanes in a run wait for the lane's Always jobs, not the rest of it,
-  and `swim all` runs them every time, plus any job that hasn't passed.
-- **Less ceremony:** swim loads its library and calls `lane_init` and
-  `summary` for a job that doesn't, and runs the script it generates at
-  `.swim/groups/lane.N.<job>.sh`. Edit the lane's file, never that script.
-  A lane's hash (approvals, queue pins, the chain) is its file's.
-- **In Python, TypeScript and Go:** mark jobs in the language's comments
-  (`# swim job 1.2`, `// swim job 1.2`) with their headers. Each job runs
-  the whole program, and the SDK's `jobs()` calls its function: keys are
-  job ids (`"1.2"`) or places under the lane (`"2"`), and the closest wins,
-  so `"1.2"` handles 1.2.1 and 1.2.2 unless they have their own. A job with
-  jobs under it only groups them. `r.job` is the running job's id.
-
-  ```python
-  # Round: checks
-  # swim job 1.1
-  # Round: fmt
-  # swim job 1.2
-  # Round: lint
-  import swim
-  swim.jobs({"1.1": lambda r: r.gate("fmt", ["ruff", "format", "--check"]),
-             "1.2": lambda r: r.gate("lint", ["ruff", "check"])})
-  ```
-- **Group files:** `lanes.<name>.sh` at the repo root is a lane of jobs with
-  a name instead of a number (it's the lane its jobs name), for standing
-  jobs worth committing. A lane in a group file can't also have a
-  `lane.N.sh`, and `swim new` and `swim stub` refuse it.
-- **Lint and CI:** `swim lint` reports findings at the file's lines (`swim
-  1.2.1: ...`), and `swim ci --changed` counts a changed group file as a
-  change to its lane.
 
 ### Lanes in other languages
 
 A lane script can be any runnable: `lane.N.py`, `lane.N.js`, `lane.N.ts`, a
-compiled `lane.N`, a plain bash script. `swim new 3 "<goal>" --lang py`
-(or `js`, `ts`) writes a template.
-
-Worked examples, each with the native SDK and with the plain CLI:
-[Python](docs/examples/python.md), [Node (TypeScript and
-JavaScript)](docs/examples/node.md) and [Go](docs/examples/go.md).
+compiled `lane.N`, a plain bash script. It calls swim's steps as commands
+(below); there is no SDK. Local modules it imports are pinned with it when
+`# Includes:` lists them.
 
 How swim runs it:
 
@@ -683,31 +605,11 @@ lane's state and round; output scrolls underneath, prefixed `[N]`.
   the round if one fails. A job id waits for that exact round. Ordering that
   holds for every round can go in config `deps`. A cycle stops the run
   before anything starts.
-- **`# Finally: 1 2 3`** waits for those lanes to end, however they end, and
-  never skips: cleanup and run reports, the run's `after_script`. Running
-  one of them pulls the finally lane in (`--no-finally` leaves it out), and
-  it sees each outcome as `SWIM_FINALLY_<N>`. The first Ctrl-C doesn't stop
-  it (`finally_timeout`). Its result never changes another lane's; a failed
-  one fails the run, and with an ordinary lane failing too, the run exits
-  89. In a lane of jobs, `# swim job 1.9 finally` runs after a failed
-  sibling.
 - **`--parallel N`** (or config `max_parallel`) caps how many lanes run at
   once. Lanes ready to start queue for a slot, longest chain first.
 - **`# Locks: orders-table`:** lanes that share a lock never run at the same
   time, in either order. That holds within a run and across concurrent runs
   on the machine. A failure doesn't spread through a lock.
-- **`# Always: yes`** makes a lane standing setup, like a CI
-  `before_script` (lint, fmt, init). It never counts as passed: `swim all`
-  runs it every time, first, and every other lane in the run starts only
-  after it finishes. Lanes that name it in `# After:` need it to pass; the
-  others start whatever its result. `swim run N` pulls in the Always lanes
-  that N names, and no others. An Always lane waits only on other Always
-  lanes, and `swim stub` and `swim archive` refuse it without `--force`.
-- **`# Rerun-Children: yes`** (Always lanes only): `swim all` also reruns
-  every lane downstream of this one, at any depth, even if it passed. That's
-  a test suite written as rounds: lint first, then the tests again. `swim
-  lint` warns about a guarded round under one (`rerun-guard`).
-
 ```
 $ swim plan
 [+] swim 1  Diamond root: fetch pages
@@ -717,17 +619,6 @@ $ swim plan
     └── [+] swim 4 (shown above)
 
 Plan: 3 to run, 1 to retry, 0 to rerun, 0 to skip.
-```
-
-With Always lanes, `swim plan` draws them first (`[*]`), says which passed
-lanes they rerun, then the rest:
-
-```
-[*] swim 1  lint
-└── [+/-] swim 2  unit  rerun (swim 1)
-[*] swim 5  init
-then, once swim 1, 5 finish (whatever the result):
-[+] swim 4  report
 ```
 
 `swim timeline` draws when each lane waited (on dependencies, a slot or a
@@ -758,8 +649,6 @@ TABLE=orders-v2
   lists the files that applied, and status and the chain record a hash of
   the env. A queued lane whose env changed since it was queued is skipped.
 - **`swim env N`** shows what a lane gets and where each key comes from.
-- **`.lane.N.rc` is deprecated.** A guard flag it sets no longer approves,
-  and `swim doctor --fix` moves a plain one into `.env.swim`.
 
 ### Caches
 
@@ -802,7 +691,7 @@ cache restore web/node_modules || { run "npm ci" npm ci --prefix web && cache sa
 
 The key hashes the tree, its `@` files (pinned like lockfiles), the OS, the
 architecture and any `--with` strings. A miss passes and returns 1; a key is
-written once; an outcome handler never saves; a save from a round with
+written once; a save from a round with
 failed steps is marked, and its restores say so. A restored tree runs
 unchecked, so every restore is recorded in the round's chain entry.
 
@@ -853,16 +742,10 @@ swim secret set datadog_api_key --all  # every repo
 swim secret ls                         # names and scopes, never values
 ```
 
-A lane gets them by name: from bash with the CLI, and from other
-languages with the SDK:
+A lane gets them by name, with the same command in any language:
 
 ```bash
 DB=$(swim secret get db_password) || stop "no db password"   # check it: lanes don't run with set -e
-```
-
-```python
-password = swim.secret.get("db_password")          # TypeScript: await secret.get(...)
-                                                   # Go: swim.Secret.Get(...)
 ```
 
 - **Encrypted with [age](https://age-encryption.org)** to an `ssh-ed25519`
@@ -876,7 +759,7 @@ password = swim.secret.get("db_password")          # TypeScript: await secret.ge
 - **Decrypted once per run:** `swim run` decrypts at start and serves the
   lanes over a private socket. It asks a protected key's passphrase before
   the live view, and only if a lane looks like it uses secrets. Outside a
-  run, `swim secret get` and the SDKs decrypt with your key directly.
+  run, `swim secret get` decrypts with your key directly.
 - **Masked exactly, by name:** every lane process masks every secret its
   lane may get as `***(db_password)`, including their base64 and URL
   forms, whichever ones it used. `swim run`'s own stream masks them all.
@@ -915,7 +798,7 @@ fi
 - **Approvals that count:** the ones the launcher saw: the prompt (or the
   live view's pre-answer), `-y`, signed approvals, a queued batch's
   `--approve`, and `FLAG=1` in the environment `swim run` started with.
-  `FLAG=1` a lane sets itself, or a `.lane.N.rc`, never counts.
+  `FLAG=1` a lane sets itself never counts.
 - **Per lane, per run:** the approval is for that lane process: another
   lane, or the next run, asks again. It lasts until the lane exits;
   `release: step` hands the value out once and refuses a second get.
@@ -1307,17 +1190,14 @@ jobs:
 ```
 
 `--changed` runs only the rounds whose script the push or merge request
-changed, plus any unpassed lanes they wait on (Always lanes count as
-unpassed). `--rerun` runs passed rounds again; for a test suite written as
-rounds, an Always lane with `Rerun-Children: yes` at its root does that
-without the flag. A fresh CI checkout has no passed rounds, so everything
+changed, plus any unpassed lanes they wait on. `--rerun` runs passed
+rounds again. A fresh CI checkout has no passed rounds, so everything
 runs there either way. swim never commits results back.
 
-This repo dogfoods it. Its own CI is `swim ci` over five committed group
-files, so the slow suites run side by side. Lane 1
-([`lanes.ci.sh`](lanes.ci.sh)) runs fmt, lint, unit tests and race first,
-as Always jobs. Then e2e (lane 2, `lanes.e2e.sh`), fault injection (3),
-the security suite (4) and fuzzing (6) start together, each its own lane so
+This repo dogfoods it. Its own CI is `swim ci` over five committed lanes,
+so the slow suites run side by side. Lane 1 ([`lane.1.sh`](lane.1.sh))
+runs fmt, lint, unit tests and race first. Then e2e (lane 2), fault
+injection (3), the security suite (4) and fuzzing (6) start together, each its own lane so
 a red run names the gate. A run takes about as long as the slowest suite.
 `just ci` runs the same lanes locally.
 
@@ -1327,7 +1207,6 @@ a red run names the gate. A run takes about as long as the slowest suite.
 swim hub [--addr 127.0.0.1:7700] [--token T]          # serve the dashboard (and a live screen on a terminal)
 swim hub --addr 0.0.0.0:7700 --tls-cert C --tls-key K   # serve it to the network, over https
 swim hub --public-url https://swim.example.ts.net --private   # behind a TLS proxy on this host, login to view
-swim hub ... --trust-tailscale-identity              # behind tailscale serve: users sign in as their tailnet login
 swim auth login URL --admin-token T [--ca hub.crt]   # the operator, once: an admin login for the commands below
 swim auth login URL --access read|readwrite [--ca hub.crt]   # each machine that runs lanes: a swimmer, once the admin admits it
 swim auth admit box                                  # or on the hub's Admin page
@@ -1335,7 +1214,6 @@ swim auth status | logout
 swim auth approve billing                            # its key, for secrets; or press a on its row in the hub's screen
 swim secret grant billing db_password                # encrypted here to billing's key; the hub keeps ciphertext
 swim auth users add alice --role operator            # a person: token shown once; viewer, operator or admin
-swim auth users add zach --role operator --tailscale zach@github
 ```
 
 Each directory where `swim watch` runs on a logged-in machine joins the
@@ -1464,14 +1342,14 @@ they waited for.
 | Command | What it does |
 |---|---|
 | `swim init` | Set up the repo: config entry, `.gitignore` block, `.swim/status.yml`. |
-| `swim new N "<goal>" [--lang py\|js\|ts] [--job ID]` | Write `lane.N.sh` (or `.py`, `.js`, `.ts`) from the template with a new job id. |
+| `swim new N\|TASK "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id (a task name takes the lowest free lane). |
 | `swim plan [N\|JOB ...] [--rerun] [--yaml]` | Dry run: what would run, retry, rerun or be skipped, as a dependency tree. |
 | `swim all [--rerun] [--parallel N] [-y\|--no-prompt] [--no-tui] [--yaml]` | Run every pending round that hasn't passed. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they passed. A job id pins the exact round. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane. |
 | `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml] [-f] [--until-done]` | A lane's or job's log (with the running step), or the project log. |
 | `swim timeline [RUN\|N\|JOB] [--steps] [--yaml] [--html FILE]` | When each lane waited, ran and finished; the longest chain. |
-| `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. An Always lane needs `--force`. |
+| `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. |
 | `swim clean [--all] [-n]` / `swim clean --restore STAMP` | A clean slate, nothing deleted: archive every finished lane at once, then (asked, default no) remove waiting batches and move the lane scripts aside. |
 | `swim prune --older D [--logs] [--confirm]` | Delete leftovers past a cutoff for good (moved-aside scripts, consumed queue entries, old run stages, archived logs with `--logs`), recorded in the chain. |
 | `swim trash N\|JOB` / `swim trash --restore STAMP` | Move one lane out of the way, recoverably: its script to `.swim/cleaned/`, its log archived (`d` in `swim watch`, the hub's Trash button). |

@@ -36,6 +36,10 @@ type Anchor interface {
 	PutCheckpoint(cp chain.Checkpoint) error
 	// Latest is the newest checkpoint (nil when there is none).
 	Latest() (*chain.Checkpoint, error)
+	// All is every checkpoint, oldest first: swim verify checks each one,
+	// so a chain rewritten behind an old checkpoint fails whatever new
+	// checkpoints were sent after it.
+	All() ([]chain.Checkpoint, error)
 	// Entries are the chain entries exported to it (ErrNoEntries if it
 	// keeps none).
 	Entries() ([]chain.Link, error)
@@ -142,6 +146,18 @@ func (a *fileAnchor) PutCheckpoint(cp chain.Checkpoint) error {
 	})
 }
 
+func (a *fileAnchor) All() ([]chain.Checkpoint, error) {
+	f, err := os.Open(a.cpPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return readCheckpoints(f)
+}
+
 func (a *fileAnchor) Latest() (*chain.Checkpoint, error) {
 	f, err := os.Open(a.cpPath())
 	if errors.Is(err, os.ErrNotExist) {
@@ -239,6 +255,8 @@ func (a *hubAnchor) PutCheckpoint(cp chain.Checkpoint) error {
 	}
 	return err
 }
+
+func (a *hubAnchor) All() ([]chain.Checkpoint, error) { return a.c.Checkpoints() }
 
 func (a *hubAnchor) Latest() (*chain.Checkpoint, error) {
 	cps, err := a.c.Checkpoints()

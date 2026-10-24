@@ -7,7 +7,6 @@ export function route(path) {
   if (parts.length === 0) return { name: 'home' };
   if (parts.length === 1 && parts[0] === 'approvals') return { name: 'approvals' };
   if (parts.length === 1 && parts[0] === 'admin') return { name: 'admin' };
-  if (parts.length === 1 && parts[0] === 'schedules') return { name: 'schedules' };
   if (parts.length === 1 && parts[0] === 'activity') return { name: 'activity' };
   if (parts.length === 1 && parts[0] === 'jobs') return { name: 'jobs' };
   if (parts.length === 2 && parts[0] === 'r') return { name: 'repo', ns: parts[1] === '-' ? '' : parts[1] };
@@ -206,31 +205,10 @@ export function lineMatches(text, query) {
   return query !== '' && String(text).toLowerCase().includes(query.toLowerCase());
 }
 
-// scheduleClass is a schedule status's color: missed, failed, skipped
-// and expired are bad, paused and expiring wait, running runs.
-export function scheduleClass(status) {
-  switch (status) {
-    case 'missed': case 'failed': case 'skipped': case 'expired': return 'bad';
-    case 'paused': case 'expiring': return 'wait';
-    case 'running': return 'run';
-    case 'ok': return 'ok';
-  }
-  return 'dim';
-}
-
-// badSchedules are runners es's schedules that need someone: bad or
-// waiting statuses.
-export function badSchedules(es) {
-  const out = [];
-  for (const e of es) for (const s of e.schedules || []) if (['bad', 'wait'].includes(scheduleClass(s.status))) out.push({ e, s });
-  return out;
-}
-
-// triggerText says what started a run: "schedule r-…", "hub:alice", …
+// triggerText says what started a run: "hub:alice", "queue q-…", …
 export function triggerText(t) {
   if (!t) return '';
   switch (t.kind) {
-    case 'schedule': return 'schedule ' + (t.schedule || '');
     case 'hub': return (t.by || 'hub').replace(/ via .*/, '');
     case 'queue': return 'queued by ' + (t.by || '?').replace(/ via .*/, '');
     case 'cli': return 'swim run';

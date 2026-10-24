@@ -11,7 +11,7 @@ import (
 // say who pre-approved it. n pre-declines another lane's (dry runs).
 func TestPreapproveInTUI(t *testing.T) {
 	r := newSerialRepo(t, "")
-	r.script(1, "first", `run "hold" bash -c 'while [ ! -e release ]; do sleep 0.05; done'`)
+	r.script(1, "first", `run "hold" bash -c 'while [ ! -e "$SWIM_ROOT/release" ]; do sleep 0.05; done'`)
 	r.script(2, "guarded", `if guard ALLOW_DROP "drop table orders"; then run "dropped" true; fi`)
 	withHeader(t, r, 2, "# After: 1")
 	withHeader(t, r, 2, "# Guards: ALLOW_DROP  drop table orders")
@@ -48,7 +48,7 @@ func TestPreapproveInTUI(t *testing.T) {
 // again (here, with no one to ask: a dry run), listed as unused.
 func TestPreapprovePinnedToScript(t *testing.T) {
 	r := newSerialRepo(t, "")
-	r.script(1, "first", `run "hold" bash -c 'while [ ! -e release ]; do sleep 0.05; done'`)
+	r.script(1, "first", `run "hold" bash -c 'while [ ! -e "$SWIM_ROOT/release" ]; do sleep 0.05; done'`)
 	r.script(2, "guarded", `if guard ALLOW_DROP "drop table orders"; then run "dropped" true; fi`)
 	withHeader(t, r, 2, "# After: 1")
 	r.script(3, "cleared", `if guard ALLOW_X "do x"; then run "x" true; fi`)
@@ -80,7 +80,7 @@ func TestPreapprovePinnedToScript(t *testing.T) {
 // over the run-wide one), and FLAG=0 beats a pre-approval.
 func TestPreanswerPrecedence(t *testing.T) {
 	r := newSerialRepo(t, "")
-	r.script(1, "first", `run "hold" bash -c 'while [ ! -e release ]; do sleep 0.05; done'`)
+	r.script(1, "first", `run "hold" bash -c 'while [ ! -e "$SWIM_ROOT/release" ]; do sleep 0.05; done'`)
 	r.script(2, "declined", `if guard ALLOW_A "do a"; then run "did a" true; fi`)
 	withHeader(t, r, 2, "# After: 1")
 	r.script(3, "flag zero", `if guard ALLOW_B "do b"; then run "did b" true; fi`)

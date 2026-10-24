@@ -20,7 +20,7 @@ func TestLaneOutputs(t *testing.T) {
 	r := newRepo(t, "")
 	producer(t, r, 1, "stats.json, pages/", `run "stats" bash -c 'echo "{\"n\":3}" > "$SWIM_OUT/stats.json"; mkdir "$SWIM_OUT/pages"; echo a > "$SWIM_OUT/pages/a"; echo junk > "$SWIM_OUT/extra"'
 output VERSION v1.2.3`)
-	r.script(2, "consume", `run "read" bash -c 'cat "$(swim input 1 stats.json)" > got.txt; ls "$(swim input 1 pages)" >> got.txt; echo "$(swim input 1 VERSION)" >> got.txt'`)
+	r.script(2, "consume", `run "read" bash -c 'cat "$(swim input 1 stats.json)" > "$SWIM_ROOT/got.txt"; ls "$(swim input 1 pages)" >> "$SWIM_ROOT/got.txt"; echo "$(swim input 1 VERSION)" >> "$SWIM_ROOT/got.txt"'`)
 	withHeader(t, r, 2, "# After: 1")
 	// A lane in another language reads them too.
 	r.write("lane.3.sh", "#!/usr/bin/env bash\n# Round: wrapped consumer\n# After: 1\nswim run \"read\" -- cat \"$(swim input 1 stats.json)\"\n", 0o755)
@@ -37,7 +37,7 @@ output VERSION v1.2.3`)
 	}
 	chain, _ := os.ReadFile(filepath.Join(r.root, ".swim", "chain.jsonl"))
 	contains(t, "chain", string(chain), `"outputs":{"pages":"`, `"inputs":{"1:VERSION":"`, `"1:stats.json":"`+st.Outputs["stats.json"], `"input_rounds":{"1":"`+st.Job+" "+st.Run)
-	r.mustSwim("verify")
+	r.mustSwim("verify", "--levels", "--allow-unsigned")
 	if os.Geteuid() != 0 {
 		path := filepath.Join(r.root, ".swim", "out", st.Job, st.Run, "stats.json")
 		if err := os.WriteFile(path, []byte("x"), 0o644); err == nil {
@@ -60,7 +60,10 @@ func TestLaneOutputProblems(t *testing.T) {
 	r.mustSwim("run", "1", "--plain")
 	r.script(2, "not a dependent", `run "peek" bash -c 'cat "$(swim input 1 data.txt)"'`)
 	contains(t, "lint", must(r.swim("lint", "2")), "input 1 reads swim 1's outputs, but swim 1 isn't in After:", "[input-dep]")
-	r.swim("run", "2", "--plain")
+	if out, code := r.swim("run", "2", "--plain"); code == 0 || !strings.Contains(out, "[input-dep]") {
+		t.Errorf("swim run of a lane reading outside After: %d\n%s", code, out)
+	}
+	r.cmd("bash", "lane.2.sh").Run() // run directly, the read itself fails
 	contains(t, "outside After:", r.log(2), "FAIL  input 1 data.txt (swim 1 is not in this round's After:")
 
 	// Tamper with the produced file, then read it: verify proves the
@@ -72,7 +75,7 @@ func TestLaneOutputProblems(t *testing.T) {
 	r.script(2, "dependent", `run "read" bash -c 'cat "$(swim input 1 data.txt)"'`)
 	withHeader(t, r, 2, "# After: 1")
 	r.mustSwim("run", "2", "--plain")
-	out, code := r.swim("verify")
+	out, code := r.swim("verify", "--levels", "--allow-unsigned")
 	if code == 0 || !strings.Contains(out, "input 1:data.txt doesn't match what round "+st.Job+" "+st.Run+" produced") {
 		t.Errorf("verify: exit %d\n%s", code, out)
 	}
@@ -85,7 +88,7 @@ func TestLaneOutputsByJobAndPrune(t *testing.T) {
 	producer(t, r, 1, "v.txt", `run "write" bash -c 'echo first > "$SWIM_OUT/v.txt"'`)
 	r.mustSwim("run", "1", "--plain")
 	first := r.status().Get(1).Job
-	r.script(2, "pinned", `run "read" bash -c 'cat "$(swim input `+first[:8]+` v.txt)" > pinned.txt'`)
+	r.script(2, "pinned", `run "read" bash -c 'cat "$(swim input `+first[:8]+` v.txt)" > "$SWIM_ROOT/pinned.txt"'`)
 	withHeader(t, r, 2, "# After: "+first)
 	r.mustSwim("run", "2", "--plain")
 	if got := readFile(t, r, "pinned.txt"); got != "first" {
@@ -116,7 +119,7 @@ func TestLibInputOutput(t *testing.T) {
 output BUILD 42`)
 	r.script(2, "consume with the library", `report=$(input 1 report.txt)
 build=$(input 1 BUILD)
-run "use" bash -c "cat '$report' > got.txt; echo $build >> got.txt"
+run "use" bash -c "cat '$report' > \"\$SWIM_ROOT/got.txt\"; echo $build >> \"\$SWIM_ROOT/got.txt\""
 missing=$(input 1 nope.txt)
 run "after missing" test -z "$missing"`)
 	withHeader(t, r, 2, "# After: 1")

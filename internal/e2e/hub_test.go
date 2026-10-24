@@ -116,8 +116,8 @@ func TestHub(t *testing.T) {
 	if w := hubGet(t, url); len(w.Workers) != 0 {
 		t.Errorf("still listed after logout: %+v", w)
 	}
-	// swim hub serves only: its old subcommands say where they went.
-	if out, code := r.swim("hub", "enroll", url); code != 2 || !strings.Contains(out, "swim auth login") {
+	// swim hub serves only.
+	if out, code := r.swim("hub", "enroll", url); code != 2 || !strings.Contains(out, "swim auth --help") {
 		t.Errorf("swim hub enroll: exit %d\n%s", code, out)
 	}
 	time.Sleep(10 * time.Millisecond)
