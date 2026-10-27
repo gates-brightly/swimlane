@@ -132,17 +132,22 @@ func noStray(t *testing.T, marker string) {
 
 func TestGracefulInterrupt(t *testing.T) {
 	r := newRepo(t, "")
-	// Step "a" notes any SIGINT it gets; it must get none.
-	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; sleep 1.5 & wait; true'
+	// Step "a" notes any SIGINT it gets; it must get none. Both steps run
+	// until both lanes have the stop request.
+	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; touch $SWIM_ROOT/trap1; while [ ! -e $SWIM_ROOT/go ]; do sleep 0.05; done; true'
 run "b" true`)
 	r.script(2, "after 1", `run "x" true`)
-	r.script(3, "other", `run "c" sleep 1.2
+	r.script(3, "other", `run "c" `+hold("go")+`
 run "d" true`)
 	withHeader(t, r, 2, "# After: 1")
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "a")
+	r.waitFile(t, "trap1")
 	r.waitStep(t, 3, "c")
 	l.signal(syscall.SIGINT)
+	r.waitFile(t, ".swim/lane1.stop")
+	r.waitFile(t, ".swim/lane3.stop")
+	r.release("go")
 	code := l.wait(t)
 	out := l.out.String()
 	if code == 0 {
@@ -176,22 +181,25 @@ func TestForceQuit(t *testing.T) {
 	r.mustSwim("config", "interrupt_grace", "600ms")
 	// A terraform-like tool: cleans up and exits on its first SIGINT, and
 	// counts how many it got.
-	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; sleep 0.2; exit 1" INT; sleep 31.1 & wait'
+	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; sleep 0.2; exit 1" INT; touch $SWIM_ROOT/trap1; sleep 31.1 & wait'
 run "after" true`)
 	// Ignores its SIGINT for longer than the grace: killed.
-	r.script(2, "stubborn", `run "hang" bash -c 'trap "echo got-int; sleep 5; exit 3" INT; echo started; sleep 31.2 & wait; wait'`)
+	r.script(2, "stubborn", `run "hang" bash -c 'trap "echo got-int; sleep 5; exit 3" INT; echo started; touch $SWIM_ROOT/trap2; sleep 31.2 & wait; wait'`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "apply")
 	r.waitStep(t, 2, "hang")
+	r.waitFile(t, "trap1")
+	r.waitFile(t, "trap2")
 	l.signal(syscall.SIGINT)
-	time.Sleep(300 * time.Millisecond)
+	l.saw(t, "swim: stopping after current steps")
+	time.Sleep(300 * time.Millisecond) // nothing to wait for: it mustn't happen
 	if data, _ := os.ReadFile(filepath.Join(r.root, "ints1.txt")); len(data) > 0 {
 		t.Fatalf("the first Ctrl-C reached the step: %s", data)
 	}
 	start := time.Now()
 	l.signal(syscall.SIGINT)
 	l.wait(t)
-	if took := time.Since(start); took > 3*time.Second {
+	if took := time.Since(start); took > scaled(3*time.Second) {
 		t.Errorf("force quit took %s (grace 600ms)", took)
 	}
 	out := l.out.String()
@@ -217,13 +225,15 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 	r.waitStep(t, 1, "hang")
 	r.waitStep(t, 2, "x")
 	l.signal(syscall.SIGINT)
-	time.Sleep(200 * time.Millisecond)
+	l.saw(t, "swim: stopping after current steps")
 	l.signal(syscall.SIGINT)
-	time.Sleep(200 * time.Millisecond)
+	l.saw(t, "swim: force quitting")
+	// Lane 2's step dies of the forwarded SIGINT; lane 1's ignores it.
+	waitFor(t, func() bool { return laneOf(r, 2).State == status.Interrupted })
 	start := time.Now()
 	l.signal(syscall.SIGINT)
 	l.wait(t)
-	if took := time.Since(start); took > 2*time.Second {
+	if took := time.Since(start); took > scaled(2*time.Second) {
 		t.Errorf("third Ctrl-C took %s", took)
 	}
 	contains(t, "output", l.out.String(), "swim: killing 1 lanes now.", "swim summary")
@@ -238,7 +248,7 @@ func TestStepTimeoutLeavesNoSurvivors(t *testing.T) {
 run "after" true`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
-	if took := time.Since(start); took > 5*time.Second {
+	if took := time.Since(start); took > scaled(5*time.Second) {
 		t.Errorf("the step limit took %s to stop the step", took)
 	}
 	contains(t, "agent1.log", r.log(1), "  FAIL  forks (timeout: step limit 500ms)", "  PASS  after")
@@ -281,7 +291,7 @@ run "never" true`)
 	l.signal(syscall.SIGTERM)
 	l.wait(t)
 	took := time.Since(start)
-	if took < 400*time.Millisecond || took > 3*time.Second {
+	if took < 400*time.Millisecond || took > scaled(3*time.Second) {
 		t.Errorf("SIGTERM should force after term_grace (500ms); took %s", took)
 	}
 	contains(t, "output", l.out.String(), "forcing in 500ms (term_grace)", "swim: force quitting")
@@ -301,7 +311,7 @@ func TestHangupForcesAtOnce(t *testing.T) {
 	start := time.Now()
 	l.signal(syscall.SIGHUP)
 	l.wait(t)
-	if took := time.Since(start); took > 2*time.Second {
+	if took := time.Since(start); took > scaled(2*time.Second) {
 		t.Errorf("SIGHUP should force at once; took %s", took)
 	}
 	contains(t, "output", l.out.String(), "swim: force quitting")
@@ -335,7 +345,7 @@ run "never" true`)
 	start := time.Now()
 	l.signal(syscall.SIGINT)
 	l.wait(t)
-	if took := time.Since(start); took > 3*time.Second {
+	if took := time.Since(start); took > scaled(3*time.Second) {
 		t.Errorf("a stop during the backoff took %s", took)
 	}
 	log := r.log(1)
@@ -372,14 +382,15 @@ run "after" true`)
 
 func TestInterruptOneLane(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "stop me", `run "a" sleep 1
+	r.script(1, "stop me", `run "a" `+hold("go")+`
 run "b" true`)
-	r.script(2, "keep going", `run "x" sleep 1
+	r.script(2, "keep going", `run "x" `+hold("go")+`
 run "y" true`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "a")
 	r.waitStep(t, 2, "x")
 	contains(t, "swim interrupt", r.mustSwim("interrupt", "1"), "swim 1: stopping after a")
+	r.release("go")
 	l.wait(t)
 	contains(t, "agent1.log", r.log(1), "PASS  a", "STOP  interrupted by operator (after: a)")
 	contains(t, "agent2.log", r.log(2), "PASS  y")

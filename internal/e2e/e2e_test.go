@@ -585,8 +585,7 @@ run "never" true`)
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
-	time.Sleep(200 * time.Millisecond)
+	r.waitStep(t, 1, "long")
 	// What a terminal does on Ctrl-C: SIGINT to the whole foreground group.
 	syscall.Kill(-c.Process.Pid, syscall.SIGINT)
 	err := c.Wait()
@@ -1529,7 +1528,7 @@ run "never" true`)
 	start := time.Now()
 	syscall.Kill(-c.Process.Pid, syscall.SIGINT)
 	c.Wait()
-	if took := time.Since(start); took > 5*time.Second {
+	if took := time.Since(start); took > scaled(5*time.Second) {
 		t.Fatalf("Ctrl-C during backoff took %s", took)
 	}
 	log := r.log(1)

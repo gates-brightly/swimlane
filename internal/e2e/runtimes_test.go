@@ -201,12 +201,14 @@ func TestWrappedLaneGracefulStop(t *testing.T) {
 	r := newRepo(t, "")
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: interrupt me
-for i in 1 2 3; do swim run "step $i" -- sleep 1; done
+for i in 1 2 3; do swim run "step $i" -- `+hold("go")+`; done
 touch "$SWIM_ROOT/carried-on"
 `, 0o755)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "step 1")
 	l.signal(syscall.SIGINT)
+	waitFor(t, func() bool { _, err := os.Stat(filepath.Join(r.root, ".swim", "lane1.stop")); return err == nil })
+	r.release("go")
 	l.wait(t)
 	log := r.log(1)
 	contains(t, "log", log, "PASS  step 1", "STOP  interrupted by operator (after: step 1)", "== END INTERRUPTED")
