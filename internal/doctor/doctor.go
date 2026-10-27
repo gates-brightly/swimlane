@@ -240,11 +240,6 @@ func (o *Options) keepRun() func(run string) bool {
 			if l.Run == run {
 				return true
 			}
-			for _, c := range l.Cells {
-				if c.Run == run {
-					return true
-				}
-			}
 		}
 		return false
 	}

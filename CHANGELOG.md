@@ -60,6 +60,15 @@ already pushed to origin's main) with the next tag and pushes that tag.
   start time, its signature is still checked before it runs, and `swim
   verify` still fails a run that started before its scheduled time.
   `schedule_tz` in a config is ignored (`swim doctor`: `removed-setting`).
+- **Removed: what matrix lanes left behind.** Matrix lanes went earlier
+  (`# Matrix:` is still a `swim lint` error); now so is their plumbing:
+  `status.yml` no longer has per-cell entries (`cell`, `cells`), the live
+  view no longer shows cell counts, and `SWIM_CELL` / `SWIM_CELL_LOG` mean
+  nothing to the lane library. A signed approval an older swim limited to
+  some cells (`cells:` in its statement) still reads and verifies, but
+  approves nothing: it never covered a whole lane. Evidence-bound
+  approvals are named `lane.N.<sha>[.m<man>].e<ev>.signature`, with no
+  cell suffix.
 - **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
   used to queue it as its own batch at once, so two jobs queued that way
   ran one after the other and `# After:` between them couldn't hold. Now

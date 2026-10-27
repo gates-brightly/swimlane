@@ -824,7 +824,7 @@ func cmdStep(args []string) error {
 	if evid && res.ExitCode == 0 && res.Saved != "" && n > 0 {
 		// The round's evidence: what an approval of the plan covers.
 		if data, err := os.ReadFile(res.Saved); err == nil {
-			key := evidence.LaneKey(n, "")
+			key := evidence.LaneKey(n)
 			if _, err := evidence.Record(root, key, os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN"), scriptSHA(root, n), label, string(data), lane.CheckMode()); err != nil {
 				fmt.Fprintln(os.Stderr, "swim step: evidence: "+err.Error())
 			}
@@ -935,7 +935,7 @@ func cmdArchive(args []string) error {
 				problems = append(problems, fmt.Sprintf("swim %d's log has no job id; name the archive: swim archive %d --as <name>", n, n))
 				continue
 			} else if st, _ := status.Load(root); st != nil && st.Get(n) != nil && st.Get(n).Job != "" {
-				what = st.Get(n).Job // a lane of jobs (or a matrix): its logs are its jobs'
+				what = st.Get(n).Job // a lane of jobs: its logs are its jobs'
 			}
 		}
 		dst, err := lane.ArchiveCheck(root, n, or(what, "x"))

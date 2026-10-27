@@ -221,7 +221,7 @@ func AlreadyPassed(info lane.Info, last *status.Lane) bool {
 }
 
 // DepEdges is every lane's direct dependencies, by lane: the config deps
-// table and each script's `# After:` (lane numbers, jobs, cells), as the
+// table and each script's `# After:` (lane numbers, jobs), as the
 // launcher enforces them. References that don't resolve are left out:
 // swim run reports those.
 func DepEdges(root string, cfg *config.Config) map[int][]int {

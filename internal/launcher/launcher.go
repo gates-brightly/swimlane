@@ -739,7 +739,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 		return skip(why)
 	}
-	cmd, ownGroup, w, tok := laneCommand(o, n, sel, plan, nil, "", "", approval.Caller{Job: info.Job}, disp, fileLocks)
+	cmd, ownGroup, w, tok := laneCommand(o, n, sel, plan, "", approval.Caller{Job: info.Job}, disp, fileLocks)
 	defer exited(o, tok)
 
 	// The last moment to honour a Ctrl-C that came while this lane was
@@ -1054,10 +1054,9 @@ func operator() string {
 
 // laneCommand builds lane n's process: its runner (inside swim's wrapper
 // for scripts that don't load the bash library), its environment (env
-// files under the shell's, the run's SWIM_* variables, extra for a cell),
-// stdin, process group and output (each line prefixed with prefix, for a
-// matrix cell).
-func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, prefix, job string, who approval.Caller, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter, string) {
+// files under the shell's, the run's SWIM_* variables), stdin, process
+// group and output.
+func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who approval.Caller, disp *display.Display, fileLocks lane.FileLocks) (*exec.Cmd, bool, *lineWriter, string) {
 	argv := plan.Argv
 	if plan.Wrapped {
 		argv = append([]string{o.Self, "_wrap", strconv.Itoa(n), "--"}, argv...)
@@ -1089,7 +1088,6 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 	} else {
 		env = append(env, "SWIM_COLOR=0")
 	}
-	env = append(env, extra...)
 	env = append(env, cacheEnv(o, n)...) // # Cache: (cache.go)
 	staged, tok := stageEnv(o, n, who)
 	env = append(env, staged...)
@@ -1099,7 +1097,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 	cmd.Env = env
 	// Parallel lanes can't share a keyboard: give them no stdin so
 	// fail-closed prompts stop instead of hanging. A lone lane may prompt.
-	if len(sel) == 1 && o.Stdin != nil && len(extra) == 0 {
+	if len(sel) == 1 && o.Stdin != nil {
 		cmd.Stdin = o.Stdin
 	}
 	// Its own process group, so the terminal's Ctrl-C reaches only swim.
@@ -1119,7 +1117,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, extra []string, 
 	w.emit = func(s string) {
 		o.beat.saw(n)
 		w.keep(mk.String(s))
-		s = prefix + mk.String(s)
+		s = mk.String(s)
 		disp.JobLine(n, job, s)
 		if job != "" {
 			s = "[" + job + "] " + s // the YAML stream says which job too
@@ -1432,20 +1430,14 @@ func manifestSum(o Options, n int) string {
 	return ""
 }
 
-// runningJob is the job id lane n (or its cell) runs in this run, from
-// status, for a round whose script names none (its id is made as it starts).
-func runningJob(o Options, n int, cell string) string {
+// runningJob is the job id lane n runs in this run, from status, for a
+// round whose script names none (its id is made as it starts).
+func runningJob(o Options, n int) string {
 	st, _ := status.Load(o.Root)
 	if st == nil || st.Get(n) == nil {
 		return ""
 	}
 	l := st.Get(n)
-	if cell != "" {
-		if e := l.FindCell(cell); e != nil && e.Run == o.RunID {
-			return e.Job
-		}
-		return ""
-	}
 	if l.Run == o.RunID {
 		return l.Job
 	}
@@ -1554,8 +1546,8 @@ func waitLane(cmd *exec.Cmd) error {
 }
 
 // stagedInfo is lane n's header as staged (what was approved and will run),
-// so an edit to the working tree while it waits can't change its locks or
-// cells; the working tree's if it wasn't staged.
+// so an edit to the working tree while it waits can't change its locks;
+// the working tree's if it wasn't staged.
 func stagedInfo(o Options, n int) lane.Info {
 	if m := o.manifests[n]; m != nil && m.Dir != "" {
 		if info, err := lane.ReadScript(m.Dir, n); err == nil && info.Exists {

@@ -64,7 +64,7 @@ func TestUpdateChecksTransitions(t *testing.T) {
 	if f, _ := Load(root); f.Get(1).State != Failed {
 		t.Errorf("the illegal write landed: %s", f.Get(1).State)
 	}
-	if err := Rebuild(root, 1, func(f *File) error { f.Mine(1).State = Passed; return nil }); err != nil {
+	if err := Rebuild(root, 1, func(f *File) error { f.Get(1).State = Passed; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if f, _ := Load(root); f.Get(1).State != Passed {

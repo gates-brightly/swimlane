@@ -132,7 +132,6 @@ func (s *Snapshot) Watch() bool { return s.Env["SWIM_QUEUE"] != "" }
 type Ask struct {
 	Root     string
 	Lane     int
-	Cell     string // a matrix cell or job, "" for the lane itself
 	Flag     string
 	Desc     string // the lane's description (for the evidence WARN)
 	Job, Run string
@@ -176,8 +175,8 @@ func (s *Snapshot) FlagSet(flag string) Result {
 }
 
 // Signed decides a guard by the signed approvals in the snapshot: those
-// of the exact manifest (or, from before manifests, of the script) and
-// cell, plus the standing approvals of whoever signed the queue entry the
+// of the exact manifest (or, from before manifests, of the script),
+// plus the standing approvals of whoever signed the queue entry the
 // run came from, counted together against lookup.yml; an approval bound
 // to evidence counts only while this run's evidence matches.
 func (s *Snapshot) Signed(a Ask, now time.Time) Result {
@@ -203,7 +202,7 @@ func (s *Snapshot) Signed(a Ask, now time.Time) Result {
 			files = append(files, f)
 		}
 	}
-	files = sigfile.ForCell(files, a.Cell)
+	files = sigfile.Unlimited(files)
 	files, stale := sigfile.ForManifest(files, a.Manifest)
 	files, r.Warns = s.evidenceFilter(a, files, r.Evidence, r.EvidenceText, r.EvidenceRequired, watch)
 	queuer := s.queuer(a.Lane, a.Script)

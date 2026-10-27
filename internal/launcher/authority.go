@@ -54,7 +54,7 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 	srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
 		resp := a.decide(*o, req, ask, cancel)
 		if !resp.Approved {
-			dryRun(*o, disp, req.Lane, req.Cell, req.Flag)
+			dryRun(*o, disp, req.Lane, req.Flag)
 		}
 		return resp
 	})
@@ -65,7 +65,7 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 	srv.Refused = func(c approval.Caller, req approval.Request, why string) {
 		a.refused(*o, c, req, why)
 		if c.Lane != 0 {
-			dryRun(*o, disp, c.Lane, c.Cell, req.Flag)
+			dryRun(*o, disp, c.Lane, req.Flag)
 		}
 	}
 	srv.Record = func(c approval.Caller, g *approval.Grant) (string, error) {
@@ -161,26 +161,22 @@ func (a *runAuthority) laneEntry(o *Options, c approval.Caller, e chain.Entry) (
 	return o.record(r)
 }
 
-// dryRun marks lane n (and its cell) as having dry-run guard flag this
+// dryRun marks lane n as having dry-run guard flag this
 // round: [DRY] in the live view, dry_run in status (swim status, the
 // watch screen, the hub).
-func dryRun(o Options, disp *display.Display, n int, cell, flag string) {
+func dryRun(o Options, disp *display.Display, n int, flag string) {
 	if flag == "" || flag == approval.ConfirmFlag {
 		return
 	}
 	disp.Set(n, func(v *display.LaneView) { v.Dry = true })
 	status.UpdateFile(o.Root, max(n, o.Cfg.Lanes), func(f *status.File) error {
-		l := f.Get(n)
-		l.Dry(flag)
-		if cell != "" {
-			l.CellEntry(cell).Dry(flag)
-		}
+		f.Get(n).Dry(flag)
 		return nil
 	})
 }
 
 // unprompted lists a guard approved without anyone being asked (-y, or a
-// guard flag) on the lane's status entry, and its cell's, where swim
+// guard flag) on the lane's status entry, where swim
 // status, swim ci's summary and the hub show it.
 func unprompted(o Options, c approval.Caller, e chain.Entry) {
 	via := ""
@@ -192,11 +188,7 @@ func unprompted(o Options, c approval.Caller, e chain.Entry) {
 		return
 	}
 	status.UpdateFile(o.Root, max(c.Lane, o.Cfg.Lanes), func(f *status.File) error {
-		l := f.Get(c.Lane)
-		l.Unprompted(e.Guard, via)
-		if c.Cell != "" {
-			l.CellEntry(c.Cell).Unprompted(e.Guard, via)
-		}
+		f.Get(c.Lane).Unprompted(e.Guard, via)
 		return nil
 	})
 }
@@ -233,14 +225,14 @@ func (a *runAuthority) refused(o Options, c approval.Caller, req approval.Reques
 		Detail: fmt.Sprintf("%s  (%s: refused: %s)", approval.Clean(req.Desc), req.Flag, why)})
 }
 
-// decide answers one guard of a lane (req's lane, cell, job and manifest
+// decide answers one guard of a lane (req's lane, job and manifest
 // are the launcher's: the server replaced the lane's claims). In order: a
 // flag the lane has set (approved only if swim run's own environment set
 // it), the signed approvals as they were when the run started, then the
 // operator (a pre-answer, -y, the prompt), if anyone can be asked.
 func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Asker, cancel <-chan struct{}) approval.Response {
 	if req.Job == "" {
-		req.Job = runningJob(o, req.Lane, req.Cell)
+		req.Job = runningJob(o, req.Lane)
 	}
 	m := o.manifests[req.Lane]
 	entry := chain.Entry{Type: "approve", Run: o.RunID, Lane: req.Lane, Job: req.Job, Guard: req.Flag, Action: req.RawDesc, Lookup: a.snap.LookupSHA}
@@ -249,7 +241,7 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	}
 	// Observe: facts are read now, with the decision, and the lane checks
 	// them again before the guarded step.
-	req.Observed = manifest.Observe(o.Root, probesFor(o, req.Lane, req.Cell), laneEnv(o, req.Lane))
+	req.Observed = manifest.Observe(o.Root, probesFor(o, req.Lane), laneEnv(o, req.Lane))
 	entry.Observed = req.Observed
 	grant := func(resp approval.Response, r authority.Result) approval.Response {
 		e := entry
@@ -270,7 +262,7 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 		return grant(approval.Response{By: operator()}, r)
 	}
 
-	ask0 := authority.Ask{Root: o.Root, Lane: req.Lane, Cell: req.Cell, Flag: req.Flag, Desc: req.RawDesc, Job: req.Job, Run: o.RunID, Manifest: m}
+	ask0 := authority.Ask{Root: o.Root, Lane: req.Lane, Flag: req.Flag, Desc: req.RawDesc, Job: req.Job, Run: o.RunID, Manifest: m}
 	if m != nil {
 		ask0.Script = m.ScriptSHA
 	}

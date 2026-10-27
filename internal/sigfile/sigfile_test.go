@@ -134,15 +134,12 @@ func TestCellAndEvidenceStatements(t *testing.T) {
 	if cell.StatementHash() == base.StatementHash() || ev.StatementHash() == base.StatementHash() {
 		t.Error("a limited approval hashes like the plain one")
 	}
-	got := ForCell([]*File{base, &cell}, "billing")
-	if len(got) != 1 || got[0] != base {
-		t.Errorf("ForCell(billing) kept %v", got)
+	// An older swim's cell-limited approval approves nothing now.
+	if got := Unlimited([]*File{base, &cell}); len(got) != 1 || got[0] != base {
+		t.Errorf("Unlimited kept %v", got)
 	}
-	if len(ForCell([]*File{base, &cell}, "orders")) != 2 || len(ForCell([]*File{&cell}, "")) != 0 {
-		t.Error("ForCell")
-	}
-	if !strings.HasSuffix(EvidencePath("/r", 1, base.SHA256, "", ev.Evidence, "ENV=prod,SVC=a"), "/lane.1.aaaaaaaaaaaa.eeeeeeeee.ENV-prod.SVC-a.signature") {
-		t.Errorf("evidence path %s", EvidencePath("/r", 1, base.SHA256, "", ev.Evidence, "ENV=prod,SVC=a"))
+	if !strings.HasSuffix(EvidencePath("/r", 1, base.SHA256, "", ev.Evidence), "/lane.1.aaaaaaaaaaaa.eeeeeeeee.signature") {
+		t.Errorf("evidence path %s", EvidencePath("/r", 1, base.SHA256, "", ev.Evidence))
 	}
 }
 

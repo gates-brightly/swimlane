@@ -111,8 +111,7 @@ func startFailed(root string, cfg *config.Config, n int, err error) error {
 
 // startRefused records a round _start refused (the lock pins other
 // syntaxes, its script or manifest can't be kept, no signing key, ...) so
-// it reaches the record, not only the terminal: failed in status (the
-// lane's, or the cell's) with "not started: <why>", and a round of its
+// it reaches the record, not only the terminal: failed in status with "not started: <why>", and a round of its
 // own in the log saying so.
 func startRefused(root string, cfg *config.Config, n int, err error) {
 	// The reason is the error's first paragraph; the rest (the fix) goes
@@ -133,7 +132,7 @@ func startRefused(root string, cfg *config.Config, n int, err error) {
 	launcher.NotStarted(root, n, lane.Log(root, n), job, info.Round, run, why, lines[1:], 1)
 	stop := logparse.ResultLine(logparse.Stop, "not started: "+why, "")
 	status.UpdateFile(root, max(n, cfg.Lanes), func(f *status.File) error {
-		l := f.Mine(n)
+		l := f.Get(n)
 		l.ResetRun()
 		l.State, l.Reason, l.FailedSteps = status.Failed, "not started: "+why, []string{stop}
 		l.Round, l.Job, l.Run = info.Round, job, run
@@ -329,7 +328,7 @@ func cmdStart(args []string) error {
 	defer fmt.Printf("%s %d %s %s %s %s\n", job, deadline, run, stepTimeout, failMode, timeoutText)
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		f.Branch = ref
-		l := f.Mine(n)
+		l := f.Get(n)
 		l.ResetRun()
 		l.State = status.Running
 		l.Round = info.Round
@@ -356,7 +355,7 @@ func finishOutputs(root string, n int, logPath string) (map[string]string, []out
 	st, _ := status.Load(root)
 	var l *status.Lane
 	if st != nil {
-		l = st.Mine(n)
+		l = st.Get(n)
 	}
 	if l == nil || l.Job == "" || l.Run == "" {
 		return nil, nil, ""
@@ -517,7 +516,7 @@ func roundEvidence(root string, r *logparse.Round) string {
 // laneEnvSHA is the env files' hash lane n's round started with.
 func laneEnvSHA(root string, n int) string {
 	if st, _ := status.Load(root); st != nil {
-		if l := st.Mine(n); l != nil {
+		if l := st.Get(n); l != nil {
 			return l.EnvSHA
 		}
 	}

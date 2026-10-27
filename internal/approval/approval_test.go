@@ -230,7 +230,7 @@ func TestConsumeOnce(t *testing.T) {
 	}
 }
 
-// whoami names the lane, cell, job and run a token was registered for;
+// whoami names the lane, job and run a token was registered for;
 // an unknown token is refused.
 func TestWhoami(t *testing.T) {
 	s, err := Listen(func(Request, <-chan struct{}) Response { return Response{} })
@@ -238,9 +238,9 @@ func TestWhoami(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	tok := s.Register(Caller{Lane: 2, Cell: "orders", Job: "j-1", Run: "r-1"})
+	tok := s.Register(Caller{Lane: 2, Job: "j-1", Run: "r-1"})
 	r, err := Whoami(s.Path(), tok)
-	if err != nil || r.Lane != 2 || r.Cell != "orders" || r.Job != "j-1" || r.Run != "r-1" {
+	if err != nil || r.Lane != 2 || r.Job != "j-1" || r.Run != "r-1" {
 		t.Fatalf("whoami: %+v %v", r, err)
 	}
 	if _, err := Whoami(s.Path(), "bogus"); err == nil {

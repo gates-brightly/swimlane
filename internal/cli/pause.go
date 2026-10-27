@@ -104,7 +104,7 @@ func holdIfPaused(root string, n int, run, next string) {
 	})
 }
 
-// updatePaused updates the paused fields of lane n, or of its cell.
+// updatePaused updates the paused fields of lane n.
 func updatePaused(root string, n int, lanes int, fn func(*status.Lane)) {
 	status.Update(root, n, lanes, fn)
 }

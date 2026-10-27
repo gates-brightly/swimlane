@@ -78,7 +78,7 @@ func pinned(o Options, n int) (why string, refuse bool) {
 
 // stageEnv is the environment that tells lane n's process where its stage
 // and manifest are, and its approval token (registered with the facts the
-// question is built from: the lane, cell, job, run and manifest, and the
+// question is built from: the lane, job, run and manifest, and the
 // process once it starts, see started), which it returns too.
 func stageEnv(o Options, n int, who approval.Caller) ([]string, string) {
 	m := o.manifests[n]
@@ -113,9 +113,8 @@ func exited(o Options, tok string) {
 	}
 }
 
-// probesFor are the Observe: probes of lane n (one cell or job of it), from
-// its staged files.
-func probesFor(o Options, n int, cell string) []lane.Probe {
+// probesFor are the Observe: probes of lane n, from its staged files.
+func probesFor(o Options, n int) []lane.Probe {
 	m := o.manifests[n]
 	if m == nil {
 		return nil

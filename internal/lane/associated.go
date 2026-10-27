@@ -17,7 +17,7 @@ const MaxLanes = 99
 //
 //   - a script that isn't a stub (lane.N.sh, lane.N.py, ..., or a group
 //     file's lane),
-//   - a current log (.swim/logs/agentN.log, or a job's or cell's,
+//   - a current log (.swim/logs/agentN.log, or a job's,
 //     agentN.<job>.log), or
 //   - a process running it.
 //
@@ -26,9 +26,8 @@ const MaxLanes = 99
 // (agentN.prev-*.log) and check logs don't count.
 
 // laneOfFile reads the lane number from a file named prefix N[.more]
-// suffix: a lane's current log, or a job's or matrix cell's (agent3.log,
-// agent1.2.log, agent3.orders.log), or a pid file (lane3.pid,
-// lane3.orders.pid).
+// suffix: a lane's current log, or a job's (agent3.log, agent1.2.log), or
+// a pid file (lane3.pid).
 func laneOfFile(name, prefix, suffix string) (int, bool) {
 	mid, ok := strings.CutPrefix(name, prefix)
 	if !ok {

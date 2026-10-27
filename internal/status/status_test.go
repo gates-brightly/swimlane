@@ -114,38 +114,6 @@ func TestWrittenFileShape(t *testing.T) {
 	}
 }
 
-// A matrix cell's process reads and writes its own entry under the lane;
-// the lane's own process writes the lane.
-func TestCellEntries(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("SWIM_CELL", "orders")
-	if err := Update(root, 1, 4, func(l *Lane) { l.State, l.Pass = Passed, 2 }); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("SWIM_CELL", "billing")
-	Update(root, 1, 4, func(l *Lane) { l.State = Failed })
-	t.Setenv("SWIM_CELL", "")
-	Update(root, 1, 4, func(l *Lane) { l.State = Failed })
-	f, err := Load(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	l := f.Get(1)
-	if l.State != Failed || len(l.Cells) != 2 || l.FindCell("orders").Pass != 2 || l.FindCell("orders").Cell != "orders" {
-		t.Fatalf("lane: %+v", l)
-	}
-	if got := l.CellsText(); got != "1/2 passed · failed: billing" {
-		t.Errorf("CellsText = %q", got)
-	}
-	if l.FindCell("nope") != nil {
-		t.Error("FindCell found a missing cell")
-	}
-	t.Setenv("SWIM_CELL", "orders")
-	if m := f.Mine(1); m.Cell != "orders" {
-		t.Errorf("Mine in a cell's process: %+v", m)
-	}
-}
-
 // A read-only check (swim plan --check) never changes lane state; only its
 // own fields, through UpdateCheck.
 func TestCheckModeLeavesStatusAlone(t *testing.T) {

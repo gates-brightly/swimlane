@@ -189,9 +189,9 @@ func sinceTime(root string, cfg *config.Config, ref string) (string, error) {
 }
 
 // A stream is one lane log followed across archives: the lane's own, or
-// one cell's (or group job's).
+// one group job's.
 type stream struct {
-	key     string // "1", or "1[cell]"
+	key     string // "1", or "1[job]"
 	lane    int
 	cell    string
 	files   []string // archives, oldest round first, then current
@@ -204,7 +204,7 @@ type logRound struct {
 	lines []string
 }
 
-// laneStreams lists lane n's streams: its log and each cell's, each with
+// laneStreams lists lane n's streams: its log and each job's, each with
 // its archives.
 func laneStreams(root string, n int) []*stream {
 	dir := lane.LogDir(root)
@@ -228,7 +228,7 @@ func laneStreams(root string, n int) []*stream {
 		switch {
 		case strings.HasSuffix(mid, ".check") || mid == "check":
 		case strings.HasPrefix(mid, "prev-"):
-			// agentN.prev-NAME.log, or a cell's agentN.prev-NAME.CELL.log
+			// agentN.prev-NAME.log, or a job's agentN.prev-NAME.JOB.log
 			s := own
 			if i := strings.LastIndex(mid, "."); i > 0 {
 				s = get(mid[i+1:])
@@ -808,7 +808,7 @@ type reportDoc struct {
 
 type laneReportDoc struct {
 	Lane   int              `yaml:"lane"`
-	Cell   string           `yaml:"cell,omitempty"`
+	Cell   string           `yaml:"cell,omitempty"` // a group job's log (the key matrix cells used)
 	Rounds []roundReportDoc `yaml:"rounds"`
 }
 

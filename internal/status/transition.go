@@ -8,7 +8,7 @@ import (
 )
 
 // The lane state machine (docs/state.md), as the rules every write of
-// status.yml is checked against. A lane or cell at rest (idle or finished)
+// status.yml is checked against. A lane at rest (idle or finished)
 // may start a new round, or be archived, refused or skipped, from anywhere;
 // the rules are about the round in flight:
 //
@@ -35,7 +35,7 @@ func finished(s string) bool {
 
 func waitingTurn(s string) bool { return s == Waiting || s == Locked || s == Queued }
 
-// Transition checks one lane's (or cell's) move from its entry before a
+// Transition checks one lane's move from its entry before a
 // write to its entry after it.
 func Transition(from, to *Lane) error {
 	a, b := from.State, to.State
@@ -65,15 +65,12 @@ func ptrEq(a, b *string) bool {
 	return *a == *b
 }
 
-// checkTransitions compares every lane and cell of before and after.
+// checkTransitions compares every lane of before and after.
 func checkTransitions(before, after *File) []string {
 	old := map[string]*Lane{}
 	for i := range before.Lanes {
 		l := &before.Lanes[i]
 		old[fmt.Sprint(l.Lane)] = l
-		for j := range l.Cells {
-			old[fmt.Sprintf("%d %s", l.Lane, l.Cells[j].Cell)] = &l.Cells[j]
-		}
 	}
 	var bad []string
 	check := func(key, who string, to *Lane) {
@@ -86,10 +83,6 @@ func checkTransitions(before, after *File) []string {
 	for i := range after.Lanes {
 		l := &after.Lanes[i]
 		check(fmt.Sprint(l.Lane), fmt.Sprintf("swim %d", l.Lane), l)
-		for j := range l.Cells {
-			c := &l.Cells[j]
-			check(fmt.Sprintf("%d %s", l.Lane, c.Cell), fmt.Sprintf("swim %d (%s)", l.Lane, c.Cell), c)
-		}
 	}
 	return bad
 }
@@ -102,12 +95,12 @@ func enforce(bad []string) {
 	panic("status.yml: illegal state transition (docs/state.md): " + strings.Join(bad, "; "))
 }
 
-// clone copies what the transition check reads (each lane's and cell's
+// clone copies what the transition check reads (each lane's
 // state, start time and run), so fn's changes don't reach it.
 func (f *File) clone() *File {
 	c := &File{Lanes: make([]Lane, len(f.Lanes))}
 	cp := func(l Lane) Lane {
-		out := Lane{Lane: l.Lane, Cell: l.Cell, State: l.State, Run: l.Run}
+		out := Lane{Lane: l.Lane, State: l.State, Run: l.Run}
 		if l.StartedAt != nil {
 			out.StartedAt = Str(*l.StartedAt)
 		}
@@ -115,9 +108,6 @@ func (f *File) clone() *File {
 	}
 	for i, l := range f.Lanes {
 		c.Lanes[i] = cp(l)
-		for _, cell := range l.Cells {
-			c.Lanes[i].Cells = append(c.Lanes[i].Cells, cp(cell))
-		}
 	}
 	return c
 }

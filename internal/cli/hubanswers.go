@@ -92,7 +92,7 @@ func hubAsker(cfg *config.Config, worker string) approval.Asker {
 			ev = ev[:maxEvidence] + "\n… (cut: the rest is in .swim/evidence/ on the swimmer)"
 		}
 		a := &hubAsk{answers: make(chan hubAnswer), done: make(chan struct{}), p: hub.PendingApproval{
-			ID: req.ID, Lane: req.Lane, Cell: req.Cell, Job: req.Job, Run: req.Run, Flag: req.Flag, Desc: req.Desc,
+			ID: req.ID, Lane: req.Lane, Job: req.Job, Run: req.Run, Flag: req.Flag, Desc: req.Desc,
 			Script: req.Script, Manifest: req.Manifest, Evidence: ev, EvidenceSHA: req.EvidenceSHA, EvidenceRequired: req.EvidenceRequired,
 			Expires: expires.Format(time.RFC3339), SignedOnly: signedOnly != ""}}
 		q := a.p.Question(worker)

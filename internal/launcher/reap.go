@@ -20,15 +20,11 @@ import (
 // Reaped is a round ReapDead closed.
 type Reaped struct {
 	Lane int
-	Cell string // a matrix cell or job ("" for the lane)
-	PID  int    // the process that died (0 if none was recorded)
+	PID  int // the process that died (0 if none was recorded)
 }
 
 func (r Reaped) String() string {
 	who := fmt.Sprintf("swim %d", r.Lane)
-	if r.Cell != "" {
-		who += " (" + r.Cell + ")"
-	}
 	pid := ""
 	if r.PID > 0 {
 		pid = fmt.Sprintf(" (pid %d)", r.PID)

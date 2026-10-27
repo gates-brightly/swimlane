@@ -198,11 +198,6 @@ func pruneCandidates(root string, cfg *config.Config, cutoff time.Duration, stam
 			if l.Run == run {
 				return true
 			}
-			for _, c := range l.Cells {
-				if c.Run == run {
-					return true
-				}
-			}
 		}
 		return false
 	}

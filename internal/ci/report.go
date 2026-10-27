@@ -17,8 +17,8 @@ import (
 // it ran in this run, its round from the log.
 type LaneReport struct {
 	N int
-	// Label names it: "swim 2", or for one job (or matrix cell) of a lane,
-	// "swim 1.2" ("swim 3[orders]"); a lane of those gets one report each.
+	// Label names it: "swim 2", or for one job of a lane, "swim 1.2"; a
+	// lane of those gets one report each.
 	Label    string
 	Job      string
 	Title    string

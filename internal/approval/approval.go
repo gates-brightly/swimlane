@@ -57,18 +57,17 @@ const ConfirmFlag = "SWIM_CONFIRM"
 
 // Request is one approval a lane asks for. Lane and Job are what the lane
 // says; the server replaces them with what the launcher registered for its
-// token (they stay on the wire for older lanes). Cell and Manifest are the
-// server's alone.
+// token (they stay on the wire for older lanes). Manifest is the server's
+// alone.
 type Request struct {
 	Lane     int    `json:"lane"`
 	Job      string `json:"job,omitempty"`
-	Cell     string `json:"-"`
 	Manifest string `json:"-"`
 	Flag     string `json:"flag"`
 	Desc     string `json:"desc"`
 	// Token identifies the lane process (TokenEnv). Op is "" to ask,
 	// "consume" to use up the approval with request id ID, "whoami" to
-	// learn which lane, cell and run the token is for, or "record" to have
+	// learn which lane and run the token is for, or "record" to have
 	// the launcher record Entry. (An ask's ID is the server's: whatever the
 	// lane sends is replaced.)
 	Token string       `json:"token,omitempty"`
@@ -115,7 +114,6 @@ type Response struct {
 	ID       string            `json:"id,omitempty"`
 	Lane     int               `json:"lane,omitempty"`
 	Job      string            `json:"job,omitempty"`
-	Cell     string            `json:"cell,omitempty"`
 	Run      string            `json:"run,omitempty"`
 	Observed map[string]string `json:"observed,omitempty"`
 	// Dry: no one was asked (nobody can be, under swim run); the guard is a
@@ -162,7 +160,6 @@ type Grant struct {
 // token.
 type Caller struct {
 	Lane     int
-	Cell     string // a matrix cell or job, "" for the lane itself
 	Job      string // "" if the launcher doesn't know it yet
 	Run      string
 	Manifest string
@@ -354,7 +351,7 @@ func (s *Server) check(req Request) (Caller, Request, string, bool) {
 	if req.Lane != c.Lane {
 		req.Desc = fmt.Sprintf("%s (sent as swim %d)", req.Desc, req.Lane)
 	}
-	req.Lane, req.Job, req.Cell, req.Manifest = c.Lane, c.Job, c.Cell, c.Manifest
+	req.Lane, req.Job, req.Manifest = c.Lane, c.Job, c.Manifest
 	// A flag the lane has set is checked against swim run's own
 	// environment, which names it: the operator set it, declared or not.
 	declared := req.Flag == ConfirmFlag || req.FlagSet || c.AnyGuard
@@ -418,13 +415,13 @@ func (s *Server) Identify(conn net.Conn, tok string) (Caller, string) {
 	return c, ""
 }
 
-// whoami says which lane, cell, job and run the token is for.
+// whoami says which lane, job and run the token is for.
 func (s *Server) whoami(req Request) Response {
 	c, ok := s.caller(req.Token)
 	if !ok {
 		return Response{Why: "not a lane of this run (no or an unknown token)"}
 	}
-	return Response{Approved: true, Lane: c.Lane, Cell: c.Cell, Job: c.Job, Run: c.Run}
+	return Response{Approved: true, Lane: c.Lane, Job: c.Job, Run: c.Run}
 }
 
 // record has the launcher record the entry a lane process sends.
@@ -673,7 +670,7 @@ func Record(path, token string, e chain.Entry) (string, error) {
 	return resp.Hash, nil
 }
 
-// Whoami asks the server which lane, cell, job and run token is for.
+// Whoami asks the server which lane, job and run token is for.
 func Whoami(path, token string) (Response, error) {
 	resp, err := Ask(path, Request{Op: "whoami", Token: token}, nil, time.Now().Add(10*time.Second))
 	if err != nil {
@@ -695,9 +692,6 @@ func Whoami(path, token string) (Response, error) {
 func Question(req Request) []string {
 	flag := Clean(req.Flag)
 	who := fmt.Sprintf("swim %d", req.Lane)
-	if req.Cell != "" {
-		who += " [" + Clean(req.Cell) + "]"
-	}
 	q := []string{who + " requires human approval of guard " + flag}
 	var facts []string
 	if req.Job != "" {

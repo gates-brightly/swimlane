@@ -35,18 +35,6 @@ type laneProc struct {
 	proc    *os.Process
 	group   bool
 	started time.Time
-	// A matrix cell's process is registered under its own key; lane and
-	// cell say whose it is.
-	lane int
-	cell string
-}
-
-// laneOf is the lane a registered process belongs to.
-func (lp *laneProc) laneOf(key int) int {
-	if lp.lane != 0 {
-		return lp.lane
-	}
-	return key
 }
 
 // interrupter turns signals into the graceful → force → kill escalation.
@@ -131,16 +119,12 @@ func (ir *interrupter) add(n int, lp *laneProc) {
 	}
 }
 
-// remove forgets a lane that finished, and its stop request (a cell's
-// process leaves its lane's request for the other cells).
+// remove forgets a lane that finished, and its stop request.
 func (ir *interrupter) remove(n int) {
 	ir.mu.Lock()
 	defer ir.mu.Unlock()
-	lp := ir.procs[n]
 	delete(ir.procs, n)
-	if lp == nil || lp.cell == "" {
-		lane.ClearStop(ir.o.Root, n)
-	}
+	lane.ClearStop(ir.o.Root, n)
 }
 
 // handle reacts to one signal.
@@ -204,16 +188,12 @@ func (ir *interrupter) gracefulLocked(s os.Signal) {
 	ir.disp.Message(fmt.Sprintf("swim: stopping after current steps (%d running). %s", len(ns), how))
 	ir.o.ev.emit(Event{Event: "stop_requested", Run: ir.o.RunID, Lanes: ns, At: now()})
 	st, _ := status.Load(ir.o.Root)
-	for _, key := range ns {
-		lp := ir.procs[key]
-		n := lp.laneOf(key)
-		ir.requestStopLocked(key, lp, s)
+	for _, n := range ns {
+		lp := ir.procs[n]
+		ir.requestStopLocked(n, lp, s)
 		step := ""
 		if st != nil {
 			if l := st.Get(n); l != nil {
-				if lp.cell != "" {
-					l = l.CellEntry(lp.cell)
-				}
 				step = l.CurrentStep
 			}
 		}
@@ -231,8 +211,7 @@ func (ir *interrupter) gracefulLocked(s os.Signal) {
 // stop file keeps swim step from starting another step, and SIGUSR2 to the
 // lane's bash (only that pid, never the step command) ends the round once
 // the current step returns, or cancels a waiting confirm.
-func (ir *interrupter) requestStopLocked(key int, lp *laneProc, s os.Signal) {
-	n := lp.laneOf(key)
+func (ir *interrupter) requestStopLocked(n int, lp *laneProc, s os.Signal) {
 	lane.RequestStop(ir.o.Root, n, ir.o.RunID)
 	if !lp.group {
 		// It shares swim's process group: the terminal already delivered
@@ -247,9 +226,6 @@ func (ir *interrupter) requestStopLocked(key int, lp *laneProc, s os.Signal) {
 	// An earlier lane has the stop file, and its first step refuses.
 	if st, _ := status.Load(ir.o.Root); st != nil {
 		if l := st.Get(n); l != nil {
-			if lp.cell != "" {
-				l = l.CellEntry(lp.cell)
-			}
 			if l.PID == lp.proc.Pid && l.Run == ir.o.RunID {
 				lp.proc.Signal(syscall.SIGUSR2)
 			}
@@ -293,12 +269,12 @@ func (ir *interrupter) killLocked() {
 	for _, n := range ns {
 		lp := ir.procs[n]
 		ir.signalLocked(lp, syscall.SIGKILL)
-		killSteps(ir.o.Root, lp.laneOf(n))
+		killSteps(ir.o.Root, n)
 	}
 }
 
 // killSteps SIGKILLs the process groups of lane n's running steps (its
-// round's, its cells', its check's): a step runs in a group of its own,
+// round's, its check's): a step runs in a group of its own,
 // which the signal to the lane's group doesn't reach, and swim step, killed
 // with the lane, can't stop it any more.
 func killSteps(root string, n int) {

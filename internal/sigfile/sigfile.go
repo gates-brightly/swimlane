@@ -87,8 +87,10 @@ type File struct {
 	// Standing: whose queued jobs are approved.
 	For string `yaml:"for,omitempty"` // a user in lookup.yml
 
-	// Cells limits a script approval to these cells of a matrix round
-	// (empty: every cell).
+	// Cells limited a script approval to cells of a matrix round, which
+	// this swim no longer has: kept so such a file's statement (and
+	// signature) still reads as signed, but a cell-limited approval
+	// approves nothing (Unlimited).
 	Cells []string `yaml:"cells,omitempty"`
 	// Evidence is the round's evidence hash this approval covers (the
 	// output of its evidence steps, e.g. terraform plan); "" for a
@@ -128,20 +130,9 @@ func ScriptPath(root string, n int, sha, man string) string {
 }
 
 // EvidencePath is the file approving lane n's script with hash sha and
-// manifest man together with evidence ev (and, for a matrix round, one
-// cell or "").
-func EvidencePath(root string, n int, sha, man, ev, cell string) string {
-	name := fmt.Sprintf("lane.%d.%s%s.e%s", n, sha[:12], manPart(man), ev[:8])
-	if cell != "" {
-		name += "." + strings.NewReplacer("=", "-", ",", ".", "/", "_").Replace(cell)
-	}
-	return filepath.Join(Dir(root), name+".signature")
-}
-
-// CellPath is the file approving one cell of lane n's matrix round.
-func CellPath(root string, n int, sha, man, cell string) string {
-	slug := strings.NewReplacer("=", "-", ",", ".", "/", "_").Replace(cell)
-	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s%s.%s.signature", n, sha[:12], manPart(man), slug))
+// manifest man together with evidence ev.
+func EvidencePath(root string, n int, sha, man, ev string) string {
+	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s%s.e%s.signature", n, sha[:12], manPart(man), ev[:8]))
 }
 
 // manPart names the manifest in a file name: ".m<8 hex>", or nothing.
@@ -152,20 +143,13 @@ func manPart(man string) string {
 	return ".m" + man[:8]
 }
 
-// ForCell keeps the files that cover cell (those limited to other cells
-// go). With no cell (a plain lane), cell-limited files go.
-func ForCell(files []*File, cell string) []*File {
+// Unlimited drops the files an older swim limited to matrix cells: they
+// never approved a whole lane.
+func Unlimited(files []*File) []*File {
 	var out []*File
 	for _, f := range files {
 		if len(f.Cells) == 0 {
 			out = append(out, f)
-			continue
-		}
-		for _, c := range f.Cells {
-			if c == cell {
-				out = append(out, f)
-				break
-			}
 		}
 	}
 	return out

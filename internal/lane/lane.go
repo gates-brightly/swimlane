@@ -674,7 +674,7 @@ func Slug(s string) string {
 }
 
 // Archive renames lane n's logs aside, .swim/logs/agentN.log to
-// agentN.prev-<what>.log, and each job's or matrix cell's log
+// agentN.prev-<what>.log, and each job's log
 // (agentN.<job>.log) to agentN.prev-<what>.<job>.log, and returns the
 // first new path. It never overwrites an existing archive. With its logs
 // archived (and a stub or no script) the lane is no longer in use
@@ -724,14 +724,14 @@ func archiveMoves(root string, n int, what string) ([][2]string, error) {
 		if name == prefix+"log" || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".log") || strings.Contains(name, ".prev-") || strings.HasSuffix(name, ".check.log") {
 			continue
 		}
-		cell := strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".log")
-		if cell == "" {
+		job := strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".log")
+		if job == "" {
 			continue
 		}
-		moves = append(moves, [2]string{filepath.Join(dir, name), filepath.Join(dir, fmt.Sprintf("agent%d.prev-%s.%s.log", n, slug, cell))})
+		moves = append(moves, [2]string{filepath.Join(dir, name), filepath.Join(dir, fmt.Sprintf("agent%d.prev-%s.%s.log", n, slug, job))})
 	}
 	if len(moves) == 0 {
-		return nil, fmt.Errorf("swim %d has nothing to archive (no .swim/logs/agent%d.log, and no job or cell logs)", n, n)
+		return nil, fmt.Errorf("swim %d has nothing to archive (no .swim/logs/agent%d.log, and no job logs)", n, n)
 	}
 	for _, m := range moves {
 		if _, err := os.Stat(m[1]); err == nil {

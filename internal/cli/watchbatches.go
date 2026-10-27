@@ -566,7 +566,7 @@ func (w *watchView) showLaneOutput(n int) string {
 }
 
 // showLaneLogs (l on a lane) shows lane n's current log, every round in
-// it with its job and cell logs, whether or not it runs; while it runs it
+// it with its job logs, whether or not it runs; while it runs it
 // follows the log, the running step's output included.
 func (w *watchView) showLaneLogs(n int) string {
 	if len(laneLogFiles(w.root, n)) == 0 {
@@ -713,8 +713,8 @@ func laneEnd(root string, n int, running func() bool) *display.FollowEnd {
 	return end
 }
 
-// laneLogFiles are lane n's current logs: its own, then its jobs', cells'
-// and read-only check's (not archives).
+// laneLogFiles are lane n's current logs: its own, then its jobs' and
+// read-only check's (not archives).
 func laneLogFiles(root string, n int) []string {
 	var logs []string
 	if _, err := os.Stat(lane.Log(root, n)); err == nil {
@@ -730,11 +730,11 @@ func laneLogFiles(root string, n int) []string {
 }
 
 // verboseLines are the batch's lanes' current rounds as their logs hold
-// them, each line marked with its lane (or job, or cell), and the running
+// them, each line marked with its lane (or job), and the running
 // step's output so far (its spool): everything the overview leaves out.
 func verboseLines(root string, lanes []int) []string { return logLines(root, lanes, false) }
 
-// logLines are lanes' current logs (their own, their jobs' and cells'),
+// logLines are lanes' current logs (their own, their jobs'),
 // each line marked with its log, and the running step's output so far:
 // every round in them with all, else the latest.
 func logLines(root string, lanes []int, all bool) []string {

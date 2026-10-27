@@ -166,9 +166,9 @@ func (rs *runSecrets) identify(o *Options) func(net.Conn, string) (secrets.Calle
 		}
 		job := c.Job
 		if job == "" {
-			job = runningJob(*o, c.Lane, c.Cell)
+			job = runningJob(*o, c.Lane)
 		}
-		return secrets.Caller{Lane: c.Lane, Cell: c.Cell, Job: job}, ""
+		return secrets.Caller{Lane: c.Lane, Job: job}, ""
 	}
 }
 

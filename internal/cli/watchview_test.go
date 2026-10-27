@@ -28,10 +28,7 @@ func TestWatchRowsSayWhatLanesWaitOn(t *testing.T) {
 	set(1, func(l *status.Lane) { l.State, l.WaitingOn = status.Waiting, []int{2, 3} })
 	set(2, func(l *status.Lane) { l.State, l.WaitingOn, l.Reason = status.Locked, []int{}, "waiting for lock db" })
 	set(3, func(l *status.Lane) { l.State, l.WaitingOn, l.Reason = status.Queued, []int{}, "2 ahead" })
-	set(4, func(l *status.Lane) {
-		l.State = status.Waiting
-		l.Cells = []status.Lane{{Cell: "a", State: status.Waiting, WaitingOn: []int{1}}, {Cell: "b", State: status.Waiting, WaitingOn: []int{1}}}
-	})
+	set(4, func(l *status.Lane) { l.State, l.WaitingOn = status.Waiting, []int{1} })
 	set(5, func(l *status.Lane) { l.State, l.WaitingOn, l.PID = status.Waiting, []int{1}, 0 }) // stale: its process is gone
 
 	w := &watchView{root: root, cfg: &config.Config{Settings: config.Settings{Lanes: 5}}}
@@ -54,9 +51,6 @@ func TestWatchRowsSayWhatLanesWaitOn(t *testing.T) {
 	}
 	if strings.Contains(row["lane:5"], "·") || !strings.Contains(row["lane:5"], "stale") {
 		t.Errorf("stale lane 5: %q", row["lane:5"])
-	}
-	if got := laneRowDetail(&status.Lane{Cells: []status.Lane{{State: status.Waiting, WaitingOn: []int{1}}, {State: status.Waiting, WaitingOn: []int{2}}}}, status.Waiting); got != "cells wait on different lanes" {
-		t.Errorf("disagreeing cells: %q", got)
 	}
 }
 

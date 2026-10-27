@@ -17,7 +17,7 @@ const printedKept = 10
 
 // NotStarted records a round of lane n that ended before it started (swim
 // refused it, or its script exited before lane_init): a round in logPath
-// (the lane's or the cell's log) whose STOP line says why, with the last
+// (the lane's log) whose STOP line says why, with the last
 // lines the lane printed, and a fail entry in .swim.log. The caller
 // records the status; why is its reason's text.
 func NotStarted(root string, n int, logPath, job, round, run, why string, printed []string, exit int) {

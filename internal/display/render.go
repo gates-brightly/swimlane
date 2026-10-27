@@ -47,7 +47,6 @@ type LaneView struct {
 	Stopping  string // while Running after a stop request: the step it is finishing
 	Approval  string // while Running and waiting for the operator to approve a guarded step
 	Message   string // while Running: the round's status message (swim msg), "migrating billing (7/25)"
-	Cells     string // a matrix round's cell counts, "2/4 pass · 1 running · 1 waiting"
 	Paused    string // held by swim pause: after which step, or "before it starts"
 	// Pre is the operator's answer, given ahead of time in the live view,
 	// to the lane's guards: "approved", "declined" or "". KnownGuards are
@@ -379,12 +378,7 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 		// A running round's message, in its own style after the round, when
 		// there's room (it never takes the state column).
 		msg := ""
-		if v.Cells != "" {
-			if left := avail - utf8.RuneCountInString(round) - 3; left >= 10 {
-				job = ""
-				msg = truncate(ui.Safe(v.Cells), left)
-			}
-		} else if v.State == Running && v.Message != "" {
+		if v.State == Running && v.Message != "" {
 			if left := avail - utf8.RuneCountInString(round) - 3; left >= 10 {
 				job = ""
 				msg = truncate("… "+ui.Safe(v.Message), left)

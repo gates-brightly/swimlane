@@ -163,7 +163,7 @@ func cmdApprove(args []string) error {
 				return err
 			}
 			evHash = ev.Hash
-			path = sigfile.EvidencePath(root, n, sha, man, ev.Hash, "")
+			path = sigfile.EvidencePath(root, n, sha, man, ev.Hash)
 			text, _ := ev.Text(root)
 			fmt.Printf("evidence from %s at %s:\n", map[bool]string{true: "swim plan --check", false: "a run"}[ev.Check], ev.At)
 			for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
@@ -362,7 +362,7 @@ func approvesText(f *sigfile.File) string {
 		text = "every guard"
 	}
 	if len(f.Cells) > 0 {
-		text += " (cell " + strings.Join(f.Cells, ", ") + " only)"
+		text += " (matrix cell " + strings.Join(f.Cells, ", ") + " only: approves nothing now)"
 	}
 	return text
 }
@@ -1154,7 +1154,7 @@ func approvalEvidence(root string, n int, info lane.Info, sha string) (*evidence
 		}
 	}
 	ref := fmt.Sprint(n)
-	key := evidence.LaneKey(n, "")
+	key := evidence.LaneKey(n)
 	ev := evidence.Load(root, job)
 	if lv := evidence.LoadLane(root, key); lv != nil && (ev == nil || ev.Script != sha || lv.At > ev.At) {
 		ev = lv // the lane's latest (a round with no fixed job)

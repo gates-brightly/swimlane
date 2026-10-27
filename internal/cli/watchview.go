@@ -74,7 +74,7 @@ func (w *watchView) stream(n int) []display.PickRow {
 			running = append(running, l)
 		} else if st != nil {
 			if s := st.Get(l); s != nil && s.State == status.Running && s.Alive() {
-				running = append(running, l) // a matrix lane: its cells hold the pid files
+				running = append(running, l)
 			}
 		}
 	}
@@ -318,9 +318,8 @@ func laneRowState(l *status.Lane, info lane.Info) (string, string) {
 
 // laneRowDetail is what a waiting, locked or queued lane waits on, for
 // the end of its row, as swim status and swim run's view say it: "waiting
-// on swim 2, 3", "waiting for lock db", "2 ahead". A matrix lane's cells
-// wait apart: said once when they agree. "" for any other state (a stale
-// row's waiting process is gone).
+// on swim 2, 3", "waiting for lock db", "2 ahead". "" for any other state
+// (a stale row's waiting process is gone).
 func laneRowDetail(l *status.Lane, state string) string {
 	if l == nil {
 		return ""
@@ -330,18 +329,7 @@ func laneRowDetail(l *status.Lane, state string) string {
 		if len(l.WaitingOn) > 0 {
 			return display.WaitingText(l.WaitingOn)
 		}
-		same := ""
-		for _, c := range l.Cells {
-			if c.State != status.Waiting || len(c.WaitingOn) == 0 {
-				continue
-			}
-			t := display.WaitingText(c.WaitingOn)
-			if same != "" && t != same {
-				return "cells wait on different lanes"
-			}
-			same = t
-		}
-		return same
+		return ""
 	case status.Locked, status.Queued:
 		return l.Reason
 	}

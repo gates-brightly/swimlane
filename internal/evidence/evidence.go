@@ -71,14 +71,8 @@ func slug(label string) string {
 // Load reads job's latest evidence (nil if it has none).
 func Load(root, job string) *Index { return loadFile(filepath.Join(Dir(root, job), "evidence.yml")) }
 
-// LaneKey names a lane's (or a matrix cell's) latest evidence, whatever its
-// job: "3", "3.orders".
-func LaneKey(n int, cellSlug string) string {
-	if cellSlug != "" {
-		return fmt.Sprintf("%d.%s", n, cellSlug)
-	}
-	return fmt.Sprint(n)
-}
+// LaneKey names a lane's latest evidence, whatever its job: "3".
+func LaneKey(n int) string { return fmt.Sprint(n) }
 
 func laneIndex(root, key string) string {
 	return filepath.Join(root, ".swim", "evidence", "lanes", key+".yml")

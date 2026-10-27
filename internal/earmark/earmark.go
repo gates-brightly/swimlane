@@ -33,7 +33,7 @@ type Cursor struct {
 	Name    string         `yaml:"name"`
 	At      string         `yaml:"at"` // UTC, RFC 3339: when it was written
 	History HistoryPos     `yaml:"history"`
-	Lanes   map[string]Pos `yaml:"lanes,omitempty"` // "1", or "1[cell]" for a cell's or job's log
+	Lanes   map[string]Pos `yaml:"lanes,omitempty"` // "1", or "1[job]" for a job's log
 }
 
 // HistoryPos is how much of .swim.log was read: Offset bytes, the last

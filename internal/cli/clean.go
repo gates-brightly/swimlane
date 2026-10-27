@@ -357,7 +357,7 @@ func cleanPlan(root string, cfg *config.Config, o cleanOpts, stamp string) ([]cl
 	return out, name
 }
 
-// hasLog reports whether lane n has a current log (its own, or a cell's or
+// hasLog reports whether lane n has a current log (its own, or a
 // job's).
 func hasLog(root string, n int) bool {
 	if st, err := os.Stat(lane.Log(root, n)); err == nil && st.Size() > 0 {

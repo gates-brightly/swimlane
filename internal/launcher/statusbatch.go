@@ -66,7 +66,7 @@ func (b *statusBatch) flush() {
 	}
 	status.UpdateFile(b.root, lanes, func(f *status.File) error {
 		for _, n := range order {
-			l := f.Mine(n)
+			l := f.Get(n)
 			for _, fn := range pending[n] {
 				fn(l)
 			}

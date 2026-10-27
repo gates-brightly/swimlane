@@ -44,7 +44,7 @@ func keepScript(root string, n int, m *manifest.Manifest) (string, error) {
 	dst := filepath.Join(scriptsDir(root), sha+".sh")
 	if _, err := os.Stat(dst); err != nil {
 		os.MkdirAll(scriptsDir(root), 0o755)
-		// A temporary name of its own: a matrix's cells start at once.
+		// A temporary name of its own: lanes start at once.
 		if err := fsutil.WriteAtomic(dst, data, 0o644); err != nil {
 			return "", err
 		}
@@ -60,7 +60,7 @@ func scriptSHA(root string, n int) string {
 		return m.ScriptSHA
 	}
 	if st, _ := status.Load(root); st != nil {
-		if l := st.Mine(n); l != nil && l.ScriptSHA != "" {
+		if l := st.Get(n); l != nil && l.ScriptSHA != "" {
 			return l.ScriptSHA
 		}
 	}
@@ -91,14 +91,14 @@ func manifestSHA(root string, n int) string {
 		return m.SHA256
 	}
 	if st, _ := status.Load(root); st != nil {
-		if l := st.Mine(n); l != nil {
+		if l := st.Get(n); l != nil {
 			return l.ManifestSHA
 		}
 	}
 	return ""
 }
 
-// laneProbes are the Observe: probes of lane n's round (this cell's or
+// laneProbes are the Observe: probes of lane n's round (this
 // job's): from the staged copy when the launcher staged one.
 func laneProbes(root string, n int, m *manifest.Manifest) []lane.Probe {
 	if m != nil && m.Dir != "" {

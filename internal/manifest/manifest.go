@@ -56,7 +56,7 @@ const (
 
 // Where an included file came from.
 const (
-	FromIncludes = "includes" // # Includes: or a Matrix: @file: part of the script hash too
+	FromIncludes = "includes" // # Includes: (or an older swim's Matrix: @file:) part of the script hash too
 	FromSource   = "source"   // a bash source line, found by a static scan (manifests before header-only pinning)
 	FromImport   = "import"   // a Python or TypeScript import of a local module (likewise)
 	FromModule   = "module"   // a file of a repo module the lane declares (# Modules:)
