@@ -70,24 +70,3 @@ func TestWriterSplitAcrossWrites(t *testing.T) {
 		t.Fatalf("got %q", b.String())
 	}
 }
-
-// A long-lived masker picks up a named secret that appears after it was
-// made (a guarded secret released to the lane), and keeps the env's.
-func TestMaskerRefresh(t *testing.T) {
-	changed, labeled := false, []Labeled{{Name: "a", Value: "first-secret"}}
-	m := New([]string{"MY_TOKEN=env-token-value"}, Options{Auto: true, Labeled: labeled, Refresh: &Refresh{
-		Changed: func() bool { c := changed; changed = false; return c },
-		Labeled: func() []Labeled { return labeled },
-	}})
-	if got := m.String("first-secret later-secret env-token-value"); got != "***(a) later-secret ***" {
-		t.Fatalf("before: %q", got)
-	}
-	labeled = append(labeled, Labeled{Name: "b", Value: "later-secret"})
-	if got := m.String("later-secret"); got != "later-secret" {
-		t.Fatalf("refreshed without a change: %q", got)
-	}
-	changed = true
-	if got := m.String("first-secret later-secret env-token-value"); got != "***(a) ***(b) ***" {
-		t.Fatalf("after: %q", got)
-	}
-}

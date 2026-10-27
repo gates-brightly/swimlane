@@ -122,8 +122,9 @@ type Entry struct {
 	Removed []string `json:"removed,omitempty"`
 	Pruned  []string `json:"pruned,omitempty"`
 
-	// secret-released, secret-refused: a guarded secret the run's broker
-	// handed a lane, or refused it. Secret is its name (never its value),
+	// secret-released, secret-refused (written by a swim that had guarded
+	// secrets, which it no longer has; they still verify): a guarded
+	// secret the run's broker handed a lane, or refused it. Secret is its name (never its value),
 	// Guard the flag that released it (or every flag that could have),
 	// Method how that flag was approved, Approvals the approve entry, and
 	// Action why a refusal was refused.

@@ -105,30 +105,6 @@ the program's:
   (`swim verify`), not impossible; see
   [the trust model](../../../../docs/trust-model.md).
 
-## Secrets broker
-
-Secrets (`swim secret`) come from a separate socket that the swim run
-serves to all of its lanes, so they work with or without a lane
-connection:
-
-- **Transport:** JSON lines on the Unix socket in `SWIM_SECRETS`, one
-  request per connection.
-- **Request:** `{"token": $SWIM_SECRETS_TOKEN, "lane_token": $SWIM_APPROVAL_TOKEN, "op": "get", "name": "db_password", "how": "sdk"}`.
-  `lane_token` is the lane process's own token: the broker asks swim run
-  which lane it belongs to (and checks the connection comes from that
-  lane's processes). A `lane` field, which older SDKs sent, is ignored.
-- **Response:** `{"ok": true, "value": "...", "scope": "repo|all|env|hub"}`, or
-  `{"ok": false, "error": "no secret db_password (...)"}`. A guarded secret
-  (`swim.yml` `secrets:`) whose guard isn't approved for this lane is
-  `{"ok": false, "error": "refused: NAME is guarded by FLAG, which isn't approved in this run"}`;
-  without a `lane_token` every guarded secret is refused.
-- **Outside a run** (`SWIM_SECRETS` unset), an SDK runs
-  `swim secret get NAME`, which decrypts with the operator's key.
-- **Masking and audit:** every lane process masks every secret the lane
-  may see (op `masks`: the unguarded ones, and the guarded ones released
-  to it) whatever it fetched, and `.swim.log` records each get by name;
-  the chain records each guarded release and refusal.
-
 ## Versioning
 
 - Fields only grow within `v1`, the same rule as the YAML schemas.

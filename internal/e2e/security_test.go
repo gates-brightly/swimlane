@@ -313,8 +313,6 @@ func TestSecurity(t *testing.T) {
 				t.Error("no round entry for lane 2")
 			}
 		}},
-		{"a guarded secret is refused without approval", "guarded secrets", TestGuardedSecretRefused},
-		{"a guarded secret is released only to the approved lane", "guarded secrets", TestGuardedSecretReleased},
 		{"the chain and its signer key replaced: consistent, not trusted", "T8", func(t *testing.T) {
 			b := newBoundaryRepo(t)
 			// The runner's key is trusted, and swim verify pins trust.yml.
@@ -352,9 +350,8 @@ func TestSecurity(t *testing.T) {
 		}},
 		{"a planted secret never appears in the log, .swim.log or status", "T9", func(t *testing.T) {
 			r := newRepo(t, "")
-			secretsKey(t, r)
-			r.setSecret("db_password", "planted-s3cret-value")
-			r.script(1, "uses a secret", `DB=$(swim secret get db_password) || stop "no secret"
+			r.env = append(r.env, "DB_PASSWORD=planted-s3cret-value")
+			r.script(1, "uses a secret", `DB=$DB_PASSWORD
 msg "using it"
 run "echo it" bash -c "echo db=$DB; echo db=$DB >&2; printf %s $DB | base64"
 run "fail with it" bash -c "echo $DB; exit 3"`)
@@ -369,7 +366,7 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 					}
 				}
 			}
-			contains(t, "agent1.log", r.log(1), "db=***(db_password)")
+			contains(t, "agent1.log", r.log(1), "db=***")
 		}},
 		{"a planted secret in every file swim writes", "T9", TestNoSecretLeaks},
 

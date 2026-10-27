@@ -21,7 +21,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
-	"github.com/gates-brightly/swimlane/internal/secrets"
 )
 
 // Settings is one block of configuration, either `defaults` or a repo entry.
@@ -45,27 +44,32 @@ type Settings struct {
 	RemovedObserve    any `yaml:"observe,omitempty"`
 	// RemovedModules (modules:) still counts in the policy hash as it
 	// did, so a repo that set it keeps its approvals (policy.go).
-	RemovedModules     any      `yaml:"modules,omitempty"`
-	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
-	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
-	SecretEnvIgnore    []string `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
-	SecretPatternsAuto *bool    `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
-	Interrupt          string   `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
-	Approvals          string   `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
-	SigningKey         string   `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
-	SecretsKey         string   `yaml:"secrets_key,omitempty"`          // SSH key secrets are encrypted to (default signing_key, then ~/.ssh/id_ed25519)
-	Signing            string   `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
-	InterruptGrace     string   `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
-	TermGrace          string   `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
-	MsgLogInterval     string   `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
-	OutputsKeep        string   `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
-	QueueLease         string   `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
-	PauseWarn          string   `yaml:"pause_warn,omitempty"`           // swim doctor warns about a lane paused longer than this (default 4h)
-	ClaimLease         string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
-	WatchBatches       int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
-	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
-	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
-	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
+	RemovedModules any `yaml:"modules,omitempty"`
+	// RemovedSecrets (secrets:) and RemovedAmbientCredentials
+	// (ambient_credentials:), swim.yml's guarded secrets, also still count
+	// in the policy hash as they did (policy.go).
+	RemovedSecrets            any      `yaml:"secrets,omitempty"`
+	RemovedAmbientCredentials any      `yaml:"ambient_credentials,omitempty"`
+	RemovedSecretsKey         any      `yaml:"secrets_key,omitempty"`
+	SecretEnv                 []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
+	SecretEnvAuto             *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
+	SecretEnvIgnore           []string `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
+	SecretPatternsAuto        *bool    `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
+	Interrupt                 string   `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
+	Approvals                 string   `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
+	SigningKey                string   `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
+	Signing                   string   `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
+	InterruptGrace            string   `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
+	TermGrace                 string   `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
+	MsgLogInterval            string   `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
+	OutputsKeep               string   `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
+	QueueLease                string   `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
+	PauseWarn                 string   `yaml:"pause_warn,omitempty"`           // swim doctor warns about a lane paused longer than this (default 4h)
+	ClaimLease                string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
+	WatchBatches              int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
+	CacheDir                  string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
+	CacheMax                  string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
+	CacheSlug                 string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
 	// the anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -87,14 +91,6 @@ type Settings struct {
 	// Hub is swim.yml's hub: block (what workers send their hub). Only
 	// swim.yml may set it.
 	Hub *HubSettings `yaml:"hub,omitempty"`
-	// Secrets are swim.yml's guarded secrets (secrets.go): released to a
-	// lane only once one of their guard flags was approved for it. Only
-	// swim.yml may set it, so a guard is removed by a reviewed commit.
-	Secrets map[string]SecretPolicy `yaml:"secrets,omitempty"`
-	// AmbientCredentials name credentials outside swim's vault that grant
-	// what a guarded secret does (AWS profiles): swim lint and swim doctor
-	// point out their use. Only swim.yml may set it.
-	AmbientCredentials []string `yaml:"ambient_credentials,omitempty"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -176,9 +172,6 @@ func Load(root string) (*Config, error) {
 	if f.Defaults.Hub != nil {
 		return nil, fmt.Errorf("%s: hub: belongs in a repo's committed swim.yml, not config.yml (what leaves the machine for a hub is the repo's decision)", c.Path)
 	}
-	if f.Defaults.Secrets != nil || f.Defaults.AmbientCredentials != nil {
-		return nil, fmt.Errorf("%s: secrets: and ambient_credentials: belong in a repo's committed swim.yml, not config.yml (a guard on a secret is the repo's decision)", c.Path)
-	}
 	c.Settings = f.Defaults
 	c.RepoLanes = f.Defaults.Lanes != 0
 	c.Runners, c.RunnerFrom = nil, nil
@@ -199,10 +192,6 @@ func Load(root string) (*Config, error) {
 			// two repos at one cache.
 			return nil, fmt.Errorf("%s: cache_dir: and cache_slug: belong in %s, not the repo's swim.yml", path, c.Path)
 		}
-		if err := validateSecrets(s.Secrets); err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-		c.Secrets, c.AmbientCredentials = s.Secrets, s.AmbientCredentials
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
 		if repo.Env != nil {
@@ -213,9 +202,6 @@ func Load(root string) (*Config, error) {
 		}
 		if repo.Hub != nil {
 			return nil, fmt.Errorf("%s (repo %s): hub: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
-		}
-		if repo.Secrets != nil || repo.AmbientCredentials != nil {
-			return nil, fmt.Errorf("%s (repo %s): secrets: and ambient_credentials: belong in the repo's committed swim.yml, not config.yml", c.Path, root)
 		}
 		c.HasRepo = true
 		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
@@ -248,7 +234,8 @@ func (s Settings) RemovedKeys() []string {
 	for _, k := range []struct {
 		name string
 		v    any
-	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules}} {
+	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules},
+		{"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}, {"secrets_key", s.RemovedSecretsKey}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}
@@ -419,9 +406,6 @@ func (c *Config) merge(r Settings) {
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
 	}
-	if r.SecretsKey != "" {
-		c.SecretsKey = r.SecretsKey
-	}
 	if r.Signing != "" {
 		c.Signing = r.Signing
 	}
@@ -487,21 +471,8 @@ func (c *Config) Validate() error {
 // (git push, git commit, git pull) plus defaults' and this repo's additions.
 func (c *Config) Blocked() []string { return policy.Patterns(c.BlockedCommands) }
 
-// Masker returns the secret masker for env (usually os.Environ()). Under a
-// swim run it asks the run's broker for the secrets this lane may see, and
-// asks again whenever one is released to the lane.
+// Masker returns the secret masker for env (usually os.Environ()).
 func (c *Config) Masker(env []string) *redact.Masker {
-	labeled, refresh := runSecrets(env)
-	return c.masker(env, labeled, refresh)
-}
-
-// MaskerWith is the masker for env with named secrets given (the launcher,
-// which holds every one of the run's): it never asks a broker.
-func (c *Config) MaskerWith(env []string, labeled []redact.Labeled) *redact.Masker {
-	return c.masker(env, labeled, nil)
-}
-
-func (c *Config) masker(env []string, labeled []redact.Labeled, refresh *redact.Refresh) *redact.Masker {
 	on := func(b *bool) bool { return b == nil || *b }
 	names := c.SecretEnv
 	// Values a lane got from env files are masked whatever their names
@@ -516,63 +487,7 @@ func (c *Config) masker(env []string, labeled []redact.Labeled, refresh *redact.
 		Auto:         on(c.SecretEnvAuto),
 		Ignore:       c.SecretEnvIgnore,
 		AutoPatterns: on(c.SecretPatternsAuto),
-		Labeled:      labeled,
-		Refresh:      refresh,
 	})
-}
-
-// runSecrets are the swim run's secrets (swim secret) this lane may see,
-// from its broker when env names one: every unguarded one, and the guarded
-// ones released to the lane. Every process in a lane masks all of them
-// exactly, whichever it uses and however it got them. The refresh asks
-// again when the broker's generation file changes (a release).
-func runSecrets(env []string) ([]redact.Labeled, *redact.Refresh) {
-	getenv := func(k string) string {
-		v := ""
-		for _, kv := range env {
-			if x, ok := strings.CutPrefix(kv, k+"="); ok {
-				v = x // the last one wins, as in exec
-			}
-		}
-		return v
-	}
-	sock := getenv(secrets.SockEnv)
-	if sock == "" {
-		return nil, nil
-	}
-	ask := func() []redact.Labeled {
-		resp, _, err := secrets.Call(getenv, secrets.Request{Op: "masks"})
-		if err != nil || resp == nil {
-			return nil
-		}
-		out := make([]redact.Labeled, len(resp.Masks))
-		for i, m := range resp.Masks {
-			out[i] = redact.Labeled{Name: m.Name, Value: m.Value}
-		}
-		return out
-	}
-	gen := secrets.GenPath(sock)
-	stamp := func() string {
-		fi, err := os.Stat(gen)
-		if err != nil {
-			return ""
-		}
-		return fmt.Sprint(fi.ModTime().UnixNano(), fi.Size())
-	}
-	last := stamp()
-	labeled := ask()
-	refresh := &redact.Refresh{
-		Changed: func() bool {
-			now := stamp()
-			if now == last {
-				return false
-			}
-			last = now
-			return true
-		},
-		Labeled: ask,
-	}
-	return labeled, refresh
 }
 
 // MsgLogEvery is msg_log_interval: the least time between two MSG lines a
@@ -925,13 +840,4 @@ func (c *Config) SigningMode() string {
 		return SigningAuto
 	}
 	return c.Signing
-}
-
-// SecretsKeyPath is the SSH key swim secret encrypts to: secrets_key, else
-// signing_key, else "" (secrets.LoadKey then tries ~/.ssh/id_ed25519).
-func (c *Config) SecretsKeyPath() string {
-	if c.SecretsKey != "" {
-		return c.SecretsKey
-	}
-	return c.SigningKey
 }

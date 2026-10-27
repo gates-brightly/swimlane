@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/chars"
-	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/help"
@@ -18,7 +17,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
-	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
@@ -626,165 +624,28 @@ func checkSecretEcho(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
-// secretUseRE is a secret named literally: swim secret get NAME, an SDK's
-// secret.get("NAME") / Secret.Get("NAME"), or ["swim", "secret", "get", "NAME"].
-var secretUseRE = regexp.MustCompile(`\bsecret\s+get\s+["']?([A-Za-z][A-Za-z0-9_]*)|\b(?:secret\.get|Secret\.Get)\(\s*["'\x60]([A-Za-z][A-Za-z0-9_]*)|['"]secret['"]\s*,\s*['"]get['"]\s*,\s*['"]([A-Za-z][A-Za-z0-9_]*)`)
+// secretUseRE is an SDK's call to the secret store swim no longer has:
+// secret.get("NAME") / Secret.Get("NAME"), or ["swim", "secret", ...].
+var secretUseRE = regexp.MustCompile(`\b(?:secret\.get|Secret\.Get)\(|['"]swim['"]\s*,\s*['"]secret['"]`)
 
-// checkSecretRefs: a secret a lane names must be in the store (or come
-// from SWIM_SECRET_<NAME>); names are readable, so no key is needed.
-func checkSecretRefs(c *Context, s *Script) []finding.Finding {
-	var out []finding.Finding
-	store, err := secrets.Load(secrets.Path(config.Path()))
-	if err != nil {
-		return []finding.Finding{f(finding.Warn, "secret-ref", -1, "fix or remove the secrets store", "can't read the secrets store: %v", err)}
-	}
-	repo := secrets.RepoKey(c.Root)
-	seen := map[string]bool{}
-	for _, u := range s.secretUses() {
-		name := u.Name
-		if seen[name] || store.Has(repo, name) || os.Getenv(secrets.EnvPrefix+secrets.EnvName(name)) != "" {
-			continue
-		}
-		seen[name] = true
-		out = append(out, f(finding.Warn, "secret-ref", u.Line, "swim secret set "+name+" (or --all)",
-			"secret %s isn't stored for this repo; getting it will fail", name))
-	}
-	return out
-}
-
-// A secretUse is a secret a script gets by a literal name.
-type secretUse struct {
-	Line int
-	Name string
-}
-
-// secretUses lists the secrets the script gets by name: in bash, swim
-// secret get NAME commands (in a $(...) too, never in quoted text or a
-// comment); in another language, the SDK's calls as written.
-func (s *Script) secretUses() []secretUse {
-	var out []secretUse
+// secretUses lists the lines where the script uses the secret store swim
+// no longer has: in bash, swim secret commands (in a $(...) too, never in
+// quoted text or a comment); in another language, the SDK's calls as
+// written.
+func (s *Script) secretUses() []int {
+	var out []int
 	if s.bash() {
 		for _, c := range s.v.commands() {
-			w := c.Words
-			if len(w) > 3 && isSwim(w[0]) && w[1].Text == "secret" && w[2].Text == "get" && literal(w[3]) {
-				out = append(out, secretUse{c.Line, w[3].Text})
+			if w := c.Words; len(w) > 1 && isSwim(w[0]) && w[1].Text == "secret" {
+				out = append(out, c.Line)
 			}
 		}
 		return out
 	}
-	for i, line := range s.v.raw {
-		for _, m := range secretUseRE.FindAllStringSubmatch(line, -1) {
-			out = append(out, secretUse{i, m[1] + m[2] + m[3]})
+	for i, line := range s.v.code {
+		if s.v.isCode(i) && secretUseRE.MatchString(line) {
+			out = append(out, i)
 		}
-	}
-	return out
-}
-
-// checkGuardedSecret: a lane that gets a guarded secret (swim.yml
-// secrets:) with no guard of one of its flags before it: the broker will
-// refuse it.
-func checkGuardedSecret(c *Context, s *Script) []finding.Finding {
-	guarded := c.Cfg.GuardedSecrets()
-	if len(guarded) == 0 {
-		return nil
-	}
-	_, used, _ := s.guardFlags()
-	sdk := map[string]bool{}
-	for _, f := range s.Info.GuardFlags() {
-		sdk[f] = true
-	}
-	var out []finding.Finding
-	seen := map[string]bool{}
-	for _, u := range s.secretUses() {
-		name, i := u.Name, u.Line
-		p, ok := guarded[name]
-		if !ok || seen[name] {
-			continue
-		}
-		before := false
-		for _, f := range p.Guard {
-			if at, ok := used[f]; (s.Lib && ok && at <= i) || (!s.Lib && sdk[f]) {
-				before = true
-			}
-		}
-		if !before {
-			seen[name] = true
-			out = append(out, f(finding.Warn, "secret-guard", i, fmt.Sprintf("put it inside `if guard %s \"<what it does>\"; then ... fi`", p.Guard[0]),
-				"secret %s is guarded by %s (swim.yml), but no guard of it comes first: swim run refuses it", name, strings.Join(p.Guard, " or ")))
-		}
-	}
-	return out
-}
-
-// checkAmbientCredential: a lane that uses a credential swim.yml lists in
-// ambient_credentials (an AWS profile with the access a guarded secret
-// grants) directly: no guard stands in its way.
-func checkAmbientCredential(c *Context, s *Script) []finding.Finding {
-	var out []finding.Finding
-	for _, name := range c.Cfg.AmbientCredentials {
-		if s.bash() {
-			// AWS_PROFILE=name or --profile name in a command, never in
-			// quoted text or a comment.
-			if i, ok := s.usesProfile(name); ok {
-				out = append(out, f(finding.Warn, "ambient-credential", i, "put that access in a guarded secret (swim.yml secrets:) and run with read-only ambient credentials",
-					"uses %s, an ambient credential (swim.yml ambient_credentials:): swim's guards can't stop what it does", name))
-			}
-			continue
-		}
-		re := regexp.MustCompile(`(?:\bAWS_PROFILE=|--profile(?:=|\s+))["']?` + regexp.QuoteMeta(name) + `(?:["'\s;)|&]|$)`)
-		for i, line := range s.v.raw {
-			if (s.Lib && s.v.doc[i]) || !re.MatchString(line) {
-				continue
-			}
-			out = append(out, f(finding.Warn, "ambient-credential", i, "put that access in a guarded secret (swim.yml secrets:) and run with read-only ambient credentials",
-				"uses %s, an ambient credential (swim.yml ambient_credentials:): swim's guards can't stop what it does", name))
-			break
-		}
-	}
-	return out
-}
-
-// usesProfile reports the first line where a bash command uses the
-// credential name: AWS_PROFILE=name (an assignment or export), or
-// --profile name / --profile=name.
-func (s *Script) usesProfile(name string) (int, bool) {
-	for _, c := range s.v.commands() {
-		for k, w := range c.Words {
-			if !literal(w) {
-				continue
-			}
-			if w.Text == "AWS_PROFILE="+name || w.Text == "--profile="+name ||
-				w.Text == "--profile" && k+1 < len(c.Words) && c.Words[k+1].Text == name {
-				return c.Line, true
-			}
-		}
-	}
-	return 0, false
-}
-
-// secretArgRE is a secret got inline: $(swim secret get ...).
-var secretArgRE = regexp.MustCompile(`\$\(\s*(?:"?\$\{?SWIM_BIN\}?"?|[^\s()]*swim)\s+secret\s+get\b`)
-
-// checkSecretArgv: a secret got inline into a command's arguments, where
-// any process on the machine can read it (ps, /proc/<pid>/cmdline). An
-// assignment first (and an environment variable or stdin for the command)
-// keeps it out.
-func checkSecretArgv(c *Context, s *Script) []finding.Finding {
-	var out []finding.Finding
-	// What bash expands: a $(...) in single quotes or a comment is text.
-	for i, line := range s.v.exp {
-		if s.v.doc[i] {
-			continue
-		}
-		loc := secretArgRE.FindStringIndex(line)
-		if loc == nil {
-			continue
-		}
-		if strings.HasSuffix(strings.TrimRight(line[:loc[0]], `"' `), "=") {
-			continue // NAME=$(swim secret get ...)
-		}
-		out = append(out, f(finding.Warn, "secret-argv", i, "assign it first (V=$(swim secret get NAME)) and pass it in an environment variable or on stdin, not as an argument",
-			"a secret on a command line: any process on the machine can read a command's arguments (ps)"))
 	}
 	return out
 }
@@ -1199,8 +1060,8 @@ var handlerDefRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failur
 // r.Module(...), which swim no longer answers.
 var sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(?:Env|_env|With)?\(\s*["'\x60]`)
 
-// checkRemoved: a header key, outcome handler or module call of a feature
-// swim no longer has. swim would ignore the header and the handler, so a
+// checkRemoved: a header key, outcome handler, module call or secret
+// store call of a feature swim no longer has. swim would ignore the header and the handler, so a
 // cleanup or rollback the script counts on would never run; a module call
 // would fail mid-round. Refuse the lane instead.
 func checkRemoved(c *Context, s *Script) []finding.Finding {
@@ -1230,6 +1091,10 @@ func checkRemoved(c *Context, s *Script) []finding.Finding {
 					"a module call, and swim no longer has modules: the step would fail"))
 			}
 		}
+	}
+	for _, i := range s.secretUses() {
+		out = append(out, f(finding.Error, "removed", i, "give the lane the credential in its environment instead (the operator's own, or env.swim)",
+			"swim secret is gone: swim no longer has a secret store, so getting a secret would fail"))
 	}
 	for i, line := range s.v.bare {
 		if s.v.doc[i] {

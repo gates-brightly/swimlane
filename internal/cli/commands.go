@@ -24,7 +24,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -489,11 +488,7 @@ func runLanes(rest []string, rf runFlags) error {
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
 		Interactive: !rf.noTUI && display.TUIAllowed(os.Getenv),
 		Interrupt:   rf.interrupt,
-		// The secrets key's passphrase, if it has one, is asked here
-		// before the live view starts (a terminal is needed).
-		SecretsPrompt: passphrasePrompt,
-		HubSecrets:    func() (map[string]secrets.Granted, error) { return hubGrants(root) },
-		Pins:          pins,
+		Pins:        pins,
 		// Guards without their flag may ask the operator (not in CI, where
 		// nobody is at the terminal, nor with approvals: flags).
 		Prompt: !rf.noPrompt && cfg.ApprovalMode() == config.ApprovalsPrompt && !ci.InCI(os.Getenv),

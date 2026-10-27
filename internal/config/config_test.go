@@ -124,24 +124,28 @@ func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
 	}
 }
 
-// chime, observe and modules were removed: a swim.yml (read strictly) or config.yml that still
-// sets its keys loads, and RemovedKeys names them for swim doctor.
+// chime, observe, modules and guarded secrets were removed: a swim.yml
+// (read strictly) or config.yml that still sets their keys loads, and
+// RemovedKeys names them for swim doctor.
 func TestRemovedChimeKeysStillLoad(t *testing.T) {
-	writeConfig(t, "defaults:\n  chime: true\n  chime_min_s: 30\n")
+	writeConfig(t, "defaults:\n  chime: true\n  chime_min_s: 30\n  secrets_key: ~/.ssh/id_ed25519\n")
 	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, RepoFileName), []byte("chime: failure\nchime_style: sound\nobserve:\n  slow_factor: 3\nmodules:\n  allow: [notify]\n"), 0o644)
+	os.WriteFile(filepath.Join(root, RepoFileName), []byte("chime: failure\nchime_style: sound\nobserve:\n  slow_factor: 3\nmodules:\n  allow: [notify]\n"+
+		"secrets:\n  PROD_DB: { guard: ALLOW_DROP }\n  1x: { guard: 'not a flag', release: forever }\nambient_credentials: [prod-write]\n"), 0o644)
 	c, err := Load(root)
 	if err != nil {
 		t.Fatalf("a config with removed keys: %v", err)
 	}
-	if got := strings.Join(c.Repo.RemovedKeys(), ","); got != "chime,chime_style,observe,modules" {
+	if got := strings.Join(c.Repo.RemovedKeys(), ","); got != "chime,chime_style,observe,modules,secrets,ambient_credentials" {
 		t.Errorf("swim.yml removed keys: %q", got)
 	}
-	if got := strings.Join(c.Settings.RemovedKeys(), ","); got != "chime,chime_min_s" {
+	if got := strings.Join(c.Settings.RemovedKeys(), ","); got != "chime,chime_min_s,secrets_key" {
 		t.Errorf("config.yml removed keys: %q", got)
 	}
-	if _, err := c.Get("chime"); err == nil {
-		t.Error("swim config chime still answers")
+	for _, k := range []string{"chime", "secrets_key"} {
+		if _, err := c.Get(k); err == nil {
+			t.Errorf("swim config %s still answers", k)
+		}
 	}
 }
 
@@ -314,51 +318,5 @@ func TestNewKeys(t *testing.T) {
 	c := &Config{}
 	if c.MsgLogEvery() != 10*time.Second || c.OutputsKeepFor() != 14*24*time.Hour {
 		t.Error("defaults")
-	}
-}
-
-// secrets: (guarded secrets) and ambient_credentials: are swim.yml's alone,
-// and change the policy hash.
-func TestGuardedSecretsConfig(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	root := t.TempDir()
-	c, err := Load(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plain := c.PolicyHash()
-	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("secrets:\n  PROD_DB: { guard: ALLOW_DROP }\n  ROLE: { guard: [A, B], release: step }\nambient_credentials: [prod-write]\n"), 0o644)
-	if c, err = Load(root); err != nil {
-		t.Fatal(err)
-	}
-	if g := c.SecretGuard("PROD_DB"); len(g) != 1 || g[0] != "ALLOW_DROP" {
-		t.Errorf("PROD_DB: %v", g)
-	}
-	if p := c.GuardedSecrets()["ROLE"]; strings.Join(p.Guard, ",") != "A,B" || p.Release != ReleaseStep {
-		t.Errorf("ROLE: %+v", p)
-	}
-	if len(c.SecretGuard("other")) != 0 || strings.Join(c.AmbientCredentials, ",") != "prod-write" {
-		t.Errorf("other / ambient: %v %v", c.SecretGuard("other"), c.AmbientCredentials)
-	}
-	if c.PolicyHash() == plain {
-		t.Error("a guard didn't change the policy hash")
-	}
-	for body, want := range map[string]string{
-		"secrets:\n  X: { release: step }\n":              "needs a guard",
-		"secrets:\n  X: { guard: 'not a flag' }\n":        "isn't a guard flag",
-		"secrets:\n  X: { guard: F, release: forever }\n": "want lane or step",
-		"secrets:\n  1x: { guard: F }\n":                  "isn't a secret name",
-	} {
-		os.WriteFile(filepath.Join(root, "swim.yml"), []byte(body), 0o644)
-		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%q: %v, want %q", body, err, want)
-		}
-	}
-	os.WriteFile(filepath.Join(root, "swim.yml"), nil, 0o644)
-	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
-	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  secrets:\n    X: { guard: F }\n"), 0o644)
-	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "belong in a repo's committed swim.yml") {
-		t.Errorf("secrets: in config.yml: %v", err)
 	}
 }

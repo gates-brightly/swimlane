@@ -183,9 +183,7 @@ whoever runs it.
   status`, `swim history`, CI summaries and the hub.
 - **Out of scope:** a malicious or mistaken script that is approved and run
   with broad credentials. Guards and lint are conventions, not a sandbox:
-  use scoped credentials and OS isolation for that. A
-  [guarded secret](#guarded-secrets) is the exception, for credentials
-  that live only in swim's vault: a lane that skips its guard never gets it.
+  use scoped credentials and OS isolation for that.
 - **The approved bytes run:** each lane runs a staged, read-only copy of
   what its execution manifest pins (script, sourced files, sidecar, runner,
   policy), and an approval binds that manifest.
@@ -703,98 +701,6 @@ written once; a save from a round with
 failed steps is marked, and its restores say so. A restored tree runs
 unchecked, so every restore is recorded in the round's chain entry.
 
-### Secrets
-
-Secrets live encrypted to your SSH key, not in env files or the shell:
-
-```sh
-swim secret set db_password            # this repo (hidden prompt, or stdin)
-swim secret set datadog_api_key --all  # every repo
-swim secret ls                         # names and scopes, never values
-```
-
-A lane gets them by name, with the same command in any language:
-
-```bash
-DB=$(swim secret get db_password) || stop "no db password"   # check it: lanes don't run with set -e
-```
-
-- **Encrypted with [age](https://age-encryption.org)** to an `ssh-ed25519`
-  or `ssh-rsa` key (`secrets_key`, else `signing_key`, else
-  `~/.ssh/id_ed25519`). They're kept in `secrets.yml` next to your config,
-  mode 0600. Names stay readable; each value is encrypted on its own.
-  Decrypting needs the private key on disk, because ssh-agent can't
-  decrypt.
-- **Two scopes:** `--all` and `--repo` (this git repo, the default inside
-  one). A repo's own secret wins over an `--all` one with the same name.
-- **Decrypted once per run:** `swim run` decrypts at start and serves the
-  lanes over a private socket. It asks a protected key's passphrase before
-  the live view, and only if a lane looks like it uses secrets. Outside a
-  run, `swim secret get` decrypts with your key directly.
-- **Masked exactly, by name:** every lane process masks every secret its
-  lane may get as `***(db_password)`, including their base64 and URL
-  forms, whichever ones it used. `swim run`'s own stream masks them all.
-- **Audited:** `.swim.log` records which lane got which secret and how,
-  never the value. `swim lint` warns about names the store doesn't have.
-- **CI:** `SWIM_SECRET_<NAME>` stands in for a secret, with no key needed.
-- **The limits:**
-  - Secrets keep values out of logs, the hub and git. They don't protect
-    against lane code, which runs as you and could read your key itself.
-  - A value passed as a command argument (`psql "$DB"`) is visible in `ps`
-    while it runs; prefer the tool's env variable or a file when it has one.
-  - `swim watch` and CI can't ask a passphrase.
-
-#### Guarded secrets
-
-A secret can be guarded by a guard flag in the committed `swim.yml`. The
-run hands it to a lane only after that lane's guard was approved in this
-run, so a script that skips `guard` never gets the credential that makes
-the destructive call possible:
-
-```yaml
-# swim.yml
-secrets:
-  PROD_DB_ADMIN_URL: { guard: ORDERS_ALLOW_DROP }                        # released after that guard is approved
-  AWS_PROD_WRITE_ROLE: { guard: [INFRA_APPLY, INFRA_DESTROY], release: step }  # either one; handed out once
-ambient_credentials: [prod-write]   # AWS profiles with the same access: lint and doctor point them out
-```
-
-```bash
-if guard ORDERS_ALLOW_DROP "drop the orders table"; then
-  export DATABASE_URL=$(swim secret get PROD_DB_ADMIN_URL) || stop "refused"
-  run "drop table" psql -c 'drop table orders'    # psql reads DATABASE_URL: not on its command line
-fi
-```
-
-- **Approvals that count:** the ones the launcher saw: the prompt (or the
-  live view's pre-answer), `-y`, signed approvals, a queued batch's
-  `--approve`, and `FLAG=1` in the environment `swim run` started with.
-  `FLAG=1` a lane sets itself never counts.
-- **Per lane, per run:** the approval is for that lane process: another
-  lane, or the next run, asks again. It lasts until the lane exits;
-  `release: step` hands the value out once and refuses a second get.
-  `swim plan --check` never releases one.
-- **Refused:** `refused: PROD_DB_ADMIN_URL is guarded by
-  ORDERS_ALLOW_DROP, which isn't approved in this run`, as a `WARN` in the
-  lane's log, in `.swim.log`, and a `secret-refused` chain entry. A release
-  is a `secret-released` entry: the name, the flag, how it was approved and
-  the approve entry it rests on (`swim verify` checks the run recorded
-  it), never the value.
-- **CI and the hub:** `SWIM_SECRET_<NAME>` of a guarded secret is kept out
-  of lanes' environments; only the broker serves it. `swim secret grant
-  --guard FLAG` guards a hub grant too (both guards must be approved).
-- **Outside a run:** `swim secret get` of a guarded secret works at your
-  own shell (recorded in `.swim.log`) and is refused in a lane run with
-  bash.
-- **The limits:** it protects only credentials that exist nowhere else.
-  Ambient credentials (`~/.aws` profiles) are out of its reach: run with
-  read-only ones and put write roles in the vault, for example as the
-  credentials an `aws sts assume-role` step uses, so the elevated session
-  exists only after approval. Released means usable: the lane can reuse
-  the value however it likes. And with a secrets key that has no
-  passphrase, a lane can decrypt `secrets.yml` itself (`swim run` and
-  `swim doctor` warn).
-
 ### Guards and approvals
 
 <a id="approvals"></a>
@@ -1122,8 +1028,7 @@ hub:
   A repo can block more commands with `blocked_commands`.
 - **Secrets are masked** as `***` everywhere swim writes. That covers the
   values of `secret_env` variables and of names like `*_TOKEN`, plus
-  credential shapes such as AWS key ids and GitHub tokens. Secrets from
-  [`swim secret`](#secrets) are masked exactly, as `***(name)`. It's a
+  credential shapes such as AWS key ids and GitHub tokens. It's a
   backstop: still never print secrets.
 - **Fail-closed:** gates and `confirm` stop the round when there's no
   answer.
@@ -1190,8 +1095,6 @@ swim auth login URL --admin-token T [--ca hub.crt]   # the operator, once: an ad
 swim auth login URL --access read|readwrite [--ca hub.crt]   # each machine that runs lanes: a swimmer, once the admin admits it
 swim auth admit box                                  # or on the hub's Admin page
 swim auth status | logout
-swim auth approve billing                            # its key, for secrets; or press a on its row in the hub's screen
-swim secret grant billing db_password                # encrypted here to billing's key; the hub keeps ciphertext
 swim auth users add alice --role operator            # a person: token shown once; viewer, operator or admin
 ```
 
@@ -1259,21 +1162,6 @@ can name it: `hub: {name: billing, namespace: acme/billing}`.
   to another machine unless `--insecure`, and `--ca FILE` trusts a
   self-signed certificate or private CA (saved with the login).
   `swim doctor` warns about an existing plain-http enrollment.
-- **Secrets for swimmers:**
-  - **Keys:** joining gives each directory its own age key (with no
-    passphrase, so `swim watch` can decrypt unattended) and a token of its
-    own. It stays *pending* until you approve its key fingerprint
-    (`swim auth approve`, or on the hub).
-  - **Grants:** `swim secret grant` encrypts a secret on your machine to
-    that swimmer's key. The hub keeps only ciphertext, in `--state DIR`, and
-    never holds a key that could decrypt it.
-  - **At run time:** the swimmer's runs fetch and decrypt their grants at
-    start. Lanes get them the usual way (`swim secret get`, `secret.get`),
-    masked by name. A grant made with `--guard FLAG` is a
-    [guarded secret](#guarded-secrets) there.
-  - **Changes:** `swim secret revoke` removes a grant. A swimmer that comes
-    back with a new key drops to pending and loses its grants. The hub's
-    `audit.log` records approvals, grants and fetches.
 
 ### Scripting and YAML
 
@@ -1345,7 +1233,6 @@ they waited for.
 | `swim lint [--strict]` / `swim doctor [--fix]` | Check lane scripts / the environment. |
 | `swim config [KEY [VALUE]] [--repo]` | Show or set config, keeping the file's comments. |
 | `swim env [N\|JOB] [--yaml]` | The env a lane gets from env files, masked, with each key's source. |
-| `swim secret set\|get\|ls\|rm NAME [--all\|--repo]` | Secrets encrypted to your SSH key, for lanes. |
 | `swim cache [ls\|rm PRESET\|prune --older D\|path --ci]` | The tool caches lanes keep between rounds (`# Cache:`). |
 | `swim lock [--upgrade]` / `swim changelog` | The repo's syntax lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
@@ -1364,7 +1251,6 @@ they waited for.
 | `.swim.lock` | The syntax versions the repo's lanes use (script, log, state). | Yes |
 | `.swim.log` | The project log: one line per top-level action. | No |
 | `.env.swim` | Lane-scoped env (`[lane N]` sections). | No |
-| `~/.config/swim/secrets.yml` | Your secrets, encrypted (`swim secret`). | Never |
 | `~/.cache/swim/<repo>-<hash>/` | Tool caches lanes keep between rounds (`# Cache:`, `cache_dir`). | Never |
 | `.swim/status.yml` | Last state of every lane (`cat` it). | No |
 | `.swim/logs/` | Lane logs, current and archived. | No |
@@ -1384,7 +1270,6 @@ defaults:
   approvals: prompt                      # prompt | flags (never ask)
   interrupt: graceful                    # graceful | immediate
   signing_key: ~/.ssh/id_ed25519.pub     # signs the chain and approvals (a .pub: via ssh-agent)
-  secrets_key: ~/.ssh/id_ed25519         # swim secret encrypts to it (the private key must be on disk)
 repos:
   /path/to/your-repo:                    # overrides defaults and the repo's swim.yml
     max_parallel: 8

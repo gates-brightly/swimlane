@@ -2,7 +2,7 @@
 # walks through its scenes with say / show / pause.
 #
 # A demo runs in a scratch repo under ${TMPDIR:-/tmp}/swim-demos/<demo>,
-# with its own HOME (SSH keys, swim config, secrets), so it never touches
+# with its own HOME (SSH keys, swim config), so it never touches
 # your ~/.ssh, ~/.config/swim or this checkout's .swim. The scratch repo is
 # wiped at the start of each run and kept afterwards for poking around.
 #

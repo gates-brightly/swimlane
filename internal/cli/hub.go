@@ -12,6 +12,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/hub"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 	"github.com/gates-brightly/swimlane/internal/version"
@@ -328,13 +328,6 @@ func keepHubToken(root string, h *hubFile, c *hub.Client) {
 	}
 }
 
-// workerKeyPath is this directory's own age key for hub secrets (one per
-// enrolled directory, private to the operator's config dir).
-func workerKeyPath(root string) string {
-	host, _ := os.Hostname()
-	return filepath.Join(filepath.Dir(config.Path()), "worker-keys", hub.IDFor(host, root)+".key")
-}
-
 func hubPath(root string) string { return filepath.Join(root, ".swim", "hub.yml") }
 
 // loadHub is root's enrollment. One made through swim auth counts only
@@ -374,9 +367,6 @@ func hubWorker(root, name, ns, access string) hub.Worker {
 		name = filepath.Base(root)
 	}
 	w := hub.Worker{Name: name, Host: host, Root: root, Namespace: ns, Access: access, Version: version.String(), PID: os.Getpid()}
-	if id, err := secrets.WorkerKey(workerKeyPath(root)); err == nil {
-		w.Key = id.Recipient().String()
-	}
 	return w
 }
 
@@ -740,4 +730,11 @@ func hubConfigDoc(cfg *config.Config, access string) string {
 	fmt.Fprintf(&b, "hub_access: %s   # swim auth login URL --access read|readwrite\n", shown)
 	fmt.Fprintf(&b, "hub_commands: [%s]   # what a headless swimmer takes from the hub\n", strings.Join(cfg.HubAllow(access), ", "))
 	return cfg.Masker(os.Environ()).String(b.String())
+}
+
+func inGitRepo(root string) bool {
+	c := exec.Command("git", "rev-parse", "--show-toplevel")
+	c.Dir = root
+	out, err := c.Output()
+	return err == nil && filepath.Clean(strings.TrimSpace(string(out))) == filepath.Clean(root)
 }

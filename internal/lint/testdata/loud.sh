@@ -14,12 +14,11 @@ snapshot "list" ls
 stage check
 run "plan" terraform apply -auto-approve # check-unsafe
 run "wipe" bash -c 'rm -rf /tmp/x' # destructive
-T="$(swim secret get TOKEN)" # secret-ref, secret-guard
-curl -H "token: $(swim secret get TOKEN)" u # secret-argv
+T="$(swim secret get TOKEN)" # removed
+curl -H "token: $(swim secret get TOKEN)" u # removed
 input 2 name # input-dep
 run "peek" bash -c 'cat "$(swim input 2 name)"' # input-dep
 mod clone x # removed
-AWS_PROFILE=prod aws s3 ls # ambient-credential
 stage change
 stage verify
 summary

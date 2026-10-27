@@ -69,3 +69,20 @@ func TestRemovedModulesPolicyHashFrozen(t *testing.T) {
 		t.Errorf("modules: set: %s, want %s", c.PolicyHash(), want)
 	}
 }
+
+// secrets: and ambient_credentials: (guarded secrets, removed) still count
+// in the policy hash exactly as they did, so a repo that sets them keeps
+// its approvals. The hashes are the ones swim computed while it had them.
+func TestRemovedSecretsPolicyHashFrozen(t *testing.T) {
+	for _, tc := range []struct{ yml, want string }{
+		{"secrets:\n  PROD_DB_URL: { guard: ORDERS_ALLOW_DROP }\n  AWS_ROLE: { guard: [INFRA_APPLY, INFRA_DESTROY], release: step }\n", "ea227f7b863a22bbf7bd6e414ae3e507c2f000cf8551006bd64b0d4581e59d2d"},
+		{"ambient_credentials: [prod-admin, \"123\"]\n", "cc6cbc09fafae209cb2f7899e4c021f07cae4fdd117d701ad58cba8dda31b653"},
+		{"secrets:\n  A: { guard: X }\nambient_credentials: [p]\nmodules:\n  allow: [notify]\n", "3979dbc9a5f8f5ecf11ac685f7480015a8bfc95f6286d0ea538a376b127b0dea"},
+		{"secrets: {}\n", "fa267a61a6156a3279bf9acd582d7d3f39dd7f233c78ce8a79c3f7d0f6997813"},
+		{"ambient_credentials: []\n", "41d696d437fc3858670d459a436161275354a4f876284fd91cb4b46704658906"},
+	} {
+		if got := loadWith(t, tc.yml).PolicyHash(); got != tc.want {
+			t.Errorf("%q: %s, want %s", tc.yml, got, tc.want)
+		}
+	}
+}

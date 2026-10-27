@@ -81,7 +81,7 @@ An edit to lane.1.sh after they sign makes their approvals stale.
 ## Anything you need from the operator first
 
 - Config or `deps:` changes: give the exact YAML lines, and they apply them.
-- A secret: `swim secret set NAME` at their shell. Never ask them to paste
-  a value to you.
+- A secret: they set it in their own environment (or `.env.swim`), and the
+  lane reads the variable. Never ask them to paste a value to you.
 - Something only they can see: a read-only command to run and send back,
   or better, a `snapshot` step in the next round.

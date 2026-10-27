@@ -33,16 +33,6 @@ type Options struct {
 	Auto         bool     // secret_env_auto: also names matching the built-in patterns
 	Ignore       []string // secret_env_ignore: names exempt from Auto
 	AutoPatterns bool     // secret_patterns_auto: also well-known credential shapes
-	// Labeled are secrets known by name (swim secret): each is masked
-	// exactly, as "***(name)", so a log says which secret it hid.
-	Labeled []Labeled
-	// Refresh, if set, updates Labeled as the masker is used.
-	Refresh *Refresh
-}
-
-// Labeled is a named secret value.
-type Labeled struct {
-	Name, Value string
 }
 
 // Regular expressions, kept: these describe credentials by their shape
@@ -65,23 +55,6 @@ type Masker struct {
 	names    []string  // variables whose values are masked (for the round header)
 	literals []literal // values and their encoded forms, longest first
 	patterns []*regexp.Regexp
-
-	// With Options.Refresh: the env's literals, kept to rebuild literals
-	// when the named secrets change.
-	refresh *Refresh
-	mu      sync.Mutex
-	env     []literal
-}
-
-// Refresh lets a long-lived masker (a lane's wrapper, a step that runs a
-// while) pick up named secrets that appear after it was made: a guarded
-// secret released to the lane mid-run.
-type Refresh struct {
-	// Changed reports whether the named secrets may have changed since it
-	// last returned true (checked before each String).
-	Changed func() bool
-	// Labeled are the named secrets now.
-	Labeled func() []Labeled
 }
 
 // literal is one string to mask and what replaces it.
@@ -115,14 +88,6 @@ func (l *literals) addValue(value, mask string) {
 	}
 }
 
-func (l *literals) labeled(ls []Labeled) {
-	for _, x := range ls {
-		if len(x.Value) >= MinLen {
-			l.addValue(x.Value, Mask+"("+x.Name+")")
-		}
-	}
-}
-
 func longestFirst(ls []literal) []literal {
 	sort.SliceStable(ls, func(a, b int) bool { return len(ls[a].value) > len(ls[b].value) })
 	return ls
@@ -138,11 +103,8 @@ func New(env []string, o Options) *Masker {
 	for _, n := range o.Ignore {
 		ignored[n] = true
 	}
-	m := &Masker{refresh: o.Refresh}
-	// Named secrets first: a value both named and in env shows its name.
+	m := &Masker{}
 	all := &literals{seen: map[string]bool{}}
-	all.labeled(o.Labeled)
-	fromEnv := &literals{seen: map[string]bool{}}
 	for _, kv := range env {
 		name, value, ok := strings.Cut(kv, "=")
 		if !ok || len(value) < MinLen {
@@ -153,37 +115,21 @@ func New(env []string, o Options) *Masker {
 		}
 		m.names = append(m.names, name)
 		all.addValue(value, Mask)
-		fromEnv.addValue(value, Mask)
 	}
 	sort.Strings(m.names)
 	m.literals = longestFirst(all.out)
-	m.env = fromEnv.out
 	if o.AutoPatterns {
 		m.patterns = valuePatterns
 	}
 	return m
 }
 
-// update rebuilds the literals when the named secrets changed.
-func (m *Masker) update() {
-	if m.refresh == nil || !m.refresh.Changed() {
-		return
-	}
-	all := &literals{seen: map[string]bool{}}
-	all.labeled(m.refresh.Labeled())
-	for _, l := range m.env {
-		all.add(l.value, l.mask)
-	}
-	m.literals = longestFirst(all.out)
-}
-
 // Names lists the variables whose values are masked.
 func (m *Masker) Names() []string { return m.names }
 
-// Active reports whether there is anything to mask (or may be, once a
-// refresh brings named secrets).
+// Active reports whether there is anything to mask.
 func (m *Masker) Active() bool {
-	return m != nil && (len(m.literals) > 0 || len(m.patterns) > 0 || m.refresh != nil)
+	return m != nil && (len(m.literals) > 0 || len(m.patterns) > 0)
 }
 
 // String masks every secret in s.
@@ -191,11 +137,7 @@ func (m *Masker) String(s string) string {
 	if !m.Active() {
 		return s
 	}
-	m.mu.Lock()
-	m.update()
-	lits := m.literals
-	m.mu.Unlock()
-	for _, l := range lits {
+	for _, l := range m.literals {
 		if strings.Contains(s, l.value) {
 			s = strings.ReplaceAll(s, l.value, l.mask)
 		}

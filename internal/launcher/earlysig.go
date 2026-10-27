@@ -16,8 +16,7 @@ import (
 const earlyGrace = 2 * time.Second
 
 // EarlySignals catches swim run's signals from the moment it has lanes to
-// run. Before, a Ctrl-C during setup (staging every lane's files, opening
-// secrets) was lost when the shell started swim with SIGINT ignored (a
+// run. Before, a Ctrl-C during setup (staging every lane's files) was lost when the shell started swim with SIGINT ignored (a
 // background job), or killed it partway through writing its state. Until
 // handOver, a signal only records that the run was interrupted, and the
 // run stops before any lane starts. After, the interrupter gets them.

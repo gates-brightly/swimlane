@@ -28,7 +28,7 @@ stage gets its allowlist only once its guard is approved, so a dry run
 physically can't make the call it is planning. The image digest and the
 network policy are part of the execution manifest, so widening the
 allowlist or changing the image stales the approval, as editing the
-script does. The container sees only the repo and the secrets granted to
+script does. The container sees only the repo and the credentials given to
 the lane, so a lane can no longer read the runner's signing key or
 `~/.ssh`.
 
@@ -97,8 +97,8 @@ the lane, so a lane can no longer read the runner's signing key or
   Network:)` line in the lane log, shown on the hub; the step's command
   sees a refused connection, not a hang.
 - Mounted: the repo (read-write, at the same path), the swim binary and
-  lane library (read-only), the approval socket, and each granted secret
-  as an environment variable or a file in a tmpfs. Nothing else from the
+  lane library (read-only), the approval socket, and each credential the
+  lane is given as an environment variable or a file in a tmpfs. Nothing else from the
   operator's home.
 - `swim plan` and the hub's Runner/run pages show the image digest and the
   network policy for each sandboxed lane; `swim verify` and the receipt

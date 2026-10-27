@@ -16,7 +16,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/manifest"
-	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
@@ -37,10 +36,6 @@ type runAuthority struct {
 	mu        sync.Mutex
 	approvals []string        // approve entries recorded, in order
 	flags     map[string]bool // guard flags approved from swim run's environment
-	// granted are the guards approved for each lane process (by its
-	// token), as it used them: what releases a guarded secret to it.
-	// Forgotten when the process exits.
-	granted map[string]map[string]secrets.Approval
 	// recorded are the entries each lane process had recorded ("token
 	// round"): one round or check entry each.
 	recorded map[string]bool
@@ -49,7 +44,7 @@ type runAuthority struct {
 // startAuthority starts the approval broker. ask asks the operator (nil:
 // no one can be asked, so a guard that nothing else approves is a dry run).
 func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*approval.Server, error) {
-	a := &runAuthority{snap: authority.Take(o.Root, os.Environ()), disp: disp, flags: map[string]bool{}, granted: map[string]map[string]secrets.Approval{},
+	a := &runAuthority{snap: authority.Take(o.Root, os.Environ()), disp: disp, flags: map[string]bool{},
 		recorded: map[string]bool{}}
 	srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
 		resp := a.decide(*o, req, ask, cancel)
@@ -77,12 +72,6 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 		a.approvals = append(a.approvals, hash)
 		if g.Entry.Method == "flag" || g.Entry.Method == "queue" {
 			a.flags[g.Entry.Guard] = true
-		}
-		if c.Token != "" && g.Entry.Guard != "" {
-			if a.granted[c.Token] == nil {
-				a.granted[c.Token] = map[string]secrets.Approval{}
-			}
-			a.granted[c.Token][g.Entry.Guard] = secrets.Approval{Flag: g.Entry.Guard, Via: g.Entry.Method, Entry: hash}
 		}
 		a.mu.Unlock()
 		unprompted(*o, c, g.Entry)
@@ -191,28 +180,6 @@ func unprompted(o Options, c approval.Caller, e chain.Entry) {
 		f.Get(c.Lane).Unprompted(e.Guard, via)
 		return nil
 	})
-}
-
-// approved says whether guard flag was approved for the lane process with
-// token tok in this run, and how (the approve entry it recorded).
-func (a *runAuthority) approved(tok, flag string) (secrets.Approval, bool) {
-	if a == nil || tok == "" {
-		return secrets.Approval{}, false
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	ap, ok := a.granted[tok][flag]
-	return ap, ok
-}
-
-// forget drops what was approved for a lane process that has exited.
-func (a *runAuthority) forget(tok string) {
-	if a == nil || tok == "" {
-		return
-	}
-	a.mu.Lock()
-	delete(a.granted, tok)
-	a.mu.Unlock()
 }
 
 func (a *runAuthority) refused(o Options, c approval.Caller, req approval.Request, why string) {

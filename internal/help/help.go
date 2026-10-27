@@ -424,7 +424,7 @@ swim auth users add NAME --role viewer|operator|admin | remove NAME | list
            --admin-token T (the hub's admin token, DIR/admin-token) or
            --token T (an admin user's token) saves an admin login instead
            (~/.config/swim/hub-admin.yml, private) for admit, reject,
-           approve, users and swim secret grant. With --access too, the
+           approve and users. With --access too, the
            machine also joins as a swimmer, admitted at once.
   Logged in, any directory where swim watch runs (with or without
   --headless) joins with the machine's token, admitted at once, and
@@ -896,77 +896,6 @@ swim cache path [PRESET] [--ci]
   gets your user id), cache_max, cache_slug (the repo's directory name).
   cache_dir and cache_slug aren't allowed in a repo's swim.yml.
 `,
-	"secret": `swim secret set NAME [--all|--repo]
-swim secret get NAME
-swim secret ls [--yaml]
-swim secret rm NAME [--all|--repo]
-swim secret grant SWIMMER NAME... [--guard FLAG[,FLAG]] [--hub URL] [--admin-token T | --token T]
-swim secret revoke SWIMMER NAME... [--hub URL] [--admin-token T | --token T]
-swim secret grants [--hub URL] [--admin-token T | --token T]
-
-  Secrets encrypted to your SSH key with age (https://age-encryption.org),
-  kept in secrets.yml next to swim's config (0600). Names are readable;
-  each value is encrypted on its own. Two scopes: --all (every repo) and
-  --repo (this git repo, the default inside one); a repo's own secret
-  wins over an --all one of the same name.
-  set    reads the value from a hidden prompt, or from stdin
-         (echo "$X" | swim secret set NAME), never the command line, so it
-         stays out of shell history and ps
-  get    prints the value: inside a swim run from the run's secrets broker,
-         outside one by decrypting with your key (asking its passphrase
-         on the terminal if it has one). A guarded secret (below) inside a
-         run only once its guard is approved; outside one at your own shell
-         (recorded in .swim.log), never in a lane run with bash
-  ls     names, scopes and when each was set, and the guard swim.yml puts
-         on it; never values
-  rm     removes one from a scope
-  The key is secrets_key, else signing_key, else ~/.ssh/id_ed25519
-  (ssh-ed25519 or ssh-rsa). Encrypting needs only its .pub; decrypting
-  needs the private key on disk: ssh-agent can't decrypt.
-  SWIM_SECRET_<NAME> in the environment stands in for a secret (CI, where
-  there is no key) and wins over the store.
-  Names: a letter, then letters, digits and _. A repo-scoped set or rm is
-  recorded in .swim.log by name, never value.
-  In lanes:
-    bash      DB=$(swim secret get db_password) || stop "no db password"
-              (lanes don't run with set -e: check the get)
-    Python    password = swim.secret.get("db_password")
-    TS / JS   const password = await secret.get("db_password")
-    Go        password, err := swim.Secret.Get("db_password")
-  A swim run decrypts the repo's secrets once, at start (a protected key's
-  passphrase is asked then, only if a lane looks like it uses secrets;
-  swim watch and CI can't ask), and serves them from a broker on a
-  private socket. Each lane process says which lane it is with its own
-  token (SWIM_APPROVAL_TOKEN), checked against the process that asks, and
-  masks, as ***(name), every secret its lane may get.
-  .swim.log records each lane's use: "secret  swim 2  db_password (repo
-  scope, get)". swim lint warns about names the store doesn't have.
-  Guarded secrets: swim.yml can guard a secret by guard flags,
-      secrets:
-        PROD_DB_ADMIN_URL: { guard: ORDERS_ALLOW_DROP }
-        AWS_PROD_WRITE_ROLE: { guard: [INFRA_APPLY, INFRA_DESTROY], release: step }
-  and the broker releases it to a lane only once one of them was approved
-  for that lane (that process) in this run, as the launcher saw it: the
-  prompt, -y, a signed approval, a queued batch's --approve, or FLAG=1 in
-  swim run's own environment. FLAG=1 a lane sets itself never counts.
-  Otherwise the get fails: "refused: NAME is guarded by FLAG, which isn't
-  approved in this run" (a WARN in the lane's log, .swim.log and a
-  secret-refused chain entry). A release is a secret-released entry: the
-  name, the flag, how it was approved and the approve entry, never the
-  value. release: step hands it out once; swim plan --check never does.
-  SWIM_SECRET_<NAME> of a guarded secret never reaches a lane's
-  environment. grant --guard puts a guard on a hub grant (both it and
-  swim.yml's must be approved).
-  From a hub (swim hub --help): grant encrypts NAME, as this repo sees it,
-  to an approved swimmer's own key and gives the hub only the ciphertext;
-  the hub never holds a value or a key to decrypt one. The swimmer's runs
-  (swim run, swim watch) fetch their grants at start, decrypt them with its
-  key and resolve them under its own store, as scope "hub"; swim secret get
-  there does too. revoke deletes a grant (its next run can't get it: rotate
-  the secret at its source if it mattered); grants lists them, by name.
-  The hub's audit.log records approvals, grants and each fetch. A swimmer
-  that enrolls with a new key drops back to pending and loses its grants.
-`,
 	"wait": `swim wait [--interval D] [--timeout D]
 
   Block until swim is idle and nothing new is about to start: no lane
@@ -1311,9 +1240,7 @@ swim keys pin
   headless.approvals: hub) and Decline. viewer may
   ask for logs and send signed answers (the signature is what counts);
   operator may do all of it; admin is an operator who also manages users,
-  approves swimmers' keys and revokes grants on the app's Admin page (a
-  grant is made with swim secret grant, which encrypts the value to the
-  swimmer's key on the admin's machine, so the hub never sees it). The hub keeps commands in --state DIR
+  approves swimmers' keys and revokes grants on the app's Admin page. The hub keeps commands in --state DIR
   and only relays them: the swimmer long-polls for them with its own
   token, checks each against swim.yml's headless: block, its expiry
   (10 minutes, interrupt 2) and its pin, and acknowledges done, refused
@@ -1334,9 +1261,6 @@ swim keys pin
   log grows (a step's block once the step ends; the running step is in
   the report's tail), masked, kept with its run (DIR/runs/), and read at
   .../runs/RUN/jobs/LANE/log while the lane runs and after.
-  Secrets: swim secret grant SWIMMER NAME encrypts a secret on your machine
-  to that swimmer's key; the hub keeps only the ciphertext, and the
-  swimmer's runs fetch and decrypt it at start (see swim secret --help).
 `,
 	"interrupt": `swim interrupt N|JOB
 
@@ -1423,21 +1347,15 @@ swim resume  N|JOB ... | --all      (the same command)
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
     blocked (error)        git push/commit/pull or a blocked_commands pattern
     secret-echo (warn)     echo/printf of a secret variable
-    secret-guard (warn)    a guarded secret (swim.yml secrets:) got with no
-                           guard of its flag before it: swim run refuses it
-    secret-argv (warn)     $(swim secret get NAME) inline in a command's
-                           arguments, readable with ps: assign it first and
-                           pass it in an environment variable or on stdin
-    ambient-credential (warn) a credential swim.yml lists in
-                           ambient_credentials (AWS_PROFILE=, --profile) used
-                           directly: no guard stands in its way
     header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag
     fail (error)           Fail: without syntax 3
     removed (error)        what this swim no longer has: Matrix:, Always:,
                            Finally:, Rerun-Children:, an outcome handler
-                           (on_success, on_failure, on_exit), or modules
-                           (# Modules:, mod, mod_env, an SDK's module call)
+                           (on_success, on_failure, on_exit), modules
+                           (# Modules:, mod, mod_env, an SDK's module call),
+                           or the secret store (swim secret, an SDK's
+                           secret.get)
     outputs (warn)         an output whose name suggests secrets (output files
                            aren't masked)
     cache (error)          a # Cache: with an unknown preset or no lockfile, a
@@ -1537,19 +1455,14 @@ swim resume  N|JOB ... | --all      (the same command)
                               pause_warn (4h), holding its locks and slot;
                               or the repo-wide pause left on that long
     removed-setting (warn)    a setting swim no longer has (chime,
-                              schedule_tz, observe, modules): it's ignored;
-                              delete it
+                              schedule_tz, observe, modules, secrets,
+                              ambient_credentials, secrets_key): it's
+                              ignored; delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key
                               in ssh-agent can be asked by a lane unless
                               added with ssh-add -c
-    guarded-secrets (info/warn) lists swim.yml's guarded secrets (info);
-                              warns when the secrets key has no passphrase:
-                              a lane could decrypt them itself
-    ambient-credential (warn) a profile swim.yml lists in
-                              ambient_credentials is configured in ~/.aws:
-                              every lane can use it without a guard
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block and removes stale pid files. It never edits
@@ -1688,7 +1601,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "secret", "cache", "new", "plan", "run", "all", "status", "log", "report", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "cache", "new", "plan", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "watch", "ps", "hub", "auth", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor", "guide"}
@@ -1731,7 +1644,7 @@ HUB
 MORE
   lint, doctor                 check lane scripts and the environment
   keys, chain                  who's who; chain repair and anchoring
-  secret, env, cache           what lanes get to work with
+  env, cache                   what lanes get to work with
   archive, clean, stub, note   tidy up and record
   pause, unpause, interrupt, wait, claim     control running lanes
   report                       what changed since you last looked

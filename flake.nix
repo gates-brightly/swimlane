@@ -19,7 +19,7 @@
           src = self;
           # Hash of `go mod vendor`; when go.mod/go.sum change, the build fails
           # with "hash mismatch" and the "got:" line is the new value.
-          vendorHash = "sha256-+xo4PDsZF8nUdbeVfCiaoP+Pxlbz+iwn60KTI4ZN0DY=";
+          vendorHash = "sha256-QLtysSpNjU6J+EHdCutaatXxdBTwsyRLfCzVx35nD3E=";
           # Only the binary; `go test ./...` would run the e2e suite (~7 min).
           subPackages = [ "cmd/swim" ];
           env.CGO_ENABLED = 0;

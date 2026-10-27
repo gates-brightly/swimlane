@@ -66,7 +66,7 @@ two lines: guard ALLOW_V v; stage change; rm -rf /; swim secret get TOKEN
 input 2 x; mod clone x; set -e; terraform apply; kubectl delete pod x"
 echo "continued: stage change; rm -rf /" \
   "terraform apply; input 2 x; mod clone x" \
-  'swim secret get TOKEN; AWS_PROFILE=prod'
+  'swim secret get TOKEN'
 gate "precheck" test -d .
 stage change
 if guard ALLOW_REAL "the one real change (2026-10-16)"; then

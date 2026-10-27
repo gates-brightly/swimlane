@@ -1885,3 +1885,6 @@ func readFile(t *testing.T, r *repo, name string) string {
 	data, _ := os.ReadFile(filepath.Join(r.root, name))
 	return strings.TrimSpace(string(data))
 }
+
+// noTTY starts a command in its own session, with no controlling terminal.
+func noTTY() *syscall.SysProcAttr { return &syscall.SysProcAttr{Setsid: true} }

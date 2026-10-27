@@ -55,9 +55,11 @@ const (
 	ClaimRelease = "claim-release" // swim claim N --release
 	ClaimBroken  = "claim-broken"  // another session's live claim taken over (--force, --break; detail: from, by, via, why)
 	UnpauseAll   = "unpause-all"   // swim unpause --all
-	SecretSet    = "secret-set"    // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)
-	SecretRm     = "secret-rm"     // swim secret rm: ... removed
-	SecretUse    = "secret"        // a lane got a secret (detail: name, scope, how)
+	// The secret store's events (swim no longer has it; older .swim.log
+	// lines keep them).
+	SecretSet = "secret-set" // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)
+	SecretRm  = "secret-rm"  // swim secret rm: ... removed
+	SecretUse = "secret"     // a lane got a secret (detail: name, scope, how)
 	// A guarded secret (swim.yml secrets:) released to a lane once its
 	// guard was approved, or refused (detail: name, flags, how or why).
 	SecretReleased = "secret-released"

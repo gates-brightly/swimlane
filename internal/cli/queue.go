@@ -23,7 +23,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -1058,8 +1057,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, PinManifest: pinMan, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
-		Unattended: true,
-		HubSecrets: func() (map[string]secrets.Granted, error) { return hubGrants(root) }}
+		Unattended: true}
 	o.Plain = plain // a batch swim watch runs alongside others (_batch)
 	o.ScheduledFor = e.NotBefore
 	if headless {

@@ -67,9 +67,7 @@ Read it top to bottom:
    run. The launcher records each approval in the chain, and attests the
    run when its last lane exits. The guard runs inside the
    lane's own process, so it is advisory: a script that skips it isn't
-   stopped, except from a guarded secret: the run's secrets broker
-   releases one only to a lane whose guard of it the launcher approved.
-   See the [trust model](trust-model.md).
+   stopped. See the [trust model](trust-model.md).
 6. **The git shim and step checks** refuse `git push`, `git commit` and
    `git pull` however a lane calls git.
 7. **The record.** Each step lands in the lane's log, its state in
@@ -96,8 +94,6 @@ button. The hub never runs anything itself.
   rounds. It signs the chain.
 - **Approvers' SSH keys:** on their own machines. Their public keys are in
   the committed `lookup.yml`.
-- **`swim secret` values:** encrypted to your SSH key on disk, decrypted at
-  run start, served to the run's lanes.
 - **The planner:** none. If it runs as your OS user, it can reach what you
   can; isolate it if that matters.
 

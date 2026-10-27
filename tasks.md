@@ -77,7 +77,6 @@ session needed it or someone asks for it:
 | `pause` / `unpause` | `interrupt` covers stopping; pausing is rare |
 | `cache`, `cache restore\|save` | build-tool speed-ups, not ops safety |
 | hub users and roles (`auth users`) | a team feature before any team uses it |
-| `secret grant` | swimmer secrets before anyone runs a swimmer |
 | `earmark` (`report --earmark`) | `swim log` and `status` cover catching up |
 
 **Done when:** five sessions are recorded, every cut candidate is decided

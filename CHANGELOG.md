@@ -103,6 +103,26 @@ already pushed to origin's main) with the next tag and pushes that tag.
   syntax 4 stays (swim new writes it); it now adds nothing over 3. The
   lock's `modules:` section is ignored and dropped the next time swim
   writes the lock. `.swim/modules/` can be deleted.
+- **Removed: the secret store and guarded secrets.** `swim secret` (`set`,
+  `get`, `ls`, `rm`, `grant`, `revoke`, `grants`), the age-encrypted
+  `secrets.yml`, the run's secrets broker (an SDK's `secret.get`),
+  `SWIM_SECRET_<NAME>` stand-ins, hub grants, guarded secrets (`secrets:`
+  in `swim.yml`, released to a lane once its guard was approved) and
+  `ambient_credentials:` are gone, with lint's `secret-ref`,
+  `secret-guard`, `secret-argv` and `ambient-credential` and doctor's
+  `guarded-secrets` and `ambient-credential`. Lanes take credentials from
+  their environment (yours, or `.env.swim`); a guard is advisory for every
+  credential now. Masking is unchanged: `secret_env`, `secret_env_auto`,
+  `secret_env_ignore` and `secret_patterns_auto` keep values out of
+  everything swim writes. `swim lint` refuses a script that still calls
+  `swim secret` or an SDK's `secret.get` (`removed`), so `swim run` won't
+  start it. `secrets:`, `ambient_credentials:` and `secrets_key` load as
+  before (ignored; `swim doctor`: `removed-setting`), and `secrets:` and
+  `ambient_credentials:` still count in the policy hash as they did, so no
+  approval goes stale. The chain's `secret-released` and `secret-refused`
+  entries still verify. `~/.config/swim/secrets.yml` can be deleted once
+  you've moved any value you still need elsewhere (an older swim's `swim
+  secret get` prints one).
 - **Cleanup is archive, stub and clean.** `swim clean` now idles each
   finished lane directly: it archives its logs (as `swim archive`) and
   stubs its script (as `swim stub`), keeping a script edited since its

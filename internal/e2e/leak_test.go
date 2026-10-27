@@ -1,8 +1,8 @@
 package e2e
 
-// T9: secrets don't leak. One run plants secrets of every kind swim knows
-// (a vault secret, a multi-line one, a secret_env variable, a CI stand-in
-// and a guarded secret), has a lane print them every way it can, drives
+// T9: secrets don't leak. One run plants secrets of every kind swim masks
+// (a variable secret_env_auto names, a multi-line one and one secret_env
+// lists), has a lane print them every way it can, drives
 // every writer (the plain and YAML streams, status and history, the log
 // and archive, the queue and its worker, the hub), then reads every file
 // swim wrote: none may hold a value, raw or encoded. A file no writer in
@@ -28,11 +28,9 @@ import (
 // leakSecrets are the planted values: each holds characters that URL
 // encoding changes, so its encoded forms differ from it.
 var leakSecrets = map[string]string{
-	"vault":   "vault L3ak/v+1x",
-	"pem":     "-----BEGIN TEST KEY-----\nPEMline1/L3ak+abcd\nPEMline2/L3ak+efgh\n-----END TEST KEY-----",
-	"env":     "envvar L3ak/v+4x",
-	"ci":      "ci L3ak/v+5x",
-	"guarded": "guard L3ak/v+3x",
+	"auto": "auto L3ak/v+1x",
+	"pem":  "-----BEGIN TEST KEY-----\nPEMline1/L3ak+abcd\nPEMline2/L3ak+efgh\n-----END TEST KEY-----",
+	"env":  "envvar L3ak/v+4x",
 }
 
 // leakNeedles are the strings no file or output may contain: each value,
@@ -80,7 +78,6 @@ var leakInventory = []struct{ what, re string }{
 	{"watch state", `^repo/\.swim/watch`},
 	{"report earmarks (places in the logs: round lines and hashes)", `^repo/\.swim/earmarks/`},
 	{"the config", `^config/swim/config\.yml$`},
-	{"the secrets store (ciphertext)", `^config/swim/secrets\.yml$`},
 	{"the trust pins", `^config/swim/trust`},
 	{"hub worker keys (age keys, not secret values)", `^config/swim/worker-keys/[^/]+\.key$`},
 	{"hub logins (the machine's and the admin's tokens, private; no lane values)", `^config/swim/(auth|hub-admin)\.yml$`},
@@ -101,13 +98,9 @@ func TestNoSecretLeaks(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(tmp) })
-	secretsKey(t, r)
-	r.env = append(r.env, "HOME="+home, "TMPDIR="+tmp, "MY_LEAK_VAR="+leakSecrets["env"], "SWIM_SECRET_CI_LEAK="+leakSecrets["ci"])
+	r.env = append(r.env, "HOME="+home, "TMPDIR="+tmp, "MY_LEAK_VAR="+leakSecrets["env"], "LEAK_API_TOKEN="+leakSecrets["auto"], "MY_LEAK_PEM="+leakSecrets["pem"])
 	// hub.logs: stream, so finished runs reach the hub with their output.
-	r.write("swim.yml", "secret_env: [MY_LEAK_VAR]\nsecrets:\n  LEAK_GUARD: { guard: LEAK_OK }\nhub:\n  logs: stream\n", 0o644)
-	r.setSecret("leak_vault", leakSecrets["vault"])
-	r.setSecret("leak_pem", leakSecrets["pem"])
-	r.setSecret("LEAK_GUARD", leakSecrets["guarded"])
+	r.write("swim.yml", "secret_env: [MY_LEAK_VAR, MY_LEAK_PEM]\nhub:\n  logs: stream\n", 0o644)
 
 	// The lane prints them every way: raw, to stderr, base64 (standard,
 	// unpadded, URL-safe), URL-encoded, split across writes, in step
@@ -116,24 +109,22 @@ func TestNoSecretLeaks(t *testing.T) {
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # swim: syntax 2
 # Round: leak everything
-# Guards: LEAK_OK release the guarded one
+# Guards: LEAK_OK describe it
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 1
-V=$(swim secret get leak_vault) || stop "no vault"
-P=$(swim secret get leak_pem) || stop "no pem"
-C=$(swim secret get ci_leak) || stop "no ci"
-G=
-if guard LEAK_OK "release it ($V)"; then
-  G=$(swim secret get LEAK_GUARD) || stop "no guarded"
+V=$LEAK_API_TOKEN
+P=$MY_LEAK_PEM
+if guard LEAK_OK "describe it ($V)"; then
+  :
 fi
-export V P C G
+export V P
 msg "msg $V"
 swim note --lane 1 "note $V"
 output leaked "$V"
-run "label $V" bash -c 'echo "raw=$V"; echo "env=$MY_LEAK_VAR"; echo "ci=$C"; echo "guarded=$G"; printf "%s\n" "$P"; echo "err=$V" >&2; sleep 0.3'
-run "encodings" bash -c 'for s in "$V" "$G" "$C" "$MY_LEAK_VAR"; do printf %s "$s" | base64; printf %s "$s" | base64 | tr -d =; printf %s "$s" | base64 | tr "+/" "-_"; python3 -c "import sys,urllib.parse as u; print(u.quote_plus(sys.argv[1])); print(u.quote(sys.argv[1], safe=\"\"))" "$s"; printf "split="; printf %s "${s:0:7}"; printf "%s\n" "${s:7}"; done'
+run "label $V" bash -c 'echo "raw=$V"; echo "env=$MY_LEAK_VAR"; printf "%s\n" "$P"; echo "err=$V" >&2; sleep 0.3'
+run "encodings" bash -c 'for s in "$V" "$MY_LEAK_VAR"; do printf %s "$s" | base64; printf %s "$s" | base64 | tr -d =; printf %s "$s" | base64 | tr "+/" "-_"; python3 -c "import sys,urllib.parse as u; print(u.quote_plus(sys.argv[1])); print(u.quote(sys.argv[1], safe=\"\"))" "$s"; printf "split="; printf %s "${s:0:7}"; printf "%s\n" "${s:7}"; done'
 run "sleep" bash -c 'echo "${#V} ${#G}" > `+filepath.Join(tmp, "sleeping")+`; sleep 3'
-gate "gate $V" bash -c 'echo "gate saw $G"; false'
+gate "gate $V" bash -c 'echo "gate saw $V"; false'
 summary
 `, 0o755)
 
@@ -178,7 +169,7 @@ summary
 		for {
 			data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "status.yml"))
 			check("status.yml mid-run", string(data))
-			saw = saw || strings.Contains(string(data), "label ***(leak_vault)")
+			saw = saw || strings.Contains(string(data), "label ***")
 			select {
 			case <-stop:
 				return
@@ -196,8 +187,7 @@ summary
 	}
 	check("swim run --plain", string(out))
 	log := r.log(1)
-	contains(t, "agent1.log", log, "raw=***(leak_vault)", "guarded=***(LEAK_GUARD)", "env=***", "ci=***(ci_leak)",
-		"split=***(leak_vault)", "gate saw ***(LEAK_GUARD)")
+	contains(t, "agent1.log", log, "raw=***", "env=***", "split=***", "gate saw ***")
 	if strings.Contains(log, "PASS  sleep") == false {
 		t.Fatalf("the lane didn't get as far as the sleep:\n%s", log)
 	}

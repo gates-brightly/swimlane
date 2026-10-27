@@ -279,32 +279,6 @@ func TestHeadlessChecks(t *testing.T) {
 	}
 }
 
-func TestGuardedSecretsAndAmbientCredentials(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "")
-	t.Setenv("AWS_CONFIG_FILE", "")
-	o := &Options{Root: t.TempDir(), Cfg: &config.Config{}}
-	if fs := append(checkGuardedSecrets(o), checkAmbientCredentials(o)...); len(fs) != 0 {
-		t.Fatalf("no guarded secrets, no ambient credentials: %+v", fs)
-	}
-	o.Cfg.Repo.Secrets = map[string]config.SecretPolicy{"PROD_DB": {Guard: config.Flags{"ALLOW_DROP"}}}
-	o.Cfg.AmbientCredentials = []string{"prod-write"}
-	fs := checkGuardedSecrets(o)
-	if len(fs) != 1 || fs[0].Level != finding.Info || !strings.Contains(fs[0].Message, "PROD_DB (ALLOW_DROP)") {
-		t.Errorf("guarded secrets: %+v", fs)
-	}
-	if fs := checkAmbientCredentials(o); len(fs) != 0 {
-		t.Errorf("no ~/.aws: %+v", fs)
-	}
-	os.MkdirAll(filepath.Join(home, ".aws"), 0o700)
-	os.WriteFile(filepath.Join(home, ".aws", "config"), []byte("[default]\nregion = x\n[profile prod-write]\nrole_arn = y\n"), 0o600)
-	if fs := checkAmbientCredentials(o); len(fs) != 1 || fs[0].Code != "ambient-credential" || !strings.Contains(fs[0].Message, "prod-write") {
-		t.Errorf("a configured profile: %+v", fs)
-	}
-}
-
 // A runner key in a plain file is a warning: a lane could read it. One a
 // lane can only reach through ssh-agent is a note.
 func TestSigningKey(t *testing.T) {

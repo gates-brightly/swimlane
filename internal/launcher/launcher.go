@@ -30,7 +30,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/runrec"
-	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -127,18 +126,11 @@ type Options struct {
 	auth         *runAuthority              // decides and records the run's approvals (authority.go)
 	runKey       *sign.Key                  // signs the run's entries (runKey, authority.go)
 	unsigned     bool                       // the runner key didn't vouch for a run key: record unsigned
-	secrets      *runSecrets                // the run's decrypted secrets and broker; nil for none
 	env          map[int]*envfile.Resolved  // each lane's env from env files
 
 	// Interactive allows the interactive view (keys pick a lane's log) when
 	// more than one lane runs on a terminal; the view then reads Stdin.
 	Interactive bool
-	// SecretsPrompt, if set, asks the secrets key's passphrase (at path) on
-	// the terminal; nil never asks (a protected key then serves no secrets).
-	SecretsPrompt func(path string) func() ([]byte, error)
-	// HubSecrets, if set, gets the secrets a hub granted this directory
-	// (decrypted with its worker key): they resolve under the local store's.
-	HubSecrets func() (map[string]secrets.Granted, error)
 	// Unattended is a run nobody answers for (a batch swim watch took from
 	// the queue): the view's keys only move around, never pre-answer a
 	// guard, and the view closes when the run ends.
@@ -310,16 +302,6 @@ func Run(o Options) (int, error) {
 	// What each lane runs is fixed here, before any waiting: its manifest is
 	// built and its files staged, and it runs the staged copy.
 	stageLanes(&o, sel, blocked)
-	// Secrets (swim secret): decrypted once, now, before the live view
-	// takes the terminal; a Secrets: entry that won't resolve stops the run.
-	rs, err := openSecrets(&o, sel)
-	if err != nil {
-		return 2, err
-	}
-	if rs != nil {
-		defer rs.srv.Close()
-		o.secrets = rs
-	}
 
 	// The panel shows the lanes in use (and any this run starts).
 	views := make([]display.LaneView, 0, o.Cfg.Lanes)
@@ -393,9 +375,6 @@ func Run(o Options) (int, error) {
 		NoHold:      o.Unattended,
 	}, views)
 	pre.disp = disp
-	if o.secrets != nil && o.secrets.note != "" {
-		disp.Message(o.secrets.note)
-	}
 	ir = newInterrupter(o, disp, sl, lt)
 	defer ir.stop()
 	// Lanes this run leaves out may be running in another swim right now.
@@ -463,7 +442,6 @@ func Run(o Options) (int, error) {
 		ir.approvals = srv
 		o.approvalSock = srv.Path()
 		o.approvalSrv = srv
-		o.secrets.attach(srv, o.auth, disp)
 	}
 
 	var (
@@ -1084,9 +1062,6 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	env = append(env, cacheEnv(o, n)...) // # Cache: (cache.go)
 	staged, tok := stageEnv(o, n, who)
 	env = append(env, staged...)
-	if o.secrets != nil {
-		env = append(o.secrets.stripGuarded(env), o.secrets.env(o, n)...)
-	}
 	cmd.Env = env
 	// Parallel lanes can't share a keyboard: give them no stdin so
 	// fail-closed prompts stop instead of hanging. A lone lane may prompt.
@@ -1103,9 +1078,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	// lane ends. They aren't passed to the lane: anything it left running
 	// would hold them for good.
 	_ = fileLocks
-	// The launcher holds every secret of the run: it masks them all itself
-	// (asking its own broker would be asking as the lane).
-	mk := o.Cfg.MaskerWith(env, o.secrets.labeled())
+	mk := o.Cfg.Masker(env)
 	w := &lineWriter{}
 	w.emit = func(s string) {
 		o.beat.saw(n)

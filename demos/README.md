@@ -23,7 +23,6 @@ before or after. The scratch repo is kept afterwards in
 | [2-parallel-dag](2-parallel-dag/demo.sh) | A release as a DAG: parallel lanes, a lock, failure, then resuming | 4 min |
 | [3-two-person-approval](3-two-person-approval/demo.sh) | Signed approvals bound to the exact script, from teammates' keys | 5 min |
 | [4-queue-and-handoff](4-queue-and-handoff/demo.sh) | Approve a batch, a worker runs it, the AI catches up from files | 4 min |
-| [5-guarded-secrets](5-guarded-secrets/demo.sh) | A credential released only after the guard is approved; masked | 3 min |
 | [6-tamper-evidence](6-tamper-evidence/demo.sh) | `swim verify` catching edited logs, a truncated chain, a swapped key | 4 min |
 
 For a 15-minute slot: **1**, then **3**, then **6**. That's the story of
@@ -86,20 +85,6 @@ for teams with big migrations.
   They're versioned, structured and small.
 - A queued batch is pinned to its scripts. An edit after queueing means
   the lane is **skipped**, not run.
-
-### 5. Guarded secrets
-
-- Guards are normally advisory: a script could simply not call one. For a
-  credential that exists only in swim's vault, the guard is **enforced**,
-  because swim won't release the secret until the guard is approved in
-  this run.
-- The script that skipped its guard asked for the password and was
-  refused. The refusal is in `.swim.log` and the chain.
-- Once the secret is released, it's masked everywhere: screen, logs and
-  the hub. The demo greps to show the value is nowhere on disk.
-- Limits to state honestly: this protects only credentials that live
-  nowhere else, and the vault key needs a passphrase (swim warns when it
-  has none).
 
 ### 6. Tamper evidence
 

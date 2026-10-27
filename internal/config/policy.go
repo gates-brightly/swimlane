@@ -30,9 +30,57 @@ func (c *Config) policyValues() map[string]any {
 		"blocked_commands": r.BlockedCommands, "runners": r.Runners, "approvals": r.Approvals,
 		"signing": r.Signing, "secret_env": r.SecretEnv, "secret_env_auto": r.SecretEnvAuto,
 		"secret_env_ignore": r.SecretEnvIgnore, "secret_patterns_auto": r.SecretPatternsAuto,
-		"env": r.Env, "secrets": r.Secrets, "ambient_credentials": r.AmbientCredentials,
-		"modules": r.RemovedModules, // removed; hashed as it was, see Settings
+		"env": r.Env,
+		// Removed keys, hashed as they were (see Settings).
+		"modules":             r.RemovedModules,
+		"secrets":             asTyped[map[string]removedSecretPolicy](r.RemovedSecrets),
+		"ambient_credentials": asTyped[[]string](r.RemovedAmbientCredentials),
 	}
+}
+
+// removedSecretPolicy is the shape swim.yml's secrets: entries were read
+// in when swim had guarded secrets: hashing a value through it keeps the
+// policy hash of a repo that still sets secrets: what it was.
+type removedSecretPolicy struct {
+	Guard removedFlags `yaml:"guard,omitempty"`
+	// Release was lane (the default) or step.
+	Release string `yaml:"release,omitempty"`
+}
+
+// removedFlags is one guard flag or a list of them.
+type removedFlags []string
+
+// UnmarshalYAML accepts a single flag or a list.
+func (f *removedFlags) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		*f = removedFlags{n.Value}
+		return nil
+	}
+	var l []string
+	if err := n.Decode(&l); err != nil {
+		return err
+	}
+	*f = l
+	return nil
+}
+
+// asTyped re-reads a removed key's value (read loosely, as any) in the
+// type swim once read it in, so it hashes as it did. A value that type
+// can't hold (one an older swim refused to load) hashes as read; nil
+// stays nil (not set).
+func asTyped[T any](v any) any {
+	if v == nil {
+		return nil
+	}
+	data, err := yaml.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var out T
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		return v
+	}
+	return out
 }
 
 // isSet reports whether swim.yml set a policy value: a list or map it

@@ -22,8 +22,6 @@ COMMANDS
   config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set
                            interrupt, approvals, signing, runners.EXT, ...
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
-  secret set|get|ls|rm NAME   secrets encrypted to your SSH key, for --all repos or this --repo
-  secret grant SWIMMER NAME   give a swimmer a secret, encrypted to its own key (revoke, grants)
   cache [ls|rm|prune|path]    the tool caches lanes keep between rounds (# Cache:; see CACHE)
   cache restore|save TREE     inside a lane: an installed tree's snapshot (# Cache: snap:TREE)
   new N|TASK "<round goal>"   write lane.N.sh from the
@@ -704,42 +702,6 @@ SAFETY RULES
     "masked: N vars (NAMES)". Masking does NOT cover output a step pipes or
     writes elsewhere, or values split or transformed. The rule stands: never
     print secrets; print keys or lengths only.
-  - Secrets from swim secret (bash: $(swim secret get NAME); any
-    language: the same command) are masked exactly, by name: ***(db_password).
-    A swim run decrypts them once at start (asking the key's passphrase, if
-    any, before the live view) and every process in a lane masks every
-    secret that lane may get, whichever it uses (swim run's own stream masks
-    all of them). .swim.log records which lane got which secret and how,
-    never a value. They guard against leaks into logs, the hub and git, not
-    against lane code: a lane runs as you and could read your key itself
-    (give it a passphrase).
-  - Guarded secrets: swim.yml can guard a secret by a guard flag. The run
-    releases it to a lane only once that lane's guard of the flag was
-    approved in this run, by the launcher (the prompt, -y, signed approvals,
-    a queued batch's --approve, FLAG=1 in swim run's own environment); a
-    lane that skips the guard, or sets FLAG=1 itself, is refused:
-        secrets:
-          PROD_DB_ADMIN_URL: { guard: ORDERS_ALLOW_DROP }
-          AWS_PROD_WRITE_ROLE: { guard: [INFRA_APPLY, INFRA_DESTROY], release: step }
-        if guard ORDERS_ALLOW_DROP "drop the orders table"; then
-          export DATABASE_URL=$(swim secret get PROD_DB_ADMIN_URL) || stop "refused"
-          run "drop table" psql -c 'drop table orders'   # psql reads DATABASE_URL
-        fi
-    A refusal says "refused: NAME is guarded by FLAG, which isn't approved in
-    this run", as a WARN line in the lane's log, in .swim.log and the chain
-    (secret-refused); a release is a secret-released entry naming the flag
-    and how it was approved (never the value). release: step hands it out
-    once (a second get is refused); the default lasts until the lane exits.
-    swim plan --check never releases one. SWIM_SECRET_<NAME> of a guarded
-    secret is kept out of lanes' environments. Outside a run, swim secret get
-    of a guarded secret works at your own shell (recorded in .swim.log) and
-    is refused in a lane run with bash. A hub grant can carry a guard too
-    (swim secret grant --guard FLAG); both must be approved. It only
-    protects credentials that exist nowhere else: list ambient ones (AWS
-    profiles with the same access) in ambient_credentials: and swim lint and
-    swim doctor point them out. Recipe: guard the credentials an
-    `aws sts assume-role` step uses, so the write session exists only after
-    approval.
   - swim never pushes, commits or pulls, and neither do lanes. A lane script
     containing `git push`, `git commit` or `git pull` (or a repo's
     blocked_commands) fails before it starts; a step whose command contains one
@@ -922,7 +884,6 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         secret_env_auto: true            # also *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY, ... (default)
         secret_env_ignore: [CSRF_TOKEN]  # names exempt from secret_env_auto
         secret_patterns_auto: true       # also AWS key ids, GitHub/Slack tokens, JWTs (default)
-        secrets_key: ~/.ssh/id_ed25519   # swim secret encrypts to it (default signing_key, then this)
         header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
         runtime: node --version          # recorded as runtime version
         toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
@@ -953,12 +914,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
   It applies on top of defaults and under the operator's repos entry, so CI
   runners (no config of their own) and every operator share it. Unknown keys
   are an error. `swim config` shows it as repo_file. Only swim.yml may set
-  secrets: (guarded secrets, SAFETY RULES) and ambient_credentials:
-      secrets:
-        PROD_DB_ADMIN_URL: { guard: ORDERS_ALLOW_DROP }       # released after that guard is approved
-        AWS_PROD_WRITE_ROLE: { guard: [INFRA_APPLY, INFRA_DESTROY], release: step }
-      ambient_credentials: [prod-write]          # AWS profiles lint and doctor point out
-  and headless: (what a headless swimmer takes from its hub; swim watch --help):
+  headless: (what a headless swimmer takes from its hub; swim watch --help):
       headless:
         allow: [answer, interrupt, drain, log]   # optional: narrows what the enrollment's access (swim auth login --access) lets the hub send
         logs: on                                 # off: never upload a log to the hub
@@ -1021,8 +977,9 @@ EXECUTION MANIFEST
     runner     how it runs as the repo says: bash, its #! line, a swim.yml
                runner ("local .ts" for a runner from your own config)
     config     swim.yml's blocked_commands, runners, approvals, signing,
-               secret_env*, secret_patterns_auto, env, secrets and
-               ambient_credentials; lookup.yml's require:
+               secret_env*, secret_patterns_auto and env (and the removed
+               modules, secrets and ambient_credentials, while a swim.yml
+               still sets them); lookup.yml's require:
   Recorded but not in the hash (they differ per machine): the env files'
   hash (checked against a queued batch's pin), the runner binary's path
   and hash. Not pinned at all: other binaries on PATH, packages, remote

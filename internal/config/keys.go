@@ -15,7 +15,7 @@ import (
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "secrets_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "pause_warn", "watch_batches", "cache_dir", "cache_max", "cache_slug"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "pause_warn", "watch_batches", "cache_dir", "cache_max", "cache_slug"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -31,8 +31,6 @@ func (c *Config) Get(key string) (string, error) {
 		return c.SigningMode(), nil
 	case "signing_key":
 		return c.SigningKey, nil
-	case "secrets_key":
-		return c.SecretsKeyPath(), nil
 	case "msg_log_interval":
 		return c.MsgLogEvery().String(), nil
 	case "outputs_keep":
@@ -108,12 +106,6 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.TrimSpace(value)
 		if v == "" {
 			return nil, fmt.Errorf("signing_key needs a path to an SSH key (or its .pub, for ssh-agent)")
-		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "secrets_key":
-		v := strings.TrimSpace(value)
-		if v == "" {
-			return nil, fmt.Errorf("secrets_key needs a path to an SSH private key on disk (ssh-agent can't decrypt)")
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "approvals":

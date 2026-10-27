@@ -113,7 +113,7 @@ batch whose risk you haven't read.
   pass `-y`, `--approve` or `--auto`, never run `swim approve` or `swim
   revoke`. Approval is a person's decision, and the record attributes it to
   them.
-- `swim interrupt`, `swim secret ...`, `swim keys trust`,
+- `swim interrupt`, `swim keys trust`,
   `swim chain ...`, `swim doctor --fix`, `swim config` / config edits.
 
 **Never edit by hand:** `.swim/` (status, logs, chain, runs, queue),
@@ -260,8 +260,9 @@ from what the previous ones left behind.
   `set -e`.** A failed `run` doesn't stop the round; a failed `gate` does.
 - **No `git push` / `commit` / `pull`** anywhere in a lane, not even in an
   echo: it's blocked on its text.
-- **Secrets:** use `$(swim secret get NAME)`. Never print values, only
-  lengths. Never list a secret in `header_env`.
+- **Secrets:** a lane gets credentials from its environment (the
+  operator's, or `.env.swim`). Never print values, only lengths. Never list
+  a secret in `header_env`.
 - **Check the target before changing it.** Start a change against cloud
   resources with a `gate` that stops on the wrong account (`gate "account"
   -- test "$(aws sts get-caller-identity --query Account --output text)" =
@@ -285,7 +286,6 @@ from what the previous ones left behind.
 Be accurate about what swim guarantees. Approvals, signatures and the chain
 prove **who decided what** and that **the approved bytes ran**. They don't
 make a script safe: an approved script runs with the operator's access. A
-guard is a bash function in the lane, so it's advisory. The exception is a
-*guarded secret*, which isn't released until the guard is approved. Never
+guard is a bash function in the lane, so it's advisory. Never
 tell the user a change is safe because swim will ask first. The full model
 is `docs/trust-model.md` in the swimlane repo.

@@ -55,7 +55,6 @@ func init() {
 		"interrupt": {run: cmdInterrupt},
 		"ci":        {run: cmdCi},
 		"queue":     {run: cmdQueue},
-		"secret":    {run: cmdSecret},
 		"cache":     {run: cmdCache},
 		"watch":     {run: cmdWatch},
 		"ps":        {run: cmdPs},

@@ -54,7 +54,7 @@ type Script struct {
 var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
-	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true, "secret-argv": true,
+	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -100,10 +100,6 @@ var Checks = []Check{
 	{"destructive", finding.Warn, false, "a destructive-looking command outside a guard block", checkDestructive},
 	{"blocked", finding.Error, false, "a blocked command (git push/commit/pull, blocked_commands)", checkBlocked},
 	{"secret-echo", finding.Warn, false, "a secret variable echoed directly", checkSecretEcho},
-	{"secret-ref", finding.Warn, false, "a secret got by name (swim secret get, secret.get) that isn't stored", checkSecretRefs},
-	{"secret-guard", finding.Warn, false, "a guarded secret (swim.yml secrets:) got with no guard of its flag before it", checkGuardedSecret},
-	{"secret-argv", finding.Warn, false, "a secret got inline into a command's arguments ($(swim secret get ...)), readable with ps", checkSecretArgv},
-	{"ambient-credential", finding.Warn, false, "a credential swim.yml lists in ambient_credentials used directly", checkAmbientCredential},
 	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks, Workspace, Task)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
@@ -116,7 +112,7 @@ var Checks = []Check{
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
 	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},
 	{"fail", finding.Error, false, "Fail: without `# swim: syntax 3`", checkFailSyntax},
-	{"removed", finding.Error, false, "what this swim no longer has: Matrix:, Always:, Finally:, Rerun-Children:, an outcome handler (on_success, on_failure, on_exit), or modules (# Modules:, mod, mod_env)", checkRemoved},
+	{"removed", finding.Error, false, "what this swim no longer has: Matrix:, Always:, Finally:, Rerun-Children:, an outcome handler (on_success, on_failure, on_exit), modules (# Modules:, mod, mod_env), or the secret store (swim secret, an SDK's secret.get)", checkRemoved},
 }
 
 // Codes of findings that come from outside the table.
