@@ -34,6 +34,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
+	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/trust"
 	"github.com/gates-brightly/swimlane/internal/version"
@@ -132,6 +133,7 @@ var Checks = []Check{
 	{"checkpoint-unsent", false, "a chain anchor hasn't had the latest checkpoint", checkCheckpointUnsent},
 	{"trust-unpinned", false, "trust.yml isn't pinned here, or changed since the pin with no signed change", checkTrustPin},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
+	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
 	{"guarded-secrets", false, "lists swim.yml's guarded secrets; warns when the secrets key has no passphrase (a lane could decrypt them itself)", checkGuardedSecrets},
 	{"ambient-credential", false, "a credential swim.yml lists in ambient_credentials is configured on this machine (~/.aws)", checkAmbientCredentials},
 	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
@@ -815,6 +817,30 @@ func checkHeadlessService(o *Options) []finding.Finding {
 			"a headless worker runs here, pid %d", h.PID))
 	}
 	return out
+}
+
+// checkSigningKey says where the runner key lives. swim run signs a run's
+// entries with a run key held in its memory, which the runner key vouches
+// for once; a lane runs as the operator, so what stands between it and a
+// signature swim verify trusts is the runner key itself.
+func checkSigningKey(o *Options) []finding.Finding {
+	if o.Cfg.SigningMode() == config.SigningOff {
+		return nil
+	}
+	k, err := sign.LoadKey(o.Cfg.SigningKey)
+	if err != nil {
+		return nil
+	}
+	switch sign.Storage(k) {
+	case sign.InFile:
+		return []finding.Finding{fd(finding.Warn, "signing-key", k.Path, "ssh-add -c "+k.Path+", delete the file and set signing_key to "+strings.TrimSuffix(k.Path, ".pub")+".pub; or a security key (ssh-keygen -t ed25519-sk)",
+			"the runner key is a file with no passphrase: a lane runs as you, so it can read it and sign chain entries swim verify trusts")}
+	case sign.InLockedFile, sign.InAgent:
+		return []finding.Finding{fd(finding.Info, "signing-key", k.Path, "ssh-add -c (swim run then asks once per run), or a security key",
+			"the runner key signs through ssh-agent: a lane can ask the agent too, unless it confirms each use")}
+	}
+	return []finding.Finding{fd(finding.Info, "signing-key", k.Path, "",
+		"the runner key is a security key: each signature needs it (swim run signs once per run)")}
 }
 
 // checkGuardedSecrets lists swim.yml's guarded secrets, and warns when the
