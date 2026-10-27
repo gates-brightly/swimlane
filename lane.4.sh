@@ -19,6 +19,9 @@ eval "$_swim_lib"
 lane_init 4
 
 stage check
+# On a CI runner this lane shares 3-4 CPUs with the others: the suites'
+# timed margins scale by E2E_SLOW (internal/e2e/e2e_test.go, "Timing").
+[ "${CI:-}" = true ] && export E2E_SLOW=${E2E_SLOW:-3}
 run "go test -run TestSecurity" scripts/hermetic bash -c 'set -o pipefail; go test -json -count=1 -timeout 12m -run "^(TestSecurity|TestNoSecretLeaks)$" ./internal/e2e/ | go run ./e2e/cmd/e2etool gotest-report --junit e2e-security.xml'
 
 summary

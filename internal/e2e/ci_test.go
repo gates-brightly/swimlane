@@ -191,7 +191,7 @@ func TestCIPinsAndLanes(t *testing.T) {
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.status().Get(2).CurrentStep == "slow" })
+	waitFor(t, func() bool { return laneOf(r, 2).CurrentStep == "slow" })
 	r.script(3, "three rewritten", `run "c" true`)
 	c.Wait()
 	l := r.status().Get(3)

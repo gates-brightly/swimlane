@@ -88,7 +88,7 @@ func TestHeadlessHubQueue(t *testing.T) {
 
 	// Off the queue: a batch waiting behind a running one (watch_batches: 1).
 	r.mustSwim("queue", "add", "3")
-	waitFor(t, func() bool { return r.status().Get(3).CurrentStep == "wait" })
+	waitFor(t, func() bool { return laneOf(r, 3).CurrentStep == "wait" })
 	alice.Send(id, hub.Command{Kind: hub.KindQueue, Lanes: []hub.LanePin{{Lane: 1, SHA256: l1.Script, Manifest: l1.Manifest}}})
 	var waiting []queue.Entry
 	waitFor(t, func() bool { waiting = waitingEntries(t, r); return len(waiting) == 1 })

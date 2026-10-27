@@ -19,19 +19,19 @@ run "two" true`)
 	via := " via " + url + ": "
 
 	r.mustSwim("queue", "add", "1")
-	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
 	run := laneOf(r, 1).Run
 	alice.Send(id, hub.Command{Kind: hub.KindPause, Lane: 1, Pin: hub.Pin{Run: "r-old"}})
 	waitLog(t, r, "hub pause by alice"+via+"refused: stale: swim 1 is now run "+run)
 	alice.Send(id, hub.Command{Kind: hub.KindPause, Lane: 1, Pin: hub.Pin{Run: run}})
 	waitLog(t, r, "hub pause by alice"+via+"done: swim 1: pausing after")
-	waitLong(t, func() bool { return laneOf(r, 1).PausedAt != "" })
+	waitFor(t, func() bool { return laneOf(r, 1).PausedAt != "" })
 	if !strings.HasPrefix(laneOf(r, 1).PausedBy, "hub:alice via ") {
 		t.Errorf("paused by %q", laneOf(r, 1).PausedBy)
 	}
-	waitLong(t, func() bool { return laneOnHub(t, url, id, 1).Paused != "" })
+	waitFor(t, func() bool { return laneOnHub(t, url, id, 1).Paused != "" })
 	alice.Send(id, hub.Command{Kind: hub.KindUnpause, Lane: 1, Pin: hub.Pin{Run: run}})
 	waitLog(t, r, "hub unpause by alice"+via+"done: swim 1: resumed")
-	waitLong(t, func() bool { return len(doneEntries(t, r)) == 1 })
+	waitFor(t, func() bool { return len(doneEntries(t, r)) == 1 })
 	contains(t, "log", r.log(1), "PAUSE  by hub:alice", "RESUME  by hub:alice", "PASS  two")
 }

@@ -113,7 +113,7 @@ func (tr *tuiRun) send(keys string) {
 // waitScreen waits until the screen satisfies ok.
 func (tr *tuiRun) waitScreen(what string, ok func(string) bool) string {
 	tr.t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for {
 		s := tr.screen()
 		if ok(s) {
@@ -138,7 +138,7 @@ func (tr *tuiRun) wait() (int, string) {
 	var err error
 	select {
 	case err = <-tr.exit:
-	case <-time.After(20 * time.Second):
+	case <-time.After(waitDeadline):
 		tr.t.Fatalf("swim never exited; screen:\n%s", tr.screen())
 	}
 	// The terminal's settings outlive swim while the test holds the pty.
@@ -148,7 +148,7 @@ func (tr *tuiRun) wait() (int, string) {
 	}
 	select {
 	case <-tr.read:
-	case <-time.After(5 * time.Second):
+	case <-time.After(waitDeadline):
 	}
 	code := 0
 	var ee *exec.ExitError
@@ -368,7 +368,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 		select {
 		case err := <-tr.exit:
 			tr.exit <- err
-		case <-time.After(15 * time.Second):
+		case <-time.After(waitDeadline):
 			t.Fatal("no panic")
 		}
 		after := tr.termiosNow()
@@ -422,7 +422,7 @@ func TestTUIManyLanesKeepsSelection(t *testing.T) {
 	tr.waitFor("more:")
 	// Lane 1 holds the run open; until it has started, the panel may give
 	// its row to lanes that started first.
-	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "hold" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "hold" })
 	tr.send("35\r")
 	s := tr.waitFor("swim 35 · ")
 	contains(t, "panel", s, "▶swim 35", "swim 1 ")

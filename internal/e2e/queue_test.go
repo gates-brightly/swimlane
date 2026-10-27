@@ -104,7 +104,7 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 	if err := busy.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "long" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "2")
 	w := r.cmd(bin, "watch", "--interval", "100ms")
@@ -227,14 +227,14 @@ run "b" true`)
 		t.Fatal(err)
 	}
 	defer w.Process.Kill()
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "a" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "a" })
 	time.Sleep(150 * time.Millisecond)
 	syscall.Kill(-w.Process.Pid, syscall.SIGINT)
 	done := make(chan error, 1)
 	go func() { done <- w.Wait() }()
 	select {
 	case <-done:
-	case <-time.After(10 * time.Second):
+	case <-time.After(waitDeadline):
 		t.Fatalf("watch didn't stop:\n%s", out.String())
 	}
 	contains(t, "agent1.log", r.log(1), "PASS  a", "STOP  interrupted by operator (after: a)")
@@ -339,7 +339,7 @@ func TestWaitAndQueueWait(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer busy.Process.Kill()
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "long" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
 	if out, code := r.swim("wait", "--timeout", "300ms", "--interval", "100ms"); code != 1 || !strings.Contains(out, "still busy after 300ms: swim 1 is running") {
 		t.Fatalf("wait --timeout on a busy repo: %d\n%s", code, out)
 	}

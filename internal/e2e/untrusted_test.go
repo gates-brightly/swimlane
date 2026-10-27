@@ -48,7 +48,7 @@ run "post" bash -c 'swim msg "$0"; touch "$SWIM_ROOT/posted"; while [ ! -e "$SWI
 		t.Errorf("status --yaml has escaped controls:\n%s", y)
 	}
 	os.WriteFile(filepath.Join(r.root, "release"), nil, 0o644)
-	if code := l.wait(t, 20*time.Second); code != 0 {
+	if code := l.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}
 	out := l.out.String()

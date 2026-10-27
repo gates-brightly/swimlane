@@ -96,7 +96,7 @@ run "after" true`)
 	go func() { done <- c.Wait() }()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(waitDeadline):
 		t.Fatal("the guard kept waiting after the stop request")
 	}
 	contains(t, "agent1.log", r.log(1), "SKIP  slow approval (dry run: not approved: the lane is stopping; set SLOW=1 to approve)")

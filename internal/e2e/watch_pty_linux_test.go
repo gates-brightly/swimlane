@@ -269,7 +269,7 @@ func TestWatchPauseKey(t *testing.T) {
 	r.script(1, "held", `run "one" sleep 0.5
 run "two" true`)
 	wait := startRun(t, r, "run", "1", "--plain")
-	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
 	tr := r.startTUI(nil, "watch")
 	tr.waitFor("▸ swim 1")
 	tr.send("p")

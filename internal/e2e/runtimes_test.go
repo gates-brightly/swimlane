@@ -7,7 +7,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 )
 
 // Lane scripts in any language: lane.N.<ext> (or a binary lane.N) runs
@@ -208,7 +207,7 @@ touch "$SWIM_ROOT/carried-on"
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "step 1")
 	l.signal(syscall.SIGINT)
-	l.wait(t, 15*time.Second)
+	l.wait(t)
 	log := r.log(1)
 	contains(t, "log", log, "PASS  step 1", "STOP  interrupted by operator (after: step 1)", "== END INTERRUPTED")
 	if strings.Contains(log, "step 2 ") {

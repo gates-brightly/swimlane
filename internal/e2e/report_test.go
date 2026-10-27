@@ -166,7 +166,7 @@ func TestReportWait(t *testing.T) {
 	select {
 	case out := <-done:
 		contains(t, "--wait", out, ".swim.log", "  run  ", "earmark default moved to")
-	case <-time.After(25 * time.Second):
+	case <-time.After(waitDeadline):
 		t.Fatal("--wait didn't return")
 	}
 }
@@ -182,7 +182,7 @@ func TestReportInFlight(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Process.Kill()
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "slow step" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "slow step" })
 	time.Sleep(300 * time.Millisecond)
 	contains(t, "in flight", r.mustSwim("report", "--earmark"), "RUNNING", "slow step", "in progress", "started-slow")
 	os.WriteFile(release, nil, 0o644)

@@ -39,7 +39,7 @@ func TestRunnerConfirmAtTerminal(t *testing.T) {
 		defer mu.Unlock()
 		return out.String()
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for !strings.Contains(screen(), "[Y/n, a number, or type a command]") {
 		if time.Now().After(deadline) {
 			t.Fatalf("no runner question:\n%s", screen())
@@ -54,7 +54,7 @@ func TestRunnerConfirmAtTerminal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("swim run: %v\n%s", err, screen())
 		}
-	case <-time.After(20 * time.Second):
+	case <-time.After(waitDeadline):
 		t.Fatalf("swim run didn't finish:\n%s", screen())
 	}
 	contains(t, "terminal", screen(), "lane.1.ts is the first .ts lane here", "1) "+tsx, "Run .ts lanes with "+tsx+"?",

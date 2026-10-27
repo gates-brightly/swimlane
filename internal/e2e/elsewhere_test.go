@@ -23,7 +23,7 @@ func TestLaneRunningElsewhere(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { syscall.Kill(-other.Process.Pid, syscall.SIGKILL) })
-	waitFor(t, func() bool { return r.status().Get(1).State == "running" })
+	waitFor(t, func() bool { return laneOf(r, 1).State == "running" })
 
 	out := r.mustSwim("run", "2", "--plain")
 	other.Wait()

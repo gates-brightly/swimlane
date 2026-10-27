@@ -136,7 +136,7 @@ run "three" bash -c 'sleep 1.5; echo third'`)
 			if strings.Contains(d, `"final":true`) {
 				final = d
 			}
-		case <-time.After(15 * time.Second):
+		case <-time.After(waitDeadline):
 			t.Fatalf("no final log event in %s (first: %q)", time.Since(start), first)
 		}
 	}

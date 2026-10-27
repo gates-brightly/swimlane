@@ -189,7 +189,7 @@ func TestSecurity(t *testing.T) {
 			go func() { done <- c.Wait() }()
 			select {
 			case <-done:
-			case <-time.After(10 * time.Second):
+			case <-time.After(waitDeadline):
 				t.Fatal("the guard kept waiting after the stop request")
 			}
 			b.noMarker(t, "stopped")

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -335,7 +336,7 @@ run "never" true`)
 	}
 
 	// Mid-run: lane 1 is running a step, lanes 2 and 4 wait on their deps.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	var mid *status.File
 	for time.Now().Before(deadline) {
 		f, err := status.Load(r.root)
@@ -584,7 +585,7 @@ run "never" true`)
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "long" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
 	time.Sleep(200 * time.Millisecond)
 	// What a terminal does on Ctrl-C: SIGINT to the whole foreground group.
 	syscall.Kill(-c.Process.Pid, syscall.SIGINT)
@@ -626,7 +627,7 @@ func TestStaleRunningShown(t *testing.T) {
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "long" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
 	syscall.Kill(-c.Process.Pid, syscall.SIGKILL) // terminal closed: no traps run
 	c.Wait()
 	contains(t, "status", r.mustSwim("status"), "running? (process gone: interrupted)", "step: long")
@@ -651,16 +652,56 @@ func TestHelp(t *testing.T) {
 	}
 }
 
+// Timing. A test waits for an event (a status state, a log line, a file),
+// never for a fixed time, and waitFor's deadline is only how long before a
+// hung swim fails the test: it costs nothing while things work, so it's
+// generous. A step the test must see running is hold(name), not a sleep
+// the test has to beat. Where a test times something on purpose (a round's
+// Timeout, a step limit, an upper bound on how long a stop takes), the
+// margin is scaled(d): in CI the suite runs beside the fault, security and
+// fuzz lanes on a 3-4 CPU runner, where an idle machine's margins fail.
+// E2E_SLOW sets the factor (default 1; this repo's CI lanes set 3); scale
+// a margin, never hand-tune one test's constant.
+var slowFactor = func() time.Duration {
+	if n, err := strconv.Atoi(os.Getenv("E2E_SLOW")); err == nil && n > 1 {
+		return time.Duration(n)
+	}
+	return 1
+}()
+
+// scaled is d times E2E_SLOW.
+func scaled(d time.Duration) time.Duration { return d * slowFactor }
+
+// dur is scaled(d) as a swim duration ("3s", "1.5s"), for a header or flag
+// and the log line that echoes it.
+func dur(d time.Duration) string { return scaled(d).String() }
+
+// waitDeadline bounds every wait for an event.
+var waitDeadline = scaled(60 * time.Second)
+
+// waitFor polls cond until it holds; a hung swim fails after waitDeadline.
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
 		}
 		time.Sleep(30 * time.Millisecond)
 	}
-	t.Fatal("condition not met within 5s")
+	t.Fatalf("condition not met within %s", waitDeadline)
+}
+
+// hold is a step command that runs until r.release(name).
+func hold(name string) string {
+	return `bash -c 'while [ ! -e "$SWIM_ROOT/` + name + `" ]; do sleep 0.05; done'`
+}
+
+// release ends hold(name)'s steps.
+func (r *repo) release(name string) {
+	if err := os.WriteFile(filepath.Join(r.root, name), nil, 0o644); err != nil {
+		r.t.Fatal(err)
+	}
 }
 
 var jobLineRE = regexp.MustCompile(`(?m)^job: (\S+)$`)
@@ -1340,7 +1381,7 @@ func TestResourceLocksWithinARun(t *testing.T) {
 	go func() { o, _ := r2.swim("all", "--plain"); done <- o }()
 	select {
 	case <-done:
-	case <-time.After(20 * time.Second):
+	case <-time.After(waitDeadline):
 		t.Fatal("deadlock: run with overlapping lock sets never finished")
 	}
 	close(stop2)
@@ -1373,7 +1414,7 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	if err := a.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.status().Get(1).State == status.Running })
+	waitFor(t, func() bool { return laneOf(r, 1).State == status.Running })
 	contains(t, "status while held", r.mustSwim("status"), "lock tf/orders held by swim 1", "locks: tf/orders")
 	out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput()
 	a.Wait()
@@ -1394,7 +1435,7 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	if err := k.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "work" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "work" })
 	syscall.Kill(-k.Process.Pid, syscall.SIGKILL)
 	k.Wait()
 	start := time.Now()

@@ -64,3 +64,20 @@ checks_passed() { [ "$E2E_CHECK_FAILS" -eq 0 ]; }
 
 # seq_list A B  "A A+1 ... B" (seq is fine on macOS and Linux, this just joins).
 seq_list() { seq "$1" "$2" | tr '\n' ' ' | sed 's/ $//'; }
+
+# Timing, as internal/e2e's: a scenario waits for an event (a file, an
+# event in run.yml), never a fixed time; a bound it checks on purpose (how
+# long a force quit takes) is scaled by E2E_SLOW (default 1; CI sets 3).
+
+# scaled SECONDS  SECONDS times E2E_SLOW.
+scaled() { awk -v s="$1" -v k="${E2E_SLOW:-1}" 'BEGIN { if (k < 1) k = 1; print s * k }'; }
+
+# wait_until CMD...  runs CMD every 50ms until it succeeds (0), or fails
+# (1) once 60s (scaled) pass.
+wait_until() {
+  local end=$(( $(date +%s) + $(scaled 60 | cut -d. -f1) ))
+  until "$@"; do
+    [ "$(date +%s)" -ge "$end" ] && return 1
+    sleep 0.05
+  done
+}

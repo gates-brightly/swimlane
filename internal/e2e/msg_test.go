@@ -29,7 +29,7 @@ msg "after clear"`)
 	contains(t, "swim status", r.mustSwim("status"), "msg: colored multi (9/9)")
 	time.Sleep(500 * time.Millisecond) // the live view polls every 200ms
 	os.WriteFile(filepath.Join(r.root, "release"), nil, 0o644)
-	l.wait(t, 20*time.Second)
+	l.wait(t)
 
 	log := r.log(1)
 	contains(t, "log", log, "  MSG  starting (1/3, ", "-- MSG  colored multi (9/9, ", "  MSG  after clear (")

@@ -46,10 +46,10 @@ func commandRepo(t *testing.T) (r *repo, url, state, id string, alice, vic *hub.
 	return r, url, state, hf.ID, user("alice", "operator"), user("vic", "viewer")
 }
 
-// waitLog waits (up to 10s) for .swim.log to hold want.
+// waitLog waits (up to waitDeadline) for .swim.log to hold want.
 func waitLog(t *testing.T, r *repo, want string) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for time.Now().Before(deadline) {
 		data, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 		if strings.Contains(string(data), want) {
@@ -105,7 +105,7 @@ run "after" sleep 10`)
 	// Interrupt: pinned to an old run it's refused as stale; to the
 	// current one it stops the lane.
 	r.mustSwim("queue", "add", "1")
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "slow" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "slow" })
 	run := r.status().Get(1).Run
 	alice.Send(id, hub.Command{Kind: hub.KindInterrupt, Lane: 1, Pin: hub.Pin{Run: "r-old"}})
 	waitLog(t, r, "hub interrupt by alice"+via+"refused: stale: swim 1 is now run "+run+", not r-old")
@@ -162,11 +162,11 @@ run "after" sleep 10`)
 	// Drain: the batch in hand finishes, then the worker exits.
 	r.script(3, "short", `run "short" bash -c 'sleep 1; echo drained-ok'`)
 	r.mustSwim("queue", "add", "3")
-	waitFor(t, func() bool { return r.status().Get(3).CurrentStep == "short" })
+	waitFor(t, func() bool { return laneOf(r, 3).CurrentStep == "short" })
 	pid := headlessPid(r)
 	alice.Send(id, hub.Command{Kind: hub.KindDrain})
 	waitLog(t, r, "hub drain by alice"+via+"done: the swimmer stops after the batch in hand")
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for processAlive(pid) && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}

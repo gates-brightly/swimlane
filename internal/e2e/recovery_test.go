@@ -68,7 +68,7 @@ func TestRecoveryStaleRunningLane(t *testing.T) {
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "long" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
 	syscall.Kill(-c.Process.Pid, syscall.SIGKILL) // no traps run
 	c.Wait()
 
