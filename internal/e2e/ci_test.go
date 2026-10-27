@@ -227,7 +227,9 @@ func TestCIHeartbeat(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	contains(t, "heartbeat", out, "[1] still running: wait (0:0")
-	if strings.Contains(out, "[2] still running") {
+	// Only while it talks: starting up (bash, swim lib) prints nothing and
+	// may take a beat on a loaded machine.
+	if strings.Contains(out, "[2] still running: talk") {
 		t.Errorf("a lane writing output needs no heartbeat:\n%s", out)
 	}
 }

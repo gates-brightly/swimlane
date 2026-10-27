@@ -228,8 +228,10 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 	l.saw(t, "swim: stopping after current steps")
 	l.signal(syscall.SIGINT)
 	l.saw(t, "swim: force quitting")
-	// Lane 2's step dies of the forwarded SIGINT; lane 1's ignores it.
-	waitFor(t, func() bool { return laneOf(r, 2).State == status.Interrupted })
+	// Lane 2's step dies of the forwarded SIGINT; lane 1's ignores it. Wait
+	// for the launcher to see lane 2's process end ("[2] INTERRUPTED"), not
+	// for its status: the lane writes that just before it exits.
+	l.saw(t, "[2] INTERRUPTED (")
 	start := time.Now()
 	l.signal(syscall.SIGINT)
 	l.wait(t)

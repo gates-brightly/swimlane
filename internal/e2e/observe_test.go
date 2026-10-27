@@ -30,7 +30,7 @@ run --retry 2 --backoff 0.1s "flaky call" bash -c 'n=$(cat tries 2>/dev/null || 
 	r.env = append(r.env, "NAP=2")
 	r.mustSwim("run", "1", "--plain")
 	out := r.mustSwim("observe")
-	contains(t, "observe", out, "slow", `"nap" took 2.`, "usually 0.1s", "(p90 0.1s, 6 runs)")
+	contains(t, "observe", out, "slow", `"nap" took 2.`, "usually 0.", "(p90 0.", "s, 6 runs)") // a 0.1s nap takes longer on a loaded machine
 	contains(t, "observe 1", r.mustSwim("observe", "1"), "slow")
 	contains(t, "observe --yaml", r.mustSwim("observe", "--yaml"), "schema: swim.observations/v1", "kind: slow", "lane: 1")
 	contains(t, "report", r.mustSwim("report"), "observations  2 (swim observe)", "slow", `"nap" took 2.`)
