@@ -48,9 +48,10 @@ the lane, so a lane can no longer read the runner's signing key or
 - Fully air-gapping is too narrow: most ops lanes need some network (the
   API they change, the host they ssh to, a package mirror). The useful
   primitive is a declared, signed network policy, unlocked by approval.
-- Credential isolation comes with it. The README's biggest caveat ("lanes
-  run as you, so one can still read the runner key") goes away for
-  sandboxed lanes: nothing from the operator's home is mounted.
+- Credential isolation comes with it. The README's biggest caveat (a lane
+  runs as you, so it can use the runner key wherever you can without
+  being asked) goes away for sandboxed lanes: nothing from the operator's
+  home is mounted, and no agent socket.
 
 ## Behaviour
 

@@ -1225,7 +1225,17 @@ CHAIN OF CUSTODY
     repair   swim chain repair removed a half-written final line: its size,
              its SHA-256 and the .swim/chain.tail-<time>.bak that keeps it
   The runner signs each entry with its SSH key (config signing_key; default
-  ~/.ssh/id_ed25519; signing: auto | required | off). The scripts that ran
+  ~/.ssh/id_ed25519; signing: auto | required | off). Under swim run, the
+  runner key vouches once, as the run starts, for a run key that swim run
+  keeps in its memory and signs the run's entries with, the lanes' rounds
+  included (a lane's swim _finish hands its round to swim run); a lane is
+  given nothing that signs. A lane runs as you, though, so it can use the
+  runner key wherever you can without being asked: keep it in ssh-agent
+  added with ssh-add -c, or on a security key, and swim run asks once per
+  run while a lane can't sign without asking you. A key file with no
+  passphrase still works; swim doctor warns (signing-key). If the runner
+  key won't vouch (you said no), signing: required stops the run before a
+  lane starts, and auto records it unsigned. The scripts that ran
   are kept by hash under .swim/scripts/, and each run's staged copy under
   .swim/runs/. Changing a log, a kept script, a staged copy or any entry (or
   removing or reordering entries) is provable: swim verify.
@@ -1253,9 +1263,11 @@ CHAIN OF CUSTODY
   with it. Signing never prompts: a key with a passphrase needs ssh-agent
   (give the .pub path as signing_key).
   swim verify reports levels, one line each, saying what it rests on:
-    consistent  links, signatures (against the key recorded in each entry),
-                logs, kept scripts, staged copies, signed approvals
-    trusted     every signer is in trust.yml (committed), whose key set is
+    consistent  links, signatures (against the key recorded in each entry,
+                and a run key's delegation by the runner key), logs,
+                kept scripts, staged copies, signed approvals
+    trusted     every signer (for a run key, the runner key that vouched
+                for it) is in trust.yml (committed), whose key set is
                 pinned outside the repo (~/.config/swim/trust-pins.yml, on
                 first use or swim keys pin; CI: --trust-pin). Changes count
                 only when signed by a trusted key (swim keys trust --sign).

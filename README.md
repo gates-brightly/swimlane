@@ -14,7 +14,8 @@ approved. `swim verify` checks the record: every entry signed, linked to
 the one before, and still matching what's on disk.
 
 **What it doesn't do:** a lane runs as you, so it can do anything you can,
-including read your signing key. Approvals and the record show what an
+including use your signing key wherever you can without being asked.
+Approvals and the record show what an
 honest lane did and who approved it; they don't confine a hostile script.
 Review what you approve. See [the trust model](docs/trust-model.md).
 
@@ -197,9 +198,14 @@ whoever runs it.
   every guard from what it saw as the run started, records each approval
   itself, and attests the run; a lane can't mark, stage or finish another
   lane's round.
-- **Not yet:** lanes run as you, so one can still read the runner key;
-  what it signs on its own fails `swim verify`. See
-  [`tasks.md`](tasks.md).
+- **A lane signs nothing through swim:** `swim run` signs every entry of a
+  run, the lanes' rounds included, with a run key that lives only in its
+  memory and that your runner key vouches for once, as the run starts.
+- **Still possible:** a lane runs as you, so it can use the runner key
+  wherever you can without being asked: a key file with no passphrase
+  (`swim doctor` warns), or an agent that signs whatever it's asked. Keep
+  it in ssh-agent added with `ssh-add -c`, or on a security key: swim run
+  asks once per run, and a lane can't sign without asking you.
 
 The details, and the test behind each claim, are in the
 [trust model](docs/trust-model.md).
@@ -990,7 +996,10 @@ Editing a log, removing an entry or reordering entries is caught and
 reported. Signing uses `ssh-keygen -Y`, the same format git uses for SSH
 commit signing, so anyone can check a signature without swim. Config:
 `signing_key` (default `~/.ssh/id_ed25519`; a `.pub` path signs through
-ssh-agent) and `signing: auto | required | off`.
+ssh-agent) and `signing: auto | required | off`. `swim run` signs a run's
+entries with a run key the runner key vouches for once (one question, for
+a key added with `ssh-add -c`, or one touch of a security key); see
+[the runner key](docs/trust-model.md#the-runner-key).
 
 Entries have no size limit, and each is synced to disk as it's written. If
 a write is cut short (a crash, a kill, a full disk), the last line has no
