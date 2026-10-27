@@ -1,7 +1,7 @@
 // Package runrec keeps a record of each swim run: when every lane became
 // ready, waited for locks and slots, started and finished (millisecond
 // precision), what it waited on, and how it ended. The launcher writes it to
-// .swim/runs/<run id>.yml when the run ends; swim timeline reads it.
+// .swim/runs/<run id>.yml when the run ends; the hub's run reports read it.
 package runrec
 
 import (

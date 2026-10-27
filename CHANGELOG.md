@@ -69,6 +69,12 @@ already pushed to origin's main) with the next tag and pushes that tag.
   approves nothing: it never covered a whole lane. Evidence-bound
   approvals are named `lane.N.<sha>[.m<man>].e<ev>.signature`, with no
   cell suffix.
+- **Removed: swim timeline.** `swim timeline` (its text chart, `--yaml`
+  schemas `swim.timeline/v1` and `swim.timeline-history/v1`, and the
+  `--html` Gantt chart) is gone: how long lanes waited is not part of what
+  swim is for. Runs still write their record (`.swim/runs/<run>.yml`,
+  `swim.runrec/v1`); `swim log RUN` and `swim status --run RUN` read a
+  run's rounds and state as before.
 - **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
   used to queue it as its own batch at once, so two jobs queued that way
   ran one after the other and `# After:` between them couldn't hold. Now

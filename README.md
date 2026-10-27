@@ -317,7 +317,6 @@ A round declares what it waits for, and swim schedules it:
 ```sh
 swim plan           # the dependency tree, Terraform style
 swim all --parallel 8
-swim timeline       # who waited on whom, and the longest chain
 ```
 
 ### 4. Make a guarded change
@@ -633,10 +632,6 @@ same flags, signed approvals and `lookup.yml` the run reads: approved
 (and by whom), or what it still needs ("approval needs 2 signature(s) from
 dba, has 1"). A lane whose guard isn't approved yet, and every lane under
 it, is marked: a dry run there skips them.
-
-`swim timeline` draws when each lane waited (on dependencies, a slot or a
-lock), ran and finished. It marks the longest chain, and `--html` writes a
-Gantt chart you can share.
 
 ### Env files
 
@@ -1327,7 +1322,6 @@ can name it: `hub: {name: billing, namespace: acme/billing}`.
 | `swim status --yaml` | `swim.status/v1` |
 | `swim log N --yaml` | `swim.log/v1`: the round parsed, including the running step as `RUNNING` |
 | `swim plan --yaml` | `swim.plan/v1` |
-| `swim timeline --yaml` | `swim.timeline/v1` |
 | `swim history --yaml` | `swim.history/v1` |
 | `swim queue --yaml` | `swim.queue-list/v1` |
 | `swim lint\|doctor --yaml` | findings |
@@ -1369,7 +1363,6 @@ they waited for.
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they passed. A job id pins the exact round. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane. |
 | `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml] [-f] [--until-done]` | A lane's or job's log (with the running step), or the project log. |
-| `swim timeline [RUN\|N\|JOB] [--steps] [--yaml] [--html FILE]` | When each lane waited, ran and finished; the longest chain. |
 | `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. |
 | `swim clean [--all] [-n]` / `swim clean --restore STAMP` | A clean slate, nothing deleted: archive every finished lane at once, then (asked, default no) remove waiting batches and move the lane scripts aside. |
 | `swim prune --older D [--logs] [--confirm]` | Delete leftovers past a cutoff for good (moved-aside scripts, consumed queue entries, old run stages, archived logs with `--logs`), recorded in the chain. |

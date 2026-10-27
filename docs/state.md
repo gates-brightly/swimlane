@@ -159,7 +159,7 @@ or claiming a consumed one is a bug, and panics under `SWIM_CHECK_STATES`.
 ## Run record
 
 `.swim/runs/<run id>.yml` (`swim.runrec/v1`, `internal/runrec`) is written
-once, when a run ends; `swim timeline` reads it. It has no live states:
+once, when a run ends; the hub's run reports read it. It has no live states:
 each lane gets the times it reached each point and how it ended.
 
 ```mermaid

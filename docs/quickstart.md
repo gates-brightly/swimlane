@@ -247,14 +247,12 @@ round wrote into the log (`$SWIM_OUT`, the round's outputs, declared in
 ```sh
 swim report
 swim log | tail -5
-swim timeline
 swim verify --allow-unsigned
 ```
 
 `swim report` is everything written since you last looked (with
 `--earmark`, it remembers where you were). `.swim.log` (`swim log` with no
-lane) is the project log, one line per action. `swim timeline` shows when
-each lane waited and ran. `swim verify` checks the **chain of custody**:
+lane) is the project log, one line per action. `swim verify` checks the **chain of custody**:
 every round and approval, hash-linked, so the record can't be quietly
 rewritten. This repo signs approvals with `hour-key` but not its record;
 with a signing key (`swim config signing_key`), drop `--allow-unsigned`

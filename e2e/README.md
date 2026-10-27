@@ -91,7 +91,6 @@ arguments lists its commands:
 | `gen DIR` | dag99 setup: writes lanes 10-99 |
 | `lock-lanes` | dag99-locks setup: adds `# Locks:` to lanes 10-98 |
 | `run-results`, `step-output LABEL` | `lane_results` and `step_output`: read `swim run --yaml` and `swim log N --yaml`, so layout changes to the human output can't break the suite |
-| `timeline-check LANES FILE` | dag99: `swim timeline --yaml` agrees with the run and the audit |
 
 Inputs come from the variables lane scripts export (`D`, `N`, `P`, `IN`, `OUT`,
 `H`, `NODE_START`, `RUN_ID`, `SWIM_JOB`). To give a new scenario's lanes more

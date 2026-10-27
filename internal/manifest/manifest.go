@@ -704,7 +704,7 @@ func OldStages(root string, keep time.Duration, keepRun func(run string) bool) [
 }
 
 // PruneStages removes what OldStages lists and returns the runs removed.
-// Their run records (.swim/runs/<run>.yml) stay, for swim timeline.
+// Their run records (.swim/runs/<run>.yml) stay.
 func PruneStages(root string, keep time.Duration, keepRun func(run string) bool) []string {
 	var removed []string
 	for _, run := range OldStages(root, keep, keepRun) {

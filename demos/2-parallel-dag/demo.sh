@@ -27,7 +27,6 @@ else
   show 'swim all --parallel 4 --plain'
 fi
 pause
-first_run=$(ls .swim/runs/*.yml | head -1 | xargs basename | sed 's/\.yml$//')
 show 'swim status'
 say "api and web are deployed. worker FAILED, so smoke test and announce were" \
     "SKIPPED rather than run against a half-finished release."
@@ -44,12 +43,4 @@ else
   show 'swim all --parallel 4 --plain'
 fi
 show 'fakecloud ls'
-pause
-
-scene "4. Who waited on whom"
-say "The first run, drawn after the fact:"
-show "swim timeline $first_run"
-say "░ waiting on a dependency, ▓ worker waiting for api to release the db-migrations lock," \
-    "◆ the longest chain."
-show 'swim timeline $first_run --html timeline.html >/dev/null && echo "wrote $PWD/timeline.html (a Gantt chart you can share)"'
 demo_done

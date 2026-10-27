@@ -57,8 +57,6 @@ for teams with big migrations.
   against a half-finished release.
 - After the fix, `swim plan` shows only what's left. Build, api and web
   aren't redone.
-- `swim timeline` shows who waited on whom, and `--html` writes a Gantt
-  chart you can share.
 
 ### 3. Two-person approval
 

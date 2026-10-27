@@ -73,7 +73,7 @@ swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit}
 ## 2. What you run, and what you hand over
 
 **Run freely.** These only read or check:
-`swim status`, `report`, `log`, `plan`, `plan --check`, `lint`, `timeline`,
+`swim status`, `report`, `log`, `plan`, `plan --check`, `lint`,
 `history`, `verify`, `env`, `keys`, `approve` (no arguments: lists them),
 `queue` / `queue show`, `doctor` (without `--fix`),
 `changelog`, `--help`. Add `--yaml` when you're going to parse the output.
@@ -222,7 +222,6 @@ from what the previous ones left behind.
   - `swim log <job>`: one round by its job id.
   - `swim history N`: who approved and ran what.
   - `swim log`: the project log, including everyone's notes.
-  - `swim timeline N`: how long each round took, and where it waited.
 - **Name archives so they can be found:** `swim archive N --as
   orders-r3-apply-failed`, not the default job id.
 - **Keep a campaign thread in the record:** one `swim note` per decision

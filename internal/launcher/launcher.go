@@ -175,7 +175,7 @@ type Outcome struct {
 	Elapsed time.Duration
 	// When the lane's dependencies were met, its locks and slot taken, its
 	// process started and finished (zero when it never got that far). The
-	// run record (.swim/runs/) keeps them for swim timeline.
+	// run record (.swim/runs/) keeps them.
 	Ready, Locked, Slot, Start, End time.Time
 }
 
@@ -978,8 +978,8 @@ func joinInts(ns []int, sep ...string) string {
 }
 
 // writeRunRecord saves when each lane became ready, started and finished,
-// and the dependencies this run resolved, so swim timeline can draw any past
-// run even after its scripts change.
+// and the dependencies this run resolved, as they were even after its
+// scripts change.
 func writeRunRecord(o Options, start time.Time, cap int, sel []int, selected map[int]bool, deps map[int][]Dep, outcomes map[int]*Outcome) error {
 	r := &runrec.Run{Run: o.RunID, Started: start.UTC(), Finished: time.Now().UTC(), MaxParallel: cap}
 	for _, n := range sel {

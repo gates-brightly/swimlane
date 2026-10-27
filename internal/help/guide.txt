@@ -42,8 +42,6 @@ COMMANDS
                            rounds, or with no argument the project log .swim.log
   report [--earmark] [--wait]   what changed since you last looked: status, .swim.log and
                            every lane-log line since your earmark, in full (--earmark moves it)
-  timeline [RUN|N|JOB]     when each lane of the last run (or RUN) waited, ran and finished,
-                           and the longest dependency chain; N/JOB: its rounds across runs
   observe [RUN|N|JOB]      a run's observations: slow steps, timeouts, retries, long waits,
                            steps that keep failing, guards nobody approves (also in report)
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
@@ -110,7 +108,7 @@ COMMANDS
 
   Wherever a command takes a lane number N it also takes a job id (JOB): the
   full id or its first 8+ characters. See "job" below.
-  run, all, plan, log, status, timeline, lint and doctor take --yaml: versioned YAML for
+  run, all, plan, log, status, lint and doctor take --yaml: versioned YAML for
   scripts and agents (see READING RESULTS).
   help [command]           this guide, or one command's detail
   guide                    this guide, the full manual
@@ -227,7 +225,7 @@ FILES (repo root)
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
                         .running claimed by a swimmer, done/ consumed with results
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,
-                        locked, started and finished (`swim timeline`)
+                        locked, started and finished
   .swim/laneN.pid       present while lane N runs
   .swim/earmarks/NAME.yml  a reader's place in the logs (swim report --earmark)
   ~/.config/swim/config.yml   configuration (outside the repo; see CONFIG)
@@ -258,9 +256,7 @@ PLANNER WORKFLOW
   5. After the run, read what it wrote with `swim report --earmark` (`swim
      log N`, or `swim log <job>`, for older rounds). Validate real
      outcomes in the step output (resource ids, counts, plan says "No
-     changes"); a PASS line only means exit 0. If the run was slow,
-     `swim timeline` shows which lane held it up (the longest chain) and
-     whether the time went to work, dependencies, slots or locks.
+     changes"); a PASS line only means exit 0.
   6. Record the results (with the job id) where your project tracks them,
      then `swim archive N|JOB ... [--as <what-happened>]` and `swim stub N "<why idle>"`.
   7. Out-of-scope findings go on a follow-up list, never into the round.
@@ -1052,7 +1048,6 @@ READING RESULTS
                               counts {run, retry, rerun, skip}
     swim status --yaml        swim.status/v1: status.yml's fields (above)
     swim report --yaml        swim.report/v1 (see swim report --help)
-    swim timeline --yaml      swim.timeline/v1 (see swim timeline --help)
 
 CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       defaults:
