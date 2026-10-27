@@ -395,3 +395,41 @@ func TestConsumeRecords(t *testing.T) {
 		t.Errorf("recorded %v", recorded)
 	}
 }
+
+// A lane process hands its round's entry to the launcher (op record),
+// which knows it by its token and process: a made-up token, or a token
+// used from outside its lane, is refused before the launcher sees it.
+func TestRecordFromTheLane(t *testing.T) {
+	s, err := Listen(func(Request, <-chan struct{}) Response { return Response{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var got []string
+	s.Chain = func(c Caller, e chain.Entry) (string, error) {
+		got = append(got, fmt.Sprintf("%d %s %s", c.Lane, c.Run, e.Type))
+		return "hash-1", nil
+	}
+	if _, err := Record(s.Path(), "made-up", chain.Entry{Type: "round"}); err == nil {
+		t.Error("recorded for a made-up token")
+	}
+	tok := s.Register(Caller{Lane: 2, Run: "r1"})
+	if h, err := Record(s.Path(), tok, chain.Entry{Type: "round", Lane: 1, Run: "other"}); err != nil || h != "hash-1" {
+		t.Errorf("the lane's own entry: %q %v", h, err)
+	}
+	if peer.Supported {
+		other := exec.Command("sleep", "30")
+		if err := other.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer other.Process.Kill()
+		away := s.Register(Caller{Lane: 3, Run: "r1", PID: AwaitPID})
+		s.SetPID(away, other.Process.Pid)
+		if _, err := Record(s.Path(), away, chain.Entry{Type: "round"}); err == nil || !strings.Contains(err.Error(), "outside swim 3's lane") {
+			t.Errorf("a token used from outside its lane: %v", err)
+		}
+	}
+	if len(got) != 1 || got[0] != "2 r1 round" {
+		t.Errorf("recorded %v", got)
+	}
+}
