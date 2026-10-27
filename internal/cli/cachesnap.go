@@ -209,3 +209,16 @@ func plural(n int, word string) string {
 	}
 	return fmt.Sprintf("%d %ss", n, word)
 }
+
+// humanBytes is "12 KB", "3.1 MB".
+func humanBytes(b int64) string {
+	switch {
+	case b >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(b)/(1<<30))
+	case b >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(b)/(1<<20))
+	case b >= 1<<10:
+		return fmt.Sprintf("%d KB", b>>10)
+	}
+	return fmt.Sprintf("%d B", b)
+}

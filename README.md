@@ -1091,7 +1091,7 @@ swim approve --hub billing/3f9c2a --decline
 ```yaml
 # swim.yml (only swim.yml: config.yml can't set it)
 headless:
-  allow: [answer, interrupt, drain, log]   # the default; add run, trash, pause, unpause to allow them
+  allow: [answer, interrupt, drain, log]   # the default; add run, pause, unpause to allow them
   logs: on                                 # off: logs never leave this machine
   command_ttl: 10m
   approvals: signed                        # or hub: a listed operator's button click, where no require: rule names the guard
@@ -1209,7 +1209,7 @@ can name it: `hub: {name: billing, namespace: acme/billing}`.
   (no build step) and served under a strict Content-Security-Policy.
 - **Controls:** a headless swimmer's Lanes page has, for a logged-in user
   and as its `swim.yml` allows, **Pause**/**Unpause**, **Interrupt**,
-  **Run now** (pinned to the script shown), **Trash**, **Fetch log** and
+  **Run now** (pinned to the script shown), **Fetch log** and
   **Stop after this batch**, the destructive ones behind a confirmation,
   and a Commands panel with each one's outcome as the swimmer
   acknowledges it. A running lane links to its log, which follows the
@@ -1327,9 +1327,7 @@ they waited for.
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane. |
 | `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml] [-f] [--until-done]` | A lane's or job's log (with the running step), or the project log. |
 | `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. |
-| `swim clean [--all] [-n]` / `swim clean --restore STAMP` | A clean slate, nothing deleted: archive every finished lane at once, then (asked, default no) remove waiting batches and move the lane scripts aside. |
-| `swim prune --older D [--logs] [--confirm]` | Delete leftovers past a cutoff for good (moved-aside scripts, consumed queue entries, old run stages, archived logs with `--logs`), recorded in the chain. |
-| `swim trash N\|JOB` / `swim trash --restore STAMP` | Move one lane out of the way, recoverably: its script to `.swim/cleaned/`, its log archived (`d` in `swim watch`, the hub's Trash button). |
+| `swim clean [--all] [-n]` | Idle every finished lane at once: archive its logs and stub its script (a script edited since it ran is kept), then (asked, default no) remove waiting batches. |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's swimmer; on a terminal, pick a job to run (`r`), or add jobs to a batch (`q`) and submit it (`s`). |

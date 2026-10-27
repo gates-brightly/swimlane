@@ -40,8 +40,6 @@ func init() {
 		"lib":       {run: cmdLib},
 		"archive":   {run: cmdArchive},
 		"clean":     {run: cmdClean},
-		"prune":     {run: cmdPrune},
-		"trash":     {run: cmdTrash},
 		"pause":     {run: cmdPause},
 		"unpause":   {run: cmdUnpause},
 		"resume":    {run: cmdUnpause},

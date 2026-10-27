@@ -410,7 +410,7 @@ swim auth users add NAME --role viewer|operator|admin | remove NAME | list
            (read, the default off a terminal: show the machine's
            directories and fetch their logs; readwrite: also send
            commands: run, queue, dequeue, requeue, interrupt, drain,
-           pause, unpause, trash and answers); swim.yml's headless.allow
+           pause, unpause and answers); swim.yml's headless.allow
            still narrows it. Logging in again with another --access
            changes it for every directory that joined (each tells the hub
            at its next report). --name names the machine (default the
@@ -511,68 +511,27 @@ swim auth users add NAME --role viewer|operator|admin | remove NAME | list
   (eval, not "source <(...)": process-substitution source is broken in
   macOS bash 3.2). See "WRITING A LANE SCRIPT" in swim guide for the functions.
 `,
-	"clean": `swim clean [--queue|--no-queue] [--scripts|--no-scripts] [--all] [--no-input] [-n] [-o yaml]
-swim clean --restore STAMP
+	"clean": `swim clean [--queue|--no-queue] [--all] [--no-input] [-n] [-o yaml]
 
-  A clean slate, recoverable: nothing is deleted. It archives every lane's
-  finished rounds (passed, failed, interrupted, stale) under one name,
-  clean-YYYYMMDD-HHMM, as swim archive does (their logs become
-  agentN.prev-clean-....log; status shows them idle), all or nothing. It
-  leaves running and waiting lanes. Then it asks two questions, each defaulting to no:
-    remove the waiting queue batches?   (a batch someone else queued and
-        signed is asked about separately; orphans are only listed)
-    move the lane scripts aside?        (lane.N.*, lane.N.yml,
-        to .swim/cleaned/<stamp>/ with their SHA-256s; never files they
-        include, swim.yml, lookup.yml or approvals/)
-  Without a terminal (CI, an agent, --no-input) it archives and answers no
-  to both. Answer up front with --queue/--no-queue and --scripts/
-  --no-scripts; --all is both. Not -y: that approves guards.
+  Idle every lane whose round is finished (passed, failed, interrupted,
+  stale), in one go: its logs are archived under one name,
+  clean-YYYYMMDD-HHMM, as swim archive does (agentN.prev-clean-....log;
+  status shows it idle), and its script is replaced by a stub, as swim
+  stub does. A script edited since its round ran (new work), a stub, or a
+  lane another session has claimed keeps its script: only its logs are
+  archived. Running and waiting lanes are left alone. Then it asks,
+  defaulting to no, whether to remove the waiting queue batches (a batch
+  someone else queued and signed is asked about separately; orphans are
+  only listed). Without a terminal (CI, an agent, --no-input) it archives
+  and stubs, and keeps the queue. --queue/--no-queue answer up front;
+  --all is --queue. Not -y: that approves guards.
   -n, --dry-run   print the plan; change nothing
   -o yaml         the plan, or what it did, as swim.clean/v1
-  --restore STAMP put a clean's scripts back (refused if a path was reused)
   Refused while swim is busy (a run or swimmer holds lanes). Recorded in
-  .swim.log (clean, and archive/queue-rm per item) and the chain (a clean
-  entry: the moved scripts' SHA-256s, the removed batches); swim verify
-  still finds the archived logs. swim prune deletes what clean set aside.
-`,
-	"prune": `swim prune --older D [--logs] [--confirm] [-n]
-swim prune --stamp STAMP [--confirm]
-swim prune
-
-  Delete leftovers for good, older than a cutoff you give: scripts swim
-  clean moved aside (.swim/cleaned/), consumed queue entries
-  (.swim/queue/done/), run stages (.swim/runs/<run>/, never the stage of a
-  lane's latest round, which swim verify checks; run records stay) and,
-  with --logs, archived logs (agentN.prev-*.log). Never the chain,
-  .swim.log, approvals/, lookup.yml or kept script copies (.swim/scripts/).
-  A bare swim prune only says what each category holds. --older D is a
-  duration (30d, 12h); --stamp prunes one clean's moved scripts.
-  At a terminal you type "prune" to confirm; without one, --confirm. -n
-  prints the plan and deletes nothing. Refused while swim is busy.
-  Before deleting an archived log it writes a prune entry in the chain
-  with each of its rounds' hashes: swim verify then reports those rounds
-  as pruned (when, by swim prune), not missing, and says it can't recheck
-  them. swim doctor says when swim prune --older 30d would free over
-  100 MB.
-`,
-	"trash": `swim trash N|JOB ... [--force] [-n]
-swim trash --restore STAMP
-swim trash
-
-  Move one lane out of the way, recoverably: its script (any language) and
-  its sidecar lane.N.yml go to .swim/cleaned/<stamp>-lane<N>/, where swim
-  clean sets scripts aside, its current log is archived (trash-<stamp>),
-  and the lane leaves swim status and swim watch. Nothing is deleted:
-  --restore STAMP puts the files back (swim clean --restore takes the same
-  stamps), its round pending again, and swim prune deletes the entry for
-  good later. A bare swim trash lists the trashed lanes.
-  Refused for a running or waiting lane (swim interrupt N first), a lane in
-  a queued batch (swim queue rm first: a batch is pinned to its script). Files the script includes, swim.yml,
-  lookup.yml and approvals/ are never touched; a signed approval of the
-  script counts again once it's restored unchanged.
-  Recorded in .swim.log (trash, untrash) and the chain with each moved
-  file's SHA-256. swim watch's d (twice) and the hub's Trash button (with
-  trash in swim.yml's headless.allow) do the same. -n says what would move.
+  .swim.log (clean, and archive/stub/queue-rm per item) and the chain (a
+  clean entry: the stubbed scripts' SHA-256s, the removed batches); swim
+  verify still finds the archived logs, and the scripts that ran are kept
+  by hash in .swim/scripts/.
 `,
 	"archive": `swim archive N|JOB ... [--as NAME] [--force]
 
@@ -785,8 +744,6 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
     q on a job     queues it as swim queue add N does (no guard approved: its
                    guards dry-run unless standing approvals cover them); the
                    swimmer takes it when its lanes are free
-    d on a job     says what swim trash N would move; d again within 5s
-                   trashes the lane (restorable: swim trash --restore STAMP)
     r on a batch   starts a waiting batch now, out of turn, if its lanes are
                    free, with its own approvals (and -y's), exactly as in turn
     enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log);
@@ -858,8 +815,7 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                 log)
     pinned      interrupt, pause and unpause name the run the page
                 showed, run the script
-                and manifest hashes, trash the lane's job (its script's
-                hash when it has no Job: line): if the lane has
+                and manifest hashes: if the lane has
                 moved on, it's refused as stale. A run is queued unsigned,
                 by "hub:USER via URL", with no approvals of its own: its
                 guards approve only as any unsigned batch's do. queue
@@ -869,8 +825,8 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                 requeue queues a finished batch's lanes again as a new
                 unsigned batch, without the old one's approvals or
                 signature, refused when a script changed since. A trash
-                (the Trash button, then its confirmation page) is swim
-                trash N with every refusal, never --force.
+                command (from a hub for an older swim) is refused: swim
+                has no trash.
     logs        a log is masked again with the secrets known now before it
                 goes (only its last 8 MiB); headless.logs: off refuses them
   Every command, refused or not, is recorded in .swim.log and the chain
@@ -1568,7 +1524,6 @@ swim resume  N|JOB ... | --all      (the same command)
                               user's click approves guards no require:
                               rule names
     headless-yes (warn)       an installed headless service runs with -y
-    prune-reclaim (info)      swim prune --older 30d would free over 100 MB
     cache-dir (error)         the cache directory is a link, isn't yours, or
                               others can write it: lanes with # Cache: won't
                               start
@@ -1735,7 +1690,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "cache", "new", "plan", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "watch", "ps", "hub", "auth", "wait", "approve", "revoke",
+	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "watch", "ps", "hub", "auth", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
@@ -1777,7 +1732,7 @@ MORE
   lint, doctor                 check lane scripts and the environment
   keys, chain                  who's who; chain repair and anchoring
   secret, env, cache           what lanes get to work with
-  archive, clean, prune, trash, stub, note   tidy up and record
+  archive, clean, stub, note   tidy up and record
   pause, unpause, interrupt, wait, claim     control running lanes
   report                       what changed since you last looked
   ci, config, lock, changelog, version, skill

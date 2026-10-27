@@ -54,10 +54,8 @@ COMMANDS
   input N|JOB NAME         print the path (or value) of a dependency's output (Outputs:)
   output KEY VALUE         record a small value among the round's outputs
   archive N|JOB ... [--as NAME]   archive lanes' logs as .swim/logs/agentN.prev-<NAME or job id>.log
-  clean [--all] [-n]       archive every finished lane at once (nothing deleted); asks about
-                           the queue and the lane scripts (moved aside: --restore)
-  prune --older D          delete leftovers past D for good (moved-aside scripts, old stages)
-  trash N|JOB              move one lane's script aside, recoverably (--restore STAMP; d in watch)
+  clean [--all] [-n]       idle every finished lane at once: archive its logs and stub its
+                           script (one edited since it ran is kept); asks about the queue
   stub N|JOB "<message>"   replace lane.N.sh with a "nothing pending" stub
   note [--lane N|JOB] "<text>"   record a decision or finding in .swim.log
   lock [--upgrade]         show swim's version and the repo's .swim.lock; move it up

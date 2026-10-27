@@ -39,7 +39,7 @@ credentials the lane never sees. swim doesn't do that.
 | **Planner** (the AI session) and **workers** (its subagents) | Write lane scripts, queue batches, read logs back. | Nothing from swim. They don't need cloud credentials, VPN or approval keys. If the AI runs as your OS user on your machine, it can reach whatever that user can: keeping your credentials from it is up to you (a separate user, a container). |
 | **Operator** | Runs `swim run` / `swim all`, answers prompts, sets guard flags. | Their shell's environment (cloud profiles, tokens). Lanes run as the operator and inherit it. |
 | **Swimmer** (`swim watch`) | Runs queued batches once their lanes are free, each in a process of its own. | Its own environment's credentials. Its environment never approves a guard: only the batch's approvals count. |
-| **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Vouches for each `swim run`'s run key, once per run, and signs what swim records outside a run (`swim approve`'s grants, `swim trash`, checkpoints). | An SSH key on the operator's or swimmer's machine: a file, in ssh-agent, or on a security key ([below](#the-runner-key)). |
+| **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Vouches for each `swim run`'s run key, once per run, and signs what swim records outside a run (`swim approve`'s grants, checkpoints). | An SSH key on the operator's or swimmer's machine: a file, in ssh-agent, or on a security key ([below](#the-runner-key)). |
 | **Run key** | Signs every chain entry of one `swim run`, the lanes' rounds included. | Only the launcher's memory, for the run. Never on disk, in a lane's environment or a descriptor a lane inherits. |
 | **Approvers** | Sign approvals of exact scripts, or standing approvals, with `swim approve`. | Their own SSH keys. Their public keys are in the committed `lookup.yml`. |
 | **Secrets** (`swim secret`) | Encrypted to your SSH key with age, decrypted once per run and served to lanes by the run's broker, which knows each lane process by its token. | An unguarded secret is readable by every lane in the run: it keeps values out of logs, the hub and git, not out of lane code. A guarded one (`swim.yml` `secrets:`) goes only to a lane whose guard of it was approved in this run. With a key that has no passphrase, a lane can decrypt the store itself. |
@@ -305,7 +305,7 @@ What this doesn't cover: a round entry's contents (its result, its log's
 hash) are what the lane reports, signed by the launcher; a lane can call
 `swim _finish` early to report first. The attestation checks what each
 lane ran, not how it ended. Commands you run yourself (`swim approve`,
-`swim trash`, `swim chain checkpoint`) sign with the runner key directly,
+`swim chain checkpoint`) sign with the runner key directly,
 as does swim run ending the round of a lane a dead run left behind, and
 so does a lane that runs them, if it can reach the key.
 
@@ -416,7 +416,7 @@ lane and on a swimmer running `swim watch -y`. Guards approved by a flag
   log requests, `readwrite` every command; kept on the swimmer, in
   `~/.config/swim/auth.yml` or an older enrollment's `.swim/hub.yml`, so
   the hub can't raise it), then
-  `swim.yml`'s `headless.allow` (committed; `run`, `trash`, `pause`, `unpause`,
+  `swim.yml`'s `headless.allow` (committed; `run`, `pause`, `unpause`,
   `queue`, `dequeue` and `requeue` are off by default), the command's expiry capped by `headless.command_ttl`, its pin
   (the run, the script and manifest, or the lane's job the page showed), and replay state kept on the
   swimmer (the hub's epoch, the last seq and recent command ids). A `run`

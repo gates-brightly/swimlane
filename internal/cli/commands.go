@@ -475,13 +475,6 @@ func runLanes(rest []string, rf runFlags) error {
 			return err
 		}
 	}
-	// A lane named by number that was trashed says so, and how to restore
-	// it, rather than that its script is missing.
-	for _, n := range lanes {
-		if note := trashedNote(root, n); note != "" {
-			return fmt.Errorf("%s", note)
-		}
-	}
 	// Pre-flight: lint's error-level checks the launcher doesn't enforce (lint.go).
 	if err := lintPreflight(root, cfg, lanes, rerun); err != nil {
 		return err
@@ -991,6 +984,18 @@ func cmdStub(args []string) error {
 		return err
 	}
 	msg := strings.Join(args[1:], " ")
+	if err := stubLane(root, cfg, n, msg); err != nil {
+		return err
+	}
+	fmt.Printf("stubbed %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, msg)
+	return nil
+}
+
+// stubLane replaces lane n's script with a stub carrying msg (swim stub,
+// and swim clean for each lane it idles), and releases this session's
+// claim on it.
+func stubLane(root string, cfg *config.Config, n int, msg string) error {
+	sess := lane.SessionID()
 	replaced, _ := lane.ReadScript(root, n)
 	content, err := assets.Stub(n, msg)
 	if err != nil {
@@ -1004,7 +1009,6 @@ func cmdStub(args []string) error {
 	if c, _ := lane.ReleaseClaim(root, n, sess, true); c != nil && c.Session != sess {
 		claimBroken(root, n, c, sess, "stub", "")
 	}
-	fmt.Printf("stubbed %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, msg)
 	return nil
 }
 

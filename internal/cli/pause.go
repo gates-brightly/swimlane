@@ -430,3 +430,10 @@ func replaceIfPaused(root string, n int, rf runFlags) error {
 	fmt.Printf("swim %d: interrupted job %s (paused); starting %s\n", n, short8(l.Job), short8(info.Job))
 	return nil
 }
+
+func short8(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	return s
+}

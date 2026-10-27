@@ -103,6 +103,20 @@ already pushed to origin's main) with the next tag and pushes that tag.
   syntax 4 stays (swim new writes it); it now adds nothing over 3. The
   lock's `modules:` section is ignored and dropped the next time swim
   writes the lock. `.swim/modules/` can be deleted.
+- **Cleanup is archive, stub and clean.** `swim clean` now idles each
+  finished lane directly: it archives its logs (as `swim archive`) and
+  stubs its script (as `swim stub`), keeping a script edited since its
+  round ran, a stub, or one another session has claimed. It still asks
+  (default no) about waiting queue batches. Removed: `swim trash` (and
+  `d` in `swim watch`, and the hub's Trash, which a swimmer now refuses),
+  `swim prune`, `swim clean --restore`, `--scripts`/`--no-scripts`, the
+  `.swim/cleaned/` move-aside, and doctor's `prune-reclaim`. `swim clean
+  --all` is `--queue`; `-o yaml` (`swim.clean/v1`) drops `scripts_moved`
+  and `restore` and adds each lane's `stub` and `kept`. Scripts a round
+  ran stay in `.swim/scripts/` by hash; files an older swim moved to
+  `.swim/cleaned/` stay there (move them back by hand, or delete them).
+  `swim verify` still reads the chain's `trash`, `untrash` and `prune`
+  entries.
 - **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
   used to queue it as its own batch at once, so two jobs queued that way
   ran one after the other and `# After:` between them couldn't hold. Now

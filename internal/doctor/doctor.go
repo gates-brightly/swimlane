@@ -64,8 +64,6 @@ type Options struct {
 	// Headless is what swim knows of this repo's headless worker (swim
 	// watch --headless); nil skips the headless checks.
 	Headless *Headless
-	// Reclaim is what swim prune --older 30d would free (nil: not known).
-	Reclaim func() (items int, bytes int64)
 }
 
 // Headless is a repo's headless worker as the CLI finds it.
@@ -140,7 +138,6 @@ var Checks = []Check{
 	{"headless-yes", false, "a headless service runs with -y: it approves every guard in every batch", checkHeadlessYes},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 	{"pause-long", false, "a lane has been paused (swim pause) longer than pause_warn, holding its locks and slot; or the repo-wide pause is left on", checkPauseLong},
-	{"prune-reclaim", false, "swim prune --older 30d would free over 100 MB", checkPruneReclaim},
 	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
 	{"cache-unused", false, "tool caches unused for 30 days, or the repo's caches over cache_max", checkCacheUnused},
 }
@@ -1039,21 +1036,4 @@ func checkPauseLong(o *Options) []finding.Finding {
 		}
 	}
 	return out
-}
-
-// reclaimThreshold is when checkPruneReclaim speaks up.
-const reclaimThreshold = 100 << 20
-
-// checkPruneReclaim: leftovers past 30 days (moved-aside scripts, consumed
-// queue entries, old run stages) take room. swim doctor never prunes.
-func checkPruneReclaim(o *Options) []finding.Finding {
-	if o.Reclaim == nil {
-		return nil
-	}
-	n, b := o.Reclaim()
-	if b < reclaimThreshold {
-		return nil
-	}
-	return []finding.Finding{fd(finding.Info, "prune-reclaim", ".swim/", "swim prune --older 30d (it asks; nothing goes without it)",
-		"%d leftovers older than 30 days take %d MB: scripts swim clean moved aside, consumed queue entries, old run stages", n, b>>20)}
 }

@@ -30,20 +30,14 @@ type watchView struct {
 	activity string       // what the worker is waiting for
 	batches  *batchRunner // batches running side by side (nil: one at a time)
 	noStream bool         // o: the running output under the queue is hidden
-	// d asks first: the lane a second d within trashConfirm trashes.
-	trashN  int
-	trashAt time.Time
 	// staged are the lanes q added to the next batch, in order: s submits
 	// them as one batch, x clears them.
 	staged []int
 }
 
-// trashConfirm is how long a second d has to confirm a trash.
-const trashConfirm = 5 * time.Second
-
 const (
-	watchKeys  = "rqsxlodp" + string(display.PickEnter)
-	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  p pause  d trash  ^C quit" // x (clear the batch) is on the submit row
+	watchKeys  = "rqsxlop" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  p pause  ^C quit" // x (clear the batch) is on the submit row
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
@@ -362,10 +356,6 @@ func (w *watchView) wait(until func() bool) bool {
 // act does key on item id and says what happened.
 func (w *watchView) act(id string, key rune) string {
 	kind, ref, _ := strings.Cut(id, ":")
-	pendingTrash := w.trashN
-	if key != 'd' {
-		w.trashN = 0 // any other key cancels a trash waiting for its second d
-	}
 	// The next batch: s submits it from any row (enter or q on its row
 	// too), x clears it.
 	switch {
@@ -382,14 +372,6 @@ func (w *watchView) act(id string, key rune) string {
 		return "enter submits the batch; x clears it"
 	}
 	if kind == "queue" {
-		if key == 'd' {
-			w.trashN = 0
-			e, err := queue.Find(w.root, ref)
-			if err != nil {
-				return err.Error()
-			}
-			return fmt.Sprintf("d trashes lanes; swim queue rm %d removes a batch", e.Seq)
-		}
 		if key == 'p' {
 			return "p pauses a lane: pick its row (swim pause --all holds every batch)"
 		}
@@ -412,9 +394,6 @@ func (w *watchView) act(id string, key rune) string {
 		return w.runQueued(e)
 	}
 	n, _ := strconv.Atoi(ref)
-	if key == 'd' {
-		return w.trash(n, pendingTrash == n && time.Since(w.trashAt) < trashConfirm)
-	}
 	if key == 'p' {
 		return w.togglePause(n)
 	}
@@ -432,9 +411,6 @@ func (w *watchView) act(id string, key rune) string {
 		return err.Error()
 	}
 	if !info.Pending() {
-		if note := trashedNote(w.root, n); note != "" {
-			return note
-		}
 		return fmt.Sprintf("swim %d holds no pending round (a stub, or no Round: line)", n)
 	}
 	if key == 'q' {
@@ -481,22 +457,6 @@ func (w *watchView) submitStaged() string {
 	}
 	w.staged = nil
 	return msg
-}
-
-// trash is d on lane n: the first press says what would move (or why it
-// won't), the second, within trashConfirm, trashes it.
-func (w *watchView) trash(n int, confirmed bool) string {
-	w.trashN = 0
-	r := trashReq{n: n, by: operator(), from: trashFromWatch, dry: !confirmed}
-	t, err := trashLane(w.root, w.cfg, r)
-	if err != nil {
-		return "not trashed: " + err.Error()
-	}
-	if !confirmed {
-		w.trashN, w.trashAt = n, time.Now()
-		return fmt.Sprintf("press d again to trash swim %d (%s)", n, strings.Join(t.files, ", "))
-	}
-	return fmt.Sprintf("swim %d trashed (.swim/cleaned/%s/); swim trash --restore %s", n, t.stamp, t.stamp)
 }
 
 // togglePause is p on lane n: pause its running round, or let a paused one

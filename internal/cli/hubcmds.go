@@ -426,18 +426,10 @@ func hubPause(root string, cmd hub.Command, by, url string) (string, string) {
 	return hub.OutcomeDone, msg
 }
 
-// hubTrash trashes lane n as the hub's user asked, only while it holds
-// the job the page showed; every swim trash refusal applies, and an
-// Always lane is never forced from here.
+// hubTrash refuses: swim no longer has trash (swim archive and swim stub
+// idle a lane).
 func hubTrash(root string, cfg *config.Config, cmd hub.Command, by, url string) (string, string) {
-	if cmd.Pin.Job == "" {
-		return hub.OutcomeRefused, "not pinned to a job"
-	}
-	t, err := trashLane(root, cfg, trashReq{n: cmd.Lane, job: cmd.Pin.Job, by: "hub:" + by + " via " + url, from: trashFromHub})
-	if err != nil {
-		return hub.OutcomeRefused, err.Error()
-	}
-	return hub.OutcomeDone, fmt.Sprintf("trashed swim %d (.swim/cleaned/%s/); swim trash --restore %s puts it back", cmd.Lane, t.stamp, t.stamp)
+	return hub.OutcomeRefused, "this swim has no trash: swim archive and swim stub idle a lane"
 }
 
 // hubLog uploads the log of lane n's rounds in the command's run. The log

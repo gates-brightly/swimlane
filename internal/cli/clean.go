@@ -2,11 +2,9 @@ package cli
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -14,7 +12,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
-	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
@@ -24,38 +21,14 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// swim clean is everyday and recoverable (features/clean.md shipped): it
-// archives every lane's finished rounds under one batch name, then asks,
-// each defaulting to no, whether to remove the waiting queue batches and
-// whether to move the lane scripts aside (.swim/cleaned/<stamp>/, restored
-// by swim clean --restore). It never deletes anything; swim prune does.
+// swim clean idles every lane whose round is finished: it archives its
+// logs under one batch name and stubs its script, as swim archive and swim
+// stub do, then asks (default no) whether to remove the waiting queue
+// batches. A script edited since its round ran holds new work: its logs
+// are archived, and the script is kept.
 
 type cleanOpts struct {
-	queue, noQueue, scripts, noScripts, all, noInput, dryRun, asYAML bool
-	restore                                                          string
-}
-
-// cleanedDir holds the scripts swim clean moved aside.
-func cleanedDir(root string) string { return filepath.Join(root, ".swim", "cleaned") }
-
-// cleanedManifest lists one clean's moved scripts.
-type cleanedManifest struct {
-	Schema  string        `yaml:"schema"`
-	Stamp   string        `yaml:"stamp"`
-	By      string        `yaml:"by"`
-	At      string        `yaml:"at"`
-	Scripts []cleanedFile `yaml:"scripts"`
-	// One lane trashed (swim trash), not a clean: which, its job and
-	// round, and where it was trashed from (cli, watch, hub).
-	Lane  int    `yaml:"lane,omitempty"`
-	Job   string `yaml:"job,omitempty"`
-	Round string `yaml:"round,omitempty"`
-	From  string `yaml:"from,omitempty"`
-}
-
-type cleanedFile struct {
-	Path   string `yaml:"path"` // repo-relative, as it was
-	SHA256 string `yaml:"sha256"`
+	queue, noQueue, noInput, dryRun, asYAML bool
 }
 
 type cleanLane struct {
@@ -63,20 +36,23 @@ type cleanLane struct {
 	State string `yaml:"state"`
 	Job   string `yaml:"job,omitempty"`
 	To    string `yaml:"to,omitempty"`   // the archived log
+	Stub  bool   `yaml:"stub"`           // its script is stubbed too
+	Kept  string `yaml:"kept,omitempty"` // why its script is kept
 	Skip  string `yaml:"skip,omitempty"` // why it's left alone
 }
 
 func cmdClean(args []string) error {
 	var o cleanOpts
+	var all bool
 	var out string
 	for i, a := range args {
 		if a == "-n" {
 			args[i] = "--dry-run"
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"queue": &o.queue, "no-queue": &o.noQueue, "scripts": &o.scripts, "no-scripts": &o.noScripts,
-		"all": &o.all, "no-input": &o.noInput, "dry-run": &o.dryRun, "yaml": &o.asYAML},
-		strs: map[string]*string{"restore": &o.restore, "o": &out}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"queue": &o.queue, "no-queue": &o.noQueue, "all": &all,
+		"no-input": &o.noInput, "dry-run": &o.dryRun, "yaml": &o.asYAML},
+		strs: map[string]*string{"o": &out}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -86,17 +62,14 @@ func cmdClean(args []string) error {
 		return usagef("-o takes yaml")
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim clean [--queue|--no-queue] [--scripts|--no-scripts] [--all] [--no-input] [-n] [-o yaml] | --restore STAMP")
+		return usagef("usage: swim clean [--queue|--no-queue] [--all] [--no-input] [-n] [-o yaml]")
 	}
-	if o.all {
-		o.queue, o.scripts = true, true
+	if all {
+		o.queue = true
 	}
 	root, cfg, err := repo()
 	if err != nil {
 		return err
-	}
-	if o.restore != "" {
-		return cleanRestore(root, cfg, o.restore)
 	}
 	if why := launcher.Busy(root, cfg); why != "" && !o.dryRun {
 		return fmt.Errorf("swim clean: %s; clean when it's done", why)
@@ -127,15 +100,14 @@ func cmdClean(args []string) error {
 		}
 		return def
 	}
-	now := time.Now()
-	stamp := now.Format("20060102-1504")
+	stamp := time.Now().Format("20060102-1504")
 
-	// What to archive: every lane with a finished round and a log.
-	lanes, name := cleanPlan(root, cfg, o, stamp)
-	var toArchive []cleanLane
+	// What to idle: every lane with a finished round and a log.
+	lanes, name := cleanPlan(root, cfg, stamp)
+	var toClean []cleanLane
 	for _, l := range lanes {
 		if l.Skip == "" {
-			toArchive = append(toArchive, l)
+			toClean = append(toClean, l)
 		}
 	}
 	entries, _ := queue.List(root, false)
@@ -151,17 +123,18 @@ func cmdClean(args []string) error {
 			waiting = append(waiting, e)
 		}
 	}
-	scripts := cleanScripts(root, o)
 
 	if !o.asYAML {
-		fmt.Printf("swim clean · nothing is deleted · %d lanes with finished rounds, %d queued batches, %d lane scripts\n\n",
-			len(toArchive), len(waiting)+len(theirs), len(scripts))
+		fmt.Printf("swim clean · %d lanes with finished rounds, %d queued batches\n\n", len(toClean), len(waiting)+len(theirs))
 		for _, l := range lanes {
-			if l.Skip != "" {
+			switch {
+			case l.Skip != "":
 				fmt.Printf("skip     swim %-2d %s\n", l.N, l.Skip)
-				continue
+			case l.Stub:
+				fmt.Printf("idle     swim %-2d %-8s %-18s -> %s, stub\n", l.N, l.State, lane.ShortJob(l.Job), l.To)
+			default:
+				fmt.Printf("archive  swim %-2d %-8s %-18s -> %s (script kept: %s)\n", l.N, l.State, lane.ShortJob(l.Job), l.To, l.Kept)
 			}
-			fmt.Printf("archive  swim %-2d %-8s %-18s -> %s\n", l.N, l.State, lane.ShortJob(l.Job), l.To)
 		}
 		for _, e := range orphans {
 			fmt.Printf("orphan   #%d %s: its swimmer is gone; swim queue requeue %d or swim queue rm %d\n", e.Seq, e.ID, e.Seq, e.Seq)
@@ -174,25 +147,34 @@ func cmdClean(args []string) error {
 		DryRun   bool        `yaml:"dry_run"`
 		Lanes    []cleanLane `yaml:"lanes"`
 		Queue    []string    `yaml:"queue_removed"`
-		Scripts  []string    `yaml:"scripts_moved"`
-		Restore  string      `yaml:"restore,omitempty"`
 		Orphaned []string    `yaml:"orphaned,omitempty"`
-	}{Schema: "swim.clean/v1", Name: name, DryRun: o.dryRun, Lanes: lanes, Queue: []string{}, Scripts: []string{}}
+	}{Schema: "swim.clean/v1", Name: name, DryRun: o.dryRun, Lanes: lanes, Queue: []string{}}
 	for _, e := range orphans {
 		res.Orphaned = append(res.Orphaned, e.ID)
 	}
 
-	// 1. Archive (asked, default yes).
-	archived := 0
-	if len(toArchive) > 0 && ask(fmt.Sprintf("archive %d lanes' logs?", len(toArchive)), true) && !o.dryRun {
-		for _, l := range toArchive {
+	// 1. Archive and stub (asked, default yes).
+	archived, stubbed := 0, 0
+	sums := map[string]string{}
+	if len(toClean) > 0 && ask(fmt.Sprintf("archive %d lanes' logs and stub their scripts?", len(toClean)), true) && !o.dryRun {
+		for _, l := range toClean {
 			if _, err := archiveLane(root, cfg, l.N, name); err != nil {
 				return err
 			}
 			archived++
+			if !l.Stub {
+				continue
+			}
+			if data, err := lane.ScriptBytes(root, l.N); err == nil {
+				sums[lane.ScriptName(root, l.N)] = chain.Hash(data)
+			}
+			if err := stubLane(root, cfg, l.N, "cleaned: archived as "+name); err != nil {
+				return err
+			}
+			stubbed++
 		}
 		if !o.asYAML {
-			fmt.Printf("archived %d lanes as %s\n", archived, name)
+			fmt.Printf("archived %d lanes as %s; stubbed %d scripts\n", archived, name, stubbed)
 		}
 	}
 
@@ -239,51 +221,14 @@ func cmdClean(args []string) error {
 	}
 	res.Queue = append(res.Queue, removed...)
 
-	// 3. The scripts (asked, default no): moved aside, restorable.
-	var moved []cleanedFile
-	if len(scripts) > 0 && !o.noScripts {
-		var names []string
-		for _, s := range scripts {
-			names = append(names, s)
-		}
-		shown := names
-		if len(shown) > 4 {
-			shown = append(append([]string(nil), shown[:3]...), "...")
-		}
-		take := o.scripts || ask(fmt.Sprintf("\nmove %d lane scripts aside (%s)?\n  they go to .swim/cleaned/%s/ and can be restored", len(scripts), strings.Join(shown, " "), stamp), false)
-		if take {
-			if !o.dryRun {
-				if moved, err = moveScripts(root, stamp, scripts, nil); err != nil {
-					return err
-				}
-			} else {
-				for _, s := range scripts {
-					moved = append(moved, cleanedFile{Path: s})
-				}
-			}
-			if !o.asYAML {
-				fmt.Printf("moved %d scripts to .swim/cleaned/%s/ (swim clean --restore %s puts them back)\n", len(moved), stamp, stamp)
-			}
-			res.Restore = stamp
-		} else if !o.asYAML {
-			fmt.Println("kept the lane scripts")
-		}
-	}
-	for _, m := range moved {
-		res.Scripts = append(res.Scripts, m.Path)
-	}
-
-	if !o.dryRun && (archived > 0 || len(removed) > 0 || len(moved) > 0) {
-		detail := fmt.Sprintf("%s: %d archived, %d queued removed, %d scripts moved", name, archived, len(removed), len(moved))
+	if !o.dryRun && (archived > 0 || len(removed) > 0) {
+		detail := fmt.Sprintf("%s: %d archived, %d stubbed, %d queued removed", name, archived, stubbed, len(removed))
 		history.Log(root, history.Entry{Event: history.Clean, Detail: detail})
-		sums := map[string]string{}
-		for _, m := range moved {
-			sums[m.Path] = m.SHA256
-		}
 		var ns []string
-		for _, l := range toArchive {
+		for _, l := range toClean {
 			ns = append(ns, fmt.Sprint(l.N))
 		}
+		// Outputs: the stubbed scripts as they were (their SHA-256s).
 		record(root, cfg, chain.Entry{Type: "clean", Action: detail + "  (lanes " + strings.Join(ns, ",") + ")", Outputs: sums, Removed: removed})
 	}
 	if o.asYAML {
@@ -301,8 +246,10 @@ func cmdClean(args []string) error {
 }
 
 // cleanPlan is what swim clean does with each lane in use, and the batch
-// name: clean-<stamp>, made unique (-2, -3, ...) if an archive has it.
-func cleanPlan(root string, cfg *config.Config, o cleanOpts, stamp string) ([]cleanLane, string) {
+// name: clean-<stamp>, made unique (-2, -3, ...) if an archive has it. A
+// finished lane's script is stubbed only if it is the one its last round
+// ran (an edit since is new work) and isn't a stub already.
+func cleanPlan(root string, cfg *config.Config, stamp string) ([]cleanLane, string) {
 	st, _ := status.Load(root)
 	var out []cleanLane
 	for _, n := range lane.Associated(root) {
@@ -316,7 +263,7 @@ func cleanPlan(root string, cfg *config.Config, o cleanOpts, stamp string) ([]cl
 		}
 		switch {
 		case !hasLog(root, n):
-			continue // nothing to archive (a pending script is the scripts question's)
+			continue // nothing to archive: a script nothing has run yet is new work
 		case cl.State == status.Running || cl.State == status.Waiting || cl.State == status.Locked || cl.State == status.Queued:
 			if pid, ok := lane.Running(root, n); ok {
 				cl.Skip = fmt.Sprintf("running (pid %d)", pid)
@@ -328,6 +275,9 @@ func cleanPlan(root string, cfg *config.Config, o cleanOpts, stamp string) ([]cl
 		}
 		if cl.State == "" || cl.State == status.Idle {
 			cl.State = "finished"
+		}
+		if cl.Skip == "" {
+			cl.Stub, cl.Kept = stubbable(root, n, l)
 		}
 		out = append(out, cl)
 	}
@@ -389,130 +339,22 @@ func archiveLane(root string, cfg *config.Config, n int, name string) (string, e
 	return dst, nil
 }
 
-// cleanScripts are the lane scripts the scripts question covers: lane.N.*
-// and lane.N.yml sidecars, not of a running lane.
-func cleanScripts(root string, o cleanOpts) []string {
-	st, _ := status.Load(root)
-	var out []string
-	for _, n := range lane.Associated(root) {
-		if _, ok := lane.Running(root, n); ok {
-			continue
-		}
-		if st != nil {
-			if l := st.Get(n); l != nil && l.Alive() && (l.State == status.Running || l.State == status.Waiting) {
-				continue
-			}
-		}
-		if s := lane.ScriptName(root, n); s != "" {
-			if _, err := os.Stat(filepath.Join(root, s)); err == nil {
-				out = append(out, s)
-			}
-		}
-		if sc := lane.Sidecar(root, n); sc != "" {
-			if _, err := os.Stat(sc); err == nil {
-				out = append(out, rel(root, sc))
-			}
-		}
+// stubbable says whether swim clean stubs lane n's script, or why it
+// keeps it: no script, already a stub, a claim another session holds, or
+// edited since its last round ran (l: its status entry).
+func stubbable(root string, n int, l *status.Lane) (bool, string) {
+	info, err := lane.ReadScript(root, n)
+	switch {
+	case err != nil || lane.ScriptName(root, n) == "":
+		return false, "no script"
+	case info.Stub:
+		return false, "a stub already"
+	case lane.CheckClaim(root, n, lane.SessionID()) != nil:
+		return false, "claimed by another session"
 	}
-	sort.Strings(out)
-	var uniq []string
-	for i, s := range out {
-		if i == 0 || s != out[i-1] {
-			uniq = append(uniq, s)
-		}
+	data, err := lane.ScriptBytes(root, n)
+	if err != nil || l == nil || l.ScriptSHA == "" || chain.Hash(data) != l.ScriptSHA {
+		return false, "changed since its last round"
 	}
-	return uniq
-}
-
-// moveScripts moves paths (repo-relative) to .swim/cleaned/<stamp>/, the
-// same layout, with cleaned.yml listing each and its SHA-256; fill, if
-// set, adds to that manifest (swim trash: the lane).
-func moveScripts(root, stamp string, paths []string, fill func(*cleanedManifest)) ([]cleanedFile, error) {
-	dir := filepath.Join(cleanedDir(root), stamp)
-	if _, err := os.Stat(dir); err == nil {
-		return nil, fmt.Errorf("%s exists already; wait a minute and clean again", rel(root, dir))
-	}
-	var moved []cleanedFile
-	for _, p := range paths {
-		sum, err := chain.HashFile(filepath.Join(root, p))
-		if err != nil {
-			return moved, err
-		}
-		dst := filepath.Join(dir, p)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return moved, err
-		}
-		if err := os.Rename(filepath.Join(root, p), dst); err != nil {
-			return moved, err
-		}
-		moved = append(moved, cleanedFile{Path: p, SHA256: sum})
-	}
-	m := cleanedManifest{Schema: "swim.cleaned/v1", Stamp: stamp, By: operator(), At: time.Now().UTC().Format(time.RFC3339), Scripts: moved}
-	if fill != nil {
-		fill(&m)
-	}
-	data, _ := yaml.Marshal(m)
-	return moved, fsutil.WriteAtomic(filepath.Join(dir, "cleaned.yml"), data, 0o644)
-}
-
-// cleanRestore puts a clean's moved scripts back, all or none: a path
-// reused since is refused.
-func cleanRestore(root string, cfg *config.Config, stamp string) error {
-	dir := filepath.Join(cleanedDir(root), stamp)
-	data, err := os.ReadFile(filepath.Join(dir, "cleaned.yml"))
-	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("no clean %s under .swim/cleaned/ (swim prune may have removed it)", stamp)
-	}
-	if err != nil {
-		return err
-	}
-	var m cleanedManifest
-	if err := yaml.Unmarshal(data, &m); err != nil {
-		return err
-	}
-	var problems []string
-	for _, f := range m.Scripts {
-		if _, err := os.Stat(filepath.Join(root, f.Path)); err == nil {
-			problems = append(problems, f.Path+" exists again (reused since the clean)")
-		}
-	}
-	if len(problems) > 0 {
-		return errors.New("nothing restored:\n  " + strings.Join(problems, "\n  "))
-	}
-	for _, f := range m.Scripts {
-		if err := os.Rename(filepath.Join(dir, f.Path), filepath.Join(root, f.Path)); err != nil {
-			return err
-		}
-	}
-	os.RemoveAll(dir)
-	refreshStatus(root, cfg)
-	if m.Lane > 0 {
-		// A trashed lane: recorded as untrash, in the chain too.
-		detail := fmt.Sprintf("%s: swim %d back (%s)", stamp, m.Lane, strings.Join(paths(m.Scripts), " "))
-		history.Log(root, history.Entry{Event: history.Untrash, Lane: m.Lane, Job: m.Job, Detail: detail})
-		record(root, cfg, chain.Entry{Type: "untrash", Lane: m.Lane, Job: m.Job, Action: detail, Outputs: sums(m.Scripts)})
-		fmt.Printf("restored swim %d from .swim/cleaned/%s/ (%s); its round is pending again\n", m.Lane, stamp, strings.Join(paths(m.Scripts), " "))
-		return nil
-	}
-	history.Log(root, history.Entry{Event: history.Clean, Detail: fmt.Sprintf("restored %d scripts from clean %s", len(m.Scripts), stamp)})
-	fmt.Printf("restored %d scripts from .swim/cleaned/%s/\n", len(m.Scripts), stamp)
-	return nil
-}
-
-// paths are the moved files' repo-relative paths.
-func paths(fs []cleanedFile) []string {
-	var out []string
-	for _, f := range fs {
-		out = append(out, f.Path)
-	}
-	return out
-}
-
-// sums are the moved files' SHA-256s, for a chain entry.
-func sums(fs []cleanedFile) map[string]string {
-	out := map[string]string{}
-	for _, f := range fs {
-		out[f.Path] = f.SHA256
-	}
-	return out
+	return true, ""
 }

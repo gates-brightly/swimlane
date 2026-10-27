@@ -95,7 +95,6 @@ func cmdDoctor(args []string) error {
 		GitignoreBegin: gitignoreBegin, GitignoreEnd: gitignoreEnd, GitignoreBody: assets.Gitignore,
 		FixGitignore: mergeGitignore,
 		Headless:     doctorHeadless(root),
-		Reclaim:      func() (int, int64) { return pruneReclaim(root, cfg) },
 	}
 	fs := doctor.Run(o)
 	if fix {
