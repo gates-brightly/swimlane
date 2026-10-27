@@ -75,7 +75,6 @@ session needed it or someone asks for it:
 | Candidate | Why it's on the list |
 |---|---|
 | `pause` / `unpause` | `interrupt` covers stopping; pausing is rare |
-| `observe` (and observations in `report`, `status`) | useful later; another concept on day one |
 | `cache`, `cache restore\|save` | build-tool speed-ups, not ops safety |
 | hub users and roles (`auth users`) | a team feature before any team uses it |
 | `secret grant` | swimmer secrets before anyone runs a swimmer |

@@ -198,7 +198,7 @@ type Result struct {
 	Output []string
 	Saved  string
 	// Key and Target are the step's own (run --key, --target, # Targets:),
-	// for swim observe: what its history is matched by, what it talks to.
+	// as logged: its name across rounds, what it talks to.
 	Key, Target string
 	// Messages are the status messages (swim msg) posted while the step ran.
 	Messages []string

@@ -42,8 +42,6 @@ COMMANDS
                            rounds, or with no argument the project log .swim.log
   report [--earmark] [--wait]   what changed since you last looked: status, .swim.log and
                            every lane-log line since your earmark, in full (--earmark moves it)
-  observe [RUN|N|JOB]      a run's observations: slow steps, timeouts, retries, long waits,
-                           steps that keep failing, guards nobody approves (also in report)
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
   lib                      print the bash library lane scripts load
   In a lane script in any language (OTHER LANGUAGES); run "<label>" -- cmd is a step too:
@@ -322,10 +320,9 @@ WRITING A LANE SCRIPT
       --retry-on CODES            retry only on these exit codes, e.g. 1,255
       --no-retry-timeout          don't retry an attempt the step limit stopped
       --soft                      in a Fail: hard round, this step's failure doesn't end it
-      --key K                     the step's name across rounds, for swim observe: its
-                                  history follows K when its label changes
-      --target T                  what it talks to (orders-api), for swim observe's
-                                  flaky; the round's # Targets: by default
+      --key K                     the step's name across rounds, logged with it (key:)
+      --target T                  what it talks to (orders-api), logged with it
+                                  (target:); the round's # Targets: by default
       --expect-fail[=CODES]       the command should fail (a negative test: the
                                   bad token is refused): PASS on a non-zero exit,
                                   one of CODES if given, logged "failed as
@@ -420,7 +417,7 @@ WRITING A LANE SCRIPT
                                       at the limit is stopped (FAIL, timeout) and the
                                       round ends. Default: none
       # Targets: <name>                what the round's steps talk to by default (orders-api),
-                                      for swim observe (a step's --target overrides it)
+                                      logged with each step (a step's --target overrides it)
       # Outputs: <name>[, <name> ...]  files or directories the round promises in $SWIM_OUT
                                       (.swim/out/<job>/<run>/, fresh each round), for the
                                       lanes that depend on it (input N name). A promised one

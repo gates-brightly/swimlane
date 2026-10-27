@@ -351,47 +351,6 @@ swim report --earmarks | --earmark --reset [--name NAME]
   lane, use the library's
   gate.)
 `,
-	"observe": `swim observe [RUN|N|JOB] [--yaml]
-swim observe check FILE [RUN]
-swim observe knowledge [--yaml]
-swim observe accept ID [--note TEXT] | reject ID
-
-  A run's observations: facts computed from what swim records, each with
-  its numbers and the runs it cites. The last run's by default; for N or
-  JOB, that lane's or job's in the last run it ran in. swim run computes
-  them as it ends, into .swim/observations/<run>.yml (beside the logs,
-  never in them), and swim report shows the ones of runs that ended since
-  your earmark. They decide nothing: acting on one is a script change.
-    timeout   a step hit its time limit, and how often it has
-    retried   a step passed only after retries
-    waited    a lane waited 2m+ for its lanes, its locks or a slot
-    slow      a step took over 1.5x its p90 and 30s+ over its median (with 5+
-              earlier runs of it)
-    fast      a step took under a quarter of its median: did it skip its work?
-    failing   a step failed in each of its last 3 runs
-    dry       a guard ran as a dry run in each of its last 3 runs
-    drift     the same DRIFT came back
-    flaky     a target's steps needed retries or failed in 25%+ of its last
-              runs (4 or more, across lanes): run --target T, # Targets: T
-  A step's history is matched by its label, or its --key when it has one
-  (so a relabelled step keeps it). swim status shows a lane's observations
-  from its last run (observed: ...).
-  The thresholds are swim.yml's observe: (slow_factor, slow_min_s,
-  baseline_min, window, wait_min_s, failing_streak, dry_streak,
-  flaky_share, flaky_min); they're
-  not policy and stale nothing. --yaml: swim.observations/v1.
-  Each has an id (slow-2-3). check lists the ids a write-up (FILE)
-  cites that the run (the last one by default) doesn't have: a citation
-  someone made up. Exit 1 on any.
-  knowledge  what keeps being true: an observation of the same kind for the
-             same lane and step in 3 or more of the lane's last runs (window,
-             default 20) is proposed. accept copies one into knowledge/steps.yml
-             (commit it), with who and when, and swim plan shows it beside the
-             lane (known: ...); reject keeps it from being proposed again. An
-             accepted entry not seen in the lane's last 5 runs is retired:
-             knowledge lists it, and doctor (knowledge-retired). Knowledge
-             decides nothing: acting on it is a script change.
-`,
 	"mod": `swim mod [--label L] [--gate|--evidence] [options] CMD [args...]
 
   In a lane program in another language (one that runs swim run ... -- for
@@ -1671,8 +1630,8 @@ swim resume  N|JOB ... | --all      (the same command)
     pause-long (warn)         a lane paused (swim pause) longer than
                               pause_warn (4h), holding its locks and slot;
                               or the repo-wide pause left on that long
-    removed-setting (warn)    a setting swim no longer has (chime, schedule_tz):
-                              it's ignored; delete it
+    removed-setting (warn)    a setting swim no longer has (chime,
+                              schedule_tz, observe): it's ignored; delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key
@@ -1823,7 +1782,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "observe", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "mod", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "watch", "ps", "hub", "auth", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor", "guide"}
@@ -1869,7 +1828,7 @@ MORE
   secret, env, cache, modules  what lanes get to work with
   archive, clean, prune, trash, stub, note   tidy up and record
   pause, unpause, interrupt, wait, claim     control running lanes
-  report, observe              what changed and how runs went
+  report                       what changed since you last looked
   ci, config, lock, changelog, version, skill
 
   Lane scripts call: gate, guard, stage, run, snapshot, evidence, mod,

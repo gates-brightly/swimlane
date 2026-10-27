@@ -283,9 +283,9 @@ reached() {
 #   --expect-fail[=CODES]  the step should fail: it passes on a non-zero
 #                      exit (one of CODES, e.g. =1,2), and fails on exit 0
 #                      or another code; logged "failed as expected"
-#   --key K            the step's name across rounds, for swim observe (no spaces)
-#   --target T         what it talks to (orders-api), for swim observe; the
-#                      lane's # Targets: by default
+#   --key K            the step's name across rounds, logged (no spaces)
+#   --target T         what it talks to (orders-api), logged; the lane's
+#                      # Targets: by default
 _swim_run_step() {
   _swim_mode=$1
   shift

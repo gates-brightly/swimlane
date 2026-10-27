@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/observe"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -184,10 +183,6 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		return err
 	}
 	what, sel, passed, selected, scripts, children := pl.what, pl.sel, pl.passed, pl.selected, pl.scripts, pl.children
-	known, _ := observe.LoadKnowledge(o.Root)
-	if known == nil {
-		known = &observe.KnowledgeFile{}
-	}
 	inRunDeps, skip, actions, counts := pl.inRunDeps, pl.skip, pl.actions, pl.counts
 	fmt.Fprintln(w, p.Paint(ui.Bold, fmt.Sprintf("swim plan · %s · %s · lanes 1..%d", filepath.Base(o.Root), what, o.Cfg.Lanes)))
 	fmt.Fprintln(w)
@@ -291,11 +286,6 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		}
 		if info.FailHard {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "fail: hard (the first failed step ends the round)"))
-		}
-		// What people accepted about it (swim observe accept): to read
-		// before running, not a decision.
-		for _, k := range observe.ForLane(known, n) {
-			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Yellow, "known: "+k))
 		}
 		if info.Timeout > 0 {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "timeout "+info.TimeoutText))

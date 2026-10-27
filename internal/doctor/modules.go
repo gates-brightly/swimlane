@@ -7,7 +7,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/module"
-	"github.com/gates-brightly/swimlane/internal/observe"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -111,27 +110,6 @@ func checkModuleFetched(o *Options) []finding.Finding {
 		if !named[a] {
 			out = append(out, fd(finding.Warn, "module-fetched", version.LockName, "swim modules get (drops pins no lane uses)",
 				"%s %s is pinned, and no lane names it", a, pin.Version))
-		}
-	}
-	return out
-}
-
-// checkKnowledgeRetired: an accepted knowledge entry the runs stopped
-// showing, for someone to remove from knowledge/steps.yml.
-func checkKnowledgeRetired(o *Options) []finding.Finding {
-	k, err := observe.LoadKnowledge(o.Root)
-	if err != nil || len(k.Entries) == 0 {
-		return nil
-	}
-	runs, err := observe.History(o.Root)
-	if err != nil {
-		return nil
-	}
-	var out []finding.Finding
-	for _, e := range k.Entries {
-		if why := observe.Retired(e, runs); why != "" {
-			out = append(out, fd(finding.Warn, "knowledge-retired", "knowledge/steps.yml", "remove "+e.ID+" from knowledge/steps.yml",
-				"%s (%s) no longer holds: %s", e.ID, e.Claim, why))
 		}
 	}
 	return out

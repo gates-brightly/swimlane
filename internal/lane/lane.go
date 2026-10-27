@@ -123,7 +123,7 @@ type Info struct {
 	// (internal/module resolves them).
 	Modules []string
 	// Target is what the lane's steps talk to, by default (# Targets:
-	// orders-api), for swim observe; a step's --target overrides it.
+	// orders-api), logged with each step; a step's --target overrides it.
 	Target string
 }
 
@@ -310,8 +310,7 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 			}
 		}
 	case "Targets":
-		// The lane's default target for its steps (swim observe groups
-		// retries and failures by what a step talks to).
+		// The lane's default target for its steps (logged with each).
 		if f := splitList(v); len(f) > 0 && info.Target == "" {
 			info.Target = f[0]
 		}

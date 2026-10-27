@@ -917,7 +917,7 @@ func joinInts(codes []int) string {
 	return strings.Join(parts, ",")
 }
 
-// meta are a step block's key: and target: lines, for swim observe.
+// meta are a step block's key: and target: lines.
 func meta(o Options) []string {
 	var out []string
 	if o.Key != "" {

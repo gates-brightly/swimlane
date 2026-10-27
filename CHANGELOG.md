@@ -75,6 +75,18 @@ already pushed to origin's main) with the next tag and pushes that tag.
   swim is for. Runs still write their record (`.swim/runs/<run>.yml`,
   `swim.runrec/v1`); `swim log RUN` and `swim status --run RUN` read a
   run's rounds and state as before.
+- **Removed: swim observe.** `swim observe` (with `check`, `knowledge`,
+  `accept` and `reject`), the observations a run computed into
+  `.swim/observations/`, `swim report`'s observations section (and its
+  `--yaml` `observations` key), `swim status`'s `observed:` lines, `swim
+  plan`'s `known:` lines, the committed `knowledge/steps.yml` and doctor's
+  `knowledge-retired` are gone: a run's record says what happened; reading
+  patterns into it is the reader's job. `observe:` in `swim.yml` loads as
+  before (it's ignored; `swim doctor`: `removed-setting`). Steps keep
+  `--key`, `--target` and `# Targets:`, logged with each step as before.
+  `.swim/observations/` and `knowledge/` can be deleted. `# Observe:`
+  probes (facts checked between approval and the guarded step) are not
+  affected.
 - **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
   used to queue it as its own batch at once, so two jobs queued that way
   ran one after the other and `# After:` between them couldn't hold. Now

@@ -19,7 +19,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/observe"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/secrets"
@@ -43,6 +42,7 @@ type Settings struct {
 	RemovedChimeStyle  any      `yaml:"chime_style,omitempty"`
 	RemovedChimeMinS   any      `yaml:"chime_min_s,omitempty"`
 	RemovedScheduleTZ  any      `yaml:"schedule_tz,omitempty"`
+	RemovedObserve     any      `yaml:"observe,omitempty"`
 	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
 	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
 	SecretEnvIgnore    []string `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
@@ -60,12 +60,9 @@ type Settings struct {
 	PauseWarn          string   `yaml:"pause_warn,omitempty"`           // swim doctor warns about a lane paused longer than this (default 4h)
 	ClaimLease         string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
 	WatchBatches       int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
-	// Observe tunes swim observe's detectors (thresholds, not policy: it
-	// stales no approval).
-	Observe   *observe.Thresholds `yaml:"observe,omitempty"`
-	CacheDir  string              `yaml:"cache_dir,omitempty"`  // where tool caches live (default ~/.cache/swim); config.yml only
-	CacheMax  string              `yaml:"cache_max,omitempty"`  // a repo's caches are trimmed to this (default 10GB; 0: no cap)
-	CacheSlug string              `yaml:"cache_slug,omitempty"` // the repo's cache directory name (default: name + remote hash); config.yml only
+	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
+	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
+	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
 	// the anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -261,7 +258,7 @@ func (s Settings) RemovedKeys() []string {
 	for _, k := range []struct {
 		name string
 		v    any
-	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}} {
+	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}
@@ -419,9 +416,6 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.WatchBatches != 0 {
 		c.WatchBatches = r.WatchBatches
-	}
-	if r.Observe != nil {
-		c.Observe = r.Observe
 	}
 	if r.CacheDir != "" {
 		c.CacheDir = r.CacheDir
@@ -950,13 +944,4 @@ func (c *Config) SecretsKeyPath() string {
 		return c.SecretsKey
 	}
 	return c.SigningKey
-}
-
-// ObserveThresholds are swim observe's detector thresholds (the
-// defaults where swim.yml's observe: leaves one out).
-func (c *Config) ObserveThresholds() observe.Thresholds {
-	if c == nil || c.Observe == nil {
-		return observe.Thresholds{}
-	}
-	return *c.Observe
 }
