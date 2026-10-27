@@ -15,6 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
@@ -98,7 +99,7 @@ func TestQueueAndWatchOnce(t *testing.T) {
 func TestWatchWaitsForBusyLanes(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	r.script(1, "long", `run "long" sleep 1.5`)
+	r.script(1, "long", `run "long" `+hold("go"))
 	r.script(2, "queued", `run "q" true`)
 	busy := r.cmd(bin, "run", "1", "--plain")
 	if err := busy.Start(); err != nil {
@@ -120,6 +121,7 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 	if r.status().Get(1).CurrentStep != "long" {
 		t.Errorf("swim 2's batch waited for swim run 1 to end:\n%s", out.String())
 	}
+	r.release("go")
 	busy.Wait()
 	waitFor(t, func() bool { return len(doneEntries(t, r)) == 2 })
 	syscall.Kill(-w.Process.Pid, syscall.SIGINT) // the watch stops between batches
@@ -215,7 +217,7 @@ var _ = exec.Command
 
 func TestWatchCtrlCDuringBatch(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "long", `run "a" sleep 1
+	r.script(1, "long", `run "a" `+hold("go")+`
 run "b" true`)
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "1") // waits for the first: same lane
@@ -227,9 +229,11 @@ run "b" true`)
 		t.Fatal(err)
 	}
 	defer w.Process.Kill()
-	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "a" })
-	time.Sleep(150 * time.Millisecond)
+	r.waitStep(t, 1, "a")
 	syscall.Kill(-w.Process.Pid, syscall.SIGINT)
+	// Step a ends once the stop is requested.
+	waitFor(t, func() bool { _, err := os.Stat(lane.StopPath(r.root, 1)); return err == nil })
+	r.release("go")
 	done := make(chan error, 1)
 	go func() { done <- w.Wait() }()
 	select {
@@ -329,7 +333,7 @@ func TestWatchDryRunMarked(t *testing.T) {
 func TestWaitAndQueueWait(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	r.script(1, "long", `run "long" sleep 1.5`)
+	r.script(1, "long", `run "long" `+hold("go"))
 	r.script(2, "queued", `run "q" true`)
 	r.script(3, "fails", `run "f" false`)
 	contains(t, "wait when idle", r.mustSwim("wait"), "swim wait: idle")
@@ -347,12 +351,13 @@ func TestWaitAndQueueWait(t *testing.T) {
 	// swim queue 2 --wait: shorthand for queue add, and it waits for the
 	// running lane, then its own batch.
 	q := r.cmd(bin, "queue", "2", "--wait")
-	var qout bytes.Buffer
-	q.Stdout, q.Stderr = &qout, &qout
+	qout := &syncBuffer{}
+	q.Stdout, q.Stderr = qout, qout
 	if err := q.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return strings.Contains(qout.String(), "queued q-") })
+	waitFor(t, func() bool { return strings.Contains(qout.String(), "swim wait: waiting: swim 1 is running") })
+	r.release("go")
 	w := r.cmd(bin, "watch", "--interval", "100ms")
 	w.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := w.Start(); err != nil {
@@ -391,7 +396,7 @@ func TestQueueWaitTimeout(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "still busy after 300ms: 1 queued batch(es) not yet taken by a worker") || !strings.Contains(out, "(#1) is still queued") {
 		t.Fatalf("queue --timeout with no worker: %d\n%s", code, out)
 	}
-	if took := time.Since(start); took > 5*time.Second {
+	if took := time.Since(start); took > scaled(5*time.Second) {
 		t.Errorf("--timeout 300ms took %s", took)
 	}
 	contains(t, "still queued", r.mustSwim("queue"), "#1", "queued")
@@ -399,8 +404,8 @@ func TestQueueWaitTimeout(t *testing.T) {
 	r.mustSwim("watch", "--once")
 	r.script(2, "q2", `run "q" true`)
 	q := r.cmd(bin, "queue", "2", "--wait", "--timeout", "30s")
-	var qout bytes.Buffer
-	q.Stdout, q.Stderr = &qout, &qout
+	qout := &syncBuffer{}
+	q.Stdout, q.Stderr = qout, qout
 	if err := q.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -421,13 +426,15 @@ func TestQueueWaitTimeout(t *testing.T) {
 func TestWatchBatchesSideBySide(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	stamp := func(name string) string {
+	// work is the middle step: side by side, swim 1's waits (up to 30s)
+	// for swim 2's start, so the two overlap however slow the machine.
+	stamp := func(name, work string) string {
 		return fmt.Sprintf(`run "%[1]s start" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.start"'
-run "%[1]s work" sleep 2
-run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name)
+run "%[1]s work" %[2]s
+run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 	}
-	r.script(1, "slow one", stamp("one"))
-	r.script(2, "two", stamp("two"))
+	r.script(1, "slow one", stamp("one", `bash -c 'for i in $(seq 600); do [ -e "$SWIM_ROOT/two.start" ] && exit 0; sleep 0.05; done'`))
+	r.script(2, "two", stamp("two", "sleep 0.2"))
 	times := func(name string) []float64 {
 		data, _ := os.ReadFile(filepath.Join(r.root, name))
 		var out []float64
@@ -466,6 +473,7 @@ run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name)
 
 	// One at a time.
 	reset()
+	r.script(1, "slow one", stamp("one", "sleep 0.2"))
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "2")
 	r.mustSwim("watch", "--once", "--batches", "1")

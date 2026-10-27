@@ -161,13 +161,19 @@ func TestReportWait(t *testing.T) {
 		out, _ := r.cmd(bin, "report", "--earmark", "--wait", "--interval", "100ms", "--timeout", "20s").CombinedOutput()
 		done <- string(out)
 	}()
-	time.Sleep(300 * time.Millisecond)
-	r.mustSwim("run", "1")
-	select {
-	case out := <-done:
-		contains(t, "--wait", out, ".swim.log", "  run  ", "earmark default moved to")
-	case <-time.After(waitDeadline):
-		t.Fatal("--wait didn't return")
+	// Something new until the waiter sees it: a run before it has read
+	// where it starts from isn't new to it, so run again until it returns.
+	deadline := time.After(waitDeadline)
+	for {
+		r.mustSwim("run", "1")
+		select {
+		case out := <-done:
+			contains(t, "--wait", out, ".swim.log", "  run  ", "earmark default moved to")
+			return
+		case <-time.After(time.Second):
+		case <-deadline:
+			t.Fatal("--wait didn't return")
+		}
 	}
 }
 
@@ -182,8 +188,7 @@ func TestReportInFlight(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Process.Kill()
-	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "slow step" })
-	time.Sleep(300 * time.Millisecond)
+	waitFor(t, spooled(r, 1, "started-slow"))
 	contains(t, "in flight", r.mustSwim("report", "--earmark"), "RUNNING", "slow step", "in progress", "started-slow")
 	os.WriteFile(release, nil, 0o644)
 	c.Wait()

@@ -375,7 +375,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 		if after != tr.before {
 			t.Errorf("terminal not restored after a panic: before %+v, after %+v", tr.before, after)
 		}
-		time.Sleep(100 * time.Millisecond)
+		waitFor(t, func() bool { return strings.Contains(tr.output(), "SWIM_TEST_TUI_PANIC") })
 		if out := tr.output(); !strings.Contains(out, "\x1b[?1049l") || !strings.Contains(out, "SWIM_TEST_TUI_PANIC") {
 			t.Errorf("panic output: %q", tail(out))
 		}

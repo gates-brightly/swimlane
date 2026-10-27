@@ -12,8 +12,8 @@ import (
 func TestLaneRunningElsewhere(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	r.script(1, "the other swim's lane", `run "work" sleep 1.5`)
-	r.script(2, "this swim's lane", `run "longer" sleep 3.5`)
+	r.script(1, "the other swim's lane", `run "work" `+hold("go1"))
+	r.script(2, "this swim's lane", `run "longer" `+hold("go2"))
 
 	other := r.cmd(bin, "run", "1", "--plain")
 	other.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -25,7 +25,16 @@ func TestLaneRunningElsewhere(t *testing.T) {
 	t.Cleanup(func() { syscall.Kill(-other.Process.Pid, syscall.SIGKILL) })
 	waitFor(t, func() bool { return laneOf(r, 1).State == "running" })
 
-	out := r.mustSwim("run", "2", "--plain")
+	// Lane 1 ends while this swim follows it; lane 2 outlasts it.
+	this := start(t, r.cmd(bin, "run", "2", "--plain"), nil)
+	this.saw(t, "[1] running in another swim")
+	r.release("go1")
+	this.saw(t, "[1] PASS")
+	r.release("go2")
+	if code := this.wait(t); code != 0 {
+		t.Fatalf("exit %d\n%s", code, this.out.String())
+	}
+	out := this.out.String()
 	other.Wait()
 	i := strings.Index(out, "[1] running in another swim: the other swim's lane")
 	j := strings.Index(out, "[1] PASS")
