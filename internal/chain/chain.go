@@ -129,8 +129,20 @@ type Entry struct {
 	// Action why a refusal was refused.
 	Secret string `json:"secret,omitempty"`
 
-	Signer string `json:"signer,omitempty"` // public key of whoever recorded the entry
-	Sig    string `json:"sig,omitempty"`
+	// RunKey: Signer is a run key swim run made for this entry's run, and
+	// this is the runner key vouching for it (sign.NewRunKey).
+	RunKey *sign.Delegation `json:"run_key,omitempty"`
+	Signer string           `json:"signer,omitempty"` // public key of whoever recorded the entry
+	Sig    string           `json:"sig,omitempty"`
+}
+
+// SignedBy is who vouches for the entry's signature: the runner key that
+// vouched for its run key, else its signer.
+func (e Entry) SignedBy() string {
+	if e.RunKey != nil {
+		return e.RunKey.By
+	}
+	return e.Signer
 }
 
 // Path is the chain file.
@@ -232,9 +244,9 @@ func link(f *os.File, end int64, e Entry, key *sign.Key) ([]byte, error) {
 	if e.At == "" {
 		e.At = time.Now().UTC().Format(time.RFC3339)
 	}
-	e.Signer, e.Sig = "", ""
+	e.Signer, e.Sig, e.RunKey = "", "", nil
 	if key != nil {
-		e.Signer = key.Public
+		e.Signer, e.RunKey = key.Public, key.RunKey
 		sig, err := sign.Sign(key, payload(e))
 		if err != nil {
 			return nil, SignError{err}
@@ -454,7 +466,8 @@ type Problem struct {
 }
 
 // Check walks the chain: every entry follows the one before it (seq and
-// prev hash), and every signed entry's signature is valid for its signer.
+// prev hash), every signed entry's signature is valid for its signer, and
+// a run key's delegation by the runner key holds.
 // Unsigned entries are reported separately (they are linked, but no one
 // vouches for them).
 func Check(links []Link) (problems []Problem, unsigned []int) {
@@ -474,6 +487,11 @@ func Check(links []Link) (problems []Problem, unsigned []int) {
 		if err := sign.Verify(l.Signer, payload(l.Entry), l.Sig); err != nil {
 			problems = append(problems, Problem{l.Line, l.Seq, "signature doesn't match the entry (it was changed after signing): " + err.Error()})
 		}
+		if l.RunKey != nil {
+			if err := l.RunKey.Check(l.Signer); err != nil {
+				problems = append(problems, Problem{l.Line, l.Seq, err.Error()})
+			}
+		}
 	}
 	return problems, unsigned
 }
@@ -489,13 +507,14 @@ type Untrusted struct {
 // Trust checks who signed: Check proves every signature matches the key
 // recorded beside it, which a chain re-signed wholesale with a new key
 // also passes; Trust says which signatures, entries' and their signed
-// approvals', were made by keys trusted doesn't vouch for. Unsigned
-// entries are Check's to report.
+// approvals', were made by keys trusted doesn't vouch for (for a run key,
+// the runner key that vouched for it). Unsigned entries are Check's to
+// report.
 func Trust(links []Link, trusted func(pub string) bool) []Untrusted {
 	var out []Untrusted
 	for _, l := range links {
-		if l.Sig != "" && !trusted(l.Signer) {
-			out = append(out, Untrusted{Seq: l.Seq, Line: l.Line, Key: l.Signer})
+		if l.Sig != "" && !trusted(l.SignedBy()) {
+			out = append(out, Untrusted{Seq: l.Seq, Line: l.Line, Key: l.SignedBy()})
 		}
 		for _, ap := range l.Approvers {
 			if ap.Sig != "" && !trusted(ap.Key) {

@@ -136,7 +136,7 @@ func (b *boundary) resign(t *testing.T) {
 		}
 		rehash[l.Hash] = h
 	}
-	if b.links()[0].Signer == links[0].Signer {
+	if b.links()[0].SignedBy() == links[0].SignedBy() {
 		t.Fatal("the chain wasn't re-signed")
 	}
 }

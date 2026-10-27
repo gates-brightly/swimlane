@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/authority"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
@@ -116,8 +117,14 @@ func laneProbes(root string, n int, m *manifest.Manifest) []lane.Probe {
 }
 
 // record appends an entry to the chain, signed by the runner's key when
-// there is one (authority.Record).
+// there is one (authority.Record). Under swim run a round's entry goes to
+// the launcher instead, which signs it with the run key: a lane needs no
+// key of its own.
 func record(root string, cfg *config.Config, e chain.Entry) error {
+	if tok := os.Getenv(approval.TokenEnv); launched() && tok != "" && (e.Type == "round" || e.Type == "check") {
+		_, err := approval.Record(os.Getenv(approval.EnvVar), tok, e)
+		return err
+	}
 	_, err := authority.Record(root, cfg, e)
 	return err
 }

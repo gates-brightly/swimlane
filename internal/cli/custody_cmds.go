@@ -666,7 +666,7 @@ func cmdHistory(args []string) error {
 		}
 		var rows []row
 		for _, l := range shown {
-			rows = append(rows, row{l.Entry, l.Hash, who(lk, l.Signer)})
+			rows = append(rows, row{l.Entry, l.Hash, who(lk, l.SignedBy())})
 		}
 		return yaml.NewEncoder(os.Stdout).Encode(map[string]any{"schema": "swim.history/v1", "entries": rows})
 	}
@@ -692,7 +692,7 @@ func cmdHistory(args []string) error {
 				fmt.Fprintln(w)
 			}
 			fmt.Fprintln(w, p.Paint(ui.Yellow, "entry "+l.Hash)+historyRefs(p, l))
-			fmt.Fprintln(w, "Signer: "+who(lk, l.Signer))
+			fmt.Fprintln(w, "Signer: "+who(lk, l.SignedBy()))
 			fmt.Fprintln(w, "Date:   "+gitDate(l.At))
 			fmt.Fprintln(w)
 			fmt.Fprintln(w, "    "+subject)
@@ -888,9 +888,9 @@ func (v *verifier) checkEntries(links []chain.Link) {
 		v.notes = append(v.notes, fmt.Sprintf("%d runs have approvals or rounds but no run attestation (lanes run directly with bash, runs from before attestations, or a swim run that didn't finish): their approvals can't be checked against what swim run recorded", unattested))
 	}
 	for _, l := range links {
-		if l.Signer != "" {
-			if _, ok := v.lk.Who(l.Signer); !ok {
-				v.unlisted[sign.Fingerprint(l.Signer)] = true
+		if by := l.SignedBy(); by != "" {
+			if _, ok := v.lk.Who(by); !ok {
+				v.unlisted[sign.Fingerprint(by)] = true
 			}
 		}
 		att, attested := runs[l.Run]

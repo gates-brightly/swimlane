@@ -19,14 +19,17 @@ machines. It is not a multi-user executor that isolates one user's work
 from another's, and it doesn't sandbox lane scripts.
 
 **Same user means the lane can do what you can.** A lane runs as the
-operator, so it can read the operator's files, including the runner key
-and the secrets key, use their ssh-agent, change its own environment and
-write `.swim/`. Nothing below confines a hostile lane: it can skip its
-guards and forge records signed with the runner key. What swim offers
-against that is detection, not prevention: the run attestation and `swim
-verify` show an approval swim run didn't record, and anchors show a
-history changed after it was checkpointed. Real confinement needs the
-guarded steps run by the launcher under another OS user, holding
+operator, so it can read the operator's files (the secrets key, and the
+runner key if it's a file), use their ssh-agent, change its own
+environment and write `.swim/`. Nothing below confines a hostile lane: it
+can skip its guards and write records. What swim offers against that is
+mostly detection: the run attestation and `swim verify` show an approval
+swim run didn't record, and anchors show a history changed after it was
+checkpointed. The one thing swim keeps from lanes is
+[signing](#the-runner-key): swim run signs with a key a lane never gets,
+and with a runner key that asks you for each use, a lane can't sign an
+entry `swim verify` trusts without you being asked. Real confinement needs
+the guarded steps run by the launcher under another OS user, holding
 credentials the lane never sees. swim doesn't do that.
 
 ## Actors and where credentials live
@@ -36,7 +39,8 @@ credentials the lane never sees. swim doesn't do that.
 | **Planner** (the AI session) and **workers** (its subagents) | Write lane scripts, queue batches, read logs back. | Nothing from swim. They don't need cloud credentials, VPN or approval keys. If the AI runs as your OS user on your machine, it can reach whatever that user can: keeping your credentials from it is up to you (a separate user, a container). |
 | **Operator** | Runs `swim run` / `swim all`, answers prompts, sets guard flags. | Their shell's environment (cloud profiles, tokens). Lanes run as the operator and inherit it. |
 | **Swimmer** (`swim watch`) | Runs queued batches once their lanes are free, each in a process of its own. | Its own environment's credentials. Its environment never approves a guard: only the batch's approvals count. |
-| **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Signs every chain entry swim records on this machine. | An SSH key on the operator's or swimmer's machine (or in ssh-agent). |
+| **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Vouches for each `swim run`'s run key, once per run, and signs what swim records outside a run (`swim approve`'s grants, `swim trash`, checkpoints). | An SSH key on the operator's or swimmer's machine: a file, in ssh-agent, or on a security key ([below](#the-runner-key)). |
+| **Run key** | Signs every chain entry of one `swim run`, the lanes' rounds included. | Only the launcher's memory, for the run. Never on disk, in a lane's environment or a descriptor a lane inherits. |
 | **Approvers** | Sign approvals of exact scripts, or standing approvals, with `swim approve`. | Their own SSH keys. Their public keys are in the committed `lookup.yml`. |
 | **Secrets** (`swim secret`) | Encrypted to your SSH key with age, decrypted once per run and served to lanes by the run's broker, which knows each lane process by its token. | An unguarded secret is readable by every lane in the run: it keeps values out of logs, the hub and git, not out of lane code. A guarded one (`swim.yml` `secrets:`) goes only to a lane whose guard of it was approved in this run. With a key that has no passphrase, a lane can decrypt the store itself. |
 | **Hub** (`swim hub`) | Admits swimmers: any machine may join (`swim auth login`), but it shows nothing and takes no command until the hub's admin admits it, and a swimmer that joined already joins again only with its own token. Shows swimmers' status, logs and queues, and relays hub users' commands (interrupt, drain, run, log, and answers to waiting guards) to headless swimmers. It runs nothing itself and can't make an answer valid. Viewing a non-private hub shows a job's steps, commands and exit codes (masked as logs are); output needs a hub user. | Tokens (only hashes of swimmer and user tokens), sessions (by their ids' hashes), commands, and only ciphertext for secret grants. TLS (`--tls-cert`/`--tls-key`, clients pin `--ca`; session cookies are `Secure` under it); plain HTTP only on loopback or with `--insecure`. |
@@ -153,14 +157,13 @@ else stops it. What is enforced outside the script:
 so it can do what the operator can. swim tells a lane swim run started by
 its environment (`SWIM_LAUNCHED`), which the lane can change: then its
 guards act as outside swim run, and a guard flag it sets itself approves.
-It can append an approve entry to the chain itself, signed with the runner
-key, which it can read; `swim verify` then reports an approval swim run
-didn't record. It can write `.swim/status.yml`, its own log, or a chain
-entry under a run id it made up (`swim verify` notes runs without an
-attestation). And it can skip `guard` altogether (above). The attestation
-makes a forged entry detectable, not impossible: keeping the runner key
-from lanes (a separate OS user or an agent that confirms each signature)
-is a recorded follow-up. A lane process that leaves its lane's tree
+It can append an approve entry to the chain itself: unsigned, or signed by
+a key of its own (both fail `swim verify`), or by the runner key if it can
+reach it ([the runner key](#the-runner-key)), which `swim verify` then
+reports as an approval swim run didn't record. It can write
+`.swim/status.yml`, its own log, or a chain entry under a run id it made
+up (`swim verify` notes runs without an attestation). And it can skip
+`guard` altogether (above). A lane process that leaves its lane's tree
 (daemonized) can't ask or report at all, and on platforms where swim can't
 name a socket's peer the token alone decides.
 
@@ -212,9 +215,10 @@ name a socket's peer the token alone decides.
 
 - **The chain.** Every approval and every round is an entry in
   `.swim/chain.jsonl`. Each holds a sequence number and the SHA-256 of the
-  entry before it, and is signed with the runner's SSH key
-  (`ssh-keygen -Y`, the format git uses for SSH commit signing). Changing,
-  removing or reordering an entry breaks every link after it.
+  entry before it, and is signed (`ssh-keygen -Y`, the format git uses for
+  SSH commit signing): under `swim run` by the run's run key, with the
+  runner key's delegation beside it; otherwise by the runner key itself.
+  Changing, removing or reordering an entry breaks every link after it.
 - **How each guard was approved.** An approve entry records the guard, the
   action, the script's hash, the approvers, and the method: `signature`,
   `standing` or `signature+standing` (signed approvals, each carrying the
@@ -238,6 +242,72 @@ name a socket's peer the token alone decides.
   (a passphrase and no agent). `signing: off` records unsigned entries.
   `swim verify` fails on unsigned entries (nothing vouches for them, and a
   chain rewritten with no key looks the same) unless `--allow-unsigned`.
+
+## The runner key
+
+*A lane can't get a signature `swim verify` trusts from swim, and with a
+runner key that asks for each use, not without asking you.*
+
+- **swim run signs with a run key.** As a run starts, the launcher makes
+  an ed25519 key in its own memory and has the runner key sign a
+  statement vouching for it for that run (the run id, the key, the host,
+  the time). Every entry of the run is signed with the run key and carries
+  that delegation (`run_key`). The run key is never written anywhere, put
+  in a lane's environment, or left on a descriptor a lane inherits, and
+  swim drops it when the run ends.
+- **A lane's round goes through the launcher.** `swim _finish` sends its
+  round's entry over the run's approval socket, and the launcher signs it:
+  one round (or check) entry per lane process, under the lane, job, run
+  and manifest the launcher started it with, whatever the entry says. It
+  signs no other kind for a lane (approve entries are its own, as an
+  approval is consumed; so is the attestation), and refuses a token used
+  from outside its lane's process tree (where the OS can tell). So a lane
+  needs no key, and swim gives it none.
+- **The launcher's memory is closed to lanes on Linux:** it makes itself
+  non-dumpable, so a process of the same user can't ptrace it or read its
+  `/proc/<pid>/mem` or `environ` (a process with `CAP_SYS_PTRACE`, root
+  included, still can). Elsewhere it relies on the OS's own rules for
+  debugging another process.
+- **`swim verify` checks the delegation.** consistent: each run-key
+  signature, and the runner key's signature over the delegation, and that
+  the delegation names the key that signed; a delegation copied onto
+  another key breaks. trusted, `swim history` and the `lookup.yml`
+  listing judge an entry by the runner key that vouched for it. Both
+  signatures check with plain `ssh-keygen -Y verify`.
+
+What's left is the runner key itself. A lane runs as you, so it can use
+the runner key the way you can, and what it signs with it is trusted:
+
+| Where the runner key lives | What a lane can do | `swim doctor` (`signing-key`) |
+|---|---|---|
+| A file with no passphrase | Read it and sign anything, during the run or after. | warns |
+| A file with a passphrase, used through ssh-agent | Ask the agent to sign, while it holds the key. | notes |
+| Only in ssh-agent (`signing_key` is the `.pub`) | Ask the agent to sign, while it holds the key; nothing to copy. | notes |
+| ssh-agent, added with `ssh-add -c` | Ask the agent, which asks you: swim run's one question as the run starts is expected, any other during a run isn't swim's. | notes |
+| A security key (`ssh-keygen -t ed25519-sk`) | Ask the device, which needs your touch (unless made with `no-touch-required`): swim run asks once per run. | notes |
+
+Removing `SSH_AUTH_SOCK` from a lane's environment wouldn't change this
+(a process running as you can find the agent's socket) and would break
+lanes that use ssh, so swim leaves it. Keep the runner key off disk and
+behind a question: an agent with `ssh-add -c` or a security key. Then
+swim run asks once per run (plus once for the checkpoint when
+`chain_anchors` is set), and a lane can only get a signature by asking
+you. A file key keeps working, as the weaker mode.
+
+If the runner key won't vouch for a run key (you said no, no touch, a
+passphrase and no agent), `signing: required` stops the run before any
+lane starts; `auto` records the run unsigned, with one warning, instead
+of asking again for every entry. A headless swimmer has no one to answer
+a question or touch a key, so its runner key is in one of the weaker
+modes.
+
+What this doesn't cover: a round entry's contents (its result, its log's
+hash) are what the lane reports, signed by the launcher; a lane can call
+`swim _finish` early to report first. The attestation checks what each
+lane ran, not how it ended. Commands you run yourself (`swim approve`,
+`swim trash`, `swim chain checkpoint`) sign with the runner key directly,
+as does swim run ending the round of a lane a dead run left behind, and
+so does a lane that runs them, if it can reach the key.
 
 **What `swim verify` proves, and what it doesn't.** It prints one answer,
 VERIFIED or NOT VERIFIED (exit 1), and what it couldn't check. It fails
@@ -336,9 +406,10 @@ lane and on a swimmer running `swim watch -y`. Guards approved by a flag
   doesn't stop a process running as you from using what you have.
 - **Tampering by whoever holds the runner key and can write every anchor,**
   and anything written after the last checkpoint (above). Lanes run as
-  the operator, so a lane can read the runner key too: what it signs is
-  detectable through the run attestation (consistent, above), not
-  prevented.
+  the operator, so a lane can use the runner key wherever you can without
+  being asked ([a file, an agent without `ssh-add -c`](#the-runner-key)):
+  what it signs then is detectable through the run attestation
+  (consistent, above), not prevented.
 - **A compromised hub.** It can show false information and send commands,
   as any user could. Each command is checked by the swimmer, not the hub:
   the swimmer's access (`swim auth login --access`: `read` takes only
@@ -408,6 +479,10 @@ Test files are under `internal/`. "Pending" names the task in
 | Changing, removing or reordering a chain entry is detected. | `TestChainLinksAndDetectsTampering` (chain) |
 | An edited log or chain entry fails `swim verify`. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
 | Every approval is recorded with its method and signed by the runner; the scripts that ran are kept; `signing: required` refuses without a key; `--strict` fails on unsigned entries. | `TestChainRecordsEveryApproval` (e2e/custody_test.go) |
+| Under `swim run`, every entry is signed by a run key the runner key vouched for once; a lane has no runner key file to read, its own try at the agent is put to the operator (who says no), and on Linux it can't read the launcher's memory; `swim verify` trusts the run. When the runner key won't vouch for a run key, `signing: required` stops the run before a lane starts and `auto` records it unsigned, asking once. | `TestRunKeyKeepsSigningFromLanes` (e2e/runkey_test.go) |
+| The launcher signs only a lane's own round or check entry, once per lane process, under its own lane, job, run and manifest; any other kind is refused, and so is a token used from outside its lane. | `TestLaneEntry` (launcher), `TestRecordFromTheLane` (approval) |
+| A run key's signature checks with plain `ssh-keygen`; its delegation holds only for its run, key and runner key; a delegation copied onto another key breaks consistent, and one by a key outside the trusted set fails trusted. | `TestRunKey` (sign), `TestRunKeyEntries` (chain) |
+| `swim doctor` warns when the runner key is a file with no passphrase, and notes a key in ssh-agent. | `TestSigningKey` (doctor) |
 | Entries signed with an old runner key still verify. | `TestRecoveryLostRunnerKey` (e2e/recovery_test.go) |
 | `git push`, `commit` and `pull` are blocked in the script, at the step and by the shim. | `TestBlockedCommands` (e2e/e2e_test.go) |
 | A chain re-signed wholesale with a new key is consistent but not trusted; with an anchor, not anchored either. | `TestTrustCatchesWholesaleReplacement` (chain), `TestSecurity` (e2e/security_test.go) |

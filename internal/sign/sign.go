@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // Namespace scopes swim's signatures: one made for swim can't be passed off
@@ -22,10 +24,14 @@ import (
 const Namespace = "swim@gates-brightly"
 
 // Key is a signing key: the path ssh-keygen signs with (a private key, or
-// a .pub whose private half is in ssh-agent) and its public key line.
+// a .pub whose private half is in ssh-agent) and its public key line; or a
+// run key (NewRunKey), held in memory and vouched for by RunKey.
 type Key struct {
 	Path   string
 	Public string // "ssh-ed25519 AAAA... comment"
+	RunKey *Delegation
+
+	signer ssh.Signer // a run key's private half
 }
 
 // Available reports whether ssh-keygen is installed.
@@ -72,6 +78,9 @@ func LoadKey(path string) (*Key, error) {
 
 // Sign signs data with k and returns the signature as one line of base64.
 func Sign(k *Key, data []byte) (string, error) {
+	if k.signer != nil {
+		return sshsig(k.signer, data)
+	}
 	dir, err := os.MkdirTemp("", "swim-sign-")
 	if err != nil {
 		return "", err

@@ -32,6 +32,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/runrec"
 	"github.com/gates-brightly/swimlane/internal/secrets"
+	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -125,6 +126,8 @@ type Options struct {
 	approvalSrv  *approval.Server
 	manifests    map[int]*manifest.Manifest // each lane's, staged (stage.go)
 	auth         *runAuthority              // decides and records the run's approvals (authority.go)
+	runKey       *sign.Key                  // signs the run's entries (runKey, authority.go)
+	unsigned     bool                       // the runner key didn't vouch for a run key: record unsigned
 	secrets      *runSecrets                // the run's decrypted secrets and broker; nil for none
 	env          map[int]*envfile.Resolved  // each lane's env from env files
 
@@ -460,6 +463,9 @@ func Run(o Options) (int, error) {
 			yes := disp.Ask(req.Lane, approval.Question(req), cancel)
 			return approval.Response{Approved: yes, By: operator()}
 		}
+	}
+	if err := runKey(&o); err != nil {
+		return 2, err
 	}
 	authErr := ""
 	if srv, err := startAuthority(&o, ask, disp); err != nil {

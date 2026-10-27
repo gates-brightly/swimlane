@@ -17,6 +17,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/secrets"
+	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
 
@@ -26,7 +27,9 @@ import (
 // environment's guard flags) or asks the operator, and it records each
 // approval in the chain as the lane uses it. When the last lane exits it
 // attests the run: what each lane ran and every approval it recorded, so
-// swim verify can tell an approve entry a lane wrote itself.
+// swim verify can tell an approve entry a lane wrote itself. Every entry
+// of the run, the lanes' rounds included, is signed with the run key
+// (runKey), so a lane needs no key of its own.
 type runAuthority struct {
 	snap *authority.Snapshot
 	disp *display.Display
@@ -38,12 +41,16 @@ type runAuthority struct {
 	// token), as it used them: what releases a guarded secret to it.
 	// Forgotten when the process exits.
 	granted map[string]map[string]secrets.Approval
+	// recorded are the entries each lane process had recorded ("token
+	// round"): one round or check entry each.
+	recorded map[string]bool
 }
 
 // startAuthority starts the approval broker. ask asks the operator (nil:
 // no one can be asked, so a guard that nothing else approves is a dry run).
 func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*approval.Server, error) {
-	a := &runAuthority{snap: authority.Take(o.Root, os.Environ()), disp: disp, flags: map[string]bool{}, granted: map[string]map[string]secrets.Approval{}}
+	a := &runAuthority{snap: authority.Take(o.Root, os.Environ()), disp: disp, flags: map[string]bool{}, granted: map[string]map[string]secrets.Approval{},
+		recorded: map[string]bool{}}
 	srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
 		resp := a.decide(*o, req, ask, cancel)
 		if !resp.Approved {
@@ -62,7 +69,7 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 		}
 	}
 	srv.Record = func(c approval.Caller, g *approval.Grant) (string, error) {
-		hash, err := authority.Record(o.Root, o.Cfg, g.Entry)
+		hash, err := o.record(g.Entry)
 		if err != nil {
 			return "", err
 		}
@@ -82,8 +89,76 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 		history.Log(o.Root, history.Entry{Event: history.Approve, Lane: g.Entry.Lane, Job: g.Entry.Job, Run: g.Entry.Run, Detail: g.History})
 		return hash, nil
 	}
+	srv.Chain = func(c approval.Caller, e chain.Entry) (string, error) { return a.laneEntry(o, c, e) }
 	o.auth = a
 	return srv, nil
+}
+
+// runKey makes the key the launcher signs the run's entries with: a run
+// key in its memory, which the runner key vouches for once (one prompt or
+// touch, for a key that asks: sign.NewRunKey). Without a runner key it's
+// nil and entries are recorded as before (unsigned, or refused under
+// signing: required). When the runner key can't vouch for one (the
+// operator said no, a passphrase and no agent), signing: required stops
+// the run before any lane starts; auto records the run unsigned, with one
+// warning, rather than ask again for every entry.
+func runKey(o *Options) error {
+	hideMemory()
+	long, err := authority.Key(o.Cfg)
+	if err != nil || long == nil {
+		return nil // authority.Record says why, as before
+	}
+	if sign.Storage(long) == sign.OnDevice {
+		fmt.Fprintln(os.Stderr, "swim: touch the runner key's security key to start the run (once)")
+	}
+	host, _ := os.Hostname()
+	k, err := sign.NewRunKey(long, o.RunID, host)
+	switch {
+	case err == nil:
+		o.runKey = k
+	case o.Cfg.SigningMode() == config.SigningRequired:
+		return fmt.Errorf("signing: required, but the runner key didn't vouch for a run key: %v", err)
+	default:
+		fmt.Fprintln(os.Stderr, "swim: warning: chain of custody: the runner key didn't vouch for a run key ("+err.Error()+"); this run is recorded unsigned")
+		o.unsigned = true
+	}
+	return nil
+}
+
+// record appends e to the chain, signed with the run key.
+func (o *Options) record(e chain.Entry) (string, error) {
+	switch {
+	case o.runKey != nil:
+		return authority.RecordWith(o.Root, o.Cfg, o.runKey, e)
+	case o.unsigned:
+		return authority.RecordWith(o.Root, o.Cfg, nil, e)
+	}
+	return authority.Record(o.Root, o.Cfg, e)
+}
+
+// laneEntry records the entry a lane process sends as its round ends
+// (swim _finish), signed by the launcher: one round or check entry per
+// process, for its own lane, job, run and manifest whatever it says.
+// Approvals are recorded as they're consumed and the attestation is the
+// launcher's own, so a lane gets no other entry signed.
+func (a *runAuthority) laneEntry(o *Options, c approval.Caller, e chain.Entry) (string, error) {
+	if e.Type != "round" && e.Type != "check" {
+		return "", fmt.Errorf("a lane can't record a %q entry", e.Type)
+	}
+	k := c.Token + " " + e.Type
+	a.mu.Lock()
+	done := a.recorded[k]
+	a.recorded[k] = true
+	a.mu.Unlock()
+	if done {
+		return "", fmt.Errorf("swim %d's process already recorded its %s entry", c.Lane, e.Type)
+	}
+	r := chain.Entry{Type: e.Type, Run: or(c.Run, e.Run), Lane: c.Lane, Job: or(c.Job, e.Job), Round: e.Round,
+		Script: e.Script, Manifest: or(c.Manifest, e.Manifest), Result: e.Result, Exit: e.Exit, Log: e.Log,
+		Approvals: e.Approvals, AutoApproved: e.AutoApproved, EnvSHA256: e.EnvSHA256, Handlers: e.Handlers,
+		Outputs: e.Outputs, Inputs: e.Inputs, Evidence: e.Evidence, InputRounds: e.InputRounds,
+		PausedS: e.PausedS, ReplacedBy: e.ReplacedBy, Cache: e.Cache}
+	return o.record(r)
 }
 
 // dryRun marks lane n (and its cell) as having dry-run guard flag this
@@ -318,7 +393,7 @@ func attestUnavailable(o Options, sel []int, why string) {
 			e.Scripts[strconv.Itoa(n)] = m.ScriptSHA
 		}
 	}
-	if _, err := authority.Record(o.Root, o.Cfg, e); err != nil {
+	if _, err := o.record(e); err != nil {
 		fmt.Fprintln(os.Stderr, "swim: run attestation: "+err.Error())
 	}
 }
@@ -348,7 +423,7 @@ func (a *runAuthority) attest(o Options, sel []int) {
 	if len(e.Manifests) == 0 && len(e.Approvals) == 0 {
 		return // nothing ran
 	}
-	if _, err := authority.Record(o.Root, o.Cfg, e); err != nil {
+	if _, err := o.record(e); err != nil {
 		fmt.Fprintln(os.Stderr, "swim: run attestation: "+err.Error())
 	}
 }

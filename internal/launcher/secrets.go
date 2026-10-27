@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
-	"github.com/gates-brightly/swimlane/internal/authority"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
@@ -250,7 +249,7 @@ func (rs *runSecrets) chain(o *Options, c secrets.Caller, e chain.Entry) {
 	if m := o.manifests[c.Lane]; m != nil {
 		e.Script, e.Manifest = m.ScriptSHA, m.SHA256
 	}
-	if _, err := authority.Record(o.Root, o.Cfg, e); err != nil {
+	if _, err := o.record(e); err != nil {
 		fmt.Fprintln(os.Stderr, "swim: secrets: "+err.Error())
 	}
 }

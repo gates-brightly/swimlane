@@ -1759,6 +1759,11 @@ swim resume  N|JOB ... | --all      (the same command)
                               or the repo-wide pause left on that long
     schedule-no-worker (warn) batches are scheduled, but no swim watch runs
                               here to start them
+    signing-key (info/warn)   where the runner key lives: warns when it's
+                              a file with no passphrase (a lane could read
+                              it and sign as the runner); notes that a key
+                              in ssh-agent can be asked by a lane unless
+                              added with ssh-add -c
     guarded-secrets (info/warn) lists swim.yml's guarded secrets (info);
                               warns when the secrets key has no passphrase:
                               a lane could decrypt them itself

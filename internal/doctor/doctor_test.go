@@ -10,6 +10,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/finding"
+	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
 // buildFor cross-compiles a tiny Go program for goos/goarch.
@@ -287,5 +288,31 @@ func TestGuardedSecretsAndAmbientCredentials(t *testing.T) {
 	os.WriteFile(filepath.Join(home, ".aws", "config"), []byte("[default]\nregion = x\n[profile prod-write]\nrole_arn = y\n"), 0o600)
 	if fs := checkAmbientCredentials(o); len(fs) != 1 || fs[0].Code != "ambient-credential" || !strings.Contains(fs[0].Message, "prod-write") {
 		t.Errorf("a configured profile: %+v", fs)
+	}
+}
+
+// A runner key in a plain file is a warning: a lane could read it. One a
+// lane can only reach through ssh-agent is a note.
+func TestSigningKey(t *testing.T) {
+	if !sign.Available() {
+		t.Skip("ssh-keygen not installed")
+	}
+	p := filepath.Join(t.TempDir(), "runner")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", p).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	o := &Options{Root: t.TempDir(), Cfg: &config.Config{}}
+	o.Cfg.SigningKey = p
+	if fs := checkSigningKey(o); len(fs) != 1 || fs[0].Level != finding.Warn || !strings.Contains(fs[0].Message, "no passphrase") {
+		t.Errorf("a plain file: %+v", fs)
+	}
+	os.Remove(p)
+	o.Cfg.SigningKey = p + ".pub"
+	if fs := checkSigningKey(o); len(fs) != 1 || fs[0].Level != finding.Info || !strings.Contains(fs[0].Message, "ssh-agent") {
+		t.Errorf("in the agent only: %+v", fs)
+	}
+	o.Cfg.Signing = config.SigningOff
+	if fs := checkSigningKey(o); len(fs) != 0 {
+		t.Errorf("signing off: %+v", fs)
 	}
 }

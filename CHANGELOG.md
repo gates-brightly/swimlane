@@ -240,6 +240,13 @@ already pushed to origin's main) with the next tag and pushes that tag.
   sent as `lane_token`).
 - **`swim verify` reports levels** with `--levels` (see above). CI that
   reads the output should use `swim verify --yaml` and its level fields.
+- **swim run signs with a run key (see Security).** A run's chain entries
+  carry `run_key`, the runner key vouching for the key that signed them; a
+  swim from before this can't check them, so update every machine that
+  runs `swim verify`. Under `signing: required` a run stops before any lane
+  starts when the runner key won't vouch for its run key (the operator
+  said no to `ssh-add -c`'s question, no touch, no agent for a passphrase);
+  under `auto` that run is recorded unsigned, with one warning.
 
 ### Docs
 
@@ -269,6 +276,22 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Security
 
+- **A lane can't sign as the runner by using swim:** `swim run` makes a
+  run key in its own memory as the run starts, has the runner key
+  (`signing_key`) vouch for it once, and signs every entry of the run with
+  it, the lanes' rounds included: `swim _finish` hands its round's entry
+  to the launcher over the run's approval socket instead of signing it.
+  The launcher signs one round (or check) entry per lane process, for its
+  own lane, job, run and manifest, and no other kind. A lane is given no
+  key, path or descriptor that signs, and on Linux the launcher is
+  non-dumpable, so a lane can't read the run key from its memory.
+  `swim verify` checks each delegation and trusts a run key's entries as
+  the runner key's. What this doesn't stop: a lane still runs as you, so
+  it can use the runner key itself if it can reach it. Keep the key off
+  disk: in ssh-agent added with `ssh-add -c`, or on a security key, so
+  each use asks you, and swim run asks once per run. A file key with no
+  passphrase still works; `swim doctor` warns about it (`signing-key`).
+  See [the trust model](docs/trust-model.md#the-runner-key).
 - **A lane can't approve its own guard by changing its environment
   (T28):** a lane that unset `SWIM_APPROVAL` or `SWIM_LAUNCHED` and set the
   guard's flag got its guard approved, and when swim run couldn't start its

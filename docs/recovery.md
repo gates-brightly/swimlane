@@ -156,12 +156,14 @@ swim note "swim verify: <what broke>; copy in ~/swim-evidence"
 
 ## A lost runner key
 
-**You see:** `signing: required, but ...` when a round starts, or (under
-`signing: auto`) new chain entries recorded unsigned, which `swim verify`
-warns about.
+**You see:** `signing: required, but ...` when a run or round starts
+(`... didn't vouch for a run key`), or (under `signing: auto`) new chain
+entries recorded unsigned, which `swim verify` warns about.
 
 **Why:** the key in `signing_key` (default `~/.ssh/id_ed25519`) is gone, or
-needs a passphrase and no ssh-agent holds it.
+needs a passphrase and no ssh-agent holds it; or it asks for each use
+(`ssh-add -c`, a security key) and nobody said yes or touched it as the
+run started ([the runner key](trust-model.md#the-runner-key)).
 
 **Fix:**
 

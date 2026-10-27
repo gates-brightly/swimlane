@@ -272,3 +272,46 @@ func TestCheckpointCatchesTruncationAndReplacement(t *testing.T) {
 		t.Errorf("unsigned: %v", err)
 	}
 }
+
+// An entry signed by a run key counts as the runner key's when the runner
+// key vouched for that run key: a key of a lane's own with a delegation
+// copied from another entry breaks, and one vouched for by a key outside
+// the trusted set isn't trusted.
+func TestRunKeyEntries(t *testing.T) {
+	root, runner, mallory := t.TempDir(), key(t), key(t)
+	rk, err := sign.NewRunKey(runner, "r1", "h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Append(root, Entry{Type: "round", Run: "r1", Lane: 1}, rk); err != nil {
+		t.Fatal(err)
+	}
+	links, _ := Read(root)
+	if links[0].RunKey == nil || links[0].SignedBy() != runner.Public {
+		t.Fatalf("run key entry: %+v", links[0].Entry)
+	}
+	trusted := func(pub string) bool { return sign.KeyOnly(pub) == sign.KeyOnly(runner.Public) }
+	if p, u := Check(links); len(p) != 0 || len(u) != 0 || len(Trust(links, trusted)) != 0 {
+		t.Fatalf("an honest run key entry: %+v %v %+v", p, u, Trust(links, trusted))
+	}
+
+	// A lane signs with a key of its own and borrows the delegation.
+	own, _ := sign.NewRunKey(mallory, "r1", "h")
+	forged := *own
+	forged.RunKey = links[0].RunKey
+	if _, err := Append(root, Entry{Type: "approve", Run: "r1", Lane: 1, Guard: "F"}, &forged); err != nil {
+		t.Fatal(err)
+	}
+	// Or has its own key vouch for one.
+	if _, err := Append(root, Entry{Type: "approve", Run: "r1", Lane: 1, Guard: "F"}, own); err != nil {
+		t.Fatal(err)
+	}
+	links, _ = Read(root)
+	p, _ := Check(links)
+	if len(p) != 1 || p[0].Seq != 2 || !strings.Contains(p[0].What, "vouches for another key") {
+		t.Errorf("a borrowed delegation: %+v", p)
+	}
+	if bad := Trust(links, trusted); len(bad) != 1 || bad[0].Seq != 3 || bad[0].Key != mallory.Public {
+		t.Errorf("a run key vouched for by an untrusted key: %+v", bad)
+	}
+}

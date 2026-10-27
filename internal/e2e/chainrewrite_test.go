@@ -31,7 +31,7 @@ func rewriteChain(t *testing.T, r *repo, key *sign.Key) {
 		if e.Type == "round" && !renamed {
 			e.Round, renamed = "something nobody ran", true
 		}
-		e.Prev, e.Signer, e.Sig = prev, "", ""
+		e.Prev, e.Signer, e.Sig, e.RunKey = prev, "", "", nil
 		if key != nil {
 			e.Signer = key.Public
 			payload, _ := json.Marshal(e)
