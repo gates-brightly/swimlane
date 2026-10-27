@@ -166,6 +166,11 @@ func cmdCi(args []string) error {
 		return err
 	}
 	checkpointAfterRun(root, cfg)
+	// CI can't approve: a dry run is what a guarded lane does there, so it
+	// passes (its report and JUnit case say skipped).
+	if code == launcher.ExitDryRun {
+		code = 0
+	}
 
 	// Reports, from the logs.
 	reps := ci.Collect(root, sel, o.RunID)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
+	"github.com/gates-brightly/swimlane/internal/launcher"
 )
 
 // broker is a scripted stand-in for swim run's approval broker.
@@ -110,7 +111,7 @@ func TestNoPromptWithoutTerminal(t *testing.T) {
 	r.script(1, "guarded", `if guard FLAG_X "risky"; then run "risky" true; fi`)
 	r.script(2, "other", `run "x" true`)
 	// swim all with no terminal: no broker, lanes don't prompt on their own.
-	out := r.mustSwim("all", "--plain")
+	out := r.mustDryRun("all", "--plain")
 	contains(t, "agent1.log", r.log(1), "SKIP  risky (dry run: set FLAG_X=1 to approve)")
 	if strings.Contains(out, "requires human approval") {
 		t.Errorf("prompted without a terminal:\n%s", out)
@@ -131,7 +132,7 @@ if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
 	c := r.cmd(bin, "all", "-y", "--plain")
 	c.Env = append(c.Env, "SWIM_USER=tester", "ALLOW_OFF=0")
 	out, err := c.CombinedOutput()
-	if err != nil {
+	if c.ProcessState.ExitCode() != launcher.ExitDryRun { // ALLOW_OFF=0 dry-runs
 		t.Fatalf("swim all -y: %v\n%s", err, out)
 	}
 	contains(t, "output", string(out), "swim: -y: every guard whose flag isn't set is approved without asking",

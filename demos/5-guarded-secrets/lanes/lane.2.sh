@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:  Tidy up old tables
 # Owner:  planner (AI session)
 #

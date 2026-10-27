@@ -43,7 +43,7 @@ Three formats have a syntax version (`internal/syntax`):
 
 | Syntax | Covers | Says it |
 |---|---|---|
-| **script** | Lane scripts | In the file: `# swim: syntax 3` |
+| **script** | Lane scripts | In the file: `# swim: syntax 4` (what `swim new` writes) |
 | **log** | Lane logs | In the file's first line: `# swim lane log \| syntax 2 \| swim N` |
 | **state** | swim's state files: `.swim/status.yml`, the chain, queued batches, signed approvals | Not in the files: only the lock records it |
 

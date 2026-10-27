@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:   CI: fault injection (crashes at named points)
 # Job:     5c1a0016-11a7-4c1e-8d00-000000000016
 # Owner:   swim CI

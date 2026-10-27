@@ -17,6 +17,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -61,6 +62,8 @@ func cmdBatch(args []string) error {
 	switch {
 	case interrupted:
 		return exitError{batchInterrupted}
+	case res.Exit == launcher.ExitDryRun:
+		return exitError{launcher.ExitDryRun}
 	case res.Exit != 0:
 		return exitError{1}
 	}
@@ -355,7 +358,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 		for _, bp := range b.reap() {
 			word := batchOutcome(root, bp)
 			switch word {
-			case "passed":
+			case "passed", "skipped": // a dry run waits on an approval; it didn't fail
 			case "interrupted":
 				stopping = true
 			default:
@@ -786,6 +789,8 @@ func batchOutcome(root string, bp *batchProc) string {
 		return "passed"
 	case batchInterrupted:
 		return "interrupted"
+	case launcher.ExitDryRun:
+		return "skipped"
 	}
 	return "failed"
 }

@@ -19,6 +19,7 @@ import (
 	// rerun them (instead of reusing a cached pass) when that code changes.
 	_ "github.com/gates-brightly/swimlane/internal/cli"
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/lint"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -245,6 +246,17 @@ func (r *repo) mustSwim(args ...string) string {
 	return out
 }
 
+// mustDryRun runs swim and requires exit ExitDryRun: nothing failed, but a
+// guarded step dry-ran.
+func (r *repo) mustDryRun(args ...string) string {
+	r.t.Helper()
+	out, code := r.swim(args...)
+	if code != launcher.ExitDryRun {
+		r.t.Fatalf("swim %v exited %d, want %d (a dry run):\n%s", args, code, launcher.ExitDryRun, out)
+	}
+	return out
+}
+
 // newLane is swim new N ..., with the template's placeholder snapshot
 // filled in, as an author would before running it.
 func (r *repo) newLane(n string, args ...string) string {
@@ -367,7 +379,9 @@ run "never" true`)
 	}
 
 	f := r.status()
-	want := map[int]string{1: status.Passed, 2: status.Passed, 3: status.Failed, 4: status.Passed}
+	// Lane 2 dry-ran its guarded step: skipped, not passed, so lane 4 after
+	// it never started.
+	want := map[int]string{1: status.Passed, 2: status.Skipped, 3: status.Failed, 4: status.Skipped}
 	for n, st := range want {
 		if got := f.Get(n).State; got != st {
 			t.Errorf("swim %d state = %s, want %s", n, got, st)
@@ -422,6 +436,37 @@ func TestSkipPropagatesDownChain(t *testing.T) {
 	contains(t, "plan after skips", r.mustSwim("plan"), "[~] swim 4  four")
 	if r.log(2) != "" {
 		t.Error("skipped lane wrote a log")
+	}
+}
+
+// A round that only dry-ran its guarded change didn't do its work: it's
+// skipped, not passed, and a lane after it doesn't start.
+func TestDryRunIsSkippedNotPassed(t *testing.T) {
+	r := newRepo(t, "{2: [1]}")
+	r.script(1, "change", `stage change
+if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then run "do x" echo did-x; fi`)
+	r.script(2, "after", `run "assumes x" true`)
+	out, code := r.swim("run", "--no-prompt")
+	if code != launcher.ExitDryRun {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	contains(t, "output", out, "dry run: do x", "[2] SKIP (swim 1 skipped)")
+	contains(t, "agent1.log", r.log(1), "== END SKIP  pass=0 fail=0 skip=1")
+	f := r.status()
+	if l := f.Get(1); l.State != status.Skipped || l.Reason != "dry run: do x" {
+		t.Fatalf("status 1: %+v", l)
+	}
+	if r.log(2) != "" {
+		t.Error("lane after a dry run started")
+	}
+	// Approved, the round passes and the lane after it runs.
+	c := r.cmd(bin, "run")
+	c.Env = append(c.Env, "TEST_ALLOW_X=1")
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("approved run: %v\n%s", err, out)
+	}
+	if f := r.status(); f.Get(1).State != status.Passed || f.Get(2).State != status.Passed {
+		t.Fatalf("after approval: 1=%+v 2=%+v", f.Get(1), f.Get(2))
 	}
 }
 
@@ -943,8 +988,13 @@ func TestPlan(t *testing.T) {
 	}
 	contains(t, "rerun", r.mustSwim("plan", "--rerun"), "[+/-] swim 1  root", "2 to rerun")
 
-	// After a full run, nothing is left.
-	r.mustSwim("all", "--plain")
+	// After a full run, nothing is left (lane 4's guard approved: a dry run
+	// would leave it to retry).
+	c = r.cmd(bin, "all", "--plain")
+	c.Env = append(c.Env, "PLAN_ALLOW_X=1")
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("all: %v\n%s", err, out)
+	}
 	contains(t, "plan after run", r.mustSwim("plan"), "No changes. 4 items have completed with no remaining work.")
 
 	// A cycle fails the plan just as it would fail the run.

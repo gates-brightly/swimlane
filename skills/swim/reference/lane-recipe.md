@@ -7,7 +7,7 @@ against `swim guide` (`WRITING A LANE SCRIPT`).
 
 ```bash
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:   Cut over orders-api from SST to Terraform
 # Job:     3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
 # After:   1

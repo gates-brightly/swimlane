@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:   CI: security (the security regression suite)
 # Job:     5c1a0017-11a7-4c1e-8d00-000000000017
 # Owner:   swim CI

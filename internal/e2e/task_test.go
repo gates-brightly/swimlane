@@ -24,7 +24,7 @@ func TestNamedTask(t *testing.T) {
 	r.script(2, "Renew the certs", "# Task: renew-certs\n"+`stage change
 if guard CERT_ALLOW "renew"; then run "renew" true; fi`)
 
-	contains(t, "dry run", r.mustSwim("run", "renew-certs", "--plain", "--no-prompt"), "SKIP  renew")
+	contains(t, "dry run", r.mustDryRun("run", "renew-certs", "--plain", "--no-prompt"), "SKIP  renew")
 	r.mustSwim("approve", "renew-certs", "--guards", "CERT_ALLOW", "--key", keys["alice"])
 	contains(t, "approved", r.mustSwim("renew-certs", "--plain", "--no-prompt"), "APPROVED  renew")
 	contains(t, "log", r.mustSwim("log", "renew-certs"), "APPROVED  renew")

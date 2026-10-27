@@ -36,7 +36,7 @@ creates `.swim/status.yml`. A **lane** is a numbered slot that holds one
 swim new 1 "Count the files here"
 cat > lane.1.sh <<'EOF'
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round: Count the files here
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 1
@@ -68,7 +68,7 @@ check, change, verify) say where the round is; a read-only preview
 ```sh
 cat > lane.1.sh <<'EOF'
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round: Only with a config file
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 1
@@ -95,7 +95,7 @@ echo "old data" > scratch.txt
 swim new 2 "Remove scratch.txt"
 cat > lane.2.sh <<'EOF'
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round: Remove scratch.txt
 # Guards: HOUR_ALLOW_RM  remove scratch.txt
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
@@ -114,7 +114,7 @@ run "what's left" ls "$SWIM_ROOT"
 
 summary
 EOF
-swim run 2 --plain --no-prompt
+swim run 2 --plain --no-prompt || echo "exit $?: a dry run"
 ls scratch.txt
 HOUR_ALLOW_RM=1 swim run 2 --plain
 ls scratch.txt 2>/dev/null || echo "scratch.txt is gone"
@@ -122,7 +122,9 @@ swim log 2 | grep -E 'SKIP|APPROVED'
 ```
 
 The **guard** is the destructive step's gate: unapproved, it's a **dry
-run** (`SKIP ... dry run`), and nothing changes. On a terminal, `swim run 2`
+run** (`SKIP ... dry run`), nothing changes, and the round ends SKIP,
+not PASS: it didn't do its work, so `swim run` exits 3 (waiting on an
+approval) and a lane after it won't start. On a terminal, `swim run 2`
 asks you (`Y/N [N]`); `HOUR_ALLOW_RM=1` approves up front, and the log
 records which it was (`APPROVED ... (HOUR_ALLOW_RM=1)`). The header's
 `# Guards:` line is the lane's contract: a guard it doesn't declare is
@@ -150,7 +152,7 @@ no longer matches:
 echo "old data" > scratch.txt
 echo "# an edit after approval" >> lane.2.sh
 swim approve
-swim run 2 --plain --no-prompt
+swim run 2 --plain --no-prompt || echo "exit $?: a dry run"
 ls scratch.txt
 ```
 
@@ -162,7 +164,7 @@ Dry run again: the approval was for the script as it was.
 swim new 3 "Build"
 cat > lane.3.sh <<'EOF'
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round: Build
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 3
@@ -173,7 +175,7 @@ EOF
 swim new 4 "Ship the build"
 cat > lane.4.sh <<'EOF'
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round: Ship the build
 # After: 3
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"

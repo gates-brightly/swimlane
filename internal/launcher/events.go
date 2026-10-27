@@ -159,7 +159,11 @@ func (e *events) summary(o Options, sel []int, outcomes map[int]*Outcome, code i
 		return
 	}
 	result := status.Passed
-	if code != 0 {
+	switch code {
+	case 0:
+	case ExitDryRun:
+		result = status.Skipped
+	default:
 		result = status.Failed
 	}
 	if interrupted {

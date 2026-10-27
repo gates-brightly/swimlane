@@ -94,6 +94,8 @@ func ReapDead(root string, cfg *config.Config, self string) []Reaped {
 				switch {
 				case !r.Found || !r.Finished:
 					s.State, s.Reason = status.Interrupted, "its process died"
+				case r.ExitCode == 0 && r.DryRun:
+					s.State, s.Reason = status.Skipped, r.DryRunReason()
 				case r.ExitCode == 0:
 					s.State = status.Passed
 				case r.ExitCode == 129 || r.ExitCode == 130 || r.ExitCode == 137 || r.ExitCode == 143 || r.Interrupt:

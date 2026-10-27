@@ -10,6 +10,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/launcher"
 )
 
 // A lane runs the bytes staged before it waited: edits to its script and
@@ -117,7 +118,7 @@ if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (approved by ", "PASS  drop")
 
 	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=orders\n"), 0o644)
-	r.mustSwim("run", "1")
+	r.mustDryRun("run", "1")
 	// The file is declared (# Includes:), so it's part of the script's hash:
 	// the approval is of another version of the script.
 	contains(t, "stale include", r.log(1), "SKIP  drop table orders (dry run: ", "approves another version of lane.1.sh")
@@ -130,7 +131,7 @@ if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 		t.Fatalf("restoring the file should restore the approval:\n%s", r.log(1))
 	}
 	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("blocked_commands: [\"terraform destroy\"]\n"), 0o644)
-	r.mustSwim("run", "1")
+	r.mustDryRun("run", "1")
 	contains(t, "stale policy", r.log(1), "stale: config policy changed (swim.yml: blocked_commands")
 	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "stale: config policy changed")
 	// A key outside the policy list (max_parallel) changes nothing.
@@ -151,7 +152,7 @@ if "$SWIM_BIN" _approve 1 DROP "harmless cleanup"; then run "dropped" true; fi
 if "$SWIM_BIN" _approve 1 WIPE_ALL "routine tidy"; then run "wiped" true; fi`)
 	withHeader(t, r, 1, "# Guards:  DROP drop the table")
 	out, code := r.swim("run", "1", "-y")
-	if code != 0 {
+	if code != launcher.ExitDryRun { // WIPE_ALL dry-runs
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	contains(t, "output", out, "refused: lane 1 can't report for lane 5", "approval refused for swim 1: guard WIPE_ALL isn't declared in swim 1's script")
@@ -238,7 +239,7 @@ if swim guard FIN_ALLOW_DROP "drop the old table"; then swim run "drop" -- true;
 	contains(t, "approved", r.log(1), "APPROVED  drop the old table (approved by ", "PASS  drop")
 
 	r.write("swim.yml", "runners:\n  py: pyrun2\n", 0o644)
-	r.mustSwim("run", "1", "--plain")
+	r.mustDryRun("run", "1", "--plain")
 	contains(t, "stale runner", r.log(1), "SKIP  drop the old table (dry run: ", "runner changed (swim.yml pyrun, now swim.yml pyrun2)")
 	if strings.Count(r.log(1), "PASS  drop") != 1 {
 		t.Errorf("the guarded step ran under another runner:\n%s", r.log(1))

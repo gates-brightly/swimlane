@@ -236,6 +236,7 @@ type Round struct {
 	ExitCode  int
 	Duration  string
 	Interrupt bool
+	DryRun    bool     // the round ended SKIP: nothing failed, but a guarded step dry-ran
 	Stage     string   // stage in effect at the end of the log
 	Declared  []string // stage lines seen, in order
 	Handlers  []string // handler sections seen, in order
@@ -245,6 +246,31 @@ type Round struct {
 	Context map[string]string
 
 	handler string // the handler section being read
+}
+
+// Skipped returns the round's SKIP results: its guarded steps that dry-ran.
+func (r *Round) Skipped() []Result {
+	var out []Result
+	for _, res := range r.Results {
+		if res.Handler == "" && res.Kind == Skip {
+			out = append(out, res)
+		}
+	}
+	return out
+}
+
+// DryRunReason says why a round that only got as far as a dry run didn't
+// pass: "dry run: <first guarded step>", and how many more there were.
+func (r *Round) DryRunReason() string {
+	sk := r.Skipped()
+	if len(sk) == 0 {
+		return ""
+	}
+	why := "dry run: " + sk[0].Label
+	if len(sk) > 1 {
+		why += fmt.Sprintf(" (+%d more)", len(sk)-1)
+	}
+	return why
 }
 
 // Failed returns the FAIL and STOP results.
@@ -528,8 +554,11 @@ func parseV2(rd io.Reader) (*Round, error) {
 			cur.Finished = true
 			if state, exit, dur, ok := endV2(line); ok {
 				cur.ExitCode, cur.Duration = exit, dur
-				if state == "INTERRUPTED" {
+				switch state {
+				case "INTERRUPTED":
 					cur.Interrupt = true
+				case Skip:
+					cur.DryRun = true
 				}
 			}
 		case strings.HasPrefix(line, HandlerMark):

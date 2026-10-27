@@ -33,6 +33,21 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Upgrading
 
+- **A dry run is SKIP, not PASS.** A round that ran to the end but
+  dry-ran a guarded step (nothing failed) ends `== END SKIP` with the
+  reason `dry run: <step>`, in the summary, `swim status`, `--yaml`
+  (`result: skipped`), the chain and the queue. It didn't do its work, so
+  a lane that waits on it (`# After:`) doesn't start, and `swim all` runs
+  it again. `swim run` exits 3 when nothing failed but work waits on an
+  approval (1 is still a failure); `swim queue --wait` and a batch do the
+  same, a batch's result is `skipped`, and `swim ci` counts it as a pass,
+  since CI can't approve. Before, it was PASS and the lanes after it
+  ran as if the change had happened. A script that wants a guard to be
+  optional should make that step its own lane.
+- **Lane scripts say `# swim: syntax 4`.** The README, guide, demos and
+  this repo's lanes now match what `swim new` writes. Syntax 2 and 3
+  scripts still run as they are; the lock pins the script syntax for the
+  whole repo, so a lower number in one script buys nothing.
 - **Lanes run in their staged copy.** A lane's working directory is now
   `.swim/runs/<run>/<N>/`, which holds only what its approval covers: the
   script and its `# Includes:`. A file it reads but doesn't pin isn't

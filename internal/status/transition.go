@@ -12,7 +12,8 @@ import (
 // may start a new round, or be archived, refused or skipped, from anywhere;
 // the rules are about the round in flight:
 //
-//   - a running round ends only as passed, failed or interrupted;
+//   - a running round ends only as passed, failed, skipped (it dry-ran a
+//     guarded step) or interrupted;
 //   - a lane waiting for its turn (waiting, locked, queued) moves on, or
 //     ends, but isn't put back to idle;
 //   - a finished round's result never changes in place: passed, failed,
@@ -41,8 +42,8 @@ func Transition(from, to *Lane) error {
 	switch {
 	case a == b || a == "":
 		return nil
-	case a == Running && !finished(b) || a == Running && b == Skipped:
-		return fmt.Errorf("a running round can only end (passed, failed, interrupted), not go %s", b)
+	case a == Running && !finished(b):
+		return fmt.Errorf("a running round can only end (passed, failed, skipped, interrupted), not go %s", b)
 	case waitingTurn(a) && b == Idle:
 		return fmt.Errorf("a lane %s for its turn can't go back to idle", a)
 	case finished(a) && finished(b) && sameRound(from, to):

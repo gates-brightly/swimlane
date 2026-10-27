@@ -255,7 +255,7 @@ func TestModuleApprovalStale(t *testing.T) {
 	contains(t, "approved", r.log(1), "APPROVED  say it (approved by ", "say-v1 hello")
 
 	os.WriteFile(filepath.Join(d, "say.sh"), []byte("say() { echo \"say-v2 $*\"; }\n"), 0o644)
-	r.mustSwim("run", "1")
+	r.mustDryRun("run", "1")
 	contains(t, "stale", r.log(1), "stale: includes modules/say/say.sh changed; module say changed")
 }
 

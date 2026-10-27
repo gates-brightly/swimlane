@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:   CI: fmt, lint, test, race
 # Job:     5c1a0011-11a7-4c1e-8d00-000000000011
 # Owner:   swim CI

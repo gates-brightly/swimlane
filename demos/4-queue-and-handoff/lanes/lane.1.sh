@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:  Roll api forward to 2.4.1 (the session-leak fix)
 # Owner:  planner (AI session)
 # Guards: DEPLOY_ALLOW_API  deploy api 2.4.1 to prod

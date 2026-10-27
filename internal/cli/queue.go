@@ -211,7 +211,11 @@ func queueAdd(args []string) error {
 		return fmt.Errorf("%s is %s, not done", e.ID, done.State)
 	}
 	fmt.Printf("%s (#%d): %s\n", e.ID, e.Seq, done.Result.Result)
-	if done.Result.Result != status.Passed {
+	switch done.Result.Result {
+	case status.Passed:
+	case status.Skipped:
+		return exitError{launcher.ExitDryRun}
+	default:
 		return exitError{1}
 	}
 	return nil
@@ -1144,6 +1148,8 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		res.Result = status.Interrupted
 	case code == 0:
 		res.Result = status.Passed
+	case code == launcher.ExitDryRun:
+		res.Result = status.Skipped
 	default:
 		res.Result = status.Failed
 	}

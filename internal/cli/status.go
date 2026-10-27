@@ -360,6 +360,8 @@ func rebuildStatus(root string, cfg *config.Config) error {
 				} else {
 					l.State = status.Interrupted
 				}
+			case r.ExitCode == 0 && r.DryRun:
+				l.State, l.Reason = status.Skipped, r.DryRunReason()
 			case r.ExitCode == 0:
 				l.State = status.Passed
 			case r.ExitCode == 130 || r.ExitCode == 143 || r.Interrupt:
@@ -438,6 +440,8 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 				word = "INTERRUPTED"
 			case round.ExitCode != 0:
 				word = fmt.Sprintf("FAIL exit %d", round.ExitCode)
+			case round.DryRun:
+				word = "SKIP (dry run)"
 			}
 			fmt.Printf("%s %s %s\n", label, p.Paint(ui.StateColor(word), fmt.Sprintf("%-22s", word)), round.Title)
 			fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Dim, fmt.Sprintf("job: %s  pass %d  fail %d  skip %d  drift %d  stages: %s",

@@ -20,6 +20,7 @@ func TestTransition(t *testing.T) {
 		{lane(Locked, "", "r1"), lane(Running, "t1", "r1")},
 		{lane(Queued, "", "r1"), lane(Passed, "t1", "r1")}, // exited before lane_init
 		{lane(Running, "t1", "r1"), lane(Failed, "t1", "r1")},
+		{lane(Running, "t1", "r1"), lane(Skipped, "t1", "r1")}, // it dry-ran a guarded step
 		{lane(Running, "t1", "r1"), lane(Running, "t2", "r2")}, // a new lane_init
 		{lane(Failed, "t1", "r1"), lane(Running, "t2", "r2")},
 		{lane(Failed, "t1", "r1"), lane(Passed, "t2", "r2")}, // a new round
@@ -33,7 +34,6 @@ func TestTransition(t *testing.T) {
 	}
 	bad := [][2]*Lane{
 		{lane(Running, "t1", "r1"), lane(Waiting, "t1", "r1")},
-		{lane(Running, "t1", "r1"), lane(Skipped, "t1", "r1")},
 		{lane(Running, "t1", "r1"), lane(Idle, "", "")},
 		{lane(Queued, "", "r1"), lane(Idle, "", "")},
 		{lane(Failed, "t1", "r1"), lane(Passed, "t1", "r1")}, // a failure turned into a pass

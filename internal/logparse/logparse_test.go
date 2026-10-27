@@ -157,6 +157,30 @@ func TestWriterRoundTrip(t *testing.T) {
 	}
 }
 
+// A round that ends SKIP only dry-ran its guarded steps: not passed.
+func TestParseDryRun(t *testing.T) {
+	log := `# swim lane log | syntax 2 | swim 1
+
+== ROUND 2026-10-27T12:00:00Z  job=3f2a9c1e  Rotate the cert
+
+-- stage change  12:00:01
+  SKIP  replace the live cert (dry run: set CERT_ALLOW_ROTATE=1 to approve)
+  SKIP  restart the proxy (dry run: set CERT_ALLOW_ROTATE=1 to approve)
+
+== END SKIP  pass=0 fail=0 skip=2 drift=0  exit=0  0.2s  2026-10-27T12:00:01Z
+`
+	r, err := Parse(strings.NewReader(log))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.DryRun || r.ExitCode != 0 || r.Doc(1).Result != "skipped" {
+		t.Fatalf("round: %+v", r)
+	}
+	if got := r.DryRunReason(); got != "dry run: replace the live cert (+1 more)" {
+		t.Fatalf("reason = %q", got)
+	}
+}
+
 func TestTooNew(t *testing.T) {
 	if _, err := Parse(strings.NewReader("# swim lane log | syntax 99 | swim 1\n")); err == nil || !strings.Contains(err.Error(), "syntax 99") {
 		t.Fatalf("err = %v", err)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:  Raise the worker's connection pool to 50
 # Owner:  planner (AI session)
 # After:  1

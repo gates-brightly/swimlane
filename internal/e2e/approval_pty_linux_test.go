@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/launcher"
 )
 
 func approvalLanes(r *repo) {
@@ -52,7 +54,7 @@ func TestPromptLineDeclines(t *testing.T) {
 	tr.waitFor("the lane says: drop table orders - 2026-10-12")
 	tr.send("\r") // Enter: the default, no
 	code, out := tr.wait()
-	if code != 0 {
+	if code != launcher.ExitDryRun {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	log := r.log(1)
@@ -87,7 +89,7 @@ func TestPromptOffWithFlag(t *testing.T) {
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all", "--no-prompt")
 	code, out := tr.wait()
-	if code != 0 || strings.Contains(out, "requires human approval") {
+	if code != launcher.ExitDryRun || strings.Contains(out, "requires human approval") {
 		t.Fatalf("--no-prompt: exit %d\n%s", code, out)
 	}
 	contains(t, "agent1.log", r.log(1), "SKIP  drop table orders - 2026-10-12 (dry run: set ALLOW_DROP=1 to approve)")
@@ -140,7 +142,7 @@ func TestPromptSeveralLanes(t *testing.T) {
 	tr.send("y")
 	tr.waitFor("run finished · q to close") // we're on a lane view: the screen holds
 	tr.send("q")
-	if code, out := tr.wait(); code != 0 {
+	if code, out := tr.wait(); code != launcher.ExitDryRun {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	contains(t, "first lane", r.log(first), "SKIP  change ", "declined at the prompt")

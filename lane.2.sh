@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:   CI: e2e (Go suite and e2e/ scenarios)
 # Job:     5c1a0014-11a7-4c1e-8d00-000000000014
 # Owner:   swim CI

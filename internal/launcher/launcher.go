@@ -166,6 +166,9 @@ type Outcome struct {
 	Reason  string
 	Round   string
 	Blocked bool // refused before starting (a blocked command, or no runner)
+	// DryRun: skipped only for want of an approval: the round dry-ran a
+	// guarded step, or waited on one that did.
+	DryRun  bool
 	Elapsed time.Duration
 	// When the lane's dependencies were met, its locks and slot taken, its
 	// process started and finished (zero when it never got that far). The
@@ -542,15 +545,24 @@ func Run(o Options) (int, error) {
 		fmt.Fprintf(summaryOut, "swim: unused pre-answers (the lane never reached a guard, or its script changed): %s\n", strings.Join(unused, ", "))
 	}
 
-	// The run passes when every lane passed.
-	code := 0
+	// The run passes when every lane passed. One where nothing failed but
+	// a guarded step dry-ran exits ExitDryRun: work is waiting on an
+	// approval.
+	code, dry := 0, false
 	counts := map[string]int{}
 	for _, n := range sel {
 		st := outcomes[n].State
 		counts[st]++
-		if st != status.Passed {
+		switch {
+		case st == status.Passed:
+		case st == status.Skipped && outcomes[n].DryRun:
+			dry = true
+		default:
 			code = 1
 		}
+	}
+	if code == 0 && dry {
+		code = ExitDryRun
 	}
 	runDone := fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d", joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted])
 	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: runDone + "  " + display.Elapsed(time.Since(start))})
@@ -601,13 +613,15 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	}
 	// Its dependencies: those outside this run must already be satisfied
 	// (outsideBlocker); those inside it are waited for (sched.go).
+	var last *Outcome // the dependency waited on last: the one a skip is for
 	dw := depWaiter{
 		selected: selected,
 		wait: func(d int) *Outcome {
 			<-done[d]
 			mu.Lock()
 			defer mu.Unlock()
-			return outcomes[d]
+			last = outcomes[d]
+			return last
 		},
 		outside: func(d Dep) string { return outsideBlocker(o.Root, d) },
 		waiting: func(remaining []int) {
@@ -619,7 +633,9 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		},
 	}
 	if why := dw.await(deps); why != "" {
-		return skip(why)
+		oc := skip(why)
+		oc.DryRun = last != nil && last.DryRun
+		return oc
 	}
 	ready = time.Now()
 	if ir.stopsLane(n) {
@@ -794,12 +810,24 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 	case code != 0:
 		state = status.Failed
 	}
+	// A round that exited 0 may still have only dry-run its guarded steps:
+	// its summary recorded that as skipped, and so does the outcome.
+	reason := ""
+	if state == status.Passed {
+		if st, _ := status.Load(o.Root); st != nil {
+			if l := st.Get(n); l != nil && l.State == status.Skipped && l.Run == o.RunID {
+				state, reason = status.Skipped, l.Reason
+			}
+		}
+	}
 	now := time.Now()
 	disp.Set(n, func(v *display.LaneView) {
 		v.Exit, v.Finished = code, now
 		switch state {
 		case status.Passed:
 			v.State = display.Passed
+		case status.Skipped:
+			v.State, v.Reason = display.Skipped, reason
 		case status.Interrupted:
 			v.State = display.Interrupted
 		default:
@@ -831,7 +859,7 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 		info, _ := lane.ReadScript(o.Root, n)
 		NotStarted(o.Root, n, lane.Log(o.Root, n), info.Job, info.Round, o.RunID, why, printed, code)
 	}
-	return &Outcome{N: n, State: state, Exit: code, Elapsed: now.Sub(started)}
+	return &Outcome{N: n, State: state, Exit: code, Reason: reason, DryRun: reason != "", Elapsed: now.Sub(started)}
 }
 
 // notStartedWhy is the reason for a lane process that exited (code) before
@@ -901,7 +929,7 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 		label := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("%-8s", fmt.Sprintf("swim %d", n)))
 		r, _ := logparse.ParseFile(lane.Log(root, n))
 		job := oc.Job
-		if job == "" && oc.State != status.Skipped {
+		if job == "" && (oc.State != status.Skipped || oc.Exit >= 0) {
 			job = r.Job
 		}
 		if job == "" {
@@ -922,11 +950,14 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 			result = "SKIP"
 		}
 		res := p.Paint(ui.StateColor(result), fmt.Sprintf("%-12s", result))
-		if oc.State == status.Skipped {
+		if oc.State == status.Skipped && oc.Exit < 0 { // never started
 			fmt.Fprintf(out, "  %s %s %4s %5s %5s %5s %6s %7s  %s\n", label, res, "-", "-", "-", "-", "-", "-", oc.Reason)
 			continue
 		}
 		fmt.Fprintf(out, "  %s %s %4d %5d %5d %5d %6d %7s\n", label, res, oc.Exit, r.Pass, r.Fail, r.Skip, r.Drift, display.Elapsed(oc.Elapsed))
+		if oc.State == status.Skipped {
+			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Yellow, oc.Reason))
+		}
 		for _, f := range r.Failed() {
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, f.Text()))
 		}

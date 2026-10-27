@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:  Purge test accounts from the prod users table
 # Owner:  planner (AI session)
 # Guards: USERS_ALLOW_PURGE  delete the @test.example rows from users

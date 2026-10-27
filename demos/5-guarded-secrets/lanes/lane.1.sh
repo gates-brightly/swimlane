@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:  Drop orders_2019 (archived to cold storage last week)
 # Owner:  planner (AI session)
 # Guards: DB_ALLOW_DROP  drop table orders_2019

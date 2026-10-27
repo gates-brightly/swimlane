@@ -620,12 +620,16 @@ func cmdFinish(args []string) error {
 	} else if len(failed) > 0 {
 		code = 1
 	}
-	state := status.Passed
+	// A round that ended cleanly but dry-ran a guarded step didn't do its
+	// work: it's skipped, not passed, so nothing that waits on it starts.
+	state, reason := status.Passed, ""
 	switch {
 	case code == 130 || code == 143 || code == 129 || code == 137 || r.Interrupt:
 		state = status.Interrupted
 	case code != 0:
 		state = status.Failed
+	case len(r.Skipped()) > 0:
+		state, reason = status.Skipped, r.DryRunReason()
 	}
 
 	now := time.Now()
@@ -636,7 +640,7 @@ func cmdFinish(args []string) error {
 	ds := fmt.Sprintf("%.1fs", dur.Seconds())
 	ts := now.UTC().Format(time.RFC3339)
 
-	word := map[string]string{status.Passed: "PASS", status.Failed: "FAIL", status.Interrupted: "INTERRUPTED"}[state]
+	word := map[string]string{status.Passed: "PASS", status.Failed: "FAIL", status.Skipped: "SKIP", status.Interrupted: "INTERRUPTED"}[state]
 	if err := appendLog(logPath, logparse.EndBlock(word, r, code, ds, ts)+outLine); err != nil {
 		return err
 	}
@@ -662,6 +666,9 @@ func cmdFinish(args []string) error {
 		laneBanner(p, root, n, " summary:"),
 		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, code, display.Span(now.Add(-dur), now))
 	fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "stages: "+logparse.StagesText(stages)))
+	if reason != "" {
+		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Yellow, reason))
+	}
 	if hs := r.HandlerResults(); len(hs) > 0 {
 		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "handlers: "+logparse.StagesText(hs)))
 	}
@@ -690,6 +697,7 @@ func cmdFinish(args []string) error {
 		}
 		l.DurationS = status.Float(float64(dur.Round(100*time.Millisecond)) / float64(time.Second))
 		l.ExitCode = status.Int(code)
+		l.Reason = reason
 		l.Pass, l.Fail, l.Skip, l.Drift = r.Pass, r.Fail, r.Skip, r.Drift
 		l.FailedSteps = failedSteps
 		l.Stage = ""
@@ -705,8 +713,11 @@ func cmdFinish(args []string) error {
 	if pid, ok := lane.Running(root, n); !ok || pid == os.Getppid() {
 		lane.RemovePID(root, n)
 	}
-	event := map[string]string{status.Passed: history.Pass, status.Failed: history.Fail, status.Interrupted: history.Interrupted}[state]
+	event := map[string]string{status.Passed: history.Pass, status.Failed: history.Fail, status.Skipped: history.Skip, status.Interrupted: history.Interrupted}[state]
 	detail := fmt.Sprintf("pass=%d fail=%d skip=%d drift=%d exit=%d %s  %s", r.Pass, r.Fail, r.Skip, r.Drift, code, ds, r.Title)
+	if reason != "" {
+		detail += "  | " + reason
+	}
 	if len(failedSteps) > 0 {
 		detail += "  | " + strings.Join(failedSteps, "; ")
 	}

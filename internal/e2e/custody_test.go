@@ -59,7 +59,7 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 	}
 	contains(t, "first approval", r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"]),
 		"approved lane.1.sh", "as zach", "not yet:  FIN_ALLOW_DROP: approval needs 2 signature(s) from platform-admin, has 1")
-	r.mustSwim("run", "1")
+	r.mustDryRun("run", "1")
 	contains(t, "one of two", r.log(1), "SKIP  drop table old_orders (dry run: approval needs 2 signature(s) from platform-admin, has 1; set FIN_ALLOW_DROP=1 to approve)")
 
 	// A valid signature from a key not in lookup.yml doesn't count.
@@ -72,7 +72,7 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 
 	// Alice revokes before it runs: not enough any more.
 	contains(t, "revoke", r.mustSwim("revoke", "1", "--key", keys["alice"]), "revoked your approval")
-	r.mustSwim("run", "1")
+	r.mustDryRun("run", "1")
 	if strings.Contains(r.log(1), "APPROVED") {
 		t.Fatal("a revoked approval still counted")
 	}
@@ -123,7 +123,7 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 	// Changing the script makes the signature stale: the guard says so.
 	r.script(1, "drop old table v2", `if guard FIN_ALLOW_DROP "drop table old_orders"; then run "drop" true; fi`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop table old_orders")
-	r.mustSwim("run", "1")
+	r.mustDryRun("run", "1")
 	contains(t, "stale", r.log(1), "approves another version of lane.1.sh")
 	contains(t, "stale verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "stale: lane.1.sh changed since")
 }

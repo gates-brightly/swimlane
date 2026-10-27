@@ -395,10 +395,13 @@ WRITING A LANE SCRIPT
   reached STAGE                   true if the round started STAGE or a later one
   summary                         print + log the summary, record
                                   final state. Exits non-zero if any step failed. Put it last.
+                                  A round that dry-ran a guarded step and failed nothing ends
+                                  SKIP ("dry run: <step>"), not PASS: lanes after it don't
+                                  start, and swim run exits 3 (swim ci: 0, as CI can't approve).
 
   Header (the `# Key: value` lines at the top; one space at most after the
   #, since indented comment lines are prose). Empty or missing means the default:
-      # swim: syntax 2                the syntax this script is written in (see SYNTAX)
+      # swim: syntax 4                the syntax this script is written in (see SYNTAX)
       # Round:   <goal>               required; a script without it is not run
       # Job:     <id>                 written by swim new; keep it. Default: one is made
                                       when the round starts (then it can't be pinned)
@@ -499,7 +502,7 @@ WRITING A LANE SCRIPT
 
   Example:
       #!/usr/bin/env bash
-      # swim: syntax 2
+      # swim: syntax 4
       # Round:   Cut over orders-api from SST to Terraform
       # Job:     3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
       # After:   1
@@ -558,7 +561,7 @@ OTHER LANGUAGES
   (options as for run in a bash lane: --timeout, --retry, --backoff,
   --retry-on, --no-retry-timeout, --soft, --expect-fail). # Fail: hard makes a
   failed swim run end the round (swim run --soft opts out); it needs
-  `# swim: syntax 3` in the header (a sidecar's fail: needs none). A failed gate, swim stop, a refused git
+  syntax 3 or later in the header (a sidecar's fail: needs none). A failed gate, swim stop, a refused git
   push or the operator's stop ends the program even if it ignores the exit
   code (SIGTERM to its process group, SIGKILL after 5s): the swim command
   that ended it doesn't return first, and no swim run/gate/snapshot/guard
@@ -688,9 +691,9 @@ CACHE
 MODULES
   A module is a small, versioned utility a lane calls as a step: a bash file
   of functions, or a Go program, with a module.yml that says what it does.
-  The lane declares the ones it uses, with `# swim: syntax 4` (a swim
-  without modules then refuses the lane instead of running it without them),
-  and calls their commands:
+  The lane declares the ones it uses (it needs `# swim: syntax 4`, so a
+  swim without modules refuses the lane instead of running it without
+  them), and calls their commands:
       # swim: syntax 4
       # Modules: aws-session clone@1 notify
       mod_env aws-session --profile orders-prod --role arn:aws:iam::123456789012:role/deploy
@@ -808,10 +811,12 @@ MODULES
     start ("blocked: can't stage the lane's files: ...").
 
 SYNTAX
-  Lane scripts and lane logs say which syntax they use ("# swim: syntax 2" near
+  Lane scripts and lane logs say which syntax they use ("# swim: syntax 4" near
   a script's top, "# swim lane log | syntax 2" as a log's first line; none
-  means syntax 1). This swim writes syntax 2, reads lane logs in syntax 1
-  and 2, and lane scripts in syntax 1 to 4.
+  means syntax 1). swim new writes script syntax 4 and swim writes log
+  syntax 2; it reads lane logs in syntax 1 and 2, and lane scripts in
+  syntax 1 to 4. Write 4: the repo's .swim.lock pins the script syntax
+  for every lane anyway, so a lower number buys nothing.
   - Older files are migrated automatically when any swim command loads the
     repo: rewritten in place, originals copied to .swim/migrations/<time>/,
     the migration recorded in .swim.log. A running lane's files wait until
@@ -821,10 +826,9 @@ SYNTAX
     (go install github.com/gates-brightly/swimlane/cmd/swim@latest).
   Syntaxes:
     4   (lane scripts only) modules: # Modules:, mod and mod_env (or a
-        sidecar's modules:). Declare it when a lane uses modules, so a swim
-        without them refuses the lane rather than running it without them.
-    3   (lane scripts only) Fail:. Declare it only when you use it; logs
-        stay syntax 2.
+        sidecar's modules:). A swim without modules refuses the lane
+        rather than running it without them.
+    3   (lane scripts only) Fail:. Logs stay syntax 2.
     2   header metadata (Owner, Created, Guards, Timeout, ...), the four
         stages, and logs grouped by round and stage with output fenced by "| "
     1   no syntax line, no stages, === STEP / --- output log framing
@@ -940,7 +944,7 @@ READING RESULTS
         MSG  <text> (7/25, <hh:mm:ss>)              a status message (msg); never a result.
                                                     One posted during a step is in its
                                                     block: -- MSG  <text> (...)
-      == END <PASS|FAIL|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>  run=<run id>
+      == END <PASS|FAIL|SKIP|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>  run=<run id>
          stages: snapshot PASS | check PASS | change SKIP | verify PASS
          outputs: stats.json 2.1 KB 3f2a9c1e0b7d | pages 14 files, 1.2 MB 9d8e...  (if any)
          failed: FAIL  <label> (exit <code>); ...

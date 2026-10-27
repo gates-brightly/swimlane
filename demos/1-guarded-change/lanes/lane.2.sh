@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:  A lane that tries to approve its own guard
 # Guards: USERS_ALLOW_PURGE  delete every row from users
 #

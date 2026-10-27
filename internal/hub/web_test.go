@@ -142,11 +142,15 @@ func TestVendoredHash(t *testing.T) {
 	}
 }
 
-// lib.js's own tests, when node is here.
+// lib.js's own tests, when node is here. A node that can't run (a version
+// manager's shim with no version picked) counts as none.
 func TestAppLib(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("no node on PATH")
+	}
+	if out, err := exec.Command(node, "--version").CombinedOutput(); err != nil {
+		t.Skipf("node on PATH doesn't run: %v\n%s", err, out)
 	}
 	cmd := exec.Command(node, "--test", "lib.test.js")
 	cmd.Dir = "web"

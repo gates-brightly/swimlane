@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:  Delete 2019 orders (past the 5-year retention)
 # Owner:  planner (AI session)
 # Guards: FIN_ALLOW_DELETE  delete the 2019 rows from orders

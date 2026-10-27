@@ -42,6 +42,7 @@ stateDiagram-v2
   queued --> running: slot taken, lane_init
   queued --> skipped: interrupted before it started
   running --> passed: summary, exit 0
+  running --> skipped: summary, exit 0, a guarded step dry-ran
   running --> failed: a failed step or gate, any other exit
   running --> interrupted: Ctrl-C, SIGTERM, exit 129/130/137/143
   running --> interrupted: process gone, then swim run, swim watch or swim status --rebuild
@@ -53,9 +54,9 @@ stateDiagram-v2
 
 What the check enforces (`Transition`) for a lane:
 
-- **A running round only ends:** `running` goes to `passed`, `failed` or
-  `interrupted` (or to `running` again, a new `lane_init`), never back to
-  waiting, `skipped` or `idle`.
+- **A running round only ends:** `running` goes to `passed`, `failed`,
+  `skipped` (it dry-ran a guarded step) or `interrupted` (or to `running`
+  again, a new `lane_init`), never back to waiting or `idle`.
 - **A lane waiting for its turn** (`waiting`, `locked`, `queued`) moves on
   or ends, but never goes back to `idle`.
 - **A finished result never changes in place:** `passed`, `failed`,
@@ -71,10 +72,10 @@ What the check enforces (`Transition`) for a lane:
 | `locked` | Waiting for a resource lock (`# Locks:`). | The launcher | It takes the locks, or the run is interrupted. |
 | `queued` | Waiting for a free slot (`--parallel`, `max_parallel`). | The launcher | It gets a slot, or the run is interrupted. |
 | `running` | Its process is running the round. | `lane_init` (in the lane's process) | `summary`, or the process exits. |
-| `passed` | The round ended with exit 0. | `summary`, or the launcher if the process died before `lane_init` | The lane runs again, or is archived. |
+| `passed` | The round ended with exit 0, and every guarded step it reached was approved. | `summary`, or the launcher if the process died before `lane_init` | The lane runs again, or is archived. |
 | `failed` | A step or gate failed, the round exited non-zero, or swim refused to start it (a blocked command, no runner). | `summary`, or the launcher | As `passed`. |
 | `interrupted` | Stopped by a signal, or its process vanished. | `summary` on exit 129, 130, 137 or 143; for a lane with no live process, the next `swim run` (`all`, `ci`) or `swim watch` (`ReapDead`, exit 137), or `swim status --rebuild` | As `passed`. |
-| `skipped` | Never started: a dependency failed or was skipped, the run was interrupted before it started, or a queued script or env changed since it was queued. | The launcher | As `passed`. |
+| `skipped` | Didn't do its work: it never started (a dependency failed or was skipped, the run was interrupted before it started, or a queued script or env changed since it was queued), or it ran to the end but dry-ran a guarded step (`reason: dry run: <step>`). | The launcher, or `summary` for a dry run | As `passed`. |
 
 Notes:
 

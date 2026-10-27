@@ -59,17 +59,18 @@ func TestQueueAndWatchOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("watch: %v\n%s", err, wout)
 	}
-	contains(t, "watch", string(wout), "running q-", "passed; consumed to .swim/queue/done/0001-q-")
+	contains(t, "watch", string(wout), "running q-", "skipped; consumed to .swim/queue/done/0001-q-")
 	contains(t, "agent1.log", r.log(1), "APPROVED  drop table t (ALLOW_DROP=1, approved in queue q-", "PASS  dropped")
 	contains(t, "agent2.log", r.log(2), "SKIP  other change (dry run: set ALLOW_OTHER=1 to approve)")
 	if strings.Contains(r.log(2), "PASS  other changed") {
 		t.Error("the watcher's environment approved a guard the batch didn't")
 	}
 	done := doneEntries(t, r)
-	if len(done) != 1 || done[0].Result == nil || done[0].Result.Result != "passed" || len(done[0].Result.Lanes) != 2 || done[0].Worker == nil {
+	// Lane 2 dry-ran: the batch is skipped (waiting on an approval), not passed.
+	if len(done) != 1 || done[0].Result == nil || done[0].Result.Result != "skipped" || len(done[0].Result.Lanes) != 2 || done[0].Worker == nil {
 		t.Fatalf("consumed entry: %+v", done)
 	}
-	contains(t, "queue list", r.mustSwim("queue"), "done: passed")
+	contains(t, "queue list", r.mustSwim("queue"), "done: skipped")
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 	contains(t, ".swim.log", string(hist), "queue ", "approve=ALLOW_DROP  batch one", "queue-run", "queue-done")
 

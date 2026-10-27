@@ -43,7 +43,7 @@ type Doc struct {
 	Run       string            `yaml:"run,omitempty" json:"run,omitempty"`
 	Context   map[string]string `yaml:"context,omitempty" json:"context,omitempty"`
 	Finished  bool              `yaml:"finished" json:"finished"`
-	Result    string            `yaml:"result" json:"result"` // passed | failed | interrupted | running (no END yet)
+	Result    string            `yaml:"result" json:"result"` // passed | failed | skipped (a guarded step dry-ran) | interrupted | running (no END yet)
 	Exit      *int              `yaml:"exit,omitempty" json:"exit,omitempty"`
 	Duration  string            `yaml:"duration,omitempty" json:"duration,omitempty"`
 	Counts    Counts            `yaml:"counts" json:"counts"`
@@ -80,6 +80,8 @@ func (r *Round) Doc(n int) Doc {
 		d.Result = "interrupted"
 	case r.ExitCode != 0:
 		d.Result = "failed"
+	case r.DryRun:
+		d.Result = "skipped"
 	default:
 		d.Result = "passed"
 	}

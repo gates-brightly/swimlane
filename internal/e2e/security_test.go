@@ -227,14 +227,14 @@ func TestSecurity(t *testing.T) {
 			// Under lane 1's file name, as is: it names lane 2's script.
 			mine := sigfile.ScriptPath(b.root, 1, b.sha(1), "")
 			os.WriteFile(mine, data, 0o644)
-			b.mustSwim("run", "1", "--plain")
+			b.mustDryRun("run", "1", "--plain")
 			b.noMarker(t, "lane 2's approval under lane 1's name")
 			// Rewritten to name lane 1's script: the signatures no longer match.
 			forged := strings.ReplaceAll(string(data), b.sha(2), b.sha(1))
 			forged = strings.ReplaceAll(forged, "lane.2.sh", "lane.1.sh")
 			forged = strings.Replace(forged, "lane: 2", "lane: 1", 1)
 			os.WriteFile(mine, []byte(forged), 0o644)
-			b.mustSwim("run", "1", "--plain")
+			b.mustDryRun("run", "1", "--plain")
 			b.noMarker(t, "lane 2's approval rewritten for lane 1")
 			// Lane 1's own approval does authorize it (the fixture works).
 			os.Remove(mine)
@@ -248,7 +248,7 @@ func TestSecurity(t *testing.T) {
 			b := newBoundaryRepo(t)
 			b.approve(1)
 			b.lane(1, "\nrun \"added after approval\" true")
-			b.mustSwim("run", "1", "--plain")
+			b.mustDryRun("run", "1", "--plain")
 			b.noMarker(t, "edited after approval")
 			contains(t, "agent1.log", b.log(1), "approves another version of lane.1.sh")
 			b.approve(1)

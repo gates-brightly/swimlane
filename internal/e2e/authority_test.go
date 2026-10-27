@@ -52,7 +52,7 @@ func TestHostileLaneWritesApprovals(t *testing.T) {
 		t.Fatalf("approval files: %v", files)
 	}
 	os.Rename(files[0], filepath.Join(saved, filepath.Base(files[0])))
-	b.mustSwim("run", "1", "--plain")
+	b.mustDryRun("run", "1", "--plain")
 	b.noMarker(t, "an approval the lane wrote")
 	contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: set "+boundaryGuard+"=1 to approve)")
 	if len(b.approvesOf(1)) != 0 {
@@ -76,7 +76,7 @@ func TestHostileLaneWritesApprovals(t *testing.T) {
 	b.hostile(`cp "` + fullLookup + `" "$SWIM_ROOT/lookup.yml"`)
 	b.approve(1)
 	os.WriteFile(filepath.Join(b.root, "lookup.yml"), []byte("users: {}\n"), 0o644)
-	b.mustSwim("run", "1", "--plain")
+	b.mustDryRun("run", "1", "--plain")
 	b.noMarker(t, "a lookup.yml the lane wrote")
 
 	// The same approval in place before the run starts does count.
@@ -95,7 +95,7 @@ func TestHostileLaneWritesApprovals(t *testing.T) {
 func TestHostileLaneMarksApproved(t *testing.T) {
 	b := newBoundaryRepo(t)
 	b.hostile(`"$SWIM_BIN" _mark 1 APPROVED "drop table orders" "` + boundaryGuard + `=1" || echo "mark refused: $?"`)
-	out := b.mustSwim("run", "1", "--plain")
+	out := b.mustDryRun("run", "1", "--plain")
 	contains(t, "output", out, "a lane can't approve itself", "mark refused: 2")
 	if strings.Contains(b.log(1), "APPROVED") || len(b.approvesOf(1)) != 0 {
 		t.Fatalf("the lane approved itself:\n%s", b.log(1))
@@ -104,7 +104,7 @@ func TestHostileLaneMarksApproved(t *testing.T) {
 	contains(t, "verify", b.mustSwim("verify"), "VERIFIED")
 
 	b.hostile(`SWIM_LAUNCHED= SWIM_APPROVAL= "$SWIM_BIN" _mark 1 APPROVED "drop table orders" "` + boundaryGuard + `=1" || echo "mark refused: $?"`)
-	b.mustSwim("run", "1", "--plain")
+	b.mustDryRun("run", "1", "--plain")
 	out, code := b.swim("verify")
 	if code == 0 {
 		t.Fatalf("verify passed a round that marked itself approved:\n%s\n%s", out, b.log(1))
@@ -120,7 +120,7 @@ func TestHostileLaneMarksApproved(t *testing.T) {
 func TestHostileLaneDropsApprovals(t *testing.T) {
 	b := newBoundaryRepo(t)
 	b.hostile("unset SWIM_APPROVAL\nexport " + boundaryGuard + "=1")
-	b.mustSwim("run", "1", "--plain")
+	b.mustDryRun("run", "1", "--plain")
 	b.noMarker(t, "unset SWIM_APPROVAL")
 	contains(t, "unset SWIM_APPROVAL", b.log(1), "WARN  approval refused: "+boundaryGuard, "SKIP  drop table orders (dry run: this lane runs under swim run, but its approvals channel is gone")
 	if len(b.approvesOf(1)) != 0 {
@@ -177,7 +177,7 @@ func TestApprovalsUnavailable(t *testing.T) {
 	}
 	b.hostile("export " + boundaryGuard + "=1")
 	b.env = append(b.env, "TMPDIR="+long)
-	out := b.mustSwim("run", "1", "--plain")
+	out := b.mustDryRun("run", "1", "--plain")
 	contains(t, "output", out, "every guard runs as a dry run")
 	b.noMarker(t, "the lane's flag with no approvals channel")
 	contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: this lane runs under swim run, but its approvals channel is gone")
@@ -202,7 +202,7 @@ func TestApprovalsUnavailable(t *testing.T) {
 func TestHostileLaneSetsFlag(t *testing.T) {
 	b := newBoundaryRepo(t)
 	b.hostile(`export ` + boundaryGuard + `=1`)
-	out := b.mustSwim("run", "1", "--plain")
+	out := b.mustDryRun("run", "1", "--plain")
 	b.noMarker(t, "FLAG=1 inside the lane")
 	contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: "+boundaryGuard+"=1 was set inside the lane, not in the environment swim run started with")
 	contains(t, "output", out, "approval refused for swim 1: "+boundaryGuard+"=1 was set inside the lane")

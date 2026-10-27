@@ -87,7 +87,7 @@ swim new 1 "Say hello"            # writes lane.1.sh from a template
 # Replace the template with one harmless step:
 cat > lane.1.sh <<'EOF'
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round: Say hello
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 1
@@ -111,7 +111,7 @@ approves it:
 swim new 2 "Write hello.txt"
 cat > lane.2.sh <<'EOF'
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round: Write hello.txt
 # Guards: HELLO_ALLOW_WRITE  write hello.txt in the repo (quickstart)
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
@@ -128,7 +128,7 @@ fi
 summary
 EOF
 
-swim run 2 --plain --no-prompt             # SKIP: a dry run, nothing written
+swim run 2 --plain --no-prompt || echo "exit $?: a dry run"   # SKIP: nothing written
 HELLO_ALLOW_WRITE=1 swim run 2 --plain     # approved up front: the step runs
 cat hello.txt
 swim history --oneline                     # the chain: rounds and the flag's approval, newest first
@@ -331,6 +331,9 @@ ORDERS_ALLOW_SST_REMOVE=1 swim run 2      # approved up front (scripts, CI)
 swim all -y                               # approve every question this run, logged as -y
 ```
 
+A round whose guarded step dry-ran ends SKIP, not PASS, and the lanes
+after it wait for a round that did the work.
+
 ### 5. Queue work and let a swimmer fire it
 
 Get a batch ready while other work runs, then let it start as soon as swim
@@ -414,7 +417,7 @@ swim plan --yaml
 
 ```bash
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:   Cut over orders-api from SST to Terraform
 # Job:     3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
 # After:   1
@@ -482,7 +485,7 @@ summary
   `swim msg` from any language, even inside a step) shows where a long job
   is now, in the live view, `swim status` and the hub. The latest wins, and
   the log keeps throttled `MSG` lines.
-- **Fail hard** (`# swim: syntax 3`): `# Fail: hard` ends the round at the
+- **Fail hard** (syntax 3 or later): `# Fail: hard` ends the round at the
   first failed step (`run --soft` opts one out). A rollback is its own
   lane, run when you decide to, or a guarded step of this one.
 - **Checks:** `swim lint` checks scripts before you run them: header,
@@ -852,7 +855,12 @@ order:
    chain entry, `swim ci`'s summary and the hub.
 
 Anything else is a **dry run**: the step is skipped, and the log says how to
-approve it. A queued batch never asks a question.
+approve it. A queued batch never asks a question. A round that dry-ran a
+guarded step ends **SKIP**, not PASS (`dry run: <step>`): it didn't do
+its work, so a lane that waits on it (`# After:`) doesn't start, the run
+exits 3 (nothing failed, but work waits on an approval; `swim ci`
+counts it as a pass, since CI can't approve), and `swim all` runs it
+again next time.
 
 Under `swim run` the launcher, not the lane, decides all of this: it reads
 `approvals/` and `lookup.yml` once, as the run starts (an approval signed
@@ -1444,7 +1452,7 @@ swim changelog        # what's new in the version you're running (--since <old v
   the release's date and its number that day (tag `v0.<YYYYMMDD>.<index>`).
   The version says nothing about compatibility; syntax versions do.
 - **Syntax versions:** lane scripts and logs declare their syntax
-  (`# swim: syntax 2`), and swim's state files (status, the chain, the
+  (`# swim: syntax 4`, what `swim new` writes), and swim's state files (status, the chain, the
   queue, approvals) have one too. Older files are migrated automatically,
   with the originals kept under `.swim/migrations/`.
 - **`.swim.lock`:** the first run in a repo writes it, pinning the script,

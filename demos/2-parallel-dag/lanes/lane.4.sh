@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# swim: syntax 2
+# swim: syntax 4
 # Round:  Release 2.4.0: deploy worker (runs a db migration)
 # After:  1
 # Locks:  db-migrations
