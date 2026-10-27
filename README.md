@@ -140,7 +140,7 @@ Without `--no-prompt` on a terminal, swim asks you instead: `swim 2
 requires human approval of task: write hello.txt (quickstart) Y/N [N]`.
 
 Next: [swim in an hour](docs/quickstart.md), a tested walk from a first
-round to guards, signed approvals, a queue and a module; and
+round to guards, signed approvals, a queue and a swimmer; and
 [the docs](docs/README.md), in reading order.
 
 What you get:
@@ -702,43 +702,6 @@ architecture and any `--with` strings. A miss passes and returns 1; a key is
 written once; a save from a round with
 failed steps is marked, and its restores say so. A restored tree runs
 unchecked, so every restore is recorded in the round's chain entry.
-
-### Modules
-
-A module is a small, versioned utility a lane calls as a step: assume a
-role, clone at a commit, post to Slack. The lane declares it, and the
-execution manifest pins its bytes, so an approval covers the module as it
-covers the script:
-
-```bash
-# Modules: aws-session clone@1 notify
-mod_env aws-session --profile orders-prod --role arn:aws:iam::123456789012:role/deploy
-mod clone https://github.com/org/orders 3f2a9c1e0b7d4e2a9c1e0b7d4e2a9c1e0b7d4e2a "$SWIM_OUT/orders"
-mod notify "#orders" "orders deploy: done (job $SWIM_JOB)"
-```
-
-- **Every call is a step**, logged, masked and timed like `run`. `mod_env`
-  gives the lane what the module exports (credentials), masked from then on.
-- **Built in:** `tf` (the plan is the round's evidence, so the approval
-  covers it, and apply runs exactly that saved plan), `smoke` (a committed
-  list of HTTP and TCP checks), `claude` (a report written with the Claude
-  Code CLI from masked material, never a decision), `report` (print an
-  artifact into the log), `target` (stop unless
-  the AWS account, kube context or GCP project is the one the lane says), `backup` (an RDS or DynamoDB restore
-  point, waited for, its id recorded), `wait` (until an HTTP status, a TCP
-  port, a command's exit code or a kube rollout says ready), `aws-session`,
-  `clone` and `notify`.
-- **Bash or Go**, built in, in the repo (`modules/<name>/`, `swim modules
-  new`), or fetched from another git repository by address
-  (`github.com/org/swim-modules//pager@2`, `swim modules get`, pinned in
-  `.swim.lock`). Each has a `module.yml` that declares its effects (network,
-  secrets, writes, credentials); `swim plan`, `swim approve` and lint show
-  them. They're declared, not enforced: a module runs as the lane.
-- **Pinned and allowed:** editing a module stales the approvals of lanes
-  that use it, and `swim.yml` `modules: allow:` decides which modules lanes
-  may use (built-ins only by default). A module is never fetched at run
-  time: `swim modules get` fetches ahead, and the run checks the copy
-  against the lock.
 
 ### Secrets
 
@@ -1339,8 +1302,8 @@ they waited for.
 
 - [The docs index](docs/README.md): every page, in reading order.
 - [swim in an hour](docs/quickstart.md): a tested walk through a first
-  round, a gate, a guard, a signed approval, a dependency, a queue, a
-  module and the record.
+  round, a gate, a guard, a signed approval, a dependency, a queue and
+  the record.
 - [Trust model](docs/trust-model.md): what swim protects against, what it
   doesn't, and the test behind each claim.
 - [Architecture](docs/architecture.md): where credentials live and where

@@ -87,6 +87,22 @@ already pushed to origin's main) with the next tag and pushes that tag.
   `.swim/observations/` and `knowledge/` can be deleted. `# Observe:`
   probes (facts checked between approval and the guarded step) are not
   affected.
+- **Removed: modules.** `# Modules:` (and a sidecar's `modules:`), the
+  `mod` and `mod_env` lane commands (`swim mod`, an SDK's module call),
+  `swim modules` (`ls`, `show`, `new`, `check`, `lock`, `get`), the built-in
+  modules (tf, smoke, claude, report, target, backup, wait, aws-session,
+  clone, notify), repo and fetched modules, and `.swim.lock`'s `modules:`
+  pins are gone. Run the tool as a step instead (`run "<label>" -- cmd`,
+  `evidence` for a plan), with its files in `# Includes:`. `swim lint`
+  refuses a script that still declares or calls a module (`removed`), so
+  `swim run` won't start it. Lanes without modules hash exactly as before:
+  no approval goes stale. `modules:` in `swim.yml` loads as before (it's
+  ignored; `swim doctor`: `removed-setting`) and still counts in the
+  policy hash as it did, so removing it is a policy change like any other.
+  A manifest an older swim wrote with module pins still verifies. Script
+  syntax 4 stays (swim new writes it); it now adds nothing over 3. The
+  lock's `modules:` section is ignored and dropped the next time swim
+  writes the lock. `.swim/modules/` can be deleted.
 - **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
   used to queue it as its own batch at once, so two jobs queued that way
   ran one after the other and `# After:` between them couldn't hold. Now

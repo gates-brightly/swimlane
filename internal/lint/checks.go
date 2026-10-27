@@ -1195,14 +1195,41 @@ func firstLane(c *Context) int {
 
 var handlerDefRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failure|on_exit)\s*(?:\(\s*\))?\s*\{?\s*$`)
 
-// checkRemoved: a header key or outcome handler of a lane kind swim no
-// longer has. swim would ignore it, so a cleanup or rollback the script
-// counts on would never run: refuse the lane instead.
+// sdkModuleRE is an SDK's module call, r.module("notify", ...) or
+// r.Module(...), which swim no longer answers.
+var sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(?:Env|_env|With)?\(\s*["'\x60]`)
+
+// checkRemoved: a header key, outcome handler or module call of a feature
+// swim no longer has. swim would ignore the header and the handler, so a
+// cleanup or rollback the script counts on would never run; a module call
+// would fail mid-round. Refuse the lane instead.
 func checkRemoved(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, k := range s.Info.Removed {
+		if k == "Modules" {
+			out = append(out, f(finding.Error, "removed", s.headerLine(k), "run the tool as a step (run \"<label>\" -- cmd ...), with its files in # Includes:, and drop the line",
+				"# Modules: is gone: swim no longer has modules (mod, mod_env)"))
+			continue
+		}
 		out = append(out, f(finding.Error, "removed", s.headerLine(k), "put the work in its own lane (After: for order) and drop the line",
 			"# %s: is a lane kind swim no longer has; swim would ignore it", k))
+	}
+	if s.Lib {
+		// mod / mod_env commands: never a word in quoted text or a comment.
+		for _, cmd := range s.v.commands() {
+			if cmd.Sub || len(cmd.Words) == 0 || cmd.Words[0].Quoted || cmd.Words[0].Text != "mod" && cmd.Words[0].Text != "mod_env" {
+				continue
+			}
+			out = append(out, f(finding.Error, "removed", cmd.Line, "run the tool as a step instead: run \"<label>\" -- cmd ...",
+				"%s calls a module, and swim no longer has modules: the step would fail", cmd.Words[0].Text))
+		}
+	} else {
+		for i, line := range s.v.code {
+			if s.v.isCode(i) && sdkModuleRE.MatchString(line) {
+				out = append(out, f(finding.Error, "removed", i, "run the tool as a step instead (the SDK's run)",
+					"a module call, and swim no longer has modules: the step would fail"))
+			}
+		}
 	}
 	for i, line := range s.v.bare {
 		if s.v.doc[i] {

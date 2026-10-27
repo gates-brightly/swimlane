@@ -22,7 +22,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
-	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
@@ -735,7 +734,7 @@ func cmdWatch(args []string) error {
 	if !hf.any() {
 		defer holdWatchLock(root)() // swim schedule can tell a worker is up
 		// ... and swim queue add which swim it is (.swim/workers/).
-		watchPresence = queue.Announce(root, operator(), cfg.QueueLeaseFor(), module.LockPins(module.Builtins()))
+		watchPresence = queue.Announce(root, operator(), cfg.QueueLeaseFor())
 		defer func() { watchPresence.Stop(); watchPresence = nil }()
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}

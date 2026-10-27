@@ -55,7 +55,7 @@ Lead with the second when it applies. The chain of custody is the hardest part o
 Approval, signing and the chain prove **who** decided **what**. They don't make an arbitrary script safe. Every feature should make that line sharper, not blur it.
 
 - **Authorization:** nothing that needs approval runs without valid authorization for that exact operation. A guard approves by its flag, signed approvals, the person at the terminal or `-y`, and otherwise is a dry run; it fails closed when there's no one to ask, the approval socket fails, the round times out or the run stops. Under `swim run` the launcher decides and records every approval: a lane can't approve itself, set its own flag, or report for another lane. The guard itself is a bash function in the lane: advisory, not enforced.
-- **Integrity:** what runs matches what was approved. Approvals bind to an execution manifest (the script, the files it sources or includes, the modules it declares, its sidecar, its runner, and the policy part of swim.yml), and each lane runs a staged copy of exactly that, so an edit mid-wait or mid-run never reaches it and an approval stops counting once anything it pins changes. A queued lane whose manifest changed is skipped.
+- **Integrity:** what runs matches what was approved. Approvals bind to an execution manifest (the script, the files it sources or includes, its sidecar, its runner, and the policy part of swim.yml), and each lane runs a staged copy of exactly that, so an edit mid-wait or mid-run never reaches it and an approval stops counting once anything it pins changes. A queued lane whose manifest changed is skipped.
 - **Attribution:** every run traces back to its job, swimmer, approval and outcome, in a hash-linked, SSH-signed chain that records how each guard was approved. `swim verify` reports how far the chain can be believed: consistent, trusted (signers in a `trust.yml` pinned outside the repo), anchored (checkpoints sent where a lane can't rewrite them) and authorized.
 - **Out of scope:** a malicious or mistaken script that is approved and run with broad credentials. That needs scoped credentials and OS isolation. A guarded secret (`swim.yml` `secrets:`) narrows it for credentials that live only in swim's vault: the run releases one to a lane only after that lane's guard is approved, so a script that skips `guard` never gets it.
 
@@ -154,7 +154,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 ### Planner / worker protocol
 - The planner assigns each worker a lane number. A worker writes **only** its own `lane.N.sh`.
 - Workers never edit shared files (registries, plan docs, config). They report exact lines, and the planner applies them.
-- Workers prefer new modules over changing shared ones while other lanes run. Any change to a shared module must leave existing users unchanged.
+- Workers prefer new helper files over changing shared ones while other lanes run. Any change to a shared file must leave existing users unchanged.
 - **Never edit a lane while it may be running.** Under `swim run` a lane runs a staged copy, so an edit no longer reaches it, but a lane run directly with bash still reads its script incrementally. swim refuses to edit, archive, stub or rerun a running lane.
 - Before writing a round, check `swim status` and confirm with the operator which lanes are idle.
 - After a run, the planner reads the log, validates real outcomes (not just PASS lines), records results in the project log, archives the log and stubs the lane.

@@ -60,3 +60,12 @@ func TestPolicyHashFrozen(t *testing.T) {
 		t.Error("blocked_commands: [] should count as set")
 	}
 }
+
+// modules: (removed) still counts in the policy hash exactly as it did, so
+// a repo that sets it keeps its approvals when swim drops modules.
+func TestRemovedModulesPolicyHashFrozen(t *testing.T) {
+	c := loadWith(t, "modules:\n  allow: [notify, ./modules/*]\n  dir: modules\n")
+	if want := "8f272f14ca05de3eb965aa31dbd723605daa60c98545b77bd83b4a3bd67a9f15"; c.PolicyHash() != want {
+		t.Errorf("modules: set: %s, want %s", c.PolicyHash(), want)
+	}
+}

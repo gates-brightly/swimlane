@@ -215,3 +215,18 @@ func TestObserve(t *testing.T) {
 		t.Error("a bad probe parsed")
 	}
 }
+
+// A manifest an older swim wrote for a lane with modules (# Modules:)
+// still hashes with their pins, so swim verify can check it; a lane
+// without modules hashes as it always has (TestManifestHashFrozen).
+func TestOldModulePinsStillHash(t *testing.T) {
+	m := build(t, repo(t), 3)
+	if len(m.Pinned.Modules) != 0 || m.SHA256 != goldenV2 {
+		t.Fatalf("a module-free lane: %s, modules %v", m.SHA256, m.Pinned.Modules)
+	}
+	p := m.Pinned
+	p.Modules = []ModulePin{{Name: "notify", Version: "1.0.0", Source: "builtin", Kind: "bash", SHA256: strings.Repeat("a", 64)}}
+	if p.Hash(3) == m.SHA256 || !strings.Contains(p.text("h", 3, "c"), "module: notify 1.0.0 builtin bash "+strings.Repeat("a", 64)+"\n") {
+		t.Error("module pins of an older manifest aren't hashed")
+	}
+}

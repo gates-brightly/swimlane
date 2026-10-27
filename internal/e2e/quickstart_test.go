@@ -85,10 +85,9 @@ func TestDocsQuickstartRuns(t *testing.T) {
 		"STOP  gate failed: there is a config file", "the round failed, as it should", // 3
 		"SKIP  remove scratch.txt (quickstart) (dry run", "scratch.txt is gone", // 4
 		"approved by me (signed)", "removed, approved by a signature", // 5
-		"approves another version of lane.2.sh",          // 5: the edit voids it
-		"SKIP (swim 3 failed)",                           // 6
-		"PASS  report report.md", "The service came up.", // 8
-		"VERIFIED", // 9
+		"approves another version of lane.2.sh", // 5: the edit voids it
+		"SKIP (swim 3 failed)",                  // 6
+		"VERIFIED",                              // 8
 	)
 	if strings.Contains(string(out), "undeclared files") {
 		t.Errorf("a step left an undeclared output:\n%s", out)

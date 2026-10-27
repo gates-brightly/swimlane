@@ -11,7 +11,6 @@ where it would land in the code, open questions, and how to test it.
 
 | feature | file | status |
 |---|---|---|
-| Modules: reusable Go and bash utilities for lanes, pinned like the script (built in, repo, fetched before approval) | [modules.md](modules.md) | in progress (built in, repo and fetched modules shipped; signed fetched versions left) |
 | Sandboxed lanes: a throwaway copy of the repo per lane, so concurrent jobs don't clobber each other's files (only $SWIM_OUT is kept); and a container with its network off or allowlisted, opened per stage only once its guard is approved; image and policy signed in the manifest; no access to the operator's keys | [sandbox.md](sandbox.md) | proposed |
 
 ## Staging a feature

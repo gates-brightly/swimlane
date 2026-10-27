@@ -222,50 +222,8 @@ type Lock struct {
 	UpdatedAt string   `yaml:"updated_at"` // when it was written
 	// Breaking is a lock from before syntax pinning (swim 7 and earlier).
 	Breaking int `yaml:"breaking,omitempty"`
-	// Modules pins the built-in modules the repo's lanes use (swim modules
-	// lock). An older swim ignores the key.
-	Modules *LockModules `yaml:"modules,omitempty"`
-}
-
-// LockModules is the lock's modules: section.
-type LockModules struct {
-	Builtin map[string]LockedModule `yaml:"builtin,omitempty"`
-	// Fetched are the modules fetched from outside the repo (swim modules
-	// get), by source address.
-	Fetched map[string]FetchedModule `yaml:"fetched,omitempty"`
-}
-
-// FetchedModule is a fetched module's pin: the version (its tag), the
-// commit the tag named, and its files' hash, which run time checks the
-// copy in .swim/modules/ against.
-type FetchedModule struct {
-	Version string `yaml:"version"`
-	Commit  string `yaml:"commit"`
-	SHA256  string `yaml:"sha256"`
-}
-
-// Fetched is the lock's pin of the module at address (ok false: none).
-func (l Lock) Fetched(address string) (FetchedModule, bool) {
-	if l.Modules == nil {
-		return FetchedModule{}, false
-	}
-	m, ok := l.Modules.Fetched[address]
-	return m, ok
-}
-
-// LockedModule is one pinned module: its version and its files' hash.
-type LockedModule struct {
-	Version string `yaml:"version"`
-	SHA256  string `yaml:"sha256"`
-}
-
-// Builtin is the lock's pin of built-in module name (ok false: none).
-func (l Lock) Builtin(name string) (LockedModule, bool) {
-	if l.Modules == nil {
-		return LockedModule{}, false
-	}
-	m, ok := l.Modules.Builtin[name]
-	return m, ok
+	// (A modules: section an older swim wrote is ignored, and dropped
+	// when swim rewrites the lock.)
 }
 
 // Syntaxes are the syntaxes the lock pins (a legacy lock's, translated:
@@ -308,51 +266,14 @@ func ReadLock(root string) (l Lock, ok bool, err error) {
 
 // WriteLock records this swim's syntaxes in root's lock.
 func WriteLock(root string) error {
-	l := Lock{Syntax: Current}
-	if old, ok, err := ReadLock(root); err == nil && ok {
-		l.Modules = old.Modules // what it pins of modules stays
-	}
-	return writeLock(root, l)
-}
-
-// WriteLockModules pins the built-in modules the repo's lanes use (nil:
-// none), keeping the syntaxes the lock pins, or this swim's if there's no
-// lock.
-func WriteLockModules(root string, builtin map[string]LockedModule) error {
-	return writeModules(root, func(m *LockModules) { m.Builtin = builtin })
-}
-
-// WriteLockFetched pins the fetched modules (nil: none), keeping the rest
-// of the lock.
-func WriteLockFetched(root string, fetched map[string]FetchedModule) error {
-	return writeModules(root, func(m *LockModules) { m.Fetched = fetched })
-}
-
-// writeModules changes the lock's modules: section with set, keeping the
-// syntaxes it pins (or this swim's, with no lock) and the rest.
-func writeModules(root string, set func(*LockModules)) error {
-	l := Lock{Syntax: Current}
-	mods := LockModules{}
-	if old, ok, err := ReadLock(root); err != nil {
-		return err
-	} else if ok {
-		l.Syntax, l.Breaking = old.Syntax, old.Breaking
-		if old.Modules != nil {
-			mods = *old.Modules
-		}
-	}
-	set(&mods)
-	if len(mods.Builtin) > 0 || len(mods.Fetched) > 0 {
-		l.Modules = &mods
-	}
-	return writeLock(root, l)
+	return writeLock(root, Lock{Syntax: Current})
 }
 
 func writeLock(root string, l Lock) error {
 	l.Version, l.UpdatedAt = String(), time.Now().UTC().Format(time.RFC3339)
 	data, _ := yaml.Marshal(l)
 	head := "# swim lock: the syntax versions of the files this repo's lanes use (lane scripts,\n" +
-		"# logs, swim's state), and the built-in modules they use (swim modules lock).\n" +
+		"# logs, swim's state).\n" +
 		"# Written by swim; commit it so everyone runs a compatible swim.\n" +
 		"# See `swim lock --help`.\n"
 	tmp := LockPath(root) + ".tmp"

@@ -191,17 +191,6 @@ func secretGet(args []string) error {
 		return usagef("usage: swim secret get NAME")
 	}
 	name := args[0]
-	// A module asks only for the secrets its module.yml declares (the
-	// broker still decides whether the lane gets them).
-	if mod := os.Getenv(moduleEnv); mod != "" {
-		declared := false
-		for _, s := range strings.Fields(os.Getenv(moduleSecretsEnv)) {
-			declared = declared || strings.EqualFold(s, name)
-		}
-		if !declared {
-			return fmt.Errorf("secret %s: module %s doesn't declare it (its module.yml effects: secrets:)", name, mod)
-		}
-	}
 	var value string
 	// Inside a swim run: ask its broker (the run decrypted at start). It
 	// says which lane asks, from the lane process's token, and releases a

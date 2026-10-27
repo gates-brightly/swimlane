@@ -19,7 +19,7 @@ These rules make it hold. They extend the guide's `PLANNER WORKFLOW` and
 3. **Record the assignment** so other sessions see it:
    `swim note "lanes: 4 orders (worker-orders), 5 billing (worker-billing)"`.
 4. **Write the shared parts yourself:** cross-lane ordering, config
-   `deps:` lines (handed to the operator), and any shared module. Workers
+   `deps:` lines (handed to the operator), and any shared file. Workers
    send you the lines; they don't edit shared files.
 5. **Check every lane together** once the workers are done: `swim lint` (all
    lanes) and `swim plan`. Hand the operator one command for the set,
@@ -37,9 +37,9 @@ These rules make it hold. They extend the guide's `PLANNER WORKFLOW` and
   operator can see whose lane it is.
 - **Use names nobody else will.** Tag resources, snapshot labels and temp
   files with `$SWIM_JOB`.
-- **Shared files:** a change to a shared module, config or another lane's
+- **Shared files:** a change to a shared file, config or another lane's
   dependency goes back to the planner as exact lines. A change to a
-  shared module must leave its other users working.
+  shared file must leave its other users working.
 - **Check, then report:** `swim lint N` until clean. Report back:
   - the lane number;
   - the job id (`# Job:`);

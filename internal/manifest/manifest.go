@@ -38,7 +38,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
-	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/runner"
 )
 
@@ -59,12 +58,13 @@ const (
 	FromIncludes = "includes" // # Includes: (or an older swim's Matrix: @file:) part of the script hash too
 	FromSource   = "source"   // a bash source line, found by a static scan (manifests before header-only pinning)
 	FromImport   = "import"   // a Python or TypeScript import of a local module (likewise)
-	FromModule   = "module"   // a file of a repo module the lane declares (# Modules:)
+	FromModule   = "module"   // a file of a repo module an older swim's lane declared (# Modules:)
 )
 
-// ModulePin is one module a lane declares (# Modules:), pinned: a built-in
-// by the hash of its embedded files, a repo module by its tree's hash (its
-// files are also staged, as includes from: module).
+// ModulePin is one module a lane declared (# Modules:, which this swim no
+// longer has), pinned: a built-in by the hash of its embedded files, a repo
+// module by its tree's hash (its files were staged as includes from:
+// module). Kept so an older manifest still reads and hashes as it did.
 type ModulePin struct {
 	Name    string `yaml:"name"`
 	Version string `yaml:"version"`
@@ -97,7 +97,8 @@ type Pinned struct {
 	Script   File   `yaml:"script"`
 	Includes []File `yaml:"includes,omitempty"`
 	Sidecar  *File  `yaml:"sidecar,omitempty"`
-	// Modules are the modules the lane declares, in its order.
+	// Modules are the modules an older swim's lane declared, in its order
+	// (empty now: a lane without them hashes as it always has).
 	Modules []ModulePin `yaml:"modules,omitempty"`
 	// Runner is how the script runs, as the repo says it: bash, its #!
 	// line, a swim.yml runner, direct; "local .ts" for a runner from the
@@ -115,17 +116,6 @@ type Local struct {
 	Env        string `yaml:"env_sha256,omitempty"` // the lane's env from env files
 	RunnerPath string `yaml:"runner_path,omitempty"`
 	RunnerSHA  string `yaml:"runner_sha256,omitempty"`
-	// Built are the repo Go modules' binaries, built from the stage with
-	// this machine's Go: what a module call runs.
-	Built []Built `yaml:"built,omitempty"`
-}
-
-// Built is a repo Go module's binary as staging built it.
-type Built struct {
-	Module string `yaml:"module"`
-	Go     string `yaml:"go"`     // the Go version that built it
-	Path   string `yaml:"path"`   // repo-relative, under .swim/modules/build/
-	SHA256 string `yaml:"sha256"` // the binary's
 }
 
 // Manifest is one lane's execution manifest.
@@ -184,14 +174,12 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 		m.data[f] = d
 		return d, nil
 	}
-	pinned := map[string]bool{rel: true}
 	for _, f := range files {
 		d, err := read(f)
 		if err != nil {
 			// ScriptBytes hashes a missing @file as "(missing)"; nothing to stage.
 			continue
 		}
-		pinned[f] = true
 		// Staged executable as it is in the tree (a helper script the lane
 		// runs); like the script's, the mode isn't in the hash.
 		exec := false
@@ -202,30 +190,9 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	}
 	m.ScriptSHA = hash(lane.JoinScript(data, files, read))
 	// What it pins is what its header names (# Includes:, # Cache:
-	// lockfiles, # Modules:): nothing is found by reading its body.
-	// A repo file it sources without naming it is refused at run time.
+	// lockfiles): nothing is found by reading its body. A repo file it
+	// sources without naming it is refused at run time.
 	info, _ := lane.ReadScript(root, n)
-	// The modules it declares, as swim.yml allows them: a module that
-	// doesn't resolve keeps the lane from starting.
-	mods, err := module.Resolve(root, cfg.Modules, info.Modules)
-	if err != nil {
-		return nil, fmt.Errorf("swim %d: %w", n, err)
-	}
-	for _, mod := range mods {
-		m.Pinned.Modules = append(m.Pinned.Modules, ModulePin{Name: mod.Name, Version: mod.Version, Source: mod.Source(), Kind: mod.Kind, SHA256: mod.SHA256})
-		if mod.Builtin {
-			continue
-		}
-		for rel, d := range mod.Files {
-			f := mod.Dir + "/" + rel
-			if pinned[f] {
-				continue
-			}
-			pinned[f] = true
-			m.data[f] = d
-			m.Pinned.Includes = append(m.Pinned.Includes, File{Path: f, SHA256: hash(d), From: FromModule})
-		}
-	}
 	sort.Slice(m.Pinned.Includes, func(i, j int) bool { return m.Pinned.Includes[i].Path < m.Pinned.Includes[j].Path })
 	if sc := lane.Sidecar(root, n); isFile(sc) {
 		d, err := os.ReadFile(sc)
@@ -342,26 +309,6 @@ func (m *Manifest) Stage(root, run string) (string, error) {
 		if err := write(f.Path, m.data[f.Path], f.Exec); err != nil {
 			return "", err
 		}
-	}
-	// Repo Go modules are built now, from the stage: a module that doesn't
-	// build keeps the lane from starting, and the binary is in the
-	// manifest.
-	m.Local.Built = nil
-	for _, p := range m.Pinned.Modules {
-		if p.Kind != module.Go || p.Source == module.BuiltinSource {
-			continue
-		}
-		rel := module.PinDir(p.Source, p.SHA256)
-		mod, err := module.FromStage(dir, rel, p.SHA256)
-		if err != nil {
-			return "", fmt.Errorf("module %s: %w", p.Name, err)
-		}
-		bin, gov, err := module.BuildGo(root, mod, filepath.Join(dir, filepath.FromSlash(rel)), os.Stderr)
-		if err != nil {
-			return "", err
-		}
-		binRel, _ := relTo(root, bin)
-		m.Local.Built = append(m.Local.Built, Built{Module: p.Name, Go: gov, Path: binRel, SHA256: fileHash(bin)})
 	}
 	data, err := yaml.Marshal(m)
 	if err != nil {

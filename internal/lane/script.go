@@ -329,8 +329,8 @@ func applySidecar(path string, info *Info) error {
 		info.Includes = append([]string(nil), *sf.Includes...)
 	}
 	if sf.Modules != nil {
-		info.Modules = nil
-		info.setModules(*sf.Modules)
+		// modules: is gone (swim lint: removed); read, so the sidecar loads.
+		info.Removed = append(info.Removed, "Modules")
 	}
 	if sf.Cache != nil {
 		info.Cache = nil
@@ -346,9 +346,6 @@ func applySidecar(path string, info *Info) error {
 	// keys need no syntax line: the round is syntax 3.
 	if sf.Fail != nil {
 		info.Syntax = max(info.Syntax, 3)
-	}
-	if sf.Modules != nil {
-		info.Syntax = max(info.Syntax, 4)
 	}
 	return nil
 }

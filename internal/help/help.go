@@ -351,16 +351,6 @@ swim report --earmarks | --earmark --reset [--name NAME]
   lane, use the library's
   gate.)
 `,
-	"mod": `swim mod [--label L] [--gate|--evidence] [options] CMD [args...]
-
-  In a lane program in another language (one that runs swim run ... -- for
-  its steps): run a command of a module the lane declares (# Modules:) as
-  a step, as a bash lane's mod does. --gate: its failure ends the round;
-  --evidence: its output is the round's evidence (tf plan). A gate module
-  (gate: true in its module.yml) that fails ends the round. Step options
-  as for swim run's in-lane form. There is no swim mod_env (a command
-  can't set its caller's environment): use mod_env in a bash lane.
-`,
 	"snapshot": `swim snapshot [options] "<label>" -- cmd [args...]
 
   In a lane script in any language: run a read-only step and save its output
@@ -918,43 +908,6 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
   unreachable, or the swimmer stopping all decline: the guard is a dry
   run. Without lookup.yml nobody can answer. A swimmer that doesn't allow
   answer never asks: its guards dry-run as in any batch.
-`,
-	"modules": `swim modules [ls] [--yaml]
-swim modules show NAME|./DIR
-swim modules new NAME [--kind bash|go] [--dir DIR]
-swim modules check [--yaml]
-swim modules lock
-swim modules get [--upgrade [NAME|ADDRESS]]
-
-  The modules this repo's lanes can declare (# Modules:) and call with mod
-  and mod_env: the built-in ones, and the repo's in swim.yml's modules: dir.
-  See MODULES in swim guide.
-  ls       each module: version, kind, where it comes from, what it does,
-           its declared effects, and whether swim.yml allows it.
-           --yaml: swim.modules/v1
-  show     a module's module.yml and its source (a built-in Go module's is
-           compiled into swim), for reading before approving a lane that
-           uses it
-  new      write a repo module's skeleton: DIR/NAME/ (default swim.yml's
-           modules: dir, else modules) with a module.yml and NAME.sh, or
-           main.go and go.mod with --kind go; it says what to add to
-           swim.yml to allow it
-  check    for each module the lanes declare: the lanes, the version they
-           ask for (tf@1.2), what .swim.lock pins and what this swim has,
-           and the fix for a mismatch. Exit 1 on one, or on a lane whose
-           modules don't resolve. --yaml: swim.modules-check/v1
-  lock     pin in .swim.lock the built-in modules the lanes use, as this
-           swim has them (version and hash), and say what changed. A swim
-           whose built-in differs then refuses those lanes. swim lock
-           --upgrade does it too. Commit the lock; lanes using a changed
-           module need approving again.
-  get      fetch the modules the lanes name by source address
-           (github.com/org/swim-modules//pager@2) into .swim/modules/, and
-           pin each in .swim.lock: the newest tag the lanes accept, its
-           commit and files' hash. A pinned version is kept (and fetched
-           again if its copy is gone or changed); --upgrade takes the newest
-           accepted tag, for all or the one named. swim.yml must allow the
-           address. See MODULES in swim guide.
 `,
 	"cache": `swim cache [ls] [--yaml]
 swim cache rm PRESET ... | --all [--yes]
@@ -1525,12 +1478,10 @@ swim resume  N|JOB ... | --all      (the same command)
     header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag
     fail (error)           Fail: without syntax 3
-    module (error)         a # Modules: entry that doesn't resolve or swim.yml
-                           doesn't allow, a module command the script doesn't
-                           declare, or modules without syntax 4
-    module-effects (warn)  a module used against its declared effects:
-                           credentials without mod_env, not read-only before
-                           stage change, destructive outside a guard
+    removed (error)        what this swim no longer has: Matrix:, Always:,
+                           Finally:, Rerun-Children:, an outcome handler
+                           (on_success, on_failure, on_exit), or modules
+                           (# Modules:, mod, mod_env, an SDK's module call)
     outputs (warn)         an output whose name suggests secrets (output files
                            aren't masked)
     cache (error)          a # Cache: with an unknown preset or no lockfile, a
@@ -1631,7 +1582,8 @@ swim resume  N|JOB ... | --all      (the same command)
                               pause_warn (4h), holding its locks and slot;
                               or the repo-wide pause left on that long
     removed-setting (warn)    a setting swim no longer has (chime,
-                              schedule_tz, observe): it's ignored; delete it
+                              schedule_tz, observe, modules): it's ignored;
+                              delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key
@@ -1726,10 +1678,9 @@ swim resume  N|JOB ... | --all      (the same command)
                         an old-form lock)
 
   Syntax versions:
-    script 4, log 2, state 2   modules: a lane script that uses # Modules:,
-                               mod or mod_env declares # swim: syntax 4,
-                               so a swim without modules refuses it
-                               instead of running it without them
+    script 4, log 2, state 2   once modules (# Modules:, mod, mod_env), which
+                               swim no longer has: syntax 4 now adds nothing
+                               over 3, and swim new still writes it
     script 3, log 2, state 2   execution manifests: chain entries, signed
                                approvals and queued batches name the
                                manifest they ran or approved
@@ -1782,8 +1733,8 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "step", "lib",
-	"gate", "snapshot", "mod", "guard", "stage", "drift", "stop", "msg", "input", "output",
+var FullOrder = []string{"init", "config", "env", "secret", "cache", "new", "plan", "run", "all", "status", "log", "report", "step", "lib",
+	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "watch", "ps", "hub", "auth", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor", "guide"}
 
@@ -1825,13 +1776,13 @@ HUB
 MORE
   lint, doctor                 check lane scripts and the environment
   keys, chain                  who's who; chain repair and anchoring
-  secret, env, cache, modules  what lanes get to work with
+  secret, env, cache           what lanes get to work with
   archive, clean, prune, trash, stub, note   tidy up and record
   pause, unpause, interrupt, wait, claim     control running lanes
   report                       what changed since you last looked
   ci, config, lock, changelog, version, skill
 
-  Lane scripts call: gate, guard, stage, run, snapshot, evidence, mod,
+  Lane scripts call: gate, guard, stage, run, snapshot, evidence,
   drift, stop, msg, input, output (swim guide: WRITING A LANE SCRIPT).
 
   swim guide prints everything, including each command's detail.

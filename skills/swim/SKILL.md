@@ -243,8 +243,8 @@ from what the previous ones left behind.
   with `summary`.
 - **Every destructive or irreversible step goes behind its own `guard
   FLAG "<action, date, reason>"`.** Declare it in the header (`# Guards:
-  FLAG  <what it approves>`): swim reads a lane's guards, includes and
-  modules from its header only, and refuses one it doesn't declare (a guard
+  FLAG  <what it approves>`): swim reads a lane's guards and includes
+  from its header only, and refuses one it doesn't declare (a guard
   dry-runs; an unlisted `source` stops the round). `swim lint --fix` adds
   missing header lines.
   With no approval it's a dry run, which is the safe default. Never default
@@ -262,20 +262,12 @@ from what the previous ones left behind.
   echo: it's blocked on its text.
 - **Secrets:** use `$(swim secret get NAME)`. Never print values, only
   lengths. Never list a secret in `header_env`.
-- **Reuse modules instead of rewriting plumbing.** `swim modules` lists
-  them (built in: `target`, `backup`, `wait`, `aws-session`, `clone`,
-  `notify`; the repo's in `modules/`). Declare what you use, `# Modules:
-  target backup notify`, and call it as a step: `mod notify "#orders"
-  "done"`; `mod_env aws-session --profile P --role ARN` for credentials.
-  Start a change against cloud resources with `mod target aws --account
-  ID` (it stops the round on the wrong account), take `mod backup ...` as
-  the first step of `stage change`, and replace sleep loops with `mod wait`.
-  For Terraform: `mod --evidence tf plan DIR` in the check stage and `mod
-  tf apply DIR` inside the guard (never a raw `terraform apply`). Verify
-  with `mod smoke smoke/<svc>.yml` (list the file in `# Includes:`). A
-  report goes through `mod claude ... --out report.md`, which only writes
-  an artifact; `mod report report.md` prints it into the log.
-  An undeclared module is refused.
+- **Check the target before changing it.** Start a change against cloud
+  resources with a `gate` that stops on the wrong account (`gate "account"
+  -- test "$(aws sts get-caller-identity --query Account --output text)" =
+  "$ACCOUNT"`). For Terraform: `evidence "plan" -- terraform plan -out
+  tfplan` in the check stage and `terraform apply tfplan` inside the guard,
+  so the approval covers the plan that's applied.
 - **Keep output streaming,** so the operator and the live view see
   progress. Don't capture a long command with `out=$(cmd); echo "$out"`.
   Check its output while it streams instead:

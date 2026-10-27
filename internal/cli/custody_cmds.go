@@ -22,7 +22,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
-	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -135,11 +134,6 @@ func cmdApprove(args []string) error {
 		m, err := manifest.Build(root, cfg, n, "")
 		if err != nil {
 			return err
-		}
-		// A warning, not a refusal: the swim that runs it may well be the
-		// one the lock pins; this one isn't.
-		if why := moduleLockProblem(root, cfg, n); why != "" {
-			fmt.Fprintf(os.Stderr, "swim approve: warning: this swim can't run swim %d as the repo is locked: %s\n", n, why)
 		}
 		sha := chain.Hash(data)
 		man := m.SHA256
@@ -393,15 +387,6 @@ func printPinned(m *manifest.Manifest) {
 	}
 	if sc := m.Pinned.Sidecar; sc != nil {
 		fmt.Printf("  sidecar  %s %s\n", sc.Path, short12(sc.SHA256))
-	}
-	// Modules, with what they declare they do (a repo module's files are
-	// among the includes above).
-	for _, p := range m.Pinned.Modules {
-		effects := ""
-		if b := module.Builtin(p.Name); b != nil && p.Source == module.BuiltinSource && b.SHA256 == p.SHA256 {
-			effects = " (" + b.EffectsText() + ")"
-		}
-		fmt.Printf("  module   %s %s %s %s%s\n", p.Name, p.Version, p.Source, short12(p.SHA256), effects)
 	}
 	fmt.Printf("  runner   %s\n", m.Pinned.Runner)
 	fmt.Printf("  config   %s (swim.yml: %s)\n", short12(m.Pinned.Config.SHA256), or(strings.Join(m.Pinned.Config.Keys, ", "), "no policy keys set"))

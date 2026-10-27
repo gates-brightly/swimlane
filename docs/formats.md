@@ -5,7 +5,7 @@ batches and hub commands all record these hashes, so changing
 how one is computed would void every one of them. **Upgrading swim
 doesn't stale an approval or a pin** while these formats hold. Only
 changes to what you pinned do: your script, the files it includes, its
-sidecar, its modules, how it runs, the `swim.yml` policy keys you set, or
+sidecar, how it runs, the `swim.yml` policy keys you set, or
 `lookup.yml`'s `require:` rules.
 
 [← back to the docs](README.md) · [trust model](trust-model.md)
@@ -43,7 +43,7 @@ lane: <N>
 script: <path> <sha256>
 include: <path> <sha256>                         (one per pinned file, sorted by path)
 sidecar: <path> <sha256>                         (when lane.N.yml exists)
-module: <name> <version> <source> <kind> <sha256>   (one per declared module, in order)
+module: <name> <version> <source> <kind> <sha256>   (only in manifests an older swim wrote for a lane with # Modules:)
 runner: <how it runs: bash, #!..., swim.yml ..., direct, local .ext>
 config: <policy hash>
 lookup-rules: <sha256 of lookup.yml's require: rules>
@@ -95,7 +95,3 @@ If a format must change once there are approvals to keep:
 3. Make every comparison accept either (`Manifest.Matches`,
    `queue.Lane.PinsManifest`).
 4. Say so in the CHANGELOG.
-
-One known exception: a swim release that changes a **built-in module**
-changes that module's hash, so approvals of lanes that use it go stale
-(see [modules](../features/modules.md)).

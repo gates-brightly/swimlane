@@ -264,26 +264,6 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		for _, v := range pl.guards[n] {
 			fmt.Fprintf(w, "%s%s%s %s (%s)%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "guard"), v.Flag, v.text(p), v.desc(p))
 		}
-		// Modules, with what they declare they do: an approver reads them
-		// next to the guards.
-		if len(info.Modules) > 0 {
-			mods, err := planModules(o.Root, o.Cfg, info.Modules)
-			for k, m := range mods {
-				label := "        "
-				if k == 0 {
-					label = "modules "
-				}
-				fmt.Fprintf(w, "%s%s%s %s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, label), moduleText(m))
-				if m.Lock != "" {
-					fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Red, "blocked: "+m.Lock))
-				}
-			}
-			if err != nil {
-				for _, e := range strings.Split(err.Error(), "\n") {
-					fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Red, "blocked: "+e))
-				}
-			}
-		}
 		if info.FailHard {
 			fmt.Fprintf(w, "%s%s%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "fail: hard (the first failed step ends the round)"))
 		}
@@ -500,10 +480,6 @@ type PlanLane struct {
 	// Cache are the tool caches the round uses (# Cache:), with the
 	// lockfiles each is checked against.
 	Cache []PlanCache `yaml:"cache,omitempty"`
-	// Modules are the modules the round declares (# Modules:), and
-	// ModuleError why they don't resolve (the lane won't start).
-	Modules     []PlanModule `yaml:"modules,omitempty"`
-	ModuleError string       `yaml:"module_error,omitempty"`
 	// Check is the lane's last read-only check (swim plan --check).
 	Check *PlanCheck `yaml:"check,omitempty"`
 	// Claim is the lane's live claim (swim claim): a session may still be
@@ -553,12 +529,6 @@ func Plan(o Options) (*PlanDoc, error) {
 				Approved: v.Approved, How: v.How, Asks: v.Asks, Why: v.Why})
 		}
 		l.AwaitsApproval = pl.awaiting[n]
-		if len(info.Modules) > 0 {
-			var err error
-			if l.Modules, err = planModules(o.Root, o.Cfg, info.Modules); err != nil {
-				l.ModuleError = err.Error()
-			}
-		}
 		if info.FailHard {
 			l.Fail = "hard"
 		}

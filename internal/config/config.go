@@ -38,11 +38,14 @@ type Settings struct {
 	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // added to the built-in git push/commit/pull
 	// Removed keys: accepted and ignored, so a swim.yml from before still
 	// loads (swim.yml is read strictly); swim doctor says to delete them.
-	RemovedChime       any      `yaml:"chime,omitempty"`
-	RemovedChimeStyle  any      `yaml:"chime_style,omitempty"`
-	RemovedChimeMinS   any      `yaml:"chime_min_s,omitempty"`
-	RemovedScheduleTZ  any      `yaml:"schedule_tz,omitempty"`
-	RemovedObserve     any      `yaml:"observe,omitempty"`
+	RemovedChime      any `yaml:"chime,omitempty"`
+	RemovedChimeStyle any `yaml:"chime_style,omitempty"`
+	RemovedChimeMinS  any `yaml:"chime_min_s,omitempty"`
+	RemovedScheduleTZ any `yaml:"schedule_tz,omitempty"`
+	RemovedObserve    any `yaml:"observe,omitempty"`
+	// RemovedModules (modules:) still counts in the policy hash as it
+	// did, so a repo that set it keeps its approvals (policy.go).
+	RemovedModules     any      `yaml:"modules,omitempty"`
 	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
 	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
 	SecretEnvIgnore    []string `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
@@ -92,9 +95,6 @@ type Settings struct {
 	// what a guarded secret does (AWS profiles): swim lint and swim doctor
 	// point out their use. Only swim.yml may set it.
 	AmbientCredentials []string `yaml:"ambient_credentials,omitempty"`
-	// Modules is swim.yml's modules: which modules lanes may declare
-	// (modules.go). Only swim.yml may set it.
-	Modules *ModulesPolicy `yaml:"modules,omitempty"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -179,9 +179,6 @@ func Load(root string) (*Config, error) {
 	if f.Defaults.Secrets != nil || f.Defaults.AmbientCredentials != nil {
 		return nil, fmt.Errorf("%s: secrets: and ambient_credentials: belong in a repo's committed swim.yml, not config.yml (a guard on a secret is the repo's decision)", c.Path)
 	}
-	if f.Defaults.Modules != nil {
-		return nil, fmt.Errorf("%s: modules: belongs in a repo's committed swim.yml, not config.yml (which modules lanes may use is the repo's decision)", c.Path)
-	}
 	c.Settings = f.Defaults
 	c.RepoLanes = f.Defaults.Lanes != 0
 	c.Runners, c.RunnerFrom = nil, nil
@@ -206,10 +203,6 @@ func Load(root string) (*Config, error) {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 		c.Secrets, c.AmbientCredentials = s.Secrets, s.AmbientCredentials
-		if err := s.Modules.validate(); err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-		c.Modules = s.Modules
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
 		if repo.Env != nil {
@@ -223,9 +216,6 @@ func Load(root string) (*Config, error) {
 		}
 		if repo.Secrets != nil || repo.AmbientCredentials != nil {
 			return nil, fmt.Errorf("%s (repo %s): secrets: and ambient_credentials: belong in the repo's committed swim.yml, not config.yml", c.Path, root)
-		}
-		if repo.Modules != nil {
-			return nil, fmt.Errorf("%s (repo %s): modules: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
 		}
 		c.HasRepo = true
 		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
@@ -258,7 +248,7 @@ func (s Settings) RemovedKeys() []string {
 	for _, k := range []struct {
 		name string
 		v    any
-	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}} {
+	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}

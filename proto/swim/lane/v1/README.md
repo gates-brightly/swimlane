@@ -47,10 +47,9 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
 
 | op | args | result |
 |---|---|---|
-| `hello` | `protocol` (`swim.lane/v1`), `sdk` | `protocol`, `swim`, `syntax` ({script, log, state}; it replaced `breaking`, which no SDK read), `lane`, `cell`, `job`, `run`, `deadline` (epoch, 0 for none), `check` (a read-only check), and for one job of a lane of jobs `job_path` (`1.5.9`) |
+| `hello` | `protocol` (`swim.lane/v1`), `sdk` | `protocol`, `swim`, `syntax` ({script, log, state}; it replaced `breaking`, which no SDK read), `lane`, `job`, `run`, `deadline` (epoch, 0 for none), `check` (a read-only check), and for one job of a lane of jobs `job_path` (`1.5.9`) |
 | `stage` | `name` | — |
 | `run`, `gate`, `snapshot`, `evidence` | `label`, `argv`, `opts` (as for `swim run`: `--timeout D`, `--retry N`, `--backoff D`, `--retry-on CODES`, `--no-retry-timeout`, `--soft`) | `exit`, `passed` |
-| `module` | `name` (a command of a module the lane declares, `# Modules:`), `args`, `opts` (as for `run`), `label` (default `name args`), `gate`, `evidence` (its output is the round's evidence, as op `evidence`), `env` | `exit`, `passed`, and with `env` once it passed `env` (the variables the module gave the lane: swim sets them for every later step, masked; the SDK sets them in the program's environment). A gate module (`gate: true`) that fails ends the round, as `gate` does |
 | `begin_step` | `label`, `gate` | `step` (id), `started` (false: the lane is stopping) |
 | `step_output` | `step`, `text` | — |
 | `end_step` | `step`, `ok`, `message` | `exit`, `passed` |
@@ -97,7 +96,7 @@ the program's:
   refused under `swim run`.
 - **A lane reports only for itself.** swim's hidden commands (`_start`,
   `_mark`, `_stage`, `_finish`, `_handler`, `_approve`) ask the launcher
-  which lane, cell and run their process belongs to (by its approval token
+  which lane, job and run their process belongs to (by its approval token
   and its process tree) and refuse to act for another: `lane 1 can't
   report for lane 2`, exit 2.
 - **Limits:** the program runs as the operator. It can write files swim

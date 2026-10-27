@@ -114,12 +114,9 @@ var Checks = []Check{
 	{"cache-bypass", finding.Warn, false, "a command that takes from a declared cache without checking it against the lockfile (npm install, pip install without --require-hashes)", checkCacheBypass},
 	{"includes", finding.Error, false, "a Python or TypeScript lane imports a local module its # Includes: doesn't cover (not staged: the import fails)", checkIncludes},
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
-	{"module", finding.Error, false, "a # Modules: entry that doesn't resolve or swim.yml doesn't allow, a module command the script doesn't declare, or modules without `# swim: syntax 4`", checkModules},
-	{"module-effects", finding.Warn, false, "a module used against its declared effects: credentials without mod_env, not read-only before `stage change`", checkModuleEffects},
-	{"module-lock", finding.Warn, false, "a built-in module .swim.lock doesn't pin yet, or pins at another version than this swim's (swim run refuses that lane here)", checkModuleLock},
 	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},
 	{"fail", finding.Error, false, "Fail: without `# swim: syntax 3`", checkFailSyntax},
-	{"removed", finding.Error, false, "a lane kind this swim no longer has: Matrix:, Always:, Finally:, Rerun-Children: or an outcome handler (on_success, on_failure, on_exit)", checkRemoved},
+	{"removed", finding.Error, false, "what this swim no longer has: Matrix:, Always:, Finally:, Rerun-Children:, an outcome handler (on_success, on_failure, on_exit), or modules (# Modules:, mod, mod_env)", checkRemoved},
 }
 
 // Codes of findings that come from outside the table.

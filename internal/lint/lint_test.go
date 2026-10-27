@@ -74,11 +74,6 @@ func replace(s, old, new string) string {
 
 func before(s, anchor, add string) string { return replace(s, anchor, add+anchor) }
 
-// mods is a script that uses modules: syntax 4 and its # Modules: line.
-func mods(s, line string) string {
-	return before(replace(s, "# swim: syntax 2", "# swim: syntax 4"), "# Timeout:", line+"\n")
-}
-
 func TestEachCheck(t *testing.T) {
 	c := clean(1)
 	cases := []struct {
@@ -117,12 +112,6 @@ func TestEachCheck(t *testing.T) {
 		{name: "Cache no lockfile", script: before(c, "# Timeout:", "# Cache: terraform\n"), code: "cache", level: finding.Error, line: 7, message: "terraform needs its lockfile"},
 		{name: "npm install with a cache", script: before(before(c, "# Timeout:", "# Cache: npm @package-lock.json\n"), "stage verify\n", "run \"deps\" npm install\n"), code: "cache-bypass", level: finding.Warn, message: "npm install"},
 		{name: "pip without hashes", script: before(before(c, "# Timeout:", "# Cache: pip @requirements.txt\n"), "stage verify\n", "run \"deps\" pip install requests\n"), code: "cache-bypass", level: finding.Warn, message: "--require-hashes"},
-		{name: "module not declared", script: before(replace(c, "# swim: syntax 2", "# swim: syntax 4"), "stage verify\n", "mod notify - \"done\"\n"), code: "module", level: finding.Error, message: "module notify isn't declared"},
-		{name: "no such module", script: mods(c, "# Modules: nope"), code: "module", level: finding.Error, line: 7, message: "module nope: no such module"},
-		{name: "no such module command", script: before(mods(c, "# Modules: notify"), "stage verify\n", "mod --label x notify_thread - hi\n"), code: "module", level: finding.Error, message: "no module has a command notify_thread"},
-		{name: "credentials without mod_env", script: before(mods(c, "# Modules: aws-session"), "stage verify\n", "mod aws-session --profile p\n"), code: "module-effects", level: finding.Warn, message: "mod drops them"},
-		{name: "module before change", script: before(mods(c, "# Modules: notify"), "stage change\n", "if true; then mod notify - \"starting\"; fi\n"), code: "module-effects", level: finding.Warn, message: "isn't read-only"},
-		{name: "module apply outside a guard", script: before(mods(c, "# Modules: tf"), "stage verify\n", "mod tf apply infra\n"), code: "module-effects", level: finding.Warn, message: "tf apply changes things, and runs outside a guard"},
 		{name: "destructive outside guard", script: before(c, "stage verify\n", "run \"clean\" rm -rf build\n"), code: "destructive", level: finding.Warn},
 		{name: "destructive after else", script: replace(c, "fi\n", "else\n  run \"destroy\" terraform destroy\nfi\n"), code: "destructive", level: finding.Warn},
 		{name: "blocked", script: before(c, "stage verify\n", "run \"ship\" git push origin main\n"), code: "blocked", level: finding.Error},
@@ -131,6 +120,8 @@ func TestEachCheck(t *testing.T) {
 		{name: "secret echoed (secret_env)", script: before(c, "stage verify\n", "run \"show\" printf '%s' ${MY_KEY}\n"), cfg: func(c *config.Config) { c.SecretEnv = []string{"MY_KEY"} }, code: "secret-echo", level: finding.Warn},
 		{name: "bad Timeout", script: replace(c, "# Timeout: 30m", "# Timeout: soon"), code: "header", level: finding.Warn, line: 7},
 		{name: "removed header", script: before(c, "# Timeout:", "# Finally: 2\n"), code: "removed", level: finding.Error, line: 7, message: "# Finally:"},
+		{name: "Modules header", script: before(c, "# Timeout:", "# Modules: notify\n"), code: "removed", level: finding.Error, line: 7, message: "# Modules: is gone"},
+		{name: "mod call", script: before(c, "stage verify\n", "mod notify - \"done\"\n"), code: "removed", level: finding.Error, message: "mod calls a module"},
 		{name: "outcome handler", script: before(c, "stage snapshot\n", "on_failure() {\n  run \"undo\" true\n}\n"), code: "removed", level: finding.Error, line: 13, message: "on_failure"},
 		{name: "cross-lane read", script: before(c, "stage verify\n", "run \"read\" cat shared/report.json\n"), other: before(clean(2), "stage verify\n", "run \"fetch\" curl -fsS -o shared/report.json https://example.com\n"), code: "cross-lane", level: finding.Info, message: "lane.2.sh:23 writes"},
 	}
@@ -334,25 +325,26 @@ func TestGuardedSecretLint(t *testing.T) {
 	}
 }
 
-// A lane that uses modules must say syntax 4.
-func TestModulesNeedSyntax4(t *testing.T) {
-	c := before(clean(1), "# Timeout:", "# Modules: notify\n")
-	fs := Lint(cfg4(), map[int]string{1: c, 2: clean(2)}, 1)
-	if len(fs) != 1 || fs[0].Code != "module" || !strings.Contains(fs[0].Message, "declares syntax 2") || fs[0].Line != 7 {
-		t.Errorf("findings: %+v", fs)
-	}
-}
-
-// go mod download isn't a module call; declared modules used after stage
-// change, and a read-only one before it, are clean.
-func TestModulesClean(t *testing.T) {
-	c := mods(clean(1), "# Modules: notify clone@1 aws-session tf")
-	c = before(c, "stage change\n", "mod --evidence tf plan infra\n")
-	c = replace(c, "  run \"drop table\"", "  mod tf apply infra\n  run \"drop table\"")
-	c = before(c, "stage change\n", "run \"deps\" go mod download\nmod_env aws-session --profile p\nmod clone https://x/y 3f2a9c1e0b7d4e2a9c1e0b7d4e2a9c1e0b7d4e2a \"$SWIM_OUT/y\"\n")
+// Modules are gone: the header, mod and mod_env (bash) and an SDK's
+// module call are each an error; go mod download, and mod in quoted text,
+// aren't module calls.
+func TestModulesRemoved(t *testing.T) {
+	c := replace(before(clean(1), "# Timeout:", "# Modules: notify tf\n"), "# swim: syntax 2", "# swim: syntax 4")
+	c = before(c, "stage change\n", "run \"deps\" go mod download\nmod_env aws-session --profile p\necho \"mod notify x\"\n")
 	c = before(c, "summary\n", "mod --timeout 30s notify \"#c\" \"done\" && echo sent\n")
-	if fs := Lint(cfg4(), map[int]string{1: c, 2: clean(2)}, 1); len(fs) != 0 {
-		t.Errorf("findings: %+v", fs)
+	var lines []string
+	for _, f := range Lint(cfg4(), map[int]string{1: c, 2: clean(2)}, 1) {
+		if f.Code != "removed" || f.Level != finding.Error {
+			t.Errorf("finding: %+v", f)
+		}
+		lines = append(lines, fmt.Sprint(f.Line))
+	}
+	if len(lines) != 3 || lines[0] != "7" {
+		t.Errorf("removed findings on lines %v, want the header, mod_env and mod", lines)
+	}
+	py := "#!/usr/bin/env python3\n# swim: syntax 4\n# Round: r\nimport swim\nr = swim.lane()\nr.module(\"notify\", \"-\", \"hi\")\n"
+	if fs := Lint(cfg4(), map[int]string{1: py, 2: clean(2)}, 1); !strings.Contains(codes(fs), "removed") {
+		t.Errorf("an SDK module call: %+v", fs)
 	}
 }
 

@@ -87,7 +87,7 @@ type Info struct {
 	Locks           []string // Locks: resources this round needs exclusively (default none)
 	Extra           []KV     // other keys in the header block, kept and shown
 	Problems        []string // header values swim couldn't use (e.g. a bad Timeout)
-	Removed         []string // header keys of lane kinds this swim no longer has (Finally:, Matrix:, ...)
+	Removed         []string // header keys of what this swim no longer has (Finally:, Matrix:, Modules:, ...)
 	Message         string   // stub message
 	// FailHard is Fail: hard: the first failed step stops the round.
 	// Default soft. Script syntax 3.
@@ -118,10 +118,6 @@ type Info struct {
 	// a directory that outlives the round, and pins the lockfiles the tool
 	// checks the cache against (internal/cache).
 	Cache []cache.Decl
-	// Modules are the modules the round uses (# Modules: notify clone@1
-	// ./modules/x), as written: the only ones its mod and mod_env may call
-	// (internal/module resolves them).
-	Modules []string
 	// Target is what the lane's steps talk to, by default (# Targets:
 	// orders-api), logged with each step; a step's --target overrides it.
 	Target string
@@ -198,8 +194,8 @@ func ReadScript(root string, n int) (Info, error) {
 // "#" or "//" (lane.N.js, lane.N.ts, lane.N.go, ...).
 //
 // The header is the lane's contract: its guards (# Guards:, "*" for flags
-// named at run time), the files it reads (# Includes:) and its modules
-// (# Modules:) are what the run allows. The body is read only for where
+// named at run time) and the files it reads (# Includes:) are what the run
+// allows. The body is read only for where
 // its stages and outcome handlers are, and whether it shows evidence (see
 // text.go).
 func ParseScript(src string) Info {
@@ -362,12 +358,10 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 		info.setFail(v, "Fail:")
 	case "Cache":
 		info.setCache(v, "Cache:")
-	case "Modules":
-		info.setModules(splitList(v))
 	case "Guards":
 		info.addGuard(v, listed)
 	case "Matrix", "Matrix-Exclude", "Matrix-Parallel", "Matrix-Fail", "Always", "Finally", "Rerun-Children",
-		"Handler-Timeout", "On-Success", "On-Failure", "On-Exit":
+		"Handler-Timeout", "On-Success", "On-Failure", "On-Exit", "Modules":
 		info.Removed = append(info.Removed, key)
 	default:
 		return false
@@ -414,12 +408,9 @@ func stagesIn(line string, cmds [][]Word) bool {
 	return false
 }
 
-// modValueOpts are mod's options that take a value.
-var modValueOpts = map[string]bool{"--label": true, "--timeout": true, "--retry": true, "--backoff": true, "--retry-on": true, "--key": true, "--target": true}
-
 // evidenceIn reports whether a line has an evidence step: `evidence
-// "<label>" ...`, `swim evidence`, `mod --evidence ...`, ["evidence", ...]
-// from another language, or an SDK's module call with evidence on.
+// "<label>" ...`, `swim evidence`, or ["evidence", ...] from another
+// language.
 func evidenceIn(line string, cmds [][]Word) bool {
 	for _, c := range cmds {
 		if len(c) > 1 && c[0].Text == "evidence" {
@@ -428,51 +419,8 @@ func evidenceIn(line string, cmds [][]Word) bool {
 		if rest, ok := swimCall(c); ok && len(rest) > 0 && rest[0].Text == "evidence" {
 			return true
 		}
-		if len(c) > 1 && c[0].Text == "mod" {
-			for k := 1; k < len(c) && strings.HasPrefix(c[k].Text, "--"); k++ {
-				if c[k].Text == "--evidence" {
-					return true
-				}
-				if modValueOpts[c[k].Text] {
-					k++
-				}
-			}
-		}
 	}
-	if quotedThen(line, "evidence", ',') {
-		return true
-	}
-	return sdkModuleEvidence(line)
-}
-
-// sdkModuleEvidence reports whether a line calls an SDK's module (or
-// moduleWith, ModuleWith) with evidence on: evidence=True, evidence: true,
-// Evidence: true.
-func sdkModuleEvidence(line string) bool {
-	i := strings.Index(line, ".module")
-	if j := strings.Index(line, ".Module"); i < 0 || j >= 0 && j < i {
-		i = j
-	}
-	if i < 0 {
-		return false
-	}
-	rest := line[i:]
-	for {
-		k := strings.Index(rest, "vidence")
-		if k < 1 {
-			return false
-		}
-		if e := rest[k-1]; e == 'e' || e == 'E' {
-			after := strings.TrimLeft(rest[k+len("vidence"):], " \t")
-			if after != "" && (after[0] == '=' || after[0] == ':') {
-				val := strings.TrimLeft(after[1:], " \t")
-				if strings.HasPrefix(val, "True") || strings.HasPrefix(val, "true") {
-					return true
-				}
-			}
-		}
-		rest = rest[k+len("vidence"):]
-	}
+	return quotedThen(line, "evidence", ',')
 }
 
 // setOutputs reads Outputs: names: relative paths inside $SWIM_OUT.

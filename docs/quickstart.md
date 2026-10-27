@@ -210,39 +210,7 @@ dry-run unless approved). A **swimmer** (`swim watch`) runs batches as their
 lanes come free; `--once` runs what's queued and exits. This is how a
 session that writes rounds hands them to a machine that runs them.
 
-## 8. A module
-
-```sh
-swim new 5 "Wait for a service, then report"
-cat > lane.5.sh <<'EOF'
-#!/usr/bin/env bash
-# swim: syntax 4
-# Round: Wait for a service, then report
-# Modules: wait report
-# Outputs: report.md
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 5
-
-stage check
-run "start the service" bash -c '(sleep 1; touch service.ready) >/dev/null 2>&1 &'
-mod wait cmd --for 20s --every 1s -- test -e service.ready
-run "write a report" bash -c 'printf "# Report\n\nThe service came up.\n" > "$SWIM_OUT/report.md"'
-mod report report.md
-
-summary
-EOF
-swim modules
-swim run 5 --plain
-swim log 5 | grep -A3 'PASS  report'
-```
-
-A **module** is a small, versioned utility a lane declares (`# Modules:`)
-and calls as a step (`mod`). `wait` polls until something is ready, judged
-by an exit code, never by matching output; `report` prints an artifact the
-round wrote into the log (`$SWIM_OUT`, the round's outputs, declared in
-`# Outputs:`). `swim modules` lists them with what they do.
-
-## 9. Reading the record
+## 8. Reading the record
 
 ```sh
 swim report
@@ -260,7 +228,7 @@ and an unsigned entry fails it.
 
 <!-- /quickstart -->
 
-## 10. With Claude
+## 9. With Claude
 
 swim is built for an AI session to write rounds and a person to run them:
 

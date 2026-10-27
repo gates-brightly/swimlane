@@ -31,7 +31,7 @@ func (c *Config) policyValues() map[string]any {
 		"signing": r.Signing, "secret_env": r.SecretEnv, "secret_env_auto": r.SecretEnvAuto,
 		"secret_env_ignore": r.SecretEnvIgnore, "secret_patterns_auto": r.SecretPatternsAuto,
 		"env": r.Env, "secrets": r.Secrets, "ambient_credentials": r.AmbientCredentials,
-		"modules": r.Modules,
+		"modules": r.RemovedModules, // removed; hashed as it was, see Settings
 	}
 }
 

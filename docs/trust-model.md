@@ -204,8 +204,8 @@ name a socket's peer the token alone decides.
 - **What the manifest can't pin:** env files are pinned for the run and for
   queued batches, but they're per machine, so they aren't in the signed
   manifest hash: an env-only change doesn't stale a signed approval. The
-  runner's binary is recorded per machine, not signed. External binaries,
-  remote state and modules found only at run time are never covered; lint's
+  runner's binary is recorded per machine, not signed. External binaries
+  and remote state are never covered; lint's
   `source` check flags a sourced file it can't pin. `# Observe:` facts are
   checked again before the guarded step, and drift ends the round.
 

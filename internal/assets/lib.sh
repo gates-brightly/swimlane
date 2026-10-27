@@ -89,7 +89,7 @@ lane_init() {
 # _swim_on_err — a command outside any step failed (a typo, a command that
 # isn't there, a cd that didn't happen): nothing else records it, so say
 # so in the log as a WARN. It changes nothing in the round. A function that
-# returns non-zero (run, gate, mod, guard, ...) recorded its own result:
+# returns non-zero (run, gate, guard, ...) recorded its own result:
 # bash names its return, which is skipped. Commands in an if, while, && or
 # || never get here.
 _swim_on_err() {
@@ -151,10 +151,6 @@ _swim_on_signal() {
 # stop, a typo) still gets a summary and a final state.
 _swim_on_exit() {
   _swim_code=$?
-  # A mod_env step the round ended during leaves its variables' file.
-  if [ -n "${_swim_mod_out:-}" ]; then
-    rm -f "$_swim_mod_out"
-  fi
   if [ -z "$SWIM_LANE" ]; then
     return
   fi
@@ -486,100 +482,6 @@ output() {
 #   cache restore web/node_modules || { run "npm ci" npm ci --prefix web && cache save web/node_modules; }
 cache() {
   "$SWIM_BIN" cache "$@"
-}
-
-# mod [options] CMD [args...] — run a command of a module the script
-# declares (# Modules: notify clone@1) as a step labelled "CMD args":
-#   mod notify "#orders" "deployed $SWIM_JOB"
-# Options: run's (--timeout, --retry, --backoff, --retry-on,
-# --no-retry-timeout, --soft), --label "<label>", --gate (a failure stops
-# the round, as gate does) and --evidence (its output is the round's
-# evidence, as evidence's is: mod --evidence tf plan infra/orders). The module's bytes are the ones the
-# manifest pinned; swim modules lists what's available.
-mod() {
-  _swim_mod "" "$@"
-}
-
-# mod_env [options] CMD [args...] — mod for a module that gives the lane
-# variables (credentials: aws-session): once the step passes, what it
-# wrote is exported for the steps after it, and every value is masked
-# from then on.
-mod_env() {
-  _swim_mod 1 "$@"
-}
-
-_swim_mod() {
-  _swim_mod_env=$1
-  shift
-  _swim_mod_o=
-  _swim_mod_label=
-  _swim_mod_gate=
-  _swim_mod_ev=
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --label|--timeout|--retry|--backoff|--retry-on|--key|--target)
-        if [ $# -lt 2 ]; then
-          echo "swim: $1 needs a value" >&2
-          return 2
-        fi
-        if [ "$1" = --label ]; then
-          _swim_mod_label=$2
-        else
-          _swim_mod_o="$_swim_mod_o $1 $2"
-        fi
-        shift 2 ;;
-      --soft|--no-retry-timeout) _swim_mod_o="$_swim_mod_o $1"; shift ;;
-      --gate) _swim_mod_gate=1; shift ;;
-      --evidence) _swim_mod_ev=1; shift ;;
-      --) shift; break ;;
-      --*) echo "swim: unknown mod option $1" >&2; return 2 ;;
-      *) break ;;
-    esac
-  done
-  if [ $# -lt 1 ]; then
-    echo 'swim: usage: mod|mod_env [options] CMD [args...]' >&2
-    return 2
-  fi
-  if [ -z "$_swim_mod_label" ]; then
-    _swim_mod_label="$*"
-  fi
-  _swim_mod_out=
-  if [ -n "$_swim_mod_env" ]; then
-    _swim_mod_out=$(mktemp "${TMPDIR:-/tmp}/swim-mod.XXXXXX") || return 1
-    SWIM_MODULE_OUT=$_swim_mod_out
-    export SWIM_MODULE_OUT
-  fi
-  if [ -n "$_swim_mod_gate" ] || [ -n "$_swim_mod_ev" ]; then
-    _swim_no_hard=1
-  fi
-  # $_swim_mod_o is unquoted on purpose, as in _swim_run_step.
-  _swim_run_step "${_swim_mod_ev:+--evidence}" $_swim_mod_o "$_swim_mod_label" "$SWIM_BIN" _module "$@"
-  _swim_mod_rc=$?
-  _swim_no_hard=
-  # 88: a gate module (gate: true in its module.yml) failed.
-  if [ "$_swim_mod_rc" -eq 88 ]; then
-    _swim_mod_gate=1
-  fi
-  if [ -n "$_swim_mod_out" ]; then
-    unset SWIM_MODULE_OUT
-    if [ "$_swim_mod_rc" -eq 0 ]; then
-      if _swim_mod_vars=$("$SWIM_BIN" _module-env "$_swim_mod_out"); then
-        eval "$_swim_mod_vars"
-      else
-        _swim_mod_rc=1
-      fi
-      _swim_mod_vars=
-    fi
-    rm -f "$_swim_mod_out"
-    _swim_mod_out=
-  fi
-  if [ -n "$_swim_mod_ev" ] && [ "$_swim_mod_rc" -ne 0 ]; then
-    stop "evidence failed: $_swim_mod_label"
-  fi
-  if [ -n "$_swim_mod_gate" ] && [ "$_swim_mod_rc" -ne 0 ]; then
-    stop "gate failed: $_swim_mod_label"
-  fi
-  return "$_swim_mod_rc"
 }
 
 # drift "<what differs>" — record a DRIFT line (deployed state differs from code).

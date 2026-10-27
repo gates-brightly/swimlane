@@ -10,9 +10,9 @@ import (
 // Reading a lane script without regular expressions: header lines are
 // "# Key: value", taken apart with string functions, and the body is read
 // a command at a time by a small quote-aware tokenizer (Commands). Nothing
-// read from the body widens what a lane may do: its guards, the files it
-// reads and the modules it calls are what its header declares, and the run
-// refuses anything else. The body only tells swim where the round's stages
+// read from the body widens what a lane may do: its guards and the files
+// it reads are what its header declares, and the run refuses anything
+// else. The body only tells swim where the round's stages
 // and handlers are, and whether it shows evidence.
 
 // headerKey reads a header line, "# Key: value", with at most one space or
