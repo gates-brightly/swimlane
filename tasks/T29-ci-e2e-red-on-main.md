@@ -52,9 +52,32 @@ Still seen, not yet fixed: `TestPromptIsSafe/tui` (ubuntu: #66, #70), the
 annotations without credentials:
 `api.github.com/repos/gates-brightly/swimlane/actions/runs`.
 
+**2026-10-27: the class, not one more test** (`fc07c45`..`70b04ec`).
+The one-off fixes above were one cause: tests that assume an idle
+machine. The e2e suite now has one timing model (e2e_test.go, "Timing"):
+waits are for events, with one generous deadline (`waitDeadline`, 60s,
+free while things work); a step the test acts on is held (`hold` /
+`r.release`) instead of slept past; margins a test times on purpose
+scale with `E2E_SLOW` (lanes 2-4 set 3 under CI). Interrupt, pause,
+headless, hub, queue, report, live-log and dag99-force tests moved to it.
+Two product bugs it surfaced are fixed: the hub's event heartbeat was a
+package variable a test raced (`go test -race` red on both OSes since
+`86778de`; `73ff0d4`), and `swim log -f` dropped a step's last output
+when it printed and exited between two polls (`717fb3d`,
+`TestLogFollowLateOutput`).
+
+Local evidence on that branch (8 cores, `E2E_SLOW` unset, so stricter
+than CI): the full suite passed twice (124s, 118s; it took ~240s before)
+and once with all 8 cores pegged by busy loops (183s); `go test -race`
+on the unit packages passed. Four tests that failed once under load on
+another branch (`TestTUIManyLanesKeepsSelection`,
+`TestHeadlessHubCommands`, `TestHangupForcesAtOnce`,
+`TestImmediateInterruptMode`) passed in all three. Not yet done: the
+20-in-a-row `GOMAXPROCS=2` run below, and CI itself.
+
 ## Do
 
-- Watch the next pushes: done at three green in a row.
+- Push, then watch the next pushes: done at three green in a row.
 - If `TestPromptIsSafe/tui`, `dag99-parallel` or `ci-changed` fail again,
   read the run's annotations (above) for the failing check.
 - If the prompt tests fail again, read that run's artifacts for their full
