@@ -193,8 +193,6 @@ func headlessStart(root string, yes, approved bool) (release func(), err error) 
 		fmt.Fprintf(os.Stderr, "swim watch: a headless swimmer already runs in this repo: pid %d holds .swim/headless.lock (swim watch --headless --status)\n", holder)
 		return nil, exitError{2}
 	}
-	pidPath := headlessPath(root, "pid")
-	os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644)
 	// Never read stdin: nothing here waits on a person.
 	if null, err := os.Open(os.DevNull); err == nil {
 		unix.Dup2(int(null.Fd()), 0)
@@ -210,7 +208,11 @@ func headlessStart(root string, yes, approved bool) (release func(), err error) 
 	}
 	os.Unsetenv(headlessModeEnv)
 	os.Unsetenv(headlessLogEnv)
+	// The pidfile comes last: --detach returns once it names this process,
+	// and by then swim ps must list it.
 	registerRunner(root, mode)
+	pidPath := headlessPath(root, "pid")
+	os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644)
 	headlessInfo = &hub.HeadlessInfo{Mode: mode, Yes: yes, Approved: approved, Since: time.Now().UTC().Format(time.RFC3339)}
 
 	hups := make(chan os.Signal, 1)
