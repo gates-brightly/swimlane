@@ -194,8 +194,7 @@ func showConfig() error {
 	return nil
 }
 
-// configDoc is the effective configuration as swim config shows it (and a
-// hub shows it, masked, from the worker's reports).
+// configDoc is the effective configuration as swim config shows it.
 func configDoc(cfg *config.Config) string {
 	var b strings.Builder
 	out, _ := yaml.Marshal(map[string]any{

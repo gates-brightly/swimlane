@@ -183,9 +183,6 @@ func cmdApproveHook(args []string) error {
 		job = resp.Job
 	}
 	if !resp.Approved {
-		if resp.Fail {
-			return blocked(resp.Why)
-		}
 		return dryRun(declined(resp))
 	}
 	by := or(resp.By, operator())
@@ -291,9 +288,6 @@ func approveLaunched(root string, cfg *config.Config, laneArg string, n int, fla
 	}
 	laneWarns(root, n, laneArg, resp.Warns)
 	if !resp.Approved {
-		if resp.Fail {
-			return blocked(resp.Why)
-		}
 		return dryRun(declined(resp))
 	}
 	if err := drifted(resp.Observed); err != nil {

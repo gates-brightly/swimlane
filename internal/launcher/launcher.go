@@ -29,7 +29,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/runner"
-	"github.com/gates-brightly/swimlane/internal/runrec"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -75,16 +74,6 @@ type Options struct {
 	// is (swim schedule), recorded in its attestation.
 	ScheduledFor            string
 	ApprovedBy, ApprovedVia string
-	// Asker, if set, asks when no one at a terminal can: after a
-	// pre-answer and -y, a guard nothing else approves is put to it (swim
-	// watch --headless: the hub). The launcher still decides: what it
-	// answers is checked against the run's rules (authority.go).
-	Asker approval.Asker
-	// FailUnanswerable fails a guard no one can ever answer in this run (a
-	// guard its script doesn't declare; the Asker says so for the rest)
-	// rather than dry-running it: for a headless worker, where a dry run
-	// would look like a passed change.
-	FailUnanswerable bool
 	// Pins holds the job each lane must still hold when it starts (lanes
 	// named by job id, and every lane swim ci selects): a lane script
 	// rewritten in the meantime is skipped, not run.
@@ -135,10 +124,6 @@ type Options struct {
 	// the queue): the view's keys only move around, never pre-answer a
 	// guard, and the view closes when the run ends.
 	Unattended bool
-	// NoHangup leaves SIGHUP to the caller (swim watch --headless reopens
-	// its log on it): it doesn't force the run the way a closed terminal
-	// does.
-	NoHangup bool
 
 	ev *events
 }
@@ -164,10 +149,9 @@ type Outcome struct {
 	// guarded step, or waited on one that did.
 	DryRun  bool
 	Elapsed time.Duration
-	// When the lane's dependencies were met, its locks and slot taken, its
-	// process started and finished (zero when it never got that far). The
-	// run record (.swim/runs/) keeps them.
-	Ready, Locked, Slot, Start, End time.Time
+	// When the lane's process started and finished (zero when it never
+	// got that far).
+	Start, End time.Time
 }
 
 // Select resolves which lanes to run and checks none is already running.
@@ -259,9 +243,7 @@ func Run(o Options) (int, error) {
 	if sigs == nil {
 		sigs = CatchSignals(os.Stderr)
 	}
-	if !o.NoHangup {
-		sigs.alsoHangup()
-	}
+	sigs.alsoHangup()
 	defer sigs.Stop()
 	isDone := map[int]bool{}
 	for _, n := range passed {
@@ -393,7 +375,7 @@ func Run(o Options) (int, error) {
 	// guard nothing else approves is a dry run.
 	var ask approval.Asker
 	prompt := o.Prompt && o.ev == nil && disp.CanAsk()
-	if o.AutoApprove || prompt || o.Asker != nil {
+	if o.AutoApprove || prompt {
 		if o.AutoApprove {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
 		}
@@ -413,13 +395,6 @@ func Run(o Options) (int, error) {
 				disp.Message(fmt.Sprintf("%sapproved by -y: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
 				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (-y)", At: now()})
 				return approval.Response{Approved: true, By: or(o.ApprovedBy, operator()), Auto: true, Via: or(o.ApprovedVia, "swim run -y")}
-			}
-			if !prompt {
-				// No terminal: the caller's asker (the hub), which says
-				// where the question waits.
-				disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
-				defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
-				return o.Asker(req, cancel)
 			}
 			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
 			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
@@ -535,9 +510,6 @@ func Run(o Options) (int, error) {
 	runDone := fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d", joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted])
 	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: runDone + "  " + display.Elapsed(time.Since(start))})
 	elapsed := time.Since(start)
-	if err := writeRunRecord(o, start, cap, sel, selected, deps, outcomes); err != nil {
-		fmt.Fprintln(os.Stderr, "swim: run record: "+err.Error())
-	}
 	printSummary(summaryOut, o.Root, sel, outcomes, start, elapsed, disp.Color())
 	stopped := ir.stopping()
 	o.ev.summary(o, sel, outcomes, code, stopped, elapsed)
@@ -550,9 +522,7 @@ func Run(o Options) (int, error) {
 func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl *slots, lt *lockTable, disp *display.Display,
 	done map[int]chan struct{}, outcomes map[int]*Outcome, mu *sync.Mutex, ir *interrupter) *Outcome {
 
-	var ready, locked, slotted time.Time
 	stamp := func(oc *Outcome) *Outcome {
-		oc.Ready, oc.Locked, oc.Slot = ready, locked, slotted
 		if oc.End.IsZero() {
 			oc.End = time.Now()
 		}
@@ -599,7 +569,6 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		oc.DryRun = last != nil && last.DryRun
 		return oc
 	}
-	ready = time.Now()
 	if ir.stopsLane(n) {
 		return skip("interrupted before start")
 	}
@@ -646,7 +615,6 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			return skip("interrupted before start")
 		}
 		defer fileLocks.Release()
-		locked = time.Now()
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = append([]string(nil), laneLocks...) })
 		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
 	}
@@ -693,7 +661,6 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	} else {
 		defer sl.release()
 	}
-	slotted = time.Now()
 
 	// How the script runs: bash for lane.N.sh, its #! line, a confirmed
 	// runner, or itself; a script that doesn't load the bash library runs
@@ -946,46 +913,6 @@ func joinInts(ns []int, sep ...string) string {
 		s = sep[0]
 	}
 	return strings.Join(parts, s)
-}
-
-// writeRunRecord saves when each lane became ready, started and finished,
-// and the dependencies this run resolved, as they were even after its
-// scripts change.
-func writeRunRecord(o Options, start time.Time, cap int, sel []int, selected map[int]bool, deps map[int][]Dep, outcomes map[int]*Outcome) error {
-	r := &runrec.Run{Run: o.RunID, Started: start.UTC(), Finished: time.Now().UTC(), MaxParallel: cap}
-	for _, n := range sel {
-		oc := outcomes[n]
-		l := runrec.Lane{Lane: n, Job: oc.Job, Round: oc.Round, State: oc.State, Reason: oc.Reason, After: []int{}}
-		for _, d := range deps[n] {
-			if selected[d.Lane] {
-				l.After = append(l.After, d.Lane)
-			}
-		}
-		if info, err := lane.ReadScript(o.Root, n); err == nil {
-			l.Locks = info.Locks
-		}
-		if st, _ := status.Load(o.Root); st != nil {
-			if s := st.Get(n); s != nil && s.Run == o.RunID {
-				l.Paused = s.PausedS
-				for _, p := range s.Pauses {
-					if at, err := time.Parse(time.RFC3339Nano, p.At); err == nil {
-						l.Pauses = append(l.Pauses, runrec.Span{Start: *runrec.Since(start, at), Dur: p.S})
-					}
-				}
-			}
-		}
-		if oc.Exit >= 0 {
-			e := oc.Exit
-			l.Exit = &e
-		}
-		l.Ready = runrec.Since(start, oc.Ready)
-		l.Locked = runrec.Since(start, oc.Locked)
-		l.Slot = runrec.Since(start, oc.Slot)
-		l.Start = runrec.Since(start, oc.Start)
-		l.End = runrec.Since(start, oc.End)
-		r.Lanes = append(r.Lanes, l)
-	}
-	return runrec.Write(o.Root, r)
 }
 
 // closeKilledRound finishes the round of a lane killed by a signal (SIGKILL

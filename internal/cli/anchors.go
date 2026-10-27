@@ -12,7 +12,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/anchor"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
-	"github.com/gates-brightly/swimlane/internal/hub"
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
@@ -33,13 +32,7 @@ func sentPath(root string) string { return filepath.Join(root, ".swim", "checkpo
 
 // openAnchor opens one anchor spec for root.
 func openAnchor(root, spec string) (anchor.Anchor, error) {
-	return anchor.Open(spec, anchor.Options{Root: root, Hub: func() (*hub.Client, error) {
-		h, err := loadHub(root)
-		if err != nil {
-			return nil, errors.New("this directory hasn't joined a hub (swim auth login URL, then swim watch here)")
-		}
-		return hubClient(h), nil
-	}})
+	return anchor.Open(spec, anchor.Options{Root: root})
 }
 
 // takeCheckpoint signs the chain's head and sends it to the configured

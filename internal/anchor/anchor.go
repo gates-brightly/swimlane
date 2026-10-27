@@ -4,12 +4,10 @@
 //
 //	file:/mnt/audit/swim/orders   checkpoints.jsonl and chain.jsonl in that
 //	                              directory, appended to, never rewritten
-//	hub                           the hub this directory is enrolled with
-//	                              (swim auth login): checkpoints only
 //
 // An anchor only helps if what's written there can't be taken back by
 // whoever controls the repo: another volume mounted append-only, or held
-// by someone else; a hub run by someone other than the operator.
+// by someone else.
 package anchor
 
 import (
@@ -25,7 +23,6 @@ import (
 	"syscall"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
-	"github.com/gates-brightly/swimlane/internal/hub"
 )
 
 // Anchor is one destination.
@@ -57,8 +54,6 @@ var ErrBehind = errors.New("not past the last checkpoint there")
 // Options is what opening an anchor may need.
 type Options struct {
 	Root string // the repo: a file anchor inside it is refused
-	// Hub connects to this directory's hub (for the hub anchor).
-	Hub func() (*hub.Client, error)
 }
 
 // Open opens the anchor spec names.
@@ -81,16 +76,9 @@ func Open(spec string, o Options) (Anchor, error) {
 		}
 		return &fileAnchor{spec: spec, dir: dir}, nil
 	case spec == "hub":
-		if o.Hub == nil {
-			return nil, errors.New("anchor hub: this directory hasn't joined a hub (swim auth login URL, then swim watch here)")
-		}
-		c, err := o.Hub()
-		if err != nil {
-			return nil, fmt.Errorf("anchor hub: %w", err)
-		}
-		return &hubAnchor{c: c}, nil
+		return nil, errors.New("anchor hub: swim no longer has a hub; use file:/path (a directory outside the repo)")
 	}
-	return nil, fmt.Errorf("unknown anchor %q: use file:/path or hub", spec)
+	return nil, fmt.Errorf("unknown anchor %q: use file:/path", spec)
 }
 
 // fileAnchor is a directory: checkpoints.jsonl and chain.jsonl, each
@@ -239,35 +227,6 @@ func countLines(f *os.File) (int, error) {
 		}
 	}
 }
-
-// hubAnchor is the hub this directory reports to.
-type hubAnchor struct{ c *hub.Client }
-
-func (a *hubAnchor) Name() string { return "hub" }
-
-func (a *hubAnchor) PutCheckpoint(cp chain.Checkpoint) error {
-	if last, err := a.Latest(); err == nil && last != nil && last.Seq == cp.Seq && last.Head == cp.Head {
-		return nil
-	}
-	err := a.c.PutCheckpoint(cp)
-	if err != nil && strings.Contains(err.Error(), "409") {
-		return fmt.Errorf("%w: %v", ErrBehind, err)
-	}
-	return err
-}
-
-func (a *hubAnchor) All() ([]chain.Checkpoint, error) { return a.c.Checkpoints() }
-
-func (a *hubAnchor) Latest() (*chain.Checkpoint, error) {
-	cps, err := a.c.Checkpoints()
-	if err != nil || len(cps) == 0 {
-		return nil, err
-	}
-	return &cps[len(cps)-1], nil
-}
-
-func (a *hubAnchor) Entries() ([]chain.Link, error)    { return nil, ErrNoEntries }
-func (a *hubAnchor) AppendEntries(int, [][]byte) error { return ErrNoEntries }
 
 // Export appends the local chain's entries that a doesn't hold yet. What
 // it holds must be the local chain's first entries, line for line: if

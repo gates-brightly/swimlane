@@ -72,9 +72,8 @@ already pushed to origin's main) with the next tag and pushes that tag.
 - **Removed: swim timeline.** `swim timeline` (its text chart, `--yaml`
   schemas `swim.timeline/v1` and `swim.timeline-history/v1`, and the
   `--html` Gantt chart) is gone: how long lanes waited is not part of what
-  swim is for. Runs still write their record (`.swim/runs/<run>.yml`,
-  `swim.runrec/v1`); `swim log RUN` and `swim status --run RUN` read a
-  run's rounds and state as before.
+  swim is for. `swim log RUN` and `swim status --run RUN` read a run's
+  rounds and state as before.
 - **Removed: swim observe.** `swim observe` (with `check`, `knowledge`,
   `accept` and `reject`), the observations a run computed into
   `.swim/observations/`, `swim report`'s observations section (and its
@@ -123,6 +122,35 @@ already pushed to origin's main) with the next tag and pushes that tag.
   entries still verify. `~/.config/swim/secrets.yml` can be deleted once
   you've moved any value you still need elsewhere (an older swim's `swim
   secret get` prints one).
+- **Removed: the hub, headless swimmers and swim auth.** `swim hub` (the
+  dashboard, its app, live screen, read API, TLS, users, roles and
+  sessions), `swim auth` (`login`, `status`, `logout`, `admit`, `reject`,
+  `approve`, `users`), headless swimmers (`swim watch --headless`, with
+  `--detach`, `--status`, `--stop`, `--install`, `--uninstall`), `swim ps`,
+  `swim stop` outside a lane, commands and guard answers relayed through a
+  hub (`swim approve --hub`), `swim watch`'s reports to a hub, the `hub`
+  chain anchor, and doctor's `hub-http`, `headless-service`,
+  `headless-stale`, `hub-unreachable`, `headless-hub-answers` and
+  `headless-yes` are gone. Runs no longer write run records
+  (`.swim/runs/<run>.yml`, `swim.runrec/v1`), which only the hub read;
+  each run's staged lane copies stay in `.swim/runs/<run>/`. What's left
+  is the core: run on a terminal, queue batches for `swim watch` (on a
+  terminal, in tmux, or `--once` from cron), and CI. Approvals still
+  travel as signed files (`swim approve`, `lookup.yml`, standing `--auto`
+  approvals). `swim stop "<reason>"` inside a lane is unchanged.
+  `headless:` and `hub:` in `swim.yml` (or `config.yml`) load as before
+  (ignored; `swim doctor`: `removed-setting`); neither was part of the
+  policy hash. A `hub` in `chain_anchors` now fails (`anchor hub: swim no
+  longer has a hub`): checkpoints warn and `swim verify`'s anchored level
+  says no until you replace it with a `file:/path`. The chain's `hub` entries and
+  `hub-signed` / `hub-button` approvals an older swim recorded still
+  verify. A headless service an older swim installed keeps starting the
+  old swim: remove it (`systemctl --user disable --now swim-<id>` and
+  `~/.config/systemd/user/swim-<id>.service`, or `launchctl unload` and
+  `~/Library/LaunchAgents/com.swim.<id>.plist`). `.swim/hub.yml`,
+  `.swim/hub-runs.yml`, `.swim/headless.*`, `.swim/runs/*.yml`,
+  `~/.config/swim/auth.yml`, `hub-admin.yml`, `runners/` and
+  `worker-keys/`, and a hub's `--state` directory can be deleted.
 - **Cleanup is archive, stub and clean.** `swim clean` now idles each
   finished lane directly: it archives its logs (as `swim archive`) and
   stubs its script (as `swim stub`), keeping a script edited since its

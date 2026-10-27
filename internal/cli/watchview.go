@@ -119,9 +119,6 @@ func watchViewAllowed(noTUI bool) bool {
 // rows is the screen's list: the worker's activity, every lane, the queue.
 func (w *watchView) rows() []display.PickRow {
 	var rows []display.PickRow
-	if link, color := hubLink(); link != "" {
-		rows = append(rows, display.PickRow{Text: link, Color: color})
-	}
 	if w.activity != "" {
 		rows = append(rows, display.PickRow{Text: w.activity, Color: ui.Dim}, display.PickRow{Text: " ", Color: ui.Dim})
 	}
@@ -598,6 +595,6 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 	if err != nil {
 		return err.Error()
 	}
-	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false, false)
+	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false)
 	return fmt.Sprintf("#%d %s", claimed.Seq, res.Result)
 }

@@ -94,14 +94,14 @@ the lane, so a lane can no longer read the runner's signing key or
   once a guard in the round is approved (a round with no guard gets it for
   its change stage at once, as today's lanes get everything).
 - A blocked connection is a `BLOCKED  connect evil.example:443 (not in #
-  Network:)` line in the lane log, shown on the hub; the step's command
+  Network:)` line in the lane log; the step's command
   sees a refused connection, not a hang.
 - Mounted: the repo (read-write, at the same path), the swim binary and
   lane library (read-only), the approval socket, and each credential the
-  lane is given as an environment variable or a file in a tmpfs. Nothing else from the
-  operator's home.
-- `swim plan` and the hub's Runner/run pages show the image digest and the
-  network policy for each sandboxed lane; `swim verify` and the receipt
+  lane is given as an environment variable or a file in a tmpfs.
+  Nothing else from the operator's home.
+- `swim plan` shows the image digest and the network policy for each
+  sandboxed lane; `swim verify` and the receipt
   include them.
 
 ## Design
@@ -221,7 +221,7 @@ the lane, so a lane can no longer read the runner's signing key or
 - The runner key and `~/.ssh` aren't readable inside a sandboxed lane.
 - Changing the image digest or the allowlist stales the approval; a lane
   without the headers hashes exactly as before (golden manifest test).
-- `swim verify` and the hub show the image digest and network policy.
+- `swim verify` shows the image digest and network policy.
 
 ## Out of scope
 

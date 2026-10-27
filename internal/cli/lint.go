@@ -94,7 +94,6 @@ func cmdDoctor(args []string) error {
 		Root: root, Cwd: cwd, Cfg: cfg, CfgErr: cfgErr, Self: self(),
 		GitignoreBegin: gitignoreBegin, GitignoreEnd: gitignoreEnd, GitignoreBody: assets.Gitignore,
 		FixGitignore: mergeGitignore,
-		Headless:     doctorHeadless(root),
 	}
 	fs := doctor.Run(o)
 	if fix {

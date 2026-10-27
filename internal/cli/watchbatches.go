@@ -58,7 +58,7 @@ func cmdBatch(args []string) error {
 	if err := queue.Adopt(e); err != nil {
 		return err
 	}
-	res, interrupted := runClaimed(root, cfg, e, yes, false, false, true)
+	res, interrupted := runClaimed(root, cfg, e, yes, false, true)
 	switch {
 	case interrupted:
 		return exitError{batchInterrupted}
@@ -328,7 +328,7 @@ func lanesText(lanes []int) string {
 // taking new ones; it exits once they've ended. It returns swim watch's
 // exit status: 1 if a batch failed.
 func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchView, once, approved bool, every time.Duration,
-	sigs chan os.Signal, say func(string), setActivity func(string)) (int, error) {
+	sigs chan os.Signal, say func(string)) (int, error) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	code := 0
 	stopping := false // no new batches: the ones in hand finish

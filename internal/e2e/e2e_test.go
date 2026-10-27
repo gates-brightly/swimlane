@@ -190,53 +190,6 @@ func (r *repo) swim(args ...string) (string, int) {
 	return string(out), code
 }
 
-// admit lets the worker named name, waiting to join the hub at url, in
-// (the hub runs with --admin-token adm1n). env: extra environment, e.g.
-// SWIM_HUB_CA for a TLS hub.
-func (r *repo) admit(t *testing.T, url, name string, env ...string) {
-	t.Helper()
-	if out, code := r.swimEnv(env, "auth", "admit", name, "--hub", url, "--admin-token", "adm1n"); code != 0 {
-		t.Fatalf("swim auth admit %s: exit %d\n%s", name, code, out)
-	}
-}
-
-// join logs r's machine in to the hub at url as a swimmer with access
-// (read or readwrite), admitted at once with the test hubs' admin token,
-// and names r's directory there (swim.yml's hub: {name}); a swim watch
-// --once joins the directory. extra goes to swim auth login.
-func (r *repo) join(t *testing.T, url, name, access string, extra ...string) string {
-	t.Helper()
-	if name != "" {
-		r.hubName(name)
-	}
-	out := r.mustSwim(append([]string{"auth", "login", url, "--access", access, "--admin-token", "adm1n"}, extra...)...)
-	// The directory joins (and saves .swim/hub.yml) as swim watch starts.
-	return out + r.mustSwim("watch", "--once")
-}
-
-// hubName sets swim.yml's hub: {name}, keeping the rest of swim.yml.
-func (r *repo) hubName(name string) {
-	r.t.Helper()
-	p := filepath.Join(r.root, "swim.yml")
-	data, _ := os.ReadFile(p)
-	s := string(data)
-	if i := strings.Index(s, "\nhub:\n"); i >= 0 || strings.HasPrefix(s, "hub:\n") {
-		at := strings.Index(s, "hub:\n") + len("hub:\n")
-		if i >= 0 {
-			at = i + len("\nhub:\n")
-		}
-		s = s[:at] + "  name: " + name + "\n" + s[at:]
-	} else {
-		if s != "" && !strings.HasSuffix(s, "\n") {
-			s += "\n"
-		}
-		s += "hub:\n  name: " + name + "\n"
-	}
-	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
-		r.t.Fatal(err)
-	}
-}
-
 func (r *repo) mustSwim(args ...string) string {
 	r.t.Helper()
 	out, code := r.swim(args...)

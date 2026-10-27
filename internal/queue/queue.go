@@ -59,12 +59,6 @@ type Lane struct {
 	Manifest string `yaml:"manifest_sha256,omitempty"`
 }
 
-// PinsManifest reports whether pin, a manifest_sha256 recorded earlier,
-// is this lane's manifest now.
-func (l Lane) PinsManifest(pin string) bool {
-	return pin != "" && pin == l.Manifest
-}
-
 // Worker is who claimed an entry.
 type Worker struct {
 	Host    string `yaml:"host"`

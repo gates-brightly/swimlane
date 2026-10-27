@@ -48,7 +48,7 @@ COMMANDS
   stage NAME               start a stage: snapshot, check, change, verify
   drift "<what differs>"   record DRIFT
   stop "<reason>"          record STOP and end the round
-  msg [--progress N/M] "<text>"   post the lane's status message (live view, status, hub)
+  msg [--progress N/M] "<text>"   post the lane's status message (live view, status)
   input N|JOB NAME         print the path (or value) of a dependency's output (Outputs:)
   output KEY VALUE         record a small value among the round's outputs
   archive N|JOB ... [--as NAME]   archive lanes' logs as .swim/logs/agentN.prev-<NAME or job id>.log
@@ -68,22 +68,9 @@ COMMANDS
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run once its lanes are free; queue [list|show|rm|requeue]
   watch [--once]           run queued batches side by side, consuming them (this machine is the swimmer)
-  watch --headless [--detach]   a swimmer with no terminal (needs swim auth login);
-                           --status, --stop, --install systemd|launchd, --uninstall
-  ps                       the headless swimmers running on this machine, in any directory
-  stop [--all]             outside a lane: stop this directory's headless swimmer after the
-                           batch in hand; --all stops every one on this machine
-  hub                      serve a dashboard of many swimmers (--tls-cert/--tls-key: https)
-  auth login URL --access read|readwrite   join this machine to a hub as a swimmer: each
-                           directory where swim watch runs joins too (--ca FILE trusts its cert);
-                           auth status | logout; the admin's side: auth admit | reject |
-                           approve | users (auth login URL --admin-token T saves an admin login)
-  auth users add NAME --role viewer|operator|admin   a hub user (token shown once): logged in,
-                           they interrupt, drain, run, fetch logs or answer guards on swimmers
   wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until it expires or is revoked
-  approve --hub SWIMMER/QUESTION [--decline]   sign an answer to a guard waiting on a headless swimmer
   revoke N|JOB / --auto USER   withdraw your approval
   verify [--against DEST]  prove the chain of custody, in levels: consistent, trusted,
                            anchored, authorized (--yaml for CI)
@@ -113,9 +100,8 @@ CONCEPTS
               count: its lanes are the ones in use (a script that isn't a
               stub, a current log, or a running lane). swim new N starts
               one; swim archive N (with a stub or no script) drops one.
-  swimmer     A machine that runs lanes for the queue: swim watch, with or without
-              --headless. swim auth login joins it to a hub, which shows every
-              swimmer. Not a worker: a worker is an AI subagent writing a lane.
+  swimmer     A machine that runs lanes for the queue: swim watch. Not a
+              worker: a worker is an AI subagent writing a lane.
   round       One lane script's contents: a single goal ("cut over service X",
               "diagnose Y"). Rewritten per round; disposable. A round that
               passed is "done": `swim all` won't run it again (`swim run N`
@@ -209,10 +195,6 @@ FILES (repo root)
   lookup.yml            who's who: users' SSH keys, groups, approval rules (committed);
                         a rule with evidence: true counts only evidence-bound approvals
   .swim/evidence/       each round's evidence (evidence steps), and blobs by hash for diffs
-  .swim/hub.yml         this directory's place on its hub (swim auth login), private; a
-                        headless swimmer also keeps the hub commands it took (epoch, seq)
-  .swim/headless.*      a headless swimmer's lock (holds its pid), pidfile and own log
-                        (swim watch --headless --detach; rotates at 10 MiB, keeps 3)
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
                         .running claimed by a swimmer, done/ consumed with results
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,
@@ -354,7 +336,7 @@ WRITING A LANE SCRIPT
   drift "<what differs>"          record DRIFT (deployed state differs from code).
   msg [--progress N/M] "<text>"   post the lane's status message: where a long job is
                                   now ("migrating billing", 7/25). It shows in the live
-                                  view, swim status and the hub; the latest wins, msg ""
+                                  view and swim status; the latest wins, msg ""
                                   clears it, and the round's end does. The log gets MSG
                                   lines, at most one per msg_log_interval (default 10s;
                                   changes only; the latest when a step or the round ends).
@@ -536,7 +518,7 @@ OTHER LANGUAGES
     swim guard FLAG "<action - date, reason>"         exit 0 if approved, 1 if not (dry run)
     swim stage snapshot|check|change|verify
     swim drift "<what differs>"    swim stop "<reason>"
-    swim msg [--progress N/M] "<text>"                a status message (live view, status, hub)
+    swim msg [--progress N/M] "<text>"                a status message (live view, status)
     swim input N|JOB NAME    swim output KEY VALUE    outputs between lanes (Outputs:)
   (options as for run in a bash lane: --timeout, --retry, --backoff,
   --retry-on, --no-retry-timeout, --soft, --expect-fail). # Fail: hard makes a
@@ -900,7 +882,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         cache_dir: ~/.cache/swim         # where tool caches live (CACHE); config.yml only
         cache_max: 10GB                  # a run trims the repo's caches to this (0: no cap)
         cache_slug: orders               # the repo's cache directory name (default: name-<remote hash>)
-        chain_anchors: ["file:/mnt/audit/orders", hub]   # where chain checkpoints go (CHAIN OF CUSTODY)
+        chain_anchors: ["file:/mnt/audit/orders"]   # where chain checkpoints go (CHAIN OF CUSTODY)
         # env: is not a config.yml key: personal env goes in env.swim (ENV FILES)
         runners:                         # how lane.N.<ext> runs without a #! line (OTHER LANGUAGES)
           ts: tsx                        # swim asks the first time, and saves the answer per repo
@@ -913,14 +895,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
   (deps, max_parallel, blocked_commands, secret_env, header_env, ...).
   It applies on top of defaults and under the operator's repos entry, so CI
   runners (no config of their own) and every operator share it. Unknown keys
-  are an error. `swim config` shows it as repo_file. Only swim.yml may set
-  headless: (what a headless swimmer takes from its hub; swim watch --help):
-      headless:
-        allow: [answer, interrupt, drain, log]   # optional: narrows what the enrollment's access (swim auth login --access) lets the hub send
-        logs: on                                 # off: never upload a log to the hub
-        command_ttl: 10m                         # older commands expire (interrupt: 2m at most)
-        approvals: signed                        # how a guard is answered through the hub: signed | hub
-        answer_timeout: 30m                      # no answer by then: the guard is a dry run
+  are an error. `swim config` shows it as repo_file.
   A lane's dependencies are config `deps` plus its script's `# After:` line.
   Dependencies in the same `swim run` are waited for. A dependency outside
   the run must already be satisfied, otherwise the lane is skipped:
@@ -1072,7 +1047,7 @@ CHAIN OF CUSTODY
                 A chain re-signed wholesale with a new key fails here.
     anchored    the chain still holds the head of every checkpoint at
                 each chain_anchors destination (file:/path outside the
-                repo, or hub). Every top-level swim run, swim all, swim ci
+                repo). Every top-level swim run, swim all, swim ci
                 and swim watch batch sends one. Entries removed from the
                 end, or a chain replaced, after a checkpoint left the
                 machine fail here.

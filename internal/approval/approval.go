@@ -39,7 +39,6 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/peer"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -68,8 +67,7 @@ type Request struct {
 	// Token identifies the lane process (TokenEnv). Op is "" to ask,
 	// "consume" to use up the approval with request id ID, "whoami" to
 	// learn which lane and run the token is for, or "record" to have
-	// the launcher record Entry. (An ask's ID is the server's: whatever the
-	// lane sends is replaced.)
+	// the launcher record Entry.
 	Token string       `json:"token,omitempty"`
 	Op    string       `json:"op,omitempty"`
 	ID    string       `json:"id,omitempty"`
@@ -90,13 +88,6 @@ type Request struct {
 	Evidence         string `json:"evidence,omitempty"`
 	EvidenceSHA      string `json:"evidence_sha256,omitempty"`
 	EvidenceRequired bool   `json:"evidence_required,omitempty"`
-	// The launcher's, for an asker that pins an answer to this one
-	// question (the hub's): the question's ID (set by the server, fresh
-	// per ask), the run, the script's SHA-256, and lookup.yml as the run
-	// started (nil if it didn't load), which says who may answer.
-	Script string         `json:"-"`
-	Run    string         `json:"-"`
-	Rules  *lookup.Lookup `json:"-"`
 }
 
 // Response is the operator's answer.
@@ -119,10 +110,6 @@ type Response struct {
 	// Dry: no one was asked (nobody can be, under swim run); the guard is a
 	// dry run, and Why (if set) says why no signed approval counted.
 	Dry bool `json:"dry,omitempty"`
-	// Fail: no one can ever answer this guard here (its script doesn't
-	// declare it, or the worker has no one who may answer), so the round
-	// fails, BLOCKED with Why, rather than dry-running the change unseen.
-	Fail bool `json:"fail,omitempty"`
 	// How is the APPROVED line's detail when the launcher decided
 	// ("approved by ... (signed)", "FLAG=1"); "" to build it from By, Auto,
 	// Via, Pre and At.
@@ -134,12 +121,6 @@ type Response struct {
 	Hash string `json:"hash,omitempty"`
 	// Grant is what the launcher records once the approval is consumed.
 	Grant *Grant `json:"-"`
-	// Hub is how an answer through the hub approved (HubSigned or
-	// HubButton; "" for any other answer), and Signed the signed answers
-	// that did (HubSigned). The launcher checks them against its rules
-	// again before it grants anything.
-	Hub    string         `json:"-"`
-	Signed []SignedAnswer `json:"-"`
 }
 
 // Warn is a WARN line for the lane's log, with an optional diff under it.
@@ -219,10 +200,6 @@ type Server struct {
 	// Chain, if set, records an entry a lane process sends (op record)
 	// and returns its hash; an error refuses it. Without it, refused.
 	Chain func(c Caller, e chain.Entry) (string, error)
-	// FailUndeclared refuses a guard its script doesn't declare with
-	// Fail (the round fails) instead of a plain decline (a dry run): for
-	// an unattended worker, where the dry run would go unseen.
-	FailUndeclared bool
 
 	mu        sync.Mutex
 	callers   map[string]Caller
@@ -341,10 +318,10 @@ func (s *Server) refuse(c Caller, req Request, why string) Response {
 // check refuses a request that doesn't come from a registered lane process
 // or names a guard its script doesn't declare; otherwise it returns req
 // with the launcher's facts in place of the lane's.
-func (s *Server) check(req Request) (Caller, Request, string, bool) {
+func (s *Server) check(req Request) (Caller, Request, string) {
 	c, ok := s.caller(req.Token)
 	if !ok {
-		return c, req, "the request didn't come from a lane of this run (no or an unknown token)", false
+		return c, req, "the request didn't come from a lane of this run (no or an unknown token)"
 	}
 	req.RawDesc, req.Desc = req.Desc, Clean(req.Desc)
 	if req.Lane != c.Lane {
@@ -358,9 +335,9 @@ func (s *Server) check(req Request) (Caller, Request, string, bool) {
 		declared = declared || g == req.Flag
 	}
 	if !declared {
-		return c, req, fmt.Sprintf("guard %s isn't declared in swim %d's script (list it in # Guards:)", req.Flag, c.Lane), true
+		return c, req, fmt.Sprintf("guard %s isn't declared in swim %d's script (list it in # Guards:)", req.Flag, c.Lane)
 	}
-	return c, req, "", false
+	return c, req, ""
 }
 
 // consume uses up approval id for the lane process with token tok and
@@ -488,11 +465,10 @@ func (s *Server) serve(c net.Conn) {
 		json.NewEncoder(c).Encode(s.record(req))
 		return
 	}
-	who, req, why, undeclared := s.check(req)
+	who, req, why := s.check(req)
 	if why != "" {
 		resp := s.refuse(who, req, why)
 		resp.Lane, resp.Job = who.Lane, who.Job // a refusal is the true lane's too
-		resp.Fail = undeclared && s.FailUndeclared
 		json.NewEncoder(c).Encode(resp)
 		return
 	}
@@ -524,7 +500,6 @@ func (s *Server) serve(c net.Conn) {
 			}
 			close(cancel)
 		}()
-		req.ID = newID() // this question, for an answer pinned to it
 		resp = s.ask(req, cancel)
 		close(stop)
 		if !resp.Approved && resp.Why == "" && s.isCancelled() {

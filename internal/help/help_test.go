@@ -81,7 +81,7 @@ func TestShortHelpIsShort(t *testing.T) {
 	if n := strings.Count(short, "\n"); n >= 80 {
 		t.Errorf("Short() is %d lines; keep it under 80", n)
 	}
-	for _, c := range []string{"init", "new", "run", "approve", "verify", "queue", "watch", "auth", "swim guide"} {
+	for _, c := range []string{"init", "new", "run", "approve", "verify", "queue", "watch", "swim guide"} {
 		if !strings.Contains(short, c) {
 			t.Errorf("Short() leaves out %s", c)
 		}

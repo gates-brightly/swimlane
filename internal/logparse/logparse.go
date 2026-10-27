@@ -631,43 +631,6 @@ func ParseRound(lines []string) (*Round, error) {
 	return Parse(strings.NewReader(text))
 }
 
-// RoundsInFile parses every syntax 2 round in a log file, oldest first
-// (none for a missing file).
-func RoundsInFile(path string) ([]*Round, error) {
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return RoundsIn(string(data)), nil
-}
-
-// RoundsIn parses every syntax 2 round in a log's text, oldest first.
-func RoundsIn(text string) []*Round {
-	var out []*Round
-	var cur []string
-	flush := func() {
-		if len(cur) > 0 {
-			if r, err := ParseRound(cur); err == nil && r.Found {
-				out = append(out, r)
-			}
-		}
-		cur = nil
-	}
-	for _, line := range strings.Split(text, "\n") {
-		if strings.HasPrefix(line, RoundMark) {
-			flush()
-		}
-		if cur != nil || strings.HasPrefix(line, RoundMark) {
-			cur = append(cur, line)
-		}
-	}
-	flush()
-	return out
-}
-
 // ParseContext reads a round's context line, "   k: v | k: v | ...".
 func ParseContext(line string) map[string]string {
 	ctx := map[string]string{}

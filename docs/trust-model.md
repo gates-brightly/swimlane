@@ -42,8 +42,6 @@ credentials the lane never sees. swim doesn't do that.
 | **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Vouches for each `swim run`'s run key, once per run, and signs what swim records outside a run (`swim approve`'s grants, checkpoints). | An SSH key on the operator's or swimmer's machine: a file, in ssh-agent, or on a security key ([below](#the-runner-key)). |
 | **Run key** | Signs every chain entry of one `swim run`, the lanes' rounds included. | Only the launcher's memory, for the run. Never on disk, in a lane's environment or a descriptor a lane inherits. |
 | **Approvers** | Sign approvals of exact scripts, or standing approvals, with `swim approve`. | Their own SSH keys. Their public keys are in the committed `lookup.yml`. |
-| **Hub** (`swim hub`) | Admits swimmers: any machine may join (`swim auth login`), but it shows nothing and takes no command until the hub's admin admits it, and a swimmer that joined already joins again only with its own token. Shows swimmers' status, logs and queues, and relays hub users' commands (interrupt, drain, run, log, and answers to waiting guards) to headless swimmers. It runs nothing itself and can't make an answer valid. Viewing a non-private hub shows a job's steps, commands and exit codes (masked as logs are); output needs a hub user. | Tokens (only hashes of swimmer and user tokens), sessions (by their ids' hashes), commands, and only ciphertext for secret grants. TLS (`--tls-cert`/`--tls-key`, clients pin `--ca`; session cookies are `Secure` under it); plain HTTP only on loopback or with `--insecure`. |
-| **Hub users** (`swim auth users add`) | Send commands to headless swimmers as their role allows: `viewer` fetches logs and sends signed answers; `operator` also interrupts, drains, runs, and answers with a button; `admin` is an operator who also does what the admin token does (users, swimmer approvals, grants), from the CLI with their token or the app's Admin page with their session. | Their own token, or a 12-hour session cookie (`HttpOnly`, `SameSite=Strict`, CSRF token on every form). The admin token manages users and sends no command. An admin session's changes need its CSRF token like any command; it never sends a secret's value (grants are encrypted to the swimmer's key on the admin's machine). |
 
 ## Authorization
 
@@ -79,30 +77,16 @@ ways that applies:
    live view, or the prompt
    `swim N requires human approval of task: <action>  Y/N [N]`.
 4. **`-y`.** Every guard still unanswered is approved, and logged as `-y`.
-5. **An answer through the hub** (`swim watch --headless`, where no one is
-   at a terminal and `swim.yml`'s `headless.allow` takes `answer`). The
-   question is published in the hub's Approvals inbox and the lane waits up
-   to `headless.answer_timeout`. A **signed** answer (`swim approve --hub`,
-   or a pasted `ssh-keygen -Y sign`) covers a statement the swimmer builds
-   from its own facts: the question's id, the swimmer, lane, job, run,
-   script, manifest, evidence, guard, decision and expiry. The swimmer
-   checks the signature against `lookup.yml` as the run started and counts
-   signers until the guard's rule is met; the launcher checks the result
-   again before it grants. A **button** answer (an operator's click)
-   counts only under `headless.approvals: hub`, from a user `lookup.yml`
-   lists, for a guard no `require:` rule names and that needs no evidence.
-   Either kind may decline.
 
 Anything else is a **dry run**: the step is skipped with `SKIP`, and the log
 says how to approve it.
 
 **It fails closed.** No one is asked in CI, without a terminal, under
-`swim watch` (a headless swimmer asks only through its hub), with
+`swim watch`, with
 `--no-prompt` or `--yaml`, or with `approvals: flags`. A question is
 declined when the approval socket can't be reached, when the run or the
 lane is stopping (Ctrl-C, `swim interrupt`), when the round's `Timeout`
-runs out (`internal/approval`), and, through the hub, when no answer
-comes by `headless.answer_timeout` (the hub gone, nobody answering). `confirm` and gates stop
+runs out (`internal/approval`). `confirm` and gates stop
 the round when there's no answer.
 
 **The guard is advisory.** `guard` is a bash function in the lane's own
@@ -213,10 +197,11 @@ name a socket's peer the token alone decides.
   `standing` or `signature+standing` (signed approvals, each carrying the
   approver's own signature), `prompt`, `preapproved` (answered ahead in the
   live view), `flag` (`FLAG=1`), `queue` (a batch's `--approve`), `auto`
-  (`-y`), `hub-signed` (answers signed through the hub, each approver's
-  statement and signature recorded) or `hub-button` (a hub user's click,
-  unsigned). A round entry records the result, the exit code, the hash of its
-  log section, its env hash, and the approve entries it used.
+  (`-y`), or, in entries an older swim with a hub recorded, `hub-signed`
+  (answers signed through the hub, each approver's statement and signature
+  recorded) or `hub-button` (a hub user's click, unsigned). A round entry
+  records the result, the exit code, the hash of its log section, its env
+  hash, and the approve entries it used.
 - **What a run did.** Once its last lane exits, `swim run` appends a `run`
   entry: the manifest and script each lane ran, every approve entry the
   launcher recorded, and the guard flags its own environment approved.
@@ -286,9 +271,9 @@ you. A file key keeps working, as the weaker mode.
 If the runner key won't vouch for a run key (you said no, no touch, a
 passphrase and no agent), `signing: required` stops the run before any
 lane starts; `auto` records the run unsigned, with one warning, instead
-of asking again for every entry. A headless swimmer has no one to answer
-a question or touch a key, so its runner key is in one of the weaker
-modes.
+of asking again for every entry. A swimmer nobody watches (`swim watch`
+in tmux or CI) has no one to touch a key, so its runner key is in one of
+the weaker modes.
 
 What this doesn't cover: a round entry's contents (its result, its log's
 hash) are what the lane reports, signed by the launcher; a lane can call
@@ -324,17 +309,17 @@ each level, and `--yaml` gives each its own field:
   re-signed, padded past the last checkpoint and checkpointed again still
   fails every checkpoint taken before the rewrite. (An anchor checks only
   that a new checkpoint's seq goes up; it can't see the chain. Anyone who
-  can send a checkpoint, a swimmer's own hub token included, can add one,
-  but not remove the old ones.) A checkpoint (seq, head hash, time, host, signed by
+  can write to it can add one, but not remove the old ones.) A checkpoint (seq, head hash, time, host, signed by
   the runner) goes to each `chain_anchors` destination (`file:/path`
-  outside the repo, or the hub) at the end of every top-level run, CI job
+  outside the repo) at the end of every top-level run, CI job
   and watch batch. `swim chain export` also copies the entries, and `swim
   verify --against DEST` checks against them.
 - **authorized:** each approve entry met `lookup.yml`'s rule for its guard,
-  under the `lookup.yml` it recorded (`lookup_sha256`). Answers signed
-  through the hub count like signed approvals (and consistent checks each
-  signature and that its statement approves that guard, lane and run); a
-  `hub-button` approval fails any `require:` rule that names its guard.
+  under the `lookup.yml` it recorded (`lookup_sha256`). Answers an older
+  swim recorded as signed through the hub count like signed approvals (and
+  consistent checks each signature and that its statement approves that
+  guard, lane and run); a `hub-button` approval fails any `require:` rule
+  that names its guard.
 
 What each level can't catch:
 
@@ -346,8 +331,8 @@ What each level can't catch:
 - **anchored** proves nothing about entries written after the last
   checkpoint, and someone holding the runner key **and** write access to
   every anchor can rewrite everything. Anchors should be held by someone
-  other than the operator: another volume mounted append-only, a hub run by
-  someone else. Without an anchor, entries removed from the end of the
+  other than the operator: another volume mounted append-only, or one
+  someone else holds. Without an anchor, entries removed from the end of the
   chain can't be told from a shorter history (`anchored: n/a`, which
   `--strict` fails).
 - **authorized** checks the rules, not the people: a prompt, `FLAG=1`, `-y`
@@ -369,14 +354,12 @@ These skip the question on purpose. Each leaves a record.
 | `swim queue add -y` | The same, for one batch. | `approved by queue q-... -y (<queuer>)`; chain method `auto`. |
 | `swim watch -y` | The swimmer approves every guard in every batch, beyond what each batch approves. | `approved by swim watch -y (<user>)`; chain method `auto`; the consumed entry's `approved_by`. |
 | `swim watch --approved` | Queues and runs a script as soon as its signed approvals meet `lookup.yml`'s rules, with no one choosing when. | A queue entry by `approval (<names>)` and a `.swim.log` queue event; the guards are approved by `signature`. |
-| `headless.approvals: hub` in `swim.yml` | On a headless swimmer, a hub operator's button click approves a guard that no `lookup.yml` `require:` rule names: the decision rests on the hub's login, as the terminal prompt rests on the operator's. | `approved through the hub by <user> (button, unsigned)`; chain method `hub-button`; the `hub answer` command in `.swim.log` and the chain; `swim doctor` warns (`headless-hub-answers`). |
 
 What `-y` approved is also loud where a run's result is read, so it shows
 without reading the chain: `swim status` lists the guards under the lane
 (`auto_approved`, `auto_via` in `status.yml`), the round's chain entry
 carries `auto_approved` (`swim history`), `swim ci` names them in the job
-summary with a warning annotation, and the hub shows a `-y` badge on the
-lane and on a swimmer running `swim watch -y`. Guards approved by a flag
+summary with a warning annotation. Guards approved by a flag
 (`FLAG=1`, a batch's `--approve`) are listed the same way, as
 `flag_approved`.
 
@@ -387,8 +370,7 @@ lane and on a swimmer running `swim watch -y`. Guards approved by a flag
   runs as you, with your environment, your secrets and your key. Limit the
   damage outside swim: scoped, short-lived credentials for each kind of
   change, and running swimmers as a separate OS user, in a container or a
-  VM. A lane can read a headless swimmer's hub token as easily as you
-  can.
+  VM.
 - **An AI that shares your OS user.** swim gives the planner nothing, but it
   doesn't stop a process running as you from using what you have.
 - **Tampering by whoever holds the runner key and can write every anchor,**
@@ -397,26 +379,6 @@ lane and on a swimmer running `swim watch -y`. Guards approved by a flag
   being asked ([a file, an agent without `ssh-add -c`](#the-runner-key)):
   what it signs then is detectable through the run attestation
   (consistent, above), not prevented.
-- **A compromised hub.** It can show false information and send commands,
-  as any user could. Each command is checked by the swimmer, not the hub:
-  the swimmer's access (`swim auth login --access`: `read` takes only
-  log requests, `readwrite` every command; kept on the swimmer, in
-  `~/.config/swim/auth.yml` or an older enrollment's `.swim/hub.yml`, so
-  the hub can't raise it), then
-  `swim.yml`'s `headless.allow` (committed; `run`, `pause`, `unpause`,
-  `queue`, `dequeue` and `requeue` are off by default), the command's expiry capped by `headless.command_ttl`, its pin
-  (the run, the script and manifest, or the lane's job the page showed), and replay state kept on the
-  swimmer (the hub's epoch, the last seq and recent command ids). A `run`
-  or `queue` from the hub queues an unsigned batch with no approvals of its
-  own, and a `requeue` queues a finished batch's lanes again the same way
-  (never with the old batch's approvals or signature), and
-  a log goes out only masked, and not at all with `headless.logs: off`.
-  An answer to a waiting guard approves only as above: a signature the
-  swimmer checks against `lookup.yml` over its own statement of the
-  question (a hub can't forge, replay or redirect one), or a button where
-  `swim.yml` allows it, and never for a guard a `require:` rule names. A
-  hub can always withhold answers: the guard then declines.
-  The swimmer records every command it takes, including refusals.
 
 ## Claims and the tests that prove them
 
@@ -437,7 +399,7 @@ Test files are under `internal/`. "Pending" names the task in
 | A rule change, stricter or looser, stales a standing approval for that guard; a removed key stops counting at once; standing approvals expire, capped by `standing.max`. | `TestApprovalLifecycle` (e2e/custody_test.go), `TestState`, `TestStandingMax` (sigfile) |
 | A swimmer's own environment approves nothing; a batch's approvals are recorded as the queue's. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
 | `swim watch -y` is logged as the swimmer's. | `TestWatchYes` (e2e/queue_test.go) |
-| What `-y` (and a guard flag) approved shows in `swim status`, the round's chain entry and `swim history`, the CI summary and annotations, and the hub. | `TestAutoApprove` (e2e/approval_test.go), `TestCIGitHub` (e2e/ci_test.go), `TestHubSnapshotUnprompted` (cli), `TestHubFlow` (hub) |
+| What `-y` (and a guard flag) approved shows in `swim status`, the round's chain entry and `swim history`, and the CI summary and annotations. | `TestAutoApprove` (e2e/approval_test.go), `TestCIGitHub` (e2e/ci_test.go) |
 | `swim watch --approved` runs a script once it is fully approved. | `TestWatchSigned` (e2e/custody_test.go) |
 | A script edited after approval no longer matches its approval. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
 | A lane edited after it was queued is skipped. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
@@ -446,21 +408,12 @@ Test files are under `internal/`. "Pending" names the task in
 | An approval covers sourced files, the sidecar, the runner and policy. | `TestManifestApprovalBinding`, `TestManifestRunnerBinding` (e2e/manifest_test.go) |
 | A queued lane whose manifest changed is skipped. | `TestManifestQueuePin` (e2e/manifest_test.go) |
 | The broker names the lane that asks; an approval is used once, by its lane. | `TestManifestRequestsFromTheLane`, `TestManifestResponseReuse` (e2e/manifest_test.go) |
-| The hub refuses plain HTTP off loopback, and clients pin its CA. | `TestHubTLS`, `TestHubTLSPolicy` (e2e/hub_tls_test.go) |
-| Hub commands need a user with the right role; the admin and swimmer tokens send none; a browser session's forms need its CSRF token, and its cookie is `HttpOnly`, `SameSite=Strict` and (under TLS) `Secure`. | `TestCommandRoles`, `TestLoginAndCSRF` (hub) |
-| A swimmer takes each hub command once (replayed seqs and ids are ignored, a new hub epoch starts over) and never after its own `command_ttl`. | `TestAcceptCommandsReplay`, `TestCommandDeadline` (cli), `TestHeadlessHubCommands` (e2e/headless_cmds_test.go) |
-| A hub command pinned to a run, script or manifest that changed is refused as stale; `run` is refused unless `swim.yml` allows it, and queues an unsigned batch with no approvals; a planted secret never reaches an uploaded log, and `headless.logs: off` refuses logs; every command is recorded in `.swim.log` and the chain. | `TestHeadlessHubCommands` (e2e/headless_cmds_test.go) |
-| The hub keeps uploaded logs in memory only, bounded per log, in all and in time. | `TestLogCacheBounds`, `TestLogUpload` (hub) |
-| A signed answer through the hub counts only for the exact question: any field changed, or a key `lookup.yml` doesn't list, fails it. | `TestVerifyHubAnswer` (sigfile), `TestHeadlessHubApprovals` (e2e/headless_answers_test.go) |
-| Signed answers through the hub count toward `lookup.yml`'s rule signer by signer; a hub button never satisfies a `require:` rule, and counts only under `headless.approvals: hub` from a listed user; the launcher checks the answer again. | `TestHubAskerSigned`, `TestHubAskerButton` (cli), `TestHubAnswerChecked` (launcher), `TestHeadlessHubApprovals` (e2e/headless_answers_test.go) |
-| No answer through the hub by `headless.answer_timeout`, the lane giving up, or the hub gone is a decline. | `TestHubAskerNoAnswer` (cli), `TestHeadlessHubApprovals` (e2e/headless_answers_test.go) |
-| An answer names a question the swimmer waits on; a viewer may send only signed answers. | `TestAnswerCommands` (hub) |
 | Under `swim run`, a lane can't approve itself: approvals or `lookup.yml` written after the run starts don't count, `swim _mark APPROVED` is refused, and an entry written by a lane that hid from swim run fails `swim verify`. | `TestHostileLaneWritesApprovals`, `TestHostileLaneMarksApproved` (e2e/authority_test.go) |
 | `FLAG=1` set inside a lane doesn't approve; set in swim run's environment, it does, and the run's attestation lists it. | `TestHostileLaneSetsFlag` (e2e/authority_test.go) |
 | The chain names the lane and job swim run knows, whatever the lane claims; its description is labelled as the lane's. | `TestHostileLaneWrongJob` (e2e/authority_test.go), `TestServerUsesRegisteredLane` (approval) |
 | A lane can't mark, stage or finish another lane's round, even with that lane's token. | `TestLaneCantReportForAnother` (e2e/authority_test.go), `TestPeerOutsideTheLane` (approval) |
 | The approval socket declines oversized, malformed and slow requests, made-up tokens and lanes that hang up. | `TestBrokerHostileClients` (e2e/authority_test.go), `TestHostileRequests`, `TestDisconnectCancels` (approval) |
-| A planted secret (a variable `secret_env_auto` names, a multi-line one, a `secret_env` variable), printed raw, base64- or URL-encoded, split across writes, in labels, guard descriptions, messages, notes, outputs and errors, is in no file swim writes, no output it prints, no hub snapshot and no process's command line; a file no known writer accounts for fails the test. | `TestNoSecretLeaks` (e2e/leak_test.go) |
+| A planted secret (a variable `secret_env_auto` names, a multi-line one, a `secret_env` variable), printed raw, base64- or URL-encoded, split across writes, in labels, guard descriptions, messages, notes, outputs and errors, is in no file swim writes, no output it prints and no process's command line; a file no known writer accounts for fails the test. | `TestNoSecretLeaks` (e2e/leak_test.go) |
 | Changing, removing or reordering a chain entry is detected. | `TestChainLinksAndDetectsTampering` (chain) |
 | An edited log or chain entry fails `swim verify`. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
 | Every approval is recorded with its method and signed by the runner; the scripts that ran are kept; `signing: required` refuses without a key; `--strict` fails on unsigned entries. | `TestChainRecordsEveryApproval` (e2e/custody_test.go) |
@@ -473,7 +426,7 @@ Test files are under `internal/`. "Pending" names the task in
 | A chain re-signed wholesale with a new key is consistent but not trusted; with an anchor, not anchored either. | `TestTrustCatchesWholesaleReplacement` (chain), `TestSecurity` (e2e/security_test.go) |
 | A `trust.yml` edit counts only when signed by a pinned key; trust is pinned on first use, or by hash in CI. | `TestTrustPinTransitions` (trust), `TestVerifyTrustedLevel` (e2e/verifylevels_test.go) |
 | A chain truncated below a checkpoint, or replaced, fails `anchored`; a tampered checkpoint fails its signature. | `TestCheckpointCatchesTruncationAndReplacement` (chain), `TestVerifyAnchoredLevel` (e2e/verifylevels_test.go) |
-| Anchors only go forward: a file anchor refuses a diverged export, the hub a seq that goes back. | `TestFileAnchorAppendsOnly` (anchor), `TestHubCheckpointsGoForward` (hub) |
+| Anchors only go forward: a file anchor refuses a diverged export. | `TestFileAnchorAppendsOnly` (anchor) |
 | An approval that didn't meet its `lookup.yml` rule fails `authorized`. | `TestVerifyAuthorizedLevel` (e2e/verifylevels_test.go) |
 | `status.yml`, queue entries, approvals files and kept scripts are replaced atomically and synced to disk with their directory; chain appends are synced. | `TestStateWritesAreDurable`, `TestWriteAtomic` (fsutil) |
 | Of several processes claiming one lane at once, exactly one wins; a pid reused by another process doesn't hold a lane. | `TestClaimRace`, `TestRunningChecksStartTime` (lane) |

@@ -25,7 +25,6 @@ flowchart TD
     S[".swim/logs/, .swim/status.yml,<br/>.swim.log"]
     C[".swim/chain.jsonl<br/>hash-linked, SSH-signed"]
   end
-  H["swim hub<br/>dashboard; relays commands"]
 
   P -->|writes| L
   P -->|swim queue add| Q
@@ -42,7 +41,6 @@ flowchart TD
   X --> S
   X --> C
   S -->|swim log, swim status| P
-  W -.->|reports| H
 ```
 
 Read it top to bottom:
@@ -75,15 +73,6 @@ Read it top to bottom:
    approval and round in the hash-linked, signed chain.
 8. **The planner reads it back** with `swim log` and `swim status`, and
    writes the next round.
-
-The **hub** is a side path: swimmers push their status, lanes and queue to
-it, and it serves a dashboard. Hub users can also send headless swimmers
-commands (interrupt, drain, run, fetch a log, answer a waiting guard),
-which the swimmers poll for, check against their own committed `headless:`
-settings, carry out and record. An answer approves only when the swimmer
-verifies it: an approver's SSH signature over the swimmer's own statement
-of the question, against `lookup.yml`, or where `swim.yml` allows a
-button. The hub never runs anything itself.
 
 ## Where credentials live
 

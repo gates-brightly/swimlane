@@ -12,11 +12,10 @@ rules below. An illegal move panics in tests and wherever
 `SWIM_CHECK_STATES=1` is set (both e2e suites set it); elsewhere the write
 goes through, since the file is the last known state and refusing would
 leave a lane stuck. `swim status --rebuild`, which reconstructs every entry
-from the logs, is the one writer that isn't checked. Queue entries and run
-records are checked too, under the same switch: every move of a queue
-entry's file goes through `queue.Transition`
-(`internal/queue/transition.go`; an illegal move is refused even where it
-doesn't panic), and every run record write through `runrec.Transition`.
+from the logs, is the one writer that isn't checked. Queue entries are
+checked too, under the same switch: every move of a queue entry's file
+goes through `queue.Transition` (`internal/queue/transition.go`; an
+illegal move is refused even where it doesn't panic).
 
 ## Lane
 
@@ -155,30 +154,6 @@ stateDiagram-v2
 `running` one (stop that swimmer first). `queue.Transition` holds every move
 to the diagram: consuming an entry no swimmer claimed, consuming one twice,
 or claiming a consumed one is a bug, and panics under `SWIM_CHECK_STATES`.
-
-## Run record
-
-`.swim/runs/<run id>.yml` (`swim.runrec/v1`, `internal/runrec`) is written
-once, when a run ends; the hub's run reports read it. It has no live states:
-each lane gets the times it reached each point and how it ended.
-
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> ready: dependencies met
-  ready --> locked: locks taken
-  locked --> slot: slot taken
-  ready --> slot
-  slot --> start: process started
-  start --> finished
-  ready --> finished: skipped
-  finished --> [*]
-```
-
-A lane's final `state` is one of `passed`, `failed`, `skipped` or
-`interrupted`. A point a lane never reached is left out. `runrec.Transition`
-checks every write: each lane has ended, and a rewrite of the same run (the
-same start) never changes a lane's result.
 
 ## Approval
 

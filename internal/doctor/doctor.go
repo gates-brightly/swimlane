@@ -24,7 +24,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
-	"github.com/gates-brightly/swimlane/internal/hub"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
@@ -59,20 +58,6 @@ type Options struct {
 	FixGitignore func(path string) (bool, error)
 	// ToolchainTimeout limits the toolchain check (default 30s).
 	ToolchainTimeout time.Duration
-	// Headless is what swim knows of this repo's headless worker (swim
-	// watch --headless); nil skips the headless checks.
-	Headless *Headless
-}
-
-// Headless is a repo's headless worker as the CLI finds it.
-type Headless struct {
-	Running bool        // a process holds .swim/headless.lock
-	PID     int         // the lock holder's pid
-	Stale   int         // .swim/headless.pid names this process, which is gone or holds no lock (0: none)
-	Units   [][2]string // installed service files: kind (systemd, launchd), path
-	// HubCheck reaches the hub the repo is enrolled with (nil: not
-	// enrolled), with a short timeout.
-	HubCheck func() error
 }
 
 func (o *Options) defaults() {
@@ -110,7 +95,7 @@ var Checks = []Check{
 	{"config-parse", false, "the config file doesn't load", checkConfigParse},
 	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
 	{"lanes-setting", false, "a `lanes:` setting (swim finds the lanes in use; it's ignored)", checkLanesSetting},
-	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key; it's ignored)", checkRemovedSettings},
+	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key, headless, hub; it's ignored)", checkRemovedSettings},
 	{"gitignore", true, "swim's .gitignore block is missing or out of date", checkGitignore},
 	{"tracked", false, "lane scripts or swim state tracked by git", checkTracked},
 	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
@@ -120,18 +105,12 @@ var Checks = []Check{
 	{"lock", false, ".swim.lock missing, invalid or for another breaking version", checkLock},
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
-	{"hub-http", false, "enrolled with a hub over plain http on another machine", checkHubHTTP},
 	{"anchors-none", false, "the repo has a chain of custody but no chain_anchors to checkpoint it to", checkAnchorsNone},
 	{"checkpoint-unsent", false, "a chain anchor hasn't had the latest checkpoint", checkCheckpointUnsent},
 	{"trust-unpinned", false, "trust.yml isn't pinned here, or changed since the pin with no signed change", checkTrustPin},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
 	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
 	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
-	{"headless-service", false, "a headless worker installed as a service or running (swim watch --headless)", checkHeadlessService},
-	{"headless-stale", false, "a .swim/headless.pid left by a headless worker that's gone (killed?)", checkHeadlessStale},
-	{"hub-unreachable", false, "a headless worker's hub can't be reached: guards waiting for an answer through it decline", checkHubReachable},
-	{"headless-hub-answers", false, "swim.yml's headless.approvals is hub: a hub user's button click approves guards no require: rule names", checkHeadlessHubAnswers},
-	{"headless-yes", false, "a headless service runs with -y: it approves every guard in every batch", checkHeadlessYes},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 	{"pause-long", false, "a lane has been paused (swim pause) longer than pause_warn, holding its locks and slot; or the repo-wide pause is left on", checkPauseLong},
 	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
@@ -239,7 +218,7 @@ func checkOldStages(o *Options) []finding.Finding {
 	if len(old) == 0 {
 		return nil
 	}
-	return []finding.Finding{fd(finding.Info, "stages-old", ".swim/runs/", "swim doctor --fix (removes them; the run records stay)",
+	return []finding.Finding{fd(finding.Info, "stages-old", ".swim/runs/", "swim doctor --fix (removes them)",
 		"%d runs' staged lane copies are older than outputs_keep (%s) and no lane's latest round", len(old), o.Cfg.OutputsKeepFor())}
 }
 
@@ -672,25 +651,6 @@ func checkLock(o *Options) []finding.Finding {
 	return nil
 }
 
-// checkHubHTTP warns about an enrollment (.swim/hub.yml) that talks to a
-// hub on another machine over plain http: the tokens, log tails and
-// grants cross the network unencrypted. Enrollments made before swim
-// refused that still work; this is where they surface.
-func checkHubHTTP(o *Options) []finding.Finding {
-	path := filepath.Join(o.Root, ".swim", "hub.yml")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var h struct{ URL string }
-	if yaml.Unmarshal(data, &h) != nil || !hub.PlainRemote(h.URL) {
-		return nil
-	}
-	return []finding.Finding{fd(finding.Warn, "hub-http", o.rel(path),
-		"serve the hub with --tls-cert/--tls-key (or behind a TLS proxy), then swim auth login https://... again",
-		"enrolled with %s over plain http: its tokens, log tails and secrets cross the network unencrypted", h.URL)}
-}
-
 // checkStandingApprovals warns of the standing approvals still counting
 // under the old terms: never expiring (until lookup.yml sets a
 // standing.max), or not bound to lookup.yml's rules.
@@ -751,7 +711,7 @@ func checkAnchorsNone(o *Options) []finding.Finding {
 	if st, err := os.Stat(filepath.Join(o.Root, ".swim", "chain.jsonl")); err != nil || st.Size() == 0 {
 		return nil
 	}
-	return []finding.Finding{fd(finding.Info, "anchors-none", "", "add chain_anchors: [file:/path/outside/the/repo] (or hub) to swim.yml or config.yml",
+	return []finding.Finding{fd(finding.Info, "anchors-none", "", "add chain_anchors: [file:/path/outside/the/repo] to swim.yml or config.yml",
 		"no chain_anchors: swim verify can't catch entries removed from the end of the chain")}
 }
 
@@ -796,25 +756,6 @@ func lastSent(seq int) string {
 	return fmt.Sprintf("its last is seq %d", seq)
 }
 
-// checkHeadlessService says what of a headless worker is set up here: the
-// service files installed, and whether one runs.
-func checkHeadlessService(o *Options) []finding.Finding {
-	h := o.Headless
-	if h == nil {
-		return nil
-	}
-	var out []finding.Finding
-	for _, u := range h.Units {
-		out = append(out, fd(finding.Info, "headless-service", u[1], "swim watch --headless --uninstall removes it",
-			"a %s service runs this repo's headless worker", u[0]))
-	}
-	if h.Running {
-		out = append(out, fd(finding.Info, "headless-service", ".swim/headless.lock", "swim watch --headless --status | --stop",
-			"a headless worker runs here, pid %d", h.PID))
-	}
-	return out
-}
-
 // checkSigningKey says where the runner key lives. swim run signs a run's
 // entries with a run key held in its memory, which the runner key vouches
 // for once; a lane runs as the operator, so what stands between it and a
@@ -837,75 +778,6 @@ func checkSigningKey(o *Options) []finding.Finding {
 	}
 	return []finding.Finding{fd(finding.Info, "signing-key", k.Path, "",
 		"the runner key is a security key: each signature needs it (swim run signs once per run)")}
-}
-
-// checkHeadlessStale: a headless worker that was killed leaves its pidfile
-// (the lock goes with the process).
-func checkHeadlessStale(o *Options) []finding.Finding {
-	if o.Headless == nil || o.Headless.Stale == 0 {
-		return nil
-	}
-	return []finding.Finding{fd(finding.Warn, "headless-stale", ".swim/headless.pid", "swim watch --headless --stop removes it; start the worker again if it should run",
-		"the headless worker that wrote it (pid %d) is gone: was it killed? Nothing answers this repo's queue from the hub", o.Headless.Stale)}
-}
-
-// checkHubReachable: a headless worker with no hub has no one to answer
-// its guards (they decline) or send it commands.
-func checkHubReachable(o *Options) []finding.Finding {
-	h := o.Headless
-	if h == nil || h.HubCheck == nil || !h.Running && len(h.Units) == 0 {
-		return nil
-	}
-	if err := h.HubCheck(); err != nil {
-		return []finding.Finding{fd(finding.Warn, "hub-unreachable", ".swim/hub.yml", "check the hub runs and the network; swim auth status",
-			"the headless worker's hub is unreachable (%v): guards waiting for an answer through it decline, and it takes no commands", err)}
-	}
-	return nil
-}
-
-// checkHeadlessHubAnswers: under headless.approvals: hub the decision on a
-// guard no require: rule names rests on the hub's login, not a signature.
-func checkHeadlessHubAnswers(o *Options) []finding.Finding {
-	if o.Cfg.HeadlessApprovals() != config.HeadlessHub || !o.Cfg.HeadlessAllows(config.HubAnswer) {
-		return nil
-	}
-	return []finding.Finding{fd(finding.Warn, "headless-hub-answers", o.rel(o.Cfg.RepoFile), "headless.approvals: signed, or a require: rule in lookup.yml for the guards that matter",
-		"headless.approvals: hub: a hub user's button click approves any guard that no lookup.yml require: rule names (recorded as hub-button, unsigned)")}
-}
-
-// checkHeadlessYes: -y written into a service runs forever.
-func checkHeadlessYes(o *Options) []finding.Finding {
-	if o.Headless == nil {
-		return nil
-	}
-	var out []finding.Finding
-	for _, u := range o.Headless.Units {
-		data, err := os.ReadFile(u[1])
-		if err != nil || !unitHasYes(string(data)) {
-			continue
-		}
-		out = append(out, fd(finding.Warn, "headless-yes", u[1], "swim watch --headless --install "+u[0]+" again without -y",
-			"the %s service runs swim watch --headless -y: it approves every guard in every batch, with nobody watching", u[0]))
-	}
-	return out
-}
-
-// unitHasYes reports whether a unit file's command line passes -y.
-func unitHasYes(text string) bool {
-	for _, l := range strings.Split(text, "\n") {
-		l = strings.TrimSpace(l)
-		switch {
-		case strings.HasPrefix(l, "ExecStart="):
-			for _, f := range strings.Fields(strings.TrimPrefix(l, "ExecStart=")) {
-				if f = strings.Trim(f, `"'`); f == "-y" || f == "--yes" {
-					return true
-				}
-			}
-		case l == "<string>-y</string>" || l == "<string>--yes</string>":
-			return true
-		}
-	}
-	return false
 }
 
 // remoteRunningFor is how long a lane may run on another machine before

@@ -1,7 +1,7 @@
 # Frozen formats
 
-What swim signs and pins, byte for byte. Approvals, queued
-batches and hub commands all record these hashes, so changing
+What swim signs and pins, byte for byte. Approvals and queued
+batches record these hashes, so changing
 how one is computed would void every one of them. **Upgrading swim
 doesn't stale an approval or a pin** while these formats hold. Only
 changes to what you pinned do: your script, the files it includes, its
@@ -69,7 +69,7 @@ staged manifest and checked before exec.
 
 A `# Task: renew-certs` header names a lane. The name is an alias: the
 lane's number is still what approval statements, manifests, the chain,
-status and the hub record. Renaming a task changes the script's bytes,
+and status record. Renaming a task changes the script's bytes,
 like any edit. Where swim takes a lane, it reads its argument in this
 order:
 1. With a `--` among the arguments (`swim run "<label>" -- cmd`, inside a

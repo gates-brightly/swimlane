@@ -4,15 +4,13 @@ package e2e
 // (a variable secret_env_auto names, a multi-line one and one secret_env
 // lists), has a lane print them every way it can, drives
 // every writer (the plain and YAML streams, status and history, the log
-// and archive, the queue and its worker, the hub), then reads every file
+// and archive, the queue and its worker), then reads every file
 // swim wrote: none may hold a value, raw or encoded. A file no writer in
 // the inventory below accounts for fails too: a new writer must be added
 // here, and so checked.
 
 import (
 	"encoding/base64"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -55,7 +53,7 @@ func leakNeedles() map[string]string {
 
 // leakInventory is every kind of file swim writes in a run like this one,
 // by path (slash-separated, relative to the scanned directory, prefixed
-// with repo/, config/, home/, tmp/ or hub/). A file that matches none is a
+// with repo/, config/, home/ or tmp/). A file that matches none is a
 // new writer: add it here (after making sure it masks).
 var leakInventory = []struct{ what, re string }{
 	{"lane scripts and swim.yml (the test's own)", `^repo/(lane\.\d+\.(sh|py)|swim\.yml|lookup\.yml|\.gitignore|\.swim\.lock)$`},
@@ -63,7 +61,6 @@ var leakInventory = []struct{ what, re string }{
 	{"lane logs", `^repo/\.swim/logs/agent\d+(\.prev-[^/]+)?(\.check)?\.log$`},
 	{"archived logs", `^repo/\.swim/logs/archive/`},
 	{"status", `^repo/\.swim/status\.yml$`},
-	{"run records", `^repo/\.swim/runs/[^/]+\.yml$`},
 	{"staged lane copies", `^repo/\.swim/runs/r-[^/]+/\d+/`},
 	{"kept scripts", `^repo/\.swim/scripts/`},
 	{"the chain", `^repo/\.swim/(chain\.jsonl|checkpoints\.jsonl|checkpoints\.sent\.yml)$`},
@@ -73,15 +70,10 @@ var leakInventory = []struct{ what, re string }{
 	{"evidence", `^repo/\.swim/evidence/`},
 	{"locks", `^repo/\.swim/(locks/|.*\.lock$)`},
 	{"the git shim", `^repo/\.swim/bin/`},
-	{"hub enrolment", `^repo/\.swim/(hub\.yml|hub\.key|hub-state\.yml|worker\.key)$`},
-	{"runs the hub took (ids, mtimes, a token's hash)", `^repo/\.swim/hub-runs\.yml$`},
 	{"watch state", `^repo/\.swim/watch`},
 	{"report earmarks (places in the logs: round lines and hashes)", `^repo/\.swim/earmarks/`},
 	{"the config", `^config/swim/config\.yml$`},
 	{"the trust pins", `^config/swim/trust`},
-	{"hub worker keys (age keys, not secret values)", `^config/swim/worker-keys/[^/]+\.key$`},
-	{"hub logins (the machine's and the admin's tokens, private; no lane values)", `^config/swim/(auth|hub-admin)\.yml$`},
-	{"the hub's state", `^hub/`},
 }
 
 func TestNoSecretLeaks(t *testing.T) {
@@ -99,8 +91,7 @@ func TestNoSecretLeaks(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(tmp) })
 	r.env = append(r.env, "HOME="+home, "TMPDIR="+tmp, "MY_LEAK_VAR="+leakSecrets["env"], "LEAK_API_TOKEN="+leakSecrets["auto"], "MY_LEAK_PEM="+leakSecrets["pem"])
-	// hub.logs: stream, so finished runs reach the hub with their output.
-	r.write("swim.yml", "secret_env: [MY_LEAK_VAR, MY_LEAK_PEM]\nhub:\n  logs: stream\n", 0o644)
+	r.write("swim.yml", "secret_env: [MY_LEAK_VAR, MY_LEAK_PEM]\n", 0o644)
 
 	// The lane prints them every way: raw, to stderr, base64 (standard,
 	// unpadded, URL-safe), URL-encoded, split across writes, in step
@@ -202,39 +193,17 @@ summary
 		check("swim "+strings.Join(args, " "), o)
 	}
 
-	// The queue and its worker, enrolled with a hub: the hub's snapshots
-	// (tails, events, messages) and its pages.
-	hubState := t.TempDir()
-	hubURL, stopHub := startHub(t, r, hubState, "127.0.0.1:0")
-	defer stopHub()
-	r.join(t, hubURL, "leaky", "read")
+	// The queue and its worker.
 	r.mustSwim("queue", "add", "1", "-y")
 	w := r.cmd(bin, "watch", "--once", "--interval", "200ms")
 	w.SysProcAttr = noTTY()
 	wout, _ := w.CombinedOutput()
 	check("swim watch --once", string(wout))
-	for _, p := range []string{"/api/enrollments", "/"} {
-		resp, err := http.Get(hubURL + p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		check("hub "+p, string(body))
-	}
 	o, _ := r.swim("archive", "1")
 	check("swim archive", o)
-	stopHub()
-	// The hub took the batch's run, with step output (hub.logs: stream),
-	// so the scan below checks what it keeps.
-	if runs, _ := filepath.Glob(filepath.Join(hubState, "runs", "*", "*.json")); len(runs) == 0 {
-		t.Error("the hub kept no run")
-	} else if data, _ := os.ReadFile(runs[0]); !strings.Contains(string(data), `"output":["`) {
-		t.Errorf("the hub's run has no step output: %.300s", data)
-	}
 
 	// Every file swim wrote.
-	roots := map[string]string{"repo": r.root, "config": envOf(r, "XDG_CONFIG_HOME"), "home": home, "tmp": tmp, "hub": hubState}
+	roots := map[string]string{"repo": r.root, "config": envOf(r, "XDG_CONFIG_HOME"), "home": home, "tmp": tmp}
 	var unknown []string
 	for prefix, dir := range roots {
 		filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {

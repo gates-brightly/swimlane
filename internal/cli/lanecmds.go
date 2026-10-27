@@ -315,12 +315,9 @@ func cmdDrift(args []string) error {
 	return cmdMark([]string{n, logparse.Drift, args[0]})
 }
 
-// swim stop "<reason>": record STOP and end the round now (exit 1). Outside
-// a lane, swim stop [--all] stops headless workers (runners.go).
+// swim stop "<reason>": record STOP and end the round now (exit 1). It
+// runs only inside a lane.
 func cmdStop(args []string) error {
-	if os.Getenv("SWIM_LANE") == "" {
-		return runnerStop(args)
-	}
 	n, err := laneEnv("stop")
 	if err != nil {
 		return err
@@ -345,8 +342,8 @@ func laneSnapshot(args []string) error { return laneStep("snapshot", args) }
 func laneEvidence(args []string) error { return laneStep("evidence", args) }
 
 // swim msg [--progress N/M] "<text>": post the lane's status message (the
-// latest wins; "" clears it). It shows in the live view, swim status and
-// the hub, and goes to the log throttled (msg_log_interval). It never fails
+// latest wins; "" clears it). It shows in the live view and swim status,
+// and goes to the log throttled (msg_log_interval). It never fails
 // the round: a message that can't be posted warns and exits 0.
 func cmdMsg(args []string) error {
 	var progress string

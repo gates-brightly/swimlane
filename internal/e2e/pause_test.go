@@ -3,9 +3,7 @@ package e2e
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -99,7 +97,7 @@ run "three" true`)
 		t.Errorf("after: paused_at %q paused_s %v", l.PausedAt, l.PausedS)
 	}
 	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
-	// The chain's round entry and the run record carry the paused time.
+	// The chain's round entry carries the paused time.
 	links, _ := chain.Read(r.root)
 	var paused float64
 	for _, l := range links {
@@ -110,8 +108,6 @@ run "three" true`)
 	if paused <= 0 {
 		t.Error("the round's chain entry has no paused_s")
 	}
-	rec, _ := os.ReadFile(filepath.Join(r.root, ".swim", "runs", r.status().LastRun+".yml"))
-	contains(t, "run record", string(rec), "pauses:", "duration_s:")
 	contains(t, "not running", must(r.swim("pause", "1")), "swim 1 isn't running")
 	contains(t, "not paused", r.mustSwim("unpause", "1"), "swim 1 isn't paused")
 }

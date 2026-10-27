@@ -64,7 +64,7 @@ is read as part of it, so explain things in the `# Goal:` block instead.
 | `evidence "<label>" cmd...` | A check whose output (a plan) an approval covers. If the output changes, it asks again. |
 | `guard FLAG "<action>"` | Returns 0 only if a person approved this action in this run. |
 | `stop "<reason>"` / `drift "<what>"` | End the round, or record a difference from what was expected. |
-| `msg --progress 3/25 "<text>"` | A status line in the live view, `swim status` and the hub. |
+| `msg --progress 3/25 "<text>"` | A status line in the live view and `swim status`. |
 | `output KEY VALUE` / `input N KEY` | Pass small values (or `# Outputs:` files) to dependent lanes. |
 
 `run`, `gate` and `snapshot` take `--timeout 2m`, `--retry 3`, `--backoff 5s`

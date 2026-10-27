@@ -231,8 +231,8 @@ func (l *Lookup) RuleFor(flag string) Rule { return MatchRule(l.Require, flag) }
 
 // Explicit reports whether a require: rule names flag (by a glob, or a
 // rule without globs that covers every guard): the repo said who must
-// approve it, so only signed answers count for it, never a hub user's
-// button click.
+// approve it, so only signed answers count for it (never a hub user's
+// button click, which an older swim could record).
 func (l *Lookup) Explicit(flag string) bool {
 	for _, r := range l.Require {
 		if len(r.Guards) == 0 {

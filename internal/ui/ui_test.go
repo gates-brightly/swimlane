@@ -81,9 +81,6 @@ func TestSafe(t *testing.T) {
 			t.Errorf("%s: SafeKeepSGR(%q) = %q, want %q", c.name, c.in, got, c.keepSGR)
 		}
 	}
-	if got := SafeLines("one\x1b[2K\r\ntwo\b\n"); got != "one\ntwo\n" {
-		t.Errorf("SafeLines: %q", got)
-	}
 	if got := SafeField("a\tb\nc"); got != "a bc" {
 		t.Errorf("SafeField: %q", got)
 	}

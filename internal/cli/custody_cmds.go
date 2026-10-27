@@ -48,22 +48,12 @@ func laneFile(arg string) (int, bool) {
 // otherwise co-signed). --key picks the key, --expires D and --note T
 // describe a new approval.
 func cmdApprove(args []string) error {
-	var guards, expires, keyPath, note, auto, hubRef, hubURL, hubToken string
-	var all, noEvidence, decline bool
-	rest, err := flags{bools: map[string]*bool{"all": &all, "no-evidence": &noEvidence, "decline": &decline},
-		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto,
-			"hub": &hubRef, "url": &hubURL, "token": &hubToken}}.parse(args)
+	var guards, expires, keyPath, note, auto string
+	var all, noEvidence bool
+	rest, err := flags{bools: map[string]*bool{"all": &all, "no-evidence": &noEvidence},
+		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto}}.parse(args)
 	if err != nil {
 		return err
-	}
-	if hubRef != "" {
-		if len(rest) > 0 || auto != "" || guards != "" || all || expires != "" {
-			return usagef("swim approve --hub WORKER/QUESTION answers one question: it takes only --decline, --key, --url and --token")
-		}
-		return approveHub(hubRef, keyPath, hubURL, hubToken, decline)
-	}
-	if decline || hubURL != "" || hubToken != "" {
-		return usagef("--decline, --url and --token go with --hub WORKER/QUESTION")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {

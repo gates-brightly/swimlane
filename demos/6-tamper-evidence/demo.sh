@@ -10,7 +10,7 @@ for s in api worker; do fakecloud deploy $s 2.4.0 0 >/dev/null; done
 mkdir -p "$DEMO_DIR/audit-volume"
 cat > swim.yml <<YML
 # Send a signed checkpoint of the chain's head here at the end of every run.
-# In real life: an append-only volume or a hub someone else runs.
+# In real life: an append-only volume someone else holds.
 chain_anchors: ["file:$DEMO_DIR/audit-volume"]
 YML
 cat > lookup.yml <<YML

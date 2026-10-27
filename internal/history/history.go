@@ -64,7 +64,7 @@ const (
 	// guard was approved, or refused (detail: name, flags, how or why).
 	SecretReleased = "secret-released"
 	SecretRefused  = "secret-refused"
-	Hub            = "hub" // enrolled with a hub, left it, or a command from it (detail: hub <cmd> by <user> via <url>: <outcome>)
+	Hub            = "hub" // (older lines: swim no longer has a hub) enrolled with a hub, left it, or a command from it (detail: hub <cmd> by <user> via <url>: <outcome>)
 )
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.

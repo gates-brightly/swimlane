@@ -241,8 +241,8 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	return m, nil
 }
 
-// Matches reports whether pin, a manifest_sha256 an approval, queue entry,
-// schedule or hub command recorded, pins this manifest.
+// Matches reports whether pin, a manifest_sha256 an approval or queue
+// entry recorded, pins this manifest.
 func (m *Manifest) Matches(pin string) bool {
 	return pin != "" && pin == m.SHA256
 }
@@ -326,7 +326,7 @@ func Dir(root, run string, n int) string {
 	return filepath.Join(root, ".swim", "runs", run, strconv.Itoa(n))
 }
 
-// RunsDir holds every run's stages (next to the run records).
+// RunsDir holds every run's stages.
 func RunsDir(root string) string { return filepath.Join(root, ".swim", "runs") }
 
 // Remove deletes a stage (or a run's stages): its files are read-only.
@@ -651,7 +651,6 @@ func OldStages(root string, keep time.Duration, keepRun func(run string) bool) [
 }
 
 // PruneStages removes what OldStages lists and returns the runs removed.
-// Their run records (.swim/runs/<run>.yml) stay.
 func PruneStages(root string, keep time.Duration, keepRun func(run string) bool) []string {
 	var removed []string
 	for _, run := range OldStages(root, keep, keepRun) {

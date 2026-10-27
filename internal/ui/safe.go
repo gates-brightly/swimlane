@@ -20,16 +20,6 @@ func Safe(s string) string { return sanitize(s, false) }
 // lane's output in the live view.
 func SafeKeepSGR(s string) string { return sanitize(s, true) }
 
-// SafeLines is Safe for multi-line text: each line made safe, the
-// newlines kept (a \r\n ending becomes \n).
-func SafeLines(s string) string {
-	lines := strings.Split(s, "\n")
-	for i, l := range lines {
-		lines[i] = Safe(l)
-	}
-	return strings.Join(lines, "\n")
-}
-
 // SafeField is Safe with tabs as spaces, for a one-line field such as a
 // step label that lands in tab-separated or column-aligned records.
 func SafeField(s string) string { return strings.ReplaceAll(Safe(s), "\t", " ") }

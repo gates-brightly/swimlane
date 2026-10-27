@@ -648,25 +648,8 @@ func VerifyEvent(statement string, e Event) error {
 	return sign.Verify(e.Key, EventPayload(statement, e.Type, e.Prev, e.Key, e.At), e.Sig)
 }
 
-// VerifyHubAnswer checks an answer given through the hub: sig must be
-// key's signature of statement (the worker's own, built from the question
-// it asked), and key must be a user's in lookup.yml. It returns the user.
-func VerifyHubAnswer(l *lookup.Lookup, statement, key, sig string) (string, error) {
-	if l == nil || l.Path == "" {
-		return "", errors.New("no lookup.yml: answers count only from users listed there")
-	}
-	user, ok := l.Who(key)
-	if !ok {
-		return "", fmt.Errorf("the key %s isn't in lookup.yml", or(sign.Fingerprint(key), "given"))
-	}
-	if err := VerifyHubSig(statement, key, sig); err != nil {
-		return "", fmt.Errorf("%s's signature doesn't match this question: %v", user, err)
-	}
-	return user, nil
-}
-
-// VerifyHubSig checks a hub answer's signature alone (swim verify, from
-// the chain).
+// VerifyHubSig checks the signature of a hub answer an older swim
+// recorded in the chain (swim verify).
 func VerifyHubSig(statement, key, sig string) error {
 	if key == "" || sig == "" {
 		return errors.New("no key or signature")

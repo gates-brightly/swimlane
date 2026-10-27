@@ -48,30 +48,33 @@ type Settings struct {
 	// RemovedSecrets (secrets:) and RemovedAmbientCredentials
 	// (ambient_credentials:), swim.yml's guarded secrets, also still count
 	// in the policy hash as they did (policy.go).
-	RemovedSecrets            any      `yaml:"secrets,omitempty"`
-	RemovedAmbientCredentials any      `yaml:"ambient_credentials,omitempty"`
-	RemovedSecretsKey         any      `yaml:"secrets_key,omitempty"`
-	SecretEnv                 []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
-	SecretEnvAuto             *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
-	SecretEnvIgnore           []string `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
-	SecretPatternsAuto        *bool    `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
-	Interrupt                 string   `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
-	Approvals                 string   `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
-	SigningKey                string   `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
-	Signing                   string   `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
-	InterruptGrace            string   `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
-	TermGrace                 string   `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
-	MsgLogInterval            string   `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
-	OutputsKeep               string   `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
-	QueueLease                string   `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
-	PauseWarn                 string   `yaml:"pause_warn,omitempty"`           // swim doctor warns about a lane paused longer than this (default 4h)
-	ClaimLease                string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
-	WatchBatches              int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
-	CacheDir                  string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
-	CacheMax                  string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
-	CacheSlug                 string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
-	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
-	// the anchor package). They add up across config.yml and swim.yml.
+	RemovedSecrets            any `yaml:"secrets,omitempty"`
+	RemovedAmbientCredentials any `yaml:"ambient_credentials,omitempty"`
+	RemovedSecretsKey         any `yaml:"secrets_key,omitempty"`
+	RemovedHeadless           any `yaml:"headless,omitempty"`
+	RemovedHub                any `yaml:"hub,omitempty"`
+
+	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
+	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
+	SecretEnvIgnore    []string `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
+	SecretPatternsAuto *bool    `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
+	Interrupt          string   `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
+	Approvals          string   `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
+	SigningKey         string   `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
+	Signing            string   `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
+	InterruptGrace     string   `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
+	TermGrace          string   `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
+	MsgLogInterval     string   `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
+	OutputsKeep        string   `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
+	QueueLease         string   `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
+	PauseWarn          string   `yaml:"pause_warn,omitempty"`           // swim doctor warns about a lane paused longer than this (default 4h)
+	ClaimLease         string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
+	WatchBatches       int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
+	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
+	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
+	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
+	// ChainAnchors are where chain checkpoints go (file:/path; see the
+	// anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
 	// Runners maps a lane script's extension (ts, py, ...) to the command
 	// that runs it ("tsx", "/usr/local/bin/python3"). A script's #! line
@@ -85,12 +88,6 @@ type Settings struct {
 	// (see the envfile package). Only swim.yml may set it; personal values
 	// go in ~/.config/swim/env.swim.
 	Env map[string]string `yaml:"env,omitempty"`
-	// Headless is swim.yml's headless: block (what a headless worker takes
-	// from its hub). Only swim.yml may set it.
-	Headless *Headless `yaml:"headless,omitempty"`
-	// Hub is swim.yml's hub: block (what workers send their hub). Only
-	// swim.yml may set it.
-	Hub *HubSettings `yaml:"hub,omitempty"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -166,12 +163,6 @@ func Load(root string) (*Config, error) {
 	if f.Defaults.Env != nil {
 		return nil, fmt.Errorf("%s: env: belongs in %s (or a repo's swim.yml), not config.yml", c.Path, filepath.Join(filepath.Dir(c.Path), "env.swim"))
 	}
-	if f.Defaults.Headless != nil {
-		return nil, fmt.Errorf("%s: headless: belongs in a repo's committed swim.yml, not config.yml (what a worker takes from its hub is the repo's decision)", c.Path)
-	}
-	if f.Defaults.Hub != nil {
-		return nil, fmt.Errorf("%s: hub: belongs in a repo's committed swim.yml, not config.yml (what leaves the machine for a hub is the repo's decision)", c.Path)
-	}
 	c.Settings = f.Defaults
 	c.RepoLanes = f.Defaults.Lanes != 0
 	c.Runners, c.RunnerFrom = nil, nil
@@ -185,7 +176,6 @@ func Load(root string) (*Config, error) {
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
-		c.Headless, c.Hub = s.Headless, s.Hub
 		if s.CacheDir != "" || s.CacheSlug != "" {
 			// Where a machine keeps its caches, and which repos share one,
 			// is the operator's: a committed swim.yml could otherwise point
@@ -196,12 +186,6 @@ func Load(root string) (*Config, error) {
 	if repo, ok := lookupRepo(f.Repos, root); ok {
 		if repo.Env != nil {
 			return nil, fmt.Errorf("%s (repo %s): env: belongs in a [repo PATH] section of %s, not config.yml", c.Path, root, filepath.Join(filepath.Dir(c.Path), "env.swim"))
-		}
-		if repo.Headless != nil {
-			return nil, fmt.Errorf("%s (repo %s): headless: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
-		}
-		if repo.Hub != nil {
-			return nil, fmt.Errorf("%s (repo %s): hub: belongs in the repo's committed swim.yml, not config.yml", c.Path, root)
 		}
 		c.HasRepo = true
 		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
@@ -235,7 +219,8 @@ func (s Settings) RemovedKeys() []string {
 		name string
 		v    any
 	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules},
-		{"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}, {"secrets_key", s.RemovedSecretsKey}} {
+		{"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}, {"secrets_key", s.RemovedSecretsKey},
+		{"headless", s.RemovedHeadless}, {"hub", s.RemovedHub}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}
@@ -437,12 +422,6 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)
-	}
-	if err := c.Headless.validate(); err != nil {
-		return err
-	}
-	if err := c.Hub.validate(); err != nil {
-		return err
 	}
 	for lane, deps := range c.Deps {
 		if !c.ValidLane(lane) {

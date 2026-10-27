@@ -32,7 +32,7 @@ swim is a flywheel for AI-assisted operations work. Every round leaves behind st
 5. **Concurrent work stays structured.** Lanes isolate parallel work, dependencies order it and locks keep shared resources from overlapping.
 6. **Approvals are deliberate and exact.** Destructive steps are dry runs until a person approves them, and an approval is signed against the exact script.
 7. **Everything is provable.** Every round and approval is signed and hash-linked into an audit record anyone can verify.
-8. **One workflow everywhere.** The same rounds run from a terminal, a queue, CI or many machines, without being rewritten.
+8. **One workflow everywhere.** The same rounds run from a terminal, from the queue under `swim watch`, or in CI, without being rewritten.
 
 ## Positioning
 
@@ -72,7 +72,7 @@ swim is a tool a person operates, with teammates approving from their own machin
 - **Safe by default.** Destructive steps sit behind guards, after a snapshot and a gate. Without an approval they are dry runs.
 - **Approvals bind to exact scripts.** Approving a script approves its hash. Editing the script voids the approval.
 - **Everything is provable.** Every round and approval is signed and hash-linked, so tampering is detectable.
-- **One workflow everywhere.** The same rounds run from a terminal, a queue, CI or many machines, without being rewritten.
+- **One workflow everywhere.** The same rounds run from a terminal, from the queue under `swim watch`, or in CI, without being rewritten.
 
 ## Concepts
 
@@ -146,10 +146,9 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - Sign each entry and link it to the one before. Keep every script that ran, by hash.
 - `swim verify` proves nothing was edited, removed or reordered. Signatures are checkable with plain `ssh-keygen`, without swim.
 
-### Queue, CI and hub
+### Queue and CI
 - **Queue:** a batch is fixed when queued. Its approvals travel with it, and the swimmer's own environment approves nothing. Several swimmers can share one queue safely: a claimed batch carries its swimmer's heartbeat, so a swimmer on another host that died is seen as gone once its lease runs out.
 - **CI:** `swim ci` never prompts. It folds each lane's log, turns failures into annotations, can run only the rounds a push changed, and never commits results back.
-- **Hub:** a dashboard of many swimmers. Swimmers push to it, so they can sit behind NAT. It serves https with `--tls-cert`/`--tls-key`, and plain HTTP only on loopback unless `--insecure`. Hub users (each with their own token and a viewer or operator role) can send headless swimmers commands: interrupt, drain, run, fetch a log. The hub only relays them; the swimmer checks each against the repo's committed `headless:` settings and records it.
 
 ### Planner / worker protocol
 - The planner assigns each worker a lane number. A worker writes **only** its own `lane.N.sh`.
@@ -180,7 +179,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 
 ## Non-functional
 
-- **One binary.** swim is one Go binary plus the target's own CLIs. The queue's swimmer and the hub are optional; nothing needs a daemon to run a round.
+- **One binary.** swim is one Go binary plus the target's own CLIs. The queue's swimmer is optional; nothing needs a daemon to run a round.
 - **Flaky networks.** Rounds work over a flaky VPN: steps are idempotent or detect their own prior success.
 - **Nothing operational is committed by accident.** Lane scripts, logs and state are git-ignored by default. Shared settings, `lookup.yml`, approvals and `.swim.lock` are committed.
 - **Readable without the planner.** A round's header states its goal, and its log shows every step.
@@ -193,7 +192,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Running from the planner's side.** The operator's machine, or a swimmer they control, stays the only executor.
 - **Secret management.** Rounds use the operator's existing credentials.
 - **Writing to git.** swim never commits, pushes or pulls, including in CI.
-- **Executing on the hub.** The hub relays requests to headless swimmers, which check, carry out and record them. It never runs anything itself, never holds credentials or secrets, and can't make an approval valid by itself: an answer to a guard counts when the swimmer verifies the approver's SSH signature against `lookup.yml` (or, where the repo's `swim.yml` allows it, a listed hub user's click for a guard no `require:` rule names).
+- **A dashboard or remote control.** swim has no server: a swimmer is seen from its own terminal (`swim watch`), the queue and status files, or CI. Approvals travel as signed files in the repo, not through a service.
 
 ## Open questions
 
@@ -202,8 +201,8 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 
 ### Resolved since
 
-- **Hub access?** Per-user identity: the hub's admin adds users (`swim auth users add NAME --role viewer|operator|admin`), named as in `lookup.yml`, each with their own token and a browser session. Every command carries the user who sent it, and the swimmer records it. The shared tokens only enroll swimmers and manage the hub. Approving through the hub takes the approver's own SSH signature, checked by the swimmer: the hub login alone approves only where a repo opts in (`headless.approvals: hub`). See `swim watch --help` and `swim hub --help`.
-- **Keeping the chain?** Opt-in, not by default: `chain_anchors` sends a signed checkpoint of the chain's head to a `file:` path outside the repo or the hub at the end of every run, and `swim chain export` copies the entries; `swim verify` checks against them (anchored). An anchor only helps if someone other than the operator holds it, so swim doesn't pick one.
+- **A hub?** Removed. swim once had one (a dashboard of many swimmers, hub users, commands and answers relayed to headless swimmers); it was more server than the core needs. A swimmer runs under `swim watch` on a terminal, in tmux, or from cron with `--once`; approvals are signed files.
+- **Keeping the chain?** Opt-in, not by default: `chain_anchors` sends a signed checkpoint of the chain's head to a `file:` path outside the repo at the end of every run, and `swim chain export` copies the entries; `swim verify` checks against them (anchored). An anchor only helps if someone other than the operator holds it, so swim doesn't pick one.
 - **Cross-session claims?** Yes, as an advisory lease: `swim new` claims the lane until it runs, is archived or stubbed, or the lease expires; another session's `new`, `stub` and `archive` refuse it, and `swim run` warns and runs. `Owner` stays authorship. See `swim claim --help`.
 - **Scheduling across rounds?** Queue the batch, and start a swimmer when it should run (`swim watch --once` from cron). swim runs no daemon or timer of its own.
 - **Do approvals outlive a policy change, and must standing approvals expire?** A rule change stales them; membership is read live; standing approvals expire. See [Approval lifecycle](#approval-lifecycle).
@@ -215,4 +214,4 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Machine-readable summary?** Yes: versioned YAML for every read command.
 - **Built-in archive and stub?** Yes: `swim archive` and `swim stub`.
 - **Guard registry?** The `Guards` header, guards found from `guard` calls, `swim lint` and `lookup.yml` rules.
-- **Scheduling, retries, a UI?** Shipped beyond the v1 scope: the queue, per-step retries, the live view and the hub.
+- **Scheduling, retries, a UI?** Shipped beyond the v1 scope: the queue, per-step retries and the live view.

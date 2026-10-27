@@ -239,46 +239,6 @@ func TestRemovedSettings(t *testing.T) {
 	}
 }
 
-func TestHeadlessChecks(t *testing.T) {
-	root := t.TempDir()
-	dir := t.TempDir()
-	plain, yes, plist := filepath.Join(dir, "a.service"), filepath.Join(dir, "b.service"), filepath.Join(dir, "c.plist")
-	os.WriteFile(plain, []byte("# -y: in a comment\nExecStart=\"/bin/swim\" \"watch\" \"--headless\"\n"), 0o644)
-	os.WriteFile(yes, []byte("ExecStart=\"/bin/swim\" \"watch\" \"--headless\" \"-y\"\n"), 0o644)
-	os.WriteFile(plist, []byte("<array>\n\t\t<string>/bin/swim</string>\n\t\t<string>--yes</string>\n</array>\n"), 0o644)
-	cfg := &config.Config{Root: root, Settings: config.Settings{Lanes: 1}}
-	cfg.Headless = &config.Headless{Approvals: config.HeadlessHub}
-	o := Options{Root: root, Cfg: cfg, Headless: &Headless{Units: [][2]string{{"systemd", plain}, {"systemd", yes}, {"launchd", plist}}, Stale: 4242,
-		HubCheck: func() error { return os.ErrDeadlineExceeded }}}
-	o.defaults()
-	codes := map[string]int{}
-	var text []string
-	for _, c := range []func(*Options) []finding.Finding{checkHeadlessService, checkHeadlessStale, checkHubReachable, checkHeadlessHubAnswers, checkHeadlessYes} {
-		for _, f := range c(&o) {
-			codes[f.Code]++
-			text = append(text, f.Message)
-		}
-	}
-	want := map[string]int{"headless-service": 3, "headless-stale": 1, "hub-unreachable": 1, "headless-hub-answers": 1, "headless-yes": 2}
-	for k, n := range want {
-		if codes[k] != n {
-			t.Errorf("%s: %d findings, want %d:\n%s", k, codes[k], n, strings.Join(text, "\n"))
-		}
-	}
-	// Nothing set up: nothing said (and the hub isn't tried).
-	tried := false
-	o = Options{Root: root, Headless: &Headless{HubCheck: func() error { tried = true; return nil }}}
-	o.defaults()
-	for _, c := range []func(*Options) []finding.Finding{checkHeadlessService, checkHeadlessStale, checkHubReachable, checkHeadlessHubAnswers, checkHeadlessYes} {
-		if fs := c(&o); len(fs) > 0 {
-			t.Errorf("idle repo: %+v", fs)
-		}
-	}
-	if tried {
-		t.Error("the hub was reached with no headless worker here")
-	}
-}
-
 // A runner key in a plain file is a warning: a lane could read it. One a
 // lane can only reach through ssh-agent is a note.
 func TestSigningKey(t *testing.T) {

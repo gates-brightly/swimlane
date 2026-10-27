@@ -14,7 +14,7 @@ import (
 
 // Msg is a running round's status message (swim msg): one per lane, the
 // latest wins. It lives in .swim/msg/laneN so posting it never contends
-// with status.yml; the launcher's panel, swim status and the hub read it.
+// with status.yml; the launcher's panel and swim status read it.
 type Msg struct {
 	Text     string `json:"text"`
 	Progress string `json:"progress,omitempty"` // "7/25"
