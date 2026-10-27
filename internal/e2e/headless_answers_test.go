@@ -183,12 +183,14 @@ func TestHeadlessHubApprovals(t *testing.T) {
 
 	// The hub goes away while a guard waits: it declines at the deadline,
 	// and the worker keeps running.
-	r.write("swim.yml", "headless:\n  answer_timeout: 2s\n", 0o644)
+	// The question must reach the hub before the timeout: scaled.
+	limit := dur(5 * time.Second)
+	r.write("swim.yml", "headless:\n  answer_timeout: "+limit+"\n", 0o644)
 	r.mustSwim("queue", "add", "4")
 	waiting(t, url, id, 4)
 	stopHub()
 	waitDone(t, r, 4)
-	contains(t, "hub gone", r.log(4), "dry run: no answer through the hub within headless.answer_timeout (2s)")
+	contains(t, "hub gone", r.log(4), "dry run: no answer through the hub within headless.answer_timeout ("+limit+")")
 	if !processAlive(headlessPid(r)) {
 		t.Error("the worker stopped with its hub")
 	}

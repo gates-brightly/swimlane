@@ -77,7 +77,7 @@ func TestHub(t *testing.T) {
 		t.Fatalf("after joining: %+v", w)
 	}
 
-	r.script(1, "slow", `run "slow" bash -c 'for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.4; done'`)
+	r.script(1, "slow", `run "slow" bash -c 'echo tick-1; while [ ! -e "$SWIM_ROOT/go" ]; do sleep 0.05; done; echo tick-6'`)
 	r.mustSwim("queue", "1")
 	watch := r.cmd(bin, "watch", "--once", "--interval", "300ms")
 	if err := watch.Start(); err != nil {
@@ -96,6 +96,7 @@ func TestHub(t *testing.T) {
 		}
 		return false
 	})
+	r.release("go")
 	if err := watch.Wait(); err != nil {
 		t.Fatalf("watch: %v", err)
 	}

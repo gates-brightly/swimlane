@@ -21,8 +21,8 @@ func TestHubStreamsLogs(t *testing.T) {
 	r.join(t, url, "billing", "read")
 	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("secret_env: [STREAM_SECRET]\nhub:\n  logs: stream\n"), 0o644)
 	r.script(1, "three steps", `run "one" bash -c 'echo first-$STREAM_SECRET'
-run "two" bash -c 'sleep 1.5; echo second'
-run "three" bash -c 'sleep 1.5; echo third'`)
+run "two" bash -c 'while [ ! -e "$SWIM_ROOT/go" ]; do sleep 0.05; done; echo second'
+run "three" bash -c 'echo third'`)
 	r.mustSwim("queue", "1")
 	w := r.cmd(bin, "watch", "--once", "--interval", "200ms")
 	w.Env = append(w.Env, "STREAM_SECRET=hunter2-s3cr3t")
@@ -42,6 +42,7 @@ run "three" bash -c 'sleep 1.5; echo third'`)
 	if s := streamed(); strings.Contains(s, "hunter2-s3cr3t") || strings.Contains(s, "first-\n") || strings.Contains(s, "first- ") {
 		t.Fatalf("the secret reached the hub, or the lane never had one to mask:\n%s", s)
 	}
+	r.release("go")
 	if err := w.Wait(); err != nil {
 		t.Fatalf("watch: %v", err)
 	}
@@ -93,8 +94,8 @@ func TestHubLiveLogEvents(t *testing.T) {
 	t.Cleanup(func() { r.swim("watch", "--headless", "--stop") })
 	r.write("swim.yml", "hub:\n  logs: stream\n", 0o644)
 	r.script(1, "three steps", `run "one" echo first
-run "two" bash -c 'sleep 1.5; echo second'
-run "three" bash -c 'sleep 1.5; echo third'`)
+run "two" bash -c 'while [ ! -e "$SWIM_ROOT/go" ]; do sleep 0.05; done; echo second'
+run "three" bash -c 'echo third'`)
 	resp, err := http.Get(url + "/api/events")
 	if err != nil {
 		t.Fatal(err)
@@ -132,6 +133,7 @@ run "three" bash -c 'sleep 1.5; echo third'`)
 				if s := r.status().Lanes[0].State; s != "running" {
 					t.Errorf("the first log event came with swim 1 %s, not running: %s", s, d)
 				}
+				r.release("go")
 			}
 			if strings.Contains(d, `"final":true`) {
 				final = d

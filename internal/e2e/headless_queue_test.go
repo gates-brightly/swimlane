@@ -36,7 +36,7 @@ func TestHeadlessHubQueue(t *testing.T) {
 	r, url, _, id, alice, vic := commandRepo(t)
 	r.script(1, "first", `run "one" echo one`)
 	r.script(2, "second", `run "two" echo two`)
-	r.script(3, "blocker", `run "wait" sleep 4`)
+	r.script(3, "blocker", `run "wait" `+hold("go"))
 	r.mustSwim("watch", "--headless", "--detach", "--interval", "200ms")
 	via := " via " + url + ": "
 
@@ -97,4 +97,5 @@ func TestHeadlessHubQueue(t *testing.T) {
 	if w := waitingEntries(t, r); len(w) != 0 {
 		t.Errorf("still waiting after dequeue: %+v", w)
 	}
+	r.release("go")
 }
