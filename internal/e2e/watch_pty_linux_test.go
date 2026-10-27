@@ -9,7 +9,8 @@ import (
 )
 
 // swim watch on a terminal shows the jobs and the queue: ↑ ↓ pick one, r
-// runs it now, q queues it (and the worker then runs it), Ctrl-C quits.
+// runs it now, q adds it to the next batch and s submits that batch (the
+// worker then runs it), Ctrl-C quits.
 func TestWatchPickRunAndQueue(t *testing.T) {
 	long(t)
 	r := newSerialRepo(t, "")
@@ -18,7 +19,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	r.write("lane.3.sh", "#!/usr/bin/env bash\n# being written: no Round: line yet\n", 0o755) // in use, nothing pending
 	tr := r.startTUI(nil, "watch")
 	s := tr.waitFor("▸ swim 1")
-	contains(t, "watch screen", s, "pending", "Jobs", "first job", "second job", "Queue", "r run now", "q queue")
+	contains(t, "watch screen", s, "pending", "Jobs", "first job", "second job", "Queue", "r run now", "q batch", "s submit")
 
 	// ↓ then r: swim 2 runs now, and the screen comes back saying so.
 	tr.send("\x1b[B")
@@ -32,10 +33,16 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 		t.Errorf("swim 1 ran too:\n%s", log)
 	}
 
-	// ↑ then q: swim 1 is queued, and the idle worker takes it.
+	// ↑ then q: swim 1 is in the next batch, not queued yet; s submits
+	// it, and the idle worker takes it.
 	tr.send("\x1b[A")
 	tr.waitFor("▸ swim 1")
 	tr.send("q")
+	tr.waitFor("submit swim 1 as one batch")
+	if out := r.mustSwim("queue", "list", "--all"); strings.Contains(out, "#1") {
+		t.Fatalf("q queued before s:\n%s", out)
+	}
+	tr.send("s")
 	tr.waitFor("#1 passed")
 	if log := r.log(1); !strings.Contains(log, "PASS  one") {
 		t.Fatalf("queued swim 1 didn't run:\n%s", log)

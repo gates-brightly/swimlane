@@ -1067,7 +1067,10 @@ swim wait [--timeout D]                                  # block until idle and 
   - **`--approved`** also queues scripts as soon as they're fully approved.
   - **On a terminal,** the watch lists every lane's job and the queue while
     it waits. Use ↑ ↓ to pick one, `r` to run it now (a job as `swim run N`,
-    a waiting batch out of turn) and `q` to queue a job. A batch's live view
+    a waiting batch out of turn). `q` adds a job to the next batch (`q`
+    again takes it out) and `s` submits them as one batch, as `swim queue
+    add 1 2` does, so `# After:` between them holds; `x` clears it. A
+    batch's live view
     lets ← → pick a lane to read, but never answers its guards.
 
 ### Running unattended
@@ -1380,7 +1383,7 @@ they waited for.
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
 | `swim schedule LANES... TIME [--approve F]`, `swim schedule list\|rm ID` | Queue a batch that starts no earlier than TIME (`13:30`, `1:30pm`, `tomorrow 06:00`, `+2h`). |
-| `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's swimmer; on a terminal, pick a job to run (`r`) or queue (`q`). |
+| `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's swimmer; on a terminal, pick a job to run (`r`), or add jobs to a batch (`q`) and submit it (`s`). |
 | `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The swimmer with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |

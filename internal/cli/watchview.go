@@ -20,8 +20,9 @@ import (
 
 // watchView is swim watch's screen on a terminal while it waits: every
 // lane's job and the queue, with ↑ ↓ to pick one, r to run it now and q to
-// queue it. A batch the worker takes from the queue still runs on its own,
-// as without the screen.
+// add it to the next batch (s submits the batch, as swim queue add N M
+// does, so its lanes' After: order holds). A batch the worker takes from
+// the queue still runs on its own, as without the screen.
 type watchView struct {
 	root     string
 	cfg      *config.Config
@@ -33,14 +34,17 @@ type watchView struct {
 	// d asks first: the lane a second d within trashConfirm trashes.
 	trashN  int
 	trashAt time.Time
+	// staged are the lanes q added to the next batch, in order: s submits
+	// them as one batch, x clears them.
+	staged []int
 }
 
 // trashConfirm is how long a second d has to confirm a trash.
 const trashConfirm = 5 * time.Second
 
 const (
-	watchKeys  = "rqlodp" + string(display.PickEnter)
-	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q queue  p pause  d trash  ctrl-c quit"
+	watchKeys  = "rqsxlodp" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  p pause  d trash  ^C quit" // x (clear the batch) is on the submit row
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
@@ -155,15 +159,23 @@ func (w *watchView) rows() []display.PickRow {
 		if d := laneRowDetail(l, state); d != "" {
 			text += "  · " + d
 		}
+		if w.isStaged(n) {
+			text += "  [+ next batch]"
+			color = ui.Green
+		}
 		rows = append(rows, display.PickRow{ID: "lane:" + strconv.Itoa(n), Text: text, Color: color})
 	}
 	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim}, display.PickRow{Text: "Queue"})
+	if len(w.staged) > 0 {
+		rows = append(rows, display.PickRow{ID: "submit", Color: ui.Green + ui.Bold,
+			Text: fmt.Sprintf("▶ submit swim %s as one batch  (enter here, or s; x clears)", joinNums(w.staged))})
+	}
 	entries, err := queue.List(w.root, false)
 	if err != nil {
 		rows = append(rows, display.PickRow{Text: "  " + err.Error(), Color: ui.Red})
 	}
 	if len(entries) == 0 && err == nil {
-		rows = append(rows, display.PickRow{Text: "  (empty: q on a job queues it)", Color: ui.Dim})
+		rows = append(rows, display.PickRow{Text: "  (empty: q on jobs, then s, queues them as one batch)", Color: ui.Dim})
 	}
 	queue.SortWaiting(entries)
 	held := heldBy(w.root, w.cfg, entries)
@@ -373,6 +385,21 @@ func (w *watchView) act(id string, key rune) string {
 	if key != 'd' {
 		w.trashN = 0 // any other key cancels a trash waiting for its second d
 	}
+	// The next batch: s submits it from any row (enter or q on its row
+	// too), x clears it.
+	switch {
+	case key == 's' || kind == "submit" && (key == display.PickEnter || key == 'q'):
+		return w.submitStaged()
+	case key == 'x':
+		if len(w.staged) == 0 {
+			return "no batch to clear (q on a job adds it)"
+		}
+		msg := fmt.Sprintf("cleared the next batch (swim %s); nothing queued", joinNums(w.staged))
+		w.staged = nil
+		return msg
+	case kind == "submit":
+		return "enter submits the batch; x clears it"
+	}
 	if kind == "queue" {
 		if key == 'd' {
 			w.trashN = 0
@@ -430,9 +457,49 @@ func (w *watchView) act(id string, key rune) string {
 		return fmt.Sprintf("swim %d holds no pending round (a stub, or no Round: line)", n)
 	}
 	if key == 'q' {
-		return w.queueLane(n)
+		return w.stage(n)
 	}
 	return w.runLane(n)
+}
+
+func (w *watchView) isStaged(n int) bool {
+	for _, s := range w.staged {
+		if s == n {
+			return true
+		}
+	}
+	return false
+}
+
+// stage is q on lane n: add it to the next batch, or take it out again.
+// Nothing is queued until s.
+func (w *watchView) stage(n int) string {
+	for i, s := range w.staged {
+		if s == n {
+			w.staged = append(w.staged[:i:i], w.staged[i+1:]...)
+			if len(w.staged) == 0 {
+				return fmt.Sprintf("swim %d out of the next batch; it's empty", n)
+			}
+			return fmt.Sprintf("swim %d out of the next batch (swim %s; s submits)", n, joinNums(w.staged))
+		}
+	}
+	w.staged = append(w.staged, n)
+	return fmt.Sprintf("next batch: swim %s (q on another adds it; s submits as one batch; x clears)", joinNums(w.staged))
+}
+
+// submitStaged queues the staged lanes as one batch, as swim queue add N M
+// does: one run, so After: between them holds. The batch stays staged if
+// it can't be queued.
+func (w *watchView) submitStaged() string {
+	if len(w.staged) == 0 {
+		return "no batch to submit: q on jobs adds them, then s"
+	}
+	msg := w.queueLanes(w.staged)
+	if !strings.HasPrefix(msg, "queued ") {
+		return "not queued: " + msg
+	}
+	w.staged = nil
+	return msg
 }
 
 // trash is d on lane n: the first press says what would move (or why it
@@ -475,17 +542,18 @@ func (w *watchView) toggleStream() string {
 	return "running output shown"
 }
 
-// queueLane queues lane n as its own batch, as swim queue add N does: no
-// guard is approved, so its guards dry-run unless standing approvals cover
-// them.
-func (w *watchView) queueLane(n int) string {
-	b, err := addBatch(w.root, w.cfg, []int{n}, queueOpts{})
+// queueLanes queues lanes as one batch, as swim queue add N M does: no
+// guard is approved, so their guards dry-run unless standing approvals
+// cover them.
+func (w *watchView) queueLanes(lanes []int) string {
+	b, err := addBatch(w.root, w.cfg, lanes, queueOpts{})
 	if err != nil {
 		return err.Error()
 	}
-	msg := fmt.Sprintf("queued swim %d as #%d (%s)", n, b.entry.Seq, b.entry.ID)
+	ns := strings.ReplaceAll(joinNums(lanes), " ", "")
+	msg := fmt.Sprintf("queued swim %s as #%d (%s)", ns, b.entry.Seq, b.entry.ID)
 	if len(b.guards) > 0 {
-		msg += "; its guards dry-run (approve with swim queue add " + strconv.Itoa(n) + " --approve FLAG)"
+		msg += "; its guards dry-run (approve with swim queue add " + strings.ReplaceAll(ns, ",", " ") + " --approve FLAG)"
 	}
 	if b.warn != "" {
 		msg += "; " + b.warn

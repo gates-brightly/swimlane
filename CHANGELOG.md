@@ -44,6 +44,13 @@ already pushed to origin's main) with the next tag and pushes that tag.
   since CI can't approve. Before, it was PASS and the lanes after it
   ran as if the change had happened. A script that wants a guard to be
   optional should make that step its own lane.
+- **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
+  used to queue it as its own batch at once, so two jobs queued that way
+  ran one after the other and `# After:` between them couldn't hold. Now
+  `q` adds the job to the next batch (`q` again takes it out; its row says
+  `[+ next batch]`), a `▶ submit` row appears in the queue, and `s` (or
+  enter on that row) queues them as one batch, as `swim queue add 1 2`
+  does. `x` clears it. Nothing is queued until you submit.
 - **`swim plan` says what each guard needs.** It decides every guard as
   `swim run` would as it starts (the flag, signed approvals against
   `lookup.yml`, `-y`): approved and by whom, or what's missing ("approval

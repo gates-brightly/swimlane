@@ -830,7 +830,7 @@ func cmdWatch(args []string) error {
 		defer stopCommands()
 	}
 	// On a terminal, waiting shows the jobs and the queue: r runs one now,
-	// q queues one (watchview.go).
+	// q adds one to the next batch and s submits it (watchview.go).
 	var view *watchView
 	if !once && !headless && watchViewAllowed(noTUI) {
 		view = newWatchView(root, cfg, yes)

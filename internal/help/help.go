@@ -910,8 +910,10 @@ swim watch --headless --install systemd|launchd [-y --i-mean-it]
                  swimmer runs one at a time.
   --no-tui       print what the swimmer waits for instead of the jobs screen
   On a terminal, while it waits, the watch shows every lane's job and the
-  queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now,
-  q queues it and enter follows its output (esc comes back).
+  queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now
+  and enter follows its output (esc comes back). q adds a job to the next
+  batch (q again takes it out) and s submits the batch, as swim queue add
+  N M does: one run, so After: between its lanes holds; x clears it.
     enter on a job follows its lane's log while it runs, in a batch or not;
                    v switches to its batch's output. When it ends, a header
                    bar says how: PASSED (green), FAILED (red, with the
