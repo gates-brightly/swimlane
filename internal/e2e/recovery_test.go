@@ -38,7 +38,7 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 			links = append(links, l)
 		}
 	}
-	if err != nil || len(links) != 2 || links[0].Signer == "" || links[0].Signer == links[1].Signer {
+	if err != nil || len(links) != 2 || links[0].SignedBy() == "" || links[0].SignedBy() == links[1].SignedBy() {
 		t.Fatalf("want two rounds signed by different keys: %v %+v", err, links)
 	}
 	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")

@@ -215,7 +215,7 @@ func (v *verifier) trusted(links []chain.Link, pin string) level {
 	signers := map[string]bool{}
 	for _, l := range links {
 		if l.Sig != "" {
-			signers[sign.KeyOnly(l.Signer)] = true
+			signers[sign.KeyOnly(l.SignedBy())] = true
 		}
 		for _, ap := range l.Approvers {
 			if ap.Sig != "" {
