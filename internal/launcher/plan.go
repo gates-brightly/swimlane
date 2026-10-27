@@ -30,6 +30,11 @@ type plan struct {
 	// scheduled are the pending lanes swim all leaves to their scheduled
 	// batch (swim schedule), with when it starts them.
 	scheduled map[int]string
+	// guards is how swim run would decide each lane's guards now, and
+	// awaiting the lane whose unapproved guard each lane depends on (0:
+	// none): a dry run there skips it.
+	guards   map[int][]GuardVerdict
+	awaiting map[int]int
 }
 
 // planFacts are what a plan is decided from, as gatherPlan reads them from
@@ -41,11 +46,12 @@ type planFacts struct {
 	lanes       int  // the config's lane count
 	named       bool // lanes were named (swim run N), not swim all
 	scripts     map[int]lane.Info
-	status      map[int]*status.Lane // nil for a lane with no status
-	deps        map[int][]Dep        // each selected lane's dependencies
-	blocked     map[int]string       // selected lanes refused before they run (BlockedLanes)
-	outside     map[Dep]string       // why a dependency outside the run blocks ("" if it doesn't)
-	scheduled   map[int]string       // when each lane's scheduled batch starts ("" for none)
+	status      map[int]*status.Lane   // nil for a lane with no status
+	deps        map[int][]Dep          // each selected lane's dependencies
+	blocked     map[int]string         // selected lanes refused before they run (BlockedLanes)
+	outside     map[Dep]string         // why a dependency outside the run blocks ("" if it doesn't)
+	scheduled   map[int]string         // when each lane's scheduled batch starts ("" for none)
+	guards      map[int][]GuardVerdict // how swim run would decide each lane's guards now
 }
 
 func computePlan(o Options) (*plan, error) {
@@ -88,6 +94,7 @@ func gatherPlan(o Options) (planFacts, error) {
 		}
 	}
 	f.blocked = BlockedLanes(o.Root, o.Cfg, f.sel)
+	f.guards = planGuards(o, f.sel, f.scripts)
 	f.what = "swim all"
 	if len(o.Lanes) > 0 {
 		parts := make([]string, len(o.Lanes))
@@ -176,8 +183,18 @@ func decidePlan(f planFacts) *plan {
 		}
 	}
 
+	// Lanes whose round, or one they sit under, needs an approval: a dry
+	// run there skips them. A lane skipped anyway needs none.
+	awaiting := awaitingApproval(sel, inRunDeps, f.guards)
+	for n := range awaiting {
+		if actions[n] == actSkip || actions[n] == actScheduled || actions[n] == actHeld {
+			delete(awaiting, n)
+		}
+	}
+
 	return &plan{what: f.what, sel: sel, passed: f.passed, selected: selected, scripts: scripts, children: children,
-		inRunDeps: inRunDeps, skip: skip, actions: actions, counts: counts, scheduled: scheduled}
+		inRunDeps: inRunDeps, skip: skip, actions: actions, counts: counts, scheduled: scheduled,
+		guards: f.guards, awaiting: awaiting}
 }
 
 // WritePlan prints what `swim run` with these options would do, without
@@ -206,7 +223,8 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		}
 		fmt.Fprintln(w)
 		how := "top-level lanes start at once; each lane starts when the lanes it sits under pass"
-		fmt.Fprintf(w, "Swim will perform the following actions (%s).\n", p.Paint(ui.Dim, how))
+		fmt.Fprintf(w, "Swim would start these rounds (%s).\n", p.Paint(ui.Dim, how))
+		fmt.Fprintln(w, p.Paint(ui.Dim, "A plan says what runs, in what order, and what each guard needs; what a script changes is up to the script."))
 		fmt.Fprintln(w)
 	}
 
@@ -237,6 +255,12 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		}
 		if pid, ok := lane.Running(o.Root, n); ok {
 			notes = append(notes, p.Paint(ui.Red, fmt.Sprintf("RUNNING NOW (pid %d): swim run would refuse", pid)))
+		}
+		switch wa := pl.awaiting[n]; {
+		case wa == n:
+			notes = append(notes, p.Paint(ui.Yellow, "needs approval: a dry run without it"))
+		case wa != 0:
+			notes = append(notes, p.Paint(ui.Yellow, fmt.Sprintf("waits on swim %d's approval", wa)))
 		}
 		switch r := skip[n]; {
 		case r == "":
@@ -271,16 +295,8 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		if len(children[n]) == 0 {
 			bar = "  "
 		}
-		for _, g := range info.Guards {
-			state := p.Paint(ui.Yellow, "unset: asks at the prompt; dry run if no one can answer")
-			if os.Getenv(g.Flag) == "1" {
-				state = p.Paint(ui.Green, "set: approved")
-			}
-			desc := ""
-			if g.Desc != "" {
-				desc = "  " + p.Paint(ui.Dim, g.Desc)
-			}
-			fmt.Fprintf(w, "%s%s%s %s=1 (%s)%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "guard"), g.Flag, state, desc)
+		for _, v := range pl.guards[n] {
+			fmt.Fprintf(w, "%s%s%s %s (%s)%s\n", childPrefix, p.Paint(ui.Dim, bar), p.Paint(ui.Dim, "guard"), v.Flag, v.text(p), v.desc(p))
 		}
 		// Modules, with what they declare they do: an approver reads them
 		// next to the guards.
@@ -381,6 +397,9 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		}
 		if len(passed) > 0 {
 			fmt.Fprintln(w, completedLine(len(passed)))
+		}
+		if line := approvalsLine(pl); line != "" {
+			fmt.Fprintln(w, p.Paint(ui.Bold, "Approvals:")+" "+line)
 		}
 		if o.ChecksRan {
 			var guarded []string
@@ -510,11 +529,19 @@ func (a planAction) name() string {
 	return [...]string{"run", "retry", "rerun", "skip", "scheduled", "held"}[a]
 }
 
-// PlanGuard is a guard flag a job's round declares.
+// PlanGuard is a guard flag a job's round declares, and how swim run
+// would decide it now.
 type PlanGuard struct {
 	Flag string `yaml:"flag"`
-	Set  bool   `yaml:"set"`
+	Set  bool   `yaml:"set"` // its flag is 1 in this environment
 	Desc string `yaml:"description,omitempty"`
+	// Approved: by its flag, signed approvals or -y (How says which).
+	// Otherwise Asks says whether swim run would ask (else a dry run), and
+	// Why why the signed approvals don't count yet.
+	Approved bool   `yaml:"approved"`
+	How      string `yaml:"how,omitempty"`
+	Asks     bool   `yaml:"asks,omitempty"`
+	Why      string `yaml:"why,omitempty"`
 }
 
 // PlanLane is one lane swim run would act on.
@@ -527,8 +554,11 @@ type PlanLane struct {
 	Reason  string      `yaml:"reason,omitempty"` // why it would be skipped
 	Running int         `yaml:"running_pid,omitempty"`
 	Guards  []PlanGuard `yaml:"guards,omitempty"`
-	Timeout string      `yaml:"timeout,omitempty"`
-	Locks   []string    `yaml:"locks,flow,omitempty"`
+	// AwaitsApproval is the lane (this one, or one it sits under) whose
+	// guard isn't approved yet: a dry run there skips this round.
+	AwaitsApproval int      `yaml:"awaits_approval,omitempty"`
+	Timeout        string   `yaml:"timeout,omitempty"`
+	Locks          []string `yaml:"locks,flow,omitempty"`
 	// Cache are the tool caches the round uses (# Cache:), with the
 	// lockfiles each is checked against.
 	Cache []PlanCache `yaml:"cache,omitempty"`
@@ -580,9 +610,11 @@ func Plan(o Options) (*PlanDoc, error) {
 		for _, d := range info.Cache {
 			l.Cache = append(l.Cache, PlanCache{Preset: d.Label(), Lockfiles: d.Lockfiles})
 		}
-		for _, g := range info.Guards {
-			l.Guards = append(l.Guards, PlanGuard{Flag: g.Flag, Set: os.Getenv(g.Flag) == "1", Desc: g.Desc})
+		for _, v := range pl.guards[n] {
+			l.Guards = append(l.Guards, PlanGuard{Flag: v.Flag, Set: os.Getenv(v.Flag) == "1", Desc: v.Desc,
+				Approved: v.Approved, How: v.How, Asks: v.Asks, Why: v.Why})
 		}
+		l.AwaitsApproval = pl.awaiting[n]
 		if len(info.Modules) > 0 {
 			var err error
 			if l.Modules, err = planModules(o.Root, o.Cfg, info.Modules); err != nil {

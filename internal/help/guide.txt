@@ -33,8 +33,10 @@ COMMANDS
                            lowest free lane and names it (# Task:), for swim run TASK etc.
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
   all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
-  plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing
-                           (--check: first run every snapshot and check stage, read-only)
+  plan [N|JOB ...]         show the tree of what swim all (or swim run N ...) would do; runs nothing.
+                           Each guard: approved (flag, signatures) or what it still needs; lanes
+                           a dry run would skip are marked (--check: first run every snapshot
+                           and check stage, read-only)
   status [N|JOB] [--yaml] [--run RUN]   last state of every lane, or as of one run
   log [N|JOB] [--all] [--yaml]   print a lane's log (--all: with its archives), a job's
                            rounds, or with no argument the project log .swim.log
@@ -1051,8 +1053,9 @@ READING RESULTS
                               [lines], saved}], failed_steps
     swim plan --yaml          swim.plan/v1: command, lanes: [{lane, job, round,
                               action (run|retry|rerun|skip|scheduled|held), waits_on, reason,
-                              running_pid, guards: [{flag, set, description}],
-                              timeout, locks}], idle: [{lane, why}],
+                              running_pid, guards: [{flag, set, description, approved,
+                              how, asks, why}], awaits_approval, timeout, locks}],
+                              idle: [{lane, why}],
                               counts {run, retry, rerun, skip}
     swim status --yaml        swim.status/v1: status.yml's fields (above)
     swim report --yaml        swim.report/v1 (see swim report --help)

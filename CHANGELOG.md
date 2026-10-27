@@ -44,6 +44,16 @@ already pushed to origin's main) with the next tag and pushes that tag.
   since CI can't approve. Before, it was PASS and the lanes after it
   ran as if the change had happened. A script that wants a guard to be
   optional should make that step its own lane.
+- **`swim plan` says what each guard needs.** It decides every guard as
+  `swim run` would as it starts (the flag, signed approvals against
+  `lookup.yml`, `-y`): approved and by whom, or what's missing ("approval
+  needs 2 signature(s) from dba, has 1"). A lane with an unapproved guard
+  says `needs approval: a dry run without it`, each lane under it `waits on
+  swim N's approval`, and an `Approvals:` line sums it up. Before, a guard
+  showed approved only when its flag was set in your shell. The header
+  reads "Swim would start these rounds" rather than promising what it will
+  perform. `--yaml` guards gain `approved`, `how`, `asks` and `why`, and
+  each lane `awaits_approval` (`set` stays).
 - **Lane scripts say `# swim: syntax 4`.** The README, guide, demos and
   this repo's lanes now match what `swim new` writes. Syntax 2 and 3
   scripts still run as they are; the lock pins the script syntax for the

@@ -630,6 +630,13 @@ $ swim plan
 Plan: 3 to run, 1 to retry, 0 to rerun, 0 to skip.
 ```
 
+A plan says what runs and in what order, not what a script will change.
+For each guard it says what `swim run` would decide right now, from the
+same flags, signed approvals and `lookup.yml` the run reads: approved
+(and by whom), or what it still needs ("approval needs 2 signature(s) from
+dba, has 1"). A lane whose guard isn't approved yet, and every lane under
+it, is marked: a dry run there skips them.
+
 `swim timeline` draws when each lane waited (on dependencies, a slot or a
 lock), ran and finished. It marks the longest chain, and `--html` writes a
 Gantt chart you can share.
@@ -1360,7 +1367,7 @@ they waited for.
 |---|---|
 | `swim init` | Set up the repo: config entry, `.gitignore` block, `.swim/status.yml`. |
 | `swim new N\|TASK "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id (a task name takes the lowest free lane). |
-| `swim plan [N\|JOB ...] [--rerun] [--yaml]` | Dry run: what would run, retry, rerun or be skipped, as a dependency tree. |
+| `swim plan [N\|JOB ...] [--rerun] [--yaml]` | Dry run: what would run, retry, rerun or be skipped, as a dependency tree, and what each guard needs. |
 | `swim all [--rerun] [--parallel N] [-y\|--no-prompt] [--no-tui] [--yaml]` | Run every pending round that hasn't passed. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they passed. A job id pins the exact round. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane. |

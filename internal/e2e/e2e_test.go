@@ -992,18 +992,24 @@ func TestPlan(t *testing.T) {
 		"[+] run: a new job",
 		"[+] swim 1  root",
 		"├── [+] swim 2  child a",
-		"│   └── [+] swim 4  join  wait [2,3]",
-		"guard PLAN_ALLOW_X=1 (unset: asks at the prompt; dry run if no one can answer)",
+		"Swim would start these rounds",
+		"│   └── [+] swim 4  join  wait [2,3]  needs approval: a dry run without it",
+		"guard PLAN_ALLOW_X (not approved: asks at the prompt; a dry run if no one can answer)",
 		"└── [+] swim 3  child b",
 		"    └── [+] swim 4 (shown above)",
-		"Plan: 4 to run, 0 to retry, 0 to rerun, 0 to skip.")
+		"Plan: 4 to run, 0 to retry, 0 to rerun, 0 to skip.",
+		"Approvals: 0 of 1 guards approved. Not yet: swim 4 PLAN_ALLOW_X")
+	if strings.Contains(out, "Swim will perform") {
+		t.Error("plan still promises what it will perform")
+	}
 	if r.log(1) != "" || r.status().Get(1).State != status.Idle {
 		t.Fatal("plan ran something")
 	}
 
 	c := r.cmd(bin, "plan")
 	c.Env = append(c.Env, "PLAN_ALLOW_X=1")
-	if out, _ := c.CombinedOutput(); !strings.Contains(string(out), "PLAN_ALLOW_X=1 (set: approved)") {
+	if out, _ := c.CombinedOutput(); !strings.Contains(string(out), "guard PLAN_ALLOW_X (approved: PLAN_ALLOW_X=1)") ||
+		!strings.Contains(string(out), "Approvals: the guard is approved.") || strings.Contains(string(out), "needs approval") {
 		t.Errorf("guard set not shown:\n%s", out)
 	}
 
