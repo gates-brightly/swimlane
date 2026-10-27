@@ -513,6 +513,7 @@ func followLog(root string, n int, untilDone bool, out logWriter) error {
 	streamKey := ""    // the spooled step being streamed (label + clock)
 	streamed := 0      // its output lines printed so far
 	skipBlock := false // printing a streamed step's block: skip what streamed
+	skipOut := 0       // its output lines that streamed (the rest didn't)
 
 	emit := func(lines []string) {
 		if len(lines) > 0 {
@@ -552,7 +553,17 @@ func followLog(root string, n int, untilDone bool, out logWriter) error {
 			for _, l := range lines[:len(lines)-1] {
 				if skipBlock {
 					if strings.HasPrefix(l, logparse.Indent) {
-						continue // the step's command and output, already streamed
+						// The step's command and the output that streamed; output
+						// written after the last look at the spool still shows.
+						if strings.HasPrefix(l, logparse.Indent+"$ ") {
+							continue
+						}
+						if skipOut > 0 {
+							skipOut--
+							continue
+						}
+						show = append(show, l)
+						continue
 					}
 					skipBlock = false
 				}
@@ -561,7 +572,7 @@ func followLog(root string, n int, untilDone bool, out logWriter) error {
 					strings.Contains(l, strings.SplitN(streamKey, "\t", 2)[1]):
 					// The streamed step's result line: show it, skip its block.
 					show = append(show, l)
-					streamKey, streamed, skipBlock = "", 0, true
+					streamKey, skipOut, streamed, skipBlock = "", streamed, 0, true
 					continue
 				case strings.HasPrefix(l, logparse.RoundMark):
 					endExit = -1
