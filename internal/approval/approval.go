@@ -16,7 +16,9 @@
 // (Server.Record), so a lane never writes its own approval.
 //
 // The same socket tells swim's hidden commands which lane they run for
-// (op "whoami"), so a lane can't report for another.
+// (op "whoami"), so a lane can't report for another, and takes their
+// round's chain entry (op "record"): the launcher signs it, so a lane
+// needs no key.
 package approval
 
 import (
@@ -65,12 +67,14 @@ type Request struct {
 	Flag     string `json:"flag"`
 	Desc     string `json:"desc"`
 	// Token identifies the lane process (TokenEnv). Op is "" to ask,
-	// "consume" to use up the approval with request id ID, or "whoami" to
-	// learn which lane, cell and run the token is for. (An ask's ID is the
-	// server's: whatever the lane sends is replaced.)
-	Token string `json:"token,omitempty"`
-	Op    string `json:"op,omitempty"`
-	ID    string `json:"id,omitempty"`
+	// "consume" to use up the approval with request id ID, "whoami" to
+	// learn which lane, cell and run the token is for, or "record" to have
+	// the launcher record Entry. (An ask's ID is the server's: whatever the
+	// lane sends is replaced.)
+	Token string       `json:"token,omitempty"`
+	Op    string       `json:"op,omitempty"`
+	ID    string       `json:"id,omitempty"`
+	Entry *chain.Entry `json:"entry,omitempty"`
 	// FlagSet: the lane's environment has Flag=1. Under swim run that
 	// approves only if swim run's own environment set it.
 	FlagSet bool `json:"flag_set,omitempty"`
@@ -216,6 +220,9 @@ type Server struct {
 	// Record, if set, records an approval as its lane consumes it (the
 	// approve entry's hash); an error refuses the approval.
 	Record func(c Caller, g *Grant) (string, error)
+	// Chain, if set, records an entry a lane process sends (op record)
+	// and returns its hash; an error refuses it. Without it, refused.
+	Chain func(c Caller, e chain.Entry) (string, error)
 	// FailUndeclared refuses a guard its script doesn't declare with
 	// Fail (the round fails) instead of a plain decline (a dry run): for
 	// an unattended worker, where the dry run would go unseen.
@@ -420,6 +427,22 @@ func (s *Server) whoami(req Request) Response {
 	return Response{Approved: true, Lane: c.Lane, Cell: c.Cell, Job: c.Job, Run: c.Run}
 }
 
+// record has the launcher record the entry a lane process sends.
+func (s *Server) record(req Request) Response {
+	c, ok := s.caller(req.Token)
+	switch {
+	case !ok:
+		return Response{Why: "not a lane of this run (no or an unknown token)"}
+	case req.Entry == nil || s.Chain == nil:
+		return Response{Why: "nothing to record"}
+	}
+	hash, err := s.Chain(c, *req.Entry)
+	if err != nil {
+		return Response{Why: err.Error()}
+	}
+	return Response{Approved: true, Lane: c.Lane, Run: c.Run, Hash: hash}
+}
+
 func short(id string) string {
 	if len(id) > 8 {
 		return id[:8]
@@ -478,6 +501,9 @@ func (s *Server) serve(c net.Conn) {
 		return
 	case "whoami":
 		json.NewEncoder(c).Encode(s.whoami(req))
+		return
+	case "record":
+		json.NewEncoder(c).Encode(s.record(req))
 		return
 	}
 	who, req, why, undeclared := s.check(req)
@@ -625,6 +651,19 @@ func dial(path string) (net.Conn, error) {
 // entry the launcher recorded ("" if it left that to the lane).
 func Consume(path, token, id, flag string) (string, error) {
 	resp, err := Ask(path, Request{Op: "consume", Token: token, ID: id, Flag: flag}, nil, time.Now().Add(10*time.Second))
+	if err != nil {
+		return "", err
+	}
+	if !resp.Approved {
+		return "", errors.New(resp.Why)
+	}
+	return resp.Hash, nil
+}
+
+// Record has the launcher record e in the chain for the lane process with
+// token, and returns the entry's hash.
+func Record(path, token string, e chain.Entry) (string, error) {
+	resp, err := Ask(path, Request{Op: "record", Token: token, Entry: &e}, nil, time.Now().Add(30*time.Second))
 	if err != nil {
 		return "", err
 	}

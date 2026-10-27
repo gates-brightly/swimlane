@@ -70,6 +70,12 @@ func Record(root string, cfg *config.Config, e chain.Entry) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return RecordWith(root, cfg, key, e)
+}
+
+// RecordWith is Record signed with key (swim run's run key) instead of
+// the runner's.
+func RecordWith(root string, cfg *config.Config, key *sign.Key, e chain.Entry) (string, error) {
 	hash, err := chain.Append(root, e, key)
 	if errors.As(err, new(chain.SignError)) && cfg.SigningMode() != config.SigningRequired {
 		// signing: auto and the key couldn't sign (a passphrase and no
