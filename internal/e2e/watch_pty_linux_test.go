@@ -266,14 +266,15 @@ func TestWatchTrashKey(t *testing.T) {
 func TestWatchPauseKey(t *testing.T) {
 	long(t)
 	r := newSerialRepo(t, "")
-	r.script(1, "held", `run "one" sleep 0.5
+	r.script(1, "held", `run "one" `+hold("go")+`
 run "two" true`)
 	wait := startRun(t, r, "run", "1", "--plain")
-	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
 	tr := r.startTUI(nil, "watch")
 	tr.waitFor("▸ swim 1")
 	tr.send("p")
 	tr.waitFor("swim 1: pausing after")
+	r.release("go")
 	tr.waitScreen("the paused row", func(s string) bool { return strings.Contains(s, "paused") && laneOf(r, 1).PausedAt != "" })
 	tr.send("p")
 	tr.waitFor("swim 1: resumed")

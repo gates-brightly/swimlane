@@ -2,16 +2,19 @@ package e2e
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/step"
 )
 
 // launched is a `swim all` started in its own process group, like a
@@ -19,20 +22,43 @@ import (
 // sends on Ctrl-C.
 type launched struct {
 	c    *exec.Cmd
-	out  *bytes.Buffer
+	out  *syncBuffer
 	done chan error
+}
+
+// syncBuffer is a command's output, read while it writes.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func (r *repo) launch(t *testing.T, stdin io.Reader, args ...string) *launched {
 	t.Helper()
-	c := r.cmd(bin, append([]string{"all", "--plain"}, args...)...)
+	return start(t, r.cmd(bin, append([]string{"all", "--plain"}, args...)...), stdin)
+}
+
+// start starts c in its own process group, its output in a syncBuffer.
+func start(t *testing.T, c *exec.Cmd, stdin io.Reader) *launched {
+	t.Helper()
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	var out bytes.Buffer
-	c.Stdout, c.Stderr, c.Stdin = &out, &out, stdin
+	out := &syncBuffer{}
+	c.Stdout, c.Stderr, c.Stdin = out, out, stdin
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	l := &launched{c: c, out: &out, done: make(chan error, 1)}
+	l := &launched{c: c, out: out, done: make(chan error, 1)}
 	go func() { l.done <- c.Wait() }()
 	t.Cleanup(func() { syscall.Kill(-c.Process.Pid, syscall.SIGKILL) })
 	return l
@@ -41,7 +67,21 @@ func (r *repo) launch(t *testing.T, stdin io.Reader, args ...string) *launched {
 // signal sends sig to swim's process group, as the terminal does.
 func (l *launched) signal(sig syscall.Signal) { syscall.Kill(-l.c.Process.Pid, sig) }
 
-func (l *launched) wait(t *testing.T, within time.Duration) int {
+// saw waits for the command to print want: it has handled what printed it.
+func (l *launched) saw(t *testing.T, want string) {
+	t.Helper()
+	deadline := time.Now().Add(waitDeadline)
+	for !strings.Contains(l.out.String(), want) {
+		if time.Now().After(deadline) {
+			t.Fatalf("never printed %q:\n%s", want, l.out.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// wait is the exit code; one still running after waitDeadline fails the
+// test. A test that times the exit checks that itself.
+func (l *launched) wait(t *testing.T) int {
 	t.Helper()
 	select {
 	case err := <-l.done:
@@ -49,41 +89,66 @@ func (l *launched) wait(t *testing.T, within time.Duration) int {
 			return ee.ExitCode()
 		}
 		return 0
-	case <-time.After(within):
-		t.Fatalf("swim didn't finish within %s:\n%s", within, l.out.String())
+	case <-time.After(waitDeadline):
+		t.Fatalf("didn't finish within %s:\n%s", waitDeadline, l.out.String())
 	}
 	return -1
 }
 
+// waitStep waits until lane n runs step label and the step's command has
+// started (its process group is recorded). A step that must set something
+// up first (a trap) says so with a file: waitFile.
 func (r *repo) waitStep(t *testing.T, n int, label string) {
 	t.Helper()
-	waitFor(t, func() bool { return r.status().Get(n).CurrentStep == label })
-	time.Sleep(150 * time.Millisecond) // the step command is running
+	pgid := filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("agent%d.log", n)+step.GroupSuffix)
+	waitFor(t, func() bool {
+		if laneOf(r, n).CurrentStep != label {
+			return false
+		}
+		_, err := os.Stat(pgid)
+		return err == nil
+	})
 }
 
-// noStray fails if a process whose command line holds marker survives.
+// waitFile waits for the file name in r's root: a step wrote it.
+func (r *repo) waitFile(t *testing.T, name string) {
+	t.Helper()
+	waitFor(t, func() bool { _, err := os.Stat(filepath.Join(r.root, name)); return err == nil })
+}
+
+// noStray fails if a process whose command line holds marker is still
+// there after a few seconds (scaled): a group just killed takes a moment.
 func noStray(t *testing.T, marker string) {
 	t.Helper()
-	time.Sleep(200 * time.Millisecond)
-	if out, err := exec.Command("pgrep", "-f", marker).Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
-		t.Errorf("processes matching %q survived: %s", marker, out)
+	var out []byte
+	for deadline := time.Now().Add(scaled(5 * time.Second)); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		var err error
+		if out, err = exec.Command("pgrep", "-f", marker).Output(); err != nil || len(bytes.TrimSpace(out)) == 0 {
+			return
+		}
 	}
+	t.Errorf("processes matching %q survived: %s", marker, out)
 }
 
 func TestGracefulInterrupt(t *testing.T) {
 	r := newRepo(t, "")
-	// Step "a" notes any SIGINT it gets; it must get none.
-	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; sleep 1.5 & wait; true'
+	// Step "a" notes any SIGINT it gets; it must get none. Both steps run
+	// until both lanes have the stop request.
+	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; touch $SWIM_ROOT/trap1; while [ ! -e $SWIM_ROOT/go ]; do sleep 0.05; done; true'
 run "b" true`)
 	r.script(2, "after 1", `run "x" true`)
-	r.script(3, "other", `run "c" sleep 1.2
+	r.script(3, "other", `run "c" `+hold("go")+`
 run "d" true`)
 	withHeader(t, r, 2, "# After: 1")
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "a")
+	r.waitFile(t, "trap1")
 	r.waitStep(t, 3, "c")
 	l.signal(syscall.SIGINT)
-	code := l.wait(t, 10*time.Second)
+	r.waitFile(t, ".swim/lane1.stop")
+	r.waitFile(t, ".swim/lane3.stop")
+	r.release("go")
+	code := l.wait(t)
 	out := l.out.String()
 	if code == 0 {
 		t.Fatalf("an interrupted run exits non-zero:\n%s", out)
@@ -116,22 +181,25 @@ func TestForceQuit(t *testing.T) {
 	r.mustSwim("config", "interrupt_grace", "600ms")
 	// A terraform-like tool: cleans up and exits on its first SIGINT, and
 	// counts how many it got.
-	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; sleep 0.2; exit 1" INT; sleep 31.1 & wait'
+	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; sleep 0.2; exit 1" INT; touch $SWIM_ROOT/trap1; sleep 31.1 & wait'
 run "after" true`)
 	// Ignores its SIGINT for longer than the grace: killed.
-	r.script(2, "stubborn", `run "hang" bash -c 'trap "echo got-int; sleep 5; exit 3" INT; echo started; sleep 31.2 & wait; wait'`)
+	r.script(2, "stubborn", `run "hang" bash -c 'trap "echo got-int; sleep 5; exit 3" INT; echo started; touch $SWIM_ROOT/trap2; sleep 31.2 & wait; wait'`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "apply")
 	r.waitStep(t, 2, "hang")
+	r.waitFile(t, "trap1")
+	r.waitFile(t, "trap2")
 	l.signal(syscall.SIGINT)
-	time.Sleep(300 * time.Millisecond)
+	l.saw(t, "swim: stopping after current steps")
+	time.Sleep(300 * time.Millisecond) // nothing to wait for: it mustn't happen
 	if data, _ := os.ReadFile(filepath.Join(r.root, "ints1.txt")); len(data) > 0 {
 		t.Fatalf("the first Ctrl-C reached the step: %s", data)
 	}
 	start := time.Now()
 	l.signal(syscall.SIGINT)
-	l.wait(t, 5*time.Second)
-	if took := time.Since(start); took > 3*time.Second {
+	l.wait(t)
+	if took := time.Since(start); took > scaled(3*time.Second) {
 		t.Errorf("force quit took %s (grace 600ms)", took)
 	}
 	out := l.out.String()
@@ -157,13 +225,15 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 	r.waitStep(t, 1, "hang")
 	r.waitStep(t, 2, "x")
 	l.signal(syscall.SIGINT)
-	time.Sleep(200 * time.Millisecond)
+	l.saw(t, "swim: stopping after current steps")
 	l.signal(syscall.SIGINT)
-	time.Sleep(200 * time.Millisecond)
+	l.saw(t, "swim: force quitting")
+	// Lane 2's step dies of the forwarded SIGINT; lane 1's ignores it.
+	waitFor(t, func() bool { return laneOf(r, 2).State == status.Interrupted })
 	start := time.Now()
 	l.signal(syscall.SIGINT)
-	l.wait(t, 4*time.Second)
-	if took := time.Since(start); took > 2*time.Second {
+	l.wait(t)
+	if took := time.Since(start); took > scaled(2*time.Second) {
 		t.Errorf("third Ctrl-C took %s", took)
 	}
 	contains(t, "output", l.out.String(), "swim: killing 1 lanes now.", "swim summary")
@@ -178,7 +248,7 @@ func TestStepTimeoutLeavesNoSurvivors(t *testing.T) {
 run "after" true`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
-	if took := time.Since(start); took > 5*time.Second {
+	if took := time.Since(start); took > scaled(5*time.Second) {
 		t.Errorf("the step limit took %s to stop the step", took)
 	}
 	contains(t, "agent1.log", r.log(1), "  FAIL  forks (timeout: step limit 500ms)", "  PASS  after")
@@ -200,7 +270,7 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 	r.waitStep(t, 1, "deaf")
 	r.waitStep(t, 2, "x")
 	l.signal(syscall.SIGINT)
-	l.wait(t, 5*time.Second)
+	l.wait(t)
 	contains(t, "output", l.out.String(), "swim: force quitting", "swim: killing 1 lanes now.")
 	noStray(t, `sleep 33\.[34]`) // this test's own steps: tests run in parallel
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
@@ -219,9 +289,9 @@ run "never" true`)
 	r.waitStep(t, 2, "long")
 	start := time.Now()
 	l.signal(syscall.SIGTERM)
-	l.wait(t, 5*time.Second)
+	l.wait(t)
 	took := time.Since(start)
-	if took < 400*time.Millisecond || took > 3*time.Second {
+	if took < 400*time.Millisecond || took > scaled(3*time.Second) {
 		t.Errorf("SIGTERM should force after term_grace (500ms); took %s", took)
 	}
 	contains(t, "output", l.out.String(), "forcing in 500ms (term_grace)", "swim: force quitting")
@@ -240,8 +310,8 @@ func TestHangupForcesAtOnce(t *testing.T) {
 	r.waitStep(t, 2, "long")
 	start := time.Now()
 	l.signal(syscall.SIGHUP)
-	l.wait(t, 5*time.Second)
-	if took := time.Since(start); took > 2*time.Second {
+	l.wait(t)
+	if took := time.Since(start); took > scaled(2*time.Second) {
 		t.Errorf("SIGHUP should force at once; took %s", took)
 	}
 	contains(t, "output", l.out.String(), "swim: force quitting")
@@ -256,7 +326,7 @@ func TestImmediateInterruptMode(t *testing.T) {
 	r.waitStep(t, 1, "long")
 	r.waitStep(t, 2, "long")
 	l.signal(syscall.SIGINT)
-	l.wait(t, 5*time.Second)
+	l.wait(t)
 	contains(t, "output", l.out.String(), "swim: force quitting")
 	contains(t, "agent1.log", r.log(1), "FAIL  long (exit 130, interrupted)")
 	noStray(t, `sleep 3(1\.9|2\.1)`) // this test's own steps, not any "sleep 3" on the machine
@@ -274,8 +344,8 @@ run "never" true`)
 	})
 	start := time.Now()
 	l.signal(syscall.SIGINT)
-	l.wait(t, 5*time.Second)
-	if took := time.Since(start); took > 3*time.Second {
+	l.wait(t)
+	if took := time.Since(start); took > scaled(3*time.Second) {
 		t.Errorf("a stop during the backoff took %s", took)
 	}
 	log := r.log(1)
@@ -296,21 +366,13 @@ run "after" true`)
 	}
 	defer pw.Close()
 	defer pr.Close()
-	c := r.cmd(bin, "run", "1", "--plain")
-	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	var out bytes.Buffer
-	c.Stdout, c.Stderr, c.Stdin = &out, &out, pr
-	if err := c.Start(); err != nil {
-		t.Fatal(err)
-	}
-	l := &launched{c: c, out: &out, done: make(chan error, 1)}
-	go func() { l.done <- c.Wait() }()
+	l := start(t, r.cmd(bin, "run", "1", "--plain"), pr)
 	// The prompt has no newline, so it isn't relayed yet: wait for the step
 	// before it, then for bash to reach the read.
 	waitFor(t, func() bool { return strings.Contains(r.log(1), "PASS  before") })
 	time.Sleep(300 * time.Millisecond)
 	l.signal(syscall.SIGINT)
-	l.wait(t, 5*time.Second)
+	l.wait(t)
 	log := r.log(1)
 	contains(t, "agent1.log", log, "STOP  interrupted by operator (after: before)", "== END INTERRUPTED")
 	if strings.Contains(log, "PASS  after") {
@@ -320,15 +382,16 @@ run "after" true`)
 
 func TestInterruptOneLane(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "stop me", `run "a" sleep 1
+	r.script(1, "stop me", `run "a" `+hold("go")+`
 run "b" true`)
-	r.script(2, "keep going", `run "x" sleep 1
+	r.script(2, "keep going", `run "x" `+hold("go")+`
 run "y" true`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "a")
 	r.waitStep(t, 2, "x")
 	contains(t, "swim interrupt", r.mustSwim("interrupt", "1"), "swim 1: stopping after a")
-	l.wait(t, 10*time.Second)
+	r.release("go")
+	l.wait(t)
 	contains(t, "agent1.log", r.log(1), "PASS  a", "STOP  interrupted by operator (after: a)")
 	contains(t, "agent2.log", r.log(2), "PASS  y")
 	if st := r.status().Get(1).State; st != status.Interrupted {

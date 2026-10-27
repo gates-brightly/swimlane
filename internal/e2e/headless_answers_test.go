@@ -49,7 +49,7 @@ func answerRepo(t *testing.T) (r *repo, url, id string, keys, tokens map[string]
 // waiting is the question lane n waits on, once the hub has it.
 func waiting(t *testing.T, url, id string, n int) hub.PendingApproval {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for time.Now().Before(deadline) {
 		if resp, err := http.Get(url + "/api/enrollments"); err == nil {
 			var out struct {
@@ -71,10 +71,10 @@ func waiting(t *testing.T, url, id string, n int) hub.PendingApproval {
 	return hub.PendingApproval{}
 }
 
-// waitDone waits (up to 30s) for n batches to be done.
+// waitDone waits (up to waitDeadline) for n batches to be done.
 func waitDone(t *testing.T, r *repo, n int) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for time.Now().Before(deadline) && len(doneEntries(t, r)) < n {
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -183,12 +183,14 @@ func TestHeadlessHubApprovals(t *testing.T) {
 
 	// The hub goes away while a guard waits: it declines at the deadline,
 	// and the worker keeps running.
-	r.write("swim.yml", "headless:\n  answer_timeout: 2s\n", 0o644)
+	// The question must reach the hub before the timeout: scaled.
+	limit := dur(5 * time.Second)
+	r.write("swim.yml", "headless:\n  answer_timeout: "+limit+"\n", 0o644)
 	r.mustSwim("queue", "add", "4")
 	waiting(t, url, id, 4)
 	stopHub()
 	waitDone(t, r, 4)
-	contains(t, "hub gone", r.log(4), "dry run: no answer through the hub within headless.answer_timeout (2s)")
+	contains(t, "hub gone", r.log(4), "dry run: no answer through the hub within headless.answer_timeout ("+limit+")")
 	if !processAlive(headlessPid(r)) {
 		t.Error("the worker stopped with its hub")
 	}

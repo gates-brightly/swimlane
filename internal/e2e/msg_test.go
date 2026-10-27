@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // A round posts status messages from its script and from inside a step:
@@ -22,14 +21,13 @@ msg ""
 msg "after clear"`)
 	l := r.launch(t, nil, "--yaml")
 	waitFor(t, func() bool { _, err := os.Stat(filepath.Join(r.root, "posted")); return err == nil })
-	time.Sleep(100 * time.Millisecond)
 	if st := r.status().Get(1); st.Message != "colored multi" || st.Progress != "9/9" || st.MessageAt == "" {
 		t.Errorf("status while running: %q %q %q", st.Message, st.Progress, st.MessageAt)
 	}
 	contains(t, "swim status", r.mustSwim("status"), "msg: colored multi (9/9)")
-	time.Sleep(500 * time.Millisecond) // the live view polls every 200ms
+	l.saw(t, "message: colored multi") // the live view polls every 200ms
 	os.WriteFile(filepath.Join(r.root, "release"), nil, 0o644)
-	l.wait(t, 20*time.Second)
+	l.wait(t)
 
 	log := r.log(1)
 	contains(t, "log", log, "  MSG  starting (1/3, ", "-- MSG  colored multi (9/9, ", "  MSG  after clear (")

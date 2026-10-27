@@ -194,7 +194,7 @@ func faultRun(t *testing.T, r *repo, spec string, args ...string) (*exec.Cmd, *b
 // returns that process's pid. A loaded machine may take a while.
 func waitHit(t *testing.T, dir, site string, out *bytes.Buffer) int {
 	t.Helper()
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for time.Now().Before(deadline) {
 		data, err := os.ReadFile(filepath.Join(dir, site+".hit"))
 		if err == nil && strings.HasSuffix(string(data), "\n") {
@@ -203,7 +203,7 @@ func waitHit(t *testing.T, dir, site string, out *bytes.Buffer) int {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("no process reached failpoint %s within 60s:\n%s", site, out)
+	t.Fatalf("no process reached failpoint %s within %s:\n%s", site, waitDeadline, out)
 	return 0
 }
 

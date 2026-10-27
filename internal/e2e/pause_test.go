@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -35,7 +36,7 @@ func startRun(t *testing.T, r *repo, args ...string) func() (string, int) {
 	return func() (string, int) {
 		select {
 		case <-done:
-		case <-time.After(30 * time.Second):
+		case <-time.After(waitDeadline):
 			t.Fatalf("swim %v didn't end:\n%s", args, out.String())
 		}
 		return out.String(), code
@@ -52,17 +53,14 @@ func laneOf(r *repo, n int) status.Lane {
 	return status.Lane{}
 }
 
-// waitLong is waitFor with room for a slow machine.
-func waitLong(t *testing.T, cond func() bool) {
+// pauseHeld pauses lane n, whose running step is hold(release), then
+// lets the step end and waits until the round holds. swim pause's output.
+func pauseHeld(t *testing.T, r *repo, n int, release string, args ...string) string {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatal("condition not met within 20s")
+	out := r.mustSwim(append([]string{"pause", fmt.Sprint(n)}, args...)...)
+	r.release(release)
+	waitFor(t, func() bool { return laneOf(r, n).PausedAt != "" })
+	return out
 }
 
 // swim pause lets the step finish, then holds the round before its next
@@ -71,12 +69,12 @@ func waitLong(t *testing.T, cond func() bool) {
 // name was typed; verify holds.
 func TestPauseResume(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "three steps", `run "one" sleep 0.5
+	r.script(1, "three steps", `run "one" `+hold("go")+`
 run "two" true
 run "three" true`)
 	wait := startRun(t, r, "run", "1", "--plain")
-	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
-	contains(t, "pause", r.mustSwim("pause", "1", "--wait", "--note", "checking the plan"), `swim 1: pausing after "one"`)
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
+	contains(t, "pause", pauseHeld(t, r, 1, "go", "--note", "checking the plan"), `swim 1: pausing after "one"`)
 	l := laneOf(r, 1)
 	if l.PausedAt == "" || l.PausedAfter != "one" || l.NextStep != "two" || l.State != "running" {
 		t.Fatalf("status while paused: %+v", l)
@@ -125,13 +123,13 @@ func TestPauseThenInterrupt(t *testing.T) {
 # Round: paused, then ended
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 1
-run "one" sleep 0.5
+run "one" `+hold("go")+`
 run "two" true
 summary
 `, 0o755)
 	wait := startRun(t, r, "run", "1", "--plain")
-	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
-	r.mustSwim("pause", "1", "--wait")
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
+	pauseHeld(t, r, 1, "go")
 	r.mustSwim("interrupt", "1")
 	out, code := wait()
 	if code == 0 {
@@ -149,12 +147,12 @@ summary
 // --replace, which ends the paused round (interrupted) and runs the new.
 func TestPauseReplace(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "job A", `run "a1" sleep 0.5
+	r.script(1, "job A", `run "a1" `+hold("go")+`
 run "a2" true`)
 	withHeader(t, r, 1, "# Job: aaaaaaaa-0000-4000-8000-00000000000a")
 	wait := startRun(t, r, "run", "1", "--plain")
-	waitLong(t, func() bool { return laneOf(r, 1).CurrentStep == "a1" })
-	r.mustSwim("pause", "1", "--wait")
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "a1" })
+	pauseHeld(t, r, 1, "go")
 	if out, code := r.swim("run", "1", "--plain"); code == 0 || !strings.Contains(out, "paused on this job: swim unpause 1 resumes it") {
 		t.Errorf("same job: exit %d\n%s", code, out)
 	}
@@ -189,25 +187,27 @@ run "a2" true`)
 // round's Timeout: doesn't count paused time.
 func TestPauseBeforeStartAndTimeout(t *testing.T) {
 	long(t)
-	r := newSerialRepo(t, "") // a 3s round Timeout: alone, not beside the parallel tests
-	r.script(1, "first", `run "first" sleep 0.5`)
-	r.script(2, "second", `run "s1" sleep 1
+	r := newSerialRepo(t, "") // it times a round's Timeout: alone, not beside the parallel tests
+	limit := scaled(3 * time.Second)
+	r.script(1, "first", `run "first" `+hold("go1"))
+	r.script(2, "second", `run "s1" `+hold("go2")+`
 run "s2" true`)
 	withHeader(t, r, 2, "# After: 1")
-	withHeader(t, r, 2, "# Timeout: 3s")
+	withHeader(t, r, 2, "# Timeout: "+limit.String())
 	wait := startRun(t, r, "run", "1", "2", "--plain")
-	waitLong(t, func() bool { return laneOf(r, 2).State == "waiting" })
+	waitFor(t, func() bool { return laneOf(r, 2).State == "waiting" })
 	contains(t, "pause waiting", r.mustSwim("pause", "2"), "swim 2: paused before it starts")
-	waitLong(t, func() bool { return laneOf(r, 1).State == "passed" })
-	time.Sleep(600 * time.Millisecond)
+	r.release("go1")
+	waitFor(t, func() bool { return laneOf(r, 1).State == "passed" })
+	time.Sleep(600 * time.Millisecond) // nothing to wait for: it mustn't happen
 	if r.log(2) != "" {
 		t.Fatal("swim 2 started while paused")
 	}
 	r.mustSwim("unpause", "2")
 	// Paused again mid-round for longer than its Timeout: it still passes.
-	waitLong(t, func() bool { return laneOf(r, 2).CurrentStep == "s1" })
-	r.mustSwim("pause", "2", "--wait")
-	time.Sleep(3500 * time.Millisecond)
+	waitFor(t, func() bool { return laneOf(r, 2).CurrentStep == "s1" })
+	pauseHeld(t, r, 2, "go2")
+	time.Sleep(limit + limit/6)
 	r.mustSwim("unpause", "2")
 	if out, code := wait(); code != 0 {
 		t.Fatalf("exit %d:\n%s\n%s", code, out, r.log(2))
@@ -231,7 +231,7 @@ func TestPauseAllHoldsWorkers(t *testing.T) {
 		t.Fatal("a worker claimed a batch while the repo was paused")
 	}
 	contains(t, "unpause --all", r.mustSwim("unpause", "--all"), "unpaused the repo")
-	waitLong(t, func() bool { return len(doneEntries(t, r)) == 1 })
+	waitFor(t, func() bool { return len(doneEntries(t, r)) == 1 })
 	if e := doneEntries(t, r); e[0].Result.Result != "passed" {
 		t.Fatalf("after unpause --all: %+v", e[0].Result)
 	}

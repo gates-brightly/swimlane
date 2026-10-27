@@ -249,10 +249,8 @@ func TestEvents(t *testing.T) {
 }
 
 func TestEventsHeartbeatAndPrivate(t *testing.T) {
-	old := EventHeartbeat
-	EventHeartbeat = 50 * time.Millisecond
-	defer func() { EventHeartbeat = old }()
 	s, srv, _, _, vic := commandHub(t)
+	s.events.heartbeat = 50 * time.Millisecond
 	if k, d := openStream(t, srv.URL+"/api/events").next(t); k != ":" || d != ": keep-alive" {
 		t.Errorf("heartbeat: %s %s", k, d)
 	}

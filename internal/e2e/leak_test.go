@@ -157,7 +157,7 @@ summary
 		procWG.Add(1)
 		go func() {
 			defer procWG.Done()
-			deadline := time.Now().Add(60 * time.Second)
+			deadline := time.Now().Add(waitDeadline)
 			for time.Now().Before(deadline) {
 				if _, err := os.Stat(filepath.Join(tmp, "sleeping")); err == nil {
 					break

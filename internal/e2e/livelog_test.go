@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,8 +11,10 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 )
 
+// slowLane's step "slow" prints tick-1..3, holds until r.release("go"),
+// prints tick-4..6, and holds until r.release("go2").
 const slowLane = `run "quick" echo hello
-run "slow" bash -c 'for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.3; done'
+run "slow" bash -c 'for i in 1 2 3; do echo tick-$i; done; while [ ! -e "$SWIM_ROOT/go" ]; do sleep 0.05; done; for i in 4 5 6; do echo tick-$i; done; while [ ! -e "$SWIM_ROOT/go2" ]; do sleep 0.05; done'
 run "after" true`
 
 func spooled(r *repo, n int, want string) func() bool {
@@ -32,6 +33,8 @@ func TestLogShowsRunningStep(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Wait()
+	defer r.release("go2")
+	defer r.release("go")
 	waitFor(t, spooled(r, 1, "tick-2"))
 
 	out := r.mustSwim("log", "1")
@@ -50,6 +53,8 @@ func TestLogShowsRunningStep(t *testing.T) {
 		t.Fatalf("--yaml running step: %+v / %+v", d, last)
 	}
 
+	r.release("go")
+	r.release("go2")
 	c.Wait()
 	if out := r.mustSwim("log", "1"); strings.Contains(out, "RUNNING") || !strings.Contains(out, "PASS  slow") {
 		t.Errorf("after the run the log shows only its blocks:\n%s", out)
@@ -66,14 +71,18 @@ run "fails" false`)
 		t.Fatal(err)
 	}
 	defer c.Wait()
+	defer r.release("go2")
+	defer r.release("go")
 	waitFor(t, spooled(r, 1, "tick-1"))
-	f := r.cmd(bin, "log", "1", "-f", "--until-done")
-	out, err := f.CombinedOutput()
-	ee, ok := err.(*exec.ExitError)
-	if !ok || ee.ExitCode() != 1 {
-		t.Fatalf("--until-done should exit with the round's status (1): %v\n%s", err, out)
+	f := start(t, r.cmd(bin, "log", "1", "-f", "--until-done"), nil)
+	f.saw(t, "RUNNING  slow (in progress)")
+	r.release("go")
+	f.saw(t, "| tick-6") // streamed while the step runs
+	r.release("go2")
+	if code := f.wait(t); code != 1 {
+		t.Fatalf("--until-done should exit with the round's status (1): exit %d\n%s", code, f.out.String())
 	}
-	s := string(out)
+	s := f.out.String()
 	contains(t, "follow", s, "RUNNING  slow (in progress)", "| tick-1", "| tick-6", "  PASS  slow", "  FAIL  fails (exit 1)", "== END FAIL")
 	if strings.Count(s, "| tick-3") != 1 || strings.Count(s, "  PASS  slow") != 1 {
 		t.Errorf("a streamed step's output must not repeat when its block lands:\n%s", s)
@@ -84,6 +93,32 @@ run "fails" false`)
 	// On an idle lane, --until-done prints the last round and exits with it.
 	if _, code := r.swim("log", "1", "--until-done"); code != 1 {
 		t.Errorf("idle lane, failed last round: exit %d", code)
+	}
+}
+
+// Output a streamed step writes just before it ends, after the follower's
+// last look at the spool, shows once, from the step's block.
+func TestLogFollowLateOutput(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "late", `run "late" bash -c 'echo early; while [ ! -e "$SWIM_ROOT/go" ]; do sleep 0.05; done; echo late-1; echo late-2'`)
+	c := r.cmd(bin, "run", "1", "--plain")
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Wait()
+	defer r.release("go")
+	waitFor(t, spooled(r, 1, "early"))
+	f := start(t, r.cmd(bin, "log", "1", "-f", "--until-done"), nil)
+	f.saw(t, "| early")
+	r.release("go")
+	if code := f.wait(t); code != 0 {
+		t.Fatalf("exit %d\n%s", code, f.out.String())
+	}
+	s := f.out.String()
+	for _, l := range []string{"| early", "| late-1", "| late-2", "  PASS  late"} {
+		if strings.Count(s, l) != 1 {
+			t.Errorf("%q shows %d times, want once:\n%s", l, strings.Count(s, l), s)
+		}
 	}
 }
 

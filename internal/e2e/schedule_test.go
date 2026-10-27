@@ -180,7 +180,7 @@ func watchUntil(t *testing.T, r *repo, cond func() bool) string {
 	if err := w.Start(); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for !cond() && time.Now().Before(deadline) {
 		time.Sleep(100 * time.Millisecond)
 	}

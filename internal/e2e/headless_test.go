@@ -82,15 +82,18 @@ func TestHeadlessDetachStatusStop(t *testing.T) {
 
 	// SIGHUP mid-lane reopens the log (logrotate moved it) and the lane
 	// runs on to pass.
-	r.script(1, "slow", `run "slow" bash -c 'for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.3; done'`)
+	r.script(1, "slow", `run "slow" bash -c 'echo tick-1; while [ ! -e "$SWIM_ROOT/go" ]; do sleep 0.05; done; echo tick-6'`)
 	r.mustSwim("queue", "add", "1")
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "slow" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "slow" })
 	logPath := filepath.Join(r.root, ".swim", "headless.log")
 	if err := os.Rename(logPath, logPath+".moved"); err != nil {
 		t.Fatal(err)
 	}
 	syscall.Kill(pid, syscall.SIGHUP)
-	deadline := time.Now().Add(10 * time.Second)
+	// The step runs until the worker has reopened its log.
+	waitFor(t, func() bool { _, err := os.Stat(logPath); return err == nil })
+	r.release("go")
+	deadline := time.Now().Add(waitDeadline)
 	for len(doneEntries(t, r)) == 0 && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -100,7 +103,7 @@ func TestHeadlessDetachStatusStop(t *testing.T) {
 	// The worker writes "passed; consumed" just after it consumes the
 	// entry: wait for the line, not only the entry.
 	var data []byte
-	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+	for deadline := time.Now().Add(waitDeadline); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
 		if data, _ = os.ReadFile(logPath); strings.Contains(string(data), "passed; consumed") {
 			break
 		}

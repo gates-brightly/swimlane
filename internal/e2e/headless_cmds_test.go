@@ -46,10 +46,10 @@ func commandRepo(t *testing.T) (r *repo, url, state, id string, alice, vic *hub.
 	return r, url, state, hf.ID, user("alice", "operator"), user("vic", "viewer")
 }
 
-// waitLog waits (up to 10s) for .swim.log to hold want.
+// waitLog waits (up to waitDeadline) for .swim.log to hold want.
 func waitLog(t *testing.T, r *repo, want string) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitDeadline)
 	for time.Now().Before(deadline) {
 		data, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 		if strings.Contains(string(data), want) {
@@ -91,7 +91,7 @@ func TestHeadlessHubCommands(t *testing.T) {
 	r, url, state, id, alice, vic := commandRepo(t)
 	const planted = "planted-s3cr3t-value-9f8e7d"
 	r.env = append(r.env, "DEPLOY_TOKEN="+planted)
-	r.script(1, "slow", `run "slow" bash -c 'echo token=$DEPLOY_TOKEN; sleep 3'
+	r.script(1, "slow", `run "slow" bash -c 'echo token=$DEPLOY_TOKEN; while [ ! -e "$SWIM_ROOT/go1" ]; do sleep 0.05; done'
 run "after" sleep 10`)
 	r.script(2, "quick", `run "quick" echo hello from the hub`)
 	r.mustSwim("watch", "--headless", "--detach", "--interval", "200ms")
@@ -105,12 +105,13 @@ run "after" sleep 10`)
 	// Interrupt: pinned to an old run it's refused as stale; to the
 	// current one it stops the lane.
 	r.mustSwim("queue", "add", "1")
-	waitFor(t, func() bool { return r.status().Get(1).CurrentStep == "slow" })
+	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "slow" })
 	run := r.status().Get(1).Run
 	alice.Send(id, hub.Command{Kind: hub.KindInterrupt, Lane: 1, Pin: hub.Pin{Run: "r-old"}})
 	waitLog(t, r, "hub interrupt by alice"+via+"refused: stale: swim 1 is now run "+run+", not r-old")
 	alice.Send(id, hub.Command{Kind: hub.KindInterrupt, Lane: 1, Pin: hub.Pin{Run: run}})
 	waitLog(t, r, "hub interrupt by alice"+via+"done: swim 1: stopping after slow")
+	r.release("go1")
 	waitFor(t, func() bool { return len(doneEntries(t, r)) == 1 })
 	if e := doneEntries(t, r)[0]; len(e.Result.Lanes) != 1 || e.Result.Lanes[0].Result != "interrupted" {
 		t.Errorf("the interrupted batch: %+v", e.Result)
@@ -160,13 +161,14 @@ run "after" sleep 10`)
 	waitLog(t, r, "hub log by vic"+via+"refused: swim.yml sets headless.logs: off")
 
 	// Drain: the batch in hand finishes, then the worker exits.
-	r.script(3, "short", `run "short" bash -c 'sleep 1; echo drained-ok'`)
+	r.script(3, "short", `run "short" bash -c 'while [ ! -e "$SWIM_ROOT/go3" ]; do sleep 0.05; done; echo drained-ok'`)
 	r.mustSwim("queue", "add", "3")
-	waitFor(t, func() bool { return r.status().Get(3).CurrentStep == "short" })
+	waitFor(t, func() bool { return laneOf(r, 3).CurrentStep == "short" })
 	pid := headlessPid(r)
 	alice.Send(id, hub.Command{Kind: hub.KindDrain})
 	waitLog(t, r, "hub drain by alice"+via+"done: the swimmer stops after the batch in hand")
-	deadline := time.Now().Add(10 * time.Second)
+	r.release("go3")
+	deadline := time.Now().Add(waitDeadline)
 	for processAlive(pid) && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}

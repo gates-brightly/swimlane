@@ -24,7 +24,7 @@ import (
 // a quiet stream.
 
 // EventHeartbeat is how often a quiet event stream gets a comment.
-var EventHeartbeat = 15 * time.Second
+const EventHeartbeat = 15 * time.Second
 
 // eventBuffer is how many events a client may fall behind by.
 const eventBuffer = 64
@@ -60,9 +60,14 @@ type eventHub struct {
 	next   int64
 	subs   map[*eventSub]struct{}
 	closed bool
+	// heartbeat is EventHeartbeat; a test sets it before serving (not a
+	// package var: a stream still open after the test would race its reset).
+	heartbeat time.Duration
 }
 
-func newEventHub() *eventHub { return &eventHub{subs: map[*eventSub]struct{}{}} }
+func newEventHub() *eventHub {
+	return &eventHub{subs: map[*eventSub]struct{}{}, heartbeat: EventHeartbeat}
+}
 
 // publish sends an event to each client that wants it, dropping any that
 // can't take it now.
@@ -160,7 +165,7 @@ func (s *Server) eventsAPI(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "retry: 2000\n\n")
 	fl.Flush()
-	beat := time.NewTicker(EventHeartbeat)
+	beat := time.NewTicker(s.events.heartbeat)
 	defer beat.Stop()
 	for {
 		select {

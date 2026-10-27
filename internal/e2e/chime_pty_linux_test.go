@@ -61,7 +61,7 @@ func (r *repo) swimTTY(args ...string) (string, int) {
 	err := c.Wait()
 	select {
 	case <-read:
-	case <-time.After(5 * time.Second):
+	case <-time.After(waitDeadline):
 		r.t.Fatal("pty output never ended")
 	}
 	code := 0

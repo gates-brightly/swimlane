@@ -25,10 +25,11 @@ func alive(pid int) bool {
 	return !strings.HasPrefix(strings.TrimSpace(string(out)), "Z")
 }
 
-// waitGone fails unless pid is gone within a few seconds.
+// waitGone fails unless pid is gone soon (generous: -race on a loaded
+// runner is slow).
 func waitGone(t *testing.T, pid int, what string) {
 	t.Helper()
-	for end := time.Now().Add(3 * time.Second); time.Now().Before(end); time.Sleep(25 * time.Millisecond) {
+	for end := time.Now().Add(15 * time.Second); time.Now().Before(end); time.Sleep(25 * time.Millisecond) {
 		if !alive(pid) {
 			return
 		}
@@ -40,7 +41,7 @@ func waitGone(t *testing.T, pid int, what string) {
 // readPid waits for the step to write a pid to file p.
 func readPid(t *testing.T, p string) int {
 	t.Helper()
-	for end := time.Now().Add(3 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+	for end := time.Now().Add(15 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
 		data, _ := os.ReadFile(p)
 		if n, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && n > 0 {
 			return n

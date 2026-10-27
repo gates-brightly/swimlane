@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -35,7 +34,7 @@ run "say" echo "script-v2 $greeting"`)
 	withHeader(t, r, 3, "# After: 2")
 	os.WriteFile(filepath.Join(r.root, "lib", "greet.sh"), []byte("greeting=greet-v2\n"), 0o644)
 	os.WriteFile(filepath.Join(r.root, "release"), nil, 0o644)
-	if code := l.wait(t, 20*time.Second); code != 0 {
+	if code := l.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}
 	log := r.log(3)
@@ -77,7 +76,7 @@ run "second" echo two-v1`)
 	// In place, same length: what a running bash would read next.
 	os.WriteFile(p, []byte(strings.ReplaceAll(string(data), "-v1", "-v2")), 0o755)
 	os.WriteFile(filepath.Join(r.root, "go1"), nil, 0o644)
-	if code := l.wait(t, 20*time.Second); code != 0 {
+	if code := l.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}
 	contains(t, "agent1.log", r.log(1), "two-v1")
