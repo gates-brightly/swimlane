@@ -197,12 +197,12 @@ func TestSecurity(t *testing.T) {
 		}},
 		{"past the round's Timeout while waiting: not run", "T25", func(t *testing.T) {
 			b := newBoundaryRepo(t)
-			withHeader(t, b.repo, 1, "# Timeout: 2s")
+			withHeader(t, b.repo, 1, "# Timeout: "+dur(2*time.Second))
 			// A broker that would approve, but only after the deadline.
 			br := newBroker(t, func(_ approval.Request, cancel <-chan struct{}) bool {
 				select {
 				case <-cancel:
-				case <-time.After(20 * time.Second):
+				case <-time.After(waitDeadline):
 				}
 				return true
 			})

@@ -318,7 +318,7 @@ func TestInitIsIdempotent(t *testing.T) {
 func TestFullRunWithDependencies(t *testing.T) {
 	r := newRepo(t, "{2: [1], 4: [2]}")
 	r.script(1, "Lane one", `snapshot "state" echo state-v1
-run "slow" sleep 1.5`)
+run "slow" `+hold("go"))
 	r.script(2, "Lane two", `run "probe" echo probing
 if guard TEST_ALLOW_DELETE "delete thing (2026-10-09: test)"; then run "delete" echo deleting; fi
 drift "policy differs"`)
@@ -336,19 +336,15 @@ run "never" true`)
 	}
 
 	// Mid-run: lane 1 is running a step, lanes 2 and 4 wait on their deps.
-	deadline := time.Now().Add(waitDeadline)
 	var mid *status.File
-	for time.Now().Before(deadline) {
+	waitFor(t, func() bool {
 		f, err := status.Load(r.root)
 		if err == nil && len(f.Lanes) == 4 && f.Get(1).CurrentStep == "slow" && f.Get(2).State == status.Waiting {
 			mid = f
-			break
 		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if mid == nil {
-		t.Fatalf("never saw the mid-run state; output so far:\n%s", out.String())
-	}
+		return mid != nil
+	})
+	r.release("go")
 	if mid.Get(1).State != status.Running || fmt.Sprint(mid.Get(2).WaitingOn) != "[1]" || fmt.Sprint(mid.Get(4).WaitingOn) != "[2]" {
 		t.Errorf("mid-run status: 1=%+v 2=%+v 4=%+v", mid.Get(1), mid.Get(2), mid.Get(4))
 	}
@@ -558,12 +554,13 @@ func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
 	}
 
 	// While a lane runs, nothing may touch its files.
-	r.script(2, "long", `run "sleep" sleep 3`)
+	r.script(2, "long", `run "sleep" `+hold("go"))
 	bg := r.cmd("bash", "lane.2.sh")
 	if err := bg.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer bg.Wait()
+	defer r.release("go")
 	waitFor(t, func() bool { l := r.status().Get(2); return l != nil && l.State == status.Running })
 	os.WriteFile(filepath.Join(r.root, "agent2.log.keep"), nil, 0o644)
 	for _, args := range [][]string{{"archive", "2", "x"}, {"stub", "2", "x"}, {"new", "2", "x", "--force"}, {"run", "2"}} {
@@ -1151,14 +1148,15 @@ func TestTimeoutStopsRound(t *testing.T) {
 run "slow" sleep 20
 run "after" true`)
 	data, _ := os.ReadFile(p)
-	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: slow\n", "# Round: slow\n# Timeout: 1s\n", 1)), 0o755)
+	limit := dur(time.Second)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: slow\n", "# Round: slow\n# Timeout: "+limit+"\n", 1)), 0o755)
 	start := time.Now()
 	out, code := r.swim("run", "1")
-	if code == 0 || time.Since(start) > 15*time.Second {
+	if code == 0 || time.Since(start) > scaled(15*time.Second) {
 		t.Fatalf("exit %d after %s:\n%s", code, time.Since(start), out)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "timeout: 1s", "  FAIL  slow (timeout: Timeout 1s reached)", "  STOP  timeout: the round's Timeout (1s) ran out", "== END FAIL")
+	contains(t, "agent1.log", log, "timeout: "+limit, "  FAIL  slow (timeout: Timeout "+limit+" reached)", "  STOP  timeout: the round's Timeout ("+limit+") ran out", "== END FAIL")
 	if strings.Contains(log, "PASS  after") {
 		t.Error("a step ran after the timeout")
 	}
@@ -1263,7 +1261,7 @@ loop:
 	if most > 3 || most < 2 {
 		t.Errorf("at most 3 lanes should run at once; saw %d", most)
 	}
-	if took < 3500*time.Millisecond || took > 9*time.Second {
+	if took < 3500*time.Millisecond || took > scaled(9*time.Second) {
 		t.Errorf("10 one-second lanes, 3 at a time, should take about 4s; took %s", took)
 	}
 	s := out.String()
@@ -1282,7 +1280,7 @@ loop:
 	contains(t, "config", r.mustSwim("config"), "max_parallel: 2")
 	start = time.Now()
 	r.mustSwim("all", "--rerun", "--parallel", "0", "--plain")
-	if took := time.Since(start); took > 3*time.Second {
+	if took := time.Since(start); took > scaled(3*time.Second) {
 		t.Errorf("--parallel 0 should run all 10 at once; took %s", took)
 	}
 	if out, code := r.swim("all", "--parallel", "-1"); code == 0 || !strings.Contains(out, "--parallel") {
@@ -1358,7 +1356,7 @@ func TestResourceLocksWithinARun(t *testing.T) {
 	if (<-seen)[[2]int{1, 2}] {
 		t.Error("lanes sharing a lock ran at the same time")
 	}
-	if took < 1900*time.Millisecond || took > 6*time.Second {
+	if took < 1900*time.Millisecond || took > scaled(6*time.Second) {
 		t.Errorf("two one-second lanes taking turns should take about 2s; took %s", took)
 	}
 	// A failure doesn't spread through a lock: lane 2 still ran and passed.
@@ -1401,7 +1399,7 @@ func TestResourceLocksWithinARun(t *testing.T) {
 func TestResourceLocksAcrossRuns(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	r.script(1, "one", `run "work" sleep 1.5`)
+	r.script(1, "one", `run "work" `+hold("go"))
 	r.script(2, "two", `run "work" sleep 0.2`)
 	withLocks(t, r, 1, "tf/orders")
 	withLocks(t, r, 2, "tf/orders")
@@ -1415,16 +1413,18 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	}
 	waitFor(t, func() bool { return laneOf(r, 1).State == status.Running })
 	contains(t, "status while held", r.mustSwim("status"), "lock tf/orders held by swim 1", "locks: tf/orders")
-	out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput()
+	b := start(t, r.cmd(bin, "run", "2", "--plain"), nil)
+	b.saw(t, "waiting for lock tf/orders: another run, swim 1")
+	r.release("go")
+	code := b.wait(t)
 	a.Wait()
 	close(stop)
-	if err != nil {
-		t.Fatalf("run 2: %v\n%s", err, out)
+	if code != 0 {
+		t.Fatalf("run 2: exit %d\n%s", code, b.out.String())
 	}
 	if (<-seen)[[2]int{1, 2}] {
 		t.Error("two runs overlapped lanes holding the same lock")
 	}
-	contains(t, "run 2 output", string(out), "waiting for lock tf/orders: another run, swim 1")
 
 	// A killed run doesn't leave the lock behind.
 	r.script(1, "one", `run "work" sleep 30`)
@@ -1438,7 +1438,7 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	syscall.Kill(-k.Process.Pid, syscall.SIGKILL)
 	k.Wait()
 	start := time.Now()
-	if out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput(); err != nil || time.Since(start) > 5*time.Second {
+	if out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput(); err != nil || time.Since(start) > scaled(5*time.Second) {
 		t.Fatalf("lock left behind by a killed run: %v after %s\n%s", err, time.Since(start), out)
 	}
 }
@@ -1454,20 +1454,21 @@ func TestBadLockNameWarns(t *testing.T) {
 func TestStepTimeoutAndRetry(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	r.script(1, "timeouts and retries", `run --timeout 1s "slow" sleep 5
+	limit := dur(time.Second)
+	r.script(1, "timeouts and retries", `run --timeout `+limit+` "slow" sleep 30
 run --retry 2 --backoff 0.1s "flaky" bash -c 'test -f "$SWIM_ROOT/ok" || { touch "$SWIM_ROOT/ok"; exit 1; }'
 run --retry 3 --backoff 0.1s --retry-on 7 "wrong code" bash -c 'exit 1'
 gate --retry 1 --backoff 0.1s "gate passes on retry" bash -c 'test -f "$SWIM_ROOT/ok2" || { touch "$SWIM_ROOT/ok2"; exit 1; }'
 run "after" true`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
-	if took := time.Since(start); took > 8*time.Second {
-		t.Fatalf("step limit didn't stop sleep 5 promptly: %s", took)
+	if took := time.Since(start); took > scaled(8*time.Second) {
+		t.Fatalf("step limit didn't stop sleep 30 promptly: %s", took)
 	}
 	log := r.log(1)
 	contains(t, "agent1.log", log,
-		"  FAIL  slow (timeout: step limit 1s)",
-		"the step's time limit (1s) ran out",
+		"  FAIL  slow (timeout: step limit "+limit+")",
+		"the step's time limit ("+limit+") ran out",
 		"  PASS  flaky (attempt 2/3)",
 		"        -- attempt 1/3",
 		"        -- exit 1 (",
@@ -1484,29 +1485,30 @@ run "after" true`)
 	}
 
 	// Step-Timeout: in the header is the default; --timeout 0 turns it off.
-	r.script(2, "default limit", `run "limited" sleep 3
-run --timeout 0 "unlimited" sleep 1.5`)
+	r.script(2, "default limit", `run "limited" sleep 30
+run --timeout 0 "unlimited" sleep `+fmt.Sprint(scaled(1500*time.Millisecond).Seconds()))
 	p := filepath.Join(r.root, "lane.2.sh")
 	data, _ := os.ReadFile(p)
-	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: default limit\n", "# Round: default limit\n# Step-Timeout: 1s\n", 1)), 0o755)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: default limit\n", "# Round: default limit\n# Step-Timeout: "+limit+"\n", 1)), 0o755)
 	r.swim("run", "2", "--plain")
-	contains(t, "agent2.log", r.log(2), "step-timeout: 1s", "  FAIL  limited (timeout: step limit 1s)", "  PASS  unlimited")
+	contains(t, "agent2.log", r.log(2), "step-timeout: "+limit, "  FAIL  limited (timeout: step limit "+limit+")", "  PASS  unlimited")
 }
 
 func TestRetryRespectsRoundDeadline(t *testing.T) {
-	r := newSerialRepo(t, "") // a 2s round Timeout: alone, not beside the parallel tests
-	r.script(1, "deadline", `run --retry 5 --backoff 1.5s "keeps failing" false
+	r := newSerialRepo(t, "") // it times a round's Timeout: alone, not beside the parallel tests
+	limit := dur(2 * time.Second)
+	r.script(1, "deadline", `run --retry 5 --backoff `+dur(1500*time.Millisecond)+` "keeps failing" false
 run "after" true`)
 	p := filepath.Join(r.root, "lane.1.sh")
 	data, _ := os.ReadFile(p)
-	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: deadline\n", "# Round: deadline\n# Timeout: 2s\n", 1)), 0o755)
+	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: deadline\n", "# Round: deadline\n# Timeout: "+limit+"\n", 1)), 0o755)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
-	if took := time.Since(start); took > 6*time.Second {
+	if took := time.Since(start); took > scaled(6*time.Second) {
 		t.Fatalf("retries ran past the round's deadline: %s", took)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "no retry: the round's Timeout 2s would pass first", "  FAIL  keeps failing (timeout: Timeout 2s reached, attempt ", "  STOP  timeout: the round's Timeout (2s) ran out")
+	contains(t, "agent1.log", log, "no retry: the round's Timeout "+limit+" would pass first", "  FAIL  keeps failing (timeout: Timeout "+limit+" reached, attempt ", "  STOP  timeout: the round's Timeout ("+limit+") ran out")
 	if strings.Contains(log, "PASS  after") {
 		t.Error("the round continued after its timeout")
 	}
@@ -1665,7 +1667,7 @@ func TestTimeline(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "root", `run "root work" sleep 0.3`)
 	r.script(2, "slow child", `stage check
-run "slow a" sleep 0.6
+run "slow a" sleep `+fmt.Sprint(scaled(time.Second).Seconds())+`
 run "slow b" sleep 0.2`)
 	r.script(3, "fast child", `run "fast" sleep 0.1`)
 	r.script(4, "join", `run "join" true`)

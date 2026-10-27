@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/status"
 )
@@ -182,7 +183,7 @@ func TestCIPinsAndLanes(t *testing.T) {
 
 	// Pinned: a lane rewritten after selection (between the job id it was
 	// named by and its start) is skipped. Simulate with swim run JOB.
-	r.script(2, "two", `run "slow" sleep 0.5`)
+	r.script(2, "two", `run "slow" `+hold("go"))
 	r.script(3, "three", `run "c" true`)
 	withHeader(t, r, 3, "# After: 2")
 	withHeader(t, r, 3, "# Job: 3f2a9c1e-aaaa-4bbb-8ccc-000000000003")
@@ -193,6 +194,7 @@ func TestCIPinsAndLanes(t *testing.T) {
 	}
 	waitFor(t, func() bool { return laneOf(r, 2).CurrentStep == "slow" })
 	r.script(3, "three rewritten", `run "c" true`)
+	r.release("go")
 	c.Wait()
 	l := r.status().Get(3)
 	if l.State != status.Skipped || !strings.Contains(l.Reason, "was rewritten") {
@@ -213,11 +215,14 @@ func jobOf(t *testing.T, r *repo, n int) string {
 }
 
 func TestCIHeartbeat(t *testing.T) {
-	r := newSerialRepo(t, "") // a lane must print within 400ms: alone, not beside the parallel tests
+	r := newSerialRepo(t, "") // a lane must print within the heartbeat: alone, not beside the parallel tests
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
-	r.script(1, "quiet", `run "wait" sleep 1.2`)
-	r.script(2, "chatty", `run "talk" bash -c 'for i in 1 2 3 4 5 6; do echo tick; sleep 0.2; done'`)
-	out, code := r.swimEnv([]string{"CI=true"}, "ci", "--heartbeat", "400ms")
+	// The chatty lane prints every 0.2s, well inside the heartbeat; the
+	// quiet one is silent for 2.5 heartbeats.
+	beat := scaled(time.Second)
+	r.script(1, "quiet", `run "wait" sleep `+fmt.Sprint((beat*5/2).Seconds()))
+	r.script(2, "chatty", `run "talk" bash -c 'for i in $(seq `+fmt.Sprint(int(beat*5/2/(200*time.Millisecond)))+`); do echo tick; sleep 0.2; done'`)
+	out, code := r.swimEnv([]string{"CI=true"}, "ci", "--heartbeat", beat.String())
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
