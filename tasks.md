@@ -74,8 +74,6 @@ session needed it or someone asks for it:
 
 | Candidate | Why it's on the list |
 |---|---|
-| `chime`, `chime_style`, `chime_min_s` | sound notifications; not part of the core workflow |
-| `schedule` | `swim queue` and cron cover it |
 | `pause` / `unpause` | `interrupt` covers stopping; pausing is rare |
 | `observe` (and observations in `report`, `status`) | useful later; another concept on day one |
 | `cache`, `cache restore\|save` | build-tool speed-ups, not ops safety |

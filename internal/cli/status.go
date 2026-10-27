@@ -16,7 +16,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/observe"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/schedule"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -270,17 +269,6 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 				color = ui.Yellow + ui.Bold
 			}
 			detail("approved without a prompt: "+t, color)
-		}
-		if l.ScheduledFor != "" {
-			at, _ := time.Parse(time.RFC3339, l.ScheduledFor)
-			when := l.ScheduledFor
-			if e, err := queue.Find(root, l.Schedule); err == nil {
-				when = scheduledAt(e)
-			}
-			detail(fmt.Sprintf("scheduled %s · %s (%s)", when, schedule.Until(at, now), l.Schedule), ui.Cyan)
-		}
-		if l.HeldBy != "" {
-			detail("held by schedule "+l.HeldBy+": its batch waits until that one has run", ui.Yellow)
 		}
 		if len(l.DryRun) > 0 {
 			detail(display.DryMark+" dry run (not approved): "+strings.Join(l.DryRun, ", "), ui.Yellow)

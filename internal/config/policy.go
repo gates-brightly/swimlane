@@ -73,7 +73,7 @@ func policyValueHash(k string, v any) string {
 // text form ("swim policy v2", then "<key> <sha256 of its value>" per set
 // key, sorted). Only the committed swim.yml counts: an operator's own
 // config.yml differs from machine to machine, and an approval signed on one
-// must hold on another. Keys outside PolicyKeys (max_parallel, chime, ...),
+// must hold on another. Keys outside PolicyKeys (max_parallel, interrupt, ...),
 // and policy keys swim.yml doesn't set, never change it.
 func (c *Config) PolicyHash() string {
 	set := c.PolicySet()

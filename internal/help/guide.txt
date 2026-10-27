@@ -20,7 +20,7 @@ USAGE
 COMMANDS
   init                     set up this repo: config entry, .gitignore block, .swim/status.yml
   config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set
-                           chime, chime_style, chime_min_s, runners.EXT, ...
+                           interrupt, approvals, signing, runners.EXT, ...
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
   secret set|get|ls|rm NAME   secrets encrypted to your SSH key, for --all repos or this --repo
   secret grant SWIMMER NAME   give a swimmer a secret, encrypted to its own key (revoke, grants)
@@ -78,8 +78,6 @@ COMMANDS
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run once its lanes are free; queue [list|show|rm|requeue]
-  schedule LANES... TIME   queue a batch that starts no earlier than TIME (13:30, 1:30pm,
-                           tomorrow 06:00, +2h); schedule list | rm ID
   watch [--once]           run queued batches side by side, consuming them (this machine is the swimmer)
   watch --headless [--detach]   a swimmer with no terminal (needs swim auth login);
                            --status, --stop, --install systemd|launchd, --uninstall
@@ -280,10 +278,9 @@ PLANNER WORKFLOW
      up front (`swim queue add 4 5 --approve FIN_ALLOW_DELETE_ZG_ITEMS`). A
      swimmer (`swim watch`) runs the batch as soon as its lanes are free. Queue only
      what you'd hand over to run unattended: a queued batch never asks, so
-     every guard it doesn't approve is a dry run. A change with a window
-     (after hours, a maintenance slot) is scheduled instead:
-     `swim schedule 4 5 22:00 --approve FIN_ALLOW_DELETE_ZG_ITEMS`; rounds
-     that depend on it wait for it.
+     every guard it doesn't approve is a dry run. For a change with a window
+     (after hours, a maintenance slot), queue it as one batch and have the
+     operator start a swimmer then (`swim watch --once`, by hand or cron).
 
 WORKER RULES
   - Write only your own lane.N.sh. Never edit shared files (registries, plan
@@ -1007,10 +1004,6 @@ READING RESULTS
           auto_via: <swim run -y | queue q-... -y | swim watch -y>
           flag_approved: [<guards approved by FLAG=1 or a batch's --approve>]
           dry_run: [<guards not approved: their steps ran as dry runs>]
-          scheduled_for: <UTC>           # a scheduled batch (swim schedule) will run it
-          schedule: <q-... the batch>
-          held_by: <q-...>               # its batch waits for that scheduled one
-          schedule_removed: <q-...>      # its scheduled batch was removed before it ran
           last_archive: <last archived log name>
   `swim status` shows "running?" when a lane's pid is gone (killed terminal);
   treat that lane's round as interrupted. The next swim run, swim all or
@@ -1052,7 +1045,7 @@ READING RESULTS
                               step, exit, duration_s, clock, command, output:
                               [lines], saved}], failed_steps
     swim plan --yaml          swim.plan/v1: command, lanes: [{lane, job, round,
-                              action (run|retry|rerun|skip|scheduled|held), waits_on, reason,
+                              action (run|retry|rerun|skip), waits_on, reason,
                               running_pid, guards: [{flag, set, description, approved,
                               how, asks, why}], awaits_approval, timeout, locks}],
                               idle: [{lane, why}],
@@ -1073,9 +1066,6 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         header_env: [STAGE, AWS_PROFILE] # env recorded in every step header
         runtime: node --version          # recorded as runtime version
         toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
-        chime: false                     # on | off | failure: chime when swim run/all ends, and per swim watch batch
-        chime_style: bell                # bell | sound | notify
-        chime_min_s: 10                  # don't chime for runs shorter than this
         interrupt: graceful              # graceful | immediate: what the first Ctrl-C does
         approvals: prompt                # prompt | flags: may an unset guard flag ask the operator
         interrupt_grace: 5s              # force quit: SIGINT, then SIGKILL after this
@@ -1085,7 +1075,6 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         claim_lease: 2h                  # a lane claim (swim new, swim claim) lasts this long
         pause_warn: 4h                   # swim doctor warns about a lane paused longer
         watch_batches: 4                 # queued batches one swim watch runs at once
-        schedule_tz: America/Chicago     # the zone swim schedule reads times in (default: the machine's)
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
         cache_dir: ~/.cache/swim         # where tool caches live (CACHE); config.yml only
         cache_max: 10GB                  # a run trims the repo's caches to this (0: no cap)
@@ -1128,16 +1117,6 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
   Unresolvable `# After:` references and cycles stop `swim run` before
   anything starts, and so does an After: lane with no script, log or past
   run (a typo). Lanes are 1..99.
-
-  Chime (operator preference; workers never set it): after `swim run` /
-  `swim all` prints its summary, and as `swim watch` finishes each queued
-  batch (a job), swim rings the bell (twice on failure) if chime is on, or
-  failure and the run or batch didn't fully pass, it took at least
-  chime_min_s, stdout is a terminal (not needed for notify) and CI isn't
-  true. sound adds a system sound, notify a desktop notification.
-  --chime / --no-chime override it for one swim run. Set it with
-  `swim config chime on|off|failure` (true/false too; --repo for this repo
-  only).
 
 INTERRUPTING
   Lanes run in their own process groups, so Ctrl-C reaches only swim, which

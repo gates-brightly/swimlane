@@ -26,7 +26,7 @@ func TestPlanAgreesWithRun(t *testing.T) {
 	}
 	check := func(d schedDAG) bool {
 		f := planFacts{lanes: len(d.Lanes), scripts: map[int]lane.Info{}, status: map[int]*status.Lane{},
-			deps: map[int][]Dep{}, blocked: map[int]string{}, outside: map[Dep]string{}, scheduled: map[int]string{}}
+			deps: map[int][]Dep{}, blocked: map[int]string{}, outside: map[Dep]string{}}
 		for i, l := range d.Lanes {
 			n := i + 1
 			f.sel = append(f.sel, n)
@@ -76,10 +76,9 @@ func TestPlanAgreesWithRun(t *testing.T) {
 	}
 }
 
-// From the facts alone: a named lane with a scheduled batch is left to it;
-// a lane waiting on a scheduled lane outside the run is held, not failed;
-// swim all lists the scheduled lanes it leaves; a lane that last passed
-// this job is a rerun, and one that last ran it otherwise a retry.
+// From the facts alone: a lane waiting on a lane outside the run that
+// hasn't passed is skipped; a lane that last passed this job is a rerun,
+// one that last ran it otherwise a retry, and a new job a run.
 func TestDecidePlanActions(t *testing.T) {
 	r := lane.Info{Exists: true, Round: "r", Job: "j"}
 	f := planFacts{lanes: 5, sel: []int{1, 2, 3, 4},
@@ -88,18 +87,14 @@ func TestDecidePlanActions(t *testing.T) {
 			3: {Job: "j", Round: "r", State: status.Passed},
 			4: {Job: "j", Round: "r", State: status.Failed},
 		},
-		deps:      map[int][]Dep{2: {{Lane: 5}}},
-		blocked:   map[int]string{},
-		outside:   map[Dep]string{{Lane: 5}: "swim 5's pending round has not passed: it is scheduled for 14:00"},
-		scheduled: map[int]string{1: "13:00", 5: "14:00"},
+		deps:    map[int][]Dep{2: {{Lane: 5}}},
+		blocked: map[int]string{},
+		outside: map[Dep]string{{Lane: 5}: "swim 5's pending round has not passed; run it too: swim run 5 ..."},
 	}
 	pl := decidePlan(f)
-	for n, want := range map[int]planAction{1: actScheduled, 2: actHeld, 3: actRerun, 4: actRetry} {
+	for n, want := range map[int]planAction{1: actRun, 2: actSkip, 3: actRerun, 4: actRetry} {
 		if got := pl.actions[n]; got != want {
 			t.Errorf("swim %d: %s, want %s (skip %q)", n, got.name(), want.name(), pl.skip[n])
 		}
-	}
-	if pl.scheduled[5] != "14:00" || pl.counts[actScheduled] != 2 {
-		t.Errorf("scheduled %v, counts %v", pl.scheduled, pl.counts)
 	}
 }

@@ -75,7 +75,7 @@ swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit}
 **Run freely.** These only read or check:
 `swim status`, `report`, `log`, `plan`, `plan --check`, `lint`, `timeline`,
 `history`, `verify`, `env`, `keys`, `approve` (no arguments: lists them),
-`queue` / `queue show`, `schedule list`, `doctor` (without `--fix`),
+`queue` / `queue show`, `doctor` (without `--fix`),
 `changelog`, `--help`. Add `--yaml` when you're going to parse the output.
 
 **Bookkeeping you may do** when it's your round: `swim new`, `swim archive`,
@@ -113,7 +113,7 @@ batch whose risk you haven't read.
   pass `-y`, `--approve` or `--auto`, never run `swim approve` or `swim
   revoke`. Approval is a person's decision, and the record attributes it to
   them.
-- `swim schedule`, `swim interrupt`, `swim secret ...`, `swim keys trust`,
+- `swim interrupt`, `swim secret ...`, `swim keys trust`,
   `swim chain ...`, `swim doctor --fix`, `swim config` / config edits.
 
 **Never edit by hand:** `.swim/` (status, logs, chain, runs, queue),

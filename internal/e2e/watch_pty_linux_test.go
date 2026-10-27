@@ -172,9 +172,11 @@ func TestWatchLogsKey(t *testing.T) {
 	tr.waitFor("▸ swim 2")
 	tr.send("l")
 	tr.waitFor("swim 2 has no current log")
-	// A batch (scheduled, so it waits): its lanes' logs, from their last run.
-	r.mustSwim("schedule", "1", "+2h")
-	tr.waitFor("scheduled")
+	// A batch (the repo paused, so no swimmer claims it): its lanes' logs,
+	// from their last run.
+	r.mustSwim("pause", "--all")
+	r.mustSwim("queue", "add", "1")
+	tr.waitFor("#1    queued")
 	tr.send("\x1b[B")
 	tr.waitFor("▸ #1")
 	tr.send("l")

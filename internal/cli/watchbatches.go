@@ -78,7 +78,7 @@ type batchProc struct {
 	out   string        // its output file ("" when it writes to swim watch's)
 	done  chan struct{} // closed when it exits
 	code  int
-	// started is when the worker started it, for the chime's elapsed time.
+	// started is when the worker started it, for the batch's elapsed time.
 	started time.Time
 }
 
@@ -149,8 +149,8 @@ func (b *batchRunner) full() bool {
 }
 
 // startable lists the waiting batches that may start now, in start-time
-// order (queue.SortWaiting), as many as there's room for: due (a scheduled
-// one not before its time), not held by a schedule, and none of the lanes
+// order (queue.SortWaiting), as many as there's room for: due (one an
+// older swim scheduled not before its time), and none of the lanes
 // it runs (its own, and the Always lanes they pull in) in a running batch
 // (any worker's), running in another swim, or in a batch picked before it.
 func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*queue.Entry {
@@ -159,8 +159,7 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 	b.mu.Unlock()
 	waiting = append([]*queue.Entry(nil), waiting...)
 	queue.SortWaiting(waiting)
-	held := heldBy(b.root, cfg, waiting)
-	now := scheduleNow()
+	now := time.Now()
 	// A batch needs its own lanes and the Always lanes its run pulls in
 	// (After: 1 on an Always lane 1): two batches that both pull in lane 1
 	// can't run side by side, or the second finds it already running and
@@ -187,14 +186,14 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 			break
 		}
 		if e.State != queue.Queued || !e.Due(now) {
-			continue // a schedule that isn't due holds no lanes yet
+			continue // a batch scheduled for later holds no lanes yet
 		}
 		if why := cantRunHere(b.root, e); why != "" {
 			holdHere(b.root, e, why) // queued for a worker that can; holds no lanes here
 			continue
 		}
 		holdHere(b.root, e, "")
-		free := held[e.ID] == nil
+		free := true
 		need := needs(e)
 		for _, n := range need {
 			if taken[n] || laneBusy(b.root, st, n) != "" {
@@ -367,7 +366,6 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 			if view != nil {
 				view.picker.Note = fmt.Sprintf("#%d %s (%s)", bp.e.Seq, word, lanesText(bp.lanes))
 			}
-			chimeBatch(cfg, root, bp, word)
 		}
 	drain:
 		for {
@@ -442,7 +440,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 		case len(running) > 0:
 			say("running " + strings.Join(parts, ", "))
 		case queued > 0:
-			say(fmt.Sprintf("%d queued; waiting for their lanes to be free%s", queued, nextScheduled(root)))
+			say(fmt.Sprintf("%d queued; waiting for their lanes to be free", queued))
 		default:
 			say("queue empty; waiting for swim queue add")
 		}

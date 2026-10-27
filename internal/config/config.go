@@ -30,40 +30,42 @@ import (
 type Settings struct {
 	// Lanes was a fixed lane count. swim now finds a repo's lanes on disk
 	// (lane.Associated); a `lanes:` setting is ignored, and doctor says so.
-	Lanes              int           `yaml:"lanes,omitempty"`
-	HeaderEnv          []string      `yaml:"header_env,omitempty"`
-	Runtime            string        `yaml:"runtime,omitempty"`
-	Toolchain          string        `yaml:"toolchain,omitempty"`
-	Deps               map[int][]int `yaml:"deps,omitempty"`
-	MaxParallel        *int          `yaml:"max_parallel,omitempty"`         // lanes running at once; 0 = unlimited
-	BlockedCommands    []string      `yaml:"blocked_commands,omitempty"`     // added to the built-in git push/commit/pull
-	Chime              *Chime        `yaml:"chime,omitempty"`                // on | off | failure (YAML true/false/failure)
-	ChimeStyle         *string       `yaml:"chime_style,omitempty"`          // bell | sound | notify
-	ChimeMinS          *int          `yaml:"chime_min_s,omitempty"`          // don't chime for runs shorter than this
-	SecretEnv          []string      `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
-	SecretEnvAuto      *bool         `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
-	SecretEnvIgnore    []string      `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
-	SecretPatternsAuto *bool         `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
-	Interrupt          string        `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
-	Approvals          string        `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
-	SigningKey         string        `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
-	SecretsKey         string        `yaml:"secrets_key,omitempty"`          // SSH key secrets are encrypted to (default signing_key, then ~/.ssh/id_ed25519)
-	Signing            string        `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
-	InterruptGrace     string        `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
-	TermGrace          string        `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
-	MsgLogInterval     string        `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
-	OutputsKeep        string        `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
-	QueueLease         string        `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
-	PauseWarn          string        `yaml:"pause_warn,omitempty"`           // swim doctor warns about a lane paused longer than this (default 4h)
-	ClaimLease         string        `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
-	WatchBatches       int           `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
+	Lanes           int           `yaml:"lanes,omitempty"`
+	HeaderEnv       []string      `yaml:"header_env,omitempty"`
+	Runtime         string        `yaml:"runtime,omitempty"`
+	Toolchain       string        `yaml:"toolchain,omitempty"`
+	Deps            map[int][]int `yaml:"deps,omitempty"`
+	MaxParallel     *int          `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
+	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // added to the built-in git push/commit/pull
+	// Removed keys: accepted and ignored, so a swim.yml from before still
+	// loads (swim.yml is read strictly); swim doctor says to delete them.
+	RemovedChime       any      `yaml:"chime,omitempty"`
+	RemovedChimeStyle  any      `yaml:"chime_style,omitempty"`
+	RemovedChimeMinS   any      `yaml:"chime_min_s,omitempty"`
+	RemovedScheduleTZ  any      `yaml:"schedule_tz,omitempty"`
+	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
+	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
+	SecretEnvIgnore    []string `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
+	SecretPatternsAuto *bool    `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
+	Interrupt          string   `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
+	Approvals          string   `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
+	SigningKey         string   `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
+	SecretsKey         string   `yaml:"secrets_key,omitempty"`          // SSH key secrets are encrypted to (default signing_key, then ~/.ssh/id_ed25519)
+	Signing            string   `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
+	InterruptGrace     string   `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
+	TermGrace          string   `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
+	MsgLogInterval     string   `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
+	OutputsKeep        string   `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
+	QueueLease         string   `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
+	PauseWarn          string   `yaml:"pause_warn,omitempty"`           // swim doctor warns about a lane paused longer than this (default 4h)
+	ClaimLease         string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
+	WatchBatches       int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
 	// Observe tunes swim observe's detectors (thresholds, not policy: it
 	// stales no approval).
-	Observe    *observe.Thresholds `yaml:"observe,omitempty"`
-	ScheduleTZ string              `yaml:"schedule_tz,omitempty"` // the zone swim schedule reads times in (default: the machine's)
-	CacheDir   string              `yaml:"cache_dir,omitempty"`   // where tool caches live (default ~/.cache/swim); config.yml only
-	CacheMax   string              `yaml:"cache_max,omitempty"`   // a repo's caches are trimmed to this (default 10GB; 0: no cap)
-	CacheSlug  string              `yaml:"cache_slug,omitempty"`  // the repo's cache directory name (default: name + remote hash); config.yml only
+	Observe   *observe.Thresholds `yaml:"observe,omitempty"`
+	CacheDir  string              `yaml:"cache_dir,omitempty"`  // where tool caches live (default ~/.cache/swim); config.yml only
+	CacheMax  string              `yaml:"cache_max,omitempty"`  // a repo's caches are trimmed to this (default 10GB; 0: no cap)
+	CacheSlug string              `yaml:"cache_slug,omitempty"` // the repo's cache directory name (default: name + remote hash); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path, hub; see
 	// the anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -246,11 +248,25 @@ func Load(root string) (*Config, error) {
 			c.Lanes = n
 		}
 	}
-	c.fillChimeDefaults()
 	if err := c.Validate(); err != nil {
 		return nil, fmt.Errorf("%s (repo %s): %w", c.Path, root, err)
 	}
 	return c, nil
+}
+
+// RemovedKeys are the keys s sets that swim no longer has: they're read
+// and ignored (swim doctor points them out).
+func (s Settings) RemovedKeys() []string {
+	var out []string
+	for _, k := range []struct {
+		name string
+		v    any
+	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}} {
+		if k.v != nil {
+			out = append(out, k.name)
+		}
+	}
+	return out
 }
 
 // EnvKeysVar lists (space separated) the keys a lane's environment got
@@ -380,15 +396,6 @@ func (c *Config) merge(r Settings) {
 	if r.SecretPatternsAuto != nil {
 		c.SecretPatternsAuto = r.SecretPatternsAuto
 	}
-	if r.Chime != nil {
-		c.Chime = r.Chime
-	}
-	if r.ChimeStyle != nil {
-		c.ChimeStyle = r.ChimeStyle
-	}
-	if r.ChimeMinS != nil {
-		c.ChimeMinS = r.ChimeMinS
-	}
 	if r.Interrupt != "" {
 		c.Interrupt = r.Interrupt
 	}
@@ -415,9 +422,6 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.Observe != nil {
 		c.Observe = r.Observe
-	}
-	if r.ScheduleTZ != "" {
-		c.ScheduleTZ = r.ScheduleTZ
 	}
 	if r.CacheDir != "" {
 		c.CacheDir = r.CacheDir
@@ -465,9 +469,6 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)
-	}
-	if err := c.validateChime(); err != nil {
-		return err
 	}
 	if err := c.Headless.validate(); err != nil {
 		return err
@@ -888,11 +889,6 @@ func (c *Config) validateInterrupt() error {
 	}
 	if c.WatchBatches < 0 {
 		return fmt.Errorf("watch_batches must be 1 or more, got %d", c.WatchBatches)
-	}
-	if c.ScheduleTZ != "" {
-		if _, err := time.LoadLocation(c.ScheduleTZ); err != nil {
-			return fmt.Errorf("schedule_tz %q: %v (use an IANA name like America/Chicago)", c.ScheduleTZ, err)
-		}
 	}
 	return nil
 }

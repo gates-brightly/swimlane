@@ -101,8 +101,7 @@ ends. Each is a fact with the numbers behind it and where it came from.
 - **Rounds that don't repeat get no baseline.** Rounds are disposable, so
   most one-off rounds only get `timeout`, `waited` and `retried`, which need
   no history. Baselines come from work that recurs: Always lanes, group
-  files, CI lanes, recurring schedules
-  (`swim schedule --daily`), and steps reused across rounds.
+  files, CI lanes, and steps reused across rounds.
 - **Thresholds** live in `swim.yml` under `observe:`. They're not policy,
   so they don't enter the manifest, and changing them stales nothing.
 - **Never in the lane log.** Observations are derived, so they're written

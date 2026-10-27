@@ -37,8 +37,7 @@ For tonight's window, queue it with the approval up front:
 
 ```sh
 swim queue add 4 5 --approve SESSIONS_ALLOW_PURGE --note "2.4.1 rollout + session cleanup"
-# or, not before 22:00:
-swim schedule 4 5 22:00 --approve SESSIONS_ALLOW_PURGE
+# then, when the window opens (by hand, or cron): swim watch --once
 ```
 
 `SESSIONS_ALLOW_PURGE` approves deleting sessions marked stale (about 3,100

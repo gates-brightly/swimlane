@@ -27,9 +27,6 @@ type plan struct {
 	skip      map[int]string
 	actions   map[int]planAction
 	counts    map[planAction]int
-	// scheduled are the pending lanes swim all leaves to their scheduled
-	// batch (swim schedule), with when it starts them.
-	scheduled map[int]string
 	// guards is how swim run would decide each lane's guards now, and
 	// awaiting the lane whose unapproved guard each lane depends on (0:
 	// none): a dry run there skips it.
@@ -50,7 +47,6 @@ type planFacts struct {
 	deps        map[int][]Dep          // each selected lane's dependencies
 	blocked     map[int]string         // selected lanes refused before they run (BlockedLanes)
 	outside     map[Dep]string         // why a dependency outside the run blocks ("" if it doesn't)
-	scheduled   map[int]string         // when each lane's scheduled batch starts ("" for none)
 	guards      map[int][]GuardVerdict // how swim run would decide each lane's guards now
 }
 
@@ -66,7 +62,7 @@ func computePlan(o Options) (*plan, error) {
 func gatherPlan(o Options) (planFacts, error) {
 	o.DryRun = true
 	f := planFacts{lanes: o.Cfg.Lanes, named: len(o.Lanes) > 0, scripts: map[int]lane.Info{}, status: map[int]*status.Lane{},
-		outside: map[Dep]string{}, scheduled: map[int]string{}}
+		outside: map[Dep]string{}}
 	var err error
 	if f.sel, f.passed, err = Select(o); err != nil {
 		return f, err
@@ -80,7 +76,6 @@ func gatherPlan(o Options) (planFacts, error) {
 		if st != nil {
 			f.status[n] = st.Get(n)
 		}
-		f.scheduled[n] = scheduledFor(o.Root, n)
 	}
 	selected := map[int]bool{}
 	for _, n := range f.sel {
@@ -162,38 +157,20 @@ func decidePlan(f planFacts) *plan {
 	counts := map[planAction]int{}
 	for _, n := range sel {
 		a := actionFor(scripts[n], f.status[n], skip[n] != "")
-		switch at := f.scheduled[n]; {
-		case at != "":
-			// Named, but its scheduled batch runs it (swim run refuses).
-			a, skip[n] = actScheduled, "scheduled for "+at
-		case a == actSkip && strings.Contains(skip[n], "is scheduled for"):
-			a = actHeld // waits for a scheduled lane, not a failure
-		}
 		actions[n] = a
 		counts[a]++
 	}
-	// Lanes swim all leaves to their schedule.
-	scheduled := map[int]string{}
-	if !f.named {
-		for n := 1; n <= f.lanes; n++ {
-			if at := f.scheduled[n]; at != "" && !selected[n] && scripts[n].Pending() {
-				scheduled[n] = at
-				counts[actScheduled]++
-			}
-		}
-	}
-
 	// Lanes whose round, or one they sit under, needs an approval: a dry
 	// run there skips them. A lane skipped anyway needs none.
 	awaiting := awaitingApproval(sel, inRunDeps, f.guards)
 	for n := range awaiting {
-		if actions[n] == actSkip || actions[n] == actScheduled || actions[n] == actHeld {
+		if actions[n] == actSkip {
 			delete(awaiting, n)
 		}
 	}
 
 	return &plan{what: f.what, sel: sel, passed: f.passed, selected: selected, scripts: scripts, children: children,
-		inRunDeps: inRunDeps, skip: skip, actions: actions, counts: counts, scheduled: scheduled,
+		inRunDeps: inRunDeps, skip: skip, actions: actions, counts: counts,
 		guards: f.guards, awaiting: awaiting}
 }
 
@@ -216,7 +193,7 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 	fmt.Fprintln(w)
 	if len(sel) > 0 {
 		fmt.Fprintln(w, "Job actions are indicated with the following symbols:")
-		for _, a := range []planAction{actRun, actRetry, actRerun, actSkip, actScheduled, actHeld} {
+		for _, a := range []planAction{actRun, actRetry, actRerun, actSkip} {
 			if counts[a] > 0 {
 				fmt.Fprintf(w, "  %s %s\n", a.symbol(p), p.Paint(ui.Dim, a.legend()))
 			}
@@ -262,13 +239,7 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		case wa != 0:
 			notes = append(notes, p.Paint(ui.Yellow, fmt.Sprintf("waits on swim %d's approval", wa)))
 		}
-		switch r := skip[n]; {
-		case r == "":
-		case actions[n] == actScheduled:
-			notes = append(notes, p.Paint(ui.Blue, r))
-		case actions[n] == actHeld:
-			notes = append(notes, p.Paint(ui.Yellow, "held: "+r))
-		default:
+		if r := skip[n]; r != "" {
 			notes = append(notes, p.Paint(ui.Red, "skip: "+r))
 		}
 		if o.ShowChecks {
@@ -373,17 +344,7 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		}
 	}
 
-	// Lanes swim all leaves to their schedule.
-	var schedNs []int
-	for n := range pl.scheduled {
-		schedNs = append(schedNs, n)
-	}
-	sort.Ints(schedNs)
-	for _, n := range schedNs {
-		label := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("%-*s", labelW, fmt.Sprintf("swim %d", n)))
-		fmt.Fprintf(w, "%s %s  %s  %s\n", actScheduled.symbol(p), label, scripts[n].Round, p.Paint(ui.Blue, "scheduled for "+pl.scheduled[n]))
-	}
-	if len(sel) > 0 || len(schedNs) > 0 {
+	if len(sel) > 0 {
 		fmt.Fprintln(w)
 	}
 	if len(sel) == 0 {
@@ -392,9 +353,6 @@ func WritePlan(w io.Writer, o Options, color bool) error {
 		fmt.Fprintf(w, "%s %s to run, %s to retry, %s to rerun, %s to skip.\n", p.Paint(ui.Bold, "Plan:"),
 			p.Paint(ui.Green, fmt.Sprint(counts[actRun])), p.Paint(ui.Yellow, fmt.Sprint(counts[actRetry])),
 			p.Paint(ui.Mag, fmt.Sprint(counts[actRerun])), p.Paint(ui.Red, fmt.Sprint(counts[actSkip])))
-		if counts[actScheduled]+counts[actHeld] > 0 {
-			fmt.Fprintf(w, "%s scheduled, %s held for a schedule.\n", p.Paint(ui.Blue, fmt.Sprint(counts[actScheduled])), p.Paint(ui.Yellow, fmt.Sprint(counts[actHeld])))
-		}
 		if len(passed) > 0 {
 			fmt.Fprintln(w, completedLine(len(passed)))
 		}
@@ -456,12 +414,10 @@ func completedLine(n int) string {
 type planAction int
 
 const (
-	actRun       planAction = iota // [+]   new job, never run
-	actRetry                       // [~]   ran before and didn't pass
-	actRerun                       // [+/-] already passed; runs again
-	actSkip                        // [-]   pending but won't run
-	actScheduled                   // [@]   a scheduled batch (swim schedule) runs it
-	actHeld                        // [=]   waits for a scheduled lane: skipped until it has run
+	actRun   planAction = iota // [+]   new job, never run
+	actRetry                   // [~]   ran before and didn't pass
+	actRerun                   // [+/-] already passed; runs again
+	actSkip                    // [-]   pending but won't run
 )
 
 func (a planAction) symbol(p ui.Painter) string {
@@ -472,10 +428,6 @@ func (a planAction) symbol(p ui.Painter) string {
 		return p.Paint(ui.Mag, "[+/-]")
 	case actSkip:
 		return p.Paint(ui.Red, "[-]")
-	case actScheduled:
-		return p.Paint(ui.Blue, "[@]")
-	case actHeld:
-		return p.Paint(ui.Yellow, "[=]")
 	}
 	return p.Paint(ui.Green, "[+]")
 }
@@ -488,10 +440,6 @@ func (a planAction) legend() string {
 		return "rerun: the job already passed and runs again"
 	case actSkip:
 		return "skip: the job won't run (a dependency won't pass)"
-	case actScheduled:
-		return "scheduled: a scheduled batch runs it at its time (swim schedule list)"
-	case actHeld:
-		return "held: depends on a scheduled lane, so it waits for that batch (run now, it would skip)"
 	}
 	return "run: a new job"
 }
@@ -526,7 +474,7 @@ func contains(ns []int, n int) bool {
 }
 
 func (a planAction) name() string {
-	return [...]string{"run", "retry", "rerun", "skip", "scheduled", "held"}[a]
+	return [...]string{"run", "retry", "rerun", "skip"}[a]
 }
 
 // PlanGuard is a guard flag a job's round declares, and how swim run
@@ -549,7 +497,7 @@ type PlanLane struct {
 	Lane    int         `yaml:"lane"`
 	Job     string      `yaml:"job,omitempty"`
 	Round   string      `yaml:"round"`
-	Action  string      `yaml:"action"` // run | retry | rerun | skip | scheduled | held
+	Action  string      `yaml:"action"` // run | retry | rerun | skip
 	WaitsOn []int       `yaml:"waits_on,flow"`
 	Reason  string      `yaml:"reason,omitempty"` // why it would be skipped
 	Running int         `yaml:"running_pid,omitempty"`
@@ -596,7 +544,7 @@ func Plan(o Options) (*PlanDoc, error) {
 		return nil, err
 	}
 	doc := &PlanDoc{Schema: "swim.plan/v1", Command: pl.what, Lanes: []PlanLane{}, Idle: []PlanIdle{},
-		Counts: map[string]int{"run": 0, "retry": 0, "rerun": 0, "skip": 0, "scheduled": 0, "held": 0}}
+		Counts: map[string]int{"run": 0, "retry": 0, "rerun": 0, "skip": 0}}
 	for a, c := range pl.counts {
 		doc.Counts[a.name()] = c
 	}
@@ -629,10 +577,6 @@ func Plan(o Options) (*PlanDoc, error) {
 		}
 		l.Claim = lane.ReadClaim(o.Root, n)
 		doc.Lanes = append(doc.Lanes, l)
-	}
-	for n, at := range pl.scheduled {
-		info := pl.scripts[n]
-		doc.Lanes = append(doc.Lanes, PlanLane{Lane: n, Job: info.Job, Round: info.Round, Action: actScheduled.name(), WaitsOn: []int{}, Reason: "scheduled for " + at})
 	}
 	sort.SliceStable(doc.Lanes, func(a, b int) bool { return doc.Lanes[a].Lane < doc.Lanes[b].Lane })
 	for _, n := range pl.passed {

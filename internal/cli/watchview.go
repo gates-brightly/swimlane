@@ -13,7 +13,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/schedule"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -178,20 +177,14 @@ func (w *watchView) rows() []display.PickRow {
 		rows = append(rows, display.PickRow{Text: "  (empty: q on jobs, then s, queues them as one batch)", Color: ui.Dim})
 	}
 	queue.SortWaiting(entries)
-	held := heldBy(w.root, w.cfg, entries)
-	snow := scheduleNow()
 	for _, e := range entries {
 		var ns []string
 		for _, l := range e.Lanes {
 			ns = append(ns, strconv.Itoa(l.Lane))
 		}
 		state, when := e.State, ""
-		switch {
-		case e.State == queue.Queued && !e.Due(snow):
-			at, _ := time.Parse(time.RFC3339, e.NotBefore)
-			state, when = "scheduled", "  at "+scheduledAt(e)+" · "+schedule.Until(at, snow)
-		case held[e.ID] != nil:
-			state, when = "held", fmt.Sprintf("  until #%d has run", held[e.ID].Seq)
+		if e.State == queue.Queued && !e.Due(now) { // scheduled by an older swim
+			state, when = "scheduled", "  not before "+e.NotBefore
 		}
 		dry := ""
 		if w.batchDry(e, st) {

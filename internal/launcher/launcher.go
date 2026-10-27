@@ -54,7 +54,7 @@ type Options struct {
 	Out      *os.File
 	Stdin    *os.File
 	// Finished, if set, is called once after the summary prints (the live
-	// view is gone by then), e.g. to chime.
+	// view is gone by then), e.g. to learn the run was interrupted.
 	Finished func(Finish)
 	// YAML, if set, receives the run as a stream of YAML documents (swim
 	// run --yaml) instead of the live view and summary table on Out;
@@ -154,7 +154,7 @@ type Options struct {
 
 // Finish is a completed run's outcome, passed to Options.Finished.
 type Finish struct {
-	Code        int            // Run's exit code: 0 only if every lane passed
+	Code        int            // Run's exit code: 0 only if every lane passed (ExitDryRun: nothing failed, a guard dry-ran)
 	Interrupted bool           // Ctrl-C or a signal arrived during the run
 	Counts      map[string]int // lanes by final state (status.Passed, ...)
 	Elapsed     time.Duration
@@ -183,18 +183,6 @@ type Outcome struct {
 // With no explicit lanes it picks every pending round that hasn't already
 // passed (unless Rerun), and returns the passed ones as done. Either way
 // it adds the Always lanes the selection needs (expandAlways).
-// ScheduledFor says when a waiting scheduled batch (swim schedule) starts
-// lane n ("13:30:00(CDT) 18:30:00(UTC) in q-..."), "" when none holds it.
-// The cli sets it (the queue is its business).
-var ScheduledFor func(root string, n int) string
-
-func scheduledFor(root string, n int) string {
-	if ScheduledFor == nil {
-		return ""
-	}
-	return ScheduledFor(root, n)
-}
-
 func Select(o Options) (sel, done []int, err error) {
 	if len(o.Lanes) > 0 {
 		seen := map[int]bool{}
@@ -228,9 +216,6 @@ func Select(o Options) (sel, done []int, err error) {
 			if !o.Rerun && AlreadyPassed(info, last) {
 				done = append(done, n)
 				continue
-			}
-			if scheduledFor(o.Root, n) != "" {
-				continue // its scheduled batch runs it (swim schedule)
 			}
 			sel = append(sel, n)
 		}

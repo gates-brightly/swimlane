@@ -44,6 +44,22 @@ already pushed to origin's main) with the next tag and pushes that tag.
   since CI can't approve. Before, it was PASS and the lanes after it
   ran as if the change had happened. A script that wants a guard to be
   optional should make that step its own lane.
+- **Removed: chime.** `chime`, `chime_style`, `chime_min_s` and `swim run
+  --chime / --no-chime` are gone: a sound when a run ends isn't part of
+  what swim is for. A `swim.yml` or `config.yml` that still sets the keys
+  loads as before (they're ignored), and `swim doctor` says to delete them
+  (`removed-setting`); `swim config chime` is an unknown key, and
+  `--chime` an unknown flag.
+- **Removed: swim schedule.** `swim schedule`, `swim queue add --at`,
+  `schedule_tz` and everything that held batches behind a schedule are
+  gone: queue a batch and start a swimmer when it should run (`swim watch
+  --once`, by hand or from cron). `swim plan` has no `scheduled` or `held`
+  actions any more (`--yaml` counts drop those keys), and `status.yml` no
+  longer records `scheduled_for`, `schedule`, `held_by` or
+  `schedule_removed`. A batch an older swim scheduled still waits for its
+  start time, its signature is still checked before it runs, and `swim
+  verify` still fails a run that started before its scheduled time.
+  `schedule_tz` in a config is ignored (`swim doctor`: `removed-setting`).
 - **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
   used to queue it as its own batch at once, so two jobs queued that way
   ran one after the other and `# After:` between them couldn't hold. Now

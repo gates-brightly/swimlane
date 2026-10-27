@@ -204,12 +204,6 @@ func outsideBlocker(root string, d Dep) string {
 	if !info.Pending() || AlreadyPassed(info, &last) {
 		return ""
 	}
-	if at := scheduledFor(root, d.Lane); at != "" {
-		return fmt.Sprintf("swim %d's pending round has not passed: it is scheduled for %s", d.Lane, at)
-	}
-	if last.ScheduleRemoved != "" {
-		return fmt.Sprintf("swim %d's pending round has not passed (swim %d's scheduled batch %s was removed); run it too: swim run %d ...", d.Lane, d.Lane, last.ScheduleRemoved, d.Lane)
-	}
 	return fmt.Sprintf("swim %d's pending round has not passed; run it too: swim run %d ...", d.Lane, d.Lane)
 }
 

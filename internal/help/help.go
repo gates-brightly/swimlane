@@ -37,14 +37,6 @@ var Commands = map[string]string{
   swim config KEY          print KEY's effective value
   swim config KEY VALUE    set KEY in the config file, keeping its comments
   Keys:
-    chime        true | false | failure   chime when swim run/all finishes
-                 (failure: only when a lane failed, was skipped or the run
-                 was interrupted). Default false.
-    chime_style  bell | sound | notify    bell rings the terminal bell
-                 (twice on failure); sound adds a system sound, notify a
-                 desktop notification, falling back to the bell. Default bell.
-    chime_min_s  seconds (0 or more)      runs shorter than this never
-                 chime. Default 10.
     outputs_keep duration (14d, 36h)      round outputs older than this that no
                  lane's latest round uses are pruned by swim doctor --fix.
     msg_log_interval  duration            at most one MSG log line per lane per
@@ -59,8 +51,6 @@ var Commands = map[string]string{
                  swim claim) lasts unless refreshed. Default 2h.
     watch_batches  a number (1 or more)   how many queued batches one swim
                  watch runs at once (default 4; swim watch --batches N).
-    schedule_tz  an IANA zone name       the zone swim schedule reads times
-                 in (default: this machine's), e.g. America/Chicago.
     cache_dir    an absolute path         where tool caches live (# Cache:;
                  default ~/.cache/swim, macOS ~/Library/Caches/swim; under
                  /tmp it gets your user id). Not in a repo's swim.yml.
@@ -84,7 +74,7 @@ var Commands = map[string]string{
 
   swim new TASK (a name: renew-certs) writes the lowest lane not in use
   and names it with a # Task: line, so swim run TASK, approve TASK, log
-  TASK, status, queue and schedule find it by name. The lane number stays
+  TASK, status and queue find it by name. The lane number stays
   what signatures, the chain and the hub record; the name is an alias.
   A name is a-z, 0-9 and - (a letter first, at most 40, not only hex
   digits and -), not a swim command, and one lane's alone (swim lint).
@@ -100,7 +90,7 @@ var Commands = map[string]string{
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
-         [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt] [--replace]
+         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt] [--replace]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see OTHER LANGUAGES)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
@@ -180,11 +170,6 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
             instead of the panel and table; lane output goes only to the
             logs. See READING RESULTS in swim guide. --yaml-output also
             streams lane output lines as output events.
-  --chime / --no-chime   chime (or don't) when this run finishes, whatever
-            config chime says. The chime comes after the summary (Ctrl-C
-            too), once, if the run took at least chime_min_s seconds, stdout
-            is a terminal (notify style excepted) and CI isn't true. See
-            "swim config --help".
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
   With a guard's flag unset and swim on a terminal, the lane asks instead:
@@ -221,15 +206,14 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   EXECUTION MANIFEST in swim guide.
 `,
 	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
-         [--chime|--no-chime] [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt] [--replace]
+         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt] [--replace]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
   "done" and not run again; failed, interrupted, skipped and new rounds run.
   --rerun   run every pending round, including ones that already passed.
   Every lane script counts, whatever its number. Dependencies ("# After:" lines and config deps), the live
-  view and its keys (--no-tui), guard flags, the summary and the chime (--chime / --no-chime) all
-  work as in "swim run".
+  view and its keys (--no-tui), guard flags and the summary all work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
 	"plan": `swim plan [N|JOB ...] [--rerun] [--yaml] [--check [--parallel N] [--timeout D]]
@@ -241,10 +225,6 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
       [+/-]  rerun  the job already passed and runs again (named lane, --rerun)
       [-]    skip   the job won't run (a dependency outside the run hasn't
                     passed, or one in the run won't run)
-      [@]    scheduled  a scheduled batch (swim schedule) runs it at its
-                    time; swim all leaves it, swim run N refuses it
-      [=]    held   depends on a scheduled lane: it waits for that batch
-                    (run now, it would skip)
   The jobs form a tree: top-level lanes start at once, and each lane sits
   under the lanes it waits for ("# After:" and config deps); a lane waiting
   for several shows "wait [2,3]" and appears in full once,
@@ -638,8 +618,7 @@ swim trash
   stamps), its round pending again, and swim prune deletes the entry for
   good later. A bare swim trash lists the trashed lanes.
   Refused for a running or waiting lane (swim interrupt N first), a lane in
-  a queued or scheduled batch (swim queue rm, swim schedule rm first: a
-  batch is pinned to its script). Files the script includes, swim.yml,
+  a queued batch (swim queue rm first: a batch is pinned to its script). Files the script includes, swim.yml,
   lookup.yml and approvals/ are never touched; a signed approval of the
   script counts again once it's restored unchanged.
   Recorded in .swim.log (trash, untrash) and the chain with each moved
@@ -826,50 +805,6 @@ swim queue show|rm|requeue ID
   is atomic: two swimmers can never claim the same entry), then
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
-`,
-	"schedule": `swim schedule LANES... TIME [--tz ZONE] [--approve FLAG]... [--note TEXT] [--parallel N] [--key PATH] [--yaml]
-swim schedule list [--all] [--yaml]
-swim schedule rm ID
-swim queue add LANES... --at TIME [flags]     (the same, one-shot)
-
-  Queue a batch that starts no earlier than TIME: swim queue add with a
-  start time. The batch is pinned and approved now, exactly as a queued
-  batch is (its lanes' jobs and manifests, --approve, signed with your
-  key). No swimmer (swim watch) claims it before TIME; from then on it is
-  an ordinary waiting batch, run as soon as its lanes are free. Late is
-  late, not cancelled: with its lanes busy or no swimmer up at TIME, it
-  starts when a swimmer next can (swim status and .swim.log say how late).
-  To stop it before it starts: swim schedule rm ID.
-  LANES are lane numbers or jobs; the last argument is always the time:
-    13:30, 13:30:00, 1330, 133000   24-hour (no am/pm means 24-hour)
-    1:30pm, 1:30 pm, 1pm, 12am      12-hour
-    tomorrow 06:00, 2026-10-20 13:30
-    +2h, +90m                       from now
-  A bare time already past today means tomorrow (the reply says so); a
-  dated time in the past, a time that doesn't happen (clocks going
-  forward) and anything else ambiguous are refused, never guessed. Times
-  are read in --tz, else schedule_tz (swim config), else this machine's
-  zone; the start is kept in UTC. The reply:
-    Lane 1 scheduled for 13:30:00(CDT) 18:30:00(UTC)
-  then warnings: no swim watch running here, a batch ahead of it on its
-  lanes, a lane it depends on holding a round that hasn't passed.
-  -y is refused: approving every guard of a run hours away, with no one
-  watching, is what -y suits least. Name each with --approve FLAG.
-  Dependents wait with it: a batch queued after it is held while one of
-  its lanes depends (After:, config deps:, at any depth) on a lane the
-  scheduled batch holds, until that batch has run; then the usual After:
-  check applies. swim run N of a scheduled lane is refused (it would run
-  twice), and swim all leaves it to its schedule.
-  The start time is signed with the batch: a swimmer refuses a signed
-  batch whose file was edited (its time moved). The run's chain
-  attestation records scheduled_for, and swim verify fails a run that
-  started before it.
-  list     scheduled batches by start time, held batches and what holds
-           them (--all: consumed ones too; --yaml: swim.schedule-list/v1)
-  rm ID    remove a scheduled batch that hasn't started; says which held
-           batches it releases (they'll skip unless its lanes pass first)
-  --yaml   the reply as swim.schedule/v1 (id, lanes, not_before, zone,
-           warnings)
 `,
 	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui]
 swim watch --headless [--detach] [-y] [--approved] [--interval D]
@@ -1596,7 +1531,7 @@ swim pause --all [--wait] [--note TEXT]
   before a run, gate, snapshot, evidence, guard or confirm; never inside a step. A pause doesn't expire. The round's Timeout: doesn't count the
   paused time. --wait returns once the lane holds; --note says why.
   --all holds every lane in the repo and stops queue swimmers claiming
-  batches (a scheduled batch due meanwhile waits), until swim unpause --all.
+  batches, until swim unpause --all.
   Ways out: swim unpause N (or swim resume N) goes on at the step it held
   before (RESUME  by <who> (paused <time>)); swim interrupt N, or the first
   Ctrl-C of its run, ends it interrupted; swim run N on a new job ends it
@@ -1759,8 +1694,8 @@ swim resume  N|JOB ... | --all      (the same command)
     pause-long (warn)         a lane paused (swim pause) longer than
                               pause_warn (4h), holding its locks and slot;
                               or the repo-wide pause left on that long
-    schedule-no-worker (warn) batches are scheduled, but no swim watch runs
-                              here to start them
+    removed-setting (warn)    a setting swim no longer has (chime, schedule_tz):
+                              it's ignored; delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key
@@ -1913,7 +1848,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "secret", "cache", "modules", "new", "plan", "run", "all", "status", "log", "report", "timeline", "observe", "step", "lib",
 	"gate", "snapshot", "mod", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "schedule", "watch", "ps", "hub", "auth", "wait", "approve", "revoke",
+	"archive", "clean", "prune", "trash", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "watch", "ps", "hub", "auth", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
@@ -1944,7 +1879,6 @@ CORE
 
 UNATTENDED
   queue add N ...              queue a batch to run once its lanes are free
-  schedule N ... TIME          queue a batch for later
   watch [--headless]           run queued batches
   ps                           headless swimmers on this machine
 

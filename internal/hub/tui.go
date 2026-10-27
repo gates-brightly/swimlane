@@ -226,9 +226,6 @@ func batchLine(b Batch) string {
 	case b.At != "":
 		s += "  at " + b.At
 	}
-	if b.HeldBy != "" {
-		s += "  held until " + b.HeldBy + " has run"
-	}
 	return s
 }
 

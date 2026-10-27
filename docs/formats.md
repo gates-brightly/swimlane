@@ -1,7 +1,7 @@
 # Frozen formats
 
-What swim signs and pins, byte for byte. Approvals, queued and
-scheduled batches and hub commands all record these hashes, so changing
+What swim signs and pins, byte for byte. Approvals, queued
+batches and hub commands all record these hashes, so changing
 how one is computed would void every one of them. **Upgrading swim
 doesn't stale an approval or a pin** while these formats hold. Only
 changes to what you pinned do: your script, the files it includes, its
@@ -54,7 +54,7 @@ line per policy key the committed `swim.yml` sets, sorted by key:
 `<key> <sha256 of the YAML "key: value">`. A key that `swim.yml` doesn't
 set adds nothing. A list or map that it writes, even an empty one, counts
 as set. The policy keys are `config.PolicyKeys`. A key that isn't policy,
-such as `max_parallel` or `chime`, never counts. Neither does the
+such as `max_parallel` or `interrupt`, never counts. Neither does the
 operator's own `config.yml`, which differs from machine to machine.
 
 So **a policy key that swim adds later changes nothing** for a repo that

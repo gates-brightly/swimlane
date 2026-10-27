@@ -638,7 +638,7 @@ function Lanes({ r, store }) {
         <td><${Pill} state=${laneState(l.state, l.dry_run)}/>
           ${laneState(l.state, l.dry_run) === 'dry run' ? html`<div class="sub wait">its change didn't run: ${l.dry_run.join('; ')}</div>` : ''}
           ${l.state === 'running' ? html`<div><${When} t=${l.started} label="started"/></div>` : l.finished ? html`<div><${When} t=${l.finished} label="ended"/></div>` : ''}
-          ${l.paused ? html`<div class="sub">paused ${l.paused}</div>` : ''}${l.scheduled ? html`<div class="sub">${l.scheduled}</div>` : ''}
+          ${l.paused ? html`<div class="sub">paused ${l.paused}</div>` : ''}
           ${l.reason ? html`<div class="sub">${l.reason}</div>` : ''}</td>
         <td>${l.step || ''}${l.progress ? html` <progress max="100" value=${pct(l.progress)}></progress> <span class="sub">${l.progress}</span>` : ''}
           ${l.message ? html`<div class="sub">${l.message}</div>` : ''}${l.cells ? html`<div class="sub">${l.cells}</div>` : ''}</td>
@@ -687,7 +687,7 @@ function Queue({ r, store }) {
         <td class="mono">${b.seq || ''}</td><td class="mono">${b.id}</td>
         <td><${Pill} state=${b.state === 'done' && b.result ? b.result : b.state} label=${b.state + (b.result ? ': ' + b.result : '')}/>
           ${b.daily ? html`<div class="sub">${b.daily}</div>` : b.at ? html`<div class="sub">at ${b.at}</div>` : ''}
-          ${b.held_by ? html`<div class="sub">held until ${b.held_by} has run</div>` : ''}</td>
+</td>
         <td>${b.finished ? html`<${When} t=${b.finished} label="ended"/>` : b.started ? html`<${When} t=${b.started} label="started"/>` : b.queued ? html`<${When} t=${b.queued} label="queued"/>` : ''}
           ${b.run ? html`<div class="sub"><a href=${href('e', e.id, 'runs', b.run)}>${b.run}</a></div>` : ''}</td>
         <td><div class="lanes-cell">${(b.lanes || []).map((l) => html`<span class="chip">${l}</span>`)}</div></td>

@@ -55,7 +55,7 @@ runs, and a lockfile. Never a fetch at run time.
   ```
 - **Run time only reads the lock.** A lane naming a fetched module that
   isn't in `.swim/modules/` with the locked hash doesn't start: `module
-  pagerduty 2.3.1 isn't here: swim modules get`. A queued or scheduled
+  pagerduty 2.3.1 isn't here: swim modules get`. A queued
   batch pins the module's hash with the rest of its manifest.
 - **Changing the lock is a reviewed diff.** `.swim.lock` is committed, so an
   upgrade (`swim modules get --upgrade pagerduty`) shows up in review, and

@@ -604,9 +604,6 @@ lane's state and round; output scrolls underneath, prefixed `[N]`.
 - **No terminal, or `--plain`:** output is plain prefixed lines.
 - **`--yaml`:** output is a stream of YAML events instead (see
   [Scripting](#scripting-and-yaml)).
-- **Chime:** `swim config chime on` rings the bell when a run ends, and
-  when `swim watch` finishes each queued job; set it to `failure` to ring
-  only when something went wrong.
 
 ### Dependencies, parallelism and locks
 
@@ -1041,12 +1038,9 @@ swim wait [--timeout D]                                  # block until idle and 
   approves nothing.
 - **The batch is signed by whoever queued it,** so standing approvals for
   that person apply to it.
-- **`swim schedule 1 3 22:00 --approve FLAG`** queues a batch that a
-  swimmer starts no earlier than 22:00 (a maintenance window, after
-  hours): pinned and approved now, signed with its start time. Batches
-  queued after it that depend on its lanes wait for it. The reply says
-  the time in your zone and UTC, and warns when no `swim watch` runs to
-  start it.
+- **A maintenance window:** queue the batch now (pinned and approved now),
+  and start a swimmer when the window opens: `swim watch --once`, by hand
+  or from cron.
 - **`swim watch`** runs queued batches side by side, then consumes each
   into `.swim/queue/done/` with its result.
   - **A batch starts once its lanes are free:** none in another batch or
@@ -1382,7 +1376,6 @@ they waited for.
 | `swim trash N\|JOB` / `swim trash --restore STAMP` | Move one lane out of the way, recoverably: its script to `.swim/cleaned/`, its log archived (`d` in `swim watch`, the hub's Trash button). |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
-| `swim schedule LANES... TIME [--approve F]`, `swim schedule list\|rm ID` | Queue a batch that starts no earlier than TIME (`13:30`, `1:30pm`, `tomorrow 06:00`, `+2h`). |
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's swimmer; on a terminal, pick a job to run (`r`), or add jobs to a batch (`q`) and submit it (`s`). |
 | `swim watch --headless [--detach\|--status\|--stop\|--install systemd\|launchd\|--uninstall]` | The swimmer with no terminal, in the background or as a service. |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
@@ -1434,7 +1427,6 @@ Personal settings live outside the repo, so workers can't change them:
 # ~/.config/swim/config.yml  ($XDG_CONFIG_HOME/swim/config.yml)
 defaults:
   header_env: [STAGE, AWS_PROFILE]       # env recorded in every step header (never secrets)
-  chime: failure                         # true | false | failure
   approvals: prompt                      # prompt | flags (never ask)
   interrupt: graceful                    # graceful | immediate
   signing_key: ~/.ssh/id_ed25519.pub     # signs the chain and approvals (a .pub: via ssh-agent)

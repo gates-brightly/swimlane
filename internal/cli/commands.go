@@ -116,29 +116,9 @@ func mergeGitignore(path string) (bool, error) {
 
 // refreshStatus records each lane's pending round from the lane scripts on disk.
 func refreshStatus(root string, cfg *config.Config) error {
-	// Scheduled batches waiting, and the batches they hold (swim schedule).
-	entries, _ := queue.List(root, false)
-	held := heldBy(root, cfg, entries)
-	sched, holder := map[int]*queue.Entry{}, map[int]string{}
-	for _, e := range entries {
-		for _, l := range e.Lanes {
-			switch {
-			case e.State == queue.Queued && e.NotBefore != "":
-				if sched[l.Lane] == nil {
-					sched[l.Lane] = e
-				}
-			case held[e.ID] != nil:
-				holder[l.Lane] = held[e.ID].ID
-			}
-		}
-	}
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		for i := range f.Lanes {
 			l := &f.Lanes[i]
-			l.ScheduledFor, l.Schedule, l.HeldBy = "", "", holder[l.Lane]
-			if e := sched[l.Lane]; e != nil {
-				l.ScheduledFor, l.Schedule = e.NotBefore, e.ID
-			}
 			info, err := lane.ReadScript(root, l.Lane)
 			if err != nil {
 				return err
@@ -390,7 +370,6 @@ type runFlags struct {
 	plain, rerun     bool
 	runID            string
 	parallel         string
-	chime, noChime   bool
 	yaml, yamlOutput bool
 	interrupt        string
 	noTUI            bool
@@ -411,7 +390,7 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 		}
 	}
 	return flags{
-		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "chime": &rf.chime, "no-chime": &rf.noChime,
+		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun,
 			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes,
 			"replace": &rf.replace},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
@@ -449,9 +428,6 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if rf.runID != "" && !lane.ValidRunID(rf.runID) {
 		return usagef("--run-id %q: use 8-64 letters, digits, '.', '_' or '-' (not all digits)", rf.runID)
-	}
-	if rf.chime && rf.noChime {
-		return usagef("use --chime or --no-chime, not both")
 	}
 	if rf.yamlOutput {
 		rf.yaml = true
@@ -506,12 +482,6 @@ func runLanes(rest []string, rf runFlags) error {
 			return fmt.Errorf("%s", note)
 		}
 	}
-	// A lane a scheduled batch holds runs then, not now: twice otherwise.
-	for _, n := range lanes {
-		if e := scheduledHolding(root, n); e != nil {
-			return fmt.Errorf("swim %d is scheduled for %s in %s (#%d); swim schedule rm %s first, or wait for it", n, scheduledAt(e), e.ID, e.Seq, e.ID)
-		}
-	}
 	// Pre-flight: lint's error-level checks the launcher doesn't enforce (lint.go).
 	if err := lintPreflight(root, cfg, lanes, rerun); err != nil {
 		return err
@@ -524,7 +494,6 @@ func runLanes(rest []string, rf runFlags) error {
 	o := launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
-		Finished:    chimeWhenDone(cfg, rf),
 		Interactive: !rf.noTUI && display.TUIAllowed(os.Getenv),
 		Interrupt:   rf.interrupt,
 		// The secrets key's passphrase, if it has one, is asked here

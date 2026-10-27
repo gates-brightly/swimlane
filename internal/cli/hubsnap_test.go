@@ -40,9 +40,9 @@ func TestHubSnapshotUnprompted(t *testing.T) {
 	}
 }
 
-// The hub sees schedules: a scheduled batch with its time, and a batch it
-// holds.
-func TestHubSnapshotSchedules(t *testing.T) {
+// A batch an older swim scheduled still waits for its time, and the hub
+// says when; a batch after it is just queued (nothing holds it any more).
+func TestHubSnapshotScheduledBatch(t *testing.T) {
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte("#!/usr/bin/env bash\n# Round: upstream\nrun \"x\" true\n"), 0o755)
 	os.WriteFile(filepath.Join(root, "lane.2.sh"), []byte("#!/usr/bin/env bash\n# Round: downstream\n# After: 1\nrun \"x\" true\n"), 0o755)
@@ -55,10 +55,10 @@ func TestHubSnapshotSchedules(t *testing.T) {
 	for _, b := range s.Queue {
 		byID[b.ID] = b
 	}
-	if b := byID["q-sched"]; b.State != "scheduled" || !strings.Contains(b.At, "(UTC) · in ") {
+	if b := byID["q-sched"]; b.State != "scheduled" || b.At != "not before "+at {
 		t.Errorf("scheduled batch: %+v", b)
 	}
-	if b := byID["q-after"]; b.State != "held" || b.HeldBy != "#1" {
-		t.Errorf("held batch: %+v", b)
+	if b := byID["q-after"]; b.State != "queued" {
+		t.Errorf("batch after it: %+v", b)
 	}
 }

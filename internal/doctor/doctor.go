@@ -64,11 +64,6 @@ type Options struct {
 	// Headless is what swim knows of this repo's headless worker (swim
 	// watch --headless); nil skips the headless checks.
 	Headless *Headless
-	// Scheduled lists the scheduled batches waiting ("#3 swim 1 at
-	// 13:30:00(CDT) ..."), and WorkerUp whether a swim watch runs here
-	// (swim schedule; nil when not known).
-	Scheduled []string
-	WorkerUp  func() bool
 	// Reclaim is what swim prune --older 30d would free (nil: not known).
 	Reclaim func() (items int, bytes int64)
 }
@@ -119,6 +114,7 @@ var Checks = []Check{
 	{"config-parse", false, "the config file doesn't load", checkConfigParse},
 	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
 	{"lanes-setting", false, "a `lanes:` setting (swim finds the lanes in use; it's ignored)", checkLanesSetting},
+	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz; it's ignored)", checkRemovedSettings},
 	{"gitignore", true, "swim's .gitignore block is missing or out of date", checkGitignore},
 	{"tracked", false, "lane scripts or swim state tracked by git", checkTracked},
 	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
@@ -144,7 +140,6 @@ var Checks = []Check{
 	{"headless-yes", false, "a headless service runs with -y: it approves every guard in every batch", checkHeadlessYes},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 	{"pause-long", false, "a lane has been paused (swim pause) longer than pause_warn, holding its locks and slot; or the repo-wide pause is left on", checkPauseLong},
-	{"schedule-no-worker", false, "batches are scheduled, but no swim watch runs to start them", checkScheduleNoWorker},
 	{"prune-reclaim", false, "swim prune --older 30d would free over 100 MB", checkPruneReclaim},
 	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
 	{"module-go", false, "a lane uses a Go module from the repo, and there's no Go toolchain here to build it", checkModuleGo},
@@ -452,6 +447,23 @@ func checkLanesSetting(o *Options) []finding.Finding {
 	}
 	return []finding.Finding{fd(finding.Warn, "lanes-setting", file, "remove `lanes:` (from swim.yml, the repo's config section or defaults)",
 		"`lanes:` is no longer used: swim shows the lanes in use (a script, a current log or a running process), and `swim archive N` drops one")}
+}
+
+// checkRemovedSettings points out keys swim.yml or config.yml's defaults
+// still set though swim no longer has them: read and ignored.
+func checkRemovedSettings(o *Options) []finding.Finding {
+	var out []finding.Finding
+	for _, src := range []struct {
+		file string
+		keys []string
+	}{{o.Cfg.RepoFile, o.Cfg.Repo.RemovedKeys()}, {o.Cfg.Path, o.Cfg.Settings.RemovedKeys()}} {
+		if src.file == "" || len(src.keys) == 0 {
+			continue
+		}
+		out = append(out, fd(finding.Warn, "removed-setting", src.file, "delete "+strings.Join(src.keys, ", "),
+			"%s: swim no longer has these settings; they're ignored", strings.Join(src.keys, ", ")))
+	}
+	return out
 }
 
 func lines(s string) []string {
@@ -968,15 +980,6 @@ func checkAmbientCredentials(o *Options) []finding.Finding {
 		}
 	}
 	return out
-}
-
-// checkScheduleNoWorker: scheduled batches start only while a worker runs.
-func checkScheduleNoWorker(o *Options) []finding.Finding {
-	if len(o.Scheduled) == 0 || o.WorkerUp == nil || o.WorkerUp() {
-		return nil
-	}
-	return []finding.Finding{fd(finding.Warn, "schedule-no-worker", ".swim/queue/", "swim watch (or swim watch --headless --detach)",
-		"%d scheduled batches, and no swim watch runs here to start them: %s", len(o.Scheduled), strings.Join(o.Scheduled, "; "))}
 }
 
 // remoteRunningFor is how long a lane may run on another machine before

@@ -84,11 +84,7 @@ func trashLane(root string, cfg *config.Config, r trashReq) (*trashed, error) {
 				if l.Lane != n {
 					continue
 				}
-				what, rm := "a queued batch", fmt.Sprintf("swim queue rm %d", e.Seq)
-				if e.NotBefore != "" {
-					what, rm = "a scheduled batch", fmt.Sprintf("swim schedule rm %d", e.Seq)
-				}
-				return nil, fmt.Errorf("swim %d is in %s, #%d, which is pinned to its script: %s first", n, what, e.Seq, rm)
+				return nil, fmt.Errorf("swim %d is in a queued batch, #%d, which is pinned to its script: swim queue rm %d first", n, e.Seq, e.Seq)
 			}
 		}
 	}

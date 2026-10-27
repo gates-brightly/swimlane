@@ -24,7 +24,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/module"
 	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/schedule"
 	"github.com/gates-brightly/swimlane/internal/secrets"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -62,21 +61,6 @@ func cmdQueue(args []string) error {
 // queueAdd queues a batch: the named lanes (or every pending round that
 // hasn't passed), pinned to the jobs they hold now, with approvals.
 func queueAdd(args []string) error {
-	// --at TIME: the same batch, scheduled (swim schedule).
-	for i, a := range args {
-		at, ok := "", false
-		switch {
-		case a == "--at" && i+1 < len(args):
-			at, ok = args[i+1], true
-			args = append(append([]string(nil), args[:i]...), args[i+2:]...)
-		case strings.HasPrefix(a, "--at="):
-			at, ok = strings.TrimPrefix(a, "--at="), true
-			args = append(append([]string(nil), args[:i]...), args[i+1:]...)
-		}
-		if ok {
-			return scheduleAdd(append(args, strings.Fields(at)...), "swim queue add --at")
-		}
-	}
 	var approve []string
 	var note, parallel, keyPath, timeout string
 	var yes, wait bool
@@ -229,9 +213,6 @@ type queueOpts struct {
 	yes      bool
 	parallel *int
 	keyPath  string
-	// notBefore (UTC, RFC 3339) and zone make it a scheduled batch (swim
-	// schedule).
-	notBefore, zone string
 }
 
 // warnUnapproved says, on stderr, which lanes of a batch that approves
@@ -293,8 +274,7 @@ type batch struct {
 // addBatch queues lanes as one batch, pinned to the scripts and env they
 // hold now, signed with the operator's key when there is one, and logs it.
 func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch, error) {
-	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel,
-		NotBefore: o.notBefore, Zone: o.zone}
+	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel}
 	b := batch{entry: e}
 	var err error
 	if e.Lanes, e.Approve, b.guards, err = pinBatch(root, cfg, lanes, o.approve); err != nil {
@@ -320,16 +300,10 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 		return b, err
 	}
 	// A worker up now that can't run it: refuse, rather than queue a batch
-	// that waits on (or used to fail in) the wrong swim. A scheduled batch
-	// runs later, maybe on another worker: warn.
+	// that waits on (or used to fail in) the wrong swim.
 	refuse, warnWorkers := checkWorkers(root, e)
-	switch {
-	case refuse != nil && o.notBefore == "":
+	if refuse != nil {
 		return b, refuse
-	case refuse != nil:
-		warnWorkers = refuse.Error()
-	case o.notBefore != "":
-		warnWorkers = "" // swim schedule says when no worker is up
 	}
 	if err := queue.Add(root, e); err != nil {
 		return b, err
@@ -353,11 +327,6 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	}
 	if e.Note != "" {
 		detail += "  " + e.Note
-	}
-	if e.NotBefore != "" {
-		detail = fmt.Sprintf("%s: swim %s  not_before=%s  zone=%s", e.ID, strings.Join(ns, ","), e.NotBefore, e.Zone) + strings.TrimPrefix(detail, fmt.Sprintf("%s: swim %s", e.ID, strings.Join(ns, ",")))
-		history.Log(root, history.Entry{Event: history.Schedule, Detail: detail})
-		return b, nil
 	}
 	history.Log(root, history.Entry{Event: history.QueueAdd, Detail: detail})
 	return b, nil
@@ -925,8 +894,8 @@ func cmdWatch(args []string) error {
 			if err != nil {
 				return err
 			}
-			// Waiting, but none due (a schedule) or all held by one.
-			say(fmt.Sprintf("%d queued; none due yet%s", n, nextScheduled(root)))
+			// Waiting, but none due (a batch an older swim scheduled).
+			say(fmt.Sprintf("%d queued; none due yet", n))
 			sleep()
 			continue
 		}
@@ -1025,14 +994,6 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		res.Finished, res.Exit, res.Result, res.Error = res.Started, 1, "error", why
 		fmt.Println("swim watch: " + why)
 		return res, false
-	}
-	if e.NotBefore != "" {
-		at, _ := time.Parse(time.RFC3339, e.NotBefore)
-		late := ""
-		if d := started.Sub(at); d >= time.Minute {
-			late = ", started " + schedule.Until(at, started) + " (after its scheduled time)"
-		}
-		history.Log(root, history.Entry{Event: history.ScheduleStart, Detail: fmt.Sprintf("%s: %s  scheduled for %s%s", e.ID, lanesText(laneNums(e)), e.NotBefore, late)})
 	}
 	var lanes []int
 	pins := map[int]string{}
@@ -1239,4 +1200,17 @@ func queueApproved(root string, cfg *config.Config) []string {
 		msgs = append(msgs, fmt.Sprintf("queued swim %d (%s): approved by %s", f.Lane, e.ID, strings.Join(names, ", ")))
 	}
 	return msgs
+}
+
+// scheduleTampered says why a signed batch with a start time (queued by a
+// swim that had swim schedule) must not run: its file no longer matches
+// what was signed (its start time moved, say).
+func scheduleTampered(e *queue.Entry) string {
+	if e.NotBefore == "" || e.QueueSig == "" {
+		return ""
+	}
+	if err := sign.Verify(e.QueuedKey, []byte(e.Statement()), e.QueueSig); err != nil {
+		return fmt.Sprintf("%s's signature doesn't match its file (edited after it was scheduled, its start time moved?): refused", e.ID)
+	}
+	return ""
 }
