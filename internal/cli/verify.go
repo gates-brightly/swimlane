@@ -50,6 +50,7 @@ type verifier struct {
 	unlisted         map[string]bool // fingerprints of signers not in lookup.yml
 	unsigned         []int
 	unsignedBad      string // unsigned entries nothing vouches for (not BROKEN: nothing changed)
+	covered          int    // unsigned entries a later signed one links to
 	rounds           int
 	approvals        int
 	// trust says whether a key is trusted (nil without trust.yml): for
@@ -114,6 +115,7 @@ func cmdVerify(args []string) error {
 	// that signature covers it through the links (a chain that gained a
 	// key later). The ones after the last signed entry nothing vouches for.
 	covered, trailing := splitUnsigned(links, unsigned)
+	v.covered = len(covered)
 	if len(covered) > 0 {
 		v.warn = append(v.warn, fmt.Sprintf("%d unsigned entries (#%s), recorded before a signed one that links to them, so they can't change unseen", len(covered), joinNums(covered)))
 	}
@@ -465,8 +467,11 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 		}
 	}
 	signed := "every one signed and linked"
-	if len(v.unsigned) > 0 {
-		signed = fmt.Sprintf("linked, %d unsigned (accepted: --allow-unsigned)", len(v.unsigned))
+	switch trailing := len(v.unsigned) - v.covered; {
+	case trailing > 0:
+		signed = fmt.Sprintf("linked, %d unsigned (%d accepted: --allow-unsigned)", len(v.unsigned), trailing)
+	case v.covered > 0:
+		signed = fmt.Sprintf("linked, %d unsigned (covered by a later signed entry)", v.covered)
 	}
 	fmt.Printf("%s: %s, %s; logs, scripts and approvals as recorded\n", p.Paint(ui.Green+ui.Bold, "VERIFIED"), plural(len(links), "entry"), signed)
 	for _, c := range caveats {

@@ -230,3 +230,21 @@ func TestOldModulePinsStillHash(t *testing.T) {
 		t.Error("module pins of an older manifest aren't hashed")
 	}
 }
+
+// A staged copy an older swim recorded with the v1 manifest hash still
+// verifies, and a pin changed under it still fails.
+func TestVerifyV1Manifest(t *testing.T) {
+	root := repo(t)
+	m := build(t, root, 3)
+	if _, err := m.Stage(root, "r-1"); err != nil {
+		t.Fatal(err)
+	}
+	m.SHA256 = m.Pinned.hashV1(3)
+	if err := m.Verify(); err != nil {
+		t.Fatalf("a v1-hashed staged copy: %v", err)
+	}
+	m.Pinned.Runner = "bash (edited)"
+	if err := m.Verify(); err == nil || !strings.Contains(err.Error(), FileName) {
+		t.Errorf("an edited v1 pin: %v", err)
+	}
+}

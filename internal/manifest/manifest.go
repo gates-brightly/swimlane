@@ -254,6 +254,13 @@ func (p Pinned) Hash(n int) string {
 	return hash([]byte(p.text("swim manifest v2", n, "config: "+p.Config.SHA256)))
 }
 
+// hashV1 is the manifest v1 hash of the pins (swim before 0b9aba3,
+// 2026-10-24): what a manifest staged by an older swim recorded. Frozen:
+// swim verify rechecks those staged copies with it.
+func (p Pinned) hashV1(n int) string {
+	return hash([]byte(p.text("swim manifest v1", n, fmt.Sprintf("config: v%d %s", p.Config.Version, p.Config.SHA256))))
+}
+
 // text is the hashed form of the pins: head, then the lane, script,
 // includes, sidecar, modules, runner, config line and lookup rules.
 func (p Pinned) text(head string, n int, config string) string {
@@ -394,7 +401,7 @@ func FromEnv(n int) *Manifest {
 // what changed.
 func (m *Manifest) Verify() error {
 	var changed []string
-	if m.Pinned.Hash(m.Lane) != m.SHA256 {
+	if m.Pinned.Hash(m.Lane) != m.SHA256 && m.Pinned.hashV1(m.Lane) != m.SHA256 {
 		changed = append(changed, FileName)
 	}
 	check := func(what string, f File) {

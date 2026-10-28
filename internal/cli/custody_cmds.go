@@ -851,6 +851,12 @@ func short12(s string) string {
 // consistent level); something gone is a warning.
 func (v *verifier) checkEntries(links []chain.Link) {
 	root := v.root
+	var logsGone []int // rounds whose log was deleted, not archived
+	defer func() {
+		if len(logsGone) > 0 {
+			v.warn = append(v.warn, fmt.Sprintf("the logs of %s are gone (deleted, not archived), so their contents can't be rechecked: #%s", plural(len(logsGone), "round"), joinNums(logsGone)))
+		}
+	}()
 	runs, unattested := attestations(links)
 	// Runs swim run started (their rounds ran staged copies), and those
 	// that were cut short (a launcher killed before it could attest).
@@ -953,7 +959,7 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				case !sums[l.Log] && prunedAt[l.Log] != "":
 					v.notes = append(v.notes, fmt.Sprintf("entry #%d: swim %d's log for run %s was pruned on %s (swim prune): its contents can't be rechecked", l.Seq, l.Lane, l.Run, prunedAt[l.Log]))
 				case len(sums) == 0:
-					v.warn = append(v.warn, fmt.Sprintf("entry #%d: swim %d's log for run %s is gone (deleted, not archived)", l.Seq, l.Lane, l.Run))
+					logsGone = append(logsGone, l.Seq) // one line for them all, below
 				case !sums[l.Log]:
 					v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's log for run %s was changed after the round ended", l.Seq, l.Lane, l.Run))
 				}

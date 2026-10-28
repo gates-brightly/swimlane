@@ -61,7 +61,7 @@ func TestVerifyRefusesUnsigned(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "NOT VERIFIED") || !strings.Contains(out, "unsigned entries") {
 		t.Fatalf("verify of an unsigned chain: exit %d\n%s", code, out)
 	}
-	contains(t, "allowed", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED", "unsigned (accepted: --allow-unsigned)")
+	contains(t, "allowed", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED", "accepted: --allow-unsigned)")
 	rewriteChain(t, r, nil)
 	if out, code := r.swim("verify"); code != 1 || !strings.Contains(out, "NOT VERIFIED") {
 		t.Errorf("verify of a rewritten unsigned chain: exit %d\n%s", code, out)
