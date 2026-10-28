@@ -50,7 +50,12 @@ func cmdApproveHook(args []string) error {
 	job, run := os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN")
 	dryRun := func(why string) error {
 		detail := "dry run: set " + flag + "=1 to approve"
-		if why != "" {
+		switch {
+		case approvalMismatch(why):
+			// What was signed changed: the way on is to look at the change
+			// and sign it, not to wave it through unsigned.
+			detail = "dry run: " + why + "; review the change (swim approve " + args[0] + " shows the manifest), then: swim approve " + args[0] + " --guards " + flag
+		case why != "":
 			detail = "dry run: " + why + "; set " + flag + "=1 to approve"
 		}
 		if err := cmdMark([]string{args[0], logparse.Skip, desc, detail}); err != nil {
@@ -375,3 +380,10 @@ func roundDeadline() time.Time {
 // approveRecorded is set when swim _approve has put an approval in the
 // chain itself, so the _mark it calls doesn't record it twice.
 var approveRecorded bool
+
+// approvalMismatch says a guard's reason for a dry run is a signed
+// approval of something other than what's running (another version of the
+// script, or a stale manifest).
+func approvalMismatch(why string) bool {
+	return strings.Contains(why, "approves another version of") || strings.Contains(why, ": stale: ")
+}

@@ -29,7 +29,8 @@ swim approve 1 --guards CERT_ALLOW_ROTATE    # you sign the script, install.sh, 
 echo 'echo DROP EVERYTHING' > install.sh     # anyone changes a file it uses after you signed
 swim run 1 --no-prompt
 #   SKIP  replace the live cert (dry run: ...signature approves another version of lane.1.sh
-#         (approved c4d0cc7ede49, running 12a561d369b4))
+#         (approved c4d0cc7ede49, running 12a561d369b4); review the change ..., then:
+#         swim approve 1 --guards CERT_ALLOW_ROTATE)
 
 git checkout install.sh && swim run 1         # back to the bytes you signed
 #   APPROVED  replace the live cert (approved by me (signed))

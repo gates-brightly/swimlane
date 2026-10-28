@@ -66,7 +66,10 @@ func TestTamperStoryFreshRepo(t *testing.T) {
 	contains(t, "first approval", r.mustSwim("approve", "1", "--guards", "CERT_ALLOW_ROTATE"), "wrote lookup.yml")
 	r.write("install.sh", "echo DROP EVERYTHING\n", 0o644)
 	out, _ := r.swim("run", "1", "--no-prompt", "--plain")
-	contains(t, "changed install.sh", out, "dry run", "approves another version")
+	contains(t, "changed install.sh", out, "dry run", "approves another version", "review the change", "swim approve 1 --guards CERT_ALLOW_ROTATE")
+	if strings.Contains(out, "CERT_ALLOW_ROTATE=1") {
+		t.Errorf("a changed approval suggests the unsigned bypass:\n%s", out)
+	}
 	r.write("install.sh", "echo installing new cert\n", 0o644)
 	contains(t, "signed bytes", r.mustSwim("run", "1", "--no-prompt", "--plain"), "APPROVED", "(signed)")
 }

@@ -318,6 +318,10 @@ and read.
   shows the name. `swim lint` (task) refuses a name that is a swim
   command, only hex digits, or another lane's. See
   [docs/formats.md](docs/formats.md#task-names).
+- **A changed approval doesn't suggest the bypass.** When a signed
+  approval covers another version of the script or a stale manifest, the
+  dry run says to review the change and `swim approve N --guards FLAG`,
+  not `set FLAG=1 to approve`, the unsigned way past it.
 - **UNSIGNED isn't BROKEN.** `swim verify` reported unsigned entries as
   BROKEN, the word for tampering, and they stayed BROKEN after you added a
   key. Unsigned entries a later signed entry links to are now a warning
