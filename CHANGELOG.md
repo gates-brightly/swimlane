@@ -19,15 +19,20 @@ one has **Upgrading** notes; read them and `swim lock --help` before running
 lanes. A release that changes what an approval or pin hashes says so under
 **Upgrading** ([formats](docs/formats.md)). Revisions before versioning existed are named by commit.
 
+Release tags live on `origin`, which is GitHub: its tags are authoritative
+(the next index is read from them), and `fj` (Forgejo) mirrors them.
+
 To cut a release:
 1. `DRY=1 just next-tag` prints the next tag, `v0.<today>.<index>`.
 2. Rename `## Unreleased` to `## 0.<date>.<index> (v0.<date>.<index>, <date>)`,
    and start a new empty `## Unreleased` above it.
-3. Commit, then run `just release v0.<date>.<index>`. It refuses to tag
-   unless the date, the index, the changelog and a clean tree all agree.
+3. Commit and push to origin's main, then run `just release v0.<date>.<index>`.
+   It refuses to tag unless the date, the index, the changelog and a clean
+   tree all agree. Then `git push origin v0.<date>.<index>` and `just mirror-tags`.
 
 Or tag what's on main as it is: `just next-tag` tags HEAD (a clean tree,
-already pushed to origin's main) with the next tag and pushes that tag.
+already pushed to origin's main) with the next tag, pushes it to origin,
+then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ## Unreleased
 

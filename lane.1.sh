@@ -28,7 +28,7 @@ run "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gof
 gate "go build" go build ./...
 run "go vet" go vet ./...
 run "swim lint (the CI rounds)" "$SWIM_BIN" lint --strict
-run "shell syntax" bash -c 'for f in scripts/hermetic scripts/release.sh scripts/next-tag.sh e2e/run.sh e2e/lib/common.sh e2e/lib/fakebin/*; do bash -n "$f" || exit 1; done'
+run "shell syntax" bash -c 'for f in scripts/hermetic scripts/release.sh scripts/next-tag.sh scripts/mirror-tags.sh scripts/tag-remotes.sh e2e/run.sh e2e/lib/common.sh e2e/lib/fakebin/*; do bash -n "$f" || exit 1; done'
 # internal/e2e runs in lanes 2-4.
 run "go test (unit)" scripts/hermetic bash -c 'go test $(go list ./... | grep -v /internal/e2e)'
 # The e2e suite drives the swim binary, which -race here doesn't instrument.

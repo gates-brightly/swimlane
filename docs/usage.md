@@ -963,8 +963,9 @@ just test             # unit tests (fast)
 just e2e              # the Go e2e suite and every scenario (just e2e dag99 ... for some)
 just check            # gofmt, vet, unit and e2e tests
 just ci               # this repo's CI rounds, through swim ci
-just next-tag                         # tag HEAD with the next release tag (today's date, the day's next index) and push it; DRY=1 just next-tag prints it
-just release v0.<YYYYMMDD>.<index>    # tag it (checks the date, index, CHANGELOG, clean tree; never pushes)
+just next-tag                         # tag HEAD with the next release tag (today's date, the day's next index on origin) and push it to origin (GitHub), then fj (Forgejo); DRY=1 prints it
+just release v0.<YYYYMMDD>.<index>    # tag it (checks the date, index against origin's tags, CHANGELOG, clean tree; never pushes)
+just mirror-tags                      # push every release tag origin has that fj lacks; DRY=1 prints them
 ```
 
 - **Two layers of end-to-end tests:**

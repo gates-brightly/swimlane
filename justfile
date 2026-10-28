@@ -25,13 +25,17 @@ install:
     go install -ldflags "{{ldflags}}" {{pkg}}
     @{{just_executable()}} which
 
-# Tag a release after checking its date and index, CHANGELOG.md and a clean tree (v0.<YYYYMMDD>.<index>); never pushes
+# Tag a release after checking its date and index (against origin's tags), CHANGELOG.md and a clean tree (v0.<YYYYMMDD>.<index>); never pushes
 release v:
     @bash ./scripts/release.sh {{v}}
 
-# Tag HEAD (clean, already on origin/main) with the next release tag, v0.<today>.<index>, and push it (DRY=1: print only)
+# Tag HEAD (clean, already on origin/main) with the next release tag, v0.<today>.<index>; push it to origin (GitHub, authoritative), then fj (Forgejo) (DRY=1: print only)
 next-tag:
     @bash ./scripts/next-tag.sh
+
+# Push every release tag origin (GitHub) has that fj (Forgejo) lacks (DRY=1: print only)
+mirror-tags:
+    @bash ./scripts/mirror-tags.sh
 
 # go install the published swim (v0.20261014.1 to pin; default latest)
 install-latest v="latest":
