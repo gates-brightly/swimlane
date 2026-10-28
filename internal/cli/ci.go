@@ -156,9 +156,19 @@ func cmdCi(args []string) error {
 	}
 	fmt.Fprintln(out)
 
+	// Run locally (just ci), swim ci is local CI: lanes with # Signoff: sign
+	// off. In a CI job they don't; that job's own status says how it went.
+	local := !ci.InCI(os.Getenv)
+	var head headState
+	if local {
+		head = signoffHead(root)
+	}
 	code, err := launcher.Run(o)
 	if err != nil {
 		return err
+	}
+	if local {
+		signoffsAfterRun(root, cfg, o.RunID, head)
 	}
 	checkpointAfterRun(root, cfg)
 	// CI can't approve: a dry run is what a guarded lane does there, so it

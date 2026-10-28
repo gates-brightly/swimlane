@@ -840,7 +840,8 @@ swim signoff verify .swim/signoffs/<commit>/1.json
 
 The lane declares the signoff; swim does it, like a chain checkpoint,
 after the round and with the credentials of whoever runs the launcher:
-`swim run`, or the swimmer under `swim watch`. The lane never needs the
+`swim run`, `swim ci` run locally (`just ci`), or the swimmer under
+`swim watch`. `swim ci` in a CI job doesn't sign off. The lane never needs the
 key or a `gh` login. Approving the script approves the signoff.
 
 swim signs off only when the tree was HEAD's as the run started and still

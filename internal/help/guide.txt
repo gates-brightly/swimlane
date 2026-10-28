@@ -404,8 +404,9 @@ WRITING A LANE SCRIPT
                                       See CACHE. Default: none
       # Signoff: <context>            local CI: when the round passes on a clean HEAD (the
                                       lane script committed), swim signs it with the key of
-                                      whoever ran swim run or swim watch, and posts commit
-                                      status <context> (swim/checks) through their gh.
+                                      whoever ran swim run, swim watch or a local swim ci,
+                                      and posts commit status <context> (swim/checks)
+                                      through their gh.
                                       Approving the script approves it. Default: none
       # Observe: NAME = <command>     a fact swim can't pin (the cloud account, ...): read
       # Observe: path CMD [CMD ...]   when a guard is approved and again just before it

@@ -814,7 +814,8 @@ swim revoke --auto USER [--key K]
 
   A lane with # Signoff: CONTEXT is local CI: when its round passes, swim
   (not the lane) signs a statement with the key of whoever runs the
-  launcher, swim run or the swimmer under swim watch: the commit and its
+  launcher (swim run, swim ci run locally, or the swimmer under swim
+  watch; never swim ci in a CI job): the commit and its
   tree, the lane, its script and manifest hashes, the job and run. It
   goes in .swim/signoffs/COMMIT/N.json, and a success commit status named
   CONTEXT goes to GitHub through their gh, which branch protection can
