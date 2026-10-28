@@ -59,7 +59,7 @@ case "$first" in
   *) die "CHANGELOG.md's newest revision is '${first#\#\# }', not '0.$D.$I ($V, $iso)'" ;;
 esac
 
-[ -z "$(git status --porcelain)" ] || die "the working tree isn't clean; commit the release first (git status)"
+[ -z "$(git status --porcelain --untracked-files=no)" ] || die "the working tree isn't clean; commit the release first (git status)"   # untracked files aren't in the tag
 
 go test ./internal/changelog ./internal/version >/dev/null || die "changelog/version tests fail: go test ./internal/changelog ./internal/version"
 

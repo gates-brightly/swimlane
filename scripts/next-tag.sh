@@ -58,7 +58,7 @@ if [ -n "${DRY:-}" ]; then
   exit 0
 fi
 
-[ -z "$(git status --porcelain)" ] || die "the working tree has changes; commit or stash them first (git status)"
+[ -z "$(git status --porcelain --untracked-files=no)" ] || die "the working tree has changes; commit or stash them first (git status)"   # untracked files aren't in the tag
 git fetch -q "$TAG_REMOTE" main || die "couldn't fetch $TAG_REMOTE main"
 git merge-base --is-ancestor HEAD "$TAG_REMOTE/main" || die "$head isn't on $TAG_REMOTE's main yet; push it first (git push $TAG_REMOTE main)"
 # A local tag of that name that origin doesn't have is a leftover (an
