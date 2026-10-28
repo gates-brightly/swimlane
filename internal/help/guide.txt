@@ -15,7 +15,7 @@ USAGE
   swim N|JOB [N|JOB ...]       shorthand for `swim run N|JOB ...`, e.g. `swim 1 2`
   swim <command> --help        detail for one command
   swim guide                   this guide (written for AI planners/workers); swim --help
-                               prints it too when its output isn't a terminal
+                               --full prints it too
 
 COMMANDS
   init                     set up this repo: config entry, .gitignore block, .swim/status.yml

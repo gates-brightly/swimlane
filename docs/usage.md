@@ -924,7 +924,7 @@ they waited for.
 | `swim lock [--upgrade]` / `swim changelog` | The repo's syntax lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
 | `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
-| `swim --help` / `swim guide` / `swim <cmd> --help` | The commands at a glance, the full guide, or one command's detail. (`swim --help` prints the full guide when its output isn't a terminal.) |
+| `swim --help` / `swim guide` / `swim <cmd> --help` | The commands at a glance, the full guide, or one command's detail. (`swim --help --full` prints the guide too.) |
 
 ### Files
 

@@ -1,7 +1,6 @@
 // Package help holds swim's user and agent documentation: the short
-// overview `swim --help` prints on a terminal, the full guide (swim guide,
-// and swim --help anywhere else, so agents still get it) and per-command
-// detail.
+// overview `swim --help` prints, the full guide (swim guide, or
+// swim --help --full) and per-command detail.
 package help
 
 import (

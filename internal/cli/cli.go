@@ -14,7 +14,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/migrate"
 	"github.com/gates-brightly/swimlane/internal/status"
-	"github.com/gates-brightly/swimlane/internal/ui"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -95,6 +94,10 @@ func (e exitError) Error() string { return fmt.Sprintf("exit %d", e.code) }
 // Main runs swim with args (without the program name) and returns the exit code.
 func Main(args []string) int {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+		if len(args) > 1 && args[1] == "--full" {
+			fmt.Print(help.Full())
+			return 0
+		}
 		fmt.Print(helpText())
 		return 0
 	}
@@ -452,13 +455,11 @@ func self() string {
 	return "swim"
 }
 
-// helpText is swim --help: the short overview on a terminal, and the full
-// guide anywhere else, so an agent or a pipe still gets the manual.
+// helpText is swim --help: the short overview, on a terminal or not, so
+// a person piping it to less or grep reads what they'd see. The manual is
+// swim guide (or swim --help --full).
 func helpText() string {
-	if ui.IsTTY(os.Stdout) {
-		return help.Short()
-	}
-	return help.Full()
+	return help.Short()
 }
 
 func cmdGuide(args []string) error {

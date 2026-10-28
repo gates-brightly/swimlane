@@ -637,8 +637,13 @@ func TestStaleRunningShown(t *testing.T) {
 
 func TestHelp(t *testing.T) {
 	r := newRepo(t, "")
-	full := r.mustSwim("--help")
-	contains(t, "--help", full, "PLANNER WORKFLOW", "WORKER RULES", "SAFETY RULES", "READING RESULTS", "COMMAND DETAIL")
+	// Piped or not, --help is the short overview; --help --full the guide.
+	short := r.mustSwim("--help")
+	contains(t, "--help", short, "CORE", "swim guide")
+	if strings.Contains(short, "PLANNER WORKFLOW") || strings.Count(short, "\n") >= 80 {
+		t.Errorf("piped --help printed the guide:\n%s", short)
+	}
+	contains(t, "--help --full", r.mustSwim("--help", "--full"), "PLANNER WORKFLOW", "WORKER RULES", "SAFETY RULES", "READING RESULTS", "COMMAND DETAIL")
 	contains(t, "guide", r.mustSwim("guide"), "PLANNER WORKFLOW", "COMMAND DETAIL")
 	contains(t, "run --help", r.mustSwim("run", "--help"), "waiting on swim N")
 	contains(t, "help status", r.mustSwim("help", "status"), "--rebuild")

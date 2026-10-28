@@ -318,6 +318,10 @@ and read.
   shows the name. `swim lint` (task) refuses a name that is a swim
   command, only hex digits, or another lane's. See
   [docs/formats.md](docs/formats.md#task-names).
+- **`swim --help` is the short overview, piped or not.** It used to print
+  the 2,000-line guide when its output wasn't a terminal, so `swim --help
+  | less` showed a different document. The guide is `swim guide` (or
+  `swim --help --full`).
 - **Output polish.**
   - A lane's summary shows only the stages that ran.
   - A dry run's summary no longer says `exit 0` (swim run exits 3).
