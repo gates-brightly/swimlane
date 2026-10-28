@@ -397,3 +397,33 @@ func TestVerifyUnsigned(t *testing.T) {
 		t.Errorf("covered unsigned entries reported as a failure:\n%s", out)
 	}
 }
+
+// swim init lists the key this machine signs with in lookup.yml as $USER:
+// it writes the file, leaves a listed key alone, and adds a second key to
+// the same user.
+func TestInitListsKey(t *testing.T) {
+	r := newRepo(t, "")
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not installed")
+	}
+	dir := t.TempDir()
+	for _, n := range []string{"laptop", "yubikey"} {
+		if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", n, "-f", filepath.Join(dir, n)).CombinedOutput(); err != nil {
+			t.Fatalf("%v %s", err, out)
+		}
+	}
+	r.mustSwim("config", "signing", "auto")
+	r.mustSwim("config", "signing_key", filepath.Join(dir, "laptop"))
+	env := []string{"USER=zach"}
+	out, _ := r.swimEnv(env, "init")
+	contains(t, "first init", out, "wrote lookup.yml: zach signs with")
+	out, _ = r.swimEnv(env, "init")
+	contains(t, "again", out, "already lists your key", "as zach")
+	r.mustSwim("config", "signing_key", filepath.Join(dir, "yubikey"))
+	out, _ = r.swimEnv(env, "init")
+	contains(t, "second key", out, "added to lookup.yml: zach signs with")
+	lk, _ := os.ReadFile(filepath.Join(r.root, "lookup.yml"))
+	if strings.Count(string(lk), "ssh-ed25519") != 2 || strings.Count(string(lk), "zach:") != 1 {
+		t.Errorf("lookup.yml:\n%s", lk)
+	}
+}

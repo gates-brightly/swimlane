@@ -21,6 +21,10 @@ var Commands = map[string]string{
       existing content and comments are kept
     - adds a marked block to .gitignore: lane.[0-9]*, .env.swim, .swim/,
       .swim.log
+    - lists the key this machine signs with (signing_key, or
+      ~/.ssh/id_ed25519) in lookup.yml as $USER: writes the file, or adds
+      the user, or adds the key to that user; a key already listed is left
+      alone (not under signing: off). Commit lookup.yml.
     - creates .swim/status.yml with every lane idle
     - records "init" in .swim.log, the project log (git-ignored too; drop it
       from the block if you want to commit the project's history)
