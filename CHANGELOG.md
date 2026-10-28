@@ -318,6 +318,14 @@ and read.
   shows the name. `swim lint` (task) refuses a name that is a swim
   command, only hex digits, or another lane's. See
   [docs/formats.md](docs/formats.md#task-names).
+- **Shorter, kinder usage errors.** An unknown flag or a bad argument
+  prints the command's usage lines and `swim CMD --help`, not its whole
+  manual, and a near miss gets "did you mean": `unknown flag --pain (did
+  you mean --plain?)`, `unknown command "histroy" (did you mean
+  history?)`. A word is taken as a job id (`swim 3f2a9c1e`) only when a
+  lane holds that job, so `swim changlog` is a typo, not "no lane holds
+  job changlog". `swim approve N` with no `--guards` says so before it
+  prints the manifest.
 - **A changed approval doesn't suggest the bypass.** When a signed
   approval covers another version of the script or a stale manifest, the
   dry run says to review the change and `swim approve N --guards FLAG`,

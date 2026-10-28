@@ -81,6 +81,7 @@ func cmdApprove(args []string) error {
 	}
 	var f *sigfile.File
 	var scriptGuards []string
+	var showPinned *manifest.Manifest // printed for a new approval
 	if auto != "" {
 		if len(rest) > 0 {
 			return usagef("swim approve --auto USER takes no lanes (it approves every job USER queues)")
@@ -148,7 +149,7 @@ func cmdApprove(args []string) error {
 				Manifest: man, Pinned: &m.Pinned}
 		})
 		if err == nil && len(f.Events) == 0 {
-			printPinned(m)
+			showPinned = m // once the arguments check out
 		}
 	}
 	if err != nil {
@@ -161,6 +162,9 @@ func cmdApprove(args []string) error {
 				return usagef("say what this approves: --guards FLAG[,FLAG] or --all")
 			}
 			all = true // a standing approval defaults to every guard
+		}
+		if showPinned != nil {
+			printPinned(showPinned)
 		}
 		f.Approves, f.All, f.Note = approves, all, note
 		life, err := approvalLifetime(lk, f.Kind, expires)
