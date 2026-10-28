@@ -8,6 +8,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // stageLanes builds each selected lane's execution manifest and stages its
@@ -56,7 +57,12 @@ func pinned(o Options, n int) (why string, refuse bool) {
 		return fmt.Sprintf("%s changed since it was queued (queued %s)", lane.ScriptName(o.Root, n), want[:min(12, len(want))]), false
 	}
 	if want := o.PinManifest[n]; want != "" && !m.Matches(want) {
-		return fmt.Sprintf("its manifest changed since it was queued (queued %s, now %s): its includes, sidecar, runner or swim.yml policy", want[:min(12, len(want))], m.SHA256[:12]), false
+		why := fmt.Sprintf("its manifest changed since it was queued (queued %s, now %s): its includes, sidecar, runner or swim.yml policy", want[:min(12, len(want))], m.SHA256[:12])
+		if q := o.QueuedBy; q != "" && q != version.Long() && q != version.String() {
+			// Another swim may pin the same files differently: the likely cause.
+			why += fmt.Sprintf(", or the swim: queued by swim %s, run by swim %s (queue it again with this swim)", q, version.Long())
+		}
+		return why, false
 	}
 	if want, ok := o.PinEnv[n]; ok && want != m.Local.Env {
 		was := "no env"

@@ -172,7 +172,7 @@ func Add(root string, e *Entry) error {
 	}
 	if e.Swim == "" {
 		cur := version.Current
-		e.Swim, e.Syntax = version.String(), &cur
+		e.Swim, e.Syntax = version.Long(), &cur // with the commit, for a build between releases
 	}
 	if e.Created == "" {
 		e.Created = time.Now().UTC().Format(time.RFC3339)

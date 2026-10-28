@@ -87,6 +87,9 @@ type Options struct {
 	// PinManifest holds the execution manifest (manifest_sha256) a lane
 	// must still hold when it starts (queued batches).
 	PinManifest map[int]string
+	// QueuedBy is the swim that queued the batch (queue.Entry.Swim): a
+	// manifest that no longer matches says so when it isn't this one.
+	QueuedBy string
 	// Heartbeat, if set, prints "[N] still running: <step> (<elapsed>)"
 	// for a running lane silent this long, so a CI log never looks hung.
 	Heartbeat time.Duration

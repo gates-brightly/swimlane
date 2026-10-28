@@ -970,7 +970,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 			pinEnv[l.Lane] = *l.EnvSHA256
 		}
 	}
-	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, PinManifest: pinMan, Self: self(), Out: os.Stdout,
+	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, PinManifest: pinMan, QueuedBy: e.Swim, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
 		Unattended: true}
