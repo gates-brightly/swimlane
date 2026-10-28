@@ -112,7 +112,7 @@ var Checks = []Check{
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
 	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},
 	{"fail", finding.Error, false, "Fail: without `# swim: syntax 3`", checkFailSyntax},
-	{"removed", finding.Error, false, "what this swim no longer has: Matrix:, Always:, Finally:, Rerun-Children:, an outcome handler (on_success, on_failure, on_exit), modules (# Modules:, mod, mod_env), or the secret store (swim secret, an SDK's secret.get)", checkRemoved},
+	{"removed", finding.Error, false, "what this swim no longer has: Matrix:, Always:, Finally:, Rerun-Children:, an outcome handler (on_success, on_failure, on_exit), modules (# Modules:, mod, mod_env), the secret store (swim secret, an SDK's secret.get), or evidence steps", checkRemoved},
 }
 
 // Codes of findings that come from outside the table.

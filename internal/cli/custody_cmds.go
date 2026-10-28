@@ -18,14 +18,12 @@ import (
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
-	"github.com/gates-brightly/swimlane/internal/evidence"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
-	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -49,8 +47,8 @@ func laneFile(arg string) (int, bool) {
 // describe a new approval.
 func cmdApprove(args []string) error {
 	var guards, expires, keyPath, note, auto string
-	var all, noEvidence bool
-	rest, err := flags{bools: map[string]*bool{"all": &all, "no-evidence": &noEvidence},
+	var all bool
+	rest, err := flags{bools: map[string]*bool{"all": &all},
 		strs: map[string]*string{"guards": &guards, "expires": &expires, "key": &keyPath, "note": &note, "auto": &auto}}.parse(args)
 	if err != nil {
 		return err
@@ -73,6 +71,13 @@ func cmdApprove(args []string) error {
 		}
 	}
 	sort.Strings(approves)
+	// A guard whose lookup.yml rule asks for evidence-bound approvals
+	// can't be approved by anything any more: don't sign what won't count.
+	for _, g := range approves {
+		if why := lk.EvidenceWhy(g); why != "" {
+			return fmt.Errorf("--guards %s: %s", g, why)
+		}
+	}
 	var f *sigfile.File
 	var scriptGuards []string
 	if auto != "" {
@@ -137,26 +142,8 @@ func cmdApprove(args []string) error {
 			}
 		}
 		path := sigfile.ScriptPath(root, n, sha, man)
-		// A round with evidence steps (or a guard whose rule needs it) is
-		// approved together with its latest evidence: the plan, not just
-		// the script.
-		evHash := ""
-		if !noEvidence && (info.UsesEvidence || needsEvidence(lk, approves, all, scriptGuards)) {
-			ev, err := approvalEvidence(root, n, info, sha)
-			if err != nil {
-				return err
-			}
-			evHash = ev.Hash
-			path = sigfile.EvidencePath(root, n, sha, man, ev.Hash)
-			text, _ := ev.Text(root)
-			fmt.Printf("evidence from %s at %s:\n", map[bool]string{true: "swim plan --check", false: "a run"}[ev.Check], ev.At)
-			for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
-				fmt.Println("  " + l)
-			}
-			fmt.Printf("approving %s (script %s, evidence %s)\n", lane.ScriptName(root, n), short12(sha), short12(ev.Hash))
-		}
 		f, err = loadOrNew(path, func() *sigfile.File {
-			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round, Evidence: evHash,
+			return &sigfile.File{Kind: sigfile.Script, Script: filepath.Base(lane.Script(root, n)), SHA256: sha, Lane: n, Job: info.Job, Round: info.Round,
 				Manifest: man, Pinned: &m.Pinned}
 		})
 		if err == nil && len(f.Events) == 0 {
@@ -359,6 +346,10 @@ func printDecision(lk *lookup.Lookup, f *sigfile.File, scriptGuards []string) {
 		flags = scriptGuards
 	}
 	for _, g := range flags {
+		if why := lk.EvidenceWhy(g); why != "" {
+			fmt.Println("  " + p.Paint(ui.Red, "never:    "+g+": "+why))
+			continue
+		}
 		d := sigfile.Decide([]*sigfile.File{f}, lk, g, time.Now())
 		if d.OK {
 			fmt.Println("  " + p.Paint(ui.Green, "approved: "+g+" ("+strings.Join(d.Users, ", ")+")"))
@@ -1099,48 +1090,6 @@ func seqs(links []chain.Link) string {
 		s = append(s, "#"+strconv.Itoa(l.Seq))
 	}
 	return strings.Join(s, ", ")
-}
-
-// needsEvidence reports whether a lookup.yml rule for any approved guard
-// requires evidence-bound approval.
-func needsEvidence(lk *lookup.Lookup, approves []string, all bool, scriptGuards []string) bool {
-	flags := approves
-	if all {
-		flags = scriptGuards
-	}
-	for _, f := range flags {
-		if lk.RuleFor(f).Evidence {
-			return true
-		}
-	}
-	return false
-}
-
-// approvalEvidence is the latest evidence of lane n's round, for an
-// approval of the script with hash sha: refused when there's none, or it
-// was gathered for another version of the script.
-func approvalEvidence(root string, n int, info lane.Info, sha string) (*evidence.Index, error) {
-	job := info.Job
-	if job == "" {
-		if st, _ := status.Load(root); st != nil {
-			if l := st.Get(n); l != nil {
-				job = l.Job
-			}
-		}
-	}
-	ref := fmt.Sprint(n)
-	key := evidence.LaneKey(n)
-	ev := evidence.Load(root, job)
-	if lv := evidence.LoadLane(root, key); lv != nil && (ev == nil || ev.Script != sha || lv.At > ev.At) {
-		ev = lv // the lane's latest (a round with no fixed job)
-	}
-	switch {
-	case ev == nil || ev.Hash == "":
-		return nil, fmt.Errorf("swim %d has evidence steps but no evidence yet: run swim plan --check %s first, then approve what it shows (--no-evidence approves the script only)", n, ref)
-	case ev.Script != sha:
-		return nil, fmt.Errorf("swim %d's evidence (%s) is for another version of its script: run swim plan --check %s again (--no-evidence approves the script only)", n, ev.At, ref)
-	}
-	return ev, nil
 }
 
 // producedBy is the round entry for "<job> <run>".

@@ -343,22 +343,6 @@ snapshot() {
   _swim_run_step --snapshot "$@"
 }
 
-# evidence [options] "<label>" cmd [args...] — a check stage step whose
-# output shows what the change will do (terraform plan, a diff): saved and
-# hashed as the round's evidence, so an approval can cover the plan, not
-# just the script (swim approve shows it and signs its hash; a guard counts
-# an approval only while the evidence still matches). Print stable output:
-# cut timestamps and refresh noise. A failure stops the round, like a gate.
-evidence() {
-  _swim_no_hard=1
-  _swim_run_step --evidence "$@"
-  _swim_no_hard=
-  if [ "$_swim_last" -ne 0 ]; then
-    stop "evidence failed: $_swim_label"
-  fi
-  return 0
-}
-
 # last_failed — true if the previous run/gate/snapshot failed.
 last_failed() {
   [ "$_swim_last" -ne 0 ]

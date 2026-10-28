@@ -70,9 +70,9 @@ ways that applies:
    counting at once), a revoked approval and an expired one don't count,
    and neither does one signed under a different rule for the guard
    (standing approvals expire, 30 days by default, capped by
-   `standing.max`). An approval bound to evidence counts only while this
-   run's evidence matches (`swim watch` doesn't compare evidence, and says
-   so in the log).
+   `standing.max`). A guard whose rule says `evidence: true` (from when
+   swim bound approvals to a round's evidence) is approved by nothing,
+   here or below: it dry-runs.
 3. **The person at the terminal.** An answer given ahead of time in the
    live view, or the prompt
    `swim N requires human approval of task: <action>  Y/N [N]`.

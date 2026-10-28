@@ -143,7 +143,7 @@ func (a *runAuthority) laneEntry(o *Options, c approval.Caller, e chain.Entry) (
 	r := chain.Entry{Type: e.Type, Run: or(c.Run, e.Run), Lane: c.Lane, Job: or(c.Job, e.Job), Round: e.Round,
 		Script: e.Script, Manifest: or(c.Manifest, e.Manifest), Result: e.Result, Exit: e.Exit, Log: e.Log,
 		Approvals: e.Approvals, AutoApproved: e.AutoApproved, EnvSHA256: e.EnvSHA256, Handlers: e.Handlers,
-		Outputs: e.Outputs, Inputs: e.Inputs, Evidence: e.Evidence, InputRounds: e.InputRounds,
+		Outputs: e.Outputs, Inputs: e.Inputs, InputRounds: e.InputRounds,
 		Cache: e.Cache}
 	return o.record(r)
 }
@@ -210,10 +210,18 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	entry.Observed = req.Observed
 	grant := func(resp approval.Response, r authority.Result) approval.Response {
 		e := entry
-		e.Method, e.Statement, e.Approvers, e.Evidence = r.Entry.Method, r.Entry.Statement, r.Entry.Approvers, r.Entry.Evidence
+		e.Method, e.Statement, e.Approvers = r.Entry.Method, r.Entry.Statement, r.Entry.Approvers
 		resp.Approved, resp.How, resp.Job, resp.Observed = true, r.How, req.Job, req.Observed
 		resp.Grant = &approval.Grant{Entry: e, History: r.History}
 		return resp
+	}
+
+	// A guard whose lookup.yml rule asks for evidence-bound approvals
+	// (which swim no longer has) can't be approved by anything: a flag, a
+	// signed approval, a pre-answer, -y or the prompt. It dry-runs.
+	if why := a.snap.Unapprovable(req.Flag); why != "" {
+		a.refused(o, approval.Caller{Lane: req.Lane, Job: req.Job}, req, why)
+		return approval.Response{Dry: true, Why: why, Job: req.Job}
 	}
 
 	if req.FlagSet {
@@ -234,20 +242,13 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	r := a.snap.Signed(ask0, time.Now())
 	if r.OK {
 		r.History = req.RawDesc + "  (" + req.Flag + ", " + r.History + ")"
-		resp := grant(approval.Response{}, r)
-		resp.Warns = r.Warns
-		return resp
-	}
-	// The question shows the run's evidence as the launcher reads it.
-	req.Evidence, req.EvidenceSHA, req.EvidenceRequired = r.EvidenceText, "", r.EvidenceRequired
-	if r.Evidence != nil {
-		req.EvidenceSHA = r.Evidence.Hash
+		return grant(approval.Response{}, r)
 	}
 	if ask == nil || o.Cfg.ApprovalMode() == config.ApprovalsFlags {
-		return approval.Response{Dry: true, Why: r.Why, Warns: r.Warns, Job: req.Job}
+		return approval.Response{Dry: true, Why: r.Why, Job: req.Job}
 	}
 	resp := ask(req, cancel)
-	resp.Job, resp.Observed, resp.Warns = req.Job, req.Observed, r.Warns
+	resp.Job, resp.Observed = req.Job, req.Observed
 	if !resp.Approved {
 		return resp
 	}

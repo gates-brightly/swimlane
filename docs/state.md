@@ -186,7 +186,9 @@ stateDiagram-v2
 - **Grandfathered:** a standing approval from before they expired (never
   expiring, no rules bound) stays active with a warning until `lookup.yml`
   sets `standing.max`, then becomes insufficient.
-- **Evidence-bound approvals** count only while the run's evidence matches
-  what was approved (not compared under `swim watch`).
+- **Evidence-bound approvals** an older swim signed count as approvals of
+  the script. A `lookup.yml` rule with `evidence: true` approves nothing:
+  its guards dry-run until the rule drops it (`swim doctor`:
+  `evidence-rule`).
 - **Live-view answers** (`y` / `n` ahead of a prompt) aren't files: they
   are pinned to the script and last one run.

@@ -114,9 +114,9 @@ func TestStandingCombinesWithScript(t *testing.T) {
 	}
 }
 
-// An approval limited to a cell, or bound to evidence, says so in its
-// statement; one that isn't reads exactly as before (old signatures stay
-// valid).
+// An approval limited to a cell, or bound to evidence (both by an older
+// swim), says so in its statement; one that isn't reads exactly as before
+// (old signatures stay valid).
 func TestCellAndEvidenceStatements(t *testing.T) {
 	base := &File{Kind: Script, Script: "lane.1.sh", SHA256: strings.Repeat("a", 64), Lane: 1, Job: "j", Round: "r", Approves: []string{"F"}}
 	plain := base.Statement()
@@ -136,9 +136,6 @@ func TestCellAndEvidenceStatements(t *testing.T) {
 	// An older swim's cell-limited approval approves nothing now.
 	if got := Unlimited([]*File{base, &cell}); len(got) != 1 || got[0] != base {
 		t.Errorf("Unlimited kept %v", got)
-	}
-	if !strings.HasSuffix(EvidencePath("/r", 1, base.SHA256, "", ev.Evidence), "/lane.1.aaaaaaaaaaaa.eeeeeeeee.signature") {
-		t.Errorf("evidence path %s", EvidencePath("/r", 1, base.SHA256, "", ev.Evidence))
 	}
 }
 

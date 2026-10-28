@@ -13,7 +13,7 @@ import (
 // read from the body widens what a lane may do: its guards and the files
 // it reads are what its header declares, and the run refuses anything
 // else. The body only tells swim where the round's stages
-// and handlers are, and whether it shows evidence.
+// and handlers are, and where its evidence steps are.
 
 // headerKey reads a header line, "# Key: value", with at most one space or
 // tab after the #. An indented comment ("#   After: ...") is prose, not a

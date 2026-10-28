@@ -406,7 +406,6 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 		{"an included file changed between approval and exec", "T2", TestManifestApprovalBinding},
 		{"the runner changed between approval and exec", "T2", TestManifestRunnerBinding},
 		{"the env changed between approval and exec", "T2", TestEnvFileQueuePin},
-		{"the evidence changed between approval and exec", "T2", TestEvidenceBoundApproval},
 		{"a chain record over 256 KiB, then another append", "T24", TestChainLargeEntryAndRepair},
 		{"a worker killed mid-step: no false success, no silent re-run", "T6", TestReapDeadLane},
 		{"a worker killed mid-chain-append: the chain is repairable", "T7", TestFaultChainMidAppend},

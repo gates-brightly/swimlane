@@ -18,7 +18,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/envfile"
-	"github.com/gates-brightly/swimlane/internal/evidence"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
@@ -491,14 +490,6 @@ func handlerMap(r *logparse.Round) map[string]string {
 	return m
 }
 
-// roundEvidence is the round's evidence hash ("" if it had none).
-func roundEvidence(root string, r *logparse.Round) string {
-	if ev := evidence.Load(root, r.Job); ev != nil && ev.Run == r.Run {
-		return ev.Hash
-	}
-	return ""
-}
-
 // laneEnvSHA is the env files' hash lane n's round started with.
 func laneEnvSHA(root string, n int) string {
 	if st, _ := status.Load(root); st != nil {
@@ -636,7 +627,7 @@ func cmdFinish(args []string) error {
 		if err := record(root, cfg, chain.Entry{Type: "round", Run: r.Run, Lane: n, Job: r.Job, Round: r.Title,
 			Script: scriptSHA(root, n), Manifest: manifestSHA(root, n), Result: state, Exit: &exit,
 			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: approvals, AutoApproved: auto,
-			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums, Evidence: roundEvidence(root, r),
+			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums,
 			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs),
 			Cache: roundSnaps(logPath)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())

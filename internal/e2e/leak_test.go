@@ -67,7 +67,6 @@ var leakInventory = []struct{ what, re string }{
 	{"round outputs", `^repo/\.swim/out/`},
 	{"the queue", `^repo/\.swim/queue/`},
 	{"lane state (claims hold a pid and its start time)", `^repo/\.swim/(lane\d+\.(pid|claim|stop|msg|end)|lanes/)`},
-	{"evidence", `^repo/\.swim/evidence/`},
 	{"locks", `^repo/\.swim/(locks/|.*\.lock$)`},
 	{"the git shim", `^repo/\.swim/bin/`},
 	{"watch state", `^repo/\.swim/watch`},

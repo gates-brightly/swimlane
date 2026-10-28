@@ -34,12 +34,12 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
 ```
 
 - `ok: false` is a usage error (raise it).
-- `round_ended: true` means the round is over: a failed gate or evidence step,
+- `round_ended: true` means the round is over: a failed gate,
   `stop`, a refused step, an operator stop or a time limit. `code` is its exit
   code. The SDK raises `RoundEnded` (in Python it derives from
   `BaseException`, so `except Exception` doesn't swallow it). The program
   then unwinds (its `finally` blocks run) and exits. If it doesn't within 10
-  seconds, swim stops it. Meanwhile `run`, `gate`, `snapshot`, `evidence`,
+  seconds, swim stops it. Meanwhile `run`, `gate`, `snapshot`,
   `begin_step`, `guard` and `confirm` are refused: answered `round_ended`
   (not passed, not started, not approved) without running.
 
@@ -49,7 +49,7 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
 |---|---|---|
 | `hello` | `protocol` (`swim.lane/v1`), `sdk` | `protocol`, `swim`, `syntax` ({script, log, state}; it replaced `breaking`, which no SDK read), `lane`, `job`, `run`, `deadline` (epoch, 0 for none), `check` (a read-only check), and for one job of a lane of jobs `job_path` (`1.5.9`) |
 | `stage` | `name` | — |
-| `run`, `gate`, `snapshot`, `evidence` | `label`, `argv`, `opts` (as for `swim run`: `--timeout D`, `--retry N`, `--backoff D`, `--retry-on CODES`, `--no-retry-timeout`, `--soft`) | `exit`, `passed` |
+| `run`, `gate`, `snapshot` | `label`, `argv`, `opts` (as for `swim run`: `--timeout D`, `--retry N`, `--backoff D`, `--retry-on CODES`, `--no-retry-timeout`, `--soft`) | `exit`, `passed` |
 | `begin_step` | `label`, `gate` | `step` (id), `started` (false: the lane is stopping) |
 | `step_output` | `step`, `text` | — |
 | `end_step` | `step`, `ok`, `message` | `exit`, `passed` |
@@ -65,7 +65,7 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
 
 ## Semantics
 
-- **Steps run by swim** (`run`, `gate`, `snapshot`, `evidence`) are exactly
+- **Steps run by swim** (`run`, `gate`, `snapshot`) are exactly
   the in-lane commands: same timeouts, retries, blocked commands, git shim
   and output capture.
 - **In-process steps** (`begin_step`, `step_output`, `end_step`) are checks

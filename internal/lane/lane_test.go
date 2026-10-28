@@ -259,10 +259,10 @@ func TestBodyTextIsNotCode(t *testing.T) {
 		"echo \"over\nstage check\nevidence \\\"x\\\" true\non_exit() {\"\n" +
 		"# stage check; evidence \"x\" true\n"
 	info := ParseScript(src)
-	if info.Staged || info.UsesEvidence {
-		t.Errorf("text read as code: staged %v, evidence %v", info.Staged, info.UsesEvidence)
+	if info.Staged || len(info.EvidenceLines) > 0 {
+		t.Errorf("text read as code: staged %v, evidence %v", info.Staged, info.EvidenceLines)
 	}
-	if info := ParseScript(src + "stage check\nevidence \"plan\" true\n"); !info.Staged || !info.UsesEvidence {
-		t.Errorf("code after the text: staged %v, evidence %v", info.Staged, info.UsesEvidence)
+	if info := ParseScript(src + "stage check\nevidence \"plan\" true\n"); !info.Staged || len(info.EvidenceLines) != 1 {
+		t.Errorf("code after the text: staged %v, evidence %v", info.Staged, info.EvidenceLines)
 	}
 }

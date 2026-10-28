@@ -717,7 +717,7 @@ swim cache path [PRESET] [--ci]
   --timeout D    give up after D (exit 1, saying what is still busy)
 `,
 	"approve": `swim approve                                    list approvals and standing approvals
-swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K] [--no-evidence]
+swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K]
 swim approve --auto USER [--guards A,B | --all] [--expires D] [--key K]
 
   How approvers act. Every approval is an SSH-signed event in a committed
@@ -737,17 +737,11 @@ swim approve --auto USER [--guards A,B | --all] [--expires D] [--key K]
                    lists it as "stale: <why>"): approve the new version. An
                    approval from before manifests names the script alone and
                    counts while the script matches.
-  With evidence    a round with evidence steps (evidence "tf plan" ...), or a
-                   guard whose lookup.yml rule says evidence: true, is
-                   approved with its latest evidence (from swim plan --check N
-                   or a run): swim approve shows it and signs its hash too
-                   (approvals/lane.N.<sha12>.m<manifest8>.e<evidence8>.signature). It
-                   refuses with no evidence, or evidence for another script
-                   version. At run time the approval counts only while the
-                   run's evidence matches; when the plan changed, the log
-                   shows a WARN and a diff, and the guard asks (or dry-runs).
-                   swim watch doesn't compare evidence (and says so).
-                   --no-evidence approves the script only.
+  evidence: true   a lookup.yml rule that says evidence: true (from when swim
+                   bound approvals to a round's evidence) approves nothing:
+                   swim approve --guards refuses its guards, and at run time
+                   no signed approval, flag, prompt, -y or queued approval
+                   counts for them (they dry-run) until the rule drops it.
   --auto USER      a standing approval: every job USER queues (swim queue add,
                    signed with USER's key) is approved, by you, for the guards
                    given (default every guard). It is never consumed: it
@@ -1009,8 +1003,8 @@ swim claim N --break "<reason>"
                            Finally:, Rerun-Children:, an outcome handler
                            (on_success, on_failure, on_exit), modules
                            (# Modules:, mod, mod_env, an SDK's module call),
-                           or the secret store (swim secret, an SDK's
-                           secret.get)
+                           the secret store (swim secret, an SDK's
+                           secret.get), or evidence steps (use snapshot)
     outputs (warn)         an output whose name suggests secrets (output files
                            aren't masked)
     cache (error)          a # Cache: with an unknown preset or no lockfile, a
@@ -1081,6 +1075,8 @@ swim claim N --break "<reason>"
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
                               older than outputs_keep, of no lane's latest
                               round; --fix removes them
+    evidence-rule (warn)      a lookup.yml rule says evidence: true: nothing
+                              can approve its guards (they dry-run)
     standing-approval (warn)  a standing approval still counting under the
                               old terms: it never expires (until lookup.yml
                               sets standing.max), or a lookup.yml rule
@@ -1281,8 +1277,8 @@ MORE
   report                       what changed since you last looked
   ci, config, lock, changelog, version, skill
 
-  Lane scripts call: gate, guard, stage, run, snapshot, evidence,
-  drift, stop, msg, input, output (swim guide: WRITING A LANE SCRIPT).
+  Lane scripts call: gate, guard, stage, run, snapshot, drift,
+  stop, msg, input, output (swim guide: WRITING A LANE SCRIPT).
 
   swim guide prints everything, including each command's detail.
 `

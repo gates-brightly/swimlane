@@ -28,7 +28,7 @@ snapshot "cfn template" aws cloudformation get-template --stack-name orders-prod
 
 stage check                        # facts and gates; nothing changes here
 gate "account is orders-prod" bash -c '[ "$(aws sts get-caller-identity --query Account --output text)" = 123456789012 ]'
-evidence "tf plan" terraform -chdir=infra/orders plan -no-color   # an approval can cover this output
+snapshot "tf plan" terraform -chdir=infra/orders plan -no-color   # saved for the operator to read
 gate "DeletionPolicy is Retain" bash -c 'aws cloudformation get-template --stack-name orders-prod | grep -q Retain'
 
 stage change                       # only guarded steps
@@ -61,7 +61,6 @@ is read as part of it, so explain things in the `# Goal:` block instead.
 | `snapshot "<label>" cmd...` | Read-only capture before a change. Its output is saved. |
 | `run "<label>" cmd...` | A step. A failure is recorded and the round continues. |
 | `gate "<label>" cmd...` | A step whose failure ends the round. Put one before any change it protects. |
-| `evidence "<label>" cmd...` | A check whose output (a plan) an approval covers. If the output changes, it asks again. |
 | `guard FLAG "<action>"` | Returns 0 only if a person approved this action in this run. |
 | `stop "<reason>"` / `drift "<what>"` | End the round, or record a difference from what was expected. |
 | `msg --progress 3/25 "<text>"` | A status line in the live view and `swim status`. |

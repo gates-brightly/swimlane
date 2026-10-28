@@ -110,6 +110,7 @@ var Checks = []Check{
 	{"trust-unpinned", false, "trust.yml isn't pinned here, or changed since the pin with no signed change", checkTrustPin},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
 	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
+	{"evidence-rule", false, "a lookup.yml rule says evidence: true: swim no longer has evidence-bound approvals, so nothing can approve its guards (they dry-run)", checkEvidenceRules},
 	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
@@ -424,6 +425,30 @@ func checkRemovedSettings(o *Options) []finding.Finding {
 		}
 		out = append(out, fd(finding.Warn, "removed-setting", src.file, "delete "+strings.Join(src.keys, ", "),
 			"%s: swim no longer has these settings; they're ignored", strings.Join(src.keys, ", ")))
+	}
+	return out
+}
+
+// checkEvidenceRules: a require: rule with evidence: true asks for
+// approvals bound to a round's evidence, which swim no longer has. It
+// fails closed (ignoring it would let a plain approval through), so every
+// guard it covers dry-runs until the rule changes.
+func checkEvidenceRules(o *Options) []finding.Finding {
+	lk, err := lookup.Load(o.Root)
+	if err != nil {
+		return nil
+	}
+	var out []finding.Finding
+	for _, r := range lk.Require {
+		if !r.Evidence {
+			continue
+		}
+		guards := "every guard"
+		if len(r.Guards) > 0 {
+			guards = strings.Join(r.Guards, ", ")
+		}
+		out = append(out, fd(finding.Warn, "evidence-rule", lookup.FileName, "remove `evidence: true` from the rule (re-approve what it covers if you change its terms)",
+			"a require: rule for %s says evidence: true; swim no longer has evidence-bound approvals, so nothing can approve those guards: they dry-run", guards))
 	}
 	return out
 }

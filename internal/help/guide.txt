@@ -42,7 +42,6 @@ COMMANDS
   lib                      print the bash library lane scripts load
   In a lane script in any language (OTHER LANGUAGES); run "<label>" -- cmd is a step too:
   gate "<label>" -- cmd    a step whose failure ends the round (and stops the program)
-  evidence "<label>" -- cmd   a check step whose output an approval can cover (the plan)
   snapshot "<label>" -- cmd   a read-only step whose output is saved
   guard FLAG "<action>"    exit 0 if the operator approves the action, 1 if not
   stage NAME               start a stage: snapshot, check, change, verify
@@ -191,8 +190,8 @@ FILES (repo root)
   approvals/            signed approvals (committed): lane.N.<sha12>.m<manifest8>.signature
                         for one exact manifest, auto.USER.signature standing for USER's jobs
   lookup.yml            who's who: users' SSH keys, groups, approval rules (committed);
-                        a rule with evidence: true counts only evidence-bound approvals
-  .swim/evidence/       each round's evidence (evidence steps), and blobs by hash for diffs
+                        a rule with evidence: true approves nothing (swim no longer
+                        has evidence-bound approvals): its guards dry-run
   .swim/queue/          queued batches (swim queue): NNNN-<id>.queue waiting,
                         .running claimed by a swimmer, done/ consumed with results
   .swim/runs/RUN.yml    each run's record: when every lane was ready, queued,
@@ -324,7 +323,7 @@ WRITING A LANE SCRIPT
                                   approval hint and returns false. FLAG set to anything
                                   else (FLAG=0) never asks. Write <action> for the person
                                   approving it: what it changes, and why. The question
-                                  shows <action> and the evidence made safe: escape
+                                  shows <action> and the observed facts made safe: escape
                                   sequences, control characters (\r, backspace) and bidi
                                   overrides are removed, so a lane can't rewrite it.
   confirm "<question>" [answer]   operator must type the answer (default "yes");
@@ -341,13 +340,6 @@ WRITING A LANE SCRIPT
                                   A command inside a step can post too: swim msg "...".
                                   Never fails the round.
   stop "<reason>"                 record STOP and end the round now.
-  evidence [opts] "<label>" cmd   a check stage step whose output shows what the change will
-                                  do (terraform plan, a diff): saved, normalized (ANSI,
-                                  line endings, trailing space) and hashed as the round's
-                                  evidence. swim approve signs it with the script, and a
-                                  guard counts that approval only while this run's evidence
-                                  matches (else a WARN, a diff, and the prompt or a dry
-                                  run). Print stable output. A failure stops the round.
   input N|JOB NAME                print the path of an output of a round this one depends on:
                                   lane N's round this run waited on (it must have passed),
                                   or job JOB's latest passed round, even from an earlier run.
@@ -961,7 +953,7 @@ EXECUTION MANIFEST
   assignments there.
   Questions come from swim, not the lane: under swim run each lane process
   has its own approval token, and the question names the lane, job, guard,
-  manifest and evidence the launcher knows, then "the lane says: <action>".
+  and manifest the launcher knows, then "the lane says: <action>".
   A flag the lane's header (or sidecar) doesn't declare in # Guards: is
   refused (and logged), unless the header says "# Guards: *" (it names
   flags at run time, guard "$F"); a lane run directly with bash refuses it
@@ -969,8 +961,7 @@ EXECUTION MANIFEST
   The header is the lane's contract: swim reads what a lane may do (its
   guards, the files it reads) from its header, never from its
   body, and refuses at run time whatever the body does beyond it. The body
-  is read only for where its stages are and whether it shows
-  evidence.
+  is read only for where its stages are.
 
 CHAIN OF CUSTODY
   Every approval and every round is recorded in .swim/chain.jsonl, one

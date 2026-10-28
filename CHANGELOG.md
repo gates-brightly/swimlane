@@ -169,6 +169,36 @@ already pushed to origin's main) with the next tag and pushes that tag.
   nothing: swimmers claim batches and lanes run past it, and
   `.swim/pause`, `.swim/laneN.pause`, `.swim/laneN.resumed` and
   `.swim/laneN.replaced` can be deleted.
+- **Removed: evidence-bound approvals.** The `evidence "<label>" cmd`
+  step (and `swim evidence`), `.swim/evidence/`, `swim approve` showing
+  and signing a round's evidence (and `--no-evidence`), the check at guard
+  time that an approval's evidence still matches (its `WARN evidence
+  changed since approval` and diff, the evidence in the approval question)
+  and `swim watch`'s "evidence not checked" are gone: an approval covers
+  the exact script and what its manifest pins, and `swim plan` now says
+  exactly which signed approvals a run will count. Use `snapshot` to save
+  a plan for the operator to read. Upgrading:
+  - A lane with an evidence step is a `swim lint` error (`removed`: use
+    snapshot), so `swim run` refuses it until it's edited.
+  - A `lookup.yml` `require:` rule with `evidence: true` fails closed
+    rather than being ignored (which would let plain approvals through):
+    nothing approves its guards (a signed approval, `FLAG=1`, the prompt,
+    a pre-answer, `-y`, `swim queue add --approve`), so they dry-run, with
+    "lookup.yml rule for GUARD requires evidence-bound approvals, which
+    swim no longer has: remove `evidence: true`". `swim approve --guards`
+    and `swim queue add --approve` refuse such a guard, `swim plan` shows
+    it as not approved with that reason, and `swim doctor` warns
+    (`evidence-rule`). The field is still read and still in the rules'
+    hash, so a `lookup.yml` without it hashes as before and no approval
+    goes stale; removing it changes the rules, so re-approve what it
+    covered.
+  - A signed approval an older swim bound to evidence
+    (`lane.N.<sha>[.m<man>].e<ev>.signature`, `evidence-sha256:` in its
+    statement) still verifies (`swim verify`, `swim approve`), and counts
+    as an approval of the script where the guard's rule doesn't say
+    `evidence: true`. Round and approve chain entries no longer carry
+    `evidence_sha256`; older ones still verify. `.swim/evidence/` can be
+    deleted.
 - **Cleanup is archive, stub and clean.** `swim clean` now idles each
   finished lane directly: it archives its logs (as `swim archive`) and
   stubs its script (as `swim stub`), keeping a script edited since its

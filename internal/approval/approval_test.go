@@ -111,34 +111,17 @@ func TestClientGivesUp(t *testing.T) {
 	}
 }
 
-// The question shows the evidence it approves, cut to 20 lines.
-func TestQuestionShowsEvidence(t *testing.T) {
-	var lines []string
-	for i := 0; i < 25; i++ {
-		lines = append(lines, fmt.Sprintf("line %d", i))
-	}
-	q := strings.Join(Question(Request{Lane: 3, Flag: "F", Desc: "apply", Evidence: strings.Join(lines, "\n")}), "\n")
-	for _, want := range []string{"evidence (what it will do):", "  line 0", "  line 19", "... 5 more lines", "Y/N [N]"} {
-		if !strings.Contains(q, want) {
-			t.Errorf("question lacks %q:\n%s", want, q)
-		}
-	}
-	if strings.Contains(q, "line 20") {
-		t.Error("more than 20 evidence lines")
-	}
-}
-
 // A lane can't rewrite its own question: escape sequences, \r, \b and
-// bidi overrides in the description and evidence are removed.
+// bidi overrides in the description and the observed facts are removed.
 func TestQuestionIsSafe(t *testing.T) {
 	q := strings.Join(Question(Request{Lane: 3, Flag: "F", Desc: "drop prod\x1b[2K\rlist files\b‮",
-		Evidence: "plan: destroy 1\x1b[1A\x1b[2K\r\nplan: ‮add 0\r\n"}), "\n")
+		Observed: map[string]string{"plan": "destroy 1\x1b[1A\x1b[2K\r"}}), "\n")
 	for _, bad := range []string{"\x1b", "\r", "\b", "‮"} {
 		if strings.Contains(q, bad) {
 			t.Errorf("question carries %q: %q", bad, q)
 		}
 	}
-	for _, want := range []string{"the lane says: drop prodlist files\n", "  plan: destroy 1\n", "  plan: add 0\n"} {
+	for _, want := range []string{"the lane says: drop prodlist files\n", "    plan = destroy 1"} {
 		if !strings.Contains(q, want) {
 			t.Errorf("question lacks %q: %q", want, q)
 		}

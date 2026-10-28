@@ -81,13 +81,6 @@ type Request struct {
 	// Observed are the round's Observe: facts, read by the launcher as it
 	// asks (shown with the question).
 	Observed map[string]string `json:"-"`
-	// Evidence is what the round's evidence steps showed this run (the plan
-	// being approved), shown with the question; EvidenceRequired: the
-	// guard's rule needs evidence-bound approval, so an answer given ahead
-	// of time (before the plan existed) doesn't count.
-	Evidence         string `json:"evidence,omitempty"`
-	EvidenceSHA      string `json:"evidence_sha256,omitempty"`
-	EvidenceRequired bool   `json:"evidence_required,omitempty"`
 }
 
 // Response is the operator's answer.
@@ -114,20 +107,11 @@ type Response struct {
 	// ("approved by ... (signed)", "FLAG=1"); "" to build it from By, Auto,
 	// Via, Pre and At.
 	How string `json:"how,omitempty"`
-	// Warns are WARN lines for the lane's log (evidence that changed).
-	Warns []Warn `json:"warns,omitempty"`
 	// Hash is the approve entry the launcher recorded as the approval was
 	// consumed ("" if it leaves recording to the lane).
 	Hash string `json:"hash,omitempty"`
 	// Grant is what the launcher records once the approval is consumed.
 	Grant *Grant `json:"-"`
-}
-
-// Warn is a WARN line for the lane's log, with an optional diff under it.
-type Warn struct {
-	Label  string   `json:"label"`
-	Detail string   `json:"detail,omitempty"`
-	Diff   []string `json:"diff,omitempty"`
 }
 
 // Grant is an approval the launcher records when its lane uses it: the
@@ -644,7 +628,7 @@ func Whoami(path, token string) (Response, error) {
 
 // Question is how an approval is put to the operator. The first lines are
 // swim's own facts: the lane and job (the launcher's, under swim run), the
-// guard, the manifest and the evidence hash; then what the lane says the
+// guard and the manifest; then what the lane says the
 // guarded step does, labelled as the lane's. Everything the lane supplied
 // goes through ui.Safe (Clean): escape sequences, carriage returns,
 // backspaces or bidi controls can't hide or rewrite what the operator
@@ -660,9 +644,6 @@ func Question(req Request) []string {
 	if req.Manifest != "" {
 		facts = append(facts, "manifest "+short12(req.Manifest))
 	}
-	if req.EvidenceSHA != "" {
-		facts = append(facts, "evidence "+short12(req.EvidenceSHA))
-	}
 	if len(facts) > 0 {
 		q = append(q, "  "+strings.Join(facts, " · "))
 	}
@@ -676,17 +657,6 @@ func Question(req Request) []string {
 		q = append(q, "  observed now (checked again before the step):")
 		for _, k := range keys {
 			q = append(q, "    "+k+" = "+Clean(req.Observed[k]))
-		}
-	}
-	if req.Evidence != "" {
-		lines := strings.Split(strings.TrimRight(req.Evidence, "\n"), "\n")
-		q = append(q, "evidence (what it will do):")
-		for i, l := range lines {
-			if i == 20 {
-				q = append(q, fmt.Sprintf("  ... %d more lines (.swim/evidence/)", len(lines)-20))
-				break
-			}
-			q = append(q, "  "+ui.Safe(l))
 		}
 	}
 	return append(q, fmt.Sprintf("(or set %s=1 to approve without asking)  Y/N [N]", flag))

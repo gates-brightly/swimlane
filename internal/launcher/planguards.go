@@ -27,11 +27,14 @@ type GuardVerdict struct {
 	// Asks: not approved, and swim run would ask at its prompt (a dry run
 	// when no one can be asked). False: a dry run outright.
 	Asks bool
+	// Never: nothing can approve it (its lookup.yml rule asks for
+	// evidence-bound approvals); Why says so.
+	Never bool
 }
 
 // planGuards decides each guard of each selected lane the way swim run
-// would as it starts. A plan run outside a run has no evidence of its own,
-// so an approval bound to a run's evidence doesn't count here (Why says so).
+// would as it starts, from the same snapshot, so the plan says exactly
+// which signed approvals will count.
 func planGuards(o Options, sel []int, scripts map[int]lane.Info) map[int][]GuardVerdict {
 	snap := authority.Take(o.Root, os.Environ())
 	asks := o.Cfg.ApprovalMode() != config.ApprovalsFlags
@@ -46,6 +49,8 @@ func planGuards(o Options, sel []int, scripts map[int]lane.Info) map[int][]Guard
 		for _, g := range info.Guards {
 			v := GuardVerdict{Flag: g.Flag, Desc: g.Desc}
 			switch {
+			case snap.Unapprovable(g.Flag) != "":
+				v.Why, v.Never = snap.Unapprovable(g.Flag), true
 			case snap.Env[g.Flag] == "1":
 				v.Approved, v.How = true, snap.FlagSet(g.Flag).How
 			case o.AutoApprove:
@@ -115,7 +120,10 @@ func (v GuardVerdict) text(p ui.Painter) string {
 		return p.Paint(ui.Green, "approved: "+v.How)
 	}
 	s := "not approved: a dry run (approvals: flags never ask)"
-	if v.Asks {
+	switch {
+	case v.Never:
+		s = "not approved: a dry run, whatever answers it"
+	case v.Asks:
 		s = "not approved: asks at the prompt; a dry run if no one can answer"
 	}
 	if v.Why != "" {

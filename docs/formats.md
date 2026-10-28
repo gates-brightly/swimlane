@@ -24,7 +24,7 @@ lane: 3
 job: <job id>
 round: <round goal>
 cells: <cell;cell>            (only in statements older swims wrote for a matrix cell)
-evidence-sha256: <sha256>     (only when approved with evidence)
+evidence-sha256: <sha256>     (only in statements older swims wrote with evidence)
 manifest-sha256: <manifest_sha256>   (only when bound to a manifest)
 approves: <FLAG,FLAG | all>
 expires: <time | never>

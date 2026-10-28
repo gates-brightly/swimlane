@@ -439,14 +439,14 @@ var (
 // their arguments is prose.
 var talk = map[string]bool{"echo": true, "printf": true, "stop": true, "drift": true, "confirm": true, "guard": true, ":": true, "msg": true, "note": true}
 
-// stepCommand is the command a step runs: run/gate/snapshot/evidence
+// stepCommand is the command a step runs: run/gate/snapshot
 // [options] "<label>" cmd... gives cmd...; any other command is itself.
 func stepCommand(words []lane.Word) []lane.Word {
 	if len(words) == 0 {
 		return nil
 	}
 	switch words[0].Text {
-	case "run", "gate", "snapshot", "evidence":
+	case "run", "gate", "snapshot":
 	default:
 		return words
 	}
@@ -467,7 +467,7 @@ func stepCommand(words []lane.Word) []lane.Word {
 }
 
 // A ran is a command the script runs, as text: the step's command for
-// run/gate/snapshot/evidence (its label and options dropped), with any
+// run/gate/snapshot (its label and options dropped), with any
 // bash -c body as one of its words. Commands that only talk (echo, stop,
 // swim note, ...) aren't listed.
 type ran struct {
@@ -1060,10 +1060,11 @@ var handlerDefRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failur
 // r.Module(...), which swim no longer answers.
 var sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(?:Env|_env|With)?\(\s*["'\x60]`)
 
-// checkRemoved: a header key, outcome handler, module call or secret
-// store call of a feature swim no longer has. swim would ignore the header and the handler, so a
-// cleanup or rollback the script counts on would never run; a module call
-// would fail mid-round. Refuse the lane instead.
+// checkRemoved: a header key, outcome handler, module call, secret
+// store call or evidence step of a feature swim no longer has. swim
+// would ignore the header and the handler, so a cleanup or rollback the
+// script counts on would never run; a module call or evidence step would
+// fail mid-round. Refuse the lane instead.
 func checkRemoved(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, k := range s.Info.Removed {
@@ -1091,6 +1092,10 @@ func checkRemoved(c *Context, s *Script) []finding.Finding {
 					"a module call, and swim no longer has modules: the step would fail"))
 			}
 		}
+	}
+	for _, i := range s.Info.EvidenceLines {
+		out = append(out, f(finding.Error, "removed", i, "use snapshot (saves read-only output, without an approval binding)",
+			"evidence steps are gone: swim no longer binds approvals to a round's evidence"))
 	}
 	for _, i := range s.secretUses() {
 		out = append(out, f(finding.Error, "removed", i, "give the lane the credential in its environment instead (the operator's own, or env.swim)",

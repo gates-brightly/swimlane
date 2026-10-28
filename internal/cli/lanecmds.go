@@ -109,8 +109,6 @@ func laneStep(cmd string, args []string) error {
 	switch cmd {
 	case "snapshot":
 		stepArgs = append(stepArgs, "--snapshot")
-	case "evidence":
-		stepArgs = append(stepArgs, "--evidence")
 	}
 	code := 0
 	if err := cmdStep(append(append(stepArgs, "--"), command...)); err != nil {
@@ -142,8 +140,6 @@ func laneStep(cmd string, args []string) error {
 		return endRound(root, ln, 1, "timeout: the round's Timeout ("+os.Getenv("SWIM_TIMEOUT")+") ran out")
 	case cmd == "gate" && code != 0:
 		return endRound(root, ln, 1, "gate failed: "+label)
-	case cmd == "evidence" && code != 0:
-		return endRound(root, ln, 1, "evidence failed: "+label)
 	case code != 0 && os.Getenv("SWIM_FAIL_MODE") == "hard" && !soft:
 		return endRound(root, ln, 1, "hard failure: "+label)
 	}
@@ -178,7 +174,7 @@ func endRound(root string, n, code int, reason string) error {
 }
 
 // refuseEnded keeps an in-lane step command (swim run/gate/snapshot/
-// evidence/guard) from running once the round's end is claimed: the
+// guard) from running once the round's end is claimed: the
 // wrapper is stopping the program, and a step must never start after a
 // failed gate or a stop, however quickly the program got to it. It returns
 // nil if the round goes on (or the command runs in a handler, after the
@@ -339,7 +335,6 @@ func cmdStop(args []string) error {
 // laneGate and laneSnapshot are swim gate / swim snapshot.
 func laneGate(args []string) error     { return laneStep("gate", args) }
 func laneSnapshot(args []string) error { return laneStep("snapshot", args) }
-func laneEvidence(args []string) error { return laneStep("evidence", args) }
 
 // swim msg [--progress N/M] "<text>": post the lane's status message (the
 // latest wins; "" clears it). It shows in the live view and swim status,

@@ -89,7 +89,7 @@ the lane, so a lane can no longer read the runner's signing key or
   - DNS is controlled too: the lane's only resolver is swim's, which
     answers allowed names and returns NXDOMAIN (logged) for the rest, so a
     lane can't even learn the address of a host it may not reach.
-- Per stage: snapshot, check and evidence steps run with `none` whatever
+- Per stage: snapshot and check steps run with `none` whatever
   the policy says; the allowlist opens for the change and verify stages
   once a guard in the round is approved (a round with no guard gets it for
   its change stage at once, as today's lanes get everything).

@@ -266,9 +266,9 @@ from what the previous ones left behind.
 - **Check the target before changing it.** Start a change against cloud
   resources with a `gate` that stops on the wrong account (`gate "account"
   -- test "$(aws sts get-caller-identity --query Account --output text)" =
-  "$ACCOUNT"`). For Terraform: `evidence "plan" -- terraform plan -out
+  "$ACCOUNT"`). For Terraform: `snapshot "plan" -- terraform plan -out
   tfplan` in the check stage and `terraform apply tfplan` inside the guard,
-  so the approval covers the plan that's applied.
+  so what's applied is the plan the operator saw.
 - **Keep output streaming,** so the operator and the live view see
   progress. Don't capture a long command with `out=$(cmd); echo "$out"`.
   Check its output while it streams instead:

@@ -92,10 +92,11 @@ type File struct {
 	// signature) still reads as signed, but a cell-limited approval
 	// approves nothing (Unlimited).
 	Cells []string `yaml:"cells,omitempty"`
-	// Evidence is the round's evidence hash this approval covers (the
-	// output of its evidence steps, e.g. terraform plan); "" for a
-	// script-only approval. A guard counts it only while the run's evidence
-	// still matches.
+	// Evidence is the round's evidence hash an older swim bound this
+	// approval to (evidence steps, which swim no longer has): kept so the
+	// file's statement (and signature) still reads as signed. Swim no
+	// longer writes it; a guard counts such an approval as one of the
+	// script (a guard whose rule asked for evidence counts nothing).
 	Evidence string `yaml:"evidence_sha256,omitempty"`
 	// Manifest is the execution manifest approved (manifest_sha256): the
 	// script and everything pinned with it. Pinned lists those entries so a
@@ -127,12 +128,6 @@ func Dir(root string) string { return filepath.Join(root, "approvals") }
 // execution manifest man ("" for none).
 func ScriptPath(root string, n int, sha, man string) string {
 	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s%s.signature", n, sha[:12], manPart(man)))
-}
-
-// EvidencePath is the file approving lane n's script with hash sha and
-// manifest man together with evidence ev.
-func EvidencePath(root string, n int, sha, man, ev string) string {
-	return filepath.Join(Dir(root), fmt.Sprintf("lane.%d.%s%s.e%s.signature", n, sha[:12], manPart(man), ev[:8]))
 }
 
 // manPart names the manifest in a file name: ".m<8 hex>", or nothing.

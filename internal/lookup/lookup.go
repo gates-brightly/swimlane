@@ -52,9 +52,10 @@ type Rule struct {
 	Guards []string `yaml:"guards,omitempty"` // globs; empty: any guard
 	Group  string   `yaml:"group,omitempty"`  // empty: any known user
 	Count  int      `yaml:"count,omitempty"`  // distinct users; default 1
-	// Evidence: only approvals that cover the round's evidence (swim
-	// approve with evidence steps) count, and only while it still matches.
-	// Not checked for batches run by swim watch.
+	// Evidence asked for approvals bound to the round's evidence, which
+	// swim no longer has. It's still read (and still in the rules' hash),
+	// and fails closed: nothing approves a guard whose rule sets it
+	// (EvidenceWhy).
 	Evidence bool `yaml:"evidence,omitempty"`
 	// Signed: only signed approvals meet the rule. A prompt, FLAG=1, -y or
 	// queue approval of one of its guards still runs, but swim verify's
@@ -228,6 +229,17 @@ func (l *Lookup) GroupsOf(user string) []string {
 // globs match it (or that has none). With no rules, one signature from any
 // user in lookup.yml.
 func (l *Lookup) RuleFor(flag string) Rule { return MatchRule(l.Require, flag) }
+
+// EvidenceWhy is why nothing can approve guard flag: its rule says
+// evidence: true, asking for evidence-bound approvals, which swim no
+// longer has. Ignoring it would loosen the rule, so the guard dry-runs
+// until the rule changes. "" when its rule doesn't say so.
+func (l *Lookup) EvidenceWhy(flag string) string {
+	if l == nil || !l.RuleFor(flag).Evidence {
+		return ""
+	}
+	return "lookup.yml rule for " + flag + " requires evidence-bound approvals, which swim no longer has: remove `evidence: true`"
+}
 
 // Explicit reports whether a require: rule names flag (by a glob, or a
 // rule without globs that covers every guard): the repo said who must

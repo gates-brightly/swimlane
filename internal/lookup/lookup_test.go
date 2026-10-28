@@ -1,6 +1,8 @@
 package lookup
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +102,17 @@ func TestRuleCanonical(t *testing.T) {
 			t.Errorf("%+v reads like %+v", other, a)
 		}
 	}
+	// The signed form, golden: a rule without evidence: true reads (and so
+	// hashes) as it always did; one with it still adds ";evidence".
+	if got := a.Canonical(); got != "guards=A_*,B_*;group=ops;count=1" {
+		t.Errorf("canonical %q", got)
+	}
+	if got := (Rule{Guards: []string{"A_*"}, Evidence: true}).Canonical(); got != "guards=A_*;group=;count=1;evidence" {
+		t.Errorf("canonical with evidence %q", got)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(RulesText([]Rule{a, {Group: "ops", Count: 2}})))); got != "9806b87012931bbaa88129668ed4b379d24e8d37c9f347b5525d585087284235" {
+		t.Errorf("rules hash %s", got)
+	}
 	rules := []Rule{{Guards: []string{"FIN_*"}, Count: 2}, {Group: "ops"}}
 	if MatchRule(rules, "FIN_X").Count != 2 || MatchRule(rules, "OTHER").Group != "ops" || MatchRule(nil, "X").Count != 1 {
 		t.Error("MatchRule")
@@ -123,5 +136,24 @@ func TestStandingMax(t *testing.T) {
 		if _, err := ParseLifetime(bad); err == nil {
 			t.Errorf("accepted %q", bad)
 		}
+	}
+}
+
+// A rule with evidence: true approves nothing now: EvidenceWhy names the
+// guards it covers, and only those.
+func TestEvidenceWhy(t *testing.T) {
+	l, err := Load(write(t, "require:\n  - guards: [ORDERS_*]\n    evidence: true\n  - count: 1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "lookup.yml rule for ORDERS_APPLY requires evidence-bound approvals, which swim no longer has: remove `evidence: true`"
+	if got := l.EvidenceWhy("ORDERS_APPLY"); got != want {
+		t.Errorf("ORDERS_APPLY: %q", got)
+	}
+	if got := l.EvidenceWhy("FIN_DROP"); got != "" {
+		t.Errorf("FIN_DROP: %q", got)
+	}
+	if (*Lookup)(nil).EvidenceWhy("X") != "" {
+		t.Error("nil lookup")
 	}
 }

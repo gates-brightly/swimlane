@@ -348,6 +348,7 @@ func pinBatch(root string, cfg *config.Config, lanes []int, approve []string) ([
 	}
 	var approved []string
 	seen := map[string]bool{}
+	lk, _ := lookup.Load(root)
 	for _, f := range approve {
 		f = strings.TrimSpace(f)
 		if f == "" || seen[f] {
@@ -355,6 +356,9 @@ func pinBatch(root string, cfg *config.Config, lanes []int, approve []string) ([
 		}
 		if !guards[f] {
 			return nil, nil, guards, fmt.Errorf("--approve %s: no lane in this batch has a guard %s (its guards: %s)", f, f, or(strings.Join(sortedKeys(guards), ", "), "none"))
+		}
+		if why := lk.EvidenceWhy(f); why != "" {
+			return nil, nil, guards, fmt.Errorf("--approve %s: %s", f, why)
 		}
 		seen[f] = true
 		approved = append(approved, f)

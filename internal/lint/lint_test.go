@@ -121,6 +121,7 @@ func TestEachCheck(t *testing.T) {
 		{name: "bad Timeout", script: replace(c, "# Timeout: 30m", "# Timeout: soon"), code: "header", level: finding.Warn, line: 7},
 		{name: "removed header", script: before(c, "# Timeout:", "# Finally: 2\n"), code: "removed", level: finding.Error, line: 7, message: "# Finally:"},
 		{name: "Modules header", script: before(c, "# Timeout:", "# Modules: notify\n"), code: "removed", level: finding.Error, line: 7, message: "# Modules: is gone"},
+		{name: "evidence step", script: before(c, "stage verify\n", "evidence \"plan\" true\n"), code: "removed", level: finding.Error, message: "evidence steps are gone"},
 		{name: "mod call", script: before(c, "stage verify\n", "mod notify - \"done\"\n"), code: "removed", level: finding.Error, message: "mod calls a module"},
 		{name: "outcome handler", script: before(c, "stage snapshot\n", "on_failure() {\n  run \"undo\" true\n}\n"), code: "removed", level: finding.Error, line: 13, message: "on_failure"},
 		{name: "cross-lane read", script: before(c, "stage verify\n", "run \"read\" cat shared/report.json\n"), other: before(clean(2), "stage verify\n", "run \"fetch\" curl -fsS -o shared/report.json https://example.com\n"), code: "cross-lane", level: finding.Info, message: "lane.2.sh:23 writes"},

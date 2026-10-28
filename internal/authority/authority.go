@@ -20,10 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
-	"github.com/gates-brightly/swimlane/internal/evidence"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
@@ -125,15 +123,12 @@ func Take(root string, env []string) *Snapshot {
 	return s
 }
 
-// Watch reports whether the run is a batch swim watch took from the queue.
-func (s *Snapshot) Watch() bool { return s.Env["SWIM_QUEUE"] != "" }
-
 // Ask is one guard to decide.
 type Ask struct {
 	Root     string
 	Lane     int
 	Flag     string
-	Desc     string // the lane's description (for the evidence WARN)
+	Desc     string // the lane's description
 	Job, Run string
 	Script   string             // the script's SHA-256
 	Manifest *manifest.Manifest // nil for none
@@ -144,20 +139,25 @@ type Result struct {
 	OK bool
 	// How is the APPROVED line's detail ("approved by ... (signed)").
 	How string
-	// Entry is the approve entry to record (OK only): method, approvers,
-	// evidence; the caller adds the lane's facts.
+	// Entry is the approve entry to record (OK only): method and
+	// approvers; the caller adds the lane's facts.
 	Entry chain.Entry
 	// History is what .swim.log says of it (OK only).
 	History string
 	// Why the signed approvals didn't count ("" if none apply).
 	Why string
-	// Warns are WARN lines for the lane's log (evidence that changed).
-	Warns []approval.Warn
-	// The run's evidence, and whether the guard's rule needs approvals
-	// bound to it (shown with a question).
-	Evidence         *evidence.Index
-	EvidenceText     string
-	EvidenceRequired bool
+}
+
+// Unapprovable is why nothing may approve guard flag, whatever answers
+// it (a signed approval, FLAG=1, the prompt, -y, a queued batch's
+// approval): its lookup.yml rule asks for evidence-bound approvals, which
+// swim no longer has. "" when something may. A lookup.yml that doesn't
+// load is left to Signed, which says so.
+func (s *Snapshot) Unapprovable(flag string) string {
+	if s.LookupErr != nil {
+		return ""
+	}
+	return s.Lookup.EvidenceWhy(flag)
 }
 
 // FlagSet decides a guard whose flag the lane has set to 1: it approves
@@ -177,25 +177,19 @@ func (s *Snapshot) FlagSet(flag string) Result {
 // Signed decides a guard by the signed approvals in the snapshot: those
 // of the exact manifest (or, from before manifests, of the script),
 // plus the standing approvals of whoever signed the queue entry the
-// run came from, counted together against lookup.yml; an approval bound
-// to evidence counts only while this run's evidence matches.
+// run came from, counted together against lookup.yml. An approval an
+// older swim bound to a round's evidence counts as one of the script.
 func (s *Snapshot) Signed(a Ask, now time.Time) Result {
 	var r Result
-	// This run's evidence (its evidence steps' output so far), and whether
-	// the guard's rule needs approvals bound to it. Batches run by swim
-	// watch don't check evidence: unattended, a drifted plan would turn every
-	// queued change into a dry run with no one to re-approve.
-	if ev := evidence.Load(a.Root, a.Job); ev != nil && ev.Run == a.Run {
-		r.Evidence = ev
-		r.EvidenceText, _ = ev.Text(a.Root)
-	}
-	watch := s.Watch()
 	if s.LookupErr != nil {
 		r.Why = s.LookupErr.Error()
 		return r
 	}
+	if why := s.Unapprovable(a.Flag); why != "" {
+		r.Why = why
+		return r
+	}
 	lk := s.Lookup
-	r.EvidenceRequired = lk.RuleFor(a.Flag).Evidence && !watch
 	var files []*sigfile.File
 	for _, f := range s.Files {
 		if f.Kind == sigfile.Script && f.SHA256 == a.Script {
@@ -204,7 +198,6 @@ func (s *Snapshot) Signed(a Ask, now time.Time) Result {
 	}
 	files = sigfile.Unlimited(files)
 	files, stale := sigfile.ForManifest(files, a.Manifest)
-	files, r.Warns = s.evidenceFilter(a, files, r.Evidence, r.EvidenceText, r.EvidenceRequired, watch)
 	queuer := s.queuer(a.Lane, a.Script)
 	if queuer != "" {
 		for _, f := range s.Files {
@@ -262,60 +255,10 @@ func (s *Snapshot) Signed(a Ask, now time.Time) Result {
 	default:
 		how += " (signed)"
 	}
-	evCovered := ""
-	for _, g := range d.Grants {
-		if g.File.Evidence != "" {
-			evCovered = g.File.Evidence
-		}
-	}
-	if evCovered != "" {
-		how += "; evidence " + short12(evCovered)
-	}
-	if watch {
-		for _, f := range files {
-			if f.Evidence != "" {
-				how += "; evidence not checked (watch)"
-				break
-			}
-		}
-	}
 	r.OK, r.How = true, how
-	r.Entry = chain.Entry{Method: method, Approvers: approvers, Evidence: evCovered}
+	r.Entry = chain.Entry{Method: method, Approvers: approvers}
 	r.History = method + ": " + strings.Join(d.Users, ", ")
 	return r
-}
-
-// evidenceFilter keeps the signed approvals that still apply given this
-// run's evidence: one bound to evidence counts only while the evidence
-// matches (a WARN and a diff in the log when it doesn't), and when the
-// guard's rule requires evidence a script-only approval doesn't count. Under
-// swim watch nothing is compared.
-func (s *Snapshot) evidenceFilter(a Ask, files []*sigfile.File, live *evidence.Index, liveText string, required, watch bool) ([]*sigfile.File, []approval.Warn) {
-	if watch {
-		return files, nil
-	}
-	var out []*sigfile.File
-	var warns []approval.Warn
-	for _, f := range files {
-		switch {
-		case f.Evidence != "" && (live == nil || f.Evidence != live.Hash):
-			now := "no evidence this run"
-			if live != nil {
-				now = short12(live.Hash)
-			}
-			w := approval.Warn{Label: "evidence changed since approval: " + a.Desc,
-				Detail: fmt.Sprintf("%s approved evidence %s; this run has %s", filepath.Base(f.Path), short12(f.Evidence), now)}
-			if old := evidence.Blob(a.Root, f.Evidence); old != "" && liveText != "" {
-				w.Diff = evidence.Diff(old, liveText, 40)
-			}
-			warns = append(warns, w)
-		case required && f.Evidence == "":
-			// Script-only: doesn't count where the rule needs the plan approved.
-		default:
-			out = append(out, f)
-		}
-	}
-	return out, warns
 }
 
 // queuer is who queued the batch this run came from, proven by their SSH

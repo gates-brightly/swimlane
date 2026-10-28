@@ -62,8 +62,7 @@ both ends are always the same swim binary.
 
 `approved: false` with `dry: true` means no one was asked: the guard is a
 dry run, and `why` (if set) says why nothing else approved it. `how` is the
-detail the lane logs with `APPROVED`; `warns` are WARN lines it logs
-(evidence that changed since a signed approval).
+detail the lane logs with `APPROVED`.
 
 ## How the launcher decides
 

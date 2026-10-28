@@ -5,7 +5,7 @@ import (
 	"unicode/utf8"
 )
 
-// Safe makes text a lane supplied (a guard's description, evidence, a
+// Safe makes text a lane supplied (a guard's description, a
 // step label, a status message, log lines) harmless to show on a
 // terminal: a lane could otherwise use escape sequences, carriage returns
 // or backspaces to hide or rewrite what the operator reads, or bidi

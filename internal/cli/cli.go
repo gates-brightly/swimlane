@@ -68,7 +68,6 @@ func init() {
 		// swim run "<label>" -- cmd is the in-lane form of run.
 		"gate":     {run: laneGate},
 		"snapshot": {run: laneSnapshot},
-		"evidence": {run: laneEvidence},
 		"guard":    {run: cmdGuard},
 		"stage":    {run: cmdStagePublic},
 		"drift":    {run: cmdDrift},

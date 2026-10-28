@@ -100,9 +100,9 @@ type Info struct {
 	// local modules a Python or TypeScript lane imports: they're hashed
 	// with the script (ScriptBytes), so approvals cover them.
 	Includes []string
-	// UsesEvidence: the script has evidence steps (evidence "tf plan" ...),
-	// so its approvals cover the evidence too (see swim approve).
-	UsesEvidence bool
+	// EvidenceLines are the lines (0-based) of evidence steps (evidence
+	// "tf plan" ...), which swim no longer has: lint refuses them.
+	EvidenceLines []int
 	// DynamicGuards counts guard calls whose flag is named at run time
 	// (guard "$FLAG" ...): swim can't know them ahead.
 	DynamicGuards int
@@ -196,8 +196,8 @@ func ReadScript(root string, n int) (Info, error) {
 // The header is the lane's contract: its guards (# Guards:, "*" for flags
 // named at run time) and the files it reads (# Includes:) are what the run
 // allows. The body is read only for where
-// its stages and outcome handlers are, and whether it shows evidence (see
-// text.go).
+// its stages and outcome handlers are, and where it has evidence steps
+// (see text.go).
 func ParseScript(src string) Info {
 	lines := strings.Split(src, "\n")
 	for i, l := range lines {
@@ -256,8 +256,8 @@ func ParseScript(src string) Info {
 		if !info.Staged && stagesIn(line, cmds) {
 			info.Staged = true
 		}
-		if !info.UsesEvidence && evidenceIn(line, cmds) {
-			info.UsesEvidence = true
+		if evidenceIn(line, cmds) {
+			info.EvidenceLines = append(info.EvidenceLines, i)
 		}
 	}
 	if info.Stub {
@@ -408,9 +408,9 @@ func stagesIn(line string, cmds [][]Word) bool {
 	return false
 }
 
-// evidenceIn reports whether a line has an evidence step: `evidence
-// "<label>" ...`, `swim evidence`, or ["evidence", ...] from another
-// language.
+// evidenceIn reports whether a line has an evidence step (which swim no
+// longer has): `evidence "<label>" ...`, `swim evidence`, or
+// ["evidence", ...] from another language.
 func evidenceIn(line string, cmds [][]Word) bool {
 	for _, c := range cmds {
 		if len(c) > 1 && c[0].Text == "evidence" {

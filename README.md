@@ -451,11 +451,6 @@ summary
   `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
-- **Approve the plan, not just the script:** `evidence "tf plan" terraform
-  plan ...` in the check stage records what the change will do.
-  `swim approve` shows it and signs its hash with the script, and the
-  approval counts only while the run's plan still matches. If it drifted,
-  the log shows a diff and the guard asks again.
 - **Pre-approve in the live view:** select a lane that hasn't asked yet
   and press `y` (or `n`) to answer its guards ahead of time, then walk away.
   The answer is pinned to the script and lasts this run only.

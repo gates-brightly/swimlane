@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // A lane waits on the nearest unapproved guard at or above it: a dry run
@@ -32,5 +34,14 @@ func TestApprovalsLine(t *testing.T) {
 	}
 	if approvalsLine(&plan{sel: []int{1}, actions: map[int]planAction{1: actRun}}) != "" {
 		t.Error("a run with no guards has no approvals line")
+	}
+}
+
+// A guard nothing can approve (its rule says evidence: true) says so in
+// the plan, whatever would answer it.
+func TestGuardVerdictNever(t *testing.T) {
+	v := GuardVerdict{Flag: "A", Never: true, Why: "lookup.yml rule for A requires evidence-bound approvals"}
+	if got := v.text(ui.Painter{}); got != "not approved: a dry run, whatever answers it; lookup.yml rule for A requires evidence-bound approvals" {
+		t.Errorf("text %q", got)
 	}
 }

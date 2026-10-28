@@ -1277,9 +1277,7 @@ func (p *preAnswers) use(o Options, req approval.Request) (approval.Response, bo
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	a := p.by[req.Lane]
-	if a == nil || req.EvidenceRequired {
-		// An evidence-bound guard asks: an answer given before the plan
-		// existed can't approve the plan.
+	if a == nil {
 		return approval.Response{}, false
 	}
 	known := false

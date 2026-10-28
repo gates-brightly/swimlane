@@ -17,6 +17,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -103,6 +104,15 @@ func cmdApproveHook(args []string) error {
 		cmdMark([]string{args[0], logparse.Warn, "approval refused: " + flag, why})
 		return dryRun(why)
 	}
+	// Run directly with bash: a guard whose lookup.yml rule asks for
+	// evidence-bound approvals (which swim no longer has) can't be
+	// approved by anything, the operator's own flag included.
+	if lk, err := lookup.Load(root); err == nil {
+		if why := lk.EvidenceWhy(flag); why != "" {
+			cmdMark([]string{args[0], logparse.Warn, "approval refused: " + flag, why})
+			return dryRun(why)
+		}
+	}
 	// Run directly with bash: only a guard the header declares can be
 	// approved, as under swim run. With an approvals broker, it decides
 	// that, knowing which lane really asks (a lane may claim another's
@@ -131,7 +141,6 @@ func cmdApproveHook(args []string) error {
 	// together against lookup.yml.
 	snap := authority.Take(root, os.Environ())
 	d := snap.Signed(authority.Ask{Root: root, Lane: n, Flag: flag, Desc: desc, Job: job, Run: run, Script: sha, Manifest: m}, time.Now())
-	laneWarns(root, n, args[0], d.Warns)
 	if d.OK {
 		facts := observe()
 		if err := drifted(facts); err != nil {
@@ -142,7 +151,7 @@ func cmdApproveHook(args []string) error {
 			return err
 		}
 		if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Manifest: man, Guard: flag, Action: desc,
-			Method: d.Entry.Method, Approvers: d.Entry.Approvers, Evidence: d.Entry.Evidence, Observed: facts, Lookup: snap.LookupSHA}); err != nil {
+			Method: d.Entry.Method, Approvers: d.Entry.Approvers, Observed: facts, Lookup: snap.LookupSHA}); err != nil {
 			return err
 		}
 		history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", " + d.History + ")"})
@@ -158,11 +167,8 @@ func cmdApproveHook(args []string) error {
 		return dryRun(why)
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
-	req := approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc, Evidence: d.EvidenceText, EvidenceRequired: d.EvidenceRequired,
+	req := approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc,
 		Token: os.Getenv(approval.TokenEnv), Manifest: man}
-	if d.Evidence != nil {
-		req.EvidenceSHA = d.Evidence.Hash
-	}
 	broker := os.Getenv(approval.EnvVar) != ""
 	if !broker {
 		req.Observed = observe() // the terminal question shows them; a broker reads its own
@@ -285,7 +291,6 @@ func approveLaunched(root string, cfg *config.Config, laneArg string, n int, fla
 	if err != nil && resp.Why == "" {
 		resp.Why = err.Error()
 	}
-	laneWarns(root, n, laneArg, resp.Warns)
 	if !resp.Approved {
 		return dryRun(declined(resp))
 	}
@@ -312,21 +317,6 @@ func declined(resp approval.Response) string {
 		return "not approved: " + resp.Why
 	}
 	return "declined at the prompt"
-}
-
-// laneWarns writes WARN lines (and diffs) to lane n's log: evidence that
-// changed since an approval.
-func laneWarns(root string, n int, laneArg string, warns []approval.Warn) {
-	for _, w := range warns {
-		cmdMark([]string{laneArg, logparse.Warn, w.Label, w.Detail})
-		if len(w.Diff) > 0 {
-			var lines []string
-			for _, l := range w.Diff {
-				lines = append(lines, logparse.Indent+"| "+l)
-			}
-			appendLog(lane.Log(root, n), strings.Join(lines, "\n")+"\n")
-		}
-	}
 }
 
 type askFunc func(req approval.Request, stopped func() bool, deadline time.Time) approval.Response

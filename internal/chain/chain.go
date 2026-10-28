@@ -88,8 +88,10 @@ type Entry struct {
 	// Inputs are the outputs it read: "2:stats.json" -> SHA-256 when read,
 	// and which round produced each: "2" -> "<job> <run>".
 	Inputs map[string]string `json:"inputs,omitempty"`
-	// Evidence is the round's evidence hash (round entries), or the
-	// evidence an approval covered (approve entries).
+	// Evidence was the round's evidence hash (round entries), or the
+	// evidence an approval covered (approve entries): swim no longer has
+	// evidence steps and writes neither; older entries keep it, and the
+	// hash covers it as written.
 	Evidence    string            `json:"evidence_sha256,omitempty"`
 	InputRounds map[string]string `json:"input_rounds,omitempty"`
 
