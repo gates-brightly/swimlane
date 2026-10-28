@@ -56,12 +56,15 @@ type Info struct {
 	// what its manifest pins) or WorkspaceLive (the repo's working tree,
 	// where it can read files nobody approved).
 	Workspace string
-	Job       string   // Job: id ("" if the script has none; one is made at start)
-	After     []string // After: lanes or job ids this round waits for (default none)
-	Owner     string   // Owner: who wrote the round (default "")
-	Created   string   // Created: date (default: the file's modification date)
-	Guards    []Guard  // Guards: lines, plus guard flags used in the body
-	Timeout   time.Duration
+	// Signoff is # Signoff: the commit status (e.g. swim/checks) swim
+	// posts, signed, when the round passes on a clean commit; "" for none.
+	Signoff string
+	Job     string   // Job: id ("" if the script has none; one is made at start)
+	After   []string // After: lanes or job ids this round waits for (default none)
+	Owner   string   // Owner: who wrote the round (default "")
+	Created string   // Created: date (default: the file's modification date)
+	Guards  []Guard  // Guards: lines, plus guard flags used in the body
+	Timeout time.Duration
 	// TimeoutText is the Timeout: value as written ("" for none).
 	TimeoutText string
 	// StepTimeout is Step-Timeout:, the default limit for each step.
@@ -280,6 +283,10 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 			info.Workspace = WorkspaceLive
 		default:
 			info.Problems = append(info.Problems, fmt.Sprintf("Workspace %q is staged (the default) or live; the lane runs staged", v))
+		}
+	case "Signoff":
+		if f := strings.Fields(v); len(f) > 0 && f[0] != "-" && !strings.EqualFold(f[0], "none") {
+			info.Signoff = f[0]
 		}
 	case "Task":
 		if f := strings.Fields(v); len(f) > 0 && info.Task == "" {

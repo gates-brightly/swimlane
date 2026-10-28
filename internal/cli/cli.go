@@ -57,6 +57,7 @@ func init() {
 		"approve":   {run: cmdApprove},
 		"revoke":    {run: cmdRevoke},
 		"verify":    {run: cmdVerify},
+		"signoff":   {run: cmdSignoff},
 		"history":   {run: cmdHistory},
 		"chain":     {run: cmdChain},
 		"keys":      {run: cmdKeys},

@@ -809,6 +809,26 @@ swim revoke --auto USER [--key K]
                        level a field of its own (consistent: "yes"), so CI
                        can require any of them; ok is what the exit code says.
 `,
+	"signoff": `swim signoff verify FILE ...
+
+  A lane with # Signoff: CONTEXT is local CI: when its round passes, swim
+  (not the lane) signs a statement with the key of whoever runs the
+  launcher, swim run or the swimmer under swim watch: the commit and its
+  tree, the lane, its script and manifest hashes, the job and run. It
+  goes in .swim/signoffs/COMMIT/N.json, and a success commit status named
+  CONTEXT goes to GitHub through their gh, which branch protection can
+  require. Approving the script approves the signoff. Only when the tree
+  was HEAD's as the run started and still is (no changed or untracked file
+  git doesn't ignore) and the lane script is committed; push the commit
+  first. A lane that can't be signed off says why; the run's result
+  doesn't change.
+  A signoff is an attestation, not a proof: it shows whose key vouches
+  that the lane passed on that tree, not that the round ran honestly. Keep
+  CI running on main (or on a sample) to catch a machine that differs.
+  verify checks each file's signature, that the key is someone's
+  (lookup.yml, or trust.yml), and that its commit (if this repo has it)
+  still has the tree it names; exits 1 if any fails.
+`,
 	"history": `swim history [RUN|N|JOB] [--oneline] [-n N | -N] [--reverse] [--no-pager] [--yaml]
 
   The chain of custody, read like git log: newest first, each entry as
@@ -1215,7 +1235,7 @@ func Names() []string {
 var FullOrder = []string{"init", "config", "env", "cache", "new", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait", "approve", "revoke",
-	"verify", "history", "chain", "keys", "ci", "lint", "doctor", "guide"}
+	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
 // line each, and where the rest is.
@@ -1253,6 +1273,7 @@ MORE
   archive, clean, stub, note   tidy up and record
   interrupt, wait, claim       control running lanes
   report                       what changed since you last looked
+  signoff verify FILE          check a signoff (# Signoff: posts a commit status)
   ci, config, lock, changelog, version, skill
 
   Lane scripts call: gate, guard, stage, run, snapshot, drift,

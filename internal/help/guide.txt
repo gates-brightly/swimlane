@@ -59,6 +59,7 @@ COMMANDS
   interrupt N|JOB          ask one running lane to stop at its next step boundary
   claim N [--for D]        hold a lane while this session writes its round (swim new does; --release, --break)
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
+  signoff verify FILE ...  check a signoff (# Signoff:): its signature, whose key, the commit
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
                            to run once its lanes are free; queue [list|show|rm|requeue]
   watch [--once]           run queued batches side by side, consuming them (this machine is the swimmer)
@@ -401,6 +402,11 @@ WRITING A LANE SCRIPT
                                       terraform, npm, pip or go, each with the lockfile the
                                       tool checks the cache against (pinned like Includes:).
                                       See CACHE. Default: none
+      # Signoff: <context>            local CI: when the round passes on a clean HEAD (the
+                                      lane script committed), swim signs it with the key of
+                                      whoever ran swim run or swim watch, and posts commit
+                                      status <context> (swim/checks) through their gh.
+                                      Approving the script approves it. Default: none
       # Observe: NAME = <command>     a fact swim can't pin (the cloud account, ...): read
       # Observe: path CMD [CMD ...]   when a guard is approved and again just before it
                                       returns; a difference ends the round as drift. A path

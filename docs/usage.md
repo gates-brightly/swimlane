@@ -817,6 +817,48 @@ injection (3), the security suite (4) and fuzzing (6) start together, each its o
 a red run names the gate. A run takes about as long as the slowest suite.
 `just ci` runs the same lanes locally.
 
+### Local CI
+
+<a id="local-ci"></a>
+
+A lane with a `# Signoff:` header runs on your machine instead of in CI,
+and swim posts the result where CI's would go:
+
+```sh
+# lane.1.sh (committed: add !/lane.1.sh to .gitignore)
+# Task:    checks
+# Signoff: swim/checks
+```
+
+```sh
+git push                     # GitHub only takes a status for a commit it has
+swim run checks              # or queue it: swim watch signs off the same way
+swim signoff verify .swim/signoffs/<commit>/1.json
+```
+
+The lane declares the signoff; swim does it, like a chain checkpoint,
+after the round and with the credentials of whoever runs the launcher:
+`swim run`, or the swimmer under `swim watch`. The lane never needs the
+key or a `gh` login. Approving the script approves the signoff.
+
+swim signs off only when the tree was HEAD's as the run started and still
+is (no changed file, no untracked file git doesn't ignore), and the lane
+script is committed, so a reviewer can see what ran. It signs a statement
+with the runner's key: the commit and its tree, the lane, its script and
+manifest hashes, the job and the run. The statement goes in
+`.swim/signoffs/COMMIT/N.json`, and a `success` commit status named by the
+header goes to GitHub through `gh`. Require that status in branch
+protection in place of the CI job it replaces. A lane that can't be signed
+off says why, and the run's result doesn't change.
+
+`swim signoff verify` checks a statement's signature, that `lookup.yml` or
+`trust.yml` names its key, and, when the repo has the commit, its tree.
+
+A signoff is an attestation, not a proof. It shows whose key says the
+lane passed on that tree. It doesn't show that the round ran honestly, or
+on a machine like CI's. Keep CI running on main, or on a sample of pull
+requests, to catch the difference.
+
 ### Scripting and YAML
 
 <a id="scripting-and-yaml"></a>

@@ -489,10 +489,15 @@ func runLanes(rest []string, rf runFlags) error {
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput
 	}
+	if o.RunID == "" {
+		o.RunID = lane.NewRunID()
+	}
+	head := signoffHead(root)
 	code, err := launcher.Run(o)
 	if err != nil {
 		return err
 	}
+	signoffsAfterRun(root, cfg, o.RunID, head)
 	checkpointAfterRun(root, cfg)
 	if code != 0 {
 		return exitError{code}

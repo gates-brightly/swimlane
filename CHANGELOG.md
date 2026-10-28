@@ -311,6 +311,18 @@ and read.
   shows the name. `swim lint` (task) refuses a name that is a swim
   command, only hex digits, or another lane's. See
   [docs/formats.md](docs/formats.md#task-names).
+- **Local CI: `# Signoff:`.** A lane with `# Signoff: swim/checks` that
+  passes on a clean HEAD (no changed or untracked file, the lane script
+  committed) is signed off by swim, not the lane: the key of whoever runs
+  `swim run` or `swim watch` signs a statement (the commit, its tree, the
+  lane's script and manifest hashes, the run) into
+  `.swim/signoffs/COMMIT/N.json`, and their `gh` posts a `swim/checks`
+  success commit status, which branch protection can require instead of
+  a CI job. Approving the script approves it. `swim signoff verify FILE`
+  checks the signature, that lookup.yml or trust.yml names the key, and
+  the commit's tree. It's an attestation, not a proof: keep CI on main.
+  A task can no longer be named `signoff`. See
+  [docs/usage.md](docs/usage.md#local-ci).
 
 ### Fixed
 
