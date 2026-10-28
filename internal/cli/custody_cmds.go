@@ -776,6 +776,15 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 		for name := range l.Outputs {
 			field("Kept", ".swim/"+name)
 		}
+	case "amend":
+		signer := sign.Fingerprint(l.Signer)
+		if name, ok := lk.Who(l.Signer); ok {
+			signer = name
+		}
+		subject = fmt.Sprintf("amend: %s acknowledged by %s (not the original signers)", plural(len(l.Amended), "gap"), signer)
+		for _, a := range l.Amended {
+			field("Amended", a)
+		}
 	default:
 		subject = l.Type
 	}

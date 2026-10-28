@@ -427,3 +427,50 @@ func TestInitListsKey(t *testing.T) {
 		t.Errorf("lookup.yml:\n%s", lk)
 	}
 }
+
+// swim verify --force acknowledges gaps and deletions in a signed amend
+// entry: they show as AMENDED (by whom, not the original signer), and
+// verify passes. Changed content isn't amended, and a gap after the
+// amendment is BROKEN again.
+func TestVerifyForceAmendsGaps(t *testing.T) {
+	r := newRepo(t, "")
+	keys := people(t, r, "", "zach")
+	r.mustSwim("config", "signing", "auto")
+	r.mustSwim("config", "signing_key", keys["zach"])
+	r.script(1, "hello", `run "hi" true`)
+	for i := 0; i < 3; i++ {
+		r.mustSwim("run", "1", "--plain")
+	}
+	chainPath := filepath.Join(r.root, ".swim", "chain.jsonl")
+	drop := func(i int) {
+		data, _ := os.ReadFile(chainPath)
+		ls := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+		ls = append(ls[:i], ls[i+1:]...)
+		os.WriteFile(chainPath, []byte(strings.Join(ls, "\n")+"\n"), 0o644)
+	}
+	drop(1) // an entry removed from the middle
+	os.Remove(filepath.Join(r.root, ".swim", "logs", "agent1.log"))
+	out, code := r.swim("verify")
+	if code == 0 || !strings.Contains(out, "BROKEN: entry #3 (line 2): entry #2 is missing before it (removed)") {
+		t.Fatalf("gap: %d\n%s", code, out)
+	}
+	out = r.mustSwim("verify", "--force")
+	contains(t, "force", out, "amended", "signed by zach", "AMENDED: entry #3", "not the original signer", "VERIFIED")
+	out = r.mustSwim("verify")
+	contains(t, "after", out, "AMENDED: ", "acknowledged by zach", "VERIFIED")
+	if strings.Contains(out, "BROKEN") {
+		t.Errorf("an amended gap is still BROKEN:\n%s", out)
+	}
+	contains(t, "history", r.mustSwim("history", "--oneline", "-n", "1"), "amend:", "acknowledged by zach")
+
+	// Nothing left: --force records nothing.
+	contains(t, "again", r.mustSwim("verify", "--force"), "no gaps or deleted items to amend")
+
+	// A gap after the amendment isn't covered by it.
+	data, _ := os.ReadFile(chainPath)
+	n := strings.Count(string(data), "\n")
+	drop(n - 2)
+	if out, code := r.swim("verify"); code == 0 || !strings.Contains(out, "BROKEN: ") {
+		t.Errorf("a new gap after the amendment: %d\n%s", code, out)
+	}
+}

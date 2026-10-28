@@ -343,6 +343,14 @@ and read.
   approval covers another version of the script or a stale manifest, the
   dry run says to review the change and `swim approve N --guards FLAG`,
   not `set FLAG=1 to approve`, the unsigned way past it.
+- **`swim verify --force`** acknowledges the gaps and deletions it finds
+  (entries removed or out of order, rounds' logs or kept scripts deleted)
+  in one signed `amend` chain entry. From then on they're AMENDED, a
+  warning naming who signed for them (not the original signer), instead
+  of BROKEN. Changed content is never amended, and a gap after the
+  amendment is BROKEN again. A removed entry is now reported once, where
+  the numbering jumps (`entry #2 is missing before it`), not at every
+  entry after it.
 - **Older staged copies verify again.** `swim verify` reported every
   round staged by a swim from before 2026-10-24 as BROKEN ("manifest
   changed since staged"): it rechecked their manifest with today's (v2)

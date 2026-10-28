@@ -49,7 +49,7 @@ type Entry struct {
 	Seq  int    `json:"seq"`
 	Prev string `json:"prev"` // SHA-256 of the previous line; "" for the first
 	At   string `json:"at"`
-	Type string `json:"type"` // approve | round | run | grant | revoke | repair | hub (a command from the hub an older swim had; Method: its kind) | secret-released | secret-refused
+	Type string `json:"type"` // approve | round | run | amend | grant | revoke | repair | hub (a command from the hub an older swim had; Method: its kind) | secret-released | secret-refused
 
 	Run    string `json:"run,omitempty"`
 	Lane   int    `json:"lane,omitempty"`
@@ -71,6 +71,11 @@ type Entry struct {
 	Lookup string `json:"lookup_sha256,omitempty"`
 	// Observed are the round's Observe: facts when the guard was approved.
 	Observed map[string]string `json:"observed,omitempty"`
+
+	// amend (swim verify --force): the problems its signer acknowledged,
+	// as swim verify printed them. Gaps and deletions only; the signer
+	// isn't whoever recorded the entries they're about.
+	Amended []string `json:"amended,omitempty"`
 
 	// round
 	Result    string   `json:"result,omitempty"`
@@ -478,8 +483,19 @@ type Problem struct {
 func Check(links []Link) (problems []Problem, unsigned []int) {
 	prev := ""
 	for i, l := range links {
-		if l.Seq != i+1 {
-			problems = append(problems, Problem{l.Line, l.Seq, fmt.Sprintf("seq %d where %d was expected (an entry was removed or inserted)", l.Seq, i+1)})
+		// Each entry follows the one before it: a gap is reported once,
+		// where the numbering jumps, not at every entry after it.
+		want := 1
+		if i > 0 {
+			want = links[i-1].Seq + 1
+		}
+		switch {
+		case l.Seq == want+1:
+			problems = append(problems, Problem{l.Line, l.Seq, fmt.Sprintf("entry #%d is missing before it (removed)", want)})
+		case l.Seq > want:
+			problems = append(problems, Problem{l.Line, l.Seq, fmt.Sprintf("entries #%d-#%d are missing before it (removed)", want, l.Seq-1)})
+		case l.Seq < want:
+			problems = append(problems, Problem{l.Line, l.Seq, fmt.Sprintf("seq %d after #%d (an entry was inserted, reordered or repeated)", l.Seq, want-1)})
 		}
 		if l.Prev != prev {
 			problems = append(problems, Problem{l.Line, l.Seq, "prev hash doesn't match the entry before it (an earlier entry was changed, removed or reordered)"})

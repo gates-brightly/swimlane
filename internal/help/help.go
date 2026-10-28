@@ -755,7 +755,7 @@ swim revoke --auto USER [--key K]
   event; your approval stops counting from then on (approving again adds
   another approve event). A round that already ran keeps its record.
 `,
-	"verify": `swim verify [--strict] [--allow-unsigned] [--levels] [--trust-pin SHA256] [--against DEST] [--yaml]
+	"verify": `swim verify [--strict] [--allow-unsigned] [--levels] [--force] [--trust-pin SHA256] [--against DEST] [--yaml]
 
   Prove the chain of custody (.swim/chain.jsonl). It prints one answer,
   VERIFIED or NOT VERIFIED (exit 1), with what failed or what it couldn't
@@ -803,6 +803,15 @@ swim revoke --auto USER [--key K]
   Exits 1 when a level says no, anything is BROKEN or an entry is
   unsigned (without --allow-unsigned); --strict also on n/a, partial and
   any warning.
+  --force acknowledges the gaps and deletions it finds: entries missing,
+  inserted or out of order, a link that doesn't follow, a round's log or
+  kept script deleted. It appends one amend entry listing them, signed
+  with your key, and from then on swim verify shows each as AMENDED (a
+  warning, which --strict counts), naming who acknowledged it: you, not
+  whoever recorded the entries. Changed content (a signature, log, script
+  or staged copy that doesn't match) is never amended, and a gap that
+  appears after the amendment is BROKEN again. swim history shows the
+  amend entry.
   --trust-pin SHA256   check trust.yml against this hash instead of the pin
                        in ~/.config/swim/trust-pins.yml (CI, which keeps no
                        pins; swim keys pin prints it). Also SWIM_TRUST_PIN.

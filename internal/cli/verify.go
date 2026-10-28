@@ -51,6 +51,7 @@ type verifier struct {
 	unsigned         []int
 	unsignedBad      string // unsigned entries nothing vouches for (not BROKEN: nothing changed)
 	covered          int    // unsigned entries a later signed one links to
+	amended          []string // problems an amend entry acknowledged (swim verify --force)
 	rounds           int
 	approvals        int
 	// trust says whether a key is trusted (nil without trust.yml): for
@@ -80,15 +81,15 @@ type verifier struct {
 // --allow-unsigned. --strict also fails when a level can't be checked
 // (n/a) and on any warning; --levels prints each level.
 func cmdVerify(args []string) error {
-	var strict, asYAML, allowUnsigned, showLevels bool
+	var strict, asYAML, allowUnsigned, showLevels, force bool
 	var pinFlag, against string
-	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML, "allow-unsigned": &allowUnsigned, "levels": &showLevels},
+	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML, "allow-unsigned": &allowUnsigned, "levels": &showLevels, "force": &force},
 		strs: map[string]*string{"trust-pin": &pinFlag, "against": &against}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim verify [--strict] [--allow-unsigned] [--levels] [--trust-pin SHA256] [--against DEST] [--yaml]")
+		return usagef("usage: swim verify [--strict] [--allow-unsigned] [--levels] [--force] [--trust-pin SHA256] [--against DEST] [--yaml]")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -127,6 +128,15 @@ func cmdVerify(args []string) error {
 	}
 	v.checkEntries(links)
 	v.checkApprovalFiles()
+	v.applyAmendments(links, problems)
+	if force {
+		if done, err := v.amend(); err != nil {
+			return err
+		} else if done {
+			// Again, from the chain as it now stands.
+			return cmdVerify(slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "--force" }))
+		}
+	}
 	levels := []level{
 		v.consistent(links),
 		v.trusted(links, or(pinFlag, os.Getenv(trust.PinEnv))),
@@ -143,7 +153,7 @@ func cmdVerify(args []string) error {
 			failed = true
 		}
 	}
-	if strict && len(v.warn) > 0 {
+	if strict && (len(v.warn) > 0 || len(v.amended) > 0) {
 		failed = true
 	}
 	if asYAML {
@@ -426,6 +436,9 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 	for _, b := range v.bad {
 		fmt.Println(p.Paint(ui.Red, "BROKEN: "+b))
 	}
+	for _, a := range v.amended {
+		fmt.Println(p.Paint(ui.Yellow, "AMENDED: "+a))
+	}
 	if v.unsignedBad != "" {
 		fmt.Println(p.Paint(ui.Red, "UNSIGNED: "+v.unsignedBad))
 	}
@@ -496,6 +509,7 @@ type verifyDoc struct {
 	Note       string            `yaml:"note"`
 	Broken     []string          `yaml:"broken"`
 	Unsigned   string            `yaml:"unsigned,omitempty"` // unsigned entries nothing vouches for
+	Amended    []string          `yaml:"amended"`            // gaps an amend entry acknowledged
 	Warnings   []string          `yaml:"warnings"`
 	Notes      []string          `yaml:"notes"`
 	Files      []string          `yaml:"approval_files"`
@@ -504,7 +518,7 @@ type verifyDoc struct {
 func (v *verifier) writeYAML(links []chain.Link, levels []level, ok bool) error {
 	d := verifyDoc{Schema: "swim.verify/v1", Chain: rel(v.root, chain.Path(v.root)), Entries: len(links), Rounds: v.rounds, Approvals: v.approvals,
 		OK: ok, Details: map[string]string{}, Note: v.note(levels),
-		Broken: nonNil(v.bad), Unsigned: v.unsignedBad, Warnings: nonNil(v.warn), Notes: nonNil(v.notes), Files: nonNil(v.files)}
+		Broken: nonNil(v.bad), Unsigned: v.unsignedBad, Amended: nonNil(v.amended), Warnings: nonNil(v.warn), Notes: nonNil(v.notes), Files: nonNil(v.files)}
 	for _, l := range levels {
 		d.Details[l.Name] = l.Detail
 		switch l.Name {
@@ -555,4 +569,96 @@ func splitUnsigned(links []chain.Link, unsigned []int) (covered, trailing []int)
 		}
 	}
 	return covered, trailing
+}
+
+// amendable says a problem swim verify --force may acknowledge: a gap in
+// the chain (an entry removed, inserted or out of order, a link that
+// doesn't follow) or something deleted (a round's log, a kept script).
+// Changed content (a signature, a log, a script or staged copy that no
+// longer matches) never is.
+func amendable(problem string) bool {
+	for _, s := range []string{
+		"is missing before it (removed)", "are missing before it (removed)",
+		"an entry was inserted, reordered or repeated", "prev hash doesn't match the entry before it",
+		"(deleted, not archived)", ".sh is missing",
+	} {
+		if strings.Contains(problem, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// applyAmendments moves the problems a signed amend entry acknowledged
+// out of BROKEN and the warnings into AMENDED, each saying who signed for
+// it. An amend entry whose own signature fails counts for nothing.
+func (v *verifier) applyAmendments(links []chain.Link, problems []chain.Problem) {
+	badSig := map[int]bool{}
+	for _, p := range problems {
+		if strings.HasPrefix(p.What, "signature doesn't match") {
+			badSig[p.Seq] = true
+		}
+	}
+	by := map[string]string{}
+	for _, l := range links {
+		if l.Type != "amend" || l.Sig == "" || badSig[l.Seq] {
+			continue
+		}
+		who := "a key not in lookup.yml"
+		if name, ok := v.lk.Who(l.Signer); ok {
+			who = name
+		}
+		for _, a := range l.Amended {
+			if amendable(a) {
+				by[a] = fmt.Sprintf("acknowledged by %s, %s, in entry #%d on %s; not the original signer", who, sign.Fingerprint(l.Signer), l.Seq, pinDate(l.At))
+			}
+		}
+	}
+	keep := func(list []string) []string {
+		var out []string
+		for _, p := range list {
+			if note, ok := by[p]; ok {
+				v.amended = append(v.amended, p+" ("+note+")")
+			} else {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+	v.bad, v.warn = keep(v.bad), keep(v.warn)
+}
+
+// amend records the gaps and deletions not yet acknowledged in a signed
+// amend entry (swim verify --force); done says it recorded one.
+func (v *verifier) amend() (done bool, err error) {
+	var pending []string
+	for _, p := range append(slices.Clone(v.bad), v.warn...) {
+		if amendable(p) {
+			pending = append(pending, p)
+		}
+	}
+	if len(pending) == 0 {
+		fmt.Println("swim verify --force: no gaps or deleted items to amend")
+		return false, nil
+	}
+	key, err := runnerKey(v.cfg)
+	if err != nil {
+		return false, err
+	}
+	if key == nil {
+		return false, errors.New("--force signs an amend entry, and there's no signing key (~/.ssh/id_ed25519 or signing_key)")
+	}
+	if _, err := chain.Append(v.root, chain.Entry{Type: "amend", Action: "swim verify --force", Amended: pending}, key); err != nil {
+		return false, fmt.Errorf("recording the amendment: %v", err)
+	}
+	who := sign.Fingerprint(key.Public)
+	if name, ok := v.lk.Who(key.Public); ok {
+		who = name + ", " + who
+	}
+	fmt.Printf("swim verify --force: amended %s, signed by %s (not the original signers):\n", plural(len(pending), "gap"), who)
+	for _, p := range pending {
+		fmt.Println("  " + p)
+	}
+	fmt.Println()
+	return true, nil
 }

@@ -55,8 +55,8 @@ func TestChainLinksAndDetectsTampering(t *testing.T) {
 	changed := append([]string(nil), lines...)
 	changed[1] = strings.Replace(changed[1], `"passed"`, `"failed"`, 1)
 	tamper("edit", changed, "signature doesn't match")
-	tamper("remove", []string{lines[0], lines[2], lines[3]}, "seq 3 where 2")
-	tamper("reorder", []string{lines[0], lines[2], lines[1], lines[3]}, "seq 3 where 2")
+	tamper("remove", []string{lines[0], lines[2], lines[3]}, "entry #2 is missing")
+	tamper("reorder", []string{lines[0], lines[2], lines[1], lines[3]}, "entry #2 is missing")
 	// Re-signing an edited entry with another key still breaks the next link.
 	os.WriteFile(Path(root), []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 }
@@ -313,5 +313,18 @@ func TestRunKeyEntries(t *testing.T) {
 	}
 	if bad := Trust(links, trusted); len(bad) != 1 || bad[0].Seq != 3 || bad[0].Key != mallory.Public {
 		t.Errorf("a run key vouched for by an untrusted key: %+v", bad)
+	}
+}
+
+// A removed entry is one gap, reported where the numbering jumps, not a
+// problem at every entry after it.
+func TestGapReportedOnce(t *testing.T) {
+	links := []Link{{Entry: Entry{Seq: 1}, Line: 1}, {Entry: Entry{Seq: 4}, Line: 2}, {Entry: Entry{Seq: 5}, Line: 3}, {Entry: Entry{Seq: 6}, Line: 4}}
+	for i := 1; i < len(links); i++ {
+		links[i].Prev = links[i-1].Hash
+	}
+	p, _ := Check(links)
+	if len(p) != 1 || p[0].Seq != 4 || p[0].What != "entries #2-#3 are missing before it (removed)" {
+		t.Errorf("problems %+v", p)
 	}
 }

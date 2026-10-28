@@ -220,6 +220,12 @@ name a socket's peer the token alone decides.
   signed entry links to are a warning: that signature covers them. BROKEN
   is kept for a link, hash or signature that doesn't match. `swim run`
   says when it records a run unsigned.
+- `swim verify --force` acknowledges gaps and deletions (entries removed
+  or out of order, logs and kept scripts deleted) in a signed `amend`
+  entry; verify then reports them as AMENDED, a warning that names who
+  signed for them, which is not whoever recorded the entries. It never
+  amends changed content, and anything after the amendment is checked as
+  before. An amendment says someone accepted the gap, not what was in it.
 
 ## The runner key
 
