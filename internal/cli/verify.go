@@ -49,6 +49,7 @@ type verifier struct {
 	files            []string        // one line per approvals file
 	unlisted         map[string]bool // fingerprints of signers not in lookup.yml
 	unsigned         []int
+	unsignedBad      string // unsigned entries nothing vouches for (not BROKEN: nothing changed)
 	rounds           int
 	approvals        int
 	// trust says whether a key is trusted (nil without trust.yml): for
@@ -109,11 +110,18 @@ func cmdVerify(args []string) error {
 		v.bad = append(v.bad, fmt.Sprintf("entry #%d (line %d): %s", pr.Seq, pr.Line, pr.What))
 	}
 	v.unsigned = unsigned
+	// An unsigned entry with a signed one after it can't change unseen:
+	// that signature covers it through the links (a chain that gained a
+	// key later). The ones after the last signed entry nothing vouches for.
+	covered, trailing := splitUnsigned(links, unsigned)
+	if len(covered) > 0 {
+		v.warn = append(v.warn, fmt.Sprintf("%d unsigned entries (#%s), recorded before a signed one that links to them, so they can't change unseen", len(covered), joinNums(covered)))
+	}
 	switch {
-	case len(unsigned) > 0 && allowUnsigned:
-		v.warn = append(v.warn, fmt.Sprintf("%d unsigned entries (linked, but no key vouches for them): #%s", len(unsigned), joinNums(unsigned)))
-	case len(unsigned) > 0:
-		v.bad = append(v.bad, fmt.Sprintf("%d unsigned entries: #%s. Nothing vouches for them, and a chain rewritten with no key looks the same (set a signing key, ~/.ssh/id_ed25519 or signing_key; --allow-unsigned accepts them)", len(unsigned), joinNums(unsigned)))
+	case len(trailing) > 0 && allowUnsigned:
+		v.warn = append(v.warn, fmt.Sprintf("%d unsigned entries at the end (linked, but no key vouches for them): #%s", len(trailing), joinNums(trailing)))
+	case len(trailing) > 0:
+		v.unsignedBad = fmt.Sprintf("%d unsigned entries at the end: #%s. Nothing vouches for them, and a chain rewritten with no key looks the same (set a signing key, ~/.ssh/id_ed25519 or signing_key; --allow-unsigned accepts them)", len(trailing), joinNums(trailing))
 	}
 	v.checkEntries(links)
 	v.checkApprovalFiles()
@@ -124,7 +132,7 @@ func cmdVerify(args []string) error {
 		v.authorized(links),
 	}
 
-	failed := len(v.bad) > 0
+	failed := len(v.bad) > 0 || v.unsignedBad != ""
 	for _, l := range levels {
 		switch {
 		case l.Result == levelNo:
@@ -152,7 +160,7 @@ func cmdVerify(args []string) error {
 // consistent is the chain checked against itself and what's on disk.
 func (v *verifier) consistent(links []chain.Link) level {
 	if len(v.bad) > 0 {
-		return level{"consistent", levelNo, fmt.Sprintf("%d problems (BROKEN, above)", len(v.bad))}
+		return level{"consistent", levelNo, fmt.Sprintf("%s (BROKEN, above)", plural(len(v.bad), "problem"))}
 	}
 	return level{"consistent", levelYes, fmt.Sprintf("%d entries, links and signatures match; logs, scripts and approvals as recorded", len(links))}
 }
@@ -416,6 +424,9 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 	for _, b := range v.bad {
 		fmt.Println(p.Paint(ui.Red, "BROKEN: "+b))
 	}
+	if v.unsignedBad != "" {
+		fmt.Println(p.Paint(ui.Red, "UNSIGNED: "+v.unsignedBad))
+	}
 	if showLevels {
 		for _, l := range levels {
 			c := ui.Yellow
@@ -440,6 +451,9 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 		}
 		if why == "" && len(v.bad) > 0 {
 			why = v.bad[0]
+		}
+		if why == "" {
+			why = v.unsignedBad
 		}
 		fmt.Println(p.Paint(ui.Red+ui.Bold, "NOT VERIFIED") + ": " + or(why, "see above"))
 		return
@@ -476,6 +490,7 @@ type verifyDoc struct {
 	Details    map[string]string `yaml:"details"` // level -> its line
 	Note       string            `yaml:"note"`
 	Broken     []string          `yaml:"broken"`
+	Unsigned   string            `yaml:"unsigned,omitempty"` // unsigned entries nothing vouches for
 	Warnings   []string          `yaml:"warnings"`
 	Notes      []string          `yaml:"notes"`
 	Files      []string          `yaml:"approval_files"`
@@ -484,7 +499,7 @@ type verifyDoc struct {
 func (v *verifier) writeYAML(links []chain.Link, levels []level, ok bool) error {
 	d := verifyDoc{Schema: "swim.verify/v1", Chain: rel(v.root, chain.Path(v.root)), Entries: len(links), Rounds: v.rounds, Approvals: v.approvals,
 		OK: ok, Details: map[string]string{}, Note: v.note(levels),
-		Broken: nonNil(v.bad), Warnings: nonNil(v.warn), Notes: nonNil(v.notes), Files: nonNil(v.files)}
+		Broken: nonNil(v.bad), Unsigned: v.unsignedBad, Warnings: nonNil(v.warn), Notes: nonNil(v.notes), Files: nonNil(v.files)}
 	for _, l := range levels {
 		d.Details[l.Name] = l.Detail
 		switch l.Name {
@@ -516,4 +531,23 @@ func pinDate(at string) string {
 		return at[:10]
 	}
 	return or(at, "earlier")
+}
+
+// splitUnsigned divides the unsigned entries into those a later signed
+// entry links to (covered) and those after the last signed one (trailing).
+func splitUnsigned(links []chain.Link, unsigned []int) (covered, trailing []int) {
+	lastSigned := -1
+	for _, l := range links {
+		if l.Sig != "" && l.Seq > lastSigned {
+			lastSigned = l.Seq
+		}
+	}
+	for _, n := range unsigned {
+		if n < lastSigned {
+			covered = append(covered, n)
+		} else {
+			trailing = append(trailing, n)
+		}
+	}
+	return covered, trailing
 }

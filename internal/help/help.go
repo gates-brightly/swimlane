@@ -756,9 +756,11 @@ swim revoke --auto USER [--key K]
 
   Prove the chain of custody (.swim/chain.jsonl). It prints one answer,
   VERIFIED or NOT VERIFIED (exit 1), with what failed or what it couldn't
-  check. Every entry must be signed: an unsigned one fails (nothing
-  vouches for it, and a chain rewritten with no key looks the same) unless
-  --allow-unsigned. Under it are four levels (--levels prints each: yes,
+  check. Unsigned entries after the last signed one fail as UNSIGNED
+  (nothing vouches for them, and a chain rewritten with no key looks the
+  same) unless --allow-unsigned; ones a later signed entry links to (a
+  repo that gained a key later) are a warning, since they can't change
+  unseen. BROKEN means something changed. Under it are four levels (--levels prints each: yes,
   no, partial, n/a, and what it rests on); any one saying no fails:
     consistent  every entry follows the one before it (sequence and
                 previous-hash: a changed, removed or reordered entry breaks

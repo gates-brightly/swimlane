@@ -93,6 +93,9 @@ func runKey(o *Options) error {
 	hideMemory()
 	long, err := authority.Key(o.Cfg)
 	if err != nil || long == nil {
+		if err == nil && o.Cfg.SigningMode() == config.SigningAuto {
+			fmt.Fprintln(os.Stderr, "swim: no signing key (~/.ssh/id_ed25519 or signing_key); this run is recorded unsigned, and swim verify will say so")
+		}
 		return nil // authority.Record says why, as before
 	}
 	if sign.Storage(long) == sign.OnDevice {

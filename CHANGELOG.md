@@ -318,6 +318,12 @@ and read.
   shows the name. `swim lint` (task) refuses a name that is a swim
   command, only hex digits, or another lane's. See
   [docs/formats.md](docs/formats.md#task-names).
+- **UNSIGNED isn't BROKEN.** `swim verify` reported unsigned entries as
+  BROKEN, the word for tampering, and they stayed BROKEN after you added a
+  key. Unsigned entries a later signed entry links to are now a warning
+  (that signature covers them); ones after the last signed entry still
+  fail, as `UNSIGNED:` (`unsigned:` in `--yaml`). `swim run` with no key
+  under `signing: auto` says it's recording the run unsigned.
 - **`swim keys add NAME [KEY]`** lists a key in lookup.yml (default: the
   key this machine signs with), keeping the file's comments. A repo's
   first `swim approve` with no lookup.yml writes one naming your key

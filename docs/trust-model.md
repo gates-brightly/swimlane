@@ -214,8 +214,12 @@ name a socket's peer the token alone decides.
   key. With `signing: auto` (the default), entries are recorded unsigned
   when no key loads, and with a warning when the key loads but can't sign
   (a passphrase and no agent). `signing: off` records unsigned entries.
-  `swim verify` fails on unsigned entries (nothing vouches for them, and a
-  chain rewritten with no key looks the same) unless `--allow-unsigned`.
+  `swim verify` fails on unsigned entries after the last signed one, as
+  UNSIGNED (nothing vouches for them, and a chain rewritten with no key
+  looks the same) unless `--allow-unsigned`. Unsigned entries a later
+  signed entry links to are a warning: that signature covers them. BROKEN
+  is kept for a link, hash or signature that doesn't match. `swim run`
+  says when it records a run unsigned.
 
 ## The runner key
 

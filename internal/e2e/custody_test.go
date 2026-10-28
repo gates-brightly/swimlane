@@ -371,3 +371,26 @@ func TestApprovalLifecycle(t *testing.T) {
 	contains(t, "legacy capped", r.mustSwim("approve"), "insufficient: it never expires, which is longer than lookup.yml's standing.max (90d)")
 	contains(t, "legacy stops", runQueued(), "auto.bob.signature: it never expires")
 }
+
+// Unsigned entries aren't BROKEN: ones a later signed entry links to are a
+// warning (they can't change unseen), and ones at the end, which nothing
+// vouches for, fail as UNSIGNED.
+func TestVerifyUnsigned(t *testing.T) {
+	r := newRepo(t, "")
+	keys := people(t, r, "", "zach")
+	r.script(1, "hello", `run "hi" true`)
+	out, _ := r.swim("run", "1", "--plain") // signing: off
+	contains(t, "unsigned run", out, "PASS")
+	out, code := r.swim("verify")
+	if code == 0 || !strings.Contains(out, "UNSIGNED: ") || strings.Contains(out, "BROKEN") {
+		t.Fatalf("trailing unsigned: %d\n%s", code, out)
+	}
+	r.mustSwim("config", "signing", "auto")
+	r.mustSwim("config", "signing_key", keys["zach"])
+	r.mustSwim("run", "1", "--plain")
+	out = r.mustSwim("verify")
+	contains(t, "covered unsigned", out, "VERIFIED", "can't change unseen")
+	if strings.Contains(out, "BROKEN") || strings.Contains(out, "UNSIGNED:") {
+		t.Errorf("covered unsigned entries reported as a failure:\n%s", out)
+	}
+}
