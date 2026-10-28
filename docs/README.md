@@ -14,35 +14,36 @@ person approves them, and the record says who decided what.
 2. [quickstart.md](quickstart.md): an hour, from a first round to a guard,
    a signed approval, a dependency, a queue and a swimmer, and reading the
    record. Every command is tested.
-3. [The README's usage patterns](../README.md#common-usage-patterns): the
-   ways people run swim day to day.
+3. [usage.md](usage.md): how swim works, the
+   [usage patterns](usage.md#common-usage-patterns) people run day to day,
+   and the reference for every feature, command, file and setting.
 
 ## Concepts
 
 Each one line, and where it's explained:
 
 - **Lanes and rounds**: a lane holds one round, a script that does one piece
-  of work ([README](../README.md#lanes-rounds-and-jobs)).
+  of work ([usage](usage.md#lanes-rounds-and-jobs)).
 - **Stages**: snapshot, check, change, verify; a read-only preview stops
-  where change begins ([README](../README.md#lane-scripts)).
+  where change begins ([usage](usage.md#lane-scripts)).
 - **Guards and approvals**: a destructive step is a dry run until a person
   approves it, at the prompt, with a flag or by signature
-  ([README](../README.md#guards-and-approvals)).
+  ([usage](usage.md#guards-and-approvals)).
 - **The execution manifest**: what an approval covers, the script and
   everything that decides what it does
-  ([README](../README.md#execution-manifest)).
+  ([usage](usage.md#execution-manifest)).
 - **The queue and swimmers**: batches pinned to their scripts, run by `swim
-  watch` ([README](../README.md#queue-watch-and-wait)).
+  watch` ([usage](usage.md#queue-watch-and-wait)).
 - **The chain of custody**: every round and approval, hash-linked and
-  signed ([README](../README.md#chain-of-custody)).
+  signed ([usage](usage.md#chain-of-custody)).
 
 ## Reference
 
 - `swim guide`: the full guide, compiled into the binary, and `swim
   <command> --help` for one command. One section of the guide:
   `swim guide | awk '/^READING RESULTS$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit} p'`
-- [The command list](../README.md#commands) and [the files swim
-  keeps](../README.md#files).
+- [The command list](usage.md#commands), [the files swim
+  keeps](usage.md#files) and [config](usage.md#config).
 - [compatibility.md](compatibility.md): where swim runs, what it needs, and
   which outputs and files you can build on (each `--yaml` schema).
 - [formats.md](formats.md): exactly what an approval signs and a manifest

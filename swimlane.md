@@ -6,7 +6,7 @@ swim is a single Go binary for **operator-in-the-loop automation**. An AI sessio
 
 The pattern grew out of the SST → Terraform migration on `feature/tf-migration`, where it ran four parallel lanes across ~25 services as three copyable shell files (`next.sh`, `step.sh`, `nextN.sh`). swim is that pattern packaged as a CLI. Its own CI runs through it.
 
-How-to and reference live in the [README](README.md) and `swim guide`. Feature specs live in [`features/`](features/README.md). This brief covers why swim exists and what it must guarantee.
+How-to and reference live in the [README](README.md), [docs/usage.md](docs/usage.md) and `swim guide`. Feature specs live in [`features/`](features/README.md). This brief covers why swim exists and what it must guarantee.
 
 ---
 

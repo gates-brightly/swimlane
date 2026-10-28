@@ -2,7 +2,7 @@
 
 Where swim runs, what it needs, and which parts you can build on.
 
-[← back to the README](../README.md#install-and-versions) ·
+[← back to using swim](usage.md#install-and-versions) ·
 [CHANGELOG](../CHANGELOG.md)
 
 ## Platforms

@@ -3,7 +3,7 @@
 Every state swim records, and what moves it from one to the next. The
 code is the source of truth; each section names where.
 
-[← back to the README](../README.md#reference) ·
+[← back to using swim](usage.md#reference) ·
 [Architecture](architecture.md) · [Recovery](recovery.md)
 
 Every write of `.swim/status.yml` goes through one check,

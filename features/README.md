@@ -21,6 +21,6 @@ where it would land in the code, open questions, and how to test it.
 3. When work starts, set the status to `in progress` and link the branch or PR.
    Resolve the open questions in the spec first: answers go in the spec, not a chat.
 4. When it ships, delete the spec and its row; git history keeps the design record.
-   The user-facing docs are `swim guide` (`internal/help/guide.txt`) and the README.
+   The user-facing docs are `swim guide` (`internal/help/guide.txt`), the README and `docs/` (the reference is `docs/usage.md`).
 
 Statuses: `proposed`, `accepted`, `in progress`, `dropped (<why>)`.

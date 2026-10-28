@@ -139,26 +139,60 @@ func TestDocLinksResolve(t *testing.T) {
 	}
 }
 
-// Anchors the docs link to in the README exist (GitHub's heading slugs, or
-// an explicit <a id>).
-func TestReadmeAnchorsResolve(t *testing.T) {
-	readme := read(t, "README.md")
-	ids := map[string]bool{}
-	for _, m := range regexp.MustCompile(`(?m)^#+ (.+)$`).FindAllStringSubmatch(readme, -1) {
-		ids[slug(m[1])] = true
-	}
-	for _, m := range regexp.MustCompile(`<a id="([^"]+)">`).FindAllStringSubmatch(readme, -1) {
-		ids[m[1]] = true
-	}
-	ref := regexp.MustCompile(`README\.md#([a-z0-9-]+)`)
+// Anchors the docs link to exist (GitHub's heading slugs, or an explicit
+// <a id>): links between the README and the pages in docs/, and within a
+// page.
+func TestDocAnchorsResolve(t *testing.T) {
 	pages, _ := filepath.Glob(filepath.Join(root(t), "docs", "*.md"))
-	for _, p := range pages {
-		data, _ := os.ReadFile(p)
-		for _, m := range ref.FindAllStringSubmatch(string(data), -1) {
-			if !ids[m[1]] {
-				t.Errorf("%s links to README.md#%s, which has no such heading", filepath.Base(p), m[1])
+	pages = append(pages, filepath.Join(root(t), "README.md"), filepath.Join(root(t), "swimlane.md"))
+	heading := regexp.MustCompile(`^#+ (.+)$`)
+	ids := map[string]map[string]bool{} // page path -> anchors
+	anchors := func(p string) map[string]bool {
+		if m, ok := ids[p]; ok {
+			return m
+		}
+		m := map[string]bool{}
+		data, err := os.ReadFile(p)
+		if err == nil {
+			// Headings outside fenced code blocks.
+			fenced := false
+			for _, line := range strings.Split(string(data), "\n") {
+				if strings.HasPrefix(line, "```") {
+					fenced = !fenced
+					continue
+				}
+				if h := heading.FindStringSubmatch(line); h != nil && !fenced {
+					m[slug(h[1])] = true
+				}
+			}
+			for _, a := range regexp.MustCompile(`<a id="([^"]+)">`).FindAllStringSubmatch(string(data), -1) {
+				m[a[1]] = true
 			}
 		}
+		ids[p] = m
+		return m
+	}
+	link := regexp.MustCompile(`\]\(([^)#\s]*\.md)?#([^)\s]+)\)`)
+	n := 0
+	for _, p := range pages {
+		data, _ := os.ReadFile(p)
+		for _, m := range link.FindAllStringSubmatch(string(data), -1) {
+			target := p
+			if m[1] != "" {
+				if strings.Contains(m[1], "://") {
+					continue
+				}
+				target = filepath.Join(filepath.Dir(p), m[1])
+			}
+			n++
+			if !anchors(target)[m[2]] {
+				rel, _ := filepath.Rel(root(t), target)
+				t.Errorf("%s links to %s#%s, which has no such heading", filepath.Base(p), filepath.ToSlash(rel), m[2])
+			}
+		}
+	}
+	if n < 10 {
+		t.Errorf("found only %d anchored links; is the pattern right?", n)
 	}
 }
 
@@ -177,15 +211,15 @@ func slug(h string) string {
 	return b.String()
 }
 
-// The README embeds docs/architecture.md's diagram: they stay the same.
-func TestReadmeDiagramMatchesArchitecture(t *testing.T) {
+// docs/usage.md embeds docs/architecture.md's diagram: they stay the same.
+func TestUsageDiagramMatchesArchitecture(t *testing.T) {
 	re := regexp.MustCompile("(?s)```mermaid\n.*?\n```")
 	arch := re.FindString(read(t, "docs/architecture.md"))
 	if arch == "" {
 		t.Fatal("docs/architecture.md has no mermaid diagram")
 	}
-	if !strings.Contains(read(t, "README.md"), arch) {
-		t.Error("README.md's diagram differs from docs/architecture.md's: copy it over")
+	if !strings.Contains(read(t, "docs/usage.md"), arch) {
+		t.Error("docs/usage.md's diagram differs from docs/architecture.md's: copy it over")
 	}
 }
 

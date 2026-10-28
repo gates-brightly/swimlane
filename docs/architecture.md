@@ -3,7 +3,7 @@
 How a round gets from an AI session to a signed record, where credentials
 live, and where policy is enforced.
 
-[← back to the README](../README.md#how-it-fits-together) ·
+[← back to using swim](usage.md#how-it-fits-together) ·
 [Trust model](trust-model.md) · [State machines](state.md)
 
 ```mermaid

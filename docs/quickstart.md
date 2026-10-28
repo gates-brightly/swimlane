@@ -235,8 +235,9 @@ swim skill
 ```
 
 prints how to install the Claude skill that teaches a session swim's loop:
-read the record (`swim report --earmark`), write a lane, lint it, plan it,
-queue it without approving anything, and flag each risk for you. You
+read the record (`swim report --earmark`), write a lane, lint it, check
+it with `swim status`, queue it without approving anything, and flag each
+risk for you. You
 approve and run; the session reads the log and writes the next round.
 
 ## Where next
