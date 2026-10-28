@@ -83,8 +83,12 @@ Each point is explained below.
   `# Includes:` that runs a tool over its directory (`go vet ./...`,
   `gofmt -l .`, `cargo test`, `terraform plan`, ...) gets a
   `workspace-empty` warning: in an empty copy gofmt passes having read
-  nothing. `swim lint` in a directory with no lane scripts says "nothing
-  to check", not "no problems found". A lane's own outputs go in
+  nothing. A staged lane whose step names a repo file `# Includes:`
+  doesn't list (`cat deploy.yaml`, `bash scripts/x.sh`) gets a
+  `workspace-file` warning, and `swim lint --fix` pins it: before, the step
+  failed with a bare "No such file or directory". `swim lint` in a
+  directory with no lane scripts says "nothing to check", not "no problems
+  found". A lane's own outputs go in
   `$SWIM_OUT`; `$SWIM_ROOT` is still the repo root, for the files a round
   acts on. `cache restore|save` work in the same directory as the lane's
   steps, and an included file keeps its executable bit in the stage.

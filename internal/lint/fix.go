@@ -113,6 +113,11 @@ func missingHeader(root string, s *Script) []string {
 				includes = append(includes, src.Path)
 			}
 		}
+		for _, r := range unstagedReads(root, s) {
+			if !slices.Contains(includes, r.Rel) {
+				includes = append(includes, r.Rel)
+			}
+		}
 	}
 	if len(includes) > 0 {
 		add = append(add, "Includes: "+strings.Join(includes, " "))

@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -13,6 +15,7 @@ func TestLaneRunsStaged(t *testing.T) {
 	r := newRepo(t, "")
 	r.write("helper.sh", "echo SAFE\n", 0o755)
 	r.script(1, "use a helper", `run "helper" bash helper.sh`)
+	unpin(t, r) // r.script's lint --fix pins it (workspace-file)
 	out, _ := r.swim("run", "1", "--plain")
 	if !strings.Contains(out, "FAIL") || strings.Contains(out, "SAFE") {
 		t.Errorf("an unpinned helper ran:\n%s", out)
@@ -32,9 +35,27 @@ func TestLaneRunsStaged(t *testing.T) {
 	live := manifestOf(t, r)
 	contains(t, "live", r.mustSwim("run", "1", "--plain"), "PASS")
 	r.script(1, "use a helper", `run "helper" bash helper.sh`)
+	unpin(t, r)
 	if manifestOf(t, r) == live {
 		t.Error("# Workspace: live isn't in the manifest")
 	}
+}
+
+// unpin drops lane 1's # Includes: lines.
+func unpin(t *testing.T, r *repo) {
+	t.Helper()
+	p := filepath.Join(r.root, "lane.1.sh")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keep []string
+	for _, l := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(l, "# Includes:") {
+			keep = append(keep, l)
+		}
+	}
+	os.WriteFile(p, []byte(strings.Join(keep, "\n")), 0o755)
 }
 
 // manifestOf is lane 1's manifest hash as swim approve shows it.

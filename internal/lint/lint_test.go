@@ -372,3 +372,51 @@ summary
 		t.Errorf("second fix: %+v", fixed)
 	}
 }
+
+// A staged lane that names a repo file its # Includes: doesn't list is
+// warned (it fails in the staged copy), and --fix pins it; a live lane,
+// a missing file and a sourced one (the source check's) aren't.
+func TestWorkspaceFile(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "scripts"), 0o755)
+	for _, f := range []string{"deploy.yaml", "scripts/helper.sh", "lib.sh"} {
+		os.WriteFile(filepath.Join(root, f), []byte("x\n"), 0o644)
+	}
+	src := `#!/usr/bin/env bash
+# swim: syntax 4
+# Round: read files
+_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+lane_init 1
+source lib.sh
+stage check
+run "show" cat deploy.yaml
+run "helper" bash scripts/helper.sh
+run "missing" cat nope.yaml
+run "flag" echo -n deploy.yaml
+summary
+`
+	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte(src), 0o755)
+	cfg := &config.Config{Root: root, Settings: config.Settings{Lanes: 1}}
+	fs, _ := Run(root, cfg, []int{1})
+	var got []string
+	for _, f := range fs {
+		if f.Code == "workspace-file" {
+			got = append(got, f.Message)
+		}
+	}
+	if len(got) != 2 || !strings.HasPrefix(got[0], "deploy.yaml ") || !strings.HasPrefix(got[1], "scripts/helper.sh ") {
+		t.Fatalf("workspace-file: %q", got)
+	}
+	fixed, err := Fix(root, cfg, []int{1})
+	if err != nil || len(fixed) != 1 || fixed[0].Added[0] != "# Includes: lib.sh deploy.yaml scripts/helper.sh" {
+		t.Fatalf("fix: %+v %v", fixed, err)
+	}
+	live := strings.Replace(src, "# Round: read files", "# Round: read files\n# Workspace: live", 1)
+	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte(live), 0o755)
+	fs, _ = Run(root, cfg, []int{1})
+	for _, f := range fs {
+		if f.Code == "workspace-file" {
+			t.Errorf("live lane: %+v", f)
+		}
+	}
+}

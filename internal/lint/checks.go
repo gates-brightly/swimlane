@@ -165,6 +165,66 @@ func checkWorkspaceEmpty(c *Context, s *Script) []finding.Finding {
 	return nil
 }
 
+// A repoRead is a repo file a staged lane's step names as a literal
+// argument (cat deploy.yaml, bash scripts/x.sh) without # Includes:
+// listing it: the staged copy doesn't hold it.
+type repoRead struct {
+	Rel  string
+	Line int
+}
+
+// unstagedReads are the repo files a staged bash lane's steps name that its
+// # Includes: doesn't cover, in order, once each.
+func unstagedReads(root string, s *Script) []repoRead {
+	if root == "" || s.v == nil || s.Info.Workspace == lane.WorkspaceLive {
+		return nil
+	}
+	switch strings.ToLower(filepath.Ext(s.Name)) {
+	case ".sh", ".bash", "":
+	default:
+		return nil
+	}
+	var out []repoRead
+	seen := map[string]bool{}
+	for _, lc := range s.v.commands() {
+		words := stepCommand(lc.Words)
+		if len(words) > 0 && (words[0].Text == "source" || words[0].Text == ".") {
+			continue // the source check's
+		}
+		for _, w := range words {
+			p := w.Text
+			if w.Expands || p == "" || strings.HasPrefix(p, "-") || filepath.IsAbs(p) || strings.ContainsAny(p, "*?[=:") {
+				continue
+			}
+			rel := filepath.ToSlash(filepath.Clean(p))
+			if rel == "." || strings.HasPrefix(rel, "../") || rel == ".." || strings.HasPrefix(rel, ".swim/") || seen[rel] || rel == s.Name {
+				continue
+			}
+			if st, err := os.Stat(filepath.Join(root, rel)); err != nil || !st.Mode().IsRegular() {
+				continue
+			}
+			if s.included(rel) {
+				continue
+			}
+			seen[rel] = true
+			out = append(out, repoRead{rel, lc.Line})
+		}
+	}
+	return out
+}
+
+// checkWorkspaceFile warns about a staged lane that names a repo file its
+// # Includes: doesn't list: it isn't in the staged copy, so the step fails
+// with "No such file or directory" under swim run.
+func checkWorkspaceFile(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for _, r := range unstagedReads(c.Root, s) {
+		out = append(out, f(finding.Warn, "workspace-file", r.Line, "add `# Includes: "+r.Rel+"` (swim lint --fix adds it), or `# Workspace: live`",
+			"%s is in the repo but not in # Includes:, so the lane's staged copy doesn't have it: the step reading it fails under swim run", r.Rel))
+	}
+	return out
+}
+
 // scriptName is the script's file name, or lane.N.sh when it has none yet.
 func (s *Script) scriptName() string {
 	if s.Name != "" {
