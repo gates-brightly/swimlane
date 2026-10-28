@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -177,6 +178,19 @@ func cmdApprove(args []string) error {
 		return err
 	}
 	name, known := lk.Who(key.Public)
+	if !known && lk.Path == "" {
+		// A repo's first approval: an unlisted key counts for nothing, so
+		// name it, rather than leave a signature that silently doesn't.
+		user := localUser()
+		if _, err := lookup.AddKey(root, user, key.Public); err != nil {
+			return err
+		}
+		if lk, err = lookup.Load(root); err != nil {
+			return err
+		}
+		name, known = lk.Who(key.Public)
+		fmt.Printf("wrote lookup.yml: %s signs with %s (commit it; swim keys add NAME KEY for teammates)\n", user, sign.Fingerprint(key.Public))
+	}
 	if f.HasApproved(lk, key.Public) {
 		fmt.Printf("you already approve %s; nothing to add\n", rel(root, f.Path))
 		return nil
@@ -467,8 +481,10 @@ func cmdKeys(args []string) error {
 			return keysPin(args[1:])
 		case "trust":
 			return keysTrust(args[1:])
+		case "add":
+			return keysAdd(args[1:])
 		}
-		return usagef("usage: swim keys [pin | trust KEY [--remove] [--sign] [--key K]]")
+		return usagef("usage: swim keys [add NAME [KEY] | pin | trust KEY [--remove] [--sign] [--key K]]")
 	}
 	root, cfg, err := repoNoMigrate()
 	if err != nil {
@@ -1128,4 +1144,80 @@ func runStarted(run string) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+// swim keys add NAME [KEY|FILE.pub]: list a key for NAME in lookup.yml
+// (default: the key this machine signs with).
+func keysAdd(args []string) error {
+	if len(args) == 0 || len(args) > 2 {
+		return usagef("usage: swim keys add NAME [KEY | FILE.pub]")
+	}
+	user := args[0]
+	if !validUserName(user) {
+		return usagef("%q: a name is letters, digits, '.', '_' or '-'", user)
+	}
+	root, cfg, err := repoNoMigrate()
+	if err != nil {
+		return err
+	}
+	var pub string
+	switch {
+	case len(args) == 2 && len(strings.Fields(args[1])) >= 2:
+		pub = args[1]
+	case len(args) == 2:
+		data, err := os.ReadFile(args[1])
+		if err != nil {
+			return err
+		}
+		pub = string(data)
+	default:
+		key, err := sign.LoadKey(cfg.SigningKey)
+		if err != nil {
+			return fmt.Errorf("no key named and none to sign with: %v", err)
+		}
+		pub = key.Public
+	}
+	created, err := lookup.AddKey(root, user, pub)
+	if err != nil {
+		return err
+	}
+	verb := "added to"
+	if created {
+		verb = "wrote"
+	}
+	fmt.Printf("%s lookup.yml: %s signs with %s (commit it)\n", verb, user, sign.Fingerprint(pub))
+	return nil
+}
+
+// localUser names this machine's user for lookup.yml: $USER, made a valid
+// name, or "me".
+func localUser() string {
+	u := os.Getenv("USER")
+	if u == "" {
+		if cu, err := user.Current(); err == nil {
+			u = cu.Username
+		}
+	}
+	var b strings.Builder
+	for _, r := range strings.ToLower(u) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() == 0 {
+		return "me"
+	}
+	return b.String()
+}
+
+func validUserName(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }

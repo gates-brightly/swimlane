@@ -72,7 +72,7 @@ COMMANDS
   history [RUN|N|JOB] [--oneline]   the chain of custody, like git log: who approved and ran what
   chain repair             remove a half-written last chain entry (kept in a .bak, recorded)
   chain checkpoint / export --to DEST   send the chain's signed head (and entries) to an anchor
-  keys [trust KEY --sign | pin]   who's who: lookup.yml, trust.yml and its pin
+  keys [add NAME | trust KEY --sign | pin]   who's who: lookup.yml, trust.yml and its pin
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
   doctor [--fix]           check the environment: binary platform, PATH, config, .gitignore,

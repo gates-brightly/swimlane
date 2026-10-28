@@ -45,6 +45,32 @@ run "after" true`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop table old_orders")
 }
 
+// The README's tamper story, in a repo with no lookup.yml: the first
+// approval names its key (or the signature would count for nothing), a
+// changed pinned file dry-runs, and the signed bytes run approved.
+func TestTamperStoryFreshRepo(t *testing.T) {
+	r := newRepo(t, "")
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not installed")
+	}
+	key := filepath.Join(t.TempDir(), "me")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "me", "-f", key).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	r.mustSwim("config", "signing", "auto")
+	r.mustSwim("config", "signing_key", key)
+	r.write("install.sh", "echo installing new cert\n", 0o644)
+	r.script(1, "rotate the cert", `if guard CERT_ALLOW_ROTATE "replace the live cert"; then run "install the new cert" bash install.sh; fi`)
+	withHeader(t, r, 1, "# Guards:  CERT_ALLOW_ROTATE replace the live cert\n# Includes: install.sh")
+
+	contains(t, "first approval", r.mustSwim("approve", "1", "--guards", "CERT_ALLOW_ROTATE"), "wrote lookup.yml")
+	r.write("install.sh", "echo DROP EVERYTHING\n", 0o644)
+	out, _ := r.swim("run", "1", "--no-prompt", "--plain")
+	contains(t, "changed install.sh", out, "dry run", "approves another version")
+	r.write("install.sh", "echo installing new cert\n", 0o644)
+	contains(t, "signed bytes", r.mustSwim("run", "1", "--no-prompt", "--plain"), "APPROVED", "(signed)")
+}
+
 func TestSignedApprovalAndVerify(t *testing.T) {
 	r := newRepo(t, "")
 	keys := people(t, r, "groups:\n  platform-admin: [zach, alice]\nrequire:\n  - guards: [FIN_ALLOW_*]\n    group: platform-admin\n    count: 2\n", "zach", "alice")

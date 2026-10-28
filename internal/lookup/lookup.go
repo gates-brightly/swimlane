@@ -351,3 +351,70 @@ func (l *Lookup) RulesHash() string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
+
+// AddKey lists key for user in root's lookup.yml, creating the file (and
+// the user) if need be and keeping the rest of it, comments included.
+// created says the file is new.
+func AddKey(root, user, key string) (created bool, err error) {
+	path := filepath.Join(root, FileName)
+	key = strings.TrimSpace(key)
+	if len(strings.Fields(key)) < 2 {
+		return false, fmt.Errorf("%q isn't an SSH public key (type base64 [comment])", key)
+	}
+	l, err := Load(root)
+	if err != nil {
+		return false, err
+	}
+	if who, ok := l.Who(key); ok {
+		if who == user {
+			return false, nil
+		}
+		return false, fmt.Errorf("%s already lists that key for %s", path, who)
+	}
+	if _, clash := l.Groups[user]; clash {
+		return false, fmt.Errorf("%s: %q is a group", path, user)
+	}
+	var doc yaml.Node
+	data, err := os.ReadFile(path)
+	created = errors.Is(err, os.ErrNotExist)
+	switch {
+	case created:
+		data = []byte("# Who is who: each user's SSH public keys (swim keys --help).\nusers: {}\n")
+	case err != nil:
+		return false, err
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return false, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(doc.Content) == 0 {
+		doc.Content = []*yaml.Node{{Kind: yaml.MappingNode}}
+	}
+	top := doc.Content[0]
+	users := mapValue(top, "users", yaml.MappingNode)
+	users.Style = 0
+	u := mapValue(users, user, yaml.MappingNode)
+	keys := mapValue(u, "keys", yaml.SequenceNode)
+	keys.Content = append(keys.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key})
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return false, err
+	}
+	return created, os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+// mapValue is m's value for key, added (of kind) if m has none.
+func mapValue(m *yaml.Node, key string, kind yaml.Kind) *yaml.Node {
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return m.Content[i+1]
+		}
+	}
+	v := &yaml.Node{Kind: kind}
+	if kind == yaml.MappingNode && m.Style == yaml.FlowStyle {
+		m.Style = 0
+	}
+	m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, v)
+	return v
+}

@@ -157,3 +157,32 @@ func TestEvidenceWhy(t *testing.T) {
 		t.Error("nil lookup")
 	}
 }
+
+// AddKey creates lookup.yml, adds keys to new and existing users, keeps
+// comments, and refuses a key another user has.
+func TestAddKey(t *testing.T) {
+	root := t.TempDir()
+	a, b := "ssh-ed25519 AAAAa zach@laptop", "ssh-ed25519 AAAAb zach@yubikey"
+	if created, err := AddKey(root, "zach", a); err != nil || !created {
+		t.Fatalf("create: %v %v", created, err)
+	}
+	path := filepath.Join(root, FileName)
+	data, _ := os.ReadFile(path)
+	os.WriteFile(path, append([]byte("# ours\n"), data...), 0o644)
+	if _, err := AddKey(root, "zach", b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AddKey(root, "alice", a); err == nil {
+		t.Error("gave zach's key to alice")
+	}
+	l, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if who, _ := l.Who(b); who != "zach" || len(l.Users["zach"].Keys) != 2 {
+		t.Errorf("users = %+v", l.Users)
+	}
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), "# ours") {
+		t.Errorf("comment lost:\n%s", data)
+	}
+}

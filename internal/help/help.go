@@ -883,12 +883,17 @@ swim chain export --to DEST
   rewrite everything: keep anchors out of the operator's reach.
 `,
 	"keys": `swim keys
+swim keys add NAME [KEY | FILE.pub]
 swim keys trust [KEY | FILE.pub] [--remove] [--sign] [--key K]
 swim keys pin
 
   Who's who: lookup.yml's users with their key fingerprints, groups (with
   nested groups expanded), require rules, trust.yml and its pin, and the key
   this machine signs with and whom it maps to.
+  add lists a key for NAME in lookup.yml (default: the key this machine
+  signs with), creating the file; it keeps the rest, comments included.
+  A repo's first swim approve does it for you ($USER) when there's no
+  lookup.yml, since an unlisted key's approval counts for nothing.
   lookup.yml (repo root, committed):
       users:
         zach:

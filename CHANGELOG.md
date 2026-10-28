@@ -311,6 +311,11 @@ and read.
   shows the name. `swim lint` (task) refuses a name that is a swim
   command, only hex digits, or another lane's. See
   [docs/formats.md](docs/formats.md#task-names).
+- **`swim keys add NAME [KEY]`** lists a key in lookup.yml (default: the
+  key this machine signs with), keeping the file's comments. A repo's
+  first `swim approve` with no lookup.yml writes one naming your key
+  (`$USER`), so the README's tamper story works as written: before, the
+  signature counted for nothing until you wrote lookup.yml by hand.
 - **Local CI: `# Signoff:`.** A lane with `# Signoff: swim/checks` that
   passes on a clean HEAD (no changed or untracked file, the lane script
   committed) is signed off by swim, not the lane: the key of whoever runs

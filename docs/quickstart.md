@@ -136,7 +136,7 @@ it in the repo, `$SWIM_ROOT/scratch.txt`.
 ```sh
 echo "old data" > scratch.txt
 ssh-keygen -q -t ed25519 -N '' -f hour-key
-printf 'users:\n  me: {keys: ["%s"]}\n' "$(cat hour-key.pub)" > lookup.yml
+swim keys add me hour-key.pub     # lookup.yml: whose key is whose
 swim approve 2 --guards HOUR_ALLOW_RM --key hour-key
 swim approve
 swim run 2 --plain --no-prompt
