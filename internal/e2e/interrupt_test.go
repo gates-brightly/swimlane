@@ -219,11 +219,13 @@ run "after" true`)
 
 func TestKillOnThirdCtrlC(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "stubborn", `run "hang" bash -c 'trap "sleep 20" INT; sleep 31.3 & wait; wait'`)
+	// It says so once its trap is set (see TestForceQuitKillsStepGroup).
+	r.script(1, "stubborn", `run "hang" bash -c 'trap "sleep 20" INT; echo hang-armed; sleep 31.3 & wait; wait'`)
 	r.script(2, "other", `run "x" sleep 31.4`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "hang")
 	r.waitStep(t, 2, "x")
+	l.saw(t, "[1] hang-armed")
 	l.signal(syscall.SIGINT)
 	l.saw(t, "swim: stopping after current steps")
 	l.signal(syscall.SIGINT)
@@ -266,11 +268,14 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 	r := newRepo(t, "")
 	r.mustSwim("config", "interrupt_grace", "400ms")
 	// The step and its child ignore SIGINT: only the kill stops them.
-	r.script(1, "deaf", `run "deaf" bash -c 'trap "" INT; sleep 33.3 & wait; wait'`)
+	// It says so once its trap is set: a SIGINT before that kills bash
+	// outright (seen on a loaded macOS runner), and there'd be nothing to kill.
+	r.script(1, "deaf", `run "deaf" bash -c 'trap "" INT; echo deaf-armed; sleep 33.3 & wait; wait'`)
 	r.script(2, "other", `run "x" sleep 33.4`)
 	l := r.launch(t, nil, "--interrupt", "immediate")
 	r.waitStep(t, 1, "deaf")
 	r.waitStep(t, 2, "x")
+	l.saw(t, "[1] deaf-armed")
 	l.signal(syscall.SIGINT)
 	l.wait(t)
 	contains(t, "output", l.out.String(), "swim: force quitting", "swim: killing 1 lanes now.")
