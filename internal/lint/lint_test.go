@@ -124,6 +124,8 @@ func TestEachCheck(t *testing.T) {
 		{name: "evidence step", script: before(c, "stage verify\n", "evidence \"plan\" true\n"), code: "removed", level: finding.Error, message: "evidence steps are gone"},
 		{name: "mod call", script: before(c, "stage verify\n", "mod notify - \"done\"\n"), code: "removed", level: finding.Error, message: "mod calls a module"},
 		{name: "outcome handler", script: before(c, "stage snapshot\n", "on_failure() {\n  run \"undo\" true\n}\n"), code: "removed", level: finding.Error, line: 13, message: "on_failure"},
+		{name: "go vet on an empty stage", script: before(c, "stage verify\n", "run \"vet\" go vet ./...\n"), code: "workspace-empty", level: finding.Warn, line: 23, message: "checks nothing"},
+		{name: "gofmt in bash -c on an empty stage", script: before(c, "stage verify\n", "run \"fmt\" bash -c 'out=$(gofmt -s -l .); [ -z \"$out\" ]'\n"), code: "workspace-empty", level: finding.Warn, message: "gofmt"},
 		{name: "cross-lane read", script: before(c, "stage verify\n", "run \"read\" cat shared/report.json\n"), other: before(clean(2), "stage verify\n", "run \"fetch\" curl -fsS -o shared/report.json https://example.com\n"), code: "cross-lane", level: finding.Info, message: "lane.2.sh:23 writes"},
 	}
 	for _, tc := range cases {
@@ -151,6 +153,20 @@ func TestEachCheck(t *testing.T) {
 				t.Errorf("message %q lacks %q", got.Message, tc.message)
 			}
 		})
+	}
+}
+
+func TestWorkspaceEmptyQuiet(t *testing.T) {
+	vet := "run \"vet\" go vet ./...\n"
+	for name, script := range map[string]string{
+		"live":       before(before(clean(1), "stage verify\n", vet), "# Timeout:", "# Workspace: live\n# swim:lint-ignore-file workspace-live go vet reads the checkout\n"),
+		"includes":   before(before(clean(1), "stage verify\n", vet), "# Timeout:", "# Includes: go.mod *.go\n"),
+		"go version": before(clean(1), "stage verify\n", "run \"go\" go version\n"),
+		"go env":     before(clean(1), "stage verify\n", "run \"go\" go env GOPATH\n"),
+	} {
+		if fs := Lint(cfg4(), map[int]string{1: script}, 1); len(fs) != 0 {
+			t.Errorf("%s: %+v", name, fs)
+		}
 	}
 }
 

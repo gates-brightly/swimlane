@@ -79,7 +79,12 @@ Each point is explained below.
   there, so it can't change under an approval. List such files in
   `# Includes:`, or add `# Workspace: live` to run in the working tree as
   before; that line is part of the manifest, so the approval says so, and
-  `swim lint` warns (`workspace-live`). A lane's own outputs go in
+  `swim lint` warns (`workspace-live`). A staged lane with no
+  `# Includes:` that runs a tool over its directory (`go vet ./...`,
+  `gofmt -l .`, `cargo test`, `terraform plan`, ...) gets a
+  `workspace-empty` warning: in an empty copy gofmt passes having read
+  nothing. `swim lint` in a directory with no lane scripts says "nothing
+  to check", not "no problems found". A lane's own outputs go in
   `$SWIM_OUT`; `$SWIM_ROOT` is still the repo root, for the files a round
   acts on. `cache restore|save` work in the same directory as the lane's
   steps, and an included file keeps its executable bit in the stage.

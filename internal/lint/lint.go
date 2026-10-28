@@ -84,6 +84,7 @@ type Check struct {
 var Checks = []Check{
 	{"round", finding.Error, false, "no `# Round:` line", checkRound},
 	{"workspace-live", finding.Warn, false, "`# Workspace: live`: the lane runs in the working tree and reads files no approval covers", checkWorkspaceLive},
+	{"workspace-empty", finding.Warn, false, "a staged lane runs a tool over its whole directory (go vet ./..., gofmt -l .) with no # Includes:, so the tool reads an empty copy", checkWorkspaceEmpty},
 	{"task", finding.Error, false, "a `# Task:` name that isn't one, is a swim command, or another lane's too", checkTask},
 	{"placeholder", finding.Error, false, "a template placeholder left in", checkPlaceholder},
 	{"after", finding.Error, false, "`# After:` names an unknown lane or job, or the lane itself", checkAfter},

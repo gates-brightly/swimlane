@@ -64,6 +64,9 @@ func cmdLint(args []string) error {
 		if err := finding.WriteYAML(os.Stdout, lint.Schema, fs); err != nil {
 			return err
 		}
+	} else if len(fs) == 0 && !anyLane(root, cfg) {
+		// Not "no problems found": nothing was looked at.
+		fmt.Printf("no lane scripts in %s: nothing to check\n", root)
 	} else {
 		finding.WriteText(os.Stdout, fs)
 	}
@@ -71,6 +74,16 @@ func cmdLint(args []string) error {
 		return exitError{code}
 	}
 	return nil
+}
+
+// anyLane reports whether root has a lane script (a stub counts).
+func anyLane(root string, cfg *config.Config) bool {
+	for n := 1; n <= cfg.Lanes; n++ {
+		if _, err := os.Stat(lane.Script(root, n)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // swim doctor [--fix] [--strict] [--yaml]

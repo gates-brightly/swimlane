@@ -81,6 +81,98 @@ func checkWorkspaceLive(c *Context, s *Script) []finding.Finding {
 		"runs in the working tree (# Workspace: live): files it reads but doesn't pin can change after it's approved")}
 }
 
+// treeTools check or build their working directory when given no paths
+// (or ./...): in a staged copy with nothing pinned they read nothing, and
+// some pass on it (gofmt -l). Each maps to the subcommands
+// that do (nil: any).
+var treeTools = map[string][]string{
+	"go":            {"vet", "test", "build", "list", "fmt"},
+	"gofmt":         nil,
+	"goimports":     nil,
+	"golangci-lint": {"run"},
+	"staticcheck":   nil,
+	"cargo":         {"build", "check", "test", "clippy", "fmt"},
+	"pytest":        nil,
+	"ruff":          {"check", "format"},
+	"black":         nil,
+	"mypy":          nil,
+	"eslint":        nil,
+	"prettier":      nil,
+	"terraform":     {"plan", "validate", "fmt"},
+	"tofu":          {"plan", "validate", "fmt"},
+	"tflint":        nil,
+}
+
+// treeCommand reports whether words run a tool over the working directory:
+// a tree tool above, or any command given ./... to read. (swim lint reads
+// the repo: SWIM_ROOT names it.)
+func treeCommand(words []lane.Word) bool {
+	if len(words) == 0 {
+		return false
+	}
+	for _, w := range words[1:] {
+		if !w.Expands && w.Text == "./..." {
+			return true
+		}
+	}
+	name := words[0].Text[strings.LastIndexByte(words[0].Text, '/')+1:]
+	subs, ok := treeTools[name]
+	if !ok {
+		return false
+	}
+	if subs == nil {
+		return true
+	}
+	for _, w := range words[1:] {
+		if strings.HasPrefix(w.Text, "-") {
+			continue
+		}
+		for _, sub := range subs {
+			if w.Text == sub {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// checkWorkspaceEmpty warns about a staged lane that runs a tool over its
+// whole directory but pins nothing for it: the stage holds only the lane's
+// script, so the tool checks an empty copy (gofmt -l passes on one, go vet
+// fails with "matched no packages").
+func checkWorkspaceEmpty(c *Context, s *Script) []finding.Finding {
+	if s.Info.Workspace == lane.WorkspaceLive || len(s.Info.Includes) > 0 {
+		return nil
+	}
+	switch strings.ToLower(filepath.Ext(s.Name)) {
+	case ".sh", ".bash", "":
+	default:
+		return nil
+	}
+	for _, lc := range s.v.commands() {
+		words := stepCommand(lc.Words)
+		if !treeCommand(words) {
+			continue
+		}
+		texts := make([]string, len(words))
+		for k, w := range words {
+			texts[k] = w.Text
+		}
+		return []finding.Finding{f(finding.Warn, "workspace-empty", lc.Line, "add `# Workspace: live` to run it in the working tree, or pin what it reads with # Includes: (filepath globs, one directory each: `go.mod go.sum *.go cmd/*/*.go`)",
+			"%q runs in the lane's staged copy, which holds only %s (no # Includes:): it reads none of the repo, so it checks nothing", strings.Join(texts, " "), s.scriptName())}
+	}
+	return nil
+}
+
+// scriptName is the script's file name, or lane.N.sh when it has none yet.
+func (s *Script) scriptName() string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return fmt.Sprintf("lane.%d.sh", s.N)
+}
+
 // checkTask checks the lane's name (# Task:): swim run NAME must find this
 // lane and nothing else.
 func checkTask(c *Context, s *Script) []finding.Finding {
