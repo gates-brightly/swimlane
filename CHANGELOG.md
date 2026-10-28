@@ -175,9 +175,8 @@ already pushed to origin's main) with the next tag and pushes that tag.
   time that an approval's evidence still matches (its `WARN evidence
   changed since approval` and diff, the evidence in the approval question)
   and `swim watch`'s "evidence not checked" are gone: an approval covers
-  the exact script and what its manifest pins, and `swim plan` now says
-  exactly which signed approvals a run will count. Use `snapshot` to save
-  a plan for the operator to read. Upgrading:
+  the exact script and what its manifest pins. Use `snapshot` to save a
+  plan for the operator to read. Upgrading:
   - A lane with an evidence step is a `swim lint` error (`removed`: use
     snapshot), so `swim run` refuses it until it's edited.
   - A `lookup.yml` `require:` rule with `evidence: true` fails closed
@@ -186,8 +185,7 @@ already pushed to origin's main) with the next tag and pushes that tag.
     a pre-answer, `-y`, `swim queue add --approve`), so they dry-run, with
     "lookup.yml rule for GUARD requires evidence-bound approvals, which
     swim no longer has: remove `evidence: true`". `swim approve --guards`
-    and `swim queue add --approve` refuse such a guard, `swim plan` shows
-    it as not approved with that reason, and `swim doctor` warns
+    and `swim queue add --approve` refuse such a guard, and `swim doctor` warns
     (`evidence-rule`). The field is still read and still in the rules'
     hash, so a `lookup.yml` without it hashes as before and no approval
     goes stale; removing it changes the rules, so re-approve what it
@@ -199,6 +197,22 @@ already pushed to origin's main) with the next tag and pushes that tag.
     `evidence: true`. Round and approve chain entries no longer carry
     `evidence_sha256`; older ones still verify. `.swim/evidence/` can be
     deleted.
+- **Removed: swim plan.** `swim plan` (the tree of what `swim run` or
+  `swim all` would do, its guard verdicts, `--rerun`, `--yaml` and the
+  `swim.plan/v1` schema) and its read-only preview `swim plan --check` are
+  gone, and with the preview `swim ci --check`, the check mode lanes ran
+  in (`SWIM_CHECK_ONLY`: rounds stopping at `CHECKED` before `stage
+  change`, guards that never approved, `agentN.check.log`), and the
+  `check_result`, `check_at`, `check_sha256`, `check_stop` and
+  `check_guards` fields in `status.yml`. Check scripts with `swim lint`,
+  read `swim status` for what a run would wait on, and run with `swim run
+  --no-prompt` to see guarded steps dry-run. Older `status.yml` files
+  with check fields load (the fields are dropped on the next write); the
+  chain's `check` entries an older swim recorded still verify, and older
+  logs' `CHECKED` lines still read. `.swim/logs/agentN.check.log` files
+  are ignored and can be deleted. `swim lint`'s `check-unsafe` stays: a
+  destructive command before `stage change` still runs in a stage that
+  should only read.
 - **Cleanup is archive, stub and clean.** `swim clean` now idles each
   finished lane directly: it archives its logs (as `swim archive`) and
   stubs its script (as `swim stub`), keeping a script edited since its
@@ -220,16 +234,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
   `[+ next batch]`), a `▶ submit` row appears in the queue, and `s` (or
   enter on that row) queues them as one batch, as `swim queue add 1 2`
   does. `x` clears it. Nothing is queued until you submit.
-- **`swim plan` says what each guard needs.** It decides every guard as
-  `swim run` would as it starts (the flag, signed approvals against
-  `lookup.yml`, `-y`): approved and by whom, or what's missing ("approval
-  needs 2 signature(s) from dba, has 1"). A lane with an unapproved guard
-  says `needs approval: a dry run without it`, each lane under it `waits on
-  swim N's approval`, and an `Approvals:` line sums it up. Before, a guard
-  showed approved only when its flag was set in your shell. The header
-  reads "Swim would start these rounds" rather than promising what it will
-  perform. `--yaml` guards gain `approved`, `how`, `asks` and `why`, and
-  each lane `awaits_approval` (`set` stays).
 - **Lane scripts say `# swim: syntax 4`.** The README, guide, demos and
   this repo's lanes now match what `swim new` writes. Syntax 2 and 3
   scripts still run as they are; the lock pins the script syntax for the

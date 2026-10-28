@@ -28,7 +28,7 @@ flowchart TD
 
   P -->|writes| L
   P -->|swim queue add| Q
-  L --> PL{{"swim plan / swim lint: checks<br/>swim run refuses blocked commands,<br/>cycles, set -e"}}
+  L --> PL{{"swim lint: checks<br/>swim run refuses blocked commands,<br/>cycles, set -e"}}
   PL --> O
   Q --> W
   O --> LK{{"lock check<br/>.swim.lock syntaxes"}}
@@ -47,7 +47,7 @@ Read it top to bottom:
 
 1. **The planner and its workers write.** They hold no credentials. Each
    worker writes one lane script in the repo; the planner can queue batches.
-2. **swim plan and swim lint check the scripts.** `swim run` refuses to
+2. **swim lint checks the scripts.** `swim run` refuses to
    start on blocked commands (`git push`, `git commit`, `git pull`,
    `blocked_commands`), dependency cycles, `set -e` and a missing
    `lane_init`. `swim lint` also warns about a delete or drop outside an

@@ -710,8 +710,8 @@ func laneEnd(root string, n int, running func() bool) *display.FollowEnd {
 	return end
 }
 
-// laneLogFiles are lane n's current logs: its own, then its jobs' and
-// read-only check's (not archives).
+// laneLogFiles are lane n's current logs: its own, then its jobs' (not
+// archives, nor a check log an older swim left).
 func laneLogFiles(root string, n int) []string {
 	var logs []string
 	if _, err := os.Stat(lane.Log(root, n)); err == nil {
@@ -719,7 +719,7 @@ func laneLogFiles(root string, n int) []string {
 	}
 	more, _ := filepath.Glob(filepath.Join(filepath.Dir(lane.Log(root, n)), fmt.Sprintf("agent%d.*.log", n)))
 	for _, m := range more {
-		if !strings.Contains(filepath.Base(m), ".prev-") {
+		if !strings.Contains(filepath.Base(m), ".prev-") && !strings.HasSuffix(m, ".check.log") {
 			logs = append(logs, m)
 		}
 	}

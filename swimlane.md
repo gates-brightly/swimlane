@@ -115,7 +115,6 @@ swim is a tool a person operates, with teammates approving from their own machin
 - Run every pending lane, or chosen lanes or jobs, in parallel up to a limit.
 - Resolve dependencies; refuse a cycle before anything starts.
 - Show a live view of every lane, with output prefixed `[N]`, and work without a terminal (plain lines or YAML).
-- Show what would run before running it (`swim plan`).
 - Stop gracefully on the first Ctrl-C, interrupt on the second, kill on the third.
 - Run the bytes that were approved: pin each lane's execution manifest (script, the local files it sources or imports, sidecar, runner, the policy in `swim.yml` and `lookup.yml`) before it waits, run a read-only staged copy, and check it again right before exec.
 

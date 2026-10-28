@@ -25,25 +25,8 @@ import (
 const StubMarker = "# swim:stub"
 
 func Log(root string, n int) string {
-	if CheckMode() {
-		return CheckLog(root, n)
-	}
 	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.log", n))
 }
-
-// CheckLog is lane n's check log (swim plan --check), kept apart from its
-// round log.
-func CheckLog(root string, n int) string {
-	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.check.log", n))
-}
-
-// CheckEnv is set (to 1) in swim plan --check and in every lane process it
-// starts: rounds stop where change would begin, guards never approve, logs
-// go to the check log and lane status is left alone.
-const CheckEnv = "SWIM_CHECK_ONLY"
-
-// CheckMode reports whether this process is part of a read-only check.
-func CheckMode() bool { return os.Getenv(CheckEnv) == "1" }
 
 // LogDir holds lane logs and their archives.
 func LogDir(root string) string { return filepath.Join(root, ".swim", "logs") }
@@ -94,7 +77,7 @@ type Info struct {
 	FailHard bool
 	FailText string // the Fail: value as written ("" if unset)
 	// Staged: the script calls stage (bash, or swim stage from another
-	// language), so a read-only check has a place to stop.
+	// language), so its snapshot and check stages are marked.
 	Staged bool
 	// Includes are repo files (globs) that are part of the round, such as
 	// local modules a Python or TypeScript lane imports: they're hashed

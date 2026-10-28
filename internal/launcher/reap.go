@@ -45,9 +45,6 @@ func (r Reaped) String() string {
 // swim run and swim watch call it as they start, so a dead lane never
 // stays running until someone runs swim status --rebuild.
 func ReapDead(root string, cfg *config.Config, self string) []Reaped {
-	if lane.CheckMode() {
-		return nil
-	}
 	if st, _ := status.Load(root); st == nil || !anyRunning(st) {
 		return nil // the common case: nothing to lock for
 	}
@@ -146,7 +143,7 @@ func finishDead(root, self string, n int) {
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch k {
-		case "SWIM_LAUNCHED", approval.EnvVar, approval.TokenEnv, "SWIM_RUN", lane.CheckEnv:
+		case "SWIM_LAUNCHED", approval.EnvVar, approval.TokenEnv, "SWIM_RUN":
 			continue
 		}
 		env = append(env, kv)

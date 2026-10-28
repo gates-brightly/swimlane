@@ -17,6 +17,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -241,17 +242,23 @@ func cmdGuard(args []string) error {
 	if err := refuseEnded("guard", n, desc); err != nil {
 		return err
 	}
-	if lane.CheckMode() {
-		// A read-only check never approves anything, whatever the flag says.
-		cmdMark([]string{n, logparse.Skip, desc, "dry run: swim plan --check never approves; set " + flag + "=1 to approve"})
-		return exitError{1}
-	}
 	val, set := os.LookupEnv(flag)
 	switch {
 	case val == "1" && launched():
 		// Under swim run the launcher says whether the flag counts.
 		return cmdApproveHook([]string{n, flag, desc, "--flag-set"})
 	case val == "1":
+		// Run directly: a guard whose lookup.yml rule asks for
+		// evidence-bound approvals can't be approved, the flag included.
+		if root, _, _, err := laneCtx(n); err == nil {
+			if lk, err := lookup.Load(root); err == nil {
+				if why := lk.EvidenceWhy(flag); why != "" {
+					cmdMark([]string{n, logparse.Warn, "approval refused: " + flag, why})
+					cmdMark([]string{n, logparse.Skip, desc, "dry run: " + why})
+					return exitError{1}
+				}
+			}
+		}
 		detail := flag + "=1"
 		if strings.Contains(" "+os.Getenv("SWIM_QUEUE_APPROVED")+" ", " "+flag+" ") {
 			detail += ", approved in " + os.Getenv("SWIM_QUEUE")
@@ -274,19 +281,6 @@ func cmdStagePublic(args []string) error {
 	}
 	if len(args) != 1 {
 		return usagef("usage: swim stage snapshot|check|change|verify")
-	}
-	if lane.CheckMode() && (args[0] == "change" || args[0] == "verify") {
-		// A read-only check ends where change would begin, passing.
-		root, _, ln, err := laneCtx(n)
-		if err != nil {
-			return err
-		}
-		cmdMark([]string{n, logparse.Checked, "stopped before stage " + args[0], "swim plan --check runs only snapshot and check"})
-		if os.Getenv("SWIM_WRAPPED") != "" {
-			lane.ClaimEnd(root, ln, 0)
-			signalEnd()
-		}
-		return exitError{0}
 	}
 	if err := cmdStage([]string{n, args[0]}); err != nil {
 		root, _, ln, cerr := laneCtx(n)

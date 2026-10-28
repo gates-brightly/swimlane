@@ -57,7 +57,7 @@ terminal (SIGHUP).
 
 ```sh
 swim log N                  # the last step that ran, and whether it finished
-swim plan                   # what swim all would run now: interrupted and skipped rounds are retried
+swim status                 # interrupted and skipped rounds are what swim all retries
 swim all                    # run them (or: swim run N for one lane)
 ```
 

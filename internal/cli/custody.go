@@ -121,7 +121,7 @@ func laneProbes(root string, n int, m *manifest.Manifest) []lane.Probe {
 // the launcher instead, which signs it with the run key: a lane needs no
 // key of its own.
 func record(root string, cfg *config.Config, e chain.Entry) error {
-	if tok := os.Getenv(approval.TokenEnv); launched() && tok != "" && (e.Type == "round" || e.Type == "check") {
+	if tok := os.Getenv(approval.TokenEnv); launched() && tok != "" && e.Type == "round" {
 		_, err := approval.Record(os.Getenv(approval.EnvVar), tok, e)
 		return err
 	}

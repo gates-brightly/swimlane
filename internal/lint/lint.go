@@ -103,7 +103,7 @@ var Checks = []Check{
 	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks, Workspace, Task)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
-	{"check-unsafe", finding.Warn, false, "a destructive-looking command before `stage change` (swim plan --check runs it)", checkCheckUnsafe},
+	{"check-unsafe", finding.Warn, false, "a destructive-looking command before `stage change` (snapshot and check stages should only read)", checkCheckUnsafe},
 	{"outputs", finding.Warn, false, "an output whose name suggests secrets (output files aren't masked)", checkOutputs},
 	{"input-dep", finding.Error, false, "`input N` of a lane not in After: (or config deps)", checkInputDeps},
 	{"cache", finding.Error, false, "a # Cache: with an unknown preset, no lockfile, a lockfile that isn't there, or pip requirements without hashes", checkCache},

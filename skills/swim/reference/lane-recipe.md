@@ -132,5 +132,5 @@ swim("gate", "none left", "--", "sh", "-c", f"test $(sqlite3 {DB} \"select count
 
 ```sh
 swim lint N          # fix errors; read the warnings
-swim plan            # the tree, the predicted skips, each guard flag
+swim status          # the lanes it waits on: one that hasn't passed skips it
 ```

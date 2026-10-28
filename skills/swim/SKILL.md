@@ -73,7 +73,7 @@ swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit}
 ## 2. What you run, and what you hand over
 
 **Run freely.** These only read or check:
-`swim status`, `report`, `log`, `plan`, `plan --check`, `lint`,
+`swim status`, `report`, `log`, `lint`,
 `history`, `verify`, `env`, `keys`, `approve` (no arguments: lists them),
 `queue` / `queue show`, `doctor` (without `--fix`),
 `changelog`, `--help`. Add `--yaml` when you're going to parse the output.
@@ -86,7 +86,7 @@ refuse to touch a running lane.
 over: `swim queue add`, and `swim queue rm` of a batch you queued. Queue
 without approving anything (no `--approve`, `-y` or `--auto`): the batch's
 guards then dry-run unless something else approves them. Before you queue,
-read `swim plan` for the lanes and `swim queue` / `swim status` for the
+read `swim lint` and `swim status` for the lanes and `swim queue` for the
 workers, and **flag every item with meaningful risk**, each on its own
 line marked ⚠, saying what it does and what will happen to it:
 
@@ -139,10 +139,8 @@ lines or command instead. For anything broken, see
    With subagents, follow [reference/workers.md](reference/workers.md):
    the planner assigns each worker exactly one lane number, and nobody
    touches a lane they weren't given.
-4. **Check:** `swim lint N` until it's clean, then `swim plan` and read the
-   tree, the predicted skips and the guard flags. `swim plan --check` runs
-   the read-only stages for real. Run it only if the user says the target is
-   reachable from here, which is usually not.
+4. **Check:** `swim lint N` until it's clean, then `swim status` for the
+   lanes it waits on (`# After:`): a dependency that hasn't passed skips it.
 5. **Dispatch or hand off:** queue the round (section 2), or give the
    operator the exact command, pinned to job ids, with each guard flag and
    what it approves ([reference/handoff.md](reference/handoff.md)). Then

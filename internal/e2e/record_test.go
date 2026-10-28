@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/chain"
 )
 
 // A lane that exits before lane_init (a setup line that fails, a broken
@@ -64,4 +66,18 @@ func TestLockRefusalIsRecorded(t *testing.T) {
 	if strings.Count(log, "PASS  never") != 1 {
 		t.Errorf("the refused round ran its step:\n%s", log)
 	}
+}
+
+// A check entry an older swim recorded (swim plan --check, which swim no
+// longer has) still verifies beside the rounds after it.
+func TestOldCheckEntryVerifies(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "one step", `run "hello" echo hi`)
+	exit := 0
+	if _, err := chain.Append(r.root, chain.Entry{Type: "check", Run: "r-old", Lane: 1, Job: "j", Round: "one step",
+		Result: "checked", Exit: &exit, Log: chain.Hash([]byte("== ROUND\n"))}, nil); err != nil {
+		t.Fatal(err)
+	}
+	r.mustSwim("run", "1", "--plain")
+	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED: 3 entries")
 }

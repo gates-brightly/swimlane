@@ -77,15 +77,6 @@ type Lane struct {
 	// Outputs are the last round's outputs (# Outputs:, output KEY value):
 	// name -> SHA-256, in .swim/out/<job>/<run>/.
 	Outputs map[string]string `yaml:"outputs,omitempty"`
-	// The last read-only check (swim plan --check): checked (it reached
-	// change cleanly), stopped (a gate stopped it), failed, or refused; when;
-	// the script it checked (stale once the script changes); the gate that
-	// stopped it; and the guards it reached.
-	CheckResult string   `yaml:"check_result,omitempty"`
-	CheckAt     string   `yaml:"check_at,omitempty"`
-	CheckSHA    string   `yaml:"check_sha256,omitempty"`
-	CheckStop   string   `yaml:"check_stop,omitempty"`
-	CheckGuards []string `yaml:"check_guards,flow,omitempty"`
 	// The guards the round's run approved without a prompt: AutoApproved by
 	// -y (swim run -y, a queue batch's -y, swim watch -y; AutoVia says
 	// which), FlagApproved by a guard flag swim run's own environment set
@@ -177,22 +168,9 @@ func (f *File) Get(n int) *Lane {
 	return nil
 }
 
-// UpdateCheck applies fn to lane n's entry even in a read-only check: for
-// the check's own fields.
-func UpdateCheck(root string, n, lanes int, fn func(*Lane)) error {
-	return updateFile(root, max(n, lanes), true, func(f *File) error {
-		fn(f.Get(n))
-		return nil
-	})
-}
-
 // UpdateFile applies fn to the whole document under the lock, after making
-// sure lanes 1..n exist, and writes it back atomically. Like Update, it
-// does nothing in a read-only check.
+// sure lanes 1..n exist, and writes it back atomically.
 func UpdateFile(root string, n int, fn func(*File) error) error {
-	if os.Getenv("SWIM_CHECK_ONLY") == "1" {
-		return nil
-	}
 	return updateFile(root, n, true, fn)
 }
 
@@ -200,9 +178,6 @@ func UpdateFile(root string, n int, fn func(*File) error) error {
 // every entry from the logs: it may move a lane to any state, so it isn't
 // checked against the state machine (Transition).
 func Rebuild(root string, n int, fn func(*File) error) error {
-	if os.Getenv("SWIM_CHECK_ONLY") == "1" {
-		return nil
-	}
 	return updateFile(root, n, false, fn)
 }
 
@@ -246,13 +221,8 @@ func updateFile(root string, n int, check bool, fn func(*File) error) error {
 	return write(root, f)
 }
 
-// Update applies fn to lane n's entry. In a read-only check (swim plan
-// --check) it does nothing: a check never changes a lane's state; its
-// result is written with UpdateCheck.
+// Update applies fn to lane n's entry.
 func Update(root string, n, lanes int, fn func(*Lane)) error {
-	if os.Getenv("SWIM_CHECK_ONLY") == "1" {
-		return nil
-	}
 	if n > lanes {
 		lanes = n
 	}

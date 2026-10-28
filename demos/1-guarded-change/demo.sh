@@ -16,8 +16,7 @@ say "An AI session was asked to clean up after a load test. It can't reach prod,
 show 'sed -n "/^stage snapshot/,\$p" lane.1.sh'
 pause
 show 'swim lint'
-show 'swim plan'
-say "swim plan says what will run, and that the guard will ask before it acts."
+say "swim lint finds nothing to fix, and the guard will ask before it acts."
 pause
 
 scene "2. Run it: a dry run until someone approves"

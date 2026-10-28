@@ -100,7 +100,7 @@ the lane, so a lane can no longer read the runner's signing key or
   lane library (read-only), the approval socket, and each credential the
   lane is given as an environment variable or a file in a tmpfs.
   Nothing else from the operator's home.
-- `swim plan` shows the image digest and the network policy for each
+- `swim status` shows the image digest and the network policy for each
   sandboxed lane; `swim verify` and the receipt
   include them.
 

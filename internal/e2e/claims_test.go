@@ -34,13 +34,8 @@ func TestLaneClaims(t *testing.T) {
 	contains(t, "status", st, "claimed by", "(a) until")
 	y, _ := r.as("b", "status", "--yaml")
 	contains(t, "status --yaml", y, "claims:", "session: a")
-	y, _ = r.as("b", "plan", "3", "--yaml")
-	contains(t, "plan --yaml", y, "claim:", "session: a")
 	if out, code := r.as("b", "stub", "3", "nothing"); code == 0 || !strings.Contains(out, "claimed by") {
 		t.Errorf("b's stub: exit %d\n%s", code, out)
-	}
-	if out, code := r.as("b", "plan", "3"); code != 0 || !strings.Contains(out, "warning: swim 3: claimed by") {
-		t.Errorf("b's plan: exit %d\n%s", code, out)
 	}
 	// a's own new and lint refresh it.
 	if out, code := r.as("a", "new", "3", "drop the orders index, again", "--force"); code != 0 {

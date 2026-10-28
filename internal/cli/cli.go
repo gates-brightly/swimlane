@@ -33,7 +33,6 @@ func init() {
 		"new":       {run: cmdNew},
 		"run":       {run: cmdRun},
 		"all":       {run: cmdAll},
-		"plan":      {run: cmdPlan},
 		"status":    {run: cmdStatus},
 		"report":    {run: cmdReport},
 		"step":      {run: cmdStep},

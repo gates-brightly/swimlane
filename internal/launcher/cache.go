@@ -106,18 +106,3 @@ func checkLockfiles(root string, n int, info lane.Info) error {
 	}
 	return nil
 }
-
-// PlanCache is one of a lane's caches in swim plan --yaml.
-type PlanCache struct {
-	Preset    string   `yaml:"preset"`
-	Lockfiles []string `yaml:"lockfiles,flow"`
-}
-
-// cacheText is a lane's caches for swim plan: "terraform (infra/.terraform.lock.hcl), npm (web/package-lock.json)".
-func cacheText(decls []cache.Decl) string {
-	parts := make([]string, len(decls))
-	for i, d := range decls {
-		parts[i] = d.Label() + " (" + strings.Join(d.Lockfiles, ", ") + ")"
-	}
-	return strings.Join(parts, ", ")
-}

@@ -252,9 +252,6 @@ func cmdStart(args []string) error {
 	if info.FailHard {
 		ctx = append(ctx, logparse.KV{K: "fail", V: "hard"})
 	}
-	if lane.CheckMode() {
-		ctx = append(ctx, logparse.KV{K: "check", V: "read-only preview: stops where change begins"})
-	}
 	ctx = append(ctx, logparse.KV{K: "sha256", V: scriptSum[:12]})
 	manSum := ""
 	if m != nil {
@@ -295,9 +292,7 @@ func cmdStart(args []string) error {
 	for _, prob := range info.Problems {
 		fmt.Fprintln(os.Stderr, p.Paint(ui.Yellow, "WARN  "+prob))
 	}
-	if !lane.CheckMode() {
-		history.Log(root, history.Entry{Event: history.Start, Lane: n, Job: job, Run: run, Detail: round})
-	}
+	history.Log(root, history.Entry{Event: history.Start, Lane: n, Job: job, Run: run, Detail: round})
 	stepTimeout := "0"
 	if info.StepTimeout > 0 {
 		stepTimeout = info.StepTimeoutText
@@ -403,81 +398,6 @@ func inputRounds(in []outputs.Input) map[string]string {
 	return m
 }
 
-// finishCheck ends a read-only check (swim plan --check): its END block in
-// the check log, the check's fields in status (nothing else), and a check
-// entry in the chain.
-func finishCheck(root string, cfg *config.Config, n int, logPath, exitS string) error {
-	r, err := logparse.ParseFile(logPath)
-	if err != nil {
-		return err
-	}
-	failed := r.Failed()
-	code := 0
-	if exitS != "" {
-		code, _ = strconv.Atoi(exitS)
-	}
-	result, word, stop := "checked", "CHECKED", ""
-	for _, f := range failed {
-		if f.Kind == logparse.Stop && strings.HasPrefix(f.Label, "gate failed: ") {
-			stop = strings.TrimPrefix(f.Label, "gate failed: ")
-		}
-	}
-	switch {
-	case stop != "":
-		result, word = "stopped", "FAIL"
-	case len(failed) > 0 || code != 0:
-		result, word = "failed", "FAIL"
-	}
-	if code == 130 || code == 143 {
-		result, word = "interrupted", "INTERRUPTED"
-	}
-	if result != "checked" && code == 0 {
-		code = 1
-	}
-	var guards []string
-	for _, res := range r.Results {
-		if res.Kind == logparse.Skip {
-			if flag := dryRunFlag(res.Detail); flag != "" {
-				guards = append(guards, flag)
-			}
-		}
-	}
-	now := time.Now()
-	var dur time.Duration
-	if t, err := time.Parse(time.RFC3339, r.StartedAt); err == nil {
-		dur = now.Sub(t)
-	}
-	if err := appendLog(logPath, logparse.EndBlock(word, r, code, fmt.Sprintf("%.1fs", dur.Seconds()), now.UTC().Format(time.RFC3339))); err != nil {
-		return err
-	}
-	sha := scriptSHA(root, n)
-	if rounds, _ := splitRounds(logPath); len(rounds) > 0 {
-		exit := code
-		if err := record(root, cfg, chain.Entry{Type: "check", Run: r.Run, Lane: n, Job: r.Job, Round: r.Title,
-			Script: sha, Result: result, Exit: &exit, Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1])))}); err != nil {
-			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
-		}
-	}
-	p := painter()
-	detail := ""
-	if stop != "" {
-		detail = "  stops at gate \"" + stop + "\""
-	}
-	fmt.Fprintf(os.Stderr, "%s %s%s  pass=%d fail=%d skip=%d  %s\n", laneBanner(p, root, n, " check:"),
-		p.Paint(ui.StateColor(word)+ui.Bold, word), detail, r.Pass, r.Fail, r.Skip, display.Elapsed(dur))
-	status.UpdateCheck(root, n, cfg.Lanes, func(l *status.Lane) {
-		l.CheckResult, l.CheckAt, l.CheckSHA, l.CheckStop, l.CheckGuards = result, now.UTC().Format(time.RFC3339), sha, stop, guards
-	})
-	if pid, ok := lane.Running(root, n); !ok || pid == os.Getppid() {
-		lane.RemovePID(root, n)
-	}
-	history.Log(root, history.Entry{Event: "check", Lane: n, Job: r.Job, Run: r.Run, Detail: result + "  " + r.Title})
-	if code != 0 {
-		return exitError{code}
-	}
-	return nil
-}
-
 // handlerMap is the round's handler outcomes for the chain (nil if none ran).
 func handlerMap(r *logparse.Round) map[string]string {
 	var m map[string]string
@@ -577,9 +497,6 @@ func cmdFinish(args []string) error {
 		appendLog(logPath, "  "+logparse.MsgText(m.Text, m.Progress, time.Now().Format("15:04:05"))+"\n")
 	}
 	lane.ClearMsg(root, n)
-	if lane.CheckMode() {
-		return finishCheck(root, cfg, n, logPath, exitS)
-	}
 	// The round's outputs: promised ones must be there; all are hashed and
 	// made read-only, then recorded for the lanes that read them.
 	outSums, inputs, outLine := finishOutputs(root, n, logPath)
@@ -787,7 +704,7 @@ func cmdMark(args []string) error {
 		label, detail = mk.String(label), mk.String(detail)
 	}
 	switch kind {
-	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn, logparse.Blocked, logparse.Fail, logparse.Checked:
+	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn, logparse.Blocked, logparse.Fail:
 	default:
 		return usagef("unknown mark kind %q", kind)
 	}

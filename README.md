@@ -99,7 +99,7 @@ run "say hello" echo "hello from swim"
 summary
 EOF
 
-swim plan                         # what would run, without running it
+swim lint 1                       # check the script before you run it
 swim run 1 --plain                # run it
 swim log 1                        # the round, step by step
 swim verify --allow-unsigned      # check the chain of custody (drop the flag once you sign: ~/.ssh/id_ed25519)
@@ -231,7 +231,7 @@ flowchart TD
 
   P -->|writes| L
   P -->|swim queue add| Q
-  L --> PL{{"swim plan / swim lint: checks<br/>swim run refuses blocked commands,<br/>cycles, set -e"}}
+  L --> PL{{"swim lint: checks<br/>swim run refuses blocked commands,<br/>cycles, set -e"}}
   PL --> O
   Q --> W
   O --> LK{{"lock check<br/>.swim.lock syntaxes"}}
@@ -279,7 +279,7 @@ cd your-repo
 swim init                                  # config entry, .gitignore block, .swim/status.yml
 swim new 1 "Cut over orders-api"           # writes lane.1.sh from a template
 $EDITOR lane.1.sh                          # fill in the steps (or have an AI write them)
-swim plan                                  # dry run: what would run, wait or be skipped
+swim lint                                  # check the scripts before you run them
 swim all                                   # run every pending lane, with a live view
 swim log 1                                 # what happened, step by step
 swim archive 1 && swim stub 1 "orders done"   # keep the log, free the lane for the next round
@@ -310,7 +310,6 @@ A round declares what it waits for, and swim schedules it:
 ```
 
 ```sh
-swim plan           # the dependency tree, Terraform style
 swim all --parallel 8
 ```
 
@@ -381,7 +380,6 @@ exit codes:
 swim run 1 2 --yaml           # a stream of events: start, step, finish, summary
 swim status --yaml
 swim log 2 --yaml             # the round parsed: steps, commands, output, results
-swim plan --yaml
 ```
 
 ---
@@ -454,11 +452,6 @@ summary
 - **Pre-approve in the live view:** select a lane that hasn't asked yet
   and press `y` (or `n`) to answer its guards ahead of time, then walk away.
   The answer is pinned to the script and lasts this run only.
-- **Read-only preview:** `swim plan --check` runs every round's `snapshot`
-  and `check` stages for real, stops where `change` would begin, and shows
-  which gates pass today (`check PASS`, `stops at gate "..."`). Guards never
-  approve, and lane status is untouched. `swim ci --check` does the same
-  for a pull request.
 - **Outputs between lanes:** `# Outputs: stats.json` promises files in
   `$SWIM_OUT`, and a dependent lane reads them with
   `"$(input 2 stats.json)"` (or `output KEY value` / `$(input 2 KEY)` for
@@ -593,24 +586,6 @@ lane's state and round; output scrolls underneath, prefixed `[N]`.
 - **`# Locks: orders-table`:** lanes that share a lock never run at the same
   time, in either order. That holds within a run and across concurrent runs
   on the machine. A failure doesn't spread through a lock.
-```
-$ swim plan
-[+] swim 1  Diamond root: fetch pages
-├── [+] swim 2  Child A: convert to Markdown
-│   └── [+] swim 4  Join: build report  wait [2,3]
-└── [~] swim 3  Child B: link stats
-    └── [+] swim 4 (shown above)
-
-Plan: 3 to run, 1 to retry, 0 to rerun, 0 to skip.
-```
-
-A plan says what runs and in what order, not what a script will change.
-For each guard it says what `swim run` would decide right now, from the
-same flags, signed approvals and `lookup.yml` the run reads: approved
-(and by whom), or what it still needs ("approval needs 2 signature(s) from
-dba, has 1"). A lane whose guard isn't approved yet, and every lane under
-it, is marked: a dry run there skips them.
-
 ### Env files
 
 Lanes get non-secret context (`STAGE`, `AWS_PROFILE`, table names) from
@@ -998,7 +973,6 @@ a red run names the gate. A run takes about as long as the slowest suite.
 | `swim run\|all --yaml` | `swim.run/v1`: one document per event (`run`, `waiting`, `queued`, `locked`, `start`, `step`, `finish`), then `summary`. `--yaml-output` adds lane output. |
 | `swim status --yaml` | `swim.status/v1` |
 | `swim log N --yaml` | `swim.log/v1`: the round parsed, including the running step as `RUNNING` |
-| `swim plan --yaml` | `swim.plan/v1` |
 | `swim history --yaml` | `swim.history/v1` |
 | `swim queue --yaml` | `swim.queue-list/v1` |
 | `swim lint\|doctor --yaml` | findings |
@@ -1035,7 +1009,6 @@ they waited for.
 |---|---|
 | `swim init` | Set up the repo: config entry, `.gitignore` block, `.swim/status.yml`. |
 | `swim new N\|TASK "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id (a task name takes the lowest free lane). |
-| `swim plan [N\|JOB ...] [--rerun] [--yaml]` | Dry run: what would run, retry, rerun or be skipped, as a dependency tree, and what each guard needs. |
 | `swim all [--rerun] [--parallel N] [-y\|--no-prompt] [--no-tui] [--yaml]` | Run every pending round that hasn't passed. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they passed. A job id pins the exact round. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane. |

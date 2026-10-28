@@ -114,21 +114,6 @@ func TestWrittenFileShape(t *testing.T) {
 	}
 }
 
-// A read-only check (swim plan --check) never changes lane state; only its
-// own fields, through UpdateCheck.
-func TestCheckModeLeavesStatusAlone(t *testing.T) {
-	root := t.TempDir()
-	Update(root, 1, 4, func(l *Lane) { l.State = Passed })
-	t.Setenv("SWIM_CHECK_ONLY", "1")
-	Update(root, 1, 4, func(l *Lane) { l.State = Failed })
-	UpdateFile(root, 4, func(f *File) error { f.Get(1).State = Failed; return nil })
-	UpdateCheck(root, 1, 4, func(l *Lane) { l.CheckResult = "checked" })
-	f, _ := Load(root)
-	if l := f.Get(1); l.State != Passed || l.CheckResult != "checked" {
-		t.Errorf("after a check: %+v", l)
-	}
-}
-
 // Guards approved without a prompt are listed once each, written as
 // auto_approved / flag_approved, and cleared when the next round starts.
 func TestUnprompted(t *testing.T) {

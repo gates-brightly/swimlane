@@ -378,11 +378,10 @@ func TestSkipPropagatesDownChain(t *testing.T) {
 	if f.Get(2).State != status.Skipped || f.Get(4).State != status.Skipped || f.Get(4).Reason != "swim 2 skipped" {
 		t.Fatalf("status: 2=%+v 4=%+v", f.Get(2), f.Get(4))
 	}
-	// A skipped lane records the round it skipped, so plan sees a retry, not a new job.
+	// A skipped lane records the round it skipped, so its next run is a retry, not a new job.
 	if f.Get(4).Round != "four" || f.Get(4).FinishedAt == nil {
 		t.Errorf("skipped lane should record its round: %+v", f.Get(4))
 	}
-	contains(t, "plan after skips", r.mustSwim("plan"), "[~] swim 4  four")
 	if r.log(2) != "" {
 		t.Error("skipped lane wrote a log")
 	}
@@ -964,82 +963,6 @@ func TestLanesInUse(t *testing.T) {
 	contains(t, "doctor", must(r.swim("doctor")), "is no longer used", "[lanes-setting]")
 }
 
-func TestPlan(t *testing.T) {
-	r := newRepo(t, "")
-	head := func(n int, after string) {
-		p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
-		data, _ := os.ReadFile(p)
-		os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: "+after+"\n", 1)), 0o755)
-	}
-	r.script(1, "root", `run "ok" true`)
-	r.script(2, "child a", `run "ok" true`)
-	r.script(3, "child b", `run "ok" true`)
-	r.script(4, "join", `if guard PLAN_ALLOW_X "do x"; then run "x" true; fi`)
-	head(2, "1")
-	head(3, "1")
-	head(4, "2 3")
-
-	out := r.mustSwim("plan")
-	contains(t, "plan", out,
-		"swim plan · ", "swim all",
-		"[+] run: a new job",
-		"[+] swim 1  root",
-		"├── [+] swim 2  child a",
-		"Swim would start these rounds",
-		"│   └── [+] swim 4  join  wait [2,3]  needs approval: a dry run without it",
-		"guard PLAN_ALLOW_X (not approved: asks at the prompt; a dry run if no one can answer)",
-		"└── [+] swim 3  child b",
-		"    └── [+] swim 4 (shown above)",
-		"Plan: 4 to run, 0 to retry, 0 to rerun, 0 to skip.",
-		"Approvals: 0 of 1 guards approved. Not yet: swim 4 PLAN_ALLOW_X")
-	if strings.Contains(out, "Swim will perform") {
-		t.Error("plan still promises what it will perform")
-	}
-	if r.log(1) != "" || r.status().Get(1).State != status.Idle {
-		t.Fatal("plan ran something")
-	}
-
-	c := r.cmd(bin, "plan")
-	c.Env = append(c.Env, "PLAN_ALLOW_X=1")
-	if out, _ := c.CombinedOutput(); !strings.Contains(string(out), "guard PLAN_ALLOW_X (approved: PLAN_ALLOW_X=1)") ||
-		!strings.Contains(string(out), "Approvals: the guard is approved.") || strings.Contains(string(out), "needs approval") {
-		t.Errorf("guard set not shown:\n%s", out)
-	}
-
-	// Lane 4 alone: its dependencies haven't passed, so it would be skipped.
-	contains(t, "plan 4", r.mustSwim("plan", "4"), "swim run 4", "[-] swim 4  join", "skip: swim 2's pending round has not passed", "0 to run, 0 to retry, 0 to rerun, 1 to skip.")
-
-	// Lane 3 fails once: it's a retry; the passed lanes are summarised.
-	r.script(3, "child b", `run "flaky" false`)
-	head(3, "1")
-	r.swim("all", "--plain")
-	r.script(3, "child b", `run "ok" true`)
-	head(3, "1")
-	out = r.mustSwim("plan")
-	// Lane 4 was skipped below lane 3: the same job comes back, so it's a retry too.
-	contains(t, "retry", out, "[~] retry: the job ran before and didn't pass", "[~] swim 3  child b", "└── [~] swim 4  join")
-	contains(t, "retry", out, "Plan: 0 to run, 2 to retry, 0 to rerun, 0 to skip.", "2 items have completed with no remaining work.")
-	if strings.Contains(out, "swim 1  root") {
-		t.Errorf("completed lanes should be summarised, not listed:\n%s", out)
-	}
-	contains(t, "rerun", r.mustSwim("plan", "--rerun"), "[+/-] swim 1  root", "2 to rerun")
-
-	// After a full run, nothing is left (lane 4's guard approved: a dry run
-	// would leave it to retry).
-	c = r.cmd(bin, "all", "--plain")
-	c.Env = append(c.Env, "PLAN_ALLOW_X=1")
-	if out, err := c.CombinedOutput(); err != nil {
-		t.Fatalf("all: %v\n%s", err, out)
-	}
-	contains(t, "plan after run", r.mustSwim("plan"), "No changes. 4 items have completed with no remaining work.")
-
-	// A cycle fails the plan just as it would fail the run.
-	head(1, "4")
-	if out, code := r.swim("plan", "--rerun"); code == 0 || !strings.Contains(out, "dependency cycle") {
-		t.Errorf("cycle: %d %s", code, out)
-	}
-}
-
 func TestVersionAndLock(t *testing.T) {
 	r := newRepo(t, "")
 	if out := r.mustSwim("--version"); !regexp.MustCompile(`^swim 0\.(\d{8}|dev)(\.\d+)?`).MatchString(out) || strings.Contains(out, "warning") {
@@ -1047,9 +970,9 @@ func TestVersionAndLock(t *testing.T) {
 	}
 	lockPath := filepath.Join(r.root, ".swim.lock")
 	r.script(1, "one", `run "ok" true`)
-	r.mustSwim("plan")
+	r.mustSwim("status")
 	if _, err := os.Stat(lockPath); err == nil {
-		t.Fatal("plan wrote a lock")
+		t.Fatal("status wrote a lock")
 	}
 	out := r.mustSwim("run", "1")
 	contains(t, "first run", out, "wrote .swim.lock (syntax "+version.Current.String()+")")
@@ -1086,7 +1009,6 @@ func TestVersionAndLock(t *testing.T) {
 	}
 	// Read-only commands still work, with a warning.
 	contains(t, "status", r.mustSwim("status"), "warning: this repo needs a newer swim", "swim 1")
-	contains(t, "plan", r.mustSwim("plan"), "warning: this repo needs a newer swim")
 	// The direct run's refusal is a round of its own that says so; no
 	// other round ran.
 	log := r.log(1)
@@ -1149,7 +1071,7 @@ func TestSyntaxTooNew(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "fine", `run "ok" true`)
 	os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte("#!/usr/bin/env bash\n# swim: syntax 9\n# Round: from the future\n"), 0o755)
-	for _, args := range [][]string{{"status"}, {"run", "1"}, {"all"}, {"plan"}} {
+	for _, args := range [][]string{{"status"}, {"run", "1"}, {"all"}} {
 		out, code := r.swim(args...)
 		if code == 0 || !strings.Contains(out, "lane.2.sh uses swim syntax 9") || !strings.Contains(out, "go install github.com/gates-brightly/swimlane/cmd/swim@latest") {
 			t.Errorf("swim %v with a syntax 9 script: %d %s", args, code, out)
@@ -1394,7 +1316,6 @@ func TestResourceLocksWithinARun(t *testing.T) {
 	r.script(2, "back up table", `run "work" sleep 1`)
 	withLocks(t, r, 1, "orders-table")
 	withLocks(t, r, 2, "orders-table")
-	contains(t, "plan", r.mustSwim("plan"), "locks orders-table", "Lock orders-table: swim 1, 2 take turns")
 
 	stop := make(chan struct{})
 	seen := overlapWatcher(r, stop)
@@ -1605,7 +1526,6 @@ run "publish" git push origin main`)
 	p := filepath.Join(r.root, "lane.2.sh")
 	data, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: after publish\n", "# Round: after publish\n# After: 1\n", 1)), 0o755)
-	contains(t, "plan", r.mustSwim("plan"), "[-] swim 1  publish", `blocked: lane.1.sh:7 matches "git push"`, "[-] swim 2")
 	out, code := r.swim("all", "--plain")
 	if code == 0 {
 		t.Fatalf("blocked lane passed:\n%s", out)
@@ -1807,7 +1727,7 @@ func TestYAMLOutput(t *testing.T) {
 		t.Errorf("--yaml-output:\n%s", out)
 	}
 
-	// log, plan and status --yaml carry their schemas.
+	// log and status --yaml carry their schemas.
 	var lg logparse.Doc
 	if err := yaml.Unmarshal([]byte(r.mustSwim("log", "2", "--yaml")), &lg); err != nil {
 		t.Fatal(err)
@@ -1815,8 +1735,6 @@ func TestYAMLOutput(t *testing.T) {
 	if lg.Schema != "swim.log/v1" || lg.Result != "failed" || len(lg.Results) != 1 || lg.Results[0].Command != "false" || *lg.Results[0].Exit != 1 {
 		t.Errorf("log --yaml: %+v", lg)
 	}
-	plan := r.mustSwim("plan", "--yaml")
-	contains(t, "plan --yaml", plan, "schema: swim.plan/v1", "action: retry", "waits_on: [2]")
 	contains(t, "status --yaml", r.mustSwim("status", "--yaml"), "schema: swim.status/v1", "last_run: ")
 	if data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "status.yml")); strings.Contains(string(data), "schema:") {
 		t.Errorf("status.yml itself stays unchanged")

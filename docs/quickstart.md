@@ -60,8 +60,8 @@ more**: read the output to know what happened. The snapshot lists one
 file: a round runs in a **staged copy** of what it pins (its script, and
 the files its `# Includes:` names), so what runs is what was approved.
 The repo itself is `$SWIM_ROOT`. The **stages** (snapshot,
-check, change, verify) say where the round is; a read-only preview
-(`swim plan --check`) stops where `change` begins.
+check, change, verify) say where the round is: snapshot and check only
+read, change is where guarded work happens.
 
 ## 3. A gate fails closed
 
@@ -184,7 +184,6 @@ stage check
 run "ship" echo shipped
 summary
 EOF
-swim plan 3 4
 swim run 3 4 --plain || true
 swim status
 touch ok.flag
@@ -192,8 +191,7 @@ swim run 3 4 --plain
 ```
 
 `# After: 3` makes lane 4 wait for lane 3 and need it to pass: with lane 3
-failing, lane 4 is **skipped**. `swim plan` shows the tree before anything
-runs; independent lanes run at once.
+failing, lane 4 is **skipped**. Independent lanes run at once.
 
 ## 7. A queue and a swimmer
 

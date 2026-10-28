@@ -41,7 +41,7 @@ type Options struct {
 	Cfg    *config.Config
 	Lanes  []int  // explicit selection; empty means every lane with a pending round
 	Rerun  bool   // with no explicit lanes, also run rounds that already passed
-	DryRun bool   // plan only: don't refuse lanes that are running
+	DryRun bool   // selection only (Select): don't refuse lanes that are running
 	RunID  string // this run's id; generated if empty (swim run --run-id)
 	// Parallel caps lanes running at once; nil means config's max_parallel,
 	// 0 unlimited.
@@ -81,18 +81,6 @@ type Options struct {
 	// PinSHA holds the exact script (SHA-256) a lane must hold when it
 	// starts (queued batches): an edit since it was queued skips it.
 	PinSHA map[int]string
-	// CheckOnly is swim plan --check: every selected lane runs at once (After:
-	// is ignored; Locks: still apply) up to where change would begin, logs
-	// to its check log and leaves lane status alone (lane.CheckEnv is set).
-	// Lanes with no stages, and compiled lanes, are refused.
-	CheckOnly bool
-	// ShowChecks makes the plan show each lane's last check (swim plan
-	// --check, after the checks ran).
-	ShowChecks bool
-	ChecksRan  bool // the checks just ran: the plan sums them up
-	// CheckTimeout caps the whole check (0: none): past it the run is
-	// force-quit like a second Ctrl-C.
-	CheckTimeout time.Duration
 	// PinEnv holds the env files' hash (envfile.Resolved.SHA256) a lane
 	// must still resolve to when it starts (queued batches).
 	PinEnv map[int]string
@@ -205,7 +193,7 @@ func Select(o Options) (sel, done []int, err error) {
 
 // Run launches the selected lanes and returns 0 only if all passed.
 func Run(o Options) (int, error) {
-	if !o.DryRun && !o.CheckOnly && o.Self != "" {
+	if !o.DryRun && o.Self != "" {
 		// A lane left running by a process that died is ended first, so
 		// it's selected (and shown) as the interrupted round it is.
 		for _, r := range ReapDead(o.Root, o.Cfg, o.Self) {
@@ -256,17 +244,6 @@ func Run(o Options) (int, error) {
 	deps, err := ResolveDeps(o.Root, o.Cfg, sel)
 	if err != nil {
 		return 2, err
-	}
-	refusedCheck := map[int]string{}
-	if o.CheckOnly {
-		// Nothing changes, so nothing waits: every check runs at once.
-		os.Setenv(lane.CheckEnv, "1")
-		deps = map[int][]Dep{}
-		for _, n := range sel {
-			if why := uncheckable(o.Root, n); why != "" {
-				refusedCheck[n] = why
-			}
-		}
 	}
 	blocked := BlockedLanes(o.Root, o.Cfg, sel)
 	// Env files: every selected lane's env resolves, and none sets a guard
@@ -360,14 +337,6 @@ func Run(o Options) (int, error) {
 	defer ir.stop()
 	// Lanes this run leaves out may be running in another swim right now.
 	stopOthers := watchOtherRuns(o, selected, disp)
-	if o.CheckOnly && o.CheckTimeout > 0 {
-		t := time.AfterFunc(o.CheckTimeout, func() {
-			disp.Message(fmt.Sprintf("swim: the check's --timeout %s ran out", o.CheckTimeout))
-			ir.handle(syscall.SIGINT)
-			ir.handle(syscall.SIGINT)
-		})
-		defer t.Stop()
-	}
 	// The approval broker always runs: every guard asks the launcher, which
 	// decides from what it saw as the run started, or asks the operator
 	// when the display can (or approves with -y). With no one to ask, a
@@ -461,8 +430,6 @@ func Run(o Options) (int, error) {
 			var out *Outcome
 			if reason := blocked[n]; reason != "" {
 				out = refuseBlocked(o, n, reason, disp)
-			} else if why := refusedCheck[n]; why != "" {
-				out = refuseCheck(o, n, why, disp)
 			} else {
 				out = runLane(o, n, sel, selected, deps[n], sl, lt, disp, done, outcomes, &mu, ir)
 			}
@@ -476,12 +443,10 @@ func Run(o Options) (int, error) {
 	o.skipped.flush()
 	stopOthers()
 	disp.Stop()
-	if !o.CheckOnly {
-		if authErr != "" {
-			attestUnavailable(o, sel, authErr)
-		} else {
-			o.auth.attest(o, sel)
-		}
+	if authErr != "" {
+		attestUnavailable(o, sel, authErr)
+	} else {
+		o.auth.attest(o, sel)
 	}
 	if unused := pre.unused(); len(unused) > 0 {
 		fmt.Fprintf(summaryOut, "swim: unused pre-answers (the lane never reached a guard, or its script changed): %s\n", strings.Join(unused, ", "))

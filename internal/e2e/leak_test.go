@@ -187,7 +187,7 @@ summary
 	c.SysProcAttr = noTTY()
 	yout, _ := c.CombinedOutput()
 	check("swim run --yaml", string(yout))
-	for _, args := range [][]string{{"status"}, {"status", "--yaml"}, {"log", "1"}, {"log", "1", "--yaml"}, {"history"}, {"verify"}, {"plan"}, {"queue"}} {
+	for _, args := range [][]string{{"status"}, {"status", "--yaml"}, {"log", "1"}, {"log", "1", "--yaml"}, {"history"}, {"verify"}, {"queue"}} {
 		o, _ := r.swim(args...)
 		check("swim "+strings.Join(args, " "), o)
 	}

@@ -81,8 +81,7 @@ func TestOldEvidenceApprovalCounts(t *testing.T) {
 
 // A lookup.yml rule with evidence: true fails closed: nothing approves
 // its guards (swim approve, a signed approval an older swim bound to
-// evidence, FLAG=1, -y, queue --approve), swim plan says why, and swim
-// doctor warns.
+// evidence, FLAG=1, -y, queue --approve), and swim doctor warns.
 func TestEvidenceRuleFailsClosed(t *testing.T) {
 	r := newRepo(t, "")
 	keys := people(t, r, "require:\n  - guards: [ORDERS_*]\n    evidence: true\n", "alice")
@@ -96,8 +95,6 @@ func TestEvidenceRuleFailsClosed(t *testing.T) {
 	out = r.mustSwim("approve", "1", "--all", "--key", keys["alice"])
 	contains(t, "approve --all", out, "never:    ORDERS_ALLOW_APPLY: "+why)
 	oldEvidenceApproval(t, r, keys["alice"], "alice")
-
-	contains(t, "plan", r.mustSwim("plan", "1"), "not approved: a dry run, whatever answers it; "+why)
 
 	applied := filepath.Join(r.root, "applied")
 	notApplied := func(what string) {

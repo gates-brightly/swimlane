@@ -49,13 +49,12 @@ for teams with big migrations.
 ### 2. Parallel DAG
 
 - `# After:` and `# Locks:` in a script's header are all the orchestration
-  it needs. `swim plan` draws the tree before anything runs.
+  it needs.
 - api and worker share the `db-migrations` lock, so they take turns. web
   doesn't wait for either of them.
 - When worker fails, smoke test and announce are **skipped**, not run
   against a half-finished release.
-- After the fix, `swim plan` shows only what's left. Build, api and web
-  aren't redone.
+- After the fix, only what's left runs. Build, api and web aren't redone.
 
 ### 3. Two-person approval
 

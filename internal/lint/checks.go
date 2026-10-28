@@ -896,12 +896,13 @@ var (
 	applyRE = regexp.MustCompile(`(?i)\b(terraform\s+(?:apply|destroy|import)|kubectl\s+(?:apply|delete|scale|rollout)|helm\s+(?:install|upgrade|uninstall)|aws\s+\S+\s+(?:delete|put|update|create)-\S+|sst\s+(?:deploy|remove))\b`)
 )
 
-// checkCheckUnsafe: swim plan --check runs everything before the first
-// `stage change` for real, so a change there (terraform apply, a delete)
-// would happen during a preview.
+// checkCheckUnsafe: everything before the first `stage change` belongs to
+// the snapshot and check stages, which should only read, so a change there
+// (terraform apply, a delete) runs before the round says it changes
+// anything.
 func checkCheckUnsafe(c *Context, s *Script) []finding.Finding {
 	if !s.Info.Staged {
-		return nil // never checked: swim plan --check refuses a round with no stages
+		return nil // no stages: nothing claims to be read-only
 	}
 	var out []finding.Finding
 	change := s.changeLine()
@@ -926,7 +927,7 @@ func checkCheckUnsafe(c *Context, s *Script) []finding.Finding {
 		if m != "" {
 			flagged[i] = true
 			out = append(out, f(finding.Warn, "check-unsafe", i, "move it after `stage change` (snapshot and check stages must be read-only)",
-				"%q runs before `stage change`, so swim plan --check would run it for real", strings.ToLower(m)))
+				"%q runs before `stage change`, in a stage that should only read", strings.ToLower(m)))
 		}
 	}
 	return out

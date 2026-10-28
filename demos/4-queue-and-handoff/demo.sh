@@ -14,7 +14,7 @@ demo_commit "the AI's rounds for tonight"
 scene "1. The AI planned tonight's work"
 say "Two rounds: roll api forward, then clear the sessions the bug leaked." \
     "lane.2 is Python, with swim's SDK. Same steps, guards and log."
-show 'swim plan'
+show 'swim status'
 pause
 
 scene "2. The operator approves the batch and leaves"

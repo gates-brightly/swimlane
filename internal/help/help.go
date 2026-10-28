@@ -209,42 +209,6 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   view and its keys (--no-tui), guard flags and the summary all work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
-	"plan": `swim plan [N|JOB ...] [--rerun] [--yaml] [--check [--parallel N] [--timeout D]]
-
-  Show what "swim all" (or "swim run N ...", with lanes) would do, without
-  running or changing anything, Terraform style:
-      [+]    run    a new job
-      [~]    retry  the job ran before and didn't pass
-      [+/-]  rerun  the job already passed and runs again (named lane, --rerun)
-      [-]    skip   the job won't run (a dependency outside the run hasn't
-                    passed, or one in the run won't run)
-  The jobs form a tree: top-level lanes start at once, and each lane sits
-  under the lanes it waits for ("# After:" and config deps); a lane waiting
-  for several shows "wait [2,3]" and appears in full once,
-  "(shown above)" elsewhere. Each job's guard flags are listed as set
-  (approved) or unset (dry run); lanes running right now are flagged.
-  Ends with "Plan: N to run, N to retry, N to rerun, N to skip." Jobs with
-  nothing left to do are summarised as "N items have completed with no
-  remaining work" ("No changes." when that is everything), followed by the
-  idle lanes in use.
-  Fails, like swim run would, on a dependency cycle or an "# After:" that
-  doesn't resolve.
-  --yaml   the plan as data (schema swim.plan/v1): each lane's action, what it
-           waits on, why it would be skipped, its guards, timeout and locks,
-           and its last check.
-  --check  a read-only preview: first run each lane's snapshot and check
-           stages for real, all at once (After: ignored, Locks: kept), and
-           stop every round where change would begin (CHECKED). Guards never
-           approve (not even with the flag set), logs go
-           to .swim/logs/agentN.check.log and lane status is untouched (only
-           check_result, check_at, check_sha256, check_stop, check_guards). A
-           round with no stages, or a compiled lane, is refused. The plan
-           then shows each lane's check: check PASS, stops at gate "<label>",
-           check ~ (it depends on lanes whose changes haven't run), and the
-           guarded changes; exits 1 if any check didn't pass. A plain swim
-           plan shows the last checks too, marked stale once a script changes.
-           --parallel N caps checks at once; --timeout D caps the whole check.
-`,
 	"report": `swim report [N|JOB ...] [--earmark] [--name NAME] [--since T|RUN|JOB] [--no-logs] [--results] [--yaml]
 swim report --earmark --wait [--timeout D] [--interval D]
 swim report --earmarks | --earmark --reset [--name NAME]
@@ -501,7 +465,7 @@ swim report --earmarks | --earmark --reset [--name NAME]
                 waiting on a job: swim log 3f2a9c1e --until-done
 `,
 	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
-        [--require-work] [--heartbeat D] [--run-id ID] [--check]
+        [--require-work] [--heartbeat D] [--run-id ID]
 
   Run rounds in a CI job: swim all, written for a CI log viewer and built for
   commits. Detects GitHub Actions (GITHUB_ACTIONS), GitLab CI (GITLAB_CI) or
@@ -542,8 +506,6 @@ swim report --earmarks | --earmark --reset [--name NAME]
   as artifacts. "Already passed" lives in .swim/status.yml: a fresh runner
   reruns every pending round unless --changed narrows it (or .swim/ is
   restored from a CI cache).
-  --check  a pull request preview: the snapshot and check stages only, read-only
-           (see swim plan --check), every pending round.
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
 swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
@@ -954,7 +916,7 @@ swim claim N --break "<reason>"
   refuse the lane, naming who holds it. It ends when the lane starts
   running (swim run, all, watch: a run warns if another session held it,
   and runs anyway), when it's archived or stubbed, when it's released, or
-  when the lease runs out. swim status shows it; swim plan warns about it.
+  when the lease runs out. swim status shows it.
   swim claim N takes or refreshes it explicitly (--for D); --release gives
   it up (--force: another session's); --break takes over a live claim with
   a reason, and --force on new, stub or archive does too: both are logged
@@ -1023,7 +985,8 @@ swim claim N --break "<reason>"
     observe (warn)         an # Observe: probe that looks like it writes or
                            changes something (an error if it's blocked)
     check-unsafe (warn)    a destructive-looking command (terraform apply, a
-                           delete) before stage change: plan --check runs it
+                           delete) before stage change, in a stage that
+                           should only read
     input-dep (error)      input N of a lane not in After: (or config deps)
     cross-lane (info)      uses a path another lane writes (> path, -o path,
                            cp/mv/tee) without either waiting on the other
@@ -1166,7 +1129,7 @@ swim claim N --break "<reason>"
   touch it.
 
   When the lock and this swim disagree, swim refuses to run lanes or write
-  new ones (swim plan / status / log still work, with a warning):
+  new ones (swim status / log still work, with a warning):
     - lock is newer than this swim: update swim, then run again:
         go install github.com/gates-brightly/swimlane/cmd/swim@latest
         (or in a swimlane checkout: git pull && just install)
@@ -1233,7 +1196,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "cache", "new", "plan", "run", "all", "status", "log", "report", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "cache", "new", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor", "guide"}
@@ -1255,7 +1218,6 @@ USAGE
 CORE
   init                         set up this repo
   new TASK "<round goal>"      write a lane script named TASK (or new N: lane N)
-  plan [TASK ...]              show what would run; runs nothing
   run [TASK ...]               run lanes: guarded steps are dry runs until approved
   approve N --guards A         sign this exact script, its inputs and policy
   revoke N                     withdraw your approval

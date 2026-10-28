@@ -57,7 +57,7 @@ older swim (or an older file) can't handle:
   `swim lock --help` lists what each syntax version changed.
 - A swim whose syntaxes differ from the lock refuses to run lanes or write
   new ones, and says whether to update swim or to upgrade the repo
-  (`swim plan`, `swim status` and `swim log` still work, with a warning).
+  (`swim status` and `swim log` still work, with a warning).
 - Upgrading a repo: read the notes, update the lane scripts, let running
   lanes finish, then `swim lock --upgrade` and commit `.swim.lock`.
 - Older files are migrated automatically where swim can, with the
@@ -73,7 +73,7 @@ when the lock and your swim disagree.
 | Tier | What | Promise |
 |---|---|---|
 | **Stable** | The commands and flags in `swim guide` and `swim <command> --help`; the lane script syntax and the lane library; the lane log syntax; exit codes (`0` means everything selected passed; waits exit with the result they waited for). | Changes are additive. A format change bumps its syntax version (scripts, logs), with Upgrading notes. A removal is deprecated first (below). |
-| **Versioned by schema** | Every `--yaml` output: `swim.run/v1`, `swim.status/v1`, `swim.log/v1`, `swim.plan/v1`, `swim.history/v1`, `swim.queue-list/v1`, `swim.env/v1`, `swim.lint/v1`, `swim.doctor/v1`, `swim.verify/v1`, `swim.report/v1`, `swim.clean/v1`, `swim.cache/v1`. The files swim keeps: `swim.queue/v1` (queued batches), `swim.approval/v1` (signed approvals), `swim.manifest/v1` (a run's staged execution manifests), `swim.earmark/v1` (a reader's place, `swim report --earmark`), `swim.cache-index/v1` (when each tool cache was last used), `swim.cache-snapshot/v1` (a saved installed tree, `# Cache: snap:`). | Each document names its schema. Within a version, fields are only added; removing or renaming one bumps the version. State files are also covered by the state syntax in `.swim.lock`. |
+| **Versioned by schema** | Every `--yaml` output: `swim.run/v1`, `swim.status/v1`, `swim.log/v1`, `swim.history/v1`, `swim.queue-list/v1`, `swim.env/v1`, `swim.lint/v1`, `swim.doctor/v1`, `swim.verify/v1`, `swim.report/v1`, `swim.clean/v1`, `swim.cache/v1`. The files swim keeps: `swim.queue/v1` (queued batches), `swim.approval/v1` (signed approvals), `swim.manifest/v1` (a run's staged execution manifests), `swim.earmark/v1` (a reader's place, `swim report --earmark`), `swim.cache-index/v1` (when each tool cache was last used), `swim.cache-snapshot/v1` (a saved installed tree, `# Cache: snap:`). | Each document names its schema. Within a version, fields are only added; removing or renaming one bumps the version. State files are also covered by the state syntax in `.swim.lock`. |
 | **Experimental** | Commands starting with `_` (`swim _mark`, `swim _approve`), which lanes use internally, and the approval socket between them and `swim run` ([proto/swim/approval/v1](../proto/swim/approval/v1/README.md)). Go packages under `internal/`. | May change in any release. Changes are noted in the CHANGELOG. |
 
 ## Deprecations

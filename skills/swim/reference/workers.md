@@ -22,7 +22,7 @@ These rules make it hold. They extend the guide's `PLANNER WORKFLOW` and
    `deps:` lines (handed to the operator), and any shared file. Workers
    send you the lines; they don't edit shared files.
 5. **Check every lane together** once the workers are done: `swim lint` (all
-   lanes) and `swim plan`. Hand the operator one command for the set,
+   lanes) and `swim status`. Hand the operator one command for the set,
    pinned to the job ids the workers reported.
 
 ## A worker

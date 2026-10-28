@@ -14,8 +14,7 @@ say "Six lanes for one release. Each declares what it waits for, and two" \
     "share a lock because both migrate the database:"
 show 'grep -H -E "^# (Round|After|Locks):" lane.*.sh'
 pause
-show 'swim plan'
-say "Terraform-style: build first, three deploys in parallel, then smoke test, then announce."
+say "Build first, three deploys in parallel, then smoke test, then announce."
 pause
 
 scene "2. Run it, with one service broken"
@@ -34,7 +33,6 @@ pause
 
 scene "3. Fix it and carry on"
 show 'fakecloud fix worker'
-show 'swim plan'
 say "Only the failed lane and what waits on it are left. Build, api and web aren't redone."
 pause
 if [ -t 1 ] && [ -z "${DEMO_AUTO:-}" ]; then

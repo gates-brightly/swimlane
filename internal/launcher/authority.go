@@ -124,12 +124,11 @@ func (o *Options) record(e chain.Entry) (string, error) {
 }
 
 // laneEntry records the entry a lane process sends as its round ends
-// (swim _finish), signed by the launcher: one round or check entry per
-// process, for its own lane, job, run and manifest whatever it says.
+// (swim _finish), signed by the launcher: one round entry per process, for its own lane, job, run and manifest whatever it says.
 // Approvals are recorded as they're consumed and the attestation is the
 // launcher's own, so a lane gets no other entry signed.
 func (a *runAuthority) laneEntry(o *Options, c approval.Caller, e chain.Entry) (string, error) {
-	if e.Type != "round" && e.Type != "check" {
+	if e.Type != "round" {
 		return "", fmt.Errorf("a lane can't record a %q entry", e.Type)
 	}
 	k := c.Token + " " + e.Type

@@ -60,7 +60,7 @@ const (
 	Warn     = "WARN"
 	Blocked  = "BLOCKED" // a command swim refused to run (counts as a failure)
 	Msg      = "MSG"     // a round's status message (swim msg); never a result
-	Checked  = "CHECKED" // a read-only check stopped where change would begin; never a result
+	Checked  = "CHECKED" // in older check logs (swim plan --check, which swim no longer has); never a result
 	// PAUSE and RESUME (swim pause, which swim no longer has) are in
 	// older logs: read as marks, never a result.
 	Pause  = "PAUSE"
@@ -242,7 +242,6 @@ type Round struct {
 	Stage     string   // stage in effect at the end of the log
 	Declared  []string // stage lines seen, in order
 	Handlers  []string // handler sections seen, in order
-	Checked   bool     // a read-only check reached the change stage (CHECKED)
 	Run       string   // swim run id (from the round's context line)
 	// Context holds the round header's key/value context line.
 	Context map[string]string
@@ -612,9 +611,6 @@ func parseV2(rd io.Reader) (*Round, error) {
 				res.Dur, _ = strconv.ParseFloat(strings.TrimSuffix(dur, "s"), 64)
 			}
 			res.Label, res.Detail = splitLabel(rest)
-			if res.Kind == Checked {
-				cur.Checked = true
-			}
 			if strings.Contains(res.Detail, "interrupted") && res.Handler == "" {
 				cur.Interrupt = true
 			}

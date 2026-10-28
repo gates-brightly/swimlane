@@ -59,9 +59,6 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 	}
 	contains(t, "first approval", r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"]),
 		"approved lane.1.sh", "as zach", "not yet:  FIN_ALLOW_DROP: approval needs 2 signature(s) from platform-admin, has 1")
-	// The plan says what the run will decide: one of two isn't enough.
-	contains(t, "plan, one of two", r.mustSwim("plan", "1"), "needs approval: a dry run without it",
-		"guard FIN_ALLOW_DROP (not approved: asks at the prompt; a dry run if no one can answer; approval needs 2 signature(s) from platform-admin, has 1)")
 	r.mustDryRun("run", "1")
 	contains(t, "one of two", r.log(1), "SKIP  drop table old_orders (dry run: approval needs 2 signature(s) from platform-admin, has 1; set FIN_ALLOW_DROP=1 to approve)")
 
@@ -71,11 +68,6 @@ func TestSignedApprovalAndVerify(t *testing.T) {
 		t.Fatalf("co-approve changing the statement: %d %s", code, out)
 	}
 	contains(t, "second approval", r.mustSwim("approve", "1", "--key", keys["alice"]), "approved: FIN_ALLOW_DROP (alice, zach)")
-	plan := r.mustSwim("plan", "1")
-	contains(t, "plan, two of two", plan, "guard FIN_ALLOW_DROP (approved by ", "(signed))", "Approvals: the guard is approved.")
-	if strings.Contains(plan, "needs approval") {
-		t.Errorf("plan wants an approval the run has:\n%s", plan)
-	}
 	contains(t, "list", r.mustSwim("approve"), "swim 1 (lane.1.sh", "approves FIN_ALLOW_DROP", "approved by zach, unknown", "alice")
 
 	// Alice revokes before it runs: not enough any more.
