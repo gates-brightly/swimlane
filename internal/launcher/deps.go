@@ -269,3 +269,56 @@ func Upstream(edges map[int][]int, n int) map[int]bool {
 	delete(up, n)
 	return up
 }
+
+// DepState is where one dependency of a pending round stands now.
+type DepState struct {
+	Dep
+	// State: passed (the round it waits for passed), pending, running,
+	// failed, skipped, interrupted, or "no round" (nothing pending there,
+	// so it holds nothing up).
+	State string
+	// Note says what that means for the round waiting on it ("" when
+	// passed).
+	Note string
+}
+
+// DepStates is where each of lane n's dependencies (ResolveDeps) stands,
+// read as swim run reads a dependency outside its run (outsideBlocker).
+func DepStates(root string, cfg *config.Config, n int) ([]DepState, error) {
+	deps, err := ResolveDeps(root, cfg, []int{n})
+	if err != nil {
+		return nil, err
+	}
+	var out []DepState
+	for _, d := range deps[n] {
+		out = append(out, depState(root, d))
+	}
+	return out, nil
+}
+
+func depState(root string, d Dep) DepState {
+	info, _ := lane.ReadScript(root, d.Lane)
+	if outsideBlocker(root, d) == "" {
+		if d.Job == "" && !info.Pending() {
+			return DepState{Dep: d, State: "no round", Note: "nothing pending there: it holds nothing up"}
+		}
+		return DepState{Dep: d, State: status.Passed}
+	}
+	var last status.Lane
+	if st, _ := status.Load(root); st != nil {
+		if l := st.Get(d.Lane); l != nil {
+			last = *l
+		}
+	}
+	job := d.Job
+	if job == "" {
+		job = info.Job
+	}
+	switch {
+	case last.Alive() && (last.State == status.Running || last.State == status.Waiting || last.State == status.Queued || last.State == status.Locked):
+		return DepState{Dep: d, State: "running", Note: "this starts once it passes, in the same run; otherwise it's skipped"}
+	case job != "" && last.Job == job && (last.State == status.Failed || last.State == status.Skipped || last.State == status.Interrupted):
+		return DepState{Dep: d, State: last.State, Note: "it must pass first: run both to retry it"}
+	}
+	return DepState{Dep: d, State: "pending", Note: "a dry run or failure there skips this"}
+}

@@ -262,7 +262,23 @@ swim report --earmarks | --earmark --reset [--name NAME]
   -y) or by a guard flag (flag_approved: FLAG=1, a batch's --approve).
   Guards it didn't approve, whose steps ran as dry runs, show as [DRY]
   (dry_run), here, in the live view and the watch screen.
+  Under each lane holding a pending round (not one live in a run, nor one
+  that already passed), what its header declares and where that stands:
+      after swim 1 (pending: a dry run or failure there skips this)
+      guard DROP_OK  drop table old_orders
+             not approved: approval needs 2 signature(s) from dba, has 1; ...
+      timeout 30m · locks orders-db · includes lib/tables.sh
+  Each lane it waits on is passed, pending, running, failed, skipped,
+  interrupted or "no round"; each guard is decided as swim run would as
+  it starts now (FLAG=1 in this environment, signed approvals against
+  lookup.yml, a rule nothing can meet), and says whether swim run would
+  ask or dry-run. Only what the header sets is shown (Fail: hard, a
+  target, an owner too).
   --yaml     the status file's fields as YAML, tagged schema: swim.status/v1;
+             each pending lane adds pending_header {after, guards: [{flag,
+             description, approved, how, why, asks, never}], timeout,
+             locks, includes, fail, targets, owner} and deps: [{lane, job,
+             state, note}] (deps_error if its After: doesn't resolve);
              claims: the lanes' live claims (swim claim), by lane
              (with N|JOB, just that lane); the file itself is unchanged
              (cat .swim/status.yml)

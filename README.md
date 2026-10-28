@@ -280,6 +280,7 @@ swim init                                  # config entry, .gitignore block, .sw
 swim new 1 "Cut over orders-api"           # writes lane.1.sh from a template
 $EDITOR lane.1.sh                          # fill in the steps (or have an AI write them)
 swim lint                                  # check the scripts before you run them
+swim status                                # each pending round: what it waits on, its guards
 swim all                                   # run every pending lane, with a live view
 swim log 1                                 # what happened, step by step
 swim archive 1 && swim stub 1 "orders done"   # keep the log, free the lane for the next round
@@ -310,6 +311,7 @@ A round declares what it waits for, and swim schedules it:
 ```
 
 ```sh
+swim status         # each pending lane: what it waits on, and where that stands
 swim all --parallel 8
 ```
 
@@ -325,6 +327,7 @@ fi
 ```
 
 ```sh
+swim status 2                             # how swim run would decide each guard now
 swim run 2                                # asks: swim 2 requires human approval of guard ORDERS_ALLOW_SST_REMOVE ... Y/N [N]
 ORDERS_ALLOW_SST_REMOVE=1 swim run 2      # approved up front (scripts, CI)
 swim all -y                               # approve every question this run, logged as -y
@@ -586,6 +589,24 @@ lane's state and round; output scrolls underneath, prefixed `[N]`.
 - **`# Locks: orders-table`:** lanes that share a lock never run at the same
   time, in either order. That holds within a run and across concurrent runs
   on the machine. A failure doesn't spread through a lock.
+
+`swim status` shows, under each lane holding a pending round, what its
+header declares and where that stands: each lane it waits on (passed,
+pending, running, failed), each guard and how `swim run` would decide it
+right now (from the same flags, signed approvals and `lookup.yml` the run
+reads), and its timeout, locks, includes, `Fail: hard` and target:
+
+```
+ swim 1  pending                drop the old table
+          guard DROP_OK  drop table old_orders
+                 not approved: approval needs 2 signature(s) from dba, has 1; swim run will ask (a dry run if no one answers)
+          timeout 30m · locks orders-db · includes lib/tables.sh
+ swim 2  pending                verify after the drop
+          after swim 1 (pending: a dry run or failure there skips this)
+```
+
+`swim status --yaml` carries the same as `pending_header` and `deps`.
+
 ### Env files
 
 Lanes get non-secret context (`STAGE`, `AWS_PROFILE`, table names) from
@@ -1011,7 +1032,7 @@ they waited for.
 | `swim new N\|TASK "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id (a task name takes the lowest free lane). |
 | `swim all [--rerun] [--parallel N] [-y\|--no-prompt] [--no-tui] [--yaml]` | Run every pending round that hasn't passed. |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they passed. A job id pins the exact round. |
-| `swim status [N\|JOB] [--yaml]` | Last state of every lane. |
+| `swim status [N\|JOB] [--yaml]` | Last state of every lane, and each pending lane's header: what it waits on, its guards and how `swim run` would decide them now. |
 | `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml] [-f] [--until-done]` | A lane's or job's log (with the running step), or the project log. |
 | `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. |
 | `swim clean [--all] [-n]` | Idle every finished lane at once: archive its logs and stub its script (a script edited since it ran is kept), then (asked, default no) remove waiting batches. |

@@ -651,6 +651,22 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Changed
 
+- **swim status shows each pending lane's header:** under each lane
+  holding a pending round, what its `# Key: value` header declares and
+  where that stands, only what's set: each lane it waits on (`After:`) and
+  its state (passed, pending, running, failed, skipped, interrupted, or no
+  round, with what that means for this round), each guard with how `swim
+  run` would decide it as it starts now (`approved: FLAG=1`, `approved by
+  alice (dba), bob (dba) (signed)`, `never approved: <why>`, or `not
+  approved: <why>` and whether swim run would ask or dry-run), and its
+  timeout, locks, includes, `Fail: hard`, target and owner, in place of
+  the `owner · timeout · guards FLAG` line. A lane that never ran shows
+  `pending` and its round on its row, in place of a `pending: <round>`
+  line. Running lanes and lanes with nothing pending show as before. `swim status
+  --yaml` adds `pending_header` (`after`, `guards: [{flag, description,
+  approved, how, why, asks, never}]`, `timeout`, `locks`, `includes`,
+  `fail`, `targets`, `owner`) and `deps` (`[{lane, job, state, note}]`)
+  per lane; no field changed.
 - **`swim --help` is short on a terminal; `swim guide` is the full manual.**
   On a terminal, `swim --help` (and `swim help`) lists the core commands
   in about 50 lines. `swim guide` prints the full guide with every

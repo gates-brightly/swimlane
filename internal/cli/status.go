@@ -5,6 +5,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -61,17 +62,41 @@ func cmdStatus(args []string) error {
 	if raw {
 		// The file's contents with a schema tag; the file itself stays as
 		// it is, for cat. A lane argument narrows it to that lane.
+		// status.File's fields, each lane with its pending round's header
+		// and dependencies added (not in status.yml itself).
+		type laneDoc struct {
+			status.Lane   `yaml:",inline"`
+			PendingHeader *pendingHeader `yaml:"pending_header,omitempty"`
+			Deps          []depDoc       `yaml:"deps,omitempty"`
+			DepsError     string         `yaml:"deps_error,omitempty"`
+		}
 		doc := struct {
-			Schema      string `yaml:"schema"`
-			status.File `yaml:",inline"`
+			Schema    string    `yaml:"schema"`
+			UpdatedAt string    `yaml:"updated_at"`
+			Root      string    `yaml:"root"`
+			Branch    string    `yaml:"branch,omitempty"`
+			LastRun   string    `yaml:"last_run,omitempty"`
+			Lanes     []laneDoc `yaml:"lanes"`
 			// Claims are the lanes' live claims (swim claim), by lane: not in
 			// status.yml itself.
 			Claims map[int]*lane.Claim `yaml:"claims,omitempty"`
-		}{Schema: "swim.status/v1", File: *f}
+		}{Schema: "swim.status/v1", UpdatedAt: f.UpdatedAt, Root: f.Root, Branch: f.Branch, LastRun: f.LastRun}
+		lanes := f.Lanes
 		if only > 0 {
-			doc.Lanes = []status.Lane{*f.Get(only)}
+			lanes = []status.Lane{*f.Get(only)}
 		}
-		for _, l := range doc.Lanes {
+		sv := newStatusView(root, cfg)
+		for i := range lanes {
+			ld := laneDoc{Lane: lanes[i]}
+			if pv := sv.pending(&lanes[i]); pv != nil {
+				ld.Deps, ld.DepsError = pv.Deps, pv.DepsErr
+				if !reflect.ValueOf(pv.Header).IsZero() {
+					ld.PendingHeader = &pv.Header
+				}
+			}
+			doc.Lanes = append(doc.Lanes, ld)
+		}
+		for _, l := range lanes {
 			if c := lane.ReadClaim(root, l.Lane); c != nil {
 				if doc.Claims == nil {
 					doc.Claims = map[int]*lane.Claim{}
@@ -144,6 +169,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 	for _, h := range lane.HeldLocks(root) {
 		fmt.Println(p.Paint(ui.Yellow, "lock "+h.Name+" held by "+h.By))
 	}
+	sv := newStatusView(root, cfg)
 	for i := range f.Lanes {
 		l := &f.Lanes[i]
 		// The lanes in use; one named (swim status N) whatever it is.
@@ -154,10 +180,18 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		word := stateWord(l, state, now)
 		label := p.Paint(ui.LaneColor(l.Lane)+ui.Bold, fmt.Sprintf(" swim %-2d", l.Lane))
 		round := l.Round
-		if state == status.Idle {
+		pv := sv.pending(l)
+		// A lane that never ran (or was archived) shows its pending round
+		// as its row.
+		idlePending := state == status.Idle && pv != nil && l.Pending != ""
+		color := ui.StateColor(state)
+		switch {
+		case idlePending:
+			word, round, color = "pending", l.Pending, ui.Cyan
+		case state == status.Idle:
 			round = ""
 		}
-		line := fmt.Sprintf("%s %s", label, p.Paint(ui.StateColor(state), fmt.Sprintf("%-22s", word)))
+		line := fmt.Sprintf("%s %s", label, p.Paint(color, fmt.Sprintf("%-22s", word)))
 		if round != "" {
 			line += " " + round
 		}
@@ -168,10 +202,14 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 
 		indent := strings.Repeat(" ", 10)
 		detail := func(s string, color string) { fmt.Println(indent + p.Paint(color, s)) }
-		if round != "" && l.Job != "" {
+		if idlePending && l.PendingJob != "" {
+			detail("job: "+l.PendingJob, ui.Dim)
+		} else if round != "" && l.Job != "" {
 			detail("job: "+l.Job, ui.Dim)
 		}
-		if l.Pending != "" && (l.Pending != round || (l.PendingJob != "" && l.PendingJob != l.Job)) {
+		if idlePending {
+			// The row says it.
+		} else if l.Pending != "" && (l.Pending != round || (l.PendingJob != "" && l.PendingJob != l.Job)) {
 			pending := "pending: " + l.Pending
 			if l.PendingJob != "" {
 				pending += "  (job " + l.PendingJob + ")"
@@ -217,22 +255,8 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		if len(l.Stages) > 0 && state != status.Running {
 			detail("stages: "+strings.Join(l.Stages, " | "), ui.Dim)
 		}
-		if l.Pending != "" && state != status.Running {
-			if info, err := lane.ReadScript(root, l.Lane); err == nil && info.Pending() {
-				var meta []string
-				if info.Owner != "" {
-					meta = append(meta, "owner "+info.Owner)
-				}
-				if info.Timeout > 0 {
-					meta = append(meta, "timeout "+info.TimeoutText)
-				}
-				if len(info.Guards) > 0 {
-					meta = append(meta, "guards "+strings.Join(info.GuardFlags(), " "))
-				}
-				if len(meta) > 0 {
-					detail(strings.Join(meta, " · "), ui.Dim)
-				}
-			}
+		if pv != nil {
+			pv.print(p, indent)
 		}
 		if c := lane.ReadClaim(root, l.Lane); c != nil && state != status.Running {
 			detail(claimText(c), ui.Cyan)

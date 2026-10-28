@@ -353,9 +353,12 @@ run "never" true`)
 		t.Errorf("snapshot content %q", data)
 	}
 
-	// status --yaml is the file's content with a schema tag. It refreshes
-	// the file first (a new updated_at), so the file is read after it.
+	// status --yaml is the file's content with a schema tag, plus each
+	// pending lane's header and dependencies. It refreshes the file first
+	// (a new updated_at), so the file is read after it.
 	got := r.mustSwim("status", "--yaml")
+	contains(t, "status --yaml", got, "pending_header:", "deps:")
+	got = withoutKeys(got, "pending_header", "deps")
 	raw, _ := os.ReadFile(status.Path(r.root))
 	body := regexp.MustCompile(`(?m)^#.*\n`).ReplaceAllString(string(raw), "")
 	if got != "schema: swim.status/v1\n"+body {
@@ -1630,6 +1633,29 @@ summary`)
 	log := r.log(1)
 	contains(t, "agent1.log", log, "masked: ", "GITHUB_TOKEN", "DD_KEY", "env: GITHUB_TOKEN=***(len 19)", "        | token=***", "  FAIL  fail with *** in the label", "reason mentions ***")
 	contains(t, ".swim.log", r.mustSwim("log"), "the token is ***")
+}
+
+// withoutKeys drops YAML keys (and what's nested under them) from doc.
+func withoutKeys(doc string, keys ...string) string {
+	var out []string
+	skip := -1 // the indent of the key being dropped
+	for _, line := range strings.SplitAfter(doc, "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		indent := len(line) - len(trimmed)
+		if skip >= 0 && (indent > skip || strings.TrimSpace(line) == "" || strings.HasPrefix(trimmed, "- ") && indent == skip) {
+			continue
+		}
+		skip = -1
+		for _, k := range keys {
+			if strings.HasPrefix(trimmed, k+":") {
+				skip = indent
+			}
+		}
+		if skip < 0 {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "")
 }
 
 func withHeader(t *testing.T, r *repo, n int, line string) {

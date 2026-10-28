@@ -283,3 +283,64 @@ func short12(s string) string {
 	}
 	return s
 }
+
+// GuardState is how swim run would decide one guard as it starts, from
+// what the snapshot holds: what swim status shows for a pending lane.
+type GuardState struct {
+	Flag     string `yaml:"flag"`
+	Desc     string `yaml:"description,omitempty"`
+	Approved bool   `yaml:"approved"`
+	// How it's approved ("FLAG=1", "approved by alice (dba) (signed)"), or
+	// why nothing approves it yet ("" if nothing applies).
+	How string `yaml:"how,omitempty"`
+	Why string `yaml:"why,omitempty"`
+	// Asks: not approved, and swim run would ask at its prompt (a dry run
+	// if no one can answer). False and not approved: a dry run outright.
+	Asks bool `yaml:"asks"`
+	// Never: nothing can approve it (Unapprovable says why).
+	Never bool `yaml:"never,omitempty"`
+}
+
+// Guard decides a.Flag as swim run would as it starts, in its order:
+// a guard nothing may approve, the flag in the environment swim run
+// starts with, then the signed approvals. asks is whether swim run would
+// ask the operator (approvals: prompt) about one still unapproved.
+func (s *Snapshot) Guard(a Ask, asks bool, now time.Time) GuardState {
+	g := GuardState{Flag: a.Flag, Desc: a.Desc}
+	if why := s.Unapprovable(a.Flag); why != "" {
+		g.Never, g.Why = true, why
+		return g
+	}
+	if s.Env[a.Flag] == "1" {
+		g.Approved, g.How = true, s.FlagSet(a.Flag).How
+		return g
+	}
+	if r := s.Signed(a, now); r.OK {
+		g.Approved, g.How = true, r.How
+	} else {
+		g.Why, g.Asks = r.Why, asks
+	}
+	return g
+}
+
+// Text is the guard's state in a line: "approved: FLAG=1", "approved by
+// ... (signed)", "never approved: <why>", or "not approved: <why>; swim
+// run will ask (a dry run if no one answers)".
+func (g GuardState) Text() string {
+	switch {
+	case g.Approved && strings.HasPrefix(g.How, "approved"):
+		return g.How
+	case g.Approved:
+		return "approved: " + g.How
+	case g.Never:
+		return "never approved: " + g.Why
+	}
+	s := "not approved"
+	if g.Why != "" {
+		s += ": " + g.Why
+	}
+	if g.Asks {
+		return s + "; swim run will ask (a dry run if no one answers)"
+	}
+	return s + "; a dry run (approvals: flags never ask)"
+}

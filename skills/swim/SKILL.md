@@ -139,8 +139,11 @@ lines or command instead. For anything broken, see
    With subagents, follow [reference/workers.md](reference/workers.md):
    the planner assigns each worker exactly one lane number, and nobody
    touches a lane they weren't given.
-4. **Check:** `swim lint N` until it's clean, then `swim status` for the
-   lanes it waits on (`# After:`): a dependency that hasn't passed skips it.
+4. **Check:** `swim lint N` until it's clean, then read `swim status N`
+   before you ask the operator to run anything: it shows the lane's header,
+   where each lane it waits on stands (one that hasn't passed skips it),
+   and how `swim run` would decide each guard now (approved and by whom,
+   what's missing, or a dry run). Tell the operator what is still unapproved.
 5. **Dispatch or hand off:** queue the round (section 2), or give the
    operator the exact command, pinned to job ids, with each guard flag and
    what it approves ([reference/handoff.md](reference/handoff.md)). Then
