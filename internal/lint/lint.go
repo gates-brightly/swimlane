@@ -82,6 +82,7 @@ type Check struct {
 
 // Checks is the table of lint checks, in report order.
 var Checks = []Check{
+	{"parse", finding.Error, false, "bash can't parse the script (bash -n)", checkParse},
 	{"round", finding.Error, false, "no `# Round:` line", checkRound},
 	{"workspace-live", finding.Warn, false, "`# Workspace: live`: the lane runs in the working tree and reads files no approval covers", checkWorkspaceLive},
 	{"workspace-file", finding.Warn, false, "a staged lane names a repo file its # Includes: doesn't list (cat deploy.yaml): the staged copy doesn't have it", checkWorkspaceFile},

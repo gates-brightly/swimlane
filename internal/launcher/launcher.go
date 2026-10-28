@@ -968,9 +968,18 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	// would hold them for good.
 	_ = fileLocks
 	mk := o.Cfg.Masker(env)
+	// bash names the staged copy it runs (.swim/runs/<run>/<N>/lane.N.sh)
+	// in its errors; the operator edits lane.N.sh.
+	stagedDir := ""
+	if m := o.manifests[n]; m != nil && m.Dir != "" {
+		stagedDir = m.Dir + string(filepath.Separator)
+	}
 	w := &lineWriter{}
 	w.emit = func(s string) {
 		o.beat.saw(n)
+		if stagedDir != "" {
+			s = strings.ReplaceAll(s, stagedDir, "")
+		}
 		w.keep(mk.String(s))
 		s = mk.String(s)
 		disp.JobLine(n, job, s)

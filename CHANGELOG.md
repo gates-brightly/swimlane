@@ -88,7 +88,10 @@ Each point is explained below.
   `workspace-file` warning, and `swim lint --fix` pins it: before, the step
   failed with a bare "No such file or directory". `swim lint` in a
   directory with no lane scripts says "nothing to check", not "no problems
-  found". A lane's own outputs go in
+  found", and `swim lint 7` with no lane.7.sh is an error. A bash lane bash
+  can't parse (`bash -n`) is a `parse` error, so `swim run` refuses it
+  before it starts, and bash's errors at run time name `lane.N.sh`, not
+  its staged copy under `.swim/runs/`. A lane's own outputs go in
   `$SWIM_OUT`; `$SWIM_ROOT` is still the repo root, for the files a round
   acts on. `cache restore|save` work in the same directory as the lane's
   steps, and an included file keeps its executable bit in the stage.

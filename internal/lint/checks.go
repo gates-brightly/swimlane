@@ -3,6 +3,7 @@ package lint
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -223,6 +224,42 @@ func checkWorkspaceFile(c *Context, s *Script) []finding.Finding {
 			"%s is in the repo but not in # Includes:, so the lane's staged copy doesn't have it: the step reading it fails under swim run", r.Rel))
 	}
 	return out
+}
+
+// bashLineRE finds the line in bash -n's complaint ("bash: line 10: ...").
+var bashLineRE = regexp.MustCompile(`line (\d+): (.*)`)
+
+// checkParse runs bash -n on a bash lane: a script bash can't parse fails
+// as it starts, whatever else lint says about it.
+func checkParse(c *Context, s *Script) []finding.Finding {
+	switch strings.ToLower(filepath.Ext(s.Name)) {
+	case ".sh", ".bash", "":
+	default:
+		return nil
+	}
+	if s.Src == "" {
+		return nil
+	}
+	if _, err := exec.LookPath("bash"); err != nil {
+		return nil
+	}
+	cmd := exec.Command("bash", "-n")
+	cmd.Stdin = strings.NewReader(s.Src)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	var fs []finding.Finding
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if m := bashLineRE.FindStringSubmatch(l); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			fs = append(fs, f(finding.Error, "parse", n-1, "fix the script so `bash -n` accepts it", "bash can't parse it: %s", m[2]))
+		}
+	}
+	if len(fs) == 0 {
+		fs = append(fs, f(finding.Error, "parse", -1, "fix the script so `bash -n` accepts it", "bash can't parse it: %s", strings.TrimSpace(string(out))))
+	}
+	return fs
 }
 
 // scriptName is the script's file name, or lane.N.sh when it has none yet.

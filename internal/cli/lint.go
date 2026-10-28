@@ -33,6 +33,10 @@ func cmdLint(args []string) error {
 		if err != nil {
 			return err
 		}
+		if _, err := os.Stat(lane.Script(root, n)); err != nil {
+			// Not "no problems found": there was nothing to check.
+			return fmt.Errorf("no %s: nothing to check", lane.ScriptName(root, n))
+		}
 		lanes = append(lanes, n)
 		// A session writing the lane keeps its claim alive by linting it.
 		lane.RefreshClaim(root, n, lane.SessionID(), cfg.ClaimLeaseFor())

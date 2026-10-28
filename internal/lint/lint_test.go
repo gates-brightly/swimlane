@@ -420,3 +420,22 @@ summary
 		}
 	}
 }
+
+// A script bash can't parse is a parse error at bash's line.
+func TestParse(t *testing.T) {
+	broken := before(clean(1), "stage verify\n", "if true; then\n")
+	var got []finding.Finding
+	for _, f := range Lint(cfg4(), map[int]string{1: broken}, 1) {
+		if f.Code == "parse" {
+			got = append(got, f)
+		}
+	}
+	if len(got) != 1 || got[0].Level != finding.Error || !strings.Contains(got[0].Message, "unexpected end of file") {
+		t.Fatalf("parse: %+v", got)
+	}
+	for _, f := range Lint(cfg4(), map[int]string{1: clean(1)}, 1) {
+		if f.Code == "parse" {
+			t.Errorf("clean script: %+v", f)
+		}
+	}
+}
