@@ -31,6 +31,30 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ## Unreleased
 
+### Upgrading: what to do
+
+- A dry run ends SKIP, not PASS: lanes `# After:` it don't start, and
+  `swim run` exits 3 when work waits on an approval.
+- Lanes run in their staged copy: pin what they read in `# Includes:`, or
+  add `# Workspace: live`. `swim verify` is strict (`--allow-unsigned`).
+- `swim run` refuses a lane with any lint error, including a removed
+  feature; the `evidence` step is one (use `snapshot`), and a `lookup.yml`
+  rule with `evidence: true` approves nothing until you remove it.
+- Runs sign with a per-run key: update every machine that runs `swim verify`.
+- Removed: chime, `swim schedule`, `timeline`, `observe`, `secret`, `hub`
+  (and headless swimmers, `swim ps`), `pause`/`unpause`/`resume`, `plan`,
+  `ci --check`, `trash`, `prune`, `clean --restore`, modules, evidence-bound
+  approvals, lane kinds (`# Always:`, `# Finally:`, `# Matrix:`, handlers,
+  jobs, group files), the SDKs and syntax 1 migration.
+- Ignored settings (`swim doctor`: `removed-setting`): `chime`, `chime_style`,
+  `chime_min_s`, `schedule_tz`, `observe`, `modules`, `secrets`,
+  `ambient_credentials`, `secrets_key`, `headless`, `hub`, `pause_warn`.
+- Can be deleted: `.swim/{observations,modules,evidence}/`, `knowledge/`,
+  `.swim/{hub,hub-runs}.yml`, `.swim/headless.*`, `.swim/runs/*.yml`,
+  `.swim/pause`, `.swim/laneN.{pause,resumed,replaced}`, `agentN.check.log`.
+
+Each point is explained below.
+
 ### Upgrading
 
 - **A dry run is SKIP, not PASS.** A round that ran to the end but
@@ -44,200 +68,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
   since CI can't approve. Before, it was PASS and the lanes after it
   ran as if the change had happened. A script that wants a guard to be
   optional should make that step its own lane.
-- **Removed: chime.** `chime`, `chime_style`, `chime_min_s` and `swim run
-  --chime / --no-chime` are gone: a sound when a run ends isn't part of
-  what swim is for. A `swim.yml` or `config.yml` that still sets the keys
-  loads as before (they're ignored), and `swim doctor` says to delete them
-  (`removed-setting`); `swim config chime` is an unknown key, and
-  `--chime` an unknown flag.
-- **Removed: swim schedule.** `swim schedule`, `swim queue add --at`,
-  `schedule_tz` and everything that held batches behind a schedule are
-  gone: queue a batch and start a swimmer when it should run (`swim watch
-  --once`, by hand or from cron). `swim plan` has no `scheduled` or `held`
-  actions any more (`--yaml` counts drop those keys), and `status.yml` no
-  longer records `scheduled_for`, `schedule`, `held_by` or
-  `schedule_removed`. A batch an older swim scheduled still waits for its
-  start time, its signature is still checked before it runs, and `swim
-  verify` still fails a run that started before its scheduled time.
-  `schedule_tz` in a config is ignored (`swim doctor`: `removed-setting`).
-- **Removed: what matrix lanes left behind.** Matrix lanes went earlier
-  (`# Matrix:` is still a `swim lint` error); now so is their plumbing:
-  `status.yml` no longer has per-cell entries (`cell`, `cells`), the live
-  view no longer shows cell counts, and `SWIM_CELL` / `SWIM_CELL_LOG` mean
-  nothing to the lane library. A signed approval an older swim limited to
-  some cells (`cells:` in its statement) still reads and verifies, but
-  approves nothing: it never covered a whole lane. Evidence-bound
-  approvals are named `lane.N.<sha>[.m<man>].e<ev>.signature`, with no
-  cell suffix.
-- **Removed: swim timeline.** `swim timeline` (its text chart, `--yaml`
-  schemas `swim.timeline/v1` and `swim.timeline-history/v1`, and the
-  `--html` Gantt chart) is gone: how long lanes waited is not part of what
-  swim is for. `swim log RUN` and `swim status --run RUN` read a run's
-  rounds and state as before.
-- **Removed: swim observe.** `swim observe` (with `check`, `knowledge`,
-  `accept` and `reject`), the observations a run computed into
-  `.swim/observations/`, `swim report`'s observations section (and its
-  `--yaml` `observations` key), `swim status`'s `observed:` lines, `swim
-  plan`'s `known:` lines, the committed `knowledge/steps.yml` and doctor's
-  `knowledge-retired` are gone: a run's record says what happened; reading
-  patterns into it is the reader's job. `observe:` in `swim.yml` loads as
-  before (it's ignored; `swim doctor`: `removed-setting`). Steps keep
-  `--key`, `--target` and `# Targets:`, logged with each step as before.
-  `.swim/observations/` and `knowledge/` can be deleted. `# Observe:`
-  probes (facts checked between approval and the guarded step) are not
-  affected.
-- **Removed: modules.** `# Modules:` (and a sidecar's `modules:`), the
-  `mod` and `mod_env` lane commands (`swim mod`, an SDK's module call),
-  `swim modules` (`ls`, `show`, `new`, `check`, `lock`, `get`), the built-in
-  modules (tf, smoke, claude, report, target, backup, wait, aws-session,
-  clone, notify), repo and fetched modules, and `.swim.lock`'s `modules:`
-  pins are gone. Run the tool as a step instead (`run "<label>" -- cmd`,
-  `evidence` for a plan), with its files in `# Includes:`. `swim lint`
-  refuses a script that still declares or calls a module (`removed`), so
-  `swim run` won't start it. Lanes without modules hash exactly as before:
-  no approval goes stale. `modules:` in `swim.yml` loads as before (it's
-  ignored; `swim doctor`: `removed-setting`) and still counts in the
-  policy hash as it did, so removing it is a policy change like any other.
-  A manifest an older swim wrote with module pins still verifies. Script
-  syntax 4 stays (swim new writes it); it now adds nothing over 3. The
-  lock's `modules:` section is ignored and dropped the next time swim
-  writes the lock. `.swim/modules/` can be deleted.
-- **Removed: the secret store and guarded secrets.** `swim secret` (`set`,
-  `get`, `ls`, `rm`, `grant`, `revoke`, `grants`), the age-encrypted
-  `secrets.yml`, the run's secrets broker (an SDK's `secret.get`),
-  `SWIM_SECRET_<NAME>` stand-ins, hub grants, guarded secrets (`secrets:`
-  in `swim.yml`, released to a lane once its guard was approved) and
-  `ambient_credentials:` are gone, with lint's `secret-ref`,
-  `secret-guard`, `secret-argv` and `ambient-credential` and doctor's
-  `guarded-secrets` and `ambient-credential`. Lanes take credentials from
-  their environment (yours, or `.env.swim`); a guard is advisory for every
-  credential now. Masking is unchanged: `secret_env`, `secret_env_auto`,
-  `secret_env_ignore` and `secret_patterns_auto` keep values out of
-  everything swim writes. `swim lint` refuses a script that still calls
-  `swim secret` or an SDK's `secret.get` (`removed`), so `swim run` won't
-  start it. `secrets:`, `ambient_credentials:` and `secrets_key` load as
-  before (ignored; `swim doctor`: `removed-setting`), and `secrets:` and
-  `ambient_credentials:` still count in the policy hash as they did, so no
-  approval goes stale. The chain's `secret-released` and `secret-refused`
-  entries still verify. `~/.config/swim/secrets.yml` can be deleted once
-  you've moved any value you still need elsewhere (an older swim's `swim
-  secret get` prints one).
-- **Removed: the hub, headless swimmers and swim auth.** `swim hub` (the
-  dashboard, its app, live screen, read API, TLS, users, roles and
-  sessions), `swim auth` (`login`, `status`, `logout`, `admit`, `reject`,
-  `approve`, `users`), headless swimmers (`swim watch --headless`, with
-  `--detach`, `--status`, `--stop`, `--install`, `--uninstall`), `swim ps`,
-  `swim stop` outside a lane, commands and guard answers relayed through a
-  hub (`swim approve --hub`), `swim watch`'s reports to a hub, the `hub`
-  chain anchor, and doctor's `hub-http`, `headless-service`,
-  `headless-stale`, `hub-unreachable`, `headless-hub-answers` and
-  `headless-yes` are gone. Runs no longer write run records
-  (`.swim/runs/<run>.yml`, `swim.runrec/v1`), which only the hub read;
-  each run's staged lane copies stay in `.swim/runs/<run>/`. What's left
-  is the core: run on a terminal, queue batches for `swim watch` (on a
-  terminal, in tmux, or `--once` from cron), and CI. Approvals still
-  travel as signed files (`swim approve`, `lookup.yml`, standing `--auto`
-  approvals). `swim stop "<reason>"` inside a lane is unchanged.
-  `headless:` and `hub:` in `swim.yml` (or `config.yml`) load as before
-  (ignored; `swim doctor`: `removed-setting`); neither was part of the
-  policy hash. A `hub` in `chain_anchors` now fails (`anchor hub: swim no
-  longer has a hub`): checkpoints warn and `swim verify`'s anchored level
-  says no until you replace it with a `file:/path`. The chain's `hub` entries and
-  `hub-signed` / `hub-button` approvals an older swim recorded still
-  verify. A headless service an older swim installed keeps starting the
-  old swim: remove it (`systemctl --user disable --now swim-<id>` and
-  `~/.config/systemd/user/swim-<id>.service`, or `launchctl unload` and
-  `~/Library/LaunchAgents/com.swim.<id>.plist`). `.swim/hub.yml`,
-  `.swim/hub-runs.yml`, `.swim/headless.*`, `.swim/runs/*.yml`,
-  `~/.config/swim/auth.yml`, `hub-admin.yml`, `runners/` and
-  `worker-keys/`, and a hub's `--state` directory can be deleted.
-- **Removed: swim pause, unpause and resume.** `swim pause N|JOB` (with
-  `--wait` and `--note`), the repo-wide `swim pause --all`, `swim unpause`
-  and its alias `swim resume` (and `--all`), `swim run --replace` (which
-  ended a paused round), the `p` key in `swim watch` and `p` / `P` in
-  `swim run`'s live view, the paused row and fields in `swim status`,
-  `swim watch` and `swim run`, and doctor's `pause-long` are gone: `swim
-  interrupt N` stops a lane at its next step boundary. A round's
-  `Timeout:` is plain wall-clock time again, and `status.yml` no longer
-  records `paused_at`, `paused_by`, `paused_after`, `next_step`,
-  `pause_note`, `paused_s` or `pauses`. `pause_warn` in `swim.yml` (or
-  `config.yml`) loads as before (ignored; `swim doctor`:
-  `removed-setting`); it wasn't part of the policy hash. Round entries no
-  longer carry `paused_s` or `replaced_by`; older ones that do still
-  verify, and older logs' `PAUSE` and `RESUME` lines still read (as marks
-  that count toward nothing). A pause an older swim left on disk holds
-  nothing: swimmers claim batches and lanes run past it, and
-  `.swim/pause`, `.swim/laneN.pause`, `.swim/laneN.resumed` and
-  `.swim/laneN.replaced` can be deleted.
-- **Removed: evidence-bound approvals.** The `evidence "<label>" cmd`
-  step (and `swim evidence`), `.swim/evidence/`, `swim approve` showing
-  and signing a round's evidence (and `--no-evidence`), the check at guard
-  time that an approval's evidence still matches (its `WARN evidence
-  changed since approval` and diff, the evidence in the approval question)
-  and `swim watch`'s "evidence not checked" are gone: an approval covers
-  the exact script and what its manifest pins. Use `snapshot` to save a
-  plan for the operator to read. Upgrading:
-  - A lane with an evidence step is a `swim lint` error (`removed`: use
-    snapshot), so `swim run` refuses it until it's edited.
-  - A `lookup.yml` `require:` rule with `evidence: true` fails closed
-    rather than being ignored (which would let plain approvals through):
-    nothing approves its guards (a signed approval, `FLAG=1`, the prompt,
-    a pre-answer, `-y`, `swim queue add --approve`), so they dry-run, with
-    "lookup.yml rule for GUARD requires evidence-bound approvals, which
-    swim no longer has: remove `evidence: true`". `swim approve --guards`
-    and `swim queue add --approve` refuse such a guard, and `swim doctor` warns
-    (`evidence-rule`). The field is still read and still in the rules'
-    hash, so a `lookup.yml` without it hashes as before and no approval
-    goes stale; removing it changes the rules, so re-approve what it
-    covered.
-  - A signed approval an older swim bound to evidence
-    (`lane.N.<sha>[.m<man>].e<ev>.signature`, `evidence-sha256:` in its
-    statement) still verifies (`swim verify`, `swim approve`), and counts
-    as an approval of the script where the guard's rule doesn't say
-    `evidence: true`. Round and approve chain entries no longer carry
-    `evidence_sha256`; older ones still verify. `.swim/evidence/` can be
-    deleted.
-- **Removed: swim plan.** `swim plan` (the tree of what `swim run` or
-  `swim all` would do, its guard verdicts, `--rerun`, `--yaml` and the
-  `swim.plan/v1` schema) and its read-only preview `swim plan --check` are
-  gone, and with the preview `swim ci --check`, the check mode lanes ran
-  in (`SWIM_CHECK_ONLY`: rounds stopping at `CHECKED` before `stage
-  change`, guards that never approved, `agentN.check.log`), and the
-  `check_result`, `check_at`, `check_sha256`, `check_stop` and
-  `check_guards` fields in `status.yml`. Check scripts with `swim lint`,
-  read `swim status` for what a run would wait on, and run with `swim run
-  --no-prompt` to see guarded steps dry-run. Older `status.yml` files
-  with check fields load (the fields are dropped on the next write); the
-  chain's `check` entries an older swim recorded still verify, and older
-  logs' `CHECKED` lines still read. `.swim/logs/agentN.check.log` files
-  are ignored and can be deleted. `swim lint`'s `check-unsafe` stays: a
-  destructive command before `stage change` still runs in a stage that
-  should only read.
-- **Cleanup is archive, stub and clean.** `swim clean` now idles each
-  finished lane directly: it archives its logs (as `swim archive`) and
-  stubs its script (as `swim stub`), keeping a script edited since its
-  round ran, a stub, or one another session has claimed. It still asks
-  (default no) about waiting queue batches. Removed: `swim trash` (and
-  `d` in `swim watch`, and the hub's Trash, which a swimmer now refuses),
-  `swim prune`, `swim clean --restore`, `--scripts`/`--no-scripts`, the
-  `.swim/cleaned/` move-aside, and doctor's `prune-reclaim`. `swim clean
-  --all` is `--queue`; `-o yaml` (`swim.clean/v1`) drops `scripts_moved`
-  and `restore` and adds each lane's `stub` and `kept`. Scripts a round
-  ran stay in `.swim/scripts/` by hash; files an older swim moved to
-  `.swim/cleaned/` stay there (move them back by hand, or delete them).
-  `swim verify` still reads the chain's `trash`, `untrash` and `prune`
-  entries.
-- **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
-  used to queue it as its own batch at once, so two jobs queued that way
-  ran one after the other and `# After:` between them couldn't hold. Now
-  `q` adds the job to the next batch (`q` again takes it out; its row says
-  `[+ next batch]`), a `▶ submit` row appears in the queue, and `s` (or
-  enter on that row) queues them as one batch, as `swim queue add 1 2`
-  does. `x` clears it. Nothing is queued until you submit.
-- **Lane scripts say `# swim: syntax 4`.** The README, guide, demos and
-  this repo's lanes now match what `swim new` writes. Syntax 2 and 3
-  scripts still run as they are; the lock pins the script syntax for the
-  whole repo, so a lower number in one script buys nothing.
 - **Lanes run in their staged copy.** A lane's working directory is now
   `.swim/runs/<run>/<N>/`, which holds only what its approval covers: the
   script and its `# Includes:`. A file it reads but doesn't pin isn't
@@ -246,75 +76,25 @@ already pushed to origin's main) with the next tag and pushes that tag.
   before; that line is part of the manifest, so the approval says so, and
   `swim lint` warns (`workspace-live`). A lane's own outputs go in
   `$SWIM_OUT`; `$SWIM_ROOT` is still the repo root, for the files a round
-  acts on. Module commands and `cache restore|save` work in the same
-  directory as the lane's steps, and an included file keeps its
-  executable bit in the stage.
+  acts on. `cache restore|save` work in the same directory as the lane's
+  steps, and an included file keeps its executable bit in the stage.
 - **`swim verify` is strict.** It fails on an unsigned entry, and prints
   one answer: `VERIFIED` or `NOT VERIFIED: <why>`. `--allow-unsigned`
   accepts unsigned entries again, and `--levels` prints the four levels
   (consistent, trusted, anchored, authorized). Anchored now checks every
   checkpoint, not only the newest, so a chain rewritten and checkpointed
-  again still fails the earlier ones.
-- **swim no longer tells a lane it started by its process name.** A lane
-  runs as you, so it can do what you can: unset its environment, call
-  swim's hidden commands, read your key. swim run refuses what it can see
-  (a lane marking its own guard approved, an approvals channel dropped
-  while `SWIM_LAUNCHED` is set). What it can't see, `swim verify` fails:
-  an approval the run's attestation doesn't list. The README and
-  [trust model](docs/trust-model.md) say this plainly.
-- **Removed: lane kinds.** `# Always:`, `# Rerun-Children:`, `# Finally:`
-  (and `finally_timeout`, `--no-finally`), `# Matrix:` rounds and `swim run
-  N --failed`, outcome handlers (`on_success`, `on_failure`, `on_exit`,
-  `# Handler-Timeout:`, `# On-*:`, exit code 89), jobs inside a lane
-  (`# swim job N.K`) and group files (`lanes.<name>.sh`). `swim lint`
-  refuses a lane that still uses one (`removed`), since swim would
-  otherwise skip a cleanup or rollback it counts on. Put that work in its
-  own lane, ordered with `# After:`. `swim clean --include-always` is gone.
-  This repo's CI is now `lane.1.sh` to `lane.6.sh`.
-- **Removed: the SDKs and the lane socket.** `sdk/` (Go, Python,
-  TypeScript), `swim new --lang` and the `_wrap` socket protocol are gone.
-  A lane in another language calls swim's steps as commands (`swim run
-  "label" -- cmd`), as before.
-- **Removed: hub extras.** Tailscale serving, `--webhook` alerts and
-  recurring schedules (`swim schedule --every`) are gone. One-shot
-  `swim schedule` stays; use cron or CI for repetition.
-- **Removed: back-compat code.** swim no longer moves root-level lane logs
-  into `.swim/logs/` or rewrites syntax 1 scripts and logs: a syntax 1
-  file stops the command and says how to replace it.
+  again still fails the earlier ones. CI that reads the output should use
+  `swim verify --yaml` and its level fields.
 - **`swim run` refuses a lane with any lint error,** not only some. The
   template's placeholder snapshot is one: fill it in first. `swim new`
   writes the current script syntax (4), and its template is shorter.
-- **A swimmer whose claim was taken over stops its batch.** A worker that
-  lost its queue claim (another took it over after the lease) used to run
-  on; it now interrupts its lanes. A lease is judged by when this host last
-  saw the heartbeat change, so another machine's clock can't make a live
-  worker look dead.
-
-- **`swim auth` replaces the `swim hub` subcommands; machines that run
-  lanes are *swimmers*.** `swim hub` now only serves the hub. Joining one,
-  and the admin's side, moved to `swim auth`:
-  - `swim hub enroll` and `swim hub access` become `swim auth login URL
-    --access read|readwrite`. It runs once per machine, and every
-    directory where `swim watch` runs joins as it starts. A directory's
-    name and dashboard tab come from `swim.yml`'s `hub: {name,
-    namespace}`, which replaces `enroll --name/--namespace`. Logging in
-    again with another `--access` changes it for every directory that
-    joined.
-  - `swim hub login` becomes `swim auth login URL --admin-token T`, or
-    `--token T` for an admin user. `admit`, `reject`, `approve`,
-    `unapprove` and `user` become `swim auth admit|reject|approve|unapprove|users`,
-    and accept an admin user's `--token` as well as the admin token.
-  - `swim hub leave` and `swim hub status` become `swim auth logout` and
-    `swim auth status`.
-
-  The old subcommands exit 2 and name their replacement. A machine logs in
-  to one hub, so a different hub per directory is no longer possible.
-  Directories enrolled with `swim hub enroll` keep reporting; `swim
-  doctor` (hub-enrolled) says how to move them to `swim auth`. The hub's
-  API, its JSON and `.swim/` files keep their names, so swimmers on an
-  older swim still talk to a new hub. The hub's pages and swim's messages
-  say *swimmer* where they said worker; *worker* now means only an AI
-  subagent.
+- **swim run signs with a run key (see Security).** A run's chain entries
+  carry `run_key`, the runner key vouching for the key that signed them; a
+  swim from before this can't check them, so update every machine that
+  runs `swim verify`. Under `signing: required` a run stops before any lane
+  starts when the runner key won't vouch for its run key (the operator
+  said no to `ssh-add -c`'s question, no touch, no agent for a passphrase);
+  under `auto` that run is recorded unsigned, with one warning.
 - **Approvals bound to a manifest go stale once more (manifest v2), then
   stop going stale on upgrades.** The policy part of a manifest now
   hashes only the swim.yml policy keys your repo sets, without a version
@@ -323,6 +103,259 @@ already pushed to origin's main) with the next tag and pushes that tag.
   swim. A stale approval now names the policy keys that changed. The hash
   text is frozen and pinned by tests; see
   [docs/formats.md](docs/formats.md).
+- **Lane scripts say `# swim: syntax 4`.** The README, guide, demos and
+  this repo's lanes now match what `swim new` writes. Syntax 2 and 3
+  scripts still run as they are; the lock pins the script syntax for the
+  whole repo, so a lower number in one script buys nothing.
+
+### Removed
+
+Each removal below that a script could still use is a `swim lint` error
+(`removed`), so `swim run` won't start the script until it's edited. A
+removed setting still loads (ignored; `swim doctor`: `removed-setting`),
+and one that counted in the policy hash still does, so no approval goes
+stale. Chain entries, approvals and logs an older swim wrote still verify
+and read.
+
+- **Chime.** `chime`, `chime_style`, `chime_min_s` and `swim run --chime /
+  --no-chime`: a sound when a run ends isn't part of what swim is for.
+  `swim config chime` is an unknown key, and `--chime` an unknown flag.
+- **swim schedule.** `swim schedule` (one-shot and recurring), `swim queue
+  add --at`, `schedule_tz` and everything that held batches behind a
+  schedule: queue a batch and start a swimmer when it should run (`swim
+  watch --once`, by hand or from cron). `status.yml` no longer records
+  `scheduled_for`, `schedule`, `held_by` or `schedule_removed`. A batch an
+  older swim scheduled still waits for its start time, its signature is
+  still checked before it runs, and `swim verify` still fails a run that
+  started before its scheduled time.
+- **Lane kinds.** `# Always:`, `# Rerun-Children:`, `# Finally:` (and
+  `finally_timeout`, `--no-finally`), `# Matrix:` rounds and `swim run N
+  --failed`, outcome handlers (`on_success`, `on_failure`, `on_exit`,
+  `# Handler-Timeout:`, `# On-*:`, exit code 89), jobs inside a lane
+  (`# swim job N.K`), group files (`lanes.<name>.sh`) and `swim clean
+  --include-always`. swim would otherwise skip a cleanup or rollback the
+  lane counts on: put that work in its own lane, ordered with `# After:`.
+  Matrix plumbing went too: `status.yml` has no per-cell entries (`cell`,
+  `cells`), the live view no cell counts, and `SWIM_CELL` / `SWIM_CELL_LOG`
+  mean nothing to the lane library. A signed approval an older swim limited
+  to some cells (`cells:`) still verifies but approves nothing. This repo's
+  CI is now `lane.1.sh` to `lane.6.sh`.
+- **swim timeline.** Its text chart, `--yaml` (`swim.timeline/v1`,
+  `swim.timeline-history/v1`) and `--html` Gantt chart. `swim log RUN` and
+  `swim status --run RUN` read a run's rounds and state as before.
+- **swim observe.** `swim observe` (`check`, `knowledge`, `accept`,
+  `reject`), `.swim/observations/`, `swim report`'s observations section
+  (and `--yaml` `observations`), `swim status`'s `observed:` lines, the
+  committed `knowledge/steps.yml` and doctor's
+  `knowledge-retired`. Steps keep `--key`, `--target` and `# Targets:`;
+  `# Observe:` probes are not affected.
+- **Modules.** `# Modules:` (and a sidecar's `modules:`), the `mod` and
+  `mod_env` lane commands, `swim modules` (`ls`, `show`, `new`, `check`,
+  `lock`, `get`), the built-in modules (tf, smoke, claude, report, target,
+  backup, wait, aws-session, clone, notify), repo and fetched modules, and
+  `.swim.lock`'s `modules:` pins (ignored, and dropped the next time swim
+  writes the lock). Run the tool as a step instead (`run "<label>" --
+  cmd`, `snapshot` for a plan), with its files in `# Includes:`. Lanes
+  without modules hash exactly as before. Syntax 4 stays (swim new writes
+  it); it now adds nothing over 3.
+- **The secret store and guarded secrets.** `swim secret` (`set`, `get`,
+  `ls`, `rm`, `grant`, `revoke`, `grants`), the age-encrypted
+  `secrets.yml`, the run's secrets broker (an SDK's `secret.get`),
+  `SWIM_SECRET_<NAME>` stand-ins, hub grants, guarded secrets (`secrets:`)
+  and `ambient_credentials:`, with lint's `secret-ref`, `secret-guard`,
+  `secret-argv` and `ambient-credential` and doctor's `guarded-secrets`
+  and `ambient-credential`. Lanes take credentials from their environment
+  (yours, or `.env.swim`); a guard is advisory for every credential now.
+  Masking is unchanged (`secret_env`, `secret_env_auto`,
+  `secret_env_ignore`, `secret_patterns_auto`). An older swim's `swim
+  secret get` prints a value you still need before you delete
+  `~/.config/swim/secrets.yml`.
+- **The hub and headless swimmers.** `swim hub` and all its subcommands
+  (the dashboard, its app, live screen, read API, TLS, Tailscale serving,
+  `--webhook` alerts, users, roles, sessions, `enroll`, `access`, `login`,
+  `leave`, `admit` and the rest), headless swimmers (`swim watch
+  --headless`, with `--detach`, `--status`, `--stop`, `--install`,
+  `--uninstall`), `swim ps`, `swim stop` outside a lane, commands and
+  guard answers relayed through a hub (`swim approve --hub`), `swim
+  watch`'s reports to a hub, the `hub` chain anchor, run records
+  (`.swim/runs/<run>.yml`, `swim.runrec/v1`) and doctor's `hub-http`,
+  `headless-service`, `headless-stale`, `hub-unreachable`,
+  `headless-hub-answers` and `headless-yes`. What's left: run on a
+  terminal, queue batches for `swim watch` (on a terminal, in tmux, or
+  `--once` from cron), and CI. Approvals still travel as signed files
+  (`swim approve`, `lookup.yml`, standing `--auto` approvals); `swim stop
+  "<reason>"` inside a lane is unchanged. A `hub` in `chain_anchors` now
+  fails (`anchor hub: swim no longer has a hub`) until you replace it with
+  a `file:/path`. A headless service an older swim installed keeps
+  starting the old swim: remove it (`systemctl --user disable --now
+  swim-<id>` and `~/.config/systemd/user/swim-<id>.service`, or `launchctl
+  unload` and `~/Library/LaunchAgents/com.swim.<id>.plist`). Delete
+  `.swim/hub.yml`, `.swim/hub-runs.yml`, `.swim/headless.*`,
+  `.swim/runs/*.yml`, `~/.config/swim/hub-admin.yml`, `runners/`,
+  `worker-keys/`, and a hub's `--state` directory.
+- **swim pause, unpause and resume.** `swim pause N|JOB` (`--wait`,
+  `--note`, `--all`), `swim unpause` and its alias `swim resume`, `swim run
+  --replace`, the `p` key in `swim watch` and `p` / `P` in `swim run`'s
+  live view, the paused row and fields, and doctor's `pause-long`: `swim
+  interrupt N` stops a lane at its next step boundary. A round's `Timeout:`
+  is plain wall-clock time again; `status.yml` and round entries no longer
+  record pause fields (`paused_at`, `paused_s`, `pauses`, `replaced_by`
+  and the like). A pause an older swim left on disk holds nothing: delete
+  `.swim/pause`, `.swim/laneN.pause`, `.swim/laneN.resumed` and
+  `.swim/laneN.replaced`.
+- **Evidence-bound approvals.** The `evidence "<label>" cmd` step (and
+  `swim evidence`), `.swim/evidence/`, `swim approve` showing and signing a
+  round's evidence (and `--no-evidence`), the guard-time check that an
+  approval's evidence still matches, and `swim watch`'s "evidence not
+  checked": an approval covers the exact script and what its manifest
+  pins. Use `snapshot` to save a plan for the operator to read.
+  - A lane with an evidence step is a `swim lint` error (`removed`: use
+    snapshot).
+  - A `lookup.yml` `require:` rule with `evidence: true` fails closed
+    rather than being ignored (which would let plain approvals through):
+    nothing approves its guards (a signed approval, `FLAG=1`, the prompt,
+    a pre-answer, `-y`, `swim queue add --approve`), so they dry-run, with
+    "lookup.yml rule for GUARD requires evidence-bound approvals, which
+    swim no longer has: remove `evidence: true`". `swim approve --guards`
+    and `swim queue add --approve` refuse such a guard, and `swim doctor`
+    warns (`evidence-rule`). The field is still in the rules' hash, so a
+    `lookup.yml` without it hashes as before; removing it changes the
+    rules, so re-approve what it covered.
+  - A signed approval an older swim bound to evidence
+    (`lane.N.<sha>[.m<man>].e<ev>.signature`) still verifies, and counts
+    as an approval of the script where the guard's rule doesn't say
+    `evidence: true`. Round and approve entries no longer carry
+    `evidence_sha256`.
+- **swim plan.** `swim plan` (`--rerun`, `--yaml`, `swim.plan/v1`) and its
+  read-only preview `swim plan --check`, and with it `swim ci --check`,
+  the check mode lanes ran in (`SWIM_CHECK_ONLY`: rounds stopping at
+  `CHECKED` before `stage change`, `agentN.check.log`) and the `check_*`
+  fields in `status.yml` (dropped on the next write). Check scripts with
+  `swim lint`, read `swim status` for what a run would wait on, and run
+  with `swim run --no-prompt` to see guarded steps dry-run. `swim lint`'s
+  `check-unsafe` stays: a destructive command before `stage change` still
+  runs in a stage that should only read.
+- **swim trash, swim prune and swim clean --restore** (see Changed:
+  cleanup is archive, stub and clean), with `d` in `swim watch`,
+  `--scripts`/`--no-scripts`, the `.swim/cleaned/` move-aside and doctor's
+  `prune-reclaim`. Files an older swim moved to `.swim/cleaned/` stay
+  there (move them back by hand, or delete them).
+- **The SDKs and the lane socket.** `sdk/` (Go, Python, TypeScript), `swim
+  new --lang` and the `_wrap` socket protocol. A lane in another language
+  calls swim's steps as commands (`swim run "label" -- cmd`), as before.
+- **Back-compat code.** swim no longer moves root-level lane logs into
+  `.swim/logs/` or rewrites syntax 1 scripts and logs: a syntax 1 file
+  stops the command and says how to replace it.
+
+### Changed
+
+- **Cleanup is archive, stub and clean.** `swim clean` now idles each
+  finished lane directly: it archives its logs (as `swim archive`) and
+  stubs its script (as `swim stub`), keeping a script edited since its
+  round ran, a stub, or one another session has claimed. It still asks
+  (default no) about waiting queue batches. `swim clean --all` is
+  `--queue`; `-o yaml` (`swim.clean/v1`) drops `scripts_moved` and
+  `restore` and adds each lane's `stub` and `kept`. Scripts a round ran
+  stay in `.swim/scripts/` by hash.
+- **`q` in `swim watch` builds a batch; `s` submits it.** `q` on a job
+  used to queue it as its own batch at once, so two jobs queued that way
+  ran one after the other and `# After:` between them couldn't hold. Now
+  `q` adds the job to the next batch (`q` again takes it out; its row says
+  `[+ next batch]`), a `▶ submit` row appears in the queue, and `s` (or
+  enter on that row) queues them as one batch, as `swim queue add 1 2`
+  does. `x` clears it. Nothing is queued until you submit.
+- **swim status shows each pending lane's header:** under each lane
+  holding a pending round, what its `# Key: value` header declares and
+  where that stands, only what's set: each lane it waits on (`After:`) and
+  its state (passed, pending, running, failed, skipped, interrupted, or no
+  round, with what that means for this round), each guard with how `swim
+  run` would decide it as it starts now (`approved: FLAG=1`, `approved by
+  alice (dba), bob (dba) (signed)`, `never approved: <why>`, or `not
+  approved: <why>` and whether swim run would ask or dry-run), and its
+  timeout, locks, includes, `Fail: hard`, target and owner, in place of
+  the `owner · timeout · guards FLAG` line. A lane that never ran shows
+  `pending` and its round on its row, in place of a `pending: <round>`
+  line. Running lanes and lanes with nothing pending show as before. `swim status
+  --yaml` adds `pending_header` (`after`, `guards: [{flag, description,
+  approved, how, why, asks, never}]`, `timeout`, `locks`, `includes`,
+  `fail`, `targets`, `owner`) and `deps` (`[{lane, job, state, note}]`)
+  per lane; no field changed.
+- **`swim --help` is short on a terminal; `swim guide` is the full manual.**
+  On a terminal, `swim --help` (and `swim help`) lists the core commands
+  in about 50 lines. `swim guide` prints the full guide with every
+  command's detail. When its output isn't a terminal (an agent, a pipe),
+  `swim --help` still prints the full guide, so agents that read it lose
+  nothing. The docs and the swim skill now point to `swim guide`.
+- **Machines that run lanes are *swimmers*.** swim's messages and docs say
+  *swimmer* where they said worker; *worker* now means only an AI
+  subagent.
+
+### Added
+
+- **Named tasks.** `swim new renew-certs "Renew the certs"` writes the
+  lowest free lane with a `# Task: renew-certs` line. Then `swim run
+  renew-certs` (or `swim renew-certs`), and `approve`, `log`, `status`,
+  `queue`, `history` and the rest, find the lane by name, and so does
+  `# After:`. The name is an alias: the lane number stays what signatures
+  and the chain record, so nothing about approvals changes. `swim status`
+  shows the name. `swim lint` (task) refuses a name that is a swim
+  command, only hex digits, or another lane's. See
+  [docs/formats.md](docs/formats.md#task-names).
+
+### Fixed
+
+- **A swimmer whose claim was taken over stops its batch.** A swimmer that
+  lost its queue claim (another took it over after the lease) used to run
+  on; it now interrupts its lanes. A lease is judged by when this host last
+  saw the heartbeat change, so another machine's clock can't make a live
+  swimmer look dead.
+
+### Security
+
+- **A lane can't sign as the runner by using swim:** `swim run` makes a
+  run key in its own memory as the run starts, has the runner key
+  (`signing_key`) vouch for it once, and signs every entry of the run with
+  it, the lanes' rounds included: `swim _finish` hands its round's entry
+  to the launcher over the run's approval socket instead of signing it.
+  The launcher signs one round entry per lane process, for its own lane,
+  job, run and manifest, and no other kind. A lane is given no key, path
+  or descriptor that signs, and on Linux the launcher is non-dumpable, so
+  a lane can't read the run key from its memory. `swim verify` checks each
+  delegation and trusts a run key's entries as the runner key's. What this
+  doesn't stop: a lane still runs as you, so it can use the runner key
+  itself if it can reach it. Keep the key off disk: in ssh-agent added
+  with `ssh-add -c`, or on a security key, so each use asks you, and swim
+  run asks once per run. A file key with no passphrase still works; `swim
+  doctor` warns about it (`signing-key`). See
+  [the trust model](docs/trust-model.md#the-runner-key).
+- **swim no longer tells a lane it started by its process name.** A lane
+  runs as you, so it can do what you can: unset its environment, call
+  swim's hidden commands, read your key. swim run refuses what it can see
+  (a lane marking its own guard approved, an approvals channel dropped
+  while `SWIM_LAUNCHED` is set). What it can't see, `swim verify` fails:
+  an approval the run's attestation doesn't list. The README and
+  [trust model](docs/trust-model.md) say this plainly.
+
+### Docs
+
+- **The README leads with what swim is for:** your AI writes the ops
+  change, you sign the exact bytes, and swim runs it and gives you a
+  receipt anyone can verify. A 90-second tamper story follows.
+- **swim is MIT-licensed.** [LICENSE](LICENSE) is at the repo root, the
+  README has a license badge, and the Nix package sets `meta.license`.
+
+## 0.20261023.3 (v0.20261023.3, 2026-10-23)
+
+Everything since `7.20261013`, as the changelog's Unreleased section stood
+at v0.20261023.3. These releases were tagged without their own sections, so
+this one collects them all: v0.20261014.1, v0.20261014.2, v0.20261015.1 to
+v0.20261015.10, v0.20261016.1 to v0.20261016.7, v0.20261022.1 to
+v0.20261022.6, v0.20261023.1, v0.20261023.2 and v0.20261023.3 (and, before
+them, v0.8.20261013, v0.8.20261014, v0.9.20261014, v0.10.20261014 and
+v0.12.20261014 under the old scheme).
+
+### Upgrading
+
 - **A guard no one can answer fails the round on a headless worker.**
   Before, it dry-ran its change and the lane passed. Now a guard that
   nobody may answer there (its script doesn't declare it, the repo has no
@@ -333,6 +366,10 @@ already pushed to origin's main) with the next tag and pushes that tag.
   now shown amber. To keep a guard that should run unattended, approve it
   with `--approve FLAG` on the queue entry or schedule, or a signed
   approval.
+- **Recurring schedules no longer expire after 30 days.** They run until
+  `swim schedule rm`, `--until` or `--for`, unless `lookup.yml`'s
+  `standing.max` caps them (then that is the default end, as before).
+  Existing schedules keep the end they were made with.
 - **A job's steps are visible to anyone who may view the hub.** Logged-out
   viewers of a non-private hub now see a job's steps, commands and exit
   codes (masked as logs are); the output still needs a hub user.
@@ -401,8 +438,8 @@ already pushed to origin's main) with the next tag and pushes that tag.
   - **Queued batches** from an older swim still run, pinned to their script
     and env hashes as before.
   - **Lanes now run a staged copy.** `$0` is the copy under
-    `.swim/runs/<run>/<N>/`, which is also the working directory (see
-    above). A lane that finds files next to itself with `dirname "$0"` should
+    `.swim/runs/<run>/<N>/`, and the working directory is still the repo
+    root. A lane that finds files next to itself with `dirname "$0"` should
     use the repo root instead. A Python or TypeScript lane that imports a
     local module by a path swim can't see should list it in `# Includes:`.
     A `declare` at the top of a file a bash lane sources is now local to
@@ -425,28 +462,18 @@ already pushed to origin's main) with the next tag and pushes that tag.
   manifest stop counting (approve again: `swim approve N`), and a queued
   batch pinned to a manifest is skipped (queue it again). Approvals of the
   script alone, from before manifests, are unaffected.
-- **The secrets broker** no longer believes the lane a request names; it
-  asks swim run, from the lane process's own token (`SWIM_APPROVAL_TOKEN`,
-  sent as `lane_token`).
-- **`swim verify` reports levels** with `--levels` (see above). CI that
-  reads the output should use `swim verify --yaml` and its level fields.
-- **swim run signs with a run key (see Security).** A run's chain entries
-  carry `run_key`, the runner key vouching for the key that signed them; a
-  swim from before this can't check them, so update every machine that
-  runs `swim verify`. Under `signing: required` a run stops before any lane
-  starts when the runner key won't vouch for its run key (the operator
-  said no to `ssh-add -c`'s question, no touch, no agent for a passphrase);
-  under `auto` that run is recorded unsigned, with one warning.
+- **SDKs and the secrets broker:** the broker no longer believes the lane a
+  request names; it asks swim run, from the lane process's own token
+  (`SWIM_APPROVAL_TOKEN`, sent as `lane_token`). The SDKs in this release
+  send it. An older SDK still gets unguarded secrets; a guarded one is
+  refused to it.
+- **`swim verify` reports levels:** the green `verified: every link,
+  signature, log and script checks out` line is gone. Each level gets a line
+  instead (`consistent  yes  ...`). CI that greps the output should use
+  `swim verify --yaml` and read the level fields.
 
 ### Docs
 
-- **The README leads with what swim is for:** your AI writes the ops
-  change, you sign the exact bytes, and swim runs it and gives you a
-  receipt anyone can verify. A 90-second tamper story follows. The hub's
-  Access note no longer says workers need the token: since admission,
-  the admin admits them.
-- **swim is MIT-licensed.** [LICENSE](LICENSE) is at the repo root, the
-  README has a license badge, and the Nix package sets `meta.license`.
 - **[docs/README.md](docs/README.md)**, an index of the docs in reading
   order, and **[docs/quickstart.md](docs/quickstart.md)**, swim in an hour:
   a first round, a gate, a guard and its dry run, a signed approval and
@@ -466,22 +493,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Security
 
-- **A lane can't sign as the runner by using swim:** `swim run` makes a
-  run key in its own memory as the run starts, has the runner key
-  (`signing_key`) vouch for it once, and signs every entry of the run with
-  it, the lanes' rounds included: `swim _finish` hands its round's entry
-  to the launcher over the run's approval socket instead of signing it.
-  The launcher signs one round (or check) entry per lane process, for its
-  own lane, job, run and manifest, and no other kind. A lane is given no
-  key, path or descriptor that signs, and on Linux the launcher is
-  non-dumpable, so a lane can't read the run key from its memory.
-  `swim verify` checks each delegation and trusts a run key's entries as
-  the runner key's. What this doesn't stop: a lane still runs as you, so
-  it can use the runner key itself if it can reach it. Keep the key off
-  disk: in ssh-agent added with `ssh-add -c`, or on a security key, so
-  each use asks you, and swim run asks once per run. A file key with no
-  passphrase still works; `swim doctor` warns about it (`signing-key`).
-  See [the trust model](docs/trust-model.md#the-runner-key).
 - **A lane can't approve its own guard by changing its environment
   (T28):** a lane that unset `SWIM_APPROVAL` or `SWIM_LAUNCHED` and set the
   guard's flag got its guard approved, and when swim run couldn't start its
@@ -651,28 +662,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Changed
 
-- **swim status shows each pending lane's header:** under each lane
-  holding a pending round, what its `# Key: value` header declares and
-  where that stands, only what's set: each lane it waits on (`After:`) and
-  its state (passed, pending, running, failed, skipped, interrupted, or no
-  round, with what that means for this round), each guard with how `swim
-  run` would decide it as it starts now (`approved: FLAG=1`, `approved by
-  alice (dba), bob (dba) (signed)`, `never approved: <why>`, or `not
-  approved: <why>` and whether swim run would ask or dry-run), and its
-  timeout, locks, includes, `Fail: hard`, target and owner, in place of
-  the `owner · timeout · guards FLAG` line. A lane that never ran shows
-  `pending` and its round on its row, in place of a `pending: <round>`
-  line. Running lanes and lanes with nothing pending show as before. `swim status
-  --yaml` adds `pending_header` (`after`, `guards: [{flag, description,
-  approved, how, why, asks, never}]`, `timeout`, `locks`, `includes`,
-  `fail`, `targets`, `owner`) and `deps` (`[{lane, job, state, note}]`)
-  per lane; no field changed.
-- **`swim --help` is short on a terminal; `swim guide` is the full manual.**
-  On a terminal, `swim --help` (and `swim help`) lists the core commands
-  in about 50 lines. `swim guide` prints the full guide with every
-  command's detail. When its output isn't a terminal (an agent, a pipe),
-  `swim --help` still prints the full guide, so agents that read it lose
-  nothing. The docs and the swim skill now point to `swim guide`.
 - **The hub's controls moved into its app; the classic pages are gone.**
   A headless worker's Lanes page has Pause, Unpause, Interrupt, Run now,
   Trash, Fetch log and Stop after this batch, for the users and commands
@@ -862,15 +851,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
 
 ### Added
 
-- **Named tasks.** `swim new renew-certs "Renew the certs"` writes the
-  lowest free lane with a `# Task: renew-certs` line. Then `swim run
-  renew-certs` (or `swim renew-certs`), and `approve`, `log`, `status`,
-  `queue`, `schedule`, `history`, `pause` and the rest, find the lane by
-  name, and so do `# After:` and `# Finally:`. The name is an alias: the lane number stays what signatures, the
-  chain and the hub record, so nothing about approvals changes. `swim
-  status` and the hub show the name. `swim lint` (task) refuses a name
-  that is a swim command, a group file's name, only hex digits, or
-  another lane's. See [docs/formats.md](docs/formats.md#task-names).
 - **The hub says when a change didn't happen.** A lane that passed with a
   guarded step dry-run is "dry run", amber, everywhere the hub shows it
   (lanes, runs, the lane history's dots, Activity, Jobs, repo cards),
@@ -901,13 +881,6 @@ already pushed to origin's main) with the next tag and pushes that tag.
   add`, or `swim run` (`trigger` on each run the hub keeps), shown on the
   run and in Activity.
 
-- **`swim auth login URL | status | logout`:** a machine-wide hub
-  enrollment for every directory of this user (`~/.config/swim/auth.yml`).
-  The machine is admitted once; then each directory where `swim watch`
-  runs enrolls itself, admitted at once, and reports (a directory's own
-  `swim hub enroll` still wins). `swim auth logout` removes the machine
-  from the hub with every directory that joined through it. The hub's
-  Admin page lists a waiting machine with the workers waiting to join.
 - **`swim ps` and `swim stop [--all]`.** `swim ps` lists the headless
   workers running on this machine, in any directory: pid, mode
   (detached, foreground, systemd, launchd), uptime, running lanes and
