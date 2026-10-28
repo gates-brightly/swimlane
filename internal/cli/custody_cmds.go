@@ -751,7 +751,7 @@ func historyEntry(lk *lookup.Lookup, l chain.Link) (string, []string) {
 			lanes = append(lanes, k)
 		}
 		sort.Strings(lanes)
-		subject = fmt.Sprintf("run %s attested: swim %s, %d approvals", l.Run, strings.Join(lanes, " "), len(l.Approvals))
+		subject = fmt.Sprintf("run %s attested: swim %s, %s", l.Run, strings.Join(lanes, " "), plural(len(l.Approvals), "approval"))
 		for _, k := range lanes {
 			field("Lane "+k, l.Manifests[k])
 		}

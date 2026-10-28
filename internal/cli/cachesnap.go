@@ -202,10 +202,13 @@ func roundSnaps(logPath string) []chain.SnapRef {
 	return out
 }
 
-// plural is "1 file", "3 files".
+// plural is "1 file", "3 files" ("1 entry", "3 entries").
 func plural(n int, word string) string {
 	if n == 1 {
 		return "1 " + word
+	}
+	if strings.HasSuffix(word, "y") {
+		return fmt.Sprintf("%d %sies", n, strings.TrimSuffix(word, "y"))
 	}
 	return fmt.Sprintf("%d %ss", n, word)
 }

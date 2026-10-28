@@ -440,9 +440,9 @@ func runLanes(rest []string, rf runFlags) error {
 	if rerun && len(rest) > 0 {
 		return usagef("--rerun is for running every pending lane; named lanes always run")
 	}
-	if root, _, err := repo(); err != nil {
-		return err
-	} else if err := requireVersion(root, true); err != nil {
+	// The lock is written as a job is about to run, not by a run with
+	// nothing to do.
+	if err := requireVersion(root, len(rest) > 0 || anyPending(root, cfg)); err != nil {
 		return err
 	}
 	var lanes []int
@@ -942,4 +942,14 @@ func cmdLock(args []string) error {
 		}
 	}
 	return nil
+}
+
+// anyPending reports whether a lane script has a round to run.
+func anyPending(root string, cfg *config.Config) bool {
+	for n := 1; n <= cfg.Lanes; n++ {
+		if info, err := lane.ReadScript(root, n); err == nil && info.Pending() {
+			return true
+		}
+	}
+	return false
 }

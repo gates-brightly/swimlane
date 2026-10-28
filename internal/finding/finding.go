@@ -6,6 +6,7 @@ package finding
 import (
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 
@@ -125,18 +126,33 @@ func Summary(fs []Finding) string {
 // WriteText prints one finding per line, aligned, with its fix indented
 // below, then the summary line.
 func WriteText(w io.Writer, fs []Finding) {
-	width := 0
+	// A long location (an absolute path) goes on a line of its own, so
+	// the rest don't pad to it and wrap in an 80-column terminal.
+	const maxWidth = 24
+	home, _ := os.UserHomeDir()
+	where := func(f Finding) string {
+		s := f.Where()
+		if home != "" && strings.HasPrefix(s, home+string(os.PathSeparator)) {
+			s = "~" + strings.TrimPrefix(s, home)
+		}
+		if s == "" {
+			s = "-"
+		}
+		return s
+	}
+	width := 1
 	for _, f := range fs {
-		if n := len(f.Where()); n > width {
+		if n := len(where(f)); n > width && n <= maxWidth {
 			width = n
 		}
 	}
 	for _, f := range fs {
-		where := f.Where()
-		if where == "" {
-			where = "-"
+		at := where(f)
+		if len(at) > width {
+			fmt.Fprintln(w, at)
+			at = ""
 		}
-		fmt.Fprintf(w, "%-*s  %-5s  %s  [%s]\n", width, where, f.Level, f.Message, f.Code)
+		fmt.Fprintf(w, "%-*s  %-5s  %s  [%s]\n", width, at, f.Level, f.Message, f.Code)
 		if f.Fix != "" {
 			fmt.Fprintf(w, "%-*s         fix: %s\n", width, "", f.Fix)
 		}

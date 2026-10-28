@@ -104,8 +104,8 @@ cat > lane.2.sh <<'EOF'
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
 lane_init 2
 
-stage check
-run "nothing written yet" ls
+stage snapshot
+snapshot "what's there" ls
 
 stage change
 if guard HELLO_ALLOW_WRITE "write hello.txt (quickstart)"; then

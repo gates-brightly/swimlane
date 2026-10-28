@@ -162,7 +162,7 @@ func (v *verifier) consistent(links []chain.Link) level {
 	if len(v.bad) > 0 {
 		return level{"consistent", levelNo, fmt.Sprintf("%s (BROKEN, above)", plural(len(v.bad), "problem"))}
 	}
-	return level{"consistent", levelYes, fmt.Sprintf("%d entries, links and signatures match; logs, scripts and approvals as recorded", len(links))}
+	return level{"consistent", levelYes, fmt.Sprintf("%s, links and signatures match; logs, scripts and approvals as recorded", plural(len(links), "entry"))}
 }
 
 // trusted checks every signer against trust.yml's keys, pinned (on first
@@ -389,7 +389,7 @@ func (v *verifier) authorized(links []chain.Link) level {
 	case unsure > 0:
 		return level{name, levelPartial, fmt.Sprintf("%d approvals; %d don't meet today's lookup.yml, which changed since they were recorded", total, unsure)}
 	}
-	return level{name, levelYes, fmt.Sprintf("%d approvals, each met its lookup.yml rule", total)}
+	return level{name, levelYes, fmt.Sprintf("%s, each met its lookup.yml rule", plural(total, "approval"))}
 }
 
 // note is what the levels together don't prove.
@@ -411,7 +411,7 @@ func (v *verifier) note(levels []level) string {
 
 func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
-	fmt.Printf("chain of custody: %d entries (%d rounds, %d approvals) in %s\n", len(links), v.rounds, v.approvals, rel(v.root, chain.Path(v.root)))
+	fmt.Printf("chain of custody: %s (%s, %s) in %s\n", plural(len(links), "entry"), plural(v.rounds, "round"), plural(v.approvals, "approval"), rel(v.root, chain.Path(v.root)))
 	for _, f := range v.files {
 		fmt.Println(f)
 	}
@@ -468,7 +468,7 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 	if len(v.unsigned) > 0 {
 		signed = fmt.Sprintf("linked, %d unsigned (accepted: --allow-unsigned)", len(v.unsigned))
 	}
-	fmt.Printf("%s: %d entries, %s; logs, scripts and approvals as recorded\n", p.Paint(ui.Green+ui.Bold, "VERIFIED"), len(links), signed)
+	fmt.Printf("%s: %s, %s; logs, scripts and approvals as recorded\n", p.Paint(ui.Green+ui.Bold, "VERIFIED"), plural(len(links), "entry"), signed)
 	for _, c := range caveats {
 		fmt.Println("  not checked: " + c)
 	}

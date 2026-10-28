@@ -318,6 +318,15 @@ and read.
   shows the name. `swim lint` (task) refuses a name that is a swim
   command, only hex digits, or another lane's. See
   [docs/formats.md](docs/formats.md#task-names).
+- **Output polish.**
+  - A lane's summary shows only the stages that ran.
+  - A dry run's summary no longer says `exit 0` (swim run exits 3).
+  - Plurals are right: "1 approval", "1 entry".
+  - `swim doctor` and `swim lint` put a long location (an absolute path,
+    shown under `~`) on its own line, so rows don't pad to 120 columns.
+  - The README quickstart's lane 2 has a snapshot stage, so the
+    tutorial runs without a warning.
+  - `swim run` with nothing pending doesn't write `.swim.lock`.
 - **Shorter, kinder usage errors.** An unknown flag or a bad argument
   prints the command's usage lines and `swim CMD --help`, not its whole
   manual, and a near miss gets "did you mean": `unknown flag --pain (did

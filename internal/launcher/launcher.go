@@ -845,7 +845,11 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 			fmt.Fprintf(out, "  %s %s %4s %5s %5s %5s %6s %7s  %s\n", label, res, "-", "-", "-", "-", "-", "-", oc.Reason)
 			continue
 		}
-		fmt.Fprintf(out, "  %s %s %4d %5d %5d %5d %6d %7s\n", label, res, oc.Exit, r.Pass, r.Fail, r.Skip, r.Drift, display.Elapsed(oc.Elapsed))
+		exit := fmt.Sprint(oc.Exit)
+		if oc.State == status.Skipped {
+			exit = "-" // the lane exited 0, but its work waits: swim run exits 3
+		}
+		fmt.Fprintf(out, "  %s %s %4s %5d %5d %5d %6d %7s\n", label, res, exit, r.Pass, r.Fail, r.Skip, r.Drift, display.Elapsed(oc.Elapsed))
 		if oc.State == status.Skipped {
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Yellow, oc.Reason))
 		}

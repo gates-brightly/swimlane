@@ -553,10 +553,23 @@ func cmdFinish(args []string) error {
 	stages := r.StageResults()
 
 	p := painter()
-	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d drift=%d  exit %d  %s\n",
+	exit := fmt.Sprintf("  exit %d", code)
+	if word == logparse.Skip {
+		exit = "" // the script exited 0; a dry run's work still waits (swim run exits 3)
+	}
+	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d drift=%d%s  %s\n",
 		laneBanner(p, root, n, " summary:"),
-		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, code, display.Span(now.Add(-dur), now))
-	fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "stages: "+logparse.StagesText(stages)))
+		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, exit, display.Span(now.Add(-dur), now))
+	// The stages that ran; the log keeps every one (none included).
+	var ran []logparse.StageResult
+	for _, s := range stages {
+		if s.State != "none" {
+			ran = append(ran, s)
+		}
+	}
+	if len(ran) > 0 {
+		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "stages: "+logparse.StagesText(ran)))
+	}
 	if reason != "" {
 		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Yellow, reason))
 	}

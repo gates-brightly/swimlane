@@ -143,7 +143,7 @@ func TestVerifyAuthorizedLevel(t *testing.T) {
 	// Signed by zach (admins): authorized.
 	r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"])
 	r.mustSwim("run", "1")
-	contains(t, "signed", r.mustSwim("verify", "--levels", "--allow-unsigned"), "authorized  yes", "1 approvals, each met its lookup.yml rule")
+	contains(t, "signed", r.mustSwim("verify", "--levels", "--allow-unsigned"), "authorized  yes", "1 approval, each met its lookup.yml rule")
 
 	// FLAG=1 for a guard whose rule says signed: it runs, but it isn't
 	// authorized.
