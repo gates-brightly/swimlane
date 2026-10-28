@@ -6,6 +6,7 @@
 # After:   1
 # Timeout: 30m
 # Workspace: live
+# Signoff: swim/e2e
 # swim:lint-ignore-file workspace-live go test reads the whole checkout
 #
 # Lane 2 of this repo's CI (lane.1.sh lists them all). The Go e2e suite

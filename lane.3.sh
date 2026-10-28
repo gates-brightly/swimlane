@@ -6,6 +6,7 @@
 # After:   1
 # Timeout: 15m
 # Workspace: live
+# Signoff: swim/fault
 # swim:lint-ignore-file workspace-live go test reads the whole checkout
 #
 # Lane 3 of this repo's CI (lane.1.sh lists them all). A crash at any
