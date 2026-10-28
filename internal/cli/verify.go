@@ -49,8 +49,8 @@ type verifier struct {
 	files            []string        // one line per approvals file
 	unlisted         map[string]bool // fingerprints of signers not in lookup.yml
 	unsigned         []int
-	unsignedBad      string // unsigned entries nothing vouches for (not BROKEN: nothing changed)
-	covered          int    // unsigned entries a later signed one links to
+	unsignedBad      string   // unsigned entries nothing vouches for (not BROKEN: nothing changed)
+	covered          int      // unsigned entries a later signed one links to
 	amended          []string // problems an amend entry acknowledged (swim verify --force)
 	rounds           int
 	approvals        int
