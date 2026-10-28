@@ -1,0 +1,5 @@
+# Who is who: each user's SSH public keys (swim keys --help).
+users:
+  zachgates:
+    keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICUcFI7KcZ1nITZbYXjgcqGt0jg1igcjUEU1Dl2X74xh zbrightly@BrightlyAdmins-MacBook-Pro.local
