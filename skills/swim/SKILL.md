@@ -27,9 +27,11 @@ ls lane.* lanes.*.sh swim.yml .swim 2>/dev/null
   yet. Don't run `swim init` on your own: it edits `.gitignore` and the
   user's config. Propose it when the work fits swim (operational work that
   has to run where you can't), and otherwise stay out of the way.
-- **Version:** this skill was written for **swim 0.20261015.2** or newer,
-  the first release with `swim report`. If `swim --version` is older, or a
-  command named here is unknown, tell the user. `swim version` shows the
+- **Version:** this skill was written for **swim 0.20261028.1** or newer:
+  a dry run ends SKIP (and `swim run` exits 3), `swim status` shows each
+  pending lane's header and guard state, lanes run in a staged copy, and
+  `swim run` refuses a lane with lint errors. If `swim --version` is older,
+  or a command named here is unknown, tell the user. `swim version` shows the
   latest release and its install line, and `swim skill` shows where to get
   the skill that matches the installed swim. If this skill and the binary
   disagree, the binary wins.
@@ -139,7 +141,8 @@ lines or command instead. For anything broken, see
    With subagents, follow [reference/workers.md](reference/workers.md):
    the planner assigns each worker exactly one lane number, and nobody
    touches a lane they weren't given.
-4. **Check:** `swim lint N` until it's clean, then read `swim status N`
+4. **Check:** `swim lint N` until it's clean (`swim run` refuses a lane
+   with any lint error), then read `swim status N`
    before you ask the operator to run anything: it shows the lane's header,
    where each lane it waits on stands (one that hasn't passed skips it),
    and how `swim run` would decide each guard now (approved and by whom,
@@ -152,8 +155,9 @@ lines or command instead. For anything broken, see
 6. **Read results** at your next stopping point: `swim report --earmark`
    (or `swim log N`, `swim log N --yaml`). **PASS only means exit 0.**
    Check the real outcome in the step output: ids, counts, "No changes",
-   the verify stage. `SKIP ... dry run` means a guard wasn't approved.
-   Nothing changed.
+   the verify stage. A round that ends **SKIP** (`dry run: <step>`) ran but
+   a guard wasn't approved: nothing changed, the lanes after it were
+   skipped too, and `swim run` exited 3. A dry run is never a result.
 7. **Close out:** record results where the project tracks them, `swim note
    "<finding>"` for what the next session needs, then `swim archive N --as
    <what-happened>` and `swim stub N "<why idle>"`. Out-of-scope findings go
@@ -192,11 +196,9 @@ The rules that keep streams apart:
   version. To change a dispatched lane, `swim queue rm` its batch (if it
   hasn't started) and dispatch again, or wait for it to finish.
 - **Shared setup takes turns.** Batches that pull in the same setup lane
-  (`After: 1`) run one after another, not side by side. Expect that wait.
-  A swim older than the fix for this (swimlane `8fc50d1`) starts them
-  together, and all but one fail at once with "swim 1 is already
-  running". There, queue such lanes together as one batch (`swim queue
-  add 2 3 4`).
+  (`After: 1`) run one after another, not side by side. Expect that wait,
+  or queue lanes that belong together as one batch (`swim queue add 2 3
+  4`): one run, so `After:` between them holds.
 - **Only block when there's nothing else to do.** Once every task is
   dispatched or waiting on results, `swim report --earmark --wait` blocks
   until something new is written. Use it then, and only then.
@@ -207,7 +209,7 @@ The rules that keep streams apart:
   user once.
 - **A guarded change dispatched without approval is a dry run.** Flag it
   (⚠), keep working, and check later whether the operator approved it.
-  Never treat a dry run as validated.
+  Its batch ends `skipped`, not passed. Never treat a dry run as validated.
 
 [reference/streams.md](reference/streams.md) walks through an example and
 shows what to keep in the task list.
@@ -257,6 +259,11 @@ from what the previous ones left behind.
   "ours" from "theirs".
 - **Declare ordering in the header,** not in prose: `# After: 2 3`,
   `# Locks: name`, `# Includes: lib/x.sh` for anything you `source`.
+- **The lane runs in a staged copy** holding only the script and what
+  `# Includes:` pins, so what runs is what was approved. A repo file it
+  reads but doesn't pin isn't there: pin it, or (rarely, and the approval
+  says so) add `# Workspace: live`. Write the lane's own outputs to
+  `$SWIM_OUT`; `$SWIM_ROOT` is the repo root, for the files the round acts on.
 - **bash 3.2** (macOS): no associative arrays, `mapfile` or `${x,,}`. **No
   `set -e`.** A failed `run` doesn't stop the round; a failed `gate` does.
 - **No `git push` / `commit` / `pull`** anywhere in a lane, not even in an

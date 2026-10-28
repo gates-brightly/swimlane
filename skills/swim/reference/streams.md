@@ -60,7 +60,7 @@ swim queue add 23                     # → queued #44
 swim report --earmark --wait --name "$SWIM_SESSION"
 #   #42 passed: check its output (PASS only means exit 0), close billing out.
 #   #43 passed: check it, close orders out.
-#   #44 passed, but its change was SKIP (dry run): not validated yet.
+#   #44 skipped: its change was a dry run (USERS_ALLOW_DROP_INDEX not approved). Not validated yet.
 ```
 
 ## When to look

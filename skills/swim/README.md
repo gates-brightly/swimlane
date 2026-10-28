@@ -20,7 +20,7 @@ and read the results back. It never runs or approves anything itself.
   something looks wrong, and what to do after a round fails partway through
   a change.
 
-**Version:** written for swim 0.20261015.2 or newer. The skill checks
+**Version:** written for swim 0.20261028.1 or newer. The skill checks
 `swim --version` and tells the user when the binary is older, or when a
 command it names is unknown. To update, run `swim skill`: it points at the
 copy that matches the installed swim (its release tag). `swim version`

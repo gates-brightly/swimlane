@@ -47,9 +47,10 @@ is read as part of it, so explain things in the `# Goal:` block instead.
 | Header | Meaning |
 |---|---|
 | `Job:` | Written by `swim new`. Don't edit it. |
-| `After: 1` | Start once swim 1 passes. Skipped if it fails. |
+| `After: 1` | Start once swim 1 passes. Skipped if it fails or dry-runs (SKIP). |
 | `Locks: tf/orders` | Never overlap another lane that holds this lock. |
-| `Includes: lib/orders.sh` | Every local file the lane sources, so the approval pins it. |
+| `Includes: lib/orders.sh` | Every repo file the lane sources or reads, so the approval pins it. The lane runs in a staged copy holding only the script and these: an unpinned file isn't there. |
+| `Workspace: live` | Rarely: run in the working tree instead of the staged copy (the approval says so, and `swim lint` warns). |
 | `Guards: FLAG  <action>` | Each guard flag, with what it approves, the date and the reason. |
 | `Observe: name = cmd` | A fact swim can't pin (the account, a binary on PATH). It's read at approval and again before the guarded step, and a difference ends the round as drift. |
 | `Timeout: 30m` | The whole round's limit. |
