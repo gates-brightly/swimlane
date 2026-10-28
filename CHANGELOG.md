@@ -304,6 +304,11 @@ and read.
 
 ### Fixed
 
+- **A batch another swim queued says so when it's refused.** "its manifest
+  changed since it was queued" now adds "queued by swim X, run by swim Y
+  (queue it again with this swim)" when the swims differ: two builds can
+  pin the same files differently. Queue entries record the swim with its
+  commit (`0.20261028 (712d4e7)`), so builds between releases are told apart.
 - **A swimmer whose claim was taken over stops its batch.** A swimmer that
   lost its queue claim (another took it over after the lease) used to run
   on; it now interrupts its lanes. A lease is judged by when this host last
