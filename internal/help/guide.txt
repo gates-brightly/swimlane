@@ -61,8 +61,6 @@ COMMANDS
   version                  swim's version and the newest release tag in its repo (git ls-remote)
   skill                    how to install the Claude skill for swim (skills/swim)
   interrupt N|JOB          ask one running lane to stop at its next step boundary
-  pause N|JOB [--wait]     hold a running lane before its next step, alive (--all: every lane, no claims)
-  unpause N|JOB            let a paused lane go on (swim resume: the same; --all)
   claim N [--for D]        hold a lane while this session writes its round (swim new does; --release, --break)
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
@@ -876,7 +874,6 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         outputs_keep: 14d                # swim doctor --fix prunes older round outputs no lane uses
         queue_lease: 2m                  # a swimmer's heartbeat holds this long (other hosts)
         claim_lease: 2h                  # a lane claim (swim new, swim claim) lasts this long
-        pause_warn: 4h                   # swim doctor warns about a lane paused longer
         watch_batches: 4                 # queued batches one swim watch runs at once
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
         cache_dir: ~/.cache/swim         # where tool caches live (CACHE); config.yml only

@@ -45,8 +45,6 @@ var Commands = map[string]string{
                  heartbeat every third of this while it runs a batch; seen
                  from another host, a claim with an older heartbeat is
                  orphaned. Default 2m.
-    pause_warn   duration (1m or more)    swim doctor warns about a lane paused
-                 (swim pause) longer than this. Default 4h.
     claim_lease  duration (1m or more)    how long a lane claim (swim new,
                  swim claim) lasts unless refreshed. Default 2h.
     watch_batches  a number (1 or more)   how many queued batches one swim
@@ -90,7 +88,7 @@ var Commands = map[string]string{
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
-         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt] [--replace]
+         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see OTHER LANGUAGES)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
@@ -112,11 +110,6 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
       one fails or is skipped, or if a dependency outside the run holds a
       round that hasn't passed. Cycles stop the run before it starts.
     - With more than one lane, lanes get no stdin (prompts fail closed).
-    - A lane paused by swim pause holds a live round: swim run N on it asks
-      (at a terminal, default no) to end that round as interrupted and run
-      the lane's new job; without a terminal, --replace does it, and nothing
-      else does. On the same job: swim unpause N resumes it, --replace
-      restarts it from the top.
     - Ctrl-C (see INTERRUPTING in swim guide): the first press stops every
       lane at its next step boundary (running steps finish, no new step
       starts, lanes not yet started are skipped); the second interrupts the
@@ -206,7 +199,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   EXECUTION MANIFEST in swim guide.
 `,
 	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
-         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt] [--replace]
+         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
@@ -955,7 +948,7 @@ swim keys pin
   terminal: its current step finishes, no further step starts, and the round
   ends interrupted (STOP  interrupted by operator (after: <step>), exit 130).
   Other lanes keep running. The same thing the first Ctrl-C does to every
-  lane of a swim run. A paused lane (swim pause) ends the same way.
+  lane of a swim run.
 `,
 	"claim": `swim claim N [--for D]
 swim claim N --release [--force]
@@ -975,31 +968,6 @@ swim claim N --break "<reason>"
   SWIM_SESSION per session, or two sessions of one user on one machine are
   one. Claims are advisory: they guard swim's commands, not an editor
   writing lane.N.sh, and stay in this checkout's .swim/claims/.
-`,
-	"pause": `swim pause N|JOB ... [--wait] [--note TEXT]
-swim pause --all [--wait] [--note TEXT]
-
-  Hold a running lane before its next step, without ending it: its current
-  step finishes, then the round waits, its process, staged script,
-  approvals, slot and locks all kept. The log gets
-  PAUSE  by <who> after "<step>" (next: "<step>"); swim status shows it
-  paused. A lane still waiting in a run is held before it starts. It holds
-  before a run, gate, snapshot, evidence, guard or confirm; never inside a step. A pause doesn't expire. The round's Timeout: doesn't count the
-  paused time. --wait returns once the lane holds; --note says why.
-  --all holds every lane in the repo and stops queue swimmers claiming
-  batches, until swim unpause --all.
-  Ways out: swim unpause N (or swim resume N) goes on at the step it held
-  before (RESUME  by <who> (paused <time>)); swim interrupt N, or the first
-  Ctrl-C of its run, ends it interrupted; swim run N on a new job ends it
-  (asked at a terminal, or --replace) and runs the new one.
-`,
-	"unpause": `swim unpause N|JOB ... | --all
-swim resume  N|JOB ... | --all      (the same command)
-
-  Let paused lanes go on at the step they held before (swim pause). --all
-  lifts every lane's pause and the repo-wide one, so swimmers claim batches
-  again. The record says unpause whichever name is typed. A lane that
-  isn't paused is left alone (exit 0).
 `,
 	"lint": `swim lint [N|JOB ...] [--strict] [--yaml] [--fix]
 
@@ -1126,13 +1094,10 @@ swim resume  N|JOB ... | --all      (the same command)
                               repo for over a day; if that machine is gone,
                               release it (rm .swim/laneN.pid, then swim
                               status --rebuild)
-    pause-long (warn)         a lane paused (swim pause) longer than
-                              pause_warn (4h), holding its locks and slot;
-                              or the repo-wide pause left on that long
     removed-setting (warn)    a setting swim no longer has (chime,
                               schedule_tz, observe, modules, secrets,
                               ambient_credentials, secrets_key, headless,
-                              hub): it's ignored; delete it
+                              hub, pause_warn): it's ignored; delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key
@@ -1253,12 +1218,8 @@ swim resume  N|JOB ... | --all      (the same command)
 `,
 }
 
-// For is a command's help: Commands, with an alias (swim resume is swim
-// unpause) resolved.
+// For is a command's help.
 func For(name string) (string, bool) {
-	if name == "resume" {
-		name = "unpause"
-	}
 	h, ok := Commands[name]
 	return h, ok
 }
@@ -1278,7 +1239,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "cache", "new", "plan", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "pause", "unpause", "claim", "queue", "watch", "wait", "approve", "revoke",
+	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
@@ -1316,7 +1277,7 @@ MORE
   keys, chain                  who's who; chain repair and anchoring
   env, cache                   what lanes get to work with
   archive, clean, stub, note   tidy up and record
-  pause, unpause, interrupt, wait, claim     control running lanes
+  interrupt, wait, claim       control running lanes
   report                       what changed since you last looked
   ci, config, lock, changelog, version, skill
 

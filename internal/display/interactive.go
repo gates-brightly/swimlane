@@ -128,21 +128,6 @@ func (d *Display) startInteractive() bool {
 				it.model.note = note
 				it.dirty = true
 				d.mu.Unlock()
-			case actPause, actPauseAll:
-				ln := 0
-				if act == actPause {
-					d.mu.Lock()
-					ln = it.model.preLane
-					d.mu.Unlock()
-				}
-				note := "pausing isn't available in this run"
-				if d.onPause != nil {
-					note = d.onPause(ln)
-				}
-				d.mu.Lock()
-				it.model.note = note
-				it.dirty = true
-				d.mu.Unlock()
 			case actYes, actNo:
 				d.mu.Lock()
 				ch := it.answers[it.model.answerLane]

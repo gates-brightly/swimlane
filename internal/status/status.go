@@ -74,19 +74,6 @@ type Lane struct {
 	Message   string `yaml:"message,omitempty"`
 	Progress  string `yaml:"progress,omitempty"`
 	MessageAt string `yaml:"message_at,omitempty"`
-	// A paused round (swim pause): its process holds before its next step
-	// (State stays running, or waiting for a lane not started yet). Who
-	// paused it and when, the step it held after and the one it will run
-	// next, and the note given. PausedS is the round's total paused time
-	// so far, which its Timeout: deadline moves out by.
-	PausedAt    string  `yaml:"paused_at,omitempty"`
-	PausedBy    string  `yaml:"paused_by,omitempty"`
-	PausedAfter string  `yaml:"paused_after,omitempty"`
-	NextStep    string  `yaml:"next_step,omitempty"`
-	PauseNote   string  `yaml:"pause_note,omitempty"`
-	PausedS     float64 `yaml:"paused_s,omitempty"`
-	// Pauses are the round's pauses so far: when each began, how long.
-	Pauses []PauseSpan `yaml:"pauses,omitempty"`
 	// Outputs are the last round's outputs (# Outputs:, output KEY value):
 	// name -> SHA-256, in .swim/out/<job>/<run>/.
 	Outputs map[string]string `yaml:"outputs,omitempty"`
@@ -295,13 +282,6 @@ func render(f *File) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// PauseSpan is one pause of a round (swim pause): when it began
-// (RFC3339, sub-second) and how long it held.
-type PauseSpan struct {
-	At string  `yaml:"at"`
-	S  float64 `yaml:"s"`
-}
-
 // Alive reports whether the lane's recorded process (PID, on Host) may
 // still be running: it's alive here, or it's on another machine, which
 // this one can't check, so it counts as alive (swim never ends another
@@ -325,8 +305,6 @@ func (l *Lane) ResetRun() {
 	l.Stages = nil
 	l.Handlers = nil
 	l.Message, l.Progress, l.MessageAt = "", "", ""
-	l.PausedAt, l.PausedBy, l.PausedAfter, l.NextStep, l.PauseNote, l.PausedS = "", "", "", "", "", 0
-	l.Pauses = nil
 	l.FailedSteps = []string{}
 	l.AutoApproved, l.AutoVia, l.FlagApproved = nil, "", nil
 	l.DryRun = nil

@@ -42,7 +42,6 @@ type Display struct {
 	in          *os.File // the terminal to read answers from; nil if none
 	onInterrupt func()
 	onPre       func(lane int, choice string) string
-	onPause     func(lane int) string
 	askMu       sync.Mutex // line-mode questions go one at a time
 	asking      bool       // a line-mode question is on screen: lane lines are held
 	held        []string   // lines held while asking, printed after the answer
@@ -67,9 +66,6 @@ type Options struct {
 	// the interactive view: choice is "approved", "declined" or "" (clear).
 	// It returns what to tell them ("swim 3: pre-approved (2 guards)").
 	OnPre func(lane int, choice string) string
-	// OnPause runs on p (lane) and P (lane 0: every lane of the run): it
-	// pauses, or lets go on, and returns what to tell the operator.
-	OnPause func(lane int) string
 	// OnInterrupt runs when Ctrl-C is typed in the interactive view (raw
 	// mode turns off the terminal's own signal). nil sends SIGINT to the
 	// terminal's foreground process group, as the terminal would have.
@@ -97,7 +93,6 @@ func New(o Options, views []LaneView) *Display {
 	}
 	d.onInterrupt = o.OnInterrupt
 	d.onPre = o.OnPre
-	d.onPause = o.OnPause
 	if d.title == nil {
 		d.title = func(time.Time) string { return "swim" }
 	}

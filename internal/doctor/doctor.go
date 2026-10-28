@@ -95,7 +95,7 @@ var Checks = []Check{
 	{"config-parse", false, "the config file doesn't load", checkConfigParse},
 	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
 	{"lanes-setting", false, "a `lanes:` setting (swim finds the lanes in use; it's ignored)", checkLanesSetting},
-	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key, headless, hub; it's ignored)", checkRemovedSettings},
+	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key, headless, hub, pause_warn; it's ignored)", checkRemovedSettings},
 	{"gitignore", true, "swim's .gitignore block is missing or out of date", checkGitignore},
 	{"tracked", false, "lane scripts or swim state tracked by git", checkTracked},
 	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
@@ -112,7 +112,6 @@ var Checks = []Check{
 	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
 	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
-	{"pause-long", false, "a lane has been paused (swim pause) longer than pause_warn, holding its locks and slot; or the repo-wide pause is left on", checkPauseLong},
 	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
 	{"cache-unused", false, "tool caches unused for 30 days, or the repo's caches over cache_max", checkCacheUnused},
 }
@@ -808,42 +807,6 @@ func checkRemoteRunning(o *Options) []finding.Finding {
 		out = append(out, fd(finding.Warn, "remote-running", o.rel(lane.PIDFile(o.Root, l.Lane)),
 			fmt.Sprintf("if %s is gone for good: rm .swim/lane%d.pid, then swim status --rebuild", l.Host, l.Lane),
 			"swim %d has been %s on %s for %s (pid %d there); this machine can't tell whether it still is", l.Lane, l.State, l.Host, time.Since(t).Round(time.Hour), l.PID))
-	}
-	return out
-}
-
-// checkPauseLong: a pause never ends on its own, and a paused lane keeps
-// its locks and its slot, so one left paused past pause_warn (default 4h)
-// is worth a look; so is a repo-wide pause that long, which keeps every
-// worker from claiming batches. It only warns.
-func checkPauseLong(o *Options) []finding.Finding {
-	limit := 4 * time.Hour
-	if o.Cfg != nil {
-		limit = o.Cfg.PauseWarnFor()
-	}
-	var out []finding.Finding
-	if st, _ := status.Load(o.Root); st != nil {
-		for _, l := range st.Lanes {
-			if l.PausedAt == "" || !l.Alive() {
-				continue
-			}
-			t, err := time.Parse(time.RFC3339, l.PausedAt)
-			if err != nil || time.Since(t) < limit {
-				continue
-			}
-			what := "holding"
-			if len(l.Locks) > 0 {
-				what += " locks " + strings.Join(l.Locks, ", ") + " and"
-			}
-			out = append(out, fd(finding.Warn, "pause-long", ".swim/status.yml", fmt.Sprintf("swim unpause %d, or swim interrupt %d to end it", l.Lane, l.Lane),
-				"swim %d has been paused for %s by %s (after %q), %s its slot", l.Lane, time.Since(t).Round(time.Minute), l.PausedBy, l.PausedAfter, what))
-		}
-	}
-	if r, on := lane.RepoPause(o.Root); on {
-		if t, err := time.Parse(time.RFC3339, r.At); err == nil && time.Since(t) >= limit {
-			out = append(out, fd(finding.Warn, "pause-long", ".swim/pause", "swim unpause --all",
-				"the repo has been paused for %s (swim pause --all by %s): no worker claims a batch", time.Since(t).Round(time.Minute), r.By))
-		}
 	}
 	return out
 }

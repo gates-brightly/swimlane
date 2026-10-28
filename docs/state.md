@@ -103,16 +103,6 @@ Notes:
   chain a round entry, and the lane is `interrupted`. `swim status
   --rebuild` does the same for status alone. A new run of the lane isn't
   blocked either way. See [recovery](recovery.md#a-lane-stuck-running).
-- **A paused lane** (`swim pause`) stays `running` (or `waiting`, paused
-  before it starts): its process holds before its next step, so every
-  check that a lane is running still holds. `paused_at`, `paused_by`,
-  `paused_after`, `next_step` and `pause_note` say so while it holds;
-  `paused_s` is the round's total paused time, which its `Timeout:`
-  deadline moves out by. The request is `.swim/laneN.pause` (the run,
-  who, when, the note), ignored and cleared for another run as a stop
-  request is; `.swim/pause` is the repo-wide pause (`--all`), which also
-  keeps swimmers from claiming batches. The log's `PAUSE` and
-  `RESUME` lines count toward nothing; a swim from before them skips them.
 - **A claimed lane** (`swim new`, `swim claim`) has a lease in
   `.swim/claims/lane.N.yml` (owner, session, host, created, expires, job)
   while a session writes its round. It isn't a lane state: it guards

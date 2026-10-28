@@ -373,7 +373,6 @@ type runFlags struct {
 	noTUI            bool
 	noPrompt         bool
 	yes              bool
-	replace          bool // end a paused round on the lane (swim pause) and run the new one
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
@@ -389,8 +388,7 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 	}
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun,
-			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes,
-			"replace": &rf.replace},
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
@@ -465,13 +463,6 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
-	}
-	// A paused lane (swim pause) holds a live round: running anything on it
-	// ends that round first, asked at a terminal or with --replace.
-	for _, n := range lanes {
-		if err := replaceIfPaused(root, n, rf); err != nil {
-			return err
-		}
 	}
 	// Pre-flight: lint's error-level checks the launcher doesn't enforce (lint.go).
 	if err := lintPreflight(root, cfg, lanes, rerun); err != nil {
@@ -595,21 +586,6 @@ func planClaimWarnings(o launcher.Options) {
 		}
 		if c := lane.ReadClaim(o.Root, pl.Lane); c != nil && c.Session != sess {
 			fmt.Printf("warning: swim %d: %s; it may still be being written\n", pl.Lane, claimText(c))
-		}
-	}
-	// Paused lanes (swim pause) hold their round, slot and locks: a lane
-	// that waits on one, or needs one of its locks, waits until it goes on.
-	if st, _ := status.Load(o.Root); st != nil {
-		for _, l := range st.Lanes {
-			if l.PausedAt == "" || !l.Alive() {
-				continue
-			}
-			held := ""
-			if len(l.Locks) > 0 {
-				held = ", holding " + strings.Join(l.Locks, ", ")
-			}
-			fmt.Printf("note: swim %d is paused (by %s, after %q%s): lanes that wait on it, or need its locks, wait until swim unpause %d\n",
-				l.Lane, or(l.PausedBy, "?"), l.PausedAfter, held, l.Lane)
 		}
 	}
 }
@@ -771,11 +747,8 @@ func cmdStep(args []string) error {
 	if expectFail && rt.Max > 0 {
 		return usagef("--expect-fail and --retry don't go together: a step expected to fail is run once")
 	}
-	// A paused round (swim pause) holds here, before the step starts.
-	holdIfPaused(root, n, os.Getenv("SWIM_RUN"), label)
-	// lane_init exports the round's deadline (Timeout:) as epoch seconds;
-	// time the round spent paused moves it out.
-	deadline := roundDeadline(root, n)
+	// lane_init exports the round's deadline (Timeout:) as epoch seconds.
+	deadline := roundDeadline()
 	logPath := os.Getenv("STEP_LOG")
 	if logPath == "" {
 		logPath = "step.log"

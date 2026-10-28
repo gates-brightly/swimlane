@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/config"
-	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
 )
 
@@ -51,9 +50,6 @@ func claimDue(root string, cfg *config.Config) (*queue.Entry, error) {
 	entries, err := queue.List(root, false)
 	if err != nil {
 		return nil, err
-	}
-	if _, paused := lane.RepoPause(root); paused {
-		return nil, nil // swim pause --all: no worker claims a batch
 	}
 	queue.SortWaiting(entries)
 	now := time.Now()

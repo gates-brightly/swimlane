@@ -172,21 +172,27 @@ func TestWatchLogsKey(t *testing.T) {
 	tr.waitFor("▸ swim 2")
 	tr.send("l")
 	tr.waitFor("swim 2 has no current log")
-	// A batch (the repo paused, so no swimmer claims it): its lanes' logs,
-	// from their last run.
-	r.mustSwim("pause", "--all")
-	r.mustSwim("queue", "add", "1")
+	// A batch (its lane busy in another run, so no swimmer claims it): its
+	// lanes' logs, from their last run.
+	r.script(2, "held lane 2", `run "hold" `+hold("go"))
+	wait := startRun(t, r, "run", "2", "--plain")
+	waitFor(t, func() bool { return laneOf(r, 2).CurrentStep == "hold" })
+	r.mustSwim("queue", "add", "2")
 	tr.waitFor("#1    queued")
 	tr.send("\x1b[B")
 	tr.waitFor("▸ #1")
 	tr.send("l")
 	tr.waitFor("· logs")
-	tr.waitFor("[1] ")
+	tr.waitFor("[2] ")
 	tr.send("q")
 	tr.waitFor("▸ #1")
 	tr.send("\x03")
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d after ctrl-c", code)
+	}
+	r.release("go")
+	if out, code := wait(); code != 0 {
+		t.Errorf("the held run: exit %d\n%s", code, out)
 	}
 }
 
@@ -236,7 +242,7 @@ func TestWatchNoTrashKey(t *testing.T) {
 	r.script(1, "keep me", `run "one" true`)
 	tr := r.startTUI(nil, "watch")
 	tr.waitFor("▸ swim 1")
-	tr.waitFor("p pause  ^C quit")
+	tr.waitFor("s submit  ^C quit")
 	tr.send("d")
 	tr.send("o")
 	tr.waitFor("running output hidden")
@@ -245,32 +251,4 @@ func TestWatchNoTrashKey(t *testing.T) {
 	}
 	tr.send("\x03")
 	tr.wait()
-}
-
-// p on a running lane's row pauses it (the row says paused), p again lets
-// it go on; the repo-wide pause shows on the title.
-func TestWatchPauseKey(t *testing.T) {
-	long(t)
-	r := newSerialRepo(t, "")
-	r.script(1, "held", `run "one" `+hold("go")+`
-run "two" true`)
-	wait := startRun(t, r, "run", "1", "--plain")
-	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "one" })
-	tr := r.startTUI(nil, "watch")
-	tr.waitFor("▸ swim 1")
-	tr.send("p")
-	tr.waitFor("swim 1: pausing after")
-	r.release("go")
-	tr.waitScreen("the paused row", func(s string) bool { return strings.Contains(s, "paused") && laneOf(r, 1).PausedAt != "" })
-	tr.send("p")
-	tr.waitFor("swim 1: resumed")
-	if _, code := wait(); code != 0 {
-		t.Fatalf("the run after p, p: exit %d\n%s", code, r.log(1))
-	}
-	r.mustSwim("pause", "--all")
-	tr.waitFor("paused: swimmers claim nothing")
-	r.mustSwim("unpause", "--all")
-	tr.send("\x03")
-	tr.wait()
-	contains(t, "log", r.log(1), "PAUSE  by ", "RESUME  by ", "PASS  two")
 }

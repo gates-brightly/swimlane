@@ -697,6 +697,47 @@ func (r *repo) release(name string) {
 	}
 }
 
+// startRun runs swim run ARGS in the background and returns a wait func
+// for its output and exit code.
+func startRun(t *testing.T, r *repo, args ...string) func() (string, int) {
+	t.Helper()
+	c := r.cmd(bin, args...)
+	var out bytes.Buffer
+	c.Stdout, c.Stderr = &out, &out
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	code := 0
+	go func() {
+		if err := c.Wait(); err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				code = ee.ExitCode()
+			}
+		}
+		close(done)
+	}()
+	t.Cleanup(func() { c.Process.Kill() })
+	return func() (string, int) {
+		select {
+		case <-done:
+		case <-time.After(waitDeadline):
+			t.Fatalf("swim %v didn't end:\n%s", args, out.String())
+		}
+		return out.String(), code
+	}
+}
+
+// laneOf is lane n's status entry, empty before it has one.
+func laneOf(r *repo, n int) status.Lane {
+	if f, err := status.Load(r.root); err == nil && f != nil {
+		if l := f.Get(n); l != nil {
+			return *l
+		}
+	}
+	return status.Lane{}
+}
+
 var jobLineRE = regexp.MustCompile(`(?m)^job: (\S+)$`)
 
 func TestJobIDsAndPinning(t *testing.T) {

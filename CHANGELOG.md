@@ -151,6 +151,24 @@ already pushed to origin's main) with the next tag and pushes that tag.
   `.swim/hub-runs.yml`, `.swim/headless.*`, `.swim/runs/*.yml`,
   `~/.config/swim/auth.yml`, `hub-admin.yml`, `runners/` and
   `worker-keys/`, and a hub's `--state` directory can be deleted.
+- **Removed: swim pause, unpause and resume.** `swim pause N|JOB` (with
+  `--wait` and `--note`), the repo-wide `swim pause --all`, `swim unpause`
+  and its alias `swim resume` (and `--all`), `swim run --replace` (which
+  ended a paused round), the `p` key in `swim watch` and `p` / `P` in
+  `swim run`'s live view, the paused row and fields in `swim status`,
+  `swim watch` and `swim run`, and doctor's `pause-long` are gone: `swim
+  interrupt N` stops a lane at its next step boundary. A round's
+  `Timeout:` is plain wall-clock time again, and `status.yml` no longer
+  records `paused_at`, `paused_by`, `paused_after`, `next_step`,
+  `pause_note`, `paused_s` or `pauses`. `pause_warn` in `swim.yml` (or
+  `config.yml`) loads as before (ignored; `swim doctor`:
+  `removed-setting`); it wasn't part of the policy hash. Round entries no
+  longer carry `paused_s` or `replaced_by`; older ones that do still
+  verify, and older logs' `PAUSE` and `RESUME` lines still read (as marks
+  that count toward nothing). A pause an older swim left on disk holds
+  nothing: swimmers claim batches and lanes run past it, and
+  `.swim/pause`, `.swim/laneN.pause`, `.swim/laneN.resumed` and
+  `.swim/laneN.replaced` can be deleted.
 - **Cleanup is archive, stub and clean.** `swim clean` now idles each
   finished lane directly: it archives its logs (as `swim archive`) and
   stubs its script (as `swim stub`), keeping a script edited since its

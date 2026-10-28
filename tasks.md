@@ -74,7 +74,6 @@ session needed it or someone asks for it:
 
 | Candidate | Why it's on the list |
 |---|---|
-| `pause` / `unpause` | `interrupt` covers stopping; pausing is rare |
 | `cache`, `cache restore\|save` | build-tool speed-ups, not ops safety |
 | `earmark` (`report --earmark`) | `swim log` and `status` cover catching up |
 

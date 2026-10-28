@@ -47,7 +47,6 @@ func cmdApproveHook(args []string) error {
 	}
 	flag, desc := args[1], cfg.Masker(os.Environ()).String(args[2])
 	job, run := os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN")
-	holdIfPaused(root, n, run, desc) // a paused round holds before its guard too
 	dryRun := func(why string) error {
 		detail := "dry run: set " + flag + "=1 to approve"
 		if why != "" {
@@ -170,7 +169,7 @@ func cmdApproveHook(args []string) error {
 	}
 	resp := ask(req, func() bool {
 		return lane.StopRequested(root, n, run)
-	}, deadline())
+	}, roundDeadline())
 	// A broker says which lane and job asked: the approval is theirs,
 	// whatever this process claimed.
 	if resp.Lane != 0 && resp.Lane != n {
@@ -282,7 +281,7 @@ func approveLaunched(root string, cfg *config.Config, laneArg string, n int, fla
 	req := approval.Request{Lane: n, Job: os.Getenv("SWIM_JOB"), Flag: flag, Desc: desc, Token: os.Getenv(approval.TokenEnv), FlagSet: flagSet}
 	resp, err := approval.Ask(os.Getenv(approval.EnvVar), req, func() bool {
 		return lane.StopRequested(root, n, os.Getenv("SWIM_RUN"))
-	}, deadline())
+	}, roundDeadline())
 	if err != nil && resp.Why == "" {
 		resp.Why = err.Error()
 	}
@@ -373,10 +372,14 @@ func operator() string {
 	return "operator"
 }
 
-// deadline is the round's Timeout, from SWIM_DEADLINE (epoch; 0 for none).
-func deadline() time.Time {
-	n, _ := strconv.Atoi(os.Getenv("SWIM_LANE"))
-	return roundDeadline(os.Getenv("SWIM_ROOT"), n)
+// roundDeadline is the round's Timeout: deadline, from SWIM_DEADLINE
+// (epoch seconds, which lane_init exports); the zero time for none.
+func roundDeadline() time.Time {
+	s, err := strconv.ParseInt(os.Getenv("SWIM_DEADLINE"), 10, 64)
+	if err != nil || s <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(s, 0)
 }
 
 // approveRecorded is set when swim _approve has put an approval in the

@@ -36,21 +36,14 @@ type watchView struct {
 }
 
 const (
-	watchKeys  = "rqsxlop" + string(display.PickEnter)
-	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  p pause  ^C quit" // x (clear the batch) is on the submit row
+	watchKeys  = "rqsxlo" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  ^C quit" // x (clear the batch) is on the submit row
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
 	w := &watchView{root: root, cfg: cfg, yes: yes, picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
 	w.picker.Tail = w.stream
-	// The repo-wide pause (swim pause --all) is on the title while it holds.
-	w.picker.Title = func() string {
-		t := "swim watch · " + w.root
-		if _, on := lane.RepoPause(w.root); on {
-			t += " · paused: swimmers claim nothing · swim unpause --all"
-		}
-		return t
-	}
+	w.picker.Title = func() string { return "swim watch · " + w.root }
 	return w
 }
 
@@ -284,9 +277,6 @@ func statusTime(s *string) (time.Time, bool) {
 // laneRowState is how a lane's row shows its state: a script holding a job
 // that hasn't run yet is pending, whatever its last round did.
 func laneRowState(l *status.Lane, info lane.Info) (string, string) {
-	if l != nil && l.PausedAt != "" && l.Alive() {
-		return "paused", ui.Yellow
-	}
 	if l == nil {
 		if info.Pending() {
 			return "pending", ""
@@ -369,9 +359,6 @@ func (w *watchView) act(id string, key rune) string {
 		return "enter submits the batch; x clears it"
 	}
 	if kind == "queue" {
-		if key == 'p' {
-			return "p pauses a lane: pick its row (swim pause --all holds every batch)"
-		}
 		e, err := queue.Find(w.root, ref)
 		if err != nil {
 			return err.Error()
@@ -391,9 +378,6 @@ func (w *watchView) act(id string, key rune) string {
 		return w.runQueued(e)
 	}
 	n, _ := strconv.Atoi(ref)
-	if key == 'p' {
-		return w.togglePause(n)
-	}
 	if key == display.PickEnter {
 		return w.showLaneOutput(n)
 	}
@@ -453,21 +437,6 @@ func (w *watchView) submitStaged() string {
 		return "not queued: " + msg
 	}
 	w.staged = nil
-	return msg
-}
-
-// togglePause is p on lane n: pause its running round, or let a paused one
-// go on.
-func (w *watchView) togglePause(n int) string {
-	st, _ := status.Load(w.root)
-	if _, paused := lane.LanePause(w.root, n, ""); paused {
-		msg, _ := unpauseOne(w.root, st, n, operator())
-		return msg
-	}
-	msg, err := pauseOne(w.root, st, n, operator(), "")
-	if err != nil {
-		return err.Error() + " (p pauses a running lane)"
-	}
 	return msg
 }
 

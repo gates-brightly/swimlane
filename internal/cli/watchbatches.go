@@ -400,9 +400,6 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 					unlock()
 					return code, err
 				}
-				if _, paused := lane.RepoPause(root); paused {
-					waiting = nil // swim pause --all: no batch starts until swim unpause --all
-				}
 				for _, e := range b.startable(cfg, waiting) {
 					bp, err := b.start(cfg, e)
 					if err != nil {

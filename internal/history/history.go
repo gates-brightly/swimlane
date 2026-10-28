@@ -48,13 +48,9 @@ const (
 	Prune        = "prune"         // swim prune: leftovers deleted (detail: name, counts, bytes)
 	Trash        = "trash"         // swim trash: one lane's files moved aside (detail: stamp, files, from)
 	Untrash      = "untrash"       // swim trash --restore: a trashed lane's files put back
-	Pause        = "pause"         // swim pause N: a lane holds before its next step (detail: after which step, note)
-	Unpause      = "unpause"       // swim unpause N (or swim resume N): ... and goes on
-	PauseAll     = "pause-all"     // swim pause --all: every lane holds, workers claim nothing
 	Claim        = "claim"         // swim claim N: a session took a lane's claim (a lease while it writes the round)
 	ClaimRelease = "claim-release" // swim claim N --release
 	ClaimBroken  = "claim-broken"  // another session's live claim taken over (--force, --break; detail: from, by, via, why)
-	UnpauseAll   = "unpause-all"   // swim unpause --all
 	// The secret store's events (swim no longer has it; older .swim.log
 	// lines keep them).
 	SecretSet = "secret-set" // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)

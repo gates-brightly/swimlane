@@ -144,7 +144,7 @@ func (a *runAuthority) laneEntry(o *Options, c approval.Caller, e chain.Entry) (
 		Script: e.Script, Manifest: or(c.Manifest, e.Manifest), Result: e.Result, Exit: e.Exit, Log: e.Log,
 		Approvals: e.Approvals, AutoApproved: e.AutoApproved, EnvSHA256: e.EnvSHA256, Handlers: e.Handlers,
 		Outputs: e.Outputs, Inputs: e.Inputs, Evidence: e.Evidence, InputRounds: e.InputRounds,
-		PausedS: e.PausedS, ReplacedBy: e.ReplacedBy, Cache: e.Cache}
+		Cache: e.Cache}
 	return o.record(r)
 }
 

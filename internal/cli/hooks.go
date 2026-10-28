@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -203,11 +202,6 @@ func cmdStart(args []string) error {
 	if !lane.StopRequested(root, n, run) {
 		lane.ClearStop(root, n)
 	}
-	if _, ok := lane.LanePause(root, n, run); !ok {
-		lane.ClearPause(root, n) // a pause left from an earlier run, likewise
-	}
-	os.Remove(lane.ResumedPath(root, n))
-	os.Remove(lane.ReplacedPath(root, n))
 	os.Remove(snapsPath(lane.Log(root, n))) // an earlier round's restores
 	// The round's outputs directory ($SWIM_OUT), fresh for this run.
 	if err := os.MkdirAll(outputs.Dir(root, job, run), 0o755); err != nil {
@@ -587,8 +581,6 @@ func cmdFinish(args []string) error {
 	logPath := lane.Log(root, n)
 	step.RecoverSpool(logPath)
 	lane.ClearStop(root, n) // the round is over: a stop request is spent
-	lane.ClearPause(root, n)
-	os.Remove(lane.ResumedPath(root, n))
 	// So is its status message; the latest goes to the log if it isn't there.
 	if m, ok := lane.ReadMsg(root, n); ok && m.Display() != m.Logged && m.Run == os.Getenv("SWIM_RUN") {
 		appendLog(logPath, "  "+logparse.MsgText(m.Text, m.Progress, time.Now().Format("15:04:05"))+"\n")
@@ -646,7 +638,7 @@ func cmdFinish(args []string) error {
 			Log: chain.Hash([]byte(roundSection(rounds[len(rounds)-1]))), Approvals: approvals, AutoApproved: auto,
 			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums, Evidence: roundEvidence(root, r),
 			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs),
-			PausedS: math.Round(pausedSoFar(root, n).Seconds()*10) / 10, ReplacedBy: replacedBy(root, n), Cache: roundSnaps(logPath)}); err != nil {
+			Cache: roundSnaps(logPath)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 	}
@@ -885,16 +877,4 @@ func laneName(root string, n int) string { return fmt.Sprintf("swim %d", n) }
 func laneBanner(p ui.Painter, root string, n int, suffix string) string {
 	id := strings.TrimPrefix(laneName(root, n), "swim ")
 	return p.Paint(ui.LaneColor(n)+ui.Bold, "swim ") + p.Job(id, ui.Bold) + p.Paint(ui.LaneColor(n)+ui.Bold, suffix)
-}
-
-// replacedBy is the job a paused round of lane n was ended for (swim run
-// --replace), read once: the file is spent.
-func replacedBy(root string, n int) string {
-	p := lane.ReplacedPath(root, n)
-	data, err := os.ReadFile(p)
-	if err != nil {
-		return ""
-	}
-	os.Remove(p)
-	return strings.TrimSpace(string(data))
 }

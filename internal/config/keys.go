@@ -15,7 +15,7 @@ import (
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "pause_warn", "watch_batches", "cache_dir", "cache_max", "cache_slug"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "cache_dir", "cache_max", "cache_slug"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -42,8 +42,6 @@ func (c *Config) Get(key string) (string, error) {
 		return "2m0s", nil
 	case "claim_lease":
 		return c.ClaimLeaseFor().String(), nil
-	case "pause_warn":
-		return c.PauseWarnFor().String(), nil
 	case "watch_batches":
 		return strconv.Itoa(c.WatchBatchesFor()), nil
 	case "cache_dir":
@@ -124,12 +122,6 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d < 10*time.Second {
 			return nil, fmt.Errorf("queue_lease must be a duration of 10s or more, like 2m, got %q", value)
-		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "pause_warn":
-		v := strings.TrimSpace(value)
-		if d, err := time.ParseDuration(v); err != nil || d < time.Minute {
-			return nil, fmt.Errorf("pause_warn must be a duration of 1m or more, like 4h, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "claim_lease":

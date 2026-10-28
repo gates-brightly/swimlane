@@ -106,8 +106,10 @@ type Entry struct {
 	// Finally is a finally lane's round (# Finally:): how each lane it
 	// waited for ended, as it started ("1" -> "pass").
 	Finally map[string]string `json:"finally,omitempty"`
-	// PausedS is a round's total time held by swim pause; ReplacedBy the
-	// job a paused round was ended for (swim run --replace).
+	// PausedS was a round's total time held by swim pause; ReplacedBy the
+	// job a paused round was ended for (swim run --replace). Swim no
+	// longer pauses and writes neither; older entries keep them, and the
+	// hash covers them as written.
 	PausedS    float64 `json:"paused_s,omitempty"`
 	ReplacedBy string  `json:"replaced_by,omitempty"`
 	// Cache are the snapshots (# Cache: snap:) a round restored: files

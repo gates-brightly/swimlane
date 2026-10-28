@@ -39,10 +39,6 @@ const (
 	actPreYes
 	actPreNo
 	actPreClear
-	// p on a selected lane, P anywhere: pause it (or every lane of the
-	// run), or let it go on if it's paused (swim pause).
-	actPause
-	actPauseAll
 )
 
 type tui struct {
@@ -224,13 +220,7 @@ func (t *tui) key(k Key, views []LaneView) action {
 		case 'u':
 			t.preLane = t.laneN
 			return actPreClear
-		case 'p':
-			t.preLane = t.laneN
-			return actPause
 		}
-	}
-	if !t.asking() && k.Code == KeyRune && k.Rune == 'P' {
-		return actPauseAll
 	}
 	v, h, w := t.cur(), t.viewH, t.cols
 	page := h - 1
@@ -500,8 +490,6 @@ var helpText = []string{
 	"Enter          open the lane waiting longest for approval",
 	"y / n          on a lane waiting for approval: approve / decline",
 	"y n u          before it asks: pre-approve, pre-decline, undo",
-	"p              pause the lane before its next step, or let it go on",
-	"P              pause every lane of the run, or let them all go on",
 	"f              lanes ← → visit: every / running / failed",
 	"Esc            back to all lanes, following",
 	"Ctrl-C         interrupt the run (as without the view)",

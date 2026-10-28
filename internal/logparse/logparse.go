@@ -61,8 +61,10 @@ const (
 	Blocked  = "BLOCKED" // a command swim refused to run (counts as a failure)
 	Msg      = "MSG"     // a round's status message (swim msg); never a result
 	Checked  = "CHECKED" // a read-only check stopped where change would begin; never a result
-	Pause    = "PAUSE"   // swim pause held the round before its next step; never a result
-	Resume   = "RESUME"  // ... and swim unpause let it go on; never a result
+	// PAUSE and RESUME (swim pause, which swim no longer has) are in
+	// older logs: read as marks, never a result.
+	Pause  = "PAUSE"
+	Resume = "RESUME"
 )
 
 // Syntax 2 markers and indents.

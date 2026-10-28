@@ -353,7 +353,6 @@ func Run(o Options) (int, error) {
 		},
 		OnInterrupt: func() { ir.handle(syscall.SIGINT) },
 		OnPre:       onPre,
-		OnPause:     func(n int) string { return togglePause(o, sel, n) },
 		NoHold:      o.Unattended,
 	}, views)
 	pre.disp = disp
@@ -570,11 +569,6 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		return oc
 	}
 	if ir.stopsLane(n) {
-		return skip("interrupted before start")
-	}
-	// Paused before it starts (swim pause N, or --all): it waits here,
-	// holding no lock and no slot, until unpaused or the run stops.
-	if waitPaused(o, n, disp, ir); ir.stopsLane(n) {
 		return skip("interrupted before start")
 	}
 	// Take the round's resource locks (# Locks:), all at once: first from the
@@ -1052,7 +1046,7 @@ func watchMsgs(o Options, n int, disp *display.Display) func() {
 		defer close(finished)
 		t := time.NewTicker(200 * time.Millisecond)
 		defer t.Stop()
-		last, lastPaused := "", ""
+		last := ""
 		for first := true; ; first = false {
 			if !first {
 				select {
@@ -1060,11 +1054,6 @@ func watchMsgs(o Options, n int, disp *display.Display) func() {
 					return
 				case <-t.C:
 				}
-			}
-			// swim pause: the row says paused while the round holds.
-			if p := pausedText(o, n); p != lastPaused {
-				lastPaused = p
-				disp.Set(n, func(v *display.LaneView) { v.Paused = p })
 			}
 			m, ok := lane.ReadMsg(o.Root, n)
 			if ok && m.Run != o.RunID {
@@ -1089,67 +1078,8 @@ func watchMsgs(o Options, n int, disp *display.Display) func() {
 	return func() {
 		close(done)
 		<-finished
-		disp.Set(n, func(v *display.LaneView) { v.Message, v.Paused = "", "" })
+		disp.Set(n, func(v *display.LaneView) { v.Message = "" })
 	}
-}
-
-// togglePause is p (lane n) and P (n 0: every lane of this run) in the
-// live view: it pauses running or waiting lanes before their next step, or
-// lets paused ones go on (swim pause, swim unpause).
-func togglePause(o Options, sel []int, n int) string {
-	lanes := sel
-	if n != 0 {
-		lanes = []int{n}
-	}
-	paused := 0
-	for _, l := range lanes {
-		if _, ok := lane.LanePause(o.Root, l, o.RunID); ok {
-			paused++
-		}
-	}
-	by := operator()
-	if paused > 0 {
-		for _, l := range lanes {
-			if _, ok := lane.LanePause(o.Root, l, o.RunID); ok {
-				os.WriteFile(lane.ResumedPath(o.Root, l), []byte(by+"\n"), 0o644)
-				lane.ClearPause(o.Root, l)
-				history.Log(o.Root, history.Entry{Event: history.Unpause, Lane: l, Run: o.RunID, Detail: "by " + by + " (live view)"})
-			}
-		}
-		if n != 0 {
-			return fmt.Sprintf("swim %d: resumed", n)
-		}
-		return fmt.Sprintf("resumed %d paused lanes", paused)
-	}
-	st, _ := status.Load(o.Root)
-	done := 0
-	for _, l := range lanes {
-		s := (*status.Lane)(nil)
-		if st != nil {
-			s = st.Get(l)
-		}
-		if s == nil || s.Run != o.RunID {
-			continue // not started in this run, or already over
-		}
-		switch s.State {
-		case status.Running, status.Waiting, status.Queued, status.Locked:
-		default:
-			continue
-		}
-		if lane.RequestPause(o.Root, l, lane.PauseReq{Run: o.RunID, By: by}) == nil {
-			history.Log(o.Root, history.Entry{Event: history.Pause, Lane: l, Job: s.Job, Run: o.RunID, Detail: fmt.Sprintf("after %q  (live view)", s.CurrentStep)})
-			done++
-		}
-	}
-	switch {
-	case done == 0 && n != 0:
-		return fmt.Sprintf("swim %d isn't running", n)
-	case done == 0:
-		return "no lane of this run is running"
-	case n != 0:
-		return fmt.Sprintf("swim %d: pausing before its next step (p again lets it go on)", n)
-	}
-	return fmt.Sprintf("pausing %d lanes before their next step (P again lets them go on)", done)
 }
 
 // releaseClaim spends lane n's claim (swim claim) as its round starts:
@@ -1165,51 +1095,6 @@ func releaseClaim(o Options, n int, disp *display.Display) {
 			n, c.Owner, c.Session, c.ExpiresAt().Local().Format("15:04")))
 	}
 	lane.DropClaim(o.Root, n)
-}
-
-// pausedText is what lane n's row says while its round holds (swim
-// pause): "after <step>", or "" when it isn't holding. Only a pause
-// request costs a read of status.yml.
-func pausedText(o Options, n int) string {
-	if _, ok := lane.Paused(o.Root, n, o.RunID); !ok {
-		return ""
-	}
-	st, _ := status.Load(o.Root)
-	if st == nil {
-		return ""
-	}
-	l := st.Get(n)
-	if l == nil || l.PausedAt == "" {
-		return ""
-	}
-	if l.PausedAfter == "" {
-		return "(swim unpause " + strconv.Itoa(n) + ")"
-	}
-	return fmt.Sprintf("after %s (swim unpause %d)", l.PausedAfter, n)
-}
-
-// waitPaused holds lane n before it starts while a pause holds it, until
-// it's lifted or the run stops for it.
-func waitPaused(o Options, n int, disp *display.Display, ir *interrupter) {
-	req, ok := lane.Paused(o.Root, n, o.RunID)
-	if !ok {
-		return
-	}
-	text := fmt.Sprintf("before it starts (swim unpause %d)", n)
-	disp.Set(n, func(v *display.LaneView) { v.Paused = text })
-	status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
-		l.PausedAt, l.PausedBy, l.PauseNote, l.NextStep = status.Now(), req.By, req.Note, "(its first step)"
-	})
-	for !ir.stopsLane(n) {
-		if _, ok := lane.Paused(o.Root, n, o.RunID); !ok {
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	disp.Set(n, func(v *display.LaneView) { v.Paused = "" })
-	status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
-		l.PausedAt, l.PausedBy, l.PauseNote, l.NextStep = "", "", "", ""
-	})
 }
 
 // watchOtherRuns keeps the panel's rows for lanes this run doesn't include

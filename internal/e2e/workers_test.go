@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -50,15 +51,24 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 		return len(files) == 1
 	})
 
-	// Queued while the repo is paused, then the lock is upgraded under the
-	// worker (what happened: swim lock --upgrade with a worker of the
-	// older build up).
-	mustRun(t, r, old, "pause", "--all")
+	// Queued while lane 1 waits in another swim run (this test's process
+	// stands in for it, so the worker can't start the batch yet, and swim
+	// lock, which refuses only over a running lane, can upgrade), then the
+	// lock is upgraded under the worker (what happened: swim lock
+	// --upgrade with a worker of the older build up).
+	setLane1 := func(state string, pid int) {
+		status.UpdateFile(r.root, 1, func(f *status.File) error {
+			l := f.Get(1)
+			l.State, l.PID = state, pid
+			return nil
+		})
+	}
+	setLane1(status.Waiting, os.Getpid())
 	mustRun(t, r, old, "queue", "add", "1")
 	up, _ := r.swim("lock", "--upgrade")
 	contains(t, "lock --upgrade", up, "syntax script 3, log 2, state 2 -> "+version.Current.String(),
 		"warning: swim watch on", "swim 0.20261001.1) reads script 3, log 2, state 2: it leaves batches queued")
-	r.mustSwim("unpause", "--all")
+	setLane1(status.Skipped, 0) // its stand-in run ends it
 
 	// The worker leaves it queued, and says why.
 	waitFor(t, func() bool { return strings.Contains(r.mustSwim("queue"), "left queued") })
