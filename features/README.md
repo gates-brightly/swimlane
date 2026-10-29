@@ -11,11 +11,11 @@ where it would land in the code, open questions, and how to test it.
 
 | feature | file | status |
 |---|---|---|
-| Sandboxed lanes: a throwaway copy of the repo per lane, so concurrent jobs don't clobber each other's files (only $SWIM_OUT is kept); and a container with its network off or allowlisted, opened per stage only once its guard is approved; image and policy signed in the manifest; no access to the operator's keys | [sandbox.md](sandbox.md) | proposed |
+| (none yet) | | |
 
 ## Staging a feature
 
-1. Add `features/<name>.md` using the sections in the existing specs:
+1. Add `features/<name>.md` with these sections:
    Summary, Motivation, Behaviour, Design, Open questions, Testing, Out of scope.
 2. Add a row above with status `proposed`.
 3. When work starts, set the status to `in progress` and link the branch or PR.

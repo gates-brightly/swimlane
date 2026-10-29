@@ -30,6 +30,7 @@ should make that line sharper, not blur it.
 | [T21](#t21-repo-landing-page-p2) repo landing page | P2 | gap |
 | [T23](#t23-outside-feedback-p1) outside feedback, then cuts | P1 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
+| [T30](tasks/T30-decision-checkpoint-followups.md) decisions and checkpoints: the unbuilt parts of their specs | P2 | gap |
 
 ---
 
