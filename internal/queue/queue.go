@@ -114,8 +114,11 @@ type Entry struct {
 	Lanes      []Lane   `yaml:"lanes"`
 	Approve    []string `yaml:"approve,omitempty"`     // guard flags approved for this batch
 	ApproveAll bool     `yaml:"approve_all,omitempty"` // -y: every guard
-	Parallel   *int     `yaml:"parallel,omitempty"`
-	Signature  string   `yaml:"signature,omitempty"` // queued by swim watch --approved: the approval's statement hash
+	// Decide are the batch's answers to its lanes' decisions ("NAME=N"):
+	// a worker runs it with NAME=N set; any other decision is unanswered.
+	Decide    []string `yaml:"decide,omitempty"`
+	Parallel  *int     `yaml:"parallel,omitempty"`
+	Signature string   `yaml:"signature,omitempty"` // queued by swim watch --approved: the approval's statement hash
 	// The queuer's SSH signature over Statement: it proves who queued the
 	// batch (standing approvals, swim approve --auto, apply to their jobs).
 	QueuedKey string  `yaml:"queued_key,omitempty"`
@@ -653,6 +656,10 @@ func (e *Entry) Statement() string {
 		}
 	}
 	fmt.Fprintf(&b, "approve: %s\napprove-all: %v\n", strings.Join(e.Approve, ","), e.ApproveAll)
+	// Only when set, so an entry without decisions reads as before.
+	if len(e.Decide) > 0 {
+		fmt.Fprintf(&b, "decide: %s\n", strings.Join(e.Decide, ","))
+	}
 	// Only when set, so an unscheduled entry's statement reads as before.
 	if e.NotBefore != "" {
 		fmt.Fprintf(&b, "not-before: %s\n", e.NotBefore)

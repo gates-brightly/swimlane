@@ -44,12 +44,20 @@ type Approver struct {
 	Sig       string `json:"sig,omitempty"`
 }
 
+// KeptStep is a checkpointed step a round didn't run: its key, its
+// command hash and the run it passed in.
+type KeptStep struct {
+	Key string `json:"key"`
+	Cmd string `json:"cmd_sha256"`
+	Run string `json:"run"`
+}
+
 // Entry is one link.
 type Entry struct {
 	Seq  int    `json:"seq"`
 	Prev string `json:"prev"` // SHA-256 of the previous line; "" for the first
 	At   string `json:"at"`
-	Type string `json:"type"` // approve | round | run | amend | grant | revoke | repair | hub (a command from the hub an older swim had; Method: its kind) | secret-released | secret-refused
+	Type string `json:"type"` // approve | decide | round | run | amend | grant | revoke | repair | hub (a command from the hub an older swim had; Method: its kind) | secret-released | secret-refused
 
 	Run    string `json:"run,omitempty"`
 	Lane   int    `json:"lane,omitempty"`
@@ -72,6 +80,13 @@ type Entry struct {
 	// Observed are the round's Observe: facts when the guard was approved.
 	Observed map[string]string `json:"observed,omitempty"`
 
+	// decide: a decision the operator answered (decide NAME "<question>"
+	// "<choice>" ...). Guard is its name, Action the question, Choices the
+	// choices as the lane offered them and Choice the one picked (1-based);
+	// Method and Approvers say how and by whom, as for approve.
+	Choices []string `json:"choices,omitempty"`
+	Choice  int      `json:"choice,omitempty"`
+
 	// amend (swim verify --force): the problems its signer acknowledged,
 	// as swim verify printed them. Gaps and deletions only; the signer
 	// isn't whoever recorded the entries they're about.
@@ -86,6 +101,10 @@ type Entry struct {
 	// asked: on the round itself, so it shows without following the hashes.
 	AutoApproved []string `json:"auto_approved,omitempty" yaml:"auto_approved,omitempty"`
 	EnvSHA256    string   `json:"env_sha256,omitempty"` // the lane's env from env files (sorted KEY=VALUE)
+	// Kept are the round's checkpointed steps it didn't run (KEPT): each
+	// passed in an earlier run of the round, which swim verify checks in
+	// that run's log.
+	Kept []KeptStep `json:"kept,omitempty"`
 	// Handlers are the round's outcome handlers that ran: name -> PASS | FAIL | SKIP | none.
 	Handlers map[string]string `json:"handlers,omitempty"`
 	// Outputs are the files (and values) the round produced: name -> SHA-256.
@@ -107,6 +126,8 @@ type Entry struct {
 	Manifests map[string]string `json:"manifests,omitempty"`
 	Scripts   map[string]string `json:"scripts,omitempty"`
 	Flags     []string          `json:"flags,omitempty"`
+	// Decisions are the decide entries the launcher recorded (hashes).
+	Decisions []string `json:"decisions,omitempty"`
 	// ScheduledFor (UTC) is a scheduled batch's start time (swim schedule):
 	// the run started no earlier.
 	ScheduledFor string `json:"scheduled_for,omitempty"`

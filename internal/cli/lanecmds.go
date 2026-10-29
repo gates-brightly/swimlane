@@ -80,7 +80,7 @@ func laneStep(cmd string, args []string) error {
 			opts = append(opts, a, args[i+1])
 			i++
 			continue
-		case a == "--no-retry-timeout" || a == "--expect-fail" || strings.HasPrefix(a, "--expect-fail="):
+		case a == "--no-retry-timeout" || a == "--expect-fail" || strings.HasPrefix(a, "--expect-fail=") || a == "--checkpoint" || strings.HasPrefix(a, "--checkpoint="):
 			opts = append(opts, a)
 			continue
 		case a == "--soft":

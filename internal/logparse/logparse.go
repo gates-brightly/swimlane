@@ -56,6 +56,8 @@ const (
 	Skip     = "SKIP"
 	Drift    = "DRIFT"
 	Approved = "APPROVED"
+	Decided  = "DECIDED" // a decision the operator answered (decide NAME ...); never a pass or failure
+	Kept     = "KEPT"    // a checkpointed step that passed in an earlier run of the round, not run again
 	Stop     = "STOP"
 	Warn     = "WARN"
 	Blocked  = "BLOCKED" // a command swim refused to run (counts as a failure)
@@ -145,6 +147,11 @@ func EndBlock(state string, r *Round, exit int, dur, ts string) string {
 	if r.Run != "" {
 		fmt.Fprintf(&b, "  run=%s", r.Run)
 	}
+	// Last, so a reader that knows only the fields before it reads the
+	// line as ever.
+	if r.Kept > 0 {
+		fmt.Fprintf(&b, "  kept=%d", r.Kept)
+	}
 	b.WriteString("\n")
 	b.WriteString(ctxIndent + "stages: " + StagesText(r.StageResults()) + "\n")
 	if hs := r.HandlerResults(); len(hs) > 0 {
@@ -202,6 +209,9 @@ type Result struct {
 	// Key and Target are the step's own (run --key, --target, # Targets:),
 	// as logged: its name across rounds, what it talks to.
 	Key, Target string
+	// Checkpoint is a checkpointed step's command hash (run --checkpoint),
+	// and KeptFrom, for a KEPT one, the run it passed in.
+	Checkpoint, KeptFrom string
 	// Messages are the status messages (swim msg) posted while the step ran.
 	Messages []string
 }
@@ -234,6 +244,7 @@ type Round struct {
 	Fail      int
 	Skip      int
 	Drift     int
+	Kept      int  // checkpointed steps not run again (KEPT): passed in an earlier run
 	Finished  bool // the round's END (SUMMARY in syntax 1) was written
 	ExitCode  int
 	Duration  string
@@ -333,7 +344,7 @@ func (r *Round) StageResults() []StageResult {
 			switch res.Kind {
 			case Fail, Stop, Blocked:
 				return "FAIL", true
-			case Pass:
+			case Pass, Kept:
 				pass = true
 			case Skip:
 				skip = true
@@ -375,6 +386,8 @@ func (r *Round) add(res Result) {
 		r.Skip++
 	case Drift:
 		r.Drift++
+	case Kept:
+		r.Kept++
 	}
 }
 
@@ -420,7 +433,7 @@ func scanner(r io.Reader) *bufio.Scanner {
 // swim's own (StepLine, MarkLine, RoundHeader, EndBlock).
 
 // v2Kinds are the result kinds of a syntax 2 result line.
-var v2Kinds = map[string]bool{Pass: true, Fail: true, Blocked: true, Skip: true, Drift: true, Approved: true, Stop: true,
+var v2Kinds = map[string]bool{Pass: true, Fail: true, Blocked: true, Skip: true, Drift: true, Approved: true, Decided: true, Kept: true, Stop: true,
 	Warn: true, Msg: true, Checked: true, Pause: true, Resume: true}
 
 // resultV2 reads "  KIND  rest": the kind and the rest.
@@ -591,6 +604,10 @@ func parseV2(rd io.Reader) (*Round, error) {
 					res.Key = strings.TrimPrefix(body, "key: ")
 				case strings.HasPrefix(body, "target: "):
 					res.Target = strings.TrimPrefix(body, "target: ")
+				case strings.HasPrefix(body, "checkpoint: "):
+					res.Checkpoint = strings.TrimPrefix(body, "checkpoint: ")
+				case strings.HasPrefix(body, "kept-from: "):
+					res.KeptFrom = strings.TrimPrefix(body, "kept-from: ")
 				case strings.HasPrefix(body, "-- "+Msg+"  "):
 					res.Messages = append(res.Messages, strings.TrimPrefix(body, "-- "+Msg+"  "))
 					res.Output = append(res.Output, body)

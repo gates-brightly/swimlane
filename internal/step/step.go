@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gates-brightly/swimlane/internal/checkpoint"
 	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -72,10 +73,23 @@ type Options struct {
 	// Mask replaces secret values in everything the step writes (log,
 	// snapshot, terminal); nil masks nothing.
 	Mask *redact.Masker
+	// Checkpoint marks the step as a checkpoint (run --checkpoint): nil
+	// for an ordinary step.
+	Checkpoint *Checkpoint
 	// Stopped reports whether the lane has been asked to stop (the
 	// operator's first Ctrl-C, or swim interrupt N): the step then doesn't
 	// start, and a step waiting to retry stops waiting. Nil: never.
 	Stopped func() bool
+}
+
+// Checkpoint is a checkpointed step: one that passed in an earlier run of
+// the same round, with the same command, isn't run again (KEPT).
+type Checkpoint struct {
+	Round  string        // the round's identity (checkpoint.Round)
+	Key    string        // the step's key: --key, else its label
+	Cmd    string        // its command hash (checkpoint.CmdHash)
+	Run    string        // this run's id, recorded when it passes
+	MaxAge time.Duration // keep only a pass this recent (0: any)
 }
 
 // ExitStopped is swim step's exit code when a stop request kept it from
@@ -98,6 +112,8 @@ type Result struct {
 	TimedOut bool      // stopped (or not started) by a time limit
 	Attempts int       // attempts made
 	Saved    string    // snapshot path, if any
+	// Kept: a checkpoint that passed in an earlier run, not run again.
+	Kept bool
 }
 
 // lockedWriter serialises the stdout and stderr copies into one spool.
@@ -255,6 +271,26 @@ func Run(o Options) (Result, error) {
 			})
 		}
 		return Result{ExitCode: policy.ExitBlocked}, nil
+	}
+
+	// A checkpoint that passed in an earlier run of this round, with this
+	// command, isn't run again: its KEPT block names that run.
+	if c := o.Checkpoint; c != nil && o.Lane > 0 {
+		if s, ok := checkpoint.Find(o.Root, o.Lane, c.Round, c.Key, c.Cmd, c.MaxAge, start); ok {
+			when := s.At
+			if t, err := time.Parse(time.RFC3339, s.At); err == nil {
+				when = t.Local().Format("15:04:05")
+			}
+			detail := fmt.Sprintf("passed in run %s at %s; not run", s.Run, when)
+			os.WriteFile(SpoolPath(o.LogPath), []byte(spoolHead(logLabel, start, cmdline)), 0o644)
+			kmeta := append(meta(o), "checkpoint: "+c.Cmd, "kept-from: "+s.Run)
+			if err := writeBlock(o.LogPath, logparse.StepLine(logparse.Kept, logLabel, detail, "0.0s", clock), "", kmeta...); err != nil {
+				return Result{}, err
+			}
+			fmt.Fprintln(o.Stderr, p.Paint(ui.StateColor(logparse.Kept), logparse.ResultLine(logparse.Kept, logLabel, detail)))
+			status.Update(o.Root, o.Lane, o.Lanes, func(l *status.Lane) { l.Kept++ })
+			return Result{Kept: true}, nil
+		}
 	}
 
 	var res Result
@@ -415,8 +451,17 @@ func Run(o Options) (Result, error) {
 	// A crash here (the command ran, its result isn't written) must never
 	// read as a pass: the spool stays, and RecoverSpool writes it as cut off.
 	failpoint.Hit(failpoint.StepAfterExit)
-	if err := writeBlock(o.LogPath, logparse.StepLine(kind, logLabel, detail, ds, clock), saved, meta(o)...); err != nil {
+	m := meta(o)
+	if c := o.Checkpoint; c != nil {
+		m = append(m, "checkpoint: "+c.Cmd)
+	}
+	if err := writeBlock(o.LogPath, logparse.StepLine(kind, logLabel, detail, ds, clock), saved, m...); err != nil {
 		return res, err
+	}
+	if c := o.Checkpoint; c != nil && kind == logparse.Pass && o.Lane > 0 && c.Run != "" {
+		if err := checkpoint.Record(o.Root, o.Lane, c.Round, c.Key, checkpoint.Step{Label: logLabel, Cmd: c.Cmd, Run: c.Run, At: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+			fmt.Fprintln(o.Stderr, p.Paint(ui.Yellow, "swim: checkpoint not recorded: "+err.Error()))
+		}
 	}
 
 	line := logparse.ResultLine(kind, logLabel, detail)

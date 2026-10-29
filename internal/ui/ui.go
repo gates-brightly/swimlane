@@ -85,7 +85,7 @@ func (p Painter) Paint(color, s string) string {
 func StateColor(state string) string {
 	s := strings.ToLower(state)
 	switch {
-	case strings.HasPrefix(s, "pass"), strings.HasPrefix(s, "approved"):
+	case strings.HasPrefix(s, "pass"), strings.HasPrefix(s, "approved"), strings.HasPrefix(s, "decided"), strings.HasPrefix(s, "kept"):
 		return Green
 	case strings.HasPrefix(s, "fail"), strings.HasPrefix(s, "interrupted"), strings.HasPrefix(s, "stop"), strings.HasPrefix(s, "blocked"):
 		return Red

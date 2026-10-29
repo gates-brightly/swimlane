@@ -90,7 +90,7 @@ var Commands = map[string]string{
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
-	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
+	"run": `swim run [N|JOB ...] [--rerun] [--fresh] [--plain] [--no-tui] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see OTHER LANGUAGES)
 
@@ -101,6 +101,8 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   With no arguments (or "swim all"), runs every lane whose lane.N.sh holds a
   pending round (a Round: line, not a stub) that hasn't passed yet; rounds
   that passed show as "done". --rerun runs them too.
+  A step marked --checkpoint that passed in an earlier run of the round
+  isn't run again (KEPT; swim checkpoint --help); --fresh runs them all.
   Lanes run in parallel as "bash lane.N.sh", each in its staged copy.
     - The top of the screen pins one row per lane in use: its state and
       round. Lanes waiting on a dependency show a throbber and
@@ -344,6 +346,34 @@ swim report --earmarks | --earmark --reset [--name NAME]
   under swim run, a flag the script neither lists nor uses by name is
   refused. With # Observe: probes, a fact that changed between approval and
   now ends the round as drift (exit 3).
+`,
+	"decide": `swim decide NAME "<question>" -- "<choice 1>" "<choice 2>" ...
+
+  In a lane script in any language: put 2 to 9 numbered choices to the
+  operator and print the number picked (1-based). NAME=N in the environment
+  swim run started with (or a queued batch's --decide NAME=N) answers it
+  ahead; otherwise the operator picks a number at the prompt or in the
+  live view. -y answers no decision, and there is no default. Unanswered (no
+  one to ask, a value that isn't one of the numbers, a NAME=N the lane set
+  itself), it records SKIP (decision needed), ends the round there (SKIP,
+  as a dry run) and exits 3. List NAME in the header: # Decisions: NAME
+  <what it decides> (or decisions: in lane.N.yml). In a bash lane, call
+  decide (the library function) and read $DECISION.
+`,
+	"checkpoint": `swim checkpoint [ls] [N|JOB]
+swim checkpoint rm N|JOB KEY... | --all
+
+  A step marked run --checkpoint (gate --checkpoint; --checkpoint=4h keeps a
+  pass that long) that passed in a round isn't run again by a later run of
+  the same round (its # Job:, or its Round: line without one): it logs KEPT,
+  naming the run it passed in, and counts toward the round as passed. One
+  whose command changed (its arguments, or a file they name in the staged
+  copy) runs again. The round's chain entry lists what it kept, and swim
+  verify checks each against the earlier run's log.
+  ls       each lane's checkpoints: key, label, when and in which run it passed
+  rm       forget some (KEY: the step's --key, else its label), or all of a
+           lane's, so the next run runs them again. swim run --fresh (and
+           swim all --fresh) runs every checkpointed step again.
 `,
 	"stage": `swim stage snapshot|check|change|verify
 
@@ -1257,7 +1287,7 @@ func Names() []string {
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "cache", "new", "run", "all", "status", "log", "report", "step", "lib",
-	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
+	"gate", "snapshot", "guard", "decide", "stage", "checkpoint", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 

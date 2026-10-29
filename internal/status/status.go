@@ -90,6 +90,12 @@ type Lane struct {
 	// starts.
 	DryRun      []string `yaml:"dry_run,flow,omitempty" json:"dry_run,omitempty"`
 	LastArchive string   `yaml:"last_archive,omitempty" json:"last_archive,omitempty"`
+	// Decided are the round's answered decisions, as its log says them
+	// ("ROLLOUT: 2. all at once (ROLLOUT=2)"). Cleared when a round starts.
+	Decided []string `yaml:"decided,omitempty" json:"decided,omitempty"`
+	// Kept counts the round's checkpointed steps not run again (KEPT):
+	// they passed in an earlier run of the round.
+	Kept int `yaml:"kept,omitempty" json:"kept,omitempty"`
 }
 
 // File is the whole status.yml document.
@@ -295,6 +301,8 @@ func (l *Lane) ResetRun() {
 	l.FailedSteps = []string{}
 	l.AutoApproved, l.AutoVia, l.FlagApproved = nil, "", nil
 	l.DryRun = nil
+	l.Decided = nil
+	l.Kept = 0
 }
 
 // Dry records that guard flag's step ran as a dry run (each flag once).

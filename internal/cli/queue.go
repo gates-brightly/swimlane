@@ -13,7 +13,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/envfile"
@@ -59,7 +61,7 @@ func cmdQueue(args []string) error {
 // queueAdd queues a batch: the named lanes (or every pending round that
 // hasn't passed), pinned to the jobs they hold now, with approvals.
 func queueAdd(args []string) error {
-	var approve []string
+	var approve, decide []string
 	var note, parallel, keyPath, timeout string
 	var yes, wait bool
 	// --approve repeats; -y is the short --yes.
@@ -71,6 +73,11 @@ func queueAdd(args []string) error {
 			i++
 		case strings.HasPrefix(a, "--approve="):
 			approve = append(approve, strings.Split(strings.TrimPrefix(a, "--approve="), ",")...)
+		case a == "--decide" && i+1 < len(args):
+			decide = append(decide, strings.Split(args[i+1], ",")...)
+			i++
+		case strings.HasPrefix(a, "--decide="):
+			decide = append(decide, strings.Split(strings.TrimPrefix(a, "--decide="), ",")...)
 		case a == "-y":
 			yes = true
 		default:
@@ -111,7 +118,7 @@ func queueAdd(args []string) error {
 	if len(lanes) == 0 {
 		return fmt.Errorf("nothing to queue: no lane holds a pending round that hasn't passed (name lanes to queue them anyway)")
 	}
-	o := queueOpts{approve: approve, note: note, yes: yes, keyPath: keyPath}
+	o := queueOpts{approve: approve, decide: decide, note: note, yes: yes, keyPath: keyPath}
 	if parallel != "" {
 		n, err := strconv.Atoi(parallel)
 		if err != nil || n < 0 {
@@ -156,6 +163,9 @@ func queueAdd(args []string) error {
 	}
 	if len(unapproved) > 0 {
 		fmt.Println("  not approved (dry runs; a queued batch never asks): " + strings.Join(unapproved, ", "))
+	}
+	if len(e.Decide) > 0 {
+		fmt.Println("  decisions: " + strings.Join(e.Decide, ", "))
 	}
 	if !e.ApproveAll && len(e.Approve) == 0 {
 		warnUnapproved(root, e, signedAs)
@@ -207,6 +217,7 @@ func queueAdd(args []string) error {
 // flags).
 type queueOpts struct {
 	approve  []string
+	decide   []string // NAME=N answers to the lanes' decisions
 	note     string
 	yes      bool
 	parallel *int
@@ -278,6 +289,9 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	if e.Lanes, e.Approve, b.guards, err = pinBatch(root, cfg, lanes, o.approve); err != nil {
 		return b, err
 	}
+	if e.Decide, err = batchDecisions(root, lanes, o.decide); err != nil {
+		return b, err
+	}
 	// Sign the batch: it proves who queued it, so standing approvals for
 	// that person (swim approve --auto) apply to it.
 	e.ID = queue.NewID()
@@ -323,6 +337,9 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	if e.ApproveAll {
 		detail += "  approve=all (-y)"
 	}
+	if len(e.Decide) > 0 {
+		detail += "  decide=" + strings.Join(e.Decide, ",")
+	}
 	if e.Note != "" {
 		detail += "  " + e.Note
 	}
@@ -365,6 +382,46 @@ func pinBatch(root string, cfg *config.Config, lanes []int, approve []string) ([
 	}
 	sort.Strings(approved)
 	return pinned, approved, guards, nil
+}
+
+// batchDecisions checks a batch's --decide answers: each NAME=N names a
+// decision one of its lanes declares (# Decisions:), once, with N a
+// number from 1 to the most a decision offers. Whether N is one of that
+// decision's choices is known only when it's asked: a worker refuses one
+// that isn't, and the decision is unanswered.
+func batchDecisions(root string, lanes []int, decide []string) ([]string, error) {
+	declared := map[string]bool{}
+	for _, n := range lanes {
+		if info, err := lane.ReadScript(root, n); err == nil {
+			for _, d := range info.DecisionNames() {
+				declared[d] = true
+			}
+		}
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, d := range decide {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		name, v, ok := strings.Cut(d, "=")
+		c, err := strconv.Atoi(v)
+		switch {
+		case !ok || !chars.Ident(name):
+			return nil, usagef("--decide %s: give NAME=N, the number of the choice", d)
+		case err != nil || c < 1 || c > approval.MaxChoices:
+			return nil, usagef("--decide %s: N is the number of a choice, 1 to %d", d, approval.MaxChoices)
+		case !declared[name]:
+			return nil, fmt.Errorf("--decide %s: no lane in this batch declares a decision %s (its decisions: %s)", d, name, or(strings.Join(sortedKeys(declared), ", "), "none"))
+		case seen[name]:
+			return nil, usagef("--decide %s: %s is answered twice", d, name)
+		}
+		seen[name] = true
+		out = append(out, fmt.Sprintf("%s=%d", name, c))
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // pinLane is lane n as a queue entry holds it: its job and round, pinned
@@ -908,7 +965,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 	}
 	var lanes []int
 	pins := map[int]string{}
-	guards := map[string]bool{}
+	guards, decisions := map[string]bool{}, map[string]bool{}
 	for _, l := range e.Lanes {
 		lanes = append(lanes, l.Lane)
 		if l.Job != "" {
@@ -917,6 +974,9 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		if info, err := lane.ReadScript(root, l.Lane); err == nil {
 			for _, g := range info.Guards {
 				guards[g.Flag] = true
+			}
+			for _, d := range info.DecisionNames() {
+				decisions[d] = true
 			}
 		}
 	}
@@ -945,6 +1005,19 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 	for f := range approved {
 		setenv(f, "1", false)
 	}
+	// The batch's answers, and no others: a decision it doesn't answer is
+	// unanswered (nobody watches a queue), whatever the worker's
+	// environment says.
+	answered := map[string]string{}
+	for _, d := range e.Decide {
+		if name, v, ok := strings.Cut(d, "="); ok {
+			answered[name] = v
+		}
+	}
+	for d := range decisions {
+		setenv(d, answered[d], answered[d] == "")
+	}
+	setenv("SWIM_QUEUE_DECIDED", strings.Join(e.Decide, " "), false)
 	setenv("SWIM_QUEUE", fmt.Sprintf("queue %s by %s", e.ID, e.By), false)
 	setenv("SWIM_QUEUE_ENTRY", e.Path, false) // the guards check its signature for standing approvals
 	setenv("SWIM_QUEUE_APPROVED", strings.Join(e.Approve, " "), false)

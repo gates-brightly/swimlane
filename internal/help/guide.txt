@@ -24,11 +24,14 @@ COMMANDS
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
   cache [ls|rm|prune|path]    the tool caches lanes keep between rounds (# Cache:; see CACHE)
   cache restore|save TREE     inside a lane: an installed tree's snapshot (# Cache: snap:TREE)
+  checkpoint [ls] [N]      the steps (run --checkpoint) the next run of each lane keeps, not runs
+  checkpoint rm N KEY...|--all   run those checkpointed steps again next time
   new N|TASK "<round goal>"   write lane.N.sh from the
                            template, with a new job id; a TASK name (renew-certs) picks the
                            lowest free lane and names it (# Task:), for swim run TASK etc.
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
-  all [--rerun]            run every pending round that hasn't passed yet (same as `swim run`)
+  all [--rerun] [--fresh]  run every pending round that hasn't passed yet (same as `swim run`);
+                           --fresh runs checkpointed steps (run --checkpoint) again too
   status [N|JOB] [--yaml] [--run RUN]   last state of every lane, or as of one run; each pending
                            lane's header: what it waits on, its guards and how swim run decides them
   log [N|JOB] [--all] [--yaml]   print a lane's log (--all: with its archives), a job's
@@ -41,6 +44,8 @@ COMMANDS
   gate "<label>" -- cmd    a step whose failure ends the round (and stops the program)
   snapshot "<label>" -- cmd   a read-only step whose output is saved
   guard FLAG "<action>"    exit 0 if the operator approves the action, 1 if not
+  decide NAME "<question>" -- CHOICE...   print the number the operator picks (1-based);
+                           unanswered, the round ends there, SKIP (exit 3)
   stage NAME               start a stage: snapshot, check, change, verify
   drift "<what differs>"   record DRIFT
   stop "<reason>"          record STOP and end the round
@@ -137,6 +142,12 @@ CONCEPTS
               FIN_ALLOW_DELETE_ZG_ITEMS=1. Unset, swim asks the operator at the
               terminal ("requires human approval of guard FLAG ... Y/N [N]");
               with no one to ask (CI, no terminal) or a "no", the step dry-runs.
+  decision    A numbered choice a lane puts to the operator (decide NAME
+              "<question>" "<choice>" ...): swim asks, not the script, and the
+              lane branches on the number. NAME=N set where swim run starts
+              answers it ahead; nothing else does (not -y, never a default).
+              Unanswered, the round ends SKIP. A decision isn't an approval:
+              a destructive branch still goes through guard.
   manifest    What swim pins about a round before it starts: the script, every
               local file it sources or imports, its sidecar, how it runs, and
               the policy keys of swim.yml and lookup.yml's rules. The lane runs
@@ -290,6 +301,19 @@ WRITING A LANE SCRIPT
       --retry-on CODES            retry only on these exit codes, e.g. 1,255
       --no-retry-timeout          don't retry an attempt the step limit stopped
       --soft                      in a Fail: hard round, this step's failure doesn't end it
+      --checkpoint[=AGE]          once it passes, a later run of this round doesn't run it
+                                  again: it logs KEPT (passed in run R; not run) and counts
+                                  as passed. Its command changed (an argument, or a file it
+                                  names in the staged copy): it runs again. =AGE (4h, 30m)
+                                  keeps a pass only that long. Mark steps that are slow or
+                                  mustn't happen twice and whose effect lives outside the
+                                  repo (a bucket made, a migration applied, a deploy, a
+                                  message sent): a 20-step lane that failed at step 19 then
+                                  reruns from step 19. Never a check or snapshot: those must
+                                  say how things are now. A kept step's local files aren't
+                                  in the next run's staged copy, so a later step that reads
+                                  them needs its own checkpoint or none. swim run --fresh
+                                  runs them all again; swim checkpoint ls|rm.
       --key K                     the step's name across rounds, logged with it (key:)
       --target T                  what it talks to (orders-api), logged with it
                                   (target:); the round's # Targets: by default
@@ -324,6 +348,30 @@ WRITING A LANE SCRIPT
                                   shows <action> and the observed facts made safe: escape
                                   sequences, control characters (\r, backspace) and bidi
                                   overrides are removed, so a lane can't rewrite it.
+  decide NAME "<question>" "<choice 1>" "<choice 2>" ...
+                                  put a numbered choice to the operator (2 to 9 choices)
+                                  and set DECISION to the number picked; branch on it:
+                                      decide ROLLOUT "How should api 2.4.1 roll out?" \
+                                        "canary: 10% for 15 minutes, then the rest" \
+                                        "all at once" "don't deploy"
+                                      case $DECISION in
+                                        1) ... ;;  2) ... ;;  3) stop "not deploying" ;;
+                                      esac
+                                  NAME is declared in # Decisions:. It's answered by
+                                  NAME=N in the environment swim run started with (or a
+                                  queued batch's --decide NAME=N), else the operator picks
+                                  a number at the prompt ("swim N asks for a decision ...
+                                  choose 1-3"), or in the live view (a number key on the
+                                  lane). A value that isn't one of the numbers, a NAME=N
+                                  the lane set itself, or no one to ask (CI, --no-prompt,
+                                  a queued batch without --decide): unanswered. Then it
+                                  logs SKIP (decision needed) and ends the round there,
+                                  SKIP, as a dry run: no branch runs, and swim run exits 3.
+                                  Answered, the log says DECIDED NAME: N. <choice> and the
+                                  chain records it (swim history). -y answers no decision.
+                                  Call it on its own line: in $(...) or a pipe it refuses.
+                                  A decision steers; it doesn't approve: guard the
+                                  destructive step on a branch as usual.
   confirm "<question>" [answer]   operator must type the answer (default "yes");
                                   anything else, or no stdin, stops the round.
   last_failed                     true if the previous step failed.
@@ -369,6 +417,11 @@ WRITING A LANE SCRIPT
                                       is refused when it asks: a dry run). "# Guards: *
                                       <why>" lets it name flags at run time (guard "$F").
                                       swim lint --fix adds the lines. Default: none
+      # Decisions: NAME  <what it decides>
+                                      one line per decision the round may ask (decide
+                                      NAME ...); one it doesn't list is refused, and the
+                                      round ends there unanswered. swim lint --fix adds
+                                      them. Default: none
       # Locks:   <name>[, <name> ...] resources this round needs to itself (letters,
                                       digits, . _ - /, e.g. orders-table, tf/orders).
                                       Lanes sharing a lock never run at the same time,
@@ -510,6 +563,8 @@ OTHER LANGUAGES
     swim gate [options] "<label>" -- cmd [args...]    a step that ends the round on failure
     swim snapshot [options] "<label>" -- cmd ...      a step whose output is saved
     swim guard FLAG "<action - date, reason>"         exit 0 if approved, 1 if not (dry run)
+    swim decide NAME "<question>" -- CHOICE...        print the number picked; unanswered,
+                                                      exit 3, and the round ends there (SKIP)
     swim stage snapshot|check|change|verify
     swim drift "<what differs>"    swim stop "<reason>"
     swim msg [--progress N/M] "<text>"                a status message (live view, status)
@@ -543,6 +598,8 @@ OTHER LANGUAGES
       after: [1, 2]
       guards:
         ORDERS_ALLOW_DELETE: delete bucket orders (2026-10-13: replaced)
+      decisions:
+        ROLLOUT: how the new version goes out
       locks: [orders-db]
       timeout: 30m
       step-timeout: 5m

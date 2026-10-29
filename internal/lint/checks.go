@@ -619,6 +619,210 @@ func checkGuardUnused(c *Context, s *Script) []finding.Finding {
 }
 
 var (
+	decisionHeaderRE = regexp.MustCompile(`^#[ \t]?Decisions:\s*(\S+)`)
+	decideUseRE      = regexp.MustCompile(`(?:^|[\s;&|(!])decide\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	// decide where it runs in a subshell: $(decide ...), `decide ...`, or
+	// either side of a pipe.
+	decideSubshellRE = regexp.MustCompile("\\$\\(\\s*decide\\s|`\\s*decide\\s|\\|\\s*decide\\s|(?:^|[\\s;&(!])decide\\s[^|]*[^|]\\|[^|]")
+)
+
+// decisions returns the names listed in Decisions: headers and those a
+// decide asks, each with the 0-based line it first appears on.
+func (s *Script) decisions() (listed, used map[string]int, order []string) {
+	listed, used = map[string]int{}, map[string]int{}
+	for i, raw := range s.v.raw {
+		if i < 200 {
+			if m := decisionHeaderRE.FindStringSubmatch(strings.TrimSpace(raw)); m != nil {
+				if name := m[1]; name != "-" && !strings.EqualFold(name, "none") {
+					if _, ok := listed[name]; !ok {
+						listed[name] = i
+					}
+				}
+			}
+		}
+		if s.v.doc[i] {
+			continue
+		}
+		for _, m := range decideUseRE.FindAllStringSubmatch(s.v.bare[i], -1) {
+			if _, ok := used[m[1]]; !ok {
+				used[m[1]] = i
+				order = append(order, m[1])
+			}
+		}
+	}
+	return
+}
+
+// checkDecisionUnlisted: a decision the header doesn't declare is refused
+// when it asks, and the round ends there, unanswered.
+func checkDecisionUnlisted(c *Context, s *Script) []finding.Finding {
+	listed, used, order := s.decisions()
+	var out []finding.Finding
+	for _, name := range order {
+		if _, ok := listed[name]; ok {
+			continue
+		}
+		out = append(out, f(finding.Error, "decision-unlisted", used[name],
+			fmt.Sprintf("add `# Decisions: %s  <what it decides>` to the header (swim lint --fix adds it)", name),
+			"decision %s is asked but not declared in `# Decisions:`: swim refuses it, and the round ends there unanswered", name))
+	}
+	return out
+}
+
+// checkDecisionUnused: a declared decision nothing asks.
+func checkDecisionUnused(c *Context, s *Script) []finding.Finding {
+	listed, used, _ := s.decisions()
+	var names []string
+	for name := range listed {
+		if _, ok := used[name]; !ok {
+			names = append(names, name)
+		}
+	}
+	sort.Slice(names, func(a, b int) bool { return listed[names[a]] < listed[names[b]] })
+	var out []finding.Finding
+	for _, name := range names {
+		out = append(out, f(finding.Warn, "decision-unused", listed[name], "remove the line, or ask it with decide",
+			"`# Decisions:` lists %s, but no `decide %s` asks it", name, name))
+	}
+	return out
+}
+
+// checkDecisionSubshell: decide sets DECISION, and ends the round when no
+// one answers; in a subshell it can do neither (it refuses there).
+func checkDecisionSubshell(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for i := range s.v.bare {
+		if !s.v.isCode(i) {
+			continue
+		}
+		if decideSubshellRE.MatchString(s.v.bare[i]) {
+			out = append(out, f(finding.Error, "decision-subshell", i, "call decide on its own line, then branch on $DECISION (case $DECISION in 1) ...)",
+				"decide runs in a subshell here ($(...), backticks or a pipe): it can't set DECISION or end the round when no one answers, so it refuses"))
+		}
+	}
+	return out
+}
+
+// checkDecisionChoices: a decision offers 2 to 9 choices, each answered
+// with one key. Counted only when every choice is a word as written (no
+// unquoted expansion that could split into more).
+func checkDecisionChoices(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for _, lc := range s.v.commands() {
+		cmd := lc.Words
+		if lc.Sub || len(cmd) < 3 || cmd[0].Text != "decide" {
+			continue
+		}
+		choices := cmd[3:]
+		literal := true
+		for _, w := range choices {
+			if w.Expands && !w.Quoted {
+				literal = false
+			}
+		}
+		if !literal {
+			continue
+		}
+		if n := len(choices); n < 2 || n > 9 {
+			out = append(out, f(finding.Error, "decision-choices", lc.Line, "give 2 to 9 choices: decide NAME \"<question>\" \"<choice 1>\" \"<choice 2>\" ...",
+				"decide %s offers %d choices; a decision offers 2 to 9 (one key each)", cmd[1].Text, n))
+		}
+	}
+	return out
+}
+
+// stepCall is one run/gate/snapshot call: its options and label.
+type stepCall struct {
+	Line       int
+	Cmd        string // run, gate or snapshot
+	Key        string // --key, if given
+	Label      lane.Word
+	Checkpoint bool
+}
+
+// stepCalls lists the script's run, gate and snapshot calls.
+func (s *Script) stepCalls() []stepCall {
+	var out []stepCall
+	for _, lc := range s.v.commands() {
+		w := lc.Words
+		if lc.Sub || len(w) < 2 || w[0].Text != "run" && w[0].Text != "gate" && w[0].Text != "snapshot" {
+			continue
+		}
+		c := stepCall{Line: lc.Line, Cmd: w[0].Text}
+		k := 1
+		for ; k < len(w); k++ {
+			t := w[k].Text
+			switch {
+			case t == "--timeout" || t == "--retry" || t == "--backoff" || t == "--retry-on" || t == "--target" || t == "--key":
+				if t == "--key" && k+1 < len(w) {
+					c.Key = w[k+1].Text
+				}
+				k++
+				continue
+			case t == "--checkpoint" || strings.HasPrefix(t, "--checkpoint="):
+				c.Checkpoint = true
+				continue
+			case strings.HasPrefix(t, "--"):
+				continue
+			}
+			break
+		}
+		if k < len(w) {
+			c.Label = w[k]
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// checkCheckpoint: a checkpointed step must be one that can be kept. A
+// snapshot can't (it says how things are now); two with one key would
+// keep each other's pass. Before `stage change` it's a check, which
+// should say how things are now too (warn), and a label that expands
+// without --key changes the key between runs (warn).
+func checkCheckpoint(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	change := len(s.v.raw)
+	if s.Info.Staged {
+		change = s.changeLine()
+	}
+	seen := map[string]int{}
+	for _, sc := range s.stepCalls() {
+		if !sc.Checkpoint {
+			continue
+		}
+		if sc.Cmd == "snapshot" {
+			out = append(out, f(finding.Error, "checkpoint", sc.Line, "drop --checkpoint: a snapshot records how things are now, every run",
+				"snapshot %q is marked --checkpoint", sc.Label.Text))
+			continue
+		}
+		key := or(sc.Key, sc.Label.Text)
+		if first, dup := seen[key]; dup {
+			out = append(out, f(finding.Error, "checkpoint", sc.Line, "give each checkpointed step its own --key",
+				"two checkpointed steps have the key %q (also line %d): one would keep the other's pass", key, first+1))
+		} else {
+			seen[key] = sc.Line
+		}
+		if sc.Line < change {
+			out = append(out, f(finding.Warn, "checkpoint", sc.Line, "move it after `stage change`, or drop --checkpoint",
+				"%s %q is a checkpoint before `stage change`: a check should say how things are now, every run", sc.Cmd, sc.Label.Text))
+		}
+		if sc.Key == "" && sc.Label.Expands {
+			out = append(out, f(finding.Warn, "checkpoint", sc.Line, "add --key NAME, a name that stays the same between runs",
+				"checkpointed step %q has a label that expands, and no --key: if it changes, the pass isn't found and the step runs again", sc.Label.Text))
+		}
+	}
+	return out
+}
+
+func or(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+var (
 	destructiveRE = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])(delete|destroy|drop)(?:$|[^A-Za-z0-9_])|(?:^|[\s;&|('"])rm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b`)
 	// Lines that only say or record something.
 	blockRE = regexp.MustCompile(`[A-Za-z0-9_]+|&&|!`)

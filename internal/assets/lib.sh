@@ -266,6 +266,9 @@ reached() {
 #   --expect-fail[=CODES]  the step should fail: it passes on a non-zero
 #                      exit (one of CODES, e.g. =1,2), and fails on exit 0
 #                      or another code; logged "failed as expected"
+#   --checkpoint[=AGE] once it passed in this round, a later run of the round
+#                      skips it (KEPT), unless its command changed or the pass
+#                      is older than AGE (4h)
 #   --key K            the step's name across rounds, logged (no spaces)
 #   --target T         what it talks to (orders-api), logged; the lane's
 #                      # Targets: by default
@@ -284,7 +287,7 @@ _swim_run_step() {
         fi
         _swim_o="$_swim_o $1 $2"
         shift 2 ;;
-      --no-retry-timeout|--expect-fail|--expect-fail=*) _swim_o="$_swim_o $1"; shift ;;
+      --no-retry-timeout|--expect-fail|--expect-fail=*|--checkpoint|--checkpoint=*) _swim_o="$_swim_o $1"; shift ;;
       --) shift; break ;;
       --*) echo "swim: unknown step option $1" >&2; return 2 ;;
       *) break ;;
@@ -383,6 +386,44 @@ guard() {
   fi
   "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$2" "dry run: set $1=1 to approve"
   return 1
+}
+
+# decide NAME "<question>" "<choice 1>" "<choice 2>" ... — ask the
+# operator to pick one of 2 to 9 numbered choices, and set DECISION to the
+# number picked (1-based); branch on it with case. NAME is declared in the
+# header (# Decisions: NAME  what it decides). swim asks, not the script:
+# NAME=N from whoever started swim run (or a queued batch's --decide)
+# answers ahead; otherwise the operator at the prompt. Unanswered (no one
+# to ask, a value that isn't a choice), the round ends here, SKIP, as a dry
+# run: nothing on any branch runs. Call it on its own line: in $(...) or a
+# pipe it couldn't end the round, so it refuses there.
+decide() {
+  if [ $# -lt 4 ]; then
+    echo 'swim: usage: decide NAME "<question>" "<choice 1>" "<choice 2>" ...' >&2
+    return 2
+  fi
+  case "$1" in
+    ''|[0-9]*|*[!A-Za-z0-9_]*) echo "swim: bad decision name: $1" >&2; return 2 ;;
+  esac
+  if [ "${BASH_SUBSHELL:-0}" -gt 0 ]; then
+    echo "swim: decide $1: call it on its own line, then read \$DECISION (in \$(...) or a pipe, an unanswered decision couldn't end the round)" >&2
+    "$SWIM_BIN" _mark "$SWIM_LANE" STOP "decide $1 called in a subshell"
+    kill -TERM "$SWIM_PID" 2>/dev/null
+    exit 1
+  fi
+  _swim_name=$1 _swim_q=$2
+  shift 2
+  DECISION=
+  # In an && list, a failure is neither the ERR trap's nor lost: $? keeps it.
+  DECISION=$("$SWIM_BIN" _decide "$SWIM_LANE" "$_swim_name" "$_swim_q" -- "$@") && return 0
+  _swim_rc=$?
+  DECISION=
+  if [ "$_swim_rc" -eq 3 ]; then
+    # Unanswered: the round ends here, SKIP (nothing failed).
+    _swim_end ""
+    exit 0
+  fi
+  stop "decide $_swim_name: swim _decide failed (exit $_swim_rc)"
 }
 
 # confirm "<question>" [answer] — ask the operator; anything other than the

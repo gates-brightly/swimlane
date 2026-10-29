@@ -280,8 +280,8 @@ summary
     terminal): it stays in the lane's group so it can read the keyboard, and
     a limit stops only its own process.
 - **Library:** the functions are `lane_init`, `stage`, `run`, `gate`,
-  `snapshot`, `guard`, `confirm`, `last_failed`, `any_failed`, `drift`,
-  `stop` and `summary`. It runs on macOS's bash 3.2.
+  `snapshot`, `guard`, `decide`, `confirm`, `last_failed`, `any_failed`,
+  `drift`, `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.
   Don't use `set -e`.
 - **Pre-approve in the live view:** select a lane that hasn't asked yet
@@ -597,6 +597,114 @@ manifest). Who is who is read live, so a key removed from `lookup.yml`
 stops counting at once. A standing approval from before they expired keeps
 counting, with a warning, until `lookup.yml` sets `standing.max`.
 
+### Decisions
+
+A guard asks "may I?". A decision asks "which way?": the lane puts two to
+nine numbered choices to the operator and branches on the number.
+
+```bash
+# Decisions: ROLLOUT  how api 2.4.1 goes out
+
+stage change
+decide ROLLOUT "How should api 2.4.1 roll out?" \
+  "canary: 10% for 15 minutes, then the rest" \
+  "all at once" \
+  "don't deploy; stop here"
+case $DECISION in
+  1) run "canary 10%" deploy api 2.4.1 --percent 10 ;;
+  2) run "deploy all" deploy api 2.4.1 --percent 100 ;;
+  3) stop "the operator chose not to deploy" ;;
+esac
+```
+
+swim asks, not the script, and accepts only a listed number:
+
+```
+swim 1 asks for a decision: ROLLOUT
+  job 3f2a9c1e · manifest 91c014326e1a
+  the lane asks: How should api 2.4.1 roll out?
+    1. canary: 10% for 15 minutes, then the rest
+    2. all at once
+    3. don't deploy; stop here
+  choose 1-3 (or set ROLLOUT=N to answer without asking):
+```
+
+- **Answering:** `ROLLOUT=2 swim run 1` answers ahead (only swim run's own
+  environment counts, as for a guard flag); `swim queue add 1 --decide
+  ROLLOUT=2` answers for a queued batch; otherwise the operator picks a
+  number at the prompt, or with a number key on the lane in the live view.
+  `-y` answers no decision, and there is no default.
+- **Unanswered:** with nobody to ask (`--no-prompt`, CI, a batch without
+  `--decide`), a value that isn't one of the numbers, or a `ROLLOUT=N` the
+  lane set itself, the log says `SKIP ... decision needed` and the round
+  ends there, SKIP, as a dry run: no branch runs, `swim run` exits 3, and a
+  lane `# After:` it doesn't start.
+- **Declared:** `# Decisions: NAME  <what it decides>` lists each decision
+  a round may ask; one it doesn't list is refused. `swim lint` errors on an
+  undeclared decision (`--fix` adds the line), on fewer than two or more
+  than nine choices, and on `decide` in `$(...)` or a pipe, where it can't
+  set `DECISION` or end the round (call it on its own line).
+- **On the record:** `DECIDED  ROLLOUT: 2. all at once (ROLLOUT=2)` in the
+  log, `decided ...` in `swim status`, and a `decide` entry in the chain
+  (question, choices, the number, who and how), which swim run's
+  attestation lists and `swim verify` checks. `swim history` shows
+  `decide ROLLOUT=2 for swim 1 by zach via flag`.
+- **Not an approval:** a decision steers; it never approves a guarded
+  step. Put the destructive step on a branch behind `guard` as usual.
+- **Other languages:** `swim decide NAME "<question>" -- "<choice 1>"
+  "<choice 2>" ...` prints the number; unanswered, it exits 3 and ends the
+  round.
+
+### Checkpoints
+
+A round is all or nothing: `swim run N` runs the whole script again. Mark
+a step `--checkpoint`, and once it passes, a later run of the same round
+skips it:
+
+```bash
+stage change
+run --checkpoint --key create-bucket "create the orders-v2 bucket" aws s3 mb s3://orders-v2
+run --checkpoint --key copy-objects  "copy 2.1M objects (40 min)"  aws s3 sync s3://orders s3://orders-v2
+run --checkpoint --key migrate       "migrate the orders schema"   ./migrate.sh up
+...
+run "point the api at orders-v2" kubectl set env deploy/api BUCKET=orders-v2   # step 19
+```
+
+Step 19 fails; fix it and run the round again, and steps 1-18 aren't redone:
+
+```
+KEPT  create the orders-v2 bucket (passed in run r-20261029T140212Z-1a2b at 14:02:12; not run)
+KEPT  copy 2.1M objects (40 min) (passed in run r-20261029T140212Z-1a2b at 14:43:05; not run)
+...
+PASS  point the api at orders-v2  1.2s
+```
+
+- **Kept only when nothing changed:** the same round (its `# Job:`, or its
+  `Round:` line without one), the same key (`--key`, else the label), a
+  recorded pass, and the same command: its arguments, and the content of
+  any file they name in the staged copy (`./migrate.sh` edited runs it
+  again). `--checkpoint=4h` keeps a pass only that long. A new round
+  starts with none.
+- **Counted as passed:** a kept `gate` doesn't stop the round, and a round
+  of kept and passed steps passes. The summary and END line say
+  `kept=18`.
+- **On the record:** the round's chain entry lists each kept step with the
+  run it passed in, and `swim verify` checks that run's log shows the pass
+  with the same command: a hand-edited `.swim/checkpoints/laneN.json`
+  can't skip a step unseen.
+- **The operator decides:** `swim status` says what the next run keeps,
+  `swim checkpoint [ls] [N]` lists them, `swim checkpoint rm N KEY...|--all`
+  forgets some, and `swim run --fresh` (`swim all --fresh`) runs them all.
+  A guard's prompt and `swim approve N` say how many steps won't run
+  again.
+- **What to mark:** steps that are slow or mustn't happen twice, whose
+  effect lives outside the repo (a bucket made, a migration applied, a
+  deploy, a message sent). Never a check or snapshot (`swim lint` refuses
+  a checkpointed snapshot and warns before `stage change`): those say how
+  things are now. A kept step's local files aren't in the next run's
+  staged copy, so a later step that reads them needs a checkpoint of its
+  own, or none.
+
 ### Execution manifest
 
 <a id="execution-manifest"></a>
@@ -905,14 +1013,14 @@ they waited for.
 |---|---|
 | `swim init` | Set up the repo: config entry, `.gitignore` block, `.swim/status.yml`. |
 | `swim new N\|TASK "<goal>" [--job ID]` | Write `lane.N.sh` from the template with a new job id (a task name takes the lowest free lane). |
-| `swim all [--rerun] [--parallel N] [-y\|--no-prompt] [--no-tui] [--yaml]` | Run every pending round that hasn't passed. |
+| `swim all [--rerun] [--fresh] [--parallel N] [-y\|--no-prompt] [--no-tui] [--yaml]` | Run every pending round that hasn't passed (`--fresh`: checkpointed steps too). |
 | `swim run N\|JOB ...` / `swim N ...` | Run specific lanes, even if they passed. A job id pins the exact round. |
 | `swim status [N\|JOB] [--yaml]` | Last state of every lane, and each pending lane's header: what it waits on, its guards and how `swim run` would decide them now. |
 | `swim log [N\|JOB] [--all] [--full] [--raw] [--yaml] [-f] [--until-done]` | A lane's or job's log (with the running step), or the project log. |
 | `swim archive N\|JOB ... [--as NAME] [--force]` / `swim stub N "<msg>" [--force]` | Archive lanes' logs (all or nothing); replace a script with a "nothing pending" stub. |
 | `swim clean [--all] [-n]` | Idle every finished lane at once: archive its logs and stub its script (a script edited since it ran is kept), then (asked, default no) remove waiting batches. |
 | `swim note [--lane N] "<text>"` | Record a decision in the project log. |
-| `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
+| `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [--decide NAME=N] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's swimmer; on a terminal, pick a job to run (`r`), or add jobs to a batch (`q`) and submit it (`s`). |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
@@ -924,9 +1032,10 @@ they waited for.
 | `swim config [KEY [VALUE]] [--repo]` | Show or set config, keeping the file's comments. |
 | `swim env [N\|JOB] [--yaml]` | The env a lane gets from env files, masked, with each key's source. |
 | `swim cache [ls\|rm PRESET\|prune --older D\|path --ci]` | The tool caches lanes keep between rounds (`# Cache:`). |
+| `swim checkpoint [ls] [N]` / `swim checkpoint rm N KEY...\|--all` | The checkpointed steps (`run --checkpoint`) the next run of each lane keeps; forget some. |
 | `swim lock [--upgrade]` / `swim changelog` | The repo's syntax lock; what changed between versions. |
 | `swim step -- cmd ...` / `swim lib` | Run and log one command; print the lane library. |
-| `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
+| `swim run\|gate\|snapshot "<label>" -- cmd`, `swim guard\|decide\|stage\|drift\|stop ...` | In-lane steps for lane scripts in any language. |
 | `swim --help` / `swim guide` / `swim <cmd> --help` | The commands at a glance, the full guide, or one command's detail. (`swim --help --full` prints the guide too.) |
 
 ### Files

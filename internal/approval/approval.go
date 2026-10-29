@@ -32,6 +32,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -81,7 +82,28 @@ type Request struct {
 	// Observed are the round's Observe: facts, read by the launcher as it
 	// asks (shown with the question).
 	Observed map[string]string `json:"-"`
+	// Choices make the request a decision (decide NAME "<question>"
+	// "<choice>" ...): Flag is its name, Desc its question, and the answer
+	// is Response.Choice, 1-based. Value is NAME's value in the lane's
+	// environment, if it has one: under swim run it counts only if swim
+	// run's own environment set it to the same.
+	Choices []string `json:"choices,omitempty"`
+	Value   string   `json:"value,omitempty"`
+	// RawChoices are the choices as the lane sent them, for the chain;
+	// Choices are made safe to show (Clean).
+	RawChoices []string `json:"-"`
+	// Kept is how many of the round's checkpointed steps (run
+	// --checkpoint) passed in an earlier run and won't run again: shown
+	// with the question, set by the launcher.
+	Kept int `json:"-"`
 }
+
+// MinChoices and MaxChoices bound a decision's choices: two at least, and
+// at most nine, so every answer is one key.
+const (
+	MinChoices = 2
+	MaxChoices = 9
+)
 
 // Response is the operator's answer.
 type Response struct {
@@ -103,6 +125,8 @@ type Response struct {
 	// Dry: no one was asked (nobody can be, under swim run); the guard is a
 	// dry run, and Why (if set) says why no signed approval counted.
 	Dry bool `json:"dry,omitempty"`
+	// Choice is a decision's answer, 1-based (with Approved: answered).
+	Choice int `json:"choice,omitempty"`
 	// How is the APPROVED line's detail when the launcher decided
 	// ("approved by ... (signed)", "FLAG=1"); "" to build it from By, Auto,
 	// Via, Pre and At.
@@ -129,6 +153,8 @@ type Caller struct {
 	Run      string
 	Manifest string
 	Guards   []string // the flags its script declares or uses
+	// Decisions are the decision names its script declares (# Decisions:).
+	Decisions []string
 	// AnyGuard: its script names a guard's flag at run time (guard "$F"),
 	// so it may ask for a flag Guards doesn't list.
 	AnyGuard bool
@@ -312,6 +338,20 @@ func (s *Server) check(req Request) (Caller, Request, string) {
 		req.Desc = fmt.Sprintf("%s (sent as swim %d)", req.Desc, req.Lane)
 	}
 	req.Lane, req.Job, req.Manifest = c.Lane, c.Job, c.Manifest
+	if req.Choices != nil {
+		req.RawChoices = req.Choices
+		req.Choices = make([]string, len(req.RawChoices))
+		for i, ch := range req.RawChoices {
+			req.Choices[i] = Clean(ch)
+		}
+		switch {
+		case len(req.Choices) < MinChoices || len(req.Choices) > MaxChoices:
+			return c, req, fmt.Sprintf("decision %s has %d choices: a decision offers %d to %d", req.Flag, len(req.Choices), MinChoices, MaxChoices)
+		case !slices.Contains(c.Decisions, req.Flag):
+			return c, req, fmt.Sprintf("decision %s isn't declared in swim %d's script (list it in # Decisions:)", req.Flag, c.Lane)
+		}
+		return c, req, ""
+	}
 	// A flag the lane has set is checked against swim run's own
 	// environment, which names it: the operator set it, declared or not.
 	declared := req.Flag == ConfirmFlag || req.FlagSet || c.AnyGuard
@@ -659,7 +699,34 @@ func Question(req Request) []string {
 			q = append(q, "    "+k+" = "+Clean(req.Observed[k]))
 		}
 	}
+	if req.Kept > 0 {
+		q = append(q, fmt.Sprintf("  checkpoints: %d steps of this round passed in an earlier run and won't run again (swim checkpoint %d)", req.Kept, req.Lane))
+	}
 	return append(q, fmt.Sprintf("(or set %s=1 to approve without asking)  Y/N [N]", flag))
+}
+
+// DecisionQuestion is how a decision is put to the operator: swim's own
+// facts (the lane, job and manifest), the lane's question, labelled as
+// the lane's, and its choices numbered from 1. What the lane supplied is
+// made safe to show (Clean).
+func DecisionQuestion(req Request) []string {
+	name := Clean(req.Flag)
+	q := []string{fmt.Sprintf("swim %d asks for a decision: %s", req.Lane, name)}
+	var facts []string
+	if req.Job != "" {
+		facts = append(facts, "job "+req.Job)
+	}
+	if req.Manifest != "" {
+		facts = append(facts, "manifest "+short12(req.Manifest))
+	}
+	if len(facts) > 0 {
+		q = append(q, "  "+strings.Join(facts, " · "))
+	}
+	q = append(q, "  the lane asks: "+Clean(req.Desc))
+	for i, ch := range req.Choices {
+		q = append(q, fmt.Sprintf("    %d. %s", i+1, Clean(ch)))
+	}
+	return append(q, fmt.Sprintf("  choose 1-%d (or set %s=N to answer without asking):", len(req.Choices), name))
 }
 
 // Clean makes text a lane supplies safe to show (ui.Safe): no escape

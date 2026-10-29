@@ -135,7 +135,10 @@ type Manifest struct {
 	// lane may ask for under any name).
 	Guards        []string `yaml:"guards,omitempty"`
 	DynamicGuards bool     `yaml:"dynamic_guards,omitempty"`
-	SHA256        string   `yaml:"manifest_sha256"`
+	// Decisions are the names of the choices the script declares (#
+	// Decisions:): a decide naming another is refused when it asks.
+	Decisions []string `yaml:"decisions,omitempty"`
+	SHA256    string   `yaml:"manifest_sha256"`
 
 	// Dir is where the manifest is staged ("" before Stage).
 	Dir  string            `yaml:"-"`
@@ -237,6 +240,8 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	// without declaring it is refused when it asks.
 	m.DynamicGuards = info.DynamicGuards > 0 || lane.ParseScript(string(data)).DynamicGuards > 0
 	sort.Strings(m.Guards)
+	m.Decisions = info.DecisionNames()
+	sort.Strings(m.Decisions)
 	m.SHA256 = m.Pinned.Hash(n)
 	return m, nil
 }

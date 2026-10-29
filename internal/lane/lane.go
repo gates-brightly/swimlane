@@ -64,7 +64,11 @@ type Info struct {
 	Owner   string   // Owner: who wrote the round (default "")
 	Created string   // Created: date (default: the file's modification date)
 	Guards  []Guard  // Guards: lines, plus guard flags used in the body
-	Timeout time.Duration
+	// Decisions are the # Decisions: lines: the choices the round may put
+	// to the operator (decide NAME "<question>" "<choice>" ...), with what
+	// each decides. Flag is the decision's name.
+	Decisions []Guard
+	Timeout   time.Duration
 	// TimeoutText is the Timeout: value as written ("" for none).
 	TimeoutText string
 	// StepTimeout is Step-Timeout:, the default limit for each step.
@@ -123,7 +127,7 @@ func (i Info) GuardFlags() []string {
 
 // knownKeys are the header keys swim reads (lower case); any other key in
 // the header block is kept as an extra and shown.
-var knownKeys = map[string]bool{"round": true, "task": true, "workspace": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
+var knownKeys = map[string]bool{"round": true, "task": true, "workspace": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "decisions": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 	"fail": true, "outputs": true, "includes": true,
 	"observe": true, "cache": true, "modules": true, "targets": true}
 
@@ -163,7 +167,7 @@ func ReadScript(root string, n int) (Info, error) {
 		return Info{}, err
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Outputs = "", "", nil, nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Decisions, info.Locks, info.Outputs = "", "", nil, nil, nil, nil, nil
 	}
 	if info.Created == "" {
 		if st, err := os.Stat(path); err == nil {
@@ -247,7 +251,7 @@ func ParseScript(src string) Info {
 		}
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Outputs = "", "", nil, nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Decisions, info.Locks, info.Outputs = "", "", nil, nil, nil, nil, nil
 	}
 	return info
 }
@@ -350,6 +354,8 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 		info.setCache(v, "Cache:")
 	case "Guards":
 		info.addGuard(v, listed)
+	case "Decisions":
+		info.addDecision(v)
 	case "Matrix", "Matrix-Exclude", "Matrix-Parallel", "Matrix-Fail", "Always", "Finally", "Rerun-Children",
 		"Handler-Timeout", "On-Success", "On-Failure", "On-Exit", "Modules":
 		info.Removed = append(info.Removed, key)
@@ -377,6 +383,33 @@ func (info *Info) addGuard(v string, listed map[string]bool) {
 		listed[f[0]] = true
 		info.Guards = append(info.Guards, Guard{Flag: f[0], Desc: strings.TrimSpace(strings.TrimPrefix(v, f[0]))})
 	}
+}
+
+// addDecision reads a # Decisions: line: "NAME  what it decides".
+func (info *Info) addDecision(v string) {
+	f := strings.Fields(v)
+	if len(f) == 0 || f[0] == "-" || strings.EqualFold(f[0], "none") {
+		return
+	}
+	if !isIdent(f[0]) {
+		info.Problems = append(info.Problems, fmt.Sprintf("Decisions: %q is not a decision name (letters, digits, _); ignored", f[0]))
+		return
+	}
+	for _, d := range info.Decisions {
+		if d.Flag == f[0] {
+			return
+		}
+	}
+	info.Decisions = append(info.Decisions, Guard{Flag: f[0], Desc: strings.TrimSpace(strings.TrimPrefix(v, f[0]))})
+}
+
+// DecisionNames lists the names of i.Decisions.
+func (i Info) DecisionNames() []string {
+	out := make([]string, len(i.Decisions))
+	for k, d := range i.Decisions {
+		out[k] = d.Flag
+	}
+	return out
 }
 
 // stagesIn reports whether a line starts a stage: `stage check`, `swim

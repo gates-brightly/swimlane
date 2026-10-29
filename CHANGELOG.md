@@ -358,6 +358,31 @@ and read.
   JSON is YAML, so whatever reads status.yml as YAML still can, and a
   status.yml an older swim wrote is read as before; it has no `#` header
   line any more. `swim status --yaml` is unchanged.
+- **Checkpoints: a step that passed isn't run again.** `run --checkpoint
+  --key migrate "migrate the schema" ./migrate.sh up` (or `gate`): once it
+  passes, a later run of the same round logs `KEPT ... (passed in run R;
+  not run)` instead, if its command is the same (its arguments, and the
+  files they name in the staged copy); `--checkpoint=4h` keeps a pass that
+  long. A 20-step lane that failed at step 19 reruns from step 19. Kept
+  steps count as passed (`kept=N` in the summary and END line), are
+  listed in the round's chain entry, and `swim verify` checks each against
+  the run it passed in. `swim run --fresh` runs them all again; `swim
+  checkpoint ls|rm` lists and forgets them; `swim status`, a guard's
+  prompt and `swim approve` say what the next run keeps. Lint:
+  `checkpoint`.
+- **Decisions: the operator picks a numbered choice.** `decide ROLLOUT
+  "How should api 2.4.1 roll out?" "canary" "all at once" "don't deploy"`
+  puts 2 to 9 numbered choices to the operator and sets `DECISION` to the
+  number picked; the lane branches on it (`case $DECISION in ...`).
+  Declared in `# Decisions:`. Answered by `ROLLOUT=N` where swim run
+  starts, `swim queue add --decide ROLLOUT=N`, the prompt (a listed number
+  only) or a number key in the live view; never by `-y` or a default.
+  Unanswered, the round ends there SKIP, as a dry run. The answer is
+  `DECIDED` in the log, in `swim status` and `swim history`, and a `decide`
+  entry in the chain that the run's attestation lists (`decisions:`) and
+  `swim verify` checks. `swim decide NAME "<q>" -- CHOICE...` for other
+  languages; lint checks `decision-unlisted`, `decision-subshell`,
+  `decision-choices` and `decision-unused`.
 - **`swim watch` says how long a lane's last round took.** A passed,
   failed, interrupted or skipped lane's row ends `· took 4m12s`, next to
   when it finished ("3h ago"); a pending lane's row says how its last

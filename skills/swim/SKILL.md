@@ -111,9 +111,9 @@ batch whose risk you haven't read.
   point. If the user explicitly asks you to run one, do it only for lanes
   with no guards that change nothing outside the repo (lint, tests, local
   builds), and say that's what you're doing.
-- **Approving anything.** Never set a guard flag (`FLAG=1 swim run`), never
-  pass `-y`, `--approve` or `--auto`, never run `swim approve` or `swim
-  revoke`. Approval is a person's decision, and the record attributes it to
+- **Approving or deciding anything.** Never set a guard flag (`FLAG=1 swim
+  run`) or a decision (`ROLLOUT=2 swim run`), never pass `-y`, `--approve`,
+  `--decide` or `--auto`, never run `swim approve` or `swim revoke`. Approval is a person's decision, and the record attributes it to
   them.
 - `swim interrupt`, `swim keys trust`,
   `swim chain ...`, `swim doctor --fix`, `swim config` / config edits.
@@ -252,6 +252,19 @@ from what the previous ones left behind.
   missing header lines.
   With no approval it's a dry run, which is the safe default. Never default
   a flag on, and never set one in the script: swim refuses that.
+- **Mark steps that mustn't run twice `--checkpoint`** (`run --checkpoint
+  --key create-bucket "create the bucket" aws s3 mb ...`): slow or
+  one-time changes whose effect lives outside the repo. When the round
+  fails later and is fixed, its next run keeps them (KEPT) and resumes.
+  Never on a check or snapshot. Clearing them (`swim run --fresh`,
+  `swim checkpoint rm`) is the operator's call.
+- **When the operator knows which way to go and you don't, write a
+  decision, not a guess.** `decide NAME "<question>" "<choice 1>" "<choice
+  2>" ...` (2 to 9 choices, declared in `# Decisions: NAME  <what it
+  decides>`) on its own line, then `case $DECISION in 1) ... ;; esac`.
+  Write every path; the operator picks one at run time. Unanswered, the
+  round ends there SKIP. A decision steers; a destructive step on a branch
+  still goes behind `guard`.
 - **Gates fail closed.** An empty or unknown answer stops the round before
   any change.
 - **Read the deployed state.** Never assume it from code.

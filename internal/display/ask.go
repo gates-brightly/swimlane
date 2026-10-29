@@ -44,11 +44,21 @@ func (d *Display) tuiActive() bool {
 }
 
 func (d *Display) askTUI(n int, question []string, cancel <-chan struct{}) bool {
-	ch := make(chan bool, 1)
+	return d.waitTUI(n, question, 0, cancel) == 1
+}
+
+// waitTUI puts lane n's question in the interactive view and waits for its
+// answer: 1 yes or 0 no for an approval; for a decision of choices
+// choices, the number picked (0: none, the run is stopping).
+func (d *Display) waitTUI(n int, question []string, choices int, cancel <-chan struct{}) int {
+	ch := make(chan int, 1)
 	d.mu.Lock()
 	d.tui.model.addPending(n, question)
+	if choices > 0 {
+		d.tui.model.choices[n] = choices
+	}
 	if d.tui.answers == nil {
-		d.tui.answers = map[int]chan bool{}
+		d.tui.answers = map[int]chan int{}
 	}
 	d.tui.answers[n] = ch
 	d.tui.dirty = true
@@ -61,11 +71,101 @@ func (d *Display) askTUI(n int, question []string, cancel <-chan struct{}) bool 
 		d.mu.Unlock()
 	}()
 	select {
-	case yes := <-ch:
-		return yes
+	case a := <-ch:
+		return a
 	case <-cancel:
-		return false
+		return 0
 	}
+}
+
+// Choose puts lane n's decision to the operator and waits for a number
+// from 1 to choices: the choice, or 0 when none was given (Enter or Esc
+// on the line, Ctrl-C, the run stopping). Any other key is ignored, so a
+// stray key never picks one. In the interactive view, the lane's view
+// shows the question and a number key answers it, as y or n answers an
+// approval.
+func (d *Display) Choose(n int, question []string, choices int, cancel <-chan struct{}) int {
+	if d.in == nil || choices < 1 {
+		return 0
+	}
+	question = safeLines(question)
+	if d.tui != nil && d.tuiActive() {
+		return d.waitTUI(n, question, choices, cancel)
+	}
+	d.askMu.Lock()
+	defer d.askMu.Unlock()
+	return d.chooseLine(question, choices, cancel)
+}
+
+func (d *Display) chooseLine(question []string, choices int, cancel <-chan struct{}) int {
+	p := ui.Painter{On: d.color}
+	fd := int(d.in.Fd())
+	st, rawErr := term.MakeRaw(fd)
+	text := "\n" + p.Paint(ui.Yellow+ui.Bold, strings.Join(question, "\n")) + " "
+	if rawErr == nil {
+		text = strings.ReplaceAll(text, "\n", "\r\n")
+	}
+	d.mu.Lock()
+	d.asking = true
+	fmt.Fprint(d.out, text)
+	d.mu.Unlock()
+
+	answer, interrupted := 0, false
+	if rawErr == nil {
+		stop := make(chan struct{})
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			readKeys(fd, stop, func(k Key) {
+				switch {
+				case k.Code == KeyRune && k.Rune >= '1' && int(k.Rune-'0') <= choices:
+					answer = int(k.Rune - '0')
+				case k.Code == KeyCtrlC:
+					interrupted = true
+				case k.Code == KeyEnter || k.Code == KeyEsc:
+				default:
+					return // not a listed number: keep waiting
+				}
+				select {
+				case <-stop:
+				default:
+					close(stop)
+				}
+			})
+		}()
+		go func() {
+			select {
+			case <-cancel:
+				select {
+				case <-stop:
+				default:
+					close(stop)
+				}
+			case <-done:
+			}
+		}()
+		<-done
+		term.Restore(fd, st)
+	}
+
+	d.mu.Lock()
+	word := "none (unanswered)"
+	if answer > 0 {
+		word = fmt.Sprint(answer)
+	}
+	if interrupted {
+		word = "none (Ctrl-C)"
+	}
+	fmt.Fprintln(d.out, word)
+	for _, l := range d.held {
+		fmt.Fprintln(d.out, l)
+	}
+	d.held, d.asking = nil, false
+	d.mu.Unlock()
+	if interrupted && d.onInterrupt != nil {
+		d.onInterrupt()
+	}
+	return answer
 }
 
 func (d *Display) askLine(question []string, cancel <-chan struct{}) bool {

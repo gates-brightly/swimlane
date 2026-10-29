@@ -55,6 +55,8 @@ var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
 	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
+	"decision-unlisted": true, "decision-unused": true, "decision-subshell": true, "decision-choices": true,
+	"checkpoint": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -100,6 +102,11 @@ var Checks = []Check{
 	{"guard-unlisted", finding.Error, false, "a guard flag used but not declared in `# Guards:` (refused when it asks; a warning with `# Guards: *`)", checkGuardUnlisted},
 	{"guard-dynamic", finding.Error, false, "a guard whose flag is named at run time, without `# Guards: *`", checkGuardDynamic},
 	{"guard-unused", finding.Warn, false, "a flag listed in `# Guards:` but never used", checkGuardUnused},
+	{"decision-unlisted", finding.Error, false, "a decision used but not declared in `# Decisions:` (refused when it asks)", checkDecisionUnlisted},
+	{"decision-subshell", finding.Error, false, "`decide` in $(...), backticks or a pipe, where an unanswered decision can't end the round", checkDecisionSubshell},
+	{"decision-choices", finding.Error, false, "a `decide` with fewer than 2 or more than 9 choices", checkDecisionChoices},
+	{"decision-unused", finding.Warn, false, "a decision listed in `# Decisions:` but never asked", checkDecisionUnused},
+	{"checkpoint", finding.Error, false, "a `--checkpoint` step that can't be one: a snapshot, two with one key; warns before `stage change` and on a label that changes", checkCheckpoint},
 	{"destructive", finding.Warn, false, "a destructive-looking command outside a guard block", checkDestructive},
 	{"blocked", finding.Error, false, "a blocked command (git push/commit/pull, blocked_commands)", checkBlocked},
 	{"secret-echo", finding.Warn, false, "a secret variable echoed directly", checkSecretEcho},

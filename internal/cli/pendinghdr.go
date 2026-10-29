@@ -20,14 +20,39 @@ import (
 // it starts: swim status shows it under the lane, and --yaml as
 // pending_header.
 type pendingHeader struct {
-	After    []string               `yaml:"after,flow,omitempty"`
-	Guards   []authority.GuardState `yaml:"guards,omitempty"`
-	Timeout  string                 `yaml:"timeout,omitempty"`
-	Locks    []string               `yaml:"locks,flow,omitempty"`
-	Includes []string               `yaml:"includes,flow,omitempty"`
-	Fail     string                 `yaml:"fail,omitempty"`
-	Targets  string                 `yaml:"targets,omitempty"`
-	Owner    string                 `yaml:"owner,omitempty"`
+	After  []string               `yaml:"after,flow,omitempty"`
+	Guards []authority.GuardState `yaml:"guards,omitempty"`
+	// Decisions are its # Decisions:, each with how swim run would answer
+	// it now.
+	Decisions []decisionState `yaml:"decisions,omitempty"`
+	Timeout   string          `yaml:"timeout,omitempty"`
+	Locks     []string        `yaml:"locks,flow,omitempty"`
+	Includes  []string        `yaml:"includes,flow,omitempty"`
+	Fail      string          `yaml:"fail,omitempty"`
+	Targets   string          `yaml:"targets,omitempty"`
+	Owner     string          `yaml:"owner,omitempty"`
+}
+
+// decisionState is one decision of a pending round, as swim run would
+// answer it as it starts: NAME=N in this environment, or the prompt (a
+// dry run when nobody can be asked).
+type decisionState struct {
+	Name  string `yaml:"name"`
+	Desc  string `yaml:"description,omitempty"`
+	Value string `yaml:"value,omitempty"` // NAME's value in this environment, if set
+	Asks  bool   `yaml:"asks"`            // swim run would ask (approvals: prompt)
+}
+
+// Text says how it would be answered: "ROLLOUT=2 set", or that swim run
+// asks.
+func (d decisionState) Text() string {
+	if d.Value != "" {
+		return d.Name + "=" + d.Value + " set (swim run checks it's one of the choices)"
+	}
+	if d.Asks {
+		return "not answered; swim run will ask (unanswered, the round ends SKIP)"
+	}
+	return "not answered; approvals: flags never asks: set " + d.Name + "=N"
 }
 
 // depDoc is where one dependency of a pending round stands (--yaml deps).
@@ -88,6 +113,10 @@ func (v *statusView) pending(l *status.Lane) *pendingView {
 			h.Guards = append(h.Guards, v.snap.Guard(a, asks, v.now))
 		}
 	}
+	for _, d := range info.Decisions {
+		h.Decisions = append(h.Decisions, decisionState{Name: d.Flag, Desc: d.Desc, Value: v.snap.Env[d.Flag],
+			Asks: v.cfg.ApprovalMode() != config.ApprovalsFlags})
+	}
 	pv := &pendingView{Header: h}
 	deps, err := launcher.DepStates(v.root, v.cfg, l.Lane)
 	if err != nil {
@@ -129,6 +158,18 @@ func (pv *pendingView) print(p ui.Painter, indent string) {
 			color = ui.Red
 		}
 		line("       "+g.Text(), color)
+	}
+	for _, d := range pv.Header.Decisions {
+		head := "decision " + d.Name
+		if d.Desc != "" {
+			head += "  " + d.Desc
+		}
+		line(head, ui.Cyan)
+		color := ui.Yellow
+		if d.Value != "" {
+			color = ui.Green
+		}
+		line("       "+d.Text(), color)
 	}
 	h := pv.Header
 	var meta []string

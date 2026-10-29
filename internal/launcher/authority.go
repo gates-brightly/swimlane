@@ -5,15 +5,18 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/authority"
 	"github.com/gates-brightly/swimlane/internal/chain"
+	"github.com/gates-brightly/swimlane/internal/checkpoint"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
+	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -34,6 +37,7 @@ type runAuthority struct {
 
 	mu        sync.Mutex
 	approvals []string        // approve entries recorded, in order
+	decisions []string        // decide entries recorded, in order
 	flags     map[string]bool // guard flags approved from swim run's environment
 	// recorded are the entries each lane process had recorded ("token
 	// round"): one round or check entry each.
@@ -50,6 +54,7 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 		if !resp.Approved {
 			dryRun(*o, disp, req.Lane, req.Flag)
 		}
+
 		return resp
 	})
 	if err != nil {
@@ -67,13 +72,23 @@ func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*app
 			return "", err
 		}
 		a.mu.Lock()
-		a.approvals = append(a.approvals, hash)
-		if g.Entry.Method == "flag" || g.Entry.Method == "queue" {
+		if g.Entry.Type == "decide" {
+			a.decisions = append(a.decisions, hash)
+		} else {
+			a.approvals = append(a.approvals, hash)
+		}
+		if g.Entry.Type == "approve" && (g.Entry.Method == "flag" || g.Entry.Method == "queue") {
 			a.flags[g.Entry.Guard] = true
 		}
 		a.mu.Unlock()
-		unprompted(*o, c, g.Entry)
-		history.Log(o.Root, history.Entry{Event: history.Approve, Lane: g.Entry.Lane, Job: g.Entry.Job, Run: g.Entry.Run, Detail: g.History})
+		if g.Entry.Type == "approve" {
+			unprompted(*o, c, g.Entry)
+		}
+		ev := history.Approve
+		if g.Entry.Type == "decide" {
+			ev = history.Decide
+		}
+		history.Log(o.Root, history.Entry{Event: ev, Lane: g.Entry.Lane, Job: g.Entry.Job, Run: g.Entry.Run, Detail: g.History})
 		return hash, nil
 	}
 	srv.Chain = func(c approval.Caller, e chain.Entry) (string, error) { return a.laneEntry(o, c, e) }
@@ -146,7 +161,7 @@ func (a *runAuthority) laneEntry(o *Options, c approval.Caller, e chain.Entry) (
 		Script: e.Script, Manifest: or(c.Manifest, e.Manifest), Result: e.Result, Exit: e.Exit, Log: e.Log,
 		Approvals: e.Approvals, AutoApproved: e.AutoApproved, EnvSHA256: e.EnvSHA256, Handlers: e.Handlers,
 		Outputs: e.Outputs, Inputs: e.Inputs, InputRounds: e.InputRounds,
-		Cache: e.Cache}
+		Cache: e.Cache, Kept: e.Kept}
 	return o.record(r)
 }
 
@@ -201,6 +216,9 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	if req.Job == "" {
 		req.Job = runningJob(o, req.Lane)
 	}
+	if req.Choices != nil {
+		return a.choose(o, req, ask, cancel)
+	}
 	m := o.manifests[req.Lane]
 	entry := chain.Entry{Type: "approve", Run: o.RunID, Lane: req.Lane, Job: req.Job, Guard: req.Flag, Action: req.RawDesc, Lookup: a.snap.LookupSHA}
 	if m != nil {
@@ -210,6 +228,7 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	// them again before the guarded step.
 	req.Observed = manifest.Observe(o.Root, probesFor(o, req.Lane), laneEnv(o, req.Lane))
 	entry.Observed = req.Observed
+	req.Kept = keptCount(o.Root, req.Lane)
 	grant := func(resp approval.Response, r authority.Result) approval.Response {
 		e := entry
 		e.Method, e.Statement, e.Approvers = r.Entry.Method, r.Entry.Statement, r.Entry.Approvers
@@ -273,6 +292,83 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 		Entry: chain.Entry{Method: method, Statement: how, Approvers: []chain.Approver{approver}}})
 }
 
+// choose answers one decision of a lane. In order: NAME=N in swim run's
+// own environment (a queued batch's --decide sets it), refused if it
+// isn't one of the numbers offered or the lane's own environment says
+// otherwise; then the operator at the prompt, if anyone can be asked.
+// Nothing else answers one: not -y, and never a default. Unanswered, the
+// response says why (Dry).
+func (a *runAuthority) choose(o Options, req approval.Request, ask approval.Asker, cancel <-chan struct{}) approval.Response {
+	m := o.manifests[req.Lane]
+	entry := chain.Entry{Type: "decide", Run: o.RunID, Lane: req.Lane, Job: req.Job, Guard: req.Flag, Action: req.RawDesc, Choices: req.RawChoices}
+	if m != nil {
+		entry.Script, entry.Manifest = m.ScriptSHA, m.SHA256
+	}
+	unanswered := func(why string) approval.Response {
+		return approval.Response{Dry: true, Why: why, Job: req.Job}
+	}
+	answer := func(choice int, method, how, by string, approver chain.Approver) approval.Response {
+		e := entry
+		e.Choice, e.Method, e.Statement, e.Approvers = choice, method, how, []chain.Approver{approver}
+		return approval.Response{Approved: true, Choice: choice, How: how, By: by, Job: req.Job,
+			Grant: &approval.Grant{Entry: e, History: fmt.Sprintf("%s  (%s=%d, by %s)", req.RawDesc, req.Flag, choice, by)}}
+	}
+	k := len(req.Choices)
+	if v, set := a.snap.Env[req.Flag]; set {
+		n, err := strconv.Atoi(v)
+		switch {
+		case err != nil || n < 1 || n > k:
+			why := fmt.Sprintf("%s=%s isn't one of the choices (1-%d)", req.Flag, v, k)
+			a.refused(o, approval.Caller{Lane: req.Lane, Job: req.Job}, req, why)
+			return unanswered(why)
+		case req.Value != "" && req.Value != v:
+			why := fmt.Sprintf("%s=%s was set inside the lane; swim run started with %s=%s", req.Flag, req.Value, req.Flag, v)
+			a.refused(o, approval.Caller{Lane: req.Lane, Job: req.Job}, req, why)
+			return unanswered(why)
+		}
+		how, method := fmt.Sprintf("%s=%d", req.Flag, n), "flag"
+		if queueDecided(a.snap.Env["SWIM_QUEUE_DECIDED"], req.Flag, n) {
+			how, method = how+", decided in "+a.snap.Env["SWIM_QUEUE"], "queue"
+		}
+		return answer(n, method, how, operator(), a.operator(o.Cfg))
+	}
+	if req.Value != "" {
+		why := fmt.Sprintf("%s=%s was set inside the lane, not in the environment swim run started with", req.Flag, req.Value)
+		a.refused(o, approval.Caller{Lane: req.Lane, Job: req.Job}, req, why)
+		return unanswered(why)
+	}
+	if ask == nil || o.Cfg.ApprovalMode() == config.ApprovalsFlags {
+		return unanswered(fmt.Sprintf("nobody here to ask (set %s=1..%d)", req.Flag, k))
+	}
+	resp := ask(req, cancel)
+	if !resp.Approved || resp.Choice < 1 || resp.Choice > k {
+		why := or(resp.Why, "no choice given at the prompt")
+		return unanswered(fmt.Sprintf("%s (set %s=1..%d)", why, req.Flag, k))
+	}
+	by := or(resp.By, operator())
+	return answer(resp.Choice, "prompt", "chosen at the prompt by "+by, by, a.operator(o.Cfg))
+}
+
+// keptCount is how many of lane n's checkpoints belong to the round its
+// script holds: the steps this run keeps rather than runs.
+func keptCount(root string, n int) int {
+	f, err := checkpoint.Load(root, n)
+	if err != nil || len(f.Steps) == 0 {
+		return 0
+	}
+	info, _ := lane.ReadScript(root, n)
+	if f.Round != checkpoint.Round(info.Job, info.Round) {
+		return 0
+	}
+	return len(f.Steps)
+}
+
+// queueDecided reports whether a queued batch's decisions (SWIM_QUEUE_DECIDED,
+// "NAME=N NAME=N") answered name with n.
+func queueDecided(list, name string, n int) bool {
+	return strings.Contains(" "+list+" ", fmt.Sprintf(" %s=%d ", name, n))
+}
+
 // operator is the operator as an approver, with the runner's key.
 func (a *runAuthority) operator(cfg *config.Config) chain.Approver {
 	ap := chain.Approver{Name: operator()}
@@ -316,12 +412,13 @@ func (a *runAuthority) attest(o Options, sel []int) {
 	}
 	a.mu.Lock()
 	e.Approvals = append([]string(nil), a.approvals...)
+	e.Decisions = append([]string(nil), a.decisions...)
 	for f := range a.flags {
 		e.Flags = append(e.Flags, f)
 	}
 	a.mu.Unlock()
 	sort.Strings(e.Flags)
-	if len(e.Manifests) == 0 && len(e.Approvals) == 0 {
+	if len(e.Manifests) == 0 && len(e.Approvals) == 0 && len(e.Decisions) == 0 {
 		return // nothing ran
 	}
 	if _, err := o.record(e); err != nil {

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
+	"github.com/gates-brightly/swimlane/internal/checkpoint"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/envfile"
@@ -37,10 +38,13 @@ import (
 
 // Options configures a launch.
 type Options struct {
-	Root   string
-	Cfg    *config.Config
-	Lanes  []int  // explicit selection; empty means every lane with a pending round
-	Rerun  bool   // with no explicit lanes, also run rounds that already passed
+	Root  string
+	Cfg   *config.Config
+	Lanes []int // explicit selection; empty means every lane with a pending round
+	Rerun bool  // with no explicit lanes, also run rounds that already passed
+	// Fresh: run every checkpointed step again (run --checkpoint): each
+	// lane's checkpoints are cleared as it starts.
+	Fresh  bool
 	DryRun bool   // selection only (Select): don't refuse lanes that are running
 	RunID  string // this run's id; generated if empty (swim run --run-id)
 	// Parallel caps lanes running at once; nil means config's max_parallel,
@@ -351,6 +355,17 @@ func Run(o Options) (int, error) {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
 		}
 		ask = func(req approval.Request, cancel <-chan struct{}) approval.Response {
+			if req.Choices != nil {
+				// A decision: only a person picks one. -y answers no
+				// decision, and there are no pre-answers for one.
+				if !prompt {
+					return approval.Response{Why: "-y answers guards, not decisions, and nobody here can be asked"}
+				}
+				disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
+				defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+				c := disp.Choose(req.Lane, approval.DecisionQuestion(req), len(req.Choices), cancel)
+				return approval.Response{Approved: c > 0, Choice: c, By: operator()}
+			}
 			// The operator's answer given ahead in the live view (pinned to
 			// the manifest) comes before -y and instead of asking.
 			if resp, ok := pre.use(o, req); ok {
@@ -638,6 +653,11 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			return stamp(refuseBlocked(o, n, why, disp))
 		}
 		return skip(why)
+	}
+	if o.Fresh {
+		if err := checkpoint.Clear(o.Root, n); err != nil {
+			disp.Message(fmt.Sprintf("%s--fresh: %v", display.Prefix(n, disp.Color()), err))
+		}
 	}
 	cmd, ownGroup, w, tok := laneCommand(o, n, sel, plan, "", approval.Caller{Job: info.Job}, disp, fileLocks)
 	defer exited(o, tok)

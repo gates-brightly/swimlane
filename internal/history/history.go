@@ -38,6 +38,7 @@ const (
 	StopReq      = "stop"          // swim interrupt N: a lane asked to stop at its next step boundary
 	Approve      = "approve"       // the operator approved a guarded step at the prompt
 	Decline      = "decline"       // ... declined it, or no answer came (the step ran as a dry run)
+	Decide       = "decide"        // the operator answered a decision (decide NAME ...): which choice, and how
 	QueueAdd     = "queue"         // swim queue add: a batch was queued (detail: id, lanes, approvals)
 	QueueRun     = "queue-run"     // swim watch started a queued batch
 	QueueDone    = "queue-done"    // ... and consumed it (detail: id, result)

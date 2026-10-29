@@ -105,6 +105,17 @@ func missingHeader(root string, s *Script) []string {
 		if s.Info.DynamicGuards == 0 && len(checkGuardDynamic(nil, s)) > 0 {
 			add = append(add, "Guards: *  flags named at run time (say which, and why)")
 		}
+		dlisted, dused, dorder := s.decisions()
+		for _, name := range dorder {
+			if _, ok := dlisted[name]; ok {
+				continue
+			}
+			desc := decideQuestion(s.v.raw[dused[name]], name)
+			if desc == "" {
+				desc = "<what it decides>"
+			}
+			add = append(add, fmt.Sprintf("Decisions: %s  %s", name, desc))
+		}
 	}
 	var includes []string
 	if root != "" {
@@ -130,6 +141,17 @@ func missingHeader(root string, s *Script) []string {
 func guardAction(line, flag string) string {
 	for _, c := range lane.Commands(line) {
 		if len(c) > 2 && c[0].Text == "guard" && c[1].Text == flag && !c[2].Expands {
+			return c[2].Text
+		}
+	}
+	return ""
+}
+
+// decideQuestion is the question a decide call asks for name on a line
+// (decide NAME "<question>" ...), "" if it isn't written out.
+func decideQuestion(line, name string) string {
+	for _, c := range lane.Commands(line) {
+		if len(c) > 2 && c[0].Text == "decide" && c[1].Text == name && !c[2].Expands {
 			return c[2].Text
 		}
 	}

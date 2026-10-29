@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/checkpoint"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
@@ -67,8 +68,10 @@ func cmdStatus(args []string) error {
 		type laneDoc struct {
 			status.Lane   `yaml:",inline"`
 			PendingHeader *pendingHeader `yaml:"pending_header,omitempty"`
-			Deps          []depDoc       `yaml:"deps,omitempty"`
-			DepsError     string         `yaml:"deps_error,omitempty"`
+			// Checkpoints are the keys of the steps the next run keeps.
+			Checkpoints []string `yaml:"checkpoints,flow,omitempty"`
+			Deps        []depDoc `yaml:"deps,omitempty"`
+			DepsError   string   `yaml:"deps_error,omitempty"`
 		}
 		doc := struct {
 			Schema    string    `yaml:"schema"`
@@ -87,7 +90,7 @@ func cmdStatus(args []string) error {
 		}
 		sv := newStatusView(root, cfg)
 		for i := range lanes {
-			ld := laneDoc{Lane: lanes[i]}
+			ld := laneDoc{Lane: lanes[i], Checkpoints: laneCheckpoints(root, lanes[i].Lane)}
 			if pv := sv.pending(&lanes[i]); pv != nil {
 				ld.Deps, ld.DepsError = pv.Deps, pv.DepsErr
 				if !reflect.ValueOf(pv.Header).IsZero() {
@@ -113,6 +116,20 @@ func cmdStatus(args []string) error {
 	}
 	printStatus(root, cfg, f, only, ui.Painter{On: ui.ColorEnabled(os.Stdout)}, time.Now())
 	return nil
+}
+
+// laneCheckpoints are the keys of lane n's checkpoints for the round its
+// script holds now: the steps its next run keeps.
+func laneCheckpoints(root string, n int) []string {
+	f, err := checkpoint.Load(root, n)
+	if err != nil || len(f.Steps) == 0 {
+		return nil
+	}
+	info, _ := lane.ReadScript(root, n)
+	if f.Round != checkpoint.Round(info.Job, info.Round) {
+		return nil
+	}
+	return f.Keys()
 }
 
 // effectiveState flags lanes whose recorded process is gone.
@@ -274,6 +291,12 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 		}
 		if len(l.DryRun) > 0 {
 			detail(display.DryMark+" dry run (not approved): "+strings.Join(l.DryRun, ", "), ui.Yellow)
+		}
+		for _, d := range l.Decided {
+			detail("decided "+d, ui.Dim)
+		}
+		if keys := laneCheckpoints(root, l.Lane); len(keys) > 0 {
+			detail(fmt.Sprintf("checkpoints: the next run keeps %s (swim checkpoint %d; swim run --fresh runs them)", plural(len(keys), "step"), l.Lane), ui.Dim)
 		}
 		for _, fs := range l.FailedSteps {
 			detail(fs, ui.Red)

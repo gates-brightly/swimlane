@@ -34,6 +34,8 @@ const (
 	actQuit
 	actYes // an approval question answered yes
 	actNo  // ... no (n, Enter, Esc)
+	// actChoose answers a decision with a number (answerChoice).
+	actChoose
 	// On a selected lane that isn't asking: answer its guards ahead of
 	// time (y), decline them ahead (n), or clear the answer (u).
 	actPreYes
@@ -62,8 +64,12 @@ type tui struct {
 	// Enter jumps there.
 	pending    map[int][]string
 	pendOrder  []int
-	answerLane int // the lane the last actYes/actNo answers
-	preLane    int // the lane the last actPre* is for
+	answerLane int // the lane the last actYes/actNo/actChoose answers
+	// choices are how many choices each pending decision offers, by lane
+	// (absent for a y/n question); answerChoice is the last one picked.
+	choices      map[int]int
+	answerChoice int
+	preLane      int // the lane the last actPre* is for
 
 	// Last frame's size, so keys scroll by what's on screen.
 	viewH, cols int
@@ -71,7 +77,7 @@ type tui struct {
 
 func newTUI(color bool, logPath, logLabel func(int) string) *tui {
 	return &tui{color: color, all: newViewport(Scrollback), lane: newViewport(Scrollback), logPath: logPath, logLabel: logLabel, viewH: 10, cols: 80,
-		pending: map[int][]string{}}
+		pending: map[int][]string{}, choices: map[int]int{}}
 }
 
 // addPending records lane n's approval question.
@@ -85,6 +91,7 @@ func (t *tui) addPending(n int, question []string) {
 // removePending forgets lane n's question (answered or cancelled).
 func (t *tui) removePending(n int) {
 	delete(t.pending, n)
+	delete(t.choices, n)
 	for i, m := range t.pendOrder {
 		if m == n {
 			t.pendOrder = append(t.pendOrder[:i:i], t.pendOrder[i+1:]...)
@@ -199,7 +206,17 @@ func (t *tui) key(k Key, views []LaneView) action {
 	}
 	// On a lane waiting for approval, y and n answer it; every other key
 	// works as usual (← → other lanes, Esc all lanes), leaving it waiting.
-	if t.asking() && k.Code == KeyRune {
+	if nc := t.choices[t.laneN]; t.asking() && nc > 0 {
+		// A decision: a listed number answers it; y, n and other digits
+		// mean nothing here.
+		if k.Code == KeyRune && k.Rune >= '1' && int(k.Rune-'0') <= nc {
+			t.answerLane, t.answerChoice = t.laneN, int(k.Rune-'0')
+			return actChoose
+		}
+		if k.Code == KeyRune && (k.Rune == 'y' || k.Rune == 'Y' || k.Rune == 'n' || k.Rune == 'N' || k.Rune >= '0' && k.Rune <= '9') {
+			return actNone
+		}
+	} else if t.asking() && k.Code == KeyRune {
 		switch k.Rune {
 		case 'y', 'Y':
 			t.answerLane = t.laneN
@@ -339,10 +356,19 @@ func (t *tui) banner() string {
 	first := t.pendOrder[0]
 	if len(t.pendOrder) == 1 {
 		// The key first, so a narrow terminal cuts the task, not the hint.
-		s := fmt.Sprintf("▶ swim %d needs approval · Enter to view it and answer", first)
+		need := "approval"
+		if t.choices[first] > 0 {
+			need = "a decision"
+		}
+		s := fmt.Sprintf("▶ swim %d needs %s · Enter to view it and answer", first, need)
 		for _, l := range t.pending[first] {
-			// What the lane says the step does (the question labels it so).
+			// What the lane says the step does, or asks (the question
+			// labels it so).
 			if _, task, ok := strings.Cut(l, "the lane says: "); ok {
+				s += " · " + task
+				break
+			}
+			if _, task, ok := strings.Cut(l, "the lane asks: "); ok {
 				s += " · " + task
 				break
 			}
@@ -353,11 +379,20 @@ func (t *tui) banner() string {
 	for i, n := range t.pendOrder {
 		ns[i] = fmt.Sprint(n)
 	}
-	return fmt.Sprintf("▶ swim %s need approval · Enter to view swim %d", strings.Join(ns, ", "), first)
+	need := "approval"
+	for _, n := range t.pendOrder {
+		if t.choices[n] > 0 {
+			need = "an answer" // a decision among them
+		}
+	}
+	return fmt.Sprintf("▶ swim %s need %s · Enter to view swim %d", strings.Join(ns, ", "), need, first)
 }
 
 // hints is the key reminder on the title line.
 func (t *tui) hints() string {
+	if nc := t.choices[t.laneN]; t.asking() && nc > 0 {
+		return fmt.Sprintf("1-%d choose  ← → lane  esc all", nc)
+	}
 	if t.asking() {
 		return "y approve  n decline  ← → lane  esc all"
 	}
@@ -466,7 +501,11 @@ func (t *tui) render(title string, views []LaneView, now time.Time, rows, cols i
 	}
 	switch {
 	case t.asking():
-		q := append(append([]string(nil), t.pending[t.laneN]...), "", "y approve   n decline   ← → other lanes   esc all lanes")
+		keys := "y approve   n decline   ← → other lanes   esc all lanes"
+		if nc := t.choices[t.laneN]; nc > 0 {
+			keys = fmt.Sprintf("1-%d choose   ← → other lanes   esc all lanes", nc)
+		}
+		q := append(append([]string(nil), t.pending[t.laneN]...), "", keys)
 		body = bottomBox(body, q, w, p)
 	case len(t.pendOrder) > 0 && len(body) > 0:
 		body[len(body)-1] = p.Paint(ui.Yellow+ui.Bold, truncate(t.banner(), w))

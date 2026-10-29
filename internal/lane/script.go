@@ -185,6 +185,7 @@ type sideFile struct {
 	Owner       *string           `yaml:"owner"`
 	Created     *string           `yaml:"created"`
 	Guards      map[string]string `yaml:"guards"`
+	Decisions   map[string]string `yaml:"decisions"`
 	Timeout     *string           `yaml:"timeout"`
 	StepTimeout *string           `yaml:"step-timeout"`
 	Locks       *strList          `yaml:"locks"`
@@ -233,7 +234,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, outputs, includes, observe, cache, modules)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, decisions, timeout, step-timeout, locks, stub, fail, outputs, includes, observe, cache, modules)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -315,6 +316,22 @@ func applySidecar(path string, info *Info) error {
 			front = append(front, Guard{Flag: f, Desc: sf.Guards[f]})
 		}
 		info.Guards = append(front, info.Guards...)
+	}
+	if len(sf.Decisions) > 0 {
+		names := make([]string, 0, len(sf.Decisions))
+		for d := range sf.Decisions {
+			names = append(names, d)
+		}
+		sort.Strings(names)
+		for _, d := range names {
+			info.addDecision(d + "  " + sf.Decisions[d])
+		}
+		// The sidecar's description wins, as for guards.
+		for i, d := range info.Decisions {
+			if desc, ok := sf.Decisions[d.Flag]; ok {
+				info.Decisions[i].Desc = desc
+			}
+		}
 	}
 	if sf.Stub != nil {
 		info.Stub = *sf.Stub

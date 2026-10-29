@@ -88,6 +88,7 @@ func stageEnv(o Options, n int, who approval.Caller) ([]string, string) {
 	tok := ""
 	if o.approvalSrv != nil {
 		who.Lane, who.Run, who.Manifest, who.Guards, who.AnyGuard, who.PID = n, o.RunID, m.SHA256, m.Guards, m.DynamicGuards, approval.AwaitPID
+		who.Decisions = m.Decisions
 		tok = o.approvalSrv.Register(who)
 		env = append(env, approval.TokenEnv+"="+tok)
 	}
