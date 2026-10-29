@@ -83,9 +83,7 @@ Queued #41: swim 22 and 23, no approvals.
 
 ⚠ swim 22, `L22_ALLOW_ZG_SMOKE`: applies tf/smoke under zg in sbx1, reads it
   back, then destroys it (the zg-tf-smoke-* role, security group and
-  parameter).
-⚠ A `swim watch -y` swimmer is up: it approves every guard, so the step above
-  runs. Without that swimmer it would dry-run; to approve it yourself:
+  parameter). To approve it with the batch:
   `swim queue add 63bdf4a9 0c9210bf --approve L22_ALLOW_ZG_SMOKE`.
 ````
 

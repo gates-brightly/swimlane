@@ -94,11 +94,17 @@ line marked ⚠, saying what it does and what will happen to it:
 
 - a guarded step that changes or destroys something outside the repo
   (apply, delete, migrate, publish, rotate): name the guard and the action;
-- a swimmer that approves guards without asking (`swim watch -y`, or
-  `--approved` with standing approvals): say which guards it will approve,
-  because then "queued without approval" still changes things;
 - production or shared targets, a setup lane the batch pulls in, and
   anything that can't be undone.
+
+**How the operator approves is theirs, not yours to plan around:** the
+prompt, `FLAG=1`, `--approve`, signed or standing approvals, or a swimmer
+they started with `swim watch -y` or `--approved`. Don't look for which
+one, and don't let it change what you do: write every guarded step as if
+it will be asked, queue what's ready, describe each guard's risk the same
+way, and read the results the same way whoever approved them. Never skip,
+hold back, split off or reword a step, or a batch, because something might
+approve it without asking.
 
 If the round only does what it should with a guard approved, queue it
 without the approval and give the operator the `--approve FLAG` command
