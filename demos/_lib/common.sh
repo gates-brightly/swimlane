@@ -58,6 +58,7 @@ demo_init() {
   cd "$DEMO_DIR/repo" || exit 1
   git init -q
   swim init >/dev/null
+  swim lock --upgrade >/dev/null   # .swim.lock up front, committed with the rest, as a team's would be
   echo
   printf '%sscratch repo: %s%s\n' "$_c_dim" "$DEMO_DIR/repo" "$_c_off"
 }
