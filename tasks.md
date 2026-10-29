@@ -67,7 +67,11 @@ screen shared, without help unless they're stuck for five minutes:
 Record per session, in `tasks/T23-sessions.md`: time to the first PASS,
 every point they got stuck (the command and what they expected), the
 commands they ran (`.swim.log` has them), the concepts they asked about,
-and their one sentence.
+which trust files they touched or asked about (`approvals/`, `lookup.yml`,
+`trust.yml`, `trust.yml.sig`, the trust pin, `.swim/chain.jsonl`,
+`chain_anchors`), whether "run" (`swim run`, the run id, the in-lane step)
+or "stage" (a script phase, the staged copy) confused them, and their one
+sentence.
 
 **Cut candidates** to settle with the sessions. Each one stays only if a
 session needed it or someone asks for it:

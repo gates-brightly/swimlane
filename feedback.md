@@ -14,7 +14,9 @@ a missing file), and most of 10. What's left is below, under the original number
 
 ### 9. Too many concepts, and two of them reuse words
 
-Not started.
+Deferred to T23 (decided 2026-10-29): no rename until the outside
+sessions show these words confuse people. T23 now records, per session,
+which trust files they touched and whether "run" or "stage" tripped them.
 
 - **run** is the command (`swim run`), the run id (`r-20261028T...`), and
   the in-lane step function (`run "say hello" echo ...`,
@@ -22,9 +24,9 @@ Not started.
 - **stage** is a script phase (`stage check`) and also the workspace (the
   "staged copy").
 
-**Smallest fix.** Rename the in-lane `run` to `step` (it already wraps
-`swim step`). Call the workspace "the approved copy". In T23 sessions,
-record which trust files anyone actually touched.
+**If T23 says so.** Rename the in-lane `run` to `step` (it already wraps
+`swim step`): about 190 lines in 64 files. Call the workspace "the approved
+copy": about 70 mentions in 34 files.
 
 ### 10. Test reliability is not yet proven in CI
 
