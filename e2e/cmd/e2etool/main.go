@@ -16,6 +16,7 @@
 //	e2etool run-results               "<lane> <PASS|FAIL|SKIP>" from a `swim run --yaml` stream (stdin)
 //	e2etool step-output LABEL         output of the steps labelled LABEL, from `swim log N --yaml` (stdin)
 //	e2etool gotest-report [--junit F] `go test -json` (stdin) as text, ending with each failed test and its output
+//	e2etool await|exited|fingerprint|changed   wait for an event, never a time (wait.go)
 //	e2etool aggregate|markdown|stats|stats-pages|report|links|wordfreq|reconcile|domains|headers
 //	                                  dag99 lanes 1-9's work (see each lane script)
 //
@@ -54,6 +55,10 @@ var commands = map[string]func(args []string) error{
 	"reconcile":     cmdReconcile,
 	"domains":       cmdDomains,
 	"headers":       cmdHeaders,
+	"await":         cmdAwait,
+	"exited":        cmdExited,
+	"fingerprint":   cmdFingerprint,
+	"changed":       cmdChanged,
 }
 
 // exitCode lets a command fail without printing an error line (its own

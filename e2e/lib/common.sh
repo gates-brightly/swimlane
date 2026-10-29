@@ -72,12 +72,18 @@ seq_list() { seq "$1" "$2" | tr '\n' ' ' | sed 's/ $//'; }
 # scaled SECONDS  SECONDS times E2E_SLOW.
 scaled() { awk -v s="$1" -v k="${E2E_SLOW:-1}" 'BEGIN { if (k < 1) k = 1; print s * k }'; }
 
-# wait_until CMD...  runs CMD every 50ms until it succeeds (0), or fails
-# (1) once 60s (scaled) pass.
+# wait_until CMD...  runs CMD again whenever a file under the scenario's
+# directory (its repo and $OUT) changes, never on a timer, until it
+# succeeds (0), or fails (1) once 60s (scaled) pass. The fingerprint is
+# taken before CMD runs, so a change while it does isn't missed.
 wait_until() {
-  local end=$(( $(date +%s) + $(scaled 60 | cut -d. -f1) ))
-  until "$@"; do
+  local dir fp end
+  dir=$(dirname "$OUT")
+  end=$(( $(date +%s) + $(scaled 60 | cut -d. -f1) ))
+  while :; do
+    fp=$(e2etool fingerprint "$dir")
+    "$@" && return 0
     [ "$(date +%s)" -ge "$end" ] && return 1
-    sleep 0.05
+    e2etool changed "$dir" "$fp" || return 1
   done
 }

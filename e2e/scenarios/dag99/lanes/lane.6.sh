@@ -45,7 +45,7 @@ RUN_ID=$SWIM_RUN
 stage change
 export RUN_ID
 
-run "simulated work (4ms)" sleep 0.004
+run "simulated work" true
 gate "word frequency -> wordfreq.md" e2etool wordfreq
 
 stage verify

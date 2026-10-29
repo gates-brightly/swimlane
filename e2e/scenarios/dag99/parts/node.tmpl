@@ -12,7 +12,7 @@
 #
 # Steps:
 #   0. Clear own marker; gate: each parent (@PARENTS_TXT@) finished, for this run, before this started
-#   1. Simulated work (@DUR@s)
+#   1. Simulated work (instant: the scheduler, not the clock, is what's tested)
 #   2. Gate: value = sha256("@N@|" + parents' values) -> nodes/@N@.val
 #   z. E2E_FAIL toggle; on success write nodes/@N@.done
 #
@@ -43,7 +43,7 @@ stage check
 export RUN_ID
 
 stage change
-run "simulated work (@DUR@s)" sleep @DUR@
+run "simulated work" true
 gate "value from parents -> nodes/$N.val" e2etool node-value $PARENTS
 
 stage verify

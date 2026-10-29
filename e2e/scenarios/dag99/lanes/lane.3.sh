@@ -11,7 +11,7 @@
 #
 # Steps:
 #   0. Clear this node's done marker; gate: every parent (swim 1) finished, for this run, before this node started
-#   1. Private copy of the input; simulated work (10ms)
+#   1. Private copy of the input; simulated work
 #   2. Gate: compute stats.json
 #   z. E2E_FAIL toggle; on success write .scenario/dag/nodes/3.done
 #
@@ -49,7 +49,7 @@ export RUN_ID
 IN=$D/input-3.$SWIM_JOB.html
 export IN
 gate "copy input to $IN" cp "$D/combined.html" "$IN"
-run "simulated work (10ms)" sleep 0.01
+run "simulated work" true
 gate "compute stats.json" e2etool stats
 
 stage verify

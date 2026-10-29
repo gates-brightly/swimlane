@@ -1,6 +1,7 @@
 # dag99-interrupt: start dag99 and press Ctrl-C (SIGINT to swim) once, at a
-# random point up to 1s after lane 1 is held mid-run (E2E_HOLD), so the run
-# is still going however fast the machine is. Every lane must end passed,
+# random point after lane 1 is held mid-run (E2E_HOLD), so the run is still
+# going however fast the machine is: when a random lane outside lane 1's
+# subtree (it runs while lane 1 holds) starts or ends. Every lane must end passed,
 # interrupted at a step boundary, or skipped: no step is cut off
 # mid-command, and no lane starts after the signal.
 . "$E2E/scenarios/dag99/scenario.sh"
@@ -11,8 +12,16 @@ scenario_run() {
   E2E_HOLD=$hold "$SWIM" all --yaml >"$OUT/run.yml" 2>"$OUT/run.err" &
   local pid=$!
   dag99_held "$hold" "$pid" || { wait "$pid"; RUN_EXIT=$?; return 1; }
-  WHEN=$(awk -v r="$RANDOM" 'BEGIN { printf "%.2f", r / 32767 }')
-  sleep "$WHEN"
+  local free lane
+  free=$(comm -23 <(seq 2 98 | sort) <(e2etool descendants 1 | tr ' ' '\n' | sort))
+  lane=$(echo "$free" | awk -v r="$RANDOM" 'NF { l[++n] = $1 } END { print l[r % n + 1] }')
+  if [ $((RANDOM % 2)) = 0 ]; then
+    WHEN="swim $lane started"
+    wait_until test -e ".swim/logs/agent$lane.log"
+  else
+    WHEN="swim $lane ended"
+    wait_until grep -q '^== END' ".swim/logs/agent$lane.log"
+  fi
   kill -INT "$pid"
   touch "$hold" # lane 1's held step ends; the lane stops at the next boundary
   wait "$pid"
@@ -29,6 +38,6 @@ scenario_check() {
   cut=$(cat .swim/logs/agent*.log | grep -cE '^  FAIL  .*interrupted\)' || true)
   expect_eq "no step was cut off mid-command" "$cut" 0
   expect_match "the stop was requested" "$(cat "$OUT/run.yml")" '^event: stop_requested$'
-  info "Ctrl-C ${WHEN}s after lane 1 held: $words"
+  info "Ctrl-C once $WHEN (lane 1 held): $words"
   checks_passed
 }

@@ -49,7 +49,7 @@ export H
 stage change
 # swim:lint-ignore destructive scratch dir under .scenario/, recreated every run
 gate "reset $H" bash -c 'rm -rf "$H" && mkdir -p "$H"'
-run "simulated work (4ms)" sleep 0.004
+run "simulated work" true
 head_of() { # head_of <name> <url>
   run "HEAD $1" curl -sSI --max-time 15 -A "swim-demo/$SWIM_JOB" -o "$H/$1.txt" -w '%{http_code} %{url_effective}\n' "$2"
 }

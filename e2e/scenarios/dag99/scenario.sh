@@ -19,17 +19,12 @@ dag99_lint() {
   return 1
 }
 
-# dag99_held HOLD PID: wait (up to 60s) until lane 1 holds at its E2E_HOLD
-# step, so a signal lands mid-run however fast the machine is. Fails if
-# swim (PID) ended first.
+# dag99_held HOLD PID: wait until lane 1 holds at its E2E_HOLD step, so a
+# signal lands mid-run however fast the machine is. Fails if swim (PID)
+# ended first.
 dag99_held() {
-  local i
-  for i in $(seq 1 1200); do
-    [ -e "$1.held" ] && return 0
-    kill -0 "$2" 2>/dev/null || break
-    sleep 0.05
-  done
-  echo "  lane 1 never held at E2E_HOLD (swim ended or 60s passed)"
+  e2etool await "$1.held" --pid "$2" && return 0
+  echo "  lane 1 never held at E2E_HOLD (swim ended, or the deadline passed)"
   touch "$1"
   return 1
 }

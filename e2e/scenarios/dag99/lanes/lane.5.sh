@@ -46,7 +46,7 @@ RUN_ID=$SWIM_RUN
 stage change
 export RUN_ID
 
-run "simulated work (2ms)" sleep 0.002
+run "simulated work" true
 gate "extract links.tsv" e2etool links
 
 stage verify

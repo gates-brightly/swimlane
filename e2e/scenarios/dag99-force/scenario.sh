@@ -18,21 +18,18 @@ scenario_run() {
   t0=$(e2etool now)
   FORCE_LIMIT=$(awk -v k="$(scaled 2)" 'BEGIN { print 1 + k }')
   # Timed to the exit (or the limit and a second more).
-  for i in $(seq 1 "$(awk -v l="$FORCE_LIMIT" 'BEGIN { printf "%d", (l + 1) * 20 }')"); do
-    kill -0 "$pid" 2>/dev/null || break
-    sleep 0.05
-  done
+  e2etool exited "$pid" "$(awk -v l="$FORCE_LIMIT" 'BEGIN { print l + 1 }')" || true
   FORCE_TOOK=$(awk -v a="$t0" -v b="$(e2etool now)" 'BEGIN { printf "%.2f", b - a }')
   touch "$hold" # a held step force quit missed would end now, not linger
   wait "$pid"
   RUN_EXIT=$?
   # A killed group can take a moment to go: one still there after 2s
   # (scaled) survived.
-  for i in $(seq 1 "$(awk -v l="$(scaled 2)" 'BEGIN { printf "%d", l * 20 }')"); do
-    pgrep -f "$PWD/\.swim/runs/" >/dev/null || break
-    sleep 0.05
+  local p
+  STRAY=
+  for p in $(pgrep -f "$PWD/\.swim/runs/"); do
+    e2etool exited "$p" "$(scaled 2)" || STRAY="$STRAY$p "
   done
-  STRAY=$(pgrep -f "$PWD/\.swim/runs/" | tr '\n' ' ')
 }
 
 scenario_check() {

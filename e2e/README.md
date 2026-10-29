@@ -18,9 +18,9 @@ e2e/run.sh -k dag99              # keep the scratch repo to dig into logs
 scenario as a subtest, against the binary the Go suite builds; `go test -short` skips them.
 
 Everything runs offline. `lib/fakebin/curl` is first on PATH and serves
-`fixtures/pages/`. Each request sleeps `E2E_CURL_DELAY` seconds (default 0.01).
-Simulated work in lanes is 0-10ms. To hunt a race that real, slower fetches
-would expose, widen the window: `E2E_CURL_DELAY=0.7 e2e/run.sh dag99`.
+`fixtures/pages/` at once. Simulated work in lanes is instant: the
+scenarios test the scheduler, not the clock, and wait for events (a file, a
+process exiting, an event in run.yml), never for a time.
 Set `SWIM_E2E_BIN=/path/to/swim` to test a prebuilt binary.
 Scenarios run with `SWIM_CHECK_STATES=1`: an illegal `status.yml` state
 transition panics swim ([state machines](../docs/state.md)).

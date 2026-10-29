@@ -49,7 +49,7 @@ export P
 stage check
 gate "curl available" curl --version
 gate "e2etool available" e2etool version
-run "hold (E2E_HOLD='${E2E_HOLD:-}')" bash -c '[ -z "${E2E_HOLD:-}" ] && exit 0; trap "exit 130" INT TERM; touch "$E2E_HOLD.held"; while [ ! -e "$E2E_HOLD" ]; do sleep 0.05; done'
+run "hold (E2E_HOLD='${E2E_HOLD:-}')" bash -c '[ -z "${E2E_HOLD:-}" ] && exit 0; trap "exit 130" INT TERM; touch "$E2E_HOLD.held"; e2etool await "$E2E_HOLD"'
 stage change
 # swim:lint-ignore destructive scratch dir under .scenario/, recreated every run
 gate "reset $P" bash -c 'rm -rf "$P" && mkdir -p "$P"'
