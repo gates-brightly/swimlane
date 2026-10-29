@@ -159,6 +159,49 @@ whoever runs it.
 The details, and the test behind each claim, are in the
 [trust model](docs/trust-model.md).
 
+## FAQ
+
+**Why not give the AI the whole environment: credentials, prod access,
+secrets, and let it run everything itself?**
+
+Because then everything it improvises runs with your authority. Where a
+mistake is cheap and reversible (running tests, driving a browser,
+iterating locally), let the AI act directly; swim only adds friction there.
+swim is for work where the credentials, the authority or the consequences
+belong to a person:
+
+- **The access stays with you.** The AI proposes a script and you run it.
+  It never holds the keys, so it can't misuse or leak them.
+- **You review the whole plan before anything runs.** A lane is a file you
+  can read, diff and sign. An agent working tool call by tool call decides
+  as it goes, and nothing shows you the whole plan first.
+- **"Who authorized this?" has an answer.** Approvals bind exact bytes,
+  `lookup.yml` says whose signature counts, and an override shows up as
+  UNAUTHORIZED in `swim verify`.
+- **It reaches where the AI can't.** Prod behind a VPN, a customer
+  network, a break-glass account, a key that needs your touch.
+
+**Isn't it slower to hand scripts back and forth?**
+
+For a quick local loop, yes. For ops work it's usually faster:
+
+- **No session waits on a long job.** A migration or a soak test runs
+  under swim; the AI reads the log when it's done instead of spending its
+  context on waiting.
+- **Long jobs run in parallel.** Independent lanes run at once
+  (`swim all --parallel N`), and a queue lets a swimmer (`swim watch`)
+  run approved batches when you're away.
+- **Catching up is cheap.** `swim log` gives one line per action, `swim log
+  N` gives a lane step by step, and `swim history` gives who approved and
+  ran what. You, a teammate or a fresh AI session can pick up a job cold
+  without the chat that started it.
+- **Your tooling, your way.** Lanes are plain bash run from your shell,
+  with your SSO session, your VPN and your aliases, so nothing has to be
+  rebuilt for an agent.
+- **Clean context switches.** Each lane is one job with its own script,
+  log and status. Leave it, work on something else, and come back to a
+  record rather than a half-remembered conversation.
+
 ## Where next
 
 - [Using swim](docs/usage.md): how it works, common usage patterns, and
