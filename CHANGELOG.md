@@ -328,6 +328,8 @@ and read.
   - Plurals are right: "1 approval", "1 entry".
   - `swim doctor` and `swim lint` put a long location (an absolute path,
     shown under `~`) on its own line, so rows don't pad to 120 columns.
+    Paths under your home in a finding's message and `fix:` line show
+    as `~/...` too (`--yaml` keeps them whole).
   - The README quickstart's lane 2 has a snapshot stage, so the
     tutorial runs without a warning.
   - `swim run` with nothing pending doesn't write `.swim.lock`.

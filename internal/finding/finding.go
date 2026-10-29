@@ -146,15 +146,22 @@ func WriteText(w io.Writer, fs []Finding) {
 			width = n
 		}
 	}
+	// Paths under $HOME in the text read ~/... too (--yaml keeps them whole).
+	tilde := func(s string) string {
+		if home == "" {
+			return s
+		}
+		return strings.ReplaceAll(s, home+string(os.PathSeparator), "~"+string(os.PathSeparator))
+	}
 	for _, f := range fs {
 		at := where(f)
 		if len(at) > width {
 			fmt.Fprintln(w, at)
 			at = ""
 		}
-		fmt.Fprintf(w, "%-*s  %-5s  %s  [%s]\n", width, at, f.Level, f.Message, f.Code)
+		fmt.Fprintf(w, "%-*s  %-5s  %s  [%s]\n", width, at, f.Level, tilde(f.Message), f.Code)
 		if f.Fix != "" {
-			fmt.Fprintf(w, "%-*s         fix: %s\n", width, "", f.Fix)
+			fmt.Fprintf(w, "%-*s         fix: %s\n", width, "", tilde(f.Fix))
 		}
 	}
 	fmt.Fprintln(w, Summary(fs))

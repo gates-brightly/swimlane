@@ -36,3 +36,17 @@ func TestRenderAndExit(t *testing.T) {
 		t.Error(Summary(nil))
 	}
 }
+
+// Paths under $HOME print as ~/... in the text, in the location, message
+// and fix alike.
+func TestTextTildesHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	key := home + "/.ssh/id_ed25519"
+	var b bytes.Buffer
+	WriteText(&b, []Finding{{Level: Warn, File: key, Code: "signing-key", Message: "key " + key, Fix: "ssh-add -c " + key}})
+	out := b.String()
+	if strings.Contains(out, home) || !strings.Contains(out, "fix: ssh-add -c ~/.ssh/id_ed25519") || !strings.Contains(out, "key ~/.ssh/id_ed25519") {
+		t.Errorf("not tilded:\n%s", out)
+	}
+}
