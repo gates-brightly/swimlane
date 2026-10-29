@@ -358,6 +358,10 @@ and read.
   JSON is YAML, so whatever reads status.yml as YAML still can, and a
   status.yml an older swim wrote is read as before; it has no `#` header
   line any more. `swim status --yaml` is unchanged.
+- **`swim watch` says how long a lane's last round took.** A passed,
+  failed, interrupted or skipped lane's row ends `· took 4m12s`, next to
+  when it finished ("3h ago"); a pending lane's row says how its last
+  round ended and took (`· last run failed, took 1m5s`).
 - **`a` in `swim watch` archives a lane's log**, as `swim archive N`
   does: the lane goes idle and its log is kept as
   `agentN.prev-<job>.log`. It refuses a running lane or one with no log.

@@ -276,3 +276,19 @@ func TestWatchNoTrashKey(t *testing.T) {
 	tr.send("\x03")
 	tr.wait()
 }
+
+// A finished lane's row says how long its last round took, passed or
+// failed, next to when it finished.
+func TestWatchRowsSayHowLongRoundsTook(t *testing.T) {
+	r := newSerialRepo(t, "")
+	r.script(1, "passes", `run "one" true`)
+	r.script(2, "fails", `run "two" false`)
+	r.swim("all", "--plain")
+	tr := r.startTUI(nil, "watch")
+	s := tr.waitScreen("both rows with their times", func(s string) bool {
+		return strings.Contains(s, "passes  · took ") && strings.Contains(s, "fails  · took ")
+	})
+	contains(t, "watch screen", s, "passed", "failed", " ago")
+	tr.send("\x03") // Ctrl-C quits
+	tr.wait()
+}

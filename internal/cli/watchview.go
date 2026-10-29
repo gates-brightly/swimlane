@@ -267,6 +267,20 @@ func queueTimer(e *queue.Entry, state string, now time.Time) string {
 	return ""
 }
 
+// roundTook is how long lane l's last finished round ran ("4m12s"): its
+// recorded duration, else its start to its finish; "" if neither is known.
+func roundTook(l *status.Lane) string {
+	if l.DurationS != nil && *l.DurationS >= 0 {
+		return display.Took(time.Duration(*l.DurationS * float64(time.Second)))
+	}
+	start, ok1 := statusTime(l.StartedAt)
+	end, ok2 := statusTime(l.FinishedAt)
+	if ok1 && ok2 && !end.Before(start) {
+		return display.Took(end.Sub(start))
+	}
+	return ""
+}
+
 func statusTime(s *string) (time.Time, bool) {
 	if s == nil || *s == "" {
 		return time.Time{}, false
@@ -298,15 +312,31 @@ func laneRowState(l *status.Lane, info lane.Info) (string, string) {
 	return state, ui.StateColor(state)
 }
 
-// laneRowDetail is what a waiting, locked or queued lane waits on, for
-// the end of its row, as swim status and swim run's view say it: "waiting
-// on swim 2, 3", "waiting for lock db", "2 ahead". "" for any other state
-// (a stale row's waiting process is gone).
+// laneRowDetail is the end of a lane's row: what a waiting, locked or
+// queued lane waits on, as swim status and swim run's view say it
+// ("waiting on swim 2, 3", "waiting for lock db", "2 ahead"); how long a
+// finished round took ("took 4m12s"); and for a pending round, how its
+// lane's last one ended ("last run failed, took 4m12s"). "" for any other
+// state (a stale row's waiting process is gone).
 func laneRowDetail(l *status.Lane, state string) string {
 	if l == nil {
 		return ""
 	}
+	took := roundTook(l)
 	switch state {
+	case status.Passed, status.Failed, status.Interrupted, status.Skipped:
+		if took != "" {
+			return "took " + took
+		}
+		return ""
+	case "pending":
+		switch l.State {
+		case status.Passed, status.Failed, status.Interrupted, status.Skipped:
+			if took != "" {
+				return "last run " + l.State + ", took " + took
+			}
+		}
+		return ""
 	case status.Waiting:
 		if len(l.WaitingOn) > 0 {
 			return display.WaitingText(l.WaitingOn)
