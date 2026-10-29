@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -41,11 +40,8 @@ func newConfirmAgent(t *testing.T, key string) *confirmAgent {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { agent.Process.Kill(); agent.Wait() })
-	for i := 0; i < 100; i++ {
-		if _, err := os.Stat(a.sock); err == nil {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	if !waitIn(dir, func() bool { _, err := os.Stat(a.sock); return err == nil }) {
+		t.Fatal("ssh-agent never made its socket")
 	}
 	add := exec.Command("ssh-add", "-c", key)
 	add.Env = append(os.Environ(), "SSH_AUTH_SOCK="+a.sock)

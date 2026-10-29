@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 // The first .ts lane with no #! line and no runner: at a terminal swim
@@ -29,22 +31,21 @@ func TestRunnerConfirmAtTerminal(t *testing.T) {
 	pts.Close()
 	var mu sync.Mutex
 	var out bytes.Buffer
+	var wrote testwait.Signal
 	go io.Copy(writerFunc(func(p []byte) (int, error) {
 		mu.Lock()
-		defer mu.Unlock()
-		return out.Write(p)
+		n, err := out.Write(p)
+		mu.Unlock()
+		wrote.Notify()
+		return n, err
 	}), ptm)
 	screen := func() string {
 		mu.Lock()
 		defer mu.Unlock()
 		return out.String()
 	}
-	deadline := time.Now().Add(waitDeadline)
-	for !strings.Contains(screen(), "[Y/n, a number, or type a command]") {
-		if time.Now().After(deadline) {
-			t.Fatalf("no runner question:\n%s", screen())
-		}
-		time.Sleep(20 * time.Millisecond)
+	if !testwait.UntilOK(&wrote, func() bool { return strings.Contains(screen(), "[Y/n, a number, or type a command]") }, waitDeadline) {
+		t.Fatalf("no runner question:\n%s", screen())
 	}
 	ptm.Write([]byte("\r"))
 	done := make(chan error, 1)

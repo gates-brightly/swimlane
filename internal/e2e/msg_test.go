@@ -16,7 +16,7 @@ func TestLaneMessages(t *testing.T) {
 	r.script(1, "messages", `msg --progress 1/3 "starting"
 msg --progress 1/3 "starting"
 msg --progress 2/3 "throttled away"
-run "inside" bash -c 'swim msg "from inside $DEPLOY_TOKEN"; printf "%s" "$(printf "\033[31mred\033[0m line")" >/dev/null; swim msg --progress 9/9 "$(printf "\033[31mcolored\033[0m\nmulti")"; touch "$SWIM_ROOT/posted"; while [ ! -e "$SWIM_ROOT/release" ]; do sleep 0.05; done'
+run "inside" bash -c 'swim msg "from inside $DEPLOY_TOKEN"; printf "%s" "$(printf "\033[31mred\033[0m line")" >/dev/null; swim msg --progress 9/9 "$(printf "\033[31mcolored\033[0m\nmulti")"; touch "$SWIM_ROOT/posted"; rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'
 msg ""
 msg "after clear"`)
 	l := r.launch(t, nil, "--yaml")
@@ -26,7 +26,7 @@ msg "after clear"`)
 	}
 	contains(t, "swim status", r.mustSwim("status"), "msg: colored multi (9/9)")
 	l.saw(t, "message: colored multi") // the live view polls every 200ms
-	os.WriteFile(filepath.Join(r.root, "release"), nil, 0o644)
+	r.release("release")
 	l.wait(t)
 
 	log := r.log(1)

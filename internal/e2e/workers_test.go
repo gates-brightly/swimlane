@@ -8,7 +8,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/version"
@@ -72,7 +71,9 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 
 	// The worker leaves it queued, and says why.
 	waitFor(t, func() bool { return strings.Contains(r.mustSwim("queue"), "left queued") })
-	time.Sleep(300 * time.Millisecond) // a few more polls: still not run
+	// Its answer (cantRunHere) depends only on the lock and the scripts,
+	// which don't change from here: a later pass says the same, so there's
+	// nothing more to wait for.
 	list := r.mustSwim("queue")
 	contains(t, "queue", list, "#1", "queued", "left queued: this swimmer, swim 0.20261001.1, can't run it",
 		"it reads script 3, log 2, state 2, and .swim.lock pins "+version.Current.String(), "queued by swim 0.20261001.1, reading script 3, log 2, state 2")

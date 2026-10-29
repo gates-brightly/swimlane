@@ -99,7 +99,14 @@ func TestLaneOutputsByJobAndPrune(t *testing.T) {
 	producer(t, r, 1, "v.txt", `run "write" bash -c 'echo second > "$SWIM_OUT/v.txt"'`)
 	r.mustSwim("run", "1", "--plain")
 	r.mustSwim("config", "outputs_keep", "1s")
-	time.Sleep(1100 * time.Millisecond)
+	// Every round's output dir aged past it (swim keeps the latest anyway).
+	hourAgo := time.Now().Add(-time.Hour)
+	filepath.WalkDir(filepath.Join(r.root, ".swim", "out"), func(p string, d os.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			os.Chtimes(p, hourAgo, hourAgo)
+		}
+		return nil
+	})
 	contains(t, "doctor", must(r.swim("doctor")), "[outputs-old]")
 	contains(t, "doctor --fix", must(r.swim("doctor", "--fix")), "removed 1 old round output dirs")
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "out", first)); err == nil {

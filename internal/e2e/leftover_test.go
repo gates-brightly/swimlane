@@ -36,7 +36,7 @@ func TestLeftoverProcessDoesntHoldLocks(t *testing.T) {
 // out of the working tree meanwhile: it locks what was staged.
 func TestLocksReadFromStage(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "holds db", "# Locks: db\n"+`run "hold" bash -c 'while [ ! -e "$SWIM_ROOT/release" ]; do sleep 0.05; done; echo one >> "$SWIM_ROOT/order"'`)
+	r.script(1, "holds db", "# Locks: db\n"+`run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo one >> "$SWIM_ROOT/order"'`)
 	r.script(2, "needs db", "# Locks: db\n"+`run "use" bash -c 'echo two >> "$SWIM_ROOT/order"'`)
 	one := r.cmd(bin, "run", "1", "--plain")
 	if err := one.Start(); err != nil {
@@ -49,8 +49,9 @@ func TestLocksReadFromStage(t *testing.T) {
 	}
 	waitFor(t, func() bool { return strings.Contains(r.mustSwim("status"), "waiting for lock db") })
 	r.script(2, "needs db", `run "use" bash -c 'echo two >> "$SWIM_ROOT/order"'`) // the lock edited out
-	time.Sleep(500 * time.Millisecond)
-	r.write("release", "", 0o644)
+	// Lane 2 waits on the locks it staged (its names are fixed by now), so
+	// the edit has nothing left to change: release lane 1 at once.
+	r.release("release")
 	one.Wait()
 	two.Wait()
 	if got := readFile(t, r, "order"); got != "one\ntwo" {

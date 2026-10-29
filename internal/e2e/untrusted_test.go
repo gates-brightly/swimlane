@@ -1,11 +1,8 @@
 package e2e
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // payload is a lane's attempt to rewrite what the operator reads: erase
@@ -37,17 +34,18 @@ func TestUntrustedTextIsSafe(t *testing.T) {
 	r.env = append(r.env, "ALLOW_X=1")
 	r.script(1, "hostile", `P=`+payload+`
 if guard ALLOW_X "$P"; then run "$P" true; fi
-run "post" bash -c 'swim msg "$0"; touch "$SWIM_ROOT/posted"; while [ ! -e "$SWIM_ROOT/release" ]; do sleep 0.05; done' "$P"`)
+run "post" bash -c 'swim msg "$0"; touch "$SWIM_ROOT/posted"; rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null' "$P"`)
 	l := r.launch(t, nil)
-	waitFor(t, func() bool { _, err := os.Stat(filepath.Join(r.root, "posted")); return err == nil })
-	time.Sleep(100 * time.Millisecond)
-	y := r.mustSwim("status", "--yaml")
+	// The launcher relays the message into status.yml.
+	var y string
+	waitFor(t, func() bool { y = r.mustSwim("status", "--yaml"); return strings.Contains(y, "message: ") })
+
 	contains(t, "status --yaml", y, "message: "+msgSafe)
 	noControls(t, "status --yaml", y)
 	if strings.Contains(y, `\`) {
 		t.Errorf("status --yaml has escaped controls:\n%s", y)
 	}
-	os.WriteFile(filepath.Join(r.root, "release"), nil, 0o644)
+	r.release("release")
 	if code := l.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}

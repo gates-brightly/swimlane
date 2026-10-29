@@ -14,7 +14,7 @@ import (
 // slowLane's step "slow" prints tick-1..3, holds until r.release("go"),
 // prints tick-4..6, and holds until r.release("go2").
 const slowLane = `run "quick" echo hello
-run "slow" bash -c 'for i in 1 2 3; do echo tick-$i; done; while [ ! -e "$SWIM_ROOT/go" ]; do sleep 0.05; done; for i in 4 5 6; do echo tick-$i; done; while [ ! -e "$SWIM_ROOT/go2" ]; do sleep 0.05; done'
+run "slow" bash -c 'for i in 1 2 3; do echo tick-$i; done; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; for i in 4 5 6; do echo tick-$i; done; rf="$SWIM_ROOT/go2"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'
 run "after" true`
 
 func spooled(r *repo, n int, want string) func() bool {
@@ -100,7 +100,7 @@ run "fails" false`)
 // last look at the spool, shows once, from the step's block.
 func TestLogFollowLateOutput(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "late", `run "late" bash -c 'echo early; while [ ! -e "$SWIM_ROOT/go" ]; do sleep 0.05; done; echo late-1; echo late-2'`)
+	r.script(1, "late", `run "late" bash -c 'echo early; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo late-1; echo late-2'`)
 	c := r.cmd(bin, "run", "1", "--plain")
 	if err := c.Start(); err != nil {
 		t.Fatal(err)

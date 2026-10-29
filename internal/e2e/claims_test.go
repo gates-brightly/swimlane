@@ -3,6 +3,7 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -64,7 +65,14 @@ func TestLaneClaims(t *testing.T) {
 	if out, code := r.as("a", "claim", "5", "--for", "1s"); code != 0 {
 		t.Fatalf("claim --for: %s", out)
 	}
-	time.Sleep(1200 * time.Millisecond)
+	// Expired: its lease ran out (written as if an hour had passed).
+	claim := filepath.Join(r.root, ".swim", "claims", "lane.5.yml")
+	data, err := os.ReadFile(claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	os.WriteFile(claim, regexp.MustCompile(`(?m)^expires: .*$`).ReplaceAll(data, []byte("expires: "+past)), 0o644)
 	if out, code := r.as("b", "new", "5", "after the lease"); code != 0 {
 		t.Fatalf("b's new after a's claim expired: %s", out)
 	}

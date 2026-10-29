@@ -24,6 +24,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lint"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/testwait"
 	"github.com/gates-brightly/swimlane/internal/version"
 	"gopkg.in/yaml.v3"
 )
@@ -159,6 +160,7 @@ func newRepo(t *testing.T, deps string) *repo {
 	// it (looping on files whose directory is about to go). Registered after
 	// t.TempDir, so it runs before the directory is removed.
 	t.Cleanup(func() { killLanes(root) })
+	r.watch(root)
 	// Never sign with the developer's own ~/.ssh key in tests (nor let swim
 	// init list it in lookup.yml); the signing tests set their own keys.
 	r.mustSwim("config", "signing", "off")
@@ -677,31 +679,123 @@ func scaled(d time.Duration) time.Duration { return d * slowFactor }
 func dur(d time.Duration) string { return scaled(d).String() }
 
 // waitDeadline bounds every wait for an event.
-var waitDeadline = scaled(60 * time.Second)
+var waitDeadline = testwait.Deadline
 
-// waitFor polls cond until it holds; a hung swim fails after waitDeadline.
+// watched are each test's sources of change (its repos' watchers), for
+// waitFor.
+var watched sync.Map // *testing.T -> testwait.Any
+
+// watch adds dir (a repo, or a directory a test's lanes write to) to what
+// r's test waits on: waitFor checks its condition again whenever a file
+// under it changes. Git's own files and the kept stages aren't watched.
+func (r *repo) watch(dir string) {
+	r.t.Helper()
+	w, err := testwait.Watch(dir, func(d string) bool {
+		rel, _ := filepath.Rel(dir, d)
+		return rel == ".git" || rel == filepath.Join(".swim", "runs") || rel == filepath.Join(".swim", "scripts")
+	})
+	if err != nil {
+		r.t.Fatalf("watch %s: %v", dir, err)
+	}
+	r.t.Cleanup(w.Close)
+	prev, _ := watched.Load(r.t)
+	src, _ := prev.(testwait.Any)
+	watched.Store(r.t, append(src, w))
+	r.t.Cleanup(func() { watched.Delete(r.t) })
+}
+
+// waitFor waits until cond holds, checking it again whenever a file in the
+// test's repos changes (never on a timer); a hung swim fails after
+// waitDeadline.
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(waitDeadline)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(30 * time.Millisecond)
+	src, ok := watched.Load(t)
+	if !ok {
+		t.Fatal("waitFor: this test has no repo to watch (newRepo), so nothing would wake the wait")
 	}
-	t.Fatalf("condition not met within %s", waitDeadline)
+	testwait.Until(t, "a condition", append(src.(testwait.Any), &output), cond)
 }
 
-// hold is a step command that runs until r.release(name).
+// waitIn is waitFor for a directory outside the test's repos (a temp
+// directory, an agent's socket directory): cond is checked again whenever
+// a file under dir changes. false if it didn't hold by waitDeadline.
+func waitIn(dir string, cond func() bool) bool {
+	w, err := testwait.Watch(dir, nil)
+	if err != nil {
+		return cond()
+	}
+	defer w.Close()
+	return testwait.UntilOK(w, cond, waitDeadline)
+}
+
+// output changes whenever a command the tests started prints (a
+// syncBuffer), for waits on what it printed.
+var output testwait.Signal
+
+// hold is a step command that runs until r.release(name): it blocks
+// reading a FIFO, $SWIM_ROOT/name, that release serves.
 func hold(name string) string {
-	return `bash -c 'while [ ! -e "$SWIM_ROOT/` + name + `" ]; do sleep 0.05; done'`
+	return `bash -c 'f="$SWIM_ROOT/` + name + `"; [ -p "$f" ] || mkfifo "$f" 2>/dev/null; cat "$f" >/dev/null'`
 }
 
-// release ends hold(name)'s steps.
+// release ends hold(name)'s steps, now and later: it serves a line to
+// every reader of the FIFO until the test ends.
 func (r *repo) release(name string) {
-	if err := os.WriteFile(filepath.Join(r.root, name), nil, 0o644); err != nil {
+	r.t.Helper()
+	p := filepath.Join(r.root, name)
+	if err := syscall.Mkfifo(p, 0o644); err != nil && !os.IsExist(err) {
 		r.t.Fatal(err)
 	}
+	if _, loaded := released.LoadOrStore(p, true); loaded {
+		return
+	}
+	stop := make(chan struct{})
+	served := make(chan struct{})
+	go func() {
+		defer close(served)
+		for {
+			f, err := os.OpenFile(p, os.O_WRONLY, 0) // blocks until a hold opens it
+			select {
+			case <-stop:
+				if err == nil {
+					f.Close()
+				}
+				return
+			default:
+			}
+			if err != nil {
+				return
+			}
+			f.Write([]byte("go\n"))
+			f.Close()
+		}
+	}()
+	r.t.Cleanup(func() {
+		close(stop)
+		// Unblock the server's open, if it's waiting for a reader.
+		if f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NONBLOCK, 0); err == nil {
+			<-served
+			f.Close()
+		} else {
+			<-served
+		}
+		released.Delete(p)
+	})
+}
+
+// released are the FIFOs r.release serves.
+var released sync.Map
+
+// blocked is a step command that runs until it's killed, named by marker
+// so noStray can find it (pgrep -f blocked-MARKER).
+func blocked(marker string) string { return `bash -c '` + fifoCat(marker) + `'` }
+
+// fifoCat is a bash fragment that runs until it's killed: cat blocks
+// opening a FIFO nobody writes, $SWIM_ROOT/.blocked-MARKER. Unquoted, so it
+// fits inside a double-quoted trap too (test repos' paths have no spaces).
+func fifoCat(marker string) string {
+	f := "$SWIM_ROOT/.blocked-" + marker
+	return "mkfifo " + f + " 2>/dev/null; cat " + f
 }
 
 // startRun runs swim run ARGS in the background and returns a wait func

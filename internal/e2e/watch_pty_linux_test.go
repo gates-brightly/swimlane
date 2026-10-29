@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,7 +80,7 @@ func TestWatchBatchOutputView(t *testing.T) {
 	tr.waitFor("lane2-hello")
 	tr.send("q")
 	tr.waitFor("▸ #1")
-	os.WriteFile(release, nil, 0o644)
+	release()
 	s := tr.waitFor("#1 passed")
 	contains(t, "watch screen after the batch", s, "Jobs", "Queue")
 	tr.send("\x03")
@@ -96,8 +95,8 @@ func TestWatchBatchOutputView(t *testing.T) {
 func TestWatchFollowEndHeader(t *testing.T) {
 	r := newSerialRepo(t, "")
 	release := tuiLanes(r, 2)
-	body := fmt.Sprintf(`run "hold" bash -c 'while [ ! -f %s ]; do sleep 0.05; done'
-gate "the check" false`, release)
+	body := `run "hold" ` + hold("release") + `
+gate "the check" false`
 	r.script(2, "fails after release", body)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
@@ -109,7 +108,7 @@ gate "the check" false`, release)
 	if strings.Contains(s, "FAILED") || strings.Contains(s, "PASSED") {
 		t.Errorf("a header while the batch runs:\n%s", s)
 	}
-	os.WriteFile(release, nil, 0o644)
+	release()
 	s = tr.waitScreen("the end header", func(s string) bool {
 		return strings.Contains(s, "✗ FAILED · exit 1") && strings.Contains(s, "swim 2: FAIL  the check")
 	})
@@ -135,7 +134,7 @@ func TestWatchLaneOutputView(t *testing.T) {
 	tr.waitFor("· batch")
 	tr.send("q")
 	tr.waitFor("▸ ")
-	os.WriteFile(release, nil, 0o644)
+	release()
 	tr.waitFor("#1 passed")
 	// Not running any more: enter says so instead of opening an empty view.
 	tr.send("\r")
@@ -241,7 +240,7 @@ func TestWatchStreamsRunningOutput(t *testing.T) {
 	})
 	tr.send("o")
 	tr.waitFor("lane1-hello")
-	os.WriteFile(release, nil, 0o644)
+	release()
 	tr.waitScreen("both done, nothing streaming", func(s string) bool {
 		return strings.Contains(s, "#2 passed") && !strings.Contains(s, "\n  Running") && !strings.Contains(s, "lane1-hello")
 	})

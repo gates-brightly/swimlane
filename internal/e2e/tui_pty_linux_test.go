@@ -16,6 +16,9 @@ import (
 	"time"
 	"unicode/utf8"
 	"unsafe"
+
+	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 // The interactive view under a pseudo-terminal: swim runs as the session
@@ -36,7 +39,8 @@ type tuiRun struct {
 	read   chan struct{}
 	before termios
 	exit   chan error
-	exited atomic.Bool // swim has exited (wait still reads its error)
+	exited atomic.Bool     // swim has exited (wait still reads its error)
+	wrote  testwait.Signal // swim wrote to the terminal
 }
 
 type termios struct{ Iflag, Oflag, Cflag, Lflag uint32 }
@@ -76,6 +80,7 @@ func (r *repo) startTUI(env []string, args ...string) *tuiRun {
 			tr.mu.Lock()
 			tr.raw.Write(buf[:n])
 			tr.mu.Unlock()
+			tr.wrote.Notify()
 			if err != nil {
 				close(tr.read)
 				return
@@ -113,17 +118,11 @@ func (tr *tuiRun) send(keys string) {
 // waitScreen waits until the screen satisfies ok.
 func (tr *tuiRun) waitScreen(what string, ok func(string) bool) string {
 	tr.t.Helper()
-	deadline := time.Now().Add(waitDeadline)
-	for {
-		s := tr.screen()
-		if ok(s) {
-			return s
-		}
-		if time.Now().After(deadline) {
-			tr.t.Fatalf("timed out waiting for %s; screen:\n%s", what, s)
-		}
-		time.Sleep(30 * time.Millisecond)
+	var s string
+	if !testwait.UntilOK(&tr.wrote, func() bool { s = tr.screen(); return ok(s) }, waitDeadline) {
+		tr.t.Fatalf("timed out waiting for %s; screen:\n%s", what, s)
 	}
+	return s
 }
 
 func (tr *tuiRun) waitFor(want string) string {
@@ -247,14 +246,13 @@ func sameGrid(a, b [][]rune) bool { return len(a) > 0 && len(b) > 0 && &a[0] == 
 
 // tuiLanes writes lanes that print and then wait for the release file, so
 // the run stays up while the test drives the view.
-func tuiLanes(r *repo, n int) string {
-	release := filepath.Join(r.root, "release")
+func tuiLanes(r *repo, n int) (release func()) {
 	for i := 1; i <= n; i++ {
 		r.script(i, fmt.Sprintf("tui lane %d", i), fmt.Sprintf(
 			`run "talk" bash -c 'for i in $(seq 1 %d); do echo lane%d-line-$i; done; echo lane%d-hello'
-run "hold" bash -c 'while [ ! -f %s ]; do sleep 0.05; done'`, 5+30*(i%2), i, i, release))
+run "hold" `, 5+30*(i%2), i, i)+hold("release"))
 	}
-	return release
+	return func() { r.release("release") }
 }
 
 func TestTUILaneViewAndCtrlC(t *testing.T) {
@@ -301,7 +299,7 @@ func TestTUILaneViewAndCtrlC(t *testing.T) {
 	tr.waitScreen("lanes stopping", func(s string) bool {
 		return strings.Contains(s, "stopping · 3 steps running") && strings.Contains(s, "stopping hold")
 	})
-	os.WriteFile(release, nil, 0o644)
+	release()
 	code, out := tr.wait()
 	if code == 0 {
 		t.Errorf("interrupted run exited 0")
@@ -317,7 +315,7 @@ func TestTUIHoldsOpenAfterRun(t *testing.T) {
 	tr.waitFor("all lanes · following")
 	tr.send("2\r")
 	tr.waitFor("swim 2 · following")
-	os.WriteFile(release, nil, 0o644)
+	release()
 	tr.waitScreen("the finished lane's END", func(s string) bool {
 		return strings.Contains(s, "run finished · q to close") && strings.Contains(s, "== END PASS")
 	})
@@ -348,10 +346,14 @@ func TestTUIRestoresTerminal(t *testing.T) {
 			tr.send("1\r") // a lane view would hold the screen at the end; a signal must not
 			tr.waitFor("swim 1 · following")
 			tr.cmd.Process.Signal(sig)
-			// The waiting command doesn't get the signal (swim passes it to
-			// the lane scripts only), so let the lanes finish.
-			time.Sleep(200 * time.Millisecond)
-			os.WriteFile(release, nil, 0o644)
+			// Once swim has acted on it (SIGTERM: asked the lanes to stop
+			// after their step, the stop file; SIGHUP: interrupted them, so
+			// lane 1 isn't running), let any lane still waiting finish.
+			waitFor(t, func() bool {
+				_, err := os.Stat(filepath.Join(r.root, ".swim", "lane1.stop"))
+				return err == nil || laneOf(r, 1).State != status.Running
+			})
+			release()
 			code, out := tr.wait()
 			if !strings.Contains(out, "\x1b[?1049l") {
 				t.Errorf("exit %d, left the alternate screen: %v", code, strings.Contains(out, "\x1b[?1049l"))
@@ -361,7 +363,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 	t.Run("panic", func(t *testing.T) {
 		r := newSerialRepo(t, "")
 		release := tuiLanes(r, 2)
-		defer os.WriteFile(release, nil, 0o644) // let the orphaned lanes end
+		defer release() // let the orphaned lanes end
 		tr := r.startTUI([]string{"SWIM_TEST_TUI_PANIC=1"}, "all")
 		tr.waitFor("all lanes · following")
 		tr.send("1\r")
@@ -386,7 +388,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 func TestTUIOff(t *testing.T) {
 	r := newSerialRepo(t, "")
 	release := tuiLanes(r, 2)
-	os.WriteFile(release, nil, 0o644)
+	release()
 	for _, c := range []struct {
 		name string
 		env  []string
@@ -410,11 +412,10 @@ func TestTUIOff(t *testing.T) {
 // With more lanes than the panel shows, the selected lane keeps a row.
 func TestTUIManyLanesKeepsSelection(t *testing.T) {
 	r := newSerialRepo(t, "")
-	release := filepath.Join(r.root, "release")
 	for i := 1; i <= 40; i++ {
 		body := `run "quick" true`
 		if i == 1 {
-			body = fmt.Sprintf(`run "hold" bash -c 'while [ ! -f %s ]; do sleep 0.05; done'`, release)
+			body = `run "hold" ` + hold("release")
 		}
 		r.script(i, fmt.Sprintf("many %d", i), body)
 	}
@@ -428,7 +429,7 @@ func TestTUIManyLanesKeepsSelection(t *testing.T) {
 	contains(t, "panel", s, "▶swim 35", "swim 1 ")
 	tr.send("\x1b")
 	tr.waitFor("all lanes · following")
-	os.WriteFile(release, nil, 0o644)
+	r.release("release")
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d", code)
 	}

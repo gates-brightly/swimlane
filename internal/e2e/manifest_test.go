@@ -17,7 +17,7 @@ import (
 // nothing in the round, and the chain names the original script.
 func TestManifestStagedBytesRun(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(2, "goes first", `run "hold" bash -c 'until [ -e "$SWIM_ROOT/release" ]; do sleep 0.05; done'`)
+	r.script(2, "goes first", `run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "greet.sh"), []byte("greeting=greet-v1\n"), 0o644)
 	r.script(3, "waits for 2", `source lib/greet.sh
@@ -33,7 +33,7 @@ run "say" echo "script-v1 $greeting"`)
 run "say" echo "script-v2 $greeting"`)
 	withHeader(t, r, 3, "# After: 2")
 	os.WriteFile(filepath.Join(r.root, "lib", "greet.sh"), []byte("greeting=greet-v2\n"), 0o644)
-	os.WriteFile(filepath.Join(r.root, "release"), nil, 0o644)
+	r.release("release")
 	if code := l.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}
@@ -67,7 +67,7 @@ run "say" echo "script-v2 $greeting"`)
 func TestManifestMidRunEdit(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "long", `run "first" echo one-v1
-run "wait" bash -c 'until [ -e "$SWIM_ROOT/go1" ]; do sleep 0.05; done'
+run "wait" bash -c 'rf="$SWIM_ROOT/go1"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'
 run "second" echo two-v1`)
 	l := r.launch(t, nil)
 	waitFor(t, func() bool { l := r.status().Get(1); return l != nil && l.CurrentStep == "wait" })
@@ -75,7 +75,7 @@ run "second" echo two-v1`)
 	data, _ := os.ReadFile(p)
 	// In place, same length: what a running bash would read next.
 	os.WriteFile(p, []byte(strings.ReplaceAll(string(data), "-v1", "-v2")), 0o755)
-	os.WriteFile(filepath.Join(r.root, "go1"), nil, 0o644)
+	r.release("go1")
 	if code := l.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 // launched is a `swim all` started in its own process group, like a
@@ -34,8 +36,10 @@ type syncBuffer struct {
 
 func (b *syncBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
+	n, err := b.buf.Write(p)
+	b.mu.Unlock()
+	output.Notify() // a wait on what a command printed checks again
+	return n, err
 }
 
 func (b *syncBuffer) String() string {
@@ -70,12 +74,8 @@ func (l *launched) signal(sig syscall.Signal) { syscall.Kill(-l.c.Process.Pid, s
 // saw waits for the command to print want: it has handled what printed it.
 func (l *launched) saw(t *testing.T, want string) {
 	t.Helper()
-	deadline := time.Now().Add(waitDeadline)
-	for !strings.Contains(l.out.String(), want) {
-		if time.Now().After(deadline) {
-			t.Fatalf("never printed %q:\n%s", want, l.out.String())
-		}
-		time.Sleep(20 * time.Millisecond)
+	if !testwait.UntilOK(&output, func() bool { return strings.Contains(l.out.String(), want) }, waitDeadline) {
+		t.Fatalf("never printed %q:\n%s", want, l.out.String())
 	}
 }
 
@@ -120,21 +120,25 @@ func (r *repo) waitFile(t *testing.T, name string) {
 // there after a few seconds (scaled): a group just killed takes a moment.
 func noStray(t *testing.T, marker string) {
 	t.Helper()
-	var out []byte
-	for deadline := time.Now().Add(scaled(5 * time.Second)); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-		var err error
-		if out, err = exec.Command("pgrep", "-f", marker).Output(); err != nil || len(bytes.TrimSpace(out)) == 0 {
-			return
+	out, _ := exec.Command("pgrep", "-f", marker).Output()
+	deadline := time.Now().Add(scaled(5 * time.Second))
+	var left []string
+	for _, f := range strings.Fields(string(out)) {
+		pid, err := strconv.Atoi(f)
+		if err == nil && !testwait.Exited(pid, time.Until(deadline)) {
+			left = append(left, f)
 		}
 	}
-	t.Errorf("processes matching %q survived: %s", marker, out)
+	if len(left) > 0 {
+		t.Errorf("processes matching %q survived: %s", marker, strings.Join(left, " "))
+	}
 }
 
 func TestGracefulInterrupt(t *testing.T) {
 	r := newRepo(t, "")
 	// Step "a" notes any SIGINT it gets; it must get none. Both steps run
 	// until both lanes have the stop request.
-	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; touch $SWIM_ROOT/trap1; while [ ! -e $SWIM_ROOT/go ]; do sleep 0.05; done; true'
+	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; touch $SWIM_ROOT/trap1; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; true'
 run "b" true`)
 	r.script(2, "after 1", `run "x" true`)
 	r.script(3, "other", `run "c" `+hold("go")+`
@@ -181,10 +185,12 @@ func TestForceQuit(t *testing.T) {
 	r.mustSwim("config", "interrupt_grace", "600ms")
 	// A terraform-like tool: cleans up and exits on its first SIGINT, and
 	// counts how many it got.
-	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; sleep 0.2; exit 1" INT; touch $SWIM_ROOT/trap1; sleep 31.1 & wait'
+	// Its cleanup lasts until the test has seen swim's force quit, so a
+	// second SIGINT would be counted.
+	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; rf=$SWIM_ROOT/tf-done; [ -p \$rf ] || mkfifo \$rf; cat \$rf >/dev/null; exit 1" INT; touch $SWIM_ROOT/trap1; `+fifoCat("31.1")+` & wait'
 run "after" true`)
-	// Ignores its SIGINT for longer than the grace: killed.
-	r.script(2, "stubborn", `run "hang" bash -c 'trap "echo got-int; sleep 5; exit 3" INT; echo started; touch $SWIM_ROOT/trap2; sleep 31.2 & wait; wait'`)
+	// Ignores its SIGINT for longer than the grace (for good): killed.
+	r.script(2, "stubborn", `run "hang" bash -c 'trap "echo got-int; `+fifoCat("never")+`; exit 3" INT; echo started; touch $SWIM_ROOT/trap2; `+fifoCat("31.2")+` & wait; wait'`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "apply")
 	r.waitStep(t, 2, "hang")
@@ -192,12 +198,15 @@ run "after" true`)
 	r.waitFile(t, "trap2")
 	l.signal(syscall.SIGINT)
 	l.saw(t, "swim: stopping after current steps")
-	time.Sleep(300 * time.Millisecond) // nothing to wait for: it mustn't happen
+	// A forwarded Ctrl-C would have been sent before swim said so.
 	if data, _ := os.ReadFile(filepath.Join(r.root, "ints1.txt")); len(data) > 0 {
 		t.Fatalf("the first Ctrl-C reached the step: %s", data)
 	}
 	start := time.Now()
 	l.signal(syscall.SIGINT)
+	l.saw(t, "swim: force quitting")
+	waitFor(t, func() bool { data, _ := os.ReadFile(filepath.Join(r.root, "ints1.txt")); return len(data) > 0 })
+	r.release("tf-done")
 	l.wait(t)
 	if took := time.Since(start); took > scaled(3*time.Second) {
 		t.Errorf("force quit took %s (grace 600ms)", took)
@@ -214,7 +223,7 @@ run "after" true`)
 			t.Errorf("swim %d = %s", n, st)
 		}
 	}
-	noStray(t, `sleep 31\.[12]`) // this test's own steps: tests run in parallel
+	noStray(t, `blocked-31\.[12]`) // this test's own steps: tests run in parallel
 }
 
 func TestKillOnThirdCtrlC(t *testing.T) {
@@ -374,10 +383,11 @@ run "after" true`)
 	defer pw.Close()
 	defer pr.Close()
 	l := start(t, r.cmd(bin, "run", "1", "--plain"), pr)
-	// The prompt has no newline, so it isn't relayed yet: wait for the step
-	// before it, then for bash to reach the read.
+	// The prompt has no newline, so it isn't relayed: wait for the step
+	// before it. Whether bash is at the read yet or not, the stop request
+	// ends the round there: confirm reads in slices and checks for it after
+	// each.
 	waitFor(t, func() bool { return strings.Contains(r.log(1), "PASS  before") })
-	time.Sleep(300 * time.Millisecond)
 	l.signal(syscall.SIGINT)
 	l.wait(t)
 	log := r.log(1)

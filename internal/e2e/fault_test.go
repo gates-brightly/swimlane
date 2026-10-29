@@ -194,17 +194,19 @@ func faultRun(t *testing.T, r *repo, spec string, args ...string) (*exec.Cmd, *b
 // returns that process's pid. A loaded machine may take a while.
 func waitHit(t *testing.T, dir, site string, out *bytes.Buffer) int {
 	t.Helper()
-	deadline := time.Now().Add(waitDeadline)
-	for time.Now().Before(deadline) {
+	pid := 0
+	hit := waitIn(dir, func() bool {
 		data, err := os.ReadFile(filepath.Join(dir, site+".hit"))
 		if err == nil && strings.HasSuffix(string(data), "\n") {
-			pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-			return pid
+			pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+			return true
 		}
-		time.Sleep(20 * time.Millisecond)
+		return false
+	})
+	if !hit {
+		t.Fatalf("no process reached failpoint %s within %s:\n%s", site, waitDeadline, out)
 	}
-	t.Fatalf("no process reached failpoint %s within %s:\n%s", site, waitDeadline, out)
-	return 0
+	return pid
 }
 
 // crash kills the whole worker as a power cut would, with no traps run:

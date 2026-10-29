@@ -181,8 +181,7 @@ func TestReportWait(t *testing.T) {
 // the next report shows the step finished, not skipped as seen.
 func TestReportInFlight(t *testing.T) {
 	r := newRepo(t, "")
-	release := filepath.Join(r.root, "release")
-	r.script(1, "slow", `run "slow step" bash -c 'echo started-slow; while [ ! -f `+release+` ]; do sleep 0.05; done; echo finished-slow'`)
+	r.script(1, "slow", `run "slow step" bash -c 'echo started-slow; rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo finished-slow'`)
 	c := r.cmd(bin, "run", "1", "--plain")
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
@@ -190,7 +189,7 @@ func TestReportInFlight(t *testing.T) {
 	defer c.Process.Kill()
 	waitFor(t, spooled(r, 1, "started-slow"))
 	contains(t, "in flight", r.mustSwim("report", "--earmark"), "RUNNING", "slow step", "in progress", "started-slow")
-	os.WriteFile(release, nil, 0o644)
+	r.release("release")
 	c.Wait()
 	out := r.mustSwim("report", "--earmark")
 	contains(t, "after", out, "PASS  slow step", "finished-slow", "== END PASS")

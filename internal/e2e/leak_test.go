@@ -136,13 +136,10 @@ summary
 		procWG.Add(1)
 		go func() {
 			defer procWG.Done()
-			deadline := time.Now().Add(waitDeadline)
-			for time.Now().Before(deadline) {
-				if _, err := os.Stat(filepath.Join(tmp, "sleeping")); err == nil {
-					break
-				}
-				time.Sleep(20 * time.Millisecond)
-			}
+			waitIn(tmp, func() bool {
+				_, err := os.Stat(filepath.Join(tmp, "sleeping"))
+				return err == nil
+			})
 			files, _ := filepath.Glob("/proc/[0-9]*/cmdline")
 			for _, f := range files {
 				data, _ := os.ReadFile(f)
