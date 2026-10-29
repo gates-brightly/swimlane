@@ -21,6 +21,7 @@ they don't confine a hostile script. Review what you approve. See
 
 ## The 90-second tamper story
 
+<!-- tamper -->
 ```sh
 # The AI wrote lane.1.sh: one guarded step that runs install.sh, which
 # its header pins (# Includes: install.sh).
@@ -36,11 +37,12 @@ git checkout install.sh && swim run 1         # back to the bytes you signed
 #   APPROVED  replace the live cert (approved by me (signed))
 #   PASS  install the new cert
 
-sed -i 's/new cert/old cert/' .swim/logs/agent1.log   # someone edits the record afterwards
+perl -pi -e 's/new cert/old cert/' .swim/logs/agent1.log   # someone edits the record afterwards
 swim verify
 #   BROKEN: entry #5: swim 1's log for run r-20261023T224837Z-a11f was changed after the round ended
-#   NOT VERIFIED: consistent: 1 problems (BROKEN, above)
+#   NOT VERIFIED: consistent: 1 problem (BROKEN, above)
 ```
+<!-- /tamper -->
 
 A changed script, or a file it pins, falls back to a dry run. A file it
 uses but doesn't pin isn't there when it runs: the lane runs in a staged

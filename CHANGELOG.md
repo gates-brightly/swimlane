@@ -455,6 +455,10 @@ and read.
 - **The README leads with what swim is for:** your AI writes the ops
   change, you sign the exact bytes, and swim runs it and gives you a
   receipt anyone can verify. A 90-second tamper story follows.
+- **The tamper story is tested.** `TestTamperStoryRuns` runs the README's
+  tamper story as written and checks the output its comments promise. It
+  edits the log with `perl -pi -e` (macOS's `sed -i` needs a suffix), and
+  says `1 problem`, as swim does.
 - **swim is MIT-licensed.** [LICENSE](LICENSE) is at the repo root, the
   README has a license badge, and the Nix package sets `meta.license`.
 

@@ -7,21 +7,9 @@
 Rechecked on 2026-10-29 against `649d340`. Fixed and removed: 3 (lint
 passes unparseable scripts), 4 (UNSIGNED vs BROKEN), 5 (the mismatch hint
 suggests the bypass), 6 (usage errors), 7 (output polish), 8 (`--help` on
-a pipe), and most of 1, 2 and 10. What's left is below, under the original numbers.
+a pipe), 1 (the tamper story, now tested), and most of 2 and 10. What's left is below, under the original numbers.
 
 ## Open findings
-
-### 1. The tamper story isn't under test
-
-`swim init` now writes `lookup.yml` for your key, and `swim keys add`
-exists, which removes the step that broke the story (not rerun end to
-end). But README.md:22-42 still isn't inside `<!-- quickstart -->`
-markers, so `TestQuickstartRuns` doesn't run it, and it has already
-drifted: its expected output still says `1 problems`, where swim now
-prints `1 problem`.
-
-**Smallest fix.** Wrap it in markers (with the lane setup it assumes) so
-`TestQuickstartRuns` runs it, and correct the expected output.
 
 ### 2. A missing file at runtime is still a bare ENOENT
 
