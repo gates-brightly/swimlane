@@ -196,6 +196,31 @@ func TestWatchLogsKey(t *testing.T) {
 	}
 }
 
+// a on a lane archives its log (swim archive N): the lane goes idle and the
+// log is kept as agentN.prev-<job>.log. A lane with no log says so.
+func TestWatchArchiveKey(t *testing.T) {
+	r := newSerialRepo(t, "")
+	r.script(1, "short lane 1", `run "hello" echo lane1-hello`)
+	r.script(2, "short lane 2", `run "hello" echo lane2-hello`)
+	r.mustSwim("run", "1", "--plain")
+	tr := r.startTUI(nil, "watch")
+	tr.waitFor("a archive")
+	tr.waitFor("▸ swim 1")
+	tr.send("a")
+	tr.waitFor("archived .swim/logs/agent1.log -> .swim/logs/agent1.prev-")
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log")); err == nil {
+		t.Error("agent1.log is still there")
+	}
+	tr.send("\x1b[B")
+	tr.waitFor("▸ swim 2")
+	tr.send("a")
+	tr.waitFor("nothing archived")
+	tr.send("\x03")
+	if code, _ := tr.wait(); code != 0 {
+		t.Errorf("exit %d after ctrl-c", code)
+	}
+}
+
 // The main screen streams the running lanes' output under the queue; o
 // hides it.
 func TestWatchStreamsRunningOutput(t *testing.T) {
@@ -242,7 +267,7 @@ func TestWatchNoTrashKey(t *testing.T) {
 	r.script(1, "keep me", `run "one" true`)
 	tr := r.startTUI(nil, "watch")
 	tr.waitFor("▸ swim 1")
-	tr.waitFor("s submit  ^C quit")
+	tr.waitFor("a archive  ^C quit")
 	tr.send("d")
 	tr.send("o")
 	tr.waitFor("running output hidden")

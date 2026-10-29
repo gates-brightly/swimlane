@@ -627,6 +627,9 @@ swim queue show|rm|requeue ID
     q on a job     queues it as swim queue add N does (no guard approved: its
                    guards dry-run unless standing approvals cover them); the
                    swimmer takes it when its lanes are free
+    a on a job     archives its lane's log as swim archive N does: the lane
+                   goes idle, the log is kept as agentN.prev-<job>.log (not
+                   while it runs, nor without a log)
     r on a batch   starts a waiting batch now, out of turn, if its lanes are
                    free, with its own approvals (and -y's), exactly as in turn
     enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log);

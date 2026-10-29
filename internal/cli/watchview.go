@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -36,8 +37,8 @@ type watchView struct {
 }
 
 const (
-	watchKeys  = "rqsxlo" + string(display.PickEnter)
-	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  ^C quit" // x (clear the batch) is on the submit row
+	watchKeys  = "rqsxloa" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  a archive  ^C quit" // x (clear the batch) is on the submit row
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
@@ -375,11 +376,17 @@ func (w *watchView) act(id string, key rune) string {
 		if key == 'q' {
 			return fmt.Sprintf("#%d is already in the queue (r runs it now)", e.Seq)
 		}
+		if key == 'a' {
+			return "a archives a lane's log: pick the lane (a batch's result stays in the queue's done list)"
+		}
 		return w.runQueued(e)
 	}
 	n, _ := strconv.Atoi(ref)
 	if key == display.PickEnter {
 		return w.showLaneOutput(n)
+	}
+	if key == 'a' {
+		return w.archiveLane(n)
 	}
 	if key == 'l' {
 		return w.showLaneLogs(n)
@@ -566,4 +573,22 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 	}
 	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false)
 	return fmt.Sprintf("#%d %s", claimed.Seq, res.Result)
+}
+
+// archiveLane is a on lane n: swim archive N, as on the command line (all
+// its checks: not while it runs, not without a log, not under another
+// session's claim). The lane goes idle and its log becomes
+// agentN.prev-<job>.log.
+func (w *watchView) archiveLane(n int) string {
+	c := exec.Command(self(), "archive", strconv.Itoa(n))
+	c.Dir = w.root
+	c.Env = append(os.Environ(), "SWIM_COLOR=0")
+	out, err := c.CombinedOutput()
+	msg := strings.TrimSpace(string(out))
+	msg = strings.TrimPrefix(msg, "swim archive: ")
+	msg = strings.ReplaceAll(msg, "\n  ", "; ")
+	if msg == "" && err != nil {
+		msg = "swim archive " + strconv.Itoa(n) + ": " + err.Error()
+	}
+	return msg
 }

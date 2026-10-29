@@ -343,6 +343,9 @@ and read.
   approval covers another version of the script or a stale manifest, the
   dry run says to review the change and `swim approve N --guards FLAG`,
   not `set FLAG=1 to approve`, the unsigned way past it.
+- **`a` in `swim watch` archives a lane's log**, as `swim archive N`
+  does: the lane goes idle and its log is kept as
+  `agentN.prev-<job>.log`. It refuses a running lane or one with no log.
 - **`swim verify --force`** acknowledges the gaps and deletions it finds
   (entries removed or out of order, rounds' logs or kept scripts deleted)
   in one signed `amend` chain entry. From then on they're AMENDED, a
