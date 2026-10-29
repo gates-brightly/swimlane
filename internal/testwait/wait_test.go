@@ -63,3 +63,19 @@ func TestExited(t *testing.T) {
 		t.Error("a reaped pid hasn't exited")
 	}
 }
+
+// A cond that holds only by the deadline, with nothing waking the wait, is
+// told apart from one that never held: the wait watched the wrong thing.
+func TestUnwoken(t *testing.T) {
+	var s Signal // never notified
+	if got := wait(&s, func() bool { return false }, 0); got != timedOut {
+		t.Errorf("never held: %v", got)
+	}
+	if got := wait(&s, func() bool { return true }, 0); got != held {
+		t.Errorf("held at once: %v", got)
+	}
+	checks := 0
+	if got := wait(&s, func() bool { checks++; return checks > 1 }, 0); got != unwoken {
+		t.Errorf("held only at the deadline: %v", got)
+	}
+}

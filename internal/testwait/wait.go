@@ -35,16 +35,34 @@ type Source interface {
 }
 
 // Until waits until cond holds, checking it again at every change src
-// reports; a test still waiting at Deadline fails, naming what.
+// reports; a test still waiting at Deadline fails, naming what. So does
+// one whose cond held by then but nothing woke it: what changes cond
+// isn't among what src watches, and the wait only ended at the deadline.
 func Until(t testing.TB, what string, src Source, cond func() bool) {
 	t.Helper()
-	if !UntilOK(src, cond, Deadline) {
+	switch wait(src, cond, Deadline) {
+	case timedOut:
 		t.Fatalf("timed out waiting for %s (%s)", what, Deadline)
+	case unwoken:
+		t.Fatalf("%s held, but nothing woke the wait: what changes it isn't watched (it waited %s)", what, Deadline)
 	}
 }
 
-// UntilOK is Until without a test: false if cond didn't hold by within.
+// UntilOK is Until without a test: false if cond didn't hold by within
+// (holding only at the deadline counts).
 func UntilOK(src Source, cond func() bool, within time.Duration) bool {
+	return wait(src, cond, within) != timedOut
+}
+
+type outcome int
+
+const (
+	held     outcome = iota
+	unwoken          // held at the deadline, after no change woke the wait
+	timedOut         // didn't hold
+)
+
+func wait(src Source, cond func() bool, within time.Duration) outcome {
 	deadline := time.NewTimer(within)
 	defer deadline.Stop()
 	for {
@@ -52,12 +70,15 @@ func UntilOK(src Source, cond func() bool, within time.Duration) bool {
 		// isn't missed.
 		ch := src.Changed()
 		if cond() {
-			return true
+			return held
 		}
 		select {
 		case <-ch:
 		case <-deadline.C:
-			return cond()
+			if cond() {
+				return unwoken
+			}
+			return timedOut
 		}
 	}
 }

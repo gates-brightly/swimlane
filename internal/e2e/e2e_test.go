@@ -739,7 +739,8 @@ func waitIn(dir string, cond func() bool) bool {
 }
 
 // output changes whenever a command the tests started prints (a
-// syncBuffer), for waits on what it printed.
+// syncBuffer), or an in-process stand-in (a test broker) records
+// something: for waits on what isn't a file.
 var output testwait.Signal
 
 // hold is a step command that runs until r.release(name): it blocks

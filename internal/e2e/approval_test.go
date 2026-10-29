@@ -26,6 +26,7 @@ func newBroker(t *testing.T, answer func(approval.Request, <-chan struct{}) bool
 		b.mu.Lock()
 		b.asked = append(b.asked, req)
 		b.mu.Unlock()
+		output.Notify() // a wait on b.requests() checks again
 		return approval.Response{Approved: answer(req, cancel), By: "tester"}
 	})
 	if err != nil {
