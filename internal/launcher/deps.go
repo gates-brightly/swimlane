@@ -220,6 +220,16 @@ func AlreadyPassed(info lane.Info, last *status.Lane) bool {
 	return last.Round == info.Round
 }
 
+// lastRan reports whether last is a run of the round in a lane's script:
+// matched by job id, or, as AlreadyPassed does, by Round: line for a
+// script without a Job: line.
+func lastRan(info lane.Info, job string, last *status.Lane) bool {
+	if job != "" {
+		return last.Job == job
+	}
+	return info.Pending() && last.Round == info.Round
+}
+
 // DepEdges is every lane's direct dependencies, by lane: the config deps
 // table and each script's `# After:` (lane numbers, jobs), as the
 // launcher enforces them. References that don't resolve are left out:
@@ -317,7 +327,7 @@ func depState(root string, d Dep) DepState {
 	switch {
 	case last.Alive() && (last.State == status.Running || last.State == status.Waiting || last.State == status.Queued || last.State == status.Locked):
 		return DepState{Dep: d, State: "running", Note: "this starts once it passes, in the same run; otherwise it's skipped"}
-	case job != "" && last.Job == job && (last.State == status.Failed || last.State == status.Skipped || last.State == status.Interrupted):
+	case lastRan(info, job, &last) && (last.State == status.Failed || last.State == status.Skipped || last.State == status.Interrupted):
 		return DepState{Dep: d, State: last.State, Note: "it must pass first: run both to retry it"}
 	}
 	return DepState{Dep: d, State: "pending", Note: "a dry run or failure there skips this"}

@@ -51,3 +51,16 @@ if guard DROP_OK "drop table old_orders"; then run "drop" true; fi`)
 		t.Errorf("a passed round still shows its header:\n%s", out)
 	}
 }
+
+// A dependency with no Job: line that failed says failed, not pending:
+// its round is matched by its Round: line, as swim run matches it.
+func TestStatusDependencyFailedWithoutJob(t *testing.T) {
+	r := newRepo(t, "")
+	r.script(1, "deploy worker", `gate "deploy" false`)
+	r.script(2, "smoke test", `run "check" true`)
+	withHeader(t, r, 2, "# After: 1")
+	if out, code := r.swim("run", "1", "--plain"); code != 1 {
+		t.Fatalf("lane 1 should fail: exit %d\n%s", code, out)
+	}
+	contains(t, "status", r.mustSwim("status", "2"), "after swim 1 (failed: it must pass first: run both to retry it)")
+}

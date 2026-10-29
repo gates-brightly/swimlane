@@ -406,6 +406,11 @@ and read.
 
 ### Fixed
 
+- **swim status says a failed dependency failed.** A lane waiting on one
+  whose script has no `# Job:` line showed it as "pending: a dry run or
+  failure there skips this" after it had failed. Its round is now matched
+  by its `Round:` line, as swim run matches it: "failed: it must pass
+  first".
 - **A batch another swim queued says so when it's refused.** "its manifest
   changed since it was queued" now adds "queued by swim X, run by swim Y
   (queue it again with this swim)" when the swims differ: two builds can
