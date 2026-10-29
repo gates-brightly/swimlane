@@ -30,9 +30,10 @@ copy": about 70 mentions in 34 files.
 
 ### 10. Test reliability is not yet proven in CI
 
-The ban on `time.Sleep` in the test rigs is in (`34b0190`), and the e2e
-suite waits on events, not time. T29 is still open at P0: three green
-pushes on both OSes, plus 20 runs in a row at `GOMAXPROCS=2`.
+The ban on `time.Sleep` in the test rigs is in (`34b0190`), the e2e suite
+waits on events, not time, and it passed 20 times in a row at
+`GOMAXPROCS=2` on 2026-10-29 (`9d855af`). What T29 still needs: main's
+`test` workflow green on ubuntu and macOS for three pushes in a row.
 
 ## What's genuinely good
 

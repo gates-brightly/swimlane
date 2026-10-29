@@ -72,8 +72,9 @@ and once with all 8 cores pegged by busy loops (183s); `go test -race`
 on the unit packages passed. Four tests that failed once under load on
 another branch (`TestTUIManyLanesKeepsSelection`,
 `TestHeadlessHubCommands`, `TestHangupForcesAtOnce`,
-`TestImmediateInterruptMode`) passed in all three. Not yet done: the
-20-in-a-row `GOMAXPROCS=2` run below, and CI itself.
+`TestImmediateInterruptMode`) passed in all three. On 2026-10-29, at
+`9d855af`, the e2e suite passed 20 times in a row with `GOMAXPROCS=2`
+(62-68s each, 8 cores, Linux). Not yet done: CI itself.
 
 ## Do
 
