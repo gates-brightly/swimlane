@@ -28,7 +28,7 @@ show 'swim all --plain 2>&1 | sed -n "/^swim summary/,\$p"'
 say "The worker change failed. That's what happened, and it's now on the record."
 pause
 show 'swim history --oneline'
-show 'swim verify'
+show 'swim verify --levels'
 say "consistent: links and signatures match. trusted: signed by keys in trust.yml," \
     "pinned outside the repo. anchored: matches the checkpoint on the audit volume."
 pause
@@ -47,7 +47,7 @@ pause
 scene "3. Tamper: delete the failed round from the chain"
 show 'n=$(grep -n "\"lane\":2" .swim/chain.jsonl | head -1 | cut -d: -f1); head -n $((n - 1)) .swim/chain.jsonl > c && mv c .swim/chain.jsonl; swim history --oneline'
 say "What's left is a perfectly consistent, shorter history. But a checkpoint left the machine:"
-show 'swim verify'
+show 'swim verify --levels'
 restore
 pause
 
@@ -55,7 +55,7 @@ scene "4. Tamper: sign with a different key"
 say "Someone adds their own key to trust.yml so they can re-sign the chain:"
 ssh-keygen -q -t ed25519 -N '' -C mallory@elsewhere -f "$DEMO_DIR/mallory"
 show 'swim keys trust "$DEMO_DIR/mallory.pub"'
-show 'swim verify'
+show 'swim verify --levels'
 say "A change to trust.yml counts only when signed by a key the pinned set already trusts."
 git checkout -q trust.yml; rm -f trust.yml.sig; git checkout -q trust.yml.sig 2>/dev/null
 pause

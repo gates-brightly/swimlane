@@ -85,6 +85,6 @@ say "It's urgent and alice can't be reached. The operator holds the credentials,
 show 'FIN_ALLOW_DELETE=1 swim run 1 --plain'
 show 'fakecloud select orders'
 show 'swim history --oneline'
-show 'swim verify'
+show 'swim verify --levels'
 say "authorized: no. The override is in the signed record for anyone who audits it."
 demo_done

@@ -1,6 +1,6 @@
 # Demos
 
-Six short, self-contained walkthroughs for showing swim to a team. Each
+Five short, self-contained walkthroughs for showing swim to a team. Each
 one builds swim from this checkout, creates a scratch repo with its own
 HOME and SSH keys, and changes a pretend cloud (`_lib/bin/fakecloud`).
 You don't need cloud credentials, and nothing touches your `~/.ssh`,
@@ -77,8 +77,9 @@ for teams with big migrations.
 
 - One approval up front for a whole batch, then nobody needs to be at a
   keyboard. `swim watch` would normally run in tmux or under systemd.
-- lane.2 is Python, using `sdk/python`: the same steps, guards and log.
-  Lanes can be written in any language.
+- lane.2 is Python. There's no SDK: it calls swim's steps as commands
+  (`swim run "label" -- cmd`, `swim guard FLAG "action"`), so it gets the
+  same stages, guards and log. Lanes can be written in any language.
 - `swim log` (the project log), `swim status --yaml` and
   `swim log N --yaml` are what a fresh AI session reads to catch up.
   They're versioned, structured and small.

@@ -13,7 +13,7 @@ demo_commit "the AI's rounds for tonight"
 
 scene "1. The AI planned tonight's work"
 say "Two rounds: roll api forward, then clear the sessions the bug leaked." \
-    "lane.2 is Python, with swim's SDK. Same steps, guards and log."
+    "lane.2 is Python. It calls swim's steps as commands: same stages, guards and log."
 show 'swim status'
 pause
 
@@ -45,7 +45,7 @@ scene "5. A queued batch runs what was approved, nothing else"
 say "The operator queues tomorrow's rerun. Then the AI 'improves' the script:"
 fakecloud seed-table sessions "s6,active" "s7,stale"
 show 'swim queue add 2 --approve SESSIONS_ALLOW_PURGE --note "nightly session cleanup"'
-show "sed -i.orig 's/\"sessions\", \"stale\"\\]/\"sessions\", \"s\"]/' lane.2.py && rm lane.2.py.orig && grep -n 'fakecloud\", \"delete' lane.2.py"
+show "sed -i.orig '/delete/s/\"sessions\", \"stale\"/\"sessions\", \"s\"/' lane.2.py && rm lane.2.py.orig && grep -n 'fakecloud\", \"delete' lane.2.py"
 say "That would delete every session. The worker:"
 show 'swim watch --once --no-tui 2>&1 | tail -5'
 show 'fakecloud select sessions'

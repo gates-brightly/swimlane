@@ -49,7 +49,6 @@ demo_init() {
   export SWIM_BIN=$DEMO_DIR/bin/swim
   export PATH=$DEMO_DIR/bin:$DEMO_LIB/bin:$PATH
   export FAKECLOUD_HOME=$DEMO_DIR/cloud
-  export PYTHONPATH=$ROOT/sdk/python${PYTHONPATH:+:$PYTHONPATH}   # import swim, for Python lanes
   export USER=operator SWIM_PAGER=cat
   export GIT_AUTHOR_NAME=operator GIT_AUTHOR_EMAIL=operator@demo.local
   export GIT_COMMITTER_NAME=operator GIT_COMMITTER_EMAIL=operator@demo.local
