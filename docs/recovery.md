@@ -100,7 +100,7 @@ truth.
 ## `swim verify` fails
 
 **You see:** a level that says `no` (`consistent`, `trusted`, `anchored`
-or `authorized`), usually with `BROKEN:` lines, and exit 1. The common ones:
+or `authorized`), usually with `BROKEN:` or `UNAUTHORIZED:` lines, and exit 1. The common ones:
 
 - `entry #N (line L): prev hash doesn't match ...` or `seq ...`: an entry
   was changed, removed, inserted or reordered.
@@ -124,7 +124,10 @@ or `authorized`), usually with `BROKEN:` lines, and exit 1. The common ones:
   removed from its end, or it was replaced. The anchor's copy (`swim chain
   export`) is the record: `swim verify --against file:/path`.
 - `authorized  no`: an approval didn't meet `lookup.yml`'s rule for its
-  guard (the `BROKEN:` line names the entry and what was missing).
+  guard (the `UNAUTHORIZED:` line names the entry and what was missing). A
+  `FLAG=1` override of a guard whose rule says `signed: true` is one: the
+  chain recorded it faithfully, so it isn't `BROKEN`, but nothing in
+  `lookup.yml` authorized it.
 
 `warning:` lines (unsigned entries, a missing script copy, a deleted log, a
 signer not in `lookup.yml` without a `trust.yml`, an unreachable anchor, an

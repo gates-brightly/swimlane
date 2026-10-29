@@ -50,6 +50,7 @@ type verifier struct {
 	unlisted         map[string]bool // fingerprints of signers not in lookup.yml
 	unsigned         []int
 	unsignedBad      string   // unsigned entries nothing vouches for (not BROKEN: nothing changed)
+	unauthorized     []string // approvals that didn't meet lookup.yml (not BROKEN: recorded as they happened)
 	covered          int      // unsigned entries a later signed one links to
 	amended          []string // problems an amend entry acknowledged (swim verify --force)
 	rounds           int
@@ -387,7 +388,7 @@ func (v *verifier) authorized(links []chain.Link) level {
 		msg := fmt.Sprintf("entry #%d: %s (swim %d, run %s): %s", l.Seq, l.Guard, l.Lane, l.Run, why)
 		if l.Lookup != "" && l.Lookup == current {
 			failed++
-			v.bad = append(v.bad, msg)
+			v.unauthorized = append(v.unauthorized, msg)
 		} else {
 			unsure++
 			v.warn = append(v.warn, msg+" (under today's lookup.yml; it was approved under another)")
@@ -442,6 +443,9 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 	if v.unsignedBad != "" {
 		fmt.Println(p.Paint(ui.Red, "UNSIGNED: "+v.unsignedBad))
 	}
+	for _, u := range v.unauthorized {
+		fmt.Println(p.Paint(ui.Red, "UNAUTHORIZED: "+u))
+	}
 	if showLevels {
 		for _, l := range levels {
 			c := ui.Yellow
@@ -495,30 +499,31 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 // verifyDoc is swim verify --yaml (schema swim.verify/v1): each level a
 // field of its own, so CI can require any combination.
 type verifyDoc struct {
-	Schema     string            `yaml:"schema"`
-	Chain      string            `yaml:"chain"`
-	Entries    int               `yaml:"entries"`
-	Rounds     int               `yaml:"rounds"`
-	Approvals  int               `yaml:"approvals"`
-	OK         bool              `yaml:"ok"` // what the exit code says
-	Consistent string            `yaml:"consistent"`
-	Trusted    string            `yaml:"trusted"`
-	Anchored   string            `yaml:"anchored"`
-	Authorized string            `yaml:"authorized"`
-	Details    map[string]string `yaml:"details"` // level -> its line
-	Note       string            `yaml:"note"`
-	Broken     []string          `yaml:"broken"`
-	Unsigned   string            `yaml:"unsigned,omitempty"` // unsigned entries nothing vouches for
-	Amended    []string          `yaml:"amended"`            // gaps an amend entry acknowledged
-	Warnings   []string          `yaml:"warnings"`
-	Notes      []string          `yaml:"notes"`
-	Files      []string          `yaml:"approval_files"`
+	Schema       string            `yaml:"schema"`
+	Chain        string            `yaml:"chain"`
+	Entries      int               `yaml:"entries"`
+	Rounds       int               `yaml:"rounds"`
+	Approvals    int               `yaml:"approvals"`
+	OK           bool              `yaml:"ok"` // what the exit code says
+	Consistent   string            `yaml:"consistent"`
+	Trusted      string            `yaml:"trusted"`
+	Anchored     string            `yaml:"anchored"`
+	Authorized   string            `yaml:"authorized"`
+	Details      map[string]string `yaml:"details"` // level -> its line
+	Note         string            `yaml:"note"`
+	Broken       []string          `yaml:"broken"`
+	Unsigned     string            `yaml:"unsigned,omitempty"` // unsigned entries nothing vouches for
+	Unauthorized []string          `yaml:"unauthorized"`       // approvals that didn't meet lookup.yml
+	Amended      []string          `yaml:"amended"`            // gaps an amend entry acknowledged
+	Warnings     []string          `yaml:"warnings"`
+	Notes        []string          `yaml:"notes"`
+	Files        []string          `yaml:"approval_files"`
 }
 
 func (v *verifier) writeYAML(links []chain.Link, levels []level, ok bool) error {
 	d := verifyDoc{Schema: "swim.verify/v1", Chain: rel(v.root, chain.Path(v.root)), Entries: len(links), Rounds: v.rounds, Approvals: v.approvals,
 		OK: ok, Details: map[string]string{}, Note: v.note(levels),
-		Broken: nonNil(v.bad), Unsigned: v.unsignedBad, Amended: nonNil(v.amended), Warnings: nonNil(v.warn), Notes: nonNil(v.notes), Files: nonNil(v.files)}
+		Broken: nonNil(v.bad), Unsigned: v.unsignedBad, Unauthorized: nonNil(v.unauthorized), Amended: nonNil(v.amended), Warnings: nonNil(v.warn), Notes: nonNil(v.notes), Files: nonNil(v.files)}
 	for _, l := range levels {
 		d.Details[l.Name] = l.Detail
 		switch l.Name {

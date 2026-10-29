@@ -379,6 +379,12 @@ and read.
   (that signature covers them); ones after the last signed entry still
   fail, as `UNSIGNED:` (`unsigned:` in `--yaml`). `swim run` with no key
   under `signing: auto` says it's recording the run unsigned.
+- **An override isn't BROKEN either.** An approval that didn't meet
+  lookup.yml's rule (a `FLAG=1` override of a guard whose rule says
+  `signed: true`) was printed as `BROKEN:`, the word for tampering, though
+  the chain recorded it faithfully. It's `UNAUTHORIZED:` now
+  (`unauthorized:` in `--yaml`, no longer under `broken:`); `authorized`
+  still says no and verify still exits 1.
 - **`swim keys add NAME [KEY]`** lists a key in lookup.yml (default: the
   key this machine signs with), keeping the file's comments. `swim init`
   lists your key there as `$USER` (writing the file, or adding to it), and

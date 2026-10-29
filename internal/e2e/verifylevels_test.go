@@ -150,11 +150,12 @@ func TestVerifyAuthorizedLevel(t *testing.T) {
 	os.RemoveAll(filepath.Join(r.root, "approvals"))
 	r.swimEnv([]string{"FIN_ALLOW_DROP=1"}, "run", "1")
 	out, code := r.swim("verify", "--levels", "--allow-unsigned")
-	if code != 1 || !strings.Contains(out, "authorized  no") || !strings.Contains(out, "approved by flag, but lookup.yml says FIN_ALLOW_DROP needs signed approvals") {
+	if code != 1 || !strings.Contains(out, "authorized  no") || !strings.Contains(out, "UNAUTHORIZED: entry #") || strings.Contains(out, "BROKEN") ||
+		!strings.Contains(out, "approved by flag, but lookup.yml says FIN_ALLOW_DROP needs signed approvals") {
 		t.Fatalf("flag approval of a signed-only guard: exit %d\n%s", code, out)
 	}
 	y, _ := r.swim("verify", "--levels", "--allow-unsigned", "--yaml")
-	contains(t, "yaml", y, `authorized: "no"`, `consistent: "yes"`)
+	contains(t, "yaml", y, `authorized: "no"`, `consistent: "yes"`, "unauthorized:\n  - 'entry #", "broken: []")
 
 	// lookup.yml changed since: a warning, and partial.
 	lk, _ := os.ReadFile(filepath.Join(r.root, "lookup.yml"))

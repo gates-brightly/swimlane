@@ -766,7 +766,8 @@ swim revoke --auto USER [--key K]
   (nothing vouches for them, and a chain rewritten with no key looks the
   same) unless --allow-unsigned; ones a later signed entry links to (a
   repo that gained a key later) are a warning, since they can't change
-  unseen. BROKEN means something changed. Under it are four levels (--levels prints each: yes,
+  unseen. BROKEN means something changed; UNAUTHORIZED, an approval that
+  didn't meet lookup.yml (a FLAG=1 override, say), recorded as it happened. Under it are four levels (--levels prints each: yes,
   no, partial, n/a, and what it rests on); any one saying no fails:
     consistent  every entry follows the one before it (sequence and
                 previous-hash: a changed, removed or reordered entry breaks
@@ -801,8 +802,8 @@ swim revoke --auto USER [--key K]
                 lookup.yml, or no approvals.
   Above the levels: each approvals file under approvals/ checked event by
   event (and whether a script approval is stale: the script, or something
-  else its manifest pins, changed since), then notes, warnings and what's
-  BROKEN.
+  else its manifest pins, changed since), then notes, warnings, what's
+  BROKEN and what's UNAUTHORIZED.
   Exits 1 when a level says no, anything is BROKEN or an entry is
   unsigned (without --allow-unsigned); --strict also on n/a, partial and
   any warning.
