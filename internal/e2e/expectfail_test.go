@@ -13,7 +13,7 @@ func TestExpectFail(t *testing.T) {
 run --expect-fail=1,3 "listed code" bash -c 'exit 3'
 run --expect-fail "accepted anyway" true
 run --expect-fail=2 "wrong code" bash -c 'exit 3'
-run --expect-fail --timeout 1s "too slow" sleep 5
+run --expect-fail --timeout 1s "too slow" `+blocked("too-slow")+`
 run --expect-fail "no such command" swim-no-such-command
 run "after" true`)
 	r.swim("run", "1", "--plain")

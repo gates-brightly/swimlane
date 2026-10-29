@@ -215,21 +215,19 @@ func jobOf(t *testing.T, r *repo, n int) string {
 }
 
 func TestCIHeartbeat(t *testing.T) {
-	r := newSerialRepo(t, "") // a lane must print within the heartbeat: alone, not beside the parallel tests
+	r := newRepo(t, "")
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
-	// The chatty lane prints every 0.2s, well inside the heartbeat; the
-	// quiet one is silent for 2.5 heartbeats.
+	// The lane is silent until swim reports it: a heartbeat must come. (A
+	// lane that writes within each beat gets none: TestHeartbeatSilent, on
+	// a test clock.)
 	beat := scaled(time.Second)
-	r.script(1, "quiet", `run "wait" sleep `+fmt.Sprint((beat*5/2).Seconds()))
-	r.script(2, "chatty", `run "talk" bash -c 'for i in $(seq `+fmt.Sprint(int(beat*5/2/(200*time.Millisecond)))+`); do echo tick; sleep 0.2; done'`)
-	out, code := r.swimEnv([]string{"CI=true"}, "ci", "--heartbeat", beat.String())
-	if code != 0 {
-		t.Fatalf("exit %d\n%s", code, out)
-	}
-	contains(t, "heartbeat", out, "[1] still running: wait (0:0")
-	// Only while it talks: starting up (bash, swim lib) prints nothing and
-	// may take a beat on a loaded machine.
-	if strings.Contains(out, "[2] still running: talk") {
-		t.Errorf("a lane writing output needs no heartbeat:\n%s", out)
+	r.script(1, "quiet", `run "wait" `+hold("heard"))
+	c := r.cmd(bin, "ci", "--heartbeat", beat.String())
+	c.Env = append(c.Env, "CI=true")
+	l := start(t, c, nil)
+	l.saw(t, "[1] still running: wait (0:0")
+	r.release("heard")
+	if code := l.wait(t); code != 0 {
+		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}
 }

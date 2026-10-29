@@ -453,7 +453,7 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 
 func TestAfterHeaderDiamond(t *testing.T) {
 	r := newRepo(t, "") // no config deps: the scripts declare them
-	r.script(1, "root", `run "write" bash -c 'sleep 0.5; echo root > "$SWIM_ROOT/out1"'`)
+	r.script(1, "root", `run "write" bash -c '`+untilReleased("root-go")+`; echo root > "$SWIM_ROOT/out1"'`)
 	r.script(2, "child a", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(3, "child b", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(4, "join", `gate "children" true`)
@@ -466,8 +466,15 @@ func TestAfterHeaderDiamond(t *testing.T) {
 	addHeader(3, "# After: swim 1")
 	addHeader(4, "# After: 2, 3")
 
-	out := r.mustSwim("all") // every pending lane, like `swim run`
-	contains(t, "output", out, "[2] waiting on swim 1", "[4] waiting on swim 2, 3")
+	all := start(t, r.cmd(bin, "all"), nil) // every pending lane, like `swim run`
+	// The root holds until its dependents have said what they wait on.
+	all.saw(t, "[2] waiting on swim 1")
+	all.saw(t, "[4] waiting on swim 2, 3")
+	r.release("root-go")
+	if code := all.wait(t); code != 0 {
+		t.Fatalf("swim all: exit %d\n%s", code, all.out.String())
+	}
+	out := all.out.String()
 	if out, code := r.swim("all", "2"); code == 0 || !strings.Contains(out, "all takes no lanes") {
 		t.Errorf("all with a lane: %d %s", code, out)
 	}
@@ -576,7 +583,7 @@ func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
 
 func TestInterruptRecordsAndStopsRound(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "interrupt me", `run "long" sleep 30
+	r.script(1, "interrupt me", `run "long" `+blocked("long")+`
 run "never" true`)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -618,7 +625,7 @@ func TestStepStandalone(t *testing.T) {
 
 func TestStaleRunningShown(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "killed", `run "long" sleep 30`)
+	r.script(1, "killed", `run "long" `+blocked("long")+``)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := c.Start(); err != nil {
@@ -1218,7 +1225,7 @@ func TestTimeoutStopsRound(t *testing.T) {
 	r := newRepo(t, "")
 	p := filepath.Join(r.root, "lane.1.sh")
 	r.script(1, "slow", `stage check
-run "slow" sleep 20
+run "slow" `+blocked("slow")+`
 run "after" true`)
 	data, _ := os.ReadFile(p)
 	limit := dur(time.Second)
@@ -1301,43 +1308,20 @@ func TestRunID(t *testing.T) {
 
 func TestParallelLimit(t *testing.T) {
 	long(t)
-	r := newSerialRepo(t, "") // it times the run: alone, not beside the parallel tests
+	r := newSerialRepo(t, "")
 	for n := 1; n <= 10; n++ {
-		r.script(n, fmt.Sprintf("sleeper %d", n), `run "sleep" sleep 1`)
+		r.script(n, fmt.Sprintf("worker %d", n), `run "work" `+inSlot(3, "go"))
 	}
-	c := r.cmd(bin, "all", "--parallel", "3", "--plain")
-	var out bytes.Buffer
-	c.Stdout, c.Stderr = &out, &out
-	start := time.Now()
-	if err := c.Start(); err != nil {
-		t.Fatal(err)
+	run := start(t, r.cmd(bin, "all", "--parallel", "3", "--plain"), nil)
+	// Three are inside their step at once, holding until released; the
+	// rest wait for a slot.
+	waitFor(t, func() bool { return inside(r) == 3 && states(r, 10)[status.Queued] == 7 })
+	r.release("go")
+	if code := run.wait(t); code != 0 {
+		t.Fatalf("run: exit %d\n%s", code, run.out.String())
 	}
-	done := make(chan error)
-	go func() { done <- c.Wait() }()
-	most := 0
-	tick := time.NewTicker(25 * time.Millisecond)
-	defer tick.Stop()
-loop:
-	for {
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Fatalf("run: %v\n%s", err, out.String())
-			}
-			break loop
-		case <-tick.C:
-			pids, _ := filepath.Glob(filepath.Join(r.root, ".swim", "lane*.pid"))
-			most = max(most, len(pids))
-		}
-	}
-	took := time.Since(start)
-	if most > 3 || most < 2 {
-		t.Errorf("at most 3 lanes should run at once; saw %d", most)
-	}
-	if took < 3500*time.Millisecond || took > scaled(9*time.Second) {
-		t.Errorf("10 one-second lanes, 3 at a time, should take about 4s; took %s", took)
-	}
-	s := out.String()
+	noOverlaps(t, r)
+	s := run.out.String()
 	contains(t, "output", s, "queued (", "swim summary")
 	for n := 1; n <= 10; n++ {
 		if st := r.status().Get(n).State; st != status.Passed {
@@ -1346,15 +1330,19 @@ loop:
 	}
 	contains(t, ".swim.log", r.mustSwim("log"), "max_parallel=3", "queued       swim ")
 
-	// Config sets the default; --parallel 0 lifts it.
+	// Config sets the default; --parallel 0 lifts it: all ten at once.
 	cfg := filepath.Join(strings.TrimPrefix(envOf(r, "XDG_CONFIG_HOME"), ""), "swim", "config.yml")
 	data, _ := os.ReadFile(cfg)
 	os.WriteFile(cfg, []byte(strings.Replace(string(data), "defaults:\n", "defaults:\n  max_parallel: 2\n", 1)), 0o644)
 	contains(t, "config", r.mustSwim("config"), "max_parallel: 2")
-	start = time.Now()
-	r.mustSwim("all", "--rerun", "--parallel", "0", "--plain")
-	if took := time.Since(start); took > scaled(3*time.Second) {
-		t.Errorf("--parallel 0 should run all 10 at once; took %s", took)
+	for n := 1; n <= 10; n++ {
+		r.script(n, fmt.Sprintf("worker %d", n), `run "work" `+inSlot(10, "go-all"))
+	}
+	all := start(t, r.cmd(bin, "all", "--rerun", "--parallel", "0", "--plain"), nil)
+	waitFor(t, func() bool { return inside(r) == 10 })
+	r.release("go-all")
+	if code := all.wait(t); code != 0 {
+		t.Fatalf("--parallel 0: exit %d\n%s", code, all.out.String())
 	}
 	if out, code := r.swim("all", "--parallel", "-1"); code == 0 || !strings.Contains(out, "--parallel") {
 		t.Errorf("--parallel -1: %d %s", code, out)
@@ -1380,57 +1368,83 @@ func withLocks(t *testing.T, r *repo, n int, locks string) {
 	os.WriteFile(p, []byte(strings.Replace(string(data), "\n# Round:", "\n# Locks: "+locks+"\n# Round:", 1)), 0o755)
 }
 
-// overlapWatcher samples lane pidfiles until stop is closed, recording the
-// pairs of lanes that were ever running at the same time.
-func overlapWatcher(r *repo, stop chan struct{}) <-chan map[[2]int]bool {
-	out := make(chan map[[2]int]bool, 1)
-	go func() {
-		seen := map[[2]int]bool{}
-		tick := time.NewTicker(10 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			select {
-			case <-stop:
-				out <- seen
-				return
-			case <-tick.C:
-				var live []int
-				for n := 1; n <= 9; n++ {
-					if _, err := os.Stat(filepath.Join(r.root, ".swim", fmt.Sprintf("lane%d.pid", n))); err == nil {
-						live = append(live, n)
-					}
-				}
-				for i := range live {
-					for j := i + 1; j < len(live); j++ {
-						seen[[2]int{live[i], live[j]}] = true
-					}
-				}
-			}
+// untilReleased is a bash fragment that blocks until r.release(name): it
+// reads the FIFO $SWIM_ROOT/name that release serves.
+func untilReleased(name string) string {
+	return `rf="$SWIM_ROOT/` + name + `"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null`
+}
+
+// exclusive is a step command for a lane that must be alone holding
+// locks: it enters each (mkdir, which fails if another lane is inside, and
+// says so in $SWIM_ROOT/overlaps), says it's inside (for inside), holds
+// until r.release(rel), leaves, and then runs tail. Overlaps are caught
+// exactly, not sampled.
+func exclusive(locks []string, rel, tail string) string {
+	var in, out []string
+	for _, l := range locks {
+		d := `"$SWIM_ROOT/in-` + strings.ReplaceAll(l, "/", "_") + `"`
+		in = append(in, `mkdir `+d+` 2>/dev/null || echo "swim $SWIM_LANE: `+l+`" >> "$SWIM_ROOT/overlaps"`)
+		out = append(out, `rmdir `+d+` 2>/dev/null`)
+	}
+	return `bash -c '` + strings.Join(in, "; ") + `; touch "$SWIM_ROOT/inside.$SWIM_LANE"; ` + untilReleased(rel) +
+		`; rm -f "$SWIM_ROOT/inside.$SWIM_LANE"; ` + strings.Join(out, "; ") + "; " + or(tail, "true") + `'`
+}
+
+// inSlot is a step command for a lane of a run limited to k at once: it
+// takes a free slot of k (mkdir), noting in $SWIM_ROOT/overlaps when none
+// is free, says it's inside ($SWIM_ROOT/inside.N, for inside), holds
+// until r.release(rel), and gives the slot back.
+func inSlot(k int, rel string) string {
+	return fmt.Sprintf(`bash -c 'i=0; while [ $i -lt %d ] && ! mkdir "$SWIM_ROOT/slot$i" 2>/dev/null; do i=$((i+1)); done; `+
+		`[ $i -lt %d ] || echo "swim $SWIM_LANE: no slot free" >> "$SWIM_ROOT/overlaps"; touch "$SWIM_ROOT/inside.$SWIM_LANE"; %s; `+
+		`rm -f "$SWIM_ROOT/inside.$SWIM_LANE"; rmdir "$SWIM_ROOT/slot$i" 2>/dev/null; true'`, k, k, untilReleased(rel))
+}
+
+// inside is how many lanes are in an inSlot or exclusive step now.
+func inside(r *repo) int {
+	m, _ := filepath.Glob(filepath.Join(r.root, "inside.*"))
+	return len(m)
+}
+
+// noOverlaps fails if a lane entered a lock or slot another held.
+func noOverlaps(t *testing.T, r *repo) {
+	t.Helper()
+	if data, err := os.ReadFile(filepath.Join(r.root, "overlaps")); err == nil {
+		t.Errorf("lanes overlapped:\n%s", data)
+	}
+}
+
+// states counts lanes 1..n by state.
+func states(r *repo, n int) map[string]int {
+	c := map[string]int{}
+	st := r.status()
+	if st == nil {
+		return c // no status.yml yet
+	}
+	for i := 1; i <= n; i++ {
+		if l := st.Get(i); l != nil {
+			c[l.State]++
 		}
-	}()
-	return out
+	}
+	return c
 }
 
 func TestResourceLocksWithinARun(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	r.script(1, "migrate table", `run "work" bash -c 'sleep 1; exit 1'`)
-	r.script(2, "back up table", `run "work" sleep 1`)
+	lock := []string{"orders-table"}
+	r.script(1, "migrate table", `run "work" `+exclusive(lock, "go", "exit 1"))
+	r.script(2, "back up table", `run "work" `+exclusive(lock, "go", ""))
 	withLocks(t, r, 1, "orders-table")
 	withLocks(t, r, 2, "orders-table")
 
-	stop := make(chan struct{})
-	seen := overlapWatcher(r, stop)
-	start := time.Now()
-	out, _ := r.swim("all", "--plain")
-	close(stop)
-	took := time.Since(start)
-	if (<-seen)[[2]int{1, 2}] {
-		t.Error("lanes sharing a lock ran at the same time")
-	}
-	if took < 1900*time.Millisecond || took > scaled(6*time.Second) {
-		t.Errorf("two one-second lanes taking turns should take about 2s; took %s", took)
-	}
+	run := start(t, r.cmd(bin, "all", "--plain"), nil)
+	// One holds the lock; the other waits for it.
+	waitFor(t, func() bool { return inside(r) == 1 && states(r, 2)[status.Locked] == 1 })
+	r.release("go")
+	run.wait(t)
+	out := run.out.String()
+	noOverlaps(t, r)
 	// A failure doesn't spread through a lock: lane 2 still ran and passed.
 	if st := r.status(); st.Get(1).State != status.Failed || st.Get(2).State != status.Passed {
 		t.Fatalf("states: 1=%s 2=%s\n%s", st.Get(1).State, st.Get(2).State, out)
@@ -1440,24 +1454,17 @@ func TestResourceLocksWithinARun(t *testing.T) {
 
 	// Locks {a}, {a,b}, {b}: no deadlock; sharers never overlap.
 	r2 := newRepo(t, "")
-	for n, locks := range map[int]string{1: "a", 2: "a, b", 3: "b"} {
-		r2.script(n, fmt.Sprintf("lane %d", n), `run "work" sleep 0.5`)
-		withLocks(t, r2, n, locks)
+	for n, locks := range map[int][]string{1: {"a"}, 2: {"a", "b"}, 3: {"b"}} {
+		r2.script(n, fmt.Sprintf("lane %d", n), `run "work" `+exclusive(locks, "go", ""))
+		withLocks(t, r2, n, strings.Join(locks, ", "))
 	}
-	stop2 := make(chan struct{})
-	seen2 := overlapWatcher(r2, stop2)
-	done := make(chan string, 1)
-	go func() { o, _ := r2.swim("all", "--plain"); done <- o }()
-	select {
-	case <-done:
-	case <-time.After(waitDeadline):
-		t.Fatal("deadlock: run with overlapping lock sets never finished")
-	}
-	close(stop2)
-	pairs := <-seen2
-	if pairs[[2]int{1, 2}] || pairs[[2]int{2, 3}] {
-		t.Errorf("lanes sharing a lock overlapped: %v", pairs)
-	}
+	run2 := start(t, r2.cmd(bin, "all", "--plain"), nil)
+	// Some lanes hold their locks, the rest wait: never all three locked
+	// out (a deadlock), never 2 beside 1 or 3.
+	waitFor(t, func() bool { in := inside(r2); return in >= 1 && in+states(r2, 3)[status.Locked] == 3 })
+	r2.release("go")
+	run2.wait(t) // a deadlock never ends: it fails at the deadline
+	noOverlaps(t, r2)
 	for n := 1; n <= 3; n++ {
 		if st := r2.status().Get(n).State; st != status.Passed {
 			t.Errorf("swim %d = %s", n, st)
@@ -1471,14 +1478,13 @@ func TestResourceLocksWithinARun(t *testing.T) {
 func TestResourceLocksAcrossRuns(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	r.script(1, "one", `run "work" `+hold("go"))
-	r.script(2, "two", `run "work" sleep 0.2`)
+	lock := []string{"tf/orders"}
+	r.script(1, "one", `run "work" `+exclusive(lock, "go", ""))
+	r.script(2, "two", `run "work" `+exclusive(lock, "go", ""))
 	withLocks(t, r, 1, "tf/orders")
 	withLocks(t, r, 2, "tf/orders")
 
 	// Two concurrent swim run processes respect the same lock.
-	stop := make(chan struct{})
-	seen := overlapWatcher(r, stop)
 	a := r.cmd(bin, "run", "1", "--plain")
 	if err := a.Start(); err != nil {
 		t.Fatal(err)
@@ -1490,16 +1496,13 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	r.release("go")
 	code := b.wait(t)
 	a.Wait()
-	close(stop)
 	if code != 0 {
 		t.Fatalf("run 2: exit %d\n%s", code, b.out.String())
 	}
-	if (<-seen)[[2]int{1, 2}] {
-		t.Error("two runs overlapped lanes holding the same lock")
-	}
+	noOverlaps(t, r)
 
 	// A killed run doesn't leave the lock behind.
-	r.script(1, "one", `run "work" sleep 30`)
+	r.script(1, "one", `run "work" `+blocked("locks"))
 	withLocks(t, r, 1, "tf/orders")
 	k := r.cmd(bin, "run", "1", "--plain")
 	k.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -1509,9 +1512,12 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "work" })
 	syscall.Kill(-k.Process.Pid, syscall.SIGKILL)
 	k.Wait()
-	start := time.Now()
-	if out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput(); err != nil || time.Since(start) > scaled(5*time.Second) {
-		t.Fatalf("lock left behind by a killed run: %v after %s\n%s", err, time.Since(start), out)
+	// The launcher held the lock; it's gone, so the kernel let go of it.
+	if st := r.mustSwim("status"); strings.Contains(st, "held by") {
+		t.Fatalf("lock left behind by a killed run:\n%s", st)
+	}
+	if out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput(); err != nil {
+		t.Fatalf("run 2 after the killed run: %v\n%s", err, out)
 	}
 }
 
@@ -1527,7 +1533,7 @@ func TestStepTimeoutAndRetry(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
 	limit := dur(time.Second)
-	r.script(1, "timeouts and retries", `run --timeout `+limit+` "slow" sleep 30
+	r.script(1, "timeouts and retries", `run --timeout `+limit+` "slow" `+blocked("slow")+`
 run --retry 2 --backoff 0.1s "flaky" bash -c 'test -f "$SWIM_ROOT/ok" || { touch "$SWIM_ROOT/ok"; exit 1; }'
 run --retry 3 --backoff 0.1s --retry-on 7 "wrong code" bash -c 'exit 1'
 gate --retry 1 --backoff 0.1s "gate passes on retry" bash -c 'test -f "$SWIM_ROOT/ok2" || { touch "$SWIM_ROOT/ok2"; exit 1; }'
@@ -1535,7 +1541,7 @@ run "after" true`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
 	if took := time.Since(start); took > scaled(8*time.Second) {
-		t.Fatalf("step limit didn't stop sleep 30 promptly: %s", took)
+		t.Fatalf("step limit didn't stop the step promptly: %s", took)
 	}
 	log := r.log(1)
 	contains(t, "agent1.log", log,
@@ -1557,7 +1563,7 @@ run "after" true`)
 	}
 
 	// Step-Timeout: in the header is the default; --timeout 0 turns it off.
-	r.script(2, "default limit", `run "limited" sleep 30
+	r.script(2, "default limit", `run "limited" `+blocked("limited")+`
 run --timeout 0 "unlimited" sleep `+fmt.Sprint(scaled(1500*time.Millisecond).Seconds()))
 	p := filepath.Join(r.root, "lane.2.sh")
 	data, _ := os.ReadFile(p)

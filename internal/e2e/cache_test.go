@@ -104,7 +104,7 @@ func TestCacheTerraformInitsTakeTurns(t *testing.T) {
 [ "$1" = init ] || exit 0
 busy="$TF_PLUGIN_CACHE_DIR/.init-running"
 if [ -e "$busy" ]; then echo "two inits at once"; exit 1; fi
-touch "$busy"; sleep 1; rm -f "$busy"; echo "init ok"
+touch "$busy"; `+untilReleased("tf-go")+`; rm -f "$busy"; echo "init ok"
 `, 0o755)
 	for _, n := range []int{1, 2} {
 		r.script(n, "tf", `# Cache: terraform @.terraform.lock.hcl
@@ -112,9 +112,14 @@ run "tf init" ./tools/terraform init
 run "tf plan" ./tools/terraform plan`)
 		withHeader(t, r, n, "# Includes: tools/terraform")
 	}
-	out, code := r.swim("run", "1", "2", "--plain")
-	if code != 0 {
-		t.Fatalf("exit %d\n%s\n%s\n%s", code, out, r.log(1), r.log(2))
+	run := start(t, r.cmd(bin, "run", "1", "2", "--plain"), nil)
+	// One init is in the cache, holding; the other lane waits its turn.
+	waitFor(t, func() bool {
+		return strings.Contains(r.log(1)+r.log(2)+run.out.String(), "waits for the terraform cache")
+	})
+	r.release("tf-go")
+	if code := run.wait(t); code != 0 {
+		t.Fatalf("exit %d\n%s\n%s\n%s", code, run.out.String(), r.log(1), r.log(2))
 	}
 	both := r.log(1) + r.log(2)
 	if strings.Contains(both, "two inits at once") || strings.Count(both, "| init ok") != 2 {

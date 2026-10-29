@@ -259,8 +259,11 @@ func TestHostileLaneWrongJob(t *testing.T) {
 // process tree).
 func TestLaneCantReportForAnother(t *testing.T) {
 	r := newRepo(t, "")
+	// The lanes signal each other through FIFOs: a write blocks until the
+	// other side reads.
 	r.script(2, "victim", `echo $$ > "$SWIM_ROOT/lane2.pid"
-while [ ! -e "$SWIM_ROOT/lane1.done" ]; do sleep 0.1; done
+f="$SWIM_ROOT/lane2.ready"; [ -p "$f" ] || mkfifo "$f" 2>/dev/null; echo ready > "$f"
+d="$SWIM_ROOT/lane1.done"; [ -p "$d" ] || mkfifo "$d" 2>/dev/null; cat "$d" >/dev/null
 run "work" true`)
 	steal := ""
 	if runtime.GOOS == "linux" {
@@ -269,11 +272,11 @@ tok=$(tr '\0' '\n' < /proc/$(cat "$SWIM_ROOT/lane2.pid")/environ | sed -n 's/^SW
 [ -n "$tok" ] && echo "stole a token"
 SWIM_APPROVAL_TOKEN=$tok "$SWIM_BIN" _mark 2 FAIL "forged with a stolen token" || echo "stolen mark refused: $?"`
 	}
-	r.script(1, "attacker", `while [ ! -e "$SWIM_ROOT/lane2.pid" ]; do sleep 0.1; done
+	r.script(1, "attacker", `f="$SWIM_ROOT/lane2.ready"; [ -p "$f" ] || mkfifo "$f" 2>/dev/null; cat "$f" >/dev/null
 "$SWIM_BIN" _mark 2 FAIL "forged failure" || echo "mark refused: $?"
 "$SWIM_BIN" _stage 2 change || echo "stage refused: $?"
 "$SWIM_BIN" _finish 2 --exit 1 || echo "finish refused: $?"`+steal+`
-touch "$SWIM_ROOT/lane1.done"
+d="$SWIM_ROOT/lane1.done"; [ -p "$d" ] || mkfifo "$d" 2>/dev/null; echo done > "$d"
 run "own work" true`)
 	out, code := r.swim("run", "1", "2", "--plain")
 	if code != 0 {

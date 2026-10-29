@@ -20,7 +20,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
+
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 // leakSecrets are the planted values: each holds characters that URL
@@ -111,9 +112,9 @@ export V P
 msg "msg $V"
 swim note --lane 1 "note $V"
 output leaked "$V"
-run "label $V" bash -c 'echo "raw=$V"; echo "env=$MY_LEAK_VAR"; printf "%s\n" "$P"; echo "err=$V" >&2; sleep 0.3'
+run "label $V" bash -c 'echo "raw=$V"; echo "env=$MY_LEAK_VAR"; printf "%s\n" "$P"; echo "err=$V" >&2; `+untilReleased("label-seen")+`'
 run "encodings" bash -c 'for s in "$V" "$MY_LEAK_VAR"; do printf %s "$s" | base64; printf %s "$s" | base64 | tr -d =; printf %s "$s" | base64 | tr "+/" "-_"; python3 -c "import sys,urllib.parse as u; print(u.quote_plus(sys.argv[1])); print(u.quote(sys.argv[1], safe=\"\"))" "$s"; printf "split="; printf %s "${s:0:7}"; printf "%s\n" "${s:7}"; done'
-run "sleep" bash -c 'echo "${#V} ${#G}" > `+filepath.Join(tmp, "sleeping")+`; sleep 3'
+run "sleep" bash -c 'echo "${#V} ${#G}" > `+filepath.Join(tmp, "sleeping")+`; `+untilReleased("scanned")+`'
 gate "gate $V" bash -c 'echo "gate saw $V"; false'
 summary
 `, 0o755)
@@ -145,22 +146,35 @@ summary
 				data, _ := os.ReadFile(f)
 				check(f, strings.ReplaceAll(string(data), "\x00", " "))
 			}
+			r.release("scanned")
 		}()
+	} else {
+		r.release("scanned")
 	}
 	// status.yml as it changes: the steps running now.
 	stop := make(chan struct{})
 	sawStep := make(chan bool, 1)
+	statusDir := filepath.Join(r.root, ".swim")
+	sw, err := testwait.Watch(statusDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sw.Close()
 	go func() {
 		saw := false
 		defer func() { sawStep <- saw }()
 		for {
-			data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "status.yml"))
+			changed := sw.Changed()
+			data, _ := os.ReadFile(filepath.Join(statusDir, "status.yml"))
 			check("status.yml mid-run", string(data))
-			saw = saw || strings.Contains(string(data), "label ***")
+			if !saw && strings.Contains(string(data), "label ***") {
+				saw = true
+				r.release("label-seen") // the step holds until it's been seen
+			}
 			select {
 			case <-stop:
 				return
-			case <-time.After(50 * time.Millisecond):
+			case <-changed:
 			}
 		}
 	}()

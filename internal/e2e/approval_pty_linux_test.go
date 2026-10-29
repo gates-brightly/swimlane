@@ -12,7 +12,7 @@ import (
 func approvalLanes(r *repo) {
 	r.script(1, "guarded", `if guard ALLOW_DROP "drop table orders - 2026-10-12"; then run "dropped" true; fi
 run "after" true`)
-	r.script(2, "busy", `run "work" bash -c 'for i in 1 2 3 4 5 6 7 8; do echo busy-$i; sleep 0.1; done'`)
+	r.script(2, "busy", `run "work" bash -c 'for i in 1 2 3 4 5 6 7 8; do echo busy-$i; done'`)
 }
 
 func TestPromptInTUI(t *testing.T) {
@@ -117,7 +117,7 @@ func TestPromptSeveralLanes(t *testing.T) {
 	r := newSerialRepo(t, "")
 	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
 	r.script(2, "two", `if guard ALLOW_TWO "change two"; then run "two changed" true; fi`)
-	r.script(3, "busy", `run "work" bash -c 'for i in $(seq 1 30); do echo busy-$i; sleep 0.1; done'`)
+	r.script(3, "busy", `run "work" bash -c 'for i in $(seq 1 30); do echo busy-$i; done'`)
 	tr := r.startTUI(nil, "all")
 	tr.waitScreen("both waiting", func(s string) bool {
 		return strings.Contains(s, "need approval · Enter to view swim")

@@ -10,7 +10,7 @@ import (
 // the run once the lane has exited.
 func TestLeftoverProcessDoesntHang(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "leave a daemon", "sleep 30 &\n"+`run "after" true`)
+	r.script(1, "leave a daemon", fifoCat("daemon")+" &\n"+`run "after" true`)
 	start := time.Now()
 	contains(t, "run", r.mustSwim("run", "1", "--plain"), "PASS")
 	if d := time.Since(start); d > 15*time.Second {

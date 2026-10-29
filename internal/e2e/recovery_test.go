@@ -62,7 +62,7 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 // --rebuild records the round as interrupted.
 func TestRecoveryStaleRunningLane(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "killed", `run "long" sleep 30`)
+	r.script(1, "killed", `run "long" `+blocked("long")+``)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := c.Start(); err != nil {
@@ -94,7 +94,7 @@ func TestRecoveryStaleRunningLane(t *testing.T) {
 func TestReapDeadLane(t *testing.T) {
 	r := newRepo(t, "")
 	kill := func() {
-		r.script(1, "killed", `run "long" sleep 30`)
+		r.script(1, "killed", `run "long" `+blocked("long")+``)
 		c := r.cmd("bash", "lane.1.sh")
 		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		if err := c.Start(); err != nil {

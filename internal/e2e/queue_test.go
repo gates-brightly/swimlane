@@ -142,7 +142,7 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 func TestWatchWorkersShareTheQueue(t *testing.T) {
 	r := newRepo(t, "")
 	for n := 1; n <= 3; n++ {
-		r.script(n, "q", `run "work" sleep 0.3`)
+		r.script(n, "q", `run "work" true`)
 	}
 	for n := 1; n <= 3; n++ {
 		r.mustSwim("queue", "add", string(rune('0'+n)))
@@ -427,15 +427,16 @@ func TestQueueWaitTimeout(t *testing.T) {
 func TestWatchBatchesSideBySide(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
-	// work is the middle step: side by side, swim 1's waits (up to 30s)
-	// for swim 2's start, so the two overlap however slow the machine.
+	// work is the middle step: side by side, swim 1's holds until swim 2
+	// has started (the test releases it then), so the two overlap however
+	// slow the machine.
 	stamp := func(name, work string) string {
 		return fmt.Sprintf(`run "%[1]s start" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.start"'
 run "%[1]s work" %[2]s
 run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 	}
-	r.script(1, "slow one", stamp("one", `bash -c 'for i in $(seq 600); do [ -e "$SWIM_ROOT/two.start" ] && exit 0; sleep 0.05; done'`))
-	r.script(2, "two", stamp("two", "sleep 0.2"))
+	r.script(1, "slow one", stamp("one", hold("two-started")))
+	r.script(2, "two", stamp("two", "true"))
 	times := func(name string) []float64 {
 		data, _ := os.ReadFile(filepath.Join(r.root, name))
 		var out []float64
@@ -456,7 +457,13 @@ run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "2")
-	out := r.mustSwim("watch", "--once")
+	watch := start(t, r.cmd(bin, "watch", "--once"), nil)
+	waitFor(t, func() bool { return len(times("two.start")) == 1 })
+	r.release("two-started")
+	if code := watch.wait(t); code != 0 {
+		t.Fatalf("watch --once: exit %d\n%s", code, watch.out.String())
+	}
+	out := watch.out.String()
 	contains(t, "watch", out, "up to 4 at once", "started")
 	one, oneEnd, two := times("one.start"), times("one.end"), times("two.start")
 	if len(one) != 2 || len(oneEnd) != 2 || len(two) != 1 {
@@ -474,7 +481,7 @@ run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 
 	// One at a time.
 	reset()
-	r.script(1, "slow one", stamp("one", "sleep 0.2"))
+	r.script(1, "slow one", stamp("one", "true"))
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "2")
 	r.mustSwim("watch", "--once", "--batches", "1")

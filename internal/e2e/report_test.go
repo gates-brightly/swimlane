@@ -161,19 +161,14 @@ func TestReportWait(t *testing.T) {
 		out, _ := r.cmd(bin, "report", "--earmark", "--wait", "--interval", "100ms", "--timeout", "20s").CombinedOutput()
 		done <- string(out)
 	}()
-	// Something new until the waiter sees it: a run before it has read
-	// where it starts from isn't new to it, so run again until it returns.
-	deadline := time.After(waitDeadline)
-	for {
-		r.mustSwim("run", "1")
-		select {
-		case out := <-done:
-			contains(t, "--wait", out, ".swim.log", "  run  ", "earmark default moved to")
-			return
-		case <-time.After(time.Second):
-		case <-deadline:
-			t.Fatal("--wait didn't return")
-		}
+	// Something new: the waiter starts from the saved earmark, so a run
+	// after it is new whenever the waiter reads it.
+	r.mustSwim("run", "1")
+	select {
+	case out := <-done:
+		contains(t, "--wait", out, ".swim.log", "  run  ", "earmark default moved to")
+	case <-time.After(waitDeadline):
+		t.Fatal("--wait didn't return")
 	}
 }
 

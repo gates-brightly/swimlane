@@ -407,7 +407,7 @@ func TestFaultManyWatchers(t *testing.T) {
 	ledger, stampLine := withLedger(t, r)
 	for n := 1; n <= 3; n++ {
 		r.script(n, "work", stampLine(n, "start")+`
-run "work" sleep 0.05
+run "work" true
 `+stampLine(n, "end"))
 	}
 	withLocks(t, r, 1, "db")

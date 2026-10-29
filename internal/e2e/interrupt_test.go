@@ -229,8 +229,8 @@ run "after" true`)
 func TestKillOnThirdCtrlC(t *testing.T) {
 	r := newRepo(t, "")
 	// It says so once its trap is set (see TestForceQuitKillsStepGroup).
-	r.script(1, "stubborn", `run "hang" bash -c 'trap "sleep 20" INT; echo hang-armed; sleep 31.3 & wait; wait'`)
-	r.script(2, "other", `run "x" sleep 31.4`)
+	r.script(1, "stubborn", `run "hang" bash -c 'trap "`+fifoCat("never")+`" INT; echo hang-armed; `+fifoCat("31.3")+` & wait; wait'`)
+	r.script(2, "other", `run "x" `+blocked("31.4")+``)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "hang")
 	r.waitStep(t, 2, "x")
@@ -250,14 +250,14 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 		t.Errorf("third Ctrl-C took %s", took)
 	}
 	contains(t, "output", l.out.String(), "swim: killing 1 lanes now.", "swim summary")
-	noStray(t, `sleep 31\.[34]`) // this test's own steps: tests run in parallel
+	noStray(t, `blocked-31\.[34]`) // this test's own steps: tests run in parallel
 }
 
 // A step stopped by its time limit takes what it started with it: the
 // whole process group gets SIGTERM.
 func TestStepTimeoutLeavesNoSurvivors(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "forks", `run --timeout 500ms "forks" bash -c 'sleep 33.1 & sleep 33.2 & wait'
+	r.script(1, "forks", `run --timeout 500ms "forks" bash -c '`+fifoCat("33.1")+` & `+fifoCat("33.2")+` & wait'
 run "after" true`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
@@ -265,7 +265,7 @@ run "after" true`)
 		t.Errorf("the step limit took %s to stop the step", took)
 	}
 	contains(t, "agent1.log", r.log(1), "  FAIL  forks (timeout: step limit 500ms)", "  PASS  after")
-	noStray(t, `sleep 33\.[12]`) // this test's own steps: tests run in parallel
+	noStray(t, `blocked-33\.[12]`) // this test's own steps: tests run in parallel
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
 		t.Error("the step's process group record was left behind")
 	}
@@ -279,8 +279,8 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 	// The step and its child ignore SIGINT: only the kill stops them.
 	// It says so once its trap is set: a SIGINT before that kills bash
 	// outright (seen on a loaded macOS runner), and there'd be nothing to kill.
-	r.script(1, "deaf", `run "deaf" bash -c 'trap "" INT; echo deaf-armed; sleep 33.3 & wait; wait'`)
-	r.script(2, "other", `run "x" sleep 33.4`)
+	r.script(1, "deaf", `run "deaf" bash -c 'trap "" INT; echo deaf-armed; `+fifoCat("33.3")+` & wait; wait'`)
+	r.script(2, "other", `run "x" `+blocked("33.4")+``)
 	l := r.launch(t, nil, "--interrupt", "immediate")
 	r.waitStep(t, 1, "deaf")
 	r.waitStep(t, 2, "x")
@@ -288,7 +288,7 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 	l.signal(syscall.SIGINT)
 	l.wait(t)
 	contains(t, "output", l.out.String(), "swim: force quitting", "swim: killing 1 lanes now.")
-	noStray(t, `sleep 33\.[34]`) // this test's own steps: tests run in parallel
+	noStray(t, `blocked-33\.[34]`) // this test's own steps: tests run in parallel
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
 		t.Error("the killed step's process group record was left behind")
 	}
@@ -297,9 +297,9 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 func TestTermEscalatesAfterGrace(t *testing.T) {
 	r := newRepo(t, "")
 	r.mustSwim("config", "term_grace", "500ms")
-	r.script(1, "long", `run "long" sleep 31.5
+	r.script(1, "long", `run "long" `+blocked("31.5")+`
 run "never" true`)
-	r.script(2, "long too", `run "long" sleep 31.6`)
+	r.script(2, "long too", `run "long" `+blocked("31.6")+``)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "long")
 	r.waitStep(t, 2, "long")
@@ -314,13 +314,13 @@ run "never" true`)
 	if strings.Contains(r.log(1), "PASS  never") || r.status().Get(1).State != status.Interrupted {
 		t.Errorf("swim 1 after SIGTERM: %+v", r.status().Get(1))
 	}
-	noStray(t, `sleep 31\.[56]`) // this test's own steps: tests run in parallel
+	noStray(t, `blocked-31\.[56]`) // this test's own steps: tests run in parallel
 }
 
 func TestHangupForcesAtOnce(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "long", `run "long" sleep 31.7`)
-	r.script(2, "long too", `run "long" sleep 31.8`)
+	r.script(1, "long", `run "long" `+blocked("31.7")+``)
+	r.script(2, "long too", `run "long" `+blocked("31.8")+``)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "long")
 	r.waitStep(t, 2, "long")
@@ -331,13 +331,13 @@ func TestHangupForcesAtOnce(t *testing.T) {
 		t.Errorf("SIGHUP should force at once; took %s", took)
 	}
 	contains(t, "output", l.out.String(), "swim: force quitting")
-	noStray(t, `sleep 31\.[78]`) // this test's own steps: tests run in parallel
+	noStray(t, `blocked-31\.[78]`) // this test's own steps: tests run in parallel
 }
 
 func TestImmediateInterruptMode(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "long", `run "long" sleep 31.9`)
-	r.script(2, "long too", `run "long" sleep 32.1`)
+	r.script(1, "long", `run "long" `+blocked("31.9")+``)
+	r.script(2, "long too", `run "long" `+blocked("32.1")+``)
 	l := r.launch(t, nil, "--interrupt", "immediate")
 	r.waitStep(t, 1, "long")
 	r.waitStep(t, 2, "long")
@@ -345,7 +345,7 @@ func TestImmediateInterruptMode(t *testing.T) {
 	l.wait(t)
 	contains(t, "output", l.out.String(), "swim: force quitting")
 	contains(t, "agent1.log", r.log(1), "FAIL  long (exit 130, interrupted)")
-	noStray(t, `sleep 3(1\.9|2\.1)`) // this test's own steps, not any "sleep 3" on the machine
+	noStray(t, `blocked-3(1\.9|2\.1)`) // this test's own steps
 }
 
 func TestStopDuringRetryWait(t *testing.T) {

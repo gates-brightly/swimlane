@@ -15,6 +15,14 @@ type heartbeat struct {
 	mu      sync.Mutex
 	last    map[int]time.Time
 	started map[int]time.Time
+	now     func() time.Time // the clock (nil: time.Now); tests set it
+}
+
+func (h *heartbeat) clock() time.Time {
+	if h.now != nil {
+		return h.now()
+	}
+	return time.Now()
 }
 
 func (h *heartbeat) begin(n int, at time.Time) {
@@ -34,7 +42,7 @@ func (h *heartbeat) saw(n int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if _, ok := h.started[n]; ok {
-		h.last[n] = time.Now()
+		h.last[n] = h.clock()
 	}
 }
 
@@ -44,7 +52,7 @@ func (h *heartbeat) silent(d time.Duration) map[int]time.Duration {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	out := map[int]time.Duration{}
-	now := time.Now()
+	now := h.clock()
 	for n, t := range h.last {
 		if now.Sub(t) >= d {
 			out[n] = now.Sub(h.started[n])
