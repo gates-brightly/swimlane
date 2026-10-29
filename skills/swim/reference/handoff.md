@@ -4,6 +4,30 @@ The operator reads your message, not your reasoning. Give them a command
 they can paste, what it will do, and what each approval allows. Then stop
 and wait for them to run it.
 
+## What you're approving
+
+Every hand-off that asks for an approval (a prompt, a guard flag,
+`--approve`, `swim approve`) or a decision has this block, one entry per
+guard or decision. Write it from the script and from what the snapshot and
+check stages found, not from memory:
+
+````markdown
+**What you're approving**
+
+- **`USERS_ALLOW_PURGE`** (swim 1, change stage)
+  - Runs: `fakecloud delete users @test.example`
+  - Target: the prod `users` table (account 123456789012)
+  - Scope: 3 rows (`load-1..3@test.example`); the 3 real users stay
+  - Undo: the `users before` snapshot has every row; `users-restore.sh` puts them back
+  - If you say no: a dry run; nothing is deleted, verify fails, swim run exits 3
+- **Decision `ROLLOUT`** (swim 2): 1 canary 10% then the rest (~20 min),
+  2 all at once (~2 min, no canary), 3 don't deploy (the round ends there)
+````
+
+The guard's own description (what the prompt shows) says the same in one
+line; this block is the detail behind it. Mark anything that can't be
+undone, or touches production or shared state, with ⚠.
+
 ## Run it now
 
 ````markdown
@@ -16,13 +40,18 @@ swim run 3f2a9c1e 7b4d4e2a        # pinned to the jobs I wrote: a rewritten lane
 - Read-only until the change stage. It snapshots the CFN template, checks
   the account is orders-prod (123456789012), and gates on DeletionPolicy:
   Retain.
-- **Guard `ORDERS_ALLOW_SST_REMOVE`** approves `npx sst remove --stage prod`
-  for orders-prod. swim asks at the prompt. Without a yes, the step is a
-  dry run and nothing is removed. To approve up front:
-  `ORDERS_ALLOW_SST_REMOVE=1 swim run 3f2a9c1e 7b4d4e2a`.
 - Verify re-runs `terraform plan` and expects no changes.
-- Rollback if verify fails: `npx sst deploy --stage prod` from `v2.3.9`
-  (noted in the script).
+
+**What you're approving**
+
+- ⚠ **`ORDERS_ALLOW_SST_REMOVE`** (swim 2, change stage)
+  - Runs: `npx sst remove --stage prod`
+  - Target: SST stack `orders-prod` in account 123456789012
+  - Scope: the 14 CloudFormation resources the snapshot lists; terraform
+    already owns them, and DeletionPolicy: Retain (gated) keeps the data
+  - Undo: `npx sst deploy --stage prod` from `v2.3.9`
+  - If you say no: a dry run; nothing is removed. To approve up front:
+    `ORDERS_ALLOW_SST_REMOVE=1 swim run 3f2a9c1e 7b4d4e2a`
 
 When it's done, say so (or don't: I'll read `swim report` next time).
 ````

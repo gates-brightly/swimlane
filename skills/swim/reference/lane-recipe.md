@@ -13,7 +13,7 @@ against `swim guide` (`WRITING A LANE SCRIPT`).
 # After:   1
 # Locks:   tf/orders
 # Includes: lib/orders.sh
-# Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack orders-prod (tf owns it) 2026-10-15
+# Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack orders-prod in 123456789012: 14 resources, tf owns them, data retained; undo: sst deploy v2.3.9. 2026-10-15
 # Observe: aws_account = aws sts get-caller-identity --query Account --output text
 # Timeout: 30m
 #
@@ -32,7 +32,7 @@ snapshot "tf plan" terraform -chdir=infra/orders plan -no-color   # saved for th
 gate "DeletionPolicy is Retain" bash -c 'aws cloudformation get-template --stack-name orders-prod | grep -q Retain'
 
 stage change                       # only guarded steps
-if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (tf owns it) 2026-10-15"; then
+if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod in 123456789012: 14 resources, tf owns them, data retained; undo: sst deploy v2.3.9. 2026-10-15"; then
   run --timeout 20m "sst remove" npx sst remove --stage prod
 fi
 
@@ -51,7 +51,7 @@ is read as part of it, so explain things in the `# Goal:` block instead.
 | `Locks: tf/orders` | Never overlap another lane that holds this lock. |
 | `Includes: lib/orders.sh` | Every repo file the lane sources or reads, so the approval pins it. The lane runs in a staged copy holding only the script and these: an unpinned file isn't there. |
 | `Workspace: live` | Rarely: run in the working tree instead of the staged copy (the approval says so, and `swim lint` warns). |
-| `Guards: FLAG  <action>` | Each guard flag, with what it approves, the date and the reason. |
+| `Guards: FLAG  <action>` | Each guard flag, with the same one-line summary its `guard` call gives (below). |
 | `Observe: name = cmd` | A fact swim can't pin (the account, a binary on PATH). It's read at approval and again before the guarded step, and a difference ends the round as drift. |
 | `Timeout: 30m` | The whole round's limit. |
 
@@ -62,7 +62,7 @@ is read as part of it, so explain things in the `# Goal:` block instead.
 | `snapshot "<label>" cmd...` | Read-only capture before a change. Its output is saved. |
 | `run "<label>" cmd...` | A step. A failure is recorded and the round continues. |
 | `gate "<label>" cmd...` | A step whose failure ends the round. Put one before any change it protects. |
-| `guard FLAG "<action>"` | Returns 0 only if a person approved this action in this run. |
+| `guard FLAG "<action>"` | Returns 0 only if a person approved this action in this run. `<action>` is what the prompt shows them: the action, the exact target, the scope, whether it can be undone, the date and the reason, in one line. |
 | `stop "<reason>"` / `drift "<what>"` | End the round, or record a difference from what was expected. |
 | `msg --progress 3/25 "<text>"` | A status line in the live view and `swim status`. |
 | `output KEY VALUE` / `input N KEY` | Pass small values (or `# Outputs:` files) to dependent lanes. |

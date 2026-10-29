@@ -148,8 +148,12 @@ lines or command instead. For anything broken, see
    and how `swim run` would decide each guard now (approved and by whom,
    what's missing, or a dry run). Tell the operator what is still unapproved.
 5. **Dispatch or hand off:** queue the round (section 2), or give the
-   operator the exact command, pinned to job ids, with each guard flag and
-   what it approves ([reference/handoff.md](reference/handoff.md)). Then
+   operator the exact command, pinned to job ids, and a **What you're
+   approving** block: for each guard, the commands it lets run, the
+   target, the scope with the numbers the checks found, whether it can be
+   undone, and what happens if they say no (a dry run); for each decision,
+   what each choice does ([reference/handoff.md](reference/handoff.md)).
+   Never ask for an approval without it. Then
    don't wait: go on to the next task (section 4). Never poll with `swim
    run`.
 6. **Read results** at your next stopping point: `swim report --earmark`
@@ -244,6 +248,18 @@ from what the previous ones left behind.
 - **Stages in order:** `snapshot` (read-only capture), `check` (checks and
   `gate`s), `change` (only behind `guard`), `verify` (prove it worked). End
   with `summary`.
+- **A guard's description is the operator's summary of what they're
+  approving:** swim shows it at the prompt (`the lane says: ...`), in
+  `swim status` and in the chain, and it's often all they read. Write one
+  line that says the action (the verb and the command's effect), the exact
+  target (resource, environment, account), the scope (how many, how much,
+  from the snapshot or check that counted it), whether it can be undone
+  and how, then the date and the reason:
+  `guard USERS_ALLOW_PURGE "delete the 3 @test.example rows from prod
+  users (snapshot keeps them; restore with users-restore.sh) 2026-10-29:
+  load-test cleanup"`, not `"cleanup"` or `"run the migration"`. The same
+  text goes in `# Guards:`. If one line can't say it, the guard covers too
+  much: split it.
 - **Every destructive or irreversible step goes behind its own `guard
   FLAG "<action, date, reason>"`.** Declare it in the header (`# Guards:
   FLAG  <what it approves>`): swim reads a lane's guards and includes
