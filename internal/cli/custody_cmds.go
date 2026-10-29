@@ -369,10 +369,20 @@ func printDecision(lk *lookup.Lookup, f *sigfile.File, scriptGuards []string) {
 			continue
 		}
 		d := sigfile.Decide([]*sigfile.File{f}, lk, g, time.Now())
+		r := lk.RuleFor(g)
+		in, out := lk.Counted(r, d.Users)
+		var notes string
+		if len(out) > 0 {
+			isnt := " signed but isn't in " + r.Group + ", so doesn't count"
+			if len(out) > 1 {
+				isnt = " signed but aren't in " + r.Group + ", so don't count"
+			}
+			notes = "; " + strings.Join(out, ", ") + isnt
+		}
 		if d.OK {
-			fmt.Println("  " + p.Paint(ui.Green, "approved: "+g+" ("+strings.Join(d.Users, ", ")+")"))
+			fmt.Println("  " + p.Paint(ui.Green, "approved: "+g+" ("+strings.Join(in, ", ")+notes+")"))
 		} else {
-			fmt.Println("  " + p.Paint(ui.Yellow, "not yet:  "+g+": "+d.Why))
+			fmt.Println("  " + p.Paint(ui.Yellow, "not yet:  "+g+": "+d.Why+notes))
 		}
 	}
 }

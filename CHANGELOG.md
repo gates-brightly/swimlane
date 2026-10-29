@@ -343,6 +343,11 @@ and read.
   approval covers another version of the script or a stale manifest, the
   dry run says to review the change and `swim approve N --guards FLAG`,
   not `set FLAG=1 to approve`, the unsigned way past it.
+- **`swim approve` says whose signature doesn't count.** With a
+  `lookup.yml` rule for a group, a signer outside the group used to be
+  listed with the rest ("approved: FIN_ALLOW_DELETE (alice, bob, carol)").
+  Now: "(alice, bob; carol signed but isn't in dba, so doesn't count)",
+  and the same note follows a "not yet".
 - **Many lanes run much faster.** Every status update reads and writes
   the whole `.swim/status.yml` under one lock, so time grew with the
   square of the lane count (80 trivial lanes: 11.2s). An update now reads

@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -309,18 +310,7 @@ func RulesText(rules []Rule) string {
 // Satisfied reports whether users (distinct signers known to lookup.yml)
 // meet rule, and if not, what's missing.
 func (l *Lookup) Satisfied(r Rule, users []string) (bool, string) {
-	have := map[string]bool{}
-	for _, u := range users {
-		if r.Group == "" {
-			have[u] = true
-			continue
-		}
-		for _, m := range l.Members(r.Group) {
-			if m == u {
-				have[u] = true
-			}
-		}
-	}
+	have, _ := l.Counted(r, users)
 	if len(have) >= r.Count {
 		return true, ""
 	}
@@ -329,6 +319,24 @@ func (l *Lookup) Satisfied(r Rule, users []string) (bool, string) {
 		who = r.Group
 	}
 	return false, fmt.Sprintf("needs %d signature(s) from %s, has %d", r.Count, who, len(have))
+}
+
+// Counted splits users into those r counts (distinct, in order) and
+// those it doesn't: with a group, the users outside it.
+func (l *Lookup) Counted(r Rule, users []string) (in, out []string) {
+	seen := map[string]bool{}
+	for _, u := range users {
+		if seen[u] {
+			continue
+		}
+		seen[u] = true
+		if r.Group == "" || slices.Contains(l.Members(r.Group), u) {
+			in = append(in, u)
+		} else {
+			out = append(out, u)
+		}
+	}
+	return in, out
 }
 
 // Describe is "zach (platform-admin, ops)".

@@ -60,6 +60,12 @@ func TestLookup(t *testing.T) {
 	if ok, _ := l.Satisfied(r, []string{"zach", "alice"}); !ok {
 		t.Error("two platform-admins should satisfy it")
 	}
+	if in, out := l.Counted(r, []string{"bob", "zach", "zach", "alice"}); fmt.Sprint(in, out) != "[zach alice] [bob]" {
+		t.Errorf("counted: %v %v", in, out)
+	}
+	if in, out := l.Counted(l.RuleFor("OTHER"), []string{"bob"}); fmt.Sprint(in, out) != "[bob] []" {
+		t.Errorf("counted, ops: %v %v", in, out)
+	}
 	if r := l.RuleFor("OTHER"); r.Group != "ops" || r.Count != 1 {
 		t.Errorf("fallback rule: %+v", r)
 	}
