@@ -4,7 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"testing"
-	"time"
+
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 func TestSame(t *testing.T) {
@@ -51,12 +52,9 @@ func TestZombieIsNotAlive(t *testing.T) {
 	}
 	defer cmd.Wait()
 	pid := cmd.Process.Pid
-	deadline := time.Now().Add(5 * time.Second)
-	for !zombie(pid) {
-		if time.Now().After(deadline) {
-			t.Skip("can't tell a zombie on this system")
-		}
-		time.Sleep(10 * time.Millisecond)
+	// Exited and not reaped: a zombie.
+	if !testwait.Exited(pid, testwait.Deadline) || !zombie(pid) {
+		t.Skip("can't tell a zombie on this system")
 	}
 	if Alive(pid) || Same(pid, Start(pid)) {
 		t.Error("a zombie counts as alive")

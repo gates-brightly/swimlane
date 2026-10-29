@@ -5,13 +5,13 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/quick"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/status"
 )
@@ -133,7 +133,9 @@ func runSched(d schedDAG) (states []string, spans map[int]span) {
 			locks := d.Lanes[i-1].Locks
 			lt.acquire(i, locks, nil)
 			sp := span{start: clock.Add(1)}
-			time.Sleep(time.Duration(rand.Intn(200)) * time.Microsecond) // let others interleave
+			for k := rand.Intn(50); k > 0; k-- {
+				runtime.Gosched() // let others interleave
+			}
 			sp.end = clock.Add(1)
 			lt.release(i, locks)
 			mu.Lock()

@@ -4,6 +4,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 func TestLockTableAllAtOnceAndFIFO(t *testing.T) {
@@ -29,7 +31,6 @@ func TestLockTableAllAtOnceAndFIFO(t *testing.T) {
 				mu.Lock()
 				order = append(order, lane)
 				mu.Unlock()
-				time.Sleep(20 * time.Millisecond)
 				lt.release(lane, names)
 			}
 		}()
@@ -56,7 +57,7 @@ func TestLockTableIndependentLocksDontWait(t *testing.T) {
 		if !ok {
 			t.Fatal("lane 2 refused")
 		}
-	case <-time.After(time.Second):
+	case <-time.After(testwait.Deadline):
 		t.Fatal("a lane waited for a lock nobody holds")
 	}
 }
@@ -65,8 +66,10 @@ func TestLockTableClose(t *testing.T) {
 	lt := newLockTable()
 	lt.acquire(1, []string{"a"}, nil)
 	done := make(chan bool)
-	go func() { done <- lt.acquire(2, []string{"a"}, nil) }()
-	time.Sleep(20 * time.Millisecond)
+	waiting := make(chan struct{})
+	var once sync.Once
+	go func() { done <- lt.acquire(2, []string{"a"}, func(string, int) { once.Do(func() { close(waiting) }) }) }()
+	<-waiting // lane 2 waits for a
 	lt.close()
 	if <-done {
 		t.Fatal("got a lock after close")

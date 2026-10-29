@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 // alive reports whether pid is a running process (a zombie, waiting for
@@ -29,10 +31,8 @@ func alive(pid int) bool {
 // runner is slow).
 func waitGone(t *testing.T, pid int, what string) {
 	t.Helper()
-	for end := time.Now().Add(15 * time.Second); time.Now().Before(end); time.Sleep(25 * time.Millisecond) {
-		if !alive(pid) {
-			return
-		}
+	if testwait.Exited(pid, testwait.Deadline) || !alive(pid) {
+		return
 	}
 	syscall.Kill(pid, syscall.SIGKILL)
 	t.Fatalf("%s (pid %d) survived", what, pid)
@@ -41,25 +41,34 @@ func waitGone(t *testing.T, pid int, what string) {
 // readPid waits for the step to write a pid to file p.
 func readPid(t *testing.T, p string) int {
 	t.Helper()
-	for end := time.Now().Add(15 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
-		data, _ := os.ReadFile(p)
-		if n, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && n > 0 {
-			return n
-		}
+	w, err := testwait.Watch(filepath.Dir(p), nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatalf("no pid in %s", p)
-	return 0
+	defer w.Close()
+	pid := 0
+	testwait.Until(t, "a pid in "+p, w, func() bool {
+		data, _ := os.ReadFile(p)
+		n, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		pid = n
+		return err == nil && n > 0
+	})
+	return pid
 }
+
+// forever is a bash fragment that runs until it's killed: cat blocks
+// opening a FIFO nobody writes (in the current directory).
+const forever = `{ [ -p never ] || mkfifo never; cat never; }`
 
 func TestStepTimeoutKillsItsChildren(t *testing.T) {
 	cases := []struct{ name, script string }{
 		// The background sleep gets the group's SIGTERM.
-		{"forked child", `sleep 999 & echo $! > p; wait`},
+		{"forked child", forever + ` & echo $! > p; wait`},
 		// The step ignores SIGTERM: SIGKILL after the grace.
-		{"step ignores TERM", `trap "" TERM; sleep 999 & echo $! > p; wait`},
+		{"step ignores TERM", `trap "" TERM; ` + forever + ` & echo $! > p; wait`},
 		// The step dies on SIGTERM but its child ignores it: the group is
 		// killed after the grace even though the step's own process is gone.
-		{"child ignores TERM", `bash -c 'trap "" TERM; echo $$ > p; sleep 999; :' & wait`},
+		{"child ignores TERM", `bash -c 'trap "" TERM; echo $$ > p; ` + forever + `; :' & wait`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -76,7 +85,7 @@ func TestStepTimeoutKillsItsChildren(t *testing.T) {
 			if !res.TimedOut || res.ExitCode != 124 {
 				t.Fatalf("result %+v", res)
 			}
-			if took := time.Since(start); took > 3*time.Second {
+			if took := time.Since(start); took > 3*time.Second*testwait.Slow {
 				t.Errorf("took %s (limit 300ms, grace 300ms)", took)
 			}
 			waitGone(t, readPid(t, filepath.Join(dir, "p")), "the step's child")
@@ -92,7 +101,7 @@ func TestStepTimeoutKillsItsChildren(t *testing.T) {
 func TestStepThatSucceedsKeepsItsChildren(t *testing.T) {
 	o, _, _ := newOpts(t)
 	dir := filepath.Dir(o.LogPath)
-	o.Args = []string{"bash", "-c", "cd " + Quote([]string{dir}) + " || exit; sleep 999 >/dev/null 2>&1 & echo $! > p"}
+	o.Args = []string{"bash", "-c", "cd " + Quote([]string{dir}) + " || exit; " + forever + " >/dev/null 2>&1 & echo $! > p"}
 	res, err := Run(o)
 	if err != nil || res.ExitCode != 0 {
 		t.Fatalf("%+v %v", res, err)
@@ -102,8 +111,12 @@ func TestStepThatSucceedsKeepsItsChildren(t *testing.T) {
 	if !alive(pid) {
 		t.Fatal("a successful step's background process was killed")
 	}
-	RecoverSpool(o.LogPath) // the next step starts: nothing recorded to kill
-	time.Sleep(50 * time.Millisecond)
+	// The next step starts: the step ended on its own, so no group is
+	// recorded, and RecoverSpool has nothing to kill.
+	if _, err := os.Stat(GroupPath(o.LogPath)); err == nil {
+		t.Fatal("a finished step left its group recorded")
+	}
+	RecoverSpool(o.LogPath)
 	if !alive(pid) {
 		t.Fatal("the next step killed a finished step's background process")
 	}
@@ -111,8 +124,11 @@ func TestStepThatSucceedsKeepsItsChildren(t *testing.T) {
 
 func TestKillRecorded(t *testing.T) {
 	start := func(t *testing.T) *exec.Cmd {
-		c := exec.Command("sleep", "999")
+		c := exec.Command("cat") // runs until killed: its stdin stays open
 		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if _, err := c.StdinPipe(); err != nil {
+			t.Fatal(err)
+		}
 		if err := c.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -134,10 +150,9 @@ func TestKillRecorded(t *testing.T) {
 	// A record whose start time doesn't match is another process's pid.
 	c = start(t)
 	os.WriteFile(GroupPath(log), []byte(fmt.Sprintf("%d 12345\n", c.Process.Pid)), 0o644)
-	if KillRecorded(log) {
+	if KillRecorded(log) { // false: it sent nothing
 		t.Error("killed a group whose start time doesn't match")
 	}
-	time.Sleep(50 * time.Millisecond)
 	if !alive(c.Process.Pid) {
 		t.Error("a process with another start time was killed")
 	}

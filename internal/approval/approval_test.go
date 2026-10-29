@@ -15,17 +15,27 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/peer"
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 func TestRoundTripConcurrent(t *testing.T) {
 	var mu sync.Mutex
 	active, most := 0, 0
+	allIn := make(chan struct{}) // closed once all four are being asked
 	s, err := Listen(func(req Request, cancel <-chan struct{}) Response {
 		mu.Lock()
 		active++
 		most = max(most, active)
+		if active == 4 {
+			close(allIn)
+		}
 		mu.Unlock()
-		time.Sleep(50 * time.Millisecond)
+		// Each waits for the others: a server that asked one at a time
+		// never gets here, and the test fails at the deadline.
+		select {
+		case <-allIn:
+		case <-time.After(testwait.Deadline):
+		}
 		mu.Lock()
 		active--
 		mu.Unlock()
@@ -60,7 +70,7 @@ func TestRoundTripConcurrent(t *testing.T) {
 	}
 	// Lanes wait at the same time; the asker decides how to queue them
 	// (the interactive view shows them all, the line prompt asks in turn).
-	if most < 2 {
+	if most != 4 {
 		t.Errorf("questions from parallel lanes should reach the asker together; at most %d at once", most)
 	}
 }
@@ -90,7 +100,9 @@ func TestCancelDeclines(t *testing.T) {
 }
 
 func TestClientGivesUp(t *testing.T) {
+	asked := make(chan struct{}, 2)
 	s, err := Listen(func(req Request, cancel <-chan struct{}) Response {
+		asked <- struct{}{}
 		<-cancel // the lane hung up
 		return Response{}
 	})
@@ -100,7 +112,7 @@ func TestClientGivesUp(t *testing.T) {
 	defer s.Close()
 	tok := s.Register(Caller{Lane: 1, Guards: []string{"F"}})
 	var stop atomic.Bool
-	go func() { time.Sleep(100 * time.Millisecond); stop.Store(true) }()
+	go func() { <-asked; stop.Store(true) }() // the lane stops while it's being asked
 	r, err := Ask(s.Path(), Request{Lane: 1, Flag: "F", Token: tok}, stop.Load, time.Time{})
 	if err != ErrNoAnswer || r.Why != "the lane is stopping" {
 		t.Fatalf("%+v %v", r, err)
@@ -313,7 +325,9 @@ func TestHostileRequests(t *testing.T) {
 // A lane that hangs up while its question is open is no longer asked for.
 func TestDisconnectCancels(t *testing.T) {
 	cancelled := make(chan struct{})
+	asked := make(chan struct{})
 	s, err := Listen(func(_ Request, cancel <-chan struct{}) Response {
+		close(asked)
 		<-cancel
 		close(cancelled)
 		return Response{}
@@ -328,11 +342,11 @@ func TestDisconnectCancels(t *testing.T) {
 		t.Fatal(err)
 	}
 	json.NewEncoder(c).Encode(Request{Flag: "F", Token: tok})
-	time.Sleep(100 * time.Millisecond)
+	<-asked // the question is open
 	c.Close()
 	select {
 	case <-cancelled:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testwait.Deadline):
 		t.Fatal("the question stayed open after the lane hung up")
 	}
 }

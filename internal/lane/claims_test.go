@@ -29,9 +29,9 @@ func TestClaims(t *testing.T) {
 	if CheckClaim(root, 3, "a") != nil || CheckClaim(root, 3, "b") == nil {
 		t.Error("CheckClaim")
 	}
-	// The holder refreshes; another session can't, and lint never creates.
+	// The holder refreshes (a longer lease: the expiry moves an hour);
+	// another session can't, and lint never creates.
 	before := ReadClaim(root, 3).Expires
-	time.Sleep(1100 * time.Millisecond)
 	if !RefreshClaim(root, 3, "a", 2*time.Hour) || ReadClaim(root, 3).Expires == before {
 		t.Error("the holder's refresh didn't move the expiry")
 	}
@@ -51,8 +51,7 @@ func TestClaims(t *testing.T) {
 		t.Errorf("release: %v %+v", err, c)
 	}
 	// An expired claim reads as none and is removed; anyone takes the lane.
-	TakeClaim(root, 5, "a", time.Millisecond, "", false)
-	time.Sleep(10 * time.Millisecond)
+	TakeClaim(root, 5, "a", -time.Minute, "", false) // ran out a minute ago
 	if ReadClaim(root, 5) != nil {
 		t.Error("an expired claim still reads")
 	}

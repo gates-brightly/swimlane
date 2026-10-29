@@ -201,9 +201,9 @@ func TestReadSpool(t *testing.T) {
 func TestReadSpoolOtherZone(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "agent1.log")
 	start := time.Now().Add(-90 * time.Second).In(time.FixedZone("far", 7*3600+1800))
-	os.WriteFile(SpoolPath(logPath), []byte(spoolHead("wait", start, "sleep 99")), 0o644)
+	os.WriteFile(SpoolPath(logPath), []byte(spoolHead("wait", start, "make deploy")), 0o644)
 	sp, ok := ReadSpool(logPath)
-	if !ok || sp.Clock != start.Format("15:04:05") || sp.Cmd != "sleep 99" {
+	if !ok || sp.Clock != start.Format("15:04:05") || sp.Cmd != "make deploy" {
 		t.Fatalf("spool: %+v", sp)
 	}
 	if e := sp.Elapsed(); e < 89*time.Second || e > 100*time.Second {

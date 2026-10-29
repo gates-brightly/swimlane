@@ -128,6 +128,6 @@ func TestLogCutOffStep(t *testing.T) {
 	r.mustSwim("run", "1")
 	// A spool left by a swim step that was killed (no lane running).
 	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"),
-		[]byte("#swim-spool\tstuck\t12:00:00\tsleep 99\npartial output\n"), 0o644)
+		[]byte("#swim-spool\tstuck\t12:00:00\tmake deploy\npartial output\n"), 0o644)
 	contains(t, "cut off", r.mustSwim("log", "1"), "RUNNING  stuck (cut off: swim step stopped; recorded as FAIL when the lane next runs)", "| partial output")
 }

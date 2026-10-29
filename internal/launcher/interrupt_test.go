@@ -4,19 +4,17 @@ import (
 	"os"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 func testInterrupter(t *testing.T, mode, termGrace string) *interrupter {
 	t.Helper()
-	devnull, _ := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	t.Cleanup(func() { devnull.Close() })
 	cfg := &config.Config{Settings: config.Settings{Lanes: 1, Interrupt: mode, InterruptGrace: "1h", TermGrace: termGrace}}
 	o := Options{Root: t.TempDir(), Cfg: cfg, RunID: "r-test"}
-	disp := display.New(display.Options{Out: devnull, Plain: true}, nil)
+	disp := display.New(display.Options{Out: notifyFile(t), Plain: true}, nil)
 	ir := newInterrupter(o, disp, newSlots(0, nil), newLockTable())
 	t.Cleanup(ir.stop)
 	return ir
@@ -56,15 +54,45 @@ func TestEscalation(t *testing.T) {
 func TestTermGraceForces(t *testing.T) {
 	ir := testInterrupter(t, "", "50ms")
 	ir.handle(syscall.SIGTERM)
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
+	// Escalating prints the force-quit notice.
+	testwait.Until(t, "SIGTERM escalating to force after term_grace", &displayed, func() bool {
 		ir.mu.Lock()
-		lvl := ir.level
-		ir.mu.Unlock()
-		if lvl == levelForce {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+		defer ir.mu.Unlock()
+		return ir.level == levelForce
+	})
+}
+
+// displayed changes whenever a test's display or signal catcher writes.
+var displayed testwait.Signal
+
+// notifyFile is a file whose writes are discarded and notify displayed
+// (a display writes to an *os.File).
+func notifyFile(t *testing.T) *os.File {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("SIGTERM didn't escalate to force after term_grace")
+	go func() {
+		defer r.Close()
+		buf := make([]byte, 4096)
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				displayed.Notify()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() { w.Close() })
+	return w
+}
+
+// notifyWriter discards what it's given and notifies s.
+type notifyWriter struct{ s *testwait.Signal }
+
+func (w notifyWriter) Write(p []byte) (int, error) {
+	w.s.Notify()
+	return len(p), nil
 }

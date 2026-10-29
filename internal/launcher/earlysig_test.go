@@ -6,17 +6,17 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 // A signal during swim run's setup stops the run before any lane starts;
 // one after the hand-over goes to the interrupter.
 func TestEarlySignals(t *testing.T) {
-	e := CatchSignals(io.Discard)
+	e := CatchSignals(notifyWriter{&displayed})
 	syscall.Kill(os.Getpid(), syscall.SIGINT)
-	// Caught, not merely sent: under -race on a loaded runner it's late.
-	for end := time.Now().Add(10 * time.Second); e.hit.Load() == nil && time.Now().Before(end); {
-		time.Sleep(5 * time.Millisecond)
-	}
+	// Caught, not merely sent: catching it prints a line.
+	testwait.Until(t, "the signal caught", &displayed, func() bool { return e.hit.Load() != nil })
 	if !e.handOver(func(os.Signal) { t.Error("a setup signal reached the interrupter") }) {
 		t.Fatal("a Ctrl-C during setup didn't stop the run")
 	}

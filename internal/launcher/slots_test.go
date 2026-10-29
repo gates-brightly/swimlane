@@ -3,7 +3,6 @@ package launcher
 import (
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestChainBelow(t *testing.T) {
@@ -43,7 +42,6 @@ func TestSlotsCapAndPriority(t *testing.T) {
 				mu.Lock()
 				order = append(order, n)
 				mu.Unlock()
-				time.Sleep(10 * time.Millisecond)
 				s.release()
 			}
 		}(n)
@@ -68,8 +66,10 @@ func TestSlotsUnlimitedAndClose(t *testing.T) {
 	c := newSlots(1, map[int]int{})
 	c.acquire(1, nil)
 	done := make(chan bool)
-	go func() { done <- c.acquire(2, nil) }()
-	time.Sleep(20 * time.Millisecond)
+	waiting := make(chan struct{})
+	var once sync.Once
+	go func() { done <- c.acquire(2, func(int) { once.Do(func() { close(waiting) }) }) }()
+	<-waiting // lane 2 waits for a slot
 	c.close()
 	if <-done {
 		t.Fatal("a waiter got a slot after close")
