@@ -119,6 +119,12 @@ func Load(root string) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parse(root, data)
+}
+
+// parse is status.yml's bytes as a document.
+func parse(root string, data []byte) (*File, error) {
+	f := &File{Root: root}
 	if err := yaml.Unmarshal(data, f); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", Path(root), err)
 	}
@@ -195,8 +201,11 @@ func updateFile(root string, n int, check bool, fn func(*File) error) error {
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 
-	old, _ := os.ReadFile(Path(root))
-	f, err := Load(root)
+	old, err := os.ReadFile(Path(root))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	f, err := parse(root, old) // read once
 	if err != nil {
 		return err
 	}
@@ -212,13 +221,32 @@ func updateFile(root string, n int, check bool, fn func(*File) error) error {
 	if check {
 		enforce(checkTransitions(before, f))
 	}
-	// Nothing changed: leave the file (and its updated_at) as it is, so a
-	// command that only looks (swim report, swim status) writes nothing.
-	if data, err := render(f); err == nil && bytes.Equal(data, old) {
+	// Rendered once (it's most of an update's cost, under the lock).
+	// Nothing changed but updated_at: leave the file as it is, so a command
+	// that only looks (swim report, swim status) writes nothing.
+	f.UpdatedAt = Now()
+	data, err := render(f)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(withoutUpdatedAt(data), withoutUpdatedAt(old)) {
 		return nil
 	}
-	f.UpdatedAt = Now()
-	return write(root, f)
+	return fsutil.WriteAtomicAt(failpoint.StatusMidWrite, Path(root), data, 0o644)
+}
+
+// withoutUpdatedAt is a rendered status.yml without its updated_at line.
+func withoutUpdatedAt(data []byte) []byte {
+	i := bytes.Index(data, []byte("\nupdated_at:"))
+	if i < 0 {
+		return data
+	}
+	j := bytes.IndexByte(data[i+1:], '\n')
+	if j < 0 {
+		return data[:i+1]
+	}
+	out := make([]byte, 0, len(data))
+	return append(append(out, data[:i+1]...), data[i+1+j+1:]...)
 }
 
 // Update applies fn to lane n's entry.
