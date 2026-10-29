@@ -27,6 +27,6 @@ scenario_check() {
   expect_match "passed lanes fold" "$(cat "$OUT/ci.out")" '^::group::swim 1 PASS - '
   expect_eq "job summary has every lane" "$(grep -c '^| swim [0-9]* |' "$OUT/summary.md")" 99
   expect_eq "JUnit has a suite per lane" "$(grep -c '<testsuite ' "$OUT/swim.xml")" 99
-  expect_match "results tagged with the commit" "$(grep '^    commit:' .swim/status.yml | head -1)" "commit: $(git rev-parse HEAD)"
+  expect_match "results tagged with the commit" "$("$SWIM" status --yaml | grep '^    commit:' | head -1)" "commit: $(git rev-parse HEAD)"
   checks_passed
 }

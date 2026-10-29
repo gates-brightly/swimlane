@@ -17,8 +17,8 @@ func TestUpdateWritesOnlyChanges(t *testing.T) {
 	data, _ := os.ReadFile(Path(root))
 	lines := strings.Split(string(data), "\n")
 	for i, l := range lines {
-		if strings.HasPrefix(l, "updated_at:") {
-			lines[i] = `updated_at: "2000-01-01T00:00:00Z"`
+		if strings.HasPrefix(strings.TrimSpace(l), `"updated_at":`) {
+			lines[i] = `  "updated_at": "2000-01-01T00:00:00Z",`
 		}
 	}
 	os.WriteFile(Path(root), []byte(strings.Join(lines, "\n")), 0o644)
@@ -35,7 +35,7 @@ func TestUpdateWritesOnlyChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	after, _ := os.ReadFile(Path(root))
-	if strings.Contains(string(after), "2000-01-01") || !strings.Contains(string(after), "round: second") {
+	if strings.Contains(string(after), "2000-01-01") || !strings.Contains(string(after), `"round": "second"`) {
 		t.Errorf("a change didn't write, or kept the old updated_at:\n%s", after)
 	}
 }

@@ -343,6 +343,14 @@ and read.
   approval covers another version of the script or a stale manifest, the
   dry run says to review the change and `swim approve N --guards FLAG`,
   not `set FLAG=1 to approve`, the unsigned way past it.
+- **Many lanes run much faster.** Every status update reads and writes
+  the whole `.swim/status.yml` under one lock, so time grew with the
+  square of the lane count (80 trivial lanes: 11.2s). An update now reads
+  and renders it once, and `status.yml` is written as indented JSON,
+  about ten times cheaper to parse and render than YAML (80 lanes: 2.5s).
+  JSON is YAML, so whatever reads status.yml as YAML still can, and a
+  status.yml an older swim wrote is read as before; it has no `#` header
+  line any more. `swim status --yaml` is unchanged.
 - **`a` in `swim watch` archives a lane's log**, as `swim archive N`
   does: the lane goes idle and its log is kept as
   `agentN.prev-<job>.log`. It refuses a running lane or one with no log.

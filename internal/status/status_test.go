@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestNormalizeFillsAllLanes(t *testing.T) {
@@ -107,10 +109,34 @@ func TestWrittenFileShape(t *testing.T) {
 	}
 	data, _ := os.ReadFile(Path(root))
 	s := string(data)
-	for _, want := range []string{"lane: 1", "state: idle", "state: running", "finished_at: null", "waiting_on: []", "script: lane.2.sh"} {
+	for _, want := range []string{`"lane": 1`, `"state": "idle"`, `"state": "running"`, `"finished_at": null`, `"waiting_on": []`, `"script": "lane.2.sh"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in:\n%s", want, s)
 		}
+	}
+	// It's JSON, and still YAML to whatever reads it as YAML.
+	var y File
+	if err := yaml.Unmarshal(data, &y); err != nil || len(y.Lanes) != 2 || y.Lanes[1].State != Running || *y.Lanes[1].StartedAt != "2026-10-09T12:00:00Z" {
+		t.Errorf("status.yml as YAML: %v %+v", err, y.Lanes)
+	}
+}
+
+// A status.yml an older swim wrote (YAML) still reads, and the next
+// update writes it as JSON.
+func TestReadsOlderYAML(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(Dir(root), 0o755)
+	os.WriteFile(Path(root), []byte("# swim status\nupdated_at: \"2026-10-01T00:00:00Z\"\nroot: /x\nlanes:\n  - lane: 1\n    state: passed\n    job: j1\n"), 0o644)
+	f, err := Load(root)
+	if err != nil || f.Get(1) == nil || f.Get(1).State != Passed || f.Get(1).Job != "j1" {
+		t.Fatalf("older YAML: %v %+v", err, f)
+	}
+	if err := Update(root, 1, 1, func(l *Lane) { l.Round = "next" }); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(Path(root))
+	if !strings.HasPrefix(string(data), "{") || !strings.Contains(string(data), `"job": "j1"`) {
+		t.Errorf("after an update:\n%s", data)
 	}
 }
 
@@ -127,14 +153,11 @@ func TestUnprompted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(Path(root))
-	for _, want := range []string{"auto_approved: [DEPLOY, SWAP]", "auto_via: swim run -y", "flag_approved: [SEED]"} {
-		if !strings.Contains(string(data), want) {
-			t.Errorf("status.yml lacks %q:\n%s", want, data)
-		}
-	}
 	f, _ := Load(root)
 	l := f.Get(1)
+	if strings.Join(l.AutoApproved, ",") != "DEPLOY,SWAP" || l.AutoVia != "swim run -y" || strings.Join(l.FlagApproved, ",") != "SEED" {
+		t.Errorf("auto %v via %q flag %v", l.AutoApproved, l.AutoVia, l.FlagApproved)
+	}
 	if got := l.UnpromptedText(); got != "DEPLOY, SWAP (swim run -y); SEED (flag set)" {
 		t.Errorf("text: %q", got)
 	}

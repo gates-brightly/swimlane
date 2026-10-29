@@ -6,6 +6,7 @@ package status
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -38,66 +39,66 @@ const (
 // Lane is one lane's entry. Fields without omitempty are always written so
 // the file reads the same for every lane.
 type Lane struct {
-	Lane        int      `yaml:"lane"`
-	State       string   `yaml:"state"`
-	Pending     string   `yaml:"pending"`                   // Round: line of the lane script on disk ("" for stub/none)
-	PendingJob  string   `yaml:"pending_job"`               // Job: id of the lane script on disk
-	Round       string   `yaml:"round"`                     // round of the last or current run
-	Job         string   `yaml:"job"`                       // job id of the last or current run
-	Run         string   `yaml:"run,omitempty"`             // swim run id of the last or current round
-	Commit      string   `yaml:"commit,omitempty"`          // commit the round ran for (swim ci)
-	ScriptSHA   string   `yaml:"script_sha256,omitempty"`   // SHA-256 of the lane script the round runs
-	ManifestSHA string   `yaml:"manifest_sha256,omitempty"` // its execution manifest (internal/manifest)
-	EnvSHA      string   `yaml:"env_sha256,omitempty"`      // SHA-256 of its env from env files ("" for none)
-	Script      string   `yaml:"script"`
-	Log         string   `yaml:"log"`
-	WaitingOn   []int    `yaml:"waiting_on,flow"`
-	Reason      string   `yaml:"reason,omitempty"`
-	Locks       []string `yaml:"locks,flow,omitempty"` // locks the running round holds
-	PID         int      `yaml:"pid,omitempty"`
-	Host        string   `yaml:"host,omitempty"` // the machine PID runs on ("" from an older swim: this one)
-	StartedAt   *string  `yaml:"started_at"`
-	FinishedAt  *string  `yaml:"finished_at"`
-	DurationS   *float64 `yaml:"duration_s"`
-	ExitCode    *int     `yaml:"exit_code"`
-	Pass        int      `yaml:"pass"`
-	Fail        int      `yaml:"fail"`
-	Skip        int      `yaml:"skip"`
-	Drift       int      `yaml:"drift"`
-	Stage       string   `yaml:"stage,omitempty"` // stage the running round is in
-	CurrentStep string   `yaml:"current_step"`
-	FailedSteps []string `yaml:"failed_steps"`
-	Stages      []string `yaml:"stages,flow,omitempty"`   // e.g. [snapshot PASS, check FAIL, change none, verify none]
-	Handlers    []string `yaml:"handlers,flow,omitempty"` // outcome handlers that ran, e.g. [on_failure PASS, on_exit PASS]
+	Lane        int      `yaml:"lane" json:"lane"`
+	State       string   `yaml:"state" json:"state"`
+	Pending     string   `yaml:"pending" json:"pending"`                                     // Round: line of the lane script on disk ("" for stub/none)
+	PendingJob  string   `yaml:"pending_job" json:"pending_job"`                             // Job: id of the lane script on disk
+	Round       string   `yaml:"round" json:"round"`                                         // round of the last or current run
+	Job         string   `yaml:"job" json:"job"`                                             // job id of the last or current run
+	Run         string   `yaml:"run,omitempty" json:"run,omitempty"`                         // swim run id of the last or current round
+	Commit      string   `yaml:"commit,omitempty" json:"commit,omitempty"`                   // commit the round ran for (swim ci)
+	ScriptSHA   string   `yaml:"script_sha256,omitempty" json:"script_sha256,omitempty"`     // SHA-256 of the lane script the round runs
+	ManifestSHA string   `yaml:"manifest_sha256,omitempty" json:"manifest_sha256,omitempty"` // its execution manifest (internal/manifest)
+	EnvSHA      string   `yaml:"env_sha256,omitempty" json:"env_sha256,omitempty"`           // SHA-256 of its env from env files ("" for none)
+	Script      string   `yaml:"script" json:"script"`
+	Log         string   `yaml:"log" json:"log"`
+	WaitingOn   []int    `yaml:"waiting_on,flow" json:"waiting_on"`
+	Reason      string   `yaml:"reason,omitempty" json:"reason,omitempty"`
+	Locks       []string `yaml:"locks,flow,omitempty" json:"locks,omitempty"` // locks the running round holds
+	PID         int      `yaml:"pid,omitempty" json:"pid,omitempty"`
+	Host        string   `yaml:"host,omitempty" json:"host,omitempty"` // the machine PID runs on ("" from an older swim: this one)
+	StartedAt   *string  `yaml:"started_at" json:"started_at"`
+	FinishedAt  *string  `yaml:"finished_at" json:"finished_at"`
+	DurationS   *float64 `yaml:"duration_s" json:"duration_s"`
+	ExitCode    *int     `yaml:"exit_code" json:"exit_code"`
+	Pass        int      `yaml:"pass" json:"pass"`
+	Fail        int      `yaml:"fail" json:"fail"`
+	Skip        int      `yaml:"skip" json:"skip"`
+	Drift       int      `yaml:"drift" json:"drift"`
+	Stage       string   `yaml:"stage,omitempty" json:"stage,omitempty"` // stage the running round is in
+	CurrentStep string   `yaml:"current_step" json:"current_step"`
+	FailedSteps []string `yaml:"failed_steps" json:"failed_steps"`
+	Stages      []string `yaml:"stages,flow,omitempty" json:"stages,omitempty"`     // e.g. [snapshot PASS, check FAIL, change none, verify none]
+	Handlers    []string `yaml:"handlers,flow,omitempty" json:"handlers,omitempty"` // outcome handlers that ran, e.g. [on_failure PASS, on_exit PASS]
 	// Message is the running round's status message (swim msg), with its
 	// progress ("7/25") and when it was posted; cleared when the round ends.
-	Message   string `yaml:"message,omitempty"`
-	Progress  string `yaml:"progress,omitempty"`
-	MessageAt string `yaml:"message_at,omitempty"`
+	Message   string `yaml:"message,omitempty" json:"message,omitempty"`
+	Progress  string `yaml:"progress,omitempty" json:"progress,omitempty"`
+	MessageAt string `yaml:"message_at,omitempty" json:"message_at,omitempty"`
 	// Outputs are the last round's outputs (# Outputs:, output KEY value):
 	// name -> SHA-256, in .swim/out/<job>/<run>/.
-	Outputs map[string]string `yaml:"outputs,omitempty"`
+	Outputs map[string]string `yaml:"outputs,omitempty" json:"outputs,omitempty"`
 	// The guards the round's run approved without a prompt: AutoApproved by
 	// -y (swim run -y, a queue batch's -y, swim watch -y; AutoVia says
 	// which), FlagApproved by a guard flag swim run's own environment set
 	// (FLAG=1) or the queue batch approved. Cleared when a round starts.
-	AutoApproved []string `yaml:"auto_approved,flow,omitempty"`
-	AutoVia      string   `yaml:"auto_via,omitempty"`
-	FlagApproved []string `yaml:"flag_approved,flow,omitempty"`
+	AutoApproved []string `yaml:"auto_approved,flow,omitempty" json:"auto_approved,omitempty"`
+	AutoVia      string   `yaml:"auto_via,omitempty" json:"auto_via,omitempty"`
+	FlagApproved []string `yaml:"flag_approved,flow,omitempty" json:"flag_approved,omitempty"`
 	// DryRun are the guards the round's run didn't approve (declined, not
 	// asked, refused): their steps ran as dry runs. Cleared when a round
 	// starts.
-	DryRun      []string `yaml:"dry_run,flow,omitempty"`
-	LastArchive string   `yaml:"last_archive,omitempty"`
+	DryRun      []string `yaml:"dry_run,flow,omitempty" json:"dry_run,omitempty"`
+	LastArchive string   `yaml:"last_archive,omitempty" json:"last_archive,omitempty"`
 }
 
 // File is the whole status.yml document.
 type File struct {
-	UpdatedAt string `yaml:"updated_at"`
-	Root      string `yaml:"root"`
-	Branch    string `yaml:"branch,omitempty"`
-	LastRun   string `yaml:"last_run,omitempty"` // id of the last swim run
-	Lanes     []Lane `yaml:"lanes"`
+	UpdatedAt string `yaml:"updated_at" json:"updated_at"`
+	Root      string `yaml:"root" json:"root"`
+	Branch    string `yaml:"branch,omitempty" json:"branch,omitempty"`
+	LastRun   string `yaml:"last_run,omitempty" json:"last_run,omitempty"` // id of the last swim run
+	Lanes     []Lane `yaml:"lanes" json:"lanes"`
 }
 
 // Dir is the per-repo state directory.
@@ -122,10 +123,17 @@ func Load(root string) (*File, error) {
 	return parse(root, data)
 }
 
-// parse is status.yml's bytes as a document.
+// parse is status.yml's bytes as a document: JSON, or the YAML an older
+// swim wrote (the next update writes it as JSON).
 func parse(root string, data []byte) (*File, error) {
 	f := &File{Root: root}
-	if err := yaml.Unmarshal(data, f); err != nil {
+	var err error
+	if t := bytes.TrimSpace(data); len(t) > 0 && t[0] == '{' {
+		err = json.Unmarshal(data, f)
+	} else {
+		err = yaml.Unmarshal(data, f)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", Path(root), err)
 	}
 	return f, nil
@@ -221,32 +229,13 @@ func updateFile(root string, n int, check bool, fn func(*File) error) error {
 	if check {
 		enforce(checkTransitions(before, f))
 	}
-	// Rendered once (it's most of an update's cost, under the lock).
-	// Nothing changed but updated_at: leave the file as it is, so a command
-	// that only looks (swim report, swim status) writes nothing.
-	f.UpdatedAt = Now()
-	data, err := render(f)
-	if err != nil {
-		return err
-	}
-	if bytes.Equal(withoutUpdatedAt(data), withoutUpdatedAt(old)) {
+	// Nothing changed: leave the file (and its updated_at) as it is, so a
+	// command that only looks (swim report, swim status) writes nothing.
+	if data, err := render(f); err == nil && bytes.Equal(data, old) {
 		return nil
 	}
-	return fsutil.WriteAtomicAt(failpoint.StatusMidWrite, Path(root), data, 0o644)
-}
-
-// withoutUpdatedAt is a rendered status.yml without its updated_at line.
-func withoutUpdatedAt(data []byte) []byte {
-	i := bytes.Index(data, []byte("\nupdated_at:"))
-	if i < 0 {
-		return data
-	}
-	j := bytes.IndexByte(data[i+1:], '\n')
-	if j < 0 {
-		return data[:i+1]
-	}
-	out := make([]byte, 0, len(data))
-	return append(append(out, data[:i+1]...), data[i+1+j+1:]...)
+	f.UpdatedAt = Now()
+	return write(root, f)
 }
 
 // Update applies fn to lane n's entry.
@@ -268,16 +257,16 @@ func write(root string, f *File) error {
 	return fsutil.WriteAtomicAt(failpoint.StatusMidWrite, Path(root), data, 0o644)
 }
 
-// render is status.yml's bytes for f.
+// render is status.yml's bytes for f: indented JSON, which is YAML too,
+// so whatever reads status.yml as YAML still can; swim writes and reads it
+// as JSON, about ten times faster, and every status update does both
+// under one lock.
 func render(f *File) ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteString("# swim status — last known state of every lane. Written by swim; do not edit.\n")
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(f); err != nil {
+	data, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	return append(data, '\n'), nil
 }
 
 // Alive reports whether the lane's recorded process (PID, on Host) may

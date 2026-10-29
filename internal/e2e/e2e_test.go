@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -362,8 +363,10 @@ run "never" true`)
 	contains(t, "status --yaml", got, "pending_header:", "deps:")
 	got = withoutKeys(got, "pending_header", "deps")
 	raw, _ := os.ReadFile(status.Path(r.root))
-	body := regexp.MustCompile(`(?m)^#.*\n`).ReplaceAllString(string(raw), "")
-	if got != "schema: swim.status/v1\n"+body {
+	var doc, file map[string]any // status.yml is JSON, which reads as YAML
+	yaml.Unmarshal([]byte(got), &doc)
+	yaml.Unmarshal(raw, &file)
+	if doc["schema"] != "swim.status/v1" || !reflect.DeepEqual(withoutKey(doc, "schema"), file) {
 		t.Errorf("status --yaml should be the file plus its schema:\n%s\n---\n%s", got, raw)
 	}
 	contains(t, "status", r.mustSwim("status"), "swim 1", "PASS", "swim 3", "FAIL exit 1", "STOP  gate failed: stops")
@@ -794,8 +797,13 @@ func (r *repo) release(name string) {
 var released sync.Map
 
 // blocked is a step command that runs until it's killed, named by marker
-// so noStray can find it (pgrep -f blocked-MARKER).
-func blocked(marker string) string { return `bash -c '` + fifoCat(marker) + `'` }
+// so noStray can find it (pgrep -f blocked-MARKER). Its trap makes a
+// signal end it even when it lands while mkfifo runs: without one, bash
+// carries on when a child it waited for exits normally despite the
+// signal, and cat would then block for good.
+func blocked(marker string) string {
+	return `bash -c 'trap "exit 130" INT TERM; ` + fifoCat(marker) + `'`
+}
 
 // fifoCat is a bash fragment that runs until it's killed: cat blocks
 // opening a FIFO nobody writes, $SWIM_ROOT/.blocked-MARKER. Unquoted, so it
@@ -1347,6 +1355,17 @@ func TestParallelLimit(t *testing.T) {
 	if out, code := r.swim("all", "--parallel", "-1"); code == 0 || !strings.Contains(out, "--parallel") {
 		t.Errorf("--parallel -1: %d %s", code, out)
 	}
+}
+
+// withoutKey is m without key.
+func withoutKey(m map[string]any, key string) map[string]any {
+	out := map[string]any{}
+	for k, v := range m {
+		if k != key {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // envOf is key's value in r.env: the last one, as exec uses it.

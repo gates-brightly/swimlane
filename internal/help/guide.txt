@@ -773,7 +773,8 @@ READING RESULTS
       note         swim note (detail: the text)
   Its details are summaries; the evidence is in the lane log (swim log N).
 
-  .swim/status.yml (also `swim status`, `swim status --yaml`):
+  .swim/status.yml (also `swim status`, `swim status --yaml`), written as
+  indented JSON, which reads as YAML too; these are its fields:
       updated_at: <utc>
       root: <repo root>
       branch: <branch>@<sha>
