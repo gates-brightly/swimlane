@@ -351,6 +351,11 @@ func Run(o Options) (Result, error) {
 		}
 		backoff = min(backoff*2, 5*time.Minute)
 	}
+	if last.exit != 0 && last.why == notTimedOut && last.sig == nil && !o.ExpectFail {
+		for _, m := range stagedMisses(o.Root, o.Args) {
+			note(m + " is in the repo but not in this lane's staged copy: add it to # Includes: (swim lint --fix does), or # Workspace: live")
+		}
+	}
 	plain.mu.Lock()
 	maskedSink.Flush()
 	plain.mu.Unlock()

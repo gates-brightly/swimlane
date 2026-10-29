@@ -7,24 +7,10 @@
 Rechecked on 2026-10-29 against `649d340`. Fixed and removed: 3 (lint
 passes unparseable scripts), 4 (UNSIGNED vs BROKEN), 5 (the mismatch hint
 suggests the bypass), 6 (usage errors), 7 (output polish), 8 (`--help` on
-a pipe), 1 (the tamper story, now tested), and most of 2 and 10. What's left is below, under the original numbers.
+a pipe), 1 (the tamper story, now tested), 2 (the staged copy explains
+a missing file), and most of 10. What's left is below, under the original numbers.
 
 ## Open findings
-
-### 2. A missing file at runtime is still a bare ENOENT
-
-`swim lint` now flags a repo file that `# Includes:` doesn't list
-(`workspace-file`), and `--fix` adds it. A lane run without linting still
-fails with no hint that the staged copy is the cause:
-
-```
-[6] cat: deploy.yaml: No such file or directory
-[6] bash: scripts/helper.sh: No such file or directory
-```
-
-**Smallest fix.** When a staged step fails, look for a missing path that
-exists in the repo and print one line: `deploy.yaml exists in the repo but
-isn't in # Includes: (staged copy)`.
 
 ### 9. Too many concepts, and two of them reuse words
 

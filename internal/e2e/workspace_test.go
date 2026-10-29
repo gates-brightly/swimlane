@@ -20,6 +20,10 @@ func TestLaneRunsStaged(t *testing.T) {
 	if !strings.Contains(out, "FAIL") || strings.Contains(out, "SAFE") {
 		t.Errorf("an unpinned helper ran:\n%s", out)
 	}
+	// The failure says why, on the terminal and in the log.
+	hint := "helper.sh is in the repo but not in this lane's staged copy: add it to # Includes:"
+	contains(t, "the hint", out, hint)
+	contains(t, "the hint, logged", r.log(1), hint)
 
 	// Pinned with # Includes:, it runs; editing it changes the manifest.
 	r.script(1, "use a helper", "# Includes: helper.sh\n"+`run "helper" bash helper.sh`)

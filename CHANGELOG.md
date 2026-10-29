@@ -413,6 +413,11 @@ and read.
   failure there skips this" after it had failed. Its round is now matched
   by its `Round:` line, as swim run matches it: "failed: it must pass
   first".
+- **A step that fails for a file the staged copy lacks says so.** `cat
+  deploy.yaml` in a lane that doesn't pin it failed with a bare "No such
+  file or directory". Now the failed step adds, on the terminal and in the
+  log: `-- deploy.yaml is in the repo but not in this lane's staged copy:
+  add it to # Includes: (swim lint --fix does), or # Workspace: live`.
 - **A batch another swim queued says so when it's refused.** "its manifest
   changed since it was queued" now adds "queued by swim X, run by swim Y
   (queue it again with this swim)" when the swims differ: two builds can

@@ -158,7 +158,8 @@ name a socket's peer the token alone decides.
   anything, and the lane runs in the staged copy: that is its working
   directory, so `source`, `bash helper.sh`, `kubectl apply -f k8s/` and
   `python tool.py` read what was pinned, and a file it uses but doesn't pin
-  isn't there. Edits made while it waits or runs don't reach it; the stage
+  isn't there (`swim lint` warns, `workspace-file`, and a step that fails
+  for it says which file to add to `# Includes:`). Edits made while it waits or runs don't reach it; the stage
   is checked again right before the process starts. A lane with
   `# Workspace: live` runs in the working tree instead, and reads files no
   one approved; that line is in its manifest, so an approval of it says
