@@ -874,7 +874,7 @@ func cmdWatch(args []string) error {
 			continue
 		}
 		s.said = ""
-		res, interrupted := runClaimed(root, cfg, e, yes, view != nil, false)
+		res, interrupted := runClaimed(root, cfg, e, yes, view != nil, false, nil)
 		unlock()
 		if view != nil {
 			view.picker.Note = fmt.Sprintf("#%d %s", e.Seq, res.Result)
@@ -895,10 +895,10 @@ func cmdWatch(args []string) error {
 // runClaimed runs a batch this worker claimed and consumes it with its
 // result. view says the watch screen is up: the run's own view may then
 // take the keyboard (to move between lanes; it never answers guards).
-func runClaimed(root string, cfg *config.Config, e *queue.Entry, yes, view, plain bool) (queue.Result, bool) {
+func runClaimed(root string, cfg *config.Config, e *queue.Entry, yes, view, plain bool, ask approval.Asker) (queue.Result, bool) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	stopBeat := heartbeatClaim(e)
-	res, interrupted := runEntry(root, cfg, e, yes, view, plain)
+	res, interrupted := runEntry(root, cfg, e, yes, view, plain, ask)
 	stopBeat()
 	checkpointAfterRun(root, cfg)
 	if err := queue.Consume(root, e, res); err != nil {
@@ -954,8 +954,10 @@ func loadCfg(root string) (*config.Config, error) {
 // runEntry runs one claimed batch through the launcher with the batch's
 // approvals and nothing else: a guard flag the batch doesn't approve is
 // cleared from the environment for the run, so the queue file alone says
-// what may change. It never prompts (nobody is watching a queue).
-func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, plain bool) (queue.Result, bool) {
+// what may change. It never prompts at a terminal (nobody is watching a
+// queue); ask, if set, is swim watch's screen, which may answer what
+// nothing else does (watchask.go).
+func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, plain bool, ask approval.Asker) (queue.Result, bool) {
 	started := time.Now().UTC()
 	res := queue.Result{Started: started.Format(time.RFC3339)}
 	if why := scheduleTampered(e); why != "" {
@@ -1046,7 +1048,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, PinManifest: pinMan, QueuedBy: e.Swim, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
-		Unattended: true}
+		Unattended: true, Ask: ask}
 	o.Plain = plain // a batch swim watch runs alongside others (_batch)
 	o.ScheduledFor = e.NotBefore
 	if keys && len(lanes) > 1 {

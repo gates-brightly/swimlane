@@ -578,9 +578,11 @@ swim queue show|rm|requeue ID
                             batch's result (0 passed, 1 otherwise)
             --timeout D     give up waiting after D (implies --wait): exit 1,
                             saying what is still busy; the batch stays queued
-            A queued batch never asks: guards it doesn't approve are dry
-            runs, and a guard flag in the swimmer's own environment does not
-            count (the queue entry alone says what may change).
+            A queued batch never asks at a terminal: guards it doesn't
+            approve are dry runs, unless swim watch's screen is up (it asks
+            there, naming the lane), and a guard flag in the swimmer's own
+            environment does not count (the queue entry alone says what
+            may change).
             A batch that approves none of its lanes' guards (and no
             standing approval of yours covers) warns on stderr, naming
             each lane and the guards that will dry-run.

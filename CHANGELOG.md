@@ -309,6 +309,18 @@ and read.
 
 ### Added
 
+- **`swim watch` asks for batches' guards.** With its screen up, a guard
+  in a batch running side by side that nothing else approves waits for the
+  operator instead of dry-running: it shows at the top of the screen in
+  yellow, naming the lane it blocks and its batch (`⚠ swim 3 is blocked:
+  waits for approval of DEPLOY · batch #12`), with the question as `swim
+  run` asks it, and the lane's row turns yellow. `y` or `n` answers it
+  (a decision: its number), Enter shows the lane's output first, and
+  several batches can wait at once. Each batch gets a private channel back
+  to the screen (`swim _batch --ask`, an inherited socket its lanes never
+  hold); the batch's launcher still decides everything else, and records
+  the answer as at the prompt. Off a terminal, `--no-tui` and `--batches 1`
+  are unchanged: a batch never asks.
 - **Named tasks.** `swim new renew-certs "Renew the certs"` writes the
   lowest free lane with a `# Task: renew-certs` line. Then `swim run
   renew-certs` (or `swim renew-certs`), and `approve`, `log`, `status`,

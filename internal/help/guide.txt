@@ -252,8 +252,9 @@ PLANNER WORKFLOW
      rounds, then have the operator queue them with the approvals they give
      up front (`swim queue add 4 5 --approve FIN_ALLOW_DELETE_ZG_ITEMS`). A
      swimmer (`swim watch`) runs the batch as soon as its lanes are free. Queue only
-     what you'd hand over to run unattended: a queued batch never asks, so
-     every guard it doesn't approve is a dry run. For a change with a window
+     what you'd hand over to run unattended: a queued batch asks only when
+     the swimmer's watch screen is up, so expect every guard it doesn't
+     approve to be a dry run. For a change with a window
      (after hours, a maintenance slot), queue it as one batch and have the
      operator start a swimmer then (`swim watch --once`, by hand or cron).
 

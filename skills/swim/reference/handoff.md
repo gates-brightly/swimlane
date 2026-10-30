@@ -59,7 +59,8 @@ When it's done, say so (or don't: I'll read `swim report` next time).
 ## Queue it for unattended running
 
 Queue only what you'd hand over to run with nobody watching. A queued batch
-never asks, so any guard it doesn't approve is a dry run.
+asks only if the operator has `swim watch`'s screen up, so plan for any
+guard it doesn't approve to be a dry run.
 
 ````markdown
 For tonight's window, queue it with the approval up front:
