@@ -42,6 +42,9 @@ type watchView struct {
 	seen int
 }
 
+// watchRedraw is how often the watch screen reloads and redraws.
+const watchRedraw = 200 * time.Millisecond
+
 const (
 	watchKeys  = "rqsxloayn123456789" + string(display.PickEnter)
 	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  a archive  ^C quit" // x (clear the batch) is on the submit row
@@ -50,6 +53,9 @@ const (
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
 	w := &watchView{root: root, cfg: cfg, yes: yes, asks: &watchAsks{bell: os.Stdout}, picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
 	w.picker.Tail = w.stream
+	// The running output redraws as quickly as swim run's view shows it;
+	// the worker's check for a batch to start stays at once a second.
+	w.picker.Redraw = watchRedraw
 	w.picker.Title = func() string { return "swim watch · " + w.root }
 	return w
 }

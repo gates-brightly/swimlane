@@ -460,6 +460,10 @@ and read.
 
 ### Fixed
 
+- **`swim watch` keeps up with the running output.** Its screen reloaded
+  once a second, so lanes' output under the queue (and a new question from
+  a batch) lagged behind `swim run`'s live view. It now redraws every
+  200ms; the worker's check for a batch to start stays at once a second.
 - **swim status says a failed dependency failed.** A lane waiting on one
   whose script has no `# Job:` line showed it as "pending: a dry run or
   failure there skips this" after it had failed. Its round is now matched

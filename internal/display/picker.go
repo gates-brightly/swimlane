@@ -37,6 +37,10 @@ type Picker struct {
 	// any it gets the room the rows leave, and never less than a third of
 	// the screen; the rows scroll above it.
 	Tail func(n int) []PickRow
+	// Redraw, if set, reloads the rows and redraws this often, apart from
+	// Pick's refresh (which then only paces until): live output as quick
+	// as swim run's view, without checking until as often.
+	Redraw time.Duration
 }
 
 // Action keys that aren't printable: put these runes in Pick's keys to
@@ -85,6 +89,12 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 	}()
 	tick := time.NewTicker(refresh)
 	defer tick.Stop()
+	var redraw <-chan time.Time // nil: the rows reload with refresh
+	if p.Redraw > 0 && p.Redraw < refresh {
+		t := time.NewTicker(p.Redraw)
+		defer t.Stop()
+		redraw = t.C
+	}
 	rows := load()
 	draw := func() {
 		cols, h, err := term.GetSize(int(p.Out.Fd()))
@@ -105,6 +115,9 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 			if until != nil && until() {
 				return PickResult{}, nil
 			}
+			rows = load()
+			draw()
+		case <-redraw:
 			rows = load()
 			draw()
 		case k := <-keyCh:
