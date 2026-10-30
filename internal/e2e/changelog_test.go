@@ -1,7 +1,9 @@
 package e2e
 
 import (
+	"encoding/base64"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -60,5 +62,44 @@ func TestChangelog(t *testing.T) {
 	}
 	if out, code := run("-n", "1", "--all"); code != 2 {
 		t.Errorf("-n with --all: exit %d\n%s", code, out)
+	}
+}
+
+// A swim the justfile stamped with its last commits (version.Recent) shows
+// them by default: each one's subject, what it changed and what its message
+// says; -n still shows the release notes.
+func TestChangelogCommits(t *testing.T) {
+	long(t)
+	recent := base64.StdEncoding.EncodeToString([]byte(
+		"\x1eb111496\x1f2026-10-30\x1fswim watch: ask for guards\x1fThe screen asks.\n\nCo-Authored-By: x <y@z>\n\x1f\n\ninternal/cli/watchask.go\ndocs/usage.md\n" +
+			"\x1ea22d658\x1f2026-10-30\x1ffeat: update git controls\x1f\x1f\n\ninternal/policy/policy.go\n"))
+	path := filepath.Join(t.TempDir(), "swim")
+	const v = "github.com/gates-brightly/swimlane/internal/version"
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", path, "-ldflags", "-X "+v+".Recent="+recent, "./cmd/swim")
+	build.Dir = repoRoot()
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v %s", err, out)
+	}
+	run := func(args ...string) string {
+		t.Helper()
+		c := exec.Command(path, append([]string{"changelog"}, args...)...)
+		c.Dir = t.TempDir()
+		c.Env = []string{"NO_COLOR=1", "PATH=/usr/bin:/bin", "HOME=" + c.Dir}
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("swim changelog %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	out := run()
+	contains(t, "swim changelog", out, "the last 2 commits",
+		"b111496  2026-10-30  swim watch: ask for guards", "changed: docs (1), internal/cli (1)", "    The screen asks.",
+		"a22d658  2026-10-30  feat: update git controls", "changed: internal/policy (1)",
+		"swim changelog -n 1 for the release notes")
+	if strings.Contains(out, "Co-Authored-By") || strings.Contains(out, "## ") {
+		t.Errorf("trailers or release notes in the commits view:\n%s", out)
+	}
+	if out := run("-n", "1"); strings.Count("\n"+out, "\n## ") != 1 {
+		t.Errorf("-n 1 should show one revision:\n%s", out)
 	}
 }

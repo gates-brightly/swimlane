@@ -9,8 +9,10 @@ commit     := env("COMMIT", `git rev-parse --short HEAD 2>/dev/null || true`)
 build_date := env("BUILD_DATE", `date -u +%Y%m%d`)
 # The release tag (v0.<YYYYMMDD>.<index>) when HEAD is one and the tree is clean.
 build_tag  := env("BUILD_TAG", `test -z "$(git status --porcelain 2>/dev/null)" && git tag --points-at HEAD 2>/dev/null | grep -E '^v0\.[0-9]{8}\.[1-9][0-9]*$' | sort -t. -k3,3n | tail -1 || true`)
+# The last 5 commits, for swim changelog (internal/changelog/commits.go).
+recent     := env("RECENT", `git log -5 --no-merges --name-only --format='%x1e%h%x1f%as%x1f%s%x1f%b%x1f' 2>/dev/null | base64 | tr -d '\n' || true`)
 version_pkg := module / "internal/version"
-ldflags := "-s -w -X " + version_pkg + ".BuildDate=" + build_date + " -X " + version_pkg + ".Commit=" + commit + " -X " + version_pkg + ".BuildTag=" + build_tag
+ldflags := "-s -w -X " + version_pkg + ".BuildDate=" + build_date + " -X " + version_pkg + ".Commit=" + commit + " -X " + version_pkg + ".BuildTag=" + build_tag + " -X " + version_pkg + ".Recent=" + recent
 
 # Show available recipes
 default:

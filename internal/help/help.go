@@ -1160,11 +1160,19 @@ swim claim N --break "<reason>"
 `,
 	"changelog": `swim changelog [-n N] [--since VERSION] [--all]
 
-  What changed in swim, from the changelog built into this binary (the
-  repo's CHANGELOG.md when it was built). Run it after updating to see what
-  is new. Works anywhere; it needs no repo.
+  What changed in swim, from what was built into this binary. Run it after
+  updating to see what is new. Works anywhere; it needs no repo.
 
-  swim changelog                  the newest revision (default -n 1)
+  swim changelog                  the last 5 commits this swim was built
+                                  from: each one's subject, the areas it
+                                  changed (internal/cli (5), docs (2)) and
+                                  its message's first paragraph. A build
+                                  that isn't stamped with them (go build,
+                                  the Nix flake: just build stamps them)
+                                  shows the newest revision instead
+  swim changelog -n 1             the newest revision of CHANGELOG.md, the
+                                  release notes (Unreleased on a build from
+                                  main)
   swim changelog -n 3             the newest three revisions
   swim changelog --since 0.20261014.1
                                   every revision after that version (or tag,

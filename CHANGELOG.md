@@ -4,7 +4,8 @@ What changed in swim, newest first. Each `##` section is one revision.
 `swim changelog` prints this from the binary you are running:
 
 ```sh
-swim changelog                  # the newest revision (what you just updated to)
+swim changelog                  # the last 5 commits this swim was built from
+swim changelog -n 1             # the newest revision (what you just updated to)
 swim changelog -n 3             # the newest three revisions
 swim changelog --since 0.20261014.1   # everything after the version you came from
 swim changelog --all            # every revision
@@ -320,6 +321,14 @@ and read.
 
 ### Added
 
+- **`swim changelog` shows the last 5 commits.** Its default printed the
+  newest revision, which on a build from main is all of Unreleased (hundreds
+  of lines). Now it lists the commits this swim was built from, newest
+  first: hash, date and subject, the areas each changed (`changed:
+  internal/cli (5), docs (2)`) and the first paragraph of its message.
+  `just build`, `install` and `link` stamp them (`version.Recent`); a build
+  without them (`go build`, the Nix flake) shows the newest revision as
+  before. `-n`, `--since` and `--all` still print CHANGELOG.md.
 - **`swim watch` asks for batches' guards.** With its screen up, a guard
   in a batch running side by side that nothing else approves waits for the
   operator instead of dry-running: it shows at the top of the screen in

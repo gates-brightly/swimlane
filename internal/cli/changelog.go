@@ -9,6 +9,7 @@ import (
 	"github.com/gates-brightly/swimlane"
 	"github.com/gates-brightly/swimlane/internal/changelog"
 	"github.com/gates-brightly/swimlane/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // cmdChangelog prints revisions from the changelog built into this binary.
@@ -45,6 +46,12 @@ func cmdChangelog(args []string) error {
 	}
 
 	entries := changelog.NonEmpty(changelog.Parse(swimlane.Changelog))
+	if !all && n == "" && since == "" {
+		if commits := changelog.Commits(version.Recent); len(commits) > 0 {
+			printCommits(commits, entries)
+			return nil
+		}
+	}
 	if len(entries) == 0 {
 		return fmt.Errorf("this build has no changelog")
 	}
@@ -82,4 +89,38 @@ func cmdChangelog(args []string) error {
 		fmt.Printf("\n%s\n", p.Paint(ui.Dim, fmt.Sprintf("%d older revision(s): swim changelog -n %d, or --all", older, total)))
 	}
 	return nil
+}
+
+// printCommits is swim changelog's default on a build the justfile
+// stamped: the commits it was built from, newest first, each with what its
+// message says it's about; then where the release notes are.
+func printCommits(commits []changelog.Commit, entries []changelog.Entry) {
+	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
+	fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim %s: the last %d commits", version.Long(), len(commits))))
+	for _, c := range commits {
+		fmt.Println()
+		fmt.Printf("%s  %s  %s\n", p.Paint(ui.Yellow, c.Hash), p.Paint(ui.Dim, c.Date), p.Paint(ui.Bold, c.Subject))
+		if len(c.Areas) > 0 {
+			const most = 6
+			var as []string
+			for i, a := range c.Areas {
+				if i == most {
+					as = append(as, fmt.Sprintf("+%d more", len(c.Areas)-most))
+					break
+				}
+				as = append(as, fmt.Sprintf("%s (%d)", a.Area, a.Files))
+			}
+			fmt.Println("    " + p.Paint(ui.Cyan, "changed: "+strings.Join(as, ", ")))
+		}
+		if c.Summary != "" {
+			for _, l := range strings.Split(c.Summary, "\n") {
+				fmt.Println("    " + l)
+			}
+		}
+	}
+	notes := "swim changelog -n 1 for the release notes, --all for every revision"
+	if len(entries) > 0 {
+		notes = fmt.Sprintf("swim changelog -n 1 for the release notes (%s), --all for every revision", entries[0].ID)
+	}
+	fmt.Printf("\n%s\n", p.Paint(ui.Dim, notes))
 }

@@ -29,10 +29,12 @@ import (
 //	-X github.com/gates-brightly/swimlane/internal/version.BuildDate=20261009
 //	-X github.com/gates-brightly/swimlane/internal/version.Commit=64a0e07
 //	-X github.com/gates-brightly/swimlane/internal/version.BuildTag=v0.20261009.1  (HEAD is a release)
+//	-X github.com/gates-brightly/swimlane/internal/version.Recent=<base64>  (the last commits: package changelog, Commits)
 var (
 	BuildDate = ""
 	Commit    = ""
 	BuildTag  = ""
+	Recent    = ""
 )
 
 // TestSyntaxes, set at build time ("script,log,state", e.g. 3,2,2), builds
