@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # swim: syntax 2
-# Round:   Pulls with git -C (refused by the git shim)
+# Round:   Commits with git (swim blocks no git by itself)
 # After:   
 # Owner:   e2e
 #
@@ -9,7 +9,8 @@ _swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exi
 eval "$_swim_lib"
 lane_init 3
 stage check
-run "read-only git still works" git status --short
-git -C . pull
-run "after the blocked command" true
+export GIT_AUTHOR_NAME=e2e GIT_AUTHOR_EMAIL=e2e@example.com GIT_COMMITTER_NAME=e2e GIT_COMMITTER_EMAIL=e2e@example.com
+run "commit" git -C "$SWIM_ROOT" commit -q --allow-empty -m "from lane 3"
+git -C "$SWIM_ROOT" commit -q --allow-empty -m "from lane 3, outside a step"
+run "after the commits" true
 summary

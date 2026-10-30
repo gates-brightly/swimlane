@@ -91,7 +91,7 @@ flowchart TD
   X --> G{{"guard: advisory, in the lane<br/>FLAG=1, signed approval, prompt, -y<br/>else a dry run"}}
   K -.->|counted against rules| G
   O -.->|answers prompts| G
-  X --> SH{{"git shim and step checks<br/>no git push / commit / pull"}}
+  X --> SH{{"step checks<br/>a repo's blocked_commands"}}
   X --> S
   X --> C
   S -->|swim log, swim status| P
@@ -332,8 +332,7 @@ How swim runs it:
    `runners: {ts: tsx}` in `swim.yml`.
 
 swim runs the program inside a wrapper. The wrapper opens and closes the
-round, exports `SWIM_LANE`, `SWIM_JOB` and the rest, and keeps the git shim
-in front. Steps are swim commands, so any language can call them:
+round and exports `SWIM_LANE`, `SWIM_JOB` and the rest. Steps are swim commands, so any language can call them:
 
 ```python
 #!/usr/bin/env python3
@@ -352,7 +351,7 @@ if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: repla
 - **The commands:** `swim run|gate|snapshot "<label>" -- cmd`,
   `swim guard FLAG "<action>"` (exit 0 when approved), `swim stage NAME`,
   `swim drift "<what>"` and `swim stop "<why>"`.
-- **Ending the round:** a failed gate, `swim stop`, a blocked `git push` or
+- **Ending the round:** a failed gate, `swim stop`, a blocked command or
   your Ctrl-C ends the program, even if it ignores the exit code; no later
   step runs.
 - **No swim calls:** a program that never calls `swim run` is logged as one
@@ -859,13 +858,11 @@ swim wait [--timeout D]                                  # block until idle and 
 
 ### Safety
 
-- **swim never pushes, commits or pulls.** `git push`, `git commit` and
-  `git pull` are caught three ways, and the round stops:
-  - in a script, before the lane starts;
-  - in a command built at runtime, at the step (`BLOCKED`, exit 87);
-  - by a git shim on each lane's `PATH`.
-  
-  A repo can block more commands with `blocked_commands`.
+- **Lanes may run git and gh** (commit, push, pull, `gh pr create`). Put a
+  push or a PR behind a guard, like any change outside the repo.
+- **A repo can block commands** with `blocked_commands` (none by default).
+  One is caught in a script, before the lane starts, or in a command built
+  at runtime, at the step (`BLOCKED`, exit 87), and the round stops.
 - **Secrets are masked** as `***` everywhere swim writes. That covers the
   values of `secret_env` variables and of names like `*_TOKEN`, plus
   credential shapes such as AWS key ids and GitHub tokens. It's a

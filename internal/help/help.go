@@ -35,8 +35,7 @@ var Commands = map[string]string{
   With no key, print the effective configuration for this repo (defaults
   merged with the repo's section), or with --path just the config file
   location. The output ends with the effective blocked_commands: the
-  built-ins (git push, git commit, git pull; always on) plus the defaults'
-  and the repo's additions.
+  defaults' and the repo's (swim blocks none by itself).
   swim config KEY          print KEY's effective value
   swim config KEY VALUE    set KEY in the config file, keeping its comments
   Keys:
@@ -1046,7 +1045,7 @@ swim claim N --break "<reason>"
     guard-dynamic (error)  guard "$FLAG" without # Guards: *
     guard-unused (warn)    a # Guards: flag no guard uses
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
-    blocked (error)        git push/commit/pull or a blocked_commands pattern
+    blocked (error)        a blocked_commands pattern
     secret-echo (warn)     echo/printf of a secret variable
     header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag

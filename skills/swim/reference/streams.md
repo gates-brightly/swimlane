@@ -52,8 +52,7 @@ swim new 23 "users: drop the legacy index"
 swim lint 23
 swim queue add 23                     # → queued #44
 #   ⚠ swim 23, USERS_ALLOW_DROP_INDEX: drops users_legacy_email_idx in prod.
-#     Queued without approval, so it dry-runs. To approve:
-#     swim queue add 23 --approve USERS_ALLOW_DROP_INDEX
+#     Unapproved, it dry-runs.
 #   task 3: waiting on the operator (#44 will dry-run)
 
 # Every task is dispatched or waiting: now block until something new.

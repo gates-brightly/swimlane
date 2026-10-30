@@ -160,7 +160,7 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - The full protocol for agents is `swim guide`.
 
 ### Safety
-- swim never pushes, commits or pulls. It blocks those commands in scripts, at runtime and through a git shim, and a repo can block more.
+- Lanes may run git and gh; put a push or PR behind a guard. A repo can block commands with `blocked_commands`, in scripts and at runtime.
 - Snapshot before any change. Back up stateful data (for example table items) before removing it, and restore it after.
 - Read the *deployed* state (for example a CloudFormation template's `DeletionPolicy`); don't assume it from code.
 - Prefer reversible operations (disable or unsubscribe, keeping a saved copy) to deletes when ownership is unclear.

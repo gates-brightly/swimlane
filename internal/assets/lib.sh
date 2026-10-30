@@ -44,11 +44,8 @@ lane_init() {
   # run directly with bash, runs in the repo.
   cd "${SWIM_WORKSPACE:-$SWIM_ROOT}" || exit 1
   STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE.log"
-  # The git shim (.swim/bin/git, installed by swim _start) refuses push,
-  # commit and pull and signals this script (SWIM_PID) to stop the round.
   SWIM_PID=$$
-  PATH="$SWIM_ROOT/.swim/bin:$PATH"
-  export SWIM_LANE SWIM_ROOT STEP_LOG SWIM_PID PATH
+  export SWIM_LANE SWIM_ROOT STEP_LOG SWIM_PID
   # A lane run directly (bash lane.N.sh) gets its caches (# Cache:) here;
   # under swim run the launcher has set them.
   if [ -z "${SWIM_LAUNCHED:-}" ]; then
@@ -79,7 +76,6 @@ lane_init() {
   SWIM_OUT="$SWIM_ROOT/.swim/out/$SWIM_JOB/$SWIM_RUN"
   export SWIM_OUT SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE
   trap '_swim_on_exit' EXIT
-  trap 'stop "blocked command: git push/commit/pull (swim never writes to git)"' USR1
   trap '_swim_on_signal 130' INT
   trap '_swim_on_signal 143' TERM
   trap '_swim_on_err' ERR

@@ -34,7 +34,7 @@ type Settings struct {
 	Toolchain       string        `yaml:"toolchain,omitempty"`
 	Deps            map[int][]int `yaml:"deps,omitempty"`
 	MaxParallel     *int          `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
-	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // added to the built-in git push/commit/pull
+	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // lane commands may not contain these
 	// Removed keys: accepted and ignored, so a swim.yml from before still
 	// loads (swim.yml is read strictly); swim doctor says to delete them.
 	RemovedChime      any `yaml:"chime,omitempty"`
@@ -443,8 +443,8 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Blocked returns the patterns no lane command may contain: the built-ins
-// (git push, git commit, git pull) plus defaults' and this repo's additions.
+// Blocked returns the patterns no lane command may contain: defaults' and
+// this repo's blocked_commands. swim blocks nothing by itself.
 func (c *Config) Blocked() []string { return policy.Patterns(c.BlockedCommands) }
 
 // Masker returns the secret masker for env (usually os.Environ()).

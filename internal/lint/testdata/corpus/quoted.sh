@@ -7,8 +7,7 @@
 #
 # Every command and keyword lint looks for, named only where bash doesn't
 # run it: double quotes, single quotes, heredocs, a string over two lines
-# and comments. Lint reports nothing for this script. (git push and the
-# other blocked commands are left out: swim refuses those on their text.)
+# and comments. Lint reports nothing for this script.
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found" >&2; exit 1; }
 eval "$_swim_lib"
 lane_init 1

@@ -12,8 +12,8 @@ import (
 )
 
 func TestMatch(t *testing.T) {
-	p := Patterns([]string{"gh  pr merge", "git push"}) // duplicate and extra spaces
-	if len(p) != 4 || p[3] != "gh pr merge" {
+	p := Patterns([]string{"git push", "git commit", "gh  pr merge", "git push"}) // duplicate and extra spaces
+	if len(p) != 3 || p[2] != "gh pr merge" {
 		t.Fatalf("Patterns = %q", p)
 	}
 	cases := map[string][]string{
@@ -30,8 +30,8 @@ func TestMatch(t *testing.T) {
 			t.Errorf("Match(%q) = %q, want %q", cmd, got, want)
 		}
 	}
-	if !IsBuiltin("git  push") || IsBuiltin("gh pr merge") {
-		t.Error("IsBuiltin")
+	if len(Patterns(nil)) != 0 {
+		t.Error("swim blocks nothing by itself")
 	}
 }
 
@@ -50,7 +50,7 @@ func sortLike(want, patterns []string) []string {
 
 func TestScanScript(t *testing.T) {
 	src := "#!/usr/bin/env bash\n# Round: never git push here (header)\n# git commit in a comment\nrun \"x\" true\nrun \"publish\" git push   # and a comment with git pull\n  echo ok\nrun \"y\" bash -c 'git commit -m x'\n"
-	hits := ScanScript(src, Builtins)
+	hits := ScanScript(src, Patterns([]string{"git push", "git commit"}))
 	if len(hits) != 2 || hits[0].Line != 5 || hits[0].Pattern != "git push" || hits[1].Line != 7 || hits[1].Pattern != "git commit" {
 		t.Fatalf("hits = %+v", hits)
 	}

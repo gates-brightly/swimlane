@@ -58,7 +58,7 @@ func Observe(root string, probes []lane.Probe, env []string) map[string]string {
 }
 
 // lookPath finds a command on env's PATH (swim's own when env sets none),
-// past the git shim lane_init puts first (root/.swim/bin): the launcher and
+// past root/.swim/bin (where older swims put a git shim): the launcher and
 // the lane must see the same binary.
 func lookPath(root, name string, env []string) (string, error) {
 	path := os.Getenv("PATH")

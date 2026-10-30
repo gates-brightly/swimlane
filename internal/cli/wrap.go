@@ -24,13 +24,13 @@ import (
 // library (lane.N.py, lane.N.ts, a binary, a plain bash script) as lane N's
 // round. The wrapper does what lane_init and the library's traps do for a
 // bash lane: it opens the round (swim _start, with its own pid as the
-// lane's), puts the git shim first on PATH, exports the SWIM_* variables the
+// lane's), exports the SWIM_* variables the
 // in-lane commands (swim run/gate/guard/stage/...) read, and closes the
 // round (swim _finish) however the program ends.
 //
 //   - SIGUSR1 ends the round now: an in-lane command claimed an end (a
 //     failed gate, swim stop, a refused step; .swim/laneN.end has the exit
-//     code), or the git shim refused a push/commit/pull. The program is
+//     code). The program is
 //     stopped (SIGTERM, then SIGKILL after 5s) even if it ignored the
 //     failure.
 //   - SIGUSR2 is the operator's graceful stop: the stop file already keeps
@@ -82,7 +82,6 @@ func cmdWrap(args []string) error {
 	env = setEnv(env,
 		"SWIM_LANE", strconv.Itoa(n), "SWIM_ROOT", root, "STEP_LOG", logPath,
 		"SWIM_PID", strconv.Itoa(pid), "SWIM_WRAPPED", "1",
-		"PATH", filepath.Join(root, ".swim", "bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"SWIM_JOB", f[0], "SWIM_DEADLINE", f[1], "SWIM_RUN", f[2], "SWIM_STEP_TIMEOUT", f[3],
 		"SWIM_FAIL_MODE", f[4], "SWIM_TIMEOUT", f[5],
 		"SWIM_RUN_LANES", runLanes, "SWIM_OUT", outputs.Dir(root, f[0], f[2]))
@@ -183,8 +182,8 @@ func waitChild(root string, n int, child *exec.Cmd, done chan error, sigs chan o
 				}
 				ending = true
 				if _, claimed := lane.EndCode(root, n); !claimed && lane.ClaimEnd(root, n, 1) {
-					// Not an in-lane command: the git shim refused a command.
-					cmdMark([]string{strconv.Itoa(n), logparse.Stop, "blocked command: git push/commit/pull (swim never writes to git)"})
+					// Not an in-lane command: something else signalled the wrapper.
+					cmdMark([]string{strconv.Itoa(n), logparse.Stop, "the round was ended by SIGUSR1"})
 				}
 				terminate(child, sigs)
 				kill = time.After(5 * time.Second)

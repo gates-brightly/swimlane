@@ -42,5 +42,4 @@ func TestTemplatesRenderAndParse(t *testing.T) {
 	stub, _ := Stub(2, `done "for now" $HOME`)
 	check("stub.sh", stub, "bash", "-n")
 	check("lib.sh", LibFor("/usr/local/bin/swim"), "bash", "-n")
-	check("git-shim.sh", GitShim, "bash", "-n")
 }

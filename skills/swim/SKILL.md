@@ -68,7 +68,6 @@ swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit}
 | write or edit a lane script | `WRITING A LANE SCRIPT`, `SAFETY RULES`, `SYNTAX` |
 | write a lane in Python/TS/Go | `OTHER LANGUAGES` |
 | read results | `READING RESULTS` |
-| touch approvals or the chain | `EXECUTION MANIFEST`, `CHAIN OF CUSTODY` |
 
 `swim <command> --help` gives one command's detail.
 
@@ -76,7 +75,7 @@ swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit}
 
 **Run freely.** These only read or check:
 `swim status`, `report`, `log`, `lint`,
-`history`, `verify`, `env`, `keys`, `approve` (no arguments: lists them),
+`history`, `verify`, `env`, `keys`,
 `queue` / `queue show`, `doctor` (without `--fix`),
 `changelog`, `--help`. Add `--yaml` when you're going to parse the output.
 
@@ -85,9 +84,9 @@ swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit}
 refuse to touch a running lane.
 
 **Queueing you may do**, when the user asks or the round is ready to hand
-over: `swim queue add`, and `swim queue rm` of a batch you queued. Queue
-without approving anything (no `--approve`, `-y` or `--auto`): the batch's
-guards then dry-run unless something else approves them. Before you queue,
+over: `swim queue add N ...`, and `swim queue rm` of a batch you queued.
+Queue the lanes and nothing else: a guard the operator doesn't approve
+dry-runs. Before you queue,
 read `swim lint` and `swim status` for the lanes and `swim queue` for the
 workers, and **flag every item with meaningful risk**, each on its own
 line marked ⚠, saying what it does and what will happen to it:
@@ -97,19 +96,13 @@ line marked ⚠, saying what it does and what will happen to it:
 - production or shared targets, a setup lane the batch pulls in, and
   anything that can't be undone.
 
-**How the operator approves is theirs, not yours to plan around:** the
-prompt, `FLAG=1`, `--approve`, signed or standing approvals, or a swimmer
-they started with `swim watch -y` or `--approved`. Don't look for which
-one, and don't let it change what you do: write every guarded step as if
-it will be asked, queue what's ready, describe each guard's risk the same
-way, and read the results the same way whoever approved them. Never skip,
-hold back, split off or reword a step, or a batch, because something might
-approve it without asking.
-
-If the round only does what it should with a guard approved, queue it
-without the approval and give the operator the `--approve FLAG` command
-(or `swim approve`) to decide on, with the risk spelled out. Never queue a
-batch whose risk you haven't read.
+**How the operator approves is theirs, and not your concern.** Don't look
+into it, name it, suggest a way to approve, or plan around it: write every
+guarded step as if it will be asked, hand over or queue the plain command,
+describe each guard's risk, and read the results the same way whoever
+approved them. Never skip, hold back, split off or reword a step, or a
+batch, because of how it might be approved. Never queue a batch whose risk
+you haven't read.
 
 **Hand to the operator; never do these yourself:**
 - Running rounds that touch anything outside the repo: `swim run`, `swim
@@ -117,10 +110,9 @@ batch whose risk you haven't read.
   point. If the user explicitly asks you to run one, do it only for lanes
   with no guards that change nothing outside the repo (lint, tests, local
   builds), and say that's what you're doing.
-- **Approving or deciding anything.** Never set a guard flag (`FLAG=1 swim
-  run`) or a decision (`ROLLOUT=2 swim run`), never pass `-y`, `--approve`,
-  `--decide` or `--auto`, never run `swim approve` or `swim revoke`. Approval is a person's decision, and the record attributes it to
-  them.
+- **Approving or deciding anything,** in any form. Approval is a person's
+  decision, and the record attributes it to them. Never set an environment
+  variable named after a guard or decision.
 - `swim interrupt`, `swim keys trust`,
   `swim chain ...`, `swim doctor --fix`, `swim config` / config edits.
 
@@ -151,10 +143,10 @@ lines or command instead. For anything broken, see
    with any lint error), then read `swim status N`
    before you ask the operator to run anything: it shows the lane's header,
    where each lane it waits on stands (one that hasn't passed skips it),
-   and how `swim run` would decide each guard now (approved and by whom,
-   what's missing, or a dry run). Tell the operator what is still unapproved.
+   and its guards.
 5. **Dispatch or hand off:** queue the round (section 2), or give the
-   operator the exact command, pinned to job ids, and a **What you're
+   operator the exact `swim run` command, pinned to job ids and with
+   nothing that approves, and a **What you're
    approving** block: for each guard, the commands it lets run, the
    target, the scope with the numbers the checks found, whether it can be
    undone, and what happens if they say no (a dry run); for each decision,
@@ -255,8 +247,8 @@ from what the previous ones left behind.
   `gate`s), `change` (only behind `guard`), `verify` (prove it worked). End
   with `summary`.
 - **A guard's description is the operator's summary of what they're
-  approving:** swim shows it at the prompt (`the lane says: ...`), in
-  `swim status` and in the chain, and it's often all they read. Write one
+  approving:** swim shows it when they approve, in `swim status` and in the
+  chain, and it's often all they read. Write one
   line that says the action (the verb and the command's effect), the exact
   target (resource, environment, account), the scope (how many, how much,
   from the snapshot or check that counted it), whether it can be undone
@@ -301,8 +293,11 @@ from what the previous ones left behind.
   `$SWIM_OUT`; `$SWIM_ROOT` is the repo root, for the files the round acts on.
 - **bash 3.2** (macOS): no associative arrays, `mapfile` or `${x,,}`. **No
   `set -e`.** A failed `run` doesn't stop the round; a failed `gate` does.
-- **No `git push` / `commit` / `pull`** anywhere in a lane, not even in an
-  echo: it's blocked on its text.
+- **git and gh are allowed** (commit, push, pull, `gh pr create`, `gh api`).
+  A step that changes a shared remote (a push, a PR, a merge) goes behind
+  its own guard, like any change outside the repo. swim blocks only what
+  the repo lists in `blocked_commands` (`swim config` shows them), on the
+  text, so not even an echo of one.
 - **Secrets:** a lane gets credentials from its environment (the
   operator's, or `.env.swim`). Never print values, only lengths. Never list
   a secret in `header_env`.

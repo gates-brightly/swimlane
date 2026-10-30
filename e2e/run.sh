@@ -76,7 +76,7 @@ for s in $selected; do
     export SWIM_CHECK_STATES=1   # an illegal status.yml transition panics (status.Transition)
     # Hermetic: scenarios set what they need. Inside a swim lane (this repo's
     # CI runs through swim ci) or a CI runner, drop the lane's SWIM_* vars,
-    # the CI provider's vars and the lane's git shim on PATH.
+    # the CI provider's vars and the git shim older swims put on PATH.
     for v in $(env | sed -nE 's/^((SWIM|GITHUB|GITLAB|CI)_[A-Za-z0-9_]*)=.*/\1/p'); do
       [ "$v" = SWIM_BIN ] || [ "$v" = SWIM_CHECK_STATES ] || unset "$v"
     done

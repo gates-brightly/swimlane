@@ -250,14 +250,14 @@ func Run(o Options) (Result, error) {
 	}
 	fmt.Fprintln(o.Stderr, p.Paint(ui.Dim, "$ "+cmdline))
 
-	// swim never pushes, commits or pulls: check the whole command line,
-	// including the string inside bash -c '...', before running anything.
+	// A repo's blocked_commands: check the whole command line, including
+	// the string inside bash -c '...', before running anything.
 	if hits := policy.Match(strings.Join(o.Args, " "), o.Blocked); len(hits) > 0 {
 		quoted := make([]string, len(hits))
 		for i, h := range hits {
 			quoted[i] = strconv.Quote(h)
 		}
-		detail := "matched " + strings.Join(quoted, ", ") + "; swim never writes to git"
+		detail := "matched " + strings.Join(quoted, ", ") + "; blocked_commands"
 		os.WriteFile(SpoolPath(o.LogPath), []byte(spoolHead(logLabel, start, cmdline)), 0o644)
 		if err := writeBlock(o.LogPath, logparse.StepLine(logparse.Blocked, logLabel, detail, "0.0s", clock), ""); err != nil {
 			return Result{ExitCode: policy.ExitBlocked}, err

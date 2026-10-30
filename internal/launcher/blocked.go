@@ -16,7 +16,7 @@ import (
 
 // BlockedLanes scans each selected lane script (comments excluded) for
 // blocked commands and returns, per refused lane, why: e.g.
-// `blocked: lane.3.sh:41 matches "git push"`.
+// `blocked: lane.3.sh:41 matches "terraform destroy"`.
 func BlockedLanes(root string, cfg *config.Config, sel []int) map[int]string {
 	out := map[int]string{}
 	for _, n := range sel {
@@ -42,7 +42,7 @@ func blockedIn(root string, cfg *config.Config, n int, path string) string {
 	for _, h := range hits {
 		parts = append(parts, fmt.Sprintf("%s:%d matches %q", lane.ScriptName(root, n), h.Line, h.Pattern))
 	}
-	return "blocked: " + strings.Join(parts, ", ") + " (swim never pushes, commits or pulls)"
+	return "blocked: " + strings.Join(parts, ", ") + " (blocked_commands)"
 }
 
 // refuseBlocked fails a lane before it starts: nothing in it runs, and its

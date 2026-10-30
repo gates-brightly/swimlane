@@ -23,7 +23,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/lookup"
-	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -213,11 +212,7 @@ func configDoc(cfg *config.Config) string {
 	fmt.Fprintf(&b, "interrupt: %s   # first Ctrl-C; interrupt_grace %s, term_grace %s\n", cfg.InterruptMode(), ig, tg)
 	b.WriteString("blocked_commands:            # no lane command may contain these\n")
 	for _, bl := range cfg.Blocked() {
-		mark := ""
-		if policy.IsBuiltin(bl) {
-			mark = "   # built-in, always on"
-		}
-		fmt.Fprintf(&b, "  - %q%s\n", bl, mark)
+		fmt.Fprintf(&b, "  - %q\n", bl)
 	}
 	if !cfg.HasRepo {
 		b.WriteString("# no section for this repo; run `swim init` to add one\n")

@@ -108,7 +108,7 @@ var Checks = []Check{
 	{"decision-unused", finding.Warn, false, "a decision listed in `# Decisions:` but never asked", checkDecisionUnused},
 	{"checkpoint", finding.Error, false, "a `--checkpoint` step that can't be one: a snapshot, two with one key; warns before `stage change` and on a label that changes", checkCheckpoint},
 	{"destructive", finding.Warn, false, "a destructive-looking command outside a guard block", checkDestructive},
-	{"blocked", finding.Error, false, "a blocked command (git push/commit/pull, blocked_commands)", checkBlocked},
+	{"blocked", finding.Error, false, "a blocked command (blocked_commands)", checkBlocked},
 	{"secret-echo", finding.Warn, false, "a secret variable echoed directly", checkSecretEcho},
 	{"header", finding.Warn, false, "a header value swim can't use (Timeout, Step-Timeout, Locks, Workspace, Task)", checkHeader},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},

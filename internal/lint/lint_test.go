@@ -114,7 +114,6 @@ func TestEachCheck(t *testing.T) {
 		{name: "pip without hashes", script: before(before(c, "# Timeout:", "# Cache: pip @requirements.txt\n"), "stage verify\n", "run \"deps\" pip install requests\n"), code: "cache-bypass", level: finding.Warn, message: "--require-hashes"},
 		{name: "destructive outside guard", script: before(c, "stage verify\n", "run \"clean\" rm -rf build\n"), code: "destructive", level: finding.Warn},
 		{name: "destructive after else", script: replace(c, "fi\n", "else\n  run \"destroy\" terraform destroy\nfi\n"), code: "destructive", level: finding.Warn},
-		{name: "blocked", script: before(c, "stage verify\n", "run \"ship\" git push origin main\n"), code: "blocked", level: finding.Error},
 		{name: "blocked from config", script: before(c, "stage verify\n", "run \"deploy\" make deploy-prod\n"), cfg: func(c *config.Config) { c.BlockedCommands = []string{"deploy-prod"} }, code: "blocked", level: finding.Error},
 		{name: "secret echoed (auto)", script: before(c, "stage verify\n", "echo \"token: $DEPLOY_TOKEN\"\n"), code: "secret-echo", level: finding.Warn},
 		{name: "secret echoed (secret_env)", script: before(c, "stage verify\n", "run \"show\" printf '%s' ${MY_KEY}\n"), cfg: func(c *config.Config) { c.SecretEnv = []string{"MY_KEY"} }, code: "secret-echo", level: finding.Warn},
@@ -153,6 +152,14 @@ func TestEachCheck(t *testing.T) {
 				t.Errorf("message %q lacks %q", got.Message, tc.message)
 			}
 		})
+	}
+}
+
+// swim blocks no command by itself: git and gh are a lane's to run.
+func TestGitAndGhAllowed(t *testing.T) {
+	steps := "run \"commit\" git commit -m x\nrun \"pull\" git pull\nrun \"push\" git push origin main\nrun \"pr\" gh pr create --fill\n"
+	if fs := Lint(cfg4(), map[int]string{1: before(clean(1), "stage verify\n", steps)}, 1); len(fs) != 0 {
+		t.Errorf("%+v", fs)
 	}
 }
 

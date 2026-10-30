@@ -10,7 +10,7 @@ and read the results back. It never runs or approves anything itself.
 - [`reference/lane-recipe.md`](reference/lane-recipe.md): an annotated lane
   (it passes `swim lint`) and patterns.
 - [`reference/handoff.md`](reference/handoff.md): how to hand a round to the
-  operator: run now, queue, signed approvals.
+  operator: run now, or queue.
 - [`reference/workers.md`](reference/workers.md): a planner and its workers,
   or two sessions, in one repo without collisions.
 - [`reference/streams.md`](reference/streams.md): working several tasks

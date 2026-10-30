@@ -974,7 +974,7 @@ func checkDestructive(c *Context, s *Script) []finding.Finding {
 func checkBlocked(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, h := range policy.ScanScript(s.Src, c.Cfg.Blocked()) {
-		out = append(out, f(finding.Error, "blocked", h.Line-1, "remove it: an operator pushes, commits or pulls, never a lane",
+		out = append(out, f(finding.Error, "blocked", h.Line-1, "remove it, or drop the pattern from blocked_commands",
 			"runs %q, a blocked command; swim run refuses this lane", h.Pattern))
 	}
 	return out

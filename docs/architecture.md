@@ -37,7 +37,7 @@ flowchart TD
   X --> G{{"guard: advisory, in the lane<br/>FLAG=1, signed approval, prompt, -y<br/>else a dry run"}}
   K -.->|counted against rules| G
   O -.->|answers prompts| G
-  X --> SH{{"git shim and step checks<br/>no git push / commit / pull"}}
+  X --> SH{{"step checks<br/>a repo's blocked_commands"}}
   X --> S
   X --> C
   S -->|swim log, swim status| P
@@ -48,8 +48,7 @@ Read it top to bottom:
 1. **The planner and its workers write.** They hold no credentials. Each
    worker writes one lane script in the repo; the planner can queue batches.
 2. **swim lint checks the scripts.** `swim run` refuses to
-   start on blocked commands (`git push`, `git commit`, `git pull`,
-   `blocked_commands`), dependency cycles, `set -e` and a missing
+   start on a repo's `blocked_commands` (none by default), dependency cycles, `set -e` and a missing
    `lane_init`. `swim lint` also warns about a delete or drop outside an
    `if guard` block, but nothing stops it.
 3. **A person runs it, or a swimmer does.** The operator runs `swim run` or
@@ -66,8 +65,8 @@ Read it top to bottom:
    run when its last lane exits. The guard runs inside the
    lane's own process, so it is advisory: a script that skips it isn't
    stopped. See the [trust model](trust-model.md).
-6. **The git shim and step checks** refuse `git push`, `git commit` and
-   `git pull` however a lane calls git.
+6. **Step checks** refuse a repo's `blocked_commands` at run time. swim
+   blocks no command by itself: lanes may run git and gh.
 7. **The record.** Each step lands in the lane's log, its state in
    `.swim/status.yml`, each top-level action in `.swim.log`, and each
    approval and round in the hash-linked, signed chain.
@@ -90,7 +89,7 @@ Read it top to bottom:
 
 | Point | Enforced by | Strength |
 |---|---|---|
-| Blocked commands | `swim run` before a lane starts, the step at run time, the git shim on `PATH` | Enforced for those commands (a text match); other ways to change a remote, like an API call, aren't covered |
+| Blocked commands | `swim run` before a lane starts, the step at run time | Only a repo's `blocked_commands` (a text match); none by default |
 | Lint | `swim lint`, and `swim run`'s preflight | `swim run` refuses `set -e` and `lane_init` errors; every other finding, like `destructive`, is advice |
 | Lock | `swim run`, `swim all`, `swim new`, a lane run directly | Enforced |
 | Queue pins | `swim watch` before a lane starts | Enforced; the stage and the pins are checked again right before the lane's process starts |

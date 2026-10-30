@@ -220,18 +220,14 @@ touch "$SWIM_ROOT/carried-on"
 	}
 }
 
-// The git shim stops a wrapped lane too: git push from anywhere in the
-// program is refused and the round ends.
-func TestWrappedLaneGitShim(t *testing.T) {
+// A wrapped lane runs git like any other program: no shim refuses it.
+func TestWrappedLaneRunsGit(t *testing.T) {
 	r := newRepo(t, "")
-	// (Spelled so swim run's scan of the script doesn't refuse it first.)
-	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: pushes\nsub=push\ngit $sub origin main\nsleep 2\ntouch \"$SWIM_ROOT/carried-on\"\n", 0o755)
-	out, code := r.swim("run", "1", "--plain")
-	if code == 0 {
-		t.Fatalf("exit 0:\n%s", out)
+	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: commits\nGIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C \"$SWIM_ROOT\" commit -q --allow-empty -m x && touch \"$SWIM_ROOT/committed\"\n", 0o755)
+	if out, code := r.swim("run", "1", "--plain"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
 	}
-	contains(t, "log", r.log(1), "BLOCKED  git push", "STOP  blocked command: git push/commit/pull")
-	if _, err := os.Stat(filepath.Join(r.root, "carried-on")); err == nil {
-		t.Error("the program carried on after git push was blocked")
+	if _, err := os.Stat(filepath.Join(r.root, "committed")); err != nil {
+		t.Error("git commit failed in a wrapped lane")
 	}
 }

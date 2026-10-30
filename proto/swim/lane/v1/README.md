@@ -66,13 +66,13 @@ masking, approvals, timeouts, the chain); the SDKs are thin clients.
 ## Semantics
 
 - **Steps run by swim** (`run`, `gate`, `snapshot`) are exactly
-  the in-lane commands: same timeouts, retries, blocked commands, git shim
-  and output capture.
+  the in-lane commands: same timeouts, retries, blocked commands and output
+  capture.
 - **In-process steps** (`begin_step`, `step_output`, `end_step`) are checks
   the program runs itself, such as a native API call. Their block is logged
   as `PASS  <label> (in-process)` with the output the SDK sent. A failed
-  in-process gate ends the round. Blocked commands only apply to processes
-  the program spawns, since the git shim is on `PATH`.
+  in-process gate ends the round. Blocked commands only apply to steps swim
+  runs.
 - **Handlers:** when the program's round closes, the SDK asks `outcome`, and
   runs its registered handler functions inside `handler` sections, which run
   soft: nothing in them ends the round.

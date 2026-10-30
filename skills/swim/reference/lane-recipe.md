@@ -62,7 +62,7 @@ is read as part of it, so explain things in the `# Goal:` block instead.
 | `snapshot "<label>" cmd...` | Read-only capture before a change. Its output is saved. |
 | `run "<label>" cmd...` | A step. A failure is recorded and the round continues. |
 | `gate "<label>" cmd...` | A step whose failure ends the round. Put one before any change it protects. |
-| `guard FLAG "<action>"` | Returns 0 only if a person approved this action in this run. `<action>` is what the prompt shows them: the action, the exact target, the scope, whether it can be undone, the date and the reason, in one line. |
+| `guard FLAG "<action>"` | Returns 0 only if a person approved this action in this run. `<action>` is what swim shows them: the action, the exact target, the scope, whether it can be undone, the date and the reason, in one line. |
 | `stop "<reason>"` / `drift "<what>"` | End the round, or record a difference from what was expected. |
 | `msg --progress 3/25 "<text>"` | A status line in the live view and `swim status`. |
 | `output KEY VALUE` / `input N KEY` | Pass small values (or `# Outputs:` files) to dependent lanes. |

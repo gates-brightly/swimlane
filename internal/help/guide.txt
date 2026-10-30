@@ -116,16 +116,7 @@ CONCEPTS
               interactive: ← → pick a lane to read its log, ↑ ↓ scroll, Esc
               returns to all lanes, ? lists the keys (--no-tui or SWIM_TUI=0:
               off). It changes nothing a lane sees or records, except its
-              approvals: y / n answer a lane that's asking, and on a selected
-              lane that hasn't asked yet, y pre-approves its known guards
-              (Guards: and guard calls), n pre-declines them (dry runs), u
-              undoes. Marks show ✓ pre-approved, ✗ dry run or ? N guards. A
-              pre-answer is the operator's prompt answer given early: FLAG=1/0
-              and signed approvals still come first, it comes before -y, it's
-              pinned to the lane's script (a changed script asks again), and
-              it lasts this run only. The log says "pre-approved by <user> at
-              <time> in the live view"; the chain records method preapproved;
-              unused pre-answers are listed after the summary.
+              approvals, which are the operator's.
   job         One round's unique id, written in the script header as
               `# Job: <id>` by `swim new` (a UUID, or your own with --job).
               It is recorded in the log, status.yml, the live view and the
@@ -138,14 +129,14 @@ CONCEPTS
   step        One command run through `swim step` (via run/gate/snapshot),
               recorded with a header, its output and exit code.
   gate        A step whose failure stops the round before any later step.
-  guard flag  An env var that approves one destructive action up front, e.g.
-              FIN_ALLOW_DELETE_ZG_ITEMS=1. Unset, swim asks the operator at the
-              terminal ("requires human approval of guard FLAG ... Y/N [N]");
-              with no one to ask (CI, no terminal) or a "no", the step dry-runs.
+  guard       A named approval for one destructive action, e.g.
+              FIN_ALLOW_DELETE_ZG_ITEMS. The operator approves it or not, in
+              their own way; unapproved, the step dry-runs. Write every guard
+              as if it will be asked.
   decision    A numbered choice a lane puts to the operator (decide NAME
               "<question>" "<choice>" ...): swim asks, not the script, and the
               lane branches on the number. NAME=N set where swim run starts
-              answers it ahead; nothing else does (not -y, never a default).
+              answers it ahead; nothing else does (never a default).
               Unanswered, the round ends SKIP. A decision isn't an approval:
               a destructive branch still goes through guard.
   manifest    What swim pins about a round before it starts: the script, every
@@ -229,9 +220,10 @@ PLANNER WORKFLOW
      and how swim run would decide each guard now. Then hand the operator the
      exact command, e.g. `swim run 1 3`, or pinned to
      the jobs you wrote, e.g. `swim run 3f2a9c1e 7b4d4e2a`, so a lane rewritten
-     in the meantime is refused instead of run. Add any guard
-     flags they must set to approve destructive steps, e.g.
-     `FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2`. Explain what each flag approves.
+     in the meantime is refused instead of run. Explain what each guard
+     approves: the action, target, scope and whether it can be undone. How
+     the operator approves is theirs: never tell them how, or set anything
+     that approves.
   5. After the run, read what it wrote with `swim report --earmark` (`swim
      log N`, or `swim log <job>`, for older rounds). Validate real
      outcomes in the step output (resource ids, counts, plan says "No
@@ -249,11 +241,9 @@ PLANNER WORKFLOW
      Ordering that holds for every round can live in config `deps:` (outside
      the repo); give the operator the exact YAML lines for that.
   9. Batches can wait their turn: while lanes are still busy, write the next
-     rounds, then have the operator queue them with the approvals they give
-     up front (`swim queue add 4 5 --approve FIN_ALLOW_DELETE_ZG_ITEMS`). A
-     swimmer (`swim watch`) runs the batch as soon as its lanes are free. Queue only
-     what you'd hand over to run unattended: a queued batch never asks, so
-     every guard it doesn't approve is a dry run. For a change with a window
+     rounds and queue them (`swim queue add 4 5`). A swimmer (`swim watch`)
+     runs the batch as soon as its lanes are free; any guard the operator
+     hasn't approved is a dry run. For a change with a window
      (after hours, a maintenance slot), queue it as one batch and have the
      operator start a swimmer then (`swim watch --once`, by hand or cron).
 
@@ -333,17 +323,10 @@ WRITING A LANE SCRIPT
     Each attempt is in the log; the step counts once (one PASS or FAIL). Only put
     --retry on read-only or idempotent steps, never on a change that isn't.
   guard FLAG "<action - date, reason>"
-                                  true if FLAG=1 (under swim run: set in the environment
-                                  swim run started with, not by the lane; a lane's own
-                                  FLAG=1 is a dry run), or (FLAG unset) the operator answers y
-                                  to "swim N requires human approval of guard FLAG ...
-                                  the lane says: <action> ... Y/N [N]" (swim run asks,
-                                  only for a flag the script declares or uses; even for
-                                  parallel lanes; in
-                                  the interactive view Enter opens the waiting lane), or
-                                  the run was started with -y; otherwise logs SKIP with the
-                                  approval hint and returns false. FLAG set to anything
-                                  else (FLAG=0) never asks. <action> is the person's
+                                  true if the operator approved FLAG for this run;
+                                  otherwise logs SKIP and returns false (a dry run).
+                                  Only a flag the script declares counts, and a lane
+                                  can't approve its own. <action> is the person's
                                   summary of what they approve, often all they read:
                                   one line with the action, the exact target (resource,
                                   environment, account), the scope (how many, from what
@@ -351,8 +334,8 @@ WRITING A LANE SCRIPT
                                   the date and the reason. "delete the 3 @test.example
                                   rows from prod users (snapshot keeps them) 2026-10-29:
                                   load-test cleanup", not "cleanup". Can't say it in a
-                                  line? The guard covers too much: split it. The question
-                                  shows <action> and the observed facts made safe: escape
+                                  line? The guard covers too much: split it. swim shows
+                                  <action> and the observed facts made safe: escape
                                   sequences, control characters (\r, backspace) and bidi
                                   overrides are removed, so a lane can't rewrite it.
   decide NAME "<question>" "<choice 1>" "<choice 2>" ...
@@ -564,8 +547,7 @@ OTHER LANGUAGES
        runners.ts tsx`, or swim.yml (runners: {ts: tsx}) for everyone.
   A script that doesn't load the bash library (no lane_init) runs inside
   swim's wrapper, which opens and closes its round, exports SWIM_LANE,
-  SWIM_JOB, SWIM_RUN, STEP_LOG and the rest, and puts the git shim first on
-  PATH. Steps are swim commands (they read SWIM_LANE):
+  SWIM_JOB, SWIM_RUN, STEP_LOG and the rest. Steps are swim commands (they read SWIM_LANE):
     swim run [options] "<label>" -- cmd [args...]     a step (PASS/FAIL)
     swim gate [options] "<label>" -- cmd [args...]    a step that ends the round on failure
     swim snapshot [options] "<label>" -- cmd ...      a step whose output is saved
@@ -742,14 +724,13 @@ SAFETY RULES
     "masked: N vars (NAMES)". Masking does NOT cover output a step pipes or
     writes elsewhere, or values split or transformed. The rule stands: never
     print secrets; print keys or lengths only.
-  - swim never pushes, commits or pulls, and neither do lanes. A lane script
-    containing `git push`, `git commit` or `git pull` (or a repo's
-    blocked_commands) fails before it starts; a step whose command contains one
-    at runtime is refused (BLOCKED, exit 87) and the round stops, even for a
-    plain `run`; and a git shim first on each lane's PATH refuses those
-    subcommands however git is called (git -C dir push, scripts the lane runs).
-    Committing is the operator's decision, made outside swim. The match is on
-    text, so even `echo "git push"` is refused: rephrase it.
+  - Lanes may run git and gh like any other command (commit, push, pull,
+    gh pr create). Put one that changes a shared remote behind a guard, like
+    any change outside the repo. swim blocks only a repo's blocked_commands:
+    a lane script containing one fails before it starts, and a step whose
+    command contains one at runtime is refused (BLOCKED, exit 87) and the
+    round stops, even for a plain `run`. The match is on text, so even an
+    echo of a blocked command is refused: rephrase it.
   - Snapshot before any change. Back up stateful data (e.g. table items)
     before removal, and know how you would restore it.
   - Read the DEPLOYED state (e.g. the CloudFormation template's
@@ -792,12 +773,10 @@ READING RESULTS
               -- exit 255 (3.0s); retry in 5s      outcome and the wait before the next
               | <command output, ANSI stripped>    output is always fenced with "| "
               saved: <snapshot path>
-        BLOCKED  <label> (matched "git push"; swim never writes to git)
+        BLOCKED  <label> (matched "terraform destroy"; blocked_commands)
                                                     a refused command (exit 87); counts as FAIL
-        SKIP  <label> (dry run: set FLAG=1 to approve)
-        SKIP  <label> (dry run: declined at the prompt by <user>; set FLAG=1 to approve)
-        APPROVED  <label> (FLAG=1)
-        APPROVED  <label> (approved at the prompt by <user>)
+        SKIP  <label> (dry run: <why>)              a guard wasn't approved
+        APPROVED  <label> (<by whom>)              a guard was approved
         DRIFT  <what>
         STOP  <reason>
         WARN  <what>                                stage order, bad header values
@@ -917,7 +896,7 @@ READING RESULTS
 CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
       defaults:
         max_parallel: 8                  # lanes running at once (0 = unlimited, the default)
-        blocked_commands: ["git rebase", "gh pr merge"]   # added to the built-in git push/commit/pull
+        blocked_commands: ["terraform destroy"]   # no lane command may contain these (none by default)
         secret_env: [GITHUB_TOKEN, DATADOG_API_KEY]       # values masked as *** everywhere swim writes
         secret_env_auto: true            # also *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY, ... (default)
         secret_env_ignore: [CSRF_TOKEN]  # names exempt from secret_env_auto

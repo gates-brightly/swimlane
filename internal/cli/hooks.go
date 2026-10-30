@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
-	"github.com/gates-brightly/swimlane/internal/assets"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
@@ -206,12 +205,10 @@ func cmdStart(args []string) error {
 	if err := os.MkdirAll(outputs.Dir(root, job, run), 0o755); err != nil {
 		return startFailed(root, cfg, n, err)
 	}
-	// The git shim lane_init puts first on PATH (swim never writes to git).
-	shim := filepath.Join(root, ".swim", "bin", "git")
-	if err := os.MkdirAll(filepath.Dir(shim), 0o755); err == nil {
-		os.WriteFile(shim+".tmp", []byte(assets.GitShim), 0o755)
-		os.Rename(shim+".tmp", shim)
-	}
+	// Older swims installed a git shim here that refused push, commit and
+	// pull; lanes may run any git now.
+	os.Remove(filepath.Join(root, ".swim", "bin", "git"))
+	os.Remove(filepath.Join(root, ".swim", "bin"))
 	logPath := lane.Log(root, n)
 	// This lane's own log is safe to convert: bash never reads it.
 	if err := logparse.EnsureV2(logPath, n); err != nil {

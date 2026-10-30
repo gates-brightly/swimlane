@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # swim: syntax 2
-# Round:   Commits through a command built at runtime (refused at the step)
+# Round:   Tears down through a command built at runtime (refused at the step)
 # After:   
 # Owner:   e2e
 #
@@ -9,7 +9,7 @@ _swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exi
 eval "$_swim_lib"
 lane_init 2
 stage check
-CMD="git com""mit -m results"
-gate "commit results" bash -c "$CMD"
+CMD="terraform des""troy -auto-approve"
+gate "tear down" bash -c "$CMD"
 run "after the blocked command" true
 summary

@@ -95,9 +95,10 @@ or runs the command outside the `if`, runs the command. `swim lint` warns
 (`destructive`: a delete or drop outside an `if guard` block), and nothing
 else stops it. What is enforced outside the script:
 
-- **Blocked commands:** `git push`, `git commit`, `git pull` and a repo's
-  `blocked_commands` are refused in the script before it starts, at the
-  step at run time, and by a git shim on each lane's `PATH`.
+- **Blocked commands:** a repo's `blocked_commands` are refused in the
+  script before it starts and at the step at run time. swim blocks none by
+  itself: lanes may run git and gh (push, commit, `gh pr create`), and a
+  guard is how an operator decides on one.
 - **Running lanes are protected:** swim won't rerun, edit, archive or stub a
   lane that's running.
 - **The lock:** a swim with other syntax versions than `.swim.lock` refuses
@@ -433,7 +434,7 @@ Test files are under `internal/`. "Pending" names the task in
 | A run key's signature checks with plain `ssh-keygen`; its delegation holds only for its run, key and runner key; a delegation copied onto another key breaks consistent, and one by a key outside the trusted set fails trusted. | `TestRunKey` (sign), `TestRunKeyEntries` (chain) |
 | `swim doctor` warns when the runner key is a file with no passphrase, and notes a key in ssh-agent. | `TestSigningKey` (doctor) |
 | Entries signed with an old runner key still verify. | `TestRecoveryLostRunnerKey` (e2e/recovery_test.go) |
-| `git push`, `commit` and `pull` are blocked in the script, at the step and by the shim. | `TestBlockedCommands` (e2e/e2e_test.go) |
+| A repo's `blocked_commands` are refused in the script and at the step; git itself is not blocked. | `TestBlockedCommands` (e2e/e2e_test.go) |
 | A chain re-signed wholesale with a new key is consistent but not trusted; with an anchor, not anchored either. | `TestTrustCatchesWholesaleReplacement` (chain), `TestSecurity` (e2e/security_test.go) |
 | A `trust.yml` edit counts only when signed by a pinned key; trust is pinned on first use, or by hash in CI. | `TestTrustPinTransitions` (trust), `TestVerifyTrustedLevel` (e2e/verifylevels_test.go) |
 | A chain truncated below a checkpoint, or replaced, fails `anchored`; a tampered checkpoint fails its signature. | `TestCheckpointCatchesTruncationAndReplacement` (chain), `TestVerifyAnchoredLevel` (e2e/verifylevels_test.go) |

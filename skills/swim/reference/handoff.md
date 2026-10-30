@@ -4,10 +4,13 @@ The operator reads your message, not your reasoning. Give them a command
 they can paste, what it will do, and what each approval allows. Then stop
 and wait for them to run it.
 
+How they approve is theirs. The command you give runs the round and nothing
+more: no guard or decision variables, no approval flags, and no advice on
+how to approve. Describe what each guard does, not how to say yes to it.
+
 ## What you're approving
 
-Every hand-off that asks for an approval (a prompt, a guard flag,
-`--approve`, `swim approve`) or a decision has this block, one entry per
+Every hand-off with a guard or a decision has this block, one entry per
 guard or decision. Write it from the script and from what the snapshot and
 check stages found, not from memory:
 
@@ -24,7 +27,7 @@ check stages found, not from memory:
   2 all at once (~2 min, no canary), 3 don't deploy (the round ends there)
 ````
 
-The guard's own description (what the prompt shows) says the same in one
+The guard's own description (what swim shows the operator) says the same in one
 line; this block is the detail behind it. Mark anything that can't be
 undone, or touches production or shared state, with ⚠.
 
@@ -50,60 +53,26 @@ swim run 3f2a9c1e 7b4d4e2a        # pinned to the jobs I wrote: a rewritten lane
   - Scope: the 14 CloudFormation resources the snapshot lists; terraform
     already owns them, and DeletionPolicy: Retain (gated) keeps the data
   - Undo: `npx sst deploy --stage prod` from `v2.3.9`
-  - If you say no: a dry run; nothing is removed. To approve up front:
-    `ORDERS_ALLOW_SST_REMOVE=1 swim run 3f2a9c1e 7b4d4e2a`
+  - If you say no: a dry run; nothing is removed.
 
 When it's done, say so (or don't: I'll read `swim report` next time).
 ````
 
 ## Queue it for unattended running
 
-Queue only what you'd hand over to run with nobody watching. A queued batch
-never asks, so any guard it doesn't approve is a dry run.
+A swimmer (`swim watch`) runs a queued batch once its lanes are free. Any
+guard the operator hasn't approved is a dry run. When you queue it (you
+may; you never approve), say what you queued and flag the risk:
 
 ````markdown
-For tonight's window, queue it with the approval up front:
-
-```sh
-swim queue add 4 5 --approve SESSIONS_ALLOW_PURGE --note "2.4.1 rollout + session cleanup"
-# then, when the window opens (by hand, or cron): swim watch --once
-```
-
-`SESSIONS_ALLOW_PURGE` approves deleting sessions marked stale (about 3,100
-rows; the snapshot keeps them). A swimmer (`swim watch`) runs it once lanes 4
-and 5 are free. If either script changes after you queue it, that lane is
-skipped, not run.
-````
-
-When you queue it yourself (you may; you never approve), say what you
-queued and flag the risk:
-
-````markdown
-Queued #41: swim 22 and 23, no approvals.
+Queued #41: swim 22 and 23.
 
 ⚠ swim 22, `L22_ALLOW_ZG_SMOKE`: applies tf/smoke under zg in sbx1, reads it
   back, then destroys it (the zg-tf-smoke-* role, security group and
-  parameter). To approve it with the batch:
-  `swim queue add 63bdf4a9 0c9210bf --approve L22_ALLOW_ZG_SMOKE`.
+  parameter). Unapproved, it dry-runs.
 ````
 
-## Needs signed approvals
-
-When `lookup.yml` requires approvals from a group, name who needs to sign
-and give them the command. Don't run `swim approve` yourself.
-
-````markdown
-`FIN_ALLOW_DELETE` needs two people from `dba` (lookup.yml). Each runs, from
-their own checkout:
-
-```sh
-swim approve 1 --guards FIN_ALLOW_DELETE
-```
-
-…and commits the file it writes in `approvals/`. Once two have signed, it
-runs unattended (`swim watch --approved`, or the operator's `swim run 1`).
-An edit to lane.1.sh after they sign makes their approvals stale.
-````
+If a script changes after it's queued, that lane is skipped, not run.
 
 ## Anything you need from the operator first
 

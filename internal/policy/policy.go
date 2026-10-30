@@ -1,5 +1,5 @@
-// Package policy holds swim's hard rules about what lanes may run. Today
-// that is one rule: swim never pushes, commits or pulls. A lane command that
+// Package policy holds the commands a repo blocks in its lanes
+// (blocked_commands). swim blocks none by itself. A lane command that
 // contains a blocked pattern is refused (BLOCKED) and its round stops.
 package policy
 
@@ -7,21 +7,18 @@ import (
 	"strings"
 )
 
-// Builtins are always blocked; config can add patterns but never remove these.
-var Builtins = []string{"git push", "git commit", "git pull"}
-
-// ExitBlocked is the exit code of a refused command (swim step and the git
-// shim). It is distinct from 126/127 and signal codes.
+// ExitBlocked is the exit code of a refused command (swim step). It is
+// distinct from 126/127 and signal codes.
 const ExitBlocked = 87
 
 // Normalize collapses runs of whitespace to one space.
 func Normalize(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// Patterns returns the built-ins plus extra, normalised and de-duplicated.
-func Patterns(extra []string) []string {
+// Patterns returns patterns normalised and de-duplicated.
+func Patterns(patterns []string) []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, p := range append(append([]string(nil), Builtins...), extra...) {
+	for _, p := range patterns {
 		p = Normalize(p)
 		if p != "" && !seen[p] {
 			seen[p] = true
@@ -29,16 +26,6 @@ func Patterns(extra []string) []string {
 		}
 	}
 	return out
-}
-
-// IsBuiltin reports whether p is one of the built-in patterns.
-func IsBuiltin(p string) bool {
-	for _, b := range Builtins {
-		if Normalize(p) == b {
-			return true
-		}
-	}
-	return false
 }
 
 // Match returns every pattern found in cmd (case-sensitive substrings, after

@@ -266,6 +266,17 @@ and read.
 
 ### Changed
 
+- **Lanes may run git and gh.** swim no longer blocks `git push`, `git
+  commit` or `git pull`, and lanes get no git shim on `PATH` (swim removes
+  `.swim/bin/git` from older versions when a round starts). Put a push or
+  a PR behind a guard like any other change outside the repo.
+  `blocked_commands` still blocks what a repo lists, and is empty by
+  default.
+- **The skill and guide no longer tell the agent how the operator
+  approves.** The agent hands over the plain `swim run` / `swim queue add`
+  command and what each guard does, never a flag, `--approve` or advice on
+  how to approve.
+
 - **Cleanup is archive, stub and clean.** `swim clean` now idles each
   finished lane directly: it archives its logs (as `swim archive`) and
   stubs its script (as `swim stub`), keeping a script edited since its

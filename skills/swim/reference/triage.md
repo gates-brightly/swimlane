@@ -24,8 +24,8 @@ swim verify            # only when the record itself is in question
 | `running?` / `process gone`, or `[stale-pid]` in doctor | The lane's process died without ending its round. The next `swim run`, `swim all`, `swim ci` or `swim watch` records it as interrupted by itself, and never reruns anything. | `swim status --rebuild` (or just the next run), then decide on a rerun after reading `swim log N` |
 | `interrupted`, `END INTERRUPTED` | Ctrl-C, `swim interrupt`, a CI cancel, or a closed terminal | Read the log first. `swim run N` reruns it. A queued batch: `swim queue requeue ID` |
 | An `orphaned` batch in `swim queue` | Its swimmer stopped renewing its lease | `swim queue requeue ID`, or `swim queue rm ID` |
-| `SKIP ... (dry run ...)` | A guard wasn't approved. Nothing changed. | Nothing is broken. Re-hand the command with the flag explained (handoff.md) |
-| `BLOCKED` (exit 87) | The step's text matched a blocked command (`git push`, ...) | Rewrite the step; even an `echo "git push"` matches |
+| `SKIP ... (dry run ...)` | A guard wasn't approved. Nothing changed. | Nothing is broken. Re-hand the command with the guard's risk explained (handoff.md) |
+| `BLOCKED` (exit 87) | The step's text matched one of the repo's `blocked_commands` | Rewrite the step; even an echo of the pattern matches |
 | `DRIFT` / `drift: observed facts changed` | An `Observe:` probe changed between approval and use (another account, another binary) | Find out why before anything else. Never re-approve blindly |
 | A lock mismatch (`.swim.lock`) | The repo's lanes need a different swim syntax than this binary | `swim lock`, `swim changelog --since <version>`, then the operator upgrades swim or the lock |
 | `swim verify`: a level says `no` | The record was changed, cut or signed by an unknown key | Quote the `BROKEN:` lines verbatim, and point to "`swim verify` fails" in `docs/recovery.md`. Don't guess, and don't repair |
