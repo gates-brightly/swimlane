@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
@@ -35,17 +37,27 @@ import (
 // batchInterrupted is swim _batch's exit status for an interrupted batch.
 const batchInterrupted = 130
 
-// cmdBatch runs one batch swim watch claimed: swim _batch ENTRY [--yes].
-// It becomes the claim's worker (its liveness and heartbeat), runs the
-// batch with plain output and consumes the entry, as swim watch would.
+// cmdBatch runs one batch swim watch claimed: swim _batch ENTRY [--yes]
+// [--ask]. It becomes the claim's worker (its liveness and heartbeat), runs
+// the batch with plain output and consumes the entry, as swim watch would.
+// --ask: fd 3 is the channel to swim watch's screen (watchask.go), which
+// answers what only a person can.
 func cmdBatch(args []string) error {
-	var yes bool
-	rest, err := flags{bools: map[string]*bool{"yes": &yes}}.parse(args)
+	var yes, askFlag bool
+	rest, err := flags{bools: map[string]*bool{"yes": &yes, "ask": &askFlag}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return usagef("usage: swim _batch ENTRY [--yes]")
+		return usagef("usage: swim _batch ENTRY [--yes] [--ask]")
+	}
+	var ask approval.Asker
+	if askFlag {
+		c, err := openAskChannel()
+		if err != nil {
+			return err
+		}
+		ask = c.ask
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -58,7 +70,7 @@ func cmdBatch(args []string) error {
 	if err := queue.Adopt(e); err != nil {
 		return err
 	}
-	res, interrupted := runClaimed(root, cfg, e, yes, false, true)
+	res, interrupted := runClaimed(root, cfg, e, yes, false, true, ask)
 	switch {
 	case interrupted:
 		return exitError{batchInterrupted}
@@ -88,6 +100,9 @@ type batchRunner struct {
 	yes    bool
 	toFile bool // the watch screen is up: each batch writes to a file of its own
 	max    int
+	// asks, when the watch screen is up, takes the batches' questions
+	// (watchask.go); nil: a guard nothing approves dry-runs.
+	asks *watchAsks
 
 	mu    sync.Mutex
 	procs map[string]*batchProc // by entry id
@@ -246,8 +261,21 @@ func (b *batchRunner) start(cfg *config.Config, e *queue.Entry) (*batchProc, err
 	if b.yes {
 		args = append(args, "--yes")
 	}
+	var askConn net.Conn
+	var askChild *os.File
+	if b.asks != nil {
+		if askConn, askChild, err = askPair(); err != nil {
+			b.fail(claimed, err)
+			return nil, err
+		}
+		args = append(args, "--ask")
+	}
 	cmd := exec.Command(self(), args...)
 	cmd.Dir = b.root
+	if askChild != nil {
+		cmd.ExtraFiles = []*os.File{askChild} // fd 3 (askFD)
+		defer askChild.Close()
+	}
 	p := &batchProc{e: claimed, cmd: cmd, done: make(chan struct{}), started: time.Now()}
 	for _, l := range claimed.Lanes {
 		p.lanes = append(p.lanes, l.Lane)
@@ -270,8 +298,14 @@ func (b *batchRunner) start(cfg *config.Config, e *queue.Entry) (*batchProc, err
 		if out != nil {
 			out.Close()
 		}
+		if askConn != nil {
+			askConn.Close()
+		}
 		b.fail(claimed, err)
 		return nil, err
+	}
+	if askConn != nil {
+		go b.asks.serve(claimed, askConn)
 	}
 	b.mu.Lock()
 	b.procs[claimed.ID] = p
@@ -280,6 +314,9 @@ func (b *batchRunner) start(cfg *config.Config, e *queue.Entry) (*batchProc, err
 		err := cmd.Wait()
 		if out != nil {
 			out.Close()
+		}
+		if askConn != nil {
+			askConn.Close() // ends serve, even if a lane left behind still holds the batch's end
 		}
 		if ee, ok := err.(*exec.ExitError); ok {
 			p.code = ee.ExitCode()
@@ -334,6 +371,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 	stopping := false // no new batches: the ones in hand finish
 	if view != nil {
 		view.batches = b
+		b.asks = view.asks
 	}
 	note := func(msg string) {
 		if view != nil {

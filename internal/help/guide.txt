@@ -243,7 +243,8 @@ PLANNER WORKFLOW
   9. Batches can wait their turn: while lanes are still busy, write the next
      rounds and queue them (`swim queue add 4 5`). A swimmer (`swim watch`)
      runs the batch as soon as its lanes are free; any guard the operator
-     hasn't approved is a dry run. For a change with a window
+     hasn't approved is a dry run, unless they approve it on the swimmer's
+     watch screen when the lane gets there. For a change with a window
      (after hours, a maintenance slot), queue it as one batch and have the
      operator start a swimmer then (`swim watch --once`, by hand or cron).
 

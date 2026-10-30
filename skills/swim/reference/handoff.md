@@ -61,8 +61,10 @@ When it's done, say so (or don't: I'll read `swim report` next time).
 ## Queue it for unattended running
 
 A swimmer (`swim watch`) runs a queued batch once its lanes are free. Any
-guard the operator hasn't approved is a dry run. When you queue it (you
-may; you never approve), say what you queued and flag the risk:
+guard the operator hasn't approved is a dry run, unless they approve it on
+`swim watch`'s screen when the lane gets there (it asks, in yellow, naming
+the lane). When you queue it (you may; you never approve), say what you
+queued and flag the risk:
 
 ````markdown
 Queued #41: swim 22 and 23.

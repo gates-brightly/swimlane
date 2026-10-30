@@ -209,8 +209,10 @@ The rules that keep streams apart:
 - **No swimmer, no progress.** If `swim queue` shows batches waiting and
   nothing running, check that a swimmer (`swim watch`) is up, and tell the
   user once.
-- **A guarded change dispatched without approval is a dry run.** Flag it
-  (⚠), keep working, and check later whether the operator approved it.
+- **A guarded change dispatched without approval is a dry run,** unless
+  the operator approves it on `swim watch`'s screen when the lane gets
+  there (the screen asks, in yellow, naming the lane). Flag it (⚠), keep
+  working, and check later whether the operator approved it.
   Its batch ends `skipped`, not passed. Never treat a dry run as validated.
 
 [reference/streams.md](reference/streams.md) walks through an example and

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -34,15 +35,20 @@ type watchView struct {
 	// staged are the lanes q added to the next batch, in order: s submits
 	// them as one batch, x clears them.
 	staged []int
+	// asks are the questions the batches running side by side put to the
+	// operator (watchask.go): shown first, in yellow; y, n or a number
+	// answers. seen is how many the screen has shown.
+	asks *watchAsks
+	seen int
 }
 
 const (
-	watchKeys  = "rqsxloa" + string(display.PickEnter)
+	watchKeys  = "rqsxloayn123456789" + string(display.PickEnter)
 	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  a archive  ^C quit" // x (clear the batch) is on the submit row
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
-	w := &watchView{root: root, cfg: cfg, yes: yes, picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
+	w := &watchView{root: root, cfg: cfg, yes: yes, asks: &watchAsks{bell: os.Stdout}, picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
 	w.picker.Tail = w.stream
 	w.picker.Title = func() string { return "swim watch · " + w.root }
 	return w
@@ -110,9 +116,10 @@ func watchViewAllowed(noTUI bool) bool {
 	return !noTUI && ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) && display.TUIAllowed(os.Getenv)
 }
 
-// rows is the screen's list: the worker's activity, every lane, the queue.
+// rows is the screen's list: the questions waiting for the operator, the
+// worker's activity, every lane, the queue.
 func (w *watchView) rows() []display.PickRow {
-	var rows []display.PickRow
+	rows, waiting := w.askRows()
 	if w.activity != "" {
 		rows = append(rows, display.PickRow{Text: w.activity, Color: ui.Dim}, display.PickRow{Text: " ", Color: ui.Dim})
 	}
@@ -142,6 +149,10 @@ func (w *watchView) rows() []display.PickRow {
 		text := fmt.Sprintf("swim %-2d  %-11s %-8s %s  %s", n, state, laneTimer(l, state, now), job, round)
 		if d := laneRowDetail(l, state); d != "" {
 			text += "  · " + d
+		}
+		if q, ok := waiting[n]; ok {
+			text += "  · " + askVerb(q) + " " + approval.Clean(q.msg.Flag)
+			color = ui.Yellow + ui.Bold
 		}
 		if w.isStaged(n) {
 			text += "  [+ next batch]"
@@ -193,6 +204,58 @@ func (w *watchView) rows() []display.PickRow {
 	return rows
 }
 
+// askRows are the questions waiting for the operator, oldest first, each
+// a yellow item naming the lane and batch it blocks and the keys that
+// answer it, over the question as swim run would put it. The selection
+// moves to a new one as it comes. waiting maps each blocked lane to its
+// question.
+func (w *watchView) askRows() (rows []display.PickRow, waiting map[int]watchAsk) {
+	if w.asks == nil {
+		return nil, nil
+	}
+	pending, added := w.asks.pending()
+	waiting = map[int]watchAsk{}
+	now := time.Now()
+	for i, q := range pending {
+		if _, ok := waiting[q.msg.Lane]; !ok {
+			waiting[q.msg.Lane] = q
+		}
+		keys := "y approve  n decline"
+		if q.msg.Choices > 0 {
+			keys = fmt.Sprintf("1-%d choose  n leave unanswered", q.msg.Choices)
+		}
+		head := fmt.Sprintf("⚠ swim %d is blocked: %s %s  · batch #%d · %s  ·  %s",
+			q.msg.Lane, askVerb(q), approval.Clean(q.msg.Flag), q.seq, display.Took(now.Sub(q.since)), keys)
+		rows = append(rows, display.PickRow{ID: q.key, Text: head, Color: ui.Yellow + ui.Bold})
+		lines := q.msg.Question
+		if len(lines) > 0 {
+			lines = lines[1:] // the head says it
+		}
+		for _, l := range lines {
+			rows = append(rows, display.PickRow{Text: "  " + approval.Clean(l), Color: ui.Yellow})
+		}
+		if i == len(pending)-1 {
+			rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim})
+		}
+	}
+	if added > w.seen {
+		// A new question: select the newest, so y or n answers it.
+		w.seen = added
+		if len(pending) > 0 {
+			w.picker.Sel = pending[len(pending)-1].key
+		}
+	}
+	return rows, waiting
+}
+
+// askVerb is what a waiting question asks for.
+func askVerb(q watchAsk) string {
+	if q.msg.Choices > 0 {
+		return "waits for a decision:"
+	}
+	return "waits for approval of"
+}
+
 // batchDry says whether batch e runs (or ran) a guard as a dry run: while
 // waiting, a guard of its lanes that neither the batch nor the worker's -y
 // approves (signed approvals may still cover it when it runs); once
@@ -208,8 +271,8 @@ func (w *watchView) batchDry(e *queue.Entry, st *status.File) bool {
 		}
 		return false
 	}
-	if e.ApproveAll || w.yes {
-		return false
+	if e.ApproveAll || w.yes || w.batches != nil && w.batches.asks != nil {
+		return false // or the screen asks for them
 	}
 	approved := map[string]bool{}
 	for _, f := range e.Approve {
@@ -374,6 +437,27 @@ func (w *watchView) wait(until func() bool) bool {
 // act does key on item id and says what happened.
 func (w *watchView) act(id string, key rune) string {
 	kind, ref, _ := strings.Cut(id, ":")
+	// y, n and the numbers answer a question a batch asks: the one
+	// selected, else the oldest.
+	if key == 'y' || key == 'n' || key >= '1' && key <= '9' {
+		return w.asks.answer(id, key)
+	}
+	if kind == "ask" {
+		// The question's row stands for its lane: enter and l show what
+		// led up to it.
+		n, ok := w.asks.lane(id)
+		switch {
+		case !ok:
+			return "that question was answered or withdrawn"
+		case key == display.PickEnter:
+			return w.showLaneOutput(n)
+		case key == 'l':
+			return w.showLaneLogs(n)
+		case key == 'o':
+			return w.toggleStream()
+		}
+		return fmt.Sprintf("swim %d waits for an answer: y or n (a decision: its number); enter shows its output", n)
+	}
 	// The next batch: s submits it from any row (enter or q on its row
 	// too), x clears it.
 	switch {
@@ -496,7 +580,10 @@ func (w *watchView) queueLanes(lanes []int) string {
 	}
 	ns := strings.ReplaceAll(joinNums(lanes), " ", "")
 	msg := fmt.Sprintf("queued swim %s as #%d (%s)", ns, b.entry.Seq, b.entry.ID)
-	if len(b.guards) > 0 {
+	switch {
+	case len(b.guards) > 0 && w.batches != nil && w.batches.asks != nil:
+		msg += "; this screen asks for its guards as they come (y approves)"
+	case len(b.guards) > 0:
 		msg += "; its guards dry-run (approve with swim queue add " + strings.ReplaceAll(ns, ",", " ") + " --approve FLAG)"
 	}
 	if b.warn != "" {
@@ -601,7 +688,7 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 	if err != nil {
 		return err.Error()
 	}
-	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false)
+	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false, nil)
 	return fmt.Sprintf("#%d %s", claimed.Seq, res.Result)
 }
 

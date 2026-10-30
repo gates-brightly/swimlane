@@ -536,7 +536,8 @@ order:
    chain entry and `swim ci`'s summary.
 
 Anything else is a **dry run**: the step is skipped, and the log says how to
-approve it. A queued batch never asks a question. A round that dry-ran a
+approve it. A queued batch asks only when `swim watch`'s screen is up
+(below). A round that dry-ran a
 guarded step ends **SKIP**, not PASS (`dry run: <step>`): it didn't do
 its work, so a lane that waits on it (`# After:`) doesn't start, the run
 exits 3 (nothing failed, but work waits on an approval; `swim ci`
@@ -844,6 +845,19 @@ swim wait [--timeout D]                                  # block until idle and 
     add 1 2` does, so `# After:` between them holds; `x` clears it. A
     batch's live view
     lets ← → pick a lane to read, but never answers its guards.
+  - **The screen asks for batches' guards.** While it's up, a guard in a
+    batch running side by side that nothing else approves (the batch's
+    `--approve`, a standing approval, `swim watch -y`) waits for you
+    instead of dry-running. It shows at the top of the screen in yellow:
+    `⚠ swim 3 is blocked: waits for approval of DEPLOY · batch #12`, over
+    the question as `swim run` would ask it, and the lane's row turns
+    yellow. `y` approves and `n` declines the highlighted question, or the
+    oldest; a decision takes its number (`n` leaves it unanswered). The
+    newest question is highlighted as it comes, with the terminal's bell.
+    Enter on it follows that lane's output first. Several batches can wait
+    at once; each is listed. The approval is recorded as at the prompt, by
+    you. Without the screen (`--no-tui`, not a terminal) and with
+    `--batches 1`, a batch never asks.
 
 ### Interrupts
 

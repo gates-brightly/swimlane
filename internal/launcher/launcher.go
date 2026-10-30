@@ -119,6 +119,11 @@ type Options struct {
 	// the queue): the view's keys only move around, never pre-answer a
 	// guard, and the view closes when the run ends.
 	Unattended bool
+	// Ask, if set, asks someone outside this run when nobody here can: the
+	// swim watch screen that started this batch (swim _batch --ask). It
+	// takes the guards -y doesn't approve and every decision, instead of
+	// a dry run.
+	Ask approval.Asker
 
 	ev *events
 }
@@ -386,6 +391,18 @@ func Run(o Options) (int, error) {
 			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
 			yes := disp.Ask(req.Lane, approval.Question(req), cancel)
 			return approval.Response{Approved: yes, By: operator()}
+		}
+	}
+	if o.Ask != nil && !prompt {
+		auto := ask
+		ask = func(req approval.Request, cancel <-chan struct{}) approval.Response {
+			if auto != nil && req.Choices == nil {
+				return auto(req, cancel) // -y approves it
+			}
+			disp.Message(fmt.Sprintf("%swaiting for an answer in swim watch: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
+			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
+			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+			return o.Ask(req, cancel)
 		}
 	}
 	if err := runKey(&o); err != nil {
