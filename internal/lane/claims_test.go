@@ -105,3 +105,25 @@ func TestSessionID(t *testing.T) {
 		t.Errorf("SessionID() = %q", SessionID())
 	}
 }
+
+// A claim's expiry is written to the second, rounded up: rounded down, a
+// one-second lease taken late in a second ran out before it was read back
+// (swim claim --for 1s then crashed on the claim it had just taken).
+func TestClaimExpiryRoundsUp(t *testing.T) {
+	now := time.Date(2026, 11, 2, 21, 8, 24, 900_000_000, time.UTC)
+	for _, c := range []struct {
+		lease time.Duration
+		want  string
+	}{
+		{time.Second, "2026-11-02T21:08:26Z"},
+		{time.Hour, "2026-11-02T22:08:25Z"},
+		{100 * time.Millisecond, "2026-11-02T21:08:25Z"},
+	} {
+		if got := expiresIn(now, c.lease); got != c.want {
+			t.Errorf("lease %v: %s, want %s", c.lease, got, c.want)
+		}
+	}
+	if got := expiresIn(now.Truncate(time.Second), time.Second); got != "2026-11-02T21:08:25Z" {
+		t.Errorf("on the second: %s", got)
+	}
+}

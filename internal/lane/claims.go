@@ -39,6 +39,17 @@ func (c *Claim) ExpiresAt() time.Time {
 	return t
 }
 
+// expiresIn is a claim's expiry lease after now, rounded up to the second
+// it is written to: rounded down, a short lease (--for 1s) could run out
+// before the claim is read back.
+func expiresIn(now time.Time, lease time.Duration) string {
+	t := now.Add(lease)
+	if r := t.Truncate(time.Second); r.Before(t) {
+		t = r.Add(time.Second)
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 // ClaimDir holds the claims.
 func ClaimDir(root string) string { return filepath.Join(root, ".swim", "claims") }
 
@@ -150,7 +161,7 @@ func TakeClaim(root string, n int, sess string, lease time.Duration, job string,
 		broke = cur
 	}
 	now := time.Now().UTC()
-	c := Claim{Owner: ClaimOwner(), Session: sess, Created: now.Format(time.RFC3339), Expires: now.Add(lease).Format(time.RFC3339), Job: job}
+	c := Claim{Owner: ClaimOwner(), Session: sess, Created: now.Format(time.RFC3339), Expires: expiresIn(now, lease), Job: job}
 	c.Host, _ = os.Hostname()
 	if cur != nil && cur.Session == sess {
 		c.Created = cur.Created // a refresh keeps when it was taken
@@ -176,7 +187,7 @@ func RefreshClaim(root string, n int, sess string, lease time.Duration) bool {
 	if c == nil || c.Session != sess {
 		return false
 	}
-	c.Expires = time.Now().UTC().Add(lease).Format(time.RFC3339)
+	c.Expires = expiresIn(time.Now().UTC(), lease)
 	return writeClaim(root, n, *c) == nil
 }
 

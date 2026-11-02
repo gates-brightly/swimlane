@@ -73,6 +73,10 @@ func cmdClaim(args []string) error {
 	}
 	history.Log(root, history.Entry{Event: history.Claim, Lane: n, Job: info.Job, Detail: fmt.Sprintf("session %s for %s", sess, lease)})
 	c := lane.ReadClaim(root, n)
+	if c == nil { // its lease ran out already (a very short --for)
+		fmt.Printf("swim %d claimed by session %s for %s, which has run out\n", n, sess, lease)
+		return nil
+	}
 	fmt.Printf("swim %d claimed by %s (session %s) until %s\n", n, c.Owner, c.Session, c.ExpiresAt().Local().Format("15:04"))
 	return nil
 }
