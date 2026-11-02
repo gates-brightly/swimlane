@@ -61,3 +61,33 @@ func TestWatchAsksForBatchDecision(t *testing.T) {
 	tr.send("\x03")
 	tr.wait()
 }
+
+// A lane whose script changes while swim watch is up gets (~) next to it,
+// until the operator acts on it (here q, then q again to take it back
+// out of the next batch). Lanes untouched since stay unmarked.
+func TestWatchMarksChangedLanes(t *testing.T) {
+	r := newSerialRepo(t, "")
+	r.script(1, "first job", `run "one" true`)
+	r.script(2, "second job", `run "two" true`)
+	tr := r.startTUI(nil, "watch")
+	s := tr.waitFor("▸ swim 1")
+	if strings.Contains(s, "(~)") {
+		t.Fatalf("a lane marked before anything changed:\n%s", s)
+	}
+	r.script(2, "second job, rewritten", `run "two again" true`)
+	s = tr.waitFor("swim 2  (~)")
+	if strings.Contains(s, "swim 1  (~)") {
+		t.Errorf("swim 1 marked, but only swim 2 changed:\n%s", s)
+	}
+	tr.send("\x1b[B")
+	tr.waitFor("▸ swim 2")
+	tr.send("q")
+	tr.waitFor("next batch: swim 2")
+	tr.send("q")
+	s = tr.waitFor("out of the next batch")
+	if strings.Contains(s, "(~)") {
+		t.Errorf("swim 2 still marked after q:\n%s", s)
+	}
+	tr.send("\x03")
+	tr.wait()
+}

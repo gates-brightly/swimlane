@@ -321,6 +321,13 @@ and read.
 
 ### Added
 
+- **`swim watch` marks changed lanes `(~)`.** A lane whose script (or a
+  file it `# Includes:`) changed since you last acted on it on the watch
+  screen, or that's new since, shows `swim 3 (~)` until you act on it
+  again: `r`, `q`, Enter, `l`, `a`, or answering its question. It's kept
+  per lane in `.swim/watch/seen.json` (the hash approvals use), so a
+  restarted watch still knows; the first watch in a repo takes every lane
+  as seen.
 - **`swim changelog` shows the last 5 commits.** Its default printed the
   newest revision, which on a build from main is all of Unreleased (hundreds
   of lines). Now it lists the commits this swim was built from, newest

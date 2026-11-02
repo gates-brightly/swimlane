@@ -37,9 +37,11 @@ type watchView struct {
 	staged []int
 	// asks are the questions the batches running side by side put to the
 	// operator (watchask.go): shown first, in yellow; y, n or a number
-	// answers. seen is how many the screen has shown.
+	// answers.
 	asks *watchAsks
-	seen int
+	seen *watchSeen // the scripts the operator last acted on: (~) on lanes changed since
+	// asked is how many questions the screen has shown.
+	asked int
 }
 
 // watchRedraw is how often the watch screen reloads and redraws.
@@ -51,7 +53,7 @@ const (
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
-	w := &watchView{root: root, cfg: cfg, yes: yes, asks: &watchAsks{bell: os.Stdout}, picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
+	w := &watchView{root: root, cfg: cfg, yes: yes, asks: &watchAsks{bell: os.Stdout}, seen: loadWatchSeen(root), picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
 	w.picker.Tail = w.stream
 	// The running output redraws as quickly as swim run's view shows it;
 	// the worker's check for a batch to start stays at once a second.
@@ -132,7 +134,9 @@ func (w *watchView) rows() []display.PickRow {
 	rows = append(rows, display.PickRow{Text: "Jobs"})
 	st, _ := status.Load(w.root)
 	now := time.Now()
-	for _, n := range lane.Associated(w.root) { // the lanes in use now (a long-lived view)
+	lanes := lane.Associated(w.root) // the lanes in use now (a long-lived view)
+	w.seen.refresh(lanes)
+	for _, n := range lanes {
 		var l *status.Lane
 		if st != nil {
 			l = st.Get(n)
@@ -152,7 +156,11 @@ func (w *watchView) rows() []display.PickRow {
 		if l != nil && len(l.DryRun) > 0 && state != "pending" {
 			round = display.DryMark + " " + round
 		}
-		text := fmt.Sprintf("swim %-2d  %-11s %-8s %s  %s", n, state, laneTimer(l, state, now), job, round)
+		mark := "    "
+		if w.seen.isChanged(n) {
+			mark = " (~)" // changed since the operator last acted on it
+		}
+		text := fmt.Sprintf("swim %-2d%s  %-11s %-8s %s  %s", n, mark, state, laneTimer(l, state, now), job, round)
 		if d := laneRowDetail(l, state); d != "" {
 			text += "  · " + d
 		}
@@ -244,9 +252,9 @@ func (w *watchView) askRows() (rows []display.PickRow, waiting map[int]watchAsk)
 			rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim})
 		}
 	}
-	if added > w.seen {
+	if added > w.asked {
 		// A new question: select the newest, so y or n answers it.
-		w.seen = added
+		w.asked = added
 		if len(pending) > 0 {
 			w.picker.Sel = pending[len(pending)-1].key
 		}
@@ -446,6 +454,9 @@ func (w *watchView) act(id string, key rune) string {
 	// y, n and the numbers answer a question a batch asks: the one
 	// selected, else the oldest.
 	if key == 'y' || key == 'n' || key >= '1' && key <= '9' {
+		if n, ok := w.asks.target(id); ok {
+			w.seen.touch(n)
+		}
 		return w.asks.answer(id, key)
 	}
 	if kind == "ask" {
@@ -456,8 +467,10 @@ func (w *watchView) act(id string, key rune) string {
 		case !ok:
 			return "that question was answered or withdrawn"
 		case key == display.PickEnter:
+			w.seen.touch(n)
 			return w.showLaneOutput(n)
 		case key == 'l':
+			w.seen.touch(n)
 			return w.showLaneLogs(n)
 		case key == 'o':
 			return w.toggleStream()
@@ -484,6 +497,9 @@ func (w *watchView) act(id string, key rune) string {
 		if err != nil {
 			return err.Error()
 		}
+		if key == display.PickEnter || key == 'l' || key == 'r' {
+			w.seen.touch(laneNums(e)...) // acting on a batch is acting on its lanes
+		}
 		if key == display.PickEnter {
 			return w.showOutput(e)
 		}
@@ -502,10 +518,16 @@ func (w *watchView) act(id string, key rune) string {
 		return w.runQueued(e)
 	}
 	n, _ := strconv.Atoi(ref)
+	if key != 'o' {
+		// Acting on a lane sees its script as it is now: no (~) until it
+		// changes again.
+		w.seen.touch(n)
+	}
 	if key == display.PickEnter {
 		return w.showLaneOutput(n)
 	}
 	if key == 'a' {
+		defer w.seen.touch(n) // as archiving left it
 		return w.archiveLane(n)
 	}
 	if key == 'l' {

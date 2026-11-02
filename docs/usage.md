@@ -845,6 +845,12 @@ swim wait [--timeout D]                                  # block until idle and 
     add 1 2` does, so `# After:` between them holds; `x` clears it. A
     batch's live view
     lets ← → pick a lane to read, but never answers its guards.
+  - **`(~)` marks a lane that changed since you last acted on it** there
+    (`r`, `q`, Enter, `l`, `a`, or answering its question): its script, or
+    a file it `# Includes:`, is different, or the lane is new. Acting on it
+    clears the mark. What you last acted on is kept in
+    `.swim/watch/seen.json`, so a restarted `swim watch` still knows; the
+    first one in a repo takes every lane as seen.
   - **The screen asks for batches' guards.** While it's up, a guard in a
     batch running side by side that nothing else approves (the batch's
     `--approve`, a standing approval, `swim watch -y`) waits for you

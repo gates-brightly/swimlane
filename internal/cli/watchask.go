@@ -204,6 +204,20 @@ func (a *watchAsks) lane(key string) (int, bool) {
 	return 0, false
 }
 
+// target is the lane a key press answers for: the question with row key,
+// else the oldest; false when none waits.
+func (a *watchAsks) target(key string) (int, bool) {
+	if n, ok := a.lane(key); ok {
+		return n, true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.list) == 0 {
+		return 0, false
+	}
+	return a.list[0].msg.Lane, true
+}
+
 // serve reads batch e's questions from conn until the batch exits.
 func (a *watchAsks) serve(e *queue.Entry, conn net.Conn) {
 	defer conn.Close()
