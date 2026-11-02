@@ -30,6 +30,9 @@ To cut a release:
 3. Commit and push to origin's main, then run `just release v0.<date>.<index>`.
    It refuses to tag unless the date, the index, the changelog and a clean
    tree all agree. Then `git push origin v0.<date>.<index>` and `just mirror-tags`.
+   The push to origin builds the release binaries and publishes the GitHub
+   release (`.github/workflows/release.yml`; `just snapshot` builds the same
+   locally into dist/).
 
 Or tag what's on main as it is: `just next-tag` tags HEAD (a clean tree,
 already pushed to origin's main) with the next tag, pushes it to origin,
@@ -321,6 +324,16 @@ and read.
 
 ### Added
 
+- **Release binaries.** Every release tag pushed to GitHub builds swim for
+  Linux and macOS, amd64 and arm64 (static), and publishes them as the
+  release: `swim_<os>_<arch>.tar.gz`, `checksums.txt` and `install.sh`,
+  with the tag's CHANGELOG section as its notes (GoReleaser,
+  `.github/workflows/release.yml`). `curl -fsSL
+  https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh
+  | sh` installs the newest after checking its checksum (`SWIM_VERSION`
+  pins one, `SWIM_INSTALL_DIR` picks where), with no Go toolchain: a
+  container gets swim in seconds instead of building it. `just snapshot`
+  builds the same into dist/ without publishing.
 - **Terminal notifications and a progress bar (`notify`).** With `notify:
   true` (`swim config notify true`), `swim run` and `swim watch` tell the
   terminal what's happening, with the escape sequences Ghostty shows

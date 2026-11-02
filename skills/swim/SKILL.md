@@ -20,9 +20,11 @@ ls lane.* lanes.*.sh swim.yml .swim 2>/dev/null
 ```
 
 - **No `swim` on PATH:** say so, and stop there unless the user wants it.
-  The install line is `go install
-  github.com/gates-brightly/swimlane/cmd/swim@latest`. Don't install it
-  yourself without being asked.
+  The install line is `curl -fsSL
+  https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh | sh`
+  (a release binary; `go install
+  github.com/gates-brightly/swimlane/cmd/swim@latest` builds it instead).
+  Don't install it yourself without being asked.
 - **swim, but the repo has none of those files:** the repo doesn't use swim
   yet. Don't run `swim init` on your own: it edits `.gitignore` and the
   user's config. Propose it when the work fits swim (operational work that

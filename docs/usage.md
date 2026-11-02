@@ -1124,13 +1124,27 @@ CI runner with no config gets its settings.
 <a id="install-and-versions"></a>
 
 ```sh
-go install github.com/gates-brightly/swimlane/cmd/swim@latest     # or @v0.20261014.1 to pin
+curl -fsSL https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh | sh    # a release binary
+SWIM_VERSION=v0.20261102.1 sh install.sh   # pin a release; SWIM_INSTALL_DIR=... picks where
+go install github.com/gates-brightly/swimlane/cmd/swim@latest     # or build it (@v0.20261014.1 to pin)
 git clone git@github.com:gates-brightly/swimlane.git && cd swimlane && just install   # from a checkout
 just link / unlink    # symlink this checkout's bin/swim into ~/.local/bin
 just which            # every swim on your PATH, and which one runs
 swim changelog        # what's new in the version you're running (--since <old version>)
 ```
 
+- **Release binaries:** every release tag pushed to GitHub builds swim for
+  Linux and macOS, amd64 and arm64 (static, `CGO_ENABLED=0`), and publishes
+  `swim_<os>_<arch>.tar.gz`, `checksums.txt` and `install.sh` as the
+  release's assets (`.github/workflows/release.yml`, `.goreleaser.yaml`).
+  The names carry no version, so `releases/latest/download/<name>` is
+  always the newest and `releases/download/<tag>/<name>` a pinned one. In
+  a container image, install it at build time rather than at boot:
+
+  ```dockerfile
+  RUN curl -fsSL https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh \
+        | SWIM_VERSION=v0.20261102.1 SWIM_INSTALL_DIR=/usr/local/bin sh
+  ```
 - **Version numbers:** `swim --version` prints `0.<YYYYMMDD>.<index>`:
   the release's date and its number that day (tag `v0.<YYYYMMDD>.<index>`).
   The version says nothing about compatibility; syntax versions do.

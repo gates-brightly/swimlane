@@ -1,0 +1,61 @@
+# GoReleaser: swim's release binaries, built by .github/workflows/release.yml
+# when a release tag (v0.<YYYYMMDD>.<index>) reaches origin. `just snapshot`
+# builds the same into dist/ without publishing.
+#
+# The asset names carry no version, so a container can always fetch the
+# newest with a fixed URL, or pin one by its tag:
+#   https://github.com/gates-brightly/swimlane/releases/latest/download/swim_linux_amd64.tar.gz
+#   https://github.com/gates-brightly/swimlane/releases/download/v0.20261102.1/swim_linux_amd64.tar.gz
+# install.sh (a release asset too) does that and checks checksums.txt.
+version: 2
+
+project_name: swim
+
+builds:
+  - id: swim
+    main: ./cmd/swim
+    binary: swim
+    env:
+      - CGO_ENABLED=0 # static: runs in any container, as the Nix flake builds it
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    # The justfile's version stamps (internal/version/version.go). Recent is
+    # the last commits, for swim changelog: the workflow and just snapshot
+    # set SWIM_RECENT (git log ... | base64).
+    ldflags:
+      - -s -w
+      - -X github.com/gates-brightly/swimlane/internal/version.BuildDate={{ .Now.UTC.Format "20060102" }}
+      - -X github.com/gates-brightly/swimlane/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/gates-brightly/swimlane/internal/version.BuildTag={{ if .IsSnapshot }}{{ else }}{{ .Tag }}{{ end }}
+      - -X github.com/gates-brightly/swimlane/internal/version.Recent={{ envOrDefault "SWIM_RECENT" "" }}
+
+archives:
+  - id: swim
+    ids: [swim]
+    formats: [tar.gz]
+    name_template: "swim_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: gates-brightly
+    name: swimlane
+  # The notes are the tag's CHANGELOG.md section (--release-notes, from
+  # scripts/release-notes.sh), not a list of commits.
+  mode: replace
+  extra_files:
+    - glob: ./scripts/install.sh
+
+changelog:
+  disable: true
+
+snapshot:
+  version_template: "0.{{ .Now.UTC.Format \"20060102\" }}-snapshot-{{ .ShortCommit }}"
