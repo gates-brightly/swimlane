@@ -12,6 +12,13 @@ Where swim runs, what it needs, and which parts you can build on.
 | **Supported** | Linux and macOS. CI runs every change on `ubuntu-24.04` and `macos-15` (named images, so one changing between runs isn't what turns CI red), with macOS's own bash 3.2 first on `PATH`. |
 | **Not supported** | Windows. swim relies on `flock` for locks, on process groups (`Setpgid`) for interrupts, and on unix sockets between swim and its lanes. |
 
+## Release binaries
+
+Each release ships static binaries for Linux and macOS on amd64 and arm64
+(`swim_<os>_<arch>.tar.gz`, checked by `checksums.txt`): no Go toolchain is
+needed to run swim. `install.sh` installs one; see [install and
+versions](usage.md#install-and-versions).
+
 ## Building from source
 
 Go **1.27.1** or newer: the `go` line in `go.mod`. `go install

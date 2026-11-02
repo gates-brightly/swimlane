@@ -8,9 +8,11 @@ in swim's own test suite (`internal/e2e/quickstart_test.go`).
 You need `swim`, `git` and `bash`, and `ssh-keygen` for step 5:
 
 ```
-go install github.com/gates-brightly/swimlane/cmd/swim@latest
+curl -fsSL https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh | sh
 swim --version
 ```
+
+(Or build it: `go install github.com/gates-brightly/swimlane/cmd/swim@latest`.)
 
 `swim version` says if a newer release is out, and the exact line that
 installs it.

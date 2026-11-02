@@ -1,0 +1,61 @@
+name: release
+
+# A release tag (v0.<YYYYMMDD>.<index>, made by `just release` or `just
+# next-tag`) reaching origin builds swim for Linux and macOS (amd64, arm64)
+# and publishes them as the tag's GitHub release, with checksums.txt and
+# install.sh (.goreleaser.yaml). Containers then install swim with no Go
+# toolchain:
+#   curl -fsSL https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh | sh
+
+on:
+  push:
+    tags: ["v0.*"]
+
+permissions:
+  contents: write # create the release and upload its assets
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      # Older tags (v0.7.20261013) match v0.* too: only this scheme releases.
+      - name: Release tag?
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v0\.[0-9]{8}\.[1-9][0-9]*$ ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$GITHUB_REF_NAME isn't a release tag (v0.<YYYYMMDD>.<index>): nothing to build"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.tag.outputs.ok == 'true'
+        with:
+          fetch-depth: 0 # the tags, and the last commits for swim changelog
+
+      - uses: actions/setup-go@v6
+        if: steps.tag.outputs.ok == 'true'
+        with:
+          go-version-file: go.mod
+
+      # The unit tests, as a last check on what's shipped (the e2e suite ran
+      # on main: release tags are made on a commit already there).
+      - name: Unit tests
+        if: steps.tag.outputs.ok == 'true'
+        run: go test $(go list ./... | grep -v /internal/e2e)
+
+      - name: Notes and stamps
+        if: steps.tag.outputs.ok == 'true'
+        run: |
+          scripts/release-notes.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+          # swim changelog's commits, as the justfile stamps them.
+          echo "SWIM_RECENT=$(git log -5 --no-merges --name-only --format='%x1e%h%x1f%as%x1f%s%x1f%b%x1f' | base64 -w0)" >> "$GITHUB_ENV"
+
+      - uses: goreleaser/goreleaser-action@v6
+        if: steps.tag.outputs.ok == 'true'
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --release-notes ${{ runner.temp }}/notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

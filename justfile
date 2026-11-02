@@ -22,6 +22,10 @@ default:
 build:
     go build -ldflags "{{ldflags}}" -o {{bin_dir}}/{{binary}} {{pkg}}
 
+# Build the release binaries into dist/ as the release workflow does, without publishing (needs goreleaser)
+snapshot:
+    SWIM_RECENT="{{recent}}" goreleaser release --snapshot --clean
+
 # Install swim from this checkout into $GOBIN (or $GOPATH/bin)
 install:
     go install -ldflags "{{ldflags}}" {{pkg}}

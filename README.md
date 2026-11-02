@@ -51,13 +51,18 @@ the approval says so). A changed record fails `swim verify`.
 
 ## Install
 
-swim is one Go binary (Go 1.27.1 or newer to build), for Linux and macOS:
+swim is one static binary, for Linux and macOS (amd64, arm64). Each release
+publishes them; the installer picks this machine's, checks its checksum and
+puts it in /usr/local/bin (if writable) or ~/.local/bin:
 
 ```sh
-go install github.com/gates-brightly/swimlane/cmd/swim@latest
-export PATH="$(go env GOPATH)/bin:$PATH"      # if ~/go/bin isn't on your PATH yet
-swim --version                                # e.g. swim 0.20261014.1
+curl -fsSL https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh | sh
+swim --version                                # e.g. swim 0.20261102.1
 ```
+
+`SWIM_VERSION=v0.20261102.1` pins a release. No Go toolchain needed, so it's
+the quick way into a container. To build from source instead (Go 1.27.1 or
+newer): `go install github.com/gates-brightly/swimlane/cmd/swim@latest`.
 
 Pinning a version, building from a checkout, and what each release
 promises: [install and versions](docs/usage.md#install-and-versions).
