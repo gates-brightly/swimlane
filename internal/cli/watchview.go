@@ -116,8 +116,13 @@ func (w *watchView) stream(n int) []display.PickRow {
 		plainTag, tag := fmt.Sprintf("[%d] ", l), display.Prefix(l, true)
 		for _, line := range lines {
 			line = ui.Safe(line) // a lane's output
-			rows = append(rows, display.PickRow{Text: plainTag + compactIndent(line),
-				Styled: tag + compactIndent(display.ColorLogLine(line, true))})
+			styled := display.ColorLaneLogLine(line, l, true)
+			if kind, _, ok := logparse.SplitResult(line, step.Running); ok && kind == step.Running {
+				// The step running now, in the lane's colour: what swim
+				// run's ==> header is.
+				styled = ui.Painter{On: true}.Paint(ui.LaneColor(l)+ui.Bold, line)
+			}
+			rows = append(rows, display.PickRow{Text: plainTag + compactIndent(line), Styled: tag + compactIndent(styled)})
 		}
 	}
 	return rows

@@ -199,3 +199,16 @@ func TestPickerStyled(t *testing.T) {
 		t.Errorf("a note takes the bottom line: %q", got)
 	}
 }
+
+func TestColorLaneLogLine(t *testing.T) {
+	stage := "-- stage change  12:00:01"
+	if got, want := ColorLaneLogLine(stage, 3, true), (ui.Painter{On: true}).Paint(ui.LaneColor(3)+ui.Bold, stage); got != want {
+		t.Errorf("stage line: %q, want %q", got, want)
+	}
+	if got := ColorLaneLogLine(stage, 3, false); got != stage {
+		t.Errorf("without colour: %q", got)
+	}
+	if got, want := ColorLaneLogLine("  PASS  build", 3, true), colorLogLine("  PASS  build", true); got != want {
+		t.Errorf("other lines are coloured as swim log colours them: %q", got)
+	}
+}

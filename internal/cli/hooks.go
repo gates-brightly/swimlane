@@ -468,7 +468,7 @@ func cmdStage(args []string) error {
 		return err
 	}
 	p := painter()
-	fmt.Fprintln(os.Stderr, p.Paint(ui.Bold, "-- stage "+name))
+	fmt.Fprintln(os.Stderr, p.Paint(ui.LaneColor(n)+ui.Bold, "-- stage "+name)) // in the lane's colour, as its ==> steps
 	for _, w := range warns {
 		fmt.Fprintln(os.Stderr, p.Paint(ui.Yellow, "WARN  "+w))
 	}

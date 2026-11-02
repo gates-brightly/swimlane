@@ -186,7 +186,7 @@ func (t *tui) pollLog() bool {
 		t.lane.clear()
 	}
 	for _, l := range lines {
-		t.lane.add(vline{text: colorLogLine(l, t.color)})
+		t.lane.add(vline{text: ColorLaneLogLine(l, t.laneN, t.color)})
 	}
 	return reset || len(lines) > 0
 }
@@ -584,8 +584,17 @@ func overlay(body, text []string, w int, p ui.Painter) []string {
 
 // ColorLogLine colours a log line the way swim log does, lightly: round and
 // END banners, stage headers and result kinds. The text is unchanged.
-// swim watch's running output uses it too.
 func ColorLogLine(l string, color bool) string { return colorLogLine(l, color) }
+
+// ColorLaneLogLine is ColorLogLine for lane n's log: its stage headers in
+// the lane's colour, as the lane's ==> step headers are when it runs.
+// swim watch's running output and a lane's view use it.
+func ColorLaneLogLine(l string, n int, color bool) string {
+	if color && n > 0 && strings.HasPrefix(l, logparse.StageMark) {
+		return ui.Painter{On: true}.Paint(ui.LaneColor(n)+ui.Bold, l)
+	}
+	return colorLogLine(l, color)
+}
 
 func colorLogLine(l string, color bool) string {
 	if !color {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 func TestQuoteRoundTripsThroughBash(t *testing.T) {
@@ -229,5 +230,22 @@ func TestRecordStep(t *testing.T) {
 	if len(r.Results) != 2 || r.Results[0].Cmd != "(in-process)" || strings.Join(r.Results[0].Output, "|") != "items: 0|ok" ||
 		r.Results[1].Kind != logparse.Fail || r.Results[1].Detail != "exit 3" || r.Pass != 1 || r.Fail != 1 {
 		t.Errorf("parsed: %+v", r.Results)
+	}
+}
+
+// A step's ==> header is in its lane's colour (as its [N] is), so lanes
+// side by side are told apart; a step outside a lane stays plain bold.
+func TestStepHeaderInLaneColour(t *testing.T) {
+	for _, lane := range []int{0, 2} {
+		o, _, errb := newOpts(t, "true")
+		o.Label, o.Color = "migrate", true
+		o.Lane, o.Lanes = lane, 3
+		if _, err := Run(o); err != nil {
+			t.Fatal(err)
+		}
+		want := ui.Painter{On: true}.Paint(ui.LaneColor(lane)+ui.Bold, "==> migrate")
+		if !strings.Contains(errb.String(), want) {
+			t.Errorf("lane %d: header %q not in %q", lane, want, errb.String())
+		}
 	}
 }

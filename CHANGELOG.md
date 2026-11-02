@@ -485,6 +485,10 @@ and read.
   `swim run`'s: `[N]` in the lane's colour on each line, coloured as `swim
   log` colours it, without the commands (Enter on the lane shows them).
   The swimmer's line of batch ids is gone; the queue says the same.
+- **Section markers in the lane's colour.** A step's `==>` header and a
+  `-- stage` header print in their lane's colour, as its `[N]` does, in
+  `swim run`, a lane's view and `swim watch`, so lanes side by side are
+  told apart at a glance.
 - **`swim watch` keeps up with the running output.** Its screen reloaded
   once a second, so lanes' output under the queue (and a new question from
   a batch) lagged behind `swim run`'s live view. It now redraws every

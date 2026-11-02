@@ -246,7 +246,9 @@ func Run(o Options) (Result, error) {
 	}
 
 	if label != "" {
-		fmt.Fprintln(o.Stderr, p.Paint(ui.Bold, "==> "+label))
+		// The step's header in its lane's colour, as the lane's [N] is:
+		// lanes side by side are told apart at a glance.
+		fmt.Fprintln(o.Stderr, p.Paint(ui.LaneColor(o.Lane)+ui.Bold, "==> "+label))
 	}
 	fmt.Fprintln(o.Stderr, p.Paint(ui.Dim, "$ "+cmdline))
 
