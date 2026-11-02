@@ -860,7 +860,8 @@ swim wait [--timeout D]                                  # block until idle and 
   - **The screen asks for batches' guards.** While it's up, a guard in a
     batch running side by side that nothing else approves (the batch's
     `--approve`, a standing approval, `swim watch -y`) waits for you
-    instead of dry-running. It shows at the top of the screen in yellow:
+    instead of dry-running. It shows at the top of the screen, under a
+    yellow bar of its own (`── ⚠ Waiting for you (2) ──`), in yellow:
     `⚠ swim 3 is blocked: waits for approval of DEPLOY · batch #12`, over
     the question as `swim run` would ask it, and the lane's row turns
     yellow. `y` approves and `n` declines the highlighted question, or the

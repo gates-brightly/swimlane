@@ -485,6 +485,11 @@ and read.
   `swim run`'s: `[N]` in the lane's colour on each line, coloured as `swim
   log` colours it, without the commands (Enter on the lane shows them).
   The swimmer's line of batch ids is gone; the queue says the same.
+- **`swim watch`'s questions get a yellow section bar.** What's waiting
+  for you sits under its own bar at the top of the screen, `── ⚠ Waiting
+  for you (2) ── y approve · n decline ──`, in yellow where the Jobs and
+  Queue bars are dim, and the title counts them (`2 waiting for you`). A
+  blocked lane's row no longer repeats its question as its step.
 - **`swim watch`'s log views keep their colours, and pin what's running.**
   Enter and `l` on a lane or batch showed its output as plain text. They
   colour it as `swim run` shows it now (`[N]`, `==>` and stage headers in

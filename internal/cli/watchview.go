@@ -239,12 +239,13 @@ func (w *watchView) rows() []display.PickRow {
 			b.add(ui.Dim, fmt.Sprintf(" %-8s", job))
 		}
 		b.add("", " ").add(roundColor, round)
+		q, asking := waiting[n]
 		if d := laneRowDetail(l, state); d != "" {
 			b.add(ui.Dim, "  · "+d)
-		} else if l != nil && state == status.Running && l.CurrentStep != "" {
-			b.add(ui.Dim, "  · "+ui.Safe(l.CurrentStep))
+		} else if l != nil && state == status.Running && l.CurrentStep != "" && !asking {
+			b.add(ui.Dim, "  · "+ui.Safe(l.CurrentStep)) // a question says what it waits on itself
 		}
-		if q, ok := waiting[n]; ok {
+		if asking {
 			b.add(ui.Yellow+ui.Bold, "  · "+askVerb(q)+" "+approval.Clean(q.msg.Flag))
 			color = ui.Yellow + ui.Bold
 		}
@@ -357,6 +358,18 @@ func (w *watchView) askRows() (rows []display.PickRow, waiting map[int]watchAsk)
 	pending, added := w.asks.pending()
 	waiting = map[int]watchAsk{}
 	now := time.Now()
+	if len(pending) > 0 {
+		// Their own section, its bar in yellow: what's blocked on the
+		// operator stands out from the jobs and the queue under it.
+		keys := "y approve · n decline"
+		for _, q := range pending {
+			if q.msg.Choices > 0 {
+				keys += " · 1-9 choose"
+				break
+			}
+		}
+		rows = append(rows, display.PickRow{Text: fmt.Sprintf("⚠ Waiting for you (%d)", len(pending)), Rule: true, Color: ui.Yellow, Right: keys})
+	}
 	for i, q := range pending {
 		if _, ok := waiting[q.msg.Lane]; !ok {
 			waiting[q.msg.Lane] = q

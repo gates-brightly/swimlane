@@ -239,3 +239,20 @@ func TestStyleOutputLine(t *testing.T) {
 		t.Errorf("a screen clear got through: %q", got)
 	}
 }
+
+// A rule with a colour is drawn in it, line and label: a section that needs
+// the operator (swim watch's questions) in yellow.
+func TestPickerColouredRule(t *testing.T) {
+	p := &Picker{Color: true}
+	got := p.rule(PickRow{Text: "⚠ Waiting for you (2)", Rule: true, Color: ui.Yellow, Right: "y approve"}, 50)
+	pt := ui.Painter{On: true}
+	if !strings.HasPrefix(got, pt.Paint(ui.Yellow, "── ")+pt.Paint(ui.Yellow+ui.Bold, "⚠ Waiting for you (2)")) || strings.Contains(got, ui.Dim) {
+		t.Errorf("yellow rule: %q", got)
+	}
+	if textWidth(got) != 50 || !strings.Contains(got, ui.Yellow+"──") || !strings.HasSuffix(got, " y approve ──"+ui.Reset) {
+		t.Errorf("yellow rule's fill: %q (%d wide)", got, textWidth(got))
+	}
+	if plain := p.rule(PickRow{Text: "Jobs", Rule: true}, 20); !strings.HasPrefix(plain, pt.Paint(ui.Dim, "── ")) {
+		t.Errorf("a rule without a colour stays dim: %q", plain)
+	}
+}

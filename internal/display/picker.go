@@ -23,7 +23,8 @@ type PickRow struct {
 	// in several colours, as swim run's panel draws a lane.
 	Styled string
 	// Rule draws the row as a section rule, as swim run's view divides its
-	// panel from the output: "── Text ───── Right ──", dim.
+	// panel from the output: "── Text ───── Right ──", dim, or in Color
+	// when set (a section that needs the operator, in yellow).
 	Rule  bool
 	Right string // a Rule's note at its right end
 }
@@ -321,7 +322,11 @@ func (p *Picker) rule(r PickRow, cols int) string {
 	if fill < 0 {
 		fill = 0
 	}
-	return pt.Paint(ui.Dim, "── ") + pt.Paint(ui.Bold, label) + " " + pt.Paint(ui.Dim, strings.Repeat("─", fill)+right)
+	line, text := ui.Dim, ui.Bold
+	if r.Color != "" {
+		line, text = r.Color, r.Color+ui.Bold
+	}
+	return pt.Paint(line, "── ") + pt.Paint(text, label) + " " + pt.Paint(line, strings.Repeat("─", fill)+right)
 }
 
 // truncateANSI cuts s, coloured with SGR codes, to w visible columns,

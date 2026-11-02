@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // waitLog waits for lane n's log to say want, and returns it.
@@ -30,6 +32,13 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 			strings.Contains(s, "⚠ swim 2 is blocked: waits for approval of ALLOW_TWO")
 	})
 	contains(t, "the questions", s, "batch #1", "batch #2", "y approve  n decline", "the lane says: change one", "the lane says: change two")
+	// Under their own bar, in yellow, over the jobs and the queue.
+	if !strings.Contains(s, "── ⚠ Waiting for you (2) ─") || strings.Index(s, "Waiting for you") > strings.Index(s, "── Jobs") {
+		t.Errorf("no section bar over the questions:\n%s", s)
+	}
+	if !strings.Contains(tr.output(), ui.Yellow+ui.Bold+"⚠ Waiting for you (2)") {
+		t.Error("the questions' bar isn't yellow")
+	}
 	// The newest is selected: y answers it, then n the one left.
 	newest, other := 2, 1
 	if strings.Contains(s, "▸ ⚠ swim 1") {
@@ -39,6 +48,7 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 	tr.waitFor(fmt.Sprintf("swim %d (#%d): ALLOW_", newest, newest))
 	tr.send("n")
 	tr.waitFor(fmt.Sprintf("swim %d (#%d): ALLOW_", other, other))
+	tr.waitScreen("the bar gone with the questions", func(s string) bool { return !strings.Contains(s, "Waiting for you") })
 	contains(t, "approved lane", r.waitLog(newest, "PASS  "), "APPROVED  change ", "approved at the prompt by ")
 	contains(t, "declined lane", r.waitLog(other, "SKIP  "), "SKIP  change ", "declined at the prompt")
 	tr.send("\x03")
