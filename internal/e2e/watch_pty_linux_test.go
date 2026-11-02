@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 // swim watch on a terminal shows the jobs and the queue: ↑ ↓ pick one, r
@@ -76,6 +78,10 @@ func TestWatchBatchOutputView(t *testing.T) {
 	tr.waitFor("▸ #1")
 	tr.send("\r")
 	tr.waitFor("swim watch · #1")
+	// Each of the batch's lanes pinned under the title: what it's doing now.
+	tr.waitScreen("both lanes pinned", func(s string) bool {
+		return strings.Contains(s, "swim 1 · stage setup · ==> hold") && strings.Contains(s, "swim 2 · stage setup · ==> hold")
+	})
 	// v: the lanes' own logs, step output included.
 	tr.send("v")
 	tr.waitFor("· verbose")
@@ -132,6 +138,16 @@ func TestWatchLaneOutputView(t *testing.T) {
 	tr.send("\r")
 	tr.waitFor("swim watch · swim 1 · #1")
 	tr.waitFor("lane1-hello")
+	// Pinned under the title: what the lane is doing now, its stage and
+	// its step as its ==> header says it. The output is coloured as swim
+	// run shows it.
+	s := tr.waitFor("swim 1 · stage setup · ==> hold · ")
+	if lines := strings.Split(s, "\n"); len(lines) < 2 || !strings.HasPrefix(lines[1], "swim 1 · stage setup · ==> hold") {
+		t.Errorf("the step isn't pinned under the title:\n%s", s)
+	}
+	if out := tr.output(); !strings.Contains(out, ui.LaneColor(1)+"[") || !strings.Contains(out, ui.LaneColor(1)+ui.Bold+"==> hold") {
+		t.Error("the lane's view lost its colours: no [1] or ==> in the lane's colour")
+	}
 	tr.send("v")
 	tr.waitFor("· batch")
 	tr.send("q")

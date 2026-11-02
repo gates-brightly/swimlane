@@ -212,3 +212,30 @@ func TestColorLaneLogLine(t *testing.T) {
 		t.Errorf("other lines are coloured as swim log colours them: %q", got)
 	}
 }
+
+// The follow views read lane output back as text: each line is coloured
+// as swim run's live view shows it.
+func TestStyleOutputLine(t *testing.T) {
+	p := ui.Painter{On: true}
+	for line, want := range map[string]string{
+		"[2] ==> migrate":               JobPrefix(2, "2", true) + p.Paint(ui.LaneColor(2)+ui.Bold, "==> migrate"),
+		"[2]   ==> hold (running)":      JobPrefix(2, "2", true) + "  " + p.Paint(ui.LaneColor(2)+ui.Bold, "==> hold (running)"),
+		"[3] $ go test ./...":           JobPrefix(3, "3", true) + p.Paint(ui.Dim, "$ go test ./..."),
+		"[3] PASS  build  0.4s":         JobPrefix(3, "3", true) + p.Paint(ui.StateColor("PASS")+ui.Bold, "PASS") + "  build  0.4s",
+		"[1] -- stage change  12:00:01": JobPrefix(1, "1", true) + p.Paint(ui.LaneColor(1)+ui.Bold, "-- stage change  12:00:01"),
+		"[1]   FAIL  check (exit 1)":    JobPrefix(1, "1", true) + colorLogLine("  FAIL  check (exit 1)", true),
+		"[1] plain output":              JobPrefix(1, "1", true) + "plain output",
+		"swim watch: a note":            "swim watch: a note",
+	} {
+		if got := StyleOutputLine(line); got != want {
+			t.Errorf("%q:\n got %q\nwant %q", line, got, want)
+		}
+	}
+	// Already coloured: as it is. Other escapes are removed.
+	if got := StyleOutputLine("\x1b[32mok\x1b[0m"); got != "\x1b[32mok\x1b[0m" {
+		t.Errorf("coloured line: %q", got)
+	}
+	if got := StyleOutputLine("[1] a\x1b[2Jb"); strings.Contains(got, "\x1b[2J") {
+		t.Errorf("a screen clear got through: %q", got)
+	}
+}

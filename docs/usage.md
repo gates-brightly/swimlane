@@ -830,6 +830,9 @@ swim wait [--timeout D]                                  # block until idle and 
     Enter on one follows its output, and Enter on a running lane follows
     that lane's log. `l` shows the highlighted lane's logs (every round in
     its current log), or a batch's lanes' logs, whether or not they run.
+    These views are coloured as `swim run` shows the output, and pin each
+    lane's current stage and running step under the title
+    (`swim 3 · stage change · ==> migrate · 0:42`) while the log scrolls.
     Under the queue, the screen streams the latest output of every running
     lane, as `swim run`'s view does: each line under its lane's `[N]`, in
     the lane's colour; `o` hides it. Lanes are drawn as `swim run`'s

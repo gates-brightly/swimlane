@@ -103,6 +103,16 @@ func EndHeader(e *FollowEnd, cols int, color bool) []string {
 // if set, says how what it follows ended (nil while it runs): Follow then
 // draws a header with the result under the title (EndHeader).
 func Follow(in, out *os.File, title string, views []FollowView, end func() *FollowEnd) error {
+	return FollowPinned(in, out, title, views, end, nil)
+}
+
+// FollowPinned is Follow with lines pinned under the title, reloaded on
+// every redraw while the output scrolls under them: what each lane it
+// follows is doing now (its stage, the step running), so the operator sees
+// it however far the log has run.
+// pinned gets whether the screen has colour, and colours its lines only
+// then.
+func FollowPinned(in, out *os.File, title string, views []FollowView, end func() *FollowEnd, pinned func(color bool) []string) error {
 	fd := int(in.Fd())
 	st, err := term.MakeRaw(fd)
 	if err != nil {
@@ -141,11 +151,18 @@ func Follow(in, out *os.File, title string, views []FollowView, end func() *Foll
 		if end != nil {
 			header = EndHeader(end(), cols, color)
 		}
+		var pins []string
+		if pinned != nil {
+			pins = pinned(color)
+			if len(pins) > rows/3 {
+				pins = pins[:rows/3] // the output keeps most of the screen
+			}
+		}
 		lines := views[cur].Lines()
 		if len(lines) == 0 {
 			lines = []string{"(no output yet)"}
 		}
-		if n := rows - 2 - len(header); len(lines) > n {
+		if n := rows - 2 - len(header) - len(pins); len(lines) > n {
 			lines = lines[len(lines)-max(n, 0):]
 		}
 		head := title
@@ -155,10 +172,22 @@ func Follow(in, out *os.File, title string, views []FollowView, end func() *Foll
 		var b strings.Builder
 		b.WriteString("\x1b[H\x1b[2J")
 		b.WriteString(p.Paint(ui.Bold, clip(head, cols)) + "\r\n")
+		for _, l := range pins {
+			l = truncateANSI(l, cols)
+			if color {
+				l += ui.Reset
+			}
+			b.WriteString(l + "\r\n")
+		}
 		for _, l := range header {
 			b.WriteString(l + "\r\n")
 		}
 		for _, l := range lines {
+			if color {
+				// Coloured as swim run shows it; the cut counts no codes.
+				b.WriteString(truncateANSI(StyleOutputLine(l), cols) + ui.Reset + "\r\n")
+				continue
+			}
 			b.WriteString(clip(l, cols) + "\r\n")
 		}
 		b.WriteString(fmt.Sprintf("\x1b[%d;1H", rows))

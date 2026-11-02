@@ -537,7 +537,7 @@ func (w *watchView) showOutput(e *queue.Entry) string {
 		{Name: "overview", Lines: display.FileLines(path)},
 		{Name: "verbose", Lines: func() []string { return verboseLines(w.root, laneNums(e)) }},
 	}
-	if err := display.Follow(os.Stdin, os.Stdout, title, views, end); err != nil {
+	if err := display.FollowPinned(os.Stdin, os.Stdout, title, views, end, w.pins(laneNums(e))); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -594,7 +594,7 @@ func (w *watchView) showLaneOutput(n int) string {
 			return be
 		}
 	}
-	if err := display.Follow(os.Stdin, os.Stdout, title, views, end); err != nil {
+	if err := display.FollowPinned(os.Stdin, os.Stdout, title, views, end, w.pins([]int{n})); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -613,7 +613,7 @@ func (w *watchView) showLaneLogs(n int) string {
 		{Name: "log", Lines: func() []string { return logLines(w.root, []int{n}, true) }},
 		{Name: "last round", Lines: func() []string { return logLines(w.root, []int{n}, false) }},
 	}
-	if err := display.Follow(os.Stdin, os.Stdout, title, views, func() *display.FollowEnd { return laneEnd(w.root, n, running) }); err != nil {
+	if err := display.FollowPinned(os.Stdin, os.Stdout, title, views, func() *display.FollowEnd { return laneEnd(w.root, n, running) }, w.pins([]int{n})); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -650,7 +650,7 @@ func (w *watchView) showBatchLogs(e *queue.Entry) string {
 		}
 		return batchEnd(w.root, e.ID, bp)
 	}
-	if err := display.Follow(os.Stdin, os.Stdout, title, views, end); err != nil {
+	if err := display.FollowPinned(os.Stdin, os.Stdout, title, views, end, w.pins(lanes)); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -826,4 +826,49 @@ func batchOutcome(root string, bp *batchProc) string {
 		return "skipped"
 	}
 	return "failed"
+}
+
+// pins are the lines a follow view keeps under its title, one per lane:
+// what it's doing now, so the operator sees it however far its log runs.
+// A running lane: its stage, the step running (its ==> label) and for how
+// long; one that isn't: its state and the stage it got to.
+//
+//	swim 3 · stage change · ==> migrate · 0:42
+func (w *watchView) pins(lanes []int) func(color bool) []string {
+	return func(color bool) []string {
+		p := ui.Painter{On: color}
+		st, _ := status.Load(w.root)
+		var out []string
+		for _, n := range lanes {
+			var l *status.Lane
+			if st != nil {
+				l = st.Get(n)
+			}
+			_, running := lane.Running(w.root, n)
+			running = running || l != nil && l.State == status.Running && l.Alive()
+			line := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d", n))
+			stage := ""
+			if l != nil && l.Stage != "" {
+				stage = " · " + p.Paint(ui.LaneColor(n), "stage "+ui.Safe(l.Stage))
+			}
+			if !running {
+				state := "idle"
+				if l != nil && l.State != "" {
+					state = l.State
+				}
+				out = append(out, line+" · "+p.Paint(ui.StateColor(state), state)+stage)
+				continue
+			}
+			line += stage
+			if sp, ok := step.ReadSpool(lane.Log(w.root, n)); ok {
+				line += " · " + p.Paint(ui.LaneColor(n)+ui.Bold, "==> "+ui.Safe(sp.Label)) + " · " + p.Paint(ui.Dim, display.Elapsed(sp.Elapsed()))
+			} else if l != nil && l.CurrentStep != "" {
+				line += " · " + p.Paint(ui.LaneColor(n)+ui.Bold, "==> "+ui.Safe(l.CurrentStep))
+			} else {
+				line += " · " + p.Paint(ui.Cyan, "running")
+			}
+			out = append(out, line)
+		}
+		return out
+	}
 }
