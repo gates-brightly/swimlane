@@ -150,3 +150,37 @@ func TestWatchStagesOneBatch(t *testing.T) {
 		t.Errorf("x: %s, staged %v, %d queued", msg, w.staged, len(queued()))
 	}
 }
+
+// Q in swim watch queues every job that hasn't passed as one batch, from
+// any row, less those a batch already holds; again, there's nothing left.
+func TestWatchQueuesAll(t *testing.T) {
+	root := t.TempDir()
+	for n := 1; n <= 4; n++ {
+		os.WriteFile(filepath.Join(root, "lane."+string(rune('0'+n))+".sh"),
+			[]byte("#!/usr/bin/env bash\n# swim: syntax 4\n# Round: r"+string(rune('0'+n))+"\n"), 0o755)
+	}
+	os.WriteFile(filepath.Join(root, "lane.4.sh"), []byte("#!/usr/bin/env bash\n# swim: syntax 4\n"), 0o755) // a stub: no round
+	w := &watchView{root: root, cfg: &config.Config{Root: root, Settings: config.Settings{Lanes: 4}}, seen: &watchSeen{}}
+	queued := func() []*queue.Entry {
+		es, err := queue.List(root, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return es
+	}
+	if msg := w.act("lane:3", 'q'); !strings.Contains(msg, "next batch: swim 3") { // staged, not queued
+		t.Fatalf("q: %s", msg)
+	}
+	if msg := w.act("queue:x", 'Q'); !strings.HasPrefix(msg, "queued swim 1,2,3 as #1") {
+		t.Fatalf("Q: %s", msg)
+	}
+	if es := queued(); len(es) != 1 || len(es[0].Lanes) != 3 {
+		t.Fatalf("want one batch of swim 1, 2, 3: %+v", es)
+	}
+	if len(w.staged) != 0 {
+		t.Errorf("swim 3 still staged after Q queued it: %v", w.staged)
+	}
+	if msg := w.act("lane:1", 'Q'); !strings.Contains(msg, "every pending job is in a batch already") || len(queued()) != 1 {
+		t.Errorf("Q again: %s (%d batches)", msg, len(queued()))
+	}
+}

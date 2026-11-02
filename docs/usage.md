@@ -848,7 +848,9 @@ swim wait [--timeout D]                                  # block until idle and 
     it waits. Use ↑ ↓ to pick one, `r` to run it now (a job as `swim run N`,
     a waiting batch out of turn). `q` adds a job to the next batch (`q`
     again takes it out) and `s` submits them as one batch, as `swim queue
-    add 1 2` does, so `# After:` between them holds; `x` clears it. A
+    add 1 2` does, so `# After:` between them holds; `x` clears it. `Q`
+    queues every job that hasn't passed as one batch at once, as `swim
+    queue add` with no lanes named does (less any already in a batch). A
     batch's live view
     lets ← → pick a lane to read, but never answers its guards.
   - **`(~)` marks a lane that changed since you last acted on it** there

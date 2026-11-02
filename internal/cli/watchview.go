@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -53,8 +54,8 @@ type watchView struct {
 const watchRedraw = 200 * time.Millisecond
 
 const (
-	watchKeys  = "rqsxloayn123456789" + string(display.PickEnter)
-	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  s submit  a archive  ^C quit" // x (clear the batch) is on the submit row
+	watchKeys  = "rqQsxloayn123456789" + string(display.PickEnter)
+	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  Q all  s submit  a archive  ^C quit" // x (clear the batch) is on the submit row
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
@@ -617,6 +618,9 @@ func (w *watchView) act(id string, key rune) string {
 		}
 		return w.asks.answer(id, key)
 	}
+	if key == 'Q' { // from any row
+		return w.queueAll()
+	}
 	if kind == "ask" {
 		// The question's row stands for its lane: enter and l show what
 		// led up to it.
@@ -744,6 +748,51 @@ func (w *watchView) submitStaged() string {
 		return "not queued: " + msg
 	}
 	w.staged = nil
+	return msg
+}
+
+// queueAll is Q: queue every lane holding a pending round that hasn't
+// passed as one batch, as swim queue add does with no lanes named, less
+// those a waiting or running batch already holds. The next batch (q)
+// is cleared of the lanes it queues.
+func (w *watchView) queueAll() string {
+	sel, _, err := launcher.Select(launcher.Options{Root: w.root, Cfg: w.cfg, DryRun: true})
+	if err != nil {
+		return "not queued: " + err.Error()
+	}
+	inBatch := map[int]bool{}
+	entries, _ := queue.List(w.root, false)
+	for _, e := range entries {
+		if e.State == queue.Queued || e.State == queue.Running {
+			for _, l := range e.Lanes {
+				inBatch[l.Lane] = true
+			}
+		}
+	}
+	var lanes []int
+	for _, n := range sel {
+		if !inBatch[n] {
+			lanes = append(lanes, n)
+		}
+	}
+	if len(lanes) == 0 {
+		if len(sel) > 0 {
+			return "nothing to queue: every pending job is in a batch already"
+		}
+		return "nothing to queue: no lane holds a pending round that hasn't passed"
+	}
+	msg := w.queueLanes(lanes)
+	if !strings.HasPrefix(msg, "queued ") {
+		return "not queued: " + msg
+	}
+	w.seen.touch(lanes...)
+	var kept []int
+	for _, n := range w.staged {
+		if !slices.Contains(lanes, n) {
+			kept = append(kept, n)
+		}
+	}
+	w.staged = kept
 	return msg
 }
 

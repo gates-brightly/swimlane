@@ -347,6 +347,11 @@ and read.
 
 ### Added
 
+- **`Q` in `swim watch` queues every job at once.** Shift-Q, from any
+  row, queues every lane holding a pending round that hasn't passed as one
+  batch, as `swim queue add` with no lanes named does, less those a
+  waiting or running batch already holds. Lanes it queues leave the next
+  batch (`q`).
 - **More lane colours.** Lanes cycled through six colours, so lane 7 looked
   like lane 1 as soon as seven ran. Lanes 1-6 keep theirs; after them, a
   terminal with 256 colours (Ghostty, iTerm, WezTerm, VS Code, a
