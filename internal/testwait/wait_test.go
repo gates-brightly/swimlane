@@ -79,3 +79,24 @@ func TestUnwoken(t *testing.T) {
 		t.Errorf("held only at the deadline: %v", got)
 	}
 }
+
+// A FIFO nobody writes doesn't stop a watch: tests keep one in a watched
+// directory to hold a step open (internal/step's
+// TestStepTimeoutKillsItsChildren), and opening it to watch blocked until
+// go test's 10m alarm on macOS.
+func TestWatchSkipsFIFOs(t *testing.T) {
+	dir := t.TempDir()
+	if err := exec.Command("mkfifo", filepath.Join(dir, "never")).Run(); err != nil {
+		t.Skip("no mkfifo:", err)
+	}
+	var returned atomic.Bool
+	var sig Signal
+	go func() {
+		if w, err := Watch(dir, nil); err == nil {
+			w.Close()
+		}
+		returned.Store(true)
+		sig.Notify()
+	}()
+	Until(t, "Watch to return past the FIFO", &sig, returned.Load)
+}

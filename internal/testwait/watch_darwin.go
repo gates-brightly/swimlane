@@ -66,7 +66,16 @@ func (w *Watcher) add(p string) {
 	if _, ok := w.fds[p]; ok {
 		return
 	}
-	fd, err := unix.Open(p, unix.O_EVTONLY|unix.O_CLOEXEC, 0)
+	// Only directories and regular files (and links to them): opening a
+	// FIFO blocks until something opens its other end, which a test's
+	// "hold the step open" FIFO never gets once the step is killed (the
+	// watch then hung the test until go test's 10m alarm). Sockets and
+	// devices aren't anything a test waits on either. O_NONBLOCK too, for
+	// one made between the check and the open.
+	if fi, err := os.Stat(p); err != nil || !fi.IsDir() && !fi.Mode().IsRegular() {
+		return
+	}
+	fd, err := unix.Open(p, unix.O_EVTONLY|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return
 	}
