@@ -51,6 +51,10 @@ var Commands = map[string]string{
                  swim claim) lasts unless refreshed. Default 2h.
     watch_batches  a number (1 or more)   how many queued batches one swim
                  watch runs at once (default 4; swim watch --batches N).
+    notify       true or false            terminal notifications and a
+                 progress bar on the tab (OSC 777 and OSC 9;4, as Ghostty
+                 shows them): when a lane waits on you and when a run or a
+                 batch ends. Only on a terminal, never in CI. Default false.
     cache_dir    an absolute path         where tool caches live (# Cache:;
                  default ~/.cache/swim, macOS ~/Library/Caches/swim; under
                  /tmp it gets your user id). Not in a repo's swim.yml.

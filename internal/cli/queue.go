@@ -778,8 +778,15 @@ func cmdWatch(args []string) error {
 	// On a terminal, waiting shows the jobs and the queue: r runs one now,
 	// q adds one to the next batch and s submits it (watchview.go).
 	var view *watchView
+	// The terminal's notifications and progress bar (notify setting).
+	notes := newWatchNotes(terminalNotifier(cfg), root)
+	defer notes.stop()
 	if !once && watchViewAllowed(noTUI) {
 		view = newWatchView(root, cfg, yes)
+		if notes != nil {
+			notes.asks = view.asks
+			view.asks.onAsk = notes.asked
+		}
 		sleep = func() {
 			ok := view.wait(func() bool {
 				if stopped() {
@@ -812,7 +819,9 @@ func cmdWatch(args []string) error {
 	}
 	if batches > 1 {
 		var c int
-		c, err = watchBatches(root, cfg, newBatchRunner(root, yes, view != nil, batches), view, once, approved, every, sigs, say)
+		b := newBatchRunner(root, yes, view != nil, batches)
+		b.notes = notes
+		c, err = watchBatches(root, cfg, b, view, once, approved, every, sigs, say)
 		if err != nil {
 			return err
 		}
@@ -874,8 +883,10 @@ func cmdWatch(args []string) error {
 			continue
 		}
 		s.said = ""
+		began := time.Now()
 		res, interrupted := runClaimed(root, cfg, e, yes, view != nil, false, nil)
 		unlock()
+		notes.batchDone(e.Seq, res.Result, laneNums(e), time.Since(began))
 		if view != nil {
 			view.picker.Note = fmt.Sprintf("#%d %s", e.Seq, res.Result)
 		}

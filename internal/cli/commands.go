@@ -489,6 +489,8 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if rf.yaml {
 		o.YAML, o.YAMLOutput = os.Stdout, rf.yamlOutput
+	} else {
+		o.Notify = terminalNotifier(cfg)
 	}
 	if o.RunID == "" {
 		o.RunID = lane.NewRunID()

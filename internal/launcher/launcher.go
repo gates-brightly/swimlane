@@ -28,6 +28,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/notify"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/runner"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -119,6 +120,10 @@ type Options struct {
 	// the queue): the view's keys only move around, never pre-answer a
 	// guard, and the view closes when the run ends.
 	Unattended bool
+	// Notify, if set, is the operator's terminal: a notification when a lane
+	// asks them and when the run ends, and a progress bar while it runs
+	// (notify.go). swim run sets it when the notify setting is on.
+	Notify *notify.Terminal
 	// Ask, if set, asks someone outside this run when nobody here can: the
 	// swim watch screen that started this batch (swim _batch --ask). It
 	// takes the guards -y doesn't approve and every decision, instead of
@@ -368,6 +373,7 @@ func Run(o Options) (int, error) {
 				}
 				disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
 				defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+				notifyAsk(o, req)
 				c := disp.Choose(req.Lane, approval.DecisionQuestion(req), len(req.Choices), cancel)
 				return approval.Response{Approved: c > 0, Choice: c, By: operator()}
 			}
@@ -389,6 +395,7 @@ func Run(o Options) (int, error) {
 			}
 			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
 			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+			notifyAsk(o, req)
 			yes := disp.Ask(req.Lane, approval.Question(req), cancel)
 			return approval.Response{Approved: yes, By: operator()}
 		}
@@ -450,6 +457,8 @@ func Run(o Options) (int, error) {
 	o.ev.emit(Event{Event: "run", Run: o.RunID, Lanes: sel, MaxParallel: cap, At: now()})
 	disp.Start()
 	defer disp.Restore()
+	stopProgress := runProgress(o, sel, disp)
+	defer stopProgress()
 	if o.Heartbeat > 0 {
 		stopBeat := o.beat.run(o, disp)
 		defer stopBeat()
@@ -475,6 +484,7 @@ func Run(o Options) (int, error) {
 		}(n)
 	}
 	wg.Wait()
+	stopProgress()
 	o.skipped.flush()
 	stopOthers()
 	disp.Stop()
@@ -512,6 +522,9 @@ func Run(o Options) (int, error) {
 	printSummary(summaryOut, o.Root, sel, outcomes, start, elapsed, disp.Color())
 	stopped := ir.stopping()
 	o.ev.summary(o, sel, outcomes, code, stopped, elapsed)
+	if o.Notify != nil {
+		notifyEnd(o, sel, counts, code, stopped, elapsed)
+	}
 	if o.Finished != nil {
 		o.Finished(Finish{Code: code, Interrupted: stopped, Counts: counts, Elapsed: elapsed})
 	}

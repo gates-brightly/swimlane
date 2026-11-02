@@ -15,7 +15,7 @@ import (
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "cache_dir", "cache_max", "cache_slug"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "notify", "cache_dir", "cache_max", "cache_slug"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -44,6 +44,8 @@ func (c *Config) Get(key string) (string, error) {
 		return c.ClaimLeaseFor().String(), nil
 	case "watch_batches":
 		return strconv.Itoa(c.WatchBatchesFor()), nil
+	case "notify":
+		return strconv.FormatBool(c.NotifyOn()), nil
 	case "cache_dir":
 		return c.CacheBase()
 	case "cache_max":
@@ -154,6 +156,12 @@ func keyValue(key, value string) (*yaml.Node, error) {
 			return nil, fmt.Errorf("watch_batches must be a number, 1 or more, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: v}, nil
+	case "notify":
+		v, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err != nil {
+			return nil, fmt.Errorf("notify must be true or false, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(v)}, nil
 	case "interrupt_grace", "term_grace", "msg_log_interval":
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d < 0 {

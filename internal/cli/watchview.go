@@ -60,7 +60,7 @@ const (
 )
 
 func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
-	w := &watchView{root: root, cfg: cfg, yes: yes, asks: &watchAsks{bell: os.Stdout}, seen: loadWatchSeen(root), picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
+	w := &watchView{root: root, cfg: cfg, yes: yes, asks: &watchAsks{}, seen: loadWatchSeen(root), picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
 	w.picker.Tail = w.stream
 	// The running output redraws as quickly as swim run's view shows it;
 	// the worker's check for a batch to start stays at once a second.

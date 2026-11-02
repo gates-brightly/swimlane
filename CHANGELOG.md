@@ -321,6 +321,16 @@ and read.
 
 ### Added
 
+- **Terminal notifications and a progress bar (`notify`).** With `notify:
+  true` (`swim config notify true`), `swim run` and `swim watch` tell the
+  terminal what's happening, with the escape sequences Ghostty shows
+  natively: a desktop notification (OSC 777) when a lane waits on you and
+  when a run or batch ends (passed, failed, interrupted, or skipped as a
+  guard dry-ran), and a progress bar on the tab (OSC 9;4): a run's lanes,
+  or a swimmer's batches until its queue is empty, red once one failed,
+  paused while a question waits, hidden when done. Only on a terminal,
+  never in CI. Off by default. It replaces the bell `swim watch` rang for a
+  question.
 - **`swim watch` marks changed lanes `(~)`.** A lane whose script (or a
   file it `# Includes:`) changed since you last acted on it on the watch
   screen, or that's new since, shows `swim 3 (~)` until you act on it

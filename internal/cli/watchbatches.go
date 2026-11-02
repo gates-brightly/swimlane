@@ -103,6 +103,8 @@ type batchRunner struct {
 	// asks, when the watch screen is up, takes the batches' questions
 	// (watchask.go); nil: a guard nothing approves dry-runs.
 	asks *watchAsks
+	// notes tells the terminal when a batch ends (watchnotify.go; nil: off).
+	notes *watchNotes
 
 	mu    sync.Mutex
 	procs map[string]*batchProc // by entry id
@@ -394,6 +396,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 	for {
 		for _, bp := range b.reap() {
 			word := batchOutcome(root, bp)
+			b.notes.batchDone(bp.e.Seq, word, bp.lanes, time.Since(bp.started))
 			switch word {
 			case "passed", "skipped": // a dry run waits on an approval; it didn't fail
 			case "interrupted":

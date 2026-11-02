@@ -70,6 +70,7 @@ type Settings struct {
 	QueueLease         string   `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
 	ClaimLease         string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
 	WatchBatches       int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
+	Notify             *bool    `yaml:"notify,omitempty"`               // terminal notifications and a progress bar (OSC 777, OSC 9;4; default off)
 	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
 	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
 	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
@@ -376,6 +377,9 @@ func (c *Config) merge(r Settings) {
 	if r.WatchBatches != 0 {
 		c.WatchBatches = r.WatchBatches
 	}
+	if r.Notify != nil {
+		c.Notify = r.Notify
+	}
 	if r.CacheDir != "" {
 		c.CacheDir = r.CacheDir
 	}
@@ -497,6 +501,11 @@ func (c *Config) ClaimLeaseFor() time.Duration {
 	}
 	return lane.DefaultClaimLease
 }
+
+// NotifyOn is notify: whether swim run and swim watch send the terminal
+// notifications (a question waiting, a run or batch ending) and draw its
+// progress bar (package notify). Off unless set.
+func (c *Config) NotifyOn() bool { return c.Notify != nil && *c.Notify }
 
 // DefaultWatchBatches is how many batches one swim watch runs at once
 // unless watch_batches or --batches says otherwise.

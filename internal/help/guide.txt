@@ -913,6 +913,7 @@ CONFIG  (~/.config/swim/config.yml, or $XDG_CONFIG_HOME/swim/config.yml)
         queue_lease: 2m                  # a swimmer's heartbeat holds this long (other hosts)
         claim_lease: 2h                  # a lane claim (swim new, swim claim) lasts this long
         watch_batches: 4                 # queued batches one swim watch runs at once
+        notify: false                    # terminal notifications + tab progress bar (Ghostty: OSC 777, 9;4)
         term_grace: 10s                  # SIGTERM: graceful, then force quit after this
         cache_dir: ~/.cache/swim         # where tool caches live (CACHE); config.yml only
         cache_max: 10GB                  # a run trims the repo's caches to this (0: no cap)

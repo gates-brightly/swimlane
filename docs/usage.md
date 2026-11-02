@@ -866,7 +866,8 @@ swim wait [--timeout D]                                  # block until idle and 
     the question as `swim run` would ask it, and the lane's row turns
     yellow. `y` approves and `n` declines the highlighted question, or the
     oldest; a decision takes its number (`n` leaves it unanswered). The
-    newest question is highlighted as it comes, with the terminal's bell.
+    newest question is highlighted as it comes (and, with `notify`, the
+    terminal shows a notification).
     Enter on it follows that lane's output first. Several batches can wait
     at once; each is listed. The approval is recorded as at the prompt, by
     you. Without the screen (`--no-tui`, not a terminal) and with
@@ -1091,6 +1092,7 @@ defaults:
   approvals: prompt                      # prompt | flags (never ask)
   interrupt: graceful                    # graceful | immediate
   signing_key: ~/.ssh/id_ed25519.pub     # signs the chain and approvals (a .pub: via ssh-agent)
+  notify: true                           # notifications and a tab progress bar (below)
 repos:
   /path/to/your-repo:                    # overrides defaults and the repo's swim.yml
     max_parallel: 8
@@ -1102,6 +1104,16 @@ repos:
 There is no lane count to configure: swim shows the lanes in use (a lane
 script that isn't a stub, a current log, or a running lane). `swim new N`
 starts one, and `swim archive N` (with a stub or no script) drops it.
+
+**Notifications** (`notify: true`, or `swim config notify true`): `swim run`
+and `swim watch` tell your terminal what's happening while you look
+elsewhere, with the escape sequences Ghostty (and other terminals) show
+natively: a desktop notification (OSC 777) when a lane waits on you (`swim
+1 needs you: approval of DEPLOY`) and when a run or a batch ends (`swim: #12
+passed`), and a progress bar on the tab (OSC 9;4): the lanes of a run, or a
+swimmer's batches until its queue is empty, red once one failed and paused
+while a question waits. They go only to a terminal, never in CI, and a
+terminal that doesn't know them ignores them. Off by default.
 
 `swim config KEY VALUE` sets a value and keeps the file's comments. A
 committed `swim.yml` takes the same keys as a `repos:` entry, and it's how a

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strconv"
@@ -179,8 +178,11 @@ type watchAsk struct {
 type watchAsks struct {
 	mu    sync.Mutex
 	list  []*watchAsk
-	added int       // questions ever added: the screen selects each new one
-	bell  io.Writer // rung for each new question (nil: silent)
+	added int // questions ever added: the screen selects each new one
+	// onAsk, if set, is told of each new question: the terminal's
+	// notification (watchNotes.asked), seen even while enter follows some
+	// output or the terminal is in another window.
+	onAsk func(watchAsk)
 	// changed, if set, is called when a question comes or goes (tests
 	// wait on it).
 	changed func()
@@ -234,20 +236,19 @@ func (a *watchAsks) serve(e *queue.Entry, conn net.Conn) {
 		switch m.Op {
 		case "ask":
 			id := m.ID
-			a.mu.Lock()
-			a.list = append(a.list, &watchAsk{key: key, seq: e.Seq, batch: e.ID, msg: m, since: time.Now(),
+			q := &watchAsk{key: key, seq: e.Seq, batch: e.ID, msg: m, since: time.Now(),
 				reply: func(r askMsg) {
 					r.ID = id
 					wmu.Lock()
 					enc.Encode(r)
 					wmu.Unlock()
-				}})
+				}}
+			a.mu.Lock()
+			a.list = append(a.list, q)
 			a.added++
 			a.mu.Unlock()
-			// The bell, heard even while enter follows some output: the
-			// question is first on the screen when it comes back.
-			if a.bell != nil {
-				fmt.Fprint(a.bell, "\a")
+			if a.onAsk != nil {
+				a.onAsk(*q)
 			}
 			a.notify()
 		case "cancel":
