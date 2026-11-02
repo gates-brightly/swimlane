@@ -270,6 +270,13 @@ and read.
 
 ### Changed
 
+- **A lane's clock stops while it waits for you.** While a round waits for
+  an approval or a decision, its running time in `swim run` and `swim
+  watch` holds still, and its recorded duration (`duration_s`, "took" in
+  `swim watch`) leaves the wait out. `status.yml` gains `paused_s` (the
+  time spent waiting) and `paused_at` (while a wait is under way). The
+  log's `END` keeps the time end to end, so `swim status --rebuild` counts
+  the wait.
 - **`swim watch` lane rows are tighter.** They start with the lane's number
   (`1`, not `swim 1`), and how long a finished round took is a column
   beside how long ago it finished, not at the end of the row.

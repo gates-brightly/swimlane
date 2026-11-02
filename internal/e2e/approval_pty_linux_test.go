@@ -2,7 +2,9 @@ package e2e
 
 import (
 	"fmt"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -44,6 +46,46 @@ func TestPromptInTUI(t *testing.T) {
 	contains(t, "agent1.log", r.log(1), "APPROVED  drop table orders - 2026-10-12 (approved at the prompt by ", "PASS  dropped")
 	if got := tr.termiosNow(); got != tr.before {
 		t.Errorf("terminal not restored")
+	}
+}
+
+// A lane's clock stops while it waits for an answer: status.yml says it
+// is paused while it asks (swim watch's timer reads that), and the round's
+// duration leaves the wait out: with the wait, it is the END line's time
+// end to end.
+func TestPromptStopsTheClock(t *testing.T) {
+	r := newSerialRepo(t, "")
+	approvalLanes(r)
+	tr := r.startTUI(nil, "all")
+	tr.waitFor("▶ swim 1 needs approval")
+	if l := r.status().Get(1); l == nil || l.PausedAt == "" {
+		t.Fatalf("lane 1 asks, but its clock runs: %+v", l)
+	}
+	// Leave it asking until the run's clock (the title's) shows 0:02: a
+	// wait long enough that a duration counting it couldn't pass below.
+	tr.waitScreen("the run's clock at 0:02", func(s string) bool {
+		first, _, _ := strings.Cut(s, "\n")
+		return strings.Contains(first, " 0:02")
+	})
+	tr.send("\r")
+	tr.waitFor("Y/N [N]")
+	tr.send("y")
+	tr.waitFor("run finished · q to close")
+	tr.send("q")
+	if code, _ := tr.wait(); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	l := r.status().Get(1)
+	if l == nil || l.PausedAt != "" || l.PausedS == nil || *l.PausedS <= 0 || l.DurationS == nil {
+		t.Fatalf("lane 1's wait wasn't counted: %+v", l)
+	}
+	m := regexp.MustCompile(`== END PASS .* exit=0  ([0-9.]+)s `).FindStringSubmatch(r.log(1))
+	if m == nil {
+		t.Fatalf("no END line:\n%s", r.log(1))
+	}
+	wall, _ := strconv.ParseFloat(m[1], 64)
+	if got := *l.DurationS + *l.PausedS; math.Abs(got-wall) > 0.11 { // each is rounded to 0.1s
+		t.Errorf("duration_s %.2f + paused_s %.2f = %.2f, but the round took %.1fs end to end", *l.DurationS, *l.PausedS, got, wall)
 	}
 }
 

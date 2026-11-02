@@ -348,11 +348,11 @@ func transition(a, b LaneView) string {
 	case Elsewhere:
 		return "running in another swim: " + b.Round
 	case Passed:
-		return "PASS (" + Elapsed(b.Finished.Sub(b.Started)) + ")"
+		return "PASS (" + Elapsed(b.Ran(b.Finished)) + ")"
 	case Failed:
-		return fmt.Sprintf("FAIL (exit %d, %s)", b.Exit, Elapsed(b.Finished.Sub(b.Started)))
+		return fmt.Sprintf("FAIL (exit %d, %s)", b.Exit, Elapsed(b.Ran(b.Finished)))
 	case Interrupted:
-		return "INTERRUPTED (" + Elapsed(b.Finished.Sub(b.Started)) + ")"
+		return "INTERRUPTED (" + Elapsed(b.Ran(b.Finished)) + ")"
 	case Skipped:
 		return "SKIP (" + b.Reason + ")"
 	}

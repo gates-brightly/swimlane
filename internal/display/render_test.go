@@ -279,3 +279,21 @@ func TestTookAndAgo(t *testing.T) {
 		}
 	}
 }
+
+// A lane's clock stops while it waits for the operator, in the panel too.
+func TestRanLeavesOutWaits(t *testing.T) {
+	t0 := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	v := LaneView{State: Running, Started: t0}
+	v.Pause(true, t0.Add(10*time.Second))
+	if got := v.Ran(t0.Add(time.Minute)); got != 10*time.Second {
+		t.Fatalf("asking: %v", got)
+	}
+	v.Pause(false, t0.Add(40*time.Second))
+	if got := v.Ran(t0.Add(time.Minute)); got != 30*time.Second {
+		t.Fatalf("answered: %v", got)
+	}
+	v.Finished = t0.Add(90 * time.Second)
+	if got := v.Ran(t0.Add(time.Hour)); got != time.Minute {
+		t.Fatalf("finished: %v", got)
+	}
+}

@@ -46,7 +46,11 @@ type LaneView struct {
 	LockWait  string // while Locked, e.g. "orders-table: swim 4"
 	Stopping  string // while Running after a stop request: the step it is finishing
 	Approval  string // while Running and waiting for the operator to approve a guarded step
-	Message   string // while Running: the round's status message (swim msg), "migrating billing (7/25)"
+	// Paused is how long the round has waited for the operator; PausedAt,
+	// when the wait under way began (zero when none). Its clock stops then.
+	Paused   time.Duration
+	PausedAt time.Time
+	Message  string // while Running: the round's status message (swim msg), "migrating billing (7/25)"
 	// Pre is the operator's answer, given ahead of time in the live view,
 	// to the lane's guards: "approved", "declined" or "". KnownGuards are
 	// the guards swim knows the lane has; UnknownGuards counts those named
@@ -57,6 +61,31 @@ type LaneView struct {
 	Started       time.Time
 	Finished      time.Time
 	Dry           bool // a guard of this round ran as a dry run: [DRY]
+}
+
+// Ran is how long the round has run by now (or ran, once finished): from
+// Started to Finished, less its waits for the operator.
+func (v LaneView) Ran(now time.Time) time.Duration {
+	end := now
+	if !v.Finished.IsZero() {
+		end = v.Finished
+	}
+	d := end.Sub(v.Started) - v.Paused
+	if !v.PausedAt.IsZero() && end.After(v.PausedAt) {
+		d -= end.Sub(v.PausedAt)
+	}
+	return max(d, 0)
+}
+
+// Pause stops the round's clock at now, or (pause false) starts it again.
+func (v *LaneView) Pause(pause bool, now time.Time) {
+	switch {
+	case pause && v.PausedAt.IsZero():
+		v.PausedAt = now
+	case !pause && !v.PausedAt.IsZero():
+		v.Paused += now.Sub(v.PausedAt)
+		v.PausedAt = time.Time{}
+	}
 }
 
 // Active reports whether the lane is still queued, waiting or running.
@@ -170,17 +199,17 @@ func laneStateText(v LaneView, now time.Time) (string, string) {
 			return fmt.Sprintf("%s awaiting approval: %s", thr, v.Approval), ui.Yellow
 		}
 		if v.Stopping != "" {
-			return fmt.Sprintf("%s stopping %s (%s)", thr, v.Stopping, Elapsed(now.Sub(v.Started))), ui.Yellow
+			return fmt.Sprintf("%s stopping %s (%s)", thr, v.Stopping, Elapsed(v.Ran(now))), ui.Yellow
 		}
-		return thr + " running " + Elapsed(now.Sub(v.Started)), ui.Cyan
+		return thr + " running " + Elapsed(v.Ran(now)), ui.Cyan
 	case Elsewhere:
-		return thr + " running elsewhere " + Elapsed(now.Sub(v.Started)), ui.Blue
+		return thr + " running elsewhere " + Elapsed(v.Ran(now)), ui.Blue
 	case Passed:
-		return "PASS " + Elapsed(v.Finished.Sub(v.Started)), ui.Green
+		return "PASS " + Elapsed(v.Ran(now)), ui.Green
 	case Failed:
-		return fmt.Sprintf("FAIL exit %d %s", v.Exit, Elapsed(v.Finished.Sub(v.Started))), ui.Red
+		return fmt.Sprintf("FAIL exit %d %s", v.Exit, Elapsed(v.Ran(now))), ui.Red
 	case Interrupted:
-		return "INTERRUPTED " + Elapsed(v.Finished.Sub(v.Started)), ui.Red
+		return "INTERRUPTED " + Elapsed(v.Ran(now)), ui.Red
 	case Skipped:
 		if v.Reason != "" {
 			return "SKIP (" + v.Reason + ")", ui.Yellow

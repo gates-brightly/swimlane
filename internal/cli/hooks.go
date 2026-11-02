@@ -612,7 +612,12 @@ func cmdFinish(args []string) error {
 		if l.StartedAt == nil && r.StartedAt != "" {
 			l.StartedAt = status.Str(r.StartedAt)
 		}
-		l.DurationS = status.Float(float64(dur.Round(100*time.Millisecond)) / float64(time.Second))
+		// The round's clock stopped while it waited for the operator (an
+		// approval, a decision): its duration leaves those waits out. The
+		// log's END keeps the time it took end to end.
+		l.Resume(now)
+		ran := max(dur-l.Paused(now), 0)
+		l.DurationS = status.Float(float64(ran.Round(100*time.Millisecond)) / float64(time.Second))
 		l.ExitCode = status.Int(code)
 		l.Reason = reason
 		l.Pass, l.Fail, l.Skip, l.Drift, l.Kept = r.Pass, r.Fail, r.Skip, r.Drift, r.Kept

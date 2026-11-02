@@ -457,8 +457,9 @@ func (w *watchView) batchDry(e *queue.Entry, st *status.File) bool {
 }
 
 // laneTimer is a lane row's time: how long it has been running (or
-// waiting) in this round, "1m5s", or how long ago its round finished,
-// "3h ago". A pending lane (a new job not run yet) shows none.
+// waiting) in this round, "1m5s", less its waits for the operator (the
+// clock stops while it asks), or how long ago its round finished, "3h
+// ago". A pending lane (a new job not run yet) shows none.
 func laneTimer(l *status.Lane, state string, now time.Time) string {
 	if l == nil || state == "pending" || state == "idle" {
 		return ""
@@ -466,7 +467,7 @@ func laneTimer(l *status.Lane, state string, now time.Time) string {
 	switch l.State {
 	case status.Running, status.Waiting, status.Queued, status.Locked:
 		if t, ok := statusTime(l.StartedAt); ok {
-			return display.Took(now.Sub(t))
+			return display.Took(max(now.Sub(t)-l.Paused(now), 0))
 		}
 		return ""
 	}

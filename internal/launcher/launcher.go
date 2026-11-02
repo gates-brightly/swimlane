@@ -371,8 +371,7 @@ func Run(o Options) (int, error) {
 				if !prompt {
 					return approval.Response{Why: "-y answers guards, not decisions, and nobody here can be asked"}
 				}
-				disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
-				defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+				defer awaitOperator(o, disp, req)()
 				notifyAsk(o, req)
 				c := disp.Choose(req.Lane, approval.DecisionQuestion(req), len(req.Choices), cancel)
 				return approval.Response{Approved: c > 0, Choice: c, By: operator()}
@@ -393,8 +392,7 @@ func Run(o Options) (int, error) {
 				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (-y)", At: now()})
 				return approval.Response{Approved: true, By: or(o.ApprovedBy, operator()), Auto: true, Via: or(o.ApprovedVia, "swim run -y")}
 			}
-			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
-			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+			defer awaitOperator(o, disp, req)()
 			notifyAsk(o, req)
 			yes := disp.Ask(req.Lane, approval.Question(req), cancel)
 			return approval.Response{Approved: yes, By: operator()}
@@ -407,8 +405,7 @@ func Run(o Options) (int, error) {
 				return auto(req, cancel) // -y approves it
 			}
 			disp.Message(fmt.Sprintf("%swaiting for an answer in swim watch: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
-			disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc })
-			defer disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = "" })
+			defer awaitOperator(o, disp, req)()
 			return o.Ask(req, cancel)
 		}
 	}
@@ -703,6 +700,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	launchedTS := launched.UTC().Format(time.RFC3339)
 	disp.Set(n, func(v *display.LaneView) {
 		v.State, v.WaitingOn, v.Started, v.Round, v.Job = display.Running, nil, launched, info.Round, info.Job
+		v.Paused, v.PausedAt = 0, time.Time{}
 	})
 	if err := cmd.Start(); err != nil {
 		disp.Line(n, "swim: cannot start lane script: "+err.Error())
@@ -1173,8 +1171,14 @@ func watchOtherRuns(o Options, selected map[int]bool, disp *display.Display) fun
 					}
 					elsewhere[n] = true
 					round, job := l.Round, l.Job
+					// Its clock stops while it waits for the operator, as ours do.
+					paused, pausedAt := l.Paused(time.Time{}), time.Time{}
+					if t, err := time.Parse(time.RFC3339Nano, l.PausedAt); err == nil {
+						pausedAt = t
+					}
 					disp.Set(n, func(v *display.LaneView) {
 						v.State, v.Started, v.Round, v.Job = display.Elsewhere, started, round, job
+						v.Paused, v.PausedAt = paused, pausedAt
 					})
 				case elsewhere[n]:
 					// It ended over there: show how.
@@ -1363,4 +1367,19 @@ func stagedInfo(o Options, n int) lane.Info {
 	}
 	info, _ := lane.ReadScript(o.Root, n)
 	return info
+}
+
+// awaitOperator marks lane req.Lane as waiting for the operator to answer
+// req, and stops its clock: in this run's view, and in status.yml for
+// swim watch and the round's recorded duration. The func it returns ends
+// the wait and starts the clock again.
+func awaitOperator(o Options, disp *display.Display, req approval.Request) func() {
+	now := time.Now()
+	disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = req.Desc; v.Pause(true, now) })
+	status.Update(o.Root, req.Lane, o.Cfg.Lanes, func(l *status.Lane) { l.Pause(now) })
+	return func() {
+		now := time.Now()
+		disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = ""; v.Pause(false, now) })
+		status.Update(o.Root, req.Lane, o.Cfg.Lanes, func(l *status.Lane) { l.Resume(now) })
+	}
 }

@@ -59,7 +59,12 @@ type Lane struct {
 	Host        string   `yaml:"host,omitempty" json:"host,omitempty"` // the machine PID runs on ("" from an older swim: this one)
 	StartedAt   *string  `yaml:"started_at" json:"started_at"`
 	FinishedAt  *string  `yaml:"finished_at" json:"finished_at"`
-	DurationS   *float64 `yaml:"duration_s" json:"duration_s"`
+	DurationS   *float64 `yaml:"duration_s" json:"duration_s"` // how long the round ran, less PausedS
+	// PausedS is how long the round has waited for the operator (an
+	// approval or a decision): its clock stops then. PausedAt is when the
+	// wait under way began ("" when there is none).
+	PausedS     *float64 `yaml:"paused_s,omitempty" json:"paused_s,omitempty"`
+	PausedAt    string   `yaml:"paused_at,omitempty" json:"paused_at,omitempty"`
 	ExitCode    *int     `yaml:"exit_code" json:"exit_code"`
 	Pass        int      `yaml:"pass" json:"pass"`
 	Fail        int      `yaml:"fail" json:"fail"`
@@ -292,6 +297,7 @@ func (l *Lane) ResetRun() {
 	l.Reason = ""
 	l.PID, l.Host = 0, ""
 	l.StartedAt, l.FinishedAt, l.DurationS, l.ExitCode = nil, nil, nil, nil
+	l.PausedS, l.PausedAt = nil, ""
 	l.Pass, l.Fail, l.Skip, l.Drift = 0, 0, 0, 0
 	l.CurrentStep = ""
 	l.Stage = ""
@@ -303,6 +309,35 @@ func (l *Lane) ResetRun() {
 	l.DryRun = nil
 	l.Decided = nil
 	l.Kept = 0
+}
+
+// Pause stops the round's clock at at: it waits for the operator.
+func (l *Lane) Pause(at time.Time) {
+	if l.PausedAt == "" {
+		l.PausedAt = at.UTC().Format(time.RFC3339Nano)
+	}
+}
+
+// Resume starts the round's clock again at at, adding the wait to PausedS.
+func (l *Lane) Resume(at time.Time) {
+	if l.PausedAt == "" {
+		return
+	}
+	l.PausedS = Float(l.Paused(at).Seconds())
+	l.PausedAt = ""
+}
+
+// Paused is how long the round has waited for the operator by now, the
+// wait under way included.
+func (l *Lane) Paused(now time.Time) time.Duration {
+	var d time.Duration
+	if l.PausedS != nil && *l.PausedS > 0 {
+		d = time.Duration(*l.PausedS * float64(time.Second))
+	}
+	if t, err := time.Parse(time.RFC3339Nano, l.PausedAt); err == nil && now.After(t) {
+		d += now.Sub(t)
+	}
+	return d
 }
 
 // Dry records that guard flag's step ran as a dry run (each flag once).

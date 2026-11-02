@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -164,5 +165,28 @@ func TestUnprompted(t *testing.T) {
 	l.ResetRun()
 	if l.UnpromptedText() != "" || l.AutoVia != "" {
 		t.Errorf("a new round keeps the last one's: %+v", l)
+	}
+}
+
+// A round's clock stops while it waits for the operator: Paused counts
+// every wait, the one under way too, and ResetRun clears them.
+func TestPauseAndResume(t *testing.T) {
+	t0 := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	l := &Lane{}
+	l.Pause(t0)
+	l.Pause(t0.Add(5 * time.Second)) // already paused: the first wait's start holds
+	if got := l.Paused(t0.Add(10 * time.Second)); got != 10*time.Second {
+		t.Fatalf("under way: %v", got)
+	}
+	l.Resume(t0.Add(12 * time.Second))
+	l.Resume(t0.Add(20 * time.Second)) // not paused: nothing to add
+	l.Pause(t0.Add(30 * time.Second))
+	l.Resume(t0.Add(31500 * time.Millisecond))
+	if got := l.Paused(t0.Add(time.Hour)); got != 13500*time.Millisecond || l.PausedAt != "" {
+		t.Fatalf("after two waits: %v (paused_at %q)", got, l.PausedAt)
+	}
+	l.ResetRun()
+	if l.PausedS != nil || l.PausedAt != "" {
+		t.Fatalf("ResetRun kept %v %q", l.PausedS, l.PausedAt)
 	}
 }

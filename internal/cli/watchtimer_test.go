@@ -11,6 +11,7 @@ import (
 func TestWatchTimers(t *testing.T) {
 	now := time.Date(2026, 10, 15, 18, 0, 0, 0, time.UTC)
 	at := func(d time.Duration) *string { s := now.Add(-d).Format(time.RFC3339); return &s }
+	secs := func(f float64) *float64 { return &f }
 	for _, c := range []struct {
 		name  string
 		lane  *status.Lane
@@ -19,6 +20,9 @@ func TestWatchTimers(t *testing.T) {
 	}{
 		{"running", &status.Lane{State: status.Running, StartedAt: at(65 * time.Second)}, "running", "1m5s"},
 		{"waiting", &status.Lane{State: status.Waiting, StartedAt: at(10 * time.Second)}, "waiting", "10s"},
+		// The clock stops while the round waits for the operator: 2m run,
+		// 30s answered before, 20s of a question still open.
+		{"asking", &status.Lane{State: status.Running, StartedAt: at(2 * time.Minute), PausedS: secs(30), PausedAt: now.Add(-20 * time.Second).Format(time.RFC3339Nano)}, "running", "1m10s"},
 		{"passed", &status.Lane{State: "passed", StartedAt: at(4 * time.Hour), FinishedAt: at(3 * time.Hour)}, "passed", "3h ago"},
 		{"pending", &status.Lane{State: "passed", FinishedAt: at(time.Hour)}, "pending", ""},
 		{"never ran", nil, "idle", ""},
