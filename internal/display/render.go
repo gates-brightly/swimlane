@@ -64,16 +64,16 @@ func (v LaneView) Active() bool {
 	return v.State == Starting || v.State == Queued || v.State == Locked || v.State == Waiting || v.State == Running
 }
 
-var throbberFrames = []string{"|", "/", "-", `\`}
+var throbberFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// Throbber returns the spinner frame for now (one frame per 100ms).
+// ThrobberStep is how long each throbber frame shows (a turn in 800ms): a
+// screen with a throbber redraws this often, so no frame is skipped.
+const ThrobberStep = 80 * time.Millisecond
+
+// Throbber returns the spinner frame for now.
 func Throbber(now time.Time) string {
-	return throbberFrames[(now.UnixMilli()/100)%int64(len(throbberFrames))]
+	return throbberFrames[(now.UnixMilli()/ThrobberStep.Milliseconds())%int64(len(throbberFrames))]
 }
-
-// ThrobberFrame is the spinner's frame i: a screen that redraws less often
-// than every 100ms steps it once per redraw, so it still turns.
-func ThrobberFrame(i int) string { return throbberFrames[i%len(throbberFrames)] }
 
 // Elapsed formats a duration as m:ss or h:mm:ss.
 func Elapsed(d time.Duration) string {

@@ -72,7 +72,7 @@ func TestRenderPanelContent(t *testing.T) {
 		t.Fatalf("got %d lines", len(lines))
 	}
 	all := strings.Join(lines, "\n")
-	for _, want := range []string{"swim 1", "swim 7", "Cut over service X to Terraform 3f2a9c1e", "- waiting on swim 1 ", "waiting on swim 2, 3", "- running 1:12", "PASS 1:00", "FAIL exit 2 0:30", "SKIP (swim 6 failed)", "idle"} {
+	for _, want := range []string{"swim 1", "swim 7", "Cut over service X to Terraform 3f2a9c1e", "⠹ waiting on swim 1 ", "waiting on swim 2, 3", "⠹ running 1:12", "PASS 1:00", "FAIL exit 2 0:30", "SKIP (swim 6 failed)", "idle"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("panel missing %q:\n%s", want, all)
 		}
@@ -100,10 +100,10 @@ func TestRenderPanelTruncatesToWidth(t *testing.T) {
 func TestThrobberCycles(t *testing.T) {
 	base := time.UnixMilli(0)
 	seen := map[string]bool{}
-	for i := 0; i < 4; i++ {
-		seen[Throbber(base.Add(time.Duration(i)*100*time.Millisecond))] = true
+	for i := 0; i < len(throbberFrames); i++ {
+		seen[Throbber(base.Add(time.Duration(i)*ThrobberStep))] = true
 	}
-	if len(seen) != 4 {
+	if len(seen) != len(throbberFrames) {
 		t.Fatalf("frames = %v", seen)
 	}
 }

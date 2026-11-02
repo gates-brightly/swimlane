@@ -50,6 +50,9 @@ type Picker struct {
 	// Pick's refresh (which then only paces until): live output as quick
 	// as swim run's view, without checking until as often.
 	Redraw time.Duration
+	// Spin, if set, redraws this often without reloading, so a SpinMark in
+	// the rows turns as swim run's throbber does whatever the reload pace.
+	Spin time.Duration
 	// HintsBelow keeps the hints on the bottom line (while there's no
 	// note), leaving the title line to the title and Status.
 	HintsBelow bool
@@ -57,6 +60,10 @@ type Picker struct {
 	// every redraw: a live summary, as swim run's title carries its clock.
 	Status func() string
 }
+
+// SpinMark in a row's text is drawn as the throbber's frame at the time of
+// the draw: one column, as the frame is.
+const SpinMark = "\uE000"
 
 // Action keys that aren't printable: put these runes in Pick's keys to
 // have Enter (on an item) and Esc (any time) end it.
@@ -110,6 +117,12 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 		defer t.Stop()
 		redraw = t.C
 	}
+	var spin <-chan time.Time // nil: SpinMark turns only on a reload
+	if p.Spin > 0 {
+		t := time.NewTicker(p.Spin)
+		defer t.Stop()
+		spin = t.C
+	}
 	rows := load()
 	last := ""
 	draw := func() {
@@ -123,6 +136,7 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 			t = p.Title()
 		}
 		frame := "\x1b[H" + strings.Join(p.render(t, hints, rows, cols, h), "\x1b[K\r\n") + "\x1b[K\x1b[J"
+		frame = strings.ReplaceAll(frame, SpinMark, Throbber(time.Now()))
 		if frame == last {
 			return // nothing changed: the terminal keeps what it shows
 		}
@@ -141,6 +155,8 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 		case <-redraw:
 			rows = load()
 			draw()
+		case <-spin:
+			draw() // only the throbber (and clocks) moved
 		case k := <-keyCh:
 			if res, ok := p.key(k, rows, keys); ok {
 				return res, nil

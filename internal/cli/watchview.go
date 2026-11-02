@@ -45,9 +45,7 @@ type watchView struct {
 	seen *watchSeen // the scripts the operator last acted on: (~) on lanes changed since
 	// asked is how many questions the screen has shown.
 	asked int
-	// frame counts redraws: the spinner steps once per redraw. started
-	// is when the screen came up, for the title's clock.
-	frame   int
+	// started is when the screen came up, for the title's clock.
 	started time.Time
 }
 
@@ -65,6 +63,8 @@ func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
 	// The running output redraws as quickly as swim run's view shows it;
 	// the worker's check for a batch to start stays at once a second.
 	w.picker.Redraw = watchRedraw
+	// The spinners turn as swim run's do, between reloads too.
+	w.picker.Spin = display.ThrobberStep
 	// As swim run's title: short, with a live summary and clock at the
 	// right; the keys keep the bottom line.
 	w.started = time.Now()
@@ -184,7 +184,6 @@ func (b *rowText) row(id, color string) display.PickRow {
 // lane, the queue. Each lane's row is drawn as swim run's panel draws it:
 // its name in its colour, a spinner and its state in the state's colour.
 func (w *watchView) rows() []display.PickRow {
-	w.frame++
 	rows, waiting := w.askRows()
 	rows = append(rows, display.PickRow{Text: "Jobs", Rule: true})
 	st, _ := status.Load(w.root)
@@ -199,7 +198,7 @@ func (w *watchView) rows() []display.PickRow {
 		anyJob = anyJob || info.Pending() && info.Job != ""
 		anyChanged = anyChanged || w.seen.isChanged(n)
 	}
-	spin := display.ThrobberFrame(w.frame)
+	spin := display.SpinMark // the picker draws the throbber's frame here
 	for _, n := range lanes {
 		var l *status.Lane
 		if st != nil {

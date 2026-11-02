@@ -178,8 +178,9 @@ func (d *Display) startInteractive() bool {
 				if it.model.pollLog() {
 					it.dirty = true
 				}
-				// The throbber and clocks move every 100ms.
-				if it.dirty || now.Sub(last) >= 100*time.Millisecond {
+				// The throbber turns (and the clocks move) every
+				// ThrobberStep; ticking faster, this catches every frame.
+				if it.dirty || Throbber(now) != Throbber(last) {
 					d.drawFrameLocked()
 					last = now
 				}

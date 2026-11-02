@@ -506,6 +506,11 @@ and read.
 
 ### Fixed
 
+- **Smoother spinners.** `swim run` and `swim watch` spin a braille throbber
+  (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, a frame every 80ms) instead of `| / - \`. `swim watch`'s
+  stepped once per reload (every 200ms, and again on the worker's
+  once-a-second check), so it turned slowly and unevenly; it now turns on
+  its own clock, and the screen still reloads every 200ms.
 - **`swim watch` looks like `swim run`.** Lanes are drawn as `swim run`'s
   panel draws them: each name in its lane's colour, a spinner and the
   state in its colour, the running step. Batches show their state and

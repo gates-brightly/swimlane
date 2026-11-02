@@ -151,7 +151,7 @@ func (d *Display) Start() {
 	go func() {
 		defer d.wg.Done()
 		defer signal.Stop(winch)
-		tick := time.NewTicker(100 * time.Millisecond)
+		tick := time.NewTicker(ThrobberStep)
 		defer tick.Stop()
 		for {
 			select {
