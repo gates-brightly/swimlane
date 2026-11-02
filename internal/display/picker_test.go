@@ -3,6 +3,8 @@ package display
 import (
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
 func pickRows() []PickRow {
@@ -150,5 +152,50 @@ func TestPickerTail(t *testing.T) {
 	p.Tail = func(int) []PickRow { return nil }
 	if out := p.render("t", "", pickRows(), 40, 10); strings.Contains(strings.Join(out, ""), "out") || len(out) != 10 {
 		t.Errorf("empty tail:\n%s", strings.Join(out, "\n"))
+	}
+}
+
+// Swim watch's look, as swim run's: section rules, rows in several colours
+// (cut to the width without counting their codes), the title's live status
+// at the right and the keys on the bottom line until a note takes it.
+func TestPickerStyled(t *testing.T) {
+	p := &Picker{Color: true, Sel: "lane:2", HintsBelow: true, Status: func() string { return "2 running · 0:42" }}
+	styled := "\x1b[36m\x1b[1mswim 1\x1b[0m  \x1b[36mrunning\x1b[0m " + strings.Repeat("x", 80)
+	rows := []PickRow{
+		{Text: "Jobs", Rule: true, Right: "o hides"},
+		{ID: "lane:1", Text: "swim 1  running " + strings.Repeat("x", 80), Styled: styled},
+		{ID: "lane:2", Text: "swim 2  passed", Styled: "\x1b[35mswim 2\x1b[0m  passed"},
+	}
+	out := p.render("swim watch · repo", "↑ ↓ pick  r run", rows, 40, 8)
+	plain := func(s string) string {
+		var b strings.Builder
+		for i := 0; i < len(s); {
+			if s[i] == 0x1b {
+				i = ui.EscEnd(s, i)
+				continue
+			}
+			b.WriteByte(s[i])
+			i++
+		}
+		return b.String()
+	}
+	if got := plain(out[0]); !strings.HasPrefix(got, "swim watch · repo") || !strings.HasSuffix(got, "2 running · 0:42") {
+		t.Errorf("title: %q", got)
+	}
+	if got := plain(out[2]); !strings.HasPrefix(got, "── Jobs ─") || !strings.HasSuffix(got, " o hides ──") || len([]rune(got)) != 40 {
+		t.Errorf("rule: %q (%d wide)", got, len([]rune(got)))
+	}
+	if !strings.Contains(out[3], "\x1b[36m\x1b[1mswim 1") || textWidth(out[3]) != 40 || !strings.HasSuffix(plain(out[3]), "…") {
+		t.Errorf("styled row: %q (%d wide)", out[3], textWidth(out[3]))
+	}
+	if !strings.HasPrefix(out[4], "\x1b[7m▸ swim 2  passed") {
+		t.Errorf("the selected row is drawn plain, reversed: %q", out[4])
+	}
+	if got := plain(out[7]); got != "↑ ↓ pick  r run" {
+		t.Errorf("bottom line: %q", got)
+	}
+	p.Note = "queued swim 2"
+	if got := plain(p.render("t", "↑ ↓ pick", rows, 40, 8)[7]); got != "queued swim 2" {
+		t.Errorf("a note takes the bottom line: %q", got)
 	}
 }

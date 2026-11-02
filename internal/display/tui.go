@@ -582,8 +582,11 @@ func overlay(body, text []string, w int, p ui.Painter) []string {
 	return out
 }
 
-// colorLogLine colours a log line the way swim log does, lightly: round and
+// ColorLogLine colours a log line the way swim log does, lightly: round and
 // END banners, stage headers and result kinds. The text is unchanged.
+// swim watch's running output uses it too.
+func ColorLogLine(l string, color bool) string { return colorLogLine(l, color) }
+
 func colorLogLine(l string, color bool) string {
 	if !color {
 		return l

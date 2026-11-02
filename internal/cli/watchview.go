@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,8 +15,10 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
+	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -42,6 +45,10 @@ type watchView struct {
 	seen *watchSeen // the scripts the operator last acted on: (~) on lanes changed since
 	// asked is how many questions the screen has shown.
 	asked int
+	// frame counts redraws: the spinner steps once per redraw. started
+	// is when the screen came up, for the title's clock.
+	frame   int
+	started time.Time
 }
 
 // watchRedraw is how often the watch screen reloads and redraws.
@@ -58,13 +65,20 @@ func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
 	// The running output redraws as quickly as swim run's view shows it;
 	// the worker's check for a batch to start stays at once a second.
 	w.picker.Redraw = watchRedraw
-	w.picker.Title = func() string { return "swim watch · " + w.root }
+	// As swim run's title: short, with a live summary and clock at the
+	// right; the keys keep the bottom line.
+	w.started = time.Now()
+	w.picker.Title = func() string { return "swim watch · " + filepath.Base(w.root) }
+	w.picker.Status = w.status
+	w.picker.HintsBelow = true
 	return w
 }
 
-// stream is the screen's live part, under the queue: the latest lines of
-// every running lane's log (its running step's output included), at most
-// n in all, shared between the lanes. o hides it.
+// stream is the screen's live part, under the queue, drawn as swim run's
+// view draws its output: a rule, then the latest lines of every running
+// lane's log (its running step included), each with the lane's [N] in its
+// colour and coloured as swim log colours it. The lanes share the n lines
+// evenly. o hides it.
 func (w *watchView) stream(n int) []display.PickRow {
 	if w.noStream {
 		return nil
@@ -80,42 +94,62 @@ func (w *watchView) stream(n int) []display.PickRow {
 			}
 		}
 	}
-	if len(running) == 0 || n < 2 {
+	if len(running) == 0 || n < 3 {
 		return nil
 	}
-	rows := []display.PickRow{{Text: "Running"}}
-	n--
-	// Each lane gets a header and an even share of the lines (2 at least);
-	// those that don't fit are counted.
-	shown := min(len(running), n/3)
-	if shown == 0 {
-		shown = 1
+	n--                             // the rule
+	shown := min(len(running), n/2) // 2 lines each at least
+	right := "o hides"
+	if more := len(running) - shown; more > 0 {
+		right = fmt.Sprintf("+%d more (l on a lane) · o hides", more)
 	}
-	per := n/shown - 1
+	rows := []display.PickRow{{Text: "Running", Rule: true, Right: right}}
 	for i, l := range running[:shown] {
-		head := fmt.Sprintf("swim %d", l)
-		if st != nil {
-			if s := st.Get(l); s != nil && s.CurrentStep != "" {
-				head += " · " + s.CurrentStep
-			}
-		}
-		rows = append(rows, display.PickRow{Text: head, Color: ui.LaneColor(l) + ui.Bold})
-		lines := logLines(w.root, []int{l}, false)
+		per := n / shown
 		if i == shown-1 {
 			per = n - (len(rows) - 1) // the last lane takes what's left
 		}
+		lines := streamLines(w.root, l)
 		if len(lines) > per {
 			lines = lines[len(lines)-per:]
 		}
+		plainTag, tag := fmt.Sprintf("[%d] ", l), display.Prefix(l, true)
 		for _, line := range lines {
-			rows = append(rows, display.PickRow{Text: "  " + line, Color: ui.Dim})
+			line = ui.Safe(line) // a lane's output
+			rows = append(rows, display.PickRow{Text: plainTag + compactIndent(line),
+				Styled: tag + compactIndent(display.ColorLogLine(line, true))})
 		}
-	}
-	if more := len(running) - shown; more > 0 {
-		rows[0].Text = fmt.Sprintf("Running  (+%d more: l on a lane shows its log)", more)
 	}
 	return rows
 }
+
+// streamLines are lane n's lines for the stream: its current round's log,
+// then its running step as swim log shows it, without the steps' command
+// lines.
+func streamLines(root string, n int) []string {
+	var out []string
+	for _, path := range laneLogFiles(root, n) {
+		if rounds, _ := splitRounds(path); len(rounds) > 0 {
+			out = append(out, rounds[len(rounds)-1]...)
+		}
+		if sp, ok := step.ReadSpool(path); ok {
+			out = append(out, sp.Block("")...)
+		}
+	}
+	// The commands are on the lane's own view (enter): here the room goes
+	// to what they print.
+	keep := out[:0]
+	for _, l := range out {
+		if !strings.HasPrefix(l, logparse.CmdPrefix) {
+			keep = append(keep, l)
+		}
+	}
+	return keep
+}
+
+// compactIndent narrows a log line's step indent (8 columns) to 2: the
+// stream has less room than swim log.
+func compactIndent(s string) string { return strings.Replace(s, logparse.Indent, "  ", 1) }
 
 // watchViewAllowed reports whether swim watch can show its screen: a
 // terminal on both ends, and the interactive view allowed (not CI,
@@ -124,31 +158,56 @@ func watchViewAllowed(noTUI bool) bool {
 	return !noTUI && ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) && display.TUIAllowed(os.Getenv)
 }
 
-// rows is the screen's list: the questions waiting for the operator, the
-// worker's activity, every lane, the queue.
+// rowText builds a row twice: plain (the selection bar, no colour) and
+// coloured (display.PickRow.Styled), segment by segment.
+type rowText struct {
+	plain, styled strings.Builder
+	p             ui.Painter
+}
+
+func (b *rowText) add(color, s string) *rowText {
+	b.plain.WriteString(s)
+	b.styled.WriteString(b.p.Paint(color, s))
+	return b
+}
+
+func (b *rowText) row(id, color string) display.PickRow {
+	return display.PickRow{ID: id, Text: b.plain.String(), Styled: b.styled.String(), Color: color}
+}
+
+// rows is the screen's list: the questions waiting for the operator, every
+// lane, the queue. Each lane's row is drawn as swim run's panel draws it:
+// its name in its colour, a spinner and its state in the state's colour.
 func (w *watchView) rows() []display.PickRow {
+	w.frame++
 	rows, waiting := w.askRows()
-	if w.activity != "" {
-		rows = append(rows, display.PickRow{Text: w.activity, Color: ui.Dim}, display.PickRow{Text: " ", Color: ui.Dim})
-	}
-	rows = append(rows, display.PickRow{Text: "Jobs"})
+	rows = append(rows, display.PickRow{Text: "Jobs", Rule: true})
 	st, _ := status.Load(w.root)
 	now := time.Now()
 	lanes := lane.Associated(w.root) // the lanes in use now (a long-lived view)
 	w.seen.refresh(lanes)
+	infos := map[int]lane.Info{}
+	anyJob, anyChanged := false, false
+	for _, n := range lanes {
+		info, _ := lane.ReadScript(w.root, n)
+		infos[n] = info
+		anyJob = anyJob || info.Pending() && info.Job != ""
+		anyChanged = anyChanged || w.seen.isChanged(n)
+	}
+	spin := display.ThrobberFrame(w.frame)
 	for _, n := range lanes {
 		var l *status.Lane
 		if st != nil {
 			l = st.Get(n)
 		}
-		info, _ := lane.ReadScript(w.root, n)
+		info := infos[n]
 		state, color := laneRowState(l, info)
-		round := "(no pending round)"
-		job := "        "
+		round, roundColor := "(no pending round)", ui.Dim
+		job := ""
 		if info.Pending() {
-			round = info.Round
+			round, roundColor = info.Round, ""
 			if info.Job != "" {
-				job = fmt.Sprintf("%-8s", lane.ShortJob(info.Job))
+				job = lane.ShortJob(info.Job)
 			}
 		} else {
 			color = ui.Dim
@@ -156,25 +215,41 @@ func (w *watchView) rows() []display.PickRow {
 		if l != nil && len(l.DryRun) > 0 && state != "pending" {
 			round = display.DryMark + " " + round
 		}
-		mark := "    "
-		if w.seen.isChanged(n) {
-			mark = " (~)" // changed since the operator last acted on it
+		b := &rowText{p: ui.Painter{On: true}}
+		b.add(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %-2d", n))
+		switch {
+		case w.seen.isChanged(n):
+			b.add(ui.Yellow+ui.Bold, " (~)") // changed since the operator last acted on it
+		case anyChanged:
+			b.add("", "    ") // the column lines up with a marked lane's
 		}
-		text := fmt.Sprintf("swim %-2d%s  %-11s %-8s %s  %s", n, mark, state, laneTimer(l, state, now), job, round)
+		lead := "  "
+		switch state {
+		case status.Running, status.Waiting, status.Queued, status.Locked:
+			lead = spin + " "
+		}
+		b.add("", "  ").add(ui.StateColor(state), fmt.Sprintf("%s%-10s", lead, state))
+		b.add(ui.Dim, fmt.Sprintf(" %-7s", laneTimer(l, state, now)))
+		if anyJob {
+			b.add(ui.Dim, fmt.Sprintf(" %-8s", job))
+		}
+		b.add("", " ").add(roundColor, round)
 		if d := laneRowDetail(l, state); d != "" {
-			text += "  · " + d
+			b.add(ui.Dim, "  · "+d)
+		} else if l != nil && state == status.Running && l.CurrentStep != "" {
+			b.add(ui.Dim, "  · "+ui.Safe(l.CurrentStep))
 		}
 		if q, ok := waiting[n]; ok {
-			text += "  · " + askVerb(q) + " " + approval.Clean(q.msg.Flag)
+			b.add(ui.Yellow+ui.Bold, "  · "+askVerb(q)+" "+approval.Clean(q.msg.Flag))
 			color = ui.Yellow + ui.Bold
 		}
 		if w.isStaged(n) {
-			text += "  [+ next batch]"
+			b.add(ui.Green+ui.Bold, "  [+ next batch]")
 			color = ui.Green
 		}
-		rows = append(rows, display.PickRow{ID: "lane:" + strconv.Itoa(n), Text: text, Color: color})
+		rows = append(rows, b.row("lane:"+strconv.Itoa(n), color))
 	}
-	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim}, display.PickRow{Text: "Queue"})
+	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim}, display.PickRow{Text: "Queue", Rule: true})
 	if len(w.staged) > 0 {
 		rows = append(rows, display.PickRow{ID: "submit", Color: ui.Green + ui.Bold,
 			Text: fmt.Sprintf("▶ submit swim %s as one batch  (enter here, or s; x clears)", joinNums(w.staged))})
@@ -184,14 +259,18 @@ func (w *watchView) rows() []display.PickRow {
 		rows = append(rows, display.PickRow{Text: "  " + err.Error(), Color: ui.Red})
 	}
 	if len(entries) == 0 && err == nil {
-		rows = append(rows, display.PickRow{Text: "  (empty: q on jobs, then s, queues them as one batch)", Color: ui.Dim})
+		rows = append(rows, display.PickRow{Text: "(empty: q on jobs, then s, queues them as one batch)", Color: ui.Dim})
 	}
 	queue.SortWaiting(entries)
+	anyRunning := false
 	for _, e := range entries {
-		var ns []string
-		for _, l := range e.Lanes {
-			ns = append(ns, strconv.Itoa(l.Lane))
-		}
+		anyRunning = anyRunning || e.State == queue.Running
+	}
+	if !anyRunning && w.activity != "" && len(entries) > 0 {
+		// Why nothing has started: the lanes it waits for, a free slot.
+		rows = append(rows, display.PickRow{Text: w.activity, Color: ui.Dim})
+	}
+	for _, e := range entries {
 		state, when := e.State, ""
 		if e.State == queue.Queued && !e.Due(now) { // scheduled by an older swim
 			state, when = "scheduled", "  not before "+e.NotBefore
@@ -200,22 +279,65 @@ func (w *watchView) rows() []display.PickRow {
 		if w.batchDry(e, st) {
 			dry = display.DryMark + " "
 		}
-		text := fmt.Sprintf("#%-4d %-9s %-8s %sswim %s  by %s%s", e.Seq, state, queueTimer(e, state, now), dry, strings.Join(ns, ","), e.By, when)
-		if e.Note != "" {
-			text += "  " + e.Note
-		}
-		color := ""
+		color, stateColor := "", ui.StateColor(state)
+		lead := "  "
 		switch state {
 		case "scheduled", "held":
-			color = ui.Dim
+			color, stateColor = ui.Dim, ui.Dim
 		case queue.Running:
-			color = ui.Cyan
+			lead = spin + " "
 		case queue.Orphaned:
-			color = ui.Red
+			color, stateColor = ui.Red, ui.Red
+		case queue.Queued:
+			stateColor = ui.Yellow
 		}
-		rows = append(rows, display.PickRow{ID: "queue:" + e.ID, Text: text, Color: color})
+		b := &rowText{p: ui.Painter{On: true}}
+		b.add(ui.Bold, fmt.Sprintf("#%-4d", e.Seq)).add(stateColor, fmt.Sprintf(" %s%-9s", lead, state))
+		b.add(ui.Dim, fmt.Sprintf(" %-7s ", queueTimer(e, state, now))).add(ui.Yellow, dry).add("", "swim ")
+		for i, l := range e.Lanes {
+			if i > 0 {
+				b.add("", ",")
+			}
+			b.add(ui.LaneColor(l.Lane)+ui.Bold, strconv.Itoa(l.Lane))
+		}
+		b.add(ui.Dim, "  by "+e.By+when)
+		if e.Note != "" {
+			b.add("", "  "+ui.Safe(e.Note))
+		}
+		rows = append(rows, b.row("queue:"+e.ID, color))
 	}
 	return rows
+}
+
+// status is the title line's right side: what the swimmer has in hand, as
+// swim run's title carries its clock.
+func (w *watchView) status() string {
+	entries, _ := queue.List(w.root, false)
+	running, waiting := 0, 0
+	for _, e := range entries {
+		switch e.State {
+		case queue.Running:
+			running++
+		case queue.Queued:
+			waiting++
+		}
+	}
+	var parts []string
+	if running > 0 {
+		parts = append(parts, fmt.Sprintf("%d running", running))
+	}
+	if waiting > 0 {
+		parts = append(parts, fmt.Sprintf("%d queued", waiting))
+	}
+	if w.asks != nil {
+		if n, _ := w.asks.pending(); len(n) > 0 {
+			parts = append(parts, fmt.Sprintf("%d waiting for you", len(n)))
+		}
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "idle")
+	}
+	return strings.Join(parts, " · ") + " · " + display.Elapsed(time.Since(w.started))
 }
 
 // askRows are the questions waiting for the operator, oldest first, each

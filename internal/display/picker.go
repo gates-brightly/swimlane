@@ -18,6 +18,14 @@ type PickRow struct {
 	ID    string
 	Text  string
 	Color string // ui colour for the row ("" for none)
+	// Styled, if set, is Text already coloured (SGR codes only), shown
+	// instead of Text when colour is on and the row isn't selected: a row
+	// in several colours, as swim run's panel draws a lane.
+	Styled string
+	// Rule draws the row as a section rule, as swim run's view divides its
+	// panel from the output: "── Text ───── Right ──", dim.
+	Rule  bool
+	Right string // a Rule's note at its right end
 }
 
 // Picker is a full-screen list the keyboard moves through: swim watch's
@@ -41,6 +49,12 @@ type Picker struct {
 	// Pick's refresh (which then only paces until): live output as quick
 	// as swim run's view, without checking until as often.
 	Redraw time.Duration
+	// HintsBelow keeps the hints on the bottom line (while there's no
+	// note), leaving the title line to the title and Status.
+	HintsBelow bool
+	// Status, if set, is shown dim at the right of the title line on
+	// every redraw: a live summary, as swim run's title carries its clock.
+	Status func() string
 }
 
 // Action keys that aren't printable: put these runes in Pick's keys to
@@ -96,6 +110,7 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 		redraw = t.C
 	}
 	rows := load()
+	last := ""
 	draw := func() {
 		cols, h, err := term.GetSize(int(p.Out.Fd()))
 		if err != nil {
@@ -106,7 +121,12 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 		if p.Title != nil {
 			t = p.Title()
 		}
-		fmt.Fprint(p.Out, "\x1b[H"+strings.Join(p.render(t, hints, rows, cols, h), "\x1b[K\r\n")+"\x1b[K\x1b[J")
+		frame := "\x1b[H" + strings.Join(p.render(t, hints, rows, cols, h), "\x1b[K\r\n") + "\x1b[K\x1b[J"
+		if frame == last {
+			return // nothing changed: the terminal keeps what it shows
+		}
+		last = frame
+		fmt.Fprint(p.Out, frame)
 	}
 	draw()
 	for {
@@ -206,17 +226,23 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 	if h < 5 {
 		h = 5
 	}
-	head := title
-	bottom := pt.Paint(ui.Yellow, truncate(p.Note, cols))
-	if gap := cols - utf8.RuneCountInString(title) - utf8.RuneCountInString(hints); gap >= 2 {
-		head = pt.Paint(ui.Bold, title) + strings.Repeat(" ", gap) + pt.Paint(ui.Dim, hints)
-	} else {
-		// No room beside the title: the hints go to the bottom line
-		// while there's no note.
-		head = pt.Paint(ui.Bold, truncate(title, cols))
-		if p.Note == "" {
-			bottom = pt.Paint(ui.Dim, truncate(hints, cols))
+	right := hints
+	if p.HintsBelow {
+		right = ""
+		if p.Status != nil {
+			right = p.Status()
 		}
+	}
+	head := pt.Paint(ui.Bold, truncate(title, cols))
+	gap := cols - utf8.RuneCountInString(title) - utf8.RuneCountInString(right)
+	if gap >= 2 {
+		head = pt.Paint(ui.Bold, title) + strings.Repeat(" ", gap) + pt.Paint(ui.Dim, right)
+	}
+	bottom := pt.Paint(ui.Yellow, truncate(p.Note, cols))
+	if p.Note == "" && (p.HintsBelow || gap < 2) {
+		// The hints' place is the bottom line, or there's no room beside
+		// the title: there, while there's no note.
+		bottom = pt.Paint(ui.Dim, truncate(hints, cols))
 	}
 	out := []string{head, ""}
 	body := h - 3 // title, blank, note
@@ -240,18 +266,22 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 	}
 	for i := first; i < len(rows) && len(out) < body+2; i++ {
 		r := rows[i]
+		sel := r.ID != "" && r.ID == p.Sel
 		mark := "  "
-		if r.ID != "" && r.ID == p.Sel {
+		if sel {
 			mark = "▸ "
 		}
-		text := truncate(mark+r.Text, cols)
 		switch {
-		case r.ID != "" && r.ID == p.Sel && p.Color:
-			out = append(out, "\x1b[7m"+pad(text, cols)+ui.Reset)
+		case r.Rule:
+			out = append(out, p.rule(r, cols))
+		case sel && p.Color:
+			out = append(out, "\x1b[7m"+pad(truncate(mark+r.Text, cols), cols)+ui.Reset)
+		case r.Styled != "" && p.Color:
+			out = append(out, mark+truncateANSI(r.Styled, cols-2)+ui.Reset)
 		case r.ID == "" && r.Color == "":
-			out = append(out, pt.Paint(ui.Bold, text))
+			out = append(out, pt.Paint(ui.Bold, truncate(mark+r.Text, cols)))
 		default:
-			out = append(out, pt.Paint(r.Color, text))
+			out = append(out, pt.Paint(r.Color, truncate(mark+r.Text, cols)))
 		}
 	}
 	for len(out) < body+2 {
@@ -260,13 +290,66 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 	if len(tail) > 0 {
 		out = append(out, "")
 		for _, r := range tail {
-			text := truncate("  "+r.Text, cols)
-			if r.Color == "" {
-				out = append(out, text)
-			} else {
-				out = append(out, pt.Paint(r.Color, text))
+			switch {
+			case r.Rule:
+				out = append(out, p.rule(r, cols))
+			case r.Styled != "" && p.Color:
+				out = append(out, "  "+truncateANSI(r.Styled, cols-2)+ui.Reset)
+			case r.Color == "":
+				out = append(out, truncate("  "+r.Text, cols))
+			default:
+				out = append(out, pt.Paint(r.Color, truncate("  "+r.Text, cols)))
 			}
 		}
 	}
 	return append(out, bottom)
+}
+
+// rule is a section rule cols wide: "── Jobs ───────── 2 running ──", the
+// line dim, the label bold.
+func (p *Picker) rule(r PickRow, cols int) string {
+	pt := ui.Painter{On: p.Color}
+	label := truncate(r.Text, max(cols-6, 1))
+	right := ""
+	if r.Right != "" {
+		right = " " + r.Right + " ──"
+	}
+	fill := cols - 3 - utf8.RuneCountInString(label) - 1 - utf8.RuneCountInString(right)
+	if fill < 2 {
+		right, fill = "", cols-3-utf8.RuneCountInString(label)-1
+	}
+	if fill < 0 {
+		fill = 0
+	}
+	return pt.Paint(ui.Dim, "── ") + pt.Paint(ui.Bold, label) + " " + pt.Paint(ui.Dim, strings.Repeat("─", fill)+right)
+}
+
+// truncateANSI cuts s, coloured with SGR codes, to w visible columns,
+// marking the cut with "…"; the codes take no room.
+func truncateANSI(s string, w int) string {
+	if textWidth(s) <= w {
+		return s
+	}
+	if w <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	n := 0
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b {
+			j := ui.EscEnd(s, i)
+			b.WriteString(s[i:j])
+			i = j
+			continue
+		}
+		if n == w-1 {
+			b.WriteString("…")
+			break
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		b.WriteString(s[i : i+size])
+		i += size
+		n++
+	}
+	return b.String()
 }

@@ -476,6 +476,15 @@ and read.
 
 ### Fixed
 
+- **`swim watch` looks like `swim run`.** Lanes are drawn as `swim run`'s
+  panel draws them: each name in its lane's colour, a spinner and the
+  state in its colour, the running step. Batches show their state and
+  lanes in colour. Sections are divided by rules, the title carries a live
+  summary (`2 running · 1 queued · 3:12`) instead of the repo's full path,
+  and the keys keep the bottom line. The running output is one stream, as
+  `swim run`'s: `[N]` in the lane's colour on each line, coloured as `swim
+  log` colours it, without the commands (Enter on the lane shows them).
+  The swimmer's line of batch ids is gone; the queue says the same.
 - **`swim watch` keeps up with the running output.** Its screen reloaded
   once a second, so lanes' output under the queue (and a new question from
   a batch) lagged behind `swim run`'s live view. It now redraws every

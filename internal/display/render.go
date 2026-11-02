@@ -71,6 +71,10 @@ func Throbber(now time.Time) string {
 	return throbberFrames[(now.UnixMilli()/100)%int64(len(throbberFrames))]
 }
 
+// ThrobberFrame is the spinner's frame i: a screen that redraws less often
+// than every 100ms steps it once per redraw, so it still turns.
+func ThrobberFrame(i int) string { return throbberFrames[i%len(throbberFrames)] }
+
 // Elapsed formats a duration as m:ss or h:mm:ss.
 func Elapsed(d time.Duration) string {
 	if d < 0 {

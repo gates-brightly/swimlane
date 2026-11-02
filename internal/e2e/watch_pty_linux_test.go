@@ -1,8 +1,10 @@
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -69,7 +71,7 @@ func TestWatchBatchOutputView(t *testing.T) {
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
-	tr.waitFor("(#1, swim 1,2)")
+	tr.waitQueueRow(1, "running", "swim 1,2")
 	tr.send("\x1b[B\x1b[B")
 	tr.waitFor("▸ #1")
 	tr.send("\r")
@@ -100,7 +102,7 @@ gate "the check" false`
 	r.script(2, "fails after release", body)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
-	tr.waitFor("(#1, swim 1,2)")
+	tr.waitQueueRow(1, "running", "swim 1,2")
 	tr.send("\x1b[B\x1b[B")
 	tr.waitFor("▸ #1")
 	tr.send("\r")
@@ -126,7 +128,7 @@ func TestWatchLaneOutputView(t *testing.T) {
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
-	tr.waitFor("(#1, swim 1,2)")
+	tr.waitQueueRow(1, "running", "swim 1,2")
 	tr.send("\r")
 	tr.waitFor("swim watch · swim 1 · #1")
 	tr.waitFor("lane1-hello")
@@ -177,7 +179,7 @@ func TestWatchLogsKey(t *testing.T) {
 	wait := startRun(t, r, "run", "2", "--plain")
 	waitFor(t, func() bool { return laneOf(r, 2).CurrentStep == "hold" })
 	r.mustSwim("queue", "add", "2")
-	tr.waitFor("#1    queued")
+	tr.waitQueueRow(1, "queued")
 	tr.send("\x1b[B")
 	tr.waitFor("▸ #1")
 	tr.send("l")
@@ -230,7 +232,7 @@ func TestWatchStreamsRunningOutput(t *testing.T) {
 	r.mustSwim("queue", "add", "2")
 	tr := r.startTUI(nil, "watch")
 	s := tr.waitScreen("both lanes streaming", func(s string) bool {
-		return strings.Contains(s, "\n  Running") && strings.Contains(s, "swim 1 · hold") && strings.Contains(s, "swim 2 · hold") &&
+		return strings.Contains(s, "── Running") && strings.Contains(s, "[1]   RUNNING  hold") && strings.Contains(s, "[2]   RUNNING  hold") &&
 			strings.Contains(s, "lane1-hello") && strings.Contains(s, "lane2-hello")
 	})
 	contains(t, "the main screen", s, "Jobs", "Queue", "o stream")
@@ -242,7 +244,7 @@ func TestWatchStreamsRunningOutput(t *testing.T) {
 	tr.waitFor("lane1-hello")
 	release()
 	tr.waitScreen("both done, nothing streaming", func(s string) bool {
-		return strings.Contains(s, "#2 passed") && !strings.Contains(s, "\n  Running") && !strings.Contains(s, "lane1-hello")
+		return strings.Contains(s, "#2 passed") && !strings.Contains(s, "── Running") && !strings.Contains(s, "lane1-hello")
 	})
 	tr.send("\x03")
 	if code, _ := tr.wait(); code != 0 {
@@ -291,4 +293,26 @@ func TestWatchRowsSayHowLongRoundsTook(t *testing.T) {
 	contains(t, "watch screen", s, "passed", "failed", " ago")
 	tr.send("\x03") // Ctrl-C quits
 	tr.wait()
+}
+
+// waitQueueRow waits for batch #seq's row in the queue to be in state,
+// and to say each of more ("swim 1,2"), whatever the columns between.
+func (tr *tuiRun) waitQueueRow(seq int, state string, more ...string) string {
+	tr.t.Helper()
+	return tr.waitScreen(fmt.Sprintf("#%d %s", seq, state), func(s string) bool {
+		for _, line := range strings.Split(s, "\n") {
+			f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "▸"))
+			if len(f) == 0 || f[0] != fmt.Sprintf("#%d", seq) || !slices.Contains(f, state) {
+				continue
+			}
+			ok := true
+			for _, m := range more {
+				ok = ok && strings.Contains(line, m)
+			}
+			if ok {
+				return true
+			}
+		}
+		return false
+	})
 }

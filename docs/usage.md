@@ -831,7 +831,10 @@ swim wait [--timeout D]                                  # block until idle and 
     that lane's log. `l` shows the highlighted lane's logs (every round in
     its current log), or a batch's lanes' logs, whether or not they run.
     Under the queue, the screen streams the latest output of every running
-    lane; `o` hides it.
+    lane, as `swim run`'s view does: each line under its lane's `[N]`, in
+    the lane's colour; `o` hides it. Lanes are drawn as `swim run`'s
+    panel draws them (the lane's colour, a spinner and its state), and the
+    title says how many batches run and wait.
   - **Several swimmers** can share one queue. Claiming an entry is atomic,
     and swimmers pick batches under a lock, so two never take the same
     lanes. A batch renews a heartbeat in its entry (`queue_lease`, default
