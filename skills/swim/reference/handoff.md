@@ -1,8 +1,9 @@
 # Handing a round to the operator
 
-The operator reads your message, not your reasoning. Give them a command
-they can paste, what it will do, and what each approval allows. Then stop
-and wait for them to run it.
+The operator reads your message, not your reasoning. Hand a ready round
+over by queueing it (the default: don't ask first), or, when no swimmer is
+up or they ask for one, with a command they can paste. Either way, say what
+it will do and what each approval allows, then go on to your next task.
 
 How they approve is theirs. The command you give runs the round and nothing
 more: no guard or decision variables, no approval flags, and no advice on
@@ -31,7 +32,28 @@ The guard's own description (what swim shows the operator) says the same in one
 line; this block is the detail behind it. Mark anything that can't be
 undone, or touches production or shared state, with ⚠.
 
-## Run it now
+## Queue it (the default)
+
+A swimmer (`swim watch`) runs a queued batch once its lanes are free, and
+its screen asks the operator for every guard nothing else approved, when
+the lane gets there (in yellow, naming the lane). That question is their
+checkpoint, so queue a ready round without asking whether to, guards and
+all; you never approve. A guard they decline, or one with no swimmer up
+that asks (`swim queue add` says which), is a dry run. Say what you queued
+and flag the risk, with the **What you're approving** block above for
+anything guarded:
+
+````markdown
+Queued #41: swim 22 and 23.
+
+⚠ swim 22, `L22_ALLOW_ZG_SMOKE`: applies tf/smoke under zg in sbx1, reads it
+  back, then destroys it (the zg-tf-smoke-* role, security group and
+  parameter). The swimmer asks for it; declined, it dry-runs.
+````
+
+If a script changes after it's queued, that lane is skipped, not run.
+
+## A command to run (no swimmer up, or asked for)
 
 ````markdown
 Ready to run: **swim 2** (cut over orders-api), after swim 1 passes.
@@ -57,24 +79,6 @@ swim run 3f2a9c1e 7b4d4e2a        # pinned to the jobs I wrote: a rewritten lane
 
 When it's done, say so (or don't: I'll read `swim report` next time).
 ````
-
-## Queue it for unattended running
-
-A swimmer (`swim watch`) runs a queued batch once its lanes are free. Any
-guard the operator hasn't approved is a dry run, unless they approve it on
-`swim watch`'s screen when the lane gets there (it asks, in yellow, naming
-the lane). When you queue it (you may; you never approve), say what you
-queued and flag the risk:
-
-````markdown
-Queued #41: swim 22 and 23.
-
-⚠ swim 22, `L22_ALLOW_ZG_SMOKE`: applies tf/smoke under zg in sbx1, reads it
-  back, then destroys it (the zg-tf-smoke-* role, security group and
-  parameter). Unapproved, it dry-runs.
-````
-
-If a script changes after it's queued, that lane is skipped, not run.
 
 ## Anything you need from the operator first
 

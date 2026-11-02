@@ -584,14 +584,15 @@ swim queue show|rm|requeue ID
                             batch's result (0 passed, 1 otherwise)
             --timeout D     give up waiting after D (implies --wait): exit 1,
                             saying what is still busy; the batch stays queued
-            A queued batch never asks at a terminal: guards it doesn't
-            approve are dry runs, unless swim watch's screen is up (it asks
-            there, naming the lane), and a guard flag in the swimmer's own
-            environment does not count (the queue entry alone says what
-            may change).
-            A batch that approves none of its lanes' guards (and no
-            standing approval of yours covers) warns on stderr, naming
-            each lane and the guards that will dry-run.
+            Guards a batch doesn't approve are asked on swim watch's screen
+            (on a terminal, running batches side by side), naming the lane;
+            with no such swimmer they are dry runs. A guard flag in the
+            swimmer's own environment does not count (the queue entry alone
+            says what may change).
+            add says which: with a swimmer up whose screen asks, it names
+            it; with none, a batch that approves none of its lanes' guards
+            (and no standing approval of yours covers) warns on stderr,
+            naming each lane and the guards that will dry-run.
             Swimmers say which swim they are (.swim/workers/): with swimmers
             up and none able to run the batch (its swim reads other
             syntaxes than .swim.lock pins, or older than a lane's script),
@@ -1198,8 +1199,8 @@ swim claim N --break "<reason>"
   How to install the Claude skill for swim: where it lives (skills/swim in
   swim's repo, at this binary's release tag, else main) and the line to
   paste into a Claude Code session to install it. The skill teaches Claude
-  to read this guide, write and lint lanes, hand runs and approvals to the
-  operator, and read results back. Works anywhere; it needs no repo.
+  to read this guide, write and lint lanes, queue them for the operator to
+  approve, and read results back. Works anywhere; it needs no repo.
 `,
 	"version": `swim version
 

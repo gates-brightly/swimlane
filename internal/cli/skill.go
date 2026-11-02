@@ -28,7 +28,7 @@ func skillURL() string {
 
 func skillText(url string) string {
 	return `The swim skill teaches Claude its side of swim: read swim guide,
-write and lint lane scripts, hand runs and approvals to the operator, and read
+write and lint lane scripts, queue them for the operator to approve, and read
 the results back. It never runs or approves anything itself.
 
   ` + url + `

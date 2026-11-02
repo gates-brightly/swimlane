@@ -49,7 +49,7 @@ func TestQueueAndWatchOnce(t *testing.T) {
 		t.Fatalf("typo approval accepted: %d %s", code, out)
 	}
 	out := r.mustSwim("queue", "add", "--approve", "ALLOW_DROP", "--note", "batch one")
-	contains(t, "queue add", out, "queued q-", "(#1): 2 lanes", "approvals: ALLOW_DROP", "not approved (dry runs; a queued batch never asks): ALLOW_OTHER")
+	contains(t, "queue add", out, "queued q-", "(#1): 2 lanes", "approvals: ALLOW_DROP", "not approved (dry runs unless approved; no swimmer up asks for them): ALLOW_OTHER")
 	contains(t, "queue list", r.mustSwim("queue"), "#1", "queued", "swim 1,2", "approve ALLOW_DROP", "batch one")
 
 	// The watcher's own ALLOW_OTHER=1 must not approve the batch: only the
@@ -507,11 +507,21 @@ func TestQueueWarnsUnapprovedGuards(t *testing.T) {
 		return out.String(), errb.String()
 	}
 	_, stderr := queueErr("1", "2")
-	contains(t, "warning", stderr, "approves no guards, so these dry-run", "swim 1  ALLOW_DROP", "swim 2  ALLOW_OTHER",
-		"to approve: swim queue add 1 --approve ALLOW_DROP", "-y (every guard)")
+	contains(t, "warning", stderr, "approves no guards and no swimmer up asks for them, so these dry-run", "swim 1  ALLOW_DROP", "swim 2  ALLOW_OTHER",
+		"the operator decides: swim watch on a terminal asks on its screen", "swim queue add 1 --approve ALLOW_DROP", "-y (every guard)")
 	for _, args := range [][]string{{"1", "--approve", "ALLOW_DROP"}, {"1", "2", "-y"}} {
 		if _, stderr := queueErr(args...); strings.Contains(stderr, "approves no guards") {
 			t.Errorf("queue add %v warned:\n%s", args, stderr)
 		}
 	}
+	// With a swimmer up whose screen asks, the guards will be asked, not
+	// dry-run: add says so, and doesn't warn.
+	a := queue.Announce(r.root, "zach", 0)
+	defer a.Stop()
+	a.SetAsks(true)
+	out, stderr := queueErr("1", "2")
+	if strings.Contains(stderr, "approves no guards") {
+		t.Errorf("warned with an asking swimmer up:\n%s", stderr)
+	}
+	contains(t, "queue add", out, "not approved yet: ALLOW_DROP, ALLOW_OTHER (the operator is asked on the screen of swim watch on ")
 }

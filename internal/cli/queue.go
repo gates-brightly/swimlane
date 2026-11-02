@@ -161,13 +161,18 @@ func queueAdd(args []string) error {
 	case len(e.Approve) > 0:
 		fmt.Println("  approvals: " + strings.Join(e.Approve, ", "))
 	}
+	asker := askingSwimmer(root)
 	if len(unapproved) > 0 {
-		fmt.Println("  not approved (dry runs; a queued batch never asks): " + strings.Join(unapproved, ", "))
+		if asker != nil {
+			fmt.Println("  not approved yet: " + strings.Join(unapproved, ", ") + " (the operator is asked on the screen of " + asker.Name() + ")")
+		} else {
+			fmt.Println("  not approved (dry runs unless approved; no swimmer up asks for them): " + strings.Join(unapproved, ", "))
+		}
 	}
 	if len(e.Decide) > 0 {
 		fmt.Println("  decisions: " + strings.Join(e.Decide, ", "))
 	}
-	if !e.ApproveAll && len(e.Approve) == 0 {
+	if !e.ApproveAll && len(e.Approve) == 0 && asker == nil {
 		warnUnapproved(root, e, signedAs)
 	}
 	if why := launcher.Busy(root, cfg); why != "" {
@@ -224,12 +229,24 @@ type queueOpts struct {
 	keyPath  string
 }
 
+// askingSwimmer is a swimmer up now whose screen asks the operator for the
+// batches' guards and decisions (nil for none): with one, a batch's
+// unapproved guards are asked, not dry runs.
+func askingSwimmer(root string) *queue.Presence {
+	for _, p := range queue.LiveWorkers(root) {
+		if p.Asks {
+			return p
+		}
+	}
+	return nil
+}
+
 // warnUnapproved says, on stderr, which lanes of a batch that approves
-// nothing will dry-run their guards: a round that "passes" while changing
-// nothing is easy to miss in the listing above. A guard a standing
-// approval of the queuer's covers isn't counted. It warns rather than
-// refuses: queuing a guarded round unapproved, for the operator to
-// decide, is how a planner hands one over.
+// nothing will dry-run their guards when no swimmer up asks for them: a
+// round that "passes" while changing nothing is easy to miss in the
+// listing above. A guard a standing approval of the queuer's covers isn't
+// counted. It warns rather than refuses: queuing a guarded round
+// unapproved, for the operator to decide, is how a planner hands one over.
 func warnUnapproved(root string, e *queue.Entry, signedAs string) {
 	var standing []*sigfile.File
 	if signedAs != "" {
@@ -267,8 +284,8 @@ func warnUnapproved(root string, e *queue.Entry, signedAs string) {
 	if len(lines) == 0 {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "swim queue: warning: #%d approves no guards, so these dry-run when it runs (a queued batch never asks):\n%s\n", e.Seq, strings.Join(lines, "\n"))
-	fmt.Fprintf(os.Stderr, "  to approve: swim queue add %s --approve %s (each flag), -y (every guard), or swim approve %s (a signed approval)\n", first, firstFlag, first)
+	fmt.Fprintf(os.Stderr, "swim queue: warning: #%d approves no guards and no swimmer up asks for them, so these dry-run if it runs before one does:\n%s\n", e.Seq, strings.Join(lines, "\n"))
+	fmt.Fprintf(os.Stderr, "  the operator decides: swim watch on a terminal asks on its screen; or swim queue add %s --approve %s (each flag), -y (every guard), or swim approve %s (a signed approval)\n", first, firstFlag, first)
 }
 
 // batch is a batch just queued: its entry, the guards its lanes hold, who
@@ -783,6 +800,9 @@ func cmdWatch(args []string) error {
 	defer notes.stop()
 	if !once && watchViewAllowed(noTUI) {
 		view = newWatchView(root, cfg, yes)
+		// Batches side by side ask on the screen (watchask.go): say so, so
+		// swim queue add can tell a batch's guards will be asked.
+		watchPresence.SetAsks(batches > 1)
 		if notes != nil {
 			notes.asks = view.asks
 			view.asks.onAsk = notes.asked

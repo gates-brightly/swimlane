@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -32,6 +33,11 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 			strings.Contains(s, "⚠ swim 2 is blocked: waits for approval of ALLOW_TWO")
 	})
 	contains(t, "the questions", s, "batch #1", "batch #2", "y approve  n decline", "the lane says: change one", "the lane says: change two")
+	// Its presence says it asks, so swim queue add can tell the operator
+	// will be asked rather than the guards dry-run.
+	if ws := queue.LiveWorkers(r.root); len(ws) != 1 || !ws[0].Asks {
+		t.Errorf("the swimmer doesn't say it asks: %+v", ws)
+	}
 	// Under their own bar, in yellow, over the jobs and the queue.
 	if !strings.Contains(s, "── ⚠ Waiting for you (2) ─") || strings.Index(s, "Waiting for you") > strings.Index(s, "── Jobs") {
 		t.Errorf("no section bar over the questions:\n%s", s)

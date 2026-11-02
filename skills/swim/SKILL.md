@@ -85,13 +85,22 @@ swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit}
 `swim stub`, `swim note`. These touch only lane files and logs, and they
 refuse to touch a running lane.
 
-**Queueing you may do**, when the user asks or the round is ready to hand
-over: `swim queue add N ...`, and `swim queue rm` of a batch you queued.
-Queue the lanes and nothing else: a guard the operator doesn't approve
-dry-runs. Before you queue,
-read `swim lint` and `swim status` for the lanes and `swim queue` for the
-workers, and **flag every item with meaningful risk**, each on its own
-line marked ⚠, saying what it does and what will happen to it:
+**Queueing is how you hand over a ready round.** Queue it (`swim queue
+add N ...`) as soon as it's ready, guards and all, without asking the user
+first; `swim queue rm` a batch you queued if you need it back. Queueing
+isn't the risky act and isn't yours to hold back: it runs nothing by
+itself and approves nothing. The swimmer runs the batch when its lanes
+are free and asks the operator, on its screen, for every guard nothing
+else approved. That question is the operator's checkpoint, and they
+decide there; a guard they decline (or that no one is asked for) is a dry
+run, the safe outcome. So don't ask "shall I queue it?", don't wait for
+the operator to be ready, and don't hold back a round because it has
+guards. Queue the lanes and nothing else. `swim queue add` says what
+happens to its guards: asked on a swimmer's screen, or, with no swimmer
+up that asks, a dry run; in that case tell the user once. Before you
+queue, read `swim lint` and `swim status` for the lanes and `swim queue`
+for the workers, and **flag every item with meaningful risk**, each on
+its own line marked ⚠, saying what it does and what will happen to it:
 
 - a guarded step that changes or destroys something outside the repo
   (apply, delete, migrate, publish, rotate): name the guard and the action;
@@ -146,10 +155,11 @@ lines or command instead. For anything broken, see
    before you ask the operator to run anything: it shows the lane's header,
    where each lane it waits on stands (one that hasn't passed skips it),
    and its guards.
-5. **Dispatch or hand off:** queue the round (section 2), or give the
-   operator the exact `swim run` command, pinned to job ids and with
-   nothing that approves, and a **What you're
-   approving** block: for each guard, the commands it lets run, the
+5. **Dispatch:** queue the round (section 2). That's the default; don't
+   ask first. Only when no swimmer is up, or the user asks for a command
+   to run themselves, give the operator the exact `swim run` command
+   instead, pinned to job ids and with nothing that approves. Either way,
+   give a **What you're approving** block: for each guard, the commands it lets run, the
    target, the scope with the numbers the checks found, whether it can be
    undone, and what happens if they say no (a dry run); for each decision,
    what each choice does ([reference/handoff.md](reference/handoff.md)).
@@ -211,11 +221,12 @@ The rules that keep streams apart:
 - **No swimmer, no progress.** If `swim queue` shows batches waiting and
   nothing running, check that a swimmer (`swim watch`) is up, and tell the
   user once.
-- **A guarded change dispatched without approval is a dry run,** unless
-  the operator approves it on `swim watch`'s screen when the lane gets
-  there (the screen asks, in yellow, naming the lane). Flag it (⚠), keep
-  working, and check later whether the operator approved it.
-  Its batch ends `skipped`, not passed. Never treat a dry run as validated.
+- **A guarded change is dispatched like any other.** The swimmer's screen
+  asks the operator for its guards when the lane gets there (in yellow,
+  naming the lane), so queue it; don't hold it for approval first. Flag it
+  (⚠), keep working, and check later what the operator decided. Declined,
+  or with no swimmer up that asks, it's a dry run: its batch ends
+  `skipped`, not passed. Never treat a dry run as validated.
 
 [reference/streams.md](reference/streams.md) walks through an example and
 shows what to keep in the task list.

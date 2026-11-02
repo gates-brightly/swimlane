@@ -27,6 +27,11 @@ type Presence struct {
 	// Holding are the batches it leaves queued because it can't run them,
 	// each with why.
 	Holding map[string]string `yaml:"holding,omitempty"`
+	// Asks is whether its screen asks the operator for the guards and
+	// decisions of the batches it runs (swim watch on a terminal, running
+	// batches side by side), rather than dry-running what they don't
+	// approve.
+	Asks bool `yaml:"asks,omitempty"`
 
 	path string
 }
@@ -95,6 +100,21 @@ func (a *Announcer) Hold(id, why string) bool {
 		a.write()
 	}
 	return changed
+}
+
+// SetAsks records whether this worker's screen asks the operator for the
+// guards and decisions of the batches it runs.
+func (a *Announcer) SetAsks(on bool) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	changed := a.p.Asks != on
+	a.p.Asks = on
+	a.mu.Unlock()
+	if changed {
+		a.write()
+	}
 }
 
 // Stop ends the heartbeat and removes the presence file.

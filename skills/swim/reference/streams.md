@@ -52,14 +52,14 @@ swim new 23 "users: drop the legacy index"
 swim lint 23
 swim queue add 23                     # → queued #44
 #   ⚠ swim 23, USERS_ALLOW_DROP_INDEX: drops users_legacy_email_idx in prod.
-#     Unapproved, it dry-runs.
-#   task 3: waiting on the operator (#44 will dry-run)
+#     The swimmer's screen asks the operator for it; declined, it dry-runs.
+#   task 3: dispatched #44, the operator decides USERS_ALLOW_DROP_INDEX
 
 # Every task is dispatched or waiting: now block until something new.
 swim report --earmark --wait --name "$SWIM_SESSION"
 #   #42 passed: check its output (PASS only means exit 0), close billing out.
 #   #43 passed: check it, close orders out.
-#   #44 skipped: its change was a dry run (USERS_ALLOW_DROP_INDEX not approved). Not validated yet.
+#   #44 skipped: the operator declined USERS_ALLOW_DROP_INDEX, so its change was a dry run. Not validated yet.
 ```
 
 ## When to look

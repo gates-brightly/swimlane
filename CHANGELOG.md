@@ -270,6 +270,19 @@ and read.
 
 ### Changed
 
+- **Queueing is how a planner hands over a ready round.** `swim queue add`
+  said a batch's unapproved guards would dry-run ("a queued batch never
+  asks") even with `swim watch`'s screen up, which asks for them, and
+  suggested `--approve` or `-y`, which a planner may not use. So Claude
+  held ready rounds back or asked before queueing. A swimmer now says in
+  its presence file (`.swim/workers/`, `asks: true`) when its screen asks;
+  with one up, `queue add` names it ("not approved yet: ... the operator
+  is asked on the screen of swim watch on ...") and doesn't warn. With
+  none, it warns as before, saying no swimmer up asks. The guide's
+  PLANNER WORKFLOW and the swim skill make queueing the default way to
+  hand over a ready round, guards and all, without asking first; a
+  `swim run` command is for when no swimmer is up. Update your installed
+  skill (`swim skill` says where).
 - **A lane's clock stops while it waits for you.** While a round waits for
   an approval or a decision, its running time in `swim run` and `swim
   watch` holds still, and its recorded duration (`duration_s`, "took" in
