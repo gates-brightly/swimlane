@@ -5,5 +5,5 @@
 [33m[1m swim 4  [0m[33m- waiting on swim 2, 3    [0m Remove old stack
 [32m[1m swim 5  [0m[32mPASS 1:00                 [0m Audit
 [91m[1m swim 6  [0m[31mFAIL exit 2 0:30          [0m Deploy
-[36m[1m swim 7  [0m[33mSKIP (swim 6 failed)      [0m Cleanup
+[96m[1m swim 7  [0m[33mSKIP (swim 6 failed)      [0m Cleanup
 [2m────────────────────────────────────────────────────────────────────────────────[0m

@@ -324,6 +324,13 @@ and read.
 
 ### Added
 
+- **More lane colours.** Lanes cycled through six colours, so lane 7 looked
+  like lane 1 as soon as seven ran. Lanes 1-6 keep theirs; after them, a
+  terminal with 256 colours (Ghostty, iTerm, WezTerm, VS Code, a
+  `TERM=*-256color` or `COLORTERM=truecolor` one) gets ten more hues, so
+  sixteen lanes run side by side before one repeats, and any other gets
+  the theme's bright colours (eleven). `SWIM_COLORS=256` or `16` overrides
+  the guess.
 - **Release binaries.** Every release tag pushed to GitHub builds swim for
   Linux and macOS, amd64 and arm64 (static), and publishes them as the
   release: `swim_<os>_<arch>.tar.gz`, `checksums.txt` and `install.sh`,

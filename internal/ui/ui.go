@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/term"
 )
@@ -23,15 +24,82 @@ const (
 	Cyan   = "\x1b[36m"
 )
 
-// laneColors cycles so each lane keeps one colour for its prefix and panel row.
-var laneColors = []string{Cyan, Mag, Blue, Yellow, Green, "\x1b[91m"}
+// Lane colours: each lane keeps one colour for its [N], its panel row and
+// its section headers, cycling when there are more lanes than colours.
+// The first six are the terminal theme's own colours (as swim always used);
+// after them, a terminal with 256 colours gets ten more hues, so sixteen
+// lanes run side by side before one repeats, and any other gets the
+// theme's bright colours (eleven in all).
+var (
+	laneColors16 = []string{Cyan, Mag, Blue, Yellow, Green, "\x1b[91m",
+		"\x1b[96m", "\x1b[95m", "\x1b[94m", "\x1b[93m", "\x1b[92m"}
+	laneColors256 = []string{Cyan, Mag, Blue, Yellow, Green, "\x1b[91m",
+		c256(208), // orange
+		c256(205), // pink
+		c256(112), // lime
+		c256(37),  // teal
+		c256(141), // purple
+		c256(75),  // sky
+		c256(178), // gold
+		c256(209), // salmon
+		c256(177), // violet
+		c256(72),  // sea green
+	}
+)
+
+func c256(n int) string { return "\x1b[38;5;" + strconv.Itoa(n) + "m" }
 
 // LaneColor returns the fixed colour for lane n (1-based).
 func LaneColor(n int) string {
+	return laneColor(n, Colors256())
+}
+
+func laneColor(n int, wide bool) string {
 	if n < 1 {
 		return ""
 	}
-	return laneColors[(n-1)%len(laneColors)]
+	colors := laneColors16
+	if wide {
+		colors = laneColors256
+	}
+	return colors[(n-1)%len(colors)]
+}
+
+var colors256 struct {
+	once sync.Once
+	on   bool
+}
+
+// Colors256 reports whether the terminal shows 256 colours, for the lane
+// palette: SWIM_COLORS=256 or 16 says so; else COLORTERM (truecolor,
+// 24bit), a TERM naming 256color, or a terminal known to (Ghostty, iTerm,
+// WezTerm, VS Code, Apple Terminal). Lanes inherit the same environment, so
+// a lane's own output and the view agree on its colour. Read once.
+func Colors256() bool {
+	colors256.once.Do(func() { colors256.on = detect256(os.Getenv) })
+	return colors256.on
+}
+
+func detect256(getenv func(string) string) bool {
+	switch getenv("SWIM_COLORS") {
+	case "256":
+		return true
+	case "16":
+		return false
+	}
+	switch strings.ToLower(getenv("COLORTERM")) {
+	case "truecolor", "24bit":
+		return true
+	}
+	term := getenv("TERM")
+	if strings.Contains(term, "256color") || strings.Contains(term, "ghostty") || strings.Contains(term, "kitty") {
+		return true
+	}
+	switch getenv("TERM_PROGRAM") {
+	case "ghostty", "iTerm.app", "WezTerm", "vscode", "Apple_Terminal":
+		return true
+	}
+	return false
 }
 
 // Job paints a lane or job id ("1", "1.4", "1.5.9") a part at a time, each

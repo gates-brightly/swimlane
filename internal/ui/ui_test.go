@@ -18,8 +18,58 @@ func TestPainterAndColors(t *testing.T) {
 			t.Errorf("StateColor(%s) = %q, want %q", state, got, want)
 		}
 	}
-	if LaneColor(1) == LaneColor(2) || LaneColor(1) != LaneColor(7) {
-		t.Error("lane colours cycle every six lanes")
+	if LaneColor(1) == LaneColor(2) {
+		t.Error("lanes 1 and 2 share a colour")
+	}
+}
+
+// Ten or more lanes side by side each get their own colour: sixteen with a
+// 256-colour terminal, eleven with 16; the first six are the theme's, as
+// before.
+func TestLaneColors(t *testing.T) {
+	for _, c := range []struct {
+		wide  bool
+		cycle int
+	}{{true, 16}, {false, 11}} {
+		seen := map[string]int{}
+		for n := 1; n <= c.cycle; n++ {
+			col := laneColor(n, c.wide)
+			if prev, ok := seen[col]; ok {
+				t.Errorf("wide=%v: lanes %d and %d share %q", c.wide, prev, n, col)
+			}
+			seen[col] = n
+		}
+		if laneColor(c.cycle+1, c.wide) != laneColor(1, c.wide) {
+			t.Errorf("wide=%v: lane %d should wrap to lane 1's colour", c.wide, c.cycle+1)
+		}
+		for n, want := range []string{Cyan, Mag, Blue, Yellow, Green} {
+			if laneColor(n+1, c.wide) != want {
+				t.Errorf("wide=%v: lane %d changed colour", c.wide, n+1)
+			}
+		}
+	}
+	if laneColor(0, true) != "" {
+		t.Error("lane 0 has no colour")
+	}
+}
+
+func TestDetect256(t *testing.T) {
+	for _, c := range []struct {
+		env  map[string]string
+		want bool
+	}{
+		{map[string]string{}, false},
+		{map[string]string{"TERM": "xterm"}, false},
+		{map[string]string{"TERM": "xterm-256color"}, true},
+		{map[string]string{"TERM": "xterm-ghostty"}, true},
+		{map[string]string{"COLORTERM": "truecolor"}, true},
+		{map[string]string{"TERM_PROGRAM": "ghostty"}, true},
+		{map[string]string{"TERM": "xterm-256color", "SWIM_COLORS": "16"}, false},
+		{map[string]string{"TERM": "dumb", "SWIM_COLORS": "256"}, true},
+	} {
+		if got := detect256(func(k string) string { return c.env[k] }); got != c.want {
+			t.Errorf("%v: %v, want %v", c.env, got, c.want)
+		}
 	}
 }
 

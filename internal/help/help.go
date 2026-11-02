@@ -148,6 +148,9 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
             running steps at once (the second press then kills).
   --plain   no pinned panel, colour or throbber; state changes print as lines.
             Automatic when stdout isn't a terminal or NO_COLOR is set.
+  Each lane keeps one colour: sixteen before one repeats on a terminal with
+  256 colours (Ghostty, iTerm, VS Code, TERM=*-256color, COLORTERM=truecolor),
+  eleven on others. SWIM_COLORS=256 or 16 says which yours is.
   --no-tui  the pinned panel without the interactive view (output scrolls in
             the terminal as before). Also SWIM_TUI=0. The interactive view is
             also off for a single lane (it may prompt on stdin), with --plain,
