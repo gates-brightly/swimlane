@@ -12,7 +12,7 @@ lane.[0-9]*
 !/demos/*/lanes/lane.[0-9]*
 
 # this repo's CI lanes (lane.1.sh lists them) are committed
-!/lane.[12346].sh
+!/lane.[1234689].sh
 
 # JUnit reports swim ci and the e2e lane write
 swim.xml

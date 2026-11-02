@@ -119,9 +119,9 @@ vet:
 tidy:
     go mod tidy
 
-# Run this repo's CI rounds (lanes 1-4 and 6: checks, then e2e, fault, security, fuzz side by side) through swim ci, as GitHub Actions does
+# Run this repo's CI rounds (lane 1's checks, then e2e, fault, security, fuzz, unit and race side by side: lanes 2-4, 6, 8, 9) through swim ci, as GitHub Actions does
 ci: build
-    {{bin_dir}}/{{binary}} ci --rerun 1 2 3 4 6
+    {{bin_dir}}/{{binary}} ci --rerun 1 2 3 4 6 8 9
 
 # gofmt, vet, unit and e2e tests (the same checks as the CI rounds, without swim)
 check:

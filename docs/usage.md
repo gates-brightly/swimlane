@@ -943,13 +943,15 @@ changed, plus any unpassed lanes they wait on. `--rerun` runs passed
 rounds again. A fresh CI checkout has no passed rounds, so everything
 runs there either way. swim never commits results back.
 
-This repo dogfoods it. Its own CI is `swim ci` over five committed lanes,
+This repo dogfoods it. Its own CI is `swim ci` over seven committed lanes,
 so the slow suites run side by side. Lane 1 ([`lane.1.sh`](../lane.1.sh))
-runs fmt, lint, unit tests and race first. Then e2e (lane 2), fault
-injection (3), the security suite (4) and fuzzing (6) start together, each its own lane so
-a red run names the gate. A run takes about as long as the slowest suite.
-`just ci` runs the same lanes locally. Each lane declares `# Signoff:`
-(`swim/ci`, `swim/e2e`, `swim/fault`, `swim/security`, `swim/fuzz`), so a
+runs the quick checks (fmt, build, vet, lint) first. Then e2e (lane 2),
+fault injection (3), the security suite (4), fuzzing (6), the unit tests
+(8) and the unit tests under -race (9) start together, each its own lane
+so a red run names the gate. A run takes about as long as the slowest
+suite. `just ci` runs the same lanes locally. Each lane declares `# Signoff:`
+(`swim/ci`, `swim/e2e`, `swim/fault`, `swim/security`, `swim/fuzz`,
+`swim/unit`, `swim/race`), so a
 local run on a clean, pushed HEAD posts those statuses ([local CI](#local-ci)).
 
 ### Local CI

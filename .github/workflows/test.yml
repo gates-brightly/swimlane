@@ -39,11 +39,11 @@ jobs:
           bash --version | head -1
           go version
 
-      # swim tests itself: the CI is five committed lanes, run by the swim
-      # built from this checkout (settings in swim.yml). Lane 1 (fmt, lint,
-      # unit tests, race) runs first; then e2e (2), fault injection (3),
-      # security (4) and fuzzing (6) run side by side. Same as `just ci`
-      # locally.
+      # swim tests itself: the CI is seven committed lanes, run by the swim
+      # built from this checkout (settings in swim.yml). Lane 1's checks
+      # (fmt, build, vet, lint) run first; then e2e (2), fault injection
+      # (3), security (4), fuzzing (6), unit tests (8) and race (9) run side
+      # by side. Same as `just ci` locally.
       - name: Build swim from this checkout
         run: |
           go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim
@@ -52,7 +52,7 @@ jobs:
       # A failed e2e scenario's scratch repo is kept under E2E_KEEP_FAILED
       # (e2e/run.sh) and uploaded below; the e2e step's annotation names
       # each failed Go test (e2etool gotest-report).
-      - name: swim ci (checks, then e2e, fault, security, fuzz)
+      - name: swim ci (checks, then e2e, fault, security, fuzz, unit, race)
         run: swim ci --junit swim.xml
         env:
           E2E_KEEP_FAILED: ${{ runner.temp }}/swim-e2e-failed
