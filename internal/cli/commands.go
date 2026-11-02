@@ -329,7 +329,7 @@ func cmdNew(args []string) error {
 	if err := lane.WriteScriptAs(root, n, "sh", content, force); err != nil {
 		return err
 	}
-	if broke, err := lane.TakeClaim(root, n, sess, cfg.ClaimLeaseFor(), job, true); err == nil && broke != nil {
+	if _, broke, err := lane.TakeClaim(root, n, sess, cfg.ClaimLeaseFor(), job, true); err == nil && broke != nil {
 		claimBroken(root, n, broke, sess, "new", "")
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {

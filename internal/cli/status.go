@@ -160,10 +160,8 @@ func stateWord(l *status.Lane, state string, now time.Time) string {
 		word = display.WaitingText(l.WaitingOn)
 	case status.Running:
 		word = "running"
-		if l.StartedAt != nil {
-			if t, err := time.Parse(time.RFC3339, *l.StartedAt); err == nil {
-				word += " " + display.Elapsed(now.Sub(t))
-			}
+		if d, ok := l.Ran(now); ok { // its clock stops while it asks
+			word += " " + display.Elapsed(d)
 		}
 		if !proc.Local(l.Host) {
 			word += " on " + l.Host // its process is there, not here

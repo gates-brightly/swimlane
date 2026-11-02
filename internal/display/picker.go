@@ -50,8 +50,9 @@ type Picker struct {
 	// Pick's refresh (which then only paces until): live output as quick
 	// as swim run's view, without checking until as often.
 	Redraw time.Duration
-	// Spin, if set, redraws this often without reloading, so a SpinMark in
-	// the rows turns as swim run's throbber does whatever the reload pace.
+	// Spin, if set, redraws this often without reloading or laying the
+	// screen out again, so a SpinMark in the rows turns as swim run's
+	// throbber does whatever the reload pace.
 	Spin time.Duration
 	// HintsBelow keeps the hints on the bottom line (while there's no
 	// note), leaving the title line to the title and Status.
@@ -125,6 +126,15 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 	}
 	rows := load()
 	last := ""
+	rendered := "" // the last frame laid out, its SpinMarks not yet drawn
+	show := func() {
+		frame := strings.ReplaceAll(rendered, SpinMark, Throbber(time.Now()))
+		if frame == last {
+			return // nothing changed: the terminal keeps what it shows
+		}
+		last = frame
+		fmt.Fprint(p.Out, frame)
+	}
 	draw := func() {
 		cols, h, err := term.GetSize(int(p.Out.Fd()))
 		if err != nil {
@@ -135,13 +145,8 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 		if p.Title != nil {
 			t = p.Title()
 		}
-		frame := "\x1b[H" + strings.Join(p.render(t, hints, rows, cols, h), "\x1b[K\r\n") + "\x1b[K\x1b[J"
-		frame = strings.ReplaceAll(frame, SpinMark, Throbber(time.Now()))
-		if frame == last {
-			return // nothing changed: the terminal keeps what it shows
-		}
-		last = frame
-		fmt.Fprint(p.Out, frame)
+		rendered = "\x1b[H" + strings.Join(p.render(t, hints, rows, cols, h), "\x1b[K\r\n") + "\x1b[K\x1b[J"
+		show()
 	}
 	draw()
 	for {
@@ -156,7 +161,11 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 			rows = load()
 			draw()
 		case <-spin:
-			draw() // only the throbber (and clocks) moved
+			// Only the throbber moved: the frame as laid out, without
+			// reloading or laying it out again.
+			if strings.Contains(rendered, SpinMark) {
+				show()
+			}
 		case k := <-keyCh:
 			if res, ok := p.key(k, rows, keys); ok {
 				return res, nil

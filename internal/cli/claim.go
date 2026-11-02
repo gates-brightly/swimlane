@@ -60,7 +60,7 @@ func cmdClaim(args []string) error {
 		lease = d
 	}
 	info, _ := lane.ReadScript(root, n)
-	broke, err := lane.TakeClaim(root, n, sess, lease, info.Job, breakWhy != "")
+	c, broke, err := lane.TakeClaim(root, n, sess, lease, info.Job, breakWhy != "")
 	var ec lane.ErrClaimed
 	if errors.As(err, &ec) {
 		return fmt.Errorf("%s; or swim claim %d --break \"<why>\" to take it over", strings.Split(err.Error(), "\n")[0], n)
@@ -72,11 +72,6 @@ func cmdClaim(args []string) error {
 		claimBroken(root, n, broke, sess, "claim --break", breakWhy)
 	}
 	history.Log(root, history.Entry{Event: history.Claim, Lane: n, Job: info.Job, Detail: fmt.Sprintf("session %s for %s", sess, lease)})
-	c := lane.ReadClaim(root, n)
-	if c == nil { // its lease ran out already (a very short --for)
-		fmt.Printf("swim %d claimed by session %s for %s, which has run out\n", n, sess, lease)
-		return nil
-	}
 	fmt.Printf("swim %d claimed by %s (session %s) until %s\n", n, c.Owner, c.Session, c.ExpiresAt().Local().Format("15:04"))
 	return nil
 }

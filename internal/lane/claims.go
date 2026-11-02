@@ -146,17 +146,17 @@ func writeClaim(root string, n int, c Claim) error {
 // TakeClaim takes lane n's claim for session sess, for lease, or refreshes
 // it if sess holds it already. Another session's live claim refuses it
 // (ErrClaimed) unless force, which takes it over and returns the claim it
-// broke.
-func TakeClaim(root string, n int, sess string, lease time.Duration, job string, force bool) (broke *Claim, err error) {
+// broke. It returns the claim it wrote, too.
+func TakeClaim(root string, n int, sess string, lease time.Duration, job string, force bool) (taken, broke *Claim, err error) {
 	unlock, err := claimsLock(root)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer unlock()
 	cur := ReadClaim(root, n)
 	if cur != nil && cur.Session != sess {
 		if !force {
-			return nil, ErrClaimed{n, cur}
+			return nil, nil, ErrClaimed{n, cur}
 		}
 		broke = cur
 	}
@@ -169,7 +169,10 @@ func TakeClaim(root string, n int, sess string, lease time.Duration, job string,
 			c.Job = cur.Job
 		}
 	}
-	return broke, writeClaim(root, n, c)
+	if err := writeClaim(root, n, c); err != nil {
+		return nil, broke, err
+	}
+	return &c, broke, nil
 }
 
 // RefreshClaim moves lane n's claim's expiry out by lease, only if session

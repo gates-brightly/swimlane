@@ -374,6 +374,9 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 	if view != nil {
 		view.batches = b
 		b.asks = view.asks
+		// The batches ask on the screen (watchask.go): say so, so swim
+		// queue add can tell a batch's guards will be asked.
+		watchPresence.SetAsks(true)
 	}
 	note := func(msg string) {
 		if view != nil {

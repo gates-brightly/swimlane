@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/launcher"
+	"github.com/gates-brightly/swimlane/internal/logparse"
 )
 
 func approvalLanes(r *repo) {
@@ -79,11 +80,15 @@ func TestPromptStopsTheClock(t *testing.T) {
 	if l == nil || l.PausedAt != "" || l.PausedS == nil || *l.PausedS <= 0 || l.DurationS == nil {
 		t.Fatalf("lane 1's wait wasn't counted: %+v", l)
 	}
-	m := regexp.MustCompile(`== END PASS .* exit=0  ([0-9.]+)s `).FindStringSubmatch(r.log(1))
-	if m == nil {
-		t.Fatalf("no END line:\n%s", r.log(1))
+	rd, err := logparse.Parse(strings.NewReader(r.log(1)))
+	if err != nil || rd == nil || rd.Duration == "" {
+		t.Fatalf("no END line (%v):\n%s", err, r.log(1))
 	}
-	wall, _ := strconv.ParseFloat(m[1], 64)
+	d, err := time.ParseDuration(rd.Duration)
+	if err != nil {
+		t.Fatalf("END duration %q: %v", rd.Duration, err)
+	}
+	wall := d.Seconds()
 	if got := *l.DurationS + *l.PausedS; math.Abs(got-wall) > 0.11 { // each is rounded to 0.1s
 		t.Errorf("duration_s %.2f + paused_s %.2f = %.2f, but the round took %.1fs end to end", *l.DurationS, *l.PausedS, got, wall)
 	}

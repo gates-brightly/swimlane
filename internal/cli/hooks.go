@@ -617,7 +617,7 @@ func cmdFinish(args []string) error {
 		// log's END keeps the time it took end to end.
 		l.Resume(now)
 		ran := max(dur-l.Paused(now), 0)
-		l.DurationS = status.Float(float64(ran.Round(100*time.Millisecond)) / float64(time.Second))
+		l.DurationS = status.Float(ran.Round(100 * time.Millisecond).Seconds())
 		l.ExitCode = status.Int(code)
 		l.Reason = reason
 		l.Pass, l.Fail, l.Skip, l.Drift, l.Kept = r.Pass, r.Fail, r.Skip, r.Drift, r.Kept

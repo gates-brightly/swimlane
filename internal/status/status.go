@@ -327,17 +327,51 @@ func (l *Lane) Resume(at time.Time) {
 	l.PausedAt = ""
 }
 
+// PausedDone is how long the round's answered waits for the operator took.
+func (l *Lane) PausedDone() time.Duration {
+	if l.PausedS == nil || *l.PausedS <= 0 {
+		return 0
+	}
+	return time.Duration(*l.PausedS * float64(time.Second))
+}
+
+// PausedSince is when the wait under way began (false: none is).
+func (l *Lane) PausedSince() (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339Nano, l.PausedAt)
+	return t, err == nil
+}
+
 // Paused is how long the round has waited for the operator by now, the
 // wait under way included.
 func (l *Lane) Paused(now time.Time) time.Duration {
-	var d time.Duration
-	if l.PausedS != nil && *l.PausedS > 0 {
-		d = time.Duration(*l.PausedS * float64(time.Second))
-	}
-	if t, err := time.Parse(time.RFC3339Nano, l.PausedAt); err == nil && now.After(t) {
+	d := l.PausedDone()
+	if t, ok := l.PausedSince(); ok && now.After(t) {
 		d += now.Sub(t)
 	}
 	return d
+}
+
+// Ran is how long the round has run by now, or ran once it finished: from
+// its start to its finish (or now), less its waits for the operator. False
+// when its start isn't known, or its finish is before it.
+func (l *Lane) Ran(now time.Time) (time.Duration, bool) {
+	if l.StartedAt == nil {
+		return 0, false
+	}
+	start, err := time.Parse(time.RFC3339, *l.StartedAt)
+	if err != nil {
+		return 0, false
+	}
+	end := now
+	if l.FinishedAt != nil {
+		if t, err := time.Parse(time.RFC3339, *l.FinishedAt); err == nil {
+			if t.Before(start) {
+				return 0, false
+			}
+			end = t
+		}
+	}
+	return max(end.Sub(start)-l.Paused(end), 0), true
 }
 
 // Dry records that guard flag's step ran as a dry run (each flag once).

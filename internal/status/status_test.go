@@ -190,3 +190,27 @@ func TestPauseAndResume(t *testing.T) {
 		t.Fatalf("ResetRun kept %v %q", l.PausedS, l.PausedAt)
 	}
 }
+
+// Ran is a round's time less its waits for the operator: to now while it
+// runs, to its finish once it has.
+func TestRan(t *testing.T) {
+	t0 := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) *string { s := t0.Add(d).Format(time.RFC3339); return &s }
+	l := &Lane{StartedAt: at(0), PausedS: Float(20)}
+	l.Pause(t0.Add(50 * time.Second))
+	if d, ok := l.Ran(t0.Add(time.Minute)); !ok || d != 30*time.Second {
+		t.Errorf("running, asking: %v %v", d, ok)
+	}
+	l.Resume(t0.Add(70 * time.Second))
+	l.FinishedAt = at(100 * time.Second)
+	if d, ok := l.Ran(t0.Add(time.Hour)); !ok || d != 60*time.Second {
+		t.Errorf("finished: %v %v", d, ok)
+	}
+	l.FinishedAt = at(-time.Second)
+	if _, ok := l.Ran(t0); ok {
+		t.Error("finished before it started")
+	}
+	if _, ok := (&Lane{}).Ran(t0); ok {
+		t.Error("never started")
+	}
+}

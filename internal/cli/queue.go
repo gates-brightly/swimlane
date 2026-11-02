@@ -161,7 +161,7 @@ func queueAdd(args []string) error {
 	case len(e.Approve) > 0:
 		fmt.Println("  approvals: " + strings.Join(e.Approve, ", "))
 	}
-	asker := askingSwimmer(root)
+	asker := b.asker
 	if len(unapproved) > 0 {
 		if asker != nil {
 			fmt.Println("  not approved yet: " + strings.Join(unapproved, ", ") + " (the operator is asked on the screen of " + asker.Name() + ")")
@@ -229,11 +229,11 @@ type queueOpts struct {
 	keyPath  string
 }
 
-// askingSwimmer is a swimmer up now whose screen asks the operator for the
-// batches' guards and decisions (nil for none): with one, a batch's
-// unapproved guards are asked, not dry runs.
-func askingSwimmer(root string) *queue.Presence {
-	for _, p := range queue.LiveWorkers(root) {
+// askingSwimmer is the first of the live swimmers whose screen asks the
+// operator for the batches' guards and decisions (nil for none): with one,
+// a batch's unapproved guards are asked, not dry runs.
+func askingSwimmer(live []*queue.Presence) *queue.Presence {
+	for _, p := range live {
 		if p.Asks {
 			return p
 		}
@@ -295,6 +295,9 @@ type batch struct {
 	guards   map[string]bool
 	signedAs string
 	warn     string
+	// asker is a swimmer up as it was queued whose screen asks the
+	// operator for its guards (nil for none).
+	asker *queue.Presence
 }
 
 // addBatch queues lanes as one batch, pinned to the scripts and env they
@@ -330,7 +333,9 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	}
 	// A worker up now that can't run it: refuse, rather than queue a batch
 	// that waits on (or used to fail in) the wrong swim.
-	refuse, warnWorkers := checkWorkers(root, e)
+	live := queue.LiveWorkers(root)
+	b.asker = askingSwimmer(live)
+	refuse, warnWorkers := checkWorkers(root, e, live)
 	if refuse != nil {
 		return b, refuse
 	}
@@ -800,9 +805,6 @@ func cmdWatch(args []string) error {
 	defer notes.stop()
 	if !once && watchViewAllowed(noTUI) {
 		view = newWatchView(root, cfg, yes)
-		// Batches side by side ask on the screen (watchask.go): say so, so
-		// swim queue add can tell a batch's guards will be asked.
-		watchPresence.SetAsks(batches > 1)
 		if notes != nil {
 			notes.asks = view.asks
 			view.asks.onAsk = notes.asked

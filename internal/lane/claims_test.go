@@ -13,7 +13,7 @@ import (
 // Taking, refreshing, refusing, breaking, expiring and releasing a claim.
 func TestClaims(t *testing.T) {
 	root := t.TempDir()
-	if _, err := TakeClaim(root, 3, "a", time.Hour, "job-a", false); err != nil {
+	if _, _, err := TakeClaim(root, 3, "a", time.Hour, "job-a", false); err != nil {
 		t.Fatal(err)
 	}
 	c := ReadClaim(root, 3)
@@ -21,7 +21,7 @@ func TestClaims(t *testing.T) {
 		t.Fatalf("claim: %+v", c)
 	}
 	// Another session is refused, naming the holder.
-	_, err := TakeClaim(root, 3, "b", time.Hour, "job-b", false)
+	_, _, err := TakeClaim(root, 3, "b", time.Hour, "job-b", false)
 	var ec ErrClaimed
 	if !errors.As(err, &ec) || ec.C.Session != "a" || !strings.Contains(err.Error(), "session a") {
 		t.Fatalf("b took a's claim: %v", err)
@@ -39,7 +39,7 @@ func TestClaims(t *testing.T) {
 		t.Error("a refresh by another session, or of no claim, did something")
 	}
 	// Force takes it over and returns what it broke.
-	broke, err := TakeClaim(root, 3, "b", time.Hour, "job-b", true)
+	_, broke, err := TakeClaim(root, 3, "b", time.Hour, "job-b", true)
 	if err != nil || broke == nil || broke.Session != "a" || ReadClaim(root, 3).Session != "b" {
 		t.Fatalf("force: %v %+v", err, broke)
 	}
@@ -58,7 +58,7 @@ func TestClaims(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(ClaimDir(root), "lane.5.yml")); err == nil {
 		t.Error("the expired claim's file wasn't removed")
 	}
-	if broke, err := TakeClaim(root, 5, "b", time.Hour, "", false); err != nil || broke != nil {
+	if _, broke, err := TakeClaim(root, 5, "b", time.Hour, "", false); err != nil || broke != nil {
 		t.Errorf("taking an expired claim: %v %+v", err, broke)
 	}
 	// The lock isn't a resource lock's path.
@@ -80,7 +80,7 @@ func TestClaimLeaseRace(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			if _, err := TakeClaim(root, 1, "s"+string(rune('a'+i)), time.Hour, "", false); err == nil {
+			if _, _, err := TakeClaim(root, 1, "s"+string(rune('a'+i)), time.Hour, "", false); err == nil {
 				mu.Lock()
 				won++
 				mu.Unlock()

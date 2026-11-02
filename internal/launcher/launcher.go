@@ -1172,8 +1172,8 @@ func watchOtherRuns(o Options, selected map[int]bool, disp *display.Display) fun
 					elsewhere[n] = true
 					round, job := l.Round, l.Job
 					// Its clock stops while it waits for the operator, as ours do.
-					paused, pausedAt := l.Paused(time.Time{}), time.Time{}
-					if t, err := time.Parse(time.RFC3339Nano, l.PausedAt); err == nil {
+					paused, pausedAt := l.PausedDone(), time.Time{}
+					if t, ok := l.PausedSince(); ok {
 						pausedAt = t
 					}
 					disp.Set(n, func(v *display.LaneView) {

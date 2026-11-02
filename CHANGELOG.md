@@ -537,9 +537,9 @@ and read.
 - **`swim claim --for` with a short lease no longer crashes.** A claim's
   expiry was written rounded down to the second, so a one-second lease
   taken late in a second could run out before `swim claim` read it back,
-  and it crashed printing it (seen in CI on a busy machine). Expiries are
-  now rounded up, and `swim claim` says so if the lease has already run
-  out.
+  and it crashed printing it (seen in CI on a busy machine). It now prints
+  the claim it wrote, without reading it back, and expiries are rounded up
+  so a lease is never shorter than asked.
 - **Smoother spinners.** `swim run` and `swim watch` spin a braille throbber
   (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, a frame every 80ms) instead of `| / - \`. `swim watch`'s
   stepped once per reload (every 200ms, and again on the worker's

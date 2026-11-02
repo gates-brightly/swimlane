@@ -64,13 +64,12 @@ func holdHere(root string, e *queue.Entry, why string) {
 	}
 }
 
-// checkWorkers is swim queue add's look at the workers up now, for a batch
-// about to be queued: an error when some are up (and announce themselves)
-// but none can run it, naming each and its swim; a warning when none is
-// up. Workers of a swim from before presence files can't be told apart:
-// nothing is said about them.
-func checkWorkers(root string, e *queue.Entry) (refuse error, warn string) {
-	live := queue.LiveWorkers(root)
+// checkWorkers is swim queue add's look at the workers up now (live), for
+// a batch about to be queued: an error when some are up (and announce
+// themselves) but none can run it, naming each and its swim; a warning
+// when none is up. Workers of a swim from before presence files can't be
+// told apart: nothing is said about them.
+func checkWorkers(root string, e *queue.Entry, live []*queue.Presence) (refuse error, warn string) {
 	if len(live) == 0 {
 		if !workerRunning(root) {
 			return nil, fmt.Sprintf("no swimmer is running: the batch waits for a swim watch that reads %s (as this swim, %s, does)",
