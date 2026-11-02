@@ -270,6 +270,9 @@ and read.
 
 ### Changed
 
+- **`swim watch` lane rows are tighter.** They start with the lane's number
+  (`1`, not `swim 1`), and how long a finished round took is a column
+  beside how long ago it finished, not at the end of the row.
 - **Lanes may run git and gh.** swim no longer blocks `git push`, `git
   commit` or `git pull`, and lanes get no git shim on `PATH` (swim removes
   `.swim/bin/git` from older versions when a round starts). Put a push or

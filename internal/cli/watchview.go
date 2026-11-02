@@ -191,12 +191,20 @@ func (w *watchView) rows() []display.PickRow {
 	lanes := lane.Associated(w.root) // the lanes in use now (a long-lived view)
 	w.seen.refresh(lanes)
 	infos := map[int]lane.Info{}
-	anyJob, anyChanged := false, false
+	tooks := map[int]string{}
+	anyJob, anyChanged, tookW := false, false, 0
 	for _, n := range lanes {
 		info, _ := lane.ReadScript(w.root, n)
 		infos[n] = info
 		anyJob = anyJob || info.Pending() && info.Job != ""
 		anyChanged = anyChanged || w.seen.isChanged(n)
+		if st != nil {
+			if l := st.Get(n); l != nil {
+				state, _ := laneRowState(l, info)
+				tooks[n] = laneTook(l, state)
+				tookW = max(tookW, len(tooks[n]))
+			}
+		}
 	}
 	spin := display.SpinMark // the picker draws the throbber's frame here
 	for _, n := range lanes {
@@ -220,7 +228,7 @@ func (w *watchView) rows() []display.PickRow {
 			round = display.DryMark + " " + round
 		}
 		b := &rowText{p: ui.Painter{On: true}}
-		b.add(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %-2d", n))
+		b.add(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("%-2d", n))
 		switch {
 		case w.seen.isChanged(n):
 			b.add(ui.Yellow+ui.Bold, " (~)") // changed since the operator last acted on it
@@ -234,6 +242,9 @@ func (w *watchView) rows() []display.PickRow {
 		}
 		b.add("", "  ").add(ui.StateColor(state), fmt.Sprintf("%s%-10s", lead, state))
 		b.add(ui.Dim, fmt.Sprintf(" %-7s", laneTimer(l, state, now)))
+		if tookW > 0 { // how long a finished round took, by when it finished
+			b.add(ui.Dim, fmt.Sprintf(" %-*s", tookW, tooks[n]))
+		}
 		if anyJob {
 			b.add(ui.Dim, fmt.Sprintf(" %-8s", job))
 		}
@@ -528,23 +539,30 @@ func laneRowState(l *status.Lane, info lane.Info) (string, string) {
 	return state, ui.StateColor(state)
 }
 
+// laneTook is a finished lane's row's column beside how long ago it
+// finished: how long its round took ("took 4m12s"). "" for any other state.
+func laneTook(l *status.Lane, state string) string {
+	switch state {
+	case status.Passed, status.Failed, status.Interrupted, status.Skipped:
+		if took := roundTook(l); took != "" {
+			return "took " + took
+		}
+	}
+	return ""
+}
+
 // laneRowDetail is the end of a lane's row: what a waiting, locked or
 // queued lane waits on, as swim status and swim run's view say it
-// ("waiting on swim 2, 3", "waiting for lock db", "2 ahead"); how long a
-// finished round took ("took 4m12s"); and for a pending round, how its
-// lane's last one ended ("last run failed, took 4m12s"). "" for any other
-// state (a stale row's waiting process is gone).
+// ("waiting on swim 2, 3", "waiting for lock db", "2 ahead"); and for a
+// pending round, how its lane's last one ended ("last run failed, took
+// 4m12s"). "" for any other state (a stale row's waiting process is gone;
+// a finished round's took is its own column, laneTook).
 func laneRowDetail(l *status.Lane, state string) string {
 	if l == nil {
 		return ""
 	}
 	took := roundTook(l)
 	switch state {
-	case status.Passed, status.Failed, status.Interrupted, status.Skipped:
-		if took != "" {
-			return "took " + took
-		}
-		return ""
 	case "pending":
 		switch l.State {
 		case status.Passed, status.Failed, status.Interrupted, status.Skipped:

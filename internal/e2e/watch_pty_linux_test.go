@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -21,12 +22,12 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	r.script(2, "second job", `run "two" echo two-ran`)
 	r.write("lane.3.sh", "#!/usr/bin/env bash\n# being written: no Round: line yet\n", 0o755) // in use, nothing pending
 	tr := r.startTUI(nil, "watch")
-	s := tr.waitFor("▸ swim 1")
+	s := tr.waitFor("▸ 1 ")
 	contains(t, "watch screen", s, "pending", "Jobs", "first job", "second job", "Queue", "r run now", "q batch", "s submit")
 
 	// ↓ then r: swim 2 runs now, and the screen comes back saying so.
 	tr.send("\x1b[B")
-	tr.waitFor("▸ swim 2")
+	tr.waitFor("▸ 2 ")
 	tr.send("r")
 	tr.waitFor("swim 2 passed")
 	if log := r.log(2); !strings.Contains(log, "PASS  two") {
@@ -39,7 +40,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	// ↑ then q: swim 1 is in the next batch, not queued yet; s submits
 	// it, and the idle worker takes it.
 	tr.send("\x1b[A")
-	tr.waitFor("▸ swim 1")
+	tr.waitFor("▸ 1 ")
 	tr.send("q")
 	tr.waitFor("submit swim 1 as one batch")
 	if out := r.mustSwim("queue", "list", "--all"); strings.Contains(out, "#1") {
@@ -56,7 +57,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 
 	// A lane with no pending round says so; Ctrl-C quits.
 	tr.send("\x1b[B\x1b[B")
-	tr.waitFor("▸ swim 3")
+	tr.waitFor("▸ 3 ")
 	tr.send("r")
 	tr.waitFor("swim 3 holds no pending round")
 	tr.send("\x03")
@@ -183,10 +184,10 @@ func TestWatchLogsKey(t *testing.T) {
 		t.Errorf("last round shows %d rounds:\n%s", n, s)
 	}
 	tr.send("q")
-	tr.waitFor("▸ swim 1")
+	tr.waitFor("▸ 1 ")
 	// A lane with no log yet says so.
 	tr.send("\x1b[B")
-	tr.waitFor("▸ swim 2")
+	tr.waitFor("▸ 2 ")
 	tr.send("l")
 	tr.waitFor("swim 2 has no current log")
 	// A batch (its lane busy in another run, so no swimmer claims it): its
@@ -222,14 +223,14 @@ func TestWatchArchiveKey(t *testing.T) {
 	r.mustSwim("run", "1", "--plain")
 	tr := r.startTUI(nil, "watch")
 	tr.waitFor("a archive")
-	tr.waitFor("▸ swim 1")
+	tr.waitFor("▸ 1 ")
 	tr.send("a")
 	tr.waitFor("archived .swim/logs/agent1.log -> .swim/logs/agent1.prev-")
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log")); err == nil {
 		t.Error("agent1.log is still there")
 	}
 	tr.send("\x1b[B")
-	tr.waitFor("▸ swim 2")
+	tr.waitFor("▸ 2 ")
 	tr.send("a")
 	tr.waitFor("nothing archived")
 	tr.send("\x03")
@@ -283,7 +284,7 @@ func TestWatchNoTrashKey(t *testing.T) {
 	r := newSerialRepo(t, "")
 	r.script(1, "keep me", `run "one" true`)
 	tr := r.startTUI(nil, "watch")
-	tr.waitFor("▸ swim 1")
+	tr.waitFor("▸ 1 ")
 	tr.waitFor("a archive  ^C quit")
 	tr.send("d")
 	tr.send("o")
@@ -304,9 +305,12 @@ func TestWatchRowsSayHowLongRoundsTook(t *testing.T) {
 	r.swim("all", "--plain")
 	tr := r.startTUI(nil, "watch")
 	s := tr.waitScreen("both rows with their times", func(s string) bool {
-		return strings.Contains(s, "passes  · took ") && strings.Contains(s, "fails  · took ")
+		return regexp.MustCompile(`passed +\S+ ago +took \S+ +passes`).MatchString(s) &&
+			regexp.MustCompile(`failed +\S+ ago +took \S+ +fails`).MatchString(s)
 	})
-	contains(t, "watch screen", s, "passed", "failed", " ago")
+	if strings.Contains(s, "swim 1") || strings.Contains(s, "swim 2") {
+		t.Errorf("lane rows still say swim N:\n%s", s)
+	}
 	tr.send("\x03") // Ctrl-C quits
 	tr.wait()
 }

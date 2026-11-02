@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
@@ -51,6 +52,40 @@ func TestWatchRowsSayWhatLanesWaitOn(t *testing.T) {
 	}
 	if strings.Contains(row["lane:5"], "·") || !strings.Contains(row["lane:5"], "stale") {
 		t.Errorf("stale lane 5: %q", row["lane:5"])
+	}
+}
+
+// A lane row in swim watch starts with the lane's number (no "swim "), and
+// how long a finished round took sits beside how long ago it finished, in
+// a column of its own.
+func TestWatchRowsPutTookBesideAgo(t *testing.T) {
+	root := t.TempDir()
+	for n := 1; n <= 3; n++ {
+		os.WriteFile(filepath.Join(root, "lane."+string(rune('0'+n))+".sh"), []byte("#!/usr/bin/env bash\n# Round: r\n"), 0o755)
+	}
+	ago := func(d time.Duration) *string { s := time.Now().Add(-d).Format(time.RFC3339); return &s }
+	secs := func(f float64) *float64 { return &f }
+	set := func(n int, fn func(l *status.Lane)) {
+		if err := status.Update(root, n, 3, fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(1, func(l *status.Lane) { l.State, l.FinishedAt, l.DurationS = status.Passed, ago(3*time.Hour), secs(252) })
+	set(2, func(l *status.Lane) { l.State, l.FinishedAt, l.DurationS = status.Failed, ago(time.Minute), secs(3) })
+
+	w := &watchView{root: root, cfg: &config.Config{Settings: config.Settings{Lanes: 3}}}
+	row := map[string]string{}
+	for _, r := range w.rows() {
+		row[r.ID] = r.Text
+	}
+	for id, want := range map[string]string{
+		"lane:1": "1     passed     3h ago  took 4m12s r",
+		"lane:2": "2     failed     1m ago  took 3s    r",
+		"lane:3": "3     pending                       r", // no took: the column is blank
+	} {
+		if !strings.HasPrefix(row[id], want) {
+			t.Errorf("%s: %q, want it to start %q", id, row[id], want)
+		}
 	}
 }
 

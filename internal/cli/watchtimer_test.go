@@ -61,8 +61,9 @@ func TestWatchRowsSayHowLongTheLastRoundTook(t *testing.T) {
 		{"running", &status.Lane{State: status.Running, StartedAt: at(time.Minute)}, status.Running, ""},
 		{"no times", &status.Lane{State: status.Passed}, status.Passed, ""},
 	} {
-		if got := laneRowDetail(c.lane, c.state); got != c.want {
-			t.Errorf("%s: laneRowDetail = %q, want %q", c.name, got, c.want)
+		got := laneTook(c.lane, c.state) + laneRowDetail(c.lane, c.state) // one of them, by state
+		if got != c.want {
+			t.Errorf("%s: took/detail = %q, want %q", c.name, got, c.want)
 		}
 	}
 }

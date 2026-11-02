@@ -80,17 +80,17 @@ func TestWatchMarksChangedLanes(t *testing.T) {
 	r.script(1, "first job", `run "one" true`)
 	r.script(2, "second job", `run "two" true`)
 	tr := r.startTUI(nil, "watch")
-	s := tr.waitFor("▸ swim 1")
+	s := tr.waitFor("▸ 1 ")
 	if strings.Contains(s, "(~)") {
 		t.Fatalf("a lane marked before anything changed:\n%s", s)
 	}
 	r.script(2, "second job, rewritten", `run "two again" true`)
-	s = tr.waitFor("swim 2  (~)")
-	if strings.Contains(s, "swim 1  (~)") {
+	s = tr.waitFor("2  (~)")
+	if strings.Contains(s, "1  (~)") {
 		t.Errorf("swim 1 marked, but only swim 2 changed:\n%s", s)
 	}
 	tr.send("\x1b[B")
-	tr.waitFor("▸ swim 2")
+	tr.waitFor("▸ 2 ")
 	tr.send("q")
 	tr.waitFor("next batch: swim 2")
 	tr.send("q")
