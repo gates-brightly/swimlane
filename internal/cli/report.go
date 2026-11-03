@@ -744,6 +744,8 @@ func (r *report) writeText(w io.Writer) {
 				}
 				if r.opts.results {
 					lines = resultsOnly(lines, l.key)
+				} else {
+					lines = logparse.FoldRepeats(lines)
 				}
 				fmt.Fprintln(w, "\n"+head)
 				for _, line := range lines {
@@ -753,7 +755,7 @@ func (r *report) writeText(w io.Writer) {
 		}
 		for _, b := range r.inFlight {
 			fmt.Fprintln(w)
-			for _, line := range b {
+			for _, line := range logparse.FoldRepeats(b) {
 				fmt.Fprintln(w, line)
 			}
 		}

@@ -389,7 +389,14 @@ is, and command output is always fenced with `| `, so
 
 - **`swim log N`** renders a log on a terminal: colours, times relative to
   the round's start, and long output folded (`--full` expands it). Piped,
-  or with `--raw`, it prints the file as is.
+  it prints the file's lines. `--raw` prints the file exactly.
+- **Repeated output is folded**, by `swim log` (on a terminal or piped)
+  and `swim report`. A line said three or more times in a row shows once,
+  then `… 29 more times`. Four or more lines that differ only in their
+  numbers (`copied 1 of 25 files` … `copied 25 of 25 files`) show the
+  first, `… 23 more like these` and the last. A progress bar redrawn with
+  carriage returns shows where it ended, and a spinner frame alone is
+  dropped. The file keeps every line: `--full` or `--raw` shows them.
 - **The step running now** isn't in the file until it ends. `swim log` adds
   it, with its output so far, as `RUNNING  <label> (in progress)`.
 - **`swim log N -f`** follows a lane live, like `tail -f`.

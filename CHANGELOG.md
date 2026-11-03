@@ -284,6 +284,14 @@ and read.
 
 ### Changed
 
+- **`swim log` and `swim report` fold repeated output.** A line said three
+  or more times in a row shows once, then `… N more times`; four or more
+  lines that differ only in their numbers show the first, `… N more like
+  these` and the last. A progress bar redrawn with carriage returns shows
+  where it ended, and a spinner frame alone is dropped. A polling loop's
+  thirty `waiting…` lines are now two. Piped, `swim log` used to print the
+  file exactly; it now folds too, and `--raw` is the file exactly
+  (`--full` also shows every line). The log files are unchanged.
 - **Day one uses six ideas: lane, round, step, guard, queue and log.**
   `swim init` no longer mentions signing keys or the status file, `swim
   new` no longer prints the job id or a pinned run, and `swim queue` says

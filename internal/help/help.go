@@ -228,9 +228,10 @@ swim report --earmarks | --earmark --reset [--name NAME]
   whose state or job changed (as swim status words them, with what they
   were, then one unchanged: line), held locks and the queue, every
   .swim.log line written since, and every lane-log line written since:
-  the rest of the round that was in progress, then each round after it
-  verbatim, as swim log --raw prints
-  them. Steps running now follow, from their spools. It changes nothing.
+  the rest of the round that was in progress, then each round after it,
+  with repeated output folded as swim log folds it (swim log --raw has
+  every line). Steps running now follow, from their spools. It changes
+  nothing.
   --earmark      then move your earmark to the end of what it printed: the
                  next report starts there. Lines written while it printed
                  are in the next one; a running step stays new until it
@@ -498,15 +499,22 @@ swim checkpoint rm N|JOB KEY... | --all
   On a terminal the log is rendered: round and stage headers stand out,
   results are coloured, times show how far into the round they were, and
   step output longer than 40 lines is folded to its first and last 15.
-  Piped (swim log 2 | less) it is the file, as cat shows it, plus the step
+  Either way, repeated output is folded: a line said three or more times
+  in a row shows once, then "… N more times"; four or more that differ
+  only in their numbers (a counter, a percentage) show the first,
+  "… N more like these" and the last. A line a progress bar or spinner
+  redrew with carriage returns shows what the terminal was left showing,
+  and a spinner frame alone is dropped. The file keeps every line.
+  Piped (swim log 2 | less) it is the file's lines, folded so, plus the step
   running now: a step's block reaches the log file only when it ends, so
   swim log adds it from the step's spool (.swim/logs/agentN.log.partial),
   output so far included, under a result line that never appears in a file:
       RUNNING  <label> (in progress)          <elapsed>s  <hh:mm:ss>
   ("cut off: ..." instead of "in progress" if its swim step died; it is
   recorded as FAIL when the lane next runs).
-  --full        don't fold long output
-  --raw         print the file exactly, even on a terminal (no running step)
+  --full        don't fold long or repeated output
+  --raw         print the file exactly, as cat shows it, even on a terminal
+                (nothing folded, no running step)
   --yaml        the round parsed, as data (schema swim.log/v1): the latest round,
                 every round with --all, or a job's rounds; the running step is
                 a result "RUNNING" with its command, output so far and

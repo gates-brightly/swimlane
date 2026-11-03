@@ -53,9 +53,11 @@ func cmdLog(args []string) error {
 		return err
 	}
 	// On a terminal the log is rendered (colour, folded output, relative
-	// times); piped or with --raw it is the file exactly, as cat shows it.
+	// times). Piped, it's the file's lines, with repeated output folded
+	// (logparse.FoldRepeats); --raw is the file exactly, as cat shows it,
+	// and --full keeps every output line.
 	render := ui.ColorEnabled(os.Stdout) && !raw
-	out := logWriter{w: os.Stdout, p: ui.Painter{On: render}, full: full, ref: strings.Join(rest, "")}
+	out := logWriter{w: os.Stdout, p: ui.Painter{On: render}, full: full, fold: !raw && !full && !follow, ref: strings.Join(rest, "")}
 
 	if len(rest) == 0 {
 		if all {
@@ -312,6 +314,7 @@ type logWriter struct {
 	w    io.Writer
 	p    ui.Painter
 	full bool
+	fold bool   // fold repeated output (logparse.FoldRepeats)
 	ref  string // lane or job as typed, for the "--full" hint
 }
 
@@ -331,7 +334,7 @@ func (lw logWriter) file(path string, withHeader bool) error {
 	if withHeader {
 		lw.header(path)
 	}
-	if !lw.p.On {
+	if !lw.p.On && !lw.fold {
 		_, err = io.Copy(lw.w, f)
 		return err
 	}
@@ -354,6 +357,9 @@ const (
 
 // lines writes log lines, rendered if colour is on.
 func (lw logWriter) lines(lines []string) {
+	if lw.fold && !syntaxOneLog(lines) {
+		lines = logparse.FoldRepeats(lines)
+	}
 	if !lw.p.On {
 		for _, l := range lines {
 			fmt.Fprintln(lw.w, l)
