@@ -77,7 +77,7 @@ swim run 3f2a9c1e 7b4d4e2a        # pinned to the jobs I wrote: a rewritten lane
   - Undo: `npx sst deploy --stage prod` from `v2.3.9`
   - If you say no: a dry run; nothing is removed.
 
-When it's done, say so (or don't: I'll read `swim report` next time).
+When it's done, say so (or don't: I'll check `swim queue` and `swim status` next time).
 ````
 
 ## Anything you need from the operator first

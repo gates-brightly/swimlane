@@ -69,10 +69,11 @@ report holds only what's new, and is worth reading when a few lanes ran;
 after a big batch, read per lane instead (section 3, step 6).
 
 When you need one section of the guide, extract it instead of reading
-all of it (headings are uppercase, at column 0):
+all of it (headings are uppercase, at column 0; a few go on after two
+spaces):
 
 ```sh
-swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+$/{exit} p'
+swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+($|  )/{exit} p'
 ```
 
 | Before you... | Read section |

@@ -1,7 +1,7 @@
 # A lane script, annotated
 
-Start from `swim new N "<goal>"`, which writes the header, a fresh `# Job:`
-id and the library line. Keep the `# Job:` line, and never copy a job id
+Start from `swim new N "<goal>"`, which writes the header (with a fresh
+`# Job:` id) and the stages. Keep the `# Job:` line, and never copy a job id
 into another script. Then shape the body like this. Check the details
 against `swim guide` (`WRITING A LANE SCRIPT`).
 
@@ -103,7 +103,7 @@ commands, and swim's wrapper opens and closes the round
 #!/usr/bin/env python3
 # swim: syntax 4
 # Round:  Archive sessions older than 30 days
-# Guards: SESSIONS_ALLOW_ARCHIVE  move sessions older than 30 days to sessions_archive
+# Guards: SESSIONS_ALLOW_ARCHIVE  move the sessions older than 30 days (the snapshot counts them; the check stops at 10,000) from data/sessions.db's sessions to sessions_archive (undo: copy them back) 2026-10-29: shrink the hot table
 import os, subprocess
 
 def swim(*a):
@@ -115,11 +115,12 @@ q = lambda sql: ["sqlite3", DB, sql]
 
 swim("stage", "snapshot")
 swim("snapshot", "sessions before", "--", *q("select count(*) from sessions"))
+swim("snapshot", "sessions to archive", "--", *q(f"select count(*) from sessions where {OLD}"))
 swim("stage", "check")
 swim("gate", "not suspiciously many", "--", "sh", "-c",
      f"test $(sqlite3 {DB} \"select count(*) from sessions where {OLD}\") -lt 10000")
 swim("stage", "change")
-if swim("guard", "SESSIONS_ALLOW_ARCHIVE", "move sessions older than 30 days to sessions_archive") == 0:
+if swim("guard", "SESSIONS_ALLOW_ARCHIVE", "move the sessions older than 30 days (the snapshot counts them; the check stops at 10,000) from data/sessions.db's sessions to sessions_archive (undo: copy them back) 2026-10-29: shrink the hot table") == 0:
     swim("run", "archive old sessions", "--",
          *q(f"insert into sessions_archive select * from sessions where {OLD}; delete from sessions where {OLD};"))
 swim("stage", "verify")

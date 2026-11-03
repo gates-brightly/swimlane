@@ -485,7 +485,6 @@ swim checkpoint rm N|JOB KEY... | --all
   Keep notes short and factual; never include secret values.
 `,
 	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]
-         [--failures]
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)

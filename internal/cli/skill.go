@@ -40,6 +40,6 @@ Install it: in a Claude Code session, paste
 Claude puts it in ~/.claude/skills/swim (every repo), or in this repo's
 .claude/skills/swim if you ask (teammates get it with the repo). Or copy
 the folder there yourself. Start a new session to load it; it begins with
-swim report --earmark and swim status.
+swim status and swim queue.
 `
 }
