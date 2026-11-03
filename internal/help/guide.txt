@@ -37,7 +37,8 @@ COMMANDS
   log [N|JOB] [--all] [--yaml]   print a lane's log (--all: with its archives), a job's
                            rounds, or with no argument the project log .swim.log
   report [--earmark] [--wait]   what changed since you last looked: status, .swim.log and
-                           every lane-log line since your earmark, in full (--earmark moves it)
+                           lane logs since your earmark: failures in full, a passing step as
+                           its result and last output line (--earmark moves it)
   step [flags] -- cmd...   run one command, logging it (what `run` in a lane script calls)
   lib                      print the bash library lane scripts load
   In a lane script in any language (OTHER LANGUAGES); run "<label>" -- cmd is a step too:

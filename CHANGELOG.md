@@ -284,6 +284,14 @@ and read.
 
 ### Changed
 
+- **`swim report` puts failures first.** A step that didn't pass, stops,
+  guard and decision marks, warnings and each round's header and summary
+  keep every line. A passing step is now its result line, its notes
+  (`saved:`, messages) and the last line it printed, which is often its
+  result: `… 3 lines of output (swim log 2); the last: No changes.` A
+  one-line output shows as it is. `swim log N` has the rest. A passing
+  gate looks like any passing step in the log, so it's brief too; a failed
+  one is in full. `--results` and `--yaml` are unchanged.
 - **`swim log` and `swim report` fold repeated output.** A line said three
   or more times in a row shows once, then `… N more times`; four or more
   lines that differ only in their numbers show the first, `… N more like

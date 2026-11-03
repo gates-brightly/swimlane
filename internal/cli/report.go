@@ -656,6 +656,52 @@ func resultsOnly(lines []string, ref string) []string {
 	return out
 }
 
+// passesBrief keeps everything but a passing step's command and output in
+// full (failures, stops, guard and decision marks, warnings, the round's
+// header and summary): a passing step keeps its result line, its own notes
+// (saved:, messages) and the last line it printed, which is often its
+// result ("No changes.", a count). A one-line output stays as it is.
+// swim log has the rest.
+func passesBrief(lines []string, ref string) []string {
+	var out, output, notes []string // the passing step's output (cleaned) and notes
+	inPass := false
+	flush := func() {
+		switch {
+		case len(output) == 1:
+			out = append(out, logparse.OutPrefix+output[0])
+		case len(output) > 1:
+			last := output[len(output)-1]
+			if r := []rune(last); len(r) > 200 {
+				last = string(r[:199]) + "…"
+			}
+			out = append(out, fmt.Sprintf("%s%d lines of output (swim log %s); the last: %s", logparse.FoldNote, len(output), ref, last))
+		}
+		out = append(out, notes...)
+		output, notes, inPass = output[:0], notes[:0], false
+	}
+	for _, l := range lines {
+		if inPass && strings.HasPrefix(l, logparse.Indent) {
+			switch {
+			case strings.HasPrefix(l, logparse.CmdPrefix):
+			case strings.HasPrefix(l, logparse.OutPrefix):
+				if body, keep := logparse.CleanOutput(strings.TrimPrefix(l, logparse.OutPrefix)); keep && strings.TrimSpace(body) != "" {
+					output = append(output, body)
+				}
+			default:
+				notes = append(notes, l) // saved:, a message
+			}
+			continue
+		}
+		flush()
+		if kind, _, ok := logparse.SplitResult(l); ok && (kind == logparse.Pass || kind == logparse.Kept) {
+			inPass = true
+		}
+		out = append(out, l)
+	}
+	flush()
+	return out
+}
+
 func (r *report) header() string {
 	h := "swim report · " + filepath.Base(r.root)
 	if r.branch == "-" {
@@ -745,7 +791,7 @@ func (r *report) writeText(w io.Writer) {
 				if r.opts.results {
 					lines = resultsOnly(lines, l.key)
 				} else {
-					lines = logparse.FoldRepeats(lines)
+					lines = logparse.FoldRepeats(passesBrief(lines, l.key))
 				}
 				fmt.Fprintln(w, "\n"+head)
 				for _, line := range lines {

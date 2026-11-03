@@ -109,3 +109,51 @@ func TestEarmarkName(t *testing.T) {
 		t.Error("a path as a name")
 	}
 }
+
+// In swim report, a passing step is its result line, its notes and the
+// last line it printed; everything else is in full.
+func TestPassesBrief(t *testing.T) {
+	in := []string{
+		roundA,
+		"-- stage check  10:00:01",
+		"  PASS  plan                 0.4s  10:00:01",
+		"        $ terraform plan",
+		"        | Refreshing...",
+		"        | No changes. Your infrastructure matches the configuration.",
+		"        saved: .swim/snapshots/plan.txt",
+		"  PASS  count                0.1s  10:00:02",
+		"        $ psql -c 'select count(*)'",
+		"        | 42",
+		"  PASS  quiet                0.1s  10:00:02",
+		"        $ true",
+		"  SKIP  delete it (dry run: set ALLOW=1 to approve)",
+		"  FAIL  verify (exit 3)      0.2s  10:00:03",
+		"        $ check",
+		"        | first",
+		"        | broke",
+		"  STOP  gate failed: verify",
+		"== END FAIL  pass=3 fail=1 skip=1 drift=0  exit=3  1.0s  2026-10-15T10:00:03Z",
+		"   failed: FAIL  verify (exit 3)",
+	}
+	want := []string{
+		roundA,
+		"-- stage check  10:00:01",
+		"  PASS  plan                 0.4s  10:00:01",
+		"        … 2 lines of output (swim log 1); the last: No changes. Your infrastructure matches the configuration.",
+		"        saved: .swim/snapshots/plan.txt",
+		"  PASS  count                0.1s  10:00:02",
+		"        | 42",
+		"  PASS  quiet                0.1s  10:00:02",
+		"  SKIP  delete it (dry run: set ALLOW=1 to approve)",
+		"  FAIL  verify (exit 3)      0.2s  10:00:03",
+		"        $ check",
+		"        | first",
+		"        | broke",
+		"  STOP  gate failed: verify",
+		"== END FAIL  pass=3 fail=1 skip=1 drift=0  exit=3  1.0s  2026-10-15T10:00:03Z",
+		"   failed: FAIL  verify (exit 3)",
+	}
+	if got := passesBrief(in, "1"); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

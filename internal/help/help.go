@@ -224,14 +224,19 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
 swim report --earmark --wait [--timeout D] [--interval D]
 swim report --earmarks | --earmark --reset [--name NAME]
 
-  What changed since you last looked, in one call, untruncated: the lanes
-  whose state or job changed (as swim status words them, with what they
-  were, then one unchanged: line), held locks and the queue, every
-  .swim.log line written since, and every lane-log line written since:
-  the rest of the round that was in progress, then each round after it,
-  with repeated output folded as swim log folds it (swim log --raw has
-  every line). Steps running now follow, from their spools. It changes
-  nothing.
+  What changed since you last looked, in one call: the lanes whose state
+  or job changed (as swim status words them, with what they were, then
+  one unchanged: line), held locks and the queue, every .swim.log line
+  written since, and the lane logs written since: the rest of the round
+  that was in progress, then each round after it. Failures come in full:
+  a step that didn't pass (FAIL, BLOCKED), stops, guard and decision
+  marks, warnings and each round's header and summary keep every line. A
+  passing step is its result line, its notes (saved:, messages) and the
+  last line it printed ("        … 3 lines of output (swim log N); the
+  last: No changes."), or its output as is when that's one line. Repeated
+  output is folded as swim log folds it; swim log N has every passing
+  step's command and output. Steps running now follow, from their spools.
+  It changes nothing.
   --earmark      then move your earmark to the end of what it printed: the
                  next report starts there. Lines written while it printed
                  are in the next one; a running step stays new until it

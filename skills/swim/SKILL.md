@@ -56,8 +56,9 @@ swim log | tail -20  # the project log: the last actions and notes
 
 **An earmark is a bookmark in swim's record.** `swim report --earmark
 --name NAME` prints everything written since NAME's earmark (status
-changes, `.swim.log`, and every lane-log line, untruncated), then moves
-the earmark to the end. Give every session and worker its own name, or
+changes, `.swim.log`, and the lane logs: failures in full, a passing
+step as its result and the last line it printed), then moves the earmark
+to the end. Give every session and worker its own name, or
 one reader's report moves the other's place.
 
 **Never report from an earmark you haven't set.** With none yet, the
