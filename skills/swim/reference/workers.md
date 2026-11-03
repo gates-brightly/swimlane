@@ -1,13 +1,14 @@
 # Planner and workers: several agents, one repo
 
-swim has no lane locks for writers yet (lane claims are a proposed feature),
-so the planner's assignment is the only thing that keeps agents apart.
-These rules make it hold. They extend the guide's `PLANNER WORKFLOW` and
+`swim new` claims the lane it writes (`swim claim`), so another session's
+`swim new`, `stub` and `archive` refuse it until it runs or the claim
+lapses. The claim only stops collisions; the planner's assignment decides
+who writes what. These rules make it hold. They extend the guide's `PLANNER WORKFLOW` and
 `WORKER RULES`; read those too.
 
 ## The planner
 
-1. **Survey:** run `swim report --earmark` and `swim status`. Free lanes are
+1. **Survey:** run `swim status` and `swim queue`. Free lanes are
    idle, stubbed, or numbers not in use (1–99). A lane that is running,
    pending or queued isn't free, and neither is a lane the repo commits.
 2. **Assign one lane number to each worker,** before any worker starts. Put

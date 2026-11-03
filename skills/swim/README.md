@@ -20,8 +20,9 @@ and read the results back. It never runs or approves anything itself.
   something looks wrong, and what to do after a round fails partway through
   a change.
 
-**Version:** written for swim 0.20261028.1 or newer. The skill checks
-`swim --version` and tells the user when the binary is older, or when a
+**Version:** written for a swim whose `swim new` writes the short form
+(`#!/usr/bin/env swim`). With an older swim, the skill follows the
+template `swim new` writes and tells the user once; it also says when a
 command it names is unknown. To update, run `swim skill`: it points at the
 copy that matches the installed swim (its release tag). `swim version`
 says whether a newer swim is out.
@@ -53,7 +54,7 @@ cp -R /path/to/swimlane/skills/swim ~/.claude/skills/swim
 
 Claude Code picks it up in the next session. Ask "what's the state of the
 swim lanes?" to check that it loads: Claude should start with
-`swim report --earmark` and `swim status`.
+`swim status` and `swim queue`, not a full report.
 
 ## Changing it
 

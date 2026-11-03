@@ -93,7 +93,7 @@ Paste each block into a shell.
 <!-- quickstart -->
 ```sh
 mkdir swim-quickstart && cd swim-quickstart && git init -q
-swim init                         # config entry, .gitignore block, .swim/status.yml
+swim init                         # registers the repo; writes .swim.lock and a .gitignore block
 swim new 1 "Say hello"            # writes lane.1.sh from a template
 
 # Replace the template with one harmless step:
@@ -109,7 +109,6 @@ EOF
 swim lint 1                       # check the script before you run it
 swim run 1 --plain                # run it
 swim log 1                        # the round, step by step
-swim verify --allow-unsigned      # check the chain of custody (drop the flag once you sign: ~/.ssh/id_ed25519)
 ```
 
 A destructive step goes behind a guard, and is a dry run until a person
@@ -135,14 +134,22 @@ EOF
 swim run 2 --plain --no-prompt || echo "exit $?: a dry run"   # SKIP: nothing written
 HELLO_ALLOW_WRITE=1 swim run 2 --plain     # approved up front: the step runs
 cat hello.txt
-swim history --oneline                     # the chain: rounds and the flag's approval, newest first
+```
+
+Queue work instead of running it, and let `swim watch` run it when its
+lanes are free (here, `--once`: run what's queued, then exit):
+
+```sh
+swim queue 1 2 --approve HELLO_ALLOW_WRITE   # queue both; lane 2's guard approved
+swim watch --once
+swim status                                   # each lane's last result
 ```
 <!-- /quickstart -->
 
 Without `--no-prompt` on a terminal, swim asks you instead: `swim 2
 requires human approval of task: write hello.txt (quickstart) Y/N [N]`.
-For the next hour (dependencies, a queue, a swimmer and signed approvals),
-see [swim in an hour](docs/quickstart.md).
+For the next hour (gates, dependencies and signed approvals), see
+[swim in an hour](docs/quickstart.md).
 
 ## What swim protects against
 

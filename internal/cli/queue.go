@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -139,10 +140,15 @@ func queueAdd(args []string) error {
 	for _, f := range e.Approve {
 		seen[f] = true
 	}
-	fmt.Printf("queued %s (#%d): %d lanes\n", e.ID, e.Seq, len(e.Lanes))
+	noun := "lanes"
+	if len(e.Lanes) == 1 {
+		noun = "lane"
+	}
+	fmt.Printf("queued #%d (%s): %d %s\n", e.Seq, e.ID, len(e.Lanes), noun)
 	if signedAs != "" {
 		fmt.Printf("  signed by %s (standing approvals for %s apply)\n", signedAs, signedAs)
-	} else {
+	} else if _, err := os.Stat(filepath.Join(root, lookup.FileName)); err == nil {
+		// Only a repo set up for approvals has standing ones to miss.
 		fmt.Println("  unsigned (no signing key): standing approvals don't apply")
 	}
 	for _, l := range e.Lanes {
@@ -178,7 +184,7 @@ func queueAdd(args []string) error {
 	if why := launcher.Busy(root, cfg); why != "" {
 		fmt.Printf("  runs when swim is idle (now: %s) and a swimmer is up: swim watch\n", why)
 	} else {
-		fmt.Println("  runs when a swimmer takes it: swim watch (or swim watch --once)")
+		fmt.Println("  runs when swim watch takes it (swim watch --once runs what's queued, then exits)")
 	}
 	if !wait {
 		return nil

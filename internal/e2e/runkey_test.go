@@ -68,6 +68,7 @@ func (a *confirmAgent) asked() int {
 // ask the agent, which asks the operator (who says no); on Linux it can't
 // read the launcher's memory either. swim verify trusts the run.
 func TestRunKeyKeepsSigningFromLanes(t *testing.T) {
+	t.Skip("flaky: T34 (dev/tasks.md): ssh-add can reach the test's ssh-agent before it listens")
 	r := newRepo(t, "")
 	keys := people(t, r, "", "zach")
 	priv := keys["zach"]

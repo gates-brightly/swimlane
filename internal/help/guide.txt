@@ -18,7 +18,7 @@ USAGE
                                --full prints it too
 
 COMMANDS
-  init                     set up this repo: config entry, .gitignore block, .swim/status.yml
+  init                     set up this repo: config entry, .swim.lock, .gitignore block, .swim/status.yml
   config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set
                            interrupt, approvals, signing, runners.EXT, ...
   env [N|JOB]              the env a lane gets from env files, masked, with each key's source
@@ -65,10 +65,11 @@ COMMANDS
   claim N [--for D]        hold a lane while this session writes its round (swim new does; --release, --break)
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   signoff verify FILE ...  check a signoff (# Signoff:): its signature, whose key, the commit
-  queue add [N|JOB ...] [--approve FLAG] [-y]   queue a batch (with its approvals)
-                           to run once its lanes are free; queue [list|show|rm|requeue]
+  queue N|JOB ... [--approve FLAG] [-y]   queue a batch (with its approvals) to run
+                           once its lanes are free; queue add: every pending lane;
+                           queue [list|show|rm|requeue]
   watch [--once]           run queued batches side by side, consuming them (this machine is the swimmer)
-  wait [--timeout D]       block until nothing runs and nothing is queued (queue add --wait too)
+  wait [--timeout D]       block until nothing runs and nothing is queued (queue N --wait too)
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until it expires or is revoked
   revoke N|JOB / --auto USER   withdraw your approval
@@ -100,12 +101,38 @@ CONCEPTS
               count: its lanes are the ones in use (a script that isn't a
               stub, a current log, or a running lane). swim new N starts
               one; swim archive N (with a stub or no script) drops one.
-  swimmer     A machine that runs lanes for the queue: swim watch. Not a
-              worker: a worker is an AI subagent writing a lane.
   round       One lane script's contents: a single goal ("cut over service X",
               "diagnose Y"). Rewritten per round; disposable. A round that
               passed is "done": `swim all` won't run it again (`swim run N`
               or `swim all --rerun` will) until the lane gets a new round.
+  step        One command run through `swim step` (via run/gate/snapshot),
+              recorded with a header, its output and exit code.
+  stage       Where a round is: snapshot (read-only capture), check (checks and
+              gates), change (guarded changes), verify (prove it worked), in
+              that order; skip the ones you don't need. See STAGES.
+  gate        A step whose failure stops the round before any later step.
+  guard       A named approval for one destructive action, e.g.
+              FIN_ALLOW_DELETE_ZG_ITEMS. The operator approves it or not, in
+              their own way; unapproved, the step dry-runs. Write every guard
+              as if it will be asked.
+  queue       Work waiting to run: swim queue N ... queues lanes together, and
+              swim watch runs them once their lanes are free. The usual way to
+              hand the operator a ready round.
+  log         What happened: a lane's log, step by step (swim log N), and the
+              project log, one line per action (swim log). The session reads
+              these back instead of watching a run. See READING RESULTS.
+
+GOING FURTHER
+  What a first round doesn't need, for when it does:
+  job         One round's unique id, written in the script header as
+              `# Job: <id>` by `swim new` (a UUID, or your own with --job).
+              It is recorded in the log, status.yml, the live view and the
+              summary, and exported to steps as $SWIM_JOB (tag resources with
+              it so gates can tell "ours" from "theirs"). Pin a command to a
+              job by passing the id instead of a lane number: `swim run 3f2a9c1e`
+              runs exactly that job, and refuses if no lane holds it any more
+              (the script was rewritten or stubbed). A script without a Job:
+              line gets an id when it starts, so it can't be pinned before then.
   run         One `swim run` / `swim all`. Each gets a run id (r-<utc>-<hex>, or
               --run-id ID), exported to every lane as $SWIM_RUN with the lanes
               in the run as $SWIM_RUN_LANES, and recorded in the log, status.yml
@@ -117,22 +144,22 @@ CONCEPTS
               returns to all lanes, ? lists the keys (--no-tui or SWIM_TUI=0:
               off). It changes nothing a lane sees or records, except its
               approvals, which are the operator's.
-  job         One round's unique id, written in the script header as
-              `# Job: <id>` by `swim new` (a UUID, or your own with --job).
-              It is recorded in the log, status.yml, the live view and the
-              summary, and exported to steps as $SWIM_JOB (tag resources with
-              it so gates can tell "ours" from "theirs"). Pin a command to a
-              job by passing the id instead of a lane number: `swim run 3f2a9c1e`
-              runs exactly that job, and refuses if no lane holds it any more
-              (the script was rewritten or stubbed). A script without a Job:
-              line gets an id when it starts, so it can't be pinned before then.
-  step        One command run through `swim step` (via run/gate/snapshot),
-              recorded with a header, its output and exit code.
-  gate        A step whose failure stops the round before any later step.
-  guard       A named approval for one destructive action, e.g.
-              FIN_ALLOW_DELETE_ZG_ITEMS. The operator approves it or not, in
-              their own way; unapproved, the step dry-runs. Write every guard
-              as if it will be asked.
+  dependency  "swim B starts after swim A succeeds". Declare it in B's script
+              header, `# After: A` (lane numbers, task names or job ids), or for ordering
+              that holds every round, in config `deps`. If A fails or is
+              skipped, B is skipped.
+  lock        A named resource a round needs exclusively (# Locks:). A lane takes
+              all its locks at once, after its dependencies pass and before it
+              starts; lanes waiting for one show "locked (name: swim N)". Locks
+              hold within a run and across concurrent swim runs in the repo
+              (files under .swim/locks/, released when the lane's process ends,
+              even if killed). They don't protect across machines, and a lane
+              run directly with bash takes none. Use After: for order; Locks:
+              when either order is fine but overlap isn't.
+  batch       The lanes one swim queue call queued: they run together (After:
+              between them holds), pinned to their scripts as queued.
+  swimmer     A machine that runs lanes for the queue: swim watch. Not a
+              worker: a worker is an AI subagent writing a lane.
   decision    A numbered choice a lane puts to the operator (decide NAME
               "<question>" "<choice>" ...): swim asks, not the script, and the
               lane branches on the number. NAME=N set where swim run starts
@@ -144,25 +171,26 @@ CONCEPTS
               the policy keys of swim.yml and lookup.yml's rules. The lane runs
               a staged copy of those files; approvals sign the manifest's hash.
               See EXECUTION MANIFEST.
-  lock        A named resource a round needs exclusively (# Locks:). A lane takes
-              all its locks at once, after its dependencies pass and before it
-              starts; lanes waiting for one show "locked (name: swim N)". Locks
-              hold within a run and across concurrent swim runs in the repo
-              (files under .swim/locks/, released when the lane's process ends,
-              even if killed). They don't protect across machines, and a lane
-              run directly with bash takes none. Use After: for order; Locks:
-              when either order is fine but overlap isn't.
-  dependency  "swim B starts after swim A succeeds". Declare it in B's script
-              header, `# After: A` (lane numbers, task names or job ids), or for ordering
-              that holds every round, in config `deps`. If A fails or is
-              skipped, B is skipped.
+  checkpoint  A step (run --checkpoint) that, once it passed, a later run of the
+              round keeps instead of running again. See WRITING A LANE SCRIPT.
+  drift       A fact a round observes (# Observe:) that changed since its
+              approval: the guarded step stops. See EXECUTION MANIFEST.
+  chain       The chain of custody: every round and approval, hash-linked and
+              signed (.swim/chain.jsonl); swim verify checks it. See CHAIN OF
+              CUSTODY.
+  claim       A lane held while a session writes its round (swim claim; swim
+              new takes one), so another session doesn't write it too.
+  earmark     A reader's place in the logs: swim report --earmark shows what's
+              new since, then moves it.
+  signoff     # Signoff: posts a round's result as a commit status, signed
+              (swim signoff verify checks one).
   stub        The placeholder a lane holds between rounds (`swim stub`).
   archive     A finished log renamed agentN.prev-<what>.log (`swim archive`).
               Logs are kept; rounds are not.
 
 FILES (repo root)
-  .swim.lock            the syntax versions this repo's lanes use; written on
-                        the first run. Commit it. If swim refuses to run over a
+  .swim.lock            the syntax versions this repo's lanes use; written by
+                        swim init. Commit it. If swim refuses to run over a
                         version mismatch, follow its instructions (and see
                         `swim lock --help`); never edit or delete the lock to
                         get past it.

@@ -103,7 +103,7 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("queue add with no worker: exit %d\n%s", code, msg)
 	}
-	contains(t, "no worker", msg, "no swimmer is running: the batch waits for a swim watch that reads "+version.Current.String())
+	contains(t, "no worker", msg, "no swim watch is running yet: it waits for one")
 }
 
 func mustRun(t *testing.T, r *repo, swim string, args ...string) string {

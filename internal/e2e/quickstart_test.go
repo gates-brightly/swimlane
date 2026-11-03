@@ -61,10 +61,10 @@ func TestQuickstartRuns(t *testing.T) {
 	qs := filepath.Join(dir, "swim-quickstart")
 	contains(t, "quickstart output", string(out),
 		"hello from swim",     // swim log 1
-		"VERIFIED",            // swim verify
 		"dry run",             // the guarded step, unapproved
 		"HELLO_ALLOW_WRITE=1", // the approval, as recorded
-		"via flag",            // swim history
+		"queued #1 (",         // swim queue 1 2
+		"passed; consumed",    // swim watch --once ran the batch
 	)
 	if got, _ := os.ReadFile(filepath.Join(qs, "hello.txt")); string(got) != "hello\n" {
 		t.Errorf("hello.txt = %q, want the approved step's output", got)

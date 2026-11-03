@@ -82,7 +82,6 @@ func cmdInit(args []string) error {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Init, Detail: "status " + rel(root, status.Path(root))})
-	fmt.Printf("status: %s   project log: %s   (lanes: the ones in use; start one with swim new N)\n", rel(root, status.Path(root)), history.FileName)
 	fmt.Println(`next: swim new 1 "<round goal>"   (AI agents: read swim guide first)`)
 	return nil
 }
@@ -346,9 +345,7 @@ func cmdNew(args []string) error {
 	} else {
 		fmt.Printf("wrote %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, goal)
 	}
-	fmt.Printf("job: %s\n", job)
-	fmt.Printf("edit its steps, then the operator runs: swim run %s   (or pinned: swim run %s)\n", ref, job)
-	fmt.Printf("check it after editing: swim lint %s\n", ref)
+	fmt.Printf("next: fill in its steps, check them with swim lint %s, then run it: swim run %s\n", ref, ref)
 	return nil
 }
 
@@ -1016,7 +1013,6 @@ func initLookup(root string, cfg *config.Config) {
 	}
 	key, err := sign.LoadKey(cfg.SigningKey)
 	if err != nil {
-		fmt.Println("no signing key yet (~/.ssh/id_ed25519, or swim config signing_key): once you have one, swim keys add NAME lists it in lookup.yml")
 		return
 	}
 	if lk, err := lookup.Load(root); err == nil {

@@ -445,7 +445,7 @@ func ensureLock(root string) error {
 	}
 	if created {
 		history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("created %s: syntax %s (swim %s)", version.LockName, version.Current, version.String())})
-		fmt.Fprintf(os.Stderr, "swim: wrote %s (syntax %s); commit it so everyone runs a compatible swim\n", version.LockName, version.Current)
+		fmt.Fprintf(os.Stderr, "swim: wrote %s; commit it, so everyone on this repo runs a compatible swim\n", version.LockName)
 	}
 	return nil
 }

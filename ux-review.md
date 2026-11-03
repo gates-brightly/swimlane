@@ -21,7 +21,7 @@ delete it.
 | 2 | [`swim run` doesn't write files the repo should commit](#2-swim-run-doesnt-write-files-the-repo-should-commit) | 1 | S | Low | Done (`ux-smaller`) |
 | 3 | [Clean up the repo root](#3-clean-up-the-repo-root) | 1 | S | Low | Done (`ux-smaller`) |
 | 4 | [One spelling per action](#4-one-spelling-per-action) | 2 | M | Low | Done with changes: queue spelling only; flags kept |
-| 5 | [Decide which concepts a beginner sees](#5-decide-which-concepts-a-beginner-sees) | 2 | M | Low | On hold: think about the template schema first |
+| 5 | [Decide which concepts a beginner sees](#5-decide-which-concepts-a-beginner-sees) | 2 | M | Low | Done (`ux-template`) |
 | 6 | [A shorter template](#6-a-shorter-template) | 2 | S | Low | Done (`ux-template`) |
 | 7 | [Let `swim run` supply the boilerplate](#7-let-swim-run-supply-the-boilerplate) | 3 | L | **High** | Done (`ux-template`): opt-in by `#!/usr/bin/env swim` |
 | 8 | [Freeze the format and the versioning](#8-freeze-the-format-and-the-versioning) | 3 | S | Low | Done with changes: changelog kept whole |
@@ -220,14 +220,24 @@ the template uses a noun outside the day-one list.
 
 **Decision:**
 - [ ] Approve
-- [ ] Approve with changes
+- [x] Approve with changes
 - [ ] Reject
 
 **Notes:**
 
-**On hold:** think about the template schema first (which header fields
-a lane needs on day one) before choosing the beginner nouns. Pairs with
-6 and 7.
+Done on `ux-template`, after the template settled (6, 7). **Change:** day
+one is six ideas, not four: lane, round, step, guard, queue, log (stage,
+run, gate and snapshot are the script's syntax). `swim init` dropped the
+signing-key and status-file lines; `swim new` prints one `next:` line (no
+job id or pinned run); `swim queue` says "1 lane", leaves out standing
+approvals without `lookup.yml`, and says "no swim watch is running yet"
+without syntax versions. The README quickstart ends with `swim queue 1 2`
++ `swim watch --once` instead of `verify`/`history`. The guide's CONCEPTS
+holds the day-one ideas and GOING FURTHER the rest (new short entries for
+batch, checkpoint, drift, chain, claim, earmark, signoff); the guide's
+`queue add [N|JOB ...]` line and stale lock line are fixed.
+`TestDayOneVocabulary` keeps later words out of the quickstart, the
+template and init/new/queue output.
 
 ---
 

@@ -12,7 +12,7 @@ or the chain to make a symptom go away.
 swim status            # each lane's state; "running?" (process gone) is a dead lane
 swim doctor            # environment and repo checks: [stale-pid], lock, config, PATH (no --fix)
 swim queue             # waiting, running, orphaned and done batches
-swim report --earmark  # what happened since you last looked
+swim log | tail -20    # the project log: the last actions and notes
 swim log N             # the lane's last round, step by step
 swim verify            # only when the record itself is in question
 ```

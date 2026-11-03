@@ -284,6 +284,17 @@ and read.
 
 ### Changed
 
+- **Day one uses six ideas: lane, round, step, guard, queue and log.**
+  `swim init` no longer mentions signing keys or the status file, `swim
+  new` no longer prints the job id or a pinned run, and `swim queue` says
+  "1 lane", leaves out standing approvals in a repo without `lookup.yml`,
+  and says "no swim watch is running yet" without syntax versions. The
+  README quickstart ends by queueing both lanes for `swim watch --once`
+  instead of `swim verify` and `swim history` (still under "When you need
+  proof"). `swim guide`'s CONCEPTS lists the day-one ideas, then GOING
+  FURTHER the rest (job, run, dependency, lock, batch, swimmer, decision,
+  manifest, checkpoint, drift, chain, claim, earmark, signoff). A test
+  keeps the later words out of what a newcomer meets first.
 - **`swim new` writes the short form,** in 21 lines: the header (Round,
   Job, Owner) and the four stages, with the guard example. The 11-line
   comment block, the empty `After`, `Guards`, `Timeout` and `Created`

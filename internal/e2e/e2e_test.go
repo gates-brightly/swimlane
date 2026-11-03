@@ -855,18 +855,20 @@ func laneOf(r *repo, n int) status.Lane {
 	return status.Lane{}
 }
 
-var jobLineRE = regexp.MustCompile(`(?m)^job: (\S+)$`)
+// swim new writes the job id in the script's header (and no longer prints
+// it: a newcomer doesn't need it, and the header is the record).
+var jobLineRE = regexp.MustCompile(`(?m)^# Job:\s+(\S+)$`)
 
 func TestJobIDsAndPinning(t *testing.T) {
 	r := newRepo(t, "")
-	out := r.newLane("1", "pinned round")
-	m := jobLineRE.FindStringSubmatch(out)
+	r.newLane("1", "pinned round")
+	script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
+	m := jobLineRE.FindStringSubmatch(string(script))
 	if m == nil {
-		t.Fatalf("new printed no job id:\n%s", out)
+		t.Fatalf("new wrote no job id:\n%s", script)
 	}
 	job := m[1]
-	script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	contains(t, "lane.1.sh", string(script), "# swim: syntax 4", "# Job:     "+job)
+	contains(t, "lane.1.sh", string(script), "# swim: syntax 4")
 	if l := r.status().Get(1); l.PendingJob != job {
 		t.Errorf("pending_job = %q", l.PendingJob)
 	}
@@ -876,7 +878,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(body), 0o755)
 
 	// Pin by an 8-character prefix.
-	out = r.mustSwim("run", job[:8])
+	out := r.mustSwim("run", job[:8])
 	contains(t, "pinned run", out, "tag="+job, job[:8])
 	log := r.log(1)
 	contains(t, "agent1.log", log, "  job="+job+"  pinned round", "| tag="+job)
@@ -1106,7 +1108,7 @@ func TestVersionAndLock(t *testing.T) {
 	if _, err := os.Stat(lockPath); err == nil {
 		t.Fatal("status wrote a lock")
 	}
-	contains(t, "init", r.mustSwim("init"), "wrote .swim.lock (syntax "+version.Current.String()+")")
+	contains(t, "init", r.mustSwim("init"), "wrote .swim.lock; commit it")
 	data, _ := os.ReadFile(lockPath)
 	contains(t, ".swim.lock", string(data), fmt.Sprintf("script: %d", version.Current.Script), fmt.Sprintf("state: %d", version.Current.State), "version: 0.")
 	if out := r.mustSwim("run", "1"); strings.Contains(out, "wrote .swim.lock") {

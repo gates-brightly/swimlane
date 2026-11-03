@@ -72,8 +72,8 @@ func holdHere(root string, e *queue.Entry, why string) {
 func checkWorkers(root string, e *queue.Entry, live []*queue.Presence) (refuse error, warn string) {
 	if len(live) == 0 {
 		if !workerRunning(root) {
-			return nil, fmt.Sprintf("no swimmer is running: the batch waits for a swim watch that reads %s (as this swim, %s, does)",
-				version.Current, version.String())
+			// A swim watch that can't run it says why when it takes the queue.
+			return nil, "no swim watch is running yet: it waits for one"
 		}
 		return nil, ""
 	}

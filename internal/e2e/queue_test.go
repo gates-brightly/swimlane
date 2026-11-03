@@ -49,7 +49,7 @@ func TestQueueAndWatchOnce(t *testing.T) {
 		t.Fatalf("typo approval accepted: %d %s", code, out)
 	}
 	out := r.mustSwim("queue", "add", "--approve", "ALLOW_DROP", "--note", "batch one")
-	contains(t, "queue add", out, "queued q-", "(#1): 2 lanes", "approvals: ALLOW_DROP", "not approved (dry runs unless approved; no swimmer up asks for them): ALLOW_OTHER")
+	contains(t, "queue add", out, "queued #1 (q-", "): 2 lanes", "approvals: ALLOW_DROP", "not approved (dry runs unless approved; no swimmer up asks for them): ALLOW_OTHER")
 	contains(t, "queue list", r.mustSwim("queue"), "#1", "queued", "swim 1,2", "approve ALLOW_DROP", "batch one")
 
 	// The watcher's own ALLOW_OTHER=1 must not approve the batch: only the
@@ -410,7 +410,7 @@ func TestQueueWaitTimeout(t *testing.T) {
 	if err := q.Start(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return strings.Contains(qout.String(), "queued q-") })
+	waitFor(t, func() bool { return strings.Contains(qout.String(), "queued #") })
 	r.mustSwim("watch", "--once")
 	if err := q.Wait(); err != nil || !strings.Contains(qout.String(), "(#2): passed") {
 		t.Errorf("queue --wait --timeout with a worker: %v\n%s", err, qout.String())
