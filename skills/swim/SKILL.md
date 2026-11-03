@@ -5,365 +5,132 @@ description: Plan and write operational work for swim (swimlane), the operator-i
 
 # swim
 
-swim runs AI-written operational work safely. **You write the round, the
-operator runs it, the log reports.** You plan and write lane scripts. A
-person (the *operator*) runs them with their own access. You read the
-results back from files and decide the next round.
+**You write the round, the operator runs it, the log reports.** You plan
+and write lane scripts; a person (the *operator*) runs them with their own
+access; you read the results back from files and decide the next round.
+Your context is for the task, not for watching runs: dispatch, work on
+something else, and read only what you need when the result is in.
 
-**Your context is for the task, not for watching runs.** A long job runs
-under swim while you work on something else. Come back when its result is
-in, and read only what you need: status first, then the failed step, never
-a whole run or a whole log history.
-
-## 0. Is swim here?
-
-Check before anything else:
+## Is swim here?
 
 ```sh
 command -v swim && swim --version
 ls lane.* swim.yml .swim 2>/dev/null
 ```
 
-- **No `swim` on PATH:** say so, and stop there unless the user wants it.
-  The install line is `curl -fsSL
-  https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh | sh`
-  (a release binary; `go install
-  github.com/gates-brightly/swimlane/cmd/swim@latest` builds it instead).
-  Don't install it yourself without being asked.
-- **swim, but the repo has none of those files:** the repo doesn't use swim
-  yet. Don't run `swim init` on your own: it edits `.gitignore` and the
-  user's config. Propose it when the work fits swim (operational work that
-  has to run where you can't), and otherwise stay out of the way.
-- **Version:** this skill matches a swim whose `swim new` writes the short
-  form (first line `#!/usr/bin/env swim`). If it writes the explicit form
-  instead (it loads the library and calls `lane_init`), the swim is older:
-  follow the template it writes, keep its `lane_init` and `summary`, and
-  tell the user once (`swim version` shows the latest release; `swim
-  skill` points at the skill that matches the installed swim). If a
-  command named here is unknown, say so. If this skill and the binary
-  disagree, the binary wins.
+- **No `swim`:** say so, and stop unless the user wants it. Don't install
+  it yourself without being asked (`swim skill` and the README say how).
+- **No lane files, swim.yml or .swim:** the repo doesn't use swim yet.
+  Don't run `swim init` yourself (it edits `.gitignore` and the user's
+  config); propose it when the work has to run where you can't.
+- **The binary wins.** This skill matches a swim whose `swim new` writes
+  the short form (`#!/usr/bin/env swim`). If it writes something else, or
+  a command here is unknown, follow the binary and tell the user once.
 
-## 1. Get the guide from the binary first
+## Run freely
 
-The installed swim is the source of truth, and its guide is written for
-you. Catch up with the cheap reads first, once per session:
+These only read or check: `swim status`, `queue` / `queue show`, `log`,
+`report` (from your own earmark), `lint`, `history`, `verify`, `env`,
+`keys`, `doctor` (without `--fix`), `changelog`, `guide`, `--help`. Add
+`--yaml` only when you'll parse the output.
 
-```sh
-swim status          # every lane: idle, pending, running, passed, failed
-swim queue           # what's waiting and running
-swim log | tail -20  # the project log: the last actions and notes
-```
+Bookkeeping on your own rounds: `swim new`, `archive`, `stub`, `note`. They
+touch only lane files and logs, and refuse a running lane.
 
-**An earmark is a bookmark in swim's record.** `swim report --earmark
---name NAME` prints everything written since NAME's earmark (status
-changes, `.swim.log`, and the lane logs: failures in full, a passing
-step as its result and the last line it printed), then moves the earmark
-to the end. Give every session and worker its own name, or
-one reader's report moves the other's place.
+## Hand over
 
-**Never report from an earmark you haven't set.** With none yet, the
-report is every lane's current rounds in full: in a busy repo, tens of
-thousands of lines. `swim report --earmarks` lists the names that exist.
-If yours isn't there, catch up with the reads above, then set it without
-reading: `swim report --earmark --name NAME >/dev/null`. From then on a
-report holds only what's new, and is worth reading when a few lanes ran;
-after a big batch, read per lane instead (section 3, step 6).
+**Queue a ready round** (`swim queue N ...`), guards and all, without
+asking first. Queueing runs and approves nothing: the swimmer runs the
+batch when its lanes are free and asks the operator for every guard
+nothing else approved; one they decline is a dry run. Don't ask "shall I
+queue it?" and don't hold a round back for its guards. With no swimmer up
+(`swim queue` says), give the operator the exact `swim run <job> ...`
+command instead, pinned to job ids, with nothing that approves.
 
-When you need one section of the guide, extract it instead of reading
-all of it (headings are uppercase, at column 0; a few go on after two
-spaces):
+Before handing over, read `swim lint` and `swim status` for the lanes and
+**flag every item with meaningful risk**, each on its own line marked ⚠:
+a guarded step that changes or destroys something outside the repo (name
+the guard and the action), production or shared targets, a setup lane the
+batch pulls in, anything that can't be undone. Give a **What you're
+approving** block for each guard and decision
+([reference/handoff.md](reference/handoff.md)). Never ask for an approval
+without it.
+
+**How the operator approves is theirs.** Don't look into it, name it,
+suggest a way, or plan around it. Write every guarded step as if it will
+be asked, and never skip, split, reword or hold back a step because of
+how it might be approved.
+
+## Never do
+
+- **Run rounds:** `swim run`, `swim all`, `swim N`, `./lane.N.sh`, `swim
+  watch`, `swim ci`. The operator's environment is the point. If the user
+  explicitly asks, run only lanes with no guards that change nothing
+  outside the repo (lint, tests, local builds), and say so.
+- **Approve or decide anything,** in any form. Never set an environment
+  variable named after a guard or decision.
+- `swim interrupt`, `swim keys trust`, `swim chain ...`, `swim doctor
+  --fix`, `swim config` or config edits.
+- **Edit by hand:** `.swim/`, `.swim.log`, `approvals/`, `lookup.yml`,
+  `trust.yml`, `~/.config/swim/`. Not even to fix one: give the operator
+  the exact lines or command ([reference/triage.md](reference/triage.md)).
+- **Tell the user a change is safe because swim will ask first.**
+  Approvals prove who decided what; an approved script still runs with the
+  operator's access.
+
+## The loop
+
+1. **Catch up, cheapest first:** `swim status`, `swim queue`, `swim log |
+   tail -20`. Then use your own earmark (one name per session and worker,
+   or one reader moves another's place): `swim report --earmark --name
+   NAME` prints what's new since it (failures in full) and moves it.
+   **Never report from an earmark you haven't set** (`swim report
+   --earmarks` lists them): the first report is every current round. Set
+   yours without reading: `swim report --earmark --name NAME >/dev/null`.
+   After a big batch, read per lane (step 6) instead. Don't redo or
+   contradict what the record says without asking.
+2. **Pick lanes:** idle ones or unused numbers (1–99). Never a lane that's
+   running, holds a round someone may be about to run, or that the repo
+   commits (its CI). Ask when unclear. With subagents, one lane per worker
+   ([reference/workers.md](reference/workers.md)).
+3. **Write:** `swim new N "<goal>"`, then the steps, in the short form, in
+   bash unless the work needs another language. Read
+   [reference/lane-rules.md](reference/lane-rules.md) first.
+4. **Check:** `swim lint N` until clean (`swim run` refuses any lint
+   error), then `swim status N`: what it waits on, and its guards.
+5. **Dispatch:** hand it over (above), then go on to the next task. Never
+   poll with `swim run`. Several tasks at once:
+   [reference/streams.md](reference/streams.md).
+6. **Read results** when the batch is done (`swim queue` says so):
+   `swim status N` first. **FAIL:** `swim log N`, the failed step and the
+   ones just before it. **PASS only means exit 0:** read the evidence (the
+   verify stage, `swim log N | sed -n '/^-- stage verify/,$p'`). **SKIP**
+   (`dry run`): a guard wasn't approved, nothing changed; never a result.
+7. **Close out:** record results where the project tracks them, `swim note
+   "<finding>"` for the next session, then `swim archive N --as
+   <what-happened>` and `swim stub N "<why idle>"`. Out-of-scope findings
+   go on a follow-up list. Rounds that build on each other:
+   [reference/campaigns.md](reference/campaigns.md).
+
+Something looks wrong (stuck `running`, a round that stopped mid-change,
+an orphaned batch, `swim verify` saying no):
+[reference/triage.md](reference/triage.md), read-only first.
+
+## Everything else is in the guide
+
+The installed binary's guide is the source of truth. Read one section
+instead of all of it:
 
 ```sh
 swim guide | awk '/^PLANNER WORKFLOW$/{p=1;print;next} p&&/^[A-Z][A-Z ]+($|  )/{exit} p'
 ```
 
-| Before you... | Read section |
+| Before you... | Read |
 |---|---|
-| plan a round | `PLANNER WORKFLOW`, `CONCEPTS` (day one); `GOING FURTHER` when you need more |
-| are a subagent writing one lane | `WORKER RULES` |
-| write or edit a lane script | `WRITING A LANE SCRIPT`, `SAFETY RULES`, `SYNTAX` |
-| write a lane in Python/TS/Go | `OTHER LANGUAGES` |
+| plan a round | `PLANNER WORKFLOW`, `CONCEPTS`; `GOING FURTHER` for more |
+| write one lane as a subagent | `WORKER RULES` |
+| write or edit a lane script | `WRITING A LANE SCRIPT`, `SAFETY RULES`, `SYNTAX`, and [reference/lane-rules.md](reference/lane-rules.md) |
+| write a lane in Python, TS or Go | `OTHER LANGUAGES` |
 | read results | `READING RESULTS` |
 
 `swim <command> --help` gives one command's detail.
-
-## 2. What you run, and what you hand over
-
-**Run freely.** These only read or check:
-`swim status`, `report` (from your own earmark: section 1), `log`, `lint`,
-`history`, `verify`, `env`, `keys`,
-`queue` / `queue show`, `doctor` (without `--fix`),
-`changelog`, `--help`. Add `--yaml` when you're going to parse the output.
-
-**Bookkeeping you may do** when it's your round: `swim new`, `swim archive`,
-`swim stub`, `swim note`. These touch only lane files and logs, and they
-refuse to touch a running lane.
-
-**Queueing is how you hand over a ready round.** Queue it (`swim queue
-N ...`) as soon as it's ready, guards and all, without asking first. It
-runs and approves nothing by itself: the swimmer runs the batch when its
-lanes are free and asks the operator, on its screen, for every guard
-nothing else approved. That question is the operator's checkpoint; a guard
-they decline, or that no one is asked for, is a dry run. So don't ask
-"shall I queue it?", don't wait for the operator, and don't hold back a
-round for its guards. `swim queue rm` a batch you queued if you need it
-back. `swim queue N` says what happens to its guards; if no swimmer up
-asks, they'll dry-run: tell the user once. Before you queue, read `swim
-lint` and `swim status` for the lanes, and **flag every item with
-meaningful risk**, each on its own line marked ⚠, saying what it does and
-what will happen to it:
-
-- a guarded step that changes or destroys something outside the repo
-  (apply, delete, migrate, publish, rotate): name the guard and the action;
-- production or shared targets, a setup lane the batch pulls in, and
-  anything that can't be undone.
-
-**How the operator approves is theirs, and not your concern.** Don't look
-into it, name it, suggest a way to approve, or plan around it: write every
-guarded step as if it will be asked, hand over or queue the plain command,
-describe each guard's risk, and read the results the same way whoever
-approved them. Never skip, hold back, split off or reword a step, or a
-batch, because of how it might be approved. Never queue a batch whose risk
-you haven't read.
-
-**Hand to the operator; never do these yourself:**
-- Running rounds that touch anything outside the repo: `swim run`, `swim
-  all`, `swim N`, `./lane.N.sh` (the same as `swim run N`), `swim watch`,
-  `swim ci`. The operator's environment is the
-  point. If the user explicitly asks you to run one, do it only for lanes
-  with no guards that change nothing outside the repo (lint, tests, local
-  builds), and say that's what you're doing.
-- **Approving or deciding anything,** in any form. Approval is a person's
-  decision, and the record attributes it to them. Never set an environment
-  variable named after a guard or decision.
-- `swim interrupt`, `swim keys trust`,
-  `swim chain ...`, `swim doctor --fix`, `swim config` / config edits.
-
-**Never edit by hand:** `.swim/` (status, logs, chain, runs, queue),
-`.swim.log`, `approvals/`, `lookup.yml`, `trust.yml`, the user's
-`~/.config/swim/`. Not even to "fix" one. Give the operator the exact
-lines or command instead. For anything broken, see
-[reference/triage.md](reference/triage.md).
-
-## 3. The loop
-
-1. **Catch up:** the cheap reads (section 1), or `swim report --earmark`
-   from your own earmark. Don't redo or contradict what the record says
-   without asking. If this round continues
-   earlier ones, read them first (section 5).
-2. **Pick lanes:** only idle ones (or unused numbers 1–99). Never a lane
-   that's running or holds a round someone may be about to run, and never
-   a lane the repo commits (its CI or setup). Confirm with the user when it's
-   unclear.
-3. **Write:** `swim new N "<goal>"`, then fill in its steps (see section 6
-   and [reference/lane-recipe.md](reference/lane-recipe.md)). It writes the
-   short form: the header and the stages. Keep it that way: no library
-   line, no `lane_init`, no `summary`; `swim run` does those. Write lanes in
-   bash unless the user asks for another language or the work is much
-   easier in one; it calls swim's steps as commands (`swim guide`, OTHER
-   LANGUAGES).
-   With subagents, follow [reference/workers.md](reference/workers.md):
-   the planner assigns each worker exactly one lane number, and nobody
-   touches a lane they weren't given.
-4. **Check:** `swim lint N` until it's clean (`swim run` refuses a lane
-   with any lint error), then read `swim status N`
-   before you ask the operator to run anything: it shows the lane's header,
-   where each lane it waits on stands (one that hasn't passed skips it),
-   and its guards.
-5. **Dispatch:** queue the round (section 2). Only when no swimmer is up,
-   or the user asks for a command to run themselves, give the operator the
-   exact `swim run` command instead, pinned to job ids and with nothing
-   that approves. Either way,
-   give a **What you're approving** block: for each guard, the commands it lets run, the
-   target, the scope with the numbers the checks found, whether it can be
-   undone, and what happens if they say no (a dry run); for each decision,
-   what each choice does ([reference/handoff.md](reference/handoff.md)).
-   Never ask for an approval without it. Then
-   don't wait: go on to the next task (section 4). Never poll with `swim
-   run`.
-6. **Read results** when the batch is done (`swim queue` says so),
-   cheapest first:
-   - `swim status N`: the result, its counts and any failed steps.
-   - **FAIL:** `swim log N`, and read the failed step (its command and
-     output) and the steps just before it. That's what the fix needs.
-   - **PASS only means exit 0.** Read the evidence, not the run: the
-     verify stage (`swim log N | sed -n '/^-- stage verify/,$p'`) and any
-     step whose output proves the change (ids, counts, "No changes").
-   - **SKIP** (`dry run: <step>`): a guard wasn't approved. Nothing
-     changed, the lanes after it were skipped too, and `swim run` exited
-     3. A dry run is never a result.
-   Add `--yaml` only when you'll parse it; it's longer.
-7. **Close out:** record results where the project tracks them, `swim note
-   "<finding>"` for what the next session needs, then `swim archive N --as
-   <what-happened>` and `swim stub N "<why idle>"`. Out-of-scope findings go
-   on a follow-up list, not into the round.
-
-**When something looks wrong** (a lane stuck `running`, a failed round that
-stopped mid-change, an orphaned batch, `swim verify` saying `no`): start
-with [reference/triage.md](reference/triage.md). Read-only first, then tell
-the operator what you found and the exact fix to run.
-
-## 4. Concurrent streams: keep working while swim validates
-
-Work several tasks at once. swim runs one task's validation while you write
-the next, and you come back to a task when its results are in. Don't sit
-idle waiting for a run.
-
-1. **List the tasks.** Write them in your task list before starting, each
-   with the lane(s) that will validate it. Give every task its own lanes
-   (section 3, step 2): two streams never share a lane.
-2. **Work the first task** until it's ready to validate.
-3. **Dispatch its validation:** `swim lint N`, then `swim queue N ...`
-   (no approvals; flag risks as section 2 says). Record the batch number
-   and job ids against the task: "orders: #41, swim 21 (63bdf4a9)".
-4. **Don't wait.** Start the next task.
-5. **At each stopping point** (the next task is ready to dispatch, or
-   blocked): dispatch what's ready, then `swim queue` to see what has
-   finished. It costs a few lines; a report of every running lane's
-   output costs far more.
-6. **Pick finished tasks back up.** For each task whose batch is done, read
-   its results as section 3, step 6 says (status, then the failed step or
-   the verify stage) and either close it out or fix it and go back to step 3. Then carry on with the task you
-   were on. Repeat until every task is validated and closed out.
-
-The rules that keep streams apart:
-- **Don't touch a dispatched lane.** A queued batch is pinned to its
-  scripts: an edit makes swim skip that lane rather than run your new
-  version. To change a dispatched lane, `swim queue rm` its batch (if it
-  hasn't started) and dispatch again, or wait for it to finish.
-- **Shared setup takes turns.** Batches that pull in the same setup lane
-  (`After: 1`) run one after another, not side by side. Expect that wait,
-  or queue lanes that belong together as one batch (`swim queue 2 3
-  4`): one run, so `After:` between them holds.
-- **Only block when there's nothing else to do.** Once every task is
-  dispatched or waiting on results, wait for one job: `swim log <job>
-  --until-done >/dev/null; swim status <job>` (it exits with the round's
-  result). Use it then, and only then.
-- **Keep a few streams open at most,** about as many as the swimmer runs at
-  once (`watch_batches`, default 4). More just sit in the queue.
-- **No swimmer, no progress.** If `swim queue` shows batches waiting and
-  nothing running, check that a swimmer (`swim watch`) is up, and tell the
-  user once.
-- **A guarded change is dispatched like any other** (section 2): flag it
-  (⚠), keep working, and check later what the operator decided. A dry run
-  ends its batch `skipped`; never treat it as validated.
-
-[reference/streams.md](reference/streams.md) walks through an example and
-shows what to keep in the task list.
-
-## 5. Campaigns: rounds that build on each other
-
-Most real work is several rounds: discover, prepare, change, clean up,
-often with an expensive setup and a few retries. Each round should start
-from what the previous ones left behind.
-
-- **Read the history before you write the next round:**
-  - `swim log N --all`: the lane's rounds, archives included.
-  - `swim log <job>`: one round by its job id.
-  - `swim history N`: who approved and ran what.
-  - `swim log`: the project log, including everyone's notes.
-- **Name archives so they can be found:** `swim archive N --as
-  orders-r3-apply-failed`, not the default job id.
-- **Keep a campaign thread in the record:** one `swim note` per decision
-  or finding, with a fixed prefix (`swim note "orders cutover: r3 apply
-  failed on the IAM role; r4 retries it alone"`). A fresh session finds
-  the thread in `swim log`. A plan that should outlive the campaign
-  belongs in the project's own docs or tracker. Ask the user where before
-  creating a file.
-- **Don't redo expensive setup:** put it in its own lane and depend on its
-  exact job (`# After: <job>`), and pass results with `# Outputs:` /
-  `input`.
-- **Each new round re-reads deployed state.** Don't trust the previous
-  round's output as current; snapshot again.
-
-## 6. Writing a lane: the rules that matter most
-
-- **The short form:** the script is its header and its steps (`swim new`
-  writes it). `./lane.N.sh` runs it as `swim run N` does; `bash lane.N.sh`
-  can't. Only write the explicit form (library line, `lane_init N`,
-  `summary`) when the lane must also run with bash directly.
-- **Stages in order:** `snapshot` (read-only capture), `check` (checks and
-  `gate`s), `change` (only behind `guard`), `verify` (prove it worked).
-  Make `verify` print the evidence a reader needs (counts, ids, "No
-  changes"): it's the part of a passing round anyone reads.
-- **A guard's description is the operator's summary of what they're
-  approving:** swim shows it when they approve, in `swim status` and in the
-  chain, and it's often all they read. Write one
-  line that says the action (the verb and the command's effect), the exact
-  target (resource, environment, account), the scope (how many, how much,
-  from the snapshot or check that counted it), whether it can be undone
-  and how, then the date and the reason:
-  `guard USERS_ALLOW_PURGE "delete the 3 @test.example rows from prod
-  users (snapshot keeps them; restore with users-restore.sh) 2026-10-29:
-  load-test cleanup"`, not `"cleanup"` or `"run the migration"`. The same
-  text goes in `# Guards:`. If one line can't say it, the guard covers too
-  much: split it.
-- **Every destructive or irreversible step goes behind its own `guard
-  FLAG "<action, date, reason>"`.** Declare it in the header (`# Guards:
-  FLAG  <what it approves>`): swim reads a lane's guards and includes
-  from its header only, and refuses one it doesn't declare (a guard
-  dry-runs; an unlisted `source` stops the round). `swim lint --fix` adds
-  missing header lines.
-  With no approval it's a dry run, which is the safe default. Never default
-  a flag on, and never set one in the script: swim refuses that.
-- **Mark steps that mustn't run twice `--checkpoint`** (`run --checkpoint
-  --key create-bucket "create the bucket" aws s3 mb ...`): slow or
-  one-time changes whose effect lives outside the repo. When the round
-  fails later and is fixed, its next run keeps them (KEPT) and resumes.
-  Never on a check or snapshot. Clearing them (`swim run --fresh`,
-  `swim checkpoint rm`) is the operator's call.
-- **When the operator knows which way to go and you don't, write a
-  decision, not a guess.** `decide NAME "<question>" "<choice 1>" "<choice
-  2>" ...` (2 to 9 choices, declared in `# Decisions: NAME  <what it
-  decides>`) on its own line, then `case $DECISION in 1) ... ;; esac`.
-  Write every path; the operator picks one at run time. Unanswered, the
-  round ends there SKIP. A decision steers; a destructive step on a branch
-  still goes behind `guard`.
-- **Gates fail closed.** An empty or unknown answer stops the round before
-  any change.
-- **Read the deployed state.** Never assume it from code.
-- **Rerunnable:** tag what you create with `$SWIM_JOB`, so a rerun tells
-  "ours" from "theirs".
-- **Declare ordering in the header,** not in prose: `# After: 2 3`,
-  `# Locks: name`, `# Includes: lib/x.sh` for anything you `source`.
-- **The lane runs in a staged copy** holding only the script and what
-  `# Includes:` pins, so what runs is what was approved. A repo file it
-  reads but doesn't pin isn't there: pin it, or (rarely, and the approval
-  says so) add `# Workspace: live`. Write the lane's own outputs to
-  `$SWIM_OUT`; `$SWIM_ROOT` is the repo root, for the files the round acts on.
-- **bash 3.2** (macOS): no associative arrays, `mapfile` or `${x,,}`. **No
-  `set -e`.** A failed `run` doesn't stop the round; a failed `gate` does.
-- **git and gh are allowed** (commit, push, pull, `gh pr create`, `gh api`).
-  A step that changes a shared remote (a push, a PR, a merge) goes behind
-  its own guard, like any change outside the repo. swim blocks only what
-  the repo lists in `blocked_commands` (`swim config` shows them), on the
-  text, so not even an echo of one.
-- **Secrets:** a lane gets credentials from its environment (the
-  operator's, or `.env.swim`). Never print values, only lengths. Never list
-  a secret in `header_env`.
-- **Check the target before changing it.** Start a change against cloud
-  resources with a `gate` that stops on the wrong account (`gate "account"
-  -- test "$(aws sts get-caller-identity --query Account --output text)" =
-  "$ACCOUNT"`). For Terraform: `snapshot "plan" -- terraform plan -out
-  tfplan` in the check stage and `terraform apply tfplan` inside the guard,
-  so what's applied is the plan the operator saw.
-- **Keep output streaming,** so the operator and the live view see
-  progress. Don't capture a long command with `out=$(cmd); echo "$out"`.
-  Check its output while it streams instead:
-  `bash -o pipefail -c 'cmd | awk "{print} /bad/{b=1} END{exit b}"'`.
-  Python tools buffer when piped: set `PYTHONUNBUFFERED=1` for them.
-- **No Claude, LLM or agent calls in a lane that decide what the round
-  does** (branching, gating, retries, approvals). Decisions are made in the
-  script you wrote, which the operator approved. An LLM step may only
-  produce an artifact (a report, a note) that nothing in swim reads back.
-- **Don't edit a lane while it may be running,** because bash reads scripts
-  incrementally. `swim status` shows what's running.
-
-## 7. Talking about safety
-
-Be accurate about what swim guarantees. Approvals, signatures and the chain
-prove **who decided what** and that **the approved bytes ran**. They don't
-make a script safe: an approved script runs with the operator's access. A
-guard is a bash function in the lane, so it's advisory. Never
-tell the user a change is safe because swim will ask first. The full model
-is `docs/trust-model.md` in the swimlane repo.

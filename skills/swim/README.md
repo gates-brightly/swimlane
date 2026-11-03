@@ -4,11 +4,15 @@ A Claude skill that teaches Claude how to work with swim: read the guide
 from the installed binary, write lane scripts, hand rounds to the operator,
 and read the results back. It never runs or approves anything itself.
 
-- [`SKILL.md`](SKILL.md): when the skill applies, Claude's role, what it may
-  run and what it hands over, the loop, the lane rules, and how to talk
-  about safety.
+- [`SKILL.md`](SKILL.md): what a session needs up front: when the skill
+  applies, what Claude runs freely, what it hands over, what it never
+  does, the loop, and which guide section to read for the rest.
+- [`reference/lane-rules.md`](reference/lane-rules.md): the rules for
+  writing a lane, and how to talk about safety.
 - [`reference/lane-recipe.md`](reference/lane-recipe.md): an annotated lane
   (it passes `swim lint`) and patterns.
+- [`reference/campaigns.md`](reference/campaigns.md): rounds that build on
+  each other.
 - [`reference/handoff.md`](reference/handoff.md): how to hand a round to the
   operator: run now, or queue.
 - [`reference/workers.md`](reference/workers.md): a planner and its workers,
@@ -28,8 +32,9 @@ copy that matches the installed swim (its release tag). `swim version`
 says whether a newer swim is out.
 
 The skill defers to `swim guide` from the installed binary for detail, so
-it stays correct as swim changes. Keep it to what the guide doesn't say:
-Claude's role and boundaries.
+it stays correct as swim changes. Keep SKILL.md to what a session needs
+before its first command: Claude's role and boundaries, and the loop.
+Detail goes in the guide, or in a reference file SKILL.md points to.
 
 ## Install
 
@@ -60,7 +65,7 @@ swim lanes?" to check that it loads: Claude should start with
 
 - A rule that holds for every agent belongs in `internal/help/guide.txt`
   (`swim guide`), not here.
-- Raise the version in SKILL.md section 0 when the skill starts relying on
+- Raise the version in SKILL.md's "Is swim here?" when the skill starts relying on
   a newer command or behaviour.
 - Check every command and header the skill names against the binary. Lint
   the recipe's lane in a scratch repo after editing it:

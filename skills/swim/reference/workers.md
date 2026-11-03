@@ -47,8 +47,8 @@ who writes what. These rules make it hold. They extend the guide's `PLANNER WORK
   - the job id (`# Job:`);
   - the guard flags and what each approves;
   - anything the planner must apply.
-- **Never run the lane.** Running and approving are the operator's (SKILL.md
-  section 2).
+- **Never run the lane.** Running and approving are the operator's (SKILL.md's
+  hand-over rules).
 
 ## Two independent sessions in one repo
 

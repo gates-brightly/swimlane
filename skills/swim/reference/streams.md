@@ -1,7 +1,51 @@
-# Concurrent streams, worked through
+# Concurrent streams: keep working while swim validates
 
-SKILL.md section 4 gives the rules. This is what it looks like in a
-session with three tasks.
+Work several tasks at once. swim runs one task's validation while you write
+the next, and you come back to a task when its results are in. Don't sit
+idle waiting for a run.
+
+1. **List the tasks.** Write them in your task list before starting, each
+   with the lane(s) that will validate it. Give every task its own lanes
+   (the loop, step 2): two streams never share a lane.
+2. **Work the first task** until it's ready to validate.
+3. **Dispatch its validation:** `swim lint N`, then `swim queue N ...`
+   (no approvals; flag risks as SKILL.md's hand-over rules say). Record the
+   batch number and job ids against the task: "orders: #41, swim 21
+   (63bdf4a9)".
+4. **Don't wait.** Start the next task.
+5. **At each stopping point** (the next task is ready to dispatch, or
+   blocked): dispatch what's ready, then `swim queue` to see what has
+   finished. It costs a few lines; a report of every running lane's
+   output costs far more.
+6. **Pick finished tasks back up.** For each task whose batch is done, read
+   its results as the loop's step 6 says (status, then the failed step or
+   the verify stage) and either close it out or fix it and go back to step
+   3. Then carry on with the task you were on. Repeat until every task is
+   validated and closed out.
+
+The rules that keep streams apart:
+- **Don't touch a dispatched lane.** A queued batch is pinned to its
+  scripts: an edit makes swim skip that lane rather than run your new
+  version. To change a dispatched lane, `swim queue rm` its batch (if it
+  hasn't started) and dispatch again, or wait for it to finish.
+- **Shared setup takes turns.** Batches that pull in the same setup lane
+  (`After: 1`) run one after another, not side by side. Expect that wait,
+  or queue lanes that belong together as one batch (`swim queue 2 3
+  4`): one run, so `After:` between them holds.
+- **Only block when there's nothing else to do.** Once every task is
+  dispatched or waiting on results, wait for one job: `swim log <job>
+  --until-done >/dev/null; swim status <job>` (it exits with the round's
+  result). Use it then, and only then.
+- **Keep a few streams open at most,** about as many as the swimmer runs at
+  once (`watch_batches`, default 4). More just sit in the queue.
+- **No swimmer, no progress.** If `swim queue` shows batches waiting and
+  nothing running, check that a swimmer (`swim watch`) is up, and tell the
+  user once.
+- **A guarded change is dispatched like any other:** flag it (⚠), keep
+  working, and check later what the operator decided. A dry run ends its
+  batch `skipped`; never treat it as validated.
+
+What follows is what it looks like in a session with three tasks.
 
 ## What the task list holds
 
