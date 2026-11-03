@@ -651,7 +651,7 @@ func TestHelp(t *testing.T) {
 	r := newRepo(t, "")
 	// Piped or not, --help is the short overview; --help --full the guide.
 	short := r.mustSwim("--help")
-	contains(t, "--help", short, "CORE", "swim guide")
+	contains(t, "--help", short, "WRITE", "RUN", "swim guide")
 	if strings.Contains(short, "PLANNER WORKFLOW") || strings.Count(short, "\n") >= 80 {
 		t.Errorf("piped --help printed the guide:\n%s", short)
 	}
@@ -948,10 +948,10 @@ func TestProjectLog(t *testing.T) {
 		events = append(events, strings.Join(f[2:], " "))
 	}
 	want := []string{
+		"lock created .swim.lock: syntax " + version.Current.String(),
 		"init status",
 		"new swim 1 job=job-one-0001 first goal",
 		"new swim 2 job=job-two-0002 second goal",
-		"lock created .swim.lock: syntax " + version.Current.String(),
 		"run swim 1,2",
 		"start swim 1 job=job-one-0001 first goal",
 		"fail swim 1 job=job-one-0001 pass=",
@@ -1088,16 +1088,32 @@ func TestVersionAndLock(t *testing.T) {
 	}
 	lockPath := filepath.Join(r.root, ".swim.lock")
 	r.script(1, "one", `run "ok" true`)
+	// swim init wrote the lock (newRepo ran it); a run never does. With no
+	// lock the repo isn't set up: a run refuses and writes nothing.
+	os.Remove(lockPath)
+	for _, args := range [][]string{{"run", "1"}, {"all"}} {
+		if out, code := r.swim(args...); code != 2 || !strings.Contains(out, "isn't set up for swim") || !strings.Contains(out, "run swim init") {
+			t.Errorf("%v with no lock: %d %s", args, code, out)
+		}
+	}
+	if out, err := r.cmd("bash", "lane.1.sh").CombinedOutput(); err == nil || !strings.Contains(string(out), "isn't set up for swim") {
+		t.Errorf("bash lane.1.sh with no lock: %v %s", err, out)
+	}
+	if _, err := os.Stat(lockPath); err == nil {
+		t.Fatal("a refused run wrote a lock")
+	}
 	r.mustSwim("status")
 	if _, err := os.Stat(lockPath); err == nil {
 		t.Fatal("status wrote a lock")
 	}
-	out := r.mustSwim("run", "1")
-	contains(t, "first run", out, "wrote .swim.lock (syntax "+version.Current.String()+")")
+	contains(t, "init", r.mustSwim("init"), "wrote .swim.lock (syntax "+version.Current.String()+")")
 	data, _ := os.ReadFile(lockPath)
 	contains(t, ".swim.lock", string(data), fmt.Sprintf("script: %d", version.Current.Script), fmt.Sprintf("state: %d", version.Current.State), "version: 0.")
 	if out := r.mustSwim("run", "1"); strings.Contains(out, "wrote .swim.lock") {
-		t.Error("lock rewritten on second run")
+		t.Error("run wrote the lock")
+	}
+	if out := r.mustSwim("init"); strings.Contains(out, "wrote .swim.lock") {
+		t.Error("lock rewritten by a second init")
 	}
 	contains(t, "lock", r.mustSwim("lock"), "lock:  syntax "+version.Current.String(), "ok:")
 	contains(t, ".swim.log", r.mustSwim("log"), "lock         created .swim.lock: syntax "+version.Current.String())

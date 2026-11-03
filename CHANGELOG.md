@@ -50,6 +50,8 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
   feature; the `evidence` step is one (use `snapshot`), and a `lookup.yml`
   rule with `evidence: true` approves nothing until you remove it.
 - Runs sign with a per-run key: update every machine that runs `swim verify`.
+- A repo with no `.swim.lock` isn't set up: `swim run`, `swim all`,
+  `swim watch` and a lane run with bash refuse until `swim init` writes it.
 - Removed: chime, `swim schedule`, `timeline`, `observe`, `secret`, `hub`
   (and headless swimmers, `swim ps`), `pause`/`unpause`/`resume`, `plan`,
   `ci --check`, `trash`, `prune`, `clean --restore`, modules, evidence-bound
@@ -66,6 +68,14 @@ Each point is explained below.
 
 ### Upgrading
 
+- **`swim init` writes `.swim.lock`, not the first run.** A run used to
+  write the lock on its way and print "commit it"; a command that runs a
+  lane shouldn't leave behind files you're meant to commit. With no lock,
+  `swim run`, `swim all`, `swim watch` and a lane run directly with bash
+  stop with `this repo isn't set up for swim (no .swim.lock): run swim
+  init` (exit 2). `swim init` writes the lock if it's missing (an existing
+  repo can run it again safely), and `swim ci` still writes one, since its
+  checkout is thrown away. `swim doctor` warns of a missing lock.
 - **A dry run is SKIP, not PASS.** A round that ran to the end but
   dry-ran a guarded step (nothing failed) ends `== END SKIP` with the
   reason `dry run: <step>`, in the summary, `swim status`, `--yaml`
@@ -270,6 +280,14 @@ and read.
 
 ### Changed
 
+- **`swim --help` follows the workflow.** It opens with what swim is (an
+  operator-in-the-loop runner: your AI writes the scripts, you run them
+  with your access) and groups commands as WRITE, RUN, READ, APPROVE and
+  RECORD, so `queue` and `watch` sit next to `run`, ahead of the record.
+- **`swim queue N ...` is the spelling.** Help, messages, the guide, the
+  docs and the swim skill show `swim queue 2 3`; `swim queue add` is for
+  queueing every pending lane with none named (bare `swim queue` lists the
+  queue). `swim queue add 2 3` still works.
 - **Queueing is how a planner hands over a ready round.** `swim queue add`
   said a batch's unapproved guards would dry-run ("a queued batch never
   asks") even with `swim watch`'s screen up, which asks for them, and
@@ -622,6 +640,13 @@ and read.
 
 ### Docs
 
+- **The README leads with the operator's workflow.** What swim is (a
+  tool, not a platform), how it speeds you up, a working session with a
+  queue next to a long job, then install and the quickstart. The tamper
+  story moves under "What swim protects against"; the FAQ is collapsible
+  and compares swim with Ansible, Rundeck/AWX, Airflow/Dagster and
+  Temporal. Working notes (`tasks.md`, `tasks/`, `feedback.md`) move to
+  `dev/`.
 - **The README leads with what swim is for:** your AI writes the ops
   change, you sign the exact bytes, and swim runs it and gives you a
   receipt anyone can verify. A 90-second tamper story follows.

@@ -39,7 +39,7 @@ its screen asks the operator for every guard nothing else approved, when
 the lane gets there (in yellow, naming the lane). That question is their
 checkpoint, so queue a ready round without asking whether to, guards and
 all; you never approve. A guard they decline, or one with no swimmer up
-that asks (`swim queue add` says which), is a dry run. Say what you queued
+that asks (`swim queue N` says which), is a dry run. Say what you queued
 and flag the risk, with the **What you're approving** block above for
 anything guarded:
 

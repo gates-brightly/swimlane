@@ -808,7 +808,7 @@ func (w *watchView) queueLanes(lanes []int) (string, error) {
 	case len(b.guards) > 0 && w.batches != nil && w.batches.asks != nil:
 		msg += "; this screen asks for its guards as they come (y approves)"
 	case len(b.guards) > 0:
-		msg += "; its guards dry-run (approve with swim queue add " + strings.ReplaceAll(ns, ",", " ") + " --approve FLAG)"
+		msg += "; its guards dry-run (approve with swim queue " + strings.ReplaceAll(ns, ",", " ") + " --approve FLAG)"
 	}
 	if b.warn != "" {
 		msg += "; " + b.warn

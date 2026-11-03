@@ -1,6 +1,6 @@
 package e2e
 
-// Fault injection (tasks.md T7): a swim built with -tags swimfailpoint
+// Fault injection (dev/tasks.md T7): a swim built with -tags swimfailpoint
 // stops at a chosen point (internal/failpoint), the test kills the worker
 // there the way a crash or a power cut would, and a restart with the
 // normal binary must read what was left correctly: no false success, no

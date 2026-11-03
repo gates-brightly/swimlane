@@ -508,7 +508,7 @@ func TestQueueWarnsUnapprovedGuards(t *testing.T) {
 	}
 	_, stderr := queueErr("1", "2")
 	contains(t, "warning", stderr, "approves no guards and no swimmer up asks for them, so these dry-run", "swim 1  ALLOW_DROP", "swim 2  ALLOW_OTHER",
-		"the operator decides: swim watch on a terminal asks on its screen", "swim queue add 1 --approve ALLOW_DROP", "-y (every guard)")
+		"the operator decides: swim watch on a terminal asks on its screen", "swim queue 1 --approve ALLOW_DROP", "-y (every guard)")
 	for _, args := range [][]string{{"1", "--approve", "ALLOW_DROP"}, {"1", "2", "-y"}} {
 		if _, stderr := queueErr(args...); strings.Contains(stderr, "approves no guards") {
 			t.Errorf("queue add %v warned:\n%s", args, stderr)

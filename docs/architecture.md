@@ -27,7 +27,7 @@ flowchart TD
   end
 
   P -->|writes| L
-  P -->|swim queue add| Q
+  P -->|swim queue N| Q
   L --> PL{{"swim lint: checks<br/>swim run refuses blocked commands,<br/>cycles, set -e"}}
   PL --> O
   Q --> W

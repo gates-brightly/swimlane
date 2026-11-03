@@ -285,7 +285,7 @@ func warnUnapproved(root string, e *queue.Entry, signedAs string) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "swim queue: warning: #%d approves no guards and no swimmer up asks for them, so these dry-run if it runs before one does:\n%s\n", e.Seq, strings.Join(lines, "\n"))
-	fmt.Fprintf(os.Stderr, "  the operator decides: swim watch on a terminal asks on its screen; or swim queue add %s --approve %s (each flag), -y (every guard), or swim approve %s (a signed approval)\n", first, firstFlag, first)
+	fmt.Fprintf(os.Stderr, "  the operator decides: swim watch on a terminal asks on its screen; or swim queue %s --approve %s (each flag), -y (every guard), or swim approve %s (a signed approval)\n", first, firstFlag, first)
 }
 
 // batch is a batch just queued: its entry, the guards its lanes hold, who
@@ -610,7 +610,7 @@ func queueList(args []string) error {
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	if len(entries) == 0 {
-		fmt.Println("queue is empty. Queue a batch: swim queue add [N|JOB ...] [--approve FLAG] [-y]")
+		fmt.Println("queue is empty. Queue a batch: swim queue N|JOB ... [--approve FLAG] [-y]")
 		return nil
 	}
 	held := heldReasons(root)
@@ -872,7 +872,7 @@ func cmdWatch(args []string) error {
 			if once {
 				break
 			}
-			say("queue empty; waiting for swim queue add")
+			say("queue empty; waiting for swim queue N")
 			sleep()
 			continue
 		}

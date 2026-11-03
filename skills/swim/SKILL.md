@@ -95,7 +95,7 @@ else approved. That question is the operator's checkpoint, and they
 decide there; a guard they decline (or that no one is asked for) is a dry
 run, the safe outcome. So don't ask "shall I queue it?", don't wait for
 the operator to be ready, and don't hold back a round because it has
-guards. Queue the lanes and nothing else. `swim queue add` says what
+guards. Queue the lanes and nothing else. `swim queue N` says what
 happens to its guards: asked on a swimmer's screen, or, with no swimmer
 up that asks, a dry run; in that case tell the user once. Before you
 queue, read `swim lint` and `swim status` for the lanes and `swim queue`
@@ -192,7 +192,7 @@ idle waiting for a run.
    with the lane(s) that will validate it. Give every task its own lanes
    (section 3, step 2): two streams never share a lane.
 2. **Work the first task** until it's ready to validate.
-3. **Dispatch its validation:** `swim lint N`, then `swim queue add N ...`
+3. **Dispatch its validation:** `swim lint N`, then `swim queue N ...`
    (no approvals; flag risks as section 2 says). Record the batch number
    and job ids against the task: "orders: #41, swim 21 (63bdf4a9)".
 4. **Don't wait.** Start the next task.
@@ -211,7 +211,7 @@ The rules that keep streams apart:
   hasn't started) and dispatch again, or wait for it to finish.
 - **Shared setup takes turns.** Batches that pull in the same setup lane
   (`After: 1`) run one after another, not side by side. Expect that wait,
-  or queue lanes that belong together as one batch (`swim queue add 2 3
+  or queue lanes that belong together as one batch (`swim queue 2 3
   4`): one run, so `After:` between them holds.
 - **Only block when there's nothing else to do.** Once every task is
   dispatched or waiting on results, `swim report --earmark --wait` blocks

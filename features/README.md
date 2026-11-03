@@ -4,7 +4,7 @@ Optional features, written down for implementation later. Nothing here is
 built or promised.
 
 **Frozen (2026-10-27):** no new features start until outside users have
-run swim ([T23](../tasks.md#t23-outside-feedback-p1)). Finishing a feature
+run swim ([T23](../dev/tasks.md#t23-outside-feedback-p1)). Finishing a feature
 already in progress means closing out its open items, not extending it.
 Fixes and cuts are fine. Each file is a spec: the problem, the proposed behaviour,
 where it would land in the code, open questions, and how to test it.

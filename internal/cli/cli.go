@@ -415,12 +415,23 @@ func taskHint(root string, cfg *config.Config) string {
 }
 
 // requireVersion refuses to continue when the repo's .swim.lock pins
-// another breaking version, and creates the lock if create is set and none
-// exists (a swim job is about to run).
-func requireVersion(root string, create bool) error {
-	if !create {
+// another breaking version. When run is set (a swim job is about to run),
+// a repo with no lock isn't set up: swim init writes it, not a run.
+func requireVersion(root string, run bool) error {
+	if !run {
 		return version.Check(root)
 	}
+	if _, ok, err := version.ReadLock(root); err != nil {
+		return err
+	} else if !ok {
+		return usagef("this repo isn't set up for swim (no %s): run swim init", version.LockName)
+	}
+	return version.Check(root)
+}
+
+// ensureLock checks the repo's .swim.lock and writes it if it's missing:
+// swim init, and swim ci, whose checkout is thrown away.
+func ensureLock(root string) error {
 	created, err := version.Ensure(root)
 	if err != nil {
 		return err

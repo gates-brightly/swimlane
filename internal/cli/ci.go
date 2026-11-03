@@ -62,7 +62,7 @@ func cmdCi(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireVersion(root, true); err != nil {
+	if err := ensureLock(root); err != nil {
 		return err
 	}
 	out := os.Stdout

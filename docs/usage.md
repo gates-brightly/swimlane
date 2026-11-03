@@ -81,7 +81,7 @@ flowchart TD
   end
 
   P -->|writes| L
-  P -->|swim queue add| Q
+  P -->|swim queue N| Q
   L --> PL{{"swim lint: checks<br/>swim run refuses blocked commands,<br/>cycles, set -e"}}
   PL --> O
   Q --> W
@@ -630,7 +630,7 @@ swim 1 asks for a decision: ROLLOUT
 ```
 
 - **Answering:** `ROLLOUT=2 swim run 1` answers ahead (only swim run's own
-  environment counts, as for a guard flag); `swim queue add 1 --decide
+  environment counts, as for a guard flag); `swim queue 1 --decide
   ROLLOUT=2` answers for a queued batch; otherwise the operator picks a
   number at the prompt, or with a number key on the lane in the live view.
   `-y` answers no decision, and there is no default.
@@ -804,7 +804,7 @@ and SHA-256. Complete entries are never touched.
 ### Queue, watch and wait
 
 ```sh
-swim queue add 4 5 --approve FLAG [-y] [--note "..."]   # or: swim queue 4 5 ...
+swim queue 4 5 --approve FLAG [-y] [--note "..."]       # swim queue add: every pending lane
 swim queue                                               # waiting, running, orphaned, done
 swim queue show|rm|requeue ID
 swim watch [--once] [-y] [--approved] [--no-tui]         # the swimmer
@@ -1186,7 +1186,7 @@ just mirror-tags                      # push every release tag origin has that f
   checklist, one subtest per case: no approval, a declined or timed-out
   one, an approval for another script, a script edited after approval, the
   chain's record of a round, and secrets kept out of logs. A known gap is a
-  subtest that skips with `gap: T<n>`, naming the task in `tasks.md` that
+  subtest that skips with `gap: T<n>`, naming the task in `dev/tasks.md` that
   closes it; finishing that task replaces the skip with the real check.
 - **Testing crashes and concurrency:**
   - **Fault injection:** `go test ./internal/e2e -run TestFault` builds a

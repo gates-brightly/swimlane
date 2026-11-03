@@ -75,6 +75,9 @@ func cmdInit(args []string) error {
 
 	initLookup(root, cfg)
 
+	if err := ensureLock(root); err != nil {
+		return err
+	}
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
 	}
@@ -441,8 +444,7 @@ func runLanes(rest []string, rf runFlags) error {
 	if rerun && len(rest) > 0 {
 		return usagef("--rerun is for running every pending lane; named lanes always run")
 	}
-	// The lock is written as a job is about to run, not by a run with
-	// nothing to do.
+	// A run with nothing to do doesn't need the repo set up.
 	if err := requireVersion(root, len(rest) > 0 || anyPending(root, cfg)); err != nil {
 		return err
 	}

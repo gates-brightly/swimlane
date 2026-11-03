@@ -483,7 +483,7 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 		case queued > 0:
 			say(fmt.Sprintf("%d queued; waiting for their lanes to be free", queued))
 		default:
-			say("queue empty; waiting for swim queue add")
+			say("queue empty; waiting for swim queue N")
 		}
 		if view == nil {
 			select {

@@ -661,10 +661,10 @@ func checkLock(o *Options) []finding.Finding {
 	l, ok, err := version.ReadLock(o.Root)
 	switch {
 	case err != nil:
-		return []finding.Finding{fd(finding.Warn, "lock", version.LockName, "fix or delete it; swim run writes a new one", "%v", err)}
+		return []finding.Finding{fd(finding.Warn, "lock", version.LockName, "fix or delete it, then swim init writes a new one", "%v", err)}
 	case !ok:
-		return []finding.Finding{fd(finding.Info, "lock", version.LockName, "commit it after the next swim run writes it",
-			"no %s yet; the first swim run writes it, pinning syntax %s", version.LockName, version.Current)}
+		return []finding.Finding{fd(finding.Warn, "lock", version.LockName, "swim init (then commit it)",
+			"no %s: the repo isn't set up, and swim run refuses until swim init writes it", version.LockName)}
 	case l.Mismatched():
 		first, _, _ := strings.Cut(version.ErrMismatch{Lock: l, Path: version.LockPath(o.Root)}.Error(), "\n")
 		return []finding.Finding{fd(finding.Warn, "lock", version.LockName, "see swim lock --help", "%s", strings.TrimSuffix(first, ","))}

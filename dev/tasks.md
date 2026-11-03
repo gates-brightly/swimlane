@@ -4,10 +4,10 @@ Open work. Each task has been checked against the code. **Today** says what
 exists, with file:line references. **Do** says what's missing. **Done when**
 gives the acceptance check. When a task ships, delete it: git history keeps
 the record, and the claim it backs belongs in the README,
-[docs/trust-model.md](docs/trust-model.md) or `swim guide`.
+[docs/trust-model.md](../docs/trust-model.md) or `swim guide`.
 
 Newer tasks live one per file in [`tasks/`](tasks/), numbered after the
-ones here. Larger designs go in [`features/`](features/README.md).
+ones here. Larger designs go in [`features/`](../features/README.md).
 
 Priorities:
 
@@ -50,7 +50,7 @@ diagram.
 
 **Today:** nobody who didn't build swim has run a change with it. Every
 command, concept and page was added without one. New features are frozen
-until this is done ([features/](features/README.md)).
+until this is done ([features/](../features/README.md)).
 
 **Do:** five engineers who didn't build swim, each in a 60-minute session,
 screen shared, without help unless they're stuck for five minutes:

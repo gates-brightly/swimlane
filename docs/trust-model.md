@@ -361,9 +361,9 @@ These skip the question on purpose. Each leaves a record.
 | Bypass | What it does | Recorded as |
 |---|---|---|
 | `FLAG=1 swim run N` | Approves that guard without asking (scripts, CI). Only from the environment `swim run` started with: a lane that sets `FLAG=1` for itself is declined. | `APPROVED <action> (FLAG=1)` in the log; chain method `flag`, recorded by swim run, attributed to the operator's user name and signed with the runner key; the run's attestation lists the flag. Nothing proves who set the flag beyond that. |
-| `swim queue add --approve FLAG` | Approves that guard for one batch. | `(FLAG=1, approved in queue q-...)`; chain method `queue`. |
+| `swim queue N --approve FLAG` | Approves that guard for one batch. | `(FLAG=1, approved in queue q-...)`; chain method `queue`. |
 | `swim run -y` / `swim all -y` | Approves every guard whose flag isn't set. `FLAG=0` still declines. | `approved by swim run -y (<user>)`; chain method `auto`; `.swim.log` says `with swim run -y`; the `--yaml` stream has an `approved` event with `(-y)`. |
-| `swim queue add -y` | The same, for one batch. | `approved by queue q-... -y (<queuer>)`; chain method `auto`. |
+| `swim queue N -y` | The same, for one batch. | `approved by queue q-... -y (<queuer>)`; chain method `auto`. |
 | `swim watch -y` | The swimmer approves every guard in every batch, beyond what each batch approves. | `approved by swim watch -y (<user>)`; chain method `auto`; the consumed entry's `approved_by`. |
 | `swim watch --approved` | Queues and runs a script as soon as its signed approvals meet `lookup.yml`'s rules, with no one choosing when. | A queue entry by `approval (<names>)` and a `.swim.log` queue event; the guards are approved by `signature`. |
 
@@ -395,7 +395,7 @@ summary with a warning annotation. Guards approved by a flag
 ## Claims and the tests that prove them
 
 Test files are under `internal/`. "Pending" names the task in
-[tasks.md](../tasks.md) that will add the proof.
+[dev/tasks.md](../dev/tasks.md) that will add the proof.
 
 | Claim | Test |
 |---|---|

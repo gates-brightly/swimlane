@@ -198,13 +198,13 @@ failing, lane 4 is **skipped**. Independent lanes run at once.
 ## 7. A queue and a swimmer
 
 ```sh
-swim queue add 3 4
+swim queue 3 4
 swim queue
 swim watch --once
 swim queue
 ```
 
-`swim queue add` pins a **batch** to the scripts as they are now, with the
+`swim queue N` pins a **batch** to the scripts as they are now, with the
 approvals you give it (none here: a queued batch asks only on `swim watch`'s
 screen, so off it its guards dry-run unless approved). A **swimmer** (`swim watch`) runs batches as their
 lanes come free; `--once` runs what's queued and exits. This is how a

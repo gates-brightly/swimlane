@@ -25,7 +25,7 @@ lane and job id for each lane), **fixing** (the run failed; what's next),
 
 # 2-3. orders is ready: check it, dispatch its validation, record it.
 swim lint 21
-swim queue add 21                     # → queued #41; job 63bdf4a9
+swim queue 21                         # → queued #41; job 63bdf4a9
 #   task 1: dispatched #41 (21: 63bdf4a9)
 
 # 4. Don't wait: start billing, lane 22.
@@ -34,7 +34,7 @@ swim new 22 "billing: raise the queue's retention"
 
 # 5. billing is ready: a stopping point. Dispatch, then look.
 swim lint 22
-swim queue add 22                     # → queued #42
+swim queue 22                         # → queued #42
 swim report --earmark --name "$SWIM_SESSION"
 swim queue
 #   #41 done: failed. #42 running.
@@ -43,14 +43,14 @@ swim queue
 swim log 63bdf4a9                     # the gate "role exists in tf state" failed: the import step never ran
 #   ... fix lane.21.sh (#41 is done, so the lane is free to edit) ...
 swim lint 21
-swim queue add 21                     # → queued #43
+swim queue 21                         # → queued #43
 #   task 1: dispatched #43 (21: 9c2e71d0), fixing the import order
 
 # Back to step 4: start users, lane 23.
 swim new 23 "users: drop the legacy index"
 #   ... write lane.23.sh: the drop is behind guard USERS_ALLOW_DROP_INDEX ...
 swim lint 23
-swim queue add 23                     # → queued #44
+swim queue 23                         # → queued #44
 #   ⚠ swim 23, USERS_ALLOW_DROP_INDEX: drops users_legacy_email_idx in prod.
 #     The swimmer's screen asks the operator for it; declined, it dry-runs.
 #   task 3: dispatched #44, the operator decides USERS_ALLOW_DROP_INDEX

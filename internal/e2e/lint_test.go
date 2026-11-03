@@ -157,7 +157,7 @@ func TestDoctor(t *testing.T) {
 	r := newRepo(t, "")
 	hermeticPath(r)
 	out := r.mustSwim("doctor")
-	contains(t, "healthy repo", out, "0 errors, 0 warnings")
+	contains(t, "healthy repo", out, "no problems found")
 
 	// Break things: a stale .gitignore block, a stale pid file, a lane script
 	// tracked by git, and a swim for another platform first on PATH.

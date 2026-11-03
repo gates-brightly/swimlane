@@ -1,6 +1,6 @@
 package e2e
 
-// The security regression suite (tasks.md T25): the audit's checklist, one
+// The security regression suite (dev/tasks.md T25): the audit's checklist, one
 // subtest per case. A case asserts what swim does today. A case for a known
 // gap calls gap(t, "Tn"), which skips it with the task that will close it,
 // so the skip shows in CI logs; finishing that task means replacing the
@@ -22,10 +22,10 @@ import (
 )
 
 // gap skips a case that documents a known gap, naming the task(s) that
-// close it (see tasks.md).
+// close it (see dev/tasks.md).
 func gap(t *testing.T, tasks string) {
 	t.Helper()
-	t.Skipf("gap: %s (tasks.md)", tasks)
+	t.Skipf("gap: %s (dev/tasks.md)", tasks)
 }
 
 // boundary is the execution-boundary fixture: lane 1's guard sits in

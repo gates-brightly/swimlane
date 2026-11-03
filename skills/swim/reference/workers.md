@@ -22,7 +22,7 @@ These rules make it hold. They extend the guide's `PLANNER WORKFLOW` and
    `deps:` lines (handed to the operator), and any shared file. Workers
    send you the lines; they don't edit shared files.
 5. **Check every lane together** once the workers are done: `swim lint` (all
-   lanes) and `swim status`. Queue the set as one batch (`swim queue add
+   lanes) and `swim status`. Queue the set as one batch (`swim queue N
    N M ...`), or, with no swimmer up, hand the operator one command for
    it, pinned to the job ids the workers reported.
 

@@ -35,7 +35,10 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 	old := oldSwim(t)
 	r := newRepo(t, "")
 	r.script(1, "probe", `run "probe" true`)
-	os.Remove(filepath.Join(r.root, ".swim.lock")) // the old worker writes its own
+	os.Remove(filepath.Join(r.root, ".swim.lock"))
+	if out, err := r.cmd(old, "init").CombinedOutput(); err != nil { // the old swim's lock
+		t.Fatalf("old swim init: %v %s", err, out)
+	}
 
 	w := r.cmd(old, "watch", "--interval", "100ms")
 	var out bytes.Buffer

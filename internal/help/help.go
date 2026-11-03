@@ -563,8 +563,8 @@ swim checkpoint rm N|JOB KEY... | --all
   restored from a CI cache).
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
-swim queue add [N|JOB ...] [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
-swim queue N|JOB ... [flags]     (shorthand for swim queue add)
+swim queue N|JOB ... [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
+swim queue add [flags]           every pending round that hasn't passed
 swim queue show|rm|requeue ID
 
   Queue a batch of rounds to run as soon as its lanes are free, by a
@@ -619,7 +619,7 @@ swim queue show|rm|requeue ID
 `,
 	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui]
 
-  The queue's swimmer. Runs queued batches (swim queue add) side by side,
+  The queue's swimmer. Runs queued batches (swim queue N) side by side,
   up to --batches at once (watch_batches, default 4), each in a process
   of its own: a batch starts as soon as none of its lanes is in another
   batch or another swim run, oldest first, so a later batch whose lanes
@@ -654,7 +654,7 @@ swim queue show|rm|requeue ID
   On a terminal, while it waits, the watch shows every lane's job and the
   queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now
   and enter follows its output (esc comes back). q adds a job to the next
-  batch (q again takes it out) and s submits the batch, as swim queue add
+  batch (q again takes it out) and s submits the batch, as swim queue N
   N M does: one run, so After: between its lanes holds; x clears it.
     enter on a job follows its lane's log while it runs, in a batch or not;
                    v switches to its batch's output. When it ends, a header
@@ -663,7 +663,7 @@ swim queue show|rm|requeue ID
                    time; enter on a batch does the same for the batch
     r on a job     runs it as swim run N does: you're at the terminal, so its
                    guards may ask
-    q on a job     queues it as swim queue add N does (no guard approved: its
+    q on a job     queues it as swim queue N does (no guard approved: its
                    guards dry-run unless standing approvals cover them); the
                    swimmer takes it when its lanes are free
     a on a job     archives its lane's log as swim archive N does: the lane
@@ -733,7 +733,7 @@ swim cache path [PRESET] [--ci]
   running, no swim run waiting on lanes, and no batch queued or running
   (an orphaned batch never runs, so it doesn't count). Prints what it is
   waiting on whenever that changes. Use it in scripts to wait out the
-  current work and the queue behind it; swim queue add --wait does the
+  current work and the queue behind it; swim queue N --wait does the
   same after queueing. With batches queued and no swimmer up, it waits
   until one starts (swim watch).
   --interval D   how often to check (default 2s)
@@ -765,7 +765,7 @@ swim approve --auto USER [--guards A,B | --all] [--expires D] [--key K]
                    swim approve --guards refuses its guards, and at run time
                    no signed approval, flag, prompt, -y or queued approval
                    counts for them (they dry-run) until the rule drops it.
-  --auto USER      a standing approval: every job USER queues (swim queue add,
+  --auto USER      a standing approval: every job USER queues (swim queue N,
                    signed with USER's key) is approved, by you, for the guards
                    given (default every guard). It is never consumed: it
                    stands until it expires (30d unless --expires says, never
@@ -1311,46 +1311,46 @@ var FullOrder = []string{"init", "config", "env", "cache", "new", "run", "all", 
 // Short is swim --help on a terminal: the commands most people need, one
 // line each, and where the rest is.
 func Short() string {
-	return `swim: guarded ops scripts with signed approvals
+	return `swim: an operator-in-the-loop runner for ops work
 
-  Your AI writes the ops change. You sign the exact bytes. swim runs it
-  and gives you a receipt anyone can verify.
+  Your AI writes the scripts. You run them, with your access.
+  The logs carry the results back.
 
 USAGE
-  swim <command> [flags] [args]
-  swim N|JOB ...               shorthand for swim run N|JOB ...
   swim <command> --help        one command's detail
   swim guide                   the full manual (for people and AI agents)
 
-CORE
+WRITE
   init                         set up this repo
-  new TASK "<round goal>"      write a lane script named TASK (or new N: lane N)
-  run [TASK ...]               run lanes: guarded steps are dry runs until approved
+  new N "<round goal>"         write lane.N.sh from the template
+  lint [N]                     check lane scripts before they run
+
+RUN
+  run N ...                    run lanes: guarded steps are dry runs until approved
+  all                          run every pending lane, dependencies first
+  queue N ...                  queue a batch to run once its lanes are free
+  watch                        the swimmer: run queued batches as lanes free up
+
+READ
+  status [N]                   what each lane is doing and waits on
+  log [N]                      a lane's log, step by step
+  report                       what changed since you last looked
+
+APPROVE
   approve N --guards A         sign this exact script, its inputs and policy
   revoke N                     withdraw your approval
-  status [N]                   last state of every lane
-  log [N]                      a lane's log, step by step
-  verify                       prove the chain of custody
-  history [--oneline]          who approved and ran what
 
-UNATTENDED
-  queue add N ...              queue a batch to run once its lanes are free
-  watch                        run queued batches
+RECORD
+  verify, history, keys, chain prove the record, read it, see who's who
 
 MORE
-  lint, doctor                 check lane scripts and the environment
-  keys, chain                  who's who; chain repair and anchoring
-  env, cache                   what lanes get to work with
+  doctor, config, env, cache   the environment lanes get
   archive, clean, stub, note   tidy up and record
   interrupt, wait, claim       control running lanes
-  report                       what changed since you last looked
-  signoff verify FILE          check a signoff (# Signoff: posts a commit status)
-  ci, config, lock, changelog, version, skill
+  ci, signoff, lock, changelog, version, skill
 
   Lane scripts call: gate, guard, stage, run, snapshot, drift,
   stop, msg, input, output (swim guide: WRITING A LANE SCRIPT).
-
-  swim guide prints everything, including each command's detail.
 `
 }
 
