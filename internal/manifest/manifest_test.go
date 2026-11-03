@@ -248,3 +248,18 @@ func TestVerifyV1Manifest(t *testing.T) {
 		t.Errorf("an edited v1 pin: %v", err)
 	}
 }
+
+// A short-form lane pins its own runner, so an approval says how it runs
+// (an explicit lane's stays "bash": TestManifestHashFrozen).
+func TestShortFormPin(t *testing.T) {
+	root := repo(t)
+	write(t, root, "lane.4.sh", "#!/usr/bin/env swim\n# Round: short\nrun \"a\" true\n")
+	m := build(t, root, 4)
+	if m.Pinned.Runner != "bash (short form)" {
+		t.Errorf("short form runner: %q", m.Pinned.Runner)
+	}
+	write(t, root, "lane.4.sh", "#!/usr/bin/env bash\n# Round: short\neval \"$(swim lib)\"\nlane_init 4\nrun \"a\" true\n")
+	if e := build(t, root, 4); e.Pinned.Runner != "bash" || e.SHA256 == m.SHA256 {
+		t.Errorf("explicit form: runner %q, same hash %v", e.Pinned.Runner, e.SHA256 == m.SHA256)
+	}
+}

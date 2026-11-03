@@ -21,6 +21,11 @@ Kinds (the audit's advice: keep these apart in issues and PRs):
 - **gap**: a missing guarantee or design decision
 - **hypothesis**: an attack scenario nobody has tested yet
 
+**Where new work goes (from 2026-11-03, for a month):** the queue, the
+dependency graph and the log the AI reads back, the loop that makes swim
+faster for an operator. No new trust levels, anchors or verify modes until
+then; T31–T33 are the candidates.
+
 Keep this in mind throughout. Approval, signing and the chain prove **who**
 decided **what**. They don't make an arbitrary script safe. Every task
 should make that line sharper, not blur it.
@@ -31,6 +36,9 @@ should make that line sharper, not blur it.
 | [T23](#t23-outside-feedback-p1) outside feedback, then cuts | P1 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
 | [T30](tasks/T30-decision-checkpoint-followups.md) decisions and checkpoints: the unbuilt parts of their specs | P2 | gap |
+| [T31](tasks/T31-watch-says-why-a-batch-waits.md) `swim watch` says why a batch waits | P2 | gap |
+| [T32](tasks/T32-log-since-fail.md) `swim log N --failed` | P2 | gap |
+| [T33](tasks/T33-requeue-from-the-failure.md) requeue a failed batch from where it stopped | P2 | gap |
 
 ---
 

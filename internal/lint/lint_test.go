@@ -446,3 +446,26 @@ func TestParse(t *testing.T) {
 		}
 	}
 }
+
+// A short-form lane (#!/usr/bin/env swim) gets every bash check, but not
+// lane-init or summary: swim run calls lane_init, and the exit trap ends
+// the round.
+func TestShortFormLane(t *testing.T) {
+	short := func(n int) string {
+		s := replace(clean(n), "#!/usr/bin/env bash", "#!/usr/bin/env swim")
+		s = replace(s, `_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found" >&2; exit 1; }
+eval "$_swim_lib"
+`, "")
+		s = replace(s, fmt.Sprintf("lane_init %d\n", n), "")
+		return replace(s, "summary\n", "")
+	}
+	scripts := map[int]string{1: short(1), 2: clean(2), 3: clean(3), 4: clean(4)}
+	if fs := Lint(cfg4(), scripts, 1); len(fs) != 0 {
+		t.Errorf("short form: %+v", fs)
+	}
+	// The bash checks still apply: a guard the header doesn't list.
+	scripts[1] = replace(short(1), "if guard ALLOW_DROP", "if guard OTHER_DROP")
+	if got := codes(Lint(cfg4(), scripts, 1)); !strings.Contains(got, "guard-unlisted") {
+		t.Errorf("short form, unlisted guard: %s", got)
+	}
+}

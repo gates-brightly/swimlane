@@ -6,7 +6,7 @@ into another script. Then shape the body like this. Check the details
 against `swim guide` (`WRITING A LANE SCRIPT`).
 
 ```bash
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round:   Cut over orders-api from SST to Terraform
 # Job:     3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
@@ -19,8 +19,6 @@ against `swim guide` (`WRITING A LANE SCRIPT`).
 #
 # Goal: what this round does and why, for an operator reading it without you.
 # Steps: snapshot -> checks/gates -> one guarded change -> verify.
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 2
 . lib/orders.sh
 
 stage snapshot                     # read-only; output saved under .swim/snapshots/
@@ -38,7 +36,6 @@ fi
 
 stage verify                       # prove the outcome, not just exit 0
 run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
-summary
 ```
 
 Header lines take a value and nothing else. A `#` comment after the value

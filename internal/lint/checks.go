@@ -380,6 +380,9 @@ var (
 )
 
 func checkLaneInit(c *Context, s *Script) []finding.Finding {
+	if s.Short {
+		return nil // swim run calls lane_init for a short-form lane
+	}
 	for i, line := range s.v.bare {
 		if s.v.doc[i] || !laneInitRE.MatchString(line) {
 			continue
@@ -410,6 +413,9 @@ var (
 )
 
 func checkSummary(c *Context, s *Script) []finding.Finding {
+	if s.Short {
+		return nil // the library's exit trap ends a short-form round
+	}
 	last := s.v.lastCode()
 	found := -1
 	for i, line := range s.v.bare {

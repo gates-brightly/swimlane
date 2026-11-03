@@ -176,6 +176,23 @@ func UsesLib(src string) bool {
 	return false
 }
 
+// ShortForm reports whether a script is written in the short form: its
+// first line is #!/usr/bin/env swim (or a #! naming swim), and it doesn't
+// load the library itself. swim run loads the library and calls lane_init
+// for it (runner.Short), so the script is its header and its steps.
+func ShortForm(src string) bool {
+	first, _, _ := strings.Cut(src, "\n")
+	f := strings.Fields(strings.TrimPrefix(first, "#!"))
+	if !strings.HasPrefix(first, "#!") || len(f) == 0 {
+		return false
+	}
+	cmd := f[0]
+	if filepath.Base(cmd) == "env" && len(f) > 1 {
+		cmd = f[1]
+	}
+	return filepath.Base(cmd) == "swim" && !UsesLib(src)
+}
+
 // sideFile is lane.N.yml. Every key is optional; a key that is set wins
 // over the script's header.
 type sideFile struct {

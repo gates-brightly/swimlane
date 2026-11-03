@@ -28,6 +28,10 @@ To cut a release:
 2. Rename `## Unreleased` to `## 0.<date>.<index> (v0.<date>.<index>, <date>)`,
    and start a new empty `## Unreleased` above it.
 3. Commit and push to origin's main, then run `just release v0.<date>.<index>`.
+
+From the next release, each opens with **What changed for you**: at most
+ten lines, one per change you'd notice, before the full sections. The full
+history stays here, since `swim changelog --since` reads it.
    It refuses to tag unless the date, the index, the changelog and a clean
    tree all agree. Then `git push origin v0.<date>.<index>` and `just mirror-tags`.
    The push to origin builds the release binaries and publishes the GitHub
@@ -280,6 +284,11 @@ and read.
 
 ### Changed
 
+- **`swim new` writes the short form,** in 21 lines: the header (Round,
+  Job, Owner) and the four stages, with the guard example. The 11-line
+  comment block, the empty `After`, `Guards`, `Timeout` and `Created`
+  lines, and the library boilerplate are gone; `swim guide` and `swim
+  lint` cover them.
 - **`swim --help` follows the workflow.** It opens with what swim is (an
   operator-in-the-loop runner: your AI writes the scripts, you run them
   with your access) and groups commands as WRITE, RUN, READ, APPROVE and
@@ -365,6 +374,16 @@ and read.
 
 ### Added
 
+- **The short form: a lane is its header and its steps.** A script whose
+  first line is `#!/usr/bin/env swim` doesn't load the library or call
+  `lane_init` and `summary`: `swim run` loads the library, calls
+  `lane_init N` (from the file name) and the exit trap ends the round.
+  `./lane.N.sh` runs it as `swim run N` does, from any directory. Lint
+  gives it every bash check but `lane-init` and `summary`. Its manifest
+  pins the runner `bash (short form)`, so an approval says which form ran;
+  explicit-form lanes, and their approvals, are unchanged (their runner is
+  still `bash`). `bash lane.N.sh` can't run a short-form lane: use the
+  explicit form for that.
 - **`Q` in `swim watch` queues every job at once.** Shift-Q, from any
   row, queues every lane holding a pending round that hasn't passed as one
   batch, as `swim queue add` with no lanes named does, less those a
@@ -640,6 +659,10 @@ and read.
 
 ### Docs
 
+- **Script syntax 4 is frozen** (docs/compatibility.md): new headers and
+  forms are additive, and there's no syntax 5 without a written migration.
+  Versions stay `0.<YYYYMMDD>.<index>`. The README, the hour-long
+  quickstart, `swim guide` and the swim skill's recipe show the short form.
 - **The README leads with the operator's workflow.** What swim is (a
   tool, not a platform), how it speeds you up, a working session with a
   queue next to a long job, then install and the quickstart. The tamper

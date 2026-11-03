@@ -98,16 +98,12 @@ swim new 1 "Say hello"            # writes lane.1.sh from a template
 
 # Replace the template with one harmless step:
 cat > lane.1.sh <<'EOF'
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round: Say hello
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 1
 
 stage check
 run "say hello" echo "hello from swim"
-
-summary
 EOF
 
 swim lint 1                       # check the script before you run it
@@ -122,12 +118,10 @@ approves it:
 ```sh
 swim new 2 "Write hello.txt"
 cat > lane.2.sh <<'EOF'
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round: Write hello.txt
 # Guards: HELLO_ALLOW_WRITE  write hello.txt in the repo (quickstart)
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 2
 
 stage snapshot
 snapshot "what's there" ls
@@ -136,8 +130,6 @@ stage change
 if guard HELLO_ALLOW_WRITE "write hello.txt (quickstart)"; then
   run "write hello.txt" bash -c 'echo hello > "$SWIM_ROOT/hello.txt"'
 fi
-
-summary
 EOF
 
 swim run 2 --plain --no-prompt || echo "exit $?: a dry run"   # SKIP: nothing written

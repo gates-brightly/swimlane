@@ -45,7 +45,10 @@ type Script struct {
 	// checks; any other script (lane.N.py, a binary, plain bash) runs
 	// inside swim's wrapper.
 	Lib bool
-	v   *view
+	// Short: a short-form lane (#!/usr/bin/env swim): swim run loads the
+	// library and calls lane_init for it.
+	Short bool
+	v     *view
 }
 
 // bashOnly are the checks that read a script written against the bash
@@ -292,7 +295,7 @@ func keyLabel(k string) string {
 
 // NewScript parses src as lane n's script.
 func NewScript(n int, src string) *Script {
-	return &Script{N: n, Name: fmt.Sprintf("lane.%d.sh", n), Src: src, Info: lane.ParseScript(src), Lib: loadsLib(src), v: scan(src)}
+	return &Script{N: n, Name: fmt.Sprintf("lane.%d.sh", n), Src: src, Info: lane.ParseScript(src), Lib: loadsLib(src) || lane.ShortForm(src), Short: lane.ShortForm(src), v: scan(src)}
 }
 
 // bash reports whether the script is bash (lane.N.sh, or one that loads

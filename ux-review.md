@@ -22,10 +22,10 @@ delete it.
 | 3 | [Clean up the repo root](#3-clean-up-the-repo-root) | 1 | S | Low | Done (`ux-smaller`) |
 | 4 | [One spelling per action](#4-one-spelling-per-action) | 2 | M | Low | Done with changes: queue spelling only; flags kept |
 | 5 | [Decide which concepts a beginner sees](#5-decide-which-concepts-a-beginner-sees) | 2 | M | Low | On hold: think about the template schema first |
-| 6 | [A shorter template](#6-a-shorter-template) | 2 | S | Low | |
-| 7 | [Let `swim run` supply the boilerplate](#7-let-swim-run-supply-the-boilerplate) | 3 | L | **High** | |
-| 8 | [Freeze the format and the versioning](#8-freeze-the-format-and-the-versioning) | 3 | S | Low | |
-| 9 | [Put new work into the queue and log loop](#9-put-new-work-into-the-queue-and-log-loop) | rule | — | — | |
+| 6 | [A shorter template](#6-a-shorter-template) | 2 | S | Low | Done (`ux-template`) |
+| 7 | [Let `swim run` supply the boilerplate](#7-let-swim-run-supply-the-boilerplate) | 3 | L | **High** | Done (`ux-template`): opt-in by `#!/usr/bin/env swim` |
+| 8 | [Freeze the format and the versioning](#8-freeze-the-format-and-the-versioning) | 3 | S | Low | Done with changes: changelog kept whole |
+| 9 | [Put new work into the queue and log loop](#9-put-new-work-into-the-queue-and-log-loop) | rule | — | — | Adopted: T31–T33 filed |
 
 Suggested order: 1 → 2 → 3, then 6 → 4 → 5, then 7 → 8. Item 9 is a rule
 for what to build next, not a task.
@@ -250,11 +250,17 @@ block explaining the header, plus empty `# After:`, `# Guards:` and
 the placeholders, and `TestQuickstartRuns` passes.
 
 **Decision:**
-- [ ] Approve
+- [x] Approve
 - [ ] Approve with changes
 - [ ] Reject
 
 **Notes:**
+
+Done on `ux-template`, together with 7: `swim new` writes the short form
+in 21 lines (was 37): header (Round, Job, Owner), the four stages and the
+guard example, with a two-line note on `# Guards:`. The comment block,
+the empty `After`/`Guards`/`Timeout`/`Created` lines and the library
+boilerplate are gone.
 
 ---
 
@@ -297,11 +303,27 @@ explicit-form lane still matches after the change.
 
 **Decision:**
 - [ ] Approve
-- [ ] Approve with changes
+- [x] Approve with changes
 - [ ] Reject
 - [ ] Defer (do 1–6 first and see if it still hurts)
 
 **Notes:**
+
+Done on `ux-template`. **Change:** opt-in, not detection. A bash lane
+without `lane_init` already runs inside `swim _wrap` (each `swim run
+"x" -- cmd` a step, or the whole program one step), so treating every
+such lane as short form would change how existing lanes run and stale
+their approvals. The short form is a script whose first line is
+`#!/usr/bin/env swim`: `swim run` runs `bash -c <prelude>`, which loads
+the library, calls `lane_init N` (N from the file name) and sources the
+script; the library's exit trap already ends a round without `summary`.
+`./lane.N.sh` runs it as `swim run N` (any directory); `bash lane.N.sh`
+can't. Its manifest pins runner `bash (short form)`; explicit lanes still
+pin `bash`, and `TestManifestHashFrozen`'s golden hash is unchanged.
+Tests: `TestShortFormLane` (dry run, signed approval binds, an edit stales
+it), `TestShortFormShebang` (`./lane.2.sh` from another directory, a
+failed gate, a queued run), plus unit tests in lane, runner, manifest and
+lint. README, hour-long quickstart, guide and skill recipe use it.
 
 ---
 
@@ -326,10 +348,19 @@ changelog entry fits on one screen.
 
 **Decision:**
 - [ ] Approve
-- [ ] Approve with changes
+- [x] Approve with changes
 - [ ] Reject
 
 **Notes:**
+
+Done on `ux-template`. `docs/compatibility.md` freezes script syntax 4
+(additive only; no syntax 5 without a written migration) and keeps the
+`0.YYYYMMDD.N` scheme; it also fixes "the first run writes the lock" (item
+2 made that wrong). **Change:** the changelog isn't archived: it's
+embedded in the binary and `swim changelog --since <old version>` prints
+upgrade notes from it, so cutting old releases would drop them. Instead,
+from the next release each opens with a ten-line **What changed for you**
+(rule in the CHANGELOG header).
 
 ---
 
@@ -349,7 +380,7 @@ Candidate work instead:
 - Re-queue a failed batch from where it stopped.
 
 **Decision:**
-- [ ] Adopt the rule
+- [x] Adopt the rule
 - [ ] Adopt with changes
 - [ ] Reject
 
@@ -360,3 +391,9 @@ Candidate work instead:
 - [ ] Other:
 
 **Notes:**
+
+Adopted in `dev/tasks.md` ("Where new work goes", from 2026-11-03 for a
+month). The candidates are filed: T31 (`swim watch` says why a batch
+waits), T32 (`swim log N --failed`) and T33 (requeue a failed batch from
+where it stopped), each with what exists today and its file:line. First
+candidate not picked yet.

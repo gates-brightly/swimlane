@@ -37,19 +37,15 @@ creates `.swim/status.yml`. A **lane** is a numbered slot that holds one
 ```sh
 swim new 1 "Count the files here"
 cat > lane.1.sh <<'EOF'
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round: Count the files here
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 1
 
 stage snapshot
 snapshot "list the files" ls -la
 
 stage check
 run "count them" bash -c 'ls | wc -l'
-
-summary
 EOF
 swim run 1 --plain
 swim log 1
@@ -69,19 +65,15 @@ read, change is where guarded work happens.
 
 ```sh
 cat > lane.1.sh <<'EOF'
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round: Only with a config file
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 1
 
 stage check
 gate "there is a config file" test -f app.conf
 
 stage change
 run "never reached without app.conf" echo "changing things"
-
-summary
 EOF
 swim run 1 --plain || echo "the round failed, as it should"
 swim log 1 | tail -8
@@ -96,12 +88,10 @@ anything changes. Write checks so an empty or unknown answer fails.
 echo "old data" > scratch.txt
 swim new 2 "Remove scratch.txt"
 cat > lane.2.sh <<'EOF'
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round: Remove scratch.txt
 # Guards: HOUR_ALLOW_RM  remove scratch.txt
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 2
 
 stage check
 gate "scratch.txt is there" test -f "$SWIM_ROOT/scratch.txt"
@@ -113,8 +103,6 @@ fi
 
 stage verify
 run "what's left" ls "$SWIM_ROOT"
-
-summary
 EOF
 swim run 2 --plain --no-prompt || echo "exit $?: a dry run"
 ls scratch.txt
@@ -165,26 +153,20 @@ Dry run again: the approval was for the script as it was.
 ```sh
 swim new 3 "Build"
 cat > lane.3.sh <<'EOF'
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round: Build
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 3
 stage check
 run "build" bash -c 'test -f "$SWIM_ROOT/ok.flag" && echo built'
-summary
 EOF
 swim new 4 "Ship the build"
 cat > lane.4.sh <<'EOF'
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round: Ship the build
 # After: 3
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 4
 stage check
 run "ship" echo shipped
-summary
 EOF
 swim run 3 4 --plain || true
 swim status

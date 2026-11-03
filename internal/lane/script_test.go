@@ -120,3 +120,19 @@ func TestEndClaim(t *testing.T) {
 		t.Error("cleared claim still there")
 	}
 }
+
+func TestShortForm(t *testing.T) {
+	for src, want := range map[string]bool{
+		"#!/usr/bin/env swim\n# Round: x\nrun \"a\" true\n":        true,
+		"#!/usr/local/bin/swim\n# Round: x\n":                      true,
+		"#! /usr/bin/env swim\n":                                   true,
+		"#!/usr/bin/env bash\n# Round: x\n":                        false,
+		"# Round: x\n#!/usr/bin/env swim\n":                        false,
+		"#!/usr/bin/env swimlane\n":                                false,
+		"#!/usr/bin/env swim\neval \"$(swim lib)\"\nlane_init 1\n": false, // loads the library itself
+	} {
+		if got := ShortForm(src); got != want {
+			t.Errorf("ShortForm(%q) = %v, want %v", src, got, want)
+		}
+	}
+}

@@ -43,8 +43,20 @@ number that day, tagged `v0.<YYYYMMDD>.<index>` (until 0.20261014.1:
 `<breaking>.<YYYYMMDD>`). A build between releases says `0.<YYYYMMDD>`.
 
 **The version says nothing about compatibility.** Syntax versions do.
+This scheme stays: no more changes to how versions are numbered.
 
 ## Syntax versions and the lock
+
+**Script syntax 4 is frozen** (2026-11-03). Lane scripts are what people
+write against, so their format stays put while the CLI keeps improving:
+
+- New headers, library functions and forms are additive: a syntax 4
+  script that runs today runs on every later swim. The short form
+  (`#!/usr/bin/env swim`, the library loaded for you) is one: an
+  explicit-form script is unchanged by it, and so are its approvals.
+- There is no script syntax 5 without a written migration: what changes,
+  why it couldn't be additive, and `swim lock --upgrade` notes, in the
+  CHANGELOG and here, before the release that ships it.
 
 Three formats have a syntax version (`internal/syntax`):
 
@@ -54,8 +66,8 @@ Three formats have a syntax version (`internal/syntax`):
 | **log** | Lane logs | In the file's first line: `# swim lane log \| syntax 2 \| swim N` |
 | **state** | swim's state files: `.swim/status.yml`, the chain, queued batches, signed approvals | Not in the files: only the lock records it |
 
-`.swim.lock`, committed at the repo root, pins all three. The first run in
-a repo writes it.
+`.swim.lock`, committed at the repo root, pins all three. `swim init`
+writes it; a run in a repo without one refuses ("run swim init").
 
 **A syntax bump** means a release changed one of these formats in a way an
 older swim (or an older file) can't handle:

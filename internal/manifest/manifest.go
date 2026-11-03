@@ -559,6 +559,9 @@ func runnerPin(p runner.Plan, err error, script string) string {
 		return "direct"
 	case runner.Builtin:
 		return strings.Join(words, " ")
+	case runner.Short:
+		// swim's prelude, like its library, comes with the swim that runs it.
+		return "bash (short form)"
 	case runner.Shebang:
 		return "#!" + strings.Join(words, " ")
 	case runner.RepoYML:

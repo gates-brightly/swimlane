@@ -237,7 +237,7 @@ swim log 2 --yaml             # the round parsed: steps, commands, output, resul
 `swim new` writes a template. A filled-in round:
 
 ```bash
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round:   Cut over orders-api from SST to Terraform
 # Job:     3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e
@@ -246,8 +246,6 @@ swim log 2 --yaml             # the round parsed: steps, commands, output, resul
 # Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack (tf owns it)
 # Locks:   tf/orders
 # Timeout: 30m
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 2
 
 stage snapshot
 snapshot "cfn template" aws cloudformation get-template --stack-name orders-prod
@@ -260,9 +258,16 @@ if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (tf owns it)"; th
 fi
 stage verify
 run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
-summary
 ```
 
+- **The short form:** a script whose first line is `#!/usr/bin/env swim`
+  is just its header and steps. `swim run` loads the library, calls
+  `lane_init N` (N from the file name) and ends the round when the script
+  does, so it needs no `summary`. `./lane.N.sh` runs it as `swim run N`
+  does; `bash lane.N.sh` can't (the functions aren't loaded). The explicit
+  form, which loads the library and calls `lane_init` itself, runs as it
+  always has and can run with bash directly. An approval pins which form
+  a lane uses (its manifest's runner: `bash (short form)` or `bash`).
 - **Header:** only `Round` is required. Missing keys get defaults: a `Job`
   is generated when the round starts, and guards are found from `guard`
   calls in the body. Unknown keys are kept and shown in the log.
@@ -279,7 +284,7 @@ summary
   - Except a step whose stdin is the terminal (a lone lane run from a
     terminal): it stays in the lane's group so it can read the keyboard, and
     a limit stops only its own process.
-- **Library:** the functions are `lane_init`, `stage`, `run`, `gate`,
+- **Library:** the functions are `lane_init` (the explicit form), `stage`, `run`, `gate`,
   `snapshot`, `guard`, `decide`, `confirm`, `last_failed`, `any_failed`,
   `drift`, `stop` and `summary`. It runs on macOS's bash 3.2.
 - **Failures:** a failed `run` doesn't stop the round; a failed `gate` does.

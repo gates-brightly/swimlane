@@ -25,7 +25,18 @@ const (
 	Config  = "config"  // runners: in ~/.config/swim/config.yml
 	RepoYML = "swim.yml"
 	Direct  = "direct" // an executable (binary) run as itself
+	Short   = "short"  // a short-form lane (#!/usr/bin/env swim): bash, after ShortPrelude
 )
+
+// ShortPrelude is what bash runs before a short-form lane: it loads swim's
+// library, calls lane_init with the lane number from the script's name
+// (lane.N.sh, staged under the same name), and sources the script. The
+// library's exit trap ends the round, so the script needn't call summary.
+const ShortPrelude = `_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
+eval "$_swim_lib"
+_swim_n=${0##*/}; _swim_n=${_swim_n#lane.}; _swim_n=${_swim_n%%.*}
+lane_init "$_swim_n"
+builtin source "$0"`
 
 // Plan is how one lane script runs.
 type Plan struct {
@@ -45,6 +56,8 @@ func (p Plan) Runner() string {
 	}
 	words := strings.Join(p.Argv[:len(p.Argv)-1], " ")
 	switch p.Source {
+	case Short:
+		return "bash (short form)"
 	case Shebang:
 		return words + " (#!)"
 	case Builtin:
@@ -123,6 +136,11 @@ func Resolve(cfg *config.Config, script string) (Plan, error) {
 			return Plan{}, fmt.Errorf("%s is a compiled program but not executable: chmod +x %s", filepath.Base(script), filepath.Base(script))
 		}
 		p.Argv, p.Source, p.Wrapped = []string{script}, Direct, true
+		return p, nil
+	}
+	if lane.ShortForm(string(data)) {
+		// Whatever its extension: its #! names swim, which runs it with bash.
+		p.Argv, p.Source = []string{"bash", "-c", ShortPrelude, script}, Short
 		return p, nil
 	}
 	p.Wrapped = !lane.UsesLib(string(data))

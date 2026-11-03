@@ -314,6 +314,9 @@ func textLines(src string) []bool {
 // one that loads the library), whose text textLines can tell from code.
 func bashScript(src string) bool {
 	first, _, _ := strings.Cut(src, "\n")
+	if ShortForm(src) {
+		return true
+	}
 	if strings.HasPrefix(first, "#!") {
 		return strings.Contains(first, "bash") || strings.HasSuffix(strings.TrimSpace(first), "/sh") || strings.Contains(first, "/sh ")
 	}

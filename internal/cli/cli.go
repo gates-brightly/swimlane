@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -109,6 +111,11 @@ func Main(args []string) int {
 		return 0
 	}
 	name := args[0]
+	if n, ok := laneFileArg(name); ok {
+		// ./lane.1.sh, through its #!/usr/bin/env swim line: swim run 1, in
+		// the script's repo.
+		name, args = "run", append([]string{"run", strconv.Itoa(n)}, args[1:]...)
+	}
 	if _, ok := commands[name]; !ok && (looksLikeLaneRef(name) || isTaskHere(name)) {
 		// `swim 1 2` / `swim 3f2a9c1e` is shorthand for `swim run ...`.
 		name, args = "run", append([]string{"run"}, args...)
@@ -496,3 +503,27 @@ func cmdHelp(args []string) error {
 	fmt.Print(h)
 	return nil
 }
+
+// laneFileArg reports whether arg is a path to a lane script (lane.N.sh,
+// lane.N.py, ...), as the kernel passes it when a short-form lane runs
+// through its #! line, and moves to the script's directory so the run is in
+// its repo.
+func laneFileArg(arg string) (int, bool) {
+	if !strings.ContainsRune(arg, os.PathSeparator) {
+		return 0, false
+	}
+	m := laneFileRE.FindStringSubmatch(filepath.Base(arg))
+	if m == nil {
+		return 0, false
+	}
+	if st, err := os.Stat(arg); err != nil || st.IsDir() {
+		return 0, false
+	}
+	if err := os.Chdir(filepath.Dir(arg)); err != nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	return n, err == nil
+}
+
+var laneFileRE = regexp.MustCompile(`^lane\.([0-9]+)(\.[A-Za-z0-9]+)?$`)

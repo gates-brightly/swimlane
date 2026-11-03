@@ -31,6 +31,16 @@ func TestResolve(t *testing.T) {
 	if p, _ := Resolve(cfg, plain); !p.Wrapped {
 		t.Errorf("a .sh without lane_init runs wrapped: %+v", p)
 	}
+	// A short form (#!/usr/bin/env swim) runs with bash after swim's
+	// prelude, whatever its extension, and isn't wrapped.
+	for _, name := range []string{"lane.7.sh", "lane.8"} {
+		short := write(name, "#!/usr/bin/env swim\n# Round: x\nrun \"hi\" echo hi\n", 0o755)
+		p, err := Resolve(cfg, short)
+		if err != nil || p.Source != Short || p.Wrapped || len(p.Argv) != 4 ||
+			strings.Join(p.Argv[:2], " ") != "bash -c" || p.Argv[2] != ShortPrelude || p.Argv[3] != short || p.Runner() != "bash (short form)" {
+			t.Errorf("short form %s: %+v %v", name, p, err)
+		}
+	}
 	py := write("lane.3.py", "#!/usr/bin/env python3 -u\nprint(1)\n", 0o644)
 	if p, err := Resolve(cfg, py); err != nil || strings.Join(p.Argv, " ") != "/usr/bin/env python3 -u "+py || p.Source != Shebang || !p.Wrapped {
 		t.Errorf("shebang: %+v %v", p, err)

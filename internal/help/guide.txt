@@ -271,9 +271,16 @@ WORKER RULES
     script: ids must be unique, and pins rely on that.
 
 WRITING A LANE SCRIPT
-  Start from `swim new N "<goal>"`. The library functions:
+  Start from `swim new N "<goal>"`. It writes the short form: the first line
+  is #!/usr/bin/env swim, then the header, then the steps. swim run loads the
+  library, calls lane_init N for it and ends the round when the script ends
+  (no summary needed); ./lane.N.sh runs it as swim run N does, but bash
+  lane.N.sh can't. The explicit form loads the library itself
+  (_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"), calls
+  lane_init N first and summary last, and also runs with bash directly. The
+  library functions:
 
-  lane_init N                     claim lane N: cd to its workspace (its staged copy under swim run),
+  lane_init N                     (explicit form) claim lane N: cd to its workspace (its staged copy under swim run),
                                   STEP_LOG=.swim/logs/agentN.log, write the round header, mark running,
                                   export SWIM_JOB (the script's job id), SWIM_DEADLINE and
                                   SWIM_TIMEOUT (from Timeout:). Refuses if lane N is already

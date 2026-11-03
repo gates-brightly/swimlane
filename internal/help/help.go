@@ -431,7 +431,9 @@ swim checkpoint rm N|JOB KEY... | --all
 `,
 	"lib": `swim lib
 
-  Print the bash library lane scripts load. Lane scripts start with:
+  Print the bash library lane scripts use. A short-form script
+  (#!/usr/bin/env swim, what swim new writes) has it loaded by swim run.
+  An explicit-form script loads it itself, then calls lane_init N:
     _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
   (eval, not "source <(...)": process-substitution source is broken in
   macOS bash 3.2). See "WRITING A LANE SCRIPT" in swim guide for the functions.

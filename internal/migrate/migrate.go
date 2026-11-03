@@ -89,7 +89,7 @@ func versionOf(root string, f file) int {
 		return 0
 	}
 	src := string(data)
-	if !lane.UsesLib(src) && !strings.Contains(src, lane.StubMarker) {
+	if !lane.UsesLib(src) && !lane.ShortForm(src) && !strings.Contains(src, lane.StubMarker) {
 		// A plain program (it runs inside swim's wrapper): swim's syntax
 		// versions are the bash library's, so there is nothing to migrate.
 		return syntax.Current
