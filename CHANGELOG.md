@@ -582,6 +582,12 @@ and read.
 
 ### Fixed
 
+- **A batch submitted on a `swim watch` screen runs on that screen.** With
+  two swim watches up, `s` (or `Q`) queued the batch for whichever swimmer
+  looked first, so it often ran on the other one, and Ctrl-C there, meant
+  for that screen's own work, interrupted it. The screen now queues and
+  starts the batch under the swimmers' lock when its lanes are free; one
+  that has to wait still goes to the first free swimmer.
 - **`swim claim --for` with a short lease no longer crashes.** A claim's
   expiry was written rounded down to the second, so a one-second lease
   taken late in a second could run out before `swim claim` read it back,

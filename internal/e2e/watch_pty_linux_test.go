@@ -336,3 +336,42 @@ func (tr *tuiRun) waitQueueRow(seq int, state string, more ...string) string {
 		return false
 	})
 }
+
+// With two swim watch screens up, a batch submitted on one runs on that
+// one: its Ctrl-C is the one that stops it, not the other screen's. Only
+// the screen running a batch notes how it ended.
+func TestWatchSubmitRunsHere(t *testing.T) {
+	long(t)
+	r := newSerialRepo(t, "")
+	for n := 1; n <= 4; n++ {
+		r.script(n, fmt.Sprintf("job %d", n), `run "work" true`)
+	}
+	a := r.startTUI(nil, "watch")
+	b := r.startTUI(nil, "watch")
+	a.waitFor("▸ 1 ")
+	b.waitFor("▸ 1 ")
+	for n := 1; n <= 4; n++ {
+		tr := a
+		if n%2 == 0 {
+			tr = b
+		}
+		tr.send("q")
+		tr.waitFor(fmt.Sprintf("submit swim %d as one batch", n))
+		tr.send("s")
+		tr.waitFor(fmt.Sprintf("started swim %d as #%d", n, n))
+		tr.waitFor(fmt.Sprintf("#%d passed", n))
+		if n == 4 {
+			break
+		}
+		for _, tr := range []*tuiRun{a, b} {
+			tr.send("\x1b[B")
+			tr.waitFor(fmt.Sprintf("▸ %d ", n+1))
+		}
+	}
+	for _, tr := range []*tuiRun{a, b} {
+		tr.send("\x03")
+		if code, _ := tr.wait(); code != 0 {
+			t.Errorf("exit %d after ctrl-c", code)
+		}
+	}
+}

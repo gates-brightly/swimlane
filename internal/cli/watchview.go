@@ -796,14 +796,28 @@ func (w *watchView) toggleStream() string {
 
 // queueLanes queues lanes as one batch, as swim queue add N M does: no
 // guard is approved, so their guards dry-run unless standing approvals
-// cover them. It says what it queued.
+// cover them. Running batches side by side, this swim watch starts it
+// itself when its lanes are free: the batch is the operator's at this
+// screen, and Ctrl-C here is what stops it. It says what it queued.
 func (w *watchView) queueLanes(lanes []int) (string, error) {
+	// Swimmers pick only under the worker lock: held from queueing to
+	// starting, no other swim watch claims the batch in between.
+	unlock := func() {}
+	if w.batches != nil {
+		unlock = lockWorkerSoon(w.root)
+	}
+	defer unlock()
 	b, err := addBatch(w.root, w.cfg, lanes, queueOpts{})
 	if err != nil {
 		return "", err
 	}
 	ns := strings.ReplaceAll(joinNums(lanes), " ", "")
 	msg := fmt.Sprintf("queued swim %s as #%d (%s)", ns, b.entry.Seq, b.entry.ID)
+	if bp, err := w.startHere(b.entry); err != nil {
+		msg += "; not started: " + err.Error()
+	} else if bp != nil {
+		msg = fmt.Sprintf("started swim %s as #%d (%s) here", ns, bp.e.Seq, bp.e.ID)
+	}
 	switch {
 	case len(b.guards) > 0 && w.batches != nil && w.batches.asks != nil:
 		msg += "; this screen asks for its guards as they come (y approves)"
@@ -814,6 +828,42 @@ func (w *watchView) queueLanes(lanes []int) (string, error) {
 		msg += "; " + b.warn
 	}
 	return msg, nil
+}
+
+// lockWorkerSoon takes the worker lock, waiting a moment for a swimmer
+// picking now (it holds the lock only while it claims). It returns a no-op
+// when the lock stays taken: the batch is then queued for any swimmer.
+func lockWorkerSoon(root string) (unlock func()) {
+	for i := 0; i < 20; i++ {
+		u, ok, err := queue.LockWorker(root)
+		if err != nil {
+			break
+		}
+		if ok {
+			return u
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return func() {}
+}
+
+// startHere starts e, just queued from this screen, in this swim watch if
+// the queue would start it now (in turn: an older batch that can start
+// keeps its place). Nil when it waits; any swimmer may take it then.
+func (w *watchView) startHere(e *queue.Entry) (*batchProc, error) {
+	if w.batches == nil {
+		return nil, nil
+	}
+	waiting, err := queue.List(w.root, false)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range w.batches.startable(w.cfg, waiting) {
+		if s.ID == e.ID {
+			return w.batches.start(w.cfg, s)
+		}
+	}
+	return nil, nil
 }
 
 // runLane runs lane n now, as swim run N does: the operator is here, so its

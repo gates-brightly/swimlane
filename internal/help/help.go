@@ -631,7 +631,9 @@ swim queue show|rm|requeue ID
   entry when the run ends (passed, failed or interrupted alike: a half-run
   change is never retried on its own; swim queue requeue does that).
   Several swimmers can share a queue: claims are atomic, and a swimmer
-  picks batches under a lock, so two never take the same lanes. While a
+  picks batches under a lock, so two never take the same lanes. A batch
+  submitted on a swimmer's screen (s, Q) starts on that swimmer when its
+  lanes are free, so Ctrl-C there is what stops it. While a
   batch runs, its process renews the claim's heartbeat every third of
   queue_lease (swim config). A batch this swimmer's swim can't run (the
   lock was upgraded after it started, or a lane's script is newer than it

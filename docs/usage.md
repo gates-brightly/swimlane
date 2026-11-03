@@ -845,7 +845,10 @@ swim wait [--timeout D]                                  # block until idle and 
     title says how many batches run and wait.
   - **Several swimmers** can share one queue. Claiming an entry is atomic,
     and swimmers pick batches under a lock, so two never take the same
-    lanes. A batch renews a heartbeat in its entry (`queue_lease`, default
+    lanes. A batch submitted on a screen (`s`, `Q`) starts in that swim
+    watch when its lanes are free, so its Ctrl-C is the one that stops it;
+    one that has to wait goes to whichever swimmer is free first. A batch
+    renews a heartbeat in its entry (`queue_lease`, default
     2m), so from another host a dead swimmer's batch shows as orphaned.
   - **Ctrl-C** stops the batches in hand gracefully.
   - **`--approved`** also queues scripts as soon as they're fully approved.
