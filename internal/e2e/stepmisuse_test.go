@@ -28,7 +28,9 @@ func TestStepWrittenWrongStopsTheRound(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRepo(t, "")
-			r.shortLane(1, "# Round: drop it\n# Guards: DB_ALLOW_DROP  drop the table", "stage check\n"+tc.gate+"\nstage change\nif guard DB_ALLOW_DROP \"drop the table\"; then\n  run \"drop\" echo DROPPED\nfi")
+			// Lint refuses these before swim run starts ([step]); the lint-ignore
+			// lets the round run, to prove the runtime fails closed by itself.
+			r.shortLane(1, "# Round: drop it\n# Guards: DB_ALLOW_DROP  drop the table", "stage check\n# swim:lint-ignore step the runtime's own check is under test\n"+tc.gate+"\nstage change\nif guard DB_ALLOW_DROP \"drop the table\"; then\n  run \"drop\" echo DROPPED\nfi")
 			cmd := r.cmd(bin, "run", "1", "--plain")
 			cmd.Env = append(cmd.Env, "DB_ALLOW_DROP=1")
 			out, _ := cmd.CombinedOutput()

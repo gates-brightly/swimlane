@@ -68,7 +68,7 @@ echo "continued: stage change; rm -rf /" \
   'swim secret get TOKEN'
 gate "precheck" test -d .
 stage change
-if guard ALLOW_REAL "the one real change (2026-10-16)"; then
+if guard ALLOW_REAL "the one real guard (2026-10-16, corpus)"; then
   run "change" true
 fi
 stage verify

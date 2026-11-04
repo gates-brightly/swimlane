@@ -81,6 +81,23 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **Lint refuses the steps that wouldn't run as they read.** Each of these
+  linted clean and then failed, or did something else, at run time; now
+  each is a lint error, so `swim run` refuses the lane before it starts:
+  - `[step]`: an unknown step option, an option with no value, a step
+    with no label or no command; `run echo hi` (the label is `echo`);
+    `run "x" "echo hi there"` (one word, exit 127); `run "x" cd /tmp` or
+    `export` (they change only the step's own process).
+  - `[step-pipe]`: `run "x" ls | wc -l` or `run "x" cmd > out.txt`, where
+    the pipe or redirect applies to swim's own output. `>/dev/null`,
+    `2>&1`, `||` and `&&` are still fine.
+  - `[short-form]`: a `.sh` lane that calls `stage`, `run` and the rest
+    without `#!/usr/bin/env swim` (`#!/bin/bash`: `stage: command not
+    found`).
+  - `[guard-text]` (a warning): a guard's description differs from its
+    `# Guards:` line, or that line has none.
+  A corpus test runs every accepted and refused form through both lint and
+  `swim run`, so the two stay in agreement.
 - **`run "<label>" -- cmd` and `--opt=value` work in bash lanes.** The
   guide and the skill show `gate "account" -- test ...`, the form `swim
   run` takes from other languages, but a bash lane ran `--` as the

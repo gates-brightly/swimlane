@@ -32,7 +32,7 @@ gate "precheck" test -f go.mod
 run "quoted bash 4 is a sub-shell" bash -c 'mapfile -t x < /dev/null; echo "${x,,}"'
 run "echo is not destructive" echo "would delete nothing"
 stage change
-if guard ALLOW_DROP "drop old table (2026-10-09)"; then
+if guard ALLOW_DROP "drop the old table (2026-10-09, migrated)"; then
   run "drop table" aws dynamodb delete-table --table-name old
 fi
 stage verify
