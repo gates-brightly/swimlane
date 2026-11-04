@@ -45,6 +45,7 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{`snapshot "snap" echo corpus-ok`, "| corpus-ok"},
 		{`run --expect-fail "fails" false`, "PASS  fails"},
 		{`run "diff" diff <(echo corpus-same) <(echo corpus-same)`, "PASS  diff"},
+		{"while read t; do\n  run \"each $t\" echo \"corpus-$t\"\ndone < <(printf 'a\\nb\\n')", "| corpus-b"},
 		{`run "spaced path" "` + spaced + `" corpus-ok`, "| corpus-ok"},
 	} {
 		write(short, tc.body)
@@ -72,6 +73,7 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{short, `run "a step"; echo corpus-later | cat`, "step"}, // no command: the pipe after ; is the lane's own
 		{short, `acct=$(gate "account check" false)`, "step-subshell"},
 		{short, `echo x | gate "piped gate" false`, "step-subshell"},
+		{short, "printf 'a\\nb\\n' | while read t; do\n  gate \"check $t\" false\ndone", "step-subshell"},
 		{short, "echo \"$(run \"quoted\" true)\"", "step-subshell"},
 		{short, `run "count" ls | wc -l`, "step-pipe"},
 		{short, `run "file" echo hi > out.txt`, "step-pipe"},

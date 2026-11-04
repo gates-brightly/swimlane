@@ -129,6 +129,11 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
   ../prod-repo/lane.3.sh` would have run this repo's lane 3. A path now
   counts only when it resolves (symlinks too) to this repo's
   `<root>/lane.N.*`; any other is refused, naming the repo swim works on.
+- **Lint catches steps in a loop a pipe feeds.** In `cmd | while read t;
+  do run ...; done` the loop body is a subshell: the round still stops on
+  a failed gate there, but `last_failed`, `any_failed` and the counts after
+  the loop missed its failures. `[step-subshell]` now covers it and
+  suggests `while ...; done < <(cmd)`; the lane recipe says so.
 - **A stale stop marker can't turn an interrupt into a failure.** The
   marker a `stop` in a subshell leaves for its round is cleared as each
   lane starts, so one left behind (its shell gone, a TERM racing a Ctrl-C)

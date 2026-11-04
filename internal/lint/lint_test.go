@@ -121,6 +121,8 @@ func TestEachCheck(t *testing.T) {
 		{name: "Timeout in words", script: replace(c, "# Timeout: 30m", "# Timeout: 10 minutes"), code: "timeout", level: finding.Error, line: 7},
 		{name: "lowercase key", script: replace(c, "# Timeout: 30m", "# timeout: 30m"), code: "header-key", level: finding.Error, line: 7, message: "(header keys are case-sensitive): did you mean # Timeout:?"},
 		{name: "synonym key", script: before(c, "# Timeout:", "# Depends: 2\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
+		{name: "step in a piped loop", script: before(c, "stage verify\n", "ls | while read t; do\n  gate \"check $t\" test -n \"$t\"\ndone\n"), code: "step-subshell", level: finding.Error},
+		{name: "step in a one-line piped loop", script: before(c, "stage verify\n", "ls | while read t; do run \"each\" echo \"$t\"; done\n"), code: "step-subshell", level: finding.Error},
 		{name: "pipe after a continuation", script: before(c, "stage verify\n", "run \"count\" ls \\\n  -la | wc -l\n"), code: "step-pipe", level: finding.Error},
 		{name: "Requires with lanes", script: before(c, "# Timeout:", "# Requires: 2, 3\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
 		{name: "typo key", script: before(c, "# Timeout:", "# Lock: db\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Locks:?"},
@@ -482,12 +484,14 @@ eval "$_swim_lib"
 func TestValidFormsStayQuiet(t *testing.T) {
 	c := clean(1)
 	for name, script := range map[string]string{
-		"Requires note":   before(c, "# Timeout:", "# Requires: VPN\n"),
-		"Wait note":       before(c, "# Timeout:", "# Wait: for the change window\n"),
-		"Needs note":      before(c, "# Timeout:", "# Needs: prod creds\n"),
-		"path with space": before(c, "stage verify\n", `run "check" "/opt/My Tools/bin/check" --fast`+"\n"),
-		"process subst":   before(c, "stage verify\n", `run "diff" diff <(sort a) <(sort b)`+"\n"),
-		"header comment":  replace(c, "# After:", "# After: 2  # waits for the schema"),
+		"Requires note":            before(c, "# Timeout:", "# Requires: VPN\n"),
+		"Wait note":                before(c, "# Timeout:", "# Wait: for the change window\n"),
+		"Needs note":               before(c, "# Timeout:", "# Needs: prod creds\n"),
+		"path with space":          before(c, "stage verify\n", `run "check" "/opt/My Tools/bin/check" --fast`+"\n"),
+		"process subst":            before(c, "stage verify\n", `run "diff" diff <(sort a) <(sort b)`+"\n"),
+		"header comment":           replace(c, "# After:", "# After: 2  # waits for the schema"),
+		"loop fed by <(cmd)":       before(c, "stage verify\n", "while read t; do\n  run \"each\" echo \"$t\"\ndone < <(ls)\n"),
+		"steps after a piped loop": before(c, "stage verify\n", "ls | while read t; do echo \"$t\"; done\nrun \"after\" true\n"),
 	} {
 		if fs := Lint(cfg4(), map[int]string{1: script, 2: clean(2), 3: clean(3), 4: clean(4)}, 1); len(fs) != 0 {
 			t.Errorf("%s: %+v", name, fs)

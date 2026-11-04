@@ -281,6 +281,10 @@ var (
 	// step a pipe feeds (it runs in a subshell).
 	stepInSubstRE   = regexp.MustCompile("(?:\\$\\(|`)\\s*(?:if\\s+|!\\s*)?(run|gate|snapshot)\\b")
 	stepAfterPipeRE = regexp.MustCompile(`(?:^|[^|])\|\s*(?:if\s+|!\s*)?(run|gate|snapshot)\b`)
+	// pipedLoopRE: a while or until loop a pipe feeds; loopKeywordRE: the
+	// words that open and close a loop body.
+	pipedLoopRE   = regexp.MustCompile(`(?:^|[^|])\|\s*(?:while|until)\b`)
+	loopKeywordRE = regexp.MustCompile(`\b(?:do|done)\b`)
 )
 
 // checkStepSubshell: a step in $(...), backticks or after a pipe runs in a
@@ -293,8 +297,39 @@ func checkStepSubshell(c *Context, s *Script) []finding.Finding {
 		return nil
 	}
 	var out []finding.Finding
+	// A loop a pipe feeds (cmd | while read x; do ... done) runs in a
+	// subshell, its body too: depth counts do/done from its first do.
+	loop, depth := false, 0
 	for i := range s.v.raw {
 		if !s.v.isCode(i) || s.v.inQuote[i] {
+			continue
+		}
+		if !loop && pipedLoopRE.MatchString(s.v.bare[i]) {
+			loop, depth = true, 0
+		}
+		if loop {
+			inBody := depth > 0
+			for _, kw := range loopKeywordRE.FindAllString(s.v.bare[i], -1) {
+				if kw == "do" {
+					depth++
+					inBody = true
+				} else {
+					depth--
+				}
+			}
+			if inBody {
+				for _, cmd := range lane.Commands(s.v.code[i]) {
+					if len(cmd) > 0 && !cmd[0].Quoted && (cmd[0].Text == "run" || cmd[0].Text == "gate" || cmd[0].Text == "snapshot") {
+						out = append(out, f(finding.Error, "step-subshell", i,
+							"feed the loop without a pipe: while read x; do ... done < <(cmd)",
+							"%s inside a loop a pipe feeds runs in a subshell: its result never reaches the lane (last_failed, any_failed, the round's counts after the loop)", cmd[0].Text))
+						break
+					}
+				}
+			}
+			if inBody && depth <= 0 {
+				loop = false
+			}
 			continue
 		}
 		m := stepInSubstRE.FindStringSubmatch(s.v.exp[i])

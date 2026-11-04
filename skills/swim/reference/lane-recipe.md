@@ -92,7 +92,11 @@ and `--retry-on 1,255` before the label. Retry only idempotent steps.
   - Python-based CLIs (aws, gcloud) buffer when piped: run them with
     `PYTHONUNBUFFERED=1`.
 - **Many similar targets:** loop over them inside one round, one step
-  each, so the log names the one that failed.
+  each, so the log names the one that failed. Feed the loop without a
+  pipe, `while read t; do run "drain $t" ...; done < <(list-targets)`:
+  piped (`list-targets | while read t; do ...`), the loop runs in a
+  subshell, so `last_failed`, `any_failed` and the round's counts after it
+  miss its failures, and `swim lint` refuses it (`[step-subshell]`).
 - **Standing setup** (lint, init): its own lane, which the others name in
   `After:`.
 
