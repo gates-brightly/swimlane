@@ -17,8 +17,12 @@ who writes what. These rules make it hold. They extend the guide's `PLANNER WORK
    - the exact `# After:` line, if the lane depends on another worker's;
    - its own earmark name (`SWIM_SESSION=worker-orders`);
    - what to report back.
-3. **Record the assignment** so other sessions see it:
-   `swim note "lanes: 4 orders (worker-orders), 5 billing (worker-billing)"`.
+3. **Claim each lane for its worker, and record the assignment,** so swim
+   holds it, not only the prompt: `swim claim 4 --session worker-orders`,
+   `swim claim 5 --session worker-billing`, then `swim note "lanes: 4
+   orders (worker-orders), 5 billing (worker-billing)"`. Only the session
+   named may then `swim new` the lane; start each worker with that
+   `SWIM_SESSION`, or its own `swim new` is refused too.
 4. **Write the shared parts yourself:** cross-lane ordering, config
    `deps:` lines (handed to the operator), and any shared file. Workers
    send you the lines; they don't edit shared files.

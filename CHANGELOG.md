@@ -54,6 +54,13 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
   for all of them. A ref is a batch (`#41`, its id) or a job id; the exit
   is the result (0 passed, 3 dry run, 1 otherwise), and a batch orphaned
   by a dead swimmer counts as ended.
+- **A planner can claim a lane for a worker: `swim claim N --session
+  NAME`.** The claim is the worker's, so only a session running with
+  `SWIM_SESSION=NAME` may `swim new`, `stub` or `archive` the lane (the
+  planner included), and the assignment is enforced by swim rather than
+  only written in the worker's prompt. The worker's `swim new` and `swim
+  lint` keep the claim; `swim status` and `.swim.log` say who assigned it;
+  `--release --session NAME` gives it back without `--force`.
 
 ### Changed
 

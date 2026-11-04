@@ -1030,8 +1030,8 @@ swim keys pin
   Other lanes keep running. The same thing the first Ctrl-C does to every
   lane of a swim run.
 `,
-	"claim": `swim claim N [--for D]
-swim claim N --release [--force]
+	"claim": `swim claim N [--for D] [--session NAME]
+swim claim N --release [--force] [--session NAME]
 swim claim N --break "<reason>"
 
   A claim is a lease a session holds on a lane while it writes the lane's
@@ -1044,7 +1044,13 @@ swim claim N --break "<reason>"
   swim claim N takes or refreshes it explicitly (--for D); --release gives
   it up (--force: another session's); --break takes over a live claim with
   a reason, and --force on new, stub or archive does too: both are logged
-  as claim-broken. A session is SWIM_SESSION, else user@host: set
+  as claim-broken.
+  --session NAME takes (or releases) the claim for another session: a
+  planner assigning each worker its lane before the worker starts
+  (swim claim 30 --session worker-orders). The claim is NAME's, so only
+  a session with SWIM_SESSION=NAME may swim new, stub or archive the
+  lane, the planner included; the worker's swim new and swim lint keep
+  it, and swim status says who assigned it. A session is SWIM_SESSION, else user@host: set
   SWIM_SESSION per session, or two sessions of one user on one machine are
   one. Claims are advisory: they guard swim's commands, not an editor
   writing lane.N.sh, and stay in this checkout's .swim/claims/.

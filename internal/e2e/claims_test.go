@@ -109,3 +109,34 @@ func TestLaneClaimsSameSession(t *testing.T) {
 		t.Errorf("exit %d\n%s", code, out)
 	}
 }
+
+// A planner assigns a worker its lane: swim claim N --session NAME holds
+// it for the worker, so another worker's swim new refuses it, the
+// assigned worker's goes through, and status says who assigned it.
+func TestClaimAssignedToASession(t *testing.T) {
+	r := newRepo(t, "")
+	out, code := r.as("planner", "claim", "30", "--session", "worker-a")
+	if code != 0 || !strings.Contains(out, "(worker-a, assigned by planner)") || !strings.Contains(out, "SWIM_SESSION=worker-a") {
+		t.Fatalf("planner's claim for worker-a: exit %d\n%s", code, out)
+	}
+	if out, code := r.as("worker-b", "new", "30", "the wrong worker"); code == 0 || !strings.Contains(out, "session worker-a") {
+		t.Fatalf("worker-b's new on worker-a's lane: exit %d\n%s", code, out)
+	}
+	if out, code := r.as("planner", "new", "30", "the planner itself"); code == 0 {
+		t.Fatalf("the planner's own new on worker-a's lane: exit %d\n%s", code, out)
+	}
+	if out, code := r.as("worker-a", "new", "30", "the right worker"); code != 0 {
+		t.Fatalf("worker-a's new: %s", out)
+	}
+	r.as("worker-a", "lint", "30")
+	st, _ := r.as("planner", "status", "30")
+	contains(t, "status keeps who assigned it", st, "(worker-a, assigned by planner) until")
+	contains(t, ".swim.log", r.mustSwim("log"), "session worker-a for", "assigned by planner")
+	// The planner can take it back without --force.
+	if out, code := r.as("planner", "claim", "30", "--release", "--session", "worker-a"); code != 0 || !strings.Contains(out, "released swim 30's claim (session worker-a)") {
+		t.Fatalf("planner's release for worker-a: exit %d\n%s", code, out)
+	}
+	if out, code := r.as("planner", "claim", "31", "--session", "two words"); code != 2 {
+		t.Errorf("a session name with a space: exit %d\n%s", code, out)
+	}
+}

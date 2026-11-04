@@ -127,3 +127,23 @@ func TestClaimExpiryRoundsUp(t *testing.T) {
 		t.Errorf("on the second: %s", got)
 	}
 }
+
+// A claim taken for another session is that session's: its own refresh
+// keeps who assigned it, and a third session is refused.
+func TestClaimAssigned(t *testing.T) {
+	root := t.TempDir()
+	c, _, err := TakeClaimFor(root, 4, "worker", "planner", time.Hour, "", false)
+	if err != nil || c.Session != "worker" || c.AssignedBy != "planner" {
+		t.Fatalf("assigned: %+v %v", c, err)
+	}
+	if err := CheckClaim(root, 4, "worker"); err != nil {
+		t.Fatalf("the worker is refused its own lane: %v", err)
+	}
+	if err := CheckClaim(root, 4, "other"); err == nil {
+		t.Fatal("another session may take the worker's lane")
+	}
+	c, _, err = TakeClaim(root, 4, "worker", time.Hour, "job-1", false)
+	if err != nil || c.AssignedBy != "planner" || c.Job != "job-1" {
+		t.Fatalf("the worker's refresh: %+v %v", c, err)
+	}
+}

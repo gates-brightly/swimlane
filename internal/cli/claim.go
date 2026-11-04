@@ -14,17 +14,22 @@ import (
 // session holds while it writes the lane's round (swim new takes one), so
 // another session's swim new, stub and archive refuse the lane.
 
-// cmdClaim is swim claim N [--for D] | --release [--force] | --break REASON.
+// cmdClaim is swim claim N [--for D] [--session NAME] | --release [--force]
+// | --break REASON. --session takes or releases the claim for another
+// session: a planner assigning a worker its lane.
 func cmdClaim(args []string) error {
 	var release, force bool
-	var forD, breakWhy string
+	var forD, breakWhy, forSess string
 	rest, err := flags{bools: map[string]*bool{"release": &release, "force": &force},
-		strs: map[string]*string{"for": &forD, "break": &breakWhy}}.parse(args)
+		strs: map[string]*string{"for": &forD, "break": &breakWhy, "session": &forSess}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || release && breakWhy != "" {
-		return usagef(`usage: swim claim N [--for D] | swim claim N --release [--force] | swim claim N --break "<reason>"`)
+		return usagef(`usage: swim claim N [--for D] [--session NAME] | swim claim N --release [--force] [--session NAME] | swim claim N --break "<reason>"`)
+	}
+	if forSess != "" && (strings.TrimSpace(forSess) != forSess || strings.ContainsAny(forSess, " \t\r\n")) {
+		return usagef("--session %q: a session name, as its SWIM_SESSION (no spaces)", forSess)
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -34,7 +39,11 @@ func cmdClaim(args []string) error {
 	if err != nil {
 		return err
 	}
-	sess := lane.SessionID()
+	me := lane.SessionID()
+	sess, by := me, ""
+	if forSess != "" && forSess != me {
+		sess, by = forSess, me // assigned: the claim is the named session's
+	}
 	if release {
 		c, err := lane.ReleaseClaim(root, n, sess, force)
 		if err != nil {
@@ -45,9 +54,13 @@ func cmdClaim(args []string) error {
 			return nil
 		}
 		if c.Session != sess {
-			claimBroken(root, n, c, sess, "claim --release --force", "")
+			claimBroken(root, n, c, me, "claim --release --force", "")
 		}
-		history.Log(root, history.Entry{Event: history.ClaimRelease, Lane: n, Job: c.Job, Detail: "session " + c.Session})
+		detail := "session " + c.Session
+		if by != "" {
+			detail += ", released by " + by
+		}
+		history.Log(root, history.Entry{Event: history.ClaimRelease, Lane: n, Job: c.Job, Detail: detail})
 		fmt.Printf("released swim %d's claim (session %s)\n", n, c.Session)
 		return nil
 	}
@@ -60,7 +73,7 @@ func cmdClaim(args []string) error {
 		lease = d
 	}
 	info, _ := lane.ReadScript(root, n)
-	c, broke, err := lane.TakeClaim(root, n, sess, lease, info.Job, breakWhy != "")
+	c, broke, err := lane.TakeClaimFor(root, n, sess, by, lease, info.Job, breakWhy != "")
 	var ec lane.ErrClaimed
 	if errors.As(err, &ec) {
 		return fmt.Errorf("%s; or swim claim %d --break \"<why>\" to take it over", strings.Split(err.Error(), "\n")[0], n)
@@ -69,10 +82,17 @@ func cmdClaim(args []string) error {
 		return err
 	}
 	if broke != nil {
-		claimBroken(root, n, broke, sess, "claim --break", breakWhy)
+		claimBroken(root, n, broke, me, "claim --break", breakWhy)
 	}
-	history.Log(root, history.Entry{Event: history.Claim, Lane: n, Job: info.Job, Detail: fmt.Sprintf("session %s for %s", sess, lease)})
-	fmt.Printf("swim %d claimed by %s (session %s) until %s\n", n, c.Owner, c.Session, c.ExpiresAt().Local().Format("15:04"))
+	detail := fmt.Sprintf("session %s for %s", sess, lease)
+	if by != "" {
+		detail += ", assigned by " + by
+	}
+	history.Log(root, history.Entry{Event: history.Claim, Lane: n, Job: info.Job, Detail: detail})
+	fmt.Printf("swim %d %s\n", n, claimText(c))
+	if by != "" {
+		fmt.Printf("only session %s may swim new, stub or archive it now: start that worker with SWIM_SESSION=%s; its swim new and swim lint keep the claim\n", sess, sess)
+	}
 	return nil
 }
 
@@ -87,5 +107,9 @@ func claimBroken(root string, n int, broke *lane.Claim, by, via, why string) {
 
 // claimText is how a lane's live claim reads in swim status and plan.
 func claimText(c *lane.Claim) string {
-	return fmt.Sprintf("claimed by %s (%s) until %s", c.Owner, c.Session, c.ExpiresAt().Local().Format("15:04"))
+	by := ""
+	if c.AssignedBy != "" {
+		by = ", assigned by " + c.AssignedBy
+	}
+	return fmt.Sprintf("claimed by %s (%s%s) until %s", c.Owner, c.Session, by, c.ExpiresAt().Local().Format("15:04"))
 }

@@ -31,6 +31,10 @@ type Claim struct {
 	Created string `yaml:"created"`
 	Expires string `yaml:"expires"`
 	Job     string `yaml:"job,omitempty"`
+	// AssignedBy is the session that took the claim for Session (swim
+	// claim N --session NAME): a planner assigning a worker its lane.
+	// Empty when the session took it itself.
+	AssignedBy string `yaml:"assigned_by,omitempty"`
 }
 
 // ExpiresAt is when the claim runs out.
@@ -148,6 +152,12 @@ func writeClaim(root string, n int, c Claim) error {
 // (ErrClaimed) unless force, which takes it over and returns the claim it
 // broke. It returns the claim it wrote, too.
 func TakeClaim(root string, n int, sess string, lease time.Duration, job string, force bool) (taken, broke *Claim, err error) {
+	return TakeClaimFor(root, n, sess, "", lease, job, force)
+}
+
+// TakeClaimFor is TakeClaim, taken by session by on sess's behalf (by ""
+// for sess itself). A refresh by sess keeps who assigned it.
+func TakeClaimFor(root string, n int, sess, by string, lease time.Duration, job string, force bool) (taken, broke *Claim, err error) {
 	unlock, err := claimsLock(root)
 	if err != nil {
 		return nil, nil, err
@@ -161,12 +171,15 @@ func TakeClaim(root string, n int, sess string, lease time.Duration, job string,
 		broke = cur
 	}
 	now := time.Now().UTC()
-	c := Claim{Owner: ClaimOwner(), Session: sess, Created: now.Format(time.RFC3339), Expires: expiresIn(now, lease), Job: job}
+	c := Claim{Owner: ClaimOwner(), Session: sess, Created: now.Format(time.RFC3339), Expires: expiresIn(now, lease), Job: job, AssignedBy: by}
 	c.Host, _ = os.Hostname()
 	if cur != nil && cur.Session == sess {
 		c.Created = cur.Created // a refresh keeps when it was taken
 		if job == "" {
 			c.Job = cur.Job
+		}
+		if by == "" {
+			c.AssignedBy = cur.AssignedBy // and who assigned it
 		}
 	}
 	if err := writeClaim(root, n, c); err != nil {

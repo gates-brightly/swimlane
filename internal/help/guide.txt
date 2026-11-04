@@ -245,6 +245,9 @@ PLANNER WORKFLOW
   2. Assign each worker one lane number. A worker writes only lane.N.sh.
      Use a lane `swim status` shows idle, or a number not in use (any of
      1..99: there's no lane count to raise). Never edit the config yourself.
+     Claim it for the worker before it starts (`swim claim N --session
+     worker-orders`, the worker running with SWIM_SESSION=worker-orders):
+     then no other session's swim new, stub or archive can take it.
   3. Write the round: `swim new N "<goal>"`, then fill in the steps. Keep the
      header (Round:, Goal, Steps, Guard flags) accurate: the operator reads
      it without you.
