@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -57,8 +59,35 @@ func expiresIn(now time.Time, lease time.Duration) string {
 // ClaimDir holds the claims.
 func ClaimDir(root string) string { return filepath.Join(root, ".swim", "claims") }
 
-func claimPathOf(root string, n int) string {
-	return filepath.Join(ClaimDir(root), fmt.Sprintf("lane.%d.yml", n))
+// ClaimKey is what a claim is on: a lane (Lane > 0), or a named resource
+// (swim claim lith): something sessions share outside any one lane, such
+// as a local environment several agents' lanes rebuild. A resource claim
+// is advisory, like a lane's: swim claim refuses another session's, and a
+// run whose # Locks: name it warns, but runs.
+type ClaimKey struct {
+	Lane int
+	Name string
+}
+
+// LaneClaim is lane n's key; ResourceClaim is a resource's.
+func LaneClaim(n int) ClaimKey           { return ClaimKey{Lane: n} }
+func ResourceClaim(name string) ClaimKey { return ClaimKey{Name: name} }
+
+// String names it as messages do: "swim 3", or the resource.
+func (k ClaimKey) String() string {
+	if k.Lane > 0 {
+		return fmt.Sprintf("swim %d", k.Lane)
+	}
+	return k.Name
+}
+
+const resourcePrefix = "res."
+
+func (k ClaimKey) path(root string) string {
+	if k.Lane > 0 {
+		return filepath.Join(ClaimDir(root), fmt.Sprintf("lane.%d.yml", k.Lane))
+	}
+	return filepath.Join(ClaimDir(root), resourcePrefix+strings.ReplaceAll(k.Name, "/", "%2F")+".yml")
 }
 
 // SessionID names this session: SWIM_SESSION, else user@host. Two sessions
@@ -81,11 +110,15 @@ func ClaimOwner() string {
 	return "-"
 }
 
-// ErrClaimed is returned when another session holds a lane's live claim.
+// ErrClaimed is returned when another session holds a live claim: on lane
+// Lane, or on resource Name.
 type ErrClaimed struct {
 	Lane int
+	Name string
 	C    *Claim
 }
+
+func errClaimed(k ClaimKey, c *Claim) ErrClaimed { return ErrClaimed{Lane: k.Lane, Name: k.Name, C: c} }
 
 func (e ErrClaimed) Error() string {
 	until := e.C.ExpiresAt().Local().Format("15:04")
@@ -93,14 +126,21 @@ func (e ErrClaimed) Error() string {
 	if e.C.Job != "" {
 		job = fmt.Sprintf(" (job %s)", e.C.Job)
 	}
+	if e.Lane == 0 {
+		return fmt.Sprintf("%s is claimed by %s (session %s on %s) until %s; wait, or ask that session to release it\n(set SWIM_SESSION to tell sessions apart)",
+			e.Name, e.C.Owner, e.C.Session, e.C.Host, until)
+	}
 	return fmt.Sprintf("swim %d is claimed by %s (session %s on %s) until %s%s; pick another lane, wait, or pass --force\n(set SWIM_SESSION to tell sessions apart)",
 		e.Lane, e.C.Owner, e.C.Session, e.C.Host, until, job)
 }
 
 // ReadClaim is lane n's live claim, or nil (none, or expired: an expired
 // one is removed).
-func ReadClaim(root string, n int) *Claim {
-	p := claimPathOf(root, n)
+func ReadClaim(root string, n int) *Claim { return ReadClaimOn(root, LaneClaim(n)) }
+
+// ReadClaimOn is k's live claim, or nil.
+func ReadClaimOn(root string, k ClaimKey) *Claim {
+	p := k.path(root)
 	data, err := os.ReadFile(p)
 	if err != nil {
 		return nil
@@ -116,11 +156,31 @@ func ReadClaim(root string, n int) *Claim {
 	return &c
 }
 
+// NamedClaim is a resource's live claim.
+type NamedClaim struct {
+	Name string
+	*Claim
+}
+
+// ResourceClaims are the live resource claims, by name.
+func ResourceClaims(root string) []NamedClaim {
+	files, _ := filepath.Glob(filepath.Join(ClaimDir(root), resourcePrefix+"*.yml"))
+	sort.Strings(files)
+	var out []NamedClaim
+	for _, p := range files {
+		name := strings.ReplaceAll(strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), resourcePrefix), ".yml"), "%2F", "/")
+		if c := ReadClaimOn(root, ResourceClaim(name)); c != nil {
+			out = append(out, NamedClaim{name, c})
+		}
+	}
+	return out
+}
+
 // CheckClaim refuses (ErrClaimed) when a session other than sess holds
 // lane n's live claim.
 func CheckClaim(root string, n int, sess string) error {
 	if c := ReadClaim(root, n); c != nil && c.Session != sess {
-		return ErrClaimed{n, c}
+		return errClaimed(LaneClaim(n), c)
 	}
 	return nil
 }
@@ -142,9 +202,9 @@ func claimsLock(root string) (func(), error) {
 	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
 }
 
-func writeClaim(root string, n int, c Claim) error {
+func writeClaim(root string, k ClaimKey, c Claim) error {
 	data, _ := yaml.Marshal(c)
-	return fsutil.WriteAtomic(claimPathOf(root, n), data, 0o644)
+	return fsutil.WriteAtomic(k.path(root), data, 0o644)
 }
 
 // TakeClaim takes lane n's claim for session sess, for lease, or refreshes
@@ -158,15 +218,20 @@ func TakeClaim(root string, n int, sess string, lease time.Duration, job string,
 // TakeClaimFor is TakeClaim, taken by session by on sess's behalf (by ""
 // for sess itself). A refresh by sess keeps who assigned it.
 func TakeClaimFor(root string, n int, sess, by string, lease time.Duration, job string, force bool) (taken, broke *Claim, err error) {
+	return TakeClaimOn(root, LaneClaim(n), sess, by, lease, job, force)
+}
+
+// TakeClaimOn is TakeClaimFor on any key, a lane's or a resource's.
+func TakeClaimOn(root string, k ClaimKey, sess, by string, lease time.Duration, job string, force bool) (taken, broke *Claim, err error) {
 	unlock, err := claimsLock(root)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer unlock()
-	cur := ReadClaim(root, n)
+	cur := ReadClaimOn(root, k)
 	if cur != nil && cur.Session != sess {
 		if !force {
-			return nil, nil, ErrClaimed{n, cur}
+			return nil, nil, errClaimed(k, cur)
 		}
 		broke = cur
 	}
@@ -182,7 +247,7 @@ func TakeClaimFor(root string, n int, sess, by string, lease time.Duration, job 
 			c.AssignedBy = cur.AssignedBy // and who assigned it
 		}
 	}
-	if err := writeClaim(root, n, c); err != nil {
+	if err := writeClaim(root, k, c); err != nil {
 		return nil, broke, err
 	}
 	return &c, broke, nil
@@ -204,25 +269,30 @@ func RefreshClaim(root string, n int, sess string, lease time.Duration) bool {
 		return false
 	}
 	c.Expires = expiresIn(time.Now().UTC(), lease)
-	return writeClaim(root, n, *c) == nil
+	return writeClaim(root, LaneClaim(n), *c) == nil
 }
 
 // ReleaseClaim gives up lane n's claim: session sess's own, or another's
 // with force (returned, so it can be recorded). No claim is no error.
 func ReleaseClaim(root string, n int, sess string, force bool) (*Claim, error) {
+	return ReleaseClaimOn(root, LaneClaim(n), sess, force)
+}
+
+// ReleaseClaimOn is ReleaseClaim on any key.
+func ReleaseClaimOn(root string, k ClaimKey, sess string, force bool) (*Claim, error) {
 	unlock, err := claimsLock(root)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
-	c := ReadClaim(root, n)
+	c := ReadClaimOn(root, k)
 	if c == nil {
 		return nil, nil
 	}
 	if c.Session != sess && !force {
-		return nil, ErrClaimed{n, c}
+		return nil, errClaimed(k, c)
 	}
-	if err := os.Remove(claimPathOf(root, n)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(k.path(root)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	return c, nil
@@ -231,4 +301,4 @@ func ReleaseClaim(root string, n int, sess string, force bool) (*Claim, error) {
 // DropClaim removes lane n's claim, whoever holds it: the round started
 // (running-lane protection takes over from here), or it was archived or
 // stubbed after the claim was checked.
-func DropClaim(root string, n int) { os.Remove(claimPathOf(root, n)) }
+func DropClaim(root string, n int) { os.Remove(LaneClaim(n).path(root)) }

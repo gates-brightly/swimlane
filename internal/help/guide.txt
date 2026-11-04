@@ -63,7 +63,8 @@ COMMANDS
   version                  swim's version and the newest release tag in its repo (git ls-remote)
   skill                    how to install the Claude skill for swim (skills/swim)
   interrupt N|JOB          ask one running lane to stop at its next step boundary
-  claim N [--for D]        hold a lane while this session writes its round (swim new does; --release, --break)
+  claim N|RESOURCE [--for D] [--session NAME]   hold a lane while a session writes its round (swim
+                           new does), or a shared resource by name; --release, --break
   ci [N|JOB ...] [--changed]   run rounds in CI: grouped, annotated, job summary, JUnit
   signoff verify FILE ...  check a signoff (# Signoff:): its signature, whose key, the commit
   queue N|JOB ... [--approve FLAG] [-y]   queue a batch (with its approvals) to run
@@ -184,7 +185,10 @@ GOING FURTHER
               signed (.swim/chain.jsonl); swim verify checks it. See CHAIN OF
               CUSTODY.
   claim       A lane held while a session writes its round (swim claim; swim
-              new takes one), so another session doesn't write it too.
+              new takes one), so another session doesn't write it too. A
+              planner can claim a lane for a worker (--session NAME), and a
+              session can claim a shared resource by name (swim claim lith)
+              so other sessions' agents leave it alone; both are advisory.
   earmark     A reader's place in the logs: swim report --earmark shows what's
               new since, then moves it.
   signoff     # Signoff: posts a round's result as a commit status, signed

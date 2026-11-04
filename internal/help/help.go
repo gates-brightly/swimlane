@@ -1030,9 +1030,9 @@ swim keys pin
   Other lanes keep running. The same thing the first Ctrl-C does to every
   lane of a swim run.
 `,
-	"claim": `swim claim N [--for D] [--session NAME]
-swim claim N --release [--force] [--session NAME]
-swim claim N --break "<reason>"
+	"claim": `swim claim N|RESOURCE [--for D] [--session NAME]
+swim claim N|RESOURCE --release [--force] [--session NAME]
+swim claim N|RESOURCE --break "<reason>"
 
   A claim is a lease a session holds on a lane while it writes the lane's
   round: swim new takes one (claim_lease, default 2h), swim lint refreshes
@@ -1050,10 +1050,19 @@ swim claim N --break "<reason>"
   (swim claim 30 --session worker-orders). The claim is NAME's, so only
   a session with SWIM_SESSION=NAME may swim new, stub or archive the
   lane, the planner included; the worker's swim new and swim lint keep
-  it, and swim status says who assigned it. A session is SWIM_SESSION, else user@host: set
-  SWIM_SESSION per session, or two sessions of one user on one machine are
-  one. Claims are advisory: they guard swim's commands, not an editor
-  writing lane.N.sh, and stay in this checkout's .swim/claims/.
+  it, and swim status says who assigned it.
+  RESOURCE (not a number: a name such as lith or tf/orders, spelled as a
+  lock) claims something sessions share outside any one lane, such as a
+  local environment several agents' lanes rebuild: swim claim lith --for
+  30m. While it's live another session's swim claim lith is refused,
+  naming who holds it; swim status lists it; a run whose # Locks: names
+  it warns that the resource is claimed, and runs anyway (# Locks: is
+  what keeps runs apart). It ends when released or when the lease runs
+  out; --session and --break work as for a lane.
+  A session is SWIM_SESSION, else user@host: set SWIM_SESSION per
+  session, or two sessions of one user on one machine are one. Claims are
+  advisory: they guard swim's commands, not an editor writing lane.N.sh
+  or a command run by hand, and stay in this checkout's .swim/claims/.
 `,
 	"lint": `swim lint [N|JOB ...] [--strict] [--yaml] [--fix]
 

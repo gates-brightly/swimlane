@@ -619,6 +619,14 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			return skip("interrupted before start")
 		}
 		defer fileLocks.Release()
+		// A resource another session has claimed (swim claim lith) is
+		// theirs to work on by agreement only: say so, and run anyway.
+		for _, name := range laneLocks {
+			if c := lane.ReadClaimOn(o.Root, lane.ResourceClaim(name)); c != nil && c.Session != lane.SessionID() {
+				disp.Line(n, fmt.Sprintf("swim: warning: %s is claimed by session %s until %s (swim claim %s); this lane locks it and runs anyway",
+					name, c.Session, c.ExpiresAt().Local().Format("15:04"), name))
+			}
+		}
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = append([]string(nil), laneLocks...) })
 		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
 	}

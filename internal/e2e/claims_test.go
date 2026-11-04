@@ -140,3 +140,36 @@ func TestClaimAssignedToASession(t *testing.T) {
 		t.Errorf("a session name with a space: exit %d\n%s", code, out)
 	}
 }
+
+// A resource several sessions' lanes share (the lith): swim claim lith
+// holds it for one session, refuses another, shows in swim status, and a
+// run whose # Locks: name it warns but runs.
+func TestResourceClaim(t *testing.T) {
+	r := newRepo(t, "")
+	out, code := r.as("worker-a", "claim", "lith", "--for", "30m")
+	if code != 0 || !strings.Contains(out, "lith claimed by") || !strings.Contains(out, "(worker-a) until") {
+		t.Fatalf("worker-a's claim on lith: exit %d\n%s", code, out)
+	}
+	if out, code := r.as("worker-b", "claim", "lith"); code == 0 || !strings.Contains(out, "lith is claimed by") || !strings.Contains(out, "session worker-a") {
+		t.Fatalf("worker-b's claim on lith: exit %d\n%s", code, out)
+	}
+	contains(t, "status", r.mustSwim("status"), "lith claimed by", "(worker-a) until")
+	contains(t, "status --yaml", r.mustSwim("status", "--yaml"), "resource_claims:", "lith:", "session: worker-a")
+	contains(t, ".swim.log", r.mustSwim("log"), "resource lith: session worker-a for 30m0s")
+
+	r.script(1, "rebuild the lith", "# Locks: lith\nrun \"build\" true")
+	out, code = r.swim("run", "1", "--plain")
+	if code != 0 || !strings.Contains(out, "lith is claimed by session worker-a") || !strings.Contains(out, "runs anyway") {
+		t.Fatalf("a run locking a claimed resource: exit %d\n%s", code, out)
+	}
+
+	if out, code := r.as("worker-a", "claim", "lith", "--release"); code != 0 || !strings.Contains(out, "released lith's claim") {
+		t.Fatalf("release: exit %d\n%s", code, out)
+	}
+	if out, code := r.as("worker-b", "claim", "lith"); code != 0 {
+		t.Fatalf("worker-b after the release: exit %d\n%s", code, out)
+	}
+	if out, code := r.swim("claim", "a b"); code != 2 {
+		t.Errorf("a resource name with a space: exit %d\n%s", code, out)
+	}
+}

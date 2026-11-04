@@ -147,3 +147,29 @@ func TestClaimAssigned(t *testing.T) {
 		t.Fatalf("the worker's refresh: %+v %v", c, err)
 	}
 }
+
+// A resource's claim works as a lane's: one session holds it, another is
+// refused, and it's listed by name (a name with / included).
+func TestResourceClaims(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := TakeClaimOn(root, ResourceClaim("tf/orders"), "a", "", time.Hour, "", false); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := TakeClaimOn(root, ResourceClaim("tf/orders"), "b", "", time.Hour, "", false)
+	var ec ErrClaimed
+	if !errors.As(err, &ec) || ec.Name != "tf/orders" || !strings.Contains(err.Error(), "tf/orders is claimed by") {
+		t.Fatalf("b's claim on a's resource: %v", err)
+	}
+	if rc := ResourceClaims(root); len(rc) != 1 || rc[0].Name != "tf/orders" || rc[0].Session != "a" {
+		t.Fatalf("listed: %+v", rc)
+	}
+	if ReadClaim(root, 1) != nil {
+		t.Fatal("a resource claim reads as a lane's")
+	}
+	if c, err := ReleaseClaimOn(root, ResourceClaim("tf/orders"), "a", false); err != nil || c == nil {
+		t.Fatalf("release: %+v %v", c, err)
+	}
+	if len(ResourceClaims(root)) != 0 {
+		t.Fatal("still listed after release")
+	}
+}

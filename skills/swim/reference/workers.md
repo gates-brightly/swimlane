@@ -23,10 +23,16 @@ who writes what. These rules make it hold. They extend the guide's `PLANNER WORK
    orders (worker-orders), 5 billing (worker-billing)"`. Only the session
    named may then `swim new` the lane; start each worker with that
    `SWIM_SESSION`, or its own `swim new` is refused too.
-4. **Write the shared parts yourself:** cross-lane ordering, config
+4. **Shared environments:** lanes that use the same thing (a local stack
+   several workers rebuild) declare `# Locks: NAME`, which keeps their
+   runs apart. A session about to work on it outside a lane (a manual
+   rebuild, a migration it runs by hand) claims it first, `swim claim NAME
+   --for 30m`, and releases it after; another session's claim is refused,
+   and `swim status` shows who holds it.
+5. **Write the shared parts yourself:** cross-lane ordering, config
    `deps:` lines (handed to the operator), and any shared file. Workers
    send you the lines; they don't edit shared files.
-5. **Check every lane together** once the workers are done: `swim lint` (all
+6. **Check every lane together** once the workers are done: `swim lint` (all
    lanes) and `swim status`. Queue the set as one batch (`swim queue N
    N M ...`), or, with no swimmer up, hand the operator one command for
    it, pinned to the job ids the workers reported.

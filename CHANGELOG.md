@@ -61,6 +61,14 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
   only written in the worker's prompt. The worker's `swim new` and `swim
   lint` keep the claim; `swim status` and `.swim.log` say who assigned it;
   `--release --session NAME` gives it back without `--force`.
+- **Claims on shared resources: `swim claim NAME`.** A name instead of a
+  lane number (`swim claim lith --for 30m`) claims something sessions
+  share outside any one lane, such as a local environment several agents'
+  lanes rebuild. Another session's claim on it is refused, naming the
+  holder; `swim status` (and `--yaml`, `resource_claims:`) lists it;
+  `--release`, `--break` and `--session` work as for a lane. Claims stay
+  advisory: a run whose `# Locks:` name a claimed resource warns that
+  it's claimed, and runs anyway, since `# Locks:` is what keeps runs apart.
 
 ### Changed
 
