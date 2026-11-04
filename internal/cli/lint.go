@@ -148,6 +148,10 @@ func cmdDoctor(args []string) error {
 	return nil
 }
 
+// runWideCodes are the lint errors that refuse the whole run, not only
+// their lane: an env file setting a guard flag is an approval from a file.
+var runWideCodes = map[string]bool{"env": true}
+
 // lintPreflight is swim run's pre-flight: a lane about to run that fails
 // any error-level lint check doesn't run. Blocked commands, After: and
 // cycles are left to the launcher, which already refuses them. With lanes
@@ -180,11 +184,19 @@ func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) (ru
 	}
 	finding.WriteText(os.Stderr, fs)
 	bad := map[int]bool{}
+	runWide := false
 	for _, f := range fs {
+		found := false
 		for _, n := range lanes {
 			if f.File == lane.ScriptName(root, n) {
-				bad[n] = true
+				bad[n], found = true, true
 			}
+		}
+		// What isn't one lane's script (lookup.yml, trust.yml), and an env
+		// file that would approve a guard, stop the whole run: approvals
+		// never come from a file.
+		if !found || runWideCodes[f.Code] {
+			runWide = true
 		}
 	}
 	for _, n := range lanes {
@@ -192,7 +204,7 @@ func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) (ru
 			runnable = append(runnable, n)
 		}
 	}
-	if len(named) > 0 || len(runnable) == 0 || len(bad) == 0 {
+	if len(named) > 0 || len(runnable) == 0 || len(bad) == 0 || runWide {
 		fmt.Fprintln(os.Stderr, "swim run: refusing to start: fix the errors above (swim lint shows every check), or add `# swim:lint-ignore <code> <reason>`")
 		return nil, exitError{2}
 	}

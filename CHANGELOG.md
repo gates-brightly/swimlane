@@ -109,7 +109,9 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
   while the message said only that lane was refused. Now it's skipped,
   `swim run` says which, the rest run, and the run exits non-zero; a lane
   that waits on a skipped one skips too. Named (`swim run 2 3`), a lane
-  with a lint error still refuses the run.
+  with a lint error still refuses the run, and so does, always, an env
+  file that sets a guard flag (an approval from a file) or an error in
+  lookup.yml or trust.yml.
 - **`swim queue` refuses what `swim run` would.** A batch was queued
   without lint's pre-flight, so a lane `swim run` refuses (no syntax line,
   `run echo hi`, ...) was accepted, and failed later on the operator's
