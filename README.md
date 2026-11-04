@@ -22,6 +22,21 @@ It's a tool, not a platform. No server, no accounts, nothing your team has
 to adopt. Like k9s, it pays off the day you install it, whether anyone
 else uses it or not.
 
+## Four ideas
+
+That's all you need to know to run swim:
+
+| | |
+|---|---|
+| **Lane** | A piece of work: a numbered script, `lane.N.sh`, that your AI writes. |
+| **Round** | One go at that work, run by you, from your shell, with your access. |
+| **Guard** | A step that needs your approval. Until you give it, the step is a dry run. |
+| **Log** | What happened, step by step, written for the AI to read back. |
+
+Everything else (gates, dependencies, the queue, signed approvals, the
+chain of custody) is built from these four. It's in `swim guide` when you
+need it, and you don't need it on day one.
+
 ## How it speeds you up
 
 - **Queue the next job while the long one runs.** A migration ties up lane
@@ -91,71 +106,108 @@ promises: [install and versions](docs/usage.md#install-and-versions).
 To teach your AI session the loop, run `swim skill` (the Claude skill) or
 `swim guide` (the full guide for any agent).
 
-## Quickstart
+## Your first five minutes
 
-Five minutes, no cloud credentials: two harmless lanes in a scratch repo.
-Paste each block into a shell.
+No cloud credentials, nothing to configure: a scratch repo, your AI and
+swim. By the end you'll have seen what swim is for:
+
+> **Your AI prepares the operational work and makes sense of what
+> happened, without ever being given the authority to run it.**
+
+**1. Install** swim ([above](#install)). **2. Make a scratch repo:**
 
 <!-- quickstart -->
 ```sh
-mkdir swim-quickstart && cd swim-quickstart && git init -q
-swim init                         # registers the repo; writes .swim.lock and a .gitignore block
-swim new 1 "Say hello"            # writes lane.1.sh from a template
+mkdir swim-try && cd swim-try && git init -q
+swim init
+touch build.tmp cache.tmp          # something for lane 2 to clean up
+```
 
-# Replace the template with one harmless step:
+**3. Ask your AI for a lane.** Open Claude Code (or any coding agent) in
+`swim-try` and paste:
+
+> Run `swim guide` to learn swim. Write lane 1: a round that reports
+> what's in this repo and how big it is. Lint it, and don't run it: I will.
+
+With Claude Code, `swim skill` installs a skill that already knows swim,
+and the first sentence can go. No AI handy? This is the kind of lane it
+writes:
+
+```sh
 cat > lane.1.sh <<'EOF'
 #!/usr/bin/env swim
 # swim: syntax 4
-# Round: Say hello
+# Round: Report what's in this repo
+
+stage snapshot
+snapshot "the files" ls -la "$SWIM_ROOT"
 
 stage check
-run "say hello" echo "hello from swim"
+run "how big it is" du -sh "$SWIM_ROOT"
 EOF
-
-swim lint 1                       # check the script before you run it
-swim run 1 --plain                # run it
-swim log 1                        # the round, step by step
 ```
 
-A destructive step goes behind a guard, and is a dry run until a person
-approves it:
+**4. Run it,** and read what came back:
 
 ```sh
-swim new 2 "Write hello.txt"
+swim run 1
+swim log 1
+```
+
+Every step is in the log with its command, output, exit code and time,
+marked PASS, FAIL or SKIP. The AI reads that, not your terminal.
+
+**5. A guarded step, refused.** Ask your AI:
+
+> Write lane 2: delete the .tmp files here, behind a guard.
+
+```sh
 cat > lane.2.sh <<'EOF'
 #!/usr/bin/env swim
 # swim: syntax 4
-# Round: Write hello.txt
-# Guards: HELLO_ALLOW_WRITE  write hello.txt in the repo (quickstart)
+# Round: Delete the .tmp files
+# Guards: TRY_ALLOW_DELETE  delete the .tmp files
 
 stage snapshot
-snapshot "what's there" ls
+snapshot "the .tmp files" bash -c 'ls "$SWIM_ROOT"/*.tmp'
 
 stage change
-if guard HELLO_ALLOW_WRITE "write hello.txt (quickstart)"; then
-  run "write hello.txt" bash -c 'echo hello > "$SWIM_ROOT/hello.txt"'
+if guard TRY_ALLOW_DELETE "delete the .tmp files"; then
+  run "delete them" bash -c 'rm -v "$SWIM_ROOT"/*.tmp'
 fi
 EOF
-
-swim run 2 --plain --no-prompt || echo "exit $?: a dry run"   # SKIP: nothing written
-HELLO_ALLOW_WRITE=1 swim run 2 --plain     # approved up front: the step runs
-cat hello.txt
+swim run 2 || echo "exit $?: nothing deleted"
+ls *.tmp
 ```
 
-Queue work instead of running it, and let `swim watch` run it when its
-lanes are free (here, `--once`: run what's queued, then exit):
+On a terminal, swim asks `Y/N [N]`. Press Enter to say no. The guarded
+step becomes a **dry run**, and the files are still there:
+
+```
+SKIP  delete the .tmp files (dry run: set TRY_ALLOW_DELETE=1 to approve)
+```
+
+**6. Ask your AI what happened:**
+
+> Read `swim log 2`. What happened, and what would it take to finish?
+
+It reads the log, not your screen. The snapshot found two .tmp files, the
+delete was a dry run because nobody approved `TRY_ALLOW_DELETE`, and
+`TRY_ALLOW_DELETE=1 swim run 2` would finish the job. That's your call:
 
 ```sh
-swim queue 1 2 --approve HELLO_ALLOW_WRITE   # queue both; lane 2's guard approved
-swim watch --once
-swim status                                   # each lane's last result
+TRY_ALLOW_DELETE=1 swim run 2
+ls *.tmp 2>/dev/null || echo "the .tmp files are gone"
 ```
 <!-- /quickstart -->
 
-Without `--no-prompt` on a terminal, swim asks you instead: `swim 2
-requires human approval of task: write hello.txt (quickstart) Y/N [N]`.
-For the next hour (gates, dependencies and signed approvals), see
-[swim in an hour](docs/quickstart.md).
+The AI wrote both lanes and explained the result. It never ran anything,
+and the delete happened only when you said so. Real work keeps the same
+split, except the lane needs your VPN, your SSO session and your prod
+keys, and the AI never gets any of them.
+
+Next, [swim in an hour](docs/quickstart.md) covers gates, dependencies,
+the queue and a swimmer, and signed approvals that an edit voids.
 
 ## What swim protects against
 

@@ -651,7 +651,7 @@ func TestHelp(t *testing.T) {
 	r := newRepo(t, "")
 	// Piped or not, --help is the short overview; --help --full the guide.
 	short := r.mustSwim("--help")
-	contains(t, "--help", short, "WRITE", "RUN", "swim guide")
+	contains(t, "--help", short, "LANES", "ROUNDS", "GUARDS", "LOGS", "swim guide")
 	if strings.Contains(short, "PLANNER WORKFLOW") || strings.Count(short, "\n") >= 80 {
 		t.Errorf("piped --help printed the guide:\n%s", short)
 	}

@@ -82,7 +82,8 @@ func cmdInit(args []string) error {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Init, Detail: "status " + rel(root, status.Path(root))})
-	fmt.Println(`next: swim new 1 "<round goal>"   (AI agents: read swim guide first)`)
+	fmt.Println(`next: ask your AI to write lane 1 (tell it to read swim guide first, and not to run it),
+      or write it yourself: swim new 1 "<round goal>"`)
 	return nil
 }
 

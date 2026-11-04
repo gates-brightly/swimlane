@@ -53,6 +53,15 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
   round's header leaves out what's at its default (`owner: -`, `after: -`,
   `timeout: none`, `step-timeout: none`, `guards: -`, `git: -`, the staged
   manifest path): a key left out means its default.
+- **Four ideas, and a first five minutes built on them.** Lane, round,
+  guard and log open the README, `swim --help`, `swim guide` and the docs
+  index. `swim --help` groups its commands under them (LANES, ROUNDS,
+  GUARDS, LOGS), and everything else under one block. The README's
+  quickstart is now *Your first five minutes*: your AI writes a lane, you
+  run it, a guarded step is refused until you say yes, and the AI reads
+  the log back. Its commands run in the test suite, with the lanes an AI
+  would write. `swim init` ends by pointing at your AI: ask it to write
+  lane 1, after reading `swim guide`, and not to run it.
 
 ### Added
 

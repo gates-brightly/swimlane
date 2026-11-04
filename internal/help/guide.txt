@@ -10,6 +10,12 @@ swim — operator-in-the-loop automation
 
   The planner never executes against the target itself.
 
+  Four ideas carry the whole tool; everything below is built from them:
+    lane     a piece of work: a numbered script, lane.N.sh, the session writes
+    round    one go at that work, run by the operator, with their access
+    guard    a step that needs approval: a dry run until a person gives it
+    log      what happened, step by step, for the session to read back
+
 USAGE
   swim <command> [flags] [args]
   swim                         in a swim repo: what needs the operator (a failed round

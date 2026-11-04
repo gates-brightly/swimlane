@@ -46,8 +46,9 @@ func namedBlocks(t *testing.T, page, name string) []string {
 	return blocks
 }
 
-// The README's quickstart runs as written, in order, with no credentials:
-// if a command, flag or output it relies on changes, this fails.
+// The README's first five minutes run as written, in order, with no
+// credentials, with the lanes the AI would write: if a command, flag or
+// output it relies on changes, this fails.
 func TestQuickstartRuns(t *testing.T) {
 	r := newRepo(t, "") // its config (signing: off) applies to the quickstart's own repo too
 	dir := t.TempDir()
@@ -58,16 +59,19 @@ func TestQuickstartRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("quickstart failed: %v\n%s", err, out)
 	}
-	qs := filepath.Join(dir, "swim-quickstart")
+	qs := filepath.Join(dir, "swim-try")
 	contains(t, "quickstart output", string(out),
-		"hello from swim",     // swim log 1
-		"dry run",             // the guarded step, unapproved
-		"HELLO_ALLOW_WRITE=1", // the approval, as recorded
-		"queued #1 (",         // swim queue 1 2
-		"passed; consumed",    // swim watch --once ran the batch
+		"PASS  how big it is", // swim log 1
+		"SKIP  delete the .tmp files (dry run: set TRY_ALLOW_DELETE=1 to approve)", // the page quotes this line
+		"exit 3: nothing deleted",
+		"the .tmp files are gone",
 	)
-	if got, _ := os.ReadFile(filepath.Join(qs, "hello.txt")); string(got) != "hello\n" {
-		t.Errorf("hello.txt = %q, want the approved step's output", got)
+	for _, lane := range []string{"1", "2"} {
+		lint := r.cmd(bin, "lint", lane)
+		lint.Dir = qs
+		if out, err := lint.CombinedOutput(); err != nil || !strings.Contains(string(out), "no problems found") {
+			t.Errorf("the README's lane %s doesn't lint clean (the AI is told to lint it): %v\n%s", lane, err, out)
+		}
 	}
 	log2, _ := os.ReadFile(filepath.Join(qs, ".swim", "logs", "agent2.log"))
 	contains(t, "lane 2's log", string(log2), "SKIP", "APPROVED")

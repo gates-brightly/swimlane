@@ -9,8 +9,9 @@ person approves them, and the record says who decided what.
 
 ## Start here
 
-1. [The README's quickstart](../README.md#quickstart): five minutes, two
-   harmless lanes.
+1. [Your first five minutes](../README.md#your-first-five-minutes): your
+   AI writes two lanes, you run them, a guarded step is refused until you
+   say yes, and the AI reads the log back. Tested, like the hour below.
 2. [quickstart.md](quickstart.md): an hour, from a first round to a guard,
    a signed approval, a dependency, a queue and a swimmer, and reading the
    record. Every command is tested.
@@ -20,15 +21,23 @@ person approves them, and the record says who decided what.
 
 ## Concepts
 
-Each one line, and where it's explained:
+Four ideas are all you need to run swim:
 
-- **Lanes and rounds**: a lane holds one round, a script that does one piece
-  of work ([usage](usage.md#lanes-rounds-and-jobs)).
-- **Stages**: snapshot, check, change, verify; a read-only preview stops
-  where change begins ([usage](usage.md#lane-scripts)).
-- **Guards and approvals**: a destructive step is a dry run until a person
-  approves it, at the prompt, with a flag or by signature
+- **Lane**: a piece of work, a numbered script (`lane.N.sh`) your AI writes
+  ([usage](usage.md#lanes-rounds-and-jobs)).
+- **Round**: one go at that work, run by you, with your access.
+- **Guard**: a step that needs your approval, and is a dry run until it has
+  it, at the prompt, with a flag or by signature
   ([usage](usage.md#guards-and-approvals)).
+- **Log**: what happened, step by step, for the AI to read back
+  ([usage](usage.md#logs)).
+
+The rest is built from them, and you can learn it when you need it:
+
+- **Gates and stages**: a gate is a check that stops the round when it
+  fails; stages (snapshot, check, change, verify) say where a round is, and
+  a read-only preview stops where change begins
+  ([usage](usage.md#lane-scripts)).
 - **The execution manifest**: what an approval covers, the script and
   everything that decides what it does
   ([usage](usage.md#execution-manifest)).

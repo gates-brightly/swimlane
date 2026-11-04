@@ -1356,45 +1356,48 @@ var FullOrder = []string{"init", "config", "env", "cache", "new", "run", "all", 
 func Short() string {
 	return `swim: an operator-in-the-loop runner for ops work
 
-  Your AI writes the scripts. You run them, with your access.
-  The logs carry the results back.
+  Your AI writes lanes. You run them, with your access.
+  Guards wait for you. The log carries the results back.
+
+  lane     a piece of work: a numbered script, lane.N.sh, your AI writes
+  round    one go at that work, run by you, with your access
+  guard    a step that needs your approval: a dry run until you give it
+  log      what happened, step by step, for the AI to read back
 
 USAGE
   swim                         in a swim repo: what needs you, and what's running
   swim <command> --help        one command's detail
   swim guide                   the full manual (for people and AI agents)
 
-WRITE
+LANES
   init                         set up this repo
   new N "<round goal>"         write lane.N.sh from the template
   lint [N]                     check lane scripts before they run
+  A lane script calls stage, run, snapshot, gate and guard.
 
-RUN
+ROUNDS
   run N ...                    run lanes: guarded steps are dry runs until approved
   all                          run every pending lane, dependencies first
   queue N ...                  queue a batch to run once its lanes are free
   watch                        the swimmer: run queued batches as lanes free up
 
-READ
+GUARDS
+  run N                        on a terminal, swim asks you at each guard
+  FLAG=1 swim run N            approve one guard up front (the log says so)
+  approve N --guards A         approve ahead: sign this exact script, its inputs and policy
+
+LOGS
   status [N]                   what each lane is doing and waits on
   log [N]                      a lane's log, step by step
   report                       what changed since you last looked
 
-APPROVE
-  approve N --guards A         sign this exact script, its inputs and policy
-  revoke N                     withdraw your approval
-
-RECORD
-  verify, history, keys, chain prove the record, read it, see who's who
-
-MORE
+EVERYTHING ELSE (swim <command> --help, or swim guide)
+  revoke, verify, history, keys, chain   approvals and the record behind them
   doctor, config, env, cache   the environment lanes get
   archive, clean, stub, note   tidy up and record
   interrupt, wait, claim       control running lanes
   ci, signoff, lock, changelog, version, skill
-
-  Lane scripts call: gate, guard, stage, run, snapshot, drift,
-  stop, msg, input, output (swim guide: WRITING A LANE SCRIPT).
+  Lane scripts can also call: decide, drift, stop, msg, input, output.
 `
 }
 
