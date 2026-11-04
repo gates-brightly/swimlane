@@ -66,7 +66,7 @@ func hermetic() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
 		case strings.HasPrefix(k, "SWIM_"), strings.HasPrefix(k, "GITHUB_"), strings.HasPrefix(k, "GITLAB_"),
-			strings.HasPrefix(k, "CI_"), k == "CI", k == "STEP_LOG", k == "XDG_CONFIG_HOME", testEnvKeys[k]:
+			strings.HasPrefix(k, "CI_"), k == "CI", k == "STEP_LOG", k == "XDG_CONFIG_HOME", k == "XDG_DATA_HOME", testEnvKeys[k]:
 			os.Unsetenv(k)
 		}
 	}
@@ -147,6 +147,8 @@ func newRepo(t *testing.T, deps string) *repo {
 	xdg := t.TempDir()
 	r := &repo{t: t, root: root, env: append(os.Environ(),
 		"XDG_CONFIG_HOME="+xdg,
+		// The store (swim store) goes here, never the developer's profile.
+		"XDG_DATA_HOME="+filepath.Join(xdg, "data"),
 		"PATH="+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"NO_COLOR=1", "SWIM_ROOT=", "SWIM_LANE=", "STEP_LOG=", "SWIM_BIN=",
 		// Every status.yml write is checked against the lane state

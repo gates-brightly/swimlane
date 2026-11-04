@@ -761,6 +761,28 @@ SHA-256 of the entry before it:
   how: a signature, standing approval, prompt, flag, `-y`, or a queued
   batch.
 
+The chain holds hashes, and `.swim/` is in the repo, so the bytes behind
+them go when the repo does. **The store** keeps them in your profile
+(`~/.local/share/swim/store`, or `$XDG_DATA_HOME/swim/store`; 0700):
+every file a lane's manifest pins, kept by SHA-256 as `swim run` stages it
+and before anything runs, then the round's log section and how it ended
+from its summary. A round killed before its summary still has what it
+ran; a lane run directly with bash is kept as it ends. Files are kept once
+each, nothing is removed, and worktrees and clones of a repo share its
+records. Logs are kept as the lane log holds them, with secrets masked as
+there.
+
+```sh
+swim store                              # this repo's kept rounds, newest first (--all)
+swim store show r-20261104T1012Z-a11f   # one round: its files, hashes, result (RUN's start is enough)
+swim store show r-2026... 3 --log       # its log section, byte for byte (--script, --file PATH)
+swim store verify                       # every object against its hash; every chain round is kept (exit 1)
+```
+
+`store_dir` in `config.yml` moves it, or turns it off (`store_dir: off`);
+a repo's `swim.yml` can't. A store that can't take a round is a warning,
+and the round runs anyway.
+
 ```sh
 swim verify                 # consistent, trusted, anchored, authorized: one line each (exit 1 if one says no)
 swim history                # the chain, newest first, like git log (--oneline, -n N, --reverse)
@@ -1070,6 +1092,7 @@ they waited for.
 | `swim wait [--any] BATCH\|JOB ...` | Block until those batches end (`--any`: the first of them), whatever else runs, and exit with the result. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
 | `swim verify [--strict] [--against DEST] [--yaml]` / `swim history [--oneline]` / `swim chain repair\|checkpoint\|export` / `swim keys [trust\|pin]` | The chain of custody: prove it (in levels), read it, repair a cut-short write, checkpoint and export it, and see and pin who's who. |
+| `swim store [ls] [--all]` / `swim store show RUN [N] [--log\|--script\|--file PATH]` / `swim store verify` / `swim store path` | The store: the bytes behind the chain's hashes, kept in your profile. List the kept rounds, print what one ran and wrote, check every object and every chain round. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE]` | Run rounds in a CI job. |
 | `swim interrupt N\|JOB` | Stop one lane at its next step boundary. |
 | `swim claim N` | Hold a lane while this session writes its round (`swim new` does it): another session's `new`, `stub` and `archive` refuse the lane until it runs, is released, or the lease (2h) runs out. Set `SWIM_SESSION` per session. |
@@ -1096,6 +1119,7 @@ they waited for.
 | `.swim.log` | The project log: one line per top-level action. | No |
 | `.env.swim` | Lane-scoped env (`[lane N]` sections). | No |
 | `~/.cache/swim/<repo>-<hash>/` | Tool caches lanes keep between rounds (`# Cache:`, `cache_dir`). | Never |
+| `~/.local/share/swim/store/` | The store: every file each round ran and its log, by hash (`swim store`, `store_dir`). | Never |
 | `.swim/status.yml` | Last state of every lane (`cat` it). | No |
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain of custody, and every script that ran. | No (export it to keep it) |

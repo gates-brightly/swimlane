@@ -15,7 +15,7 @@ import (
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "notify", "cache_dir", "cache_max", "cache_slug"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "notify", "cache_dir", "cache_max", "cache_slug", "store_dir"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -55,6 +55,12 @@ func (c *Config) Get(key string) (string, error) {
 		return "0 (no cap)", nil
 	case "cache_slug":
 		return c.CacheSlugFor()
+	case "store_dir":
+		dir, ok, err := c.StoreBase()
+		if err == nil && !ok {
+			return StoreOff, nil
+		}
+		return dir, err
 	case "interrupt_grace", "term_grace":
 		ig, tg := c.Graces()
 		if key == "term_grace" {
@@ -136,6 +142,12 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.TrimSpace(value)
 		if !filepath.IsAbs(v) && v != "~" && !strings.HasPrefix(v, "~/") {
 			return nil, fmt.Errorf("cache_dir must be an absolute path (or ~/...), got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case "store_dir":
+		v := strings.TrimSpace(value)
+		if v != StoreOff && !filepath.IsAbs(v) && v != "~" && !strings.HasPrefix(v, "~/") {
+			return nil, fmt.Errorf("store_dir must be an absolute path (or ~/...) or off, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "cache_max":

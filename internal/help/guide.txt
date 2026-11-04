@@ -93,6 +93,7 @@ COMMANDS
   history [RUN|N|JOB] [--oneline]   the chain of custody, like git log: who approved and ran what
   chain repair             remove a half-written last chain entry (kept in a .bak, recorded)
   chain checkpoint / export --to DEST   send the chain's signed head (and entries) to an anchor
+  store [ls|show RUN [N]|verify]   the copy in your profile of what each round ran and wrote
   keys [add NAME | trust KEY --sign | pin]   who's who: lookup.yml, trust.yml and its pin
   lint [N|JOB ...]         check lane scripts (headers, set -e, lane_init, summary, stages,
                            bash 3.2, guards, blocked commands, secrets, deps); changes nothing
@@ -195,6 +196,9 @@ GOING FURTHER
   chain       The chain of custody: every round and approval, hash-linked and
               signed (.swim/chain.jsonl); swim verify checks it. See CHAIN OF
               CUSTODY.
+  store       Your profile's copy of what each round ran (every file it
+              pinned) and wrote (its log), by the hashes its chain entry
+              holds, kept outside the repo (swim store; store_dir).
   claim       A lane held while a session writes its round (swim claim; swim
               new takes one), so another session doesn't write it too. A
               planner can claim a lane for a worker (--session NAME), and a

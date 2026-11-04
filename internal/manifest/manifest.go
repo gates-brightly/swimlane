@@ -313,11 +313,7 @@ func (m *Manifest) Stage(root, run string) (string, error) {
 		}
 		return os.WriteFile(dst, data, mode)
 	}
-	files := append([]File{m.Pinned.Script}, m.Pinned.Includes...)
-	if m.Pinned.Sidecar != nil {
-		files = append(files, *m.Pinned.Sidecar)
-	}
-	for _, f := range files {
+	for _, f := range m.Files() {
 		if err := write(f.Path, m.data[f.Path], f.Exec); err != nil {
 			return "", err
 		}
@@ -368,6 +364,27 @@ func (m *Manifest) Workspace(root string) string {
 
 // Script is the staged script's path.
 func (m *Manifest) Script() string { return m.Path(m.Pinned.Script.Path) }
+
+// Files are the pinned files: the script, its includes and its sidecar.
+func (m *Manifest) Files() []File {
+	files := append([]File{m.Pinned.Script}, m.Pinned.Includes...)
+	if m.Pinned.Sidecar != nil {
+		files = append(files, *m.Pinned.Sidecar)
+	}
+	return files
+}
+
+// Bytes is a pinned file's content: as Build read it, else its staged
+// copy.
+func (m *Manifest) Bytes(rel string) ([]byte, error) {
+	if d, ok := m.data[rel]; ok {
+		return d, nil
+	}
+	if m.Dir == "" {
+		return nil, fmt.Errorf("manifest: %s isn't staged", rel)
+	}
+	return os.ReadFile(m.Path(rel))
+}
 
 // Load reads the manifest staged in dir.
 func Load(dir string) (*Manifest, error) {

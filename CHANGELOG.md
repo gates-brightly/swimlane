@@ -65,6 +65,20 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Added
 
+- **The store: what each round ran and wrote, kept outside the repo.** The
+  chain of custody holds hashes; the store, in your profile
+  (`~/.local/share/swim/store`, 0700), holds the bytes they name, so they
+  can still be read after `swim stub`, `swim clean`, `git clean` or a
+  deleted checkout. `swim run` keeps each lane's staged files (script,
+  includes, sidecar, manifest) as it stages them, before anything runs; the
+  round's summary adds its log section and how it ended, so a round killed
+  mid-way still has what it ran. Files are kept once each, by SHA-256, and
+  nothing is removed. `swim store` lists this repo's rounds, `swim store
+  show RUN [--log | --script | --file PATH]` prints one byte for byte, and
+  `swim store verify` checks every kept object against its hash and every
+  round the chain recorded against the store. A store that can't take a
+  round is a warning. `store_dir` in `config.yml` moves it or turns it off
+  (`store_dir: off`); a repo's `swim.yml` can't.
 - **Bare `swim`, in a swim repo, says what needs you.** A failed, dry-run
   or interrupted round whose script nobody has edited since, a lane asking
   for an answer, a lane lint refuses, an orphaned batch or one no swimmer

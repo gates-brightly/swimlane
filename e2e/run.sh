@@ -71,7 +71,7 @@ for s in $selected; do
   start=$(date +%s)
   (
     export SWIM E2E SCENARIO_DIR="$E2E/scenarios/$s" OUT="$dir/out" E2E_FIXTURES="$E2E/fixtures"
-    export XDG_CONFIG_HOME="$dir/xdg" PATH="$E2E/lib/fakebin:$base/bin:$(dirname "$SWIM"):$PATH"
+    export XDG_CONFIG_HOME="$dir/xdg" XDG_DATA_HOME="$dir/xdg/data" PATH="$E2E/lib/fakebin:$base/bin:$(dirname "$SWIM"):$PATH"
     export NO_COLOR=1 SWIM_BIN="$SWIM"
     export SWIM_CHECK_STATES=1   # an illegal status.yml transition panics (status.Transition)
     # Hermetic: scenarios set what they need. Inside a swim lane (this repo's

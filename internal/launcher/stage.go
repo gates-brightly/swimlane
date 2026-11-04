@@ -8,6 +8,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
+	"github.com/gates-brightly/swimlane/internal/store"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -16,9 +17,22 @@ import (
 // what a lane runs is fixed now, whatever happens to the working tree while
 // it waits for its dependencies, locks or a slot. A lane that can't be
 // staged, or whose staged script holds a blocked command, is refused; why,
-// per lane, goes in blocked.
+// per lane, goes in blocked. What's staged is also kept in the operator's
+// store (internal/store), before it runs: a store that can't take it is a
+// warning, not a reason to refuse the lane.
 func stageLanes(o *Options, sel []int, blocked map[int]string) {
 	o.manifests = map[int]*manifest.Manifest{}
+	st, slug, serr := store.Open(o.Cfg)
+	keep := func(m *manifest.Manifest) {
+		if st != nil && serr == nil {
+			serr = st.Keep(slug, o.Root, o.RunID, m)
+		}
+	}
+	defer func() {
+		if serr != nil {
+			fmt.Fprintf(os.Stderr, "swim: warning: the store didn't keep this run's lanes (%v); they run anyway (swim store verify)\n", serr)
+		}
+	}()
 	for _, n := range sel {
 		if blocked[n] != "" {
 			continue
@@ -38,7 +52,9 @@ func stageLanes(o *Options, sel []int, blocked map[int]string) {
 		o.manifests[n] = m
 		if why := blockedIn(o.Root, o.Cfg, n, m.Script()); why != "" {
 			blocked[n] = why
+			continue
 		}
+		keep(m)
 	}
 }
 

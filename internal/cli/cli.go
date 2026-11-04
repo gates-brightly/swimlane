@@ -62,6 +62,7 @@ func init() {
 		"signoff":    {run: cmdSignoff},
 		"history":    {run: cmdHistory},
 		"chain":      {run: cmdChain},
+		"store":      {run: cmdStore},
 		"keys":       {run: cmdKeys},
 		"doctor":     {run: cmdDoctor},
 		"help":       {run: cmdHelp},

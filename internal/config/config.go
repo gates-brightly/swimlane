@@ -74,6 +74,7 @@ type Settings struct {
 	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
 	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
 	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
+	StoreDir           string   `yaml:"store_dir,omitempty"`            // where swim keeps what each round ran and wrote (default ~/.local/share/swim/store; off: don't); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path; see the
 	// anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -182,6 +183,11 @@ func Load(root string) (*Config, error) {
 			// is the operator's: a committed swim.yml could otherwise point
 			// two repos at one cache.
 			return nil, fmt.Errorf("%s: cache_dir: and cache_slug: belong in %s, not the repo's swim.yml", path, c.Path)
+		}
+		if s.StoreDir != "" {
+			// So is whether it keeps a copy of what ran: a committed
+			// swim.yml mustn't turn the operator's record off.
+			return nil, fmt.Errorf("%s: store_dir: belongs in %s, not the repo's swim.yml", path, c.Path)
 		}
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
@@ -388,6 +394,9 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.CacheSlug != "" {
 		c.CacheSlug = r.CacheSlug
+	}
+	if r.StoreDir != "" {
+		c.StoreDir = r.StoreDir
 	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey

@@ -73,6 +73,7 @@ var leakInventory = []struct{ what, re string }{
 	{"report earmarks (places in the logs: round lines and hashes)", `^repo/\.swim/earmarks/`},
 	{"the config", `^config/swim/config\.yml$`},
 	{"the trust pins", `^config/swim/trust`},
+	{"the store (swim store: what each round ran, and its log as the lane log holds it)", `^config/data/swim/store/(objects/[0-9a-f]{2}/[0-9a-f]{64}|repos/[^/]+/r-[^/]+/\d+\.yml)$`},
 }
 
 func TestNoSecretLeaks(t *testing.T) {
