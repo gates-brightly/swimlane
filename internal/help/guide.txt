@@ -154,7 +154,9 @@ GOING FURTHER
               starts; lanes waiting for one show "locked (name: swim N)". Locks
               hold within a run and across concurrent swim runs in the repo
               (files under .swim/locks/, released when the lane's process ends,
-              even if killed). They don't protect across machines, and a lane
+              even if killed). A lock file's text names its last holder, held
+              or not: swim status lists the locks held now. They don't protect
+              across machines, and a lane
               run directly with bash takes none. Use After: for order; Locks:
               when either order is fine but overlap isn't.
   batch       The lanes one swim queue call queued: they run together (After:

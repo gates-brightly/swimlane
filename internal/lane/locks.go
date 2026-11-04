@@ -34,10 +34,35 @@ func lockPath(root, name string) string {
 // FileLocks is a set of held lock files.
 type FileLocks []*os.File
 
+// lockNote heads every lock file. The holder's line under it is only true
+// while the lock is held, and a run that's killed can't take it back, so
+// the file says how to tell (a reader with cat would otherwise take a
+// finished run's line for a held lock).
+const lockNote = "# held only while a swim process holds this file (flock), not because it names a holder: swim status lists the locks held now\n"
+
+// lockText is a lock file's holder line, without lockNote.
+func lockText(data []byte) string {
+	var keep []string
+	for _, l := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(l, "#") {
+			keep = append(keep, l)
+		}
+	}
+	return strings.TrimSpace(strings.Join(keep, "\n"))
+}
+
 // Release unlocks and closes them (the lane's process may still hold its
-// inherited copy until it exits).
+// inherited copy until it exits). Each file then says it's free, and who
+// held it last.
 func (fl FileLocks) Release() {
 	for _, f := range fl {
+		if data, err := os.ReadFile(f.Name()); err == nil {
+			last := lockText(data)
+			if !strings.HasPrefix(last, "free since ") {
+				f.Truncate(0)
+				f.WriteAt([]byte(lockNote+"free since "+time.Now().UTC().Format(time.RFC3339)+"; last held by "+last+"\n"), 0)
+			}
+		}
 		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		f.Close()
 	}
@@ -63,12 +88,12 @@ func TryFileLocks(root string, names []string, holder string) (FileLocks, string
 			f.Close()
 			got.Release()
 			if errors.Is(err, syscall.EWOULDBLOCK) {
-				return nil, n, strings.TrimSpace(string(text)), nil
+				return nil, n, lockText(text), nil
 			}
 			return nil, "", "", err
 		}
 		f.Truncate(0)
-		f.WriteAt([]byte(holder+"\n"), 0)
+		f.WriteAt([]byte(lockNote+holder+"\n"), 0)
 		got = append(got, f)
 	}
 	return got, "", "", nil
@@ -117,7 +142,7 @@ func HeldLocks(root string) []HeldLock {
 		}
 		text, _ := os.ReadFile(p)
 		name := strings.ReplaceAll(strings.TrimSuffix(filepath.Base(p), ".lock"), "%2F", "/")
-		out = append(out, HeldLock{Name: name, By: strings.TrimSpace(string(text))})
+		out = append(out, HeldLock{Name: name, By: lockText(text)})
 	}
 	return out
 }

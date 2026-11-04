@@ -197,6 +197,17 @@ func TestFileLocksAllOrNothing(t *testing.T) {
 	if len(HeldLocks(root)) != 0 {
 		t.Fatal("locks still held after release")
 	}
+	// A released lock's file says so: read with cat, it never looks held.
+	data, _ := os.ReadFile(lockPath(root, "vpc"))
+	if !strings.HasPrefix(string(data), lockNote) || !strings.Contains(string(data), "free since ") || !strings.Contains(string(data), "last held by run A") {
+		t.Fatalf("released lock file: %q", data)
+	}
+	// Taken again, the holder line is the new one alone.
+	c, _, _, _ := TryFileLocks(root, []string{"vpc"}, "run C")
+	if held := HeldLocks(root); len(held) != 1 || held[0].By != "run C" {
+		t.Fatalf("held after retake: %+v", held)
+	}
+	c.Release()
 	if !ValidLockName("tf/orders-1.2_x") || ValidLockName("a b") || ValidLockName("../x") || ValidLockName("") {
 		t.Fatal("ValidLockName")
 	}

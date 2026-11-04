@@ -44,6 +44,16 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ## Unreleased
 
+### Fixed
+
+- **A released lock no longer looks held.** A lock file under
+  `.swim/locks/` kept naming its last holder after the lane ended, so an
+  agent reading it with `cat` took a finished run for a held lock. A
+  released lock's file now says `free since <time>; last held by …`, and
+  every lock file opens with a line saying it counts only while a swim
+  process holds it (a killed run can't rewrite its own). `swim status`
+  was always right: it lists only the locks held now.
+
 ## 0.20261104.3 (v0.20261104.3, 2026-11-04)
 
 ### Upgrading: what to do
