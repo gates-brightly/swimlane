@@ -10,6 +10,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/sign"
+	"github.com/gates-brightly/swimlane/internal/testwait"
 )
 
 // confirmAgent starts an ssh-agent holding key (and no file of it) added
@@ -36,12 +37,17 @@ func newConfirmAgent(t *testing.T, key string) *confirmAgent {
 	os.WriteFile(askpass, []byte("#!/bin/sh\necho asked >> \""+dir+"/asked\"\nrm \""+dir+"/allow\" 2>/dev/null\n"), 0o755)
 	agent := exec.Command("ssh-agent", "-D", "-a", a.sock)
 	agent.Env = append(os.Environ(), "SSH_ASKPASS="+askpass, "SSH_ASKPASS_REQUIRE=force", "DISPLAY=:0")
+	// ssh-agent prints its SSH_AUTH_SOCK= line once it listens on the
+	// socket. The socket file exists from bind, before that: an ssh-add
+	// sent then was refused on a loaded machine (T34).
+	said := &syncBuffer{}
+	agent.Stdout = said
 	if err := agent.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { agent.Process.Kill(); agent.Wait() })
-	if !waitIn(dir, func() bool { _, err := os.Stat(a.sock); return err == nil }) {
-		t.Fatal("ssh-agent never made its socket")
+	if !testwait.UntilOK(&output, func() bool { return strings.Contains(said.String(), "SSH_AUTH_SOCK=") }, waitDeadline) {
+		t.Fatalf("ssh-agent never said it was listening: %q", said.String())
 	}
 	add := exec.Command("ssh-add", "-c", key)
 	add.Env = append(os.Environ(), "SSH_AUTH_SOCK="+a.sock)
@@ -68,7 +74,6 @@ func (a *confirmAgent) asked() int {
 // ask the agent, which asks the operator (who says no); on Linux it can't
 // read the launcher's memory either. swim verify trusts the run.
 func TestRunKeyKeepsSigningFromLanes(t *testing.T) {
-	t.Skip("flaky: T34 (dev/tasks.md): ssh-add can reach the test's ssh-agent before it listens")
 	r := newRepo(t, "")
 	keys := people(t, r, "", "zach")
 	priv := keys["zach"]

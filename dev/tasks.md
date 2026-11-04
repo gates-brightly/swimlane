@@ -39,7 +39,7 @@ should make that line sharper, not blur it.
 | [T31](tasks/T31-watch-says-why-a-batch-waits.md) `swim watch` says why a batch waits | P2 | gap |
 | [T32](tasks/T32-log-since-fail.md) `swim log N --failed` | P2 | gap |
 | [T33](tasks/T33-requeue-from-the-failure.md) requeue a failed batch from where it stopped | P2 | gap |
-| [T34](tasks/T34-runkey-test-flake.md) `TestRunKeyKeepsSigningFromLanes` is flaky (skipped) | P1 | bug |
+| [T34](tasks/T34-runkey-test-flake.md) `TestRunKeyKeepsSigningFromLanes` is flaky (fixed and unskipped; macOS CI to confirm) | P1 | bug |
 | [T35](tasks/T35-swimmer-says-its-platform.md) the swimmer says what platform lanes run on | P2 | gap |
 | [T36](tasks/T36-lint-gnu-only-tools.md) lint warns on GNU-only tool forms | P2 | gap |
 

@@ -22,3 +22,11 @@ on a loaded machine `ssh-add` connects too early and is refused.
 load (`GOMAXPROCS=2`, alongside the race lane), on macOS and Linux, and
 the skip is gone. The claim the test proves (a lane can't sign as the
 runner key) is in docs/trust-model.md; until then it's unproven by CI.
+
+**2026-11-04:** fixed and unskipped. `newConfirmAgent` now waits for
+ssh-agent's `SSH_AUTH_SOCK=` line, which it prints once it listens (an
+event the test's output Signal reports; no polling), not for the socket
+file, which exists from bind. Linux: 20 of 20 with `-count=20
+GOMAXPROCS=2`, and 40 of 40 with all 16 cores pegged by busy loops.
+**Left:** the same on macOS; the next CI runs (T29) show it. Delete this
+task when they do.
