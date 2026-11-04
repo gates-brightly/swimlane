@@ -72,3 +72,33 @@ func TestStepAcceptsDashDashAndOptEquals(t *testing.T) {
 		t.Errorf("-- was run as the command:\n%s", log)
 	}
 }
+
+// A gate that fails in a subshell ($(...), or fed by a pipe) ends the
+// round, not just the subshell: the change after it never runs, and the
+// round ends FAIL, not interrupted.
+func TestGateInASubshellStopsTheRound(t *testing.T) {
+	for _, tc := range []struct{ name, gate string }{
+		{"command substitution", `acct=$(gate "account check" false)`},
+		{"pipe", `echo x | gate "piped gate" false`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRepo(t, "")
+			r.shortLane(1, "# Round: change it\n# Guards: ALLOW_CHANGE  change it",
+				"stage check\n# swim:lint-ignore step-subshell the runtime's own check is under test\n"+tc.gate+
+					"\nstage change\nif guard ALLOW_CHANGE \"change it\"; then\n  run \"change\" echo CHANGED\nfi")
+			cmd := r.cmd(bin, "run", "1", "--plain")
+			cmd.Env = append(cmd.Env, "ALLOW_CHANGE=1")
+			out, _ := cmd.CombinedOutput()
+			log := r.log(1)
+			if strings.Contains(log, "CHANGED") || strings.Contains(string(out), "CHANGED") {
+				t.Fatalf("the change ran past a failed gate:\n%s\n%s", out, log)
+			}
+			if !strings.Contains(log, "== END FAIL") || !strings.Contains(log, "STOP  gate failed") {
+				t.Errorf("the round didn't end FAIL at the gate:\n%s", log)
+			}
+			if strings.Contains(log, "fail=0") {
+				t.Errorf("the summary lost the gate's failure:\n%s", log)
+			}
+		})
+	}
+}

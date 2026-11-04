@@ -90,6 +90,14 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **A gate that fails in a subshell ends the round (safety).** `acct=$(gate
+  "account check" ...)` or `... | gate "x" ...` logged `STOP  gate
+  failed`, but `stop` ended only the subshell, so the change after the
+  gate ran. `stop` (and so a failed gate, and a step written wrong) now
+  ends the round itself from a subshell, as `decide` already did, and the
+  round ends FAIL. Lint refuses a run, gate or snapshot inside `$(...)`,
+  backticks or after a pipe (`[step-subshell]`), where its result never
+  reaches the lane.
 - **A lane with no syntax line stops only that lane, and swim says the
   same thing about it everywhere.** One script missing `# swim: syntax 4`
   stopped `swim run`, `swim status` and every other command for every

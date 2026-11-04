@@ -2,6 +2,7 @@ package lint
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/finding"
@@ -255,6 +256,43 @@ func checkGuardText(c *Context, s *Script) []finding.Finding {
 			out = append(out, f(finding.Warn, "guard-text", lc.Line, "say the same in both: the header line is what swim status shows",
 				"guard %s says %q here but %q in # Guards:", flag, desc, hd))
 		}
+	}
+	return out
+}
+
+var (
+	// stepInSubstRE: a step in $(...) or backticks; stepAfterPipeRE: a
+	// step a pipe feeds (it runs in a subshell).
+	stepInSubstRE   = regexp.MustCompile("(?:\\$\\(|`)\\s*(?:if\\s+|!\\s*)?(run|gate|snapshot)\\b")
+	stepAfterPipeRE = regexp.MustCompile(`(?:^|[^|])\|\s*(?:if\s+|!\s*)?(run|gate|snapshot)\b`)
+)
+
+// checkStepSubshell: a step in $(...), backticks or after a pipe runs in a
+// subshell. The round still ends where it fails (stop ends the whole
+// round from a subshell), but the step's result is lost to the lane:
+// last_failed and the round's failure count don't see it, and $(...)
+// captures swim's own output, not the command's.
+func checkStepSubshell(c *Context, s *Script) []finding.Finding {
+	if !s.Lib {
+		return nil
+	}
+	var out []finding.Finding
+	for i := range s.v.raw {
+		if !s.v.isCode(i) || s.v.inQuote[i] {
+			continue
+		}
+		m := stepInSubstRE.FindStringSubmatch(s.v.exp[i])
+		where := "$(...)"
+		if m == nil {
+			m = stepAfterPipeRE.FindStringSubmatch(s.v.bare[i])
+			where = "a pipe"
+		}
+		if m == nil {
+			continue
+		}
+		out = append(out, f(finding.Error, "step-subshell", i,
+			fmt.Sprintf("call %s on its own line; for its output, have the command write a file in $SWIM_OUT, or use snapshot", m[1]),
+			"%s inside %s runs in a subshell: its result never reaches the lane (last_failed, the round's counts), and $(...) captures swim's output, not the command's", m[1], where))
 	}
 	return out
 }

@@ -63,6 +63,9 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{short, `gate --timeout= "empty" false`, "step"},
 		{short, `gate "no command"`, "step"},
 		{short, `run "a step"; echo corpus-later | cat`, "step"}, // no command: the pipe after ; is the lane's own
+		{short, `acct=$(gate "account check" false)`, "step-subshell"},
+		{short, `echo x | gate "piped gate" false`, "step-subshell"},
+		{short, "echo \"$(run \"quoted\" true)\"", "step-subshell"},
 		{short, `run "count" ls | wc -l`, "step-pipe"},
 		{short, `run "file" echo hi > out.txt`, "step-pipe"},
 		{"#!/bin/bash", `run "x" true`, "short-form"},

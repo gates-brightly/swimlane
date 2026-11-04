@@ -139,6 +139,11 @@ source() {
 
 # _swim_on_signal CODE — Ctrl-C (130) or SIGTERM (143): end the round.
 _swim_on_signal() {
+  if [ -e "$STEP_LOG.stopped" ]; then
+    # stop, from a subshell: the round failed there.
+    rm -f "$STEP_LOG.stopped"
+    exit 1
+  fi
   exit "$1"
 }
 
@@ -525,6 +530,13 @@ drift() {
 stop() {
   "$SWIM_BIN" _mark "$SWIM_LANE" STOP "${1:-stopped}"
   _swim_stop_reason=${1:-stopped}
+  if [ "${BASH_SUBSHELL:-0}" -gt 0 ]; then
+    # In $(...) or a pipe, exit would end only this subshell, and the
+    # round would go on past a failed gate. End the round itself: the
+    # marker makes its TERM handler end it failed, not interrupted.
+    : > "$STEP_LOG.stopped"
+    kill -TERM "$SWIM_PID" 2>/dev/null
+  fi
   exit 1
 }
 

@@ -59,7 +59,7 @@ var bashOnly = map[string]bool{
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
 	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
 	"decision-unlisted": true, "decision-unused": true, "decision-subshell": true, "decision-choices": true,
-	"checkpoint": true, "step": true, "step-pipe": true, "guard-text": true,
+	"checkpoint": true, "step": true, "step-pipe": true, "step-subshell": true, "guard-text": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -111,6 +111,7 @@ var Checks = []Check{
 	{"decision-unused", finding.Warn, false, "a decision listed in `# Decisions:` but never asked", checkDecisionUnused},
 	{"checkpoint", finding.Error, false, "a `--checkpoint` step that can't be one: a snapshot, two with one key; warns before `stage change` and on a label that changes", checkCheckpoint},
 	{"step", finding.Error, false, "a run, gate or snapshot written so it can't run as it reads: an unknown option, no label or command, a command for a label, a command quoted into one word, or cd/export in a step", checkStepCall},
+	{"step-subshell", finding.Error, false, "a run, gate or snapshot inside $(...), backticks or after a pipe, where its result never reaches the lane", checkStepSubshell},
 	{"step-pipe", finding.Error, false, "a pipe or redirect after a step, which applies to swim's output, not the step's command", checkStepPipe},
 	{"short-form", finding.Error, false, "a .sh lane that calls swim's steps without #!/usr/bin/env swim (or the library)", checkShortFormShebang},
 	{"guard-text", finding.Warn, false, "a guard's description differs from its # Guards: line, or that line has none", checkGuardText},
