@@ -234,13 +234,21 @@ func cmdStart(args []string) error {
 		{K: "script", V: filepath.Base(lane.Script(root, n))},
 		{K: "pid", V: strconv.Itoa(pid)},
 		{K: "operator", V: or(os.Getenv("USER"), "-")},
-		{K: "owner", V: or(info.Owner, "-")},
 		{K: "created", V: or(info.Created, "-")},
-		{K: "after", V: or(strings.Join(info.After, " "), "-")},
+	}
+	// What's set, and only that: a key left out is its default (no owner,
+	// nothing to wait for, no time limit, no guards, not in git).
+	for _, kv := range []logparse.KV{
+		{K: "owner", V: info.Owner},
+		{K: "after", V: strings.Join(info.After, " ")},
 		{K: "timeout", V: timeoutText},
-		{K: "step-timeout", V: or(info.StepTimeoutText, "none")},
-		{K: "guards", V: or(strings.Join(info.GuardFlags(), " "), "-")},
+		{K: "step-timeout", V: info.StepTimeoutText},
+		{K: "guards", V: strings.Join(info.GuardFlags(), " ")},
 		{K: "git", V: ref},
+	} {
+		if kv.V != "" && kv.V != "-" && kv.V != "none" {
+			ctx = append(ctx, kv)
+		}
 	}
 	commit := os.Getenv("SWIM_COMMIT") // set by swim ci
 	if commit != "" {
@@ -253,7 +261,7 @@ func cmdStart(args []string) error {
 	manSum := ""
 	if m != nil {
 		manSum = m.SHA256
-		ctx = append(ctx, logparse.KV{K: "manifest", V: manSum[:12] + " (staged " + rel(root, m.Dir) + ")"})
+		ctx = append(ctx, logparse.KV{K: "manifest", V: manSum[:12]}) // staged under .swim/runs/<run>/<lane>
 	}
 	// The env files that applied (their values are in the lane's env, and
 	// masked), and their hash for the chain.

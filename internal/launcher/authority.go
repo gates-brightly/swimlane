@@ -3,6 +3,7 @@ package launcher
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -108,7 +110,10 @@ func runKey(o *Options) error {
 	hideMemory()
 	long, err := authority.Key(o.Cfg)
 	if err != nil || long == nil {
-		if err == nil && o.Cfg.SigningMode() == config.SigningAuto {
+		// Said only where approvals are set up (lookup.yml): a repo without
+		// them has nothing an unsigned run weakens, and swim verify still
+		// says it's unsigned.
+		if _, serr := os.Stat(filepath.Join(o.Root, lookup.FileName)); err == nil && serr == nil && o.Cfg.SigningMode() == config.SigningAuto {
 			fmt.Fprintln(os.Stderr, "swim: no signing key (~/.ssh/id_ed25519 or signing_key); this run is recorded unsigned, and swim verify will say so")
 		}
 		return nil // authority.Record says why, as before

@@ -403,7 +403,11 @@ func TestTUIOff(t *testing.T) {
 	} {
 		tr := r.startTUI(c.env, c.args...)
 		code, out := tr.wait()
-		if code != 0 || strings.Contains(out, "\x1b[?1049h") || !strings.Contains(out, "swim summary") {
+		done := "swim summary" // one lane prints its own summary, then only where its log is
+		if c.name == "one lane" {
+			done = "logs: swim log 1"
+		}
+		if code != 0 || strings.Contains(out, "\x1b[?1049h") || !strings.Contains(out, done) {
 			t.Errorf("%s: exit %d, used the interactive view: %v\n%s", c.name, code, strings.Contains(out, "\x1b[?1049h"), tail(out))
 		}
 	}

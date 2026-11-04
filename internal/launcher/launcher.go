@@ -874,6 +874,15 @@ func indexByte(b []byte, c byte) int {
 
 func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outcome, start time.Time, total time.Duration, color bool) {
 	p := ui.Painter{On: color}
+	if len(sel) == 1 {
+		// One lane that ran has printed its own summary as its last lines:
+		// a table of that one row says it again. One that never started
+		// (refused, skipped) printed none, so it gets the table and why.
+		if oc := outcomes[sel[0]]; oc != nil && !oc.Blocked && oc.Exit >= 0 && oc.State != status.Skipped {
+			fmt.Fprintln(out, p.Paint(ui.Dim, "  logs: swim log "+strconv.Itoa(sel[0])+" (or "+logList(sel)+")   status: swim status"))
+			return
+		}
+	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, p.Paint(ui.Bold, "swim summary · "+display.Span(start, start.Add(total))))
 	fmt.Fprintln(out, p.Paint(ui.Dim, fmt.Sprintf("  %-8s %-8s %-12s %4s %5s %5s %5s %6s %7s", "lane", "job", "result", "exit", "pass", "fail", "skip", "drift", "time")))

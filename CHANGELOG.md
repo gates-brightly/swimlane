@@ -44,6 +44,16 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ## Unreleased
 
+### Changed
+
+- **Quieter defaults.** A first run no longer warns that it's unsigned in a
+  repo with no `lookup.yml` (nothing is set up for approvals there; `swim
+  verify` still says it). A run of one lane prints that lane's summary
+  once, then where its log is, instead of a one-row table after it. A
+  round's header leaves out what's at its default (`owner: -`, `after: -`,
+  `timeout: none`, `step-timeout: none`, `guards: -`, `git: -`, the staged
+  manifest path): a key left out means its default.
+
 ### Added
 
 - **swim reads what people type first.** Where a command takes a lane, a

@@ -824,7 +824,8 @@ READING RESULTS
       # swim lane log | syntax 2 | swim N           first line: the log's syntax
       == ROUND <utc>  job=<id>  <Round>             a round starts
          run: <run id> | script: lane.N.sh | owner: ... | after: ... | timeout: ... | guards: ...
-         | git: <branch>@<sha> | runtime: ... | env: STAGE=... ...
+         | git: <branch>@<sha> | runtime: ... | env: STAGE=... ...   (a key at its default,
+         such as no owner, no After:, no time limit or no guards, is left out)
       -- stage <name>  <hh:mm:ss>                   a stage starts
         PASS  <label>                <dur>s  <hh:mm:ss>    a step (2 spaces, kind, 2 spaces)
         FAIL  <label> (exit <code>)  <dur>s  <hh:mm:ss>    ... or (exit 130, interrupted),
