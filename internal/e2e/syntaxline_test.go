@@ -22,7 +22,7 @@ func TestMissingSyntaxLineStopsOnlyItsLane(t *testing.T) {
 	if code == 0 || !strings.Contains(out, "lane.2.sh:1  error") || !strings.Contains(out, fix) || strings.Contains(out, "migrates") {
 		t.Fatalf("lint: exit %d\n%s", code, out)
 	}
-	if out, code := r.swim("status"); code != 0 || !strings.Contains(out, "won't run: no `# swim: syntax` line") {
+	if out, code := r.swim("status"); code != 0 || !strings.Contains(out, "won't run: 1 lint error (swim lint 2)") || !strings.Contains(out, "[syntax]") {
 		t.Fatalf("status doesn't say lane 2 won't run: exit %d\n%s", code, out)
 	}
 	if out, code := r.swim("run", "1", "--plain"); code != 0 || !strings.Contains(r.log(1), "| lane-one") {
@@ -90,6 +90,16 @@ func TestQueueWarnsOfARefusedDependency(t *testing.T) {
 	r := newRepo(t, "")
 	r.shortLane(1, "# Round: setup", "stage check\nrun echo hi")
 	r.shortLane(2, "# Round: after setup\n# After: 1", "stage check\nrun \"x\" echo lane-two")
+	// status says swim 1 won't run, and why, whatever the lint error.
+	if st := must(r.swim("status", "1")); !strings.Contains(st, "won't run: 1 lint error (swim lint 1)") || !strings.Contains(st, "[step]") {
+		t.Errorf("status 1:\n%s", st)
+	}
+	if y := must(r.swim("status", "1", "--yaml")); !strings.Contains(y, "lint_errors: 1") {
+		t.Errorf("status 1 --yaml:\n%s", y)
+	}
+	if st := must(r.swim("status", "2")); strings.Contains(st, "won't run") {
+		t.Errorf("status 2 says a clean lane won't run:\n%s", st)
+	}
 	out, code := r.swim("queue", "2")
 	if code != 0 || !strings.Contains(out, "swim 2 waits on swim 1, which swim lint refuses") || !strings.Contains(out, "[step]") {
 		t.Fatalf("queue 2: exit %d\n%s", code, out)

@@ -7,15 +7,16 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/checkpoint"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/lint"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/queue"
@@ -75,6 +76,9 @@ func cmdStatus(args []string) error {
 			Checkpoints []string `yaml:"checkpoints,flow,omitempty"`
 			Deps        []depDoc `yaml:"deps,omitempty"`
 			DepsError   string   `yaml:"deps_error,omitempty"`
+			// LintErrors counts the lint errors its pending round has: any
+			// means swim run and swim queue refuse it (swim lint N).
+			LintErrors int `yaml:"lint_errors,omitempty"`
 		}
 		doc := struct {
 			Schema    string    `yaml:"schema"`
@@ -98,8 +102,9 @@ func cmdStatus(args []string) error {
 			}
 		}
 		sv := newStatusView(root, cfg)
+		refused := lintRefusals(root, cfg)
 		for i := range lanes {
-			ld := laneDoc{Lane: lanes[i], Checkpoints: laneCheckpoints(root, lanes[i].Lane)}
+			ld := laneDoc{Lane: lanes[i], Checkpoints: laneCheckpoints(root, lanes[i].Lane), LintErrors: len(refused[lanes[i].Lane])}
 			if pv := sv.pending(&lanes[i]); pv != nil {
 				ld.Deps, ld.DepsError = pv.Deps, pv.DepsErr
 				if !reflect.ValueOf(pv.Header).IsZero() {
@@ -203,6 +208,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		fmt.Println(p.Paint(ui.Cyan, rc.Name+" "+claimText(rc.Claim)))
 	}
 	sv := newStatusView(root, cfg)
+	refused := lintRefusals(root, cfg)
 	for i := range f.Lanes {
 		l := &f.Lanes[i]
 		// The lanes in use; those named (swim status N M) whatever they are.
@@ -294,8 +300,12 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		if c := lane.ReadClaim(root, l.Lane); c != nil && state != status.Running {
 			detail(claimText(c), ui.Cyan)
 		}
-		if state != status.Running && noSyntaxLine(root, l.Lane) {
-			detail("won't run: no `# swim: syntax` line (swim lint "+strconv.Itoa(l.Lane)+")", ui.Red)
+		if fs := refused[l.Lane]; len(fs) > 0 && state != status.Running {
+			noun := "lint error"
+			if len(fs) > 1 {
+				noun += "s"
+			}
+			detail(fmt.Sprintf("won't run: %d %s (swim lint %d): %s:%d %s [%s]", len(fs), noun, l.Lane, fs[0].File, fs[0].Line, fs[0].Message, fs[0].Code), ui.Red)
 		}
 		if l.Reason != "" {
 			detail("reason: "+l.Reason, ui.Yellow)
@@ -480,14 +490,29 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 	return nil
 }
 
-// noSyntaxLine reports whether lane n's pending script is written against
-// swim's library but declares no syntax: lint refuses it, so swim run and
-// the queue do too.
-func noSyntaxLine(root string, n int) bool {
-	info, err := lane.ReadScript(root, n)
-	if err != nil || !info.Pending() || info.Syntax >= 2 {
-		return false
+// lintRefusals are the lint errors swim run and swim queue would refuse
+// each pending lane for, by lane (one lint run for them all).
+func lintRefusals(root string, cfg *config.Config) map[int][]finding.Finding {
+	var pending []int
+	for n := 1; n <= cfg.Lanes; n++ {
+		if info, err := lane.ReadScript(root, n); err == nil && info.Pending() {
+			pending = append(pending, n)
+		}
 	}
-	data, err := lane.ScriptBytes(root, n)
-	return err == nil && (lane.UsesLib(string(data)) || lane.ShortForm(string(data)))
+	out := map[int][]finding.Finding{}
+	if len(pending) == 0 {
+		return out
+	}
+	fs, err := lint.Errors(root, cfg, pending)
+	if err != nil {
+		return out
+	}
+	for _, f := range fs {
+		for _, n := range pending {
+			if f.File == lane.ScriptName(root, n) {
+				out[n] = append(out[n], f)
+			}
+		}
+	}
+	return out
 }
