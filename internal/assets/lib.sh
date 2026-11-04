@@ -268,6 +268,21 @@ reached() {
 #   --key K            the step's name across rounds, logged (no spaces)
 #   --target T         what it talks to (orders-api), logged; the lane's
 #                      # Targets: by default
+# _swim_misuse MSG — a step written wrong can't run, and nothing after it
+# may run as if it had passed (a gate that never checked would let the
+# change through): count it failed and stop the round, saying why in the
+# log.
+_swim_misuse() {
+  echo "swim: $1" >&2
+  _swim_last=2
+  _swim_fail=$((_swim_fail + 1))
+  if [ -z "$_swim_first_failed" ]; then
+    _swim_first_failed="step written wrong"
+    _swim_first_failed_stage=${_swim_stage:-setup}
+  fi
+  stop "step written wrong: $1"
+}
+
 _swim_run_step() {
   _swim_mode=$1
   shift
@@ -278,20 +293,21 @@ _swim_run_step() {
       --soft) _swim_soft=1; shift ;;
       --timeout|--retry|--backoff|--retry-on|--key|--target)
         if [ $# -lt 2 ]; then
-          echo "swim: $1 needs a value" >&2
-          return 2
+          _swim_misuse "$1 needs a value"
         fi
         _swim_o="$_swim_o $1 $2"
         shift 2 ;;
       --no-retry-timeout|--expect-fail|--expect-fail=*|--checkpoint|--checkpoint=*) _swim_o="$_swim_o $1"; shift ;;
       --) shift; break ;;
-      --*) echo "swim: unknown step option $1" >&2; return 2 ;;
+      --*) _swim_misuse "unknown step option $1 (options: --timeout --retry --backoff --retry-on --no-retry-timeout --soft --expect-fail --checkpoint --key --target)" ;;
       *) break ;;
     esac
   done
   if [ $# -lt 2 ]; then
-    echo 'swim: usage: run|gate|snapshot [options] "<label>" cmd [args...]' >&2
-    return 2
+    if [ $# -eq 1 ]; then
+      _swim_misuse "step \"$1\" has a label but no command: run|gate|snapshot [options] \"<label>\" cmd [args...]"
+    fi
+    _swim_misuse 'a step with no label or command: run|gate|snapshot [options] "<label>" cmd [args...]'
   fi
   _swim_label=$1
   shift

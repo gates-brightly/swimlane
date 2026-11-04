@@ -81,6 +81,13 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **A step written wrong stops the round (safety).** A step with a
+  misspelled option (`gate --retries 2 ...`), an option with no value, or a
+  label and no command returned an error before it recorded a result, so
+  `gate` read the previous step's result: the gate passed without
+  checking anything, and an approved change after it ran. Such a step now
+  counts as failed and stops the round, before anything after it, with
+  `STOP  step written wrong: <what>` in the log.
 - **A released lock no longer looks held.** A lock file under
   `.swim/locks/` kept naming its last holder after the lane ended, so an
   agent reading it with `cat` took a finished run for a held lock. A
