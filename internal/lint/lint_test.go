@@ -121,6 +121,7 @@ func TestEachCheck(t *testing.T) {
 		{name: "Timeout in words", script: replace(c, "# Timeout: 30m", "# Timeout: 10 minutes"), code: "timeout", level: finding.Error, line: 7},
 		{name: "lowercase key", script: replace(c, "# Timeout: 30m", "# timeout: 30m"), code: "header-key", level: finding.Error, line: 7, message: "(header keys are case-sensitive): did you mean # Timeout:?"},
 		{name: "synonym key", script: before(c, "# Timeout:", "# Depends: 2\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
+		{name: "Requires with lanes", script: before(c, "# Timeout:", "# Requires: 2, 3\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
 		{name: "typo key", script: before(c, "# Timeout:", "# Lock: db\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Locks:?"},
 		{name: "swapped letters", script: before(c, "# Timeout:", "# Inlcudes: lib/x.sh\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Includes:?"},
 		{name: "removed header", script: before(c, "# Timeout:", "# Finally: 2\n"), code: "removed", level: finding.Error, line: 7, message: "# Finally:"},
@@ -472,5 +473,22 @@ eval "$_swim_lib"
 	scripts[1] = replace(short(1), "if guard ALLOW_DROP", "if guard OTHER_DROP")
 	if got := codes(Lint(cfg4(), scripts, 1)); !strings.Contains(got, "guard-unlisted") {
 		t.Errorf("short form, unlisted guard: %s", got)
+	}
+}
+
+// What reads like a mistake but isn't stays quiet: notes in the header,
+// a quoted command path with a space, a process substitution.
+func TestValidFormsStayQuiet(t *testing.T) {
+	c := clean(1)
+	for name, script := range map[string]string{
+		"Requires note":   before(c, "# Timeout:", "# Requires: VPN\n"),
+		"Wait note":       before(c, "# Timeout:", "# Wait: for the change window\n"),
+		"Needs note":      before(c, "# Timeout:", "# Needs: prod creds\n"),
+		"path with space": before(c, "stage verify\n", `run "check" "/opt/My Tools/bin/check" --fast`+"\n"),
+		"process subst":   before(c, "stage verify\n", `run "diff" diff <(sort a) <(sort b)`+"\n"),
+	} {
+		if fs := Lint(cfg4(), map[int]string{1: script, 2: clean(2), 3: clean(3), 4: clean(4)}, 1); len(fs) != 0 {
+			t.Errorf("%s: %+v", name, fs)
+		}
 	}
 }

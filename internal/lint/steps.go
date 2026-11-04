@@ -106,7 +106,7 @@ func checkStepCall(c *Context, s *Script) []finding.Finding {
 		case !label.Quoted && !label.Expands && commandWords[label.Text]:
 			bad(fmt.Sprintf(`%s "<what it checks>" %s ...`, name, label.Text),
 				"%s %s ...: %q is the step's label, not its command, so it runs %q; the label comes first, quoted", name, label.Text, label.Text, cmd.Text)
-		case cmd.Quoted && !cmd.Expands && strings.ContainsAny(cmd.Text, " \t"):
+		case cmd.Quoted && !cmd.Expands && strings.ContainsAny(cmd.Text, " \t") && !isPath(cmd.Text):
 			bad(fmt.Sprintf(`%s %q %s, or bash -c '...' for a shell line`, name, label.Text, cmd.Text),
 				"%s %q runs the one word %q, which no command is called (exit 127): the command and its arguments are separate words", name, label.Text, cmd.Text)
 		case !cmd.Quoted && childless[cmd.Text]:
@@ -148,6 +148,12 @@ func checkStepPipe(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
+// isPath reports whether a command word is a path ("/opt/My Tools/bin/x"):
+// quoted with its spaces, it's one command, as written.
+func isPath(w string) bool {
+	return strings.HasPrefix(w, "/") || strings.HasPrefix(w, "./") || strings.HasPrefix(w, "../") || strings.HasPrefix(w, "~/")
+}
+
 func opName(op string) string {
 	if op == "|" {
 		return "pipe"
@@ -168,7 +174,9 @@ func stepOperator(bare string) string {
 			next = bare[i+1]
 		}
 		switch {
-		case c == '$' && next == '(':
+		case (c == '$' || c == '<' || c == '>') && next == '(':
+			// $(...), or a process substitution <(...) >(...): an argument
+			// to the step's command, not a redirect.
 			depth++
 			i++
 		case c == '(' && depth > 0:

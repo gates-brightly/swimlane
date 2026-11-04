@@ -3,6 +3,7 @@ package lint
 import (
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
 )
@@ -31,11 +32,17 @@ func checkHeaderKey(c *Context, s *Script) []finding.Finding {
 		if !strings.HasPrefix(line, "#") {
 			break // the header block ends at the first line of code
 		}
-		key, _, ok := lane.HeaderKey(line)
+		key, value, ok := lane.HeaderKey(line)
 		if !ok || isHeaderKey(key) {
 			continue
 		}
-		if want := meantKey(key); want != "" {
+		want := meantKey(key)
+		if want == "After" && !strings.EqualFold(key, "After") && !looksLikeRefs(value) {
+			// # Requires: VPN, # Wait: for the change window: a note, not
+			// an After: (whose values are lanes and job ids).
+			want = ""
+		}
+		if want != "" {
 			why := "swim doesn't read it"
 			if strings.EqualFold(key, want) {
 				why = "header keys are case-sensitive"
@@ -45,6 +52,21 @@ func checkHeaderKey(c *Context, s *Script) []finding.Finding {
 		}
 	}
 	return out
+}
+
+// looksLikeRefs reports whether a header value is lanes or job ids, as
+// After: takes them: 2 3, 2,3, 3f2a9c1e-7b4d.
+func looksLikeRefs(v string) bool {
+	toks := strings.FieldsFunc(v, func(r rune) bool { return r == ' ' || r == '\t' || r == ',' })
+	if len(toks) == 0 {
+		return false
+	}
+	for _, t := range toks {
+		if !chars.All(t, chars.Digit) && !(len(t) >= 8 && lane.ValidJobID(t) && strings.ContainsAny(t, "0123456789")) {
+			return false
+		}
+	}
+	return true
 }
 
 func isHeaderKey(k string) bool {

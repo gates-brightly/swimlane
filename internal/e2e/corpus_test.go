@@ -24,6 +24,11 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		}
 	}
 	const short = "#!/usr/bin/env swim"
+	// A command at a path with a space in it, quoted as one word.
+	spacedDir := filepath.Join(t.TempDir(), "My Tools")
+	os.MkdirAll(spacedDir, 0o755)
+	spaced := filepath.Join(spacedDir, "say")
+	os.WriteFile(spaced, []byte("#!/bin/sh\necho \"$1\"\n"), 0o755)
 
 	// Lint passes these, and they run as written.
 	for _, tc := range []struct{ body, want string }{
@@ -39,6 +44,8 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{`run "expands" echo "corpus-$SWIM_LANE"`, "| corpus-1"},
 		{`snapshot "snap" echo corpus-ok`, "| corpus-ok"},
 		{`run --expect-fail "fails" false`, "PASS  fails"},
+		{`run "diff" diff <(echo corpus-same) <(echo corpus-same)`, "PASS  diff"},
+		{`run "spaced path" "` + spaced + `" corpus-ok`, "| corpus-ok"},
 	} {
 		write(short, tc.body)
 		if out, code := r.swim("lint", "1"); code != 0 {
@@ -91,6 +98,10 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{"# timeout: 5m", "header-key"},
 		{"# Timeout: 10 minutes", "timeout"},
 		{"# Issue: #42", ""},
+		{"# Requires: VPN", ""},
+		{"# Wait: for the change window", ""},
+		{"# Needs: prod creds", ""},
+		{"# Requires: 2", "header-key"},
 	} {
 		header = tc.header + "\n"
 		write(short, `run "x" echo corpus-ok`)

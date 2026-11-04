@@ -90,6 +90,12 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **The new lint errors no longer refuse valid lanes.** `# Requires: VPN`,
+  `# Wait: for the change window` and `# Needs: prod creds` are notes;
+  they're read as a misspelled `# After:` only when the value is lanes or
+  job ids (`# Requires: 2`). A quoted command path with a space (`run "x"
+  "/opt/My Tools/bin/check"`) is one command, as written. A process
+  substitution (`diff <(a) <(b)`) isn't a redirect. Corpus rows run each.
 - **`swim all` skips a lane lint refuses and runs the rest.** One lane
   with a lint error refused the whole `swim all` (or bare `swim run`),
   while the message said only that lane was refused. Now it's skipped,
