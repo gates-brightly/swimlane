@@ -38,13 +38,10 @@ stage verify                       # prove the outcome, not just exit 0
 run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 ```
 
-Header lines take a value and nothing else; explain things in the `# Goal:`
-block instead. A trailing `# comment` is dropped from a header whose value is
-names, numbers or a duration (`After:`, `Locks:`, `Includes:`, `Targets:`,
-`Outputs:`, `Timeout:`, `Step-Timeout:`, `Workspace:`, `Fail:`, `Task:`,
-`Job:`, `Signoff:`), but on a text header (`Round:`, `Guards:`, `Decisions:`,
-`Owner:`) it's part of the text: the approval prompt and `swim status` show
-it.
+Header lines take a value and nothing else: a `# comment` after the value
+of a header swim reads is a lint error, whichever header it is. Put
+explanations on lines of their own, in the `# Goal:` block. (A `#` that
+starts a word, as in `fix #42`, is text.)
 
 | Header | Meaning |
 |---|---|

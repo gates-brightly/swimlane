@@ -120,6 +120,7 @@ var Checks = []Check{
 	{"secret-echo", finding.Warn, false, "a secret variable echoed directly", checkSecretEcho},
 	{"header", finding.Warn, false, "a header value swim can't use (Locks, Workspace, Task)", checkHeader},
 	{"timeout", finding.Error, false, "a Timeout or Step-Timeout that isn't a duration: the round would run with no limit", checkTimeout},
+	{"header-comment", finding.Error, false, "a # comment after a header value, which would be read as part of it", checkHeaderComment},
 	{"header-key", finding.Error, false, "a header key swim doesn't read that looks meant as one it does: another case (# timeout:), a synonym (# Depends:), a typo (# Lock:)", checkHeaderKey},
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
@@ -253,10 +254,34 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		for i := range fs {
 			fs[i].File = s.Name
 		}
+		fs = commentFirst(fs)
 		out = append(out, applyIgnores(s, fs)...)
 	}
 	finding.Sort(out)
 	return out, nil
+}
+
+// commentFirst drops what a header line's # comment makes the other
+// checks say about its value (the comment read as a lane, a job or a
+// duration): the header-comment error on that line says what's wrong.
+func commentFirst(fs []finding.Finding) []finding.Finding {
+	commented := map[int]bool{}
+	for _, f := range fs {
+		if f.Code == "header-comment" {
+			commented[f.Line] = true
+		}
+	}
+	if len(commented) == 0 {
+		return fs
+	}
+	readsValue := map[string]bool{"after": true, "header": true, "timeout": true, "header-key": true, "cycle": true}
+	out := fs[:0]
+	for _, f := range fs {
+		if !(commented[f.Line] && readsValue[f.Code]) {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // checkTrust: once trust.yml lists the keys swim verify trusts, every key
@@ -355,7 +380,7 @@ func lintScripts(cfg *config.Config, scripts map[int]*Script, n int) []finding.F
 	for i := range fs {
 		fs[i].File = s.Name
 	}
-	fs = applyIgnores(s, fs)
+	fs = applyIgnores(s, commentFirst(fs))
 	finding.Sort(fs)
 	return fs
 }

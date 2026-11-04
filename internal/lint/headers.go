@@ -1,6 +1,8 @@
 package lint
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/chars"
@@ -134,4 +136,36 @@ func editDistance(a, b string) int {
 // limit: the round would run with none, so it's an error, not a warning.
 func timeoutProblem(p string) bool {
 	return strings.HasPrefix(p, "Timeout ") || strings.HasPrefix(p, "Step-Timeout ")
+}
+
+// headerCommentRE: a # comment after a header value (whitespace, #, then
+// whitespace or the end). A # that starts a word (#42) is text.
+var headerCommentRE = regexp.MustCompile(`\s#(\s|$)`)
+
+// checkHeaderComment: a header swim reads takes a value and nothing else.
+// A trailing # comment is read as part of the value (# After: 2  # db
+// makes "#" and "db" lanes or jobs to wait for), so it's an error on every
+// such key alike, one rule to know: notes go on their own line. Your own
+// keys (# Goal:, # Issue:) are notes, shown as written.
+func checkHeaderComment(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for i, raw := range s.v.raw {
+		line := strings.TrimSpace(raw)
+		if i == 0 && strings.HasPrefix(line, "#!") || line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") {
+			break // the header block ends at the first line of code
+		}
+		key, value, ok := lane.HeaderKey(line)
+		if !ok || key == "swim" || !isHeaderKey(key) {
+			continue // # swim: syntax 4; your own notes (# Goal:, # Issue:) are shown as written
+		}
+		if loc := headerCommentRE.FindStringIndex(value); loc != nil {
+			out = append(out, f(finding.Error, "header-comment", i,
+				fmt.Sprintf("# %s: %s, and the note on a line of its own (# Goal: ...)", key, strings.TrimSpace(value[:loc[0]])),
+				"# %s: carries a # comment: a header value takes nothing else, and the comment would be read as part of it", key))
+		}
+	}
+	return out
 }

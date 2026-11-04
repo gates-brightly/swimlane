@@ -121,6 +121,8 @@ func TestEachCheck(t *testing.T) {
 		{name: "Timeout in words", script: replace(c, "# Timeout: 30m", "# Timeout: 10 minutes"), code: "timeout", level: finding.Error, line: 7},
 		{name: "lowercase key", script: replace(c, "# Timeout: 30m", "# timeout: 30m"), code: "header-key", level: finding.Error, line: 7, message: "(header keys are case-sensitive): did you mean # Timeout:?"},
 		{name: "synonym key", script: before(c, "# Timeout:", "# Depends: 2\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
+		{name: "header comment", script: replace(c, "# After:", "# After: 2  # waits for the schema"), code: "header-comment", level: finding.Error, line: 5, message: "# After: carries a # comment"},
+		{name: "comment on a text header", script: replace(c, "# Round: clean round 1", "# Round: clean round 1  # see the ticket"), code: "header-comment", level: finding.Error, line: 3},
 		{name: "label for a command", script: before(c, "stage verify\n", "run echo hi\n"), code: "step", level: finding.Error, message: `runs "hi", which isn't a command here`},
 		{name: "cd in a step", script: before(c, "stage verify\n", "run \"dir\" cd /tmp\n"), code: "step", level: finding.Error, message: "a shell builtin, as a program: it fails (exit 127"},
 		{name: "step in a piped loop", script: before(c, "stage verify\n", "ls | while read t; do\n  gate \"check $t\" test -n \"$t\"\ndone\n"), code: "step-subshell", level: finding.Error},
@@ -491,7 +493,6 @@ func TestValidFormsStayQuiet(t *testing.T) {
 		"Needs note":                 before(c, "# Timeout:", "# Needs: prod creds\n"),
 		"path with space":            before(c, "stage verify\n", `run "check" "/opt/My Tools/bin/check" --fast`+"\n"),
 		"process subst":              before(c, "stage verify\n", `run "diff" diff <(sort a) <(sort b)`+"\n"),
-		"header comment":             replace(c, "# After:", "# After: 2  # waits for the schema"),
 		"label test, command go":     before(c, "stage verify\n", "run test go version\n"),
 		"label curl, command curl":   before(c, "stage verify\n", "run curl curl --version\n"),
 		"label terraform, cmd echo":  before(c, "stage verify\n", "run terraform echo plan\n"),
@@ -502,5 +503,15 @@ func TestValidFormsStayQuiet(t *testing.T) {
 		if fs := Lint(cfg4(), map[int]string{1: script, 2: clean(2), 3: clean(3), 4: clean(4)}, 1); len(fs) != 0 {
 			t.Errorf("%s: %+v", name, fs)
 		}
+	}
+}
+
+// A # that starts a word in a header value is text, not a comment, and
+// your own keys are notes, shown as written.
+func TestHashInAHeaderValue(t *testing.T) {
+	c := replace(clean(1), "# Round: clean round 1", "# Round: fix #42 for orders")
+	c = before(c, "# Timeout:", "# Issue: #42  # the orders ticket\n")
+	if fs := Lint(cfg4(), map[int]string{1: c, 2: clean(2), 3: clean(3), 4: clean(4)}, 1); len(fs) != 0 {
+		t.Errorf("%+v", fs)
 	}
 }

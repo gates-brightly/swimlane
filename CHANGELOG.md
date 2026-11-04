@@ -118,10 +118,11 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
   the skip hint says to fix that lane (`swim lint 1`), then run both.
 - **Smaller gaps from review.** A pipe after a step continued onto the
   next line (`run "x" ls \` then `| wc -l`) is caught by `[step-pipe]`. A
-  trailing comment on a header whose value is names or a duration (`#
-  After: 2  # the schema lane`, `# Timeout: 30m # generous`) is a comment,
-  no longer read as part of the value ("no lane holds job #"); text headers
-  (Round, Guards, Owner) keep a `#` as text. `swim status` marks a lane
+  trailing `# comment` on a header swim reads (`# After: 2  # the schema
+  lane`) is one lint error, `[header-comment]`, whatever the header, instead
+  of the confusing "no lane holds job #"; your own keys (`# Goal:`, `#
+  Issue:`) are notes, and a `#` that starts a word (`fix #42`) is text.
+  `swim status` marks a lane
   with no syntax line "won't run". `swim watch --plain` is `--no-tui`, as
   `swim run --plain` spells it.
 - **The new lint errors no longer refuse valid lanes.** `# Requires: VPN`,

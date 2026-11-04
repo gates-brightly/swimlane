@@ -220,9 +220,6 @@ func ParseScript(src string) Info {
 			key, v, isKey := headerKey(line, false)
 			roundKey, roundVal, _ := headerKey(line, true)
 			isRound := roundKey == "Round"
-			if isKey && commentable[key] {
-				v = dropComment(v) // # After: 2  # waits for the db
-			}
 			if isKey && info.setHeader(key, v, i+1, listed) {
 				continue
 			}
@@ -257,26 +254,6 @@ func ParseScript(src string) Info {
 		info.Round, info.Job, info.After, info.Guards, info.Decisions, info.Locks, info.Outputs = "", "", nil, nil, nil, nil, nil
 	}
 	return info
-}
-
-// commentable are the header keys whose values are names, numbers or a
-// duration, never prose: a trailing "# note" on one is a comment, not
-// part of the value. (Round, Guards, Owner and the like are text, where a
-// # is text too.)
-var commentable = map[string]bool{"After": true, "Locks": true, "Includes": true, "Targets": true, "Outputs": true,
-	"Timeout": true, "Step-Timeout": true, "Workspace": true, "Fail": true, "Task": true, "Job": true, "Signoff": true}
-
-// dropComment is a header value without a trailing # comment.
-func dropComment(v string) string {
-	if strings.HasPrefix(v, "#") {
-		return ""
-	}
-	for _, sep := range []string{" #", "\t#"} {
-		if i := strings.Index(v, sep); i >= 0 {
-			v = v[:i]
-		}
-	}
-	return strings.TrimSpace(v)
 }
 
 // setHeader applies a header key the script sets (line is 1-based), and

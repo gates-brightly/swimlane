@@ -106,6 +106,7 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{"# Wait: for the change window", ""},
 		{"# Needs: prod creds", ""},
 		{"# Requires: 2", "header-key"},
+		{"# After: 2  # the schema lane", "header-comment"},
 	} {
 		header = tc.header + "\n"
 		write(short, `run "x" echo corpus-ok`)
