@@ -803,9 +803,8 @@ READING RESULTS
   Lane log (.swim/logs/agentN.log): append-only plain text, written to be
   read with cat or an editor; `swim log N` renders it (colour, folded output,
   relative times; --full, --raw). swim log and swim report fold repeated
-  output: "        … N more times" (the line above, again) and
-  "        … N more like these" (lines differing only in their numbers,
-  between the first and last shown); --raw shows every line.
+  output: "        … N more times" (the line above, again); lines that
+  differ only in their numbers never fold. --raw shows every line.
   Every line says what it is by how it starts:
       # swim lane log | syntax 2 | swim N           first line: the log's syntax
       == ROUND <utc>  job=<id>  <Round>             a round starts

@@ -505,9 +505,8 @@ swim checkpoint rm N|JOB KEY... | --all
   results are coloured, times show how far into the round they were, and
   step output longer than 40 lines is folded to its first and last 15.
   Either way, repeated output is folded: a line said three or more times
-  in a row shows once, then "… N more times"; four or more that differ
-  only in their numbers (a counter, a percentage) show the first,
-  "… N more like these" and the last. A line a progress bar or spinner
+  in a row shows once, then "… N more times"; lines that differ only in
+  their numbers never fold. A line a progress bar or spinner
   redrew with carriage returns shows what the terminal was left showing,
   and a spinner frame alone is dropped. The file keeps every line.
   Piped (swim log 2 | less) it is the file's lines, folded so, plus the step

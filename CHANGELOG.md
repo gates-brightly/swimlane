@@ -288,14 +288,14 @@ and read.
   guard and decision marks, warnings and each round's header and summary
   keep every line. A passing step is now its result line, its notes
   (`saved:`, messages) and the last line it printed, which is often its
-  result: `… 3 lines of output (swim log 2); the last: No changes.` A
-  one-line output shows as it is. `swim log N` has the rest. A passing
+  result: `… 3 lines of output (swim log 63bdf4a9); the last: No changes.`
+  A one-line output shows as it is. `swim log <job>` has the rest. A passing
   gate looks like any passing step in the log, so it's brief too; a failed
   one is in full. `--results` and `--yaml` are unchanged.
 - **`swim log` and `swim report` fold repeated output.** A line said three
-  or more times in a row shows once, then `… N more times`; four or more
-  lines that differ only in their numbers show the first, `… N more like
-  these` and the last. A progress bar redrawn with carriage returns shows
+  or more times in a row shows once, then `… N more times`. Lines that
+  differ only in their numbers never fold, so a `500` among `200`s still
+  shows. A progress bar redrawn with carriage returns shows
   where it ended, and a spinner frame alone is dropped. A polling loop's
   thirty `waiting…` lines are now two. Piped, `swim log` used to print the
   file exactly; it now folds too, and `--raw` is the file exactly

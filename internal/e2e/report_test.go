@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -82,10 +83,15 @@ func TestReportLoop(t *testing.T) {
 	r.mustSwim("report", "--earmark")
 	contains(t, "caught up", r.mustSwim("report"), "nothing new")
 
-	// --results drops step output, saying where it is.
+	// --results drops step output, saying where it is: the round's job,
+	// which the lane's next round doesn't move.
 	r.mustSwim("run", "2")
 	res := r.mustSwim("report", "--results")
-	contains(t, "results", res, "PASS  second", "lines of command and output: swim log 2")
+	m := regexp.MustCompile(`==> swim 2 · job=(\w+)`).FindStringSubmatch(res)
+	if m == nil {
+		t.Fatalf("no job in the round's header:\n%s", res)
+	}
+	contains(t, "results", res, "PASS  second", "lines of command and output: swim log "+m[1])
 	if strings.Contains(res, "| two-output") {
 		t.Errorf("--results kept step output:\n%s", res)
 	}

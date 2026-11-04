@@ -778,8 +778,10 @@ func (r *report) writeText(w io.Writer) {
 			}
 			for _, sl := range l.slices {
 				head := "==> swim " + l.key
+				ref := l.key // what swim log reads this round by: its job, which a later round doesn't move
 				if job, ok := logparse.RoundJob(sl.round.lines[0]); ok {
 					head += " · job=" + lane.ShortJob(job)
+					ref = lane.ShortJob(job)
 				}
 				lines := sl.round.lines
 				if sl.from > 0 {
@@ -789,9 +791,9 @@ func (r *report) writeText(w io.Writer) {
 					head += " · round " + sl.round.start
 				}
 				if r.opts.results {
-					lines = resultsOnly(lines, l.key)
+					lines = resultsOnly(lines, ref)
 				} else {
-					lines = logparse.FoldRepeats(passesBrief(lines, l.key))
+					lines = logparse.FoldRepeats(passesBrief(lines, ref))
 				}
 				fmt.Fprintln(w, "\n"+head)
 				for _, line := range lines {
