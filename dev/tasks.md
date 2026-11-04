@@ -7,7 +7,7 @@ the record, and the claim it backs belongs in the README,
 [docs/trust-model.md](../docs/trust-model.md) or `swim guide`.
 
 Newer tasks live one per file in [`tasks/`](tasks/), numbered after the
-ones here. Larger designs go in [`features/`](../features/README.md).
+ones here.
 
 Priorities:
 
