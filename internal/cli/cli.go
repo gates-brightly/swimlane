@@ -98,6 +98,14 @@ func (e exitError) Error() string { return fmt.Sprintf("exit %d", e.code) }
 
 // Main runs swim with args (without the program name) and returns the exit code.
 func Main(args []string) int {
+	if len(args) == 0 && inSwimRepo() {
+		// Bare swim in a swim repo: what needs you (attention.go).
+		if err := cmdAttention(); err != nil {
+			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
+			return 1
+		}
+		return 0
+	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
 		if len(args) > 1 && args[1] == "--full" {
 			fmt.Print(help.Full())

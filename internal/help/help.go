@@ -1360,6 +1360,7 @@ func Short() string {
   The logs carry the results back.
 
 USAGE
+  swim                         in a swim repo: what needs you, and what's running
   swim <command> --help        one command's detail
   swim guide                   the full manual (for people and AI agents)
 

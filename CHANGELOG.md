@@ -56,6 +56,13 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Added
 
+- **Bare `swim`, in a swim repo, says what needs you.** A failed, dry-run
+  or interrupted round whose script nobody has edited since, a lane asking
+  for an answer, a lane lint refuses, an orphaned batch or one no swimmer
+  will take: each on a line with the command that acts on it (`→ swim log
+  3`). Then what's running and what's ready to queue, or "nothing needs
+  you". Outside a swim repo it's the help, as before; `swim --help` is
+  always the help.
 - **.swim.log records what cost a turn.** A command swim refused as typed
   (`usage`: the command and swim's message, never its arguments) and the
   lint errors `swim lint`, `swim run` and `swim queue` found (`lint`: the

@@ -52,7 +52,8 @@ unless the project says otherwise (its CLAUDE.md, your instructions):
 
 ## Run freely
 
-These only read or check: `swim status`, `queue` / `queue show`, `log`,
+These only read or check: `swim` alone (what needs the operator, what's
+running, what's ready), `swim status`, `queue` / `queue show`, `log`,
 `report` (from your own earmark), `lint`, `history`, `verify`, `env`,
 `keys`, `doctor` (without `--fix`), `changelog`, `guide`, `--help`, and
 `wait` (blocks until batches end; changes nothing). Add `--yaml` only when
@@ -106,8 +107,8 @@ how it might be approved.
 
 ## The loop
 
-1. **Catch up, cheapest first:** `swim status`, `swim queue`, `swim log |
-   tail -20`. Then use your own earmark (one name per session and worker,
+1. **Catch up, cheapest first:** `swim` (what needs the operator), then
+   `swim status`, `swim queue`, `swim log | tail -20`. Then use your own earmark (one name per session and worker,
    or one reader moves another's place): `swim report --earmark --name
    NAME` prints what's new since it (failures in full) and moves it.
    **Never report from an earmark you haven't set** (`swim report

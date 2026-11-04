@@ -58,6 +58,7 @@ Lane 3's guard waits on the swimmer's screen for your `y`. Then lane 2
 fails. Only now does the AI need to look:
 
 ```sh
+swim                             # what needs you: lane 2's failure, and the command for it
 swim report --earmark            # everything since you last looked, then marks your place
 swim log 2                       # the failed round, step by step
 ```
