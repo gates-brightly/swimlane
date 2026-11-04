@@ -81,6 +81,15 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Changed
 
+- **The skill says where the agent runs and where the lanes run.** A new
+  "Two machines" section: the agent is in a sandbox that sees only the
+  repo, the operator's machine (often macOS) runs the lanes with the
+  operator's access, and only the repo is shared, so `swim env`, `doctor`
+  and `config` describe the agent's machine, not the operator's. A fact
+  from the operator's side comes from a snapshot-only lane, and the agent
+  never writes files that machine runs on its own (`.git/hooks/`,
+  `.envrc`). The lane rules add the BSD tools a lane meets on macOS
+  (`sed -i.bak`, no `date -d`, `grep -P`, `stat -c`, `timeout`).
 - **`swim queue ... --wait` waits for its own batch, not the whole repo.**
   It used to block until nothing at all ran or was queued, so it also
   waited out other sessions' lanes and batches. It now returns when its

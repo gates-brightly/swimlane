@@ -27,6 +27,29 @@ ls lane.* swim.yml .swim 2>/dev/null
   the short form (`#!/usr/bin/env swim`). If it writes something else, or
   a command here is unknown, follow the binary and tell the user once.
 
+## Two machines
+
+You and the operator are usually on different machines. Assume this
+unless the project says otherwise (its CLAUDE.md, your instructions):
+
+- **You:** a sandbox that sees only this repo. No cloud credentials, VPN,
+  SSH keys or the operator's home directory: don't probe for them or work
+  around their absence.
+- **The operator:** their own machine, often another OS (macOS: bash 3.2,
+  BSD `sed`, `date`, `grep`), with their access. Lanes run there, with
+  that access, beyond this repo. The sandbox limits you, not what you
+  write.
+- **Only the repo is shared.** `swim status`, `queue`, `log` and `report`
+  read it, so they show the operator's runs. `swim env`, `doctor` and
+  `config` describe your machine, not theirs: don't judge the operator's
+  environment by them.
+- **Need a fact from their side?** Write a lane of snapshot steps (it
+  reads, changes nothing) and queue it, rather than asking the operator to
+  paste output. A command that works in your sandbox hasn't run on theirs.
+- **Never write files their machine runs on its own:** `.git/hooks/`,
+  `.envrc`, editor tasks. Nothing approves them: they'd run with the
+  operator's access the moment they open the repo or commit.
+
 ## Run freely
 
 These only read or check: `swim status`, `queue` / `queue show`, `log`,

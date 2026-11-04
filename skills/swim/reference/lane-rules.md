@@ -59,6 +59,13 @@ WRITING A LANE SCRIPT, SAFETY RULES and SYNTAX. The annotated example is
   `$SWIM_OUT`; `$SWIM_ROOT` is the repo root, for the files the round acts on.
 - **bash 3.2** (macOS): no associative arrays, `mapfile` or `${x,,}`. **No
   `set -e`.** A failed `run` doesn't stop the round; a failed `gate` does.
+- **Write for the operator's machine, not yours.** The lane runs where the
+  operator is (often macOS), not in your sandbox, so a command you tried
+  here proves nothing there. On macOS the tools are BSD's: `sed -i.bak`
+  (both kinds take it; bare `sed -i` is GNU's), no `date -d`, `grep -P`,
+  `stat -c` or `find -printf`, and no `timeout` (use the step's
+  `--timeout`). Name paths from `$SWIM_ROOT` or `$SWIM_OUT`, never `~` or
+  your own home directory.
 - **git and gh are allowed** (commit, push, pull, `gh pr create`, `gh api`).
   A step that changes a shared remote (a push, a PR, a merge) goes behind
   its own guard, like any change outside the repo. swim blocks only what
