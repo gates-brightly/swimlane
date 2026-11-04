@@ -44,6 +44,8 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ## Unreleased
 
+## 0.20261104.3 (v0.20261104.3, 2026-11-04)
+
 ### Upgrading: what to do
 
 - A dry run ends SKIP, not PASS: lanes `# After:` it don't start, and
