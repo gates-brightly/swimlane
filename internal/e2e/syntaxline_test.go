@@ -31,13 +31,30 @@ func TestMissingSyntaxLineStopsOnlyItsLane(t *testing.T) {
 	if out, code := r.swim("run", "2", "--plain"); code == 0 || !strings.Contains(out, fix) {
 		t.Fatalf("run 2: exit %d\n%s", code, out)
 	}
-	// Queued, the swimmer refuses it too: it never runs.
-	r.mustSwim("queue", "2")
-	r.swim("watch", "--once")
-	if strings.Contains(r.log(2), "| lane-two") {
-		t.Fatalf("a queued lane with no syntax line ran:\n%s", r.log(2))
+	// It can't be queued either (the launcher would refuse it too).
+	if out, code := r.swim("queue", "2"); code == 0 || !strings.Contains(out, fix) {
+		t.Fatalf("queue 2: exit %d\n%s", code, out)
 	}
-	if !strings.Contains(r.log(2), "no `# swim: syntax` line") {
-		t.Errorf("the queued lane's log doesn't say why it was refused:\n%s", r.log(2))
+}
+
+// swim queue refuses what swim run would, at enqueue, while whoever
+// queues it can fix it: nothing is queued.
+func TestQueueRefusesWhatRunWould(t *testing.T) {
+	r := newRepo(t, "")
+	r.shortLane(1, "# Round: fine", "stage check\nrun \"x\" echo ok")
+	r.shortLane(2, "# Round: label for a command", "stage check\nrun echo hi")
+	nosyntax := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nrun \"x\" echo hi\n"
+	os.WriteFile(filepath.Join(r.root, "lane.3.sh"), []byte(nosyntax), 0o755)
+	for _, n := range []string{"2", "3", "1,2"} {
+		out, code := r.swim("queue", n)
+		if code == 0 || !strings.Contains(out, "not queued: swim run would refuse it") {
+			t.Errorf("queue %s: exit %d\n%s", n, code, out)
+		}
+	}
+	if q := r.mustSwim("queue"); strings.Contains(q, "#1") {
+		t.Errorf("something was queued:\n%s", q)
+	}
+	if out, code := r.swim("queue", "1"); code != 0 || !strings.Contains(out, "queued #1") {
+		t.Errorf("queue 1, which lints clean: exit %d\n%s", code, out)
 	}
 }

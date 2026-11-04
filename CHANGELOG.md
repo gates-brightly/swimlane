@@ -90,6 +90,12 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **`swim queue` refuses what `swim run` would.** A batch was queued
+  without lint's pre-flight, so a lane `swim run` refuses (no syntax line,
+  `run echo hi`, ...) was accepted, and failed later on the operator's
+  swimmer, after whoever queued it had moved on. Queueing now runs the
+  same check and refuses with the findings, from `swim queue`, the watch
+  screen's `q`/`s`/`Q`, and `swim watch --approved` alike.
 - **A path to another repo's lane is refused, never read as this repo's
   (safety).** A lane script's path was read by its file name alone, so
   `swim lint ../other/lane.22.sh` linted this repo's lane 22, and `swim run

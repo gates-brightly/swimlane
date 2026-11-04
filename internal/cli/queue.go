@@ -20,9 +20,11 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/envfile"
+	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
+	"github.com/gates-brightly/swimlane/internal/lint"
 	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/queue"
@@ -128,6 +130,12 @@ func queueAdd(args []string) error {
 		o.parallel = &n
 	}
 	b, err := addBatch(root, cfg, lanes, o)
+	var refused lintRefused
+	if errors.As(err, &refused) {
+		finding.WriteText(os.Stderr, refused.fs)
+		fmt.Fprintln(os.Stderr, "swim queue: not queued: swim run would refuse it; fix the errors above (swim lint shows every check), then queue again")
+		return exitError{2}
+	}
 	if err != nil {
 		return err
 	}
@@ -387,6 +395,11 @@ type batch struct {
 func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch, error) {
 	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel}
 	b := batch{entry: e}
+	// What swim run would refuse is refused now, while whoever queues it
+	// can fix it, not later, when the operator's swimmer runs it.
+	if err := queueLint(root, cfg, lanes); err != nil {
+		return b, err
+	}
 	var err error
 	if e.Lanes, e.Approve, b.guards, err = pinBatch(root, cfg, lanes, o.approve); err != nil {
 		return b, err
@@ -1288,6 +1301,11 @@ func queueApproved(root string, cfg *config.Config) []string {
 		if !ok {
 			continue // not fully approved yet
 		}
+		if err := queueLint(root, cfg, []int{f.Lane}); err != nil {
+			done[id] = true // said once; a fix changes the script, and the approval with it
+			msgs = append(msgs, "swim "+strconv.Itoa(f.Lane)+": "+err.Error())
+			continue
+		}
 		names := sortedKeys(users)
 		e := &queue.Entry{By: "approval (" + strings.Join(names, ", ") + ")", Note: "approved " + rel(root, f.Path),
 			Lanes: []queue.Lane{{Lane: f.Lane, Job: info.Job, Round: info.Round, SHA256: f.SHA256}}, Signature: id}
@@ -1313,4 +1331,27 @@ func scheduleTampered(e *queue.Entry) string {
 		return fmt.Sprintf("%s's signature doesn't match its file (edited after it was scheduled, its start time moved?): refused", e.ID)
 	}
 	return ""
+}
+
+// lintRefused is a batch refused at enqueue: lint errors swim run would
+// refuse it for. Error is one line (the watch screen shows it); the
+// findings are for swim queue to print in full.
+type lintRefused struct{ fs []finding.Finding }
+
+func (e lintRefused) Error() string {
+	f := e.fs[0]
+	more := ""
+	if len(e.fs) > 1 {
+		more = fmt.Sprintf(" (and %d more)", len(e.fs)-1)
+	}
+	return fmt.Sprintf("not queued: %s:%d %s [%s]%s; swim run would refuse it: fix it (swim lint), then queue again", f.File, f.Line, f.Message, f.Code, more)
+}
+
+// queueLint runs swim run's lint pre-flight on lanes about to be queued.
+func queueLint(root string, cfg *config.Config, lanes []int) error {
+	fs, err := lint.Errors(root, cfg, lanes)
+	if err != nil || len(fs) == 0 {
+		return err
+	}
+	return lintRefused{fs}
 }
