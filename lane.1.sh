@@ -31,7 +31,7 @@ run "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gof
 gate "go build" go build ./...
 run "go vet" go vet ./...
 run "swim lint (the CI rounds)" "$SWIM_BIN" lint --strict
-run "shell syntax" bash -c 'for f in scripts/hermetic scripts/release.sh scripts/next-tag.sh scripts/mirror-tags.sh scripts/tag-remotes.sh scripts/release-notes.sh e2e/run.sh e2e/lib/common.sh e2e/lib/fakebin/*; do bash -n "$f" || exit 1; done; sh -n scripts/install.sh'
+run "shell syntax" bash -c 'for f in scripts/hermetic scripts/next-tag.sh scripts/mirror-tags.sh scripts/tag-remotes.sh scripts/release-notes.sh e2e/run.sh e2e/lib/common.sh e2e/lib/fakebin/*; do bash -n "$f" || exit 1; done; sh -n scripts/install.sh'
 # The unit tests are lanes 8 (plain) and 9 (-race); internal/e2e is lanes 2-4.
 
 summary

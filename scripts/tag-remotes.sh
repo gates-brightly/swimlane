@@ -1,4 +1,4 @@
-# Release tags' remotes, sourced by next-tag.sh, release.sh and mirror-tags.sh.
+# Release tags' remotes, sourced by next-tag.sh and mirror-tags.sh.
 #
 # TAG_REMOTE (default origin) is GitHub, and its tags are authoritative:
 # what's released is what it has. MIRROR_REMOTE (default fj) is Forgejo, a

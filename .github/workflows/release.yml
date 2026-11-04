@@ -1,7 +1,6 @@
 name: release
 
-# A release tag (v0.<YYYYMMDD>.<index>, made by `just release` or `just
-# next-tag`) reaching origin builds swim for Linux and macOS (amd64, arm64)
+# A release tag (v0.<YYYYMMDD>.<index>, made by `just next-tag`) reaching origin builds swim for Linux and macOS (amd64, arm64)
 # and publishes them as the tag's GitHub release, with checksums.txt and
 # install.sh (.goreleaser.yaml). Containers then install swim with no Go
 # toolchain:

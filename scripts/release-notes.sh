@@ -5,8 +5,8 @@
 #
 #   scripts/release-notes.sh v0.20261102.1
 #
-# Fails if CHANGELOG.md has no section for the tag (scripts/release.sh
-# makes sure it does before tagging). Bash 3.2 compatible (macOS).
+# Fails if CHANGELOG.md has no section for the tag. Bash 3.2 compatible
+# (macOS).
 set -eu
 
 tag=${1:-}

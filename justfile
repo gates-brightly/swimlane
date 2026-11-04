@@ -31,10 +31,6 @@ install:
     go install -ldflags "{{ldflags}}" {{pkg}}
     @{{just_executable()}} which
 
-# Tag a release after checking its date and index (against origin's tags), CHANGELOG.md and a clean tree (v0.<YYYYMMDD>.<index>); never pushes
-release v:
-    @bash ./scripts/release.sh {{v}}
-
 # Tag HEAD (clean, already on origin/main) with the next release tag, v0.<today>.<index>; push it to origin (GitHub, authoritative), then fj (Forgejo) (DRY=1: print only)
 next-tag:
     @bash ./scripts/next-tag.sh

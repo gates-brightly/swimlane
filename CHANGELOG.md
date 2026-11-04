@@ -27,25 +27,25 @@ To cut a release:
 1. `DRY=1 just next-tag` prints the next tag, `v0.<today>.<index>`.
 2. Rename `## Unreleased` to `## 0.<date>.<index> (v0.<date>.<index>, <date>)`,
    and start a new empty `## Unreleased` above it.
-3. Commit and push to origin's main, then run `just release v0.<date>.<index>`.
+3. Commit and push to origin's main, then run `just next-tag`. It tags HEAD
+   (a clean tree, already on origin's main) with the next tag, pushes it to
+   origin, then mirrors it to fj; `just mirror-tags` catches fj up on any
+   it missed. The push to origin builds the release binaries and publishes
+   the GitHub release, with this section as its notes
+   (`.github/workflows/release.yml`; `just snapshot` builds the same
+   locally into dist/).
 
 From the next release, each opens with **What changed for you**: at most
 ten lines, one per change you'd notice, before the full sections. The full
 history stays here, since `swim changelog --since` reads it.
-   It refuses to tag unless the date, the index, the changelog and a clean
-   tree all agree. Then `git push origin v0.<date>.<index>` and `just mirror-tags`.
-   The push to origin builds the release binaries and publishes the GitHub
-   release (`.github/workflows/release.yml`; `just snapshot` builds the same
-   locally into dist/).
-
-Or tag what's on main as it is: `just next-tag` tags HEAD (a clean tree,
-already pushed to origin's main) with the next tag, pushes it to origin,
-then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ## Unreleased
 
 ### Changed
 
+- **`just release` is gone.** `just next-tag` is the one way to tag a
+  release. Name this section for the tag before you run it (the steps
+  above): the GitHub release takes its notes from it.
 - **Quieter defaults.** A first run no longer warns that it's unsigned in a
   repo with no `lookup.yml` (nothing is set up for approvals there; `swim
   verify` still says it). A run of one lane prints that lane's summary
