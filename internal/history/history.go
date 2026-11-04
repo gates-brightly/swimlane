@@ -52,6 +52,8 @@ const (
 	Claim        = "claim"         // swim claim N: a session took a lane's claim (a lease while it writes the round)
 	ClaimRelease = "claim-release" // swim claim N --release
 	ClaimBroken  = "claim-broken"  // another session's live claim taken over (--force, --break; detail: from, by, via, why)
+	Usage        = "usage"         // a command swim refused as typed (detail: the command and swim's message, never the arguments)
+	LintFound    = "lint"          // lint found errors (detail: the lane, the codes with counts, and what ran it: lint, run, queue)
 	// The secret store's events (swim no longer has it; older .swim.log
 	// lines keep them).
 	SecretSet = "secret-set" // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)

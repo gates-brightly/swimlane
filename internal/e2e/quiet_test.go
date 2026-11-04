@@ -50,3 +50,43 @@ func TestQuietDefaults(t *testing.T) {
 		t.Errorf("two lanes lost the summary table:\n%s", out)
 	}
 }
+
+// What cost a turn is in .swim.log: a command swim refused as typed (the
+// command and message, not its arguments), and the lint errors lint, run
+// and queue found, by code. Nothing is written outside a repo swim is in.
+func TestUsageAndLintAreLogged(t *testing.T) {
+	r := newRepo(t, "")
+	r.shortLane(1, "# Round: two mistakes", "stage check\nrun echo hi\ngate --retries 2 \"x\" true")
+	r.swim("lint", "1")
+	r.swim("run", "1", "--plain")
+	r.swim("queue", "1")
+	r.swim("status", "--json")
+	r.swim("statsu")
+	r.swim("config", "signing_key") // not a usage error: prints the value
+	log := r.mustSwim("log")
+	for _, want := range []string{
+		"lane.1.sh: step x2 (via lint)", "lane.1.sh: step x2 (via run)", "lane.1.sh: step x2 (via queue)",
+		"status: unknown flag --json", `unknown command "statsu"`,
+	} {
+		found := false
+		for _, line := range strings.Split(log, "\n") {
+			if f := strings.Fields(line); len(f) > 3 && (f[2] == "lint" || f[2] == "usage") && strings.Contains(line, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf(".swim.log has no lint or usage line with %q:\n%s", want, log)
+		}
+	}
+	if strings.Count(log, " usage ") != 2 {
+		t.Errorf("want exactly two usage lines (swim config KEY isn't one):\n%s", log)
+	}
+	// Outside any repo swim is set up in, nothing is written.
+	out := t.TempDir()
+	c := r.cmd(bin, "statsu")
+	c.Dir = out
+	c.Run()
+	if _, err := os.Stat(filepath.Join(out, ".swim.log")); err == nil {
+		t.Error("a usage error outside a swim repo wrote .swim.log")
+	}
+}

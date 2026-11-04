@@ -56,6 +56,12 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Added
 
+- **.swim.log records what cost a turn.** A command swim refused as typed
+  (`usage`: the command and swim's message, never its arguments) and the
+  lint errors `swim lint`, `swim run` and `swim queue` found (`lint`: the
+  file, the codes with counts, and which of them found it). Only in a repo
+  swim is set up in. They're the data for ranking which mistakes to make
+  impossible next (T23).
 - **swim reads what people type first.** Where a command takes a lane, a
   lane script's path works (`swim lint lane.17.sh`, `swim status
   ./lane.3.py`), and where it takes several, so does a comma list (`swim

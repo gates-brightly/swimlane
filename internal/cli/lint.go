@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/assets"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/doctor"
 	"github.com/gates-brightly/swimlane/internal/finding"
+	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/lint"
@@ -64,6 +66,7 @@ func cmdLint(args []string) error {
 	if err != nil {
 		return err
 	}
+	logLintErrors(root, fs, "lint")
 	if asYAML {
 		if err := finding.WriteYAML(os.Stdout, lint.Schema, fs); err != nil {
 			return err
@@ -183,6 +186,7 @@ func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) (ru
 		return nil, err
 	}
 	finding.WriteText(os.Stderr, fs)
+	logLintErrors(root, fs, "run")
 	bad := map[int]bool{}
 	runWide := false
 	for _, f := range fs {
@@ -215,4 +219,37 @@ func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) (ru
 	slices.Sort(skipped)
 	fmt.Fprintf(os.Stderr, "swim run: not running swim %s (the lint errors above), running the rest; a lane that waits on one of them skips\n", joinNums(skipped))
 	return runnable, nil
+}
+
+// logLintErrors records in .swim.log, per file, the error codes lint found
+// and what ran it (lint, run, queue): "lane.3.sh: step, header-key x2
+// (via run)". Warnings aren't recorded: they refuse nothing.
+func logLintErrors(root string, fs []finding.Finding, via string) {
+	byFile := map[string]map[string]int{}
+	var files []string
+	for _, f := range fs {
+		if f.Level != finding.Error {
+			continue
+		}
+		if byFile[f.File] == nil {
+			byFile[f.File] = map[string]int{}
+			files = append(files, f.File)
+		}
+		byFile[f.File][f.Code]++
+	}
+	for _, file := range files {
+		var codes, names []string
+		for c := range byFile[file] {
+			names = append(names, c)
+		}
+		slices.Sort(names)
+		for _, c := range names {
+			if k := byFile[file][c]; k > 1 {
+				codes = append(codes, fmt.Sprintf("%s x%d", c, k))
+			} else {
+				codes = append(codes, c)
+			}
+		}
+		history.Log(root, history.Entry{Event: history.LintFound, Detail: fmt.Sprintf("%s: %s (via %s)", file, strings.Join(codes, ", "), via)})
+	}
 }

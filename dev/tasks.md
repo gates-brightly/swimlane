@@ -78,7 +78,10 @@ screen shared, without help unless they're stuck for five minutes:
 
 Record per session, in `tasks/T23-sessions.md`: time to the first PASS,
 every point they got stuck (the command and what they expected), the
-commands they ran (`.swim.log` has them), the concepts they asked about,
+commands they ran (`.swim.log` has them, and since 2026-11-04 every
+command swim refused as typed, `usage`, and every lint error by code and
+by what ran it, `lint`: count them per session with `grep -cE
+'\s(usage|lint)\s' .swim.log`), the concepts they asked about,
 which trust files they touched or asked about (`approvals/`, `lookup.yml`,
 `trust.yml`, `trust.yml.sig`, the trust pin, `.swim/chain.jsonl`,
 `chain_anchors`), whether "run" (`swim run`, the run id, the in-lane step)

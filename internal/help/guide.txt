@@ -878,6 +878,10 @@ READING RESULTS
       archive      a log was archived (detail: archive file name)
       stub         a lane was stubbed (job= is the job it replaced)
       note         swim note (detail: the text)
+      lint         lint found errors (detail: the file, the codes with
+                   counts, and what ran it: via lint, run or queue)
+      usage        a command swim refused as typed (detail: the command and
+                   swim's message; never its arguments)
   Its details are summaries; the evidence is in the lane log (swim log N).
 
   .swim/status.yml (also `swim status`, `swim status --yaml`), written as

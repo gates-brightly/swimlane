@@ -129,6 +129,7 @@ func Main(args []string) int {
 			}
 		}
 		fmt.Fprintf(os.Stderr, "swim: unknown command %q%s\nRun `swim --help` for the commands.\n", name, didYouMean(name, names))
+		logUsage("", fmt.Sprintf("unknown command %q", name))
 		return 2
 	}
 	rest := args[1:]
@@ -149,6 +150,7 @@ func Main(args []string) int {
 		fmt.Fprintln(os.Stderr, "swim "+name+": "+err.Error())
 		var ue usageError
 		if errors.As(err, &ue) {
+			logUsage(name, ue.msg)
 			// The usage lines, not the whole manual.
 			h, _ := help.For(name)
 			if u, _, ok := strings.Cut(h, "\n\n"); ok {
@@ -160,6 +162,29 @@ func Main(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// logUsage records a command swim refused as typed in .swim.log, when the
+// current directory is in a repo swim is set up in (never creating one
+// elsewhere): which mistakes cost a turn, for the record. Only the command
+// and swim's message, not the arguments, which may hold values.
+func logUsage(name, msg string) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	root := config.RepoRoot(cwd)
+	if _, err := os.Stat(history.Path(root)); err != nil {
+		return
+	}
+	if r := []rune(msg); len(r) > 200 {
+		msg = string(r[:200]) + "…"
+	}
+	detail := msg
+	if name != "" {
+		detail = name + ": " + msg
+	}
+	history.Log(root, history.Entry{Event: history.Usage, Detail: detail})
 }
 
 // looksLikeLaneRef reports whether a first argument that isn't a command
