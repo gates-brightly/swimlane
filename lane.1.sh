@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env swim
 # swim: syntax 4
 # Round:   CI: checks (fmt, build, vet, lint, shell syntax)
 # Job:     5c1a0011-11a7-4c1e-8d00-000000000011
@@ -22,16 +22,10 @@
 # `just ci` run them all; `swim run 8` runs one. Lanes 5 and 7 aren't CI's.
 # Security tests fail the build on a violation; they never only warn.
 
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
-eval "$_swim_lib"
-lane_init 1
-
 stage check
 run "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gofmt -s (just fmt):"; echo "$out"; exit 1; }'
 gate "go build" go build ./...
 run "go vet" go vet ./...
 run "swim lint (the CI rounds)" "$SWIM_BIN" lint --strict
-run "shell syntax" bash -c 'for f in scripts/next-tag.sh scripts/mirror-tags.sh scripts/tag-remotes.sh scripts/release-notes.sh e2e/lib/fakebin/*; do bash -n "$f" || exit 1; done; sh -n scripts/install.sh'
+run "shell syntax" bash -c 'for f in $(git ls-files "*.sh" e2e/lib/fakebin demos/_lib/bin); do bash -n "$f" || exit 1; done; sh -n scripts/install.sh'
 # The unit tests are lanes 8 (plain) and 9 (-race); internal/e2e is lanes 2-4.
-
-summary

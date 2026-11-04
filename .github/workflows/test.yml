@@ -39,11 +39,8 @@ jobs:
           bash --version | head -1
           go version
 
-      # swim tests itself: the CI is seven committed lanes, run by the swim
-      # built from this checkout (settings in swim.yml). Lane 1's checks
-      # (fmt, build, vet, lint) run first; then e2e (2), fault injection
-      # (3), security (4), fuzzing (6), unit tests (8) and race (9) run side
-      # by side. Same as `just ci` locally.
+      # swim tests itself: the CI is committed lanes (lane.1.sh lists
+      # them), run by the swim built from this checkout. Same as `just ci`.
       - name: Build swim from this checkout
         run: |
           go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim
