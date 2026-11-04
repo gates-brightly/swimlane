@@ -45,6 +45,8 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{`snapshot "snap" echo corpus-ok`, "| corpus-ok"},
 		{`run --expect-fail "fails" false`, "PASS  fails"},
 		{`run "diff" diff <(echo corpus-same) <(echo corpus-same)`, "PASS  diff"},
+		{`run test echo corpus-ok`, "PASS  test"},
+		{`run terraform echo corpus-ok`, "| corpus-ok"},
 		{"while read t; do\n  run \"each $t\" echo \"corpus-$t\"\ndone < <(printf 'a\\nb\\n')", "| corpus-b"},
 		{`run "spaced path" "` + spaced + `" corpus-ok`, "| corpus-ok"},
 	} {

@@ -90,6 +90,13 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **`[step]` no longer refuses a label that happens to be a command
+  name.** `run test go version`, `run curl curl --version` and `run
+  terraform echo plan` are a label and a command, and were refused. The
+  check now refuses `run echo hi` only when the word after the label can't
+  be a command (not one lint knows, not a path, not a variable, not on
+  PATH). Its `cd`/`export` message now says what happens: the step fails
+  with exit 127, or, where a `cd` program exists (macOS), changes nothing.
 - **`swim status` says when a lane won't run, for any lint error.** It
   marked only a missing syntax line; now any pending lane with lint errors
   shows `won't run: N lint errors (swim lint N)` and the first of them,

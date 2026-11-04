@@ -2,6 +2,7 @@ package lint
 
 import (
 	"fmt"
+	"os/exec"
 	"regexp"
 	"strings"
 
@@ -103,15 +104,17 @@ func checkStepCall(c *Context, s *Script) []finding.Finding {
 		}
 		cmd := w[k]
 		switch {
-		case !label.Quoted && !label.Expands && commandWords[label.Text]:
-			bad(fmt.Sprintf(`%s "<what it checks>" %s ...`, name, label.Text),
-				"%s %s ...: %q is the step's label, not its command, so it runs %q; the label comes first, quoted", name, label.Text, label.Text, cmd.Text)
+		case !label.Quoted && !label.Expands && commandWords[label.Text] && !plausibleCommand(cmd):
+			// run echo hi: the label is "echo" and hi can't be a command.
+			// (run test go version is a label and a command: it passes.)
+			bad(fmt.Sprintf(`%s "<what it checks>" %s %s ...`, name, label.Text, cmd.Text),
+				"%s %s %s ...: %q is the step's label, so it runs %q, which isn't a command here (exit 127); put a quoted label first", name, label.Text, cmd.Text, label.Text, cmd.Text)
 		case cmd.Quoted && !cmd.Expands && strings.ContainsAny(cmd.Text, " \t") && !isPath(cmd.Text):
 			bad(fmt.Sprintf(`%s %q %s, or bash -c '...' for a shell line`, name, label.Text, cmd.Text),
 				"%s %q runs the one word %q, which no command is called (exit 127): the command and its arguments are separate words", name, label.Text, cmd.Text)
 		case !cmd.Quoted && childless[cmd.Text]:
 			bad("do it in the lane itself (outside the step), or inside the step's own command: bash -c 'cd dir && ...'",
-				"%s %q runs %s in a process of its own, where it changes nothing the lane sees", name, label.Text, cmd.Text)
+				"%s %q runs %s, a shell builtin, as a program: it fails (exit 127: no such program) or, where one exists (macOS has /usr/bin/cd), changes nothing the lane sees", name, label.Text, cmd.Text)
 		}
 	}
 	return out
@@ -154,6 +157,17 @@ func checkStepPipe(c *Context, s *Script) []finding.Finding {
 		}
 	}
 	return out
+}
+
+// plausibleCommand reports whether a step's command word can be a command:
+// one lint knows, a path, a word that expands (only known when it runs),
+// or a program on PATH here.
+func plausibleCommand(w lane.Word) bool {
+	if w.Expands || commandWords[w.Text] || isPath(w.Text) || strings.Contains(w.Text, "/") {
+		return true
+	}
+	_, err := exec.LookPath(w.Text)
+	return err == nil
 }
 
 // isPath reports whether a command word is a path ("/opt/My Tools/bin/x"):
