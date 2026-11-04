@@ -12,14 +12,20 @@ ones here. Larger designs go in [`features/`](../features/README.md).
 Priorities:
 
 - **P0**: the claim the product makes isn't backed by the code yet
-- **P1**: needed before teams rely on it
-- **P2**: adoption
+- **P1**: needed before I can rely on it for real work
+- **P2**: makes my own loop faster, safer or lighter
+- **P3**: adoption by others (a bonus, not a goal)
 
 Kinds (the audit's advice: keep these apart in issues and PRs):
 
 - **bug**: a defect reproduced or confirmed in the code
 - **gap**: a missing guarantee or design decision
 - **hypothesis**: an attack scenario nobody has tested yet
+
+**The rule for every task:** a feature must save time, reduce risk or
+reduce cognitive load in your actual work. If it does none of these, it
+doesn't get built, and an existing one that doesn't (T23 measures it) gets
+cut.
 
 **Where new work goes (from 2026-11-03, for a month):** the queue, the
 dependency graph and the log the AI reads back, the loop that makes swim
@@ -32,8 +38,8 @@ should make that line sharper, not blur it.
 
 | Task | Priority | Kind |
 |---|---|---|
-| [T21](#t21-repo-landing-page-p2) repo landing page | P2 | gap |
-| [T23](#t23-outside-feedback-p1) outside feedback, then cuts | P1 | gap |
+| [T21](#t21-repo-landing-page-p3) repo landing page | P3 | gap |
+| [T23](#t23-friction-from-my-own-sessions-p1) friction from my own sessions, then cuts | P1 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
 | [T30](tasks/T30-decision-checkpoint-followups.md) decisions and checkpoints: the unbuilt parts of their specs | P2 | gap |
 | [T31](tasks/T31-watch-says-why-a-batch-waits.md) `swim watch` says why a batch waits | P2 | gap |
@@ -47,7 +53,7 @@ should make that line sharper, not blur it.
 
 ## Reducing adoption friction
 
-### T21. Repo landing page (P2)
+### T21. Repo landing page (P3)
 
 **Today:** the README has the CI badge, a quickstart and an architecture
 diagram.
@@ -57,45 +63,44 @@ diagram.
 - one terminal recording of `swim run` in the live view (`demos/` has
   scenes worth recording)
 
-### T23. Outside feedback (P1)
+### T23. Friction from my own sessions (P1)
 
-**Today:** nobody who didn't build swim has run a change with it. Every
-command, concept and page was added without one. New features are frozen
-until this is done ([features/](../features/README.md)).
+swim is built for its author's own work: an opinionated tool that makes
+one engineer faster. Others using it is a bonus, so the evidence for what
+to fix or cut comes from that engineer's sessions, not outside ones.
 
-**Do:** five engineers who didn't build swim, each in a 60-minute session,
-screen shared, without help unless they're stuck for five minutes:
+**Today:** `.swim.log` records every command swim refused as typed
+(`usage`) and every lint error by code and by what ran it (`lint`), since
+`3da314f`. Nothing reads them back across repos or weeks.
 
-1. **Cold start (15 min):** from the README only, install swim and finish
-   the quickstart. Note where they stop, what they reread, and the first
-   thing they get wrong.
-2. **A real change (35 min):** with their own AI session, a small change
-   from their backlog, one guarded step. The AI writes the lanes (`swim
-   guide`); they review, approve and run them. A teammate co-approves if one
-   is there.
-3. **Debrief (10 min):** what they'd tell a colleague swim is, in one
-   sentence; what they'd use again; what they'd cut.
+**Do:** for two weeks of real work, in every repo that uses swim, record
+in `tasks/T23-friction.md`, per week:
 
-Record per session, in `tasks/T23-sessions.md`: time to the first PASS,
-every point they got stuck (the command and what they expected), the
-commands they ran (`.swim.log` has them, and since 2026-11-04 every
-command swim refused as typed, `usage`, and every lint error by code and
-by what ran it, `lint`: count them per session with `grep -cE
-'\s(usage|lint)\s' .swim.log`), the concepts they asked about,
-which trust files they touched or asked about (`approvals/`, `lookup.yml`,
-`trust.yml`, `trust.yml.sig`, the trust pin, `.swim/chain.jsonl`,
-`chain_anchors`), whether "run" (`swim run`, the run id, the in-lane step)
-or "stage" (a script phase, the staged copy) confused them, and their one
-sentence.
+- **Trips**, from each repo's `.swim.log`:
+  ```sh
+  # lint errors by code (a line's "x2" counts once: lint runs that hit it)
+  grep -E '^\S+\s+\S+\s+lint\s' .swim.log | sed -E 's/.* (lane\.[^:]+): (.*) \(via [a-z]+\)$/\2/' \
+    | tr ',' '\n' | sed -E 's/^ +//; s/ x[0-9]+$//' | sort | uniq -c | sort -rn
+  # commands refused as typed
+  grep -E '^\S+\s+\S+\s+usage\s' .swim.log | sed -E 's/^\S+\s+\S+\s+usage\s+//' | sort | uniq -c | sort -rn
+  ```
+- **Rounds before a pass:** per job, the `fail` lines before its `pass`.
+- **Cost per accepted change:** for each change that shipped, the AI
+  session's tokens (Claude Code's `/usage` or the session's cost) and the
+  swim jobs it took.
+- **What ran at all:** every `.swim.log` event and command by count, for
+  the cut list below.
 
-**Cut candidates** to settle with the sessions. Each one stays only if a
-session needed it or someone asks for it:
+**Cut candidates**, each kept only if the two weeks used it or it caught
+something:
 
 | Candidate | Why it's on the list |
 |---|---|
 | `cache`, `cache restore\|save` | build-tool speed-ups, not ops safety |
-| `earmark` (`report --earmark`) | `swim log` and `status` cover catching up |
+| `earmark` (`report --earmark`) | bare `swim`, `swim log` and `status` cover catching up |
+| approvals from others (`lookup.yml`, `signoff`) | one engineer approves their own work |
+| `trust.yml`, chain anchors | proof for an auditor, where the operator is the only reader |
 
-**Done when:** five sessions are recorded, every cut candidate is decided
-(kept with a reason, or removed), and the README's first screen and
-quickstart are rewritten around what the sessions got stuck on.
+**Done when:** two weeks are recorded; every trip seen three times or more
+has a fix or a written reason; and every cut candidate is kept with a
+reason, or removed.

@@ -49,4 +49,4 @@ the demo runs with `DEMO_AUTO=1`.
 - A warning when a step reads a file a kept step would have made (the
   staged copy is fresh each run).
 
-Settle these with T23's sessions, if anyone needs them.
+Settle these with T23's friction log, if any session needs them.

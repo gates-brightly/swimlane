@@ -1,5 +1,10 @@
 # swim
 
+> **A feature must save time, reduce risk or reduce cognitive load in your actual work.**
+>
+> That's the bar every command in swim has to clear. What doesn't clear it
+> doesn't get built, and what stops clearing it gets cut.
+
 [![test](https://github.com/gates-brightly/swimlane/actions/workflows/test.yml/badge.svg)](https://github.com/gates-brightly/swimlane/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 

@@ -14,9 +14,9 @@ a missing file), and most of 10. What's left is below, under the original number
 
 ### 9. Too many concepts, and two of them reuse words
 
-Deferred to T23 (decided 2026-10-29): no rename until the outside
-sessions show these words confuse people. T23 now records, per session,
-which trust files they touched and whether "run" or "stage" tripped them.
+Deferred to T23 (decided 2026-10-29): no rename until real sessions
+show these words cause trips. T23 now counts trips from my own sessions'
+`.swim.log` (lint codes and refused commands).
 
 - **run** is the command (`swim run`), the run id (`r-20261028T...`), and
   the in-lane step function (`run "say hello" echo ...`,
