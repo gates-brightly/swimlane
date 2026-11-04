@@ -59,6 +59,23 @@ fi
 	contains(t, "stale", r.log(1), "SKIP  write hello.txt (dry run")
 }
 
+// A short-form lane whose last step fails ends with that failure alone:
+// the prelude's own source of the script isn't a command outside a step.
+// A command outside a step that fails is still recorded.
+func TestShortFormLastStepFails(t *testing.T) {
+	r := newRepo(t, "")
+	shortLane(t, r, 1, "# Round: fails last\nstage check\nrun \"fails\" false\n")
+	if _, code := r.swim("run", "1", "--plain", "--no-prompt"); code == 0 {
+		t.Fatal("the lane passed")
+	}
+	if strings.Contains(r.log(1), "outside a step") {
+		t.Errorf("the failed last step also warned outside a step:\n%s", r.log(1))
+	}
+	shortLane(t, r, 2, "# Round: stray\nstage check\ncd /nowhere-at-all\nrun \"ok\" true\n")
+	r.swim("run", "2", "--plain", "--no-prompt")
+	contains(t, "stray command", r.log(2), "WARN  outside a step: cd /nowhere-at-all")
+}
+
 // ./lane.N.sh runs the lane through its #! line, as swim run N does, from
 // any directory; a failed gate ends the round, as in an explicit lane.
 func TestShortFormShebang(t *testing.T) {

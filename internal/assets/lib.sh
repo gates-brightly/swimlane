@@ -90,11 +90,13 @@ lane_init() {
 # so in the log as a WARN. It changes nothing in the round. A function that
 # returns non-zero (run, gate, guard, ...) recorded its own result:
 # bash names its return, which is skipped. Commands in an if, while, && or
-# || never get here.
+# || never get here. Nor does a short-form lane's own script, which the
+# prelude sources (runner.ShortPrelude): it returns its last command's
+# status, and that command recorded itself.
 _swim_on_err() {
   _swim_err=$?
   case "$BASH_COMMAND" in
-    return|return\ *) return ;;
+    return|return\ *|'builtin source "$0"') return ;;
   esac
   if [ -z "$SWIM_LANE" ] || [ -n "$_swim_done" ]; then
     return

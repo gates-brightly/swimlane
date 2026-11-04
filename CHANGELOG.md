@@ -145,6 +145,10 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Fixed
 
+- **A short-form lane whose last step fails no longer also warns
+  `outside a step: builtin source "$0"`.** The prelude's own source of
+  the script tripped the check for stray commands; the failed step
+  already recorded itself. A stray command that fails still warns.
 - **The docs no longer say older lane scripts and logs are migrated.**
   `swimlane.md`, docs/compatibility.md and docs/usage.md said so after
   swim stopped rewriting them: a script with no syntax line is a lint
