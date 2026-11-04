@@ -19,6 +19,6 @@ eval "$_swim_lib"
 lane_init 9
 
 stage check
-run "go test -race (unit)" scripts/hermetic bash -c 'go test -race $(go list ./... | grep -v /internal/e2e)'
+run "go test -race (unit)" bash -c 'go test -race $(go list ./... | grep -v /internal/e2e)'
 
 summary

@@ -56,11 +56,10 @@ func TestMain(m *testing.M) {
 
 // hermetic strips what the suite may inherit when it runs inside a swim
 // lane (this repo's own CI runs it through swim ci), a CI runner or a
-// developer's shell: the lane's SWIM_* variables and STEP_LOG, the git shim
-// older swims put first on a lane's PATH (it refused git commit and stopped
-// the outer lane), the CI provider's variables (tests set the ones they need;
-// inherited, they would change provider detection, turn the TUI off and
-// write to the runner's real job summary), and testEnvKeys.
+// developer's shell: the lane's SWIM_* variables and STEP_LOG, the CI
+// provider's variables (tests set the ones they need; inherited, they would
+// change provider detection, turn the TUI off and write to the runner's
+// real job summary), and testEnvKeys.
 func hermetic() {
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
@@ -70,13 +69,6 @@ func hermetic() {
 			os.Unsetenv(k)
 		}
 	}
-	var path []string
-	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
-		if !strings.HasSuffix(filepath.ToSlash(p), "/.swim/bin") {
-			path = append(path, p)
-		}
-	}
-	os.Setenv("PATH", strings.Join(path, string(os.PathListSeparator)))
 }
 
 // testEnvKeys are names the tests give values of their own (env files, a

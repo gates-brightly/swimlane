@@ -25,8 +25,8 @@ stage check
 fuzztime=5s
 [ "${CI:-}" = true ] && fuzztime=20s
 fuzztime=${FUZZTIME:-$fuzztime}
-run "fuzz logparse" scripts/hermetic go test -run '^$' -parallel 2 -fuzz '^FuzzParse$' -fuzztime "$fuzztime" ./internal/logparse
-run "fuzz lane" scripts/hermetic go test -run '^$' -parallel 2 -fuzz '^FuzzParseScript$' -fuzztime "$fuzztime" ./internal/lane
-run "fuzz chain" scripts/hermetic go test -run '^$' -parallel 2 -fuzz '^FuzzDecodeLine$' -fuzztime "$fuzztime" ./internal/chain
+run "fuzz logparse" go test -run '^$' -parallel 2 -fuzz '^FuzzParse$' -fuzztime "$fuzztime" ./internal/logparse
+run "fuzz lane" go test -run '^$' -parallel 2 -fuzz '^FuzzParseScript$' -fuzztime "$fuzztime" ./internal/lane
+run "fuzz chain" go test -run '^$' -parallel 2 -fuzz '^FuzzDecodeLine$' -fuzztime "$fuzztime" ./internal/chain
 
 summary
