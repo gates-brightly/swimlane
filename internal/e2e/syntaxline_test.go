@@ -22,8 +22,8 @@ func TestMissingSyntaxLineStopsOnlyItsLane(t *testing.T) {
 	if code == 0 || !strings.Contains(out, "lane.2.sh:1  error") || !strings.Contains(out, fix) || strings.Contains(out, "migrates") {
 		t.Fatalf("lint: exit %d\n%s", code, out)
 	}
-	if out, code := r.swim("status"); code != 0 {
-		t.Fatalf("status refused over lane 2: %s", out)
+	if out, code := r.swim("status"); code != 0 || !strings.Contains(out, "won't run: no `# swim: syntax` line") {
+		t.Fatalf("status doesn't say lane 2 won't run: exit %d\n%s", code, out)
 	}
 	if out, code := r.swim("run", "1", "--plain"); code != 0 || !strings.Contains(r.log(1), "| lane-one") {
 		t.Fatalf("run 1 refused over lane 2: exit %d\n%s", code, out)

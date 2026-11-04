@@ -124,11 +124,19 @@ func checkStepPipe(c *Context, s *Script) []finding.Finding {
 		return nil
 	}
 	var out []finding.Finding
-	for i, bare := range s.v.bare {
+	for i := 0; i < len(s.v.bare); i++ {
 		if !s.v.isCode(i) || s.v.inQuote[i] {
 			continue
 		}
-		cmds := lane.Commands(s.v.code[i])
+		// A command continued onto the next lines (a trailing \) is read
+		// whole, as lint's commands are.
+		first, bare, code := i, s.v.bare[i], s.v.code[i]
+		for continued(code) && i+1 < len(s.v.code) && !s.v.doc[i+1] {
+			i++
+			bare = strings.TrimSuffix(strings.TrimRight(bare, " \t"), "\\") + " " + s.v.bare[i]
+			code = strings.TrimSuffix(strings.TrimRight(code, " \t"), "\\") + " " + s.v.code[i]
+		}
+		cmds := lane.Commands(code)
 		if len(cmds) == 0 || len(cmds[0]) == 0 || cmds[0][0].Quoted {
 			continue
 		}
@@ -141,7 +149,7 @@ func checkStepPipe(c *Context, s *Script) []finding.Finding {
 			if len(cmds[0]) > 1 {
 				label = cmds[0][1].Text
 			}
-			out = append(out, f(finding.Error, "step-pipe", i, fmt.Sprintf(`%s %q bash -c 'cmd %s ...' (in the step's own shell)`, name, label, op),
+			out = append(out, f(finding.Error, "step-pipe", first, fmt.Sprintf(`%s %q bash -c 'cmd %s ...' (in the step's own shell)`, name, label, op),
 				"%s %q ... %s: the %s applies to swim's own output, not to the step's command", name, label, op, opName(op)))
 		}
 	}

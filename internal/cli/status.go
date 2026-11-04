@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -293,6 +294,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		if c := lane.ReadClaim(root, l.Lane); c != nil && state != status.Running {
 			detail(claimText(c), ui.Cyan)
 		}
+		if state != status.Running && noSyntaxLine(root, l.Lane) {
+			detail("won't run: no `# swim: syntax` line (swim lint "+strconv.Itoa(l.Lane)+")", ui.Red)
+		}
 		if l.Reason != "" {
 			detail("reason: "+l.Reason, ui.Yellow)
 		}
@@ -474,4 +478,16 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 		return fmt.Errorf("no lane has a record of run %s", id)
 	}
 	return nil
+}
+
+// noSyntaxLine reports whether lane n's pending script is written against
+// swim's library but declares no syntax: lint refuses it, so swim run and
+// the queue do too.
+func noSyntaxLine(root string, n int) bool {
+	info, err := lane.ReadScript(root, n)
+	if err != nil || !info.Pending() || info.Syntax >= 2 {
+		return false
+	}
+	data, err := lane.ScriptBytes(root, n)
+	return err == nil && (lane.UsesLib(string(data)) || lane.ShortForm(string(data)))
 }

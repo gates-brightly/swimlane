@@ -827,13 +827,15 @@ func cmdWatch(args []string) error {
 			args[i] = "--yes"
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"once": &once, "yes": &yes, "approved": &approved, "no-tui": &noTUI},
+	var plain bool // as swim run says it: --plain is --no-tui here
+	rest, err := flags{bools: map[string]*bool{"once": &once, "yes": &yes, "approved": &approved, "no-tui": &noTUI, "plain": &plain},
 		strs: map[string]*string{"interval": &interval, "batches": &batchesFlag}}.parse(args)
 	if err != nil {
 		return err
 	}
+	noTUI = noTUI || plain
 	if len(rest) > 0 {
-		return usagef("usage: swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui]")
+		return usagef("usage: swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui|--plain]")
 	}
 	every, err := durationFlag("interval", interval, pollEvery, "2s")
 	if err != nil {

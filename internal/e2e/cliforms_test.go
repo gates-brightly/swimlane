@@ -55,6 +55,9 @@ func TestCLIFormsPeopleType(t *testing.T) {
 	if out, _ := r.swim("status", "--json"); !strings.Contains(out, "--yaml") {
 		t.Errorf("status --json doesn't point at --yaml:\n%s", out)
 	}
+	if out, code := r.swim("watch", "--plain", "--once"); code != 0 {
+		t.Errorf("watch --plain --once: exit %d\n%s", code, out)
+	}
 	if out, _ := r.swim("run", "2", "--dry-run"); !strings.Contains(out, "already a dry run") {
 		t.Errorf("run --dry-run doesn't explain:\n%s", out)
 	}

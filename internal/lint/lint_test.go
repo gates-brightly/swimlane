@@ -121,6 +121,7 @@ func TestEachCheck(t *testing.T) {
 		{name: "Timeout in words", script: replace(c, "# Timeout: 30m", "# Timeout: 10 minutes"), code: "timeout", level: finding.Error, line: 7},
 		{name: "lowercase key", script: replace(c, "# Timeout: 30m", "# timeout: 30m"), code: "header-key", level: finding.Error, line: 7, message: "(header keys are case-sensitive): did you mean # Timeout:?"},
 		{name: "synonym key", script: before(c, "# Timeout:", "# Depends: 2\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
+		{name: "pipe after a continuation", script: before(c, "stage verify\n", "run \"count\" ls \\\n  -la | wc -l\n"), code: "step-pipe", level: finding.Error},
 		{name: "Requires with lanes", script: before(c, "# Timeout:", "# Requires: 2, 3\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
 		{name: "typo key", script: before(c, "# Timeout:", "# Lock: db\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Locks:?"},
 		{name: "swapped letters", script: before(c, "# Timeout:", "# Inlcudes: lib/x.sh\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Includes:?"},
@@ -486,6 +487,7 @@ func TestValidFormsStayQuiet(t *testing.T) {
 		"Needs note":      before(c, "# Timeout:", "# Needs: prod creds\n"),
 		"path with space": before(c, "stage verify\n", `run "check" "/opt/My Tools/bin/check" --fast`+"\n"),
 		"process subst":   before(c, "stage verify\n", `run "diff" diff <(sort a) <(sort b)`+"\n"),
+		"header comment":  replace(c, "# After:", "# After: 2  # waits for the schema"),
 	} {
 		if fs := Lint(cfg4(), map[int]string{1: script, 2: clean(2), 3: clean(3), 4: clean(4)}, 1); len(fs) != 0 {
 			t.Errorf("%s: %+v", name, fs)

@@ -277,3 +277,12 @@ func TestBodyTextIsNotCode(t *testing.T) {
 		t.Errorf("code after the text: staged %v, evidence %v", info.Staged, info.EvidenceLines)
 	}
 }
+
+// A trailing # comment on a header whose value is names or a duration is
+// a comment; on a text header it's text.
+func TestHeaderComment(t *testing.T) {
+	i := ParseScript("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: fix #42\n# After: 2 3  # the schema lanes\n# Timeout: 30m # generous\n# Locks: db\t# shared\n")
+	if i.Round != "fix #42" || strings.Join(i.After, ",") != "2,3" || i.TimeoutText != "30m" || strings.Join(i.Locks, ",") != "db" || len(i.Problems) != 0 {
+		t.Fatalf("round %q after %v timeout %q locks %v problems %v", i.Round, i.After, i.TimeoutText, i.Locks, i.Problems)
+	}
+}

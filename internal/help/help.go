@@ -668,7 +668,8 @@ swim queue show|rm|requeue ID
   --interval D   how often to check the queue and for idleness (default 2s)
   --batches N    run up to N batches at once (default watch_batches, 4);
                  --batches 1 runs one at a time, on the screen.
-  --no-tui       print what the swimmer waits for instead of the jobs screen
+  --no-tui, --plain  print what the swimmer waits for instead of the jobs
+                 screen (--plain, as swim run spells it)
   On a terminal, while it waits, the watch shows every lane's job and the
   queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now
   and enter follows its output (esc comes back). q adds a job to the next
