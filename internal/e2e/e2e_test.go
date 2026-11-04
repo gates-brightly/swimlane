@@ -1188,9 +1188,15 @@ PASS  precheck
 func TestSyntax1Refused(t *testing.T) {
 	r := newRepo(t, "")
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(v1Lane), 0o755)
-	out, code := r.swim("status")
-	if code == 0 || !strings.Contains(out, "lane.1.sh is swim syntax 1") {
-		t.Errorf("a syntax 1 script: exit %d\n%s", code, out)
+	// A syntax 1 script is its own lane's problem: status still works, and
+	// lint and run refuse that lane.
+	if out, code := r.swim("status"); code != 0 {
+		t.Errorf("status with a syntax 1 script: exit %d\n%s", code, out)
+	}
+	for _, args := range [][]string{{"lint", "1"}, {"run", "1", "--plain"}} {
+		if out, code := r.swim(args...); code == 0 || !strings.Contains(out, "no `# swim: syntax` line") {
+			t.Errorf("swim %v with a syntax 1 script: exit %d\n%s", args, code, out)
+		}
 	}
 	if script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh")); string(script) != v1Lane {
 		t.Error("the script was rewritten")

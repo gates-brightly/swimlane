@@ -1,8 +1,9 @@
 // Package migrate checks a repo's lane scripts and lane logs against the
 // syntaxes this swim reads (see internal/syntax), whenever swim loads a
 // repo: a file newer than it reads stops the command with an update
-// prompt, and a syntax 1 file (from before swim versioned its files) with
-// how to replace it. Nothing is rewritten.
+// prompt, and a syntax 1 log (from before swim versioned its files) with
+// how to move it aside. A syntax 1 script is its own lane's problem (swim
+// lint). Nothing is rewritten.
 package migrate
 
 import (
@@ -57,7 +58,9 @@ func files(root string) []file {
 }
 
 // Check returns syntax.ErrTooNew for the first lane script or log written
-// in a newer syntax than this swim reads, and an error for one in syntax 1.
+// in a newer syntax than this swim reads, and an error for a log in syntax
+// 1. A syntax 1 script (one with no syntax line) stops only its own lane:
+// swim lint reports it, and swim run refuses that lane.
 func Check(root string) error {
 	for _, f := range files(root) {
 		check := syntax.CheckScript
@@ -68,12 +71,8 @@ func Check(root string) error {
 		if err := check(f.rel, v); err != nil {
 			return err
 		}
-		if v == 1 {
-			fix := "write it again from `swim new N`"
-			if f.log {
-				fix = "archive it out of the way (swim archive " + strconv.Itoa(f.lane) + ") or delete it"
-			}
-			return fmt.Errorf("%s is swim syntax 1, from before swim versioned its files, which this swim doesn't read: %s", f.rel, fix)
+		if v == 1 && f.log {
+			return fmt.Errorf("%s is swim syntax 1, from before swim versioned its files, which this swim doesn't read: archive it out of the way (swim archive %d) or delete it", f.rel, f.lane)
 		}
 	}
 	return nil

@@ -631,6 +631,12 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		defer status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) { l.Locks = nil })
 	}
 
+	// A script with no syntax line reads as syntax 1, which this swim
+	// doesn't run (swim lint says so too). Refused here, whatever started
+	// it (swim run, a queued batch), and only this lane.
+	if now, _ := lane.ReadScript(o.Root, n); now.Exists && !now.Stub && now.Syntax < 2 && swimScript(o.Root, n) {
+		return stamp(refuseBlocked(o, n, fmt.Sprintf("%s has no `# swim: syntax` line (it reads as syntax 1, which this swim doesn't run): add `# swim: syntax 4` under its first line", lane.ScriptName(o.Root, n)), disp))
+	}
 	// What a queued batch pinned must be what was staged (checked again,
 	// with the staged files, right before exec).
 	if why, refuse := pinned(o, n); why != "" {
@@ -1390,4 +1396,15 @@ func awaitOperator(o Options, disp *display.Display, req approval.Request) func(
 		disp.Set(req.Lane, func(v *display.LaneView) { v.Approval = ""; v.Pause(false, now) })
 		status.Update(o.Root, req.Lane, o.Cfg.Lanes, func(l *status.Lane) { l.Resume(now) })
 	}
+}
+
+// swimScript reports whether lane n's script is written against swim's
+// bash library (it loads it, or is the short form): a plain program has
+// no swim syntax to declare.
+func swimScript(root string, n int) bool {
+	data, err := os.ReadFile(lane.Script(root, n))
+	if err != nil {
+		return false
+	}
+	return lane.UsesLib(string(data)) || lane.ShortForm(string(data))
 }

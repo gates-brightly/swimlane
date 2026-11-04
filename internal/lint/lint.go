@@ -169,7 +169,7 @@ func Errors(root string, cfg *config.Config, lanes []int) ([]finding.Finding, er
 	})
 	var out []finding.Finding
 	for _, f := range fs {
-		if f.Level == finding.Error && f.Code != codeIgnore && f.Code != codeSyntax {
+		if f.Level == finding.Error && f.Code != codeIgnore {
 			out = append(out, f)
 		}
 	}
@@ -236,9 +236,13 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 			continue
 		}
 		var fs []finding.Finding
-		if s.Info.Syntax < syntax.Current {
-			fs = append(fs, finding.Finding{Level: finding.Warn, Code: codeSyntax,
-				Message: fmt.Sprintf("uses swim syntax %d; the next swim command migrates it to %d", s.Info.Syntax, syntax.Current)})
+		if s.Lib && s.Info.Syntax < syntax.Current {
+			// No syntax line reads as syntax 1, from before swim versioned
+			// its files: this swim doesn't run it (nothing is migrated).
+			// Only this lane is refused.
+			fs = append(fs, finding.Finding{Level: finding.Error, Line: 1, Code: codeSyntax,
+				Message: "no `# swim: syntax` line, so it reads as syntax 1, from before swim versioned its files; this swim doesn't run that (only this lane is refused)",
+				Fix:     fmt.Sprintf("add `# swim: syntax %d` under the first line", syntax.Script)})
 		}
 		for _, ch := range Checks {
 			if want(ch) && (s.Lib || !bashOnly[ch.Code]) {

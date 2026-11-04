@@ -753,11 +753,12 @@ SYNTAX
   syntax 2; it reads lane logs in syntax 1 and 2, and lane scripts in
   syntax 1 to 4. Write 4: the repo's .swim.lock pins the script syntax
   for every lane anyway, so a lower number buys nothing.
-  - Older files are migrated automatically when any swim command loads the
-    repo: rewritten in place, originals copied to .swim/migrations/<time>/,
-    the migration recorded in .swim.log. A running lane's files wait until
-    it finishes. Syntax 1 scripts get the syntax line, a Created: date, and
-    stage lines where the old template's numbered sections were.
+  - Nothing is migrated. A lane script with no syntax line reads as syntax
+    1 (from before swim versioned its files), which this swim doesn't run:
+    swim lint reports it as an error ([syntax]) and swim run refuses that
+    lane, and only that lane, until it has "# swim: syntax 4" under its
+    first line. A syntax 1 lane log stops swim until it's archived (swim
+    archive N) or deleted.
   - A file in a newer syntax stops swim with an update prompt
     (go install github.com/gates-brightly/swimlane/cmd/swim@latest).
   Syntaxes:

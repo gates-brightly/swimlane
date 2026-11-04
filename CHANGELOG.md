@@ -81,6 +81,16 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **A lane with no syntax line stops only that lane, and swim says the
+  same thing about it everywhere.** One script missing `# swim: syntax 4`
+  stopped `swim run`, `swim status` and every other command for every
+  lane. And three things disagreed: lint called it a warning that "the
+  next swim command migrates", `swim run` said it "doesn't read" the
+  file, and the guide said old files are migrated automatically. Nothing
+  is migrated. Now lint reports it as an error with the fix (add `# swim:
+  syntax 4` under the first line), `swim run` and a queued batch refuse
+  that lane alone, other lanes run, and the guide's SYNTAX section says so.
+  A syntax 1 lane *log* still stops swim until it's archived.
 - **Header typos and unreadable time limits are errors.** A header key
   that looks meant as one swim reads, but isn't, was dropped silently: `#
   Depends: 2` ordered nothing, `# Lock: db` locked nothing, `# round:` was
