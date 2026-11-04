@@ -76,6 +76,10 @@ func TestRunNotifies(t *testing.T) {
 	tr.waitScreen("the question's notification", func(string) bool {
 		return strings.Contains(tr.output(), "\x1b]777;notify;swim 1 needs you;approval of ALLOW_ONE: change one\x07")
 	})
+	// The notification can come before the view takes keys: an Enter sent
+	// then was lost, and the wait for the question ran out (T29, run 116).
+	// Wait for the line the view shows when Enter will open the question.
+	tr.waitFor("Enter to view it and answer")
 	tr.send("\r")
 	tr.waitFor("y approve")
 	tr.send("y")

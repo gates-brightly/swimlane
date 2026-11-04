@@ -76,6 +76,19 @@ another branch (`TestTUIManyLanesKeepsSelection`,
 `9d855af`, the e2e suite passed 20 times in a row with `GOMAXPROCS=2`
 (62-68s each, 8 cores, Linux). Not yet done: CI itself.
 
+**2026-11-04** (read by lane 11 from the public API, runs 112-119):
+three of the four red runs weren't swim's. macOS was cancelled in 115
+(`88562d8`), 116 (`f776ccd`) and 118 (`1f34971`): "The job was not
+acquired by Runner of type hosted even after multiple attempts", with
+GitHub's notice of macOS arm64 capacity limits. No macOS test ran in
+them. The one real failure: `TestRunNotifies`, ubuntu, run 116, hung
+180s (60s deadline x E2E_SLOW 3) at "swim 1 needs approval · Enter to
+view it and answer": the test sent Enter on the notification, before the
+view took keys, and the key was lost. It now waits for that line first
+(20/20 at GOMAXPROCS=2 with every core busy). Green on both OSes: 117
+(`eccb7b4`) and 112-114. Three in a row still to come, and a macOS
+cancelled for capacity counts as neither.
+
 ## Do
 
 - Push, then watch the next pushes: done at three green in a row.
