@@ -44,6 +44,26 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ## Unreleased
 
+### Added
+
+- **`swim wait --any BATCH|JOB ...` returns when the first of those
+  batches ends.** An agent with several batches out (an orchestrator,
+  several workers' lanes) blocks on whichever finishes first, reads it,
+  and waits on the rest again, instead of blocking on one and leaving the
+  others' results unread. `swim wait BATCH|JOB ...` without `--any` waits
+  for all of them. A ref is a batch (`#41`, its id) or a job id; the exit
+  is the result (0 passed, 3 dry run, 1 otherwise), and a batch orphaned
+  by a dead swimmer counts as ended.
+
+### Changed
+
+- **`swim queue ... --wait` waits for its own batch, not the whole repo.**
+  It used to block until nothing at all ran or was queued, so it also
+  waited out other sessions' lanes and batches. It now returns when its
+  batch ends, with its result; `swim wait` with no batches named still
+  waits for the repo to go idle. On a timeout it says the batch is
+  `queued (not yet taken by a swimmer: swim watch)`, or what else it is.
+
 ### Fixed
 
 - **A released lock no longer looks held.** A lock file under

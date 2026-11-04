@@ -593,8 +593,9 @@ swim queue show|rm|requeue ID
                             FLAG,FLAG); it must be a guard of a lane in the
                             batch, so a typo fails here, not at 3am
             -y, --yes       approve every guard in the batch
-            --wait          then block like swim wait, and exit with the
-                            batch's result (0 passed, 1 otherwise)
+            --wait          then block until this batch ends (swim wait
+                            BATCH: not the rest of the repo), and exit with
+                            its result (0 passed, 3 dry run, 1 otherwise)
             --timeout D     give up waiting after D (implies --wait): exit 1,
                             saying what is still busy; the batch stays queued
             Guards a batch doesn't approve are asked on swim watch's screen
@@ -743,14 +744,23 @@ swim cache path [PRESET] [--ci]
   cache_dir and cache_slug aren't allowed in a repo's swim.yml.
 `,
 	"wait": `swim wait [--interval D] [--timeout D]
+swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
 
-  Block until swim is idle and nothing new is about to start: no lane
-  running, no swim run waiting on lanes, and no batch queued or running
-  (an orphaned batch never runs, so it doesn't count). Prints what it is
-  waiting on whenever that changes. Use it in scripts to wait out the
-  current work and the queue behind it; swim queue N --wait does the
-  same after queueing. With batches queued and no swimmer up, it waits
-  until one starts (swim watch).
+  With no batches named, block until swim is idle and nothing new is
+  about to start: no lane running, no swim run waiting on lanes, and no
+  batch queued or running (an orphaned batch never runs, so it doesn't
+  count). Prints what it is waiting on whenever that changes. Use it in
+  scripts to wait out the current work and the queue behind it. With
+  batches queued and no swimmer up, it waits until one starts (swim
+  watch).
+  With batches named (#41, a queue id or its first characters, or a job
+  id: the newest batch that queued it), wait for those alone, whatever
+  else runs, then print how each ended and exit as they went: 0 passed,
+  3 when one dry-ran a guard and none failed, 1 otherwise. A batch
+  orphaned by a dead swimmer counts as ended (it never runs by itself).
+  --any          return when the first of them ends, with its result: an
+                 agent with several batches out reads that one, then
+                 waits on the rest again
   --interval D   how often to check (default 2s)
   --timeout D    give up after D (exit 1, saying what is still busy)
 `,

@@ -70,7 +70,9 @@ COMMANDS
                            once its lanes are free; queue add: every pending lane;
                            queue [list|show|rm|requeue]
   watch [--once]           run queued batches side by side, consuming them (this machine is the swimmer)
-  wait [--timeout D]       block until nothing runs and nothing is queued (queue N --wait too)
+  wait [--timeout D]       block until nothing runs and nothing is queued
+  wait [--any] BATCH|JOB ...  block until those batches end (--any: the first of them), exit
+                           with the result; queue N --wait waits for its own batch so
   approve N|JOB --guards A  approve this exact script (signed; others co-approve the same way)
   approve --auto USER      standing approval of every job USER queues, until it expires or is revoked
   revoke N|JOB / --auto USER   withdraw your approval

@@ -33,9 +33,11 @@ The rules that keep streams apart:
   or queue lanes that belong together as one batch (`swim queue 2 3
   4`): one run, so `After:` between them holds.
 - **Only block when there's nothing else to do.** Once every task is
-  dispatched or waiting on results, wait for one job: `swim log <job>
-  --until-done >/dev/null; swim status <job>` (it exits with the round's
-  result). Use it then, and only then.
+  dispatched or waiting on results, wait for whichever of your batches
+  ends first: `swim wait --any '#41' '#42' '#44'` (batch numbers or job
+  ids). It returns with that one's result; read it, then wait on the
+  rest again. Use it then, and only then. Never `swim queue ... --wait`
+  while you have other work: it blocks until that batch ends.
 - **Keep a few streams open at most,** about as many as the swimmer runs at
   once (`watch_batches`, default 4). More just sit in the queue.
 - **No swimmer, no progress.** If `swim queue` shows batches waiting and
@@ -99,8 +101,8 @@ swim queue 23                         # → queued #44
 #     The swimmer's screen asks the operator for it; declined, it dry-runs.
 #   task 3: dispatched #44, the operator decides USERS_ALLOW_DROP_INDEX
 
-# Every task is dispatched or waiting: now block, on one job.
-swim log 9c2e71d0 --until-done >/dev/null; swim queue
+# Every task is dispatched or waiting: now block, on the first to end.
+swim wait --any '#42' '#43' '#44'; swim queue
 #   #42 passed, #43 passed, #44 skipped.
 swim log 22 | sed -n '/^-- stage verify/,$p'   # billing's evidence (PASS only means exit 0): close it out
 swim log 21 | sed -n '/^-- stage verify/,$p'   # orders' evidence: close it out
@@ -115,8 +117,8 @@ swim log 21 | sed -n '/^-- stage verify/,$p'   # orders' evidence: close it out
   fine when few lanes ran, but it carries every running lane's output.
 - **Before editing a lane:** run `swim queue`. Is a batch of yours waiting
   on it? Then `swim queue rm <id>` first, or work on something else.
-- **Nothing left to do:** block on one job, `swim log <job> --until-done
-  >/dev/null`, then `swim queue`. Not before then.
+- **Nothing left to do:** block on the first of your batches to end,
+  `swim wait --any '#42' '#43' ...`, then `swim queue`. Not before then.
 
 ## Closing a task out
 

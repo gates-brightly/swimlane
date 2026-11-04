@@ -820,6 +820,7 @@ swim queue                                               # waiting, running, orp
 swim queue show|rm|requeue ID
 swim watch [--once] [-y] [--approved] [--no-tui]         # the swimmer
 swim wait [--timeout D]                                  # block until idle and nothing queued
+swim wait --any '#41' '#42' 9c2e71d0                     # block until the first of these batches (or jobs) ends
 ```
 
 - **A batch is fixed when you queue it:** each lane is pinned to its job and
@@ -1066,6 +1067,7 @@ they waited for.
 | `swim queue [add\|show\|rm\|requeue]`, `swim queue N ... [--approve F] [--decide NAME=N] [-y] [--wait] [--timeout D]` | Queue batches to run once their lanes are free. |
 | `swim watch [--once] [-y] [--approved] [--no-tui]` | The queue's swimmer; on a terminal, pick a job to run (`r`), or add jobs to a batch (`q`) and submit it (`s`). |
 | `swim wait [--timeout D]` | Block until nothing runs and nothing is queued. |
+| `swim wait [--any] BATCH\|JOB ...` | Block until those batches end (`--any`: the first of them), whatever else runs, and exit with the result. |
 | `swim approve [N\|JOB --guards A,B \| --auto USER]` / `swim revoke ...` | Signed approvals: this exact script, or standing for a user's queued jobs. |
 | `swim verify [--strict] [--against DEST] [--yaml]` / `swim history [--oneline]` / `swim chain repair\|checkpoint\|export` / `swim keys [trust\|pin]` | The chain of custody: prove it (in levels), read it, repair a cut-short write, checkpoint and export it, and see and pin who's who. |
 | `swim ci [N\|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE]` | Run rounds in a CI job. |

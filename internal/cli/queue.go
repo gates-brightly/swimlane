@@ -189,37 +189,113 @@ func queueAdd(args []string) error {
 	if !wait {
 		return nil
 	}
-	var done *queue.Entry
+	// Wait for this batch alone, not for the repo to go idle: other
+	// sessions' work goes on beside it. Exit with its result, like swim log
+	// --until-done.
+	return waitBatches(root, []string{e.ID}, false, pollEvery, limit)
+}
+
+// waitBatches waits until every batch refs names has ended (any: until the
+// first does), says how each ended, and exits as the ended ones went: 0
+// when they passed, ExitDryRun when one dry-ran a guard and none failed, 1
+// otherwise (with any, the first to end decides). A ref is what swim queue
+// show takes (#41, an id or its first characters) or a job id: the newest
+// batch that queued that job. A batch whose swimmer died (orphaned) has
+// ended too: it never runs on its own.
+func waitBatches(root string, refs []string, any bool, every, limit time.Duration) error {
+	s := sayer{p: ui.Painter{On: ui.ColorEnabled(os.Stdout)}, prefix: "swim wait: "}
+	start, nap := time.Now(), min(every, 100*time.Millisecond)
+	ended := map[string]bool{}
+	var order []*queue.Entry // the batches that ended, in the order they did
 	for {
-		if err := waitIdle(root, pollEvery, limit); err != nil {
-			// Timed out: the batch stays queued (or running) for a worker.
-			if cur, ferr := queue.Find(root, e.ID); ferr == nil {
-				return fmt.Errorf("%v; %s (#%d) is still %s", err, e.ID, e.Seq, cur.State)
+		var waiting []string
+		for _, ref := range refs {
+			e, err := findBatch(root, ref)
+			if err != nil {
+				return err
 			}
-			return err
+			if ended[e.ID] {
+				continue
+			}
+			switch {
+			case e.State == queue.Done && e.Result != nil, e.State == queue.Orphaned && !e.BeingClaimed():
+				ended[e.ID] = true
+				order = append(order, e)
+			case e.State == queue.Queued:
+				waiting = append(waiting, fmt.Sprintf("#%d queued (not yet taken by a swimmer: swim watch)", e.Seq))
+			default:
+				waiting = append(waiting, fmt.Sprintf("#%d %s", e.Seq, e.State))
+			}
 		}
-		// Exit with the batch's result, like swim log --until-done.
-		var err error
-		if done, err = queue.Find(root, e.ID); err != nil {
-			return fmt.Errorf("%s: %v (removed before it ran?)", e.ID, err)
+		if len(waiting) == 0 || any && len(order) > 0 {
+			return batchesEnded(order, any)
 		}
-		// Caught between a worker's claim and its writing itself in: the
-		// queue looked idle for a moment. Wait on.
-		if !done.BeingClaimed() {
-			break
+		if limit > 0 && time.Since(start) >= limit {
+			return fmt.Errorf("still waiting after %s: %s", limit, strings.Join(waiting, ", "))
 		}
-		time.Sleep(pollEvery)
+		s.say("waiting: " + strings.Join(waiting, ", "))
+		time.Sleep(nap)
+		nap = min(2*nap, every)
 	}
-	if done.State != queue.Done || done.Result == nil {
-		return fmt.Errorf("%s is %s, not done", e.ID, done.State)
+}
+
+// findBatch finds a queue entry by what swim queue show takes, or by a job
+// id it queued (the newest such batch).
+func findBatch(root, ref string) (*queue.Entry, error) {
+	e, err := queue.Find(root, ref)
+	if err == nil || len(ref) < 8 {
+		return e, err
 	}
-	fmt.Printf("%s (#%d): %s\n", e.ID, e.Seq, done.Result.Result)
-	switch done.Result.Result {
-	case status.Passed:
-	case status.Skipped:
-		return exitError{launcher.ExitDryRun}
-	default:
-		return exitError{1}
+	all, lerr := queue.List(root, true)
+	if lerr != nil {
+		return nil, lerr
+	}
+	var newest *queue.Entry
+	for _, c := range all {
+		for _, l := range c.Lanes {
+			if l.Job != "" && strings.HasPrefix(l.Job, ref) && (newest == nil || c.Seq > newest.Seq) {
+				newest = c
+			}
+		}
+	}
+	if newest == nil {
+		return nil, fmt.Errorf("no queue entry or queued job %q (swim queue --all lists them)", ref)
+	}
+	return newest, nil
+}
+
+// batchesEnded says how each batch ended and returns the exit they make.
+func batchesEnded(order []*queue.Entry, any bool) error {
+	code := 0
+	for i, e := range order {
+		result := e.State
+		if e.Result != nil {
+			result = e.Result.Result
+		}
+		lanes := make([]string, len(e.Lanes))
+		for k, l := range e.Lanes {
+			lanes[k] = strconv.Itoa(l.Lane)
+		}
+		line := fmt.Sprintf("%s (#%d): %s · swim %s", e.ID, e.Seq, result, strings.Join(lanes, ","))
+		if result == queue.Orphaned {
+			line += " (its swimmer is gone; swim queue requeue " + e.ID + " runs it again)"
+		}
+		fmt.Println(line)
+		if any && i > 0 {
+			continue
+		}
+		switch result {
+		case status.Passed:
+		case status.Skipped:
+			if code == 0 {
+				code = launcher.ExitDryRun
+			}
+		default:
+			code = 1
+		}
+	}
+	if code != 0 {
+		return exitError{code}
 	}
 	return nil
 }
@@ -482,12 +558,13 @@ func pinLane(root string, cfg *config.Config, n int) (queue.Lane, lane.Info, err
 // running, no swim run waiting on lanes, and no queued or running batch.
 func cmdWait(args []string) error {
 	var interval, timeout string
-	rest, err := flags{strs: map[string]*string{"interval": &interval, "timeout": &timeout}}.parse(args)
+	var any bool
+	rest, err := flags{bools: map[string]*bool{"any": &any}, strs: map[string]*string{"interval": &interval, "timeout": &timeout}}.parse(args)
 	if err != nil {
 		return err
 	}
-	if len(rest) > 0 {
-		return usagef("usage: swim wait [--interval D] [--timeout D]")
+	if any && len(rest) == 0 {
+		return usagef("usage: swim wait --any BATCH|JOB ... (the batches or jobs to wait on)")
 	}
 	every, err := durationFlag("interval", interval, pollEvery, "2s")
 	if err != nil {
@@ -500,6 +577,9 @@ func cmdWait(args []string) error {
 	root, _, err := repo()
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 {
+		return waitBatches(root, rest, any, every, limit)
 	}
 	return waitIdle(root, every, limit)
 }
