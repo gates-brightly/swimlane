@@ -39,6 +39,10 @@ func headerKey(line string, bare bool) (key, value string, ok bool) {
 	return k, strings.TrimSpace(v), true
 }
 
+// HeaderKey reads a "# Key: value" header comment line as the script's
+// header is read (key as written, case and all).
+func HeaderKey(line string) (key, value string, ok bool) { return headerKey(line, false) }
+
 // splitList splits a header value at spaces and commas.
 func splitList(s string) []string {
 	return strings.FieldsFunc(s, func(r rune) bool { return unicode.IsSpace(r) || r == ',' })

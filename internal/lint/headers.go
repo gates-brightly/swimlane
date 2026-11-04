@@ -1,0 +1,115 @@
+package lint
+
+import (
+	"strings"
+
+	"github.com/gates-brightly/swimlane/internal/finding"
+	"github.com/gates-brightly/swimlane/internal/lane"
+)
+
+// headerKeys are the header keys swim reads, spelled as it reads them
+// (case matters: # timeout: is not # Timeout:).
+var headerKeys = []string{"Round", "Task", "Job", "After", "Owner", "Created", "Guards", "Decisions", "Timeout", "Step-Timeout",
+	"Locks", "Includes", "Outputs", "Observe", "Cache", "Targets", "Signoff", "Workspace", "Fail", "swim"}
+
+// headerSynonyms are words agents reach for in place of a key swim reads.
+var headerSynonyms = map[string]string{"depends": "After", "depends-on": "After", "dependson": "After", "requires": "After",
+	"needs": "After", "waits": "After", "wait": "After", "lock": "Locks", "include": "Includes", "guard": "Guards",
+	"decision": "Decisions", "target": "Targets", "output": "Outputs", "step-timeouts": "Step-Timeout", "steptimeout": "Step-Timeout"}
+
+// checkHeaderKey: a key in the header block that swim doesn't read but
+// that looks meant as one it does (another case, a synonym, a typo) is
+// dropped silently at run time: # Depends: 2 orders nothing, # Lock: db
+// locks nothing. Other keys stay the round's own notes, shown as written.
+func checkHeaderKey(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for i, raw := range s.v.raw {
+		line := strings.TrimSpace(raw)
+		if i == 0 && strings.HasPrefix(line, "#!") || line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") {
+			break // the header block ends at the first line of code
+		}
+		key, _, ok := lane.HeaderKey(line)
+		if !ok || isHeaderKey(key) {
+			continue
+		}
+		if want := meantKey(key); want != "" {
+			why := "swim doesn't read it"
+			if strings.EqualFold(key, want) {
+				why = "header keys are case-sensitive"
+			}
+			out = append(out, f(finding.Error, "header-key", i, "write # "+want+":",
+				"# %s: is dropped (%s): did you mean # %s:?", key, why, want))
+		}
+	}
+	return out
+}
+
+func isHeaderKey(k string) bool {
+	for _, h := range headerKeys {
+		if k == h {
+			return true
+		}
+	}
+	return false
+}
+
+// meantKey is the key swim reads that k looks meant as, or "".
+func meantKey(k string) string {
+	lk := strings.ToLower(k)
+	if want := headerSynonyms[lk]; want != "" {
+		return want
+	}
+	best, bestD := "", 99
+	for _, h := range headerKeys {
+		if h == "swim" {
+			continue
+		}
+		d := editDistance(lk, strings.ToLower(h))
+		if d < bestD {
+			best, bestD = h, d
+		}
+	}
+	limit := 1
+	if len(lk) >= 7 {
+		limit = 2
+	}
+	if bestD <= limit {
+		return best
+	}
+	return ""
+}
+
+// editDistance is the edit distance between a and b, a swap of two
+// neighbouring letters counting as one edit (Gaurds is one from Guards).
+func editDistance(a, b string) int {
+	d := make([][]int, len(a)+1)
+	for i := range d {
+		d[i] = make([]int, len(b)+1)
+		d[i][0] = i
+	}
+	for j := range d[0] {
+		d[0][j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			d[i][j] = min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost)
+			if i > 1 && j > 1 && a[i-1] == b[j-2] && a[i-2] == b[j-1] {
+				d[i][j] = min(d[i][j], d[i-2][j-2]+1)
+			}
+		}
+	}
+	return d[len(a)][len(b)]
+}
+
+// timeoutProblem reports whether a header problem is an unreadable time
+// limit: the round would run with none, so it's an error, not a warning.
+func timeoutProblem(p string) bool {
+	return strings.HasPrefix(p, "Timeout ") || strings.HasPrefix(p, "Step-Timeout ")
+}

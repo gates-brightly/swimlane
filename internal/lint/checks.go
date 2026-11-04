@@ -1055,8 +1055,24 @@ func checkHeader(c *Context, s *Script) []finding.Finding {
 		if isCacheProblem(p) {
 			continue // checkCache
 		}
+		if timeoutProblem(p) {
+			continue // checkTimeout
+		}
 		key := strings.TrimSuffix(strings.Fields(p)[0], ":")
 		out = append(out, f(finding.Warn, "header", s.headerLine(key), "fix the value, or leave it empty for the default", "%s", p))
+	}
+	return out
+}
+
+// checkTimeout: a time limit the round can't read would mean no limit at
+// all, so it fails closed: an error, and swim run refuses the lane.
+func checkTimeout(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for _, p := range s.Info.Problems {
+		if timeoutProblem(p) {
+			key := strings.TrimSuffix(strings.Fields(p)[0], ":")
+			out = append(out, f(finding.Error, "timeout", s.headerLine(key), "a duration like 10m or 1h30m, or none", "%s", p))
+		}
 	}
 	return out
 }

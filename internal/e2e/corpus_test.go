@@ -15,9 +15,10 @@ import (
 // step form, or a new mistake seen in the wild, gets a line here.
 func TestLintAndRuntimeAgree(t *testing.T) {
 	r := newSerialRepo(t, "")
+	header := ""
 	write := func(shebang, body string) {
 		t.Helper()
-		s := shebang + "\n# swim: syntax 4\n# Round: corpus\n\nstage check\n" + body + "\n"
+		s := shebang + "\n# swim: syntax 4\n# Round: corpus\n" + header + "\nstage check\n" + body + "\n"
 		if err := os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(s), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -75,6 +76,31 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		before := r.log(1)
 		if out, code := r.swim("run", "1", "--plain"); code == 0 || r.log(1) != before && strings.Contains(r.log(1), "  PASS  ") {
 			t.Errorf("swim run ran %q, which lint refuses (exit %d):\n%s", tc.body, code, out)
+		}
+	}
+
+	// Header lines: a key meant as one swim reads, or a time limit it can't
+	// read, would be dropped at run time, so lint refuses it; one of the
+	// round's own keys stays a note.
+	for _, tc := range []struct{ header, code string }{
+		{"# Depends: 2", "header-key"},
+		{"# Lock: db", "header-key"},
+		{"# timeout: 5m", "header-key"},
+		{"# Timeout: 10 minutes", "timeout"},
+		{"# Issue: #42", ""},
+	} {
+		header = tc.header + "\n"
+		write(short, `run "x" echo corpus-ok`)
+		out, code := r.swim("lint", "1")
+		switch {
+		case tc.code == "" && code != 0:
+			t.Errorf("lint refuses the note %q:\n%s", tc.header, out)
+		case tc.code != "" && (code == 0 || !strings.Contains(out, "["+tc.code+"]")):
+			t.Errorf("lint passes %q (want [%s]):\n%s", tc.header, tc.code, out)
+		case tc.code != "":
+			if _, code := r.swim("run", "1", "--plain"); code == 0 {
+				t.Errorf("swim run ran with %q, which lint refuses", tc.header)
+			}
 		}
 	}
 }

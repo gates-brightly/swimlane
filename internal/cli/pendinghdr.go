@@ -99,6 +99,10 @@ func (v *statusView) pending(l *status.Lane) *pendingView {
 		return nil
 	}
 	h := pendingHeader{After: info.After, Timeout: info.TimeoutText, Locks: info.Locks, Includes: info.Includes, Targets: info.Target, Owner: info.Owner}
+	if t := strings.ToLower(info.TimeoutText); info.Timeout == 0 && t != "" && t != "-" && t != "none" {
+		// Not a duration: no limit would apply, and swim lint refuses it.
+		h.Timeout = fmt.Sprintf("%q unreadable, none applies (swim lint)", info.TimeoutText)
+	}
 	if info.FailHard {
 		h.Fail = "hard"
 	}

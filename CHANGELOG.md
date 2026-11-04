@@ -81,6 +81,17 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **Header typos and unreadable time limits are errors.** A header key
+  that looks meant as one swim reads, but isn't, was dropped silently: `#
+  Depends: 2` ordered nothing, `# Lock: db` locked nothing, `# round:` was
+  reported only as "no # Round: line". Lint now refuses it with a
+  did-you-mean (`[header-key]`): another case, a synonym (Depends,
+  Requires, Needs → After) or a typo of one or two letters. Other keys
+  are still the round's own notes (`# Issue:`, `# Goal:`). A `Timeout:` or
+  `Step-Timeout:` that isn't a duration (`10 minutes`) was a warning and
+  ran with no limit; it's now an error (`[timeout]`), so `swim run`
+  refuses the lane, and `swim status` says the value is unreadable
+  instead of showing it as a limit.
 - **Lint refuses the steps that wouldn't run as they read.** Each of these
   linted clean and then failed, or did something else, at run time; now
   each is a lint error, so `swim run` refuses the lane before it starts:
