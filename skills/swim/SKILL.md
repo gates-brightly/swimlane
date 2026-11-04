@@ -31,11 +31,14 @@ ls lane.* swim.yml .swim 2>/dev/null
 
 These only read or check: `swim status`, `queue` / `queue show`, `log`,
 `report` (from your own earmark), `lint`, `history`, `verify`, `env`,
-`keys`, `doctor` (without `--fix`), `changelog`, `guide`, `--help`. Add
-`--yaml` only when you'll parse the output.
+`keys`, `doctor` (without `--fix`), `changelog`, `guide`, `--help`, and
+`wait` (blocks until batches end; changes nothing). Add `--yaml` only when
+you'll parse the output.
 
-Bookkeeping on your own rounds: `swim new`, `archive`, `stub`, `note`. They
-touch only lane files and logs, and refuse a running lane.
+Bookkeeping on your own rounds: `swim new`, `archive`, `stub`, `note`, and
+`claim` (a lane, a lane for a worker with `--session`, or a shared
+resource by name). They touch only lane files, claims and logs, and refuse
+a running lane.
 
 ## Hand over
 
@@ -91,15 +94,19 @@ how it might be approved.
    contradict what the record says without asking.
 2. **Pick lanes:** idle ones or unused numbers (1–99). Never a lane that's
    running, holds a round someone may be about to run, or that the repo
-   commits (its CI). Ask when unclear. With subagents, one lane per worker
-   ([reference/workers.md](reference/workers.md)).
+   commits (its CI). Ask when unclear. With subagents, one lane per worker,
+   claimed for it before it starts (`swim claim N --session NAME`;
+   [reference/workers.md](reference/workers.md)).
 3. **Write:** `swim new N "<goal>"`, then the steps, in the short form, in
    bash unless the work needs another language. Read
    [reference/lane-rules.md](reference/lane-rules.md) first.
 4. **Check:** `swim lint N` until clean (`swim run` refuses any lint
    error), then `swim status N`: what it waits on, and its guards.
 5. **Dispatch:** hand it over (above), then go on to the next task. Never
-   poll with `swim run`. Several tasks at once:
+   poll with `swim run`, and never `swim queue ... --wait` while you have
+   other work: it blocks until that batch ends. When there's nothing else
+   to do, `swim wait --any '#41' '#42'` returns as the first of your
+   batches ends. Several tasks at once:
    [reference/streams.md](reference/streams.md).
 6. **Read results** when the batch is done (`swim queue` says so):
    `swim status N` first. **FAIL:** `swim log N`, the failed step and the
