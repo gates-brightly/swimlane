@@ -57,7 +57,7 @@ func TestNoSleepInTests(t *testing.T) {
 				data, _ := os.ReadFile(p)
 				for i, line := range strings.Split(string(data), "\n") {
 					if code, _, _ := strings.Cut(line, "#"); bashSleep.MatchString(code) {
-						t.Errorf("%s:%d: sleeps: wait for an event (e2etool await, wait_until), not a time", rel, i+1)
+						t.Errorf("%s:%d: sleeps: wait for an event (waitFor, e2etool await), not a time", rel, i+1)
 					}
 				}
 			}

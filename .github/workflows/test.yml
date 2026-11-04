@@ -23,9 +23,9 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Lane scripts and e2e/run.sh must work on macOS's /bin/bash 3.2. Runner
-      # images also ship a newer bash; put 3.2 first so every `bash` (the
-      # launcher's, the scenario runner's, #!/usr/bin/env bash) is 3.2.
+      # Lane scripts must work on macOS's /bin/bash 3.2. Runner images also
+      # ship a newer bash; put 3.2 first so every `bash` (the launcher's,
+      # #!/usr/bin/env bash) is 3.2.
       - name: Use macOS system bash 3.2
         if: runner.os == 'macOS'
         run: |
@@ -49,13 +49,10 @@ jobs:
           go build -o "$RUNNER_TEMP/swim-bin/swim" ./cmd/swim
           echo "$RUNNER_TEMP/swim-bin" >> "$GITHUB_PATH"
 
-      # A failed e2e scenario's scratch repo is kept under E2E_KEEP_FAILED
-      # (e2e/run.sh) and uploaded below; the e2e step's annotation names
-      # each failed Go test (e2etool gotest-report).
+      # The e2e step's annotation names each failed Go test (e2etool
+      # gotest-report).
       - name: swim ci (checks, then e2e, fault, security, fuzz, unit, race)
         run: swim ci --junit swim.xml
-        env:
-          E2E_KEEP_FAILED: ${{ runner.temp }}/swim-e2e-failed
 
       - name: Upload swim logs and JUnit
         if: always()

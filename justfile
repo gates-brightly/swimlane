@@ -94,9 +94,9 @@ run *args: build
 test:
     go test $(go list ./... | grep -v /internal/e2e)
 
-# Run the end-to-end tests: Go e2e suite + e2e/ scenarios; `just e2e dag99 ...` runs just those scenarios
-e2e *scenarios:
-    {{ if scenarios == "" { "go test -count=1 ./internal/e2e/..." } else { "./e2e/run.sh " + scenarios } }}
+# Run the end-to-end tests (the whole-workflow scenarios included; e2e/README.md)
+e2e:
+    go test -count=1 ./internal/e2e/...
 
 # Run tests with a coverage report
 cover:

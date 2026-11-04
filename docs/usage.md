@@ -1209,7 +1209,7 @@ swim changelog        # what's new in the version you're running (--since <old v
 
 ```sh
 just test             # unit tests (fast)
-just e2e              # the Go e2e suite and every scenario (just e2e dag99 ... for some)
+just e2e              # the Go e2e suite, the whole-workflow scenarios included
 just check            # gofmt, vet, unit and e2e tests
 just ci               # this repo's CI rounds, through swim ci
 just next-tag                         # tag HEAD with the next release tag (today's date, the day's next index on origin) and push it to origin (GitHub), then fj (Forgejo); DRY=1 prints it
@@ -1246,8 +1246,8 @@ just mirror-tags                      # push every release tag origin has that f
   - **State transitions:** with `SWIM_CHECK_STATES=1` (set by both e2e
     suites) an illegal `status.yml` transition panics; see
     [state machines](state.md).
-- **Bash 3.2:** `internal/assets/lib.sh`, `e2e/run.sh` and
-  `e2e/lib/common.sh` must stay compatible with macOS's bash 3.2.
+- **Bash 3.2:** `internal/assets/lib.sh` and the lane scripts under
+  `e2e/scenarios` must stay compatible with macOS's bash 3.2.
 - **Incompatible changes:** bump the syntax version of what changed
   (`Script`, `Current` for logs, or `State` in `internal/syntax`), add it to
   `swim lock --help` and `CHANGELOG.md` (with Upgrading notes), and follow

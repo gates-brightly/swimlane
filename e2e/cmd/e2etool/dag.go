@@ -115,55 +115,6 @@ func atoiAll(args []string) ([]int, error) {
 	return out, nil
 }
 
-func cmdDescendants(args []string) error {
-	roots, err := atoiAll(args)
-	if err != nil {
-		return err
-	}
-	after, err := graph()
-	if err != nil {
-		return err
-	}
-	kids := map[int][]int{}
-	for n, ps := range after {
-		for _, p := range ps {
-			kids[p] = append(kids[p], n)
-		}
-	}
-	seen := map[int]bool{}
-	stack := append([]int(nil), roots...)
-	for len(stack) > 0 {
-		top := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		for _, c := range kids[top] {
-			if !seen[c] {
-				seen[c] = true
-				stack = append(stack, c)
-			}
-		}
-	}
-	var out []int
-	for n := range seen {
-		out = append(out, n)
-	}
-	sort.Ints(out)
-	fmt.Println(joinInts(out, " "))
-	return nil
-}
-
-func cmdEdges([]string) error {
-	after, err := graph()
-	if err != nil {
-		return err
-	}
-	total := 0
-	for _, ps := range after {
-		total += len(ps)
-	}
-	fmt.Println(total)
-	return nil
-}
-
 // done is a parsed nodes/N.done marker: "<run> <start> <end>".
 type done struct {
 	run        string
@@ -759,32 +710,4 @@ func shareLock(a, b []string) bool {
 		}
 	}
 	return false
-}
-
-// lock-lanes: give generated lanes 10..98 locks from a pool of five, by
-// lane number (fixed, so runs are comparable): n%7 = 0 none, 1-5 one lock,
-// 6 two locks.
-func cmdLockLanes([]string) error {
-	pool := []string{"pool/a", "pool/b", "pool/c", "pool/d", "pool/e"}
-	for n := 10; n <= 98; n++ {
-		var locks string
-		switch k := n % 7; {
-		case k == 0:
-			continue
-		case k <= 5:
-			locks = pool[k-1]
-		default:
-			locks = pool[0] + ", " + pool[2]
-		}
-		p := fmt.Sprintf("lane.%d.sh", n)
-		src, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		out := strings.Replace(string(src), "\n# Job:", "\n# Locks: "+locks+"\n# Job:", 1)
-		if err := os.WriteFile(p, []byte(out), 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
 }

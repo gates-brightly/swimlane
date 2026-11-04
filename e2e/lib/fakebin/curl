@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline stand-in for curl, put first on PATH by e2e/run.sh.
+# Offline stand-in for curl, put first on PATH by internal/e2e/scenarios_test.go.
 # GET  -> copies $E2E_FIXTURES/pages/<site>.html to -o
 # -I   -> writes canned 200 response headers to -o
 out=; url=; head=0

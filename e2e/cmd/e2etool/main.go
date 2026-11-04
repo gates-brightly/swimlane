@@ -1,22 +1,16 @@
-// Command e2etool does the work inside the e2e scenarios' lane scripts:
-// the "real work" of dag99 lanes 1-9 (aggregate pages, Markdown, stats,
-// links, ...), the per-node checks every generated lane runs, the lane 99
-// audit, graph queries for scenario checks, and generating the dag99 lanes.
-// e2e/run.sh builds it next to the swim binary under test and puts it on
-// PATH, so scenarios need only bash and Go.
+// Command e2etool does the work inside the e2e scenarios' lane scripts
+// (internal/e2e/scenarios_test.go): the "real work" of dag99 lanes 1-9
+// (aggregate pages, Markdown, stats, links, ...), the per-node checks every
+// generated lane runs, and the lane 99 audit. The tests build it next to
+// the swim binary under test and put it on PATH. Lane 2 of this repo's CI
+// also uses gotest-report.
 //
 //	e2etool now                       monotonic clock seconds, 3 decimals (compare stamps only with each other)
 //	e2etool parents-check P...        gate: each parent in this run finished, on it, before NODE_START
 //	e2etool node-value P...           sha256 value from the parents -> nodes/N.val
 //	e2etool audit                     lane 99: every node, edge and value
-//	e2etool descendants N...          lanes downstream of N (from lane.*.sh # After:)
-//	e2etool edges                     number of # After: edges
-//	e2etool gen SCENARIO_DIR          write dag99 lanes 10..99 into the cwd
-//	e2etool lock-lanes                add # Locks: (from a pool of five) to lanes 10..98
-//	e2etool run-results               "<lane> <PASS|FAIL|SKIP>" from a `swim run --yaml` stream (stdin)
-//	e2etool step-output LABEL         output of the steps labelled LABEL, from `swim log N --yaml` (stdin)
+//	e2etool await PATH                until PATH exists, never a time (wait.go)
 //	e2etool gotest-report [--junit F] `go test -json` (stdin) as text, ending with each failed test and its output
-//	e2etool await|exited|fingerprint|changed   wait for an event, never a time (wait.go)
 //	e2etool aggregate|markdown|stats|stats-pages|report|links|wordfreq|reconcile|domains|headers
 //	                                  dag99 lanes 1-9's work (see each lane script)
 //
@@ -38,12 +32,6 @@ var commands = map[string]func(args []string) error{
 	"parents-check": cmdParentsCheck,
 	"node-value":    cmdNodeValue,
 	"audit":         cmdAudit,
-	"descendants":   cmdDescendants,
-	"edges":         cmdEdges,
-	"gen":           cmdGen,
-	"lock-lanes":    cmdLockLanes,
-	"run-results":   cmdRunResults,
-	"step-output":   cmdStepOutput,
 	"gotest-report": cmdGotestReport,
 	"aggregate":     cmdAggregate,
 	"markdown":      cmdMarkdown,
@@ -56,9 +44,6 @@ var commands = map[string]func(args []string) error{
 	"domains":       cmdDomains,
 	"headers":       cmdHeaders,
 	"await":         cmdAwait,
-	"exited":        cmdExited,
-	"fingerprint":   cmdFingerprint,
-	"changed":       cmdChanged,
 }
 
 // exitCode lets a command fail without printing an error line (its own

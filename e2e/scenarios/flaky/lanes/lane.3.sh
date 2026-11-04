@@ -4,7 +4,7 @@
 # After:   1
 # Owner:   e2e
 #
-# Part of the e2e scenario e2e/scenarios/flaky (run: e2e/run.sh flaky).
+# Part of the e2e scenario e2e/scenarios/flaky (internal/e2e/scenarios_test.go).
 _swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
 eval "$_swim_lib"
 lane_init 3

@@ -25,7 +25,7 @@
 #   4, 6, 7, 8 -> 9    9 -> 10..19 (generated)    8 has no parents (independent root)
 # Shared dir .scenario/dag/: nodes/N.done ("<run> <start> <end>"); <run> is $SWIM_RUN.
 #
-# Part of the e2e scenario e2e/scenarios/dag99 (run: e2e/run.sh dag99).
+# Part of the e2e scenario e2e/scenarios/dag99 (internal/e2e/scenarios_test.go).
 # Never edit this file while it may be running: `swim status` first.
 # Do not use `set -e`: failed checks keep going; only gates stop the round.
 
