@@ -75,6 +75,10 @@ lane_init() {
   # Where the round's outputs go (# Outputs:), fresh for each round.
   SWIM_OUT="$SWIM_ROOT/.swim/out/$SWIM_JOB/$SWIM_RUN"
   export SWIM_OUT SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE
+  # A marker an earlier round's stop left behind (its shell already gone,
+  # a TERM racing a Ctrl-C) would turn this round's real interrupt into a
+  # failure: only this round's stop may leave one.
+  rm -f "$STEP_LOG.stopped"
   trap '_swim_on_exit' EXIT
   trap '_swim_on_signal 130' INT
   trap '_swim_on_signal 143' TERM

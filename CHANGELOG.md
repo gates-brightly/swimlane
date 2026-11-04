@@ -129,6 +129,10 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
   ../prod-repo/lane.3.sh` would have run this repo's lane 3. A path now
   counts only when it resolves (symlinks too) to this repo's
   `<root>/lane.N.*`; any other is refused, naming the repo swim works on.
+- **A stale stop marker can't turn an interrupt into a failure.** The
+  marker a `stop` in a subshell leaves for its round is cleared as each
+  lane starts, so one left behind (its shell gone, a TERM racing a Ctrl-C)
+  can't make the next round's real interrupt (130) record exit 1.
 - **A gate that fails in a subshell ends the round (safety).** `acct=$(gate
   "account check" ...)` or `... | gate "x" ...` logged `STOP  gate
   failed`, but `stop` ended only the subshell, so the change after the

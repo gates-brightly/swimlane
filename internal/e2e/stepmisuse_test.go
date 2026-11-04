@@ -102,3 +102,19 @@ func TestGateInASubshellStopsTheRound(t *testing.T) {
 		})
 	}
 }
+
+// A stop marker an earlier round left behind doesn't turn this round's
+// interrupt into a failure: the lane clears it as it starts.
+func TestStaleStopMarkerIsCleared(t *testing.T) {
+	r := newRepo(t, "")
+	r.shortLane(1, "# Round: fine", "stage check\nrun \"x\" true")
+	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
+	marker := filepath.Join(r.root, ".swim", "logs", "agent1.log.stopped")
+	os.WriteFile(marker, nil, 0o644)
+	if out, code := r.swim("run", "1", "--plain"); code != 0 {
+		t.Fatalf("run 1: exit %d\n%s", code, out)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the stale stop marker is still there")
+	}
+}
