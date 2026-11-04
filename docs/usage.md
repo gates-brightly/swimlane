@@ -1170,8 +1170,9 @@ swim changelog        # what's new in the version you're running (--since <old v
   The version says nothing about compatibility; syntax versions do.
 - **Syntax versions:** lane scripts and logs declare their syntax
   (`# swim: syntax 4`, what `swim new` writes), and swim's state files (status, the chain, the
-  queue, approvals) have one too. Older files are migrated automatically,
-  with the originals kept under `.swim/migrations/`.
+  queue, approvals) have one too. Nothing is migrated: older lane scripts
+  run as they are, and one with no syntax line is a lint error for that
+  lane alone.
 - **`.swim.lock`:** the first run in a repo writes it, pinning the script,
   log and state syntax the repo uses. Commit it. A swim with other syntaxes
   refuses to run lanes, and says whether to update swim or run `swim lock

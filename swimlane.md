@@ -184,13 +184,13 @@ Standing approvals (`swim approve --auto USER`) must expire: 30 days by default 
 - **Readable without the planner.** A round's header states its goal, and its log shows every step.
 - **Personal settings stay out of reach.** Config lives outside the repo, so workers can't change it.
 - **Crash semantics.** A crash, a kill or a power cut never leaves a state file half-written: `status.yml`, queue entries, approvals and kept scripts are replaced atomically and synced with their directory, and each chain entry is synced as it's appended (a line cut short is refused until `swim chain repair`). On macOS the sync is `fsync`, which a drive's own cache can still lose on power loss. A lane is claimed by one process, named by pid and start time. A lane whose process died is ended as interrupted by the next `swim run` or `swim watch`, never reported passed and never rerun on its own; a half-run queued batch is orphaned, not retried.
-- **Upgrades are explicit.** `.swim.lock` pins the syntax versions a repo uses (lane scripts, logs, state), and older scripts and logs are migrated with the originals kept. Releases (`0.<date>.<index>`) that change no syntax never touch it.
+- **Upgrades are explicit.** `.swim.lock` pins the syntax versions a repo uses (lane scripts, logs, state). Nothing is migrated: a lane script with no syntax line is a lint error that keeps only that lane from running, and a pre-versioning log stops swim until it's archived. Releases (`0.<date>.<index>`) that change no syntax never touch it.
 
 ## Out of scope
 
 - **Running from the planner's side.** The operator's machine, or a swimmer they control, stays the only executor.
 - **Secret management.** Rounds use the operator's existing credentials.
-- **Writing to git.** swim never commits, pushes or pulls, including in CI.
+- **Writing to git.** swim itself never commits, pushes or pulls, including in CI. A lane may (it's the operator's shell): a push or a PR goes behind its own guard, and `blocked_commands` can forbid it.
 - **A dashboard or remote control.** swim has no server: a swimmer is seen from its own terminal (`swim watch`), the queue and status files, or CI. Approvals travel as signed files in the repo, not through a service.
 
 ## Open questions

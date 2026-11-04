@@ -122,6 +122,11 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **The docs no longer say older lane scripts and logs are migrated.**
+  `swimlane.md`, docs/compatibility.md and docs/usage.md said so after
+  swim stopped rewriting them: a script with no syntax line is a lint
+  error for that lane alone. `swimlane.md`'s "swim never commits, pushes
+  or pulls" now says it's swim itself: a lane may, behind its own guard.
 - **`[step]` no longer refuses a label that happens to be a command
   name.** `run test go version`, `run curl curl --version` and `run
   terraform echo plan` are a label and a command, and were refused. The

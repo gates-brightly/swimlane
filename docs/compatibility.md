@@ -79,9 +79,10 @@ older swim (or an older file) can't handle:
   (`swim status` and `swim log` still work, with a warning).
 - Upgrading a repo: read the notes, update the lane scripts, let running
   lanes finish, then `swim lock --upgrade` and commit `.swim.lock`.
-- Older files are migrated automatically where swim can, with the
-  originals kept under `.swim/migrations/`. Older lane scripts run as they
-  are: a syntax 2 script is never rewritten to 3.
+- Nothing is migrated. Older lane scripts run as they are (a syntax 2
+  script is never rewritten to 3). A script with no syntax line is a lint
+  error that keeps only that lane from running, and a pre-versioning lane
+  log stops swim until it's archived (`swim archive N`).
 
 A release that changes no syntax never touches the lock, however many
 releases there are in a day. See [recovery](recovery.md#a-lock-mismatch)
