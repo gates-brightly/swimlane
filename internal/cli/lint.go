@@ -28,7 +28,7 @@ func cmdLint(args []string) error {
 		return err
 	}
 	var lanes []int
-	for _, a := range rest {
+	for _, a := range laneArgs(rest) {
 		n, err := laneRef(root, cfg, a, false)
 		if err != nil {
 			return err

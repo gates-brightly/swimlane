@@ -46,6 +46,15 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Added
 
+- **swim reads what people type first.** Where a command takes a lane, a
+  lane script's path works (`swim lint lane.17.sh`, `swim status
+  ./lane.3.py`), and where it takes several, so does a comma list (`swim
+  queue 2,3`, `swim run 2,3`). `swim status` takes several lanes (`swim
+  status 17 18`). `swim report --since` takes a duration back from now
+  (`90m`, `1h`, `2d`). `--json` says swim's data output is `--yaml`, and
+  `--dry-run` explains that a guarded step is already a dry run until
+  someone approves it, and what to use instead.
+
 - **`swim wait --any BATCH|JOB ...` returns when the first of those
   batches ends.** An agent with several batches out (an orchestrator,
   several workers' lanes) blocks on whichever finishes first, reads it,

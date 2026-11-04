@@ -166,6 +166,17 @@ func Main(args []string) int {
 // should be read as a lane number or job id: a number, or a job a lane
 // holds (so a mistyped command isn't taken for a job nobody has).
 func looksLikeLaneRef(s string) bool {
+	if parts := laneArgs([]string{s}); len(parts) > 1 {
+		for _, p := range parts { // 2,3: a list of them
+			if !looksLikeLaneRef(p) {
+				return false
+			}
+		}
+		return true
+	}
+	if n, ok := laneOfPath(s); ok {
+		s = n // lane.17.sh
+	}
 	if n, err := strconv.Atoi(s); err == nil {
 		return n > 0
 	}
@@ -275,9 +286,27 @@ func (f flags) parse(args []string) ([]string, error) {
 		for k := range f.strs {
 			known = append(known, k)
 		}
+		if why := flagGuess(name, f); why != "" {
+			return nil, usagef("unknown flag --%s: %s", name, why)
+		}
 		return nil, usagef("unknown flag --%s%s", name, strings.ReplaceAll(didYouMean(name, known), "mean ", "mean --"))
 	}
 	return rest, nil
+}
+
+// flagGuess explains a flag people reach for that swim spells, or does,
+// another way ("" when it isn't one of them).
+func flagGuess(name string, f flags) string {
+	switch name {
+	case "json":
+		if _, ok := f.bools["yaml"]; ok {
+			return "swim's data output is YAML: --yaml"
+		}
+		return "swim's data output is YAML, where a command has it (--yaml)"
+	case "dry-run", "dryrun", "plan", "noop":
+		return "there's nothing to switch on: a guarded step is already a dry run until someone approves it. swim lint checks a lane without running it, and swim status N shows how swim run would decide each guard"
+	}
+	return ""
 }
 
 // repo resolves the repo root and its configuration.
@@ -339,7 +368,36 @@ func taskLanes(root string, cfg *config.Config, name string) []int {
 // disk; with lastRun it also matches the job a lane last ran. Pinning by job
 // means the command acts on exactly that job, or refuses if no lane holds it
 // any more (the script was rewritten or stubbed).
+// laneArgs is lane references as typed, made what swim reads: "2,3" is 2
+// and 3. (A lane script's path, lane.17.sh, is read by laneRef itself.)
+// Only for commands whose arguments are all lane references.
+func laneArgs(args []string) []string {
+	var out []string
+	for _, a := range args {
+		if strings.Contains(a, ",") && !strings.HasPrefix(a, "-") {
+			for _, p := range strings.Split(a, ",") {
+				if p = strings.TrimSpace(p); p != "" {
+					out = append(out, p)
+				}
+			}
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// laneOfPath is the lane number of a lane script's path (lane.17.sh,
+// ./lane.3.py, /repo/lane.4), as typed where a lane is meant.
+func laneOfPath(s string) (string, bool) {
+	if m := laneFileRE.FindStringSubmatch(filepath.Base(s)); m != nil {
+		return m[1], true
+	}
+	return s, false
+}
+
 func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, error) {
+	s, _ = laneOfPath(s)
 	if _, err := strconv.Atoi(s); err == nil {
 		return laneArg(cfg, s)
 	}
@@ -399,6 +457,7 @@ func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, erro
 // number, for commands that tell a lane number from a job id by its form;
 // anything else comes back as it was.
 func taskRef(root string, cfg *config.Config, ref string) string {
+	ref, _ = laneOfPath(ref)
 	if lane.ValidTaskName(ref) {
 		if ns := taskLanes(root, cfg, ref); len(ns) == 1 {
 			return strconv.Itoa(ns[0])
@@ -459,6 +518,7 @@ func warnVersion(root string) {
 
 // laneArg parses and range-checks a lane number.
 func laneArg(cfg *config.Config, s string) (int, error) {
+	s, _ = laneOfPath(s)
 	n, err := strconv.Atoi(s)
 	if err != nil {
 		return 0, usagef("%q is not a lane number", s)

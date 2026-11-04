@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,9 +29,6 @@ func cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(rest) > 1 {
-		return usagef("usage: swim status [N|JOB] [--yaml] [--rebuild]")
-	}
 	root, cfg, err := repo()
 	if err != nil {
 		return err
@@ -39,10 +37,14 @@ func cmdStatus(args []string) error {
 	if run != "" {
 		return printRunStatus(root, cfg, run, ui.Painter{On: ui.ColorEnabled(os.Stdout)})
 	}
-	only := 0
-	if len(rest) == 1 {
-		if only, err = laneRef(root, cfg, rest[0], true); err != nil {
+	var only []int // the lanes named (none: every lane in use)
+	for _, a := range laneArgs(rest) {
+		n, err := laneRef(root, cfg, a, true)
+		if err != nil {
 			return err
+		}
+		if !slices.Contains(only, n) {
+			only = append(only, n)
 		}
 	}
 	if rebuild {
@@ -88,8 +90,11 @@ func cmdStatus(args []string) error {
 			ResourceClaims map[string]*lane.Claim `yaml:"resource_claims,omitempty"`
 		}{Schema: "swim.status/v1", UpdatedAt: f.UpdatedAt, Root: f.Root, Branch: f.Branch, LastRun: f.LastRun}
 		lanes := f.Lanes
-		if only > 0 {
-			lanes = []status.Lane{*f.Get(only)}
+		if len(only) > 0 {
+			lanes = nil
+			for _, n := range only {
+				lanes = append(lanes, *f.Get(n))
+			}
 		}
 		sv := newStatusView(root, cfg)
 		for i := range lanes {
@@ -181,7 +186,7 @@ func stateWord(l *status.Lane, state string, now time.Time) string {
 	return word
 }
 
-func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui.Painter, now time.Time) {
+func printStatus(root string, cfg *config.Config, f *status.File, only []int, p ui.Painter, now time.Time) {
 	title := fmt.Sprintf("swim status · %s", filepath.Base(root))
 	if f.Branch != "" {
 		title += " · " + f.Branch
@@ -199,8 +204,8 @@ func printStatus(root string, cfg *config.Config, f *status.File, only int, p ui
 	sv := newStatusView(root, cfg)
 	for i := range f.Lanes {
 		l := &f.Lanes[i]
-		// The lanes in use; one named (swim status N) whatever it is.
-		if only != 0 && l.Lane != only || only == 0 && !cfg.IsActive(l.Lane) {
+		// The lanes in use; those named (swim status N M) whatever they are.
+		if len(only) > 0 && !slices.Contains(only, l.Lane) || len(only) == 0 && !cfg.IsActive(l.Lane) {
 			continue
 		}
 		state := effectiveState(l)

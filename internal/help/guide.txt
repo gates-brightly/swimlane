@@ -18,6 +18,8 @@ USAGE
                                --full prints it too
 
 COMMANDS
+  Where a command takes a lane, it takes its number, a job id, a task name or
+  the script's path (lane.17.sh); where it takes several, 2 3 and 2,3 both work.
   init                     set up this repo: config entry, .swim.lock, .gitignore block, .swim/status.yml
   config [KEY [VALUE]] [--repo]   show effective config (--path: its path); get or set
                            interrupt, approvals, signing, runners.EXT, ...
@@ -32,7 +34,7 @@ COMMANDS
   run [N|JOB ...]          run lanes (all pending if none given): parallel, dependency-ordered;
   all [--rerun] [--fresh]  run every pending round that hasn't passed yet (same as `swim run`);
                            --fresh runs checkpointed steps (run --checkpoint) again too
-  status [N|JOB] [--yaml] [--run RUN]   last state of every lane, or as of one run; each pending
+  status [N|JOB ...] [--yaml] [--run RUN]   last state of every lane, or as of one run; each pending
                            lane's header: what it waits on, its guards and how swim run decides them
   log [N|JOB] [--all] [--yaml]   print a lane's log (--all: with its archives), a job's
                            rounds, or with no argument the project log .swim.log

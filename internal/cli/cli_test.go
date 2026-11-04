@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestDidYouMean(t *testing.T) {
 	cmds := []string{"history", "changelog", "run", "verify", "status"}
@@ -40,5 +44,35 @@ func TestAmendable(t *testing.T) {
 		if amendable(p) != want {
 			t.Errorf("amendable(%q) = %v", p, !want)
 		}
+	}
+}
+
+// The forms people type where swim reads a lane, or a time: each is
+// read as what it unambiguously means.
+func TestUnambiguousForms(t *testing.T) {
+	if got := strings.Join(laneArgs([]string{"2,3", "17", "--yaml", "a,,b"}), " "); got != "2 3 17 --yaml a b" {
+		t.Errorf("laneArgs: %q", got)
+	}
+	for in, want := range map[string]string{"lane.17.sh": "17", "./lane.3.py": "3", "/repo/lane.4": "4", "17": "17", "lanes.x.sh": "lanes.x.sh", "3f2a9c1e": "3f2a9c1e"} {
+		if got, _ := laneOfPath(in); got != want {
+			t.Errorf("laneOfPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]time.Duration{"90m": 90 * time.Minute, "1h": time.Hour, "2d": 48 * time.Hour} {
+		if got, ok := sinceAgo(in); !ok || got != want {
+			t.Errorf("sinceAgo(%q) = %v %v", in, got, ok)
+		}
+	}
+	for _, bad := range []string{"0d", "-1h", "soon", "3f2a9c1e"} {
+		if _, ok := sinceAgo(bad); ok {
+			t.Errorf("sinceAgo(%q) read as a duration", bad)
+		}
+	}
+	yaml := false
+	if _, err := (flags{bools: map[string]*bool{"yaml": &yaml}}).parse([]string{"--json"}); err == nil || !strings.Contains(err.Error(), "--yaml") {
+		t.Errorf("--json: %v", err)
+	}
+	if _, err := (flags{}).parse([]string{"--dry-run"}); err == nil || !strings.Contains(err.Error(), "already a dry run") {
+		t.Errorf("--dry-run: %v", err)
 	}
 }

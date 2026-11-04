@@ -244,8 +244,9 @@ swim report --earmarks | --earmark --reset [--name NAME]
                  nothing is cut from a log.
   --name NAME    whose earmark (default $SWIM_SESSION, else "default"):
                  readers each keep their own, in .swim/earmarks/NAME.yml
-  --since T|RUN|JOB  start at a UTC time, a run's first .swim.log line or a
-                 job's first round, whatever the earmark says
+  --since T|RUN|JOB  start at a UTC time, a duration back from now (90m,
+                 1h, 2d), a run's first .swim.log line or a job's first
+                 round, whatever the earmark says
   N|JOB ...      only these lanes (their .swim.log lines, logs and status);
                  the earmark still keeps the other lanes' places, so the
                  next full report misses nothing
@@ -266,10 +267,11 @@ swim report --earmarks | --earmark --reset [--name NAME]
   An earmark that lost its place (a round pruned, a log rewritten) says so
   with a WARN line and shows the rounds since it was set.
 `,
-	"status": `swim status [N|JOB] [--yaml] [--rebuild] [--run RUN]
+	"status": `swim status [N|JOB ...] [--yaml] [--rebuild] [--run RUN]
 
-  Show the last state of every lane in use (or just one lane, by number
-  or job id), from .swim/status.yml: state, job id, pending round and job
+  Show the last state of every lane in use (or just the lanes named, by
+  number, job id or script path: swim status 17 18, swim status 2,3,
+  swim status lane.17.sh), from .swim/status.yml: state, job id, pending round and job
   (from lane.N.sh on disk), last round, counts,
   current or failed steps, and timing. Running lanes whose process is gone
   are shown as "running?" (interrupted); the next swim run, swim all, swim

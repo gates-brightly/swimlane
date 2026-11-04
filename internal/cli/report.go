@@ -168,6 +168,10 @@ func sinceTime(root string, cfg *config.Config, ref string) (string, error) {
 	if t, err := time.Parse(time.RFC3339, ref); err == nil {
 		return t.UTC().Format(time.RFC3339), nil
 	}
+	// A duration back from now: 90m, 1h, 2d.
+	if d, ok := sinceAgo(ref); ok {
+		return time.Now().Add(-d).UTC().Format(time.RFC3339), nil
+	}
 	data, _ := os.ReadFile(history.Path(root))
 	for _, l := range strings.Split(string(data), "\n") {
 		if run := historyField(l, "run"); run != "" && run == ref {
@@ -183,7 +187,20 @@ func sinceTime(root string, cfg *config.Config, ref string) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("--since %q: not a UTC time (2026-10-15T14:02:11Z), a run id or a job", ref)
+	return "", fmt.Errorf("--since %q: not a UTC time (2026-10-15T14:02:11Z), a duration back from now (1h, 2d), a run id or a job", ref)
+}
+
+// sinceAgo reads a duration back from now: Go's (90m, 1h30m) or whole
+// days (2d).
+func sinceAgo(s string) (time.Duration, bool) {
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		if n, err := strconv.Atoi(days); err == nil && n > 0 {
+			return time.Duration(n) * 24 * time.Hour, true
+		}
+		return 0, false
+	}
+	d, err := time.ParseDuration(s)
+	return d, err == nil && d > 0
 }
 
 // A stream is one lane log followed across archives: the lane's own, or
