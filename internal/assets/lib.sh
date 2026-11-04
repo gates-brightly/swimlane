@@ -253,6 +253,9 @@ reached() {
 
 # _swim_run_step MODE [options] "<label>" cmd [args...] — shared by run and
 # snapshot (MODE is "" or --snapshot). Options, before the label:
+# An option's value may follow it or an = (--timeout 5m, --timeout=5m), and
+# a -- may come after the label (run "<label>" -- cmd ...), as in other
+# languages' swim run.
 #   --timeout D        stop the step after D (30s, 5m); 0 turns off Step-Timeout:
 #   --retry N          try up to N more times on a non-zero exit
 #   --backoff D        wait D before the first retry, doubling (default 2s)
@@ -297,6 +300,13 @@ _swim_run_step() {
         fi
         _swim_o="$_swim_o $1 $2"
         shift 2 ;;
+      --timeout=*|--retry=*|--backoff=*|--retry-on=*|--key=*|--target=*)
+        # --opt=value, as swim step takes it.
+        if [ -z "${1#*=}" ]; then
+          _swim_misuse "${1%%=*} needs a value"
+        fi
+        _swim_o="$_swim_o ${1%%=*} ${1#*=}"
+        shift ;;
       --no-retry-timeout|--expect-fail|--expect-fail=*|--checkpoint|--checkpoint=*) _swim_o="$_swim_o $1"; shift ;;
       --) shift; break ;;
       --*) _swim_misuse "unknown step option $1 (options: --timeout --retry --backoff --retry-on --no-retry-timeout --soft --expect-fail --checkpoint --key --target)" ;;
@@ -311,6 +321,14 @@ _swim_run_step() {
   fi
   _swim_label=$1
   shift
+  # run "<label>" -- cmd, the form swim run takes from other languages:
+  # the -- only ends the label.
+  if [ "$1" = "--" ]; then
+    shift
+    if [ $# -eq 0 ]; then
+      _swim_misuse "step \"$_swim_label\" has a label but no command after --"
+    fi
+  fi
   # $_swim_o is unquoted on purpose: option values (durations, codes) have no spaces.
   "$SWIM_BIN" step $_swim_mode $_swim_o --label "$_swim_label" -- "$@"
   _swim_after_step $?

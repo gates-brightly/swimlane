@@ -45,3 +45,28 @@ func TestStepWrittenWrongStopsTheRound(t *testing.T) {
 		})
 	}
 }
+
+// The unambiguous spellings run as written: -- after the label (as swim
+// run takes it from other languages) and --opt=value.
+func TestStepAcceptsDashDashAndOptEquals(t *testing.T) {
+	r := newRepo(t, "")
+	r.shortLane(1, "# Round: spellings", "stage check\n"+
+		"gate \"dash dash\" -- echo gate-ran\n"+
+		"run --timeout=1m \"opt equals\" echo run-ran\n"+
+		"snapshot \"snap\" -- echo snap-ran\n"+
+		"gate --retry=1 --backoff=1s \"fails closed\" -- false\n"+
+		"run \"after the gate\" echo SHOULD-NOT-RUN")
+	out, _ := r.swim("run", "1", "--plain")
+	log := r.log(1)
+	for _, want := range []string{"PASS  dash dash", "| gate-ran", "PASS  opt equals", "| run-ran", "PASS  snapshot: snap", "| snap-ran", "FAIL  fails closed", "STOP  gate failed: fails closed"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("log lacks %q:\n%s\n%s", want, log, out)
+		}
+	}
+	if strings.Contains(log, "SHOULD-NOT-RUN") {
+		t.Errorf("a step ran after a failed gate:\n%s", log)
+	}
+	if strings.Contains(log, "$ -- ") {
+		t.Errorf("-- was run as the command:\n%s", log)
+	}
+}

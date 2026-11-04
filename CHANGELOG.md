@@ -81,6 +81,11 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **`run "<label>" -- cmd` and `--opt=value` work in bash lanes.** The
+  guide and the skill show `gate "account" -- test ...`, the form `swim
+  run` takes from other languages, but a bash lane ran `--` as the
+  command (exit 127). A `--` right after the label now just ends it, and
+  step options take `--timeout=5m` as well as `--timeout 5m`.
 - **A step written wrong stops the round (safety).** A step with a
   misspelled option (`gate --retries 2 ...`), an option with no value, or a
   label and no command returned an error before it recorded a result, so
