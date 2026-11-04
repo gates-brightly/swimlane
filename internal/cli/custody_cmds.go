@@ -642,7 +642,10 @@ func cmdHistory(args []string) error {
 	}
 	match := func(l chain.Link) bool { return true }
 	if len(rest) == 1 {
-		ref := taskRef(root, cfg, rest[0])
+		ref, err := taskRef(root, cfg, rest[0])
+		if err != nil {
+			return err
+		}
 		if n, err := strconv.Atoi(ref); err == nil {
 			if _, err := laneArg(cfg, ref); err != nil {
 				return err

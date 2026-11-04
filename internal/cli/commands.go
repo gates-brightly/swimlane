@@ -449,7 +449,10 @@ func runLanes(rest []string, rf runFlags) error {
 	var lanes []int
 	pins := map[int]string{}
 	for _, a := range rest {
-		ref := taskRef(root, cfg, a) // a task is its lane, not a job pin
+		ref, err := taskRef(root, cfg, a) // a task is its lane, not a job pin
+		if err != nil {
+			return err
+		}
 		n, err := laneRef(root, cfg, ref, false)
 		if err != nil {
 			return err

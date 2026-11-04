@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -15,6 +17,30 @@ func TestCLIFormsPeopleType(t *testing.T) {
 	}
 	if out, code := r.swim("lint", "lane.17.sh"); code != 0 || !strings.Contains(out, "no problems found") {
 		t.Errorf("lint lane.17.sh: exit %d\n%s", code, out)
+	}
+	// Another repo's lane, or any file elsewhere, is never this repo's lane
+	// of the same number.
+	other := t.TempDir()
+	os.WriteFile(filepath.Join(other, "lane.17.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: someone else's\n"), 0o755)
+	for _, args := range [][]string{
+		{"lint", filepath.Join(other, "lane.17.sh")},
+		{"status", "/etc/lane.17.sh"},
+		{"run", filepath.Join(other, "lane.17.sh"), "--plain"},
+		{"queue", filepath.Join(other, "lane.17.sh")},
+		{"log", filepath.Join(other, "lane.17.sh")},
+	} {
+		if out, code := r.swim(args...); code == 0 || !strings.Contains(out, "isn't one of this repo's lanes") {
+			t.Errorf("swim %v: exit %d\n%s", args, code, out)
+		}
+	}
+	if strings.Contains(r.log(17), "  PASS  ") {
+		t.Errorf("this repo's lane 17 ran for another repo's path:\n%s", r.log(17))
+	}
+	// A symlink to this repo's root is this repo.
+	link := filepath.Join(t.TempDir(), "here")
+	os.Symlink(r.root, link)
+	if out, code := r.swim("lint", filepath.Join(link, "lane.17.sh")); code != 0 {
+		t.Errorf("lint through a symlink to the repo: exit %d\n%s", code, out)
 	}
 	out, code := r.swim("status", "2", "17")
 	if code != 0 || !strings.Contains(out, "swim 2 ") || !strings.Contains(out, "swim 17") || strings.Contains(out, "swim 3 ") {

@@ -66,7 +66,10 @@ func cmdLog(args []string) error {
 		return out.file(history.Path(root), false)
 	}
 
-	ref := taskRef(root, cfg, rest[0])
+	ref, err := taskRef(root, cfg, rest[0])
+	if err != nil {
+		return err
+	}
 	if _, err := strconv.Atoi(ref); err == nil || follow {
 		n, err := laneRef(root, cfg, ref, true)
 		if err != nil {

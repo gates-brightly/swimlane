@@ -90,6 +90,12 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **A path to another repo's lane is refused, never read as this repo's
+  (safety).** A lane script's path was read by its file name alone, so
+  `swim lint ../other/lane.22.sh` linted this repo's lane 22, and `swim run
+  ../prod-repo/lane.3.sh` would have run this repo's lane 3. A path now
+  counts only when it resolves (symlinks too) to this repo's
+  `<root>/lane.N.*`; any other is refused, naming the repo swim works on.
 - **A gate that fails in a subshell ends the round (safety).** `acct=$(gate
   "account check" ...)` or `... | gate "x" ...` logged `STOP  gate
   failed`, but `stop` ended only the subshell, so the change after the

@@ -174,8 +174,8 @@ func looksLikeLaneRef(s string) bool {
 		}
 		return true
 	}
-	if n, ok := laneOfPath(s); ok {
-		s = n // lane.17.sh
+	if _, ok := laneOfPathName(s); ok {
+		return true // a lane script's path: swim run resolves it (or refuses another repo's)
 	}
 	if n, err := strconv.Atoi(s); err == nil {
 		return n > 0
@@ -387,17 +387,53 @@ func laneArgs(args []string) []string {
 	return out
 }
 
-// laneOfPath is the lane number of a lane script's path (lane.17.sh,
-// ./lane.3.py, /repo/lane.4), as typed where a lane is meant.
-func laneOfPath(s string) (string, bool) {
+// lanePath reads s as a lane script's path when it looks like one (its
+// file name is lane.N or lane.N.ext): its lane number, if it is this
+// repo's lane N (root/lane.N.*, symlinks resolved), or an error saying
+// whose it is. Only the file name would turn ../prod-repo/lane.3.sh into
+// this repo's lane 3. ok is false for anything else (a number, a job id).
+func lanePath(root, s string) (n string, ok bool, err error) {
+	m := laneFileRE.FindStringSubmatch(filepath.Base(s))
+	if m == nil {
+		return s, false, nil
+	}
+	abs, err := filepath.Abs(s)
+	if err != nil {
+		return s, true, err
+	}
+	if root == "" || !sameDir(filepath.Dir(abs), root) {
+		return s, true, usagef("%s isn't one of this repo's lanes: swim works on %s/lane.N.* here (cd to the repo it belongs to, or name the lane by its number)", s, root)
+	}
+	return m[1], true, nil
+}
+
+// laneOfPathName is the lane number in a lane script's file name, without
+// asking whose repo it's in (lanePath does).
+func laneOfPathName(s string) (string, bool) {
 	if m := laneFileRE.FindStringSubmatch(filepath.Base(s)); m != nil {
 		return m[1], true
 	}
 	return s, false
 }
 
+// sameDir reports whether a and b are one directory, symlinks resolved.
+func sameDir(a, b string) bool {
+	canon := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		return filepath.Clean(p)
+	}
+	return canon(a) == canon(b)
+}
+
 func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, error) {
-	s, _ = laneOfPath(s)
+	if n, ok, err := lanePath(root, s); ok {
+		if err != nil {
+			return 0, err
+		}
+		s = n
+	}
 	if _, err := strconv.Atoi(s); err == nil {
 		return laneArg(cfg, s)
 	}
@@ -453,17 +489,20 @@ func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, erro
 	return 0, fmt.Errorf("job %s is ambiguous: matches lanes %v; use more characters", s, hits)
 }
 
-// taskRef is ref with a task name (# Task:) replaced by its lane's
-// number, for commands that tell a lane number from a job id by its form;
-// anything else comes back as it was.
-func taskRef(root string, cfg *config.Config, ref string) string {
-	ref, _ = laneOfPath(ref)
+// taskRef is ref with a task name (# Task:) or a lane script's path
+// replaced by its lane's number, for commands that tell a lane number
+// from a job id by its form; anything else comes back as it was. A path
+// to another repo's lane is an error.
+func taskRef(root string, cfg *config.Config, ref string) (string, error) {
+	if n, ok, err := lanePath(root, ref); ok {
+		return n, err
+	}
 	if lane.ValidTaskName(ref) {
 		if ns := taskLanes(root, cfg, ref); len(ns) == 1 {
-			return strconv.Itoa(ns[0])
+			return strconv.Itoa(ns[0]), nil
 		}
 	}
-	return ref
+	return ref, nil
 }
 
 // taskHint lists the repo's tasks for an error: " (tasks: a, b)", or "".
@@ -518,7 +557,12 @@ func warnVersion(root string) {
 
 // laneArg parses and range-checks a lane number.
 func laneArg(cfg *config.Config, s string) (int, error) {
-	s, _ = laneOfPath(s)
+	if n, ok, err := lanePath(cfg.Root, s); ok {
+		if err != nil {
+			return 0, err
+		}
+		s = n
+	}
 	n, err := strconv.Atoi(s)
 	if err != nil {
 		return 0, usagef("%q is not a lane number", s)
