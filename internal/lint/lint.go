@@ -242,7 +242,7 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 			// its files: this swim doesn't run it (nothing is migrated).
 			// Only this lane is refused.
 			fs = append(fs, finding.Finding{Level: finding.Error, Line: 1, Code: codeSyntax,
-				Message: "no `# swim: syntax` line, so it reads as syntax 1, from before swim versioned its files; this swim doesn't run that (only this lane is refused)",
+				Message: "no `# swim: syntax` line, so it reads as syntax 1, from before swim versioned its files, which this swim doesn't run",
 				Fix:     fmt.Sprintf("add `# swim: syntax %d` under the first line", syntax.Script)})
 		}
 		for _, ch := range Checks {

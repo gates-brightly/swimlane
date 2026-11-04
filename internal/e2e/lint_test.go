@@ -107,13 +107,18 @@ func TestRunLintPreflight(t *testing.T) {
 	r.script(2, "errexit", "set -o errexit\nrun \"never\" true")
 	writeLane(t, r, 3, "#!/usr/bin/env bash\n# swim: syntax 2\n# Round: wrong lane\n_swim_lib=$(\"${SWIM_BIN:-swim}\" lib) || exit 1; eval \"$_swim_lib\"\nlane_init 4\nrun \"never\" true\nsummary\n")
 
-	out, code := r.swim("run")
-	if code != 2 {
-		t.Fatalf("run exit %d, want 2:\n%s", code, out)
+	// A bare run skips the lanes lint refuses and runs the rest, exiting 1.
+	out, code := r.swim("run", "--plain")
+	if code != 1 {
+		t.Fatalf("run exit %d, want 1:\n%s", code, out)
 	}
-	contains(t, "pre-flight", out, "lane.2.sh:6", "[set-e]", "lane.3.sh:5", "[lane-init]", "refusing to start")
-	if r.log(1) != "" || r.log(2) != "" {
-		t.Errorf("a lane ran despite the pre-flight:\n%s", out)
+	contains(t, "pre-flight", out, "lane.2.sh:6", "[set-e]", "lane.3.sh:5", "[lane-init]", "not running swim 2, 3")
+	if !strings.Contains(r.log(1), "PASS  ok") || r.log(2) != "" {
+		t.Errorf("lane 1 should run, lane 2 not:\n%s\n%s", out, r.log(1))
+	}
+	// Named, they refuse the run.
+	if out, code := r.swim("run", "2", "3"); code != 2 || !strings.Contains(out, "refusing to start") {
+		t.Fatalf("run 2 3: exit %d\n%s", code, out)
 	}
 
 	// Only the lanes being run are checked; warnings never refuse.

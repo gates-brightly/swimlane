@@ -148,10 +148,14 @@ func cmdDoctor(args []string) error {
 	return nil
 }
 
-// lintPreflight is swim run's pre-flight: it refuses to start (exit 2) when
-// a lane about to run fails any error-level lint check. Blocked commands,
-// After: and cycles are left to the launcher, which already refuses them.
-func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) error {
+// lintPreflight is swim run's pre-flight: a lane about to run that fails
+// any error-level lint check doesn't run. Blocked commands, After: and
+// cycles are left to the launcher, which already refuses them. With lanes
+// named, any such lane refuses the run (exit 2): the operator asked for
+// exactly those. With none named (swim all, a bare swim run), it returns
+// the lanes that may run, the others skipped, saying so; none left
+// refuses it.
+func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) (runnable []int, err error) {
 	var lanes []int
 	st, _ := status.Load(root)
 	for n := 1; n <= cfg.Lanes; n++ {
@@ -168,13 +172,35 @@ func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) err
 		lanes = append(lanes, n)
 	}
 	if len(lanes) == 0 {
-		return nil
+		return nil, nil
 	}
 	fs, err := lint.Errors(root, cfg, lanes)
 	if err != nil || len(fs) == 0 {
-		return err
+		return nil, err
 	}
 	finding.WriteText(os.Stderr, fs)
-	fmt.Fprintln(os.Stderr, "swim run: refusing to start: fix the errors above (swim lint shows every check), or add `# swim:lint-ignore <code> <reason>`")
-	return exitError{2}
+	bad := map[int]bool{}
+	for _, f := range fs {
+		for _, n := range lanes {
+			if f.File == lane.ScriptName(root, n) {
+				bad[n] = true
+			}
+		}
+	}
+	for _, n := range lanes {
+		if !bad[n] {
+			runnable = append(runnable, n)
+		}
+	}
+	if len(named) > 0 || len(runnable) == 0 || len(bad) == 0 {
+		fmt.Fprintln(os.Stderr, "swim run: refusing to start: fix the errors above (swim lint shows every check), or add `# swim:lint-ignore <code> <reason>`")
+		return nil, exitError{2}
+	}
+	var skipped []int
+	for n := range bad {
+		skipped = append(skipped, n)
+	}
+	slices.Sort(skipped)
+	fmt.Fprintf(os.Stderr, "swim run: not running swim %s (the lint errors above), running the rest; a lane that waits on one of them skips\n", joinNums(skipped))
+	return runnable, nil
 }

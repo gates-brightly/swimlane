@@ -757,9 +757,10 @@ SYNTAX
   for every lane anyway, so a lower number buys nothing.
   - Nothing is migrated. A lane script with no syntax line reads as syntax
     1 (from before swim versioned its files), which this swim doesn't run:
-    swim lint reports it as an error ([syntax]) and swim run refuses that
-    lane, and only that lane, until it has "# swim: syntax 4" under its
-    first line. A syntax 1 lane log stops swim until it's archived (swim
+    swim lint reports it as an error ([syntax]) until it has "# swim:
+    syntax 4" under its first line. Like any lane with a lint error, it
+    isn't queued, and swim all (or a bare swim run) skips it and runs the
+    rest, exiting non-zero; named (swim run 2 3), it refuses the run. A syntax 1 lane log stops swim until it's archived (swim
     archive N) or deleted.
   - A file in a newer syntax stops swim with an update prompt
     (go install github.com/gates-brightly/swimlane/cmd/swim@latest).

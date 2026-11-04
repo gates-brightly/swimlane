@@ -468,8 +468,13 @@ func runLanes(rest []string, rf runFlags) error {
 		return err
 	}
 	// Pre-flight: lint's error-level checks the launcher doesn't enforce (lint.go).
-	if err := lintPreflight(root, cfg, lanes, rerun); err != nil {
+	runnable, err := lintPreflight(root, cfg, lanes, rerun)
+	if err != nil {
 		return err
+	}
+	lintSkipped := len(lanes) == 0 && runnable != nil
+	if lintSkipped {
+		lanes = runnable // every pending lane but those lint refused
 	}
 	// The first lane of a kind swim has no runner for: ask now, before the
 	// live view takes the terminal (runners.go).
@@ -507,6 +512,11 @@ func runLanes(rest []string, rf runFlags) error {
 	checkpointAfterRun(root, cfg)
 	if code != 0 {
 		return exitError{code}
+	}
+	if lintSkipped {
+		// The rest passed, but not everything pending ran: not a success.
+		fmt.Fprintln(os.Stderr, "swim run: lanes with lint errors didn't run (swim lint)")
+		return exitError{1}
 	}
 	return nil
 }
