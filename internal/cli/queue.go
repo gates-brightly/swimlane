@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -436,6 +437,12 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	}
 	if err := queue.Add(root, e); err != nil {
 		return b, err
+	}
+	if w := refusedDeps(root, cfg, lanes); w != "" {
+		if b.warn != "" {
+			b.warn += "; "
+		}
+		b.warn += w
 	}
 	if warnWorkers != "" {
 		if b.warn != "" {
@@ -1347,6 +1354,46 @@ func (e lintRefused) Error() string {
 		more = fmt.Sprintf(" (and %d more)", len(e.fs)-1)
 	}
 	return fmt.Sprintf("not queued: %s:%d %s [%s]%s; swim run would refuse it: fix it (swim lint), then queue again", f.File, f.Line, f.Message, f.Code, more)
+}
+
+func init() { launcher.LintRefusal = lintRefusal }
+
+// lintRefusal is the first lint error swim run would refuse lane n for, as
+// "lane.N.sh:L message [code]" ("" when there's none).
+func lintRefusal(root string, n int) string {
+	cfg, err := config.Load(root)
+	if err != nil {
+		return ""
+	}
+	fs, err := lint.Errors(root, cfg, []int{n})
+	if err != nil || len(fs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d %s [%s]", fs[0].File, fs[0].Line, fs[0].Message, fs[0].Code)
+}
+
+// refusedDeps warns about the lanes a batch waits on, outside it, that
+// swim lint refuses: they can't pass, so the lanes waiting on them would
+// skip. It names each one's first lint error.
+func refusedDeps(root string, cfg *config.Config, lanes []int) string {
+	deps, err := launcher.ResolveDeps(root, cfg, lanes)
+	if err != nil {
+		return ""
+	}
+	var warns []string
+	seen := map[int]bool{}
+	for _, n := range lanes {
+		for _, d := range deps[n] {
+			if slices.Contains(lanes, d.Lane) || seen[d.Lane] {
+				continue
+			}
+			seen[d.Lane] = true
+			if why := lintRefusal(root, d.Lane); why != "" {
+				warns = append(warns, fmt.Sprintf("swim %d waits on swim %d, which swim lint refuses (%s): it can't pass, so swim %d will skip; fix swim %d first", n, d.Lane, why, n, d.Lane))
+			}
+		}
+	}
+	return strings.Join(warns, "; ")
 }
 
 // queueLint runs swim run's lint pre-flight on lanes about to be queued.

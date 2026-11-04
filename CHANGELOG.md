@@ -90,6 +90,11 @@ then mirrors it to fj. `just mirror-tags` catches fj up on any it missed.
 
 ### Fixed
 
+- **Queueing a lane that waits on a lint-refused lane warns.** `swim queue
+  2` with `# After: 1`, where swim 1 has lint errors, queued a batch that
+  couldn't pass, and its skip hint said to `swim run 1`, which would be
+  refused too. The queue now warns, naming swim 1's first lint error, and
+  the skip hint says to fix that lane (`swim lint 1`), then run both.
 - **Smaller gaps from review.** A pipe after a step continued onto the
   next line (`run "x" ls \` then `| wc -l`) is caught by `[step-pipe]`. A
   trailing comment on a header whose value is names or a duration (`#

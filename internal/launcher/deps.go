@@ -181,6 +181,12 @@ func selectedCycle(deps map[int][]Dep) string {
 	return ""
 }
 
+// LintRefusal, when set, says why swim lint refuses lane n's round ("" if
+// it doesn't). The cli sets it (lint imports this package, so it can't be
+// called from here): a dependency lint refuses can't be run to unblock the
+// lanes waiting on it, and the hint should say to fix it instead.
+var LintRefusal func(root string, n int) string
+
 // outsideBlocker checks a dependency that is not part of this run. It
 // returns "" when satisfied, or why the waiting lane must be skipped:
 //   - pinned to a job: that job must be the dependency lane's last run, passed;
@@ -203,6 +209,11 @@ func outsideBlocker(root string, d Dep) string {
 	info, _ := lane.ReadScript(root, d.Lane)
 	if !info.Pending() || AlreadyPassed(info, &last) {
 		return ""
+	}
+	if LintRefusal != nil {
+		if why := LintRefusal(root, d.Lane); why != "" {
+			return fmt.Sprintf("swim %d's pending round has not passed, and swim lint refuses it (%s): fix it (swim lint %d), then run both", d.Lane, why, d.Lane)
+		}
 	}
 	return fmt.Sprintf("swim %d's pending round has not passed; run it too: swim run %d ...", d.Lane, d.Lane)
 }

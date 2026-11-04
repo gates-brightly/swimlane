@@ -82,3 +82,23 @@ func TestRunAllSkipsALaneLintRefuses(t *testing.T) {
 		t.Errorf("run 1 2: exit %d\n%s", code, out)
 	}
 }
+
+// Queueing a lane that waits on a lane lint refuses warns, naming that
+// lane's lint error; when the batch skips, the hint says to fix that lane,
+// not to run it (swim run would refuse it too).
+func TestQueueWarnsOfARefusedDependency(t *testing.T) {
+	r := newRepo(t, "")
+	r.shortLane(1, "# Round: setup", "stage check\nrun echo hi")
+	r.shortLane(2, "# Round: after setup\n# After: 1", "stage check\nrun \"x\" echo lane-two")
+	out, code := r.swim("queue", "2")
+	if code != 0 || !strings.Contains(out, "swim 2 waits on swim 1, which swim lint refuses") || !strings.Contains(out, "[step]") {
+		t.Fatalf("queue 2: exit %d\n%s", code, out)
+	}
+	r.swim("watch", "--once")
+	if strings.Contains(r.log(2), "| lane-two") {
+		t.Fatalf("lane 2 ran past a lane that can't pass:\n%s", r.log(2))
+	}
+	if st := must(r.swim("status", "2")); !strings.Contains(st, "swim lint refuses it") || strings.Contains(st, "run it too") {
+		t.Errorf("the skip hint should say to fix swim 1:\n%s", st)
+	}
+}
