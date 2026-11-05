@@ -96,7 +96,6 @@ something:
 | Candidate | Why it's on the list |
 |---|---|
 | `cache`, `cache restore\|save` | build-tool speed-ups, not ops safety |
-| `earmark` (`report --earmark`) | bare `swim`, `swim log` and `status` cover catching up |
 | approvals from others (`lookup.yml`, `signoff`) | one engineer approves their own work |
 | `trust.yml`, chain anchors | proof for an auditor, where the operator is the only reader |
 

@@ -232,8 +232,7 @@ runner key that asks for each use, not without asking you.*
 - **`swim verify` checks the delegation:** each run-key
   signature, and the runner key's signature over the delegation, and that
   the delegation names the key that signed; a delegation copied onto
-  another key breaks. `swim history` names an entry by the runner key that
-  vouched for it. Both signatures check with plain `ssh-keygen -Y
+  another key breaks. Both signatures check with plain `ssh-keygen -Y
   verify`.
 
 What's left is the runner key itself. A lane runs as you, so it can use
@@ -350,7 +349,7 @@ Test files are under `internal/`. "Pending" names the task in
 | The approval socket declines oversized, malformed and slow requests, made-up tokens and lanes that hang up. | `TestBrokerHostileClients` (e2e/authority_test.go), `TestHostileRequests`, `TestDisconnectCancels` (approval) |
 | A planted secret (a variable `secret_env_auto` names, a multi-line one, a `secret_env` variable), printed raw, base64- or URL-encoded, split across writes, in labels, guard descriptions, notes and errors, is in no file swim writes, no output it prints and no process's command line; a file no known writer accounts for fails the test. | `TestNoSecretLeaks` (e2e/leak_test.go) |
 | Changing, removing or reordering a chain entry is detected. | `TestChainLinksAndDetectsTampering` (chain) |
-| An edited log or chain entry fails `swim verify`. | `TestHistoryAndVerify` (e2e/custody_test.go) |
+| An edited log or chain entry fails `swim verify`. | `TestChainAndVerify` (e2e/custody_test.go) |
 | Every approval is recorded with its method and signed by the runner; the scripts that ran are kept; `signing: required` refuses without a key; `--strict` fails on unsigned entries. | `TestChainRecordsEveryApproval` (e2e/custody_test.go) |
 | Under `swim run`, every entry is signed by a run key the runner key vouched for once; a lane has no runner key file to read, its own try at the agent is put to the operator (who says no), and on Linux it can't read the launcher's memory; `swim verify` trusts the run. When the runner key won't vouch for a run key, `signing: required` stops the run before a lane starts and `auto` records it unsigned, asking once. | `TestRunKeyKeepsSigningFromLanes` (e2e/runkey_test.go) |
 | The launcher signs only a lane's own round or check entry, once per lane process, under its own lane, job, run and manifest; any other kind is refused, and so is a token used from outside its lane. | `TestLaneEntry` (launcher), `TestRecordFromTheLane` (approval) |

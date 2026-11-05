@@ -49,8 +49,8 @@ func TestCLIFormsPeopleType(t *testing.T) {
 	if out, code := r.swim("queue", "2,3"); code != 0 || !strings.Contains(out, "2 lanes") {
 		t.Errorf("queue 2,3: exit %d\n%s", code, out)
 	}
-	if out, code := r.swim("report", "--since", "1h"); code != 0 || !strings.Contains(out, "(--since 1h)") {
-		t.Errorf("report --since 1h: exit %d\n%s", code, out)
+	if out, code := r.swim("log", "--since", "1h"); code != 0 || !strings.Contains(out, "  queue  ") {
+		t.Errorf("log --since 1h: exit %d\n%s", code, out)
 	}
 	if out, _ := r.swim("status", "--json"); !strings.Contains(out, "--yaml") {
 		t.Errorf("status --json doesn't point at --yaml:\n%s", out)

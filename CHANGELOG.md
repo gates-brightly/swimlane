@@ -42,6 +42,18 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Removed
 
+- **One read view per job: `swim report`, earmarks and `swim history` are
+  gone.** Bare `swim` is what needs you and what's running, `swim status`
+  is every lane's state and why, and `swim log` is the detail. What
+  `swim report` did is now `swim log --since 1h` (or a UTC time, a run id
+  or a job): the project log's lines from then on, each round with its
+  result, failed steps and job for `swim log JOB`. `swim report` and its
+  flags (`--earmark`, `--earmarks`, `--reset`, `--name`, `--no-logs`,
+  `--results`, `--wait`), `.swim/earmarks/` (delete it if you like) and
+  the `swim.report/v1` and `swim.history/v1` schemas are removed. The
+  chain of custody is unchanged: `swim verify` checks it, and it is
+  `.swim/chain.jsonl` to read.
+
 - **`drift`, `stop`, `msg`, `input` and `output` are gone from lane
   scripts, with `# Observe:` and `# Outputs:`.** A lane calls `stage`,
   `run`, `snapshot`, `gate` and `guard` (and `confirm`); `swim drift`,

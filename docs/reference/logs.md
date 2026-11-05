@@ -5,7 +5,7 @@ swim log N            # a lane's latest round (--all: archives too; --follow: fo
 swim wait N           # block until lane N's round ends; exit with its result
 swim log <job|run>    # a job's rounds / one run
 swim log              # .swim.log, the project log
-swim report --earmark # everything since you last looked, then mark your place (--wait)
+swim log --since 1h   # what happened since: a duration, a UTC time, a run or a job
 swim status [N]       # every lane's state
 ```
 
@@ -80,8 +80,7 @@ document carries `schema:`; fields are only added within a version.
 | `swim run\|all --yaml` | `swim.run/v1`, one document per event as it happens: `run`, `waiting`, `locked`, `queued`, `start`, `output` (with `--yaml-output`), `step`, `finish`, `stop_requested`, `stopping`, `force_quit`, `kill`, then `summary` (result, exit, each lane's result). Same exit code. |
 | `swim log N --yaml` | `swim.log/v1`: the round as data: results with label, stage, exit, command, output; the running step as `RUNNING`. |
 | `swim status --yaml` | `swim.status/v1`: status.yml, plus each pending lane's `pending_header` (after, guards and how each would be decided, timeout, locks, includes) and `deps`. |
-| `swim report --yaml` | `swim.report/v1`. |
-| others | `swim.history/v1`, `swim.queue-list/v1`, `swim.verify/v1`, ...: [compatibility](compatibility.md#stability-tiers). |
+| others | `swim.queue-list/v1`, `swim.verify/v1`, ...: [compatibility](compatibility.md#stability-tiers). |
 
 Exit codes: `0` means everything selected passed; `3` means work waits on
 an approval; `swim wait` exits with the result it waited for.

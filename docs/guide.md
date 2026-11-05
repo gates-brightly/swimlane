@@ -166,16 +166,15 @@ come free: how a session hands work to the machine that runs it.
 ## 8. The record
 
 ```sh
-swim report
-swim log | tail -5
+swim log --since 1h
 swim verify --allow-unsigned
 sed 's/shipped/SHIPPED/' .swim/logs/agent4.log > edited.log    # someone edits the record
 mv edited.log .swim/logs/agent4.log
 swim verify --allow-unsigned || echo "the edit was caught"
 ```
 
-`swim report` is everything since you last looked; `swim log` alone is the
-project log. Every round and approval is hash-linked into a chain, so
+`swim log` alone is the project log, one line per action; `--since 1h`
+(or a run id or job) is what happened since then. Every round and approval is hash-linked into a chain, so
 `swim verify` catches an edit, a removal or a reorder. With a signing key
 (`swim config signing_key`), drop `--allow-unsigned`. ([chain](reference/chain.md))
 

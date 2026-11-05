@@ -224,7 +224,7 @@ func updateFile(root string, n int, check bool, fn func(*File) error) error {
 		enforce(checkTransitions(before, f))
 	}
 	// Nothing changed: leave the file (and its updated_at) as it is, so a
-	// command that only looks (swim report, swim status) writes nothing.
+	// command that only looks (swim status, bare swim) writes nothing.
 	if data, err := render(f); err == nil && bytes.Equal(data, old) {
 		return nil
 	}

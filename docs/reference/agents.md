@@ -15,7 +15,7 @@ says otherwise:
 - **The operator:** their own machine, often macOS (bash 3.2, BSD tools),
   with their access. Lanes run there; a command that works in your sandbox
   hasn't run on theirs.
-- **Only the repo is shared.** `swim status`, `queue`, `log` and `report`
+- **Only the repo is shared.** `swim status`, `queue` and `log`
   show the operator's runs; `swim env`, `doctor` and `config` describe your
   machine, not theirs.
 - **Need a fact from their side?** Queue a lane of snapshot steps rather
@@ -26,7 +26,7 @@ says otherwise:
 ## What you run
 
 - **Freely** (they only read or check): `swim` alone, `status`, `queue`,
-  `queue show`, `log`, `report` (from your own earmark), `lint`, `history`,
+  `queue show`, `log`, `lint`,
   `verify`, `env`, `keys`, `doctor` (no `--fix`), `changelog`, `guide`,
   `--help`, `wait`. Add `--yaml` only to parse.
 - **Your own bookkeeping:** `swim new`, `archive`, `note`.
@@ -45,11 +45,9 @@ says otherwise:
 ## The loop
 
 1. **Catch up, cheapest first:** `swim`, `swim status`, `swim queue`,
-   `swim log | tail -20`. Then `swim report --earmark --name NAME` (one name
-   per session, or `SWIM_SESSION`): what's new since your place, then it
-   moves it. Never report from an earmark you haven't set (the first report
-   is everything); set one silently with `>/dev/null`. Don't redo or
-   contradict what the record says without asking.
+   `swim log --since RUN` (the last run you read, or a time: `1h`): what
+   happened since, one line per action; `swim log JOB` for a round's
+   detail. Don't redo or contradict what the record says without asking.
 2. **Pick lanes:** idle, or unused numbers (1..99). Never one that's
    running, pending someone's run, queued, or committed (the repo's CI).
 3. **Write:** `swim new N "<goal>"`, then the steps in the short form, bash
@@ -129,7 +127,7 @@ A worker:
 - Lints, then reports: lane, job id, each guard and what it approves,
   anything the planner must apply. Never runs the lane.
 
-Two independent sessions in one repo: separate earmark names, read each
+Two independent sessions in one repo: read each
 other's `swim note`s first, leave your own ("session-b: lanes 20-24 for
 billing"), and ask the user when unsure whose a lane is.
 
@@ -156,7 +154,7 @@ work; `swim log --follow` only shows it). Rules:
 ## Campaigns
 
 Rounds that build on each other: read the history first (`swim log N
---all`, `swim log <job>`, `swim history N`, `swim log`), archive with names
+--all`, `swim log <job>`, `swim log`), archive with names
 that can be found (`--as orders-r3-apply-failed`), keep a thread of `swim
 note`s with a fixed prefix, put expensive setup in its own lane that later
 rounds depend on by job (`# After: <job>`), and

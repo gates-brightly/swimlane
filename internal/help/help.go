@@ -256,53 +256,6 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   the summary all work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
-	"report": `swim report [N|JOB ...] [--earmark] [--name NAME] [--since T|RUN|JOB] [--no-logs] [--results] [--yaml]
-swim report --earmark --wait [--timeout D] [--interval D]
-swim report --earmarks | --earmark --reset [--name NAME]
-
-  What changed since you last looked, in one call: the lanes whose state
-  or job changed (as swim status words them, with what they were, then
-  one unchanged: line), held locks and the queue, every .swim.log line
-  written since, and the lane logs written since: the rest of the round
-  that was in progress, then each round after it. Failures come in full:
-  a step that didn't pass (FAIL, BLOCKED), stops, guard
-  marks, warnings and each round's header and summary keep every line. A
-  passing step is its result line, its notes (saved:, messages) and the
-  last line it printed ("        … 3 lines of output (swim log N); the
-  last: No changes."), or its output as is when that's one line. Repeated
-  output is folded as swim log folds it; swim log N has every passing
-  step's command and output. Steps running now follow, from their spools.
-  It changes nothing.
-  --earmark      then move your earmark to the end of what it printed: the
-                 next report starts there. Lines written while it printed
-                 are in the next one; a running step stays new until it
-                 ends. An earmark is a place in the record, never an edit:
-                 nothing is cut from a log.
-  --name NAME    whose earmark (default $SWIM_SESSION, else "default"):
-                 readers each keep their own, in .swim/earmarks/NAME.yml
-  --since T|RUN|JOB  start at a UTC time, a duration back from now (90m,
-                 1h, 2d), a run's first .swim.log line or a job's first
-                 round, whatever the earmark says
-  N|JOB ...      only these lanes (their .swim.log lines, logs and status);
-                 the earmark still keeps the other lanes' places, so the
-                 next full report misses nothing
-  --no-logs      status and .swim.log only
-  --results      lane logs' result lines only: each step's command and
-                 output are dropped, counted, with where to read them
-  --yaml         swim.report/v1: earmark, status {changed, unchanged, queue},
-                 history (lines), lanes: [{lane, rounds:
-                 [{continues_from, round: swim.log/v1, its results since}]}]
-  --wait         block until there's something new, then report (with
-                 --earmark: the agent loop in one command); --timeout D
-                 gives up, failing as swim wait does
-  --earmarks     list every reader's earmark (name, time, age)
-  --reset        (with --earmark) delete your earmark: the next report is
-                 the work in progress again
-  With no earmark yet the report is the work in progress: every lane's
-  current (not archived) rounds, and .swim.log from the oldest of them.
-  An earmark that lost its place (a round pruned, a log rewritten) says so
-  with a WARN line and shows the rounds since it was set.
-`,
 	"status": `swim status [N|JOB ...] [--yaml] [--rebuild] [--run RUN]
 
   Show the last state of every lane in use (or just the lanes named, by
@@ -407,10 +360,15 @@ swim archive --done ["<note>"]
   --lane N|JOB   tie the note to a lane (and its job id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [--follow]
+	"log": `swim log [N|JOB|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
+swim log --since <1h|TIME|RUN|JOB>
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
+    swim log --since X  what happened since X: the project log's lines from a
+                        duration back from now (90m, 1h, 2d), a UTC time
+                        (2026-10-15T14:02:11Z), or a run's or job's first line
+                        on. Each round's detail is then swim log JOB
     swim log N          lane N's current log, .swim/logs/agentN.log (every round since its
                         last archive; the newest round is at the end)
     swim log N --all    all of lane N's logs: archives (.swim/logs/agentN.prev-*.log),
@@ -675,8 +633,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   warning, which --strict counts), naming who acknowledged it: you, not
   whoever recorded the entries. Changed content (a signature, log, script
   or staged copy that doesn't match) is never amended, and a gap that
-  appears after the amendment is BROKEN again. swim history shows the
-  amend entry.
+  appears after the amendment is BROKEN again.
   --yaml               the result as data (schema swim.verify/v1):
                        consistent ("yes" or "no"), ok (what the exit code
                        says), broken, unsigned, amended, warnings, notes.
@@ -702,22 +659,6 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   (signing_key, or ~/.ssh/id_ed25519) made it, and that its commit (if
   this repo has it) still has the tree it names; exits 1 if any fails.
 `,
-	"history": `swim history [RUN|N|JOB] [--oneline] [-n N | -N] [--reverse] [--no-pager] [--yaml]
-
-  The chain of custody, read like git log: newest first, each entry as
-  "entry <hash> (#seq, run, lane, result)", its signer and date, then what
-  happened: each approval (guard, who, and how: prompt, preapproved,
-  flag, queue, auto; the action and script) and
-  each round (result, exit, job, script and log hashes, approvals used).
-  --oneline      one line per entry: its short hash and what happened
-  -n N, -N       only the newest N entries (--max-count N)
-  --reverse      oldest first (after -n, as git log)
-  --no-pager     on a terminal the output goes through $SWIM_PAGER or
-                 $PAGER (default less, with LESS=FRX as git); this skips it
-  --yaml         the entries as data, oldest first unless --reverse is
-                 given (schema swim.history/v1)
-  swim verify checks the chain.
-`,
 	"chain": `swim chain repair
 
   Look after the chain of custody file itself (.swim/chain.jsonl).
@@ -729,8 +670,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                after its last complete entry, and appends a signed repair
                entry recording how many bytes were removed and their
                SHA-256. Complete entries are never touched; with nothing to
-               repair it changes nothing. swim history shows the repair
-               entry, and swim verify notes it.
+               repair it changes nothing. swim verify notes the repair
+               entry.
 `,
 	"keys": `swim keys
 
@@ -979,10 +920,10 @@ func For(name string) (string, bool) {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report",
+var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log",
 	"gate", "snapshot", "guard", "stage",
 	"archive", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
-	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
+	"verify", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
 // line each, and where the rest is.
@@ -1020,12 +961,12 @@ GUARDS
   queue N --approve A          approve ahead, for one batch pinned to this exact script
 
 LOGS
-  status [N]                   what each lane is doing and waits on
-  log [N]                      a lane's log, step by step
-  report                       what changed since you last looked
+  status [N]                   every lane's state, and why
+  log [N|JOB|RUN]              a lane's log, step by step
+  log --since 1h               what happened since a time, run or job
 
 EVERYTHING ELSE (swim <command> --help, or swim guide commands)
-  verify, history, keys, chain   the record of approvals and rounds
+  verify, keys, chain          the record of approvals and rounds
   doctor, config, env          the environment lanes get
   archive, note                tidy up and record
   interrupt, wait              control running lanes

@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -36,9 +35,9 @@ run "after" true`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop table old_orders")
 }
 
-// The chain records each approval and round: swim history reads it like
-// git log, and swim verify catches an edited log or chain entry.
-func TestHistoryAndVerify(t *testing.T) {
+// The chain records each approval and round, signed, and swim verify
+// catches an edited log or chain entry.
+func TestChainAndVerify(t *testing.T) {
 	r := newRepo(t)
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
@@ -47,23 +46,26 @@ func TestHistoryAndVerify(t *testing.T) {
 	r.mustSwimEnv([]string{"FIN_ALLOW_DROP=1"}, "run", "1")
 	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (FIN_ALLOW_DROP=1", "PASS  drop")
 
-	hist := r.mustSwim("history", "1")
-	contains(t, "history", hist, "approve FIN_ALLOW_DROP for swim 1 by ", "via flag",
-		"round swim 1 passed (exit 0)", "Signer: SHA256:", "(zach)", "Date:   ", "    Action:    drop table old_orders")
-	if !strings.HasPrefix(hist, "entry ") || strings.Index(hist, "round swim 1 passed") > strings.Index(hist, "approve FIN_ALLOW_DROP") {
-		t.Errorf("history should start with the newest entry, like git log:\n%s", hist)
+	// The newest entries: the approval, its round, the run's attestation,
+	// each signed by the runner.
+	links, err := chain.Read(r.root)
+	if err != nil || len(links) < 3 {
+		t.Fatalf("chain: %v %+v", err, links)
 	}
-	// --oneline, -n and --reverse, as in git log.
-	// The newest: the run's attestation, its round, the approval.
-	one := strings.Split(strings.TrimSpace(r.mustSwim("history", "--oneline", "-n", "3")), "\n")
-	if len(one) != 3 || !regexp.MustCompile(`^[0-9a-f]{12} run r-\S+ attested: swim 1, 1 approval$`).MatchString(one[0]) ||
-		!regexp.MustCompile(`^[0-9a-f]{12} round swim 1 passed \(exit 0\)$`).MatchString(one[1]) ||
-		!strings.Contains(one[2], " approve FIN_ALLOW_DROP for swim 1") {
-		t.Errorf("history --oneline -n 3: %q", one)
+	last := links[len(links)-3:]
+	if a := last[0]; a.Type != "approve" || a.Guard != "FIN_ALLOW_DROP" || a.Lane != 1 || a.Method != "flag" || a.Action != "drop table old_orders" {
+		t.Errorf("approve entry: %+v", a)
 	}
-	rev := strings.Split(strings.TrimSpace(r.mustSwim("history", "--oneline", "-3", "--reverse")), "\n")
-	if len(rev) != 3 || rev[0] != one[2] || rev[2] != one[0] {
-		t.Errorf("history --oneline -3 --reverse: %q, want %q reversed", rev, one)
+	if rd := last[1]; rd.Type != "round" || rd.Lane != 1 || rd.Result != "passed" || rd.Exit == nil || *rd.Exit != 0 {
+		t.Errorf("round entry: %+v", rd)
+	}
+	if run := last[2]; run.Type != "run" || len(run.Approvals) != 1 || run.Approvals[0] != last[0].Hash {
+		t.Errorf("run entry: %+v", run)
+	}
+	for _, l := range last {
+		if !strings.HasSuffix(l.SignedBy(), " zach") {
+			t.Errorf("entry #%d signed by %q, not the runner", l.Seq, l.SignedBy())
+		}
 	}
 	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 
@@ -196,7 +198,9 @@ func TestVerifyForceAmendsGaps(t *testing.T) {
 	if strings.Contains(out, "BROKEN") {
 		t.Errorf("an amended gap is still BROKEN:\n%s", out)
 	}
-	contains(t, "history", r.mustSwim("history", "--oneline", "-n", "1"), "amend:", "acknowledged by SHA256:")
+	if links, _ := chain.Read(r.root); len(links) == 0 || links[len(links)-1].Type != "amend" {
+		t.Errorf("verify --force recorded no amend entry")
+	}
 
 	// Nothing left: --force records nothing.
 	contains(t, "again", r.mustSwim("verify", "--force"), "no gaps or deleted items to amend")

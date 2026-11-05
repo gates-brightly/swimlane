@@ -160,7 +160,7 @@ func EndBlock(state string, r *Round, exit int, dur, ts string) string {
 // lane swim refused to start (its lock, its manifest), or one that exited
 // before lane_init's round header. It says why in a STOP line, with the
 // last lines the lane printed (masked by the caller) as its output, so swim
-// log and swim report show it like any failed round.
+// log shows it like any failed round.
 func NotStartedRound(ts, job, title, run, why string, printed []string, exit int) string {
 	if job == "" {
 		job = "-"

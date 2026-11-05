@@ -92,9 +92,3 @@ func Between(s, prefix, suffix string) (string, bool) {
 	}
 	return s[len(prefix) : len(s)-len(suffix)], true
 }
-
-// Name reports whether s is a name people and files are known by: a letter
-// or digit, then letters, digits, '.', '_' and '-', at most max long.
-func Name(s string, max int) bool {
-	return len(s) <= max && Word(s, Alnum, Or(Alnum, In("._-")))
-}

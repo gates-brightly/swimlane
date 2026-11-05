@@ -3,6 +3,8 @@ package e2e
 import (
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/chain"
 )
 
 // payload is a lane's attempt to rewrite what the operator reads: erase
@@ -23,8 +25,8 @@ func noControls(t *testing.T, what, s string) {
 }
 
 // A lane's guard description, step label and command line reach the
-// terminal, the log, status.yml and swim history only made safe;
-// the chain keeps the text as given.
+// terminal, the log and status.yml only made safe; the chain keeps the
+// text as given.
 func TestUntrustedTextIsSafe(t *testing.T) {
 	r := newRepo(t)
 	r.env = append(r.env, "ALLOW_X=1")
@@ -51,8 +53,15 @@ run "waits $P" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>
 	log := r.log(1)
 	contains(t, "log", log, "APPROVED  "+payloadSafe+" (ALLOW_X=1)", "PASS  "+payloadSafe, "PASS  waits "+payloadSafe)
 	noControls(t, "log", log)
-	h := r.mustSwim("history")
-	contains(t, "history", h, "Action:    "+payloadSafe)
-	noControls(t, "history", h)
-	contains(t, "history --yaml (the chain keeps the text as given)", r.mustSwim("history", "--yaml"), `\e[2K\rlist\b`)
+	links, err := chain.Read(r.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := false
+	for _, l := range links {
+		kept = kept || l.Type == "approve" && strings.Contains(l.Action, "drop prod\x1b[2K\rlist\b files \u202eevil")
+	}
+	if !kept {
+		t.Errorf("the chain's approve entry doesn't keep the guard's text as given: %+v", links)
+	}
 }

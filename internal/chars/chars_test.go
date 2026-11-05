@@ -1,9 +1,6 @@
 package chars
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestChars(t *testing.T) {
 	for s, want := range map[string]bool{"ALLOW_X": true, "_x1": true, "1x": false, "": false, "a-b": false} {
@@ -24,7 +21,7 @@ func TestChars(t *testing.T) {
 	}
 }
 
-func TestBetweenAndName(t *testing.T) {
+func TestBetween(t *testing.T) {
 	for _, c := range []struct {
 		s, pre, suf, want string
 		ok                bool
@@ -36,11 +33,6 @@ func TestBetweenAndName(t *testing.T) {
 	} {
 		if got, ok := Between(c.s, c.pre, c.suf); got != c.want || ok != c.ok {
 			t.Errorf("Between(%q) = %q %v", c.s, got, ok)
-		}
-	}
-	for s, ok := range map[string]bool{"zach": true, "a.b-c_d": true, ".x": false, "": false, "a b": false, strings.Repeat("a", 65): false, strings.Repeat("a", 64): true} {
-		if Name(s, 64) != ok {
-			t.Errorf("Name(%q) != %v", s, ok)
 		}
 	}
 }

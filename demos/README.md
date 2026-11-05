@@ -41,7 +41,7 @@ afterwards". Bring in **2** for teams with big migrations.
 - Scene 4: a script that sets its own approval flag gets a dry run. The
   flag counts only when it comes from the environment of whoever started
   `swim run`.
-- `swim log`, `swim status` and `swim history` are what the AI reads back
+- `swim log` and `swim status` are what the AI reads back
   next. Nobody pastes terminal output into a chat.
 
 ### 2. Parallel DAG

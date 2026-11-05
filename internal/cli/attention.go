@@ -42,7 +42,7 @@ type attentionItem struct{ who, what, next string }
 // (a failed, dry-run or interrupted round nobody has rewritten, a lane
 // asking for an answer, a lane lint refuses, a batch no swimmer will
 // take), what's running, and what's ready to queue. Everything else is in
-// swim status, swim queue and swim report.
+// swim status, swim queue and swim log.
 func cmdAttention() error {
 	root, cfg, err := repo()
 	if err != nil {
@@ -161,6 +161,6 @@ func cmdAttention() error {
 	if len(needs)+len(running)+len(ready) == 0 {
 		fmt.Println("nothing needs you, and nothing is running.")
 	}
-	fmt.Println(p.Paint(ui.Dim, "every lane: swim status · since you last looked: swim report · commands: swim --help"))
+	fmt.Println(p.Paint(ui.Dim, "every lane: swim status · what happened: swim log --since 1h · commands: swim --help"))
 	return nil
 }

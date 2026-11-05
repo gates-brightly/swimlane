@@ -14,7 +14,6 @@ entry per line, each holding the SHA-256 of the line before it.
 
 ```sh
 swim verify                 # VERIFIED or NOT VERIFIED (exit 1; --yaml for CI)
-swim history [--oneline]    # the chain, newest first, like git log
 swim chain repair           # after a crash cut a write short
 ```
 

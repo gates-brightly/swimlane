@@ -13,7 +13,7 @@ import (
 // A lane that exits before lane_init (a setup line that fails, a broken
 // library line) reaches the record: its reason, with the last line it
 // printed, in status, a round of its own in its log, and .swim.log. Read
-// back with swim status, swim log and swim report, never the terminal.
+// back with swim status and swim log, never the terminal.
 func TestLaneThatNeverStartsIsRecorded(t *testing.T) {
 	r := newRepo(t)
 	r.write("lane.1.sh", `#!/usr/bin/env bash
@@ -36,7 +36,6 @@ summary
 	contains(t, "swim log 1", r.mustSwim("log", "1"), "== ROUND", "never starts", "STOP  "+why,
 		"| fetching setup", "| setup: cannot reach vault.internal", "== END FAIL")
 	contains(t, "swim status", r.mustSwim("status"), "not started")
-	contains(t, "swim report", r.mustSwim("report"), why)
 	contains(t, ".swim.log", r.mustSwim("log"), "not started: the lane script exited before lane_init")
 }
 
