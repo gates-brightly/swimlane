@@ -64,7 +64,7 @@ in [env files](env.md), not config. There is no lane count.
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain, and every script that ran. | No (export it) |
 | `.swim/runs/<run>/<N>/`, `.swim/runs/RUN.yml` | Staged copies and manifests; each run's timeline. | No |
 | `.swim/out/<job>/<run>/` | A round's outputs (`$SWIM_OUT`). | No |
-| `.swim/queue/`, `.swim/snapshots/`, `.swim/checkpoints/`, `.swim/earmarks/`, `.swim/signoffs/` | Batches, snapshot output, kept steps, readers' places, signoffs. | No |
+| `.swim/queue/`, `.swim/snapshots/`, `.swim/earmarks/`, `.swim/signoffs/` | Batches, snapshot output, readers' places, signoffs. | No |
 | `.swim/laneN.pid` | Present while lane N runs. | No |
 
 `swim init` sets these up (and git-ignores what shouldn't be committed);

@@ -56,8 +56,6 @@ const (
 	Skip     = "SKIP"
 	Drift    = "DRIFT"
 	Approved = "APPROVED"
-	Decided  = "DECIDED" // a decision the operator answered (decide NAME ...); never a pass or failure
-	Kept     = "KEPT"    // a checkpointed step that passed in an earlier run of the round, not run again
 	Stop     = "STOP"
 	Warn     = "WARN"
 	Blocked  = "BLOCKED" // a command swim refused to run (counts as a failure)
@@ -67,6 +65,12 @@ const (
 	// older logs: read as marks, never a result.
 	Pause  = "PAUSE"
 	Resume = "RESUME"
+	// DECIDED (decide, which swim no longer has: a decision answered) is
+	// in older logs: read as a mark, never a result. KEPT (run
+	// --checkpoint, likewise: a step that passed in an earlier run) is
+	// read as the pass it was.
+	Decided = "DECIDED"
+	Kept    = "KEPT"
 )
 
 // Syntax 2 markers and indents.
@@ -147,11 +151,6 @@ func EndBlock(state string, r *Round, exit int, dur, ts string) string {
 	if r.Run != "" {
 		fmt.Fprintf(&b, "  run=%s", r.Run)
 	}
-	// Last, so a reader that knows only the fields before it reads the
-	// line as ever.
-	if r.Kept > 0 {
-		fmt.Fprintf(&b, "  kept=%d", r.Kept)
-	}
 	b.WriteString("\n")
 	b.WriteString(ctxIndent + "stages: " + StagesText(r.StageResults()) + "\n")
 	if hs := r.HandlerResults(); len(hs) > 0 {
@@ -209,9 +208,6 @@ type Result struct {
 	// Key and Target are the step's own (run --key, --target, # Targets:),
 	// as logged: its name across rounds, what it talks to.
 	Key, Target string
-	// Checkpoint is a checkpointed step's command hash (run --checkpoint),
-	// and KeptFrom, for a KEPT one, the run it passed in.
-	Checkpoint, KeptFrom string
 	// Messages are the status messages (swim msg) posted while the step ran.
 	Messages []string
 }
@@ -244,7 +240,6 @@ type Round struct {
 	Fail      int
 	Skip      int
 	Drift     int
-	Kept      int  // checkpointed steps not run again (KEPT): passed in an earlier run
 	Finished  bool // the round's END (SUMMARY in syntax 1) was written
 	ExitCode  int
 	Duration  string
@@ -386,8 +381,6 @@ func (r *Round) add(res Result) {
 		r.Skip++
 	case Drift:
 		r.Drift++
-	case Kept:
-		r.Kept++
 	}
 }
 
@@ -604,10 +597,6 @@ func parseV2(rd io.Reader) (*Round, error) {
 					res.Key = strings.TrimPrefix(body, "key: ")
 				case strings.HasPrefix(body, "target: "):
 					res.Target = strings.TrimPrefix(body, "target: ")
-				case strings.HasPrefix(body, "checkpoint: "):
-					res.Checkpoint = strings.TrimPrefix(body, "checkpoint: ")
-				case strings.HasPrefix(body, "kept-from: "):
-					res.KeptFrom = strings.TrimPrefix(body, "kept-from: ")
 				case strings.HasPrefix(body, "-- "+Msg+"  "):
 					res.Messages = append(res.Messages, strings.TrimPrefix(body, "-- "+Msg+"  "))
 					res.Output = append(res.Output, body)

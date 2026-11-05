@@ -4,7 +4,7 @@ Hand a ready round to a machine that runs it: queue a batch, and a swimmer
 (`swim watch`) runs it when its lanes are free.
 
 ```sh
-swim queue 4 5 --approve FLAG --decide ROLLOUT=2 --note "cutover"   # a batch
+swim queue 4 5 --approve FLAG --note "cutover"   # a batch
 swim queue add                          # every pending lane, as one batch
 swim queue                              # waiting, running, orphaned, done
 swim queue show|rm|requeue ID
@@ -19,7 +19,7 @@ swim wait [--any] BATCH|JOB ...         # until those end (--any: the first); ex
 - **Fixed when queued:** each lane is pinned to its job and exact script; a
   lane edited since, or whose env changed, is skipped. `# After:` between
   its lanes holds.
-- **Approvals travel with it** (`--approve`, `--decide`, `-y`); the
+- **Approvals travel with it** (`--approve`, `-y`); the
   swimmer's environment approves nothing.
 - **A window:** queue now, start `swim watch --once` when it opens (by
   hand or cron).
@@ -30,9 +30,9 @@ swim wait [--any] BATCH|JOB ...         # until those end (--any: the first); ex
   batch or run. Oldest first, but a later batch whose lanes are free goes
   ahead. Up to `--batches N` (`watch_batches`, 4) at once.
 - **Asks for guards on its screen:** a guard nothing else approved waits
-  under a yellow `Waiting for you` bar; `y`/`n` answers it (a decision takes
-  its number). Without the screen (`--no-tui`, not a terminal) a batch
-  never asks: its guards dry-run.
+  under a yellow `Waiting for you` bar; `y`/`n` answers it. Without the
+  screen (`--no-tui`, not a terminal) a batch never asks: its guards
+  dry-run.
 - **On a terminal**, it lists every lane's job and the queue: `r` runs one
   now, `q` adds it to the next batch and `s` submits it, `Q` queues every
   job that hasn't passed, `l` shows logs, `Enter` follows a batch or lane,

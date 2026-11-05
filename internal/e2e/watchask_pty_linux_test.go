@@ -61,23 +61,6 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 	tr.wait()
 }
 
-// A decision in a batch: a number answers it on the watch screen.
-func TestWatchAsksForBatchDecision(t *testing.T) {
-	r := newSerialRepo(t, "")
-	decisionLane(r, 1)
-	r.mustSwim("queue", "add", "1")
-	tr := r.startTUI(nil, "watch", "--batches", "2")
-	s := tr.waitFor("⚠ swim 1 is blocked: waits for a decision: ROLLOUT")
-	contains(t, "the decision", s, "1-3 choose", "1. canary", "3. don't deploy")
-	tr.send("y") // not an answer to a decision
-	tr.waitFor("press 1-3")
-	tr.send("1")
-	tr.waitFor("swim 1 (#1): ROLLOUT = 1")
-	contains(t, "agent1.log", r.waitLog(1, "PASS  canary"), "DECIDED  ROLLOUT: 1. canary (chosen at the prompt by ", "PASS  canary")
-	tr.send("\x03")
-	tr.wait()
-}
-
 // A lane whose script changes while swim watch is up gets (~) next to it,
 // until the operator acts on it (here q, then q again to take it back
 // out of the next batch). Lanes untouched since stay unmarked.

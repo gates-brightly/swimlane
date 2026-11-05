@@ -14,7 +14,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/assets"
-	"github.com/gates-brightly/swimlane/internal/checkpoint"
 	"github.com/gates-brightly/swimlane/internal/ci"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
@@ -375,7 +374,6 @@ func withTask(content, task string) string {
 // runFlags are the options swim run and swim all share.
 type runFlags struct {
 	plain, rerun     bool
-	fresh            bool // run checkpointed steps again
 	runID            string
 	parallel         string
 	yaml, yamlOutput bool
@@ -397,7 +395,7 @@ func (rf *runFlags) parse(args []string) ([]string, error) {
 		}
 	}
 	return flags{
-		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun, "fresh": &rf.fresh,
+		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun,
 			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt, "yes": &rf.yes},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
@@ -492,7 +490,7 @@ func runLanes(rest []string, rf runFlags) error {
 		return err
 	}
 	o := launcher.Options{
-		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun, Fresh: rf.fresh,
+		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
 		Interactive: !rf.noTUI && display.TUIAllowed(os.Getenv),
 		Interrupt:   rf.interrupt,
@@ -573,12 +571,6 @@ func cmdStep(args []string) error {
 	if err != nil {
 		return err
 	}
-	// --checkpoint, or --checkpoint=MAXAGE (4h): a step that, once passed,
-	// isn't run again in this round.
-	isCheckpoint, maxAge, flagArgs, err := checkpointFlag(flagArgs)
-	if err != nil {
-		return err
-	}
 	rest, err := flags{
 		bools: map[string]*bool{"new": &fresh, "snapshot": &snap, "no-retry-timeout": &noRetryTimeout},
 		strs:  map[string]*string{"label": &label, "timeout": &timeout, "retry": &retry, "backoff": &backoff, "retry-on": &retryOn, "key": &key, "target": &target},
@@ -591,9 +583,6 @@ func cmdStep(args []string) error {
 	}
 	if len(rest) > 0 || len(cmdArgs) == 0 {
 		return usagef("usage: swim step [--label L] [--new] [--snapshot] -- cmd [args...]")
-	}
-	if isCheckpoint && snap {
-		return usagef("--checkpoint isn't for a snapshot: a snapshot records how things are now, every run")
 	}
 
 	cwd, _ := os.Getwd()
@@ -663,19 +652,6 @@ func cmdStep(args []string) error {
 			target = info.Target
 		}
 	}
-	var cp *step.Checkpoint
-	if isCheckpoint {
-		if n == 0 {
-			fmt.Fprintln(os.Stderr, "swim step: --checkpoint outside a lane: the step runs (checkpoints belong to a lane's round)")
-		} else if info, err := lane.ReadScript(root, n); err == nil {
-			wd, _ := os.Getwd()
-			cp = &step.Checkpoint{Round: checkpoint.Round(info.Job, info.Round), Key: or(key, label), Cmd: checkpoint.CmdHash(wd, cmdArgs),
-				Run: os.Getenv("SWIM_RUN"), MaxAge: maxAge}
-			if cp.Key == "" {
-				cp.Key = step.Quote(cmdArgs)
-			}
-		}
-	}
 	res, err := step.Run(step.Options{
 		Args: cmdArgs, Label: label, New: fresh, Snapshot: snap,
 		LogPath: logPath, Root: root, Lane: n, Lanes: cfg.Lanes,
@@ -685,9 +661,8 @@ func cmdStep(args []string) error {
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
 		ExpectFail: expectFail, ExpectCodes: expectCodes,
 		Key: key, Target: target,
-		Checkpoint: cp,
-		Blocked:    cfg.Blocked(),
-		Mask:       cfg.Masker(os.Environ()),
+		Blocked: cfg.Blocked(),
+		Mask:    cfg.Masker(os.Environ()),
 		// A stop request ends the round at its next step.
 		Stopped: func() bool {
 			return n > 0 && lane.StopRequested(root, n, os.Getenv("SWIM_RUN"))
@@ -732,30 +707,6 @@ func expectFailFlag(args []string) (bool, []int, []string, error) {
 		}
 	}
 	return on, codes, rest, nil
-}
-
-// checkpointFlag takes --checkpoint and --checkpoint=MAXAGE out of a
-// step's flags.
-func checkpointFlag(args []string) (bool, time.Duration, []string, error) {
-	var rest []string
-	on, age := false, time.Duration(0)
-	for _, a := range args {
-		v, isFlag := strings.CutPrefix(a, "--checkpoint")
-		if !isFlag || v != "" && !strings.HasPrefix(v, "=") {
-			rest = append(rest, a)
-			continue
-		}
-		on = true
-		if v == "" {
-			continue
-		}
-		d, err := time.ParseDuration(strings.TrimPrefix(v, "="))
-		if err != nil || d <= 0 {
-			return false, 0, nil, usagef("--checkpoint=%s: give how long a pass keeps, like 4h or 30m", strings.TrimPrefix(v, "="))
-		}
-		age = d
-	}
-	return on, age, rest, nil
 }
 
 func cmdLib(args []string) error {

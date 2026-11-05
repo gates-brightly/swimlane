@@ -10,10 +10,10 @@ Using swim:
 - [concepts](concepts.md): every term, in one table.
 - [agents](agents.md): how an AI planner and its workers use swim.
 - [lanes](lanes.md): writing a lane script: functions, step options,
-  header, stages, checkpoints, lint.
+  header, stages, lint.
 - [other-languages](other-languages.md): lanes in Python, TypeScript, or
   any program.
-- [guards](guards.md): how a guard is decided, decisions.
+- [guards](guards.md): how a guard is decided.
 - [running](running.md): dependencies, parallelism, locks, the live view,
   interrupts.
 - [queue](queue.md): batches, the swimmer, waiting.

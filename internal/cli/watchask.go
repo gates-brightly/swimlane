@@ -19,8 +19,8 @@ import (
 // with nobody to ask, its guards would dry-run. When the watch screen is
 // up, each batch gets a private channel back to it instead: one end of a
 // socket pair, as fd 3 (swim _batch --ask), closed on exec so the batch's
-// lanes never hold it. The batch's launcher decides every guard and
-// decision as before (flags, signed approvals, -y); what only a person
+// lanes never hold it. The batch's launcher decides every guard as
+// before (flags, signed approvals, -y); what only a person
 // can answer it sends up the channel, and the screen asks the operator in
 // yellow, naming the lane and the batch. Several batches may ask at once:
 // the screen lists them all, oldest first.
@@ -42,9 +42,7 @@ type askMsg struct {
 	Flag     string   `json:"flag,omitempty"`
 	Desc     string   `json:"desc,omitempty"`
 	Question []string `json:"question,omitempty"`
-	Choices  int      `json:"choices,omitempty"` // a decision's choice count (0: a guard)
 	Approved bool     `json:"approved,omitempty"`
-	Choice   int      `json:"choice,omitempty"`
 	By       string   `json:"by,omitempty"`
 	Why      string   `json:"why,omitempty"`
 }
@@ -108,9 +106,6 @@ func (c *askClient) read() {
 // answer, or for cancel (the run is stopping).
 func (c *askClient) ask(req approval.Request, cancel <-chan struct{}) approval.Response {
 	q := approval.Question(req)
-	if req.Choices != nil {
-		q = approval.DecisionQuestion(req)
-	}
 	q = q[:len(q)-1] // the terminal prompt's last line: swim watch says its own keys
 	ch := make(chan askMsg, 1)
 	c.mu.Lock()
@@ -121,14 +116,14 @@ func (c *askClient) ask(req approval.Request, cancel <-chan struct{}) approval.R
 	c.next++
 	id := c.next
 	c.waiting[id] = ch
-	err := c.enc.Encode(askMsg{Op: "ask", ID: id, Lane: req.Lane, Flag: req.Flag, Desc: req.Desc, Question: q, Choices: len(req.Choices)})
+	err := c.enc.Encode(askMsg{Op: "ask", ID: id, Lane: req.Lane, Flag: req.Flag, Desc: req.Desc, Question: q})
 	c.mu.Unlock()
 	if err != nil {
 		return approval.Response{Dry: true, Why: askGone + ": " + err.Error()}
 	}
 	select {
 	case m := <-ch:
-		return approval.Response{Approved: m.Approved, Choice: m.Choice, By: m.By, Why: m.Why, Dry: m.Why == askGone}
+		return approval.Response{Approved: m.Approved, By: m.By, Why: m.Why, Dry: m.Why == askGone}
 	case <-cancel:
 		c.mu.Lock()
 		delete(c.waiting, id)
@@ -293,7 +288,7 @@ func (a *watchAsks) pending() ([]watchAsk, int) {
 }
 
 // answer answers the question with row key (the oldest if key isn't one)
-// with key press k: y or n for a guard, a choice's number for a decision.
+// with key press k: y or n.
 // It says what happened.
 func (a *watchAsks) answer(key string, k rune) string {
 	a.mu.Lock()
@@ -316,25 +311,15 @@ func (a *watchAsks) answer(key string, k rune) string {
 	var r askMsg
 	var msg string
 	switch {
-	case m.Choices == 0 && (k == 'y' || k == 'n'):
+	case k == 'y' || k == 'n':
 		r = askMsg{Approved: k == 'y', By: operator()}
 		msg = fmt.Sprintf("%s: %s declined", who, m.Flag)
 		if r.Approved {
 			msg = fmt.Sprintf("%s: %s approved", who, m.Flag)
 		}
-	case m.Choices == 0:
-		a.mu.Unlock()
-		return fmt.Sprintf("%s asks for approval of %s: y approves, n declines", who, m.Flag)
-	case k >= '1' && k <= '9' && int(k-'0') <= m.Choices:
-		c := int(k - '0')
-		r = askMsg{Approved: true, Choice: c, By: operator()}
-		msg = fmt.Sprintf("%s: %s = %d", who, m.Flag, c)
-	case k == 'n':
-		r = askMsg{Why: "declined in swim watch by " + operator()}
-		msg = fmt.Sprintf("%s: %s left unanswered (the round ends there, as a dry run)", who, m.Flag)
 	default:
 		a.mu.Unlock()
-		return fmt.Sprintf("%s asks for a decision, %s: press 1-%d (n leaves it unanswered)", who, m.Flag, m.Choices)
+		return fmt.Sprintf("%s asks for approval of %s: y approves, n declines", who, m.Flag)
 	}
 	for i, p := range a.list {
 		if p == q {

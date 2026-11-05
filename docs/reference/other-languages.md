@@ -39,7 +39,6 @@ if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: repla
 |---|---|
 | `swim run\|gate\|snapshot [opts] "<label>" -- cmd` | Steps, with the [step options](lanes.md#functions). |
 | `swim guard FLAG "<action>"` | Exit 0 approved, 1 a dry run. |
-| `swim decide NAME "<question>" -- CHOICE...` | Prints the number; unanswered, exit 3 and the round ends. |
 | `swim stage NAME`, `swim drift`, `swim stop`, `swim msg`, `swim input`, `swim output` | As in bash. |
 
 - A failed gate, `swim stop`, a blocked command or Ctrl-C ends the program
@@ -59,8 +58,6 @@ job: 3f2a9c1e-...
 after: [1, 2]
 guards:
   ORDERS_ALLOW_DELETE: delete bucket orders (2026-10-13: replaced)
-decisions:
-  ROLLOUT: how the new version goes out
 locks: [orders-db]
 timeout: 30m
 step-timeout: 5m

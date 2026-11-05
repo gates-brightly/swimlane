@@ -56,8 +56,7 @@ var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
 	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
-	"decision-unlisted": true, "decision-unused": true, "decision-subshell": true, "decision-choices": true,
-	"checkpoint": true, "step": true, "step-pipe": true, "step-subshell": true, "guard-text": true,
+	"step": true, "step-pipe": true, "step-subshell": true, "guard-text": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -103,11 +102,6 @@ var Checks = []Check{
 	{"guard-unlisted", finding.Error, false, "a guard flag used but not declared in `# Guards:` (refused when it asks; a warning with `# Guards: *`)", checkGuardUnlisted},
 	{"guard-dynamic", finding.Error, false, "a guard whose flag is named at run time, without `# Guards: *`", checkGuardDynamic},
 	{"guard-unused", finding.Warn, false, "a flag listed in `# Guards:` but never used", checkGuardUnused},
-	{"decision-unlisted", finding.Error, false, "a decision used but not declared in `# Decisions:` (refused when it asks)", checkDecisionUnlisted},
-	{"decision-subshell", finding.Error, false, "`decide` in $(...), backticks or a pipe, where an unanswered decision can't end the round", checkDecisionSubshell},
-	{"decision-choices", finding.Error, false, "a `decide` with fewer than 2 or more than 9 choices", checkDecisionChoices},
-	{"decision-unused", finding.Warn, false, "a decision listed in `# Decisions:` but never asked", checkDecisionUnused},
-	{"checkpoint", finding.Error, false, "a `--checkpoint` step that can't be one: a snapshot, two with one key; warns before `stage change` and on a label that changes", checkCheckpoint},
 	{"step", finding.Error, false, "a run, gate or snapshot written so it can't run as it reads: an unknown option, no label or command, a command for a label, a command quoted into one word, or cd/export in a step", checkStepCall},
 	{"step-subshell", finding.Error, false, "a run, gate or snapshot inside $(...), backticks or after a pipe, where its result never reaches the lane", checkStepSubshell},
 	{"step-pipe", finding.Error, false, "a pipe or redirect after a step, which applies to swim's output, not the step's command", checkStepPipe},

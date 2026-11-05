@@ -15,11 +15,10 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `archive N ... [--as NAME]` / `stub N "<msg>"` / `clean` | Keep a finished log; free the lane; both, for every finished lane. |
 | `note [--lane N] "<text>"` | A decision or finding in `.swim.log`. |
 | **Rounds** | |
-| `run [N ...]` / `all [--rerun] [--fresh]` | Run lanes / every pending round that hasn't passed. |
+| `run [N ...]` / `all [--rerun]` | Run lanes / every pending round that hasn't passed. |
 | `queue N ...` / `watch` / `wait` | Queue a batch; the swimmer; block until done. See [queue](queue.md). |
 | `interrupt N` | Stop one lane at its next step. |
 | `ci [N ...] [--changed]` | Run rounds in CI. See [CI](ci.md). |
-| `checkpoint [ls\|rm]` | The steps the next run keeps. |
 | **Guards** | |
 | `keys` | The key this machine signs with. |
 | **Logs and the record** | |
@@ -35,5 +34,5 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `skill` | How to install the Claude skill. |
 | `guide [TOPIC]` | This reference. |
 | **In a lane script** (any language) | |
-| `run`, `gate`, `snapshot`, `guard`, `decide`, `stage`, `drift`, `stop`, `msg`, `input`, `output` | Steps and marks. See [lanes](lanes.md) and [other languages](other-languages.md). |
+| `run`, `gate`, `snapshot`, `guard`, `stage`, `drift`, `stop`, `msg`, `input`, `output` | Steps and marks. See [lanes](lanes.md) and [other languages](other-languages.md). |
 | `step -- cmd` / `lib` | Run and log one command (what `run` calls); print the bash library. |

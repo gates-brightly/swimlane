@@ -42,6 +42,14 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Removed
 
+- **Decisions and checkpoints are gone.** `decide` (bash), `swim decide`,
+  `# Decisions:` (and `decisions:` in lane.N.yml) and `swim queue
+  --decide` are removed, with the live view's and `swim watch`'s numbered
+  prompts: make the choice before the run (a guard per path, or one lane
+  per choice). `run --checkpoint`, `swim checkpoint` and `swim run
+  --fresh` are removed too: a run reruns the whole round. An older
+  chain's `decide` entries still verify; `.swim/checkpoints/` can be
+  deleted.
 - **The store is gone.** swim no longer copies what each round ran and
   wrote into `~/.local/share/swim/store`, and `swim store` is removed.
   The chain of custody and `.swim/scripts/` are unchanged, and `swim

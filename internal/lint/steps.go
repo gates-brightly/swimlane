@@ -19,8 +19,8 @@ import (
 // in checks.go, take one: --timeout 5m or --timeout=5m). Keep both in
 // step with _swim_run_step.
 var (
-	stepFlagOpts = map[string]bool{"--soft": true, "--no-retry-timeout": true, "--expect-fail": true, "--checkpoint": true}
-	stepOptNames = "--timeout, --retry, --backoff, --retry-on, --key, --target, --soft, --no-retry-timeout, --expect-fail, --checkpoint"
+	stepFlagOpts = map[string]bool{"--soft": true, "--no-retry-timeout": true, "--expect-fail": true}
+	stepOptNames = "--timeout, --retry, --backoff, --retry-on, --key, --target, --soft, --no-retry-timeout, --expect-fail"
 )
 
 // commandWords are commands a label is easily mistaken for: run echo hi
@@ -80,7 +80,7 @@ func checkStepCall(c *Context, s *Script) []finding.Finding {
 					ok = false
 				}
 				k++
-			case stepFlagOpts[opt] && (!eq || opt == "--expect-fail" || opt == "--checkpoint"):
+			case stepFlagOpts[opt] && (!eq || opt == "--expect-fail"):
 			default:
 				bad("the options are "+stepOptNames, "%s: unknown option %s; the round would stop here", name, t)
 				ok = false
@@ -239,7 +239,7 @@ func checkShortFormShebang(c *Context, s *Script) []finding.Finding {
 	if s.Lib || !strings.HasSuffix(s.Name, ".sh") {
 		return nil
 	}
-	steps := map[string]bool{"stage": true, "run": true, "gate": true, "snapshot": true, "guard": true, "decide": true, "stop": true}
+	steps := map[string]bool{"stage": true, "run": true, "gate": true, "snapshot": true, "guard": true, "stop": true}
 	for _, lc := range s.v.commands() {
 		if lc.Sub || len(lc.Words) == 0 || lc.Words[0].Quoted || !steps[lc.Words[0].Text] {
 			continue

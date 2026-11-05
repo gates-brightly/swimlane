@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
-	"github.com/gates-brightly/swimlane/internal/checkpoint"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/envfile"
@@ -38,13 +37,10 @@ import (
 
 // Options configures a launch.
 type Options struct {
-	Root  string
-	Cfg   *config.Config
-	Lanes []int // explicit selection; empty means every lane with a pending round
-	Rerun bool  // with no explicit lanes, also run rounds that already passed
-	// Fresh: run every checkpointed step again (run --checkpoint): each
-	// lane's checkpoints are cleared as it starts.
-	Fresh  bool
+	Root   string
+	Cfg    *config.Config
+	Lanes  []int  // explicit selection; empty means every lane with a pending round
+	Rerun  bool   // with no explicit lanes, also run rounds that already passed
 	DryRun bool   // selection only (Select): don't refuse lanes that are running
 	RunID  string // this run's id; generated if empty (swim run --run-id)
 	// Parallel caps lanes running at once; nil means config's max_parallel,
@@ -128,8 +124,7 @@ type Options struct {
 	Hook *notify.Hook
 	// Ask, if set, asks someone outside this run when nobody here can: the
 	// swim watch screen that started this batch (swim _batch --ask). It
-	// takes the guards -y doesn't approve and every decision, instead of
-	// a dry run.
+	// takes the guards -y doesn't approve, instead of a dry run.
 	Ask approval.Asker
 
 	ev *events
@@ -366,17 +361,6 @@ func Run(o Options) (int, error) {
 			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
 		}
 		ask = func(req approval.Request, cancel <-chan struct{}) approval.Response {
-			if req.Choices != nil {
-				// A decision: only a person picks one. -y answers no
-				// decision, and there are no pre-answers for one.
-				if !prompt {
-					return approval.Response{Why: "-y answers guards, not decisions, and nobody here can be asked"}
-				}
-				defer awaitOperator(o, disp, req)()
-				notifyAsk(o, req)
-				c := disp.Choose(req.Lane, approval.DecisionQuestion(req), len(req.Choices), cancel)
-				return approval.Response{Approved: c > 0, Choice: c, By: operator()}
-			}
 			// The operator's answer given ahead in the live view (pinned to
 			// the manifest) comes before -y and instead of asking.
 			if resp, ok := pre.use(o, req); ok {
@@ -402,7 +386,7 @@ func Run(o Options) (int, error) {
 	if o.Ask != nil && !prompt {
 		auto := ask
 		ask = func(req approval.Request, cancel <-chan struct{}) approval.Response {
-			if auto != nil && req.Choices == nil {
+			if auto != nil {
 				return auto(req, cancel) // -y approves it
 			}
 			disp.Message(fmt.Sprintf("%swaiting for an answer in swim watch: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
@@ -687,11 +671,6 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 			return stamp(refuseBlocked(o, n, why, disp))
 		}
 		return skip(why)
-	}
-	if o.Fresh {
-		if err := checkpoint.Clear(o.Root, n); err != nil {
-			disp.Message(fmt.Sprintf("%s--fresh: %v", display.Prefix(n, disp.Color()), err))
-		}
 	}
 	cmd, ownGroup, w, tok := laneCommand(o, n, sel, plan, "", approval.Caller{Job: info.Job}, disp, fileLocks)
 	defer exited(o, tok)
