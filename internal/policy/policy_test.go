@@ -59,11 +59,13 @@ func TestScanScript(t *testing.T) {
 // swim's own code may run git only to read. Every exec.Command("git", ...)
 // outside tests must pass a literal, read-only subcommand first. Adding a
 // write is a deliberate change to this list. ls-remote reads a remote's
-// refs (swim version's release check) and writes nothing local.
+// refs (swim version's release check) and writes nothing local; remote
+// (get-url) and symbolic-ref (--short HEAD) read the repo's name and branch
+// (config.RepoName, RepoBranch).
 func TestSwimOnlyReadsGit(t *testing.T) {
 	// clone: swim modules get, into a scratch directory under .swim/ that
 	// it removes after; never the repo's own git.
-	allowed := map[string]bool{"rev-parse": true, "diff": true, "log": true, "ls-files": true, "status": true, "ls-remote": true, "clone": true}
+	allowed := map[string]bool{"rev-parse": true, "diff": true, "log": true, "ls-files": true, "status": true, "ls-remote": true, "clone": true, "remote": true, "symbolic-ref": true}
 	root := filepath.Join("..", "..")
 	count := 0
 	for _, dir := range []string{"internal", "cmd"} {
@@ -107,7 +109,7 @@ func TestSwimOnlyReadsGit(t *testing.T) {
 				}
 				sub, _ := strconv.Unquote(lit.Value)
 				if !allowed[sub] {
-					t.Errorf("%s: swim runs `git %s`; swim only reads git (allowed: rev-parse, diff, log, ls-files, status, ls-remote, and clone into a scratch directory)", path, sub)
+					t.Errorf("%s: swim runs `git %s`; swim only reads git (allowed: rev-parse, diff, log, ls-files, status, ls-remote, remote get-url, symbolic-ref HEAD, and clone into a scratch directory)", path, sub)
 				}
 				return true
 			})

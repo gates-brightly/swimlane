@@ -81,16 +81,18 @@ var Commands = map[string]string{
     notify       true or false            terminal notifications and a
                  progress bar on the tab (OSC 777 and OSC 9;4, as Ghostty
                  shows them): when a lane waits on you and when a run or a
-                 batch ends. Only on a terminal, never in CI. Default false.
+                 batch ends. Each title starts with the repo, and the branch
+                 off the default: swimlane@fix · lane 2 needs you. Only on
+                 a terminal, never in CI. Default false.
     notify_url   an http(s) URL           send the same notifications there,
                  terminal or not, as ntfy messages (title, priority, tags;
                  with curl): e.g. https://ntfy.sh/TOPIC. Not in swim.yml.
     notify_command  a shell command       run instead (sh -c, in the repo
                  root), with SWIM_EVENT (ask, end, test), SWIM_RESULT
                  (passed, failed, interrupted, skipped, error), SWIM_TITLE,
-                 SWIM_BODY, SWIM_LANES, SWIM_BATCH, SWIM_ROOT,
-                 SWIM_PRIORITY (high, default), SWIM_TAGS and
-                 SWIM_NOTIFY_URL set. Not in a repo's swim.yml.
+                 SWIM_BODY, SWIM_LANES, SWIM_BATCH, SWIM_REPO,
+                 SWIM_BRANCH, SWIM_ROOT, SWIM_PRIORITY (high, default),
+                 SWIM_TAGS and SWIM_NOTIFY_URL set. Not in a repo's swim.yml.
                  Each send is recorded in ~/.local/state/swim/notify.json:
                  swim config shows the last (t on its screen sends a test),
                  swim doctor warns when it failed, and a failure is a warn

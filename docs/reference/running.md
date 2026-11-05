@@ -71,7 +71,10 @@ under it, prefixed `[N]`. With more than one lane:
 
 `notify: true` in config adds a desktop notification when a lane waits on
 you or a run ends, and a progress bar on the terminal tab (OSC 777, OSC
-9;4, as Ghostty shows them).
+9;4, as Ghostty shows them). Each title starts with where it came from:
+the repo (origin's name, else the checkout's directory), and the branch
+when it isn't the default: `swimlane · lane 2 needs you`,
+`swimlane@fix-auth · run failed`, `swimlane · batch #41 passed`.
 
 `notify_url` sends the same notifications (a lane waits on you, a run or
 a `swim watch` batch ends) to an [ntfy](https://ntfy.sh) topic, whether
@@ -83,7 +86,7 @@ defaults:
 ```
 
 Each is an ntfy message: its title, `high` priority for a question or a
-failure, and a tag for how it ended, sent with `curl`.
+failure, and tags for how it ended and the repo, sent with `curl`.
 
 `notify_command` runs a command of yours instead, for anything else (a
 webhook, a chat): `sh -c` in the repo root, with the notification in its
@@ -96,8 +99,9 @@ environment, and `notify_url` as `$SWIM_NOTIFY_URL`:
 | `SWIM_TITLE`, `SWIM_BODY` | What the terminal notification says, one line each. |
 | `SWIM_LANES` | The lanes, `1,2,3`. |
 | `SWIM_BATCH` | `swim watch`'s batch number (empty for `swim run`). |
+| `SWIM_REPO`, `SWIM_BRANCH` | Where it came from: the repo's name (as the title says it) and the branch checked out (empty when detached). |
 | `SWIM_ROOT` | The repo. |
-| `SWIM_PRIORITY`, `SWIM_TAGS` | ntfy's: `high` for a question or a failure (else `default`), and an emoji's name for how it ended. |
+| `SWIM_PRIORITY`, `SWIM_TAGS` | ntfy's: `high` for a question or a failure (else `default`), and an emoji's name for how it ended, then the repo (`x,swimlane`). |
 | `SWIM_NOTIFY_URL` | `notify_url`. |
 
 Quote the variables: the body carries a lane's own text. Each send is
@@ -105,7 +109,7 @@ killed after 15s; swim waits for it before exiting.
 
 Whether it's working: each send is recorded in
 `~/.local/state/swim/notify.json` (`$XDG_STATE_HOME`). `swim config`
-shows the last under the two keys (`last sent 3:00 ago: swim run passed`,
+shows the last under the two keys (`last sent 3:00 ago: swimlane · run passed`,
 or why it failed), and `t` on its screen sends a test; `swim doctor` warns
 (`notify-failing`) while the last send failed, and (`notify`) when
 `notify_url` doesn't answer or `notify_command`'s program isn't there, and each failure is also a

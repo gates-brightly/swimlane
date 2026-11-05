@@ -30,7 +30,40 @@ type Note struct {
 	Title  string
 	Body   string
 	Lanes  []int
-	Batch  int // swim watch's batch number (0: a swim run)
+	Batch  int    // swim watch's batch number (0: a swim run)
+	Repo   string // where it came from (Origin.Repo)
+	Branch string // the branch checked out there ("": detached or outside git)
+}
+
+// Origin is where a run's or a watch's notifications come from: every
+// title starts with it ("swimlane · lane 2 needs you"), and the branch
+// when it isn't the default ("swimlane@fix-auth · run failed"), since one
+// operator runs swims in many repos and worktrees, with the same lane
+// numbers. Worked out once per run or watch.
+type Origin struct {
+	Repo    string
+	Branch  string // "" when detached or outside git
+	Default string // the repo's default branch, origin/HEAD's ("": unknown)
+}
+
+// Title is what, said from o: "<repo>[@<branch>] · what".
+func (o Origin) Title(what string) string {
+	if o.Repo == "" {
+		return what
+	}
+	from := o.Repo
+	switch o.Branch {
+	case "", o.Default, "main", "master":
+	default:
+		from += "@" + o.Branch
+	}
+	return from + " · " + what
+}
+
+// Note is a Note from o, with its Repo and Branch.
+func (o Origin) Note(n Note) Note {
+	n.Repo, n.Branch = o.Repo, o.Branch
+	return n
 }
 
 // NtfyCommand is what a Hook runs with notify_url and no notify_command:
@@ -53,7 +86,8 @@ type HookConfig struct {
 // Hook runs the operator's notify_command (or NtfyCommand, for notify_url)
 // for each Note: `sh -c COMMAND` in the repo root, with the Note in its
 // environment (SWIM_EVENT, SWIM_RESULT, SWIM_TITLE, SWIM_BODY, SWIM_LANES,
-// SWIM_BATCH, SWIM_ROOT, SWIM_PRIORITY, SWIM_TAGS, SWIM_NOTIFY_URL), so it
+// SWIM_BATCH, SWIM_REPO, SWIM_BRANCH, SWIM_ROOT, SWIM_PRIORITY, SWIM_TAGS,
+// SWIM_NOTIFY_URL), so it
 // can send the note anywhere. Send runs it in the background; Wait waits
 // for those. A nil Hook runs nothing.
 type Hook struct {
@@ -155,6 +189,8 @@ func (n Note) env(root, url string) []string {
 		"SWIM_BODY=" + clean(n.Body),
 		"SWIM_LANES=" + strings.Join(lanes, ","),
 		"SWIM_BATCH=" + batch,
+		"SWIM_REPO=" + clean(n.Repo),
+		"SWIM_BRANCH=" + clean(n.Branch),
 		"SWIM_ROOT=" + root,
 		"SWIM_PRIORITY=" + priority,
 		"SWIM_TAGS=" + tags,
@@ -162,9 +198,18 @@ func (n Note) env(root, url string) []string {
 	}
 }
 
-// urgency is n's ntfy priority and tag (an emoji's name): high for what
-// needs the operator (a question, a failure), default otherwise.
+// urgency is n's ntfy priority and tags: an emoji's name, then the repo
+// (ntfy shows a tag it has no emoji for as text); high for what needs the
+// operator (a question, a failure), default otherwise.
 func (n Note) urgency() (priority, tags string) {
+	priority, tags = n.level()
+	if repo := strings.ReplaceAll(clean(n.Repo), ",", ""); repo != "" {
+		tags += "," + repo
+	}
+	return priority, tags
+}
+
+func (n Note) level() (priority, tag string) {
 	switch {
 	case n.Event == EventAsk:
 		return "high", "question"

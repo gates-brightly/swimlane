@@ -14,16 +14,16 @@ import (
 
 func TestHook(t *testing.T) {
 	root := t.TempDir()
-	h := NewHook(HookConfig{Command: `printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' "$SWIM_EVENT" "$SWIM_RESULT" "$SWIM_TITLE" "$SWIM_BODY" "$SWIM_LANES" "$SWIM_BATCH" "$PWD" "$SWIM_PRIORITY" "$SWIM_TAGS" > note`,
+	h := NewHook(HookConfig{Command: `printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' "$SWIM_EVENT" "$SWIM_RESULT" "$SWIM_TITLE" "$SWIM_BODY" "$SWIM_LANES" "$SWIM_BATCH" "$SWIM_REPO" "$SWIM_BRANCH" "$PWD" "$SWIM_PRIORITY" "$SWIM_TAGS" > note`,
 		Root: root, Warn: func(why string) { t.Error(why) }})
-	h.Send(Note{Event: EventEnd, Result: "failed", Title: "swim: #4 failed", Body: "swim 1,2\n· 3s\x07", Lanes: []int{1, 2}, Batch: 4})
+	h.Send(Note{Event: EventEnd, Result: "failed", Title: "ops@fix · batch #4 failed", Body: "swim 1,2\n· 3s\x07", Lanes: []int{1, 2}, Batch: 4, Repo: "ops", Branch: "fix"})
 	h.Wait()
 	b, err := os.ReadFile(filepath.Join(root, "note"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// One line, no controls: a lane's text reaches the command as data.
-	if got, want := string(b), "end|failed|swim: #4 failed|swim 1,2 · 3s|1,2|4|"+root+"|high|x"; got != want {
+	if got, want := string(b), "end|failed|ops@fix · batch #4 failed|swim 1,2 · 3s|1,2|4|ops|fix|"+root+"|high|x,ops"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 
@@ -56,22 +56,22 @@ func TestHookURL(t *testing.T) {
 	defer srv.Close()
 	state := filepath.Join(t.TempDir(), "swim", "notify.json")
 	h := NewHook(HookConfig{URL: srv.URL + "/zach", Root: t.TempDir(), State: state})
-	if err := h.SendNow(Note{Event: EventAsk, Title: "swim 3 needs you", Body: "approval of DEPLOY: deploy 2.4.1", Lanes: []int{3}}); err != nil {
+	if err := h.SendNow(Note{Event: EventAsk, Title: "infra · lane 3 needs you", Body: "approval of DEPLOY: deploy 2.4.1", Lanes: []int{3}, Repo: "infra", Branch: "main"}); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
 	r, b := got, body
 	mu.Unlock()
 	if r.URL.Path != "/zach" || r.Method != http.MethodPost || b != "approval of DEPLOY: deploy 2.4.1" ||
-		r.Header.Get("Title") != "swim 3 needs you" || r.Header.Get("Priority") != "high" || r.Header.Get("Tags") != "question" {
+		r.Header.Get("Title") != "infra · lane 3 needs you" || r.Header.Get("Priority") != "high" || r.Header.Get("Tags") != "question,infra" {
 		t.Errorf("sent %s %s %q %v", r.Method, r.URL.Path, b, r.Header)
 	}
-	if s, err := LastSent(state); err != nil || s == nil || s.Error != "" || s.Title != "swim 3 needs you" || s.Event != EventAsk {
+	if s, err := LastSent(state); err != nil || s == nil || s.Error != "" || s.Title != "infra · lane 3 needs you" || s.Event != EventAsk {
 		t.Errorf("recorded %+v, %v", s, err)
 	}
 
 	h = NewHook(HookConfig{URL: srv.URL + "/denied", Root: t.TempDir(), State: state})
-	err := h.SendNow(Note{Event: EventTest, Title: "swim: test"})
+	err := h.SendNow(Note{Event: EventTest, Title: "infra · test"})
 	if err == nil || !strings.HasPrefix(err.Error(), "notify_url: ") || !strings.Contains(err.Error(), "forbidden") {
 		t.Errorf("a 403: %v", err)
 	}
@@ -104,5 +104,29 @@ func TestHookFails(t *testing.T) {
 	h.Wait()
 	if len(warned) != 1 || !strings.HasPrefix(warned[0], "notify_command: exit status 6") || !strings.Contains(warned[0], "no route to ntfy") {
 		t.Errorf("warned %q", warned)
+	}
+}
+
+// Each title starts with where it came from: the repo, and the branch when
+// it isn't the default.
+func TestOriginTitle(t *testing.T) {
+	for _, c := range []struct {
+		o    Origin
+		want string
+	}{
+		{Origin{}, "lane 2 needs you"},
+		{Origin{Repo: "swimlane"}, "swimlane · lane 2 needs you"},
+		{Origin{Repo: "swimlane", Branch: "main"}, "swimlane · lane 2 needs you"},
+		{Origin{Repo: "swimlane", Branch: "master"}, "swimlane · lane 2 needs you"},
+		{Origin{Repo: "swimlane", Branch: "trunk", Default: "trunk"}, "swimlane · lane 2 needs you"},
+		{Origin{Repo: "swimlane", Branch: "fix-auth", Default: "main"}, "swimlane@fix-auth · lane 2 needs you"},
+	} {
+		if got := c.o.Title("lane 2 needs you"); got != c.want {
+			t.Errorf("%+v: got %q, want %q", c.o, got, c.want)
+		}
+	}
+	n := Origin{Repo: "ops", Branch: "main"}.Note(Note{Event: EventAsk})
+	if n.Repo != "ops" || n.Branch != "main" || n.Event != EventAsk {
+		t.Errorf("Note: %+v", n)
 	}
 }

@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/ci"
@@ -38,8 +40,18 @@ func commandHook(cfg *config.Config, root string) *notify.Hook {
 		}})
 }
 
+// notifyOrigin is where root's notifications come from (notify.Origin):
+// its repo's name and branch, and its default branch, origin/HEAD's.
+func notifyOrigin(root string) notify.Origin {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "origin/HEAD")
+	cmd.Dir = root
+	def, _ := cmd.Output()
+	return notify.Origin{Repo: config.RepoName(root), Branch: config.RepoBranch(root),
+		Default: strings.TrimPrefix(strings.TrimSpace(string(def)), "origin/")}
+}
+
 // notifySummary says how the last notification sent from this machine
-// went: "last sent 3m ago: swim run passed", "last send failed 2h ago:
+// went: "last sent 3m ago: swimlane · run passed", "last send failed 2h ago:
 // notify_url: exit status 6: ...", "nothing sent yet" ("" with neither
 // notify_url nor notify_command set).
 func notifySummary(cfg *config.Config, now time.Time) string {
@@ -65,7 +77,8 @@ func testNotify(cfg *config.Config, root string) string {
 		return "nothing to test: set notify_url (or notify_command)"
 	}
 	host, _ := os.Hostname()
-	err := h.SendNow(notify.Note{Event: notify.EventTest, Title: "swim: test", Body: "from swim config on " + host})
+	from := notifyOrigin(root)
+	err := h.SendNow(from.Note(notify.Note{Event: notify.EventTest, Title: from.Title("test"), Body: "from swim config on " + host}))
 	if err != nil {
 		return "test failed: " + err.Error()
 	}

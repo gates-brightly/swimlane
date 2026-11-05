@@ -23,7 +23,8 @@ type watchNotes struct {
 	t    *notify.Terminal // nil: no terminal notifications or bar
 	hook *notify.Hook     // nil: no notify_command
 	root string
-	asks *watchAsks // the screen's questions (nil without the screen)
+	from notify.Origin // what each title starts with
+	asks *watchAsks    // the screen's questions (nil without the screen)
 
 	mu           sync.Mutex
 	ended, fails int // batches of the work in hand that ended, and failed
@@ -37,7 +38,7 @@ func newWatchNotes(t *notify.Terminal, hook *notify.Hook, root string) *watchNot
 	if t == nil && hook == nil {
 		return nil
 	}
-	n := &watchNotes{t: t, hook: hook, root: root, stopTick: make(chan struct{})}
+	n := &watchNotes{t: t, hook: hook, root: root, from: notifyOrigin(root), stopTick: make(chan struct{})}
 	if t == nil {
 		return n
 	}
@@ -76,10 +77,10 @@ func (n *watchNotes) asked(q watchAsk) {
 		return
 	}
 	what := "approval of " + q.msg.Flag
-	title := fmt.Sprintf("swim %d needs you", q.msg.Lane)
+	title := n.from.Title(fmt.Sprintf("lane %d needs you", q.msg.Lane))
 	body := fmt.Sprintf("%s: %s · batch #%d", what, approval.Clean(q.msg.Desc), q.seq)
 	n.t.Notify(title, body)
-	n.hook.Send(notify.Note{Event: notify.EventAsk, Title: title, Body: body, Lanes: []int{q.msg.Lane}, Batch: q.seq})
+	n.hook.Send(n.from.Note(notify.Note{Event: notify.EventAsk, Title: title, Body: body, Lanes: []int{q.msg.Lane}, Batch: q.seq}))
 	n.progress()
 }
 
@@ -106,9 +107,9 @@ func (n *watchNotes) batchDone(seq int, result string, lanes []int, took time.Du
 			body += " · " + f
 		}
 	}
-	title := fmt.Sprintf("swim: #%d %s", seq, result)
+	title := n.from.Title(fmt.Sprintf("batch #%d %s", seq, result))
 	n.t.Notify(title, body)
-	n.hook.Send(notify.Note{Event: notify.EventEnd, Result: result, Title: title, Body: body, Lanes: lanes, Batch: seq})
+	n.hook.Send(n.from.Note(notify.Note{Event: notify.EventEnd, Result: result, Title: title, Body: body, Lanes: lanes, Batch: seq}))
 	n.progress()
 }
 
