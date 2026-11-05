@@ -40,6 +40,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261105.4 (v0.20261105.4, 2026-11-05)
+
 ### Removed
 
 - **`swim archive` empties the slot; `swim stub`, `swim clean` and `swim
