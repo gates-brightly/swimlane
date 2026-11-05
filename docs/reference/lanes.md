@@ -134,8 +134,19 @@ and what a lane approves in the copy is which check runs, with what. The
 commands a check runs (`aws`, `gh`, `git`) aren't on the command line, so
 `blocked_commands` doesn't see them; none of them change anything outside
 the repo's git state. A destructive step stays in the
-lane behind its own guard: lint reads the lane, not the files it
-includes, for guards and for bash 3.2.
+lane behind its own guard.
+
+A function that changes something says so in its comment, with a
+`# Changes: WHAT` line (`git_worktree`: a new branch and worktree in the
+repo); `swim helpers MODULE` shows it. Lint holds a lane's call of one to
+the rules for a destructive command: outside a guard block, it warns
+(`destructive`). Lint leaves swim's own modules, as shipped, to swim's
+tests; any other module a lane sources (a repo's own, an edited copy) it
+reads on its own file, as it reads a lane, for destructive and blocked
+commands, bash 3.2, BSD tools, how steps are written and secrets, leaving
+alone the body of a function that declares `# Changes:`. A disable comment
+in the module covers its own lines; one in the lane covers a module's only
+with `-file`.
 
 In the log, a helper's step shows the call, not the command it runs, and
 its `helper:` line names the function, the copy and the swim it came from:

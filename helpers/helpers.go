@@ -139,11 +139,14 @@ func (c Copy) Describe(this string) string {
 // Func is one documented entry of a module: the comment block above its
 // public functions, "# gh_pr_fetch N [REMOTE]: a gate that ...". Usage is
 // the part before ": " (one or more functions with their arguments), Doc
-// the rest as one paragraph.
+// the rest as one paragraph. A "# Changes: WHAT" line in the block says
+// the function changes something (Changes is WHAT): lint holds a lane's
+// call of it to the rules for a destructive command.
 type Func struct {
-	Names []string // the functions it defines: gh_pr_fetch; os_mac, os_linux
-	Usage string
-	Doc   string
+	Names   []string // the functions it defines: gh_pr_fetch; os_mac, os_linux
+	Usage   string
+	Doc     string
+	Changes string
 }
 
 // Funcs are module m's documented public functions, in file order. A
@@ -151,6 +154,12 @@ type Func struct {
 // ("# os_mac / os_linux: ...") shares its entry.
 func Funcs(m string) []Func {
 	src, _ := Source(m)
+	return FuncsIn(src)
+}
+
+// FuncsIn are the documented public functions of a module's source, swim's
+// or a repo's own, written as swim's are.
+func FuncsIn(src string) []Func {
 	var out []Func
 	var block []string
 	var cur *Func
@@ -163,11 +172,20 @@ func Funcs(m string) []Func {
 		name, isFunc := strings.CutSuffix(line, "() {")
 		switch {
 		case isFunc && !strings.HasPrefix(name, "_") && len(block) > 0 && strings.HasPrefix(block[0], name):
-			usage, doc, _ := strings.Cut(strings.Join(block, " "), ": ")
-			if doc != "" {
-				doc = strings.ToUpper(doc[:1]) + doc[1:]
+			var doc []string
+			changes := ""
+			for _, b := range block {
+				if w, ok := strings.CutPrefix(b, "Changes: "); ok {
+					changes = strings.TrimSuffix(strings.TrimSpace(w), ".")
+					continue
+				}
+				doc = append(doc, b)
 			}
-			out = append(out, Func{Names: []string{name}, Usage: usage, Doc: doc})
+			usage, text, _ := strings.Cut(strings.Join(doc, " "), ": ")
+			if text != "" {
+				text = strings.ToUpper(text[:1]) + text[1:]
+			}
+			out = append(out, Func{Names: []string{name}, Usage: usage, Doc: text, Changes: changes})
 			cur = &out[len(out)-1]
 		case isFunc && cur != nil && strings.Contains(cur.Usage, name):
 			cur.Names = append(cur.Names, name)

@@ -40,6 +40,18 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Added
 
+- **Lint reads a repo's own modules, and `# Changes:`:** a bash module a
+  lane sources, other than swim's own as shipped (a repo's own, an edited
+  copy), is linted on its own file for destructive and blocked commands,
+  bash 3.2, BSD tools, how steps are written and secrets, with its own
+  disable comments. A function whose comment has `# Changes: WHAT` says
+  it changes something: lint leaves its body alone and warns on a lane's
+  call of it outside a guard block (`destructive`), as for any
+  destructive command. `git_worktree` declares it (a new branch and
+  worktree in the repo), so an unguarded call of it now warns; `swim
+  helpers MODULE` shows each declaration. A disable comment in a lane
+  covers a module's lines only with `-file`.
+
 - **`aws_gate --profile PROFILE [ACCOUNT]`:** gates on a named profile's
   session (`aws_gate --profile sbx1`), as lanes gate on an environment,
   without exporting `AWS_PROFILE` first; its expired SSO session names

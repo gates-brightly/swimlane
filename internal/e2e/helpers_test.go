@@ -201,7 +201,8 @@ tool_gate git`)
 	if strings.Contains(out, "outside a step") {
 		t.Errorf("a helper ran a command outside a step:\n%s", out)
 	}
-	contains(t, "lint", must(r.swim("lint", "1")), "no problems found")
+	// git_worktree declares it changes things: lint wants its calls guarded.
+	contains(t, "lint", must(r.swim("lint", "1")), "git_worktree changes things: a new branch and worktree in the repo (lib/swim/git.sh); it isn't inside a guard block  [destructive]", "0 errors, 2 warnings")
 
 	gitAs(t, r.root, "commit", "-q", "--allow-empty", "-m", "mine")
 	lane(`git_authors_gate "t <t@t>" upstream/main..HEAD`)
@@ -334,4 +335,52 @@ func TestHelperStats(t *testing.T) {
 		r2.mustSwim("run", "1", "--plain")
 	}
 	contains(t, "reruns", r2.mustSwim("helpers", "stats"), "helpers: none ran", "checks written by hand: none repeated")
+}
+
+// A module a lane sources that isn't swim's own as shipped is linted on its
+// own file, with its own disable comments; a function that declares
+// # Changes: is left alone, and the lane's unguarded calls of it warn.
+func TestLintModules(t *testing.T) {
+	r := newRepo(t)
+	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
+	os.WriteFile(filepath.Join(r.root, "lib/lith.sh"), []byte(`# lith_: this repo's dev stack.
+
+# lith_wipe: drop the dev data.
+lith_wipe() {
+  step "wipe" rm -rf /tmp/lith-data
+}
+
+# lith_clean: tidy up.
+lith_clean() {
+  step "clean" rm -rf /tmp/lith-cache # swim:lint-ignore destructive a cache
+}
+
+# lith_reset DB: drop and recreate DB.
+# Changes: drops the dev database.
+lith_reset() {
+  step "reset $1" rm -rf "/tmp/lith/$1"
+}
+`), 0o644)
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(`#!/usr/bin/env swim
+# swim: syntax 4
+# Round: modules
+# Includes: lib/lith.sh
+# Guards: L1_ALLOW_RESET  reset the dev db
+
+source lib/lith.sh
+stage check
+step "x" true
+stage change
+lith_reset main
+if guard L1_ALLOW_RESET "reset the dev db"; then
+  lith_reset main
+fi
+`), 0o755)
+	out := must(r.swim("lint", "1"))
+	contains(t, "modules", out,
+		`lib/lith.sh:5  warn   "rm -r" looks destructive but isn't inside a guard block (in a module lane 1 sources)  [destructive]`,
+		"declare it in the function's comment (# Changes: WHAT)",
+		"lane.1.sh:11   warn   lith_reset changes things: drops the dev database (lib/lith.sh); it isn't inside a guard block  [destructive]",
+		"0 errors, 2 warnings")
+	contains(t, "show", r.mustSwim("helpers", "git"), "Changes: a new branch and worktree in the repo")
 }

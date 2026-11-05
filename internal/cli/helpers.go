@@ -93,6 +93,9 @@ func showHelpers(root string, cfg *config.Config, m string) error {
 		for _, l := range wrapWords(f.Doc, 72) {
 			fmt.Printf("    %s\n", l)
 		}
+		if f.Changes != "" {
+			fmt.Printf("    Changes: %s (lint wants a call of it inside a guard block).\n", f.Changes)
+		}
 	}
 	return nil
 }

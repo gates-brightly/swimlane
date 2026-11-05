@@ -819,7 +819,7 @@ func checkDestructive(c *Context, s *Script) []finding.Finding {
 				"%q looks destructive but isn't inside a guard block", strings.ToLower(what)))
 		}
 	}
-	return out
+	return append(out, changingCalls(c, s)...)
 }
 
 func checkBlocked(c *Context, s *Script) []finding.Finding {

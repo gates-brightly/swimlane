@@ -10,9 +10,9 @@
 # Every function is gh_<name>. # Includes: pins the file with the lane, so
 # approving the lane approves it as it is. The gates run their checks
 # through swim _helper (the check is swim's own code, as gate is); the log
-# shows the call and what the check found. Nothing here changes anything but the
-# repo's own git refs; destructive work stays in the lane, behind its own
-# guard (lint doesn't read this file). bash 3.2 and BSD tools (macOS).
+# shows the call and what the check found. Nothing here changes anything
+# but the repo's own git refs; destructive work stays in the lane, behind
+# its own guard. bash 3.2 and BSD tools (macOS).
 
 # Functions that talk to GitHub use $REPO (owner/name) when set, else the
 # repo origin points at (gh_repo sets it).

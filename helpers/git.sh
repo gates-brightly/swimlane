@@ -13,10 +13,11 @@
 # Every function is git_<name>. # Includes: pins the file with the lane, so
 # approving the lane approves it as it is. The gates run their checks
 # through swim _helper (the check is swim's own code, as gate is); the log
-# shows the call and what the check found. They change only the repo's own git state (refs,
-# a new worktree); pushing, resetting and deleting stay in the lane, behind
-# its own guard (lint doesn't read this file). Paths are relative to the
-# repo ($SWIM_ROOT). bash 3.2 and BSD tools (macOS).
+# shows the call and what the check found. They change only the repo's own
+# git state (refs, a new worktree); git_worktree says so (# Changes:), and
+# lint wants its calls inside a guard block. Pushing, resetting and
+# deleting stay in the lane, behind its own guard. Paths are relative to
+# the repo ($SWIM_ROOT). bash 3.2 and BSD tools (macOS).
 
 # _git_fail LABEL MESSAGE: a failed gate, for a function called wrong.
 _git_fail() {
@@ -47,6 +48,7 @@ git_fetch_gate() {
 # branch BRANCH from BASE (default origin/main). Rerunnable: a worktree
 # already at PATH on BRANCH passes; one on another branch, or a BRANCH that
 # already exists elsewhere, stops the round. Sets WT to the worktree's path.
+# Changes: a new branch and worktree in the repo.
 git_worktree() {
   WT=$(_git_path "${1:-}")
   gate --helper "git_worktree${*:+ $*}" --timeout 2m "worktree ${1:-?} on ${2:-?} (from ${3:-origin/main})" "${SWIM_BIN:-swim}" _helper git_worktree "$@"

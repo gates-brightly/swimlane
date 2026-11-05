@@ -11,8 +11,8 @@
 # so approving the lane approves it as it is. Each gate runs its check
 # through swim _helper (the check is swim's own code, as gate is); the log
 # shows the call and what the check found. Nothing here changes anything;
-# destructive work stays in the lane, behind its own guard (lint doesn't
-# read this file). bash 3.2 and BSD tools (macOS).
+# destructive work stays in the lane, behind its own guard. bash 3.2 and
+# BSD tools (macOS).
 
 # aws_gate [--profile PROFILE] [ACCOUNT]: a gate that an AWS session is
 # active (sts get-caller-identity answers, under PROFILE, else AWS_PROFILE
