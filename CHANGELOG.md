@@ -40,6 +40,18 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Added
+
+- **`notify_command`: your own command when a lane asks or a run ends.**
+  Set in config.yml (`swim config notify_command '...'`; never a repo's
+  swim.yml), swim runs it with `sh -c` in the repo root at the moments
+  `notify` shows: a lane waits on you, a `swim run` ends, a `swim watch`
+  batch ends. The notification is in its environment (`SWIM_EVENT` ask or
+  end, `SWIM_RESULT`, `SWIM_TITLE`, `SWIM_BODY`, `SWIM_LANES`,
+  `SWIM_BATCH`, `SWIM_ROOT`), so one `curl` sends it to ntfy, a webhook
+  or a chat. It runs with or without a terminal, independent of `notify`;
+  each is killed after 15s, and a failure is a `warn` line in `.swim.log`.
+
 ## 0.20261105.2 (v0.20261105.2, 2026-11-05)
 
 ### Added

@@ -510,6 +510,7 @@ func runLanes(rest []string, rf runFlags) error {
 	} else {
 		o.Notify = terminalNotifier(cfg)
 	}
+	o.Hook = commandHook(cfg, root)
 	if o.RunID == "" {
 		o.RunID = lane.NewRunID()
 	}

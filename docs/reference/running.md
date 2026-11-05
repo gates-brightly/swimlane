@@ -64,6 +64,33 @@ under it, prefixed `[N]`. With more than one lane:
 you or a run ends, and a progress bar on the terminal tab (OSC 777, OSC
 9;4, as Ghostty shows them).
 
+`notify_command` runs a command of yours at the same moments (a lane
+waits on you, a run or a `swim watch` batch ends), whether or not there's
+a terminal: `sh -c` in the repo root, with the notification in its
+environment. Use it to reach your phone, a webhook or a chat:
+
+```yaml
+defaults:
+  notify_command: >-
+    curl -s -H "Title: $SWIM_TITLE" -H "Tags: $SWIM_RESULT"
+    -H "Priority: $([ "$SWIM_RESULT" = failed ] || [ "$SWIM_EVENT" = ask ] && echo high || echo default)"
+    -d "$SWIM_BODY" https://ntfy.example.com/swim
+```
+
+| Variable | |
+|---|---|
+| `SWIM_EVENT` | `ask` (a lane waits on you) or `end` (a run or batch ended). |
+| `SWIM_RESULT` | For `end`: `passed`, `failed`, `interrupted`, `skipped` (a guard dry-ran: it waits on an approval) or `error`. |
+| `SWIM_TITLE`, `SWIM_BODY` | What the terminal notification says, one line each. |
+| `SWIM_LANES` | The lanes, `1,2,3`. |
+| `SWIM_BATCH` | `swim watch`'s batch number (empty for `swim run`). |
+| `SWIM_ROOT` | The repo. |
+
+Quote the variables: the body carries a lane's own text. Each command is
+killed after 15s; swim waits for it before exiting, and one that fails is
+a `warn` line in `.swim.log`. It belongs in `config.yml`, never a repo's
+`swim.yml`: a committed file mustn't run a command no guard sees.
+
 ## Interrupts
 
 Lanes run in their own process groups, so Ctrl-C reaches only swim:

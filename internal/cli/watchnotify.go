@@ -16,9 +16,11 @@ import (
 // batch asks the operator and when one ends, and a bar for the batches of
 // the work in hand, from the first batch until the queue is empty again:
 // how many have ended of those ended, running and queued, red once one
-// failed, paused while a question waits. A nil watchNotes sends nothing.
+// failed, paused while a question waits. notify_command hears of the same
+// questions and batch ends. A nil watchNotes sends nothing.
 type watchNotes struct {
-	t    *notify.Terminal
+	t    *notify.Terminal // nil: no terminal notifications or bar
+	hook *notify.Hook     // nil: no notify_command
 	root string
 	asks *watchAsks // the screen's questions (nil without the screen)
 
@@ -28,12 +30,16 @@ type watchNotes struct {
 	ticking      sync.WaitGroup
 }
 
-// newWatchNotes starts keeping the bar up to date (nil: notify is off).
-func newWatchNotes(t *notify.Terminal, root string) *watchNotes {
-	if t == nil {
+// newWatchNotes starts keeping the bar up to date (nil: notify is off and
+// there's no notify_command).
+func newWatchNotes(t *notify.Terminal, hook *notify.Hook, root string) *watchNotes {
+	if t == nil && hook == nil {
 		return nil
 	}
-	n := &watchNotes{t: t, root: root, stopTick: make(chan struct{})}
+	n := &watchNotes{t: t, hook: hook, root: root, stopTick: make(chan struct{})}
+	if t == nil {
+		return n
+	}
 	n.ticking.Add(1)
 	go func() {
 		defer n.ticking.Done()
@@ -51,7 +57,8 @@ func newWatchNotes(t *notify.Terminal, root string) *watchNotes {
 	return n
 }
 
-// stop hides the bar: swim watch leaves none behind.
+// stop hides the bar, swim watch leaves none behind, and waits for the
+// notify_command still running.
 func (n *watchNotes) stop() {
 	if n == nil {
 		return
@@ -59,6 +66,7 @@ func (n *watchNotes) stop() {
 	close(n.stopTick)
 	n.ticking.Wait()
 	n.t.Done()
+	n.hook.Wait()
 }
 
 // asked tells the terminal a batch's lane is waiting on the operator.
@@ -70,8 +78,10 @@ func (n *watchNotes) asked(q watchAsk) {
 	if q.msg.Choices > 0 {
 		what = "a decision: " + q.msg.Flag
 	}
-	n.t.Notify(fmt.Sprintf("swim %d needs you", q.msg.Lane),
-		fmt.Sprintf("%s: %s · batch #%d", what, approval.Clean(q.msg.Desc), q.seq))
+	title := fmt.Sprintf("swim %d needs you", q.msg.Lane)
+	body := fmt.Sprintf("%s: %s · batch #%d", what, approval.Clean(q.msg.Desc), q.seq)
+	n.t.Notify(title, body)
+	n.hook.Send(notify.Note{Event: notify.EventAsk, Title: title, Body: body, Lanes: []int{q.msg.Lane}, Batch: q.seq})
 	n.progress()
 }
 
@@ -93,12 +103,17 @@ func (n *watchNotes) batchDone(seq int, result string, lanes []int, took time.Du
 	if result == "skipped" {
 		body += " · a guard dry-ran: it waits on an approval"
 	}
-	n.t.Notify(fmt.Sprintf("swim: #%d %s", seq, result), body)
+	title := fmt.Sprintf("swim: #%d %s", seq, result)
+	n.t.Notify(title, body)
+	n.hook.Send(notify.Note{Event: notify.EventEnd, Result: result, Title: title, Body: body, Lanes: lanes, Batch: seq})
 	n.progress()
 }
 
 // progress brings the bar up to date with the queue.
 func (n *watchNotes) progress() {
+	if n.t == nil {
+		return
+	}
 	entries, err := queue.List(n.root, false)
 	if err != nil {
 		return

@@ -91,6 +91,13 @@ var Commands = map[string]string{
                  progress bar on the tab (OSC 777 and OSC 9;4, as Ghostty
                  shows them): when a lane waits on you and when a run or a
                  batch ends. Only on a terminal, never in CI. Default false.
+    notify_command  a shell command       run (sh -c, in the repo root) for
+                 the same moments, terminal or not, with SWIM_EVENT (ask,
+                 end), SWIM_RESULT (passed, failed, interrupted, skipped,
+                 error), SWIM_TITLE, SWIM_BODY, SWIM_LANES, SWIM_BATCH and
+                 SWIM_ROOT set: e.g. curl -s -H "Title: $SWIM_TITLE" -d
+                 "$SWIM_BODY" https://ntfy.sh/TOPIC. A failure is a warn
+                 line in .swim.log. Not in a repo's swim.yml.
     cache_dir    an absolute path         where tool caches live (# Cache:;
                  default ~/.cache/swim, macOS ~/Library/Caches/swim; under
                  /tmp it gets your user id). Not in a repo's swim.yml.

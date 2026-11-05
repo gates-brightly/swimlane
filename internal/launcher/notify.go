@@ -77,9 +77,12 @@ func progressOf(views []display.LaneView, sel []int) notify.Progress {
 	return notify.Of(ended, len(sel), state)
 }
 
-// notifyAsk tells the operator's terminal a lane is asking them.
+// notifyAsk tells the operator's terminal, and notify_command, a lane is
+// asking them.
 func notifyAsk(o Options, req approval.Request) {
-	o.Notify.Notify(fmt.Sprintf("swim %d needs you", req.Lane), askText(req))
+	title := fmt.Sprintf("swim %d needs you", req.Lane)
+	o.Notify.Notify(title, askText(req))
+	o.Hook.Send(notify.Note{Event: notify.EventAsk, Title: title, Body: askText(req), Lanes: []int{req.Lane}})
 }
 
 // askText is what a question asks, for a notification: "approval of
@@ -91,17 +94,18 @@ func askText(req approval.Request) string {
 	return "approval of " + req.Flag + ": " + req.Desc
 }
 
-// notifyEnd tells the operator's terminal how the run ended: "swim run
+// notifyEnd tells the operator's terminal, and notify_command, how the run
+// ended: "swim run
 // failed" / "swim 1,2,3 · 2 passed, 1 failed · 3:12".
 func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bool, elapsed time.Duration) {
-	word := "passed"
+	word, result := "passed", status.Passed
 	switch {
 	case stopped:
-		word = "interrupted"
+		word, result = "interrupted", status.Interrupted
 	case code == ExitDryRun:
-		word = "waiting on an approval (a guard dry-ran)"
+		word, result = "waiting on an approval (a guard dry-ran)", status.Skipped
 	case code != 0:
-		word = "failed"
+		word, result = "failed", status.Failed
 	}
 	var parts []string
 	for _, st := range []string{status.Passed, status.Failed, status.Skipped, status.Interrupted} {
@@ -109,5 +113,7 @@ func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bo
 			parts = append(parts, fmt.Sprintf("%d %s", counts[st], st))
 		}
 	}
-	o.Notify.Notify("swim run "+word, fmt.Sprintf("swim %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Elapsed(elapsed)))
+	title, body := "swim run "+word, fmt.Sprintf("swim %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Elapsed(elapsed))
+	o.Notify.Notify(title, body)
+	o.Hook.Send(notify.Note{Event: notify.EventEnd, Result: result, Title: title, Body: body, Lanes: sel})
 }

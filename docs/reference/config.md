@@ -37,6 +37,7 @@ defaults:
   claim_lease: 2h                  # how long a lane claim lasts
   watch_batches: 4                 # batches one swim watch runs at once
   notify: false                    # notifications and a tab progress bar
+  notify_command: curl -s -H "Title: $SWIM_TITLE" -d "$SWIM_BODY" https://ntfy.sh/TOPIC   # config.yml only
   cache_dir: ~/.cache/swim         # config.yml only
   cache_max: 10GB
   cache_slug: orders               # the repo's cache directory name
