@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # swim: syntax 2
 # Round: DAG child B (of 1): per-page link and word stats
-# Job:   127c5d37-ca9e-441f-9256-1a97d5186feb
+# Round-ID:   127c5d37-ca9e-441f-9256-1a97d5186feb
 # After: 1
 # Lane:  swim 3    Written: 2026-10-09
 #
@@ -46,7 +46,7 @@ RUN_ID=$SWIM_RUN
 stage change
 export RUN_ID
 
-IN=$D/input-3.$SWIM_JOB.html
+IN=$D/input-3.$SWIM_ROUND_ID.html
 export IN
 gate "copy input to $IN" cp "$D/combined.html" "$IN"
 step "simulated work" true

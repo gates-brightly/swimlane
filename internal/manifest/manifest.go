@@ -97,7 +97,7 @@ type Pinned struct {
 	Runner string `yaml:"runner"`
 	Config Policy `yaml:"config"`
 	// Workspace is "live" for a lane that runs in the working tree (#
-	// Workspace: live), "" for one that runs in its staged copy.
+	// Workspace: live), "" for one that runs in its pinned copy.
 	Workspace string `yaml:"workspace,omitempty"`
 }
 
@@ -146,7 +146,7 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	}
 	rel, ok := relTo(root, path)
 	if !ok {
-		return nil, fmt.Errorf("swim %d: %s is outside the repo", n, path)
+		return nil, fmt.Errorf("lane %d: %s is outside the repo", n, path)
 	}
 	m := &Manifest{Schema: Schema, Lane: n, data: map[string][]byte{rel: data}}
 	st, err := os.Stat(path)
@@ -239,7 +239,7 @@ func (p Pinned) Hash(n int) string {
 
 // hashV1 is the manifest v1 hash of the pins (swim before 0b9aba3,
 // 2026-10-24): what a manifest staged by an older swim recorded. Frozen:
-// swim verify rechecks those staged copies with it.
+// swim verify rechecks those pinned copies with it.
 func (p Pinned) hashV1(n int) string {
 	return hash([]byte(p.text("swim manifest v1", n, fmt.Sprintf("config: v%d %s", p.Config.Version, p.Config.SHA256))))
 }
@@ -436,7 +436,7 @@ func (m *Manifest) Verify() error {
 	return nil
 }
 
-// ScriptBytes is lane.ScriptBytes of the staged copy: what the chain keeps
+// ScriptBytes is lane.ScriptBytes of the pinned copy: what the chain keeps
 // as the round's script.
 func (m *Manifest) ScriptBytes() ([]byte, error) {
 	data, err := os.ReadFile(m.Script())

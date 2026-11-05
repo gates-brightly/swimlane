@@ -50,7 +50,7 @@ var Commands = map[string]string{
       repo's name, the repos: key its settings go under
     - adds a marked block to .gitignore: lane.[0-9]*, .env.swim, .swim/,
       .swim.log
-    - creates .swim/status.yml with every lane idle
+    - creates .swim/status.yml with every lane empty
     - records "init" in .swim.log, the project log (git-ignored too; drop it
       from the block if you want to commit the project's history)
   Safe to run again.
@@ -80,7 +80,7 @@ var Commands = map[string]string{
   swim config KEY VALUE    set KEY under defaults:, keeping the file's comments;
                            --repo: in repos.NAME; --branch: in repos.NAME/BRANCH
   Keys:
-    queue_lease  duration (10s or more)   a queue swimmer renews its claim's
+    queue_lease  duration (10s or more)   a queue watcher renews its claim's
                  heartbeat every third of this while it runs a batch; seen
                  from another host, a claim with an older heartbeat is
                  orphaned. Default 2m.
@@ -115,10 +115,10 @@ var Commands = map[string]string{
   that isn't a stub, a current log, or a running lane). swim new N starts
   one (1..99); swim archive N drops one. A lanes: setting is ignored.
   Config lives outside the repo, in ~/.config/swim/config.yml
-  ($XDG_CONFIG_HOME/swim/config.yml if set). Swimmers must not edit it; give
+  ($XDG_CONFIG_HOME/swim/config.yml if set). Watchers must not edit it; give
   the operator exact YAML lines instead.
 `,
-	"new": `swim new N|TASK "<round goal>" [--job ID] [--force]
+	"new": `swim new N|TASK "<round goal>" [--round-id ID] [--force]
 
   swim new TASK (a name: renew-certs) writes the lowest lane not in use
   and names it with a # Task: line, so swim run TASK, log TASK, status
@@ -127,38 +127,39 @@ var Commands = map[string]string{
   A name is a-z, 0-9 and - (a letter first, at most 40, not only hex
   digits and -), not a swim command, and one lane's alone (swim lint).
   Where swim takes a lane it reads a number as a lane, then a name as a
-  task, then a job id.
-  Write lane.N.sh from the template: the goal on its Round: line, a new job
-  id on its Job: line, the toolchain preamble from config, and example
-  snapshot/gate/guard/verify steps to replace. Prints the job id. Marks the
-  lane's pending round and job in status.yml.
-  Refuses if lane N is running, or already holds a pending round (use
-  --force to replace a pending round you own).
+  task, then a round id.
+  Write lane.N.sh from the template: the goal on its Round: line, a new
+  round id on its Round-ID: line, the toolchain preamble from config, and
+  example snapshot/gate/guard/verify steps to replace. Prints the round id.
+  Marks the lane ready in status.yml, with its round and round id.
+  Refuses if lane N is running, or already holds a ready round (use
+  --force to replace a ready round you own).
   It takes a claim on the lane while you write the round (claim_lease,
   default 2h; swim lint refreshes it; it ends when the lane runs or is
   archived): another session's swim new and archive refuse the lane,
   naming who holds it, and swim status shows it to them. --force takes it
   over (logged as claim-broken). A session is SWIM_SESSION, else
   user@host.
-  --job ID   use your own job id instead of a random UUID: 8-64 letters,
-             digits, '.', '_' or '-', not all digits, unique across lanes.
+  --round-id ID   use your own round id instead of a random UUID: 8-64
+                  letters, digits, '.', '_' or '-', not all digits, unique
+                  across lanes.
 `,
-	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N]
+	"run": `swim run [N|ROUND-ID ...] [--rerun] [--plain] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 
-  Run lanes. Each argument is a lane number or a job id (full, or 8+
-  characters of it). A job id pins the run to that job: it runs the lane
+  Run lanes. Each argument is a lane number or a round id (full, or 8+
+  characters of it). A round id pins the run to that round: it runs the lane
   whose script holds it, and refuses if none does. Named lanes always run,
   even if their round already passed (rounds are rerunnable).
   With no arguments (or "swim all"), runs every lane whose lane.N.sh holds a
-  pending round (a Round: line, not a stub) that hasn't passed yet; rounds
-  that passed show as "done". --rerun runs them too.
-  Lanes run in parallel as "bash lane.N.sh", each in its staged copy.
+  ready round (a Round: line, not a stub) that hasn't passed yet; rounds
+  that passed show as "passed (an earlier run)". --rerun runs them too.
+  Lanes run in parallel as "bash lane.N.sh", each in its pinned copy.
     - The top of the screen pins one row per lane in use: its state and
       round. Lanes waiting on a dependency show a throbber and
-      "waiting on swim N". Output scrolls below, prefixed [N].
+      "waiting on lane N". Output scrolls below, prefixed [N].
       The panel shows at most 15 lanes. With more, a "… N more" line counts
-      the hidden ones; idle, done and passed lanes are hidden first, then
+      the hidden ones; empty, ready and passed lanes are hidden first, then
       waiting and failed ones, so running lanes stay visible.
     - Dependencies come from each script's "# After:" line.
       A lane starts when its dependencies in this run pass, and is skipped if
@@ -177,7 +178,7 @@ var Commands = map[string]string{
       follow new lines; scrolling up pauses ("paused · 37 new lines"). The
       all view keeps the last 20000 lines; older ones are in the logs. If
       you are in a lane view or scrolled back when the run ends, the screen
-      stays until you press q ("run finished · q to close"); the summary
+      stays until you press q ("run ended · q to close"); the summary
       prints after it closes.
     - Ends with a per-lane summary: result, exit code, counts, failed steps.
   Exits 0 only if every lane passed.
@@ -206,11 +207,11 @@ var Commands = map[string]string{
             terminal, and when the terminal is too small.
   KEYS (interactive view)
     → l Tab / ← h Shift-Tab   next / previous lane, in panel order (running,
-                    then waiting, then finished); from the all view → opens
+                    then waiting, then ended); from the all view → opens
                     the last lane selected, ← the last lane
     ↑ k / ↓ j       scroll one line      PgUp b / PgDn Space   a page
     Home g / End G  top; bottom and follow again
-    4 2 Enter       jump to swim 42
+    4 2 Enter       jump to lane 42
     Enter           open the lane waiting longest for approval (see below)
     y / n           on a lane waiting for approval: approve / decline it
     f               which lanes ← → visit: every lane / running / failed
@@ -218,25 +219,25 @@ var Commands = map[string]string{
     Ctrl-C          interrupt, as without the view   ?  help    q  close
                     the view after the run
   --yaml    stdout is a stream of YAML documents (schema swim.run/v1: run,
-            waiting, locked, queued, start, step, finish, then summary)
+            waiting, start, step, finish, then summary)
             instead of the panel and table; lane output goes only to the
             logs. See swim guide logs. --yaml-output also
             streams lane output lines as output events.
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
   With a guard's flag unset and swim on a terminal, the lane asks instead:
-    swim 2 requires human approval of guard FIN_ALLOW_DELETE_ZG_ITEMS
-      job 3f2a9c1e-... · manifest 3be9a1c07d2e
+    lane 2 requires human approval of guard FIN_ALLOW_DELETE_ZG_ITEMS
+      round-id 3f2a9c1e-... · manifest 3be9a1c07d2e
       the lane says: delete the zg items - 2026-10-12
     (or set FIN_ALLOW_DELETE_ZG_ITEMS=1 to approve without asking)  Y/N [N]
-  The first lines are swim's own: the lane, job and manifest the launcher
+  The first lines are swim's own: the lane, round id and manifest the launcher
   started (each lane process has its own approval token), not what the
   request claims. A flag neither the script nor a file it includes declares
   or uses is refused (unless the script names a guard's flag at run time,
   guard "$F"), and an approval is used once, by the lane it was given to.
-  The lane's panel row shows "awaiting approval".
+  The lane's panel row shows "waiting for approval".
     - Interactive view: several lanes can wait at once. A banner names them
-      ("▶ swim 2 needs approval · Enter to view it and answer"); Enter opens
+      ("▶ lane 2 needs approval · Enter to view it and answer"); Enter opens
       the lane waiting longest, showing its log with the question under it,
       and there y approves, n declines. ← → still visit other lanes and Esc
       returns to all lanes; the question waits until answered.
@@ -249,7 +250,7 @@ var Commands = map[string]string{
   front: FLAG=1 swim run N (FLAG=0 declines).
   --no-prompt   answer every guard question no: an unset guard flag is a
                 dry run
-  Each lane runs a staged copy of its files (.swim/runs/<run>/<N>/), fixed
+  Each lane runs a pinned copy of its files (.swim/runs/<run>/<N>/), fixed
   before it waits for anything and checked again right before it starts;
   an edit to the working tree after that changes nothing in the run. See
   swim guide manifest.
@@ -257,47 +258,48 @@ var Commands = map[string]string{
 	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 
-  Run every lane whose pending round hasn't passed yet: the same as
+  Run every lane whose ready round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
-  "done" and not run again; failed, interrupted, skipped and new rounds run.
-  --rerun   run every pending round, including ones that already passed.
+  "passed (an earlier run)" and not run again; failed, interrupted,
+  skipped and ready rounds run.
+  --rerun   run every ready round, including ones that already passed.
   Every lane script counts, whatever its number. Dependencies ("# After:"
   lines), the live view and its keys (off with --plain), guard flags and
   the summary all work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
-	"status": `swim status [N|JOB ...] [--yaml] [--rebuild] [--run RUN]
+	"status": `swim status [N|ROUND-ID ...] [--yaml] [--rebuild] [--run RUN]
 
   Show the last state of every lane in use (or just the lanes named, by
-  number, job id or script path: swim status 17 18, swim status 2,3,
-  swim status lane.17.sh), from .swim/status.yml: state, job id, pending round and job
-  (from lane.N.sh on disk), last round, counts,
+  number, round id or script path: swim status 17 18, swim status 2,3,
+  swim status lane.17.sh), from .swim/status.yml: state, round id, ready
+  round and its round id (from lane.N.sh on disk), last round, counts,
   current or failed steps, and timing. Running lanes whose process is gone
-  are shown as "running?" (interrupted); the next swim run, swim all, swim
+  are shown as "interrupted (its process is gone)"; the next swim run, swim all, swim
   ci or swim watch ends their round as interrupted. Guards the round's run
   approved with no one asked are listed as "approved without a prompt", by
   a guard flag (flag_approved: FLAG=1, a batch's --approve).
   Guards it didn't approve, whose steps ran as dry runs, show as [DRY]
   (dry_run), here, in the live view and the watch screen.
-  Under each lane holding a pending round (not one live in a run, nor one
+  Under each lane holding a ready round (not one live in a run, nor one
   that already passed), what its header declares and where that stands:
-      after swim 1 (pending: a dry run or failure there skips this)
+      after lane 1 (ready: a dry run or failure there skips this)
       guard DROP_OK  drop table old_orders
              not approved; swim run will ask (a dry run if no one answers)
       timeout 30m · locks orders-db · includes lib/tables.sh
-  Each lane it waits on is passed, pending, running, failed, skipped,
+  Each lane it waits on is passed, ready, running, failed, skipped,
   interrupted or "no round"; each guard is decided as swim run would as
   it starts now (FLAG=1 in this environment), and says whether swim run
   would ask or dry-run. Only what the header sets is shown (Fail: hard, a
   target, an owner other than you too). A lane another session is writing
   shows its claim (swim new took it); your own doesn't.
   --yaml     the status file's fields as YAML, tagged schema: swim.status/v1;
-             each pending lane adds pending_header {after, guards: [{flag,
+             each ready lane adds pending_header {after, guards: [{flag,
              description, approved, how, asks}], timeout,
-             locks, includes, fail, targets, owner} and deps: [{lane, job,
+             locks, includes, fail, targets, owner} and deps: [{lane, job (its round id),
              state, note}] (deps_error if its After: doesn't resolve);
              claims: the lanes' live claims (swim new takes one), by lane
-             (with N|JOB, just that lane); the file itself is unchanged
+             (with N|ROUND-ID, just that lane); the file itself is unchanged
              (cat .swim/status.yml)
   --rebuild  reconstruct status.yml from lane scripts and logs
   --run RUN  each lane as it was in swim run RUN (from the logs, archives
@@ -340,7 +342,7 @@ var Commands = map[string]string{
   In a lane script in any language: start a stage. Out of order or twice
   records WARN; an unknown name ends the round.
 `,
-	"env": `swim env [N|JOB] [--yaml]
+	"env": `swim env [N|ROUND-ID] [--yaml]
 
   The environment env files give lane N (with no lane: the general keys and
   this repo's [repo NAME] and [repo NAME/BRANCH] sections), masked as the lane's logs show it, with where each key comes from
@@ -348,48 +350,48 @@ var Commands = map[string]string{
   one of the lane's guard flags. --yaml: a swim.env/v1 document with the
   env_sha256 the round would record. See swim guide env.
 `,
-	"archive": `swim archive N|JOB ... ["<note>"] [--as NAME] [--force]
-swim archive --done ["<note>"]
+	"archive": `swim archive N|ROUND-ID ... ["<note>"] [--as NAME] [--force]
+swim archive --passed ["<note>"]
 
-  Tidy lanes whose rounds are done: rename each lane's
-  .swim/logs/agentN.log to agentN.prev-<NAME>.log in the same directory,
-  and replace its lane.N.sh with a "nothing pending" stub carrying <note>
+  Tidy lanes whose rounds have ended: rename each lane's
+  .swim/logs/laneN.log to laneN.prev-<NAME>.log in the same directory,
+  and replace its lane.N.sh with a "nothing ready" stub carrying <note>
   (default: where the log went). The slot is empty: status shows the lane
-  idle with its note, swim run skips it, and swim new N writes the next
+  empty with its note, swim run skips it, and swim new N writes the next
   round. swim archive 1 2 3 "shipped" tidies lanes 1, 2 and 3. Every
-  argument is a lane number or a job id (the lane whose script holds that
-  job or that last ran it); the words after them are the note. NAME is
-  slugified; without --as each archive is named after its round's job id.
+  argument is a lane number or a round id (the lane whose script holds that
+  round or that last ran it); the words after them are the note. NAME is
+  slugified; without --as each archive is named after its round id.
   A script edited since its round ran holds new work: its log is archived
   and the script is kept (swim new N --force replaces it).
-  --done   every lane whose round passed
+  --passed every lane whose round passed
   --force  take over another session's claim on the lane (logged as
            claim-broken)
   All or nothing: if any lane is running, has no log, is claimed by
   another session, or its archive name exists, nothing is archived and
   every problem is listed.
 `,
-	"note": `swim note [--lane N|JOB] "<text>"
+	"note": `swim note [--lane N|ROUND-ID] "<text>"
 
   Append a note to .swim.log, the project log, so the next agent learns it:
   a decision, a finding, why a lane was archived, what to do next.
-  --lane N|JOB   tie the note to a lane (and its job id)
+  --lane N|ROUND-ID   tie the note to a lane (and its round id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|JOB|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
-swim log --since <1h|TIME|RUN|JOB>
+	"log": `swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
+swim log --since <1h|TIME|RUN|ROUND-ID>
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
     swim log --since X  what happened since X: the project log's lines from a
                         duration back from now (90m, 1h, 2d), a UTC time
-                        (2026-10-15T14:02:11Z), or a run's or job's first line
-                        on. Each round's detail is then swim log JOB
-    swim log N          lane N's current log, .swim/logs/agentN.log (every round since its
+                        (2026-10-15T14:02:11Z), or a run's or round's first line
+                        on. Each round's detail is then swim log ROUND-ID
+    swim log N          lane N's current log, .swim/logs/laneN.log (every round since its
                         last archive; the newest round is at the end)
-    swim log N --all    all of lane N's logs: archives (.swim/logs/agentN.prev-*.log),
-                        oldest first, then agentN.log, each under a header
-    swim log JOB        just the rounds of that job (full id or 8+ characters),
+    swim log N --all    all of lane N's logs: archives (.swim/logs/laneN.prev-*.log),
+                        oldest first, then laneN.log, each under a header
+    swim log ROUND-ID   just that round (full id or 8+ characters),
                         from whichever current or archived log holds them
     swim log RUN        every lane's round from that swim run, in lane order
   On a terminal the log is rendered: round and stage headers stand out,
@@ -402,7 +404,7 @@ swim log --since <1h|TIME|RUN|JOB>
   and a spinner frame alone is dropped. The file keeps every line.
   Piped (swim log 2 | less) it is the file's lines, folded so, plus the step
   running now: a step's block reaches the log file only when it ends, so
-  swim log adds it from the step's spool (.swim/logs/agentN.log.partial),
+  swim log adds it from the step's spool (.swim/logs/laneN.log.partial),
   output so far included, under a result line that never appears in a file:
       RUNNING  <label> (in progress)          <elapsed>s  <hh:mm:ss>
   ("cut off: ..." instead of "in progress" if swim died mid-step; it is
@@ -411,18 +413,18 @@ swim log --since <1h|TIME|RUN|JOB>
   --raw         print the file exactly, as cat shows it, even on a terminal
                 (nothing folded, no running step)
   --yaml        the round parsed, as data (schema swim.log/v1): the latest round,
-                every round with --all, or a job's rounds; the running step is
+                every round with --all, or a round id's; the running step is
                 a result "RUNNING" with its command, output so far and
                 duration_s. See swim guide logs.
-  --follow      print lane N's (or JOB's lane's) current round, then follow it
+  --follow      print lane N's (or ROUND-ID's lane's) current round, then follow it
                 like tail -f: new log lines, and the running step's output as
                 it is written (the step's block then adds only its result
                 line). It stops by itself once the round has ended (on an
-                idle lane, at once, after its last round; with no round yet,
+                lane at rest, at once, after its last round; with no round yet,
                 it waits for one). To wait for a round's result, and exit
                 with it: swim wait N.
 `,
-	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
+	"ci": `swim ci [N|ROUND-ID ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
         [--require-work] [--heartbeat D] [--run-id ID]
 
   Run rounds in a CI job: swim all, written for a CI log viewer and built for
@@ -441,7 +443,7 @@ swim log --since <1h|TIME|RUN|JOB>
       per lane, one case per step), and the paths to upload as artifacts.
     - Never interactive: lanes get no stdin (confirm fails closed), no
       prompts.
-    - Pinned: the selected rounds' job ids are fixed up front; a lane
+    - Pinned: the selected rounds' round ids are fixed up front; a lane
       script rewritten before its lane starts is skipped, not run.
     - Commit-tagged: SWIM_COMMIT (HEAD) goes into each round's context line
       (commit: <sha>), status.yml (commit:) and the .swim.log run, start and
@@ -452,7 +454,7 @@ swim log --since <1h|TIME|RUN|JOB>
                     "before"; pull request: the merge base with
                     origin/$GITHUB_BASE_REF; GitLab: CI_MERGE_REQUEST_DIFF_BASE_SHA
                     or CI_COMMIT_BEFORE_SHA. An all-zero SHA (new branch) runs
-                    every pending round. Needs the history (fetch-depth: 0).
+                    every ready round. Needs the history (fetch-depth: 0).
   --rerun           also rounds that already passed
   --require-work    exit 1 when there is nothing to run (default: a notice, 0)
   Exit codes: 0 every selected lane passed, 1 a lane failed or was skipped,
@@ -462,20 +464,20 @@ swim log --since <1h|TIME|RUN|JOB>
   lane.[0-9]* from swim's .gitignore block). swim never commits or pushes
   results: upload .swim/logs/, .swim/snapshots/, .swim.log and the JUnit file
   as artifacts. "Already passed" lives in .swim/status.yml: a fresh runner
-  reruns every pending round unless --changed narrows it (or .swim/ is
+  reruns every ready round unless --changed narrows it (or .swim/ is
   restored from a CI cache).
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
-swim queue N|JOB ... [--approve FLAG[,FLAG]]... [--parallel N] [--note TEXT]
-swim queue add [flags]           every pending round that hasn't passed
+swim queue N|ROUND-ID ... [--approve FLAG[,FLAG]]... [--parallel N] [--note TEXT]
+swim queue add [flags]           every ready round that hasn't passed
 swim queue show|rm|requeue ID
 
   Queue a batch of rounds to run as soon as its lanes are free, by a
-  swimmer (swim watch). Get a batch ready, queue it with its approvals, and let it
+  watcher (swim watch). Get a batch ready, queue it with its approvals, and let it
   fire when the current work is done.
-  add       queue the named lanes, or with none every pending round that
+  add       queue the named lanes, or with none every ready round that
             hasn't passed (as swim all would run). The batch is fixed now:
-            each lane is pinned to the job it holds, its script, its
+            each lane is pinned to the round it holds, its script, its
             manifest (what it sources, its sidecar, how it runs) and
             its env, so a lane changed before the batch runs is skipped, not
             run.
@@ -486,39 +488,39 @@ swim queue show|rm|requeue ID
             ends and exits with its result.
             Guards a batch doesn't approve are asked on swim watch's screen
             (on a terminal, running batches side by side), naming the lane;
-            with no such swimmer they are dry runs. A guard flag in the
-            swimmer's own environment does not count (the queue entry alone
+            with no such watcher they are dry runs. A guard flag in the
+            watcher's own environment does not count (the queue entry alone
             says what may change).
-            add says which: with a swimmer up whose screen asks, it names
+            add says which: with a watcher up whose screen asks, it names
             it; with none, a batch that approves none of its lanes' guards
             warns on stderr,
             naming each lane and the guards that will dry-run.
-            Swimmers say which swim they are (.swim/workers/): with swimmers
+            Watchers say which swim they are (.swim/workers/): with watchers
             up and none able to run the batch (its swim reads an older
             syntax than a lane's script), add refuses, naming each
-            swimmer's swim and this one; with no swimmer up it queues and
+            watcher's swim and this one; with no watcher up it queues and
             warns. The entry records the swim that queued it (swim).
   list      waiting, running and orphaned entries, and the last 5 consumed
             (--all: every one); --yaml for scripts (schema swim.queue-list/v1).
-            A batch a swimmer leaves queued says why ("left queued: ...")
+            A batch a watcher leaves queued says why ("left queued: ...")
   show ID   the entry file; ID is its id, a 4+ character prefix, or #seq
   rm ID     remove an entry that isn't running
-  requeue ID  put an orphaned (its swimmer died) or consumed entry back at the
+  requeue ID  put an orphaned (its watcher died) or consumed entry back at the
             end of the queue
-  A claimed entry is orphaned when its swimmer is gone: on the swimmer's host,
+  A claimed entry is orphaned when its watcher is gone: on the watcher's host,
   its process (pid and start time) is; from another host sharing the queue,
   its heartbeat is older than its lease (queue_lease, default 2m). A claim by
   an older swim (no heartbeat) can't be judged from another host and shows
-  as running?.
+  as running? (can't tell).
   Entries are files under .swim/queue/: NNNN-q-<utc>-<hex>.queue while
-  waiting, .running once a swimmer has claimed it (by renaming it, which
-  is atomic: two swimmers can never claim the same entry), then
+  waiting, .running once a watcher has claimed it (by renaming it, which
+  is atomic: two watchers can never claim the same entry), then
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
 	"watch": `swim watch [--once] [--interval D] [--batches N] [--plain]
 
-  The queue's swimmer. Runs queued batches (swim queue N) side by side,
+  The queue's watcher. Runs queued batches (swim queue N) side by side,
   up to --batches at once (watch_batches, default 4), each in a process
   of its own: a batch starts as soon as none of its lanes is in another
   batch or another swim run, oldest first, so a later batch whose lanes
@@ -528,39 +530,39 @@ swim queue show|rm|requeue ID
   batch's lanes pinned and its approvals, never prompts, and consumes the
   entry when the run ends (passed, failed or interrupted alike: a half-run
   change is never retried on its own; swim queue requeue does that).
-  Several swimmers can share a queue: claims are atomic, and a swimmer
+  Several watchers can share a queue: claims are atomic, and a watcher
   picks batches under a lock, so two never take the same lanes. A batch
-  submitted on a swimmer's screen (s, Q) starts on that swimmer when its
+  submitted on a watcher's screen (s, Q) starts on that watcher when its
   lanes are free, so Ctrl-C there is what stops it. While a
   batch runs, its process renews the claim's heartbeat every third of
-  queue_lease (swim config). A batch this swimmer's swim can't run (a
-  lane's script is newer than it reads) is left queued for a swimmer that can, with why, in swim queue and
-  .swim/workers/<host>-<pid>.yml, which says which swim the swimmer is. As
+  queue_lease (swim config). A batch this watcher's swim can't run (a
+  lane's script is newer than it reads) is left queued for a watcher that can, with why, in swim queue and
+  .swim/workers/<host>-<pid>.yml, which says which swim the watcher is. As
   it starts, the
   watch ends the round of any lane whose process died without ending it
   (as swim run does): END INTERRUPTED in its log, interrupted in status.
   --once         run every queued batch, then exit (non-zero if one failed)
-  --interval D   how often to check the queue and for idleness (default 2s)
+  --interval D   how often to check the queue and whether anything runs (default 2s)
   --batches N    run up to N batches at once (default watch_batches, 4);
                  --batches 1 runs one at a time, on the screen.
-  --plain        print what the swimmer waits for instead of the jobs
+  --plain        print what the watcher waits for instead of the lanes
                  screen (automatic when stdin or stdout isn't a terminal)
-  On a terminal, while it waits, the watch shows every lane's job and the
+  On a terminal, while it waits, the watch shows every lane's round and the
   queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now
-  and enter follows its output (esc comes back). q adds a job to the next
+  and enter follows its output (esc comes back). q adds a lane to the next
   batch (q again takes it out) and s submits the batch, as swim queue N
   N M does: one run, so After: between its lanes holds; x clears it.
-    enter on a job follows its lane's log while it runs, in a batch or not;
+    enter on a lane follows its log while it runs, in a batch or not;
                    v switches to its batch's output. When it ends, a header
                    bar says how: PASSED (green), FAILED (red, with the
                    failed steps) or INTERRUPTED, with the exit code and
                    time; enter on a batch does the same for the batch
-    r on a job     runs it as swim run N does: you're at the terminal, so its
+    r on a lane    runs it as swim run N does: you're at the terminal, so its
                    guards may ask
-    q on a job     queues it as swim queue N does (the batch approves none
-                   of its guards); the swimmer takes it when its lanes are free
-    a on a job     archives its lane as swim archive N does: the lane goes
-                   idle, the log is kept as agentN.prev-<job>.log and the
+    q on a lane    queues it as swim queue N does (the batch approves none
+                   of its guards); the watcher takes it when its lanes are free
+    a on a lane    archives it as swim archive N does: the lane goes
+                   empty, the log is kept as laneN.prev-<round-id>.log and the
                    script becomes a stub (not while it runs, nor without a
                    log)
     r on a batch   starts a waiting batch now, out of turn, if its lanes are
@@ -568,7 +570,7 @@ swim queue show|rm|requeue ID
     enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log);
                    v switches to the verbose output (its lanes' logs, the
                    running step's output included) and back
-    l on a job     its lane's current log, every round (v: the last one),
+    l on a lane    its current log, every round (v: the last one),
                    running or not; followed while it runs
     l on a batch   its lanes' latest rounds, from their last run while it
                    waits, as they go while it runs (v: the batch's output)
@@ -599,20 +601,20 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   one dry-ran a guard and none failed, 1 otherwise.
     N        a lane (its number, script path or task): the round it is
              running, or the one a swim run holds it waiting to start; on an
-             idle lane, its last round (with none yet, it waits for one)
+             lane at rest, its last round (with none yet, it waits for one)
     BATCH    a queued batch: its id as swim queue printed it, 4+ of its
-             first characters, or '#41'; a job id names the newest batch
-             that queued it. A batch orphaned by a dead swimmer counts as
+             first characters, or '#41'; a round id names the newest batch
+             that queued it. A batch orphaned by a dead watcher counts as
              ended (it never runs by itself).
     RUN      a swim run id (8+ characters): every lane of that run
-  A job id no batch queued names the lane that holds or last ran it.
+  A round id no batch queued names the lane that holds or last ran it.
   An agent queues work and waits for it: swim queue 3, then swim wait
   q-20260101T120000Z-ab12 (waiting on the lane instead could read its
-  previous round, before a swimmer takes the batch).
-  With nothing named, block until swim is idle and nothing new is about
+  previous round, before a watcher takes the batch).
+  With nothing named, block until nothing runs and nothing new is about
   to start: no lane running, no swim run waiting on lanes, and no batch
   queued or running (an orphaned batch never runs, so it doesn't count).
-  With batches queued and no swimmer up, it waits until one starts (swim
+  With batches queued and no watcher up, it waits until one starts (swim
   watch). Prints what it is waiting on whenever that changes.
   --any          return when the first of them ends, with its result: an
                  agent with several batches out reads that one, then
@@ -629,7 +631,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   after it); every signature is valid for the key recorded beside it;
   every round's log section still hashes to what was recorded, the copy
   of its script kept under .swim/scripts/<sha256>.sh is unchanged, and
-  its staged copy (.swim/runs/<run>/<N>/, until swim doctor --fix prunes
+  its pinned copy (.swim/runs/<run>/<N>/, until swim doctor --fix prunes
   it) still matches the manifest it ran; and every approval a run
   recorded is in its run's attestation. BROKEN means something changed.
   A chain replaced wholesale and re-signed with another key, or with
@@ -646,7 +648,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   with your key, and from then on swim verify shows each as AMENDED (a
   warning, which --strict counts), naming who acknowledged it: you, not
   whoever recorded the entries. Changed content (a signature, log, script
-  or staged copy that doesn't match) is never amended, and a gap that
+  or pinned copy that doesn't match) is never amended, and a gap that
   appears after the amendment is BROKEN again.
   --yaml               the result as data (schema swim.verify/v1):
                        consistent ("yes" or "no"), ok (what the exit code
@@ -656,9 +658,9 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
 
   A lane with # Signoff: CONTEXT is local CI: when its round passes, swim
   (not the lane) signs a statement with the key of whoever runs the
-  launcher (swim run, swim ci run locally, or the swimmer under swim
+  launcher (swim run, swim ci run locally, or the watcher under swim
   watch; never swim ci in a CI job): the commit and its
-  tree, the lane, its script and manifest hashes, the job and run. It
+  tree, the lane, its script and manifest hashes, the round id and run. It
   goes in .swim/signoffs/COMMIT/N.json, and a success commit status named
   CONTEXT goes to GitHub through their gh, which branch protection can
   require. Approving the script approves the signoff. Only when the tree
@@ -694,7 +696,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   mode (signing: auto, required or off).
 `,
 
-	"interrupt": `swim interrupt N|JOB
+	"interrupt": `swim interrupt N|ROUND-ID
 
   Ask one running lane to stop at its next step boundary, from any
   terminal: its current step finishes, no further step starts, and the round
@@ -702,7 +704,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   Other lanes keep running. The same thing the first Ctrl-C does to every
   lane of a swim run.
 `,
-	"lint": `swim lint [N|JOB ...] [--strict] [--yaml] [--fix]
+	"lint": `swim lint [N|ROUND-ID ...] [--strict] [--yaml] [--fix]
 
   Check lane scripts before they run; changes nothing (but --fix). With no lanes, lints
   every lane script (stubs skipped). Each finding is printed as
@@ -715,12 +717,13 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   action as the description), # Guards: * for a flag it names at run time,
   # Includes: for a repo file it sources or imports. In a bash lane it
   also renames run, step's old name, to step. It never removes a line or
-  rewrites one otherwise, and skips running lanes and lanes of jobs.
+  rewrites one otherwise, and skips running lanes and lanes of jobs. It
+  also rewrites a # Job: line, Round-ID's old name, to # Round-ID:.
 
   Checks [code] (level):
     round (error)          no # Round: line
     placeholder (error)    a template placeholder left in
-    after (error)          # After: names an unknown lane or job, or itself
+    after (error)          # After: names an unknown lane or round id, or itself
     cycle (error)          lanes wait on each other in a cycle
     set-e (error)          set -e / set -o errexit (failed checks must go on)
     lane-init (error)      no lane_init, or lane_init with another lane's number
@@ -738,6 +741,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     guard-unused (warn)    a # Guards: flag no guard uses
     run-is-step (warn)     a call of run, step's old name (works for this
                            release only; --fix renames it)
+    job-is-round-id (warn) a # Job: line, Round-ID's old name (--fix renames
+                           it)
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
     blocked (error)        a blocked_commands pattern
     secret-echo (warn)     echo/printf of a secret variable
@@ -824,7 +829,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
 
   --fix applies only safe local repairs, then checks again: it rewrites
   swim's .gitignore block, and deletes stale pid files, expired claims,
-  gone watches' files, old staged copies and the leftover files above,
+  gone watches' files, old pinned copies and the leftover files above,
   checking each again first. It never edits config, lane scripts or git,
   and never deletes lane logs, the chain, status.yml, the queue,
   .swim/scripts, snapshots or signoffs.
@@ -942,9 +947,9 @@ LANES
 
 ROUNDS
   run N ...                    run lanes: guarded steps are dry runs until approved
-  all                          run every pending lane, dependencies first
+  all                          run every ready lane, dependencies first
   queue N ...                  queue a batch to run once its lanes are free
-  watch                        the swimmer: run queued batches as lanes free up
+  watch                        the watcher: run queued batches as lanes free up
 
 GUARDS
   run N                        on a terminal, swim asks you at each guard
@@ -953,8 +958,8 @@ GUARDS
 
 LOGS
   status [N]                   every lane's state, and why
-  log [N|JOB|RUN]              a lane's log, step by step
-  log --since 1h               what happened since a time, run or job
+  log [N|ROUND-ID|RUN]         a lane's log, step by step
+  log --since 1h               what happened since a time, run or round
 
 EVERYTHING ELSE (swim <command> --help, or swim guide commands)
   verify, keys, chain          the record of approvals and rounds

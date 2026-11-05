@@ -7,10 +7,10 @@ import (
 )
 
 // stagedMisses are the paths a failed step's command names that its
-// staged copy (.swim/runs/<run>/<N>/, the working directory of a staged
+// pinned copy (.swim/runs/<run>/<N>/, the working directory of a staged
 // lane) doesn't have but the repo at root does: the likely cause of a
 // bare "No such file or directory", since only the script and its
-// # Includes: are staged. Nil when the step doesn't run in a staged copy.
+// # Includes: are staged. Nil when the step doesn't run in a pinned copy.
 func stagedMisses(root string, args []string) []string {
 	cwd, err := os.Getwd()
 	if err != nil || root == "" {

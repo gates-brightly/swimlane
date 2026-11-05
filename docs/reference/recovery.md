@@ -72,7 +72,7 @@ changes passed. The target is now half-changed.
    output), whether a guard was approved.
 2. The before state is in the round's snapshots (`saved:` lines).
 3. Don't rerun blindly: only safe if its gates tell "already done by us"
-   from "not done" (resources tagged with `$SWIM_JOB`).
+   from "not done" (resources tagged with `$SWIM_ROUND_ID`).
 4. Write a recovery round: snapshot what's deployed now, gate on it, then
    finish forward or roll back behind its own guard.
 5. Next time, write the rollback as its own guarded lane before the

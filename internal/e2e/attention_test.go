@@ -26,10 +26,10 @@ func TestBareSwimSaysWhatNeedsYou(t *testing.T) {
 	out := r.mustSwim()
 	for _, want := range []string{
 		"needs you",
-		"swim 1   FAIL exit 1 · fails  → swim log 1",
-		"swim 2   won't run: 1 lint error · lint refuses it  → swim lint 2",
-		"swim 4: queued, no swimmer up  → swim watch",
-		"ready\n  swim 3  → swim queue 3",
+		"lane 1   failed exit 1 · fails  → swim log 1",
+		"lane 2   won't run: 1 lint error · lint refuses it  → swim lint 2",
+		"lane 4: queued, no watcher up  → swim watch",
+		"ready\n  lane 3  → swim queue 3",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("bare swim lacks %q:\n%s", want, out)
@@ -39,7 +39,7 @@ func TestBareSwimSaysWhatNeedsYou(t *testing.T) {
 	// Once its script is edited, the failed round is history: lane 1 is
 	// ready again, not a failure that needs you.
 	r.shortLane(1, "# Round: fixed", "stage check\nstep \"x\" true")
-	if out := r.mustSwim(); strings.Contains(out, "swim 1   FAIL") || !strings.Contains(out, "swim 1,3  → swim queue 1 3") {
+	if out := r.mustSwim(); strings.Contains(out, "lane 1   FAIL") || !strings.Contains(out, "lane 1,3  → swim queue 1 3") {
 		t.Errorf("an edited lane still shows its failure:\n%s", out)
 	}
 

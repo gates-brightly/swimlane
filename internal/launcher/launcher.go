@@ -39,7 +39,7 @@ import (
 type Options struct {
 	Root   string
 	Cfg    *config.Config
-	Lanes  []int  // explicit selection; empty means every lane with a pending round
+	Lanes  []int  // explicit selection; empty means every lane with a ready round
 	Rerun  bool   // with no explicit lanes, also run rounds that already passed
 	DryRun bool   // selection only (Select): don't refuse lanes that are running
 	RunID  string // this run's id; generated if empty (swim run --run-id)
@@ -150,7 +150,7 @@ type Outcome struct {
 }
 
 // Select resolves which lanes to run and checks none is already running.
-// With no explicit lanes it picks every pending round that hasn't already
+// With no explicit lanes it picks every ready round that hasn't already
 // passed (unless Rerun), and returns the passed ones as done. Either way
 // it adds the Always lanes the selection needs (expandAlways).
 func Select(o Options) (sel, done []int, err error) {
@@ -158,14 +158,14 @@ func Select(o Options) (sel, done []int, err error) {
 		seen := map[int]bool{}
 		for _, n := range o.Lanes {
 			if !o.Cfg.ValidLane(n) {
-				return nil, nil, fmt.Errorf("no swim %d: lanes are numbered 1..%d", n, o.Cfg.Lanes)
+				return nil, nil, fmt.Errorf("no lane %d: lanes are numbered 1..%d", n, o.Cfg.Lanes)
 			}
 			info, err := lane.ReadScript(o.Root, n)
 			if err != nil {
 				return nil, nil, err
 			}
 			if !info.Pending() {
-				return nil, nil, fmt.Errorf("swim %d has no pending round (%s is missing, a stub, or has no Round: line)", n, filepath.Base(lane.Script(o.Root, n)))
+				return nil, nil, fmt.Errorf("lane %d has no round ready (%s is missing, a stub, or has no Round: line)", n, filepath.Base(lane.Script(o.Root, n)))
 			}
 			if !seen[n] {
 				sel = append(sel, n)
@@ -218,17 +218,17 @@ func Run(o Options) (int, error) {
 	}
 	if len(sel) == 0 {
 		if o.ev != nil {
-			note := "nothing pending (every lane is a stub or has no lane script)"
+			note := "nothing ready (every lane is a stub or has no lane script)"
 			if len(passed) > 0 {
-				note = "every pending job has already passed (swim " + joinInts(passed) + ")"
+				note = "every ready round has already passed (swim " + joinInts(passed) + ")"
 			}
 			o.ev.nothing(o, note)
 			return 0, nil
 		}
 		if len(passed) > 0 {
-			fmt.Fprintf(o.Out, "swim: nothing to run: every pending job has already passed (swim %s). Rerun one with `swim run N`, or all with `swim all --rerun`.\n", joinInts(passed))
+			fmt.Fprintf(o.Out, "swim: nothing to run: every ready round has already passed (lane %s). Rerun one with `swim run N`, or all with `swim all --rerun`.\n", joinInts(passed))
 		} else {
-			fmt.Fprintln(o.Out, "swim: nothing pending (every lane is a stub or has no lane script). Write one with `swim new N \"<goal>\"`.")
+			fmt.Fprintln(o.Out, "swim: nothing ready (every lane is a stub or has no lane script). Write one with `swim new N \"<goal>\"`.")
 		}
 		return 0, nil
 	}
@@ -265,7 +265,7 @@ func Run(o Options) (int, error) {
 		o.env[n] = r
 	}
 	// What each lane runs is fixed here, before any waiting: its manifest is
-	// built and its files staged, and it runs the staged copy.
+	// built and its files staged, and it runs the pinned copy.
 	stageLanes(&o, sel, blocked)
 
 	// The panel shows the lanes in use (and any this run starts).
@@ -275,10 +275,13 @@ func Run(o Options) (int, error) {
 			continue
 		}
 		info, _ := lane.ReadScript(o.Root, n)
-		v := display.LaneView{N: n, State: display.Idle, Round: info.Round, Job: info.Job,
+		v := display.LaneView{N: n, State: display.Empty, Round: info.Round, Job: info.Job,
 			KnownGuards: info.GuardFlags(), UnknownGuards: info.DynamicGuards}
+		if info.Pending() {
+			v.State = display.Ready
+		}
 		if isDone[n] {
-			v.State = display.Done
+			v.State = display.Earlier
 		}
 		if selected[n] {
 			v.State = display.Starting
@@ -412,7 +415,7 @@ func Run(o Options) (int, error) {
 	}
 
 	status.UpdateFile(o.Root, o.Cfg.Lanes, func(f *status.File) error { f.LastRun = o.RunID; return nil })
-	runDetail := "swim " + joinInts(sel)
+	runDetail := "lane " + joinInts(sel)
 	if cap > 0 {
 		runDetail += fmt.Sprintf("  max_parallel=%d", cap)
 	}
@@ -479,7 +482,7 @@ func Run(o Options) (int, error) {
 	if code == 0 && dry {
 		code = ExitDryRun
 	}
-	runDone := fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d", joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted])
+	runDone := fmt.Sprintf("lane %s  passed=%d failed=%d skipped=%d interrupted=%d", joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted])
 	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: runDone + "  " + display.Duration(time.Since(start))})
 	elapsed := time.Since(start)
 	printSummary(summaryOut, o.Root, sel, outcomes, start, elapsed, disp.Color())
@@ -556,16 +559,16 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	laneLocks := info.Locks
 	if len(laneLocks) > 0 {
 		lockWait := func(text string) {
-			disp.Set(n, func(v *display.LaneView) { v.State, v.LockWait, v.WaitingOn = display.Locked, text, nil })
+			disp.Set(n, func(v *display.LaneView) { v.State, v.LockText, v.WaitingOn = display.LockWait, text, nil })
 			status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
-				l.State, l.WaitingOn, l.Reason, l.Run = status.Locked, []int{}, "waiting for lock "+text, o.RunID
+				l.State, l.WaitingOn, l.Reason, l.Run = status.Waiting, []int{}, display.WaitingLock(text), o.RunID
 			})
-			history.Log(o.Root, history.Entry{Event: history.Locked, Lane: n, Job: info.Job, Run: o.RunID, Detail: "waiting for lock " + text})
-			o.ev.emit(Event{Event: "locked", Lane: n, Lock: text, At: now()})
+			history.Log(o.Root, history.Entry{Event: history.Waiting, Lane: n, Job: info.Job, Run: o.RunID, Detail: display.WaitingLock(text)})
+			o.ev.emit(Event{Event: "waiting", Lane: n, Lock: text, At: now()})
 		}
 		if !lt.acquire(n, laneLocks, func(name string, holder int) {
 			if holder > 0 {
-				lockWait(fmt.Sprintf("%s: swim %d", name, holder))
+				lockWait(fmt.Sprintf("%s: lane %d", name, holder))
 			} else {
 				lockWait(name + ": queued behind another lane")
 			}
@@ -607,22 +610,22 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	// A lane named by job id runs only if its script still holds that job.
 	if pin := o.Pins[n]; pin != "" {
 		if now, _ := lane.ReadScript(o.Root, n); !lane.MatchJob(now.Job, pin) {
-			return skip(fmt.Sprintf("%s was rewritten: it holds job %s, not the pinned %s", lane.ScriptName(o.Root, n), or(lane.ShortJob(now.Job), "none"), lane.ShortJob(pin)))
+			return skip(fmt.Sprintf("%s was rewritten: it holds round %s, not the pinned %s", lane.ScriptName(o.Root, n), or(lane.ShortJob(now.Job), "none"), lane.ShortJob(pin)))
 		}
 	}
 
-	// Wait for a free slot (max_parallel); queued lanes don't hold one.
+	// Wait for a free slot (max_parallel); a waiting lane doesn't hold one.
 	loggedQueue := false
 	if !sl.acquire(n, func(ahead int) {
-		disp.Set(n, func(v *display.LaneView) { v.State, v.QueuePos, v.WaitingOn = display.Queued, ahead, nil })
+		disp.Set(n, func(v *display.LaneView) { v.State, v.QueuePos, v.WaitingOn = display.SlotWait, ahead, nil })
 		status.Update(o.Root, n, o.Cfg.Lanes, func(l *status.Lane) {
-			l.State, l.WaitingOn, l.Reason, l.Run = status.Queued, []int{}, fmt.Sprintf("%d ahead", ahead), o.RunID
+			l.State, l.WaitingOn, l.Reason, l.Run = status.Waiting, []int{}, display.WaitingSlot(ahead+1), o.RunID
 		})
 		if !loggedQueue {
 			loggedQueue = true
 			info, _ := lane.ReadScript(o.Root, n)
-			history.Log(o.Root, history.Entry{Event: history.Queued, Lane: n, Job: info.Job, Run: o.RunID, Detail: fmt.Sprintf("%d ahead", ahead)})
-			o.ev.emit(Event{Event: "queued", Lane: n, Ahead: intp(ahead), At: now()})
+			history.Log(o.Root, history.Entry{Event: history.Waiting, Lane: n, Job: info.Job, Run: o.RunID, Detail: display.WaitingSlot(ahead + 1)})
+			o.ev.emit(Event{Event: "waiting", Lane: n, Ahead: intp(ahead), At: now()})
 		}
 	}) {
 		return skip("interrupted before start")
@@ -830,10 +833,10 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, p.Paint(ui.Bold, "swim summary · "+display.Span(start, start.Add(total))))
-	fmt.Fprintln(out, p.Paint(ui.Dim, fmt.Sprintf("  %-8s %-8s %-12s %4s %5s %5s %5s %7s", "lane", "job", "result", "exit", "pass", "fail", "skip", "time")))
+	fmt.Fprintln(out, p.Paint(ui.Dim, fmt.Sprintf("  %-8s %-8s %-12s %4s %5s %5s %5s %7s", "lane", "round-id", "result", "exit", "pass", "fail", "skip", "time")))
 	for _, n := range sel {
 		oc := outcomes[n]
-		label := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("%-8s", fmt.Sprintf("swim %d", n)))
+		label := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("%-8s", fmt.Sprintf("lane %d", n)))
 		r, _ := logparse.ParseFile(lane.Log(root, n))
 		job := oc.Job
 		if job == "" && (oc.State != status.Skipped || oc.Exit >= 0) {
@@ -844,18 +847,11 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 		}
 		label += " " + p.Paint(ui.Dim, fmt.Sprintf("%-8s", lane.ShortJob(job)))
 		if oc.Blocked { // refused before starting: no round of its own in the log
-			fmt.Fprintf(out, "  %s %s %4d %5s %5s %5s %7s\n", label, p.Paint(ui.Red, fmt.Sprintf("%-12s", "FAIL")), oc.Exit, "-", "-", "-", "-")
+			fmt.Fprintf(out, "  %s %s %4d %5s %5s %5s %7s\n", label, p.Paint(ui.Red, fmt.Sprintf("%-12s", status.Failed)), oc.Exit, "-", "-", "-", "-")
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, oc.Reason))
 			continue
 		}
-		result := strings.ToUpper(oc.State)
-		if oc.State == status.Passed {
-			result = "PASS"
-		} else if oc.State == status.Failed {
-			result = "FAIL"
-		} else if oc.State == status.Skipped {
-			result = "SKIP"
-		}
+		result := oc.State
 		res := p.Paint(ui.StateColor(result), fmt.Sprintf("%-12s", result))
 		if oc.State == status.Skipped && oc.Exit < 0 { // never started
 			fmt.Fprintf(out, "  %s %s %4s %5s %5s %5s %7s  %s\n", label, res, "-", "-", "-", "-", "-", oc.Reason)
@@ -879,7 +875,7 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 func logList(sel []int) string {
 	parts := make([]string, len(sel))
 	for i, n := range sel {
-		parts[i] = fmt.Sprintf(".swim/logs/agent%d.log", n)
+		parts[i] = fmt.Sprintf(".swim/logs/lane%d.log", n)
 	}
 	return strings.Join(parts, " ")
 }
@@ -944,7 +940,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = o.Root
 	if m := o.manifests[n]; m != nil {
-		// It runs in its staged copy: relative paths read what was pinned.
+		// It runs in its pinned copy: relative paths read what was pinned.
 		cmd.Dir = m.Workspace(o.Root)
 	}
 	// The env files' values go under the shell's: what the operator typed
@@ -987,7 +983,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	// would hold them for good.
 	_ = fileLocks
 	mk := o.Cfg.Masker(env)
-	// bash names the staged copy it runs (.swim/runs/<run>/<N>/lane.N.sh)
+	// bash names the pinned copy it runs (.swim/runs/<run>/<N>/lane.N.sh)
 	// in its errors; the operator edits lane.N.sh.
 	stagedDir := ""
 	if m := o.manifests[n]; m != nil && m.Dir != "" {
@@ -1025,7 +1021,7 @@ func releaseClaim(o Options, n int, disp *display.Display) {
 		return
 	}
 	if c.Session != lane.SessionID() {
-		disp.Line(n, fmt.Sprintf("swim: swim %d was claimed by %s (session %s) until %s: it may still have been being written; running it released the claim",
+		disp.Line(n, fmt.Sprintf("swim: lane %d was claimed by %s (session %s) until %s: it may still have been being written; running it released the claim",
 			n, c.Owner, c.Session, c.ExpiresAt().Local().Format("15:04")))
 	}
 	lane.DropClaim(o.Root, n)
@@ -1065,7 +1061,7 @@ func watchOtherRuns(o Options, selected map[int]bool, disp *display.Display) fun
 					continue
 				}
 				active := l.Run != o.RunID && l.Alive() &&
-					(l.State == status.Running || l.State == status.Waiting || l.State == status.Queued || l.State == status.Locked)
+					(l.State == status.Running || l.State == status.Waiting || l.State == status.Queued)
 				switch {
 				case active:
 					started := time.Now()
@@ -1088,7 +1084,7 @@ func watchOtherRuns(o Options, selected map[int]bool, disp *display.Display) fun
 				case elsewhere[n]:
 					// It ended over there: show how.
 					delete(elsewhere, n)
-					state, exit := display.Idle, 0
+					state, exit := display.Empty, 0
 					switch l.State {
 					case status.Passed:
 						state = display.Passed
@@ -1166,12 +1162,12 @@ func runningJob(o Options, n int) string {
 // pre-answer and says what happened.
 func (p *preAnswers) set(o Options, n int, choice string) string {
 	if !p.selected[n] {
-		return fmt.Sprintf("swim %d isn't in this run", n)
+		return fmt.Sprintf("lane %d isn't in this run", n)
 	}
 	info, _ := lane.ReadScript(o.Root, n)
 	if st, _ := status.Load(o.Root); st != nil {
 		if l := st.Get(n); l != nil && l.Run == o.RunID && (l.State == status.Passed || l.State == status.Failed || l.State == status.Skipped || l.State == status.Interrupted) {
-			return fmt.Sprintf("swim %d already finished", n)
+			return fmt.Sprintf("lane %d already ended", n)
 		}
 	}
 	p.mu.Lock()
@@ -1179,13 +1175,13 @@ func (p *preAnswers) set(o Options, n int, choice string) string {
 	if choice == "" {
 		delete(p.by, n)
 		p.disp.Set(n, func(v *display.LaneView) { v.Pre = "" })
-		return fmt.Sprintf("swim %d: pre-answer cleared; it will ask", n)
+		return fmt.Sprintf("lane %d: pre-answer cleared; it will ask", n)
 	}
 	if len(info.Guards) == 0 {
-		return fmt.Sprintf("swim %d has no guards to approve", n)
+		return fmt.Sprintf("lane %d has no guards to approve", n)
 	}
 	if prev := p.by[n]; prev != nil && prev.used {
-		return fmt.Sprintf("swim %d already used its pre-answer", n)
+		return fmt.Sprintf("lane %d already used its pre-answer", n)
 	}
 	p.by[n] = &preAnswer{approve: choice == "approved", sha: manifestSum(o, n), at: time.Now().Format("15:04:05")}
 	p.disp.Set(n, func(v *display.LaneView) { v.Pre = choice })
@@ -1194,7 +1190,7 @@ func (p *preAnswers) set(o Options, n int, choice string) string {
 		event, word = "predeclined", "pre-declined (dry runs)"
 	}
 	o.ev.emit(Event{Event: event, Lane: n, Detail: strings.Join(info.GuardFlags(), " "), At: now()})
-	msg := fmt.Sprintf("swim %d: %s (%d guards)", n, word, len(info.Guards))
+	msg := fmt.Sprintf("lane %d: %s (%d guards)", n, word, len(info.Guards))
 	if info.DynamicGuards > 0 {
 		msg += fmt.Sprintf("; %d named at run time will still ask", info.DynamicGuards)
 	}
@@ -1230,7 +1226,7 @@ func (p *preAnswers) unused() []string {
 	var out []string
 	for n, a := range p.by {
 		if !a.used {
-			out = append(out, fmt.Sprintf("swim %d", n))
+			out = append(out, fmt.Sprintf("lane %d", n))
 		}
 	}
 	sort.Strings(out)

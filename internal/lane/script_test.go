@@ -74,7 +74,7 @@ func TestScriptsDiscovery(t *testing.T) {
 }
 
 func TestSlashHeaderAndSidecar(t *testing.T) {
-	src := "#!/usr/bin/env node\n// swim: syntax 2\n// Round: js round\n// Job:   job-abcdef12\n// After: 1 2\n// Guards: ALLOW_X  do x\n// Timeout: 5m\nspawnSync(\"swim\", [\"guard\", \"BODY_FLAG\", \"y\"])\n// swim guard COMMENTED nope\n"
+	src := "#!/usr/bin/env node\n// swim: syntax 2\n// Round: js round\n// Round-ID:   job-abcdef12\n// After: 1 2\n// Guards: ALLOW_X  do x\n// Timeout: 5m\nspawnSync(\"swim\", [\"guard\", \"BODY_FLAG\", \"y\"])\n// swim guard COMMENTED nope\n"
 	info := ParseScript(src)
 	if info.Round != "js round" || info.Job != "job-abcdef12" || strings.Join(info.After, ",") != "1,2" || info.Timeout.String() != "5m0s" || info.Syntax != 2 {
 		t.Errorf("header: %+v", info)

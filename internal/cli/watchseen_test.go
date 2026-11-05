@@ -41,7 +41,7 @@ func TestWatchSeen(t *testing.T) {
 
 	s.touch(2)
 	if s.isChanged(2) {
-		t.Error("acting on swim 2 left its mark")
+		t.Error("acting on lane 2 left its mark")
 	}
 	s = loadWatchSeen(root)
 	s.refresh([]int{1, 2, 3})

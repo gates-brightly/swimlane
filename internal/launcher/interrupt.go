@@ -280,7 +280,7 @@ func (ir *interrupter) killLocked() {
 func killSteps(root string, n int) {
 	dir := lane.LogDir(root)
 	ents, _ := os.ReadDir(dir)
-	prefix := fmt.Sprintf("agent%d.", n)
+	prefix := fmt.Sprintf("lane%d.", n)
 	for _, e := range ents {
 		name := e.Name()
 		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, step.GroupSuffix) {

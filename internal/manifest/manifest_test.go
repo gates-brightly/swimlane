@@ -138,7 +138,7 @@ func TestCoverage(t *testing.T) {
 }
 
 // The stage holds read-only copies; Verify catches a changed one, and the
-// staged copy rebuilds the script hash.
+// pinned copy rebuilds the script hash.
 func TestStageAndVerify(t *testing.T) {
 	root := repo(t)
 	m := build(t, root, 3)
@@ -162,7 +162,7 @@ func TestStageAndVerify(t *testing.T) {
 	}
 	data, _ := lane.ScriptBytes(root, 3)
 	if got, _ := loaded.ScriptBytes(); string(got) != string(data) {
-		t.Error("the staged copy's script bytes differ from the repo's")
+		t.Error("the pinned copy's script bytes differ from the repo's")
 	}
 	// The working tree moves on; the stage doesn't.
 	write(t, root, "lib/orders.sh", "echo edited\n")
@@ -184,7 +184,7 @@ func TestStageAndVerify(t *testing.T) {
 	}
 }
 
-// A staged copy an older swim recorded with the v1 manifest hash still
+// A pinned copy an older swim recorded with the v1 manifest hash still
 // verifies, and a pin changed under it still fails.
 func TestVerifyV1Manifest(t *testing.T) {
 	root := repo(t)
@@ -194,7 +194,7 @@ func TestVerifyV1Manifest(t *testing.T) {
 	}
 	m.SHA256 = m.Pinned.hashV1(3)
 	if err := m.Verify(); err != nil {
-		t.Fatalf("a v1-hashed staged copy: %v", err)
+		t.Fatalf("a v1-hashed pinned copy: %v", err)
 	}
 	m.Pinned.Runner = "bash (edited)"
 	if err := m.Verify(); err == nil || !strings.Contains(err.Error(), FileName) {

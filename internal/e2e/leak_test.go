@@ -184,7 +184,7 @@ summary
 	}
 	check("swim run --plain", string(out))
 	log := r.log(1)
-	contains(t, "agent1.log", log, "raw=***", "env=***", "split=***", "gate saw ***")
+	contains(t, "lane1.log", log, "raw=***", "env=***", "split=***", "gate saw ***")
 	if strings.Contains(log, "PASS  sleep") == false {
 		t.Fatalf("the lane didn't get as far as the sleep:\n%s", log)
 	}

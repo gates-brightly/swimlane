@@ -4,9 +4,9 @@
 // says what it is by its first characters, so command output can never be
 // mistaken for a result:
 //
-//	# swim log | syntax 4 | swim 1                            file header
+//	# swim log | syntax 4 | lane 1                            file header
 //
-//	== ROUND 2026-10-09T12:00:00Z  job=3f2a9c1e-...  Cut over orders-api
+//	== ROUND 2026-10-09T12:00:00Z  round-id=3f2a9c1e-...  Cut over orders-api
 //	   script: lane.1.sh | owner: zach | after: 1 | git: main@abc1234 | ...
 //
 //	-- stage snapshot  12:00:01                               a stage begins
@@ -120,7 +120,7 @@ type KV struct{ K, V string }
 // RoundHeader starts a round: a blank line, the ROUND line and its context.
 func RoundHeader(ts, job, title string, ctx []KV) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n%s%s  job=%s  %s\n", RoundMark, ts, job, title)
+	fmt.Fprintf(&b, "\n%s%s  round-id=%s  %s\n", RoundMark, ts, job, title)
 	parts := make([]string, 0, len(ctx))
 	for _, kv := range ctx {
 		parts = append(parts, kv.K+": "+kv.V)
@@ -546,15 +546,20 @@ func splitLabel(s string) (string, string) {
 	return s, ""
 }
 
-// roundV2 reads "== ROUND <ts>  job=<job>  <title>".
+// roundV2 reads "== ROUND <ts>  round-id=<id>  <title>" (job=<id> in an
+// older log).
 func roundV2(line string) (ts, job, title string, ok bool) {
 	rest, _ := strings.CutPrefix(line, RoundMark)
 	ts, rest, ok = strings.Cut(rest, " ")
 	rest = strings.TrimLeft(rest, " \t")
-	if !ok || ts == "" || !strings.HasPrefix(rest, "job=") {
+	id, isID := strings.CutPrefix(rest, "round-id=")
+	if !isID {
+		id, isID = strings.CutPrefix(rest, "job=")
+	}
+	if !ok || ts == "" || !isID {
 		return "", "", "", false
 	}
-	job, title, ok = strings.Cut(strings.TrimPrefix(rest, "job="), " ")
+	job, title, ok = strings.Cut(id, " ")
 	if !ok || job == "" {
 		return "", "", "", false
 	}

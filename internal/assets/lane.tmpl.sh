@@ -1,8 +1,8 @@
 #!/usr/bin/env swim
 # swim: syntax {{.Syntax}}
-# Round:   {{.Goal}}
-# Job:     {{.Job}}
-# Owner:   {{.Owner}}
+# Round:    {{.Goal}}
+# Round-ID: {{.Job}}
+# Owner:    {{.Owner}}
 {{if .Toolchain}}
 {{.Toolchain}} || _swim_stop "toolchain failed to load"
 {{end}}

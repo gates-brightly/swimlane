@@ -421,12 +421,12 @@ func TestScenarioDag99Interrupt(t *testing.T) {
 	}
 	c, stream, release, wait := startDag99(t, r)
 	lane := free[rand.Intn(len(free))]
-	log := filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("agent%d.log", lane))
-	when := fmt.Sprintf("swim %d started", lane)
+	log := filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("lane%d.log", lane))
+	when := fmt.Sprintf("lane %d started", lane)
 	if rand.Intn(2) == 0 {
 		waitFor(t, func() bool { _, err := os.Stat(log); return err == nil })
 	} else {
-		when = fmt.Sprintf("swim %d ended", lane)
+		when = fmt.Sprintf("lane %d ended", lane)
 		waitFor(t, func() bool { data, _ := os.ReadFile(log); return regexp.MustCompile(`(?m)^== END`).Match(data) })
 	}
 	c.Process.Signal(os.Interrupt)
@@ -441,7 +441,7 @@ func TestScenarioDag99Interrupt(t *testing.T) {
 	}
 	eq(t, "every lane passed, interrupted or skipped", len(strings.Fields(res.with("passed", "interrupted", "skipped"))), 99)
 	eq(t, "no lane started after the signal", res.afterStop, []int(nil))
-	logs, _ := filepath.Glob(filepath.Join(r.root, ".swim", "logs", "agent*.log"))
+	logs, _ := filepath.Glob(filepath.Join(r.root, ".swim", "logs", "lane*.log"))
 	for _, l := range logs {
 		data, _ := os.ReadFile(l)
 		if m := regexp.MustCompile(`(?m)^  FAIL  .*interrupted\)`).Find(data); m != nil {
@@ -523,10 +523,10 @@ func TestScenarioCIGitHub(t *testing.T) {
 	sort.Ints(errs)
 	eq(t, "an ::error for each failed lane", errs, failed)
 	eq(t, "one notice for all the skipped lanes", len(regexp.MustCompile(`(?m)^::notice title=swim%3A [0-9]* lanes skipped::`).FindAllString(ciOut, -1)), 1)
-	matches(t, "failed lanes stay open", ciOut, `^==== swim 23 FAIL - `)
-	matches(t, "passed lanes fold", ciOut, `^::group::swim 1 PASS - `)
+	matches(t, "failed lanes stay open", ciOut, `^==== lane 23 FAIL - `)
+	matches(t, "passed lanes fold", ciOut, `^::group::lane 1 PASS - `)
 	summary, _ := os.ReadFile(filepath.Join(out, "summary.md"))
-	eq(t, "job summary has every lane", len(regexp.MustCompile(`(?m)^\| swim [0-9]* \|`).FindAll(summary, -1)), 99)
+	eq(t, "job summary has every lane", len(regexp.MustCompile(`(?m)^\| lane [0-9]* \|`).FindAll(summary, -1)), 99)
 	junit, _ := os.ReadFile(filepath.Join(out, "swim.xml"))
 	eq(t, "JUnit has a suite per lane", strings.Count(string(junit), "<testsuite "), 99)
 	matches(t, "results tagged with the commit", must(r.swim("status", "--yaml")), `^    commit: `+r.git("rev-parse", "HEAD"))

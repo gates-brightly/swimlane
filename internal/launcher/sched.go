@@ -55,9 +55,9 @@ func (w depWaiter) await(deps []Dep) string {
 func depVerdict(d Dep, dep *Outcome) string {
 	switch {
 	case dep == nil:
-		return fmt.Sprintf("swim %d did not finish", d.Lane)
+		return fmt.Sprintf("lane %d did not finish", d.Lane)
 	case dep.State != status.Passed:
-		return fmt.Sprintf("swim %d %s", d.Lane, dep.State)
+		return fmt.Sprintf("lane %d %s", d.Lane, dep.State)
 	}
 	return ""
 }

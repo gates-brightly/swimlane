@@ -15,9 +15,9 @@ func TestTransition(t *testing.T) {
 		return l
 	}
 	ok := [][2]*Lane{
-		{lane(Idle, "", ""), lane(Waiting, "", "r1")},
-		{lane(Waiting, "", "r1"), lane(Locked, "", "r1")},
-		{lane(Locked, "", "r1"), lane(Running, "t1", "r1")},
+		{lane(Empty, "", ""), lane(Waiting, "", "r1")},
+		{lane(Waiting, "", "r1"), lane(Waiting, "", "r1")},
+		{lane(Waiting, "", "r1"), lane(Running, "t1", "r1")},
 		{lane(Queued, "", "r1"), lane(Passed, "t1", "r1")}, // exited before lane_init
 		{lane(Running, "t1", "r1"), lane(Failed, "t1", "r1")},
 		{lane(Running, "t1", "r1"), lane(Skipped, "t1", "r1")}, // it dry-ran a guarded step
@@ -25,7 +25,7 @@ func TestTransition(t *testing.T) {
 		{lane(Failed, "t1", "r1"), lane(Running, "t2", "r2")},
 		{lane(Failed, "t1", "r1"), lane(Passed, "t2", "r2")}, // a new round
 		{lane(Passed, "t1", "r1"), lane(Skipped, "t1", "r2")},
-		{lane(Passed, "t1", "r1"), lane(Idle, "", "")}, // archived
+		{lane(Passed, "t1", "r1"), lane(Empty, "", "")}, // archived
 	}
 	for _, c := range ok {
 		if err := Transition(c[0], c[1]); err != nil {
@@ -34,8 +34,8 @@ func TestTransition(t *testing.T) {
 	}
 	bad := [][2]*Lane{
 		{lane(Running, "t1", "r1"), lane(Waiting, "t1", "r1")},
-		{lane(Running, "t1", "r1"), lane(Idle, "", "")},
-		{lane(Queued, "", "r1"), lane(Idle, "", "")},
+		{lane(Running, "t1", "r1"), lane(Empty, "", "")},
+		{lane(Queued, "", "r1"), lane(Empty, "", "")},
 		{lane(Failed, "t1", "r1"), lane(Passed, "t1", "r1")}, // a failure turned into a pass
 		{lane(Interrupted, "t1", "r1"), lane(Passed, "t1", "r1")},
 	}

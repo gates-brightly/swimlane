@@ -29,8 +29,8 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 	r.mustSwim("queue", "add", "2")
 	tr := r.startTUI(nil, "watch", "--batches", "2")
 	s := tr.waitScreen("both questions", func(s string) bool {
-		return strings.Contains(s, "⚠ swim 1 is blocked: waits for approval of ALLOW_ONE") &&
-			strings.Contains(s, "⚠ swim 2 is blocked: waits for approval of ALLOW_TWO")
+		return strings.Contains(s, "⚠ lane 1 is blocked: waits for approval of ALLOW_ONE") &&
+			strings.Contains(s, "⚠ lane 2 is blocked: waits for approval of ALLOW_TWO")
 	})
 	contains(t, "the questions", s, "batch #1", "batch #2", "y approve  n decline", "the lane says: change one", "the lane says: change two")
 	// Its presence says it asks, so swim queue add can tell the operator
@@ -47,13 +47,13 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 	}
 	// The newest is selected: y answers it, then n the one left.
 	newest, other := 2, 1
-	if strings.Contains(s, "▸ ⚠ swim 1") {
+	if strings.Contains(s, "▸ ⚠ lane 1") {
 		newest, other = 1, 2
 	}
 	tr.send("y")
-	tr.waitFor(fmt.Sprintf("swim %d (#%d): ALLOW_", newest, newest))
+	tr.waitFor(fmt.Sprintf("lane %d (#%d): ALLOW_", newest, newest))
 	tr.send("n")
-	tr.waitFor(fmt.Sprintf("swim %d (#%d): ALLOW_", other, other))
+	tr.waitFor(fmt.Sprintf("lane %d (#%d): ALLOW_", other, other))
 	tr.waitScreen("the bar gone with the questions", func(s string) bool { return !strings.Contains(s, "Waiting for you") })
 	contains(t, "approved lane", r.waitLog(newest, "PASS  "), "APPROVED  change ", "approved at the prompt by ")
 	contains(t, "declined lane", r.waitLog(other, "SKIP  "), "SKIP  change ", "declined at the prompt")
@@ -76,16 +76,16 @@ func TestWatchMarksChangedLanes(t *testing.T) {
 	r.script(2, "second job, rewritten", `step "two again" true`)
 	s = tr.waitFor("2  (~)")
 	if strings.Contains(s, "1  (~)") {
-		t.Errorf("swim 1 marked, but only swim 2 changed:\n%s", s)
+		t.Errorf("lane 1 marked, but only lane 2 changed:\n%s", s)
 	}
 	tr.send("\x1b[B")
 	tr.waitFor("▸ 2 ")
 	tr.send("q")
-	tr.waitFor("next batch: swim 2")
+	tr.waitFor("next batch: lane 2")
 	tr.send("q")
 	s = tr.waitFor("out of the next batch")
 	if strings.Contains(s, "(~)") {
-		t.Errorf("swim 2 still marked after q:\n%s", s)
+		t.Errorf("lane 2 still marked after q:\n%s", s)
 	}
 	tr.send("\x03")
 	tr.wait()

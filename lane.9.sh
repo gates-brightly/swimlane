@@ -1,7 +1,7 @@
 #!/usr/bin/env swim
 # swim: syntax 4
 # Round:   CI: unit tests under -race
-# Job:     5c1a0019-11a7-4c1e-8d00-000000000019
+# Round-ID:     5c1a0019-11a7-4c1e-8d00-000000000019
 # Owner:   swim CI
 # After:   1
 # Timeout: 25m

@@ -22,19 +22,19 @@ func TestPreapproveInTUI(t *testing.T) {
 
 	tr := r.startTUI(nil, "all")
 	tr.waitScreen("lane 2 marked as asking", func(s string) bool { return strings.Contains(s, "? 1 guard") })
-	tr.send("\x1b[C\x1b[C") // → → : swim 2
+	tr.send("\x1b[C\x1b[C") // → → : lane 2
 	tr.waitFor("guards: ALLOW_DROP (y pre-approve · n pre-decline)")
 	tr.send("y")
-	tr.waitFor("swim 2: pre-approved (1 guards)")
+	tr.waitFor("lane 2: pre-approved (1 guards)")
 	tr.waitFor("✓ pre-approved")
-	tr.send("\x1b[C") // swim 3
+	tr.send("\x1b[C") // lane 3
 	tr.send("n")
 	tr.waitFor("✗ dry run")
-	tr.send("\x1b[C") // swim 4
+	tr.send("\x1b[C") // lane 4
 	tr.send("y")
-	tr.waitFor("swim 4 has no guards to approve")
+	tr.waitFor("lane 4 has no guards to approve")
 	os.WriteFile(r.root+"/release", nil, 0o644)
-	tr.waitFor("run finished · q to close")
+	tr.waitFor("run ended · q to close")
 	tr.send("q")
 	tr.wait()
 
@@ -55,25 +55,25 @@ func TestPreapprovePinnedToScript(t *testing.T) {
 	withHeader(t, r, 3, "# After: 1")
 
 	tr := r.startTUI([]string{"SWIM_APPROVAL_TIMEOUT=1s"}, "all", "--no-prompt")
-	tr.waitScreen("lanes listed", func(s string) bool { return strings.Contains(s, "swim 3") })
+	tr.waitScreen("lanes listed", func(s string) bool { return strings.Contains(s, "lane 3") })
 	tr.send("\x1b[C\x1b[C")
 	tr.send("y")
 	tr.waitFor("✓ pre-approved")
 	tr.send("\x1b[C")
 	tr.send("y")
-	tr.waitFor("swim 3: pre-approved")
+	tr.waitFor("lane 3: pre-approved")
 	tr.send("u")
-	tr.waitFor("swim 3: pre-answer cleared")
+	tr.waitFor("lane 3: pre-answer cleared")
 	// Edit lane 2's script before it starts: its pre-approval no longer applies.
 	withHeader(t, r, 2, "# Owner: someone else")
 	os.WriteFile(r.root+"/release", nil, 0o644)
-	tr.waitFor("run finished")
+	tr.waitFor("run ended")
 	tr.send("q")
 	_, out := tr.wait()
 	if strings.Contains(r.log(2), "PASS  dropped") || strings.Contains(r.log(3), "PASS  x") {
 		t.Errorf("a stale or cleared pre-answer approved:\n%s\n%s", r.log(2), r.log(3))
 	}
-	contains(t, "summary", out, "unused pre-answers", "swim 2")
+	contains(t, "summary", out, "unused pre-answers", "lane 2")
 }
 
 // Precedence: a pre-decline is the answer (the lane never asks), and
@@ -87,15 +87,15 @@ func TestPreanswerPrecedence(t *testing.T) {
 	withHeader(t, r, 3, "# After: 1")
 
 	tr := r.startTUI([]string{"ALLOW_B=0"}, "all")
-	tr.waitScreen("lanes listed", func(s string) bool { return strings.Contains(s, "swim 3") })
+	tr.waitScreen("lanes listed", func(s string) bool { return strings.Contains(s, "lane 3") })
 	tr.send("\x1b[C\x1b[C")
 	tr.send("n")
-	tr.waitFor("swim 2: pre-declined")
+	tr.waitFor("lane 2: pre-declined")
 	tr.send("\x1b[C")
 	tr.send("y")
-	tr.waitFor("swim 3: pre-approved")
+	tr.waitFor("lane 3: pre-approved")
 	os.WriteFile(r.root+"/release", nil, 0o644)
-	tr.waitFor("run finished")
+	tr.waitFor("run ended")
 	tr.send("q")
 	tr.wait()
 	contains(t, "pre-declined", r.log(2), "SKIP  do a (dry run: pre-declined by ")

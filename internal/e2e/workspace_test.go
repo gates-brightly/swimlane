@@ -10,7 +10,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/queue"
 )
 
-// A lane runs in its staged copy: a file it reads that its manifest doesn't
+// A lane runs in its pinned copy: a file it reads that its manifest doesn't
 // pin isn't there, so editing it after approval changes nothing it runs.
 // # Workspace: live runs it in the working tree, and is part of its
 // manifest.
@@ -24,7 +24,7 @@ func TestLaneRunsStaged(t *testing.T) {
 		t.Errorf("an unpinned helper ran:\n%s", out)
 	}
 	// The failure says why, on the terminal and in the log.
-	hint := "helper.sh is in the repo but not in this lane's staged copy: add it to # Includes:"
+	hint := "helper.sh is in the repo but not in this lane's pinned copy: add it to # Includes:"
 	contains(t, "the hint", out, hint)
 	contains(t, "the hint, logged", r.log(1), hint)
 

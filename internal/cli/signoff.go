@@ -58,7 +58,7 @@ func signoffHead(root string) headState {
 
 // signoffsAfterRun signs off each lane of run runID that declares
 // # Signoff: and passed: with the key of whoever ran the launcher (swim
-// run, or the swimmer under swim watch), posting the commit status with
+// run, or the watcher under swim watch), posting the commit status with
 // their gh login. Approving the script approved this; the lane takes no
 // part. Nothing here changes the run's result: a lane that can't be signed
 // off says why.
@@ -77,7 +77,7 @@ func signoffsAfterRun(root string, cfg *config.Config, runID string, head headSt
 			continue
 		}
 		if err := signoffLane(root, cfg, n, l, info.Signoff, head); err != nil {
-			fmt.Fprintf(os.Stderr, "swim %d: %s not signed off: %v\n", n, info.Signoff, err)
+			fmt.Fprintf(os.Stderr, "lane %d: %s not signed off: %v\n", n, info.Signoff, err)
 		}
 	}
 }
@@ -112,7 +112,7 @@ func signoffLane(root string, cfg *config.Config, n int, l *status.Lane, ctx str
 		"context " + ctx,
 		"script " + l.ScriptSHA,
 		"manifest " + l.ManifestSHA,
-		"job " + l.Job,
+		"round-id " + l.Job,
 		"run " + l.Run,
 		"result " + status.Passed,
 		"at " + status.Now(),
@@ -126,7 +126,7 @@ func signoffLane(root string, cfg *config.Config, n int, l *status.Lane, ctx str
 	if err != nil {
 		return err
 	}
-	fmt.Printf("swim %d: signed off %s on %s: %s\n", n, ctx, head.commit[:12], rel(root, path))
+	fmt.Printf("lane %d: signed off %s on %s: %s\n", n, ctx, head.commit[:12], rel(root, path))
 	sum := sha256.Sum256([]byte(stmt))
 	desc := fmt.Sprintf("passed (swim run %s); statement sha256:%s", l.Run, hex.EncodeToString(sum[:])[:16])
 	err = ghReady(root)

@@ -59,7 +59,7 @@ func progressOf(views []display.LaneView, sel []int) notify.Progress {
 			continue
 		}
 		switch v.State {
-		case display.Passed, display.Skipped, display.Done:
+		case display.Passed, display.Skipped, display.Earlier:
 			ended++
 		case display.Failed, display.Interrupted:
 			ended++
@@ -92,7 +92,7 @@ func askText(req approval.Request) string {
 }
 
 // FirstFailure is the first failed step of lanes (in order) as their
-// status has it, with its why: "swim 8: FAIL  go test (exit 1): --- FAIL:
+// status has it, with its why: "lane 8: FAIL  go test (exit 1): --- FAIL:
 // TestX: x_test.go:41: got 1"; "" if none failed a step.
 func FirstFailure(root string, lanes []int) string {
 	st, _ := status.Load(root)
@@ -101,14 +101,14 @@ func FirstFailure(root string, lanes []int) string {
 	}
 	for _, n := range lanes {
 		if l := st.Get(n); l != nil && l.State == status.Failed && len(l.FailedSteps) > 0 {
-			return fmt.Sprintf("swim %d: %s", n, strings.TrimSpace(l.FailedSteps[0]))
+			return fmt.Sprintf("lane %d: %s", n, strings.TrimSpace(l.FailedSteps[0]))
 		}
 	}
 	return ""
 }
 
 // notifyEnd tells the operator's terminal, and notify_command, how the run
-// ended: "swimlane · run failed" / "swim 1,2,3 · 2 passed, 1 failed · 3m 12s", and
+// ended: "swimlane · run failed" / "lane 1,2,3 · 2 passed, 1 failed · 3m 12s", and
 // the first failed step with its why.
 func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bool, elapsed time.Duration) {
 	word, result := "passed", status.Passed
@@ -116,7 +116,7 @@ func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bo
 	case stopped:
 		word, result = "interrupted", status.Interrupted
 	case code == ExitDryRun:
-		word, result = "waiting on an approval (a guard dry-ran)", status.Skipped
+		word, result = "needs approval", status.Skipped
 	case code != 0:
 		word, result = "failed", status.Failed
 	}
@@ -126,7 +126,7 @@ func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bo
 			parts = append(parts, fmt.Sprintf("%d %s", counts[st], st))
 		}
 	}
-	title, body := o.Origin.Title("run "+word), fmt.Sprintf("swim %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Duration(elapsed))
+	title, body := o.Origin.Title("run "+word), fmt.Sprintf("lane %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Duration(elapsed))
 	if result == status.Failed {
 		if f := FirstFailure(o.Root, sel); f != "" {
 			body += " · " + f

@@ -29,7 +29,7 @@ func TestOfScriptAndLog(t *testing.T) {
 			t.Errorf("OfLog(%q) = %d, want %d", log, got, want)
 		}
 	}
-	if !strings.HasPrefix(LogHeader(3), "# swim log | syntax 4 | swim 3") || !IsLogHeader(LogHeader(3)) || !IsLogHeader("# swim lane log | syntax 2 | swim 1") {
+	if !strings.HasPrefix(LogHeader(3), "# swim log | syntax 4 | lane 3") || !IsLogHeader(LogHeader(3)) || !IsLogHeader("# swim lane log | syntax 2 | swim 1") {
 		t.Error("LogHeader")
 	}
 	dir := t.TempDir()
@@ -58,13 +58,13 @@ func TestCheckRepo(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, ".swim", "logs"), 0o755)
 	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 3\n"), 0o755)
-	os.WriteFile(filepath.Join(root, ".swim", "logs", "agent1.prev-x.log"), []byte("# swim lane log | syntax 2 | swim 1\n"), 0o644)
-	os.WriteFile(filepath.Join(root, ".swim", "logs", "agent2.log"), []byte("no header\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".swim", "logs", "lane1.prev-x.log"), []byte("# swim lane log | syntax 2 | swim 1\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".swim", "logs", "lane2.log"), []byte("no header\n"), 0o644)
 	if err := CheckRepo(root); err != nil {
 		t.Fatalf("older files: %v", err)
 	}
-	os.WriteFile(filepath.Join(root, ".swim", "logs", "agent3.log"), []byte("# swim log | syntax 9 | swim 3\n"), 0o644)
-	if err := CheckRepo(root); err == nil || !strings.Contains(err.Error(), "agent3.log uses swim syntax 9") {
+	os.WriteFile(filepath.Join(root, ".swim", "logs", "lane3.log"), []byte("# swim log | syntax 9 | swim 3\n"), 0o644)
+	if err := CheckRepo(root); err == nil || !strings.Contains(err.Error(), "lane3.log uses swim syntax 9") {
 		t.Fatalf("newer log: %v", err)
 	}
 }

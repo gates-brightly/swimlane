@@ -72,7 +72,7 @@ arguments lists its commands:
 | `gotest-report` | this repo's CI lanes: `go test -json` as text and JUnit |
 
 Inputs come from the variables lane scripts export (`D`, `N`, `P`, `IN`, `OUT`,
-`H`, `NODE_START`, `RUN_ID`, `SWIM_JOB`). To give a scenario's lanes more
+`H`, `NODE_START`, `RUN_ID`, `SWIM_ROUND_ID`). To give a scenario's lanes more
 work, add a command in `e2e/cmd/e2etool`, not an inline interpreter.
 
 Lane scripts here are source files. A `.gitignore` exception keeps them

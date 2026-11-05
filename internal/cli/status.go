@@ -65,14 +65,14 @@ func cmdStatus(args []string) error {
 	if raw {
 		// The file's contents with a schema tag; the file itself stays as
 		// it is, for cat. A lane argument narrows it to that lane.
-		// status.File's fields, each lane with its pending round's header
+		// status.File's fields, each lane with its ready round's header
 		// and dependencies added (not in status.yml itself).
 		type laneDoc struct {
 			status.Lane   `yaml:",inline"`
 			PendingHeader *pendingHeader `yaml:"pending_header,omitempty"`
 			Deps          []depDoc       `yaml:"deps,omitempty"`
 			DepsError     string         `yaml:"deps_error,omitempty"`
-			// LintErrors counts the lint errors its pending round has: any
+			// LintErrors counts the lint errors its ready round has: any
 			// means swim run and swim queue refuse it (swim lint N).
 			LintErrors int `yaml:"lint_errors,omitempty"`
 		}
@@ -133,34 +133,34 @@ func effectiveState(l *status.Lane) string {
 	return l.State
 }
 
-// stateWord is how swim status names a lane's state: "PASS", "FAIL exit
-// 1", "waiting on swim 3", "running 42s".
+// stateWord is how swim status names a lane's state: "passed", "failed
+// exit 1", "waiting on lane 3", "running 42s".
 func stateWord(l *status.Lane, state string, now time.Time) string {
 	word := state
 	switch state {
-	case status.Passed:
-		word = "PASS"
 	case status.Failed:
-		word = "FAIL"
 		if l.ExitCode != nil {
-			word = fmt.Sprintf("FAIL exit %d", *l.ExitCode)
+			word = fmt.Sprintf("failed exit %d", *l.ExitCode)
 		}
-	case status.Skipped:
-		word = "SKIP"
-	case status.Interrupted:
-		word = "INTERRUPTED"
 	case status.Waiting:
 		word = display.WaitingText(l.WaitingOn)
+		if len(l.WaitingOn) == 0 && strings.HasPrefix(l.Reason, "waiting ") {
+			word = l.Reason // for a lock or a slot
+		}
 	case status.Running:
+		if l.PausedAt != "" {
+			word = "waiting for approval" // its clock stops while it asks
+			break
+		}
 		word = "running"
-		if d, ok := l.Ran(now); ok { // its clock stops while it asks
+		if d, ok := l.Ran(now); ok {
 			word += " " + display.Duration(d)
 		}
 		if !proc.Local(l.Host) {
 			word += " on " + l.Host // its process is there, not here
 		}
 	case status.Running + "?", status.Waiting + "?":
-		word = state + " (process gone: interrupted)"
+		word = "interrupted (its process is gone)"
 	}
 	return word
 }
@@ -175,7 +175,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 	}
 	fmt.Println(p.Paint(ui.Bold, title))
 	for _, h := range lane.HeldLocks(root) {
-		fmt.Println(p.Paint(ui.Yellow, "lock "+h.Name+" held by "+h.By))
+		fmt.Println(p.Paint(ui.Yellow, "lock "+h.Name+": "+h.By))
 	}
 	sv := newStatusView(root, cfg)
 	refused := lintRefusals(root, cfg)
@@ -187,17 +187,17 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		}
 		state := effectiveState(l)
 		word := stateWord(l, state, now)
-		label := p.Paint(ui.LaneColor(l.Lane)+ui.Bold, fmt.Sprintf(" swim %-2d", l.Lane))
+		label := p.Paint(ui.LaneColor(l.Lane)+ui.Bold, fmt.Sprintf(" lane %-2d", l.Lane))
 		round := l.Round
 		pv := sv.pending(l)
-		// A lane that never ran (or was archived) shows its pending round
+		// A lane that never ran (or was archived) shows the round it holds
 		// as its row.
-		idlePending := state == status.Idle && pv != nil && l.Pending != ""
+		idlePending := state == status.Ready && pv != nil && l.Pending != ""
 		color := ui.StateColor(state)
 		switch {
 		case idlePending:
-			word, round, color = "pending", l.Pending, ui.Cyan
-		case state == status.Idle:
+			round = l.Pending
+		case state == status.Ready || state == status.Empty:
 			round = ""
 		}
 		line := fmt.Sprintf("%s %s", label, p.Paint(color, fmt.Sprintf("%-22s", word)))
@@ -212,29 +212,29 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		indent := strings.Repeat(" ", 10)
 		detail := func(s string, color string) { fmt.Println(indent + p.Paint(color, s)) }
 		if idlePending && l.PendingJob != "" {
-			detail("job: "+l.PendingJob, ui.Dim)
+			detail("round-id: "+l.PendingJob, ui.Dim)
 		} else if round != "" && l.Job != "" {
-			detail("job: "+l.Job, ui.Dim)
+			detail("round-id: "+l.Job, ui.Dim)
 		}
 		if idlePending {
 			// The row says it.
 		} else if l.Pending != "" && (l.Pending != round || (l.PendingJob != "" && l.PendingJob != l.Job)) {
-			pending := "pending: " + l.Pending
+			next := "ready: " + l.Pending
 			if l.PendingJob != "" {
-				pending += "  (job " + l.PendingJob + ")"
+				next += "  (round-id " + l.PendingJob + ")"
 			}
-			detail(pending, ui.Cyan)
+			detail(next, ui.Cyan)
 		} else if l.Pending == "" && state != status.Running {
 			if info, _ := lane.ReadScript(root, l.Lane); info.Stub {
-				detail("stub: "+info.Message, ui.Dim)
+				detail("note: "+info.Message, ui.Dim)
 			} else if !info.Exists {
 				detail("no lane script", ui.Dim)
 			}
 		}
-		if state != status.Idle && state != status.Waiting && state != status.Skipped {
+		if !l.AtRest() && state != status.Waiting && state != status.Skipped {
 			counts := fmt.Sprintf("pass %d  fail %d  skip %d", l.Pass, l.Fail, l.Skip)
 			if l.FinishedAt != nil {
-				counts += "  finished " + *l.FinishedAt
+				counts += "  ended " + *l.FinishedAt
 				if l.DurationS != nil {
 					counts += fmt.Sprintf(" (%s)", display.Seconds(*l.DurationS))
 				}
@@ -268,7 +268,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 			}
 			detail(fmt.Sprintf("won't run: %d %s (swim lint %d): %s:%d %s [%s]", len(fs), noun, l.Lane, fs[0].File, fs[0].Line, fs[0].Message, fs[0].Code), ui.Red)
 		}
-		if l.Reason != "" {
+		if l.Reason != "" && l.Reason != word {
 			detail("reason: "+l.Reason, ui.Yellow)
 		}
 		// Loud on purpose: nobody was asked about these guards.
@@ -281,27 +281,27 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		for _, fs := range l.FailedSteps {
 			detail(fs, ui.Red)
 		}
-		if l.LastArchive != "" && state == status.Idle {
+		if l.LastArchive != "" && l.AtRest() {
 			detail("last archive: "+l.LastArchive, ui.Dim)
 		}
 	}
 	if entries, err := queue.List(root, false); err == nil && len(entries) > 0 {
-		waiting, running, orphaned := 0, 0, 0
+		queued, running, orphaned := 0, 0, 0
 		for _, e := range entries {
 			switch e.State {
 			case queue.Queued:
-				waiting++
+				queued++
 			case queue.Running:
 				running++
 			case queue.Orphaned:
 				orphaned++
 			}
 		}
-		line := fmt.Sprintf("queue: %d waiting, %d running", waiting, running)
+		line := fmt.Sprintf("queue: %d queued, %d running", queued, running)
 		if orphaned > 0 {
 			line += fmt.Sprintf(", %d orphaned", orphaned)
 		}
-		fmt.Println(p.Paint(ui.Yellow, line+"   (swim queue; a swimmer: swim watch)"))
+		fmt.Println(p.Paint(ui.Yellow, line+"   (swim queue; the watcher: swim watch)"))
 	}
 	fmt.Println(p.Paint(ui.Dim, "raw: "+rel(root, status.Path(root))+"   logs: swim log N"))
 }
@@ -322,7 +322,8 @@ func rebuildStatus(root string, cfg *config.Config) error {
 			l.ResetRun()
 			l.LastArchive = archive
 			if !r.Found {
-				l.State, l.Round, l.Job = status.Idle, "", ""
+				l.State, l.Round, l.Job = status.Empty, "", ""
+				l.Rest()
 				continue
 			}
 			l.Round, l.Job = r.Title, r.Job
@@ -372,7 +373,7 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 			}
 			n := 0
 			for i := 3; i+1 < len(f); i++ {
-				if f[i] == "swim" {
+				if f[i] == "lane" || f[i] == "swim" { // swim N in an older .swim.log
 					fmt.Sscan(f[i+1], &n)
 					break
 				}
@@ -394,7 +395,7 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 	fmt.Println(p.Paint(ui.Bold, fmt.Sprintf("swim status · %s · run %s", filepath.Base(root), id)))
 	found := 0
 	for n := 1; n <= cfg.Lanes; n++ {
-		label := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf(" swim %-2d", n))
+		label := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf(" lane %-2d", n))
 		var round *logparse.Round
 		for _, f := range append(archives(root, n), lane.Log(root, n)) {
 			rs, err := roundsOf(f, id)
@@ -410,19 +411,19 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 		switch {
 		case round != nil:
 			found++
-			word := "PASS"
+			word := status.Passed
 			switch {
 			case !round.Finished:
-				word = "running?"
+				word = "running (or its process is gone)"
 			case round.Interrupt:
-				word = "INTERRUPTED"
+				word = status.Interrupted
 			case round.ExitCode != 0:
-				word = fmt.Sprintf("FAIL exit %d", round.ExitCode)
+				word = fmt.Sprintf("failed exit %d", round.ExitCode)
 			case round.DryRun:
-				word = "SKIP (dry run)"
+				word = "skipped (dry run)"
 			}
 			fmt.Printf("%s %s %s\n", label, p.Paint(ui.StateColor(word), fmt.Sprintf("%-22s", word)), round.Title)
-			fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Dim, fmt.Sprintf("job: %s  pass %d  fail %d  skip %d  stages: %s",
+			fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Dim, fmt.Sprintf("round-id: %s  pass %d  fail %d  skip %d  stages: %s",
 				round.Job, round.Pass, round.Fail, round.Skip, logparse.StagesText(round.StageResults()))))
 			for _, fr := range round.Failed() {
 				fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Red, fr.Brief()))

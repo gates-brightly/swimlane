@@ -15,7 +15,7 @@ import (
 // envSchema identifies swim env --yaml output.
 const envSchema = "swim.env/v1"
 
-// swim env [N|JOB] [--yaml]: the environment env files give a lane, masked
+// swim env [N|ROUND-ID] [--yaml]: the environment env files give a lane, masked
 // as the lane's logs would show it, with where each key comes from.
 func cmdEnv(args []string) error {
 	var asYAML bool
@@ -24,7 +24,7 @@ func cmdEnv(args []string) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim env [N|JOB] [--yaml]")
+		return usagef("usage: swim env [N|ROUND-ID] [--yaml]")
 	}
 	root, cfg, err := repo()
 	if err != nil {

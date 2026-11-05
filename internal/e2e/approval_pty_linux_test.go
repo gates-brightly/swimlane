@@ -24,27 +24,27 @@ func TestPromptInTUI(t *testing.T) {
 	tr := r.startTUI(nil, "all")
 	// From the all view: a banner, not a question that takes the keys.
 	s := tr.waitScreen("the approval banner", func(s string) bool {
-		return strings.Contains(s, "▶ swim 1 needs approval · Enter to view it and answer · drop table orders - 2026-10-12")
+		return strings.Contains(s, "▶ lane 1 needs approval · Enter to view it and answer · drop table orders - 2026-10-12")
 	})
-	contains(t, "panel", s, "awaiting approval: drop", "all lanes")
+	contains(t, "panel", s, "waiting for approval: drop", "all lanes")
 	tr.send("y") // not on lane 1's view: doesn't answer
 	// Enter opens lane 1: its log, with the question under it.
 	tr.send("\r")
 	s = tr.waitScreen("lane 1 with its question", func(s string) bool {
-		return strings.Contains(s, "swim 1 · ") && strings.Contains(s, "y approve   n decline") && strings.Contains(s, "Y/N [N]")
+		return strings.Contains(s, "lane 1 · ") && strings.Contains(s, "y approve   n decline") && strings.Contains(s, "Y/N [N]")
 	})
-	contains(t, "lane view", s, "== ROUND ", "▶swim 1")
+	contains(t, "lane view", s, "== ROUND ", "▶lane 1")
 	if strings.Contains(r.log(1), "APPROVED") {
 		t.Fatal("y on the all view answered the question")
 	}
 	tr.send("y")
-	tr.waitFor("run finished · q to close") // still on lane 1's view: the screen holds
+	tr.waitFor("run ended · q to close") // still on lane 1's view: the screen holds
 	tr.send("q")
 	code, _ := tr.wait()
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	contains(t, "agent1.log", r.log(1), "APPROVED  drop table orders - 2026-10-12 (approved at the prompt by ", "PASS  dropped")
+	contains(t, "lane1.log", r.log(1), "APPROVED  drop table orders - 2026-10-12 (approved at the prompt by ", "PASS  dropped")
 	if got := tr.termiosNow(); got != tr.before {
 		t.Errorf("terminal not restored")
 	}
@@ -58,7 +58,7 @@ func TestPromptStopsTheClock(t *testing.T) {
 	r := newSerialRepo(t)
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
-	tr.waitFor("▶ swim 1 needs approval")
+	tr.waitFor("▶ lane 1 needs approval")
 	if l := r.status().Get(1); l == nil || l.PausedAt == "" {
 		t.Fatalf("lane 1 asks, but its clock runs: %+v", l)
 	}
@@ -77,7 +77,7 @@ func TestPromptStopsTheClock(t *testing.T) {
 	tr.send("\r")
 	tr.waitFor("Y/N [N]")
 	tr.send("y")
-	tr.waitFor("run finished · q to close")
+	tr.waitFor("run ended · q to close")
 	tr.send("q")
 	if code, _ := tr.wait(); code != 0 {
 		t.Fatalf("exit %d", code)
@@ -111,7 +111,7 @@ func TestPromptLineDeclines(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "SKIP  drop table orders - 2026-10-12 (dry run: declined at the prompt by ", "; set ALLOW_DROP=1 to approve)", "PASS  after")
+	contains(t, "lane1.log", log, "SKIP  drop table orders - 2026-10-12 (dry run: declined at the prompt by ", "; set ALLOW_DROP=1 to approve)", "PASS  after")
 	if strings.Contains(log, "PASS  dropped") {
 		t.Error("declined step ran")
 	}
@@ -134,7 +134,7 @@ func TestPromptSingleLane(t *testing.T) {
 	if code, out := tr.wait(); code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	contains(t, "agent1.log", r.log(1), "APPROVED  drop table orders", "PASS  dropped")
+	contains(t, "lane1.log", r.log(1), "APPROVED  drop table orders", "PASS  dropped")
 }
 
 func TestPromptOffWithFlag(t *testing.T) {
@@ -145,21 +145,21 @@ func TestPromptOffWithFlag(t *testing.T) {
 	if code != launcher.ExitDryRun || strings.Contains(out, "requires human approval") {
 		t.Fatalf("--no-prompt: exit %d\n%s", code, out)
 	}
-	contains(t, "agent1.log", r.log(1), "SKIP  drop table orders - 2026-10-12 (dry run: set ALLOW_DROP=1 to approve)")
+	contains(t, "lane1.log", r.log(1), "SKIP  drop table orders - 2026-10-12 (dry run: set ALLOW_DROP=1 to approve)")
 }
 
 func TestPromptCtrlCStops(t *testing.T) {
 	r := newSerialRepo(t)
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
-	tr.waitFor("swim 1 needs approval · Enter to view")
+	tr.waitFor("lane 1 needs approval · Enter to view")
 	tr.send("\x03")
 	code, _ := tr.wait()
 	if code == 0 {
 		t.Error("an interrupted run exits non-zero")
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "SKIP  drop table orders - 2026-10-12 (dry run: ", "STOP  interrupted by operator", "== END INTERRUPTED")
+	contains(t, "lane1.log", log, "SKIP  drop table orders - 2026-10-12 (dry run: ", "STOP  interrupted by operator", "== END INTERRUPTED")
 	if strings.Contains(log, "PASS  dropped") || strings.Contains(log, "PASS  after") {
 		t.Errorf("the round went on after Ctrl-C at the prompt:\n%s", log)
 	}
@@ -178,22 +178,22 @@ func TestPromptSeveralLanes(t *testing.T) {
 	tr.send("\r")
 	s := tr.waitScreen("a waiting lane", func(s string) bool { return strings.Contains(s, "y approve   n decline") })
 	first := 1
-	if strings.Contains(s, "swim 2 requires human approval") {
+	if strings.Contains(s, "lane 2 requires human approval") {
 		first = 2
 	}
 	second := 3 - first
 	tr.send("n") // decline the first...
 	tr.waitScreen("only the other still waiting", func(s string) bool {
-		return strings.Contains(s, fmt.Sprintf("▶ swim %d needs approval · Enter to view", second))
+		return strings.Contains(s, fmt.Sprintf("▶ lane %d needs approval · Enter to view", second))
 	})
 	tr.send("\x1b") // Esc: all lanes; the other question still waits
 	tr.waitFor("all lanes")
 	tr.send("\r") // ...then approve the second
 	tr.waitScreen("the second lane", func(s string) bool {
-		return strings.Contains(s, fmt.Sprintf("swim %d requires human approval", second)) && strings.Contains(s, "y approve")
+		return strings.Contains(s, fmt.Sprintf("lane %d requires human approval", second)) && strings.Contains(s, "y approve")
 	})
 	tr.send("y")
-	tr.waitFor("run finished · q to close") // we're on a lane view: the screen holds
+	tr.waitFor("run ended · q to close") // we're on a lane view: the screen holds
 	tr.send("q")
 	if code, out := tr.wait(); code != launcher.ExitDryRun {
 		t.Fatalf("exit %d\n%s", code, out)

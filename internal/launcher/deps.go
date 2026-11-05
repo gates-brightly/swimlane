@@ -19,9 +19,9 @@ type Dep struct {
 
 func (d Dep) String() string {
 	if d.Job != "" {
-		return fmt.Sprintf("swim %d (job %s)", d.Lane, lane.ShortJob(d.Job))
+		return fmt.Sprintf("lane %d (round-id %s)", d.Lane, lane.ShortJob(d.Job))
 	}
-	return fmt.Sprintf("swim %d", d.Lane)
+	return fmt.Sprintf("lane %d", d.Lane)
 }
 
 // ResolveDeps returns each selected lane's dependencies: the `# After:`
@@ -69,7 +69,7 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File, n int, ref string) (Dep, error) {
 	if m, err := strconv.Atoi(ref); err == nil {
 		if !cfg.ValidLane(m) {
-			return Dep{}, fmt.Errorf("no swim %d (lanes are 1..%d)", m, cfg.Lanes)
+			return Dep{}, fmt.Errorf("no lane %d (lanes are 1..%d)", m, cfg.Lanes)
 		}
 		if m == n {
 			return Dep{}, fmt.Errorf("a lane can't wait for itself")
@@ -77,7 +77,7 @@ func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File
 		// Any lane number is valid, so a typo would wait on nothing: the lane
 		// must have a script, a log or a past run.
 		if !scripts[m].Exists && !cfg.IsActive(m) && st.Get(m) == nil {
-			return Dep{}, fmt.Errorf("no swim %d: it has no lane script, log or past run", m)
+			return Dep{}, fmt.Errorf("no lane %d: it has no lane script, log or past run", m)
 		}
 		return Dep{Lane: m}, nil
 	}
@@ -113,11 +113,11 @@ func resolveAfter(cfg *config.Config, scripts map[int]lane.Info, st *status.File
 	}
 	switch {
 	case len(hits) == 0 && lane.ValidTaskName(ref):
-		return Dep{}, fmt.Errorf("no lane holds or last ran job %s, and no lane is task %s", ref, ref)
+		return Dep{}, fmt.Errorf("no lane holds or last ran round %s, and no lane is task %s", ref, ref)
 	case len(hits) == 0:
-		return Dep{}, fmt.Errorf("no lane holds or last ran job %s", ref)
+		return Dep{}, fmt.Errorf("no lane holds or last ran round %s", ref)
 	case len(hits) > 1:
-		return Dep{}, fmt.Errorf("job %s is ambiguous; use more characters", ref)
+		return Dep{}, fmt.Errorf("round id %s is ambiguous; use more characters", ref)
 	case hits[0].Lane == n:
 		return Dep{}, fmt.Errorf("a lane can't wait for itself")
 	}
@@ -148,7 +148,7 @@ func selectedCycle(deps map[int][]Dep) string {
 				for i, s := range stack {
 					if s == d.Lane {
 						for _, x := range append(append([]int(nil), stack[i:]...), d.Lane) {
-							parts = append(parts, fmt.Sprintf("swim %d", x))
+							parts = append(parts, fmt.Sprintf("lane %d", x))
 						}
 						return strings.Join(parts, " -> ")
 					}
@@ -187,7 +187,7 @@ var LintRefusal func(root string, n int) string
 // outsideBlocker checks a dependency that is not part of this run. It
 // returns "" when satisfied, or why the waiting lane must be skipped:
 //   - pinned to a job: that job must be the dependency lane's last run, passed;
-//   - otherwise: if the dependency lane holds a pending round, that round
+//   - otherwise: if the dependency lane holds a ready round, that round
 //     must have passed already (a stubbed or empty lane never blocks).
 func outsideBlocker(root string, d Dep) string {
 	st, _ := status.Load(root)
@@ -209,10 +209,10 @@ func outsideBlocker(root string, d Dep) string {
 	}
 	if LintRefusal != nil {
 		if why := LintRefusal(root, d.Lane); why != "" {
-			return fmt.Sprintf("swim %d's pending round has not passed, and swim lint refuses it (%s): fix it (swim lint %d), then run both", d.Lane, why, d.Lane)
+			return fmt.Sprintf("lane %d's ready round has not passed, and swim lint refuses it (%s): fix it (swim lint %d), then run both", d.Lane, why, d.Lane)
 		}
 	}
-	return fmt.Sprintf("swim %d's pending round has not passed; run it too: swim run %d ...", d.Lane, d.Lane)
+	return fmt.Sprintf("lane %d's ready round has not passed; run it too: swim run %d ...", d.Lane, d.Lane)
 }
 
 // AlreadyPassed reports whether the round in a lane's script is the one the
@@ -238,11 +238,11 @@ func lastRan(info lane.Info, job string, last *status.Lane) bool {
 	return info.Pending() && last.Round == info.Round
 }
 
-// DepState is where one dependency of a pending round stands now.
+// DepState is where one dependency of a ready round stands now.
 type DepState struct {
 	Dep
 	// State: passed (the round it waits for passed), pending, running,
-	// failed, skipped, interrupted, or "no round" (nothing pending there,
+	// failed, skipped, interrupted, or "no round" (nothing ready there,
 	// so it holds nothing up).
 	State string
 	// Note says what that means for the round waiting on it ("" when
@@ -268,7 +268,7 @@ func depState(root string, d Dep) DepState {
 	info, _ := lane.ReadScript(root, d.Lane)
 	if outsideBlocker(root, d) == "" {
 		if d.Job == "" && !info.Pending() {
-			return DepState{Dep: d, State: "no round", Note: "nothing pending there: it holds nothing up"}
+			return DepState{Dep: d, State: "no round", Note: "no round there: it holds nothing up"}
 		}
 		return DepState{Dep: d, State: status.Passed}
 	}
@@ -283,10 +283,10 @@ func depState(root string, d Dep) DepState {
 		job = info.Job
 	}
 	switch {
-	case last.Alive() && (last.State == status.Running || last.State == status.Waiting || last.State == status.Queued || last.State == status.Locked):
+	case last.Alive() && (last.State == status.Running || last.State == status.Waiting || last.State == status.Queued):
 		return DepState{Dep: d, State: "running", Note: "this starts once it passes, in the same run; otherwise it's skipped"}
 	case lastRan(info, job, &last) && (last.State == status.Failed || last.State == status.Skipped || last.State == status.Interrupted):
 		return DepState{Dep: d, State: last.State, Note: "it must pass first: run both to retry it"}
 	}
-	return DepState{Dep: d, State: "pending", Note: "a dry run or failure there skips this"}
+	return DepState{Dep: d, State: status.Ready, Note: "a dry run or failure there skips this"}
 }

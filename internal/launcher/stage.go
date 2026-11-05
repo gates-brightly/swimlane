@@ -108,6 +108,6 @@ func exited(o Options, tok string) {
 	}
 }
 
-// WorkspaceEnv names the directory a lane runs in: its staged copy, or the
+// WorkspaceEnv names the directory a lane runs in: its pinned copy, or the
 // working tree for # Workspace: live.
 const WorkspaceEnv = "SWIM_WORKSPACE"

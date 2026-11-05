@@ -40,7 +40,7 @@ swim status
 
 Each `step` is logged with its command, output, exit code and time.
 PASS means exit 0, nothing more: read the output. The snapshot lists one
-file because a round runs in a staged copy of what it pins; the repo itself
+file because a round runs in a pinned copy of what it pins; the repo itself
 is `$SWIM_ROOT`. Stages say where the round is: snapshot and check only
 read. ([lanes](reference/lanes.md), [logs](reference/logs.md))
 
@@ -169,8 +169,8 @@ come free: how a session hands work to the machine that runs it.
 ```sh
 swim log --since 1h
 swim verify --allow-unsigned
-sed 's/shipped/SHIPPED/' .swim/logs/agent4.log > edited.log    # someone edits the record
-mv edited.log .swim/logs/agent4.log
+sed 's/shipped/SHIPPED/' .swim/logs/lane4.log > edited.log    # someone edits the record
+mv edited.log .swim/logs/lane4.log
 swim verify --allow-unsigned || echo "the edit was caught"
 ```
 

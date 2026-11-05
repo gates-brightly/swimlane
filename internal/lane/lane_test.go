@@ -67,7 +67,7 @@ func TestArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(dst) != "agent2.prev-cut-over-api.log" || filepath.Dir(dst) != LogDir(root) {
+	if filepath.Base(dst) != "lane2.prev-cut-over-api.log" || filepath.Dir(dst) != LogDir(root) {
 		t.Fatalf("dst = %s", dst)
 	}
 	os.WriteFile(Log(root, 2), []byte("log2"), 0o644)
@@ -109,7 +109,7 @@ func TestJobIDs(t *testing.T) {
 		}
 	}
 	root := t.TempDir()
-	os.WriteFile(Script(root, 1), []byte("# Round: X\n# Job:   "+id+"\nlane_init 1\n"), 0o755)
+	os.WriteFile(Script(root, 1), []byte("# Round: X\n# Round-ID:   "+id+"\nlane_init 1\n"), 0o755)
 	if info, _ := ReadScript(root, 1); info.Job != id || info.Round != "X" {
 		t.Fatalf("ReadScript: %+v", info)
 	}
@@ -119,7 +119,7 @@ func TestParseScriptMetadataAndDefaults(t *testing.T) {
 	full := `#!/usr/bin/env bash
 # swim: syntax 2
 # Round:   Cut over orders-api
-# Job:     job-0001-aaaa
+# Round-ID:     job-0001-aaaa
 # After:   1 3
 # Owner:   zach
 # Created: 2026-10-01
@@ -274,5 +274,19 @@ func TestBodyTextIsNotCode(t *testing.T) {
 	}
 	if info := ParseScript(src + "stage check\n"); !info.Staged {
 		t.Error("code after the text: not staged")
+	}
+}
+
+// An older script's # Job: (Round-ID's old name) is its round id, and an
+// older sidecar's job: too.
+func TestOldJobHeaderIsRoundID(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(Script(root, 1), []byte("# Round: X\n# Job: old-id\nlane_init 1\n"), 0o755)
+	if info, _ := ReadScript(root, 1); info.Job != "old-id" {
+		t.Fatalf("# Job: read as %q", info.Job)
+	}
+	os.WriteFile(filepath.Join(root, "lane.1.yml"), []byte("job: side-id\n"), 0o644)
+	if info, err := ReadScript(root, 1); err != nil || info.Job != "side-id" {
+		t.Fatalf("sidecar job: read as %q (%v)", info.Job, err)
 	}
 }

@@ -113,7 +113,7 @@ func dagNodeLane(nd dagNode, locks string) string {
 	if locks != "" {
 		fmt.Fprintf(&b, "# Locks: %s\n", locks)
 	}
-	fmt.Fprintf(&b, "# Job:   %s\n# After: %s\n", newUUID(), ps)
+	fmt.Fprintf(&b, "# Round-ID:   %s\n# After: %s\n", newUUID(), ps)
 	b.WriteString("#\n# Synthetic dag99 node: no network, nothing destructive. Its value is\n" +
 		"# sha256 over its parents' values, so lane 99 can recompute the DAG.\n" +
 		"# E2E_FAIL=\"3 41\" fails those lanes on purpose.\n\n")
@@ -154,7 +154,7 @@ func dagAuditLane(sinks []int) string {
 	return `#!/usr/bin/env bash
 # swim: syntax 2
 # Round: DAG99 audit: every node done, every edge honoured, every value matches
-# Job:   ` + newUUID() + `
+# Round-ID:   ` + newUUID() + `
 # After: ` + ps + `
 #
 # Reads every lane's # After: line, nodes/N.done and N.val, and .swim.log.

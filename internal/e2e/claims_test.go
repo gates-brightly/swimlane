@@ -30,7 +30,7 @@ func TestLaneClaims(t *testing.T) {
 		t.Fatalf("a's new: %s", out)
 	}
 	out, code := r.as("b", "new", "3", "something else")
-	if code == 0 || !strings.Contains(out, "swim 3 is claimed by") || !strings.Contains(out, "session a") || !strings.Contains(out, "SWIM_SESSION") {
+	if code == 0 || !strings.Contains(out, "lane 3 is claimed by") || !strings.Contains(out, "session a") || !strings.Contains(out, "SWIM_SESSION") {
 		t.Fatalf("b's new over a's claim: exit %d\n%s", code, out)
 	}
 	st, _ := r.as("b", "status", "3")

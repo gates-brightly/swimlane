@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # swim: syntax 4
 # Round: the portable forms of GNU-only tools
-# Job:   corpus-portable
+# Round-ID:   corpus-portable
 # Timeout: 30m
 #
 # What gnu-only warns about, written so a Mac's BSD tools run it too, and

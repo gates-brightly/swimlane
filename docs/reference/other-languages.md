@@ -19,7 +19,7 @@ A lane can be any runnable: `lane.N.py`, `.js`, `.ts`, `.rb`, a compiled
 ## Steps
 
 The program runs inside swim's wrapper, which opens and closes the round
-and exports `SWIM_LANE`, `SWIM_JOB`, `SWIM_RUN`, `STEP_LOG` and the rest:
+and exports `SWIM_LANE`, `SWIM_ROUND_ID`, `SWIM_RUN`, `STEP_LOG` and the rest:
 
 ```python
 #!/usr/bin/env python3
@@ -46,7 +46,7 @@ if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: repla
 - A program that never calls `swim step` is logged as one step: its whole
   output (masked), its exit code.
 - `# Includes: lib/*.py` pins the local modules it imports; a lane runs
-  from its staged copy, so an unlisted one isn't found.
+  from its pinned copy, so an unlisted one isn't found.
 
 ## Header
 

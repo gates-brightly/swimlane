@@ -38,7 +38,7 @@ step "say" echo "script-v2 $greeting"`)
 		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}
 	log := r.log(3)
-	contains(t, "agent3.log", log, "script-v1 greet-v1", "manifest: ")
+	contains(t, "lane3.log", log, "script-v1 greet-v1", "manifest: ")
 	if strings.Contains(log, "v2") {
 		t.Errorf("the edits reached the waiting lane:\n%s", log)
 	}
@@ -57,13 +57,13 @@ step "say" echo "script-v2 $greeting"`)
 		}
 	}
 	if !found {
-		t.Error("no round entry for swim 3")
+		t.Error("no round entry for lane 3")
 	}
 	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 }
 
 // An edit to the working-tree script while it runs changes nothing: bash
-// reads the staged copy.
+// reads the pinned copy.
 func TestManifestMidRunEdit(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "long", `step "first" echo one-v1
@@ -79,7 +79,7 @@ step "second" echo two-v1`)
 	if code := l.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, l.out.String())
 	}
-	contains(t, "agent1.log", r.log(1), "two-v1")
+	contains(t, "lane1.log", r.log(1), "two-v1")
 	if strings.Contains(r.log(1), "two-v2") {
 		t.Error("bash ran the edited working-tree script")
 	}
@@ -97,7 +97,7 @@ step "x" echo "x=$x"`)
 	os.WriteFile(filepath.Join(r.root, "lib", "x.sh"), []byte("x=2\n"), 0o644)
 	r.swim("watch", "--once")
 	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "lane.1.sh changed since it was queued") {
-		t.Errorf("swim 1 after its include changed: %s %q", st.State, st.Reason)
+		t.Errorf("lane 1 after its include changed: %s %q", st.State, st.Reason)
 	}
 }
 
@@ -116,7 +116,7 @@ if guard FIN_ALLOW_DROP "drop table $table"; then step "drop" true; fi`)
 	r.swim("watch", "--once")
 	// The file is declared (# Includes:), so it's part of the script's hash.
 	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "lane.1.sh changed since it was queued") {
-		t.Errorf("swim 1 after its include changed: %s %q", st.State, st.Reason)
+		t.Errorf("lane 1 after its include changed: %s %q", st.State, st.Reason)
 	}
 	if strings.Contains(r.log(1), "PASS  drop") {
 		t.Fatalf("the guarded step ran after its manifest changed:\n%s", r.log(1))
@@ -140,24 +140,24 @@ if "$SWIM_BIN" _approve 1 WIPE_ALL "routine tidy"; then step "wiped" true; fi`)
 	if code != launcher.ExitDryRun { // WIPE_ALL dry-runs
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	contains(t, "output", out, "refused: lane 1 can't report for lane 5", "approval refused for swim 1: guard WIPE_ALL isn't declared in swim 1's script")
+	contains(t, "output", out, "refused: lane 1 can't report for lane 5", "approval refused for lane 1: guard WIPE_ALL isn't declared in lane 1's script")
 	if strings.Contains(r.log(1), "dropped as 5") {
 		t.Error("lane 1 was approved as lane 5")
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "APPROVED  harmless cleanup (DROP=1", "PASS  dropped",
+	contains(t, "lane1.log", log, "APPROVED  harmless cleanup (DROP=1", "PASS  dropped",
 		"SKIP  routine tidy (dry run: not approved: guard WIPE_ALL isn't declared")
 	if strings.Contains(log, "PASS  wiped") {
 		t.Error("an undeclared flag was approved")
 	}
-	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent5.log")); err == nil {
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "lane5.log")); err == nil {
 		t.Error("the approval went to the lane the request named")
 	}
 	contains(t, ".swim.log", r.mustSwim("log"), "refused: guard WIPE_ALL isn't declared")
 	links, _ := chain.Read(r.root)
 	for _, k := range links {
 		if k.Type == "approve" && k.Guard == "DROP" && (k.Lane != 1 || k.Manifest == "") {
-			t.Errorf("approve entry for swim %d, manifest %q", k.Lane, k.Manifest)
+			t.Errorf("approve entry for lane %d, manifest %q", k.Lane, k.Manifest)
 		}
 	}
 }
@@ -185,7 +185,7 @@ open(os.environ["SWIM_ROOT"] + "/approval-id", "w").write(resp["id"])'
 	out, _ := r.swimEnv([]string{"DROP=1"}, "run", "1", "2")
 	contains(t, "output", out, "first-use-ok", "second-use-refused", "the approval was already used", "the approval was given to another lane")
 	if strings.Contains(r.log(2), "APPROVED") || strings.Contains(r.log(2), "PASS  replayed") {
-		t.Errorf("swim 2 used swim 1's approval:\n%s", r.log(2))
+		t.Errorf("lane 2 used lane 1's approval:\n%s", r.log(2))
 	}
 }
 
@@ -208,7 +208,7 @@ if swim guard FIN_ALLOW_DROP "drop the old table"; then swim step "drop" -- true
 	r.write("lane.1.py", "#!/usr/bin/env pyrun2\n"+body, 0o755)
 	r.swim("watch", "--once")
 	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "changed since it was queued") {
-		t.Errorf("swim 1 after its runner changed: %s %q", st.State, st.Reason)
+		t.Errorf("lane 1 after its runner changed: %s %q", st.State, st.Reason)
 	}
 	if strings.Contains(r.log(1), "PASS  drop") {
 		t.Errorf("the guarded step ran under another runner:\n%s", r.log(1))

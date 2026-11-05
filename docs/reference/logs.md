@@ -16,7 +16,7 @@ progress)` with its output so far.
 
 ## The lane log
 
-`.swim/logs/agentN.log`: append-only plain text, readable with `cat`. Each
+`.swim/logs/laneN.log`: append-only plain text, readable with `cat`. Each
 line says what it is by how it starts:
 
 ```

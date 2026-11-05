@@ -14,7 +14,7 @@ import (
 func Busy(root string, cfg *config.Config) string {
 	for n := 1; n <= cfg.Lanes; n++ {
 		if pid, ok := lane.Running(root, n); ok {
-			return fmt.Sprintf("swim %d is running (pid %d)", n, pid)
+			return fmt.Sprintf("lane %d is running (pid %d)", n, pid)
 		}
 	}
 	st, _ := status.Load(root)
@@ -23,9 +23,9 @@ func Busy(root string, cfg *config.Config) string {
 	}
 	for _, l := range st.Lanes {
 		switch l.State {
-		case status.Waiting, status.Queued, status.Locked, status.Running:
+		case status.Waiting, status.Queued, status.Running:
 			if l.Alive() {
-				return fmt.Sprintf("swim %d is %s in another swim run (pid %d)", l.Lane, l.State, l.PID)
+				return fmt.Sprintf("lane %d is %s in another swim run (pid %d)", l.Lane, l.State, l.PID)
 			}
 		}
 	}

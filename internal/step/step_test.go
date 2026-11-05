@@ -50,7 +50,7 @@ func newOpts(t *testing.T, args ...string) (Options, *bytes.Buffer, *bytes.Buffe
 	var out, errb bytes.Buffer
 	return Options{
 		Args:    args,
-		LogPath: filepath.Join(root, "agent1.log"),
+		LogPath: filepath.Join(root, "lane1.log"),
 		Root:    root,
 		Stdout:  &out,
 		Stderr:  &errb,
@@ -73,7 +73,7 @@ func TestRunWritesV2BlockAndPreservesExitCode(t *testing.T) {
 	}
 	data, _ := os.ReadFile(o.LogPath)
 	log := string(data)
-	if !strings.HasPrefix(log, "# swim log | syntax 4 | swim 1\n") {
+	if !strings.HasPrefix(log, "# swim log | syntax 4 | lane 1\n") {
 		t.Fatalf("no header:\n%s", log)
 	}
 	for _, want := range []string{"  FAIL  colour test (exit 3)", "        $ bash -c ", "        | green\n", "        | err\n", "        | FAIL  fake (exit 1)\n"} {
@@ -214,7 +214,7 @@ func TestRecoverSpool(t *testing.T) {
 }
 
 func TestReadSpool(t *testing.T) {
-	logPath := filepath.Join(t.TempDir(), "agent1.log")
+	logPath := filepath.Join(t.TempDir(), "lane1.log")
 	if _, ok := ReadSpool(logPath); ok {
 		t.Fatal("no spool: nothing running")
 	}
@@ -243,7 +243,7 @@ func TestReadSpool(t *testing.T) {
 // read by a planner in a UTC container sharing the repo) still gives the
 // step's real elapsed time, and shows the writer's wall clock.
 func TestReadSpoolOtherZone(t *testing.T) {
-	logPath := filepath.Join(t.TempDir(), "agent1.log")
+	logPath := filepath.Join(t.TempDir(), "lane1.log")
 	start := time.Now().Add(-90 * time.Second).In(time.FixedZone("far", 7*3600+1800))
 	os.WriteFile(SpoolPath(logPath), []byte(spoolHead("wait", start, "make deploy")), 0o644)
 	sp, ok := ReadSpool(logPath)
@@ -262,7 +262,7 @@ func TestReadSpoolOtherZone(t *testing.T) {
 // RecordStep writes a finished step (a whole program, an SDK's in-process
 // step) as a block the log parser reads back.
 func TestRecordStep(t *testing.T) {
-	log := filepath.Join(t.TempDir(), "agent1.log")
+	log := filepath.Join(t.TempDir(), "lane1.log")
 	os.WriteFile(log, []byte("# swim lane log | syntax 2 | swim 1\n\n== ROUND 2026-10-14T00:00:00Z  job=j  r\n"), 0o644)
 	line, err := RecordStep(log, logparse.Pass, "native check", "in-process", "(in-process)", time.Now(), 1500*time.Millisecond, strings.NewReader("items: 0\nok\n"))
 	if err != nil || line != "PASS  native check (in-process)" {

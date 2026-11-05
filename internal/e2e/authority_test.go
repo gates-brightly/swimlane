@@ -129,7 +129,7 @@ func TestApprovalsUnavailable(t *testing.T) {
 	out := b.mustDryRun("run", "1", "--plain")
 	contains(t, "output", out, "every guard runs as a dry run")
 	b.noMarker(t, "the lane's flag with no approvals channel")
-	contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: this lane runs under swim run, but its approvals channel is gone")
+	contains(t, "lane1.log", b.log(1), "SKIP  drop table orders (dry run: this lane runs under swim run, but its approvals channel is gone")
 	if len(b.approvesOf(1)) != 0 {
 		t.Fatalf("approve entries: %+v", b.approvesOf(1))
 	}
@@ -153,8 +153,8 @@ func TestHostileLaneSetsFlag(t *testing.T) {
 	b.hostile(`export ` + boundaryGuard + `=1`)
 	out := b.mustDryRun("run", "1", "--plain")
 	b.noMarker(t, "FLAG=1 inside the lane")
-	contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: "+boundaryGuard+"=1 was set inside the lane, not in the environment swim run started with")
-	contains(t, "output", out, "approval refused for swim 1: "+boundaryGuard+"=1 was set inside the lane")
+	contains(t, "lane1.log", b.log(1), "SKIP  drop table orders (dry run: "+boundaryGuard+"=1 was set inside the lane, not in the environment swim run started with")
+	contains(t, "output", out, "approval refused for lane 1: "+boundaryGuard+"=1 was set inside the lane")
 	contains(t, ".swim.log", b.mustSwim("log"), "refused: "+boundaryGuard+"=1 was set inside the lane")
 
 	// The operator's own flag approves, recorded by swim run.
@@ -164,7 +164,7 @@ func TestHostileLaneSetsFlag(t *testing.T) {
 	if !b.dropped() {
 		t.Fatalf("the operator's flag didn't approve:\n%s", b.log(1))
 	}
-	contains(t, "agent1.log", b.log(1), "APPROVED  drop table orders ("+boundaryGuard+"=1)")
+	contains(t, "lane1.log", b.log(1), "APPROVED  drop table orders ("+boundaryGuard+"=1)")
 	apps := b.approvesOf(1)
 	if len(apps) != 1 || apps[0].Method != "flag" || apps[0].Manifest == "" {
 		t.Fatalf("approve entries: %+v", apps)
@@ -186,7 +186,7 @@ func TestHostileLaneSetsFlag(t *testing.T) {
 // A lane that claims another job: the chain names the job swim run knows.
 func TestHostileLaneWrongJob(t *testing.T) {
 	b := newBoundaryRepo(t)
-	b.hostile(`SWIM_JOB=not-my-job; export SWIM_JOB`)
+	b.hostile(`SWIM_ROUND_ID=not-my-job; export SWIM_ROUND_ID`)
 	if out, code := b.swimEnv([]string{boundaryGuard + "=1"}, "run", "1", "--plain"); code != 0 || !b.dropped() {
 		t.Fatalf("the flag didn't approve: %d\n%s\n%s", code, out, b.log(1))
 	}
@@ -232,7 +232,7 @@ step "own work" true`)
 	}
 	contains(t, "output", out, "refused: lane 1 can't report for lane 2", "mark refused: 2", "stage refused: 2", "finish refused: 2")
 	if runtime.GOOS == "linux" {
-		contains(t, "output", out, "stole a token", "outside swim 2's lane", "stolen mark refused: 2")
+		contains(t, "output", out, "stole a token", "outside lane 2's lane", "stolen mark refused: 2")
 	}
 	log2 := r.log(2)
 	if strings.Contains(log2, "forged") || strings.Count(log2, "== END") != 1 || !strings.Contains(log2, "PASS  work") {
@@ -285,5 +285,5 @@ if guard DROP "drop the table"; then step "dropped" true; fi`)
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
 	contains(t, "output", out, "big: request too large", "malformed: malformed request", "bogus approved: False", "as lane 2 answered for lane 1")
-	contains(t, "agent1.log", r.log(1), "APPROVED  drop the table (DROP=1", "PASS  dropped")
+	contains(t, "lane1.log", r.log(1), "APPROVED  drop the table (DROP=1", "PASS  dropped")
 }

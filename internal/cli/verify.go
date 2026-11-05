@@ -32,7 +32,7 @@ type verifier struct {
 
 // cmdVerify proves (or disproves) the chain of custody: every link follows
 // the one before it, every signature matches the key recorded beside it,
-// and every round's log, kept script, staged copy and inputs are what was
+// and every round's log, kept script, pinned copy and inputs are what was
 // recorded.
 //
 // It prints one answer, VERIFIED or NOT VERIFIED, and exits 1 for the
@@ -212,7 +212,7 @@ func splitUnsigned(links []chain.Link, unsigned []int) (covered, trailing []int)
 // amendable says a problem swim verify --force may acknowledge: a gap in
 // the chain (an entry removed, inserted or out of order, a link that
 // doesn't follow) or something deleted (a round's log, a kept script).
-// Changed content (a signature, a log, a script or staged copy that no
+// Changed content (a signature, a log, a script or pinned copy that no
 // longer matches) never is.
 func amendable(problem string) bool {
 	for _, s := range []string{

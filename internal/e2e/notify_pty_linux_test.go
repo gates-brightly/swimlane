@@ -51,11 +51,11 @@ func TestWatchNotifies(t *testing.T) {
 	r.mustSwim("queue", "add", "2")
 	r.mustSwim("queue", "add", "1")
 	tr := r.startTUI(nil, "watch", "--batches", "2")
-	tr.waitFor("⚠ swim 1 is blocked")
+	tr.waitFor("⚠ lane 1 is blocked")
 	tr.waitScreen("the notifications", func(string) bool {
 		out := tr.output()
 		return strings.Contains(out, "\x1b]777;notify;"+from+"lane 1 needs you;approval of ALLOW_ONE: change one · batch #2\x07") &&
-			strings.Contains(out, "\x1b]777;notify;"+from+"batch #1 passed;swim 2 · ")
+			strings.Contains(out, "\x1b]777;notify;"+from+"batch #1 passed;lane 2 · ")
 	})
 	tr.waitScreen("the bar paused on the question", func(string) bool { return strings.Contains(tr.output(), "\x1b]9;4;4;") })
 	if strings.Contains(oscRe.ReplaceAllString(tr.output(), ""), "\a") {
@@ -63,7 +63,7 @@ func TestWatchNotifies(t *testing.T) {
 	}
 	tr.send("y")
 	tr.waitScreen("#2 ends", func(string) bool {
-		return strings.Contains(tr.output(), "\x1b]777;notify;"+from+"batch #2 passed;swim 1 · ")
+		return strings.Contains(tr.output(), "\x1b]777;notify;"+from+"batch #2 passed;lane 1 · ")
 	})
 	tr.waitScreen("no bar once the queue is empty", func(string) bool { return lastProgress(tr.output()) == "\x1b]9;4;0\x07" })
 	tr.send("\x03")
@@ -104,11 +104,11 @@ func TestRunNotifies(t *testing.T) {
 	tr.send("\r")
 	tr.waitFor("y approve")
 	tr.send("y")
-	tr.waitFor("run finished · q to close")
+	tr.waitFor("run ended · q to close")
 	tr.send("q")
 	tr.wait()
 	out := tr.output()
-	contains(t, "swim run's output", out, "\x1b]777;notify;"+from+"run passed;swim 1,2 · 2 passed · ", "\x1b]9;4;")
+	contains(t, "swim run's output", out, "\x1b]777;notify;"+from+"run passed;lane 1,2 · 2 passed · ", "\x1b]9;4;")
 	if last := lastProgress(out); last != "\x1b]9;4;0\x07" {
 		t.Errorf("the bar is left on the tab: %q", last)
 	}

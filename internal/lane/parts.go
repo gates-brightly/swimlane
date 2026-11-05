@@ -50,7 +50,7 @@ func ScriptParts(root string, n int) (string, []string, error) {
 }
 
 // JoinScript is ScriptBytes from the script's data and its files, read
-// with read (from the repo, or from a run's staged copy).
+// with read (from the repo, or from a run's pinned copy).
 func JoinScript(data []byte, files []string, read func(string) ([]byte, error)) []byte {
 	var b bytes.Buffer
 	b.Write(data)

@@ -24,7 +24,7 @@ type Reaped struct {
 }
 
 func (r Reaped) String() string {
-	who := fmt.Sprintf("swim %d", r.Lane)
+	who := fmt.Sprintf("lane %d", r.Lane)
 	pid := ""
 	if r.PID > 0 {
 		pid = fmt.Sprintf(" (pid %d)", r.PID)

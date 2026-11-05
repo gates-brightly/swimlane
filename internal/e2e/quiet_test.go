@@ -23,7 +23,7 @@ func TestQuietDefaults(t *testing.T) {
 	if strings.Contains(out, "no signing key") {
 		t.Errorf("a first run warned about signing:\n%s", out)
 	}
-	if strings.Contains(out, "swim summary") || !strings.Contains(out, "swim 1 summary: PASS") || !strings.Contains(out, "logs: swim log 1") {
+	if strings.Contains(out, "swim summary") || !strings.Contains(out, "lane 1 summary: passed") || !strings.Contains(out, "logs: swim log 1") {
 		t.Errorf("one lane should print its own summary, then only where its log is:\n%s", out)
 	}
 	head := strings.Split(r.log(1), "\n")[3] // the round's context line

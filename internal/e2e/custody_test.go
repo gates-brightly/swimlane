@@ -70,7 +70,7 @@ func TestChainAndVerify(t *testing.T) {
 	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 
 	// Tampering is provable.
-	logPath := filepath.Join(r.root, ".swim", "logs", "agent1.log")
+	logPath := filepath.Join(r.root, ".swim", "logs", "lane1.log")
 	orig, _ := os.ReadFile(logPath)
 	os.WriteFile(logPath, []byte(strings.Replace(string(orig), "PASS  drop", "PASS  dorp", 1)), 0o644)
 	if out, code := r.swim("verify", "--allow-unsigned"); code != 1 || !strings.Contains(out, "log for run") || !strings.Contains(out, "was changed after the round ended") {
@@ -186,7 +186,7 @@ func TestVerifyForceAmendsGaps(t *testing.T) {
 		os.WriteFile(chainPath, []byte(strings.Join(ls, "\n")+"\n"), 0o644)
 	}
 	drop(1) // an entry removed from the middle
-	os.Remove(filepath.Join(r.root, ".swim", "logs", "agent1.log"))
+	os.Remove(filepath.Join(r.root, ".swim", "logs", "lane1.log"))
 	out, code := r.swim("verify")
 	if code == 0 || !strings.Contains(out, "BROKEN: entry #3 (line 2): entry #2 is missing before it (removed)") {
 		t.Fatalf("gap: %d\n%s", code, out)

@@ -23,14 +23,14 @@ func TestAssociated(t *testing.T) {
 	write("lane.3.sh", "# swim:stub\n# done\n") // a stub: not in use
 	write("lane.4.notes", "not a script")       // not executable, so not a script
 	os.Chmod(filepath.Join(root, "lane.4.notes"), 0o644)
-	write(".swim/logs/agent5.log", "")              // a current log
-	write(".swim/logs/agent6.prev-cutover.log", "") // archived: no
-	write(".swim/logs/agent7.check.log", "")        // a check log: no
+	write(".swim/logs/lane5.log", "")              // a current log
+	write(".swim/logs/lane6.prev-cutover.log", "") // archived: no
+	write(".swim/logs/lane7.check.log", "")        // a check log: no
 	if got := Associated(root); fmt.Sprint(got) != "[2 5]" {
 		t.Errorf("associated: %v, want [2 5]", got)
 	}
 	// Archiving the log drops lane 5.
-	os.Rename(filepath.Join(root, ".swim/logs/agent5.log"), filepath.Join(root, ".swim/logs/agent5.prev-x.log"))
+	os.Rename(filepath.Join(root, ".swim/logs/lane5.log"), filepath.Join(root, ".swim/logs/lane5.prev-x.log"))
 	if got := Associated(root); fmt.Sprint(got) != "[2]" {
 		t.Errorf("after archive: %v", got)
 	}
@@ -39,7 +39,7 @@ func TestAssociated(t *testing.T) {
 func TestArchiveMovesJobLogs(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(LogDir(root), 0o755)
-	for _, f := range []string{"agent1.log", "agent1.2.log", "agent1.5.9.log", "agent10.log", "agent1.check.log"} {
+	for _, f := range []string{"lane1.log", "lane1.2.log", "lane1.5.9.log", "lane10.log", "lane1.check.log"} {
 		os.WriteFile(filepath.Join(LogDir(root), f), nil, 0o644)
 	}
 	if _, err := Archive(root, 1, "done"); err != nil {
@@ -50,7 +50,7 @@ func TestArchiveMovesJobLogs(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if got := fmt.Sprint(names); got != "[agent1.check.log agent1.prev-done.2.log agent1.prev-done.5.9.log agent1.prev-done.log agent10.log]" {
+	if got := fmt.Sprint(names); got != "[lane1.check.log lane1.prev-done.2.log lane1.prev-done.5.9.log lane1.prev-done.log lane10.log]" {
 		t.Errorf("after archive: %s", got)
 	}
 	if got := Associated(root); fmt.Sprint(got) != "[10]" {

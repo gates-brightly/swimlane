@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// A failed step's command names files the repo has and its staged copy
-// doesn't; outside a staged copy, nothing is suggested.
+// A failed step's command names files the repo has and its pinned copy
+// doesn't; outside a pinned copy, nothing is suggested.
 func TestStagedMisses(t *testing.T) {
 	root := t.TempDir()
 	root, _ = filepath.EvalSymlinks(root)

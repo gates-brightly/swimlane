@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # swim: syntax 2
 # Round: DAG root: fetch pages, aggregate
-# Job:   6885ada8-4cda-4947-98d6-17f37df32cea
+# Round-ID:   6885ada8-4cda-4947-98d6-17f37df32cea
 # After: 
 # Lane:  swim 1    Written: 2026-10-09
 #
@@ -54,7 +54,7 @@ stage change
 # swim:lint-ignore destructive scratch dir under .scenario/, recreated every run
 gate "reset $P" bash -c 'rm -rf "$P" && mkdir -p "$P"'
 fetch() { # fetch <name> <url>
-  step "fetch $1" curl -fsSL --max-time 20 -A "swim-demo/$SWIM_JOB" -o "$P/$1.html" -w '%{http_code} %{size_download}B %{url_effective}\n' "$2"
+  step "fetch $1" curl -fsSL --max-time 20 -A "swim-demo/$SWIM_ROUND_ID" -o "$P/$1.html" -w '%{http_code} %{size_download}B %{url_effective}\n' "$2"
 }
 fetch example https://example.com/
 fetch cern    http://info.cern.ch/hypertext/WWW/TheProject.html

@@ -38,9 +38,9 @@ func TestAmendable(t *testing.T) {
 		"the logs of 2 rounds are gone (deleted, not archived), so their contents can't be rechecked: #1, 3":                  true,
 		"entry #4: the script copy 1a2b3c4d5e6f.sh is missing":                                                                true,
 		"entry #4 (line 4): signature doesn't match the entry (it was changed after signing): bad":                            false,
-		"entry #5: swim 1's log for run r-1 was changed after the round ended":                                                false,
+		"entry #5: lane 1's log for run r-1 was changed after the round ended":                                                false,
 		"entry #4: the kept script 1a2b3c4d5e6f.sh was changed":                                                               false,
-		"entry #6: swim 1's staged copy in run r-1: manifest changed since staged (manifest.yml)":                             false,
+		"entry #6: lane 1's pinned copy in run r-1: manifest changed since staged (manifest.yml)":                             false,
 	} {
 		if amendable(p) != want {
 			t.Errorf("amendable(%q) = %v", p, !want)

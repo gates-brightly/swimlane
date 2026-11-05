@@ -69,7 +69,7 @@ func TestRunAllSkipsALaneLintRefuses(t *testing.T) {
 	os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte(nosyntax), 0o755)
 	r.shortLane(3, "# Round: after two\n# After: 2", "stage check\nstep \"x\" echo lane-three")
 	out, code := r.swim("all", "--plain")
-	if code == 0 || !strings.Contains(out, "not running swim 2") {
+	if code == 0 || !strings.Contains(out, "not running lane 2") {
 		t.Fatalf("swim all: exit %d\n%s", code, out)
 	}
 	if !strings.Contains(r.log(1), "| lane-one") {
@@ -101,7 +101,7 @@ func TestQueueWarnsOfARefusedDependency(t *testing.T) {
 		t.Errorf("status 2 says a clean lane won't run:\n%s", st)
 	}
 	out, code := r.swim("queue", "2")
-	if code != 0 || !strings.Contains(out, "swim 2 waits on swim 1, which swim lint refuses") || !strings.Contains(out, "[step]") {
+	if code != 0 || !strings.Contains(out, "lane 2 waits on lane 1, which swim lint refuses") || !strings.Contains(out, "[step]") {
 		t.Fatalf("queue 2: exit %d\n%s", code, out)
 	}
 	r.swim("watch", "--once")
@@ -109,6 +109,6 @@ func TestQueueWarnsOfARefusedDependency(t *testing.T) {
 		t.Fatalf("lane 2 ran past a lane that can't pass:\n%s", r.log(2))
 	}
 	if st := must(r.swim("status", "2")); !strings.Contains(st, "swim lint refuses it") || strings.Contains(st, "run it too") {
-		t.Errorf("the skip hint should say to fix swim 1:\n%s", st)
+		t.Errorf("the skip hint should say to fix lane 1:\n%s", st)
 	}
 }

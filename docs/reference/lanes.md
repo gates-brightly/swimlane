@@ -42,7 +42,7 @@ step "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 
 | | |
 |---|---|
-| `lane_init N` | Explicit form only, first: cd to the lane's workspace (its staged copy under `swim run`), open the round, export `SWIM_JOB`, `SWIM_DEADLINE`, `SWIM_TIMEOUT`. Refuses a lane already running. |
+| `lane_init N` | Explicit form only, first: cd to the lane's workspace (its pinned copy under `swim run`), open the round, export `SWIM_ROUND_ID`, `SWIM_DEADLINE`, `SWIM_TIMEOUT`. Refuses a lane already running. |
 | `stage NAME` | Start a [stage](#stages). Steps before the first are setup. |
 | `step [opts] "<label>" cmd [args]` | A step: PASS/FAIL. A failure doesn't stop the round. (`run`, its old name, works for one more release; `swim lint --fix` rewrites it.) |
 | `gate [opts] "<label>" cmd [args]` | A step whose failure (after the last attempt) stops the round. |
@@ -92,7 +92,7 @@ OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
 | `# Fail: soft\|hard` | `hard`: the first failed step ends the round. |
 | `# Includes:` | Repo files that are part of the round (sourced files, local modules): pinned and staged; the only repo files it may read as code. |
 | `# Signoff:` | See [CI](ci.md#local-ci). |
-| `# Workspace: live` | Run in the checkout itself, not a staged copy (for tools that read the whole tree, like `go test`); lint warns (`workspace-live`). |
+| `# Workspace: live` | Run in the checkout itself, not a pinned copy (for tools that read the whole tree, like `go test`); lint warns (`workspace-live`). |
 
 ## Stages
 
@@ -130,7 +130,7 @@ block and `status.yml`.
 - Keep output streaming: not `out=$(cmd); echo "$out"`, but `bash -o
   pipefail -c 'cmd | awk "{print} /bad/{b=1} END{exit b}"'`. Python CLIs
   buffer when piped: `PYTHONUNBUFFERED=1`.
-- A lane runs in a staged copy holding the script and what `# Includes:`
+- A lane runs in a pinned copy holding the script and what `# Includes:`
   pins; `$SWIM_ROOT` is the repo, for what the round acts on.
 - Header values take no trailing `# comment`; explain on lines of their own.
 - Write for the operator's machine, not yours: often macOS, so bash 3.2 (no

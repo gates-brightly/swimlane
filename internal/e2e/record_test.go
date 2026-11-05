@@ -61,7 +61,7 @@ func TestStartRefusalIsRecorded(t *testing.T) {
 		t.Fatalf("status: %s, reason %q", l.State, l.Reason)
 	}
 	log := r.log(1) // swim log refuses too: the script is newer than it reads
-	contains(t, "agent1.log", log, "STOP  "+l.Reason, "Update swim, then run again")
+	contains(t, "lane1.log", log, "STOP  "+l.Reason, "Update swim, then run again")
 	if strings.Count(log, "PASS  never") != 1 {
 		t.Errorf("the refused round ran its step:\n%s", log)
 	}

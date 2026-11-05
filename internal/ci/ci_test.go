@@ -38,25 +38,25 @@ func TestDetect(t *testing.T) {
 func TestFormats(t *testing.T) {
 	var b bytes.Buffer
 	gh := GitHub{}
-	gh.Group(&b, "swim 1 PASS - a: b", true)
+	gh.Group(&b, "lane 1 PASS - a: b", true)
 	gh.EndGroup(&b)
-	gh.Annotate(&b, Error, "swim 2: cut, over", "FAIL  x (exit 1)\nmore 100%")
-	want := "::group::swim 1 PASS - a: b\n::endgroup::\n::error title=swim 2%3A cut%2C over::FAIL  x (exit 1)%0Amore 100%25\n"
+	gh.Annotate(&b, Error, "lane 2: cut, over", "FAIL  x (exit 1)\nmore 100%")
+	want := "::group::lane 1 PASS - a: b\n::endgroup::\n::error title=lane 2%3A cut%2C over::FAIL  x (exit 1)%0Amore 100%25\n"
 	if b.String() != want {
 		t.Errorf("github:\n%q\nwant\n%q", b.String(), want)
 	}
 	b.Reset()
 	gl := &GitLab{}
-	gl.Group(&b, "swim 3 FAIL - Deploy API", true)
+	gl.Group(&b, "lane 3 failed - Deploy API", true)
 	gl.EndGroup(&b)
 	s := b.String()
-	if !strings.Contains(s, ":swim_1_swim_3_fail_deploy_api[collapsed=true]\r\x1b[0Kswim 3 FAIL - Deploy API\n") ||
-		!strings.Contains(s, "section_end:") || !strings.Contains(s, ":swim_1_swim_3_fail_deploy_api\r") {
+	if !strings.Contains(s, ":swim_1_lane_3_failed_deploy_api[collapsed=true]\r\x1b[0Klane 3 failed - Deploy API\n") ||
+		!strings.Contains(s, "section_end:") || !strings.Contains(s, ":swim_1_lane_3_failed_deploy_api\r") {
 		t.Errorf("gitlab: %q", s)
 	}
 	b.Reset()
-	Generic{}.Annotate(&b, Warning, "swim 1: x", "WARN  y")
-	if b.String() != "swim: warning: swim 1: x: WARN  y\n" {
+	Generic{}.Annotate(&b, Warning, "lane 1: x", "WARN  y")
+	if b.String() != "swim: warning: lane 1: x: WARN  y\n" {
 		t.Errorf("generic: %q", b.String())
 	}
 }
@@ -105,24 +105,24 @@ func reports() []LaneReport {
 	return []LaneReport{
 		{N: 1, Title: "deploy", State: "failed", Exit: &exit1, Duration: 3.5, Round: r, Lines: []string{"== ROUND x", "  FAIL  apply (exit 1)"},
 			Unprompted: "ALLOW_A, DEPLOY (flag set)"},
-		{N: 2, Title: "after", State: "skipped", Reason: "swim 1 failed"},
-		{N: 3, Title: "after too", State: "skipped", Reason: "swim 1 failed"},
+		{N: 2, Title: "after", State: "skipped", Reason: "lane 1 failed"},
+		{N: 3, Title: "after too", State: "skipped", Reason: "lane 1 failed"},
 	}
 }
 
 func TestAnnotateAndSections(t *testing.T) {
 	var b bytes.Buffer
 	Annotate(&b, Generic{}, reports())
-	want := "swim: warning: swim 1: deploy: approved without a prompt: ALLOW_A, DEPLOY (flag set)\n" +
-		"swim: error: swim 1: deploy: FAIL  apply (exit 1): boom <&>\nboom <&>\n" + // its why, then its last output lines
-		"swim: notice: swim 1: deploy: delete table: dry run: set X=1 to approve\n" +
-		"swim: notice: swim: 2 lanes skipped: swim 2, 3 (swim 1 failed)\n"
+	want := "swim: warning: lane 1: deploy: approved without a prompt: ALLOW_A, DEPLOY (flag set)\n" +
+		"swim: error: lane 1: deploy: FAIL  apply (exit 1): boom <&>\nboom <&>\n" + // its why, then its last output lines
+		"swim: notice: lane 1: deploy: delete table: dry run: set X=1 to approve\n" +
+		"swim: notice: swim: 2 lanes skipped: lane 2, 3 (lane 1 failed)\n"
 	if b.String() != want {
 		t.Errorf("annotations:\n%s\nwant\n%s", b.String(), want)
 	}
 	b.Reset()
 	Sections(&b, GitHub{}, reports())
-	if s := b.String(); !strings.HasPrefix(s, "==== swim 1 FAIL - deploy (3.5s) ====\n== ROUND x\n") || strings.Contains(s, "::group::") {
+	if s := b.String(); !strings.HasPrefix(s, "==== lane 1 failed - deploy (3.5s) ====\n== ROUND x\n") || strings.Contains(s, "::group::") {
 		t.Errorf("a failed lane stays open (no group) on GitHub:\n%s", s)
 	}
 }
@@ -143,7 +143,7 @@ func TestJUnit(t *testing.T) {
 	if s1.Cases[1].Failure == nil || s1.Cases[1].Failure.Body != "boom <&>" || s1.Cases[1].Failure.Message != "FAIL  apply (exit 1): boom <&>" || s1.Cases[2].Skipped == nil {
 		t.Errorf("suite 1: %+v", s1)
 	}
-	if c := got.Suites[1].Cases[0]; c.Skipped == nil || c.Skipped.Message != "swim 1 failed" {
+	if c := got.Suites[1].Cases[0]; c.Skipped == nil || c.Skipped.Message != "lane 1 failed" {
 		t.Errorf("skipped lane: %+v", c)
 	}
 }
@@ -151,8 +151,8 @@ func TestJUnit(t *testing.T) {
 func TestMarkdown(t *testing.T) {
 	var b bytes.Buffer
 	Markdown(&b, reports(), "r-1", "0123456789abcdef", 1)
-	for _, want := range []string{"## swim ci: failed", "commit `0123456789ab`", "| swim 1 | `` | FAIL | 1 | 1 | 1 |", "FAIL  apply (exit 1): boom", "| swim 2 | `` | SKIP |",
-		"\n**Approved without a prompt:** swim 1: ALLOW_A, DEPLOY (flag set)\n"} {
+	for _, want := range []string{"## swim ci: failed", "commit `0123456789ab`", "| lane 1 | `` | failed | 1 | 1 | 1 |", "FAIL  apply (exit 1): boom", "| lane 2 | `` | skipped |",
+		"\n**Approved without a prompt:** lane 1: ALLOW_A, DEPLOY (flag set)\n"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("summary missing %q:\n%s", want, b.String())
 		}

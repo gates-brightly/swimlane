@@ -130,12 +130,12 @@ func (t *tui) order(views []LaneView) []int {
 		switch v.State {
 		case Running:
 			return 0
-		case Starting, Queued, Locked, Waiting:
+		case Starting, SlotWait, LockWait, Waiting:
 			return 1
 		case Passed, Failed, Interrupted, Skipped:
 			return 2
 		}
-		return -1 // idle, done: not in this run
+		return -1 // ready, empty, passed earlier: not in this run
 	}
 	var out []int
 	for g := 0; g <= 2; g++ {
@@ -245,7 +245,7 @@ func (t *tui) key(k Key, views []LaneView) action {
 					return actNone
 				}
 			}
-			t.note = fmt.Sprintf("no swim %d", n)
+			t.note = fmt.Sprintf("no lane %d", n)
 			return actNone
 		case KeyBackspace:
 			t.digits = t.digits[:len(t.digits)-1]
@@ -340,7 +340,7 @@ func (t *tui) banner() string {
 	first := t.pendOrder[0]
 	if len(t.pendOrder) == 1 {
 		// The key first, so a narrow terminal cuts the task, not the hint.
-		s := fmt.Sprintf("▶ swim %d needs approval · Enter to view it and answer", first)
+		s := fmt.Sprintf("▶ lane %d needs approval · Enter to view it and answer", first)
 		for _, l := range t.pending[first] {
 			// What the lane says the step does (the question labels it so).
 			if _, task, ok := strings.Cut(l, "the lane says: "); ok {
@@ -354,7 +354,7 @@ func (t *tui) banner() string {
 	for i, n := range t.pendOrder {
 		ns[i] = fmt.Sprint(n)
 	}
-	return fmt.Sprintf("▶ swim %s need approval · Enter to view swim %d", strings.Join(ns, ", "), first)
+	return fmt.Sprintf("▶ lane %s need approval · Enter to view lane %d", strings.Join(ns, ", "), first)
 }
 
 // hints is the key reminder on the title line.
@@ -374,14 +374,14 @@ func (t *tui) divider(views []LaneView) string {
 	v := t.cur()
 	var parts []string
 	if t.laneN != 0 {
-		parts = append(parts, fmt.Sprintf("swim %d", t.laneN))
+		parts = append(parts, fmt.Sprintf("lane %d", t.laneN))
 	} else {
 		parts = append(parts, "all lanes")
 	}
 	// What the operator must know first, before the rest: the line is cut
 	// at the screen's width.
 	if t.finished {
-		parts = append(parts, "run finished · q to close")
+		parts = append(parts, "run ended · q to close")
 	}
 	if t.note != "" {
 		parts = append(parts, t.note)
@@ -488,14 +488,14 @@ var helpText = []string{
 	"↑ k  ↓ j       scroll one line",
 	"PgUp b  PgDn   scroll a page",
 	"Home g  End G  top; bottom and follow",
-	"4 2 Enter      jump to swim 42",
+	"4 2 Enter      jump to lane 42",
 	"Enter          open the lane waiting longest for approval",
 	"y / n          on a lane waiting for approval: approve / decline",
 	"y n u          before it asks: pre-approve, pre-decline, undo",
 	"f              lanes ← → visit: every / running / failed",
 	"Esc            back to all lanes, following",
 	"Ctrl-C         interrupt the run (as without the view)",
-	"q              close the view once the run has finished",
+	"q              close the view once the run has ended",
 	"",
 	"any key closes this help",
 }

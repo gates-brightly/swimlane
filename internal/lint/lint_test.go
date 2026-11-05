@@ -16,7 +16,7 @@ func clean(n int) string {
 	return fmt.Sprintf(`#!/usr/bin/env bash
 # swim: syntax 2
 # Round: clean round %[1]d
-# Job:   clean-job-%[1]d
+# Round-ID:   clean-job-%[1]d
 # After:
 # Guards: ALLOW_DROP  drop the old table (2026-10-09, migrated)
 # Timeout: 30m
@@ -89,10 +89,10 @@ func TestEachCheck(t *testing.T) {
 		{name: "no Round", script: replace(c, "# Round: clean round 1\n", ""), code: "round", level: finding.Error},
 		{name: "placeholder", script: before(c, "stage check\n", `snapshot "current state" echo "replace with a read-only describe/list command"`+"\n"), code: "placeholder", level: finding.Error, line: 15},
 		{name: "template braces", script: replace(c, "# Round: clean round 1", "# Round: {{.Goal}}"), code: "placeholder", level: finding.Error, line: 3},
-		{name: "After unknown lane", script: replace(c, "# After:", "# After: 9"), code: "after", level: finding.Error, line: 5, message: "no swim 9"},
+		{name: "After unknown lane", script: replace(c, "# After:", "# After: 9"), code: "after", level: finding.Error, line: 5, message: "no lane 9"},
 		{name: "After itself", script: replace(c, "# After:", "# After: 1"), code: "after", level: finding.Error, line: 5, message: "itself"},
-		{name: "After unknown job", script: replace(c, "# After:", "# After: deadbeef-gone"), code: "after", level: finding.Error, message: "no lane holds job"},
-		{name: "cycle", script: replace(c, "# After:", "# After: 2"), other: replace(clean(2), "# After:", "# After: clean-job-1"), code: "cycle", level: finding.Error, line: 5, message: "swim 1, swim 2"},
+		{name: "After unknown job", script: replace(c, "# After:", "# After: deadbeef-gone"), code: "after", level: finding.Error, message: "no lane holds round"},
+		{name: "cycle", script: replace(c, "# After:", "# After: 2"), other: replace(clean(2), "# After:", "# After: clean-job-1"), code: "cycle", level: finding.Error, line: 5, message: "lane 1, lane 2"},
 		{name: "set -e", script: before(c, "_swim_lib=", "set -euo pipefail\n"), code: "set-e", level: finding.Error, line: 10},
 		{name: "set -o errexit", script: before(c, "_swim_lib=", "set -o errexit\n"), code: "set-e", level: finding.Error},
 		{name: "shebang -e", script: replace(c, "#!/usr/bin/env bash", "#!/bin/bash -e"), code: "set-e", level: finding.Error, line: 1},
@@ -334,7 +334,7 @@ summary
 }
 
 // A staged lane that names a repo file its # Includes: doesn't list is
-// warned (it fails in the staged copy), and --fix pins it; a live lane,
+// warned (it fails in the pinned copy), and --fix pins it; a live lane,
 // a missing file and a sourced one (the source check's) aren't.
 func TestWorkspaceFile(t *testing.T) {
 	root := t.TempDir()

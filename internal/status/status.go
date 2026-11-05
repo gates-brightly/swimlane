@@ -24,28 +24,75 @@ import (
 	"github.com/gates-brightly/swimlane/internal/proc"
 )
 
-// Lane states.
+// Lane states: the one set of words every view (bare swim, swim status,
+// swim watch, a run's panel and summary, --yaml, notifications, docs) uses
+// for a lane. docs/reference/concepts.md lists exactly these (a test
+// compares them).
 const (
-	Idle        = "idle"
-	Waiting     = "waiting"
-	Queued      = "queued" // waiting for a free slot (max_parallel)
-	Locked      = "locked" // waiting for a resource lock (# Locks:)
+	Ready       = "ready"   // a round is written and hasn't run
+	Queued      = "queued"  // its batch is queued (swim queue)
+	Waiting     = "waiting" // held up, always with why: approval, a lane it runs after, a lock, a batch or slot ahead
 	Running     = "running"
 	Passed      = "passed"
 	Failed      = "failed"
 	Skipped     = "skipped"
 	Interrupted = "interrupted"
+	Empty       = "empty" // no round in the slot
 )
+
+// States are the lane states, in the order docs list them.
+var States = []string{Ready, Queued, Waiting, Running, Passed, Failed, Skipped, Interrupted, Empty}
+
+// oldStates are the words an older swim wrote in status.yml, as the
+// state each now is.
+var oldStates = map[string]string{
+	"idle": Empty, "stub": Empty,
+	"pending": Ready, "new": Ready,
+	"locked": Waiting, "held": Waiting, "blocked": Waiting, "scheduled": Waiting,
+	"done": Passed, "finished": Passed,
+}
+
+// AtRest reports whether the lane holds no round in flight or ended:
+// ready or empty.
+func (l *Lane) AtRest() bool { return l.State == Ready || l.State == Empty || l.State == "" }
+
+// Rest sets a lane at rest ready when it holds a round it hasn't run
+// (Pending), or empty.
+func (l *Lane) Rest() {
+	if !l.AtRest() {
+		return
+	}
+	l.State = Empty
+	if l.Pending != "" {
+		l.State = Ready
+	}
+}
+
+// Shown is the state a person sees for the lane: its recorded state, with
+// a lane at rest that holds a round it hasn't run (ready: true) shown
+// ready, and a running round that waits for the operator's approval shown
+// waiting.
+func (l *Lane) Shown(ready bool) string {
+	switch {
+	case (l.State == Empty || l.State == Ready || l.State == "") && ready:
+		return Ready
+	case l.State == Ready || l.State == "":
+		return Empty
+	case l.State == Running && l.PausedAt != "":
+		return Waiting
+	}
+	return l.State
+}
 
 // Lane is one lane's entry. Fields without omitempty are always written so
 // the file reads the same for every lane.
 type Lane struct {
 	Lane        int      `yaml:"lane" json:"lane"`
 	State       string   `yaml:"state" json:"state"`
-	Pending     string   `yaml:"pending" json:"pending"`                                     // Round: line of the lane script on disk ("" for stub/none)
-	PendingJob  string   `yaml:"pending_job" json:"pending_job"`                             // Job: id of the lane script on disk
+	Pending     string   `yaml:"pending" json:"pending"`                                     // Round: line of the lane script on disk ("" for none)
+	PendingJob  string   `yaml:"pending_job" json:"pending_job"`                             // Round-ID: of the lane script on disk
 	Round       string   `yaml:"round" json:"round"`                                         // round of the last or current run
-	Job         string   `yaml:"job" json:"job"`                                             // job id of the last or current run
+	Job         string   `yaml:"job" json:"job"`                                             // round id of the last or current round
 	Run         string   `yaml:"run,omitempty" json:"run,omitempty"`                         // swim run id of the last or current round
 	Commit      string   `yaml:"commit,omitempty" json:"commit,omitempty"`                   // commit the round ran for (swim ci)
 	ScriptSHA   string   `yaml:"script_sha256,omitempty" json:"script_sha256,omitempty"`     // SHA-256 of the lane script the round runs
@@ -130,6 +177,11 @@ func parse(root string, data []byte) (*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", Path(root), err)
 	}
+	for i := range f.Lanes {
+		if w, ok := oldStates[f.Lanes[i].State]; ok {
+			f.Lanes[i].State = w
+		}
+	}
 	return f, nil
 }
 
@@ -142,21 +194,21 @@ func (f *File) Normalize(n int) {
 	}
 	for i := 1; i <= n; i++ {
 		if !have[i] {
-			f.Lanes = append(f.Lanes, Lane{Lane: i, State: Idle})
+			f.Lanes = append(f.Lanes, Lane{Lane: i, State: Empty})
 		}
 	}
 	sort.Slice(f.Lanes, func(a, b int) bool { return f.Lanes[a].Lane < f.Lanes[b].Lane })
 	for i := range f.Lanes {
 		l := &f.Lanes[i]
 		if l.State == "" {
-			l.State = Idle
+			l.State = Empty
 		}
 		// The script's name (lane.3.py) is filled in by swim from the file
 		// on disk; lane.N.sh until then.
 		if base := fmt.Sprintf("lane.%d", l.Lane); l.Script != base && !strings.HasPrefix(l.Script, base+".") {
 			l.Script = base + ".sh"
 		}
-		l.Log = fmt.Sprintf(".swim/logs/agent%d.log", l.Lane)
+		l.Log = fmt.Sprintf(".swim/logs/lane%d.log", l.Lane)
 		if l.WaitingOn == nil {
 			l.WaitingOn = []int{}
 		}

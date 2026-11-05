@@ -137,7 +137,7 @@ func TestLeftoverAndFix(t *testing.T) {
 	for _, d := range []string{"groups", "observations", "earmarks", "out/job", "logs", "queue", "claims", "workers", "scripts", "snapshots", "signoffs"} {
 		os.MkdirAll(filepath.Join(swim, d), 0o755)
 	}
-	for _, f := range []string{"hub.yml", "headless.log", "lane1.2.claim", "lane1.claim", "chain.jsonl", "status.yml", "logs/agent1.log", "watch.lock"} {
+	for _, f := range []string{"hub.yml", "headless.log", "lane1.2.claim", "lane1.claim", "chain.jsonl", "status.yml", "logs/lane1.log", "watch.lock"} {
 		os.WriteFile(filepath.Join(swim, f), []byte("x\n"), 0o644)
 	}
 	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
@@ -169,7 +169,7 @@ func TestLeftoverAndFix(t *testing.T) {
 			t.Errorf("%s kept", gone)
 		}
 	}
-	for _, kept := range []string{"lane1.claim", "chain.jsonl", "status.yml", "logs/agent1.log", "queue", "scripts", "snapshots", "signoffs", "watch.lock", "claims/lane.5.yml", "workers/far-2.yml"} {
+	for _, kept := range []string{"lane1.claim", "chain.jsonl", "status.yml", "logs/lane1.log", "queue", "scripts", "snapshots", "signoffs", "watch.lock", "claims/lane.5.yml", "workers/far-2.yml"} {
 		if _, err := os.Stat(filepath.Join(swim, kept)); err != nil {
 			t.Errorf("%s removed", kept)
 		}

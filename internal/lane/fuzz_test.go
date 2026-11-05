@@ -10,7 +10,7 @@ import (
 // never empty, and a guard flag is listed once. Seeds: lane scripts in
 // testdata/fuzz/FuzzParseScript and the ones below.
 func FuzzParseScript(f *testing.F) {
-	f.Add("#!/usr/bin/env bash\n# swim: syntax 2\n# Round: deploy\n# Job: 1b2c\n# After: 1, swim 2\n# Locks: db, cache/${STAGE}\n# Guards: ALLOW_X drop the table\n# Timeout: 30m\nlane_init 3\nstep \"a\" true\nsummary\n")
+	f.Add("#!/usr/bin/env bash\n# swim: syntax 2\n# Round: deploy\n# Round-ID: 1b2c\n# After: 1, swim 2\n# Locks: db, cache/${STAGE}\n# Guards: ALLOW_X drop the table\n# Timeout: 30m\nlane_init 3\nstep \"a\" true\nsummary\n")
 	f.Add("// swim: syntax 2\n// Round: js lane\n// Matrix: SVC=a,b\n// On-Failure: notify\nconsole.log(1)\n")
 	f.Add("# Round:\n# After: -\n# Locks: none, bad name!, a//b\n# Guards: X\n# Guards: X again\n# Timeout: nope\n")
 	f.Add("")

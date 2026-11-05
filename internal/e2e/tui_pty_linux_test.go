@@ -262,16 +262,16 @@ func TestTUILaneViewAndCtrlC(t *testing.T) {
 	s := tr.waitScreen("all view with lane output", func(s string) bool {
 		return strings.Contains(s, "all lanes · following") && strings.Contains(s, "] ==> hold")
 	})
-	contains(t, "all view", s, "swim 1", "swim 3", "← → lane")
+	contains(t, "all view", s, "lane 1", "lane 3", "← → lane")
 
 	// → opens the first lane in panel order; → again moves to lane 2.
 	tr.send("\x1b[C")
-	tr.waitFor("swim 1 · following · .swim/logs/agent1.log")
+	tr.waitFor("lane 1 · following · .swim/logs/lane1.log")
 	tr.send("l")
 	s = tr.waitScreen("lane 2's log", func(s string) bool {
-		return strings.Contains(s, "swim 2 · following") && strings.Contains(s, "| lane2-hello")
+		return strings.Contains(s, "lane 2 · following") && strings.Contains(s, "| lane2-hello")
 	})
-	contains(t, "lane view", s, "== ROUND ", "PASS  talk", "▶swim 2")
+	contains(t, "lane view", s, "== ROUND ", "PASS  talk", "▶lane 2")
 	for _, bad := range []string{"[1]", "[3]", "lane1-", "lane3-"} {
 		if strings.Contains(s, bad) {
 			t.Errorf("lane 2's view shows %q:\n%s", bad, s)
@@ -279,7 +279,7 @@ func TestTUILaneViewAndCtrlC(t *testing.T) {
 	}
 	// Digits then Enter jump; Esc returns to the all view.
 	tr.send("3\r")
-	tr.waitFor("swim 3 · following")
+	tr.waitFor("lane 3 · following")
 	tr.send("\x1b")
 	tr.waitFor("all lanes · following")
 
@@ -305,7 +305,7 @@ func TestTUILaneViewAndCtrlC(t *testing.T) {
 		t.Errorf("interrupted run exited 0")
 	}
 	end := out[strings.LastIndex(out, "\x1b[?1049l"):]
-	contains(t, "after the view", end, "swim summary", "INTERRUPTED")
+	contains(t, "after the view", end, "swim summary", "interrupted")
 }
 
 func TestTUIHoldsOpenAfterRun(t *testing.T) {
@@ -314,17 +314,17 @@ func TestTUIHoldsOpenAfterRun(t *testing.T) {
 	tr := r.startTUI(nil, "all")
 	tr.waitFor("all lanes · following")
 	tr.send("2\r")
-	tr.waitFor("swim 2 · following")
+	tr.waitFor("lane 2 · following")
 	release()
 	tr.waitScreen("the finished lane's END", func(s string) bool {
-		return strings.Contains(s, "run finished · q to close") && strings.Contains(s, "== END PASS")
+		return strings.Contains(s, "run ended · q to close") && strings.Contains(s, "== END PASS")
 	})
 	tr.send("q")
 	code, out := tr.wait()
 	if code != 0 {
 		t.Errorf("exit %d", code)
 	}
-	contains(t, "summary", out[strings.LastIndex(out, "\x1b[?1049l"):], "swim summary", "PASS")
+	contains(t, "summary", out[strings.LastIndex(out, "\x1b[?1049l"):], "swim summary", "passed")
 
 	// Following the all view at the end, it closes by itself.
 	tr = r.startTUI(nil, "all", "--rerun")
@@ -344,7 +344,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 			tr := r.startTUI(nil, "all")
 			tr.waitFor("all lanes · following")
 			tr.send("1\r") // a lane view would hold the screen at the end; a signal must not
-			tr.waitFor("swim 1 · following")
+			tr.waitFor("lane 1 · following")
 			tr.cmd.Process.Signal(sig)
 			// Once swim has acted on it (SIGTERM: asked the lanes to stop
 			// after their step, the stop file; SIGHUP: interrupted them, so
@@ -428,8 +428,8 @@ func TestTUIManyLanesKeepsSelection(t *testing.T) {
 	// its row to lanes that started first.
 	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "hold" })
 	tr.send("35\r")
-	s := tr.waitFor("swim 35 · ")
-	contains(t, "panel", s, "▶swim 35", "swim 1 ")
+	s := tr.waitFor("lane 35 · ")
+	contains(t, "panel", s, "▶lane 35", "lane 1 ")
 	tr.send("\x1b")
 	tr.waitFor("all lanes · following")
 	r.release("release")

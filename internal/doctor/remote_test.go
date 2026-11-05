@@ -25,7 +25,7 @@ func TestCheckRemoteRunning(t *testing.T) {
 		return nil
 	})
 	got := checkRemoteRunning(&Options{Root: root})
-	if len(got) != 1 || !strings.Contains(got[0].Message, "swim 1 has been running on container-1 for 30h") || !strings.Contains(got[0].Fix, "rm .swim/lane1.pid") {
+	if len(got) != 1 || !strings.Contains(got[0].Message, "lane 1 has been running on container-1 for 30h") || !strings.Contains(got[0].Fix, "rm .swim/lane1.pid") {
 		t.Fatalf("findings: %+v", got)
 	}
 }

@@ -27,8 +27,10 @@ func TestWatchRowsSayWhatLanesWaitOn(t *testing.T) {
 		}
 	}
 	set(1, func(l *status.Lane) { l.State, l.WaitingOn = status.Waiting, []int{2, 3} })
-	set(2, func(l *status.Lane) { l.State, l.WaitingOn, l.Reason = status.Locked, []int{}, "waiting for lock db" })
-	set(3, func(l *status.Lane) { l.State, l.WaitingOn, l.Reason = status.Queued, []int{}, "2 ahead" })
+	set(2, func(l *status.Lane) { l.State, l.WaitingOn, l.Reason = status.Waiting, []int{}, "waiting for lock db" })
+	set(3, func(l *status.Lane) {
+		l.State, l.WaitingOn, l.Reason = status.Waiting, []int{}, "waiting for a slot (#3)"
+	})
 	set(4, func(l *status.Lane) { l.State, l.WaitingOn = status.Waiting, []int{1} })
 	set(5, func(l *status.Lane) { l.State, l.WaitingOn, l.PID = status.Waiting, []int{1}, 0 }) // stale: its process is gone
 
@@ -40,17 +42,17 @@ func TestWatchRowsSayWhatLanesWaitOn(t *testing.T) {
 	for id, want := range map[string]string{
 		"lane:1": "· " + display.WaitingText([]int{2, 3}),
 		"lane:2": "· waiting for lock db",
-		"lane:3": "· 2 ahead",
-		"lane:4": "· waiting on swim 1",
+		"lane:3": "· waiting for a slot (#3)",
+		"lane:4": "· waiting on lane 1",
 	} {
 		if !strings.HasSuffix(row[id], want) {
 			t.Errorf("%s: %q, want it to end %q", id, row[id], want)
 		}
 	}
-	if !strings.Contains(row["lane:1"], "waiting on swim 2, 3") {
+	if !strings.Contains(row["lane:1"], "waiting on lane 2, 3") {
 		t.Errorf("lane 1: %q", row["lane:1"])
 	}
-	if strings.Contains(row["lane:5"], "·") || !strings.Contains(row["lane:5"], "stale") {
+	if !strings.HasSuffix(row["lane:5"], "· its process is gone") || !strings.Contains(row["lane:5"], "interrupted") {
 		t.Errorf("stale lane 5: %q", row["lane:5"])
 	}
 }
@@ -81,7 +83,7 @@ func TestWatchRowsPutTookBesideAgo(t *testing.T) {
 	for id, want := range map[string]string{
 		"lane:1": "1     passed     3h ago  took 4m 12s r",
 		"lane:2": "2     failed     1m ago  took 3.0s   r",
-		"lane:3": "3     pending                        r", // no took: the column is blank
+		"lane:3": "3     ready                          r", // no took: the column is blank
 	} {
 		if !strings.HasPrefix(row[id], want) {
 			t.Errorf("%s: %q, want it to start %q", id, row[id], want)
@@ -121,17 +123,17 @@ func TestWatchStagesOneBatch(t *testing.T) {
 	for _, r := range w.rows() {
 		rows[r.ID] = r.Text
 	}
-	if !strings.Contains(rows["submit"], "submit swim 1, 2 as one batch") ||
+	if !strings.Contains(rows["submit"], "submit lane 1, 2 as one batch") ||
 		!strings.Contains(rows["lane:1"], "[+ next batch]") || strings.Contains(rows["lane:3"], "[+ next batch]") {
 		t.Fatalf("rows: %v", rows)
 	}
 
-	if msg := w.act("lane:3", 's'); !strings.HasPrefix(msg, "queued swim 1,2 as #1") {
+	if msg := w.act("lane:3", 's'); !strings.HasPrefix(msg, "queued lane 1,2 as #1") {
 		t.Fatalf("submit: %s", msg)
 	}
 	es := queued()
 	if len(es) != 1 || len(es[0].Lanes) != 2 || es[0].Lanes[0].Lane != 1 || es[0].Lanes[1].Lane != 2 {
-		t.Fatalf("want one batch of swim 1, 2: %+v", es)
+		t.Fatalf("want one batch of lane 1, 2: %+v", es)
 	}
 	if len(w.staged) != 0 {
 		t.Errorf("still staged after submit: %v", w.staged)
@@ -142,11 +144,11 @@ func TestWatchStagesOneBatch(t *testing.T) {
 
 	// Enter on the submit row submits too; x clears without queueing.
 	w.act("lane:3", 'q')
-	if msg := w.act("submit", display.PickEnter); !strings.HasPrefix(msg, "queued swim 3 as #2") {
+	if msg := w.act("submit", display.PickEnter); !strings.HasPrefix(msg, "queued lane 3 as #2") {
 		t.Errorf("enter on submit: %s", msg)
 	}
 	w.act("lane:1", 'q')
-	if msg := w.act("lane:1", 'x'); !strings.Contains(msg, "cleared the next batch (swim 1)") || len(w.staged) != 0 || len(queued()) != 2 {
+	if msg := w.act("lane:1", 'x'); !strings.Contains(msg, "cleared the next batch (lane 1)") || len(w.staged) != 0 || len(queued()) != 2 {
 		t.Errorf("x: %s, staged %v, %d queued", msg, w.staged, len(queued()))
 	}
 }
@@ -168,19 +170,19 @@ func TestWatchQueuesAll(t *testing.T) {
 		}
 		return es
 	}
-	if msg := w.act("lane:3", 'q'); !strings.Contains(msg, "next batch: swim 3") { // staged, not queued
+	if msg := w.act("lane:3", 'q'); !strings.Contains(msg, "next batch: lane 3") { // staged, not queued
 		t.Fatalf("q: %s", msg)
 	}
-	if msg := w.act("queue:x", 'Q'); !strings.HasPrefix(msg, "queued swim 1,2,3 as #1") {
+	if msg := w.act("queue:x", 'Q'); !strings.HasPrefix(msg, "queued lane 1,2,3 as #1") {
 		t.Fatalf("Q: %s", msg)
 	}
 	if es := queued(); len(es) != 1 || len(es[0].Lanes) != 3 {
-		t.Fatalf("want one batch of swim 1, 2, 3: %+v", es)
+		t.Fatalf("want one batch of lane 1, 2, 3: %+v", es)
 	}
 	if len(w.staged) != 0 {
-		t.Errorf("swim 3 still staged after Q queued it: %v", w.staged)
+		t.Errorf("lane 3 still staged after Q queued it: %v", w.staged)
 	}
-	if msg := w.act("lane:1", 'Q'); !strings.Contains(msg, "every pending job is in a batch already") || len(queued()) != 1 {
+	if msg := w.act("lane:1", 'Q'); !strings.Contains(msg, "every ready round is in a batch already") || len(queued()) != 1 {
 		t.Errorf("Q again: %s (%d batches)", msg, len(queued()))
 	}
 }

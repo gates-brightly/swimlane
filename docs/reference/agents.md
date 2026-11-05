@@ -123,7 +123,7 @@ A worker:
 
 - Writes only its own `lane.N.*`. Never `new`, `archive` or edits
   another lane. If its lane isn't free, it stops and tells the planner.
-- Puts its name in `# Owner:`, tags what it creates with `$SWIM_JOB`, keeps
+- Puts its name in `# Owner:`, tags what it creates with `$SWIM_ROUND_ID`, keeps
   the `# Job:` line `swim new` wrote.
 - Sends changes to shared files back as exact lines; a shared-file change
   must leave its other users working.

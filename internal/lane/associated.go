@@ -17,16 +17,16 @@ const MaxLanes = 99
 //
 //   - a script that isn't a stub (lane.N.sh, lane.N.py, ..., or a group
 //     file's lane),
-//   - a current log (.swim/logs/agentN.log, or a job's,
-//     agentN.<job>.log), or
+//   - a current log (.swim/logs/laneN.log, or a job's,
+//     laneN.<job>.log), or
 //   - a process running it.
 //
 // So `swim new 7` adds lane 7, and `swim archive 7` (which moves its logs
 // aside) with a stub or no script drops it again. Archived logs
-// (agentN.prev-*.log) and check logs don't count.
+// (laneN.prev-*.log) and check logs don't count.
 
 // laneOfFile reads the lane number from a file named prefix N[.more]
-// suffix: a lane's current log, or a job's (agent3.log, agent1.2.log), or
+// suffix: a lane's current log, or a job's (lane3.log, lane1.2.log), or
 // a pid file (lane3.pid).
 func laneOfFile(name, prefix, suffix string) (int, bool) {
 	mid, ok := strings.CutPrefix(name, prefix)
@@ -67,7 +67,7 @@ func Associated(root string) []int {
 		if strings.Contains(name, ".prev-") || strings.HasSuffix(name, ".check.log") {
 			continue
 		}
-		if n, ok := laneOfFile(name, "agent", ".log"); ok {
+		if n, ok := laneOfFile(name, "lane", ".log"); ok {
 			add(n)
 		}
 	}
@@ -107,4 +107,30 @@ func isStubFile(path string) bool {
 	head := make([]byte, 16<<10)
 	n, _ := f.Read(head)
 	return bytes.Contains(head[:n], []byte(StubMarker))
+}
+
+// RenameOldLogs renames the lane logs an older swim wrote under its old
+// names (.swim/logs/agentN.log, agentN.prev-*.log, agentN.<id>.log) to
+// laneN...: swim writes and reads only the new names. A name already taken
+// is left alone.
+func RenameOldLogs(root string) {
+	dir := LogDir(root)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		rest, ok := strings.CutPrefix(e.Name(), "agent")
+		if !ok || e.IsDir() || !strings.HasSuffix(rest, ".log") {
+			continue
+		}
+		if num, _, _ := strings.Cut(rest, "."); !isDigits(num) {
+			continue
+		}
+		to := filepath.Join(dir, "lane"+rest)
+		if _, err := os.Lstat(to); err == nil {
+			continue
+		}
+		_ = os.Rename(filepath.Join(dir, e.Name()), to)
+	}
 }

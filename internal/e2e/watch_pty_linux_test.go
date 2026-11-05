@@ -29,12 +29,12 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	tr.send("\x1b[B")
 	tr.waitFor("▸ 2 ")
 	tr.send("r")
-	tr.waitFor("swim 2 passed")
+	tr.waitFor("lane 2 passed")
 	if log := r.log(2); !strings.Contains(log, "PASS  two") {
-		t.Fatalf("swim 2 didn't run:\n%s", log)
+		t.Fatalf("lane 2 didn't run:\n%s", log)
 	}
 	if log := r.log(1); log != "" {
-		t.Errorf("swim 1 ran too:\n%s", log)
+		t.Errorf("lane 1 ran too:\n%s", log)
 	}
 
 	// ↑ then q: swim 1 is in the next batch, not queued yet; s submits
@@ -42,14 +42,14 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	tr.send("\x1b[A")
 	tr.waitFor("▸ 1 ")
 	tr.send("q")
-	tr.waitFor("submit swim 1 as one batch")
+	tr.waitFor("submit lane 1 as one batch")
 	if out := r.mustSwim("queue", "list", "--all"); strings.Contains(out, "#1") {
 		t.Fatalf("q queued before s:\n%s", out)
 	}
 	tr.send("s")
 	tr.waitFor("#1 passed")
 	if log := r.log(1); !strings.Contains(log, "PASS  one") {
-		t.Fatalf("queued swim 1 didn't run:\n%s", log)
+		t.Fatalf("queued lane 1 didn't run:\n%s", log)
 	}
 	if out := r.mustSwim("queue", "list", "--all"); !strings.Contains(out, "passed") {
 		t.Errorf("the batch wasn't consumed:\n%s", out)
@@ -59,7 +59,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	tr.send("\x1b[B\x1b[B")
 	tr.waitFor("▸ 3 ")
 	tr.send("r")
-	tr.waitFor("swim 3 holds no pending round")
+	tr.waitFor("lane 3 holds no pending round")
 	tr.send("\x03")
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d after ctrl-c", code)
@@ -74,14 +74,14 @@ func TestWatchBatchOutputView(t *testing.T) {
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
-	tr.waitQueueRow(1, "running", "swim 1,2")
+	tr.waitQueueRow(1, "running", "lane 1,2")
 	tr.send("\x1b[B\x1b[B")
 	tr.waitFor("▸ #1")
 	tr.send("\r")
 	tr.waitFor("swim watch · #1")
 	// Each of the batch's lanes pinned under the title: what it's doing now.
 	tr.waitScreen("both lanes pinned", func(s string) bool {
-		return strings.Contains(s, "swim 1 · stage setup · ==> hold") && strings.Contains(s, "swim 2 · stage setup · ==> hold")
+		return strings.Contains(s, "lane 1 · stage setup · ==> hold") && strings.Contains(s, "lane 2 · stage setup · ==> hold")
 	})
 	// v: the lanes' own logs, step output included.
 	tr.send("v")
@@ -109,7 +109,7 @@ gate "the check" false`
 	r.script(2, "fails after release", body)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
-	tr.waitQueueRow(1, "running", "swim 1,2")
+	tr.waitQueueRow(1, "running", "lane 1,2")
 	tr.send("\x1b[B\x1b[B")
 	tr.waitFor("▸ #1")
 	tr.send("\r")
@@ -119,7 +119,7 @@ gate "the check" false`
 	}
 	release()
 	s = tr.waitScreen("the end header", func(s string) bool {
-		return strings.Contains(s, "✗ FAILED · exit 1") && strings.Contains(s, "swim 2: FAIL  the check")
+		return strings.Contains(s, "✗ FAILED · exit 1") && strings.Contains(s, "lane 2: FAIL  the check")
 	})
 	contains(t, "follow view after the end", s, "swim summary") // the output is still there, under the header
 	tr.send("q")
@@ -135,15 +135,15 @@ func TestWatchLaneOutputView(t *testing.T) {
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
-	tr.waitQueueRow(1, "running", "swim 1,2")
+	tr.waitQueueRow(1, "running", "lane 1,2")
 	tr.send("\r")
-	tr.waitFor("swim watch · swim 1 · #1")
+	tr.waitFor("swim watch · lane 1 · #1")
 	tr.waitFor("lane1-hello")
 	// Pinned under the title: what the lane is doing now, its stage and
 	// its step as its ==> header says it. The output is coloured as swim
 	// run shows it.
-	s := tr.waitFor("swim 1 · stage setup · ==> hold · ")
-	if lines := strings.Split(s, "\n"); len(lines) < 2 || !strings.HasPrefix(lines[1], "swim 1 · stage setup · ==> hold") {
+	s := tr.waitFor("lane 1 · stage setup · ==> hold · ")
+	if lines := strings.Split(s, "\n"); len(lines) < 2 || !strings.HasPrefix(lines[1], "lane 1 · stage setup · ==> hold") {
 		t.Errorf("the step isn't pinned under the title:\n%s", s)
 	}
 	if out := tr.output(); !strings.Contains(out, ui.LaneColor(1)+"[") || !strings.Contains(out, ui.LaneColor(1)+ui.Bold+"==> hold") {
@@ -157,7 +157,7 @@ func TestWatchLaneOutputView(t *testing.T) {
 	tr.waitFor("#1 passed")
 	// Not running any more: enter says so instead of opening an empty view.
 	tr.send("\r")
-	tr.waitFor("swim 1 isn't running")
+	tr.waitFor("lane 1 isn't running")
 	tr.send("\x03")
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d after ctrl-c", code)
@@ -175,7 +175,7 @@ func TestWatchLogsKey(t *testing.T) {
 	tr := r.startTUI(nil, "watch")
 	tr.waitFor("l logs")
 	tr.send("l")
-	tr.waitFor("swim watch · swim 1 · .swim/logs/agent1.log")
+	tr.waitFor("swim watch · lane 1 · .swim/logs/lane1.log")
 	s := tr.waitScreen("both rounds", func(s string) bool { return strings.Count(s, "== ROUND") == 2 })
 	contains(t, "l on a lane", s, "| lane1-hello")
 	tr.send("v")
@@ -189,7 +189,7 @@ func TestWatchLogsKey(t *testing.T) {
 	tr.send("\x1b[B")
 	tr.waitFor("▸ 2 ")
 	tr.send("l")
-	tr.waitFor("swim 2 has no current log")
+	tr.waitFor("lane 2 has no current log")
 	// A batch (its lane busy in another run, so no swimmer claims it): its
 	// lanes' logs, from their last run.
 	r.script(2, "held lane 2", `step "hold" `+hold("go"))
@@ -215,7 +215,7 @@ func TestWatchLogsKey(t *testing.T) {
 }
 
 // a on a lane archives its log (swim archive N): the lane goes idle and the
-// log is kept as agentN.prev-<job>.log. A lane with no log says so.
+// log is kept as laneN.prev-<job>.log. A lane with no log says so.
 func TestWatchArchiveKey(t *testing.T) {
 	r := newSerialRepo(t)
 	r.script(1, "short lane 1", `step "hello" echo lane1-hello`)
@@ -225,9 +225,9 @@ func TestWatchArchiveKey(t *testing.T) {
 	tr.waitFor("a archive")
 	tr.waitFor("▸ 1 ")
 	tr.send("a")
-	tr.waitFor("archived .swim/logs/agent1.log -> .swim/logs/agent1.prev-")
-	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log")); err == nil {
-		t.Error("agent1.log is still there")
+	tr.waitFor("archived .swim/logs/lane1.log -> .swim/logs/lane1.prev-")
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "lane1.log")); err == nil {
+		t.Error("lane1.log is still there")
 	}
 	tr.send("\x1b[B")
 	tr.waitFor("▸ 2 ")
@@ -290,7 +290,7 @@ func TestWatchNoTrashKey(t *testing.T) {
 	tr.send("o")
 	tr.waitFor("running output hidden")
 	if _, err := os.Stat(filepath.Join(r.root, "lane.1.sh")); err != nil {
-		t.Fatal("d removed swim 1's script")
+		t.Fatal("d removed lane 1's script")
 	}
 	tr.send("\x03")
 	tr.wait()
@@ -308,7 +308,7 @@ func TestWatchRowsSayHowLongRoundsTook(t *testing.T) {
 		return regexp.MustCompile(`passed +\S+ ago +took \S+ +passes`).MatchString(s) &&
 			regexp.MustCompile(`failed +\S+ ago +took \S+ +fails`).MatchString(s)
 	})
-	if strings.Contains(s, "swim 1") || strings.Contains(s, "swim 2") {
+	if strings.Contains(s, "lane 1") || strings.Contains(s, "lane 2") {
 		t.Errorf("lane rows still say swim N:\n%s", s)
 	}
 	tr.send("\x03") // Ctrl-C quits
@@ -356,9 +356,9 @@ func TestWatchSubmitRunsHere(t *testing.T) {
 			tr = b
 		}
 		tr.send("q")
-		tr.waitFor(fmt.Sprintf("submit swim %d as one batch", n))
+		tr.waitFor(fmt.Sprintf("submit lane %d as one batch", n))
 		tr.send("s")
-		tr.waitFor(fmt.Sprintf("started swim %d as #%d", n, n))
+		tr.waitFor(fmt.Sprintf("started lane %d as #%d", n, n))
 		tr.waitFor(fmt.Sprintf("#%d passed", n))
 		if n == 4 {
 			break

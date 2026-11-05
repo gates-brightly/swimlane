@@ -18,7 +18,7 @@ var laterWords = regexp.MustCompile(`(?i)\b(swimmers?|batch(es)?|drift|decisions
 func dayOne(text string) string {
 	var keep []string
 	for _, l := range strings.Split(text, "\n") {
-		if strings.HasPrefix(l, "# swim: syntax") || strings.HasPrefix(l, "# Job:") {
+		if strings.HasPrefix(l, "# swim: syntax") || strings.HasPrefix(l, "# Round-ID:") {
 			continue
 		}
 		keep = append(keep, l)

@@ -1,7 +1,7 @@
 // Package history appends top-level actions to .swim.log at the repo root:
 // one line per event (rounds written, started, finished, skipped, archived,
 // stubbed, notes), so a new agent can read the project's history quickly.
-// Step output never goes here; that is what .swim/logs/agentN.log is for.
+// Step output never goes here; that is what .swim/logs/laneN.log is for.
 package history
 
 import (
@@ -30,15 +30,14 @@ const (
 	Archive     = "archive" // swim archive: a round's log archived and its script stubbed (detail: the archive, the note)
 	Note        = "note"
 	Lanes       = "lanes"
-	Queued      = "queued"
-	Locked      = "locked"       // a lane waits for a resource lock
+	Waiting     = "waiting"      // a lane waits for a resource lock or a free slot (detail: for what)
 	StopReq     = "stop"         // swim interrupt N: a lane asked to stop at its next step boundary
 	Approve     = "approve"      // the operator approved a guarded step at the prompt
 	Decline     = "decline"      // ... declined it, or no answer came (the step ran as a dry run)
 	QueueAdd    = "queue"        // swim queue add: a batch was queued (detail: id, lanes, approvals)
 	QueueRun    = "queue-run"    // swim watch started a queued batch
 	QueueDone   = "queue-done"   // ... and consumed it (detail: id, result)
-	QueueHeld   = "queue-held"   // a worker left a batch queued: its swim can't run it (detail: id, why)
+	QueueHeld   = "queue-kept"   // a worker left a batch queued: its swim can't run it (detail: id, why)
 	Warn        = "warn"         // something swim couldn't do that changes no result (detail: what)
 	Prune       = "prune"        // swim prune: leftovers deleted (detail: name, counts, bytes)
 	Trash       = "trash"        // swim trash: one lane's files moved aside (detail: stamp, files, from)
@@ -59,7 +58,7 @@ const (
 
 const header = `# swim project log: top-level actions, oldest first. Append-only; written by swim.
 # Read this to catch up, then: swim status (current state), swim log N (step detail).
-# Format: <utc time>  <user>  <event>  [swim N]  [job=<id>]  [run=<id>]  <detail>
+# Format: <utc time>  <user>  <event>  [lane N]  [round-id=<id>]  [run=<id>]  <detail>
 `
 
 // Path returns the project log location.
@@ -69,7 +68,7 @@ func Path(root string) string { return filepath.Join(root, FileName) }
 type Entry struct {
 	Event  string
 	Lane   int    // 0 when not about one lane
-	Job    string // "" when not about one job
+	Job    string // the round id ("" when not about one round)
 	Run    string // the swim run it belongs to ("" when not about a run)
 	Detail string
 }
@@ -79,10 +78,10 @@ func Format(t time.Time, user string, e Entry) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s  %-8s  %-11s", t.UTC().Format(time.RFC3339), user, e.Event)
 	if e.Lane > 0 {
-		fmt.Fprintf(&b, "  swim %d", e.Lane)
+		fmt.Fprintf(&b, "  lane %d", e.Lane)
 	}
 	if e.Job != "" {
-		fmt.Fprintf(&b, "  job=%s", e.Job)
+		fmt.Fprintf(&b, "  round-id=%s", e.Job)
 	}
 	if e.Run != "" {
 		fmt.Fprintf(&b, "  run=%s", e.Run)

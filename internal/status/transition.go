@@ -8,15 +8,15 @@ import (
 )
 
 // The lane state machine (docs/reference/state.md), as the rules every write of
-// status.yml is checked against. A lane at rest (idle or finished)
+// status.yml is checked against. A lane at rest (ready, empty, or its round ended)
 // may start a new round, or be archived, refused or skipped, from anywhere;
 // the rules are about the round in flight:
 //
 //   - a running round ends only as passed, failed, skipped (it dry-ran a
 //     guarded step) or interrupted;
-//   - a lane waiting for its turn (waiting, locked, queued) moves on, or
-//     ends, but isn't put back to idle;
-//   - a finished round's result never changes in place: passed, failed,
+//   - a lane waiting for its turn (queued, waiting) moves on, or ends,
+//     but isn't put back to ready or empty;
+//   - an ended round's result never changes in place: passed, failed,
 //     skipped and interrupted turn into one another only as a new round
 //     (another start time or run). A failure never becomes a pass.
 //
@@ -29,11 +29,13 @@ import (
 // a lane stuck.
 const CheckEnv = "SWIM_CHECK_STATES"
 
-func finished(s string) bool {
+func ended(s string) bool {
 	return s == Passed || s == Failed || s == Skipped || s == Interrupted
 }
 
-func waitingTurn(s string) bool { return s == Waiting || s == Locked || s == Queued }
+func waitingTurn(s string) bool { return s == Waiting || s == Queued }
+
+func atRest(s string) bool { return s == Ready || s == Empty }
 
 // Transition checks one lane's move from its entry before a
 // write to its entry after it.
@@ -42,11 +44,11 @@ func Transition(from, to *Lane) error {
 	switch {
 	case a == b || a == "":
 		return nil
-	case a == Running && !finished(b):
+	case a == Running && !ended(b):
 		return fmt.Errorf("a running round can only end (passed, failed, skipped, interrupted), not go %s", b)
-	case waitingTurn(a) && b == Idle:
-		return fmt.Errorf("a lane %s for its turn can't go back to idle", a)
-	case finished(a) && finished(b) && sameRound(from, to):
+	case waitingTurn(a) && atRest(b):
+		return fmt.Errorf("a lane %s for its turn can't go back to %s", a, b)
+	case ended(a) && ended(b) && sameRound(from, to):
 		return fmt.Errorf("a %s round can't become %s without a new round", a, b)
 	}
 	return nil
@@ -82,7 +84,7 @@ func checkTransitions(before, after *File) []string {
 	}
 	for i := range after.Lanes {
 		l := &after.Lanes[i]
-		check(fmt.Sprint(l.Lane), fmt.Sprintf("swim %d", l.Lane), l)
+		check(fmt.Sprint(l.Lane), fmt.Sprintf("lane %d", l.Lane), l)
 	}
 	return bad
 }

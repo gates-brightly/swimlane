@@ -35,11 +35,11 @@ func fixture() ([]LaneView, time.Time) {
 	return []LaneView{
 		{N: 1, State: Running, Round: "Cut over service X to Terraform", Job: "3f2a9c1e-7b4d-4e2a-9c1e-7b4d4e2a9c1e", Started: now.Add(-72 * time.Second)},
 		{N: 2, State: Waiting, Round: "Diagnose Y", WaitingOn: []int{1}},
-		{N: 3, State: Idle, Round: ""},
+		{N: 3, State: Empty, Round: ""},
 		{N: 4, State: Waiting, Round: "Remove old stack", WaitingOn: []int{2, 3}},
 		{N: 5, State: Passed, Round: "Audit", Started: now.Add(-3 * time.Minute), Finished: now.Add(-2 * time.Minute)},
 		{N: 6, State: Failed, Exit: 2, Round: "Deploy", Started: now.Add(-30 * time.Second), Finished: now},
-		{N: 7, State: Skipped, Reason: "swim 6 failed", Round: "Cleanup"},
+		{N: 7, State: Skipped, Reason: "lane 6 failed", Round: "Cleanup"},
 	}, now
 }
 
@@ -73,7 +73,7 @@ func TestRenderPanelContent(t *testing.T) {
 		t.Fatalf("got %d lines", len(lines))
 	}
 	all := strings.Join(lines, "\n")
-	for _, want := range []string{"swim 1", "swim 7", "Cut over service X to Terraform 3f2a9c1e", "⠹ waiting on swim 1 ", "waiting on swim 2, 3", "⠹ running 1m 12s", "PASS 1m 0s", "FAIL exit 2 30s", "SKIP (swim 6 failed)", "idle"} {
+	for _, want := range []string{"lane 1", "lane 7", "Cut over service X to Terraform 3f2a9c1e", "⠹ waiting on lane 1 ", "waiting on lane 2, 3", "⠹ running 1m 12s", "passed 1m 0s", "failed exit 2 30s", "skipped (lane 6 failed)", "empty"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("panel missing %q:\n%s", want, all)
 		}
@@ -111,13 +111,13 @@ func TestThrobberCycles(t *testing.T) {
 
 func TestPlainTransitions(t *testing.T) {
 	var buf bytes.Buffer
-	d := &Display{out: &buf, views: []LaneView{{N: 1, State: Idle}, {N: 2, State: Idle}}, now: time.Now, title: func(time.Time) string { return "" }}
+	d := &Display{out: &buf, views: []LaneView{{N: 1, State: Empty}, {N: 2, State: Empty}}, now: time.Now, title: func(time.Time) string { return "" }}
 	d.Set(2, func(v *LaneView) { v.State, v.WaitingOn = Waiting, []int{1} })
 	d.Set(2, func(v *LaneView) { v.State, v.WaitingOn = Waiting, []int{1} }) // no change, no line
 	d.Line(1, "hello")
-	d.Set(2, func(v *LaneView) { v.State, v.Reason = Skipped, "swim 1 failed" })
+	d.Set(2, func(v *LaneView) { v.State, v.Reason = Skipped, "lane 1 failed" })
 	got := buf.String()
-	want := "[2] waiting on swim 1\n[1] hello\n[2] SKIP (swim 1 failed)\n"
+	want := "[2] waiting on lane 1\n[1] hello\n[2] skipped (lane 1 failed)\n"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
@@ -177,7 +177,7 @@ func manyLanes(now time.Time, states map[int]string, n int) []LaneView {
 	for i := 1; i <= n; i++ {
 		st, ok := states[i]
 		if !ok {
-			st = Idle
+			st = Empty
 		}
 		vs = append(vs, LaneView{N: i, State: st, Round: fmt.Sprintf("round %d", i), WaitingOn: []int{1}, Started: now, Finished: now})
 	}
@@ -189,9 +189,9 @@ func TestPanelCapsRowsAndPrefersRunning(t *testing.T) {
 	// 24 lanes: 3 running, 1 failed, 4 waiting, 6 passed, 2 done, 8 idle.
 	states := map[int]string{
 		20: Running, 21: Running, 22: Running, 9: Failed,
-		10: Waiting, 11: Waiting, 12: Queued, 13: Waiting,
+		10: Waiting, 11: Waiting, 12: SlotWait, 13: Waiting,
 		1: Passed, 2: Passed, 3: Passed, 4: Passed, 5: Passed, 6: Passed,
-		7: Done, 8: Done,
+		7: Earlier, 8: Earlier,
 	}
 	lines := RenderPanel("t", manyLanes(now, states, 24), 100, now, false)
 	if len(lines) != PanelRows(24)+2 || PanelRows(24) != MaxRows {
@@ -199,15 +199,15 @@ func TestPanelCapsRowsAndPrefersRunning(t *testing.T) {
 	}
 	all := strings.Join(lines, "\n")
 	for _, n := range []int{20, 21, 22, 9, 10, 11, 12, 13} {
-		if !strings.Contains(all, fmt.Sprintf(" swim %d ", n)) {
-			t.Errorf("swim %d (running/failed/waiting) hidden:\n%s", n, all)
+		if !strings.Contains(all, fmt.Sprintf(" lane %d ", n)) {
+			t.Errorf("lane %d (running/failed/waiting) hidden:\n%s", n, all)
 		}
 	}
 	// 14 rows: 3 running + 1 failed + 4 waiting + 6 passed; done and idle hidden.
-	if strings.Contains(all, " swim 7 ") || strings.Contains(all, " swim 14 ") {
+	if strings.Contains(all, " lane 7 ") || strings.Contains(all, " lane 14 ") {
 		t.Errorf("done/idle lanes should be hidden first:\n%s", all)
 	}
-	contains := strings.Contains(lines[len(lines)-2], "… 10 more: 2 done earlier, 8 idle")
+	contains := strings.Contains(lines[len(lines)-2], "… 10 more: 2 passed earlier, 8 empty")
 	if !contains {
 		t.Errorf("more line = %q", lines[len(lines)-2])
 	}
@@ -215,7 +215,7 @@ func TestPanelCapsRowsAndPrefersRunning(t *testing.T) {
 	last := 0
 	for _, l := range lines[1 : len(lines)-2] {
 		var n int
-		fmt.Sscanf(strings.TrimSpace(l), "swim %d", &n)
+		fmt.Sscanf(strings.TrimSpace(l), "lane %d", &n)
 		if n <= last {
 			t.Errorf("rows out of order:\n%s", all)
 		}
@@ -235,8 +235,8 @@ func TestPanelHidesPassedBeforeRunning(t *testing.T) {
 	lines := RenderPanel("t", manyLanes(now, states, 20), 100, now, false)
 	all := strings.Join(lines, "\n")
 	for i := 11; i <= 20; i++ {
-		if !strings.Contains(all, fmt.Sprintf(" swim %d ", i)) {
-			t.Errorf("running swim %d hidden", i)
+		if !strings.Contains(all, fmt.Sprintf(" lane %d ", i)) {
+			t.Errorf("running lane %d hidden", i)
 		}
 	}
 	if !strings.Contains(lines[len(lines)-2], "6 more: 6 passed") {

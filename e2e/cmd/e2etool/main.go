@@ -15,7 +15,7 @@
 //	                                  dag99 lanes 1-9's work (see each lane script)
 //
 // Inputs come from the environment the lane scripts export (D, N, P, IN,
-// OUT, H, NODE_START, RUN_ID) and swim sets (SWIM_JOB, SWIM_RUN,
+// OUT, H, NODE_START, RUN_ID) and swim sets (SWIM_ROUND_ID, SWIM_RUN,
 // SWIM_RUN_LANES).
 package main
 

@@ -12,7 +12,7 @@ import (
 func TestFormat(t *testing.T) {
 	ts := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 	got := Format(ts, "zach", Entry{Event: New, Lane: 1, Job: "3f2a9c1e", Detail: "Cut over\norders-api"})
-	want := "2026-10-09T12:00:00Z  zach      new          swim 1  job=3f2a9c1e  Cut over orders-api"
+	want := "2026-10-09T12:00:00Z  zach      new          lane 1  round-id=3f2a9c1e  Cut over orders-api"
 	if got != want {
 		t.Fatalf("got  %q\nwant %q", got, want)
 	}

@@ -1,12 +1,12 @@
 swim · app · main@abc1234 · 1m 12s    ← → lane  y/n pre-answer  esc all  ? help
- swim 1  ⠹ running 1m 12s           Cut over service X to Terraform 3f2a9c1e
- swim 2  ⠹ waiting on swim 1        Diagnose Y
- swim 3    idle                     -
- swim 4  ⠹ waiting on swim 2, 3     Remove old stack
- swim 5  PASS 1m 0s                 Audit
-▶swim 6  FAIL exit 2 30s            Deploy
- swim 7  SKIP (swim 6 failed)       Cleanup
-───────────────────────────────── swim 6 · following · .swim/logs/agent6.log ──
+ lane 1  ⠹ running 1m 12s           Cut over service X to Terraform 3f2a9c1e
+ lane 2  ⠹ waiting on lane 1        Diagnose Y
+ lane 3    empty                    -
+ lane 4  ⠹ waiting on lane 2, 3     Remove old stack
+ lane 5  passed 1m 0s               Audit
+▶lane 6  failed exit 2 30s          Deploy
+ lane 7  skipped (lane 6 failed)    Cleanup
+────────────────────────────────── lane 6 · following · .swim/logs/lane6.log ──
 == ROUND 2026-10-09T11:59:30Z  job=6e1f  Deploy
    run: r-1 | script: lane.6.sh
 

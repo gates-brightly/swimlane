@@ -21,6 +21,8 @@ type Fixed struct {
 	// Renamed: the lines (1-based) whose run calls it rewrote to step.
 	// Remove after the next release (T38).
 	Renamed []int
+	// RoundID: the line (1-based) whose # Job: it rewrote to # Round-ID:.
+	RoundID int
 	Skip    string // why it wasn't changed ("" if it was, or had nothing to add)
 }
 
@@ -30,7 +32,8 @@ type Fixed struct {
 // time, # Includes: for a repo file it sources or imports. The header is
 // the lane's contract (swim refuses what it doesn't declare); these are
 // lines for a person to review, so it never removes or rewrites one. In a
-// bash lane it also rewrites run, step's old name, to step. It skips
+// bash lane it also rewrites run, step's old name, to step, and in any
+// lane # Job:, Round-ID's old name, to # Round-ID:. It skips
 // running lanes, lanes of jobs (each job declares its own guards)
 // and compiled lanes.
 func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
@@ -62,7 +65,8 @@ func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
 			out = append(out, fx)
 			continue
 		}
-		src := string(data)
+		src, roundID := renameJob(string(data))
+		fx.RoundID = roundID
 		if s := NewScript(n, src); s.Lib {
 			var renamed []int
 			src, renamed = renameRun(src)
@@ -73,7 +77,7 @@ func Fix(root string, cfg *config.Config, lanes []int) ([]Fixed, error) {
 		s := NewScript(n, src)
 		s.Name = fx.File
 		add := missingHeader(root, s)
-		if len(add) == 0 && len(fx.Renamed) == 0 {
+		if len(add) == 0 && len(fx.Renamed) == 0 && fx.RoundID == 0 {
 			continue
 		}
 		lines := strings.Split(src, "\n")

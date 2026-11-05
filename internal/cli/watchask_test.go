@@ -54,7 +54,7 @@ func TestWatchAskGuard(t *testing.T) {
 	if msg := a.answer(p[0].key, '2'); !strings.Contains(msg, "y approves") {
 		t.Errorf("a number on a guard: %q", msg)
 	}
-	if msg := a.answer(p[0].key, 'y'); !strings.Contains(msg, "swim 3 (#7): ALLOW_DROP approved") {
+	if msg := a.answer(p[0].key, 'y'); !strings.Contains(msg, "lane 3 (#7): ALLOW_DROP approved") {
 		t.Errorf("y: %q", msg)
 	}
 	r := <-got

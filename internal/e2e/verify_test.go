@@ -25,7 +25,7 @@ func TestVerifyYAML(t *testing.T) {
 	r, _ := signedRepo(t)
 	y := r.mustSwim("verify", "--yaml")
 	contains(t, "yaml", y, "schema: swim.verify/v1", "ok: true", `consistent: "yes"`, "broken: []")
-	logPath := filepath.Join(r.root, ".swim", "logs", "agent1.log")
+	logPath := filepath.Join(r.root, ".swim", "logs", "lane1.log")
 	orig, _ := os.ReadFile(logPath)
 	os.WriteFile(logPath, []byte(strings.Replace(string(orig), "PASS  ok", "PASS  ko", 1)), 0o644)
 	y, code := r.swim("verify", "--yaml")

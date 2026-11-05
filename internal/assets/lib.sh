@@ -17,10 +17,10 @@ _swim_first_failed=
 _swim_first_failed_stage=
 SWIM_LANE=
 
-# lane_init N — claim lane N: cd to its workspace (its staged copy under
-# swim run), point STEP_LOG at .swim/logs/agentN.log, write the round marker and mark
-# the lane running in .swim/status.yml. Exports SWIM_JOB (the job id from
-# the script's Job: line), and SWIM_DEADLINE / SWIM_TIMEOUT from its
+# lane_init N — claim lane N: cd to its workspace (its pinned copy under
+# swim run), point STEP_LOG at .swim/logs/laneN.log, write the round marker and mark
+# the lane running in .swim/status.yml. Exports SWIM_ROUND_ID (the round id from
+# the script's Round-ID: line), and SWIM_DEADLINE / SWIM_TIMEOUT from its
 # Timeout: line, and SWIM_RUN / SWIM_RUN_LANES (the swim run and the lanes
 # in it; a lane run directly with bash is a run of its own). Refuses if lane
 # N is already running.
@@ -30,7 +30,7 @@ lane_init() {
   esac
   SWIM_LANE=$1
   if [ -n "${SWIM_STAGE:-}" ] && [ -n "${SWIM_ROOT:-}" ]; then
-    # swim run runs the staged copy (.swim/runs/<run>/<lane>/): the repo is
+    # swim run runs the pinned copy (.swim/runs/<run>/<lane>/): the repo is
     # the one the launcher names, not the script's directory.
     SWIM_ROOT=$(cd "$SWIM_ROOT" && pwd -P) || exit 1
   else
@@ -39,11 +39,11 @@ lane_init() {
     # two directories up.
     case "$SWIM_ROOT" in */.swim/groups) SWIM_ROOT=${SWIM_ROOT%/.swim/groups} ;; esac
   fi
-  # swim run runs a lane in its staged copy ($SWIM_WORKSPACE), so relative
+  # swim run runs a lane in its pinned copy ($SWIM_WORKSPACE), so relative
   # paths read only what its manifest pinned; # Workspace: live, or a lane
   # run directly with bash, runs in the repo.
   cd "${SWIM_WORKSPACE:-$SWIM_ROOT}" || exit 1
-  STEP_LOG="$SWIM_ROOT/.swim/logs/agent$SWIM_LANE.log"
+  STEP_LOG="$SWIM_ROOT/.swim/logs/lane$SWIM_LANE.log"
   SWIM_PID=$$
   export SWIM_LANE SWIM_ROOT STEP_LOG SWIM_PID
   # Before _start marks the lane running: the launcher only signals a lane
@@ -54,9 +54,9 @@ lane_init() {
     _swim_done=1
     exit 1
   fi
-  # "<job> <deadline epoch, 0 for none> <run> <step timeout, 0 for none>
+  # "<round id> <deadline epoch, 0 for none> <run> <step timeout, 0 for none>
   # <fail mode> <start, Unix ms> <timeout text>"
-  SWIM_JOB=${_swim_start%% *}
+  SWIM_ROUND_ID=${_swim_start%% *}
   _swim_start=${_swim_start#* }
   SWIM_DEADLINE=${_swim_start%% *}
   _swim_start=${_swim_start#* }
@@ -69,7 +69,7 @@ lane_init() {
   SWIM_STARTED=${_swim_start%% *}
   SWIM_TIMEOUT=${_swim_start#* }
   SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
-  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE SWIM_STARTED
+  export SWIM_ROUND_ID SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE SWIM_STARTED
   # A marker an earlier round's stop left behind (its shell already gone,
   # a TERM racing a Ctrl-C) would turn this round's real interrupt into a
   # failure: only this round's stop may leave one.

@@ -13,7 +13,7 @@ func TestPainterAndColors(t *testing.T) {
 		t.Errorf("painted %q", got)
 	}
 	for state, want := range map[string]string{"PASS": Green, "approved": Green, "FAIL": Red, "interrupted": Red, "STOP": Red,
-		"BLOCKED": Red, "skip": Yellow, "running?": Yellow, "running": Cyan, "idle": Dim, "WARN": ""} {
+		"BLOCKED": Red, "skip": Yellow, "running?": Yellow, "running": Cyan, "empty": Dim, "ready": Cyan, "queued": Yellow, "WARN": ""} {
 		if got := StateColor(state); got != want {
 			t.Errorf("StateColor(%s) = %q, want %q", state, got, want)
 		}

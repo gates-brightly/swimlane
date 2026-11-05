@@ -77,18 +77,18 @@ func TestReapDeadOtherHost(t *testing.T) {
 	}
 	got := ReapDead(root, cfg, "")
 	if len(got) != 1 || got[0].Lane != 2 {
-		t.Fatalf("reaped %+v, want only swim 2", got)
+		t.Fatalf("reaped %+v, want only lane 2", got)
 	}
 	st, _ := status.Load(root)
 	for _, n := range []int{1, 3} {
 		if l := st.Get(n); l.State != status.Running {
-			t.Errorf("swim %d on another machine reaped: %s", n, l.State)
+			t.Errorf("lane %d on another machine reaped: %s", n, l.State)
 		}
 	}
 	if l := st.Get(1); !l.Alive() {
-		t.Error("swim 1, on another machine, isn't counted alive")
+		t.Error("lane 1, on another machine, isn't counted alive")
 	}
 	if l := st.Get(2); l.State != status.Interrupted || l.Host != "" {
-		t.Errorf("swim 2: %s host %q", l.State, l.Host)
+		t.Errorf("lane 2: %s host %q", l.State, l.Host)
 	}
 }

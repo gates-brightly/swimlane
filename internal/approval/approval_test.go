@@ -163,7 +163,7 @@ func TestServerUsesRegisteredLane(t *testing.T) {
 		t.Fatalf("declared guard: %+v %v", r, err)
 	}
 	q := strings.Join(Question(asked[0]), "\n")
-	for _, want := range []string{"swim 3 requires human approval of guard DROP", "job j-real · manifest abcdef012345", "the lane says: harmless cleanup (sent as swim 5)"} {
+	for _, want := range []string{"lane 3 requires human approval of guard DROP", "round-id j-real · manifest abcdef012345", "the lane says: harmless cleanup (sent as lane 5)"} {
 		if !strings.Contains(q, want) {
 			t.Errorf("question lacks %q:\n%s", want, q)
 		}
@@ -258,7 +258,7 @@ func TestPeerOutsideTheLane(t *testing.T) {
 	tok := s.Register(Caller{Lane: 1, Guards: []string{"F"}, PID: AwaitPID})
 	s.SetPID(tok, other.Process.Pid)
 	r, _ := Ask(s.Path(), Request{Flag: "F", Token: tok}, nil, time.Time{})
-	if r.Approved || asked || !strings.Contains(r.Why, "outside swim 1's lane") {
+	if r.Approved || asked || !strings.Contains(r.Why, "outside lane 1's lane") {
 		t.Errorf("a request from outside the lane: %+v (asked %v)", r, asked)
 	}
 	if _, err := Whoami(s.Path(), tok); err == nil {
@@ -411,7 +411,7 @@ func TestRecordFromTheLane(t *testing.T) {
 		defer other.Process.Kill()
 		away := s.Register(Caller{Lane: 3, Run: "r1", PID: AwaitPID})
 		s.SetPID(away, other.Process.Pid)
-		if _, err := Record(s.Path(), away, chain.Entry{Type: "round"}); err == nil || !strings.Contains(err.Error(), "outside swim 3's lane") {
+		if _, err := Record(s.Path(), away, chain.Entry{Type: "round"}); err == nil || !strings.Contains(err.Error(), "outside lane 3's lane") {
 			t.Errorf("a token used from outside its lane: %v", err)
 		}
 	}

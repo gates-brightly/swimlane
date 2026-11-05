@@ -18,7 +18,7 @@ import (
 // runner (lane.2.ts with no runners: ts), and saves each answer in this
 // repo's section of the config. Off a terminal (CI, a queue) it asks
 // nothing: such a lane fails at start with the exact fix. lanes empty means
-// every pending lane.
+// every ready lane.
 func confirmRunners(root string, cfg *config.Config, lanes []int) (*config.Config, error) {
 	if !ui.IsTTY(os.Stdin) || !ui.IsTTY(os.Stderr) || ci.InCI(os.Getenv) {
 		return cfg, nil

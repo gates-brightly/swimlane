@@ -24,8 +24,8 @@ func TestWatchTimers(t *testing.T) {
 		// 30s answered before, 20s of a question still open.
 		{"asking", &status.Lane{State: status.Running, StartedAt: at(2 * time.Minute), PausedS: secs(30), PausedAt: now.Add(-20 * time.Second).Format(time.RFC3339Nano)}, "running", "1m 10s"},
 		{"passed", &status.Lane{State: "passed", StartedAt: at(4 * time.Hour), FinishedAt: at(3 * time.Hour)}, "passed", "3h ago"},
-		{"pending", &status.Lane{State: "passed", FinishedAt: at(time.Hour)}, "pending", ""},
-		{"never ran", nil, "idle", ""},
+		{"ready", &status.Lane{State: "passed", FinishedAt: at(time.Hour)}, "ready", ""},
+		{"never ran", nil, "empty", ""},
 	} {
 		if got := laneTimer(c.lane, c.state, now); got != c.want {
 			t.Errorf("%s: laneTimer = %q, want %q", c.name, got, c.want)
@@ -61,8 +61,8 @@ func TestWatchRowsSayHowLongTheLastRoundTook(t *testing.T) {
 			status.Failed, "took 3.0s" + "FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:4: got 1"},
 		{"interrupted, no duration", &status.Lane{State: status.Interrupted, StartedAt: at(2 * time.Hour), FinishedAt: at(time.Hour)}, status.Interrupted, "took 1h 0m"},
 		{"skipped", &status.Lane{State: status.Skipped, DurationS: secs(0.4)}, status.Skipped, "took 0.4s"},
-		{"pending after a failure", &status.Lane{State: status.Failed, DurationS: secs(65)}, "pending", "last run failed, took 1m 5s"},
-		{"pending, never ran", &status.Lane{State: status.Idle}, "pending", ""},
+		{"pending after a failure", &status.Lane{State: status.Failed, DurationS: secs(65)}, "ready", "last round failed, took 1m 5s"},
+		{"pending, never ran", &status.Lane{State: status.Empty}, "ready", ""},
 		{"running", &status.Lane{State: status.Running, StartedAt: at(time.Minute)}, status.Running, ""},
 		{"no times", &status.Lane{State: status.Passed}, status.Passed, ""},
 	} {

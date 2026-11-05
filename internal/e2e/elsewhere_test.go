@@ -29,7 +29,7 @@ func TestLaneRunningElsewhere(t *testing.T) {
 	this := start(t, r.cmd(bin, "run", "2", "--plain"), nil)
 	this.saw(t, "[1] running in another swim")
 	r.release("go1")
-	this.saw(t, "[1] PASS")
+	this.saw(t, "[1] passed")
 	r.release("go2")
 	if code := this.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, this.out.String())
@@ -37,12 +37,12 @@ func TestLaneRunningElsewhere(t *testing.T) {
 	out := this.out.String()
 	other.Wait()
 	i := strings.Index(out, "[1] running in another swim: the other swim's lane")
-	j := strings.Index(out, "[1] PASS")
+	j := strings.Index(out, "[1] passed")
 	if i < 0 || j < i {
 		t.Errorf("lane 1 not followed from the other swim:\n%s", out)
 	}
 	// Lane 1 is the other swim's: never started, nor summarized, here.
-	if strings.Contains(out, "[1] started") || strings.Contains(out, "  swim 1 ") {
+	if strings.Contains(out, "[1] started") || strings.Contains(out, "  lane 1 ") {
 		t.Errorf("this swim claimed lane 1:\n%s", out)
 	}
 }

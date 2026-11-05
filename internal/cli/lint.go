@@ -17,7 +17,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/status"
 )
 
-// swim lint [N|JOB ...] [--strict] [--yaml] [--fix]
+// swim lint [N|ROUND-ID ...] [--strict] [--yaml] [--fix]
 func cmdLint(args []string) error {
 	var strict, asYAML, fix bool
 	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML, "fix": &fix}}.parse(args)
@@ -60,6 +60,9 @@ func cmdLint(args []string) error {
 				for _, l := range fx.Added {
 					fmt.Fprintf(os.Stderr, "  %s\n", l)
 				}
+			}
+			if fx.RoundID > 0 {
+				fmt.Fprintf(os.Stderr, "swim lint --fix: %s: # Job: is now # Round-ID:, on line %d\n", fx.File, fx.RoundID)
 			}
 			if len(fx.Renamed) > 0 {
 				fmt.Fprintf(os.Stderr, "swim lint --fix: %s: run is now step, on %s\n", fx.File, lineList(fx.Renamed))
@@ -219,7 +222,7 @@ func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) (ru
 		skipped = append(skipped, n)
 	}
 	slices.Sort(skipped)
-	fmt.Fprintf(os.Stderr, "swim run: not running swim %s (the lint errors above), running the rest; a lane that waits on one of them skips\n", joinNums(skipped))
+	fmt.Fprintf(os.Stderr, "swim run: not running lane %s (the lint errors above), running the rest; a lane that waits on one of them skips\n", joinNums(skipped))
 	return runnable, nil
 }
 

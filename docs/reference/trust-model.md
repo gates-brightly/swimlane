@@ -133,7 +133,7 @@ name a socket's peer the token alone decides.
   entry names its hash, and a queued batch is pinned to it.
 - **The approved bytes are the bytes that run.** The manifest's files are
   staged read-only under `.swim/runs/<run>/<N>/` before the lane waits for
-  anything, and the lane runs in the staged copy: that is its working
+  anything, and the lane runs in the pinned copy: that is its working
   directory, so `source`, `bash helper.sh`, `kubectl apply -f k8s/` and
   `python tool.py` read what was pinned, and a file it uses but doesn't pin
   isn't there (`swim lint` warns, `workspace-file`, and a step that fails
@@ -269,7 +269,7 @@ so does a lane that runs them, if it can reach the key.
 **What `swim verify` proves, and what it doesn't.** It prints one answer,
 VERIFIED or NOT VERIFIED (exit 1). It checks every link, every signature
 against the key recorded **in that same entry**, every round's log
-section, kept script and staged copy; and each attested run against its
+section, kept script and pinned copy; and each attested run against its
 attestation: an approve entry the run didn't record (or that two
 attestations claim), or a round whose script or manifest isn't the one it
 ran, is BROKEN. Runs that share an id (`--run-id`) each attest their own

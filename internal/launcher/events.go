@@ -21,7 +21,7 @@ const RunSchema = "swim.run/v1"
 // type are left out.
 type Event struct {
 	Schema      string           `yaml:"schema"`
-	Event       string           `yaml:"event"` // run | waiting | locked | queued | start | output | step | finish | summary
+	Event       string           `yaml:"event"` // run | waiting | start | output | step | finish | summary
 	Run         string           `yaml:"run,omitempty"`
 	Lane        int              `yaml:"lane,omitempty"`
 	Job         string           `yaml:"job,omitempty"`

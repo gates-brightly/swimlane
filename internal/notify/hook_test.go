@@ -16,14 +16,14 @@ func TestHook(t *testing.T) {
 	root := t.TempDir()
 	h := NewHook(HookConfig{Command: `printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' "$SWIM_EVENT" "$SWIM_RESULT" "$SWIM_TITLE" "$SWIM_BODY" "$SWIM_LANES" "$SWIM_BATCH" "$SWIM_REPO" "$SWIM_BRANCH" "$PWD" "$SWIM_PRIORITY" "$SWIM_TAGS" > note`,
 		Root: root, Warn: func(why string) { t.Error(why) }})
-	h.Send(Note{Event: EventEnd, Result: "failed", Title: "ops@fix · batch #4 failed", Body: "swim 1,2\n· 3s\x07", Lanes: []int{1, 2}, Batch: 4, Repo: "ops", Branch: "fix"})
+	h.Send(Note{Event: EventEnd, Result: "failed", Title: "ops@fix · batch #4 failed", Body: "lane 1,2\n· 3s\x07", Lanes: []int{1, 2}, Batch: 4, Repo: "ops", Branch: "fix"})
 	h.Wait()
 	b, err := os.ReadFile(filepath.Join(root, "note"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// One line, no controls: a lane's text reaches the command as data.
-	if got, want := string(b), "end|failed|ops@fix · batch #4 failed|swim 1,2 · 3s|1,2|4|ops|fix|"+root+"|high|x,ops"; got != want {
+	if got, want := string(b), "end|failed|ops@fix · batch #4 failed|lane 1,2 · 3s|1,2|4|ops|fix|"+root+"|high|x,ops"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 
