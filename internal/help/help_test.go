@@ -26,7 +26,7 @@ func TestGuideCoversLibAndCommands(t *testing.T) {
 		}
 	}
 	commands, _ := Topic("commands")
-	for _, name := range Names() {
+	for name := range Commands {
 		if name != "help" && !regexp.MustCompile("`"+name+"\\b").MatchString(commands) {
 			t.Errorf("command %s missing from the commands topic", name)
 		}

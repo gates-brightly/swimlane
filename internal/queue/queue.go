@@ -126,11 +126,6 @@ type Entry struct {
 	QueueSig  string  `yaml:"queue_sig,omitempty"`
 	Worker    *Worker `yaml:"worker,omitempty"`
 	Result    *Result `yaml:"result,omitempty"`
-	// NotBefore (UTC, RFC 3339) is a scheduled batch's start time (swim
-	// schedule): no worker claims it before. Zone is the zone it was
-	// written in, for saying it.
-	NotBefore string `yaml:"not_before,omitempty"`
-	Zone      string `yaml:"zone,omitempty"`
 	// Swim and Syntax are the swim that queued the batch and the syntaxes
 	// it read, for saying why a worker can't run it. Not part of the
 	// signed statement: a worker decides from its own syntaxes and the
@@ -485,33 +480,6 @@ func Adopt(e *Entry) error {
 	return nil
 }
 
-// ClaimNext claims the first waiting entry that's due (SortWaiting's
-// order; a scheduled one not before its start time) for this process, by
-// renaming it to .running; it returns nil when nothing is due. A lost race (another
-// worker renamed it first) moves on to the next entry. lease is how long
-// the claim's heartbeat holds (0: DefaultLease); the worker renews it with
-// Touch.
-func ClaimNext(root, user string, lease time.Duration) (*Entry, error) {
-	entries, err := List(root, false)
-	if err != nil {
-		return nil, err
-	}
-	SortWaiting(entries)
-	for _, w := range entries {
-		if w.State != Queued || !w.Due(now()) {
-			continue
-		}
-		e, err := claim(w.Path, user, lease)
-		if err != nil {
-			return nil, err
-		}
-		if e != nil {
-			return e, nil
-		}
-	}
-	return nil, nil
-}
-
 // Claim claims one waiting entry, out of turn (swim watch: r on a queued
 // batch). It errors if the entry isn't waiting any more: another worker
 // claimed it, or it was removed.
@@ -661,26 +629,7 @@ func (e *Entry) Statement() string {
 	if len(e.Decide) > 0 {
 		fmt.Fprintf(&b, "decide: %s\n", strings.Join(e.Decide, ","))
 	}
-	// Only when set, so an unscheduled entry's statement reads as before.
-	if e.NotBefore != "" {
-		fmt.Fprintf(&b, "not-before: %s\n", e.NotBefore)
-	}
 	return b.String()
-}
-
-// StartKey orders waiting entries: a scheduled one by its start time,
-// others by when they were queued (both UTC, RFC 3339).
-func (e *Entry) StartKey() string { return or(e.NotBefore, e.Created) }
-
-// Due reports whether a worker may claim e at t: unscheduled, or its
-// start time has come.
-func (e *Entry) Due(t time.Time) bool {
-	return e.NotBefore == "" || !t.UTC().Before(mustTime(e.NotBefore))
-}
-
-func mustTime(s string) time.Time {
-	t, _ := time.Parse(time.RFC3339, s)
-	return t
 }
 
 func or(s, def string) string {
@@ -690,10 +639,11 @@ func or(s, def string) string {
 	return s
 }
 
-// SortWaiting orders entries as workers take them: by StartKey, then seq.
+// SortWaiting orders entries as workers take them: by when they were
+// queued (UTC, RFC 3339), then seq.
 func SortWaiting(es []*Entry) {
 	sort.SliceStable(es, func(a, b int) bool {
-		if ka, kb := es[a].StartKey(), es[b].StartKey(); ka != kb {
+		if ka, kb := es[a].Created, es[b].Created; ka != kb {
 			return ka < kb
 		}
 		return es[a].Seq < es[b].Seq

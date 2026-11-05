@@ -11,7 +11,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// FollowView is one way Follow shows what it follows: its lines, reloaded
+// FollowView is one way FollowPinned shows what it follows: its lines, reloaded
 // on every redraw.
 type FollowView struct {
 	Name  string
@@ -29,7 +29,7 @@ func FileLines(path string) func() []string {
 	}
 }
 
-// FollowEnd is how what Follow shows ended, for the header it draws then:
+// FollowEnd is how what FollowPinned shows ended, for the header it draws then:
 // the result (passed, failed, interrupted, skipped, error), the exit code
 // when known, how long it took, and details (failed steps, lanes skipped
 // and why).
@@ -43,7 +43,7 @@ type FollowEnd struct {
 // maxEndDetails is how many detail lines the header shows before "… N more".
 const maxEndDetails = 5
 
-// EndHeader is the header Follow draws once what it follows has ended: a
+// EndHeader is the header FollowPinned draws once what it follows has ended: a
 // full-width bar, green for passed, red for failed, yellow otherwise, then
 // the details. Without color the bar is "== FAILED · exit 1 · 2:13 ==".
 func EndHeader(e *FollowEnd, cols int, color bool) []string {
@@ -97,16 +97,12 @@ func EndHeader(e *FollowEnd, cols int, color bool) []string {
 	return out
 }
 
-// Follow shows the end of the first view's lines under title, following
-// them as they grow (tail -f), until Esc, q, Enter or Ctrl-C; v switches
-// to the next view (an overview, then the verbose output) and back. end,
-// if set, says how what it follows ended (nil while it runs): Follow then
-// draws a header with the result under the title (EndHeader).
-func Follow(in, out *os.File, title string, views []FollowView, end func() *FollowEnd) error {
-	return FollowPinned(in, out, title, views, end, nil)
-}
-
-// FollowPinned is Follow with lines pinned under the title, reloaded on
+// FollowPinned shows the end of the first view's lines under title,
+// following them as they grow (tail -f), until Esc, q, Enter or Ctrl-C; v
+// switches to the next view (an overview, then the verbose output) and
+// back. end, if set, says how what it follows ended (nil while it runs):
+// it then draws a header with the result under the title (EndHeader).
+// pinned, if set, gives lines pinned under the title, reloaded on
 // every redraw while the output scrolls under them: what each lane it
 // follows is doing now (its stage, the step running), so the operator sees
 // it however far the log has run.

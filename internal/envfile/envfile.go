@@ -333,43 +333,6 @@ func Duplicates(root string) []string {
 	return out
 }
 
-// Quote writes a value so Parse reads it back unchanged.
-func Quote(v string) string {
-	if v == "" || strings.ContainsAny(v, " \t#$`\"'") {
-		if !strings.Contains(v, "'") {
-			return "'" + v + "'"
-		}
-		return `"` + v + `"`
-	}
-	return v
-}
-
-// AppendLane adds a [lane n] section with entries to the repo's .env.swim
-// (created if missing).
-func AppendLane(root string, n int, entries []Entry, comment string) error {
-	path := filepath.Join(root, RepoFile)
-	var b strings.Builder
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		b.WriteString("# Lane env for swim (KEY=VALUE, never run as shell; no guard flags).\n# Precedence: the shell, then [lane N] here, then ~/.config/swim/env.swim.\n")
-	} else if err != nil {
-		return err
-	} else {
-		b.Write(data)
-		if len(data) > 0 && !bytes.HasSuffix(data, []byte("\n")) {
-			b.WriteString("\n")
-		}
-	}
-	fmt.Fprintf(&b, "\n[lane %d]\n", n)
-	if comment != "" {
-		b.WriteString("# " + comment + "\n")
-	}
-	for _, e := range entries {
-		fmt.Fprintf(&b, "%s=%s\n", e.Key, Quote(e.Value))
-	}
-	return os.WriteFile(path, []byte(b.String()), 0o600)
-}
-
 // section reads a "[repo PATH]" or "[lane N]" line: the kind and its
 // argument, or nil.
 func section(line string) []string {

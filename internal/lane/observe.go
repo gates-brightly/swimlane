@@ -55,19 +55,6 @@ func ParseProbe(v string) (Probe, error) {
 	return Probe{Name: name, Cmd: cmd}, nil
 }
 
-// Names are the facts a probe reports: its name, or path.CMD for each
-// command of a path probe.
-func (p Probe) Names() []string {
-	if p.Name != "" {
-		return []string{p.Name}
-	}
-	out := make([]string, len(p.Path))
-	for i, c := range p.Path {
-		out[i] = "path." + c
-	}
-	return out
-}
-
 func (i *Info) addProbe(v, where string) {
 	if v == "" || v == "-" || strings.EqualFold(v, "none") {
 		return

@@ -512,3 +512,42 @@ func TestHashInAHeaderValue(t *testing.T) {
 		t.Errorf("%+v", fs)
 	}
 }
+
+// Lint runs every check on one script outside a repo (for tests): deps are
+// resolved against the other scripts given, with cfg's lane count.
+func Lint(cfg *config.Config, scripts map[int]string, n int) []finding.Finding {
+	ss := map[int]*Script{}
+	for k, src := range scripts {
+		ss[k] = NewScript(k, src)
+	}
+	return lintScripts(cfg, ss, n)
+}
+
+// lintScripts is Lint for scripts already read (a test names one
+// lane.N.py).
+func lintScripts(cfg *config.Config, scripts map[int]*Script, n int) []finding.Finding {
+	c := &Context{Cfg: cfg, Scripts: map[int]*Script{}}
+	for k, s := range scripts {
+		if !s.Info.Stub {
+			c.Scripts[k] = s
+		}
+	}
+	c.deps, c.depErrs = localDeps(cfg, c.Scripts)
+	c.depsDone = true
+	s := c.Scripts[n]
+	if s == nil {
+		return nil
+	}
+	var fs []finding.Finding
+	for _, ch := range Checks {
+		if s.Lib || !bashOnly[ch.Code] {
+			fs = append(fs, ch.Run(c, s)...)
+		}
+	}
+	for i := range fs {
+		fs[i].File = s.Name
+	}
+	fs = applyIgnores(s, commentFirst(fs))
+	finding.Sort(fs)
+	return fs
+}

@@ -158,16 +158,8 @@ func (b *batchRunner) reap() []*batchProc {
 	return out
 }
 
-// full reports whether as many batches run as allowed.
-func (b *batchRunner) full() bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return len(b.procs) >= b.max
-}
-
 // startable lists the waiting batches that may start now, in start-time
-// order (queue.SortWaiting), as many as there's room for: due (one an
-// older swim scheduled not before its time), and none of the lanes
+// order (queue.SortWaiting), as many as there's room for: none of the lanes
 // it runs (its own, and the Always lanes they pull in) in a running batch
 // (any worker's), running in another swim, or in a batch picked before it.
 func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*queue.Entry {
@@ -176,7 +168,6 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 	b.mu.Unlock()
 	waiting = append([]*queue.Entry(nil), waiting...)
 	queue.SortWaiting(waiting)
-	now := time.Now()
 	// A batch needs its own lanes and the Always lanes its run pulls in
 	// (After: 1 on an Always lane 1): two batches that both pull in lane 1
 	// can't run side by side, or the second finds it already running and
@@ -202,8 +193,8 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 		if room <= 0 {
 			break
 		}
-		if e.State != queue.Queued || !e.Due(now) {
-			continue // a batch scheduled for later holds no lanes yet
+		if e.State != queue.Queued {
+			continue
 		}
 		if why := cantRunHere(b.root, e); why != "" {
 			holdHere(b.root, e, why) // queued for a worker that can; holds no lanes here

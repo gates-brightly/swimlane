@@ -21,9 +21,6 @@ func TestStringFormat(t *testing.T) {
 	if String() != "0.20261014.2" || Date() != "20261014" {
 		t.Fatalf("String() of a release = %q (date %s)", String(), Date())
 	}
-	if Tag("20261014", 2) != "v0.20261014.2" {
-		t.Fatalf("Tag() = %q", Tag("20261014", 2))
-	}
 	for tag, ok := range map[string]bool{"v0.20261014.2": true, "v0.20261014.0": false, "v0.7.20261013": false, "v.0.11.20261014": false} {
 		if _, _, got := ParseTag(tag); got != ok {
 			t.Errorf("ParseTag(%q) ok = %v, want %v", tag, got, ok)

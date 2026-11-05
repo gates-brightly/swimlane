@@ -65,9 +65,6 @@ const InstallCmd = "go install github.com/gates-brightly/swimlane/cmd/swim@lates
 // RepoWeb is swim's repository on the web.
 const RepoWeb = "https://github.com/gates-brightly/swimlane"
 
-// Tag is the git tag of release index on date, e.g. "v0.20261009.2".
-func Tag(date string, index int) string { return fmt.Sprintf("v0.%s.%d", date, index) }
-
 // ParseTag splits a release tag ("v0.20261009.2") into its date and index.
 func ParseTag(tag string) (date string, index string, ok bool) {
 	v, isTag := strings.CutPrefix(tag, "v")

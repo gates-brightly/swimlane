@@ -101,9 +101,6 @@ func IsScriptLine(line string) bool {
 	return ok
 }
 
-// ScriptLine is the line that marks a lane script's syntax.
-func ScriptLine() string { return fmt.Sprintf("# swim: syntax %d", Script) }
-
 // LogHeader is the first line of a lane log for lane n.
 func LogHeader(n int) string {
 	return fmt.Sprintf("# swim lane log | syntax %d | swim %d", Current, n)

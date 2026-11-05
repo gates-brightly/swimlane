@@ -267,7 +267,7 @@ func (a *runAuthority) operator(cfg *config.Config) chain.Approver {
 // each lane ran, no approvals, and why, so swim verify can tell it from a
 // run made directly with bash.
 func attestUnavailable(o Options, sel []int, why string) {
-	e := chain.Entry{Type: "run", Run: o.RunID, Manifests: map[string]string{}, Scripts: map[string]string{}, ScheduledFor: o.ScheduledFor,
+	e := chain.Entry{Type: "run", Run: o.RunID, Manifests: map[string]string{}, Scripts: map[string]string{},
 		AuthorityUnavailable: why}
 	for _, n := range sel {
 		if m := o.manifests[n]; m != nil {
@@ -288,7 +288,7 @@ func (a *runAuthority) attest(o Options, sel []int) {
 	if a == nil {
 		return
 	}
-	e := chain.Entry{Type: "run", Run: o.RunID, Manifests: map[string]string{}, Scripts: map[string]string{}, ScheduledFor: o.ScheduledFor}
+	e := chain.Entry{Type: "run", Run: o.RunID, Manifests: map[string]string{}, Scripts: map[string]string{}}
 	for _, n := range sel {
 		if m := o.manifests[n]; m != nil {
 			e.Manifests[strconv.Itoa(n)] = m.SHA256

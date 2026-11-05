@@ -45,26 +45,6 @@ failed: STOP  gate failed: target is ours
 === END
 `
 
-func checkFixture(t *testing.T, r *Round, wantSyntax int) {
-	t.Helper()
-	if r.Syntax != wantSyntax || !r.Found || r.Title != "Cut over service X" || r.Job != "3f2a9c1e" || r.StartedAt != "2026-10-09T12:00:00Z" {
-		t.Fatalf("header: %+v", r)
-	}
-	if r.Pass != 1 || r.Fail != 1 || r.Skip != 1 || r.Drift != 1 || r.Steps != 2 {
-		t.Fatalf("counts: pass=%d fail=%d skip=%d drift=%d steps=%d", r.Pass, r.Fail, r.Skip, r.Drift, r.Steps)
-	}
-	if !r.Finished || r.ExitCode != 1 {
-		t.Fatalf("end: %+v", r)
-	}
-	failed := r.Failed()
-	if len(failed) != 2 || failed[0].Label != "deploy api" || failed[0].Detail != "exit 2" || failed[1].Kind != Stop {
-		t.Fatalf("failed: %+v", failed)
-	}
-	if got := failed[0].Text(); got != "FAIL  deploy api (exit 2)" {
-		t.Fatalf("Text() = %q", got)
-	}
-}
-
 // A syntax 1 log (from before swim versioned its files) is refused.
 func TestParseV1Refused(t *testing.T) {
 	if _, err := Parse(strings.NewReader(fixtureV1)); err == nil || !strings.Contains(err.Error(), "syntax 1") {

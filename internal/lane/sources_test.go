@@ -20,7 +20,7 @@ with swim.round() as r:
         pass
     r.guard(flag, "dynamic")
 `)
-	if len(info.Observe) != 2 || info.Observe[0].Name != "acct" || strings.Join(info.Observe[1].Names(), ",") != "path.terraform,path.aws" || info.Observe[0].Line != 5 {
+	if len(info.Observe) != 2 || info.Observe[0].Name != "acct" || strings.Join(info.Observe[1].Path, ",") != "terraform,aws" || info.Observe[0].Line != 5 {
 		t.Errorf("probes: %+v", info.Observe)
 	}
 	if len(info.Problems) != 1 || !strings.HasPrefix(info.Problems[0], "Observe:") {

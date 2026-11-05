@@ -243,14 +243,6 @@ func checkEnvFiles(o *Options) []finding.Finding {
 	return out
 }
 
-func toVars(entries []envfile.Entry, file string) []envfile.Var {
-	out := make([]envfile.Var, len(entries))
-	for i, e := range entries {
-		out[i] = envfile.Var{Key: e.Key, Value: e.Value, File: file, Line: e.Line}
-	}
-	return out
-}
-
 func fd(level, code, file, fix, format string, a ...any) finding.Finding {
 	return finding.Finding{Level: level, Code: code, File: file, Message: fmt.Sprintf(format, a...), Fix: fix}
 }

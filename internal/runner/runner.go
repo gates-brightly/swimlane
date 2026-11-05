@@ -48,24 +48,6 @@ type Plan struct {
 	Wrapped bool
 }
 
-// Runner is the plan's runner as people read it: "bash", "python3 (#!)",
-// "tsx (config)", "./lane.3 (direct)".
-func (p Plan) Runner() string {
-	if p.Source == Direct {
-		return "./" + filepath.Base(p.Script) + " (direct)"
-	}
-	words := strings.Join(p.Argv[:len(p.Argv)-1], " ")
-	switch p.Source {
-	case Short:
-		return "bash (short form)"
-	case Shebang:
-		return words + " (#!)"
-	case Builtin:
-		return words
-	}
-	return words + " (" + p.Source + ")"
-}
-
 // Candidates are the commands swim looks for on PATH, in order, when it
 // meets an extension it has no runner for.
 var Candidates = map[string][]string{
@@ -265,20 +247,4 @@ func describe(cmd string) string {
 // operator's config.
 func Save(root, ext, cmd string) error {
 	return config.SetKey(config.Path(), root, "runners."+ext, cmd, true)
-}
-
-// Apply builds the plan for script once its runner (from Confirm) is known,
-// without re-reading config.
-func Apply(script, cmd string) (Plan, error) {
-	data, err := os.ReadFile(script)
-	if err != nil {
-		return Plan{}, err
-	}
-	p := Plan{Script: script, Source: Config, Wrapped: !lane.UsesLib(string(data))}
-	if cmd == "./" {
-		p.Argv, p.Source = []string{script}, Direct
-		return p, nil
-	}
-	p.Argv = append(strings.Fields(cmd), script)
-	return p, nil
 }

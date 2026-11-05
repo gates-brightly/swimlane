@@ -26,7 +26,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lint"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -134,7 +133,7 @@ func queueAdd(args []string) error {
 	if b.warn != "" {
 		fmt.Fprintln(os.Stderr, "swim queue: "+b.warn)
 	}
-	refreshStatus(root, cfg) // a schedule may hold it (held_by)
+	refreshStatus(root, cfg)
 	e, guards := b.entry, b.guards
 	seen := map[string]bool{}
 	for _, f := range e.Approve {
@@ -754,7 +753,7 @@ func cmdWatch(args []string) error {
 			return usagef("--batches takes a number, 1 or more (how many batches run at once), got %q", batchesFlag)
 		}
 	}
-	defer holdWatchLock(root)() // swim schedule can tell a worker is up
+	defer holdWatchLock(root)() // others can tell a worker is up
 	// ... and swim queue add which swim it is (.swim/workers/).
 	watchPresence = queue.Announce(root, operator(), cfg.QueueLeaseFor())
 	defer func() { watchPresence.Stop(); watchPresence = nil }()
@@ -896,8 +895,8 @@ func cmdWatch(args []string) error {
 			if err != nil {
 				return err
 			}
-			// Waiting, but none due (a batch an older swim scheduled).
-			say(fmt.Sprintf("%d queued; none due yet", n))
+			// Waiting, but none this worker can run (held for another).
+			say(fmt.Sprintf("%d queued; none can run here", n))
 			sleep()
 			continue
 		}
@@ -989,11 +988,6 @@ func loadCfg(root string) (*config.Config, error) {
 func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, plain bool, ask approval.Asker) (queue.Result, bool) {
 	started := time.Now().UTC()
 	res := queue.Result{Started: started.Format(time.RFC3339)}
-	if why := scheduleTampered(e); why != "" {
-		res.Finished, res.Exit, res.Result, res.Error = res.Started, 1, "error", why
-		fmt.Println("swim watch: " + why)
-		return res, false
-	}
 	var lanes []int
 	pins := map[int]string{}
 	guards := map[string]bool{}
@@ -1062,7 +1056,6 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
 		Unattended: true, Ask: ask}
 	o.Plain = plain // a batch swim watch runs alongside others (_batch)
-	o.ScheduledFor = e.NotBefore
 	if keys && len(lanes) > 1 {
 		// The live view's keys move between the batch's lanes. Parallel
 		// lanes get no stdin, so nothing in the batch can prompt.
@@ -1115,19 +1108,6 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		}
 	}
 	return res, interrupted
-}
-
-// scheduleTampered says why a signed batch with a start time (queued by a
-// swim that had swim schedule) must not run: its file no longer matches
-// what was signed (its start time moved, say).
-func scheduleTampered(e *queue.Entry) string {
-	if e.NotBefore == "" || e.QueueSig == "" {
-		return ""
-	}
-	if err := sign.Verify(e.QueuedKey, []byte(e.Statement()), e.QueueSig); err != nil {
-		return fmt.Sprintf("%s's signature doesn't match its file (edited after it was scheduled, its start time moved?): refused", e.ID)
-	}
-	return ""
 }
 
 // lintRefused is a batch refused at enqueue: lint errors swim run would

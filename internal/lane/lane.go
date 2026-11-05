@@ -433,25 +433,6 @@ func (i *Info) setFail(v, where string) {
 	}
 }
 
-// setBool reads a yes/no header value ("" is no).
-func (i *Info) setBool(v, where string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "", "-", "no", "false", "off", "none":
-		return false
-	case "yes", "true", "on":
-		return true
-	}
-	i.Problems = append(i.Problems, fmt.Sprintf("%s %q is not yes or no; no applies", where, v))
-	return false
-}
-
-// v1HeadKey reports whether a trimmed line is a Round, Job or After line.
-func v1HeadKey(t string) bool {
-	rest, ok := strings.CutPrefix(t, "#")
-	rest = strings.TrimSpace(rest)
-	return ok && (strings.HasPrefix(rest, "Round:") || strings.HasPrefix(rest, "Job:") || strings.HasPrefix(rest, "After:"))
-}
-
 // firstWordIs reports whether a line's first word is cmd, with something
 // after it.
 func firstWordIs(l, cmd string) bool {
@@ -516,11 +497,6 @@ func parseClaim(s string) (pid int, start, host string, ok bool) {
 	pid, start, ok = proc.Parse(strings.Join(f, " "))
 	return pid, start, host, ok
 }
-
-// Alive reports whether a process with pid exists. A pid alone may have
-// been handed to another process since; Running checks the start time
-// recorded with it too.
-func Alive(pid int) bool { return proc.Alive(pid) }
 
 // claimFile is lane n's claim: the lock it's claimed under, holding the
 // claimer's pid and start time.

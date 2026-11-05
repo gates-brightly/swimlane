@@ -5,7 +5,6 @@ package help
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/gates-brightly/swimlane"
@@ -1116,16 +1115,6 @@ swim claim N|RESOURCE --break "<reason>"
 func For(name string) (string, bool) {
 	h, ok := Commands[name]
 	return h, ok
-}
-
-// Names returns command names in a stable order.
-func Names() []string {
-	var n []string
-	for k := range Commands {
-		n = append(n, k)
-	}
-	sort.Strings(n)
-	return n
 }
 
 // Full is the complete --help text: the guide plus every command's detail.

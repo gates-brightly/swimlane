@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/queue"
@@ -44,17 +43,15 @@ func workerRunning(root string) bool {
 }
 
 // claimDue claims the first waiting batch a worker may start now, in
-// queue order. A batch an older swim scheduled (not_before) waits for its
-// time.
+// queue order.
 func claimDue(root string, cfg *config.Config) (*queue.Entry, error) {
 	entries, err := queue.List(root, false)
 	if err != nil {
 		return nil, err
 	}
 	queue.SortWaiting(entries)
-	now := time.Now()
 	for _, w := range entries {
-		if w.State != queue.Queued || !w.Due(now) {
+		if w.State != queue.Queued {
 			continue
 		}
 		if why := cantRunHere(root, w); why != "" {

@@ -206,13 +206,6 @@ func cmdParentsCheck(args []string) error {
 	return nil
 }
 
-func prefix(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
-}
-
 // node-value P...: the node's value is sha256 over its parents' values, so
 // the audit can recompute the whole DAG and catch a node that read early.
 func cmdNodeValue(args []string) error {

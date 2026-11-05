@@ -88,6 +88,11 @@ history stays here, since `swim changelog --since` reads it.
   in swim.yml or config.yml is ignored (`swim doctor` says to delete it),
   and the doctor checks `anchors-none`, `checkpoint-unsent` and
   `trust-unpinned` and the lint check `trust` are gone.
+- **The last of `swim schedule`.** A batch an older swim queued with a
+  start time (`not_before`) is no longer held for it, and the watch screen
+  no longer shows a `scheduled` state; `swim verify` no longer checks a
+  run's `scheduled_for` against its start (older chain entries keep the
+  field, and their signatures still verify).
 
 ### Changed
 
