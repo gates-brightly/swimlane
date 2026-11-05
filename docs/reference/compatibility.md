@@ -76,19 +76,20 @@ is a lint error that keeps only that lane from running.
 
 | Tier | What | Promise |
 |---|---|---|
-| **Stable** | The commands and flags in `swim guide` and `swim <command> --help`; the lane script syntax and the lane library; the lane log syntax; exit codes (`0` means everything selected passed; waits exit with the result they waited for). | Changes are additive. A format change bumps the syntax version, with Upgrading notes. A removal is deprecated first (below). |
+| **Stable** | The commands and flags in `swim guide` and `swim <command> --help`; the lane script syntax and the lane library; the lane log syntax; exit codes (`0` means everything selected passed; waits exit with the result they waited for). | Changes are additive. A format change bumps the syntax version, with Upgrading notes. A removal says what to change (below). |
 | **Versioned by schema** | Every `--yaml` output: `swim.run/v1`, `swim.status/v1`, `swim.log/v1`, `swim.queue-list/v1`, `swim.env/v1`, `swim.lint/v1`, `swim.doctor/v1`, `swim.verify/v1`. The files swim keeps: `swim.queue/v1` (queued batches) and `swim.manifest/v1` (a run's staged execution manifests). | Each document names its schema. Within a version, fields are only added; removing or renaming one bumps the version. |
 | **Experimental** | Commands starting with `_` (`swim _mark`, `swim _approve`), which lanes use internally, and the socket between them and `swim run` (`internal/approval`). Go packages under `internal/`. | May change in any release. Changes are noted in the CHANGELOG. |
 
-## Deprecations
+## Removals
 
-A stable feature is removed in steps, each announced in `CHANGELOG.md`:
-
-1. **Deprecated:** the release's **Changed** section says so, with how to
-   migrate and when it goes. swim warns where it's used (a `WARN` in the
-   log, a `swim doctor` or `swim lint` finding), and `swim doctor --fix`
-   migrates it where that's safe.
-2. **Removed:** in a later release, with **Upgrading** notes.
+swim is an opinionated tool, and a feature that stops earning its place
+goes. A removal lands in one release, with no compatibility layer: the
+release's **Removed** section says what went, and its **Upgrading** notes
+say what to change. Where a change can be made for you, a tool does it
+(`swim lint --fix` for lane scripts, `swim doctor --fix` for leftover
+state). The rare exception is a rename every lane would hit at once (in-lane
+`run` became `step`): the old name works for one release, with a lint
+warning.
 
 `swim changelog --since <version>` prints everything after the version you
 came from.
