@@ -26,7 +26,7 @@ print(f"{len(stale())} stale sessions", flush=True)   # plain Python, logged wit
 
 swim("stage", "change")
 if swim("guard", "SESSIONS_ALLOW_PURGE", "delete sessions older than the 2.4.1 deploy") == 0:
-    swim("run", "delete stale sessions", "--", "fakecloud", "delete", "sessions", "stale")
+    swim("step", "delete stale sessions", "--", "fakecloud", "delete", "sessions", "stale")
 
 swim("stage", "verify")
-swim("run", "no stale sessions left", "--", "bash", "-c", '[ -z "$(fakecloud select sessions stale)" ]')
+swim("step", "no stale sessions left", "--", "bash", "-c", '[ -z "$(fakecloud select sessions stale)" ]')

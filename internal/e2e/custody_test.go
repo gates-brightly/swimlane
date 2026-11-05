@@ -30,8 +30,8 @@ func people(t *testing.T, r *repo, names ...string) map[string]string {
 }
 
 func dropLane(t *testing.T, r *repo) {
-	r.script(1, "drop old table", `if guard FIN_ALLOW_DROP "drop table old_orders"; then run "drop" true; fi
-run "after" true`)
+	r.script(1, "drop old table", `if guard FIN_ALLOW_DROP "drop table old_orders"; then step "drop" true; fi
+step "after" true`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop table old_orders")
 }
 
@@ -92,13 +92,13 @@ func TestChainRecordsEveryApproval(t *testing.T) {
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])
-	r.script(1, "flagged", `if guard ALLOW_A "change a"; then run "a" true; fi`)
+	r.script(1, "flagged", `if guard ALLOW_A "change a"; then step "a" true; fi`)
 	c := r.cmd(bin, "run", "1")
 	c.Env = append(c.Env, "ALLOW_A=1")
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, out)
 	}
-	r.script(1, "queued", `if guard ALLOW_B "change b"; then run "b" true; fi`)
+	r.script(1, "queued", `if guard ALLOW_B "change b"; then step "b" true; fi`)
 	withHeader(t, r, 1, "# Guards:  ALLOW_B change b")
 	r.mustSwim("queue", "1", "--approve", "ALLOW_B")
 	r.mustSwim("watch", "--once")
@@ -148,7 +148,7 @@ func TestChainRecordsEveryApproval(t *testing.T) {
 func TestVerifyUnsigned(t *testing.T) {
 	r := newRepo(t)
 	keys := people(t, r, "zach")
-	r.script(1, "hello", `run "hi" true`)
+	r.script(1, "hello", `step "hi" true`)
 	out, _ := r.swim("run", "1", "--plain") // signing: off
 	contains(t, "unsigned run", out, "PASS")
 	out, code := r.swim("verify")
@@ -174,7 +174,7 @@ func TestVerifyForceAmendsGaps(t *testing.T) {
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])
-	r.script(1, "hello", `run "hi" true`)
+	r.script(1, "hello", `step "hi" true`)
 	for i := 0; i < 3; i++ {
 		r.mustSwim("run", "1", "--plain")
 	}

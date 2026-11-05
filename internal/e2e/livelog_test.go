@@ -13,9 +13,9 @@ import (
 
 // slowLane's step "slow" prints tick-1..3, holds until r.release("go"),
 // prints tick-4..6, and holds until r.release("go2").
-const slowLane = `run "quick" echo hello
-run "slow" bash -c 'for i in 1 2 3; do echo tick-$i; done; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; for i in 4 5 6; do echo tick-$i; done; rf="$SWIM_ROOT/go2"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'
-run "after" true`
+const slowLane = `step "quick" echo hello
+step "slow" bash -c 'for i in 1 2 3; do echo tick-$i; done; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; for i in 4 5 6; do echo tick-$i; done; rf="$SWIM_ROOT/go2"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'
+step "after" true`
 
 func spooled(r *repo, n int, want string) func() bool {
 	return func() bool {
@@ -67,7 +67,7 @@ func TestLogFollowStopsWhenDone(t *testing.T) {
 	long(t)
 	r := newRepo(t)
 	r.script(1, "slow then fail", slowLane+`
-run "fails" false`)
+step "fails" false`)
 	c := r.cmd(bin, "run", "1", "--plain")
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
@@ -110,7 +110,7 @@ run "fails" false`)
 // last look at the spool, shows once, from the step's block.
 func TestLogFollowLateOutput(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "late", `run "late" bash -c 'echo early; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo late-1; echo late-2'`)
+	r.script(1, "late", `step "late" bash -c 'echo early; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo late-1; echo late-2'`)
 	c := r.cmd(bin, "run", "1", "--plain")
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestLogFollowLateOutput(t *testing.T) {
 
 func TestLogCutOffStep(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "x", `run "a" true`)
+	r.script(1, "x", `step "a" true`)
 	r.mustSwim("run", "1")
 	// A spool left by a swim _step that was killed (no lane running).
 	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"),

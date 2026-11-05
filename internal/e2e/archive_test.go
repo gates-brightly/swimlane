@@ -11,12 +11,12 @@ import (
 // still passes.
 func TestArchiveDone(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one", `run "a" true`)
-	r.script(2, "two", `run "b" true`)
-	r.script(3, "three", `run "c" true`)
-	r.script(4, "four", `run "d" false`)
+	r.script(1, "one", `step "a" true`)
+	r.script(2, "two", `step "b" true`)
+	r.script(3, "three", `step "c" true`)
+	r.script(4, "four", `step "d" false`)
 	r.swim("all", "--plain")
-	r.script(3, "three again", `run "c2" true`) // new work since its round ran
+	r.script(3, "three again", `step "c2" true`) // new work since its round ran
 
 	out := r.mustSwim("archive", "--done", "shipped")
 	contains(t, "archive --done", out, "agent1.prev-", "agent2.prev-", "agent3.prev-", "kept lane.3.sh: changed since its round ran")

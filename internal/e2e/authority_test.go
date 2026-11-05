@@ -21,8 +21,8 @@ import (
 func (b *boundary) hostile(prelude string) {
 	b.t.Helper()
 	b.script(1, "drop orders", prelude+`
-if guard `+boundaryGuard+` "drop table orders"; then run "drop" touch "`+b.marker+`"; fi
-run "after" true`)
+if guard `+boundaryGuard+` "drop table orders"; then step "drop" touch "`+b.marker+`"; fi
+step "after" true`)
 	withHeader(b.t, b.repo, 1, "# Guards:  "+boundaryGuard+" drop table orders")
 }
 
@@ -106,7 +106,7 @@ func TestOtherRepoRunDoesNotCount(t *testing.T) {
 	inner += " " + boundaryGuard + "=1 bash lane.1.sh\n"
 	outer := newRepo(t)
 	outer.write("inner.sh", inner, 0o755)
-	outer.script(1, "test another repo", `run "inner lane" ./inner.sh`)
+	outer.script(1, "test another repo", `step "inner lane" ./inner.sh`)
 	withHeader(t, outer, 1, "# Includes: inner.sh")
 	outer.mustSwim("run", "1", "--plain")
 	if !b.dropped() {
@@ -212,7 +212,7 @@ func TestLaneCantReportForAnother(t *testing.T) {
 	r.script(2, "victim", `echo $$ > "$SWIM_ROOT/lane2.pid"
 f="$SWIM_ROOT/lane2.ready"; [ -p "$f" ] || mkfifo "$f" 2>/dev/null; echo ready > "$f"
 d="$SWIM_ROOT/lane1.done"; [ -p "$d" ] || mkfifo "$d" 2>/dev/null; cat "$d" >/dev/null
-run "work" true`)
+step "work" true`)
 	steal := ""
 	if runtime.GOOS == "linux" {
 		steal = `
@@ -225,7 +225,7 @@ SWIM_APPROVAL_TOKEN=$tok "$SWIM_BIN" _mark 2 FAIL "forged with a stolen token" |
 "$SWIM_BIN" _stage 2 change || echo "stage refused: $?"
 "$SWIM_BIN" _finish 2 --exit 1 || echo "finish refused: $?"`+steal+`
 d="$SWIM_ROOT/lane1.done"; [ -p "$d" ] || mkfifo "$d" 2>/dev/null; echo done > "$d"
-run "own work" true`)
+step "own work" true`)
 	out, code := r.swim("run", "1", "2", "--plain")
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
@@ -252,7 +252,7 @@ func TestBrokerHostileClients(t *testing.T) {
 		t.Skip("python3 not installed")
 	}
 	r := newRepo(t)
-	r.script(1, "hostile", `run "junk" python3 -c '
+	r.script(1, "hostile", `step "junk" python3 -c '
 import json, os, socket, threading
 path, tok = os.environ["SWIM_APPROVAL"], os.environ["SWIM_APPROVAL_TOKEN"]
 def ask(payload):
@@ -278,7 +278,7 @@ print("bogus approved:", any(out))
 other = ask(json.dumps({"lane": 2, "flag": "DROP", "desc": "as lane 2", "token": tok}).encode() + b"\n")
 print("as lane 2 answered for lane", other.get("lane"))
 '
-if guard DROP "drop the table"; then run "dropped" true; fi`)
+if guard DROP "drop the table"; then step "dropped" true; fi`)
 	withHeader(t, r, 1, "# Guards:  DROP drop the table")
 	out, code := r.swimEnv([]string{"DROP=1"}, "run", "1", "--plain")
 	if code != 0 {

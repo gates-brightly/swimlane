@@ -22,7 +22,7 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 	keys := people(t, r, "old", "new")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["old"])
-	r.script(1, "one", `run "ok" true`)
+	r.script(1, "one", `step "ok" true`)
 	r.mustSwim("run", "1")
 
 	// The old private key is gone; the runner signs with a new one.
@@ -47,7 +47,7 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 // --rebuild records the round as interrupted.
 func TestRecoveryStaleRunningLane(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "killed", `run "long" `+blocked("long")+``)
+	r.script(1, "killed", `step "long" `+blocked("long")+``)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := c.Start(); err != nil {
@@ -69,7 +69,7 @@ func TestRecoveryStaleRunningLane(t *testing.T) {
 		t.Errorf("after rebuild: state %q, want interrupted", l.State)
 	}
 	// The lane is free again.
-	r.script(1, "rerun", `run "quick" true`)
+	r.script(1, "rerun", `step "quick" true`)
 	r.mustSwim("run", "1")
 }
 
@@ -79,7 +79,7 @@ func TestRecoveryStaleRunningLane(t *testing.T) {
 func TestReapDeadLane(t *testing.T) {
 	r := newRepo(t)
 	kill := func() {
-		r.script(1, "killed", `run "long" `+blocked("long")+``)
+		r.script(1, "killed", `step "long" `+blocked("long")+``)
 		c := r.cmd("bash", "lane.1.sh")
 		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		if err := c.Start(); err != nil {
@@ -110,7 +110,7 @@ func TestReapDeadLane(t *testing.T) {
 
 	// swim run does the same before it starts anything; the lane is free.
 	kill()
-	r.script(1, "rerun", `run "quick" true`)
+	r.script(1, "rerun", `step "quick" true`)
 	out = r.mustSwim("run", "1")
 	contains(t, "run", out, "swim 1: its process died without ending its round")
 	if strings.Count(r.log(1), "== END INTERRUPTED") != 2 {

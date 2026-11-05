@@ -45,10 +45,10 @@ func (b *broker) requests() []approval.Request {
 
 func TestGuardAsksForApproval(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "guarded", `if guard DROP_A "drop table a - 2026-10-12"; then run "drop a" true; fi
-if guard DROP_B "drop table b - 2026-10-12"; then run "drop b" true; fi
-if guard PRESET "preset flag"; then run "preset step" true; fi
-if guard OFF "explicitly off"; then run "off step" true; fi`)
+	r.script(1, "guarded", `if guard DROP_A "drop table a - 2026-10-12"; then step "drop a" true; fi
+if guard DROP_B "drop table b - 2026-10-12"; then step "drop b" true; fi
+if guard PRESET "preset flag"; then step "preset step" true; fi
+if guard OFF "explicitly off"; then step "off step" true; fi`)
 	b := newBroker(t, func(req approval.Request, _ <-chan struct{}) bool { return req.Flag == "DROP_A" })
 	c := r.cmd("bash", "lane.1.sh")
 	tok := b.Register(approval.Caller{Lane: 1, Guards: []string{"DROP_A", "DROP_B", "PRESET", "OFF"}})
@@ -80,8 +80,8 @@ if guard OFF "explicitly off"; then run "off step" true; fi`)
 
 func TestApprovalGivesUpWhenStopped(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "guarded", `if guard SLOW "slow approval"; then run "never" true; fi
-run "after" true`)
+	r.script(1, "guarded", `if guard SLOW "slow approval"; then step "never" true; fi
+step "after" true`)
 	b := newBroker(t, func(_ approval.Request, cancel <-chan struct{}) bool { <-cancel; return false })
 	c := r.cmd("bash", "lane.1.sh")
 	c.Env = append(c.Env, approval.EnvVar+"="+b.Path(), approval.TokenEnv+"="+b.Register(approval.Caller{Lane: 1, Guards: []string{"SLOW"}}))
@@ -109,8 +109,8 @@ run "after" true`)
 
 func TestNoPromptWithoutTerminal(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "guarded", `if guard FLAG_X "risky"; then run "risky" true; fi`)
-	r.script(2, "other", `run "x" true`)
+	r.script(1, "guarded", `if guard FLAG_X "risky"; then step "risky" true; fi`)
+	r.script(2, "other", `step "x" true`)
 	// swim all with no terminal: no broker, lanes don't prompt on their own.
 	out := r.mustDryRun("all", "--plain")
 	contains(t, "agent1.log", r.log(1), "SKIP  risky (dry run: set FLAG_X=1 to approve)")
@@ -127,9 +127,9 @@ func TestNoPromptWithoutTerminal(t *testing.T) {
 // it's loud where people look; FLAG=0 declines. -y is gone.
 func TestFlagApproved(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "guarded", `if guard ALLOW_A "change a"; then run "a changed" true; fi
-if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
-	r.script(2, "guarded too", `if guard ALLOW_B "change b"; then run "b changed" true; fi`)
+	r.script(1, "guarded", `if guard ALLOW_A "change a"; then step "a changed" true; fi
+if guard ALLOW_OFF "explicitly off"; then step "off ran" true; fi`)
+	r.script(2, "guarded too", `if guard ALLOW_B "change b"; then step "b changed" true; fi`)
 	c := r.cmd(bin, "all", "--plain")
 	c.Env = append(c.Env, "SWIM_USER=tester", "ALLOW_A=1", "ALLOW_B=1", "ALLOW_OFF=0")
 	out, err := c.CombinedOutput()
@@ -157,7 +157,7 @@ if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
 // dry run, never approved by default.
 func TestGuardDeclinesOnSocketError(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "guarded", `if guard ALLOW_X "change x"; then run "x changed" true; fi`)
+	r.script(1, "guarded", `if guard ALLOW_X "change x"; then step "x changed" true; fi`)
 	c := r.cmd("bash", "lane.1.sh")
 	c.Env = append(c.Env, approval.EnvVar+"="+filepath.Join(t.TempDir(), "no-such-socket"))
 	if out, err := c.CombinedOutput(); err != nil {

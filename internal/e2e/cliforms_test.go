@@ -13,7 +13,7 @@ import (
 func TestCLIFormsPeopleType(t *testing.T) {
 	r := newRepo(t)
 	for _, n := range []int{2, 3, 17} {
-		r.shortLane(n, "# Round: lane form", "stage check\nrun \"x\" echo hi")
+		r.shortLane(n, "# Round: lane form", "stage check\nstep \"x\" echo hi")
 	}
 	if out, code := r.swim("lint", "lane.17.sh"); code != 0 || !strings.Contains(out, "no problems found") {
 		t.Errorf("lint lane.17.sh: exit %d\n%s", code, out)

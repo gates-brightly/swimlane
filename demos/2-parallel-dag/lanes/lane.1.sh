@@ -11,6 +11,6 @@ stage check
 gate "tests pass" sleep 1
 
 stage change
-run "build images" sleep 2
-run "push images" sleep 1
+step "build images" sleep 2
+step "push images" sleep 1
 summary

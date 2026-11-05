@@ -13,9 +13,9 @@ stage check
 gate "image worker:2.4.0 pushed" echo "registry.local/worker:2.4.0"
 
 stage change
-run "migrate jobs schema" sleep 1
+step "migrate jobs schema" sleep 1
 gate "deploy worker" fakecloud deploy worker 2.4.0 2
 
 stage verify
-run "worker healthy" fakecloud health worker
+step "worker healthy" fakecloud health worker
 summary

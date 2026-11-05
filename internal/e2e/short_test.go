@@ -23,10 +23,10 @@ func TestShortFormLane(t *testing.T) {
 	shortLane(t, r, 1, `# Round: Say hello
 # Guards: HELLO_ALLOW_WRITE  write hello.txt
 stage check
-run "say hello" echo "hello from swim"
+step "say hello" echo "hello from swim"
 stage change
 if guard HELLO_ALLOW_WRITE "write hello.txt"; then
-  run "write it" bash -c 'echo hi > "$SWIM_ROOT/hello.txt"'
+  step "write it" bash -c 'echo hi > "$SWIM_ROOT/hello.txt"'
 fi
 `)
 	contains(t, "lint", r.mustSwim("lint", "1"), "no problems found")
@@ -56,14 +56,14 @@ fi
 // A command outside a step that fails is still recorded.
 func TestShortFormLastStepFails(t *testing.T) {
 	r := newRepo(t)
-	shortLane(t, r, 1, "# Round: fails last\nstage check\nrun \"fails\" false\n")
+	shortLane(t, r, 1, "# Round: fails last\nstage check\nstep \"fails\" false\n")
 	if _, code := r.swim("run", "1", "--plain", "--no-prompt"); code == 0 {
 		t.Fatal("the lane passed")
 	}
 	if strings.Contains(r.log(1), "outside a step") {
 		t.Errorf("the failed last step also warned outside a step:\n%s", r.log(1))
 	}
-	shortLane(t, r, 2, "# Round: stray\nstage check\ncd /nowhere-at-all\nrun \"ok\" true\n")
+	shortLane(t, r, 2, "# Round: stray\nstage check\ncd /nowhere-at-all\nstep \"ok\" true\n")
 	r.swim("run", "2", "--plain", "--no-prompt")
 	contains(t, "stray command", r.log(2), "WARN  outside a step: cd /nowhere-at-all")
 }
@@ -75,7 +75,7 @@ func TestShortFormShebang(t *testing.T) {
 	shortLane(t, r, 2, `# Round: Gate
 stage check
 gate "app.conf is there" test -f "$SWIM_ROOT/app.conf"
-run "never reached" echo reached
+step "never reached" echo reached
 `)
 	c := r.cmd(filepath.Join(r.root, "lane.2.sh"), "--plain")
 	c.Dir = t.TempDir()

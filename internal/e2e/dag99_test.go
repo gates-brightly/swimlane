@@ -125,7 +125,7 @@ eval "$_swim_lib"
 RUN_ID=$SWIM_RUN
 export D N PARENTS NODE_START RUN_ID
 mkdir -p "$D/nodes"
-run "clear own marker and value" rm -f "$D/nodes/$N.done" "$D/nodes/$N.val"
+step "clear own marker and value" rm -f "$D/nodes/$N.done" "$D/nodes/$N.val"
 stage check
 `)
 	if ps != "" {
@@ -133,7 +133,7 @@ stage check
 	}
 	b.WriteString(`
 stage change
-run "simulated work" true
+step "simulated work" true
 gate "value from parents -> nodes/$N.val" e2etool node-value $PARENTS
 
 stage verify
@@ -172,7 +172,7 @@ NODE_START=$(e2etool now)
 RUN_ID=$SWIM_RUN
 export D N PARENTS NODE_START RUN_ID
 mkdir -p "$D/nodes"
-run "clear own marker" rm -f "$D/nodes/$N.done"
+step "clear own marker" rm -f "$D/nodes/$N.done"
 stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 

@@ -44,7 +44,7 @@ summary
 // its log, with the fix.
 func TestStartRefusalIsRecorded(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "too new", `run "never" true`)
+	r.script(1, "too new", `step "never" true`)
 	r.mustSwim("run", "1", "--plain")
 	path := filepath.Join(r.root, "lane.1.sh")
 	data, err := os.ReadFile(path)
@@ -71,7 +71,7 @@ func TestStartRefusalIsRecorded(t *testing.T) {
 // longer has) still verifies beside the rounds after it.
 func TestOldCheckEntryVerifies(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one step", `run "hello" echo hi`)
+	r.script(1, "one step", `step "hello" echo hi`)
 	exit := 0
 	if _, err := chain.Append(r.root, chain.Entry{Type: "check", Run: "r-old", Lane: 1, Job: "j", Round: "one step",
 		Result: "checked", Exit: &exit, Log: chain.Hash([]byte("== ROUND\n"))}, nil); err != nil {

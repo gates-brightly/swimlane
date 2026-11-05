@@ -21,8 +21,8 @@ import (
 )
 
 func guardedLanes(t *testing.T, r *repo) {
-	r.script(1, "drop", `if guard ALLOW_DROP "drop table t"; then run "dropped" true; fi`)
-	r.script(2, "other", `if guard ALLOW_OTHER "other change"; then run "other changed" true; fi`)
+	r.script(1, "drop", `if guard ALLOW_DROP "drop table t"; then step "dropped" true; fi`)
+	r.script(2, "other", `if guard ALLOW_OTHER "other change"; then step "other changed" true; fi`)
 	withHeader(t, r, 1, "# Guards:  ALLOW_DROP drop table t")
 	withHeader(t, r, 2, "# Guards:  ALLOW_OTHER other change")
 }
@@ -76,10 +76,10 @@ func TestQueueAndWatchOnce(t *testing.T) {
 	contains(t, ".swim.log", string(hist), "queue ", "approve=ALLOW_DROP  batch one", "queue-run", "queue-done")
 
 	// A lane rewritten after it was queued is skipped, not run.
-	r.script(1, "drop v2", `run "v2" true`)
+	r.script(1, "drop v2", `step "v2" true`)
 	withHeader(t, r, 1, "# Job: 11111111-2222-4333-8444-555555555555")
 	r.mustSwim("queue", "add", "1")
-	r.script(1, "drop v3", `run "v3" true`)
+	r.script(1, "drop v3", `step "v3" true`)
 	withHeader(t, r, 1, "# Job: 99999999-2222-4333-8444-555555555555")
 	if out, code := r.swim("watch", "--once"); code == 0 {
 		t.Errorf("a batch with a skipped lane should not pass:\n%s", out)
@@ -100,8 +100,8 @@ func TestQueueAndWatchOnce(t *testing.T) {
 func TestWatchWaitsForBusyLanes(t *testing.T) {
 	long(t)
 	r := newRepo(t)
-	r.script(1, "long", `run "long" `+hold("go"))
-	r.script(2, "queued", `run "q" true`)
+	r.script(1, "long", `step "long" `+hold("go"))
+	r.script(2, "queued", `step "q" true`)
 	busy := r.cmd(bin, "run", "1", "--plain")
 	if err := busy.Start(); err != nil {
 		t.Fatal(err)
@@ -142,7 +142,7 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 func TestWatchWorkersShareTheQueue(t *testing.T) {
 	r := newRepo(t)
 	for n := 1; n <= 3; n++ {
-		r.script(n, "q", `run "work" true`)
+		r.script(n, "q", `step "work" true`)
 	}
 	for n := 1; n <= 3; n++ {
 		r.mustSwim("queue", "add", string(rune('0'+n)))
@@ -218,8 +218,8 @@ var _ = exec.Command
 
 func TestWatchCtrlCDuringBatch(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "long", `run "a" `+hold("go")+`
-run "b" true`)
+	r.script(1, "long", `step "a" `+hold("go")+`
+step "b" true`)
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "1") // waits for the first: same lane
 	w := r.cmd(bin, "watch", "--interval", "100ms")
@@ -280,13 +280,13 @@ func TestWatchApprovesOnlyTheBatchs(t *testing.T) {
 func TestApproveIncludedAndDynamicGuards(t *testing.T) {
 	r := newRepo(t)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
-	r.write("lib/g.sh", "do_inc() { if guard ALLOW_INC \"included\"; then run \"inc ran\" true; fi; }\n", 0o644)
+	r.write("lib/g.sh", "do_inc() { if guard ALLOW_INC \"included\"; then step \"inc ran\" true; fi; }\n", 0o644)
 	r.script(1, "include", `source lib/g.sh
 do_inc`)
 	// A guard in an included file is the lane's: its header declares it.
 	withHeader(t, r, 1, "# Includes: lib/g.sh\n# Guards: ALLOW_INC  included")
 	r.script(2, "dynamic", `F=ALLOW_DYN
-if guard "$F" "dynamic"; then run "dyn ran" true; fi`)
+if guard "$F" "dynamic"; then step "dyn ran" true; fi`)
 	r.mustSwim("queue", "add", "1", "--approve", "ALLOW_INC")
 	if out, code := r.swim("watch", "--once"); code != 0 {
 		t.Fatalf("watch: %d\n%s", code, out)
@@ -334,9 +334,9 @@ func queuedID(t *testing.T, out string) string {
 func TestWaitForBatchLaneAndRun(t *testing.T) {
 	long(t)
 	r := newRepo(t)
-	r.script(1, "long", `run "long" `+hold("go"))
-	r.script(2, "queued", `run "q" true`)
-	r.script(3, "fails", `run "f" false`)
+	r.script(1, "long", `step "long" `+hold("go"))
+	r.script(2, "queued", `step "q" true`)
+	r.script(3, "fails", `step "f" false`)
 	contains(t, "wait when idle", r.mustSwim("wait"), "swim wait: idle")
 
 	busy := r.cmd(bin, "run", "1", "--plain")
@@ -397,7 +397,7 @@ func TestWaitForBatchLaneAndRun(t *testing.T) {
 
 func TestWaitNamesAQueueWithNoWorker(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "q", `run "q" true`)
+	r.script(1, "q", `step "q" true`)
 	id := queuedID(t, r.mustSwim("queue", "1"))
 	if out, code := r.swim("wait", "--timeout", "200ms", "--interval", "50ms"); code != 1 || !strings.Contains(out, "1 queued batch(es) not yet taken by a worker (swim watch)") {
 		t.Errorf("wait with a queued batch and no worker: %d\n%s", code, out)
@@ -428,9 +428,9 @@ func TestWatchBatchesSideBySide(t *testing.T) {
 	// has started (the test releases it then), so the two overlap however
 	// slow the machine.
 	stamp := func(name, work string) string {
-		return fmt.Sprintf(`run "%[1]s start" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.start"'
-run "%[1]s work" %[2]s
-run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
+		return fmt.Sprintf(`step "%[1]s start" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.start"'
+step "%[1]s work" %[2]s
+step "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 	}
 	r.script(1, "slow one", stamp("one", hold("two-started")))
 	r.script(2, "two", stamp("two", "true"))

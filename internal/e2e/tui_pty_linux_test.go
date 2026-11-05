@@ -249,8 +249,8 @@ func sameGrid(a, b [][]rune) bool { return len(a) > 0 && len(b) > 0 && &a[0] == 
 func tuiLanes(r *repo, n int) (release func()) {
 	for i := 1; i <= n; i++ {
 		r.script(i, fmt.Sprintf("tui lane %d", i), fmt.Sprintf(
-			`run "talk" bash -c 'for i in $(seq 1 %d); do echo lane%d-line-$i; done; echo lane%d-hello'
-run "hold" `, 5+30*(i%2), i, i)+hold("release"))
+			`step "talk" bash -c 'for i in $(seq 1 %d); do echo lane%d-line-$i; done; echo lane%d-hello'
+step "hold" `, 5+30*(i%2), i, i)+hold("release"))
 	}
 	return func() { r.release("release") }
 }
@@ -416,9 +416,9 @@ func TestTUIOff(t *testing.T) {
 func TestTUIManyLanesKeepsSelection(t *testing.T) {
 	r := newSerialRepo(t)
 	for i := 1; i <= 40; i++ {
-		body := `run "quick" true`
+		body := `step "quick" true`
 		if i == 1 {
-			body = `run "hold" ` + hold("release")
+			body = `step "hold" ` + hold("release")
 		}
 		r.script(i, fmt.Sprintf("many %d", i), body)
 	}

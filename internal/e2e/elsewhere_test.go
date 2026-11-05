@@ -12,8 +12,8 @@ import (
 func TestLaneRunningElsewhere(t *testing.T) {
 	long(t)
 	r := newRepo(t)
-	r.script(1, "the other swim's lane", `run "work" `+hold("go1"))
-	r.script(2, "this swim's lane", `run "longer" `+hold("go2"))
+	r.script(1, "the other swim's lane", `step "work" `+hold("go1"))
+	r.script(2, "this swim's lane", `step "longer" `+hold("go2"))
 
 	other := r.cmd(bin, "run", "1", "--plain")
 	other.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

@@ -34,7 +34,7 @@ func TestResolve(t *testing.T) {
 	// A short form (#!/usr/bin/env swim) runs with bash after swim's
 	// prelude, whatever its extension, and isn't wrapped.
 	for _, name := range []string{"lane.7.sh", "lane.8"} {
-		short := write(name, "#!/usr/bin/env swim\n# Round: x\nrun \"hi\" echo hi\n", 0o755)
+		short := write(name, "#!/usr/bin/env swim\n# Round: x\nstep \"hi\" echo hi\n", 0o755)
 		p, err := Resolve(cfg, short)
 		if err != nil || p.Source != Short || p.Wrapped || len(p.Argv) != 4 ||
 			strings.Join(p.Argv[:2], " ") != "bash -c" || p.Argv[2] != ShortPrelude || p.Argv[3] != short {

@@ -39,7 +39,7 @@ PARENTS="1"
 NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
-run "clear own done marker" rm -f "$D/nodes/$N.done"
+step "clear own done marker" rm -f "$D/nodes/$N.done"
 stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$SWIM_RUN
@@ -49,7 +49,7 @@ export RUN_ID
 IN=$D/input-3.$SWIM_JOB.html
 export IN
 gate "copy input to $IN" cp "$D/combined.html" "$IN"
-run "simulated work" true
+step "simulated work" true
 gate "compute stats.json" e2etool stats
 
 stage verify

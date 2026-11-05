@@ -55,7 +55,7 @@ func rewriteChain(t *testing.T, r *repo, key *sign.Key) {
 // one fails the same way.
 func TestVerifyRefusesUnsigned(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one", `run "ok" true`)
+	r.script(1, "one", `step "ok" true`)
 	r.mustSwim("run", "1", "--plain")
 	out, code := r.swim("verify")
 	if code != 1 || !strings.Contains(out, "NOT VERIFIED") || !strings.Contains(out, "unsigned entries") {

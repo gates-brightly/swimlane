@@ -17,11 +17,11 @@ import (
 // nothing in the round, and the chain names the original script.
 func TestManifestStagedBytesRun(t *testing.T) {
 	r := newRepo(t)
-	r.script(2, "goes first", `run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
+	r.script(2, "goes first", `step "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "greet.sh"), []byte("greeting=greet-v1\n"), 0o644)
 	r.script(3, "waits for 2", `source lib/greet.sh
-run "say" echo "script-v1 $greeting"`)
+step "say" echo "script-v1 $greeting"`)
 	withHeader(t, r, 3, "# After: 2")
 	data, _ := lane.ScriptBytes(r.root, 3)
 	orig := chain.Hash(data)
@@ -30,7 +30,7 @@ run "say" echo "script-v1 $greeting"`)
 	waitFor(t, func() bool { l := r.status().Get(2); return l != nil && l.CurrentStep == "hold" })
 	waitFor(t, func() bool { l := r.status().Get(3); return l != nil && l.State == "waiting" })
 	r.script(3, "waits for 2", `source lib/greet.sh
-run "say" echo "script-v2 $greeting"`)
+step "say" echo "script-v2 $greeting"`)
 	withHeader(t, r, 3, "# After: 2")
 	os.WriteFile(filepath.Join(r.root, "lib", "greet.sh"), []byte("greeting=greet-v2\n"), 0o644)
 	r.release("release")
@@ -66,9 +66,9 @@ run "say" echo "script-v2 $greeting"`)
 // reads the staged copy.
 func TestManifestMidRunEdit(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "long", `run "first" echo one-v1
-run "wait" bash -c 'rf="$SWIM_ROOT/go1"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'
-run "second" echo two-v1`)
+	r.script(1, "long", `step "first" echo one-v1
+step "wait" bash -c 'rf="$SWIM_ROOT/go1"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'
+step "second" echo two-v1`)
 	l := r.launch(t, nil)
 	waitFor(t, func() bool { l := r.status().Get(1); return l != nil && l.CurrentStep == "wait" })
 	p := filepath.Join(r.root, "lane.1.sh")
@@ -92,7 +92,7 @@ func TestManifestQueuePin(t *testing.T) {
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "x.sh"), []byte("x=1\n"), 0o644)
 	r.script(1, "sources x", `source lib/x.sh
-run "x" echo "x=$x"`)
+step "x" echo "x=$x"`)
 	r.mustSwim("queue", "add", "1")
 	os.WriteFile(filepath.Join(r.root, "lib", "x.sh"), []byte("x=2\n"), 0o644)
 	r.swim("watch", "--once")
@@ -109,7 +109,7 @@ func TestManifestApprovalBinding(t *testing.T) {
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=old_orders\n"), 0o644)
 	r.script(1, "drop old table", `source lib/tables.sh
-if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
+if guard FIN_ALLOW_DROP "drop table $table"; then step "drop" true; fi`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop the old table")
 	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")
 	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=orders\n"), 0o644)
@@ -132,9 +132,9 @@ if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 // flag is refused, and the approval is recorded as the lane's own.
 func TestManifestRequestsFromTheLane(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "asks as another", `if "$SWIM_BIN" _approve 5 DROP "harmless cleanup" --flag-set; then run "dropped as 5" true; fi
-if "$SWIM_BIN" _approve 1 DROP "harmless cleanup" --flag-set; then run "dropped" true; fi
-if "$SWIM_BIN" _approve 1 WIPE_ALL "routine tidy"; then run "wiped" true; fi`)
+	r.script(1, "asks as another", `if "$SWIM_BIN" _approve 5 DROP "harmless cleanup" --flag-set; then step "dropped as 5" true; fi
+if "$SWIM_BIN" _approve 1 DROP "harmless cleanup" --flag-set; then step "dropped" true; fi
+if "$SWIM_BIN" _approve 1 WIPE_ALL "routine tidy"; then step "wiped" true; fi`)
 	withHeader(t, r, 1, "# Guards:  DROP drop the table")
 	out, code := r.swimEnv([]string{"DROP=1"}, "run", "1")
 	if code != launcher.ExitDryRun { // WIPE_ALL dry-runs
@@ -170,7 +170,7 @@ func TestManifestResponseReuse(t *testing.T) {
 	}
 	r := newRepo(t)
 	// Lane 1 asks the broker itself and keeps the response's id.
-	r.script(1, "gets an approval", `run "ask" python3 -c '
+	r.script(1, "gets an approval", `step "ask" python3 -c '
 import json, os, socket
 s = socket.socket(socket.AF_UNIX); s.connect(os.environ["SWIM_APPROVAL"])
 s.sendall(json.dumps({"lane": 1, "flag": "DROP", "desc": "x", "flag_set": True, "token": os.environ["SWIM_APPROVAL_TOKEN"]}).encode() + b"\n")
@@ -179,7 +179,7 @@ open(os.environ["SWIM_ROOT"] + "/approval-id", "w").write(resp["id"])'
 "$SWIM_BIN" _mark 1 APPROVED "drop" "approved" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP && echo first-use-ok
 "$SWIM_BIN" _mark 1 APPROVED "drop" "approved" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP || echo second-use-refused`)
 	withHeader(t, r, 1, "# Guards:  DROP drop the table")
-	r.script(2, "replays it", `if "$SWIM_BIN" _mark 2 APPROVED "drop" "approved at the prompt" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP; then run "replayed" true; fi`)
+	r.script(2, "replays it", `if "$SWIM_BIN" _mark 2 APPROVED "drop" "approved at the prompt" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP; then step "replayed" true; fi`)
 	withHeader(t, r, 2, "# Guards:  DROP drop the table")
 	withHeader(t, r, 2, "# After: 1")
 	out, _ := r.swimEnv([]string{"DROP=1"}, "run", "1", "2")
@@ -201,7 +201,7 @@ func TestManifestRunnerBinding(t *testing.T) {
 	r.env = append(r.env, "PATH="+filepath.Dir(bin)+":"+dir+":/usr/bin:/bin")
 	body := `# Round: drop the old table
 # Guards:  FIN_ALLOW_DROP drop the old table
-if swim guard FIN_ALLOW_DROP "drop the old table"; then swim run "drop" -- true; fi
+if swim guard FIN_ALLOW_DROP "drop the old table"; then swim step "drop" -- true; fi
 `
 	r.write("lane.1.py", "#!/usr/bin/env pyrun\n"+body, 0o755)
 	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")

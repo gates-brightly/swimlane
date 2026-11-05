@@ -15,5 +15,5 @@ stage change
 gate "deploy web" fakecloud deploy web 2.4.0 3
 
 stage verify
-run "web healthy" fakecloud health web
+step "web healthy" fakecloud health web
 summary

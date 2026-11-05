@@ -39,14 +39,14 @@ PARENTS="1"
 NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
-run "clear own done marker" rm -f "$D/nodes/$N.done"
+step "clear own done marker" rm -f "$D/nodes/$N.done"
 stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$SWIM_RUN
 stage change
 export RUN_ID
 
-run "simulated work" true
+step "simulated work" true
 gate "extract links.tsv" e2etool links
 
 stage verify

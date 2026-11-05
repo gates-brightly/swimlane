@@ -10,6 +10,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 )
 
+// lane3 calls run, step's old name: its bytes are hashed (goldenV2).
 const lane3 = `#!/usr/bin/env bash
 # Round: drop orders
 # Includes: lib/inc.sh lib/orders.sh lib/deep.sh
@@ -112,7 +113,7 @@ func TestCoverage(t *testing.T) {
 		// Only what the header names is pinned: a file the script sources
 		// without # Includes: is refused when the lane runs, not pinned.
 		{"a file sourced but not declared", "lib/undeclared.sh", "undeclared=2\n", false},
-		{"another lane", "lane.5.sh", "#!/usr/bin/env bash\n# Round: ci\nrun \"fmt\" true\n", false},
+		{"another lane", "lane.5.sh", "#!/usr/bin/env bash\n# Round: ci\nstep \"fmt\" true\n", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -205,12 +206,12 @@ func TestVerifyV1Manifest(t *testing.T) {
 // (an explicit lane's stays "bash": TestManifestHashFrozen).
 func TestShortFormPin(t *testing.T) {
 	root := repo(t)
-	write(t, root, "lane.4.sh", "#!/usr/bin/env swim\n# Round: short\nrun \"a\" true\n")
+	write(t, root, "lane.4.sh", "#!/usr/bin/env swim\n# Round: short\nstep \"a\" true\n")
 	m := build(t, root, 4)
 	if m.Pinned.Runner != "bash (short form)" {
 		t.Errorf("short form runner: %q", m.Pinned.Runner)
 	}
-	write(t, root, "lane.4.sh", "#!/usr/bin/env bash\n# Round: short\neval \"$(swim _lib)\"\nlane_init 4\nrun \"a\" true\n")
+	write(t, root, "lane.4.sh", "#!/usr/bin/env bash\n# Round: short\neval \"$(swim _lib)\"\nlane_init 4\nstep \"a\" true\n")
 	if e := build(t, root, 4); e.Pinned.Runner != "bash" || e.SHA256 == m.SHA256 {
 		t.Errorf("explicit form: runner %q, same hash %v", e.Pinned.Runner, e.SHA256 == m.SHA256)
 	}

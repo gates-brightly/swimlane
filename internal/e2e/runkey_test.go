@@ -94,7 +94,7 @@ while [ "${p:-1}" -gt 1 ]; do
   fi
   p=$(awk '{print $4}' /proc/$p/stat 2>/dev/null)
 done
-run "ok" true`)
+step "ok" true`)
 
 	a.allow() // the operator says yes to swim run's one question
 	r.mustSwim("run", "1", "--plain")

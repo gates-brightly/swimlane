@@ -9,6 +9,6 @@ _swim_lib=$("${SWIM_BIN:-swim}" _lib) || { echo "swim not found on PATH" >&2; ex
 eval "$_swim_lib"
 lane_init 6
 stage check
-run "git log" git log --oneline -1
-run "after the blocked command" true
+step "git log" git log --oneline -1
+step "after the blocked command" true
 summary

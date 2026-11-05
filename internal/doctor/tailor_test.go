@@ -66,7 +66,7 @@ func TestBash(t *testing.T) {
 func TestGNUOnly(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	writeLane(t, root, 1, "run \"edit\" sed -i 's/a/b/' notes.txt\nrun \"slow\" timeout 30 make check")
+	writeLane(t, root, 1, "step \"edit\" sed -i 's/a/b/' notes.txt\nstep \"slow\" timeout 30 make check")
 	o := opts(root)
 	o.Host = "darwin/arm64"
 	o.GNU = func(tool string) bool { return tool == "timeout" } // coreutils' timeout, BSD sed

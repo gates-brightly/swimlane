@@ -228,8 +228,8 @@ func crash(r *repo, c *exec.Cmd, paused int) {
 // swim run.
 func TestFaultStepAfterExit(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
-run "after" touch "$SWIM_ROOT/after"`)
+	r.script(1, "charge", `step "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
+step "after" touch "$SWIM_ROOT/after"`)
 	c, out, dir := faultRun(t, r, failpoint.StepAfterExit+":pause", "run", "1")
 	pid := waitHit(t, dir, failpoint.StepAfterExit, out)
 	crash(r, c, pid)
@@ -272,7 +272,7 @@ run "after" touch "$SWIM_ROOT/after"`)
 // watch doesn't run it. It runs again only when requeued.
 func TestFaultQueueClaimed(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'`)
+	r.script(1, "charge", `step "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'`)
 	r.mustSwim("queue", "add", "1")
 	c, out, dir := faultRun(t, r, failpoint.QueueClaimed+":kill", "watch", "--once", "--plain")
 	waitHit(t, dir, failpoint.QueueClaimed, out)
@@ -296,8 +296,8 @@ func TestFaultQueueClaimed(t *testing.T) {
 // watch ends the dead lane's round and doesn't rerun the batch.
 func TestFaultWatchMidBatch(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
-run "after" touch "$SWIM_ROOT/after"`)
+	r.script(1, "charge", `step "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
+step "after" touch "$SWIM_ROOT/after"`)
 	r.mustSwim("queue", "add", "1")
 	c, out, dir := faultRun(t, r, failpoint.StepAfterExit+":pause", "watch", "--once", "--plain")
 	pid := waitHit(t, dir, failpoint.StepAfterExit, out)
@@ -326,8 +326,8 @@ func TestFaultStatusMidWrite(t *testing.T) {
 		t.Run(fmt.Sprint("write ", nth), func(t *testing.T) {
 			t.Parallel()
 			r := newRepo(t)
-			r.script(1, "one", `run "a" true
-run "b" true`)
+			r.script(1, "one", `step "a" true
+step "b" true`)
 			r.mustSwim("run", "1")
 			c, out, dir := faultRun(t, r, fmt.Sprintf("%s:pause@%d", failpoint.StatusMidWrite, nth), "run", "1")
 			pid := waitHit(t, dir, failpoint.StatusMidWrite, out)
@@ -359,7 +359,7 @@ run "b" true`)
 // repair cuts it off and records the repair; then appends and verify work.
 func TestFaultChainMidAppend(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one", `run "a" true`)
+	r.script(1, "one", `step "a" true`)
 	r.mustSwim("run", "1")
 	c, out, dir := faultRun(t, r, failpoint.ChainMidAppend+":pause", "run", "1")
 	pid := waitHit(t, dir, failpoint.ChainMidAppend, out)
@@ -407,7 +407,7 @@ func TestFaultManyWatchers(t *testing.T) {
 	ledger, stampLine := withLedger(t, r)
 	for n := 1; n <= 3; n++ {
 		r.script(n, "work", stampLine(n, "start")+`
-run "work" true
+step "work" true
 `+stampLine(n, "end"))
 	}
 	withLocks(t, r, 1, "db")

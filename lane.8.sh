@@ -14,4 +14,4 @@
 # internal/e2e runs in lanes 2-4.
 
 stage check
-run "go test (unit)" bash -c 'go test $(go list ./... | grep -v /internal/e2e)'
+step "go test (unit)" bash -c 'go test $(go list ./... | grep -v /internal/e2e)'

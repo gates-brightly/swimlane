@@ -60,7 +60,7 @@ func TestCorpusLoudScript(t *testing.T) {
 // what it runs on its later lines is found, on its first.
 func TestCorpusContinuedLines(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	src := replace(clean(1), "stage verify\n", `run "wipe" \
+	src := replace(clean(1), "stage verify\n", `step "wipe" \
   bash -c \
   'rm -rf /tmp/x'
 stage verify
@@ -78,7 +78,7 @@ stage verify
 		}
 		return -1
 	}
-	if got["destructive"] != at(`run "wipe"`) {
-		t.Errorf("destructive at %d, want %d (%v)", got["destructive"], at(`run "wipe"`), got)
+	if got["destructive"] != at(`step "wipe"`) {
+		t.Errorf("destructive at %d, want %d (%v)", got["destructive"], at(`step "wipe"`), got)
 	}
 }

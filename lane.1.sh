@@ -23,10 +23,10 @@
 # Security tests fail the build on a violation; they never only warn.
 
 stage check
-run "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gofmt -s (just fmt):"; echo "$out"; exit 1; }'
+step "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gofmt -s (just fmt):"; echo "$out"; exit 1; }'
 gate "go build" go build ./...
-run "go vet" go vet ./...
-run "deadcode" bash -c 'out=$(go run golang.org/x/tools/cmd/deadcode@v0.52.0 ./cmd/swim) || exit 1; [ -z "$out" ] || { echo "nothing in swim reaches these:"; echo "$out"; exit 1; }'
-run "swim lint (the CI rounds)" "$SWIM_BIN" lint --strict
-run "shell syntax" bash -c 'for f in $(git ls-files "*.sh" e2e/lib/fakebin demos/_lib/bin); do bash -n "$f" || exit 1; done; sh -n scripts/install.sh'
+step "go vet" go vet ./...
+step "deadcode" bash -c 'out=$(go run golang.org/x/tools/cmd/deadcode@v0.52.0 ./cmd/swim) || exit 1; [ -z "$out" ] || { echo "nothing in swim reaches these:"; echo "$out"; exit 1; }'
+step "swim lint (the CI rounds)" "$SWIM_BIN" lint --strict
+step "shell syntax" bash -c 'for f in $(git ls-files "*.sh" e2e/lib/fakebin demos/_lib/bin); do bash -n "$f" || exit 1; done; sh -n scripts/install.sh'
 # The unit tests are lanes 8 (plain) and 9 (-race); internal/e2e is lanes 2-4.

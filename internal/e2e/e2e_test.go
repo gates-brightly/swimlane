@@ -377,7 +377,7 @@ func TestConfigByRepoName(t *testing.T) {
 	contains(t, "swim config in the worktree", in(wt, "config"), "repo: shop", "branch: feature # no repos.shop/feature section", "interrupt: graceful # default")
 
 	os.WriteFile(filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "env.swim"), []byte("[repo shop]\nSTAGE=shop-stage\nTABLE=shop-table\n[repo shop/feature]\nTABLE=feature-table\n"), 0o644)
-	script := "#!/usr/bin/env bash\n# Round: env\nrun \"env\" true\n"
+	script := "#!/usr/bin/env bash\n# Round: env\nstep \"env\" true\n"
 	for _, dir := range []string{r.root, wt} {
 		os.WriteFile(filepath.Join(dir, "lane.1.sh"), []byte(script), 0o755)
 	}
@@ -389,14 +389,14 @@ func TestConfigByRepoName(t *testing.T) {
 func TestFullRunWithDependencies(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "Lane one", `snapshot "state" echo state-v1
-run "slow" `+hold("go"))
-	r.script(2, "Lane two", `run "probe" echo probing
-if guard TEST_ALLOW_DELETE "delete thing (2026-10-09: test)"; then run "delete" echo deleting; fi`)
-	r.script(3, "Lane three", `run "fails" bash -c 'echo nope >&2; exit 4'
-run "keeps going" true
+step "slow" `+hold("go"))
+	r.script(2, "Lane two", `step "probe" echo probing
+if guard TEST_ALLOW_DELETE "delete thing (2026-10-09: test)"; then step "delete" echo deleting; fi`)
+	r.script(3, "Lane three", `step "fails" bash -c 'echo nope >&2; exit 4'
+step "keeps going" true
 gate "stops" false
-run "never" true`)
-	r.script(4, "Lane four", `run "after" echo after`)
+step "never" true`)
+	r.script(4, "Lane four", `step "after" echo after`)
 	r.after(2, "1")
 	r.after(4, "2")
 
@@ -484,9 +484,9 @@ run "never" true`)
 
 func TestSkipPropagatesDownChain(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "fails", `run "x" false`)
-	r.script(2, "two", `run "y" true`)
-	r.script(4, "four", `run "z" true`)
+	r.script(1, "fails", `step "x" false`)
+	r.script(2, "two", `step "y" true`)
+	r.script(4, "four", `step "z" true`)
 	r.after(2, "1")
 	r.after(4, "2")
 	out, code := r.swim("run")
@@ -512,8 +512,8 @@ func TestSkipPropagatesDownChain(t *testing.T) {
 func TestDryRunIsSkippedNotPassed(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "change", `stage change
-if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then run "do x" echo did-x; fi`)
-	r.script(2, "after", `run "assumes x" true`)
+if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then step "do x" echo did-x; fi`)
+	r.script(2, "after", `step "assumes x" true`)
 	r.after(2, "1")
 	out, code := r.swim("run", "--no-prompt")
 	if code != launcher.ExitDryRun {
@@ -542,7 +542,7 @@ if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then run "do x" echo did-x; fi`
 func TestRunSelectedLanesOnly(t *testing.T) {
 	r := newRepo(t)
 	for n := 1; n <= 3; n++ {
-		r.script(n, fmt.Sprintf("lane %d", n), `run "ok" true`)
+		r.script(n, fmt.Sprintf("lane %d", n), `step "ok" true`)
 	}
 	r.after(2, "1")
 	// `swim 3 2` is shorthand for `swim run 3 2`. Lane 2's dependency (1) is
@@ -570,7 +570,7 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 
 func TestAfterHeaderDiamond(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "root", `run "write" bash -c '`+untilReleased("root-go")+`; echo root > "$SWIM_ROOT/out1"'`)
+	r.script(1, "root", `step "write" bash -c '`+untilReleased("root-go")+`; echo root > "$SWIM_ROOT/out1"'`)
 	r.script(2, "child a", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(3, "child b", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(4, "join", `gate "children" true`)
@@ -606,7 +606,7 @@ func TestAfterHeaderDiamond(t *testing.T) {
 func TestAfterPinnedToJob(t *testing.T) {
 	r := newRepo(t)
 	r.newLane("1", "root", "--job", "root-job-0001")
-	r.script(2, "child", `run "ok" true`)
+	r.script(2, "child", `step "ok" true`)
 	p := filepath.Join(r.root, "lane.2.sh")
 	data, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: root-jo\n", 1)), 0o755)
@@ -630,9 +630,9 @@ func TestAfterPinnedToJob(t *testing.T) {
 
 func TestGuardApprovedAndConfirmFailsClosed(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "guarded", `if guard TEST_ALLOW_X "do x (2026-10-09: test)"; then run "do x" echo did-x; fi
+	r.script(1, "guarded", `if guard TEST_ALLOW_X "do x (2026-10-09: test)"; then step "do x" echo did-x; fi
 confirm "really?"
-run "after confirm" true`)
+step "after confirm" true`)
 	c := r.cmd(bin, "run", "1")
 	c.Env = append(c.Env, "TEST_ALLOW_X=1")
 	c.Stdin = strings.NewReader("") // operator gives no answer
@@ -676,7 +676,7 @@ func TestArchiveNewAndRunningRefusals(t *testing.T) {
 	r.mustSwim("new", "1", "second round")
 
 	// While a lane runs, nothing may touch its files.
-	r.script(2, "long", `run "sleep" `+hold("go"))
+	r.script(2, "long", `step "sleep" `+hold("go"))
 	bg := r.cmd("bash", "lane.2.sh")
 	if err := bg.Start(); err != nil {
 		t.Fatal(err)
@@ -697,8 +697,8 @@ func TestArchiveNewAndRunningRefusals(t *testing.T) {
 
 func TestInterruptRecordsAndStopsRound(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "interrupt me", `run "long" `+blocked("long")+`
-run "never" true`)
+	r.script(1, "interrupt me", `step "long" `+blocked("long")+`
+step "never" true`)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := c.Start(); err != nil {
@@ -739,7 +739,7 @@ func TestStepStandalone(t *testing.T) {
 
 func TestStaleRunningShown(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "killed", `run "long" `+blocked("long")+``)
+	r.script(1, "killed", `step "long" `+blocked("long")+``)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := c.Start(); err != nil {
@@ -750,7 +750,7 @@ func TestStaleRunningShown(t *testing.T) {
 	c.Wait()
 	contains(t, "status", r.mustSwim("status"), "running? (process gone: interrupted)", "step: long")
 	// A dead pidfile doesn't block a rerun.
-	r.script(1, "rerun", `run "quick" true`)
+	r.script(1, "rerun", `step "quick" true`)
 	r.mustSwim("run", "1")
 	r.mustSwim("status", "--rebuild")
 	if l := r.status().Get(1); l.State != status.Passed || l.Round != "rerun" {
@@ -993,7 +993,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 	}
 
 	// Steps see the job id, so they can tag resources as "ours".
-	body := strings.Replace(string(script), `run "verify" true`, `run "tag" bash -c 'echo "tag=$SWIM_JOB"'`, 1)
+	body := strings.Replace(string(script), `step "verify" true`, `step "tag" bash -c 'echo "tag=$SWIM_JOB"'`, 1)
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(body), 0o755)
 
 	// Pin by an 8-character prefix.
@@ -1028,7 +1028,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 
 func TestScriptWithoutJobLineGetsOne(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "no job line", `run "x" true`)
+	r.script(1, "no job line", `step "x" true`)
 	r.mustSwim("run", "1")
 	l := r.status().Get(1)
 	if len(l.Job) != 36 || !strings.Contains(r.log(1), "job="+l.Job) {
@@ -1040,11 +1040,11 @@ func TestProjectLog(t *testing.T) {
 	r := newRepo(t)
 	r.newLane("1", "first goal", "--job", "job-one-0001")
 	body, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(body), `gate "target is ours (tagged)" true`, `run "precheck" false`, 1)), 0o755)
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(body), `gate "target is ours (tagged)" true`, `step "precheck" false`, 1)), 0o755)
 	r.newLane("2", "second goal", "--job", "job-two-0002")
 	r.after(2, "1")
 	r.swim("run")
-	r.script(3, "direct run", `run "ok" true`)
+	r.script(3, "direct run", `step "ok" true`)
 	if out, err := r.cmd("bash", "lane.3.sh").CombinedOutput(); err != nil {
 		t.Fatalf("direct run: %v %s", err, out)
 	}
@@ -1143,7 +1143,7 @@ func TestLogCommand(t *testing.T) {
 func TestAllSkipsPassedJobs(t *testing.T) {
 	r := newRepo(t)
 	r.newLane("1", "passes")
-	r.script(2, "fails until fixed", `run "check" test -e "$SWIM_ROOT/fixed"`)
+	r.script(2, "fails until fixed", `step "check" test -e "$SWIM_ROOT/fixed"`)
 	if _, code := r.swim("all"); code != 1 {
 		t.Fatalf("first run should fail (lane 2)")
 	}
@@ -1176,8 +1176,8 @@ func TestAllSkipsPassedJobs(t *testing.T) {
 // lane. There's no count to raise, and archiving drops a lane.
 func TestLanesInUse(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one", `run "ok" true`)
-	r.script(6, "six", `run "ok" true`)
+	r.script(1, "one", `step "ok" true`)
+	r.script(6, "six", `step "ok" true`)
 	out := r.mustSwim("all")
 	contains(t, "all", out, "[1] started: one", "[6] started: six")
 	st := r.mustSwim("status")
@@ -1205,7 +1205,7 @@ func TestVersionAndOldLock(t *testing.T) {
 	if out := r.mustSwim("--version"); !regexp.MustCompile(`^swim 0\.(\d{8}|dev)(\.\d+)?`).MatchString(out) || strings.Contains(out, "warning") {
 		t.Errorf("--version = %q", out)
 	}
-	r.script(1, "one", `run "ok" true`)
+	r.script(1, "one", `step "ok" true`)
 	os.WriteFile(filepath.Join(r.root, ".swim.lock"), []byte("syntax: {script: 99, log: 99, state: 99}\nversion: 0.20270101.1\n"), 0o644)
 	if out := r.mustSwim("run", "1"); strings.Contains(out, "lock") {
 		t.Errorf("run with an old .swim.lock mentions it:\n%s", out)
@@ -1226,10 +1226,10 @@ lane_init 1
 snapshot "state" echo state
 
 # 2. Checks
-run "precheck" true
+step "precheck" true
 
 # 4. Verify
-run "verify" true
+step "verify" true
 
 summary
 `
@@ -1256,7 +1256,7 @@ func TestSyntax1Refused(t *testing.T) {
 
 func TestSyntaxTooNew(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "fine", `run "ok" true`)
+	r.script(1, "fine", `step "ok" true`)
 	os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte("#!/usr/bin/env bash\n# swim: syntax 9\n# Round: from the future\n"), 0o755)
 	for _, args := range [][]string{{"status"}, {"run", "1"}, {"all"}} {
 		out, code := r.swim(args...)
@@ -1275,11 +1275,11 @@ func TestSyntaxTooNew(t *testing.T) {
 func TestStagesWarnings(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "out of order", `stage change
-run "change" true
+step "change" true
 stage check
-run "check" true
+step "check" true
 stage verify
-run "verify" true`)
+step "verify" true`)
 	r.mustSwim("run", "1")
 	contains(t, "agent1.log", r.log(1),
 		"  WARN  change stage without a snapshot or check stage before it",
@@ -1287,7 +1287,7 @@ run "verify" true`)
 		"stages: snapshot none | check PASS | change PASS | verify PASS")
 
 	r.script(2, "bad stage", `stage deploy
-run "never" true`)
+step "never" true`)
 	// swim lint refuses it before it starts; run directly, it stops there.
 	out, code := r.swim("run", "2")
 	if code == 0 || !strings.Contains(out, `unknown stage "deploy"`) {
@@ -1303,8 +1303,8 @@ func TestTimeoutStopsRound(t *testing.T) {
 	r := newRepo(t)
 	p := filepath.Join(r.root, "lane.1.sh")
 	r.script(1, "slow", `stage check
-run "slow" `+blocked("slow")+`
-run "after" true`)
+step "slow" `+blocked("slow")+`
+step "after" true`)
 	data, _ := os.ReadFile(p)
 	limit := dur(time.Second)
 	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: slow\n", "# Round: slow\n# Timeout: "+limit+"\n", 1)), 0o755)
@@ -1324,10 +1324,10 @@ var runRE = regexp.MustCompile(`run=(r-\d{8}T\d{6}Z-[0-9a-f]{4})`)
 
 func TestRunID(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one", `run "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
-	r.script(2, "two", `run "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
-	r.script(3, "three", `run "x" false`)
-	r.script(4, "four", `run "x" true`)
+	r.script(1, "one", `step "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
+	r.script(2, "two", `step "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
+	r.script(3, "three", `step "x" false`)
+	r.script(4, "four", `step "x" true`)
 	r.after(2, "1")
 	r.after(4, "3")
 
@@ -1387,7 +1387,7 @@ func TestParallelLimit(t *testing.T) {
 	long(t)
 	r := newSerialRepo(t)
 	for n := 1; n <= 10; n++ {
-		r.script(n, fmt.Sprintf("worker %d", n), `run "work" `+inSlot(3, "go"))
+		r.script(n, fmt.Sprintf("worker %d", n), `step "work" `+inSlot(3, "go"))
 	}
 	run := start(t, r.cmd(bin, "all", "--parallel", "3", "--plain"), nil)
 	// Three are inside their step at once, holding until released; the
@@ -1413,7 +1413,7 @@ func TestParallelLimit(t *testing.T) {
 	os.WriteFile(cfg, []byte(strings.Replace(string(data), "defaults:\n", "defaults:\n  max_parallel: 2\n", 1)), 0o644)
 	contains(t, "config", r.mustSwim("config"), "max_parallel: 2")
 	for n := 1; n <= 10; n++ {
-		r.script(n, fmt.Sprintf("worker %d", n), `run "work" `+inSlot(10, "go-all"))
+		r.script(n, fmt.Sprintf("worker %d", n), `step "work" `+inSlot(10, "go-all"))
 	}
 	all := start(t, r.cmd(bin, "all", "--rerun", "--parallel", "0", "--plain"), nil)
 	waitFor(t, func() bool { return inside(r) == 10 })
@@ -1521,8 +1521,8 @@ func TestResourceLocksWithinARun(t *testing.T) {
 	long(t)
 	r := newRepo(t)
 	lock := []string{"orders-table"}
-	r.script(1, "migrate table", `run "work" `+exclusive(lock, "go", "exit 1"))
-	r.script(2, "back up table", `run "work" `+exclusive(lock, "go", ""))
+	r.script(1, "migrate table", `step "work" `+exclusive(lock, "go", "exit 1"))
+	r.script(2, "back up table", `step "work" `+exclusive(lock, "go", ""))
 	withLocks(t, r, 1, "orders-table")
 	withLocks(t, r, 2, "orders-table")
 
@@ -1543,7 +1543,7 @@ func TestResourceLocksWithinARun(t *testing.T) {
 	// Locks {a}, {a,b}, {b}: no deadlock; sharers never overlap.
 	r2 := newRepo(t)
 	for n, locks := range map[int][]string{1: {"a"}, 2: {"a", "b"}, 3: {"b"}} {
-		r2.script(n, fmt.Sprintf("lane %d", n), `run "work" `+exclusive(locks, "go", ""))
+		r2.script(n, fmt.Sprintf("lane %d", n), `step "work" `+exclusive(locks, "go", ""))
 		withLocks(t, r2, n, strings.Join(locks, ", "))
 	}
 	run2 := start(t, r2.cmd(bin, "all", "--plain"), nil)
@@ -1567,8 +1567,8 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	long(t)
 	r := newRepo(t)
 	lock := []string{"tf/orders"}
-	r.script(1, "one", `run "work" `+exclusive(lock, "go", ""))
-	r.script(2, "two", `run "work" `+exclusive(lock, "go", ""))
+	r.script(1, "one", `step "work" `+exclusive(lock, "go", ""))
+	r.script(2, "two", `step "work" `+exclusive(lock, "go", ""))
 	withLocks(t, r, 1, "tf/orders")
 	withLocks(t, r, 2, "tf/orders")
 
@@ -1590,7 +1590,7 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	noOverlaps(t, r)
 
 	// A killed run doesn't leave the lock behind.
-	r.script(1, "one", `run "work" `+blocked("locks"))
+	r.script(1, "one", `step "work" `+blocked("locks"))
 	withLocks(t, r, 1, "tf/orders")
 	k := r.cmd(bin, "run", "1", "--plain")
 	k.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -1611,7 +1611,7 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 
 func TestBadLockNameWarns(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "bad lock", `run "x" true`)
+	r.script(1, "bad lock", `step "x" true`)
 	withLocks(t, r, 1, "ok-name, bad*name")
 	r.mustSwim("run", "1")
 	contains(t, "agent1.log", r.log(1), `WARN  Locks: "bad*name" is not a lock name`)
@@ -1621,11 +1621,11 @@ func TestStepTimeoutAndRetry(t *testing.T) {
 	long(t)
 	r := newRepo(t)
 	limit := dur(time.Second)
-	r.script(1, "timeouts and retries", `run --timeout `+limit+` "slow" `+blocked("slow")+`
-run --retry 2 --backoff 0.1s "flaky" bash -c 'test -f "$SWIM_ROOT/ok" || { touch "$SWIM_ROOT/ok"; exit 1; }'
-run --retry 3 --backoff 0.1s --retry-on 7 "wrong code" bash -c 'exit 1'
+	r.script(1, "timeouts and retries", `step --timeout `+limit+` "slow" `+blocked("slow")+`
+step --retry 2 --backoff 0.1s "flaky" bash -c 'test -f "$SWIM_ROOT/ok" || { touch "$SWIM_ROOT/ok"; exit 1; }'
+step --retry 3 --backoff 0.1s --retry-on 7 "wrong code" bash -c 'exit 1'
 gate --retry 1 --backoff 0.1s "gate passes on retry" bash -c 'test -f "$SWIM_ROOT/ok2" || { touch "$SWIM_ROOT/ok2"; exit 1; }'
-run "after" true`)
+step "after" true`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
 	if took := time.Since(start); took > scaled(8*time.Second) {
@@ -1651,8 +1651,8 @@ run "after" true`)
 	}
 
 	// Step-Timeout: in the header is the default; --timeout 0 turns it off.
-	r.script(2, "default limit", `run "limited" `+blocked("limited")+`
-run --timeout 0 "unlimited" sleep `+fmt.Sprint(scaled(1500*time.Millisecond).Seconds()))
+	r.script(2, "default limit", `step "limited" `+blocked("limited")+`
+step --timeout 0 "unlimited" sleep `+fmt.Sprint(scaled(1500*time.Millisecond).Seconds()))
 	p := filepath.Join(r.root, "lane.2.sh")
 	data, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: default limit\n", "# Round: default limit\n# Step-Timeout: "+limit+"\n", 1)), 0o755)
@@ -1663,8 +1663,8 @@ run --timeout 0 "unlimited" sleep `+fmt.Sprint(scaled(1500*time.Millisecond).Sec
 func TestRetryRespectsRoundDeadline(t *testing.T) {
 	r := newSerialRepo(t) // it times a round's Timeout: alone, not beside the parallel tests
 	limit := dur(2 * time.Second)
-	r.script(1, "deadline", `run --retry 5 --backoff `+dur(1500*time.Millisecond)+` "keeps failing" false
-run "after" true`)
+	r.script(1, "deadline", `step --retry 5 --backoff `+dur(1500*time.Millisecond)+` "keeps failing" false
+step "after" true`)
 	p := filepath.Join(r.root, "lane.1.sh")
 	data, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: deadline\n", "# Round: deadline\n# Timeout: "+limit+"\n", 1)), 0o755)
@@ -1682,8 +1682,8 @@ run "after" true`)
 
 func TestCtrlCDuringBackoff(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "backoff", `run --retry 3 --backoff 20s "fails" false
-run "never" true`)
+	r.script(1, "backoff", `step --retry 3 --backoff 20s "fails" false
+step "never" true`)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := c.Start(); err != nil {
@@ -1724,9 +1724,9 @@ func TestBlockedCommands(t *testing.T) {
 	}
 
 	// 1. Pre-flight: a literal blocked command fails the lane before it starts.
-	r.script(1, "publish", `run "snapshot" echo before
-run "publish" make publish`)
-	r.script(2, "after publish", `run "x" true`)
+	r.script(1, "publish", `step "snapshot" echo before
+step "publish" make publish`)
+	r.script(2, "after publish", `step "x" true`)
 	p := filepath.Join(r.root, "lane.2.sh")
 	data, _ = os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: after publish\n", "# Round: after publish\n# After: 1\n", 1)), 0o755)
@@ -1749,8 +1749,8 @@ run "publish" make publish`)
 	// 2. A command built at runtime is refused at the step, and a plain run
 	//    (not just gate) stops the round.
 	r.script(3, "runtime", `CMD="terraform des""troy -auto-approve"
-run "builds a destroy" bash -c "$CMD"
-run "never" true`)
+step "builds a destroy" bash -c "$CMD"
+step "never" true`)
 	r.swim("run", "3", "--plain")
 	log := r.log(3)
 	contains(t, "agent3.log", log, `  BLOCKED  builds a destroy (matched "terraform destroy"; blocked_commands)`, "  STOP  blocked command: builds a destroy", "== END FAIL", "exit=1")
@@ -1764,9 +1764,9 @@ run "never" true`)
 	// 3. git is a lane's to run: a commit in a step and one outside any
 	//    step both land, and the round carries on.
 	r.script(4, "commits", `export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-run "commit" git -C "$SWIM_ROOT" commit -q --allow-empty -m one
+step "commit" git -C "$SWIM_ROOT" commit -q --allow-empty -m one
 git -C "$SWIM_ROOT" commit -q --allow-empty -m two
-run "after" true`)
+step "after" true`)
 	out4, _ := r.swim("run", "4", "--plain")
 	contains(t, "agent4.log", r.log(4), "  PASS  commit", "  PASS  after", "== END PASS")
 	if head() == before {
@@ -1789,9 +1789,9 @@ func TestSecretMasking(t *testing.T) {
 	conf := strings.Replace(string(data), "defaults:\n", "defaults:\n  secret_env: [DD_KEY]\n", 1)
 	conf = regexp.MustCompile(`(?m)^  header_env: .*$`).ReplaceAllString(conf, "  header_env: [GITHUB_TOKEN, STAGE]")
 	os.WriteFile(cfg, []byte(conf), 0o644)
-	r.script(1, "leaky", `run "echo the token" bash -c 'echo "token=$GITHUB_TOKEN"; env | grep -E "GITHUB_TOKEN|DD_KEY"'
+	r.script(1, "leaky", `step "echo the token" bash -c 'echo "token=$GITHUB_TOKEN"; env | grep -E "GITHUB_TOKEN|DD_KEY"'
 snapshot "state with secrets" bash -c 'echo "dd=$DD_KEY b64=$(printf %s "$GITHUB_TOKEN" | base64)"'
-run "fail with $GITHUB_TOKEN in the label" false
+step "fail with $GITHUB_TOKEN in the label" false
 guard SECRET_FLAG "reason mentions $DD_KEY"
 summary`)
 	c := r.cmd(bin, "run", "1", "--plain")
@@ -1863,10 +1863,10 @@ func withHeader(t *testing.T, r *repo, n int, line string) {
 
 func TestYAMLOutput(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "root", `run "hello" echo hi there`)
-	r.script(2, "fails", `run "convert" false`)
-	r.script(3, "after fails", `run "never" true`)
-	r.script(4, "after root", `run "child" true`)
+	r.script(1, "root", `step "hello" echo hi there`)
+	r.script(2, "fails", `step "convert" false`)
+	r.script(3, "after fails", `step "never" true`)
+	r.script(4, "after root", `step "child" true`)
 	withHeader(t, r, 2, "# After: 1")
 	withHeader(t, r, 3, "# After: 2")
 	withHeader(t, r, 4, "# After: 1")
@@ -1941,7 +1941,7 @@ func TestYAMLOutput(t *testing.T) {
 	}
 
 	// --yaml-output adds lane output lines.
-	r.script(1, "root again", `run "hello" echo hi there`)
+	r.script(1, "root again", `step "hello" echo hi there`)
 	if out := r.mustSwim("run", "1", "--yaml-output"); !strings.Contains(out, "event: output") || !strings.Contains(out, "line: hi there") {
 		t.Errorf("--yaml-output:\n%s", out)
 	}
@@ -1971,7 +1971,7 @@ type launcherSummary struct {
 func TestArchiveSeveralLanes(t *testing.T) {
 	r := newRepo(t)
 	for n := 1; n <= 3; n++ {
-		r.script(n, fmt.Sprintf("round %d", n), `run "a" true`)
+		r.script(n, fmt.Sprintf("round %d", n), `step "a" true`)
 		withHeader(t, r, n, fmt.Sprintf("# Job: aaaa000%d-1111-4222-8333-444455556666", n))
 	}
 	r.mustSwim("all")
@@ -1984,7 +1984,7 @@ func TestArchiveSeveralLanes(t *testing.T) {
 	}
 	// --as names every lane's archive; all or nothing when one can't be archived.
 	for n := 1; n <= 3; n++ {
-		r.script(n, fmt.Sprintf("round %d", n), `run "a" true`)
+		r.script(n, fmt.Sprintf("round %d", n), `step "a" true`)
 		withHeader(t, r, n, fmt.Sprintf("# Job: aaaa000%d-1111-4222-8333-444455556666", n))
 	}
 	r.mustSwim("all")

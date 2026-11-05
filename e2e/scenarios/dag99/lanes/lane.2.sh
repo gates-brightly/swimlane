@@ -38,7 +38,7 @@ PARENTS="1"
 NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
-run "clear own done marker" rm -f "$D/nodes/$N.done"
+step "clear own done marker" rm -f "$D/nodes/$N.done"
 stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$SWIM_RUN
@@ -48,7 +48,7 @@ export RUN_ID
 IN=$D/input-2.$SWIM_JOB.html
 export IN
 gate "copy input to $IN" cp "$D/combined.html" "$IN"
-run "simulated work" true
+step "simulated work" true
 gate "convert html -> markdown" env OUT="$D" e2etool markdown
 gate "one H1 per source page" bash -c 'h=$(grep -c "^# " "$D/combined.md"); s=$(grep -c "<section data-source" "$IN"); echo "h1=$h sections=$s"; test "$h" -ge "$s" -a "$h" -gt 0'
 gate "no leftover HTML tags" bash -c '! grep -nE "</?(div|p|span|section|body|html)[ >]" "$D/combined.md"'

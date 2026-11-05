@@ -12,8 +12,8 @@ lane_init 1
 stage snapshot
 snapshot "list" ls
 stage check
-run "plan" terraform apply -auto-approve # check-unsafe
-run "wipe" bash -c 'rm -rf /tmp/x' # destructive
+step "plan" terraform apply -auto-approve # check-unsafe
+step "wipe" bash -c 'rm -rf /tmp/x' # destructive
 stage change
 stage verify
 summary

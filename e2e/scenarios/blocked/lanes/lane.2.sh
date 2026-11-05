@@ -11,5 +11,5 @@ lane_init 2
 stage check
 CMD="terraform des""troy -auto-approve"
 gate "tear down" bash -c "$CMD"
-run "after the blocked command" true
+step "after the blocked command" true
 summary

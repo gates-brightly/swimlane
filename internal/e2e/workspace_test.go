@@ -17,7 +17,7 @@ import (
 func TestLaneRunsStaged(t *testing.T) {
 	r := newRepo(t)
 	r.write("helper.sh", "echo SAFE\n", 0o755)
-	r.script(1, "use a helper", `run "helper" bash helper.sh`)
+	r.script(1, "use a helper", `step "helper" bash helper.sh`)
 	unpin(t, r) // r.script's lint --fix pins it (workspace-file)
 	out, _ := r.swim("run", "1", "--plain")
 	if !strings.Contains(out, "FAIL") || strings.Contains(out, "SAFE") {
@@ -29,7 +29,7 @@ func TestLaneRunsStaged(t *testing.T) {
 	contains(t, "the hint, logged", r.log(1), hint)
 
 	// Pinned with # Includes:, it runs; editing it changes the manifest.
-	r.script(1, "use a helper", "# Includes: helper.sh\n"+`run "helper" bash helper.sh`)
+	r.script(1, "use a helper", "# Includes: helper.sh\n"+`step "helper" bash helper.sh`)
 	before := manifestOf(t, r)
 	contains(t, "pinned", r.mustSwim("run", "1", "--plain"), "PASS")
 	r.write("helper.sh", "echo DESTRUCTIVE\n", 0o755)
@@ -38,10 +38,10 @@ func TestLaneRunsStaged(t *testing.T) {
 	}
 
 	// Live: it reads the working tree, and that's in the manifest.
-	r.script(1, "use a helper", "# Workspace: live\n"+`run "helper" bash helper.sh`)
+	r.script(1, "use a helper", "# Workspace: live\n"+`step "helper" bash helper.sh`)
 	live := manifestOf(t, r)
 	contains(t, "live", r.mustSwim("run", "1", "--plain"), "PASS")
-	r.script(1, "use a helper", `run "helper" bash helper.sh`)
+	r.script(1, "use a helper", `step "helper" bash helper.sh`)
 	unpin(t, r)
 	if manifestOf(t, r) == live {
 		t.Error("# Workspace: live isn't in the manifest")

@@ -13,9 +13,9 @@ import (
 )
 
 func approvalLanes(r *repo) {
-	r.script(1, "guarded", `if guard ALLOW_DROP "drop table orders - 2026-10-12"; then run "dropped" true; fi
-run "after" true`)
-	r.script(2, "busy", `run "work" bash -c 'for i in 1 2 3 4 5 6 7 8; do echo busy-$i; done'`)
+	r.script(1, "guarded", `if guard ALLOW_DROP "drop table orders - 2026-10-12"; then step "dropped" true; fi
+step "after" true`)
+	r.script(2, "busy", `step "work" bash -c 'for i in 1 2 3 4 5 6 7 8; do echo busy-$i; done'`)
 }
 
 func TestPromptInTUI(t *testing.T) {
@@ -168,9 +168,9 @@ func TestPromptCtrlCStops(t *testing.T) {
 func TestPromptSeveralLanes(t *testing.T) {
 	long(t)
 	r := newSerialRepo(t)
-	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
-	r.script(2, "two", `if guard ALLOW_TWO "change two"; then run "two changed" true; fi`)
-	r.script(3, "busy", `run "work" bash -c 'for i in $(seq 1 30); do echo busy-$i; done'`)
+	r.script(1, "one", `if guard ALLOW_ONE "change one"; then step "one changed" true; fi`)
+	r.script(2, "two", `if guard ALLOW_TWO "change two"; then step "two changed" true; fi`)
+	r.script(3, "busy", `step "work" bash -c 'for i in $(seq 1 30); do echo busy-$i; done'`)
 	tr := r.startTUI(nil, "all")
 	tr.waitScreen("both waiting", func(s string) bool {
 		return strings.Contains(s, "need approval · Enter to view swim")
@@ -209,7 +209,7 @@ func TestPromptIsSafe(t *testing.T) {
 	for _, mode := range []string{"--plain", "tui"} {
 		t.Run(mode, func(t *testing.T) {
 			r := newSerialRepo(t)
-			r.script(1, "hostile", `if guard ALLOW_X `+payload+`; then run "changed" true; fi`)
+			r.script(1, "hostile", `if guard ALLOW_X `+payload+`; then step "changed" true; fi`)
 			args := []string{"all"}
 			if mode != "tui" {
 				args = append(args, mode)

@@ -29,7 +29,7 @@ func TestEnvFiles(t *testing.T) {
 	envFiles(t, r,
 		"STAGE=general-stage\nREGION=general-region\nGENERAL_ONLY=general-value\n[repo REPO]\nPROFILE=orders-prod-profile\nREGION=repo-region\nOWNER=platform-team\n",
 		"[lane 1]\nTABLE=orders-v2-table\nSTAGE=lane-stage\n[lane 2]\nTABLE=other-lane-table\n")
-	r.script(1, "env", `run "env" bash -c 'echo "$STAGE $REGION $PROFILE $TABLE $OWNER $GENERAL_ONLY $SHELL_ONLY" > "$SWIM_ROOT/env.out"'`)
+	r.script(1, "env", `step "env" bash -c 'echo "$STAGE $REGION $PROFILE $TABLE $OWNER $GENERAL_ONLY $SHELL_ONLY" > "$SWIM_ROOT/env.out"'`)
 	r.env = append(r.env, "SHELL_ONLY=typed", "OWNER=shell-owner")
 	r.mustSwim("run", "1", "--plain")
 	data, _ := os.ReadFile(filepath.Join(r.root, "env.out"))
@@ -62,8 +62,8 @@ func TestEnvFiles(t *testing.T) {
 // run before anything starts.
 func TestEnvFileGuardFlagRefused(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "guarded", `if guard ALLOW_DROP "drop t"; then run "dropped" true; fi`)
-	r.script(2, "other", `run "ok" true`)
+	r.script(1, "guarded", `if guard ALLOW_DROP "drop t"; then step "dropped" true; fi`)
+	r.script(2, "other", `step "ok" true`)
 	envFiles(t, r, "", "[lane 1]\nALLOW_DROP=1\n")
 	out, code := r.swim("run", "--plain")
 	if code == 0 || !strings.Contains(out, ".env.swim:2 sets ALLOW_DROP, a guard flag of this lane's script: env files can't approve guards") {
@@ -86,7 +86,7 @@ func TestEnvFileGuardFlagRefused(t *testing.T) {
 // it, like an edited script.
 func TestEnvFileQueuePin(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "pinned", `run "ok" true`)
+	r.script(1, "pinned", `step "ok" true`)
 	envFiles(t, r, "", "[lane 1]\nTABLE=one\n")
 	r.mustSwim("queue", "add", "1")
 	r.write(".env.swim", "[lane 1]\nTABLE=two\n", 0o600)
@@ -102,7 +102,7 @@ func TestEnvFileQueuePin(t *testing.T) {
 func TestEnvFileDuplicatesAndWrappedLane(t *testing.T) {
 	r := newRepo(t)
 	envFiles(t, r, "", "[lane 1]\nTABLE=first-table\nTABLE=orders-v2-table\n")
-	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped env\nswim run \"show\" -- bash -c 'echo \"table=$TABLE\"; echo \"$TABLE\" > \"$SWIM_ROOT/table.txt\"'\n", 0o755)
+	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped env\nswim step \"show\" -- bash -c 'echo \"table=$TABLE\"; echo \"$TABLE\" > \"$SWIM_ROOT/table.txt\"'\n", 0o755)
 	contains(t, "lint", must(r.swim("lint", "1")), ".env.swim:3 sets TABLE again in [lane 1] (first at line 2; the last wins)")
 	r.mustSwim("run", "1", "--plain")
 	if got := readFile(t, r, "table.txt"); got != "orders-v2-table" {

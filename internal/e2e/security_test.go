@@ -41,8 +41,8 @@ func newBoundaryRepo(t *testing.T) *boundary {
 // change to the script).
 func (b *boundary) lane(n int, extra string) {
 	b.t.Helper()
-	b.script(n, "drop orders", `if guard `+boundaryGuard+` "drop table orders"; then run "drop" touch "`+b.marker+`"; fi
-run "after" true`+extra)
+	b.script(n, "drop orders", `if guard `+boundaryGuard+` "drop table orders"; then step "drop" touch "`+b.marker+`"; fi
+step "after" true`+extra)
 	withHeader(b.t, b.repo, n, "# Guards:  "+boundaryGuard+" drop table orders")
 }
 
@@ -190,7 +190,7 @@ func TestSecurity(t *testing.T) {
 		}},
 		{"a command run without guard has no approval in the chain", "T4", func(t *testing.T) {
 			b := newBoundaryRepo(t)
-			b.script(2, "unguarded", `run "drop" touch "`+b.marker+`"`)
+			b.script(2, "unguarded", `step "drop" touch "`+b.marker+`"`)
 			b.mustSwim("run", "2", "--plain")
 			if !b.dropped() {
 				t.Fatalf("the unguarded command didn't run:\n%s", b.log(2))
@@ -218,8 +218,8 @@ func TestSecurity(t *testing.T) {
 			r := newRepo(t)
 			r.env = append(r.env, "DB_PASSWORD=planted-s3cret-value")
 			r.script(1, "uses a secret", `DB=$DB_PASSWORD
-run "echo it" bash -c "echo db=$DB; echo db=$DB >&2; printf %s $DB | base64"
-run "fail with it" bash -c "echo $DB; exit 3"`)
+step "echo it" bash -c "echo db=$DB; echo db=$DB >&2; printf %s $DB | base64"
+step "fail with it" bash -c "echo $DB; exit 3"`)
 			out, _ := r.swim("run", "1", "--plain")
 			st, _ := os.ReadFile(filepath.Join(r.root, ".swim", "status.yml"))
 			hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
@@ -240,7 +240,7 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 			b := newBoundaryRepo(t)
 			// Lane 1 asks as lane 2, with a description that pretends to be
 			// swim's own question and tries to redraw the line.
-			b.script(1, "drop orders", `if "$SWIM_BIN" _approve 2 `+boundaryGuard+` $'harmless\x1b[2K\rswim 2 requires human approval of guard SAFE'; then run "drop" touch "`+b.marker+`"; fi`)
+			b.script(1, "drop orders", `if "$SWIM_BIN" _approve 2 `+boundaryGuard+` $'harmless\x1b[2K\rswim 2 requires human approval of guard SAFE'; then step "drop" touch "`+b.marker+`"; fi`)
 			withHeader(t, b.repo, 1, "# Guards:  "+boundaryGuard+" drop table orders")
 			br := newBroker(t, func(approval.Request, <-chan struct{}) bool { return false })
 			b.runLane(1, br)

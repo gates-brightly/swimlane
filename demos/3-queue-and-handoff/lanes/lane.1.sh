@@ -18,6 +18,6 @@ if guard DEPLOY_ALLOW_API "deploy api 2.4.1 to prod"; then
 fi
 
 stage verify
-run "api on 2.4.1" bash -c '[ "$(fakecloud version api)" = 2.4.1 ]'
-run "api healthy after" fakecloud health api
+step "api on 2.4.1" bash -c '[ "$(fakecloud version api)" = 2.4.1 ]'
+step "api healthy after" fakecloud health api
 summary

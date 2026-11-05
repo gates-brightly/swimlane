@@ -38,7 +38,7 @@ PARENTS="2 3"
 NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
-run "clear own done marker" rm -f "$D/nodes/$N.done"
+step "clear own done marker" rm -f "$D/nodes/$N.done"
 stage check
 gate "parents finished before this node started (swim $PARENTS)" e2etool parents-check $PARENTS
 RUN_ID=$SWIM_RUN
@@ -47,7 +47,7 @@ export RUN_ID
 
 gate "build report.md" e2etool report
 
-run "report has stats table and a section per page" bash -c '
+step "report has stats table and a section per page" bash -c '
   n=$(e2etool stats-pages)
   grep -q "^| \*\*total\*\*" "$D/report.md" && h=$(grep -c "^## " "$D/report.md") && echo "pages=$n h2=$h" && test "$h" -ge $((n + 2))'
 

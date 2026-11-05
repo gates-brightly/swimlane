@@ -11,13 +11,13 @@ import (
 // say who pre-approved it. n pre-declines another lane's (dry runs).
 func TestPreapproveInTUI(t *testing.T) {
 	r := newSerialRepo(t)
-	r.script(1, "first", `run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
-	r.script(2, "guarded", `if guard ALLOW_DROP "drop table orders"; then run "dropped" true; fi`)
+	r.script(1, "first", `step "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
+	r.script(2, "guarded", `if guard ALLOW_DROP "drop table orders"; then step "dropped" true; fi`)
 	withHeader(t, r, 2, "# After: 1")
 	withHeader(t, r, 2, "# Guards: ALLOW_DROP  drop table orders")
-	r.script(3, "declined", `if guard ALLOW_PURGE "purge cache"; then run "purged" true; fi`)
+	r.script(3, "declined", `if guard ALLOW_PURGE "purge cache"; then step "purged" true; fi`)
 	withHeader(t, r, 3, "# After: 1")
-	r.script(4, "no guards", `run "plain" true`)
+	r.script(4, "no guards", `step "plain" true`)
 	withHeader(t, r, 4, "# After: 1")
 
 	tr := r.startTUI(nil, "all")
@@ -48,10 +48,10 @@ func TestPreapproveInTUI(t *testing.T) {
 // again (here, with no one to ask: a dry run), listed as unused.
 func TestPreapprovePinnedToScript(t *testing.T) {
 	r := newSerialRepo(t)
-	r.script(1, "first", `run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
-	r.script(2, "guarded", `if guard ALLOW_DROP "drop table orders"; then run "dropped" true; fi`)
+	r.script(1, "first", `step "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
+	r.script(2, "guarded", `if guard ALLOW_DROP "drop table orders"; then step "dropped" true; fi`)
 	withHeader(t, r, 2, "# After: 1")
-	r.script(3, "cleared", `if guard ALLOW_X "do x"; then run "x" true; fi`)
+	r.script(3, "cleared", `if guard ALLOW_X "do x"; then step "x" true; fi`)
 	withHeader(t, r, 3, "# After: 1")
 
 	tr := r.startTUI([]string{"SWIM_APPROVAL_TIMEOUT=1s"}, "all", "--no-prompt")
@@ -80,10 +80,10 @@ func TestPreapprovePinnedToScript(t *testing.T) {
 // FLAG=0 beats a pre-approval.
 func TestPreanswerPrecedence(t *testing.T) {
 	r := newSerialRepo(t)
-	r.script(1, "first", `run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
-	r.script(2, "declined", `if guard ALLOW_A "do a"; then run "did a" true; fi`)
+	r.script(1, "first", `step "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
+	r.script(2, "declined", `if guard ALLOW_A "do a"; then step "did a" true; fi`)
 	withHeader(t, r, 2, "# After: 1")
-	r.script(3, "flag zero", `if guard ALLOW_B "do b"; then run "did b" true; fi`)
+	r.script(3, "flag zero", `if guard ALLOW_B "do b"; then step "did b" true; fi`)
 	withHeader(t, r, 3, "# After: 1")
 
 	tr := r.startTUI([]string{"ALLOW_B=0"}, "all")
