@@ -40,6 +40,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261105.3 (v0.20261105.3, 2026-11-05)
+
 ### Added
 
 - **`notify_command`: your own command when a lane asks or a run ends.**
