@@ -74,27 +74,36 @@ reading the terminal, which stays in the lane's group and is stopped alone.
 ## Shared helpers
 
 Behaviour many lanes repeat goes in a repo file the lanes include, not in
-each lane. swim's repo has a starting set, `helpers/ops.sh`; copy it in
-(say to `lib/swim-ops.sh`):
+each lane. swim's repo has modules for it under `helpers/`, one per
+namespace, every function named `<module>_<name>` (as Terraform names
+resources by provider). Copy in the ones you use (say to `lib/swim/`):
 
 ```bash
-# Includes: lib/swim-ops.sh
-source lib/swim-ops.sh
+# Includes: lib/swim/aws.sh lib/swim/gh.sh lib/swim/os.sh
+source lib/swim/aws.sh
+source lib/swim/gh.sh
+source lib/swim/os.sh
 stage check
+os_mac_gate             # gate: this is the operator's Mac
 aws_gate 123456789012   # gate: an AWS session is active, and is that account
-pr_fetch 482            # gate: fetch PR 482 (remote: origin) to $PR_REF, snapshot its head
+gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $PR_REF, snapshot its head
 ```
 
 | | |
 |---|---|
 | `aws_gate [ACCOUNT]` | A gate that `aws sts get-caller-identity` answers (under `AWS_PROFILE` if set), and with ACCOUNT, that it's that account. The log shows the identity. |
-| `pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `PR_REF`. |
+| `gh_pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `PR_REF`. |
+| `gh_actions` / `gh_actions_gate` | True on a GitHub Actions runner (`GITHUB_ACTIONS=true`), for `if`; the gate stops the round anywhere else and logs the runner, repository, run and commit. |
+| `os_mac` / `os_linux` | True on macOS / Linux (`uname -s`), for `if`. |
+| `os_mac_gate` / `os_linux_gate` | A gate that this is macOS / Linux; logs `uname -srm`. |
 
-`# Includes:` pins the file with the lane: approving the lane approves the
-helpers as they are. Keep helpers read-only, and run every command through
-`step`, `gate` or `snapshot` so the log has it. A destructive step stays in
-the lane behind its own guard: lint reads the lane, not the files it
-includes, for guards and for bash 3.2.
+The plain checks (`gh_actions`, `os_mac`, `os_linux`) log nothing: put
+what depends on them in steps, or use the gate when the lane must run
+there. `# Includes:` pins each module with the lane: approving the lane
+approves the helpers as they are. Keep helpers read-only, and run every
+command through `step`, `gate` or `snapshot` so the log has it. A
+destructive step stays in the lane behind its own guard: lint reads the
+lane, not the files it includes, for guards and for bash 3.2.
 
 ## Header
 

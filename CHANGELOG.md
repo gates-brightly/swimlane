@@ -40,12 +40,16 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Added
 
-- **Shared lane helpers, `helpers/ops.sh`:** copy it into a repo and
-  include it (`# Includes:`, then `source`). `aws_gate [ACCOUNT]` gates on
-  an active AWS session (`sts get-caller-identity`), and on the account;
-  `pr_fetch N [REMOTE]` fetches a pull request's head (remote `origin` by
-  default) to `$PR_REF` and snapshots it. Each runs through `gate` and
-  `snapshot`, so the log records it. See [lanes](docs/reference/lanes.md#shared-helpers).
+- **Shared lane helpers, one module per namespace under `helpers/`:**
+  copy a module into a repo and include it (`# Includes:`, then
+  `source`). Every function is `<module>_<name>`. `aws.sh`: `aws_gate
+  [ACCOUNT]` gates on an active AWS session (`sts get-caller-identity`)
+  and the account. `gh.sh`: `gh_pr_fetch N [REMOTE]` fetches a pull
+  request's head (remote `origin` by default) to `$PR_REF` and snapshots
+  it; `gh_actions` / `gh_actions_gate` tell a GitHub Actions runner.
+  `os.sh`: `os_mac` / `os_linux` and their gates. Commands run through
+  `gate` and `snapshot`, so the log records them. See
+  [lanes](docs/reference/lanes.md#shared-helpers).
 
 ### What changed for you
 
