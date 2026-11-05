@@ -38,6 +38,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261105.9 (v0.20261105.9, 2026-11-05)
+
 ### Added
 
 - **Lint reads a repo's own modules, and `# Changes:`:** a bash module a
