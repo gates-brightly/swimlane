@@ -79,6 +79,38 @@ history stays here, since `swim changelog --since` reads it.
   (and `why` in `swim log --yaml`); the step's result line is unchanged. A
   step that printed nothing keeps today's text.
 
+- **One duration format everywhere you read one: `0.4s`, `12s`, `1m 5s`,
+  `1h 4m`.** `swim run`'s summary and per-lane lines, `swim status`, `swim
+  watch`, `swim log` (step and END lines), `.swim.log`, notifications and
+  `swim ci`'s job summary all use it, instead of a mix of `0:01`, `1.0s`
+  and `1m5s`. Clock times (`15:04:41 → 15:05:46`) stay, and show the
+  second each falls in. A round's duration is now timed from its real
+  start, to the tenth. `swim log --yaml` adds `duration_s` (seconds) beside
+  `duration`; YAML keeps numbers. Older logs' durations still read.
+
+- **A failed run says why once.** The live lines show the failure; the
+  lane's summary, the run's table, `swim status` (`failed_steps`) and
+  `.swim.log`'s fail line list it once, with its why (a `STOP  gate
+  failed: X` that restates `FAIL  X` stays in the lane log), and the
+  trailing `[N] FAIL (exit 1, …)`
+  line is gone when the lane printed its own summary. In a run of several
+  lanes each lane's summary is one line, and the run's table says why.
+
+- **The round header names only the `header_env` variables that are set,
+  and none by default.** No more `STAGE=<unset> AWS_REGION=<unset>`, and
+  `AWS_PROFILE` is no longer recorded unless listed. A new config.yml's
+  `header_env` is `[]`; list what your lanes use (e.g. `[STAGE,
+  AWS_PROFILE, AWS_REGION]`).
+
+- **A lane's staged copy holds only its own files.** Swim's manifest moved
+  out of the lane's working directory to `.swim/runs/<run>/<N>.manifest.yml`
+  (`$SWIM_MANIFEST`), so a lane's `ls` no longer shows `manifest.yml`.
+  Stages an older swim made still verify.
+
+- **`swim lint` findings no longer go to `.swim.log`.** The terminal
+  shows them; the project log keeps what happened (`usage` lines stay).
+  Older `lint` lines still read.
+
 ### Removed
 
 - **One read view per job: `swim report`, earmarks and `swim history` are
@@ -161,38 +193,6 @@ history stays here, since `swim changelog --since` reads it.
   On `swim run`, `swim all` and `swim watch`, `--plain` means plain lines
   and no screen, as it does when stdout isn't a terminal. The pinned panel
   without its keys is `SWIM_TUI=0`.
-
-### Changed
-
-- **One duration format everywhere you read one: `0.4s`, `12s`, `1m 5s`,
-  `1h 4m`.** `swim run`'s summary and per-lane lines, `swim status`, `swim
-  watch`, `swim log` (step and END lines), `.swim.log`, notifications and
-  `swim ci`'s job summary all use it, instead of a mix of `0:01`, `1.0s`
-  and `1m5s`. Clock times (`15:04:41 → 15:05:46`) stay, and show the
-  second each falls in. A round's duration is now timed from its real
-  start, to the tenth. `swim log --yaml` adds `duration_s` (seconds) beside
-  `duration`; YAML keeps numbers. Older logs' durations still read.
-
-- **A failed run says why once.** The live lines show the failure; the
-  lane's summary lists it once (a `STOP  gate failed: X` that restates
-  `FAIL  X` stays in the log), and the trailing `[N] FAIL (exit 1, …)`
-  line is gone when the lane printed its own summary. In a run of several
-  lanes each lane's summary is one line, and the run's table says why.
-
-- **The round header names only the `header_env` variables that are set,
-  and none by default.** No more `STAGE=<unset> AWS_REGION=<unset>`, and
-  `AWS_PROFILE` is no longer recorded unless listed. A new config.yml's
-  `header_env` is `[]`; list what your lanes use (e.g. `[STAGE,
-  AWS_PROFILE, AWS_REGION]`).
-
-- **A lane's staged copy holds only its own files.** Swim's manifest moved
-  out of the lane's working directory to `.swim/runs/<run>/<N>.manifest.yml`
-  (`$SWIM_MANIFEST`), so a lane's `ls` no longer shows `manifest.yml`.
-  Stages an older swim made still verify.
-
-- **`swim lint` findings no longer go to `.swim.log`.** The terminal
-  shows them; the project log keeps what happened (`usage` lines stay).
-  Older `lint` lines still read.
 
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 
