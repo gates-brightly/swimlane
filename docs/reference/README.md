@@ -29,7 +29,7 @@ Using swim:
 How it holds together:
 
 - [manifest](manifest.md): what a round pins and an approval signs.
-- [chain](chain.md): the signed record, `swim verify`, the store.
+- [chain](chain.md): the signed record, `swim verify`.
 - [architecture](architecture.md): where credentials live and where policy
   is enforced.
 - [trust-model](trust-model.md): what swim protects against, what it

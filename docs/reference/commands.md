@@ -27,7 +27,7 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `status [N]` | Every lane's state; each pending lane's dependencies and guards. |
 | `log [N\|JOB\|RUN]` | A lane's log, or the project log. See [logs](logs.md). |
 | `report [--earmark]` | What changed since you last looked. |
-| `verify` / `history` / `chain` / `store` / `signoff verify` | The [chain of custody](chain.md). |
+| `verify` / `history` / `chain` / `signoff verify` | The [chain of custody](chain.md). |
 | **Environment** | |
 | `config [edit \| KEY [VALUE]]` | Settings on one screen; see [config](config.md). |
 | `env [N]` | The env a lane gets, masked, with each key's source. |

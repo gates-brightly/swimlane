@@ -139,7 +139,8 @@ func newRepo(t *testing.T, deps string) *repo {
 	xdg := t.TempDir()
 	r := &repo{t: t, root: root, env: append(os.Environ(),
 		"XDG_CONFIG_HOME="+xdg,
-		// The store (swim store) goes here, never the developer's profile.
+		// Anything swim keeps in a data directory goes here, never the
+		// developer's profile.
 		"XDG_DATA_HOME="+filepath.Join(xdg, "data"),
 		"PATH="+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"NO_COLOR=1", "SWIM_ROOT=", "SWIM_LANE=", "STEP_LOG=", "SWIM_BIN=",

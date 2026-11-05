@@ -56,19 +56,3 @@ authorized  yes  31 approvals, each met its lookup.yml rule
 An anchor proves nothing about entries after its last checkpoint, and
 whoever holds the runner key and can write every anchor can rewrite
 everything: keep anchors out of the operator's reach.
-
-## The store
-
-The chain holds hashes, and the repo can go. The store keeps the bytes in
-your profile (`~/.local/share/swim/store`, 0700): every file a lane's
-manifest pins, as `swim run` stages it, then the round's log section and
-result. Kept once each, never removed, shared by a repo's clones.
-
-```sh
-swim store                              # this repo's kept rounds (--all)
-swim store show RUN [N] [--log|--script|--file PATH]
-swim store verify                       # every object against its hash; every chain round kept
-```
-
-`store_dir` in config.yml moves it or turns it off; a repo's `swim.yml`
-can't. A store that can't take a round warns, and the round runs.

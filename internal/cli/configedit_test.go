@@ -16,7 +16,6 @@ func TestConfigShown(t *testing.T) {
 		{"outputs_keep", "336h0m0s", "14d"},
 		{"outputs_keep", "36h0m0s", "36h"},
 		{"cache_dir", home + "/.cache/swim", "~/.cache/swim"},
-		{"store_dir", "off", "off"},
 		{"signing_key", "", "—"},
 	} {
 		if got := configShown(c.key, c.v); got != c.want {

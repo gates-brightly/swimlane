@@ -567,7 +567,6 @@ func cmdFinish(args []string) error {
 			Cache: roundSnaps(logPath), Kept: keptSteps(r)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
-		keepRound(root, cfg, n, r.Run, r.Job, r.Title, state, code, section)
 	}
 	stages := r.StageResults()
 
