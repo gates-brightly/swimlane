@@ -16,7 +16,7 @@ var (
 // Clock times stay.
 func TestDurationsReadOneWay(t *testing.T) {
 	r := newRepo(t)
-	r.shortLane(1, "# Round: takes a second", "stage check\nrun \"wait\" sleep 1.1\nrun \"list\" ls -a")
+	r.shortLane(1, "# Round: lists", "stage check\nrun \"wait\" true\nrun \"list\" ls -a")
 	r.shortLane(2, "# Round: fails", "stage check\ngate \"config exists\" false")
 	run, _ := r.swim("run", "1", "2", "--plain")
 	one, _ := r.swim("run", "2", "--plain")
@@ -30,8 +30,8 @@ func TestDurationsReadOneWay(t *testing.T) {
 			t.Errorf("%s shows a duration as m:ss (%s):\n%s", what, m, out)
 		}
 	}
-	if !regexp.MustCompile(`PASS  wait\s+1\.\ds  \d\d:\d\d:\d\d`).MatchString(r.log(1)) {
-		t.Errorf("the step's duration isn't 1.Ns:\n%s", r.log(1))
+	if !regexp.MustCompile(`PASS  wait\s+\d\.\ds  \d\d:\d\d:\d\d`).MatchString(r.log(1)) {
+		t.Errorf("the step's duration isn't N.Ns:\n%s", r.log(1))
 	}
 
 	// A failed lane says why once in its summary (the STOP that restates

@@ -136,7 +136,7 @@ func TestDurationsReadBack(t *testing.T) {
 	log := "# swim lane log | syntax 2 | swim 1\n\n" +
 		"== ROUND 2026-10-09T12:00:00Z  job=j  t\n\n" +
 		StepLine(Pass, "short", "", "0.4s", "12:00:01") + "\n" +
-		StepLine(Pass, "sleep 2m", "", "12s", "12:00:02") + "\n" +
+		StepLine(Pass, "wait 2m", "", "12s", "12:00:02") + "\n" +
 		StepLine(Pass, "long", "", "1m 5s", "12:00:03") + "\n" +
 		StepLine(Pass, "longer", "", "1h 4m", "12:00:04") + "\n" +
 		"  PASS  old                                    65.0s  12:00:05\n" +
@@ -148,7 +148,7 @@ func TestDurationsReadBack(t *testing.T) {
 	want := []struct {
 		label string
 		dur   float64
-	}{{"short", 0.4}, {"sleep 2m", 12}, {"long", 65}, {"longer", 3840}, {"old", 65}}
+	}{{"short", 0.4}, {"wait 2m", 12}, {"long", 65}, {"longer", 3840}, {"old", 65}}
 	if len(r.Results) != len(want) {
 		t.Fatalf("results: %+v", r.Results)
 	}
