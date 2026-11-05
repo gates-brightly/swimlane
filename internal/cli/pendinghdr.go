@@ -125,7 +125,8 @@ func (pv *pendingView) print(p ui.Painter, indent string) {
 	}
 	h := pv.Header
 	var meta []string
-	if h.Owner != "" {
+	// Your own name is no news: the owner shows when it's someone else.
+	if h.Owner != "" && h.Owner != lane.ClaimOwner() && h.Owner != os.Getenv("USER") {
 		meta = append(meta, "owner "+h.Owner)
 	}
 	if h.Timeout != "" {

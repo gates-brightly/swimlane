@@ -11,8 +11,7 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `init` | Set up this repo: config entry, `.swim.lock`, `.gitignore` block, `.swim/status.yml`. |
 | `new N\|TASK "<goal>"` | Write `lane.N.sh` from the template with a new job id; a TASK takes the lowest free lane. |
 | `lint [N ...]` | Check lane scripts; changes nothing. |
-| `claim N\|RESOURCE` | Hold a lane while a session writes it, or a shared resource. |
-| `archive N ... [--as NAME]` / `stub N "<msg>"` / `clean` | Keep a finished log; free the lane; both, for every finished lane. |
+| `archive N ... ["<note>"] [--as NAME]` / `archive --done` | Keep a finished round's log and free the lane (its script becomes a stub with the note); `--done`: every lane whose round passed. |
 | `note [--lane N] "<text>"` | A decision or finding in `.swim.log`. |
 | **Rounds** | |
 | `run [N ...]` / `all [--rerun]` | Run lanes / every pending round that hasn't passed. |

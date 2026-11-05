@@ -84,12 +84,9 @@ func cmdStatus(args []string) error {
 			Branch    string    `yaml:"branch,omitempty"`
 			LastRun   string    `yaml:"last_run,omitempty"`
 			Lanes     []laneDoc `yaml:"lanes"`
-			// Claims are the lanes' live claims (swim claim), by lane: not in
-			// status.yml itself.
+			// Claims are the lanes' live claims (swim new takes one), by
+			// lane: not in status.yml itself.
 			Claims map[int]*lane.Claim `yaml:"claims,omitempty"`
-			// ResourceClaims are the live claims on named resources (swim
-			// claim lith), by name.
-			ResourceClaims map[string]*lane.Claim `yaml:"resource_claims,omitempty"`
 		}{Schema: "swim.status/v1", UpdatedAt: f.UpdatedAt, Root: f.Root, Branch: f.Branch, LastRun: f.LastRun}
 		lanes := f.Lanes
 		if len(only) > 0 {
@@ -117,12 +114,6 @@ func cmdStatus(args []string) error {
 				}
 				doc.Claims[l.Lane] = c
 			}
-		}
-		for _, rc := range lane.ResourceClaims(root) {
-			if doc.ResourceClaims == nil {
-				doc.ResourceClaims = map[string]*lane.Claim{}
-			}
-			doc.ResourceClaims[rc.Name] = rc.Claim
 		}
 		enc := yaml.NewEncoder(os.Stdout)
 		enc.SetIndent(2)
@@ -186,9 +177,6 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 	fmt.Println(p.Paint(ui.Bold, title))
 	for _, h := range lane.HeldLocks(root) {
 		fmt.Println(p.Paint(ui.Yellow, "lock "+h.Name+" held by "+h.By))
-	}
-	for _, rc := range lane.ResourceClaims(root) {
-		fmt.Println(p.Paint(ui.Cyan, rc.Name+" "+claimText(rc.Claim)))
 	}
 	sv := newStatusView(root, cfg)
 	refused := lintRefusals(root, cfg)
@@ -280,8 +268,9 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 		if pv != nil {
 			pv.print(p, indent)
 		}
-		if c := lane.ReadClaim(root, l.Lane); c != nil && state != status.Running {
-			detail(claimText(c), ui.Cyan)
+		// Your own claim (swim new took it) is no news: another session's is.
+		if c := lane.ReadClaim(root, l.Lane); c != nil && c.Session != lane.SessionID() && state != status.Running {
+			detail(fmt.Sprintf("claimed by %s (%s) until %s", c.Owner, c.Session, c.ExpiresAt().Local().Format("15:04")), ui.Cyan)
 		}
 		if fs := refused[l.Lane]; len(fs) > 0 && state != status.Running {
 			noun := "lint error"

@@ -100,12 +100,13 @@ Notes:
   chain a round entry, and the lane is `interrupted`. `swim status
   --rebuild` does the same for status alone. A new run of the lane isn't
   blocked either way. See [recovery](recovery.md#a-lane-stuck-running).
-- **A claimed lane** (`swim new`, `swim claim`) has a lease in
-  `.swim/claims/lane.N.yml` (owner, session, host, created, expires, job)
-  while a session writes its round. It isn't a lane state: it guards
-  `swim new`, `stub` and `archive` from other sessions, and ends when the
-  lane starts running, is archived or stubbed, is released, or expires (an
-  expired one is removed by the next command that reads it). Changes are
+- **A claimed lane** (`swim new` takes it; `swim lint` refreshes it) has
+  a lease in `.swim/claims/lane.N.yml` (owner, session, host, created,
+  expires, job) while a session writes its round. It isn't a lane state:
+  it guards `swim new` and `archive` from other sessions (`--force` takes
+  it over, logged as `claim-broken`), and ends when the lane starts
+  running, is archived, or expires (an expired one is removed by the next
+  command that reads it). `swim status` shows it only to other sessions. Changes are
   serialised by `flock` on `.swim/claims/.lock`.
 - **Passed lanes** are left alone by `swim all` (unless `--rerun`). `swim
   run N` reruns them.

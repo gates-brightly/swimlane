@@ -440,8 +440,8 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 	if strings.Contains(out, "waiting on") {
 		t.Errorf("lane waited on a dependency outside the run:\n%s", out)
 	}
-	// A stubbed dependency never blocks.
-	r.mustSwim("stub", "1", "done")
+	// An archived dependency never blocks.
+	r.mustSwim("archive", "1", "done")
 	r.mustSwim("run", "2")
 
 	if out, code := r.swim("run", "100"); code == 0 || !strings.Contains(out, "lanes are numbered 1..99") {
@@ -533,7 +533,7 @@ run "after confirm" true`)
 	}
 }
 
-func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
+func TestArchiveNewAndRunningRefusals(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
 	r.newLane("1", "first round")
@@ -544,20 +544,22 @@ func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
 		t.Errorf("pending = %q", f.Get(1).Pending)
 	}
 	r.mustSwim("run", "1")
-	r.mustSwim("archive", "1", "first round")
+	r.mustSwim("archive", "1", "all done", "--as", "first round")
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.prev-first-round.log")); err != nil {
 		t.Fatal(err)
 	}
-	r.mustSwim("stub", "1", "all done")
 	if l := r.status().Get(1); l.State != status.Idle || l.Pending != "" || l.LastArchive != "agent1.prev-first-round.log" {
-		t.Errorf("after archive+stub: %+v", l)
+		t.Errorf("after archive: %+v", l)
 	}
+	contains(t, "stub", readFile(t, r, "lane.1.sh"), "# swim:stub", "all done")
 	if out, code := r.swim("run", "1"); code == 0 || !strings.Contains(out, "no pending round") {
 		t.Errorf("run stub: %d %s", code, out)
 	}
 	if out := r.mustSwim("run"); !strings.Contains(out, "nothing pending") {
 		t.Errorf("run with only stubs: %s", out)
 	}
+	// The slot is empty: swim new needs no --force.
+	r.mustSwim("new", "1", "second round")
 
 	// While a lane runs, nothing may touch its files.
 	r.script(2, "long", `run "sleep" `+hold("go"))
@@ -569,7 +571,7 @@ func TestArchiveStubNewAndRunningRefusals(t *testing.T) {
 	defer r.release("go")
 	waitFor(t, func() bool { l := r.status().Get(2); return l != nil && l.State == status.Running })
 	os.WriteFile(filepath.Join(r.root, "agent2.log.keep"), nil, 0o644)
-	for _, args := range [][]string{{"archive", "2", "x"}, {"stub", "2", "x"}, {"new", "2", "x", "--force"}, {"run", "2"}} {
+	for _, args := range [][]string{{"archive", "2", "x"}, {"new", "2", "x", "--force"}, {"run", "2"}} {
 		if out, code := r.swim(args...); code == 0 || !strings.Contains(out, "running") {
 			t.Errorf("swim %v on running lane: %d %s", args, code, out)
 		}
@@ -931,8 +933,7 @@ func TestProjectLog(t *testing.T) {
 	if out, err := r.cmd("bash", "lane.3.sh").CombinedOutput(); err != nil {
 		t.Fatalf("direct run: %v %s", err, out)
 	}
-	r.mustSwim("archive", "job-one-0001")
-	r.mustSwim("stub", "1", "precheck needs a fix")
+	r.mustSwim("archive", "job-one-0001", "precheck needs a fix")
 	r.mustSwim("note", "--lane", "2", "rerun after lane 1 is fixed")
 
 	data, err := os.ReadFile(filepath.Join(r.root, ".swim.log"))
@@ -964,8 +965,7 @@ func TestProjectLog(t *testing.T) {
 		"run-done swim 1,2 passed=0 failed=1 skipped=1 interrupted=0",
 		"start swim 3 job=",
 		"pass swim 3 job=",
-		"archive swim 1 job=job-one-0001 agent1.prev-job-one-0001.log",
-		"stub swim 1 job=job-one-0001 precheck needs a fix",
+		"archive swim 1 job=job-one-0001 agent1.prev-job-one-0001.log precheck needs a fix",
 		"note swim 2 job=job-two-0002 rerun after lane 1 is fixed",
 	}
 	if len(events) != len(want) {
@@ -987,8 +987,8 @@ func TestLogCommand(t *testing.T) {
 	r := newRepo(t, "")
 	r.newLane("1", "first round", "--job", "first-job-01")
 	r.mustSwim("run", "1")
-	r.mustSwim("archive", "1", "first")
-	r.newLane("1", "second round", "--force", "--job", "second-job-02")
+	r.mustSwim("archive", "1", "--as", "first")
+	r.newLane("1", "second round", "--job", "second-job-02")
 	r.mustSwim("run", "1")
 
 	// Current log only.
@@ -1071,10 +1071,8 @@ func TestLanesInUse(t *testing.T) {
 	if strings.Contains(st, "swim 3") {
 		t.Errorf("status shows a lane not in use:\n%s", st)
 	}
-	// Stubbed, lane 6 is still in use while it has a log; archived, it isn't.
-	r.mustSwim("stub", "6", "done")
-	contains(t, "after stub", r.mustSwim("status"), "swim 6")
-	r.mustSwim("archive", "6")
+	// Archived (its log kept, its script a stub), it isn't in use.
+	r.mustSwim("archive", "6", "done")
 	if st := r.mustSwim("status"); strings.Contains(st, "swim 6") {
 		t.Errorf("status after archive 6 still shows it:\n%s", st)
 	}
@@ -1942,7 +1940,11 @@ func TestArchiveSeveralLanes(t *testing.T) {
 		}
 	}
 	// --as names every lane's archive; all or nothing when one can't be archived.
-	r.mustSwim("all", "--rerun")
+	for n := 1; n <= 3; n++ {
+		r.script(n, fmt.Sprintf("round %d", n), `run "a" true`)
+		withHeader(t, r, n, fmt.Sprintf("# Job: aaaa000%d-1111-4222-8333-444455556666", n))
+	}
+	r.mustSwim("all")
 	if out, code := r.swim("archive", "1", "2", "4", "--as", "batch"); code == 0 || !strings.Contains(out, "nothing archived") || !strings.Contains(out, "swim 4 has nothing to archive") {
 		t.Fatalf("a lane without a log: %d %s", code, out)
 	}
@@ -1950,8 +1952,9 @@ func TestArchiveSeveralLanes(t *testing.T) {
 		t.Fatal("lane 1 was archived although lane 4 couldn't be")
 	}
 	contains(t, "--as", r.mustSwim("archive", "1", "2", "--as", "batch"), "agent1.prev-batch.log", "agent2.prev-batch.log")
-	// A job id is a lane too, and the older "name after the lane" form still works.
-	contains(t, "job id + old form", r.mustSwim("archive", "aaaa0003", "cut", "over"), "agent3.prev-cut-over.log")
+	// A job id is a lane too, and the words after the lanes are the note.
+	contains(t, "job id + note", r.mustSwim("archive", "aaaa0003", "cut", "over", "--as", "third"), "agent3.prev-third.log")
+	contains(t, "note", readFile(t, r, "lane.3.sh"), "# swim:stub", "cut over")
 }
 
 // long puts a test in the long batch (make test-long, and CI): go test

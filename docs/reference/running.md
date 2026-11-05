@@ -11,7 +11,7 @@ run, and skips the round if one fails or is skipped. Config `deps:` adds
 ordering that holds every round. A dependency outside the run must already
 be satisfied, or the lane is skipped:
 
-- a lane: its pending round passed (a stubbed or empty lane never blocks);
+- a lane: its pending round passed (an archived or empty lane never blocks);
 - a job: it's that lane's last run, and passed.
 
 Cycles, unresolvable references, and an `After:` lane with no script, log

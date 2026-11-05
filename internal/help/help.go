@@ -78,8 +78,8 @@ var Commands = map[string]string{
                  heartbeat every third of this while it runs a batch; seen
                  from another host, a claim with an older heartbeat is
                  orphaned. Default 2m.
-    claim_lease  duration (1m or more)    how long a lane claim (swim new,
-                 swim claim) lasts unless refreshed. Default 2h.
+    claim_lease  duration (1m or more)    how long the claim swim new takes
+                 on a lane lasts unless refreshed. Default 2h.
     watch_batches  a number (1 or more)   how many queued batches one swim
                  watch runs at once (default 4; swim watch --batches N).
     notify       true or false            terminal notifications and a
@@ -127,6 +127,12 @@ var Commands = map[string]string{
   lane's pending round and job in status.yml.
   Refuses if lane N is running, or already holds a pending round (use
   --force to replace a pending round you own).
+  It takes a claim on the lane while you write the round (claim_lease,
+  default 2h; swim lint refreshes it; it ends when the lane runs or is
+  archived): another session's swim new and archive refuse the lane,
+  naming who holds it, and swim status shows it to them. --force takes it
+  over (logged as claim-broken). A session is SWIM_SESSION, else
+  user@host.
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
@@ -326,13 +332,14 @@ swim report --earmarks | --earmark --reset [--name NAME]
   interrupted or "no round"; each guard is decided as swim run would as
   it starts now (FLAG=1 in this environment), and says whether swim run
   would ask or dry-run. Only what the header sets is shown (Fail: hard, a
-  target, an owner too).
+  target, an owner other than you too). A lane another session is writing
+  shows its claim (swim new took it); your own doesn't.
   --yaml     the status file's fields as YAML, tagged schema: swim.status/v1;
              each pending lane adds pending_header {after, guards: [{flag,
              description, approved, how, asks}], timeout,
              locks, includes, fail, targets, owner} and deps: [{lane, job,
              state, note}] (deps_error if its After: doesn't resolve);
-             claims: the lanes' live claims (swim claim), by lane
+             claims: the lanes' live claims (swim new takes one), by lane
              (with N|JOB, just that lane); the file itself is unchanged
              (cat .swim/status.yml)
   --rebuild  reconstruct status.yml from lane scripts and logs
@@ -451,49 +458,31 @@ swim report --earmarks | --earmark --reset [--name NAME]
   (eval, not "source <(...)": process-substitution source is broken in
   macOS bash 3.2). See swim guide lanes for the functions.
 `,
-	"clean": `swim clean [--queue|--no-queue] [--all] [--no-input] [-n] [-o yaml]
+	"archive": `swim archive N|JOB ... ["<note>"] [--as NAME] [--force]
+swim archive --done ["<note>"]
 
-  Idle every lane whose round is finished (passed, failed, interrupted,
-  stale), in one go: its logs are archived under one name,
-  clean-YYYYMMDD-HHMM, as swim archive does (agentN.prev-clean-....log;
-  status shows it idle), and its script is replaced by a stub, as swim
-  stub does. A script edited since its round ran (new work), a stub, or a
-  lane another session has claimed keeps its script: only its logs are
-  archived. Running and waiting lanes are left alone. Then it asks,
-  defaulting to no, whether to remove the waiting queue batches (a batch
-  someone else queued and signed is asked about separately; orphans are
-  only listed). Without a terminal (CI, an agent, --no-input) it archives
-  and stubs, and keeps the queue. --queue/--no-queue answer up front;
-  --all is --queue. Not -y: that approves guards.
-  -n, --dry-run   print the plan; change nothing
-  -o yaml         the plan, or what it did, as swim.clean/v1
-  Refused while swim is busy (a run or swimmer holds lanes). Recorded in
-  .swim.log (clean, and archive/stub/queue-rm per item) and the chain (a
-  clean entry: the stubbed scripts' SHA-256s, the removed batches); swim
-  verify still finds the archived logs, and the scripts that ran are kept
-  by hash in .swim/scripts/.
-`,
-	"archive": `swim archive N|JOB ... [--as NAME] [--force]
-
-  Rename each lane's .swim/logs/agentN.log to agentN.prev-<NAME>.log in the
-  same directory: swim archive 1 2 3 archives lanes 1, 2 and 3. Every
+  Tidy lanes whose rounds are done: rename each lane's
+  .swim/logs/agentN.log to agentN.prev-<NAME>.log in the same directory,
+  and replace its lane.N.sh with a "nothing pending" stub carrying <note>
+  (default: where the log went). The slot is empty: status shows the lane
+  idle with its note, swim run skips it, and swim new N writes the next
+  round. swim archive 1 2 3 "shipped" tidies lanes 1, 2 and 3. Every
   argument is a lane number or a job id (the lane whose script holds that
-  job or that last ran it). NAME is slugified; without --as each archive is
-  named after its round's job id. The next round starts a fresh log and
-  history is kept; each lane is reset to idle in status.yml.
-  All or nothing: if any lane is running, has no log, or its archive name
-  exists, nothing is archived and every problem is listed.
-  The older form, a name after one lane, still works: swim archive 1 cutover.
-`,
-	"stub": `swim stub N|JOB "<message>" [--force]
-
-  Replace lane.N.sh with a "nothing pending" stub carrying <message>. The lane
-  shows as idle and "swim run" skips it. Refuses if lane N is running.
+  job or that last ran it); the words after them are the note. NAME is
+  slugified; without --as each archive is named after its round's job id.
+  A script edited since its round ran holds new work: its log is archived
+  and the script is kept (swim new N --force replaces it).
+  --done   every lane whose round passed
+  --force  take over another session's claim on the lane (logged as
+           claim-broken)
+  All or nothing: if any lane is running, has no log, is claimed by
+  another session, or its archive name exists, nothing is archived and
+  every problem is listed.
 `,
 	"note": `swim note [--lane N|JOB] "<text>"
 
   Append a note to .swim.log, the project log, so the next agent learns it:
-  a decision, a finding, why a lane was stubbed, what to do next.
+  a decision, a finding, why a lane was archived, what to do next.
   --lane N|JOB   tie the note to a lane (and its job id)
   Keep notes short and factual; never include secret values.
 `,
@@ -686,9 +675,10 @@ swim queue show|rm|requeue ID
                    guards may ask
     q on a job     queues it as swim queue N does (the batch approves none
                    of its guards); the swimmer takes it when its lanes are free
-    a on a job     archives its lane's log as swim archive N does: the lane
-                   goes idle, the log is kept as agentN.prev-<job>.log (not
-                   while it runs, nor without a log)
+    a on a job     archives its lane as swim archive N does: the lane goes
+                   idle, the log is kept as agentN.prev-<job>.log and the
+                   script becomes a stub (not while it runs, nor without a
+                   log)
     r on a batch   starts a waiting batch now, out of turn, if its lanes are
                    free, with its own approvals (and -y's), exactly as in turn
     enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log);
@@ -835,40 +825,6 @@ swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
   ends interrupted (STOP  interrupted by operator (after: <step>), exit 130).
   Other lanes keep running. The same thing the first Ctrl-C does to every
   lane of a swim run.
-`,
-	"claim": `swim claim N|RESOURCE [--for D] [--session NAME]
-swim claim N|RESOURCE --release [--force] [--session NAME]
-swim claim N|RESOURCE --break "<reason>"
-
-  A claim is a lease a session holds on a lane while it writes the lane's
-  round: swim new takes one (claim_lease, default 2h), swim lint refreshes
-  it, and while it's live another session's swim new, stub and archive
-  refuse the lane, naming who holds it. It ends when the lane starts
-  running (swim run, all, watch: a run warns if another session held it,
-  and runs anyway), when it's archived or stubbed, when it's released, or
-  when the lease runs out. swim status shows it.
-  swim claim N takes or refreshes it explicitly (--for D); --release gives
-  it up (--force: another session's); --break takes over a live claim with
-  a reason, and --force on new, stub or archive does too: both are logged
-  as claim-broken.
-  --session NAME takes (or releases) the claim for another session: a
-  planner assigning each worker its lane before the worker starts
-  (swim claim 30 --session worker-orders). The claim is NAME's, so only
-  a session with SWIM_SESSION=NAME may swim new, stub or archive the
-  lane, the planner included; the worker's swim new and swim lint keep
-  it, and swim status says who assigned it.
-  RESOURCE (not a number: a name such as lith or tf/orders, spelled as a
-  lock) claims something sessions share outside any one lane, such as a
-  local environment several agents' lanes rebuild: swim claim lith --for
-  30m. While it's live another session's swim claim lith is refused,
-  naming who holds it; swim status lists it; a run whose # Locks: names
-  it warns that the resource is claimed, and runs anyway (# Locks: is
-  what keeps runs apart). It ends when released or when the lease runs
-  out; --session and --break work as for a lane.
-  A session is SWIM_SESSION, else user@host: set SWIM_SESSION per
-  session, or two sessions of one user on one machine are one. Claims are
-  advisory: they guard swim's commands, not an editor writing lane.N.sh
-  or a command run by hand, and stay in this checkout's .swim/claims/.
 `,
 	"lint": `swim lint [N|JOB ...] [--strict] [--yaml] [--fix]
 
@@ -1112,7 +1068,7 @@ func For(name string) (string, bool) {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait",
+	"archive", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
 	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
@@ -1158,8 +1114,8 @@ LOGS
 EVERYTHING ELSE (swim <command> --help, or swim guide commands)
   verify, history, keys, chain   the record of approvals and rounds
   doctor, config, env          the environment lanes get
-  archive, clean, stub, note   tidy up and record
-  interrupt, wait, claim       control running lanes
+  archive, note                tidy up and record
+  interrupt, wait              control running lanes
   ci, signoff, lock, changelog, version, skill
   Lane scripts can also call: drift, stop, msg, input, output.
 `

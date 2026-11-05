@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/assets"
+	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/ci"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
@@ -332,7 +333,8 @@ func cmdNew(args []string) error {
 	if task != "" {
 		content = withTask(content, task)
 	}
-	// Another session writing this lane holds its claim (swim claim).
+	// Another session writing this lane holds its claim (swim new took
+	// it); --force takes it over.
 	sess := lane.SessionID()
 	if err := lane.CheckClaim(root, n, sess); err != nil && !force {
 		return err
@@ -341,7 +343,7 @@ func cmdNew(args []string) error {
 		return err
 	}
 	if _, broke, err := lane.TakeClaim(root, n, sess, cfg.ClaimLeaseFor(), job, true); err == nil && broke != nil {
-		claimBroken(root, n, broke, sess, "new", "")
+		claimBroken(root, n, broke, sess, "new")
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
 		l.Pending, l.PendingJob = strings.Join(strings.Fields(goal), " "), job
@@ -717,40 +719,60 @@ func cmdLib(args []string) error {
 	return nil
 }
 
-// cmdArchive archives lanes' logs: swim archive N|JOB ... [--as NAME].
-// Every argument that is a lane number or a job id is a lane; each lane's
-// log becomes agentN.prev-<NAME>.log, or with no name its round's job id.
-// The older form, a name after one lane (swim archive 1 cutover), still
-// works: arguments after the lanes that are neither are taken as the name.
+// cmdArchive tidies lanes whose rounds are done: swim archive N|JOB ...
+// ["<note>"] [--as NAME] [--force], or swim archive --done ["<note>"].
+// Each lane's log becomes agentN.prev-<NAME>.log (with no name, its
+// round's job id) and its script a stub carrying the note: the slot is
+// empty. A script edited since its round ran holds new work: it's kept.
+// --done does it for every lane whose round passed. Arguments after the
+// lanes that are neither a lane number nor a job id are the note.
 func cmdArchive(args []string) error {
 	var as string
-	var force bool
-	rest, err := flags{strs: map[string]*string{"as": &as}, bools: map[string]*bool{"force": &force}}.parse(args)
+	var force, done bool
+	rest, err := flags{strs: map[string]*string{"as": &as}, bools: map[string]*bool{"force": &force, "done": &done}}.parse(args)
 	if err != nil {
 		return err
 	}
-	if len(rest) < 1 {
-		return usagef("usage: swim archive N|JOB ... [--as NAME] [--force]")
+	if len(rest) < 1 && !done {
+		return usagef(`usage: swim archive N|JOB ... ["<note>"] [--as NAME] [--force] | swim archive --done ["<note>"]`)
 	}
 	root, cfg, err := repo()
 	if err != nil {
 		return err
 	}
 	var lanes []int
-	seen := map[int]bool{}
-	for i, a := range rest {
-		n, err := laneRef(root, cfg, a, true)
-		if err != nil {
-			if _, numErr := strconv.Atoi(a); numErr == nil || i == 0 || as != "" {
-				return err // a number is always a lane; so is the first argument
-			}
-			// The older form: the rest is the archive's name.
-			as = strings.Join(rest[i:], " ")
-			break
+	var note string
+	if done {
+		note = strings.Join(rest, " ")
+		if err := refreshStatus(root, cfg); err != nil {
+			return err
 		}
-		if !seen[n] {
-			seen[n] = true
-			lanes = append(lanes, n)
+		if st, _ := status.Load(root); st != nil {
+			for _, l := range st.Lanes {
+				if l.State == status.Passed && cfg.IsActive(l.Lane) {
+					lanes = append(lanes, l.Lane)
+				}
+			}
+		}
+		if len(lanes) == 0 {
+			fmt.Println("nothing to archive: no lane's round passed")
+			return nil
+		}
+	} else {
+		seen := map[int]bool{}
+		for i, a := range rest {
+			n, err := laneRef(root, cfg, a, true)
+			if err != nil {
+				if _, numErr := strconv.Atoi(a); numErr == nil || i == 0 {
+					return err // a number is always a lane; so is the first argument
+				}
+				note = strings.Join(rest[i:], " ")
+				break
+			}
+			if !seen[n] {
+				seen[n] = true
+				lanes = append(lanes, n)
+			}
 		}
 	}
 	// Check every lane first: archive all of them or none.
@@ -790,74 +812,76 @@ func cmdArchive(args []string) error {
 		msg := "nothing archived:\n  " + strings.Join(problems, "\n  ")
 		return errors.New(msg)
 	}
+	st, _ := status.Load(root)
 	for _, pl := range plans {
+		// The script is the round that ran (not edited since): stub it.
+		var ran *status.Lane
+		if st != nil {
+			ran = st.Get(pl.n)
+		}
+		stub, kept := stubScript(root, pl.n, ran)
+		replaced, _ := lane.ReadScript(root, pl.n)
 		dst, err := lane.Archive(root, pl.n, pl.what)
 		if err != nil {
 			return err
+		}
+		msg := or(note, "archived as "+filepath.Base(dst))
+		if stub {
+			content, err := assets.Stub(pl.n, msg)
+			if err != nil {
+				return err
+			}
+			if err := lane.WriteScript(root, pl.n, content, true); err != nil {
+				return err
+			}
 		}
 		status.Update(root, pl.n, cfg.Lanes, func(l *status.Lane) {
 			l.ResetRun()
 			l.State, l.Round, l.Job = status.Idle, "", ""
 			l.LastArchive = filepath.Base(dst)
+			if stub {
+				l.Pending, l.PendingJob = "", ""
+			}
 		})
 		archived, _ := logparse.ParseFile(dst)
-		history.Log(root, history.Entry{Event: history.Archive, Lane: pl.n, Job: archived.Job, Detail: filepath.Base(dst)})
+		detail := filepath.Base(dst)
+		if note != "" {
+			detail += "  " + note
+		}
+		history.Log(root, history.Entry{Event: history.Archive, Lane: pl.n, Job: or(archived.Job, replaced.Job), Detail: detail})
 		if c, _ := lane.ReleaseClaim(root, pl.n, sess, true); c != nil && c.Session != sess {
-			claimBroken(root, pl.n, c, sess, "archive", "")
+			claimBroken(root, pl.n, c, sess, "archive")
 		}
 		fmt.Printf("archived %s -> %s\n", rel(root, lane.Log(root, pl.n)), rel(root, dst))
+		if kept != "" {
+			fmt.Printf("  kept %s: %s\n", rel(root, lane.Script(root, pl.n)), kept)
+		}
 	}
 	return nil
 }
 
-func cmdStub(args []string) error {
-	var force bool
-	args, err := flags{bools: map[string]*bool{"force": &force}}.parse(args)
-	if err != nil {
-		return err
-	}
-	if len(args) < 2 {
-		return usagef(`usage: swim stub N "<message>" [--force]`)
-	}
-	root, cfg, err := repo()
-	if err != nil {
-		return err
-	}
-	n, err := laneRef(root, cfg, args[0], false)
-	if err != nil {
-		return err
-	}
-	sess := lane.SessionID()
-	if err := lane.CheckClaim(root, n, sess); err != nil && !force {
-		return err
-	}
-	msg := strings.Join(args[1:], " ")
-	if err := stubLane(root, cfg, n, msg); err != nil {
-		return err
-	}
-	fmt.Printf("stubbed %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, msg)
-	return nil
+// claimBroken records lane n's live claim, another session's, taken over
+// by session by (swim new or swim archive with --force).
+func claimBroken(root string, n int, broke *lane.Claim, by, via string) {
+	history.Log(root, history.Entry{Event: history.ClaimBroken, Lane: n, Job: broke.Job, Detail: fmt.Sprintf("from=%s by=%s via=%s", broke.Session, by, via)})
 }
 
-// stubLane replaces lane n's script with a stub carrying msg (swim stub,
-// and swim clean for each lane it idles), and releases this session's
-// claim on it.
-func stubLane(root string, cfg *config.Config, n int, msg string) error {
-	sess := lane.SessionID()
-	replaced, _ := lane.ReadScript(root, n)
-	content, err := assets.Stub(n, msg)
-	if err != nil {
-		return err
+// stubScript says whether swim archive stubs lane n's script, or why it
+// keeps it: no script is nothing to stub, and one edited since its last
+// round ran (ran: its status entry) is new work. A stub is restubbed.
+func stubScript(root string, n int, ran *status.Lane) (bool, string) {
+	info, err := lane.ReadScript(root, n)
+	switch {
+	case err != nil || !info.Exists:
+		return false, ""
+	case info.Stub:
+		return true, ""
 	}
-	if err := lane.WriteScript(root, n, content, true); err != nil {
-		return err
+	data, err := lane.ScriptBytes(root, n)
+	if err != nil || ran == nil || ran.ScriptSHA == "" || chain.Hash(data) != ran.ScriptSHA {
+		return false, "changed since its round ran (swim new " + strconv.Itoa(n) + " --force replaces it)"
 	}
-	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.Pending, l.PendingJob = "", "" })
-	history.Log(root, history.Entry{Event: history.Stub, Lane: n, Job: replaced.Job, Detail: msg})
-	if c, _ := lane.ReleaseClaim(root, n, sess, true); c != nil && c.Session != sess {
-		claimBroken(root, n, c, sess, "stub", "")
-	}
-	return nil
+	return true, ""
 }
 
 func cmdNote(args []string) error {

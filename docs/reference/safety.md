@@ -25,7 +25,7 @@
   mutations; use rejected inputs, health routes, dry runs.
 - **Fail closed:** a gate or `confirm` with no answer stops the round.
 - **Rounds are safe to rerun.**
-- **Running lanes are protected:** swim won't edit, archive, stub or rerun
+- **Running lanes are protected:** swim won't edit, archive or rerun
   one.
 - **Approval proves who decided, not that a script is safe.** A guard runs
   in the lane, and an approved script runs with the operator's access. See

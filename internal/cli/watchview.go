@@ -652,7 +652,7 @@ func (w *watchView) act(id string, key rune) string {
 			return fmt.Sprintf("#%d is already in the queue (r runs it now)", e.Seq)
 		}
 		if key == 'a' {
-			return "a archives a lane's log: pick the lane (a batch's result stays in the queue's done list)"
+			return "a archives a lane (its log kept, its script a stub): pick the lane (a batch's result stays in the queue's done list)"
 		}
 		return w.runQueued(e)
 	}

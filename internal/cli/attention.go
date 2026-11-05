@@ -97,7 +97,7 @@ func cmdAttention() error {
 		who := "swim " + strconv.Itoa(l.Lane)
 		state := effectiveState(l)
 		// The round that ended is still the script on disk: nobody has
-		// edited, rewritten or archived it since (as swim stub tells).
+		// edited, rewritten or archived it since.
 		current := false
 		if data, err := lane.ScriptBytes(root, l.Lane); err == nil && l.ScriptSHA != "" {
 			current = chain.Hash(data) == l.ScriptSHA
