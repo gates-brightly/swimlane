@@ -809,8 +809,9 @@ func exitCode(cmd *exec.Cmd, err error) int {
 	return 0
 }
 
-// EnvLine records the cloud profile and configured keys. Only names listed
-// in config are printed, so secrets stay out of logs unless someone lists one.
+// EnvLine records the configured keys that are set (header_env). Only
+// names listed in config are printed, so secrets stay out of logs unless
+// someone lists one.
 func EnvLine(keys []string, mk ...*redact.Masker) string {
 	var m *redact.Masker
 	if len(mk) > 0 {
@@ -818,19 +819,16 @@ func EnvLine(keys []string, mk ...*redact.Masker) string {
 	}
 	seen := map[string]bool{}
 	var parts []string
-	for _, k := range append([]string{"AWS_PROFILE"}, keys...) {
+	for _, k := range keys {
 		if k == "" || seen[k] {
 			continue
 		}
 		seen[k] = true
 		v, ok := os.LookupEnv(k)
 		if !ok {
-			if k == "AWS_PROFILE" {
-				continue
-			}
-			v = "<unset>"
+			continue
 		}
-		if m != nil && v != "<unset>" && (m.Value(k) || m.String(v) != v) {
+		if m != nil && (m.Value(k) || m.String(v) != v) {
 			v = fmt.Sprintf("***(len %d)", len(v))
 		}
 		parts = append(parts, k+"="+v)

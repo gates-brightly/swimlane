@@ -164,6 +164,13 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Changed
 
+- **The round header names only the `header_env` variables that are set,
+  and none by default.** No more `STAGE=<unset> AWS_REGION=<unset>`, and
+  `AWS_PROFILE` is no longer recorded unless listed. A new config.yml's
+  `header_env` is `[]`; list what your lanes use (e.g. `[STAGE,
+  AWS_PROFILE, AWS_REGION]`).
+
+
 - **`swim lint` findings no longer go to `.swim.log`.** The terminal
   shows them; the project log keeps what happened (`usage` lines stay).
   Older `lint` lines still read.

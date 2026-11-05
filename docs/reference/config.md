@@ -21,7 +21,7 @@ defaults:
   secret_env_auto: true            # also *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY, ...
   secret_env_ignore: [CSRF_TOKEN]  # exempt from secret_env_auto
   secret_patterns_auto: true       # also AWS key ids, GitHub/Slack tokens, JWTs
-  header_env: [STAGE, AWS_PROFILE] # recorded in every step header (never secrets)
+  header_env: [STAGE, AWS_PROFILE] # recorded in the round header when set (none by default; never secrets)
   runtime: node --version          # recorded as the runtime version
   toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
   interrupt: graceful              # graceful | immediate: the first Ctrl-C
