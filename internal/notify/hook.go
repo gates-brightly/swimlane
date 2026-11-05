@@ -151,7 +151,10 @@ func (h *Hook) run(n Note) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", h.c.Command)
 	cmd.Dir = h.c.Root
-	cmd.Env = append(os.Environ(), n.env(h.c.Root, h.c.URL)...)
+	// cmd.Environ, not os.Environ: it sets PWD to the root. With swim's own
+	// PWD, sh resolves the root's symlinks for $PWD (/private/var/... on
+	// macOS), and $PWD no longer matches $SWIM_ROOT.
+	cmd.Env = append(cmd.Environ(), n.env(h.c.Root, h.c.URL)...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	// A child that keeps the output open (sh's curl, once sh is killed)

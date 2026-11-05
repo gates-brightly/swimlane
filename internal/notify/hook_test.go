@@ -13,7 +13,12 @@ import (
 )
 
 func TestHook(t *testing.T) {
-	root := t.TempDir()
+	// The root is a symlink, as macOS's temp dirs are (/var is
+	// /private/var): $PWD is the root as named, like $SWIM_ROOT.
+	root := filepath.Join(t.TempDir(), "root")
+	if err := os.Symlink(t.TempDir(), root); err != nil {
+		t.Fatal(err)
+	}
 	h := NewHook(HookConfig{Command: `printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' "$SWIM_EVENT" "$SWIM_RESULT" "$SWIM_TITLE" "$SWIM_BODY" "$SWIM_LANES" "$SWIM_BATCH" "$SWIM_REPO" "$SWIM_BRANCH" "$PWD" "$SWIM_PRIORITY" "$SWIM_TAGS" > note`,
 		Root: root, Warn: func(why string) { t.Error(why) }})
 	h.Send(Note{Event: EventEnd, Result: "failed", Title: "ops@fix · batch #4 failed", Body: "lane 1,2\n· 3s\x07", Lanes: []int{1, 2}, Batch: 4, Repo: "ops", Branch: "fix"})

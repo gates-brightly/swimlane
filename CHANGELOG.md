@@ -67,6 +67,12 @@ history stays here, since `swim changelog --since` reads it.
   Copy out any statement you want to keep first; the round it vouched
   for stays in the chain.
 
+### Fixed
+
+- **A notify hook's `$PWD` is the repo root as named,** the same as
+  `$SWIM_ROOT`. It was the root with its symlinks resolved, so on macOS
+  (`/var` is `/private/var`) the two could differ.
+
 ## 0.20261105.6 (v0.20261105.6, 2026-11-05)
 
 ### Changed
