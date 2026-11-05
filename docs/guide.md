@@ -171,7 +171,8 @@ come free: how a session hands work to the machine that runs it.
 swim report
 swim log | tail -5
 swim verify --allow-unsigned
-perl -pi -e 's/shipped/SHIPPED/' .swim/logs/agent4.log    # someone edits the record
+sed 's/shipped/SHIPPED/' .swim/logs/agent4.log > edited.log    # someone edits the record
+mv edited.log .swim/logs/agent4.log
 swim verify --allow-unsigned || echo "the edit was caught"
 ```
 

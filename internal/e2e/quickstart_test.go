@@ -80,10 +80,8 @@ func TestQuickstartRuns(t *testing.T) {
 // docs/guide.md, the tour, runs as written, in order, with no
 // credentials: each step does what the page says it does.
 func TestTourRuns(t *testing.T) {
-	for _, tool := range []string{"ssh-keygen", "perl"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			t.Skip(tool + " not installed")
-		}
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not installed")
 	}
 	r := newRepo(t, "")
 	dir := t.TempDir()
