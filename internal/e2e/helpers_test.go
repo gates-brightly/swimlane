@@ -153,6 +153,12 @@ esac
 esac
 `)
 	write("node", "echo v20.11.1\n")
+	// go has no --version: it fails and says so, and go version answers.
+	write("go", `case "$1" in
+  version) echo "go version go1.27.1 darwin/arm64" ;;
+  *) echo "flag provided but not defined: -version" >&2; exit 2 ;;
+esac
+`)
 	env := []string{"PATH=" + fake + string(os.PathListSeparator) + os.Getenv("PATH")}
 
 	lane := func(body string) {
@@ -182,6 +188,7 @@ git_authors_gate "t <t@t>" HEAD~0..HEAD
 docker_gate
 docker_compose_snapshot nxb-lith before
 tool_gate node 20
+tool_gate go 1.27
 tool_gate git`)
 	out := r.mustSwimEnv(env, "run", "1", "--plain")
 	contains(t, "modules", out,
@@ -189,7 +196,7 @@ tool_gate git`)
 		"PR 7 in gates-brightly/swimlane: OPEN abc1234def APPROVED", "PASS  PR 7 is at abc1234",
 		"PASS  fetch main from upstream", "PASS  worktree .worktrees/bdk-1 on bdk-1", "is on bdk-1 already",
 		"PASS  pushed is on upstream at its local head", "no commits in upstream/main..HEAD",
-		"PASS  docker is running", "lith-api", "PASS  node 20", "v20.11.1", "PASS  git")
+		"PASS  docker is running", "lith-api", "PASS  node 20", "v20.11.1", "PASS  go 1.27", "go version go1.27.1", "PASS  git")
 	if strings.Contains(out, "outside a step") {
 		t.Errorf("a helper ran a command outside a step:\n%s", out)
 	}
@@ -205,6 +212,7 @@ tool_gate git`)
 	fails("wrong state", `gh_pr_state_gate 7 MERGED`, "want MERGED")
 	fails("moved head", `gh_pr_head_gate 7 fff0000`, "want fff0000")
 	fails("old node", `tool_gate node 18`, "want node 18, got 20.11.1")
+	fails("old go", `tool_gate go 1.26`, "want go 1.26, got 1.27.1")
 	fails("no tool", `tool_gate no-such-tool`, "no-such-tool: not on PATH")
 	fails("not GitHub", `gh_repo upstream`, "isn't a GitHub repo")
 }

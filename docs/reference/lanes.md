@@ -110,7 +110,7 @@ gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $PR_REF, snapsh
 | `git_authors_gate "NAME <EMAIL>" RANGE [PATH]` | A gate that every commit in RANGE was authored and committed by that identity; lists any that weren't. |
 | `docker_gate` | A gate that the Docker daemon answers. |
 | `docker_compose_snapshot PROJECT [WHEN]` | Snapshot a compose project's containers, running or not (`before`, `after`). |
-| `tool_gate CMD [VERSION]` | A gate that CMD is on PATH, and with VERSION that `CMD --version` reports it (`node 20` matches v20.11.1). |
+| `tool_gate CMD [VERSION]` | A gate that CMD is on PATH, and with VERSION that `CMD --version` reports it, or `CMD version` when that fails (`node 20` matches v20.11.1, `go 1.27` matches go1.27.1). |
 | `os_mac` / `os_linux` | True on macOS / Linux (`uname -s`), for `if`. |
 | `os_mac_gate` / `os_linux_gate` | A gate that this is macOS / Linux; logs `uname -srm`. |
 

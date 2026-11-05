@@ -178,15 +178,3 @@ func Funcs(m string) []Func {
 	}
 	return out
 }
-
-// Public are the functions module m defines outside its private _m_ ones.
-func Public(m string) []string {
-	src, _ := Source(m)
-	var out []string
-	for _, line := range strings.Split(src, "\n") {
-		if name, ok := strings.CutSuffix(line, "() {"); ok && !strings.HasPrefix(name, "_") {
-			out = append(out, name)
-		}
-	}
-	return out
-}

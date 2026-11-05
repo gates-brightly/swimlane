@@ -5,6 +5,7 @@
 # Owner:   swim CI
 # Timeout: 10m
 # Workspace: live
+# Includes: lib/swim/tool.sh
 # swim:lint-ignore-file workspace-live go build and go test read the whole checkout
 #
 # This repo's CI is seven lanes, each its own job, so the slow suites run
@@ -21,7 +22,11 @@
 # `just ci` run them all; `swim run 8` runs one. Lanes 5 and 7 aren't CI's.
 # Security tests fail the build on a violation; they never only warn.
 
+source lib/swim/tool.sh
 stage check
+# The Go go.mod names (major.minor), as setup-go and the flake install it:
+# another Go fails here, by name, not as build errors in every lane after.
+tool_gate go "$(sed -n 's/^go \([0-9]*\.[0-9]*\).*/\1/p' go.mod)"
 step "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gofmt -s (just fmt):"; echo "$out"; exit 1; }'
 gate "go build" go build ./...
 step "go vet" go vet ./...

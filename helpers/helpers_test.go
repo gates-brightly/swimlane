@@ -63,7 +63,7 @@ func TestFuncsDocumentEveryFunction(t *testing.T) {
 				documented[n] = true
 			}
 		}
-		for _, n := range Public(m) {
+		for _, n := range public(m) {
 			if !documented[n] {
 				t.Errorf("%s: %s has no `# %s ARGS: what it does` comment above it", m, n, n)
 			}
@@ -73,4 +73,16 @@ func TestFuncsDocumentEveryFunction(t *testing.T) {
 	if len(fs) != 2 || strings.Join(fs[0].Names, " ") != "os_mac os_linux" || fs[0].Usage != "os_mac / os_linux" {
 		t.Errorf("os: %+v", fs)
 	}
+}
+
+// public are the functions module m defines outside its private _m_ ones.
+func public(m string) []string {
+	src, _ := Source(m)
+	var out []string
+	for _, line := range strings.Split(src, "\n") {
+		if name, ok := strings.CutSuffix(line, "() {"); ok && !strings.HasPrefix(name, "_") {
+			out = append(out, name)
+		}
+	}
+	return out
 }

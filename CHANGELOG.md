@@ -38,6 +38,20 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Fixed
+
+- **`tool_gate go 1.27` passes on Go 1.27:** go has no `--version` (it
+  exits 2, "flag provided but not defined"), so the gate always failed
+  with "got no version". When `CMD --version` fails, `tool_gate` now asks
+  `CMD version`. Run `swim helpers add tool` to update a copy.
+
+### Changed
+
+- **This repo's CI checks the Go version first:** lane 1 includes
+  `lib/swim/tool.sh` and gates on the Go `go.mod` names (`tool_gate go
+  1.27`), so another Go stops the run by name instead of as build errors
+  in every lane after it.
+
 ## 0.20261105.7 (v0.20261105.7, 2026-11-05)
 
 ### Added
