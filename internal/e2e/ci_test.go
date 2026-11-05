@@ -43,8 +43,7 @@ func ciRepo(t *testing.T) *repo {
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
 	r.script(1, "root", `run "hello" echo hi`)
 	r.script(2, "fails", `run "convert" false
-guard ALLOW_X "drop x - 2026-10-09"
-drift "queue policy differs"`)
+guard ALLOW_X "drop x - 2026-10-09"`)
 	r.script(3, "after fails", `run "never" true`)
 	r.script(4, "after root", `run "child" true`)
 	withHeader(t, r, 2, "# After: 1")
@@ -73,10 +72,9 @@ func TestCIGitHub(t *testing.T) {
 		"::group::swim 1 PASS - root (job ", "::endgroup::",
 		"==== swim 2 FAIL - fails (job ", // a failed lane stays open
 		"::error title=swim 2%3A fails::FAIL  convert (exit 1)",
-		"::warning title=swim 2%3A fails::DRIFT  queue policy differs",
 		"::notice title=swim 2%3A fails::drop x - 2026-10-09: dry run: set ALLOW_X=1 to approve",
 		"::notice title=swim%3A 1 lane skipped::swim 3 (swim 2 failed)",
-		"artifacts to upload: .swim/logs/ .swim/snapshots/ .swim/out/ .swim.log "+junit)
+		"artifacts to upload: .swim/logs/ .swim/snapshots/ .swim.log "+junit)
 	md, _ := os.ReadFile(summary)
 	contains(t, "job summary", string(md), "## swim ci: failed", "| swim 2 |", "FAIL  convert (exit 1)", "| swim 3 |", "swim 2 failed",
 		"**Approved without a prompt:** swim 4: ALLOW_Y (flag set)")

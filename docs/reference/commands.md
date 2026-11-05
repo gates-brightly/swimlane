@@ -34,5 +34,5 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `skill` | How to install the Claude skill. |
 | `guide [TOPIC]` | This reference. |
 | **In a lane script** (any language) | |
-| `run`, `gate`, `snapshot`, `guard`, `stage`, `drift`, `stop`, `msg`, `input`, `output` | Steps and marks. See [lanes](lanes.md) and [other languages](other-languages.md). |
+| `run`, `gate`, `snapshot`, `guard`, `stage` | Steps and marks. See [lanes](lanes.md) and [other languages](other-languages.md). |
 | `step -- cmd` / `lib` | Run and log one command (what `run` calls); print the bash library. |

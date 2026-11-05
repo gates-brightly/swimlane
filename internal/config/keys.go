@@ -16,7 +16,7 @@ import (
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -32,10 +32,6 @@ func (c *Config) Get(key string) (string, error) {
 		return c.SigningMode(), nil
 	case "signing_key":
 		return c.SigningKey, nil
-	case "msg_log_interval":
-		return c.MsgLogEvery().String(), nil
-	case "outputs_keep":
-		return c.OutputsKeepFor().String(), nil
 	case "queue_lease":
 		if d := c.QueueLeaseFor(); d > 0 {
 			return d.String(), nil
@@ -110,12 +106,6 @@ func keyValue(key, value string) (*yaml.Node, error) {
 			return nil, fmt.Errorf("approvals must be prompt or flags, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "outputs_keep":
-		v := strings.TrimSpace(value)
-		if _, ok := parseDays(v); !ok {
-			return nil, fmt.Errorf("outputs_keep must be a duration like 14d or 36h, got %q", value)
-		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "queue_lease":
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d < 10*time.Second {
@@ -152,7 +142,7 @@ func keyValue(key, value string) (*yaml.Node, error) {
 			return nil, fmt.Errorf(`notify_command needs a command, e.g. curl -s -H "Title: $SWIM_TITLE" -d "$SWIM_BODY" https://ntfy.sh/TOPIC`)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "interrupt_grace", "term_grace", "msg_log_interval":
+	case "interrupt_grace", "term_grace":
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d < 0 {
 			return nil, fmt.Errorf("%s must be a duration like 5s or 1m, got %q", key, value)
@@ -385,14 +375,12 @@ func Hint(key string) string {
 		return strings.Join(cs, " | ")
 	}
 	switch key {
-	case "interrupt_grace", "term_grace", "msg_log_interval":
+	case "interrupt_grace", "term_grace":
 		return "duration: 5s, 1m"
 	case "queue_lease":
 		return "duration, 10s or more"
 	case "claim_lease":
 		return "duration, 1m or more"
-	case "outputs_keep":
-		return "age: 14d, 36h"
 	case "watch_batches":
 		return "number, 1 or more"
 	case "signing_key":

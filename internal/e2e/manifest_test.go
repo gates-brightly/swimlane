@@ -197,21 +197,6 @@ open(os.environ["SWIM_ROOT"] + "/approval-id", "w").write(resp["id"])'
 	}
 }
 
-// An Observe: fact that changes between approval and the guarded step
-// ends the round as drift.
-func TestManifestObservedDrift(t *testing.T) {
-	r := newRepo(t, "")
-	r.script(1, "observed", `if guard DROP "drop the table"; then run "dropped" true; fi
-run "after" true`)
-	withHeader(t, r, 1, `# Observe: tick = n=$(cat tick 2>/dev/null || echo 0); echo $((n+1)) > tick; echo $n`)
-	out, _ := r.swim("run", "1", "-y")
-	log := r.log(1)
-	contains(t, "agent1.log", log, "DRIFT  drift: tick was 0 at approval, now 1", "STOP  drift: observed facts changed since approval (DROP)")
-	if strings.Contains(log, "PASS  dropped") || strings.Contains(log, "PASS  after") {
-		t.Errorf("the round went on after drift:\n%s\n%s", log, out)
-	}
-}
-
 // A queued batch's approval binds the runner the repo names for the lane:
 // the same script, run by another runner, is another thing to approve
 // (T2).

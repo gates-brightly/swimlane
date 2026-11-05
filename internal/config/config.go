@@ -53,8 +53,6 @@ type Settings struct {
 	Signing            string   `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
 	InterruptGrace     string   `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
 	TermGrace          string   `yaml:"term_grace,omitempty"`           // SIGTERM: graceful, then force quit after this (default 10s)
-	MsgLogInterval     string   `yaml:"msg_log_interval,omitempty"`     // at most one MSG log line per this per lane (default 10s; 0: every change)
-	OutputsKeep        string   `yaml:"outputs_keep,omitempty"`         // round outputs older than this are pruned by swim doctor --fix (default 14d)
 	QueueLease         string   `yaml:"queue_lease,omitempty"`          // a queue worker's heartbeat holds this long (default 2m)
 	ClaimLease         string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
 	WatchBatches       int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
@@ -339,12 +337,6 @@ func (c *Config) merge(r Settings) {
 	if r.Approvals != "" {
 		c.Approvals = r.Approvals
 	}
-	if r.OutputsKeep != "" {
-		c.OutputsKeep = r.OutputsKeep
-	}
-	if r.MsgLogInterval != "" {
-		c.MsgLogInterval = r.MsgLogInterval
-	}
 	if r.QueueLease != "" {
 		c.QueueLease = r.QueueLease
 	}
@@ -439,19 +431,6 @@ func (c *Config) Masker(env []string) *redact.Masker {
 	})
 }
 
-// MsgLogEvery is msg_log_interval: the least time between two MSG lines a
-// lane writes to its log (default 10s; 0 logs every change).
-func (c *Config) MsgLogEvery() time.Duration {
-	if c.MsgLogInterval == "" {
-		return 10 * time.Second
-	}
-	d, err := time.ParseDuration(c.MsgLogInterval)
-	if err != nil || d < 0 {
-		return 10 * time.Second
-	}
-	return d
-}
-
 // QueueLeaseFor is queue_lease: how long a queue worker's heartbeat holds
 // (0: the queue's default, 2m). A worker renews it every third of that;
 // from another host, a claim whose heartbeat is older is orphaned.
@@ -487,41 +466,6 @@ func (c *Config) WatchBatchesFor() int {
 		return c.WatchBatches
 	}
 	return DefaultWatchBatches
-}
-
-// OutputsKeepFor is outputs_keep: how long round outputs nothing uses are
-// kept (default 14 days). Durations take d for days: 14d, 36h.
-func (c *Config) OutputsKeepFor() time.Duration {
-	if d, ok := parseDays(c.OutputsKeep); ok {
-		return d
-	}
-	return 14 * 24 * time.Hour
-}
-
-// parseDays parses a duration that may use d (days): "14d", "1d12h".
-func parseDays(s string) (time.Duration, bool) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, false
-	}
-	var days int
-	if i := strings.Index(s, "d"); i > 0 {
-		n, err := strconv.Atoi(s[:i])
-		if err != nil {
-			return 0, false
-		}
-		days, s = n, s[i+1:]
-	}
-	var rest time.Duration
-	if s != "" {
-		d, err := time.ParseDuration(s)
-		if err != nil {
-			return 0, false
-		}
-		rest = d
-	}
-	total := time.Duration(days)*24*time.Hour + rest
-	return total, total > 0
 }
 
 // Parallel is the cap on lanes running at once (0 = unlimited).

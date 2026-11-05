@@ -21,13 +21,13 @@
 //	        | Error: ...
 //	  STOP  gate failed: tf plan
 //
-//	== END FAIL  pass=1 fail=1 skip=0 drift=0  exit=1  3.6s  2026-10-09T12:00:04Z
+//	== END FAIL  pass=1 fail=1 skip=0  exit=1  3.6s  2026-10-09T12:00:04Z
 //	   stages: snapshot PASS | check FAIL | change none | verify none
 //	   failed: FAIL  tf plan (exit 2); STOP  gate failed: tf plan
 //
-// Result lines are two spaces, a KIND (PASS FAIL BLOCKED SKIP DRIFT APPROVED
-// STOP WARN), two spaces and a label. Step results end with a duration and a
-// clock time; marks (SKIP, DRIFT, APPROVED, STOP, WARN) carry a detail in
+// Result lines are two spaces, a KIND (PASS FAIL BLOCKED SKIP APPROVED STOP
+// WARN), two spaces and a label. Step results end with a duration and a
+// clock time; marks (SKIP, APPROVED, STOP, WARN) carry a detail in
 // parentheses instead. Lines indented 8 spaces belong to the step above.
 //
 // Syntax 1 logs (=== ROUND START / === STEP / --- output framing) are still
@@ -54,13 +54,16 @@ const (
 	Pass     = "PASS"
 	Fail     = "FAIL"
 	Skip     = "SKIP"
-	Drift    = "DRIFT"
 	Approved = "APPROVED"
 	Stop     = "STOP"
 	Warn     = "WARN"
 	Blocked  = "BLOCKED" // a command swim refused to run (counts as a failure)
-	Msg      = "MSG"     // a round's status message (swim msg); never a result
 	Checked  = "CHECKED" // in older check logs (swim plan --check, which swim no longer has); never a result
+	// DRIFT (swim drift and # Observe:) and MSG (swim msg: a status
+	// message), which swim no longer has, are in older logs: read as
+	// marks, never a result.
+	Drift = "DRIFT"
+	Msg   = "MSG"
 	// PAUSE and RESUME (swim pause, which swim no longer has) are in
 	// older logs: read as marks, never a result.
 	Pause  = "PAUSE"
@@ -107,21 +110,11 @@ func StepLine(kind, label, detail, dur, clock string) string {
 	return "  " + text + strings.Repeat(" ", pad) + fmt.Sprintf("%6s  %s", dur, clock)
 }
 
-// MarkLine is a result line without a duration (SKIP, DRIFT, STOP, ...).
+// MarkLine is a result line without a duration (SKIP, STOP, WARN, ...).
 func MarkLine(kind, label, detail string) string { return "  " + ResultLine(kind, label, detail) }
 
 // StageLine starts a stage.
 func StageLine(name, clock string) string { return StageMark + name + "  " + clock }
-
-// MsgText is a status message as the log records it: "migrating billing
-// (7/25, 12:04:10)".
-func MsgText(text, progress, clock string) string {
-	detail := clock
-	if progress != "" {
-		detail = progress + ", " + clock
-	}
-	return ResultLine(Msg, text, detail)
-}
 
 // KV is one key/value of a round's context line.
 type KV struct{ K, V string }
@@ -143,8 +136,8 @@ func RoundHeader(ts, job, title string, ctx []KV) string {
 // EndBlock closes a round: totals, the stage results and the failures.
 func EndBlock(state string, r *Round, exit int, dur, ts string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n%s%s  pass=%d fail=%d skip=%d drift=%d  exit=%d  %s  %s",
-		EndMark, state, r.Pass, r.Fail, r.Skip, r.Drift, exit, dur, ts)
+	fmt.Fprintf(&b, "\n%s%s  pass=%d fail=%d skip=%d  exit=%d  %s  %s",
+		EndMark, state, r.Pass, r.Fail, r.Skip, exit, dur, ts)
 	if r.Run != "" {
 		fmt.Fprintf(&b, "  run=%s", r.Run)
 	}
@@ -205,8 +198,6 @@ type Result struct {
 	// Key and Target are the step's own (run --key, --target, # Targets:),
 	// as logged: its name across rounds, what it talks to.
 	Key, Target string
-	// Messages are the status messages (swim msg) posted while the step ran.
-	Messages []string
 }
 
 // Text renders the result as text, e.g. "FAIL  tf plan (exit 2)".
@@ -236,7 +227,6 @@ type Round struct {
 	Pass      int
 	Fail      int
 	Skip      int
-	Drift     int
 	Finished  bool // the round's END (SUMMARY in syntax 1) was written
 	ExitCode  int
 	Duration  string
@@ -366,8 +356,6 @@ func (r *Round) add(res Result) {
 		r.Fail++
 	case Skip:
 		r.Skip++
-	case Drift:
-		r.Drift++
 	}
 }
 
@@ -506,23 +494,27 @@ func roundV2(line string) (ts, job, title string, ok bool) {
 	return ts, job, strings.TrimSpace(title), true
 }
 
-// endV2 reads "== END <state>  pass=N fail=N skip=N drift=N  exit=N  <dur> ...".
+// endV2 reads "== END <state>  pass=N fail=N skip=N  exit=N  <dur> ...";
+// older logs have drift=N after skip=N.
 func endV2(line string) (state string, exit int, dur string, ok bool) {
 	f := strings.Fields(strings.TrimPrefix(line, EndMark))
-	if len(f) < 7 {
+	if len(f) > 4 && strings.HasPrefix(f[4], "drift=") {
+		f = append(f[:4:4], f[5:]...)
+	}
+	if len(f) < 6 {
 		return "", 0, "", false
 	}
-	for i, k := range []string{"pass=", "fail=", "skip=", "drift="} {
+	for i, k := range []string{"pass=", "fail=", "skip="} {
 		if n, has := strings.CutPrefix(f[1+i], k); !has || !chars.Digits(n) {
 			return "", 0, "", false
 		}
 	}
-	code, has := strings.CutPrefix(f[5], "exit=")
+	code, has := strings.CutPrefix(f[4], "exit=")
 	exit, err := strconv.Atoi(code)
 	if !has || err != nil {
 		return "", 0, "", false
 	}
-	return f[0], exit, f[6], true
+	return f[0], exit, f[5], true
 }
 
 func parseV2(rd io.Reader) (*Round, error) {
@@ -584,9 +576,6 @@ func parseV2(rd io.Reader) (*Round, error) {
 					res.Key = strings.TrimPrefix(body, "key: ")
 				case strings.HasPrefix(body, "target: "):
 					res.Target = strings.TrimPrefix(body, "target: ")
-				case strings.HasPrefix(body, "-- "+Msg+"  "):
-					res.Messages = append(res.Messages, strings.TrimPrefix(body, "-- "+Msg+"  "))
-					res.Output = append(res.Output, body)
 				case strings.HasPrefix(body, "-- "):
 					res.Output = append(res.Output, body)
 				}

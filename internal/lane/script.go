@@ -208,9 +208,7 @@ type sideFile struct {
 	Stub        *bool             `yaml:"stub"`
 	// Fail: hard (script syntax 3).
 	Fail     *string  `yaml:"fail"`
-	Outputs  *strList `yaml:"outputs"`
 	Includes *strList `yaml:"includes"`
-	Observe  []string `yaml:"observe"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -248,7 +246,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, outputs, includes, observe, cache, modules)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, includes, cache, modules)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
@@ -334,17 +332,8 @@ func applySidecar(path string, info *Info) error {
 	if sf.Stub != nil {
 		info.Stub = *sf.Stub
 	}
-	if sf.Observe != nil {
-		info.Observe = nil
-		for _, v := range sf.Observe {
-			info.addProbe(v, name+" observe:")
-		}
-	}
 	if sf.Includes != nil {
 		info.Includes = append([]string(nil), *sf.Includes...)
-	}
-	if sf.Outputs != nil {
-		info.setOutputs(*sf.Outputs, name+" outputs:")
 	}
 	if sf.Fail != nil {
 		info.setFail(*sf.Fail, name+" fail:")
@@ -358,7 +347,7 @@ func applySidecar(path string, info *Info) error {
 }
 
 // EndPath is lane n's end request (.swim/laneN.end), for a lane running
-// inside swim's wrapper: a failed `swim gate`, a `swim stop`, a refused
+// inside swim's wrapper: a failed `swim gate`, a bad `swim stage`, a refused
 // step writes the round's exit code there and signals the wrapper
 // (SIGUSR1), which ends the program even if it ignores the failure.
 func EndPath(root string, n int) string {

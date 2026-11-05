@@ -1,7 +1,7 @@
 # CI
 
 `swim ci` is `swim all` for a CI job: it never prompts, folds each lane's
-log, turns FAIL, DRIFT and unprompted approvals into annotations, writes a
+log, turns FAIL and unprompted approvals into annotations, writes a
 job summary, and with `--junit FILE` a JUnit report. It detects GitHub
 Actions and GitLab CI. A dry-run round counts as a pass (CI can't approve).
 swim never commits results back.

@@ -51,7 +51,7 @@ both ends are always the same swim binary.
 ## Answers
 
 ```json
-{"approved": true, "id": "…", "lane": 1, "job": "…", "how": "approved by swim run -y (zach)", "observed": {"tick": "0"}}
+{"approved": true, "id": "…", "lane": 1, "job": "…", "how": "approved by swim run -y (zach)"}
 {"approved": false, "dry": true, "why": "ALLOW_DROP=1 was set inside the lane, not in the environment swim run started with"}
 {"approved": false, "by": "zach"}
 {"approved": true, "id": "…", "hash": "…"}

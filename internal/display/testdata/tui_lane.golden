@@ -15,4 +15,4 @@ swim · app · main@abc1234 · 1:12      ← → lane  y/n pre-answer  esc all  
         $ ./deploy.sh
         | Error: nope
 
-== END FAIL  pass=0 fail=1 skip=0 drift=0  exit=2  30.0s  2026-10-09T12:00:00Z
+== END FAIL  pass=0 fail=1 skip=0  exit=2  30.0s  2026-10-09T12:00:00Z

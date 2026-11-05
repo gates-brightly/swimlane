@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -296,24 +295,15 @@ func TestRunnersAndEnv(t *testing.T) {
 }
 
 func TestNewKeys(t *testing.T) {
-	for key, val := range map[string]string{"runners.ts": "tsx --quiet", "msg_log_interval": "30s", "outputs_keep": "14d"} {
+	for key, val := range map[string]string{"runners.ts": "tsx --quiet"} {
 		if _, err := Normalize(key, val); err != nil {
 			t.Errorf("%s %s: %v", key, val, err)
 		}
 	}
-	for key, val := range map[string]string{"runners.ts": "", "msg_log_interval": "soon", "outputs_keep": "forever", "runners.": "x"} {
+	for key, val := range map[string]string{"runners.ts": "", "runners.": "x"} {
 		if _, err := Normalize(key, val); err == nil {
 			t.Errorf("%s %q accepted", key, val)
 		}
-	}
-	for s, want := range map[string]time.Duration{"14d": 14 * 24 * time.Hour, "1d12h": 36 * time.Hour, "36h": 36 * time.Hour} {
-		if got, ok := parseDays(s); !ok || got != want {
-			t.Errorf("parseDays(%s) = %v %v", s, got, ok)
-		}
-	}
-	c := &Config{}
-	if c.MsgLogEvery() != 10*time.Second || c.OutputsKeepFor() != 14*24*time.Hour {
-		t.Error("defaults")
 	}
 }
 

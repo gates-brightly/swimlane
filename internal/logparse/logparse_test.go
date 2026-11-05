@@ -117,14 +117,14 @@ func TestWriterRoundTrip(t *testing.T) {
 	b.WriteString("\n" + StageLine("check", "12:00:01") + "\n")
 	b.WriteString(StepLine(Pass, "a label (with parens)", "", "0.1s", "12:00:01") + "\n")
 	b.WriteString(StepLine(Fail, strings.Repeat("long label ", 6), "exit 3", "12.0s", "12:00:02") + "\n")
-	b.WriteString(MarkLine(Drift, "policy", "") + "\n")
+	b.WriteString(MarkLine(Warn, "policy", "") + "\n")
 	r, _ := Parse(strings.NewReader(b.String()))
 	b.WriteString(EndBlock("FAIL", r, 1, "2.0s", "2026-10-09T12:00:03Z"))
 	r, err := Parse(strings.NewReader(b.String()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Steps != 2 || r.Pass != 1 || r.Fail != 1 || r.Drift != 1 || !r.Finished {
+	if r.Steps != 2 || r.Pass != 1 || r.Fail != 1 || !r.Finished {
 		t.Fatalf("%+v\n%s", r, b.String())
 	}
 	if r.Results[0].Label != "a label" || r.Results[0].Detail != "with parens" {

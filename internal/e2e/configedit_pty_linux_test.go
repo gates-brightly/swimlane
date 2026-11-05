@@ -38,7 +38,6 @@ func TestConfigEdit(t *testing.T) {
 	row("interrupt", "graceful", "graceful", "graceful | immediate")
 	row("signing_key", "—", "—", "SSH key path")
 	row("claim_lease", "2h", "2h", "duration, 1m or more")
-	row("outputs_keep", "14d", "14d")
 
 	tr.send("\r") // interrupt: graceful -> immediate
 	tr.waitFor("interrupt: immediate (written)")

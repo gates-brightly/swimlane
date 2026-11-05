@@ -282,8 +282,7 @@ func TestFullRunWithDependencies(t *testing.T) {
 	r.script(1, "Lane one", `snapshot "state" echo state-v1
 run "slow" `+hold("go"))
 	r.script(2, "Lane two", `run "probe" echo probing
-if guard TEST_ALLOW_DELETE "delete thing (2026-10-09: test)"; then run "delete" echo deleting; fi
-drift "policy differs"`)
+if guard TEST_ALLOW_DELETE "delete thing (2026-10-09: test)"; then run "delete" echo deleting; fi`)
 	r.script(3, "Lane three", `run "fails" bash -c 'echo nope >&2; exit 4'
 run "keeps going" true
 gate "stops" false
@@ -334,7 +333,7 @@ run "never" true`)
 			t.Errorf("swim %d state = %s, want %s", n, got, st)
 		}
 	}
-	if l := f.Get(2); l.Skip != 1 || l.Drift != 1 || l.Pass != 1 {
+	if l := f.Get(2); l.Skip != 1 || l.Pass != 1 {
 		t.Errorf("swim 2 counts: %+v", l)
 	}
 	if l := f.Get(3); *l.ExitCode != 1 || len(l.FailedSteps) != 3 {

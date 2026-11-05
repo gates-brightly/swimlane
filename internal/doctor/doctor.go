@@ -23,7 +23,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
-	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -99,8 +98,7 @@ var Checks = []Check{
 	{"header-env-secret", false, "header_env lists a secret", checkHeaderEnvSecret},
 	{"lock", false, ".swim.lock missing, invalid or for another breaking version", checkLock},
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
-	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
-	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
+	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than 14 days, of no lane's latest round", checkOldStages},
 	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 }
@@ -155,33 +153,13 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 				return done, err
 			}
 			done = append(done, "removed "+f.File)
-		case "outputs-old":
-			if removed := outputs.Prune(o.Root, o.Cfg.OutputsKeepFor(), o.keepRound()); len(removed) > 0 {
-				done = append(done, fmt.Sprintf("removed %d old round output dirs from .swim/out/", len(removed)))
-			}
 		case "stages-old":
-			if removed := manifest.PruneStages(o.Root, o.Cfg.OutputsKeepFor(), o.keepRun()); len(removed) > 0 {
+			if removed := manifest.PruneStages(o.Root, stageKeep, o.keepRun()); len(removed) > 0 {
 				done = append(done, fmt.Sprintf("removed the staged copies of %d old runs from .swim/runs/", len(removed)))
 			}
 		}
 	}
 	return done, nil
-}
-
-// keepRound keeps each lane's latest round's outputs (what input reads).
-func (o *Options) keepRound() func(job, run string) bool {
-	st, _ := status.Load(o.Root)
-	return func(job, run string) bool {
-		if st == nil {
-			return false
-		}
-		for _, l := range st.Lanes {
-			if l.Job == job && l.Run == run {
-				return true
-			}
-		}
-		return false
-	}
 }
 
 // keepRun keeps the run of each lane's latest round (swim verify checks its
@@ -201,22 +179,17 @@ func (o *Options) keepRun() func(run string) bool {
 	}
 }
 
+// stageKeep is how long a run's staged lane copies are kept once no
+// lane's latest round is theirs.
+const stageKeep = 14 * 24 * time.Hour
+
 func checkOldStages(o *Options) []finding.Finding {
-	old := manifest.OldStages(o.Root, o.Cfg.OutputsKeepFor(), o.keepRun())
+	old := manifest.OldStages(o.Root, stageKeep, o.keepRun())
 	if len(old) == 0 {
 		return nil
 	}
 	return []finding.Finding{fd(finding.Info, "stages-old", ".swim/runs/", "swim doctor --fix (removes them)",
-		"%d runs' staged lane copies are older than outputs_keep (%s) and no lane's latest round", len(old), o.Cfg.OutputsKeepFor())}
-}
-
-func checkOldOutputs(o *Options) []finding.Finding {
-	old := outputs.Stale(o.Root, o.Cfg.OutputsKeepFor(), o.keepRound())
-	if len(old) == 0 {
-		return nil
-	}
-	return []finding.Finding{fd(finding.Info, "outputs-old", ".swim/out/", "swim doctor --fix (removes them)",
-		"%d round output dirs are older than outputs_keep (%s) and no lane's latest round", len(old), o.Cfg.OutputsKeepFor())}
+		"%d runs' staged lane copies are older than 14 days and no lane's latest round", len(old))}
 }
 
 func checkEnvFiles(o *Options) []finding.Finding {

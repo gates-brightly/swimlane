@@ -63,8 +63,6 @@ func TestCorpusContinuedLines(t *testing.T) {
 	src := replace(clean(1), "stage verify\n", `run "wipe" \
   bash -c \
   'rm -rf /tmp/x'
-input \
-  2 name
 stage verify
 `)
 	got := map[string]int{}
@@ -82,8 +80,5 @@ stage verify
 	}
 	if got["destructive"] != at(`run "wipe"`) {
 		t.Errorf("destructive at %d, want %d (%v)", got["destructive"], at(`run "wipe"`), got)
-	}
-	if got["input-dep"] != at("input \\") {
-		t.Errorf("input-dep at %d, want %d (%v)", got["input-dep"], at("input \\"), got)
 	}
 }

@@ -218,7 +218,6 @@ func TestSecurity(t *testing.T) {
 			r := newRepo(t, "")
 			r.env = append(r.env, "DB_PASSWORD=planted-s3cret-value")
 			r.script(1, "uses a secret", `DB=$DB_PASSWORD
-msg "using it"
 run "echo it" bash -c "echo db=$DB; echo db=$DB >&2; printf %s $DB | base64"
 run "fail with it" bash -c "echo $DB; exit 3"`)
 			out, _ := r.swim("run", "1", "--plain")

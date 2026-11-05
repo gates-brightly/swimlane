@@ -37,7 +37,7 @@ func TestLineReaders(t *testing.T) {
 	if ts, job, title, ok := roundV2(hdr); !ok || ts != "2026-10-16T12:00:00Z" || job != "abc-123" || title != "deploy orders" {
 		t.Errorf("roundV2(%q) = %q %q %q %v", hdr, ts, job, title, ok)
 	}
-	end := "== END FAIL  pass=1 fail=2 skip=0 drift=0  exit=3  4.5s  2026-10-16T12:00:05Z  run=r-1"
+	end := "== END FAIL  pass=1 fail=2 skip=0  exit=3  4.5s  2026-10-16T12:00:05Z  run=r-1"
 	if st, code, d, ok := endV2(end); !ok || st != "FAIL" || code != 3 || d != "4.5s" {
 		t.Errorf("endV2 = %q %d %q %v", st, code, d, ok)
 	}

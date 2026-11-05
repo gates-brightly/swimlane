@@ -16,7 +16,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
-	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/step"
 )
 
@@ -29,7 +28,7 @@ import (
 // round (swim _finish) however the program ends.
 //
 //   - SIGUSR1 ends the round now: an in-lane command claimed an end (a
-//     failed gate, swim stop, a refused step; .swim/laneN.end has the exit
+//     failed gate, a bad stage, a refused step; .swim/laneN.end has the exit
 //     code). The program is
 //     stopped (SIGTERM, then SIGKILL after 5s) even if it ignored the
 //     failure.
@@ -84,7 +83,7 @@ func cmdWrap(args []string) error {
 		"SWIM_PID", strconv.Itoa(pid), "SWIM_WRAPPED", "1",
 		"SWIM_JOB", f[0], "SWIM_DEADLINE", f[1], "SWIM_RUN", f[2], "SWIM_STEP_TIMEOUT", f[3],
 		"SWIM_FAIL_MODE", f[4], "SWIM_TIMEOUT", f[5],
-		"SWIM_RUN_LANES", runLanes, "SWIM_OUT", outputs.Dir(root, f[0], f[2]))
+		"SWIM_RUN_LANES", runLanes)
 
 	// The program's output goes to the terminal as it is, and (plain,
 	// masked) to a capture file: the round's one step if it never calls

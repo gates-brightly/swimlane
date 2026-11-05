@@ -13,9 +13,7 @@
 // Some inputs differ from machine to machine, so approvals signed on one
 // must not depend on them: the env files' values (personal and git-ignored)
 // and the runner binary's path and hash. They are recorded under local:,
-// checked before exec, and left out of manifest_sha256. Facts swim can't
-// pin at all (remote state, what PATH finds) are Observe: probes, checked
-// around each guard (lane.Probe, Observe).
+// checked before exec, and left out of manifest_sha256.
 package manifest
 
 import (
@@ -528,13 +526,6 @@ func relTo(root, path string) (string, bool) {
 func isFile(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
-}
-
-func or(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
 }
 
 // OldStages lists the runs whose stages (.swim/runs/<run>/) are older than

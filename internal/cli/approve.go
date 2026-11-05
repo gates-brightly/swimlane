@@ -72,28 +72,10 @@ func cmdApproveHook(args []string) error {
 	if m != nil {
 		sha, man = m.ScriptSHA, m.SHA256
 	}
-	// Observe: facts are read when the guard is approved and again just
-	// before it returns; a difference ends the round as drift.
-	probes := laneProbes(root, n, m)
-	observe := func() map[string]string { return manifest.Observe(root, probes, nil) }
-	drifted := func(was map[string]string) error {
-		if len(probes) == 0 {
-			return nil
-		}
-		diffs := manifest.ObservedDiff(was, observe())
-		if len(diffs) == 0 {
-			return nil
-		}
-		if err := cmdMark([]string{args[0], logparse.Drift, "drift: " + strings.Join(diffs, "; "), "observed facts changed between approval and the guarded step (" + flag + ")"}); err != nil {
-			return err
-		}
-		history.Log(root, history.Entry{Event: history.Decline, Lane: n, Job: job, Run: run, Detail: desc + "  (drift: " + strings.Join(diffs, "; ") + ")"})
-		return exitError{3}
-	}
 	route := guardRoute(launched(), func() bool { return underSwimRun(root) }, flagSet)
 	switch route {
 	case routeLauncher:
-		return approveLaunched(root, cfg, args[0], n, flag, desc, flagSet, dryRun, blocked, drifted)
+		return approveLaunched(root, cfg, args[0], n, flag, desc, flagSet, dryRun, blocked)
 	case routeRefuse:
 		// Started by swim run, but without its approval channel: the lane
 		// unset it, or swim run couldn't start it. Nobody can decide the
@@ -132,10 +114,6 @@ func cmdApproveHook(args []string) error {
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
 	req := approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc,
 		Token: os.Getenv(approval.TokenEnv), Manifest: man}
-	broker := os.Getenv(approval.EnvVar) != ""
-	if !broker {
-		req.Observed = observe() // the terminal question shows them; a broker reads its own
-	}
 	resp := ask(req, func() bool {
 		return lane.StopRequested(root, n, run)
 	}, roundDeadline())
@@ -163,13 +141,6 @@ func cmdApproveHook(args []string) error {
 	if resp.Pre {
 		how = "pre-approved by " + by + " at " + resp.At + " in the live view"
 	}
-	was := resp.Observed
-	if !broker {
-		was = req.Observed
-	}
-	if err := drifted(was); err != nil {
-		return err
-	}
 	approveRecorded = true
 	mark := []string{args[0], logparse.Approved, desc, how}
 	if resp.ID != "" {
@@ -190,7 +161,7 @@ func cmdApproveHook(args []string) error {
 		approver.Key = k.Public // the operator at this terminal: the runner's key
 	}
 	if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Manifest: man, Guard: flag, Action: desc,
-		Method: method, Statement: how, Approvers: []chain.Approver{approver}, Observed: was}); err != nil {
+		Method: method, Statement: how, Approvers: []chain.Approver{approver}}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", by " + by + ")"})
@@ -243,7 +214,7 @@ func underSwimRun(string) bool {
 // approveLaunched asks swim run's launcher to decide the guard: it alone
 // approves (from what it saw as the run started, or the operator), and it
 // records the approval in the chain as this lane uses it (_mark --request).
-func approveLaunched(root string, cfg *config.Config, laneArg string, n int, flag, desc string, flagSet bool, dryRun, blocked func(string) error, drifted func(map[string]string) error) error {
+func approveLaunched(root string, cfg *config.Config, laneArg string, n int, flag, desc string, flagSet bool, dryRun, blocked func(string) error) error {
 	if !flagSet {
 		status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
 	}
@@ -256,9 +227,6 @@ func approveLaunched(root string, cfg *config.Config, laneArg string, n int, fla
 	}
 	if !resp.Approved {
 		return dryRun(declined(resp))
-	}
-	if err := drifted(resp.Observed); err != nil {
-		return err
 	}
 	how := resp.How
 	if how == "" {

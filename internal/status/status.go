@@ -69,20 +69,11 @@ type Lane struct {
 	Pass        int      `yaml:"pass" json:"pass"`
 	Fail        int      `yaml:"fail" json:"fail"`
 	Skip        int      `yaml:"skip" json:"skip"`
-	Drift       int      `yaml:"drift" json:"drift"`
 	Stage       string   `yaml:"stage,omitempty" json:"stage,omitempty"` // stage the running round is in
 	CurrentStep string   `yaml:"current_step" json:"current_step"`
 	FailedSteps []string `yaml:"failed_steps" json:"failed_steps"`
 	Stages      []string `yaml:"stages,flow,omitempty" json:"stages,omitempty"`     // e.g. [snapshot PASS, check FAIL, change none, verify none]
 	Handlers    []string `yaml:"handlers,flow,omitempty" json:"handlers,omitempty"` // outcome handlers that ran, e.g. [on_failure PASS, on_exit PASS]
-	// Message is the running round's status message (swim msg), with its
-	// progress ("7/25") and when it was posted; cleared when the round ends.
-	Message   string `yaml:"message,omitempty" json:"message,omitempty"`
-	Progress  string `yaml:"progress,omitempty" json:"progress,omitempty"`
-	MessageAt string `yaml:"message_at,omitempty" json:"message_at,omitempty"`
-	// Outputs are the last round's outputs (# Outputs:, output KEY value):
-	// name -> SHA-256, in .swim/out/<job>/<run>/.
-	Outputs map[string]string `yaml:"outputs,omitempty" json:"outputs,omitempty"`
 	// The guards the round's run approved without a prompt: AutoApproved by
 	// -y (swim run -y, a queue batch's -y, swim watch -y; AutoVia says
 	// which), FlagApproved by a guard flag swim run's own environment set
@@ -292,12 +283,11 @@ func (l *Lane) ResetRun() {
 	l.PID, l.Host = 0, ""
 	l.StartedAt, l.FinishedAt, l.DurationS, l.ExitCode = nil, nil, nil, nil
 	l.PausedS, l.PausedAt = nil, ""
-	l.Pass, l.Fail, l.Skip, l.Drift = 0, 0, 0, 0
+	l.Pass, l.Fail, l.Skip = 0, 0, 0
 	l.CurrentStep = ""
 	l.Stage = ""
 	l.Stages = nil
 	l.Handlers = nil
-	l.Message, l.Progress, l.MessageAt = "", "", ""
 	l.FailedSteps = []string{}
 	l.AutoApproved, l.AutoVia, l.FlagApproved = nil, "", nil
 	l.DryRun = nil

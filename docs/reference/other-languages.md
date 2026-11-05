@@ -39,9 +39,9 @@ if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: repla
 |---|---|
 | `swim run\|gate\|snapshot [opts] "<label>" -- cmd` | Steps, with the [step options](lanes.md#functions). |
 | `swim guard FLAG "<action>"` | Exit 0 approved, 1 a dry run. |
-| `swim stage NAME`, `swim drift`, `swim stop`, `swim msg`, `swim input`, `swim output` | As in bash. |
+| `swim stage NAME` | As in bash. |
 
-- A failed gate, `swim stop`, a blocked command or Ctrl-C ends the program
+- A failed gate, a bad stage, a blocked command or Ctrl-C ends the program
   even if it ignores the exit code (SIGTERM to its group, SIGKILL after 5s).
 - A program that never calls `swim run` is logged as one step: its whole
   output (masked), its exit code.

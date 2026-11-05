@@ -4,7 +4,7 @@
 # Job:     {{.Job}}
 # Owner:   {{.Owner}}
 {{if .Toolchain}}
-{{.Toolchain}} || stop "toolchain failed to load"
+{{.Toolchain}} || _swim_stop "toolchain failed to load"
 {{end}}
 stage snapshot
 snapshot "current state" echo "replace with a read-only describe/list command"

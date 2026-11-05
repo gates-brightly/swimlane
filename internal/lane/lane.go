@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/fsutil"
-	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
@@ -87,13 +86,6 @@ type Info struct {
 	// DynamicGuards counts guard calls whose flag is named at run time
 	// (guard "$FLAG" ...): swim can't know them ahead.
 	DynamicGuards int
-	// Outputs are the files or directories the round promises in
-	// $SWIM_OUT (# Outputs:), for lanes that depend on it (input N name).
-	Outputs []string
-	// Observe are the round's probes (# Observe:): facts swim can't pin,
-	// such as which binary PATH finds or the cloud account, read when a
-	// guard is approved and again just before it returns (observe.go).
-	Observe []Probe
 	// Target is what the lane's steps talk to, by default (# Targets:
 	// orders-api), logged with each step; a step's --target overrides it.
 	Target string
@@ -114,8 +106,7 @@ func (i Info) GuardFlags() []string {
 // knownKeys are the header keys swim reads (lower case); any other key in
 // the header block is kept as an extra and shown.
 var knownKeys = map[string]bool{"round": true, "task": true, "workspace": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
-	"fail": true, "outputs": true, "includes": true,
-	"observe": true, "targets": true}
+	"fail": true, "includes": true, "targets": true}
 
 // stageNames are the stages, in order.
 var stageNames = map[string]bool{"snapshot": true, "check": true, "change": true, "verify": true}
@@ -153,7 +144,7 @@ func ReadScript(root string, n int) (Info, error) {
 		return Info{}, err
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Outputs = "", "", nil, nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks = "", "", nil, nil, nil
 	}
 	if info.Created == "" {
 		if st, err := os.Stat(path); err == nil {
@@ -232,7 +223,7 @@ func ParseScript(src string) Info {
 		}
 	}
 	if info.Stub {
-		info.Round, info.Job, info.After, info.Guards, info.Locks, info.Outputs = "", "", nil, nil, nil, nil
+		info.Round, info.Job, info.After, info.Guards, info.Locks = "", "", nil, nil, nil
 	}
 	return info
 }
@@ -316,13 +307,6 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 				info.Locks = append(info.Locks, tok)
 			}
 		}
-	case "Outputs":
-		info.setOutputs(splitList(v), "Outputs:")
-	case "Observe":
-		info.addProbe(v, "Observe:")
-		if k := len(info.Observe); k > 0 && info.Observe[k-1].Line == 0 {
-			info.Observe[k-1].Line = line
-		}
 	case "Includes":
 		for _, g := range splitList(v) {
 			if g != "-" && !strings.EqualFold(g, "none") {
@@ -376,20 +360,6 @@ func stagesIn(line string, cmds [][]Word) bool {
 		}
 	}
 	return false
-}
-
-// setOutputs reads Outputs: names: relative paths inside $SWIM_OUT.
-func (i *Info) setOutputs(names []string, where string) {
-	i.Outputs = nil
-	for _, name := range names {
-		switch {
-		case name == "" || name == "-" || strings.EqualFold(name, "none"):
-		case !outputs.ValidName(name):
-			i.Problems = append(i.Problems, fmt.Sprintf("%s %q is not a path inside $SWIM_OUT (relative, no ..); ignored", where, name))
-		default:
-			i.Outputs = append(i.Outputs, name)
-		}
-	}
 }
 
 // setFail reads a Fail: value (soft or hard).

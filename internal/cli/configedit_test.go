@@ -10,9 +10,8 @@ func TestConfigShown(t *testing.T) {
 		{"queue_lease", "2m0s", "2m"},
 		{"claim_lease", "2h0m0s", "2h"},
 		{"claim_lease", "1h30m0s", "1h30m"},
-		{"msg_log_interval", "0s", "0s"},
-		{"outputs_keep", "336h0m0s", "14d"},
-		{"outputs_keep", "36h0m0s", "36h"},
+		{"term_grace", "0s", "0s"},
+		{"claim_lease", "36h0m0s", "36h"},
 		{"signing_key", "", "—"},
 	} {
 		if got := configShown(c.key, c.v); got != c.want {

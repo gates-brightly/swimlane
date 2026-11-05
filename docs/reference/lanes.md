@@ -51,11 +51,6 @@ run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 | `confirm "<question>" [answer]` | The operator must type the answer (default `yes`); anything else, or no stdin, stops the round. |
 | `last_failed` / `any_failed` | True if the previous step / any step this round failed. |
 | `reached STAGE` | True if the round started STAGE or a later one. |
-| `drift "<what differs>"` | Record DRIFT (deployed state differs from code). |
-| `stop "<reason>"` | Record STOP and end the round now. |
-| `msg [--progress N/M] "<text>"` | The lane's status message (live view, `swim status`); latest wins, `msg ""` clears. The log keeps `MSG` lines, at most one per `msg_log_interval` (10s). Never fails the round. |
-| `output KEY VALUE` | A small value among the round's outputs. |
-| `input N\|JOB NAME` | The path (or small value) of an output of a round in `# After:`: lane N's round this run waited on, or JOB's latest pass. `"$(input 2 stats.json)"`; inside `bash -c`, `swim input`. Recorded in the chain. |
 | `source FILE` | Under `swim run`, a repo file is read from the stage, and only if `# Includes:` lists it. |
 | `summary` | Explicit form only, last: log the summary, record the final state, exit non-zero if a step failed. |
 
@@ -94,11 +89,9 @@ OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
 | `# Locks:` | Resources it needs to itself (`orders-table, tf/orders`). |
 | `# Step-Timeout:` / `# Timeout:` | Default limit per step / limit for the round. |
 | `# Targets:` | What its steps talk to by default. |
-| `# Outputs:` | Files or directories it promises in `$SWIM_OUT` for dependents. Missing: FAIL; undeclared: WARN. Hashed into status and the chain, made read-only. Not masked: never secrets. |
 | `# Fail: soft\|hard` | `hard`: the first failed step ends the round. |
 | `# Includes:` | Repo files that are part of the round (sourced files, local modules): pinned and staged; the only repo files it may read as code. |
 | `# Signoff:` | See [CI](ci.md#local-ci). |
-| `# Observe: NAME = <command>` / `# Observe: path CMD...` | See [manifest](manifest.md#probes). |
 | `# Workspace: live` | Run in the checkout itself, not a staged copy (for tools that read the whole tree, like `go test`); lint warns (`workspace-live`). |
 
 ## Stages
@@ -138,8 +131,7 @@ block and `status.yml`.
   pipefail -c 'cmd | awk "{print} /bad/{b=1} END{exit b}"'`. Python CLIs
   buffer when piped: `PYTHONUNBUFFERED=1`.
 - A lane runs in a staged copy holding the script and what `# Includes:`
-  pins. Write its own outputs to `$SWIM_OUT`; `$SWIM_ROOT` is the repo, for
-  what the round acts on.
+  pins; `$SWIM_ROOT` is the repo, for what the round acts on.
 - Header values take no trailing `# comment`; explain on lines of their own.
 - Write for the operator's machine, not yours: often macOS, so bash 3.2 (no
   associative arrays, `mapfile`, `${x,,}`) and BSD tools (`sed -i.bak`; no

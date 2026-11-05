@@ -50,7 +50,6 @@ type LaneView struct {
 	// when the wait under way began (zero when none). Its clock stops then.
 	Paused   time.Duration
 	PausedAt time.Time
-	Message  string // while Running: the round's status message (swim msg), "migrating billing (7/25)"
 	// Pre is the operator's answer, given ahead of time in the live view,
 	// to the lane's guards: "approved", "declined" or "". KnownGuards are
 	// the guards swim knows the lane has; UnknownGuards counts those named
@@ -404,24 +403,12 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 		if v.State == Idle || v.State == Done {
 			roundColor = ui.Dim
 		}
-		// A running round's message, in its own style after the round, when
-		// there's room (it never takes the state column).
-		msg := ""
-		if v.State == Running && v.Message != "" {
-			if left := avail - utf8.RuneCountInString(round) - 3; left >= 10 {
-				job = ""
-				msg = truncate("… "+ui.Safe(v.Message), left)
-			}
-		}
 		line := p.Paint(ui.LaneColor(v.N)+ui.Bold, label) + p.Paint(stColor, st)
 		if round != "" {
 			line += " " + p.Paint(roundColor, round)
 		}
 		if job != "" {
 			line += p.Paint(ui.Dim, job)
-		}
-		if msg != "" {
-			line += "  " + p.Paint(ui.Mag, msg)
 		}
 		if mark, color := preMark(v); mark != "" {
 			line += "  " + p.Paint(color, mark)

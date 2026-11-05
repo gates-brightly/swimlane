@@ -30,8 +30,6 @@ defaults:
   approvals: prompt                # prompt | flags: may a guard ask
   signing: auto                    # auto | required | off
   signing_key: ~/.ssh/id_ed25519   # a .pub signs through ssh-agent
-  msg_log_interval: 10s            # at most one MSG log line per lane per this
-  outputs_keep: 14d                # swim doctor --fix prunes older unused outputs
   queue_lease: 2m                  # a swimmer's heartbeat, seen from other hosts
   claim_lease: 2h                  # how long a lane claim lasts
   watch_batches: 4                 # batches one swim watch runs at once
@@ -63,7 +61,6 @@ in [env files](env.md), not config. There is no lane count.
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain, and every script that ran. | No (export it) |
 | `.swim/runs/<run>/<N>/`, `.swim/runs/RUN.yml` | Staged copies and manifests; each run's timeline. | No |
-| `.swim/out/<job>/<run>/` | A round's outputs (`$SWIM_OUT`). | No |
 | `.swim/queue/`, `.swim/snapshots/`, `.swim/earmarks/`, `.swim/signoffs/` | Batches, snapshot output, readers' places, signoffs. | No |
 | `.swim/laneN.pid` | Present while lane N runs. | No |
 

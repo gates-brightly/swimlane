@@ -186,31 +186,6 @@ func TestStageAndVerify(t *testing.T) {
 	}
 }
 
-func TestObserve(t *testing.T) {
-	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, "fact"), []byte("one\n"), 0o644)
-	p1, err := lane.ParseProbe("acct = cat fact")
-	if err != nil {
-		t.Fatal(err)
-	}
-	p2, err := lane.ParseProbe("path sh nosuchcommand-xyz")
-	if err != nil {
-		t.Fatal(err)
-	}
-	was := Observe(root, []lane.Probe{p1, p2}, nil)
-	if was["acct"] != "one" || !strings.Contains(was["path.sh"], "@sha256:") || was["path.nosuchcommand-xyz"] != "(not found)" {
-		t.Errorf("observed: %v", was)
-	}
-	os.WriteFile(filepath.Join(root, "fact"), []byte("two\n"), 0o644)
-	diff := ObservedDiff(was, Observe(root, []lane.Probe{p1, p2}, nil))
-	if len(diff) != 1 || diff[0] != "acct was one at approval, now two" {
-		t.Errorf("diff: %v", diff)
-	}
-	if _, err := lane.ParseProbe("not a probe"); err == nil {
-		t.Error("a bad probe parsed")
-	}
-}
-
 // A staged copy an older swim recorded with the v1 manifest hash still
 // verifies, and a pin changed under it still fails.
 func TestVerifyV1Manifest(t *testing.T) {

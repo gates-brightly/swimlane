@@ -124,16 +124,15 @@ func TestClientGivesUp(t *testing.T) {
 }
 
 // A lane can't rewrite its own question: escape sequences, \r, \b and
-// bidi overrides in the description and the observed facts are removed.
+// bidi overrides in the description are removed.
 func TestQuestionIsSafe(t *testing.T) {
-	q := strings.Join(Question(Request{Lane: 3, Flag: "F", Desc: "drop prod\x1b[2K\rlist files\b‮",
-		Observed: map[string]string{"plan": "destroy 1\x1b[1A\x1b[2K\r"}}), "\n")
+	q := strings.Join(Question(Request{Lane: 3, Flag: "F", Desc: "drop prod\x1b[2K\rlist files\b‮"}), "\n")
 	for _, bad := range []string{"\x1b", "\r", "\b", "‮"} {
 		if strings.Contains(q, bad) {
 			t.Errorf("question carries %q: %q", bad, q)
 		}
 	}
-	for _, want := range []string{"the lane says: drop prodlist files\n", "    plan = destroy 1"} {
+	for _, want := range []string{"the lane says: drop prodlist files\n"} {
 		if !strings.Contains(q, want) {
 			t.Errorf("question lacks %q: %q", want, q)
 		}
