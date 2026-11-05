@@ -91,13 +91,13 @@ source lib/swim/gh.sh
 source lib/swim/os.sh
 stage check
 os_mac_gate             # gate: this is the operator's Mac
-aws_gate 123456789012   # gate: an AWS session is active, and is that account
+aws_gate --profile sbx1 123456789012   # gate: sbx1's AWS session is active, and is that account
 gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $PR_REF, snapshot its head
 ```
 
 | | |
 |---|---|
-| `aws_gate [ACCOUNT]` | A gate that `aws sts get-caller-identity` answers (under `AWS_PROFILE` if set), and with ACCOUNT, that it's that account. The log shows the identity. |
+| `aws_gate [--profile PROFILE] [ACCOUNT]` | A gate that `aws sts get-caller-identity` answers (under PROFILE, else `AWS_PROFILE` if set), and with ACCOUNT, that it's that account. The log shows the identity; an expired SSO session names the `aws sso login` that renews it. |
 | `gh_pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `PR_REF`. |
 | `gh_actions` / `gh_actions_gate` | True on a GitHub Actions runner (`GITHUB_ACTIONS=true`), for `if`; the gate stops the round anywhere else and logs the runner, repository, run and commit. |
 | `gh_auth_gate [LOGIN]` | A gate that `gh` is signed in, and with LOGIN, as that user. |
@@ -110,7 +110,7 @@ gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $PR_REF, snapsh
 | `git_authors_gate "NAME <EMAIL>" RANGE [PATH]` | A gate that every commit in RANGE was authored and committed by that identity; lists any that weren't. |
 | `docker_gate` | A gate that the Docker daemon answers. |
 | `docker_compose_snapshot PROJECT [WHEN]` | Snapshot a compose project's containers, running or not (`before`, `after`). |
-| `tool_gate CMD [VERSION]` | A gate that CMD is on PATH, and with VERSION that `CMD --version` reports it, or `CMD version` when that fails (`node 20` matches v20.11.1, `go 1.27` matches go1.27.1). |
+| `tool_gate CMD [VERSION \| VERSION+]` | A gate that CMD is on PATH, and with VERSION that `CMD --version` reports it, or `CMD version` when that fails (`node 20` matches v20.11.1, `go 1.27` matches go1.27.1); `VERSION+` is that or later (`node 20+` matches v22.3.0). |
 | `os_mac` / `os_linux` | True on macOS / Linux (`uname -s`), for `if`. |
 | `os_mac_gate` / `os_linux_gate` | A gate that this is macOS / Linux; logs `uname -srm`. |
 

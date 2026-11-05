@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -74,8 +75,16 @@ func (e *env) value(name string, args ...string) (string, error) {
 // capture runs a command for its output, trimmed, and returns what it
 // said as well, for a check that reads why it failed.
 func (e *env) capture(name string, args ...string) (string, []byte, error) {
+	return e.captureEnv(nil, name, args...)
+}
+
+// captureEnv is capture with these variables set for the command.
+func (e *env) captureEnv(vars []string, name string, args ...string) (string, []byte, error) {
 	var b bytes.Buffer
 	c := exec.Command(name, args...)
+	if len(vars) > 0 {
+		c.Env = append(os.Environ(), vars...)
+	}
 	c.Stdout, c.Stderr = &b, &b
 	err := c.Run()
 	return strings.TrimSpace(b.String()), b.Bytes(), err
@@ -137,16 +146,24 @@ func Run(fn string, args []string, out io.Writer) int {
 
 var digits = regexp.MustCompile(`^[0-9]+$`)
 
-// aws_gate [ACCOUNT]
+// aws_gate [--profile PROFILE] [ACCOUNT]
 func awsGate(e *env, args []string) error {
+	profile := os.Getenv("AWS_PROFILE")
+	var cmdEnv []string
+	if len(args) > 0 && args[0] == "--profile" {
+		if len(args) < 2 || args[1] == "" || strings.HasPrefix(args[1], "-") {
+			return misusef("aws_gate --profile needs a profile name: aws_gate --profile sbx1")
+		}
+		profile, args = args[1], args[2:]
+		cmdEnv = []string{"AWS_PROFILE=" + profile}
+	}
 	if len(args) > 1 {
-		return misusef("aws_gate takes at most an account id, got %q", strings.Join(args, " "))
+		return misusef("aws_gate takes [--profile PROFILE] [ACCOUNT], got %q", strings.Join(args, " "))
 	}
 	if len(args) == 1 && (len(args[0]) != 12 || !digits.MatchString(args[0])) {
-		return misusef("aws_gate takes a 12-digit account id, got '%s'", args[0])
+		return misusef("aws_gate takes a 12-digit account id, got '%s' (a profile name goes after --profile)", args[0])
 	}
-	profile := os.Getenv("AWS_PROFILE")
-	id, out, err := e.capture("aws", "sts", "get-caller-identity", "--output", "json")
+	id, out, err := e.captureEnv(cmdEnv, "aws", "sts", "get-caller-identity", "--output", "json")
 	if err != nil {
 		e.out.Write(out)
 		return awsNoSession(profile, string(out), err)
@@ -165,7 +182,7 @@ func awsGate(e *env, args []string) error {
 	}
 	e.printf("account %s (profile %s)", who.Account, shown)
 	if who.Account != args[0] {
-		return failf("want account %s, the session is %s (profile %s): set AWS_PROFILE to %s's profile", args[0], who.Account, shown, args[0])
+		return failf("want account %s, the session is %s (profile %s): use %s's profile (aws_gate --profile P, or AWS_PROFILE)", args[0], who.Account, shown, args[0])
 	}
 	return nil
 }
@@ -443,10 +460,17 @@ func osGate(e *env, args []string, goos, name string) error {
 
 var versionNumber = regexp.MustCompile(`[0-9]+(\.[0-9]+)*`)
 
-// tool_gate CMD [VERSION]
+// tool_gate CMD [VERSION | VERSION+]
 func toolGate(e *env, args []string) error {
 	if len(args) < 1 || len(args) > 2 || args[0] == "" {
 		return misusef("tool_gate needs a command name")
+	}
+	want, atLeast := "", false
+	if len(args) == 2 {
+		want, atLeast = strings.CutSuffix(args[1], "+")
+		if !versionNumber.MatchString(want) || versionNumber.FindString(want) != want {
+			return misusef("tool_gate %s: a version is numbers and dots, + for that or later (20, 1.27, 20+), got '%s'", args[0], args[1])
+		}
 	}
 	name := args[0]
 	p, err := exec.LookPath(name)
@@ -463,13 +487,31 @@ func toolGate(e *env, args []string) error {
 	if len(args) == 1 {
 		return nil
 	}
-	want := args[1]
 	n := versionNumber.FindString(first)
-	if n == want || strings.HasPrefix(n, want+".") {
+	if n == "" {
+		return failf("want %s %s, got no version", name, args[1])
+	}
+	if n == want || strings.HasPrefix(n, want+".") || (atLeast && newer(n, want)) {
 		return nil
 	}
-	if n == "" {
-		n = "no version"
+	return failf("want %s %s, got %s", name, args[1], n)
+}
+
+// newer: version a is later than b, number by number (1.27.1 > 1.9; a
+// missing number is 0).
+func newer(a, b string) bool {
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < max(len(as), len(bs)); i++ {
+		x, y := 0, 0
+		if i < len(as) {
+			x, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			y, _ = strconv.Atoi(bs[i])
+		}
+		if x != y {
+			return x > y
+		}
 	}
-	return failf("want %s %s, got %s", name, want, n)
+	return false
 }
