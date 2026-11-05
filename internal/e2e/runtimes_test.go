@@ -32,15 +32,15 @@ func fakeRunner(t *testing.T, r *repo, name string) string {
 }
 
 // A lane that never loads the bash library runs inside the wrapper: its
-// swim run/gate/guard/stage calls are steps, and a failed gate ends the
+// swim step/gate/guard/stage calls are steps, and a failed gate ends the
 // program even though it carries on.
 func TestWrappedLaneInLaneCommands(t *testing.T) {
 	r := newRepo(t)
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: plain bash, swim commands
 swim stage check
-swim run "first" -- echo one
-if swim guard ALLOW_X "do x"; then swim run "x" -- echo did-x; fi
+swim step "first" -- echo one
+if swim guard ALLOW_X "do x"; then swim step "x" -- echo did-x; fi
 swim gate "must pass" -- false
 touch "$SWIM_ROOT/after-gate"
 `, 0o755)
@@ -65,8 +65,28 @@ touch "$SWIM_ROOT/after-gate"
 	}
 }
 
+// run, step's old name, still runs a step for one release: in a bash lane
+// (lint warns run-is-step) and as swim run "<label>" -- cmd in a wrapped
+// one. Remove after the next release (T38).
+func TestRunAliasForStep(t *testing.T) {
+	r := newRepo(t)
+	r.write("lane.1.sh", "#!/usr/bin/env swim\n# swim: syntax 4\n# Round: old bash name\nrun \"old bash\" true\nstep \"new bash\" true\n", 0o755)
+	r.write("lane.2.sh", "#!/usr/bin/env bash\n# Round: old wrapped name\nswim run \"old wrapped\" -- true\nswim step \"new wrapped\" -- true\n", 0o755)
+	if out, code := r.swim("run", "1", "2", "--plain"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	contains(t, "lane 1", r.log(1), "PASS  old bash", "PASS  new bash")
+	contains(t, "lane 2", r.log(2), "PASS  old wrapped", "PASS  new wrapped")
+	out, _ := r.swim("lint", "1")
+	contains(t, "lint", out, "[run-is-step]", "run is now step")
+	r.swim("lint", "1", "--fix")
+	if data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh")); !strings.Contains(string(data), "step \"old bash\" true") {
+		t.Errorf("lint --fix left:\n%s", data)
+	}
+}
+
 // Once a gate fails no later step runs, even in a program that outlives
-// its stop: this one ignores SIGTERM, so it reaches its next swim run
+// its stop: this one ignores SIGTERM, so it reaches its next swim step
 // before the wrapper's SIGKILL, every time. That step is refused, not run,
 // and the log shows the gate's FAIL and STOP and nothing after.
 func TestWrappedLaneNoStepAfterEnd(t *testing.T) {
@@ -75,9 +95,9 @@ func TestWrappedLaneNoStepAfterEnd(t *testing.T) {
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: ignores its stop
 trap '' TERM
-swim run "first" -- true
+swim step "first" -- true
 swim gate "must pass" -- false
-swim run "never" -- touch "$SWIM_ROOT/ran-never"
+swim step "never" -- touch "$SWIM_ROOT/ran-never"
 touch "$SWIM_ROOT/after-refusal"
 `, 0o755)
 	out, code := r.swim("run", "1", "--plain")
@@ -90,7 +110,7 @@ touch "$SWIM_ROOT/after-refusal"
 	if _, err := os.Stat(filepath.Join(r.root, "after-refusal")); err == nil {
 		t.Error("the refused step returned to the program before it was stopped")
 	}
-	contains(t, "output", out, `swim run: the round has ended; "never" not run`)
+	contains(t, "output", out, `swim step: the round has ended; "never" not run`)
 	log := r.log(1)
 	contains(t, "log", log, "PASS  first", "FAIL  must pass (exit 1)", "STOP  gate failed: must pass", "== END FAIL")
 	if strings.Contains(log, "never") {
@@ -98,7 +118,7 @@ touch "$SWIM_ROOT/after-refusal"
 	}
 }
 
-// A program that never calls swim run is one step: its whole output, with
+// A program that never calls swim step is one step: its whole output, with
 // secrets masked, passed or failed by its exit code.
 func TestWrappedLaneWholeRun(t *testing.T) {
 	r := newRepo(t)
@@ -179,7 +199,7 @@ func TestRunnerResolution(t *testing.T) {
 // A lane has exactly one script.
 func TestTwoScriptsConflict(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "bash version", `run "x" true`)
+	r.script(1, "bash version", `step "x" true`)
 	r.write("lane.1.js", "// Round: js version\n", 0o644)
 	out, code := r.swim("run", "1", "--plain")
 	if code == 0 || !strings.Contains(out, "swim 1 has 2 scripts (lane.1.sh, lane.1.js)") {
@@ -194,7 +214,7 @@ func TestWrappedLaneGracefulStop(t *testing.T) {
 	r := newRepo(t)
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: interrupt me
-for i in 1 2 3; do swim run "step $i" -- `+hold("go")+`; done
+for i in 1 2 3; do swim step "step $i" -- `+hold("go")+`; done
 touch "$SWIM_ROOT/carried-on"
 `, 0o755)
 	l := r.launch(t, nil)

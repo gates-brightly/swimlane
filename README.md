@@ -61,7 +61,7 @@ stage snapshot
 snapshot "the files" ls -la "$SWIM_ROOT"
 
 stage check
-run "how big it is" du -sh "$SWIM_ROOT"
+step "how big it is" du -sh "$SWIM_ROOT"
 EOF
 ```
 
@@ -90,7 +90,7 @@ snapshot "the .tmp files" bash -c 'ls "$SWIM_ROOT"/*.tmp'
 
 stage change
 if guard TRY_ALLOW_DELETE "delete the .tmp files"; then
-  run "delete them" bash -c 'rm -v "$SWIM_ROOT"/*.tmp'
+  step "delete them" bash -c 'rm -v "$SWIM_ROOT"/*.tmp'
 fi
 EOF
 swim run 2 || echo "exit $?: nothing deleted"

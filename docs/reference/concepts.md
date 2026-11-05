@@ -13,7 +13,7 @@ Built from them:
 
 | | |
 |---|---|
-| **step** | One command run through `run`, `gate` or `snapshot`: its command, output, exit code and time, logged. |
+| **step** | One command run through `step`, `gate` or `snapshot`: each records its command, output, exit code and time in the log; `snapshot` also saves the output under `.swim/snapshots/`. |
 | **stage** | Where a round is: snapshot, check, change, verify. See [lanes](lanes.md#stages). |
 | **gate** | A step whose failure stops the round before any later step. |
 | **job** | A round's unique id (`# Job:`, written by `swim new`), exported as `$SWIM_JOB`. Naming a job instead of a lane (`swim run 3f2a9c1e`, `# After: 3f2a9c1e`) pins that exact round; a lane rewritten since is refused. A script without one gets an id when it starts. |

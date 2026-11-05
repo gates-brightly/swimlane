@@ -24,7 +24,7 @@ import (
 // round. The wrapper does what lane_init and the library's traps do for a
 // bash lane: it opens the round (swim _start, with its own pid as the
 // lane's), exports the SWIM_* variables the
-// in-lane commands (swim run/gate/guard/stage/...) read, and closes the
+// in-lane commands (swim step/gate/guard/stage/...) read, and closes the
 // round (swim _finish) however the program ends.
 //
 //   - SIGUSR1 ends the round now: an in-lane command claimed an end (a
@@ -33,8 +33,8 @@ import (
 //     stopped (SIGTERM, then SIGKILL after 5s) even if it ignored the
 //     failure.
 //   - SIGUSR2 is the operator's graceful stop: the stop file already keeps
-//     swim run from starting another step, which ends the round there.
-//   - A program that never called swim run is recorded as one step: the
+//     swim step from starting another step, which ends the round there.
+//   - A program that never called swim step is recorded as one step: the
 //     whole run, with its output (masked), passed or failed by its exit code.
 func cmdWrap(args []string) error {
 	if len(args) < 3 || args[1] != "--" {
@@ -130,7 +130,7 @@ func cmdWrap(args []string) error {
 		code = c
 	}
 
-	// Never called swim run: the whole program is the round's one step.
+	// Never called swim step: the whole program is the round's one step.
 	if r, err := logparse.ParseFile(logPath); err == nil && r.Pass+r.Fail == 0 {
 		if in, err := os.Open(capPath); err == nil {
 			childCode := code

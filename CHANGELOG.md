@@ -48,6 +48,15 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Changed
 
+- **A lane's step function is `step`, not `run`:** `step "label" cmd
+  args` in a bash lane, `swim step "<label>" -- cmd` in any other
+  language, with the same options. "run" now only means `swim run` and
+  its run ids. `run` (and `swim run "<label>" -- cmd` in a lane) still
+  works for this release; `swim lint` warns `run is now step`
+  (`run-is-step`), and `swim lint --fix` rewrites a bash lane's `run`
+  calls to `step`. `swim new`'s template, the docs and the examples use
+  `step`.
+
 - **Config lives in your home directory alone, keyed by repo name and
   branch; `swim.yml` is gone.** `~/.config/swim/config.yml` applies in
   layers, later winning key by key: swim's default, `defaults:`,
@@ -227,6 +236,10 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Upgrading
 
+- **Run `swim lint --fix` in each repo with lanes** to rename their `run`
+  calls to `step`; rewrite a lane in another language's `swim run
+  "<label>" -- cmd` to `swim step` by hand. The `run` name goes in the
+  next release.
 - **Rename each `repos:` key in `~/.config/swim/config.yml`, and each
   `[repo PATH]` section in `env.swim`, from the repo's path to its
   name** (`/Users/you/src/swimlane:` becomes `swimlane:`, `[repo

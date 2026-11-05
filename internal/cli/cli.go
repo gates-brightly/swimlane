@@ -54,8 +54,8 @@ func init() {
 		"doctor":    {run: cmdDoctor},
 		"help":      {run: cmdHelp},
 		"guide":     {run: cmdGuide},
-		// In-lane commands, for lane scripts in any language (lanecmds.go);
-		// swim run "<label>" -- cmd is the in-lane form of run.
+		// In-lane commands, for lane scripts in any language (lanecmds.go).
+		"step":     {run: laneStepCmd},
 		"gate":     {run: laneGate},
 		"snapshot": {run: laneSnapshot},
 		"guard":    {run: cmdGuard},

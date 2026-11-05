@@ -10,7 +10,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 )
 
-// The step checks hold lint to what lib.sh's run, gate and snapshot do at
+// The step checks hold lint to what lib.sh's step, gate and snapshot do at
 // run time (_swim_run_step): a call they would refuse, or run as something
 // other than what it says, is an error here, before anything runs. The
 // corpus test (internal/e2e/corpus_test.go) keeps the two in agreement.
@@ -21,9 +21,12 @@ import (
 var (
 	stepFlagOpts = map[string]bool{"--soft": true, "--no-retry-timeout": true, "--expect-fail": true}
 	stepOptNames = "--timeout, --retry, --backoff, --retry-on, --key, --target, --soft, --no-retry-timeout, --expect-fail"
+	// stepFuncs are the library's step functions. run is step's old name,
+	// kept for one release: remove it after the next release (T38).
+	stepFuncs = map[string]bool{"step": true, "gate": true, "snapshot": true, "run": true}
 )
 
-// commandWords are commands a label is easily mistaken for: run echo hi
+// commandWords are commands a label is easily mistaken for: step echo hi
 // is the label "echo" running hi.
 var commandWords = map[string]bool{"echo": true, "printf": true, "ls": true, "cat": true, "bash": true, "sh": true, "true": true, "false": true,
 	"test": true, "curl": true, "wget": true, "git": true, "gh": true, "kubectl": true, "helm": true, "aws": true, "gcloud": true, "az": true,
@@ -36,7 +39,7 @@ var commandWords = map[string]bool{"echo": true, "printf": true, "ls": true, "ca
 var childless = map[string]bool{"cd": true, "pushd": true, "popd": true, "export": true, "unset": true, "set": true, "source": true,
 	".": true, "alias": true, "declare": true, "local": true, "readonly": true, "shift": true, "exit": true, "return": true, "read": true, "eval": true}
 
-// checkStepCall: a run, gate or snapshot call written so lib.sh refuses it
+// checkStepCall: a step, gate or snapshot call written so lib.sh refuses it
 // (an unknown option, a missing value, label or command) or runs something
 // other than what it says (an unquoted label that's a command, a command
 // quoted into one word, a builtin that only changes its own shell).
@@ -47,7 +50,7 @@ func checkStepCall(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, lc := range s.v.commands() {
 		w := lc.Words
-		if lc.Sub || len(w) == 0 || w[0].Quoted || w[0].Text != "run" && w[0].Text != "gate" && w[0].Text != "snapshot" {
+		if lc.Sub || len(w) == 0 || w[0].Quoted || !stepFuncs[w[0].Text] {
 			continue
 		}
 		name := w[0].Text
@@ -96,7 +99,7 @@ func checkStepCall(c *Context, s *Script) []finding.Finding {
 		label := w[k]
 		k++
 		if k < len(w) && w[k].Text == "--" {
-			k++ // run "<label>" -- cmd: the -- ends the label
+			k++ // step "<label>" -- cmd: the -- ends the label
 		}
 		if k >= len(w) {
 			bad(fmt.Sprintf(`%s "%s" cmd [args...]`, name, label.Text), "%s %q has a label but no command; the round would stop here", name, label.Text)
@@ -105,8 +108,8 @@ func checkStepCall(c *Context, s *Script) []finding.Finding {
 		cmd := w[k]
 		switch {
 		case !label.Quoted && !label.Expands && commandWords[label.Text] && !plausibleCommand(cmd):
-			// run echo hi: the label is "echo" and hi can't be a command.
-			// (run test go version is a label and a command: it passes.)
+			// step echo hi: the label is "echo" and hi can't be a command.
+			// (step test go version is a label and a command: it passes.)
 			bad(fmt.Sprintf(`%s "<what it checks>" %s %s ...`, name, label.Text, cmd.Text),
 				"%s %s %s ...: %q is the step's label, so it runs %q, which isn't a command here (exit 127); put a quoted label first", name, label.Text, cmd.Text, label.Text, cmd.Text)
 		case cmd.Quoted && !cmd.Expands && strings.ContainsAny(cmd.Text, " \t") && !isPath(cmd.Text):
@@ -144,7 +147,7 @@ func checkStepPipe(c *Context, s *Script) []finding.Finding {
 			continue
 		}
 		name := cmds[0][0].Text
-		if name != "run" && name != "gate" && name != "snapshot" {
+		if !stepFuncs[name] {
 			continue
 		}
 		if op := stepOperator(bare); op != "" {
@@ -232,16 +235,15 @@ func stepOperator(bare string) string {
 	return ""
 }
 
-// checkShortFormShebang: a .sh lane that calls swim's steps (stage, run,
+// checkShortFormShebang: a .sh lane that calls swim's steps (stage, step,
 // gate, ...) but neither loads the library nor starts #!/usr/bin/env swim:
 // bash runs it without them ("stage: command not found").
 func checkShortFormShebang(c *Context, s *Script) []finding.Finding {
 	if s.Lib || !strings.HasSuffix(s.Name, ".sh") {
 		return nil
 	}
-	steps := map[string]bool{"stage": true, "run": true, "gate": true, "snapshot": true, "guard": true}
 	for _, lc := range s.v.commands() {
-		if lc.Sub || len(lc.Words) == 0 || lc.Words[0].Quoted || !steps[lc.Words[0].Text] {
+		if lc.Sub || len(lc.Words) == 0 || lc.Words[0].Quoted || !stepFuncs[lc.Words[0].Text] && lc.Words[0].Text != "stage" && lc.Words[0].Text != "guard" {
 			continue
 		}
 		first, _, _ := strings.Cut(s.Src, "\n")
@@ -293,8 +295,8 @@ func checkGuardText(c *Context, s *Script) []finding.Finding {
 var (
 	// stepInSubstRE: a step in $(...) or backticks; stepAfterPipeRE: a
 	// step a pipe feeds (it runs in a subshell).
-	stepInSubstRE   = regexp.MustCompile("(?:\\$\\(|`)\\s*(?:if\\s+|!\\s*)?(run|gate|snapshot)\\b")
-	stepAfterPipeRE = regexp.MustCompile(`(?:^|[^|])\|\s*(?:if\s+|!\s*)?(run|gate|snapshot)\b`)
+	stepInSubstRE   = regexp.MustCompile("(?:\\$\\(|`)\\s*(?:if\\s+|!\\s*)?(step|run|gate|snapshot)\\b")
+	stepAfterPipeRE = regexp.MustCompile(`(?:^|[^|])\|\s*(?:if\s+|!\s*)?(step|run|gate|snapshot)\b`)
 	// pipedLoopRE: a while or until loop a pipe feeds; loopKeywordRE: the
 	// words that open and close a loop body.
 	pipedLoopRE   = regexp.MustCompile(`(?:^|[^|])\|\s*(?:while|until)\b`)
@@ -333,7 +335,7 @@ func checkStepSubshell(c *Context, s *Script) []finding.Finding {
 			}
 			if inBody {
 				for _, cmd := range lane.Commands(s.v.code[i]) {
-					if len(cmd) > 0 && !cmd[0].Quoted && (cmd[0].Text == "run" || cmd[0].Text == "gate" || cmd[0].Text == "snapshot") {
+					if len(cmd) > 0 && !cmd[0].Quoted && stepFuncs[cmd[0].Text] {
 						out = append(out, f(finding.Error, "step-subshell", i,
 							"feed the loop without a pipe: while read x; do ... done < <(cmd)",
 							"%s inside a loop a pipe feeds runs in a subshell: its result never reaches the lane (last_failed, any_failed, the round's counts after the loop)", cmd[0].Text))
@@ -358,6 +360,23 @@ func checkStepSubshell(c *Context, s *Script) []finding.Finding {
 		out = append(out, f(finding.Error, "step-subshell", i,
 			fmt.Sprintf("call %s on its own line; for its output, have the command write a file, or use snapshot", m[1]),
 			"%s inside %s runs in a subshell: its result never reaches the lane (last_failed, the round's counts), and $(...) captures swim's output, not the command's", m[1], where))
+	}
+	return out
+}
+
+// checkRunIsStep: run is step's old name, kept for one release. Remove
+// after the next release (T38), with the alias.
+func checkRunIsStep(c *Context, s *Script) []finding.Finding {
+	if !s.Lib {
+		return nil
+	}
+	calls := runCalls(s.v)
+	var out []finding.Finding
+	for i := range s.v.raw {
+		if len(calls[i]) > 0 {
+			out = append(out, f(finding.Warn, "run-is-step", i, "write step \"<label>\" cmd (swim lint --fix rewrites it)",
+				"run is now step: run still works for this release only"))
+		}
 	}
 	return out
 }

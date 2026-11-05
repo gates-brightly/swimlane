@@ -127,7 +127,7 @@ var Commands = map[string]string{
   A name is a-z, 0-9 and - (a letter first, at most 40, not only hex
   digits and -), not a swim command, and one lane's alone (swim lint).
   Where swim takes a lane it reads a number as a lane, then a name as a
-  task, then a job id; swim run "<label>" -- cmd (in a lane) is a step.
+  task, then a job id.
   Write lane.N.sh from the template: the goal on its Round: line, a new job
   id on its Job: line, the toolchain preamble from config, and example
   snapshot/gate/guard/verify steps to replace. Prints the job id. Marks the
@@ -145,7 +145,6 @@ var Commands = map[string]string{
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
-swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see swim guide other-languages)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -304,15 +303,21 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   --run RUN  each lane as it was in swim run RUN (from the logs, archives
              included, and .swim.log for lanes skipped before they started)
 `,
+	"step": `swim step [options] "<label>" -- cmd [args...]
+
+  In a lane script in any language (swim guide other-languages): run one
+  step and record PASS or FAIL <label>; a failure doesn't end the round.
+  Options: --timeout D, --retry N, --backoff D, --retry-on CODES,
+  --no-retry-timeout, --soft, --expect-fail[=CODES], --key K, --target T.
+  (In a bash lane, use the library's step.) The old in-lane form, swim run
+  "<label>" -- cmd, still works for one release.
+`,
 	"gate": `swim gate [options] "<label>" -- cmd [args...]
 
   In a lane script in any language (swim guide other-languages): run
-  one step like swim run "<label>" -- cmd; if it fails, record STOP and end
-  the round, stopping the program even if it carries on. Options as for
-  swim run's in-lane form: --timeout D, --retry N, --backoff D,
-  --retry-on CODES, --no-retry-timeout, --expect-fail[=CODES]. (In a bash
-  lane, use the library's
-  gate.)
+  one step like swim step; if it fails, record STOP and end the round,
+  stopping the program even if it carries on. Options as for swim step.
+  (In a bash lane, use the library's gate.)
 `,
 	"snapshot": `swim snapshot [options] "<label>" -- cmd [args...]
 
@@ -708,8 +713,9 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   --fix adds the header lines a script's body needs, for you to review:
   # Guards: for each guard it uses without declaring (with the guard's own
   action as the description), # Guards: * for a flag it names at run time,
-  # Includes: for a repo file it sources or imports. It never removes or
-  rewrites a line, and skips running lanes and lanes of jobs.
+  # Includes: for a repo file it sources or imports. In a bash lane it
+  also renames run, step's old name, to step. It never removes a line or
+  rewrites one otherwise, and skips running lanes and lanes of jobs.
 
   Checks [code] (level):
     round (error)          no # Round: line
@@ -730,6 +736,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                            (refused when it asks; a warning with # Guards: *)
     guard-dynamic (error)  guard "$FLAG" without # Guards: *
     guard-unused (warn)    a # Guards: flag no guard uses
+    run-is-step (warn)     a call of run, step's old name (works for this
+                           release only; --fix renames it)
     destructive (warn)     delete/destroy/drop/rm -r outside an if guard block
     blocked (error)        a blocked_commands pattern
     secret-echo (warn)     echo/printf of a secret variable
@@ -904,7 +912,7 @@ func For(name string) (string, bool) {
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log",
-	"gate", "snapshot", "guard", "stage",
+	"step", "gate", "snapshot", "guard", "stage",
 	"archive", "note", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
 	"verify", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 
@@ -930,7 +938,7 @@ LANES
   init                         set up this repo
   new N "<round goal>"         write lane.N.sh from the template
   lint [N]                     check lane scripts before they run
-  A lane script calls stage, run, snapshot, gate and guard.
+  A lane script calls stage, step, snapshot, gate and guard.
 
 ROUNDS
   run N ...                    run lanes: guarded steps are dry runs until approved

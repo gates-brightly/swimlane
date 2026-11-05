@@ -83,7 +83,7 @@ lane_init() {
 # _swim_on_err — a command outside any step failed (a typo, a command that
 # isn't there, a cd that didn't happen): nothing else records it, so say
 # so in the log as a WARN. It changes nothing in the round. A function that
-# returns non-zero (run, gate, guard, ...) recorded its own result:
+# returns non-zero (step, gate, guard, ...) recorded its own result:
 # bash names its return, which is skipped. Commands in an if, while, && or
 # || never get here. Nor does a short-form lane's own script, which the
 # prelude sources (runner.ShortPrelude): it returns its last command's
@@ -202,7 +202,7 @@ _swim_after_step() {
     _swim_stop "timeout: the round's Timeout ($SWIM_TIMEOUT) ran out"
   fi
   # Fail: hard: the first failed step ends the round (a gate stops it with
-  # its own reason; run --soft opts one step out).
+  # its own reason; step --soft opts one step out).
   if [ "$_swim_last" -ne 0 ] && [ "${SWIM_FAIL_MODE:-soft}" = hard ] && [ -z "$_swim_soft" ] && [ -z "$_swim_no_hard" ]; then
     _swim_stop "hard failure: $_swim_label"
   fi
@@ -257,11 +257,11 @@ reached() {
   return 1
 }
 
-# _swim_run_step MODE [options] "<label>" cmd [args...] — shared by run and
-# snapshot (MODE is "" or --snapshot). Options, before the label:
+# _swim_run_step MODE [options] "<label>" cmd [args...] — shared by step,
+# gate and snapshot (MODE is "" or --snapshot). Options, before the label:
 # An option's value may follow it or an = (--timeout 5m, --timeout=5m), and
-# a -- may come after the label (run "<label>" -- cmd ...), as in other
-# languages' swim run.
+# a -- may come after the label (step "<label>" -- cmd ...), as in other
+# languages' swim step.
 #   --timeout D        stop the step after D (30s, 5m); 0 turns off Step-Timeout:
 #   --retry N          try up to N more times on a non-zero exit
 #   --backoff D        wait D before the first retry, doubling (default 2s)
@@ -318,13 +318,13 @@ _swim_run_step() {
   done
   if [ $# -lt 2 ]; then
     if [ $# -eq 1 ]; then
-      _swim_misuse "step \"$1\" has a label but no command: run|gate|snapshot [options] \"<label>\" cmd [args...]"
+      _swim_misuse "step \"$1\" has a label but no command: step|gate|snapshot [options] \"<label>\" cmd [args...]"
     fi
-    _swim_misuse 'a step with no label or command: run|gate|snapshot [options] "<label>" cmd [args...]'
+    _swim_misuse 'a step with no label or command: step|gate|snapshot [options] "<label>" cmd [args...]'
   fi
   _swim_label=$1
   shift
-  # run "<label>" -- cmd, the form swim run takes from other languages:
+  # step "<label>" -- cmd, the form swim step takes from other languages:
   # the -- only ends the label.
   if [ "$1" = "--" ]; then
     shift
@@ -337,16 +337,23 @@ _swim_run_step() {
   _swim_after_step $?
 }
 
-# run [options] "<label>" cmd [args...] — run one step through `swim _step`,
+# step [options] "<label>" cmd [args...] — run one step through `swim _step`,
 # recording PASS/FAIL <label>. A failure does not stop the round; use gate
-# for that. For pipes or redirects, wrap them: run "<label>" bash -c 'a | b'.
+# for that. For pipes or redirects, wrap them: step "<label>" bash -c 'a | b'.
 # Options (--timeout, --retry, --backoff, --retry-on, --no-retry-timeout):
 # see _swim_run_step. Only retry read-only or idempotent steps.
+step() {
+  _swim_run_step "" "$@"
+}
+
+# run — the old name of step, kept for one release (swim lint warns
+# run-is-step; swim lint --fix rewrites it). Remove after the next release
+# (T38).
 run() {
   _swim_run_step "" "$@"
 }
 
-# gate [options] "<label>" cmd [args...] — like run, but a failure (after
+# gate [options] "<label>" cmd [args...] — like step, but a failure (after
 # the last attempt) stops the round here, before any later (destructive)
 # step. Fail-closed.
 gate() {
@@ -366,7 +373,7 @@ snapshot() {
   _swim_run_step --snapshot "$@"
 }
 
-# last_failed — true if the previous run/gate/snapshot failed.
+# last_failed — true if the previous step/gate/snapshot failed.
 last_failed() {
   [ "$_swim_last" -ne 0 ]
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/assets"
 	"github.com/gates-brightly/swimlane/internal/config"
@@ -43,7 +45,8 @@ func cmdLint(args []string) error {
 	}
 	if fix {
 		// The header lines the body needs (# Guards:, # Includes:), added
-		// for review; then the report, as after any edit.
+		// for review, and run calls renamed step; then the report, as after
+		// any edit.
 		fixed, err := lint.Fix(root, cfg, lanes)
 		if err != nil {
 			return err
@@ -57,6 +60,9 @@ func cmdLint(args []string) error {
 				for _, l := range fx.Added {
 					fmt.Fprintf(os.Stderr, "  %s\n", l)
 				}
+			}
+			if len(fx.Renamed) > 0 {
+				fmt.Fprintf(os.Stderr, "swim lint --fix: %s: run is now step, on %s\n", fx.File, lineList(fx.Renamed))
 			}
 		}
 	}
@@ -215,4 +221,16 @@ func lintPreflight(root string, cfg *config.Config, named []int, rerun bool) (ru
 	slices.Sort(skipped)
 	fmt.Fprintf(os.Stderr, "swim run: not running swim %s (the lint errors above), running the rest; a lane that waits on one of them skips\n", joinNums(skipped))
 	return runnable, nil
+}
+
+// lineList is "line 3" or "lines 3, 7, 9".
+func lineList(lines []int) string {
+	var s []string
+	for _, l := range lines {
+		s = append(s, strconv.Itoa(l))
+	}
+	if len(s) == 1 {
+		return "line " + s[0]
+	}
+	return "lines " + strings.Join(s, ", ")
 }
