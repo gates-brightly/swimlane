@@ -8,9 +8,9 @@ import (
 )
 
 func TestDidYouMean(t *testing.T) {
-	cmds := []string{"history", "changelog", "run", "verify", "status"}
+	cmds := []string{"status", "changelog", "run", "verify", "queue"}
 	for word, want := range map[string]string{
-		"histroy":  " (did you mean history?)",
+		"stauts":   " (did you mean status?)",
 		"changlog": " (did you mean changelog?)",
 		"deploy":   "",
 		"x":        "",

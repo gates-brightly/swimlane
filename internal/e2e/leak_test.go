@@ -69,7 +69,6 @@ var leakInventory = []struct{ what, re string }{
 	{"lane state (claims hold a pid and its start time)", `^repo/\.swim/(lane\d+\.(pid|claim|stop|end)|lanes/)`},
 	{"locks", `^repo/\.swim/(locks/|.*\.lock$)`},
 	{"watch state", `^repo/\.swim/watch`},
-	{"report earmarks (places in the logs: round lines and hashes)", `^repo/\.swim/earmarks/`},
 	{"the config", `^config/swim/config\.yml$`},
 	{"the trust pins", `^config/swim/trust`},
 }
@@ -196,7 +195,7 @@ summary
 	c.SysProcAttr = noTTY()
 	yout, _ := c.CombinedOutput()
 	check("swim run --yaml", string(yout))
-	for _, args := range [][]string{{"status"}, {"status", "--yaml"}, {"log", "1"}, {"log", "1", "--yaml"}, {"history"}, {"verify"}, {"queue"}} {
+	for _, args := range [][]string{{"status"}, {"status", "--yaml"}, {"log", "1"}, {"log", "1", "--yaml"}, {"log", "--since", "1h"}, {"verify"}, {"queue"}} {
 		o, _ := r.swim(args...)
 		check("swim "+strings.Join(args, " "), o)
 	}

@@ -133,7 +133,7 @@ don't fail it; `swim verify --strict` does.
 ```sh
 mkdir -p ~/swim-evidence
 cp -R .swim/chain.jsonl .swim/logs .swim/scripts ~/swim-evidence/    # keep a copy first
-swim history                # what the chain says happened, newest first
+tail -5 .swim/chain.jsonl   # what the chain says happened last
 swim note "swim verify: <what broke>; copy in ~/swim-evidence"
 ```
 

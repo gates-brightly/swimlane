@@ -22,16 +22,21 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [--follow]
+// swim log [N|JOB|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
+// swim log --since <1h|TIME|RUN|JOB>
 func cmdLog(args []string) error {
 	var all, full, raw, asYAML, follow bool
+	var since string
 	rest, err := flags{bools: map[string]*bool{"all": &all, "full": &full, "raw": &raw, "yaml": &asYAML,
-		"follow": &follow}}.parse(args)
+		"follow": &follow}, strs: map[string]*string{"since": &since}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [--follow]")
+		return usagef("usage: swim log [N|JOB|RUN] [--all] [--full] [--raw] [--yaml] [--follow]\n       swim log --since <1h|TIME|RUN|JOB>")
+	}
+	if since != "" && len(rest) > 0 {
+		return usagef("--since reads the project log: swim log --since %s (swim log %s is all of it)", since, rest[0])
 	}
 	if asYAML && len(rest) == 0 {
 		return usagef("--yaml needs a lane or job: swim log N --yaml")
@@ -53,6 +58,9 @@ func cmdLog(args []string) error {
 	if len(rest) == 0 {
 		if all {
 			return usagef("--all needs a lane: swim log N --all")
+		}
+		if since != "" {
+			return logSince(root, since, out)
 		}
 		return out.file(history.Path(root), false)
 	}
@@ -159,6 +167,80 @@ func cmdLog(args []string) error {
 		return fmt.Errorf("no log holds a round of job or run %s", ref)
 	}
 	return nil
+}
+
+// logSince prints the project log's lines from ref on: a time, a duration
+// back from now, or a run's or job's first line. What happened since then;
+// each round's detail is swim log JOB.
+func logSince(root, ref string, out logWriter) error {
+	data, err := os.ReadFile(history.Path(root))
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%s does not exist yet", history.FileName)
+	}
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	from, at, err := sinceLine(ref, lines)
+	if err != nil {
+		return err
+	}
+	var show []string
+	for _, l := range lines[at:] {
+		if f := strings.Fields(l); len(f) > 0 && !strings.HasPrefix(l, "#") && f[0] >= from {
+			show = append(show, l)
+		}
+	}
+	if len(show) == 0 {
+		fmt.Fprintf(out.w, "nothing in %s since %s\n", history.FileName, ref)
+		return nil
+	}
+	out.lines(show)
+	return nil
+}
+
+// sinceLine resolves --since: an RFC 3339 time or a duration back from now
+// (from: the UTC time lines must be stamped at or after), or a run id or
+// job (at: the index of its first line in the project log).
+func sinceLine(ref string, lines []string) (from string, at int, err error) {
+	if t, err := time.Parse(time.RFC3339, ref); err == nil {
+		return t.UTC().Format(time.RFC3339), 0, nil
+	}
+	if d, ok := sinceAgo(ref); ok {
+		return time.Now().Add(-d).UTC().Format(time.RFC3339), 0, nil
+	}
+	for i, l := range lines {
+		if run := historyField(l, "run"); run != "" && run == ref || lane.MatchJob(historyField(l, "job"), ref) {
+			return "", i, nil
+		}
+	}
+	return "", 0, usagef("--since %q: not a UTC time (2026-10-15T14:02:11Z), a duration back from now (1h, 2d), or a run id or job in %s", ref, history.FileName)
+}
+
+// sinceAgo reads a duration back from now: Go's (90m, 1h30m) or whole
+// days (2d).
+func sinceAgo(s string) (time.Duration, bool) {
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		if n, err := strconv.Atoi(days); err == nil && n > 0 {
+			return time.Duration(n) * 24 * time.Hour, true
+		}
+		return 0, false
+	}
+	d, err := time.ParseDuration(s)
+	return d, err == nil && d > 0
+}
+
+// historyField is the value of key=VALUE in a .swim.log line ("" if none).
+func historyField(line, key string) string {
+	i := strings.Index(line, "  "+key+"=")
+	if i < 0 {
+		return ""
+	}
+	v := line[i+len(key)+3:]
+	if j := strings.IndexAny(v, " \t"); j >= 0 {
+		v = v[:j]
+	}
+	return v
 }
 
 // archives lists lane n's archived logs, oldest round first.

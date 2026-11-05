@@ -14,7 +14,7 @@ fakecloud break worker >/dev/null
 show 'swim all --plain 2>&1 | sed -n "/^swim summary/,\$p"'
 say "The worker change failed. That's what happened, and it's now on the record."
 pause
-show 'swim history --oneline'
+show 'swim log --since 1h'
 show 'swim verify'
 say "Every link and signature matches, and every round's log is what was recorded."
 pause

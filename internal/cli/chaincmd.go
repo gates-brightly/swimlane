@@ -10,7 +10,7 @@ import (
 )
 
 // cmdChain is swim chain SUB: maintenance of the chain of custody itself
-// (swim verify proves it, swim history reads it).
+// (swim verify proves it).
 func cmdChain(args []string) error {
 	if len(args) == 0 {
 		return usagef("needs a subcommand: repair")

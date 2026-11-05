@@ -25,6 +25,5 @@ Built from them:
 | **manifest** | What swim pins before a round starts. See [manifest](manifest.md). |
 | **chain** | Every round and approval, hash-linked and signed: `.swim/chain.jsonl`. See [chain](chain.md). |
 | **claim** | A lane held while a session writes it: `swim new` takes one, the round starting or `swim archive` ends it, and another session's `swim new` and `archive` refuse the lane until then (`--force` takes it over). Advisory; `swim status` shows only other sessions' claims. |
-| **earmark** | A reader's place in the logs: `swim report --earmark` shows what's new, then moves it. |
 | **signoff** | `# Signoff:` posts a round's result as a signed commit status. See [CI](ci.md#local-ci). |
 | **archive / stub** | `swim archive N "<note>"` renames a finished log `agentN.prev-<what>.log` and leaves a stub, the placeholder a lane holds between rounds, carrying the note. Logs are kept; rounds are not. |

@@ -53,7 +53,8 @@ say "Every step, result and approval is on disk, readable by people and by the A
 show 'swim status'
 show 'swim log 1 | tail -25'
 pause
-show 'swim history --oneline'
-say "The chain records who approved what and how (the prompt, a flag, a queued batch), signed and hash-linked."
+show 'swim log --since 1h'
+say "The project log says who approved what and how (the prompt, a flag, a queued batch);" \
+    "the chain of custody behind it is signed and hash-linked."
 show 'swim verify'
 demo_done

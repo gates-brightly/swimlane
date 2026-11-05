@@ -65,5 +65,4 @@ func TestChainLargeEntryAndRepair(t *testing.T) {
 	contains(t, "repair again", r.mustSwim("chain", "repair"), "nothing to repair")
 	r.mustSwim("run", "1")
 	contains(t, "verify after repair", r.mustSwim("verify", "--allow-unsigned"), "8 entries", "note: entry #6: swim chain repair removed 17 bytes", "VERIFIED")
-	contains(t, "history", r.mustSwim("history", "--oneline", "-n", "3"), "repair: removed 17 bytes of an incomplete final entry")
 }

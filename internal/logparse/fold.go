@@ -8,7 +8,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// Folding repeated output, for swim log and swim report: a polling loop's
+// Folding repeated output, for swim log: a polling loop's
 // "waiting…" fifty times, or a progress bar redrawn as it counts, is one
 // line and a count, not fifty. The log file keeps every line (swim log
 // --raw shows it as it is).
