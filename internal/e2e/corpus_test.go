@@ -32,23 +32,23 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 
 	// Lint passes these, and they run as written.
 	for _, tc := range []struct{ body, want string }{
-		{`run "plain" echo corpus-ok`, "| corpus-ok"},
-		{`run "dash dash" -- echo corpus-ok`, "| corpus-ok"},
-		{`run --timeout=1m "opt equals" echo corpus-ok`, "| corpus-ok"},
-		{`run --timeout 1m --retry 1 "opt value" echo corpus-ok`, "| corpus-ok"},
-		{`run "pipe inside" bash -c 'echo corpus-ax | tr x k'`, "| corpus-ak"},
-		{`run "quiet" echo corpus-ok >/dev/null`, "| corpus-ok"},
-		{`run "merged" echo corpus-ok 2>&1`, "| corpus-ok"},
-		{`run "or true" echo corpus-ok || true`, "| corpus-ok"},
+		{`step "plain" echo corpus-ok`, "| corpus-ok"},
+		{`step "dash dash" -- echo corpus-ok`, "| corpus-ok"},
+		{`step --timeout=1m "opt equals" echo corpus-ok`, "| corpus-ok"},
+		{`step --timeout 1m --retry 1 "opt value" echo corpus-ok`, "| corpus-ok"},
+		{`step "pipe inside" bash -c 'echo corpus-ax | tr x k'`, "| corpus-ak"},
+		{`step "quiet" echo corpus-ok >/dev/null`, "| corpus-ok"},
+		{`step "merged" echo corpus-ok 2>&1`, "| corpus-ok"},
+		{`step "or true" echo corpus-ok || true`, "| corpus-ok"},
 		{`gate "and then" true && echo corpus-after`, "PASS  and then"},
-		{`run "expands" echo "corpus-$SWIM_LANE"`, "| corpus-1"},
+		{`step "expands" echo "corpus-$SWIM_LANE"`, "| corpus-1"},
 		{`snapshot "snap" echo corpus-ok`, "| corpus-ok"},
-		{`run --expect-fail "fails" false`, "PASS  fails"},
-		{`run "diff" diff <(echo corpus-same) <(echo corpus-same)`, "PASS  diff"},
-		{`run test echo corpus-ok`, "PASS  test"},
-		{`run terraform echo corpus-ok`, "| corpus-ok"},
-		{"while read t; do\n  run \"each $t\" echo \"corpus-$t\"\ndone < <(printf 'a\\nb\\n')", "| corpus-b"},
-		{`run "spaced path" "` + spaced + `" corpus-ok`, "| corpus-ok"},
+		{`step --expect-fail "fails" false`, "PASS  fails"},
+		{`step "diff" diff <(echo corpus-same) <(echo corpus-same)`, "PASS  diff"},
+		{`step test echo corpus-ok`, "PASS  test"},
+		{`step terraform echo corpus-ok`, "| corpus-ok"},
+		{"while read t; do\n  step \"each $t\" echo \"corpus-$t\"\ndone < <(printf 'a\\nb\\n')", "| corpus-b"},
+		{`step "spaced path" "` + spaced + `" corpus-ok`, "| corpus-ok"},
 	} {
 		write(short, tc.body)
 		if out, code := r.swim("lint", "1"); code != 0 {
@@ -65,21 +65,21 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 
 	// Lint refuses these (each with its check), and so does swim run.
 	for _, tc := range []struct{ shebang, body, code string }{
-		{short, `run echo hi`, "step"},
-		{short, `run "words" "echo hi there"`, "step"},
-		{short, `run "dir" cd /tmp`, "step"},
-		{short, `run "env" export X=1`, "step"},
+		{short, `step echo hi`, "step"},
+		{short, `step "words" "echo hi there"`, "step"},
+		{short, `step "dir" cd /tmp`, "step"},
+		{short, `step "env" export X=1`, "step"},
 		{short, `gate --retries 2 "typo" false`, "step"},
 		{short, `gate --timeout= "empty" false`, "step"},
 		{short, `gate "no command"`, "step"},
-		{short, `run "a step"; echo corpus-later | cat`, "step"}, // no command: the pipe after ; is the lane's own
+		{short, `step "a step"; echo corpus-later | cat`, "step"}, // no command: the pipe after ; is the lane's own
 		{short, `acct=$(gate "account check" false)`, "step-subshell"},
 		{short, `echo x | gate "piped gate" false`, "step-subshell"},
 		{short, "printf 'a\\nb\\n' | while read t; do\n  gate \"check $t\" false\ndone", "step-subshell"},
-		{short, "echo \"$(run \"quoted\" true)\"", "step-subshell"},
-		{short, `run "count" ls | wc -l`, "step-pipe"},
-		{short, `run "file" echo hi > out.txt`, "step-pipe"},
-		{"#!/bin/bash", `run "x" true`, "short-form"},
+		{short, "echo \"$(step \"quoted\" true)\"", "step-subshell"},
+		{short, `step "count" ls | wc -l`, "step-pipe"},
+		{short, `step "file" echo hi > out.txt`, "step-pipe"},
+		{"#!/bin/bash", `step "x" true`, "short-form"},
 	} {
 		write(tc.shebang, tc.body)
 		out, code := r.swim("lint", "1")
@@ -109,7 +109,7 @@ func TestLintAndRuntimeAgree(t *testing.T) {
 		{"# After: 2  # the schema lane", "header-comment"},
 	} {
 		header = tc.header + "\n"
-		write(short, `run "x" echo corpus-ok`)
+		write(short, `step "x" echo corpus-ok`)
 		out, code := r.swim("lint", "1")
 		switch {
 		case tc.code == "" && code != 0:

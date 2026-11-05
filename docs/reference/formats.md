@@ -42,7 +42,8 @@ lane's number is still what manifests, the chain, and status record. Renaming a 
 like any edit. Where swim takes a lane, it reads its argument in this
 order:
 1. With a `--` among the arguments (`swim run "<label>" -- cmd`, inside a
-   lane), it's a step, and nothing is resolved.
+   lane: the old name of `swim step`, for one more release), it's a step,
+   and nothing is resolved.
 2. All digits: a lane number.
 3. A task name, matched exactly.
 4. A job id, or a prefix of 8 or more characters.

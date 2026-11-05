@@ -40,7 +40,7 @@ PARENTS=""
 NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
-run "clear own done marker" rm -f "$D/nodes/$N.done"
+step "clear own done marker" rm -f "$D/nodes/$N.done"
 RUN_ID=$SWIM_RUN
 export RUN_ID
 
@@ -49,12 +49,12 @@ export P
 stage check
 gate "curl available" curl --version
 gate "e2etool available" e2etool version
-run "hold (E2E_HOLD='${E2E_HOLD:-}')" bash -c '[ -z "${E2E_HOLD:-}" ] && exit 0; trap "exit 130" INT TERM; touch "$E2E_HOLD.held"; e2etool await "$E2E_HOLD"'
+step "hold (E2E_HOLD='${E2E_HOLD:-}')" bash -c '[ -z "${E2E_HOLD:-}" ] && exit 0; trap "exit 130" INT TERM; touch "$E2E_HOLD.held"; e2etool await "$E2E_HOLD"'
 stage change
 # swim:lint-ignore destructive scratch dir under .scenario/, recreated every run
 gate "reset $P" bash -c 'rm -rf "$P" && mkdir -p "$P"'
 fetch() { # fetch <name> <url>
-  run "fetch $1" curl -fsSL --max-time 20 -A "swim-demo/$SWIM_JOB" -o "$P/$1.html" -w '%{http_code} %{size_download}B %{url_effective}\n' "$2"
+  step "fetch $1" curl -fsSL --max-time 20 -A "swim-demo/$SWIM_JOB" -o "$P/$1.html" -w '%{http_code} %{size_download}B %{url_effective}\n' "$2"
 }
 fetch example https://example.com/
 fetch cern    http://info.cern.ch/hypertext/WWW/TheProject.html

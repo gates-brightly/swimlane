@@ -19,9 +19,9 @@ stage check
 echo "sed -i s/a/b/ f; grep -P x; date -d now; stat -c %s f; find . -printf x"
 echo 'timeout 30 make check'
 stage change
-run "edit" sed -i.bak 's/a/b/' notes.txt
-run "drop backup" rm -f notes.txt.bak
-run --timeout 30s "slow" make check
+step "edit" sed -i.bak 's/a/b/' notes.txt
+step "drop backup" rm -f notes.txt.bak
+step --timeout 30s "slow" make check
 stage verify
 gate "edited" grep -q b notes.txt
 summary

@@ -23,8 +23,8 @@ func (r *repo) waitLog(n int, want string) string {
 func TestWatchAsksForBatchGuards(t *testing.T) {
 	long(t)
 	r := newSerialRepo(t)
-	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
-	r.script(2, "two", `if guard ALLOW_TWO "change two"; then run "two changed" true; fi`)
+	r.script(1, "one", `if guard ALLOW_ONE "change one"; then step "one changed" true; fi`)
+	r.script(2, "two", `if guard ALLOW_TWO "change two"; then step "two changed" true; fi`)
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "2")
 	tr := r.startTUI(nil, "watch", "--batches", "2")
@@ -66,14 +66,14 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 // out of the next batch). Lanes untouched since stay unmarked.
 func TestWatchMarksChangedLanes(t *testing.T) {
 	r := newSerialRepo(t)
-	r.script(1, "first job", `run "one" true`)
-	r.script(2, "second job", `run "two" true`)
+	r.script(1, "first job", `step "one" true`)
+	r.script(2, "second job", `step "two" true`)
 	tr := r.startTUI(nil, "watch")
 	s := tr.waitFor("▸ 1 ")
 	if strings.Contains(s, "(~)") {
 		t.Fatalf("a lane marked before anything changed:\n%s", s)
 	}
-	r.script(2, "second job, rewritten", `run "two again" true`)
+	r.script(2, "second job, rewritten", `step "two again" true`)
 	s = tr.waitFor("2  (~)")
 	if strings.Contains(s, "1  (~)") {
 		t.Errorf("swim 1 marked, but only swim 2 changed:\n%s", s)

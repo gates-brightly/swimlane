@@ -13,5 +13,5 @@ mkdir -p .scenario/flaky
 fail_first() { c=".scenario/flaky/$2.count"; n=$(cat "$c" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "$c"; echo "call $n"; [ $n -gt "$1" ]; }
 export -f fail_first 2>/dev/null || true
 stage check
-run --retry 2 --backoff 0.1s "fails three times" bash -c "$(declare -f fail_first); fail_first 3 two"
+step --retry 2 --backoff 0.1s "fails three times" bash -c "$(declare -f fail_first); fail_first 3 two"
 summary

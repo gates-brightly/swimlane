@@ -29,14 +29,14 @@ stage snapshot
 snapshot "tables" aws dynamodb list-tables
 stage check
 gate "precheck" test -f go.mod
-run "quoted bash 4 is a sub-shell" bash -c 'mapfile -t x < /dev/null; echo "${x,,}"'
-run "echo is not destructive" echo "would delete nothing"
+step "quoted bash 4 is a sub-shell" bash -c 'mapfile -t x < /dev/null; echo "${x,,}"'
+step "echo is not destructive" echo "would delete nothing"
 stage change
 if guard ALLOW_DROP "drop the old table (2026-10-09, migrated)"; then
-  run "drop table" aws dynamodb delete-table --table-name old
+  step "drop table" aws dynamodb delete-table --table-name old
 fi
 stage verify
-run "token length only" echo "${#API_TOKEN}"
+step "token length only" echo "${#API_TOKEN}"
 cat <<EOF
 declare -A in a heredoc is text
 EOF
@@ -99,44 +99,44 @@ func TestEachCheck(t *testing.T) {
 		{name: "no lane_init", script: replace(c, "lane_init 1\n", ""), code: "lane-init", level: finding.Error},
 		{name: "wrong lane_init", script: replace(c, "lane_init 1", "lane_init 3"), code: "lane-init", level: finding.Error, line: 12, message: "lane_init 3"},
 		{name: "no summary", script: replace(c, "summary\n", ""), code: "summary", level: finding.Warn},
-		{name: "summary not last", script: c + "run \"late\" true\n", code: "summary", level: finding.Warn},
+		{name: "summary not last", script: c + "step \"late\" true\n", code: "summary", level: finding.Warn},
 		{name: "unknown stage", script: replace(c, "stage verify", "stage deploy"), code: "stage", level: finding.Error, message: `"deploy"`},
 		{name: "stage repeated", script: before(c, "summary\n", "stage check\n"), code: "stage-order", level: finding.Warn},
 		{name: "stage out of order", script: replace(replace(c, "stage snapshot\n", ""), "stage verify", "stage verify\nstage snapshot"), code: "stage-order", level: finding.Warn, message: "snapshot after verify"},
 		{name: "bash 4", script: before(c, "stage snapshot\n", "declare -A seen\n"), code: "bash4", level: finding.Warn, line: 13},
 		{name: "bash 4 in double quotes", script: before(c, "stage snapshot\n", "echo \"${NAME^^}\"\n"), code: "bash4", level: finding.Warn},
 		{name: "sed -i with no suffix", script: before(c, "stage snapshot\n", "sed -i 's/a/b/' notes.txt\n"), code: "gnu-only", level: finding.Warn, line: 13, message: "`sed -i` with no suffix is GNU-only"},
-		{name: "sed -i '' (the BSD form)", script: before(c, "stage verify\n", "run \"edit\" sed -E -i '' 's/a/b/' notes.txt\n"), code: "gnu-only", level: finding.Warn, message: "`sed -i`"},
+		{name: "sed -i '' (the BSD form)", script: before(c, "stage verify\n", "step \"edit\" sed -E -i '' 's/a/b/' notes.txt\n"), code: "gnu-only", level: finding.Warn, message: "`sed -i`"},
 		{name: "grep -P", script: before(c, "stage snapshot\n", "grep -oP '\\d+' notes.txt\n"), code: "gnu-only", level: finding.Warn, message: "`grep -P`"},
 		{name: "date -d", script: before(c, "stage snapshot\n", "when=$(date -d yesterday +%F)\n"), code: "gnu-only", level: finding.Warn, message: "`date -d`"},
 		{name: "stat -c", script: before(c, "stage snapshot\n", "size=$(stat -c %s notes.txt)\n"), code: "gnu-only", level: finding.Warn, message: "`stat -c`"},
 		{name: "find -printf", script: before(c, "stage snapshot\n", "find . -name '*.log' -printf '%s\\n'\n"), code: "gnu-only", level: finding.Warn, message: "`find -printf`"},
-		{name: "timeout", script: before(c, "stage verify\n", "run \"slow\" timeout 30 make check\n"), code: "gnu-only", level: finding.Warn, message: "`timeout`"},
-		{name: "guard not listed", script: before(c, "stage verify\n", "if guard ALLOW_X \"x\"; then run \"x\" true; fi\n"), code: "guard-unlisted", level: finding.Error, message: "swim refuses it when it asks"},
-		{name: "guard named at run time", script: before(c, "stage verify\n", "if guard \"$FLAG\" \"x\"; then run \"x\" true; fi\n"), code: "guard-dynamic", level: finding.Error, message: "# Guards: *"},
+		{name: "timeout", script: before(c, "stage verify\n", "step \"slow\" timeout 30 make check\n"), code: "gnu-only", level: finding.Warn, message: "`timeout`"},
+		{name: "guard not listed", script: before(c, "stage verify\n", "if guard ALLOW_X \"x\"; then step \"x\" true; fi\n"), code: "guard-unlisted", level: finding.Error, message: "swim refuses it when it asks"},
+		{name: "guard named at run time", script: before(c, "stage verify\n", "if guard \"$FLAG\" \"x\"; then step \"x\" true; fi\n"), code: "guard-dynamic", level: finding.Error, message: "# Guards: *"},
 		{name: "guard not used", script: before(c, "# Timeout:", "# Guards: ALLOW_Z  never used\n"), code: "guard-unused", level: finding.Warn, line: 7},
-		{name: "destructive outside guard", script: before(c, "stage verify\n", "run \"clean\" rm -rf build\n"), code: "destructive", level: finding.Warn},
-		{name: "destructive after else", script: replace(c, "fi\n", "else\n  run \"destroy\" terraform destroy\nfi\n"), code: "destructive", level: finding.Warn},
-		{name: "blocked from config", script: before(c, "stage verify\n", "run \"deploy\" make deploy-prod\n"), cfg: func(c *config.Config) { c.BlockedCommands = []string{"deploy-prod"} }, code: "blocked", level: finding.Error},
+		{name: "destructive outside guard", script: before(c, "stage verify\n", "step \"clean\" rm -rf build\n"), code: "destructive", level: finding.Warn},
+		{name: "destructive after else", script: replace(c, "fi\n", "else\n  step \"destroy\" terraform destroy\nfi\n"), code: "destructive", level: finding.Warn},
+		{name: "blocked from config", script: before(c, "stage verify\n", "step \"deploy\" make deploy-prod\n"), cfg: func(c *config.Config) { c.BlockedCommands = []string{"deploy-prod"} }, code: "blocked", level: finding.Error},
 		{name: "secret echoed (auto)", script: before(c, "stage verify\n", "echo \"token: $DEPLOY_TOKEN\"\n"), code: "secret-echo", level: finding.Warn},
-		{name: "secret echoed (secret_env)", script: before(c, "stage verify\n", "run \"show\" printf '%s' ${MY_KEY}\n"), cfg: func(c *config.Config) { c.SecretEnv = []string{"MY_KEY"} }, code: "secret-echo", level: finding.Warn},
+		{name: "secret echoed (secret_env)", script: before(c, "stage verify\n", "step \"show\" printf '%s' ${MY_KEY}\n"), cfg: func(c *config.Config) { c.SecretEnv = []string{"MY_KEY"} }, code: "secret-echo", level: finding.Warn},
 		{name: "bad Timeout", script: replace(c, "# Timeout: 30m", "# Timeout: soon"), code: "timeout", level: finding.Error, line: 7},
 		{name: "Timeout in words", script: replace(c, "# Timeout: 30m", "# Timeout: 10 minutes"), code: "timeout", level: finding.Error, line: 7},
 		{name: "lowercase key", script: replace(c, "# Timeout: 30m", "# timeout: 30m"), code: "header-key", level: finding.Error, line: 7, message: "(header keys are case-sensitive): did you mean # Timeout:?"},
 		{name: "synonym key", script: before(c, "# Timeout:", "# Depends: 2\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
 		{name: "header comment", script: replace(c, "# After:", "# After: 2  # waits for the schema"), code: "header-comment", level: finding.Error, line: 5, message: "# After: carries a # comment"},
 		{name: "comment on a text header", script: replace(c, "# Round: clean round 1", "# Round: clean round 1  # see the ticket"), code: "header-comment", level: finding.Error, line: 3},
-		{name: "label for a command", script: before(c, "stage verify\n", "run echo hi\n"), code: "step", level: finding.Error, message: `runs "hi", which isn't a command here`},
-		{name: "cd in a step", script: before(c, "stage verify\n", "run \"dir\" cd /tmp\n"), code: "step", level: finding.Error, message: "a shell builtin, as a program: it fails (exit 127"},
+		{name: "label for a command", script: before(c, "stage verify\n", "step echo hi\n"), code: "step", level: finding.Error, message: `runs "hi", which isn't a command here`},
+		{name: "cd in a step", script: before(c, "stage verify\n", "step \"dir\" cd /tmp\n"), code: "step", level: finding.Error, message: "a shell builtin, as a program: it fails (exit 127"},
 		{name: "step in a piped loop", script: before(c, "stage verify\n", "ls | while read t; do\n  gate \"check $t\" test -n \"$t\"\ndone\n"), code: "step-subshell", level: finding.Error},
-		{name: "step in a one-line piped loop", script: before(c, "stage verify\n", "ls | while read t; do run \"each\" echo \"$t\"; done\n"), code: "step-subshell", level: finding.Error},
-		{name: "pipe after a continuation", script: before(c, "stage verify\n", "run \"count\" ls \\\n  -la | wc -l\n"), code: "step-pipe", level: finding.Error},
+		{name: "step in a one-line piped loop", script: before(c, "stage verify\n", "ls | while read t; do step \"each\" echo \"$t\"; done\n"), code: "step-subshell", level: finding.Error},
+		{name: "pipe after a continuation", script: before(c, "stage verify\n", "step \"count\" ls \\\n  -la | wc -l\n"), code: "step-pipe", level: finding.Error},
 		{name: "Requires with lanes", script: before(c, "# Timeout:", "# Requires: 2, 3\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
 		{name: "typo key", script: before(c, "# Timeout:", "# Lock: db\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Locks:?"},
 		{name: "swapped letters", script: before(c, "# Timeout:", "# Inlcudes: lib/x.sh\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Includes:?"},
-		{name: "go vet on an empty stage", script: before(c, "stage verify\n", "run \"vet\" go vet ./...\n"), code: "workspace-empty", level: finding.Warn, line: 23, message: "checks nothing"},
-		{name: "gofmt in bash -c on an empty stage", script: before(c, "stage verify\n", "run \"fmt\" bash -c 'out=$(gofmt -s -l .); [ -z \"$out\" ]'\n"), code: "workspace-empty", level: finding.Warn, message: "gofmt"},
-		{name: "cross-lane read", script: before(c, "stage verify\n", "run \"read\" cat shared/report.json\n"), other: before(clean(2), "stage verify\n", "run \"fetch\" curl -fsS -o shared/report.json https://example.com\n"), code: "cross-lane", level: finding.Info, message: "lane.2.sh:23 writes"},
+		{name: "go vet on an empty stage", script: before(c, "stage verify\n", "step \"vet\" go vet ./...\n"), code: "workspace-empty", level: finding.Warn, line: 23, message: "checks nothing"},
+		{name: "gofmt in bash -c on an empty stage", script: before(c, "stage verify\n", "step \"fmt\" bash -c 'out=$(gofmt -s -l .); [ -z \"$out\" ]'\n"), code: "workspace-empty", level: finding.Warn, message: "gofmt"},
+		{name: "cross-lane read", script: before(c, "stage verify\n", "step \"read\" cat shared/report.json\n"), other: before(clean(2), "stage verify\n", "step \"fetch\" curl -fsS -o shared/report.json https://example.com\n"), code: "cross-lane", level: finding.Info, message: "lane.2.sh:23 writes"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,19 +168,19 @@ func TestEachCheck(t *testing.T) {
 
 // swim blocks no command by itself: git and gh are a lane's to run.
 func TestGitAndGhAllowed(t *testing.T) {
-	steps := "run \"commit\" git commit -m x\nrun \"pull\" git pull\nrun \"push\" git push origin main\nrun \"pr\" gh pr create --fill\n"
+	steps := "step \"commit\" git commit -m x\nstep \"pull\" git pull\nstep \"push\" git push origin main\nstep \"pr\" gh pr create --fill\n"
 	if fs := Lint(cfg4(), map[int]string{1: before(clean(1), "stage verify\n", steps)}, 1); len(fs) != 0 {
 		t.Errorf("%+v", fs)
 	}
 }
 
 func TestWorkspaceEmptyQuiet(t *testing.T) {
-	vet := "run \"vet\" go vet ./...\n"
+	vet := "step \"vet\" go vet ./...\n"
 	for name, script := range map[string]string{
 		"live":       before(before(clean(1), "stage verify\n", vet), "# Timeout:", "# Workspace: live\n# swim:lint-ignore-file workspace-live go vet reads the checkout\n"),
 		"includes":   before(before(clean(1), "stage verify\n", vet), "# Timeout:", "# Includes: go.mod *.go\n"),
-		"go version": before(clean(1), "stage verify\n", "run \"go\" go version\n"),
-		"go env":     before(clean(1), "stage verify\n", "run \"go\" go env GOPATH\n"),
+		"go version": before(clean(1), "stage verify\n", "step \"go\" go version\n"),
+		"go env":     before(clean(1), "stage verify\n", "step \"go\" go env GOPATH\n"),
 	} {
 		if fs := Lint(cfg4(), map[int]string{1: script}, 1); len(fs) != 0 {
 			t.Errorf("%s: %+v", name, fs)
@@ -189,15 +189,15 @@ func TestWorkspaceEmptyQuiet(t *testing.T) {
 }
 
 func TestCrossLaneQuietWhenOrdered(t *testing.T) {
-	reader := replace(before(clean(1), "stage verify\n", "run \"read\" cat shared/report.json\n"), "# After:", "# After: 2")
-	writer := before(clean(2), "stage verify\n", "run \"fetch\" curl -fsS -o shared/report.json https://example.com\n")
+	reader := replace(before(clean(1), "stage verify\n", "step \"read\" cat shared/report.json\n"), "# After:", "# After: 2")
+	writer := before(clean(2), "stage verify\n", "step \"fetch\" curl -fsS -o shared/report.json https://example.com\n")
 	if fs := Lint(cfg4(), map[int]string{1: reader, 2: writer}, 1); len(fs) != 0 {
 		t.Errorf("ordered lanes: %+v", fs)
 	}
 }
 
 func TestDisableComments(t *testing.T) {
-	bad := "run \"clean\" rm -rf build"
+	bad := "step \"clean\" rm -rf build"
 	c := clean(1)
 	cases := []struct {
 		name, script, want string
@@ -241,7 +241,7 @@ func TestDisableComments(t *testing.T) {
 }
 
 func TestScanViews(t *testing.T) {
-	src := "echo 'a # not comment' \"b ${x,,} c\" # comment\ncat <<-'EOT'\n\tmapfile\n\tEOT\nrun \"multi\nline\" true\n"
+	src := "echo 'a # not comment' \"b ${x,,} c\" # comment\ncat <<-'EOT'\n\tmapfile\n\tEOT\nstep \"multi\nline\" true\n"
 	v := scan(src)
 	if strings.Contains(v.code[0], "comment\"") || strings.Contains(v.code[0], "# comment") {
 		t.Errorf("code kept the comment: %q", v.code[0])
@@ -300,9 +300,9 @@ func TestFix(t *testing.T) {
 _swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 source lib/x.sh
-if guard ALLOW_A "a"; then run a true; fi
-if guard ALLOW_B "drop the old table"; then run b true; fi
-guard "$F" "dynamic" && run c true
+if guard ALLOW_A "a"; then step a true; fi
+if guard ALLOW_B "drop the old table"; then step b true; fi
+guard "$F" "dynamic" && step c true
 summary
 `
 	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte(src), 0o755)
@@ -349,10 +349,10 @@ _swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 source lib.sh
 stage check
-run "show" cat deploy.yaml
-run "helper" bash scripts/helper.sh
-run "missing" cat nope.yaml
-run "flag" echo -n deploy.yaml
+step "show" cat deploy.yaml
+step "helper" bash scripts/helper.sh
+step "missing" cat nope.yaml
+step "flag" echo -n deploy.yaml
 summary
 `
 	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte(src), 0o755)
@@ -431,14 +431,14 @@ func TestValidFormsStayQuiet(t *testing.T) {
 		"Requires note":              before(c, "# Timeout:", "# Requires: VPN\n"),
 		"Wait note":                  before(c, "# Timeout:", "# Wait: for the change window\n"),
 		"Needs note":                 before(c, "# Timeout:", "# Needs: prod creds\n"),
-		"path with space":            before(c, "stage verify\n", `run "check" "/opt/My Tools/bin/check" --fast`+"\n"),
-		"process subst":              before(c, "stage verify\n", `run "diff" diff <(sort a) <(sort b)`+"\n"),
-		"label test, command go":     before(c, "stage verify\n", "run test go version\n"),
-		"label curl, command curl":   before(c, "stage verify\n", "run curl curl --version\n"),
-		"label terraform, cmd echo":  before(c, "stage verify\n", "run terraform echo plan\n"),
-		"label echo, command a path": before(c, "stage verify\n", "run echo ./bin/say hi\n"),
-		"loop fed by <(cmd)":         before(c, "stage verify\n", "while read t; do\n  run \"each\" echo \"$t\"\ndone < <(ls)\n"),
-		"steps after a piped loop":   before(c, "stage verify\n", "ls | while read t; do echo \"$t\"; done\nrun \"after\" true\n"),
+		"path with space":            before(c, "stage verify\n", `step "check" "/opt/My Tools/bin/check" --fast`+"\n"),
+		"process subst":              before(c, "stage verify\n", `step "diff" diff <(sort a) <(sort b)`+"\n"),
+		"label test, command go":     before(c, "stage verify\n", "step test go version\n"),
+		"label curl, command curl":   before(c, "stage verify\n", "step curl curl --version\n"),
+		"label terraform, cmd echo":  before(c, "stage verify\n", "step terraform echo plan\n"),
+		"label echo, command a path": before(c, "stage verify\n", "step echo ./bin/say hi\n"),
+		"loop fed by <(cmd)":         before(c, "stage verify\n", "while read t; do\n  step \"each\" echo \"$t\"\ndone < <(ls)\n"),
+		"steps after a piped loop":   before(c, "stage verify\n", "ls | while read t; do echo \"$t\"; done\nstep \"after\" true\n"),
 	} {
 		if fs := Lint(cfg4(), map[int]string{1: script, 2: clean(2), 3: clean(3), 4: clean(4)}, 1); len(fs) != 0 {
 			t.Errorf("%s: %+v", name, fs)

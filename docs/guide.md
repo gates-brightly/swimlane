@@ -31,14 +31,14 @@ stage snapshot
 snapshot "list the files" ls -la
 
 stage check
-run "count them" bash -c 'ls | wc -l'
+step "count them" bash -c 'ls | wc -l'
 EOF
 swim run 1 --plain
 swim log 1
 swim status
 ```
 
-Each `run` is a step, logged with its command, output, exit code and time.
+Each `step` is logged with its command, output, exit code and time.
 PASS means exit 0, nothing more: read the output. The snapshot lists one
 file because a round runs in a staged copy of what it pins; the repo itself
 is `$SWIM_ROOT`. Stages say where the round is: snapshot and check only
@@ -56,13 +56,13 @@ stage check
 gate "there is a config file" test -f app.conf
 
 stage change
-run "never reached without app.conf" echo "changing things"
+step "never reached without app.conf" echo "changing things"
 EOF
 swim run 1 --plain || echo "the round failed, as it should"
 swim log 1 | tail -8
 ```
 
-A failed `run` lets the round go on; a failed gate stops it before anything
+A failed `step` lets the round go on; a failed gate stops it before anything
 changes.
 
 ## 4. A guard
@@ -81,11 +81,11 @@ gate "scratch.txt is there" test -f "$SWIM_ROOT/scratch.txt"
 
 stage change
 if guard HOUR_ALLOW_RM "remove scratch.txt (quickstart)"; then
-  run "remove it" rm "$SWIM_ROOT/scratch.txt"
+  step "remove it" rm "$SWIM_ROOT/scratch.txt"
 fi
 
 stage verify
-run "what's left" ls "$SWIM_ROOT"
+step "what's left" ls "$SWIM_ROOT"
 EOF
 swim run 2 --plain --no-prompt || echo "exit $?: a dry run"
 ls scratch.txt
@@ -130,7 +130,7 @@ cat > lane.3.sh <<'EOF'
 # swim: syntax 4
 # Round: Build
 stage check
-run "build" bash -c 'test -f "$SWIM_ROOT/ok.flag" && echo built'
+step "build" bash -c 'test -f "$SWIM_ROOT/ok.flag" && echo built'
 EOF
 swim new 4 "Ship the build"
 cat > lane.4.sh <<'EOF'
@@ -139,7 +139,7 @@ cat > lane.4.sh <<'EOF'
 # Round: Ship the build
 # After: 3
 stage check
-run "ship" echo shipped
+step "ship" echo shipped
 EOF
 swim run 3 4 --plain || true
 swim status

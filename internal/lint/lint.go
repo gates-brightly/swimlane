@@ -56,7 +56,7 @@ var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true, "gnu-only": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
 	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
-	"step": true, "step-pipe": true, "step-subshell": true, "guard-text": true,
+	"step": true, "step-pipe": true, "step-subshell": true, "guard-text": true, "run-is-step": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -103,8 +103,10 @@ var Checks = []Check{
 	{"guard-unlisted", finding.Error, false, "a guard flag used but not declared in `# Guards:` (refused when it asks; a warning with `# Guards: *`)", checkGuardUnlisted},
 	{"guard-dynamic", finding.Error, false, "a guard whose flag is named at run time, without `# Guards: *`", checkGuardDynamic},
 	{"guard-unused", finding.Warn, false, "a flag listed in `# Guards:` but never used", checkGuardUnused},
-	{"step", finding.Error, false, "a run, gate or snapshot written so it can't run as it reads: an unknown option, no label or command, a command for a label, a command quoted into one word, or cd/export in a step", checkStepCall},
-	{"step-subshell", finding.Error, false, "a run, gate or snapshot inside $(...), backticks or after a pipe, where its result never reaches the lane", checkStepSubshell},
+	{"step", finding.Error, false, "a step, gate or snapshot written so it can't run as it reads: an unknown option, no label or command, a command for a label, a command quoted into one word, or cd/export in a step", checkStepCall},
+	// Remove after the next release (T38), with the run alias.
+	{"run-is-step", finding.Warn, false, "a call of run, the old name of step (swim lint --fix rewrites it)", checkRunIsStep},
+	{"step-subshell", finding.Error, false, "a step, gate or snapshot inside $(...), backticks or after a pipe, where its result never reaches the lane", checkStepSubshell},
 	{"step-pipe", finding.Error, false, "a pipe or redirect after a step, which applies to swim's output, not the step's command", checkStepPipe},
 	{"short-form", finding.Error, false, "a .sh lane that calls swim's steps without #!/usr/bin/env swim (or the library)", checkShortFormShebang},
 	{"guard-text", finding.Warn, false, "a guard's description differs from its # Guards: line, or that line has none", checkGuardText},

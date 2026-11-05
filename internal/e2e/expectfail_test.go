@@ -5,17 +5,17 @@ import (
 	"testing"
 )
 
-// A step expected to fail (run --expect-fail) passes on a non-zero exit,
+// A step expected to fail (step --expect-fail) passes on a non-zero exit,
 // and fails on exit 0 or a code it wasn't expected to exit with.
 func TestExpectFail(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "negative tests", `run --expect-fail "bad token refused" bash -c 'exit 3'
-run --expect-fail=1,3 "listed code" bash -c 'exit 3'
-run --expect-fail "accepted anyway" true
-run --expect-fail=2 "wrong code" bash -c 'exit 3'
-run --expect-fail --timeout 1s "too slow" `+blocked("too-slow")+`
-run --expect-fail "no such command" swim-no-such-command
-run "after" true`)
+	r.script(1, "negative tests", `step --expect-fail "bad token refused" bash -c 'exit 3'
+step --expect-fail=1,3 "listed code" bash -c 'exit 3'
+step --expect-fail "accepted anyway" true
+step --expect-fail=2 "wrong code" bash -c 'exit 3'
+step --expect-fail --timeout 1s "too slow" `+blocked("too-slow")+`
+step --expect-fail "no such command" swim-no-such-command
+step "after" true`)
 	r.swim("run", "1", "--plain")
 	log := r.log(1)
 	contains(t, "log", log,

@@ -63,12 +63,12 @@ func TestLintExitCodes(t *testing.T) {
 		t.Fatalf("template lint: %d\n%s", code, out)
 	}
 
-	r.script(1, "clean", "stage check\nrun \"ok\" true")
+	r.script(1, "clean", "stage check\nstep \"ok\" true")
 	out = r.mustSwim("lint")
 	contains(t, "clean lint", out, "no problems found")
 
 	// A warning: exit 0, but 1 with --strict.
-	r.script(2, "bash 4", "stage check\ndeclare -A seen\nrun \"ok\" true")
+	r.script(2, "bash 4", "stage check\ndeclare -A seen\nstep \"ok\" true")
 	out, code := r.swim("lint")
 	if code != 0 || !strings.Contains(out, "lane.2.sh:7") || !strings.Contains(out, "[bash4]") || !strings.Contains(out, "0 errors, 1 warning") {
 		t.Fatalf("warning: %d\n%s", code, out)
@@ -78,7 +78,7 @@ func TestLintExitCodes(t *testing.T) {
 	}
 
 	// An error: exit 1. Naming lanes lints only those.
-	r.script(3, "errexit", "set -e\nstage check\nrun \"ok\" true")
+	r.script(3, "errexit", "set -e\nstage check\nstep \"ok\" true")
 	if out, code := r.swim("lint"); code != 1 || !strings.Contains(out, "lane.3.sh:6") || !strings.Contains(out, "[set-e]") || !strings.Contains(out, "1 error, 1 warning") {
 		t.Fatalf("error: %d\n%s", code, out)
 	}
@@ -92,7 +92,7 @@ func TestLintExitCodes(t *testing.T) {
 	contains(t, "--yaml", out, "schema: swim.lint/v1", "errors: 1", "warnings: 1", "code: set-e", "file: lane.3.sh", "line: 6", "level: error")
 
 	// Read-only: a syntax 1 script is reported, not rewritten.
-	v1 := "#!/usr/bin/env bash\n# Round: old style\n_swim_lib=$(\"${SWIM_BIN:-swim}\" _lib) || exit 1; eval \"$_swim_lib\"\nlane_init 4\nrun \"x\" true\nsummary\n"
+	v1 := "#!/usr/bin/env bash\n# Round: old style\n_swim_lib=$(\"${SWIM_BIN:-swim}\" _lib) || exit 1; eval \"$_swim_lib\"\nlane_init 4\nstep \"x\" true\nsummary\n"
 	writeLane(t, r, 4, v1)
 	out, _ = r.swim("lint", "4")
 	contains(t, "syntax 1", out, "[syntax]")
@@ -103,9 +103,9 @@ func TestLintExitCodes(t *testing.T) {
 
 func TestRunLintPreflight(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "fine", "run \"ok\" true")
-	r.script(2, "errexit", "set -o errexit\nrun \"never\" true")
-	writeLane(t, r, 3, "#!/usr/bin/env bash\n# swim: syntax 2\n# Round: wrong lane\n_swim_lib=$(\"${SWIM_BIN:-swim}\" _lib) || exit 1; eval \"$_swim_lib\"\nlane_init 4\nrun \"never\" true\nsummary\n")
+	r.script(1, "fine", "step \"ok\" true")
+	r.script(2, "errexit", "set -o errexit\nstep \"never\" true")
+	writeLane(t, r, 3, "#!/usr/bin/env bash\n# swim: syntax 2\n# Round: wrong lane\n_swim_lib=$(\"${SWIM_BIN:-swim}\" _lib) || exit 1; eval \"$_swim_lib\"\nlane_init 4\nstep \"never\" true\nsummary\n")
 
 	// A bare run skips the lanes lint refuses and runs the rest, exiting 1.
 	out, code := r.swim("run", "--plain")
@@ -122,16 +122,16 @@ func TestRunLintPreflight(t *testing.T) {
 	}
 
 	// Only the lanes being run are checked; warnings never refuse.
-	r.script(4, "warns only", "declare -A seen\nrun \"ok\" true")
+	r.script(4, "warns only", "declare -A seen\nstep \"ok\" true")
 	r.mustSwim("run", "1", "4")
 
 	// A disable comment with a reason lets the lane run.
-	r.script(2, "errexit on purpose", "set -o errexit  # swim:lint-ignore set-e this round must die on the first failure\nrun \"ran\" true")
+	r.script(2, "errexit on purpose", "set -o errexit  # swim:lint-ignore set-e this round must die on the first failure\nstep \"ran\" true")
 	if out, code := r.swim("run", "2"); code != 0 || !strings.Contains(r.log(2), "PASS  ran") {
 		t.Fatalf("ignored set-e: %d\n%s", code, out)
 	}
 	// Without a reason it disables nothing.
-	r.script(2, "errexit, no reason", "set -o errexit  # swim:lint-ignore set-e\nrun \"ran\" true")
+	r.script(2, "errexit, no reason", "set -o errexit  # swim:lint-ignore set-e\nstep \"ran\" true")
 	if out, code := r.swim("run", "2"); code != 2 || !strings.Contains(out, "[set-e]") {
 		t.Fatalf("reasonless ignore: %d\n%s", code, out)
 	}
@@ -170,7 +170,7 @@ func TestDoctor(t *testing.T) {
 	os.WriteFile(gi, []byte("node_modules/\n# >>> swim >>>\nnext[0-9]*.sh\n.swim/\n# <<< swim <<<\ndist/\n"), 0o644)
 	os.WriteFile(filepath.Join(r.root, ".swim", "lane2.pid"), []byte("2147483646\n"), 0o644)
 	os.WriteFile(filepath.Join(r.root, ".swim", "hub.yml"), []byte("workers: []\n"), 0o644)
-	r.script(1, "tracked", "run \"ok\" true")
+	r.script(1, "tracked", "step \"ok\" true")
 	if out, err := r.cmd("git", "add", "-f", "lane.1.sh").CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v %s", err, out)
 	}

@@ -30,7 +30,7 @@ func TestStepWrittenWrongStopsTheRound(t *testing.T) {
 			r := newRepo(t)
 			// Lint refuses these before swim run starts ([step]); the lint-ignore
 			// lets the round run, to prove the runtime fails closed by itself.
-			r.shortLane(1, "# Round: drop it\n# Guards: DB_ALLOW_DROP  drop the table", "stage check\n# swim:lint-ignore step the runtime's own check is under test\n"+tc.gate+"\nstage change\nif guard DB_ALLOW_DROP \"drop the table\"; then\n  run \"drop\" echo DROPPED\nfi")
+			r.shortLane(1, "# Round: drop it\n# Guards: DB_ALLOW_DROP  drop the table", "stage check\n# swim:lint-ignore step the runtime's own check is under test\n"+tc.gate+"\nstage change\nif guard DB_ALLOW_DROP \"drop the table\"; then\n  step \"drop\" echo DROPPED\nfi")
 			cmd := r.cmd(bin, "run", "1", "--plain")
 			cmd.Env = append(cmd.Env, "DB_ALLOW_DROP=1")
 			out, _ := cmd.CombinedOutput()
@@ -54,10 +54,10 @@ func TestStepAcceptsDashDashAndOptEquals(t *testing.T) {
 	r := newRepo(t)
 	r.shortLane(1, "# Round: spellings", "stage check\n"+
 		"gate \"dash dash\" -- echo gate-ran\n"+
-		"run --timeout=1m \"opt equals\" echo run-ran\n"+
+		"step --timeout=1m \"opt equals\" echo run-ran\n"+
 		"snapshot \"snap\" -- echo snap-ran\n"+
 		"gate --retry=1 --backoff=1s \"fails closed\" -- false\n"+
-		"run \"after the gate\" echo SHOULD-NOT-RUN")
+		"step \"after the gate\" echo SHOULD-NOT-RUN")
 	out, _ := r.swim("run", "1", "--plain")
 	log := r.log(1)
 	for _, want := range []string{"PASS  dash dash", "| gate-ran", "PASS  opt equals", "| run-ran", "PASS  snapshot: snap", "| snap-ran", "FAIL  fails closed", "STOP  gate failed: fails closed"} {
@@ -85,7 +85,7 @@ func TestGateInASubshellStopsTheRound(t *testing.T) {
 			r := newRepo(t)
 			r.shortLane(1, "# Round: change it\n# Guards: ALLOW_CHANGE  change it",
 				"stage check\n# swim:lint-ignore step-subshell the runtime's own check is under test\n"+tc.gate+
-					"\nstage change\nif guard ALLOW_CHANGE \"change it\"; then\n  run \"change\" echo CHANGED\nfi")
+					"\nstage change\nif guard ALLOW_CHANGE \"change it\"; then\n  step \"change\" echo CHANGED\nfi")
 			cmd := r.cmd(bin, "run", "1", "--plain")
 			cmd.Env = append(cmd.Env, "ALLOW_CHANGE=1")
 			out, _ := cmd.CombinedOutput()
@@ -107,7 +107,7 @@ func TestGateInASubshellStopsTheRound(t *testing.T) {
 // interrupt into a failure: the lane clears it as it starts.
 func TestStaleStopMarkerIsCleared(t *testing.T) {
 	r := newRepo(t)
-	r.shortLane(1, "# Round: fine", "stage check\nrun \"x\" true")
+	r.shortLane(1, "# Round: fine", "stage check\nstep \"x\" true")
 	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
 	marker := filepath.Join(r.root, ".swim", "logs", "agent1.log.stopped")
 	os.WriteFile(marker, nil, 0o644)

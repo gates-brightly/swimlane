@@ -95,9 +95,9 @@ func TestSchedulerProperties(t *testing.T) {
 			var lanes []string
 			for i, l := range d.Lanes {
 				n := i + 1
-				body := stampLine(n, "start") + fmt.Sprintf("\nrun \"work\" sleep %.3f\n", float64(l.Work)/1000)
+				body := stampLine(n, "start") + fmt.Sprintf("\nstep \"work\" sleep %.3f\n", float64(l.Work)/1000)
 				if l.Fail {
-					body += `run "fails" false` + "\n"
+					body += `step "fails" false` + "\n"
 				}
 				body += stampLine(n, "end")
 				r.script(n, "prop", body)

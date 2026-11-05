@@ -23,4 +23,4 @@ stage check
 # On a CI runner this lane shares 3-4 CPUs with the others: the suites'
 # timed margins scale by E2E_SLOW (internal/e2e/e2e_test.go, "Timing").
 [ "${CI:-}" = true ] && export E2E_SLOW=${E2E_SLOW:-3}
-run "go test ./internal/e2e" bash -c 'set -o pipefail; go test -json -count=1 -timeout 25m -skip "^(TestSecurity|TestFault|TestNoSecretLeaks)" ./internal/e2e/... | go run ./e2e/cmd/e2etool gotest-report --junit e2e.xml'
+step "go test ./internal/e2e" bash -c 'set -o pipefail; go test -json -count=1 -timeout 25m -skip "^(TestSecurity|TestFault|TestNoSecretLeaks)" ./internal/e2e/... | go run ./e2e/cmd/e2etool gotest-report --junit e2e.xml'

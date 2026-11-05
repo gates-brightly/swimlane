@@ -2,7 +2,7 @@
 
 ```bash
 if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (2026-10-09: tf owns it)"; then
-  run "sst remove" npx sst remove --stage prod
+  step "sst remove" npx sst remove --stage prod
 fi
 ```
 

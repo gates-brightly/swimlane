@@ -16,10 +16,10 @@ func TestBareSwimSaysWhatNeedsYou(t *testing.T) {
 		t.Errorf("an empty repo:\n%s", out)
 	}
 
-	r.shortLane(1, "# Round: fails", "stage check\nrun \"x\" false")
-	r.shortLane(2, "# Round: lint refuses it", "stage check\nrun echo hi")
-	r.shortLane(3, "# Round: ready", "stage check\nrun \"x\" true")
-	r.shortLane(4, "# Round: queued", "stage check\nrun \"x\" true")
+	r.shortLane(1, "# Round: fails", "stage check\nstep \"x\" false")
+	r.shortLane(2, "# Round: lint refuses it", "stage check\nstep echo hi")
+	r.shortLane(3, "# Round: ready", "stage check\nstep \"x\" true")
+	r.shortLane(4, "# Round: queued", "stage check\nstep \"x\" true")
 	r.swim("run", "1", "--plain")
 	r.mustSwim("queue", "4")
 
@@ -38,7 +38,7 @@ func TestBareSwimSaysWhatNeedsYou(t *testing.T) {
 
 	// Once its script is edited, the failed round is history: lane 1 is
 	// ready again, not a failure that needs you.
-	r.shortLane(1, "# Round: fixed", "stage check\nrun \"x\" true")
+	r.shortLane(1, "# Round: fixed", "stage check\nstep \"x\" true")
 	if out := r.mustSwim(); strings.Contains(out, "swim 1   FAIL") || !strings.Contains(out, "swim 1,3  → swim queue 1 3") {
 		t.Errorf("an edited lane still shows its failure:\n%s", out)
 	}

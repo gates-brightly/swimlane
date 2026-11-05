@@ -15,7 +15,7 @@ func signedRepo(t *testing.T) (*repo, map[string]string) {
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])
-	r.script(1, "one", `run "ok" true`)
+	r.script(1, "one", `step "ok" true`)
 	r.mustSwim("run", "1")
 	return r, keys
 }
@@ -39,10 +39,10 @@ func TestVerifyYAML(t *testing.T) {
 // lanes, and the same lane may run twice under it: that isn't a break.
 func TestVerifySharedRunID(t *testing.T) {
 	r, _ := signedRepo(t)
-	r.script(2, "two", `if guard ALLOW_B "change b"; then run "b changed" true; fi`)
+	r.script(2, "two", `if guard ALLOW_B "change b"; then step "b changed" true; fi`)
 	r.mustSwim("run", "1", "--plain", "--run-id", "pipeline-7")
 	r.mustSwimEnv([]string{"ALLOW_B=1"}, "run", "2", "--plain", "--run-id", "pipeline-7")
-	r.script(1, "one", `run "ok again" true`)
+	r.script(1, "one", `step "ok again" true`)
 	r.mustSwim("run", "1", "--plain", "--run-id", "pipeline-7")
 	out, code := r.swim("verify", "--allow-unsigned")
 	if code != 0 || strings.Contains(out, "BROKEN") {

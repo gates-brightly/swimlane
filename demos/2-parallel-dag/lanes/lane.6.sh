@@ -12,5 +12,5 @@ stage check
 gate "api is on 2.4.0" bash -c '[ "$(fakecloud version api)" = 2.4.0 ]'
 
 stage change
-run "post to #releases" echo "2.4.0 is live: api, web, worker"
+step "post to #releases" echo "2.4.0 is live: api, web, worker"
 summary

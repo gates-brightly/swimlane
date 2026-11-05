@@ -84,7 +84,7 @@ type Options struct {
 // starting; the lane library then records STOP and ends the round.
 const ExitStopped = 86
 
-// Retry configures a step's retries (run --retry N ...).
+// Retry configures a step's retries (step --retry N ...).
 type Retry struct {
 	Max       int           // extra attempts after the first
 	Backoff   time.Duration // wait before the first retry, doubling, capped at 5m (default 2s)

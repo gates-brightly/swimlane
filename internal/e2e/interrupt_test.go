@@ -138,11 +138,11 @@ func TestGracefulInterrupt(t *testing.T) {
 	r := newRepo(t)
 	// Step "a" notes any SIGINT it gets; it must get none. Both steps run
 	// until both lanes have the stop request.
-	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; touch $SWIM_ROOT/trap1; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; true'
-run "b" true`)
-	r.script(2, "after 1", `run "x" true`)
-	r.script(3, "other", `run "c" `+hold("go")+`
-run "d" true`)
+	r.script(1, "graceful", `step "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; touch $SWIM_ROOT/trap1; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; true'
+step "b" true`)
+	r.script(2, "after 1", `step "x" true`)
+	r.script(3, "other", `step "c" `+hold("go")+`
+step "d" true`)
 	withHeader(t, r, 2, "# After: 1")
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "a")
@@ -187,10 +187,10 @@ func TestForceQuit(t *testing.T) {
 	// counts how many it got.
 	// Its cleanup lasts until the test has seen swim's force quit, so a
 	// second SIGINT would be counted.
-	r.script(1, "tf-like", `run "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; rf=$SWIM_ROOT/tf-done; [ -p \$rf ] || mkfifo \$rf; cat \$rf >/dev/null; exit 1" INT; touch $SWIM_ROOT/trap1; `+fifoCat("31.1")+` & wait'
-run "after" true`)
+	r.script(1, "tf-like", `step "apply" bash -c 'c=0; trap "c=\$((c+1)); echo \$c > $SWIM_ROOT/ints1.txt; rf=$SWIM_ROOT/tf-done; [ -p \$rf ] || mkfifo \$rf; cat \$rf >/dev/null; exit 1" INT; touch $SWIM_ROOT/trap1; `+fifoCat("31.1")+` & wait'
+step "after" true`)
 	// Ignores its SIGINT for longer than the grace (for good): killed.
-	r.script(2, "stubborn", `run "hang" bash -c 'trap "echo got-int; `+fifoCat("never")+`; exit 3" INT; echo started; touch $SWIM_ROOT/trap2; `+fifoCat("31.2")+` & wait; wait'`)
+	r.script(2, "stubborn", `step "hang" bash -c 'trap "echo got-int; `+fifoCat("never")+`; exit 3" INT; echo started; touch $SWIM_ROOT/trap2; `+fifoCat("31.2")+` & wait; wait'`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "apply")
 	r.waitStep(t, 2, "hang")
@@ -229,8 +229,8 @@ run "after" true`)
 func TestKillOnThirdCtrlC(t *testing.T) {
 	r := newRepo(t)
 	// It says so once its trap is set (see TestForceQuitKillsStepGroup).
-	r.script(1, "stubborn", `run "hang" bash -c 'trap "`+fifoCat("never")+`" INT; echo hang-armed; `+fifoCat("31.3")+` & wait; wait'`)
-	r.script(2, "other", `run "x" `+blocked("31.4")+``)
+	r.script(1, "stubborn", `step "hang" bash -c 'trap "`+fifoCat("never")+`" INT; echo hang-armed; `+fifoCat("31.3")+` & wait; wait'`)
+	r.script(2, "other", `step "x" `+blocked("31.4")+``)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "hang")
 	r.waitStep(t, 2, "x")
@@ -257,8 +257,8 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 // whole process group gets SIGTERM.
 func TestStepTimeoutLeavesNoSurvivors(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "forks", `run --timeout 500ms "forks" bash -c '`+fifoCat("33.1")+` & `+fifoCat("33.2")+` & wait'
-run "after" true`)
+	r.script(1, "forks", `step --timeout 500ms "forks" bash -c '`+fifoCat("33.1")+` & `+fifoCat("33.2")+` & wait'
+step "after" true`)
 	start := time.Now()
 	r.swim("run", "1", "--plain")
 	if took := time.Since(start); took > scaled(5*time.Second) {
@@ -279,8 +279,8 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 	// The step and its child ignore SIGINT: only the kill stops them.
 	// It says so once its trap is set: a SIGINT before that kills bash
 	// outright (seen on a loaded macOS runner), and there'd be nothing to kill.
-	r.script(1, "deaf", `run "deaf" bash -c 'trap "" INT; echo deaf-armed; `+fifoCat("33.3")+` & wait; wait'`)
-	r.script(2, "other", `run "x" `+blocked("33.4")+``)
+	r.script(1, "deaf", `step "deaf" bash -c 'trap "" INT; echo deaf-armed; `+fifoCat("33.3")+` & wait; wait'`)
+	r.script(2, "other", `step "x" `+blocked("33.4")+``)
 	l := r.launch(t, nil, "--interrupt", "immediate")
 	r.waitStep(t, 1, "deaf")
 	r.waitStep(t, 2, "x")
@@ -298,9 +298,9 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 func TestTermEscalatesAfterGrace(t *testing.T) {
 	r := newRepo(t)
 	r.mustSwim("config", "term_grace", "500ms")
-	r.script(1, "long", `run "long" `+blocked("31.5")+`
-run "never" true`)
-	r.script(2, "long too", `run "long" `+blocked("31.6")+``)
+	r.script(1, "long", `step "long" `+blocked("31.5")+`
+step "never" true`)
+	r.script(2, "long too", `step "long" `+blocked("31.6")+``)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "long")
 	r.waitStep(t, 2, "long")
@@ -320,8 +320,8 @@ run "never" true`)
 
 func TestHangupForcesAtOnce(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "long", `run "long" `+blocked("31.7")+``)
-	r.script(2, "long too", `run "long" `+blocked("31.8")+``)
+	r.script(1, "long", `step "long" `+blocked("31.7")+``)
+	r.script(2, "long too", `step "long" `+blocked("31.8")+``)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "long")
 	r.waitStep(t, 2, "long")
@@ -337,8 +337,8 @@ func TestHangupForcesAtOnce(t *testing.T) {
 
 func TestImmediateInterruptMode(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "long", `run "long" `+blocked("31.9")+``)
-	r.script(2, "long too", `run "long" `+blocked("32.1")+``)
+	r.script(1, "long", `step "long" `+blocked("31.9")+``)
+	r.script(2, "long too", `step "long" `+blocked("32.1")+``)
 	l := r.launch(t, nil, "--interrupt", "immediate")
 	r.waitStep(t, 1, "long")
 	r.waitStep(t, 2, "long")
@@ -351,9 +351,9 @@ func TestImmediateInterruptMode(t *testing.T) {
 
 func TestStopDuringRetryWait(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "backoff", `run --retry 3 --backoff 20s "fails" false
-run "never" true`)
-	r.script(2, "other", `run "short" true`)
+	r.script(1, "backoff", `step --retry 3 --backoff 20s "fails" false
+step "never" true`)
+	r.script(2, "other", `step "short" true`)
 	l := r.launch(t, nil)
 	waitFor(t, func() bool {
 		data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"))
@@ -374,9 +374,9 @@ run "never" true`)
 
 func TestStopCancelsConfirm(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "asks", `run "before" true
+	r.script(1, "asks", `step "before" true
 confirm "really?"
-run "after" true`)
+step "after" true`)
 	pr, pw, err := os.Pipe() // stdin that never answers
 	if err != nil {
 		t.Fatal(err)
@@ -400,10 +400,10 @@ run "after" true`)
 
 func TestInterruptOneLane(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "stop me", `run "a" `+hold("go")+`
-run "b" true`)
-	r.script(2, "keep going", `run "x" `+hold("go")+`
-run "y" true`)
+	r.script(1, "stop me", `step "a" `+hold("go")+`
+step "b" true`)
+	r.script(2, "keep going", `step "x" `+hold("go")+`
+step "y" true`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "a")
 	r.waitStep(t, 2, "x")

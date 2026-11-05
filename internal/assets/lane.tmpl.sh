@@ -16,8 +16,8 @@ stage change
 # A destructive step goes behind a guard: list it in the header
 # (# Guards: FLAG  what it approves); it's a dry run until approved.
 # if guard EXAMPLE_ALLOW_DELETE "delete X ({{.Date}}: why it is safe)"; then
-#   run "delete X" echo "would delete X"
+#   step "delete X" echo "would delete X"
 # fi
 
 stage verify
-run "verify" true
+step "verify" true

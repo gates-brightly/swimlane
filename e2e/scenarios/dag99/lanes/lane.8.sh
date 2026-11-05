@@ -39,7 +39,7 @@ PARENTS=""
 NODE_START=$(e2etool now)
 export D N PARENTS NODE_START
 mkdir -p "$D/nodes"
-run "clear own done marker" rm -f "$D/nodes/$N.done"
+step "clear own done marker" rm -f "$D/nodes/$N.done"
 RUN_ID=$SWIM_RUN
 export RUN_ID
 
@@ -49,9 +49,9 @@ export H
 stage change
 # swim:lint-ignore destructive scratch dir under .scenario/, recreated every run
 gate "reset $H" bash -c 'rm -rf "$H" && mkdir -p "$H"'
-run "simulated work" true
+step "simulated work" true
 head_of() { # head_of <name> <url>
-  run "HEAD $1" curl -sSI --max-time 15 -A "swim-demo/$SWIM_JOB" -o "$H/$1.txt" -w '%{http_code} %{url_effective}\n' "$2"
+  step "HEAD $1" curl -sSI --max-time 15 -A "swim-demo/$SWIM_JOB" -o "$H/$1.txt" -w '%{http_code} %{url_effective}\n' "$2"
 }
 head_of example https://example.com/
 head_of httpbin https://httpbin.org/get

@@ -12,8 +12,8 @@ stage check
 gate "api healthy" fakecloud health api
 
 stage change
-run "set pool_size=50" fakecloud deploy api 2.4.0-pool50 1
+step "set pool_size=50" fakecloud deploy api 2.4.0-pool50 1
 
 stage verify
-run "api healthy after" fakecloud health api
+step "api healthy after" fakecloud health api
 summary

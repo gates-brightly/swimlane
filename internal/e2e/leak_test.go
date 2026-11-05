@@ -107,9 +107,9 @@ if guard LEAK_OK "describe it ($V)"; then
 fi
 export V P
 swim note --lane 1 "note $V"
-run "label $V" bash -c 'echo "raw=$V"; echo "env=$MY_LEAK_VAR"; printf "%s\n" "$P"; echo "err=$V" >&2; `+untilReleased("label-seen")+`'
-run "encodings" bash -c 'for s in "$V" "$MY_LEAK_VAR"; do printf %s "$s" | base64; printf %s "$s" | base64 | tr -d =; printf %s "$s" | base64 | tr "+/" "-_"; python3 -c "import sys,urllib.parse as u; print(u.quote_plus(sys.argv[1])); print(u.quote(sys.argv[1], safe=\"\"))" "$s"; printf "split="; printf %s "${s:0:7}"; printf "%s\n" "${s:7}"; done'
-run "sleep" bash -c 'echo "${#V} ${#G}" > `+filepath.Join(tmp, "sleeping")+`; `+untilReleased("scanned")+`'
+step "label $V" bash -c 'echo "raw=$V"; echo "env=$MY_LEAK_VAR"; printf "%s\n" "$P"; echo "err=$V" >&2; `+untilReleased("label-seen")+`'
+step "encodings" bash -c 'for s in "$V" "$MY_LEAK_VAR"; do printf %s "$s" | base64; printf %s "$s" | base64 | tr -d =; printf %s "$s" | base64 | tr "+/" "-_"; python3 -c "import sys,urllib.parse as u; print(u.quote_plus(sys.argv[1])); print(u.quote(sys.argv[1], safe=\"\"))" "$s"; printf "split="; printf %s "${s:0:7}"; printf "%s\n" "${s:7}"; done'
+step "sleep" bash -c 'echo "${#V} ${#G}" > `+filepath.Join(tmp, "sleeping")+`; `+untilReleased("scanned")+`'
 gate "gate $V" bash -c 'echo "gate saw $V"; false'
 summary
 `, 0o755)

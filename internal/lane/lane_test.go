@@ -129,8 +129,8 @@ func TestParseScriptMetadataAndDefaults(t *testing.T) {
 #
 # Goal: not a header key (prose after the block)
 lane_init 2
-if guard ORDERS_ALLOW_REMOVE "x"; then run x true; fi
-if guard EXTRA_FLAG "y"; then run y true; fi
+if guard ORDERS_ALLOW_REMOVE "x"; then step x true; fi
+if guard EXTRA_FLAG "y"; then step y true; fi
 summary
 `
 	i := ParseScript(full)
@@ -229,8 +229,8 @@ func TestNewJobIDPrefixNeverNumeric(t *testing.T) {
 // or not, and "*" lets it name flags at run time.
 func TestGuardsFromHeaderOnly(t *testing.T) {
 	src := "#!/usr/bin/env bash\n# Round: r\n# Guards: ALLOW_X  do x\n" +
-		`if guard ALLOW_X "do x, unless the guard was declined"; then run "x" true; fi` + "\n" +
-		`run "say" bash -c 'echo "no report: the guard was declined"'` + "\n" +
+		`if guard ALLOW_X "do x, unless the guard was declined"; then step "x" true; fi` + "\n" +
+		`step "say" bash -c 'echo "no report: the guard was declined"'` + "\n" +
 		"guard ALLOW_Y 'y'\n" +
 		`guard "$FLAG" "dynamic"` + "\n"
 	info := ParseScript(src)

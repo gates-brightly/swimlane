@@ -13,8 +13,8 @@ stage check
 gate "worker healthy" fakecloud health worker
 
 stage change
-run "set pool_size=50" fakecloud deploy worker 2.4.0-pool50 1
+step "set pool_size=50" fakecloud deploy worker 2.4.0-pool50 1
 
 stage verify
-run "worker healthy after" fakecloud health worker
+step "worker healthy after" fakecloud health worker
 summary

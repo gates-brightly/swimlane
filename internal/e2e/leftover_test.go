@@ -10,7 +10,7 @@ import (
 // the run once the lane has exited.
 func TestLeftoverProcessDoesntHang(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "leave a daemon", fifoCat("daemon")+" &\n"+`run "after" true`)
+	r.script(1, "leave a daemon", fifoCat("daemon")+" &\n"+`step "after" true`)
 	start := time.Now()
 	contains(t, "run", r.mustSwim("run", "1", "--plain"), "PASS")
 	if d := time.Since(start); d > 15*time.Second {
@@ -22,8 +22,8 @@ func TestLeftoverProcessDoesntHang(t *testing.T) {
 // lane that takes the lock doesn't wait for it.
 func TestLeftoverProcessDoesntHoldLocks(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "leave a daemon", "# Locks: db\nsleep 30 &\n"+`run "after" true`)
-	r.script(2, "needs the lock", "# Locks: db\n"+`run "ok" true`)
+	r.script(1, "leave a daemon", "# Locks: db\nsleep 30 &\n"+`step "after" true`)
+	r.script(2, "needs the lock", "# Locks: db\n"+`step "ok" true`)
 	r.mustSwim("run", "1", "--plain")
 	start := time.Now()
 	contains(t, "run 2", r.mustSwim("run", "2", "--plain"), "PASS")
@@ -36,8 +36,8 @@ func TestLeftoverProcessDoesntHoldLocks(t *testing.T) {
 // out of the working tree meanwhile: it locks what was staged.
 func TestLocksReadFromStage(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "holds db", "# Locks: db\n"+`run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo one >> "$SWIM_ROOT/order"'`)
-	r.script(2, "needs db", "# Locks: db\n"+`run "use" bash -c 'echo two >> "$SWIM_ROOT/order"'`)
+	r.script(1, "holds db", "# Locks: db\n"+`step "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo one >> "$SWIM_ROOT/order"'`)
+	r.script(2, "needs db", "# Locks: db\n"+`step "use" bash -c 'echo two >> "$SWIM_ROOT/order"'`)
 	one := r.cmd(bin, "run", "1", "--plain")
 	if err := one.Start(); err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestLocksReadFromStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { return strings.Contains(r.mustSwim("status"), "waiting for lock db") })
-	r.script(2, "needs db", `run "use" bash -c 'echo two >> "$SWIM_ROOT/order"'`) // the lock edited out
+	r.script(2, "needs db", `step "use" bash -c 'echo two >> "$SWIM_ROOT/order"'`) // the lock edited out
 	// Lane 2 waits on the locks it staged (its names are fixed by now), so
 	// the edit has nothing left to change: release lane 1 at once.
 	r.release("release")

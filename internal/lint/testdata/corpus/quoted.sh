@@ -69,8 +69,8 @@ echo "continued: stage change; rm -rf /" \
 gate "precheck" test -d .
 stage change
 if guard ALLOW_REAL "the one real guard (2026-10-16, corpus)"; then
-  run "change" true
+  step "change" true
 fi
 stage verify
-run "verify" true
+step "verify" true
 summary

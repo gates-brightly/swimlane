@@ -49,7 +49,7 @@ func sortLike(want, patterns []string) []string {
 }
 
 func TestScanScript(t *testing.T) {
-	src := "#!/usr/bin/env bash\n# Round: never git push here (header)\n# git commit in a comment\nrun \"x\" true\nrun \"publish\" git push   # and a comment with git pull\n  echo ok\nrun \"y\" bash -c 'git commit -m x'\n"
+	src := "#!/usr/bin/env bash\n# Round: never git push here (header)\n# git commit in a comment\nstep \"x\" true\nstep \"publish\" git push   # and a comment with git pull\n  echo ok\nstep \"y\" bash -c 'git commit -m x'\n"
 	hits := ScanScript(src, Patterns([]string{"git push", "git commit"}))
 	if len(hits) != 2 || hits[0].Line != 5 || hits[0].Pattern != "git push" || hits[1].Line != 7 || hits[1].Pattern != "git commit" {
 		t.Fatalf("hits = %+v", hits)

@@ -11,12 +11,12 @@ import (
 // duration back from now or a UTC time too.
 func TestLogSince(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one", `run "first" echo one-a`)
+	r.script(1, "one", `step "first" echo one-a`)
 	r.mustSwim("run", "1")
 	first := r.status().Get(1)
 
-	r.script(1, "one again", `run "broken" false`)
-	r.script(2, "two", `run "second" echo two-a`)
+	r.script(1, "one again", `step "broken" false`)
+	r.script(2, "two", `step "second" echo two-a`)
 	r.swim("run", "1", "2")
 	second := r.status().Get(1)
 	if first.Run == "" || second.Run == "" || first.Run == second.Run {

@@ -28,14 +28,14 @@ A lane's manifest pins which form it uses (its runner).
 stage snapshot
 snapshot "cfn template" aws cloudformation get-template --stack-name orders-prod
 stage check
-run  "tf plan" terraform -chdir=infra/orders plan -detailed-exitcode
+step  "tf plan" terraform -chdir=infra/orders plan -detailed-exitcode
 gate "DeletionPolicy is Retain (deployed)" bash -c 'aws cloudformation get-template --stack-name orders-prod | grep -q Retain'
 stage change
 if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (2026-10-09: tf owns it)"; then
-  run "sst remove" npx sst remove --stage prod
+  step "sst remove" npx sst remove --stage prod
 fi
 stage verify
-run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
+step "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 ```
 
 ## Functions
@@ -44,7 +44,7 @@ run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 |---|---|
 | `lane_init N` | Explicit form only, first: cd to the lane's workspace (its staged copy under `swim run`), open the round, export `SWIM_JOB`, `SWIM_DEADLINE`, `SWIM_TIMEOUT`. Refuses a lane already running. |
 | `stage NAME` | Start a [stage](#stages). Steps before the first are setup. |
-| `run [opts] "<label>" cmd [args]` | A step: PASS/FAIL. A failure doesn't stop the round. |
+| `step [opts] "<label>" cmd [args]` | A step: PASS/FAIL. A failure doesn't stop the round. (`run`, its old name, works for one more release; `swim lint --fix` rewrites it.) |
 | `gate [opts] "<label>" cmd [args]` | A step whose failure (after the last attempt) stops the round. |
 | `snapshot [opts] "<label>" cmd [args]` | A read-only step whose output is also saved under `.swim/snapshots/`. |
 | `guard FLAG "<action - date, reason>"` | True if FLAG is approved for this run, else logs SKIP (a dry run). See [guards](guards.md). |
@@ -113,7 +113,7 @@ block and `status.yml`.
 - No `set -e`: failed checks keep going; only gates stop the round. A
   command outside a step that fails is logged `WARN outside a step` and
   changes nothing: put what matters in a step.
-- Steps take argv, not a shell string: `run "count" bash -c 'scan | jq .Count'`.
+- Steps take argv, not a shell string: `step "count" bash -c 'scan | jq .Count'`.
 - Load your toolchain (nvm, asdf, pyenv) yourself: non-interactive shells
   don't.
 - Snapshot first. Every destructive step behind its own guard, after a gate
@@ -125,7 +125,7 @@ block and `status.yml`.
   Terraform, `snapshot "plan" terraform plan -out tfplan` in check, `terraform
   apply tfplan` inside the guard, so what's applied is what was seen.
 - Many similar targets: one step each, fed without a pipe (`while read t; do
-  run "drain $t" ...; done < <(list-targets)`); a piped loop runs in a
+  step "drain $t" ...; done < <(list-targets)`); a piped loop runs in a
   subshell and loses its failures (lint: `step-subshell`).
 - Keep output streaming: not `out=$(cmd); echo "$out"`, but `bash -o
   pipefail -c 'cmd | awk "{print} /bad/{b=1} END{exit b}"'`. Python CLIs

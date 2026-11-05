@@ -32,18 +32,18 @@ swim("stage", "check")
 swim("gate", "new bucket exists", "--", "aws", "s3api", "head-bucket", "--bucket", "orders-v2")
 swim("stage", "change")
 if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: replaced)") == 0:
-    swim("run", "delete old bucket", "--", "aws", "s3", "rb", "s3://orders")
+    swim("step", "delete old bucket", "--", "aws", "s3", "rb", "s3://orders")
 ```
 
 | | |
 |---|---|
-| `swim run\|gate\|snapshot [opts] "<label>" -- cmd` | Steps, with the [step options](lanes.md#functions). |
+| `swim step\|gate\|snapshot [opts] "<label>" -- cmd` | Steps, with the [step options](lanes.md#functions). |
 | `swim guard FLAG "<action>"` | Exit 0 approved, 1 a dry run. |
 | `swim stage NAME` | As in bash. |
 
 - A failed gate, a bad stage, a blocked command or Ctrl-C ends the program
   even if it ignores the exit code (SIGTERM to its group, SIGKILL after 5s).
-- A program that never calls `swim run` is logged as one step: its whole
+- A program that never calls `swim step` is logged as one step: its whole
   output (masked), its exit code.
 - `# Includes: lib/*.py` pins the local modules it imports; a lane runs
   from its staged copy, so an unlisted one isn't found.

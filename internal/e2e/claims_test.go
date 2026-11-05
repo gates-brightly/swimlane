@@ -81,7 +81,7 @@ func TestLaneClaims(t *testing.T) {
 	}
 
 	// swim run releases a claim, another session's too, and says so.
-	r.script(5, "after the lease", `run "x" true`)
+	r.script(5, "after the lease", `step "x" true`)
 	out, _ = r.as("a", "run", "5", "--plain")
 	contains(t, "run warns", out, "was claimed by", "running it released the claim")
 	if _, err := os.Stat(filepath.Join(r.root, ".swim", "claims", "lane.5.yml")); err == nil {

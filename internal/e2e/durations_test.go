@@ -16,7 +16,7 @@ var (
 // Clock times stay.
 func TestDurationsReadOneWay(t *testing.T) {
 	r := newRepo(t)
-	r.shortLane(1, "# Round: lists", "stage check\nrun \"wait\" true\nrun \"list\" ls -a")
+	r.shortLane(1, "# Round: lists", "stage check\nstep \"wait\" true\nstep \"list\" ls -a")
 	r.shortLane(2, "# Round: fails", "stage check\ngate \"config exists\" false")
 	run, _ := r.swim("run", "1", "2", "--plain")
 	one, _ := r.swim("run", "2", "--plain")

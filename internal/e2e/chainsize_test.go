@@ -20,7 +20,7 @@ func TestChainLargeEntryAndRepair(t *testing.T) {
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])
-	r.script(1, "small", `run "ok" true`)
+	r.script(1, "small", `step "ok" true`)
 	r.mustSwim("run", "1")
 
 	// The big round goes in through the package, signed by the runner's

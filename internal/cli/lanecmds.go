@@ -19,7 +19,7 @@ import (
 // In-lane commands: the lane library's functions as swim commands, for
 // lane scripts in any language (lane.N.py, lane.N.ts, a binary, ...):
 //
-//	swim run [options] "<label>" -- cmd [args...]
+//	swim step [options] "<label>" -- cmd [args...]
 //	swim gate [options] "<label>" -- cmd [args...]
 //	swim snapshot [options] "<label>" -- cmd [args...]
 //	swim guard FLAG "<action - date, reason>"
@@ -51,7 +51,7 @@ func hasDashDash(args []string) bool {
 	return false
 }
 
-// laneStep runs one step for swim run/gate/snapshot inside a lane: the
+// laneStep runs one step for swim step/gate/snapshot inside a lane: the
 // options and label, then the command after "--".
 func laneStep(cmd string, args []string) error {
 	n, err := laneEnv(cmd)
@@ -165,7 +165,7 @@ func endRound(root string, n, code int, reason string) error {
 	return exitError{code}
 }
 
-// refuseEnded keeps an in-lane step command (swim run/gate/snapshot/
+// refuseEnded keeps an in-lane step command (swim step/gate/snapshot/
 // guard) from running once the round's end is claimed: the
 // wrapper is stopping the program, and a step must never start after a
 // failed gate or a stop, however quickly the program got to it. It returns
@@ -274,5 +274,6 @@ func cmdStagePublic(args []string) error {
 }
 
 // laneGate and laneSnapshot are swim gate / swim snapshot.
+func laneStepCmd(args []string) error  { return laneStep("step", args) }
 func laneGate(args []string) error     { return laneStep("gate", args) }
 func laneSnapshot(args []string) error { return laneStep("snapshot", args) }

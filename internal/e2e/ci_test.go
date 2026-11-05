@@ -41,11 +41,11 @@ func (r *repo) git(args ...string) string {
 func ciRepo(t *testing.T) *repo {
 	r := newRepo(t)
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
-	r.script(1, "root", `run "hello" echo hi`)
-	r.script(2, "fails", `run "convert" false
+	r.script(1, "root", `step "hello" echo hi`)
+	r.script(2, "fails", `step "convert" false
 guard ALLOW_X "drop x - 2026-10-09"`)
-	r.script(3, "after fails", `run "never" true`)
-	r.script(4, "after root", `run "child" true`)
+	r.script(3, "after fails", `step "never" true`)
+	r.script(4, "after root", `step "child" true`)
 	withHeader(t, r, 2, "# After: 1")
 	withHeader(t, r, 3, "# After: 2")
 	withHeader(t, r, 4, "# After: 1")
@@ -56,7 +56,7 @@ func TestCIGitHub(t *testing.T) {
 	r := ciRepo(t)
 	// Lane 4's guard is approved by the job's ALLOW_Y=1: no one is asked,
 	// so the summary says so.
-	r.script(4, "after root", `if guard ALLOW_Y "seed y"; then run "child" true; fi`)
+	r.script(4, "after root", `if guard ALLOW_Y "seed y"; then step "child" true; fi`)
 	withHeader(t, r, 4, "# After: 1")
 	summary := filepath.Join(t.TempDir(), "summary.md")
 	junit := filepath.Join(r.root, "swim.xml")
@@ -99,8 +99,8 @@ func TestCIGitHub(t *testing.T) {
 
 	// Lanes never get stdin; nothing left to do is a notice (exit 0), or 1
 	// with --require-work.
-	r.script(2, "fixed", `run "convert" true`)
-	r.script(3, "after fixed", `run "x" true`)
+	r.script(2, "fixed", `step "convert" true`)
+	r.script(3, "after fixed", `step "x" true`)
 	r.mustSwim("all")
 	out, code = r.swimEnv([]string{"GITHUB_ACTIONS=true"}, "ci")
 	if code != 0 || !strings.Contains(out, "::notice title=swim ci%3A nothing to run::") {
@@ -126,9 +126,9 @@ func TestCIGitLabAndGeneric(t *testing.T) {
 
 func TestCIChanged(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one", `run "a" true`)
-	r.script(2, "two", `run "b" true`)
-	r.script(3, "three", `run "c" true`)
+	r.script(1, "one", `step "a" true`)
+	r.script(2, "two", `step "b" true`)
+	r.script(3, "three", `step "c" true`)
 	withHeader(t, r, 3, "# After: 1")
 	r.git("add", "-f", "lane.1.sh", "lane.2.sh", "lane.3.sh")
 	r.git("commit", "-q", "-m", "lanes")
@@ -136,7 +136,7 @@ func TestCIChanged(t *testing.T) {
 	base := r.git("rev-parse", "HEAD")
 
 	// Commit 2 touches lane 2 only.
-	r.script(2, "two v2", `run "b2" true`)
+	r.script(2, "two v2", `step "b2" true`)
 	r.git("add", "-f", "lane.2.sh")
 	r.git("commit", "-q", "-m", "lane 2")
 	out, code := r.swimEnv([]string{"CI=true"}, "ci", "--changed="+base)
@@ -150,10 +150,10 @@ func TestCIChanged(t *testing.T) {
 
 	// Commit 3 rewrites lane 3, whose parent lane 1 is also rewritten but
 	// not yet run: the changed lane brings its unpassed parent along.
-	r.script(1, "one v2", `run "a2" true`)
+	r.script(1, "one v2", `step "a2" true`)
 	r.mustSwim("status")
 	head2 := r.git("rev-parse", "HEAD")
-	r.script(3, "three v2", `run "c2" true`)
+	r.script(3, "three v2", `step "c2" true`)
 	withHeader(t, r, 3, "# After: 1")
 	r.git("add", "-f", "lane.3.sh")
 	r.git("commit", "-q", "-m", "lane 3")
@@ -170,9 +170,9 @@ func TestCIChanged(t *testing.T) {
 
 func TestCIPinsAndLanes(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "one", `run "a" true`)
+	r.script(1, "one", `step "a" true`)
 	// Every lane script counts, whatever its number: there's no lane count.
-	r.script(6, "six", `run "six" true`)
+	r.script(6, "six", `step "six" true`)
 	cfgDir := filepath.Join(t.TempDir(), "empty")
 	out, code := r.swimEnv([]string{"CI=true", "XDG_CONFIG_HOME=" + cfgDir}, "ci")
 	if code != 0 || !strings.Contains(out, "[6] started: six") {
@@ -181,8 +181,8 @@ func TestCIPinsAndLanes(t *testing.T) {
 
 	// Pinned: a lane rewritten after selection (between the job id it was
 	// named by and its start) is skipped. Simulate with swim run JOB.
-	r.script(2, "two", `run "slow" `+hold("go"))
-	r.script(3, "three", `run "c" true`)
+	r.script(2, "two", `step "slow" `+hold("go"))
+	r.script(3, "three", `step "c" true`)
 	withHeader(t, r, 3, "# After: 2")
 	withHeader(t, r, 3, "# Job: 3f2a9c1e-aaaa-4bbb-8ccc-000000000003")
 	job3 := jobOf(t, r, 3)
@@ -191,7 +191,7 @@ func TestCIPinsAndLanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { return laneOf(r, 2).CurrentStep == "slow" })
-	r.script(3, "three rewritten", `run "c" true`)
+	r.script(3, "three rewritten", `step "c" true`)
 	r.release("go")
 	c.Wait()
 	l := r.status().Get(3)
@@ -219,7 +219,7 @@ func TestCIHeartbeat(t *testing.T) {
 	// lane that writes within each beat gets none: TestHeartbeatSilent, on
 	// a test clock.)
 	beat := scaled(time.Second)
-	r.script(1, "quiet", `run "wait" `+hold("heard"))
+	r.script(1, "quiet", `step "wait" `+hold("heard"))
 	c := r.cmd(bin, "ci", "--heartbeat", beat.String())
 	c.Env = append(c.Env, "CI=true")
 	l := start(t, c, nil)

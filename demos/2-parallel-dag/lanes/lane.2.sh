@@ -13,9 +13,9 @@ stage check
 gate "image api:2.4.0 pushed" echo "registry.local/api:2.4.0"
 
 stage change
-run "migrate orders schema" sleep 2
+step "migrate orders schema" sleep 2
 gate "deploy api" fakecloud deploy api 2.4.0 2
 
 stage verify
-run "api healthy" fakecloud health api
+step "api healthy" fakecloud health api
 summary

@@ -11,8 +11,8 @@ import (
 // and the queue say the same thing about it: add the line.
 func TestMissingSyntaxLineStopsOnlyItsLane(t *testing.T) {
 	r := newRepo(t)
-	r.shortLane(1, "# Round: good", "stage check\nrun \"x\" echo lane-one")
-	two := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nrun \"x\" echo lane-two\n"
+	r.shortLane(1, "# Round: good", "stage check\nstep \"x\" echo lane-one")
+	two := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nstep \"x\" echo lane-two\n"
 	if err := os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte(two), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -41,9 +41,9 @@ func TestMissingSyntaxLineStopsOnlyItsLane(t *testing.T) {
 // queues it can fix it: nothing is queued.
 func TestQueueRefusesWhatRunWould(t *testing.T) {
 	r := newRepo(t)
-	r.shortLane(1, "# Round: fine", "stage check\nrun \"x\" echo ok")
-	r.shortLane(2, "# Round: label for a command", "stage check\nrun echo hi")
-	nosyntax := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nrun \"x\" echo hi\n"
+	r.shortLane(1, "# Round: fine", "stage check\nstep \"x\" echo ok")
+	r.shortLane(2, "# Round: label for a command", "stage check\nstep echo hi")
+	nosyntax := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nstep \"x\" echo hi\n"
 	os.WriteFile(filepath.Join(r.root, "lane.3.sh"), []byte(nosyntax), 0o755)
 	for _, n := range []string{"2", "3", "1,2"} {
 		out, code := r.swim("queue", n)
@@ -64,10 +64,10 @@ func TestQueueRefusesWhatRunWould(t *testing.T) {
 // the same lane refuses the run.
 func TestRunAllSkipsALaneLintRefuses(t *testing.T) {
 	r := newRepo(t)
-	r.shortLane(1, "# Round: fine", "stage check\nrun \"x\" echo lane-one")
-	nosyntax := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nrun \"x\" echo lane-two\n"
+	r.shortLane(1, "# Round: fine", "stage check\nstep \"x\" echo lane-one")
+	nosyntax := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nstep \"x\" echo lane-two\n"
 	os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte(nosyntax), 0o755)
-	r.shortLane(3, "# Round: after two\n# After: 2", "stage check\nrun \"x\" echo lane-three")
+	r.shortLane(3, "# Round: after two\n# After: 2", "stage check\nstep \"x\" echo lane-three")
 	out, code := r.swim("all", "--plain")
 	if code == 0 || !strings.Contains(out, "not running swim 2") {
 		t.Fatalf("swim all: exit %d\n%s", code, out)
@@ -88,8 +88,8 @@ func TestRunAllSkipsALaneLintRefuses(t *testing.T) {
 // not to run it (swim run would refuse it too).
 func TestQueueWarnsOfARefusedDependency(t *testing.T) {
 	r := newRepo(t)
-	r.shortLane(1, "# Round: setup", "stage check\nrun echo hi")
-	r.shortLane(2, "# Round: after setup\n# After: 1", "stage check\nrun \"x\" echo lane-two")
+	r.shortLane(1, "# Round: setup", "stage check\nstep echo hi")
+	r.shortLane(2, "# Round: after setup\n# After: 1", "stage check\nstep \"x\" echo lane-two")
 	// status says swim 1 won't run, and why, whatever the lint error.
 	if st := must(r.swim("status", "1")); !strings.Contains(st, "won't run: 1 lint error (swim lint 1)") || !strings.Contains(st, "[step]") {
 		t.Errorf("status 1:\n%s", st)

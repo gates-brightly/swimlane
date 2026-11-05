@@ -14,7 +14,7 @@ func TestQuietDefaults(t *testing.T) {
 	r := newRepo(t)
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", filepath.Join(t.TempDir(), "no-such-key.pub"))
-	r.shortLane(1, "# Round: say hello", "stage check\nrun \"hello\" echo hi")
+	r.shortLane(1, "# Round: say hello", "stage check\nstep \"hello\" echo hi")
 
 	out, code := r.swim("run", "1", "--plain")
 	if code != 0 {
@@ -39,7 +39,7 @@ func TestQuietDefaults(t *testing.T) {
 	}
 
 	// Two lanes still get the table.
-	r.shortLane(2, "# Round: again", "stage check\nrun \"hello\" echo hi")
+	r.shortLane(2, "# Round: again", "stage check\nstep \"hello\" echo hi")
 	if out, _ := r.swim("run", "1", "2", "--plain"); !strings.Contains(out, "swim summary") {
 		t.Errorf("two lanes lost the summary table:\n%s", out)
 	}
@@ -50,7 +50,7 @@ func TestQuietDefaults(t *testing.T) {
 // terminal shows them. Nothing is written outside a repo swim is in.
 func TestUsageIsLogged(t *testing.T) {
 	r := newRepo(t)
-	r.shortLane(1, "# Round: two mistakes", "stage check\nrun echo hi\ngate --retries 2 \"x\" true")
+	r.shortLane(1, "# Round: two mistakes", "stage check\nstep echo hi\ngate --retries 2 \"x\" true")
 	r.swim("lint", "1")
 	r.swim("run", "1", "--plain")
 	r.swim("queue", "1")

@@ -550,7 +550,7 @@ var gnuOnly = []struct {
 	{regexp.MustCompile(`(?:^|[\s;&|(!{])find\s[^;&|]*\s-printf(?:\s|$)`), "find", "`find -printf`",
 		"macOS find has no -printf", "find ... -print, then format each path (or -exec ls -l {} +)"},
 	{cmdRE(`timeout`), "timeout", "`timeout`",
-		"macOS has no timeout command", "the step's own limit: run --timeout 5m \"label\" cmd (or # Step-Timeout:)"},
+		"macOS has no timeout command", "the step's own limit: step --timeout 5m \"label\" cmd (or # Step-Timeout:)"},
 }
 
 // checkGNUOnly: a GNU-only tool form, which a Mac's BSD tool rejects or
@@ -683,15 +683,13 @@ var (
 // their arguments is prose.
 var talk = map[string]bool{"echo": true, "printf": true, "confirm": true, "guard": true, ":": true, "note": true}
 
-// stepCommand is the command a step runs: run/gate/snapshot
+// stepCommand is the command a step runs: step/gate/snapshot
 // [options] "<label>" cmd... gives cmd...; any other command is itself.
 func stepCommand(words []lane.Word) []lane.Word {
 	if len(words) == 0 {
 		return nil
 	}
-	switch words[0].Text {
-	case "run", "gate", "snapshot":
-	default:
+	if !stepFuncs[words[0].Text] {
 		return words
 	}
 	k := 1
@@ -711,7 +709,7 @@ func stepCommand(words []lane.Word) []lane.Word {
 }
 
 // A ran is a command the script runs, as text: the step's command for
-// run/gate/snapshot (its label and options dropped), with any
+// step/gate/snapshot (its label and options dropped), with any
 // bash -c body as one of its words. Commands that only talk (echo, stop,
 // swim note, ...) aren't listed.
 type ran struct {

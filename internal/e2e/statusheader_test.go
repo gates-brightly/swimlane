@@ -15,9 +15,9 @@ func TestStatusShowsPendingHeader(t *testing.T) {
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	r.write("lib/tables.sh", "TABLE=old_orders\n", 0o644)
 	r.script(1, "drop the old table", `stage change
-if guard DROP_OK "drop table old_orders"; then run "drop" true; fi`)
+if guard DROP_OK "drop table old_orders"; then step "drop" true; fi`)
 	withHeader(t, r, 1, "# Timeout: 30m\n# Locks: orders-db\n# Includes: lib/tables.sh")
-	r.script(2, "verify after the drop", `run "check" true`)
+	r.script(2, "verify after the drop", `step "check" true`)
 	withHeader(t, r, 2, "# After: 1")
 	out := r.mustSwim("status")
 	contains(t, "status, not approved", out,
@@ -53,7 +53,7 @@ if guard DROP_OK "drop table old_orders"; then run "drop" true; fi`)
 func TestStatusDependencyFailedWithoutJob(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "deploy worker", `gate "deploy" false`)
-	r.script(2, "smoke test", `run "check" true`)
+	r.script(2, "smoke test", `step "check" true`)
 	withHeader(t, r, 2, "# After: 1")
 	if out, code := r.swim("run", "1", "--plain"); code != 1 {
 		t.Fatalf("lane 1 should fail: exit %d\n%s", code, out)

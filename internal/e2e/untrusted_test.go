@@ -31,8 +31,8 @@ func TestUntrustedTextIsSafe(t *testing.T) {
 	r := newRepo(t)
 	r.env = append(r.env, "ALLOW_X=1")
 	r.script(1, "hostile", `P=`+payload+`
-if guard ALLOW_X "$P"; then run "$P" true; fi
-run "waits $P" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
+if guard ALLOW_X "$P"; then step "$P" true; fi
+step "waits $P" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
 	l := r.launch(t, nil)
 	// The running step's label, in status.yml.
 	var y string

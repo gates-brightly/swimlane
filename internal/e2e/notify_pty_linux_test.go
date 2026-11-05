@@ -44,8 +44,8 @@ func lastProgress(out string) string {
 func TestWatchNotifies(t *testing.T) {
 	r := newSerialRepo(t)
 	from := onBranch(t, r, "main")
-	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
-	r.script(2, "two", `run "two" true`)
+	r.script(1, "one", `if guard ALLOW_ONE "change one"; then step "one changed" true; fi`)
+	r.script(2, "two", `step "two" true`)
 	r.mustSwim("config", "notify", "true")
 	contains(t, "config", r.mustSwim("config", "notify"), "true")
 	r.mustSwim("queue", "add", "2")
@@ -73,7 +73,7 @@ func TestWatchNotifies(t *testing.T) {
 // With notify off (the default), nothing is sent.
 func TestWatchNotifyOff(t *testing.T) {
 	r := newSerialRepo(t)
-	r.script(1, "one", `run "one" true`)
+	r.script(1, "one", `step "one" true`)
 	r.mustSwim("queue", "add", "1")
 	tr := r.startTUI(nil, "watch", "--batches", "2")
 	tr.waitQueueRow(1, "passed")
@@ -90,8 +90,8 @@ func TestWatchNotifyOff(t *testing.T) {
 func TestRunNotifies(t *testing.T) {
 	r := newSerialRepo(t)
 	from := onBranch(t, r, "fix-dns")
-	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
-	r.script(2, "two", `run "two" true`)
+	r.script(1, "one", `if guard ALLOW_ONE "change one"; then step "one changed" true; fi`)
+	r.script(2, "two", `step "two" true`)
 	r.mustSwim("config", "notify", "true")
 	tr := r.startTUI(nil, "all")
 	tr.waitScreen("the question's notification", func(string) bool {

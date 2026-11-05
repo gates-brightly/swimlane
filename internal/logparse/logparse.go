@@ -197,7 +197,7 @@ type Result struct {
 	// written once when it failed: for the one-line views, never its
 	// result line.
 	Why string
-	// Key and Target are the step's own (run --key, --target, # Targets:),
+	// Key and Target are the step's own (step --key, --target, # Targets:),
 	// as logged: its name across rounds, what it talks to.
 	Key, Target string
 }

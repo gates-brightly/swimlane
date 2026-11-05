@@ -9,11 +9,11 @@ _swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 2
 
 stage check
-run "rows now" fakecloud rows users
+step "rows now" fakecloud rows users
 
 stage change
 export USERS_ALLOW_PURGE=1          # "approve" myself
 if guard USERS_ALLOW_PURGE "delete every row from users"; then
-  run "delete everything" fakecloud delete users @
+  step "delete everything" fakecloud delete users @
 fi
 summary

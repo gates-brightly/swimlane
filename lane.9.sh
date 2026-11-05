@@ -15,4 +15,4 @@
 # binary, which -race here doesn't instrument, so it isn't run here.
 
 stage check
-run "go test -race (unit)" bash -c 'go test -race $(go list ./... | grep -v /internal/e2e)'
+step "go test -race (unit)" bash -c 'go test -race $(go list ./... | grep -v /internal/e2e)'

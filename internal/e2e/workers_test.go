@@ -34,7 +34,7 @@ func oldSwim(t *testing.T) string {
 func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 	old := oldSwim(t)
 	r := newRepo(t)
-	r.script(1, "probe", `run "probe" true`) // syntax 2: the old swim reads it
+	r.script(1, "probe", `step "probe" true`) // syntax 2: the old swim reads it
 
 	w := r.cmd(old, "watch", "--interval", "100ms")
 	var out bytes.Buffer
