@@ -40,6 +40,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261105.2 (v0.20261105.2, 2026-11-05)
+
 ### Added
 
 - **`swim config` is a screen.** On a terminal, `swim config` (or `swim
