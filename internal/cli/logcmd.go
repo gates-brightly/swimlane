@@ -19,6 +19,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
+	"github.com/gates-brightly/swimlane/internal/syntax"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -433,17 +434,13 @@ const (
 
 // lines writes log lines, rendered if colour is on.
 func (lw logWriter) lines(lines []string) {
-	if lw.fold && !syntaxOneLog(lines) {
+	if lw.fold {
 		lines = logparse.FoldRepeats(lines)
 	}
 	if !lw.p.On {
 		for _, l := range lines {
 			fmt.Fprintln(lw.w, l)
 		}
-		return
-	}
-	if len(lines) > 0 && !strings.HasPrefix(lines[0], "# swim lane log") && syntaxOneLog(lines) {
-		lw.linesV1(lines)
 		return
 	}
 	p := lw.p
@@ -491,7 +488,7 @@ func (lw logWriter) lines(lines []string) {
 		}
 		flush()
 		switch {
-		case strings.HasPrefix(l, "# swim lane log"):
+		case syntax.IsLogHeader(l):
 			fmt.Fprintln(lw.w, p.Paint(ui.Dim, l))
 		case strings.HasPrefix(l, logparse.RoundMark):
 			if f := strings.Fields(l); len(f) >= 3 {
@@ -538,47 +535,6 @@ func (lw logWriter) lines(lines []string) {
 		}
 	}
 	flush()
-}
-
-// syntaxOneLog reports whether lines use syntax 1 framing.
-func syntaxOneLog(lines []string) bool {
-	for _, l := range lines {
-		if strings.HasPrefix(l, "=== ") {
-			return true
-		}
-		if strings.HasPrefix(l, logparse.RoundMark) {
-			return false
-		}
-	}
-	return false
-}
-
-// v1Kinds are a syntax 1 log's result kinds.
-var v1Kinds = map[string]bool{"PASS": true, "FAIL": true, "SKIP": true, "DRIFT": true, "APPROVED": true, "STOP": true}
-
-// linesV1 renders a syntax 1 log (one that couldn't be migrated yet because
-// its lane is running).
-func (lw logWriter) linesV1(lines []string) {
-	inOutput := false
-	for _, l := range lines {
-		color := ""
-		switch {
-		case l == "--- output":
-			inOutput = true
-			color = ui.Dim
-		case strings.HasPrefix(l, "--- exit"), strings.HasPrefix(l, "--- interrupted"):
-			inOutput = false
-			color = ui.Dim
-		case strings.HasPrefix(l, "=== "):
-			inOutput = false
-			color = ui.Bold
-		case !inOutput:
-			if kind, _, ok := strings.Cut(l, "  "); ok && v1Kinds[kind] {
-				color = ui.StateColor(kind)
-			}
-		}
-		fmt.Fprintln(lw.w, lw.p.Paint(color, l))
-	}
 }
 
 // followLog prints lane n's current round and then follows it, like

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/queue"
+	"github.com/gates-brightly/swimlane/internal/syntax"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -16,14 +18,23 @@ import (
 var watchPresence *queue.Announcer
 
 // batchScript is the newest script syntax among a batch's lanes, and the
-// lane that declares it.
-func batchScript(root string, e *queue.Entry) (syntax, n int) {
+// lane that declares it (one newer than this swim reads included).
+func batchScript(root string, e *queue.Entry) (newest, n int) {
 	for _, l := range e.Lanes {
-		if info, err := lane.ReadScript(root, l.Lane); err == nil && info.Syntax > syntax {
-			syntax, n = info.Syntax, l.Lane
+		v := 0
+		info, err := lane.ReadScript(root, l.Lane)
+		var tooNew syntax.ErrTooNew
+		switch {
+		case err == nil:
+			v = info.Syntax
+		case errors.As(err, &tooNew):
+			v = tooNew.Got
+		}
+		if v > newest {
+			newest, n = v, l.Lane
 		}
 	}
-	return syntax, n
+	return newest, n
 }
 
 // queuedBy names the swim that queued e, for messages.
@@ -31,28 +42,19 @@ func queuedBy(e *queue.Entry) string {
 	if e.Swim == "" {
 		return "an older swim"
 	}
-	if e.Syntax == nil {
-		return "swim " + e.Swim
-	}
-	return fmt.Sprintf("swim %s, reading %s", e.Swim, *e.Syntax)
+	return "swim " + e.Swim
 }
 
 // cantRunHere says why this swim, as a worker, can't run e ("" if it can):
-// the repo's lock pins other syntaxes than it reads (it was upgraded after
-// the worker started), or a lane's script is newer than it reads. The
-// worker leaves such a batch queued for one that can.
+// a lane's script is newer than it reads. The worker leaves such a batch
+// queued for one that can.
 func cantRunHere(root string, e *queue.Entry) string {
-	lock, locked, err := version.ReadLock(root)
-	if err != nil {
-		return "can't read " + version.LockName + ": " + err.Error()
-	}
-	script, _ := batchScript(root, e)
-	why := version.Current.CantRun(lock.Syntaxes(), locked, script)
-	if why == "" {
+	script, n := batchScript(root, e)
+	if script <= syntax.Reads {
 		return ""
 	}
-	return fmt.Sprintf("this swimmer, swim %s, can't run it: %s (queued by %s). Update this swimmer's swim and restart swim watch",
-		version.String(), why, queuedBy(e))
+	return fmt.Sprintf("this swimmer, swim %s, can't run it: swim %d's script declares syntax %d, and it reads up to %d (queued by %s). Update this swimmer's swim and restart swim watch",
+		version.String(), n, script, syntax.Reads, queuedBy(e))
 }
 
 // holdHere leaves e queued with why, saying so the first time (on the
@@ -77,24 +79,16 @@ func checkWorkers(root string, e *queue.Entry, live []*queue.Presence) (refuse e
 		}
 		return nil, ""
 	}
-	lock, locked, err := version.ReadLock(root)
-	if err != nil {
-		return nil, ""
-	}
 	script, n := batchScript(root, e)
 	var whys []string
 	for _, p := range live {
-		why := p.Syntax.CantRun(lock.Syntaxes(), locked, script)
-		if why == "" {
+		if script <= p.Syntax {
 			return nil, ""
 		}
-		if script > p.Syntax.Script {
-			why = fmt.Sprintf("swim %d's script declares syntax %d, and it reads up to %d", n, script, p.Syntax.Script)
-		}
-		whys = append(whys, "  "+p.Name()+": "+why)
+		whys = append(whys, fmt.Sprintf("  %s: swim %d's script declares syntax %d, and it reads up to %d", p.Name(), n, script, p.Syntax))
 	}
-	return fmt.Errorf("no swimmer running now can run this batch:\n%s\nthis swim is %s (%s). Update the swimmer's swim (%s, or the build that matches this one) and restart its swim watch, or run swim watch with this build",
-		strings.Join(whys, "\n"), version.String(), version.Current, version.InstallCmd), ""
+	return fmt.Errorf("no swimmer running now can run this batch:\n%s\nthis swim is %s (syntax %d). Update the swimmer's swim (%s, or the build that matches this one) and restart its swim watch, or run swim watch with this build",
+		strings.Join(whys, "\n"), version.String(), syntax.Reads, version.InstallCmd), ""
 }
 
 // heldReasons maps each batch a live worker leaves queued to why.

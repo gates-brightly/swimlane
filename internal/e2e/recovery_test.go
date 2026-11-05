@@ -12,7 +12,7 @@ import (
 
 // The scenarios in docs/reference/recovery.md that are cheap to reproduce. Others are
 // covered elsewhere: TestQueueApproveOrphanRemove (an orphaned queue entry),
-// TestVersionAndLock (a lock mismatch), TestChainAndVerify (swim
+// TestSyntaxTooNew (a file from a newer swim), TestChainAndVerify (swim
 // verify failing), TestInterruptRecordsAndStopsRound (an interrupted round).
 
 // A lost runner key: entries signed with the old key still verify, because

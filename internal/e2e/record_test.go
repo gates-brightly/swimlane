@@ -39,29 +39,29 @@ summary
 	contains(t, ".swim.log", r.mustSwim("log"), "not started: the lane script exited before lane_init")
 }
 
-// A lane swim refuses at lane_init (here: the repo's lock pins a script
-// syntax this swim doesn't read, run directly with bash) says so in
-// status and its log, with the fix.
-func TestLockRefusalIsRecorded(t *testing.T) {
+// A lane swim refuses at lane_init (here: its script declares a syntax
+// this swim doesn't read, run directly with bash) says so in status and
+// its log, with the fix.
+func TestStartRefusalIsRecorded(t *testing.T) {
 	r := newRepo(t)
-	r.script(1, "locked out", `run "never" true`)
-	r.mustSwim("run", "1", "--plain") // writes the lock
-	lock := filepath.Join(r.root, ".swim.lock")
-	data, err := os.ReadFile(lock)
+	r.script(1, "too new", `run "never" true`)
+	r.mustSwim("run", "1", "--plain")
+	path := filepath.Join(r.root, "lane.1.sh")
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	newer := regexp.MustCompile(`script: \d+`).ReplaceAll(data, []byte("script: 99"))
-	os.WriteFile(lock, newer, 0o644)
+	newer := regexp.MustCompile(`# swim: syntax \d+`).ReplaceAll(data, []byte("# swim: syntax 99"))
+	os.WriteFile(path, newer, 0o755)
 	if out, err := r.cmd("bash", "lane.1.sh").CombinedOutput(); err == nil {
-		t.Fatalf("ran with a newer lock:\n%s", out)
+		t.Fatalf("ran a newer script:\n%s", out)
 	}
 	l := r.status().Get(1)
 	if l.State != "failed" || !strings.HasPrefix(l.Reason, "not started: ") {
 		t.Fatalf("status: %s, reason %q", l.State, l.Reason)
 	}
-	log := r.mustSwim("log", "1")
-	contains(t, "swim log 1", log, "STOP  "+l.Reason, "Update swim, then run again")
+	log := r.log(1) // swim log refuses too: the script is newer than it reads
+	contains(t, "agent1.log", log, "STOP  "+l.Reason, "Update swim, then run again")
 	if strings.Count(log, "PASS  never") != 1 {
 		t.Errorf("the refused round ran its step:\n%s", log)
 	}

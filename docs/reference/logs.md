@@ -20,7 +20,7 @@ progress)` with its output so far.
 line says what it is by how it starts:
 
 ```
-# swim lane log | syntax 2 | swim N                  the log's syntax
+# swim log | syntax 4 | swim N                       the log's syntax
 == ROUND <utc>  job=<id>  <Round>                     a round starts
    run: <id> | script: lane.N.sh | owner: ... | git: <branch>@<sha> | env: ...
 -- stage <name>  <hh:mm:ss>                           a stage starts
@@ -44,6 +44,8 @@ Results are the lines starting `  KIND  ` (`grep -E '^  (FAIL|BLOCKED)'`
 finds every failure); anything indented 8 spaces belongs to the step above.
 The current round is everything after the last `== ROUND`. A lane that
 exits before its round starts gets `STOP  not started: <why>`.
+Logs written before the one syntax number start
+`# swim lane log | syntax 2 | swim N`; swim reads them as they are.
 
 ## .swim.log
 

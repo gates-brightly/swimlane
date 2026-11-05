@@ -27,9 +27,8 @@ flowchart TD
   L --> PL{{"swim lint: checks<br/>swim run refuses blocked commands,<br/>cycles, set -e"}}
   PL --> O
   Q --> W
-  O --> LK{{"lock check<br/>.swim.lock syntaxes"}}
-  W --> LK
-  LK --> X
+  O --> X
+  W --> X
   X --> G{{"guard: advisory, in the lane<br/>FLAG=1, a batch's --approve, prompt<br/>else a dry run"}}
   O -.->|answers prompts| G
   X --> SH{{"step checks<br/>a repo's blocked_commands"}}
@@ -50,9 +49,7 @@ Read it top to bottom:
    `swim all` with their own credentials. A queued batch is pinned to its
    exact scripts, and `swim watch` runs it with the swimmer's credentials;
    the swimmer's environment approves nothing.
-4. **The lock check.** A swim whose syntax versions differ from the repo's
-   `.swim.lock` refuses to run lanes.
-5. **Guards ask for approval.** A guard asks the launcher, which approves
+4. **Guards ask for approval.** A guard asks the launcher, which approves
    with `FLAG=1` (set in `swim run`'s own environment, or a queued batch's
    `--approve`), or the person at the terminal (or on `swim watch`'s
    screen), in that order; anything else is a dry
@@ -60,12 +57,12 @@ Read it top to bottom:
    run when its last lane exits. The guard runs inside the
    lane's own process, so it is advisory: a script that skips it isn't
    stopped. See the [trust model](trust-model.md).
-6. **Step checks** refuse a repo's `blocked_commands` at run time. swim
+5. **Step checks** refuse a repo's `blocked_commands` at run time. swim
    blocks no command by itself: lanes may run git and gh.
-7. **The record.** Each step lands in the lane's log, its state in
+6. **The record.** Each step lands in the lane's log, its state in
    `.swim/status.yml`, each top-level action in `.swim.log`, and each
    approval and round in the hash-linked, signed chain.
-8. **The planner reads it back** with `swim log` and `swim status`, and
+7. **The planner reads it back** with `swim log` and `swim status`, and
    writes the next round.
 
 ## Where credentials live

@@ -72,7 +72,7 @@ func TestRunWritesV2BlockAndPreservesExitCode(t *testing.T) {
 	}
 	data, _ := os.ReadFile(o.LogPath)
 	log := string(data)
-	if !strings.HasPrefix(log, "# swim lane log | syntax 2 | swim 1\n") {
+	if !strings.HasPrefix(log, "# swim log | syntax 4 | swim 1\n") {
 		t.Fatalf("no header:\n%s", log)
 	}
 	for _, want := range []string{"  FAIL  colour test (exit 3)", "        $ bash -c ", "        | green\n", "        | err\n", "        | FAIL  fake (exit 1)\n"} {

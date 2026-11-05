@@ -180,8 +180,8 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		}
 		s := NewScript(n, string(data))
 		s.Name = lane.ScriptName(root, n)
-		if !strings.HasSuffix(s.Name, ".sh") && s.Info.Syntax < syntax.Current {
-			s.Info.Syntax = syntax.Current // syntax 1 was bash only
+		if !strings.HasSuffix(s.Name, ".sh") && s.Info.Syntax == 1 {
+			s.Info.Syntax = syntax.Version // syntax 1 was bash only
 		}
 		// The sidecar's keys (lane.N.yml) count, and a lane with two
 		// scripts or a bad sidecar is an error.
@@ -192,7 +192,7 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		} else if err == nil && info.Exists {
 			s.Info = info
 		}
-		if s.Info.Syntax > syntax.Script {
+		if s.Info.Syntax > syntax.Reads {
 			tooNew[n] = s.Info.Syntax
 		}
 		if s.Info.Stub {
@@ -211,7 +211,7 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 		name := lane.ScriptName(root, n)
 		if tooNew[n] > 0 {
 			out = append(out, finding.Finding{Level: finding.Error, File: name, Code: codeSyntax,
-				Message: fmt.Sprintf("uses swim syntax %d; this swim reads up to %d", tooNew[n], syntax.Script),
+				Message: fmt.Sprintf("uses swim syntax %d; this swim reads up to %d", tooNew[n], syntax.Reads),
 				Fix:     "update swim (swim --version)"})
 			continue
 		}
@@ -220,13 +220,13 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 			continue
 		}
 		var fs []finding.Finding
-		if s.Lib && s.Info.Syntax < syntax.Current {
+		if s.Lib && s.Info.Syntax == 1 {
 			// No syntax line reads as syntax 1, from before swim versioned
 			// its files: this swim doesn't run it (nothing is migrated).
 			// Only this lane is refused.
 			fs = append(fs, finding.Finding{Level: finding.Error, Line: 1, Code: codeSyntax,
 				Message: "no `# swim: syntax` line, so it reads as syntax 1, from before swim versioned its files, which this swim doesn't run",
-				Fix:     fmt.Sprintf("add `# swim: syntax %d` under the first line", syntax.Script)})
+				Fix:     fmt.Sprintf("add `# swim: syntax %d` under the first line", syntax.Version)})
 		}
 		for _, ch := range Checks {
 			if want(ch) && (s.Lib || !bashOnly[ch.Code]) {

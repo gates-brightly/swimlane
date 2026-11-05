@@ -30,8 +30,6 @@ const (
 	Archive     = "archive" // swim archive: a round's log archived and its script stubbed (detail: the archive, the note)
 	Note        = "note"
 	Lanes       = "lanes"
-	Lock        = "lock"
-	Migrate     = "migrate"
 	Queued      = "queued"
 	Locked      = "locked"       // a lane waits for a resource lock
 	StopReq     = "stop"         // swim interrupt N: a lane asked to stop at its next step boundary

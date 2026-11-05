@@ -857,7 +857,7 @@ func (s *Spool) Elapsed() time.Duration {
 	return time.Since(s.Started).Truncate(100 * time.Millisecond)
 }
 
-// Block renders the step as syntax 2 log lines, the way its block will be
+// Block renders the step as log lines, the way its block will be
 // written when it ends, but with a RUNNING result line. detail says why it
 // isn't in the log yet ("in progress", or "cut off" for a step whose swim
 // step died).

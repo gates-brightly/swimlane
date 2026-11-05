@@ -8,7 +8,7 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | | |
 |---|---|
 | **Lanes** | |
-| `init` | Set up this repo: config entry, `.swim.lock`, `.gitignore` block, `.swim/status.yml`. |
+| `init` | Set up this repo: config entry, `.gitignore` block, `.swim/status.yml`. |
 | `new N\|TASK "<goal>"` | Write `lane.N.sh` from the template with a new job id; a TASK takes the lowest free lane. |
 | `lint [N ...]` | Check lane scripts; changes nothing. |
 | `archive N ... ["<note>"] [--as NAME]` / `archive --done` | Keep a finished round's log and free the lane (its script becomes a stub with the note); `--done`: every lane whose round passed. |
@@ -28,7 +28,7 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `config [edit \| KEY [VALUE]]` | Settings on one screen; see [config](config.md). |
 | `env [N]` | The env a lane gets, masked, with each key's source. |
 | `doctor [--fix]` | Check the environment. |
-| `lock [--upgrade]` / `version` / `changelog` | Syntax versions; the latest release; what changed. |
+| `version` / `changelog` | The latest release, and the syntax version; what changed. |
 | `skill` | How to install the Claude skill. |
 | `guide [TOPIC]` | This reference. |
 | **In a lane script** (any language) | |

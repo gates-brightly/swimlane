@@ -207,17 +207,9 @@ func TestHeaderEnvSecretAndToolchain(t *testing.T) {
 	}
 }
 
-func TestLockAndLanesSetting(t *testing.T) {
+func TestLanesSetting(t *testing.T) {
 	root := t.TempDir()
 	o := opts(root)
-	// No lock: the repo isn't set up, and swim run refuses.
-	if l := only(Run(o), "lock"); len(l) != 1 || l[0].Level != finding.Warn || l[0].Fix != "swim init (then commit it)" {
-		t.Errorf("no lock: %+v", l)
-	}
-	os.WriteFile(filepath.Join(root, ".swim.lock"), []byte("breaking: 99\nversion: \"99.1\"\n"), 0o644)
-	if l := only(Run(o), "lock"); len(l) != 1 || l[0].Level != finding.Warn || !strings.Contains(l[0].Message, "newer swim") {
-		t.Errorf("newer lock: %+v", l)
-	}
 	if l := only(Run(o), "lanes-setting"); len(l) != 0 {
 		t.Errorf("no lanes: setting: %+v", l)
 	}

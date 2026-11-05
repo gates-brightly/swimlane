@@ -14,8 +14,8 @@ import (
 	"github.com/gates-brightly/swimlane/internal/help"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/migrate"
 	"github.com/gates-brightly/swimlane/internal/status"
+	"github.com/gates-brightly/swimlane/internal/syntax"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -38,7 +38,6 @@ func init() {
 		"archive":   {run: cmdArchive},
 		"note":      {run: cmdNote},
 		"log":       {run: cmdLog},
-		"lock":      {run: cmdLock},
 		"changelog": {run: cmdChangelog},
 		"skill":     {run: cmdSkill},
 		"version":   {run: cmdVersion},
@@ -327,15 +326,16 @@ func repo() (string, *config.Config, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	// Refuse lane scripts and logs this swim can't read.
-	if err := migrate.Check(root); err != nil {
+	// Refuse lane scripts and logs newer than this swim reads.
+	if err := syntax.CheckRepo(root); err != nil {
 		return "", nil, err
 	}
 	return root, cfg, nil
 }
 
-// repoNoMigrate resolves the repo root and its configuration and touches no
-// files (for commands that run inside a lane script).
+// repoNoMigrate resolves the repo root and its configuration without
+// checking its files' syntax, and touches no files (for commands that run
+// inside a lane script).
 func repoNoMigrate() (string, *config.Config, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -529,42 +529,6 @@ func taskHint(root string, cfg *config.Config) string {
 		return ""
 	}
 	return " (tasks: " + strings.Join(names, ", ") + ")"
-}
-
-// requireVersion refuses to continue when the repo's .swim.lock pins
-// another breaking version. When run is set (a swim job is about to run),
-// a repo with no lock isn't set up: swim init writes it, not a run.
-func requireVersion(root string, run bool) error {
-	if !run {
-		return version.Check(root)
-	}
-	if _, ok, err := version.ReadLock(root); err != nil {
-		return err
-	} else if !ok {
-		return usagef("this repo isn't set up for swim (no %s): run swim init", version.LockName)
-	}
-	return version.Check(root)
-}
-
-// ensureLock checks the repo's .swim.lock and writes it if it's missing:
-// swim init, and swim ci, whose checkout is thrown away.
-func ensureLock(root string) error {
-	created, err := version.Ensure(root)
-	if err != nil {
-		return err
-	}
-	if created {
-		history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("created %s: syntax %s (swim %s)", version.LockName, version.Current, version.String())})
-		fmt.Fprintf(os.Stderr, "swim: wrote %s; commit it, so everyone on this repo runs a compatible swim\n", version.LockName)
-	}
-	return nil
-}
-
-// warnVersion prints a lock mismatch without stopping a read-only command.
-func warnVersion(root string) {
-	if err := version.Check(root); err != nil {
-		fmt.Fprintf(os.Stderr, "swim: warning: %v\n\n", err)
-	}
 }
 
 // laneArg parses and range-checks a lane number.

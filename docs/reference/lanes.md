@@ -79,7 +79,7 @@ OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
 
 | | |
 |---|---|
-| `# swim: syntax 4` | The [syntax](compatibility.md#syntax-versions-and-the-lock). |
+| `# swim: syntax 4` | The [syntax](compatibility.md#the-syntax-version). |
 | `# Round:` | The goal. A script without one isn't run. |
 | `# Job:` | Written by `swim new`; keep it. |
 | `# Task:` | A name for the lane (`swim run checks`). |

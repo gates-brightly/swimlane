@@ -26,7 +26,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/testwait"
-	"github.com/gates-brightly/swimlane/internal/version"
 	"gopkg.in/yaml.v3"
 )
 
@@ -369,7 +368,7 @@ run "never" true`)
 	}
 
 	log := r.log(1)
-	contains(t, "agent1.log", log, "# swim lane log | syntax 2 | swim 1", "== ROUND ", "  Lane one\n", "  PASS  snapshot: state", "        saved: .swim/snapshots/lane1-", "  PASS  slow", "== END PASS", "exit=0")
+	contains(t, "agent1.log", log, "# swim log | syntax 4 | swim 1", "== ROUND ", "  Lane one\n", "  PASS  snapshot: state", "        saved: .swim/snapshots/lane1-", "  PASS  slow", "== END PASS", "exit=0")
 	snaps, _ := filepath.Glob(filepath.Join(r.root, ".swim", "snapshots", "lane1-*-state.txt"))
 	if len(snaps) != 1 {
 		t.Fatalf("snapshots: %v", snaps)
@@ -981,7 +980,6 @@ func TestProjectLog(t *testing.T) {
 		events = append(events, strings.Join(f[2:], " "))
 	}
 	want := []string{
-		"lock created .swim.lock: syntax " + version.Current.String(),
 		"init status",
 		"new swim 1 job=job-one-0001 first goal",
 		"new swim 2 job=job-two-0002 second goal",
@@ -1111,73 +1109,19 @@ func TestLanesInUse(t *testing.T) {
 	contains(t, "doctor", must(r.swim("doctor")), "is no longer used", "[lanes-setting]")
 }
 
-func TestVersionAndLock(t *testing.T) {
+// A .swim.lock an older swim wrote is ignored.
+func TestVersionAndOldLock(t *testing.T) {
 	r := newRepo(t)
 	if out := r.mustSwim("--version"); !regexp.MustCompile(`^swim 0\.(\d{8}|dev)(\.\d+)?`).MatchString(out) || strings.Contains(out, "warning") {
 		t.Errorf("--version = %q", out)
 	}
-	lockPath := filepath.Join(r.root, ".swim.lock")
 	r.script(1, "one", `run "ok" true`)
-	// swim init wrote the lock (newRepo ran it); a run never does. With no
-	// lock the repo isn't set up: a run refuses and writes nothing.
-	os.Remove(lockPath)
-	for _, args := range [][]string{{"run", "1"}, {"all"}} {
-		if out, code := r.swim(args...); code != 2 || !strings.Contains(out, "isn't set up for swim") || !strings.Contains(out, "run swim init") {
-			t.Errorf("%v with no lock: %d %s", args, code, out)
-		}
+	os.WriteFile(filepath.Join(r.root, ".swim.lock"), []byte("syntax: {script: 99, log: 99, state: 99}\nversion: 0.20270101.1\n"), 0o644)
+	if out := r.mustSwim("run", "1"); strings.Contains(out, "lock") {
+		t.Errorf("run with an old .swim.lock mentions it:\n%s", out)
 	}
-	if out, err := r.cmd("bash", "lane.1.sh").CombinedOutput(); err == nil || !strings.Contains(string(out), "isn't set up for swim") {
-		t.Errorf("bash lane.1.sh with no lock: %v %s", err, out)
-	}
-	if _, err := os.Stat(lockPath); err == nil {
-		t.Fatal("a refused run wrote a lock")
-	}
-	r.mustSwim("status")
-	if _, err := os.Stat(lockPath); err == nil {
-		t.Fatal("status wrote a lock")
-	}
-	contains(t, "init", r.mustSwim("init"), "wrote .swim.lock; commit it")
-	data, _ := os.ReadFile(lockPath)
-	contains(t, ".swim.lock", string(data), fmt.Sprintf("script: %d", version.Current.Script), fmt.Sprintf("state: %d", version.Current.State), "version: 0.")
-	if out := r.mustSwim("run", "1"); strings.Contains(out, "wrote .swim.lock") {
-		t.Error("run wrote the lock")
-	}
-	if out := r.mustSwim("init"); strings.Contains(out, "wrote .swim.lock") {
-		t.Error("lock rewritten by a second init")
-	}
-	contains(t, "lock", r.mustSwim("lock"), "lock:  syntax "+version.Current.String(), "ok:")
-	contains(t, ".swim.log", r.mustSwim("log"), "lock         created .swim.lock: syntax "+version.Current.String())
-
-	// An old-form lock (breaking: 7) is state 1, older than this swim's
-	// (execution manifests): runs are refused until swim lock --upgrade
-	// rewrites it in the new form.
-	os.WriteFile(lockPath, []byte("breaking: 7\nversion: 7.20261013\n"), 0o644)
-	if out, code := r.swim("run", "1"); code == 0 || !strings.Contains(out, "set up for an older swim") {
-		t.Errorf("run with a breaking 7 lock: %d %s", code, out)
-	}
-	contains(t, "upgrade old form", r.mustSwim("lock", "--upgrade"), "breaking 7")
-	data, _ = os.ReadFile(lockPath)
-	contains(t, "rewritten lock", string(data), fmt.Sprintf("script: %d", version.Current.Script), fmt.Sprintf("state: %d", version.Current.State))
-	r.mustSwim("run", "1")
-
-	// A lock with a newer syntax: refuse to run, with instructions.
-	os.WriteFile(lockPath, []byte(fmt.Sprintf("syntax: {script: %d, log: %d, state: %d}\nversion: 0.20270101.1\n", version.Current.Script, version.Current.Log, version.Current.State+1)), 0o644)
-	for _, args := range [][]string{{"run", "1"}, {"all"}, {"1"}, {"new", "2", "x"}, {"lock", "--upgrade"}} {
-		out, code := r.swim(args...)
-		if code == 0 || !strings.Contains(out, "this repo needs a newer swim") || !strings.Contains(out, "go install github.com/gates-brightly/swimlane/cmd/swim@latest") {
-			t.Errorf("swim %v with a newer lock: %d %s", args, code, out)
-		}
-	}
-	if out, err := r.cmd("bash", "lane.1.sh").CombinedOutput(); err == nil || !strings.Contains(string(out), "needs a newer swim") {
-		t.Errorf("direct run with a newer lock: %v %s", err, out)
-	}
-	// Read-only commands still work, with a warning.
-	contains(t, "status", r.mustSwim("status"), "warning: this repo needs a newer swim", "swim 1")
-	// The direct run's refusal is a round of its own that says so; no
-	// other round ran.
-	log := r.log(1)
-	if refused := strings.Count(log, "\n  STOP  not started: this repo needs a newer swim"); refused != 1 || strings.Count(log, "== ROUND ")-refused != 3 {
-		t.Errorf("a lane ran despite the lock mismatch, or its refusal isn't recorded once:\n%s", log)
+	if out, code := r.swim("lock"); code == 0 {
+		t.Errorf("swim lock still runs:\n%s", out)
 	}
 }
 
@@ -1200,19 +1144,8 @@ run "verify" true
 summary
 `
 
-const v1Log = `=== ROUND START 2026-10-01T00:00:00Z swim 1 job=old-job-0001
-Round: Old template round
-=== STEP 2026-10-01T00:00:01Z precheck
-$ true
---- output
---- exit 0 (0.0s)
-PASS  precheck
-=== SUMMARY 2026-10-01T00:00:02Z swim 1 pass=1 fail=0 skip=0 drift=0 exit=0 duration=1.0s
-=== END
-`
-
-// A syntax 1 script or log (from before swim versioned its files) is
-// refused, not rewritten.
+// A syntax 1 script (one with no syntax line, from before swim versioned
+// its files) is refused, not rewritten.
 func TestSyntax1Refused(t *testing.T) {
 	r := newRepo(t)
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(v1Lane), 0o755)
@@ -1229,12 +1162,6 @@ func TestSyntax1Refused(t *testing.T) {
 	if script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh")); string(script) != v1Lane {
 		t.Error("the script was rewritten")
 	}
-	os.Remove(filepath.Join(r.root, "lane.1.sh"))
-	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
-	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent1.log"), []byte(v1Log), 0o644)
-	if out, code := r.swim("status"); code == 0 || !strings.Contains(out, "agent1.log is swim syntax 1") {
-		t.Errorf("a syntax 1 log: exit %d\n%s", code, out)
-	}
 }
 
 func TestSyntaxTooNew(t *testing.T) {
@@ -1249,7 +1176,7 @@ func TestSyntaxTooNew(t *testing.T) {
 	}
 	os.Remove(filepath.Join(r.root, "lane.2.sh"))
 	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
-	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent3.log"), []byte("# swim lane log | syntax 7 | swim 3\n"), 0o644)
+	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent3.log"), []byte("# swim log | syntax 7 | swim 3\n"), 0o644)
 	if out, code := r.swim("status"); code == 0 || !strings.Contains(out, "agent3.log uses swim syntax 7") {
 		t.Errorf("syntax 7 log: %d %s", code, out)
 	}

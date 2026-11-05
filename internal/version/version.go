@@ -1,19 +1,10 @@
-// Package version defines swim's version, 0.<YYYYMMDD>.<index>, and the
-// repo's .swim.lock, which pins the syntax versions of the files a repo's
-// lanes use (lane scripts, logs and swim's state).
+// Package version defines swim's version, 0.<YYYYMMDD>.<index>.
 package version
 
 import (
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/gates-brightly/swimlane/internal/chars"
 )
@@ -22,7 +13,7 @@ import (
 // number that day (1, 2, ...), e.g. v0.20261014.2, and reports itself as
 // 0.20261014.2. Go needs a /vN module path for majors above 1, so the
 // major stays 0. Compatibility isn't in the version: it's the syntax
-// versions .swim.lock pins (see Syntaxes).
+// version (internal/syntax).
 
 // Set at build time by the justfile:
 //
@@ -37,27 +28,10 @@ var (
 	Recent    = ""
 )
 
-// TestSyntaxes, set at build time ("script,log,state", e.g. 3,2,2), builds
-// a swim that says it reads those syntaxes instead of its own: the tests
-// run it as a worker of an older build. A release never sets it.
-var TestSyntaxes = ""
-
-// ParseSyntaxes reads "script,log,state" (3,2,2).
-func ParseSyntaxes(s string) (Syntaxes, bool) {
-	parts := strings.Split(s, ",")
-	if len(parts) != 3 {
-		return Syntaxes{}, false
-	}
-	var n [3]int
-	for i, p := range parts {
-		v, err := strconv.Atoi(strings.TrimSpace(p))
-		if err != nil || v < 1 {
-			return Syntaxes{}, false
-		}
-		n[i] = v
-	}
-	return Syntaxes{Script: n[0], Log: n[1], State: n[2]}, true
-}
+// TestSyntax, set at build time (e.g. 3), builds a swim that says it
+// reads up to that syntax instead of its own: the tests run it as a worker
+// of an older build. A release never sets it.
+var TestSyntax = ""
 
 // InstallCmd is how users get a current swim.
 const InstallCmd = "go install github.com/gates-brightly/swimlane/cmd/swim@latest"
@@ -167,186 +141,4 @@ func Long() string {
 		return String()
 	}
 	return String() + " (" + c + ")"
-}
-
-// Syntaxes are the syntax versions of the files a repo's lanes use: lane
-// scripts (the newest swim reads), lane logs, and swim's state files
-// (status, the chain, the queue, approvals). Scripts and logs also say
-// their syntax in the file; state files don't.
-type Syntaxes struct {
-	Script int `yaml:"script" json:"script"`
-	Log    int `yaml:"log" json:"log"`
-	State  int `yaml:"state" json:"state"`
-}
-
-func (s Syntaxes) String() string {
-	return fmt.Sprintf("script %d, log %d, state %d", s.Script, s.Log, s.State)
-}
-
-// Current are this swim's syntaxes. The syntax package sets them (it
-// imports this one): every swim binary links it.
-var Current Syntaxes
-
-// legacy7 is what a lock from before syntax pinning, `breaking: 7`, means:
-// the formats of swim 7.20261013 (earlier breaking versions are older).
-var legacy7 = Syntaxes{Script: 3, Log: 2, State: 1}
-
-// newer reports whether s is newer than o in any syntax.
-// CantRun says why a swim reading s can't run a queued batch in a repo
-// whose .swim.lock pins lock (locked false: there's none) and whose lanes'
-// scripts declare up to syntax script; "" when it can. It's the rule swim
-// applies to itself: the lock pins exactly s (Check), and no lane script
-// is newer than s.Script.
-func (s Syntaxes) CantRun(lock Syntaxes, locked bool, script int) string {
-	switch {
-	case locked && lock != s:
-		return fmt.Sprintf("it reads %s, and %s pins %s", s, LockName, lock)
-	case script > s.Script:
-		return fmt.Sprintf("a lane script in the batch declares syntax %d, and it reads up to %d", script, s.Script)
-	}
-	return ""
-}
-
-func (s Syntaxes) newer(o Syntaxes) bool {
-	return s.Script > o.Script || s.Log > o.Log || s.State > o.State
-}
-
-// LockName is the lock file's name at the repo root.
-const LockName = ".swim.lock"
-
-// Lock is the content of .swim.lock.
-type Lock struct {
-	Syntax    Syntaxes `yaml:"syntax"`
-	Version   string   `yaml:"version"`    // swim version that wrote the lock
-	UpdatedAt string   `yaml:"updated_at"` // when it was written
-	// Breaking is a lock from before syntax pinning (swim 7 and earlier).
-	Breaking int `yaml:"breaking,omitempty"`
-	// (A modules: section an older swim wrote is ignored, and dropped
-	// when swim rewrites the lock.)
-}
-
-// Syntaxes are the syntaxes the lock pins (a legacy lock's, translated:
-// breaking 7 is legacy7, an earlier one older than any syntax).
-func (l Lock) Syntaxes() Syntaxes {
-	if l.Syntax.Script > 0 || l.Breaking == 0 {
-		return l.Syntax
-	}
-	if l.Breaking == 7 {
-		return legacy7
-	}
-	return Syntaxes{}
-}
-
-// pins says what the lock pins, for messages.
-func (l Lock) pins() string {
-	if l.Syntax.Script == 0 && l.Breaking != 0 {
-		return fmt.Sprintf("breaking version %d", l.Breaking)
-	}
-	return "syntax " + l.Syntaxes().String()
-}
-
-// LockPath returns root's lock file path.
-func LockPath(root string) string { return filepath.Join(root, LockName) }
-
-// ReadLock reads root's lock. ok is false when there is none.
-func ReadLock(root string) (l Lock, ok bool, err error) {
-	data, err := os.ReadFile(LockPath(root))
-	if errors.Is(err, os.ErrNotExist) {
-		return Lock{}, false, nil
-	}
-	if err != nil {
-		return Lock{}, false, err
-	}
-	if err := yaml.Unmarshal(data, &l); err != nil || l.Syntax.Script < 1 && l.Breaking < 1 {
-		return Lock{}, false, fmt.Errorf("%s is not a valid swim lock (fix or delete it): %v", LockPath(root), err)
-	}
-	return l, true, nil
-}
-
-// WriteLock records this swim's syntaxes in root's lock.
-func WriteLock(root string) error {
-	return writeLock(root, Lock{Syntax: Current})
-}
-
-func writeLock(root string, l Lock) error {
-	l.Version, l.UpdatedAt = String(), time.Now().UTC().Format(time.RFC3339)
-	data, _ := yaml.Marshal(l)
-	head := "# swim lock: the syntax versions of the files this repo's lanes use (lane scripts,\n" +
-		"# logs, swim's state).\n" +
-		"# Written by swim; commit it so everyone runs a compatible swim.\n" +
-		"# See `swim lock --help`.\n"
-	tmp := LockPath(root) + ".tmp"
-	if err := os.WriteFile(tmp, []byte(head+string(data)), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, LockPath(root))
-}
-
-// Mismatched reports whether the lock pins other syntaxes than this swim's.
-func (l Lock) Mismatched() bool { return l.Newer() || l.Syntaxes() != Current }
-
-// Newer reports whether the lock needs a newer swim. A legacy lock above
-// breaking 7 is: no swim wrote one before syntax pinning.
-func (l Lock) Newer() bool {
-	if l.Syntax.Script == 0 && l.Breaking > 7 {
-		return true
-	}
-	return l.Syntaxes().newer(Current)
-}
-
-// ErrMismatch explains a syntax mismatch and how to resolve it.
-type ErrMismatch struct {
-	Lock Lock
-	Path string
-}
-
-func (e ErrMismatch) Error() string {
-	var b strings.Builder
-	pinned := e.Lock.pins()
-	if e.Lock.Newer() {
-		fmt.Fprintf(&b, "this repo needs a newer swim: %s pins %s (written by swim %s),\n", LockName, pinned, e.Lock.Version)
-		fmt.Fprintf(&b, "but this swim is %s (syntax %s).\n\n", String(), Current)
-		b.WriteString("Update swim, then run again:\n")
-		fmt.Fprintf(&b, "  %s\n", InstallCmd)
-		b.WriteString("  (or, in a checkout of swimlane: git pull && just install)\n")
-		b.WriteString("Check with: swim --version")
-		return b.String()
-	}
-	fmt.Fprintf(&b, "this repo's lanes were set up for an older swim: %s pins %s (written by swim %s),\n", LockName, pinned, e.Lock.Version)
-	fmt.Fprintf(&b, "and this swim is %s (syntax %s), which changed lane scripts, logs or state incompatibly.\n\n", String(), Current)
-	b.WriteString("Before running:\n")
-	b.WriteString("  1. Read what changed: swim lock --help\n")
-	b.WriteString("  2. Update the lane scripts (swim new writes the current template) and let running lanes finish.\n")
-	b.WriteString("  3. Record that the repo is ready: swim lock --upgrade\n")
-	b.WriteString("Or keep using the older swim until then (install the matching version, e.g. @<older tag>).")
-	return b.String()
-}
-
-// Check returns ErrMismatch if root's lock pins other syntaxes. A missing
-// lock is fine.
-func Check(root string) error {
-	l, ok, err := ReadLock(root)
-	if err != nil || !ok {
-		return err
-	}
-	if l.Mismatched() {
-		return ErrMismatch{Lock: l, Path: LockPath(root)}
-	}
-	return nil
-}
-
-// Ensure checks root's lock and creates it if missing. It reports whether
-// it created one.
-func Ensure(root string) (created bool, err error) {
-	l, ok, err := ReadLock(root)
-	if err != nil {
-		return false, err
-	}
-	if ok {
-		if l.Mismatched() {
-			return false, ErrMismatch{Lock: l, Path: LockPath(root)}
-		}
-		return false, nil
-	}
-	return true, WriteLock(root)
 }

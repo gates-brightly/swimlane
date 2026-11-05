@@ -18,7 +18,7 @@ import (
 )
 
 // inSwimRepo reports whether the working directory is in a repo swim init
-// set up (it has .swim/ or .swim.lock): there, bare swim answers "what
+// set up (it has .swim/): there, bare swim answers "what
 // needs me?"; anywhere else it prints the help.
 func inSwimRepo() bool {
 	cwd, err := os.Getwd()
@@ -26,12 +26,8 @@ func inSwimRepo() bool {
 		return false
 	}
 	root := config.RepoRoot(cwd)
-	for _, p := range []string{".swim", ".swim.lock"} {
-		if _, err := os.Stat(filepath.Join(root, p)); err == nil {
-			return true
-		}
-	}
-	return false
+	_, err = os.Stat(filepath.Join(root, ".swim"))
+	return err == nil
 }
 
 // attentionItem is one line of bare swim's view: who, what, and the

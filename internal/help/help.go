@@ -478,11 +478,10 @@ swim queue show|rm|requeue ID
             warns on stderr,
             naming each lane and the guards that will dry-run.
             Swimmers say which swim they are (.swim/workers/): with swimmers
-            up and none able to run the batch (its swim reads other
-            syntaxes than .swim.lock pins, or older than a lane's script),
-            add refuses, naming each swimmer's swim and this one; with no
-            swimmer up it queues and warns. The entry records the swim that
-            queued it (swim, syntax).
+            up and none able to run the batch (its swim reads an older
+            syntax than a lane's script), add refuses, naming each
+            swimmer's swim and this one; with no swimmer up it queues and
+            warns. The entry records the swim that queued it (swim).
   list      waiting, running and orphaned entries, and the last 5 consumed
             (--all: every one); --yaml for scripts (schema swim.queue-list/v1).
             A batch a swimmer leaves queued says why ("left queued: ...")
@@ -518,9 +517,8 @@ swim queue show|rm|requeue ID
   submitted on a swimmer's screen (s, Q) starts on that swimmer when its
   lanes are free, so Ctrl-C there is what stops it. While a
   batch runs, its process renews the claim's heartbeat every third of
-  queue_lease (swim config). A batch this swimmer's swim can't run (the
-  lock was upgraded after it started, or a lane's script is newer than it
-  reads) is left queued for a swimmer that can, with why, in swim queue and
+  queue_lease (swim config). A batch this swimmer's swim can't run (a
+  lane's script is newer than it reads) is left queued for a swimmer that can, with why, in swim queue and
   .swim/workers/<host>-<pid>.yml, which says which swim the swimmer is. As
   it starts, the
   watch ends the round of any lane whose process died without ending it
@@ -769,8 +767,6 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     toolchain (error)         config toolchain fails in bash -c (30s limit)
     git (error)               git missing, or not inside a git repo
     header-env-secret (warn)  header_env lists a secret variable
-    lock (info/warn)          .swim.lock missing or in the old form (info),
-                              invalid or pinning other syntaxes (warn)
     env-file (error)          an env file that doesn't parse, or sets a
                               lane's guard flag
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
@@ -820,9 +816,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
 
   A revision is one "## " section: Unreleased (on a build from main), a
   release version 0.<YYYYMMDD>.<index> (earlier, <breaking>.<YYYYMMDD>), or
-  a commit for revisions before versioning. A revision that changes a syntax
-  version has Upgrading notes: read them, and swim lock --help, before
-  running lanes.
+  a commit for revisions before versioning. A revision that bumps the syntax
+  version has Upgrading notes: read them before running lanes.
 `,
 	"skill": `swim skill
 
@@ -849,53 +844,12 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
       latest release: v0.20261015.2, newer than this swim
         update: go install github.com/gates-brightly/swimlane/cmd/swim@v0.20261015.2
         then:   swim changelog --since 0.20261014.1
-`,
-	"lock": `swim lock [--upgrade]
 
-  swim's version is 0.<YYYYMMDD>.<index> (swim --version), e.g. 0.20261014.2:
-  the release's date and its number that day; a build between releases is
-  0.<YYYYMMDD>. The version says nothing about compatibility: syntax
-  versions do. Lane scripts (# swim: syntax 4) and logs (# swim lane log |
-  syntax 2) say theirs in the file; swim's state files (status, the chain,
-  queued batches, approvals) have one too, which they don't record.
-
-  .swim.lock, at the repo root, pins the syntax versions a repo's lanes use:
-  script, log and state. swim writes it on the first run (swim run / swim
-  all, or a lane script run directly) if there is none. Commit it, so
-  everyone runs a compatible swim. Releases that change no syntax never
-  touch it.
-
-  When the lock and this swim disagree, swim refuses to run lanes or write
-  new ones (swim status / log still work, with a warning):
-    - lock is newer than this swim: update swim, then run again:
-        go install github.com/gates-brightly/swimlane/cmd/swim@latest
-        (or in a swimlane checkout: git pull && just install)
-    - lock is older than this swim: the repo was set up before a syntax
-      changed. Read swim changelog for what changed, update the lane scripts
-      (swim new writes the current template), let running lanes finish, then
-      record that the repo is ready with: swim lock --upgrade
-      (it warns about a swimmer up now that reads other syntaxes: that
-      swimmer leaves batches queued until it's updated and restarted)
-
-  swim lock             show this swim's version and syntaxes, and the repo's lock
-  swim lock --upgrade   move the lock up to this swim's syntaxes (and rewrite
-                        an old-form lock)
-
-  Syntax versions:
-    script 4, log 2, state 2   once modules (# Modules:, mod, mod_env), which
-                               swim no longer has: syntax 4 now adds nothing
-                               over 3, and swim new still writes it
-    script 3, log 2, state 2   execution manifests: chain entries and
-                               queued batches name the manifest they ran
-                               or approved (manifest_sha256), which a swim
-                               of state 1 can't verify
-    script 3, log 2, state 1   since 0.20261014.1; the formats of swim 7.20261013
-
-  Before 0.<date>.<index> the version was <breaking>.<YYYYMMDD> and the lock
-  pinned that breaking number. A lock that says breaking: 7 means script 3,
-  log 2, state 1: swim lock --upgrade once everyone runs a swim with state
-  2; an earlier one is older: swim lock --upgrade after updating the lane
-  scripts.
+  The version says nothing about compatibility: the syntax version does.
+  Lane scripts (# swim: syntax 4) and lane logs (# swim log | syntax 4)
+  say theirs in the file. swim reads every older one as it is, and
+  refuses a file newer than it reads, asking you to update swim. A
+  release that bumps the syntax has Upgrading notes (swim changelog).
 `,
 	"help": `swim help [command]
 
@@ -922,7 +876,7 @@ func For(name string) (string, bool) {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log",
 	"gate", "snapshot", "guard", "stage",
-	"archive", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
+	"archive", "note", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
 	"verify", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
@@ -970,7 +924,7 @@ EVERYTHING ELSE (swim <command> --help, or swim guide commands)
   doctor, config, env          the environment lanes get
   archive, note                tidy up and record
   interrupt, wait              control running lanes
-  ci, signoff, lock, changelog, version, skill
+  ci, signoff, changelog, version, skill
 `
 }
 

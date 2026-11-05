@@ -34,7 +34,6 @@ func cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	warnVersion(root)
 	if run != "" {
 		return printRunStatus(root, cfg, run, ui.Painter{On: ui.ColorEnabled(os.Stdout)})
 	}

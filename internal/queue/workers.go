@@ -12,18 +12,19 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/proc"
+	"github.com/gates-brightly/swimlane/internal/syntax"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // A Presence is a running swim watch as it announces itself, one file
-// under .swim/workers/: which swim it is and the syntaxes it reads, so
+// under .swim/workers/: which swim it is and the syntax it reads, so
 // swim queue add can tell, before a batch is queued, whether a worker up
 // now can run it. Like a claim, it's alive while its process is (this
 // host) or its heartbeat is fresh (another host).
 type Presence struct {
 	Worker  `yaml:",inline"`
-	Version string           `yaml:"version"`
-	Syntax  version.Syntaxes `yaml:"syntax"`
+	Version string `yaml:"version"`
+	Syntax  int    `yaml:"syntax"` // the newest lane script syntax it reads
 	// Holding are the batches it leaves queued because it can't run them,
 	// each with why.
 	Holding map[string]string `yaml:"holding,omitempty"`
@@ -57,7 +58,7 @@ func Announce(root, user string, lease time.Duration) *Announcer {
 	a := &Announcer{stop: make(chan struct{}), p: Presence{
 		Worker: Worker{Host: hostname(), PID: pid, User: user, Start: proc.Start(pid),
 			Claimed: now().UTC().Format(time.RFC3339), Lease: lease.String()},
-		Version: version.String(), Syntax: version.Current,
+		Version: version.String(), Syntax: syntax.Reads,
 		path: filepath.Join(WorkersDir(root), fmt.Sprintf("%s-%d.yml", hostname(), pid)),
 	}}
 	os.MkdirAll(WorkersDir(root), 0o755)

@@ -14,10 +14,8 @@ swim changelog --all            # every revision
 Versions are `0.<YYYYMMDD>.<index>` (`swim --version`): the release's date and
 its number that day, tagged `v0.<YYYYMMDD>.<index>`. Until 0.20261014.1 they
 were `<breaking>.<YYYYMMDD>`, tagged `v0.<breaking>.<YYYYMMDD>`. The version
-says nothing about compatibility: lane scripts, logs and swim's state have
-syntax versions, which a repo's `.swim.lock` pins. A revision that changes
-one has **Upgrading** notes; read them and `swim lock --help` before running
-lanes. A release that changes what an approval or pin hashes says so under
+says nothing about compatibility: the syntax version does. A revision that
+bumps it has **Upgrading** notes; read them before running lanes. A release that changes what an approval or pin hashes says so under
 **Upgrading** ([formats](docs/reference/formats.md)). Revisions before versioning existed are named by commit.
 
 Release tags live on `origin`, which is GitHub: its tags are authoritative
@@ -54,6 +52,16 @@ history stays here, since `swim changelog --since` reads it.
   chain of custody is unchanged: `swim verify` checks it, and it is
   `.swim/chain.jsonl` to read.
 
+- **One syntax number, and no `.swim.lock`.** swim has one syntax
+  version, 4: lane scripts say `# swim: syntax 4` as before, and lane logs
+  now start `# swim log | syntax 4 | swim N`. Older scripts (syntax 2 and
+  3) and logs (`# swim lane log | syntax 2`) read as they are; swim refuses
+  only a file newer than it reads, asking you to update swim. `swim lock`
+  is gone, `swim init` no longer writes `.swim.lock`, and runs no longer
+  check it or need `swim init` first: an existing `.swim.lock` is ignored
+  (delete it). The doctor check `lock` is gone, and so is the special
+  refusal of a pre-versioning (syntax 1) lane log. A swimmer now says the
+  one syntax it reads, and leaves queued a batch whose lane script is newer.
 - **`drift`, `stop`, `msg`, `input` and `output` are gone from lane
   scripts, with `# Observe:` and `# Outputs:`.** A lane calls `stage`,
   `run`, `snapshot`, `gate` and `guard` (and `confirm`); `swim drift`,
