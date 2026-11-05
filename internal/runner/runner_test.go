@@ -51,13 +51,13 @@ func TestResolve(t *testing.T) {
 	if !errors.As(err, &need) || need.Ext != "ts" || len(need.Found) != 1 || need.Found[0] != filepath.Join(bin, "tsx") {
 		t.Fatalf("ts: %v", err)
 	}
-	for _, want := range []string{"#!/usr/bin/env tsx", "swim config runners.ts \"" + filepath.Join(bin, "tsx") + "\"", "ts: tsx"} {
+	for _, want := range []string{"#!/usr/bin/env tsx", "swim config runners.ts \"" + filepath.Join(bin, "tsx") + "\""} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message lacks %q:\n%s", want, err)
 		}
 	}
-	cfg.Runners, cfg.RunnerFrom = map[string]string{"ts": "tsx --quiet"}, map[string]string{"ts": "/repo/swim.yml"}
-	if p, err := Resolve(cfg, ts); err != nil || strings.Join(p.Argv, " ") != "tsx --quiet "+ts || p.Source != RepoYML {
+	cfg.Runners = map[string]string{"ts": "tsx --quiet"}
+	if p, err := Resolve(cfg, ts); err != nil || strings.Join(p.Argv, " ") != "tsx --quiet "+ts || p.Source != Config {
 		t.Errorf("configured: %+v %v", p, err)
 	}
 	exe := write("lane.5", "\x7fELF\x00binary", 0o755)

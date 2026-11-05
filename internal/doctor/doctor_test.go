@@ -109,7 +109,7 @@ func TestLookPathAll(t *testing.T) {
 
 func opts(root string) Options {
 	return Options{
-		Root: root, Cwd: root, Cfg: &config.Config{Root: root, HasRepo: true, Path: filepath.Join(root, "no-config.yml"), Settings: config.Settings{Lanes: 4}},
+		Root: root, Cwd: root, Cfg: &config.Config{Root: root, Path: filepath.Join(root, "no-config.yml"), Settings: config.Settings{Lanes: 4}},
 		BashVersion: "5.2", GNU: func(string) bool { return true },
 		GitignoreBegin: "# >>> swim >>>", GitignoreEnd: "# <<< swim <<<", GitignoreBody: "lane.[0-9]*.sh\n.swim/\n.swim.log\n",
 	}
@@ -196,6 +196,21 @@ func TestToolchain(t *testing.T) {
 	o.Cfg.Toolchain = "true"
 	if tc := only(Run(o), "toolchain"); len(tc) != 0 {
 		t.Errorf("good toolchain: %+v", tc)
+	}
+}
+
+// A repos: key that's a path (as swim keyed repos once) matches nothing:
+// doctor says to key it by name.
+func TestConfigRepoPathKey(t *testing.T) {
+	o := opts(t.TempDir())
+	o.Cfg.Path = filepath.Join(t.TempDir(), "config.yml")
+	os.WriteFile(o.Cfg.Path, []byte("repos:\n  swimlane: {}\n  /src/web: {}\n"), 0o644)
+	l := only(Run(o), "config-repo")
+	if len(l) != 1 || l[0].Message != "repos: key /src/web is a path; key by repo name (e.g. web)" {
+		t.Errorf("path key: %+v", l)
+	}
+	if k := only(Run(o), "config-key"); len(k) != 0 {
+		t.Errorf("repos keys counted as unknown: %+v", k)
 	}
 }
 

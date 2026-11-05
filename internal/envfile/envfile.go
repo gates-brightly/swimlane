@@ -1,11 +1,10 @@
 // Package envfile reads the env files that give lanes their environment:
-// declarative KEY=VALUE files, parsed and never sourced, in three scopes.
+// declarative KEY=VALUE files, parsed and never sourced, in two files.
 //
 //	~/.config/swim/env.swim   general keys, then [repo PATH] sections
 //	<repo>/.env.swim          [lane N] sections only (git-ignored)
-//	<repo>/swim.yml env:      shared, non-secret defaults (committed)
 //
-// Precedence, highest first: the shell, then lane, repo, swim.yml, general.
+// Precedence, highest first: the shell, then lane, repo, general.
 // No key may be a guard flag: approvals never come from a file.
 package envfile
 
@@ -166,9 +165,9 @@ func value(v string) (string, error) {
 // Var is one resolved key: its value and where it came from.
 type Var struct {
 	Key, Value string
-	Scope      string // "lane 2", "repo", "swim.yml", "general"
-	File       string // the file, as people read it: .env.swim, swim.yml, ~/.config/swim/env.swim
-	Line       int    // 0 for swim.yml
+	Scope      string // "lane 2", "repo", "general"
+	File       string // the file, as people read it: .env.swim, ~/.config/swim/env.swim
+	Line       int
 }
 
 // Resolved is the env files' environment for one lane.
@@ -178,7 +177,7 @@ type Resolved struct {
 }
 
 // Resolve reads the env files for lane n of the repo at root.
-func Resolve(root string, cfg *config.Config, n int) (*Resolved, error) {
+func Resolve(root string, n int) (*Resolved, error) {
 	byKey := map[string]Var{}
 	var sources []string
 	add := func(scope, file, label string, entries []Entry) {
@@ -202,17 +201,6 @@ func Resolve(root string, cfg *config.Config, n int) (*Resolved, error) {
 	short := tilde(UserPath())
 	if user != nil {
 		add("general", short, short, user.General)
-	}
-	if len(cfg.Env) > 0 {
-		var entries []Entry
-		for k, v := range cfg.Env {
-			if !chars.Ident(k) {
-				return nil, fmt.Errorf("%s env: %q is not a variable name", config.RepoFileName, k)
-			}
-			entries = append(entries, Entry{Key: k, Value: v})
-		}
-		sort.Slice(entries, func(a, b int) bool { return entries[a].Key < entries[b].Key })
-		add("swim.yml", config.RepoFileName, config.RepoFileName+"[env]", entries)
 	}
 	if user != nil {
 		for _, sec := range user.Repos {
@@ -299,8 +287,8 @@ func GuardConflicts(r *Resolved, info lane.Info) []GuardConflict {
 
 // Check resolves lane n's env and refuses guard flags in it: what the
 // launcher does before any lane starts.
-func Check(root string, cfg *config.Config, n int, info lane.Info) (*Resolved, error) {
-	r, err := Resolve(root, cfg, n)
+func Check(root string, n int, info lane.Info) (*Resolved, error) {
+	r, err := Resolve(root, n)
 	if err != nil {
 		return nil, err
 	}

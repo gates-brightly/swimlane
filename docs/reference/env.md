@@ -14,14 +14,11 @@ AWS_PROFILE=orders-prod
 TABLE=orders-v2
 ```
 
-```yaml
-# <repo>/swim.yml (committed, so CI gets it)
-env:
-  LOG_LEVEL: info
-```
-
 - **Precedence:** the shell, then the lane's section, the repo's section,
-  `swim.yml`'s `env:`, the general keys.
+  the general keys.
+- **Shared values:** nothing committed gives lanes env. A non-secret value
+  every operator and CI needs (`LOG_LEVEL=info`) goes in the lane script
+  itself (`export LOG_LEVEL=info`), or in the CI job's `env:`.
 - **Format:** `KEY=VALUE`, `#` comments, quotes around a value. No `export`,
   `$VAR` or `$(...)`: a line that doesn't parse stops the run, naming the
   file and line.

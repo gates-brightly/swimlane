@@ -101,9 +101,9 @@ run "x" echo "x=$x"`)
 	}
 }
 
-// A queued batch's approval binds the manifest: changing a sourced file,
-// or the policy part of swim.yml, after it was queued skips the lane, and
-// swim says why; queued again, it runs approved.
+// A queued batch's approval binds the manifest: changing a sourced file
+// after it was queued skips the lane, and swim says why; queued again, it
+// runs approved.
 func TestManifestApprovalBinding(t *testing.T) {
 	r := newRepo(t)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
@@ -117,14 +117,6 @@ if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 	// The file is declared (# Includes:), so it's part of the script's hash.
 	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "lane.1.sh changed since it was queued") {
 		t.Errorf("swim 1 after its include changed: %s %q", st.State, st.Reason)
-	}
-
-	// Queued again; then only swim.yml's policy changes.
-	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")
-	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("blocked_commands: [\"terraform destroy\"]\n"), 0o644)
-	r.swim("watch", "--once")
-	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "its manifest changed since it was queued") {
-		t.Errorf("swim 1 after swim.yml's policy changed: %s %q", st.State, st.Reason)
 	}
 	if strings.Contains(r.log(1), "PASS  drop") {
 		t.Fatalf("the guarded step ran after its manifest changed:\n%s", r.log(1))
@@ -197,9 +189,9 @@ open(os.environ["SWIM_ROOT"] + "/approval-id", "w").write(resp["id"])'
 	}
 }
 
-// A queued batch's approval binds the runner the repo names for the lane:
-// the same script, run by another runner, is another thing to approve
-// (T2).
+// A queued batch's approval binds the runner the repo names for the lane
+// (its #! line): the same script, run by another runner, is another thing
+// to approve (T2).
 func TestManifestRunnerBinding(t *testing.T) {
 	r := newRepo(t)
 	dir := t.TempDir()
@@ -207,15 +199,15 @@ func TestManifestRunnerBinding(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexec bash \"$@\"\n"), 0o755)
 	}
 	r.env = append(r.env, "PATH="+filepath.Dir(bin)+":"+dir+":/usr/bin:/bin")
-	r.write("swim.yml", "runners:\n  py: pyrun\n", 0o644)
-	r.write("lane.1.py", `# Round: drop the old table
+	body := `# Round: drop the old table
 # Guards:  FIN_ALLOW_DROP drop the old table
 if swim guard FIN_ALLOW_DROP "drop the old table"; then swim run "drop" -- true; fi
-`, 0o644)
+`
+	r.write("lane.1.py", "#!/usr/bin/env pyrun\n"+body, 0o755)
 	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")
-	r.write("swim.yml", "runners:\n  py: pyrun2\n", 0o644)
+	r.write("lane.1.py", "#!/usr/bin/env pyrun2\n"+body, 0o755)
 	r.swim("watch", "--once")
-	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "its manifest changed since it was queued") {
+	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "changed since it was queued") {
 		t.Errorf("swim 1 after its runner changed: %s %q", st.State, st.Reason)
 	}
 	if strings.Contains(r.log(1), "PASS  drop") {

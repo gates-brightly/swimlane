@@ -8,8 +8,8 @@ import (
 )
 
 // envFiles writes the operator's env.swim (general keys and this repo's
-// section), the repo's .env.swim (lane sections) and swim.yml's env:.
-func envFiles(t *testing.T, r *repo, user, laneFile, yml string) {
+// section) and the repo's .env.swim (lane sections).
+func envFiles(t *testing.T, r *repo, user, laneFile string) {
 	t.Helper()
 	dir := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim")
 	os.MkdirAll(dir, 0o755)
@@ -19,9 +19,6 @@ func envFiles(t *testing.T, r *repo, user, laneFile, yml string) {
 	if laneFile != "" {
 		r.write(".env.swim", laneFile, 0o600)
 	}
-	if yml != "" {
-		r.write("swim.yml", yml, 0o644)
-	}
 }
 
 // Each layer's keys reach the lane, the shell beats every file, values are
@@ -30,9 +27,8 @@ func envFiles(t *testing.T, r *repo, user, laneFile, yml string) {
 func TestEnvFiles(t *testing.T) {
 	r := newRepo(t)
 	envFiles(t, r,
-		"STAGE=general-stage\nREGION=general-region\nGENERAL_ONLY=general-value\n[repo REPO]\nPROFILE=orders-prod-profile\nREGION=repo-region\n",
-		"[lane 1]\nTABLE=orders-v2-table\nSTAGE=lane-stage\n[lane 2]\nTABLE=other-lane-table\n",
-		"env:\n  REGION: yml-region\n  OWNER: platform-team\n")
+		"STAGE=general-stage\nREGION=general-region\nGENERAL_ONLY=general-value\n[repo REPO]\nPROFILE=orders-prod-profile\nREGION=repo-region\nOWNER=platform-team\n",
+		"[lane 1]\nTABLE=orders-v2-table\nSTAGE=lane-stage\n[lane 2]\nTABLE=other-lane-table\n")
 	r.script(1, "env", `run "env" bash -c 'echo "$STAGE $REGION $PROFILE $TABLE $OWNER $GENERAL_ONLY $SHELL_ONLY" > "$SWIM_ROOT/env.out"'`)
 	r.env = append(r.env, "SHELL_ONLY=typed", "OWNER=shell-owner")
 	r.mustSwim("run", "1", "--plain")
@@ -41,7 +37,7 @@ func TestEnvFiles(t *testing.T) {
 		t.Errorf("lane env:\n got %s\nwant %s", got, want)
 	}
 	log := r.log(1)
-	contains(t, "log", log, "env-files: ", "swim.yml[env]", "[repo]", ".env.swim[lane 1]")
+	contains(t, "log", log, "env-files: ", "[repo]", ".env.swim[lane 1]")
 	for _, secret := range []string{"orders-v2-table", "orders-prod-profile"} {
 		if strings.Contains(log, secret) {
 			t.Errorf("file value %q in the log", secret)
@@ -60,15 +56,6 @@ func TestEnvFiles(t *testing.T) {
 		t.Errorf("swim env shows a value unmasked:\n%s", out)
 	}
 	contains(t, "swim env --yaml", r.mustSwim("env", "1", "--yaml"), "schema: swim.env/v1", "env_sha256: "+sum, "key: TABLE", "scope: lane 1")
-
-	// env: belongs in env.swim, not config.yml.
-	cfg := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")
-	orig, _ := os.ReadFile(cfg)
-	os.WriteFile(cfg, []byte(strings.Replace(string(orig), "defaults:\n", "defaults:\n  env: {A: b}\n", 1)), 0o644)
-	if out, code := r.swim("status"); code == 0 || !strings.Contains(out, "env: belongs in") {
-		t.Errorf("env in config.yml: exit %d\n%s", code, out)
-	}
-	os.WriteFile(cfg, orig, 0o644)
 }
 
 // Approvals never come from a file: a guard flag in any env file stops the
@@ -77,7 +64,7 @@ func TestEnvFileGuardFlagRefused(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "guarded", `if guard ALLOW_DROP "drop t"; then run "dropped" true; fi`)
 	r.script(2, "other", `run "ok" true`)
-	envFiles(t, r, "", "[lane 1]\nALLOW_DROP=1\n", "")
+	envFiles(t, r, "", "[lane 1]\nALLOW_DROP=1\n")
 	out, code := r.swim("run", "--plain")
 	if code == 0 || !strings.Contains(out, ".env.swim:2 sets ALLOW_DROP, a guard flag of this lane's script: env files can't approve guards") {
 		t.Fatalf("exit %d\n%s", code, out)
@@ -89,7 +76,7 @@ func TestEnvFileGuardFlagRefused(t *testing.T) {
 	contains(t, "doctor", must(r.swim("doctor")), "sets ALLOW_DROP", "[env-file]")
 
 	// A bad line names the file and line.
-	envFiles(t, r, "STAGE=$HOME\n", "", "")
+	envFiles(t, r, "STAGE=$HOME\n", "")
 	if out, code := r.swim("run", "2", "--plain"); code == 0 || !strings.Contains(out, "env.swim:1: STAGE: no expansion") {
 		t.Errorf("bad line: exit %d\n%s", code, out)
 	}
@@ -100,7 +87,7 @@ func TestEnvFileGuardFlagRefused(t *testing.T) {
 func TestEnvFileQueuePin(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "pinned", `run "ok" true`)
-	envFiles(t, r, "", "[lane 1]\nTABLE=one\n", "")
+	envFiles(t, r, "", "[lane 1]\nTABLE=one\n")
 	r.mustSwim("queue", "add", "1")
 	r.write(".env.swim", "[lane 1]\nTABLE=two\n", 0o600)
 	out, _ := r.cmd(bin, "watch", "--once").CombinedOutput()
@@ -114,7 +101,7 @@ func TestEnvFileQueuePin(t *testing.T) {
 // another language gets the env files too, masked in its log.
 func TestEnvFileDuplicatesAndWrappedLane(t *testing.T) {
 	r := newRepo(t)
-	envFiles(t, r, "", "[lane 1]\nTABLE=first-table\nTABLE=orders-v2-table\n", "")
+	envFiles(t, r, "", "[lane 1]\nTABLE=first-table\nTABLE=orders-v2-table\n")
 	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped env\nswim run \"show\" -- bash -c 'echo \"table=$TABLE\"; echo \"$TABLE\" > \"$SWIM_ROOT/table.txt\"'\n", 0o755)
 	contains(t, "lint", must(r.swim("lint", "1")), ".env.swim:3 sets TABLE again in [lane 1] (first at line 2; the last wins)")
 	r.mustSwim("run", "1", "--plain")

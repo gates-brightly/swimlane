@@ -1,6 +1,6 @@
 ---
 name: swim
-description: Plan and write operational work for swim (swimlane), the operator-in-the-loop runner. Claude writes lane scripts, a person runs them, and Claude reads the logs back. Use when a repo has lane.N.sh / swim.yml / .swim/, when the user mentions swim, lanes, rounds, guards, approvals, the queue or `swim watch`, or when operational work (infra changes, migrations, cutovers, prod diagnostics) has to run somewhere Claude can't reach (production, a VPN, the user's credentials).
+description: Plan and write operational work for swim (swimlane), the operator-in-the-loop runner. Claude writes lane scripts, a person runs them, and Claude reads the logs back. Use when a repo has lane.N.sh / .swim/, when the user mentions swim, lanes, rounds, guards, approvals, the queue or `swim watch`, or when operational work (infra changes, migrations, cutovers, prod diagnostics) has to run somewhere Claude can't reach (production, a VPN, the user's credentials).
 ---
 
 # swim
@@ -12,12 +12,12 @@ run a round or approve anything.
 
 ```sh
 command -v swim && swim --version
-ls lane.* swim.yml .swim 2>/dev/null
+ls lane.* .swim 2>/dev/null
 ```
 
 - **No `swim`:** say so; don't install it unless asked (`swim skill`
   says how).
-- **No lane files, swim.yml or .swim:** the repo doesn't use swim yet.
+- **No lane files or .swim:** the repo doesn't use swim yet.
   Propose `swim init` when work has to run where you can't; don't run it.
 - **The binary wins:** if a command here is unknown, follow the binary and
   tell the user once.

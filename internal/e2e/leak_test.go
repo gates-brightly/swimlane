@@ -57,7 +57,7 @@ func leakNeedles() map[string]string {
 // with repo/, config/, home/ or tmp/). A file that matches none is a
 // new writer: add it here (after making sure it masks).
 var leakInventory = []struct{ what, re string }{
-	{"lane scripts and swim.yml (the test's own)", `^repo/(lane\.\d+\.(sh|py)|swim\.yml|\.gitignore|\.swim\.lock)$`},
+	{"lane scripts (the test's own)", `^repo/(lane\.\d+\.(sh|py)|\.gitignore|\.swim\.lock)$`},
 	{"the project log", `^repo/\.swim\.log$`},
 	{"lane logs", `^repo/\.swim/logs/agent\d+(\.prev-[^/]+)?(\.check)?\.log$`},
 	{"archived logs", `^repo/\.swim/logs/archive/`},
@@ -88,7 +88,7 @@ func TestNoSecretLeaks(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(tmp) })
 	r.env = append(r.env, "HOME="+home, "TMPDIR="+tmp, "MY_LEAK_VAR="+leakSecrets["env"], "LEAK_API_TOKEN="+leakSecrets["auto"], "MY_LEAK_PEM="+leakSecrets["pem"])
-	r.write("swim.yml", "secret_env: [MY_LEAK_VAR, MY_LEAK_PEM]\n", 0o644)
+	r.repoConfig("secret_env: [MY_LEAK_VAR, MY_LEAK_PEM]\n")
 
 	// The lane prints them every way: raw, to stderr, base64 (standard,
 	// unpadded, URL-safe), URL-encoded, split across writes, in step

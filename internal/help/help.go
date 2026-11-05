@@ -45,9 +45,9 @@ var Commands = map[string]string{
 	"init": `swim init
 
   Set up the current repo (run from anywhere inside it):
-    - creates ~/.config/swim/config.yml if missing and adds a section for this
-      repo (keyed by git toplevel) with lanes and an empty deps table;
-      existing content and comments are kept
+    - creates ~/.config/swim/config.yml if missing (an existing one is left
+      as it is; init writes nothing for the repo there) and says the
+      repo's name, the repos: key its settings go under
     - adds a marked block to .gitignore: lane.[0-9]*, .env.swim, .swim/,
       .swim.log
     - creates .swim/status.yml with every lane idle
@@ -55,20 +55,30 @@ var Commands = map[string]string{
       from the block if you want to commit the project's history)
   Safe to run again.
 `,
-	"config": `swim config [edit | KEY [VALUE]] [--repo] [--path]
+	"config": `swim config [edit | KEY [VALUE]] [--repo | --branch] [--path]
 
+  Config is ~/.config/swim/config.yml, in layers, later winning key by key:
+  swim's default < defaults: < repos.NAME < repos.NAME/BRANCH. NAME is the
+  repo's name: its origin remote URL's last part without .git (swimlane,
+  from git@github.com:gates-brightly/swimlane.git), else its toplevel
+  directory's name; every worktree of a repo shares it. BRANCH is the
+  checked-out branch, matched exactly (none on a detached HEAD).
   With no key on a terminal (or with edit), every setting on one screen to
-  change in place: its value, default and what it takes. Enter, Space or
-  ← → step a key with choices; Enter on another types its value on the
-  bottom line (Esc cancels), checked before it's written; d goes back to
-  the default; q quits. Only what differs from the default is written, to
-  defaults:, and the first write backs the file up as config.yml-N.bak.
-  With no key otherwise, print the effective configuration for this repo
-  (defaults merged with the repo's section), or with --path just the
-  config file location. The output ends with the effective blocked_commands: the
-  defaults' and the repo's (swim blocks none by itself).
+  change in place: its value, the layer it comes from, its default and
+  what it takes. Enter, Space or ← → step a key with choices; Enter on
+  another types its value on the bottom line (Esc cancels), checked before
+  it's written; d removes it from this section; q quits. The screen edits
+  defaults:, or with --repo this repo's section and with --branch this
+  branch's. Only what differs from what the section inherits is written,
+  and the first write backs the file up as config.yml-N.bak.
+  With no key otherwise, print the effective configuration for this repo,
+  each value with the layer it comes from (default, defaults, repo,
+  repo/branch), or with --path just the config file location. The output
+  ends with the effective blocked_commands: every layer's, added up (swim
+  blocks none by itself).
   swim config KEY          print KEY's effective value
-  swim config KEY VALUE    set KEY in the config file, keeping its comments
+  swim config KEY VALUE    set KEY under defaults:, keeping the file's comments;
+                           --repo: in repos.NAME; --branch: in repos.NAME/BRANCH
   Keys:
     queue_lease  duration (10s or more)   a queue swimmer renews its claim's
                  heartbeat every third of this while it runs a batch; seen
@@ -84,22 +94,21 @@ var Commands = map[string]string{
                  batch ends. Only on a terminal, never in CI. Default false.
     notify_url   an http(s) URL           send the same notifications there,
                  terminal or not, as ntfy messages (title, priority, tags;
-                 with curl): e.g. https://ntfy.sh/TOPIC. Not in swim.yml.
+                 with curl): e.g. https://ntfy.sh/TOPIC.
     notify_command  a shell command       run instead (sh -c, in the repo
                  root), with SWIM_EVENT (ask, end, test), SWIM_RESULT
                  (passed, failed, interrupted, skipped, error), SWIM_TITLE,
                  SWIM_BODY, SWIM_LANES, SWIM_BATCH, SWIM_ROOT,
                  SWIM_PRIORITY (high, default), SWIM_TAGS and
-                 SWIM_NOTIFY_URL set. Not in a repo's swim.yml.
+                 SWIM_NOTIFY_URL set.
                  Each send is recorded in ~/.local/state/swim/notify.json:
                  swim config shows the last (t on its screen sends a test),
                  swim doctor warns when it failed, and a failure is a warn
                  line in .swim.log.
     runners.EXT  a command                the runner for lane.N.EXT scripts with
-                 no #! line, e.g. swim config runners.ts tsx. Always written
-                 to the repo's section; swim.yml's runners: is the default.
-  Settings go under defaults: (every repo); --repo writes this repo's
-  section instead. Unknown keys and bad values are rejected.
+                 no #! line, e.g. swim config runners.ts tsx. Written to the
+                 repo's section (or the branch's, with --branch).
+  Unknown keys and bad values are rejected.
   There is no lane count to set: swim shows the lanes in use (a lane script
   that isn't a stub, a current log, or a running lane). swim new N starts
   one (1..99); swim archive N drops one. A lanes: setting is ignored.
@@ -441,7 +450,7 @@ swim log --since <1h|TIME|RUN|JOB>
   --require-work    exit 1 when there is nothing to run (default: a notice, 0)
   Exit codes: 0 every selected lane passed, 1 a lane failed or was skipped,
   2 usage, config or an unresolvable # After:.
-  Config on a runner comes from the repo's committed swim.yml (see CONFIG);
+  A runner has no config of its own: swim's defaults apply (see CONFIG);
   commit the lane scripts the job runs (git add -f lane.N.sh, or drop
   lane.[0-9]* from swim's .gitignore block). swim never commits or pushes
   results: upload .swim/logs/, .swim/snapshots/, .swim.log and the JUnit file
@@ -460,7 +469,7 @@ swim queue show|rm|requeue ID
   add       queue the named lanes, or with none every pending round that
             hasn't passed (as swim all would run). The batch is fixed now:
             each lane is pinned to the job it holds, its script, its
-            manifest (what it sources, its sidecar, swim.yml's policy) and
+            manifest (what it sources, its sidecar, how it runs) and
             its env, so a lane changed before the batch runs is skipped, not
             run.
             --approve FLAG  approve that guard for this batch (repeat, or

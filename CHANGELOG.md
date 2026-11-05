@@ -162,6 +162,41 @@ history stays here, since `swim changelog --since` reads it.
   and no screen, as it does when stdout isn't a terminal. The pinned panel
   without its keys is `SWIM_TUI=0`.
 
+### Changed
+
+- **Config lives in your home directory alone, keyed by repo name and
+  branch; `swim.yml` is gone.** `~/.config/swim/config.yml` applies in
+  layers, later winning key by key: swim's default, `defaults:`,
+  `repos.NAME`, then `repos.NAME/BRANCH`. NAME is the repo's name, the
+  last part of its `origin` URL without `.git` (`swimlane`), or its
+  toplevel directory's name with no origin; BRANCH is the checked-out
+  branch, matched exactly (none on a detached HEAD). Every worktree of a
+  repo now gets its config (a path key missed them). `swim config` shows
+  the layer each value comes from (`term_grace: 30s # repo`); `swim config
+  KEY VALUE --repo` sets it in `repos.NAME` and `--branch` in
+  `repos.NAME/BRANCH`, and the screen edits either with the same flags.
+  `swim init` no longer writes a section for the repo. A repo's
+  `swim.yml` is no longer read (a file left there is ignored), nor is its
+  `env:`: a shared non-secret value goes in the lane script or the CI
+  job's `env:`. With nothing committed to read, `swim ci` runs on swim's
+  defaults, and a lane's manifest pins no policy keys: its
+  `manifest_sha256` is what it was for a repo whose `swim.yml` set none.
+  `swim doctor`'s `config-repo` check now flags a `repos:` key that's a
+  path.
+
+### Upgrading
+
+- **Rename each `repos:` key in `~/.config/swim/config.yml` from the
+  repo's path to its name** (`/Users/you/src/swimlane:` becomes
+  `swimlane:`; `swim config` prints the name, and `swim doctor` lists the
+  path keys left). A path key matches nothing now.
+- **Move a repo's `swim.yml` settings into `repos.NAME`** of your
+  config.yml, then delete the file. Its `env:` goes in the lane scripts
+  (or `[repo PATH]` in `env.swim`, for you alone), and its `runners:` in a
+  `#!` line for CI. A batch queued with an older swim, for a repo whose
+  `swim.yml` set a policy key (`blocked_commands`, `runners`, `signing`,
+  `secret_env*`, `env`), is skipped as changed: queue it again.
+
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 
 ### Removed

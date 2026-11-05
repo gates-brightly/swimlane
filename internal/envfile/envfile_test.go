@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 )
 
@@ -54,8 +53,7 @@ func TestResolvePrecedenceAndGuards(t *testing.T) {
 	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
 	os.WriteFile(filepath.Join(xdg, "swim", "env.swim"), []byte("K=general\nG=general\n[repo "+root+"]\nK=repo\nR=repo\n[repo /elsewhere]\nK=other\n"), 0o644)
 	os.WriteFile(filepath.Join(root, RepoFile), []byte("[lane 1]\nK=lane\n[lane 2]\nK=lane2\n"), 0o644)
-	cfg := &config.Config{Settings: config.Settings{Env: map[string]string{"K": "yml", "Y": "yml", "R": "yml"}}}
-	r, err := Resolve(root, cfg, 1)
+	r, err := Resolve(root, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,18 +61,18 @@ func TestResolvePrecedenceAndGuards(t *testing.T) {
 	for _, v := range r.Vars {
 		got[v.Key] = v.Value + "@" + v.Scope
 	}
-	want := map[string]string{"K": "lane@lane 1", "G": "general@general", "R": "repo@repo", "Y": "yml@swim.yml"}
+	want := map[string]string{"K": "lane@lane 1", "G": "general@general", "R": "repo@repo"}
 	for k, w := range want {
 		if got[k] != w {
 			t.Errorf("%s = %q, want %q", k, got[k], w)
 		}
 	}
-	if len(r.Sources) != 4 || r.Sources[3] != ".env.swim[lane 1]" {
+	if len(r.Sources) != 3 || r.Sources[2] != ".env.swim[lane 1]" {
 		t.Errorf("sources %q", r.Sources)
 	}
 	h1 := r.SHA256()
 	os.WriteFile(filepath.Join(root, RepoFile), []byte("[lane 1]\nK=changed\n"), 0o644)
-	r2, _ := Resolve(root, cfg, 1)
+	r2, _ := Resolve(root, 1)
 	if h1 == "" || r2.SHA256() == h1 {
 		t.Error("env hash didn't change with a value")
 	}
@@ -86,7 +84,7 @@ func TestResolvePrecedenceAndGuards(t *testing.T) {
 	if c := GuardConflicts(r2, info); len(c) != 1 || c[0].Key != "K" || !strings.Contains(c[0].Error(), ".env.swim:2 sets K") {
 		t.Errorf("script guard: %+v", c)
 	}
-	if _, err := Check(root, cfg, 1, info); err == nil {
+	if _, err := Check(root, 1, info); err == nil {
 		t.Error("Check allowed a guard flag")
 	}
 }

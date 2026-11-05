@@ -7,14 +7,14 @@ A lane can be any runnable: `lane.N.py`, `.js`, `.ts`, `.rb`, a compiled
 
 1. `lane.N.sh`: bash.
 2. A `#!` line: that command.
-3. `runners:` for its extension: yours (config.yml) over the repo's
-   `swim.yml`.
+3. `runners:` for its extension, from your config.yml (the branch's
+   section over the repo's over `defaults:`).
 4. An executable with no runner: itself.
 5. Otherwise swim finds the usual runners on `PATH` (`.ts`: tsx, ts-node,
    bun, deno; `.py`: python3; ...), asks once, and saves the answer as
    `runners.ts` for this repo. With no one to ask (CI, `swim watch`), the
-   lane fails at start with the fix: a `#!` line, `swim config runners.ts
-   tsx`, or `runners: {ts: tsx}` in `swim.yml`.
+   lane fails at start with the fix: a `#!` line (which CI needs: it has
+   no config), or `swim config runners.ts tsx`.
 
 ## Steps
 

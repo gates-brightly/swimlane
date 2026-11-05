@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,90 +36,150 @@ func TestLoadMissingFileUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Lanes != 1 || len(c.Active) != 0 || c.HasRepo {
-		t.Fatalf("got lanes=%d active=%v hasRepo=%v", c.Lanes, c.Active, c.HasRepo)
+	if c.Lanes != 1 || len(c.Active) != 0 || c.Repo != "repo" || c.From("term_grace") != LayerDefault {
+		t.Fatalf("got lanes=%d active=%v repo=%q", c.Lanes, c.Active, c.Repo)
 	}
 }
 
-func TestLoadMergesRepoOverDefaults(t *testing.T) {
+// gitRepo makes a git repo on branch, with origin as its origin remote
+// when it isn't "".
+func gitRepo(t *testing.T, origin, branch string) string {
+	t.Helper()
+	root := t.TempDir()
+	for _, args := range [][]string{{"init", "-q", "-b", branch}, {"remote", "add", "origin", origin}} {
+		if args[0] == "remote" && origin == "" {
+			continue
+		}
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	return root
+}
+
+func TestRepoName(t *testing.T) {
+	for origin, want := range map[string]string{
+		"git@github.com:gates-brightly/swimlane.git": "swimlane",
+		"https://github.com/gates-brightly/web/":     "web",
+		"ssh://git@host:22/team/api.git":             "api",
+		"/srv/git/infra.git":                         "infra",
+	} {
+		if got := RepoName(gitRepo(t, origin, "main")); got != want {
+			t.Errorf("RepoName(origin %s) = %q, want %q", origin, got, want)
+		}
+	}
+	// No origin: the toplevel's directory name.
+	root := gitRepo(t, "", "main")
+	if got := RepoName(root); got != filepath.Base(root) {
+		t.Errorf("RepoName without origin = %q, want %q", got, filepath.Base(root))
+	}
+	if got := RepoBranch(root); got != "main" {
+		t.Errorf("RepoBranch = %q", got)
+	}
+	if got := RepoBranch(t.TempDir()); got != "" {
+		t.Errorf("RepoBranch outside git = %q", got)
+	}
+}
+
+// Layers apply in order, later winning key by key: defaults, the repo's
+// section (by name), then the branch's.
+func TestLoadLayers(t *testing.T) {
+	root := gitRepo(t, "git@github.com:me/swimlane.git", "feature")
 	writeConfig(t, `
 defaults:
   lanes: 4
   header_env: [STAGE]
   runtime: node --version
+  term_grace: 20s
+  blocked_commands: [rm -rf]
 repos:
-  /repo/a:
-    lanes: 6
+  swimlane:
     deps: {2: [1]} # removed: config.yml ignores it
-  /repo/b:
-    header_env: [AWS_PROFILE]
+    term_grace: 30s
+    interrupt: immediate
+    blocked_commands: [terraform destroy]
+    runners: {ts: tsx}
+  swimlane/feature:
+    interrupt: graceful
+    runners: {py: python3}
+  swimlane/main:
+    signing: off
+  `+root+`:
+    max_parallel: 9 # a path key: matches nothing
 `)
-	a, err := Load("/repo/a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.Runtime != "node --version" || strings.Join(a.HeaderEnv, ",") != "STAGE" {
-		t.Fatalf("a = %+v", a.Settings)
-	}
-	b, err := Load("/repo/b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(b.HeaderEnv, ",") != "AWS_PROFILE" {
-		t.Fatalf("b = %+v", b.Settings)
-	}
-}
-
-func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	p := Path()
-
-	created, added, err := EnsureRepo(p, "/repo/one")
-	if err != nil || !created || !added {
-		t.Fatalf("first EnsureRepo: created=%v added=%v err=%v", created, added, err)
-	}
-	// Second repo: comments from the default file must survive.
-	if _, added, err = EnsureRepo(p, "/repo/two"); err != nil || !added {
-		t.Fatalf("second EnsureRepo: added=%v err=%v", added, err)
-	}
-	// Idempotent.
-	if _, added, err = EnsureRepo(p, "/repo/two"); err != nil || added {
-		t.Fatalf("third EnsureRepo: added=%v err=%v", added, err)
-	}
-	data, _ := os.ReadFile(p)
-	s := string(data)
-	for _, want := range []string{"# swim configuration", "/repo/one:", "/repo/two:", "header_env"} {
-		if !strings.Contains(s, want) {
-			t.Errorf("config missing %q:\n%s", want, s)
-		}
-	}
-	if strings.Contains(s, "deps") {
-		t.Errorf("config has deps:\n%s", s)
-	}
-	c, err := Load("/repo/two")
-	if err != nil || !c.HasRepo {
-		t.Fatalf("Load after EnsureRepo: %+v err=%v", c, err)
-	}
-}
-
-// modules and guarded secrets were removed: a swim.yml (read strictly)
-// that still sets their keys loads (they count in the policy hash).
-func TestRemovedPolicyKeysStillLoad(t *testing.T) {
-	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, RepoFileName), []byte("modules:\n  allow: [notify]\n"+
-		"secrets:\n  PROD_DB: { guard: ALLOW_DROP }\n  1x: { guard: 'not a flag', release: forever }\nambient_credentials: [prod-write]\n"), 0o644)
 	c, err := Load(root)
 	if err != nil {
-		t.Fatalf("a config with removed keys: %v", err)
+		t.Fatal(err)
 	}
-	if c.Repo.RemovedModules == nil || c.Repo.RemovedSecrets == nil || c.Repo.RemovedAmbientCredentials == nil {
-		t.Errorf("swim.yml removed keys not read: %+v", c.Repo)
+	if c.Repo != "swimlane" || c.Branch != "feature" || len(c.Layers) != 3 || !c.Layers[1].Found || !c.Layers[2].Found {
+		t.Fatalf("repo %q branch %q layers %+v", c.Repo, c.Branch, c.Layers)
 	}
-	for _, k := range []string{"modules", "secrets"} {
-		if _, err := c.Get(k); err == nil {
-			t.Errorf("swim config %s still answers", k)
+	_, tg := c.Graces()
+	if c.Runtime != "node --version" || tg.String() != "30s" || c.InterruptMode() != InterruptGraceful || c.SigningMode() != SigningAuto || c.Parallel() != 0 {
+		t.Fatalf("effective: %+v", c.Settings)
+	}
+	if strings.Join(c.BlockedCommands, ",") != "rm -rf,terraform destroy" || c.Runners["ts"] != "tsx" || c.Runners["py"] != "python3" {
+		t.Errorf("lists and runners: %v %v", c.BlockedCommands, c.Runners)
+	}
+	for key, want := range map[string]string{"runtime": LayerDefaults, "term_grace": LayerRepo, "interrupt": LayerBranch,
+		"signing": LayerDefault, "runners.ts": LayerRepo, "runners.py": LayerBranch, "watch_batches": LayerDefault} {
+		if got := c.From(key); got != want {
+			t.Errorf("From(%s) = %s, want %s", key, got, want)
 		}
+	}
+	if v, _ := c.Upto(LayerDefaults).Get("term_grace"); v != "20s" {
+		t.Errorf("Upto(defaults) term_grace = %s", v)
+	}
+	if v, _ := c.Below(LayerBranch).Get("interrupt"); v != InterruptImmediate {
+		t.Errorf("Below(branch) interrupt = %s", v)
+	}
+	if s, _ := c.Section(LayerBranch); s != "swimlane/feature" {
+		t.Errorf("Section(branch) = %q", s)
+	}
+	if keys, _ := PathKeys(Path()); len(keys) != 1 || keys[0] != root {
+		t.Errorf("PathKeys = %v", keys)
+	}
+}
+
+// A detached HEAD has no branch layer.
+func TestDetachedHeadHasNoBranchLayer(t *testing.T) {
+	root := gitRepo(t, "", "main")
+	for _, args := range [][]string{{"commit", "-q", "--allow-empty", "-m", "x"}, {"checkout", "-q", "--detach"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	name := filepath.Base(root)
+	writeConfig(t, "repos:\n  "+name+"/main:\n    interrupt: immediate\n")
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Branch != "" || len(c.Layers) != 2 || c.InterruptMode() != InterruptGraceful {
+		t.Fatalf("detached: branch %q layers %d interrupt %s", c.Branch, len(c.Layers), c.InterruptMode())
+	}
+	if _, err := c.Section(LayerBranch); err == nil {
+		t.Error("a branch section on a detached HEAD")
+	}
+}
+
+func TestEnsureFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	p := Path()
+	if created, err := EnsureFile(p); err != nil || !created {
+		t.Fatalf("first EnsureFile: %v %v", created, err)
+	}
+	os.WriteFile(p, []byte("# mine\n"), 0o644)
+	if created, err := EnsureFile(p); err != nil || created {
+		t.Fatalf("second EnsureFile: %v %v", created, err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "# mine\n" {
+		t.Errorf("an existing file was rewritten: %q", b)
 	}
 }
 
@@ -129,17 +190,20 @@ defaults:
   # interrupt comment
   interrupt: graceful # trailing
 repos:
-  /repo/a:
+  a:
     # keep me
     header_env: [STAGE]
 `)
-	if err := SetKey(p, "/repo/a", "interrupt", "immediate", false); err != nil {
+	if err := SetKey(p, "", "interrupt", "immediate"); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetKey(p, "/repo/a", "signing", "off", false); err != nil {
+	if err := SetKey(p, "", "signing", "off"); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetKey(p, "/repo/a", "watch_batches", "2", true); err != nil {
+	if err := SetKey(p, "a", "watch_batches", "2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetKey(p, "a/main", "term_grace", "30s"); err != nil {
 		t.Fatal(err)
 	}
 	c, err := Load("/repo/a")
@@ -156,13 +220,13 @@ repos:
 	}
 	data, _ := os.ReadFile(p)
 	s := string(data)
-	for _, want := range []string{"# top comment", "# interrupt comment", "# trailing", "# keep me", "interrupt: immediate", "watch_batches: 2"} {
+	for _, want := range []string{"# top comment", "# interrupt comment", "# trailing", "# keep me", "interrupt: immediate", "watch_batches: 2", "a/main:\n    term_grace: 30s"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("lost %q:\n%s", want, s)
 		}
 	}
 	// A value is replaced in place, its comment kept.
-	if err := SetKey(p, "/repo/a", "interrupt", "graceful", false); err != nil {
+	if err := SetKey(p, "", "interrupt", "graceful"); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(p)
@@ -175,24 +239,28 @@ func TestSetKeyCreatesFileAndDefaults(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	p := Path()
-	if err := SetKey(p, "/repo/x", "interrupt", "immediate", false); err != nil {
+	if err := SetKey(p, "", "interrupt", "immediate"); err != nil {
 		t.Fatal(err)
 	}
 	c, err := Load("/repo/x")
-	if err != nil || c.InterruptMode() != InterruptImmediate || c.HasRepo {
+	if err != nil || c.InterruptMode() != InterruptImmediate || c.Layers[1].Found {
 		t.Fatalf("new file: %+v %v", c, err)
 	}
-	// An empty file and a flow-style `defaults: {}` both work.
+	// An empty file and a flow-style `defaults: {}` both work, and a
+	// repo's section is added to a file with no repos:.
 	writeConfig(t, "")
-	if err := SetKey(Path(), "/r", "signing", "off", false); err != nil {
+	if err := SetKey(Path(), "", "signing", "off"); err != nil {
 		t.Fatal(err)
 	}
 	writeConfig(t, "defaults: {}\n")
-	if err := SetKey(Path(), "/r", "watch_batches", "5", false); err != nil {
+	if err := SetKey(Path(), "", "watch_batches", "5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetKey(Path(), "x", "watch_batches", "6"); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(Path())
-	if !strings.Contains(string(data), "defaults:\n  watch_batches: 5") {
+	if !strings.Contains(string(data), "defaults:\n  watch_batches: 5") || !strings.Contains(string(data), "repos:\n  x:\n    watch_batches: 6") {
 		t.Errorf("flow defaults:\n%s", data)
 	}
 }
@@ -210,7 +278,7 @@ func TestSetKeyRejectsBadKeysAndValues(t *testing.T) {
 		{"lanes", "4", "unknown config key"},    // swim finds the lanes in use
 	}
 	for _, c := range cases {
-		err := SetKey(p, "/r", c.key, c.value, false)
+		err := SetKey(p, "r", c.key, c.value)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("SetKey(%s, %s) err = %v, want %q", c.key, c.value, err, c.want)
 		}
@@ -220,56 +288,31 @@ func TestSetKeyRejectsBadKeysAndValues(t *testing.T) {
 	}
 }
 
-func TestRepoFile(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
+// A swim.yml in a repo is just a file: swim reads its config from
+// config.yml alone.
+func TestSwimYmlIsIgnored(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("max_parallel: 3\nblocked_commands: [terraform destroy]\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("max_parallel: 3\nlanse: 3\nenv: {A: b}\n"), 0o644)
 	c, err := Load(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Lanes != 1 || c.Parallel() != 3 || c.RepoFile == "" {
-		t.Fatalf("swim.yml not applied: %+v", c)
-	}
-	// The operator's repos entry wins over swim.yml.
-	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
-	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  lanes: 4\nrepos:\n  "+root+":\n    max_parallel: 5\n"), 0o644)
-	if c, _ = Load(root); c.Parallel() != 5 {
-		t.Fatalf("precedence: parallel %d", c.Parallel())
-	}
-	for _, bad := range []string{"lanse: 3\n", "lanes: 7\n"} { // lanes: is no setting: swim finds the lanes in use
-		os.WriteFile(filepath.Join(root, "swim.yml"), []byte(bad), 0o644)
-		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "swim.yml") {
-			t.Fatalf("%q: unknown key should be an error naming swim.yml: %v", bad, err)
-		}
+	if err != nil || c.Parallel() != 0 {
+		t.Fatalf("swim.yml applied: %+v %v", c, err)
 	}
 }
 
-// Runners merge per extension: config defaults, then the repo's swim.yml,
-// then the operator's repo section; env: is swim.yml's alone.
-func TestRunnersAndEnv(t *testing.T) {
-	xdg, root := t.TempDir(), t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
-	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  runners: {ts: deno, py: python3}\nrepos:\n  "+root+":\n    runners: {ts: tsx}\n"), 0o644)
-	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("runners: {ts: bun, rb: ruby}\nenv: {STAGE: dev}\n"), 0o644)
-	c, err := Load(root)
+// Runners merge per extension, defaults then the repo's section; env: in
+// config.yml is not a key (env files hold env).
+func TestRunners(t *testing.T) {
+	writeConfig(t, "defaults:\n  runners: {ts: deno, py: python3}\n  env: {A: b}\nrepos:\n  r:\n    runners: {ts: tsx}\n")
+	c, err := Load("/x/r")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Runners["ts"] != "tsx" || c.Runners["py"] != "python3" || c.Runners["rb"] != "ruby" || filepath.Base(c.RunnerFrom["rb"]) != "swim.yml" {
-		t.Errorf("runners %v from %v", c.Runners, c.RunnerFrom)
-	}
-	if c.Env["STAGE"] != "dev" {
-		t.Errorf("env %v", c.Env)
+	if c.Runners["ts"] != "tsx" || c.Runners["py"] != "python3" {
+		t.Errorf("runners %v", c.Runners)
 	}
 	if v, _ := c.Get("runners.ts"); v != "tsx" {
 		t.Errorf("Get runners.ts = %q", v)
-	}
-	os.WriteFile(filepath.Join(xdg, "swim", "config.yml"), []byte("defaults:\n  env: {A: b}\n"), 0o644)
-	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "env: belongs in") {
-		t.Errorf("env in config.yml: %v", err)
 	}
 }
 
@@ -286,38 +329,51 @@ func TestNewKeys(t *testing.T) {
 	}
 }
 
-func TestIsDefault(t *testing.T) {
-	for _, c := range []struct {
-		key, value string
-		want       bool
+func TestInherited(t *testing.T) {
+	writeConfig(t, "defaults:\n  term_grace: 20s\n")
+	c, err := Load("/x/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		layer, key, value string
+		want              bool
 	}{
-		{"term_grace", "10s", true},
-		{"term_grace", "11s", false},
-		{"notify", "false", true},
-		{"notify", "true", false},
-		{"interrupt", "Graceful", true},
-		{"watch_batches", "4", true},
+		{LayerDefaults, "term_grace", "10s", true},
+		{LayerDefaults, "term_grace", "20s", false},
+		{LayerRepo, "term_grace", "20s", true},
+		{LayerRepo, "term_grace", "10s", false},
+		{LayerDefaults, "notify", "false", true},
+		{LayerDefaults, "notify", "true", false},
+		{LayerDefaults, "interrupt", "Graceful", true},
+		{LayerDefaults, "watch_batches", "4", true},
 	} {
-		got, err := IsDefault(c.key, c.value)
-		if err != nil || got != c.want {
-			t.Errorf("IsDefault(%s, %s) = %v, %v; want %v", c.key, c.value, got, err, c.want)
+		got, err := c.Inherited(tc.layer, tc.key, tc.value)
+		if err != nil || got != tc.want {
+			t.Errorf("Inherited(%s, %s, %s) = %v, %v; want %v", tc.layer, tc.key, tc.value, got, err, tc.want)
 		}
 	}
-	if _, err := IsDefault("term_grace", "soon"); err == nil {
+	if _, err := c.Inherited(LayerDefaults, "term_grace", "soon"); err == nil {
 		t.Error("a bad value passed")
 	}
 }
 
 func TestUnsetKeyKeepsTheRest(t *testing.T) {
-	p := writeConfig(t, "defaults:\n  # first Ctrl-C\n  interrupt: immediate\n  notify: true # bar\nrepos: {}\n")
-	if err := UnsetKey(p, "interrupt"); err != nil {
+	p := writeConfig(t, "defaults:\n  # first Ctrl-C\n  interrupt: immediate\n  notify: true # bar\nrepos:\n  r:\n    notify: false\n    interrupt: graceful\n")
+	if err := UnsetKey(p, "", "interrupt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := UnsetKey(p, "r", "notify"); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(p)
-	if s := string(b); strings.Contains(s, "interrupt") || !strings.Contains(s, "notify: true # bar") {
+	if s := string(b); strings.Contains(s, "interrupt: immediate") || !strings.Contains(s, "notify: true # bar") || strings.Contains(s, "notify: false") || !strings.Contains(s, "interrupt: graceful") {
 		t.Errorf("after UnsetKey:\n%s", s)
 	}
-	if err := UnsetKey(filepath.Join(t.TempDir(), "none.yml"), "notify"); err != nil {
+	if err := UnsetKey(p, "nope", "notify"); err != nil {
+		t.Errorf("a missing section: %v", err)
+	}
+	if err := UnsetKey(filepath.Join(t.TempDir(), "none.yml"), "", "notify"); err != nil {
 		t.Errorf("a missing file: %v", err)
 	}
 }
@@ -352,9 +408,12 @@ func TestUnknownKeys(t *testing.T) {
   notify_ulr: https://ntfy.sh/x
   runners: {ts: tsx}
 repos:
-  /repo/a:
+  shop:
     max_parallel: 2
     deps: {2: [1]}
+  shop/main:
+    modules: {allow: [notify]}
+    term_grace: 30s
 hub: true
 `)
 	got, err := UnknownKeys(p)
@@ -365,7 +424,7 @@ hub: true
 	for _, k := range got {
 		s = append(s, fmt.Sprintf("%s@%s:%d", k.Key, k.Section, k.Line))
 	}
-	if strings.Join(s, " ") != "lanes@defaults:2 notify_ulr@defaults:3 deps@repos /repo/a:8 hub@:9" {
+	if strings.Join(s, " ") != "lanes@defaults:2 notify_ulr@defaults:3 deps@repos shop:8 modules@repos shop/main:10 hub@:12" {
 		t.Errorf("unknown keys: %v", s)
 	}
 	if got, err := UnknownKeys(filepath.Join(t.TempDir(), "none.yml")); err != nil || len(got) != 0 {

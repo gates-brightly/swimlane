@@ -1,12 +1,12 @@
-// Package config loads ~/.config/swim/config.yml: global defaults plus
-// per-repo sections keyed by the repo's git toplevel path.
+// Package config loads ~/.config/swim/config.yml: global defaults, then
+// per-repo and per-branch sections keyed by the repo's name (repos:
+// swimlane, swimlane/main). Nothing in a repo configures swim.
 package config
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,8 +22,9 @@ import (
 	"github.com/gates-brightly/swimlane/internal/redact"
 )
 
-// Settings is one block of configuration, either `defaults` or a repo entry.
-// Zero values mean "not set" so a repo block can override field by field.
+// Settings is one block of configuration: `defaults`, or a repos entry
+// (a repo's or a branch's). Zero values mean "not set", so a later block
+// overrides field by field.
 type Settings struct {
 	// Lanes is the highest lane in use (see Config.Active), not a setting:
 	// swim finds a repo's lanes on disk (lane.Associated).
@@ -33,13 +34,6 @@ type Settings struct {
 	Toolchain       string   `yaml:"toolchain,omitempty"`
 	MaxParallel     *int     `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
 	BlockedCommands []string `yaml:"blocked_commands,omitempty"` // lane commands may not contain these
-	// Removed keys that still count in the policy hash as they did, so a
-	// repo that sets them keeps its approvals (policy.go): modules:, and
-	// swim.yml's guarded secrets (secrets:, ambient_credentials:). Read
-	// and otherwise ignored.
-	RemovedModules            any `yaml:"modules,omitempty"`
-	RemovedSecrets            any `yaml:"secrets,omitempty"`
-	RemovedAmbientCredentials any `yaml:"ambient_credentials,omitempty"`
 
 	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
 	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
@@ -54,20 +48,13 @@ type Settings struct {
 	ClaimLease         string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new takes it) lasts this long unless refreshed (default 2h)
 	WatchBatches       int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
 	Notify             *bool    `yaml:"notify,omitempty"`               // terminal notifications and a progress bar (OSC 777, OSC 9;4; default off)
-	NotifyURL          string   `yaml:"notify_url,omitempty"`           // ntfy-style URL each notification is POSTed to (with curl); config.yml only
-	NotifyCommand      string   `yaml:"notify_command,omitempty"`       // sh -c this for each notification instead, with SWIM_EVENT, SWIM_TITLE, ...; config.yml only
+	NotifyURL          string   `yaml:"notify_url,omitempty"`           // ntfy-style URL each notification is POSTed to (with curl)
+	NotifyCommand      string   `yaml:"notify_command,omitempty"`       // sh -c this for each notification instead, with SWIM_EVENT, SWIM_TITLE, ...
 	// Runners maps a lane script's extension (ts, py, ...) to the command
 	// that runs it ("tsx", "/usr/local/bin/python3"). A script's #! line
 	// wins; swim asks the operator for one the first time it meets an
 	// extension with neither, and saves the answer in the repo's section.
 	Runners map[string]string `yaml:"runners,omitempty"`
-	// RunnerFrom says where each runner came from (a config path or
-	// swim.yml), for messages.
-	RunnerFrom map[string]string `yaml:"-"`
-	// Env is swim.yml's env: shared, non-secret defaults for every lane
-	// (see the envfile package). Only swim.yml may set it; personal values
-	// go in ~/.config/swim/env.swim.
-	Env map[string]string `yaml:"env,omitempty"`
 }
 
 // File is the on-disk shape of config.yml.
@@ -76,18 +63,33 @@ type File struct {
 	Repos    map[string]Settings `yaml:"repos"`
 }
 
+// The layers a value can come from, lowest first: swim's built-in
+// default, config.yml's defaults:, the repo's repos entry, then the
+// branch's (repos.NAME/BRANCH).
+const (
+	LayerDefault  = "default"
+	LayerDefaults = "defaults"
+	LayerRepo     = "repo"
+	LayerBranch   = "repo/branch"
+)
+
+// Layer is one section of config.yml that applies, with its settings.
+type Layer struct {
+	Name    string // LayerDefaults, LayerRepo or LayerBranch
+	Section string // its key: "" for defaults:, else the repos key (swimlane, swimlane/main)
+	Found   bool   // the file has the section
+	Settings
+}
+
 // Config is the effective configuration for one repo.
 type Config struct {
-	Path    string // config.yml location
-	Root    string // repo root the settings apply to
-	HasRepo bool   // a repos entry exists for Root
-	// RepoFile is the repo's committed swim.yml, if it has one ("" if not).
-	// Its settings apply on top of defaults and under the repos entry, so a
-	// CI runner with no config of its own gets them.
-	RepoFile string
-	// Repo is what swim.yml itself sets (empty without one): the settings
-	// every machine shares, which PolicyHash covers.
-	Repo Settings
+	Path   string // config.yml location
+	Root   string // repo root the settings apply to
+	Repo   string // the repo's name, its repos key (RepoName)
+	Branch string // the checked-out branch ("" on a detached HEAD)
+	// Layers are the sections that apply, lowest first: defaults, the
+	// repo's, then the branch's (when there is a branch).
+	Layers []Layer
 	Settings
 	// Active are the lanes the repo is using (lane.Associated): the ones
 	// swim shows. Lanes (in Settings) is the highest of them (at least 1),
@@ -129,43 +131,39 @@ func RepoRoot(dir string) string {
 	return abs
 }
 
-// Load reads the config file and resolves the effective settings for root.
-// A missing file is not an error: built-in defaults apply.
+// Load reads the config file and resolves the effective settings for
+// root: swim's defaults, then defaults:, then repos.NAME, then
+// repos.NAME/BRANCH, each later one winning key by key. A missing file is
+// not an error: built-in defaults apply.
 func Load(root string) (*Config, error) {
-	c := &Config{Path: Path(), Root: root}
+	c, err := Read(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("%s (repo %s): %w", c.Path, root, err)
+	}
+	return c, nil
+}
+
+// Read is Load without checking the values: what swim config's screen
+// shows, so a bad value can be fixed there.
+func Read(root string) (*Config, error) {
+	c := &Config{Path: Path(), Root: root, Repo: RepoName(root), Branch: RepoBranch(root)}
 	f, err := readFile(c.Path)
 	if err != nil {
 		return nil, err
 	}
-	if f.Defaults.Env != nil {
-		return nil, fmt.Errorf("%s: env: belongs in %s (or a repo's swim.yml), not config.yml", c.Path, filepath.Join(filepath.Dir(c.Path), "env.swim"))
+	c.Layers = []Layer{{Name: LayerDefaults, Found: true, Settings: f.Defaults}}
+	repo, ok := f.Repos[c.Repo]
+	c.Layers = append(c.Layers, Layer{Name: LayerRepo, Section: c.Repo, Found: ok, Settings: repo})
+	if c.Branch != "" {
+		key := c.Repo + "/" + c.Branch
+		br, ok := f.Repos[key]
+		c.Layers = append(c.Layers, Layer{Name: LayerBranch, Section: key, Found: ok, Settings: br})
 	}
-	c.Settings = f.Defaults
-	c.Runners, c.RunnerFrom = nil, nil
-	c.mergeRunners(f.Defaults.Runners, c.Path)
-	if s, path, err := readRepoFile(root); err != nil {
-		return nil, err
-	} else if path != "" {
-		c.RepoFile = path
-		c.Repo = s
-		c.merge(s)
-		c.mergeRunners(s.Runners, path)
-		c.Env = s.Env
-		if s.NotifyCommand != "" || s.NotifyURL != "" {
-			// And what runs on the operator's machine outside any lane, and
-			// where it sends what swim does: a committed swim.yml mustn't
-			// run a command no guard sees, or send the operator's
-			// notifications elsewhere.
-			return nil, fmt.Errorf("%s: notify_command: and notify_url: belong in %s, not the repo's swim.yml", path, c.Path)
-		}
-	}
-	if repo, ok := lookupRepo(f.Repos, root); ok {
-		if repo.Env != nil {
-			return nil, fmt.Errorf("%s (repo %s): env: belongs in a [repo PATH] section of %s, not config.yml", c.Path, root, filepath.Join(filepath.Dir(c.Path), "env.swim"))
-		}
-		c.HasRepo = true
-		c.merge(repo)
-		c.mergeRunners(repo.Runners, c.Path)
+	for _, l := range c.Layers {
+		c.merge(l.Settings)
 	}
 	// The lanes in use, not a setting.
 	c.Active = lane.Associated(root)
@@ -180,37 +178,12 @@ func Load(root string) (*Config, error) {
 			c.Lanes = n
 		}
 	}
-	if err := c.Validate(); err != nil {
-		return nil, fmt.Errorf("%s (repo %s): %w", c.Path, root, err)
-	}
 	return c, nil
 }
 
 // EnvKeysVar lists (space separated) the keys a lane's environment got
 // from env files.
 const EnvKeysVar = "SWIM_ENV_KEYS"
-
-// RepoFileName is the committed per-repo settings file at the repo root.
-const RepoFileName = "swim.yml"
-
-// readRepoFile reads root's swim.yml: the same keys as a repos entry.
-func readRepoFile(root string) (Settings, string, error) {
-	var s Settings
-	path := filepath.Join(root, RepoFileName)
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) || root == "" {
-		return s, "", nil
-	}
-	if err != nil {
-		return s, "", err
-	}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&s); err != nil && !errors.Is(err, io.EOF) {
-		return s, "", fmt.Errorf("parse %s: %w", path, err)
-	}
-	return s, path, nil
-}
 
 func readFile(path string) (*File, error) {
 	f := &File{}
@@ -227,22 +200,26 @@ func readFile(path string) (*File, error) {
 	return f, nil
 }
 
-// lookupRepo matches root against repo keys, expanding ~ and cleaning paths.
-func lookupRepo(repos map[string]Settings, root string) (Settings, bool) {
-	for k, v := range repos {
-		if sameRepo(k, root) {
-			return v, true
+// PathKeys are the repos: keys of the config file at path that are paths
+// (/abs/path, ~/src/x): swim keyed repos by their git toplevel once; it
+// keys them by name now, so these match nothing.
+func PathKeys(path string) ([]string, error) {
+	f, err := readFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for k := range f.Repos {
+		if filepath.IsAbs(k) || k == "~" || strings.HasPrefix(k, "~/") {
+			out = append(out, k)
 		}
 	}
-	return Settings{}, false
+	slices.Sort(out)
+	return out, nil
 }
 
-// sameRepo reports whether a repos key names root (after ~ expansion,
-// cleaning and resolving symlinks).
-func sameRepo(key, root string) bool { return SameRepo(key, root) }
-
-// SameRepo reports whether path (a repos key, an env.swim [repo PATH]
-// section) names root, after ~ expansion, cleaning and resolving symlinks.
+// SameRepo reports whether path (an env.swim [repo PATH] section) names
+// root, after ~ expansion, cleaning and resolving symlinks.
 func SameRepo(key, root string) bool {
 	canon := func(p string) string {
 		p = filepath.Clean(expandHome(p))
@@ -263,21 +240,19 @@ func expandHome(p string) string {
 	return p
 }
 
-// mergeRunners adds runners, later sources winning per extension.
-func (c *Config) mergeRunners(r map[string]string, from string) {
-	for ext, cmd := range r {
+// merge lays r over the settings so far: a key r sets wins, except the
+// lists that add up and runners, which win per extension.
+func (c *Config) merge(r Settings) {
+	for ext, cmd := range r.Runners {
 		ext = strings.ToLower(strings.TrimPrefix(ext, "."))
 		if strings.TrimSpace(cmd) == "" {
 			continue
 		}
 		if c.Runners == nil {
-			c.Runners, c.RunnerFrom = map[string]string{}, map[string]string{}
+			c.Runners = map[string]string{}
 		}
-		c.Runners[ext], c.RunnerFrom[ext] = strings.TrimSpace(cmd), from
+		c.Runners[ext] = strings.TrimSpace(cmd)
 	}
-}
-
-func (c *Config) merge(r Settings) {
 	if r.Lanes != 0 {
 		c.Lanes = r.Lanes
 	}
@@ -436,8 +411,11 @@ const laneMax = lane.MaxLanes
 // IsActive reports whether lane n is in use (see Active).
 func (c *Config) IsActive(n int) bool { return slices.Contains(c.Active, n) }
 
-// defaultFile is written by EnsureRepo when no config exists yet.
-const defaultFile = `# swim configuration. Global defaults, overridden per repo (keyed by git toplevel).
+// defaultFile is written by EnsureFile when no config exists yet.
+const defaultFile = `# swim configuration: defaults for every repo, then repos: sections keyed
+# by the repo's name (its origin URL's last part: swimlane) or by
+# name/branch (swimlane/main). Later wins, key by key:
+# defaults < repos.NAME < repos.NAME/BRANCH.
 defaults:
   # Env vars recorded in every step header (values printed; never list secrets).
   header_env: [STAGE, AWS_PROFILE, AWS_REGION]
@@ -449,56 +427,16 @@ defaults:
 repos: {}
 `
 
-// EnsureRepo creates the config file if missing and adds a section for root
-// if none exists. Existing content and comments are preserved. It reports
-// whether the file and the repo section were created.
-func EnsureRepo(path, root string) (createdFile, addedRepo bool, err error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		createdFile = true
-		data = []byte(defaultFile)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return false, false, err
-		}
-	} else if err != nil {
-		return false, false, err
+// EnsureFile creates the config file with swim's starting content if it is
+// missing, and reports whether it did. An existing file is left alone.
+func EnsureFile(path string) (bool, error) {
+	if _, err := os.Stat(path); err == nil || !errors.Is(err, os.ErrNotExist) {
+		return false, err
 	}
-
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return false, false, fmt.Errorf("parse %s: %w", path, err)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return false, err
 	}
-	if doc.Kind == 0 {
-		doc = yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode}}}
-	}
-	top := doc.Content[0]
-	if top.Kind != yaml.MappingNode {
-		return false, false, fmt.Errorf("%s: top level must be a mapping", path)
-	}
-
-	repos := mapGet(top, "repos")
-	if repos == nil || repos.Kind != yaml.MappingNode {
-		if repos == nil {
-			top.Content = append(top.Content, scalar("repos"), &yaml.Node{Kind: yaml.MappingNode})
-			repos = top.Content[len(top.Content)-1]
-		} else {
-			*repos = yaml.Node{Kind: yaml.MappingNode}
-		}
-	}
-	repos.Style = 0 // render block style even if it was `{}`
-
-	var f File
-	_ = doc.Decode(&f)
-	if _, ok := lookupRepo(f.Repos, root); ok {
-		if createdFile {
-			return true, false, writeNode(path, &doc)
-		}
-		return false, false, nil
-	}
-
-	entry := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
-	repos.Content = append(repos.Content, scalar(root), entry)
-	return createdFile, true, writeNode(path, &doc)
+	return true, os.WriteFile(path, []byte(defaultFile), 0o644)
 }
 
 func mapGet(m *yaml.Node, key string) *yaml.Node {

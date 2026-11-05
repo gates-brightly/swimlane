@@ -51,7 +51,7 @@ const (
 	SecretSet = "secret-set" // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)
 	SecretRm  = "secret-rm"  // swim secret rm: ... removed
 	SecretUse = "secret"     // a lane got a secret (detail: name, scope, how)
-	// A guarded secret (swim.yml secrets:) released to a lane once its
+	// A guarded secret (an older swim.yml's secrets:) released to a lane once its
 	// guard was approved, or refused (detail: name, flags, how or why).
 	SecretReleased = "secret-released"
 	SecretRefused  = "secret-refused"

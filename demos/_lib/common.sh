@@ -79,7 +79,7 @@ demo_lanes() {
   fi
 }
 
-# demo_commit MSG  commit everything in the scratch repo (lanes, swim.yml
+# demo_commit MSG  commit everything in the scratch repo (lanes and the
 # ...), the way a team would share them.
 demo_commit() {
   git add -A >/dev/null 2>&1 && git commit -qm "$1" >/dev/null 2>&1

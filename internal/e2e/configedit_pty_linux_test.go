@@ -8,12 +8,13 @@ import (
 )
 
 // swim config on a terminal is swim watch's picker over every setting: its
-// value, default and what it takes. It changes one in place (choices with
-// Enter or ← →, a value typed on the bottom line under the rows), and
-// writes only what differs from the default: a value stepped or typed
-// back to the default, or reset with d, leaves the file. The first write
-// backs the file up as config.yml-1.bak, once a session, and the screen
-// stays up from first key to q.
+// value, the layer it comes from, its default and what it takes. It
+// changes one in place (choices with Enter or ← →, a value typed on the
+// bottom line under the rows), and writes only what differs from what the
+// section inherits: a value stepped or typed back to that, or reset with
+// d, leaves the file. The first write backs the file up as
+// config.yml-1.bak, once a session, and the screen stays up from first key
+// to q. With --repo it edits the repo's section.
 func TestConfigEdit(t *testing.T) {
 	r := newSerialRepo(t)
 	cfg := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")
@@ -35,13 +36,13 @@ func TestConfigEdit(t *testing.T) {
 			return false
 		})
 	}
-	row("interrupt", "graceful", "graceful", "graceful | immediate")
-	row("signing_key", "—", "—", "SSH key path")
-	row("claim_lease", "2h", "2h", "duration, 1m or more")
+	row("interrupt", "graceful", "default", "graceful", "graceful | immediate")
+	row("signing_key", "—", "default", "—", "SSH key path")
+	row("claim_lease", "2h", "default", "2h", "duration, 1m or more")
 
 	tr.send("\r") // interrupt: graceful -> immediate
 	tr.waitFor("interrupt: immediate (written)")
-	row("interrupt", "immediate", "graceful")
+	row("interrupt", "immediate", "defaults", "graceful")
 	contains(t, "config.yml", file(), "interrupt: immediate")
 	if b, err := os.ReadFile(cfg + "-1.bak"); err != nil || string(b) != before {
 		t.Errorf("the first write's backup: %q, %v", b, err)
@@ -85,5 +86,22 @@ func TestConfigEdit(t *testing.T) {
 	}
 	if baks, _ := filepath.Glob(cfg + "-*.bak"); len(baks) != 1 {
 		t.Errorf("one session, one backup: %v", baks)
+	}
+
+	// The repo's section: it inherits defaults', and writes under
+	// repos.NAME.
+	os.WriteFile(cfg, []byte("defaults:\n  interrupt: immediate\n"), 0o644)
+	tr = r.startTUI(nil, "config", "--repo")
+	tr.waitFor("swim config · repos." + filepath.Base(r.root))
+	row("interrupt", "immediate", "defaults", "graceful")
+	tr.send("\r") // immediate -> graceful, in the repo's section
+	tr.waitFor("interrupt: graceful (written)")
+	row("interrupt", "graceful", "repo", "graceful")
+	contains(t, "config.yml", file(), "repos:\n  "+filepath.Base(r.root)+":\n    interrupt: graceful")
+	tr.send("d")
+	tr.waitFor("interrupt: back to immediate, as defaults sets it")
+	tr.send("q")
+	if code, _ := tr.wait(); code != 0 {
+		t.Errorf("--repo exit %d", code)
 	}
 }

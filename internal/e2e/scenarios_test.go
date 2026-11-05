@@ -571,7 +571,7 @@ func TestScenarioCIChanged(t *testing.T) {
 func TestScenarioBlocked(t *testing.T) {
 	r := newScenario(t)
 	r.lanesFrom("blocked")
-	r.write("swim.yml", "blocked_commands: [\"terraform destroy\"]\n", 0o644)
+	r.repoConfig("blocked_commands: [\"terraform destroy\"]\n")
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
 	head := r.git("rev-parse", "HEAD")
 	status := func() string { return r.git("status", "--porcelain") }

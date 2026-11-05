@@ -1,6 +1,6 @@
 // Package runner decides how a lane script runs: bash for lane.N.sh, the
-// script's #! line, a runner the operator confirmed (config runners:, or
-// the repo's swim.yml), or the program itself for a compiled lane.
+// script's #! line, a runner the operator confirmed (config runners:), or
+// the program itself for a compiled lane.
 package runner
 
 import (
@@ -23,9 +23,8 @@ const (
 	Builtin = "builtin" // bash for .sh
 	Shebang = "shebang" // the script's #! line
 	Config  = "config"  // runners: in ~/.config/swim/config.yml
-	RepoYML = "swim.yml"
-	Direct  = "direct" // an executable (binary) run as itself
-	Short   = "short"  // a short-form lane (#!/usr/bin/env swim): bash, after ShortPrelude
+	Direct  = "direct"  // an executable (binary) run as itself
+	Short   = "short"   // a short-form lane (#!/usr/bin/env swim): bash, after ShortPrelude
 )
 
 // ShortPrelude is what bash runs before a short-form lane: it loads swim's
@@ -42,7 +41,7 @@ builtin source "$0"`
 type Plan struct {
 	Script string   // the script's path
 	Argv   []string // the command: runner words, then the script
-	Source string   // Builtin, Shebang, Config, RepoYML or Direct
+	Source string   // Builtin, Shebang, Config, Short or Direct
 	// Wrapped: the script doesn't load swim's bash library (lane_init), so
 	// it runs inside `swim _wrap`, which opens and closes its round.
 	Wrapped bool
@@ -91,12 +90,12 @@ func (e *NeedRunner) Error() string {
 			fmt.Fprintf(&b, "; none of %s is on PATH", strings.Join(e.Tried, ", "))
 		}
 	}
-	// The portable spelling (a command name) for #! and swim.yml; the
-	// found path for this machine's config.
+	// The portable spelling (a command name) for #!; the found path for
+	// this machine's config.
 	w := strings.Fields(ex)
 	portable := strings.Join(append([]string{filepath.Base(w[0])}, w[1:]...), " ")
-	fmt.Fprintf(&b, "\nFix it one way:\n  - a first line: #!/usr/bin/env %s\n  - this repo, your machine: swim config runners.%s %q\n  - everyone (CI too): add to swim.yml\n      runners:\n        %s: %s\n  - or run it once at a terminal: swim asks, and remembers the answer",
-		portable, e.Ext, ex, e.Ext, portable)
+	fmt.Fprintf(&b, "\nFix it one way:\n  - a first line: #!/usr/bin/env %s\n  - this repo, your machine: swim config runners.%s %q\n  - or run it once at a terminal: swim asks, and remembers the answer",
+		portable, e.Ext, ex)
 	return b.String()
 }
 
@@ -140,9 +139,6 @@ func Resolve(cfg *config.Config, script string) (Plan, error) {
 		p.Argv, p.Source = append(strings.Fields(r), script), Config
 		if r == "./" {
 			p.Argv = []string{script}
-		}
-		if filepath.Base(cfg.RunnerFrom[ext]) == config.RepoFileName {
-			p.Source = RepoYML
 		}
 		return p, nil
 	}
@@ -243,8 +239,8 @@ func describe(cmd string) string {
 	return cmd
 }
 
-// Save records cmd as the runner for ext in root's section of the
-// operator's config.
+// Save records cmd as the runner for ext in the repo's section of the
+// operator's config (repos.NAME).
 func Save(root, ext, cmd string) error {
-	return config.SetKey(config.Path(), root, "runners."+ext, cmd, true)
+	return config.SetKey(config.Path(), config.RepoName(root), "runners."+ext, cmd)
 }

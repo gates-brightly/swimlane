@@ -56,7 +56,7 @@ func pinned(o Options, n int) (why string, refuse bool) {
 		return fmt.Sprintf("%s changed since it was queued (queued %s)", lane.ScriptName(o.Root, n), want[:min(12, len(want))]), false
 	}
 	if want := o.PinManifest[n]; want != "" && !m.Matches(want) {
-		why := fmt.Sprintf("its manifest changed since it was queued (queued %s, now %s): its includes, sidecar, runner or swim.yml policy", want[:min(12, len(want))], m.SHA256[:12])
+		why := fmt.Sprintf("its manifest changed since it was queued (queued %s, now %s): its includes, sidecar or runner", want[:min(12, len(want))], m.SHA256[:12])
 		if q := o.QueuedBy; q != "" && q != version.Long() && q != version.String() {
 			// Another swim may pin the same files differently: the likely cause.
 			why += fmt.Sprintf(", or the swim: queued by swim %s, run by swim %s (queue it again with this swim)", q, version.Long())

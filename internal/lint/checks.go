@@ -1019,7 +1019,7 @@ func checkEnv(c *Context, s *Script) []finding.Finding {
 	if c.Root == "" {
 		return nil
 	}
-	r, err := envfile.Resolve(c.Root, c.Cfg, s.N)
+	r, err := envfile.Resolve(c.Root, s.N)
 	if err != nil {
 		return []finding.Finding{f(finding.Error, "env", -1, "fix the line: KEY=VALUE, '...' for literal text, no export or $", "%v", err)}
 	}

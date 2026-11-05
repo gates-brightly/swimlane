@@ -36,7 +36,7 @@ func cmdEnv(args []string) error {
 			return err
 		}
 	}
-	r, err := envfile.Resolve(root, cfg, n)
+	r, err := envfile.Resolve(root, n)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func cmdEnv(args []string) error {
 			head = fmt.Sprintf("swim env %d", n)
 		}
 		if len(r.Vars) == 0 {
-			fmt.Printf("%s: no env files apply (%s, .env.swim, swim.yml env:)\n", head, envfile.UserPath())
+			fmt.Printf("%s: no env files apply (%s, .env.swim)\n", head, envfile.UserPath())
 		} else {
 			fmt.Println(p.Paint(ui.Bold, head) + p.Paint(ui.Dim, "  from "+strings.Join(r.Sources, ", ")))
 			w := 0

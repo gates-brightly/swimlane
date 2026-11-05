@@ -142,8 +142,8 @@ func TestBinaryLaneWithSidecar(t *testing.T) {
 }
 
 // Without a #! line or a runner, a lane fails at start with the exact
-// fix; swim.yml's runners: (command names) covers everyone; a #! line
-// needs nothing.
+// fix; a runner in the repo's config section runs it, and one set with
+// --branch wins there; a #! line needs nothing.
 func TestRunnerResolution(t *testing.T) {
 	r := newRepo(t)
 	fakeRunner(t, r, "fakets")
@@ -153,20 +153,23 @@ func TestRunnerResolution(t *testing.T) {
 		t.Fatalf("ran without a runner:\n%s", out)
 	}
 	contains(t, "no runner", out, "lane.1.ts: no runner for .ts lanes", "none of tsx, ts-node, bun, deno is on PATH",
-		"#!/usr/bin/env tsx", "swim config runners.ts", "runners:", "ts: tsx")
+		"#!/usr/bin/env tsx", "swim config runners.ts")
 
-	r.write("swim.yml", "runners:\n  ts: fakets\n", 0o644)
+	r.repoConfig("runners:\n  ts: fakets\n")
 	out = r.mustSwim("run", "1", "--plain")
-	contains(t, "swim.yml runner", out, "fakets runs lane.1.ts")
+	contains(t, "repo runner", out, "fakets runs lane.1.ts")
 	contains(t, "log", r.log(1), "PASS  lane.1.ts", "$ fakets ./lane.1.ts")
 
-	// The operator's own runner (swim config runners.EXT) wins over swim.yml.
+	// This branch's runner wins over the repo's.
+	if err := exec.Command("git", "-C", r.root, "checkout", "-q", "-b", "feature").Run(); err != nil {
+		t.Fatal(err)
+	}
 	other := fakeRunner(t, r, "otherts")
-	r.mustSwim("config", "runners.ts", other)
+	r.mustSwim("config", "runners.ts", other, "--branch")
 	if got := strings.TrimSpace(r.mustSwim("config", "runners.ts")); got != other {
 		t.Errorf("config runners.ts = %q, want %q", got, other)
 	}
-	contains(t, "personal runner", r.mustSwim("run", "1", "--plain"), "otherts runs lane.1.ts")
+	contains(t, "branch runner", r.mustSwim("run", "1", "--plain"), "otherts runs lane.1.ts")
 
 	// A #! line wins, with no runner configured for its extension.
 	r.write("lane.2.py", "#!/bin/sh\n# Round: shebang lane\necho \"from sh: $0\"\n", 0o644)

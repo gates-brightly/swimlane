@@ -190,6 +190,38 @@ func (r *repo) mustSwim(args ...string) string {
 	return out
 }
 
+// repoConfig sets this repo's section of the operator's config.yml
+// (repos.NAME: a test repo has no origin, so NAME is its directory's name)
+// to the settings in yml, keeping the rest of the file.
+func (r *repo) repoConfig(yml string) {
+	r.t.Helper()
+	path := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")
+	f := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil {
+		if err := yaml.Unmarshal(data, &f); err != nil {
+			r.t.Fatal(err)
+		}
+	}
+	repos, _ := f["repos"].(map[string]any)
+	if repos == nil {
+		repos = map[string]any{}
+	}
+	sec := map[string]any{}
+	if err := yaml.Unmarshal([]byte(yml), &sec); err != nil {
+		r.t.Fatal(err)
+	}
+	repos[filepath.Base(r.root)] = sec
+	f["repos"] = repos
+	data, err := yaml.Marshal(f)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
 // mustSwimEnv is mustSwim with env added to swim's environment (a guard
 // flag set up front: FLAG=1 swim run N).
 func (r *repo) mustSwimEnv(env []string, args ...string) string {
@@ -291,7 +323,11 @@ func contains(t *testing.T, what, s string, wants ...string) {
 func TestInitIsIdempotent(t *testing.T) {
 	r := newRepo(t)
 	out := r.mustSwim("init")
-	contains(t, "second init", out, "already configured", "already has the swim block")
+	contains(t, "second init", out, "config for this repo: defaults, then repos."+filepath.Base(r.root), "already has the swim block")
+	// init writes no section for the repo.
+	if cfg, _ := os.ReadFile(filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")); strings.Contains(string(cfg), r.root) {
+		t.Errorf("init wrote the repo's path into the config:\n%s", cfg)
+	}
 	gi, _ := os.ReadFile(filepath.Join(r.root, ".gitignore"))
 	if strings.Count(string(gi), "# >>> swim >>>") != 1 {
 		t.Fatalf(".gitignore:\n%s", gi)
@@ -300,6 +336,44 @@ func TestInitIsIdempotent(t *testing.T) {
 	if out := r.mustSwim("status"); strings.Contains(out, "swim 1") {
 		t.Fatalf("status of a repo with no lanes:\n%s", out)
 	}
+}
+
+// Config is keyed by the repo's name (its origin URL's last part), so
+// every worktree of a repo shares repos.NAME; repos.NAME/BRANCH applies on
+// that branch alone; swim config says which layer each value comes from.
+func TestConfigByRepoName(t *testing.T) {
+	r := newRepo(t)
+	r.git("remote", "add", "origin", "git@github.com:me/shop.git")
+	r.git("checkout", "-q", "-b", "main")
+	r.git("commit", "-q", "--allow-empty", "-m", "base")
+	r.mustSwim("config", "term_grace", "30s", "--repo")
+	contains(t, "--branch", r.mustSwim("config", "interrupt", "immediate", "--branch"), "interrupt: immediate  (repos.shop/main in ")
+	cfg, _ := os.ReadFile(filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml"))
+	contains(t, "config.yml", string(cfg), "shop:\n    term_grace: 30s", "shop/main:\n    interrupt: immediate")
+
+	wt := filepath.Join(t.TempDir(), "feature-wt")
+	r.git("worktree", "add", "-q", "-b", "feature", wt)
+	in := func(dir string, args ...string) string {
+		t.Helper()
+		c := r.cmd(bin, args...)
+		c.Dir = dir
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("swim %v in %s: %v\n%s", args, dir, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	for _, c := range []struct{ dir, key, want string }{
+		{r.root, "term_grace", "30s"}, {wt, "term_grace", "30s"},
+		{r.root, "interrupt", "immediate"}, {wt, "interrupt", "graceful"},
+	} {
+		if got := in(c.dir, "config", c.key); got != c.want {
+			t.Errorf("%s in %s = %q, want %q", c.key, c.dir, got, c.want)
+		}
+	}
+	contains(t, "swim config", r.mustSwim("config"), "repo: shop", "branch: main",
+		"term_grace: 30s # repo\n", "interrupt: immediate # repo/branch\n", "signing: off # defaults\n", "claim_lease: 2h # default\n")
+	contains(t, "swim config in the worktree", in(wt, "config"), "repo: shop", "branch: feature # no repos.shop/feature section", "interrupt: graceful # default")
 }
 
 func TestFullRunWithDependencies(t *testing.T) {
@@ -1104,9 +1178,10 @@ func TestLanesInUse(t *testing.T) {
 	// Any lane can start: swim new 9 just works.
 	r.newLane("9", "nine")
 	contains(t, "after new 9", r.mustSwim("status"), "swim 9")
-	// lanes: is no setting: in swim.yml (read strictly) it fails to load.
-	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("lanes: 4\n"), 0o644)
-	contains(t, "doctor", must(r.swim("doctor")), "field lanes not found", "[config-parse]")
+	// lanes: is no setting: in the config it's an unknown key, and doctor
+	// says so.
+	r.repoConfig("lanes: 4\n")
+	contains(t, "doctor", must(r.swim("doctor")), "unknown key lanes under repos "+filepath.Base(r.root), "[config-key]")
 }
 
 // A .swim.lock an older swim wrote is ignored.
