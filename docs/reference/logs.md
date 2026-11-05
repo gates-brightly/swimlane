@@ -75,7 +75,7 @@ A `fail` line's detail ends with the failed steps, each with its why:
 x_test.go:41: got 1, want 2`.
 
 Events: `init`, `new`, `run`, `start`, `pass`/`fail`/`interrupted`, `skip`,
-`approve`, `decline`, `run-done`, `archive`, `note`, `lint`,
+`approve`, `decline`, `run-done`, `archive`, `note`,
 `usage` (a command swim refused as typed). Details summarize; the evidence
 is in the lane log.
 

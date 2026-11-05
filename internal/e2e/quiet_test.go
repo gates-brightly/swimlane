@@ -46,9 +46,9 @@ func TestQuietDefaults(t *testing.T) {
 }
 
 // What cost a turn is in .swim.log: a command swim refused as typed (the
-// command and message, not its arguments), and the lint errors lint, run
-// and queue found, by code. Nothing is written outside a repo swim is in.
-func TestUsageAndLintAreLogged(t *testing.T) {
+// command and message, not its arguments). Lint findings aren't: the
+// terminal shows them. Nothing is written outside a repo swim is in.
+func TestUsageIsLogged(t *testing.T) {
 	r := newRepo(t)
 	r.shortLane(1, "# Round: two mistakes", "stage check\nrun echo hi\ngate --retries 2 \"x\" true")
 	r.swim("lint", "1")
@@ -58,18 +58,20 @@ func TestUsageAndLintAreLogged(t *testing.T) {
 	r.swim("statsu")
 	r.swim("config", "signing_key") // not a usage error: prints the value
 	log := r.mustSwim("log")
-	for _, want := range []string{
-		"lane.1.sh: step x2 (via lint)", "lane.1.sh: step x2 (via run)", "lane.1.sh: step x2 (via queue)",
-		"status: unknown flag --json", `unknown command "statsu"`,
-	} {
+	for _, want := range []string{"status: unknown flag --json", `unknown command "statsu"`} {
 		found := false
 		for _, line := range strings.Split(log, "\n") {
-			if f := strings.Fields(line); len(f) > 3 && (f[2] == "lint" || f[2] == "usage") && strings.Contains(line, want) {
+			if f := strings.Fields(line); len(f) > 3 && f[2] == "usage" && strings.Contains(line, want) {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf(".swim.log has no lint or usage line with %q:\n%s", want, log)
+			t.Errorf(".swim.log has no usage line with %q:\n%s", want, log)
+		}
+	}
+	for _, line := range strings.Split(log, "\n") {
+		if f := strings.Fields(line); len(f) > 3 && f[2] == "lint" {
+			t.Errorf("a lint line in .swim.log: %q", line)
 		}
 	}
 	if strings.Count(log, " usage ") != 2 {

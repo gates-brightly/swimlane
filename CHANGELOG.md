@@ -162,6 +162,12 @@ history stays here, since `swim changelog --since` reads it.
   and no screen, as it does when stdout isn't a terminal. The pinned panel
   without its keys is `SWIM_TUI=0`.
 
+### Changed
+
+- **`swim lint` findings no longer go to `.swim.log`.** The terminal
+  shows them; the project log keeps what happened (`usage` lines stay).
+  Older `lint` lines still read.
+
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 
 ### Removed

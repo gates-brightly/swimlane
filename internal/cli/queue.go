@@ -1298,6 +1298,5 @@ func queueLint(root string, cfg *config.Config, lanes []int) error {
 	if err != nil || len(fs) == 0 {
 		return err
 	}
-	logLintErrors(root, fs, "queue")
 	return lintRefused{fs}
 }
