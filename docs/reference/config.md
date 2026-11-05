@@ -2,7 +2,13 @@
 
 Personal settings live outside the repo, so workers can't change them:
 `~/.config/swim/config.yml` (`$XDG_CONFIG_HOME/swim/config.yml`). `swim
-config [KEY [VALUE]]` shows or sets them, keeping comments.
+config [KEY [VALUE]]` shows or sets them, keeping comments. `swim config
+edit` lists every setting at its value or swim's default to change in
+place (Enter steps through a key's choices or asks for a value, `d` goes
+back to the default); it writes only what differs from the default, so a
+key set back to its default leaves the file. Its first write copies the
+file as it was to `config.yml-N.bak`, one past the highest N there, like
+Nix's profile generations; restore one with `cp`.
 
 ```yaml
 defaults:

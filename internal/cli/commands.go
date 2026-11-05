@@ -156,7 +156,7 @@ func cmdConfig(args []string) error {
 		return errNoLaneCount
 	}
 	if len(rest) > 2 {
-		return usagef("usage: swim config [KEY [VALUE]] [--repo] [--path]")
+		return usagef("usage: swim config [edit | KEY [VALUE]] [--repo] [--path]")
 	}
 	if len(rest) == 0 {
 		if toRepo {
@@ -165,6 +165,12 @@ func cmdConfig(args []string) error {
 		return showConfig()
 	}
 	key := rest[0]
+	if key == "edit" && len(rest) == 1 {
+		if toRepo {
+			return usagef("swim config edit edits defaults; set a repo's key with swim config KEY VALUE --repo")
+		}
+		return cmdConfigEdit()
+	}
 	if key == "lanes" {
 		return errNoLaneCount
 	}

@@ -322,6 +322,44 @@ func TestNewKeys(t *testing.T) {
 	}
 }
 
+func TestIsDefault(t *testing.T) {
+	for _, c := range []struct {
+		key, value string
+		want       bool
+	}{
+		{"term_grace", "10s", true},
+		{"term_grace", "11s", false},
+		{"notify", "false", true},
+		{"notify", "true", false},
+		{"interrupt", "Graceful", true},
+		{"watch_batches", "4", true},
+		{"cache_dir", "~/.cache/swim", true},
+		{"cache_dir", "/var/cache/swim", false},
+	} {
+		got, err := IsDefault(c.key, c.value)
+		if err != nil || got != c.want {
+			t.Errorf("IsDefault(%s, %s) = %v, %v; want %v", c.key, c.value, got, err, c.want)
+		}
+	}
+	if _, err := IsDefault("term_grace", "soon"); err == nil {
+		t.Error("a bad value passed")
+	}
+}
+
+func TestUnsetKeyKeepsTheRest(t *testing.T) {
+	p := writeConfig(t, "defaults:\n  # first Ctrl-C\n  interrupt: immediate\n  notify: true # bar\nrepos: {}\n")
+	if err := UnsetKey(p, "interrupt"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	if s := string(b); strings.Contains(s, "interrupt") || !strings.Contains(s, "notify: true # bar") {
+		t.Errorf("after UnsetKey:\n%s", s)
+	}
+	if err := UnsetKey(filepath.Join(t.TempDir(), "none.yml"), "notify"); err != nil {
+		t.Errorf("a missing file: %v", err)
+	}
+}
+
 func TestBackupNumbersCopies(t *testing.T) {
 	p := writeConfig(t, "defaults:\n  notify: true\n")
 	if bak, err := Backup(p); err != nil || bak != p+"-1.bak" {

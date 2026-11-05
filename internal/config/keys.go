@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -278,6 +279,84 @@ func SetKey(path, root, key, value string, repo bool) error {
 		section.Content = append(section.Content, scalar(key), val)
 	}
 	return writeNode(path, &doc)
+}
+
+// Choices are the values one of Keys takes, when it takes a fixed few (""
+// otherwise): what swim config edit steps through.
+func Choices(key string) []string {
+	switch key {
+	case "interrupt":
+		return []string{InterruptGraceful, InterruptImmediate}
+	case "approvals":
+		return []string{ApprovalsPrompt, ApprovalsFlags}
+	case "signing":
+		return []string{SigningAuto, SigningRequired, SigningOff}
+	case "notify":
+		return []string{"false", "true"}
+	}
+	return nil
+}
+
+// IsDefault reports whether value for key is what swim uses with the key
+// unset (10s for term_grace, ~/.cache/swim for cache_dir). The value is
+// validated first.
+func IsDefault(key, value string) (bool, error) {
+	val, err := keyValue(key, value)
+	if err != nil {
+		return false, err
+	}
+	var c Config
+	m := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{scalar(key), val}}
+	if err := m.Decode(&c.Settings); err != nil {
+		return false, err
+	}
+	got, err := c.Get(key)
+	if err != nil {
+		return false, err
+	}
+	def, err := (&Config{}).Get(key)
+	return err == nil && got == def, nil
+}
+
+// UnsetKey removes one of Keys from `defaults:`, keeping the rest of the
+// file and its comments, so swim goes back to its default (or what a repo
+// sets). A missing file or key is no change.
+func UnsetKey(path, key string) error {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	if doc.Kind == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil
+	}
+	section := mapGet(doc.Content[0], "defaults")
+	if section == nil || section.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(section.Content); i += 2 {
+		if section.Content[i].Value == key {
+			section.Content = slices.Delete(section.Content, i, i+2)
+			return writeNode(path, &doc)
+		}
+	}
+	return nil
+}
+
+// DefaultsIn is what the `defaults:` section of the config file at path
+// sets, as a Config whose Get says what it means (swim's own default for
+// a key it leaves unset).
+func DefaultsIn(path string) (*Config, error) {
+	f, err := readFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return &Config{Path: path, Settings: f.Defaults}, nil
 }
 
 // Backup copies the config file at path to path-N.bak, N one past the

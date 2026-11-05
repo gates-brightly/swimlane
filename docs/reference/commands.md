@@ -29,7 +29,7 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `report [--earmark]` | What changed since you last looked. |
 | `verify` / `history` / `chain` / `store` / `signoff verify` | The [chain of custody](chain.md). |
 | **Environment** | |
-| `config [KEY [VALUE]]` | See [config](config.md). |
+| `config [edit \| KEY [VALUE]]` | See [config](config.md). |
 | `env [N]` | The env a lane gets, masked, with each key's source. |
 | `cache` | Tool caches. See [cache](cache.md). |
 | `doctor [--fix]` | Check the environment. |

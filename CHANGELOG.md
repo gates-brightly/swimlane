@@ -41,6 +41,18 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Added
+
+- **`swim config edit`.** Every setting on one screen, at what your
+  config sets or swim's default, with what this repo uses instead where
+  it differs. Enter steps through a key's choices (`notify`, `interrupt`,
+  `approvals`, `signing`) or asks for a value, `d` goes back to the
+  default, `q` quits. It edits `defaults:` in `~/.config/swim/config.yml`
+  and writes only what differs from the default: a key set back to its
+  default leaves the file. The first write of a session copies the file
+  as it was to `config.yml-N.bak`, numbered like Nix's profile
+  generations; an unchanged file isn't copied again.
+
 ### Changed
 
 - **`swim guide` is the reference, one topic at a time.** `swim guide`
