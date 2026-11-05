@@ -9,9 +9,11 @@
 # after, and a failed mirror push only warns (just mirror-tags retries).
 # TAG_REMOTE and MIRROR_REMOTE override the names (MIRROR_REMOTE= skips it).
 #
-# It refuses a working tree with changes, and a commit origin's main
-# doesn't have yet (push it first): the tag names what's already
-# published. It pushes only the new tag, never other local tags.
+# It refuses a working tree with changes, a commit origin's main doesn't
+# have yet (push it first): the tag names what's already published, and a
+# CHANGELOG.md without a section for the tag: the release workflow takes
+# the GitHub release's notes from it (scripts/release-notes.sh), and fails
+# without one. It pushes only the new tag, never other local tags.
 #
 # Tags are v0.<YYYYMMDD>.<index>: today's date, and 1 + the highest index
 # already tagged today (1 for the day's first release). Older tags
@@ -53,12 +55,19 @@ for t in $(git tag --points-at HEAD 'v0.*'); do
     echo "next-tag: $head is already released as $t" >&2; exit 1 ;;
   esac
 done
+heading="## ${tag#v} ($tag, $(date +%Y-%m-%d))"
 if [ -n "${DRY:-}" ]; then
   echo "$tag  (would tag $head, push it to $TAG_REMOTE${MIRROR_REMOTE:+, then $MIRROR_REMOTE}: just next-tag)"
+  bash ./scripts/release-notes.sh "$tag" >/dev/null 2>&1 ||
+    echo "  first: rename ## Unreleased in CHANGELOG.md to \"$heading\", above a new empty ## Unreleased, then commit and push"
   exit 0
 fi
 
 [ -z "$(git status --porcelain --untracked-files=no)" ] || die "the working tree has changes; commit or stash them first (git status)"   # untracked files aren't in the tag
+# The notes the release workflow will publish (the tree is clean, so this
+# is HEAD's CHANGELOG.md).
+bash ./scripts/release-notes.sh "$tag" >/dev/null ||
+  die "rename ## Unreleased in CHANGELOG.md to \"$heading\", above a new empty ## Unreleased, then commit, push and run again"
 git fetch -q "$TAG_REMOTE" main || die "couldn't fetch $TAG_REMOTE main"
 git merge-base --is-ancestor HEAD "$TAG_REMOTE/main" || die "$head isn't on $TAG_REMOTE's main yet; push it first (git push $TAG_REMOTE main)"
 # A local tag of that name that origin doesn't have is a leftover (an

@@ -44,8 +44,10 @@ history stays here, since `swim changelog --since` reads it.
 ### Changed
 
 - **`just release` is gone.** `just next-tag` is the one way to tag a
-  release. Name this section for the tag before you run it (the steps
-  above): the GitHub release takes its notes from it.
+  release. It refuses to tag until this file has a section for the tag
+  (the steps above), since the GitHub release takes its notes from it:
+  tags without one built no release. `DRY=1 just next-tag` says what to
+  name it.
 - **Quieter defaults.** A first run no longer warns that it's unsigned in a
   repo with no `lookup.yml` (nothing is set up for approvals there; `swim
   verify` still says it). A run of one lane prints that lane's summary
