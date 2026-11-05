@@ -62,9 +62,11 @@ var bashOnly = map[string]bool{
 // Context is what checks can see besides the script: the repo, its config
 // and every lane script (for the dependency and cross-lane checks).
 type Context struct {
-	Root    string
-	Cfg     *config.Config
-	Scripts map[int]*Script // every lane 1..Lanes with a non-stub script
+	Root string
+	// helpersSeen are the helper copies already reported this run.
+	helpersSeen map[string]bool
+	Cfg         *config.Config
+	Scripts     map[int]*Script // every lane 1..Lanes with a non-stub script
 
 	depsDone bool
 	deps     map[int][]int  // resolved dependencies (After:)
@@ -90,6 +92,7 @@ var Checks = []Check{
 	{"workspace-file", finding.Warn, false, "a staged lane names a repo file its # Includes: doesn't list (cat deploy.yaml): the pinned copy doesn't have it", checkWorkspaceFile},
 	{"workspace-empty", finding.Warn, false, "a staged lane runs a tool over its whole directory (go vet ./..., gofmt -l .) with no # Includes:, so the tool reads an empty copy", checkWorkspaceEmpty},
 	{"task", finding.Error, false, "a `# Task:` name that isn't one, is a swim command, or another lane's too", checkTask},
+	{"helpers", finding.Warn, false, "an included swim helpers module edited since swim helpers add wrote it, or one this swim ships a different version of", checkHelpers},
 	{"placeholder", finding.Error, false, "a template placeholder left in", checkPlaceholder},
 	{"after", finding.Error, false, "`# After:` names an unknown lane or round id, or the lane itself", checkAfter},
 	{"cycle", finding.Error, false, "lanes wait on each other in a cycle", checkCycle},
@@ -255,7 +258,9 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 			}
 		}
 		for i := range fs {
-			fs[i].File = s.Name
+			if fs[i].File == "" {
+				fs[i].File = s.Name
+			}
 		}
 		fs = commentFirst(fs)
 		out = append(out, applyIgnores(s, fs)...)

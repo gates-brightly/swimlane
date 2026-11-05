@@ -840,6 +840,24 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   a commit for revisions before versioning. A revision that bumps the syntax
   version has Upgrading notes: read them before running lanes.
 `,
+	"helpers": `swim helpers
+swim helpers add MODULE... [--dir DIR] [--force]
+
+  The lane helper modules swim ships: bash files of functions named
+  <module>_<name> (aws_gate, gh_pr_fetch, git_worktree, tool_gate, ...).
+  swim helpers lists them, and the copies in this repo (in lib/swim, and
+  what lanes include) with how each stands.
+  add writes each module to DIR/<module>.sh (default lib/swim), stamped on
+  its first line with the module, the swim it came from and the SHA-256 of
+  the rest. Lanes include and source the copy (# Includes: lib/swim/gh.sh,
+  then source lib/swim/gh.sh), so the approved round holds every line that
+  runs; commit it with the repo. Run add again to update a copy: it
+  replaces one swim wrote as it is, refuses one edited since (--force
+  replaces the edits) and a file swim didn't write (--force replaces it).
+  swim lint says when an included copy was edited since, or this swim
+  ships a different version of it ([helpers]). swim guide lanes, "Shared
+  helpers", lists the functions.
+`,
 	"skill": `swim skill
 
   How to install the Claude skill for swim: where it lives (skills/swim in
@@ -897,7 +915,7 @@ func For(name string) (string, bool) {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log",
 	"step", "gate", "snapshot", "guard", "stage",
-	"archive", "note", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
+	"archive", "note", "helpers", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
 	"verify", "chain", "keys", "ci", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
@@ -944,6 +962,7 @@ EVERYTHING ELSE (swim <command> --help, or swim guide commands)
   verify, keys, chain          the record of approvals and rounds
   doctor, config, env          the environment lanes get
   archive, note                tidy up and record
+  helpers                      shared lane helper modules (aws_, gh_, git_, ...)
   interrupt, wait              control running lanes
   ci, changelog, version, skill
 `

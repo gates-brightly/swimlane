@@ -67,7 +67,7 @@ Then the topic for the job at hand, `swim guide <topic>`:
 
 | Before you... | Topic |
 |---|---|
-| write or edit a lane | `lanes`, `guards`, `safety`; shared helper modules (`aws_`, `docker_`, `gh_`, `git_`, `os_`, `tool_`) are under "Shared helpers" in `lanes` |
+| write or edit a lane | `lanes`, `guards`, `safety`; shared helper modules (`aws_`, `docker_`, `gh_`, `git_`, `os_`, `tool_`; `swim helpers`) are under "Shared helpers" in `lanes` |
 | write a lane in Python, TS or Go | `other-languages` |
 | read results | `logs` |
 | something looks wrong | `recovery` |

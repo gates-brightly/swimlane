@@ -1,9 +1,12 @@
 package e2e
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -99,18 +102,11 @@ step "never" true`)
 	contains(t, "on a runner", r.mustSwimEnv(actions, "run", "1", "--plain"), "runner gh-1 (Linux): o/r run 42 at abc", "PASS  never")
 }
 
-// installHelpers copies helper modules into r as lib/swim/<module>.sh.
+// installHelpers installs helper modules in r with swim helpers add, as
+// lib/swim/<module>.sh.
 func installHelpers(t *testing.T, r *repo, modules ...string) {
 	t.Helper()
-	_, file, _, _ := runtime.Caller(0)
-	os.MkdirAll(filepath.Join(r.root, "lib", "swim"), 0o755)
-	for _, m := range modules {
-		src, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "helpers", m+".sh"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		os.WriteFile(filepath.Join(r.root, "lib", "swim", m+".sh"), src, 0o644)
-	}
+	r.mustSwim(append([]string{"helpers", "add"}, modules...)...)
 }
 
 // gitAs runs git in dir as a fixed identity (the container's may be empty).
@@ -211,4 +207,51 @@ tool_gate git`)
 	fails("old node", `tool_gate node 18`, "want node 18, got 20.11.1")
 	fails("no tool", `tool_gate no-such-tool`, "no-such-tool: not on PATH")
 	fails("not GitHub", `gh_repo upstream`, "isn't a GitHub repo")
+}
+
+// swim helpers add writes stamped copies; swim helpers and swim lint say
+// how each stands: current, edited since, or from another swim.
+func TestHelpersCommand(t *testing.T) {
+	r := newRepo(t)
+	out := r.mustSwim("helpers")
+	contains(t, "list", out, "aws ", "docker ", "gh ", "git ", "os ", "tool ", "in this repo: none")
+
+	out = r.mustSwim("helpers", "add", "gh", "tool")
+	contains(t, "add", out, "wrote lib/swim/gh.sh (gh, from swim ", "# Includes: lib/swim/gh.sh lib/swim/tool.sh", "source lib/swim/tool.sh")
+	gh := filepath.Join(r.root, "lib", "swim", "gh.sh")
+	data, _ := os.ReadFile(gh)
+	if !regexp.MustCompile(`^# swim helpers: gh, from swim \S+, sha256 [0-9a-f]{64}\n# swim helpers, module gh:`).Match(data) {
+		t.Fatalf("stamp:\n%.200s", data)
+	}
+	contains(t, "again", r.mustSwim("helpers", "add", "gh"), "lib/swim/gh.sh: gh is current")
+	contains(t, "list copies", r.mustSwim("helpers"), "lib/swim/gh.sh  gh, current", "lib/swim/tool.sh  tool, current")
+
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: r\n# Includes: lib/swim/gh.sh\n\nsource lib/swim/gh.sh\nstage check\nstep \"x\" true\n"), 0o755)
+	contains(t, "lint current", must(r.swim("lint", "1")), "no problems found")
+
+	// An edit: lint warns on the helper's file, and add won't overwrite it.
+	os.WriteFile(gh, append(data, []byte("# a local tweak\n")...), 0o644)
+	contains(t, "lint edited", must(r.swim("lint", "1")), "lib/swim/gh.sh:1", "edited since swim helpers add wrote it", "[helpers]")
+	if out, code := r.swim("helpers", "add", "gh"); code == 0 || !strings.Contains(out, "--force replaces the edits") {
+		t.Errorf("add over an edit: exit %d\n%s", code, out)
+	}
+	contains(t, "force", r.mustSwim("helpers", "add", "gh", "--force"), "wrote lib/swim/gh.sh")
+	contains(t, "lint restored", must(r.swim("lint", "1")), "no problems found")
+
+	// Another swim's gh, as it wrote it: lint says this swim ships another.
+	src := strings.SplitN(string(data), "\n", 2)[1]
+	old := strings.Replace(src, "gh_pr_fetch()", "gh_pr_fetch_v0()", 1)
+	sum := sha256.Sum256([]byte(old))
+	os.WriteFile(gh, []byte("# swim helpers: gh, from swim 0.20260101.1, sha256 "+hex.EncodeToString(sum[:])+"\n"+old), 0o644)
+	contains(t, "lint older", must(r.swim("lint", "1")), "gh from swim 0.20260101.1; this swim", "swim helpers add gh updates it")
+	contains(t, "update", r.mustSwim("helpers", "add", "gh"), "wrote lib/swim/gh.sh")
+
+	// A file swim didn't write is never overwritten without --force.
+	os.WriteFile(filepath.Join(r.root, "lib", "swim", "os.sh"), []byte("echo mine\n"), 0o644)
+	if out, code := r.swim("helpers", "add", "os"); code == 0 || !strings.Contains(out, "swim didn't write it") {
+		t.Errorf("add over a file of yours: exit %d\n%s", code, out)
+	}
+	if out, code := r.swim("helpers", "add", "nope"); code == 0 || !strings.Contains(out, "no helper module") {
+		t.Errorf("unknown module: exit %d\n%s", code, out)
+	}
 }

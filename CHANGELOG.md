@@ -40,9 +40,12 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Added
 
-- **Shared lane helpers, one module per namespace under `helpers/`:**
-  copy a module into a repo and include it (`# Includes:`, then
-  `source`). Every function is `<module>_<name>`. `aws.sh`: `aws_gate
+- **Shared lane helpers, one module per namespace:** `swim helpers`
+  lists them; `swim helpers add gh git` writes them to `lib/swim/`,
+  stamped with the swim they came from, and running it again updates
+  them. Lanes include and source the copy (`# Includes:`, then `source`),
+  so the approved round holds every line. `swim lint` says when an
+  included copy was edited, or this swim ships a newer one (`helpers`). Every function is `<module>_<name>`. `aws.sh`: `aws_gate
   [ACCOUNT]` gates on an active AWS session (`sts get-caller-identity`)
   and the account. `gh.sh`: `gh_pr_fetch N [REMOTE]` fetches a pull
   request's head (remote `origin` by default) to `$PR_REF` and snapshots

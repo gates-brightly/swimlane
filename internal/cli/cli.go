@@ -53,6 +53,7 @@ func init() {
 		"doctor":    {run: cmdDoctor},
 		"help":      {run: cmdHelp},
 		"guide":     {run: cmdGuide},
+		"helpers":   {run: cmdHelpers},
 		// In-lane commands, for lane scripts in any language (lanecmds.go).
 		"step":     {run: laneStepCmd},
 		"gate":     {run: laneGate},

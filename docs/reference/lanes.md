@@ -73,10 +73,15 @@ reading the terminal, which stays in the lane's group and is stopped alone.
 
 ## Shared helpers
 
-Behaviour many lanes repeat goes in a repo file the lanes include, not in
-each lane. swim's repo has modules for it under `helpers/`, one per
-namespace, every function named `<module>_<name>` (as Terraform names
-resources by provider). Copy in the ones you use (say to `lib/swim/`):
+Behaviour many lanes repeat goes in a module the lanes include, not in each
+lane. swim ships modules of bash functions, one per namespace, every
+function named `<module>_<name>` (as Terraform names resources by
+provider). `swim helpers` lists them; `swim helpers add` writes the ones
+you use into the repo, to `lib/swim/`:
+
+```bash
+swim helpers add aws gh os     # lib/swim/aws.sh, gh.sh, os.sh; commit them
+```
 
 ```bash
 # Includes: lib/swim/aws.sh lib/swim/gh.sh lib/swim/os.sh
@@ -112,10 +117,14 @@ The plain checks (`gh_actions`, `os_mac`, `os_linux`) log nothing: put
 what depends on them in steps, or use the gate when the lane must run
 there.
 
-Modules: `aws`, `docker`, `gh`, `git`, `os`, `tool`. A repo's own module
-(`lith_` for its dev stack, say) is a file like these, committed in that
-repo. `# Includes:` pins each module with the lane: approving the lane
-approves the helpers as they are. Helpers change at most the repo's own
+Modules: `aws`, `docker`, `gh`, `git`, `os`, `tool`. A copy is plain bash
+in the repo: `# Includes:` pins it with the lane, so approving the lane
+approves the helpers as they are, and an update is a diff you review. Its
+first line stamps the module, the swim it came from and a hash of the
+rest: `swim helpers add` again updates a copy, and `swim lint` says when
+an included copy was edited since (`helpers`, a warning), or this swim
+ships a different version (info). A repo's own module (`lith_` for its dev
+stack, say) is a file like these without the stamp. Helpers change at most the repo's own
 git state (refs, a new worktree), and run every command through `step`,
 `gate` or `snapshot`, so the log has it. A destructive step stays in the
 lane behind its own guard: lint reads the lane, not the files it
