@@ -394,7 +394,6 @@ func TestTUIOff(t *testing.T) {
 		env  []string
 		args []string
 	}{
-		{"--no-tui", nil, []string{"all", "--rerun", "--no-tui"}},
 		{"SWIM_TUI=0", []string{"SWIM_TUI=0"}, []string{"all", "--rerun"}},
 		{"CI", []string{"CI=true"}, []string{"all", "--rerun"}},
 		{"--plain", nil, []string{"all", "--rerun", "--plain"}},

@@ -269,10 +269,10 @@ func TestWatchStreamsRunningOutput(t *testing.T) {
 	}
 }
 
-// --no-tui keeps the plain worker.
-func TestWatchNoTUI(t *testing.T) {
+// --plain keeps the plain worker.
+func TestWatchPlain(t *testing.T) {
 	r := newSerialRepo(t, "")
-	tr := r.startTUI(nil, "watch", "--once", "--no-tui")
+	tr := r.startTUI(nil, "watch", "--once", "--plain")
 	code, out := tr.wait()
 	if code != 0 || strings.Contains(out, "\x1b[?1049h") {
 		t.Errorf("exit %d, screen used: %v\n%s", code, strings.Contains(out, "\x1b[?1049h"), out)

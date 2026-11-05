@@ -380,14 +380,13 @@ type runFlags struct {
 	parallel         string
 	yaml, yamlOutput bool
 	interrupt        string
-	noTUI            bool
 	noPrompt         bool
 }
 
 func (rf *runFlags) parse(args []string) ([]string, error) {
 	return flags{
 		bools: map[string]*bool{"plain": &rf.plain, "rerun": &rf.rerun,
-			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-tui": &rf.noTUI, "no-prompt": &rf.noPrompt},
+			"yaml": &rf.yaml, "yaml-output": &rf.yamlOutput, "no-prompt": &rf.noPrompt},
 		strs: map[string]*string{"run-id": &rf.runID, "parallel": &rf.parallel, "interrupt": &rf.interrupt},
 	}.parse(args)
 }
@@ -480,7 +479,7 @@ func runLanes(rest []string, rf runFlags) error {
 	o := launcher.Options{
 		Root: root, Cfg: cfg, Lanes: lanes, Plain: plain, Rerun: rerun,
 		Self: self(), Out: os.Stdout, Stdin: os.Stdin, RunID: rf.runID, Parallel: parallel,
-		Interactive: !rf.noTUI && display.TUIAllowed(os.Getenv),
+		Interactive: display.TUIAllowed(os.Getenv),
 		Interrupt:   rf.interrupt,
 		Pins:        pins,
 		// Guards without their flag may ask the operator (not in CI, where

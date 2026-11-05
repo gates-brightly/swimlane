@@ -97,7 +97,7 @@ func TestPromptStopsTheClock(t *testing.T) {
 func TestPromptLineDeclines(t *testing.T) {
 	r := newSerialRepo(t, "")
 	approvalLanes(r)
-	tr := r.startTUI(nil, "all", "--no-tui")
+	tr := r.startTUI(nil, "all", "--plain")
 	tr.waitFor("the lane says: drop table orders - 2026-10-12")
 	tr.send("\r") // Enter: the default, no
 	code, out := tr.wait()
@@ -200,7 +200,7 @@ func TestPromptSeveralLanes(t *testing.T) {
 // carriage return, the backspace and the right-to-left override never
 // reach the terminal, at the prompt line or in the live view.
 func TestPromptIsSafe(t *testing.T) {
-	for _, mode := range []string{"--no-tui", "tui"} {
+	for _, mode := range []string{"--plain", "tui"} {
 		t.Run(mode, func(t *testing.T) {
 			r := newSerialRepo(t, "")
 			r.script(1, "hostile", `if guard ALLOW_X `+payload+`; then run "changed" true; fi`)

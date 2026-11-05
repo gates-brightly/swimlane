@@ -31,7 +31,7 @@ swim wait [--timeout D]                 # until nothing runs or is queued
   ahead. Up to `--batches N` (`watch_batches`, 4) at once.
 - **Asks for guards on its screen:** a guard nothing else approved waits
   under a yellow `Waiting for you` bar; `y`/`n` answers it. Without the
-  screen (`--no-tui`, not a terminal) a batch never asks: its guards
+  screen (`--plain`, not a terminal) a batch never asks: its guards
   dry-run.
 - **On a terminal**, it lists every lane's job and the queue: `r` runs one
   now, `q` adds it to the next batch and `s` submits it, `Q` queues every

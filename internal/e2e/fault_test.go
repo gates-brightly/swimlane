@@ -274,7 +274,7 @@ func TestFaultQueueClaimed(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'`)
 	r.mustSwim("queue", "add", "1")
-	c, out, dir := faultRun(t, r, failpoint.QueueClaimed+":kill", "watch", "--once", "--no-tui")
+	c, out, dir := faultRun(t, r, failpoint.QueueClaimed+":kill", "watch", "--once", "--plain")
 	waitHit(t, dir, failpoint.QueueClaimed, out)
 	crash(r, c, 0)
 
@@ -299,7 +299,7 @@ func TestFaultWatchMidBatch(t *testing.T) {
 	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
 run "after" touch "$SWIM_ROOT/after"`)
 	r.mustSwim("queue", "add", "1")
-	c, out, dir := faultRun(t, r, failpoint.StepAfterExit+":pause", "watch", "--once", "--no-tui")
+	c, out, dir := faultRun(t, r, failpoint.StepAfterExit+":pause", "watch", "--once", "--plain")
 	pid := waitHit(t, dir, failpoint.StepAfterExit, out)
 	crash(r, c, pid)
 
@@ -421,7 +421,7 @@ run "work" true
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			out, _ := r.cmd(bin, "watch", "--once", "--no-tui", "--interval", "100ms").CombinedOutput()
+			out, _ := r.cmd(bin, "watch", "--once", "--plain", "--interval", "100ms").CombinedOutput()
 			outs[i] = string(out)
 		}(i)
 	}

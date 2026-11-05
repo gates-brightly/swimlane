@@ -81,6 +81,11 @@ history stays here, since `swim changelog --since` reads it.
   id or `'#41'`). `swim log -f` stops by itself once the followed round
   ends (exit 0, whatever its result).
 
+- **`--no-tui` is gone: `--plain` is the one flag for no live view.**
+  On `swim run`, `swim all` and `swim watch`, `--plain` means plain lines
+  and no screen, as it does when stdout isn't a terminal. The pinned panel
+  without its keys is `SWIM_TUI=0`.
+
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 
 ### Removed

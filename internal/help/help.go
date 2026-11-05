@@ -132,7 +132,7 @@ var Commands = map[string]string{
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
-	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
+	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see swim guide other-languages)
 
@@ -183,16 +183,17 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   --interrupt graceful|immediate   what the first Ctrl-C does, for this run
             (default: config interrupt, graceful). immediate interrupts
             running steps at once (the second press then kills).
-  --plain   no pinned panel, colour or throbber; state changes print as lines.
-            Automatic when stdout isn't a terminal or NO_COLOR is set.
+  --plain   no live view (no pinned panel, interactive view, colour or
+            throbber); state changes print as lines. Automatic when stdout
+            isn't a terminal or NO_COLOR is set.
   Each lane keeps one colour: sixteen before one repeats on a terminal with
   256 colours (Ghostty, iTerm, VS Code, TERM=*-256color, COLORTERM=truecolor),
   eleven on others. SWIM_COLORS=256 or 16 says which yours is.
-  --no-tui  the pinned panel without the interactive view (output scrolls in
-            the terminal as before). Also SWIM_TUI=0. The interactive view is
-            also off for a single lane (it may prompt on stdin), with --plain,
-            --yaml, NO_COLOR or SWIM_COLOR=0, CI=true, when stdin or stdout
-            isn't a terminal, and when the terminal is too small.
+  SWIM_TUI=0 keeps the pinned panel without the interactive view (output
+            scrolls in the terminal). The interactive view is also off for a
+            single lane (it may prompt on stdin), with --plain, --yaml,
+            NO_COLOR or SWIM_COLOR=0, CI=true, when stdin or stdout isn't a
+            terminal, and when the terminal is too small.
   KEYS (interactive view)
     → l Tab / ← h Shift-Tab   next / previous lane, in panel order (running,
                     then waiting, then finished); from the all view → opens
@@ -243,7 +244,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   an edit to the working tree after that changes nothing in the run. See
   swim guide manifest.
 `,
-	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
+	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 
   Run every lane whose pending round hasn't passed yet: the same as
@@ -251,7 +252,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   "done" and not run again; failed, interrupted, skipped and new rounds run.
   --rerun   run every pending round, including ones that already passed.
   Every lane script counts, whatever its number. Dependencies ("# After:" lines and config deps), the live
-  view and its keys (--no-tui), guard flags and the summary all work as in "swim run".
+  view and its keys (--plain), guard flags and the summary all work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
 	"report": `swim report [N|JOB ...] [--earmark] [--name NAME] [--since T|RUN|JOB] [--no-logs] [--results] [--yaml]
@@ -578,7 +579,7 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [--interval D] [--batches N] [--no-tui]
+	"watch": `swim watch [--once] [--interval D] [--batches N] [--plain]
 
   The queue's swimmer. Runs queued batches (swim queue N) side by side,
   up to --batches at once (watch_batches, default 4), each in a process
@@ -606,8 +607,8 @@ swim queue show|rm|requeue ID
   --interval D   how often to check the queue and for idleness (default 2s)
   --batches N    run up to N batches at once (default watch_batches, 4);
                  --batches 1 runs one at a time, on the screen.
-  --no-tui, --plain  print what the swimmer waits for instead of the jobs
-                 screen (--plain, as swim run spells it)
+  --plain        print what the swimmer waits for instead of the jobs
+                 screen (automatic when stdin or stdout isn't a terminal)
   On a terminal, while it waits, the watch shows every lane's job and the
   queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now
   and enter follows its output (esc comes back). q adds a job to the next
@@ -650,7 +651,7 @@ swim queue show|rm|requeue ID
   the watch exits; between batches, it exits at once. Batches still
   waiting stay queued.
   With no one watching: run it in tmux, or under a service manager of your
-  own with --no-tui; swim watch --once (from cron, say) runs what's queued
+  own with --plain; swim watch --once (from cron, say) runs what's queued
   and exits.
 `,
 	"wait": `swim wait [--interval D] [--timeout D]

@@ -66,8 +66,8 @@ under it, prefixed `[N]`. With more than one lane:
 | `f` / `?` | Filter to running or failed lanes / help. |
 | `Enter`, `y`, `n` | Open the lane a banner says is waiting, and answer it. |
 
-`--plain` (or no terminal): plain prefixed lines. `--no-tui` or
-`SWIM_TUI=0`: no panel. `--yaml`: [events](logs.md#yaml).
+`--plain` (or no terminal): no live view, plain prefixed lines.
+`SWIM_TUI=0`: the panel without the keys. `--yaml`: [events](logs.md#yaml).
 
 `notify: true` in config adds a desktop notification when a lane waits on
 you or a run ends, and a progress bar on the terminal tab (OSC 777, OSC
