@@ -40,6 +40,12 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Changed
+
+- **CI fails on unreachable code.** Lane 1 runs `deadcode ./cmd/swim`
+  (golang.org/x/tools v0.52.0): a function nothing in swim can reach is
+  an error, so it is deleted rather than kept for a test.
+
 ### Removed
 
 - **Decisions and checkpoints are gone.** `decide` (bash), `swim decide`,
