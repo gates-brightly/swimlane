@@ -107,7 +107,7 @@ func cmdApproveHook(args []string) error {
 
 	// Run directly with bash, the lane decides for itself: it asks the
 	// operator on the terminal, or it's a dry run.
-	ask, why := approvalChannel(cfg)
+	ask, why := approvalChannel()
 	if ask == nil {
 		return dryRun(why)
 	}
@@ -246,7 +246,7 @@ type askFunc func(req approval.Request, stopped func() bool, deadline time.Time)
 
 // approvalChannel picks how to ask: swim run's broker, the terminal (a lane
 // run directly), or nobody (CI, no terminal), with why.
-func approvalChannel(cfg *config.Config) (askFunc, string) {
+func approvalChannel() (askFunc, string) {
 	if sock := os.Getenv(approval.EnvVar); sock != "" {
 		return func(req approval.Request, stopped func() bool, dl time.Time) approval.Response {
 			resp, err := approval.Ask(sock, req, stopped, dl)
