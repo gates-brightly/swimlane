@@ -321,3 +321,25 @@ func TestNewKeys(t *testing.T) {
 		t.Error("defaults")
 	}
 }
+
+func TestBackupNumbersCopies(t *testing.T) {
+	p := writeConfig(t, "defaults:\n  notify: true\n")
+	if bak, err := Backup(p); err != nil || bak != p+"-1.bak" {
+		t.Fatalf("first backup = %q, %v", bak, err)
+	}
+	if bak, err := Backup(p); err != nil || bak != "" {
+		t.Errorf("an unchanged file was copied again: %q, %v", bak, err)
+	}
+	os.WriteFile(p, []byte("defaults:\n  notify: false\n"), 0o644)
+	os.WriteFile(p+"-7.bak", []byte("older"), 0o644)
+	os.WriteFile(p+"-x.bak", []byte("not a copy"), 0o644)
+	if bak, err := Backup(p); err != nil || bak != p+"-8.bak" {
+		t.Fatalf("after -7: %q, %v", bak, err)
+	}
+	if b, _ := os.ReadFile(p + "-8.bak"); string(b) != "defaults:\n  notify: false\n" {
+		t.Errorf("copy holds %q", b)
+	}
+	if bak, err := Backup(filepath.Join(t.TempDir(), "none.yml")); err != nil || bak != "" {
+		t.Errorf("a missing file: %q, %v", bak, err)
+	}
+}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -277,4 +278,47 @@ func SetKey(path, root, key, value string, repo bool) error {
 		section.Content = append(section.Content, scalar(key), val)
 	}
 	return writeNode(path, &doc)
+}
+
+// Backup copies the config file at path to path-N.bak, N one past the
+// highest copy there, the way Nix numbers a profile's generations
+// (profile-41-link, profile-42-link), and returns the copy's path. A
+// missing file, or one the newest copy already holds, isn't copied: ""
+// and no error.
+func Backup(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	dir, base := filepath.Split(path)
+	entries, err := os.ReadDir(filepath.Clean(dir))
+	if err != nil {
+		return "", err
+	}
+	last := 0
+	for _, e := range entries {
+		mid, ok := strings.CutPrefix(e.Name(), base+"-")
+		if !ok {
+			continue
+		}
+		if mid, ok = strings.CutSuffix(mid, ".bak"); !ok {
+			continue
+		}
+		if n, err := strconv.Atoi(mid); err == nil && n > last {
+			last = n
+		}
+	}
+	if last > 0 {
+		if prev, err := os.ReadFile(fmt.Sprintf("%s-%d.bak", path, last)); err == nil && bytes.Equal(prev, data) {
+			return "", nil
+		}
+	}
+	bak := fmt.Sprintf("%s-%d.bak", path, last+1)
+	return bak, os.WriteFile(bak, data, info.Mode().Perm())
 }
