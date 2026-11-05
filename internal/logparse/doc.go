@@ -116,7 +116,7 @@ func (r *Round) Doc(n int) Doc {
 		d.Results = append(d.Results, rd)
 	}
 	for _, f := range r.Failed() {
-		d.Failed = append(d.Failed, f.Text())
+		d.Failed = append(d.Failed, f.Brief())
 	}
 	return d
 }

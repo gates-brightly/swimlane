@@ -27,6 +27,9 @@ var markers = [][]string{
 // location is a source position, "file.go:12:" or "lane.1.sh:8:".
 var location = regexp.MustCompile(`[\w./-]+\.\w+:\d+:`)
 
+// lintLine is a swim lint finding: "lane.2.sh:4  error  ..." (or warn).
+var lintLine = regexp.MustCompile(`^[\w./-]+:\d+  (error|warn) `)
+
 // testLoc starts a go test failure's message: "x_test.go:41: ...".
 var testLoc = regexp.MustCompile(`^[\w./-]+\.go:\d+:`)
 
@@ -61,6 +64,12 @@ func pick(output []string, lastErr string) string {
 		if location.MatchString(l) {
 			return l
 		}
+	}
+	if s := lint(output); s != "" {
+		return s
+	}
+	if s := gofmt(output); s != "" {
+		return s
 	}
 	if strings.TrimSpace(lastErr) != "" {
 		return lastErr
@@ -98,6 +107,40 @@ func goFail(output []string) string {
 		}
 	}
 	return first
+}
+
+// lint is swim lint's first error, else its first warning.
+func lint(output []string) string {
+	warn := ""
+	for _, l := range output {
+		if m := lintLine.FindStringSubmatch(l); m != nil {
+			if m[1] == "error" {
+				return l
+			}
+			if warn == "" {
+				warn = l
+			}
+		}
+	}
+	return warn
+}
+
+// gofmt is a "needs gofmt -s:" header (as a lane prints gofmt -l's list)
+// with the first file under it: "needs gofmt -s: internal/x.go".
+func gofmt(output []string) string {
+	for i, l := range output {
+		head := strings.TrimSpace(l)
+		if !strings.HasPrefix(head, "needs gofmt") || !strings.HasSuffix(head, ":") {
+			continue
+		}
+		for _, f := range output[i+1:] {
+			if f = strings.TrimSpace(f); f != "" {
+				return head + " " + f
+			}
+		}
+		return head
+	}
+	return ""
 }
 
 // testName is "--- FAIL: TestX" without its " (0.01s)" or e2etool's

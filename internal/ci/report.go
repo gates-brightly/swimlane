@@ -187,7 +187,7 @@ func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 			continue
 		}
 		for _, res := range r.Round.Results {
-			text := res.Text()
+			text := res.Brief()
 			if res.Handler != "" {
 				text = res.Handler + ": " + text // a handler's step (rollback, cleanup)
 			}
@@ -244,7 +244,7 @@ func Markdown(w io.Writer, reps []LaneReport, run, commit string, code int) {
 		if r.Round != nil {
 			pass, fail, skip = r.Round.Pass, r.Round.Fail, r.Round.Skip
 			for _, f := range r.Round.Failed() {
-				failed = append(failed, mdCell(f.Text()))
+				failed = append(failed, mdCell(f.Brief()))
 			}
 		} else if r.Reason != "" {
 			failed = append(failed, mdCell(r.Reason))
@@ -330,7 +330,7 @@ func JUnit(w io.Writer, reps []LaneReport) error {
 				c := junitCase{Name: res.Label, ClassName: class + "." + group, Time: fmt.Sprintf("%.1f", res.Dur)}
 				switch res.Kind {
 				case logparse.Fail, logparse.Blocked, logparse.Stop:
-					c.Failure = &junitMessage{Message: res.Text(), Body: tail(res.Output, 30)}
+					c.Failure = &junitMessage{Message: res.Brief(), Body: tail(res.Output, 30)}
 					if res.Kind == logparse.Stop {
 						c.Name = "STOP: " + res.Label
 					}

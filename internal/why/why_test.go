@@ -26,8 +26,11 @@ func TestOfRealFailures(t *testing.T) {
 		{"missing-command-127.txt", "bash: line 1: kubectl-nope: command not found"},
 		{"missing-exec-127.txt", `swim: cannot start kubectl-nope: exec: "kubectl-nope": executable file not found in $PATH`},
 		{"go-vet-no-packages.txt", "no packages to vet"},
-		{"gofmt.txt", "internal/envfile/envfile.go"},
-		{"swim-lint.txt", "0 errors, 5 warnings"},
+		// gofmt -l's list under its header: the first file.
+		{"gofmt.txt", "needs gofmt -s: internal/cli/schedule.go"},
+		// swim lint: its first error, else its first warning.
+		{"swim-lint.txt", `lane.1.sh:8  warn   disable comment names unknown check "workspace-live"  [lint-ignore]`},
+		{"swim-lint-error.txt", "lane.2.sh:4  error  `After: 9`: no swim 9: it has no lane script, log or past run; swim run refuses this lane  [after]"},
 		// A gate that printed nothing has no why.
 		{"gate-test-f.txt", ""},
 	} {
@@ -72,6 +75,7 @@ func TestOf(t *testing.T) {
 			"        a_test.go:9: got 1",
 			"FAIL",
 		}, "", "--- FAIL: TestA/sub: a_test.go:9: got 1"},
+		{"gofmt header with a note", []string{"needs gofmt -s (just fmt):", "a.go", "b.go"}, "", "needs gofmt -s (just fmt): a.go"},
 		{"go test without a location", []string{"--- FAIL: TestB (0.00s)", "FAIL"}, "", "--- FAIL: TestB"},
 	} {
 		if got := Of(tc.out, tc.lastErr); got != tc.want {

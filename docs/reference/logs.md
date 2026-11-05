@@ -48,11 +48,14 @@ A failed step's `why:` is the line of its output that best says why,
 picked once when it fails: the first line with (in this order) `--- FAIL:`
 (joined with the `x_test.go:NN:` line below it: `--- FAIL: TestX:
 x_test.go:41: got 1, want 2`), `panic:`, `FAIL:`, `fatal:`/`Fatal`,
-`error:`/`Error:`/`ERROR`, or a `file.ext:NN:` location; else its last
-stderr line; else its last output line. One line, secrets masked, cut at
+`error:`/`Error:`/`ERROR`, or a `file.ext:NN:` location; else swim lint's
+first `file:N  error` (or `warn`) finding, or a `needs gofmt` header with
+the first file under it; else its last stderr line; else its last output
+line. One line, secrets masked, cut at
 160 characters; a step that printed nothing has none. The one-line views
 show it after the step's result: `.swim.log`, `swim status`, bare `swim`,
-`swim watch`, notifications and the run summary.
+`swim watch`, notifications, the run summary, `swim ci`'s job summary,
+annotations and JUnit, and `failed_steps` in the `--yaml` documents.
 The current round is everything after the last `== ROUND`. A lane that
 exits before its round starts gets `STOP  not started: <why>`.
 

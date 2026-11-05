@@ -1,0 +1,5 @@
+lane.1.sh:4  warn   runs in the working tree (# Workspace: live): files it reads but doesn't pin can change after it's approved  [workspace-live]
+                    fix: pin the files it reads (# Includes:) and drop the line, so it runs in its staged copy
+lane.2.sh:4  error  `After: 9`: no swim 9: it has no lane script, log or past run; swim run refuses this lane  [after]
+                    fix: name a configured lane number, a task (# Task:) or a job id a lane holds
+1 error, 1 warning

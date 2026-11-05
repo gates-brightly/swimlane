@@ -99,7 +99,7 @@ func reports() []LaneReport {
 	r := &logparse.Round{Title: "deploy", Run: "r-1", Finished: true, ExitCode: 1, Pass: 1, Fail: 1, Skip: 1,
 		Results: []logparse.Result{
 			{Kind: "PASS", Label: "plan", Stage: "check", Step: true, Dur: 1.5},
-			{Kind: "FAIL", Label: "apply", Detail: "exit 1", Stage: "change", Step: true, Dur: 2, Output: []string{"boom <&>"}},
+			{Kind: "FAIL", Label: "apply", Detail: "exit 1", Stage: "change", Step: true, Dur: 2, Output: []string{"boom <&>"}, Why: "boom <&>"},
 			{Kind: "SKIP", Label: "delete table", Detail: "dry run: set X=1 to approve", Stage: "change"},
 		}}
 	return []LaneReport{
@@ -114,7 +114,7 @@ func TestAnnotateAndSections(t *testing.T) {
 	var b bytes.Buffer
 	Annotate(&b, Generic{}, reports())
 	want := "swim: warning: swim 1: deploy: approved without a prompt: ALLOW_A, DEPLOY (flag set)\n" +
-		"swim: error: swim 1: deploy: FAIL  apply (exit 1)\nboom <&>\n" + // with the step's last output lines
+		"swim: error: swim 1: deploy: FAIL  apply (exit 1): boom <&>\nboom <&>\n" + // its why, then its last output lines
 		"swim: notice: swim 1: deploy: delete table: dry run: set X=1 to approve\n" +
 		"swim: notice: swim: 2 lanes skipped: swim 2, 3 (swim 1 failed)\n"
 	if b.String() != want {
@@ -140,7 +140,7 @@ func TestJUnit(t *testing.T) {
 		t.Fatalf("totals: %+v", got)
 	}
 	s1 := got.Suites[0]
-	if s1.Cases[1].Failure == nil || s1.Cases[1].Failure.Body != "boom <&>" || s1.Cases[2].Skipped == nil {
+	if s1.Cases[1].Failure == nil || s1.Cases[1].Failure.Body != "boom <&>" || s1.Cases[1].Failure.Message != "FAIL  apply (exit 1): boom <&>" || s1.Cases[2].Skipped == nil {
 		t.Errorf("suite 1: %+v", s1)
 	}
 	if c := got.Suites[1].Cases[0]; c.Skipped == nil || c.Skipped.Message != "swim 1 failed" {
@@ -151,7 +151,7 @@ func TestJUnit(t *testing.T) {
 func TestMarkdown(t *testing.T) {
 	var b bytes.Buffer
 	Markdown(&b, reports(), "r-1", "0123456789abcdef", 1)
-	for _, want := range []string{"## swim ci: failed", "commit `0123456789ab`", "| swim 1 | `` | FAIL | 1 | 1 | 1 |", "FAIL  apply (exit 1)", "| swim 2 | `` | SKIP |",
+	for _, want := range []string{"## swim ci: failed", "commit `0123456789ab`", "| swim 1 | `` | FAIL | 1 | 1 | 1 |", "FAIL  apply (exit 1): boom", "| swim 2 | `` | SKIP |",
 		"\n**Approved without a prompt:** swim 1: ALLOW_A, DEPLOY (flag set)\n"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("summary missing %q:\n%s", want, b.String())
