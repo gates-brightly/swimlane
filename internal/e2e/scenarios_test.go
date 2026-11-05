@@ -574,15 +574,7 @@ func TestScenarioBlocked(t *testing.T) {
 	r.write("swim.yml", "blocked_commands: [\"terraform destroy\"]\n", 0o644)
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
 	head := r.git("rev-parse", "HEAD")
-	status := func() string {
-		var keep []string
-		for _, l := range strings.Split(r.git("status", "--porcelain"), "\n") {
-			if !strings.HasSuffix(l, " .swim.lock") {
-				keep = append(keep, l)
-			}
-		}
-		return strings.Join(keep, "\n")
-	}
+	status := func() string { return r.git("status", "--porcelain") }
 	before := status()
 	res, code := r.runYAML(nil, "run", "1", "2", "3", "4", "5", "6")
 	eq(t, "swim run exit", code, 1)
@@ -603,7 +595,6 @@ func TestScenarioBlocked(t *testing.T) {
 		t.Error("lane 2 ran its next step after the blocked one")
 	}
 	eq(t, "lane 3's two commits landed", r.git("rev-list", "--count", head+"..HEAD"), "2")
-	// .swim.lock is written by swim run itself (a file meant to be committed), not by git.
 	eq(t, "working tree unchanged", status(), before)
 }
 

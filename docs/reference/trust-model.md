@@ -84,8 +84,6 @@ else stops it. What is enforced outside the script:
   guard is how an operator decides on one.
 - **Running lanes are protected:** swim won't rerun, edit or archive a
   lane that's running.
-- **The lock:** a swim with other syntax versions than `.swim.lock` refuses
-  to run lanes.
 
 **An honest lane's approvals are decided and recorded by the launcher**
 (under `swim run`):

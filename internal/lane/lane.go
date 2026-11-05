@@ -130,14 +130,14 @@ func ReadScript(root string, n int) (Info, error) {
 	}
 	var info Info
 	if IsBinary(data) {
-		info = Info{Exists: true, Syntax: syntax.Current}
+		info = Info{Exists: true, Syntax: syntax.Version}
 	} else {
 		info = ParseScript(string(data))
 		if !strings.HasSuffix(path, ".sh") && info.Syntax == 1 {
-			info.Syntax = syntax.Current // syntax 1 was bash only
+			info.Syntax = syntax.Version // syntax 1 was bash only
 		}
 	}
-	if err := syntax.CheckScript(filepath.Base(path), info.Syntax); err != nil {
+	if err := syntax.Check(filepath.Base(path), info.Syntax); err != nil {
 		return Info{}, err
 	}
 	if err := applySidecar(Sidecar(root, n), &info); err != nil {

@@ -104,10 +104,10 @@ func startFailed(root string, cfg *config.Config, n int, err error) error {
 	return err
 }
 
-// startRefused records a round _start refused (the lock pins other
-// syntaxes, its script or manifest can't be kept, no signing key, ...) so
-// it reaches the record, not only the terminal: failed in status with "not started: <why>", and a round of its
-// own in the log saying so.
+// startRefused records a round _start refused (its script is newer than
+// this swim reads or can't be kept, no signing key, ...) so it reaches the
+// record, not only the terminal: failed in status with "not started:
+// <why>", and a round of its own in the log saying so.
 func startRefused(root string, cfg *config.Config, n int, err error) {
 	// The reason is the error's first paragraph; the rest (the fix) goes
 	// in the log under it.
@@ -147,13 +147,6 @@ func cmdStart(args []string) error {
 	}
 	root, cfg, n, err := laneCtx(rest[0])
 	if err != nil {
-		return err
-	}
-	// Lane scripts run directly with bash honour the lock too.
-	if err := requireVersion(root, true); err != nil {
-		if _, running := lane.Running(root, n); !running {
-			startRefused(root, cfg, n, err)
-		}
 		return err
 	}
 	pid, _ := strconv.Atoi(pidS)

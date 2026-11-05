@@ -20,8 +20,17 @@ func TestOfScriptAndLog(t *testing.T) {
 			t.Errorf("OfScript(%q) = %d, want %d", src, got, want)
 		}
 	}
-	if OfLog(strings.NewReader(LogHeader(3)+"\n")) != Current || OfLog(strings.NewReader("=== ROUND START\n")) != 1 {
-		t.Error("OfLog")
+	for log, want := range map[string]int{
+		LogHeader(3) + "\n":                     Version,
+		"# swim lane log | syntax 2 | swim 1\n": 2, // an older log
+		"=== ROUND START\n":                     1,
+	} {
+		if got := OfLog(strings.NewReader(log)); got != want {
+			t.Errorf("OfLog(%q) = %d, want %d", log, got, want)
+		}
+	}
+	if !strings.HasPrefix(LogHeader(3), "# swim log | syntax 4 | swim 3") || !IsLogHeader(LogHeader(3)) || !IsLogHeader("# swim lane log | syntax 2 | swim 1") {
+		t.Error("LogHeader")
 	}
 	dir := t.TempDir()
 	if OfLogFile(filepath.Join(dir, "missing")) != 0 {
@@ -34,17 +43,29 @@ func TestOfScriptAndLog(t *testing.T) {
 	}
 }
 
-func TestCheckLimits(t *testing.T) {
-	if Check("log", Current) != nil || Check("log", Current+1) == nil {
-		t.Error("logs read up to Current")
+func TestCheck(t *testing.T) {
+	if Check("lane.1.sh", Version) != nil || Check("log", 2) != nil {
+		t.Error("files up to Version read")
 	}
-	if CheckScript("lane.1.sh", Script) != nil {
-		t.Error("scripts read up to Script")
-	}
-	err := CheckScript("lane.1.sh", Script+1)
+	err := Check("lane.1.sh", Version+1)
 	var tooNew ErrTooNew
-	if !errors.As(err, &tooNew) || !strings.Contains(err.Error(), "reads up to syntax 4") {
-		t.Errorf("CheckScript: %v", err)
+	if !errors.As(err, &tooNew) || !strings.Contains(err.Error(), "reads up to syntax 4") || !strings.Contains(err.Error(), "Update swim") {
+		t.Errorf("Check: %v", err)
+	}
+}
+
+func TestCheckRepo(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".swim", "logs"), 0o755)
+	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 3\n"), 0o755)
+	os.WriteFile(filepath.Join(root, ".swim", "logs", "agent1.prev-x.log"), []byte("# swim lane log | syntax 2 | swim 1\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".swim", "logs", "agent2.log"), []byte("no header\n"), 0o644)
+	if err := CheckRepo(root); err != nil {
+		t.Fatalf("older files: %v", err)
+	}
+	os.WriteFile(filepath.Join(root, ".swim", "logs", "agent3.log"), []byte("# swim log | syntax 9 | swim 3\n"), 0o644)
+	if err := CheckRepo(root); err == nil || !strings.Contains(err.Error(), "agent3.log uses swim syntax 9") {
+		t.Fatalf("newer log: %v", err)
 	}
 }
 

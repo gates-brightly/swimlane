@@ -23,11 +23,9 @@ import (
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/notify"
-	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
-	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 const (
@@ -72,9 +70,6 @@ func cmdInit(args []string) error {
 		fmt.Println(".gitignore already has the swim block")
 	}
 
-	if err := ensureLock(root); err != nil {
-		return err
-	}
 	if err := refreshStatus(root, cfg); err != nil {
 		return err
 	}
@@ -277,9 +272,6 @@ func cmdNew(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireVersion(root, false); err != nil {
-		return err
-	}
 	// A task name: the lowest lane not in use, named by # Task:.
 	task := ""
 	if _, aerr := strconv.Atoi(rest[0]); aerr != nil {
@@ -436,10 +428,6 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	if rerun && len(rest) > 0 {
 		return usagef("--rerun is for running every pending lane; named lanes always run")
-	}
-	// A run with nothing to do doesn't need the repo set up.
-	if err := requireVersion(root, len(rest) > 0 || anyPending(root, cfg)); err != nil {
-		return err
 	}
 	var lanes []int
 	pins := map[int]string{}
@@ -905,79 +893,4 @@ func rel(root, p string) string {
 		return r
 	}
 	return p
-}
-
-// swim lock [--upgrade]
-func cmdLock(args []string) error {
-	var upgrade bool
-	rest, err := flags{bools: map[string]*bool{"upgrade": &upgrade}}.parse(args)
-	if err != nil {
-		return err
-	}
-	if len(rest) > 0 {
-		return usagef("usage: swim lock [--upgrade]")
-	}
-	root, _, err := repo()
-	if err != nil {
-		return err
-	}
-	l, ok, err := version.ReadLock(root)
-	if err != nil {
-		return err
-	}
-	if !upgrade {
-		fmt.Printf("swim:  %s (syntax %s)\n", version.Long(), version.Current)
-		if !ok {
-			fmt.Printf("lock:  none (%s is written on the next swim run)\n", version.LockName)
-			return nil
-		}
-		fmt.Printf("lock:  syntax %s, written by swim %s at %s\n", l.Syntaxes(), l.Version, l.UpdatedAt)
-		if l.Mismatched() {
-			return version.ErrMismatch{Lock: l, Path: version.LockPath(root)}
-		}
-		fmt.Println("ok:    this swim can run this repo's lanes")
-		return nil
-	}
-	switch {
-	case ok && l.Newer():
-		return version.ErrMismatch{Lock: l, Path: version.LockPath(root)}
-	case ok && !l.Mismatched() && l.Breaking == 0:
-		fmt.Printf("%s already pins syntax %s\n", version.LockName, version.Current)
-		return nil
-	}
-	for n := 1; n <= 99; n++ {
-		if pid, running := lane.Running(root, n); running {
-			return fmt.Errorf("swim %d is running (pid %d); let it finish before upgrading the lock", n, pid)
-		}
-	}
-	if err := version.WriteLock(root); err != nil {
-		return err
-	}
-	from := "none"
-	if ok {
-		from = l.Syntaxes().String()
-		if l.Breaking != 0 {
-			from = fmt.Sprintf("breaking %d (%s)", l.Breaking, from)
-		}
-	}
-	history.Log(root, history.Entry{Event: history.Lock, Detail: fmt.Sprintf("syntax %s -> %s (swim %s)", from, version.Current, version.String())})
-	fmt.Printf("%s: syntax %s -> %s\n", version.LockName, from, version.Current)
-	// A worker up now that reads other syntaxes leaves every batch queued
-	// from here on (or, from before presence files, fails them).
-	for _, p := range queue.LiveWorkers(root) {
-		if p.Syntax != version.Current {
-			fmt.Fprintf(os.Stderr, "swim lock: warning: %s reads %s: it leaves batches queued until its swim is updated and swim watch restarted\n", p.Name(), p.Syntax)
-		}
-	}
-	return nil
-}
-
-// anyPending reports whether a lane script has a round to run.
-func anyPending(root string, cfg *config.Config) bool {
-	for n := 1; n <= cfg.Lanes; n++ {
-		if info, err := lane.ReadScript(root, n); err == nil && info.Pending() {
-			return true
-		}
-	}
-	return false
 }

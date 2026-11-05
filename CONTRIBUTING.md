@@ -27,5 +27,5 @@ just next-tag    # tag HEAD with the next release (DRY=1 prints it); see CHANGEL
 - **Docs:** each topic is written once, in `docs/reference/` (the binary
   embeds it for `swim guide`). The README and `docs/guide.md` link there
   rather than repeat it; their commands run in the test suite.
-- **Incompatible changes:** bump the syntax version in `internal/syntax`,
-  add it to `swim lock --help` and `CHANGELOG.md` with Upgrading notes.
+- **Incompatible changes:** bump `syntax.Version` (`internal/syntax`) and
+  write Upgrading notes in `CHANGELOG.md`.

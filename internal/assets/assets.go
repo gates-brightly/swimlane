@@ -33,7 +33,7 @@ func LibFor(bin string) string {
 // Lane script renders a fresh lane.N.sh.
 func Script(lane int, goal, toolchain, job, owner string) (string, error) {
 	return render(laneTmpl, map[string]any{
-		"Syntax":    syntax.Script,
+		"Syntax":    syntax.Version,
 		"Job":       job,
 		"Owner":     owner,
 		"Lane":      lane,

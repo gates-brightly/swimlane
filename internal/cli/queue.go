@@ -888,9 +888,6 @@ func cmdWatch(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireVersion(root, true); err != nil {
-		return err
-	}
 	batches := cfg.WatchBatchesFor()
 	if batchesFlag != "" {
 		if batches, err = strconv.Atoi(batchesFlag); err != nil || batches < 1 {

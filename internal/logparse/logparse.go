@@ -1,10 +1,10 @@
 // Package logparse defines the lane log grammar, writes it, and reads it back.
 //
-// Syntax 2 (current) is built to be read with cat or an editor. Every line
+// A lane log is built to be read with cat or an editor. Every line
 // says what it is by its first characters, so command output can never be
 // mistaken for a result:
 //
-//	# swim lane log | syntax 2 | swim 1                       file header
+//	# swim log | syntax 4 | swim 1                            file header
 //
 //	== ROUND 2026-10-09T12:00:00Z  job=3f2a9c1e-...  Cut over orders-api
 //	   script: lane.1.sh | owner: zach | after: 1 | git: main@abc1234 | ...
@@ -29,9 +29,6 @@
 // WARN), two spaces and a label. Step results end with a duration and a
 // clock time; marks (SKIP, APPROVED, STOP, WARN) carry a detail in
 // parentheses instead. Lines indented 8 spaces belong to the step above.
-//
-// Syntax 1 logs (=== ROUND START / === STEP / --- output framing) are still
-// read, and ConvertV1 rewrites them as syntax 2.
 package logparse
 
 import (
@@ -76,7 +73,7 @@ const (
 	Kept    = "KEPT"
 )
 
-// Syntax 2 markers and indents.
+// Log markers and indents.
 const (
 	RoundMark = "== ROUND "
 	EndMark   = "== END "
@@ -217,7 +214,6 @@ func StagesText(rs []StageResult) string {
 
 // Round is the parsed tail of a log: everything since the last round start.
 type Round struct {
-	Syntax    int
 	Found     bool // a round start was present
 	Title     string
 	Job       string
@@ -364,7 +360,7 @@ func (r *Round) add(res Result) {
 func ParseFile(path string) (*Round, error) {
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
-		return &Round{Syntax: syntax.Current}, nil
+		return &Round{}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -384,9 +380,6 @@ func Parse(rd io.Reader) (*Round, error) {
 	v := syntax.OfLog(strings.NewReader(string(first)))
 	if err := syntax.Check("lane log", v); err != nil {
 		return nil, err
-	}
-	if v == 1 {
-		return nil, fmt.Errorf("lane log is swim syntax 1, from before swim versioned its files, which this swim doesn't read")
 	}
 	return parseV2(br)
 }
@@ -519,7 +512,7 @@ func endV2(line string) (state string, exit int, dur string, ok bool) {
 
 func parseV2(rd io.Reader) (*Round, error) {
 	sc := scanner(rd)
-	cur := &Round{Syntax: 2, Stage: syntax.Setup}
+	cur := &Round{Stage: syntax.Setup}
 	ctxNext := false // the line after == ROUND may be its context
 	for sc.Scan() {
 		line := sc.Text()
@@ -527,7 +520,7 @@ func parseV2(rd io.Reader) (*Round, error) {
 		ctxNext = false
 		switch {
 		case strings.HasPrefix(line, RoundMark):
-			cur = &Round{Syntax: 2, Found: true, Stage: syntax.Setup}
+			cur = &Round{Found: true, Stage: syntax.Setup}
 			if ts, job, title, ok := roundV2(line); ok {
 				cur.StartedAt, cur.Job, cur.Title = ts, job, title
 			}
@@ -602,7 +595,7 @@ func parseV2(rd io.Reader) (*Round, error) {
 	return cur, sc.Err()
 }
 
-// ParseRound parses one round's lines (as cut from a syntax 2 log).
+// ParseRound parses one round's lines (as cut from a log).
 func ParseRound(lines []string) (*Round, error) {
 	text := strings.Join(lines, "\n") + "\n"
 	if len(lines) > 0 && strings.HasPrefix(lines[0], RoundMark) {
@@ -622,18 +615,15 @@ func ParseContext(line string) map[string]string {
 	return ctx
 }
 
-// EnsureV2 makes path ready for syntax 2 lines: a missing or empty log gets
-// the header; a syntax 1 log, or one in a newer syntax, is an error.
+// EnsureV2 makes path ready for log lines: a missing or empty log gets the
+// header; one in a newer syntax is an error.
 func EnsureV2(path string, lane int) error {
-	switch v := syntax.OfLogFile(path); {
-	case v == 0:
+	v := syntax.OfLogFile(path)
+	if v == 0 {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
 		}
 		return os.WriteFile(path, []byte(syntax.LogHeader(lane)+"\n"), 0o644)
-	case v == 1:
-		return fmt.Errorf("%s is swim syntax 1, from before swim versioned its files, which this swim doesn't read: archive it (swim archive %d) or delete it", path, lane)
-	default:
-		return syntax.Check(path, v)
 	}
+	return syntax.Check(path, v)
 }

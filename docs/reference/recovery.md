@@ -174,37 +174,22 @@ swim verify                                     # old entries still verify
   and re-signed it, which `swim verify` can't tell from the real one.
 - `swim config signing_key` also sets the key `swim signoff` signs with.
 
-## A lock mismatch
+## A file from a newer swim
 
-**You see:** `swim run` refuses to start, with
-`this repo needs a newer swim: .swim.lock pins ...` or
-`this repo's lanes were set up for an older swim: ...`. `swim doctor`
-reports `[lock]`.
+**You see:** a command stops with
+`lane.N.sh uses swim syntax 5, but this swim (...) reads up to syntax 4`
+(or the same for a lane log under `.swim/logs/`).
 
-**Why:** `.swim.lock` pins the script, log and state syntax the repo's
-lanes use, and this swim reads and writes others.
+**Why:** the file was written by a newer swim, in a syntax this one can't
+read.
 
-**Fix,** when the lock is newer than your swim:
+**Fix:** update swim, then run again:
 
 ```sh
 go install github.com/gates-brightly/swimlane/cmd/swim@latest
 swim --version
 just which                  # in a swimlane checkout: every swim on PATH, and which one runs
 ```
-
-When the lock is older than your swim:
-
-```sh
-swim lock                   # this swim's syntaxes, and the lock's
-swim changelog --since <the version in .swim.lock>   # what changed: read the Upgrading notes
-swim lock --help            # what each syntax version changed
-# update the lane scripts (swim new N writes the current template), let running lanes finish, then:
-swim lock --upgrade
-```
-
-Commit `.swim.lock`: CI and teammates read it too. A lock in the old form
-(`breaking: 7`) means today's syntaxes and runs as it is; `swim lock
---upgrade` rewrites it in the new form.
 
 ## See also
 

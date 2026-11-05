@@ -27,7 +27,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
-	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // Schema is the --yaml document's schema.
@@ -96,7 +95,6 @@ var Checks = []Check{
 	{"toolchain", false, "the configured toolchain fails to load", checkToolchain},
 	{"git", false, "git missing, or not a git repo", checkGit},
 	{"header-env-secret", false, "header_env lists a secret", checkHeaderEnvSecret},
-	{"lock", false, ".swim.lock missing, invalid or for another breaking version", checkLock},
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than 14 days, of no lane's latest round", checkOldStages},
 	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
@@ -583,24 +581,6 @@ func checkHeaderEnvSecret(o *Options) []finding.Finding {
 		}
 	}
 	return out
-}
-
-func checkLock(o *Options) []finding.Finding {
-	l, ok, err := version.ReadLock(o.Root)
-	switch {
-	case err != nil:
-		return []finding.Finding{fd(finding.Warn, "lock", version.LockName, "fix or delete it, then swim init writes a new one", "%v", err)}
-	case !ok:
-		return []finding.Finding{fd(finding.Warn, "lock", version.LockName, "swim init (then commit it)",
-			"no %s: the repo isn't set up, and swim run refuses until swim init writes it", version.LockName)}
-	case l.Mismatched():
-		first, _, _ := strings.Cut(version.ErrMismatch{Lock: l, Path: version.LockPath(o.Root)}.Error(), "\n")
-		return []finding.Finding{fd(finding.Warn, "lock", version.LockName, "see swim lock --help", "%s", strings.TrimSuffix(first, ","))}
-	case l.Breaking != 0:
-		return []finding.Finding{fd(finding.Info, "lock", version.LockName, "swim lock --upgrade (rewrites it; nothing else changes)",
-			"%s is in the old form (breaking: %d); it means syntax %s", version.LockName, l.Breaking, l.Syntaxes())}
-	}
-	return nil
 }
 
 // checkSigningKey says where the runner key lives. swim run signs a run's

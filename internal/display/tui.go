@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/syntax"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -574,7 +575,7 @@ func colorLogLine(l string, color bool) string {
 		return p.Paint(ui.Bold+ui.Blue, l)
 	case strings.HasPrefix(l, logparse.OutPrefix):
 		return l
-	case strings.HasPrefix(l, logparse.Indent), strings.HasPrefix(l, "   "), strings.HasPrefix(l, "# swim lane log"):
+	case strings.HasPrefix(l, logparse.Indent), strings.HasPrefix(l, "   "), syntax.IsLogHeader(l):
 		return p.Paint(ui.Dim, l)
 	}
 	if kind, _, ok := logparse.SplitResult(l); ok {
