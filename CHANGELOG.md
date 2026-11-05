@@ -42,6 +42,28 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Removed
 
+- **`drift`, `stop`, `msg`, `input` and `output` are gone from lane
+  scripts, with `# Observe:` and `# Outputs:`.** A lane calls `stage`,
+  `run`, `snapshot`, `gate` and `guard` (and `confirm`); `swim drift`,
+  `swim stop`, `swim msg`, `swim input` and `swim output` are removed for
+  other languages too. Guards no longer re-read observed facts, so there
+  is no DRIFT line, no `drift=` count in the END line, `swim status`, `swim
+  run`'s summary, `swim ci`'s job summary or the `--yaml` documents
+  (`counts.drift`, status `drift`), and no `msg` event or status message.
+  `$SWIM_OUT` and `.swim/out/` are no longer made (delete `.swim/out/` if
+  you like), and the lint checks `outputs`, `input-dep` and `observe` and
+  the doctor check `outputs-old` are gone. `msg_log_interval` and
+  `outputs_keep` are no longer settings (a swim.yml that sets one fails to
+  load); `swim doctor --fix` prunes staged copies older than 14 days. A
+  `# Observe:` or `# Outputs:` line is now an ordinary header line that
+  does nothing (drop it), and a sidecar's `observe:` or `outputs:` fails
+  to load. Older logs with DRIFT and MSG lines still read, and older chain
+  entries keep their observed facts, outputs and inputs and still verify.
+
+## 0.20261105.4 (v0.20261105.4, 2026-11-05)
+
+### Removed
+
 - **`swim archive` empties the slot; `swim stub`, `swim clean` and `swim
   claim` are gone.** `swim archive N ["<note>"]` archives the round's log
   and leaves the stub `swim stub` used to write, carrying the note (a
@@ -103,23 +125,6 @@ history stays here, since `swim changelog --since` reads it.
   no longer shows a `scheduled` state; `swim verify` no longer checks a
   run's `scheduled_for` against its start (older chain entries keep the
   field, and their signatures still verify).
-- **`drift`, `stop`, `msg`, `input` and `output` are gone from lane
-  scripts, with `# Observe:` and `# Outputs:`.** A lane calls `stage`,
-  `run`, `snapshot`, `gate` and `guard` (and `confirm`); `swim drift`,
-  `swim stop`, `swim msg`, `swim input` and `swim output` are removed for
-  other languages too. Guards no longer re-read observed facts, so there
-  is no DRIFT line, no `drift=` count in the END line, `swim status`, `swim
-  run`'s summary, `swim ci`'s job summary or the `--yaml` documents
-  (`counts.drift`, status `drift`), and no `msg` event or status message.
-  `$SWIM_OUT` and `.swim/out/` are no longer made (delete `.swim/out/` if
-  you like), and the lint checks `outputs`, `input-dep` and `observe` and
-  the doctor check `outputs-old` are gone. `msg_log_interval` and
-  `outputs_keep` are no longer settings (a swim.yml that sets one fails to
-  load); `swim doctor --fix` prunes staged copies older than 14 days. A
-  `# Observe:` or `# Outputs:` line is now an ordinary header line that
-  does nothing (drop it), and a sidecar's `observe:` or `outputs:` fails
-  to load. Older logs with DRIFT and MSG lines still read, and older chain
-  entries keep their observed facts, outputs and inputs and still verify.
 - **swim lint's `removed` check.** It refused scripts that still used
   what swim dropped (`# Finally:`, `# Matrix:`, `# Modules:`, `# Cache:`,
   `mod`, `swim secret`, outcome handlers, evidence steps); such a header
