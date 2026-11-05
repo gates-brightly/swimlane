@@ -240,7 +240,7 @@ func (ir *interrupter) forceLocked(s os.Signal) {
 	}
 	ns := ir.running()
 	ir.notice.Store(fmt.Sprintf("force quitting · killing in %s · Ctrl-C again to kill now", ir.grace))
-	ir.disp.Message(fmt.Sprintf("swim: force quitting: interrupting %d lanes, killing in %s. Ctrl-C again to kill now.", len(ns), ir.grace))
+	ir.disp.Message(fmt.Sprintf("swim: force quitting: interrupting %s, killing in %s. Ctrl-C again to kill now.", nLanes(len(ns)), ir.grace))
 	ir.o.ev.emit(Event{Event: "force_quit", Run: ir.o.RunID, Lanes: ns, Duration: floatp(ir.grace.Seconds()), At: now()})
 	for _, n := range ns {
 		lp := ir.procs[n]
@@ -263,7 +263,7 @@ func (ir *interrupter) killLocked() {
 	ns := ir.running()
 	ir.notice.Store("killing lanes")
 	if len(ns) > 0 {
-		ir.disp.Message(fmt.Sprintf("swim: killing %d lanes now.", len(ns)))
+		ir.disp.Message(fmt.Sprintf("swim: killing %s now.", nLanes(len(ns))))
 	}
 	ir.o.ev.emit(Event{Event: "kill", Run: ir.o.RunID, Lanes: ns, At: now()})
 	for _, n := range ns {
@@ -297,4 +297,12 @@ func (ir *interrupter) signalLocked(lp *laneProc, sig syscall.Signal) {
 		return
 	}
 	lp.proc.Signal(sig)
+}
+
+// nLanes is "1 lane", "2 lanes".
+func nLanes(n int) string {
+	if n == 1 {
+		return "1 lane"
+	}
+	return fmt.Sprintf("%d lanes", n)
 }

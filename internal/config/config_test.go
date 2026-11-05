@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gates-brightly/swimlane/internal/cache"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -323,6 +325,11 @@ func TestNewKeys(t *testing.T) {
 }
 
 func TestIsDefault(t *testing.T) {
+	// The default cache is the OS's: ~/.cache/swim, ~/Library/Caches/swim.
+	defaultCache, err := cache.Base("")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		key, value string
 		want       bool
@@ -333,7 +340,7 @@ func TestIsDefault(t *testing.T) {
 		{"notify", "true", false},
 		{"interrupt", "Graceful", true},
 		{"watch_batches", "4", true},
-		{"cache_dir", "~/.cache/swim", true},
+		{"cache_dir", defaultCache, true},
 		{"cache_dir", "/var/cache/swim", false},
 	} {
 		got, err := IsDefault(c.key, c.value)

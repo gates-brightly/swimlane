@@ -315,7 +315,7 @@ func Choices(key string) []string {
 }
 
 // IsDefault reports whether value for key is what swim uses with the key
-// unset (10s for term_grace, ~/.cache/swim for cache_dir). The value is
+// unset (10s for term_grace, the OS cache directory's swim for cache_dir). The value is
 // validated first.
 func IsDefault(key, value string) (bool, error) {
 	val, err := keyValue(key, value)
