@@ -10,7 +10,7 @@ import (
 // A lane script with no syntax line stops only its own lane, and lint, run
 // and the queue say the same thing about it: add the line.
 func TestMissingSyntaxLineStopsOnlyItsLane(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.shortLane(1, "# Round: good", "stage check\nrun \"x\" echo lane-one")
 	two := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nrun \"x\" echo lane-two\n"
 	if err := os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte(two), 0o755); err != nil {
@@ -40,7 +40,7 @@ func TestMissingSyntaxLineStopsOnlyItsLane(t *testing.T) {
 // swim queue refuses what swim run would, at enqueue, while whoever
 // queues it can fix it: nothing is queued.
 func TestQueueRefusesWhatRunWould(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.shortLane(1, "# Round: fine", "stage check\nrun \"x\" echo ok")
 	r.shortLane(2, "# Round: label for a command", "stage check\nrun echo hi")
 	nosyntax := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nrun \"x\" echo hi\n"
@@ -63,7 +63,7 @@ func TestQueueRefusesWhatRunWould(t *testing.T) {
 // exiting non-zero; a lane waiting on the skipped one skips too. Named,
 // the same lane refuses the run.
 func TestRunAllSkipsALaneLintRefuses(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.shortLane(1, "# Round: fine", "stage check\nrun \"x\" echo lane-one")
 	nosyntax := "#!/usr/bin/env swim\n# Round: no syntax line\n\nstage check\nrun \"x\" echo lane-two\n"
 	os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte(nosyntax), 0o755)
@@ -87,7 +87,7 @@ func TestRunAllSkipsALaneLintRefuses(t *testing.T) {
 // lane's lint error; when the batch skips, the hint says to fix that lane,
 // not to run it (swim run would refuse it too).
 func TestQueueWarnsOfARefusedDependency(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.shortLane(1, "# Round: setup", "stage check\nrun echo hi")
 	r.shortLane(2, "# Round: after setup\n# After: 1", "stage check\nrun \"x\" echo lane-two")
 	// status says swim 1 won't run, and why, whatever the lint error.

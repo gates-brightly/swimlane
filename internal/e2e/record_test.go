@@ -15,7 +15,7 @@ import (
 // printed, in status, a round of its own in its log, and .swim.log. Read
 // back with swim status, swim log and swim report, never the terminal.
 func TestLaneThatNeverStartsIsRecorded(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # swim: syntax 2
 # Round: never starts
@@ -44,7 +44,7 @@ summary
 // syntax this swim doesn't read, run directly with bash) says so in
 // status and its log, with the fix.
 func TestLockRefusalIsRecorded(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "locked out", `run "never" true`)
 	r.mustSwim("run", "1", "--plain") // writes the lock
 	lock := filepath.Join(r.root, ".swim.lock")
@@ -71,7 +71,7 @@ func TestLockRefusalIsRecorded(t *testing.T) {
 // A check entry an older swim recorded (swim plan --check, which swim no
 // longer has) still verifies beside the rounds after it.
 func TestOldCheckEntryVerifies(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one step", `run "hello" echo hi`)
 	exit := 0
 	if _, err := chain.Append(r.root, chain.Entry{Type: "check", Run: "r-old", Lane: 1, Job: "j", Round: "one step",

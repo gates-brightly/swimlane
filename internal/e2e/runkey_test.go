@@ -74,7 +74,7 @@ func (a *confirmAgent) asked() int {
 // ask the agent, which asks the operator (who says no); on Linux it can't
 // read the launcher's memory either. swim verify trusts the run.
 func TestRunKeyKeepsSigningFromLanes(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	keys := people(t, r, "zach")
 	priv := keys["zach"]
 	a := newConfirmAgent(t, priv)

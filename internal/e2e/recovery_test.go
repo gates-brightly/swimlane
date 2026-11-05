@@ -18,7 +18,7 @@ import (
 // A lost runner key: entries signed with the old key still verify, because
 // each entry carries its signer's public key.
 func TestRecoveryLostRunnerKey(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	keys := people(t, r, "old", "new")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["old"])
@@ -46,7 +46,7 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 // pid file: swim doctor reports it, --fix removes it, and swim status
 // --rebuild records the round as interrupted.
 func TestRecoveryStaleRunningLane(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "killed", `run "long" `+blocked("long")+``)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -77,7 +77,7 @@ func TestRecoveryStaleRunningLane(t *testing.T) {
 // watch: its cut-off step and END INTERRUPTED go to the log, the chain
 // records the round as interrupted, and the lane isn't left running.
 func TestReapDeadLane(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	kill := func() {
 		r.script(1, "killed", `run "long" `+blocked("long")+``)
 		c := r.cmd("bash", "lane.1.sh")

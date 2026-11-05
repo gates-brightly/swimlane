@@ -27,7 +27,7 @@ func TestStepWrittenWrongStopsTheRound(t *testing.T) {
 		{"option missing its value", `gate "x" --timeout`, ""}, // label "x", command --timeout: runs, fails, stops as a failed gate
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := newRepo(t, "")
+			r := newRepo(t)
 			// Lint refuses these before swim run starts ([step]); the lint-ignore
 			// lets the round run, to prove the runtime fails closed by itself.
 			r.shortLane(1, "# Round: drop it\n# Guards: DB_ALLOW_DROP  drop the table", "stage check\n# swim:lint-ignore step the runtime's own check is under test\n"+tc.gate+"\nstage change\nif guard DB_ALLOW_DROP \"drop the table\"; then\n  run \"drop\" echo DROPPED\nfi")
@@ -51,7 +51,7 @@ func TestStepWrittenWrongStopsTheRound(t *testing.T) {
 // The unambiguous spellings run as written: -- after the label (as swim
 // run takes it from other languages) and --opt=value.
 func TestStepAcceptsDashDashAndOptEquals(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.shortLane(1, "# Round: spellings", "stage check\n"+
 		"gate \"dash dash\" -- echo gate-ran\n"+
 		"run --timeout=1m \"opt equals\" echo run-ran\n"+
@@ -82,7 +82,7 @@ func TestGateInASubshellStopsTheRound(t *testing.T) {
 		{"pipe", `echo x | gate "piped gate" false`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := newRepo(t, "")
+			r := newRepo(t)
 			r.shortLane(1, "# Round: change it\n# Guards: ALLOW_CHANGE  change it",
 				"stage check\n# swim:lint-ignore step-subshell the runtime's own check is under test\n"+tc.gate+
 					"\nstage change\nif guard ALLOW_CHANGE \"change it\"; then\n  run \"change\" echo CHANGED\nfi")
@@ -106,7 +106,7 @@ func TestGateInASubshellStopsTheRound(t *testing.T) {
 // A stop marker an earlier round left behind doesn't turn this round's
 // interrupt into a failure: the lane clears it as it starts.
 func TestStaleStopMarkerIsCleared(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.shortLane(1, "# Round: fine", "stage check\nrun \"x\" true")
 	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
 	marker := filepath.Join(r.root, ".swim", "logs", "agent1.log.stopped")

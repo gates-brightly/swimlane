@@ -39,7 +39,7 @@ func (r *repo) git(args ...string) string {
 }
 
 func ciRepo(t *testing.T) *repo {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
 	r.script(1, "root", `run "hello" echo hi`)
 	r.script(2, "fails", `run "convert" false
@@ -125,7 +125,7 @@ func TestCIGitLabAndGeneric(t *testing.T) {
 }
 
 func TestCIChanged(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "a" true`)
 	r.script(2, "two", `run "b" true`)
 	r.script(3, "three", `run "c" true`)
@@ -169,7 +169,7 @@ func TestCIChanged(t *testing.T) {
 }
 
 func TestCIPinsAndLanes(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "a" true`)
 	// Every lane script counts, whatever its number: there's no lane count.
 	r.script(6, "six", `run "six" true`)
@@ -213,7 +213,7 @@ func jobOf(t *testing.T, r *repo, n int) string {
 }
 
 func TestCIHeartbeat(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.git("commit", "-q", "--allow-empty", "-m", "base")
 	// The lane is silent until swim reports it: a heartbeat must come. (A
 	// lane that writes within each beat gets none: TestHeartbeatSilent, on

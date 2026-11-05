@@ -16,7 +16,7 @@ import (
 // passes. A write cut short leaves a half line that swim chain repair
 // removes, recorded in the chain.
 func TestChainLargeEntryAndRepair(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])

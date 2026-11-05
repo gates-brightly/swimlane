@@ -25,7 +25,7 @@ func spooled(r *repo, n int, want string) func() bool {
 }
 
 func TestLogShowsRunningStep(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "slow", slowLane)
 	withHeader(t, r, 1, "# Job: 7e57a110-1111-4222-8333-444455556666")
 	c := r.cmd(bin, "run", "1", "--plain")
@@ -65,7 +65,7 @@ func TestLogShowsRunningStep(t *testing.T) {
 // wait N is what exits with its result.
 func TestLogFollowStopsWhenDone(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "slow then fail", slowLane+`
 run "fails" false`)
 	c := r.cmd(bin, "run", "1", "--plain")
@@ -109,7 +109,7 @@ run "fails" false`)
 // Output a streamed step writes just before it ends, after the follower's
 // last look at the spool, shows once, from the step's block.
 func TestLogFollowLateOutput(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "late", `run "late" bash -c 'echo early; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo late-1; echo late-2'`)
 	c := r.cmd(bin, "run", "1", "--plain")
 	if err := c.Start(); err != nil {
@@ -133,7 +133,7 @@ func TestLogFollowLateOutput(t *testing.T) {
 }
 
 func TestLogCutOffStep(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "x", `run "a" true`)
 	r.mustSwim("run", "1")
 	// A spool left by a swim _step that was killed (no lane running).

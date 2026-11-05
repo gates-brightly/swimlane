@@ -11,7 +11,7 @@ import (
 // where that stands, each guard and how swim run would decide it now,
 // and the rest of what the header sets; --yaml carries the same.
 func TestStatusShowsPendingHeader(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	r.write("lib/tables.sh", "TABLE=old_orders\n", 0o644)
 	r.script(1, "drop the old table", `stage change
@@ -51,7 +51,7 @@ if guard DROP_OK "drop table old_orders"; then run "drop" true; fi`)
 // A dependency with no Job: line that failed says failed, not pending:
 // its round is matched by its Round: line, as swim run matches it.
 func TestStatusDependencyFailedWithoutJob(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "deploy worker", `gate "deploy" false`)
 	r.script(2, "smoke test", `run "check" true`)
 	withHeader(t, r, 2, "# After: 1")

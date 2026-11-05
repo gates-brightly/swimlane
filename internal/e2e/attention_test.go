@@ -11,7 +11,7 @@ import (
 // swimmer will take; what's ready to queue; and nothing else. Outside a
 // swim repo it's the help.
 func TestBareSwimSaysWhatNeedsYou(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	if out := r.mustSwim(); !strings.Contains(out, "nothing needs you") {
 		t.Errorf("an empty repo:\n%s", out)
 	}

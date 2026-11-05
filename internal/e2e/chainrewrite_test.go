@@ -54,7 +54,7 @@ func rewriteChain(t *testing.T, r *repo, key *sign.Key) {
 // An unsigned chain proves nothing: swim verify says so, and a rewritten
 // one fails the same way.
 func TestVerifyRefusesUnsigned(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "ok" true`)
 	r.mustSwim("run", "1", "--plain")
 	out, code := r.swim("verify")

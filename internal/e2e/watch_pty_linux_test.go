@@ -17,7 +17,7 @@ import (
 // worker then runs it), Ctrl-C quits.
 func TestWatchPickRunAndQueue(t *testing.T) {
 	long(t)
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "first job", `run "one" echo one-ran`)
 	r.script(2, "second job", `run "two" echo two-ran`)
 	r.write("lane.3.sh", "#!/usr/bin/env bash\n# being written: no Round: line yet\n", 0o755) // in use, nothing pending
@@ -70,7 +70,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 // queue shows it running, enter on it follows its output (v: the lanes'
 // verbose output), q comes back.
 func TestWatchBatchOutputView(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
@@ -102,7 +102,7 @@ func TestWatchBatchOutputView(t *testing.T) {
 // result, the exit code and each lane that didn't pass, with its failed
 // step, above the output.
 func TestWatchFollowEndHeader(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	release := tuiLanes(r, 2)
 	body := `run "hold" ` + hold("release") + `
 gate "the check" false`
@@ -131,7 +131,7 @@ gate "the check" false`
 // Enter on a running lane's row follows its log, with no detour through
 // its batch; v switches to the batch's overview.
 func TestWatchLaneOutputView(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1", "2")
 	tr := r.startTUI(nil, "watch")
@@ -167,7 +167,7 @@ func TestWatchLaneOutputView(t *testing.T) {
 // l on a lane shows its log, every round, running or not; l on a batch
 // shows its lanes' logs.
 func TestWatchLogsKey(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "short lane 1", `run "hello" echo lane1-hello`)
 	r.script(2, "short lane 2", `run "hello" echo lane2-hello`)
 	r.mustSwim("run", "1", "--plain")
@@ -217,7 +217,7 @@ func TestWatchLogsKey(t *testing.T) {
 // a on a lane archives its log (swim archive N): the lane goes idle and the
 // log is kept as agentN.prev-<job>.log. A lane with no log says so.
 func TestWatchArchiveKey(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "short lane 1", `run "hello" echo lane1-hello`)
 	r.script(2, "short lane 2", `run "hello" echo lane2-hello`)
 	r.mustSwim("run", "1", "--plain")
@@ -243,7 +243,7 @@ func TestWatchArchiveKey(t *testing.T) {
 // hides it.
 func TestWatchStreamsRunningOutput(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	release := tuiLanes(r, 2)
 	r.mustSwim("queue", "add", "1")
 	r.mustSwim("queue", "add", "2")
@@ -271,7 +271,7 @@ func TestWatchStreamsRunningOutput(t *testing.T) {
 
 // --plain keeps the plain worker.
 func TestWatchPlain(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	tr := r.startTUI(nil, "watch", "--once", "--plain")
 	code, out := tr.wait()
 	if code != 0 || strings.Contains(out, "\x1b[?1049h") {
@@ -281,7 +281,7 @@ func TestWatchPlain(t *testing.T) {
 
 // swim watch has no d (trash) key: d on a lane changes nothing.
 func TestWatchNoTrashKey(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "keep me", `run "one" true`)
 	tr := r.startTUI(nil, "watch")
 	tr.waitFor("▸ 1 ")
@@ -299,7 +299,7 @@ func TestWatchNoTrashKey(t *testing.T) {
 // A finished lane's row says how long its last round took, passed or
 // failed, next to when it finished.
 func TestWatchRowsSayHowLongRoundsTook(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "passes", `run "one" true`)
 	r.script(2, "fails", `run "two" false`)
 	r.swim("all", "--plain")
@@ -342,7 +342,7 @@ func (tr *tuiRun) waitQueueRow(seq int, state string, more ...string) string {
 // the screen running a batch notes how it ended.
 func TestWatchSubmitRunsHere(t *testing.T) {
 	long(t)
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	for n := 1; n <= 4; n++ {
 		r.script(n, fmt.Sprintf("job %d", n), `run "work" true`)
 	}

@@ -115,10 +115,10 @@ var parallelTests sync.Map
 
 // newSerialRepo is newRepo for a test that runs alone: the PTY tests, which
 // wait for a terminal screen to redraw and miss it on a loaded machine.
-func newSerialRepo(t *testing.T, deps string) *repo {
+func newSerialRepo(t *testing.T) *repo {
 	t.Helper()
 	parallelTests.LoadOrStore(t, true) // parallel() then leaves it serial
-	return newRepo(t, deps)
+	return newRepo(t)
 }
 
 // serialTests run alone: their checks time things tightly enough that a
@@ -131,7 +131,7 @@ type repo struct {
 	env  []string
 }
 
-func newRepo(t *testing.T, deps string) *repo {
+func newRepo(t *testing.T) *repo {
 	t.Helper()
 	parallel(t)
 	root := t.TempDir()
@@ -290,7 +290,7 @@ func contains(t *testing.T, what, s string, wants ...string) {
 }
 
 func TestInitIsIdempotent(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	out := r.mustSwim("init")
 	contains(t, "second init", out, "already configured", "already has the swim block")
 	gi, _ := os.ReadFile(filepath.Join(r.root, ".gitignore"))
@@ -304,7 +304,7 @@ func TestInitIsIdempotent(t *testing.T) {
 }
 
 func TestFullRunWithDependencies(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "Lane one", `snapshot "state" echo state-v1
 run "slow" `+hold("go"))
 	r.script(2, "Lane two", `run "probe" echo probing
@@ -395,7 +395,7 @@ run "never" true`)
 }
 
 func TestSkipPropagatesDownChain(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "fails", `run "x" false`)
 	r.script(2, "two", `run "y" true`)
 	r.script(4, "four", `run "z" true`)
@@ -422,7 +422,7 @@ func TestSkipPropagatesDownChain(t *testing.T) {
 // A round that only dry-ran its guarded change didn't do its work: it's
 // skipped, not passed, and a lane after it doesn't start.
 func TestDryRunIsSkippedNotPassed(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "change", `stage change
 if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then run "do x" echo did-x; fi`)
 	r.script(2, "after", `run "assumes x" true`)
@@ -452,7 +452,7 @@ if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then run "do x" echo did-x; fi`
 }
 
 func TestRunSelectedLanesOnly(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	for n := 1; n <= 3; n++ {
 		r.script(n, fmt.Sprintf("lane %d", n), `run "ok" true`)
 	}
@@ -481,7 +481,7 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 }
 
 func TestAfterHeaderDiamond(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "root", `run "write" bash -c '`+untilReleased("root-go")+`; echo root > "$SWIM_ROOT/out1"'`)
 	r.script(2, "child a", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(3, "child b", `gate "root output" test -s "$SWIM_ROOT/out1"`)
@@ -516,7 +516,7 @@ func TestAfterHeaderDiamond(t *testing.T) {
 }
 
 func TestAfterPinnedToJob(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.newLane("1", "root", "--job", "root-job-0001")
 	r.script(2, "child", `run "ok" true`)
 	p := filepath.Join(r.root, "lane.2.sh")
@@ -541,7 +541,7 @@ func TestAfterPinnedToJob(t *testing.T) {
 }
 
 func TestGuardApprovedAndConfirmFailsClosed(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "guarded", `if guard TEST_ALLOW_X "do x (2026-10-09: test)"; then run "do x" echo did-x; fi
 confirm "really?"
 run "after confirm" true`)
@@ -561,7 +561,7 @@ run "after confirm" true`)
 
 func TestArchiveNewAndRunningRefusals(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.newLane("1", "first round")
 	if out, code := r.swim("new", "1", "second"); code == 0 || !strings.Contains(out, "pending round") {
 		t.Fatalf("new over pending: %d %s", code, out)
@@ -608,7 +608,7 @@ func TestArchiveNewAndRunningRefusals(t *testing.T) {
 }
 
 func TestInterruptRecordsAndStopsRound(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "interrupt me", `run "long" `+blocked("long")+`
 run "never" true`)
 	c := r.cmd("bash", "lane.1.sh")
@@ -638,7 +638,7 @@ run "never" true`)
 }
 
 func TestStepStandalone(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	c := r.cmd(bin, "_step", "--new", "--label", "hello", "--", "bash", "-c", "echo hi; exit 7")
 	c.Env = append(c.Env, "STEP_LOG=custom.log")
 	out, err := c.CombinedOutput()
@@ -650,7 +650,7 @@ func TestStepStandalone(t *testing.T) {
 }
 
 func TestStaleRunningShown(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "killed", `run "long" `+blocked("long")+``)
 	c := r.cmd("bash", "lane.1.sh")
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -671,7 +671,7 @@ func TestStaleRunningShown(t *testing.T) {
 }
 
 func TestHelp(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	// Piped or not, --help is the short overview; --help --full the guide.
 	short := r.mustSwim("--help")
 	contains(t, "--help", short, "LANES", "ROUNDS", "GUARDS", "LOGS", "swim guide")
@@ -891,7 +891,7 @@ func laneOf(r *repo, n int) status.Lane {
 var jobLineRE = regexp.MustCompile(`(?m)^# Job:\s+(\S+)$`)
 
 func TestJobIDsAndPinning(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.newLane("1", "pinned round")
 	script, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
 	m := jobLineRE.FindStringSubmatch(string(script))
@@ -939,7 +939,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 }
 
 func TestScriptWithoutJobLineGetsOne(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "no job line", `run "x" true`)
 	r.mustSwim("run", "1")
 	l := r.status().Get(1)
@@ -949,7 +949,7 @@ func TestScriptWithoutJobLineGetsOne(t *testing.T) {
 }
 
 func TestProjectLog(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.newLane("1", "first goal", "--job", "job-one-0001")
 	body, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(body), `gate "target is ours (tagged)" true`, `run "precheck" false`, 1)), 0o755)
@@ -1011,7 +1011,7 @@ func TestProjectLog(t *testing.T) {
 }
 
 func TestLogCommand(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.newLane("1", "first round", "--job", "first-job-01")
 	r.mustSwim("run", "1")
 	r.mustSwim("archive", "1", "--as", "first")
@@ -1054,7 +1054,7 @@ func TestLogCommand(t *testing.T) {
 }
 
 func TestAllSkipsPassedJobs(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.newLane("1", "passes")
 	r.script(2, "fails until fixed", `run "check" test -e "$SWIM_ROOT/fixed"`)
 	if _, code := r.swim("all"); code != 1 {
@@ -1088,7 +1088,7 @@ func TestAllSkipsPassedJobs(t *testing.T) {
 // A repo's lanes are the ones in use: a script, a current log or a running
 // lane. There's no count to raise, and archiving drops a lane.
 func TestLanesInUse(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "ok" true`)
 	r.script(6, "six", `run "ok" true`)
 	out := r.mustSwim("all")
@@ -1112,7 +1112,7 @@ func TestLanesInUse(t *testing.T) {
 }
 
 func TestVersionAndLock(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	if out := r.mustSwim("--version"); !regexp.MustCompile(`^swim 0\.(\d{8}|dev)(\.\d+)?`).MatchString(out) || strings.Contains(out, "warning") {
 		t.Errorf("--version = %q", out)
 	}
@@ -1214,7 +1214,7 @@ PASS  precheck
 // A syntax 1 script or log (from before swim versioned its files) is
 // refused, not rewritten.
 func TestSyntax1Refused(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(v1Lane), 0o755)
 	// A syntax 1 script is its own lane's problem: status still works, and
 	// lint and run refuse that lane.
@@ -1238,7 +1238,7 @@ func TestSyntax1Refused(t *testing.T) {
 }
 
 func TestSyntaxTooNew(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "fine", `run "ok" true`)
 	os.WriteFile(filepath.Join(r.root, "lane.2.sh"), []byte("#!/usr/bin/env bash\n# swim: syntax 9\n# Round: from the future\n"), 0o755)
 	for _, args := range [][]string{{"status"}, {"run", "1"}, {"all"}} {
@@ -1256,7 +1256,7 @@ func TestSyntaxTooNew(t *testing.T) {
 }
 
 func TestStagesWarnings(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "out of order", `stage change
 run "change" true
 stage check
@@ -1283,7 +1283,7 @@ run "never" true`)
 }
 
 func TestTimeoutStopsRound(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	p := filepath.Join(r.root, "lane.1.sh")
 	r.script(1, "slow", `stage check
 run "slow" `+blocked("slow")+`
@@ -1306,7 +1306,7 @@ run "after" true`)
 var runRE = regexp.MustCompile(`run=(r-\d{8}T\d{6}Z-[0-9a-f]{4})`)
 
 func TestRunID(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
 	r.script(2, "two", `run "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
 	r.script(3, "three", `run "x" false`)
@@ -1368,7 +1368,7 @@ func TestRunID(t *testing.T) {
 
 func TestParallelLimit(t *testing.T) {
 	long(t)
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	for n := 1; n <= 10; n++ {
 		r.script(n, fmt.Sprintf("worker %d", n), `run "work" `+inSlot(3, "go"))
 	}
@@ -1502,7 +1502,7 @@ func states(r *repo, n int) map[string]int {
 
 func TestResourceLocksWithinARun(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	lock := []string{"orders-table"}
 	r.script(1, "migrate table", `run "work" `+exclusive(lock, "go", "exit 1"))
 	r.script(2, "back up table", `run "work" `+exclusive(lock, "go", ""))
@@ -1524,7 +1524,7 @@ func TestResourceLocksWithinARun(t *testing.T) {
 	contains(t, ".swim.log", r.mustSwim("log"), "locked       swim ")
 
 	// Locks {a}, {a,b}, {b}: no deadlock; sharers never overlap.
-	r2 := newRepo(t, "")
+	r2 := newRepo(t)
 	for n, locks := range map[int][]string{1: {"a"}, 2: {"a", "b"}, 3: {"b"}} {
 		r2.script(n, fmt.Sprintf("lane %d", n), `run "work" `+exclusive(locks, "go", ""))
 		withLocks(t, r2, n, strings.Join(locks, ", "))
@@ -1548,7 +1548,7 @@ func TestResourceLocksWithinARun(t *testing.T) {
 
 func TestResourceLocksAcrossRuns(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	lock := []string{"tf/orders"}
 	r.script(1, "one", `run "work" `+exclusive(lock, "go", ""))
 	r.script(2, "two", `run "work" `+exclusive(lock, "go", ""))
@@ -1593,7 +1593,7 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 }
 
 func TestBadLockNameWarns(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "bad lock", `run "x" true`)
 	withLocks(t, r, 1, "ok-name, bad*name")
 	r.mustSwim("run", "1")
@@ -1602,7 +1602,7 @@ func TestBadLockNameWarns(t *testing.T) {
 
 func TestStepTimeoutAndRetry(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	limit := dur(time.Second)
 	r.script(1, "timeouts and retries", `run --timeout `+limit+` "slow" `+blocked("slow")+`
 run --retry 2 --backoff 0.1s "flaky" bash -c 'test -f "$SWIM_ROOT/ok" || { touch "$SWIM_ROOT/ok"; exit 1; }'
@@ -1644,7 +1644,7 @@ run --timeout 0 "unlimited" sleep `+fmt.Sprint(scaled(1500*time.Millisecond).Sec
 }
 
 func TestRetryRespectsRoundDeadline(t *testing.T) {
-	r := newSerialRepo(t, "") // it times a round's Timeout: alone, not beside the parallel tests
+	r := newSerialRepo(t) // it times a round's Timeout: alone, not beside the parallel tests
 	limit := dur(2 * time.Second)
 	r.script(1, "deadline", `run --retry 5 --backoff `+dur(1500*time.Millisecond)+` "keeps failing" false
 run "after" true`)
@@ -1664,7 +1664,7 @@ run "after" true`)
 }
 
 func TestCtrlCDuringBackoff(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "backoff", `run --retry 3 --backoff 20s "fails" false
 run "never" true`)
 	c := r.cmd("bash", "lane.1.sh")
@@ -1690,7 +1690,7 @@ run "never" true`)
 }
 
 func TestBlockedCommands(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	exec.Command("git", "-C", r.root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base").Run()
 	head := func() string {
 		out, _ := exec.Command("git", "-C", r.root, "rev-parse", "HEAD").Output()
@@ -1764,7 +1764,7 @@ run "after" true`)
 }
 
 func TestSecretMasking(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	const tok = "ghp_testvalue123456"
 	const listed = "dd-api-key-0042"
 	cfg := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")
@@ -1845,7 +1845,7 @@ func withHeader(t *testing.T, r *repo, n int, line string) {
 }
 
 func TestYAMLOutput(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "root", `run "hello" echo hi there`)
 	r.script(2, "fails", `run "convert" false`)
 	r.script(3, "after fails", `run "never" true`)
@@ -1952,7 +1952,7 @@ type launcherSummary struct {
 }
 
 func TestArchiveSeveralLanes(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	for n := 1; n <= 3; n++ {
 		r.script(n, fmt.Sprintf("round %d", n), `run "a" true`)
 		withHeader(t, r, n, fmt.Sprintf("# Job: aaaa000%d-1111-4222-8333-444455556666", n))

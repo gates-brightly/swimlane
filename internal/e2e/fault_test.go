@@ -227,7 +227,7 @@ func crash(r *repo, c *exec.Cmd, paused int) {
 // non-idempotent step ran exactly once. Rerunning it takes an explicit
 // swim run.
 func TestFaultStepAfterExit(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
 run "after" touch "$SWIM_ROOT/after"`)
 	c, out, dir := faultRun(t, r, failpoint.StepAfterExit+":pause", "run", "1")
@@ -271,7 +271,7 @@ run "after" touch "$SWIM_ROOT/after"`)
 // recorded itself: the entry names no worker, so it is orphaned, and a new
 // watch doesn't run it. It runs again only when requeued.
 func TestFaultQueueClaimed(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'`)
 	r.mustSwim("queue", "add", "1")
 	c, out, dir := faultRun(t, r, failpoint.QueueClaimed+":kill", "watch", "--once", "--plain")
@@ -295,7 +295,7 @@ func TestFaultQueueClaimed(t *testing.T) {
 // pid and start time it recorded), so the entry is orphaned; the next
 // watch ends the dead lane's round and doesn't rerun the batch.
 func TestFaultWatchMidBatch(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "charge", `run "charge" bash -c 'echo charged >> "$SWIM_ROOT/charges"'
 run "after" touch "$SWIM_ROOT/after"`)
 	r.mustSwim("queue", "add", "1")
@@ -325,7 +325,7 @@ func TestFaultStatusMidWrite(t *testing.T) {
 	for _, nth := range []int{1, 2, 4, 7} {
 		t.Run(fmt.Sprint("write ", nth), func(t *testing.T) {
 			t.Parallel()
-			r := newRepo(t, "")
+			r := newRepo(t)
 			r.script(1, "one", `run "a" true
 run "b" true`)
 			r.mustSwim("run", "1")
@@ -358,7 +358,7 @@ run "b" true`)
 // the next append and swim verify refuse the incomplete entry; swim chain
 // repair cuts it off and records the repair; then appends and verify work.
 func TestFaultChainMidAppend(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "a" true`)
 	r.mustSwim("run", "1")
 	c, out, dir := faultRun(t, r, failpoint.ChainMidAppend+":pause", "run", "1")
@@ -403,7 +403,7 @@ func TestFaultChainMidAppend(t *testing.T) {
 func TestFaultManyWatchers(t *testing.T) {
 	long(t)
 	const watchers, batches = 4, 20
-	r := newRepo(t, "")
+	r := newRepo(t)
 	ledger, stampLine := withLedger(t, r)
 	for n := 1; n <= 3; n++ {
 		r.script(n, "work", stampLine(n, "start")+`

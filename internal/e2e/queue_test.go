@@ -43,7 +43,7 @@ func doneEntries(t *testing.T, r *repo) []queue.Entry {
 }
 
 func TestQueueAndWatchOnce(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	guardedLanes(t, r)
 	if out, code := r.swim("queue", "add", "--approve", "ALLOW_TYPO"); code == 0 || !strings.Contains(out, "no lane in this batch has a guard ALLOW_TYPO") {
 		t.Fatalf("typo approval accepted: %d %s", code, out)
@@ -99,7 +99,7 @@ func TestQueueAndWatchOnce(t *testing.T) {
 // has waits until that run ends, one whose lanes are free starts now.
 func TestWatchWaitsForBusyLanes(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "long", `run "long" `+hold("go"))
 	r.script(2, "queued", `run "q" true`)
 	busy := r.cmd(bin, "run", "1", "--plain")
@@ -140,7 +140,7 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 }
 
 func TestWatchWorkersShareTheQueue(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	for n := 1; n <= 3; n++ {
 		r.script(n, "q", `run "work" true`)
 	}
@@ -177,7 +177,7 @@ func TestWatchWorkersShareTheQueue(t *testing.T) {
 }
 
 func TestQueueApproveOrphanRemove(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	guardedLanes(t, r)
 	// Approvals are credited to whoever queued the batch, not the worker.
 	add := r.cmd(bin, "queue", "add", "--approve", "ALLOW_DROP,ALLOW_OTHER")
@@ -217,7 +217,7 @@ func hostname() string {
 var _ = exec.Command
 
 func TestWatchCtrlCDuringBatch(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "long", `run "a" `+hold("go")+`
 run "b" true`)
 	r.mustSwim("queue", "add", "1")
@@ -255,7 +255,7 @@ run "b" true`)
 // swimmer approves nothing of its own, so the rest dry-runs (no screen
 // to ask on).
 func TestWatchApprovesOnlyTheBatchs(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	guardedLanes(t, r)
 	add := r.cmd(bin, "queue", "add", "--approve", "ALLOW_DROP")
 	add.Env = append(add.Env, "SWIM_USER=zach")
@@ -278,7 +278,7 @@ func TestWatchApprovesOnlyTheBatchs(t *testing.T) {
 // approves it. One whose flag the script names at run time is approved
 // by its flag.
 func TestApproveIncludedAndDynamicGuards(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	r.write("lib/g.sh", "do_inc() { if guard ALLOW_INC \"included\"; then run \"inc ran\" true; fi; }\n", 0o644)
 	r.script(1, "include", `source lib/g.sh
@@ -303,7 +303,7 @@ if guard "$F" "dynamic"; then run "dyn ran" true; fi`)
 // A guard nothing approves runs as a dry run, and says so: [DRY] in swim
 // status, dry_run in status.yml, until the lane's next round.
 func TestWatchDryRunMarked(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	guardedLanes(t, r)
 	r.mustSwim("queue", "add", "2")
 	r.mustSwim("watch", "--once")
@@ -333,7 +333,7 @@ func queuedID(t *testing.T, out string) string {
 
 func TestWaitForBatchLaneAndRun(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "long", `run "long" `+hold("go"))
 	r.script(2, "queued", `run "q" true`)
 	r.script(3, "fails", `run "f" false`)
@@ -396,7 +396,7 @@ func TestWaitForBatchLaneAndRun(t *testing.T) {
 }
 
 func TestWaitNamesAQueueWithNoWorker(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "q", `run "q" true`)
 	id := queuedID(t, r.mustSwim("queue", "1"))
 	if out, code := r.swim("wait", "--timeout", "200ms", "--interval", "50ms"); code != 1 || !strings.Contains(out, "1 queued batch(es) not yet taken by a worker (swim watch)") {
@@ -423,7 +423,7 @@ func TestWaitNamesAQueueWithNoWorker(t *testing.T) {
 // one at a time.
 func TestWatchBatchesSideBySide(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	// work is the middle step: side by side, swim 1's holds until swim 2
 	// has started (the test releases it then), so the two overlap however
 	// slow the machine.
@@ -491,7 +491,7 @@ run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 // naming each lane and the guards that will dry-run, and how to approve
 // them; --approve doesn't warn.
 func TestQueueWarnsUnapprovedGuards(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	guardedLanes(t, r)
 	queueErr := func(args ...string) (string, string) {
 		t.Helper()

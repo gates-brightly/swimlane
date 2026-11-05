@@ -44,7 +44,7 @@ func (b *broker) requests() []approval.Request {
 }
 
 func TestGuardAsksForApproval(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "guarded", `if guard DROP_A "drop table a - 2026-10-12"; then run "drop a" true; fi
 if guard DROP_B "drop table b - 2026-10-12"; then run "drop b" true; fi
 if guard PRESET "preset flag"; then run "preset step" true; fi
@@ -79,7 +79,7 @@ if guard OFF "explicitly off"; then run "off step" true; fi`)
 }
 
 func TestApprovalGivesUpWhenStopped(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "guarded", `if guard SLOW "slow approval"; then run "never" true; fi
 run "after" true`)
 	b := newBroker(t, func(_ approval.Request, cancel <-chan struct{}) bool { <-cancel; return false })
@@ -108,7 +108,7 @@ run "after" true`)
 }
 
 func TestNoPromptWithoutTerminal(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "guarded", `if guard FLAG_X "risky"; then run "risky" true; fi`)
 	r.script(2, "other", `run "x" true`)
 	// swim all with no terminal: no broker, lanes don't prompt on their own.
@@ -126,7 +126,7 @@ func TestNoPromptWithoutTerminal(t *testing.T) {
 // Approved up front by its flag (FLAG=1 swim run N): no one is asked, so
 // it's loud where people look; FLAG=0 declines. -y is gone.
 func TestFlagApproved(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "guarded", `if guard ALLOW_A "change a"; then run "a changed" true; fi
 if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
 	r.script(2, "guarded too", `if guard ALLOW_B "change b"; then run "b changed" true; fi`)
@@ -156,7 +156,7 @@ if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
 // A guard whose approval socket can't be reached declines: the step is a
 // dry run, never approved by default.
 func TestGuardDeclinesOnSocketError(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "guarded", `if guard ALLOW_X "change x"; then run "x changed" true; fi`)
 	c := r.cmd("bash", "lane.1.sh")
 	c.Env = append(c.Env, approval.EnvVar+"="+filepath.Join(t.TempDir(), "no-such-socket"))

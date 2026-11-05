@@ -49,7 +49,7 @@ func namedBlocks(t *testing.T, page, name string) []string {
 // credentials, with the lanes the AI would write: if a command, flag or
 // output it relies on changes, this fails.
 func TestQuickstartRuns(t *testing.T) {
-	r := newRepo(t, "") // its config (signing: off) applies to the quickstart's own repo too
+	r := newRepo(t) // its config (signing: off) applies to the quickstart's own repo too
 	dir := t.TempDir()
 	script := "set -e\n" + strings.Join(quickstartBlocks(t), "\n")
 	c := r.cmd("bash", "-c", script)
@@ -79,7 +79,7 @@ func TestQuickstartRuns(t *testing.T) {
 // docs/guide.md, the tour, runs as written, in order, with no
 // credentials: each step does what the page says it does.
 func TestTourRuns(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	dir := t.TempDir()
 	c := r.cmd("bash", "-c", "set -e\n"+strings.Join(markedBlocks(t, "docs/guide.md"), "\n"))
 	c.Dir = dir

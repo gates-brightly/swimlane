@@ -8,7 +8,7 @@ import (
 // A step expected to fail (run --expect-fail) passes on a non-zero exit,
 // and fails on exit 0 or a code it wasn't expected to exit with.
 func TestExpectFail(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "negative tests", `run --expect-fail "bad token refused" bash -c 'exit 3'
 run --expect-fail=1,3 "listed code" bash -c 'exit 3'
 run --expect-fail "accepted anyway" true

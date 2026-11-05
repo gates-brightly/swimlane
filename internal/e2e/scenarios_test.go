@@ -54,7 +54,7 @@ func newScenario(t *testing.T) *repo {
 	if buildErr != nil {
 		t.Fatalf("building e2etool: %v\n%s", buildErr, buildOut)
 	}
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.env = append(r.env,
 		"PATH="+filepath.Join(e2eDir(), "lib", "fakebin")+string(os.PathListSeparator)+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"E2E_FIXTURES="+filepath.Join(e2eDir(), "fixtures"))

@@ -43,7 +43,7 @@ func TestDayOneVocabulary(t *testing.T) {
 	}
 	noLaterWords(t, "swim new's template", tmpl)
 
-	r := newRepo(t, "")
+	r := newRepo(t)
 	noLaterWords(t, "swim init", r.mustSwim("init"))
 	noLaterWords(t, "swim new", r.mustSwim("new", "1", "say hello"))
 	r.script(1, "say hello", `run "hello" echo hello`)

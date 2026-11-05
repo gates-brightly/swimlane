@@ -53,7 +53,7 @@ func treeChanges(dir string, before, after map[string]string) []string {
 // round, its .swim.log lines and its status; a peek changes nothing, and
 // after --earmark there's nothing new.
 func TestReportLoop(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "first" echo one-output-a`)
 	r.script(2, "two", `run "second" echo two-output`)
 	r.mustSwim("all")
@@ -119,7 +119,7 @@ func TestReportLoop(t *testing.T) {
 // Readers keep their own earmarks; narrowing never makes the next full
 // report miss a line; an archived round keeps its place.
 func TestReportReadersAndArchive(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "first" echo one-a`)
 	r.script(2, "two", `run "second" echo two-a`)
 	r.mustSwim("all")
@@ -155,7 +155,7 @@ func TestReportReadersAndArchive(t *testing.T) {
 // --wait returns as soon as there's something new (the run's first
 // .swim.log line is); with nothing new it times out as swim wait does.
 func TestReportWait(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "first" echo waited-for`)
 	r.mustSwim("run", "1")
 	r.mustSwim("report", "--earmark")
@@ -181,7 +181,7 @@ func TestReportWait(t *testing.T) {
 // A running step shows from its spool; the earmark stays before it, so
 // the next report shows the step finished, not skipped as seen.
 func TestReportInFlight(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "slow", `run "slow step" bash -c 'echo started-slow; rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo finished-slow'`)
 	c := r.cmd(bin, "run", "1", "--plain")
 	if err := c.Start(); err != nil {

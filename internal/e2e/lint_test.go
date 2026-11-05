@@ -55,7 +55,7 @@ func hermeticPath(r *repo) {
 }
 
 func TestLintExitCodes(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	out := r.mustSwim("new", "1", "a round")
 	contains(t, "swim new", out, "swim lint 1")
 	// The fresh template still has its placeholder step.
@@ -102,7 +102,7 @@ func TestLintExitCodes(t *testing.T) {
 }
 
 func TestRunLintPreflight(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "fine", "run \"ok\" true")
 	r.script(2, "errexit", "set -o errexit\nrun \"never\" true")
 	writeLane(t, r, 3, "#!/usr/bin/env bash\n# swim: syntax 2\n# Round: wrong lane\n_swim_lib=$(\"${SWIM_BIN:-swim}\" _lib) || exit 1; eval \"$_swim_lib\"\nlane_init 4\nrun \"never\" true\nsummary\n")
@@ -159,7 +159,7 @@ func foreignSwim(t *testing.T) (dir, platform string) {
 }
 
 func TestDoctor(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	hermeticPath(r)
 	out := r.mustSwim("doctor")
 	contains(t, "healthy repo", out, "no problems found")
@@ -228,7 +228,7 @@ func TestDoctor(t *testing.T) {
 }
 
 func TestDoctorBrokenConfig(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	hermeticPath(r)
 	cfgPath := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")
 	os.WriteFile(cfgPath, []byte("defaults: [not, a, mapping\n"), 0o644)

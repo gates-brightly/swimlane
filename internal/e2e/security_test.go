@@ -28,7 +28,7 @@ const boundaryGuard = "SEC_ALLOW_DROP"
 
 func newBoundaryRepo(t *testing.T) *boundary {
 	t.Helper()
-	r := newRepo(t, "")
+	r := newRepo(t)
 	b := &boundary{repo: r, marker: filepath.Join(t.TempDir(), "dropped")}
 	b.keys = people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
@@ -215,7 +215,7 @@ func TestSecurity(t *testing.T) {
 			}
 		}},
 		{"a planted secret never appears in the log, .swim.log or status", "T9", func(t *testing.T) {
-			r := newRepo(t, "")
+			r := newRepo(t)
 			r.env = append(r.env, "DB_PASSWORD=planted-s3cret-value")
 			r.script(1, "uses a secret", `DB=$DB_PASSWORD
 run "echo it" bash -c "echo db=$DB; echo db=$DB >&2; printf %s $DB | base64"
