@@ -60,6 +60,21 @@ type Picker struct {
 	// Status, if set, is shown dim at the right of the title line on
 	// every redraw: a live summary, as swim run's title carries its clock.
 	Status func() string
+	// Field, if set, is a line of text being typed on the bottom line:
+	// keys edit it instead of moving, Enter ends Pick with its text (Key
+	// PickEnter), Esc with PickEsc. Pick clears it when it ends.
+	Field *PickField
+	// Stay leaves the screen up when Pick ends, so the next Pick takes
+	// over without the terminal flashing back between them; Leave puts
+	// the terminal back.
+	Stay  bool
+	shown bool // the screen is up: Stay kept it
+}
+
+// PickField is a Picker's text field: Prompt, then Text as typed, then
+// Hint dim.
+type PickField struct {
+	Prompt, Text, Hint string
 }
 
 // SpinMark in a row's text is drawn as the throbber's frame at the time of
@@ -67,10 +82,12 @@ type Picker struct {
 const SpinMark = "\uE000"
 
 // Action keys that aren't printable: put these runes in Pick's keys to
-// have Enter (on an item) and Esc (any time) end it.
+// have Enter, ← or → (on an item) and Esc (any time) end it.
 const (
 	PickEnter = '\r'
 	PickEsc   = '\x1b'
+	PickLeft  = '\uE001'
+	PickRight = '\uE002'
 )
 
 // PickResult is how Pick ended.
@@ -78,6 +95,7 @@ type PickResult struct {
 	ID   string // the item an action key was pressed on
 	Key  rune   // the action key
 	Quit bool   // Ctrl-C
+	Text string // the Field's text, ended with Enter
 }
 
 // Pick shows the rows load returns (reloaded every refresh) under title
@@ -89,9 +107,15 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 	if err != nil {
 		return PickResult{}, err
 	}
-	fmt.Fprint(p.Out, "\x1b[?1049h\x1b[?25l\x1b[2J")
+	if !p.shown {
+		fmt.Fprint(p.Out, "\x1b[?1049h\x1b[?25l\x1b[2J")
+		p.shown = true
+	}
 	defer func() {
-		fmt.Fprint(p.Out, "\x1b[?25h\x1b[?1049l")
+		p.Field = nil
+		if !p.Stay {
+			p.Leave()
+		}
 		term.Restore(fd, st)
 	}()
 	stop := make(chan struct{})
@@ -175,9 +199,41 @@ func (p *Picker) Pick(title, hints, keys string, load func() []PickRow, refresh 
 	}
 }
 
+// Leave takes the screen down, if Pick left it up (Stay).
+func (p *Picker) Leave() {
+	if p.shown {
+		fmt.Fprint(p.Out, "\x1b[?25h\x1b[?1049l")
+		p.shown = false
+	}
+}
+
+// fieldKey applies one key press to the Field: it edits the text, or ends
+// Pick.
+func (p *Picker) fieldKey(k Key) (PickResult, bool) {
+	f := p.Field
+	switch k.Code {
+	case KeyCtrlC:
+		return PickResult{Quit: true}, true
+	case KeyEnter:
+		return PickResult{ID: p.Sel, Key: PickEnter, Text: f.Text}, true
+	case KeyEsc:
+		return PickResult{ID: p.Sel, Key: PickEsc}, true
+	case KeyBackspace:
+		if r := []rune(f.Text); len(r) > 0 {
+			f.Text = string(r[:len(r)-1])
+		}
+	case KeyRune:
+		f.Text += string(k.Rune)
+	}
+	return PickResult{}, false
+}
+
 // key applies one key press: it moves the selection, or ends Pick.
 func (p *Picker) key(k Key, rows []PickRow, keys string) (PickResult, bool) {
 	p.Note = ""
+	if p.Field != nil {
+		return p.fieldKey(k)
+	}
 	switch {
 	case k.Code == KeyCtrlC:
 		return PickResult{Quit: true}, true
@@ -196,12 +252,14 @@ func (p *Picker) key(k Key, rows []PickRow, keys string) (PickResult, bool) {
 		}
 	case k.Code == KeyEsc && strings.ContainsRune(keys, PickEsc):
 		return PickResult{ID: p.Sel, Key: PickEsc}, true
-	case k.Code == KeyEnter && strings.ContainsRune(keys, PickEnter):
+	case k.Code == KeyEnter && strings.ContainsRune(keys, PickEnter),
+		k.Code == KeyLeft && strings.ContainsRune(keys, PickLeft),
+		k.Code == KeyRight && strings.ContainsRune(keys, PickRight):
 		if p.Sel == "" {
 			p.Note = "nothing selected"
 			return PickResult{}, false
 		}
-		return PickResult{ID: p.Sel, Key: PickEnter}, true
+		return PickResult{ID: p.Sel, Key: map[KeyCode]rune{KeyEnter: PickEnter, KeyLeft: PickLeft, KeyRight: PickRight}[k.Code]}, true
 	case k.Code == KeyRune && strings.ContainsRune(keys, k.Rune):
 		if p.Sel == "" {
 			p.Note = "nothing selected"
@@ -270,6 +328,9 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 		// the title: there, while there's no note.
 		bottom = pt.Paint(ui.Dim, truncate(hints, cols))
 	}
+	if f := p.Field; f != nil {
+		bottom = p.field(f, cols)
+	}
 	out := []string{head, ""}
 	body := h - 3 // title, blank, note
 	var tail []PickRow
@@ -329,6 +390,28 @@ func (p *Picker) render(title, hints string, rows []PickRow, cols, h int) []stri
 		}
 	}
 	return append(out, bottom)
+}
+
+// field is the Field's line cols wide: the prompt, the text with a block
+// cursor after it (its end kept in view as it grows), then the hint where
+// there's room.
+func (p *Picker) field(f *PickField, cols int) string {
+	pt := ui.Painter{On: p.Color}
+	text := []rune(f.Text)
+	room := max(cols-utf8.RuneCountInString(f.Prompt)-1, 1)
+	if len(text) > room {
+		text = append([]rune("…"), text[len(text)-room+1:]...)
+	}
+	cursor := "\x1b[7m \x1b[27m"
+	if !p.Color {
+		cursor = "_"
+	}
+	line := pt.Paint(ui.Bold, f.Prompt) + string(text) + cursor
+	used := utf8.RuneCountInString(f.Prompt) + len(text) + 1
+	if hint := "   " + f.Hint; f.Hint != "" && used+utf8.RuneCountInString(hint) <= cols {
+		line += pt.Paint(ui.Dim, hint)
+	}
+	return line
 }
 
 // rule is a section rule cols wide: "── Jobs ───────── 2 running ──", the

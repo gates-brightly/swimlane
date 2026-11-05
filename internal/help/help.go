@@ -60,11 +60,17 @@ var Commands = map[string]string{
       from the block if you want to commit the project's history)
   Safe to run again.
 `,
-	"config": `swim config [KEY [VALUE]] [--repo] [--path]
+	"config": `swim config [edit | KEY [VALUE]] [--repo] [--path]
 
-  With no key, print the effective configuration for this repo (defaults
-  merged with the repo's section), or with --path just the config file
-  location. The output ends with the effective blocked_commands: the
+  With no key on a terminal (or with edit), every setting on one screen to
+  change in place: its value, default and what it takes. Enter, Space or
+  ← → step a key with choices; Enter on another types its value on the
+  bottom line (Esc cancels), checked before it's written; d goes back to
+  the default; q quits. Only what differs from the default is written, to
+  defaults:, and the first write backs the file up as config.yml-N.bak.
+  With no key otherwise, print the effective configuration for this repo
+  (defaults merged with the repo's section), or with --path just the
+  config file location. The output ends with the effective blocked_commands: the
   defaults' and the repo's (swim blocks none by itself).
   swim config KEY          print KEY's effective value
   swim config KEY VALUE    set KEY in the config file, keeping its comments

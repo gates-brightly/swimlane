@@ -162,6 +162,9 @@ func cmdConfig(args []string) error {
 		if toRepo {
 			return usagef("--repo is for setting a key: swim config KEY VALUE --repo")
 		}
+		if ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) {
+			return cmdConfigEdit()
+		}
 		return showConfig()
 	}
 	key := rest[0]

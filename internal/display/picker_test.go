@@ -256,3 +256,32 @@ func TestPickerColouredRule(t *testing.T) {
 		t.Errorf("a rule without a colour stays dim: %q", plain)
 	}
 }
+
+func TestPickerField(t *testing.T) {
+	rows := pickRows()
+	p := &Picker{Sel: "lane:2", Field: &PickField{Prompt: "grace: ", Text: "5s", Hint: "Esc cancels"}}
+	for _, k := range []Key{{Code: KeyBackspace}, {Code: KeyBackspace}, {Code: KeyRune, Rune: 'j'}, {Code: KeyRune, Rune: '7'}} {
+		if _, done := p.key(k, rows, "q"); done {
+			t.Fatalf("%+v ended Pick", k)
+		}
+	}
+	if p.Sel != "lane:2" || p.Field.Text != "j7" {
+		t.Errorf("j moved or wasn't typed: sel %q, text %q", p.Sel, p.Field.Text)
+	}
+	if got := p.render("t", "h", rows, 40, 10)[9]; got != "grace: j7_   Esc cancels" {
+		t.Errorf("field line: %q", got)
+	}
+	if res, done := p.key(Key{Code: KeyEnter}, rows, "q"); !done || res.Key != PickEnter || res.Text != "j7" || res.ID != "lane:2" {
+		t.Errorf("enter: %+v %v", res, done)
+	}
+	if res, done := p.key(Key{Code: KeyEsc}, rows, "q"); !done || res.Key != PickEsc {
+		t.Errorf("esc: %+v %v", res, done)
+	}
+	p.Field = nil
+	if res, done := p.key(Key{Code: KeyLeft}, rows, string(PickLeft)); !done || res.Key != PickLeft {
+		t.Errorf("←: %+v %v", res, done)
+	}
+	if _, done := p.key(Key{Code: KeyRight}, rows, string(PickLeft)); done {
+		t.Error("→ ended Pick without being an action key")
+	}
+}

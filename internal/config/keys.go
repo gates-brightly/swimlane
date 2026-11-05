@@ -401,3 +401,32 @@ func Backup(path string) (string, error) {
 	bak := fmt.Sprintf("%s-%d.bak", path, last+1)
 	return bak, os.WriteFile(bak, data, info.Mode().Perm())
 }
+
+// Hint says what one of Keys takes, as keyValue checks it: its choices,
+// or the kind of value, briefly.
+func Hint(key string) string {
+	if cs := Choices(key); cs != nil {
+		return strings.Join(cs, " | ")
+	}
+	switch key {
+	case "interrupt_grace", "term_grace", "msg_log_interval":
+		return "duration: 5s, 1m"
+	case "queue_lease":
+		return "duration, 10s or more"
+	case "claim_lease":
+		return "duration, 1m or more"
+	case "outputs_keep":
+		return "age: 14d, 36h"
+	case "watch_batches":
+		return "number, 1 or more"
+	case "cache_dir":
+		return "absolute path or ~/..."
+	case "store_dir":
+		return "absolute path, ~/... or off"
+	case "cache_max":
+		return "size: 500MB, 10GB"
+	case "signing_key":
+		return "SSH key path (.pub for ssh-agent)"
+	}
+	return ""
+}
