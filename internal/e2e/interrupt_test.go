@@ -135,7 +135,7 @@ func noStray(t *testing.T, marker string) {
 }
 
 func TestGracefulInterrupt(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	// Step "a" notes any SIGINT it gets; it must get none. Both steps run
 	// until both lanes have the stop request.
 	r.script(1, "graceful", `run "a" bash -c 'trap "echo got > $SWIM_ROOT/int1.txt" INT; touch $SWIM_ROOT/trap1; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; true'
@@ -181,7 +181,7 @@ run "d" true`)
 }
 
 func TestForceQuit(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.mustSwim("config", "interrupt_grace", "600ms")
 	// A terraform-like tool: cleans up and exits on its first SIGINT, and
 	// counts how many it got.
@@ -227,7 +227,7 @@ run "after" true`)
 }
 
 func TestKillOnThirdCtrlC(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	// It says so once its trap is set (see TestForceQuitKillsStepGroup).
 	r.script(1, "stubborn", `run "hang" bash -c 'trap "`+fifoCat("never")+`" INT; echo hang-armed; `+fifoCat("31.3")+` & wait; wait'`)
 	r.script(2, "other", `run "x" `+blocked("31.4")+``)
@@ -256,7 +256,7 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 // A step stopped by its time limit takes what it started with it: the
 // whole process group gets SIGTERM.
 func TestStepTimeoutLeavesNoSurvivors(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "forks", `run --timeout 500ms "forks" bash -c '`+fifoCat("33.1")+` & `+fifoCat("33.2")+` & wait'
 run "after" true`)
 	start := time.Now()
@@ -272,9 +272,9 @@ run "after" true`)
 }
 
 // Force quit kills a step's process group too: it isn't in the lane's
-// group, and its swim step, killed with the lane, can't stop it.
+// group, and its swim _step, killed with the lane, can't stop it.
 func TestForceQuitKillsStepGroup(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.mustSwim("config", "interrupt_grace", "400ms")
 	// The step and its child ignore SIGINT: only the kill stops them.
 	// It says so once its trap is set: a SIGINT before that kills bash
@@ -296,7 +296,7 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 }
 
 func TestTermEscalatesAfterGrace(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.mustSwim("config", "term_grace", "500ms")
 	r.script(1, "long", `run "long" `+blocked("31.5")+`
 run "never" true`)
@@ -319,7 +319,7 @@ run "never" true`)
 }
 
 func TestHangupForcesAtOnce(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "long", `run "long" `+blocked("31.7")+``)
 	r.script(2, "long too", `run "long" `+blocked("31.8")+``)
 	l := r.launch(t, nil)
@@ -336,7 +336,7 @@ func TestHangupForcesAtOnce(t *testing.T) {
 }
 
 func TestImmediateInterruptMode(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "long", `run "long" `+blocked("31.9")+``)
 	r.script(2, "long too", `run "long" `+blocked("32.1")+``)
 	l := r.launch(t, nil, "--interrupt", "immediate")
@@ -350,7 +350,7 @@ func TestImmediateInterruptMode(t *testing.T) {
 }
 
 func TestStopDuringRetryWait(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "backoff", `run --retry 3 --backoff 20s "fails" false
 run "never" true`)
 	r.script(2, "other", `run "short" true`)
@@ -373,7 +373,7 @@ run "never" true`)
 }
 
 func TestStopCancelsConfirm(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "asks", `run "before" true
 confirm "really?"
 run "after" true`)
@@ -399,7 +399,7 @@ run "after" true`)
 }
 
 func TestInterruptOneLane(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "stop me", `run "a" `+hold("go")+`
 run "b" true`)
 	r.script(2, "keep going", `run "x" `+hold("go")+`

@@ -90,7 +90,7 @@ func TestSchedulerProperties(t *testing.T) {
 	check := func(d propDAG) bool {
 		ok := true
 		t.Run(fmt.Sprintf("%d lanes", len(d.Lanes)), func(t *testing.T) {
-			r := newRepo(t, "")
+			r := newRepo(t)
 			ledger, stampLine := withLedger(t, r)
 			var lanes []string
 			for i, l := range d.Lanes {

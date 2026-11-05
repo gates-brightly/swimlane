@@ -6,7 +6,7 @@
 #
 # What testdata/corpus/quoted.sh only names, run as commands (each line's
 # expected finding after it): lint reports every one.
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found" >&2; exit 1; }
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || { echo "swim not found" >&2; exit 1; }
 eval "$_swim_lib"
 lane_init 1
 stage snapshot

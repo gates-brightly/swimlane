@@ -25,7 +25,7 @@ func spooled(r *repo, n int, want string) func() bool {
 }
 
 func TestLogShowsRunningStep(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "slow", slowLane)
 	withHeader(t, r, 1, "# Job: 7e57a110-1111-4222-8333-444455556666")
 	c := r.cmd(bin, "run", "1", "--plain")
@@ -61,11 +61,11 @@ func TestLogShowsRunningStep(t *testing.T) {
 	}
 }
 
-// swim log -f follows the round and stops by itself when it ends; swim
+// swim log --follow follows the round and stops by itself when it ends; swim
 // wait N is what exits with its result.
 func TestLogFollowStopsWhenDone(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "slow then fail", slowLane+`
 run "fails" false`)
 	c := r.cmd(bin, "run", "1", "--plain")
@@ -76,7 +76,7 @@ run "fails" false`)
 	defer r.release("go2")
 	defer r.release("go")
 	waitFor(t, spooled(r, 1, "tick-1"))
-	f := start(t, r.cmd(bin, "log", "1", "-f"), nil)
+	f := start(t, r.cmd(bin, "log", "1", "--follow"), nil)
 	w := start(t, r.cmd(bin, "wait", "1", "--interval", "100ms"), nil)
 	f.saw(t, "RUNNING  slow (in progress)")
 	r.release("go")
@@ -98,8 +98,8 @@ run "fails" false`)
 	}
 	// On an idle lane, -f prints the last round and stops; swim wait 1
 	// exits with it.
-	if out, code := r.swim("log", "1", "-f"); code != 0 || !strings.Contains(out, "== END FAIL") {
-		t.Errorf("idle lane, -f: exit %d\n%s", code, out)
+	if out, code := r.swim("log", "1", "--follow"); code != 0 || !strings.Contains(out, "== END FAIL") {
+		t.Errorf("idle lane, --follow: exit %d\n%s", code, out)
 	}
 	if _, code := r.swim("wait", "1"); code != 1 {
 		t.Errorf("idle lane, failed last round: swim wait 1 exit %d", code)
@@ -109,7 +109,7 @@ run "fails" false`)
 // Output a streamed step writes just before it ends, after the follower's
 // last look at the spool, shows once, from the step's block.
 func TestLogFollowLateOutput(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "late", `run "late" bash -c 'echo early; rf="$SWIM_ROOT/go"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo late-1; echo late-2'`)
 	c := r.cmd(bin, "run", "1", "--plain")
 	if err := c.Start(); err != nil {
@@ -118,7 +118,7 @@ func TestLogFollowLateOutput(t *testing.T) {
 	defer c.Wait()
 	defer r.release("go")
 	waitFor(t, spooled(r, 1, "early"))
-	f := start(t, r.cmd(bin, "log", "1", "-f"), nil)
+	f := start(t, r.cmd(bin, "log", "1", "--follow"), nil)
 	f.saw(t, "| early")
 	r.release("go")
 	if code := f.wait(t); code != 0 {
@@ -133,11 +133,11 @@ func TestLogFollowLateOutput(t *testing.T) {
 }
 
 func TestLogCutOffStep(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "x", `run "a" true`)
 	r.mustSwim("run", "1")
-	// A spool left by a swim step that was killed (no lane running).
+	// A spool left by a swim _step that was killed (no lane running).
 	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"),
 		[]byte("#swim-spool\tstuck\t12:00:00\tmake deploy\npartial output\n"), 0o644)
-	contains(t, "cut off", r.mustSwim("log", "1"), "RUNNING  stuck (cut off: swim step stopped; recorded as FAIL when the lane next runs)", "| partial output")
+	contains(t, "cut off", r.mustSwim("log", "1"), "RUNNING  stuck (cut off: swim stopped mid-step; recorded as FAIL when the lane next runs)", "| partial output")
 }

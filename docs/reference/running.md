@@ -7,9 +7,9 @@ dependencies first.
 ## Dependencies
 
 `# After: 2 3` (lanes, tasks or job ids) waits for those to pass in this
-run, and skips the round if one fails or is skipped. Config `deps:` adds
-ordering that holds every round. A dependency outside the run must already
-be satisfied, or the lane is skipped:
+run, and skips the round if one fails or is skipped. It is the only way to
+declare a dependency. A dependency outside the run must already be
+satisfied, or the lane is skipped:
 
 - a lane: its pending round passed (an archived or empty lane never blocks);
 - a job: it's that lane's last run, and passed.
@@ -66,8 +66,8 @@ under it, prefixed `[N]`. With more than one lane:
 | `f` / `?` | Filter to running or failed lanes / help. |
 | `Enter`, `y`, `n` | Open the lane a banner says is waiting, and answer it. |
 
-`--plain` (or no terminal): plain prefixed lines. `--no-tui` or
-`SWIM_TUI=0`: no panel. `--yaml`: [events](logs.md#yaml).
+`--plain` (or no terminal): no live view, plain prefixed lines.
+`SWIM_TUI=0`: the panel without the keys. `--yaml`: [events](logs.md#yaml).
 
 `notify: true` in config adds a desktop notification when a lane waits on
 you or a run ends, and a progress bar on the terminal tab (OSC 777, OSC

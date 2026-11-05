@@ -14,7 +14,7 @@ import (
 // what lint refuses, swim run refuses too, before any step runs. A new
 // step form, or a new mistake seen in the wild, gets a line here.
 func TestLintAndRuntimeAgree(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	header := ""
 	write := func(shebang, body string) {
 		t.Helper()

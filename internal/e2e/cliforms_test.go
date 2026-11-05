@@ -11,7 +11,7 @@ import (
 // comma list, several lanes to status, a duration to --since; and --json
 // and --dry-run say what swim does instead.
 func TestCLIFormsPeopleType(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	for _, n := range []int{2, 3, 17} {
 		r.shortLane(n, "# Round: lane form", "stage check\nrun \"x\" echo hi")
 	}

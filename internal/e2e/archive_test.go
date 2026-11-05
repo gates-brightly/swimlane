@@ -10,7 +10,7 @@ import (
 // since its round ran is kept, and a failed lane is left alone. verify
 // still passes.
 func TestArchiveDone(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "one", `run "a" true`)
 	r.script(2, "two", `run "b" true`)
 	r.script(3, "three", `run "c" true`)

@@ -870,17 +870,15 @@ func queueRequeue(args []string) error {
 // cmdWatch is the queue's worker: it runs each queued batch, oldest first,
 // as soon as swim is idle, and consumes it when it ends.
 func cmdWatch(args []string) error {
-	var once, noTUI bool
+	var once, plain bool
 	var interval, batchesFlag string
-	var plain bool // as swim run says it: --plain is --no-tui here
-	rest, err := flags{bools: map[string]*bool{"once": &once, "no-tui": &noTUI, "plain": &plain},
+	rest, err := flags{bools: map[string]*bool{"once": &once, "plain": &plain},
 		strs: map[string]*string{"interval": &interval, "batches": &batchesFlag}}.parse(args)
 	if err != nil {
 		return err
 	}
-	noTUI = noTUI || plain
 	if len(rest) > 0 {
-		return usagef("usage: swim watch [--once] [--interval D] [--batches N] [--no-tui|--plain]")
+		return usagef("usage: swim watch [--once] [--interval D] [--batches N] [--plain]")
 	}
 	every, err := durationFlag("interval", interval, pollEvery, "2s")
 	if err != nil {
@@ -947,7 +945,7 @@ func cmdWatch(args []string) error {
 	// notify_command.
 	notes := newWatchNotes(terminalNotifier(cfg), commandHook(cfg, root), root)
 	defer notes.stop()
-	if !once && watchViewAllowed(noTUI) {
+	if !once && watchViewAllowed(plain) {
 		view = newWatchView(root, cfg)
 		if notes != nil {
 			notes.asks = view.asks

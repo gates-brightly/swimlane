@@ -26,7 +26,7 @@ pause
 scene "3. A worker runs it"
 say "In real life: swim watch in a tmux pane, on a box with the prod credentials." \
     "It runs each batch as soon as its lanes are free."
-show 'swim watch --once --no-tui'
+show 'swim watch --once --plain'
 show 'fakecloud ls'
 pause
 
@@ -47,7 +47,7 @@ fakecloud seed-table sessions "s6,active" "s7,stale"
 show 'swim queue 2 --approve SESSIONS_ALLOW_PURGE --note "nightly session cleanup"'
 show "sed -i.orig '/delete/s/\"sessions\", \"stale\"/\"sessions\", \"s\"/' lane.2.py && rm lane.2.py.orig && grep -n 'fakecloud\", \"delete' lane.2.py"
 say "That would delete every session. The worker:"
-show 'swim watch --once --no-tui 2>&1 | tail -5'
+show 'swim watch --once --plain 2>&1 | tail -5'
 show 'fakecloud select sessions'
 say "Skipped: lane.2.py changed since it was queued. Nothing deleted."
 demo_done

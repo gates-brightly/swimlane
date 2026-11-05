@@ -16,7 +16,7 @@ import (
 // to a file it sources, made while it waits for the lane before it, change
 // nothing in the round, and the chain names the original script.
 func TestManifestStagedBytesRun(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(2, "goes first", `run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "greet.sh"), []byte("greeting=greet-v1\n"), 0o644)
@@ -65,7 +65,7 @@ run "say" echo "script-v2 $greeting"`)
 // An edit to the working-tree script while it runs changes nothing: bash
 // reads the staged copy.
 func TestManifestMidRunEdit(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "long", `run "first" echo one-v1
 run "wait" bash -c 'rf="$SWIM_ROOT/go1"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'
 run "second" echo two-v1`)
@@ -88,7 +88,7 @@ run "second" echo two-v1`)
 // A queued lane whose included file changed since it was queued is
 // skipped: a file it declares (# Includes:) is part of its script's hash.
 func TestManifestQueuePin(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "x.sh"), []byte("x=1\n"), 0o644)
 	r.script(1, "sources x", `source lib/x.sh
@@ -105,7 +105,7 @@ run "x" echo "x=$x"`)
 // or the policy part of swim.yml, after it was queued skips the lane, and
 // swim says why; queued again, it runs approved.
 func TestManifestApprovalBinding(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=old_orders\n"), 0o644)
 	r.script(1, "drop old table", `source lib/tables.sh
@@ -139,7 +139,7 @@ if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 // lane is refused (a hidden command for another lane, T10), an undeclared
 // flag is refused, and the approval is recorded as the lane's own.
 func TestManifestRequestsFromTheLane(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "asks as another", `if "$SWIM_BIN" _approve 5 DROP "harmless cleanup" --flag-set; then run "dropped as 5" true; fi
 if "$SWIM_BIN" _approve 1 DROP "harmless cleanup" --flag-set; then run "dropped" true; fi
 if "$SWIM_BIN" _approve 1 WIPE_ALL "routine tidy"; then run "wiped" true; fi`)
@@ -176,7 +176,7 @@ func TestManifestResponseReuse(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not installed")
 	}
-	r := newRepo(t, "")
+	r := newRepo(t)
 	// Lane 1 asks the broker itself and keeps the response's id.
 	r.script(1, "gets an approval", `run "ask" python3 -c '
 import json, os, socket
@@ -201,7 +201,7 @@ open(os.environ["SWIM_ROOT"] + "/approval-id", "w").write(resp["id"])'
 // the same script, run by another runner, is another thing to approve
 // (T2).
 func TestManifestRunnerBinding(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	dir := t.TempDir()
 	for _, name := range []string{"pyrun", "pyrun2"} {
 		os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexec bash \"$@\"\n"), 0o755)

@@ -11,7 +11,7 @@ import (
 // one summary for one lane, and a round header that leaves out what's at
 // its default.
 func TestQuietDefaults(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", filepath.Join(t.TempDir(), "no-such-key.pub"))
 	r.shortLane(1, "# Round: say hello", "stage check\nrun \"hello\" echo hi")
@@ -49,7 +49,7 @@ func TestQuietDefaults(t *testing.T) {
 // command and message, not its arguments), and the lint errors lint, run
 // and queue found, by code. Nothing is written outside a repo swim is in.
 func TestUsageAndLintAreLogged(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.shortLane(1, "# Round: two mistakes", "stage check\nrun echo hi\ngate --retries 2 \"x\" true")
 	r.swim("lint", "1")
 	r.swim("run", "1", "--plain")

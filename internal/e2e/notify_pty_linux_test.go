@@ -24,7 +24,7 @@ func lastProgress(out string) string {
 // paused while a question waits, and leaves none behind. The bell it rang
 // for a question is gone.
 func TestWatchNotifies(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
 	r.script(2, "two", `run "two" true`)
 	r.mustSwim("config", "notify", "true")
@@ -53,7 +53,7 @@ func TestWatchNotifies(t *testing.T) {
 
 // With notify off (the default), nothing is sent.
 func TestWatchNotifyOff(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "one", `run "one" true`)
 	r.mustSwim("queue", "add", "1")
 	tr := r.startTUI(nil, "watch", "--batches", "2")
@@ -68,7 +68,7 @@ func TestWatchNotifyOff(t *testing.T) {
 // swim run, with notify on: a notification when a lane asks and when the
 // run ends, and a progress bar of its lanes, hidden at the end.
 func TestRunNotifies(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
 	r.script(2, "two", `run "two" true`)
 	r.mustSwim("config", "notify", "true")

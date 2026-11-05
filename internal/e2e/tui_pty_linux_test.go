@@ -256,7 +256,7 @@ run "hold" `, 5+30*(i%2), i, i)+hold("release"))
 }
 
 func TestTUILaneViewAndCtrlC(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	release := tuiLanes(r, 3)
 	tr := r.startTUI(nil, "all")
 	s := tr.waitScreen("all view with lane output", func(s string) bool {
@@ -309,7 +309,7 @@ func TestTUILaneViewAndCtrlC(t *testing.T) {
 }
 
 func TestTUIHoldsOpenAfterRun(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	release := tuiLanes(r, 2)
 	tr := r.startTUI(nil, "all")
 	tr.waitFor("all lanes · following")
@@ -339,7 +339,7 @@ func TestTUIHoldsOpenAfterRun(t *testing.T) {
 func TestTUIRestoresTerminal(t *testing.T) {
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGHUP} {
 		t.Run(sig.String(), func(t *testing.T) {
-			r := newSerialRepo(t, "")
+			r := newSerialRepo(t)
 			release := tuiLanes(r, 2)
 			tr := r.startTUI(nil, "all")
 			tr.waitFor("all lanes · following")
@@ -361,7 +361,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 		})
 	}
 	t.Run("panic", func(t *testing.T) {
-		r := newSerialRepo(t, "")
+		r := newSerialRepo(t)
 		release := tuiLanes(r, 2)
 		defer release() // let the orphaned lanes end
 		tr := r.startTUI([]string{"SWIM_TEST_TUI_PANIC=1"}, "all")
@@ -386,7 +386,7 @@ func TestTUIRestoresTerminal(t *testing.T) {
 
 // The existing views when the interactive one is ruled out.
 func TestTUIOff(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	release := tuiLanes(r, 2)
 	release()
 	for _, c := range []struct {
@@ -394,7 +394,6 @@ func TestTUIOff(t *testing.T) {
 		env  []string
 		args []string
 	}{
-		{"--no-tui", nil, []string{"all", "--rerun", "--no-tui"}},
 		{"SWIM_TUI=0", []string{"SWIM_TUI=0"}, []string{"all", "--rerun"}},
 		{"CI", []string{"CI=true"}, []string{"all", "--rerun"}},
 		{"--plain", nil, []string{"all", "--rerun", "--plain"}},
@@ -415,7 +414,7 @@ func TestTUIOff(t *testing.T) {
 
 // With more lanes than the panel shows, the selected lane keeps a row.
 func TestTUIManyLanesKeepsSelection(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	for i := 1; i <= 40; i++ {
 		body := `run "quick" true`
 		if i == 1 {

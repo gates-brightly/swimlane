@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ExitBlocked is the exit code of a refused command (swim step). It is
+// ExitBlocked is the exit code of a refused command (swim _step). It is
 // distinct from 126/127 and signal codes.
 const ExitBlocked = 87
 

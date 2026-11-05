@@ -19,7 +19,7 @@ run "after" true`)
 }
 
 func TestPromptInTUI(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
 	// From the all view: a banner, not a question that takes the keys.
@@ -55,7 +55,7 @@ func TestPromptInTUI(t *testing.T) {
 // duration leaves the wait out: with the wait, it is the END line's time
 // end to end.
 func TestPromptStopsTheClock(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
 	tr.waitFor("▶ swim 1 needs approval")
@@ -95,9 +95,9 @@ func TestPromptStopsTheClock(t *testing.T) {
 }
 
 func TestPromptLineDeclines(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	approvalLanes(r)
-	tr := r.startTUI(nil, "all", "--no-tui")
+	tr := r.startTUI(nil, "all", "--plain")
 	tr.waitFor("the lane says: drop table orders - 2026-10-12")
 	tr.send("\r") // Enter: the default, no
 	code, out := tr.wait()
@@ -120,7 +120,7 @@ func TestPromptLineDeclines(t *testing.T) {
 }
 
 func TestPromptSingleLane(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	approvalLanes(r)
 	tr := r.startTUI(nil, "run", "1")
 	tr.waitFor("requires human approval of guard ALLOW_DROP")
@@ -132,7 +132,7 @@ func TestPromptSingleLane(t *testing.T) {
 }
 
 func TestPromptOffWithFlag(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all", "--no-prompt")
 	code, out := tr.wait()
@@ -143,7 +143,7 @@ func TestPromptOffWithFlag(t *testing.T) {
 }
 
 func TestPromptCtrlCStops(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	approvalLanes(r)
 	tr := r.startTUI(nil, "all")
 	tr.waitFor("swim 1 needs approval · Enter to view")
@@ -161,7 +161,7 @@ func TestPromptCtrlCStops(t *testing.T) {
 
 func TestPromptSeveralLanes(t *testing.T) {
 	long(t)
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
 	r.script(2, "two", `if guard ALLOW_TWO "change two"; then run "two changed" true; fi`)
 	r.script(3, "busy", `run "work" bash -c 'for i in $(seq 1 30); do echo busy-$i; done'`)
@@ -200,9 +200,9 @@ func TestPromptSeveralLanes(t *testing.T) {
 // carriage return, the backspace and the right-to-left override never
 // reach the terminal, at the prompt line or in the live view.
 func TestPromptIsSafe(t *testing.T) {
-	for _, mode := range []string{"--no-tui", "tui"} {
+	for _, mode := range []string{"--plain", "tui"} {
 		t.Run(mode, func(t *testing.T) {
-			r := newSerialRepo(t, "")
+			r := newSerialRepo(t)
 			r.script(1, "hostile", `if guard ALLOW_X `+payload+`; then run "changed" true; fi`)
 			args := []string{"all"}
 			if mode != "tui" {

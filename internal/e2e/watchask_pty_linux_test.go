@@ -22,7 +22,7 @@ func (r *repo) waitLog(n int, want string) string {
 // swim run in between.
 func TestWatchAsksForBatchGuards(t *testing.T) {
 	long(t)
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "one", `if guard ALLOW_ONE "change one"; then run "one changed" true; fi`)
 	r.script(2, "two", `if guard ALLOW_TWO "change two"; then run "two changed" true; fi`)
 	r.mustSwim("queue", "add", "1")
@@ -65,7 +65,7 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 // until the operator acts on it (here q, then q again to take it back
 // out of the next batch). Lanes untouched since stay unmarked.
 func TestWatchMarksChangedLanes(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	r.script(1, "first job", `run "one" true`)
 	r.script(2, "second job", `run "two" true`)
 	tr := r.startTUI(nil, "watch")

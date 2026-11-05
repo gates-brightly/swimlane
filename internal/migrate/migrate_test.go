@@ -12,7 +12,7 @@ import (
 // rewritten. A syntax 1 log does stop it, saying how to move it aside.
 func TestCheckSyntax1(t *testing.T) {
 	root := t.TempDir()
-	old := "#!/usr/bin/env bash\n# Round: old round\neval \"$(swim lib)\"\nlane_init 1\nrun \"x\" true\nsummary\n"
+	old := "#!/usr/bin/env bash\n# Round: old round\neval \"$(swim _lib)\"\nlane_init 1\nrun \"x\" true\nsummary\n"
 	os.WriteFile(filepath.Join(root, "lane.2.sh"), []byte("#!/usr/bin/env bash\necho hi\n"), 0o755)
 	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte(old), 0o755)
 	if err := Check(root); err != nil {
@@ -30,11 +30,11 @@ func TestCheckSyntax1(t *testing.T) {
 
 func TestCheckRefusesNewer(t *testing.T) {
 	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte("# swim: syntax 3\neval \"$(swim lib)\"\nlane_init 1\n"), 0o755)
+	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte("# swim: syntax 3\neval \"$(swim _lib)\"\nlane_init 1\n"), 0o755)
 	if err := Check(root); err != nil {
 		t.Errorf("syntax 3 scripts are readable: %v", err)
 	}
-	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte("# swim: syntax 9\neval \"$(swim lib)\"\nlane_init 1\n"), 0o755)
+	os.WriteFile(filepath.Join(root, "lane.1.sh"), []byte("# swim: syntax 9\neval \"$(swim _lib)\"\nlane_init 1\n"), 0o755)
 	if err := Check(root); err == nil {
 		t.Error("a syntax 9 script passed Check")
 	}

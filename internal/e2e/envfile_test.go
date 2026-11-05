@@ -28,7 +28,7 @@ func envFiles(t *testing.T, r *repo, user, laneFile, yml string) {
 // masked in the log, and the round records which files applied and their
 // hash (status and the chain).
 func TestEnvFiles(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	envFiles(t, r,
 		"STAGE=general-stage\nREGION=general-region\nGENERAL_ONLY=general-value\n[repo REPO]\nPROFILE=orders-prod-profile\nREGION=repo-region\n",
 		"[lane 1]\nTABLE=orders-v2-table\nSTAGE=lane-stage\n[lane 2]\nTABLE=other-lane-table\n",
@@ -74,7 +74,7 @@ func TestEnvFiles(t *testing.T) {
 // Approvals never come from a file: a guard flag in any env file stops the
 // run before anything starts.
 func TestEnvFileGuardFlagRefused(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "guarded", `if guard ALLOW_DROP "drop t"; then run "dropped" true; fi`)
 	r.script(2, "other", `run "ok" true`)
 	envFiles(t, r, "", "[lane 1]\nALLOW_DROP=1\n", "")
@@ -98,7 +98,7 @@ func TestEnvFileGuardFlagRefused(t *testing.T) {
 // A queued lane runs with the env it was queued with: an edit since skips
 // it, like an edited script.
 func TestEnvFileQueuePin(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "pinned", `run "ok" true`)
 	envFiles(t, r, "", "[lane 1]\nTABLE=one\n", "")
 	r.mustSwim("queue", "add", "1")
@@ -113,7 +113,7 @@ func TestEnvFileQueuePin(t *testing.T) {
 // Lint warns about a key set twice in one env file section; a lane in
 // another language gets the env files too, masked in its log.
 func TestEnvFileDuplicatesAndWrappedLane(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	envFiles(t, r, "", "[lane 1]\nTABLE=first-table\nTABLE=orders-v2-table\n", "")
 	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: wrapped env\nswim run \"show\" -- bash -c 'echo \"table=$TABLE\"; echo \"$TABLE\" > \"$SWIM_ROOT/table.txt\"'\n", 0o755)
 	contains(t, "lint", must(r.swim("lint", "1")), ".env.swim:3 sets TABLE again in [lane 1] (first at line 2; the last wins)")

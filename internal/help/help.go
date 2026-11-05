@@ -132,7 +132,7 @@ var Commands = map[string]string{
   --job ID   use your own job id instead of a random UUID: 8-64 letters,
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
-	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
+	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see swim guide other-languages)
 
@@ -150,7 +150,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
       The panel shows at most 15 lanes. With more, a "… N more" line counts
       the hidden ones; idle, done and passed lanes are hidden first, then
       waiting and failed ones, so running lanes stay visible.
-    - Dependencies come from each script's "# After:" line and config deps.
+    - Dependencies come from each script's "# After:" line.
       A lane starts when its dependencies in this run pass, and is skipped if
       one fails or is skipped, or if a dependency outside the run holds a
       round that hasn't passed. Cycles stop the run before it starts.
@@ -183,16 +183,17 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   --interrupt graceful|immediate   what the first Ctrl-C does, for this run
             (default: config interrupt, graceful). immediate interrupts
             running steps at once (the second press then kills).
-  --plain   no pinned panel, colour or throbber; state changes print as lines.
-            Automatic when stdout isn't a terminal or NO_COLOR is set.
+  --plain   no live view (no pinned panel, interactive view, colour or
+            throbber); state changes print as lines. Automatic when stdout
+            isn't a terminal or NO_COLOR is set.
   Each lane keeps one colour: sixteen before one repeats on a terminal with
   256 colours (Ghostty, iTerm, VS Code, TERM=*-256color, COLORTERM=truecolor),
   eleven on others. SWIM_COLORS=256 or 16 says which yours is.
-  --no-tui  the pinned panel without the interactive view (output scrolls in
-            the terminal as before). Also SWIM_TUI=0. The interactive view is
-            also off for a single lane (it may prompt on stdin), with --plain,
-            --yaml, NO_COLOR or SWIM_COLOR=0, CI=true, when stdin or stdout
-            isn't a terminal, and when the terminal is too small.
+  SWIM_TUI=0 keeps the pinned panel without the interactive view (output
+            scrolls in the terminal). The interactive view is also off for a
+            single lane (it may prompt on stdin), with --plain, --yaml,
+            NO_COLOR or SWIM_COLOR=0, CI=true, when stdin or stdout isn't a
+            terminal, and when the terminal is too small.
   KEYS (interactive view)
     → l Tab / ← h Shift-Tab   next / previous lane, in panel order (running,
                     then waiting, then finished); from the all view → opens
@@ -243,15 +244,16 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   an edit to the working tree after that changes nothing in the run. See
   swim guide manifest.
 `,
-	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
+	"all": `swim all [--rerun] [--plain] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
   "done" and not run again; failed, interrupted, skipped and new rounds run.
   --rerun   run every pending round, including ones that already passed.
-  Every lane script counts, whatever its number. Dependencies ("# After:" lines and config deps), the live
-  view and its keys (--no-tui), guard flags and the summary all work as in "swim run".
+  Every lane script counts, whatever its number. Dependencies ("# After:"
+  lines), the live view and its keys (off with --plain), guard flags and
+  the summary all work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
 	"report": `swim report [N|JOB ...] [--earmark] [--name NAME] [--since T|RUN|JOB] [--no-logs] [--results] [--yaml]
@@ -338,34 +340,6 @@ swim report --earmarks | --earmark --reset [--name NAME]
   --run RUN  each lane as it was in swim run RUN (from the logs, archives
              included, and .swim.log for lanes skipped before they started)
 `,
-	"step": `swim step [--label L] [--new] [--snapshot] [--timeout D] [--retry N]
-          [--backoff D] [--retry-on CODES] [--no-retry-timeout]
-          [--expect-fail[=CODES]] -- cmd [args...]
-
-  Run one command. Its output streams to the terminal unchanged; a framed copy
-  goes to the log chosen by $STEP_LOG (default step.log):
-    header (UTC time, shell-quoted command, cwd, git branch@sha, runtime
-    version, AWS_PROFILE and header_env values), output with ANSI codes
-    stripped, exit code and duration, and PASS/FAIL <label> when labelled.
-  Exits with the command's exit code. On Ctrl-C the log is flushed and the
-  interruption recorded before exiting.
-  --label L     record PASS/FAIL L (and update status.yml when run in a lane)
-  --new         start a fresh log (truncate)
-  --snapshot    also save output to .swim/snapshots/laneN-<time>-<label>.txt
-  --timeout D   stop the command after D (default: $SWIM_STEP_TIMEOUT, from the
-                script's Step-Timeout:; 0 for none); never past the round's Timeout.
-                The command runs in its own process group: SIGTERM to all of
-                it, SIGKILL after 5s (when stdin is a terminal, only to the
-                command: see swim guide lanes)
-  --retry N, --backoff D, --retry-on CODES, --no-retry-timeout
-                retry on failure (see swim guide lanes)
-  --expect-fail[=CODES]
-                the command should fail: the step passes on a non-zero exit
-                (one of CODES, e.g. =1,2, if given) and is logged "failed as
-                expected: exit N"; exit 0 or another code fails it. A time
-                limit or a signal still fails it. Not with --retry.
-  Lane scripts call this through run/gate/snapshot; you rarely need it directly.
-`,
 	"gate": `swim gate [options] "<label>" -- cmd [args...]
 
   In a lane script in any language (swim guide other-languages): run
@@ -405,15 +379,6 @@ swim report --earmarks | --earmark --reset [--name NAME]
   one of the lane's guard flags. --yaml: a swim.env/v1 document with the
   env_sha256 the round would record. See swim guide env.
 `,
-	"lib": `swim lib
-
-  Print the bash library lane scripts use. A short-form script
-  (#!/usr/bin/env swim, what swim new writes) has it loaded by swim run.
-  An explicit-form script loads it itself, then calls lane_init N:
-    _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-  (eval, not "source <(...)": process-substitution source is broken in
-  macOS bash 3.2). See swim guide lanes for the functions.
-`,
 	"archive": `swim archive N|JOB ... ["<note>"] [--as NAME] [--force]
 swim archive --done ["<note>"]
 
@@ -442,7 +407,7 @@ swim archive --done ["<note>"]
   --lane N|JOB   tie the note to a lane (and its job id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow]
+	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [--follow]
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
@@ -466,7 +431,7 @@ swim archive --done ["<note>"]
   swim log adds it from the step's spool (.swim/logs/agentN.log.partial),
   output so far included, under a result line that never appears in a file:
       RUNNING  <label> (in progress)          <elapsed>s  <hh:mm:ss>
-  ("cut off: ..." instead of "in progress" if its swim step died; it is
+  ("cut off: ..." instead of "in progress" if swim died mid-step; it is
   recorded as FAIL when the lane next runs).
   --full        don't fold long or repeated output
   --raw         print the file exactly, as cat shows it, even on a terminal
@@ -475,7 +440,7 @@ swim archive --done ["<note>"]
                 every round with --all, or a job's rounds; the running step is
                 a result "RUNNING" with its command, output so far and
                 duration_s. See swim guide logs.
-  -f, --follow  print lane N's (or JOB's lane's) current round, then follow it
+  --follow      print lane N's (or JOB's lane's) current round, then follow it
                 like tail -f: new log lines, and the running step's output as
                 it is written (the step's block then adds only its result
                 line). It stops by itself once the round has ended (on an
@@ -578,7 +543,7 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [--interval D] [--batches N] [--no-tui]
+	"watch": `swim watch [--once] [--interval D] [--batches N] [--plain]
 
   The queue's swimmer. Runs queued batches (swim queue N) side by side,
   up to --batches at once (watch_batches, default 4), each in a process
@@ -606,8 +571,8 @@ swim queue show|rm|requeue ID
   --interval D   how often to check the queue and for idleness (default 2s)
   --batches N    run up to N batches at once (default watch_batches, 4);
                  --batches 1 runs one at a time, on the screen.
-  --no-tui, --plain  print what the swimmer waits for instead of the jobs
-                 screen (--plain, as swim run spells it)
+  --plain        print what the swimmer waits for instead of the jobs
+                 screen (automatic when stdin or stdout isn't a terminal)
   On a terminal, while it waits, the watch shows every lane's job and the
   queue, with the batches running: ↑ ↓ (or k j) pick one, r runs it now
   and enter follows its output (esc comes back). q adds a job to the next
@@ -650,7 +615,7 @@ swim queue show|rm|requeue ID
   the watch exits; between batches, it exits at once. Batches still
   waiting stay queued.
   With no one watching: run it in tmux, or under a service manager of your
-  own with --no-tui; swim watch --once (from cron, say) runs what's queued
+  own with --plain; swim watch --once (from cron, say) runs what's queued
   and exits.
 `,
 	"wait": `swim wait [--interval D] [--timeout D]
@@ -1014,7 +979,7 @@ func For(name string) (string, bool) {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report",
 	"gate", "snapshot", "guard", "stage",
 	"archive", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
 	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}

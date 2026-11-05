@@ -1,7 +1,7 @@
 # Logs
 
 ```sh
-swim log N            # a lane's latest round (--all: archives too; -f: follow it until it ends)
+swim log N            # a lane's latest round (--all: archives too; --follow: follow it until it ends)
 swim wait N           # block until lane N's round ends; exit with its result
 swim log <job|run>    # a job's rounds / one run
 swim log              # .swim.log, the project log

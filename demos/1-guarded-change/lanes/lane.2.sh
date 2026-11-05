@@ -5,7 +5,7 @@
 #
 # What a confused (or malicious) script might try: set the approval flag
 # itself, then call guard.
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 2
 
 stage check

@@ -15,7 +15,7 @@ import (
 // # Workspace: live runs it in the working tree, and is part of its
 // manifest.
 func TestLaneRunsStaged(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.write("helper.sh", "echo SAFE\n", 0o755)
 	r.script(1, "use a helper", `run "helper" bash helper.sh`)
 	unpin(t, r) // r.script's lint --fix pins it (workspace-file)

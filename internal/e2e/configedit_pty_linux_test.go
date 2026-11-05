@@ -15,7 +15,7 @@ import (
 // backs the file up as config.yml-1.bak, once a session, and the screen
 // stays up from first key to q.
 func TestConfigEdit(t *testing.T) {
-	r := newSerialRepo(t, "")
+	r := newSerialRepo(t)
 	cfg := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "config.yml")
 	file := func() string { b, _ := os.ReadFile(cfg); return string(b) }
 	before := "# mine\ndefaults: {}\n"

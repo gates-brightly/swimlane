@@ -19,7 +19,7 @@ func shortLane(t *testing.T, r *repo, n int, src string) {
 // a guard dry-runs until approved, FLAG=1 approves it, and the round ends
 // without summary.
 func TestShortFormLane(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	shortLane(t, r, 1, `# Round: Say hello
 # Guards: HELLO_ALLOW_WRITE  write hello.txt
 stage check
@@ -55,7 +55,7 @@ fi
 // the prelude's own source of the script isn't a command outside a step.
 // A command outside a step that fails is still recorded.
 func TestShortFormLastStepFails(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	shortLane(t, r, 1, "# Round: fails last\nstage check\nrun \"fails\" false\n")
 	if _, code := r.swim("run", "1", "--plain", "--no-prompt"); code == 0 {
 		t.Fatal("the lane passed")
@@ -71,7 +71,7 @@ func TestShortFormLastStepFails(t *testing.T) {
 // ./lane.N.sh runs the lane through its #! line, as swim run N does, from
 // any directory; a failed gate ends the round, as in an explicit lane.
 func TestShortFormShebang(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	shortLane(t, r, 2, `# Round: Gate
 stage check
 gate "app.conf is there" test -f "$SWIM_ROOT/app.conf"

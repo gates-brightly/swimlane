@@ -26,7 +26,7 @@ func noControls(t *testing.T, what, s string) {
 // terminal, the log, status.yml and swim history only made safe;
 // the chain keeps the text as given.
 func TestUntrustedTextIsSafe(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.env = append(r.env, "ALLOW_X=1")
 	r.script(1, "hostile", `P=`+payload+`
 if guard ALLOW_X "$P"; then run "$P" true; fi

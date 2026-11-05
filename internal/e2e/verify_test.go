@@ -11,7 +11,7 @@ import (
 // in the chain.
 func signedRepo(t *testing.T) (*repo, map[string]string) {
 	t.Helper()
-	r := newRepo(t, "")
+	r := newRepo(t)
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])

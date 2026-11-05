@@ -24,8 +24,8 @@ func (d Dep) String() string {
 	return fmt.Sprintf("swim %d", d.Lane)
 }
 
-// ResolveDeps returns each selected lane's dependencies: the config deps
-// table plus the `# After:` line of its script (lane numbers or job ids).
+// ResolveDeps returns each selected lane's dependencies: the `# After:`
+// line of its script (lane numbers or job ids).
 // It fails, before anything runs, on a reference that doesn't resolve or a
 // cycle among the selected lanes.
 func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, error) {
@@ -44,9 +44,6 @@ func ResolveDeps(root string, cfg *config.Config, sel []int) (map[int][]Dep, err
 	out := map[int][]Dep{}
 	for _, n := range sel {
 		byLane := map[int]Dep{}
-		for _, d := range cfg.DepsOf(n) {
-			byLane[d] = Dep{Lane: d}
-		}
 		for _, ref := range scripts[n].After {
 			d, err := resolveAfter(cfg, scripts, st, n, ref)
 			if err != nil {

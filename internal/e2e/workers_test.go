@@ -33,7 +33,7 @@ func oldSwim(t *testing.T) string {
 // anyway stays queued, with why, instead of failing.
 func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 	old := oldSwim(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "probe", `run "probe" true`)
 	os.Remove(filepath.Join(r.root, ".swim.lock"))
 	if out, err := r.cmd(old, "init").CombinedOutput(); err != nil { // the old swim's lock

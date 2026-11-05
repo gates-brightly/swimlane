@@ -35,7 +35,7 @@ func fakeRunner(t *testing.T, r *repo, name string) string {
 // swim run/gate/guard/stage calls are steps, and a failed gate ends the
 // program even though it carries on.
 func TestWrappedLaneInLaneCommands(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: plain bash, swim commands
 swim stage check
@@ -71,7 +71,7 @@ touch "$SWIM_ROOT/after-gate"
 // and the log shows the gate's FAIL and STOP and nothing after.
 func TestWrappedLaneNoStepAfterEnd(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: ignores its stop
 trap '' TERM
@@ -101,7 +101,7 @@ touch "$SWIM_ROOT/after-refusal"
 // A program that never calls swim run is one step: its whole output, with
 // secrets masked, passed or failed by its exit code.
 func TestWrappedLaneWholeRun(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.write("lane.2.sh", "#!/usr/bin/env bash\n# Round: no swim calls\necho \"hello $SWIM_LANE\"\necho \"token=$DEPLOY_TOKEN\"\nexit 3\n", 0o755)
 	r.env = append(r.env, "DEPLOY_TOKEN=s3cr3t-value-123")
 	out, code := r.swim("run", "2", "--plain")
@@ -118,7 +118,7 @@ func TestWrappedLaneWholeRun(t *testing.T) {
 // A compiled lane has no header: its sidecar lane.N.yml holds the round
 // and the rest.
 func TestBinaryLaneWithSidecar(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	// A program built here, not a copy of a system one: macOS kills a copied
 	// system binary at launch (exit 137); Go signs what it builds.
 	src := filepath.Join(t.TempDir(), "main.go")
@@ -145,7 +145,7 @@ func TestBinaryLaneWithSidecar(t *testing.T) {
 // fix; swim.yml's runners: (command names) covers everyone; a #! line
 // needs nothing.
 func TestRunnerResolution(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	fakeRunner(t, r, "fakets")
 	r.write("lane.1.ts", "// Round: typescript lane\nconsole.log('hi')\n", 0o644)
 	out, code := r.swim("run", "1", "--plain")
@@ -175,7 +175,7 @@ func TestRunnerResolution(t *testing.T) {
 
 // A lane has exactly one script.
 func TestTwoScriptsConflict(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "bash version", `run "x" true`)
 	r.write("lane.1.js", "// Round: js version\n", 0o644)
 	out, code := r.swim("run", "1", "--plain")
@@ -188,7 +188,7 @@ func TestTwoScriptsConflict(t *testing.T) {
 // bash lane: the running step finishes, the next is refused, the round
 // ends interrupted, and the program doesn't carry on.
 func TestWrappedLaneGracefulStop(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # Round: interrupt me
 for i in 1 2 3; do swim run "step $i" -- `+hold("go")+`; done
@@ -212,7 +212,7 @@ touch "$SWIM_ROOT/carried-on"
 
 // A wrapped lane runs git like any other program: no shim refuses it.
 func TestWrappedLaneRunsGit(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.write("lane.1.sh", "#!/usr/bin/env bash\n# Round: commits\nGIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C \"$SWIM_ROOT\" commit -q --allow-empty -m x && touch \"$SWIM_ROOT/committed\"\n", 0o755)
 	if out, code := r.swim("run", "1", "--plain"); code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)

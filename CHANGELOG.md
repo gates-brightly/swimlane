@@ -78,8 +78,28 @@ history stays here, since `swim changelog --since` reads it.
   blocks until a lane's round, a queued batch or a swim run ends and exits
   with its result (0 passed, 3 dry run, 1 otherwise); `swim queue` prints
   the batch's id to wait on. A plain number is now a lane (a batch is its
-  id or `'#41'`). `swim log -f` stops by itself once the followed round
+  id or `'#41'`). `swim log --follow` stops by itself once the followed round
   ends (exit 0, whatever its result).
+
+- **`swim log -f` is `swim log --follow`,** its one spelling.
+
+- **`swim step` and `swim lib` are plumbing now: `swim _step` and `swim
+  _lib`,** out of `swim --help` like swim's other internal commands. Lanes
+  in any language keep `swim run|gate|snapshot "<label>" -- cmd`. An
+  explicit-form bash lane loads the library with
+  `_swim_lib=$("${SWIM_BIN:-swim}" _lib)`; one that still says `lib` stops
+  with "unknown command": change the word (short-form lanes,
+  `#!/usr/bin/env swim`, need nothing).
+
+- **Config `deps:` is gone: `# After:` is the one way to order lanes.**
+  `swim init` no longer writes `deps: {}` into `~/.config/swim/config.yml`;
+  a `deps:` there is now ignored (delete it, and put each lane's
+  dependencies on its `# After:` line), and in `swim.yml` it fails to load.
+
+- **`--no-tui` is gone: `--plain` is the one flag for no live view.**
+  On `swim run`, `swim all` and `swim watch`, `--plain` means plain lines
+  and no screen, as it does when stdout isn't a terminal. The pinned panel
+  without its keys is `SWIM_TUI=0`.
 
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 

@@ -8,7 +8,7 @@ import (
 // A step expected to fail (run --expect-fail) passes on a non-zero exit,
 // and fails on exit 0 or a code it wasn't expected to exit with.
 func TestExpectFail(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "negative tests", `run --expect-fail "bad token refused" bash -c 'exit 3'
 run --expect-fail=1,3 "listed code" bash -c 'exit 3'
 run --expect-fail "accepted anyway" true
@@ -30,18 +30,18 @@ run "after" true`)
 		t.Errorf("status passed %d failed %d, want 3 and 4\n%s", l.Pass, l.Fail, log)
 	}
 
-	// swim step by hand: the exit code follows the verdict.
-	if _, code := r.swim("step", "--expect-fail", "--", "false"); code != 0 {
+	// swim _step by hand: the exit code follows the verdict.
+	if _, code := r.swim("_step", "--expect-fail", "--", "false"); code != 0 {
 		t.Errorf("step --expect-fail false: exit %d, want 0", code)
 	}
-	if _, code := r.swim("step", "--expect-fail", "--", "true"); code != 1 {
+	if _, code := r.swim("_step", "--expect-fail", "--", "true"); code != 1 {
 		t.Errorf("step --expect-fail true: exit %d, want 1", code)
 	}
-	out, code := r.swim("step", "--expect-fail", "--retry", "2", "--", "false")
+	out, code := r.swim("_step", "--expect-fail", "--retry", "2", "--", "false")
 	if code != 2 || !strings.Contains(out, "don't go together") {
 		t.Errorf("--expect-fail with --retry: exit %d\n%s", code, out)
 	}
-	out, code = r.swim("step", "--expect-fail=0", "--", "false")
+	out, code = r.swim("_step", "--expect-fail=0", "--", "false")
 	if code != 2 || !strings.Contains(out, "non-zero exit codes") {
 		t.Errorf("--expect-fail=0: exit %d\n%s", code, out)
 	}

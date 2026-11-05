@@ -67,7 +67,7 @@ type Context struct {
 	Scripts map[int]*Script // every lane 1..Lanes with a non-stub script
 
 	depsDone bool
-	deps     map[int][]int  // resolved dependencies (After: plus config deps)
+	deps     map[int][]int  // resolved dependencies (After:)
 	depErrs  map[int]string // lane -> why its After: didn't resolve
 }
 
@@ -273,21 +273,18 @@ func NewScript(n int, src string) *Script {
 
 // libLoadRE: the line that loads swim's library, in any of its spellings
 // (a regular expression, kept: it is matched within a line of text).
-var libLoadRE = regexp.MustCompile(`(?:swim|SWIM_BIN[^"]*)"?\s+lib\b`)
+var libLoadRE = regexp.MustCompile(`(?:swim|SWIM_BIN[^"]*)"?\s+_lib\b`)
 
 // loadsLib reports whether src loads swim's bash library (or calls
 // lane_init, which only it defines).
 func loadsLib(src string) bool { return lane.UsesLib(src) || libLoadRE.MatchString(src) }
 
 // localDeps resolves After: refs (lane numbers, or job ids held by the
-// given scripts) and config deps without a repo or status file.
+// given scripts) without a repo or status file.
 func localDeps(cfg *config.Config, scripts map[int]*Script) (map[int][]int, map[int]string) {
 	out, errs := map[int][]int{}, map[int]string{}
 	for n, s := range scripts {
 		seen := map[int]bool{}
-		for _, d := range cfg.DepsOf(n) {
-			seen[d] = true
-		}
 		for _, ref := range s.Info.After {
 			m, err := strconv.Atoi(ref)
 			if err != nil {

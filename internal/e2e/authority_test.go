@@ -104,7 +104,7 @@ func TestOtherRepoRunDoesNotCount(t *testing.T) {
 		inner += " " + q(kv)
 	}
 	inner += " " + boundaryGuard + "=1 bash lane.1.sh\n"
-	outer := newRepo(t, "")
+	outer := newRepo(t)
 	outer.write("inner.sh", inner, 0o755)
 	outer.script(1, "test another repo", `run "inner lane" ./inner.sh`)
 	withHeader(t, outer, 1, "# Includes: inner.sh")
@@ -206,7 +206,7 @@ func TestHostileLaneWrongJob(t *testing.T) {
 // with lane 2's read from /proc (the request comes from outside lane 2's
 // process tree).
 func TestLaneCantReportForAnother(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	// The lanes signal each other through FIFOs: a write blocks until the
 	// other side reads.
 	r.script(2, "victim", `echo $$ > "$SWIM_ROOT/lane2.pid"
@@ -251,7 +251,7 @@ func TestBrokerHostileClients(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not installed")
 	}
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "hostile", `run "junk" python3 -c '
 import json, os, socket, threading
 path, tok = os.environ["SWIM_APPROVAL"], os.environ["SWIM_APPROVAL_TOKEN"]

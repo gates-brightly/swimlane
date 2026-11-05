@@ -11,7 +11,7 @@ import (
 // view as running elsewhere, then with its result, not as idle.
 func TestLaneRunningElsewhere(t *testing.T) {
 	long(t)
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "the other swim's lane", `run "work" `+hold("go1"))
 	r.script(2, "this swim's lane", `run "longer" `+hold("go2"))
 

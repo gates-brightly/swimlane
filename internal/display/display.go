@@ -56,7 +56,7 @@ type Options struct {
 	// Interactive asks for the interactive view: the keyboard picks a lane
 	// to read. It is used only if live mode is, In is a terminal and this
 	// process is in its foreground; the caller rules out the rest (a lane
-	// that needs stdin, --no-tui, SWIM_TUI=0, CI: see TUIAllowed).
+	// that needs stdin, SWIM_TUI=0, CI: see TUIAllowed).
 	Interactive bool
 	In          *os.File
 	// LogPath and LogLabel name lane n's log file, read by the lane view,

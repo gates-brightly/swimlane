@@ -3,7 +3,7 @@
 # Round:  Release 2.4.0: deploy api (runs a db migration)
 # After:  1
 # Locks:  db-migrations
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 2
 
 stage snapshot

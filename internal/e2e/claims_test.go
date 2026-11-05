@@ -24,7 +24,7 @@ func (r *repo) as(sess string, args ...string) (string, int) {
 // claim; --force takes it over and logs claim-broken; an expired claim is
 // no bar; swim run releases it (and warns, J1: it runs anyway).
 func TestLaneClaims(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.env = append(r.env, "USER=alice", "SWIM_USER=")
 	if out, code := r.as("a", "new", "3", "drop the orders index"); code != 0 {
 		t.Fatalf("a's new: %s", out)
@@ -109,7 +109,7 @@ func TestLaneClaims(t *testing.T) {
 // session: the claim doesn't stop the second swim new (the pending-round
 // check still does).
 func TestLaneClaimsSameSession(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.mustSwim("new", "2", "first")
 	out, code := r.swim("new", "2", "second")
 	if code == 0 || strings.Contains(out, "claimed by") || !strings.Contains(out, "pending") {

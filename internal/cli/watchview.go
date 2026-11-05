@@ -158,9 +158,9 @@ func compactIndent(s string) string { return strings.Replace(s, logparse.Indent,
 
 // watchViewAllowed reports whether swim watch can show its screen: a
 // terminal on both ends, and the interactive view allowed (not CI,
-// SWIM_TUI=0 or --no-tui).
-func watchViewAllowed(noTUI bool) bool {
-	return !noTUI && ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) && display.TUIAllowed(os.Getenv)
+// SWIM_TUI=0 or --plain).
+func watchViewAllowed(plain bool) bool {
+	return !plain && ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) && display.TUIAllowed(os.Getenv)
 }
 
 // rowText builds a row twice: plain (the selection bar, no colour) and

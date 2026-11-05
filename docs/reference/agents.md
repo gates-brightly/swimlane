@@ -100,7 +100,7 @@ script and what its snapshot and check found:
   - If you say no: a dry run; nothing is removed
 ```
 
-Need something from the operator first? Config or `deps:`: the exact YAML.
+Need something from the operator first? Config: the exact YAML.
 A secret: they set it in their environment or `.env.swim`; never ask for
 the value.
 
@@ -113,9 +113,9 @@ The planner:
   lane, so another session's `swim new` is refused). Puts
   the goal, the exact `# After:` line, its session name and what to report
   in the worker's prompt, and records the assignment with `swim note`.
-- Writes the shared parts: cross-lane ordering, `deps:` lines for the
-  operator, shared files. Checks every lane together (`swim lint`, `swim
-  status`) and queues them as one batch.
+- Writes the shared parts: cross-lane ordering (`# After:` lines), shared
+  files. Checks every lane together (`swim lint`, `swim status`) and
+  queues them as one batch.
 - For a shared environment: lanes declare `# Locks: NAME`.
 
 A worker:
@@ -141,7 +141,7 @@ Work a task until it's ready, dispatch it, start the next. At each
 stopping point, `swim queue` to see what finished, and pick those up
 first. When everything is dispatched, `swim wait --any <batch> <batch>`
 returns as the first ends (`swim wait` is the one command that blocks on
-work; `swim log -f` only shows it). Rules:
+work; `swim log --follow` only shows it). Rules:
 
 - Don't edit a dispatched lane: the batch is pinned, so the edit is
   skipped. `swim queue rm` it first, or wait.

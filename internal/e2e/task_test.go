@@ -13,7 +13,7 @@ import (
 // log, status and history take the name. The lane number stays its
 // identity: the chain reads as for any lane.
 func TestNamedTask(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "something else", `run "x" true`)
 
 	out := r.mustSwim("new", "renew-certs", "Renew the certs")
@@ -56,7 +56,7 @@ if guard CERT_ALLOW "renew"; then run "renew" true; fi`)
 
 // # After: takes a task name as it takes a lane number.
 func TestTaskAfter(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "build", "# Task: build\n"+`run "build" true`)
 	r.script(2, "ship", "# After: build\n"+`run "ship" true`)
 	contains(t, "lint", must(r.swim("lint")), "no problems found")

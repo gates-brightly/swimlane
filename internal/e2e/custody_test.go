@@ -39,7 +39,7 @@ run "after" true`)
 // The chain records each approval and round: swim history reads it like
 // git log, and swim verify catches an edited log or chain entry.
 func TestHistoryAndVerify(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"]) // the runner
@@ -86,7 +86,7 @@ func TestHistoryAndVerify(t *testing.T) {
 }
 
 func TestChainRecordsEveryApproval(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])
@@ -144,7 +144,7 @@ func TestChainRecordsEveryApproval(t *testing.T) {
 // warning (they can't change unseen), and ones at the end, which nothing
 // vouches for, fail as UNSIGNED.
 func TestVerifyUnsigned(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	keys := people(t, r, "zach")
 	r.script(1, "hello", `run "hi" true`)
 	out, _ := r.swim("run", "1", "--plain") // signing: off
@@ -168,7 +168,7 @@ func TestVerifyUnsigned(t *testing.T) {
 // verify passes. Changed content isn't amended, and a gap after the
 // amendment is BROKEN again.
 func TestVerifyForceAmendsGaps(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])

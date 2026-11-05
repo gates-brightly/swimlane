@@ -9,7 +9,7 @@ import (
 // A lane that leaves a process behind holding its output doesn't hold up
 // the run once the lane has exited.
 func TestLeftoverProcessDoesntHang(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "leave a daemon", fifoCat("daemon")+" &\n"+`run "after" true`)
 	start := time.Now()
 	contains(t, "run", r.mustSwim("run", "1", "--plain"), "PASS")
@@ -21,7 +21,7 @@ func TestLeftoverProcessDoesntHang(t *testing.T) {
 // A process a lane left behind doesn't keep its # Locks: lock: the next
 // lane that takes the lock doesn't wait for it.
 func TestLeftoverProcessDoesntHoldLocks(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "leave a daemon", "# Locks: db\nsleep 30 &\n"+`run "after" true`)
 	r.script(2, "needs the lock", "# Locks: db\n"+`run "ok" true`)
 	r.mustSwim("run", "1", "--plain")
@@ -35,7 +35,7 @@ func TestLeftoverProcessDoesntHoldLocks(t *testing.T) {
 // A lane waiting for a lock keeps waiting when its # Locks: line is edited
 // out of the working tree meanwhile: it locks what was staged.
 func TestLocksReadFromStage(t *testing.T) {
-	r := newRepo(t, "")
+	r := newRepo(t)
 	r.script(1, "holds db", "# Locks: db\n"+`run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null; echo one >> "$SWIM_ROOT/order"'`)
 	r.script(2, "needs db", "# Locks: db\n"+`run "use" bash -c 'echo two >> "$SWIM_ROOT/order"'`)
 	one := r.cmd(bin, "run", "1", "--plain")

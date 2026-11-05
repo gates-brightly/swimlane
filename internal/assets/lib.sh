@@ -1,5 +1,5 @@
 # swim lane script library. Load it at the top of a lane script with:
-#   _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+#   _swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 # Must stay compatible with macOS bash 3.2: no associative arrays, no
 # mapfile, no negative indexes, no ${var,,}.
 export SWIM_BIN
@@ -175,12 +175,12 @@ _swim_finish() {
 }
 
 # _swim_after_step CODE — count a failure; stop the round if the round's
-# Timeout: ran out. swim step exits 124 for any time limit, and leaves
+# Timeout: ran out. swim _step exits 124 for any time limit, and leaves
 # $STEP_LOG.round-timeout when it was the round's (not the step's own).
 _swim_after_step() {
   _swim_last=$1
   if [ "$_swim_last" -eq 86 ]; then
-    # swim step refused to start: the lane is stopping.
+    # swim _step refused to start: the lane is stopping.
     _swim_operator_stop "$_swim_prev_label"
   fi
   _swim_prev_label=$_swim_label
@@ -301,7 +301,7 @@ _swim_run_step() {
         _swim_o="$_swim_o $1 $2"
         shift 2 ;;
       --timeout=*|--retry=*|--backoff=*|--retry-on=*|--key=*|--target=*)
-        # --opt=value, as swim step takes it.
+        # --opt=value, as swim _step takes it.
         if [ -z "${1#*=}" ]; then
           _swim_misuse "${1%%=*} needs a value"
         fi
@@ -330,11 +330,11 @@ _swim_run_step() {
     fi
   fi
   # $_swim_o is unquoted on purpose: option values (durations, codes) have no spaces.
-  "$SWIM_BIN" step $_swim_mode $_swim_o --label "$_swim_label" -- "$@"
+  "$SWIM_BIN" _step $_swim_mode $_swim_o --label "$_swim_label" -- "$@"
   _swim_after_step $?
 }
 
-# run [options] "<label>" cmd [args...] — run one step through `swim step`,
+# run [options] "<label>" cmd [args...] — run one step through `swim _step`,
 # recording PASS/FAIL <label>. A failure does not stop the round; use gate
 # for that. For pipes or redirects, wrap them: run "<label>" bash -c 'a | b'.
 # Options (--timeout, --retry, --backoff, --retry-on, --no-retry-timeout):
