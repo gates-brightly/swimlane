@@ -80,9 +80,9 @@ func progressOf(views []display.LaneView, sel []int) notify.Progress {
 // notifyAsk tells the operator's terminal, and notify_command, a lane is
 // asking them.
 func notifyAsk(o Options, req approval.Request) {
-	title := fmt.Sprintf("swim %d needs you", req.Lane)
+	title := o.Origin.Title(fmt.Sprintf("lane %d needs you", req.Lane))
 	o.Notify.Notify(title, askText(req))
-	o.Hook.Send(notify.Note{Event: notify.EventAsk, Title: title, Body: askText(req), Lanes: []int{req.Lane}})
+	o.Hook.Send(o.Origin.Note(notify.Note{Event: notify.EventAsk, Title: title, Body: askText(req), Lanes: []int{req.Lane}}))
 }
 
 // askText is what a question asks, for a notification: "approval of
@@ -108,7 +108,7 @@ func FirstFailure(root string, lanes []int) string {
 }
 
 // notifyEnd tells the operator's terminal, and notify_command, how the run
-// ended: "swim run failed" / "swim 1,2,3 · 2 passed, 1 failed · 3:12", and
+// ended: "swimlane · run failed" / "swim 1,2,3 · 2 passed, 1 failed · 3:12", and
 // the first failed step with its why.
 func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bool, elapsed time.Duration) {
 	word, result := "passed", status.Passed
@@ -126,12 +126,12 @@ func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bo
 			parts = append(parts, fmt.Sprintf("%d %s", counts[st], st))
 		}
 	}
-	title, body := "swim run "+word, fmt.Sprintf("swim %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Elapsed(elapsed))
+	title, body := o.Origin.Title("run "+word), fmt.Sprintf("swim %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Elapsed(elapsed))
 	if result == status.Failed {
 		if f := FirstFailure(o.Root, sel); f != "" {
 			body += " · " + f
 		}
 	}
 	o.Notify.Notify(title, body)
-	o.Hook.Send(notify.Note{Event: notify.EventEnd, Result: result, Title: title, Body: body, Lanes: sel})
+	o.Hook.Send(o.Origin.Note(notify.Note{Event: notify.EventEnd, Result: result, Title: title, Body: body, Lanes: sel}))
 }

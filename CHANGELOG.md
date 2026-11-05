@@ -79,6 +79,15 @@ history stays here, since `swim changelog --since` reads it.
   (and `why` in `swim log --yaml`); the step's result line is unchanged. A
   step that printed nothing keeps today's text.
 
+- **Notifications say which repo they came from.** Each title starts with
+  the repo (origin's name, else the checkout's directory), and the branch
+  when it isn't the default: `swimlane · lane 2 needs you`,
+  `swimlane@fix-auth · run failed`, `swimlane · batch #41 passed` (they
+  were `swim 2 needs you`, `swim run failed`, `swim: #41 passed`).
+  `notify_command` also gets `SWIM_REPO` and `SWIM_BRANCH`, and
+  `notify_url`'s ntfy messages carry the repo as a tag (`SWIM_TAGS` is
+  now `x,swimlane`).
+
 ### Removed
 
 - **One read view per job: `swim report`, earmarks and `swim history` are

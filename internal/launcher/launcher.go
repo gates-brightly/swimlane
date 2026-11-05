@@ -113,6 +113,8 @@ type Options struct {
 	// Hook, if set, runs the operator's notify_command when a lane asks
 	// and when the run ends (notify.go); the run waits for it to finish.
 	Hook *notify.Hook
+	// Origin is the repo and branch each notification's title starts with.
+	Origin notify.Origin
 	// Ask, if set, asks someone outside this run when nobody here can: the
 	// swim watch screen that started this batch (swim _batch --ask). It
 	// takes the guards nothing else approves, instead of a dry run.

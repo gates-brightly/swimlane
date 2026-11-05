@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,10 +28,13 @@ func TestNotifySummary(t *testing.T) {
 		t.Errorf("failed: %q", s)
 	}
 	cfg.NotifyCommand = "true"
-	if got := testNotify(cfg, t.TempDir()); !strings.HasPrefix(got, "test sent") {
+	dir := filepath.Join(t.TempDir(), "infra")
+	os.Mkdir(dir, 0o755)
+	if got := testNotify(cfg, dir); !strings.HasPrefix(got, "test sent") {
 		t.Errorf("testNotify = %q", got)
 	}
-	if s := notifySummary(cfg, time.Now().Add(3*time.Minute)); s != "last sent 3:00 ago: swim: test" {
+	// The test says where it came from, as every notification does.
+	if s := notifySummary(cfg, time.Now().Add(3*time.Minute)); s != "last sent 3:00 ago: infra · test" {
 		t.Errorf("sent: %q", s)
 	}
 }
