@@ -75,7 +75,7 @@ func checkLeftover(o *Options) []finding.Finding {
 			file += "/"
 		}
 		out = append(out, fd(finding.Warn, "leftover", file, "swim doctor --fix (deletes it)",
-			"swim no longer reads it (it was %s's)", what))
+			"swim no longer reads it (left by %s)", what))
 	}
 	return out
 }
@@ -118,7 +118,7 @@ func checkWatchGone(o *Options) []finding.Finding {
 			continue
 		}
 		out = append(out, fd(finding.Warn, "watch-gone", o.rel(p), "swim doctor --fix (deletes it)",
-			"swim watch on %s (pid %d) %s; swim queue add still counts it as up", w.Host, w.PID, why))
+			"swim watch on %s (pid %d) %s, but its presence file is still here", w.Host, w.PID, why))
 	}
 	return out
 }

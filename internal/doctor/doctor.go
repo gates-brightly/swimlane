@@ -349,6 +349,9 @@ func checkConfigParse(o *Options) []finding.Finding {
 // checkConfigKeys: config.yml is read loosely, so a key swim doesn't
 // read (a typo, a removed setting) is silently ignored.
 func checkConfigKeys(o *Options) []finding.Finding {
+	if o.CfgErr != nil {
+		return nil // config-parse says why it doesn't load
+	}
 	path := o.Cfg.Path
 	if path == "" {
 		path = config.Path()

@@ -15,7 +15,7 @@ import (
 // checkNotifyTarget: where notifications go is reachable. notify_url is
 // POSTed to with curl; notify_command runs with sh -c.
 func checkNotifyTarget(o *Options) []finding.Finding {
-	const fix = "fix it (swim config --path), then swim config, t sends a test"
+	const test = "; then swim config, t sends a test"
 	var out []finding.Finding
 	if u := o.Cfg.NotifyURL; u != "" && o.Cfg.NotifyCommand == "" {
 		if _, err := exec.LookPath("curl"); err != nil {
@@ -31,13 +31,13 @@ func checkNotifyTarget(o *Options) []finding.Finding {
 			}
 		}
 		if err != nil {
-			out = append(out, fd(finding.Warn, "notify", "", "check notify_url and this machine's network; "+fix,
+			out = append(out, fd(finding.Warn, "notify", "", "check notify_url and the network here"+test,
 				"notify_url %s doesn't answer: %v", u, err))
 		}
 	}
 	if c := strings.TrimSpace(o.Cfg.NotifyCommand); c != "" {
 		if prog := commandWord(c); prog != "" && !runnable(prog) {
-			out = append(out, fd(finding.Warn, "notify", "", fix,
+			out = append(out, fd(finding.Warn, "notify", "", "fix notify_command (swim config --path)"+test,
 				"notify_command runs %s, which isn't on PATH or isn't executable", prog))
 		}
 	}
