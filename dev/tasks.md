@@ -46,6 +46,7 @@ should make that line sharper, not blur it.
 | [T33](tasks/T33-requeue-from-the-failure.md) requeue a failed batch from where it stopped | P2 | gap |
 | [T34](tasks/T34-runkey-test-flake.md) `TestRunKeyKeepsSigningFromLanes` is flaky (fixed and unskipped; macOS CI to confirm) | P1 | bug |
 | [T35](tasks/T35-swimmer-says-its-platform.md) the swimmer says what platform lanes run on | P2 | gap |
+| [T37](tasks/T37-e2e-flakes-under-load.md) e2e tests that fail under load (interrupts, signals) | P1 | bug |
 
 ---
 
