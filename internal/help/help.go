@@ -922,9 +922,9 @@ swim revoke --auto USER [--key K]
   A signoff is an attestation, not a proof: it shows whose key vouches
   that the lane passed on that tree, not that the round ran honestly. Keep
   CI running on main (or on a sample) to catch a machine that differs.
-  verify checks each file's signature, that the key is someone's
-  (lookup.yml, or trust.yml), and that its commit (if this repo has it)
-  still has the tree it names; exits 1 if any fails.
+  verify checks each file's signature, that this machine's signing key
+  (signing_key, or ~/.ssh/id_ed25519) made it, and that its commit (if
+  this repo has it) still has the tree it names; exits 1 if any fails.
 `,
 	"history": `swim history [RUN|N|JOB] [--oneline] [-n N | -N] [--reverse] [--no-pager] [--yaml]
 

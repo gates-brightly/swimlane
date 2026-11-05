@@ -48,7 +48,9 @@ key of whoever ran `swim run`, `swim watch` or a local `swim ci`, writes it
 to `.swim/signoffs/COMMIT/N.json`, and posts a `success` commit status named
 by the header through their `gh`. Require that status in branch protection.
 The lane needs no key or `gh` login; approving the script approves the
-signoff. `swim ci` in a CI job doesn't sign off.
+signoff. `swim ci` in a CI job doesn't sign off. `swim signoff verify`
+checks a statement's signature, that this machine's signing key made it,
+and that its commit still has the tree it names.
 
 A signoff is an attestation, not a proof: it shows whose key says the lane
 passed on that tree, not that it ran honestly. Keep CI running on main to

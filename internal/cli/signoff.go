@@ -15,10 +15,8 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
-	"github.com/gates-brightly/swimlane/internal/trust"
 )
 
 // A signoff is the launcher's signed word that a lane, as committed,
@@ -224,19 +222,25 @@ func postStatus(root, commit, ctx, desc string) error {
 	return nil
 }
 
-// swim signoff verify FILE ...: each statement's signature, and that its
-// commit (when this repo has it) still has the tree it names.
+// swim signoff verify FILE ...: each statement's signature, that this
+// machine's signing key made it, and that its commit (when this repo has
+// it) still has the tree it names.
 func signoffVerify(files []string) error {
 	if len(files) == 0 {
 		return usagef("name the signoff files to verify (.swim/signoffs/COMMIT/N.json)")
 	}
 	root, _ := os.Getwd()
-	if r, _, err := repoNoMigrate(); err == nil {
-		root = r
+	keyPath := ""
+	if r, cfg, err := repoNoMigrate(); err == nil {
+		root, keyPath = r, cfg.SigningKey
+	}
+	mine := ""
+	if k, err := sign.LoadKey(keyPath); err == nil {
+		mine = k.Public
 	}
 	bad := 0
 	for _, f := range files {
-		if err := verifySignoff(root, f); err != nil {
+		if err := verifySignoff(root, mine, f); err != nil {
 			fmt.Printf("%s: NOT VERIFIED: %v\n", f, err)
 			bad++
 		}
@@ -247,7 +251,9 @@ func signoffVerify(files []string) error {
 	return nil
 }
 
-func verifySignoff(root, path string) error {
+// verifySignoff checks one statement; mine is this machine's signing key
+// ("" for none), the only key whose signoffs swim vouches for.
+func verifySignoff(root, mine, path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -279,20 +285,12 @@ func verifySignoff(root, path string) error {
 	if fields["result"] != status.Passed {
 		return fmt.Errorf("result %s", fields["result"])
 	}
-	// A good signature by a key nobody named vouches for nothing.
+	// A good signature by a key that isn't yours vouches for nothing here.
 	fp := sign.Fingerprint(fields["signer"])
-	who := ""
-	if lk, err := lookup.Load(root); err == nil {
-		if name, ok := lk.Who(fields["signer"]); ok {
-			who = name + " in lookup.yml"
-		}
+	if mine == "" || sign.KeyOnly(mine) != sign.KeyOnly(fields["signer"]) {
+		return fmt.Errorf("signature good, but by %s, not this machine's signing key (signing_key, or ~/.ssh/id_ed25519): nothing says whose key it is", fp)
 	}
-	if tf, err := trust.Load(root); who == "" && err == nil && tf != nil && tf.Has(fields["signer"]) {
-		who = "a key in trust.yml"
-	}
-	if who == "" {
-		return fmt.Errorf("signature good, but by %s, which is in neither lookup.yml nor trust.yml: nothing says whose key it is", fp)
-	}
+	who := "your signing key"
 	tree := ""
 	if t, err := gitRead(root, exec.Command("git", "rev-parse", "--verify", "--quiet", fields["commit"]+"^{tree}")); err == nil {
 		tree = strings.TrimSpace(t)

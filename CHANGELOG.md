@@ -58,6 +58,13 @@ history stays here, since `swim changelog --since` reads it.
   ignored, and `swim doctor` says to delete them. Older chain entries keep their `cache:` restores and
   still verify.
 
+### Changed
+
+- **`swim signoff verify` vouches for your own signing key.** A statement
+  verifies when this machine's signing key (`signing_key`, or
+  `~/.ssh/id_ed25519`) made it; `lookup.yml` and `trust.yml` no longer
+  name whose key it is.
+
 ## 0.20261105.3 (v0.20261105.3, 2026-11-05)
 
 ### Added
