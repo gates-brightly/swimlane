@@ -7,7 +7,8 @@ detail.
 
 Using swim:
 
-- [concepts](concepts.md): every term, in one table.
+- [concepts](concepts.md): the four ideas, what's built from them, and
+  the lane states.
 - [agents](agents.md): how an AI planner and its workers use swim.
 - [lanes](lanes.md): writing a lane script: functions, step options,
   header, stages, lint.
@@ -34,8 +35,6 @@ How it holds together:
   doesn't, and the test behind each claim.
 - [state](state.md): every state swim records, and what moves it.
 - [formats](formats.md): what swim signs, byte for byte.
-- [approval-socket](approval-socket.md): how a lane's swim commands ask
-  `swim run` to decide a guard (internal).
 
 When you need it:
 

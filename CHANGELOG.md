@@ -50,6 +50,10 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Changed
 
+- **The docs describe swim as it is now:** one place per topic, shorter
+  trust model, state and recovery pages, a concepts page built on the four
+  ideas, and a skill that walks the AI's loop. The approval-socket page is
+  gone (it's internal; `internal/approval` documents it).
 - **One word per thing, in every view.** Bare `swim`, `swim status`,
   `swim watch`, a run's panel, plain output and summary, `swim ci`'s
   reports, notifications, `--yaml`, help and docs say a lane's state

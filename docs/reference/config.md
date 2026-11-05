@@ -98,15 +98,11 @@ profile generations; restore one with `cp`.
 | `.env.swim` | Lane env. | No |
 | `.swim/status.yml` | Every lane's state. | No |
 | `.swim/logs/` | Lane logs, current and archived. | No |
-| `.swim/chain.jsonl`, `.swim/scripts/` | The chain, and every script that ran. | No (export it) |
+| `.swim/chain.jsonl`, `.swim/scripts/` | The chain, and every script that ran. | No |
 | `.swim/runs/<run>/<N>/`, `.swim/runs/<run>/<N>.manifest.yml`, `.swim/runs/RUN.yml` | Staged copies and manifests; each run's timeline. | No |
 | `.swim/queue/`, `.swim/snapshots/`, `.swim/signoffs/` | Batches, snapshot output, signoffs. | No |
 | `.swim/laneN.pid` | Present while lane N runs. | No |
 
-`swim init` sets these up (and git-ignores what shouldn't be committed);
-`swim doctor [--fix]` checks what running swim on this machine needs
-(the swim on PATH, git, bash and the tools lanes call, the toolchain,
-where notifications go, unknown keys in `config.yml`) and the state swim
-left behind; `--fix` repairs only swim's `.gitignore` block and deletes
-leftover state (stale pid files, expired claims, files under `.swim/`
-swim no longer reads), never logs, the chain or `status.yml`.
+`swim init` sets these up and git-ignores what shouldn't be committed.
+`swim doctor` checks what running lanes on this machine needs, and
+`--fix` deletes what swim left behind (`swim doctor --help` lists both).
