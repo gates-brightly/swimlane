@@ -134,7 +134,7 @@ func TestNotifyTarget(t *testing.T) {
 func TestLeftoverAndFix(t *testing.T) {
 	root := t.TempDir()
 	swim := filepath.Join(root, ".swim")
-	for _, d := range []string{"groups", "observations", "out/job", "logs", "queue", "claims", "workers", "scripts", "snapshots", "signoffs"} {
+	for _, d := range []string{"groups", "observations", "earmarks", "out/job", "logs", "queue", "claims", "workers", "scripts", "snapshots", "signoffs"} {
 		os.MkdirAll(filepath.Join(swim, d), 0o755)
 	}
 	for _, f := range []string{"hub.yml", "headless.log", "lane1.2.claim", "lane1.claim", "chain.jsonl", "status.yml", "logs/agent1.log", "watch.lock"} {
@@ -156,12 +156,12 @@ func TestLeftoverAndFix(t *testing.T) {
 		}
 	}
 	want := "claim-expired .swim/claims/lane.4.yml watch-gone .swim/workers/far-1.yml " +
-		"leftover .swim/groups/ leftover .swim/headless.log leftover .swim/hub.yml leftover .swim/lane1.2.claim leftover .swim/observations/ leftover .swim/out/"
+		"leftover .swim/earmarks/ leftover .swim/groups/ leftover .swim/headless.log leftover .swim/hub.yml leftover .swim/lane1.2.claim leftover .swim/observations/ leftover .swim/out/"
 	if strings.Join(got, " ") != want {
 		t.Fatalf("found:\n%s\nwant:\n%s", strings.Join(got, " "), want)
 	}
 	done, err := Fix(o, fs)
-	if err != nil || len(done) != 8 {
+	if err != nil || len(done) != 9 {
 		t.Fatalf("fix: %v %v", done, err)
 	}
 	for _, gone := range []string{"groups", "hub.yml", "out", "lane1.2.claim", "claims/lane.4.yml", "workers/far-1.yml"} {

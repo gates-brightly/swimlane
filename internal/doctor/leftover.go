@@ -39,6 +39,7 @@ var retired = map[string]string{
 	"migrations":           "script migrations",
 	"msg":                  "swim msg",
 	"pause":                "swim pause",
+	"earmarks":             "swim report --earmark",
 }
 
 // retiredLaneRE: per-lane files of group lanes (lane1.2.claim) and of swim

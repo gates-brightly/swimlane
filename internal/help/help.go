@@ -792,7 +792,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                               stopped (another host)
     leftover (warn)           a file under .swim/ swim no longer reads
                               (hub.yml, headless.*, groups/, observations/,
-                              out/, checkpoints/, lane1.2.claim, ...)
+                              out/, checkpoints/, earmarks/, lane1.2.claim,
+                              ...)
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
                               older than 14 days, of no lane's latest round
     remote-running (warn)     a lane has run on another machine sharing the
