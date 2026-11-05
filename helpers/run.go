@@ -275,10 +275,10 @@ func ghAuthGate(e *env, args []string) error {
 }
 
 // repoFlag takes --repo OWNER/NAME off the front of args (the module
-// passes $REPO, which gh_repo sets).
+// passes $GH_REPO, which gh_repo sets).
 func repoFlag(fn string, args []string) (string, []string, error) {
 	if len(args) < 2 || args[0] != "--repo" || args[1] == "" {
-		return "", nil, misusef("%s: no repo (gh_repo sets REPO)", fn)
+		return "", nil, misusef("%s: no repo (gh_repo sets GH_REPO)", fn)
 	}
 	return args[1], args[2:], nil
 }

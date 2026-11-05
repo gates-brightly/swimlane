@@ -90,6 +90,16 @@ history stays here, since `swim changelog --since` reads it.
   an edited one, another swim's or a repo's own shows the command in full.
   Run `swim helpers add` for your modules to update copies.
 
+### Upgrading
+
+- **Helpers set prefixed names:** `gh_repo` (and the `gh_pr_*` gates)
+  set `GH_REPO`, not `REPO`; `gh_pr_fetch` sets `GH_PR_REF`, not
+  `PR_REF`; `git_worktree` sets `GIT_WT`, not `WT`. A lane's own `REPO`
+  or `WT` is no longer overwritten, and an exported `GH_REPO` (gh's own)
+  is the repo the gates ask about. Your copies keep the old names until
+  `swim helpers add gh git`; rename `$REPO`, `$PR_REF` and `$WT` in your
+  lanes when you run it.
+
 ## 0.20261105.8 (v0.20261105.8, 2026-11-05)
 
 ### Fixed

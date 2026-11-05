@@ -92,20 +92,20 @@ source lib/swim/os.sh
 stage check
 os_mac_gate             # gate: this is the operator's Mac
 aws_gate --profile sbx1 123456789012   # gate: sbx1's AWS session is active, and is that account
-gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $PR_REF, snapshot its head
+gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $GH_PR_REF, snapshot its head
 ```
 
 | | |
 |---|---|
 | `aws_gate [--profile PROFILE] [ACCOUNT]` | A gate that `aws sts get-caller-identity` answers (under PROFILE, else `AWS_PROFILE` if set), and with ACCOUNT, that it's that account. The log shows the identity; an expired SSO session names the `aws sso login` that renews it. |
-| `gh_pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `PR_REF`. |
+| `gh_pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `GH_PR_REF`. |
 | `gh_actions` / `gh_actions_gate` | True on a GitHub Actions runner (`GITHUB_ACTIONS=true`), for `if`; the gate stops the round anywhere else and logs the runner, repository, run and commit. |
 | `gh_auth_gate [LOGIN]` | A gate that `gh` is signed in, and with LOGIN, as that user. |
-| `gh_repo [REMOTE]` | Sets `REPO` (owner/name) from REMOTE's URL (default `origin`); stops the round if it isn't GitHub's. The `gh_pr_*` gates set it when unset. |
+| `gh_repo [REMOTE]` | Sets `GH_REPO` (owner/name, as `gh` reads it) from REMOTE's URL (default `origin`); stops the round if it isn't GitHub's. The `gh_pr_*` gates set it when unset. |
 | `gh_pr_state_gate N STATE...` | A gate that PR N is OPEN, MERGED, CLOSED or DRAFT (one of those given); logs its state, head and review decision. |
 | `gh_pr_head_gate N SHA` | A gate that PR N's head is still SHA (a prefix will do): what was reviewed is what it holds. |
 | `git_fetch_gate REMOTE REF...` | A gate that fetches REFs from REMOTE, with retries. |
-| `git_worktree PATH BRANCH [BASE]` | A gate that PATH (under the repo) is a worktree on a new BRANCH from BASE (default `origin/main`); rerunnable; sets `WT`. |
+| `git_worktree PATH BRANCH [BASE]` | A gate that PATH (under the repo) is a worktree on a new BRANCH from BASE (default `origin/main`); rerunnable; sets `GIT_WT`. |
 | `git_pushed_gate BRANCH [REMOTE]` | A gate that REMOTE (default `origin`) has BRANCH at the local branch's commit. |
 | `git_authors_gate "NAME <EMAIL>" RANGE [PATH]` | A gate that every commit in RANGE was authored and committed by that identity; lists any that weren't. |
 | `docker_gate` | A gate that the Docker daemon answers. |

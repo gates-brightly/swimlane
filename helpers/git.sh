@@ -47,10 +47,10 @@ git_fetch_gate() {
 # git_worktree PATH BRANCH [BASE]: a gate that PATH is a worktree on a new
 # branch BRANCH from BASE (default origin/main). Rerunnable: a worktree
 # already at PATH on BRANCH passes; one on another branch, or a BRANCH that
-# already exists elsewhere, stops the round. Sets WT to the worktree's path.
+# already exists elsewhere, stops the round. Sets GIT_WT to the worktree's path.
 # Changes: a new branch and worktree in the repo.
 git_worktree() {
-  WT=$(_git_path "${1:-}")
+  GIT_WT=$(_git_path "${1:-}")
   gate --helper "git_worktree${*:+ $*}" --timeout 2m "worktree ${1:-?} on ${2:-?} (from ${3:-origin/main})" "${SWIM_BIN:-swim}" _helper git_worktree "$@"
 }
 

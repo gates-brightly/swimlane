@@ -62,7 +62,7 @@ aws_gate 111111111111
 gh_pr_fetch 7 upstream
 os_` + here + `_gate
 if os_` + here + ` && ! os_` + other + ` && ! gh_actions; then step "branched" true; fi
-step "the ref" git -C "$SWIM_ROOT" rev-parse --verify "$PR_REF"`)
+step "the ref" git -C "$SWIM_ROOT" rev-parse --verify "$GH_PR_REF"`)
 	out := r.mustSwimEnv(env, "run", "1", "--plain")
 	contains(t, "lint", must(r.swim("lint", "1")), "no problems found")
 	contains(t, "helpers", out, "PASS  AWS session active", "arn:aws:iam::111111111111:user/op",
@@ -176,12 +176,12 @@ esac
 	lane(`gh_auth_gate
 gh_auth_gate gates-brightly
 gh_repo
-step "repo" echo "repo=$REPO"
+step "repo" echo "repo=$GH_REPO"
 gh_pr_state_gate 7 OPEN DRAFT
 gh_pr_head_gate 7 abc1234
 git_fetch_gate upstream main
 git_worktree .worktrees/bdk-1 bdk-1 upstream/main
-step "in the worktree" git -C "$WT" branch --show-current
+step "in the worktree" git -C "$GIT_WT" branch --show-current
 git_worktree .worktrees/bdk-1 bdk-1 upstream/main
 git_pushed_gate pushed upstream
 git_authors_gate "t <t@t>" upstream/main..HEAD

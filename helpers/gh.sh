@@ -14,8 +14,10 @@
 # but the repo's own git refs; destructive work stays in the lane, behind
 # its own guard. bash 3.2 and BSD tools (macOS).
 
-# Functions that talk to GitHub use $REPO (owner/name) when set, else the
-# repo origin points at (gh_repo sets it).
+# Functions that talk to GitHub use $GH_REPO ([HOST/]OWNER/NAME, as gh
+# reads it) when set, an exported one included, else the repo origin
+# points at (gh_repo sets it). What the modules set is prefixed by module
+# (GH_REPO, GH_PR_REF, GIT_WT), so it can't clobber a lane's own names.
 
 # _gh_fail LABEL MESSAGE: a failed gate, for a function called wrong.
 _gh_fail() {
@@ -24,8 +26,8 @@ _gh_fail() {
 
 # gh_pr_fetch N [REMOTE]: a gate that fetches pull request N's head from
 # REMOTE (default origin) into refs/remotes/REMOTE/pr/N, with retries.
-# Snapshots the commit it got and sets PR_REF to that ref for the steps
-# after it (git -C "$SWIM_ROOT" diff main..."$PR_REF").
+# Snapshots the commit it got and sets GH_PR_REF to that ref for the steps
+# after it (git -C "$SWIM_ROOT" diff main..."$GH_PR_REF").
 gh_pr_fetch() {
   _gh_pr=${1:-}
   _gh_remote=${2:-origin}
@@ -35,10 +37,10 @@ gh_pr_fetch() {
       return 1
       ;;
   esac
-  PR_REF=refs/remotes/$_gh_remote/pr/$_gh_pr
+  GH_PR_REF=refs/remotes/$_gh_remote/pr/$_gh_pr
   gate --helper "gh_pr_fetch $_gh_pr${2:+ $2}" --timeout 2m --retry 2 "fetch PR $_gh_pr from $_gh_remote" \
-    git -C "${SWIM_ROOT:-.}" fetch --no-tags "$_gh_remote" "+refs/pull/$_gh_pr/head:$PR_REF"
-  snapshot --helper "gh_pr_fetch $_gh_pr${2:+ $2}" "PR $_gh_pr head" git -C "${SWIM_ROOT:-.}" log -1 --format='%H %an: %s' "$PR_REF"
+    git -C "${SWIM_ROOT:-.}" fetch --no-tags "$_gh_remote" "+refs/pull/$_gh_pr/head:$GH_PR_REF"
+  snapshot --helper "gh_pr_fetch $_gh_pr${2:+ $2}" "PR $_gh_pr head" git -C "${SWIM_ROOT:-.}" log -1 --format='%H %an: %s' "$GH_PR_REF"
 }
 
 # gh_actions: true on a GitHub Actions runner (GITHUB_ACTIONS=true), for
@@ -60,32 +62,32 @@ gh_auth_gate() {
   gate --helper "gh_auth_gate${*:+ $*}" --timeout 30s "gh is signed in${1:+ as $1}" "${SWIM_BIN:-swim}" _helper gh_auth_gate "$@"
 }
 
-# gh_repo [REMOTE]: set REPO to the GitHub owner/name REMOTE (default
-# origin) points at, for gh --repo "$REPO". It runs no step; a remote that
-# isn't GitHub's stops the round.
+# gh_repo [REMOTE]: set GH_REPO to the GitHub owner/name REMOTE (default
+# origin) points at, for gh --repo "$GH_REPO". It runs no step; a remote
+# that isn't GitHub's stops the round.
 gh_repo() {
   _gh_r=${1:-origin}
   _gh_url=$(git -C "${SWIM_ROOT:-.}" remote get-url "$_gh_r" 2>/dev/null)
-  REPO=
+  GH_REPO=
   case $_gh_url in
     *github.com[:/]*/*)
-      REPO=${_gh_url#*github.com[:/]}
-      REPO=${REPO%.git}
-      REPO=${REPO%/}
+      GH_REPO=${_gh_url#*github.com[:/]}
+      GH_REPO=${GH_REPO%.git}
+      GH_REPO=${GH_REPO%/}
       ;;
   esac
-  case $REPO in
-    */*/* | /* | */ | '') REPO= ;;
+  case $GH_REPO in
+    */*/* | /* | */ | '') GH_REPO= ;;
   esac
-  if [ -z "$REPO" ]; then
+  if [ -z "$GH_REPO" ]; then
     _gh_fail "gh_repo: $_gh_r is a GitHub repo" "remote $_gh_r ($_gh_url) isn't a GitHub repo"
     return 1
   fi
 }
 
-# _gh_need_repo: REPO, from origin if unset.
+# _gh_need_repo: GH_REPO, from origin if unset.
 _gh_need_repo() {
-  [ -n "${REPO:-}" ] || gh_repo
+  [ -n "${GH_REPO:-}" ] || gh_repo
 }
 
 # gh_pr_state_gate N STATE...: a gate that pull request N is in one of the
@@ -93,12 +95,12 @@ _gh_need_repo() {
 # its state, head commit and review decision.
 gh_pr_state_gate() {
   _gh_need_repo || return 1
-  gate --helper "gh_pr_state_gate${*:+ $*}" --timeout 1m "PR ${1:-?} is ${*:2}" "${SWIM_BIN:-swim}" _helper gh_pr_state_gate --repo "$REPO" "$@"
+  gate --helper "gh_pr_state_gate${*:+ $*}" --timeout 1m "PR ${1:-?} is ${*:2}" "${SWIM_BIN:-swim}" _helper gh_pr_state_gate --repo "$GH_REPO" "$@"
 }
 
 # gh_pr_head_gate N SHA: a gate that pull request N's head is still SHA
 # (what was reviewed or tested is what the PR holds).
 gh_pr_head_gate() {
   _gh_need_repo || return 1
-  gate --helper "gh_pr_head_gate${*:+ $*}" --timeout 1m "PR ${1:-?} is at ${2:-?}" "${SWIM_BIN:-swim}" _helper gh_pr_head_gate --repo "$REPO" "$@"
+  gate --helper "gh_pr_head_gate${*:+ $*}" --timeout 1m "PR ${1:-?} is at ${2:-?}" "${SWIM_BIN:-swim}" _helper gh_pr_head_gate --repo "$GH_REPO" "$@"
 }
