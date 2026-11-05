@@ -908,8 +908,9 @@ func cmdWatch(args []string) error {
 	// On a terminal, waiting shows the jobs and the queue: r runs one now,
 	// q adds one to the next batch and s submits it (watchview.go).
 	var view *watchView
-	// The terminal's notifications and progress bar (notify setting).
-	notes := newWatchNotes(terminalNotifier(cfg), root)
+	// The terminal's notifications and progress bar (notify setting), and
+	// notify_command.
+	notes := newWatchNotes(terminalNotifier(cfg), commandHook(cfg, root), root)
 	defer notes.stop()
 	if !once && watchViewAllowed(noTUI) {
 		view = newWatchView(root, cfg, yes)

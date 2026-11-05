@@ -124,6 +124,9 @@ type Options struct {
 	// asks them and when the run ends, and a progress bar while it runs
 	// (notify.go). swim run sets it when the notify setting is on.
 	Notify *notify.Terminal
+	// Hook, if set, runs the operator's notify_command when a lane asks
+	// and when the run ends (notify.go); the run waits for it to finish.
+	Hook *notify.Hook
 	// Ask, if set, asks someone outside this run when nobody here can: the
 	// swim watch screen that started this batch (swim _batch --ask). It
 	// takes the guards -y doesn't approve and every decision, instead of
@@ -519,9 +522,10 @@ func Run(o Options) (int, error) {
 	printSummary(summaryOut, o.Root, sel, outcomes, start, elapsed, disp.Color())
 	stopped := ir.stopping()
 	o.ev.summary(o, sel, outcomes, code, stopped, elapsed)
-	if o.Notify != nil {
+	if o.Notify != nil || o.Hook != nil {
 		notifyEnd(o, sel, counts, code, stopped, elapsed)
 	}
+	o.Hook.Wait()
 	if o.Finished != nil {
 		o.Finished(Finish{Code: code, Interrupted: stopped, Counts: counts, Elapsed: elapsed})
 	}
