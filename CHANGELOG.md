@@ -38,6 +38,15 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Added
+
+- **Shared lane helpers, `helpers/ops.sh`:** copy it into a repo and
+  include it (`# Includes:`, then `source`). `aws_gate [ACCOUNT]` gates on
+  an active AWS session (`sts get-caller-identity`), and on the account;
+  `pr_fetch N [REMOTE]` fetches a pull request's head (remote `origin` by
+  default) to `$PR_REF` and snapshots it. Each runs through `gate` and
+  `snapshot`, so the log records it. See [lanes](docs/reference/lanes.md#shared-helpers).
+
 ### What changed for you
 
 - `# Signoff:` and `swim signoff verify` are gone: a passed round no

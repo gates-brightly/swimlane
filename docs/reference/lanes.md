@@ -71,6 +71,31 @@ The round's `Timeout:` always wins. A step runs in its own process group,
 and a limit stops all of it (SIGTERM, SIGKILL after 5s), except a step
 reading the terminal, which stays in the lane's group and is stopped alone.
 
+## Shared helpers
+
+Behaviour many lanes repeat goes in a repo file the lanes include, not in
+each lane. swim's repo has a starting set, `helpers/ops.sh`; copy it in
+(say to `lib/swim-ops.sh`):
+
+```bash
+# Includes: lib/swim-ops.sh
+source lib/swim-ops.sh
+stage check
+aws_gate 123456789012   # gate: an AWS session is active, and is that account
+pr_fetch 482            # gate: fetch PR 482 (remote: origin) to $PR_REF, snapshot its head
+```
+
+| | |
+|---|---|
+| `aws_gate [ACCOUNT]` | A gate that `aws sts get-caller-identity` answers (under `AWS_PROFILE` if set), and with ACCOUNT, that it's that account. The log shows the identity. |
+| `pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `PR_REF`. |
+
+`# Includes:` pins the file with the lane: approving the lane approves the
+helpers as they are. Keep helpers read-only, and run every command through
+`step`, `gate` or `snapshot` so the log has it. A destructive step stays in
+the lane behind its own guard: lint reads the lane, not the files it
+includes, for guards and for bash 3.2.
+
 ## Header
 
 `# Key: value` lines at the top (at most one space after `#`). Only
