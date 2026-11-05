@@ -4,11 +4,11 @@ How a lane's swim processes ask `swim run` to decide a guard, use an
 approval, and learn which lane they belong to. Both ends are swim: the
 launcher serves it, and the hidden commands a lane calls (`swim _approve`,
 `swim _mark`, `swim guard`, ...) use it. A lane program never speaks it
-directly; the SDKs speak [`swim.lane/v1`](../../lane/v1/README.md).
+directly.
 
 Not to be confused with `swim.approval/v1`, the schema of the signed
 approvals files under `approvals/`. Like every hidden command, this
-protocol is experimental (see [compatibility](../../../../docs/compatibility.md)):
+protocol is experimental (see [compatibility](compatibility.md)):
 both ends are always the same swim binary.
 
 ## Transport

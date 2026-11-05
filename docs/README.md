@@ -65,6 +65,8 @@ The rest is built from them, and you can learn it when you need it:
 - [trust-model.md](trust-model.md): what swim protects against, what it
   doesn't, and the test behind each claim.
 - [state.md](state.md): every state swim records, and what moves it.
+- [approval-socket.md](approval-socket.md): how a lane's swim commands ask
+  `swim run` to decide a guard (internal, experimental).
 - [recovery.md](recovery.md): when something goes wrong, what you see and
   the commands that fix it.
 
