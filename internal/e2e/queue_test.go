@@ -176,11 +176,11 @@ func TestWatchWorkersShareTheQueue(t *testing.T) {
 	}
 }
 
-func TestQueueYesOrphanRemove(t *testing.T) {
+func TestQueueApproveOrphanRemove(t *testing.T) {
 	r := newRepo(t, "")
 	guardedLanes(t, r)
 	// Approvals are credited to whoever queued the batch, not the worker.
-	add := r.cmd(bin, "queue", "add", "-y")
+	add := r.cmd(bin, "queue", "add", "--approve", "ALLOW_DROP,ALLOW_OTHER")
 	add.Env = append(add.Env, "SWIM_USER=zach")
 	if out, err := add.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -190,7 +190,7 @@ func TestQueueYesOrphanRemove(t *testing.T) {
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	contains(t, "agent2.log", r.log(2), "APPROVED  other change (approved by queue q-", " -y (zach))", "PASS  other changed")
+	contains(t, "agent2.log", r.log(2), "APPROVED  other change (ALLOW_OTHER=1, approved in queue q-", " by zach)", "PASS  other changed")
 
 	// An entry claimed by a worker that died is orphaned, then requeued.
 	r.mustSwim("queue", "add", "1")
@@ -251,7 +251,10 @@ run "b" true`)
 	contains(t, "queue", r.mustSwim("queue"), "#2", "queued")
 }
 
-func TestWatchYes(t *testing.T) {
+// A batch approves what --approve names, credited to who queued it; the
+// swimmer approves nothing of its own, so the rest dry-runs (no screen
+// to ask on).
+func TestWatchApprovesOnlyTheBatchs(t *testing.T) {
 	r := newRepo(t, "")
 	guardedLanes(t, r)
 	add := r.cmd(bin, "queue", "add", "--approve", "ALLOW_DROP")
@@ -259,41 +262,22 @@ func TestWatchYes(t *testing.T) {
 	if out, err := add.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	w := r.cmd(bin, "watch", "--once", "-y")
-	w.Env = append(w.Env, "SWIM_USER=worker")
-	out, err := w.CombinedOutput()
-	if err != nil {
-		t.Fatalf("watch -y: %v\n%s", err, out)
-	}
-	contains(t, "watch", string(out), "-y: every guard in every batch is approved")
-	// The batch's own approval keeps its credit; the worker approves the rest.
+	w := r.cmd(bin, "watch", "--once")
+	w.Env = append(w.Env, "SWIM_USER=worker", "ALLOW_OTHER=1")
+	w.CombinedOutput()
 	contains(t, "agent1.log", r.log(1), "APPROVED  drop table t (ALLOW_DROP=1, approved in queue q-", " by zach)")
-	contains(t, "agent2.log", r.log(2), "APPROVED  other change (approved by swim watch -y (worker))", "PASS  other changed")
-	done := doneEntries(t, r)
-	if len(done) != 1 || done[0].Result.ApprovedBy != "swim watch -y (worker)" {
-		t.Fatalf("consumed entry should record the worker's approval: %+v", done[0].Result)
-	}
-	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	contains(t, ".swim.log", string(hist), "every other guard approved by swim watch -y (worker)")
-	// swim status names what approved which guard with no one asked.
-	if l := r.status().Get(2); strings.Join(l.AutoApproved, " ") != "ALLOW_OTHER" || l.AutoVia != "swim watch -y" {
-		t.Errorf("status lane 2: auto_approved %v via %q", l.AutoApproved, l.AutoVia)
-	}
-	if l := r.status().Get(1); strings.Join(l.FlagApproved, " ") != "ALLOW_DROP" || len(l.AutoApproved) != 0 {
-		t.Errorf("status lane 1: flag_approved %v auto_approved %v", l.FlagApproved, l.AutoApproved)
-	}
-
-	// Without -y the same batch would have dry-run lane 2's change.
-	r.mustSwim("queue", "add", "2")
-	r.mustSwim("watch", "--once")
 	if !strings.Contains(r.log(2), "SKIP  other change (dry run: set ALLOW_OTHER=1 to approve)") {
-		t.Errorf("without -y an unapproved guard must dry-run:\n%s", r.log(2))
+		t.Errorf("an unapproved guard must dry-run, whatever the swimmer's environment:\n%s", r.log(2))
+	}
+	if l := r.status().Get(1); strings.Join(l.FlagApproved, " ") != "ALLOW_DROP" {
+		t.Errorf("status lane 1: flag_approved %v", l.FlagApproved)
 	}
 }
 
-// swim watch -y approves a guard in a file the script includes, and one
-// whose flag the script names at run time: both are the lane's own.
-func TestWatchYesIncludedAndDynamicGuards(t *testing.T) {
+// A guard in a file the script includes is the lane's own: a batch
+// approves it. One whose flag the script names at run time is approved
+// by its flag.
+func TestApproveIncludedAndDynamicGuards(t *testing.T) {
 	r := newRepo(t, "")
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	r.write("lib/g.sh", "do_inc() { if guard ALLOW_INC \"included\"; then run \"inc ran\" true; fi; }\n", 0o644)
@@ -303,14 +287,17 @@ do_inc`)
 	withHeader(t, r, 1, "# Includes: lib/g.sh\n# Guards: ALLOW_INC  included")
 	r.script(2, "dynamic", `F=ALLOW_DYN
 if guard "$F" "dynamic"; then run "dyn ran" true; fi`)
-	r.mustSwim("queue", "add", "1", "2")
-	w := r.cmd(bin, "watch", "--once", "-y")
-	w.Env = append(w.Env, "SWIM_USER=worker")
-	if out, err := w.CombinedOutput(); err != nil {
-		t.Fatalf("watch -y: %v\n%s", err, out)
+	r.mustSwim("queue", "add", "1", "--approve", "ALLOW_INC")
+	if out, code := r.swim("watch", "--once"); code != 0 {
+		t.Fatalf("watch: %d\n%s", code, out)
 	}
-	contains(t, "agent1.log", r.log(1), "APPROVED  included (approved by swim watch -y (worker))", "PASS  inc ran")
-	contains(t, "agent2.log", r.log(2), "APPROVED  dynamic (approved by swim watch -y (worker))", "PASS  dyn ran")
+	contains(t, "agent1.log", r.log(1), "APPROVED  included (ALLOW_INC=1, approved in queue q-", "PASS  inc ran")
+	c := r.cmd(bin, "run", "2", "--plain")
+	c.Env = append(c.Env, "ALLOW_DYN=1")
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("ALLOW_DYN=1 swim run 2: %v\n%s", err, out)
+	}
+	contains(t, "agent2.log", r.log(2), "APPROVED  dynamic (ALLOW_DYN=1", "PASS  dyn ran")
 }
 
 // A guard nothing approves runs as a dry run, and says so: [DRY] in swim
@@ -502,7 +489,7 @@ run "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 
 // T39: a batch that approves none of its lanes' guards warns on stderr,
 // naming each lane and the guards that will dry-run, and how to approve
-// them; --approve or -y doesn't warn.
+// them; --approve doesn't warn.
 func TestQueueWarnsUnapprovedGuards(t *testing.T) {
 	r := newRepo(t, "")
 	guardedLanes(t, r)
@@ -518,8 +505,8 @@ func TestQueueWarnsUnapprovedGuards(t *testing.T) {
 	}
 	_, stderr := queueErr("1", "2")
 	contains(t, "warning", stderr, "approves no guards and no swimmer up asks for them, so these dry-run", "swim 1  ALLOW_DROP", "swim 2  ALLOW_OTHER",
-		"the operator decides: swim watch on a terminal asks on its screen", "swim queue 1 --approve ALLOW_DROP", "-y (every guard)")
-	for _, args := range [][]string{{"1", "--approve", "ALLOW_DROP"}, {"1", "2", "-y"}} {
+		"the operator decides: swim watch on a terminal asks on its screen", "swim queue 1 --approve ALLOW_DROP")
+	for _, args := range [][]string{{"1", "--approve", "ALLOW_DROP"}, {"1", "2", "--approve", "ALLOW_DROP,ALLOW_OTHER"}} {
 		if _, stderr := queueErr(args...); strings.Contains(stderr, "approves no guards") {
 			t.Errorf("queue add %v warned:\n%s", args, stderr)
 		}

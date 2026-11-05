@@ -67,7 +67,7 @@ skipped, interrupted; see [state](state.md)), `pending` and `pending_job`
 (the script on disk), `round`, `job`, `run`, `script`, `log`,
 `waiting_on`, `reason`, `locks`, `pid`, `started_at`, `finished_at`,
 `duration_s`, `exit_code`, `pass`/`fail`/`skip`, `current_step`,
-`failed_steps`, `auto_approved`/`auto_via`, `flag_approved`, `dry_run`,
+`failed_steps`, `flag_approved`, `dry_run`,
 `last_archive`.
 
 ## YAML

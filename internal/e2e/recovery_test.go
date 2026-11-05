@@ -11,7 +11,7 @@ import (
 )
 
 // The scenarios in docs/reference/recovery.md that are cheap to reproduce. Others are
-// covered elsewhere: TestQueueYesOrphanRemove (an orphaned queue entry),
+// covered elsewhere: TestQueueApproveOrphanRemove (an orphaned queue entry),
 // TestVersionAndLock (a lock mismatch), TestHistoryAndVerify (swim
 // verify failing), TestInterruptRecordsAndStopsRound (an interrupted round).
 

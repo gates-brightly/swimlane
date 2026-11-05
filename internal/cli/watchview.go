@@ -32,7 +32,6 @@ type watchView struct {
 	root     string
 	cfg      *config.Config
 	picker   *display.Picker
-	yes      bool         // swim watch -y: approves what a batch doesn't
 	activity string       // what the worker is waiting for
 	batches  *batchRunner // batches running side by side (nil: one at a time)
 	noStream bool         // o: the running output under the queue is hidden
@@ -58,8 +57,8 @@ const (
 	watchHints = "↑ ↓ pick  enter output  l logs  o stream  r run now  q batch  Q all  s submit  a archive  ^C quit" // x (clear the batch) is on the submit row
 )
 
-func newWatchView(root string, cfg *config.Config, yes bool) *watchView {
-	w := &watchView{root: root, cfg: cfg, yes: yes, asks: &watchAsks{}, seen: loadWatchSeen(root), picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
+func newWatchView(root string, cfg *config.Config) *watchView {
+	w := &watchView{root: root, cfg: cfg, asks: &watchAsks{}, seen: loadWatchSeen(root), picker: &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout)}}
 	w.picker.Tail = w.stream
 	// The running output redraws as quickly as swim run's view shows it;
 	// the worker's check for a batch to start stays at once a second.
@@ -402,9 +401,8 @@ func (w *watchView) askRows() (rows []display.PickRow, waiting map[int]watchAsk)
 }
 
 // batchDry says whether batch e runs (or ran) a guard as a dry run: while
-// waiting, a guard of its lanes that neither the batch nor the worker's -y
-// approves (signed approvals may still cover it when it runs); once
-// running, a guard its lanes' rounds dry-ran.
+// waiting, a guard of its lanes the batch doesn't approve, with no screen
+// to ask for it; once running, a guard its lanes' rounds dry-ran.
 func (w *watchView) batchDry(e *queue.Entry, st *status.File) bool {
 	if e.State != queue.Queued {
 		for _, l := range e.Lanes {
@@ -416,7 +414,7 @@ func (w *watchView) batchDry(e *queue.Entry, st *status.File) bool {
 		}
 		return false
 	}
-	if e.ApproveAll || w.yes || w.batches != nil && w.batches.asks != nil {
+	if w.batches != nil && w.batches.asks != nil {
 		return false // or the screen asks for them
 	}
 	approved := map[string]bool{}
@@ -936,7 +934,7 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 	if err != nil {
 		return err.Error()
 	}
-	res, _ := runClaimed(w.root, w.cfg, claimed, w.yes, true, false, nil)
+	res, _ := runClaimed(w.root, w.cfg, claimed, true, false, nil)
 	return fmt.Sprintf("#%d %s", claimed.Seq, res.Result)
 }
 

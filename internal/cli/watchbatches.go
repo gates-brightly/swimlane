@@ -37,19 +37,19 @@ import (
 // batchInterrupted is swim _batch's exit status for an interrupted batch.
 const batchInterrupted = 130
 
-// cmdBatch runs one batch swim watch claimed: swim _batch ENTRY [--yes]
+// cmdBatch runs one batch swim watch claimed: swim _batch ENTRY
 // [--ask]. It becomes the claim's worker (its liveness and heartbeat), runs
 // the batch with plain output and consumes the entry, as swim watch would.
 // --ask: fd 3 is the channel to swim watch's screen (watchask.go), which
 // answers what only a person can.
 func cmdBatch(args []string) error {
-	var yes, askFlag bool
-	rest, err := flags{bools: map[string]*bool{"yes": &yes, "ask": &askFlag}}.parse(args)
+	var askFlag bool
+	rest, err := flags{bools: map[string]*bool{"ask": &askFlag}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return usagef("usage: swim _batch ENTRY [--yes] [--ask]")
+		return usagef("usage: swim _batch ENTRY [--ask]")
 	}
 	var ask approval.Asker
 	if askFlag {
@@ -70,7 +70,7 @@ func cmdBatch(args []string) error {
 	if err := queue.Adopt(e); err != nil {
 		return err
 	}
-	res, interrupted := runClaimed(root, cfg, e, yes, false, true, ask)
+	res, interrupted := runClaimed(root, cfg, e, false, true, ask)
 	switch {
 	case interrupted:
 		return exitError{batchInterrupted}
@@ -97,7 +97,6 @@ type batchProc struct {
 // batchRunner starts and tracks swim watch's batches.
 type batchRunner struct {
 	root   string
-	yes    bool
 	toFile bool // the watch screen is up: each batch writes to a file of its own
 	max    int
 	// asks, when the watch screen is up, takes the batches' questions
@@ -111,8 +110,8 @@ type batchRunner struct {
 	wake  chan struct{}         // a batch exited
 }
 
-func newBatchRunner(root string, yes, toFile bool, max int) *batchRunner {
-	return &batchRunner{root: root, yes: yes, toFile: toFile, max: max, procs: map[string]*batchProc{}, wake: make(chan struct{}, 1)}
+func newBatchRunner(root string, toFile bool, max int) *batchRunner {
+	return &batchRunner{root: root, toFile: toFile, max: max, procs: map[string]*batchProc{}, wake: make(chan struct{}, 1)}
 }
 
 // batchOutPath is where a batch's output goes while the watch screen is
@@ -251,9 +250,6 @@ func (b *batchRunner) start(cfg *config.Config, e *queue.Entry) (*batchProc, err
 		return nil, err
 	}
 	args := []string{"_batch", claimed.Path}
-	if b.yes {
-		args = append(args, "--yes")
-	}
 	var askConn net.Conn
 	var askChild *os.File
 	if b.asks != nil {

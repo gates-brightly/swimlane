@@ -63,8 +63,7 @@ func cmdQueue(args []string) error {
 func queueAdd(args []string) error {
 	var approve []string
 	var note, parallel string
-	var yes bool
-	// --approve repeats; -y is the short --yes.
+	// --approve repeats.
 	var rest0 []string
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
@@ -73,13 +72,11 @@ func queueAdd(args []string) error {
 			i++
 		case strings.HasPrefix(a, "--approve="):
 			approve = append(approve, strings.Split(strings.TrimPrefix(a, "--approve="), ",")...)
-		case a == "-y":
-			yes = true
 		default:
 			rest0 = append(rest0, a)
 		}
 	}
-	rest, err := flags{bools: map[string]*bool{"yes": &yes}, strs: map[string]*string{"note": &note, "parallel": &parallel}}.parse(rest0)
+	rest, err := flags{strs: map[string]*string{"note": &note, "parallel": &parallel}}.parse(rest0)
 	if err != nil {
 		return err
 	}
@@ -106,7 +103,7 @@ func queueAdd(args []string) error {
 	if len(lanes) == 0 {
 		return fmt.Errorf("nothing to queue: no lane holds a pending round that hasn't passed (name lanes to queue them anyway)")
 	}
-	o := queueOpts{approve: approve, note: note, yes: yes}
+	o := queueOpts{approve: approve, note: note}
 	if parallel != "" {
 		n, err := strconv.Atoi(parallel)
 		if err != nil || n < 0 {
@@ -143,15 +140,12 @@ func queueAdd(args []string) error {
 	}
 	var unapproved []string
 	for g := range guards {
-		if !e.ApproveAll && !seen[g] {
+		if !seen[g] {
 			unapproved = append(unapproved, g)
 		}
 	}
 	sort.Strings(unapproved)
-	switch {
-	case e.ApproveAll:
-		fmt.Println("  approvals: every guard (-y)")
-	case len(e.Approve) > 0:
+	if len(e.Approve) > 0 {
 		fmt.Println("  approvals: " + strings.Join(e.Approve, ", "))
 	}
 	asker := b.asker
@@ -162,7 +156,7 @@ func queueAdd(args []string) error {
 			fmt.Println("  not approved (dry runs unless approved; no swimmer up asks for them): " + strings.Join(unapproved, ", "))
 		}
 	}
-	if !e.ApproveAll && len(e.Approve) == 0 && asker == nil {
+	if len(e.Approve) == 0 && asker == nil {
 		warnUnapproved(root, e)
 	}
 	if why := launcher.Busy(root, cfg); why != "" {
@@ -450,7 +444,6 @@ func waitEnded(order []waitEnd, any bool) error {
 type queueOpts struct {
 	approve  []string
 	note     string
-	yes      bool
 	parallel *int
 }
 
@@ -492,7 +485,7 @@ func warnUnapproved(root string, e *queue.Entry) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "swim queue: warning: #%d approves no guards and no swimmer up asks for them, so these dry-run if it runs before one does:\n%s\n", e.Seq, strings.Join(lines, "\n"))
-	fmt.Fprintf(os.Stderr, "  the operator decides: swim watch on a terminal asks on its screen; or swim queue %s --approve %s (each flag), or -y (every guard)\n", first, firstFlag)
+	fmt.Fprintf(os.Stderr, "  the operator decides: swim watch on a terminal asks on its screen; or swim queue %s --approve %s (each flag)\n", first, firstFlag)
 }
 
 // batch is a batch just queued: its entry, the guards its lanes hold, and
@@ -509,7 +502,7 @@ type batch struct {
 // addBatch queues lanes as one batch, pinned to the scripts and env they
 // hold now, and logs it.
 func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch, error) {
-	e := &queue.Entry{By: operator(), Note: o.note, ApproveAll: o.yes, Parallel: o.parallel}
+	e := &queue.Entry{By: operator(), Note: o.note, Parallel: o.parallel}
 	b := batch{entry: e}
 	// What swim run would refuse is refused now, while whoever queues it
 	// can fix it, not later, when the operator's swimmer runs it.
@@ -551,9 +544,6 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	detail := fmt.Sprintf("%s: swim %s", e.ID, strings.Join(ns, ","))
 	if len(e.Approve) > 0 {
 		detail += "  approve=" + strings.Join(e.Approve, ",")
-	}
-	if e.ApproveAll {
-		detail += "  approve=all (-y)"
 	}
 	if e.Note != "" {
 		detail += "  " + e.Note
@@ -773,7 +763,7 @@ func queueList(args []string) error {
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	if len(entries) == 0 {
-		fmt.Println("queue is empty. Queue a batch: swim queue N|JOB ... [--approve FLAG] [-y]")
+		fmt.Println("queue is empty. Queue a batch: swim queue N|JOB ... [--approve FLAG]")
 		return nil
 	}
 	held := heldReasons(root)
@@ -800,10 +790,7 @@ func queueList(args []string) error {
 			color = ui.Yellow
 		}
 		appr := ""
-		switch {
-		case e.ApproveAll:
-			appr = "  approve all"
-		case len(e.Approve) > 0:
+		if len(e.Approve) > 0 {
 			appr = "  approve " + strings.Join(e.Approve, ",")
 		}
 		fmt.Printf("#%-3d %s  %s  swim %s%s  %s\n", e.Seq, e.ID, p.Paint(color, state), strings.Join(ns, ","), appr, p.Paint(ui.Dim, e.Note))
@@ -883,23 +870,17 @@ func queueRequeue(args []string) error {
 // cmdWatch is the queue's worker: it runs each queued batch, oldest first,
 // as soon as swim is idle, and consumes it when it ends.
 func cmdWatch(args []string) error {
-	var once, yes, noTUI bool
+	var once, noTUI bool
 	var interval, batchesFlag string
-	args = append([]string(nil), args...)
-	for i, a := range args {
-		if a == "-y" {
-			args[i] = "--yes"
-		}
-	}
 	var plain bool // as swim run says it: --plain is --no-tui here
-	rest, err := flags{bools: map[string]*bool{"once": &once, "yes": &yes, "no-tui": &noTUI, "plain": &plain},
+	rest, err := flags{bools: map[string]*bool{"once": &once, "no-tui": &noTUI, "plain": &plain},
 		strs: map[string]*string{"interval": &interval, "batches": &batchesFlag}}.parse(args)
 	if err != nil {
 		return err
 	}
 	noTUI = noTUI || plain
 	if len(rest) > 0 {
-		return usagef("usage: swim watch [--once] [-y] [--interval D] [--batches N] [--no-tui|--plain]")
+		return usagef("usage: swim watch [--once] [--interval D] [--batches N] [--no-tui|--plain]")
 	}
 	every, err := durationFlag("interval", interval, pollEvery, "2s")
 	if err != nil {
@@ -958,9 +939,6 @@ func cmdWatch(args []string) error {
 		mode = fmt.Sprintf("running every queued batch, up to %d at once, then exiting", batches)
 	}
 	fmt.Println(p.Paint(ui.Bold, "swim watch · "+mode))
-	if yes {
-		fmt.Println(p.Paint(ui.Yellow+ui.Bold, "swim watch: -y: every guard in every batch is approved, beyond what each batch approves (logged as approved by swim watch -y ("+operator()+"))"))
-	}
 	code, s := 0, sayer{p: p, prefix: "swim watch: "}
 	// On a terminal, waiting shows the jobs and the queue: r runs one now,
 	// q adds one to the next batch and s submits it (watchview.go).
@@ -970,7 +948,7 @@ func cmdWatch(args []string) error {
 	notes := newWatchNotes(terminalNotifier(cfg), commandHook(cfg, root), root)
 	defer notes.stop()
 	if !once && watchViewAllowed(noTUI) {
-		view = newWatchView(root, cfg, yes)
+		view = newWatchView(root, cfg)
 		if notes != nil {
 			notes.asks = view.asks
 			view.asks.onAsk = notes.asked
@@ -1007,7 +985,7 @@ func cmdWatch(args []string) error {
 	}
 	if batches > 1 {
 		var c int
-		b := newBatchRunner(root, yes, view != nil, batches)
+		b := newBatchRunner(root, view != nil, batches)
 		b.notes = notes
 		c, err = watchBatches(root, cfg, b, view, once, every, sigs, say)
 		if err != nil {
@@ -1067,7 +1045,7 @@ func cmdWatch(args []string) error {
 		}
 		s.said = ""
 		began := time.Now()
-		res, interrupted := runClaimed(root, cfg, e, yes, view != nil, false, nil)
+		res, interrupted := runClaimed(root, cfg, e, view != nil, false, nil)
 		unlock()
 		notes.batchDone(e.Seq, res.Result, laneNums(e), time.Since(began))
 		if view != nil {
@@ -1089,10 +1067,10 @@ func cmdWatch(args []string) error {
 // runClaimed runs a batch this worker claimed and consumes it with its
 // result. view says the watch screen is up: the run's own view may then
 // take the keyboard (to move between lanes; it never answers guards).
-func runClaimed(root string, cfg *config.Config, e *queue.Entry, yes, view, plain bool, ask approval.Asker) (queue.Result, bool) {
+func runClaimed(root string, cfg *config.Config, e *queue.Entry, view, plain bool, ask approval.Asker) (queue.Result, bool) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	stopBeat := heartbeatClaim(e)
-	res, interrupted := runEntry(root, cfg, e, yes, view, plain, ask)
+	res, interrupted := runEntry(root, cfg, e, view, plain, ask)
 	stopBeat()
 	if err := queue.Consume(root, e, res); err != nil {
 		fmt.Fprintln(os.Stderr, "swim watch: consume "+e.ID+": "+err.Error())
@@ -1150,7 +1128,7 @@ func loadCfg(root string) (*config.Config, error) {
 // what may change. It never prompts at a terminal (nobody is watching a
 // queue); ask, if set, is swim watch's screen, which may answer what
 // nothing else does (watchask.go).
-func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, plain bool, ask approval.Asker) (queue.Result, bool) {
+func runEntry(root string, cfg *config.Config, e *queue.Entry, keys, plain bool, ask approval.Asker) (queue.Result, bool) {
 	started := time.Now().UTC()
 	res := queue.Result{Started: started.Format(time.RFC3339)}
 	var lanes []int
@@ -1218,19 +1196,12 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 	}
 	o := launcher.Options{Root: root, Cfg: cfg, Lanes: lanes, Pins: pins, PinSHA: pinSHA, PinEnv: pinEnv, PinManifest: pinMan, QueuedBy: e.Swim, Self: self(), Out: os.Stdout,
 		RunID: lane.NewRunID(), Parallel: e.Parallel,
-		AutoApprove: e.ApproveAll, ApprovedBy: e.By, ApprovedVia: "queue " + e.ID + " -y",
 		Unattended: true, Ask: ask}
 	o.Plain = plain // a batch swim watch runs alongside others (_batch)
 	if keys && len(lanes) > 1 {
 		// The live view's keys move between the batch's lanes. Parallel
 		// lanes get no stdin, so nothing in the batch can prompt.
 		o.Stdin, o.Interactive = os.Stdin, display.TUIAllowed(os.Getenv)
-	}
-	if !e.ApproveAll && workerYes {
-		// The worker approves what the batch doesn't (the batch's own
-		// approvals keep their credit): swim watch -y.
-		o.AutoApprove, o.ApprovedBy, o.ApprovedVia = true, operator(), "swim watch -y"
-		res.ApprovedBy = "swim watch -y (" + operator() + ")"
 	}
 	interrupted := false
 	o.Finished = func(f launcher.Finish) { interrupted = f.Interrupted }
@@ -1240,9 +1211,6 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, workerYes, keys, 
 		ns = append(ns, strconv.Itoa(n))
 	}
 	detail := fmt.Sprintf("%s: swim %s  queued by %s", e.ID, strings.Join(ns, ","), e.By)
-	if res.ApprovedBy != "" {
-		detail += "  every other guard approved by " + res.ApprovedBy
-	}
 	history.Log(root, history.Entry{Event: history.QueueRun, Run: o.RunID, Detail: detail})
 	fmt.Printf("\nswim watch: running %s (#%d, queued by %s): swim %s\n", e.ID, e.Seq, e.By, strings.Join(ns, " "))
 

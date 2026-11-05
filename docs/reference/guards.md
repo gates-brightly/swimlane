@@ -21,14 +21,15 @@ In this order:
 1. **The flag:** `FLAG=1` in the environment `swim run` started with
    approves; `FLAG=0` declines without asking. A flag a lane sets for
    itself doesn't count. Env files can't hold one.
-2. **A queued batch's approvals:** `swim queue N --approve FLAG` (or
-   `-y`), for that batch, pinned to its exact [manifest](manifest.md).
+2. **A queued batch's approvals:** `swim queue N --approve FLAG` (each
+   flag), for that batch, pinned to its exact [manifest](manifest.md); or
+   `y` on `swim watch`'s screen when the batch asks.
 3. **The person at the terminal:** `swim 2 requires human approval of guard
    FLAG ... the lane says: <action>  Y/N [N]`. Or in the live view: `y`/`n`
    on a lane that's asking, or ahead of time on one that hasn't (this run
    only).
-4. **`-y`** (`swim all -y`, `swim watch -y`): approves every question; the
-   log, `swim status`, the chain and `swim ci`'s summary say so.
+
+Those are the only ways: there is no "approve everything" switch.
 
 Anything else is a **dry run**: the step is skipped, the log says how to
 approve, and the round ends **SKIP**, not PASS: lanes after it don't start,
@@ -37,5 +38,6 @@ approve, and the round ends **SKIP**, not PASS: lanes after it don't start,
 Under `swim run` the launcher decides, not the lane: it reads its own
 environment once as the run starts, refuses a flag the header doesn't
 declare, lets each approval be used once, and writes every approval to the
-chain itself. A lane can't approve itself. `approvals: flags` in config
-never asks.
+chain itself. A lane can't approve itself. `--no-prompt` answers every
+question no (and CI, `--yaml` or no terminal never ask): only `FLAG=1`
+approves.

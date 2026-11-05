@@ -48,7 +48,6 @@ type Settings struct {
 	SecretEnvIgnore    []string `yaml:"secret_env_ignore,omitempty"`    // names exempt from secret_env_auto
 	SecretPatternsAuto *bool    `yaml:"secret_patterns_auto,omitempty"` // also AWS key ids, GitHub/Slack tokens, JWTs (default true)
 	Interrupt          string   `yaml:"interrupt,omitempty"`            // graceful (default) | immediate: what the first Ctrl-C does
-	Approvals          string   `yaml:"approvals,omitempty"`            // prompt (default) | flags: may an unset guard flag ask the operator
 	SigningKey         string   `yaml:"signing_key,omitempty"`          // SSH key the runner signs the chain with (default ~/.ssh/id_ed25519)
 	Signing            string   `yaml:"signing,omitempty"`              // auto (default: sign if a key loads) | required | off
 	InterruptGrace     string   `yaml:"interrupt_grace,omitempty"`      // force quit: SIGINT, then SIGKILL after this (default 5s)
@@ -333,9 +332,6 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.Interrupt != "" {
 		c.Interrupt = r.Interrupt
-	}
-	if r.Approvals != "" {
-		c.Approvals = r.Approvals
 	}
 	if r.QueueLease != "" {
 		c.QueueLease = r.QueueLease
@@ -636,11 +632,6 @@ const (
 )
 
 func (c *Config) validateInterrupt() error {
-	switch c.Approvals {
-	case "", ApprovalsPrompt, ApprovalsFlags:
-	default:
-		return fmt.Errorf("approvals must be prompt or flags, got %q", c.Approvals)
-	}
 	switch c.Signing {
 	case "", SigningAuto, SigningRequired, SigningOff:
 	default:
@@ -694,20 +685,6 @@ func (c *Config) Graces() (interrupt, term time.Duration) {
 		term = d
 	}
 	return interrupt, term
-}
-
-// Approval modes: what a guard does when its flag isn't set.
-const (
-	ApprovalsPrompt = "prompt" // ask the operator at the terminal (dry run if no one can be asked)
-	ApprovalsFlags  = "flags"  // never ask: only FLAG=1 approves
-)
-
-// ApprovalMode is prompt (the default) or flags.
-func (c *Config) ApprovalMode() string {
-	if c.Approvals == "" {
-		return ApprovalsPrompt
-	}
-	return c.Approvals
 }
 
 // Signing modes: whether the runner signs its chain entries.

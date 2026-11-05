@@ -27,7 +27,6 @@ defaults:
   interrupt: graceful              # graceful | immediate: the first Ctrl-C
   interrupt_grace: 5s              # force quit: SIGINT, SIGKILL after this
   term_grace: 10s                  # SIGTERM: graceful, then force after this
-  approvals: prompt                # prompt | flags: may a guard ask
   signing: auto                    # auto | required | off
   signing_key: ~/.ssh/id_ed25519   # a .pub signs through ssh-agent
   queue_lease: 2m                  # a swimmer's heartbeat, seen from other hosts

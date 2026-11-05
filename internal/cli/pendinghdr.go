@@ -79,9 +79,8 @@ func (v *statusView) pending(l *status.Lane) *pendingView {
 		h.Fail = "hard"
 	}
 	if len(info.Guards) > 0 {
-		asks := v.cfg.ApprovalMode() != config.ApprovalsFlags
 		for _, g := range info.Guards {
-			h.Guards = append(h.Guards, v.snap.Guard(g.Flag, g.Desc, asks))
+			h.Guards = append(h.Guards, v.snap.Guard(g.Flag, g.Desc))
 		}
 	}
 	pv := &pendingView{Header: h}

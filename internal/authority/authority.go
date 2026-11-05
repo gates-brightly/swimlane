@@ -135,22 +135,21 @@ type GuardState struct {
 	Approved bool   `yaml:"approved"`
 	// How it's approved ("FLAG=1").
 	How string `yaml:"how,omitempty"`
-	// Asks: not approved, and swim run would ask at its prompt (a dry run
-	// if no one can answer). False and not approved: a dry run outright.
+	// Asks: not approved, so swim run would ask at its prompt (a dry run
+	// if no one can answer).
 	Asks bool `yaml:"asks"`
 }
 
 // Guard decides flag as swim run would as it starts: approved by the flag
-// in the environment swim run starts with, or not. asks is whether swim
-// run would ask the operator (approvals: prompt) about one still
-// unapproved.
-func (s *Snapshot) Guard(flag, desc string, asks bool) GuardState {
+// in the environment swim run starts with, or not (swim run asks the
+// operator about one still unapproved).
+func (s *Snapshot) Guard(flag, desc string) GuardState {
 	g := GuardState{Flag: flag, Desc: desc}
 	if s.Env[flag] == "1" {
 		g.Approved, g.How = true, s.FlagSet(flag).How
 		return g
 	}
-	g.Asks = asks
+	g.Asks = true
 	return g
 }
 
@@ -160,8 +159,5 @@ func (g GuardState) Text() string {
 	if g.Approved {
 		return "approved: " + g.How
 	}
-	if g.Asks {
-		return "not approved; swim run will ask (a dry run if no one answers)"
-	}
-	return "not approved; a dry run (approvals: flags never ask)"
+	return "not approved; swim run will ask (a dry run if no one answers)"
 }

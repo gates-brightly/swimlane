@@ -101,8 +101,9 @@ type Entry struct {
 	Exit      *int     `json:"exit,omitempty"`
 	Log       string   `json:"log,omitempty"`       // SHA-256 of the round's section of the log
 	Approvals []string `json:"approvals,omitempty"` // hashes of the approve entries it used
-	// AutoApproved are the guards among them approved by -y, with no one
-	// asked: on the round itself, so it shows without following the hashes.
+	// AutoApproved were the guards among them approved by an older swim's
+	// -y, with no one asked. Legacy: no longer written; older entries keep
+	// it, and the hash covers it as written.
 	AutoApproved []string `json:"auto_approved,omitempty" yaml:"auto_approved,omitempty"`
 	EnvSHA256    string   `json:"env_sha256,omitempty"` // the lane's env from env files (sorted KEY=VALUE)
 	// Kept were the round's checkpointed steps it didn't run (KEPT):

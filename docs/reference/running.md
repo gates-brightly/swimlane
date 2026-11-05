@@ -30,6 +30,15 @@ and includes:
           after swim 1 (pending: a dry run or failure there skips this)
 ```
 
+## Approving guards
+
+Three ways, and only three: answer the prompt (`Y/N` on a terminal, `y`/`n`
+in the live view), set the flag up front (`FLAG=1 swim run N`), or approve
+a queued batch (`swim queue N --approve FLAG`, or `y` on `swim watch`'s
+screen). `--no-prompt` answers every question no: each unset guard is a
+dry run. In CI, with `--yaml` or with no terminal nothing asks either. See
+[guards](guards.md#how-a-guard-is-decided).
+
 ## Parallelism
 
 `--parallel N` (config `max_parallel`; default unlimited) caps lanes

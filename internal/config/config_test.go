@@ -158,7 +158,7 @@ repos:
 	if err := SetKey(p, "/repo/a", "interrupt", "immediate", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetKey(p, "/repo/a", "approvals", "flags", false); err != nil {
+	if err := SetKey(p, "/repo/a", "signing", "off", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := SetKey(p, "/repo/a", "watch_batches", "2", true); err != nil {
@@ -168,7 +168,7 @@ repos:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, want := range map[string]string{"interrupt": "immediate", "approvals": "flags", "watch_batches": "2"} {
+	for key, want := range map[string]string{"interrupt": "immediate", "signing": "off", "watch_batches": "2"} {
 		if got, _ := c.Get(key); got != want {
 			t.Errorf("Get(%s) = %q, want %q", key, got, want)
 		}
@@ -206,7 +206,7 @@ func TestSetKeyCreatesFileAndDefaults(t *testing.T) {
 	}
 	// An empty file and a flow-style `defaults: {}` both work.
 	writeConfig(t, "")
-	if err := SetKey(Path(), "/r", "approvals", "flags", false); err != nil {
+	if err := SetKey(Path(), "/r", "signing", "off", false); err != nil {
 		t.Fatal(err)
 	}
 	writeConfig(t, "defaults: {}\n")
@@ -225,7 +225,7 @@ func TestSetKeyRejectsBadKeysAndValues(t *testing.T) {
 	cases := []struct{ key, value, want string }{
 		{"colour", "red", "keys: interrupt, interrupt_grace"},
 		{"interrupt", "maybe", "graceful or immediate"},
-		{"approvals", "sometimes", "prompt or flags"},
+		{"approvals", "flags", "unknown config key"}, // removed: --no-prompt, per run
 		{"watch_batches", "0", "1 or more"},
 		{"watch_batches", "ten", "1 or more"},
 		{"chime", "true", "unknown config key"}, // removed

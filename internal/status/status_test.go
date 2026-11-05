@@ -142,28 +142,27 @@ func TestReadsOlderYAML(t *testing.T) {
 }
 
 // Guards approved without a prompt are listed once each, written as
-// auto_approved / flag_approved, and cleared when the next round starts.
+// flag_approved, and cleared when the next round starts.
 func TestUnprompted(t *testing.T) {
 	root := t.TempDir()
 	err := Update(root, 1, 1, func(l *Lane) {
-		l.Unprompted("DEPLOY", "swim run -y")
-		l.Unprompted("DEPLOY", "swim run -y")
-		l.Unprompted("SWAP", "swim run -y")
-		l.Unprompted("SEED", "")
+		l.Unprompted("DEPLOY")
+		l.Unprompted("DEPLOY")
+		l.Unprompted("SEED")
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f, _ := Load(root)
 	l := f.Get(1)
-	if strings.Join(l.AutoApproved, ",") != "DEPLOY,SWAP" || l.AutoVia != "swim run -y" || strings.Join(l.FlagApproved, ",") != "SEED" {
-		t.Errorf("auto %v via %q flag %v", l.AutoApproved, l.AutoVia, l.FlagApproved)
+	if strings.Join(l.FlagApproved, ",") != "DEPLOY,SEED" {
+		t.Errorf("flag %v", l.FlagApproved)
 	}
-	if got := l.UnpromptedText(); got != "DEPLOY, SWAP (swim run -y); SEED (flag set)" {
+	if got := l.UnpromptedText(); got != "DEPLOY, SEED (flag set)" {
 		t.Errorf("text: %q", got)
 	}
 	l.ResetRun()
-	if l.UnpromptedText() != "" || l.AutoVia != "" {
+	if l.UnpromptedText() != "" {
 		t.Errorf("a new round keeps the last one's: %+v", l)
 	}
 }

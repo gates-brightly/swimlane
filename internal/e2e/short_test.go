@@ -37,8 +37,8 @@ fi
 		t.Fatal("the dry run wrote hello.txt")
 	}
 
-	r.mustSwim("run", "1", "--plain", "-y")
-	contains(t, "approved", r.log(1), "APPROVED  write hello.txt (approved by ", "PASS  write it", "== END PASS")
+	r.mustSwimEnv([]string{"HELLO_ALLOW_WRITE=1"}, "run", "1", "--plain")
+	contains(t, "approved", r.log(1), "APPROVED  write hello.txt (HELLO_ALLOW_WRITE=1", "PASS  write it", "== END PASS")
 	if got, _ := os.ReadFile(filepath.Join(r.root, "hello.txt")); string(got) != "hi\n" {
 		t.Errorf("hello.txt = %q", got)
 	}

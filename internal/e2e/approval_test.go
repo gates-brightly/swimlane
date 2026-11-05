@@ -117,61 +117,39 @@ func TestNoPromptWithoutTerminal(t *testing.T) {
 	if strings.Contains(out, "requires human approval") {
 		t.Errorf("prompted without a terminal:\n%s", out)
 	}
-	// approvals: flags is accepted and shown.
-	r.mustSwim("config", "approvals", "flags")
-	contains(t, "config", r.mustSwim("config", "approvals"), "flags")
-	if _, code := r.swim("config", "approvals", "sometimes"); code == 0 {
-		t.Error("a bad approvals value was accepted")
+	// --no-prompt is the per-run "never ask"; approvals: is no setting.
+	if _, code := r.swim("config", "approvals", "flags"); code == 0 {
+		t.Error("approvals: is no longer a setting")
 	}
 }
 
-func TestAutoApprove(t *testing.T) {
+// Approved up front by its flag (FLAG=1 swim run N): no one is asked, so
+// it's loud where people look; FLAG=0 declines. -y is gone.
+func TestFlagApproved(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "guarded", `if guard ALLOW_A "change a"; then run "a changed" true; fi
 if guard ALLOW_OFF "explicitly off"; then run "off ran" true; fi`)
 	r.script(2, "guarded too", `if guard ALLOW_B "change b"; then run "b changed" true; fi`)
-	c := r.cmd(bin, "all", "-y", "--plain")
-	c.Env = append(c.Env, "SWIM_USER=tester", "ALLOW_OFF=0")
+	c := r.cmd(bin, "all", "--plain")
+	c.Env = append(c.Env, "SWIM_USER=tester", "ALLOW_A=1", "ALLOW_B=1", "ALLOW_OFF=0")
 	out, err := c.CombinedOutput()
 	if c.ProcessState.ExitCode() != launcher.ExitDryRun { // ALLOW_OFF=0 dry-runs
-		t.Fatalf("swim all -y: %v\n%s", err, out)
+		t.Fatalf("ALLOW_A=1 ALLOW_B=1 swim all: %v\n%s", err, out)
 	}
-	contains(t, "output", string(out), "swim: -y: every guard whose flag isn't set is approved without asking",
-		"[1] approved by -y: change a (ALLOW_A)", "[2] approved by -y: change b (ALLOW_B)")
-	contains(t, "agent1.log", r.log(1), "APPROVED  change a (approved by swim run -y (tester))", "PASS  a changed",
-		"SKIP  explicitly off (dry run: set ALLOW_OFF=1 to approve)")
+	contains(t, "agent1.log", r.log(1), "PASS  a changed", "SKIP  explicitly off (dry run: set ALLOW_OFF=1 to approve)")
 	if strings.Contains(r.log(1), "PASS  off ran") {
-		t.Error("-y approved a guard whose flag was set to 0")
+		t.Error("a guard whose flag was set to 0 was approved")
 	}
-	contains(t, "agent2.log", r.log(2), "APPROVED  change b (approved by swim run -y (tester))", "PASS  b changed")
-	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	contains(t, ".swim.log", string(hist), "change a  (ALLOW_A, by tester with swim run -y)")
-	// Loud where people look: swim status (and its YAML), the round's chain
-	// entry and swim history.
-	if l := r.status().Get(1); strings.Join(l.AutoApproved, " ") != "ALLOW_A" || l.AutoVia != "swim run -y" {
-		t.Errorf("status lane 1: auto_approved %v via %q", l.AutoApproved, l.AutoVia)
+	contains(t, "agent2.log", r.log(2), "PASS  b changed")
+	if l := r.status().Get(1); strings.Join(l.FlagApproved, " ") != "ALLOW_A" {
+		t.Errorf("status lane 1: flag_approved %v", l.FlagApproved)
 	}
-	contains(t, "status", r.mustSwim("status"), "approved without a prompt: ALLOW_A (swim run -y)", "approved without a prompt: ALLOW_B (swim run -y)")
-	contains(t, "status --yaml", r.mustSwim("status", "2", "--yaml"), "auto_approved: [ALLOW_B]", "auto_via: swim run -y")
-	contains(t, "history --yaml", r.mustSwim("history", "--yaml"), "auto_approved:\n        - ALLOW_A")
-	contains(t, "history", r.mustSwim("history", "1", "--no-pager"), "Auto:      ALLOW_A (approved by -y: no one was asked)")
-
-	// The lane shorthand takes it too, and the YAML stream records it.
-	r.script(2, "again", `if guard ALLOW_C "change c"; then run "c changed" true; fi`)
-	contains(t, "yaml", r.mustSwim("2", "-y", "--yaml"), "event: approved", "label: change c", "detail: ALLOW_C (-y)")
-	// A round approved by its flag instead lists it as such, and the next
-	// round starts clean.
-	r.script(2, "flagged", `if guard ALLOW_D "change d"; then run "d changed" true; fi`)
-	c = r.cmd(bin, "2")
-	c.Env = append(c.Env, "ALLOW_D=1")
-	if out, err := c.CombinedOutput(); err != nil {
-		t.Fatalf("ALLOW_D=1 swim 2: %v\n%s", err, out)
-	}
-	if l := r.status().Get(2); len(l.AutoApproved) != 0 || l.AutoVia != "" || strings.Join(l.FlagApproved, " ") != "ALLOW_D" {
-		t.Errorf("status lane 2 after a flag-approved round: auto %v via %q flag %v", l.AutoApproved, l.AutoVia, l.FlagApproved)
-	}
-	if out, code := r.swim("all", "-y", "--no-prompt"); code == 0 || !strings.Contains(out, "not both") {
-		t.Errorf("-y with --no-prompt: %d %s", code, out)
+	contains(t, "status", r.mustSwim("status"), "approved without a prompt: ALLOW_A (flag set)", "approved without a prompt: ALLOW_B (flag set)")
+	contains(t, "status --yaml", r.mustSwim("status", "2", "--yaml"), "flag_approved: [ALLOW_B]")
+	for _, args := range [][]string{{"all", "-y"}, {"run", "1", "--yes"}, {"queue", "1", "-y"}, {"watch", "-y"}} {
+		if out, code := r.swim(args...); code != 2 {
+			t.Errorf("swim %v: -y is gone, want a usage error: %d\n%s", args, code, out)
+		}
 	}
 }
 

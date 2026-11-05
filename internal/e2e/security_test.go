@@ -279,7 +279,7 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 			t.Run("mid-batch", TestFaultWatchMidBatch)
 		}},
 		{"escape sequences in a guard description are shown escaped", "T26", TestUntrustedTextIsSafe},
-		{"-y is loud: swim status, the round's chain entry and swim history name what it approved", "T5", TestAutoApprove},
+		{"a guard approved by its flag is loud: swim status names it", "T5", TestFlagApproved},
 		{"guards approved without a prompt are in the CI summary and a warning annotation", "T5", TestCIGitHub},
 	}
 	for _, c := range cases {

@@ -40,7 +40,7 @@ if guard DROP_OK "drop table old_orders"; then run "drop" true; fi`)
 
 	// Once lane 1 has passed, lane 2's dependency says so; lane 1 shows
 	// its run, not a header.
-	r.mustSwim("run", "1", "--plain", "-y")
+	r.mustSwimEnv([]string{"DROP_OK=1"}, "run", "1", "--plain")
 	out = r.mustSwim("status")
 	contains(t, "after the run", out, "after swim 1 (passed)")
 	if strings.Contains(out, "guard DROP_OK") {

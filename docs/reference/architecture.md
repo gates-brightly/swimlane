@@ -30,7 +30,7 @@ flowchart TD
   O --> LK{{"lock check<br/>.swim.lock syntaxes"}}
   W --> LK
   LK --> X
-  X --> G{{"guard: advisory, in the lane<br/>FLAG=1, a batch's --approve, prompt, -y<br/>else a dry run"}}
+  X --> G{{"guard: advisory, in the lane<br/>FLAG=1, a batch's --approve, prompt<br/>else a dry run"}}
   O -.->|answers prompts| G
   X --> SH{{"step checks<br/>a repo's blocked_commands"}}
   X --> S
@@ -54,7 +54,8 @@ Read it top to bottom:
    `.swim.lock` refuses to run lanes.
 5. **Guards ask for approval.** A guard asks the launcher, which approves
    with `FLAG=1` (set in `swim run`'s own environment, or a queued batch's
-   `--approve`), the person at the terminal, or `-y`, in that order; anything else is a dry
+   `--approve`), or the person at the terminal (or on `swim watch`'s
+   screen), in that order; anything else is a dry
    run. The launcher records each approval in the chain, and attests the
    run when its last lane exits. The guard runs inside the
    lane's own process, so it is advisory: a script that skips it isn't

@@ -3,7 +3,6 @@ package cli
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
@@ -121,16 +120,13 @@ func roundSection(lines []string) string {
 }
 
 // roundApprovals are the hashes of the approve entries recorded for lane n
-// in run, and the guards among them approved by -y (method auto), once each.
-func roundApprovals(root, run string, n int) (hashes, auto []string) {
+// in run.
+func roundApprovals(root, run string, n int) (hashes []string) {
 	links, _ := chain.Read(root)
 	for _, l := range links {
 		if l.Type == "approve" && l.Run == run && l.Lane == n {
 			hashes = append(hashes, l.Hash)
-			if l.Method == "auto" && !slices.Contains(auto, l.Guard) {
-				auto = append(auto, l.Guard)
-			}
 		}
 	}
-	return hashes, auto
+	return hashes
 }

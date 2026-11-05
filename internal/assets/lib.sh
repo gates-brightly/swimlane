@@ -404,7 +404,7 @@ guard() {
     # Nobody set the flag: ask the operator if one is at the terminal
     # ("requires human approval of guard ... Y/N [N]"); swim _approve
     # records APPROVED, or SKIP as a dry run when declined or no one can be
-    # asked (CI, no terminal, approvals: flags).
+    # asked (CI, no terminal, --no-prompt).
     "$SWIM_BIN" _approve "$SWIM_LANE" "$1" "$2" $_swim_flag_set
     return
   fi

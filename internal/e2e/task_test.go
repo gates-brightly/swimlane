@@ -24,7 +24,7 @@ func TestNamedTask(t *testing.T) {
 if guard CERT_ALLOW "renew"; then run "renew" true; fi`)
 
 	contains(t, "dry run", r.mustDryRun("run", "renew-certs", "--plain", "--no-prompt"), "SKIP  renew")
-	contains(t, "approved", r.mustSwim("renew-certs", "--plain", "-y"), "APPROVED  renew")
+	contains(t, "approved", r.mustSwimEnv([]string{"CERT_ALLOW=1"}, "renew-certs", "--plain"), "APPROVED  renew")
 	contains(t, "log", r.mustSwim("log", "renew-certs"), "APPROVED  renew")
 	contains(t, "status", r.mustSwim("status"), "[renew-certs]")
 	contains(t, "history", r.mustSwim("history", "renew-certs", "--oneline"), "round swim 2 passed")

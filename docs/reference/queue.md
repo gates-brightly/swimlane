@@ -8,7 +8,7 @@ swim queue 4 5 --approve FLAG --note "cutover"   # a batch
 swim queue add                          # every pending lane, as one batch
 swim queue                              # waiting, running, orphaned, done
 swim queue show|rm|requeue ID
-swim watch [--once] [-y]                # the swimmer
+swim watch [--once]                     # the swimmer
 swim wait BATCH [--timeout D]           # until that batch ends; exits with its result
 swim wait [--any] N|BATCH|RUN ...       # until those end (--any: the first)
 swim wait [--timeout D]                 # until nothing runs or is queued
@@ -19,7 +19,7 @@ swim wait [--timeout D]                 # until nothing runs or is queued
 - **Fixed when queued:** each lane is pinned to its job and exact script; a
   lane edited since, or whose env changed, is skipped. `# After:` between
   its lanes holds.
-- **Approvals travel with it** (`--approve`, `-y`); the
+- **Approvals travel with it** (`--approve FLAG`, each flag); the
   swimmer's environment approves nothing.
 - **A window:** queue now, start `swim watch --once` when it opens (by
   hand or cron).

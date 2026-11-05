@@ -56,15 +56,17 @@ ways that applies:
    flag: the run stops before anything starts.
 2. **The person at the terminal.** An answer given ahead of time in the
    live view, or the prompt
-   `swim N requires human approval of task: <action>  Y/N [N]`.
-3. **`-y`.** Every guard still unanswered is approved, and logged as `-y`.
+   `swim N requires human approval of task: <action>  Y/N [N]`. For a
+   queued batch: `y` on `swim watch`'s screen.
+
+There is no switch that approves every guard.
 
 Anything else is a **dry run**: the step is skipped with `SKIP`, and the log
 says how to approve it.
 
 **It fails closed.** No one is asked in CI, without a terminal, under
 `swim watch`, with
-`--no-prompt` or `--yaml`, or with `approvals: flags`. A question is
+`--no-prompt` or `--yaml`. A question is
 declined when the approval socket can't be reached, when the run or the
 lane is stopping (Ctrl-C, `swim interrupt`), when the round's `Timeout`
 runs out (`internal/approval`). `confirm` and gates stop
@@ -174,8 +176,8 @@ name a socket's peer the token alone decides.
 - **How each guard was approved.** An approve entry records the guard, the
   action, the script's hash, who approved it (the operator, with the
   runner key), and the method: `prompt`, `preapproved` (answered ahead in
-  the live view), `flag` (`FLAG=1`), `queue` (a batch's `--approve`) or
-  `auto` (`-y`). Entries an older swim recorded may say `signature`,
+  the live view), `flag` (`FLAG=1`), `queue` (a batch's `--approve`). Entries an older swim recorded may say
+  `auto` (its `-y`), `signature`,
   `standing`, `signature+standing`, `hub-signed` or `hub-button`; they
   verify by their own signature like any entry. A round entry
   records the result, the exit code, the hash of its log section, its env
@@ -295,17 +297,12 @@ These skip the question on purpose. Each leaves a record.
 |---|---|---|
 | `FLAG=1 swim run N` | Approves that guard without asking (scripts, CI). Only from the environment `swim run` started with: a lane that sets `FLAG=1` for itself is declined. | `APPROVED <action> (FLAG=1)` in the log; chain method `flag`, recorded by swim run, attributed to the operator's user name and signed with the runner key; the run's attestation lists the flag. Nothing proves who set the flag beyond that. |
 | `swim queue N --approve FLAG` | Approves that guard for one batch. | `(FLAG=1, approved in queue q-...)`; chain method `queue`. |
-| `swim run -y` / `swim all -y` | Approves every guard whose flag isn't set. `FLAG=0` still declines. | `approved by swim run -y (<user>)`; chain method `auto`; `.swim.log` says `with swim run -y`; the `--yaml` stream has an `approved` event with `(-y)`. |
-| `swim queue N -y` | The same, for one batch. | `approved by queue q-... -y (<queuer>)`; chain method `auto`. |
-| `swim watch -y` | The swimmer approves every guard in every batch, beyond what each batch approves. | `approved by swim watch -y (<user>)`; chain method `auto`; the consumed entry's `approved_by`. |
 
-What `-y` approved is also loud where a run's result is read, so it shows
-without reading the chain: `swim status` lists the guards under the lane
-(`auto_approved`, `auto_via` in `status.yml`), the round's chain entry
-carries `auto_approved` (`swim history`), `swim ci` names them in the job
-summary with a warning annotation. Guards approved by a flag
-(`FLAG=1`, a batch's `--approve`) are listed the same way, as
-`flag_approved`.
+What a flag approved (`FLAG=1`, a batch's `--approve`) is also loud where
+a run's result is read, so it shows without reading the chain: `swim
+status` lists the guards under the lane (`flag_approved` in
+`status.yml`), and `swim ci` names them in the job summary with a warning
+annotation.
 
 ## Out of scope
 
@@ -336,11 +333,10 @@ Test files are under `internal/`. "Pending" names the task in
 | A stopping lane, or a round whose `Timeout` ran out, declines. | `TestApprovalGivesUpWhenStopped` (e2e/approval_test.go), `TestClientGivesUp` (approval) |
 | A stopping run declines the question being asked and every later one. | `TestCancelDeclines` (approval) |
 | An unreachable approval socket declines. | `TestGuardDeclinesOnSocketError` (e2e/approval_test.go) |
-| `-y` approves only unset guards, and is logged as `-y`. | `TestAutoApprove` (e2e/approval_test.go) |
 | An env file can't approve a guard. | `TestEnvFileGuardFlagRefused` (e2e/envfile_test.go) |
 | A swimmer's own environment approves nothing; a batch's approvals are recorded as the queue's. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
-| `swim watch -y` is logged as the swimmer's. | `TestWatchYes` (e2e/queue_test.go) |
-| What `-y` (and a guard flag) approved shows in `swim status`, the round's chain entry and `swim history`, and the CI summary and annotations. | `TestAutoApprove` (e2e/approval_test.go), `TestCIGitHub` (e2e/ci_test.go) |
+| A batch approves only what its `--approve` names, credited to who queued it. | `TestWatchApprovesOnlyTheBatchs` (e2e/queue_test.go) |
+| What a guard flag approved shows in `swim status` and the CI summary and annotations. | `TestFlagApproved` (e2e/approval_test.go), `TestCIGitHub` (e2e/ci_test.go) |
 | A lane edited after it was queued is skipped. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
 | A lane whose env files changed after it was queued is skipped. | `TestEnvFileQueuePin` (e2e/envfile_test.go) |
 | The bytes approved are the bytes that run, even if the file changes mid-run. | `TestManifestStagedBytesRun`, `TestManifestMidRunEdit` (e2e/manifest_test.go) |

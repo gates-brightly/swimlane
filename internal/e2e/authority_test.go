@@ -187,9 +187,8 @@ func TestHostileLaneSetsFlag(t *testing.T) {
 func TestHostileLaneWrongJob(t *testing.T) {
 	b := newBoundaryRepo(t)
 	b.hostile(`SWIM_JOB=not-my-job; export SWIM_JOB`)
-	b.mustSwim("run", "1", "-y", "--plain")
-	if !b.dropped() {
-		t.Fatalf("-y didn't approve:\n%s", b.log(1))
+	if out, code := b.swimEnv([]string{boundaryGuard + "=1"}, "run", "1", "--plain"); code != 0 || !b.dropped() {
+		t.Fatalf("the flag didn't approve: %d\n%s\n%s", code, out, b.log(1))
 	}
 	apps := b.approvesOf(1)
 	var round chain.Link
@@ -198,7 +197,7 @@ func TestHostileLaneWrongJob(t *testing.T) {
 			round = l
 		}
 	}
-	if len(apps) != 1 || apps[0].Job == "not-my-job" || apps[0].Job != round.Job || apps[0].Method != "auto" {
+	if len(apps) != 1 || apps[0].Job == "not-my-job" || apps[0].Job != round.Job || apps[0].Method != "flag" {
 		t.Fatalf("approve entry %+v for round job %s", apps, round.Job)
 	}
 }
@@ -281,10 +280,10 @@ print("as lane 2 answered for lane", other.get("lane"))
 '
 if guard DROP "drop the table"; then run "dropped" true; fi`)
 	withHeader(t, r, 1, "# Guards:  DROP drop the table")
-	out, code := r.swim("run", "1", "-y", "--plain")
+	out, code := r.swimEnv([]string{"DROP=1"}, "run", "1", "--plain")
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
 	contains(t, "output", out, "big: request too large", "malformed: malformed request", "bogus approved: False", "as lane 2 answered for lane 1")
-	contains(t, "agent1.log", r.log(1), "APPROVED  drop the table (approved by swim run -y", "PASS  dropped")
+	contains(t, "agent1.log", r.log(1), "APPROVED  drop the table (DROP=1", "PASS  dropped")
 }
