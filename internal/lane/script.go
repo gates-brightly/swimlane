@@ -247,7 +247,7 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, round-id, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, includes, cache, modules)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, round-id, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, includes)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
