@@ -97,24 +97,6 @@ func manifestSHA(root string, n int) string {
 	return ""
 }
 
-// laneProbes are the Observe: probes of lane n's round (this
-// job's): from the staged copy when the launcher staged one.
-func laneProbes(root string, n int, m *manifest.Manifest) []lane.Probe {
-	if m != nil && m.Dir != "" {
-		data, err := os.ReadFile(m.Script())
-		if err != nil {
-			return nil
-		}
-		side := ""
-		if m.Pinned.Sidecar != nil {
-			side = m.Path(m.Pinned.Sidecar.Path)
-		}
-		return lane.ProbesIn(data, side)
-	}
-	info, _ := lane.ReadScript(root, n)
-	return info.Observe
-}
-
 // record appends an entry to the chain, signed by the runner's key when
 // there is one (authority.Record). Under swim run a round's entry goes to
 // the launcher instead, which signs it with the run key: a lane needs no

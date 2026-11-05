@@ -2,7 +2,6 @@ package launcher
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
@@ -108,23 +107,6 @@ func exited(o Options, tok string) {
 	if o.approvalSrv != nil && tok != "" {
 		o.approvalSrv.Revoke(tok)
 	}
-}
-
-// probesFor are the Observe: probes of lane n, from its staged files.
-func probesFor(o Options, n int) []lane.Probe {
-	m := o.manifests[n]
-	if m == nil {
-		return nil
-	}
-	data, err := os.ReadFile(m.Script())
-	if err != nil {
-		return nil
-	}
-	side := ""
-	if m.Pinned.Sidecar != nil {
-		side = m.Path(m.Pinned.Sidecar.Path)
-	}
-	return lane.ProbesIn(data, side)
 }
 
 // WorkspaceEnv names the directory a lane runs in: its staged copy, or the

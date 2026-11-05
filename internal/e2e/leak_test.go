@@ -65,9 +65,8 @@ var leakInventory = []struct{ what, re string }{
 	{"staged lane copies", `^repo/\.swim/runs/r-[^/]+/\d+/`},
 	{"kept scripts", `^repo/\.swim/scripts/`},
 	{"the chain", `^repo/\.swim/(chain\.jsonl|checkpoints\.jsonl|checkpoints\.sent\.yml)$`},
-	{"round outputs", `^repo/\.swim/out/`},
 	{"the queue", `^repo/\.swim/queue/`},
-	{"lane state (claims hold a pid and its start time)", `^repo/\.swim/(lane\d+\.(pid|claim|stop|msg|end)|lanes/)`},
+	{"lane state (claims hold a pid and its start time)", `^repo/\.swim/(lane\d+\.(pid|claim|stop|end)|lanes/)`},
 	{"locks", `^repo/\.swim/(locks/|.*\.lock$)`},
 	{"watch state", `^repo/\.swim/watch`},
 	{"report earmarks (places in the logs: round lines and hashes)", `^repo/\.swim/earmarks/`},
@@ -94,8 +93,8 @@ func TestNoSecretLeaks(t *testing.T) {
 
 	// The lane prints them every way: raw, to stderr, base64 (standard,
 	// unpadded, URL-safe), URL-encoded, split across writes, in step
-	// labels, a guard's description, msg, note, an output value, a failing
-	// gate and the stop reason.
+	// labels, a guard's description, note, a failing gate and the stop
+	// reason.
 	r.write("lane.1.sh", `#!/usr/bin/env bash
 # swim: syntax 2
 # Round: leak everything
@@ -108,9 +107,7 @@ if guard LEAK_OK "describe it ($V)"; then
   :
 fi
 export V P
-msg "msg $V"
 swim note --lane 1 "note $V"
-output leaked "$V"
 run "label $V" bash -c 'echo "raw=$V"; echo "env=$MY_LEAK_VAR"; printf "%s\n" "$P"; echo "err=$V" >&2; `+untilReleased("label-seen")+`'
 run "encodings" bash -c 'for s in "$V" "$MY_LEAK_VAR"; do printf %s "$s" | base64; printf %s "$s" | base64 | tr -d =; printf %s "$s" | base64 | tr "+/" "-_"; python3 -c "import sys,urllib.parse as u; print(u.quote_plus(sys.argv[1])); print(u.quote(sys.argv[1], safe=\"\"))" "$s"; printf "split="; printf %s "${s:0:7}"; printf "%s\n" "${s:7}"; done'
 run "sleep" bash -c 'echo "${#V} ${#G}" > `+filepath.Join(tmp, "sleeping")+`; `+untilReleased("scanned")+`'

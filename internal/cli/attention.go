@@ -110,11 +110,7 @@ func cmdAttention() error {
 			needs = append(needs, attentionItem{who, "interrupted: its process is gone", "swim log " + strconv.Itoa(l.Lane)})
 			continue
 		case state == status.Running || state == status.Waiting || state == status.Locked || state == status.Queued:
-			what := stateWord(l, state, now)
-			if l.Message != "" {
-				what += " · " + l.Message
-			}
-			running = append(running, attentionItem{who, what, ""})
+			running = append(running, attentionItem{who, stateWord(l, state, now), ""})
 			continue
 		case current && state == status.Failed:
 			needs = append(needs, attentionItem{who, stateWord(l, state, now) + " · " + l.Round, "swim log " + strconv.Itoa(l.Lane)})

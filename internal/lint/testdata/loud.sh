@@ -14,8 +14,6 @@ snapshot "list" ls
 stage check
 run "plan" terraform apply -auto-approve # check-unsafe
 run "wipe" bash -c 'rm -rf /tmp/x' # destructive
-input 2 name # input-dep
-run "peek" bash -c 'cat "$(swim input 2 name)"' # input-dep
 stage change
 stage verify
 summary

@@ -70,10 +70,6 @@ var Commands = map[string]string{
   swim config KEY          print KEY's effective value
   swim config KEY VALUE    set KEY in the config file, keeping its comments
   Keys:
-    outputs_keep duration (14d, 36h)      round outputs older than this that no
-                 lane's latest round uses are pruned by swim doctor --fix.
-    msg_log_interval  duration            at most one MSG log line per lane per
-                 this (default 10s; 0 logs every change of swim msg).
     queue_lease  duration (10s or more)   a queue swimmer renews its claim's
                  heartbeat every third of this while it runs a batch; seen
                  from another host, a claim with an older heartbeat is
@@ -398,23 +394,12 @@ swim report --earmarks | --earmark --reset [--name NAME]
   environment set it (a FLAG=1 the lane sets is a dry run).
   One flag per destructive action; list it in the header (or lane.N.yml):
   under swim run, a flag the script neither lists nor uses by name is
-  refused. With # Observe: probes, a fact that changed between approval and
-  now ends the round as drift (exit 3).
+  refused.
 `,
 	"stage": `swim stage snapshot|check|change|verify
 
   In a lane script in any language: start a stage. Out of order or twice
   records WARN; an unknown name ends the round.
-`,
-	"drift": `swim drift "<what differs>"
-
-  In a lane script in any language: record DRIFT (deployed state differs
-  from code).
-`,
-	"stop": `swim stop "<reason>"
-
-  In a lane script in any language: record STOP <reason> and end the round
-  now (exit 1); the program is stopped. It runs only inside a lane.
 `,
 	"env": `swim env [N|JOB] [--yaml]
 
@@ -423,31 +408,6 @@ swim report --earmarks | --earmark --reset [--name NAME]
   (file and line) and whether the shell overrides it. Exits 1 if a key is
   one of the lane's guard flags. --yaml: a swim.env/v1 document with the
   env_sha256 the round would record. See swim guide env.
-`,
-	"msg": `swim msg [--progress N/M] "<text>"
-
-  In a lane (bash, any language, or a command inside a step): post the
-  lane's status message, where a long job is now. The live view, swim
-  status and swim run --yaml (msg events) show it; the latest
-  wins; msg "" clears it, and so does the round's end. Text is one line,
-  cleaned (no ANSI or control characters), masked, at most 120 characters.
-  The log gets MSG lines for changes, at most one per msg_log_interval
-  (default 10s; 0 logs every change), and the latest when a step or the
-  round ends. Never fails the round: outside a lane it warns and exits 0.
-`,
-	"input": `swim input N|JOB NAME
-
-  In a lane: print the path of an output (# Outputs:) of a round this one
-  depends on: lane N's round this run waited on (it must have passed), or
-  job JOB's latest passed round. Only lanes and jobs in the round's After:
-  (or config deps). A small value (swim output) prints the value. What was
-  read, and its hash, goes in the chain, and swim verify proves it matches
-  what the producer made. A failure records FAIL and exits 1.
-`,
-	"output": `swim output KEY VALUE
-
-  In a lane: record a small value (an id, a version) among the round's
-  outputs, for dependents to read with swim input N KEY.
 `,
 	"lib": `swim lib
 
@@ -541,8 +501,8 @@ swim archive --done ["<note>"]
       --heartbeat (default 60s; 0 turns it off).
     - After the run: each lane's round log in its own section (::group:: on
       GitHub, collapsed sections on GitLab; failed lanes left open),
-      annotations (FAIL/BLOCKED/STOP error, DRIFT warning, a dry-run SKIP
-      notice, one notice for the lanes skipped below a failure), the
+      annotations (FAIL/BLOCKED/STOP error, a dry-run SKIP notice, one
+      notice for the lanes skipped below a failure), the
       Markdown job summary ($GITHUB_STEP_SUMMARY), --junit FILE (one suite
       per lane, one case per step), and the paths to upload as artifacts.
     - Never interactive: lanes get no stdin (confirm fails closed), no
@@ -862,8 +822,6 @@ swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
     header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag
     fail (error)           Fail: without syntax 3
-    outputs (warn)         an output whose name suggests secrets (output files
-                           aren't masked)
     includes (error)       a Python/TypeScript lane imports a local module its
                            # Includes: doesn't list (it isn't staged: the
                            import fails under swim run)
@@ -871,12 +829,9 @@ swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
                            doesn't list (the round stops there under swim
                            run), or a path built at run time (source "$x"),
                            which swim can't pin or stage
-    observe (warn)         an # Observe: probe that looks like it writes or
-                           changes something (an error if it's blocked)
     check-unsafe (warn)    a destructive-looking command (terraform apply, a
                            delete) before stage change, in a stage that
                            should only read
-    input-dep (error)      input N of a lane not in After: (or config deps)
     cross-lane (info)      uses a path another lane writes (> path, -o path,
                            cp/mv/tee) without either waiting on the other
     syntax                 an older (warn) or newer (error) script syntax
@@ -916,12 +871,9 @@ swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
                               invalid or pinning other syntaxes (warn)
     env-file (error)          an env file that doesn't parse, or sets a
                               lane's guard flag
-    outputs-old (info)        round outputs older than outputs_keep (default
-                              14d) that no lane's latest round uses; --fix
-                              removes them
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
-                              older than outputs_keep, of no lane's latest
-                              round; --fix removes them
+                              older than 14 days, of no lane's latest round;
+                              --fix removes them
     remote-running (warn)     a lane has run on another machine sharing the
                               repo for over a day; if that machine is gone,
                               release it (rm .swim/laneN.pid, then swim
@@ -1067,7 +1019,7 @@ func For(name string) (string, bool) {
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report", "step", "lib",
-	"gate", "snapshot", "guard", "stage", "drift", "stop", "msg", "input", "output",
+	"gate", "snapshot", "guard", "stage",
 	"archive", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
 	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 
@@ -1117,7 +1069,6 @@ EVERYTHING ELSE (swim <command> --help, or swim guide commands)
   archive, note                tidy up and record
   interrupt, wait              control running lanes
   ci, signoff, lock, changelog, version, skill
-  Lane scripts can also call: drift, stop, msg, input, output.
 `
 }
 

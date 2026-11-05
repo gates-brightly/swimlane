@@ -239,7 +239,7 @@ func checkShortFormShebang(c *Context, s *Script) []finding.Finding {
 	if s.Lib || !strings.HasSuffix(s.Name, ".sh") {
 		return nil
 	}
-	steps := map[string]bool{"stage": true, "run": true, "gate": true, "snapshot": true, "guard": true, "stop": true}
+	steps := map[string]bool{"stage": true, "run": true, "gate": true, "snapshot": true, "guard": true}
 	for _, lc := range s.v.commands() {
 		if lc.Sub || len(lc.Words) == 0 || lc.Words[0].Quoted || !steps[lc.Words[0].Text] {
 			continue
@@ -356,7 +356,7 @@ func checkStepSubshell(c *Context, s *Script) []finding.Finding {
 			continue
 		}
 		out = append(out, f(finding.Error, "step-subshell", i,
-			fmt.Sprintf("call %s on its own line; for its output, have the command write a file in $SWIM_OUT, or use snapshot", m[1]),
+			fmt.Sprintf("call %s on its own line; for its output, have the command write a file, or use snapshot", m[1]),
 			"%s inside %s runs in a subshell: its result never reaches the lane (last_failed, the round's counts), and $(...) captures swim's output, not the command's", m[1], where))
 	}
 	return out

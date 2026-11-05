@@ -17,7 +17,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
-	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -444,18 +443,6 @@ func (v *verifier) checkEntries(links []chain.Link) {
 					}
 				}
 			}
-			// What it read must be what its producers recorded.
-			for key, sum := range l.Inputs {
-				from := l.InputRounds[strings.SplitN(key, ":", 2)[0]]
-				name := strings.SplitN(key, ":", 2)[1]
-				prod, ok := producedBy(links, from)
-				switch {
-				case !ok:
-					v.warn = append(v.warn, fmt.Sprintf("entry #%d: input %s came from round %s, which isn't in the chain", l.Seq, key, from))
-				case prod.Outputs[name] != sum && prod.Outputs[outputs.ValuePrefix+name] != sum:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: input %s doesn't match what round %s produced (entry #%d): changed after it was produced", l.Seq, key, from, prod.Seq))
-				}
-			}
 			if l.Log != "" {
 				// A lane run twice under one run id (--run-id) has a section
 				// for each round: this one's must be among them.
@@ -573,17 +560,6 @@ func seqs(links []chain.Link) string {
 		s = append(s, "#"+strconv.Itoa(l.Seq))
 	}
 	return strings.Join(s, ", ")
-}
-
-// producedBy is the round entry for "<job> <run>".
-func producedBy(links []chain.Link, round string) (chain.Link, bool) {
-	job, run, _ := strings.Cut(round, " ")
-	for _, l := range links {
-		if l.Type == "round" && l.Job == job && l.Run == run {
-			return l, true
-		}
-	}
-	return chain.Link{}, false
 }
 
 // roundLogHash is the hash of lane n's round in run, from its current or

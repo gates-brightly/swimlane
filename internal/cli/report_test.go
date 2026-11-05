@@ -132,7 +132,7 @@ func TestPassesBrief(t *testing.T) {
 		"        | first",
 		"        | broke",
 		"  STOP  gate failed: verify",
-		"== END FAIL  pass=3 fail=1 skip=1 drift=0  exit=3  1.0s  2026-10-15T10:00:03Z",
+		"== END FAIL  pass=3 fail=1 skip=1  exit=3  1.0s  2026-10-15T10:00:03Z",
 		"   failed: FAIL  verify (exit 3)",
 	}
 	want := []string{
@@ -150,7 +150,7 @@ func TestPassesBrief(t *testing.T) {
 		"        | first",
 		"        | broke",
 		"  STOP  gate failed: verify",
-		"== END FAIL  pass=3 fail=1 skip=1 drift=0  exit=3  1.0s  2026-10-15T10:00:03Z",
+		"== END FAIL  pass=3 fail=1 skip=1  exit=3  1.0s  2026-10-15T10:00:03Z",
 		"   failed: FAIL  verify (exit 3)",
 	}
 	if got := passesBrief(in, "1"); strings.Join(got, "\n") != strings.Join(want, "\n") {

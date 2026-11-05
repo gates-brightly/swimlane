@@ -78,7 +78,9 @@ type Entry struct {
 	// Lookup was the SHA-256 of lookup.yml when the guard was approved
 	// (an older swim with signed approvals); kept as written.
 	Lookup string `json:"lookup_sha256,omitempty"`
-	// Observed are the round's Observe: facts when the guard was approved.
+	// Observed were the round's Observe: facts when the guard was approved
+	// (legacy: no longer written; older entries keep it, and the hash
+	// covers it as written).
 	Observed map[string]string `json:"observed,omitempty"`
 
 	// decide (written by a swim that had decisions, which this one no
@@ -109,10 +111,13 @@ type Entry struct {
 	Kept []KeptStep `json:"kept,omitempty"`
 	// Handlers are the round's outcome handlers that ran: name -> PASS | FAIL | SKIP | none.
 	Handlers map[string]string `json:"handlers,omitempty"`
-	// Outputs are the files (and values) the round produced: name -> SHA-256.
+	// Outputs are what the entry produced: name -> SHA-256 (a clean's
+	// stubbed scripts, a backup; a round's # Outputs: in older entries).
 	Outputs map[string]string `json:"outputs,omitempty"`
-	// Inputs are the outputs it read: "2:stats.json" -> SHA-256 when read,
-	// and which round produced each: "2" -> "<job> <run>".
+	// Inputs were the outputs a round read: "2:stats.json" -> SHA-256
+	// when read, and InputRounds which round produced each: "2" -> "<job>
+	// <run>" (legacy: no longer written; older entries keep them, and the
+	// hash covers them as written).
 	Inputs map[string]string `json:"inputs,omitempty"`
 	// Evidence was the round's evidence hash (round entries), or the
 	// evidence an approval covered (approve entries): swim no longer has

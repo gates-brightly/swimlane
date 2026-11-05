@@ -687,9 +687,7 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 	o.ev.emit(Event{Event: "start", Lane: n, Job: info.Job, Round: info.Round, At: launchedTS})
 	ir.add(n, &laneProc{proc: cmd.Process, group: ownGroup, started: launched})
 	o.beat.begin(n, launched)
-	stopMsgs := watchMsgs(o, n, disp)
 	err := waitLane(cmd)
-	stopMsgs()
 	w.Flush()
 	o.beat.end(n)
 	ir.remove(n)
@@ -846,7 +844,7 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, p.Paint(ui.Bold, "swim summary · "+display.Span(start, start.Add(total))))
-	fmt.Fprintln(out, p.Paint(ui.Dim, fmt.Sprintf("  %-8s %-8s %-12s %4s %5s %5s %5s %6s %7s", "lane", "job", "result", "exit", "pass", "fail", "skip", "drift", "time")))
+	fmt.Fprintln(out, p.Paint(ui.Dim, fmt.Sprintf("  %-8s %-8s %-12s %4s %5s %5s %5s %7s", "lane", "job", "result", "exit", "pass", "fail", "skip", "time")))
 	for _, n := range sel {
 		oc := outcomes[n]
 		label := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("%-8s", fmt.Sprintf("swim %d", n)))
@@ -860,7 +858,7 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 		}
 		label += " " + p.Paint(ui.Dim, fmt.Sprintf("%-8s", lane.ShortJob(job)))
 		if oc.Blocked { // refused before starting: no round of its own in the log
-			fmt.Fprintf(out, "  %s %s %4d %5s %5s %5s %6s %7s\n", label, p.Paint(ui.Red, fmt.Sprintf("%-12s", "FAIL")), oc.Exit, "-", "-", "-", "-", "-")
+			fmt.Fprintf(out, "  %s %s %4d %5s %5s %5s %7s\n", label, p.Paint(ui.Red, fmt.Sprintf("%-12s", "FAIL")), oc.Exit, "-", "-", "-", "-")
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, oc.Reason))
 			continue
 		}
@@ -874,14 +872,14 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 		}
 		res := p.Paint(ui.StateColor(result), fmt.Sprintf("%-12s", result))
 		if oc.State == status.Skipped && oc.Exit < 0 { // never started
-			fmt.Fprintf(out, "  %s %s %4s %5s %5s %5s %6s %7s  %s\n", label, res, "-", "-", "-", "-", "-", "-", oc.Reason)
+			fmt.Fprintf(out, "  %s %s %4s %5s %5s %5s %7s  %s\n", label, res, "-", "-", "-", "-", "-", oc.Reason)
 			continue
 		}
 		exit := fmt.Sprint(oc.Exit)
 		if oc.State == status.Skipped {
 			exit = "-" // the lane exited 0, but its work waits: swim run exits 3
 		}
-		fmt.Fprintf(out, "  %s %s %4s %5d %5d %5d %6d %7s\n", label, res, exit, r.Pass, r.Fail, r.Skip, r.Drift, display.Elapsed(oc.Elapsed))
+		fmt.Fprintf(out, "  %s %s %4s %5d %5d %5d %7s\n", label, res, exit, r.Pass, r.Fail, r.Skip, display.Elapsed(oc.Elapsed))
 		if oc.State == status.Skipped {
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Yellow, oc.Reason))
 		}
@@ -1032,52 +1030,6 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	return cmd, ownGroup, w, tok
 }
 
-// watchMsgs follows lane n's status message (swim msg) while it runs: the
-// panel shows it and the YAML stream gets a msg event for each change. The
-// returned func stops it and clears the panel's message.
-func watchMsgs(o Options, n int, disp *display.Display) func() {
-	done := make(chan struct{})
-	finished := make(chan struct{})
-	go func() {
-		defer close(finished)
-		t := time.NewTicker(200 * time.Millisecond)
-		defer t.Stop()
-		last := ""
-		for first := true; ; first = false {
-			if !first {
-				select {
-				case <-done:
-					return
-				case <-t.C:
-				}
-			}
-			m, ok := lane.ReadMsg(o.Root, n)
-			if ok && m.Run != o.RunID {
-				ok = false // an earlier round's
-			}
-			cur := ""
-			if ok {
-				cur = m.Display()
-			}
-			if cur == last {
-				continue
-			}
-			last = cur
-			disp.Set(n, func(v *display.LaneView) { v.Message = cur })
-			if cur != "" {
-				disp.Line(n, "… "+cur)
-			}
-			text := m.Text
-			o.ev.emit(Event{Event: "msg", Lane: n, Message: &text, Progress: m.Progress, At: now()})
-		}
-	}()
-	return func() {
-		close(done)
-		<-finished
-		disp.Set(n, func(v *display.LaneView) { v.Message = "" })
-	}
-}
-
 // releaseClaim spends lane n's claim (swim new took it) as its round starts:
 // running-lane protection takes over. Another session's claim is no bar
 // (the operator decides), but the run says so.
@@ -1222,16 +1174,6 @@ func runningJob(o Options, n int) string {
 		return l.Job
 	}
 	return ""
-}
-
-// laneEnv is lane n's environment as its process gets it (env files under
-// the shell), for its Observe: probes.
-func laneEnv(o Options, n int) []string {
-	var env []string
-	if r := o.env[n]; r != nil {
-		env = append(env, r.Env()...)
-	}
-	return append(env, os.Environ()...)
 }
 
 // set records (choice "approved" / "declined") or clears ("") lane n's

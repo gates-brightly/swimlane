@@ -66,9 +66,7 @@ lane_init() {
   SWIM_FAIL_MODE=${_swim_start%% *}
   SWIM_TIMEOUT=${_swim_start#* }
   SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
-  # Where the round's outputs go (# Outputs:), fresh for each round.
-  SWIM_OUT="$SWIM_ROOT/.swim/out/$SWIM_JOB/$SWIM_RUN"
-  export SWIM_OUT SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE
+  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE
   # A marker an earlier round's stop left behind (its shell already gone,
   # a TERM racing a Ctrl-C) would turn this round's real interrupt into a
   # failure: only this round's stop may leave one.
@@ -127,7 +125,7 @@ source() {
             echo "swim: source $1: not pinned with the lane; add # Includes: $_swim_src" >&2
             return 1
           fi
-          stop "source $1: not pinned with the lane (add # Includes: $_swim_src)"
+          _swim_stop "source $1: not pinned with the lane (add # Includes: $_swim_src)"
           return 1
         fi
         ;;
@@ -140,15 +138,15 @@ source() {
 # _swim_on_signal CODE — Ctrl-C (130) or SIGTERM (143): end the round.
 _swim_on_signal() {
   if [ -e "$STEP_LOG.stopped" ]; then
-    # stop, from a subshell: the round failed there.
+    # _swim_stop, from a subshell: the round failed there.
     rm -f "$STEP_LOG.stopped"
     exit 1
   fi
   exit "$1"
 }
 
-# Runs on any exit: a round that ends without `summary` (Ctrl-C, gate,
-# stop, a typo) still gets a summary and a final state.
+# Runs on any exit: a round that ends without `summary` (Ctrl-C, a failed
+# gate, a typo) still gets a summary and a final state.
 _swim_on_exit() {
   _swim_code=$?
   if [ -z "$SWIM_LANE" ]; then
@@ -194,16 +192,16 @@ _swim_after_step() {
     fi
   fi
   if [ "$_swim_last" -eq 87 ]; then
-    stop "blocked command: $_swim_label"
+    _swim_stop "blocked command: $_swim_label"
   fi
   if [ "$_swim_last" -eq 124 ] && [ -e "$STEP_LOG.round-timeout" ]; then
     rm -f "$STEP_LOG.round-timeout"
-    stop "timeout: the round's Timeout ($SWIM_TIMEOUT) ran out"
+    _swim_stop "timeout: the round's Timeout ($SWIM_TIMEOUT) ran out"
   fi
   # Fail: hard: the first failed step ends the round (a gate stops it with
   # its own reason; run --soft opts one step out).
   if [ "$_swim_last" -ne 0 ] && [ "${SWIM_FAIL_MODE:-soft}" = hard ] && [ -z "$_swim_soft" ] && [ -z "$_swim_no_hard" ]; then
-    stop "hard failure: $_swim_label"
+    _swim_stop "hard failure: $_swim_label"
   fi
   return "$_swim_last"
 }
@@ -234,7 +232,7 @@ _swim_operator_stop() {
 # or a change stage without a snapshot and check before it records WARN.
 stage() {
   if ! "$SWIM_BIN" _stage "$SWIM_LANE" "$1"; then
-    stop "bad stage: ${1:-<none>} (stages are snapshot, check, change, verify)"
+    _swim_stop "bad stage: ${1:-<none>} (stages are snapshot, check, change, verify)"
   fi
   _swim_stage=$1
   _swim_reached="$_swim_reached $1"
@@ -285,7 +283,7 @@ _swim_misuse() {
     _swim_first_failed="step written wrong"
     _swim_first_failed_stage=${_swim_stage:-setup}
   fi
-  stop "step written wrong: $1"
+  _swim_stop "step written wrong: $1"
 }
 
 _swim_run_step() {
@@ -353,7 +351,7 @@ gate() {
   _swim_run_step "" "$@"
   _swim_no_hard=
   if [ "$_swim_last" -ne 0 ]; then
-    stop "gate failed: $_swim_label"
+    _swim_stop "gate failed: $_swim_label"
   fi
   return 0
 }
@@ -381,8 +379,7 @@ any_failed() {
 # FLAG ... the lane says: <action> Y/N [N]"; y approves (recorded with who
 # answered). Under swim run the launcher decides every guard: FLAG=1
 # approves only if swim run's own environment set it (not the lane), a
-# FLAG the script doesn't declare or use is refused, and an Observe: fact
-# that changed since approval stops the round as drift. Anything else (n,
+# FLAG the script doesn't declare or use is refused. Anything else (n,
 # Enter, FLAG set to another value, nobody to ask) records SKIP with a
 # dry-run message showing how to approve, and returns false. One flag per
 # destructive action.
@@ -409,12 +406,7 @@ guard() {
     # records APPROVED, or SKIP as a dry run when declined or no one can be
     # asked (CI, no terminal, approvals: flags).
     "$SWIM_BIN" _approve "$SWIM_LANE" "$1" "$2" $_swim_flag_set
-    _swim_rc=$?
-    if [ "$_swim_rc" -eq 3 ]; then
-      # An Observe: fact changed between approval and now.
-      stop "drift: observed facts changed since approval ($1)"
-    fi
-    return "$_swim_rc"
+    return
   fi
   "$SWIM_BIN" _mark "$SWIM_LANE" SKIP "$2" "dry run: set $1=1 to approve"
   return 1
@@ -446,38 +438,12 @@ confirm() {
     "$SWIM_BIN" _mark "$SWIM_LANE" APPROVED "$1" "operator typed $_swim_want" --confirm
     return 0
   fi
-  stop "not confirmed: $1"
+  _swim_stop "not confirmed: $1"
 }
 
-# msg [--progress N/M] "<text>" — post the lane's status message: where a
-# long job is now ("migrating billing", --progress 7/25). It shows in the
-# live view and swim status; the latest wins, msg "" clears it,
-# and the log gets it throttled. Never fails the round.
-msg() {
-  "$SWIM_BIN" msg "$@" || true
-}
-
-# input N|JOB NAME — print the path of an output of a round this one
-# depends on (After:): lane N's round this run waited on, or job JOB's.
-# A small value (output KEY value) prints the value itself. Use it as
-# "$(input 2 stats.json)". A failure is recorded as FAIL.
-input() {
-  "$SWIM_BIN" input "$@"
-}
-
-# output KEY VALUE — record a small value (an id, a version) among the
-# round's outputs; dependent lanes read it with $(input N KEY).
-output() {
-  "$SWIM_BIN" output "$@"
-}
-
-# drift "<what differs>" — record a DRIFT line (deployed state differs from code).
-drift() {
-  "$SWIM_BIN" _mark "$SWIM_LANE" DRIFT "$1"
-}
-
-# stop "<reason>" — record STOP <reason> and end the round now.
-stop() {
+# _swim_stop "<reason>" — record STOP <reason> and end the round now (a
+# failed gate, a refused step, an unconfirmed confirm).
+_swim_stop() {
   "$SWIM_BIN" _mark "$SWIM_LANE" STOP "${1:-stopped}"
   _swim_stop_reason=${1:-stopped}
   if [ "${BASH_SUBSHELL:-0}" -gt 0 ]; then

@@ -233,7 +233,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 			}
 		}
 		if state != status.Idle && state != status.Waiting && state != status.Skipped {
-			counts := fmt.Sprintf("pass %d  fail %d  skip %d  drift %d", l.Pass, l.Fail, l.Skip, l.Drift)
+			counts := fmt.Sprintf("pass %d  fail %d  skip %d", l.Pass, l.Fail, l.Skip)
 			if l.FinishedAt != nil {
 				counts += "  finished " + *l.FinishedAt
 				if l.DurationS != nil {
@@ -248,16 +248,6 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 				step = "stage: " + l.Stage + "  " + step
 			}
 			detail(step, ui.Cyan)
-		}
-		if state == status.Running && l.Message != "" {
-			m := l.Message
-			if l.Progress != "" {
-				m += " (" + l.Progress + ")"
-			}
-			if t, err := time.Parse(time.RFC3339, l.MessageAt); err == nil && time.Since(t) > time.Minute {
-				m += " · " + display.Elapsed(time.Since(t)) + " ago"
-			}
-			detail("msg: "+m, ui.Dim)
 		}
 		if len(l.Locks) > 0 && state == status.Running {
 			detail("locks: "+strings.Join(l.Locks, ", "), ui.Dim)
@@ -342,7 +332,7 @@ func rebuildStatus(root string, cfg *config.Config) error {
 			}
 			l.Round, l.Job = r.Title, r.Job
 			l.StartedAt = status.Str(r.StartedAt)
-			l.Pass, l.Fail, l.Skip, l.Drift = r.Pass, r.Fail, r.Skip, r.Drift
+			l.Pass, l.Fail, l.Skip = r.Pass, r.Fail, r.Skip
 			for _, fr := range r.Failed() {
 				l.FailedSteps = append(l.FailedSteps, fr.Text())
 			}
@@ -437,8 +427,8 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 				word = "SKIP (dry run)"
 			}
 			fmt.Printf("%s %s %s\n", label, p.Paint(ui.StateColor(word), fmt.Sprintf("%-22s", word)), round.Title)
-			fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Dim, fmt.Sprintf("job: %s  pass %d  fail %d  skip %d  drift %d  stages: %s",
-				round.Job, round.Pass, round.Fail, round.Skip, round.Drift, logparse.StagesText(round.StageResults()))))
+			fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Dim, fmt.Sprintf("job: %s  pass %d  fail %d  skip %d  stages: %s",
+				round.Job, round.Pass, round.Fail, round.Skip, logparse.StagesText(round.StageResults()))))
 			for _, fr := range round.Failed() {
 				fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Red, fr.Text()))
 			}

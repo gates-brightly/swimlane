@@ -12,10 +12,6 @@ const payload = `"$(printf 'drop prod\033[2K\rlist\b files \342\200\256evil')"`
 
 const payloadSafe = "drop prodlist files evil"
 
-// msgSafe is the payload as a status message: a message is one line, its
-// \r a space.
-const msgSafe = "drop prod list files evil"
-
 // noControls fails if s carries any of the payload's controls.
 func noControls(t *testing.T, what, s string) {
 	t.Helper()
@@ -26,21 +22,21 @@ func noControls(t *testing.T, what, s string) {
 	}
 }
 
-// A lane's guard description, step label, command line and status message
-// reach the terminal, the log, status.yml and swim history only made safe;
+// A lane's guard description, step label and command line reach the
+// terminal, the log, status.yml and swim history only made safe;
 // the chain keeps the text as given.
 func TestUntrustedTextIsSafe(t *testing.T) {
 	r := newRepo(t, "")
 	r.env = append(r.env, "ALLOW_X=1")
 	r.script(1, "hostile", `P=`+payload+`
 if guard ALLOW_X "$P"; then run "$P" true; fi
-run "post" bash -c 'swim msg "$0"; touch "$SWIM_ROOT/posted"; rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null' "$P"`)
+run "waits $P" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
 	l := r.launch(t, nil)
-	// The launcher relays the message into status.yml.
+	// The running step's label, in status.yml.
 	var y string
-	waitFor(t, func() bool { y = r.mustSwim("status", "--yaml"); return strings.Contains(y, "message: ") })
+	waitFor(t, func() bool { y = r.mustSwim("status", "--yaml"); return strings.Contains(y, "current_step: waits") })
 
-	contains(t, "status --yaml", y, "message: "+msgSafe)
+	contains(t, "status --yaml", y, "current_step: waits "+payloadSafe)
 	noControls(t, "status --yaml", y)
 	if strings.Contains(y, `\`) {
 		t.Errorf("status --yaml has escaped controls:\n%s", y)
@@ -53,7 +49,7 @@ run "post" bash -c 'swim msg "$0"; touch "$SWIM_ROOT/posted"; rf="$SWIM_ROOT/rel
 	contains(t, "output", out, "APPROVED  "+payloadSafe+" (ALLOW_X=1)", "PASS  "+payloadSafe)
 	noControls(t, "output", out)
 	log := r.log(1)
-	contains(t, "log", log, "APPROVED  "+payloadSafe+" (ALLOW_X=1)", "PASS  "+payloadSafe, "MSG  "+msgSafe)
+	contains(t, "log", log, "APPROVED  "+payloadSafe+" (ALLOW_X=1)", "PASS  "+payloadSafe, "PASS  waits "+payloadSafe)
 	noControls(t, "log", log)
 	h := r.mustSwim("history")
 	contains(t, "history", h, "Action:    "+payloadSafe)

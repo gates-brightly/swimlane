@@ -32,7 +32,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,9 +77,6 @@ type Request struct {
 	// RawDesc is the description as the lane sent it, for the chain; Desc
 	// is made safe to show (Clean).
 	RawDesc string `json:"-"`
-	// Observed are the round's Observe: facts, read by the launcher as it
-	// asks (shown with the question).
-	Observed map[string]string `json:"-"`
 }
 
 // Response is the operator's answer.
@@ -93,13 +89,11 @@ type Response struct {
 	Pre      bool   `json:"pre,omitempty"`  // answered ahead of time in the live view (pre-approved / pre-declined)
 	At       string `json:"at,omitempty"`   // when a pre-answer was given (hh:mm:ss)
 	// ID is the approval's request id, to consume once (approved only).
-	// Lane and Job are who the launcher says asked; Observed the Observe:
-	// facts when it was approved.
-	ID       string            `json:"id,omitempty"`
-	Lane     int               `json:"lane,omitempty"`
-	Job      string            `json:"job,omitempty"`
-	Run      string            `json:"run,omitempty"`
-	Observed map[string]string `json:"observed,omitempty"`
+	// Lane and Job are who the launcher says asked.
+	ID   string `json:"id,omitempty"`
+	Lane int    `json:"lane,omitempty"`
+	Job  string `json:"job,omitempty"`
+	Run  string `json:"run,omitempty"`
 	// Dry: no one was asked (nobody can be, under swim run); the guard is a
 	// dry run, and Why (if set) says why no signed approval counted.
 	Dry bool `json:"dry,omitempty"`
@@ -642,17 +636,6 @@ func Question(req Request) []string {
 		q = append(q, "  "+strings.Join(facts, " · "))
 	}
 	q = append(q, "  the lane says: "+Clean(req.Desc))
-	if len(req.Observed) > 0 {
-		var keys []string
-		for k := range req.Observed {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		q = append(q, "  observed now (checked again before the step):")
-		for _, k := range keys {
-			q = append(q, "    "+k+" = "+Clean(req.Observed[k]))
-		}
-	}
 	return append(q, fmt.Sprintf("(or set %s=1 to approve without asking)  Y/N [N]", flag))
 }
 

@@ -157,11 +157,11 @@ func StateColor(state string) string {
 		return Green
 	case strings.HasPrefix(s, "fail"), strings.HasPrefix(s, "interrupted"), strings.HasPrefix(s, "stop"), strings.HasPrefix(s, "blocked"):
 		return Red
-	case strings.HasPrefix(s, "skip"), strings.HasPrefix(s, "drift"), strings.HasPrefix(s, "waiting"), strings.HasPrefix(s, "running?"):
+	case strings.HasPrefix(s, "skip"), strings.HasPrefix(s, "waiting"), strings.HasPrefix(s, "running?"):
 		return Yellow
 	case strings.HasPrefix(s, "running"):
 		return Cyan
-	case strings.HasPrefix(s, "idle"), s == "msg":
+	case strings.HasPrefix(s, "idle"):
 		return Dim
 	}
 	return ""

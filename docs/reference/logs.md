@@ -32,13 +32,10 @@ line says what it is by how it starts:
   BLOCKED  <label> (matched "terraform destroy"; blocked_commands)    exit 87, counts as FAIL
   SKIP  <label> (dry run: <why>)                      a guard not approved
   APPROVED  <label> (<by whom>)
-  DRIFT  <what>
   STOP  <reason>
   WARN  <what>
-  MSG  <text> (7/25, <hh:mm:ss>)                      a status message, never a result
-== END <PASS|FAIL|SKIP|INTERRUPTED>  pass=P fail=F skip=S drift=D  exit=E  <dur>s  <utc>  run=<id>
+== END <PASS|FAIL|SKIP|INTERRUPTED>  pass=P fail=F skip=S  exit=E  <dur>s  <utc>  run=<id>
    stages: snapshot PASS | check PASS | change SKIP | verify PASS
-   outputs: ...
    failed: FAIL  <label> (exit <code>); ...
 ```
 
@@ -68,7 +65,7 @@ lane: `state` (idle, waiting, locked, queued, running, passed, failed,
 skipped, interrupted; see [state](state.md)), `pending` and `pending_job`
 (the script on disk), `round`, `job`, `run`, `script`, `log`,
 `waiting_on`, `reason`, `locks`, `pid`, `started_at`, `finished_at`,
-`duration_s`, `exit_code`, `pass`/`fail`/`skip`/`drift`, `current_step`,
+`duration_s`, `exit_code`, `pass`/`fail`/`skip`, `current_step`,
 `failed_steps`, `auto_approved`/`auto_via`, `flag_approved`, `dry_run`,
 `last_archive`.
 
@@ -79,7 +76,7 @@ document carries `schema:`; fields are only added within a version.
 
 | | |
 |---|---|
-| `swim run\|all --yaml` | `swim.run/v1`, one document per event as it happens: `run`, `waiting`, `locked`, `queued`, `start`, `output` (with `--yaml-output`), `step`, `msg`, `finish`, `stop_requested`, `stopping`, `force_quit`, `kill`, then `summary` (result, exit, each lane's result). Same exit code. |
+| `swim run\|all --yaml` | `swim.run/v1`, one document per event as it happens: `run`, `waiting`, `locked`, `queued`, `start`, `output` (with `--yaml-output`), `step`, `finish`, `stop_requested`, `stopping`, `force_quit`, `kill`, then `summary` (result, exit, each lane's result). Same exit code. |
 | `swim log N --yaml` | `swim.log/v1`: the round as data: results with label, stage, exit, command, output; the running step as `RUNNING`. |
 | `swim status --yaml` | `swim.status/v1`: status.yml, plus each pending lane's `pending_header` (after, guards and how each would be decided, timeout, locks, includes) and `deps`. |
 | `swim report --yaml` | `swim.report/v1`. |

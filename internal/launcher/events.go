@@ -42,8 +42,6 @@ type Event struct {
 	FailedSteps []string         `yaml:"failed_steps,omitempty"`
 	Duration    *float64         `yaml:"duration_s,omitempty"`
 	Note        string           `yaml:"note,omitempty"`
-	Message     *string          `yaml:"message,omitempty"`  // msg events: the status message ("" when cleared)
-	Progress    string           `yaml:"progress,omitempty"` // msg events: "7/25"
 	At          string           `yaml:"at,omitempty"`
 }
 
@@ -140,7 +138,7 @@ func (e *events) laneDone(o Options, oc *Outcome) {
 				e.emit(Event{Event: "step", Lane: oc.N, Label: res.Label, Stage: res.Stage, Result: res.Result,
 					Exit: res.Exit, Duration: res.Duration, Detail: res.Detail})
 			}
-			ev.Counts = &logparse.Counts{Pass: r.Pass, Fail: r.Fail, Skip: r.Skip, Drift: r.Drift}
+			ev.Counts = &logparse.Counts{Pass: r.Pass, Fail: r.Fail, Skip: r.Skip}
 			ev.FailedSteps = []string{}
 			for _, f := range r.Failed() {
 				ev.FailedSteps = append(ev.FailedSteps, f.Text())

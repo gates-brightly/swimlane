@@ -117,11 +117,8 @@ var Checks = []Check{
 	{"cross-lane", finding.Info, false, "reads a path another lane writes without waiting for it", checkCrossLane},
 	{"env", finding.Error, false, "the lane's env files don't parse, or set one of its guard flags", checkEnv},
 	{"check-unsafe", finding.Warn, false, "a destructive-looking command before `stage change` (snapshot and check stages should only read)", checkCheckUnsafe},
-	{"outputs", finding.Warn, false, "an output whose name suggests secrets (output files aren't masked)", checkOutputs},
-	{"input-dep", finding.Error, false, "`input N` of a lane not in After: (or config deps)", checkInputDeps},
 	{"includes", finding.Error, false, "a Python or TypeScript lane imports a local module its # Includes: doesn't cover (not staged: the import fails)", checkIncludes},
 	{"source", finding.Error, false, "a bash lane sources a local file its # Includes: doesn't list, or a path built at run time", checkSource},
-	{"observe", finding.Warn, false, "an Observe: probe that looks like it changes something (probes must only read)", checkObserve},
 	{"fail", finding.Error, false, "Fail: without `# swim: syntax 3`", checkFailSyntax},
 }
 
@@ -273,10 +270,6 @@ func commentFirst(fs []finding.Finding) []finding.Finding {
 func NewScript(n int, src string) *Script {
 	return &Script{N: n, Name: fmt.Sprintf("lane.%d.sh", n), Src: src, Info: lane.ParseScript(src), Lib: loadsLib(src) || lane.ShortForm(src), Short: lane.ShortForm(src), v: scan(src)}
 }
-
-// bash reports whether the script is bash (lane.N.sh, or one that loads
-// swim's library), which lint reads command by command.
-func (s *Script) bash() bool { return s.Lib || strings.HasSuffix(s.Name, ".sh") }
 
 // libLoadRE: the line that loads swim's library, in any of its spellings
 // (a regular expression, kept: it is matched within a line of text).

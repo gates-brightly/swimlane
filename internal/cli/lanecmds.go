@@ -4,20 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/chars"
-	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
-	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 )
@@ -30,11 +24,9 @@ import (
 //	swim snapshot [options] "<label>" -- cmd [args...]
 //	swim guard FLAG "<action - date, reason>"
 //	swim stage NAME
-//	swim drift "<what differs>"
-//	swim stop "<reason>"
 //
 // They read the lane from SWIM_LANE, which swim's wrapper (swim _wrap)
-// exports. Ending the round (a failed gate, swim stop, a refused step)
+// exports. Ending the round (a failed gate, a bad stage, a refused step)
 // signals the wrapper, which stops the program even if it ignores the
 // exit code. Once a round's end is claimed, the command that claimed it
 // doesn't return to the program until the wrapper has stopped it, and a
@@ -281,243 +273,6 @@ func cmdStagePublic(args []string) error {
 	return nil
 }
 
-// swim drift "<what differs>": record DRIFT (deployed state differs from code).
-func cmdDrift(args []string) error {
-	n, err := laneEnv("drift")
-	if err != nil {
-		return err
-	}
-	if len(args) != 1 {
-		return usagef(`usage: swim drift "<what differs>"`)
-	}
-	return cmdMark([]string{n, logparse.Drift, args[0]})
-}
-
-// swim stop "<reason>": record STOP and end the round now (exit 1). It
-// runs only inside a lane.
-func cmdStop(args []string) error {
-	n, err := laneEnv("stop")
-	if err != nil {
-		return err
-	}
-	if len(args) > 1 {
-		return usagef(`usage: swim stop "<reason>"`)
-	}
-	reason := "stopped"
-	if len(args) == 1 && args[0] != "" {
-		reason = args[0]
-	}
-	root, _, ln, err := laneCtx(n)
-	if err != nil {
-		return err
-	}
-	return endRound(root, ln, 1, reason)
-}
-
 // laneGate and laneSnapshot are swim gate / swim snapshot.
 func laneGate(args []string) error     { return laneStep("gate", args) }
 func laneSnapshot(args []string) error { return laneStep("snapshot", args) }
-
-// swim msg [--progress N/M] "<text>": post the lane's status message (the
-// latest wins; "" clears it). It shows in the live view and swim status,
-// and goes to the log throttled (msg_log_interval). It never fails
-// the round: a message that can't be posted warns and exits 0.
-func cmdMsg(args []string) error {
-	var progress string
-	rest, err := flags{strs: map[string]*string{"progress": &progress}}.parse(args)
-	if err != nil {
-		return err
-	}
-	warn := func(format string, a ...any) error {
-		fmt.Fprintf(os.Stderr, "swim msg: warning: "+format+"\n", a...)
-		return nil
-	}
-	ns := os.Getenv("SWIM_LANE")
-	if ns == "" {
-		return warn("not inside a lane's round (SWIM_LANE is unset); nothing posted")
-	}
-	root, cfg, n, err := laneCtx(ns)
-	if err != nil {
-		return warn("%v", err)
-	}
-	if progress != "" && !lane.ValidProgress(progress) {
-		warn("--progress %q is not N/M; ignored", progress)
-		progress = ""
-	}
-	text := cfg.Masker(os.Environ()).String(lane.CleanMsg(strings.Join(rest, " ")))
-	if text == "" {
-		progress = ""
-	}
-	now := time.Now()
-	m, _ := lane.ReadMsg(root, n)
-	if run := os.Getenv("SWIM_RUN"); m.Run != run {
-		m = lane.Msg{Run: run} // an earlier round's message (and log state) is spent
-	}
-	m.Text, m.Progress, m.At = text, progress, now.UTC().Format(time.RFC3339)
-
-	// The log: changes only, at most one line per msg_log_interval. A
-	// message posted during a step waits for the step, which writes it into
-	// its own block when it ends (nothing else writes into a running step).
-	if text != "" && m.Display() != m.Logged {
-		last, _ := time.Parse(time.RFC3339, m.LoggedAt)
-		if every := cfg.MsgLogEvery(); every == 0 || now.Sub(last) >= every {
-			line := logparse.MsgText(text, progress, now.Format("15:04:05"))
-			logPath := lane.Log(root, n)
-			if _, err := os.Stat(step.SpoolPath(logPath)); err == nil {
-				if len(m.Pending) < 100 {
-					m.Pending = append(m.Pending, line)
-				}
-			} else if err := appendLog(logPath, "  "+line+"\n"); err != nil {
-				return warn("%v", err)
-			}
-			m.Logged, m.LoggedAt = m.Display(), m.At
-		}
-	}
-	if err := lane.WriteMsg(root, n, m); err != nil {
-		return warn("%v", err)
-	}
-	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
-		l.Message, l.Progress, l.MessageAt = m.Text, m.Progress, m.At
-		if m.Text == "" {
-			l.MessageAt = ""
-		}
-	})
-	// Nothing printed: inside a step it would land in the step's output.
-	// swim run shows it ([3] … migrating billing (7/25)) as it changes.
-	return nil
-}
-
-// swim output KEY VALUE: record a small value among the round's outputs
-// (read by dependent lanes as `input N KEY`).
-func cmdOutput(args []string) error {
-	if _, err := laneEnv("output"); err != nil {
-		return err
-	}
-	if len(args) != 2 {
-		return usagef("usage: swim output KEY VALUE")
-	}
-	dir := os.Getenv("SWIM_OUT")
-	if dir == "" {
-		return fmt.Errorf("swim output: SWIM_OUT is unset (a round started by an older swim?)")
-	}
-	// A value is kept in .swim/out/ (and hashed in the chain): masked, like
-	// everything else swim writes. Files a lane writes to $SWIM_OUT itself
-	// are its own.
-	value := args[1]
-	if _, cfg, err := repoNoMigrate(); err == nil {
-		value = cfg.Masker(os.Environ()).String(value)
-	}
-	return outputs.SetValue(dir, args[0], value)
-}
-
-// swim input N|JOB NAME: print the path of an output (or a small value) of
-// a round this lane depends on: lane N's round this run waited on, or the
-// exact round of job JOB. Only lanes and jobs in this round's After: (or
-// config deps) may be read. What was read, and its hash, is recorded for
-// the chain. A failure is recorded as FAIL and exits 1.
-func cmdInput(args []string) error {
-	ns, err := laneEnv("input")
-	if err != nil {
-		return err
-	}
-	if len(args) != 2 {
-		return usagef("usage: swim input N|JOB NAME")
-	}
-	ref, name := args[0], strings.TrimSuffix(args[1], "/")
-	root, cfg, n, err := laneCtx(ns)
-	if err != nil {
-		return err
-	}
-	fail := func(format string, a ...any) error {
-		why := fmt.Sprintf(format, a...)
-		cmdMark([]string{ns, logparse.Fail, "input " + ref + " " + name, why})
-		return exitError{1}
-	}
-	info, _ := lane.ReadScript(root, n)
-	job, run, sums, err := inputRound(root, cfg, n, info, ref)
-	if err != nil {
-		return fail("%v", err)
-	}
-	dir := outputs.Dir(root, job, run)
-	var path, sum, value string
-	isValue := false
-	if s, ok := sums[outputs.ValuePrefix+name]; ok && outputs.ValidKey(name) {
-		v, ok := outputs.Value(dir, name)
-		if !ok {
-			return fail("its value %s is gone from %s", name, rel(root, dir))
-		}
-		isValue, value, sum = true, v, s
-		if got := chain.Hash([]byte(v)); got != s {
-			return fail("value %s changed after the round recorded it", name)
-		}
-	} else if _, ok := sums[name]; ok {
-		path = filepath.Join(dir, name)
-		got, _, _, err := outputs.Hash(path)
-		if err != nil {
-			return fail("%s is gone from %s", name, rel(root, dir))
-		}
-		sum = got
-	} else {
-		var names []string
-		for k := range sums {
-			names = append(names, k)
-		}
-		sort.Strings(names)
-		return fail("that round declared no output %s (its outputs: %s)", name, or(strings.Join(names, ", "), "none"))
-	}
-	if out := os.Getenv("SWIM_OUT"); out != "" {
-		outputs.AddInput(out, outputs.Input{Key: ref + ":" + name, Sum: sum, Round: job + " " + run})
-	}
-	if isValue {
-		fmt.Print(value)
-		return nil
-	}
-	fmt.Println(path)
-	return nil
-}
-
-// inputRound finds the round lane n may read ref's outputs from: lane ref's
-// last round (which must have passed), or job ref's latest passed round.
-// ref must be one of the round's dependencies.
-func inputRound(root string, cfg *config.Config, n int, info lane.Info, ref string) (job, run string, sums map[string]string, err error) {
-	st, _ := status.Load(root)
-	if k, numErr := strconv.Atoi(ref); numErr == nil {
-		dep := slices.Contains(cfg.DepsOf(n), k)
-		for _, a := range info.After {
-			dep = dep || a == ref
-		}
-		if !dep {
-			return "", "", nil, fmt.Errorf("swim %d is not in this round's After: (or config deps); only dependencies' outputs can be read", k)
-		}
-		var l *status.Lane
-		if st != nil {
-			l = st.Get(k)
-		}
-		if l == nil || l.State != status.Passed {
-			return "", "", nil, fmt.Errorf("swim %d's last round hasn't passed", k)
-		}
-		return l.Job, l.Run, l.Outputs, nil
-	}
-	dep := false
-	for _, a := range info.After {
-		dep = dep || lane.MatchJob(a, ref) || lane.MatchJob(ref, a)
-	}
-	if !dep {
-		return "", "", nil, fmt.Errorf("job %s is not in this round's After:; only dependencies' outputs can be read", ref)
-	}
-	if st != nil {
-		for _, l := range st.Lanes {
-			if lane.MatchJob(l.Job, ref) && l.State == status.Passed && l.Outputs != nil {
-				return l.Job, l.Run, l.Outputs, nil
-			}
-		}
-	}
-	links, _ := chain.Read(root)
-	for i := len(links) - 1; i >= 0; i-- {
-		e := links[i]
-		if e.Type == "round" && lane.MatchJob(e.Job, ref) && e.Result == status.Passed {
-			return e.Job, e.Run, e.Outputs, nil
-		}
-	}
-	return "", "", nil, fmt.Errorf("no passed round of job %s found", ref)
-}

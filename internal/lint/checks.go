@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/help"
@@ -631,7 +630,7 @@ var (
 
 // talk are the commands that only say something: a destructive word in
 // their arguments is prose.
-var talk = map[string]bool{"echo": true, "printf": true, "stop": true, "drift": true, "confirm": true, "guard": true, ":": true, "msg": true, "note": true}
+var talk = map[string]bool{"echo": true, "printf": true, "confirm": true, "guard": true, ":": true, "note": true}
 
 // stepCommand is the command a step runs: run/gate/snapshot
 // [options] "<label>" cmd... gives cmd...; any other command is itself.
@@ -986,11 +985,6 @@ func checkEnv(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
-var (
-	secretOutputRE = regexp.MustCompile(`(?i)(^|/|[._-])(\.?env|secrets?|credentials?|passwords?|tokens?|id_rsa|id_ed25519|.*\.pem|.*\.key)($|[._/-])`)
-	inputUseRE     = regexp.MustCompile(`(?:^|[\s(;&|$])input\s+([0-9]+)\s`)
-)
-
 // checkFailSyntax: a round with Fail: must declare script syntax 3, or an
 // older swim would run it soft.
 func checkFailSyntax(c *Context, s *Script) []finding.Finding {
@@ -999,61 +993,6 @@ func checkFailSyntax(c *Context, s *Script) []finding.Finding {
 	}
 	return []finding.Finding{f(finding.Error, "fail", -1, "change the syntax line to `# swim: syntax 3`",
 		"uses Fail: but declares syntax %d: an older swim would run the round without it", s.Info.Syntax)}
-}
-
-// checkOutputs: output files aren't masked, so a name that suggests secrets is
-// worth a second look.
-func checkOutputs(c *Context, s *Script) []finding.Finding {
-	var out []finding.Finding
-	for _, name := range s.Info.Outputs {
-		if secretOutputRE.MatchString(name) {
-			out = append(out, f(finding.Warn, "outputs", s.headerLine("Outputs"), "never put secret values in outputs: output files aren't masked",
-				"output %s looks like it could hold secrets", name))
-		}
-	}
-	return out
-}
-
-// checkInputDeps: input N reads lane N's outputs only if N is a dependency.
-func checkInputDeps(c *Context, s *Script) []finding.Finding {
-	deps := map[string]bool{}
-	for _, a := range s.Info.After {
-		deps[a] = true
-	}
-	if c.Cfg != nil {
-		for _, d := range c.Cfg.DepsOf(s.N) {
-			deps[strconv.Itoa(d)] = true
-		}
-	}
-	var out []finding.Finding
-	report := func(i int, n string) {
-		if !deps[n] {
-			out = append(out, f(finding.Error, "input-dep", i, "add "+n+" to the round's After:",
-				"input %s reads swim %s's outputs, but swim %s isn't in After: (or config deps)", n, n, n))
-		}
-	}
-	if s.bash() {
-		// input N NAME, or swim input N NAME: a command, never quoted text.
-		for _, lc := range s.v.commands() {
-			w := lc.Words
-			if len(w) > 0 && isSwim(w[0]) {
-				w = w[1:]
-			}
-			if len(w) > 2 && w[0].Text == "input" && !w[0].Quoted && chars.Word(w[1].Text, chars.Digit, chars.Digit) {
-				report(lc.Line, w[1].Text)
-			}
-		}
-		return out
-	}
-	for i, line := range s.v.raw {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		for _, m := range inputUseRE.FindAllStringSubmatch(line+" ", -1) {
-			report(i, m[1])
-		}
-	}
-	return out
 }
 
 // changeLine is the line of the script's first `stage change` (or
@@ -1184,37 +1123,6 @@ func checkSource(c *Context, s *Script) []finding.Finding {
 	}
 	return out
 }
-
-// checkObserve: Observe: probes run when a guard is approved and again just
-// before it returns, so they must only read. A probe that looks like it
-// changes something, or is a blocked command, is flagged.
-func checkObserve(c *Context, s *Script) []finding.Finding {
-	var out []finding.Finding
-	line := s.headerLine("Observe")
-	for _, p := range s.Info.Observe {
-		if p.Cmd == "" {
-			continue
-		}
-		i := line
-		if p.Line > 0 {
-			i = p.Line - 1
-		}
-		if hits := policy.ScanScript(p.Cmd, c.Cfg.Blocked()); len(hits) > 0 {
-			out = append(out, f(finding.Error, "observe", i, "a probe only reads: remove it",
-				"Observe: %s runs %q, a blocked command", p.Name, hits[0].Pattern))
-			continue
-		}
-		if m := applyRE.FindString(p.Cmd); m != "" || destructiveRE.MatchString(p.Cmd) || observeWriteRE.MatchString(p.Cmd) {
-			out = append(out, f(finding.Warn, "observe", i, "a probe runs at approval and again before the guarded step: make it read-only",
-				"Observe: %s looks like it changes something (%s)", p.Name, p.Cmd))
-		}
-	}
-	return out
-}
-
-// observeWriteRE is a probe that writes: a redirect into a file, or a
-// command that sends or posts something.
-var observeWriteRE = regexp.MustCompile(`(?:^|[^0-9&<>])>>?\s*[^&\s]|(?:^|[\s;&|(])(?:curl\s.*-X\s*(?:POST|PUT|DELETE|PATCH)|mail|sendmail|tee|touch|mkdir|mv|cp)(?:$|[\s;&|)])`)
 
 // firstLane is the lowest lane number with a script being linted.
 func firstLane(c *Context) int {

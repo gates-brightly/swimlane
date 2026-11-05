@@ -13,7 +13,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
-	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
@@ -143,8 +142,7 @@ func (a *runAuthority) laneEntry(o *Options, c approval.Caller, e chain.Entry) (
 	}
 	r := chain.Entry{Type: e.Type, Run: or(c.Run, e.Run), Lane: c.Lane, Job: or(c.Job, e.Job), Round: e.Round,
 		Script: e.Script, Manifest: or(c.Manifest, e.Manifest), Result: e.Result, Exit: e.Exit, Log: e.Log,
-		Approvals: e.Approvals, AutoApproved: e.AutoApproved, EnvSHA256: e.EnvSHA256, Handlers: e.Handlers,
-		Outputs: e.Outputs, Inputs: e.Inputs, InputRounds: e.InputRounds}
+		Approvals: e.Approvals, AutoApproved: e.AutoApproved, EnvSHA256: e.EnvSHA256, Handlers: e.Handlers}
 	return o.record(r)
 }
 
@@ -204,14 +202,10 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	if m != nil {
 		entry.Script, entry.Manifest = m.ScriptSHA, m.SHA256
 	}
-	// Observe: facts are read now, with the decision, and the lane checks
-	// them again before the guarded step.
-	req.Observed = manifest.Observe(o.Root, probesFor(o, req.Lane), laneEnv(o, req.Lane))
-	entry.Observed = req.Observed
 	grant := func(resp approval.Response, r authority.Result) approval.Response {
 		e := entry
 		e.Method, e.Statement, e.Approvers = r.Entry.Method, r.Entry.Statement, r.Entry.Approvers
-		resp.Approved, resp.How, resp.Job, resp.Observed = true, r.How, req.Job, req.Observed
+		resp.Approved, resp.How, resp.Job = true, r.How, req.Job
 		resp.Grant = &approval.Grant{Entry: e, History: r.History}
 		return resp
 	}
@@ -231,7 +225,7 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 		return approval.Response{Dry: true, Job: req.Job}
 	}
 	resp := ask(req, cancel)
-	resp.Job, resp.Observed = req.Job, req.Observed
+	resp.Job = req.Job
 	if !resp.Approved {
 		return resp
 	}

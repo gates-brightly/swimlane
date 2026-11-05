@@ -10,7 +10,7 @@ const DocSchema = "swim.log/v1"
 
 // ResultDoc is one result line of a round, with its step's block.
 type ResultDoc struct {
-	Result   string   `yaml:"result" json:"result"` // PASS | FAIL | BLOCKED | SKIP | DRIFT | APPROVED | STOP | WARN
+	Result   string   `yaml:"result" json:"result"` // PASS | FAIL | BLOCKED | SKIP | APPROVED | STOP | WARN
 	Label    string   `yaml:"label" json:"label"`
 	Detail   string   `yaml:"detail,omitempty" json:"detail,omitempty"`
 	Stage    string   `yaml:"stage" json:"stage"`
@@ -22,15 +22,13 @@ type ResultDoc struct {
 	Command  string   `yaml:"command,omitempty" json:"command,omitempty"`
 	Output   []string `yaml:"output,omitempty" json:"output,omitempty"`
 	Saved    string   `yaml:"saved,omitempty" json:"saved,omitempty"`
-	Messages []string `yaml:"messages,omitempty" json:"messages,omitempty"` // status messages posted during the step (swim msg)
 }
 
 // Counts are a round's result totals.
 type Counts struct {
-	Pass  int `yaml:"pass" json:"pass"`
-	Fail  int `yaml:"fail" json:"fail"`
-	Skip  int `yaml:"skip" json:"skip"`
-	Drift int `yaml:"drift" json:"drift"`
+	Pass int `yaml:"pass" json:"pass"`
+	Fail int `yaml:"fail" json:"fail"`
+	Skip int `yaml:"skip" json:"skip"`
 }
 
 // Doc is one round as data.
@@ -71,7 +69,7 @@ func detailExit(detail string) (int, bool) {
 // Doc renders the round as data for lane n.
 func (r *Round) Doc(n int) Doc {
 	d := Doc{Schema: DocSchema, Lane: n, Job: r.Job, Round: r.Title, StartedAt: r.StartedAt, Run: r.Run, Context: r.Context,
-		Finished: r.Finished, Duration: r.Duration, Counts: Counts{r.Pass, r.Fail, r.Skip, r.Drift},
+		Finished: r.Finished, Duration: r.Duration, Counts: Counts{r.Pass, r.Fail, r.Skip},
 		Stages: map[string]string{}, Results: []ResultDoc{}, Failed: []string{}}
 	switch {
 	case !r.Finished:
@@ -100,7 +98,7 @@ func (r *Round) Doc(n int) Doc {
 	}
 	for _, res := range r.Results {
 		rd := ResultDoc{Result: res.Kind, Label: res.Label, Detail: res.Detail, Stage: res.Stage, Handler: res.Handler, Step: res.Step,
-			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved, Messages: res.Messages}
+			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved}
 		if res.Step {
 			dur := res.Dur
 			rd.Duration = &dur

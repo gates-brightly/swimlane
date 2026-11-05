@@ -157,5 +157,5 @@ Rounds that build on each other: read the history first (`swim log N
 --all`, `swim log <job>`, `swim history N`, `swim log`), archive with names
 that can be found (`--as orders-r3-apply-failed`), keep a thread of `swim
 note`s with a fixed prefix, put expensive setup in its own lane that later
-rounds depend on by job (`# After: <job>`, `# Outputs:` and `input`), and
+rounds depend on by job (`# After: <job>`), and
 re-read deployed state every round.

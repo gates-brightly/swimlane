@@ -41,7 +41,6 @@ func TestWrappedLaneInLaneCommands(t *testing.T) {
 swim stage check
 swim run "first" -- echo one
 if swim guard ALLOW_X "do x"; then swim run "x" -- echo did-x; fi
-swim drift "config differs"
 swim gate "must pass" -- false
 touch "$SWIM_ROOT/after-gate"
 `, 0o755)
@@ -55,8 +54,8 @@ touch "$SWIM_ROOT/after-gate"
 	}
 	log := r.log(1)
 	contains(t, "log", log, "script: lane.1.sh", "-- stage check", "PASS  first", "APPROVED  do x (ALLOW_X=1)", "PASS  x",
-		"DRIFT  config differs", "FAIL  must pass (exit 1)", "STOP  gate failed: must pass", "== END FAIL")
-	if l := r.status().Get(1); l.State != "failed" || l.Pass != 2 || l.Fail != 1 || l.Drift != 1 || l.Script != "lane.1.sh" {
+		"FAIL  must pass (exit 1)", "STOP  gate failed: must pass", "== END FAIL")
+	if l := r.status().Get(1); l.State != "failed" || l.Pass != 2 || l.Fail != 1 || l.Script != "lane.1.sh" {
 		t.Errorf("status: %+v", l)
 	}
 	// Outside a lane, the in-lane commands say how to use them.

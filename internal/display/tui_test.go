@@ -249,7 +249,7 @@ func TestTUIFrameGolden(t *testing.T) {
 	log := "# swim lane log | syntax 2 | swim 6\n\n== ROUND 2026-10-09T11:00:00Z  job=old  Deploy (yesterday)\n  PASS  old step\n" +
 		"\n== ROUND 2026-10-09T11:59:30Z  job=6e1f  Deploy\n   run: r-1 | script: lane.6.sh\n\n-- stage check  11:59:30\n" +
 		"  FAIL  deploy (exit 2)                             30.0s  12:00:00\n        $ ./deploy.sh\n        | Error: nope\n" +
-		"\n== END FAIL  pass=0 fail=1 skip=0 drift=0  exit=2  30.0s  2026-10-09T12:00:00Z\n"
+		"\n== END FAIL  pass=0 fail=1 skip=0  exit=2  30.0s  2026-10-09T12:00:00Z\n"
 	os.WriteFile(m.logPath(6), []byte(log), 0o644)
 	for i := 1; i <= 4; i++ {
 		m.addLine(i%2+1, "", fmt.Sprintf("output line %d from a lane that has quite a lot to say about what it is doing", i))

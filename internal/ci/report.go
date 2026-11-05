@@ -164,8 +164,8 @@ func writeLines(w io.Writer, r LaneReport) {
 	}
 }
 
-// Annotate surfaces failures (error), drift and guards approved without
-// a prompt (warning), dry-run skips (notice) and, as one notice, the lanes
+// Annotate surfaces failures (error), guards approved without a prompt
+// (warning), dry-run skips (notice) and, as one notice, the lanes
 // skipped because of others.
 func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 	skipped := map[string][]string{}
@@ -194,8 +194,6 @@ func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 			switch res.Kind {
 			case logparse.Fail, logparse.Blocked, logparse.Stop:
 				p.Annotate(w, Error, title, text+outputTail(res.Output))
-			case logparse.Drift:
-				p.Annotate(w, Warning, title, text)
 			case logparse.Skip:
 				if strings.HasPrefix(res.Detail, "dry run:") {
 					p.Annotate(w, Notice, title, res.Label+": "+res.Detail)
@@ -238,13 +236,13 @@ func Markdown(w io.Writer, reps []LaneReport, run, commit string, code int) {
 		fmt.Fprintf(w, " · commit `%s`", short(commit))
 	}
 	fmt.Fprintf(w, " · %d lanes\n\n", len(reps))
-	fmt.Fprintln(w, "| lane | job | result | pass | fail | skip | drift | time | failed steps |")
-	fmt.Fprintln(w, "|---|---|---|---:|---:|---:|---:|---:|---|")
+	fmt.Fprintln(w, "| lane | job | result | pass | fail | skip | time | failed steps |")
+	fmt.Fprintln(w, "|---|---|---|---:|---:|---:|---:|---|")
 	for _, r := range reps {
-		var pass, fail, skip, drift int
+		var pass, fail, skip int
 		var failed []string
 		if r.Round != nil {
-			pass, fail, skip, drift = r.Round.Pass, r.Round.Fail, r.Round.Skip, r.Round.Drift
+			pass, fail, skip = r.Round.Pass, r.Round.Fail, r.Round.Skip
 			for _, f := range r.Round.Failed() {
 				failed = append(failed, mdCell(f.Text()))
 			}
@@ -255,8 +253,8 @@ func Markdown(w io.Writer, reps []LaneReport, run, commit string, code int) {
 		if r.Round != nil {
 			t = dur(r.Duration)
 		}
-		fmt.Fprintf(w, "| %s | `%s` | %s | %d | %d | %d | %d | %s | %s |\n", r.name(), lane.ShortJob(r.Job), word(r.State),
-			pass, fail, skip, drift, t, strings.Join(failed, "<br>"))
+		fmt.Fprintf(w, "| %s | `%s` | %s | %d | %d | %d | %s | %s |\n", r.name(), lane.ShortJob(r.Job), word(r.State),
+			pass, fail, skip, t, strings.Join(failed, "<br>"))
 	}
 	var unprompted []string
 	for _, r := range reps {
@@ -342,7 +340,7 @@ func JUnit(w io.Writer, reps []LaneReport) error {
 					s.Skipped++
 				case logparse.Pass, logparse.Approved:
 				default:
-					continue // DRIFT and WARN are annotations, not tests
+					continue // WARN is an annotation, not a test
 				}
 				s.Cases = append(s.Cases, c)
 			}

@@ -208,16 +208,13 @@ func configEditRows(path, root string) []display.PickRow {
 
 // configShown is a value as swim config shows it, and as its field starts
 // out (config takes it back): durations without their zero tails (2h, not
-// 2h0m0s; outputs_keep in days, 14d), paths in the home directory from ~,
+// 2h0m0s), paths in the home directory from ~,
 // and "—" for none.
 func configShown(key, v string) string {
 	if v == "" {
 		return "—"
 	}
 	if d, err := time.ParseDuration(v); err == nil && d > 0 {
-		if key == "outputs_keep" && d%(24*time.Hour) == 0 {
-			return fmt.Sprintf("%dd", d/(24*time.Hour))
-		}
 		v = d.String()
 		if strings.HasSuffix(v, "m0s") { // 2m0s: 2m
 			v = v[:len(v)-2]
