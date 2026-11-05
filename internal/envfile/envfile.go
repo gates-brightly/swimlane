@@ -1,10 +1,12 @@
 // Package envfile reads the env files that give lanes their environment:
 // declarative KEY=VALUE files, parsed and never sourced, in two files.
 //
-//	~/.config/swim/env.swim   general keys, then [repo PATH] sections
+//	~/.config/swim/env.swim   general keys, then [repo NAME] and [repo NAME/BRANCH] sections
 //	<repo>/.env.swim          [lane N] sections only (git-ignored)
 //
-// Precedence, highest first: the shell, then lane, repo, general.
+// Precedence, highest first: the shell, then lane, the repo's branch, the
+// repo, general. NAME is the repo's name (config.RepoName), as config.yml's
+// repos: keys it, so every worktree of a repo shares its sections.
 // No key may be a guard flag: approvals never come from a file.
 package envfile
 
@@ -41,7 +43,7 @@ type Entry struct {
 type File struct {
 	Path    string
 	General []Entry
-	Repos   []Section // [repo PATH], in file order
+	Repos   []Section // [repo NAME] and [repo NAME/BRANCH], in file order
 	Lanes   map[int][]Entry
 	// Dups are keys set twice in one section (the last wins).
 	Dups []Dup
@@ -51,17 +53,17 @@ type File struct {
 type Dup struct {
 	Key         string
 	Line, First int
-	Section     string // "general", "repo PATH", "lane N"
+	Section     string // "general", "repo NAME", "lane N"
 }
 
-// Section is a [repo PATH] section.
+// Section is a [repo NAME] or [repo NAME/BRANCH] section.
 type Section struct {
-	Path    string
+	Key     string // NAME or NAME/BRANCH, as written
 	Entries []Entry
 }
 
 // Parse reads an env file. user is the operator's file (general keys and
-// [repo PATH] sections); otherwise it's a repo's .env.swim ([lane N]
+// [repo NAME] sections); otherwise it's a repo's .env.swim ([lane N]
 // sections only). A line that doesn't parse is an error naming the file
 // and line.
 func Parse(path string, data []byte, user bool) (*File, error) {
@@ -83,7 +85,7 @@ func Parse(path string, data []byte, user bool) (*File, error) {
 		if m := section(line); m != nil {
 			switch {
 			case m[1] == "repo" && user:
-				f.Repos = append(f.Repos, Section{Path: m[2]})
+				f.Repos = append(f.Repos, Section{Key: m[2]})
 				general, repoSec = false, len(f.Repos)-1
 			case m[1] == "lane" && !user:
 				k, err := strconv.Atoi(m[2])
@@ -99,7 +101,7 @@ func Parse(path string, data []byte, user bool) (*File, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "[") {
-			return nil, bad(n, "%q: sections are [repo PATH] (in %s) or [lane N] (in %s)", line, UserPath(), RepoFile)
+			return nil, bad(n, "%q: sections are [repo NAME] (in %s) or [lane N] (in %s)", line, UserPath(), RepoFile)
 		}
 		if !general && repoSec < 0 && laneSec == 0 {
 			return nil, bad(n, "a key before any [lane N] section: this file holds lane sections only (general and repo keys go in %s)", UserPath())
@@ -122,7 +124,7 @@ func Parse(path string, data []byte, user bool) (*File, error) {
 		case laneSec > 0:
 			section = fmt.Sprintf("lane %d", laneSec)
 		case repoSec >= 0:
-			section = "repo " + f.Repos[repoSec].Path
+			section = "repo " + f.Repos[repoSec].Key
 		}
 		if first, dup := seen[section+"\x00"+k]; dup {
 			f.Dups = append(f.Dups, Dup{Key: k, Line: n, First: first, Section: section})
@@ -165,7 +167,7 @@ func value(v string) (string, error) {
 // Var is one resolved key: its value and where it came from.
 type Var struct {
 	Key, Value string
-	Scope      string // "lane 2", "repo", "general"
+	Scope      string // "lane 2", "repo/branch", "repo", "general"
 	File       string // the file, as people read it: .env.swim, ~/.config/swim/env.swim
 	Line       int
 }
@@ -202,10 +204,17 @@ func Resolve(root string, n int) (*Resolved, error) {
 	if user != nil {
 		add("general", short, short, user.General)
 	}
-	if user != nil {
-		for _, sec := range user.Repos {
-			if config.SameRepo(sec.Path, root) {
-				add("repo", short, short+"[repo]", sec.Entries)
+	if user != nil && len(user.Repos) > 0 {
+		name := config.RepoName(root)
+		keys := [][2]string{{name, "repo"}}
+		if br := config.RepoBranch(root); br != "" {
+			keys = append(keys, [2]string{name + "/" + br, "repo/branch"})
+		}
+		for _, k := range keys {
+			for _, sec := range user.Repos {
+				if sec.Key == k[0] {
+					add(k[1], short, short+"["+k[1]+"]", sec.Entries)
+				}
 			}
 		}
 	}
@@ -253,6 +262,28 @@ func (r *Resolved) SHA256() string {
 		return ""
 	}
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(r.Env(), "\n")+"\n")))
+}
+
+// PathSections are the [repo ...] sections of the operator's env file
+// whose key is a path (/abs/path, ~/src/x), with their lines: swim keyed
+// them by the repo's directory once; it keys them by name now, so these
+// match nothing. A missing or unparsable file has none.
+func PathSections() []string {
+	data, err := os.ReadFile(UserPath())
+	if err != nil {
+		return nil
+	}
+	f, err := Parse(UserPath(), data, true)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, sec := range f.Repos {
+		if filepath.IsAbs(sec.Key) || sec.Key == "~" || strings.HasPrefix(sec.Key, "~/") {
+			out = append(out, sec.Key)
+		}
+	}
+	return out
 }
 
 // GuardConflict is an env file key that is a guard flag.
@@ -321,7 +352,7 @@ func Duplicates(root string) []string {
 	return out
 }
 
-// section reads a "[repo PATH]" or "[lane N]" line: the kind and its
+// section reads a "[repo NAME]" or "[lane N]" line: the kind and its
 // argument, or nil.
 func section(line string) []string {
 	body, ok := chars.Between(line, "[", "]")

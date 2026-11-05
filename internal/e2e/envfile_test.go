@@ -8,13 +8,13 @@ import (
 )
 
 // envFiles writes the operator's env.swim (general keys and this repo's
-// section) and the repo's .env.swim (lane sections).
+// section: REPO is its name) and the repo's .env.swim (lane sections).
 func envFiles(t *testing.T, r *repo, user, laneFile string) {
 	t.Helper()
 	dir := filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim")
 	os.MkdirAll(dir, 0o755)
 	if user != "" {
-		os.WriteFile(filepath.Join(dir, "env.swim"), []byte(strings.ReplaceAll(user, "REPO", r.root)), 0o644)
+		os.WriteFile(filepath.Join(dir, "env.swim"), []byte(strings.ReplaceAll(user, "REPO", filepath.Base(r.root))), 0o644)
 	}
 	if laneFile != "" {
 		r.write(".env.swim", laneFile, 0o600)

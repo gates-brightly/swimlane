@@ -101,7 +101,7 @@ var Checks = []Check{
 	{"swim-bin", false, "$SWIM_BIN, or the swim lanes find on PATH, isn't this swim", checkSwimBin},
 	{"config-parse", false, "the config file doesn't load", checkConfigParse},
 	{"config-key", false, "config.yml sets a key swim doesn't read (a typo, or a removed setting): it's ignored", checkConfigKeys},
-	{"config-repo", false, "a repos: key that's a path (repos are keyed by name now)", checkConfigRepo},
+	{"config-repo", false, "a config.yml repos: key or an env.swim [repo] section that's a path (repos are keyed by name now)", checkConfigRepo},
 	{"git", false, "git missing, or not a git repo", checkGit},
 	{"bash", false, "bash missing, or older than 4 while a lane uses a bash 4 feature (named by lane and line)", checkBash},
 	{"gnu-only", false, "a lane uses a GNU-only tool form (sed -i, grep -P, date -d, ...) this machine's tools don't run (macOS/BSD)", checkGNUOnly},
@@ -374,8 +374,9 @@ func checkConfigKeys(o *Options) []finding.Finding {
 	return out
 }
 
-// checkConfigRepo points out repos: keys that are paths, as swim keyed
-// repos once: they match nothing now.
+// checkConfigRepo points out config.yml repos: keys and env.swim [repo]
+// sections that are paths, as swim keyed repos once: they match nothing
+// now.
 func checkConfigRepo(o *Options) []finding.Finding {
 	if o.CfgErr != nil {
 		return nil
@@ -392,6 +393,10 @@ func checkConfigRepo(o *Options) []finding.Finding {
 	for _, k := range keys {
 		out = append(out, fd(finding.Warn, "config-repo", path, "rename the key to the repo's name (swim config shows it)",
 			"repos: key %s is a path; key by repo name (e.g. %s)", k, config.RepoName(k)))
+	}
+	for _, k := range envfile.PathSections() {
+		out = append(out, fd(finding.Warn, "config-repo", envfile.UserPath(), "rename the section to the repo's name (swim config shows it)",
+			"[repo %s] is a path; key by repo name (e.g. [repo %s])", k, config.RepoName(k)))
 	}
 	return out
 }

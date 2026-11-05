@@ -218,28 +218,6 @@ func PathKeys(path string) ([]string, error) {
 	return out, nil
 }
 
-// SameRepo reports whether path (an env.swim [repo PATH] section) names
-// root, after ~ expansion, cleaning and resolving symlinks.
-func SameRepo(key, root string) bool {
-	canon := func(p string) string {
-		p = filepath.Clean(expandHome(p))
-		if r, err := filepath.EvalSymlinks(p); err == nil {
-			p = r
-		}
-		return p
-	}
-	return canon(key) == canon(root)
-}
-
-func expandHome(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, strings.TrimPrefix(p, "~"))
-		}
-	}
-	return p
-}
-
 // merge lays r over the settings so far: a key r sets wins, except the
 // lists that add up and runners, which win per extension.
 func (c *Config) merge(r Settings) {

@@ -48,6 +48,28 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Changed
 
+- **Config lives in your home directory alone, keyed by repo name and
+  branch; `swim.yml` is gone.** `~/.config/swim/config.yml` applies in
+  layers, later winning key by key: swim's default, `defaults:`,
+  `repos.NAME`, then `repos.NAME/BRANCH`. NAME is the repo's name, the
+  last part of its `origin` URL without `.git` (`swimlane`), or its
+  toplevel directory's name with no origin; BRANCH is the checked-out
+  branch, matched exactly (none on a detached HEAD). Every worktree of a
+  repo now gets its config (a path key missed them). `swim config` shows
+  the layer each value comes from (`term_grace: 30s # repo`); `swim config
+  KEY VALUE --repo` sets it in `repos.NAME` and `--branch` in
+  `repos.NAME/BRANCH`, and the screen edits either with the same flags.
+  `swim init` no longer writes a section for the repo. A repo's
+  `swim.yml` is no longer read (a file left there is ignored), nor is its
+  `env:`: a shared non-secret value goes in the lane script or the CI
+  job's `env:`. With nothing committed to read, `swim ci` runs on swim's
+  defaults, and a lane's manifest pins no policy keys: its
+  `manifest_sha256` is what it was for a repo whose `swim.yml` set none.
+  env.swim's `[repo PATH]` sections are keyed the same way, `[repo NAME]`
+  and `[repo NAME/BRANCH]` (the branch's over the repo's). `swim
+  doctor`'s `config-repo` check now names a `repos:` key or `[repo]`
+  section still keyed by a path.
+
 - **`swim doctor` checks what running lanes on your machine needs, and
   cleans up what swim left behind.** New: `bash` (on a Mac, bash 3.2 is
   named only where a lane uses a bash 4 feature, by lane and line),
@@ -63,8 +85,8 @@ history stays here, since `swim changelog --since` reads it.
   `path-multiple` (`swim-bin` says when the swim that runs isn't this
   one), `lanes-setting` and `removed-setting`. The toolchain check's limit
   is 10s, and the report ends `0 errors, 0 warnings` when all is well.
-- **`lanes:` is no longer read.** In `swim.yml` it fails to load, like any
-  unknown key; in `config.yml` it's ignored, and `swim doctor` names it.
+- **`lanes:` is no longer read.** In `config.yml` it's ignored, like any
+  unknown key, and `swim doctor` names it.
 
 - **A failed step says why in one line.** When a step fails, swim picks the
   line of its output that best says why (a go test `--- FAIL: TestX:
@@ -114,8 +136,8 @@ history stays here, since `swim changelog --since` reads it.
   `$SWIM_OUT` and `.swim/out/` are no longer made (delete `.swim/out/` if
   you like), and the lint checks `outputs`, `input-dep` and `observe` and
   the doctor check `outputs-old` are gone. `msg_log_interval` and
-  `outputs_keep` are no longer settings (a swim.yml that sets one fails to
-  load); `swim doctor --fix` prunes staged copies older than 14 days. A
+  `outputs_keep` are no longer settings (config.yml ignores them);
+  `swim doctor --fix` prunes staged copies older than 14 days. A
   `# Observe:` or `# Outputs:` line is now an ordinary header line that
   does nothing (drop it), and a sidecar's `observe:` or `outputs:` fails
   to load. Older logs with DRIFT and MSG lines still read, and older chain
@@ -127,8 +149,8 @@ history stays here, since `swim changelog --since` reads it.
   `--yes` ("approve every guard") is gone from `swim run`, `swim all`,
   `swim queue` and `swim watch`, and so is the `approvals:` setting
   (`flags`: never ask): `--no-prompt` answers every guard no, per run, and
-  CI or no terminal never asks. `approvals:` in swim.yml now fails to load
-  (remove it); in config.yml it is ignored. `status.yml` no longer writes
+  CI or no terminal never asks. `approvals:` in config.yml is ignored
+  (remove it). `status.yml` no longer writes
   `auto_approved`/`auto_via`, nor a consumed batch `approved_by`. A batch
   an older swim queued with `-y` runs with only its `--approve` flags; its
   other guards are asked on the swimmer's screen, or dry-run. Older chain
@@ -155,44 +177,24 @@ history stays here, since `swim changelog --since` reads it.
 - **Config `deps:` is gone: `# After:` is the one way to order lanes.**
   `swim init` no longer writes `deps: {}` into `~/.config/swim/config.yml`;
   a `deps:` there is now ignored (delete it, and put each lane's
-  dependencies on its `# After:` line), and in `swim.yml` it fails to load.
+  dependencies on its `# After:` line).
 
 - **`--no-tui` is gone: `--plain` is the one flag for no live view.**
   On `swim run`, `swim all` and `swim watch`, `--plain` means plain lines
   and no screen, as it does when stdout isn't a terminal. The pinned panel
   without its keys is `SWIM_TUI=0`.
 
-### Changed
-
-- **Config lives in your home directory alone, keyed by repo name and
-  branch; `swim.yml` is gone.** `~/.config/swim/config.yml` applies in
-  layers, later winning key by key: swim's default, `defaults:`,
-  `repos.NAME`, then `repos.NAME/BRANCH`. NAME is the repo's name, the
-  last part of its `origin` URL without `.git` (`swimlane`), or its
-  toplevel directory's name with no origin; BRANCH is the checked-out
-  branch, matched exactly (none on a detached HEAD). Every worktree of a
-  repo now gets its config (a path key missed them). `swim config` shows
-  the layer each value comes from (`term_grace: 30s # repo`); `swim config
-  KEY VALUE --repo` sets it in `repos.NAME` and `--branch` in
-  `repos.NAME/BRANCH`, and the screen edits either with the same flags.
-  `swim init` no longer writes a section for the repo. A repo's
-  `swim.yml` is no longer read (a file left there is ignored), nor is its
-  `env:`: a shared non-secret value goes in the lane script or the CI
-  job's `env:`. With nothing committed to read, `swim ci` runs on swim's
-  defaults, and a lane's manifest pins no policy keys: its
-  `manifest_sha256` is what it was for a repo whose `swim.yml` set none.
-  `swim doctor`'s `config-repo` check now flags a `repos:` key that's a
-  path.
-
 ### Upgrading
 
-- **Rename each `repos:` key in `~/.config/swim/config.yml` from the
-  repo's path to its name** (`/Users/you/src/swimlane:` becomes
-  `swimlane:`; `swim config` prints the name, and `swim doctor` lists the
-  path keys left). A path key matches nothing now.
+- **Rename each `repos:` key in `~/.config/swim/config.yml`, and each
+  `[repo PATH]` section in `env.swim`, from the repo's path to its
+  name** (`/Users/you/src/swimlane:` becomes `swimlane:`, `[repo
+  ~/src/swimlane]` becomes `[repo swimlane]`; `swim config` prints the
+  name, and `swim doctor` lists the path keys left). A path key matches
+  nothing now.
 - **Move a repo's `swim.yml` settings into `repos.NAME`** of your
   config.yml, then delete the file. Its `env:` goes in the lane scripts
-  (or `[repo PATH]` in `env.swim`, for you alone), and its `runners:` in a
+  (or `[repo NAME]` in `env.swim`, for you alone), and its `runners:` in a
   `#!` line for CI. A batch queued with an older swim, for a repo whose
   `swim.yml` set a policy key (`blocked_commands`, `runners`, `signing`,
   `secret_env*`, `env`), is skipped as changed: queue it again.

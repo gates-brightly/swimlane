@@ -335,8 +335,8 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
 `,
 	"env": `swim env [N|JOB] [--yaml]
 
-  The environment env files give lane N (with no lane: the general and repo
-  keys), masked as the lane's logs show it, with where each key comes from
+  The environment env files give lane N (with no lane: the general keys and
+  this repo's [repo NAME] and [repo NAME/BRANCH] sections), masked as the lane's logs show it, with where each key comes from
   (file and line) and whether the shell overrides it. Exits 1 if a key is
   one of the lane's guard flags. --yaml: a swim.env/v1 document with the
   env_sha256 the round would record. See swim guide env.
@@ -774,7 +774,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     config-parse (error)      the config file doesn't load
     config-key (warn)         config.yml sets a key swim doesn't read (a
                               typo, a removed setting): named with its line
-    config-repo (warn)        a repos: key that's a path; key repos by name
+    config-repo (warn)        a config.yml repos: key or env.swim [repo]
+                              section that's a path; key repos by name
     git (error)               git missing, or not inside a git repo
     bash (error/warn)         no bash on PATH (error); bash older than 4
                               here while a lane uses a bash 4 feature: each

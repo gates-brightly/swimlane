@@ -202,12 +202,16 @@ func TestToolchain(t *testing.T) {
 // A repos: key that's a path (as swim keyed repos once) matches nothing:
 // doctor says to key it by name.
 func TestConfigRepoPathKey(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
+	os.WriteFile(filepath.Join(xdg, "swim", "env.swim"), []byte("[repo swimlane]\nA=1\n[repo /src/api]\nA=2\n"), 0o644)
 	o := opts(t.TempDir())
-	o.Cfg.Path = filepath.Join(t.TempDir(), "config.yml")
-	os.WriteFile(o.Cfg.Path, []byte("repos:\n  swimlane: {}\n  /src/web: {}\n"), 0o644)
+	o.Cfg.Path = filepath.Join(xdg, "swim", "config.yml")
+	os.WriteFile(o.Cfg.Path, []byte("repos:\n  swimlane: {}\n  swimlane/main: {}\n  /src/web: {}\n"), 0o644)
 	l := only(Run(o), "config-repo")
-	if len(l) != 1 || l[0].Message != "repos: key /src/web is a path; key by repo name (e.g. web)" {
-		t.Errorf("path key: %+v", l)
+	if len(l) != 2 || l[0].Message != "repos: key /src/web is a path; key by repo name (e.g. web)" || l[1].Message != "[repo /src/api] is a path; key by repo name (e.g. [repo api])" {
+		t.Errorf("path keys: %+v", l)
 	}
 	if k := only(Run(o), "config-key"); len(k) != 0 {
 		t.Errorf("repos keys counted as unknown: %+v", k)

@@ -341,6 +341,7 @@ func TestInitIsIdempotent(t *testing.T) {
 // Config is keyed by the repo's name (its origin URL's last part), so
 // every worktree of a repo shares repos.NAME; repos.NAME/BRANCH applies on
 // that branch alone; swim config says which layer each value comes from.
+// env.swim's [repo NAME] and [repo NAME/BRANCH] sections work the same way.
 func TestConfigByRepoName(t *testing.T) {
 	r := newRepo(t)
 	r.git("remote", "add", "origin", "git@github.com:me/shop.git")
@@ -374,6 +375,15 @@ func TestConfigByRepoName(t *testing.T) {
 	contains(t, "swim config", r.mustSwim("config"), "repo: shop", "branch: main",
 		"term_grace: 30s # repo\n", "interrupt: immediate # repo/branch\n", "signing: off # defaults\n", "claim_lease: 2h # default\n")
 	contains(t, "swim config in the worktree", in(wt, "config"), "repo: shop", "branch: feature # no repos.shop/feature section", "interrupt: graceful # default")
+
+	os.WriteFile(filepath.Join(envOf(r, "XDG_CONFIG_HOME"), "swim", "env.swim"), []byte("[repo shop]\nSTAGE=shop-stage\nTABLE=shop-table\n[repo shop/feature]\nTABLE=feature-table\n"), 0o644)
+	script := "#!/usr/bin/env bash\n# Round: env\nrun \"env\" true\n"
+	for _, dir := range []string{r.root, wt} {
+		os.WriteFile(filepath.Join(dir, "lane.1.sh"), []byte(script), 0o755)
+	}
+	contains(t, "swim env in the checkout", in(r.root, "env", "1"), "STAGE", "TABLE", "repo")
+	wtEnv := in(wt, "env", "1", "--yaml")
+	contains(t, "swim env in the worktree", wtEnv, "key: STAGE", "scope: repo\n", "key: TABLE", "scope: repo/branch")
 }
 
 func TestFullRunWithDependencies(t *testing.T) {
