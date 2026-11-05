@@ -7,9 +7,9 @@ dependencies first.
 ## Dependencies
 
 `# After: 2 3` (lanes, tasks or job ids) waits for those to pass in this
-run, and skips the round if one fails or is skipped. Config `deps:` adds
-ordering that holds every round. A dependency outside the run must already
-be satisfied, or the lane is skipped:
+run, and skips the round if one fails or is skipped. It is the only way to
+declare a dependency. A dependency outside the run must already be
+satisfied, or the lane is skipped:
 
 - a lane: its pending round passed (an archived or empty lane never blocks);
 - a job: it's that lane's last run, and passed.

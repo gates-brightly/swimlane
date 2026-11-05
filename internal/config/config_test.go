@@ -48,9 +48,7 @@ defaults:
 repos:
   /repo/a:
     lanes: 6
-    deps:
-      2: [1]
-      4: [2]
+    deps: {2: [1]} # removed: config.yml ignores it
   /repo/b:
     header_env: [AWS_PROFILE]
 `)
@@ -61,35 +59,12 @@ repos:
 	if a.Runtime != "node --version" || strings.Join(a.HeaderEnv, ",") != "STAGE" {
 		t.Fatalf("a = %+v", a.Settings)
 	}
-	if got := a.DepsOf(4); len(got) != 1 || got[0] != 2 {
-		t.Fatalf("DepsOf(4) = %v", got)
-	}
 	b, err := Load("/repo/b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(b.HeaderEnv, ",") != "AWS_PROFILE" || len(b.Deps) != 0 {
+	if strings.Join(b.HeaderEnv, ",") != "AWS_PROFILE" {
 		t.Fatalf("b = %+v", b.Settings)
-	}
-}
-
-func TestValidateRejectsCyclesAndRange(t *testing.T) {
-	cases := map[string]string{
-		"cycle": "repos:\n  /r:\n    deps: {1: [2], 2: [3], 3: [1]}\n",
-		"range": "repos:\n  /r:\n    deps: {2: [100]}\n",
-		"self":  "repos:\n  /r:\n    deps: {2: [2]}\n",
-	}
-	for name, body := range cases {
-		t.Run(name, func(t *testing.T) {
-			writeConfig(t, body)
-			_, err := Load("/r")
-			if err == nil {
-				t.Fatal("expected error")
-			}
-			if name == "cycle" && !strings.Contains(err.Error(), "cycle") {
-				t.Fatalf("err = %v", err)
-			}
-		})
 	}
 }
 
@@ -116,6 +91,9 @@ func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("config missing %q:\n%s", want, s)
 		}
+	}
+	if strings.Contains(s, "deps") {
+		t.Errorf("config has deps:\n%s", s)
 	}
 	c, err := Load("/repo/two")
 	if err != nil || !c.HasRepo {
@@ -153,7 +131,7 @@ defaults:
 repos:
   /repo/a:
     # keep me
-    deps: {2: [1]}
+    header_env: [STAGE]
 `)
 	if err := SetKey(p, "/repo/a", "interrupt", "immediate", false); err != nil {
 		t.Fatal(err)

@@ -150,7 +150,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
       The panel shows at most 15 lanes. With more, a "… N more" line counts
       the hidden ones; idle, done and passed lanes are hidden first, then
       waiting and failed ones, so running lanes stay visible.
-    - Dependencies come from each script's "# After:" line and config deps.
+    - Dependencies come from each script's "# After:" line.
       A lane starts when its dependencies in this run pass, and is skipped if
       one fails or is skipped, or if a dependency outside the run holds a
       round that hasn't passed. Cycles stop the run before it starts.
@@ -251,8 +251,9 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   "swim run" with no lane numbers. Rounds that already passed are shown as
   "done" and not run again; failed, interrupted, skipped and new rounds run.
   --rerun   run every pending round, including ones that already passed.
-  Every lane script counts, whatever its number. Dependencies ("# After:" lines and config deps), the live
-  view and its keys (--plain), guard flags and the summary all work as in "swim run".
+  Every lane script counts, whatever its number. Dependencies ("# After:"
+  lines), the live view and its keys (off with --plain), guard flags and
+  the summary all work as in "swim run".
   Stubbed lanes and lanes without a Round: line are left alone.
 `,
 	"report": `swim report [N|JOB ...] [--earmark] [--name NAME] [--since T|RUN|JOB] [--no-logs] [--results] [--yaml]

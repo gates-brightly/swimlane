@@ -161,12 +161,6 @@ func newRepo(t *testing.T, deps string) *repo {
 	// tests set their own keys.
 	r.mustSwim("config", "signing", "off")
 	r.mustSwim("init")
-	if deps != "" {
-		cfg := filepath.Join(xdg, "swim", "config.yml")
-		data, _ := os.ReadFile(cfg)
-		data = bytes.Replace(data, []byte("deps: {}"), []byte("deps: "+deps), 1)
-		os.WriteFile(cfg, data, 0o644)
-	}
 	return r
 }
 
@@ -248,6 +242,27 @@ func (r *repo) script(n int, round, body string) {
 	}
 }
 
+// after sets lane n's # After: line to deps.
+func (r *repo) after(n int, deps string) {
+	r.t.Helper()
+	p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
+	data, err := os.ReadFile(p)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	src, line := string(data), "# After: "+deps
+	if loc := afterLineRE.FindStringIndex(src); loc != nil {
+		src = src[:loc[0]] + line + src[loc[1]:]
+	} else {
+		src = strings.Replace(src, "\n", "\n"+line+"\n", 1)
+	}
+	if err := os.WriteFile(p, []byte(src), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+var afterLineRE = regexp.MustCompile(`(?m)^# After:.*$`)
+
 func (r *repo) log(n int) string {
 	data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("agent%d.log", n)))
 	return string(data)
@@ -289,7 +304,7 @@ func TestInitIsIdempotent(t *testing.T) {
 }
 
 func TestFullRunWithDependencies(t *testing.T) {
-	r := newRepo(t, "{2: [1], 4: [2]}")
+	r := newRepo(t, "")
 	r.script(1, "Lane one", `snapshot "state" echo state-v1
 run "slow" `+hold("go"))
 	r.script(2, "Lane two", `run "probe" echo probing
@@ -299,6 +314,8 @@ run "keeps going" true
 gate "stops" false
 run "never" true`)
 	r.script(4, "Lane four", `run "after" echo after`)
+	r.after(2, "1")
+	r.after(4, "2")
 
 	c := r.cmd(bin, "run")
 	var out bytes.Buffer
@@ -378,10 +395,12 @@ run "never" true`)
 }
 
 func TestSkipPropagatesDownChain(t *testing.T) {
-	r := newRepo(t, "{2: [1], 4: [2]}")
+	r := newRepo(t, "")
 	r.script(1, "fails", `run "x" false`)
 	r.script(2, "two", `run "y" true`)
 	r.script(4, "four", `run "z" true`)
+	r.after(2, "1")
+	r.after(4, "2")
 	out, code := r.swim("run")
 	if code != 1 {
 		t.Fatalf("exit %d\n%s", code, out)
@@ -403,10 +422,11 @@ func TestSkipPropagatesDownChain(t *testing.T) {
 // A round that only dry-ran its guarded change didn't do its work: it's
 // skipped, not passed, and a lane after it doesn't start.
 func TestDryRunIsSkippedNotPassed(t *testing.T) {
-	r := newRepo(t, "{2: [1]}")
+	r := newRepo(t, "")
 	r.script(1, "change", `stage change
 if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then run "do x" echo did-x; fi`)
 	r.script(2, "after", `run "assumes x" true`)
+	r.after(2, "1")
 	out, code := r.swim("run", "--no-prompt")
 	if code != launcher.ExitDryRun {
 		t.Fatalf("exit %d\n%s", code, out)
@@ -432,10 +452,11 @@ if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then run "do x" echo did-x; fi`
 }
 
 func TestRunSelectedLanesOnly(t *testing.T) {
-	r := newRepo(t, "{2: [1]}")
+	r := newRepo(t, "")
 	for n := 1; n <= 3; n++ {
 		r.script(n, fmt.Sprintf("lane %d", n), `run "ok" true`)
 	}
+	r.after(2, "1")
 	// `swim 3 2` is shorthand for `swim run 3 2`. Lane 2's dependency (1) is
 	// not in the run and holds a round that hasn't passed: lane 2 is skipped.
 	out, code := r.swim("3", "2")
@@ -460,19 +481,14 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 }
 
 func TestAfterHeaderDiamond(t *testing.T) {
-	r := newRepo(t, "") // no config deps: the scripts declare them
+	r := newRepo(t, "")
 	r.script(1, "root", `run "write" bash -c '`+untilReleased("root-go")+`; echo root > "$SWIM_ROOT/out1"'`)
 	r.script(2, "child a", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(3, "child b", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(4, "join", `gate "children" true`)
-	addHeader := func(n int, line string) {
-		p := filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n))
-		data, _ := os.ReadFile(p)
-		os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n"+line+"\n", 1)), 0o755)
-	}
-	addHeader(2, "# After: 1")
-	addHeader(3, "# After: swim 1")
-	addHeader(4, "# After: 2, 3")
+	r.after(2, "1")
+	r.after(3, "swim 1")
+	r.after(4, "2, 3")
 
 	all := start(t, r.cmd(bin, "all"), nil) // every pending lane, like `swim run`
 	// The root holds until its dependents have said what they wait on.
@@ -493,7 +509,7 @@ func TestAfterHeaderDiamond(t *testing.T) {
 	}
 
 	// A cycle is refused before anything runs.
-	addHeader(1, "# After: 4")
+	r.after(1, "4")
 	if out, code := r.swim("all", "--rerun"); code == 0 || !strings.Contains(out, "dependency cycle") || r.status().Get(1).State != status.Passed {
 		t.Errorf("cycle: %d %s", code, out)
 	}
@@ -933,11 +949,12 @@ func TestScriptWithoutJobLineGetsOne(t *testing.T) {
 }
 
 func TestProjectLog(t *testing.T) {
-	r := newRepo(t, "{2: [1]}")
+	r := newRepo(t, "")
 	r.newLane("1", "first goal", "--job", "job-one-0001")
 	body, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(body), `gate "target is ours (tagged)" true`, `run "precheck" false`, 1)), 0o755)
 	r.newLane("2", "second goal", "--job", "job-two-0002")
+	r.after(2, "1")
 	r.swim("run")
 	r.script(3, "direct run", `run "ok" true`)
 	if out, err := r.cmd("bash", "lane.3.sh").CombinedOutput(); err != nil {
@@ -1289,14 +1306,13 @@ run "after" true`)
 var runRE = regexp.MustCompile(`run=(r-\d{8}T\d{6}Z-[0-9a-f]{4})`)
 
 func TestRunID(t *testing.T) {
-	r := newRepo(t, "{2: [1]}")
+	r := newRepo(t, "")
 	r.script(1, "one", `run "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
 	r.script(2, "two", `run "id" bash -c 'echo "id=$SWIM_RUN lanes=$SWIM_RUN_LANES"'`)
 	r.script(3, "three", `run "x" false`)
 	r.script(4, "four", `run "x" true`)
-	p := filepath.Join(r.root, "lane.4.sh")
-	data, _ := os.ReadFile(p)
-	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: four\n", "# Round: four\n# After: 3\n", 1)), 0o755)
+	r.after(2, "1")
+	r.after(4, "3")
 
 	r.swim("all", "--plain")
 	idRE := regexp.MustCompile(`\| id=(\S+) lanes=(.*)`)

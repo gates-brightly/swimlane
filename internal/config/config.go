@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,13 +27,12 @@ import (
 type Settings struct {
 	// Lanes was a fixed lane count. swim now finds a repo's lanes on disk
 	// (lane.Associated); a `lanes:` setting is ignored, and doctor says so.
-	Lanes           int           `yaml:"lanes,omitempty"`
-	HeaderEnv       []string      `yaml:"header_env,omitempty"`
-	Runtime         string        `yaml:"runtime,omitempty"`
-	Toolchain       string        `yaml:"toolchain,omitempty"`
-	Deps            map[int][]int `yaml:"deps,omitempty"`
-	MaxParallel     *int          `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
-	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // lane commands may not contain these
+	Lanes           int      `yaml:"lanes,omitempty"`
+	HeaderEnv       []string `yaml:"header_env,omitempty"`
+	Runtime         string   `yaml:"runtime,omitempty"`
+	Toolchain       string   `yaml:"toolchain,omitempty"`
+	MaxParallel     *int     `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
+	BlockedCommands []string `yaml:"blocked_commands,omitempty"` // lane commands may not contain these
 	// Removed keys that still count in the policy hash as they did, so a
 	// repo that sets them keeps its approvals (policy.go): modules:, and
 	// swim.yml's guarded secrets (secrets:, ambient_credentials:). Read
@@ -313,9 +311,6 @@ func (c *Config) merge(r Settings) {
 	if r.Toolchain != "" {
 		c.Toolchain = r.Toolchain
 	}
-	if r.Deps != nil {
-		c.Deps = r.Deps
-	}
 	if r.MaxParallel != nil {
 		c.MaxParallel = r.MaxParallel
 	}
@@ -365,7 +360,7 @@ func (c *Config) merge(r Settings) {
 	}
 }
 
-// Validate checks lane numbers are within 1..Lanes and deps form no cycle.
+// Validate checks the values settings must have.
 func (c *Config) Validate() error {
 	if c.Lanes < 1 || c.Lanes > lane.MaxLanes {
 		return fmt.Errorf("lanes must be 1..%d, got %d", lane.MaxLanes, c.Lanes)
@@ -380,26 +375,6 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)
-	}
-	for lane, deps := range c.Deps {
-		if !c.ValidLane(lane) {
-			return fmt.Errorf("deps: swim %d is outside 1..%d", lane, laneMax)
-		}
-		for _, d := range deps {
-			if !c.ValidLane(d) {
-				return fmt.Errorf("deps: swim %d depends on swim %d, outside 1..%d", lane, d, laneMax)
-			}
-			if d == lane {
-				return fmt.Errorf("deps: swim %d depends on itself", lane)
-			}
-		}
-	}
-	if cyc := c.findCycle(); cyc != nil {
-		parts := make([]string, len(cyc))
-		for i, n := range cyc {
-			parts[i] = fmt.Sprint(n)
-		}
-		return fmt.Errorf("deps: cycle %s", strings.Join(parts, " -> "))
 	}
 	return nil
 }
@@ -482,53 +457,6 @@ const laneMax = lane.MaxLanes
 // IsActive reports whether lane n is in use (see Active).
 func (c *Config) IsActive(n int) bool { return slices.Contains(c.Active, n) }
 
-// DepsOf returns the lanes n waits on, sorted.
-func (c *Config) DepsOf(n int) []int {
-	d := append([]int(nil), c.Deps[n]...)
-	sort.Ints(d)
-	return d
-}
-
-func (c *Config) findCycle() []int {
-	const (
-		unseen = iota
-		active
-		done
-	)
-	state := map[int]int{}
-	var stack []int
-	var visit func(n int) []int
-	visit = func(n int) []int {
-		state[n] = active
-		stack = append(stack, n)
-		for _, d := range c.DepsOf(n) {
-			switch state[d] {
-			case active:
-				for i, s := range stack {
-					if s == d {
-						return append(append([]int(nil), stack[i:]...), d)
-					}
-				}
-			case unseen:
-				if cyc := visit(d); cyc != nil {
-					return cyc
-				}
-			}
-		}
-		stack = stack[:len(stack)-1]
-		state[n] = done
-		return nil
-	}
-	for n := 1; n <= c.Lanes; n++ {
-		if state[n] == unseen {
-			if cyc := visit(n); cyc != nil {
-				return cyc
-			}
-		}
-	}
-	return nil
-}
-
 // defaultFile is written by EnsureRepo when no config exists yet.
 const defaultFile = `# swim configuration. Global defaults, overridden per repo (keyed by git toplevel).
 defaults:
@@ -589,11 +517,7 @@ func EnsureRepo(path, root string) (createdFile, addedRepo bool, err error) {
 		return false, false, nil
 	}
 
-	entry := &yaml.Node{Kind: yaml.MappingNode}
-	deps := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
-	depsKey := scalar("deps")
-	depsKey.HeadComment = "swim N starts after the listed lanes succeed, e.g. {2: [1], 4: [2]}"
-	entry.Content = append(entry.Content, depsKey, deps)
+	entry := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
 	repos.Content = append(repos.Content, scalar(root), entry)
 	return createdFile, true, writeNode(path, &doc)
 }

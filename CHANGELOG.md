@@ -81,6 +81,11 @@ history stays here, since `swim changelog --since` reads it.
   id or `'#41'`). `swim log -f` stops by itself once the followed round
   ends (exit 0, whatever its result).
 
+- **Config `deps:` is gone: `# After:` is the one way to order lanes.**
+  `swim init` no longer writes `deps: {}` into `~/.config/swim/config.yml`;
+  a `deps:` there is now ignored (delete it, and put each lane's
+  dependencies on its `# After:` line), and in `swim.yml` it fails to load.
+
 - **`--no-tui` is gone: `--plain` is the one flag for no live view.**
   On `swim run`, `swim all` and `swim watch`, `--plain` means plain lines
   and no screen, as it does when stdout isn't a terminal. The pinned panel

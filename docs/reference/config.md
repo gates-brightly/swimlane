@@ -38,7 +38,7 @@ defaults:
   runners: {ts: tsx}               # saved when swim asks
 repos:
   /path/to/repo:                   # git toplevel; overrides defaults key by key
-    deps: {2: [1], 4: [2, 3]}      # swim N starts after these pass
+    max_parallel: 2
 ```
 
 A repo may commit `swim.yml` at its root with the same keys as a `repos:`

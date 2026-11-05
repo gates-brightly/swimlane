@@ -329,7 +329,7 @@ func checkAfter(c *Context, s *Script) []finding.Finding {
 }
 
 // checkCycle reports lanes on a dependency cycle (strongly connected
-// components of more than one lane, over After: and config deps).
+// components of more than one lane, over After:).
 func checkCycle(c *Context, s *Script) []finding.Finding {
 	c.resolve()
 	// Lanes reachable from s that also reach s are on a cycle with it.
@@ -349,7 +349,7 @@ func checkCycle(c *Context, s *Script) []finding.Finding {
 		parts[i] = fmt.Sprintf("swim %d", n)
 	}
 	return []finding.Finding{f(finding.Error, "cycle", s.headerLine("After"),
-		"remove one of the `# After:` lines (or config deps) in the cycle",
+		"remove one of the `# After:` lines in the cycle",
 		"dependency cycle: %s wait on each other; none of them can start", strings.Join(parts, ", "))}
 }
 

@@ -187,13 +187,6 @@ func TestCrossLaneQuietWhenOrdered(t *testing.T) {
 	if fs := Lint(cfg4(), map[int]string{1: reader, 2: writer}, 1); len(fs) != 0 {
 		t.Errorf("ordered lanes: %+v", fs)
 	}
-	// Config deps order lanes too.
-	reader = before(clean(1), "stage verify\n", "run \"read\" cat shared/report.json\n")
-	cf := cfg4()
-	cf.Deps = map[int][]int{1: {2}}
-	if fs := Lint(cf, map[int]string{1: reader, 2: writer}, 1); len(fs) != 0 {
-		t.Errorf("config deps: %+v", fs)
-	}
 }
 
 func TestDisableComments(t *testing.T) {
