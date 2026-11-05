@@ -1,15 +1,45 @@
 // Package help holds swim's user and agent documentation: the short
-// overview `swim --help` prints, the full guide (swim guide, or
-// swim --help --full) and per-command detail.
+// overview `swim --help` prints, per-command detail, and the reference
+// (docs/reference, embedded) that swim guide prints.
 package help
 
 import (
-	_ "embed"
+	"regexp"
 	"sort"
+	"strings"
+
+	"github.com/gates-brightly/swimlane"
 )
 
-//go:embed guide.txt
-var Guide string
+// Index is docs/reference/README.md: what swim guide prints with no topic.
+var Index = page("README")
+
+// Topics are the reference's pages, in the index's order.
+var Topics = func() []string {
+	var names []string
+	for _, m := range regexp.MustCompile(`\]\(([a-z-]+)\.md\)`).FindAllStringSubmatch(Index, -1) {
+		names = append(names, m[1])
+	}
+	return names
+}()
+
+// Topic is one reference page.
+func Topic(name string) (string, bool) {
+	for _, t := range Topics {
+		if t == name {
+			return page(name), true
+		}
+	}
+	return "", false
+}
+
+func page(name string) string {
+	data, err := swimlane.Reference.ReadFile("docs/reference/" + name + ".md")
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
+}
 
 // Commands maps each command to its detailed help.
 var Commands = map[string]string{
@@ -95,7 +125,7 @@ var Commands = map[string]string{
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--fresh] [--plain] [--no-tui] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
-swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see OTHER LANGUAGES)
+swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see swim guide other-languages)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
   characters of it). A job id pins the run to that job: it runs the lane
@@ -118,7 +148,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
       one fails or is skipped, or if a dependency outside the run holds a
       round that hasn't passed. Cycles stop the run before it starts.
     - With more than one lane, lanes get no stdin (prompts fail closed).
-    - Ctrl-C (see INTERRUPTING in swim guide): the first press stops every
+    - Ctrl-C (swim guide running): the first press stops every
       lane at its next step boundary (running steps finish, no new step
       starts, lanes not yet started are skipped); the second interrupts the
       running steps (SIGINT) and kills them after interrupt_grace (5s); the
@@ -172,7 +202,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   --yaml    stdout is a stream of YAML documents (schema swim.run/v1: run,
             waiting, locked, queued, start, step, finish, then summary)
             instead of the panel and table; lane output goes only to the
-            logs. See READING RESULTS in swim guide. --yaml-output also
+            logs. See swim guide logs. --yaml-output also
             streams lane output lines as output events.
   Guard flags are passed through the environment:
     FIN_ALLOW_DELETE_ZG_ITEMS=1 swim run 2
@@ -207,7 +237,7 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
   Each lane runs a staged copy of its files (.swim/runs/<run>/<N>/), fixed
   before it waits for anything and checked again right before it starts;
   an edit to the working tree after that changes nothing in the run. See
-  EXECUTION MANIFEST in swim guide.
+  swim guide manifest.
 `,
 	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
          [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
@@ -323,9 +353,9 @@ swim report --earmarks | --earmark --reset [--name NAME]
                 script's Step-Timeout:; 0 for none); never past the round's Timeout.
                 The command runs in its own process group: SIGTERM to all of
                 it, SIGKILL after 5s (when stdin is a terminal, only to the
-                command: see "TIME LIMITS" in swim guide)
+                command: see swim guide lanes)
   --retry N, --backoff D, --retry-on CODES, --no-retry-timeout
-                retry on failure (see "WRITING A LANE SCRIPT" in swim guide)
+                retry on failure (see swim guide lanes)
   --expect-fail[=CODES]
                 the command should fail: the step passes on a non-zero exit
                 (one of CODES, e.g. =1,2, if given) and is logged "failed as
@@ -335,7 +365,7 @@ swim report --earmarks | --earmark --reset [--name NAME]
 `,
 	"gate": `swim gate [options] "<label>" -- cmd [args...]
 
-  In a lane script in any language (see OTHER LANGUAGES in swim guide): run
+  In a lane script in any language (swim guide other-languages): run
   one step like swim run "<label>" -- cmd; if it fails, record STOP and end
   the round, stopping the program even if it carries on. Options as for
   swim run's in-lane form: --timeout D, --retry N, --backoff D,
@@ -410,7 +440,7 @@ swim checkpoint rm N|JOB KEY... | --all
   keys), masked as the lane's logs show it, with where each key comes from
   (file and line) and whether the shell overrides it. Exits 1 if a key is
   one of the lane's guard flags. --yaml: a swim.env/v1 document with the
-  env_sha256 the round would record. See ENV FILES in swim guide.
+  env_sha256 the round would record. See swim guide env.
 `,
 	"msg": `swim msg [--progress N/M] "<text>"
 
@@ -444,7 +474,7 @@ swim checkpoint rm N|JOB KEY... | --all
   An explicit-form script loads it itself, then calls lane_init N:
     _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
   (eval, not "source <(...)": process-substitution source is broken in
-  macOS bash 3.2). See "WRITING A LANE SCRIPT" in swim guide for the functions.
+  macOS bash 3.2). See swim guide lanes for the functions.
 `,
 	"clean": `swim clean [--queue|--no-queue] [--all] [--no-input] [-n] [-o yaml]
 
@@ -524,7 +554,7 @@ swim checkpoint rm N|JOB KEY... | --all
   --yaml        the round parsed, as data (schema swim.log/v1): the latest round,
                 every round with --all, or a job's rounds; the running step is
                 a result "RUNNING" with its command, output so far and
-                duration_s. See READING RESULTS.
+                duration_s. See swim guide logs.
   -f, --follow  print lane N's (or JOB's lane's) current round, then follow it
                 like tail -f: new log lines, and the running step's output as
                 it is written (the step's block then adds only its result
@@ -725,7 +755,7 @@ swim cache path [PRESET] [--ci]
       # Cache: terraform @infra/orders/.terraform.lock.hcl
   and swim points the tool's own download cache (TF_PLUGIN_CACHE_DIR,
   npm_config_cache, PIP_CACHE_DIR, GOMODCACHE) at the repo's directory for
-  that preset. See CACHE in swim guide.
+  that preset. See swim guide cache.
   ls       each preset's cache: size, when it was last used and by which
            lanes, whether a running lane holds it. --yaml: swim.cache/v1
   rm       delete a preset's cache (asks at a terminal; --yes doesn't). A
@@ -1353,11 +1383,12 @@ swim claim N|RESOURCE --break "<reason>"
   Print the overview (the full guide when stdout isn't a terminal), or one
   command's detail.
 `,
-	"guide": `swim guide
+	"guide": `swim guide [TOPIC|all]
 
-  Print the full guide: how planners, workers and operators use swim, every
-  concept, and every command's detail. swim --help prints it too when its
-  output isn't a terminal, so an agent reading swim --help gets all of it.
+  Print swim's reference (docs/reference in swim's repo, carried by the
+  binary): with no topic, the index of topics; with one (swim guide lanes),
+  that page; with all (or swim --help --full), every page and every
+  command's detail.
 `,
 }
 
@@ -1401,7 +1432,7 @@ func Short() string {
 USAGE
   swim                         in a swim repo: what needs you, and what's running
   swim <command> --help        one command's detail
-  swim guide                   the full manual (for people and AI agents)
+  swim guide [TOPIC]           the reference, one topic at a time (people and AI agents)
 
 LANES
   init                         set up this repo
@@ -1425,7 +1456,7 @@ LOGS
   log [N]                      a lane's log, step by step
   report                       what changed since you last looked
 
-EVERYTHING ELSE (swim <command> --help, or swim guide)
+EVERYTHING ELSE (swim <command> --help, or swim guide commands)
   revoke, verify, history, keys, chain   approvals and the record behind them
   doctor, config, env, cache   the environment lanes get
   archive, clean, stub, note   tidy up and record
@@ -1436,9 +1467,13 @@ EVERYTHING ELSE (swim <command> --help, or swim guide)
 }
 
 func Full() string {
-	s := Guide + "\nCOMMAND DETAIL\n"
-	for _, order := range FullOrder {
-		s += "\n" + Commands[order]
+	var b strings.Builder
+	for _, t := range Topics {
+		b.WriteString(page(t) + "\n")
 	}
-	return s
+	b.WriteString("# Command detail\n")
+	for _, order := range FullOrder {
+		b.WriteString("\n" + Commands[order])
+	}
+	return b.String()
 }

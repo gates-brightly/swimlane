@@ -8,8 +8,6 @@ changes to what you pinned do: your script, the files it includes, its
 sidecar, how it runs, the `swim.yml` policy keys you set, or
 `lookup.yml`'s `require:` rules.
 
-[← back to the docs](README.md) · [trust model](trust-model.md)
-
 ## The approval statement
 
 Every event in an `approvals/lane.N.<sha12>[.m<man8>]….signature` file is

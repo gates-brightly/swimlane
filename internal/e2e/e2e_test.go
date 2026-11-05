@@ -646,11 +646,19 @@ func TestHelp(t *testing.T) {
 	// Piped or not, --help is the short overview; --help --full the guide.
 	short := r.mustSwim("--help")
 	contains(t, "--help", short, "LANES", "ROUNDS", "GUARDS", "LOGS", "swim guide")
-	if strings.Contains(short, "PLANNER WORKFLOW") || strings.Count(short, "\n") >= 80 {
+	if strings.Contains(short, "# Agents") || strings.Count(short, "\n") >= 80 {
 		t.Errorf("piped --help printed the guide:\n%s", short)
 	}
-	contains(t, "--help --full", r.mustSwim("--help", "--full"), "PLANNER WORKFLOW", "WORKER RULES", "SAFETY RULES", "READING RESULTS", "COMMAND DETAIL")
-	contains(t, "guide", r.mustSwim("guide"), "PLANNER WORKFLOW", "COMMAND DETAIL")
+	full := r.mustSwim("--help", "--full")
+	contains(t, "--help --full", full, "# Agents", "# Lanes", "# Safety", "# Logs", "# Command detail")
+	if guideAll := r.mustSwim("guide", "all"); guideAll != full {
+		t.Error("swim guide all differs from swim --help --full")
+	}
+	contains(t, "guide", r.mustSwim("guide"), "# swim reference", "[lanes](lanes.md)")
+	contains(t, "guide lanes", r.mustSwim("guide", "lanes"), "# Lanes", "**Step options**", "`lane_init N`")
+	if out, code := r.swim("guide", "nope"); code != 2 || !strings.Contains(out, "topics: concepts, agents") {
+		t.Errorf("guide nope: %d %s", code, out)
+	}
 	contains(t, "run --help", r.mustSwim("run", "--help"), "waiting on swim N")
 	contains(t, "help status", r.mustSwim("help", "status"), "--rebuild")
 	if out, code := r.swim("bogus"); code != 2 || !strings.Contains(out, "unknown command") {

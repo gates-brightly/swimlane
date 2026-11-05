@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// The queue entry state machine (docs/state.md), as the rules every move
+// The queue entry state machine (docs/reference/state.md), as the rules every move
 // of an entry's file is checked against. An entry's state is where its
 // file is: NNNN-<id>.queue waiting, .running claimed (orphaned when its
 // worker is gone), done/ consumed.
@@ -68,7 +68,7 @@ func move(id, path, to string) error {
 	if err == nil {
 		return nil
 	}
-	err = fmt.Errorf("%s: %w (docs/state.md)", id, err)
+	err = fmt.Errorf("%s: %w (docs/reference/state.md)", id, err)
 	if testing.Testing() || os.Getenv(checkEnv) == "1" {
 		panic("queue: illegal state transition: " + err.Error())
 	}

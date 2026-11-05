@@ -19,7 +19,7 @@ everything runs offline) and `e2etool`, which does their work. Simulated
 work is instant: the scenarios test the scheduler, not the clock, and wait
 for events (a file, a process exiting, an event in the run's stream), never
 for a time. Scenarios run with `SWIM_CHECK_STATES=1`: an illegal
-`status.yml` state transition panics swim ([state machines](../docs/state.md)).
+`status.yml` state transition panics swim ([state machines](../docs/reference/state.md)).
 
 ## Scenarios
 

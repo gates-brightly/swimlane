@@ -10,7 +10,7 @@
 # swim:lint-ignore-file workspace-live go test reads the whole checkout
 #
 # Lane 4 of this repo's CI (lane.1.sh lists them all). Every claim in
-# docs/trust-model.md's claims table holds: what swim run can refuse it
+# docs/reference/trust-model.md's claims table holds: what swim run can refuse it
 # refuses (T3, T28), what it can't swim verify fails, a changed manifest
 # input stales its approval, the chain catches tampering, no secret leaks.
 # A violation fails the build.

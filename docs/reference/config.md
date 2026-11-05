@@ -1,0 +1,70 @@
+# Config
+
+Personal settings live outside the repo, so workers can't change them:
+`~/.config/swim/config.yml` (`$XDG_CONFIG_HOME/swim/config.yml`). `swim
+config [KEY [VALUE]]` shows or sets them, keeping comments.
+
+```yaml
+defaults:
+  max_parallel: 8                  # lanes at once (0: unlimited, the default)
+  blocked_commands: ["terraform destroy"]   # no lane command may contain these (none by default)
+  secret_env: [GITHUB_TOKEN]       # masked as *** everywhere swim writes
+  secret_env_auto: true            # also *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY, ...
+  secret_env_ignore: [CSRF_TOKEN]  # exempt from secret_env_auto
+  secret_patterns_auto: true       # also AWS key ids, GitHub/Slack tokens, JWTs
+  header_env: [STAGE, AWS_PROFILE] # recorded in every step header (never secrets)
+  runtime: node --version          # recorded as the runtime version
+  toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
+  interrupt: graceful              # graceful | immediate: the first Ctrl-C
+  interrupt_grace: 5s              # force quit: SIGINT, SIGKILL after this
+  term_grace: 10s                  # SIGTERM: graceful, then force after this
+  approvals: prompt                # prompt | flags: may a guard ask
+  signing: auto                    # auto | required | off
+  signing_key: ~/.ssh/id_ed25519   # a .pub signs through ssh-agent
+  chain_anchors: ["file:/mnt/audit/orders"]
+  msg_log_interval: 10s            # at most one MSG log line per lane per this
+  outputs_keep: 14d                # swim doctor --fix prunes older unused outputs
+  queue_lease: 2m                  # a swimmer's heartbeat, seen from other hosts
+  claim_lease: 2h                  # how long a lane claim lasts
+  watch_batches: 4                 # batches one swim watch runs at once
+  notify: false                    # notifications and a tab progress bar
+  cache_dir: ~/.cache/swim         # config.yml only
+  cache_max: 10GB
+  cache_slug: orders               # the repo's cache directory name
+  store_dir: ~/.local/share/swim/store   # or off; config.yml only
+  runners: {ts: tsx}               # saved when swim asks
+repos:
+  /path/to/repo:                   # git toplevel; overrides defaults key by key
+    deps: {2: [1], 4: [2, 3]}      # swim N starts after these pass
+```
+
+A repo may commit `swim.yml` at its root with the same keys as a `repos:`
+entry: it applies over `defaults` and under your own entry, so a CI runner
+and every operator share it. Unknown keys are an error. Personal env goes
+in [env files](env.md), not config. There is no lane count.
+
+## Files
+
+| Path | What | Commit? |
+|---|---|---|
+| `lane.N.sh` (`lane.N.<ext>`, `lane.N`) | Lane N's current round. | Only CI rounds. |
+| `lane.N.yml` | A lane's header as YAML ([other languages](other-languages.md#header)). | With its script. |
+| `swim.yml` | The repo's shared settings. | Yes |
+| `lookup.yml` | Users, keys, groups, approval rules. | Yes |
+| `trust.yml` | The keys `swim verify` trusts. | Yes |
+| `approvals/` | Signed approvals. | Yes |
+| `.swim.lock` | The repo's [syntax versions](compatibility.md#syntax-versions-and-the-lock). Never edit it to get past a mismatch. | Yes |
+| `.swim.log` | The project log. | No (or yes, to keep history) |
+| `.env.swim` | Lane env. | No |
+| `.swim/status.yml` | Every lane's state. | No |
+| `.swim/logs/` | Lane logs, current and archived. | No |
+| `.swim/chain.jsonl`, `.swim/scripts/` | The chain, and every script that ran. | No (export it) |
+| `.swim/runs/<run>/<N>/`, `.swim/runs/RUN.yml` | Staged copies and manifests; each run's timeline. | No |
+| `.swim/out/<job>/<run>/` | A round's outputs (`$SWIM_OUT`). | No |
+| `.swim/queue/`, `.swim/snapshots/`, `.swim/checkpoints/`, `.swim/earmarks/`, `.swim/signoffs/` | Batches, snapshot output, kept steps, readers' places, signoffs. | No |
+| `.swim/laneN.pid` | Present while lane N runs. | No |
+| `~/.cache/swim/`, `~/.local/share/swim/store/` | [Caches](cache.md), the [store](chain.md#the-store). | Never |
+
+`swim init` sets these up (and git-ignores what shouldn't be committed);
+`swim doctor [--fix]` checks the environment and repairs only swim's
+`.gitignore` block and stale pid files.

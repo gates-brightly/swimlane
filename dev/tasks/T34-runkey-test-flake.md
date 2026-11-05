@@ -21,7 +21,7 @@ on a loaded machine `ssh-add` connects too early and is refused.
 **Done when:** the test passes 20 times in a row with `-count=20` under
 load (`GOMAXPROCS=2`, alongside the race lane), on macOS and Linux, and
 the skip is gone. The claim the test proves (a lane can't sign as the
-runner key) is in docs/trust-model.md; until then it's unproven by CI.
+runner key) is in docs/reference/trust-model.md; until then it's unproven by CI.
 
 **2026-11-04:** fixed and unskipped. `newConfirmAgent` now waits for
 ssh-agent's `SSH_AUTH_SOCK=` line, which it prints once it listens (an

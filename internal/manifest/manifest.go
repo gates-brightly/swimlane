@@ -253,7 +253,7 @@ func (m *Manifest) Matches(pin string) bool {
 }
 
 // Hash is manifest_sha256: the SHA-256 of the lane number and the pinned
-// entries, in a fixed text form (docs/formats.md). (The job id is in the
+// entries, in a fixed text form (docs/reference/formats.md). (The job id is in the
 // script or sidecar.)
 func (p Pinned) Hash(n int) string {
 	return hash([]byte(p.text("swim manifest v2", n, "config: "+p.Config.SHA256)))

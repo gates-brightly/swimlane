@@ -18,7 +18,7 @@ const PolicyVersion = 3
 // PolicyKeys are the swim.yml keys that change what a lane may do, or how
 // its approvals and secrets work: an approval bound to a manifest stops
 // counting when any of them that swim.yml sets changes. To add one, add it
-// here and to policyValues; never bump the hash text (docs/formats.md).
+// here and to policyValues; never bump the hash text (docs/reference/formats.md).
 var PolicyKeys = []string{"blocked_commands", "runners", "approvals", "signing",
 	"secret_env", "secret_env_auto", "secret_env_ignore", "secret_patterns_auto", "env",
 	"secrets", "ambient_credentials", "modules"}

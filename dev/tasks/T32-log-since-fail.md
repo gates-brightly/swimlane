@@ -15,7 +15,7 @@ agent reads every PASS to find the FAIL.
   in, and the summary line. Passing steps are counted, not shown.
 - The same filter in `--yaml` (`--failed --yaml`).
 - `swim report` points at it for a failed round: `swim log 2 --failed`.
-- The guide's READING RESULTS section and the swim skill use it after a
+- The logs reference (docs/reference/logs.md) and the swim skill use it after a
   failure.
 
 **Done when:** an e2e test fails one step of five and `swim log N

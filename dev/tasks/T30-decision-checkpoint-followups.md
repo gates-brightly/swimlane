@@ -2,8 +2,8 @@
 
 Source: the specs `features/decision.md` and `features/checkpoint.md`,
 removed when both features were built (2026-10-29). Their design is in
-`swim guide` (decide, `--checkpoint`), docs/usage.md (Decisions,
-Checkpoints) and the CHANGELOG. These are the parts left out.
+docs/reference/guards.md (Decisions), docs/reference/lanes.md
+(Checkpoints) and the CHANGELOG. These are the parts left out.
 
 ## Decisions
 

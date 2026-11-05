@@ -4,7 +4,7 @@ Open work. Each task has been checked against the code. **Today** says what
 exists, with file:line references. **Do** says what's missing. **Done when**
 gives the acceptance check. When a task ships, delete it: git history keeps
 the record, and the claim it backs belongs in the README,
-[docs/trust-model.md](../docs/trust-model.md) or `swim guide`.
+[docs/reference/trust-model.md](../docs/reference/trust-model.md) or `swim guide`.
 
 Newer tasks live one per file in [`tasks/`](tasks/), numbered after the
 ones here.

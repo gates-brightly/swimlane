@@ -525,7 +525,7 @@ func checkBash4(c *Context, s *Script) []finding.Finding {
 		}
 		for _, b := range bash4 {
 			if b.re.MatchString(line) {
-				out = append(out, f(finding.Warn, "bash4", i, "rewrite it for bash 3.2 (see `swim guide`, WRITING A LANE SCRIPT)",
+				out = append(out, f(finding.Warn, "bash4", i, "rewrite it for bash 3.2 (see `swim guide lanes`)",
 					"%s is bash 4; macOS bash 3.2 can't run it", b.what))
 				break
 			}

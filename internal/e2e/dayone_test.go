@@ -9,7 +9,7 @@ import (
 )
 
 // laterWords are swim's concepts a newcomer doesn't need on day one; swim
-// guide's GOING FURTHER introduces them. Day one is lane, round, step,
+// concepts topic introduces them after the four ideas. Day one is lane, round, step,
 // stage, guard (a dry run until approved), queue and log.
 var laterWords = regexp.MustCompile(`(?i)\b(swimmers?|batch(es)?|drift|decisions?|checkpoints?|earmarks?|signoffs?|claims?|stubs?|manifests?|chain|custody|lookup|signing|staged)\b`)
 
@@ -29,7 +29,7 @@ func dayOne(text string) string {
 func noLaterWords(t *testing.T, where, text string) {
 	t.Helper()
 	if m := laterWords.FindAllString(dayOne(text), -1); len(m) > 0 {
-		t.Errorf("%s uses words a newcomer doesn't need yet (swim guide's GOING FURTHER has them): %v\n%s", where, m, text)
+		t.Errorf("%s uses words a newcomer doesn't need yet (swim guide concepts has them): %v\n%s", where, m, text)
 	}
 }
 

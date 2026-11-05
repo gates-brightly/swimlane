@@ -2,10 +2,15 @@
 // (go:embed can't reach above a package's own directory).
 package swimlane
 
-import _ "embed"
+import "embed"
 
 // Changelog is CHANGELOG.md: swim's revision history, printed by
 // `swim changelog`.
 //
 //go:embed CHANGELOG.md
 var Changelog string
+
+// Reference is docs/reference: one page per topic, printed by `swim guide`.
+//
+//go:embed docs/reference/*.md
+var Reference embed.FS

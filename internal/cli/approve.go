@@ -277,7 +277,7 @@ func launched() bool {
 // process's lane, as its environment says. A lane runs as the operator,
 // so it can change its environment, or anything else the operator can:
 // this tells an honest lane's guards to ask the launcher, and isn't a
-// boundary against a hostile one (docs/trust-model.md).
+// boundary against a hostile one (docs/reference/trust-model.md).
 func underSwimRun(string) bool {
 	return launched() || os.Getenv("SWIM_LAUNCHED") == "1"
 }

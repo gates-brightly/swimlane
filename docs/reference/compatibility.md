@@ -2,9 +2,6 @@
 
 Where swim runs, what it needs, and which parts you can build on.
 
-[← back to using swim](usage.md#install-and-versions) ·
-[CHANGELOG](../CHANGELOG.md)
-
 ## Platforms
 
 | | |
@@ -12,19 +9,24 @@ Where swim runs, what it needs, and which parts you can build on.
 | **Supported** | Linux and macOS. CI runs every change on `ubuntu-24.04` and `macos-15` (named images, so one changing between runs isn't what turns CI red), with macOS's own bash 3.2 first on `PATH`. |
 | **Not supported** | Windows. swim relies on `flock` for locks, on process groups (`Setpgid`) for interrupts, and on unix sockets between swim and its lanes. |
 
-## Release binaries
+## Install
+
+```sh
+curl -fsSL https://github.com/gates-brightly/swimlane/releases/latest/download/install.sh | sh
+SWIM_VERSION=v0.20261102.1 SWIM_INSTALL_DIR=/usr/local/bin sh install.sh   # pin a release, pick where
+go install github.com/gates-brightly/swimlane/cmd/swim@latest              # or build it (Go 1.27.1+)
+swim version                                                               # is a newer release out?
+```
 
 Each release ships static binaries for Linux and macOS on amd64 and arm64
-(`swim_<os>_<arch>.tar.gz`, checked by `checksums.txt`): no Go toolchain is
-needed to run swim. `install.sh` installs one; see [install and
-versions](usage.md#install-and-versions).
+(`swim_<os>_<arch>.tar.gz`, checked by `checksums.txt`) with `install.sh`.
+The names carry no version, so `releases/latest/download/<name>` is always
+the newest. The installer picks this machine's, checks it, and puts it in
+`/usr/local/bin` (if writable) or `~/.local/bin`. In a container, install
+at build time.
 
-## Building from source
-
-Go **1.27.1** or newer: the `go` line in `go.mod`. `go install
-github.com/gates-brightly/swimlane/cmd/swim@latest` builds it; with an
-older Go, the `go` command fetches the right toolchain when
-`GOTOOLCHAIN` allows it.
+Building from source needs Go **1.27.1** or newer (`go.mod`'s `go` line);
+an older `go` fetches it when `GOTOOLCHAIN` allows.
 
 ## What swim needs at run time
 

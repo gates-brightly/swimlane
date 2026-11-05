@@ -3,9 +3,6 @@
 Every state swim records, and what moves it from one to the next. The
 code is the source of truth; each section names where.
 
-[← back to using swim](usage.md#reference) ·
-[Architecture](architecture.md) · [Recovery](recovery.md)
-
 Every write of `.swim/status.yml` goes through one check,
 `status.Transition` (`internal/status/transition.go`), against the lane
 rules below. An illegal move panics in tests and wherever

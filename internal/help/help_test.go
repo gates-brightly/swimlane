@@ -1,34 +1,55 @@
 package help
 
 import (
+	"io/fs"
+	"path"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/gates-brightly/swimlane"
 	"github.com/gates-brightly/swimlane/internal/assets"
 )
 
-// Every function the lane script library defines must be documented in the guide,
-// and every command must have detail and appear in the command list.
+// Every function the lane script library defines is documented in the
+// lanes topic, and every command is in the commands topic and has detail.
 func TestGuideCoversLibAndCommands(t *testing.T) {
 	fnRE := regexp.MustCompile(`(?m)^([a-z][a-z_]*)\(\) \{`)
 	fns := fnRE.FindAllStringSubmatch(assets.Lib, -1)
 	if len(fns) < 10 {
 		t.Fatalf("found only %d lib functions", len(fns))
 	}
-	section := Guide[strings.Index(Guide, "WRITING A LANE SCRIPT"):strings.Index(Guide, "SAFETY RULES")]
+	lanes, _ := Topic("lanes")
 	for _, m := range fns {
-		if !strings.Contains(section, "  "+m[1]) {
-			t.Errorf("lib function %s is not documented under WRITING A LANE SCRIPT", m[1])
+		if !strings.Contains(lanes, "`"+m[1]) {
+			t.Errorf("lib function %s is not documented in the lanes topic", m[1])
 		}
 	}
-	commands := Guide[strings.Index(Guide, "COMMANDS"):strings.Index(Guide, "CONCEPTS")]
+	commands, _ := Topic("commands")
 	for _, name := range Names() {
-		if !strings.Contains(commands, "  "+name) {
-			t.Errorf("command %s missing from COMMANDS", name)
+		if name != "help" && !regexp.MustCompile("`"+name+"\\b").MatchString(commands) {
+			t.Errorf("command %s missing from the commands topic", name)
 		}
 		if !strings.HasPrefix(Commands[name], "swim "+name) {
 			t.Errorf("command %s detail should start with its usage", name)
+		}
+	}
+}
+
+// Every page in docs/reference is a topic: the index links it.
+func TestEveryReferencePageIsATopic(t *testing.T) {
+	pages, err := fs.Glob(swimlane.Reference, "docs/reference/*.md")
+	if err != nil || len(pages) < 10 {
+		t.Fatalf("found %d reference pages: %v", len(pages), err)
+	}
+	topics := map[string]bool{}
+	for _, name := range Topics {
+		topics[name] = true
+	}
+	for _, p := range pages {
+		name := strings.TrimSuffix(path.Base(p), ".md")
+		if name != "README" && !topics[name] {
+			t.Errorf("docs/reference/README.md doesn't link %s.md", name)
 		}
 	}
 }
@@ -62,15 +83,6 @@ func TestFullHelpHasEveryCommand(t *testing.T) {
 	for c := range Commands {
 		if !in[c] && c != "help" { // swim help's own entry: the guide is its output
 			t.Errorf("swim --help leaves out %s: add it to FullOrder", c)
-		}
-	}
-}
-
-// The guide points agents to the trust model and the recovery playbook.
-func TestGuidePointsToDocs(t *testing.T) {
-	for _, doc := range []string{"docs/trust-model.md", "docs/recovery.md"} {
-		if !strings.Contains(Guide, doc) {
-			t.Errorf("the guide doesn't mention %s", doc)
 		}
 	}
 }

@@ -1,0 +1,84 @@
+# Running
+
+`swim run N ...` (or `swim N`) runs lanes; `swim all` runs every pending
+round that hasn't passed (`--rerun`: those too). Lanes run in parallel,
+dependencies first.
+
+## Dependencies
+
+`# After: 2 3` (lanes, tasks or job ids) waits for those to pass in this
+run, and skips the round if one fails or is skipped. Config `deps:` adds
+ordering that holds every round. A dependency outside the run must already
+be satisfied, or the lane is skipped:
+
+- a lane: its pending round passed (a stubbed or empty lane never blocks);
+- a job: it's that lane's last run, and passed.
+
+Cycles, unresolvable references, and an `After:` lane with no script, log
+or past run stop the run before anything starts.
+
+`swim status` shows, under each pending lane, what it waits on and where
+that stands, how each guard would be decided now, and its timeout, locks
+and includes:
+
+```
+ swim 1  pending                drop the old table
+          guard DROP_OK  drop table old_orders
+                 not approved: approval needs 2 signature(s) from dba, has 1; swim run will ask (a dry run if no one answers)
+          timeout 30m · locks orders-db · includes lib/tables.sh
+ swim 2  pending                verify after the drop
+          after swim 1 (pending: a dry run or failure there skips this)
+```
+
+## Parallelism
+
+`--parallel N` (config `max_parallel`; default unlimited) caps lanes
+running at once; ready lanes queue for a slot, longest chain first.
+
+## Locks
+
+`# Locks: orders-db, tf/orders`: a lane takes all its locks at once, after
+its dependencies pass. Lanes sharing one never overlap, in either order,
+within a run and across concurrent runs on the machine (`.swim/locks/`,
+released when the lane's process ends). A failure doesn't spread through a
+lock. Not across machines, and not for a lane run directly with bash. Use
+`After:` for order, `Locks:` when order doesn't matter but overlap does.
+
+## The live view
+
+A panel at the top of the terminal shows each lane's state; output scrolls
+under it, prefixed `[N]`. With more than one lane:
+
+| | |
+|---|---|
+| `→` `←` | Open a lane's log; `Esc` returns. |
+| `↑` `↓` `PgUp` `PgDn` `Home` `End` | Scroll. |
+| a number, `Enter` | Jump to that lane. |
+| `f` / `?` | Filter to running or failed lanes / help. |
+| `Enter`, `y`, `n` | Open the lane a banner says is waiting, and answer it. |
+
+`--plain` (or no terminal): plain prefixed lines. `--no-tui` or
+`SWIM_TUI=0`: no panel. `--yaml`: [events](logs.md#yaml).
+
+`notify: true` in config adds a desktop notification when a lane waits on
+you or a run ends, and a progress bar on the terminal tab (OSC 777, OSC
+9;4, as Ghostty shows them).
+
+## Interrupts
+
+Lanes run in their own process groups, so Ctrl-C reaches only swim:
+
+| | |
+|---|---|
+| 1st Ctrl-C | Graceful: each running lane finishes its step, starts no other, and ends interrupted (exit 130); lanes not started are skipped. |
+| 2nd | SIGINT to every running lane's group, SIGKILL after `interrupt_grace` (5s). |
+| 3rd | SIGKILL now. |
+
+SIGTERM (a CI cancel) stops gracefully, then forces after `term_grace`
+(10s); SIGHUP forces at once. `interrupt: immediate` makes the first press
+force. `swim interrupt N` stops one lane from another terminal. A lone
+lane given the terminal gets Ctrl-C directly. A lane run directly with bash
+has no launcher: Ctrl-C interrupts it at once.
+
+`swim status` shows `running?` when a lane's process is gone; the next
+`swim run`, `swim all` or `swim watch` records it as interrupted.

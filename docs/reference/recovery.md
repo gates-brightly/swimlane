@@ -3,9 +3,6 @@
 When something goes wrong: what you see, why, and the commands that fix
 it. Start with `swim status` and `swim doctor`; they name most of these.
 
-[← back to using swim](usage.md#reference) ·
-[State machines](state.md) · [Trust model](trust-model.md)
-
 **Before you change anything,** read the lane's log (`swim log N`) and
 check the target itself. A log says what swim saw; only the target says
 what actually changed. Rounds should be safe to rerun, but a step that was

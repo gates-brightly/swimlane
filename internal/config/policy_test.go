@@ -39,7 +39,7 @@ func TestPolicyValuesCoverPolicyKeys(t *testing.T) {
 	}
 }
 
-// The policy hash is frozen (docs/formats.md): "swim policy v2", then each
+// The policy hash is frozen (docs/reference/formats.md): "swim policy v2", then each
 // key swim.yml sets with its value's hash. A key swim.yml doesn't set adds
 // nothing, so a key swim adds later changes no repo's hash.
 func TestPolicyHashFrozen(t *testing.T) {

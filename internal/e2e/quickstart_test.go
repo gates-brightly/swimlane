@@ -77,38 +77,9 @@ func TestQuickstartRuns(t *testing.T) {
 	contains(t, "lane 2's log", string(log2), "SKIP", "APPROVED")
 }
 
-// tamperSetup is what the README's tamper story starts from and doesn't
-// show: a repo with a signing key, which swim init lists in lookup.yml,
-// and the AI's lane.1.sh, whose one guarded step runs install.sh.
-const tamperSetup = `mkdir tamper && cd tamper && git init -q
-mkdir -p "$HOME/.ssh" && ssh-keygen -q -t ed25519 -N '' -f "$HOME/.ssh/id_ed25519"
-swim config signing auto
-swim init >/dev/null
-echo 'echo installing the new cert' > install.sh
-cat > lane.1.sh <<'LANE'
-#!/usr/bin/env bash
-# swim: syntax 4
-# Round:    Rotate the cert
-# Guards:   CERT_ALLOW_ROTATE  replace the live cert
-# Includes: install.sh
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-lane_init 1
-
-stage snapshot
-snapshot "the cert now" echo "cert 2025"
-
-stage change
-if guard CERT_ALLOW_ROTATE "replace the live cert"; then
-  run "install the new cert" bash install.sh
-fi
-summary
-LANE
-git add -A && git commit -qm "the AI's round"
-`
-
-// The README's tamper story runs as written, from tamperSetup, and prints
-// what its comments say it does.
-func TestTamperStoryRuns(t *testing.T) {
+// docs/guide.md, the tour, runs as written, in order, with no
+// credentials: each step does what the page says it does.
+func TestTourRuns(t *testing.T) {
 	for _, tool := range []string{"ssh-keygen", "perl"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip(tool + " not installed")
@@ -116,42 +87,21 @@ func TestTamperStoryRuns(t *testing.T) {
 	}
 	r := newRepo(t, "")
 	dir := t.TempDir()
-	c := r.cmd("bash", "-c", "set -e\n"+tamperSetup+"set +e\n"+strings.Join(namedBlocks(t, "README.md", "tamper"), "\n"))
-	c.Dir = dir
-	c.Env = append(c.Env, "HOME="+t.TempDir(), "USER=me",
-		"GIT_AUTHOR_NAME=me", "GIT_AUTHOR_EMAIL=me@example.com", "GIT_COMMITTER_NAME=me", "GIT_COMMITTER_EMAIL=me@example.com")
-	out, _ := c.CombinedOutput()
-	contains(t, "tamper story", string(out),
-		"SKIP  replace the live cert (dry run:", "approves another version of lane.1.sh", "review the change",
-		"swim approve 1 --guards CERT_ALLOW_ROTATE)",
-		"APPROVED  replace the live cert (approved by me (signed))",
-		"PASS  install the new cert",
-		"log for run r-", "was changed after the round ended",
-		"NOT VERIFIED: consistent: 1 problem (BROKEN, above)")
-}
-
-// docs/quickstart.md, the hour-long guide, runs as written, in order, with
-// no credentials: each step does what the page says it does.
-func TestDocsQuickstartRuns(t *testing.T) {
-	if _, err := exec.LookPath("ssh-keygen"); err != nil {
-		t.Skip("ssh-keygen not installed")
-	}
-	r := newRepo(t, "")
-	dir := t.TempDir()
-	c := r.cmd("bash", "-c", "set -e\n"+strings.Join(markedBlocks(t, "docs/quickstart.md"), "\n"))
+	c := r.cmd("bash", "-c", "set -e\n"+strings.Join(markedBlocks(t, "docs/guide.md"), "\n"))
 	c.Dir = dir
 	out, err := c.CombinedOutput()
 	if err != nil {
-		t.Fatalf("docs/quickstart.md failed: %v\n%s", err, out)
+		t.Fatalf("docs/guide.md failed: %v\n%s", err, out)
 	}
-	contains(t, "docs quickstart", string(out),
+	contains(t, "the tour", string(out),
 		"PASS  count them",                                                            // 2
 		"STOP  gate failed: there is a config file", "the round failed, as it should", // 3
 		"SKIP  remove scratch.txt (quickstart) (dry run", "scratch.txt is gone", // 4
 		"approved by me (signed)", "removed, approved by a signature", // 5
-		"approves another version of lane.2.sh", // 5: the edit voids it
-		"SKIP (swim 3 failed)",                  // 6
-		"VERIFIED",                              // 8
+		"approves another version of lane.2.sh",                    // 5: the edit voids it
+		"SKIP (swim 3 failed)",                                     // 6
+		"VERIFIED",                                                 // 8
+		"was changed after the round ended", "the edit was caught", // 8: the record catches an edit
 	)
 	if strings.Contains(string(out), "undeclared files") {
 		t.Errorf("a step left an undeclared output:\n%s", out)

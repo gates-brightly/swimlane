@@ -10,7 +10,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chain"
 )
 
-// The scenarios in docs/recovery.md that are cheap to reproduce. Others are
+// The scenarios in docs/reference/recovery.md that are cheap to reproduce. Others are
 // covered elsewhere: TestQueueYesOrphanRemove (an orphaned queue entry),
 // TestVersionAndLock (a lock mismatch), TestSignedApprovalAndVerify (swim
 // verify failing), TestInterruptRecordsAndStopsRound (an interrupted round).

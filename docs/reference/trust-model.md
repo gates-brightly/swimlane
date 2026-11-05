@@ -2,10 +2,6 @@
 
 What swim protects against, what it doesn't, and the test behind each claim.
 
-[← back to the README](../README.md#what-swim-protects-against) ·
-[Architecture](architecture.md) · [State machines](state.md) ·
-[Recovery](recovery.md)
-
 ## The line
 
 **Approval, signing and the chain prove who decided what. They don't make a
@@ -395,7 +391,7 @@ summary with a warning annotation. Guards approved by a flag
 ## Claims and the tests that prove them
 
 Test files are under `internal/`. "Pending" names the task in
-[dev/tasks.md](../dev/tasks.md) that will add the proof.
+[dev/tasks.md](../../dev/tasks.md) that will add the proof.
 
 | Claim | Test |
 |---|---|
@@ -429,7 +425,7 @@ Test files are under `internal/`. "Pending" names the task in
 | Changing, removing or reordering a chain entry is detected. | `TestChainLinksAndDetectsTampering` (chain) |
 | An edited log or chain entry fails `swim verify`. | `TestSignedApprovalAndVerify` (e2e/custody_test.go) |
 | Every approval is recorded with its method and signed by the runner; the scripts that ran are kept; `signing: required` refuses without a key; `--strict` fails on unsigned entries. | `TestChainRecordsEveryApproval` (e2e/custody_test.go) |
-| Under `swim run`, every entry is signed by a run key the runner key vouched for once; a lane has no runner key file to read, its own try at the agent is put to the operator (who says no), and on Linux it can't read the launcher's memory; `swim verify` trusts the run. When the runner key won't vouch for a run key, `signing: required` stops the run before a lane starts and `auto` records it unsigned, asking once. | `TestRunKeyKeepsSigningFromLanes` (e2e/runkey_test.go); skipped while flaky ([T34](../dev/tasks/T34-runkey-test-flake.md)) |
+| Under `swim run`, every entry is signed by a run key the runner key vouched for once; a lane has no runner key file to read, its own try at the agent is put to the operator (who says no), and on Linux it can't read the launcher's memory; `swim verify` trusts the run. When the runner key won't vouch for a run key, `signing: required` stops the run before a lane starts and `auto` records it unsigned, asking once. | `TestRunKeyKeepsSigningFromLanes` (e2e/runkey_test.go); skipped while flaky ([T34](../../dev/tasks/T34-runkey-test-flake.md)) |
 | The launcher signs only a lane's own round or check entry, once per lane process, under its own lane, job, run and manifest; any other kind is refused, and so is a token used from outside its lane. | `TestLaneEntry` (launcher), `TestRecordFromTheLane` (approval) |
 | A run key's signature checks with plain `ssh-keygen`; its delegation holds only for its run, key and runner key; a delegation copied onto another key breaks consistent, and one by a key outside the trusted set fails trusted. | `TestRunKey` (sign), `TestRunKeyEntries` (chain) |
 | `swim doctor` warns when the runner key is a file with no passphrase, and notes a key in ssh-agent. | `TestSigningKey` (doctor) |

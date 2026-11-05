@@ -27,6 +27,21 @@ func read(t *testing.T, rel string) string {
 	return string(data)
 }
 
+// pages are the docs: the README, CONTRIBUTING.md, docs/ and
+// docs/reference/.
+func pages(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for _, g := range []string{"docs/*.md", "docs/reference/*.md"} {
+		m, _ := filepath.Glob(filepath.Join(root(t), g))
+		out = append(out, m...)
+	}
+	if len(out) < 15 {
+		t.Fatalf("found only %d doc pages", len(out))
+	}
+	return append(out, filepath.Join(root(t), "README.md"), filepath.Join(root(t), "CONTRIBUTING.md"))
+}
+
 // goFiles calls fn with the path and content of every .go file under dir
 // (relative to the root), tests included or not.
 func goFiles(t *testing.T, dir string, tests bool, fn func(path, src string)) {
@@ -56,17 +71,16 @@ func TestGoVersionMatchesGoMod(t *testing.T) {
 	if m == nil {
 		t.Fatal("go.mod has no go line")
 	}
-	for _, f := range []string{"docs/compatibility.md", "README.md"} {
-		if !strings.Contains(read(t, f), "Go "+m[1]) && !strings.Contains(read(t, f), "Go **"+m[1]+"**") {
-			t.Errorf("%s doesn't give go.mod's Go version (Go %s)", f, m[1])
-		}
+	f := "docs/reference/compatibility.md"
+	if !strings.Contains(read(t, f), "Go "+m[1]) && !strings.Contains(read(t, f), "Go **"+m[1]+"**") {
+		t.Errorf("%s doesn't give go.mod's Go version (Go %s)", f, m[1])
 	}
 }
 
 // Every versioned schema swim writes (swim.<name>/vN in the code) has a
-// stability tier in docs/compatibility.md.
+// stability tier in docs/reference/compatibility.md.
 func TestEverySchemaHasATier(t *testing.T) {
-	doc := read(t, "docs/compatibility.md")
+	doc := read(t, "docs/reference/compatibility.md")
 	re := regexp.MustCompile(`"(swim\.[a-z-]+/v\d+)"`)
 	seen := map[string]bool{}
 	for _, dir := range []string{"internal", "cmd"} {
@@ -86,7 +100,7 @@ func TestEverySchemaHasATier(t *testing.T) {
 	sort.Strings(names)
 	for _, s := range names {
 		if !strings.Contains(doc, "`"+s+"`") {
-			t.Errorf("docs/compatibility.md doesn't list schema %s", s)
+			t.Errorf("docs/reference/compatibility.md doesn't list schema %s", s)
 		}
 	}
 }
@@ -103,9 +117,8 @@ func TestCitedTestsExist(t *testing.T) {
 		})
 	}
 	cited := regexp.MustCompile("`(Test[A-Z]\\w*)`")
-	docs, _ := filepath.Glob(filepath.Join(root(t), "docs", "*.md"))
 	n := 0
-	for _, p := range docs {
+	for _, p := range pages(t) {
 		data, _ := os.ReadFile(p)
 		for _, m := range cited.FindAllStringSubmatch(string(data), -1) {
 			n++
@@ -119,13 +132,10 @@ func TestCitedTestsExist(t *testing.T) {
 	}
 }
 
-// Relative links in the docs (and the README's links into docs/) point at
-// files that exist.
+// Relative links in the docs point at files that exist.
 func TestDocLinksResolve(t *testing.T) {
 	link := regexp.MustCompile(`\]\(([^)#\s]+)(#[^)]*)?\)`)
-	pages, _ := filepath.Glob(filepath.Join(root(t), "docs", "*.md"))
-	pages = append(pages, filepath.Join(root(t), "README.md"), filepath.Join(root(t), "swimlane.md"))
-	for _, p := range pages {
+	for _, p := range pages(t) {
 		data, _ := os.ReadFile(p)
 		for _, m := range link.FindAllStringSubmatch(string(data), -1) {
 			target := m[1]
@@ -140,11 +150,8 @@ func TestDocLinksResolve(t *testing.T) {
 }
 
 // Anchors the docs link to exist (GitHub's heading slugs, or an explicit
-// <a id>): links between the README and the pages in docs/, and within a
-// page.
+// <a id>): links between the docs, and within a page.
 func TestDocAnchorsResolve(t *testing.T) {
-	pages, _ := filepath.Glob(filepath.Join(root(t), "docs", "*.md"))
-	pages = append(pages, filepath.Join(root(t), "README.md"), filepath.Join(root(t), "swimlane.md"))
 	heading := regexp.MustCompile(`^#+ (.+)$`)
 	ids := map[string]map[string]bool{} // page path -> anchors
 	anchors := func(p string) map[string]bool {
@@ -174,7 +181,7 @@ func TestDocAnchorsResolve(t *testing.T) {
 	}
 	link := regexp.MustCompile(`\]\(([^)#\s]*\.md)?#([^)\s]+)\)`)
 	n := 0
-	for _, p := range pages {
+	for _, p := range pages(t) {
 		data, _ := os.ReadFile(p)
 		for _, m := range link.FindAllStringSubmatch(string(data), -1) {
 			target := p
@@ -209,33 +216,4 @@ func slug(h string) string {
 		}
 	}
 	return b.String()
-}
-
-// docs/usage.md embeds docs/architecture.md's diagram: they stay the same.
-func TestUsageDiagramMatchesArchitecture(t *testing.T) {
-	re := regexp.MustCompile("(?s)```mermaid\n.*?\n```")
-	arch := re.FindString(read(t, "docs/architecture.md"))
-	if arch == "" {
-		t.Fatal("docs/architecture.md has no mermaid diagram")
-	}
-	if !strings.Contains(read(t, "docs/usage.md"), arch) {
-		t.Error("docs/usage.md's diagram differs from docs/architecture.md's: copy it over")
-	}
-}
-
-// docs/README.md is the index: every page in docs/ (and each SDK example)
-// is listed in it.
-func TestDocsIndexListsEveryPage(t *testing.T) {
-	index := read(t, "docs/README.md")
-	pages, _ := filepath.Glob(filepath.Join(root(t), "docs", "*.md"))
-	examples, _ := filepath.Glob(filepath.Join(root(t), "docs", "examples", "*.md"))
-	for _, p := range append(pages, examples...) {
-		rel, _ := filepath.Rel(filepath.Join(root(t), "docs"), p)
-		if rel == "README.md" {
-			continue
-		}
-		if !strings.Contains(index, "]("+filepath.ToSlash(rel)+")") {
-			t.Errorf("docs/README.md doesn't list %s", rel)
-		}
-	}
 }

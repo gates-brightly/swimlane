@@ -243,7 +243,7 @@ type Pin struct {
 
 // PinsPath is the operator's pins file, next to config.yml: outside every
 // repo, so a lane can't change it through the repo (it can as the same
-// user; see docs/trust-model.md).
+// user; see docs/reference/trust-model.md).
 func PinsPath() string { return filepath.Join(filepath.Dir(config.Path()), "trust-pins.yml") }
 
 type pinsFile struct {

@@ -3,9 +3,6 @@
 How a round gets from an AI session to a signed record, where credentials
 live, and where policy is enforced.
 
-[← back to using swim](usage.md#how-it-fits-together) ·
-[Trust model](trust-model.md) · [State machines](state.md)
-
 ```mermaid
 flowchart TD
   subgraph nocreds["No credentials"]

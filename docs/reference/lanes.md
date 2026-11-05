@@ -1,0 +1,166 @@
+# Lanes
+
+Writing a lane script. Start from `swim new N "<goal>"`.
+
+## Forms
+
+- **Short** (what `swim new` writes): first line `#!/usr/bin/env swim`,
+  then the header and steps. `swim run` loads the library, calls
+  `lane_init N` and ends the round when the script ends. `./lane.N.sh`
+  runs it as `swim run N` does; `bash lane.N.sh` can't.
+- **Explicit:** loads the library itself and calls `lane_init N` first and
+  `summary` last, so it also runs with plain bash:
+  `_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"`.
+
+An approval pins which form a lane uses (its manifest's runner).
+
+## Example
+
+```bash
+#!/usr/bin/env swim
+# swim: syntax 4
+# Round:   Cut over orders-api from SST to Terraform
+# After:   1
+# Guards:  ORDERS_ALLOW_SST_REMOVE  remove SST stack orders-prod (2026-10-09: tf owns it)
+# Locks:   tf/orders
+# Timeout: 30m
+
+stage snapshot
+snapshot "cfn template" aws cloudformation get-template --stack-name orders-prod
+stage check
+run  "tf plan" terraform -chdir=infra/orders plan -detailed-exitcode
+gate "DeletionPolicy is Retain (deployed)" bash -c 'aws cloudformation get-template --stack-name orders-prod | grep -q Retain'
+stage change
+if guard ORDERS_ALLOW_SST_REMOVE "remove SST stack orders-prod (2026-10-09: tf owns it)"; then
+  run "sst remove" npx sst remove --stage prod
+fi
+stage verify
+run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
+```
+
+## Functions
+
+| | |
+|---|---|
+| `lane_init N` | Explicit form only, first: cd to the lane's workspace (its staged copy under `swim run`), open the round, export `SWIM_JOB`, `SWIM_DEADLINE`, `SWIM_TIMEOUT`. Refuses a lane already running. |
+| `stage NAME` | Start a [stage](#stages). Steps before the first are setup. |
+| `run [opts] "<label>" cmd [args]` | A step: PASS/FAIL. A failure doesn't stop the round. |
+| `gate [opts] "<label>" cmd [args]` | A step whose failure (after the last attempt) stops the round. |
+| `snapshot [opts] "<label>" cmd [args]` | A read-only step whose output is also saved under `.swim/snapshots/`. |
+| `guard FLAG "<action - date, reason>"` | True if FLAG is approved for this run, else logs SKIP (a dry run). See [guards](guards.md). |
+| `decide NAME "<question>" "<choice>"...` | A numbered choice; sets `DECISION`. See [decisions](guards.md#decisions). |
+| `confirm "<question>" [answer]` | The operator must type the answer (default `yes`); anything else, or no stdin, stops the round. |
+| `last_failed` / `any_failed` | True if the previous step / any step this round failed. |
+| `reached STAGE` | True if the round started STAGE or a later one. |
+| `drift "<what differs>"` | Record DRIFT (deployed state differs from code). |
+| `stop "<reason>"` | Record STOP and end the round now. |
+| `msg [--progress N/M] "<text>"` | The lane's status message (live view, `swim status`); latest wins, `msg ""` clears. The log keeps `MSG` lines, at most one per `msg_log_interval` (10s). Never fails the round. |
+| `output KEY VALUE` | A small value among the round's outputs. |
+| `input N\|JOB NAME` | The path (or small value) of an output of a round in `# After:`: lane N's round this run waited on, or JOB's latest pass. `"$(input 2 stats.json)"`; inside `bash -c`, `swim input`. Recorded in the chain. |
+| `cache restore\|save TREE` | An installed tree's snapshot. See [cache](cache.md). |
+| `source FILE` | Under `swim run`, a repo file is read from the stage, and only if `# Includes:` lists it. |
+| `summary` | Explicit form only, last: log the summary, record the final state, exit non-zero if a step failed. |
+
+**Step options**, before the label:
+
+| | |
+|---|---|
+| `--timeout D` | Stop the step after D (`30s`, `5m`): FAIL, exit 124. `0` turns off `Step-Timeout:` for this step. |
+| `--retry N` | Up to N more tries on a non-zero exit. Only on read-only or idempotent steps. |
+| `--backoff D` | Wait before the first retry (default 2s), doubling to 5m, ±20% jitter. |
+| `--retry-on CODES` | Retry only on these exit codes (`1,255`). |
+| `--no-retry-timeout` | Don't retry an attempt the limit stopped. |
+| `--soft` | In a `Fail: hard` round, this step's failure doesn't end it. |
+| `--checkpoint[=AGE]` | See [checkpoints](#checkpoints). |
+| `--key K` / `--target T` | The step's name across rounds / what it talks to (default: `# Targets:`), both logged. |
+| `--expect-fail[=CODES]` | A negative test: PASS on a non-zero exit (one of CODES), FAIL on 0. Not with `--retry`. |
+
+The round's `Timeout:` always wins. A step runs in its own process group,
+and a limit stops all of it (SIGTERM, SIGKILL after 5s), except a step
+reading the terminal, which stays in the lane's group and is stopped alone.
+
+## Header
+
+`# Key: value` lines at the top (at most one space after `#`). Only
+`Round` is required; empty means the default. Other keys (`# Ticket:
+OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
+
+| | |
+|---|---|
+| `# swim: syntax 4` | The [syntax](compatibility.md#syntax-versions-and-the-lock). |
+| `# Round:` | The goal. A script without one isn't run. |
+| `# Job:` | Written by `swim new`; keep it. |
+| `# Task:` | A name for the lane (`swim run checks`). |
+| `# After:` | Lanes, tasks or jobs that must pass first. |
+| `# Owner:` / `# Created:` | Who wrote it / when. |
+| `# Guards: FLAG  <what it approves>` | One per flag: the only guards it can have approved. `# Guards: * <why>` lets it name flags at run time. `swim lint --fix` adds them. |
+| `# Decisions: NAME  <what it decides>` | One per decision it may ask. |
+| `# Locks:` | Resources it needs to itself (`orders-table, tf/orders`). |
+| `# Step-Timeout:` / `# Timeout:` | Default limit per step / limit for the round. |
+| `# Targets:` | What its steps talk to by default. |
+| `# Outputs:` | Files or directories it promises in `$SWIM_OUT` for dependents. Missing: FAIL; undeclared: WARN. Hashed into status and the chain, made read-only. Not masked: never secrets. |
+| `# Fail: soft\|hard` | `hard`: the first failed step ends the round. |
+| `# Includes:` | Repo files that are part of the round (sourced files, local modules): pinned and staged; the only repo files it may read as code. |
+| `# Cache:` | See [cache](cache.md). |
+| `# Signoff:` | See [CI](ci.md#local-ci). |
+| `# Observe: NAME = <command>` / `# Observe: path CMD...` | See [manifest](manifest.md#probes). |
+| `# Workspace: live` | Run in the checkout itself, not a staged copy (for tools that read the whole tree, like `go test`); lint warns (`workspace-live`). |
+
+## Stages
+
+| | |
+|---|---|
+| `snapshot` | Read-only capture of current state. |
+| `check` | Checks and gates; nothing changes yet. |
+| `change` | The change, destructive steps behind guards. |
+| `verify` | Prove it worked (a re-plan is a no-op). |
+
+In that order; leave out what you don't need. Out of order, twice, or
+`change` without snapshot and check before it: a WARN. An unknown name
+stops the round. Each stage's result (PASS, FAIL, SKIP, none) is in the END
+block and `status.yml`.
+
+## Checkpoints
+
+A run reruns the whole round. `run --checkpoint` keeps a step that passed:
+a later run of the same round logs `KEPT ... (passed in run R; not run)`
+and counts it as passed. Mark steps that are slow or mustn't happen twice
+and whose effect lives outside the repo (a bucket made, a migration, a
+deploy): a 20-step lane that failed at step 19 reruns from 19.
+
+- Kept only for the same round, key (`--key`, else the label), and command
+  (its arguments and any file they name in the stage). `=AGE` (`4h`) bounds
+  it.
+- Never a check or snapshot: those say how things are now. A kept step's
+  local files aren't in the next run's stage.
+- The chain lists each kept step with the run it passed in, and `swim
+  verify` checks that run's log.
+- `swim status` says what the next run keeps; `swim checkpoint [ls|rm]`;
+  `swim run --fresh` runs them all.
+
+## Rules
+
+- No `set -e`: failed checks keep going; only gates stop the round. A
+  command outside a step that fails is logged `WARN outside a step` and
+  changes nothing: put what matters in a step.
+- Steps take argv, not a shell string: `run "count" bash -c 'scan | jq .Count'`.
+- Load your toolchain (nvm, asdf, pyenv) yourself: non-interactive shells
+  don't.
+- Snapshot first. Every destructive step behind its own guard, after a gate
+  that tells "ours" (tagged) from "theirs".
+- Rerunnable: steps idempotent or detecting their own prior success.
+- End with a verification step.
+- Bash 3.2 (macOS): no associative arrays, `mapfile`, `${x,,}`.
+
+## Lint
+
+`swim lint` reports errors, warnings and info with `file:line`, a fix and a
+`[code]`; exit 1 on an error (`--strict`: on a warning). `swim run` refuses
+`set -e` and a missing or wrong `lane_init`. Accept a finding with a
+reason:
+
+```bash
+rm -rf "$TMP"   # swim:lint-ignore destructive scratch dir this round made
+# swim:lint-ignore bash4 runs only on the Linux CI box          (the next line)
+# swim:lint-ignore-file cross-lane reads lane 1's output        (the file)
+```

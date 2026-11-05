@@ -622,10 +622,20 @@ func helpText() string {
 }
 
 func cmdGuide(args []string) error {
-	if len(args) > 0 {
-		return usagef("usage: swim guide")
+	switch {
+	case len(args) == 0:
+		fmt.Print(help.Index)
+	case len(args) == 1 && args[0] == "all":
+		fmt.Print(help.Full())
+	case len(args) == 1:
+		page, ok := help.Topic(args[0])
+		if !ok {
+			return usagef("no topic %q; topics: %s, all", args[0], strings.Join(help.Topics, ", "))
+		}
+		fmt.Print(page)
+	default:
+		return usagef("usage: swim guide [TOPIC|all]")
 	}
-	fmt.Print(help.Full())
 	return nil
 }
 

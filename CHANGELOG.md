@@ -43,6 +43,14 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Changed
 
+- **`swim guide` is the reference, one topic at a time.** `swim guide`
+  lists the topics, `swim guide lanes` prints one, and `swim guide all`
+  (or `swim --help --full`) prints them all. The pages are
+  docs/reference in swim's repo, which the binary carries, so the guide
+  and the docs are one text: each topic is written once. The README is
+  the first five minutes; docs/guide.md, the tour, shows the rest once and
+  links to the reference. docs/usage.md, docs/quickstart.md and
+  swimlane.md are gone.
 - **`just release` is gone.** `just next-tag` is the one way to tag a
   release. It refuses to tag until this file has a section for the tag
   (the steps above), since the GitHub release takes its notes from it:

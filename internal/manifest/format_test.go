@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-// The manifest hash text is frozen (docs/formats.md): approvals, queue
+// The manifest hash text is frozen (docs/reference/formats.md): approvals, queue
 // entries, schedules and hub commands pin these hashes, so a change here
 // stales every one of them. Change it only with a dual-hash transition
-// (docs/formats.md).
+// (docs/reference/formats.md).
 const goldenV2 = "7ced577be71ab4bc4701b0d1ccc3d6b0935e26b67143ffc28a4795fd3ce8fd32"
 
 func TestManifestHashFrozen(t *testing.T) {
 	m := build(t, repo(t), 3)
 	if m.SHA256 != goldenV2 {
-		t.Errorf("manifest v2 hash is %s, want %s: the hash text changed (docs/formats.md)", m.SHA256, goldenV2)
+		t.Errorf("manifest v2 hash is %s, want %s: the hash text changed (docs/reference/formats.md)", m.SHA256, goldenV2)
 	}
 	if !m.Matches(goldenV2) || m.Matches("") || m.Matches("other") {
 		t.Error("Matches should accept the manifest's hash and nothing else")

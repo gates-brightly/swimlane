@@ -8,7 +8,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/approval"
 )
 
-// Claims in docs/trust-model.md that no other test covers.
+// Claims in docs/reference/trust-model.md that no other test covers.
 
 // A guard whose approval socket can't be reached declines: the step is a
 // dry run, never approved by default.

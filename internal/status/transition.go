@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The lane state machine (docs/state.md), as the rules every write of
+// The lane state machine (docs/reference/state.md), as the rules every write of
 // status.yml is checked against. A lane at rest (idle or finished)
 // may start a new round, or be archived, refused or skipped, from anywhere;
 // the rules are about the round in flight:
@@ -92,7 +92,7 @@ func enforce(bad []string) {
 	if len(bad) == 0 || !(testing.Testing() || os.Getenv(CheckEnv) == "1") {
 		return
 	}
-	panic("status.yml: illegal state transition (docs/state.md): " + strings.Join(bad, "; "))
+	panic("status.yml: illegal state transition (docs/reference/state.md): " + strings.Join(bad, "; "))
 }
 
 // clone copies what the transition check reads (each lane's
