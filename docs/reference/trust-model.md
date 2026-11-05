@@ -236,13 +236,13 @@ runner key that asks for each use, not without asking you.*
 What's left is the runner key itself. A lane runs as you, so it can use
 the runner key the way you can, and what it signs with it is trusted:
 
-| Where the runner key lives | What a lane can do | `swim doctor` (`signing-key`) |
-|---|---|---|
-| A file with no passphrase | Read it and sign anything, during the run or after. | warns |
-| A file with a passphrase, used through ssh-agent | Ask the agent to sign, while it holds the key. | notes |
-| Only in ssh-agent (`signing_key` is the `.pub`) | Ask the agent to sign, while it holds the key; nothing to copy. | notes |
-| ssh-agent, added with `ssh-add -c` | Ask the agent, which asks you: swim run's one question as the run starts is expected, any other during a run isn't swim's. | notes |
-| A security key (`ssh-keygen -t ed25519-sk`) | Ask the device, which needs your touch (unless made with `no-touch-required`): swim run asks once per run. | notes |
+| Where the runner key lives | What a lane can do |
+|---|---|
+| A file with no passphrase | Read it and sign anything, during the run or after. |
+| A file with a passphrase, used through ssh-agent | Ask the agent to sign, while it holds the key. |
+| Only in ssh-agent (`signing_key` is the `.pub`) | Ask the agent to sign, while it holds the key; nothing to copy. |
+| ssh-agent, added with `ssh-add -c` | Ask the agent, which asks you: swim run's one question as the run starts is expected, any other during a run isn't swim's. |
+| A security key (`ssh-keygen -t ed25519-sk`) | Ask the device, which needs your touch (unless made with `no-touch-required`): swim run asks once per run. |
 
 Removing `SSH_AUTH_SOCK` from a lane's environment wouldn't change this
 (a process running as you can find the agent's socket) and would break
@@ -352,7 +352,6 @@ Test files are under `internal/`. "Pending" names the task in
 | Under `swim run`, every entry is signed by a run key the runner key vouched for once; a lane has no runner key file to read, its own try at the agent is put to the operator (who says no), and on Linux it can't read the launcher's memory; `swim verify` trusts the run. When the runner key won't vouch for a run key, `signing: required` stops the run before a lane starts and `auto` records it unsigned, asking once. | `TestRunKeyKeepsSigningFromLanes` (e2e/runkey_test.go) |
 | The launcher signs only a lane's own round or check entry, once per lane process, under its own lane, job, run and manifest; any other kind is refused, and so is a token used from outside its lane. | `TestLaneEntry` (launcher), `TestRecordFromTheLane` (approval) |
 | A run key's signature checks with plain `ssh-keygen`; its delegation holds only for its run, key and runner key; a delegation copied onto another key fails `swim verify`. | `TestRunKey` (sign), `TestRunKeyEntries` (chain) |
-| `swim doctor` warns when the runner key is a file with no passphrase, and notes a key in ssh-agent. | `TestSigningKey` (doctor) |
 | Entries signed with an old runner key still verify. | `TestRecoveryLostRunnerKey` (e2e/recovery_test.go) |
 | A repo's `blocked_commands` are refused in the script and at the step; git itself is not blocked. | `TestBlockedCommands` (e2e/e2e_test.go) |
 | `status.yml`, queue entries and kept scripts are replaced atomically and synced to disk with their directory; chain appends are synced. | `TestStateWritesAreDurable`, `TestWriteAtomic` (fsutil) |

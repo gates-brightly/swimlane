@@ -1,7 +1,8 @@
-// Package doctor checks swim's environment: the binary and PATH, the
-// config, the repo's .gitignore block and git state, stale pid files, the
-// toolchain and the version lock. Checks only read; Fix applies the two
-// safe local repairs (the .gitignore block and stale pid files).
+// Package doctor checks what running swim on this machine needs: the swim
+// on PATH, the config, git and bash and the tools lanes call, the
+// toolchain, where notifications go, the repo's .gitignore block, and
+// state swim left behind. Checks only read; Fix applies the safe local
+// repairs (the .gitignore block, and leftover state).
 package doctor
 
 import (
@@ -24,8 +25,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/proc"
-	"github.com/gates-brightly/swimlane/internal/redact"
-	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 )
 
@@ -48,8 +47,16 @@ type Options struct {
 	GitignoreBegin, GitignoreEnd, GitignoreBody string
 	// FixGitignore rewrites the block (swim init's merge); used by Fix.
 	FixGitignore func(path string) (bool, error)
-	// ToolchainTimeout limits the toolchain check (default 30s).
+	// ToolchainTimeout limits the toolchain check (default 10s).
 	ToolchainTimeout time.Duration
+	// NotifyTimeout limits the notify_url request (default 5s).
+	NotifyTimeout time.Duration
+	// BashVersion is bash's "major.minor" (default: asks the bash on PATH;
+	// "" there means none).
+	BashVersion string
+	// GNU reports whether this machine's tool (sed, grep, ...) is the GNU
+	// one (default: asks it with --version; timeout: whether it's on PATH).
+	GNU func(tool string) bool
 }
 
 func (o *Options) defaults() {
@@ -63,7 +70,16 @@ func (o *Options) defaults() {
 		o.SwimBin = os.Getenv("SWIM_BIN")
 	}
 	if o.ToolchainTimeout == 0 {
-		o.ToolchainTimeout = 30 * time.Second
+		o.ToolchainTimeout = 10 * time.Second
+	}
+	if o.NotifyTimeout == 0 {
+		o.NotifyTimeout = 5 * time.Second
+	}
+	if o.BashVersion == "" {
+		o.BashVersion = bashVersion()
+	}
+	if o.GNU == nil {
+		o.GNU = gnuTool()
 	}
 	if o.Cfg == nil {
 		o.Cfg = &config.Config{Root: o.Root, Settings: config.Settings{Lanes: 1}}
@@ -82,22 +98,24 @@ type Check struct {
 var Checks = []Check{
 	{"binary-platform", false, "a swim binary built for another OS or CPU (this one, bin/swim, each on PATH)", checkPlatform},
 	{"path-missing", false, "no swim on PATH (lane scripts run with bash can't load the library)", checkPathMissing},
-	{"path-multiple", false, "more than one swim on PATH", checkPathMultiple},
 	{"swim-bin", false, "$SWIM_BIN, or the swim lanes find on PATH, isn't this swim", checkSwimBin},
 	{"config-parse", false, "the config file doesn't load", checkConfigParse},
+	{"config-key", false, "config.yml sets a key swim doesn't read (a typo, or a removed setting): it's ignored", checkConfigKeys},
 	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
-	{"lanes-setting", false, "a `lanes:` setting (swim finds the lanes in use; it's ignored)", checkLanesSetting},
+	{"git", false, "git missing, or not a git repo", checkGit},
+	{"bash", false, "bash missing, or older than 4 while a lane uses a bash 4 feature (named by lane and line)", checkBash},
+	{"gnu-only", false, "a lane uses a GNU-only tool form (sed -i, grep -P, date -d, ...) this machine's tools don't run (macOS/BSD)", checkGNUOnly},
+	{"toolchain", false, "the configured toolchain fails to load", checkToolchain},
+	{"notify", false, "notify_url doesn't answer, or curl or notify_command's program isn't there", checkNotifyTarget},
 	{"notify-failing", false, "the last notification sent to notify_url (or notify_command) failed", checkNotifyFailing},
-	{"removed-setting", false, "a setting swim no longer has (modules, secrets, ambient_credentials; it's ignored)", checkRemovedSettings},
 	{"gitignore", true, "swim's .gitignore block is missing or out of date", checkGitignore},
 	{"tracked", false, "lane scripts or swim state tracked by git", checkTracked},
-	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
-	{"toolchain", false, "the configured toolchain fails to load", checkToolchain},
-	{"git", false, "git missing, or not a git repo", checkGit},
-	{"header-env-secret", false, "header_env lists a secret", checkHeaderEnvSecret},
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
+	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
+	{"claim-expired", true, "a lane claim (.swim/claims/) past its lease", checkExpiredClaims},
+	{"watch-gone", true, "a swim watch presence file (.swim/workers/) whose process is gone, or whose heartbeat stopped", checkWatchGone},
+	{"leftover", true, "a file under .swim/ that swim no longer reads (hub.yml, headless.*, groups/, observations/, out/, checkpoints/, ...)", checkLeftover},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than 14 days, of no lane's latest round", checkOldStages},
-	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 }
 
@@ -122,8 +140,11 @@ func Fixable(code string) bool {
 }
 
 // Fix applies the safe repairs for fs (the .gitignore block, stale pid
-// files, plain .lane.N.rc files moved into .env.swim) and returns what it
-// did. It never touches config, lane scripts or git.
+// files, expired claims, dead watches' presence files, old staged copies,
+// and files under .swim/ swim no longer reads) and returns what it did.
+// It checks each again before removing it, and never touches config, lane
+// scripts, git, lane logs, the chain, status.yml, the queue, .swim/scripts,
+// snapshots or signoffs.
 func Fix(o Options, fs []finding.Finding) ([]string, error) {
 	o.defaults()
 	var done []string
@@ -151,6 +172,14 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 				return done, err
 			}
 			done = append(done, "removed "+f.File)
+		case "claim-expired", "watch-gone", "leftover":
+			ok, err := o.removeLeftover(f)
+			if err != nil {
+				return done, err
+			}
+			if ok {
+				done = append(done, "removed "+f.File)
+			}
 		case "stages-old":
 			if removed := manifest.PruneStages(o.Root, stageKeep, o.keepRun()); len(removed) > 0 {
 				done = append(done, fmt.Sprintf("removed the staged copies of %d old runs from .swim/runs/", len(removed)))
@@ -284,31 +313,6 @@ func checkPathMissing(o *Options) []finding.Finding {
 		"no swim on PATH; a lane script run directly with bash can't load the library")}
 }
 
-func checkPathMultiple(o *Options) []finding.Finding {
-	all := LookPathAll("swim", o.PATH)
-	var distinct []string
-	for _, p := range all {
-		dup := false
-		for _, q := range distinct {
-			if sameFile(p, q) {
-				dup = true
-			}
-		}
-		if !dup {
-			distinct = append(distinct, p)
-		}
-	}
-	if len(distinct) < 2 {
-		return nil
-	}
-	parts := []string{distinct[0] + " (runs)"}
-	for _, p := range distinct[1:] {
-		parts = append(parts, p+" (hidden)")
-	}
-	return []finding.Finding{fd(finding.Warn, "path-multiple", "", "remove the ones you don't use, or reorder PATH (just which shows where each came from)",
-		"%d different swims on PATH, in order: %s", len(distinct), strings.Join(parts, ", "))}
-}
-
 func checkSwimBin(o *Options) []finding.Finding {
 	if o.Self == "" {
 		return nil
@@ -342,41 +346,37 @@ func checkConfigParse(o *Options) []finding.Finding {
 		"config doesn't load: %v", o.CfgErr)}
 }
 
+// checkConfigKeys: config.yml is read loosely, so a key swim doesn't
+// read (a typo, a removed setting) is silently ignored.
+func checkConfigKeys(o *Options) []finding.Finding {
+	path := o.Cfg.Path
+	if path == "" {
+		path = config.Path()
+	}
+	keys, err := config.UnknownKeys(path)
+	if err != nil {
+		return nil // config-parse says why it doesn't load
+	}
+	var out []finding.Finding
+	for _, k := range keys {
+		where := "at the top level"
+		if k.Section != "" {
+			where = "under " + k.Section
+		}
+		f := fd(finding.Warn, "config-key", path, "delete it, or correct its spelling (swim guide config lists the settings)",
+			"unknown key %s %s: swim ignores it", k.Key, where)
+		f.Line = k.Line
+		out = append(out, f)
+	}
+	return out
+}
+
 func checkConfigRepo(o *Options) []finding.Finding {
 	if o.CfgErr != nil || o.Cfg.HasRepo {
 		return nil
 	}
 	return []finding.Finding{fd(finding.Warn, "config-repo", o.Cfg.Path, "swim init",
 		"the config has no section for %s; built-in defaults apply", o.Root)}
-}
-
-func checkLanesSetting(o *Options) []finding.Finding {
-	if !o.Cfg.RepoLanes {
-		return nil
-	}
-	file := o.Cfg.Path
-	if o.Cfg.RepoFile != "" {
-		file = o.Cfg.RepoFile
-	}
-	return []finding.Finding{fd(finding.Warn, "lanes-setting", file, "remove `lanes:` (from swim.yml, the repo's config section or defaults)",
-		"`lanes:` is no longer used: swim shows the lanes in use (a script, a current log or a running process), and `swim archive N` drops one")}
-}
-
-// checkRemovedSettings points out keys swim.yml or config.yml's defaults
-// still set though swim no longer has them: read and ignored.
-func checkRemovedSettings(o *Options) []finding.Finding {
-	var out []finding.Finding
-	for _, src := range []struct {
-		file string
-		keys []string
-	}{{o.Cfg.RepoFile, o.Cfg.Repo.RemovedKeys()}, {o.Cfg.Path, o.Cfg.Settings.RemovedKeys()}} {
-		if src.file == "" || len(src.keys) == 0 {
-			continue
-		}
-		out = append(out, fd(finding.Warn, "removed-setting", src.file, "delete "+strings.Join(src.keys, ", "),
-			"%s: swim no longer has these settings; they're ignored", strings.Join(src.keys, ", ")))
-	}
-	return out
 }
 
 func lines(s string) []string {
@@ -561,50 +561,6 @@ func checkGit(o *Options) []finding.Finding {
 			"%s is not in a git repo; swim keys config and state by the repo's root", o.Cwd)}
 	}
 	return nil
-}
-
-func checkHeaderEnvSecret(o *Options) []finding.Finding {
-	ignored := map[string]bool{}
-	for _, n := range o.Cfg.SecretEnvIgnore {
-		ignored[n] = true
-	}
-	listed := map[string]bool{}
-	for _, n := range o.Cfg.SecretEnv {
-		listed[n] = true
-	}
-	auto := o.Cfg.SecretEnvAuto == nil || *o.Cfg.SecretEnvAuto
-	var out []finding.Finding
-	for _, n := range o.Cfg.HeaderEnv {
-		if listed[n] || auto && redact.AutoName(n) && !ignored[n] {
-			out = append(out, fd(finding.Warn, "header-env-secret", "", "remove it from header_env (swim config --path)",
-				"header_env lists %s, a secret; step headers record it only as %s=***(len N)", n, n))
-		}
-	}
-	return out
-}
-
-// checkSigningKey says where the runner key lives. swim run signs a run's
-// entries with a run key held in its memory, which the runner key vouches
-// for once; a lane runs as the operator, so what stands between it and a
-// signature swim verify trusts is the runner key itself.
-func checkSigningKey(o *Options) []finding.Finding {
-	if o.Cfg.SigningMode() == config.SigningOff {
-		return nil
-	}
-	k, err := sign.LoadKey(o.Cfg.SigningKey)
-	if err != nil {
-		return nil
-	}
-	switch sign.Storage(k) {
-	case sign.InFile:
-		return []finding.Finding{fd(finding.Warn, "signing-key", k.Path, "ssh-add -c "+k.Path+", delete the file and set signing_key to "+strings.TrimSuffix(k.Path, ".pub")+".pub; or a security key (ssh-keygen -t ed25519-sk)",
-			"the runner key is a file with no passphrase: a lane runs as you, so it can read it and sign chain entries swim verify trusts")}
-	case sign.InLockedFile, sign.InAgent:
-		return []finding.Finding{fd(finding.Info, "signing-key", k.Path, "ssh-add -c (swim run then asks once per run), or a security key",
-			"the runner key signs through ssh-agent: a lane can ask the agent too, unless it confirms each use")}
-	}
-	return []finding.Finding{fd(finding.Info, "signing-key", k.Path, "",
-		"the runner key is a security key: each signature needs it (swim run signs once per run)")}
 }
 
 // remoteRunningFor is how long a lane may run on another machine before

@@ -111,7 +111,7 @@ func TestEachCheck(t *testing.T) {
 		{name: "date -d", script: before(c, "stage snapshot\n", "when=$(date -d yesterday +%F)\n"), code: "gnu-only", level: finding.Warn, message: "`date -d`"},
 		{name: "stat -c", script: before(c, "stage snapshot\n", "size=$(stat -c %s notes.txt)\n"), code: "gnu-only", level: finding.Warn, message: "`stat -c`"},
 		{name: "find -printf", script: before(c, "stage snapshot\n", "find . -name '*.log' -printf '%s\\n'\n"), code: "gnu-only", level: finding.Warn, message: "`find -printf`"},
-		{name: "timeout", script: before(c, "stage verify\n", "run \"slow\" timeout 30 sleep 1\n"), code: "gnu-only", level: finding.Warn, message: "`timeout`"},
+		{name: "timeout", script: before(c, "stage verify\n", "run \"slow\" timeout 30 make check\n"), code: "gnu-only", level: finding.Warn, message: "`timeout`"},
 		{name: "guard not listed", script: before(c, "stage verify\n", "if guard ALLOW_X \"x\"; then run \"x\" true; fi\n"), code: "guard-unlisted", level: finding.Error, message: "swim refuses it when it asks"},
 		{name: "guard named at run time", script: before(c, "stage verify\n", "if guard \"$FLAG\" \"x\"; then run \"x\" true; fi\n"), code: "guard-dynamic", level: finding.Error, message: "# Guards: *"},
 		{name: "guard not used", script: before(c, "# Timeout:", "# Guards: ALLOW_Z  never used\n"), code: "guard-unused", level: finding.Warn, line: 7},

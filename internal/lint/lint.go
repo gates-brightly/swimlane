@@ -145,6 +145,23 @@ func Run(root string, cfg *config.Config, lanes []int) ([]finding.Finding, error
 	return run(root, cfg, lanes, func(Check) bool { return true })
 }
 
+// Only lints every lane with just the checks named (swim doctor's bash4
+// and gnu-only), and returns only their findings.
+func Only(root string, cfg *config.Config, codes ...string) ([]finding.Finding, error) {
+	want := map[string]bool{}
+	for _, c := range codes {
+		want[c] = true
+	}
+	fs, err := run(root, cfg, nil, func(c Check) bool { return want[c.Code] })
+	out := fs[:0]
+	for _, f := range fs {
+		if want[f.Code] {
+			out = append(out, f)
+		}
+	}
+	return out, err
+}
+
 // launcherRefuses are the error-level checks the launcher already refuses
 // as the run starts (with its own message), so the pre-flight leaves them.
 var launcherRefuses = map[string]bool{"after": true, "cycle": true, "blocked": true}

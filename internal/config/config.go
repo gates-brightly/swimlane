@@ -25,9 +25,9 @@ import (
 // Settings is one block of configuration, either `defaults` or a repo entry.
 // Zero values mean "not set" so a repo block can override field by field.
 type Settings struct {
-	// Lanes was a fixed lane count. swim now finds a repo's lanes on disk
-	// (lane.Associated); a `lanes:` setting is ignored, and doctor says so.
-	Lanes           int      `yaml:"lanes,omitempty"`
+	// Lanes is the highest lane in use (see Config.Active), not a setting:
+	// swim finds a repo's lanes on disk (lane.Associated).
+	Lanes           int      `yaml:"-"`
 	HeaderEnv       []string `yaml:"header_env,omitempty"`
 	Runtime         string   `yaml:"runtime,omitempty"`
 	Toolchain       string   `yaml:"toolchain,omitempty"`
@@ -36,7 +36,7 @@ type Settings struct {
 	// Removed keys that still count in the policy hash as they did, so a
 	// repo that sets them keeps its approvals (policy.go): modules:, and
 	// swim.yml's guarded secrets (secrets:, ambient_credentials:). Read
-	// and otherwise ignored; swim doctor says to delete them.
+	// and otherwise ignored.
 	RemovedModules            any `yaml:"modules,omitempty"`
 	RemovedSecrets            any `yaml:"secrets,omitempty"`
 	RemovedAmbientCredentials any `yaml:"ambient_credentials,omitempty"`
@@ -88,9 +88,6 @@ type Config struct {
 	// Repo is what swim.yml itself sets (empty without one): the settings
 	// every machine shares, which PolicyHash covers.
 	Repo Settings
-	// RepoLanes reports whether a (no longer used) `lanes:` was set, in the
-	// repos entry, swim.yml or defaults: swim doctor points it out.
-	RepoLanes bool
 	Settings
 	// Active are the lanes the repo is using (lane.Associated): the ones
 	// swim shows. Lanes (in Settings) is the highest of them (at least 1),
@@ -144,7 +141,6 @@ func Load(root string) (*Config, error) {
 		return nil, fmt.Errorf("%s: env: belongs in %s (or a repo's swim.yml), not config.yml", c.Path, filepath.Join(filepath.Dir(c.Path), "env.swim"))
 	}
 	c.Settings = f.Defaults
-	c.RepoLanes = f.Defaults.Lanes != 0
 	c.Runners, c.RunnerFrom = nil, nil
 	c.mergeRunners(f.Defaults.Runners, c.Path)
 	if s, path, err := readRepoFile(root); err != nil {
@@ -152,7 +148,6 @@ func Load(root string) (*Config, error) {
 	} else if path != "" {
 		c.RepoFile = path
 		c.Repo = s
-		c.RepoLanes = c.RepoLanes || s.Lanes != 0
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
@@ -169,7 +164,6 @@ func Load(root string) (*Config, error) {
 			return nil, fmt.Errorf("%s (repo %s): env: belongs in a [repo PATH] section of %s, not config.yml", c.Path, root, filepath.Join(filepath.Dir(c.Path), "env.swim"))
 		}
 		c.HasRepo = true
-		c.RepoLanes = c.RepoLanes || repo.Lanes != 0
 		c.merge(repo)
 		c.mergeRunners(repo.Runners, c.Path)
 	}
@@ -190,21 +184,6 @@ func Load(root string) (*Config, error) {
 		return nil, fmt.Errorf("%s (repo %s): %w", c.Path, root, err)
 	}
 	return c, nil
-}
-
-// RemovedKeys are the keys s sets that swim no longer has: they're read
-// and ignored (swim doctor points them out).
-func (s Settings) RemovedKeys() []string {
-	var out []string
-	for _, k := range []struct {
-		name string
-		v    any
-	}{{"modules", s.RemovedModules}, {"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}} {
-		if k.v != nil {
-			out = append(out, k.name)
-		}
-	}
-	return out
 }
 
 // EnvKeysVar lists (space separated) the keys a lane's environment got

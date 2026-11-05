@@ -144,6 +144,26 @@ history stays here, since `swim changelog --since` reads it.
   finding names the portable form (`sed -i.bak`, `grep -E`, the step's
   `--timeout`, ...).
 
+### Changed
+
+- **`swim doctor` checks what running lanes on your machine needs, and
+  cleans up what swim left behind.** New: `bash` (on a Mac, bash 3.2 is
+  named only where a lane uses a bash 4 feature, by lane and line),
+  `gnu-only` (a lane's `sed -i`, `grep -P`, `date -d`, ... that this
+  machine's BSD tools don't run), `notify` (`notify_url` doesn't answer,
+  or `notify_command`'s program isn't there), `config-key` (a key in
+  `config.yml` swim doesn't read, with its line), and leftover state:
+  `claim-expired`, `watch-gone` (a dead `swim watch`'s presence file) and
+  `leftover` (`hub.yml`, `headless.*`, `groups/`, `observations/`,
+  `out/`, `checkpoints/`, ... under `.swim/`), which `--fix` deletes. It
+  never deletes lane logs, the chain, `status.yml`, the queue, scripts,
+  snapshots or signoffs. Gone: `signing-key`, `header-env-secret`,
+  `path-multiple` (`swim-bin` says when the swim that runs isn't this
+  one), `lanes-setting` and `removed-setting`. The toolchain check's limit
+  is 10s, and the report ends `0 errors, 0 warnings` when all is well.
+- **`lanes:` is no longer read.** In `swim.yml` it fails to load, like any
+  unknown key; in `config.yml` it's ignored, and `swim doctor` names it.
+
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 
 ### Removed

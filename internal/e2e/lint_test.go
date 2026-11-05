@@ -162,13 +162,14 @@ func TestDoctor(t *testing.T) {
 	r := newRepo(t)
 	hermeticPath(r)
 	out := r.mustSwim("doctor")
-	contains(t, "healthy repo", out, "no problems found")
+	contains(t, "healthy repo", out, "0 errors, 0 warnings")
 
 	// Break things: a stale .gitignore block, a stale pid file, a lane script
 	// tracked by git, and a swim for another platform first on PATH.
 	gi := filepath.Join(r.root, ".gitignore")
 	os.WriteFile(gi, []byte("node_modules/\n# >>> swim >>>\nnext[0-9]*.sh\n.swim/\n# <<< swim <<<\ndist/\n"), 0o644)
 	os.WriteFile(filepath.Join(r.root, ".swim", "lane2.pid"), []byte("2147483646\n"), 0o644)
+	os.WriteFile(filepath.Join(r.root, ".swim", "hub.yml"), []byte("workers: []\n"), 0o644)
 	r.script(1, "tracked", "run \"ok\" true")
 	if out, err := r.cmd("git", "add", "-f", "lane.1.sh").CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v %s", err, out)
@@ -185,9 +186,10 @@ func TestDoctor(t *testing.T) {
 	}
 	contains(t, "doctor", out,
 		filepath.Join(dir, "swim"), "error", "built for "+plat, "exec format error", "[binary-platform]",
-		"[path-multiple]", "[swim-bin]",
+		"[swim-bin]",
 		".gitignore", "missing lane.[0-9]*", "has old next[0-9]*.sh", "[gitignore]",
 		".swim/lane2.pid", "[stale-pid]",
+		".swim/hub.yml", "swim no longer reads it", "[leftover]",
 		"git tracks lane.1.sh", "[tracked]",
 		"swim doctor --fix")
 
@@ -202,8 +204,8 @@ func TestDoctor(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("doctor --fix exit %d (the wrong binary is still there):\n%s", code, out)
 	}
-	contains(t, "--fix", out, "fixed: rewrote swim's block in .gitignore", "fixed: removed .swim/lane2.pid", "[binary-platform]", "[tracked]")
-	for _, gone := range []string{"[gitignore]", "[stale-pid]"} {
+	contains(t, "--fix", out, "fixed: rewrote swim's block in .gitignore", "fixed: removed .swim/lane2.pid", "fixed: removed .swim/hub.yml", "[binary-platform]", "[tracked]")
+	for _, gone := range []string{"[gitignore]", "[stale-pid]", "[leftover]"} {
 		if strings.Contains(out, gone) {
 			t.Errorf("--fix left %s:\n%s", gone, out)
 		}
@@ -236,10 +238,10 @@ func TestDoctorBrokenConfig(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "[config-parse]") {
 		t.Fatalf("broken config: %d\n%s", code, out)
 	}
-	os.WriteFile(cfgPath, []byte("defaults:\n  lanes: 2\n  header_env: [STAGE, DEPLOY_TOKEN]\n  toolchain: exit 7\n"), 0o644)
+	os.WriteFile(cfgPath, []byte("defaults:\n  lanes: 2\n  header_env: [STAGE]\n  toolchain: exit 7\n"), 0o644)
 	out, code = r.swim("doctor")
 	if code != 1 {
 		t.Fatalf("doctor exit %d:\n%s", code, out)
 	}
-	contains(t, "doctor", out, "[config-repo]", "header_env lists DEPLOY_TOKEN", "[header-env-secret]", "toolchain \"exit 7\" fails", "[toolchain]")
+	contains(t, "doctor", out, "[config-repo]", "unknown key lanes under defaults", "[config-key]", "toolchain \"exit 7\" fails", "[toolchain]")
 }
