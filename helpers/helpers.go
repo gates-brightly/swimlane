@@ -42,17 +42,26 @@ func Source(m string) (string, bool) {
 	return string(b), err == nil
 }
 
-// Summary is module m's one-line description, from its first comment line
-// ("# swim helpers, module gh: GitHub. ..." is "GitHub").
+// Summary is module m's one-line description: the first sentence of its
+// header comment ("# swim helpers, module gh: GitHub. ..." is "GitHub").
 func Summary(m string) string {
 	src, _ := Source(m)
-	first, _, _ := strings.Cut(src, "\n")
-	_, rest, ok := strings.Cut(first, "module "+m+": ")
+	var head []string
+	for _, line := range strings.Split(src, "\n") {
+		c, ok := strings.CutPrefix(line, "#")
+		if c = strings.TrimSpace(c); !ok || c == "" {
+			break
+		}
+		head = append(head, c)
+	}
+	_, rest, ok := strings.Cut(strings.Join(head, " "), "module "+m+": ")
 	if !ok {
 		return ""
 	}
-	s, _, _ := strings.Cut(rest, ". ")
-	return strings.TrimSuffix(s, ".")
+	if s, _, cut := strings.Cut(rest, ". "); cut {
+		rest = s
+	}
+	return strings.TrimSuffix(rest, ".")
 }
 
 // Stamped is module m's file with its stamp, as swim helpers add writes it.
@@ -125,4 +134,59 @@ func (c Copy) Describe(this string) string {
 		return fmt.Sprintf("%s from swim %s, a module this swim doesn't ship", c.Module, c.From)
 	}
 	return "not a swim helpers copy"
+}
+
+// Func is one documented entry of a module: the comment block above its
+// public functions, "# gh_pr_fetch N [REMOTE]: a gate that ...". Usage is
+// the part before ": " (one or more functions with their arguments), Doc
+// the rest as one paragraph.
+type Func struct {
+	Names []string // the functions it defines: gh_pr_fetch; os_mac, os_linux
+	Usage string
+	Doc   string
+}
+
+// Funcs are module m's documented public functions, in file order. A
+// function defined right after another under one comment
+// ("# os_mac / os_linux: ...") shares its entry.
+func Funcs(m string) []Func {
+	src, _ := Source(m)
+	var out []Func
+	var block []string
+	var cur *Func
+	for _, line := range strings.Split(src, "\n") {
+		if c, ok := strings.CutPrefix(line, "#"); ok {
+			block = append(block, strings.TrimPrefix(c, " "))
+			cur = nil
+			continue
+		}
+		name, isFunc := strings.CutSuffix(line, "() {")
+		switch {
+		case isFunc && !strings.HasPrefix(name, "_") && len(block) > 0 && strings.HasPrefix(block[0], name):
+			usage, doc, _ := strings.Cut(strings.Join(block, " "), ": ")
+			if doc != "" {
+				doc = strings.ToUpper(doc[:1]) + doc[1:]
+			}
+			out = append(out, Func{Names: []string{name}, Usage: usage, Doc: doc})
+			cur = &out[len(out)-1]
+		case isFunc && cur != nil && strings.Contains(cur.Usage, name):
+			cur.Names = append(cur.Names, name)
+		}
+		if strings.TrimSpace(line) == "" || isFunc {
+			block = nil
+		}
+	}
+	return out
+}
+
+// Public are the functions module m defines outside its private _m_ ones.
+func Public(m string) []string {
+	src, _ := Source(m)
+	var out []string
+	for _, line := range strings.Split(src, "\n") {
+		if name, ok := strings.CutSuffix(line, "() {"); ok && !strings.HasPrefix(name, "_") {
+			out = append(out, name)
+		}
+	}
+	return out
 }

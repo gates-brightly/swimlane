@@ -12,7 +12,7 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | `new N\|TASK "<goal>"` | Write `lane.N.sh` from the template with a new round id; a TASK takes the lowest free lane. |
 | `lint [N ...]` | Check lane scripts; changes nothing. |
 | `archive N ... ["<note>"] [--as NAME]` / `archive --passed` | Keep an ended round's log and empty the lane (its script becomes a stub with the note); `--passed`: every lane whose round passed. |
-| `helpers` / `helpers add MODULE...` | The lane helper modules swim ships, and the copies in this repo; write a module to `lib/swim/` (again: update it). See [lanes](lanes.md#shared-helpers). |
+| `helpers [MODULE]` / `helpers add MODULE...` | The lane helper modules swim ships (one line each), a module's functions, and the copies in this repo; write a module to `lib/swim/` (again: update it). See [lanes](lanes.md#shared-helpers). |
 | `note [--lane N] "<text>"` | A decision or finding in `.swim.log`. |
 | **Rounds** | |
 | `run [N ...]` / `all [--rerun]` | Run lanes / every ready round that hasn't passed. |

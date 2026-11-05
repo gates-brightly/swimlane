@@ -840,13 +840,16 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   a commit for revisions before versioning. A revision that bumps the syntax
   version has Upgrading notes: read them before running lanes.
 `,
-	"helpers": `swim helpers
+	"helpers": `swim helpers [MODULE]
 swim helpers add MODULE... [--dir DIR] [--force]
 
   The lane helper modules swim ships: bash files of functions named
   <module>_<name> (aws_gate, gh_pr_fetch, git_worktree, tool_gate, ...).
-  swim helpers lists them, and the copies in this repo (in lib/swim, and
-  what lanes include) with how each stands.
+  swim helpers lists them, one line each, and the copies in this repo (in
+  lib/swim, and what lanes include) with how each stands. swim helpers
+  MODULE shows its functions: each one's arguments and what it does (from
+  the comment above it), and the lines a lane includes it with. Both work
+  outside a repo.
   add writes each module to DIR/<module>.sh (default lib/swim), stamped on
   its first line with the module, the swim it came from and the SHA-256 of
   the rest. Lanes include and source the copy (# Includes: lib/swim/gh.sh,

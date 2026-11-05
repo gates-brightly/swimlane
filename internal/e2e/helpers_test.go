@@ -215,6 +215,12 @@ func TestHelpersCommand(t *testing.T) {
 	r := newRepo(t)
 	out := r.mustSwim("helpers")
 	contains(t, "list", out, "aws ", "docker ", "gh ", "git ", "os ", "tool ", "in this repo: none")
+	contains(t, "show", r.mustSwim("helpers", "gh"), "gh: GitHub", "not in this repo yet: swim helpers add gh",
+		"# Includes: lib/swim/gh.sh", "\ngh_pr_fetch N [REMOTE]\n    A gate that fetches pull request N's head", "\ngh_auth_gate [LOGIN]\n")
+	contains(t, "show paired", r.mustSwim("helpers", "os"), "\nos_mac / os_linux\n    True on macOS / Linux")
+	if out, code := r.swim("helpers", "nope"); code == 0 || !strings.Contains(out, "no helper module") {
+		t.Errorf("unknown module: exit %d\n%s", code, out)
+	}
 
 	out = r.mustSwim("helpers", "add", "gh", "tool")
 	contains(t, "add", out, "wrote lib/swim/gh.sh (gh, from swim ", "# Includes: lib/swim/gh.sh lib/swim/tool.sh", "source lib/swim/tool.sh")
@@ -225,6 +231,7 @@ func TestHelpersCommand(t *testing.T) {
 	}
 	contains(t, "again", r.mustSwim("helpers", "add", "gh"), "lib/swim/gh.sh: gh is current")
 	contains(t, "list copies", r.mustSwim("helpers"), "lib/swim/gh.sh  gh, current", "lib/swim/tool.sh  tool, current")
+	contains(t, "show installed", r.mustSwim("helpers", "gh"), "in this repo: lib/swim/gh.sh, gh, current")
 
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: r\n# Includes: lib/swim/gh.sh\n\nsource lib/swim/gh.sh\nstage check\nstep \"x\" true\n"), 0o755)
 	contains(t, "lint current", must(r.swim("lint", "1")), "no problems found")

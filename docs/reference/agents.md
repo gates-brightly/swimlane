@@ -29,7 +29,7 @@ says otherwise:
   `queue show`, `log`, `lint`,
   `verify`, `env`, `keys`, `doctor` (no `--fix`), `changelog`, `guide`,
   `--help`, `wait`. Add `--yaml` only to parse.
-- **Your own bookkeeping:** `swim new`, `archive`, `note`.
+- **Your own bookkeeping:** `swim new`, `archive`, `note`, `helpers add`.
 - **Never:**
   - Run rounds (`swim run`, `all`, `swim N`, `./lane.N.sh`, `watch`, `ci`).
     If the user explicitly asks, only lanes with no guards that change
@@ -53,7 +53,10 @@ says otherwise:
 3. **Write:** `swim new N "<goal>"`, then the steps in the short form, bash
    unless the work needs another language ([lanes](lanes.md)). Keep the
    header accurate: the operator reads it without you. Order goes in the
-   header (`# After:`), never just prose.
+   header (`# After:`), never just prose. Before writing a check by hand,
+   `swim helpers` (the modules) and `swim helpers MODULE` (their
+   functions): a helper that fits beats your own version
+   ([shared helpers](lanes.md#shared-helpers)).
 4. **Check:** `swim lint N` until clean, then `swim status N` (what it
    waits on, how each guard would be decided).
 5. **Hand over** (below), then go on to other work. Never poll. With

@@ -17,7 +17,7 @@ import (
 // helpersDir is where swim helpers add writes modules, under the repo.
 const helpersDir = "lib/swim"
 
-// cmdHelpers is swim helpers [add MODULE... [--dir DIR] [--force]].
+// cmdHelpers is swim helpers [MODULE | add MODULE... [--dir DIR] [--force]].
 func cmdHelpers(args []string) error {
 	var dir string
 	var force bool
@@ -25,23 +25,66 @@ func cmdHelpers(args []string) error {
 	if err != nil {
 		return err
 	}
-	root, cfg, err := repo()
-	if err != nil {
-		return err
-	}
-	switch {
-	case len(rest) == 0:
-		if force || dir != "" {
-			return usagef("--dir and --force are for swim helpers add")
+	if len(rest) > 0 && rest[0] == "add" {
+		if len(rest) == 1 {
+			return usagef("usage: swim helpers add MODULE... [--dir DIR] [--force]")
 		}
-		return listHelpers(root, cfg)
-	case rest[0] == "add" && len(rest) > 1:
+		root, _, err := repo()
+		if err != nil {
+			return err
+		}
 		if dir == "" {
 			dir = helpersDir
 		}
 		return addHelpers(root, dir, rest[1:], force)
 	}
-	return usagef("usage: swim helpers [add MODULE... [--dir DIR] [--force]]")
+	if force || dir != "" {
+		return usagef("--dir and --force are for swim helpers add")
+	}
+	// Listing and showing work anywhere; in a repo they add its copies.
+	root, cfg, rerr := repo()
+	if rerr != nil {
+		root, cfg = "", nil
+	}
+	switch len(rest) {
+	case 0:
+		return listHelpers(root, cfg)
+	case 1:
+		if _, ok := helpers.Source(rest[0]); !ok {
+			return usagef("no helper module %q; modules: %s", rest[0], strings.Join(helpers.Modules(), ", "))
+		}
+		return showHelpers(root, cfg, rest[0])
+	}
+	return usagef("usage: swim helpers [MODULE | add MODULE... [--dir DIR] [--force]]")
+}
+
+// showHelpers prints module m's functions: each one's usage and what it
+// does, from the comment above it, and how a lane uses the module.
+func showHelpers(root string, cfg *config.Config, m string) error {
+	fmt.Printf("%s: %s\n", m, helpers.Summary(m))
+	rel := filepath.ToSlash(filepath.Join(helpersDir, m+".sh"))
+	if root != "" {
+		installed := false
+		for _, c := range helperCopies(root, cfg) {
+			data, _ := os.ReadFile(filepath.Join(root, c))
+			if h := helpers.Check(string(data)); h.Module == m {
+				rel, installed = c, true
+				fmt.Printf("in this repo: %s, %s\n", c, h.Describe(version.String()))
+				break
+			}
+		}
+		if !installed {
+			fmt.Printf("not in this repo yet: swim helpers add %s\n", m)
+		}
+	}
+	fmt.Printf("in a lane:\n  # Includes: %s\n  source %s\n", rel, rel)
+	for _, f := range helpers.Funcs(m) {
+		fmt.Printf("\n%s\n", f.Usage)
+		for _, l := range wrapWords(f.Doc, 72) {
+			fmt.Printf("    %s\n", l)
+		}
+	}
+	return nil
 }
 
 // addHelpers writes each module to DIR/<module>.sh with its stamp. A copy
@@ -94,9 +137,12 @@ func addHelpers(root, dir string, modules []string, force bool) error {
 // listHelpers lists the modules this swim ships, and the copies in this
 // repo (lib/swim, and what lanes include) with how each stands.
 func listHelpers(root string, cfg *config.Config) error {
-	fmt.Println("modules (swim helpers add MODULE...; swim guide lanes, Shared helpers):")
+	fmt.Println("helper modules: swim helpers MODULE shows its functions; swim helpers add MODULE... writes it into the repo")
 	for _, m := range helpers.Modules() {
 		fmt.Printf("  %-8s %s\n", m, helpers.Summary(m))
+	}
+	if root == "" {
+		return nil
 	}
 	copies := helperCopies(root, cfg)
 	if len(copies) == 0 {
@@ -146,5 +192,25 @@ func helperCopies(root string, cfg *config.Config) []string {
 		out = append(out, rel)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// wrapWords breaks s into lines of at most w columns, between words.
+func wrapWords(s string, w int) []string {
+	var out []string
+	line := ""
+	for _, word := range strings.Fields(s) {
+		if line != "" && len(line)+1+len(word) > w {
+			out = append(out, line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += word
+	}
+	if line != "" {
+		out = append(out, line)
+	}
 	return out
 }

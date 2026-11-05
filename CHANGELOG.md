@@ -41,7 +41,9 @@ history stays here, since `swim changelog --since` reads it.
 ### Added
 
 - **Shared lane helpers, one module per namespace:** `swim helpers`
-  lists them; `swim helpers add gh git` writes them to `lib/swim/`,
+  lists them, one line each, and `swim helpers gh` shows a module's
+  functions (arguments and what each does, from its comments; the skill
+  has the agent look there before writing a check by hand); `swim helpers add gh git` writes them to `lib/swim/`,
   stamped with the swim they came from, and running it again updates
   them. Lanes include and source the copy (`# Includes:`, then `source`),
   so the approved round holds every line. `swim lint` says when an

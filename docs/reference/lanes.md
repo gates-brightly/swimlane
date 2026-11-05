@@ -76,8 +76,9 @@ reading the terminal, which stays in the lane's group and is stopped alone.
 Behaviour many lanes repeat goes in a module the lanes include, not in each
 lane. swim ships modules of bash functions, one per namespace, every
 function named `<module>_<name>` (as Terraform names resources by
-provider). `swim helpers` lists them; `swim helpers add` writes the ones
-you use into the repo, to `lib/swim/`:
+provider). `swim helpers` lists them, one line each; `swim helpers gh`
+shows a module's functions, their arguments and what each does; `swim
+helpers add` writes the ones you use into the repo, to `lib/swim/`:
 
 ```bash
 swim helpers add aws gh os     # lib/swim/aws.sh, gh.sh, os.sh; commit them

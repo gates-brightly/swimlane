@@ -49,3 +49,28 @@ func TestCheck(t *testing.T) {
 		t.Errorf("not a copy: %+v", c)
 	}
 }
+
+// Every public function is documented: swim helpers MODULE lists it with
+// its usage, from the comment above it.
+func TestFuncsDocumentEveryFunction(t *testing.T) {
+	for _, m := range Modules() {
+		documented := map[string]bool{}
+		for _, f := range Funcs(m) {
+			if f.Doc == "" || !strings.HasPrefix(f.Usage, f.Names[0]) {
+				t.Errorf("%s: entry %+v", m, f)
+			}
+			for _, n := range f.Names {
+				documented[n] = true
+			}
+		}
+		for _, n := range Public(m) {
+			if !documented[n] {
+				t.Errorf("%s: %s has no `# %s ARGS: what it does` comment above it", m, n, n)
+			}
+		}
+	}
+	fs := Funcs("os")
+	if len(fs) != 2 || strings.Join(fs[0].Names, " ") != "os_mac os_linux" || fs[0].Usage != "os_mac / os_linux" {
+		t.Errorf("os: %+v", fs)
+	}
+}
