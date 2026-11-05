@@ -3,17 +3,14 @@ package authority
 import "testing"
 
 // Guard decides as swim run does as it starts: a flag set in the
-// environment approves; approvals: flags never asks.
+// environment approves; otherwise swim run asks.
 func TestGuard(t *testing.T) {
-	if g := Take(nil).Guard("DROP_OK", "drop table old_orders", true); g.Approved || !g.Asks {
+	if g := Take(nil).Guard("DROP_OK", "drop table old_orders"); g.Approved || !g.Asks {
 		t.Errorf("unset: %+v", g)
 	} else if got := g.Text(); got != "not approved; swim run will ask (a dry run if no one answers)" {
 		t.Errorf("unset text: %q", got)
 	}
-	if g := Take(nil).Guard("DROP_OK", "", false); g.Asks || g.Text() != "not approved; a dry run (approvals: flags never ask)" {
-		t.Errorf("approvals: flags: %+v %q", g, g.Text())
-	}
-	if g := Take([]string{"DROP_OK=1"}).Guard("DROP_OK", "", true); !g.Approved || g.Text() != "approved: DROP_OK=1" {
+	if g := Take([]string{"DROP_OK=1"}).Guard("DROP_OK", ""); !g.Approved || g.Text() != "approved: DROP_OK=1" {
 		t.Errorf("flag: %+v %q", g, g.Text())
 	}
 	q := Take([]string{"DROP_OK=1", "SWIM_QUEUE=q-1", "SWIM_QUEUE_APPROVED=DROP_OK"}).FlagSet("DROP_OK")

@@ -61,7 +61,9 @@ func TestLogShowsRunningStep(t *testing.T) {
 	}
 }
 
-func TestLogFollowUntilDone(t *testing.T) {
+// swim log -f follows the round and stops by itself when it ends; swim
+// wait N is what exits with its result.
+func TestLogFollowStopsWhenDone(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
 	r.script(1, "slow then fail", slowLane+`
@@ -74,13 +76,17 @@ run "fails" false`)
 	defer r.release("go2")
 	defer r.release("go")
 	waitFor(t, spooled(r, 1, "tick-1"))
-	f := start(t, r.cmd(bin, "log", "1", "-f", "--until-done"), nil)
+	f := start(t, r.cmd(bin, "log", "1", "-f"), nil)
+	w := start(t, r.cmd(bin, "wait", "1", "--interval", "100ms"), nil)
 	f.saw(t, "RUNNING  slow (in progress)")
 	r.release("go")
 	f.saw(t, "| tick-6") // streamed while the step runs
 	r.release("go2")
-	if code := f.wait(t); code != 1 {
-		t.Fatalf("--until-done should exit with the round's status (1): exit %d\n%s", code, f.out.String())
+	if code := f.wait(t); code != 0 {
+		t.Fatalf("-f should stop once the round ends: exit %d\n%s", code, f.out.String())
+	}
+	if code := w.wait(t); code != 1 || !strings.Contains(w.out.String(), "swim 1: failed") {
+		t.Fatalf("swim wait 1 should exit with the round's result (1): exit %d\n%s", code, w.out.String())
 	}
 	s := f.out.String()
 	contains(t, "follow", s, "RUNNING  slow (in progress)", "| tick-1", "| tick-6", "  PASS  slow", "  FAIL  fails (exit 1)", "== END FAIL")
@@ -90,9 +96,13 @@ run "fails" false`)
 	if strings.Index(s, "| tick-6") > strings.Index(s, "  PASS  slow") {
 		t.Errorf("output should stream before the step's result:\n%s", s)
 	}
-	// On an idle lane, --until-done prints the last round and exits with it.
-	if _, code := r.swim("log", "1", "--until-done"); code != 1 {
-		t.Errorf("idle lane, failed last round: exit %d", code)
+	// On an idle lane, -f prints the last round and stops; swim wait 1
+	// exits with it.
+	if out, code := r.swim("log", "1", "-f"); code != 0 || !strings.Contains(out, "== END FAIL") {
+		t.Errorf("idle lane, -f: exit %d\n%s", code, out)
+	}
+	if _, code := r.swim("wait", "1"); code != 1 {
+		t.Errorf("idle lane, failed last round: swim wait 1 exit %d", code)
 	}
 }
 
@@ -108,7 +118,7 @@ func TestLogFollowLateOutput(t *testing.T) {
 	defer c.Wait()
 	defer r.release("go")
 	waitFor(t, spooled(r, 1, "early"))
-	f := start(t, r.cmd(bin, "log", "1", "-f", "--until-done"), nil)
+	f := start(t, r.cmd(bin, "log", "1", "-f"), nil)
 	f.saw(t, "| early")
 	r.release("go")
 	if code := f.wait(t); code != 0 {

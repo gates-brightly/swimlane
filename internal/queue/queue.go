@@ -91,29 +91,29 @@ type LaneResult struct {
 
 // Result is filled in when the entry is consumed.
 type Result struct {
-	Run      string `yaml:"run,omitempty"`
-	Started  string `yaml:"started"`
-	Finished string `yaml:"finished"`
-	Exit     int    `yaml:"exit"`
-	Result   string `yaml:"result"` // passed | failed | interrupted | error
-	Error    string `yaml:"error,omitempty"`
-	// ApprovedBy is set when the worker approved the guards the batch
-	// didn't (swim watch -y): "swim watch -y (<user>)".
-	ApprovedBy string       `yaml:"approved_by,omitempty"`
-	Lanes      []LaneResult `yaml:"lanes,omitempty"`
+	Run      string       `yaml:"run,omitempty"`
+	Started  string       `yaml:"started"`
+	Finished string       `yaml:"finished"`
+	Exit     int          `yaml:"exit"`
+	Result   string       `yaml:"result"` // passed | failed | interrupted | error
+	Error    string       `yaml:"error,omitempty"`
+	Lanes    []LaneResult `yaml:"lanes,omitempty"`
 }
 
 // Entry is one queued batch.
 type Entry struct {
-	Schema     string   `yaml:"schema"`
-	ID         string   `yaml:"id"`
-	Seq        int      `yaml:"seq"`
-	Created    string   `yaml:"created"`
-	By         string   `yaml:"by"`
-	Note       string   `yaml:"note,omitempty"`
-	Lanes      []Lane   `yaml:"lanes"`
-	Approve    []string `yaml:"approve,omitempty"`     // guard flags approved for this batch
-	ApproveAll bool     `yaml:"approve_all,omitempty"` // -y: every guard
+	Schema  string   `yaml:"schema"`
+	ID      string   `yaml:"id"`
+	Seq     int      `yaml:"seq"`
+	Created string   `yaml:"created"`
+	By      string   `yaml:"by"`
+	Note    string   `yaml:"note,omitempty"`
+	Lanes   []Lane   `yaml:"lanes"`
+	Approve []string `yaml:"approve,omitempty"` // guard flags approved for this batch
+	// ApproveAll was an older swim's swim queue -y (every guard). Legacy:
+	// no longer written nor honoured; kept so that batch's signed
+	// statement still verifies.
+	ApproveAll bool `yaml:"approve_all,omitempty"`
 	// Decide were an older swim's answers to its lanes' decisions
 	// ("NAME=N"; swim no longer has decisions and sets none): kept so that
 	// batch's signed statement still verifies.
@@ -291,7 +291,7 @@ func List(root string, done bool) ([]*Entry, error) {
 // ClaimGrace is how long after its claim a .running entry that names no
 // worker may still be in the middle of being claimed (the worker writes
 // itself in right after the rename). List says orphaned regardless; a
-// caller waiting for the entry (swim queue --wait) gives it this long.
+// caller waiting for the entry (swim wait) gives it this long.
 const ClaimGrace = 10 * time.Second
 
 // BeingClaimed reports whether e, read as orphaned, names no worker and

@@ -160,20 +160,15 @@ func dryRun(o Options, disp *display.Display, n int, flag string) {
 	})
 }
 
-// unprompted lists a guard approved without anyone being asked (-y, or a
-// guard flag) on the lane's status entry, where swim
-// status and swim ci's summary show it.
+// unprompted lists a guard approved without anyone being asked (a guard
+// flag, or a queued batch's approval) on the lane's status entry, where
+// swim status and swim ci's summary show it.
 func unprompted(o Options, c approval.Caller, e chain.Entry) {
-	via := ""
-	switch e.Method {
-	case "auto":
-		via = or(o.ApprovedVia, "swim run -y")
-	case "flag", "queue":
-	default:
+	if e.Method != "flag" && e.Method != "queue" {
 		return
 	}
 	status.UpdateFile(o.Root, max(c.Lane, o.Cfg.Lanes), func(f *status.File) error {
-		f.Get(c.Lane).Unprompted(e.Guard, via)
+		f.Get(c.Lane).Unprompted(e.Guard)
 		return nil
 	})
 }
@@ -191,7 +186,7 @@ func (a *runAuthority) refused(o Options, c approval.Caller, req approval.Reques
 // decide answers one guard of a lane (req's lane, job and manifest
 // are the launcher's: the server replaced the lane's claims). In order: a
 // flag the lane has set (approved only if swim run's own environment set
-// it), then the operator (a pre-answer, -y, the prompt), if anyone can be
+// it), then the operator (a pre-answer, the prompt), if anyone can be
 // asked.
 func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Asker, cancel <-chan struct{}) approval.Response {
 	if req.Job == "" {
@@ -221,7 +216,7 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 		return grant(approval.Response{By: operator()}, r)
 	}
 
-	if ask == nil || o.Cfg.ApprovalMode() == config.ApprovalsFlags {
+	if ask == nil {
 		return approval.Response{Dry: true, Job: req.Job}
 	}
 	resp := ask(req, cancel)
@@ -232,11 +227,6 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 	by := or(resp.By, operator())
 	how := "approved at the prompt by " + by
 	method := "prompt"
-	if resp.Auto {
-		via := or(resp.Via, "swim run -y")
-		how, method = "approved by "+via+" ("+by+")", "auto"
-		by += " with " + via
-	}
 	if resp.Pre {
 		how, method = "pre-approved by "+by+" at "+resp.At+" in the live view", "preapproved"
 	}

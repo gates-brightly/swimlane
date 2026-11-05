@@ -82,12 +82,10 @@ type Request struct {
 // Response is the operator's answer.
 type Response struct {
 	Approved bool   `json:"approved"`
-	By       string `json:"by,omitempty"`   // who answered (the operator's user name)
-	Auto     bool   `json:"auto,omitempty"` // approved by -y, not at a prompt
-	Via      string `json:"via,omitempty"`  // what approved it when Auto ("swim run -y", "queue q-... -y")
-	Why      string `json:"why,omitempty"`  // for a decline without an answer: "the run is stopping", ...
-	Pre      bool   `json:"pre,omitempty"`  // answered ahead of time in the live view (pre-approved / pre-declined)
-	At       string `json:"at,omitempty"`   // when a pre-answer was given (hh:mm:ss)
+	By       string `json:"by,omitempty"`  // who answered (the operator's user name)
+	Why      string `json:"why,omitempty"` // for a decline without an answer: "the run is stopping", ...
+	Pre      bool   `json:"pre,omitempty"` // answered ahead of time in the live view (pre-approved / pre-declined)
+	At       string `json:"at,omitempty"`  // when a pre-answer was given (hh:mm:ss)
 	// ID is the approval's request id, to consume once (approved only).
 	// Lane and Job are who the launcher says asked.
 	ID   string `json:"id,omitempty"`

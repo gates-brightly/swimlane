@@ -20,7 +20,7 @@ import (
 // up, each batch gets a private channel back to it instead: one end of a
 // socket pair, as fd 3 (swim _batch --ask), closed on exec so the batch's
 // lanes never hold it. The batch's launcher decides every guard as
-// before (flags, signed approvals, -y); what only a person
+// before (flags, the batch's approvals); what only a person
 // can answer it sends up the channel, and the screen asks the operator in
 // yellow, naming the lane and the batch. Several batches may ask at once:
 // the screen lists them all, oldest first.

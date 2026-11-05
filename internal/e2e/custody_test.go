@@ -44,11 +44,11 @@ func TestHistoryAndVerify(t *testing.T) {
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"]) // the runner
 	dropLane(t, r)
-	r.mustSwim("run", "1", "-y")
-	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (approved by swim run -y", "PASS  drop")
+	r.mustSwimEnv([]string{"FIN_ALLOW_DROP=1"}, "run", "1")
+	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (FIN_ALLOW_DROP=1", "PASS  drop")
 
 	hist := r.mustSwim("history", "1")
-	contains(t, "history", hist, "approve FIN_ALLOW_DROP for swim 1 by ", "via auto",
+	contains(t, "history", hist, "approve FIN_ALLOW_DROP for swim 1 by ", "via flag",
 		"round swim 1 passed (exit 0)", "Signer: SHA256:", "(zach)", "Date:   ", "    Action:    drop table old_orders")
 	if !strings.HasPrefix(hist, "entry ") || strings.Index(hist, "round swim 1 passed") > strings.Index(hist, "approve FIN_ALLOW_DROP") {
 		t.Errorf("history should start with the newest entry, like git log:\n%s", hist)
@@ -96,8 +96,10 @@ func TestChainRecordsEveryApproval(t *testing.T) {
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, out)
 	}
-	r.script(1, "auto", `if guard ALLOW_B "change b"; then run "b" true; fi`)
-	r.mustSwim("run", "1", "-y")
+	r.script(1, "queued", `if guard ALLOW_B "change b"; then run "b" true; fi`)
+	withHeader(t, r, 1, "# Guards:  ALLOW_B change b")
+	r.mustSwim("queue", "1", "--approve", "ALLOW_B")
+	r.mustSwim("watch", "--once")
 	links, err := chain.Read(r.root)
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +113,7 @@ func TestChainRecordsEveryApproval(t *testing.T) {
 			}
 		}
 	}
-	if strings.Join(methods, " ") != "flag:ALLOW_A auto:ALLOW_B" {
+	if strings.Join(methods, " ") != "flag:ALLOW_A queue:ALLOW_B" {
 		t.Errorf("approve methods: %v", methods)
 	}
 	if !strings.Contains(r.log(1), "| sha256: ") {
@@ -131,7 +133,7 @@ func TestChainRecordsEveryApproval(t *testing.T) {
 	}
 	// signing: off records unsigned links; verify --strict flags them.
 	r.mustSwim("config", "signing", "off")
-	r.mustSwim("run", "1", "-y")
+	r.mustSwimEnv([]string{"ALLOW_B=1"}, "run", "1")
 	if out, code := r.swim("verify", "--allow-unsigned", "--strict"); code != 1 || !strings.Contains(out, "unsigned entries") {
 		t.Errorf("--strict with unsigned entries: %d %s", code, out)
 	}

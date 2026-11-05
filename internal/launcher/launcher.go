@@ -65,12 +65,6 @@ type Options struct {
 	// broker, approval.go) when the display can: stdin and stdout are a
 	// terminal and this isn't the YAML stream.
 	Prompt bool
-	// AutoApprove (swim run -y) approves every such guard without asking,
-	// terminal or not; each approval is logged as by -y. ApprovedBy and
-	// ApprovedVia name who and what approved (default: this user, "swim run
-	// -y"; a queued batch: who queued it, "queue <id> -y").
-	AutoApprove             bool
-	ApprovedBy, ApprovedVia string
 	// Pins holds the job each lane must still hold when it starts (lanes
 	// named by job id, and every lane swim ci selects): a lane script
 	// rewritten in the meantime is skipped, not run.
@@ -121,7 +115,7 @@ type Options struct {
 	Hook *notify.Hook
 	// Ask, if set, asks someone outside this run when nobody here can: the
 	// swim watch screen that started this batch (swim _batch --ask). It
-	// takes the guards -y doesn't approve, instead of a dry run.
+	// takes the guards nothing else approves, instead of a dry run.
 	Ask approval.Asker
 
 	ev *events
@@ -349,17 +343,14 @@ func Run(o Options) (int, error) {
 	stopOthers := watchOtherRuns(o, selected, disp)
 	// The approval broker always runs: every guard asks the launcher, which
 	// decides from what it saw as the run started, or asks the operator
-	// when the display can (or approves with -y). With no one to ask, a
+	// when the display can (or swim watch's screen). With no one to ask, a
 	// guard nothing else approves is a dry run.
 	var ask approval.Asker
 	prompt := o.Prompt && o.ev == nil && disp.CanAsk()
-	if o.AutoApprove || prompt {
-		if o.AutoApprove {
-			disp.Message("swim: -y: every guard whose flag isn't set is approved without asking (logged as by -y)")
-		}
+	if prompt {
 		ask = func(req approval.Request, cancel <-chan struct{}) approval.Response {
 			// The operator's answer given ahead in the live view (pinned to
-			// the manifest) comes before -y and instead of asking.
+			// the manifest) comes instead of asking.
 			if resp, ok := pre.use(o, req); ok {
 				word := "pre-approved"
 				if !resp.Approved {
@@ -369,11 +360,6 @@ func Run(o Options) (int, error) {
 				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (" + word + ")", At: now()})
 				return resp
 			}
-			if o.AutoApprove {
-				disp.Message(fmt.Sprintf("%sapproved by -y: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
-				o.ev.emit(Event{Event: "approved", Lane: req.Lane, Label: req.Desc, Detail: req.Flag + " (-y)", At: now()})
-				return approval.Response{Approved: true, By: or(o.ApprovedBy, operator()), Auto: true, Via: or(o.ApprovedVia, "swim run -y")}
-			}
 			defer awaitOperator(o, disp, req)()
 			notifyAsk(o, req)
 			yes := disp.Ask(req.Lane, approval.Question(req), cancel)
@@ -381,11 +367,7 @@ func Run(o Options) (int, error) {
 		}
 	}
 	if o.Ask != nil && !prompt {
-		auto := ask
 		ask = func(req approval.Request, cancel <-chan struct{}) approval.Response {
-			if auto != nil {
-				return auto(req, cancel) // -y approves it
-			}
 			disp.Message(fmt.Sprintf("%swaiting for an answer in swim watch: %s (%s)", display.Prefix(req.Lane, disp.Color()), req.Desc, req.Flag))
 			defer awaitOperator(o, disp, req)()
 			return o.Ask(req, cancel)

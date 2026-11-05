@@ -107,7 +107,7 @@ func cmdApproveHook(args []string) error {
 
 	// Run directly with bash, the lane decides for itself: it asks the
 	// operator on the terminal, or it's a dry run.
-	ask, why := approvalChannel(cfg)
+	ask, why := approvalChannel()
 	if ask == nil {
 		return dryRun(why)
 	}
@@ -133,11 +133,6 @@ func cmdApproveHook(args []string) error {
 	}
 	by := or(resp.By, operator())
 	how := "approved at the prompt by " + by
-	if resp.Auto {
-		via := or(resp.Via, "swim run -y")
-		how = "approved by " + via + " (" + by + ")"
-		by += " with " + via
-	}
 	if resp.Pre {
 		how = "pre-approved by " + by + " at " + resp.At + " in the live view"
 	}
@@ -151,9 +146,6 @@ func cmdApproveHook(args []string) error {
 		return err
 	}
 	method, approver := "prompt", chain.Approver{Name: or(resp.By, operator())}
-	if resp.Auto {
-		method = "auto"
-	}
 	if resp.Pre {
 		method = "preapproved"
 	}
@@ -253,11 +245,8 @@ func declined(resp approval.Response) string {
 type askFunc func(req approval.Request, stopped func() bool, deadline time.Time) approval.Response
 
 // approvalChannel picks how to ask: swim run's broker, the terminal (a lane
-// run directly), or nobody (CI, no terminal, approvals: flags), with why.
-func approvalChannel(cfg *config.Config) (askFunc, string) {
-	if cfg.ApprovalMode() == config.ApprovalsFlags {
-		return nil, ""
-	}
+// run directly), or nobody (CI, no terminal), with why.
+func approvalChannel() (askFunc, string) {
 	if sock := os.Getenv(approval.EnvVar); sock != "" {
 		return func(req approval.Request, stopped func() bool, dl time.Time) approval.Response {
 			resp, err := approval.Ask(sock, req, stopped, dl)

@@ -140,11 +140,11 @@ if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 // flag is refused, and the approval is recorded as the lane's own.
 func TestManifestRequestsFromTheLane(t *testing.T) {
 	r := newRepo(t, "")
-	r.script(1, "asks as another", `if "$SWIM_BIN" _approve 5 DROP "harmless cleanup"; then run "dropped as 5" true; fi
-if "$SWIM_BIN" _approve 1 DROP "harmless cleanup"; then run "dropped" true; fi
+	r.script(1, "asks as another", `if "$SWIM_BIN" _approve 5 DROP "harmless cleanup" --flag-set; then run "dropped as 5" true; fi
+if "$SWIM_BIN" _approve 1 DROP "harmless cleanup" --flag-set; then run "dropped" true; fi
 if "$SWIM_BIN" _approve 1 WIPE_ALL "routine tidy"; then run "wiped" true; fi`)
 	withHeader(t, r, 1, "# Guards:  DROP drop the table")
-	out, code := r.swim("run", "1", "-y")
+	out, code := r.swimEnv([]string{"DROP=1"}, "run", "1")
 	if code != launcher.ExitDryRun { // WIPE_ALL dry-runs
 		t.Fatalf("exit %d\n%s", code, out)
 	}
@@ -153,7 +153,7 @@ if "$SWIM_BIN" _approve 1 WIPE_ALL "routine tidy"; then run "wiped" true; fi`)
 		t.Error("lane 1 was approved as lane 5")
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "APPROVED  harmless cleanup (approved by swim run -y", "PASS  dropped",
+	contains(t, "agent1.log", log, "APPROVED  harmless cleanup (DROP=1", "PASS  dropped",
 		"SKIP  routine tidy (dry run: not approved: guard WIPE_ALL isn't declared")
 	if strings.Contains(log, "PASS  wiped") {
 		t.Error("an undeclared flag was approved")
@@ -181,7 +181,7 @@ func TestManifestResponseReuse(t *testing.T) {
 	r.script(1, "gets an approval", `run "ask" python3 -c '
 import json, os, socket
 s = socket.socket(socket.AF_UNIX); s.connect(os.environ["SWIM_APPROVAL"])
-s.sendall(json.dumps({"lane": 1, "flag": "DROP", "desc": "x", "token": os.environ["SWIM_APPROVAL_TOKEN"]}).encode() + b"\n")
+s.sendall(json.dumps({"lane": 1, "flag": "DROP", "desc": "x", "flag_set": True, "token": os.environ["SWIM_APPROVAL_TOKEN"]}).encode() + b"\n")
 resp = json.loads(s.makefile().readline())
 open(os.environ["SWIM_ROOT"] + "/approval-id", "w").write(resp["id"])'
 "$SWIM_BIN" _mark 1 APPROVED "drop" "approved" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP && echo first-use-ok
@@ -190,7 +190,7 @@ open(os.environ["SWIM_ROOT"] + "/approval-id", "w").write(resp["id"])'
 	r.script(2, "replays it", `if "$SWIM_BIN" _mark 2 APPROVED "drop" "approved at the prompt" --request "$(cat "$SWIM_ROOT/approval-id")" --guard DROP; then run "replayed" true; fi`)
 	withHeader(t, r, 2, "# Guards:  DROP drop the table")
 	withHeader(t, r, 2, "# After: 1")
-	out, _ := r.swim("run", "1", "2", "-y")
+	out, _ := r.swimEnv([]string{"DROP=1"}, "run", "1", "2")
 	contains(t, "output", out, "first-use-ok", "second-use-refused", "the approval was already used", "the approval was given to another lane")
 	if strings.Contains(r.log(2), "APPROVED") || strings.Contains(r.log(2), "PASS  replayed") {
 		t.Errorf("swim 2 used swim 1's approval:\n%s", r.log(2))

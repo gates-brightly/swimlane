@@ -60,6 +60,27 @@ history stays here, since `swim changelog --since` reads it.
   to load. Older logs with DRIFT and MSG lines still read, and older chain
   entries keep their observed facts, outputs and inputs and still verify.
 
+- **Three ways to approve a guard, no more.** The prompt on a terminal (or
+  `swim watch`'s screen for a queued batch), the flag up front (`FLAG=1
+  swim run N`), and a queued batch's `swim queue N --approve FLAG`. `-y` /
+  `--yes` ("approve every guard") is gone from `swim run`, `swim all`,
+  `swim queue` and `swim watch`, and so is the `approvals:` setting
+  (`flags`: never ask): `--no-prompt` answers every guard no, per run, and
+  CI or no terminal never asks. `approvals:` in swim.yml now fails to load
+  (remove it); in config.yml it is ignored. `status.yml` no longer writes
+  `auto_approved`/`auto_via`, nor a consumed batch `approved_by`. A batch
+  an older swim queued with `-y` runs with only its `--approve` flags; its
+  other guards are asked on the swimmer's screen, or dry-run. Older chain
+  entries (method `auto`) still verify.
+
+- **One way to wait: `swim wait`.** `swim queue --wait` (and its
+  `--timeout`) and `swim log --until-done` are gone. `swim wait N|BATCH|RUN`
+  blocks until a lane's round, a queued batch or a swim run ends and exits
+  with its result (0 passed, 3 dry run, 1 otherwise); `swim queue` prints
+  the batch's id to wait on. A plain number is now a lane (a batch is its
+  id or `'#41'`). `swim log -f` stops by itself once the followed round
+  ends (exit 0, whatever its result).
+
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 
 ### Removed

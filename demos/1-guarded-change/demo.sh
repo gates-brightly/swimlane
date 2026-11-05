@@ -54,6 +54,6 @@ show 'swim status'
 show 'swim log 1 | tail -25'
 pause
 show 'swim history --oneline'
-say "The chain records who approved what and how (the prompt, a flag, -y), signed and hash-linked."
+say "The chain records who approved what and how (the prompt, a flag, a queued batch), signed and hash-linked."
 show 'swim verify'
 demo_done

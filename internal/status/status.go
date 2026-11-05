@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -74,12 +75,9 @@ type Lane struct {
 	FailedSteps []string `yaml:"failed_steps" json:"failed_steps"`
 	Stages      []string `yaml:"stages,flow,omitempty" json:"stages,omitempty"`     // e.g. [snapshot PASS, check FAIL, change none, verify none]
 	Handlers    []string `yaml:"handlers,flow,omitempty" json:"handlers,omitempty"` // outcome handlers that ran, e.g. [on_failure PASS, on_exit PASS]
-	// The guards the round's run approved without a prompt: AutoApproved by
-	// -y (swim run -y, a queue batch's -y, swim watch -y; AutoVia says
-	// which), FlagApproved by a guard flag swim run's own environment set
-	// (FLAG=1) or the queue batch approved. Cleared when a round starts.
-	AutoApproved []string `yaml:"auto_approved,flow,omitempty" json:"auto_approved,omitempty"`
-	AutoVia      string   `yaml:"auto_via,omitempty" json:"auto_via,omitempty"`
+	// FlagApproved are the guards the round's run approved without a
+	// prompt: by a guard flag swim run's own environment set (FLAG=1), or
+	// the queue batch approved. Cleared when a round starts.
 	FlagApproved []string `yaml:"flag_approved,flow,omitempty" json:"flag_approved,omitempty"`
 	// DryRun are the guards the round's run didn't approve (declined, not
 	// asked, refused): their steps ran as dry runs. Cleared when a round
@@ -289,7 +287,7 @@ func (l *Lane) ResetRun() {
 	l.Stages = nil
 	l.Handlers = nil
 	l.FailedSteps = []string{}
-	l.AutoApproved, l.AutoVia, l.FlagApproved = nil, "", nil
+	l.FlagApproved = nil
 	l.DryRun = nil
 }
 
@@ -366,33 +364,21 @@ func (l *Lane) Dry(flag string) {
 	l.DryRun = append(l.DryRun, flag)
 }
 
-// Unprompted records that guard flag was approved without a prompt: by -y
-// when via names it ("swim run -y"), else by a guard flag. Each flag is
-// listed once.
-func (l *Lane) Unprompted(flag, via string) {
-	list := &l.FlagApproved
-	if via != "" {
-		list, l.AutoVia = &l.AutoApproved, via
+// Unprompted records that guard flag was approved without a prompt, by a
+// guard flag. Each flag is listed once.
+func (l *Lane) Unprompted(flag string) {
+	if !slices.Contains(l.FlagApproved, flag) {
+		l.FlagApproved = append(l.FlagApproved, flag)
 	}
-	for _, f := range *list {
-		if f == flag {
-			return
-		}
-	}
-	*list = append(*list, flag)
 }
 
 // UnpromptedText sums up the guards approved without a prompt: "DEPLOY,
-// MIGRATE (swim run -y); SEED (flag set)" ("" for none).
+// SEED (flag set)" ("" for none).
 func (l *Lane) UnpromptedText() string {
-	var parts []string
-	if len(l.AutoApproved) > 0 {
-		parts = append(parts, strings.Join(l.AutoApproved, ", ")+" ("+l.AutoVia+")")
+	if len(l.FlagApproved) == 0 {
+		return ""
 	}
-	if len(l.FlagApproved) > 0 {
-		parts = append(parts, strings.Join(l.FlagApproved, ", ")+" (flag set)")
-	}
-	return strings.Join(parts, "; ")
+	return strings.Join(l.FlagApproved, ", ") + " (flag set)"
 }
 
 // Ptr helpers for the nullable fields.

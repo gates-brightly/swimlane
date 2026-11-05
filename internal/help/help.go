@@ -133,7 +133,7 @@ var Commands = map[string]string{
              digits, '.', '_' or '-', not all digits, unique across lanes.
 `,
 	"run": `swim run [N|JOB ...] [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
-         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
+         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see swim guide other-languages)
 
   Run lanes. Each argument is a lane number or a job id (full, or 8+
@@ -233,21 +233,18 @@ swim run [options] "<label>" -- cmd [args...]     (inside a lane: one step; see 
       y approves; n, Enter or Esc declines. Lane output is held meanwhile.
   An approval is logged with who answered; a decline makes the step a dry
   run. Ctrl-C declines every waiting question and stops the run as usual.
-  Not asked: in CI, without a terminal, with --yaml, --no-prompt or config
-  approvals: flags (then only FLAG=1 approves).
-  -y, --yes     approve every guard whose flag isn't set, without asking,
-                terminal or not (logged as "approved by swim run -y (<user>)");
-                a flag set to anything but 1 (FLAG=0) still declines. What it
-                approved stays loud: swim status (auto_approved), the round's
-                chain entry and swim history, and swim ci's summary
-  --no-prompt   never ask; an unset guard flag is a dry run
+  Not asked: in CI, without a terminal, with --yaml or --no-prompt (then
+  only FLAG=1 approves). To approve without being asked, set the flag up
+  front: FLAG=1 swim run N (FLAG=0 declines).
+  --no-prompt   answer every guard question no: an unset guard flag is a
+                dry run
   Each lane runs a staged copy of its files (.swim/runs/<run>/<N>/), fixed
   before it waits for anything and checked again right before it starts;
   an edit to the working tree after that changes nothing in the run. See
   swim guide manifest.
 `,
 	"all": `swim all [--rerun] [--plain] [--no-tui] [--run-id ID] [--parallel N]
-         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [-y|--no-prompt]
+         [--yaml] [--yaml-output] [--interrupt graceful|immediate] [--no-prompt]
 
   Run every lane whose pending round hasn't passed yet: the same as
   "swim run" with no lane numbers. Rounds that already passed are shown as
@@ -313,9 +310,8 @@ swim report --earmarks | --earmark --reset [--name NAME]
   current or failed steps, and timing. Running lanes whose process is gone
   are shown as "running?" (interrupted); the next swim run, swim all, swim
   ci or swim watch ends their round as interrupted. Guards the round's run
-  approved with no one asked are listed as "approved without a prompt": by
-  -y (auto_approved, auto_via: swim run -y, queue q-... -y or swim watch
-  -y) or by a guard flag (flag_approved: FLAG=1, a batch's --approve).
+  approved with no one asked are listed as "approved without a prompt", by
+  a guard flag (flag_approved: FLAG=1, a batch's --approve).
   Guards it didn't approve, whose steps ran as dry runs, show as [DRY]
   (dry_run), here, in the live view and the watch screen.
   Under each lane holding a pending round (not one live in a run, nor one
@@ -446,7 +442,7 @@ swim archive --done ["<note>"]
   --lane N|JOB   tie the note to a lane (and its job id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]
+	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow]
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
@@ -482,11 +478,10 @@ swim archive --done ["<note>"]
   -f, --follow  print lane N's (or JOB's lane's) current round, then follow it
                 like tail -f: new log lines, and the running step's output as
                 it is written (the step's block then adds only its result
-                line). Runs until Ctrl-C.
-  --until-done  follow until the lane has finished its round, then exit with
-                the round's exit status (0 passed); on an idle lane, print its
-                last round and exit with that. For scripts and services
-                waiting on a job: swim log 3f2a9c1e --until-done
+                line). It stops by itself once the round has ended (on an
+                idle lane, at once, after its last round; with no round yet,
+                it waits for one). To wait for a round's result, and exit
+                with it: swim wait N.
 `,
 	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
         [--require-work] [--heartbeat D] [--run-id ID]
@@ -532,7 +527,7 @@ swim archive --done ["<note>"]
   restored from a CI cache).
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
-swim queue N|JOB ... [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
+swim queue N|JOB ... [--approve FLAG[,FLAG]]... [--parallel N] [--note TEXT]
 swim queue add [flags]           every pending round that hasn't passed
 swim queue show|rm|requeue ID
 
@@ -548,12 +543,8 @@ swim queue show|rm|requeue ID
             --approve FLAG  approve that guard for this batch (repeat, or
                             FLAG,FLAG); it must be a guard of a lane in the
                             batch, so a typo fails here, not at 3am
-            -y, --yes       approve every guard in the batch
-            --wait          then block until this batch ends (swim wait
-                            BATCH: not the rest of the repo), and exit with
-                            its result (0 passed, 3 dry run, 1 otherwise)
-            --timeout D     give up waiting after D (implies --wait): exit 1,
-                            saying what is still busy; the batch stays queued
+            It prints the batch's id; swim wait ID blocks until that batch
+            ends and exits with its result.
             Guards a batch doesn't approve are asked on swim watch's screen
             (on a terminal, running batches side by side), naming the lane;
             with no such swimmer they are dry runs. A guard flag in the
@@ -587,7 +578,7 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [-y] [--interval D] [--batches N] [--no-tui]
+	"watch": `swim watch [--once] [--interval D] [--batches N] [--no-tui]
 
   The queue's swimmer. Runs queued batches (swim queue N) side by side,
   up to --batches at once (watch_batches, default 4), each in a process
@@ -612,10 +603,6 @@ swim queue show|rm|requeue ID
   watch ends the round of any lane whose process died without ending it
   (as swim run does): END INTERRUPTED in its log, interrupted in status.
   --once         run every queued batch, then exit (non-zero if one failed)
-  -y, --yes      approve every guard in every batch, beyond what the batch
-                 approves (the swimmer's say-so: logged as "approved by swim
-                 watch -y (<user>)", and in the consumed entry as approved_by).
-                 The batch's own --approve and -y keep their credit.
   --interval D   how often to check the queue and for idleness (default 2s)
   --batches N    run up to N batches at once (default watch_batches, 4);
                  --batches 1 runs one at a time, on the screen.
@@ -640,7 +627,7 @@ swim queue show|rm|requeue ID
                    script becomes a stub (not while it runs, nor without a
                    log)
     r on a batch   starts a waiting batch now, out of turn, if its lanes are
-                   free, with its own approvals (and -y's), exactly as in turn
+                   free, with its own approvals, exactly as in turn
     enter on a batch  follows its output (.swim/queue/out/<seq>-<id>.log);
                    v switches to the verbose output (its lanes' logs, the
                    running step's output included) and back
@@ -652,7 +639,7 @@ swim queue show|rm|requeue ID
                    latest lines of every running lane's log, the running
                    step's output included (shown by default)
   [DRY] marks a lane whose round dry-ran a guard, and a waiting batch with
-  a guard neither it nor -y approves.
+  a guard it doesn't approve that no screen will ask for.
   The screen stays up while batches run; their output goes to that file.
   With --batches 1 a batch runs in the interactive view instead, as swim
   run does. SWIM_TUI=0, CI and --once turn the screen off: then every
@@ -667,20 +654,29 @@ swim queue show|rm|requeue ID
   and exits.
 `,
 	"wait": `swim wait [--interval D] [--timeout D]
-swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
+swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
 
-  With no batches named, block until swim is idle and nothing new is
-  about to start: no lane running, no swim run waiting on lanes, and no
-  batch queued or running (an orphaned batch never runs, so it doesn't
-  count). Prints what it is waiting on whenever that changes. Use it in
-  scripts to wait out the current work and the queue behind it. With
-  batches queued and no swimmer up, it waits until one starts (swim
-  watch).
-  With batches named (#41, a queue id or its first characters, or a job
-  id: the newest batch that queued it), wait for those alone, whatever
-  else runs, then print how each ended and exit as they went: 0 passed,
-  3 when one dry-ran a guard and none failed, 1 otherwise. A batch
-  orphaned by a dead swimmer counts as ended (it never runs by itself).
+  The one command that blocks until work is done.
+  With lanes, batches or runs named, wait for those alone, whatever else
+  runs, then print how each ended and exit as they went: 0 passed, 3 when
+  one dry-ran a guard and none failed, 1 otherwise.
+    N        a lane (its number, script path or task): the round it is
+             running, or the one a swim run holds it waiting to start; on an
+             idle lane, its last round (with none yet, it waits for one)
+    BATCH    a queued batch: its id as swim queue printed it, 4+ of its
+             first characters, or '#41'; a job id names the newest batch
+             that queued it. A batch orphaned by a dead swimmer counts as
+             ended (it never runs by itself).
+    RUN      a swim run id (8+ characters): every lane of that run
+  A job id no batch queued names the lane that holds or last ran it.
+  An agent queues work and waits for it: swim queue 3, then swim wait
+  q-20260101T120000Z-ab12 (waiting on the lane instead could read its
+  previous round, before a swimmer takes the batch).
+  With nothing named, block until swim is idle and nothing new is about
+  to start: no lane running, no swim run waiting on lanes, and no batch
+  queued or running (an orphaned batch never runs, so it doesn't count).
+  With batches queued and no swimmer up, it waits until one starts (swim
+  watch). Prints what it is waiting on whenever that changes.
   --any          return when the first of them ends, with its result: an
                  agent with several batches out reads that one, then
                  waits on the rest again

@@ -16,7 +16,7 @@ import (
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "signing", "signing_key", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -26,8 +26,6 @@ func (c *Config) Get(key string) (string, error) {
 	switch key {
 	case "interrupt":
 		return c.InterruptMode(), nil
-	case "approvals":
-		return c.ApprovalMode(), nil
 	case "signing":
 		return c.SigningMode(), nil
 	case "signing_key":
@@ -100,12 +98,6 @@ func keyValue(key, value string) (*yaml.Node, error) {
 			return nil, fmt.Errorf("signing_key needs a path to an SSH key (or its .pub, for ssh-agent)")
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "approvals":
-		v := strings.ToLower(strings.TrimSpace(value))
-		if v != ApprovalsPrompt && v != ApprovalsFlags {
-			return nil, fmt.Errorf("approvals must be prompt or flags, got %q", value)
-		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "queue_lease":
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d < 10*time.Second {
@@ -153,7 +145,7 @@ func keyValue(key, value string) (*yaml.Node, error) {
 }
 
 // Normalize validates value for key and returns it as config spells it
-// (approvals Prompt -> prompt).
+// (interrupt Graceful -> graceful).
 func Normalize(key, value string) (string, error) {
 	n, err := keyValue(key, value)
 	if err != nil {
@@ -253,8 +245,6 @@ func Choices(key string) []string {
 	switch key {
 	case "interrupt":
 		return []string{InterruptGraceful, InterruptImmediate}
-	case "approvals":
-		return []string{ApprovalsPrompt, ApprovalsFlags}
 	case "signing":
 		return []string{SigningAuto, SigningRequired, SigningOff}
 	case "notify":

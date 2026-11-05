@@ -41,7 +41,7 @@ func TestVerifySharedRunID(t *testing.T) {
 	r, _ := signedRepo(t)
 	r.script(2, "two", `if guard ALLOW_B "change b"; then run "b changed" true; fi`)
 	r.mustSwim("run", "1", "--plain", "--run-id", "pipeline-7")
-	r.mustSwim("run", "2", "-y", "--plain", "--run-id", "pipeline-7")
+	r.mustSwimEnv([]string{"ALLOW_B=1"}, "run", "2", "--plain", "--run-id", "pipeline-7")
 	r.script(1, "one", `run "ok again" true`)
 	r.mustSwim("run", "1", "--plain", "--run-id", "pipeline-7")
 	out, code := r.swim("verify", "--allow-unsigned")

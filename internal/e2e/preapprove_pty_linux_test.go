@@ -76,8 +76,8 @@ func TestPreapprovePinnedToScript(t *testing.T) {
 	contains(t, "summary", out, "unused pre-answers", "swim 2")
 }
 
-// Precedence: a pre-decline beats -y (the operator's specific answer wins
-// over the run-wide one), and FLAG=0 beats a pre-approval.
+// Precedence: a pre-decline is the answer (the lane never asks), and
+// FLAG=0 beats a pre-approval.
 func TestPreanswerPrecedence(t *testing.T) {
 	r := newSerialRepo(t, "")
 	r.script(1, "first", `run "hold" bash -c 'rf="$SWIM_ROOT/release"; [ -p "$rf" ] || mkfifo "$rf" 2>/dev/null; cat "$rf" >/dev/null'`)
@@ -86,7 +86,7 @@ func TestPreanswerPrecedence(t *testing.T) {
 	r.script(3, "flag zero", `if guard ALLOW_B "do b"; then run "did b" true; fi`)
 	withHeader(t, r, 3, "# After: 1")
 
-	tr := r.startTUI([]string{"ALLOW_B=0"}, "all", "-y")
+	tr := r.startTUI([]string{"ALLOW_B=0"}, "all")
 	tr.waitScreen("lanes listed", func(s string) bool { return strings.Contains(s, "swim 3") })
 	tr.send("\x1b[C\x1b[C")
 	tr.send("n")
@@ -98,9 +98,9 @@ func TestPreanswerPrecedence(t *testing.T) {
 	tr.waitFor("run finished")
 	tr.send("q")
 	tr.wait()
-	contains(t, "pre-decline beats -y", r.log(2), "SKIP  do a (dry run: pre-declined by ")
+	contains(t, "pre-declined", r.log(2), "SKIP  do a (dry run: pre-declined by ")
 	if strings.Contains(r.log(2), "PASS  did a") {
-		t.Error("-y overrode a pre-decline")
+		t.Error("a pre-declined guard ran")
 	}
 	if strings.Contains(r.log(3), "PASS  did b") {
 		t.Error("a pre-approval overrode ALLOW_B=0")

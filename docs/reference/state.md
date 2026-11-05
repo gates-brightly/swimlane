@@ -146,6 +146,6 @@ or claiming a consumed one is a bug, and panics under `SWIM_CHECK_STATES`.
 ## Approval
 
 An approval isn't a file: it's decided when the guard asks (the flag, a
-queued batch's `--approve`, the operator, `-y`) and recorded as an
+queued batch's `--approve`, the operator) and recorded as an
 `approve` entry in the chain. **Live-view answers** (`y` / `n` ahead of a
 prompt) are pinned to the script and last one run.

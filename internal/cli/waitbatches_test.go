@@ -42,6 +42,14 @@ func exitCode(err error) int {
 	return 0
 }
 
+func batches(root string, refs ...string) []waitTarget {
+	var ts []waitTarget
+	for _, r := range refs {
+		ts = append(ts, batchTarget(root, r))
+	}
+	return ts
+}
+
 // swim wait BATCH|JOB ... waits for those batches alone, not the whole
 // repo; --any returns when the first ends, with its result.
 func TestWaitBatches(t *testing.T) {
@@ -51,23 +59,23 @@ func TestWaitBatches(t *testing.T) {
 	queued(t, root, 19, "cccccccc-3333") // another session's: never waited on
 
 	// Neither has ended: a short limit gives up, naming what it waits on.
-	err := waitBatches(root, []string{a.ID, "bbbbbbbb"}, true, 10*time.Millisecond, 50*time.Millisecond)
+	err := waitFor(batches(root, a.ID, "bbbbbbbb"), true, 10*time.Millisecond, 50*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "#1 queued") || !strings.Contains(err.Error(), "#2 queued") {
 		t.Fatalf("before either ended: %v", err)
 	}
 
 	// --any: b passes first, so it returns at once, passed.
 	finish(t, root, b, status.Passed)
-	if code := exitCode(waitBatches(root, []string{a.ID, b.ID}, true, 10*time.Millisecond, time.Second)); code != 0 {
+	if code := exitCode(waitFor(batches(root, a.ID, b.ID), true, 10*time.Millisecond, time.Second)); code != 0 {
 		t.Fatalf("--any after b passed: exit %d", code)
 	}
 	// Without --any it still waits on a.
-	if err := waitBatches(root, []string{a.ID, b.ID}, false, 10*time.Millisecond, 50*time.Millisecond); err == nil || !strings.Contains(err.Error(), "#1 queued") {
+	if err := waitFor(batches(root, a.ID, b.ID), false, 10*time.Millisecond, 50*time.Millisecond); err == nil || !strings.Contains(err.Error(), "#1 queued") {
 		t.Fatalf("all, with a queued: %v", err)
 	}
 	// A job id finds the batch that queued it; a dry run exits as swim run's does.
 	finish(t, root, a, status.Skipped)
-	if code := exitCode(waitBatches(root, []string{"aaaaaaaa-1111", b.ID}, false, 10*time.Millisecond, time.Second)); code != launcher.ExitDryRun {
+	if code := exitCode(waitFor(batches(root, "aaaaaaaa-1111", b.ID), false, 10*time.Millisecond, time.Second)); code != launcher.ExitDryRun {
 		t.Fatalf("all, one dry run: exit %d", code)
 	}
 	if _, err := findBatch(root, "zzzzzzzz"); err == nil {

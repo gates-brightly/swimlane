@@ -29,8 +29,8 @@ type LaneReport struct {
 	Round    *logparse.Round // nil if the lane didn't run in this run
 	Lines    []string        // that round's log lines
 	Log      string          // the log's path, relative to the repo
-	// Unprompted sums up the guards approved with no one asked, -y's and
-	// guard flags' (status.Lane.UnpromptedText); "" for none.
+	// Unprompted sums up the guards approved with no one asked, by guard
+	// flags (status.Lane.UnpromptedText); "" for none.
 	Unprompted string
 }
 

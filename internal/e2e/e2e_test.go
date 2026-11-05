@@ -197,6 +197,17 @@ func (r *repo) mustSwim(args ...string) string {
 	return out
 }
 
+// mustSwimEnv is mustSwim with env added to swim's environment (a guard
+// flag set up front: FLAG=1 swim run N).
+func (r *repo) mustSwimEnv(env []string, args ...string) string {
+	r.t.Helper()
+	out, code := r.swimEnv(env, args...)
+	if code != 0 {
+		r.t.Fatalf("%v swim %v exited %d:\n%s", env, args, code, out)
+	}
+	return out
+}
+
 // mustDryRun runs swim and requires exit ExitDryRun: nothing failed, but a
 // guarded step dry-ran.
 func (r *repo) mustDryRun(args ...string) string {

@@ -19,7 +19,7 @@ const PolicyVersion = 3
 // its approvals and secrets work: an approval bound to a manifest stops
 // counting when any of them that swim.yml sets changes. To add one, add it
 // here and to policyValues; never bump the hash text (docs/reference/formats.md).
-var PolicyKeys = []string{"blocked_commands", "runners", "approvals", "signing",
+var PolicyKeys = []string{"blocked_commands", "runners", "signing",
 	"secret_env", "secret_env_auto", "secret_env_ignore", "secret_patterns_auto", "env",
 	"secrets", "ambient_credentials", "modules"}
 
@@ -27,7 +27,7 @@ var PolicyKeys = []string{"blocked_commands", "runners", "approvals", "signing",
 func (c *Config) policyValues() map[string]any {
 	r := c.Repo
 	return map[string]any{
-		"blocked_commands": r.BlockedCommands, "runners": r.Runners, "approvals": r.Approvals,
+		"blocked_commands": r.BlockedCommands, "runners": r.Runners,
 		"signing": r.Signing, "secret_env": r.SecretEnv, "secret_env_auto": r.SecretEnvAuto,
 		"secret_env_ignore": r.SecretEnvIgnore, "secret_patterns_auto": r.SecretPatternsAuto,
 		"env": r.Env,

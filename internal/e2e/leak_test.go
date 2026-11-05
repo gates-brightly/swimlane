@@ -174,7 +174,8 @@ summary
 			}
 		}
 	}()
-	c := r.cmd(bin, "run", "1", "-y", "--plain")
+	c := r.cmd(bin, "run", "1", "--plain")
+	c.Env = append(c.Env, "LEAK_OK=1")
 	c.SysProcAttr = noTTY()
 	out, _ := c.CombinedOutput()
 	procWG.Wait()
@@ -190,7 +191,8 @@ summary
 	}
 
 	// Every other way swim shows a run.
-	c = r.cmd(bin, "run", "1", "-y", "--yaml")
+	c = r.cmd(bin, "run", "1", "--yaml")
+	c.Env = append(c.Env, "LEAK_OK=1")
 	c.SysProcAttr = noTTY()
 	yout, _ := c.CombinedOutput()
 	check("swim run --yaml", string(yout))
@@ -200,7 +202,7 @@ summary
 	}
 
 	// The queue and its worker.
-	r.mustSwim("queue", "add", "1", "-y")
+	r.mustSwim("queue", "add", "1", "--approve", "LEAK_OK")
 	w := r.cmd(bin, "watch", "--once", "--interval", "200ms")
 	w.SysProcAttr = noTTY()
 	wout, _ := w.CombinedOutput()

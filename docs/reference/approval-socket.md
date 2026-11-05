@@ -51,7 +51,7 @@ both ends are always the same swim binary.
 ## Answers
 
 ```json
-{"approved": true, "id": "…", "lane": 1, "job": "…", "how": "approved by swim run -y (zach)"}
+{"approved": true, "id": "…", "lane": 1, "job": "…", "how": "approved at the prompt by zach"}
 {"approved": false, "dry": true, "why": "ALLOW_DROP=1 was set inside the lane, not in the environment swim run started with"}
 {"approved": false, "by": "zach"}
 {"approved": true, "id": "…", "hash": "…"}
@@ -71,8 +71,8 @@ In this order, from what it saw when the run started:
    `flag=1`. A flag set inside the lane, by its env files or by anything it
    runs, is declined: `FLAG=1 was set inside the lane, not in the
    environment swim run started with`.
-2. **The operator:** a pre-answer in the live view, `-y`, or the prompt,
-   when someone can be asked. A guard the script doesn't declare is refused
+2. **The operator:** a pre-answer in the live view, or the prompt (on the
+   terminal, or `swim watch`'s screen), when someone can be asked. A guard the script doesn't declare is refused
    before any of this (except under `flag_set`: the operator named that
    flag).
 3. Otherwise a dry run.
