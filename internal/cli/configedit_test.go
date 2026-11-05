@@ -15,7 +15,7 @@ func TestConfigShown(t *testing.T) {
 		{"msg_log_interval", "0s", "0s"},
 		{"outputs_keep", "336h0m0s", "14d"},
 		{"outputs_keep", "36h0m0s", "36h"},
-		{"cache_dir", home + "/.cache/swim", "~/.cache/swim"},
+		{"store_dir", home + "/.local/share/swim/store", "~/.local/share/swim/store"},
 		{"store_dir", "off", "off"},
 		{"signing_key", "", "—"},
 	} {

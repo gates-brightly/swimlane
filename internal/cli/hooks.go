@@ -200,7 +200,6 @@ func cmdStart(args []string) error {
 	if !lane.StopRequested(root, n, run) {
 		lane.ClearStop(root, n)
 	}
-	os.Remove(snapsPath(lane.Log(root, n))) // an earlier round's restores
 	// The round's outputs directory ($SWIM_OUT), fresh for this run.
 	if err := os.MkdirAll(outputs.Dir(root, job, run), 0o755); err != nil {
 		return startFailed(root, cfg, n, err)
@@ -564,7 +563,7 @@ func cmdFinish(args []string) error {
 			Log: chain.Hash([]byte(section)), Approvals: approvals, AutoApproved: auto,
 			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums,
 			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs),
-			Cache: roundSnaps(logPath), Kept: keptSteps(r)}); err != nil {
+			Kept: keptSteps(r)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 		keepRound(root, cfg, n, r.Run, r.Job, r.Title, state, code, section)

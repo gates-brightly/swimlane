@@ -13,7 +13,7 @@ import (
 // headerKeys are the header keys swim reads, spelled as it reads them
 // (case matters: # timeout: is not # Timeout:).
 var headerKeys = []string{"Round", "Task", "Job", "After", "Owner", "Created", "Guards", "Decisions", "Timeout", "Step-Timeout",
-	"Locks", "Includes", "Outputs", "Observe", "Cache", "Targets", "Signoff", "Workspace", "Fail", "swim"}
+	"Locks", "Includes", "Outputs", "Observe", "Targets", "Signoff", "Workspace", "Fail", "swim"}
 
 // headerSynonyms are words agents reach for in place of a key swim reads.
 var headerSynonyms = map[string]string{"depends": "After", "depends-on": "After", "dependson": "After", "requires": "After",

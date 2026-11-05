@@ -96,7 +96,7 @@ var Checks = []Check{
 	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
 	{"lanes-setting", false, "a `lanes:` setting (swim finds the lanes in use; it's ignored)", checkLanesSetting},
 	{"notify-failing", false, "the last notification sent to notify_url (or notify_command) failed", checkNotifyFailing},
-	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key, headless, hub, pause_warn; it's ignored)", checkRemovedSettings},
+	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key, headless, hub, pause_warn, cache_dir, cache_max, cache_slug; it's ignored)", checkRemovedSettings},
 	{"gitignore", true, "swim's .gitignore block is missing or out of date", checkGitignore},
 	{"tracked", false, "lane scripts or swim state tracked by git", checkTracked},
 	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
@@ -114,8 +114,6 @@ var Checks = []Check{
 	{"evidence-rule", false, "a lookup.yml rule says evidence: true: swim no longer has evidence-bound approvals, so nothing can approve its guards (they dry-run)", checkEvidenceRules},
 	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
-	{"cache-dir", false, "the cache directory (cache_dir) is a link, isn't yours, or others can write it: lanes with # Cache: won't start", checkCacheDir},
-	{"cache-unused", false, "tool caches unused for 30 days, or the repo's caches over cache_max", checkCacheUnused},
 }
 
 // Run runs every check.

@@ -1052,9 +1052,6 @@ func (s *Script) secretUses() []int {
 func checkHeader(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, p := range s.Info.Problems {
-		if isCacheProblem(p) {
-			continue // checkCache
-		}
 		if timeoutProblem(p) {
 			continue // checkTimeout
 		}
@@ -1484,6 +1481,11 @@ var sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(?:Env|_env|With)?\(\s*["'\x60]
 func checkRemoved(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, k := range s.Info.Removed {
+		if k == "Cache" {
+			out = append(out, f(finding.Error, "removed", s.headerLine(k), "drop the line; the tool uses its own cache, as it would outside swim",
+				"# Cache: is gone: swim no longer keeps tool caches"))
+			continue
+		}
 		if k == "Modules" {
 			out = append(out, f(finding.Error, "removed", s.headerLine(k), "run the tool as a step (run \"<label>\" -- cmd ...), with its files in # Includes:, and drop the line",
 				"# Modules: is gone: swim no longer has modules (mod, mod_env)"))

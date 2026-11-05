@@ -39,9 +39,6 @@ defaults:
   notify: false                    # notifications and a tab progress bar
   notify_url: https://ntfy.sh/TOPIC   # notifications to ntfy, terminal or not; config.yml only
   notify_command: ./my-notifier.sh    # or run this instead; config.yml only
-  cache_dir: ~/.cache/swim         # config.yml only
-  cache_max: 10GB
-  cache_slug: orders               # the repo's cache directory name
   store_dir: ~/.local/share/swim/store   # or off; config.yml only
   runners: {ts: tsx}               # saved when swim asks
 repos:
@@ -74,7 +71,7 @@ in [env files](env.md), not config. There is no lane count.
 | `.swim/out/<job>/<run>/` | A round's outputs (`$SWIM_OUT`). | No |
 | `.swim/queue/`, `.swim/snapshots/`, `.swim/checkpoints/`, `.swim/earmarks/`, `.swim/signoffs/` | Batches, snapshot output, kept steps, readers' places, signoffs. | No |
 | `.swim/laneN.pid` | Present while lane N runs. | No |
-| `~/.cache/swim/`, `~/.local/share/swim/store/` | [Caches](cache.md), the [store](chain.md#the-store). | Never |
+| `~/.local/share/swim/store/` | The [store](chain.md#the-store). | Never |
 
 `swim init` sets these up (and git-ignores what shouldn't be committed);
 `swim doctor [--fix]` checks the environment and repairs only swim's

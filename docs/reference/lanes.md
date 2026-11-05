@@ -57,7 +57,6 @@ run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 | `msg [--progress N/M] "<text>"` | The lane's status message (live view, `swim status`); latest wins, `msg ""` clears. The log keeps `MSG` lines, at most one per `msg_log_interval` (10s). Never fails the round. |
 | `output KEY VALUE` | A small value among the round's outputs. |
 | `input N\|JOB NAME` | The path (or small value) of an output of a round in `# After:`: lane N's round this run waited on, or JOB's latest pass. `"$(input 2 stats.json)"`; inside `bash -c`, `swim input`. Recorded in the chain. |
-| `cache restore\|save TREE` | An installed tree's snapshot. See [cache](cache.md). |
 | `source FILE` | Under `swim run`, a repo file is read from the stage, and only if `# Includes:` lists it. |
 | `summary` | Explicit form only, last: log the summary, record the final state, exit non-zero if a step failed. |
 
@@ -101,7 +100,6 @@ OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
 | `# Outputs:` | Files or directories it promises in `$SWIM_OUT` for dependents. Missing: FAIL; undeclared: WARN. Hashed into status and the chain, made read-only. Not masked: never secrets. |
 | `# Fail: soft\|hard` | `hard`: the first failed step ends the round. |
 | `# Includes:` | Repo files that are part of the round (sourced files, local modules): pinned and staged; the only repo files it may read as code. |
-| `# Cache:` | See [cache](cache.md). |
 | `# Signoff:` | See [CI](ci.md#local-ci). |
 | `# Observe: NAME = <command>` / `# Observe: path CMD...` | See [manifest](manifest.md#probes). |
 | `# Workspace: live` | Run in the checkout itself, not a staged copy (for tools that read the whole tree, like `go test`); lint warns (`workspace-live`). |

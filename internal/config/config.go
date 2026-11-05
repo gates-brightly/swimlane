@@ -54,6 +54,9 @@ type Settings struct {
 	RemovedHeadless           any `yaml:"headless,omitempty"`
 	RemovedHub                any `yaml:"hub,omitempty"`
 	RemovedPauseWarn          any `yaml:"pause_warn,omitempty"`
+	RemovedCacheDir           any `yaml:"cache_dir,omitempty"`
+	RemovedCacheMax           any `yaml:"cache_max,omitempty"`
+	RemovedCacheSlug          any `yaml:"cache_slug,omitempty"`
 
 	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
 	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
@@ -73,9 +76,6 @@ type Settings struct {
 	Notify             *bool    `yaml:"notify,omitempty"`               // terminal notifications and a progress bar (OSC 777, OSC 9;4; default off)
 	NotifyURL          string   `yaml:"notify_url,omitempty"`           // ntfy-style URL each notification is POSTed to (with curl); config.yml only
 	NotifyCommand      string   `yaml:"notify_command,omitempty"`       // sh -c this for each notification instead, with SWIM_EVENT, SWIM_TITLE, ...; config.yml only
-	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim, macOS ~/Library/Caches/swim); config.yml only
-	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
-	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
 	StoreDir           string   `yaml:"store_dir,omitempty"`            // where swim keeps what each round ran and wrote (default ~/.local/share/swim/store; off: don't); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path; see the
 	// anchor package). They add up across config.yml and swim.yml.
@@ -180,15 +180,9 @@ func Load(root string) (*Config, error) {
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
-		if s.CacheDir != "" || s.CacheSlug != "" {
-			// Where a machine keeps its caches, and which repos share one,
-			// is the operator's: a committed swim.yml could otherwise point
-			// two repos at one cache.
-			return nil, fmt.Errorf("%s: cache_dir: and cache_slug: belong in %s, not the repo's swim.yml", path, c.Path)
-		}
 		if s.StoreDir != "" {
-			// So is whether it keeps a copy of what ran: a committed
-			// swim.yml mustn't turn the operator's record off.
+			// Whether the machine keeps a copy of what ran is the
+			// operator's: a committed swim.yml mustn't turn that record off.
 			return nil, fmt.Errorf("%s: store_dir: belongs in %s, not the repo's swim.yml", path, c.Path)
 		}
 		if s.NotifyCommand != "" || s.NotifyURL != "" {
@@ -236,7 +230,8 @@ func (s Settings) RemovedKeys() []string {
 		v    any
 	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules},
 		{"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}, {"secrets_key", s.RemovedSecretsKey},
-		{"headless", s.RemovedHeadless}, {"hub", s.RemovedHub}, {"pause_warn", s.RemovedPauseWarn}} {
+		{"headless", s.RemovedHeadless}, {"hub", s.RemovedHub}, {"pause_warn", s.RemovedPauseWarn},
+		{"cache_dir", s.RemovedCacheDir}, {"cache_max", s.RemovedCacheMax}, {"cache_slug", s.RemovedCacheSlug}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}
@@ -401,15 +396,6 @@ func (c *Config) merge(r Settings) {
 	if r.NotifyCommand != "" {
 		c.NotifyCommand = r.NotifyCommand
 	}
-	if r.CacheDir != "" {
-		c.CacheDir = r.CacheDir
-	}
-	if r.CacheMax != "" {
-		c.CacheMax = r.CacheMax
-	}
-	if r.CacheSlug != "" {
-		c.CacheSlug = r.CacheSlug
-	}
 	if r.StoreDir != "" {
 		c.StoreDir = r.StoreDir
 	}
@@ -439,11 +425,6 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateInterrupt(); err != nil {
 		return err
-	}
-	if c.CacheMax != "" {
-		if _, err := ParseSize(c.CacheMax); err != nil {
-			return err
-		}
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)

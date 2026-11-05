@@ -96,14 +96,14 @@ func (r *Round) Objects() []Object {
 type Store struct{ Dir string }
 
 // Open is the store for cfg's repo (config.StoreBase), and the repo's
-// name in it (its cache slug: worktrees and clones of one repo share it).
+// name in it (config.RepoSlug: worktrees and clones of one repo share it).
 // nil when store_dir is off.
 func Open(cfg *config.Config) (*Store, string, error) {
 	dir, ok, err := cfg.StoreBase()
 	if err != nil || !ok {
 		return nil, "", err
 	}
-	slug, err := cfg.CacheSlugFor()
+	slug, err := cfg.RepoSlug()
 	if err != nil {
 		return nil, "", err
 	}

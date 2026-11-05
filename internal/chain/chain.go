@@ -140,8 +140,9 @@ type Entry struct {
 	// hash covers them as written.
 	PausedS    float64 `json:"paused_s,omitempty"`
 	ReplacedBy string  `json:"replaced_by,omitempty"`
-	// Cache are the snapshots (# Cache: snap:) a round restored: files
-	// that ran without being approved or checked.
+	// Cache were the snapshots (# Cache: snap:) a round restored. Swim no
+	// longer has caches and writes none; older entries keep it, and the
+	// hash covers it as written.
 	Cache []SnapRef `json:"cache,omitempty"`
 	// AuthorityUnavailable says why swim run couldn't start its approvals
 	// (the broker): every guard of the run was a dry run.

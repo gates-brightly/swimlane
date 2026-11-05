@@ -656,15 +656,6 @@ func runLane(o Options, n int, sel []int, selected map[int]bool, deps []Dep, sl 
 		}
 	}
 
-	// The round's caches (# Cache:), held while it runs; its process
-	// inherits the hold with its lock files.
-	held, cerr := holdCaches(o, n, info)
-	if cerr != nil {
-		return stamp(refuseStart(o, n, cerr, disp))
-	}
-	defer held.Release()
-	fileLocks = append(fileLocks, held...)
-
 	// Wait for a free slot (max_parallel); queued lanes don't hold one.
 	loggedQueue := false
 	if !sl.acquire(n, func(ahead int) {
@@ -1027,7 +1018,6 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	} else {
 		env = append(env, "SWIM_COLOR=0")
 	}
-	env = append(env, cacheEnv(o, n)...) // # Cache: (cache.go)
 	staged, tok := stageEnv(o, n, who)
 	env = append(env, staged...)
 	cmd.Env = env
@@ -1042,7 +1032,7 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	// directly, at once, as before.
 	ownGroup := cmd.Stdin == nil || !ui.IsTTY(o.Stdin)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: ownGroup}
-	// The launcher holds the lane's lock files (# Locks:, caches) until the
+	// The launcher holds the lane's lock files (# Locks:) until the
 	// lane ends. They aren't passed to the lane: anything it left running
 	// would hold them for good.
 	_ = fileLocks

@@ -367,8 +367,8 @@ func applySidecar(path string, info *Info) error {
 		info.Removed = append(info.Removed, "Modules")
 	}
 	if sf.Cache != nil {
-		info.Cache = nil
-		info.setCache(strings.Join(*sf.Cache, " "), name+" cache:")
+		// cache: is gone too.
+		info.Removed = append(info.Removed, "Cache")
 	}
 	if sf.Outputs != nil {
 		info.setOutputs(*sf.Outputs, name+" outputs:")

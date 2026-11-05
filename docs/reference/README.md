@@ -20,7 +20,6 @@ Using swim:
 - [queue](queue.md): batches, the swimmer, waiting.
 - [logs](logs.md): the lane log, `.swim.log`, `status.yml`, YAML.
 - [env](env.md): env files.
-- [cache](cache.md): tool caches and installed-tree snapshots.
 - [ci](ci.md): `swim ci`, and signing off from your machine.
 - [config](config.md): settings, and every file swim keeps.
 - [commands](commands.md): every command, one line each.

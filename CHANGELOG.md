@@ -40,6 +40,19 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Removed
+
+- **Tool caches are gone: `swim cache`, `# Cache:` and installed-tree
+  snapshots.** Build-tool speed-ups aren't ops safety. `swim cache`
+  (`ls`, `rm`, `prune`, `path`), the lane library's `cache restore|save`
+  and swim's cache directory (`~/.cache/swim`) are no longer used: delete
+  it if you like. A lane with `# Cache:` (or a sidecar's `cache:`) is a
+  `swim lint` error (`removed`); drop the line and the tool uses its own
+  cache, as outside swim. `cache_dir`, `cache_max` and `cache_slug` are
+  ignored, and `swim doctor` says to delete them; the store still names a
+  repo as before. Older chain entries keep their `cache:` restores and
+  still verify.
+
 ## 0.20261105.3 (v0.20261105.3, 2026-11-05)
 
 ### Added

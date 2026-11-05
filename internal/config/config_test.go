@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/gates-brightly/swimlane/internal/cache"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -126,26 +124,26 @@ func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
 	}
 }
 
-// chime, observe, modules, guarded secrets, the hub and pause were removed: a swim.yml
+// chime, observe, modules, guarded secrets, the hub, pause and the cache were removed: a swim.yml
 // (read strictly) or config.yml that still sets their keys loads, and
 // RemovedKeys names them for swim doctor.
 func TestRemovedChimeKeysStillLoad(t *testing.T) {
-	writeConfig(t, "defaults:\n  chime: true\n  chime_min_s: 30\n  secrets_key: ~/.ssh/id_ed25519\n  pause_warn: 4h\n")
+	writeConfig(t, "defaults:\n  chime: true\n  chime_min_s: 30\n  secrets_key: ~/.ssh/id_ed25519\n  pause_warn: 4h\n  cache_dir: ~/c\n  cache_max: 1GB\n")
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, RepoFileName), []byte("chime: failure\nchime_style: sound\nobserve:\n  slow_factor: 3\nmodules:\n  allow: [notify]\n"+
 		"secrets:\n  PROD_DB: { guard: ALLOW_DROP }\n  1x: { guard: 'not a flag', release: forever }\nambient_credentials: [prod-write]\n"+
-		"headless:\n  allow: [answer, run]\n  approvals: hub\nhub:\n  logs: stream\npause_warn: 2h\n"), 0o644)
+		"headless:\n  allow: [answer, run]\n  approvals: hub\nhub:\n  logs: stream\npause_warn: 2h\ncache_max: 2GB\n"), 0o644)
 	c, err := Load(root)
 	if err != nil {
 		t.Fatalf("a config with removed keys: %v", err)
 	}
-	if got := strings.Join(c.Repo.RemovedKeys(), ","); got != "chime,chime_style,observe,modules,secrets,ambient_credentials,headless,hub,pause_warn" {
+	if got := strings.Join(c.Repo.RemovedKeys(), ","); got != "chime,chime_style,observe,modules,secrets,ambient_credentials,headless,hub,pause_warn,cache_max" {
 		t.Errorf("swim.yml removed keys: %q", got)
 	}
-	if got := strings.Join(c.Settings.RemovedKeys(), ","); got != "chime,chime_min_s,secrets_key,pause_warn" {
+	if got := strings.Join(c.Settings.RemovedKeys(), ","); got != "chime,chime_min_s,secrets_key,pause_warn,cache_dir,cache_max" {
 		t.Errorf("config.yml removed keys: %q", got)
 	}
-	for _, k := range []string{"chime", "secrets_key", "pause_warn"} {
+	for _, k := range []string{"chime", "secrets_key", "pause_warn", "cache_dir"} {
 		if _, err := c.Get(k); err == nil {
 			t.Errorf("swim config %s still answers", k)
 		}
@@ -325,11 +323,6 @@ func TestNewKeys(t *testing.T) {
 }
 
 func TestIsDefault(t *testing.T) {
-	// The default cache is the OS's: ~/.cache/swim, ~/Library/Caches/swim.
-	defaultCache, err := cache.Base("")
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, c := range []struct {
 		key, value string
 		want       bool
@@ -340,8 +333,6 @@ func TestIsDefault(t *testing.T) {
 		{"notify", "true", false},
 		{"interrupt", "Graceful", true},
 		{"watch_batches", "4", true},
-		{"cache_dir", defaultCache, true},
-		{"cache_dir", "/var/cache/swim", false},
 	} {
 		got, err := IsDefault(c.key, c.value)
 		if err != nil || got != c.want {

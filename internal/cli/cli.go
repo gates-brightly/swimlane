@@ -52,7 +52,6 @@ func init() {
 		"interrupt":  {run: cmdInterrupt},
 		"ci":         {run: cmdCi},
 		"queue":      {run: cmdQueue},
-		"cache":      {run: cmdCache},
 		"checkpoint": {run: cmdCheckpoint},
 		"watch":      {run: cmdWatch},
 		"wait":       {run: cmdWait},
@@ -80,15 +79,14 @@ func init() {
 		"input":    {run: cmdInput},
 		"output":   {run: cmdOutput},
 		// Called by the lane script library, not by people.
-		"_start":     {run: cmdStart, hidden: true},
-		"_finish":    {run: cmdFinish, hidden: true},
-		"_batch":     {run: cmdBatch, hidden: true},
-		"_mark":      {run: cmdMark, hidden: true},
-		"_approve":   {run: cmdApproveHook, hidden: true},
-		"_decide":    {run: cmdDecideHook, hidden: true},
-		"_stage":     {run: cmdStage, hidden: true},
-		"_wrap":      {run: cmdWrap, hidden: true},
-		"_cache-env": {run: cmdCacheEnv, hidden: true},
+		"_start":   {run: cmdStart, hidden: true},
+		"_finish":  {run: cmdFinish, hidden: true},
+		"_batch":   {run: cmdBatch, hidden: true},
+		"_mark":    {run: cmdMark, hidden: true},
+		"_approve": {run: cmdApproveHook, hidden: true},
+		"_decide":  {run: cmdDecideHook, hidden: true},
+		"_stage":   {run: cmdStage, hidden: true},
+		"_wrap":    {run: cmdWrap, hidden: true},
 	}
 }
 
@@ -675,3 +673,14 @@ func laneFileArg(arg string) (int, bool) {
 }
 
 var laneFileRE = regexp.MustCompile(`^lane\.([0-9]+)(\.[A-Za-z0-9]+)?$`)
+
+// plural is "1 file", "3 files" ("1 entry", "3 entries").
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	if strings.HasSuffix(word, "y") {
+		return fmt.Sprintf("%d %sies", n, strings.TrimSuffix(word, "y"))
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
