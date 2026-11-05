@@ -123,9 +123,6 @@ func MsgText(text, progress, clock string) string {
 	return ResultLine(Msg, text, detail)
 }
 
-// HandlerLine starts an outcome handler's section.
-func HandlerLine(name, clock string) string { return HandlerMark + name + "  " + clock }
-
 // KV is one key/value of a round's context line.
 type KV struct{ K, V string }
 
@@ -313,16 +310,6 @@ func (r *Round) HandlerResults() []StageResult {
 		out = append(out, StageResult{h, state})
 	}
 	return out
-}
-
-// HandlerState is handler name's outcome ("" if it didn't run).
-func (r *Round) HandlerState(name string) string {
-	for _, h := range r.HandlerResults() {
-		if h.Name == name {
-			return h.State
-		}
-	}
-	return ""
 }
 
 // StageResults returns each standard stage's outcome, in order, preceded by

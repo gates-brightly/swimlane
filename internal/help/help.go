@@ -5,7 +5,6 @@ package help
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/gates-brightly/swimlane"
@@ -907,13 +906,6 @@ swim claim N|RESOURCE --break "<reason>"
     header (warn)          a Timeout, Step-Timeout or Locks value swim ignores
     env (error)            the lane's env files don't parse, or set its guard flag
     fail (error)           Fail: without syntax 3
-    removed (error)        what this swim no longer has: Matrix:, Always:,
-                           Finally:, Rerun-Children:, an outcome handler
-                           (on_success, on_failure, on_exit), modules
-                           (# Modules:, mod, mod_env, an SDK's module call),
-                           tool caches (# Cache:), the secret store (swim
-                           secret, an SDK's secret.get), or evidence steps
-                           (use snapshot)
     outputs (warn)         an output whose name suggests secrets (output files
                            aren't masked)
     includes (error)       a Python/TypeScript lane imports a local module its
@@ -981,12 +973,9 @@ swim claim N|RESOURCE --break "<reason>"
     notify-failing (warn)     the last notification sent to notify_url (or
                               notify_command) failed: swim config, then t,
                               sends a test
-    removed-setting (warn)    a setting swim no longer has (chime,
-                              schedule_tz, observe, modules, secrets,
-                              ambient_credentials, secrets_key, headless,
-                              hub, pause_warn, store_dir, cache_dir,
-                              cache_max, cache_slug, chain_anchors): it's
-                              ignored; delete it
+    removed-setting (warn)    a setting swim no longer has (modules,
+                              secrets, ambient_credentials): it's ignored;
+                              delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key
@@ -1116,16 +1105,6 @@ swim claim N|RESOURCE --break "<reason>"
 func For(name string) (string, bool) {
 	h, ok := Commands[name]
 	return h, ok
-}
-
-// Names returns command names in a stable order.
-func Names() []string {
-	var n []string
-	for k := range Commands {
-		n = append(n, k)
-	}
-	sort.Strings(n)
-	return n
 }
 
 // Full is the complete --help text: the guide plus every command's detail.

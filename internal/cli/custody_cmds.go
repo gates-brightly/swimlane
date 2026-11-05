@@ -263,7 +263,6 @@ func historyEntry(l chain.Link) (string, []string) {
 			field("Decision", d)
 		}
 		field("Flags", strings.Join(l.Flags, " "))
-		field("Scheduled for", l.ScheduledFor)
 		field("Approvals unavailable", l.AuthorityUnavailable)
 	case "secret-released":
 		subject = fmt.Sprintf("secret %s released to swim %d (guard %s, approved by %s)", l.Secret, l.Lane, l.Guard, l.Method)
@@ -478,12 +477,6 @@ func (v *verifier) checkEntries(links []chain.Link) {
 					v.bad = append(v.bad, fmt.Sprintf("entry #%d: secret %s released to swim %d in run %s on approval %s, which swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, l.Secret, l.Lane, l.Run, short12(h), seqs(att)))
 				}
 			}
-		case "run":
-			// A scheduled run starts no earlier than its time; its run id
-			// says when it started.
-			if started := runStarted(l.Run); l.ScheduledFor != "" && started != "" && started < l.ScheduledFor {
-				v.bad = append(v.bad, fmt.Sprintf("entry #%d: run %s started at %s, before its scheduled time %s", l.Seq, l.Run, started, l.ScheduledFor))
-			}
 		case "repair":
 			// Not a break: the removed bytes were never a complete entry.
 			v.notes = append(v.notes, fmt.Sprintf("entry #%d: swim chain repair %s", l.Seq, l.Action))
@@ -604,18 +597,4 @@ func roundLogHashes(root string, n int, run string) map[string]bool {
 		}
 	}
 	return sums
-}
-
-// runStarted is when a run started, from its id (r-20261015T121857Z-...),
-// as RFC 3339; "" for an id that doesn't say (--run-id).
-func runStarted(run string) string {
-	stamp, ok := strings.CutPrefix(run, "r-")
-	if !ok || len(stamp) < 16 {
-		return ""
-	}
-	t, err := time.Parse("20060102T150405Z", stamp[:16])
-	if err != nil {
-		return ""
-	}
-	return t.UTC().Format(time.RFC3339)
 }

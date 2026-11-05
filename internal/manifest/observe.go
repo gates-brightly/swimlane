@@ -97,17 +97,3 @@ func ObservedDiff(was, now map[string]string) []string {
 	}
 	return out
 }
-
-// ObservedText is facts as one line: "aws_account=1234, path.aws=/usr/...".
-func ObservedText(facts map[string]string) string {
-	var keys []string
-	for k := range facts {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	parts := make([]string, len(keys))
-	for i, k := range keys {
-		parts[i] = k + "=" + facts[k]
-	}
-	return strings.Join(parts, ", ")
-}

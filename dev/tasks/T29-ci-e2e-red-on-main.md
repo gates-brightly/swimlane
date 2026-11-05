@@ -95,7 +95,7 @@ cancelled for capacity counts as neither.
 - If `TestPromptIsSafe/tui`, `dag99-parallel` or `ci-changed` fail again,
   read the run's annotations (above) for the failing check.
 - If the prompt tests fail again, read that run's artifacts for their full
-  output (`CI_SHA=<sha> swim run 5` fetches a given commit's run).
+  output (`gh run download <run-id>`; no committed lane fetches them).
 - If the prompt tests race the TUI closing, wait for an end the view
   always shows, not one of two it may skip.
 

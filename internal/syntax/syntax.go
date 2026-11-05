@@ -7,7 +7,7 @@
 //	lane log, first line:       # swim lane log | syntax 2 | swim 3
 //
 // A file without the line is syntax 1 (written before versioning). swim
-// reads and migrates older syntaxes, and refuses files newer than Current,
+// reads older syntaxes as they are, and refuses files newer than Current,
 // asking for a swim update.
 package syntax
 
@@ -30,10 +30,9 @@ const Current = 2
 
 // Script is the newest lane script syntax this swim reads, and the one
 // swim new writes. Script syntax 3 adds Fail: hard (and once added outcome
-// handlers, which swim no longer has: swim lint refuses a script that
-// defines one). Syntax 4 added modules (# Modules:, mod, mod_env), which
-// swim no longer has either: a syntax 4 script reads as a syntax 3 one
-// (swim lint refuses one that still uses modules), and swim new still
+// handlers, which swim no longer has). Syntax 4 added modules (# Modules:,
+// mod, mod_env), which swim no longer has either: a syntax 4 script reads
+// as a syntax 3 one, and swim new still
 // writes 4, so .swim.lock and the scripts already written keep their
 // syntax. Syntax 2, 3 and 4 scripts are read as they are; nothing is
 // migrated, and logs stay at Current.
@@ -100,9 +99,6 @@ func IsScriptLine(line string) bool {
 	_, ok := scriptSyntax(line)
 	return ok
 }
-
-// ScriptLine is the line that marks a lane script's syntax.
-func ScriptLine() string { return fmt.Sprintf("# swim: syntax %d", Script) }
 
 // LogHeader is the first line of a lane log for lane n.
 func LogHeader(n int) string {

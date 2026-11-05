@@ -9,7 +9,7 @@ You don't need cloud credentials, and nothing touches your `~/.ssh`,
 ```sh
 demos/1-guarded-change/demo.sh          # press Enter between scenes
 DEMO_AUTO=1 demos/2-parallel-dag/demo.sh   # no pauses (a smoke test)
-SWIM_BIN=$(which swim) demos/4-queue-and-handoff/demo.sh   # skip the build
+SWIM_BIN=$(which swim) demos/3-queue-and-handoff/demo.sh   # skip the build
 ```
 
 Each demo prints the commands it runs as `$ ...`, with a line of narration
@@ -21,10 +21,10 @@ before or after. The scratch repo is kept afterwards in
 |---|---|---|
 | [1-guarded-change](1-guarded-change/demo.sh) | The core loop: the AI writes, a person approves, the log reports | 4 min |
 | [2-parallel-dag](2-parallel-dag/demo.sh) | A release as a DAG: parallel lanes, a lock, failure, then resuming | 4 min |
-| [4-queue-and-handoff](4-queue-and-handoff/demo.sh) | Approve a batch, a worker runs it, the AI catches up from files | 4 min |
-| [6-tamper-evidence](6-tamper-evidence/demo.sh) | `swim verify` catching an edited log | 3 min |
+| [3-queue-and-handoff](3-queue-and-handoff/demo.sh) | Approve a batch, a worker runs it, the AI catches up from files | 4 min |
+| [4-tamper-evidence](4-tamper-evidence/demo.sh) | `swim verify` catching an edited log | 3 min |
 
-For a 15-minute slot: **1**, then **4**, then **6**. That's the story of
+For a 15-minute slot: **1**, then **3**, then **4**. That's the story of
 "the AI can't act alone, a person decides, and you can prove it
 afterwards". Bring in **2** for teams with big migrations.
 
@@ -54,7 +54,7 @@ afterwards". Bring in **2** for teams with big migrations.
   against a half-finished release.
 - After the fix, only what's left runs. Build, api and web aren't redone.
 
-### 4. Queue and hand-off
+### 3. Queue and hand-off
 
 - One approval up front for a whole batch, then nobody needs to be at a
   keyboard. `swim watch` would normally run in tmux or under systemd.
@@ -67,7 +67,7 @@ afterwards". Bring in **2** for teams with big migrations.
 - A queued batch is pinned to its scripts. An edit after queueing means
   the lane is **skipped**, not run.
 
-### 6. Tamper evidence
+### 4. Tamper evidence
 
 - `.swim/chain.jsonl` holds every round and approval. Each entry is
   SSH-signed and linked to the hash of the one before.

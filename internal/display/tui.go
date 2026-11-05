@@ -544,12 +544,10 @@ func overlay(body, text []string, w int, p ui.Painter) []string {
 	return out
 }
 
-// ColorLogLine colours a log line the way swim log does, lightly: round and
-// END banners, stage headers and result kinds. The text is unchanged.
-func ColorLogLine(l string, color bool) string { return colorLogLine(l, color) }
-
-// ColorLaneLogLine is ColorLogLine for lane n's log: its stage headers in
-// the lane's colour, as the lane's ==> step headers are when it runs.
+// ColorLaneLogLine colours lane n's log lines the way swim log does,
+// lightly (round and END banners, stage headers and result kinds; the text
+// is unchanged), with its stage headers in the lane's colour, as the
+// lane's ==> step headers are when it runs.
 // swim watch's running output and a lane's view use it.
 func ColorLaneLogLine(l string, n int, color bool) string {
 	if color && n > 0 && strings.HasPrefix(l, logparse.StageMark) {

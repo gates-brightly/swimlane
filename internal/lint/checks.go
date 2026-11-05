@@ -623,13 +623,6 @@ func checkGuardUnused(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
-func or(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
-}
-
 var (
 	destructiveRE = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])(delete|destroy|drop)(?:$|[^A-Za-z0-9_])|(?:^|[\s;&|('"])rm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b`)
 	// Lines that only say or record something.
@@ -820,32 +813,6 @@ func checkSecretEcho(c *Context, s *Script) []finding.Finding {
 					"echoes $%s, a secret; swim masks it in what it writes, but lanes must never print secrets", m[1]))
 				break
 			}
-		}
-	}
-	return out
-}
-
-// secretUseRE is an SDK's call to the secret store swim no longer has:
-// secret.get("NAME") / Secret.Get("NAME"), or ["swim", "secret", ...].
-var secretUseRE = regexp.MustCompile(`\b(?:secret\.get|Secret\.Get)\(|['"]swim['"]\s*,\s*['"]secret['"]`)
-
-// secretUses lists the lines where the script uses the secret store swim
-// no longer has: in bash, swim secret commands (in a $(...) too, never in
-// quoted text or a comment); in another language, the SDK's calls as
-// written.
-func (s *Script) secretUses() []int {
-	var out []int
-	if s.bash() {
-		for _, c := range s.v.commands() {
-			if w := c.Words; len(w) > 1 && isSwim(w[0]) && w[1].Text == "secret" {
-				out = append(out, c.Line)
-			}
-		}
-		return out
-	}
-	for i, line := range s.v.code {
-		if s.v.isCode(i) && secretUseRE.MatchString(line) {
-			out = append(out, i)
 		}
 	}
 	return out
@@ -1145,13 +1112,6 @@ func checkCheckUnsafe(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
-var (
-	pySDKRE    = regexp.MustCompile(`(?m)^\s*(?:import\s+swim\b|from\s+swim\s+import)`)
-	pyBypassRE = regexp.MustCompile(`\b(subprocess\.(?:run|call|check_call|check_output|Popen)|os\.system|os\.popen)\s*\(`)
-	tsSDKRE    = regexp.MustCompile(`["']@gates-brightly/swim["']|/sdk/ts/swim\.ts["']`)
-	tsBypassRE = regexp.MustCompile(`\b(execSync|execFileSync|spawnSync|exec|execFile|spawn)\s*\(`)
-)
-
 // checkIncludes: a lane in Python or TypeScript that imports a local module
 // should list it in # Includes:, or approvals of the script don't cover
 // what it actually runs.
@@ -1265,68 +1225,4 @@ func firstLane(c *Context) int {
 		}
 	}
 	return first
-}
-
-var handlerDefRE = regexp.MustCompile(`^\s*(?:function\s+)?(on_success|on_failure|on_exit)\s*(?:\(\s*\))?\s*\{?\s*$`)
-
-// sdkModuleRE is an SDK's module call, r.module("notify", ...) or
-// r.Module(...), which swim no longer answers.
-var sdkModuleRE = regexp.MustCompile(`\.[Mm]odule(?:Env|_env|With)?\(\s*["'\x60]`)
-
-// checkRemoved: a header key, outcome handler, module call, secret
-// store call or evidence step of a feature swim no longer has. swim
-// would ignore the header and the handler, so a cleanup or rollback the
-// script counts on would never run; a module call or evidence step would
-// fail mid-round. Refuse the lane instead.
-func checkRemoved(c *Context, s *Script) []finding.Finding {
-	var out []finding.Finding
-	for _, k := range s.Info.Removed {
-		if k == "Cache" {
-			out = append(out, f(finding.Error, "removed", s.headerLine(k), "drop the line; the tool uses its own cache, as it would outside swim",
-				"# Cache: is gone: swim no longer keeps tool caches"))
-			continue
-		}
-		if k == "Modules" {
-			out = append(out, f(finding.Error, "removed", s.headerLine(k), "run the tool as a step (run \"<label>\" -- cmd ...), with its files in # Includes:, and drop the line",
-				"# Modules: is gone: swim no longer has modules (mod, mod_env)"))
-			continue
-		}
-		out = append(out, f(finding.Error, "removed", s.headerLine(k), "put the work in its own lane (After: for order) and drop the line",
-			"# %s: is a lane kind swim no longer has; swim would ignore it", k))
-	}
-	if s.Lib {
-		// mod / mod_env commands: never a word in quoted text or a comment.
-		for _, cmd := range s.v.commands() {
-			if cmd.Sub || len(cmd.Words) == 0 || cmd.Words[0].Quoted || cmd.Words[0].Text != "mod" && cmd.Words[0].Text != "mod_env" {
-				continue
-			}
-			out = append(out, f(finding.Error, "removed", cmd.Line, "run the tool as a step instead: run \"<label>\" -- cmd ...",
-				"%s calls a module, and swim no longer has modules: the step would fail", cmd.Words[0].Text))
-		}
-	} else {
-		for i, line := range s.v.code {
-			if s.v.isCode(i) && sdkModuleRE.MatchString(line) {
-				out = append(out, f(finding.Error, "removed", i, "run the tool as a step instead (the SDK's run)",
-					"a module call, and swim no longer has modules: the step would fail"))
-			}
-		}
-	}
-	for _, i := range s.Info.EvidenceLines {
-		out = append(out, f(finding.Error, "removed", i, "use snapshot (saves read-only output, without an approval binding)",
-			"evidence steps are gone: swim no longer binds approvals to a round's evidence"))
-	}
-	for _, i := range s.secretUses() {
-		out = append(out, f(finding.Error, "removed", i, "give the lane the credential in its environment instead (the operator's own, or env.swim)",
-			"swim secret is gone: swim no longer has a secret store, so getting a secret would fail"))
-	}
-	for i, line := range s.v.bare {
-		if s.v.doc[i] {
-			continue
-		}
-		if m := handlerDefRE.FindStringSubmatch(line); m != nil {
-			out = append(out, f(finding.Error, "removed", i, "put the rollback in its own lane (After: for order), or a guarded step of this one",
-				"%s is an outcome handler, which swim no longer calls: it would never run", m[1]))
-		}
-	}
-	return out
 }

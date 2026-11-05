@@ -39,9 +39,6 @@ func TestWatchTimers(t *testing.T) {
 	if got := queueTimer(waiting, queue.Queued, now); got != "3m ago" {
 		t.Errorf("waiting batch: %q", got)
 	}
-	if got := queueTimer(waiting, "scheduled", now); got != "" {
-		t.Errorf("scheduled batch: %q", got)
-	}
 }
 
 // A finished lane's row says how long its round took, whatever its end;

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Demo 6: a record you can believe. Every round and approval is signed and
+# Demo 4: a record you can believe. Every round and approval is signed and
 # hash-linked into .swim/chain.jsonl. swim verify says how far it can be
 # believed, and catches a log edited after the fact.
 . "$(dirname "$0")/../_lib/common.sh"
-demo_init 6-tamper-evidence
+demo_init 4-tamper-evidence
 
 for s in api worker; do fakecloud deploy $s 2.4.0 0 >/dev/null; done
 demo_lanes

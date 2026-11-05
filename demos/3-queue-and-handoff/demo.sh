@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Demo 4: nobody waits on anybody. The operator approves a batch and goes
+# Demo 3: nobody waits on anybody. The operator approves a batch and goes
 # home; a worker runs it when swim is free; the AI catches up from files,
 # not from a chat transcript. A batch is pinned to the scripts it was
 # approved with.
 . "$(dirname "$0")/../_lib/common.sh"
-demo_init 4-queue-and-handoff
+demo_init 3-queue-and-handoff
 
 fakecloud deploy api 2.4.0 0 >/dev/null
 fakecloud seed-table sessions "s1,active" "s2,stale" "s3,stale" "s4,active" "s5,stale"

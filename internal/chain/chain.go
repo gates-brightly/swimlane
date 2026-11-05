@@ -132,8 +132,9 @@ type Entry struct {
 	// swim no longer has decisions and writes none; older entries keep
 	// it, and swim verify still checks them.
 	Decisions []string `json:"decisions,omitempty"`
-	// ScheduledFor (UTC) is a scheduled batch's start time (swim schedule):
-	// the run started no earlier.
+	// ScheduledFor was a run's start time, when an older swim started it
+	// at one. Swim writes it no longer; older entries keep it, and their
+	// signatures cover it as written.
 	ScheduledFor string `json:"scheduled_for,omitempty"`
 	// Finally is a finally lane's round (# Finally:): how each lane it
 	// waited for ended, as it started ("1" -> "pass").

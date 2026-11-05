@@ -1,6 +1,6 @@
 #!/usr/bin/env swim
 # swim: syntax 4
-# Round:   CI: checks (fmt, build, vet, lint, shell syntax)
+# Round:   CI: checks (fmt, build, vet, deadcode, lint, shell syntax)
 # Job:     5c1a0011-11a7-4c1e-8d00-000000000011
 # Owner:   swim CI
 # Timeout: 10m
@@ -10,7 +10,7 @@
 #
 # This repo's CI is seven lanes, each its own job, so the slow suites run
 # side by side and a red run names the one that failed:
-#   lane 1  checks: fmt, build, vet, lint, shell syntax (first, seconds)
+#   lane 1  checks: fmt, build, vet, deadcode, lint, shell syntax (first, seconds)
 #   lane 2  the e2e suite and scenarios
 #   lane 3  fault injection
 #   lane 4  the security regression suite
@@ -26,6 +26,7 @@ stage check
 run "gofmt -s" bash -c 'out=$(gofmt -s -l .); [ -z "$out" ] || { echo "needs gofmt -s (just fmt):"; echo "$out"; exit 1; }'
 gate "go build" go build ./...
 run "go vet" go vet ./...
+run "deadcode" bash -c 'out=$(go run golang.org/x/tools/cmd/deadcode@v0.52.0 ./cmd/swim) || exit 1; [ -z "$out" ] || { echo "nothing in swim reaches these:"; echo "$out"; exit 1; }'
 run "swim lint (the CI rounds)" "$SWIM_BIN" lint --strict
 run "shell syntax" bash -c 'for f in $(git ls-files "*.sh" e2e/lib/fakebin demos/_lib/bin); do bash -n "$f" || exit 1; done; sh -n scripts/install.sh'
 # The unit tests are lanes 8 (plain) and 9 (-race); internal/e2e is lanes 2-4.

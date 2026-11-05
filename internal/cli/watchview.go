@@ -289,10 +289,7 @@ func (w *watchView) rows() []display.PickRow {
 		rows = append(rows, display.PickRow{Text: w.activity, Color: ui.Dim})
 	}
 	for _, e := range entries {
-		state, when := e.State, ""
-		if e.State == queue.Queued && !e.Due(now) { // scheduled by an older swim
-			state, when = "scheduled", "  not before "+e.NotBefore
-		}
+		state := e.State
 		dry := ""
 		if w.batchDry(e, st) {
 			dry = display.DryMark + " "
@@ -300,7 +297,7 @@ func (w *watchView) rows() []display.PickRow {
 		color, stateColor := "", ui.StateColor(state)
 		lead := "  "
 		switch state {
-		case "scheduled", "held":
+		case "held":
 			color, stateColor = ui.Dim, ui.Dim
 		case queue.Running:
 			lead = display.SpinMark + " "
@@ -318,7 +315,7 @@ func (w *watchView) rows() []display.PickRow {
 			}
 			b.add(ui.LaneColor(l.Lane)+ui.Bold, strconv.Itoa(l.Lane))
 		}
-		b.add(ui.Dim, "  by "+e.By+when)
+		b.add(ui.Dim, "  by "+e.By)
 		if e.Note != "" {
 			b.add("", "  "+ui.Safe(e.Note))
 		}
@@ -462,12 +459,8 @@ func laneTimer(l *status.Lane, state string, now time.Time) string {
 }
 
 // queueTimer is a batch row's time: how long it has been running since a
-// worker claimed it, or how long ago it was queued. A scheduled batch's row
-// already says when it starts, so it has none.
+// worker claimed it, or how long ago it was queued.
 func queueTimer(e *queue.Entry, state string, now time.Time) string {
-	if state == "scheduled" {
-		return ""
-	}
 	if state == queue.Running && e.Worker != nil {
 		if t, err := time.Parse(time.RFC3339, e.Worker.Claimed); err == nil {
 			return display.Took(now.Sub(t))

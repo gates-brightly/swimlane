@@ -153,12 +153,6 @@ var readTimeout atomic.Int64
 
 func init() { readTimeout.Store(int64(10 * time.Second)) }
 
-// SetReadTimeout sets how long a connection may take to send its request,
-// and returns what it was.
-func SetReadTimeout(d time.Duration) time.Duration {
-	return time.Duration(readTimeout.Swap(int64(d)))
-}
-
 // issued is an approval handed out and not yet consumed.
 type issued struct {
 	token, flag string

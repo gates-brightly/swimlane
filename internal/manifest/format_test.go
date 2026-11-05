@@ -28,18 +28,14 @@ func TestManifestHashFrozen(t *testing.T) {
 	}
 }
 
-// A stale approval's reason names the policy key that changed.
-func TestDiffNamesPolicyKey(t *testing.T) {
+// Setting a policy key changes the manifest; a key outside policy doesn't.
+func TestPolicyKeyChangesManifest(t *testing.T) {
 	root := repo(t)
 	before := build(t, root, 3)
 	write(t, root, "swim.yml", "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 2\nsigning: required\n")
 	after := build(t, root, 3)
 	if after.Matches(before.SHA256) {
 		t.Fatal("setting a policy key should change the manifest")
-	}
-	why := strings.Join(Diff(before.Pinned, after.Pinned), "; ")
-	if !strings.Contains(why, "signing") || strings.Contains(why, "blocked_commands") {
-		t.Errorf("Diff = %q, want it to name signing alone", why)
 	}
 	// max_parallel isn't policy: changing it changes nothing.
 	write(t, root, "swim.yml", "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 5\nsigning: required\n")

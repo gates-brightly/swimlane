@@ -95,28 +95,27 @@ func TestBuildPins(t *testing.T) {
 	}
 }
 
-// Changing each pinned input changes manifest_sha256 (and Diff says
-// which); changing anything else doesn't.
+// Changing each pinned input changes manifest_sha256; changing anything
+// else doesn't.
 func TestCoverage(t *testing.T) {
 	cases := []struct {
 		name, file, data string
 		changes          bool
-		why              string
 	}{
-		{"script", "lane.3.sh", lane3 + "# more\n", true, "script lane.3.sh changed"},
-		{"declared include", "lib/inc.sh", "inc=2\n", true, "includes lib/inc.sh changed"},
-		{"sourced file", "lib/orders.sh", ". lib/deep.sh\necho changed\n", true, "includes lib/orders.sh changed"},
-		{"file it sources", "lib/deep.sh", "deep=2\n", true, "includes lib/deep.sh changed"},
-		{"sidecar", "lane.3.yml", "owner: someone\n", true, "sidecar lane.3.yml changed"},
-		{"swim.yml policy", "swim.yml", "blocked_commands: [\"rm -rf /\", \"curl\"]\nmax_parallel: 2\n", true, "config policy changed (swim.yml: blocked_commands"},
-		{"lookup.yml rules", "lookup.yml", "users: {}\nrequire:\n  - guards: [DROP]\n    count: 2\n", false, ""},
-		{"swim.yml other key", "swim.yml", "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 5\n", false, ""},
-		{"lookup.yml users", "lookup.yml", "users: {bob: {keys: []}}\nrequire:\n  - guards: [DROP]\n    count: 1\n", false, ""},
-		{"a data file", "data/rows.csv", "c,d\n", false, ""},
+		{"script", "lane.3.sh", lane3 + "# more\n", true},
+		{"declared include", "lib/inc.sh", "inc=2\n", true},
+		{"sourced file", "lib/orders.sh", ". lib/deep.sh\necho changed\n", true},
+		{"file it sources", "lib/deep.sh", "deep=2\n", true},
+		{"sidecar", "lane.3.yml", "owner: someone\n", true},
+		{"swim.yml policy", "swim.yml", "blocked_commands: [\"rm -rf /\", \"curl\"]\nmax_parallel: 2\n", true},
+		{"lookup.yml rules", "lookup.yml", "users: {}\nrequire:\n  - guards: [DROP]\n    count: 2\n", false},
+		{"swim.yml other key", "swim.yml", "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 5\n", false},
+		{"lookup.yml users", "lookup.yml", "users: {bob: {keys: []}}\nrequire:\n  - guards: [DROP]\n    count: 1\n", false},
+		{"a data file", "data/rows.csv", "c,d\n", false},
 		// Only what the header names is pinned: a file the script sources
 		// without # Includes: is refused when the lane runs, not pinned.
-		{"a file sourced but not declared", "lib/undeclared.sh", "undeclared=2\n", false, ""},
-		{"another lane", "lane.5.sh", "#!/usr/bin/env bash\n# Round: ci\nrun \"fmt\" true\n", false, ""},
+		{"a file sourced but not declared", "lib/undeclared.sh", "undeclared=2\n", false},
+		{"another lane", "lane.5.sh", "#!/usr/bin/env bash\n# Round: ci\nrun \"fmt\" true\n", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -126,10 +125,6 @@ func TestCoverage(t *testing.T) {
 			after := build(t, root, 3)
 			if changed := after.SHA256 != before.SHA256; changed != c.changes {
 				t.Fatalf("manifest changed = %v, want %v", changed, c.changes)
-			}
-			why := strings.Join(Diff(before.Pinned, after.Pinned), "; ")
-			if c.why != "" && !strings.Contains(why, c.why) {
-				t.Errorf("Diff = %q, want %q", why, c.why)
 			}
 		})
 	}
@@ -213,21 +208,6 @@ func TestObserve(t *testing.T) {
 	}
 	if _, err := lane.ParseProbe("not a probe"); err == nil {
 		t.Error("a bad probe parsed")
-	}
-}
-
-// A manifest an older swim wrote for a lane with modules (# Modules:)
-// still hashes with their pins, so swim verify can check it; a lane
-// without modules hashes as it always has (TestManifestHashFrozen).
-func TestOldModulePinsStillHash(t *testing.T) {
-	m := build(t, repo(t), 3)
-	if len(m.Pinned.Modules) != 0 || m.SHA256 != goldenV2 {
-		t.Fatalf("a module-free lane: %s, modules %v", m.SHA256, m.Pinned.Modules)
-	}
-	p := m.Pinned
-	p.Modules = []ModulePin{{Name: "notify", Version: "1.0.0", Source: "builtin", Kind: "bash", SHA256: strings.Repeat("a", 64)}}
-	if p.Hash(3) == m.SHA256 || !strings.Contains(p.text("h", 3, "c"), "module: notify 1.0.0 builtin bash "+strings.Repeat("a", 64)+"\n") {
-		t.Error("module pins of an older manifest aren't hashed")
 	}
 }
 

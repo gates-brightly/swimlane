@@ -227,7 +227,7 @@ func TestLockAndLanesSetting(t *testing.T) {
 	}
 }
 
-// A setting swim no longer has (chime ...) is ignored, and doctor says
+// A setting swim no longer has (modules ...) is ignored, and doctor says
 // which file still sets it.
 func TestRemovedSettings(t *testing.T) {
 	o := opts(t.TempDir())
@@ -235,9 +235,9 @@ func TestRemovedSettings(t *testing.T) {
 		t.Errorf("none set: %+v", l)
 	}
 	o.Cfg.RepoFile = "swim.yml"
-	o.Cfg.Repo.RemovedChime, o.Cfg.Repo.RemovedChimeMinS = true, 30
-	if l := only(Run(o), "removed-setting"); len(l) != 1 || l[0].File != "swim.yml" || !strings.Contains(l[0].Message, "chime, chime_min_s: swim no longer has") {
-		t.Errorf("swim.yml sets chime: %+v", l)
+	o.Cfg.Repo.RemovedModules, o.Cfg.Repo.RemovedSecrets = map[string]any{}, map[string]any{}
+	if l := only(Run(o), "removed-setting"); len(l) != 1 || l[0].File != "swim.yml" || !strings.Contains(l[0].Message, "modules, secrets: swim no longer has") {
+		t.Errorf("swim.yml sets modules: %+v", l)
 	}
 }
 

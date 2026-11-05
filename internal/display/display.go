@@ -112,9 +112,6 @@ func New(o Options, views []LaneView) *Display {
 	return d
 }
 
-// Live reports whether the pinned panel is in use.
-func (d *Display) Live() bool { return d.live }
-
 // Color reports whether output is coloured.
 func (d *Display) Color() bool { return d.color }
 

@@ -35,30 +35,13 @@ type Settings struct {
 	Deps            map[int][]int `yaml:"deps,omitempty"`
 	MaxParallel     *int          `yaml:"max_parallel,omitempty"`     // lanes running at once; 0 = unlimited
 	BlockedCommands []string      `yaml:"blocked_commands,omitempty"` // lane commands may not contain these
-	// Removed keys: accepted and ignored, so a swim.yml from before still
-	// loads (swim.yml is read strictly); swim doctor says to delete them.
-	RemovedChime      any `yaml:"chime,omitempty"`
-	RemovedChimeStyle any `yaml:"chime_style,omitempty"`
-	RemovedChimeMinS  any `yaml:"chime_min_s,omitempty"`
-	RemovedScheduleTZ any `yaml:"schedule_tz,omitempty"`
-	RemovedObserve    any `yaml:"observe,omitempty"`
-	// RemovedModules (modules:) still counts in the policy hash as it
-	// did, so a repo that set it keeps its approvals (policy.go).
-	RemovedModules any `yaml:"modules,omitempty"`
-	// RemovedSecrets (secrets:) and RemovedAmbientCredentials
-	// (ambient_credentials:), swim.yml's guarded secrets, also still count
-	// in the policy hash as they did (policy.go).
+	// Removed keys that still count in the policy hash as they did, so a
+	// repo that sets them keeps its approvals (policy.go): modules:, and
+	// swim.yml's guarded secrets (secrets:, ambient_credentials:). Read
+	// and otherwise ignored; swim doctor says to delete them.
+	RemovedModules            any `yaml:"modules,omitempty"`
 	RemovedSecrets            any `yaml:"secrets,omitempty"`
 	RemovedAmbientCredentials any `yaml:"ambient_credentials,omitempty"`
-	RemovedSecretsKey         any `yaml:"secrets_key,omitempty"`
-	RemovedHeadless           any `yaml:"headless,omitempty"`
-	RemovedHub                any `yaml:"hub,omitempty"`
-	RemovedPauseWarn          any `yaml:"pause_warn,omitempty"`
-	RemovedStoreDir           any `yaml:"store_dir,omitempty"`
-	RemovedCacheDir           any `yaml:"cache_dir,omitempty"`
-	RemovedCacheMax           any `yaml:"cache_max,omitempty"`
-	RemovedCacheSlug          any `yaml:"cache_slug,omitempty"`
-	RemovedChainAnchors       any `yaml:"chain_anchors,omitempty"`
 
 	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
 	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
@@ -221,11 +204,7 @@ func (s Settings) RemovedKeys() []string {
 	for _, k := range []struct {
 		name string
 		v    any
-	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules},
-		{"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}, {"secrets_key", s.RemovedSecretsKey},
-		{"headless", s.RemovedHeadless}, {"hub", s.RemovedHub}, {"pause_warn", s.RemovedPauseWarn},
-		{"store_dir", s.RemovedStoreDir}, {"cache_dir", s.RemovedCacheDir}, {"cache_max", s.RemovedCacheMax}, {"cache_slug", s.RemovedCacheSlug},
-		{"chain_anchors", s.RemovedChainAnchors}} {
+	}{{"modules", s.RemovedModules}, {"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}

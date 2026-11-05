@@ -241,56 +241,6 @@ func lastRan(info lane.Info, job string, last *status.Lane) bool {
 	return info.Pending() && last.Round == info.Round
 }
 
-// DepEdges is every lane's direct dependencies, by lane: the config deps
-// table and each script's `# After:` (lane numbers, jobs), as the
-// launcher enforces them. References that don't resolve are left out:
-// swim run reports those.
-func DepEdges(root string, cfg *config.Config) map[int][]int {
-	st, _ := status.Load(root)
-	if st == nil {
-		st = &status.File{}
-	}
-	st.Normalize(cfg.Lanes)
-	scripts := map[int]lane.Info{}
-	for n := 1; n <= cfg.Lanes; n++ {
-		scripts[n], _ = lane.ReadScript(root, n)
-	}
-	out := map[int][]int{}
-	for n := 1; n <= cfg.Lanes; n++ {
-		seen := map[int]bool{}
-		for _, d := range cfg.DepsOf(n) {
-			seen[d] = true
-		}
-		for _, ref := range scripts[n].After {
-			if d, err := resolveAfter(cfg, scripts, st, n, ref); err == nil {
-				seen[d.Lane] = true
-			}
-		}
-		for d := range seen {
-			out[n] = append(out[n], d)
-		}
-		sort.Ints(out[n])
-	}
-	return out
-}
-
-// Upstream is every lane n depends on, at any depth.
-func Upstream(edges map[int][]int, n int) map[int]bool {
-	up := map[int]bool{}
-	var walk func(int)
-	walk = func(m int) {
-		for _, d := range edges[m] {
-			if !up[d] {
-				up[d] = true
-				walk(d)
-			}
-		}
-	}
-	walk(n)
-	delete(up, n)
-	return up
-}
-
 // DepState is where one dependency of a pending round stands now.
 type DepState struct {
 	Dep

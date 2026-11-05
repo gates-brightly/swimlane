@@ -132,7 +132,7 @@ stateDiagram-v2
 | State | File | Entered by | Notes |
 |---|---|---|---|
 | `queued` | `NNNN-q-<utc>-<hex>.queue` | `swim queue N`, `swim queue requeue` | Requeue gives a new sequence number, at the back of the queue. |
-| `running` | `NNNN-....running`, with `worker:` (host, pid and start time, user, heartbeat, lease) | `swim watch` claims it (`ClaimNext`, or `r` on a batch in the watch screen) | Of two workers racing, exactly one rename succeeds. The worker renews `heartbeat` every third of its `lease` (`queue_lease`, default 2m) while the batch runs. |
+| `running` | `NNNN-....running`, with `worker:` (host, pid and start time, user, heartbeat, lease) | `swim watch` claims it (the first waiting batch it can run, or `r` on a batch in the watch screen) | Of two workers racing, exactly one rename succeeds. The worker renews `heartbeat` every third of its `lease` (`queue_lease`, default 2m) while the batch runs. |
 | `orphaned` | the same `.running` file | Not written: `swim queue` derives it. On the swimmer's host: its pid is gone, or now another process (start time). From another host: its heartbeat is older than its lease | A claim by an older worker (no heartbeat) can't be judged from another host and stays `running`. Never run again on its own. |
 | `done` | `done/NNNN-....yml`, with `result:` | `Consume`, when the batch ends: passed, failed or interrupted alike | A half-run batch is never retried on its own. |
 | removed | none | `swim queue rm` | Refused while `running`. |

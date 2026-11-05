@@ -37,7 +37,7 @@ func TestResolve(t *testing.T) {
 		short := write(name, "#!/usr/bin/env swim\n# Round: x\nrun \"hi\" echo hi\n", 0o755)
 		p, err := Resolve(cfg, short)
 		if err != nil || p.Source != Short || p.Wrapped || len(p.Argv) != 4 ||
-			strings.Join(p.Argv[:2], " ") != "bash -c" || p.Argv[2] != ShortPrelude || p.Argv[3] != short || p.Runner() != "bash (short form)" {
+			strings.Join(p.Argv[:2], " ") != "bash -c" || p.Argv[2] != ShortPrelude || p.Argv[3] != short {
 			t.Errorf("short form %s: %+v %v", name, p, err)
 		}
 	}
@@ -57,7 +57,7 @@ func TestResolve(t *testing.T) {
 		}
 	}
 	cfg.Runners, cfg.RunnerFrom = map[string]string{"ts": "tsx --quiet"}, map[string]string{"ts": "/repo/swim.yml"}
-	if p, err := Resolve(cfg, ts); err != nil || strings.Join(p.Argv, " ") != "tsx --quiet "+ts || p.Source != RepoYML || p.Runner() != "tsx --quiet (swim.yml)" {
+	if p, err := Resolve(cfg, ts); err != nil || strings.Join(p.Argv, " ") != "tsx --quiet "+ts || p.Source != RepoYML {
 		t.Errorf("configured: %+v %v", p, err)
 	}
 	exe := write("lane.5", "\x7fELF\x00binary", 0o755)

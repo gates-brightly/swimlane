@@ -185,15 +185,6 @@ func TestTwoScriptsConflict(t *testing.T) {
 	}
 }
 
-func mustRead(t *testing.T, path string) []byte {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data
-}
-
 // The first Ctrl-C stops a wrapped lane at its next step, as it does a
 // bash lane: the running step finishes, the next is refused, the round
 // ends interrupted, and the program doesn't carry on.

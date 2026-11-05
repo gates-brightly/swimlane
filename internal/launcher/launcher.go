@@ -69,10 +69,7 @@ type Options struct {
 	// terminal or not; each approval is logged as by -y. ApprovedBy and
 	// ApprovedVia name who and what approved (default: this user, "swim run
 	// -y"; a queued batch: who queued it, "queue <id> -y").
-	AutoApprove bool
-	// ScheduledFor (UTC) is the start time of the scheduled batch this run
-	// is (swim schedule), recorded in its attestation.
-	ScheduledFor            string
+	AutoApprove             bool
 	ApprovedBy, ApprovedVia string
 	// Pins holds the job each lane must still hold when it starts (lanes
 	// named by job id, and every lane swim ci selects): a lane script
@@ -1041,22 +1038,6 @@ func laneCommand(o Options, n int, sel []int, plan runner.Plan, job string, who 
 	// started) mustn't hold up the run once the lane itself has exited.
 	cmd.WaitDelay = 2 * time.Second
 	return cmd, ownGroup, w, tok
-}
-
-// exitCode is a finished process's exit code (128+signal if a signal
-// killed it).
-func exitCode(err error) int {
-	if err == nil {
-		return 0
-	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-			return 128 + int(ws.Signal())
-		}
-		return ee.ExitCode()
-	}
-	return 1
 }
 
 // watchMsgs follows lane n's status message (swim msg) while it runs: the

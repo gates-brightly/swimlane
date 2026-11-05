@@ -58,20 +58,7 @@ const (
 	FromIncludes = "includes" // # Includes: (or an older swim's Matrix: @file:) part of the script hash too
 	FromSource   = "source"   // a bash source line, found by a static scan (manifests before header-only pinning)
 	FromImport   = "import"   // a Python or TypeScript import of a local module (likewise)
-	FromModule   = "module"   // a file of a repo module an older swim's lane declared (# Modules:)
 )
-
-// ModulePin is one module a lane declared (# Modules:, which this swim no
-// longer has), pinned: a built-in by the hash of its embedded files, a repo
-// module by its tree's hash (its files were staged as includes from:
-// module). Kept so an older manifest still reads and hashes as it did.
-type ModulePin struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
-	Source  string `yaml:"source"` // builtin, or ./<dir>
-	Kind    string `yaml:"kind"`
-	SHA256  string `yaml:"sha256"`
-}
 
 // File is one pinned file.
 type File struct {
@@ -89,8 +76,8 @@ type Policy struct {
 	// Rules were lookup.yml's require: rules when swim had signed
 	// approvals: no longer set, but hashed as written (an empty line).
 	Rules string `yaml:"lookup_rules,omitempty"`
-	// Set is each policy key swim.yml sets, with its value's hash, so a
-	// stale approval can say which changed (not hashed).
+	// Set is each policy key swim.yml sets, with its value's hash: a
+	// record of what the policy was (not hashed).
 	Set map[string]string `yaml:"set,omitempty"`
 }
 
@@ -99,9 +86,6 @@ type Pinned struct {
 	Script   File   `yaml:"script"`
 	Includes []File `yaml:"includes,omitempty"`
 	Sidecar  *File  `yaml:"sidecar,omitempty"`
-	// Modules are the modules an older swim's lane declared, in its order
-	// (empty now: a lane without them hashes as it always has).
-	Modules []ModulePin `yaml:"modules,omitempty"`
 	// Runner is how the script runs, as the repo says it: bash, its #!
 	// line, a swim.yml runner, direct; "local .ts" for a runner from the
 	// operator's own config (which differs per machine).
@@ -257,7 +241,7 @@ func (p Pinned) hashV1(n int) string {
 }
 
 // text is the hashed form of the pins: head, then the lane, script,
-// includes, sidecar, modules, runner, config line and lookup rules.
+// includes, sidecar, runner, config line and lookup rules.
 func (p Pinned) text(head string, n int, config string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\nlane: %d\nscript: %s %s\n", head, n, p.Script.Path, p.Script.SHA256)
@@ -266,9 +250,6 @@ func (p Pinned) text(head string, n int, config string) string {
 	}
 	if p.Sidecar != nil {
 		fmt.Fprintf(&b, "sidecar: %s %s\n", p.Sidecar.Path, p.Sidecar.SHA256)
-	}
-	for _, mod := range p.Modules {
-		fmt.Fprintf(&b, "module: %s %s %s %s %s\n", mod.Name, mod.Version, mod.Source, mod.Kind, mod.SHA256)
 	}
 	fmt.Fprintf(&b, "runner: %s\n%s\nlookup-rules: %s\n", p.Runner, config, p.Config.Rules)
 	// Only when live, so a staged lane's hash reads as it always has.
@@ -449,105 +430,6 @@ func (m *Manifest) ScriptBytes() ([]byte, error) {
 		}
 	}
 	return lane.JoinScript(data, files, func(f string) ([]byte, error) { return os.ReadFile(m.Path(f)) }), nil
-}
-
-// Diff says why new differs from old, an approval's pins: "config policy
-// changed (swim.yml)", "includes lib/orders.sh changed", ...
-func Diff(old, new Pinned) []string {
-	var out []string
-	if old.Script.Path != new.Script.Path || old.Script.SHA256 != new.Script.SHA256 {
-		out = append(out, "script "+new.Script.Path+" changed")
-	}
-	was := map[string]string{}
-	for _, f := range old.Includes {
-		was[f.Path] = f.SHA256
-	}
-	now := map[string]bool{}
-	for _, f := range new.Includes {
-		now[f.Path] = true
-		switch sum, ok := was[f.Path]; {
-		case !ok:
-			out = append(out, "includes "+f.Path+" added")
-		case sum != f.SHA256:
-			out = append(out, "includes "+f.Path+" changed")
-		}
-	}
-	for _, f := range old.Includes {
-		if !now[f.Path] {
-			out = append(out, "includes "+f.Path+" removed")
-		}
-	}
-	switch {
-	case old.Sidecar == nil && new.Sidecar != nil:
-		out = append(out, "sidecar "+new.Sidecar.Path+" added")
-	case old.Sidecar != nil && new.Sidecar == nil:
-		out = append(out, "sidecar "+old.Sidecar.Path+" removed")
-	case old.Sidecar != nil && *old.Sidecar != *new.Sidecar:
-		out = append(out, "sidecar "+new.Sidecar.Path+" changed")
-	}
-	out = append(out, diffModules(old.Modules, new.Modules)...)
-	if old.Runner != new.Runner {
-		out = append(out, fmt.Sprintf("runner changed (%s, now %s)", or(old.Runner, "none"), or(new.Runner, "none")))
-	}
-	out = append(out, diffPolicy(old.Config, new.Config)...)
-	if old.Config.Rules != new.Config.Rules {
-		out = append(out, "approval rules changed (lookup.yml require:, which swim no longer reads)")
-	}
-	return out
-}
-
-// diffPolicy says how swim.yml's policy changed between an approval's pins
-// and now, naming the keys when both sides recorded them.
-func diffPolicy(old, new Policy) []string {
-	if old.SHA256 == new.SHA256 {
-		return nil
-	}
-	var keys []string
-	for k, sum := range new.Set {
-		if old.Set[k] != sum {
-			keys = append(keys, k)
-		}
-	}
-	for k := range old.Set {
-		if _, ok := new.Set[k]; !ok {
-			keys = append(keys, k)
-		}
-	}
-	sort.Strings(keys)
-	if len(keys) == 0 {
-		return []string{"config policy changed (swim.yml)"}
-	}
-	return []string{"config policy changed (swim.yml: " + strings.Join(keys, ", ") + ")"}
-}
-
-// diffModules says how a lane's modules changed: "module notify added",
-// "module notify changed (1.0.0, now 1.1.0)".
-func diffModules(old, new []ModulePin) []string {
-	var out []string
-	was := map[string]ModulePin{}
-	for _, p := range old {
-		was[p.Name] = p
-	}
-	now := map[string]bool{}
-	for _, p := range new {
-		now[p.Name] = true
-		switch o, ok := was[p.Name]; {
-		case !ok:
-			out = append(out, "module "+p.Name+" added")
-		case o.Version != p.Version:
-			out = append(out, fmt.Sprintf("module %s changed (%s, now %s)", p.Name, o.Version, p.Version))
-		case o.Source != p.Source:
-			out = append(out, fmt.Sprintf("module %s changed (%s, now %s)", p.Name, o.Source, p.Source))
-		case o != p:
-			out = append(out, "module "+p.Name+" changed")
-		}
-	}
-	for _, p := range old {
-		if !now[p.Name] {
-			out = append(out, "module "+p.Name+" removed")
-		}
-	}
-	return out
 }
 
 // runnerPin is how the repo says the script runs, the same on every

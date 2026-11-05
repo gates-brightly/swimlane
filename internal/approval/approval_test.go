@@ -420,3 +420,9 @@ func TestRecordFromTheLane(t *testing.T) {
 		t.Errorf("recorded %v", got)
 	}
 }
+
+// SetReadTimeout sets how long a connection may take to send its request,
+// and returns what it was.
+func SetReadTimeout(d time.Duration) time.Duration {
+	return time.Duration(readTimeout.Swap(int64(d)))
+}
