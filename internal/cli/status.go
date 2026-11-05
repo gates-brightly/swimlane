@@ -96,7 +96,11 @@ func cmdStatus(args []string) error {
 		}
 		sv := newStatusView(root, cfg)
 		refused := lintRefusals(root, cfg)
+		inBatch := queuedLanes(root)
 		for i := range lanes {
+			if inBatch[lanes[i].Lane] && lanes[i].AtRest() {
+				lanes[i].State = status.Queued
+			}
 			ld := laneDoc{Lane: lanes[i], LintErrors: len(refused[lanes[i].Lane])}
 			if pv := sv.pending(&lanes[i]); pv != nil {
 				ld.Deps, ld.DepsError = pv.Deps, pv.DepsErr
@@ -123,6 +127,21 @@ func cmdStatus(args []string) error {
 	}
 	printStatus(root, cfg, f, only, ui.Painter{On: ui.ColorEnabled(os.Stdout)}, time.Now())
 	return nil
+}
+
+// queuedLanes are the lanes in a batch still queued (swim queue): a lane
+// at rest there is queued, not ready.
+func queuedLanes(root string) map[int]bool {
+	out := map[int]bool{}
+	entries, _ := queue.List(root, false)
+	for _, e := range entries {
+		if e.State == queue.Queued {
+			for _, l := range e.Lanes {
+				out[l.Lane] = true
+			}
+		}
+	}
+	return out
 }
 
 // effectiveState flags lanes whose recorded process is gone.
@@ -179,6 +198,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 	}
 	sv := newStatusView(root, cfg)
 	refused := lintRefusals(root, cfg)
+	inBatch := queuedLanes(root)
 	for i := range f.Lanes {
 		l := &f.Lanes[i]
 		// The lanes in use; those named (swim status N M) whatever they are.
@@ -186,13 +206,16 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 			continue
 		}
 		state := effectiveState(l)
+		if inBatch[l.Lane] && l.AtRest() {
+			state = status.Queued
+		}
 		word := stateWord(l, state, now)
 		label := p.Paint(ui.LaneColor(l.Lane)+ui.Bold, fmt.Sprintf(" lane %-2d", l.Lane))
 		round := l.Round
 		pv := sv.pending(l)
 		// A lane that never ran (or was archived) shows the round it holds
 		// as its row.
-		idlePending := state == status.Ready && pv != nil && l.Pending != ""
+		idlePending := (state == status.Ready || state == status.Queued) && pv != nil && l.Pending != ""
 		color := ui.StateColor(state)
 		switch {
 		case idlePending:

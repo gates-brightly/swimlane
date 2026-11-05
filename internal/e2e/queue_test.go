@@ -73,7 +73,7 @@ func TestQueueAndWatchOnce(t *testing.T) {
 	}
 	contains(t, "queue list", r.mustSwim("queue"), "skipped")
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	contains(t, ".swim.log", string(hist), "queue ", "approve=ALLOW_DROP  batch one", "queue-run", "queue-done")
+	contains(t, ".swim.log", string(hist), "queue ", "approve=ALLOW_DROP  batch one", "queue-run", "queue-end")
 
 	// A lane rewritten after it was queued is skipped, not run.
 	r.script(1, "drop v2", `step "v2" true`)

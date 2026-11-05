@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/status"
 )
 
 // root is the repo's root directory.
@@ -216,4 +218,22 @@ func slug(h string) string {
 		}
 	}
 	return b.String()
+}
+
+// concepts.md's lane states are exactly status.States, in order: the one
+// set of words every view uses for a lane's state.
+func TestConceptsListTheLaneStates(t *testing.T) {
+	page := read(t, "docs/reference/concepts.md")
+	_, section, ok := strings.Cut(page, "\n## Lane states\n")
+	if !ok {
+		t.Fatal(`docs/reference/concepts.md has no "## Lane states" section`)
+	}
+	section, _, _ = strings.Cut(section, "\n## ")
+	var words []string
+	for _, m := range regexp.MustCompile(`(?m)^\| \*\*([a-z]+)\*\* \|`).FindAllStringSubmatch(section, -1) {
+		words = append(words, m[1])
+	}
+	if strings.Join(words, " ") != strings.Join(status.States, " ") {
+		t.Errorf("concepts.md lists the lane states %v; swim's are %v (internal/status)", words, status.States)
+	}
 }

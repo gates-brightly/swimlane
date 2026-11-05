@@ -185,8 +185,9 @@ func (b *rowText) row(id, color string) display.PickRow {
 // its name in its colour, a spinner and its state in the state's colour.
 func (w *watchView) rows() []display.PickRow {
 	rows, waiting := w.askRows()
-	rows = append(rows, display.PickRow{Text: "Jobs", Rule: true})
+	rows = append(rows, display.PickRow{Text: "Lanes", Rule: true})
 	st, _ := status.Load(w.root)
+	inBatch := queuedLanes(w.root)
 	now := time.Now()
 	lanes := lane.Associated(w.root) // the lanes in use now (a long-lived view)
 	w.seen.refresh(lanes)
@@ -206,6 +207,9 @@ func (w *watchView) rows() []display.PickRow {
 			r.l = st.Get(n)
 		}
 		r.state, r.color = laneRowState(r.l, r.info)
+		if r.state == status.Ready && inBatch[n] {
+			r.state, r.color = status.Queued, ui.StateColor(status.Queued)
+		}
 		if r.l != nil {
 			r.took = laneTook(r.l, r.state)
 		}

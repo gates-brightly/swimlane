@@ -21,7 +21,7 @@ const (
 	Init        = "init"
 	New         = "new"
 	Run         = "run"
-	RunDone     = "run-done"
+	RunDone     = "run-end"
 	Start       = "start"
 	Pass        = "pass"
 	Fail        = "fail"
@@ -36,7 +36,7 @@ const (
 	Decline     = "decline"      // ... declined it, or no answer came (the step ran as a dry run)
 	QueueAdd    = "queue"        // swim queue add: a batch was queued (detail: id, lanes, approvals)
 	QueueRun    = "queue-run"    // swim watch started a queued batch
-	QueueDone   = "queue-done"   // ... and consumed it (detail: id, result)
+	QueueDone   = "queue-end"    // ... and consumed it (detail: id, result)
 	QueueHeld   = "queue-kept"   // a worker left a batch queued: its swim can't run it (detail: id, why)
 	Warn        = "warn"         // something swim couldn't do that changes no result (detail: what)
 	Prune       = "prune"        // swim prune: leftovers deleted (detail: name, counts, bytes)

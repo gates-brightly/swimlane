@@ -39,7 +39,7 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 		t.Errorf("the swimmer doesn't say it asks: %+v", ws)
 	}
 	// Under their own bar, in yellow, over the jobs and the queue.
-	if !strings.Contains(s, "── ⚠ Waiting for you (2) ─") || strings.Index(s, "Waiting for you") > strings.Index(s, "── Jobs") {
+	if !strings.Contains(s, "── ⚠ Waiting for you (2) ─") || strings.Index(s, "Waiting for you") > strings.Index(s, "── Lanes") {
 		t.Errorf("no section bar over the questions:\n%s", s)
 	}
 	if !strings.Contains(tr.output(), ui.Yellow+ui.Bold+"⚠ Waiting for you (2)") {

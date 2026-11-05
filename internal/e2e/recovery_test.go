@@ -57,7 +57,7 @@ func TestRecoveryStaleRunningLane(t *testing.T) {
 	syscall.Kill(-c.Process.Pid, syscall.SIGKILL) // no traps run
 	c.Wait()
 
-	contains(t, "status", r.mustSwim("status"), "running?")
+	contains(t, "status", r.mustSwim("status"), "interrupted (its process is gone)")
 	out, _ := r.swim("doctor")
 	contains(t, "doctor", out, "[stale-pid]")
 	r.swim("doctor", "--fix")

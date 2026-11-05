@@ -748,7 +748,7 @@ func TestStaleRunningShown(t *testing.T) {
 	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
 	syscall.Kill(-c.Process.Pid, syscall.SIGKILL) // terminal closed: no traps run
 	c.Wait()
-	contains(t, "status", r.mustSwim("status"), "running? (process gone: interrupted)", "step: long")
+	contains(t, "status", r.mustSwim("status"), "interrupted (its process is gone)", "step: long")
 	// A dead pidfile doesn't block a rerun.
 	r.script(1, "rerun", `step "quick" true`)
 	r.mustSwim("run", "1")
@@ -1076,7 +1076,7 @@ func TestProjectLog(t *testing.T) {
 		"start lane 1 round-id=job-one-0001 first goal",
 		"fail lane 1 round-id=job-one-0001 pass=",
 		"skip lane 2 round-id=job-two-0002 lane 1 failed second goal",
-		"run-done lane 1,2 passed=0 failed=1 skipped=1 interrupted=0",
+		"run-end lane 1,2 passed=0 failed=1 skipped=1 interrupted=0",
 		"start lane 3 round-id=",
 		"pass lane 3 round-id=",
 		"archive lane 1 round-id=job-one-0001 lane1.prev-job-one-0001.log precheck needs a fix",
@@ -1347,7 +1347,7 @@ func TestRunID(t *testing.T) {
 		t.Errorf("status: last_run=%s lane1=%s lane4=%+v", st.LastRun, st.Get(1).Run, st.Get(4))
 	}
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	for _, ev := range []string{"run ", "start ", "pass ", "fail ", "skip ", "run-done "} {
+	for _, ev := range []string{"run ", "start ", "pass ", "fail ", "skip ", "run-end "} {
 		found := false
 		for _, line := range strings.Split(string(hist), "\n") {
 			if f := strings.Fields(line); len(f) > 2 && f[2]+" " == ev && strings.Contains(line, "run="+run) {

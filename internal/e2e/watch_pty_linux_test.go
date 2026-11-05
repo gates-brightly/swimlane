@@ -23,7 +23,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	r.write("lane.3.sh", "#!/usr/bin/env bash\n# being written: no Round: line yet\n", 0o755) // in use, nothing pending
 	tr := r.startTUI(nil, "watch")
 	s := tr.waitFor("▸ 1 ")
-	contains(t, "watch screen", s, "pending", "Jobs", "first job", "second job", "Queue", "r run now", "q batch", "s submit")
+	contains(t, "watch screen", s, "ready", "Lanes", "first job", "second job", "Queue", "r run now", "q batch", "s submit")
 
 	// ↓ then r: swim 2 runs now, and the screen comes back saying so.
 	tr.send("\x1b[B")
@@ -59,7 +59,7 @@ func TestWatchPickRunAndQueue(t *testing.T) {
 	tr.send("\x1b[B\x1b[B")
 	tr.waitFor("▸ 3 ")
 	tr.send("r")
-	tr.waitFor("lane 3 holds no pending round")
+	tr.waitFor("lane 3 holds no round")
 	tr.send("\x03")
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d after ctrl-c", code)
@@ -91,7 +91,7 @@ func TestWatchBatchOutputView(t *testing.T) {
 	tr.waitFor("▸ #1")
 	release()
 	s := tr.waitFor("#1 passed")
-	contains(t, "watch screen after the batch", s, "Jobs", "Queue")
+	contains(t, "watch screen after the batch", s, "Lanes", "Queue")
 	tr.send("\x03")
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d after ctrl-c", code)

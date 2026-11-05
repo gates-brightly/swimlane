@@ -516,7 +516,7 @@ swim queue show|rm|requeue ID
   waiting, .running once a watcher has claimed it (by renaming it, which
   is atomic: two watchers can never claim the same entry), then
   done/NNNN-....yml with its result (run id, exit, each lane's result).
-  .swim.log records queue, queue-run and queue-done events.
+  .swim.log records queue, queue-run and queue-end events.
 `,
 	"watch": `swim watch [--once] [--interval D] [--batches N] [--plain]
 

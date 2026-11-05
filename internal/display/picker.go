@@ -414,7 +414,7 @@ func (p *Picker) field(f *PickField, cols int) string {
 	return line
 }
 
-// rule is a section rule cols wide: "── Jobs ───────── 2 running ──", the
+// rule is a section rule cols wide: "── Lanes ───────── 2 running ──", the
 // line dim, the label bold.
 func (p *Picker) rule(r PickRow, cols int) string {
 	pt := ui.Painter{On: p.Color}
