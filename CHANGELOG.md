@@ -38,6 +38,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261105.7 (v0.20261105.7, 2026-11-05)
+
 ### Added
 
 - **Shared lane helpers, one module per namespace:** `swim helpers`
