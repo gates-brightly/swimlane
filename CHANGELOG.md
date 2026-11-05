@@ -171,6 +171,12 @@ history stays here, since `swim changelog --since` reads it.
   AWS_PROFILE, AWS_REGION]`).
 
 
+- **A lane's staged copy holds only its own files.** Swim's manifest moved
+  out of the lane's working directory to `.swim/runs/<run>/<N>.manifest.yml`
+  (`$SWIM_MANIFEST`), so a lane's `ls` no longer shows `manifest.yml`.
+  Stages an older swim made still verify.
+
+
 - **`swim lint` findings no longer go to `.swim.log`.** The terminal
   shows them; the project log keeps what happened (`usage` lines stay).
   Older `lint` lines still read.

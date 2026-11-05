@@ -42,13 +42,18 @@ import (
 // Schema identifies a manifest file.
 const Schema = "swim.manifest/v1"
 
-// FileName is the manifest's name in a lane's stage.
+// FileName is the manifest's name: <stage>.manifest.yml, beside the
+// lane's stage (.swim/runs/<run>/<N>.manifest.yml), never in it, so the
+// lane's working directory holds only the files it pinned.
 const FileName = "manifest.yml"
+
+// FilePath is the manifest of the stage in dir.
+func FilePath(dir string) string { return filepath.Clean(dir) + "." + FileName }
 
 // Environment variables the launcher gives a lane.
 const (
 	StageEnv    = "SWIM_STAGE"    // the lane's stage directory
-	ManifestEnv = "SWIM_MANIFEST" // its manifest.yml (launcher-owned, read-only)
+	ManifestEnv = "SWIM_MANIFEST" // its manifest (launcher-owned, read-only)
 )
 
 // Where an included file came from.
@@ -266,13 +271,10 @@ func (m *Manifest) Stage(root, run string) (string, error) {
 	}
 	m.Run = run
 	dir := Dir(root, run, m.Lane)
-	if _, err := os.Stat(dir); err == nil {
-		if err := Remove(dir); err != nil {
-			return "", err
-		}
+	if err := Remove(dir); err != nil {
+		return "", err
 	}
-	write := func(rel string, data []byte, exec bool) error {
-		dst := filepath.Join(dir, filepath.FromSlash(rel))
+	write := func(dst string, data []byte, exec bool) error {
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
@@ -282,8 +284,11 @@ func (m *Manifest) Stage(root, run string) (string, error) {
 		}
 		return os.WriteFile(dst, data, mode)
 	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
 	for _, f := range m.Files() {
-		if err := write(f.Path, m.data[f.Path], f.Exec); err != nil {
+		if err := write(filepath.Join(dir, filepath.FromSlash(f.Path)), m.data[f.Path], f.Exec); err != nil {
 			return "", err
 		}
 	}
@@ -291,7 +296,7 @@ func (m *Manifest) Stage(root, run string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := write(FileName, data, false); err != nil {
+	if err := write(FilePath(dir), data, false); err != nil {
 		return "", err
 	}
 	m.Dir = dir
@@ -306,7 +311,8 @@ func Dir(root, run string, n int) string {
 // RunsDir holds every run's stages.
 func RunsDir(root string) string { return filepath.Join(root, ".swim", "runs") }
 
-// Remove deletes a stage (or a run's stages): its files are read-only.
+// Remove deletes a stage and its manifest (or a run's stages): its files
+// are read-only.
 func Remove(dir string) error {
 	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err == nil {
@@ -314,6 +320,10 @@ func Remove(dir string) error {
 		}
 		return nil
 	})
+	if mf := FilePath(dir); isFile(mf) {
+		os.Chmod(mf, 0o600)
+		os.Remove(mf)
+	}
 	return os.RemoveAll(dir)
 }
 
@@ -357,16 +367,23 @@ func (m *Manifest) Bytes(rel string) ([]byte, error) {
 
 // Load reads the manifest staged in dir.
 func Load(dir string) (*Manifest, error) {
-	data, err := os.ReadFile(filepath.Join(dir, FileName))
+	path := FilePath(dir)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		// A stage from an older swim keeps its manifest inside it.
+		if d, err2 := os.ReadFile(filepath.Join(dir, FileName)); err2 == nil {
+			path, data, err = filepath.Join(dir, FileName), d, nil
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
 	var m Manifest
 	if err := yaml.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("%s: %w", filepath.Join(dir, FileName), err)
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if m.Schema != Schema {
-		return nil, fmt.Errorf("%s: not a swim manifest (schema %q)", filepath.Join(dir, FileName), m.Schema)
+		return nil, fmt.Errorf("%s: not a swim manifest (schema %q)", path, m.Schema)
 	}
 	m.Dir = dir
 	return &m, nil
@@ -380,7 +397,11 @@ func FromEnv(n int) *Manifest {
 	if p == "" {
 		return nil
 	}
-	m, err := Load(filepath.Dir(p))
+	dir, ok := strings.CutSuffix(p, "."+FileName)
+	if !ok {
+		return nil
+	}
+	m, err := Load(dir)
 	if err != nil || m.Lane != n {
 		return nil
 	}

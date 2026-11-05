@@ -42,7 +42,7 @@ fi
 	if got, _ := os.ReadFile(filepath.Join(r.root, "hello.txt")); string(got) != "hi\n" {
 		t.Errorf("hello.txt = %q", got)
 	}
-	runs, _ := filepath.Glob(filepath.Join(r.root, ".swim", "runs", "*", "1", "manifest.yml"))
+	runs, _ := filepath.Glob(filepath.Join(r.root, ".swim", "runs", "*", "1.manifest.yml"))
 	if len(runs) == 0 {
 		t.Fatal("no staged manifest")
 	}
