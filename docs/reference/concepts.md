@@ -27,7 +27,6 @@ Built from them:
 | **checkpoint** | A step (`run --checkpoint`) a later run of the round keeps instead of rerunning. See [lanes](lanes.md#checkpoints). |
 | **drift** | A fact (`# Observe:`) that changed since approval: the guarded step stops. |
 | **chain** | Every round and approval, hash-linked and signed: `.swim/chain.jsonl`. See [chain](chain.md). |
-| **store** | Your profile's copy of what each round ran and wrote. See [chain](chain.md#the-store). |
 | **claim** | A lane held while a session writes it (`swim new` takes one), or a shared resource by name (`swim claim lith`). Advisory. |
 | **earmark** | A reader's place in the logs: `swim report --earmark` shows what's new, then moves it. |
 | **signoff** | `# Signoff:` posts a round's result as a signed commit status. See [CI](ci.md#local-ci). |

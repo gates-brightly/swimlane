@@ -40,6 +40,13 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+- **The store is gone.** swim no longer copies what each round ran and
+  wrote into `~/.local/share/swim/store`, and `swim store` is removed.
+  The chain of custody and `.swim/scripts/` are unchanged, and `swim
+  verify` checks them as before. `store_dir:` in `config.yml` is ignored
+  (`swim doctor` says to delete it); delete `~/.local/share/swim/store`
+  yourself if you like.
+
 ## 0.20261105.3 (v0.20261105.3, 2026-11-05)
 
 ### Added

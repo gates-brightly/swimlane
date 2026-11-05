@@ -126,11 +126,11 @@ func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
 	}
 }
 
-// chime, observe, modules, guarded secrets, the hub and pause were removed: a swim.yml
+// chime, observe, modules, guarded secrets, the hub, pause and the store were removed: a swim.yml
 // (read strictly) or config.yml that still sets their keys loads, and
 // RemovedKeys names them for swim doctor.
 func TestRemovedChimeKeysStillLoad(t *testing.T) {
-	writeConfig(t, "defaults:\n  chime: true\n  chime_min_s: 30\n  secrets_key: ~/.ssh/id_ed25519\n  pause_warn: 4h\n")
+	writeConfig(t, "defaults:\n  chime: true\n  chime_min_s: 30\n  secrets_key: ~/.ssh/id_ed25519\n  pause_warn: 4h\n  store_dir: off\n")
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, RepoFileName), []byte("chime: failure\nchime_style: sound\nobserve:\n  slow_factor: 3\nmodules:\n  allow: [notify]\n"+
 		"secrets:\n  PROD_DB: { guard: ALLOW_DROP }\n  1x: { guard: 'not a flag', release: forever }\nambient_credentials: [prod-write]\n"+
@@ -142,10 +142,10 @@ func TestRemovedChimeKeysStillLoad(t *testing.T) {
 	if got := strings.Join(c.Repo.RemovedKeys(), ","); got != "chime,chime_style,observe,modules,secrets,ambient_credentials,headless,hub,pause_warn" {
 		t.Errorf("swim.yml removed keys: %q", got)
 	}
-	if got := strings.Join(c.Settings.RemovedKeys(), ","); got != "chime,chime_min_s,secrets_key,pause_warn" {
+	if got := strings.Join(c.Settings.RemovedKeys(), ","); got != "chime,chime_min_s,secrets_key,pause_warn,store_dir" {
 		t.Errorf("config.yml removed keys: %q", got)
 	}
-	for _, k := range []string{"chime", "secrets_key", "pause_warn"} {
+	for _, k := range []string{"chime", "secrets_key", "pause_warn", "store_dir"} {
 		if _, err := c.Get(k); err == nil {
 			t.Errorf("swim config %s still answers", k)
 		}

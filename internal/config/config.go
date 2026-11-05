@@ -54,6 +54,7 @@ type Settings struct {
 	RemovedHeadless           any `yaml:"headless,omitempty"`
 	RemovedHub                any `yaml:"hub,omitempty"`
 	RemovedPauseWarn          any `yaml:"pause_warn,omitempty"`
+	RemovedStoreDir           any `yaml:"store_dir,omitempty"`
 
 	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
 	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
@@ -76,7 +77,6 @@ type Settings struct {
 	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim, macOS ~/Library/Caches/swim); config.yml only
 	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
 	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
-	StoreDir           string   `yaml:"store_dir,omitempty"`            // where swim keeps what each round ran and wrote (default ~/.local/share/swim/store; off: don't); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path; see the
 	// anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -186,11 +186,6 @@ func Load(root string) (*Config, error) {
 			// two repos at one cache.
 			return nil, fmt.Errorf("%s: cache_dir: and cache_slug: belong in %s, not the repo's swim.yml", path, c.Path)
 		}
-		if s.StoreDir != "" {
-			// So is whether it keeps a copy of what ran: a committed
-			// swim.yml mustn't turn the operator's record off.
-			return nil, fmt.Errorf("%s: store_dir: belongs in %s, not the repo's swim.yml", path, c.Path)
-		}
 		if s.NotifyCommand != "" || s.NotifyURL != "" {
 			// And what runs on the operator's machine outside any lane, and
 			// where it sends what swim does: a committed swim.yml mustn't
@@ -236,7 +231,8 @@ func (s Settings) RemovedKeys() []string {
 		v    any
 	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules},
 		{"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}, {"secrets_key", s.RemovedSecretsKey},
-		{"headless", s.RemovedHeadless}, {"hub", s.RemovedHub}, {"pause_warn", s.RemovedPauseWarn}} {
+		{"headless", s.RemovedHeadless}, {"hub", s.RemovedHub}, {"pause_warn", s.RemovedPauseWarn},
+		{"store_dir", s.RemovedStoreDir}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}
@@ -409,9 +405,6 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.CacheSlug != "" {
 		c.CacheSlug = r.CacheSlug
-	}
-	if r.StoreDir != "" {
-		c.StoreDir = r.StoreDir
 	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey

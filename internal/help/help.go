@@ -980,40 +980,6 @@ swim revoke --auto USER [--key K]
                  given (schema swim.history/v1)
   swim verify checks the chain.
 `,
-	"store": `swim store [ls] [--all]
-swim store show RUN [N] [--log | --script | --file PATH]
-swim store verify
-swim store path
-
-  The store is your profile's copy of what each round ran and wrote, kept
-  outside the repo: the chain of custody holds hashes, and the store holds
-  the bytes they name, so they can still be read after swim stub, swim
-  clean, git clean or a deleted checkout. swim run keeps each lane's
-  staged files (the script, its includes, its sidecar, its manifest) as it
-  stages them, before anything runs; the round's summary adds its section
-  of the log and how it ended. A round killed before its summary still has
-  what it ran. A lane run directly with bash is kept as it ends, from the
-  working tree, as its chain entry hashed it.
-  Files are kept once each, by SHA-256 (objects/), read-only, under
-  $XDG_DATA_HOME/swim/store or ~/.local/share/swim/store (0700); a record
-  per round (repos/<repo>/<run>/<lane>.yml, schema swim.store/v1) names
-  them. Worktrees and clones of one repo share its records (cache_slug).
-  Nothing is removed. Logs are kept as the lane log holds them, secrets
-  masked as there. A store that can't take a round is a warning; the
-  round runs anyway. store_dir in config.yml moves it, or turns it off
-  (store_dir: off); a repo's swim.yml can't.
-  ls       this repo's kept rounds, newest first (the last 20; --all)
-  show     one round: its files and their hashes, how it ended, and whether
-           every object it names is intact. RUN is a run id or its start;
-           N picks the lane when the run had several. --log prints its log
-           section, --script the script as the chain hashed it (with its
-           includes), --file PATH one file it ran, byte for byte
-  verify   every object of every record has the bytes its hash names, and
-           every round the chain recorded since the repo's first record is
-           kept, with the script and log hashes its chain entry holds.
-           Exits 1 on any problem
-  path     the store directory
-`,
 	"chain": `swim chain repair
 swim chain checkpoint [--to DEST]
 swim chain export --to DEST
@@ -1436,7 +1402,7 @@ func Names() []string {
 var FullOrder = []string{"init", "config", "env", "cache", "new", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "decide", "stage", "checkpoint", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait", "approve", "revoke",
-	"verify", "history", "chain", "store", "keys", "ci", "signoff", "lint", "doctor", "guide"}
+	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
 // line each, and where the rest is.

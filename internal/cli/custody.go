@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,7 +16,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
-	"github.com/gates-brightly/swimlane/internal/store"
 )
 
 // runnerKey is the key this swim signs chain entries with: nil (and no
@@ -70,30 +68,6 @@ func scriptSHA(root string, n int) string {
 		return chain.Hash(data)
 	}
 	return ""
-}
-
-// keepRound puts lane n's round in the operator's store (internal/store):
-// what it ran, kept again in case the launcher couldn't (or, for a lane
-// run directly with bash, kept now, from the working tree its chain entry
-// hashed), then its log section and how it ended. A store that can't take
-// it is a warning: the round is over either way.
-func keepRound(root string, cfg *config.Config, n int, run, job, title, result string, exit int, section string) {
-	st, slug, err := store.Open(cfg)
-	if st == nil || err != nil {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "swim: warning: the store didn't keep this round: %v\n", err)
-		}
-		return
-	}
-	if m := laneManifest(root, cfg, n); m != nil {
-		err = st.Keep(slug, root, run, m)
-	}
-	if err == nil {
-		err = st.Finish(slug, run, n, job, title, result, exit, section)
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "swim: warning: the store didn't keep this round: %v (swim store verify)\n", err)
-	}
 }
 
 // laneManifest is the execution manifest lane n's round runs: the one the
