@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/helpers"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/help"
@@ -17,6 +18,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/syntax"
+	"github.com/gates-brightly/swimlane/internal/version"
 )
 
 // f builds a finding at 0-based line i (-1 for the whole file).
@@ -1182,4 +1184,44 @@ func firstLane(c *Context) int {
 		}
 	}
 	return first
+}
+
+// checkHelpers: a swim helpers module the lane includes (stamped by swim
+// helpers add) that was edited since, or that this swim ships a
+// different version of. Each copy once per run, on the helper's file.
+func checkHelpers(c *Context, s *Script) []finding.Finding {
+	if c.Root == "" {
+		return nil
+	}
+	var out []finding.Finding
+	for _, g := range s.Info.Includes {
+		matches, _ := filepath.Glob(filepath.Join(c.Root, g))
+		for _, p := range matches {
+			rel, err := filepath.Rel(c.Root, p)
+			if err != nil || c.helpersSeen[rel] {
+				continue
+			}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				continue
+			}
+			h := helpers.Check(string(data))
+			var level, fix string
+			switch h.State {
+			case helpers.Edited:
+				level, fix = finding.Warn, fmt.Sprintf("swim helpers add %s --force restores swim's; or drop the stamp line (line 1) to make it this repo's own module", h.Module)
+			case helpers.Differs, helpers.Unknown:
+				level, fix = finding.Info, fmt.Sprintf("swim helpers add %s", h.Module)
+			default:
+				continue
+			}
+			if c.helpersSeen == nil {
+				c.helpersSeen = map[string]bool{}
+			}
+			c.helpersSeen[rel] = true
+			out = append(out, finding.Finding{Level: level, Code: "helpers", File: filepath.ToSlash(rel), Line: 1,
+				Message: h.Describe(version.String()), Fix: fix})
+		}
+	}
+	return out
 }

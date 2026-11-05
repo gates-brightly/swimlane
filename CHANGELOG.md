@@ -38,6 +38,28 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Added
+
+- **Shared lane helpers, one module per namespace:** `swim helpers`
+  lists them, one line each, and `swim helpers gh` shows a module's
+  functions (arguments and what each does, from its comments; the skill
+  has the agent look there before writing a check by hand); `swim helpers add gh git` writes them to `lib/swim/`,
+  stamped with the swim they came from, and running it again updates
+  them. Lanes include and source the copy (`# Includes:`, then `source`),
+  so the approved round holds every line. `swim lint` says when an
+  included copy was edited, or this swim ships a newer one (`helpers`). Every function is `<module>_<name>`. `aws.sh`: `aws_gate
+  [ACCOUNT]` gates on an active AWS session (`sts get-caller-identity`)
+  and the account. `gh.sh`: `gh_pr_fetch N [REMOTE]` fetches a pull
+  request's head (remote `origin` by default) to `$PR_REF` and snapshots
+  it; `gh_actions` / `gh_actions_gate` tell a GitHub Actions runner.
+  `os.sh`: `os_mac` / `os_linux` and their gates. Also `gh_auth_gate`,
+  `gh_repo`, `gh_pr_state_gate`, `gh_pr_head_gate`; `git.sh`:
+  `git_fetch_gate`, `git_worktree`, `git_pushed_gate`,
+  `git_authors_gate`; `docker.sh`: `docker_gate`,
+  `docker_compose_snapshot`; `tool.sh`: `tool_gate CMD [VERSION]`. Commands run through
+  `gate` and `snapshot`, so the log records them. See
+  [lanes](docs/reference/lanes.md#shared-helpers).
+
 ### What changed for you
 
 - `# Signoff:` and `swim signoff verify` are gone: a passed round no

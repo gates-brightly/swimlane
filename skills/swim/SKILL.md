@@ -52,6 +52,16 @@ hand a round over, workers, several tasks at once. Follow it.
 
    `step` records a command; a failed `gate` stops the round; `snapshot`
    also saves its output; `guard` is a dry run until the operator approves.
+
+   **Check `swim helpers` before writing a check by hand.** It lists the
+   helper modules (`aws`, `gh`, `git`, `docker`, `tool`, `os`), one line
+   each; `swim helpers gh` shows each function's arguments and what it
+   does. Use one when it fits (`aws_gate 123456789012` rather than your own
+   `sts get-caller-identity` gate): include and source the module the way
+   `swim helpers gh` says. If the repo has no copy yet, `swim helpers add
+   gh` writes one to `lib/swim/`; tell the operator to commit it. Never edit
+   a copy (lint warns): a check the modules lack goes in the lane, and one
+   lanes keep repeating is worth proposing as a module.
 3. **Check:** `swim lint N` until clean, then `swim status N`.
 4. **Hand over:** `swim queue N` (it runs and approves nothing; it prints
    the batch id), or give the operator `swim run N`. Never run it, and
@@ -67,7 +77,7 @@ Then the topic for the job at hand, `swim guide <topic>`:
 
 | Before you... | Topic |
 |---|---|
-| write or edit a lane | `lanes`, `guards`, `safety` |
+| write or edit a lane | `lanes`, `guards`, `safety`; shared helper modules (`aws_`, `docker_`, `gh_`, `git_`, `os_`, `tool_`; `swim helpers`) are under "Shared helpers" in `lanes` |
 | write a lane in Python, TS or Go | `other-languages` |
 | read results | `logs` |
 | something looks wrong | `recovery` |
