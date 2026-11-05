@@ -102,23 +102,21 @@ run` exits 3, and a lane after it won't start. On a terminal swim asks;
 
 ```sh
 echo "old data" > scratch.txt
-ssh-keygen -q -t ed25519 -N '' -f hour-key
-swim keys add me hour-key.pub     # lookup.yml: whose key is whose
-swim approve 2 --guards HOUR_ALLOW_RM --key hour-key
-swim approve
-swim run 2 --plain --no-prompt
-ls scratch.txt 2>/dev/null || echo "removed, approved by a signature"
+swim queue 2 --approve HOUR_ALLOW_RM
+swim watch --once --plain
+ls scratch.txt 2>/dev/null || echo "removed, approved in the queue"
 ```
 
-`swim approve` signs exactly what will run: the script, the files it pins,
-how it runs, and the repo's policy. Change any of it, and the approval no
-longer matches ([manifest](reference/manifest.md)):
+A queued batch's approval is pinned to exactly what will run: the script,
+the files it pins, how it runs, and the repo's policy. Change any of it
+before a swimmer takes it, and the lane is skipped
+([manifest](reference/manifest.md)):
 
 ```sh
 echo "old data" > scratch.txt
-echo "# an edit after approval" >> lane.2.sh
-swim approve
-swim run 2 --plain --no-prompt || echo "exit $?: a dry run"
+swim queue 2 --approve HOUR_ALLOW_RM
+echo "# an edit after queueing" >> lane.2.sh
+swim watch --once --plain || echo "exit $?: skipped, not run"
 ls scratch.txt
 ```
 

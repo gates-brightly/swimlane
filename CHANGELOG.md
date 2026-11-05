@@ -57,6 +57,36 @@ history stays here, since `swim changelog --since` reads it.
   cache, as outside swim. `cache_dir`, `cache_max` and `cache_slug` are
   ignored, and `swim doctor` says to delete them. Older chain entries keep their `cache:` restores and
   still verify.
+- **Signed approvals and approvals from others.** `swim approve`, `swim
+  revoke`, `swim keys add`, `approvals/`, `lookup.yml` (users, groups,
+  `require:` rules, `standing.max`), standing approvals, `swim watch
+  --approved` and `swim queue --key` are gone: a guard is approved by
+  `FLAG=1`, a queued batch's `--approve` or `-y`, or you, at the prompt,
+  in the live view or on `swim watch`'s screen. Queued batches are no
+  longer signed; a batch is still pinned to its exact manifest and env.
+  `swim init` no longer writes `lookup.yml`, `swim keys` shows only the
+  key this machine signs with, and env files are refused only for a
+  lane's own guard flags. `swim verify` has one answer and no levels
+  (`--levels` and the `authorized` level are gone; `--yaml` keeps
+  `consistent` and `ok`). Chain entries older swims recorded with signed
+  or hub approvals still verify by their own signatures. The doctor checks
+  `evidence-rule` and `standing-approval` are gone.
+- **Trust levels and chain anchors.** `trust.yml`, `swim keys trust`,
+  `swim keys pin`, `chain_anchors`, `swim chain checkpoint` and `swim
+  chain export` are gone, and so are `swim verify`'s `trusted` and
+  `anchored` levels and its `--trust-pin` and `--against` flags
+  (`SWIM_TRUST_PIN` too). `swim verify` checks the chain's links and
+  signatures against itself, as `consistent` did. A `chain_anchors` key
+  in swim.yml or config.yml is ignored (`swim doctor` says to delete it),
+  and the doctor checks `anchors-none`, `checkpoint-unsent` and
+  `trust-unpinned` and the lint check `trust` are gone.
+
+### Changed
+
+- **`swim signoff verify` vouches for your own signing key.** A statement
+  verifies when this machine's signing key (`signing_key`, or
+  `~/.ssh/id_ed25519`) made it; `lookup.yml` and `trust.yml` no longer
+  name whose key it is.
 
 ## 0.20261105.3 (v0.20261105.3, 2026-11-05)
 

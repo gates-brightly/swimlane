@@ -37,9 +37,8 @@ says otherwise:
   - Approve or decide anything, in any form. Never set a variable named
     after a guard or decision. How the operator approves is theirs: don't
     name it, suggest it, or write steps around it.
-  - `swim interrupt`, `keys trust`, `chain ...`, `doctor --fix`, `config`.
-  - Edit `.swim/`, `.swim.log`, `approvals/`, `lookup.yml`, `trust.yml` or
-    `~/.config/swim/` by hand: give the operator the exact lines.
+  - `swim interrupt`, `chain ...`, `doctor --fix`, `config`.
+  - Edit `.swim/`, `.swim.log` or `~/.config/swim/` by hand: give the operator the exact lines.
   - Tell anyone a change is safe because swim will ask first: an approved
     script runs with the operator's access.
 

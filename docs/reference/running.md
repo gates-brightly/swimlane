@@ -24,7 +24,7 @@ and includes:
 ```
  swim 1  pending                drop the old table
           guard DROP_OK  drop table old_orders
-                 not approved: approval needs 2 signature(s) from dba, has 1; swim run will ask (a dry run if no one answers)
+                 not approved; swim run will ask (a dry run if no one answers)
           timeout 30m · locks orders-db · includes lib/tables.sh
  swim 2  pending                verify after the drop
           after swim 1 (pending: a dry run or failure there skips this)

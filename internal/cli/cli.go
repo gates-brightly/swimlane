@@ -55,8 +55,6 @@ func init() {
 		"checkpoint": {run: cmdCheckpoint},
 		"watch":      {run: cmdWatch},
 		"wait":       {run: cmdWait},
-		"approve":    {run: cmdApprove},
-		"revoke":     {run: cmdRevoke},
 		"verify":     {run: cmdVerify},
 		"signoff":    {run: cmdSignoff},
 		"history":    {run: cmdHistory},

@@ -10,7 +10,6 @@ flowchart TD
   end
   subgraph repo["The repo"]
     L["Lane scripts<br/>lane.N.sh"]
-    K["lookup.yml (keys, rules)<br/>approvals/ (signed)"]
     Q[".swim/queue/<br/>batches pinned to scripts"]
   end
   subgraph creds["Holds credentials"]
@@ -31,8 +30,7 @@ flowchart TD
   O --> LK{{"lock check<br/>.swim.lock syntaxes"}}
   W --> LK
   LK --> X
-  X --> G{{"guard: advisory, in the lane<br/>FLAG=1, signed approval, prompt, -y<br/>else a dry run"}}
-  K -.->|counted against rules| G
+  X --> G{{"guard: advisory, in the lane<br/>FLAG=1, a batch's --approve, prompt, -y<br/>else a dry run"}}
   O -.->|answers prompts| G
   X --> SH{{"step checks<br/>a repo's blocked_commands"}}
   X --> S
@@ -55,9 +53,8 @@ Read it top to bottom:
 4. **The lock check.** A swim whose syntax versions differ from the repo's
    `.swim.lock` refuses to run lanes.
 5. **Guards ask for approval.** A guard asks the launcher, which approves
-   with `FLAG=1` (set in `swim run`'s own environment), signed approvals
-   counted against `lookup.yml` (as they were when the run started), the
-   person at the terminal, or `-y`, in that order; anything else is a dry
+   with `FLAG=1` (set in `swim run`'s own environment, or a queued batch's
+   `--approve`), the person at the terminal, or `-y`, in that order; anything else is a dry
    run. The launcher records each approval in the chain, and attests the
    run when its last lane exits. The guard runs inside the
    lane's own process, so it is advisory: a script that skips it isn't
@@ -77,8 +74,6 @@ Read it top to bottom:
   use them.
 - **The runner's SSH key** (`signing_key`): on the machine that runs the
   rounds. It signs the chain.
-- **Approvers' SSH keys:** on their own machines. Their public keys are in
-  the committed `lookup.yml`.
 - **The planner:** none. If it runs as your OS user, it can reach what you
   can; isolate it if that matters.
 
@@ -91,5 +86,5 @@ Read it top to bottom:
 | Lock | `swim run`, `swim all`, `swim new`, a lane run directly | Enforced |
 | Queue pins | `swim watch` before a lane starts | Enforced; the stage and the pins are checked again right before the lane's process starts |
 | Guard | `guard` in the lane process | Advisory |
-| Approval rules | `swim run`'s launcher, from `approvals/`, `lookup.yml` and its environment as they were when the run started | Enforced for every guard a lane calls; the launcher records each approval, and `swim verify` fails on one it didn't |
-| Chain | `swim verify` | Detects edits (consistent); re-signing with a key outside the pinned `trust.yml` (trusted); truncation or replacement after a checkpoint left the machine (anchored, with `chain_anchors`) |
+| Approvals | `swim run`'s launcher, from its environment as it was when the run started, or the operator | Enforced for every guard a lane calls; the launcher records each approval, and `swim verify` fails on one it didn't |
+| Chain | `swim verify` | Detects edits: a changed, removed or reordered entry, log or kept script. Not a chain re-signed wholesale, or cut short at its end |

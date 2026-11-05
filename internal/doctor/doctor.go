@@ -6,7 +6,6 @@ package doctor
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,22 +17,17 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/redact"
-	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
-	"github.com/gates-brightly/swimlane/internal/trust"
 	"github.com/gates-brightly/swimlane/internal/version"
 )
 
@@ -96,7 +90,7 @@ var Checks = []Check{
 	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
 	{"lanes-setting", false, "a `lanes:` setting (swim finds the lanes in use; it's ignored)", checkLanesSetting},
 	{"notify-failing", false, "the last notification sent to notify_url (or notify_command) failed", checkNotifyFailing},
-	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key, headless, hub, pause_warn, store_dir, cache_dir, cache_max, cache_slug; it's ignored)", checkRemovedSettings},
+	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key, headless, hub, pause_warn, store_dir, cache_dir, cache_max, cache_slug, chain_anchors; it's ignored)", checkRemovedSettings},
 	{"gitignore", true, "swim's .gitignore block is missing or out of date", checkGitignore},
 	{"tracked", false, "lane scripts or swim state tracked by git", checkTracked},
 	{"stale-pid", true, "a .swim/laneN.pid whose process is gone", checkStalePID},
@@ -106,13 +100,8 @@ var Checks = []Check{
 	{"lock", false, ".swim.lock missing, invalid or for another breaking version", checkLock},
 	{"env-file", false, "an env file that doesn't parse, or sets a lane's guard flag", checkEnvFiles},
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
-	{"anchors-none", false, "the repo has a chain of custody but no chain_anchors to checkpoint it to", checkAnchorsNone},
-	{"checkpoint-unsent", false, "a chain anchor hasn't had the latest checkpoint", checkCheckpointUnsent},
-	{"trust-unpinned", false, "trust.yml isn't pinned here, or changed since the pin with no signed change", checkTrustPin},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
 	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
-	{"evidence-rule", false, "a lookup.yml rule says evidence: true: swim no longer has evidence-bound approvals, so nothing can approve its guards (they dry-run)", checkEvidenceRules},
-	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 }
 
@@ -232,7 +221,6 @@ func checkOldOutputs(o *Options) []finding.Finding {
 
 func checkEnvFiles(o *Options) []finding.Finding {
 	var out []finding.Finding
-	lk, _ := lookup.Load(o.Root)
 	reported := map[string]bool{}
 	for n := 1; n <= o.Cfg.Lanes; n++ {
 		info, err := lane.ReadScript(o.Root, n)
@@ -247,8 +235,8 @@ func checkEnvFiles(o *Options) []finding.Finding {
 			}
 			continue
 		}
-		for _, c := range envfile.GuardConflicts(r, info, lk) {
-			out = append(out, fd(finding.Error, "env-file", c.File, "remove the line; approve with the shell, the prompt or swim approve",
+		for _, c := range envfile.GuardConflicts(r, info) {
+			out = append(out, fd(finding.Error, "env-file", c.File, "remove the line; approve with the shell or the prompt",
 				"%s (swim %d)", c.Error(), n))
 		}
 	}
@@ -424,30 +412,6 @@ func checkRemovedSettings(o *Options) []finding.Finding {
 		}
 		out = append(out, fd(finding.Warn, "removed-setting", src.file, "delete "+strings.Join(src.keys, ", "),
 			"%s: swim no longer has these settings; they're ignored", strings.Join(src.keys, ", ")))
-	}
-	return out
-}
-
-// checkEvidenceRules: a require: rule with evidence: true asks for
-// approvals bound to a round's evidence, which swim no longer has. It
-// fails closed (ignoring it would let a plain approval through), so every
-// guard it covers dry-runs until the rule changes.
-func checkEvidenceRules(o *Options) []finding.Finding {
-	lk, err := lookup.Load(o.Root)
-	if err != nil {
-		return nil
-	}
-	var out []finding.Finding
-	for _, r := range lk.Require {
-		if !r.Evidence {
-			continue
-		}
-		guards := "every guard"
-		if len(r.Guards) > 0 {
-			guards = strings.Join(r.Guards, ", ")
-		}
-		out = append(out, fd(finding.Warn, "evidence-rule", lookup.FileName, "remove `evidence: true` from the rule (re-approve what it covers if you change its terms)",
-			"a require: rule for %s says evidence: true; swim no longer has evidence-bound approvals, so nothing can approve those guards: they dry-run", guards))
 	}
 	return out
 }
@@ -672,111 +636,6 @@ func checkLock(o *Options) []finding.Finding {
 			"%s is in the old form (breaking: %d); it means syntax %s", version.LockName, l.Breaking, l.Syntaxes())}
 	}
 	return nil
-}
-
-// checkStandingApprovals warns of the standing approvals still counting
-// under the old terms: never expiring (until lookup.yml sets a
-// standing.max), or not bound to lookup.yml's rules.
-func checkStandingApprovals(o *Options) []finding.Finding {
-	lk, err := lookup.Load(o.Root)
-	if err != nil {
-		return nil
-	}
-	files, _ := sigfile.All(o.Root)
-	var out []finding.Finding
-	for _, f := range files {
-		if f.Kind != sigfile.Standing {
-			continue
-		}
-		st := f.State(lk, time.Now(), sigfile.Current{})
-		for _, w := range st.Warnings {
-			out = append(out, fd(finding.Warn, "standing-approval", o.rel(f.Path),
-				"swim revoke --auto "+f.For+", then swim approve --auto "+f.For+" again (or set standing.max in lookup.yml)",
-				"standing approval for %s's jobs: %s", f.For, w))
-		}
-	}
-	return out
-}
-
-// checkTrustPin: swim verify trusts trust.yml's keys as pinned in the
-// operator's config. Not pinned yet, the next verify pins whatever trust.yml
-// says then (trust on first use); changed with no signed change leading to
-// it, verify reports trusted: no.
-func checkTrustPin(o *Options) []finding.Finding {
-	tf, err := trust.Load(o.Root)
-	if err != nil {
-		return []finding.Finding{fd(finding.Error, "trust-unpinned", trust.FileName, "fix the file", "%v", err)}
-	}
-	if tf == nil {
-		return nil
-	}
-	pin, err := trust.LoadPin(o.Root)
-	if err != nil {
-		return []finding.Finding{fd(finding.Warn, "trust-unpinned", trust.PinsPath(), "fix or remove the file", "%v", err)}
-	}
-	switch res := trust.Check(o.Root, tf, pin); res.Status {
-	case trust.TOFU:
-		return []finding.Finding{fd(finding.Warn, "trust-unpinned", trust.FileName, "check its keys, then swim keys pin",
-			"trust.yml isn't pinned on this machine: the next swim verify trusts whatever it lists then")}
-	case trust.Unsigned, trust.Malformed:
-		return []finding.Finding{fd(finding.Error, "trust-unpinned", trust.FileName, "find out who changed it; swim keys pin accepts it as it is",
-			"%s: swim verify reports trusted: no", res.Why)}
-	}
-	return nil
-}
-
-// checkAnchorsNone: without an anchor, entries removed from the end of the
-// chain, or a chain replaced wholesale, can't be told from the real one.
-func checkAnchorsNone(o *Options) []finding.Finding {
-	if len(o.Cfg.ChainAnchors) > 0 {
-		return nil
-	}
-	if st, err := os.Stat(filepath.Join(o.Root, ".swim", "chain.jsonl")); err != nil || st.Size() == 0 {
-		return nil
-	}
-	return []finding.Finding{fd(finding.Info, "anchors-none", "", "add chain_anchors: [file:/path/outside/the/repo] to swim.yml or config.yml",
-		"no chain_anchors: swim verify can't catch entries removed from the end of the chain")}
-}
-
-// checkCheckpointUnsent: the newest checkpoint (.swim/checkpoints.jsonl)
-// didn't reach an anchor (.swim/checkpoints.sent.yml). The next one is
-// sent anyway; until then that anchor proves less.
-func checkCheckpointUnsent(o *Options) []finding.Finding {
-	data, err := os.ReadFile(filepath.Join(o.Root, ".swim", "checkpoints.jsonl"))
-	if err != nil || len(o.Cfg.ChainAnchors) == 0 {
-		return nil
-	}
-	ls := lines(string(data))
-	if len(ls) == 0 {
-		return nil
-	}
-	var last struct {
-		Seq int    `json:"seq"`
-		At  string `json:"at"`
-	}
-	if json.Unmarshal([]byte(ls[len(ls)-1]), &last) != nil {
-		return nil
-	}
-	sent := map[string]int{}
-	if data, err := os.ReadFile(filepath.Join(o.Root, ".swim", "checkpoints.sent.yml")); err == nil {
-		yaml.Unmarshal(data, &sent)
-	}
-	var out []finding.Finding
-	for _, a := range o.Cfg.ChainAnchors {
-		if sent[a] != last.Seq {
-			out = append(out, fd(finding.Warn, "checkpoint-unsent", "", "check the anchor is reachable, then swim chain checkpoint",
-				"chain anchor %s hasn't had the latest checkpoint (seq %d, %s); %s", a, last.Seq, last.At, lastSent(sent[a])))
-		}
-	}
-	return out
-}
-
-// lastSent says what an anchor last took: a send that failed clears it.
-func lastSent(seq int) string {
-	if seq == 0 {
-		return "the last send to it failed, or none was made"
-	}
-	return fmt.Sprintf("its last is seq %d", seq)
 }
 
 // checkSigningKey says where the runner key lives. swim run signs a run's

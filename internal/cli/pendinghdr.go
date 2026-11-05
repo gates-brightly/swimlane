@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/authority"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
-	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -79,11 +77,10 @@ type statusView struct {
 	root string
 	cfg  *config.Config
 	snap *authority.Snapshot
-	now  time.Time
 }
 
 func newStatusView(root string, cfg *config.Config) *statusView {
-	return &statusView{root: root, cfg: cfg, snap: authority.Take(root, os.Environ()), now: time.Now()}
+	return &statusView{root: root, cfg: cfg, snap: authority.Take(os.Environ())}
 }
 
 // pending is lane l's pending round's header and state, or nil when it
@@ -107,14 +104,9 @@ func (v *statusView) pending(l *status.Lane) *pendingView {
 		h.Fail = "hard"
 	}
 	if len(info.Guards) > 0 {
-		m, _ := manifest.Build(v.root, v.cfg, l.Lane, "")
 		asks := v.cfg.ApprovalMode() != config.ApprovalsFlags
 		for _, g := range info.Guards {
-			a := authority.Ask{Root: v.root, Lane: l.Lane, Flag: g.Flag, Desc: g.Desc, Job: info.Job, Manifest: m}
-			if m != nil {
-				a.Script = m.ScriptSHA
-			}
-			h.Guards = append(h.Guards, v.snap.Guard(a, asks, v.now))
+			h.Guards = append(h.Guards, v.snap.Guard(g.Flag, g.Desc, asks))
 		}
 	}
 	for _, d := range info.Decisions {
@@ -155,11 +147,8 @@ func (pv *pendingView) print(p ui.Painter, indent string) {
 		}
 		line(head, ui.Cyan)
 		color := ui.Yellow
-		switch {
-		case g.Approved:
+		if g.Approved {
 			color = ui.Green
-		case g.Never:
-			color = ui.Red
 		}
 		line("       "+g.Text(), color)
 	}

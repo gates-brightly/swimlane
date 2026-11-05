@@ -121,7 +121,7 @@ the AI never gets any of them.
 
 ## Next
 
-- [The tour](docs/guide.md): gates, guards, signed approvals, dependencies,
+- [The tour](docs/guide.md): gates, guards, approving ahead, dependencies,
   the queue, and the record that proves what ran. Tested, an hour.
 - [The reference](docs/reference/README.md): one page per topic. The binary
   carries it: `swim guide`.

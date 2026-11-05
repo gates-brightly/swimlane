@@ -58,6 +58,7 @@ type Settings struct {
 	RemovedCacheDir           any `yaml:"cache_dir,omitempty"`
 	RemovedCacheMax           any `yaml:"cache_max,omitempty"`
 	RemovedCacheSlug          any `yaml:"cache_slug,omitempty"`
+	RemovedChainAnchors       any `yaml:"chain_anchors,omitempty"`
 
 	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
 	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
@@ -77,9 +78,6 @@ type Settings struct {
 	Notify             *bool    `yaml:"notify,omitempty"`               // terminal notifications and a progress bar (OSC 777, OSC 9;4; default off)
 	NotifyURL          string   `yaml:"notify_url,omitempty"`           // ntfy-style URL each notification is POSTed to (with curl); config.yml only
 	NotifyCommand      string   `yaml:"notify_command,omitempty"`       // sh -c this for each notification instead, with SWIM_EVENT, SWIM_TITLE, ...; config.yml only
-	// ChainAnchors are where chain checkpoints go (file:/path; see the
-	// anchor package). They add up across config.yml and swim.yml.
-	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
 	// Runners maps a lane script's extension (ts, py, ...) to the command
 	// that runs it ("tsx", "/usr/local/bin/python3"). A script's #! line
 	// wins; swim asks the operator for one the first time it meets an
@@ -226,7 +224,8 @@ func (s Settings) RemovedKeys() []string {
 	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules},
 		{"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}, {"secrets_key", s.RemovedSecretsKey},
 		{"headless", s.RemovedHeadless}, {"hub", s.RemovedHub}, {"pause_warn", s.RemovedPauseWarn},
-		{"store_dir", s.RemovedStoreDir}, {"cache_dir", s.RemovedCacheDir}, {"cache_max", s.RemovedCacheMax}, {"cache_slug", s.RemovedCacheSlug}} {
+		{"store_dir", s.RemovedStoreDir}, {"cache_dir", s.RemovedCacheDir}, {"cache_max", s.RemovedCacheMax}, {"cache_slug", s.RemovedCacheSlug},
+		{"chain_anchors", s.RemovedChainAnchors}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}
@@ -349,12 +348,6 @@ func (c *Config) merge(r Settings) {
 	// Secret names add up too; the switches override.
 	c.SecretEnv = append(append([]string(nil), c.SecretEnv...), r.SecretEnv...)
 	c.SecretEnvIgnore = append(append([]string(nil), c.SecretEnvIgnore...), r.SecretEnvIgnore...)
-	// Anchors add up: an operator's own on top of the repo's.
-	for _, a := range r.ChainAnchors {
-		if !slices.Contains(c.ChainAnchors, a) {
-			c.ChainAnchors = append(append([]string(nil), c.ChainAnchors...), a)
-		}
-	}
 	if r.SecretEnvAuto != nil {
 		c.SecretEnvAuto = r.SecretEnvAuto
 	}

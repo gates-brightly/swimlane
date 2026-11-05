@@ -69,23 +69,6 @@ _demo_key() {
   ssh-keygen -q -t ed25519 -N '' -C "$1@demo" -f "$2/.ssh/id_ed25519"
 }
 
-# demo_person NAME  a teammate with their own HOME and SSH key, for `as`.
-demo_person() {
-  _demo_key "$1" "$DEMO_DIR/people/$1"
-}
-
-# pubkey NAME  that persona's public key line ("operator" is you).
-pubkey() {
-  if [ "$1" = operator ]; then cat "$HOME/.ssh/id_ed25519.pub"
-  else cat "$DEMO_DIR/people/$1/.ssh/id_ed25519.pub"; fi
-}
-
-# as NAME CMD...  run a command as a teammate: their HOME, config and key.
-as() {
-  local who=$1; shift
-  HOME=$DEMO_DIR/people/$who XDG_CONFIG_HOME=$DEMO_DIR/people/$who/.config USER=$who "$@"
-}
-
 # demo_lanes [N...]  copy the demo's lanes/lane.N.* into the repo (all of
 # them with no arguments).
 demo_lanes() {
@@ -97,8 +80,8 @@ demo_lanes() {
   fi
 }
 
-# demo_commit MSG  commit everything in the scratch repo (lookup.yml,
-# approvals/, swim.yml ...), the way a team would share them.
+# demo_commit MSG  commit everything in the scratch repo (lanes, swim.yml
+# ...), the way a team would share them.
 demo_commit() {
   git add -A >/dev/null 2>&1 && git commit -qm "$1" >/dev/null 2>&1
   true

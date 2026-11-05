@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -80,9 +79,6 @@ func TestQuickstartRuns(t *testing.T) {
 // docs/guide.md, the tour, runs as written, in order, with no
 // credentials: each step does what the page says it does.
 func TestTourRuns(t *testing.T) {
-	if _, err := exec.LookPath("ssh-keygen"); err != nil {
-		t.Skip("ssh-keygen not installed")
-	}
 	r := newRepo(t, "")
 	dir := t.TempDir()
 	c := r.cmd("bash", "-c", "set -e\n"+strings.Join(markedBlocks(t, "docs/guide.md"), "\n"))
@@ -95,8 +91,8 @@ func TestTourRuns(t *testing.T) {
 		"PASS  count them",                                                            // 2
 		"STOP  gate failed: there is a config file", "the round failed, as it should", // 3
 		"SKIP  remove scratch.txt (quickstart) (dry run", "scratch.txt is gone", // 4
-		"approved by me (signed)", "removed, approved by a signature", // 5
-		"approves another version of lane.2.sh",                    // 5: the edit voids it
+		"approved in queue q-", "removed, approved in the queue", // 5
+		"changed since it was queued", "skipped, not run", // 5: the edit voids it
 		"SKIP (swim 3 failed)",                                     // 6
 		"VERIFIED",                                                 // 8
 		"was changed after the round ended", "the edit was caught", // 8: the record catches an edit

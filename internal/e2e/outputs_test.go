@@ -37,7 +37,7 @@ output VERSION v1.2.3`)
 	}
 	chain, _ := os.ReadFile(filepath.Join(r.root, ".swim", "chain.jsonl"))
 	contains(t, "chain", string(chain), `"outputs":{"pages":"`, `"inputs":{"1:VERSION":"`, `"1:stats.json":"`+st.Outputs["stats.json"], `"input_rounds":{"1":"`+st.Job+" "+st.Run)
-	r.mustSwim("verify", "--levels", "--allow-unsigned")
+	r.mustSwim("verify", "--allow-unsigned")
 	if os.Geteuid() != 0 {
 		path := filepath.Join(r.root, ".swim", "out", st.Job, st.Run, "stats.json")
 		if err := os.WriteFile(path, []byte("x"), 0o644); err == nil {
@@ -75,7 +75,7 @@ func TestLaneOutputProblems(t *testing.T) {
 	r.script(2, "dependent", `run "read" bash -c 'cat "$(swim input 1 data.txt)"'`)
 	withHeader(t, r, 2, "# After: 1")
 	r.mustSwim("run", "2", "--plain")
-	out, code := r.swim("verify", "--levels", "--allow-unsigned")
+	out, code := r.swim("verify", "--allow-unsigned")
 	if code == 0 || !strings.Contains(out, "input 1:data.txt doesn't match what round "+st.Job+" "+st.Run+" produced") {
 		t.Errorf("verify: exit %d\n%s", code, out)
 	}

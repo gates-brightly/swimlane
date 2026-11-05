@@ -157,8 +157,8 @@ func newRepo(t *testing.T, deps string) *repo {
 	// t.TempDir, so it runs before the directory is removed.
 	t.Cleanup(func() { killLanes(root) })
 	r.watch(root)
-	// Never sign with the developer's own ~/.ssh key in tests (nor let swim
-	// init list it in lookup.yml); the signing tests set their own keys.
+	// Never sign with the developer's own ~/.ssh key in tests; the signing
+	// tests set their own keys.
 	r.mustSwim("config", "signing", "off")
 	r.mustSwim("init")
 	if deps != "" {

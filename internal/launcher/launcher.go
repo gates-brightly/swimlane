@@ -26,7 +26,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/notify"
 	"github.com/gates-brightly/swimlane/internal/proc"
@@ -268,11 +267,10 @@ func Run(o Options) (int, error) {
 	blocked := BlockedLanes(o.Root, o.Cfg, sel)
 	// Env files: every selected lane's env resolves, and none sets a guard
 	// flag, or nothing starts.
-	lk, _ := lookup.Load(o.Root)
 	o.env = map[int]*envfile.Resolved{}
 	for _, n := range sel {
 		info, _ := lane.ReadScript(o.Root, n)
-		r, err := envfile.Check(o.Root, o.Cfg, n, info, lk)
+		r, err := envfile.Check(o.Root, o.Cfg, n, info)
 		if err != nil {
 			return 2, err
 		}

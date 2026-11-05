@@ -8,7 +8,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/ui"
 	"gopkg.in/yaml.v3"
 )
@@ -44,8 +43,7 @@ func cmdEnv(args []string) error {
 	var conflicts []envfile.GuardConflict
 	if n > 0 {
 		info, _ := lane.ReadScript(root, n)
-		lk, _ := lookup.Load(root)
-		conflicts = envfile.GuardConflicts(r, info, lk)
+		conflicts = envfile.GuardConflicts(r, info)
 	}
 	// Masked as in the lane's logs: every file value, unless the shell
 	// overrides it (then the lane sees the shell's).

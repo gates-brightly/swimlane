@@ -27,9 +27,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/syntax"
-	"github.com/gates-brightly/swimlane/internal/trust"
 )
 
 // Schema is the --yaml document's schema.
@@ -138,7 +136,6 @@ var Checks = []Check{
 const (
 	codeSyntax = "syntax"
 	codeIgnore = "lint-ignore"
-	codeTrust  = "trust"
 )
 
 // KnownCode reports whether code names a check (for disable comments).
@@ -148,7 +145,7 @@ func KnownCode(code string) bool {
 			return true
 		}
 	}
-	return code == codeSyntax || code == codeTrust
+	return code == codeSyntax
 }
 
 // Run lints the given lanes (all lanes 1..Lanes with a script when lanes is
@@ -180,9 +177,6 @@ func run(root string, cfg *config.Config, lanes []int, want func(Check) bool) ([
 	c := &Context{Root: root, Cfg: cfg, Scripts: map[int]*Script{}}
 	var out []finding.Finding
 	tooNew := map[int]int{} // lane -> the newer syntax it declares
-	if want(Check{Code: codeTrust}) {
-		out = append(out, checkTrust(root)...)
-	}
 	for n := 1; n <= cfg.Lanes; n++ {
 		data, err := os.ReadFile(lane.Script(root, n))
 		if os.IsNotExist(err) {
@@ -280,51 +274,6 @@ func commentFirst(fs []finding.Finding) []finding.Finding {
 		}
 	}
 	return out
-}
-
-// checkTrust: once trust.yml lists the keys swim verify trusts, every key
-// lookup.yml names must be one of them, or an approval by that person
-// would fail verify's trusted level.
-func checkTrust(root string) []finding.Finding {
-	if root == "" {
-		return nil
-	}
-	tf, err := trust.Load(root)
-	if err != nil {
-		return []finding.Finding{{Level: finding.Error, File: trust.FileName, Code: codeTrust, Message: err.Error()}}
-	}
-	lk, err := lookup.Load(root)
-	if tf == nil || err != nil {
-		return nil
-	}
-	var users []string
-	for u := range lk.Users {
-		users = append(users, u)
-	}
-	sort.Strings(users)
-	var out []finding.Finding
-	for _, u := range users {
-		for _, k := range lk.Users[u].Keys {
-			if !tf.Has(k) {
-				out = append(out, finding.Finding{Level: finding.Error, File: lookup.FileName, Code: codeTrust,
-					Message: fmt.Sprintf("%s's key %s isn't in trust.yml: swim verify won't trust what it signs", u, keyLabel(k)),
-					Fix:     "swim keys trust '" + k + "' --sign (or remove the key from lookup.yml)"})
-			}
-		}
-	}
-	return out
-}
-
-// keyLabel names a public key briefly: its comment, else the start of it.
-func keyLabel(k string) string {
-	f := strings.Fields(k)
-	if len(f) >= 3 {
-		return strings.Join(f[2:], " ")
-	}
-	if len(k) > 32 {
-		return k[:32] + "..."
-	}
-	return k
 }
 
 // NewScript parses src as lane n's script.

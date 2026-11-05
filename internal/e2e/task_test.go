@@ -10,11 +10,10 @@ import (
 
 // A lane named by # Task: is found by its name everywhere a lane number
 // or job id goes: swim new NAME writes it in the lowest free lane, and run,
-// approve, log, status and history take the name. The lane number stays
-// its identity: signatures and the chain read as for any lane.
+// log, status and history take the name. The lane number stays its
+// identity: the chain reads as for any lane.
 func TestNamedTask(t *testing.T) {
 	r := newRepo(t, "")
-	keys := people(t, r, "", "alice")
 	r.script(1, "something else", `run "x" true`)
 
 	out := r.mustSwim("new", "renew-certs", "Renew the certs")
@@ -25,17 +24,11 @@ func TestNamedTask(t *testing.T) {
 if guard CERT_ALLOW "renew"; then run "renew" true; fi`)
 
 	contains(t, "dry run", r.mustDryRun("run", "renew-certs", "--plain", "--no-prompt"), "SKIP  renew")
-	r.mustSwim("approve", "renew-certs", "--guards", "CERT_ALLOW", "--key", keys["alice"])
-	contains(t, "approved", r.mustSwim("renew-certs", "--plain", "--no-prompt"), "APPROVED  renew")
+	contains(t, "approved", r.mustSwim("renew-certs", "--plain", "-y"), "APPROVED  renew")
 	contains(t, "log", r.mustSwim("log", "renew-certs"), "APPROVED  renew")
 	contains(t, "status", r.mustSwim("status"), "[renew-certs]")
 	contains(t, "history", r.mustSwim("history", "renew-certs", "--oneline"), "round swim 2 passed")
-	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
-	// The approval is the lane's, as any is.
-	files, _ := filepath.Glob(filepath.Join(r.root, "approvals", "lane.2.*.signature"))
-	if len(files) != 1 {
-		t.Errorf("approvals: %v", files)
-	}
+	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 
 	// Names swim can't use are refused, by swim new and by lint.
 	for name, want := range map[string]string{"status": "is a swim command", "abc123": "nor a task name"} {

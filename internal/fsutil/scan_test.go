@@ -9,11 +9,11 @@ import (
 )
 
 // TestStateWritesAreDurable fails on a bare os.WriteFile or os.Rename in
-// the packages that write swim's records: status, queue entries, the chain
-// and approvals files go through WriteAtomic and Rename, which fsync.
+// the packages that write swim's records: status, queue entries and the
+// chain go through WriteAtomic and Rename, which fsync.
 func TestStateWritesAreDurable(t *testing.T) {
 	bare := regexp.MustCompile(`\bos\.(WriteFile|Rename)\(`)
-	for _, pkg := range []string{"status", "queue", "chain", "sigfile"} {
+	for _, pkg := range []string{"status", "queue", "chain"} {
 		files, err := filepath.Glob(filepath.Join("..", pkg, "*.go"))
 		if err != nil || len(files) == 0 {
 			t.Fatalf("no files in internal/%s: %v", pkg, err)

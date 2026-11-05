@@ -21,8 +21,7 @@ without letting it run that work.**
 ## What it is, and isn't
 
 - **One binary, no server.** Lane scripts and state are git-ignored by
-  default, so swim lives in your checkout; teammates who do pick it up get
-  approvals and the record across machines.
+  default, so swim lives in your checkout.
 - **The operator's machine, or a swimmer they control, is the only
   executor.** No running from the planner's side.
 - **Not secret management:** rounds use your existing credentials.
@@ -39,4 +38,4 @@ without letting it run that work.**
 | **Rundeck, AWX** | Servers for curated, shared runbooks. swim's rounds are disposable and run from your shell. |
 | **Airflow, Dagster** | Recurring pipelines on workers you deploy. swim's DAG is today's cutover, run once: `# After: 2`, no scheduler. |
 | **Temporal** | Durable application workflows you build a product on. swim is something an operator runs. |
-| **Ticket or PR approvals** | A swim approval binds the exact script and everything it pins, is SSH-signed, and lands in a chain anyone can verify. |
+| **Ticket or PR approvals** | A swim approval is given for the exact script and everything it pins, and lands in a signed chain `swim verify` checks. |

@@ -24,7 +24,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chars"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 )
 
 // RepoFile is the repo's lane-scoped env file.
@@ -271,7 +270,7 @@ func (r *Resolved) SHA256() string {
 // GuardConflict is an env file key that is a guard flag.
 type GuardConflict struct {
 	Var
-	Why string // "a guard of lane.2.sh", "matches guards: FIN_ALLOW_* in lookup.yml"
+	Why string // "a guard flag of this lane's script"
 }
 
 func (g GuardConflict) Error() string {
@@ -279,13 +278,12 @@ func (g GuardConflict) Error() string {
 	if g.Line > 0 {
 		where = fmt.Sprintf("%s:%d", g.File, g.Line)
 	}
-	return fmt.Sprintf("%s sets %s, %s: env files can't approve guards (set it in the shell, approve at the prompt, or sign an approval)", where, g.Key, g.Why)
+	return fmt.Sprintf("%s sets %s, %s: env files can't approve guards (set it in the shell, or approve at the prompt)", where, g.Key, g.Why)
 }
 
 // GuardConflicts lists the keys of r that are guard flags: guards of the
-// lane's script (header or body), or names matching a guards: glob in
-// lookup.yml's require rules.
-func GuardConflicts(r *Resolved, info lane.Info, lk *lookup.Lookup) []GuardConflict {
+// lane's script (header or body).
+func GuardConflicts(r *Resolved, info lane.Info) []GuardConflict {
 	guards := map[string]bool{}
 	for _, f := range info.GuardFlags() {
 		guards[f] = true
@@ -294,32 +292,19 @@ func GuardConflicts(r *Resolved, info lane.Info, lk *lookup.Lookup) []GuardConfl
 	for _, v := range r.Vars {
 		if guards[v.Key] {
 			out = append(out, GuardConflict{v, "a guard flag of this lane's script"})
-			continue
 		}
-		if lk == nil {
-			continue
-		}
-		for _, rule := range lk.Require {
-			for _, g := range rule.Guards {
-				if ok, _ := filepath.Match(g, v.Key); ok {
-					out = append(out, GuardConflict{v, fmt.Sprintf("which matches guards %q in %s", g, lookup.FileName)})
-					goto next
-				}
-			}
-		}
-	next:
 	}
 	return out
 }
 
 // Check resolves lane n's env and refuses guard flags in it: what the
 // launcher does before any lane starts.
-func Check(root string, cfg *config.Config, n int, info lane.Info, lk *lookup.Lookup) (*Resolved, error) {
+func Check(root string, cfg *config.Config, n int, info lane.Info) (*Resolved, error) {
 	r, err := Resolve(root, cfg, n)
 	if err != nil {
 		return nil, err
 	}
-	if c := GuardConflicts(r, info, lk); len(c) > 0 {
+	if c := GuardConflicts(r, info); len(c) > 0 {
 		return nil, fmt.Errorf("swim %d: %w", n, c[0])
 	}
 	return r, nil

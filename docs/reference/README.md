@@ -13,8 +13,7 @@ Using swim:
   header, stages, checkpoints, lint.
 - [other-languages](other-languages.md): lanes in Python, TypeScript, or
   any program.
-- [guards](guards.md): how a guard is decided, signed approvals,
-  `lookup.yml`, decisions.
+- [guards](guards.md): how a guard is decided, decisions.
 - [running](running.md): dependencies, parallelism, locks, the live view,
   interrupts.
 - [queue](queue.md): batches, the swimmer, waiting.
@@ -27,7 +26,7 @@ Using swim:
 
 How it holds together:
 
-- [manifest](manifest.md): what a round pins and an approval signs.
+- [manifest](manifest.md): what a round pins.
 - [chain](chain.md): the signed record, `swim verify`.
 - [architecture](architecture.md): where credentials live and where policy
   is enforced.

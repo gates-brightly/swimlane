@@ -11,9 +11,9 @@ import (
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
-// A signoff verifies only with its signature intact and a key someone is
-// named for; a statement changed after signing, or signed by a stranger,
-// doesn't.
+// A signoff verifies only with its signature intact and by this machine's
+// signing key; a statement changed after signing, or signed by another
+// key, doesn't.
 func TestVerifySignoff(t *testing.T) {
 	if !sign.Available() {
 		t.Skip("ssh-keygen not installed")
@@ -44,17 +44,24 @@ func TestVerifySignoff(t *testing.T) {
 	good := write("good.json", Signoff{Statement: stmt, Signature: sig})
 	tampered := write("tampered.json", Signoff{Statement: strings.Replace(stmt, "lane 1", "lane 2", 1), Signature: sig})
 
-	if err := verifySignoff(root, good); err == nil || !strings.Contains(err.Error(), "neither lookup.yml nor trust.yml") {
-		t.Errorf("a stranger's key: %v", err)
+	if err := verifySignoff(root, "", good); err == nil || !strings.Contains(err.Error(), "not this machine's signing key") {
+		t.Errorf("no signing key here: %v", err)
 	}
-	lookupYML := "users:\n  zach:\n    keys: [" + sign.KeyOnly(key.Public) + "]\n"
-	if err := os.WriteFile(filepath.Join(root, "lookup.yml"), []byte(lookupYML), 0o644); err != nil {
+	other := filepath.Join(t.TempDir(), "other")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", other).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	otherKey, err := sign.LoadKey(other)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := verifySignoff(root, good); err != nil {
-		t.Errorf("a named key: %v", err)
+	if err := verifySignoff(root, otherKey.Public, good); err == nil || !strings.Contains(err.Error(), "not this machine's signing key") {
+		t.Errorf("another key: %v", err)
 	}
-	if err := verifySignoff(root, tampered); err == nil || !strings.Contains(err.Error(), "bad signature") {
+	if err := verifySignoff(root, key.Public, good); err != nil {
+		t.Errorf("this machine's key: %v", err)
+	}
+	if err := verifySignoff(root, key.Public, tampered); err == nil || !strings.Contains(err.Error(), "bad signature") {
 		t.Errorf("a changed statement: %v", err)
 	}
 }

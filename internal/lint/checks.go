@@ -15,7 +15,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/help"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/policy"
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/syntax"
@@ -1195,8 +1194,7 @@ func checkCrossLane(c *Context, s *Script) []finding.Finding {
 }
 
 // checkEnv resolves the lane's env files: a line that doesn't parse, or a
-// key that is one of the lane's guard flags (or matches a lookup.yml guard
-// glob), is an error. swim run refuses both before any lane starts.
+// key that is one of the lane's guard flags, is an error. swim run refuses both before any lane starts.
 func checkEnv(c *Context, s *Script) []finding.Finding {
 	if c.Root == "" {
 		return nil
@@ -1205,7 +1203,6 @@ func checkEnv(c *Context, s *Script) []finding.Finding {
 	if err != nil {
 		return []finding.Finding{f(finding.Error, "env", -1, "fix the line: KEY=VALUE, '...' for literal text, no export or $", "%v", err)}
 	}
-	lk, _ := lookup.Load(c.Root)
 	var out []finding.Finding
 	if s.N == firstLane(c) {
 		// Once per repo, on its first lane script: a key set twice in a file.
@@ -1213,8 +1210,8 @@ func checkEnv(c *Context, s *Script) []finding.Finding {
 			out = append(out, f(finding.Warn, "env", -1, "remove one of them", "%s", d))
 		}
 	}
-	for _, g := range envfile.GuardConflicts(r, s.Info, lk) {
-		out = append(out, f(finding.Error, "env", -1, "remove it from the env file; approve with the shell, the prompt or swim approve", "%s", g.Error()))
+	for _, g := range envfile.GuardConflicts(r, s.Info) {
+		out = append(out, f(finding.Error, "env", -1, "remove it from the env file; approve with the shell or the prompt", "%s", g.Error()))
 	}
 	return out
 }

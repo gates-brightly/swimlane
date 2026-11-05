@@ -12,16 +12,14 @@ import (
 
 // The scenarios in docs/reference/recovery.md that are cheap to reproduce. Others are
 // covered elsewhere: TestQueueYesOrphanRemove (an orphaned queue entry),
-// TestVersionAndLock (a lock mismatch), TestSignedApprovalAndVerify (swim
+// TestVersionAndLock (a lock mismatch), TestHistoryAndVerify (swim
 // verify failing), TestInterruptRecordsAndStopsRound (an interrupted round).
 
 // A lost runner key: entries signed with the old key still verify, because
-// each entry carries its signer's public key. Dropping the old key from
-// lookup.yml makes verify warn (and --strict fail), not break.
+// each entry carries its signer's public key.
 func TestRecoveryLostRunnerKey(t *testing.T) {
 	r := newRepo(t, "")
-	keys := people(t, r, "", "old", "new")
-	lookup, _ := os.ReadFile(filepath.Join(r.root, "lookup.yml"))
+	keys := people(t, r, "old", "new")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["old"])
 	r.script(1, "one", `run "ok" true`)
@@ -41,20 +39,7 @@ func TestRecoveryLostRunnerKey(t *testing.T) {
 	if err != nil || len(links) != 2 || links[0].SignedBy() == "" || links[0].SignedBy() == links[1].SignedBy() {
 		t.Fatalf("want two rounds signed by different keys: %v %+v", err, links)
 	}
-	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
-
-	// lookup.yml without the old key: a warning, and --strict fails.
-	var kept []string
-	for _, l := range strings.Split(string(lookup), "\n") {
-		if !strings.HasPrefix(l, "  old:") && !strings.Contains(l, " old\"") {
-			kept = append(kept, l)
-		}
-	}
-	os.WriteFile(filepath.Join(r.root, "lookup.yml"), []byte(strings.Join(kept, "\n")), 0o644)
-	contains(t, "verify, old key unlisted", r.mustSwim("verify", "--levels", "--allow-unsigned"), "entries signed by a key not in lookup.yml", "consistent  yes")
-	if out, code := r.swim("verify", "--levels", "--allow-unsigned", "--strict"); code != 1 {
-		t.Errorf("verify --strict with an unlisted signer: %d %s", code, out)
-	}
+	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 }
 
 // A lane whose process died (a closed terminal, a crash) leaves a stale

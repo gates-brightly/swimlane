@@ -12,7 +12,7 @@ Writing a lane script. Start from `swim new N "<goal>"`.
   `summary` last, so it also runs with plain bash:
   `_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"`.
 
-An approval pins which form a lane uses (its manifest's runner).
+A lane's manifest pins which form it uses (its runner).
 
 ## Example
 

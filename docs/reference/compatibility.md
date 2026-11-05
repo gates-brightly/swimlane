@@ -34,7 +34,7 @@ an older `go` fetches it when `GOTOOLCHAIN` allows.
 |---|---|
 | **bash 3.2 or newer** | Lane scripts and swim's lane library (`swim lib`). The library and the e2e scenarios stay compatible with macOS's bash 3.2, and `swim lint` warns about bash 4 features in lane scripts (`bash4`). |
 | **git** | swim finds the repo's root with git (`swim doctor` checks it). |
-| **ssh-keygen, OpenSSH 8.0 or newer** | Signing the chain and approvals, and `swim verify`. Without it, `signing: auto` records unsigned entries; `signing: required` refuses to run. |
+| **ssh-keygen, OpenSSH 8.0 or newer** | Signing the chain and signoffs, and `swim verify`. Without it, `signing: auto` records unsigned entries; `signing: required` refuses to run. |
 A lane in another language calls the plain CLI (`swim run "<label>" --
 cmd`, `swim guard FLAG "<action>"`) and needs only its own interpreter.
 
@@ -55,7 +55,7 @@ write against, so their format stays put while the CLI keeps improving:
 - New headers, library functions and forms are additive: a syntax 4
   script that runs today runs on every later swim. The short form
   (`#!/usr/bin/env swim`, the library loaded for you) is one: an
-  explicit-form script is unchanged by it, and so are its approvals.
+  explicit-form script is unchanged by it, and so is its manifest.
 - There is no script syntax 5 without a written migration: what changes,
   why it couldn't be additive, and `swim lock --upgrade` notes, in the
   CHANGELOG and here, before the release that ships it.
@@ -66,7 +66,7 @@ Three formats have a syntax version (`internal/syntax`):
 |---|---|---|
 | **script** | Lane scripts | In the file: `# swim: syntax 4` (what `swim new` writes) |
 | **log** | Lane logs | In the file's first line: `# swim lane log \| syntax 2 \| swim N` |
-| **state** | swim's state files: `.swim/status.yml`, the chain, queued batches, signed approvals | Not in the files: only the lock records it |
+| **state** | swim's state files: `.swim/status.yml`, the chain, queued batches | Not in the files: only the lock records it |
 
 `.swim.lock`, committed at the repo root, pins all three. `swim init`
 writes it; a run in a repo without one refuses ("run swim init").
@@ -95,7 +95,7 @@ when the lock and your swim disagree.
 | Tier | What | Promise |
 |---|---|---|
 | **Stable** | The commands and flags in `swim guide` and `swim <command> --help`; the lane script syntax and the lane library; the lane log syntax; exit codes (`0` means everything selected passed; waits exit with the result they waited for). | Changes are additive. A format change bumps its syntax version (scripts, logs), with Upgrading notes. A removal is deprecated first (below). |
-| **Versioned by schema** | Every `--yaml` output: `swim.run/v1`, `swim.status/v1`, `swim.log/v1`, `swim.history/v1`, `swim.queue-list/v1`, `swim.env/v1`, `swim.lint/v1`, `swim.doctor/v1`, `swim.verify/v1`, `swim.report/v1`, `swim.clean/v1`. The files swim keeps: `swim.queue/v1` (queued batches), `swim.approval/v1` (signed approvals), `swim.manifest/v1` (a run's staged execution manifests), `swim.earmark/v1` (a reader's place, `swim report --earmark`), `swim.checkpoints/v1` (a lane's checkpointed steps that passed, `.swim/checkpoints/laneN.json`). | Each document names its schema. Within a version, fields are only added; removing or renaming one bumps the version. State files are also covered by the state syntax in `.swim.lock`. |
+| **Versioned by schema** | Every `--yaml` output: `swim.run/v1`, `swim.status/v1`, `swim.log/v1`, `swim.history/v1`, `swim.queue-list/v1`, `swim.env/v1`, `swim.lint/v1`, `swim.doctor/v1`, `swim.verify/v1`, `swim.report/v1`, `swim.clean/v1`. The files swim keeps: `swim.queue/v1` (queued batches), `swim.manifest/v1` (a run's staged execution manifests), `swim.earmark/v1` (a reader's place, `swim report --earmark`), `swim.checkpoints/v1` (a lane's checkpointed steps that passed, `.swim/checkpoints/laneN.json`). | Each document names its schema. Within a version, fields are only added; removing or renaming one bumps the version. State files are also covered by the state syntax in `.swim.lock`. |
 | **Experimental** | Commands starting with `_` (`swim _mark`, `swim _approve`), which lanes use internally, and the approval socket between them and `swim run` ([approval-socket.md](approval-socket.md)). Go packages under `internal/`. | May change in any release. Changes are noted in the CHANGELOG. |
 
 ## Deprecations

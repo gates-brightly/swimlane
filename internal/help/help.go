@@ -51,10 +51,6 @@ var Commands = map[string]string{
       existing content and comments are kept
     - adds a marked block to .gitignore: lane.[0-9]*, .env.swim, .swim/,
       .swim.log
-    - lists the key this machine signs with (signing_key, or
-      ~/.ssh/id_ed25519) in lookup.yml as $USER: writes the file, or adds
-      the user, or adds the key to that user; a key already listed is left
-      alone (not under signing: off). Commit lookup.yml.
     - creates .swim/status.yml with every lane idle
     - records "init" in .swim.log, the project log (git-ignored too; drop it
       from the block if you want to commit the project's history)
@@ -119,9 +115,9 @@ var Commands = map[string]string{
 	"new": `swim new N|TASK "<round goal>" [--job ID] [--force]
 
   swim new TASK (a name: renew-certs) writes the lowest lane not in use
-  and names it with a # Task: line, so swim run TASK, approve TASK, log
-  TASK, status and queue find it by name. The lane number stays
-  what signatures and the chain record; the name is an alias.
+  and names it with a # Task: line, so swim run TASK, log TASK, status
+  and queue find it by name. The lane number stays what the chain
+  records; the name is an alias.
   A name is a-z, 0-9 and - (a letter first, at most 40, not only hex
   digits and -), not a swim command, and one lane's alone (swim lint).
   Where swim takes a lane it reads a number as a lane, then a name as a
@@ -327,17 +323,16 @@ swim report --earmarks | --earmark --reset [--name NAME]
   that already passed), what its header declares and where that stands:
       after swim 1 (pending: a dry run or failure there skips this)
       guard DROP_OK  drop table old_orders
-             not approved: approval needs 2 signature(s) from dba, has 1; ...
+             not approved; swim run will ask (a dry run if no one answers)
       timeout 30m · locks orders-db · includes lib/tables.sh
   Each lane it waits on is passed, pending, running, failed, skipped,
   interrupted or "no round"; each guard is decided as swim run would as
-  it starts now (FLAG=1 in this environment, signed approvals against
-  lookup.yml, a rule nothing can meet), and says whether swim run would
-  ask or dry-run. Only what the header sets is shown (Fail: hard, a
+  it starts now (FLAG=1 in this environment), and says whether swim run
+  would ask or dry-run. Only what the header sets is shown (Fail: hard, a
   target, an owner too).
   --yaml     the status file's fields as YAML, tagged schema: swim.status/v1;
              each pending lane adds pending_header {after, guards: [{flag,
-             description, approved, how, why, asks, never}], timeout,
+             description, approved, how, asks}], timeout,
              locks, includes, fail, targets, owner} and deps: [{lane, job,
              state, note}] (deps_error if its After: doesn't resolve);
              claims: the lanes' live claims (swim claim), by lane
@@ -393,11 +388,10 @@ swim report --earmarks | --earmark --reset [--name NAME]
 	"guard": `swim guard FLAG "<action - date, reason>"
 
   In a lane script in any language: exit 0 if the operator approves the
-  action, 1 if not. FLAG=1 approves up front; unset, swim asks the operator
-  (or counts signed approvals); anything else records SKIP as a dry run.
+  action, 1 if not. FLAG=1 approves up front; unset, swim asks the
+  operator; anything else records SKIP as a dry run.
   Under swim run the launcher decides: FLAG=1 counts only if swim run's own
-  environment set it (a FLAG=1 the lane sets is a dry run), and signed
-  approvals count as they were when the run started.
+  environment set it (a FLAG=1 the lane sets is a dry run).
   One flag per destructive action; list it in the header (or lane.N.yml):
   under swim run, a flag the script neither lists nor uses by name is
   refused. With # Observe: probes, a fact that changed between approval and
@@ -649,7 +643,7 @@ swim queue show|rm|requeue ID
             says what may change).
             add says which: with a swimmer up whose screen asks, it names
             it; with none, a batch that approves none of its lanes' guards
-            (and no standing approval of yours covers) warns on stderr,
+            warns on stderr,
             naming each lane and the guards that will dry-run.
             Swimmers say which swim they are (.swim/workers/): with swimmers
             up and none able to run the batch (its swim reads other
@@ -675,7 +669,7 @@ swim queue show|rm|requeue ID
   done/NNNN-....yml with its result (run id, exit, each lane's result).
   .swim.log records queue, queue-run and queue-done events.
 `,
-	"watch": `swim watch [--once] [-y] [--approved] [--interval D] [--batches N] [--no-tui]
+	"watch": `swim watch [--once] [-y] [--interval D] [--batches N] [--no-tui]
 
   The queue's swimmer. Runs queued batches (swim queue N) side by side,
   up to --batches at once (watch_batches, default 4), each in a process
@@ -700,9 +694,6 @@ swim queue show|rm|requeue ID
   watch ends the round of any lane whose process died without ending it
   (as swim run does): END INTERRUPTED in its log, interrupted in status.
   --once         run every queued batch, then exit (non-zero if one failed)
-  --approved     also queue, by itself, every lane whose exact script is fully
-                 approved (swim approve, meeting lookup.yml's rules), once per
-                 approval: the last approval is what makes it run
   -y, --yes      approve every guard in every batch, beyond what the batch
                  approves (the swimmer's say-so: logged as "approved by swim
                  watch -y (<user>)", and in the consumed entry as approved_by).
@@ -724,9 +715,8 @@ swim queue show|rm|requeue ID
                    time; enter on a batch does the same for the batch
     r on a job     runs it as swim run N does: you're at the terminal, so its
                    guards may ask
-    q on a job     queues it as swim queue N does (no guard approved: its
-                   guards dry-run unless standing approvals cover them); the
-                   swimmer takes it when its lanes are free
+    q on a job     queues it as swim queue N does (the batch approves none
+                   of its guards); the swimmer takes it when its lanes are free
     a on a job     archives its lane's log as swim archive N does: the lane
                    goes idle, the log is kept as agentN.prev-<job>.log (not
                    while it runs, nor without a log)
@@ -743,7 +733,7 @@ swim queue show|rm|requeue ID
                    latest lines of every running lane's log, the running
                    step's output included (shown by default)
   [DRY] marks a lane whose round dry-ran a guard, and a waiting batch with
-  a guard neither it nor -y approves (signed approvals may still cover it).
+  a guard neither it nor -y approves.
   The screen stays up while batches run; their output goes to that file.
   With --batches 1 a batch runs in the interactive view instead, as swim
   run does. SWIM_TUI=0, CI and --once turn the screen off: then every
@@ -778,113 +768,26 @@ swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
   --interval D   how often to check (default 2s)
   --timeout D    give up after D (exit 1, saying what is still busy)
 `,
-	"approve": `swim approve                                    list approvals and standing approvals
-swim approve N|JOB [--guards A,B | --all] [--expires D] [--note T] [--key K]
-swim approve --auto USER [--guards A,B | --all] [--expires D] [--key K]
+	"verify": `swim verify [--strict] [--allow-unsigned] [--force] [--yaml]
 
-  How approvers act. Every approval is an SSH-signed event in a committed
-  file under approvals/, so an approver anywhere (with the repo) can add
-  theirs and push it; the files are hash-linked logs of approve and revoke
-  events, so their order is attested like commits.
-  swim approve N   approve this exact lane's execution manifest: the script
-                   and every file it sources or imports, its sidecar, how it
-                   runs, swim.yml's policy keys and lookup.yml's rules (it
-                   lists them, and the file records them). Its guards
-                   (--guards, or --all) approve without a prompt or flag when
-                   the approvers, named by lookup.yml, meet lookup.yml's rule
-                   for each guard. Another approver runs the same command to
-                   co-approve (the statement can't change). Writes
-                   approvals/lane.N.<sha12>.m<manifest8>.signature. If
-                   anything it pins changes it no longer matches (swim approve
-                   lists it as "stale: <why>"): approve the new version. An
-                   approval from before manifests names the script alone and
-                   counts while the script matches.
-  evidence: true   a lookup.yml rule that says evidence: true (from when swim
-                   bound approvals to a round's evidence) approves nothing:
-                   swim approve --guards refuses its guards, and at run time
-                   no signed approval, flag, prompt, -y or queued approval
-                   counts for them (they dry-run) until the rule drops it.
-  --auto USER      a standing approval: every job USER queues (swim queue N,
-                   signed with USER's key) is approved, by you, for the guards
-                   given (default every guard). It is never consumed: it
-                   stands until it expires (30d unless --expires says, never
-                   longer than lookup.yml's standing.max) or you revoke it.
-                   It binds lookup.yml's rule for each guard: once a guard's
-                   rule changes (stricter or looser), it stops counting
-                   there. Writes approvals/auto.USER.signature; approving
-                   again after it stopped counting starts a new one.
-  Approvals of a script and standing approvals for its queuer count
-  together toward a rule (zach standing for bob + alice approving the script
-  = 2 of platform-admin).
-  --expires D  a new approval stops counting after D (24h, 90m, 30d).
-  Listed, each approval shows its state: active, expired, revoked,
-  stale: <why> (what it approves changed) or insufficient: <why> (its
-  signers don't meet the rule, aren't in lookup.yml, or it outlasts
-  standing.max). Who is who (users, keys, groups) is read live: a key
-  removed from lookup.yml stops counting at once. A standing approval from
-  before they expired keeps counting, with a warning (here, swim doctor and
-  swim verify), until lookup.yml sets standing.max.
-  --key K    sign with this key (default: config signing_key, then
-             ~/.ssh/id_ed25519; a .pub path signs through ssh-agent)
-  swim watch --approved runs fully approved scripts by itself.
-`,
-	"revoke": `swim revoke N|JOB [--key K]
-swim revoke --auto USER [--key K]
-
-  Withdraw your approval: of lane N's script (every version you approved),
-  or your standing approval of USER's queued jobs. Adds a signed revoke
-  event; your approval stops counting from then on (approving again adds
-  another approve event). A round that already ran keeps its record.
-`,
-	"verify": `swim verify [--strict] [--allow-unsigned] [--levels] [--force] [--trust-pin SHA256] [--against DEST] [--yaml]
-
-  Prove the chain of custody (.swim/chain.jsonl). It prints one answer,
-  VERIFIED or NOT VERIFIED (exit 1), with what failed or what it couldn't
-  check. Unsigned entries after the last signed one fail as UNSIGNED
-  (nothing vouches for them, and a chain rewritten with no key looks the
-  same) unless --allow-unsigned; ones a later signed entry links to (a
-  repo that gained a key later) are a warning, since they can't change
-  unseen. BROKEN means something changed; UNAUTHORIZED, an approval that
-  didn't meet lookup.yml (a FLAG=1 override, say), recorded as it happened. Under it are four levels (--levels prints each: yes,
-  no, partial, n/a, and what it rests on); any one saying no fails:
-    consistent  every entry follows the one before it (sequence and
-                previous-hash: a changed, removed or reordered entry breaks
-                every link after it); every signature is valid for the key
-                recorded beside it; every round's log section still hashes
-                to what was recorded, the copy of its script kept under
-                .swim/scripts/<sha256>.sh is unchanged, and its staged copy
-                (.swim/runs/<run>/<N>/, until swim doctor --fix prunes it)
-                still matches the manifest it ran; every signed approval's
-                signatures check out. A chain replaced wholesale and
-                re-signed with a new key is consistent too: that's what
-                trusted is for.
-    trusted     every signature is by a key in trust.yml, as pinned outside
-                the repo (swim keys --help): pinned on first use, or with
-                --trust-pin. partial: some entries are unsigned. n/a: no
-                trust.yml.
-    anchored    the chain still holds the entry every checkpoint at each
-                anchor (chain_anchors) recorded, oldest to newest: entries
-                removed from its end, or a chain replaced or rewritten,
-                after a checkpoint left the machine, fail it, whatever
-                checkpoints were sent since. A checkpoint with a
-                bad signature, or signed by a key outside trust.yml, is
-                ignored with a warning. Says nothing about entries after
-                the checkpoint. n/a: no anchors, or no checkpoint yet.
-    authorized  every approval recorded met lookup.yml's rule for its
-                guard: a signed approval's approvers, named by lookup.yml,
-                are enough of the right group; a prompt, flag, -y or queue
-                approval only fails a rule with signed: true (swim keys
-                --help). A failure under the lookup.yml the approval was
-                recorded under (lookup_sha256) says no; under a lookup.yml
-                that changed since, it's a warning (partial). n/a: no
-                lookup.yml, or no approvals.
-  Above the levels: each approvals file under approvals/ checked event by
-  event (and whether a script approval is stale: the script, or something
-  else its manifest pins, changed since), then notes, warnings, what's
-  BROKEN and what's UNAUTHORIZED.
-  Exits 1 when a level says no, anything is BROKEN or an entry is
-  unsigned (without --allow-unsigned); --strict also on n/a, partial and
-  any warning.
+  Prove the chain of custody (.swim/chain.jsonl) against itself. It prints
+  one answer, VERIFIED or NOT VERIFIED (exit 1), with what failed. It
+  checks that every entry follows the one before it (sequence and
+  previous-hash: a changed, removed or reordered entry breaks every link
+  after it); every signature is valid for the key recorded beside it;
+  every round's log section still hashes to what was recorded, the copy
+  of its script kept under .swim/scripts/<sha256>.sh is unchanged, and
+  its staged copy (.swim/runs/<run>/<N>/, until swim doctor --fix prunes
+  it) still matches the manifest it ran; and every approval a run
+  recorded is in its run's attestation. BROKEN means something changed.
+  A chain replaced wholesale and re-signed with another key, or with
+  entries removed from its end, verifies too.
+  Unsigned entries after the last signed one fail as UNSIGNED (nothing
+  vouches for them, and a chain rewritten with no key looks the same)
+  unless --allow-unsigned; ones a later signed entry links to (a repo that
+  gained a key later) are a warning, since they can't change unseen.
+  Exits 1 when anything is BROKEN or an entry is unsigned (without
+  --allow-unsigned); --strict also on any warning.
   --force acknowledges the gaps and deletions it finds: entries missing,
   inserted or out of order, a link that doesn't follow, a round's log or
   kept script deleted. It appends one amend entry listing them, signed
@@ -894,16 +797,9 @@ swim revoke --auto USER [--key K]
   or staged copy that doesn't match) is never amended, and a gap that
   appears after the amendment is BROKEN again. swim history shows the
   amend entry.
-  --trust-pin SHA256   check trust.yml against this hash instead of the pin
-                       in ~/.config/swim/trust-pins.yml (CI, which keeps no
-                       pins; swim keys pin prints it). Also SWIM_TRUST_PIN.
-  --against DEST       anchor to DEST (file:/path) instead of
-                       chain_anchors: its checkpoints, and the entries
-                       swim chain export copied there must be the chain's
-                       first ones (so a lost or wiped repo can be checked).
-  --yaml               the result as data (schema swim.verify/v1): each
-                       level a field of its own (consistent: "yes"), so CI
-                       can require any of them; ok is what the exit code says.
+  --yaml               the result as data (schema swim.verify/v1):
+                       consistent ("yes" or "no"), ok (what the exit code
+                       says), broken, unsigned, amended, warnings, notes.
 `,
 	"signoff": `swim signoff verify FILE ...
 
@@ -922,16 +818,16 @@ swim revoke --auto USER [--key K]
   A signoff is an attestation, not a proof: it shows whose key vouches
   that the lane passed on that tree, not that the round ran honestly. Keep
   CI running on main (or on a sample) to catch a machine that differs.
-  verify checks each file's signature, that the key is someone's
-  (lookup.yml, or trust.yml), and that its commit (if this repo has it)
-  still has the tree it names; exits 1 if any fails.
+  verify checks each file's signature, that this machine's signing key
+  (signing_key, or ~/.ssh/id_ed25519) made it, and that its commit (if
+  this repo has it) still has the tree it names; exits 1 if any fails.
 `,
 	"history": `swim history [RUN|N|JOB] [--oneline] [-n N | -N] [--reverse] [--no-pager] [--yaml]
 
   The chain of custody, read like git log: newest first, each entry as
   "entry <hash> (#seq, run, lane, result)", its signer and date, then what
-  happened: each approval (guard, approvers by name from lookup.yml, and
-  how: signature, prompt, flag, auto, queue; the action and script) and
+  happened: each approval (guard, who, and how: prompt, preapproved,
+  flag, queue, auto; the action and script) and
   each round (result, exit, job, script and log hashes, approvals used).
   --oneline      one line per entry: its short hash and what happened
   -n N, -N       only the newest N entries (--max-count N)
@@ -943,8 +839,6 @@ swim revoke --auto USER [--key K]
   swim verify checks the chain.
 `,
 	"chain": `swim chain repair
-swim chain checkpoint [--to DEST]
-swim chain export --to DEST
 
   Look after the chain of custody file itself (.swim/chain.jsonl).
   repair       remove a half-written final entry: a write cut short by a
@@ -957,85 +851,14 @@ swim chain export --to DEST
                SHA-256. Complete entries are never touched; with nothing to
                repair it changes nothing. swim history shows the repair
                entry, and swim verify notes it.
-  checkpoint   sign the chain's head now ({v, seq, head, at, host,
-               runner_key_fp}, with the runner's key) and send it to each
-               chain_anchors destination (and --to DEST). swim run, swim
-               all, swim ci and each swim watch batch do this as they end
-               (not swim run inside a lane). An anchor refuses a checkpoint
-               that doesn't go past its last. A failed send is a warning; the
-               next checkpoint is sent anyway, and swim doctor lists the
-               anchor until then (checkpoint-unsent). Exits 1 when an anchor
-               didn't take it. Also kept in .swim/checkpoints.jsonl, which
-               proves nothing (a lane can rewrite it).
-  export       copy the entries DEST doesn't hold yet, then a checkpoint.
-               What DEST holds must be the chain's first entries, line for
-               line; if the chain lost entries or was replaced since, nothing
-               is written. swim verify --against DEST checks against it.
-  Destinations (chain_anchors in swim.yml or config.yml; they add up):
-    file:/path   a directory outside the repo: checkpoints.jsonl and
-                 chain.jsonl, only ever appended to (put it on another
-                 volume, mounted append-only, or held by someone else)
-  An anchor proves nothing about entries written after its last checkpoint,
-  and someone holding the runner key and write access to every anchor can
-  rewrite everything: keep anchors out of the operator's reach.
 `,
 	"keys": `swim keys
-swim keys add NAME [KEY | FILE.pub]
-swim keys trust [KEY | FILE.pub] [--remove] [--sign] [--key K]
-swim keys pin
 
-  Who's who: lookup.yml's users with their key fingerprints, groups (with
-  nested groups expanded), require rules, trust.yml and its pin, and the key
-  this machine signs with and whom it maps to.
-  add lists a key for NAME in lookup.yml (default: the key this machine
-  signs with), creating the file; it keeps the rest, comments included.
-  A repo's first swim approve does it for you ($USER) when there's no
-  lookup.yml, since an unlisted key's approval counts for nothing.
-  lookup.yml (repo root, committed):
-      users:
-        zach:
-          keys:
-            - ssh-ed25519 AAAA... zach@laptop
-            - sk-ssh-ed25519@openssh.com AAAA... zach@yubikey
-        alice:
-          keys: [ssh-ed25519 AAAA... alice@work]
-      groups:
-        platform-admin: [zach, alice]
-        ops: [bob, platform-admin]       # a group may include groups
-      require:                           # what a signed approval needs
-        - guards: [FIN_ALLOW_*]          # globs; the first matching rule applies
-          group: platform-admin
-          count: 2                       # distinct users
-          signed: true                   # only signed approvals meet it
-        - group: ops                     # no guards: every other guard
-  With no rule a signature from any listed user approves; with no
-  lookup.yml signatures don't count at all (their keys can't be named).
-  signed: true makes a prompt, FLAG=1, -y or queue approval of the rule's
-  guards fail swim verify's authorized level (the guard still accepts it:
-  the operator's call at the time, recorded as such).
-
-  trust.yml (repo root, committed) lists the keys swim verify trusts to
-  sign the chain: the runners' and the approvers'. lookup.yml's keys must
-  be among them (swim lint). Its key set's SHA-256 is pinned outside the
-  repo, per repo, in ~/.config/swim/trust-pins.yml: the first swim verify
-  pins it (trust on first use), or swim keys pin. After that a change
-  counts only when signed by a key the pinned set trusts; it's recorded in
-  trust.yml.sig (committed), and each operator's next swim verify moves
-  their pin along. An unsigned change makes verify's trusted level fail
-  until that operator runs swim keys pin again.
-  trust     add KEY (a public key line or a .pub file; default this
-            machine's signing key) to trust.yml, creating it; --remove
-            takes it out. --sign records the change in trust.yml.sig,
-            signed with --key K (default signing_key), a key trust.yml
-            already lists. A key removed this way still verifies what it
-            signed before.
-  pin       pin trust.yml as it is now (after checking its keys), and print
-            the hash for CI (swim verify --trust-pin). Also forgets keys
-            earlier pins kept for what they signed before.
-  The pins file is the operator's: a lane can't change it through the
-  repo, but runs as the same user, so it could write it directly. For a
-  pin a lane can't reach, give CI --trust-pin from its own settings.
+  The key this machine signs the chain and signoffs with (signing_key, or
+  ~/.ssh/id_ed25519): its fingerprint, path and comment, and the signing
+  mode (signing: auto, required or off).
 `,
+
 	"interrupt": `swim interrupt N|JOB
 
   Ask one running lane to stop at its next step boundary, from any
@@ -1178,20 +1001,9 @@ swim claim N|RESOURCE --break "<reason>"
     outputs-old (info)        round outputs older than outputs_keep (default
                               14d) that no lane's latest round uses; --fix
                               removes them
-    anchors-none (info)       the repo has a chain but no chain_anchors
-    checkpoint-unsent (warn)  a chain anchor hasn't had the latest checkpoint
-    trust-unpinned (warn/error) trust.yml not pinned on this machine yet
-                              (warn), or changed since the pin with no
-                              signed change (error): swim keys --help
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
                               older than outputs_keep, of no lane's latest
                               round; --fix removes them
-    evidence-rule (warn)      a lookup.yml rule says evidence: true: nothing
-                              can approve its guards (they dry-run)
-    standing-approval (warn)  a standing approval still counting under the
-                              old terms: it never expires (until lookup.yml
-                              sets standing.max), or a lookup.yml rule
-                              change doesn't stale it
     remote-running (warn)     a lane has run on another machine sharing the
                               repo for over a day; if that machine is gone,
                               release it (rm .swim/laneN.pid, then swim
@@ -1203,7 +1015,8 @@ swim claim N|RESOURCE --break "<reason>"
                               schedule_tz, observe, modules, secrets,
                               ambient_credentials, secrets_key, headless,
                               hub, pause_warn, store_dir, cache_dir,
-                              cache_max, cache_slug): it's ignored; delete it
+                              cache_max, cache_slug, chain_anchors): it's
+                              ignored; delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key
@@ -1303,14 +1116,10 @@ swim claim N|RESOURCE --break "<reason>"
     script 4, log 2, state 2   once modules (# Modules:, mod, mod_env), which
                                swim no longer has: syntax 4 now adds nothing
                                over 3, and swim new still writes it
-    script 3, log 2, state 2   execution manifests: chain entries, signed
-                               approvals and queued batches name the
-                               manifest they ran or approved
-                               (manifest_sha256), and approve entries the
-                               lookup.yml in force (lookup_sha256), which
-                               a swim of state 1 can't verify; approvals
-                               signed by a state 1
-                               swim still count (script hash alone)
+    script 3, log 2, state 2   execution manifests: chain entries and
+                               queued batches name the manifest they ran
+                               or approved (manifest_sha256), which a swim
+                               of state 1 can't verify
     script 3, log 2, state 1   since 0.20261014.1; the formats of swim 7.20261013
 
   Before 0.<date>.<index> the version was <breaking>.<YYYYMMDD> and the lock
@@ -1354,7 +1163,7 @@ func Names() []string {
 // command in Commands is in it (help_test checks).
 var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "decide", "stage", "checkpoint", "drift", "stop", "msg", "input", "output",
-	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait", "approve", "revoke",
+	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait",
 	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
@@ -1390,7 +1199,7 @@ ROUNDS
 GUARDS
   run N                        on a terminal, swim asks you at each guard
   FLAG=1 swim run N            approve one guard up front (the log says so)
-  approve N --guards A         approve ahead: sign this exact script, its inputs and policy
+  queue N --approve A          approve ahead, for one batch pinned to this exact script
 
 LOGS
   status [N]                   what each lane is doing and waits on
@@ -1398,7 +1207,7 @@ LOGS
   report                       what changed since you last looked
 
 EVERYTHING ELSE (swim <command> --help, or swim guide commands)
-  revoke, verify, history, keys, chain   approvals and the record behind them
+  verify, history, keys, chain   the record of approvals and rounds
   doctor, config, env          the environment lanes get
   archive, clean, stub, note   tidy up and record
   interrupt, wait, claim       control running lanes

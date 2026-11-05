@@ -25,8 +25,7 @@ env:
 - **Format:** `KEY=VALUE`, `#` comments, quotes around a value. No `export`,
   `$VAR` or `$(...)`: a line that doesn't parse stops the run, naming the
   file and line.
-- **No guard flags:** a key that is a selected lane's guard, or matches a
-  `lookup.yml` guard glob, stops the run.
+- **No guard flags:** a key that is a selected lane's guard stops the run.
 - **Masked:** every value (6 characters or more) is masked wherever swim
   writes. Still, store `AWS_PROFILE`, not the key.
 - **Recorded:** the round header lists the files that applied; status and

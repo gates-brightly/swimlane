@@ -8,7 +8,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 )
 
 func TestParse(t *testing.T) {
@@ -84,14 +83,10 @@ func TestResolvePrecedenceAndGuards(t *testing.T) {
 	}
 
 	info := lane.Info{Guards: []lane.Guard{{Flag: "K"}}}
-	if c := GuardConflicts(r2, info, nil); len(c) != 1 || c[0].Key != "K" || !strings.Contains(c[0].Error(), ".env.swim:2 sets K") {
+	if c := GuardConflicts(r2, info); len(c) != 1 || c[0].Key != "K" || !strings.Contains(c[0].Error(), ".env.swim:2 sets K") {
 		t.Errorf("script guard: %+v", c)
 	}
-	lk := &lookup.Lookup{Require: []lookup.Rule{{Guards: []string{"G*"}}}}
-	if c := GuardConflicts(r2, lane.Info{}, lk); len(c) != 1 || c[0].Key != "G" || !strings.Contains(c[0].Error(), `matches guards "G*"`) {
-		t.Errorf("lookup glob: %+v", c)
-	}
-	if _, err := Check(root, cfg, 1, info, nil); err == nil {
+	if _, err := Check(root, cfg, 1, info); err == nil {
 		t.Error("Check allowed a guard flag")
 	}
 }
