@@ -2,7 +2,7 @@
 # swim: syntax 4
 # Round:  Release 2.4.0: end-to-end smoke test
 # After:  2 3 4
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 5
 
 stage verify

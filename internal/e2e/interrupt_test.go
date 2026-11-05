@@ -272,7 +272,7 @@ run "after" true`)
 }
 
 // Force quit kills a step's process group too: it isn't in the lane's
-// group, and its swim step, killed with the lane, can't stop it.
+// group, and its swim _step, killed with the lane, can't stop it.
 func TestForceQuitKillsStepGroup(t *testing.T) {
 	r := newRepo(t, "")
 	r.mustSwim("config", "interrupt_grace", "400ms")

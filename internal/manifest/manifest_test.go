@@ -213,7 +213,7 @@ func TestShortFormPin(t *testing.T) {
 	if m.Pinned.Runner != "bash (short form)" {
 		t.Errorf("short form runner: %q", m.Pinned.Runner)
 	}
-	write(t, root, "lane.4.sh", "#!/usr/bin/env bash\n# Round: short\neval \"$(swim lib)\"\nlane_init 4\nrun \"a\" true\n")
+	write(t, root, "lane.4.sh", "#!/usr/bin/env bash\n# Round: short\neval \"$(swim _lib)\"\nlane_init 4\nrun \"a\" true\n")
 	if e := build(t, root, 4); e.Pinned.Runner != "bash" || e.SHA256 == m.SHA256 {
 		t.Errorf("explicit form: runner %q, same hash %v", e.Pinned.Runner, e.SHA256 == m.SHA256)
 	}

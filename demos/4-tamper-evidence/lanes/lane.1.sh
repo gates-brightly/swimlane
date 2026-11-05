@@ -2,7 +2,7 @@
 # swim: syntax 4
 # Round:  Raise the api's connection pool to 50
 # Owner:  planner (AI session)
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 
 stage snapshot

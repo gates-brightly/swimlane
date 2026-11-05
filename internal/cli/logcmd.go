@@ -290,7 +290,7 @@ func inFlight(root string, n int) (*step.Spool, string) {
 	if _, running := lane.Running(root, n); running {
 		return sp, "in progress"
 	}
-	return sp, "cut off: swim step stopped; recorded as FAIL when the lane next runs"
+	return sp, "cut off: swim stopped mid-step; recorded as FAIL when the lane next runs"
 }
 
 // roundMatches reports whether a round's lines belong to job or run ref.

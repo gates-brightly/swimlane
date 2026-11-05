@@ -6,7 +6,7 @@
 #
 # Goal: the signup load test left accounts behind in prod. Delete them, and
 # only them. Everything before `stage change` is read-only.
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 
 stage snapshot

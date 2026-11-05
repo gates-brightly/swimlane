@@ -99,7 +99,7 @@ func TestNoSecretLeaks(t *testing.T) {
 # swim: syntax 2
 # Round: leak everything
 # Guards: LEAK_OK describe it
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 V=$LEAK_API_TOKEN
 P=$MY_LEAK_PEM

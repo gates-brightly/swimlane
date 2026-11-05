@@ -707,7 +707,7 @@ func validJobID(id string) bool {
 }
 
 // StopPath is lane n's stop request (.swim/laneN.stop): while it exists,
-// holding the lane's run id, swim step starts no new step in that lane. The
+// holding the lane's run id, swim _step starts no new step in that lane. The
 // launcher writes it on the first Ctrl-C; swim interrupt N writes it too.
 func StopPath(root string, n int) string {
 	return filepath.Join(root, ".swim", fmt.Sprintf("lane%d.stop", n))

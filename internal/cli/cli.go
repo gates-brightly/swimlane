@@ -36,8 +36,6 @@ func init() {
 		"all":       {run: cmdAll},
 		"status":    {run: cmdStatus},
 		"report":    {run: cmdReport},
-		"step":      {run: cmdStep},
-		"lib":       {run: cmdLib},
 		"archive":   {run: cmdArchive},
 		"note":      {run: cmdNote},
 		"log":       {run: cmdLog},
@@ -73,6 +71,8 @@ func init() {
 		"_approve": {run: cmdApproveHook, hidden: true},
 		"_stage":   {run: cmdStage, hidden: true},
 		"_wrap":    {run: cmdWrap, hidden: true},
+		"_step":    {run: cmdStep, hidden: true},
+		"_lib":     {run: cmdLib, hidden: true},
 	}
 }
 
@@ -126,13 +126,9 @@ func Main(args []string) int {
 		return 2
 	}
 	rest := args[1:]
-	if !cmd.hidden && name != "step" && wantsHelp(rest) {
+	if !cmd.hidden && wantsHelp(rest) {
 		h, _ := help.For(name)
 		fmt.Print(h)
-		return 0
-	}
-	if name == "step" && len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
-		fmt.Print(help.Commands[name])
 		return 0
 	}
 	if err := cmd.run(rest); err != nil {

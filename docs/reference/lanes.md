@@ -10,7 +10,7 @@ Writing a lane script. Start from `swim new N "<goal>"`.
   runs it as `swim run N` does; `bash lane.N.sh` can't.
 - **Explicit:** loads the library itself and calls `lane_init N` first and
   `summary` last, so it also runs with plain bash:
-  `_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"`.
+  `_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"`.
 
 A lane's manifest pins which form it uses (its runner).
 

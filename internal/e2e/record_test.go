@@ -22,7 +22,7 @@ func TestLaneThatNeverStartsIsRecorded(t *testing.T) {
 echo "fetching setup"
 echo "setup: cannot reach vault.internal" >&2
 exit 3
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 summary
 `, 0o755)

@@ -160,7 +160,7 @@ func TestRecoverSpool(t *testing.T) {
 	os.WriteFile(SpoolPath(o.LogPath), []byte(spoolMagic+"\tkilled step\t12:00:00\tdo thing\npartial line\n"), 0o644)
 	RecoverSpool(o.LogPath)
 	data, _ := os.ReadFile(o.LogPath)
-	for _, want := range []string{"  FAIL  killed step (cut off: swim step was killed, output recovered)", "        $ do thing", "        | partial line"} {
+	for _, want := range []string{"  FAIL  killed step (cut off: swim was killed mid-step, output recovered)", "        $ do thing", "        | partial line"} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("missing %q:\n%s", want, data)
 		}

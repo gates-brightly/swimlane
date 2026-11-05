@@ -23,7 +23,7 @@ func TestResolve(t *testing.T) {
 	}
 	cfg := &config.Config{}
 
-	sh := write("lane.1.sh", "#!/usr/bin/env zsh\n_swim_lib=$(swim lib); eval \"$_swim_lib\"\nlane_init 1\n", 0o644)
+	sh := write("lane.1.sh", "#!/usr/bin/env zsh\n_swim_lib=$(swim _lib); eval \"$_swim_lib\"\nlane_init 1\n", 0o644)
 	if p, err := Resolve(cfg, sh); err != nil || strings.Join(p.Argv, " ") != "bash "+sh || p.Wrapped || p.Source != Builtin {
 		t.Errorf("sh: %+v %v", p, err)
 	}

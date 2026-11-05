@@ -567,7 +567,7 @@ func cmdStep(args []string) error {
 		cmdArgs, rest = rest, nil
 	}
 	if len(rest) > 0 || len(cmdArgs) == 0 {
-		return usagef("usage: swim step [--label L] [--new] [--snapshot] -- cmd [args...]")
+		return usagef("usage: swim _step [--label L] [--new] [--snapshot] -- cmd [args...]")
 	}
 
 	cwd, _ := os.Getwd()
@@ -575,7 +575,7 @@ func cmdStep(args []string) error {
 	cfg, err := config.Load(root)
 	if err != nil {
 		// A broken config must not stop the operator's command from running.
-		fmt.Fprintln(os.Stderr, "swim step: warning:", err)
+		fmt.Fprintln(os.Stderr, "swim _step: warning:", err)
 		cfg = &config.Config{Root: root, Settings: config.Settings{Lanes: 1}}
 	}
 	n, _ := strconv.Atoi(os.Getenv("SWIM_LANE"))
@@ -696,7 +696,7 @@ func expectFailFlag(args []string) (bool, []int, []string, error) {
 
 func cmdLib(args []string) error {
 	if len(args) > 0 {
-		return usagef("lib takes no arguments")
+		return usagef("_lib takes no arguments")
 	}
 	fmt.Print(assets.LibFor(self()))
 	return nil

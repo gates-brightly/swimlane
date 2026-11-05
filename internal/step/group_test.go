@@ -138,7 +138,7 @@ func TestKillRecorded(t *testing.T) {
 	}
 	log := filepath.Join(t.TempDir(), "agent1.log")
 
-	// swim step was killed: RecoverSpool kills the group it recorded.
+	// swim _step was killed: RecoverSpool kills the group it recorded.
 	c := start(t)
 	recordGroup(log, c.Process.Pid)
 	RecoverSpool(log)

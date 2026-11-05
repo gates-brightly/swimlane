@@ -13,8 +13,8 @@ import (
 
 // A step runs in its own process group, so a time limit (or an interrupt)
 // reaches everything it started: bash -c 'server & tests' leaves no server
-// behind. While it runs, swim step records the group in <spool>.pgid; if
-// swim step itself is SIGKILLed it can't clean up, so the launcher's kill
+// behind. While it runs, swim _step records the group in <spool>.pgid; if
+// swim _step itself is SIGKILLed it can't clean up, so the launcher's kill
 // and RecoverSpool kill the recorded group instead.
 
 // DefaultKillGrace is how long a stopped step has between SIGTERM (or the
@@ -58,7 +58,7 @@ func endGroup(pgid int, until time.Time) {
 }
 
 // KillRecorded SIGKILLs the process group a step recorded at logPath (one
-// whose swim step was killed before it could clean up) and removes the
+// whose swim _step was killed before it could clean up) and removes the
 // record. The group is killed only while it is still that step's: its
 // leader has the recorded start time, or the leader is gone but the group
 // lives on (a pid isn't handed out again while a group still uses it).

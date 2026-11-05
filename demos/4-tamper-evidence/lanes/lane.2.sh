@@ -3,7 +3,7 @@
 # Round:  Raise the worker's connection pool to 50
 # Owner:  planner (AI session)
 # After:  1
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 2
 
 stage snapshot

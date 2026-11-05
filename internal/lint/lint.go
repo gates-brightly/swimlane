@@ -273,7 +273,7 @@ func NewScript(n int, src string) *Script {
 
 // libLoadRE: the line that loads swim's library, in any of its spellings
 // (a regular expression, kept: it is matched within a line of text).
-var libLoadRE = regexp.MustCompile(`(?:swim|SWIM_BIN[^"]*)"?\s+lib\b`)
+var libLoadRE = regexp.MustCompile(`(?:swim|SWIM_BIN[^"]*)"?\s+_lib\b`)
 
 // loadsLib reports whether src loads swim's bash library (or calls
 // lane_init, which only it defines).

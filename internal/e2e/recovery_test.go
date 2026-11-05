@@ -102,7 +102,7 @@ func TestReapDeadLane(t *testing.T) {
 	if l := r.status().Get(1); l.State != "interrupted" || l.ExitCode == nil || *l.ExitCode != 137 {
 		t.Fatalf("after watch: %+v", l)
 	}
-	contains(t, "log", r.log(1), "cut off: swim step was killed", "== END INTERRUPTED")
+	contains(t, "log", r.log(1), "cut off: swim was killed mid-step", "== END INTERRUPTED")
 	links, _ := chain.Read(r.root)
 	if last := links[len(links)-1]; last.Type != "round" || last.Result != "interrupted" || last.Exit == nil || *last.Exit != 137 {
 		t.Errorf("chain's last entry: %+v", last.Entry)

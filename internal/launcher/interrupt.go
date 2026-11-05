@@ -208,7 +208,7 @@ func (ir *interrupter) gracefulLocked(s os.Signal) {
 }
 
 // requestStopLocked asks one lane to stop at its next step boundary: the
-// stop file keeps swim step from starting another step, and SIGUSR2 to the
+// stop file keeps swim _step from starting another step, and SIGUSR2 to the
 // lane's bash (only that pid, never the step command) ends the round once
 // the current step returns, or cancels a waiting confirm.
 func (ir *interrupter) requestStopLocked(n int, lp *laneProc, s os.Signal) {
@@ -275,7 +275,7 @@ func (ir *interrupter) killLocked() {
 
 // killSteps SIGKILLs the process groups of lane n's running steps (its
 // round's, its check's): a step runs in a group of its own,
-// which the signal to the lane's group doesn't reach, and swim step, killed
+// which the signal to the lane's group doesn't reach, and swim _step, killed
 // with the lane, can't stop it any more.
 func killSteps(root string, n int) {
 	dir := lane.LogDir(root)

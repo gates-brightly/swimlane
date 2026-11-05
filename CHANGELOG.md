@@ -81,6 +81,14 @@ history stays here, since `swim changelog --since` reads it.
   id or `'#41'`). `swim log -f` stops by itself once the followed round
   ends (exit 0, whatever its result).
 
+- **`swim step` and `swim lib` are plumbing now: `swim _step` and `swim
+  _lib`,** out of `swim --help` like swim's other internal commands. Lanes
+  in any language keep `swim run|gate|snapshot "<label>" -- cmd`. An
+  explicit-form bash lane loads the library with
+  `_swim_lib=$("${SWIM_BIN:-swim}" _lib)`; one that still says `lib` stops
+  with "unknown command": change the word (short-form lanes,
+  `#!/usr/bin/env swim`, need nothing).
+
 - **Config `deps:` is gone: `# After:` is the one way to order lanes.**
   `swim init` no longer writes `deps: {}` into `~/.config/swim/config.yml`;
   a `deps:` there is now ignored (delete it, and put each lane's

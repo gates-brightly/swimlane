@@ -233,7 +233,7 @@ func (r *repo) newLane(n string, args ...string) string {
 // happens without them writes the file itself.
 func (r *repo) script(n int, round, body string) {
 	r.t.Helper()
-	s := fmt.Sprintf("#!/usr/bin/env bash\n# swim: syntax 2\n# Round: %s\n_swim_lib=$(\"${SWIM_BIN:-swim}\" lib) || exit 1; eval \"$_swim_lib\"\nlane_init %d\n%s\nsummary\n", round, n, body)
+	s := fmt.Sprintf("#!/usr/bin/env bash\n# swim: syntax 2\n# Round: %s\n_swim_lib=$(\"${SWIM_BIN:-swim}\" _lib) || exit 1; eval \"$_swim_lib\"\nlane_init %d\n%s\nsummary\n", round, n, body)
 	if err := os.WriteFile(filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n)), []byte(s), 0o755); err != nil {
 		r.t.Fatal(err)
 	}
@@ -639,7 +639,7 @@ run "never" true`)
 
 func TestStepStandalone(t *testing.T) {
 	r := newRepo(t, "")
-	c := r.cmd(bin, "step", "--new", "--label", "hello", "--", "bash", "-c", "echo hi; exit 7")
+	c := r.cmd(bin, "_step", "--new", "--label", "hello", "--", "bash", "-c", "echo hi; exit 7")
 	c.Env = append(c.Env, "STEP_LOG=custom.log")
 	out, err := c.CombinedOutput()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 7 {
@@ -1185,7 +1185,7 @@ const v1Lane = `#!/usr/bin/env bash
 # Round: Old template round
 # Job:   old-job-0001
 # Lane:  swim 1    Written: 2026-10-01
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 
 # 1. Snapshot (read-only)

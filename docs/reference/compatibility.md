@@ -32,7 +32,7 @@ an older `go` fetches it when `GOTOOLCHAIN` allows.
 
 | Needed | For |
 |---|---|
-| **bash 3.2 or newer** | Lane scripts and swim's lane library (`swim lib`). The library and the e2e scenarios stay compatible with macOS's bash 3.2, and `swim lint` warns about bash 4 features in lane scripts (`bash4`). |
+| **bash 3.2 or newer** | Lane scripts and swim's lane library. The library and the e2e scenarios stay compatible with macOS's bash 3.2, and `swim lint` warns about bash 4 features in lane scripts (`bash4`). |
 | **git** | swim finds the repo's root with git (`swim doctor` checks it). |
 | **ssh-keygen, OpenSSH 8.0 or newer** | Signing the chain and signoffs, and `swim verify`. Without it, `signing: auto` records unsigned entries; `signing: required` refuses to run. |
 A lane in another language calls the plain CLI (`swim run "<label>" --

@@ -557,7 +557,7 @@ func buildReport(root string, cfg *config.Config, name string, cur *earmark.Curs
 				}
 				if s.current != "" {
 					if sp, ok := step.ReadSpool(s.current); ok {
-						why := "cut off: swim step stopped; recorded as FAIL when the lane next runs"
+						why := "cut off: swim stopped mid-step; recorded as FAIL when the lane next runs"
 						if _, running := lane.Running(root, n); running {
 							why = "in progress"
 						}

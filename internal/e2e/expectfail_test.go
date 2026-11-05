@@ -30,18 +30,18 @@ run "after" true`)
 		t.Errorf("status passed %d failed %d, want 3 and 4\n%s", l.Pass, l.Fail, log)
 	}
 
-	// swim step by hand: the exit code follows the verdict.
-	if _, code := r.swim("step", "--expect-fail", "--", "false"); code != 0 {
+	// swim _step by hand: the exit code follows the verdict.
+	if _, code := r.swim("_step", "--expect-fail", "--", "false"); code != 0 {
 		t.Errorf("step --expect-fail false: exit %d, want 0", code)
 	}
-	if _, code := r.swim("step", "--expect-fail", "--", "true"); code != 1 {
+	if _, code := r.swim("_step", "--expect-fail", "--", "true"); code != 1 {
 		t.Errorf("step --expect-fail true: exit %d, want 1", code)
 	}
-	out, code := r.swim("step", "--expect-fail", "--retry", "2", "--", "false")
+	out, code := r.swim("_step", "--expect-fail", "--retry", "2", "--", "false")
 	if code != 2 || !strings.Contains(out, "don't go together") {
 		t.Errorf("--expect-fail with --retry: exit %d\n%s", code, out)
 	}
-	out, code = r.swim("step", "--expect-fail=0", "--", "false")
+	out, code = r.swim("_step", "--expect-fail=0", "--", "false")
 	if code != 2 || !strings.Contains(out, "non-zero exit codes") {
 		t.Errorf("--expect-fail=0: exit %d\n%s", code, out)
 	}

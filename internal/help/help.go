@@ -340,34 +340,6 @@ swim report --earmarks | --earmark --reset [--name NAME]
   --run RUN  each lane as it was in swim run RUN (from the logs, archives
              included, and .swim.log for lanes skipped before they started)
 `,
-	"step": `swim step [--label L] [--new] [--snapshot] [--timeout D] [--retry N]
-          [--backoff D] [--retry-on CODES] [--no-retry-timeout]
-          [--expect-fail[=CODES]] -- cmd [args...]
-
-  Run one command. Its output streams to the terminal unchanged; a framed copy
-  goes to the log chosen by $STEP_LOG (default step.log):
-    header (UTC time, shell-quoted command, cwd, git branch@sha, runtime
-    version, AWS_PROFILE and header_env values), output with ANSI codes
-    stripped, exit code and duration, and PASS/FAIL <label> when labelled.
-  Exits with the command's exit code. On Ctrl-C the log is flushed and the
-  interruption recorded before exiting.
-  --label L     record PASS/FAIL L (and update status.yml when run in a lane)
-  --new         start a fresh log (truncate)
-  --snapshot    also save output to .swim/snapshots/laneN-<time>-<label>.txt
-  --timeout D   stop the command after D (default: $SWIM_STEP_TIMEOUT, from the
-                script's Step-Timeout:; 0 for none); never past the round's Timeout.
-                The command runs in its own process group: SIGTERM to all of
-                it, SIGKILL after 5s (when stdin is a terminal, only to the
-                command: see swim guide lanes)
-  --retry N, --backoff D, --retry-on CODES, --no-retry-timeout
-                retry on failure (see swim guide lanes)
-  --expect-fail[=CODES]
-                the command should fail: the step passes on a non-zero exit
-                (one of CODES, e.g. =1,2, if given) and is logged "failed as
-                expected: exit N"; exit 0 or another code fails it. A time
-                limit or a signal still fails it. Not with --retry.
-  Lane scripts call this through run/gate/snapshot; you rarely need it directly.
-`,
 	"gate": `swim gate [options] "<label>" -- cmd [args...]
 
   In a lane script in any language (swim guide other-languages): run
@@ -406,15 +378,6 @@ swim report --earmarks | --earmark --reset [--name NAME]
   (file and line) and whether the shell overrides it. Exits 1 if a key is
   one of the lane's guard flags. --yaml: a swim.env/v1 document with the
   env_sha256 the round would record. See swim guide env.
-`,
-	"lib": `swim lib
-
-  Print the bash library lane scripts use. A short-form script
-  (#!/usr/bin/env swim, what swim new writes) has it loaded by swim run.
-  An explicit-form script loads it itself, then calls lane_init N:
-    _swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
-  (eval, not "source <(...)": process-substitution source is broken in
-  macOS bash 3.2). See swim guide lanes for the functions.
 `,
 	"archive": `swim archive N|JOB ... ["<note>"] [--as NAME] [--force]
 swim archive --done ["<note>"]
@@ -468,7 +431,7 @@ swim archive --done ["<note>"]
   swim log adds it from the step's spool (.swim/logs/agentN.log.partial),
   output so far included, under a result line that never appears in a file:
       RUNNING  <label> (in progress)          <elapsed>s  <hh:mm:ss>
-  ("cut off: ..." instead of "in progress" if its swim step died; it is
+  ("cut off: ..." instead of "in progress" if swim died mid-step; it is
   recorded as FAIL when the lane next runs).
   --full        don't fold long or repeated output
   --raw         print the file exactly, as cat shows it, even on a terminal
@@ -1016,7 +979,7 @@ func For(name string) (string, bool) {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report",
 	"gate", "snapshot", "guard", "stage",
 	"archive", "note", "lock", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
 	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}

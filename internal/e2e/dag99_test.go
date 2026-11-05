@@ -117,7 +117,7 @@ func dagNodeLane(nd dagNode, locks string) string {
 	b.WriteString("#\n# Synthetic dag99 node: no network, nothing destructive. Its value is\n" +
 		"# sha256 over its parents' values, so lane 99 can recompute the DAG.\n" +
 		"# E2E_FAIL=\"3 41\" fails those lanes on purpose.\n\n")
-	b.WriteString(`_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
+	b.WriteString(`_swim_lib=$("${SWIM_BIN:-swim}" _lib) || { echo "swim not found on PATH" >&2; exit 1; }
 eval "$_swim_lib"
 `)
 	fmt.Fprintf(&b, "lane_init %d\n\nD=$SWIM_ROOT/.scenario/dag\nN=%d\nPARENTS=%q\n", nd.n, nd.n, ps)
@@ -161,7 +161,7 @@ func dagAuditLane(sinks []int) string {
 # Checks every node finished in this run, every edge finished-before-started,
 # every value recomputes from the graph, and the roots started together.
 
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || { echo "swim not found on PATH" >&2; exit 1; }
 eval "$_swim_lib"
 lane_init 99
 

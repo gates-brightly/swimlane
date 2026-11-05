@@ -78,7 +78,7 @@ type Options struct {
 	Stopped func() bool
 }
 
-// ExitStopped is swim step's exit code when a stop request kept it from
+// ExitStopped is swim _step's exit code when a stop request kept it from
 // starting; the lane library then records STOP and ends the round.
 const ExitStopped = 86
 
@@ -181,7 +181,7 @@ type attempt struct {
 // reports 128+signal, and one stopped by a time limit reports 124.
 func Run(o Options) (Result, error) {
 	if len(o.Args) == 0 {
-		return Result{ExitCode: 2}, errors.New("step: no command given (usage: swim step [--label L] -- cmd args...)")
+		return Result{ExitCode: 2}, errors.New("step: no command given (usage: swim _step [--label L] -- cmd args...)")
 	}
 	p := ui.Painter{On: o.Color}
 	if dir := filepath.Dir(o.LogPath); dir != "" {
@@ -683,7 +683,7 @@ func RecordStep(logPath, kind, label, detail, cmdline string, start time.Time, d
 	return logparse.ResultLine(kind, label, detail), nil
 }
 
-// RecoverSpool writes a step that never finished (swim step was killed
+// RecoverSpool writes a step that never finished (swim _step was killed
 // outright, so it never wrote its block) into the log as a failed step with
 // whatever output it had collected.
 func RecoverSpool(logPath string) {
@@ -701,7 +701,7 @@ func RecoverSpool(logPath string) {
 		}
 	}
 	f.Close()
-	writeBlock(logPath, logparse.StepLine(logparse.Fail, label, "cut off: swim step was killed, output recovered", "?", clock), "")
+	writeBlock(logPath, logparse.StepLine(logparse.Fail, label, "cut off: swim was killed mid-step, output recovered", "?", clock), "")
 }
 
 // readsTerminal reports whether a step's stdin is a terminal.

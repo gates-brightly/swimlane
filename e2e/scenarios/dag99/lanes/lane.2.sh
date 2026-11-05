@@ -28,7 +28,7 @@
 # Never edit this file while it may be running: `swim status` first.
 # Do not use `set -e`: failed checks keep going; only gates stop the round.
 
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || { echo "swim not found on PATH" >&2; exit 1; }
 eval "$_swim_lib"
 lane_init 2
 

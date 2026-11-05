@@ -24,7 +24,7 @@
 //
 // The sites:
 //
-//	step.after-exit    swim step: the command exited, its PASS/FAIL line not yet written
+//	step.after-exit    swim _step: the command exited, its PASS/FAIL line not yet written
 //	queue.claimed      a queue entry renamed to .running, its worker not yet recorded
 //	status.mid-write   half of status.yml's new temporary file written
 //	chain.mid-append   half of a chain entry's line written and synced

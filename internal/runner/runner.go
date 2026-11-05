@@ -32,7 +32,7 @@ const (
 // library, calls lane_init with the lane number from the script's name
 // (lane.N.sh, staged under the same name), and sources the script. The
 // library's exit trap ends the round, so the script needn't call summary.
-const ShortPrelude = `_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found on PATH" >&2; exit 1; }
+const ShortPrelude = `_swim_lib=$("${SWIM_BIN:-swim}" _lib) || { echo "swim not found on PATH" >&2; exit 1; }
 eval "$_swim_lib"
 _swim_n=${0##*/}; _swim_n=${_swim_n#lane.}; _swim_n=${_swim_n%%.*}
 lane_init "$_swim_n"

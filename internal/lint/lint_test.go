@@ -22,7 +22,7 @@ func clean(n int) string {
 # Timeout: 30m
 #
 # Notes in prose: set -e is banned; mapfile too. # Round: not a key
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found" >&2; exit 1; }
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || { echo "swim not found" >&2; exit 1; }
 eval "$_swim_lib"
 lane_init %[1]d
 stage snapshot
@@ -290,7 +290,7 @@ func TestFix(t *testing.T) {
 # Guards: ALLOW_A  a
 #
 # Goal: prose
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 source lib/x.sh
 if guard ALLOW_A "a"; then run a true; fi
@@ -338,7 +338,7 @@ func TestWorkspaceFile(t *testing.T) {
 	src := `#!/usr/bin/env bash
 # swim: syntax 4
 # Round: read files
-_swim_lib=$("${SWIM_BIN:-swim}" lib) || exit 1; eval "$_swim_lib"
+_swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 source lib.sh
 stage check
@@ -399,7 +399,7 @@ func TestParse(t *testing.T) {
 func TestShortFormLane(t *testing.T) {
 	short := func(n int) string {
 		s := replace(clean(n), "#!/usr/bin/env bash", "#!/usr/bin/env swim")
-		s = replace(s, `_swim_lib=$("${SWIM_BIN:-swim}" lib) || { echo "swim not found" >&2; exit 1; }
+		s = replace(s, `_swim_lib=$("${SWIM_BIN:-swim}" _lib) || { echo "swim not found" >&2; exit 1; }
 eval "$_swim_lib"
 `, "")
 		s = replace(s, fmt.Sprintf("lane_init %d\n", n), "")

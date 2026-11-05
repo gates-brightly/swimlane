@@ -221,7 +221,7 @@ func crash(r *repo, c *exec.Cmd, paused int) {
 	c.Wait()
 }
 
-// A crash after a step's command exited but before swim step wrote its
+// A crash after a step's command exited but before swim _step wrote its
 // result: the restart (swim watch) ends the round as interrupted with the
 // step recovered as cut off, never as passed, and runs nothing again; the
 // non-idempotent step ran exactly once. Rerunning it takes an explicit
@@ -244,7 +244,7 @@ run "after" touch "$SWIM_ROOT/after"`)
 		t.Fatalf("after the restart: %+v", l)
 	}
 	log := r.log(1)
-	contains(t, "log", log, "FAIL  charge (cut off: swim step was killed, output recovered)", "== END INTERRUPTED")
+	contains(t, "log", log, "FAIL  charge (cut off: swim was killed mid-step, output recovered)", "== END INTERRUPTED")
 	if strings.Contains(log, "PASS  charge") {
 		t.Errorf("the cut-off step reads as passed:\n%s", log)
 	}
