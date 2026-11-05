@@ -30,6 +30,7 @@ line says what it is by how it starts:
         -- attempt 1/4                                with --retry
         | <output, ANSI stripped>                     output is always fenced
         saved: <snapshot path>
+        why: <the output line that says why>             a failed step's why (below)
   BLOCKED  <label> (matched "terraform destroy"; blocked_commands)    exit 87, counts as FAIL
   SKIP  <label> (dry run: <why>)                      a guard not approved
   APPROVED  <label> (<by whom>)
@@ -42,6 +43,19 @@ line says what it is by how it starts:
 
 Results are the lines starting `  KIND  ` (`grep -E '^  (FAIL|BLOCKED)'`
 finds every failure); anything indented 8 spaces belongs to the step above.
+
+A failed step's `why:` is the line of its output that best says why,
+picked once when it fails: the first line with (in this order) `--- FAIL:`
+(joined with the `x_test.go:NN:` line below it: `--- FAIL: TestX:
+x_test.go:41: got 1, want 2`), `panic:`, `FAIL:`, `fatal:`/`Fatal`,
+`error:`/`Error:`/`ERROR`, or a `file.ext:NN:` location; else swim lint's
+first `file:N  error` (or `warn`) finding, or a `needs gofmt` header with
+the first file under it; else its last stderr line; else its last output
+line. One line, secrets masked, cut at
+160 characters; a step that printed nothing has none. The one-line views
+show it after the step's result: `.swim.log`, `swim status`, bare `swim`,
+`swim watch`, notifications, the run summary, `swim ci`'s job summary,
+annotations and JUnit, and `failed_steps` in the `--yaml` documents.
 The current round is everything after the last `== ROUND`. A lane that
 exits before its round starts gets `STOP  not started: <why>`.
 Logs written before the one syntax number start
@@ -56,6 +70,10 @@ first. `swim note "<text>"` adds to it.
 <utc>  <user>  <event>  [swim N]  [job=<id>]  [run=<id>]  <detail>
 ```
 
+A `fail` line's detail ends with the failed steps, each with its why:
+`... CI: unit tests  | FAIL  go test (unit) (exit 1): --- FAIL: TestX:
+x_test.go:41: got 1, want 2`.
+
 Events: `init`, `new`, `run`, `start`, `pass`/`fail`/`interrupted`, `skip`,
 `approve`, `decline`, `run-done`, `archive`, `note`, `lint`,
 `usage` (a command swim refused as typed). Details summarize; the evidence
@@ -69,7 +87,7 @@ skipped, interrupted; see [state](state.md)), `pending` and `pending_job`
 (the script on disk), `round`, `job`, `run`, `script`, `log`,
 `waiting_on`, `reason`, `locks`, `pid`, `started_at`, `finished_at`,
 `duration_s`, `exit_code`, `pass`/`fail`/`skip`, `current_step`,
-`failed_steps`, `flag_approved`, `dry_run`,
+`failed_steps` (each with its why), `flag_approved`, `dry_run`,
 `last_archive`.
 
 ## YAML
@@ -80,7 +98,7 @@ document carries `schema:`; fields are only added within a version.
 | | |
 |---|---|
 | `swim run\|all --yaml` | `swim.run/v1`, one document per event as it happens: `run`, `waiting`, `locked`, `queued`, `start`, `output` (with `--yaml-output`), `step`, `finish`, `stop_requested`, `stopping`, `force_quit`, `kill`, then `summary` (result, exit, each lane's result). Same exit code. |
-| `swim log N --yaml` | `swim.log/v1`: the round as data: results with label, stage, exit, command, output; the running step as `RUNNING`. |
+| `swim log N --yaml` | `swim.log/v1`: the round as data: results with label, stage, exit, command, output, why; the running step as `RUNNING`. |
 | `swim status --yaml` | `swim.status/v1`: status.yml, plus each pending lane's `pending_header` (after, guards and how each would be decided, timeout, locks, includes) and `deps`. |
 | others | `swim.queue-list/v1`, `swim.verify/v1`, ...: [compatibility](compatibility.md#stability-tiers). |
 

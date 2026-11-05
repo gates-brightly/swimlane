@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/logparse"
+	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
@@ -118,6 +119,48 @@ func TestRunNewTruncatesAndSnapshotSaves(t *testing.T) {
 	snap, err := os.ReadFile(res.Saved)
 	if err != nil || string(snap) != "state-v1\n" {
 		t.Fatalf("snapshot %s: %q %v", res.Saved, snap, err)
+	}
+}
+
+// A failed step's why is picked once, from its last attempt's output with
+// secrets masked, and stored in its block and status, not its result line.
+func TestRunWhy(t *testing.T) {
+	o, _, _ := newOpts(t, "bash", "-c", `n=$(cat "$0.n" 2>/dev/null || echo 0); echo $((n+1)) > "$0.n"
+echo "attempt $n"; echo "token hunter2-secret rejected (try $n)" >&2; echo done; exit 2`)
+	o.Args = append(o.Args, filepath.Join(o.Root, "count"))
+	o.Label, o.Lane, o.Lanes = "deploy", 1, 1
+	o.Retry = Retry{Max: 1, Backoff: time.Millisecond}
+	o.Mask = redact.New([]string{"API_TOKEN=hunter2-secret"}, redact.Options{Names: []string{"API_TOKEN"}})
+	if _, err := Run(o); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := logparse.ParseFile(o.LogPath)
+	if len(r.Results) != 1 {
+		t.Fatalf("results: %+v", r.Results)
+	}
+	res := r.Results[0]
+	if want := "token *** rejected (try 1)"; res.Why != want {
+		t.Errorf("why = %q, want %q", res.Why, want)
+	}
+	if strings.Contains(res.Text(), "rejected") {
+		t.Errorf("the why is in the result line: %q", res.Text())
+	}
+	st, _ := status.Load(o.Root)
+	if l := st.Get(1); len(l.FailedSteps) != 1 || l.FailedSteps[0] != "FAIL  deploy (exit 2, attempt 2/2): token *** rejected (try 1)" {
+		t.Errorf("status failed steps: %q", l.FailedSteps)
+	}
+
+	// A gate that fails printing nothing has no why.
+	o, _, _ = newOpts(t, "test", "-f", "/nonexistent/ready")
+	o.Label, o.Lane, o.Lanes = "ready", 1, 1
+	Run(o)
+	data, _ := os.ReadFile(o.LogPath)
+	if strings.Contains(string(data), "why:") {
+		t.Errorf("why for a silent failure:\n%s", data)
+	}
+	st, _ = status.Load(o.Root)
+	if l := st.Get(1); len(l.FailedSteps) != 1 || l.FailedSteps[0] != "FAIL  ready (exit 1)" {
+		t.Errorf("status failed steps: %q", l.FailedSteps)
 	}
 }
 

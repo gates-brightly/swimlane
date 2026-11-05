@@ -1,0 +1,54 @@
+?   	github.com/gates-brightly/swimlane	[no test files]
+?   	github.com/gates-brightly/swimlane/cmd/swim	[no test files]
+?   	github.com/gates-brightly/swimlane/e2e/cmd/e2etool	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/anchor	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/approval	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/assets	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/authority	0.572s
+ok  	github.com/gates-brightly/swimlane/internal/cache	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/chain	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/changelog	0.621s
+ok  	github.com/gates-brightly/swimlane/internal/chars	(cached)
+?   	github.com/gates-brightly/swimlane/internal/checkpoint	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/ci	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/cli	5.375s
+--- FAIL: TestIsDefault (0.00s)
+    config_test.go:341: IsDefault(cache_dir, ~/.cache/swim) = false, <nil>; want true
+FAIL
+FAIL	github.com/gates-brightly/swimlane/internal/config	4.220s
+ok  	github.com/gates-brightly/swimlane/internal/display	1.643s
+ok  	github.com/gates-brightly/swimlane/internal/docs	3.393s
+ok  	github.com/gates-brightly/swimlane/internal/doctor	7.910s
+?   	github.com/gates-brightly/swimlane/internal/earmark	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/envfile	2.755s
+?   	github.com/gates-brightly/swimlane/internal/failpoint	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/finding	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/fsutil	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/help	1.108s
+ok  	github.com/gates-brightly/swimlane/internal/history	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/lane	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/launcher	5.276s
+ok  	github.com/gates-brightly/swimlane/internal/lint	3.605s
+ok  	github.com/gates-brightly/swimlane/internal/logparse	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/lookup	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/manifest	9.768s
+ok  	github.com/gates-brightly/swimlane/internal/migrate	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/notify	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/outputs	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/peer	2.062s
+ok  	github.com/gates-brightly/swimlane/internal/policy	3.014s
+ok  	github.com/gates-brightly/swimlane/internal/proc	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/queue	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/redact	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/runner	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/sigfile	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/sign	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/status	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/step	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/store	3.237s
+ok  	github.com/gates-brightly/swimlane/internal/syntax	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/testwait	3.371s
+ok  	github.com/gates-brightly/swimlane/internal/trust	3.911s
+ok  	github.com/gates-brightly/swimlane/internal/ui	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/version	(cached)
+FAIL

@@ -329,7 +329,7 @@ func rebuildStatus(root string, cfg *config.Config) error {
 			l.StartedAt = status.Str(r.StartedAt)
 			l.Pass, l.Fail, l.Skip = r.Pass, r.Fail, r.Skip
 			for _, fr := range r.Failed() {
-				l.FailedSteps = append(l.FailedSteps, fr.Text())
+				l.FailedSteps = append(l.FailedSteps, fr.Brief())
 			}
 			switch {
 			case !r.Finished:
@@ -425,7 +425,7 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 			fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Dim, fmt.Sprintf("job: %s  pass %d  fail %d  skip %d  stages: %s",
 				round.Job, round.Pass, round.Fail, round.Skip, logparse.StagesText(round.StageResults()))))
 			for _, fr := range round.Failed() {
-				fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Red, fr.Text()))
+				fmt.Println(strings.Repeat(" ", 10) + p.Paint(ui.Red, fr.Brief()))
 			}
 		case skips[n] != "":
 			found++

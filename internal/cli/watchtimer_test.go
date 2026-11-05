@@ -42,7 +42,8 @@ func TestWatchTimers(t *testing.T) {
 }
 
 // A finished lane's row says how long its round took, whatever its end;
-// a pending one, how its lane's last round ended and took.
+// a pending one, how its lane's last round ended and took; a failed one,
+// its first failed step with its why.
 func TestWatchRowsSayHowLongTheLastRoundTook(t *testing.T) {
 	now := time.Date(2026, 10, 15, 18, 0, 0, 0, time.UTC)
 	at := func(d time.Duration) *string { s := now.Add(-d).Format(time.RFC3339); return &s }
@@ -55,6 +56,9 @@ func TestWatchRowsSayHowLongTheLastRoundTook(t *testing.T) {
 	}{
 		{"passed", &status.Lane{State: status.Passed, DurationS: secs(252)}, status.Passed, "took 4m12s"},
 		{"failed", &status.Lane{State: status.Failed, DurationS: secs(3)}, status.Failed, "took 3s"},
+		{"failed, with its first step's why", &status.Lane{State: status.Failed, DurationS: secs(3),
+			FailedSteps: []string{"FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:4: got 1", "STOP  gate failed: go test"}},
+			status.Failed, "took 3s" + "FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:4: got 1"},
 		{"interrupted, no duration", &status.Lane{State: status.Interrupted, StartedAt: at(2 * time.Hour), FinishedAt: at(time.Hour)}, status.Interrupted, "took 1h0m"},
 		{"skipped", &status.Lane{State: status.Skipped, DurationS: secs(0.4)}, status.Skipped, "took 0s"},
 		{"pending after a failure", &status.Lane{State: status.Failed, DurationS: secs(65)}, "pending", "last run failed, took 1m5s"},
@@ -62,7 +66,7 @@ func TestWatchRowsSayHowLongTheLastRoundTook(t *testing.T) {
 		{"running", &status.Lane{State: status.Running, StartedAt: at(time.Minute)}, status.Running, ""},
 		{"no times", &status.Lane{State: status.Passed}, status.Passed, ""},
 	} {
-		got := laneTook(c.lane, c.state) + laneRowDetail(c.lane, c.state) // one of them, by state
+		got := laneTook(c.lane, c.state) + laneRowDetail(c.lane, c.state) // by state: one of them, or both
 		if got != c.want {
 			t.Errorf("%s: took/detail = %q, want %q", c.name, got, c.want)
 		}

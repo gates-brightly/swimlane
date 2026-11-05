@@ -1,0 +1,1 @@
+swim: cannot start kubectl-nope: exec: "kubectl-nope": executable file not found in $PATH

@@ -22,6 +22,7 @@ type ResultDoc struct {
 	Command  string   `yaml:"command,omitempty" json:"command,omitempty"`
 	Output   []string `yaml:"output,omitempty" json:"output,omitempty"`
 	Saved    string   `yaml:"saved,omitempty" json:"saved,omitempty"`
+	Why      string   `yaml:"why,omitempty" json:"why,omitempty"` // a failed step's most telling output line
 }
 
 // Counts are a round's result totals.
@@ -98,7 +99,7 @@ func (r *Round) Doc(n int) Doc {
 	}
 	for _, res := range r.Results {
 		rd := ResultDoc{Result: res.Kind, Label: res.Label, Detail: res.Detail, Stage: res.Stage, Handler: res.Handler, Step: res.Step,
-			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved}
+			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved, Why: res.Why}
 		if res.Step {
 			dur := res.Dur
 			rd.Duration = &dur
@@ -115,7 +116,7 @@ func (r *Round) Doc(n int) Doc {
 		d.Results = append(d.Results, rd)
 	}
 	for _, f := range r.Failed() {
-		d.Failed = append(d.Failed, f.Text())
+		d.Failed = append(d.Failed, f.Brief())
 	}
 	return d
 }

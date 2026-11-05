@@ -1,0 +1,1320 @@
+=== RUN   TestGuardAsksForApproval
+=== PAUSE TestGuardAsksForApproval
+=== RUN   TestApprovalGivesUpWhenStopped
+=== PAUSE TestApprovalGivesUpWhenStopped
+=== RUN   TestNoPromptWithoutTerminal
+=== PAUSE TestNoPromptWithoutTerminal
+=== RUN   TestAutoApprove
+=== PAUSE TestAutoApprove
+=== RUN   TestAuthMachineEnrollment
+=== PAUSE TestAuthMachineEnrollment
+=== RUN   TestAuthAdminUserNamesAndAccess
+=== PAUSE TestAuthAdminUserNamesAndAccess
+=== RUN   TestHostileLaneWritesApprovals
+=== PAUSE TestHostileLaneWritesApprovals
+=== RUN   TestHostileLaneMarksApproved
+=== PAUSE TestHostileLaneMarksApproved
+=== RUN   TestHostileLaneDropsApprovals
+=== PAUSE TestHostileLaneDropsApprovals
+=== RUN   TestOtherRepoRunDoesNotCount
+=== PAUSE TestOtherRepoRunDoesNotCount
+=== RUN   TestApprovalsUnavailable
+=== PAUSE TestApprovalsUnavailable
+=== RUN   TestHostileLaneSetsFlag
+=== PAUSE TestHostileLaneSetsFlag
+=== RUN   TestHostileLaneWrongJob
+=== PAUSE TestHostileLaneWrongJob
+=== RUN   TestLaneCantReportForAnother
+=== PAUSE TestLaneCantReportForAnother
+=== RUN   TestBrokerHostileClients
+=== PAUSE TestBrokerHostileClients
+=== RUN   TestCachePresetPersistsBetweenRounds
+=== PAUSE TestCachePresetPersistsBetweenRounds
+=== RUN   TestCacheLockfileIsPinnedAndRequired
+=== PAUSE TestCacheLockfileIsPinnedAndRequired
+=== RUN   TestCacheTerraformInitsTakeTurns
+=== PAUSE TestCacheTerraformInitsTakeTurns
+=== RUN   TestCacheSnapshot
+=== PAUSE TestCacheSnapshot
+=== RUN   TestCacheSnapshotRules
+=== PAUSE TestCacheSnapshotRules
+=== RUN   TestVerifyRefusesUnsigned
+=== PAUSE TestVerifyRefusesUnsigned
+=== RUN   TestVerifyCatchesRewriteBehindCheckpoint
+=== PAUSE TestVerifyCatchesRewriteBehindCheckpoint
+=== RUN   TestChainLargeEntryAndRepair
+=== PAUSE TestChainLargeEntryAndRepair
+=== RUN   TestChangelog
+--- PASS: TestChangelog (0.46s)
+=== RUN   TestConfigKeys
+=== PAUSE TestConfigKeys
+=== RUN   TestChimeNeverIntoAPipe
+=== PAUSE TestChimeNeverIntoAPipe
+=== RUN   TestCIGitHub
+=== PAUSE TestCIGitHub
+=== RUN   TestCIGitLabAndGeneric
+=== PAUSE TestCIGitLabAndGeneric
+=== RUN   TestCIChanged
+=== PAUSE TestCIChanged
+=== RUN   TestCIPinsAndLanes
+=== PAUSE TestCIPinsAndLanes
+=== RUN   TestCIHeartbeat
+    ci_test.go:231: a lane writing output needs no heartbeat:
+        swim: wrote .swim.lock (syntax script 4, log 2, state 2); commit it so everyone runs a compatible swim
+        swim ci · swim 0.dev · provider generic
+        commit 590e6877e01b703a82738271d3f266ead44a0d84  branch main
+        run r-20261027T194020Z-b078 · lanes 1, 2
+        selected: every pending round that hasn't passed
+        guard flags set: none (destructive steps run as dry runs)
+        
+        [1] started: quiet
+        [2] started: chatty
+        [1] still running: lane script (0:01)
+        [2] still running: lane script (0:01)
+        [1] swim 1  Round: quiet  job 32db439a-7164-4a9a-bb3b-0eff919f1928
+        [2] swim 2  Round: chatty  job afdb7e36-4f47-416c-b382-bae217c9a9e3
+        [1] ==> wait
+        [1] $ sleep 2.5
+        [2] ==> talk
+        [2] $ bash -c 'for i in $(seq 12); do echo tick; sleep 0.2; done'
+        [2] tick
+        [2] tick
+        [2] tick
+        [2] tick
+        [2] tick
+        [2] tick
+        [1] still running: wait (0:03)
+        [2] tick
+        [2] tick
+        [2] tick
+        [2] tick
+        [2] tick
+        [2] tick
+        [1] still running: wait (0:04)
+        [1] PASS  wait  2.6s
+        [1] swim 1 summary: PASS  pass=1 fail=0 skip=0 drift=0  exit 0  15:40:20 → 15:40:25 (0:05)
+        [1]   stages: setup PASS | snapshot none | check none | change none | verify none
+        [2] PASS  talk  2.6s
+        [1] PASS (0:04)
+        [2] swim 2 summary: PASS  pass=1 fail=0 skip=0 drift=0  exit 0  15:40:20 → 15:40:25 (0:05)
+        [2]   stages: setup PASS | snapshot none | check none | change none | verify none
+        [2] PASS (0:04)
+        
+        swim summary · 15:40:20 → 15:40:25 (0:05)
+          lane     job      result       exit  pass  fail  skip  drift    time
+          swim 1   32db439a PASS            0     1     0     0      0    0:04
+          swim 2   afdb7e36 PASS            0     1     0     0      0    0:04
+          logs: swim log N (or .swim/logs/agent1.log .swim/logs/agent2.log)   status: swim status
+        
+        ==== swim 1 PASS - quiet (job 32db439a, 0:05) ====
+        == ROUND 2026-10-27T19:40:20Z  job=32db439a-7164-4a9a-bb3b-0eff919f1928  quiet
+           run: r-20261027T194020Z-b078 | script: lane.1.sh | pid: 45084 | operator: zachgates | owner: - | created: 2026-10-27 | after: - | timeout: none | step-timeout: none | guards: - | git: main@590e687 | commit: 590e6877e01b703a82738271d3f266ead44a0d84 | sha256: c241aab65952 | manifest: 7c40b785082d (staged .swim/runs/r-20261027T194020Z-b078/1) | env: STAGE=<unset> AWS_REGION=<unset> | masked: 4 vars (CF_KEYRING_FILE_PASSWORD, FONTAWESOME_NPM_AUTH_TOKEN, HOMEBREW_GITHUB_API_TOKEN, SWIM_APPROVAL_TOKEN)
+          PASS  wait                                    2.6s  15:40:21
+                $ sleep 2.5
+        
+        == END PASS  pass=1 fail=0 skip=0 drift=0  exit=0  4.6s  2026-10-27T19:40:24Z  run=r-20261027T194020Z-b078
+           stages: setup PASS | snapshot none | check none | change none | verify none
+        
+        ==== swim 2 PASS - chatty (job afdb7e36, 0:05) ====
+        == ROUND 2026-10-27T19:40:20Z  job=afdb7e36-4f47-416c-b382-bae217c9a9e3  chatty
+           run: r-20261027T194020Z-b078 | script: lane.2.sh | pid: 45085 | operator: zachgates | owner: - | created: 2026-10-27 | after: - | timeout: none | step-timeout: none | guards: - | git: main@590e687 | commit: 590e6877e01b703a82738271d3f266ead44a0d84 | sha256: fd78c1ae997a | manifest: 5e8c25240da7 (staged .swim/runs/r-20261027T194020Z-b078/2) | env: STAGE=<unset> AWS_REGION=<unset> | masked: 4 vars (CF_KEYRING_FILE_PASSWORD, FONTAWESOME_NPM_AUTH_TOKEN, HOMEBREW_GITHUB_API_TOKEN, SWIM_APPROVAL_TOKEN)
+          PASS  talk                                    2.6s  15:40:22
+                $ bash -c 'for i in $(seq 12); do echo tick; sleep 0.2; done'
+                | tick
+                | tick
+                | tick
+                | tick
+                | tick
+                | tick
+                | tick
+                | tick
+                | tick
+                | tick
+                | tick
+                | tick
+        
+        == END PASS  pass=1 fail=0 skip=0 drift=0  exit=0  4.7s  2026-10-27T19:40:24Z  run=r-20261027T194020Z-b078
+           stages: setup PASS | snapshot none | check none | change none | verify none
+        
+        artifacts to upload: .swim/logs/ .swim/snapshots/ .swim/out/ .swim.log
+--- FAIL: TestCIHeartbeat (5.64s)
+=== RUN   TestLaneClaims
+=== PAUSE TestLaneClaims
+=== RUN   TestLaneClaimsSameSession
+=== PAUSE TestLaneClaimsSameSession
+=== RUN   TestClean
+=== PAUSE TestClean
+=== RUN   TestPrune
+=== PAUSE TestPrune
+=== RUN   TestSignedApprovalAndVerify
+=== PAUSE TestSignedApprovalAndVerify
+=== RUN   TestChainRecordsEveryApproval
+=== PAUSE TestChainRecordsEveryApproval
+=== RUN   TestWatchSigned
+=== PAUSE TestWatchSigned
+=== RUN   TestStandingApproval
+=== PAUSE TestStandingApproval
+=== RUN   TestApprovalLifecycle
+=== PAUSE TestApprovalLifecycle
+=== RUN   TestInitIsIdempotent
+=== PAUSE TestInitIsIdempotent
+=== RUN   TestFullRunWithDependencies
+=== PAUSE TestFullRunWithDependencies
+=== RUN   TestSkipPropagatesDownChain
+=== PAUSE TestSkipPropagatesDownChain
+=== RUN   TestDryRunIsSkippedNotPassed
+=== PAUSE TestDryRunIsSkippedNotPassed
+=== RUN   TestRunSelectedLanesOnly
+=== PAUSE TestRunSelectedLanesOnly
+=== RUN   TestAfterHeaderDiamond
+=== PAUSE TestAfterHeaderDiamond
+=== RUN   TestAfterPinnedToJob
+=== PAUSE TestAfterPinnedToJob
+=== RUN   TestGuardApprovedAndConfirmFailsClosed
+=== PAUSE TestGuardApprovedAndConfirmFailsClosed
+=== RUN   TestArchiveStubNewAndRunningRefusals
+=== PAUSE TestArchiveStubNewAndRunningRefusals
+=== RUN   TestInterruptRecordsAndStopsRound
+=== PAUSE TestInterruptRecordsAndStopsRound
+=== RUN   TestStepStandalone
+=== PAUSE TestStepStandalone
+=== RUN   TestStaleRunningShown
+=== PAUSE TestStaleRunningShown
+=== RUN   TestHelp
+=== PAUSE TestHelp
+=== RUN   TestJobIDsAndPinning
+=== PAUSE TestJobIDsAndPinning
+=== RUN   TestScriptWithoutJobLineGetsOne
+=== PAUSE TestScriptWithoutJobLineGetsOne
+=== RUN   TestProjectLog
+=== PAUSE TestProjectLog
+=== RUN   TestLogCommand
+=== PAUSE TestLogCommand
+=== RUN   TestAllSkipsPassedJobs
+=== PAUSE TestAllSkipsPassedJobs
+=== RUN   TestLanesInUse
+=== PAUSE TestLanesInUse
+=== RUN   TestPlan
+=== PAUSE TestPlan
+=== RUN   TestVersionAndLock
+=== PAUSE TestVersionAndLock
+=== RUN   TestSyntax1Refused
+=== PAUSE TestSyntax1Refused
+=== RUN   TestSyntaxTooNew
+=== PAUSE TestSyntaxTooNew
+=== RUN   TestStagesWarnings
+=== PAUSE TestStagesWarnings
+=== RUN   TestTimeoutStopsRound
+=== PAUSE TestTimeoutStopsRound
+=== RUN   TestRunID
+=== PAUSE TestRunID
+=== RUN   TestParallelLimit
+--- PASS: TestParallelLimit (9.86s)
+=== RUN   TestResourceLocksWithinARun
+=== PAUSE TestResourceLocksWithinARun
+=== RUN   TestResourceLocksAcrossRuns
+=== PAUSE TestResourceLocksAcrossRuns
+=== RUN   TestBadLockNameWarns
+=== PAUSE TestBadLockNameWarns
+=== RUN   TestStepTimeoutAndRetry
+=== PAUSE TestStepTimeoutAndRetry
+=== RUN   TestRetryRespectsRoundDeadline
+--- PASS: TestRetryRespectsRoundDeadline (0.45s)
+=== RUN   TestCtrlCDuringBackoff
+=== PAUSE TestCtrlCDuringBackoff
+=== RUN   TestBlockedCommands
+=== PAUSE TestBlockedCommands
+=== RUN   TestSecretMasking
+=== PAUSE TestSecretMasking
+=== RUN   TestTimeline
+=== PAUSE TestTimeline
+=== RUN   TestYAMLOutput
+=== PAUSE TestYAMLOutput
+=== RUN   TestArchiveSeveralLanes
+=== PAUSE TestArchiveSeveralLanes
+=== RUN   TestLaneRunningElsewhere
+=== PAUSE TestLaneRunningElsewhere
+=== RUN   TestEnvFiles
+=== PAUSE TestEnvFiles
+=== RUN   TestEnvFileGuardFlagRefused
+=== PAUSE TestEnvFileGuardFlagRefused
+=== RUN   TestEnvFileQueuePin
+=== PAUSE TestEnvFileQueuePin
+=== RUN   TestEnvFileDuplicatesAndWrappedLane
+=== PAUSE TestEnvFileDuplicatesAndWrappedLane
+=== RUN   TestEvidenceBoundApproval
+=== PAUSE TestEvidenceBoundApproval
+=== RUN   TestEvidenceRuleAndWatch
+=== PAUSE TestEvidenceRuleAndWatch
+=== RUN   TestExpectFail
+=== PAUSE TestExpectFail
+=== RUN   TestGuardedSecretRefused
+=== PAUSE TestGuardedSecretRefused
+=== RUN   TestGuardedSecretReleased
+=== PAUSE TestGuardedSecretReleased
+=== RUN   TestGuardedSecretReleaseStep
+=== PAUSE TestGuardedSecretReleaseStep
+=== RUN   TestGuardedSecretSignedAndQueued
+=== PAUSE TestGuardedSecretSignedAndQueued
+=== RUN   TestGuardedSecretFromCIEnv
+=== PAUSE TestGuardedSecretFromCIEnv
+=== RUN   TestGuardedSecretOutsideRun
+=== PAUSE TestGuardedSecretOutsideRun
+=== RUN   TestHeadlessHubApprovals
+=== PAUSE TestHeadlessHubApprovals
+=== RUN   TestHeadlessUnanswerableGuardFails
+=== PAUSE TestHeadlessUnanswerableGuardFails
+=== RUN   TestHeadlessHubCommands
+=== PAUSE TestHeadlessHubCommands
+=== RUN   TestHeadlessHubPause
+=== PAUSE TestHeadlessHubPause
+=== RUN   TestRunnersPsStop
+=== PAUSE TestRunnersPsStop
+=== RUN   TestHeadlessHubQueue
+=== PAUSE TestHeadlessHubQueue
+=== RUN   TestHeadlessNeedsAHub
+=== PAUSE TestHeadlessNeedsAHub
+=== RUN   TestHeadlessDetachStatusStop
+=== PAUSE TestHeadlessDetachStatusStop
+=== RUN   TestHeadlessKilled
+=== PAUSE TestHeadlessKilled
+=== RUN   TestHeadlessInstall
+=== PAUSE TestHeadlessInstall
+=== RUN   TestHeadlessHubTrash
+=== PAUSE TestHeadlessHubTrash
+=== RUN   TestHubKeepsRuns
+=== PAUSE TestHubKeepsRuns
+=== RUN   TestHubSecrets
+=== PAUSE TestHubSecrets
+=== RUN   TestHubStreamsLogs
+=== PAUSE TestHubStreamsLogs
+=== RUN   TestHubStreamsNothingByDefault
+=== PAUSE TestHubStreamsNothingByDefault
+=== RUN   TestHubLiveLogEvents
+=== PAUSE TestHubLiveLogEvents
+=== RUN   TestHub
+=== PAUSE TestHub
+=== RUN   TestHubTLS
+=== PAUSE TestHubTLS
+=== RUN   TestHubTLSPolicy
+=== PAUSE TestHubTLSPolicy
+=== RUN   TestGracefulInterrupt
+=== PAUSE TestGracefulInterrupt
+=== RUN   TestForceQuit
+=== PAUSE TestForceQuit
+=== RUN   TestKillOnThirdCtrlC
+=== PAUSE TestKillOnThirdCtrlC
+=== RUN   TestStepTimeoutLeavesNoSurvivors
+=== PAUSE TestStepTimeoutLeavesNoSurvivors
+=== RUN   TestForceQuitKillsStepGroup
+=== PAUSE TestForceQuitKillsStepGroup
+=== RUN   TestTermEscalatesAfterGrace
+=== PAUSE TestTermEscalatesAfterGrace
+=== RUN   TestHangupForcesAtOnce
+=== PAUSE TestHangupForcesAtOnce
+=== RUN   TestImmediateInterruptMode
+=== PAUSE TestImmediateInterruptMode
+=== RUN   TestStopDuringRetryWait
+=== PAUSE TestStopDuringRetryWait
+=== RUN   TestStopCancelsConfirm
+=== PAUSE TestStopCancelsConfirm
+=== RUN   TestInterruptOneLane
+=== PAUSE TestInterruptOneLane
+=== RUN   TestLeftoverProcessDoesntHang
+=== PAUSE TestLeftoverProcessDoesntHang
+=== RUN   TestLeftoverProcessDoesntHoldLocks
+=== PAUSE TestLeftoverProcessDoesntHoldLocks
+=== RUN   TestLocksReadFromStage
+=== PAUSE TestLocksReadFromStage
+=== RUN   TestLintExitCodes
+=== PAUSE TestLintExitCodes
+=== RUN   TestRunLintPreflight
+=== PAUSE TestRunLintPreflight
+=== RUN   TestDoctor
+=== PAUSE TestDoctor
+=== RUN   TestDoctorBrokenConfig
+=== PAUSE TestDoctorBrokenConfig
+=== RUN   TestLogShowsRunningStep
+=== PAUSE TestLogShowsRunningStep
+=== RUN   TestLogFollowUntilDone
+=== PAUSE TestLogFollowUntilDone
+=== RUN   TestLogFollowLateOutput
+=== PAUSE TestLogFollowLateOutput
+=== RUN   TestLogCutOffStep
+=== PAUSE TestLogCutOffStep
+=== RUN   TestManifestStagedBytesRun
+=== PAUSE TestManifestStagedBytesRun
+=== RUN   TestManifestMidRunEdit
+=== PAUSE TestManifestMidRunEdit
+=== RUN   TestManifestQueuePin
+=== PAUSE TestManifestQueuePin
+=== RUN   TestManifestApprovalBinding
+=== PAUSE TestManifestApprovalBinding
+=== RUN   TestManifestRequestsFromTheLane
+=== PAUSE TestManifestRequestsFromTheLane
+=== RUN   TestManifestResponseReuse
+=== PAUSE TestManifestResponseReuse
+=== RUN   TestManifestObservedDrift
+=== PAUSE TestManifestObservedDrift
+=== RUN   TestManifestRunnerBinding
+=== PAUSE TestManifestRunnerBinding
+=== RUN   TestFetchedModules
+=== PAUSE TestFetchedModules
+=== RUN   TestModuleLockPinsBuiltins
+=== PAUSE TestModuleLockPinsBuiltins
+=== RUN   TestModuleClone
+=== PAUSE TestModuleClone
+=== RUN   TestModuleNotify
+=== PAUSE TestModuleNotify
+=== RUN   TestModuleRepoAndEnv
+=== PAUSE TestModuleRepoAndEnv
+=== RUN   TestModuleAWSSession
+=== PAUSE TestModuleAWSSession
+=== RUN   TestModuleRepoGo
+=== PAUSE TestModuleRepoGo
+=== RUN   TestModuleApprovalStale
+=== PAUSE TestModuleApprovalStale
+=== RUN   TestModuleTargetBackupWait
+=== PAUSE TestModuleTargetBackupWait
+=== RUN   TestModuleTF
+=== PAUSE TestModuleTF
+=== RUN   TestModuleSmoke
+=== PAUSE TestModuleSmoke
+=== RUN   TestModuleClaude
+=== PAUSE TestModuleClaude
+=== RUN   TestFailureOutsideStepWarns
+=== PAUSE TestFailureOutsideStepWarns
+=== RUN   TestModuleFromAPlainProgram
+=== PAUSE TestModuleFromAPlainProgram
+=== RUN   TestLaneMessages
+=== PAUSE TestLaneMessages
+=== RUN   TestLaneMessagesEveryChange
+=== PAUSE TestLaneMessagesEveryChange
+=== RUN   TestObservations
+=== PAUSE TestObservations
+=== RUN   TestObservationKnowledge
+=== PAUSE TestObservationKnowledge
+=== RUN   TestObservationTargets
+=== PAUSE TestObservationTargets
+=== RUN   TestLaneOutputs
+=== PAUSE TestLaneOutputs
+=== RUN   TestLaneOutputProblems
+=== PAUSE TestLaneOutputProblems
+=== RUN   TestLaneOutputsByJobAndPrune
+=== PAUSE TestLaneOutputsByJobAndPrune
+=== RUN   TestLibInputOutput
+=== PAUSE TestLibInputOutput
+=== RUN   TestPauseResume
+=== PAUSE TestPauseResume
+=== RUN   TestPauseThenInterrupt
+=== PAUSE TestPauseThenInterrupt
+=== RUN   TestPauseReplace
+=== PAUSE TestPauseReplace
+=== RUN   TestPauseBeforeStartAndTimeout
+--- PASS: TestPauseBeforeStartAndTimeout (5.15s)
+=== RUN   TestPauseAllHoldsWorkers
+=== PAUSE TestPauseAllHoldsWorkers
+=== RUN   TestPlanCheck
+=== PAUSE TestPlanCheck
+=== RUN   TestPlanCheckWrapped
+=== PAUSE TestPlanCheckWrapped
+=== RUN   TestPlanCheckLintAndCI
+=== PAUSE TestPlanCheckLintAndCI
+=== RUN   TestSchedulerProperties
+=== RUN   TestSchedulerProperties/3_lanes
+--- PASS: TestSchedulerProperties/3_lanes (1.23s)
+=== RUN   TestSchedulerProperties/5_lanes
+--- PASS: TestSchedulerProperties/5_lanes (1.53s)
+=== RUN   TestSchedulerProperties/2_lanes
+--- PASS: TestSchedulerProperties/2_lanes (1.21s)
+--- PASS: TestSchedulerProperties (3.97s)
+=== RUN   TestQueueAndWatchOnce
+=== PAUSE TestQueueAndWatchOnce
+=== RUN   TestWatchWaitsForBusyLanes
+=== PAUSE TestWatchWaitsForBusyLanes
+=== RUN   TestWatchWorkersShareTheQueue
+=== PAUSE TestWatchWorkersShareTheQueue
+=== RUN   TestQueueYesOrphanRemove
+=== PAUSE TestQueueYesOrphanRemove
+=== RUN   TestWatchCtrlCDuringBatch
+=== PAUSE TestWatchCtrlCDuringBatch
+=== RUN   TestWatchYes
+=== PAUSE TestWatchYes
+=== RUN   TestWatchYesIncludedAndDynamicGuards
+=== PAUSE TestWatchYesIncludedAndDynamicGuards
+=== RUN   TestWatchDryRunMarked
+=== PAUSE TestWatchDryRunMarked
+=== RUN   TestWaitAndQueueWait
+=== PAUSE TestWaitAndQueueWait
+=== RUN   TestWaitNamesAQueueWithNoWorker
+=== PAUSE TestWaitNamesAQueueWithNoWorker
+=== RUN   TestQueueWaitTimeout
+=== PAUSE TestQueueWaitTimeout
+=== RUN   TestWatchBatchesSideBySide
+=== PAUSE TestWatchBatchesSideBySide
+=== RUN   TestQueueWarnsUnapprovedGuards
+=== PAUSE TestQueueWarnsUnapprovedGuards
+=== RUN   TestQuickstartRuns
+=== PAUSE TestQuickstartRuns
+=== RUN   TestDocsQuickstartRuns
+=== PAUSE TestDocsQuickstartRuns
+=== RUN   TestLaneThatNeverStartsIsRecorded
+=== PAUSE TestLaneThatNeverStartsIsRecorded
+=== RUN   TestLockRefusalIsRecorded
+=== PAUSE TestLockRefusalIsRecorded
+=== RUN   TestRecoveryLostRunnerKey
+=== PAUSE TestRecoveryLostRunnerKey
+=== RUN   TestRecoveryStaleRunningLane
+=== PAUSE TestRecoveryStaleRunningLane
+=== RUN   TestReapDeadLane
+=== PAUSE TestReapDeadLane
+=== RUN   TestReportLoop
+=== PAUSE TestReportLoop
+=== RUN   TestReportReadersAndArchive
+=== PAUSE TestReportReadersAndArchive
+=== RUN   TestReportWait
+=== PAUSE TestReportWait
+=== RUN   TestReportInFlight
+=== PAUSE TestReportInFlight
+=== RUN   TestRunKeyKeepsSigningFromLanes
+=== PAUSE TestRunKeyKeepsSigningFromLanes
+=== RUN   TestWrappedLaneInLaneCommands
+=== PAUSE TestWrappedLaneInLaneCommands
+=== RUN   TestWrappedLaneNoStepAfterEnd
+=== PAUSE TestWrappedLaneNoStepAfterEnd
+=== RUN   TestWrappedLaneWholeRun
+=== PAUSE TestWrappedLaneWholeRun
+=== RUN   TestBinaryLaneWithSidecar
+=== PAUSE TestBinaryLaneWithSidecar
+=== RUN   TestRunnerResolution
+=== PAUSE TestRunnerResolution
+=== RUN   TestTwoScriptsConflict
+=== PAUSE TestTwoScriptsConflict
+=== RUN   TestWrappedLaneGracefulStop
+=== PAUSE TestWrappedLaneGracefulStop
+=== RUN   TestWrappedLaneGitShim
+=== PAUSE TestWrappedLaneGitShim
+=== RUN   TestScenarios
+=== PAUSE TestScenarios
+=== RUN   TestScheduleStartsNoEarlier
+=== PAUSE TestScheduleStartsNoEarlier
+=== RUN   TestScheduleHoldsDependents
+=== PAUSE TestScheduleHoldsDependents
+=== RUN   TestScheduleRefusals
+=== PAUSE TestScheduleRefusals
+=== RUN   TestScheduleTamperedRefused
+=== PAUSE TestScheduleTamperedRefused
+=== RUN   TestSecretCLI
+=== PAUSE TestSecretCLI
+=== RUN   TestSecretsInRun
+=== PAUSE TestSecretsInRun
+=== RUN   TestSecretsFromCIEnv
+=== PAUSE TestSecretsFromCIEnv
+=== RUN   TestSecretsPassphraseKeyUnattended
+=== PAUSE TestSecretsPassphraseKeyUnattended
+=== RUN   TestNamedTask
+=== PAUSE TestNamedTask
+=== RUN   TestTaskAfter
+=== PAUSE TestTaskAfter
+=== RUN   TestTrash
+=== PAUSE TestTrash
+=== RUN   TestTrashRefuses
+=== PAUSE TestTrashRefuses
+=== RUN   TestGuardDeclinesOnSocketError
+=== PAUSE TestGuardDeclinesOnSocketError
+=== RUN   TestUntrustedTextIsSafe
+=== PAUSE TestUntrustedTextIsSafe
+=== RUN   TestVerifyTrustedLevel
+=== PAUSE TestVerifyTrustedLevel
+=== RUN   TestVerifyAnchoredLevel
+=== PAUSE TestVerifyAnchoredLevel
+=== RUN   TestVerifyAuthorizedLevel
+=== PAUSE TestVerifyAuthorizedLevel
+=== RUN   TestVerifySharedRunID
+=== PAUSE TestVerifySharedRunID
+=== RUN   TestCheckpointSendFails
+=== PAUSE TestCheckpointSendFails
+=== RUN   TestQueueRefusesBatchTheWorkerCantRun
+=== PAUSE TestQueueRefusesBatchTheWorkerCantRun
+=== RUN   TestLaneRunsStaged
+=== PAUSE TestLaneRunsStaged
+=== CONT  TestGuardAsksForApproval
+=== CONT  TestForceQuitKillsStepGroup
+=== CONT  TestQueueAndWatchOnce
+=== CONT  TestModuleClone
+=== CONT  TestHubStreamsLogs
+=== CONT  TestBinaryLaneWithSidecar
+=== CONT  TestModuleLockPinsBuiltins
+=== CONT  TestStepTimeoutLeavesNoSurvivors
+=== CONT  TestKillOnThirdCtrlC
+=== CONT  TestForceQuit
+=== CONT  TestGracefulInterrupt
+=== CONT  TestHubTLSPolicy
+=== CONT  TestHubTLS
+=== CONT  TestHub
+=== CONT  TestHubLiveLogEvents
+=== CONT  TestHubStreamsNothingByDefault
+=== CONT  TestFetchedModules
+=== CONT  TestLanesInUse
+--- PASS: TestHubTLSPolicy (0.72s)
+=== CONT  TestManifestRunnerBinding
+--- PASS: TestHubTLS (1.13s)
+=== CONT  TestManifestObservedDrift
+--- PASS: TestGuardAsksForApproval (1.41s)
+=== CONT  TestManifestResponseReuse
+    interrupt_test.go:239: output missing "swim: killing 1 lanes now.":
+        swim: wrote .swim.lock (syntax script 4, log 2, state 2); commit it so everyone runs a compatible swim
+        [2] started: other
+        [1] started: stubborn
+        [2] swim 2  Round: other  job 4d281567-c61b-42bc-b4c1-51c6973023f0
+        [1] swim 1  Round: stubborn  job 5bddfe01-0210-4752-87e3-44a2395dcd7f
+        [2] ==> x
+        [2] $ sleep 31.4
+        [1] ==> hang
+        [1] $ bash -c 'trap "sleep 20" INT; sleep 31.3 & wait; wait'
+        swim: stopping after current steps (2 running). Ctrl-C again to force quit.
+           swim 1   stopping  hang (0:01)
+           swim 2   stopping  x (0:01)
+        swim: force quitting: interrupting 2 lanes, killing in 5s. Ctrl-C again to kill now.
+        [2] FAIL  x (exit 130, interrupted)  0.1s
+        [2] swim 2 summary: INTERRUPTED  pass=0 fail=1 skip=0 drift=0  exit 130  15:40:45 → 15:40:46 (0:01)
+        [2]   stages: setup FAIL | snapshot none | check none | change none | verify none
+        [2]   FAIL  x (exit 130, interrupted)
+        swim: killing 2 lanes now.
+        [1] INTERRUPTED (0:01)
+        [2] INTERRUPTED (0:01)
+        
+        swim summary · 15:40:45 → 15:40:46 (0:01)
+          lane     job      result       exit  pass  fail  skip  drift    time
+          swim 1   5bddfe01 INTERRUPTED   137     0     1     0      0    0:01
+                            FAIL  hang (cut off: swim step was killed, output recovered)       ?  15:40:45
+          swim 2   4d281567 INTERRUPTED   137     0     1     0      0    0:01
+                            FAIL  x (exit 130, interrupted)
+          logs: swim log N (or .swim/logs/agent1.log .swim/logs/agent2.log)   status: swim status
+--- FAIL: TestKillOnThirdCtrlC (1.52s)
+=== CONT  TestObservations
+=== CONT  TestManifestRequestsFromTheLane
+--- PASS: TestForceQuitKillsStepGroup (1.94s)
+--- PASS: TestGracefulInterrupt (2.01s)
+=== CONT  TestManifestApprovalBinding
+=== CONT  TestPlanCheckLintAndCI
+--- PASS: TestLanesInUse (2.17s)
+--- PASS: TestForceQuit (2.70s)
+=== CONT  TestManifestQueuePin
+--- PASS: TestStepTimeoutLeavesNoSurvivors (2.81s)
+=== CONT  TestManifestMidRunEdit
+--- PASS: TestBinaryLaneWithSidecar (2.89s)
+=== CONT  TestPlanCheckWrapped
+--- PASS: TestHubLiveLogEvents (3.03s)
+=== CONT  TestManifestStagedBytesRun
+--- PASS: TestHubStreamsLogs (3.03s)
+=== CONT  TestPlanCheck
+--- PASS: TestQueueAndWatchOnce (3.18s)
+=== CONT  TestLogCutOffStep
+--- PASS: TestManifestObservedDrift (2.18s)
+=== CONT  TestPauseAllHoldsWorkers
+--- PASS: TestHub (3.39s)
+=== CONT  TestLogFollowLateOutput
+--- PASS: TestPlanCheckLintAndCI (2.12s)
+=== CONT  TestLogFollowUntilDone
+--- PASS: TestPlanCheckWrapped (1.48s)
+=== CONT  TestModuleTF
+--- PASS: TestManifestQueuePin (1.73s)
+=== CONT  TestLaneMessagesEveryChange
+--- PASS: TestManifestRequestsFromTheLane (2.64s)
+=== CONT  TestLogShowsRunningStep
+--- PASS: TestManifestResponseReuse (3.24s)
+=== CONT  TestLaneMessages
+--- PASS: TestModuleLockPinsBuiltins (4.68s)
+=== CONT  TestDoctorBrokenConfig
+--- PASS: TestManifestRunnerBinding (4.08s)
+=== CONT  TestDoctor
+=== CONT  TestModuleFromAPlainProgram
+--- PASS: TestManifestMidRunEdit (2.15s)
+--- PASS: TestModuleClone (5.01s)
+=== CONT  TestRunLintPreflight
+--- PASS: TestLogCutOffStep (2.15s)
+=== CONT  TestPauseReplace
+--- PASS: TestDoctorBrokenConfig (0.85s)
+=== CONT  TestLintExitCodes
+--- PASS: TestLogFollowLateOutput (2.30s)
+=== CONT  TestPauseThenInterrupt
+--- PASS: TestManifestStagedBytesRun (2.74s)
+=== CONT  TestLocksReadFromStage
+=== CONT  TestFailureOutsideStepWarns
+--- PASS: TestDoctor (1.50s)
+--- PASS: TestLaneMessagesEveryChange (1.98s)
+=== CONT  TestLeftoverProcessDoesntHoldLocks
+--- PASS: TestHubStreamsNothingByDefault (6.51s)
+=== CONT  TestModuleClaude
+--- PASS: TestLogFollowUntilDone (2.58s)
+=== CONT  TestLeftoverProcessDoesntHang
+=== CONT  TestModuleSmoke
+--- PASS: TestLintExitCodes (1.38s)
+--- PASS: TestLogShowsRunningStep (2.63s)
+=== CONT  TestInterruptOneLane
+=== CONT  TestHangupForcesAtOnce
+--- PASS: TestModuleFromAPlainProgram (2.57s)
+=== CONT  TestTermEscalatesAfterGrace
+--- PASS: TestLaneMessages (2.98s)
+--- PASS: TestPauseAllHoldsWorkers (4.36s)
+=== CONT  TestPauseResume
+--- PASS: TestPauseThenInterrupt (2.64s)
+=== CONT  TestWrappedLaneWholeRun
+--- PASS: TestPlanCheck (5.42s)
+=== CONT  TestLibInputOutput
+--- PASS: TestRunLintPreflight (3.64s)
+=== CONT  TestWrappedLaneNoStepAfterEnd
+--- PASS: TestFailureOutsideStepWarns (2.46s)
+=== CONT  TestLaneOutputsByJobAndPrune
+--- PASS: TestPauseReplace (3.49s)
+=== CONT  TestEvidenceBoundApproval
+--- PASS: TestManifestApprovalBinding (6.95s)
+=== CONT  TestNamedTask
+--- PASS: TestModuleSmoke (2.30s)
+=== CONT  TestHubSecrets
+--- PASS: TestWrappedLaneWholeRun (1.22s)
+=== CONT  TestLaneRunsStaged
+--- PASS: TestFetchedModules (9.59s)
+=== CONT  TestHubKeepsRuns
+--- PASS: TestModuleClaude (3.14s)
+=== CONT  TestQueueRefusesBatchTheWorkerCantRun
+--- PASS: TestInterruptOneLane (2.49s)
+=== CONT  TestHeadlessHubTrash
+--- PASS: TestHangupForcesAtOnce (2.18s)
+=== CONT  TestHeadlessInstall
+--- PASS: TestLocksReadFromStage (4.30s)
+=== CONT  TestWrappedLaneInLaneCommands
+=== CONT  TestLaneOutputProblems
+--- PASS: TestModuleTF (5.74s)
+--- PASS: TestHeadlessInstall (0.76s)
+=== CONT  TestLaneOutputs
+--- PASS: TestTermEscalatesAfterGrace (2.84s)
+=== CONT  TestCheckpointSendFails
+--- PASS: TestLeftoverProcessDoesntHang (4.26s)
+=== CONT  TestHeadlessKilled
+--- PASS: TestHeadlessHubTrash (1.69s)
+=== CONT  TestObservationTargets
+--- PASS: TestPauseResume (3.88s)
+=== CONT  TestHeadlessDetachStatusStop
+--- PASS: TestQueueRefusesBatchTheWorkerCantRun (2.38s)
+=== CONT  TestObservationKnowledge
+--- PASS: TestLibInputOutput (3.25s)
+=== CONT  TestHeadlessNeedsAHub
+--- PASS: TestWrappedLaneInLaneCommands (1.73s)
+=== CONT  TestStopCancelsConfirm
+--- PASS: TestLeftoverProcessDoesntHoldLocks (5.52s)
+=== CONT  TestHeadlessHubQueue
+--- PASS: TestHeadlessNeedsAHub (0.73s)
+=== CONT  TestGuardedSecretSignedAndQueued
+=== CONT  TestGuardedSecretReleaseStep
+--- PASS: TestHubSecrets (3.27s)
+--- PASS: TestHeadlessKilled (1.61s)
+=== CONT  TestGuardedSecretReleased
+--- PASS: TestCheckpointSendFails (2.32s)
+=== CONT  TestGuardedSecretRefused
+--- PASS: TestNamedTask (3.83s)
+=== CONT  TestExpectFail
+--- PASS: TestLaneRunsStaged (3.32s)
+=== CONT  TestEvidenceRuleAndWatch
+--- PASS: TestHubKeepsRuns (3.39s)
+=== CONT  TestHeadlessHubCommands
+--- PASS: TestLaneOutputs (2.70s)
+=== CONT  TestRunnersPsStop
+--- PASS: TestLaneOutputsByJobAndPrune (5.05s)
+=== CONT  TestImmediateInterruptMode
+--- PASS: TestStopCancelsConfirm (2.09s)
+=== CONT  TestHeadlessHubPause
+--- PASS: TestHeadlessDetachStatusStop (2.51s)
+=== CONT  TestStopDuringRetryWait
+    observe_test.go:33: observe missing "usually 0.1s":
+        swim observe · run r-20261027T194055Z-cd33 · 1 lanes · 2 observations
+        slow     swim 1   "nap" took 2.1s; usually 0.2s (p90 0.2s, 6 runs)  slow-1-1
+        retried  swim 1   "flaky call" passed on attempt 2 (attempt 2/3)  retried-1-2
+    observe_test.go:33: observe missing "(p90 0.1s, 6 runs)":
+        swim observe · run r-20261027T194055Z-cd33 · 1 lanes · 2 observations
+        slow     swim 1   "nap" took 2.1s; usually 0.2s (p90 0.2s, 6 runs)  slow-1-1
+        retried  swim 1   "flaky call" passed on attempt 2 (attempt 2/3)  retried-1-2
+--- PASS: TestGuardedSecretReleaseStep (1.87s)
+=== CONT  TestModuleRepoGo
+--- PASS: TestLaneOutputProblems (4.32s)
+=== CONT  TestModuleTargetBackupWait
+--- PASS: TestEvidenceBoundApproval (5.82s)
+=== CONT  TestModuleApprovalStale
+--- PASS: TestWrappedLaneNoStepAfterEnd (6.37s)
+=== CONT  TestModuleRepoAndEnv
+--- PASS: TestObservationKnowledge (4.44s)
+=== CONT  TestModuleAWSSession
+--- PASS: TestRunnersPsStop (2.89s)
+=== CONT  TestTrashRefuses
+--- PASS: TestImmediateInterruptMode (2.42s)
+=== CONT  TestGuardDeclinesOnSocketError
+--- FAIL: TestObservations (14.78s)
+=== CONT  TestScheduleHoldsDependents
+--- PASS: TestExpectFail (3.56s)
+=== CONT  TestVerifyAnchoredLevel
+--- PASS: TestStopDuringRetryWait (2.37s)
+=== CONT  TestVerifyAuthorizedLevel
+--- PASS: TestGuardedSecretReleased (3.91s)
+=== CONT  TestSecretsPassphraseKeyUnattended
+--- PASS: TestTrashRefuses (0.97s)
+=== CONT  TestSecretsFromCIEnv
+=== CONT  TestHeadlessHubApprovals
+--- PASS: TestGuardDeclinesOnSocketError (1.21s)
+=== CONT  TestSecretsInRun
+--- PASS: TestHeadlessHubPause (3.59s)
+--- PASS: TestModuleApprovalStale (2.98s)
+=== CONT  TestSecretCLI
+--- PASS: TestObservationTargets (6.29s)
+=== CONT  TestHeadlessUnanswerableGuardFails
+--- PASS: TestGuardedSecretSignedAndQueued (5.28s)
+=== CONT  TestScheduleTamperedRefused
+=== CONT  TestScheduleRefusals
+--- PASS: TestEvidenceRuleAndWatch (4.95s)
+--- PASS: TestHeadlessHubQueue (6.01s)
+=== CONT  TestVerifyTrustedLevel
+--- PASS: TestModuleRepoAndEnv (3.01s)
+=== CONT  TestTrash
+--- PASS: TestSecretCLI (0.57s)
+=== CONT  TestGuardedSecretOutsideRun
+--- PASS: TestScheduleRefusals (0.47s)
+=== CONT  TestWatchYesIncludedAndDynamicGuards
+--- PASS: TestSecretsFromCIEnv (1.34s)
+=== CONT  TestWatchBatchesSideBySide
+--- PASS: TestModuleAWSSession (2.50s)
+=== CONT  TestGuardedSecretFromCIEnv
+--- PASS: TestModuleTargetBackupWait (4.55s)
+=== CONT  TestQueueWarnsUnapprovedGuards
+--- PASS: TestGuardedSecretRefused (6.41s)
+=== CONT  TestReportInFlight
+--- PASS: TestScheduleTamperedRefused (1.51s)
+=== CONT  TestReportWait
+--- PASS: TestQueueWarnsUnapprovedGuards (0.43s)
+=== CONT  TestReportReadersAndArchive
+--- PASS: TestGuardedSecretOutsideRun (1.58s)
+=== CONT  TestReportLoop
+--- PASS: TestTrash (2.02s)
+=== CONT  TestReapDeadLane
+=== CONT  TestRecoveryStaleRunningLane
+--- PASS: TestSecretsPassphraseKeyUnattended (3.61s)
+--- PASS: TestSecretsInRun (3.04s)
+=== CONT  TestRecoveryLostRunnerKey
+--- PASS: TestWatchYesIncludedAndDynamicGuards (2.89s)
+=== CONT  TestLockRefusalIsRecorded
+--- PASS: TestGuardedSecretFromCIEnv (2.84s)
+=== CONT  TestQueueWaitTimeout
+--- PASS: TestVerifyTrustedLevel (3.45s)
+=== CONT  TestWaitNamesAQueueWithNoWorker
+=== CONT  TestLaneThatNeverStartsIsRecorded
+--- PASS: TestReportInFlight (2.34s)
+--- PASS: TestHeadlessHubCommands (8.66s)
+=== CONT  TestWaitAndQueueWait
+--- PASS: TestHeadlessUnanswerableGuardFails (4.39s)
+=== CONT  TestDocsQuickstartRuns
+--- PASS: TestWaitNamesAQueueWithNoWorker (0.99s)
+=== CONT  TestQuickstartRuns
+--- PASS: TestLaneThatNeverStartsIsRecorded (1.02s)
+=== CONT  TestWatchDryRunMarked
+--- PASS: TestReportWait (3.66s)
+=== CONT  TestTaskAfter
+--- PASS: TestRecoveryStaleRunningLane (2.79s)
+=== CONT  TestModuleNotify
+--- PASS: TestLockRefusalIsRecorded (1.98s)
+=== CONT  TestQueueYesOrphanRemove
+--- PASS: TestScheduleHoldsDependents (6.99s)
+=== CONT  TestWatchCtrlCDuringBatch
+--- PASS: TestReportLoop (3.91s)
+=== CONT  TestWatchYes
+--- PASS: TestVerifyAuthorizedLevel (7.28s)
+=== CONT  TestWrappedLaneGitShim
+=== CONT  TestCIPinsAndLanes
+--- PASS: TestVerifyAnchoredLevel (7.58s)
+--- PASS: TestReportReadersAndArchive (4.63s)
+=== CONT  TestScheduleStartsNoEarlier
+--- PASS: TestReapDeadLane (4.16s)
+=== CONT  TestScenarios
+=== RUN   TestScenarios/blocked
+=== PAUSE TestScenarios/blocked
+=== RUN   TestScenarios/ci-changed
+=== PAUSE TestScenarios/ci-changed
+=== RUN   TestScenarios/ci-github
+=== PAUSE TestScenarios/ci-github
+=== RUN   TestScenarios/dag99
+=== PAUSE TestScenarios/dag99
+=== RUN   TestScenarios/dag99-cascade
+=== PAUSE TestScenarios/dag99-cascade
+=== RUN   TestScenarios/dag99-force
+=== PAUSE TestScenarios/dag99-force
+=== RUN   TestScenarios/dag99-interrupt
+=== PAUSE TestScenarios/dag99-interrupt
+=== RUN   TestScenarios/dag99-locks
+    scenarios_test.go:30: Linux only (T32): the scheduler under load is the same on macOS; plain dag99, -interrupt and -force cover bash 3.2 and signals there. SWIM_E2E_ALL_SCENARIOS=1 runs it
+--- SKIP: TestScenarios/dag99-locks (0.00s)
+=== RUN   TestScenarios/dag99-parallel
+    scenarios_test.go:30: Linux only (T32): the scheduler under load is the same on macOS; plain dag99, -interrupt and -force cover bash 3.2 and signals there. SWIM_E2E_ALL_SCENARIOS=1 runs it
+--- SKIP: TestScenarios/dag99-parallel (0.00s)
+=== RUN   TestScenarios/dag99-retry
+    scenarios_test.go:30: Linux only (T32): the scheduler under load is the same on macOS; plain dag99, -interrupt and -force cover bash 3.2 and signals there. SWIM_E2E_ALL_SCENARIOS=1 runs it
+--- SKIP: TestScenarios/dag99-retry (0.00s)
+=== RUN   TestScenarios/flaky
+=== PAUSE TestScenarios/flaky
+=== CONT  TestWatchWorkersShareTheQueue
+--- PASS: TestRecoveryLostRunnerKey (4.97s)
+=== CONT  TestLaneRunningElsewhere
+--- PASS: TestWrappedLaneGitShim (1.86s)
+=== CONT  TestEnvFileDuplicatesAndWrappedLane
+--- PASS: TestTaskAfter (2.92s)
+=== CONT  TestEnvFileQueuePin
+--- PASS: TestWatchCtrlCDuringBatch (2.84s)
+=== CONT  TestEnvFileGuardFlagRefused
+--- PASS: TestQueueYesOrphanRemove (3.04s)
+=== CONT  TestEnvFiles
+--- PASS: TestQueueWaitTimeout (4.82s)
+=== CONT  TestRunKeyKeepsSigningFromLanes
+--- PASS: TestWatchBatchesSideBySide (7.92s)
+=== CONT  TestWatchWaitsForBusyLanes
+--- PASS: TestWatchDryRunMarked (3.82s)
+=== CONT  TestBrokerHostileClients
+--- PASS: TestModuleNotify (3.76s)
+=== CONT  TestCIChanged
+--- PASS: TestEnvFileDuplicatesAndWrappedLane (1.55s)
+=== CONT  TestCIGitLabAndGeneric
+--- PASS: TestWaitAndQueueWait (5.51s)
+=== CONT  TestVerifySharedRunID
+--- PASS: TestEnvFileGuardFlagRefused (1.17s)
+=== CONT  TestCIGitHub
+--- PASS: TestEnvFileQueuePin (1.68s)
+=== CONT  TestRunSelectedLanesOnly
+--- PASS: TestCIPinsAndLanes (3.57s)
+=== CONT  TestChimeNeverIntoAPipe
+--- PASS: TestWatchWorkersShareTheQueue (3.36s)
+=== CONT  TestCtrlCDuringBackoff
+--- PASS: TestWatchYes (3.93s)
+=== CONT  TestConfigKeys
+--- PASS: TestQuickstartRuns (5.28s)
+=== CONT  TestArchiveSeveralLanes
+--- PASS: TestEnvFiles (1.56s)
+=== CONT  TestYAMLOutput
+--- PASS: TestLaneRunningElsewhere (2.79s)
+=== CONT  TestTimeline
+--- PASS: TestConfigKeys (0.85s)
+=== CONT  TestSecretMasking
+--- PASS: TestBrokerHostileClients (2.22s)
+=== CONT  TestBlockedCommands
+--- PASS: TestScheduleStartsNoEarlier (4.75s)
+=== CONT  TestRunnerResolution
+--- PASS: TestCtrlCDuringBackoff (1.39s)
+=== CONT  TestGuardApprovedAndConfirmFailsClosed
+--- PASS: TestRunKeyKeepsSigningFromLanes (3.84s)
+=== CONT  TestInterruptRecordsAndStopsRound
+--- PASS: TestSecretMasking (2.10s)
+=== CONT  TestChainLargeEntryAndRepair
+--- PASS: TestChimeNeverIntoAPipe (3.10s)
+=== CONT  TestArchiveStubNewAndRunningRefusals
+--- PASS: TestCIGitLabAndGeneric (3.52s)
+=== CONT  TestTimeoutStopsRound
+--- PASS: TestGuardApprovedAndConfirmFailsClosed (2.04s)
+=== CONT  TestStepTimeoutAndRetry
+--- PASS: TestModuleRepoGo (16.91s)
+=== CONT  TestVerifyCatchesRewriteBehindCheckpoint
+--- PASS: TestWatchWaitsForBusyLanes (5.34s)
+=== CONT  TestVerifyRefusesUnsigned
+--- PASS: TestInterruptRecordsAndStopsRound (1.91s)
+=== CONT  TestBadLockNameWarns
+--- PASS: TestArchiveSeveralLanes (4.38s)
+=== CONT  TestCacheSnapshotRules
+--- PASS: TestTimeoutStopsRound (1.81s)
+=== CONT  TestResourceLocksAcrossRuns
+--- PASS: TestHeadlessHubApprovals (15.55s)
+=== CONT  TestResourceLocksWithinARun
+--- PASS: TestYAMLOutput (5.30s)
+=== CONT  TestRunID
+--- PASS: TestBlockedCommands (4.45s)
+=== CONT  TestAfterPinnedToJob
+--- PASS: TestRunnerResolution (4.27s)
+=== CONT  TestSyntax1Refused
+--- PASS: TestRunSelectedLanesOnly (5.68s)
+=== CONT  TestLaneCantReportForAnother
+--- PASS: TestSyntax1Refused (0.26s)
+=== CONT  TestStagesWarnings
+--- PASS: TestVerifySharedRunID (6.53s)
+=== CONT  TestCacheSnapshot
+--- PASS: TestVerifyRefusesUnsigned (2.06s)
+=== CONT  TestSyntaxTooNew
+--- PASS: TestBadLockNameWarns (2.02s)
+=== CONT  TestCacheTerraformInitsTakeTurns
+--- PASS: TestArchiveStubNewAndRunningRefusals (3.64s)
+=== CONT  TestAfterHeaderDiamond
+--- PASS: TestSyntaxTooNew (0.59s)
+=== CONT  TestCacheLockfileIsPinnedAndRequired
+--- PASS: TestCIChanged (7.86s)
+=== CONT  TestCachePresetPersistsBetweenRounds
+--- PASS: TestTimeline (6.61s)
+=== CONT  TestWrappedLaneGracefulStop
+--- PASS: TestLaneCantReportForAnother (2.02s)
+=== CONT  TestScriptWithoutJobLineGetsOne
+--- PASS: TestCIGitHub (8.11s)
+=== CONT  TestLogCommand
+=== CONT  TestProjectLog
+--- PASS: TestCacheSnapshotRules (3.47s)
+--- PASS: TestWrappedLaneGracefulStop (0.96s)
+=== CONT  TestHostileLaneMarksApproved
+--- PASS: TestScriptWithoutJobLineGetsOne (1.56s)
+=== CONT  TestHostileLaneWritesApprovals
+--- PASS: TestStagesWarnings (3.58s)
+=== CONT  TestHostileLaneWrongJob
+--- PASS: TestResourceLocksAcrossRuns (4.98s)
+=== CONT  TestHostileLaneSetsFlag
+--- PASS: TestChainLargeEntryAndRepair (6.90s)
+=== CONT  TestAuthAdminUserNamesAndAccess
+--- PASS: TestCacheLockfileIsPinnedAndRequired (3.62s)
+=== CONT  TestApprovalsUnavailable
+--- PASS: TestAuthAdminUserNamesAndAccess (0.73s)
+=== CONT  TestAuthMachineEnrollment
+=== CONT  TestOtherRepoRunDoesNotCount
+--- PASS: TestAfterPinnedToJob (5.19s)
+--- PASS: TestStepTimeoutAndRetry (7.62s)
+=== CONT  TestHostileLaneDropsApprovals
+--- PASS: TestHostileLaneWrongJob (1.87s)
+=== CONT  TestPrune
+--- PASS: TestRunID (5.72s)
+=== CONT  TestWatchSigned
+--- PASS: TestProjectLog (3.42s)
+=== CONT  TestChainRecordsEveryApproval
+--- PASS: TestLogCommand (3.66s)
+=== CONT  TestSignedApprovalAndVerify
+--- PASS: TestAuthMachineEnrollment (1.28s)
+=== CONT  TestDryRunIsSkippedNotPassed
+--- PASS: TestCachePresetPersistsBetweenRounds (4.81s)
+=== CONT  TestLaneClaimsSameSession
+--- PASS: TestAfterHeaderDiamond (5.47s)
+=== CONT  TestSkipPropagatesDownChain
+--- PASS: TestCacheSnapshot (6.06s)
+=== CONT  TestClean
+=== CONT  TestFullRunWithDependencies
+--- PASS: TestHostileLaneMarksApproved (3.88s)
+--- PASS: TestLaneClaimsSameSession (0.42s)
+=== CONT  TestJobIDsAndPinning
+--- PASS: TestApprovalsUnavailable (2.39s)
+=== CONT  TestInitIsIdempotent
+--- PASS: TestCacheTerraformInitsTakeTurns (6.34s)
+=== CONT  TestApprovalLifecycle
+--- PASS: TestVerifyCatchesRewriteBehindCheckpoint (9.27s)
+=== CONT  TestStandingApproval
+=== CONT  TestVersionAndLock
+--- PASS: TestInitIsIdempotent (0.65s)
+--- PASS: TestHostileLaneSetsFlag (3.59s)
+=== CONT  TestPlan
+--- PASS: TestWatchSigned (2.30s)
+=== CONT  TestLaneClaims
+--- PASS: TestSkipPropagatesDownChain (1.98s)
+=== CONT  TestNoPromptWithoutTerminal
+--- PASS: TestJobIDsAndPinning (2.91s)
+=== CONT  TestHelp
+--- PASS: TestOtherRepoRunDoesNotCount (4.71s)
+=== CONT  TestApprovalGivesUpWhenStopped
+--- PASS: TestClean (3.58s)
+=== CONT  TestAllSkipsPassedJobs
+--- PASS: TestHelp (0.50s)
+=== CONT  TestUntrustedTextIsSafe
+--- PASS: TestDocsQuickstartRuns (21.29s)
+=== CONT  TestAutoApprove
+=== CONT  TestTwoScriptsConflict
+--- PASS: TestPrune (4.63s)
+--- PASS: TestFullRunWithDependencies (3.75s)
+=== CONT  TestStepStandalone
+--- PASS: TestDryRunIsSkippedNotPassed (4.41s)
+=== CONT  TestStaleRunningShown
+=== CONT  TestScenarios/blocked
+--- PASS: TestNoPromptWithoutTerminal (2.23s)
+--- PASS: TestTwoScriptsConflict (0.65s)
+=== CONT  TestScenarios/dag99-cascade
+--- PASS: TestHostileLaneDropsApprovals (5.43s)
+--- PASS: TestStepStandalone (0.56s)
+=== CONT  TestScenarios/flaky
+=== CONT  TestScenarios/dag99-interrupt
+--- PASS: TestResourceLocksWithinARun (11.11s)
+=== CONT  TestScenarios/dag99-force
+--- PASS: TestApprovalGivesUpWhenStopped (1.61s)
+=== CONT  TestScenarios/ci-github
+--- PASS: TestLaneClaims (3.79s)
+=== CONT  TestScenarios/dag99
+--- PASS: TestHostileLaneWritesApprovals (8.44s)
+=== CONT  TestScenarios/ci-changed
+--- PASS: TestVersionAndLock (4.30s)
+--- PASS: TestUntrustedTextIsSafe (2.01s)
+--- PASS: TestChainRecordsEveryApproval (6.55s)
+--- PASS: TestPlan (4.76s)
+--- PASS: TestStaleRunningShown (2.34s)
+--- PASS: TestAutoApprove (4.21s)
+    scenarios_test.go:43: 
+        
+        === blocked
+          swim run exit 1: 1 pass, 3 fail, 2 skip
+          ok    swim run exit
+          ok    blocked lanes failed
+          ok    their dependents were skipped
+          ok    the read-only lane passed
+          ok    lane 1 refused before starting
+          ok    lane 1 never started
+          ok    lane 1's round says why
+          ok    lane 1 ran no step
+          ok    lane 1 exit code 87
+          ok    lane 2 BLOCKED at the step
+          ok    lane 3 BLOCKED by the shim
+          ok    no blocked lane ran its next step
+          ok    repo history unchanged
+          ok    working tree unchanged
+        
+        e2e summary
+          blocked          PASS    3s
+--- PASS: TestScenarios/blocked (3.99s)
+    scenarios_test.go:43: 
+        
+        === flaky
+          swim run exit 1: 2 pass, 1 fail, 1 skip
+          ok    swim run exit
+          ok    passed
+          ok    failed
+          ok    skipped
+          ok    lane 1 passed on its third attempt
+          ok    lane 2 failed after its third attempt
+          ok    every attempt is in the log
+          ok    attempt output kept
+        
+        e2e summary
+          flaky            PASS    4s
+--- PASS: TestScenarios/flaky (4.33s)
+--- PASS: TestSignedApprovalAndVerify (9.38s)
+--- PASS: TestAllSkipsPassedJobs (5.58s)
+--- PASS: TestStandingApproval (8.53s)
+--- PASS: TestApprovalLifecycle (9.22s)
+    scenarios_test.go:43: 
+        
+        === dag99-interrupt
+          swim run exit 1: 3 pass, 2 fail, 94 skip
+          ok    interrupted run exits non-zero
+          ok    every lane passed, interrupted or skipped
+          ok    no lane started after the signal
+          ok    no step was cut off mid-command
+          ok    the stop was requested
+            Ctrl-C 0.90s after lane 1 held: interrupted=2 passed=3 skipped=94 
+        
+        e2e summary
+          dag99-interrupt  PASS   12s
+--- PASS: TestScenarios/dag99-interrupt (14.80s)
+    scenarios_test.go:43: 
+        
+        === dag99-force
+          swim run exit 1: 0 pass, 5 fail, 94 skip
+          ok    force-quit run exits non-zero
+          ok    swim exited within the grace + 2s (scaled)
+          ok    no lane process survived
+          ok    force quit was announced
+          ok    lanes passed, interrupted or skipped
+            force quit took 1.04s
+        
+        e2e summary
+          dag99-force      PASS   12s
+--- PASS: TestScenarios/dag99-force (14.75s)
+    scenarios_test.go:43: 
+        
+        === dag99-cascade
+          swim run exit 1: 29 pass, 2 fail, 68 skip
+          ok    swim run exit
+          ok    failed = injected lanes not downstream of another
+          ok    skipped = descendants of the failures
+          ok    passed = everything else
+            68 lanes skipped downstream of 23 38 41
+        
+        e2e summary
+          dag99-cascade    PASS   31s
+--- PASS: TestScenarios/dag99-cascade (33.00s)
+    scenarios_test.go:43: 
+        
+        === ci-github
+          swim exit 1
+          ok    swim ci exit (failures injected)
+          ok    an ::error for each failed lane
+          ok    one notice for all the skipped lanes
+          ok    failed lanes stay open
+          ok    passed lanes fold
+          ok    job summary has every lane
+          ok    JUnit has a suite per lane
+          ok    results tagged with the commit
+        
+        e2e summary
+          ci-github        PASS   32s
+--- PASS: TestScenarios/ci-github (33.17s)
+    scenarios_test.go:43: 
+        
+        === dag99
+          swim run exit 0: 99 pass, 0 fail, 0 skip
+          ok    swim run exit
+          ok    lanes passed
+          ok    audit passed
+          ok    edges all ok
+          ok    values all match
+          ok    roots started together
+          ok    lane 1 recorded its stages
+          ok    audit lane recorded its stages
+          ok    timeline agrees with the run and the audit
+            timeline: 99 lanes · 50.19s · longest chain 48.82s over 34 lanes · start delay median 0.04s max 2.09s (swim 38)
+            scheduler latency (start - last parent done), 94 nodes: median 0.50s  p95 1.14s  max 3.12s (swim 38)
+            makespan 46.45s vs critical-path work 31.52s -> scheduling overhead 14.93s
+        
+        e2e summary
+          dag99            PASS   59s
+--- PASS: TestScenarios/dag99 (60.04s)
+    scenarios_test.go:43: 
+        
+        === ci-changed
+          swim exit 0
+          ok    first run passed
+          ok    swim ci exit
+          ok    selected the changed lanes
+          ok    ran lanes 30 and 60
+          ok    only the changed lanes ran again
+        
+        e2e summary
+          ci-changed       PASS   63s
+--- PASS: TestScenarios/ci-changed (63.24s)
+--- PASS: TestScenarios (0.00s)
+FAIL
+FAIL	github.com/gates-brightly/swimlane/internal/e2e	135.549s
+
+=== 3 failed tests
+
+--- FAIL: TestCIHeartbeat (github.com/gates-brightly/swimlane/internal/e2e, 5.6s)
+    === RUN   TestCIHeartbeat
+        ci_test.go:231: a lane writing output needs no heartbeat:
+            swim: wrote .swim.lock (syntax script 4, log 2, state 2); commit it so everyone runs a compatible swim
+            swim ci · swim 0.dev · provider generic
+            commit 590e6877e01b703a82738271d3f266ead44a0d84  branch main
+            run r-20261027T194020Z-b078 · lanes 1, 2
+            selected: every pending round that hasn't passed
+            guard flags set: none (destructive steps run as dry runs)
+            
+            [1] started: quiet
+            [2] started: chatty
+            [1] still running: lane script (0:01)
+            [2] still running: lane script (0:01)
+            [1] swim 1  Round: quiet  job 32db439a-7164-4a9a-bb3b-0eff919f1928
+            [2] swim 2  Round: chatty  job afdb7e36-4f47-416c-b382-bae217c9a9e3
+            [1] ==> wait
+            [1] $ sleep 2.5
+            [2] ==> talk
+            [2] $ bash -c 'for i in $(seq 12); do echo tick; sleep 0.2; done'
+            [2] tick
+            [2] tick
+            [2] tick
+            [2] tick
+            [2] tick
+            [2] tick
+            [1] still running: wait (0:03)
+            [2] tick
+            [2] tick
+            [2] tick
+            [2] tick
+            [2] tick
+            [2] tick
+            [1] still running: wait (0:04)
+            [1] PASS  wait  2.6s
+            [1] swim 1 summary: PASS  pass=1 fail=0 skip=0 drift=0  exit 0  15:40:20 → 15:40:25 (0:05)
+            [1]   stages: setup PASS | snapshot none | check none | change none | verify none
+            [2] PASS  talk  2.6s
+            [1] PASS (0:04)
+            [2] swim 2 summary: PASS  pass=1 fail=0 skip=0 drift=0  exit 0  15:40:20 → 15:40:25 (0:05)
+            [2]   stages: setup PASS | snapshot none | check none | change none | verify none
+            [2] PASS (0:04)
+            
+            swim summary · 15:40:20 → 15:40:25 (0:05)
+              lane     job      result       exit  pass  fail  skip  drift    time
+              swim 1   32db439a PASS            0     1     0     0      0    0:04
+              swim 2   afdb7e36 PASS            0     1     0     0      0    0:04
+              logs: swim log N (or .swim/logs/agent1.log .swim/logs/agent2.log)   status: swim status
+            
+            ==== swim 1 PASS - quiet (job 32db439a, 0:05) ====
+            == ROUND 2026-10-27T19:40:20Z  job=32db439a-7164-4a9a-bb3b-0eff919f1928  quiet
+               run: r-20261027T194020Z-b078 | script: lane.1.sh | pid: 45084 | operator: zachgates | owner: - | created: 2026-10-27 | after: - | timeout: none | step-timeout: none | guards: - | git: main@590e687 | commit: 590e6877e01b703a82738271d3f266ead44a0d84 | sha256: c241aab65952 | manifest: 7c40b785082d (staged .swim/runs/r-20261027T194020Z-b078/1) | env: STAGE=<unset> AWS_REGION=<unset> | masked: 4 vars (CF_KEYRING_FILE_PASSWORD, FONTAWESOME_NPM_AUTH_TOKEN, HOMEBREW_GITHUB_API_TOKEN, SWIM_APPROVAL_TOKEN)
+              PASS  wait                                    2.6s  15:40:21
+                    $ sleep 2.5
+            
+            == END PASS  pass=1 fail=0 skip=0 drift=0  exit=0  4.6s  2026-10-27T19:40:24Z  run=r-20261027T194020Z-b078
+               stages: setup PASS | snapshot none | check none | change none | verify none
+            
+            ==== swim 2 PASS - chatty (job afdb7e36, 0:05) ====
+            == ROUND 2026-10-27T19:40:20Z  job=afdb7e36-4f47-416c-b382-bae217c9a9e3  chatty
+               run: r-20261027T194020Z-b078 | script: lane.2.sh | pid: 45085 | operator: zachgates | owner: - | created: 2026-10-27 | after: - | timeout: none | step-timeout: none | guards: - | git: main@590e687 | commit: 590e6877e01b703a82738271d3f266ead44a0d84 | sha256: fd78c1ae997a | manifest: 5e8c25240da7 (staged .swim/runs/r-20261027T194020Z-b078/2) | env: STAGE=<unset> AWS_REGION=<unset> | masked: 4 vars (CF_KEYRING_FILE_PASSWORD, FONTAWESOME_NPM_AUTH_TOKEN, HOMEBREW_GITHUB_API_TOKEN, SWIM_APPROVAL_TOKEN)
+              PASS  talk                                    2.6s  15:40:22
+                    $ bash -c 'for i in $(seq 12); do echo tick; sleep 0.2; done'
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+                    | tick
+            
+            == END PASS  pass=1 fail=0 skip=0 drift=0  exit=0  4.7s  2026-10-27T19:40:24Z  run=r-20261027T194020Z-b078
+               stages: setup PASS | snapshot none | check none | change none | verify none
+            
+            artifacts to upload: .swim/logs/ .swim/snapshots/ .swim/out/ .swim.log
+    --- FAIL: TestCIHeartbeat (5.64s)
+
+--- FAIL: TestKillOnThirdCtrlC (github.com/gates-brightly/swimlane/internal/e2e, 1.5s)
+    === RUN   TestKillOnThirdCtrlC
+    === PAUSE TestKillOnThirdCtrlC
+    === CONT  TestKillOnThirdCtrlC
+        interrupt_test.go:239: output missing "swim: killing 1 lanes now.":
+            swim: wrote .swim.lock (syntax script 4, log 2, state 2); commit it so everyone runs a compatible swim
+            [2] started: other
+            [1] started: stubborn
+            [2] swim 2  Round: other  job 4d281567-c61b-42bc-b4c1-51c6973023f0
+            [1] swim 1  Round: stubborn  job 5bddfe01-0210-4752-87e3-44a2395dcd7f
+            [2] ==> x
+            [2] $ sleep 31.4
+            [1] ==> hang
+            [1] $ bash -c 'trap "sleep 20" INT; sleep 31.3 & wait; wait'
+            swim: stopping after current steps (2 running). Ctrl-C again to force quit.
+               swim 1   stopping  hang (0:01)
+               swim 2   stopping  x (0:01)
+            swim: force quitting: interrupting 2 lanes, killing in 5s. Ctrl-C again to kill now.
+            [2] FAIL  x (exit 130, interrupted)  0.1s
+            [2] swim 2 summary: INTERRUPTED  pass=0 fail=1 skip=0 drift=0  exit 130  15:40:45 → 15:40:46 (0:01)
+            [2]   stages: setup FAIL | snapshot none | check none | change none | verify none
+            [2]   FAIL  x (exit 130, interrupted)
+            swim: killing 2 lanes now.
+            [1] INTERRUPTED (0:01)
+            [2] INTERRUPTED (0:01)
+            
+            swim summary · 15:40:45 → 15:40:46 (0:01)
+              lane     job      result       exit  pass  fail  skip  drift    time
+              swim 1   5bddfe01 INTERRUPTED   137     0     1     0      0    0:01
+                                FAIL  hang (cut off: swim step was killed, output recovered)       ?  15:40:45
+              swim 2   4d281567 INTERRUPTED   137     0     1     0      0    0:01
+                                FAIL  x (exit 130, interrupted)
+              logs: swim log N (or .swim/logs/agent1.log .swim/logs/agent2.log)   status: swim status
+    --- FAIL: TestKillOnThirdCtrlC (1.52s)
+
+--- FAIL: TestObservations (github.com/gates-brightly/swimlane/internal/e2e, 14.8s)
+    === RUN   TestObservations
+    === PAUSE TestObservations
+    === CONT  TestObservations
+        observe_test.go:33: observe missing "usually 0.1s":
+            swim observe · run r-20261027T194055Z-cd33 · 1 lanes · 2 observations
+            slow     swim 1   "nap" took 2.1s; usually 0.2s (p90 0.2s, 6 runs)  slow-1-1
+            retried  swim 1   "flaky call" passed on attempt 2 (attempt 2/3)  retried-1-2
+        observe_test.go:33: observe missing "(p90 0.1s, 6 runs)":
+            swim observe · run r-20261027T194055Z-cd33 · 1 lanes · 2 observations
+            slow     swim 1   "nap" took 2.1s; usually 0.2s (p90 0.2s, 6 runs)  slow-1-1
+            retried  swim 1   "flaky call" passed on attempt 2 (attempt 2/3)  retried-1-2
+    --- FAIL: TestObservations (14.78s)
+
+FAILED: TestCIHeartbeat TestKillOnThirdCtrlC TestObservations
+exit status 1
