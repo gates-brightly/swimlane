@@ -3,9 +3,9 @@
 ```sh
 swim log N            # a lane's latest round (--all: archives too; --follow: follow it until it ends)
 swim wait N           # block until lane N's round ends; exit with its result
-swim log <job|run>    # a job's rounds / one run
+swim log <round-id|run> # one round / one run
 swim log              # .swim.log, the project log
-swim log --since 1h   # what happened since: a duration, a UTC time, a run or a job
+swim log --since 1h   # what happened since: a duration, a UTC time, a run or a round id
 swim status [N]       # every lane's state
 ```
 
@@ -20,8 +20,8 @@ progress)` with its output so far.
 line says what it is by how it starts:
 
 ```
-# swim log | syntax 4 | swim N                       the log's syntax
-== ROUND <utc>  job=<id>  <Round>                     a round starts
+# swim log | syntax 4 | lane N                       the log's syntax
+== ROUND <utc>  round-id=<id>  <Round>                a round starts
    run: <id> | script: lane.N.sh | owner: ... | git: <branch>@<sha> | env: ...
 -- stage <name>  <hh:mm:ss>                           a stage starts
   PASS  <label>                <dur>s  <hh:mm:ss>     a step
@@ -59,7 +59,10 @@ annotations and JUnit, and `failed_steps` in the `--yaml` documents.
 The current round is everything after the last `== ROUND`. A lane that
 exits before its round starts gets `STOP  not started: <why>`.
 Logs written before the one syntax number start
-`# swim lane log | syntax 2 | swim N`; swim reads them as they are.
+`# swim lane log | syntax 2 | swim N`, and older rounds say `job=<id>`
+where newer ones say `round-id=<id>`; swim reads them as they are. A log an
+older swim wrote as `agentN.log` (`agentN.prev-*.log`) is renamed
+`laneN.log` the next time swim runs in the repo.
 
 ## .swim.log
 
@@ -67,7 +70,7 @@ The project log, oldest first, one line per event; a new agent reads it
 first. `swim note "<text>"` adds to it.
 
 ```
-<utc>  <user>  <event>  [swim N]  [job=<id>]  [run=<id>]  <detail>
+<utc>  <user>  <event>  [lane N]  [round-id=<id>]  [run=<id>]  <detail>
 ```
 
 A `fail` line's detail ends with the failed steps, each with its why:
@@ -75,16 +78,17 @@ A `fail` line's detail ends with the failed steps, each with its why:
 x_test.go:41: got 1, want 2`.
 
 Events: `init`, `new`, `run`, `start`, `pass`/`fail`/`interrupted`, `skip`,
-`approve`, `decline`, `run-done`, `archive`, `note`,
+`approve`, `decline`, `waiting` (for a lock or a slot), `run-end`,
+`archive`, `note`, `queue`, `queue-run`, `queue-end`, `queue-kept`,
 `usage` (a command swim refused as typed). Details summarize; the evidence
 is in the lane log.
 
 ## status.yml
 
 `.swim/status.yml` (`swim status`, `swim status --yaml`), one entry per
-lane: `state` (idle, waiting, locked, queued, running, passed, failed,
-skipped, interrupted; see [state](state.md)), `pending` and `pending_job`
-(the script on disk), `round`, `job`, `run`, `script`, `log`,
+lane: `state` (ready, queued, waiting, running, passed, failed, skipped,
+interrupted, empty; see [state](state.md)), `pending` and `pending_job`
+(the round on disk and its round id), `round`, `job` (its round id), `run`, `script`, `log`,
 `waiting_on`, `reason`, `locks`, `pid`, `started_at`, `finished_at`,
 `duration_s`, `exit_code`, `pass`/`fail`/`skip`, `current_step`,
 `failed_steps` (each with its why), `flag_approved`, `dry_run`,
@@ -97,9 +101,9 @@ document carries `schema:`; fields are only added within a version.
 
 | | |
 |---|---|
-| `swim run\|all --yaml` | `swim.run/v1`, one document per event as it happens: `run`, `waiting`, `locked`, `queued`, `start`, `output` (with `--yaml-output`), `step`, `finish`, `stop_requested`, `stopping`, `force_quit`, `kill`, then `summary` (result, exit, each lane's result). Same exit code. |
+| `swim run\|all --yaml` | `swim.run/v1`, one document per event as it happens: `run`, `waiting` (with `on`, `lock` or `ahead`), `start`, `output` (with `--yaml-output`), `step`, `finish`, `stop_requested`, `stopping`, `force_quit`, `kill`, then `summary` (result, exit, each lane's result). Same exit code. |
 | `swim log N --yaml` | `swim.log/v1`: the round as data: `duration` as the log says it (`1m 5s`) and `duration_s` in seconds; results with label, stage, exit, `duration_s`, command, output, why; the running step as `RUNNING`. |
-| `swim status --yaml` | `swim.status/v1`: status.yml, plus each pending lane's `pending_header` (after, guards and how each would be decided, timeout, locks, includes) and `deps`. |
+| `swim status --yaml` | `swim.status/v1`: status.yml, plus each ready lane's `pending_header` (after, guards and how each would be decided, timeout, locks, includes) and `deps`. |
 | others | `swim.queue-list/v1`, `swim.verify/v1`, ...: [compatibility](compatibility.md#stability-tiers). |
 
 Exit codes: `0` means everything selected passed; `3` means work waits on

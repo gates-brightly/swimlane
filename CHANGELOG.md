@@ -48,6 +48,41 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Changed
 
+- **One word per thing, in every view.** Bare `swim`, `swim status`,
+  `swim watch`, a run's panel, plain output and summary, `swim ci`'s
+  reports, notifications, `--yaml`, help and docs say a lane's state
+  with one of nine words: `ready` (a round is written and hasn't run),
+  `queued` (its batch is queued), `waiting` (always with why: "waiting
+  on lane 2", "waiting for lock db", "waiting for a slot (#2)", "waiting
+  for approval: ..."), `running`, `passed`, `failed`, `skipped`,
+  `interrupted` and `empty` (no round in the slot). Gone: pending, new,
+  idle, stub, locked, held, scheduled, done, finished, stale and
+  `PASS`/`FAIL`/`SKIP` as a lane's state (the panel says `passed 1m 0s`,
+  the summary's result column `failed`). Step markers in lane logs stay
+  `PASS`, `FAIL`, `SKIP`, `STOP` and `BLOCKED`.
+  ([concepts](docs/reference/concepts.md#lane-states) lists the words.)
+- **A lane is "lane N" wherever you read it**: status rows, the panel,
+  run output, the summary, `.swim.log` (`lane N`), notifications
+  (`lane 1,2,3 · ...`), the live view's banner (`▶ lane 2 needs
+  approval`). Its logs are `.swim/logs/laneN.log` and
+  `laneN.prev-*.log`.
+- **A round's id is its round id, not a job**: `# Round-ID:` in a lane's
+  header (`round-id:` in a sidecar), `$SWIM_ROUND_ID` in a lane, `swim
+  new --round-id ID`, `swim log ROUND-ID`, `round-id=` on a lane log's
+  `== ROUND` line and in `.swim.log`, the summary's `round-id` column.
+  `swim lint` warns `job-is-round-id` on a `# Job:` line, and `swim lint
+  --fix` rewrites it.
+- **`swim watch` is the watcher** (not a swimmer), and a lane runs **its
+  pinned copy** (not its staged copy). `swim watch`'s lane section is
+  "Lanes".
+- **`swim archive --passed`** (was `--done`).
+- **The dry-run notification is `<repo> · run needs approval`.**
+- **`.swim.log` events**: `run-done` and `queue-done` are `run-end` and
+  `queue-end`; a lane waiting for a lock or a free slot is a `waiting`
+  event (was `locked`, `queued`); `queue-held` is `queue-kept`.
+  `swim run --yaml`'s `locked` and `queued` events are `waiting` events
+  (with `lock:` or `ahead:`).
+
 - **A lane's step function is `step`, not `run`:** `step "label" cmd
   args` in a bash lane, `swim step "<label>" -- cmd` in any other
   language, with the same options. "run" now only means `swim run` and
@@ -236,6 +271,22 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Upgrading
 
+- **Lane logs are renamed**: the first swim command in a repo renames
+  `.swim/logs/agentN.log` (and `agentN.prev-*.log`, `agentN.<id>.log`)
+  to `laneN...`. A script or alias that reads `agentN.log` reads
+  `laneN.log` now.
+- **`# Job:` is `# Round-ID:`**: an older script's `# Job:` (and a
+  sidecar's `job:`) still reads, and `swim lint --fix` rewrites it. A
+  lane that reads `$SWIM_JOB` reads `$SWIM_ROUND_ID`; `swim new --job`
+  is `--round-id`.
+- **`--yaml` state values changed**: `swim status --yaml` (and
+  `status.yml`) say `empty` for idle, `ready` for a lane holding a round
+  not run, `waiting` (with its `reason`) for locked or waiting for a
+  slot; `swim queue --yaml` gives an ended batch its result (was
+  `done`); `swim run --yaml` has no `locked` or `queued` events. An
+  older `status.yml`'s words read as the new ones. Keys are unchanged.
+  `.swim.log` lines say `lane N  round-id=<id>` (an older line's `swim N
+  job=<id>` still reads for `swim log --since` and `swim status --run`).
 - **Run `swim lint --fix` in each repo with lanes** to rename their `run`
   calls to `step`; rewrite a lane in another language's `swim run
   "<label>" -- cmd` to `swim step` by hand. The `run` name goes in the

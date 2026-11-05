@@ -22,10 +22,10 @@ without letting it run that work.**
 
 - **One binary, no server.** Lane scripts and state are git-ignored by
   default, so swim lives in your checkout.
-- **The operator's machine, or a swimmer they control, is the only
+- **The operator's machine, or a watcher they control, is the only
   executor.** No running from the planner's side.
 - **Not secret management:** rounds use your existing credentials.
-- **Not a dashboard:** a swimmer is seen from its own terminal, the
+- **Not a dashboard:** a watcher is seen from its own terminal, the
   queue and status files, or CI.
 - **swim itself never writes to git**; a lane may, behind a guard.
 

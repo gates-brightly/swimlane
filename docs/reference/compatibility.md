@@ -66,7 +66,7 @@ two kinds of file say it:
 | File | Says it |
 |---|---|
 | Lane scripts | Near the top: `# swim: syntax 4` (what `swim new` writes) |
-| Lane logs | The first line: `# swim log \| syntax 4 \| swim N` (lane N) |
+| Lane logs | The first line: `# swim log \| syntax 4 \| lane N` |
 
 swim reads every older file as it is: scripts that say syntax 2 or 3, and
 logs that start `# swim lane log | syntax 2`, as written before the one

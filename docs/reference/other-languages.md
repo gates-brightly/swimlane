@@ -54,7 +54,7 @@ if swim("guard", "ORDERS_ALLOW_DELETE", "delete bucket orders (2026-10-13: repla
 
 ```yaml
 round: cut over orders
-job: 3f2a9c1e-...
+round-id: 3f2a9c1e-...
 after: [1, 2]
 guards:
   ORDERS_ALLOW_DELETE: delete bucket orders (2026-10-13: replaced)

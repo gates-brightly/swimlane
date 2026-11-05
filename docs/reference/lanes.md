@@ -81,9 +81,9 @@ OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
 |---|---|
 | `# swim: syntax 4` | The [syntax](compatibility.md#the-syntax-version). |
 | `# Round:` | The goal. A script without one isn't run. |
-| `# Job:` | Written by `swim new`; keep it. |
+| `# Round-ID:` | The round id, written by `swim new`; keep it. (An older script's `# Job:` reads the same; `swim lint --fix` rewrites it.) |
 | `# Task:` | A name for the lane (`swim run checks`). |
-| `# After:` | Lanes, tasks or jobs that must pass first. |
+| `# After:` | Lanes, tasks or round ids that must pass first. |
 | `# Owner:` / `# Created:` | Who wrote it / when. |
 | `# Guards: FLAG  <what it approves>` | One per flag: the only guards it can have approved. `# Guards: * <why>` lets it name flags at run time. `swim lint --fix` adds them. |
 | `# Locks:` | Resources it needs to itself (`orders-table, tf/orders`). |

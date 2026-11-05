@@ -24,7 +24,7 @@ In this order:
 2. **A queued batch's approvals:** `swim queue N --approve FLAG` (each
    flag), for that batch, pinned to its exact [manifest](manifest.md); or
    `y` on `swim watch`'s screen when the batch asks.
-3. **The person at the terminal:** `swim 2 requires human approval of guard
+3. **The person at the terminal:** `lane 2 requires human approval of guard
    FLAG ... the lane says: <action>  Y/N [N]`. Or in the live view: `y`/`n`
    on a lane that's asking, or ahead of time on one that hasn't (this run
    only).

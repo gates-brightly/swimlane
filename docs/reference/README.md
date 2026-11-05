@@ -16,7 +16,7 @@ Using swim:
 - [guards](guards.md): how a guard is decided.
 - [running](running.md): dependencies, parallelism, locks, the live view,
   interrupts.
-- [queue](queue.md): batches, the swimmer, waiting.
+- [queue](queue.md): batches, the watcher, waiting.
 - [logs](logs.md): the lane log, `.swim.log`, `status.yml`, YAML.
 - [env](env.md): env files.
 - [ci](ci.md): `swim ci`, and signing off from your machine.

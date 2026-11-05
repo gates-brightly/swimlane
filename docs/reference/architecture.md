@@ -14,8 +14,8 @@ flowchart TD
   end
   subgraph creds["Holds credentials"]
     O["Operator<br/>swim run / swim all"]
-    W["Swimmer<br/>swim watch"]
-    X["Lane process<br/>runs as the operator or swimmer"]
+    W["Watcher<br/>swim watch"]
+    X["Lane process<br/>runs as the operator or watcher"]
   end
   subgraph record["The record"]
     S[".swim/logs/, .swim/status.yml,<br/>.swim.log"]
@@ -45,10 +45,10 @@ Read it top to bottom:
    start on a repo's `blocked_commands` (none by default), dependency cycles, `set -e` and a missing
    `lane_init`. `swim lint` also warns about a delete or drop outside an
    `if guard` block, but nothing stops it.
-3. **A person runs it, or a swimmer does.** The operator runs `swim run` or
+3. **A person runs it, or a watcher does.** The operator runs `swim run` or
    `swim all` with their own credentials. A queued batch is pinned to its
-   exact scripts, and `swim watch` runs it with the swimmer's credentials;
-   the swimmer's environment approves nothing.
+   exact scripts, and `swim watch` runs it with the watcher's credentials;
+   the watcher's environment approves nothing.
 4. **Guards ask for approval.** A guard asks the launcher, which approves
    with `FLAG=1` (set in `swim run`'s own environment, or a queued batch's
    `--approve`), or the person at the terminal (or on `swim watch`'s
@@ -68,7 +68,7 @@ Read it top to bottom:
 ## Where credentials live
 
 - **Cloud credentials, VPN, production access:** the operator's shell, or
-  the swimmer's environment. Lanes inherit them, so every lane in a run can
+  the watcher's environment. Lanes inherit them, so every lane in a run can
   use them.
 - **The runner's SSH key** (`signing_key`): on the machine that runs the
   rounds. It signs the chain.

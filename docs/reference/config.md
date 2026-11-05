@@ -41,7 +41,7 @@ defaults:
   term_grace: 10s                  # SIGTERM: graceful, then force after this
   signing: auto                    # auto | required | off
   signing_key: ~/.ssh/id_ed25519   # a .pub signs through ssh-agent
-  queue_lease: 2m                  # a swimmer's heartbeat, seen from other hosts
+  queue_lease: 2m                  # a watcher's heartbeat, seen from other hosts
   claim_lease: 2h                  # how long a lane claim lasts
   watch_batches: 4                 # batches one swim watch runs at once
   notify: false                    # notifications and a tab progress bar

@@ -46,10 +46,10 @@ says otherwise:
 
 1. **Catch up, cheapest first:** `swim`, `swim status`, `swim queue`,
    `swim log --since RUN` (the last run you read, or a time: `1h`): what
-   happened since, one line per action; `swim log JOB` for a round's
+   happened since, one line per action; `swim log ROUND-ID` for a round's
    detail. Don't redo or contradict what the record says without asking.
-2. **Pick lanes:** idle, or unused numbers (1..99). Never one that's
-   running, pending someone's run, queued, or committed (the repo's CI).
+2. **Pick lanes:** empty, or unused numbers (1..99). Never one that's
+   running, ready for someone's run, queued, or committed (the repo's CI).
 3. **Write:** `swim new N "<goal>"`, then the steps in the short form, bash
    unless the work needs another language ([lanes](lanes.md)). Keep the
    header accurate: the operator reads it without you. Order goes in the
@@ -59,16 +59,16 @@ says otherwise:
 5. **Hand over** (below), then go on to other work. Never poll. With
    nothing else to do, `swim wait <batch>` (the id `swim queue` printed)
    blocks until that batch ends and exits with its result.
-6. **Read results** when the batch is done (`swim wait` returned, or
-   `swim queue` says so): `swim status N`. FAIL: each failed step comes
+6. **Read results** when the batch has ended (`swim wait` returned, or
+   `swim queue` says so): `swim status N`. `failed`: each failed step comes
    with its why, the most telling line of its output (`FAIL  go test
    (exit 1): --- FAIL: TestX: x_test.go:41: got 1`); when that isn't
-   enough, `swim log N`, the failed step and those before it. PASS only
+   enough, `swim log N`, the failed step and those before it. `passed` only
    means exit 0: read the evidence (`swim log N | sed -n '/^-- stage
-   verify/,$p'`). SKIP (dry run): nothing changed; never a result.
-7. **Close out:** record results (with the job id) where the project tracks
+   verify/,$p'`). `skipped` (dry run): nothing changed; never a result.
+7. **Close out:** record results (with the round id) where the project tracks
    them, `swim note "<finding>"` for the next session, `swim archive N
-   "<why idle>" --as <what-happened>` (the log is kept, the lane is free).
+   "<why it's done>" --as <what-happened>` (the log is kept, the lane is empty).
    Out-of-scope findings go
    on a follow-up list, never into the round.
 
@@ -80,9 +80,9 @@ lines. Don't run fixes yourself.
 ## Handing over
 
 **Queue a ready round** (`swim queue N ...`), guards and all, without
-asking: queueing runs and approves nothing. The swimmer asks the operator
-for each guard nothing approved; declined, it's a dry run. With no swimmer
-up (`swim queue` says), give the exact command, pinned to the jobs: `swim
+asking: queueing runs and approves nothing. The watcher asks the operator
+for each guard nothing approved; declined, it's a dry run. With no watcher
+up (`swim queue` says), give the exact command, pinned to the rounds: `swim
 run 3f2a9c1e 7b4d4e2a`, with nothing that approves.
 
 Flag every risk on its own line marked ⚠ (a change outside the repo,
@@ -93,7 +93,7 @@ script and what its snapshot and check found:
 ```markdown
 **What you're approving**
 
-- ⚠ **`ORDERS_ALLOW_SST_REMOVE`** (swim 2, change stage)
+- ⚠ **`ORDERS_ALLOW_SST_REMOVE`** (lane 2, change stage)
   - Runs: `npx sst remove --stage prod`
   - Target: SST stack `orders-prod` in account 123456789012
   - Scope: the 14 resources the snapshot lists; terraform owns them, data retained
@@ -124,10 +124,10 @@ A worker:
 - Writes only its own `lane.N.*`. Never `new`, `archive` or edits
   another lane. If its lane isn't free, it stops and tells the planner.
 - Puts its name in `# Owner:`, tags what it creates with `$SWIM_ROUND_ID`, keeps
-  the `# Job:` line `swim new` wrote.
+  the `# Round-ID:` line `swim new` wrote.
 - Sends changes to shared files back as exact lines; a shared-file change
   must leave its other users working.
-- Lints, then reports: lane, job id, each guard and what it approves,
+- Lints, then reports: lane, round id, each guard and what it approves,
   anything the planner must apply. Never runs the lane.
 
 Two independent sessions in one repo: read each
@@ -139,7 +139,7 @@ billing"), and ask the user when unsure whose a lane is.
 Keep one entry per task in your task list: its lanes and state (writing,
 dispatched `#41 (21: 63bdf4a9)`, fixing, waiting on the operator, done).
 Work a task until it's ready, dispatch it, start the next. At each
-stopping point, `swim queue` to see what finished, and pick those up
+stopping point, `swim queue` to see what ended, and pick those up
 first. When everything is dispatched, `swim wait --any <batch> <batch>`
 returns as the first ends (`swim wait` is the one command that blocks on
 work; `swim log --follow` only shows it). Rules:
@@ -148,17 +148,17 @@ work; `swim log --follow` only shows it). Rules:
   skipped. `swim queue rm` it first, or wait.
 - Batches that pull in the same setup lane run one after another; queue
   lanes that belong together as one batch.
-- About as many streams as the swimmer runs at once (`watch_batches`, 4).
-- Batches waiting and nothing running: tell the user once that no swimmer
+- About as many streams as the watcher runs at once (`watch_batches`, 4).
+- Batches waiting and nothing running: tell the user once that no watcher
   is up.
 - A task is done when it passed and you read the output that shows the
-  outcome; a dry-run SKIP isn't done.
+  outcome; a dry-run skip isn't done.
 
 ## Campaigns
 
 Rounds that build on each other: read the history first (`swim log N
---all`, `swim log <job>`, `swim log`), archive with names
+--all`, `swim log <round-id>`, `swim log`), archive with names
 that can be found (`--as orders-r3-apply-failed`), keep a thread of `swim
 note`s with a fixed prefix, put expensive setup in its own lane that later
-rounds depend on by job (`# After: <job>`), and
+rounds depend on by round id (`# After: <round-id>`), and
 re-read deployed state every round.

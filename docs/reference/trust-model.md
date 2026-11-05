@@ -6,7 +6,7 @@ What swim protects against, what it doesn't, and the test behind each claim.
 
 **Approval, signing and the chain prove who decided what. They don't make a
 script safe.** A lane script that is approved and run does whatever it
-says, with whatever access the person or swimmer running it has. swim makes
+says, with whatever access the person or watcher running it has. swim makes
 sure the right people decided to run it and leaves a record that shows
 who. Whether the script is a good idea is up to them.
 
@@ -32,8 +32,8 @@ credentials the lane never sees. swim doesn't do that.
 |---|---|---|
 | **Planner** (the AI session) and **workers** (its subagents) | Write lane scripts, queue batches, read logs back. | Nothing from swim. They don't need cloud credentials, VPN or approval keys. If the AI runs as your OS user on your machine, it can reach whatever that user can: keeping your credentials from it is up to you (a separate user, a container). |
 | **Operator** | Runs `swim run` / `swim all`, answers prompts, sets guard flags. | Their shell's environment (cloud profiles, tokens). Lanes run as the operator and inherit it. |
-| **Swimmer** (`swim watch`) | Runs queued batches once their lanes are free, each in a process of its own. | Its own environment's credentials. Its environment never approves a guard: only the batch's approvals count. |
-| **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Vouches for each `swim run`'s run key, once per run, and signs what swim records outside a run (`swim verify --force`, a signoff). | An SSH key on the operator's or swimmer's machine: a file, in ssh-agent, or on a security key ([below](#the-runner-key)). |
+| **Watcher** (`swim watch`) | Runs queued batches once their lanes are free, each in a process of its own. | Its own environment's credentials. Its environment never approves a guard: only the batch's approvals count. |
+| **Runner key** (`signing_key`, default `~/.ssh/id_ed25519`) | Vouches for each `swim run`'s run key, once per run, and signs what swim records outside a run (`swim verify --force`, a signoff). | An SSH key on the operator's or watcher's machine: a file, in ssh-agent, or on a security key ([below](#the-runner-key)). |
 | **Run key** | Signs every chain entry of one `swim run`, the lanes' rounds included. | Only the launcher's memory, for the run. Never on disk, in a lane's environment or a descriptor a lane inherits. |
 
 ## Authorization
@@ -56,7 +56,7 @@ ways that applies:
    flag: the run stops before anything starts.
 2. **The person at the terminal.** An answer given ahead of time in the
    live view, or the prompt
-   `swim N requires human approval of task: <action>  Y/N [N]`. For a
+   `lane N requires human approval of task: <action>  Y/N [N]`. For a
    queued batch: `y` on `swim watch`'s screen.
 
 There is no switch that approves every guard.
@@ -163,7 +163,7 @@ name a socket's peer the token alone decides.
 
 ## Attribution
 
-*Every run traces back to its job, swimmer, approval and outcome.*
+*Every run traces back to its round, watcher, approval and outcome.*
 
 - **The chain.** Every approval and every round is an entry in
   `.swim/chain.jsonl`. Each holds a sequence number and the SHA-256 of the
@@ -254,7 +254,7 @@ you. A file key keeps working, as the weaker mode.
 If the runner key won't vouch for a run key (you said no, no touch, a
 passphrase and no agent), `signing: required` stops the run before any
 lane starts; `auto` records the run unsigned, with one warning, instead
-of asking again for every entry. A swimmer nobody watches (`swim watch`
+of asking again for every entry. A watcher nobody watches (`swim watch`
 in tmux or CI) has no one to touch a key, so its runner key is in one of
 the weaker modes.
 
@@ -307,7 +307,7 @@ annotation.
   credentials.** Guards and lint are conventions, not a sandbox: the lane
   runs as you, with your environment, your secrets and your key. Limit the
   damage outside swim: scoped, short-lived credentials for each kind of
-  change, and running swimmers as a separate OS user, in a container or a
+  change, and running watchers as a separate OS user, in a container or a
   VM.
 - **An AI that shares your OS user.** swim gives the planner nothing, but it
   doesn't stop a process running as you from using what you have.
@@ -331,7 +331,7 @@ Test files are under `internal/`. "Pending" names the task in
 | A stopping run declines the question being asked and every later one. | `TestCancelDeclines` (approval) |
 | An unreachable approval socket declines. | `TestGuardDeclinesOnSocketError` (e2e/approval_test.go) |
 | An env file can't approve a guard. | `TestEnvFileGuardFlagRefused` (e2e/envfile_test.go) |
-| A swimmer's own environment approves nothing; a batch's approvals are recorded as the queue's. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
+| A watcher's own environment approves nothing; a batch's approvals are recorded as the queue's. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
 | A batch approves only what its `--approve` names, credited to who queued it. | `TestWatchApprovesOnlyTheBatchs` (e2e/queue_test.go) |
 | What a guard flag approved shows in `swim status` and the CI summary and annotations. | `TestFlagApproved` (e2e/approval_test.go), `TestCIGitHub` (e2e/ci_test.go) |
 | A lane edited after it was queued is skipped. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
@@ -357,8 +357,8 @@ Test files are under `internal/`. "Pending" names the task in
 | `status.yml`, queue entries and kept scripts are replaced atomically and synced to disk with their directory; chain appends are synced. | `TestStateWritesAreDurable`, `TestWriteAtomic` (fsutil) |
 | Of several processes claiming one lane at once, exactly one wins; a pid reused by another process doesn't hold a lane. | `TestClaimRace`, `TestRunningChecksStartTime` (lane) |
 | A lane killed mid-step is never reported passed nor rerun on its own: the next `swim run` or `swim watch` records the round as interrupted, in the log and the chain. | `TestReapDeadLane` (e2e/recovery_test.go), `TestReapDead` (launcher) |
-| A queue claim is orphaned once its swimmer is gone: by pid and start time on its host, by an expired heartbeat lease from another. | `TestWorkerLease` (queue) |
+| A queue claim is orphaned once its watcher is gone: by pid and start time on its host, by an expired heartbeat lease from another. | `TestWorkerLease` (queue) |
 | A crash at any chosen point (mid-step, mid-claim, mid-write, mid-append) leaves state that a restart reads correctly: no false success, no silent re-run, a whole `status.yml`, a repairable chain. | `TestFaultStepAfterExit`, `TestFaultQueueClaimed`, `TestFaultWatchMidBatch`, `TestFaultStatusMidWrite`, `TestFaultChainMidAppend` (e2e/fault_test.go) |
 | Several `swim watch` processes on one queue run each batch once, and lanes sharing a lock never overlap. | `TestFaultManyWatchers` (e2e/fault_test.go) |
 | The scheduler never starts a lane before its `After:` lanes finish, never lets lock holders overlap, and never reports a failure as a pass, on random graphs. | `TestSchedulerProperties` (e2e/property_test.go) |
-| A lane's state moves only as the state machine allows; a finished round's result never changes in place. | `TestTransition`, `TestUpdateChecksTransitions` (status) |
+| A lane's state moves only as the state machine allows; an ended round's result never changes in place. | `TestTransition`, `TestUpdateChecksTransitions` (status) |
