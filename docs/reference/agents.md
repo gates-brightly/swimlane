@@ -60,7 +60,10 @@ says otherwise:
    nothing else to do, `swim wait <batch>` (the id `swim queue` printed)
    blocks until that batch ends and exits with its result.
 6. **Read results** when the batch is done (`swim wait` returned, or
-   `swim queue` says so): `swim status N`. FAIL: `swim log N`, the failed step and those before it. PASS only
+   `swim queue` says so): `swim status N`. FAIL: each failed step comes
+   with its why, the most telling line of its output (`FAIL  go test
+   (exit 1): --- FAIL: TestX: x_test.go:41: got 1`); when that isn't
+   enough, `swim log N`, the failed step and those before it. PASS only
    means exit 0: read the evidence (`swim log N | sed -n '/^-- stage
    verify/,$p'`). SKIP (dry run): nothing changed; never a result.
 7. **Close out:** record results (with the job id) where the project tracks

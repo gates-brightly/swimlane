@@ -1,0 +1,120 @@
+?   	github.com/gates-brightly/swimlane	[no test files]
+?   	github.com/gates-brightly/swimlane/cmd/swim	[no test files]
+?   	github.com/gates-brightly/swimlane/e2e/cmd/e2etool	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/anchor	0.268s
+ok  	github.com/gates-brightly/swimlane/internal/approval	0.948s
+ok  	github.com/gates-brightly/swimlane/internal/assets	0.690s
+ok  	github.com/gates-brightly/swimlane/internal/authority	0.558s
+ok  	github.com/gates-brightly/swimlane/internal/cache	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/chain	1.595s
+ok  	github.com/gates-brightly/swimlane/internal/changelog	0.963s
+ok  	github.com/gates-brightly/swimlane/internal/chars	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/ci	1.116s
+ok  	github.com/gates-brightly/swimlane/internal/cli	1.051s
+ok  	github.com/gates-brightly/swimlane/internal/config	1.337s
+ok  	github.com/gates-brightly/swimlane/internal/display	1.785s
+ok  	github.com/gates-brightly/swimlane/internal/docs	2.565s
+ok  	github.com/gates-brightly/swimlane/internal/doctor	2.760s
+?   	github.com/gates-brightly/swimlane/internal/earmark	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/envfile	1.171s
+?   	github.com/gates-brightly/swimlane/internal/failpoint	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/finding	1.019s
+ok  	github.com/gates-brightly/swimlane/internal/fsutil	2.448s
+ok  	github.com/gates-brightly/swimlane/internal/help	2.112s
+ok  	github.com/gates-brightly/swimlane/internal/history	1.473s
+ok  	github.com/gates-brightly/swimlane/internal/lane	2.409s
+ok  	github.com/gates-brightly/swimlane/internal/launcher	2.822s
+ok  	github.com/gates-brightly/swimlane/internal/lint	3.052s
+ok  	github.com/gates-brightly/swimlane/internal/logparse	2.649s
+ok  	github.com/gates-brightly/swimlane/internal/lookup	2.546s
+ok  	github.com/gates-brightly/swimlane/internal/manifest	2.738s
+ok  	github.com/gates-brightly/swimlane/internal/migrate	2.683s
+ok  	github.com/gates-brightly/swimlane/internal/outputs	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/peer	2.481s
+ok  	github.com/gates-brightly/swimlane/internal/policy	2.602s
+ok  	github.com/gates-brightly/swimlane/internal/proc	2.621s
+ok  	github.com/gates-brightly/swimlane/internal/queue	4.176s
+ok  	github.com/gates-brightly/swimlane/internal/redact	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/runner	2.767s
+ok  	github.com/gates-brightly/swimlane/internal/sigfile	4.098s
+ok  	github.com/gates-brightly/swimlane/internal/sign	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/status	5.396s
+panic: test timed out after 10m0s
+	running tests:
+		TestStepTimeoutKillsItsChildren (10m0s)
+		TestStepTimeoutKillsItsChildren/forked_child (10m0s)
+
+goroutine 37 [running]:
+testing.(*M).startAlarm.func1()
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2959 +0x2c4
+created by time.goFunc
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/time/sleep.go:182 +0x38
+
+goroutine 1 [chan receive]:
+testing.(*T).Run(0x254f8b91e488, {0x1049ad937?, 0x254f8b7dfa88?}, 0x104c502c0)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2266 +0x3cc
+testing.runTests.func1(0x254f8b91e488)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2742 +0x38
+testing.tRunner(0x254f8b91e488, 0x254f8b7dfbb8)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2193 +0xc4
+testing.runTests({0x1049af300, 0x22}, {0x1049b4629, 0x30}, 0x254f8b7b61c8, {0x104ca63b0, 0xe, 0xe}, {0x254f8b7dfc58?, 0x254f8b8607e0?, ...})
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2740 +0x400
+testing.(*M).Run(0x254f8b854dc0)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2600 +0x578
+main.main()
+	_testmain.go:72 +0x80
+
+goroutine 6 [chan receive]:
+testing.(*T).Run(0x254f8b91e6c8, {0x1049a593c?, 0x254f8b832ed8?}, 0x254f8b85b4a0)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2266 +0x3cc
+github.com/gates-brightly/swimlane/internal/step.TestStepTimeoutKillsItsChildren(0x254f8b91e6c8)
+	/Users/zachgates/nix/swimlane/internal/step/group_test.go:74 +0xa0
+testing.tRunner(0x254f8b91e6c8, 0x104c502c0)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2193 +0xc4
+created by testing.(*T).Run in goroutine 1
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2258 +0x3b8
+
+goroutine 7 [syscall]:
+syscall.syscalln(0x1048e29b0, {0x254f8b949520, 0x3, 0x3})
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/runtime/sys_darwin.go:27 +0x20
+syscall.syscall(0x254f8b9ce230?, 0x70?, 0x254f8b949588?, 0xbe5b7e506b843f41?)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/syscall/syscall_darwin.go:384 +0x24
+golang.org/x/sys/unix.Open({0x254f8b9ce230?, 0x1047d41d4?}, 0x1008000, 0x0)
+	/Users/zachgates/go/pkg/mod/golang.org/x/sys@v0.49.0/unix/zsyscall_darwin_arm64.go:1823 +0x70
+github.com/gates-brightly/swimlane/internal/testwait.(*Watcher).add(0x254f8b9ae0c0, {0x254f8b9ce230, 0x70})
+	/Users/zachgates/nix/swimlane/internal/testwait/watch_darwin.go:69 +0xec
+github.com/gates-brightly/swimlane/internal/testwait.(*Watcher).scan.func1({0x254f8b9ce230, 0x70}, {0x104c4f6b8?, 0x254f8b9ae100?}, {0x0?, 0x0?})
+	/Users/zachgates/nix/swimlane/internal/testwait/watch_darwin.go:58 +0xe0
+path/filepath.walkDir({0x254f8b9ce230, 0x70}, {0x104c4f6b8, 0x254f8b9ae100}, 0x254f8b949908)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/path/filepath/path.go:311 +0x44
+path/filepath.walkDir({0x254f8b9ce000, 0x6a}, {0x104c4f760, 0x254f8b9980b0}, 0x254f8b949908)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/path/filepath/path.go:333 +0x1fc
+path/filepath.WalkDir({0x254f8b9ce000, 0x6a}, 0x254f8b949908)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/path/filepath/path.go:401 +0x74
+github.com/gates-brightly/swimlane/internal/testwait.(*Watcher).scan(...)
+	/Users/zachgates/nix/swimlane/internal/testwait/watch_darwin.go:51
+github.com/gates-brightly/swimlane/internal/testwait.Watch({0x254f8b9ce000, 0x6a}, 0x0)
+	/Users/zachgates/nix/swimlane/internal/testwait/watch_darwin.go:44 +0x178
+github.com/gates-brightly/swimlane/internal/step.readPid(0x254f8b91e908, {0x254f8b9ce000, 0x6c})
+	/Users/zachgates/nix/swimlane/internal/step/group_test.go:44 +0x50
+github.com/gates-brightly/swimlane/internal/step.TestStepTimeoutKillsItsChildren.func1(0x254f8b91e908)
+	/Users/zachgates/nix/swimlane/internal/step/group_test.go:91 +0x3a8
+testing.tRunner(0x254f8b91e908, 0x254f8b85b4a0)
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2193 +0xc4
+created by testing.(*T).Run in goroutine 6
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/testing/testing.go:2258 +0x3b8
+
+goroutine 33 [syscall]:
+os/signal.signal_recv()
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/runtime/sigqueue.go:149 +0x104
+os/signal.loop()
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/os/signal/signal_unix.go:23 +0x1c
+created by os/signal.Notify.func2.1 in goroutine 7
+	/Users/zachgates/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/os/signal/signal.go:164 +0x28
+FAIL	github.com/gates-brightly/swimlane/internal/step	602.503s
+ok  	github.com/gates-brightly/swimlane/internal/syntax	(cached)
+ok  	github.com/gates-brightly/swimlane/internal/testwait	2.368s
+ok  	github.com/gates-brightly/swimlane/internal/trust	2.717s
+ok  	github.com/gates-brightly/swimlane/internal/ui	2.490s
+ok  	github.com/gates-brightly/swimlane/internal/version	(cached)
+FAIL

@@ -27,6 +27,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/redact"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
+	"github.com/gates-brightly/swimlane/internal/why"
 )
 
 // Options configures one step.
@@ -245,7 +246,7 @@ func Run(o Options) (Result, error) {
 		}
 		detail := "matched " + strings.Join(quoted, ", ") + "; blocked_commands"
 		os.WriteFile(SpoolPath(o.LogPath), []byte(spoolHead(logLabel, start, cmdline)), 0o644)
-		if err := writeBlock(o.LogPath, logparse.StepLine(logparse.Blocked, logLabel, detail, "0.0s", clock), ""); err != nil {
+		if _, err := writeBlock(o.LogPath, logparse.StepLine(logparse.Blocked, logLabel, detail, "0.0s", clock), "", nil); err != nil {
 			return Result{ExitCode: policy.ExitBlocked}, err
 		}
 		line := logparse.ResultLine(logparse.Blocked, logLabel, detail)
@@ -308,6 +309,7 @@ func Run(o Options) (Result, error) {
 		backoff = 2 * time.Second
 	}
 	var last attempt
+	errTail := &lastLine{} // the last attempt's last stderr line: a why when nothing better
 	for a := 1; a <= attempts; a++ {
 		res.Attempts = a
 		if attempts > 1 {
@@ -317,7 +319,8 @@ func Run(o Options) (Result, error) {
 			save.Truncate(0)
 			save.Seek(0, io.SeekStart)
 		}
-		last = runOnce(o, plain, sigs)
+		errTail.reset()
+		last = runOnce(o, plain, errTail, sigs)
 		retryable := a < attempts && last.exit != 0 && last.sig == nil && last.why != roundLimit &&
 			!(last.why == stepLimit && o.Retry.NoTimeout) &&
 			(len(o.Retry.On) == 0 || last.why == stepLimit || containsInt(o.Retry.On, last.exit))
@@ -414,7 +417,13 @@ func Run(o Options) (Result, error) {
 	// A crash here (the command ran, its result isn't written) must never
 	// read as a pass: the spool stays, and RecoverSpool writes it as cut off.
 	failpoint.Hit(failpoint.StepAfterExit)
-	if err := writeBlock(o.LogPath, logparse.StepLine(kind, logLabel, detail, ds, clock), saved, meta(o)...); err != nil {
+	var whyOf func([]string) string
+	if kind == logparse.Fail {
+		lastErr := mk.String(ui.Safe(errTail.String()))
+		whyOf = func(out []string) string { return why.Of(out, lastErr) }
+	}
+	because, err := writeBlock(o.LogPath, logparse.StepLine(kind, logLabel, detail, ds, clock), saved, whyOf, meta(o)...)
+	if err != nil {
 		return res, err
 	}
 	line := logparse.ResultLine(kind, logLabel, detail)
@@ -428,7 +437,7 @@ func Run(o Options) (Result, error) {
 				l.Pass++
 			} else {
 				l.Fail++
-				l.FailedSteps = append(l.FailedSteps, line)
+				l.FailedSteps = append(l.FailedSteps, logparse.WithWhy(line, because))
 			}
 		})
 	}
@@ -437,7 +446,7 @@ func Run(o Options) (Result, error) {
 
 // runOnce runs the command once, stopping it at the step limit or the
 // round's deadline, whichever comes first.
-func runOnce(o Options, plain *lockedWriter, sigs chan os.Signal) attempt {
+func runOnce(o Options, plain *lockedWriter, errTail io.Writer, sigs chan os.Signal) attempt {
 	start := time.Now()
 	var at attempt
 	limit, why := time.Time{}, notTimedOut
@@ -457,7 +466,7 @@ func runOnce(o Options, plain *lockedWriter, sigs chan os.Signal) attempt {
 	cmd := exec.Command(o.Args[0], o.Args[1:]...)
 	cmd.Stdin = o.Stdin
 	cmd.Stdout = io.MultiWriter(o.Stdout, plain)
-	cmd.Stderr = io.MultiWriter(o.Stderr, plain)
+	cmd.Stderr = io.MultiWriter(o.Stderr, plain, errTail)
 	cmd.WaitDelay = 2 * time.Second // don't hang on grandchildren holding the pipes
 	// Its own process group, so a time limit stops everything it started.
 	// Not for a step reading the terminal: a background group that reads it
@@ -600,19 +609,20 @@ func containsInt(xs []int, x int) bool {
 }
 
 // writeBlock appends a step's block to the log: its result line, then the
-// command and output from the spool, then the snapshot path. The spool is
-// removed afterwards.
-func writeBlock(logPath, resultLine, saved string, meta ...string) error {
+// command and output from the spool, then the snapshot path, its why and
+// meta. whyOf, for a failed step, picks its why from the last attempt's
+// output; it returns that why. The spool is removed afterwards.
+func writeBlock(logPath, resultLine, saved string, whyOf func([]string) string, meta ...string) (string, error) {
 	sp := SpoolPath(logPath)
 	in, err := os.Open(sp)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer os.Remove(sp)
 	defer in.Close()
 	out, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer out.Close()
 	w := bufio.NewWriterSize(out, 64*1024)
@@ -620,6 +630,7 @@ func writeBlock(logPath, resultLine, saved string, meta ...string) error {
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	first := true
+	var output []string // the last attempt's output, for whyOf
 	for sc.Scan() {
 		line := sc.Text()
 		if first {
@@ -630,21 +641,81 @@ func writeBlock(logPath, resultLine, saved string, meta ...string) error {
 			}
 		}
 		if strings.HasPrefix(line, spoolMark) {
-			w.WriteString(logparse.Indent + "-- " + strings.TrimPrefix(line, spoolMark) + "\n")
+			note := strings.TrimPrefix(line, spoolMark)
+			if strings.HasPrefix(note, "attempt ") {
+				output = output[:0] // the why is the last attempt's
+			}
+			w.WriteString(logparse.Indent + "-- " + note + "\n")
 			continue
 		}
 		w.WriteString(logparse.OutPrefix + line + "\n")
+		if whyOf != nil {
+			if len(output) >= whyLines {
+				output = append(output[:0], output[whyLines/2:]...)
+			}
+			output = append(output, line)
+		}
 	}
 	if saved != "" {
 		w.WriteString(logparse.Indent + "saved: " + saved + "\n")
+	}
+	because := ""
+	if whyOf != nil {
+		if because = whyOf(output); because != "" {
+			w.WriteString(logparse.Indent + "why: " + because + "\n")
+		}
 	}
 	for _, m := range meta {
 		w.WriteString(logparse.Indent + m + "\n")
 	}
 	if err := w.Flush(); err != nil {
-		return err
+		return "", err
 	}
-	return sc.Err()
+	return because, sc.Err()
+}
+
+// whyLines is how many of a failed step's last output lines its why is
+// picked from.
+const whyLines = 100000
+
+// lastLine keeps the last non-empty line written to it (a step's stderr),
+// cut at 4 KiB.
+type lastLine struct {
+	mu        sync.Mutex
+	cur, last []byte
+}
+
+func (l *lastLine) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, b := range p {
+		if b == '\n' || b == '\r' {
+			if len(strings.TrimSpace(string(l.cur))) > 0 {
+				l.last = append(l.last[:0], l.cur...)
+			}
+			l.cur = l.cur[:0]
+			continue
+		}
+		if len(l.cur) < 4096 {
+			l.cur = append(l.cur, b)
+		}
+	}
+	return len(p), nil
+}
+
+func (l *lastLine) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(strings.TrimSpace(string(l.cur))) > 0 {
+		return string(l.cur)
+	}
+	return string(l.last)
+}
+
+func (l *lastLine) reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.cur, l.last = l.cur[:0], l.last[:0]
 }
 
 // RecordOutput writes a step that has already run into the log: a lane
@@ -677,7 +748,11 @@ func RecordStep(logPath, kind, label, detail, cmdline string, start time.Time, d
 	if err != nil {
 		return "", err
 	}
-	if err := writeBlock(logPath, logparse.StepLine(kind, label, detail, fmt.Sprintf("%.1fs", dur.Seconds()), clock), ""); err != nil {
+	var whyOf func([]string) string
+	if kind == logparse.Fail {
+		whyOf = func(out []string) string { return why.Of(out, "") }
+	}
+	if _, err := writeBlock(logPath, logparse.StepLine(kind, label, detail, fmt.Sprintf("%.1fs", dur.Seconds()), clock), "", whyOf); err != nil {
 		return "", err
 	}
 	return logparse.ResultLine(kind, label, detail), nil
@@ -701,7 +776,8 @@ func RecoverSpool(logPath string) {
 		}
 	}
 	f.Close()
-	writeBlock(logPath, logparse.StepLine(logparse.Fail, label, "cut off: swim was killed mid-step, output recovered", "?", clock), "")
+	writeBlock(logPath, logparse.StepLine(logparse.Fail, label, "cut off: swim was killed mid-step, output recovered", "?", clock), "",
+		func(out []string) string { return why.Of(out, "") })
 }
 
 // readsTerminal reports whether a step's stdin is a terminal.

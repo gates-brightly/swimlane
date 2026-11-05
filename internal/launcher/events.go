@@ -141,7 +141,7 @@ func (e *events) laneDone(o Options, oc *Outcome) {
 			ev.Counts = &logparse.Counts{Pass: r.Pass, Fail: r.Fail, Skip: r.Skip}
 			ev.FailedSteps = []string{}
 			for _, f := range r.Failed() {
-				ev.FailedSteps = append(ev.FailedSteps, f.Text())
+				ev.FailedSteps = append(ev.FailedSteps, f.Brief())
 			}
 		}
 	}

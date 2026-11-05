@@ -7,6 +7,7 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/display"
+	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/notify"
 	"github.com/gates-brightly/swimlane/internal/queue"
 )
@@ -99,6 +100,11 @@ func (n *watchNotes) batchDone(seq int, result string, lanes []int, took time.Du
 	body := lanesText(lanes) + " · " + display.Elapsed(took)
 	if result == "skipped" {
 		body += " · a guard dry-ran: it waits on an approval"
+	}
+	if result == "failed" {
+		if f := launcher.FirstFailure(n.root, lanes); f != "" {
+			body += " · " + f
+		}
 	}
 	title := fmt.Sprintf("swim: #%d %s", seq, result)
 	n.t.Notify(title, body)

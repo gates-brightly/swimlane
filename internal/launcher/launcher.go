@@ -866,7 +866,7 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Yellow, oc.Reason))
 		}
 		for _, f := range r.Failed() {
-			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, f.Text()))
+			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, f.Brief()))
 		}
 	}
 	fmt.Fprintln(out, p.Paint(ui.Dim, "  logs: swim log N (or "+logList(sel)+")   status: swim status"))

@@ -19,6 +19,7 @@
 //	  FAIL  tf plan (exit 2)                       3.1s  12:00:02
 //	        $ terraform plan -detailed-exitcode
 //	        | Error: ...
+//	        why: Error: ...                                   a failure's telling line
 //	  STOP  gate failed: tf plan
 //
 //	== END FAIL  pass=1 fail=1 skip=0  exit=1  3.6s  2026-10-09T12:00:04Z
@@ -195,6 +196,10 @@ type Result struct {
 	Cmd    string
 	Output []string
 	Saved  string
+	// Why is a failed step's most telling output line (package why),
+	// written once when it failed: for the one-line views, never its
+	// result line.
+	Why string
 	// Key and Target are the step's own (run --key, --target, # Targets:),
 	// as logged: its name across rounds, what it talks to.
 	Key, Target string
@@ -202,6 +207,18 @@ type Result struct {
 
 // Text renders the result as text, e.g. "FAIL  tf plan (exit 2)".
 func (r Result) Text() string { return ResultLine(r.Kind, r.Label, r.Detail) }
+
+// Brief is the result as one line with its why, for the one-line views:
+// "FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:41: got 1".
+func (r Result) Brief() string { return WithWhy(r.Text(), r.Why) }
+
+// WithWhy appends a failed step's why to its result text ("" adds nothing).
+func WithWhy(text, why string) string {
+	if why == "" {
+		return text
+	}
+	return text + ": " + why
+}
 
 // StageResult is one stage's outcome.
 type StageResult struct{ Name, State string }
@@ -572,6 +589,8 @@ func parseV2(rd io.Reader) (*Round, error) {
 					res.Output = append(res.Output, strings.TrimPrefix(strings.TrimPrefix(body, "|"), " "))
 				case strings.HasPrefix(body, "saved: "):
 					res.Saved = strings.TrimPrefix(body, "saved: ")
+				case strings.HasPrefix(body, "why: "):
+					res.Why = strings.TrimPrefix(body, "why: ")
 				case strings.HasPrefix(body, "key: "):
 					res.Key = strings.TrimPrefix(body, "key: ")
 				case strings.HasPrefix(body, "target: "):

@@ -91,9 +91,25 @@ func askText(req approval.Request) string {
 	return "approval of " + req.Flag + ": " + req.Desc
 }
 
+// FirstFailure is the first failed step of lanes (in order) as their
+// status has it, with its why: "swim 8: FAIL  go test (exit 1): --- FAIL:
+// TestX: x_test.go:41: got 1"; "" if none failed a step.
+func FirstFailure(root string, lanes []int) string {
+	st, _ := status.Load(root)
+	if st == nil {
+		return ""
+	}
+	for _, n := range lanes {
+		if l := st.Get(n); l != nil && l.State == status.Failed && len(l.FailedSteps) > 0 {
+			return fmt.Sprintf("swim %d: %s", n, strings.TrimSpace(l.FailedSteps[0]))
+		}
+	}
+	return ""
+}
+
 // notifyEnd tells the operator's terminal, and notify_command, how the run
-// ended: "swim run
-// failed" / "swim 1,2,3 · 2 passed, 1 failed · 3:12".
+// ended: "swim run failed" / "swim 1,2,3 · 2 passed, 1 failed · 3:12", and
+// the first failed step with its why.
 func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bool, elapsed time.Duration) {
 	word, result := "passed", status.Passed
 	switch {
@@ -111,6 +127,11 @@ func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bo
 		}
 	}
 	title, body := "swim run "+word, fmt.Sprintf("swim %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Elapsed(elapsed))
+	if result == status.Failed {
+		if f := FirstFailure(o.Root, sel); f != "" {
+			body += " · " + f
+		}
+	}
 	o.Notify.Notify(title, body)
 	o.Hook.Send(notify.Note{Event: notify.EventEnd, Result: result, Title: title, Body: body, Lanes: sel})
 }

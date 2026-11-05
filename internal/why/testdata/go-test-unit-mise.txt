@@ -1,0 +1,76 @@
+?   	github.com/gates-brightly/swimlane	[no test files]
+?   	github.com/gates-brightly/swimlane/cmd/swim	[no test files]
+?   	github.com/gates-brightly/swimlane/e2e/cmd/e2etool	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/anchor	0.579s
+ok  	github.com/gates-brightly/swimlane/internal/approval	1.071s
+--- FAIL: TestTemplatesRenderAndParse (0.12s)
+    assets_test.go:43: lane.3.js doesn't parse: exit status 1
+        mise ERROR No version is set for shim: node
+        Set a global *** version with one of the following:
+        mise use -g node@20.11.0
+        mise ERROR Version: 2026.10.3 macos-arm64 (1980-01-01)
+        mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+FAIL
+FAIL	github.com/gates-brightly/swimlane/internal/assets	0.883s
+?   	github.com/gates-brightly/swimlane/internal/authority	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/cache	1.066s
+ok  	github.com/gates-brightly/swimlane/internal/chain	1.834s
+ok  	github.com/gates-brightly/swimlane/internal/changelog	1.400s
+ok  	github.com/gates-brightly/swimlane/internal/chars	1.586s
+ok  	github.com/gates-brightly/swimlane/internal/chime	1.793s
+ok  	github.com/gates-brightly/swimlane/internal/ci	1.979s
+ok  	github.com/gates-brightly/swimlane/internal/cli	3.987s
+ok  	github.com/gates-brightly/swimlane/internal/config	1.986s
+ok  	github.com/gates-brightly/swimlane/internal/display	2.165s
+ok  	github.com/gates-brightly/swimlane/internal/docs	2.763s
+ok  	github.com/gates-brightly/swimlane/internal/doctor	4.639s
+?   	github.com/gates-brightly/swimlane/internal/earmark	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/envfile	3.172s
+ok  	github.com/gates-brightly/swimlane/internal/evidence	3.381s
+?   	github.com/gates-brightly/swimlane/internal/failpoint	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/finding	3.582s
+ok  	github.com/gates-brightly/swimlane/internal/fsutil	3.768s
+ok  	github.com/gates-brightly/swimlane/internal/help	3.759s
+ok  	github.com/gates-brightly/swimlane/internal/history	3.654s
+ok  	github.com/gates-brightly/swimlane/internal/hub	4.296s
+ok  	github.com/gates-brightly/swimlane/internal/lane	5.083s
+ok  	github.com/gates-brightly/swimlane/internal/launcher	5.561s
+ok  	github.com/gates-brightly/swimlane/internal/lint	4.208s
+ok  	github.com/gates-brightly/swimlane/internal/logparse	3.834s
+ok  	github.com/gates-brightly/swimlane/internal/lookup	3.938s
+ok  	github.com/gates-brightly/swimlane/internal/manifest	4.072s
+ok  	github.com/gates-brightly/swimlane/internal/migrate	3.891s
+ok  	github.com/gates-brightly/swimlane/internal/module	3.999s
+?   	github.com/gates-brightly/swimlane/internal/module/builtin/aws-session	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/module/builtin/backup	11.242s
+ok  	github.com/gates-brightly/swimlane/internal/module/builtin/claude	7.116s
+ok  	github.com/gates-brightly/swimlane/internal/module/builtin/report	3.352s
+ok  	github.com/gates-brightly/swimlane/internal/module/builtin/smoke	3.451s
+ok  	github.com/gates-brightly/swimlane/internal/module/builtin/target	10.604s
+ok  	github.com/gates-brightly/swimlane/internal/module/builtin/tf	10.195s
+ok  	github.com/gates-brightly/swimlane/internal/module/builtin/wait	7.576s
+?   	github.com/gates-brightly/swimlane/internal/module/gomod	[no test files]
+?   	github.com/gates-brightly/swimlane/internal/module/gomod/gomodtest	[no test files]
+ok  	github.com/gates-brightly/swimlane/internal/observe	3.519s
+ok  	github.com/gates-brightly/swimlane/internal/outputs	3.262s
+ok  	github.com/gates-brightly/swimlane/internal/peer	3.113s
+ok  	github.com/gates-brightly/swimlane/internal/policy	3.248s
+ok  	github.com/gates-brightly/swimlane/internal/proc	3.267s
+ok  	github.com/gates-brightly/swimlane/internal/queue	4.297s
+ok  	github.com/gates-brightly/swimlane/internal/redact	3.374s
+ok  	github.com/gates-brightly/swimlane/internal/runner	3.583s
+ok  	github.com/gates-brightly/swimlane/internal/runrec	3.837s
+ok  	github.com/gates-brightly/swimlane/internal/schedule	3.791s
+ok  	github.com/gates-brightly/swimlane/internal/secrets	4.170s
+ok  	github.com/gates-brightly/swimlane/internal/sigfile	4.385s
+ok  	github.com/gates-brightly/swimlane/internal/sign	3.824s
+ok  	github.com/gates-brightly/swimlane/internal/status	6.181s
+ok  	github.com/gates-brightly/swimlane/internal/step	6.123s
+ok  	github.com/gates-brightly/swimlane/internal/syntax	3.806s
+ok  	github.com/gates-brightly/swimlane/internal/timeline	3.616s
+ok  	github.com/gates-brightly/swimlane/internal/trust	3.748s
+ok  	github.com/gates-brightly/swimlane/internal/ui	3.342s
+ok  	github.com/gates-brightly/swimlane/internal/version	3.398s
+?   	github.com/gates-brightly/swimlane/sdk/go/conformance	[no test files]
+ok  	github.com/gates-brightly/swimlane/sdk/go/swim	3.130s
+FAIL

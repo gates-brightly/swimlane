@@ -1,0 +1,11 @@
+lane.1.sh:8  warn   disable comment names unknown check "workspace-live"  [lint-ignore]
+                    fix: use a code shown in brackets by swim lint (swim lint --help lists them)
+lane.2.sh:9  warn   disable comment names unknown check "workspace-live"  [lint-ignore]
+                    fix: use a code shown in brackets by swim lint (swim lint --help lists them)
+lane.3.sh:9  warn   disable comment names unknown check "workspace-live"  [lint-ignore]
+                    fix: use a code shown in brackets by swim lint (swim lint --help lists them)
+lane.4.sh:9  warn   disable comment names unknown check "workspace-live"  [lint-ignore]
+                    fix: use a code shown in brackets by swim lint (swim lint --help lists them)
+lane.6.sh:9  warn   disable comment names unknown check "workspace-live"  [lint-ignore]
+                    fix: use a code shown in brackets by swim lint (swim lint --help lists them)
+0 errors, 5 warnings

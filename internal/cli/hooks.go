@@ -496,12 +496,12 @@ func cmdFinish(args []string) error {
 		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "handlers: "+logparse.StagesText(hs)))
 	}
 	for _, f := range failed {
-		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Red, f.Text()))
+		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Red, f.Brief()))
 	}
 
 	failedSteps := []string{}
 	for _, f := range failed {
-		failedSteps = append(failedSteps, f.Text())
+		failedSteps = append(failedSteps, f.Brief())
 	}
 	err = status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
 		l.State = state

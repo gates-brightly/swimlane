@@ -40,6 +40,20 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Changed
+
+- **A failed step says why in one line.** When a step fails, swim picks the
+  line of its output that best says why (a go test `--- FAIL: TestX:
+  x_test.go:41: got 1` joined from two lines, else a `panic:`, `FAIL:`,
+  `fatal:`, `error:` or `file:NN:` line, else its last stderr or output
+  line), masked and cut to 160 characters, and shows it after the step:
+  `FAIL  go test (unit) (exit 1): --- FAIL: TestIsDefault:
+  config_test.go:341: ...` in `.swim.log`, `swim status` (and
+  `failed_steps`), bare `swim`, `swim watch`'s lane row, notifications and
+  the run summary. The lane log keeps it as the step block's `why:` line
+  (and `why` in `swim log --yaml`); the step's result line is unchanged. A
+  step that printed nothing keeps today's text.
+
 ### Removed
 
 - **One read view per job: `swim report`, earmarks and `swim history` are

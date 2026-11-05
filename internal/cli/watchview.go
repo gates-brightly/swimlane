@@ -555,6 +555,10 @@ func laneRowDetail(l *status.Lane, state string) string {
 		return ""
 	case status.Locked, status.Queued:
 		return l.Reason
+	case status.Failed:
+		if len(l.FailedSteps) > 0 { // the first failed step and its why
+			return strings.TrimSpace(l.FailedSteps[0])
+		}
 	}
 	return ""
 }

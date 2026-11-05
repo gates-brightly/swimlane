@@ -114,6 +114,13 @@ func cmdAttention() error {
 			continue
 		case current && state == status.Failed:
 			needs = append(needs, attentionItem{who, stateWord(l, state, now) + " · " + l.Round, "swim log " + strconv.Itoa(l.Lane)})
+			if len(l.FailedSteps) > 0 { // the first failed step and its why, on a line of its own
+				first := strings.TrimSpace(l.FailedSteps[0])
+				if more := len(l.FailedSteps) - 1; more > 0 {
+					first += fmt.Sprintf("  (+%d more)", more)
+				}
+				needs = append(needs, attentionItem{"", "  " + first, ""})
+			}
 			continue
 		case current && state == status.Interrupted:
 			needs = append(needs, attentionItem{who, "INTERRUPTED · " + l.Round, "swim log " + strconv.Itoa(l.Lane)})
