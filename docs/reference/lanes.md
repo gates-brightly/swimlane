@@ -94,16 +94,32 @@ gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $PR_REF, snapsh
 | `aws_gate [ACCOUNT]` | A gate that `aws sts get-caller-identity` answers (under `AWS_PROFILE` if set), and with ACCOUNT, that it's that account. The log shows the identity. |
 | `gh_pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `PR_REF`. |
 | `gh_actions` / `gh_actions_gate` | True on a GitHub Actions runner (`GITHUB_ACTIONS=true`), for `if`; the gate stops the round anywhere else and logs the runner, repository, run and commit. |
+| `gh_auth_gate [LOGIN]` | A gate that `gh` is signed in, and with LOGIN, as that user. |
+| `gh_repo [REMOTE]` | Sets `REPO` (owner/name) from REMOTE's URL (default `origin`); stops the round if it isn't GitHub's. The `gh_pr_*` gates set it when unset. |
+| `gh_pr_state_gate N STATE...` | A gate that PR N is OPEN, MERGED, CLOSED or DRAFT (one of those given); logs its state, head and review decision. |
+| `gh_pr_head_gate N SHA` | A gate that PR N's head is still SHA (a prefix will do): what was reviewed is what it holds. |
+| `git_fetch_gate REMOTE REF...` | A gate that fetches REFs from REMOTE, with retries. |
+| `git_worktree PATH BRANCH [BASE]` | A gate that PATH (under the repo) is a worktree on a new BRANCH from BASE (default `origin/main`); rerunnable; sets `WT`. |
+| `git_pushed_gate BRANCH [REMOTE]` | A gate that REMOTE (default `origin`) has BRANCH at the local branch's commit. |
+| `git_authors_gate "NAME <EMAIL>" RANGE [PATH]` | A gate that every commit in RANGE was authored and committed by that identity; lists any that weren't. |
+| `docker_gate` | A gate that the Docker daemon answers. |
+| `docker_compose_snapshot PROJECT [WHEN]` | Snapshot a compose project's containers, running or not (`before`, `after`). |
+| `tool_gate CMD [VERSION]` | A gate that CMD is on PATH, and with VERSION that `CMD --version` reports it (`node 20` matches v20.11.1). |
 | `os_mac` / `os_linux` | True on macOS / Linux (`uname -s`), for `if`. |
 | `os_mac_gate` / `os_linux_gate` | A gate that this is macOS / Linux; logs `uname -srm`. |
 
 The plain checks (`gh_actions`, `os_mac`, `os_linux`) log nothing: put
 what depends on them in steps, or use the gate when the lane must run
-there. `# Includes:` pins each module with the lane: approving the lane
-approves the helpers as they are. Keep helpers read-only, and run every
-command through `step`, `gate` or `snapshot` so the log has it. A
-destructive step stays in the lane behind its own guard: lint reads the
-lane, not the files it includes, for guards and for bash 3.2.
+there.
+
+Modules: `aws`, `docker`, `gh`, `git`, `os`, `tool`. A repo's own module
+(`lith_` for its dev stack, say) is a file like these, committed in that
+repo. `# Includes:` pins each module with the lane: approving the lane
+approves the helpers as they are. Helpers change at most the repo's own
+git state (refs, a new worktree), and run every command through `step`,
+`gate` or `snapshot`, so the log has it. A destructive step stays in the
+lane behind its own guard: lint reads the lane, not the files it
+includes, for guards and for bash 3.2.
 
 ## Header
 
