@@ -145,7 +145,7 @@ func keyValue(key, value string) (*yaml.Node, error) {
 }
 
 // Normalize validates value for key and returns it as config spells it
-// (approvals Prompt -> prompt).
+// (interrupt Graceful -> graceful).
 func Normalize(key, value string) (string, error) {
 	n, err := keyValue(key, value)
 	if err != nil {
