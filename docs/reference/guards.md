@@ -21,9 +21,8 @@ In this order:
 1. **The flag:** `FLAG=1` in the environment `swim run` started with
    approves; `FLAG=0` declines without asking. A flag a lane sets for
    itself doesn't count. Env files can't hold one.
-2. **Signed approvals** of this exact [manifest](manifest.md), plus standing
-   approvals of whoever queued the batch, counted against `lookup.yml`'s
-   rule for the guard.
+2. **A queued batch's approvals:** `swim queue N --approve FLAG` (or
+   `-y`), for that batch, pinned to its exact [manifest](manifest.md).
 3. **The person at the terminal:** `swim 2 requires human approval of guard
    FLAG ... the lane says: <action>  Y/N [N]`. Or in the live view: `y`/`n`
    on a lane that's asking, or ahead of time on one that hasn't (this run
@@ -35,57 +34,11 @@ Anything else is a **dry run**: the step is skipped, the log says how to
 approve, and the round ends **SKIP**, not PASS: lanes after it don't start,
 `swim run` exits 3 (`swim ci`: 0), `swim all` runs it again next time.
 
-Under `swim run` the launcher decides, not the lane: it reads `approvals/`
-and `lookup.yml` once as the run starts, refuses a flag the header doesn't
+Under `swim run` the launcher decides, not the lane: it reads its own
+environment once as the run starts, refuses a flag the header doesn't
 declare, lets each approval be used once, and writes every approval to the
 chain itself. A lane can't approve itself. `approvals: flags` in config
 never asks.
-
-## Signed approvals
-
-```sh
-swim approve 4 --guards FIN_ALLOW_DROP     # this exact manifest; co-approvers run the same
-swim approve --auto bob [--guards A,B]     # standing: every job bob queues
-swim revoke 4 / swim revoke --auto bob
-swim approve                               # every approval, its state and signers
-swim watch --approved                      # run scripts once they're fully approved
-```
-
-Approvals are committed files under `approvals/`, each an ordered,
-signed log of approve and revoke events, so approvers sign from their own
-machines. `lookup.yml` (committed) says whose key is whose and what each
-guard needs:
-
-```yaml
-users:
-  zach:  {keys: ["ssh-ed25519 AAAA... zach@laptop"]}
-  alice: {keys: ["ssh-ed25519 AAAA... alice@work"]}
-groups:
-  platform-admin: [zach, alice]
-require:
-  - guards: [FIN_ALLOW_*]
-    group: platform-admin
-    count: 2              # two different people
-standing:
-  max: 90d                # the longest a standing approval may last
-```
-
-Script and standing approvals count together. `swim keys` shows who's who.
-
-## Lifecycle
-
-`swim approve` and `swim verify` show each approval's state:
-
-| | |
-|---|---|
-| **active** | It counts. |
-| **expired** | Past `--expires`. Standing approvals last 30 days by default, never past `standing.max`. |
-| **revoked** | Every signer's latest event revokes. |
-| **stale** | What it approves changed. A script approval binds its manifest (script, pinned files, `swim.yml` policy, `lookup.yml`'s rules); a standing approval binds each guard's rule when signed. Stricter or looser, a rule change needs a new signature. `swim approve` says why: `stale: includes lib/orders.sh changed`. |
-| **insufficient** | Its signers don't meet the rule, or aren't in `lookup.yml`. |
-
-Who is who is read live: a key removed from `lookup.yml` stops counting at
-once.
 
 ## Decisions
 

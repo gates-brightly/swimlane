@@ -30,14 +30,15 @@ import (
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
-// Approver is one person behind an approval: their key, and for a remote
-// signature (.signature file) their own signature over the approval.
+// Approver is one person behind an approval: their name and key, and
+// for a signed approval an older swim recorded, their own signature over
+// it.
 type Approver struct {
-	Name string `json:"name,omitempty"` // from lookup.yml when recorded
+	Name string `json:"name,omitempty"`
 	Key  string `json:"key"`
-	// For a signed approval (approvals/*.signature): the statement and the
-	// approving event (its prev, time and signature), so swim verify can
-	// check it without the file.
+	// For a signed approval (an older swim's approvals/*.signature): the
+	// statement and the approving event (its prev, time and signature),
+	// kept as recorded; swim no longer checks them.
 	Statement string `json:"statement,omitempty"`
 	Prev      string `json:"prev,omitempty"`
 	SignedAt  string `json:"signed_at,omitempty"`
@@ -71,11 +72,11 @@ type Entry struct {
 	// approve
 	Guard     string     `json:"guard,omitempty"`
 	Action    string     `json:"action,omitempty"`    // the guard's description
-	Method    string     `json:"method,omitempty"`    // signature | standing | prompt | flag | auto | queue | preapproved | hub-signed | hub-button
-	Statement string     `json:"statement,omitempty"` // what a signature's approvers signed
+	Method    string     `json:"method,omitempty"`    // prompt | preapproved | flag | queue | auto; older entries: signature | standing | signature+standing | hub-signed | hub-button
+	Statement string     `json:"statement,omitempty"` // how it was approved (or what a signature's approvers signed)
 	Approvers []Approver `json:"approvers,omitempty"`
-	// Lookup is the SHA-256 of lookup.yml when the guard was approved, so
-	// swim verify knows whether today's rules are the ones it met.
+	// Lookup was the SHA-256 of lookup.yml when the guard was approved
+	// (an older swim with signed approvals); kept as written.
 	Lookup string `json:"lookup_sha256,omitempty"`
 	// Observed are the round's Observe: facts when the guard was approved.
 	Observed map[string]string `json:"observed,omitempty"`

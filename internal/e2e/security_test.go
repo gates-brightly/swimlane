@@ -16,7 +16,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/chain"
-	"github.com/gates-brightly/swimlane/internal/sigfile"
 )
 
 // gap skips a case that documents a known gap, naming the task(s) that
@@ -28,7 +27,7 @@ func gap(t *testing.T, tasks string) {
 
 // boundary is the execution-boundary fixture: lane 1's guard sits in
 // front of a harmless stand-in for a destructive command (it touches a
-// marker file), with signing on and a key in lookup.yml.
+// marker file), with signing on.
 type boundary struct {
 	*repo
 	marker string            // exists once the guarded command ran
@@ -41,7 +40,7 @@ func newBoundaryRepo(t *testing.T) *boundary {
 	t.Helper()
 	r := newRepo(t, "")
 	b := &boundary{repo: r, marker: filepath.Join(t.TempDir(), "dropped")}
-	b.keys = people(t, r, "", "zach")
+	b.keys = people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", b.keys["zach"])
 	b.lane(1, "")
@@ -89,11 +88,6 @@ func (b *boundary) sha(n int) string {
 		b.t.Fatal(err)
 	}
 	return sum
-}
-
-func (b *boundary) approve(n int) {
-	b.t.Helper()
-	b.mustSwim("approve", strconv.Itoa(n), "--guards", boundaryGuard, "--key", b.keys["zach"])
 }
 
 func (b *boundary) links() []chain.Link {
@@ -174,56 +168,9 @@ func TestSecurity(t *testing.T) {
 			b.noMarker(t, "timed out")
 			contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: not approved: the round's Timeout ran out")
 		}},
-		{"an approval for another script doesn't authorize this one", "T25", func(t *testing.T) {
-			b := newBoundaryRepo(t)
-			b.lane(2, "\nrun \"other\" true")
-			b.approve(2)
-			// Lane 2's approval file, whatever manifest it names.
-			files, _ := filepath.Glob(filepath.Join(sigfile.Dir(b.root), "lane.2."+b.sha(2)[:12]+"*.signature"))
-			if len(files) != 1 {
-				t.Fatalf("lane 2's approval: %v", files)
-			}
-			other := files[0]
-			data, err := os.ReadFile(other)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// Under lane 1's file name, as is: it names lane 2's script.
-			mine := sigfile.ScriptPath(b.root, 1, b.sha(1), "")
-			os.WriteFile(mine, data, 0o644)
-			b.mustDryRun("run", "1", "--plain")
-			b.noMarker(t, "lane 2's approval under lane 1's name")
-			// Rewritten to name lane 1's script: the signatures no longer match.
-			forged := strings.ReplaceAll(string(data), b.sha(2), b.sha(1))
-			forged = strings.ReplaceAll(forged, "lane.2.sh", "lane.1.sh")
-			forged = strings.Replace(forged, "lane: 2", "lane: 1", 1)
-			os.WriteFile(mine, []byte(forged), 0o644)
-			b.mustDryRun("run", "1", "--plain")
-			b.noMarker(t, "lane 2's approval rewritten for lane 1")
-			// Lane 1's own approval does authorize it (the fixture works).
-			os.Remove(mine)
-			b.approve(1)
-			b.mustSwim("run", "1", "--plain")
-			if !b.dropped() {
-				t.Fatalf("lane 1's own approval didn't run it:\n%s", b.log(1))
-			}
-		}},
-		{"editing the script after approval needs a fresh approval", "T25", func(t *testing.T) {
-			b := newBoundaryRepo(t)
-			b.approve(1)
-			b.lane(1, "\nrun \"added after approval\" true")
-			b.mustDryRun("run", "1", "--plain")
-			b.noMarker(t, "edited after approval")
-			contains(t, "agent1.log", b.log(1), "approves another version of lane.1.sh")
-			b.approve(1)
-			b.mustSwim("run", "1", "--plain")
-			if !b.dropped() {
-				t.Fatalf("a fresh approval didn't run it:\n%s", b.log(1))
-			}
-		}},
 		{"the chain's last entry names the script, approval and outcome", "T25", func(t *testing.T) {
 			b := newBoundaryRepo(t)
-			b.approve(1)
+			b.env = append(b.env, boundaryGuard+"=1")
 			b.mustSwim("run", "1", "--plain")
 			if !b.dropped() {
 				t.Fatalf("approved but not run:\n%s", b.log(1))
@@ -243,13 +190,13 @@ func TestSecurity(t *testing.T) {
 					appr = &links[i]
 				}
 			}
-			if appr == nil || appr.Guard != boundaryGuard || appr.Script != b.sha(1) || appr.Method != "signature" {
+			if appr == nil || appr.Guard != boundaryGuard || appr.Script != b.sha(1) || appr.Method != "flag" {
 				t.Fatalf("approve entry for the round: %+v", appr)
 			}
 			if len(last.Approvals) != 1 || last.Approvals[0] != appr.Hash || att.Approvals[0] != appr.Hash {
 				t.Errorf("the round names approvals %v, the run %v, want [%s]", last.Approvals, att.Approvals, appr.Hash)
 			}
-			contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
+			contains(t, "verify", b.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 		}},
 		{"a command run without guard has no approval in the chain", "T4", func(t *testing.T) {
 			b := newBoundaryRepo(t)
@@ -327,7 +274,6 @@ run "fail with it" bash -c "echo $DB; exit 3"`)
 		{"an approval response replayed from another lane is refused", "T3, T10", TestManifestResponseReuse},
 		{"_mark and _finish for another lane are refused", "T3, T10", TestLaneCantReportForAnother},
 		{"a hostile lane at the broker: concurrent requests, disconnects, oversized messages", "T3", TestBrokerHostileClients},
-		{"a lane that writes approvals/ or lookup.yml after the run starts", "T3", TestHostileLaneWritesApprovals},
 		{"a lane that calls _mark APPROVED itself", "T3", TestHostileLaneMarksApproved},
 		{"a lane that sets FLAG=1 in its own environment", "T3", TestHostileLaneSetsFlag},
 		{"a lane that drops its approvals channel and sets the flag", "T28", TestHostileLaneDropsApprovals},

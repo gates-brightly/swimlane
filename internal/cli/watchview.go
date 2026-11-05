@@ -794,9 +794,8 @@ func (w *watchView) toggleStream() string {
 	return "running output shown"
 }
 
-// queueLanes queues lanes as one batch, as swim queue add N M does: no
-// guard is approved, so their guards dry-run unless standing approvals
-// cover them. Running batches side by side, this swim watch starts it
+// queueLanes queues lanes as one batch, as swim queue add N M does: the
+// batch approves none of their guards. Running batches side by side, this swim watch starts it
 // itself when its lanes are free: the batch is the operator's at this
 // screen, and Ctrl-C here is what stops it. It says what it queued.
 func (w *watchView) queueLanes(lanes []int) (string, error) {

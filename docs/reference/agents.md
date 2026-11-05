@@ -38,8 +38,7 @@ says otherwise:
     after a guard or decision. How the operator approves is theirs: don't
     name it, suggest it, or write steps around it.
   - `swim interrupt`, `chain ...`, `doctor --fix`, `config`.
-  - Edit `.swim/`, `.swim.log`, `approvals/`, `lookup.yml` or
-    `~/.config/swim/` by hand: give the operator the exact lines.
+  - Edit `.swim/`, `.swim.log` or `~/.config/swim/` by hand: give the operator the exact lines.
   - Tell anyone a change is safe because swim will ask first: an approved
     script runs with the operator's access.
 

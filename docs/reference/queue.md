@@ -9,7 +9,7 @@ swim queue add                          # every pending lane, as one batch
 swim queue                              # waiting, running, orphaned, done
 swim queue show|rm|requeue ID
 swim queue 6 --wait --timeout 30m       # queue, then block for its result
-swim watch [--once] [-y] [--approved]   # the swimmer
+swim watch [--once] [-y]                # the swimmer
 swim wait [--timeout D]                 # until nothing runs or is queued
 swim wait [--any] BATCH|JOB ...         # until those end (--any: the first); exits with the result
 ```
@@ -20,8 +20,7 @@ swim wait [--any] BATCH|JOB ...         # until those end (--any: the first); ex
   lane edited since, or whose env changed, is skipped. `# After:` between
   its lanes holds.
 - **Approvals travel with it** (`--approve`, `--decide`, `-y`); the
-  swimmer's environment approves nothing. The batch is signed by whoever
-  queued it, so standing approvals for that person apply.
+  swimmer's environment approves nothing.
 - **A window:** queue now, start `swim watch --once` when it opens (by
   hand or cron).
 
@@ -43,6 +42,5 @@ swim wait [--any] BATCH|JOB ...         # until those end (--any: the first); ex
   running batch renews a heartbeat (`queue_lease`, 2m), so from another host
   a dead swimmer's batch shows as orphaned (see
   [recovery](recovery.md#an-orphaned-queue-entry)).
-- `--approved` also queues scripts once they're fully approved. Ctrl-C
-  stops the batches in hand gracefully. Each finished batch goes to
+- Ctrl-C stops the batches in hand gracefully. Each finished batch goes to
   `.swim/queue/done/` with its result.

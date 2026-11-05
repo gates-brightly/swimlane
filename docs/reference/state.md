@@ -131,7 +131,7 @@ stateDiagram-v2
 
 | State | File | Entered by | Notes |
 |---|---|---|---|
-| `queued` | `NNNN-q-<utc>-<hex>.queue` | `swim queue N`, `swim watch --approved`, `swim queue requeue` | Requeue gives a new sequence number, at the back of the queue. |
+| `queued` | `NNNN-q-<utc>-<hex>.queue` | `swim queue N`, `swim queue requeue` | Requeue gives a new sequence number, at the back of the queue. |
 | `running` | `NNNN-....running`, with `worker:` (host, pid and start time, user, heartbeat, lease) | `swim watch` claims it (`ClaimNext`, or `r` on a batch in the watch screen) | Of two workers racing, exactly one rename succeeds. The worker renews `heartbeat` every third of its `lease` (`queue_lease`, default 2m) while the batch runs. |
 | `orphaned` | the same `.running` file | Not written: `swim queue` derives it. On the swimmer's host: its pid is gone, or now another process (start time). From another host: its heartbeat is older than its lease | A claim by an older worker (no heartbeat) can't be judged from another host and stays `running`. Never run again on its own. |
 | `done` | `done/NNNN-....yml`, with `result:` | `Consume`, when the batch ends: passed, failed or interrupted alike | A half-run batch is never retried on its own. |
@@ -144,48 +144,7 @@ or claiming a consumed one is a bug, and panics under `SWIM_CHECK_STATES`.
 
 ## Approval
 
-Signed approvals are files under `approvals/` (`internal/sigfile`): an
-ordered, hash-linked log of approve and revoke events, one file per
-approved script (or per standing approval). Each signer's last event
-decides whether they stand behind it. An approval's state
-(`sigfile.State`, shown by `swim approve` and `swim verify`) is one of:
-
-```mermaid
-stateDiagram-v2
-  [*] --> active: swim approve (signed approve events that meet the rule)
-  [*] --> insufficient: too few signers, or unknown keys
-  insufficient --> active: co-approvers sign
-  active --> insufficient: a key or member removed from lookup.yml
-  active --> revoked: swim revoke (every signer's last event revokes)
-  revoked --> active: swim approve again
-  active --> expired: past its expiry
-  active --> stale: what it approves changed
-  stale --> [*]: approve the new version
-  expired --> [*]: approve again
-```
-
-- **Active:** it counts toward `lookup.yml`'s rule for the guard.
-- **Insufficient (why):** its signers don't meet the rule on their own
-  (signatures from several files still count together), none is in
-  `lookup.yml`, or a standing approval outlasts `standing.max`. Users,
-  keys and groups' members are read live, so this can change either way
-  without a new event.
-- **Revoked:** every signer's last event revokes. The events stay: the
-  file is append-only, and a round that already ran keeps its record.
-- **Expired:** past its `--expires`. A standing approval always has one:
-  30 days by default, never more than `lookup.yml`'s `standing.max`.
-- **Stale (why):** what it approves changed. A script approval names the
-  script's SHA-256 and its execution manifest (which pins `swim.yml`'s
-  policy and all of `lookup.yml`'s `require:` rules); a standing approval
-  names the rule each guard had. Once one changes, stricter or looser, the
-  approval stops counting there (the file stays). `swim approve` and
-  `swim verify` say why; approve again.
-- **Grandfathered:** a standing approval from before they expired (never
-  expiring, no rules bound) stays active with a warning until `lookup.yml`
-  sets `standing.max`, then becomes insufficient.
-- **Evidence-bound approvals** an older swim signed count as approvals of
-  the script. A `lookup.yml` rule with `evidence: true` approves nothing:
-  its guards dry-run until the rule drops it (`swim doctor`:
-  `evidence-rule`).
-- **Live-view answers** (`y` / `n` ahead of a prompt) aren't files: they
-  are pinned to the script and last one run.
+An approval isn't a file: it's decided when the guard asks (the flag, a
+queued batch's `--approve`, the operator, `-y`) and recorded as an
+`approve` entry in the chain. **Live-view answers** (`y` / `n` ahead of a
+prompt) are pinned to the script and last one run.

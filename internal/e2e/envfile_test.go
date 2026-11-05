@@ -71,8 +71,8 @@ func TestEnvFiles(t *testing.T) {
 	os.WriteFile(cfg, orig, 0o644)
 }
 
-// Approvals never come from a file: a guard flag in any env file (or a key
-// matching a lookup.yml guard glob) stops the run before anything starts.
+// Approvals never come from a file: a guard flag in any env file stops the
+// run before anything starts.
 func TestEnvFileGuardFlagRefused(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "guarded", `if guard ALLOW_DROP "drop t"; then run "dropped" true; fi`)
@@ -88,12 +88,6 @@ func TestEnvFileGuardFlagRefused(t *testing.T) {
 	contains(t, "lint", must(r.swim("lint")), "sets ALLOW_DROP", "[env]")
 	contains(t, "doctor", must(r.swim("doctor")), "sets ALLOW_DROP", "[env-file]")
 
-	// A lookup.yml guard glob covers flags a script doesn't name yet.
-	envFiles(t, r, "FIN_ALLOW_ANYTHING=1\n", "[lane 1]\nTABLE=t\n", "")
-	r.write("lookup.yml", "users: {}\nrequire:\n  - guards: [FIN_ALLOW_*]\n", 0o644)
-	if out, code := r.swim("run", "2", "--plain"); code == 0 || !strings.Contains(out, `matches guards "FIN_ALLOW_*" in lookup.yml`) {
-		t.Errorf("lookup glob: exit %d\n%s", code, out)
-	}
 	// A bad line names the file and line.
 	envFiles(t, r, "STAGE=$HOME\n", "", "")
 	if out, code := r.swim("run", "2", "--plain"); code == 0 || !strings.Contains(out, "env.swim:1: STAGE: no expansion") {

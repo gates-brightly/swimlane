@@ -1,8 +1,9 @@
 // Package manifest is a round's execution manifest: everything swim can
 // pin about the operation a lane runs, built by the launcher before the
 // lane starts. It names the script and every local file it reads as code,
-// the sidecar, how the script runs, the policy part of swim.yml and
-// lookup.yml's rules. Its hash, manifest_sha256, is what approvals sign.
+// the sidecar, how the script runs and the policy part of swim.yml. Its
+// hash, manifest_sha256, is what a round's chain entry and a queued batch
+// pin.
 //
 // The launcher copies the pinned files into the run's stage,
 // .swim/runs/<run>/<lane>/ (read-only, same layout as the repo), checks the
@@ -37,7 +38,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/runner"
 )
 
@@ -86,7 +86,9 @@ type Policy struct {
 	SHA256  string   `yaml:"sha256"` // config.PolicyHash: the swim.yml policy keys it sets
 	Version int      `yaml:"version"`
 	Keys    []string `yaml:"keys"`
-	Rules   string   `yaml:"lookup_rules,omitempty"` // lookup.yml's require: rules
+	// Rules were lookup.yml's require: rules when swim had signed
+	// approvals: no longer set, but hashed as written (an empty line).
+	Rules string `yaml:"lookup_rules,omitempty"`
 	// Set is each policy key swim.yml sets, with its value's hash, so a
 	// stale approval can say which changed (not hashed).
 	Set map[string]string `yaml:"set,omitempty"`
@@ -211,20 +213,13 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	if perr == nil {
 		m.Local.RunnerPath, m.Local.RunnerSHA = runnerBinary(plan)
 	}
-	// A lookup.yml that doesn't parse leaves no rules to pin: approvals
-	// bound to the manifest then don't match (the guard says why), but the
-	// lane still runs.
-	rules := "unreadable lookup.yml"
-	if lk, err := lookup.Load(root); err == nil {
-		rules = lk.RulesHash()
-	}
 	set := cfg.PolicySet()
 	keys := make([]string, 0, len(set))
 	for k := range set {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	m.Pinned.Config = Policy{SHA256: cfg.PolicyHash(), Version: config.PolicyVersion, Keys: keys, Rules: rules, Set: set}
+	m.Pinned.Config = Policy{SHA256: cfg.PolicyHash(), Version: config.PolicyVersion, Keys: keys, Set: set}
 	m.Local.Env = envSHA
 	m.Pinned.Workspace = info.Workspace
 	m.Job = info.Job
@@ -501,7 +496,7 @@ func Diff(old, new Pinned) []string {
 	}
 	out = append(out, diffPolicy(old.Config, new.Config)...)
 	if old.Config.Rules != new.Config.Rules {
-		out = append(out, "approval rules changed (lookup.yml require:)")
+		out = append(out, "approval rules changed (lookup.yml require:, which swim no longer reads)")
 	}
 	return out
 }

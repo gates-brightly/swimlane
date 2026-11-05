@@ -3,14 +3,17 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/gates-brightly/swimlane/internal/queue"
 )
 
 // A lane runs in its staged copy: a file it reads that its manifest doesn't
 // pin isn't there, so editing it after approval changes nothing it runs.
-// # Workspace: live runs it in the working tree, and is part of what an
-// approval signs.
+// # Workspace: live runs it in the working tree, and is part of its
+// manifest.
 func TestLaneRunsStaged(t *testing.T) {
 	r := newRepo(t, "")
 	r.write("helper.sh", "echo SAFE\n", 0o755)
@@ -62,15 +65,18 @@ func unpin(t *testing.T, r *repo) {
 	os.WriteFile(p, []byte(strings.Join(keep, "\n")), 0o755)
 }
 
-// manifestOf is lane 1's manifest hash as swim approve shows it.
+// manifestOf is lane 1's manifest hash as a queued batch pins it.
 func manifestOf(t *testing.T, r *repo) string {
 	t.Helper()
-	out, _ := r.swim("approve", "1", "--all", "--key", "/nonexistent")
-	for _, l := range strings.Split(out, "\n") {
-		if strings.HasPrefix(l, "approving manifest ") {
-			return l
-		}
+	r.mustSwim("queue", "add", "1")
+	entries, err := queue.List(r.root, false)
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("queue: %v %+v", err, entries)
 	}
-	t.Fatalf("no manifest in:\n%s", out)
-	return ""
+	e := entries[len(entries)-1]
+	r.mustSwim("queue", "rm", strconv.Itoa(e.Seq))
+	if len(e.Lanes) != 1 || e.Lanes[0].Manifest == "" {
+		t.Fatalf("no manifest in %+v", e)
+	}
+	return e.Lanes[0].Manifest
 }

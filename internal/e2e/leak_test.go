@@ -57,7 +57,7 @@ func leakNeedles() map[string]string {
 // with repo/, config/, home/ or tmp/). A file that matches none is a
 // new writer: add it here (after making sure it masks).
 var leakInventory = []struct{ what, re string }{
-	{"lane scripts and swim.yml (the test's own)", `^repo/(lane\.\d+\.(sh|py)|swim\.yml|lookup\.yml|\.gitignore|\.swim\.lock)$`},
+	{"lane scripts and swim.yml (the test's own)", `^repo/(lane\.\d+\.(sh|py)|swim\.yml|\.gitignore|\.swim\.lock)$`},
 	{"the project log", `^repo/\.swim\.log$`},
 	{"lane logs", `^repo/\.swim/logs/agent\d+(\.prev-[^/]+)?(\.check)?\.log$`},
 	{"archived logs", `^repo/\.swim/logs/archive/`},

@@ -16,11 +16,10 @@ func shortLane(t *testing.T, r *repo, n int, src string) {
 }
 
 // A short-form lane runs as an explicit one does: steps and stages logged,
-// a guard dry-runs until approved, a signed approval binds it (and stops
-// counting when it changes), and the round ends without summary.
+// a guard dry-runs until approved, FLAG=1 approves it, and the round ends
+// without summary.
 func TestShortFormLane(t *testing.T) {
 	r := newRepo(t, "")
-	keys := people(t, r, "require:\n  - guards: [HELLO_ALLOW_*]\n    count: 1\n", "zach")
 	shortLane(t, r, 1, `# Round: Say hello
 # Guards: HELLO_ALLOW_WRITE  write hello.txt
 stage check
@@ -38,8 +37,7 @@ fi
 		t.Fatal("the dry run wrote hello.txt")
 	}
 
-	r.mustSwim("approve", "1", "--guards", "HELLO_ALLOW_WRITE", "--key", keys["zach"])
-	r.mustSwim("run", "1", "--plain", "--no-prompt")
+	r.mustSwim("run", "1", "--plain", "-y")
 	contains(t, "approved", r.log(1), "APPROVED  write hello.txt (approved by ", "PASS  write it", "== END PASS")
 	if got, _ := os.ReadFile(filepath.Join(r.root, "hello.txt")); string(got) != "hi\n" {
 		t.Errorf("hello.txt = %q", got)
@@ -51,12 +49,6 @@ fi
 	if m, _ := os.ReadFile(runs[0]); !strings.Contains(string(m), "runner: bash (short form)") {
 		t.Errorf("manifest doesn't pin the short form's runner:\n%s", m)
 	}
-
-	// An edit stales the approval: a dry run again.
-	data, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
-	r.write("lane.1.sh", string(data)+"run \"one more\" true\n", 0o755)
-	r.mustDryRun("run", "1", "--plain", "--no-prompt")
-	contains(t, "stale", r.log(1), "SKIP  write hello.txt (dry run")
 }
 
 // A short-form lane whose last step fails ends with that failure alone:

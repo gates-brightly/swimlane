@@ -1,8 +1,8 @@
 package e2e
 
 // A hostile lane under swim run (dev/tasks.md T3, T10): it runs as the
-// operator, so it can write approvals/ and lookup.yml, call swim's hidden
-// commands and set guard flags in its own environment. What swim run can
+// operator, so it can write .swim/, call swim's hidden commands and set
+// guard flags in its own environment. What swim run can
 // refuse it refuses; what it can't, swim verify fails.
 
 import (
@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
-	"github.com/gates-brightly/swimlane/internal/sigfile"
 )
 
 // hostile writes lane 1 of the boundary fixture with prelude before its
@@ -36,56 +35,6 @@ func (b *boundary) approvesOf(n int) []chain.Link {
 		}
 	}
 	return out
-}
-
-// A lane that writes approvals/ or lookup.yml once the run has started:
-// swim run decides from what it saw at the start, so neither counts.
-func TestHostileLaneWritesApprovals(t *testing.T) {
-	b := newBoundaryRepo(t)
-	// The lane puts a valid approval of itself in place as it starts.
-	saved := filepath.Join(t.TempDir(), "saved")
-	os.Mkdir(saved, 0o755)
-	b.hostile(`cp "` + saved + `"/*.signature "$SWIM_ROOT/approvals/"`)
-	b.approve(1)
-	files, _ := filepath.Glob(filepath.Join(sigfile.Dir(b.root), "*.signature"))
-	if len(files) != 1 {
-		t.Fatalf("approval files: %v", files)
-	}
-	os.Rename(files[0], filepath.Join(saved, filepath.Base(files[0])))
-	b.mustDryRun("run", "1", "--plain")
-	b.noMarker(t, "an approval the lane wrote")
-	contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: set "+boundaryGuard+"=1 to approve)")
-	if len(b.approvesOf(1)) != 0 {
-		t.Errorf("an approve entry for the lane's own approval: %+v", b.approvesOf(1))
-	}
-	// In place before the next run starts, the same file counts.
-	b.mustSwim("run", "1", "--plain")
-	if !b.dropped() {
-		t.Fatalf("the approval in place at the start didn't count:\n%s", b.log(1))
-	}
-	os.Remove(b.marker)
-	for _, f := range files {
-		os.Remove(f)
-	}
-
-	// lookup.yml without the approver at the start; the lane restores it.
-	lk, _ := os.ReadFile(filepath.Join(b.root, "lookup.yml"))
-	fullLookup := filepath.Join(t.TempDir(), "lookup.yml")
-	os.WriteFile(fullLookup, lk, 0o644)
-	os.WriteFile(filepath.Join(b.root, "lookup.yml"), []byte("users: {}\n"), 0o644)
-	b.hostile(`cp "` + fullLookup + `" "$SWIM_ROOT/lookup.yml"`)
-	b.approve(1)
-	os.WriteFile(filepath.Join(b.root, "lookup.yml"), []byte("users: {}\n"), 0o644)
-	b.mustDryRun("run", "1", "--plain")
-	b.noMarker(t, "a lookup.yml the lane wrote")
-
-	// The same approval in place before the run starts does count.
-	os.WriteFile(filepath.Join(b.root, "lookup.yml"), lk, 0o644)
-	b.mustSwim("run", "1", "--plain")
-	if !b.dropped() {
-		t.Fatalf("a real approval didn't run it:\n%s", b.log(1))
-	}
-	contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
 }
 
 // A lane that calls _mark APPROVED itself is refused under swim run. One
@@ -194,7 +143,7 @@ func TestApprovalsUnavailable(t *testing.T) {
 	if att == nil || att.AuthorityUnavailable == "" {
 		t.Fatalf("attestation: %+v", att)
 	}
-	contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
+	contains(t, "verify", b.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 }
 
 // FLAG=1 set inside the lane doesn't approve; set in the environment swim
@@ -231,7 +180,7 @@ func TestHostileLaneSetsFlag(t *testing.T) {
 		att.Manifests["1"] != apps[0].Manifest {
 		t.Fatalf("run attestation: %+v", att)
 	}
-	contains(t, "verify", b.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
+	contains(t, "verify", b.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 }
 
 // A lane that claims another job: the chain names the job swim run knows.

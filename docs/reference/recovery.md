@@ -113,7 +113,8 @@ truth.
 
 ## `swim verify` fails
 
-**You see:** a level that says `no` (`consistent` or `authorized`), usually with `BROKEN:` or `UNAUTHORIZED:` lines, and exit 1. The common ones:
+**You see:** `NOT VERIFIED`, usually with `BROKEN:` lines, and exit 1. The
+common ones:
 
 - `entry #N (line L): prev hash doesn't match ...` or `seq ...`: an entry
   was changed, removed, inserted or reordered.
@@ -123,22 +124,15 @@ truth.
   was edited.
 - `the kept script <sha>.sh was changed`: a copy under `.swim/scripts/` was
   edited.
-- An `approvals/` file with a broken event.
-- `authorized  no`: an approval didn't meet `lookup.yml`'s rule for its
-  guard (the `UNAUTHORIZED:` line names the entry and what was missing). A
-  `FLAG=1` override of a guard whose rule says `signed: true` is one: the
-  chain recorded it faithfully, so it isn't `BROKEN`, but nothing in
-  `lookup.yml` authorized it.
 
-`warning:` lines (unsigned entries, a missing script copy, a deleted log, a
-signer not in `lookup.yml`, an approval checked against a `lookup.yml` that changed since) and the levels
-that say `n/a` or `partial` don't fail it; `swim verify --strict` does.
+`warning:` lines (unsigned entries, a missing script copy, a deleted log)
+don't fail it; `swim verify --strict` does.
 
 **Fix:** treat it as evidence, not as a bug to clear.
 
 ```sh
 mkdir -p ~/swim-evidence
-cp -R .swim/chain.jsonl .swim/logs .swim/scripts approvals ~/swim-evidence/    # keep a copy first
+cp -R .swim/chain.jsonl .swim/logs .swim/scripts ~/swim-evidence/    # keep a copy first
 swim history                # what the chain says happened, newest first
 swim note "swim verify: <what broke>; copy in ~/swim-evidence"
 ```
@@ -169,21 +163,16 @@ run started ([the runner key](trust-model.md#the-runner-key)).
 ```sh
 ssh-keygen -t ed25519 -f ~/.ssh/swim_runner     # a new key (or use another you have)
 swim config signing_key ~/.ssh/swim_runner      # a .pub path signs through ssh-agent
-$EDITOR lookup.yml                              # add the new public key to your user
-swim keys                                       # check: this machine signs with ... (you)
+swim keys                                       # check: this machine signs with ...
 swim verify                                     # old entries still verify
 ```
 
 - **Old entries still verify.** Each chain entry stores the public key that
   signed it, and `swim verify` checks each signature against that key, so
   losing the private key doesn't break the record.
-- **Lost, not stolen:** keep the old public key in `lookup.yml`, so old
-  entries and approvals still name you.
-- **Stolen:** remove the old key from `lookup.yml`. Approvals it signed
-  stop counting: re-approve with the new key. Whoever holds the old key
-  could have rewritten the chain and re-signed it, which `swim verify`
-  can't tell from the real one.
-- `swim config signing_key` also sets the key `swim approve` signs with.
+- **Stolen:** whoever holds the old key could have rewritten the chain
+  and re-signed it, which `swim verify` can't tell from the real one.
+- `swim config signing_key` also sets the key `swim signoff` signs with.
 
 ## A lock mismatch
 

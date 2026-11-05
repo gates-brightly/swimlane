@@ -3,12 +3,10 @@ package launcher
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/authority"
@@ -18,7 +16,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -26,8 +23,8 @@ import (
 
 // runAuthority is the launcher as the only judge of a run's guards: every
 // guard of every lane asks it (approval broker), it decides from what it
-// saw when the run started (signed approvals, lookup.yml, its own
-// environment's guard flags) or asks the operator, and it records each
+// saw when the run started (its own environment's guard flags) or asks
+// the operator, and it records each
 // approval in the chain as the lane uses it. When the last lane exits it
 // attests the run: what each lane ran and every approval it recorded, so
 // swim verify can tell an approve entry a lane wrote itself. Every entry
@@ -49,7 +46,7 @@ type runAuthority struct {
 // startAuthority starts the approval broker. ask asks the operator (nil:
 // no one can be asked, so a guard that nothing else approves is a dry run).
 func startAuthority(o *Options, ask approval.Asker, disp *display.Display) (*approval.Server, error) {
-	a := &runAuthority{snap: authority.Take(o.Root, os.Environ()), disp: disp, flags: map[string]bool{},
+	a := &runAuthority{snap: authority.Take(os.Environ()), disp: disp, flags: map[string]bool{},
 		recorded: map[string]bool{}}
 	srv, err := approval.Listen(func(req approval.Request, cancel <-chan struct{}) approval.Response {
 		resp := a.decide(*o, req, ask, cancel)
@@ -110,12 +107,6 @@ func runKey(o *Options) error {
 	hideMemory()
 	long, err := authority.Key(o.Cfg)
 	if err != nil || long == nil {
-		// Said only where approvals are set up (lookup.yml): a repo without
-		// them has nothing an unsigned run weakens, and swim verify still
-		// says it's unsigned.
-		if _, serr := os.Stat(filepath.Join(o.Root, lookup.FileName)); err == nil && serr == nil && o.Cfg.SigningMode() == config.SigningAuto {
-			fmt.Fprintln(os.Stderr, "swim: no signing key (~/.ssh/id_ed25519 or signing_key); this run is recorded unsigned, and swim verify will say so")
-		}
 		return nil // authority.Record says why, as before
 	}
 	if sign.Storage(long) == sign.OnDevice {
@@ -215,8 +206,8 @@ func (a *runAuthority) refused(o Options, c approval.Caller, req approval.Reques
 // decide answers one guard of a lane (req's lane, job and manifest
 // are the launcher's: the server replaced the lane's claims). In order: a
 // flag the lane has set (approved only if swim run's own environment set
-// it), the signed approvals as they were when the run started, then the
-// operator (a pre-answer, -y, the prompt), if anyone can be asked.
+// it), then the operator (a pre-answer, -y, the prompt), if anyone can be
+// asked.
 func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Asker, cancel <-chan struct{}) approval.Response {
 	if req.Job == "" {
 		req.Job = runningJob(o, req.Lane)
@@ -225,7 +216,7 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 		return a.choose(o, req, ask, cancel)
 	}
 	m := o.manifests[req.Lane]
-	entry := chain.Entry{Type: "approve", Run: o.RunID, Lane: req.Lane, Job: req.Job, Guard: req.Flag, Action: req.RawDesc, Lookup: a.snap.LookupSHA}
+	entry := chain.Entry{Type: "approve", Run: o.RunID, Lane: req.Lane, Job: req.Job, Guard: req.Flag, Action: req.RawDesc}
 	if m != nil {
 		entry.Script, entry.Manifest = m.ScriptSHA, m.SHA256
 	}
@@ -242,14 +233,6 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 		return resp
 	}
 
-	// A guard whose lookup.yml rule asks for evidence-bound approvals
-	// (which swim no longer has) can't be approved by anything: a flag, a
-	// signed approval, a pre-answer, -y or the prompt. It dry-runs.
-	if why := a.snap.Unapprovable(req.Flag); why != "" {
-		a.refused(o, approval.Caller{Lane: req.Lane, Job: req.Job}, req, why)
-		return approval.Response{Dry: true, Why: why, Job: req.Job}
-	}
-
 	if req.FlagSet {
 		r := a.snap.FlagSet(req.Flag)
 		if !r.OK {
@@ -261,17 +244,8 @@ func (a *runAuthority) decide(o Options, req approval.Request, ask approval.Aske
 		return grant(approval.Response{By: operator()}, r)
 	}
 
-	ask0 := authority.Ask{Root: o.Root, Lane: req.Lane, Flag: req.Flag, Desc: req.RawDesc, Job: req.Job, Run: o.RunID, Manifest: m}
-	if m != nil {
-		ask0.Script = m.ScriptSHA
-	}
-	r := a.snap.Signed(ask0, time.Now())
-	if r.OK {
-		r.History = req.RawDesc + "  (" + req.Flag + ", " + r.History + ")"
-		return grant(approval.Response{}, r)
-	}
 	if ask == nil || o.Cfg.ApprovalMode() == config.ApprovalsFlags {
-		return approval.Response{Dry: true, Why: r.Why, Job: req.Job}
+		return approval.Response{Dry: true, Job: req.Job}
 	}
 	resp := ask(req, cancel)
 	resp.Job, resp.Observed = req.Job, req.Observed

@@ -9,86 +9,53 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
-	"github.com/gates-brightly/swimlane/internal/lookup"
-	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// Level results. Each level of swim verify says how far the chain can be
-// believed, and its line says what it doesn't prove.
-const (
-	levelYes     = "yes"
-	levelNo      = "no"
-	levelPartial = "partial" // held for every signed entry; some are unsigned
-	levelNA      = "n/a"     // nothing to check it against
-)
-
-// level is one line of swim verify.
-type level struct {
-	Name   string
-	Result string
-	Detail string
-}
-
 // verifier gathers what swim verify finds: breaks (bad), warnings and
-// notes, from the chain entries, the approvals files and each level.
+// notes, from the chain's entries.
 type verifier struct {
 	root string
 	cfg  *config.Config
-	lk   *lookup.Lookup
-	mans map[int]*manifest.Manifest
 
 	bad, warn, notes []string
-	files            []string        // one line per approvals file
-	unlisted         map[string]bool // fingerprints of signers not in lookup.yml
 	unsigned         []int
 	unsignedBad      string   // unsigned entries nothing vouches for (not BROKEN: nothing changed)
-	unauthorized     []string // approvals that didn't meet lookup.yml (not BROKEN: recorded as they happened)
 	covered          int      // unsigned entries a later signed one links to
 	amended          []string // problems an amend entry acknowledged (swim verify --force)
 	rounds           int
 	approvals        int
 }
 
-// cmdVerify proves (or disproves) the chain of custody, in levels:
-//
-//	consistent  every link follows the one before it, every signature
-//	            matches the key recorded beside it, and every round's log,
-//	            kept script, staged copy and inputs, and every signed
-//	            approval, are what was recorded
-//	authorized  every approval recorded met lookup.yml's rule for its guard
-//	            (signed ones: by enough of the right people)
+// cmdVerify proves (or disproves) the chain of custody: every link follows
+// the one before it, every signature matches the key recorded beside it,
+// and every round's log, kept script, staged copy and inputs are what was
+// recorded.
 //
 // It prints one answer, VERIFIED or NOT VERIFIED, and exits 1 for the
-// second: when a level fails, or any entry is unsigned (nothing vouches
-// for it, and a chain rewritten without a key looks the same) unless
-// --allow-unsigned. --strict also fails when a level can't be checked
-// (n/a) and on any warning; --levels prints each level.
+// second: when anything is BROKEN, or any entry is unsigned (nothing
+// vouches for it, and a chain rewritten without a key looks the same)
+// unless --allow-unsigned. --strict also fails on any warning.
 func cmdVerify(args []string) error {
-	var strict, asYAML, allowUnsigned, showLevels, force bool
-	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML, "allow-unsigned": &allowUnsigned, "levels": &showLevels, "force": &force}}.parse(args)
+	var strict, asYAML, allowUnsigned, force bool
+	rest, err := flags{bools: map[string]*bool{"strict": &strict, "yaml": &asYAML, "allow-unsigned": &allowUnsigned, "force": &force}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("usage: swim verify [--strict] [--allow-unsigned] [--levels] [--force] [--yaml]")
+		return usagef("usage: swim verify [--strict] [--allow-unsigned] [--force] [--yaml]")
 	}
 	root, cfg, err := repoNoMigrate()
-	if err != nil {
-		return err
-	}
-	lk, err := lookup.Load(root)
 	if err != nil {
 		return err
 	}
 	if !sign.Available() {
 		return errors.New("swim verify needs ssh-keygen (OpenSSH 8.0 or later)")
 	}
-	v := &verifier{root: root, cfg: cfg, lk: lk, mans: map[int]*manifest.Manifest{}, unlisted: map[string]bool{}}
+	v := &verifier{root: root, cfg: cfg}
 	links, rerr := chain.Read(root)
 	if rerr != nil {
 		v.bad = append(v.bad, rerr.Error())
@@ -113,7 +80,6 @@ func cmdVerify(args []string) error {
 		v.unsignedBad = fmt.Sprintf("%d unsigned entries at the end: #%s. Nothing vouches for them, and a chain rewritten with no key looks the same (set a signing key, ~/.ssh/id_ed25519 or signing_key; --allow-unsigned accepts them)", len(trailing), joinNums(trailing))
 	}
 	v.checkEntries(links)
-	v.checkApprovalFiles()
 	v.applyAmendments(links, problems)
 	if force {
 		if done, err := v.amend(); err != nil {
@@ -123,29 +89,16 @@ func cmdVerify(args []string) error {
 			return cmdVerify(slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "--force" }))
 		}
 	}
-	levels := []level{
-		v.consistent(links),
-		v.authorized(links),
-	}
-
 	failed := len(v.bad) > 0 || v.unsignedBad != ""
-	for _, l := range levels {
-		switch {
-		case l.Result == levelNo:
-			failed = true
-		case strict && (l.Result == levelNA || l.Result == levelPartial):
-			failed = true
-		}
-	}
 	if strict && (len(v.warn) > 0 || len(v.amended) > 0) {
 		failed = true
 	}
 	if asYAML {
-		if err := v.writeYAML(links, levels, !failed); err != nil {
+		if err := v.writeYAML(links, !failed); err != nil {
 			return err
 		}
 	} else {
-		v.print(links, levels, showLevels, !failed)
+		v.print(links, !failed)
 	}
 	if failed {
 		return exitError{1}
@@ -153,91 +106,12 @@ func cmdVerify(args []string) error {
 	return nil
 }
 
-// consistent is the chain checked against itself and what's on disk.
-func (v *verifier) consistent(links []chain.Link) level {
-	if len(v.bad) > 0 {
-		return level{"consistent", levelNo, fmt.Sprintf("%s (BROKEN, above)", plural(len(v.bad), "problem"))}
-	}
-	return level{"consistent", levelYes, fmt.Sprintf("%s, links and signatures match; logs, scripts and approvals as recorded", plural(len(links), "entry"))}
-}
+// verifyNote is what swim verify doesn't prove.
+const verifyNote = "a chain replaced wholesale and re-signed with another key, or with entries removed from its end, is consistent too."
 
-// signedMethods are how an approval is recorded when signatures (approvals
-// files, or answers signed through the hub) approved it.
-var signedMethods = map[string]bool{"signature": true, "standing": true, "signature+standing": true, approval.HubSigned: true}
-
-// authorized checks each approve entry against lookup.yml's rule for its
-// guard: a signed approval's approvers (named by their keys) must meet
-// it; a prompt, flag, -y or queue approval fails only a rule that says
-// signed: true, and a hub button click any require: rule for its guard (it
-// counts only where none names it). A failure under the lookup.yml the entry recorded
-// (lookup_sha256) is an error; under one that has changed since, only a
-// warning: the rules it met then aren't known.
-func (v *verifier) authorized(links []chain.Link) level {
-	const name = "authorized"
-	if v.lk.Path == "" {
-		return level{name, levelNA, "no lookup.yml: no rules to check approvals against"}
-	}
-	current := lookupSHA(v.root)
-	total, failed, unsure := 0, 0, 0
-	for _, l := range links {
-		if l.Type != "approve" {
-			continue
-		}
-		total++
-		rule := v.lk.RuleFor(l.Guard)
-		why := ""
-		if signedMethods[l.Method] {
-			var users []string
-			for _, ap := range l.Approvers {
-				if ap.Sig == "" {
-					continue
-				}
-				if u, ok := v.lk.Who(ap.Key); ok {
-					users = append(users, u)
-				}
-			}
-			if ok, need := v.lk.Satisfied(rule, users); !ok {
-				why = need
-			}
-		} else if rule.Signed {
-			why = fmt.Sprintf("approved by %s, but lookup.yml says %s needs signed approvals", or(l.Method, "an unknown method"), l.Guard)
-		} else if l.Method == approval.HubButton && v.lk.Explicit(l.Guard) {
-			why = fmt.Sprintf("approved by a hub button click, but lookup.yml has a require: rule for %s (only signed answers count)", l.Guard)
-		}
-		if why == "" {
-			continue
-		}
-		msg := fmt.Sprintf("entry #%d: %s (swim %d, run %s): %s", l.Seq, l.Guard, l.Lane, l.Run, why)
-		if l.Lookup != "" && l.Lookup == current {
-			failed++
-			v.unauthorized = append(v.unauthorized, msg)
-		} else {
-			unsure++
-			v.warn = append(v.warn, msg+" (under today's lookup.yml; it was approved under another)")
-		}
-	}
-	switch {
-	case total == 0:
-		return level{name, levelNA, "no approvals recorded"}
-	case failed > 0:
-		return level{name, levelNo, fmt.Sprintf("%d of %d approvals didn't meet their lookup.yml rule", failed, total)}
-	case unsure > 0:
-		return level{name, levelPartial, fmt.Sprintf("%d approvals; %d don't meet today's lookup.yml, which changed since they were recorded", total, unsure)}
-	}
-	return level{name, levelYes, fmt.Sprintf("%s, each met its lookup.yml rule", plural(total, "approval"))}
-}
-
-// note is what the levels together don't prove.
-func (v *verifier) note([]level) string {
-	return "a chain replaced wholesale and re-signed with another key, or with entries removed from its end, is consistent too."
-}
-
-func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool) {
+func (v *verifier) print(links []chain.Link, ok bool) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	fmt.Printf("chain of custody: %s (%s, %s) in %s\n", plural(len(links), "entry"), plural(v.rounds, "round"), plural(v.approvals, "approval"), rel(v.root, chain.Path(v.root)))
-	for _, f := range v.files {
-		fmt.Println(f)
-	}
 	for _, n := range v.notes {
 		fmt.Println("note: " + n)
 	}
@@ -253,45 +127,14 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 	if v.unsignedBad != "" {
 		fmt.Println(p.Paint(ui.Red, "UNSIGNED: "+v.unsignedBad))
 	}
-	for _, u := range v.unauthorized {
-		fmt.Println(p.Paint(ui.Red, "UNAUTHORIZED: "+u))
-	}
-	if showLevels {
-		for _, l := range levels {
-			c := ui.Yellow
-			switch l.Result {
-			case levelYes:
-				c = ui.Green
-			case levelNo:
-				c = ui.Red
-			}
-			fmt.Printf("%-10s  %s  %s\n", l.Name, p.Paint(c, fmt.Sprintf("%-3s", l.Result)), l.Detail)
-		}
-		fmt.Println("note: " + v.note(levels))
-	}
 	// One answer, and what it can't vouch for.
 	if !ok {
-		why := ""
-		for _, l := range levels {
-			if l.Result == levelNo {
-				why = l.Name + ": " + l.Detail
-				break
-			}
-		}
-		if why == "" && len(v.bad) > 0 {
+		why := v.unsignedBad
+		if len(v.bad) > 0 {
 			why = v.bad[0]
-		}
-		if why == "" {
-			why = v.unsignedBad
 		}
 		fmt.Println(p.Paint(ui.Red+ui.Bold, "NOT VERIFIED") + ": " + or(why, "see above"))
 		return
-	}
-	var caveats []string
-	for _, l := range levels {
-		if l.Result == levelNA || l.Result == levelPartial {
-			caveats = append(caveats, l.Name+" "+string(l.Result)+": "+l.Detail)
-		}
 	}
 	signed := "every one signed and linked"
 	switch trailing := len(v.unsigned) - v.covered; {
@@ -300,46 +143,32 @@ func (v *verifier) print(links []chain.Link, levels []level, showLevels, ok bool
 	case v.covered > 0:
 		signed = fmt.Sprintf("linked, %d unsigned (covered by a later signed entry)", v.covered)
 	}
-	fmt.Printf("%s: %s, %s; logs, scripts and approvals as recorded\n", p.Paint(ui.Green+ui.Bold, "VERIFIED"), plural(len(links), "entry"), signed)
-	for _, c := range caveats {
-		fmt.Println("  not checked: " + c)
-	}
+	fmt.Printf("%s: %s, %s; logs and scripts as recorded\n", p.Paint(ui.Green+ui.Bold, "VERIFIED"), plural(len(links), "entry"), signed)
 }
 
-// verifyDoc is swim verify --yaml (schema swim.verify/v1): each level a
-// field of its own, so CI can require any combination.
+// verifyDoc is swim verify --yaml (schema swim.verify/v1).
 type verifyDoc struct {
-	Schema       string            `yaml:"schema"`
-	Chain        string            `yaml:"chain"`
-	Entries      int               `yaml:"entries"`
-	Rounds       int               `yaml:"rounds"`
-	Approvals    int               `yaml:"approvals"`
-	OK           bool              `yaml:"ok"` // what the exit code says
-	Consistent   string            `yaml:"consistent"`
-	Authorized   string            `yaml:"authorized"`
-	Details      map[string]string `yaml:"details"` // level -> its line
-	Note         string            `yaml:"note"`
-	Broken       []string          `yaml:"broken"`
-	Unsigned     string            `yaml:"unsigned,omitempty"` // unsigned entries nothing vouches for
-	Unauthorized []string          `yaml:"unauthorized"`       // approvals that didn't meet lookup.yml
-	Amended      []string          `yaml:"amended"`            // gaps an amend entry acknowledged
-	Warnings     []string          `yaml:"warnings"`
-	Notes        []string          `yaml:"notes"`
-	Files        []string          `yaml:"approval_files"`
+	Schema     string   `yaml:"schema"`
+	Chain      string   `yaml:"chain"`
+	Entries    int      `yaml:"entries"`
+	Rounds     int      `yaml:"rounds"`
+	Approvals  int      `yaml:"approvals"`
+	OK         bool     `yaml:"ok"`         // what the exit code says
+	Consistent string   `yaml:"consistent"` // yes: nothing BROKEN
+	Note       string   `yaml:"note"`
+	Broken     []string `yaml:"broken"`
+	Unsigned   string   `yaml:"unsigned,omitempty"` // unsigned entries nothing vouches for
+	Amended    []string `yaml:"amended"`            // gaps an amend entry acknowledged
+	Warnings   []string `yaml:"warnings"`
+	Notes      []string `yaml:"notes"`
 }
 
-func (v *verifier) writeYAML(links []chain.Link, levels []level, ok bool) error {
+func (v *verifier) writeYAML(links []chain.Link, ok bool) error {
 	d := verifyDoc{Schema: "swim.verify/v1", Chain: rel(v.root, chain.Path(v.root)), Entries: len(links), Rounds: v.rounds, Approvals: v.approvals,
-		OK: ok, Details: map[string]string{}, Note: v.note(levels),
-		Broken: nonNil(v.bad), Unsigned: v.unsignedBad, Unauthorized: nonNil(v.unauthorized), Amended: nonNil(v.amended), Warnings: nonNil(v.warn), Notes: nonNil(v.notes), Files: nonNil(v.files)}
-	for _, l := range levels {
-		d.Details[l.Name] = l.Detail
-		switch l.Name {
-		case "consistent":
-			d.Consistent = l.Result
-		case "authorized":
-			d.Authorized = l.Result
-		}
+		OK: ok, Consistent: "yes", Note: verifyNote,
+		Broken: nonNil(v.bad), Unsigned: v.unsignedBad, Amended: nonNil(v.amended), Warnings: nonNil(v.warn), Notes: nonNil(v.notes)}
+	if len(v.bad) > 0 {
+		d.Consistent = "no"
 	}
 	enc := yaml.NewEncoder(os.Stdout)
 	enc.SetIndent(2)
@@ -353,7 +182,7 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// pinDate is the day a pin was made.
+// pinDate is the day of an RFC 3339 time.
 func pinDate(at string) string {
 	if len(at) >= 10 {
 		return at[:10]
@@ -413,13 +242,9 @@ func (v *verifier) applyAmendments(links []chain.Link, problems []chain.Problem)
 		if l.Type != "amend" || l.Sig == "" || badSig[l.Seq] {
 			continue
 		}
-		who := "a key not in lookup.yml"
-		if name, ok := v.lk.Who(l.Signer); ok {
-			who = name
-		}
 		for _, a := range l.Amended {
 			if amendable(a) {
-				by[a] = fmt.Sprintf("acknowledged by %s, %s, in entry #%d on %s; not the original signer", who, sign.Fingerprint(l.Signer), l.Seq, pinDate(l.At))
+				by[a] = fmt.Sprintf("acknowledged by %s in entry #%d on %s; not the original signer", who(l.Signer), l.Seq, pinDate(l.At))
 			}
 		}
 	}
@@ -460,11 +285,7 @@ func (v *verifier) amend() (done bool, err error) {
 	if _, err := chain.Append(v.root, chain.Entry{Type: "amend", Action: "swim verify --force", Amended: pending}, key); err != nil {
 		return false, fmt.Errorf("recording the amendment: %v", err)
 	}
-	who := sign.Fingerprint(key.Public)
-	if name, ok := v.lk.Who(key.Public); ok {
-		who = name + ", " + who
-	}
-	fmt.Printf("swim verify --force: amended %s, signed by %s (not the original signers):\n", plural(len(pending), "gap"), who)
+	fmt.Printf("swim verify --force: amended %s, signed by %s (not the original signers):\n", plural(len(pending), "gap"), who(key.Public))
 	for _, p := range pending {
 		fmt.Println("  " + p)
 	}

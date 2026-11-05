@@ -366,7 +366,7 @@ func lanesText(lanes []int) string {
 // the batches in hand, as it did the one batch in hand, and stops it
 // taking new ones; it exits once they've ended. It returns swim watch's
 // exit status: 1 if a batch failed.
-func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchView, once, approved bool, every time.Duration,
+func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchView, once bool, every time.Duration,
 	sigs chan os.Signal, say func(string)) (int, error) {
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	code := 0
@@ -422,11 +422,6 @@ func watchBatches(root string, cfg *config.Config, b *batchRunner, view *watchVi
 		}
 		if stopping && len(b.running()) == 0 {
 			return code, nil
-		}
-		if approved && !stopping {
-			for _, msg := range queueApproved(root, cfg) {
-				fmt.Println(p.Paint(ui.Cyan, "swim watch: "+msg))
-			}
 		}
 		if c, err := loadCfg(root); err == nil {
 			cfg = c

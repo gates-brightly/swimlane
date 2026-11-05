@@ -48,7 +48,7 @@ func TestClean(t *testing.T) {
 		t.Error("lane.3.sh, edited since its round, was replaced")
 	}
 	contains(t, "queue kept", r.mustSwim("queue"), "#1")
-	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 
 	// --all: the waiting batch too.
 	r.mustSwim("clean", "--all")

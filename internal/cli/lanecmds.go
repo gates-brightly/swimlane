@@ -17,7 +17,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
@@ -248,17 +247,6 @@ func cmdGuard(args []string) error {
 		// Under swim run the launcher says whether the flag counts.
 		return cmdApproveHook([]string{n, flag, desc, "--flag-set"})
 	case val == "1":
-		// Run directly: a guard whose lookup.yml rule asks for
-		// evidence-bound approvals can't be approved, the flag included.
-		if root, _, _, err := laneCtx(n); err == nil {
-			if lk, err := lookup.Load(root); err == nil {
-				if why := lk.EvidenceWhy(flag); why != "" {
-					cmdMark([]string{n, logparse.Warn, "approval refused: " + flag, why})
-					cmdMark([]string{n, logparse.Skip, desc, "dry run: " + why})
-					return exitError{1}
-				}
-			}
-		}
 		detail := flag + "=1"
 		if strings.Contains(" "+os.Getenv("SWIM_QUEUE_APPROVED")+" ", " "+flag+" ") {
 			detail += ", approved in " + os.Getenv("SWIM_QUEUE")

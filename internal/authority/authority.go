@@ -1,32 +1,22 @@
 // Package authority decides whether a guard is approved by what swim can
-// check without asking anyone: signed approvals (approvals/, counted
-// against lookup.yml) and, under swim run, a guard flag set in the
+// check without asking anyone: under swim run, a guard flag set in the
 // environment swim run started with. It also records approvals in the
 // chain with the runner's key.
 //
 // Under swim run the launcher decides, from a Snapshot it takes when the
-// run starts: what a lane writes to approvals/ or lookup.yml, or sets in
-// its own environment, after that doesn't count. A lane run directly with
-// bash decides for itself, from a snapshot taken as it asks (there is no
-// one else to ask).
+// run starts: what a lane sets in its own environment after that doesn't
+// count.
 package authority
 
 import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/config"
-	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
-	"github.com/gates-brightly/swimlane/internal/manifest"
-	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
@@ -93,71 +83,34 @@ func RecordWith(root string, cfg *config.Config, key *sign.Key, e chain.Entry) (
 // Snapshot is what approves guards without a question, as it stood when
 // it was taken.
 type Snapshot struct {
-	Lookup    *lookup.Lookup
-	LookupErr error
-	// LookupSHA is the SHA-256 of the lookup.yml it read (approve entries
-	// record it: swim verify checks them against those rules).
-	LookupSHA string
-	Files     []*sigfile.File // every approvals file that parsed
 	// Env is the environment: guard flags set to 1, and a queued batch's
-	// SWIM_QUEUE, SWIM_QUEUE_APPROVED and SWIM_QUEUE_ENTRY.
+	// SWIM_QUEUE and SWIM_QUEUE_APPROVED.
 	Env map[string]string
-	// Queue is the queue entry the run came from (SWIM_QUEUE_ENTRY), if any.
-	Queue *queue.Entry
 }
 
-// Take snapshots root's approvals and lookup.yml, and env.
-func Take(root string, env []string) *Snapshot {
+// Take snapshots env.
+func Take(env []string) *Snapshot {
 	s := &Snapshot{Env: map[string]string{}}
 	for _, kv := range env {
 		if k, v, ok := strings.Cut(kv, "="); ok {
 			s.Env[k] = v
 		}
 	}
-	s.Lookup, s.LookupErr = lookup.Load(root)
-	s.LookupSHA, _ = chain.HashFile(filepath.Join(root, lookup.FileName))
-	s.Files, _ = sigfile.All(root)
-	if p := s.Env["SWIM_QUEUE_ENTRY"]; p != "" && filepath.Dir(p) == queue.Dir(root) {
-		s.Queue, _ = queue.Load(p)
-	}
 	return s
-}
-
-// Ask is one guard to decide.
-type Ask struct {
-	Root     string
-	Lane     int
-	Flag     string
-	Desc     string // the lane's description
-	Job, Run string
-	Script   string             // the script's SHA-256
-	Manifest *manifest.Manifest // nil for none
 }
 
 // Result is a decision.
 type Result struct {
 	OK bool
-	// How is the APPROVED line's detail ("approved by ... (signed)").
+	// How is the APPROVED line's detail ("FLAG=1").
 	How string
 	// Entry is the approve entry to record (OK only): method and
 	// approvers; the caller adds the lane's facts.
 	Entry chain.Entry
 	// History is what .swim.log says of it (OK only).
 	History string
-	// Why the signed approvals didn't count ("" if none apply).
+	// Why it isn't approved.
 	Why string
-}
-
-// Unapprovable is why nothing may approve guard flag, whatever answers
-// it (a signed approval, FLAG=1, the prompt, -y, a queued batch's
-// approval): its lookup.yml rule asks for evidence-bound approvals, which
-// swim no longer has. "" when something may. A lookup.yml that doesn't
-// load is left to Signed, which says so.
-func (s *Snapshot) Unapprovable(flag string) string {
-	if s.LookupErr != nil {
-		return ""
-	}
-	return s.Lookup.EvidenceWhy(flag)
 }
 
 // FlagSet decides a guard whose flag the lane has set to 1: it approves
@@ -174,173 +127,41 @@ func (s *Snapshot) FlagSet(flag string) Result {
 	return Result{OK: true, How: how, Entry: chain.Entry{Method: method, Statement: how}}
 }
 
-// Signed decides a guard by the signed approvals in the snapshot: those
-// of the exact manifest (or, from before manifests, of the script),
-// plus the standing approvals of whoever signed the queue entry the
-// run came from, counted together against lookup.yml. An approval an
-// older swim bound to a round's evidence counts as one of the script.
-func (s *Snapshot) Signed(a Ask, now time.Time) Result {
-	var r Result
-	if s.LookupErr != nil {
-		r.Why = s.LookupErr.Error()
-		return r
-	}
-	if why := s.Unapprovable(a.Flag); why != "" {
-		r.Why = why
-		return r
-	}
-	lk := s.Lookup
-	var files []*sigfile.File
-	for _, f := range s.Files {
-		if f.Kind == sigfile.Script && f.SHA256 == a.Script {
-			files = append(files, f)
-		}
-	}
-	files = sigfile.Unlimited(files)
-	files, stale := sigfile.ForManifest(files, a.Manifest)
-	queuer := s.queuer(a.Lane, a.Script)
-	if queuer != "" {
-		for _, f := range s.Files {
-			if f.Kind == sigfile.Standing && f.For == queuer {
-				files = append(files, f)
-			}
-		}
-	}
-	relevant := false
-	for _, f := range files {
-		relevant = relevant || f.Covers(a.Flag)
-	}
-	if !relevant {
-		if len(stale) > 0 {
-			// Approvals of this script bound to another manifest: say why.
-			r.Why = strings.Join(stale, "; ")
-			return r
-		}
-		// An approval of another version of this script: say so.
-		for _, f := range s.Files {
-			if f.Kind == sigfile.Script && f.Lane == a.Lane && f.SHA256 != a.Script && f.Covers(a.Flag) {
-				r.Why = fmt.Sprintf("%s approves another version of %s (approved %s, running %s)", filepath.Base(f.Path), lane.ScriptName(a.Root, a.Lane), short12(f.SHA256), short12(a.Script))
-			}
-		}
-		return r
-	}
-	d := sigfile.Decide(files, lk, a.Flag, now)
-	if !d.OK {
-		r.Why = d.Why
-		if len(stale) > 0 {
-			r.Why += "; " + strings.Join(stale, "; ")
-		}
-		return r
-	}
-	var names []string
-	for _, u := range d.Users {
-		names = append(names, lk.Describe(u))
-	}
-	var approvers []chain.Approver
-	methods := map[string]bool{}
-	for _, g := range d.Grants {
-		methods[g.File.Kind] = true
-		for _, sg := range g.Signers {
-			ev := sg.Events[len(sg.Events)-1]
-			approvers = append(approvers, chain.Approver{Name: sg.User, Key: sg.Key, Statement: g.File.Statement(), Prev: ev.Prev, SignedAt: ev.At, Sig: ev.Sig})
-		}
-	}
-	how := "approved by " + strings.Join(names, ", ")
-	method := "signature"
-	switch {
-	case methods[sigfile.Standing] && methods[sigfile.Script]:
-		method, how = "signature+standing", how+" (signed, and standing for jobs queued by "+queuer+")"
-	case methods[sigfile.Standing]:
-		method, how = "standing", how+" (standing approval for jobs queued by "+queuer+")"
-	default:
-		how += " (signed)"
-	}
-	r.OK, r.How = true, how
-	r.Entry = chain.Entry{Method: method, Approvers: approvers}
-	r.History = method + ": " + strings.Join(d.Users, ", ")
-	return r
-}
-
-// queuer is who queued the batch this run came from, proven by their SSH
-// signature on the queue entry and lookup.yml; "" if there's no such
-// entry, it isn't signed by a listed user, or it doesn't hold lane n's
-// exact script.
-func (s *Snapshot) queuer(n int, sha string) string {
-	e := s.Queue
-	if e == nil || e.QueueSig == "" || !e.Has(n, sha) {
-		return ""
-	}
-	if sign.Verify(e.QueuedKey, []byte(e.Statement()), e.QueueSig) != nil {
-		return ""
-	}
-	user, _ := s.Lookup.Who(e.QueuedKey)
-	return user
-}
-
-func short12(s string) string {
-	if len(s) > 12 {
-		return s[:12]
-	}
-	return s
-}
-
 // GuardState is how swim run would decide one guard as it starts, from
 // what the snapshot holds: what swim status shows for a pending lane.
 type GuardState struct {
 	Flag     string `yaml:"flag"`
 	Desc     string `yaml:"description,omitempty"`
 	Approved bool   `yaml:"approved"`
-	// How it's approved ("FLAG=1", "approved by alice (dba) (signed)"), or
-	// why nothing approves it yet ("" if nothing applies).
+	// How it's approved ("FLAG=1").
 	How string `yaml:"how,omitempty"`
-	Why string `yaml:"why,omitempty"`
 	// Asks: not approved, and swim run would ask at its prompt (a dry run
 	// if no one can answer). False and not approved: a dry run outright.
 	Asks bool `yaml:"asks"`
-	// Never: nothing can approve it (Unapprovable says why).
-	Never bool `yaml:"never,omitempty"`
 }
 
-// Guard decides a.Flag as swim run would as it starts, in its order:
-// a guard nothing may approve, the flag in the environment swim run
-// starts with, then the signed approvals. asks is whether swim run would
-// ask the operator (approvals: prompt) about one still unapproved.
-func (s *Snapshot) Guard(a Ask, asks bool, now time.Time) GuardState {
-	g := GuardState{Flag: a.Flag, Desc: a.Desc}
-	if why := s.Unapprovable(a.Flag); why != "" {
-		g.Never, g.Why = true, why
+// Guard decides flag as swim run would as it starts: approved by the flag
+// in the environment swim run starts with, or not. asks is whether swim
+// run would ask the operator (approvals: prompt) about one still
+// unapproved.
+func (s *Snapshot) Guard(flag, desc string, asks bool) GuardState {
+	g := GuardState{Flag: flag, Desc: desc}
+	if s.Env[flag] == "1" {
+		g.Approved, g.How = true, s.FlagSet(flag).How
 		return g
 	}
-	if s.Env[a.Flag] == "1" {
-		g.Approved, g.How = true, s.FlagSet(a.Flag).How
-		return g
-	}
-	if r := s.Signed(a, now); r.OK {
-		g.Approved, g.How = true, r.How
-	} else {
-		g.Why, g.Asks = r.Why, asks
-	}
+	g.Asks = asks
 	return g
 }
 
-// Text is the guard's state in a line: "approved: FLAG=1", "approved by
-// ... (signed)", "never approved: <why>", or "not approved: <why>; swim
-// run will ask (a dry run if no one answers)".
+// Text is the guard's state in a line: "approved: FLAG=1", or "not
+// approved; swim run will ask (a dry run if no one answers)".
 func (g GuardState) Text() string {
-	switch {
-	case g.Approved && strings.HasPrefix(g.How, "approved"):
-		return g.How
-	case g.Approved:
+	if g.Approved {
 		return "approved: " + g.How
-	case g.Never:
-		return "never approved: " + g.Why
-	}
-	s := "not approved"
-	if g.Why != "" {
-		s += ": " + g.Why
 	}
 	if g.Asks {
-		return s + "; swim run will ask (a dry run if no one answers)"
+		return "not approved; swim run will ask (a dry run if no one answers)"
 	}
-	return s + "; a dry run (approvals: flags never ask)"
+	return "not approved; a dry run (approvals: flags never ask)"
 }

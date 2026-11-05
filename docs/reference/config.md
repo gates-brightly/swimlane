@@ -56,8 +56,6 @@ in [env files](env.md), not config. There is no lane count.
 | `lane.N.sh` (`lane.N.<ext>`, `lane.N`) | Lane N's current round. | Only CI rounds. |
 | `lane.N.yml` | A lane's header as YAML ([other languages](other-languages.md#header)). | With its script. |
 | `swim.yml` | The repo's shared settings. | Yes |
-| `lookup.yml` | Users, keys, groups, approval rules. | Yes |
-| `approvals/` | Signed approvals. | Yes |
 | `.swim.lock` | The repo's [syntax versions](compatibility.md#syntax-versions-and-the-lock). Never edit it to get past a mismatch. | Yes |
 | `.swim.log` | The project log. | No (or yes, to keep history) |
 | `.env.swim` | Lane env. | No |

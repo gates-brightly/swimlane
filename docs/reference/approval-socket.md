@@ -6,9 +6,7 @@ launcher serves it, and the hidden commands a lane calls (`swim _approve`,
 `swim _mark`, `swim guard`, ...) use it. A lane program never speaks it
 directly.
 
-Not to be confused with `swim.approval/v1`, the schema of the signed
-approvals files under `approvals/`. Like every hidden command, this
-protocol is experimental (see [compatibility](compatibility.md)):
+Like every hidden command, this protocol is experimental (see [compatibility](compatibility.md)):
 both ends are always the same swim binary.
 
 ## Transport
@@ -73,13 +71,11 @@ In this order, from what it saw when the run started:
    `flag=1`. A flag set inside the lane, by its env files or by anything it
    runs, is declined: `FLAG=1 was set inside the lane, not in the
    environment swim run started with`.
-2. **Signed approvals:** `approvals/` and `lookup.yml` as they were when
-   the run started; files a lane writes later don't count.
-3. **The operator:** a pre-answer in the live view, `-y`, or the prompt,
+2. **The operator:** a pre-answer in the live view, `-y`, or the prompt,
    when someone can be asked. A guard the script doesn't declare is refused
    before any of this (except under `flag_set`: the operator named that
    flag).
-4. Otherwise a dry run.
+3. Otherwise a dry run.
 
 Every request is declined when the lane hangs up, the run is stopping, or
 the round's `Timeout` runs out. An unknown or revoked token, a process

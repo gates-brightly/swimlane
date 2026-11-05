@@ -12,7 +12,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -127,13 +126,6 @@ func record(root string, cfg *config.Config, e chain.Entry) error {
 	}
 	_, err := authority.Record(root, cfg, e)
 	return err
-}
-
-// lookupSHA is the SHA-256 of root's lookup.yml ("" without one): approve
-// entries record it (swim verify's authorized level).
-func lookupSHA(root string) string {
-	sum, _ := chain.HashFile(filepath.Join(root, lookup.FileName))
-	return sum
 }
 
 // roundSection is the text a round's chain entry hashes: its lines from

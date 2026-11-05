@@ -368,7 +368,7 @@ func TestFaultChainMidAppend(t *testing.T) {
 	if _, err := chain.Read(r.root); err == nil || !strings.Contains(err.Error(), "incomplete entry") {
 		t.Fatalf("reading the chain after the crash: %v", err)
 	}
-	vout, code := r.swim("verify", "--levels", "--allow-unsigned")
+	vout, code := r.swim("verify", "--allow-unsigned")
 	if code == 0 {
 		t.Fatalf("verify passed a chain cut mid-append:\n%s", vout)
 	}
@@ -376,9 +376,9 @@ func TestFaultChainMidAppend(t *testing.T) {
 	// The next append refuses rather than link to a broken line.
 	contains(t, "run before repair", must(r.swim("run", "1")), "the last entry is incomplete")
 	contains(t, "repair", r.mustSwim("chain", "repair"), "removed", "of an incomplete final entry")
-	contains(t, "verify after repair", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
+	contains(t, "verify after repair", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 	r.mustSwim("run", "1")
-	contains(t, "verify after the next run", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
+	contains(t, "verify after the next run", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 	links, err := chain.Read(r.root)
 	if err != nil {
 		t.Fatal(err)

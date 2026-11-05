@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-// signedRepo is a repo whose runner signs as zach, with alice also in
-// lookup.yml, and one passed round in the chain.
+// signedRepo is a repo whose runner signs as zach, with one passed round
+// in the chain.
 func signedRepo(t *testing.T) (*repo, map[string]string) {
 	t.Helper()
 	r := newRepo(t, "")
-	keys := people(t, r, "", "zach", "alice")
+	keys := people(t, r, "zach")
 	r.mustSwim("config", "signing", "auto")
 	r.mustSwim("config", "signing_key", keys["zach"])
 	r.script(1, "one", `run "ok" true`)
@@ -20,42 +20,19 @@ func signedRepo(t *testing.T) (*repo, map[string]string) {
 	return r, keys
 }
 
-// authorized: an approval that didn't meet lookup.yml's rule for its guard
-// fails the level, while lookup.yml is the one it was recorded under; once
-// lookup.yml has changed it's a warning.
-func TestVerifyAuthorizedLevel(t *testing.T) {
-	r := newRepo(t, "")
-	rules := "groups:\n  admins: [zach]\nrequire:\n  - guards: [FIN_ALLOW_*]\n    group: admins\n    signed: true\n"
-	keys := people(t, r, rules, "zach", "alice")
-	r.mustSwim("config", "signing", "auto")
-	r.mustSwim("config", "signing_key", keys["zach"])
-	dropLane(t, r)
-
-	// Signed by zach (admins): authorized.
-	r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"])
-	r.mustSwim("run", "1")
-	contains(t, "signed", r.mustSwim("verify", "--levels", "--allow-unsigned"), "authorized  yes", "1 approval, each met its lookup.yml rule")
-
-	// FLAG=1 for a guard whose rule says signed: it runs, but it isn't
-	// authorized.
-	os.RemoveAll(filepath.Join(r.root, "approvals"))
-	r.swimEnv([]string{"FIN_ALLOW_DROP=1"}, "run", "1")
-	out, code := r.swim("verify", "--levels", "--allow-unsigned")
-	if code != 1 || !strings.Contains(out, "authorized  no") || !strings.Contains(out, "UNAUTHORIZED: entry #") || strings.Contains(out, "BROKEN") ||
-		!strings.Contains(out, "approved by flag, but lookup.yml says FIN_ALLOW_DROP needs signed approvals") {
-		t.Fatalf("flag approval of a signed-only guard: exit %d\n%s", code, out)
+// swim verify --yaml says what the exit code says, and what broke.
+func TestVerifyYAML(t *testing.T) {
+	r, _ := signedRepo(t)
+	y := r.mustSwim("verify", "--yaml")
+	contains(t, "yaml", y, "schema: swim.verify/v1", "ok: true", `consistent: "yes"`, "broken: []")
+	logPath := filepath.Join(r.root, ".swim", "logs", "agent1.log")
+	orig, _ := os.ReadFile(logPath)
+	os.WriteFile(logPath, []byte(strings.Replace(string(orig), "PASS  ok", "PASS  ko", 1)), 0o644)
+	y, code := r.swim("verify", "--yaml")
+	if code != 1 {
+		t.Fatalf("verify --yaml of an edited log: exit %d\n%s", code, y)
 	}
-	y, _ := r.swim("verify", "--levels", "--allow-unsigned", "--yaml")
-	contains(t, "yaml", y, `authorized: "no"`, `consistent: "yes"`, "unauthorized:\n  - 'entry #", "broken: []")
-
-	// lookup.yml changed since: a warning, and partial.
-	lk, _ := os.ReadFile(filepath.Join(r.root, "lookup.yml"))
-	os.WriteFile(filepath.Join(r.root, "lookup.yml"), append(lk, []byte("# reviewed\n")...), 0o644)
-	out = r.mustSwim("verify", "--levels", "--allow-unsigned")
-	contains(t, "changed lookup.yml", out, "authorized  partial", "it was approved under another")
-	if out, code := r.swim("verify", "--levels", "--allow-unsigned", "--strict"); code != 1 {
-		t.Errorf("--strict with authorized partial: exit %d\n%s", code, out)
-	}
+	contains(t, "yaml, edited log", y, "ok: false", `consistent: "no"`, "was changed after the round ended")
 }
 
 // Runs that share an id (--run-id, a CI pipeline's) each attest their own
@@ -67,9 +44,9 @@ func TestVerifySharedRunID(t *testing.T) {
 	r.mustSwim("run", "2", "-y", "--plain", "--run-id", "pipeline-7")
 	r.script(1, "one", `run "ok again" true`)
 	r.mustSwim("run", "1", "--plain", "--run-id", "pipeline-7")
-	out, code := r.swim("verify", "--levels", "--allow-unsigned")
+	out, code := r.swim("verify", "--allow-unsigned")
 	if code != 0 || strings.Contains(out, "BROKEN") {
 		t.Fatalf("verify of runs sharing an id: exit %d\n%s", code, out)
 	}
-	contains(t, "verify", out, "consistent  yes", "authorized  yes")
+	contains(t, "verify", out, "VERIFIED")
 }

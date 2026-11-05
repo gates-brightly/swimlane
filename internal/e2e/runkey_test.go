@@ -75,7 +75,7 @@ func (a *confirmAgent) asked() int {
 // read the launcher's memory either. swim verify trusts the run.
 func TestRunKeyKeepsSigningFromLanes(t *testing.T) {
 	r := newRepo(t, "")
-	keys := people(t, r, "", "zach")
+	keys := people(t, r, "zach")
 	priv := keys["zach"]
 	a := newConfirmAgent(t, priv)
 	r.env = append(r.env, "SSH_AUTH_SOCK="+a.sock)

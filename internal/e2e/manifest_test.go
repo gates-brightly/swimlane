@@ -59,7 +59,7 @@ run "say" echo "script-v2 $greeting"`)
 	if !found {
 		t.Error("no round entry for swim 3")
 	}
-	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "consistent  yes")
+	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 }
 
 // An edit to the working-tree script while it runs changes nothing: bash
@@ -101,44 +101,38 @@ run "x" echo "x=$x"`)
 	}
 }
 
-// A signed approval binds the manifest: changing a sourced file, or the
-// policy part of swim.yml, stales it, and swim says why.
+// A queued batch's approval binds the manifest: changing a sourced file,
+// or the policy part of swim.yml, after it was queued skips the lane, and
+// swim says why; queued again, it runs approved.
 func TestManifestApprovalBinding(t *testing.T) {
 	r := newRepo(t, "")
-	keys := people(t, r, "require:\n  - guards: [FIN_ALLOW_*]\n    count: 1\n", "zach")
 	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
 	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=old_orders\n"), 0o644)
 	r.script(1, "drop old table", `source lib/tables.sh
 if guard FIN_ALLOW_DROP "drop table $table"; then run "drop" true; fi`)
 	withHeader(t, r, 1, "# Guards:  FIN_ALLOW_DROP drop the old table")
-	contains(t, "approve", r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"]),
-		"approving manifest", "includes lib/tables.sh", "(includes)", "approved: FIN_ALLOW_DROP")
-	r.mustSwim("run", "1")
-	contains(t, "approved", r.log(1), "APPROVED  drop table old_orders (approved by ", "PASS  drop")
-
+	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")
 	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=orders\n"), 0o644)
-	r.mustDryRun("run", "1")
-	// The file is declared (# Includes:), so it's part of the script's hash:
-	// the approval is of another version of the script.
-	contains(t, "stale include", r.log(1), "SKIP  drop table orders (dry run: ", "approves another version of lane.1.sh")
-	contains(t, "approve --list", r.mustSwim("approve"), "stale: the script changed since")
+	r.swim("watch", "--once")
+	// The file is declared (# Includes:), so it's part of the script's hash.
+	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "lane.1.sh changed since it was queued") {
+		t.Errorf("swim 1 after its include changed: %s %q", st.State, st.Reason)
+	}
 
-	// Approve the new manifest; then change only swim.yml's policy.
-	os.WriteFile(filepath.Join(r.root, "lib", "tables.sh"), []byte("table=old_orders\n"), 0o644)
-	r.mustSwim("run", "1")
-	if strings.Count(r.log(1), "APPROVED") != 2 {
-		t.Fatalf("restoring the file should restore the approval:\n%s", r.log(1))
-	}
+	// Queued again; then only swim.yml's policy changes.
+	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")
 	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("blocked_commands: [\"terraform destroy\"]\n"), 0o644)
-	r.mustDryRun("run", "1")
-	contains(t, "stale policy", r.log(1), "stale: config policy changed (swim.yml: blocked_commands")
-	contains(t, "verify", r.mustSwim("verify", "--levels", "--allow-unsigned"), "stale: config policy changed")
-	// A key outside the policy list (max_parallel) changes nothing.
-	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("max_parallel: 3\n"), 0o644)
-	r.mustSwim("run", "1")
-	if strings.Count(r.log(1), "APPROVED") != 3 {
-		t.Errorf("a non-policy swim.yml key staled the approval:\n%s", r.log(1))
+	r.swim("watch", "--once")
+	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "its manifest changed since it was queued") {
+		t.Errorf("swim 1 after swim.yml's policy changed: %s %q", st.State, st.Reason)
 	}
+	if strings.Contains(r.log(1), "PASS  drop") {
+		t.Fatalf("the guarded step ran after its manifest changed:\n%s", r.log(1))
+	}
+	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")
+	r.mustSwim("watch", "--once")
+	contains(t, "approved", r.log(1), "APPROVED  drop table orders (FIN_ALLOW_DROP=1, approved in ", "PASS  drop")
+	contains(t, "verify", r.mustSwim("verify", "--allow-unsigned"), "VERIFIED")
 }
 
 // The broker, not the request, says who asks: a lane that asks as another
@@ -218,11 +212,11 @@ run "after" true`)
 	}
 }
 
-// An approval binds the runner the repo names for the lane: the same
-// script, run by another runner, is another thing to approve (T2).
+// A queued batch's approval binds the runner the repo names for the lane:
+// the same script, run by another runner, is another thing to approve
+// (T2).
 func TestManifestRunnerBinding(t *testing.T) {
 	r := newRepo(t, "")
-	keys := people(t, r, "require:\n  - guards: [FIN_ALLOW_*]\n    count: 1\n", "zach")
 	dir := t.TempDir()
 	for _, name := range []string{"pyrun", "pyrun2"} {
 		os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexec bash \"$@\"\n"), 0o755)
@@ -233,14 +227,16 @@ func TestManifestRunnerBinding(t *testing.T) {
 # Guards:  FIN_ALLOW_DROP drop the old table
 if swim guard FIN_ALLOW_DROP "drop the old table"; then swim run "drop" -- true; fi
 `, 0o644)
-	r.mustSwim("approve", "1", "--guards", "FIN_ALLOW_DROP", "--key", keys["zach"])
-	r.mustSwim("run", "1", "--plain")
-	contains(t, "approved", r.log(1), "APPROVED  drop the old table (approved by ", "PASS  drop")
-
+	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")
 	r.write("swim.yml", "runners:\n  py: pyrun2\n", 0o644)
-	r.mustDryRun("run", "1", "--plain")
-	contains(t, "stale runner", r.log(1), "SKIP  drop the old table (dry run: ", "runner changed (swim.yml pyrun, now swim.yml pyrun2)")
-	if strings.Count(r.log(1), "PASS  drop") != 1 {
+	r.swim("watch", "--once")
+	if st := r.status().Get(1); st.State != "skipped" || !strings.Contains(st.Reason, "its manifest changed since it was queued") {
+		t.Errorf("swim 1 after its runner changed: %s %q", st.State, st.Reason)
+	}
+	if strings.Contains(r.log(1), "PASS  drop") {
 		t.Errorf("the guarded step ran under another runner:\n%s", r.log(1))
 	}
+	r.mustSwim("queue", "add", "1", "--approve", "FIN_ALLOW_DROP")
+	r.mustSwim("watch", "--once")
+	contains(t, "approved", r.log(1), "APPROVED  drop the old table (FIN_ALLOW_DROP=1, approved in ", "PASS  drop")
 }

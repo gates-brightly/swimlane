@@ -5,11 +5,12 @@ import (
 	"testing"
 )
 
-// The manifest hash text is frozen (docs/reference/formats.md): approvals, queue
-// entries, schedules and hub commands pin these hashes, so a change here
-// stales every one of them. Change it only with a dual-hash transition
-// (docs/reference/formats.md).
-const goldenV2 = "7ced577be71ab4bc4701b0d1ccc3d6b0935e26b67143ffc28a4795fd3ce8fd32"
+// The manifest hash text is frozen (docs/reference/formats.md): chain
+// entries and queue entries pin these hashes, so a change here stales
+// every one of them. Change it only with a dual-hash transition
+// (docs/reference/formats.md). (The fixture's lookup.yml has no rules: a
+// swim that read them hashed this lane the same.)
+const goldenV2 = "8a1a8f1dbdc1e6eb0b81229e205f86b793a1a60134fef09dfc17a8f66c0fb5fe"
 
 func TestManifestHashFrozen(t *testing.T) {
 	m := build(t, repo(t), 3)

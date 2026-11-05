@@ -10,14 +10,12 @@ import (
 	"time"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
-	"github.com/gates-brightly/swimlane/internal/authority"
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/ci"
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -28,8 +26,8 @@ import (
 // lane run directly with bash, on the terminal. It records APPROVED (exit
 // 0) or SKIP as a dry run (exit 1), as guard does with the flag.
 //
-// Under swim run the launcher decides (signed approvals as they were when
-// the run started, then the operator) and records the approval; with
+// Under swim run the launcher decides (the flag in its own environment,
+// then the operator) and records the approval; with
 // --flag-set (the lane has FLAG=1) it approves only if swim run's own
 // environment set the flag.
 //
@@ -50,12 +48,7 @@ func cmdApproveHook(args []string) error {
 	job, run := os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN")
 	dryRun := func(why string) error {
 		detail := "dry run: set " + flag + "=1 to approve"
-		switch {
-		case approvalMismatch(why):
-			// What was signed changed: the way on is to look at the change
-			// and sign it, not to wave it through unsigned.
-			detail = "dry run: " + why + "; review the change (swim approve " + args[0] + " shows the manifest), then: swim approve " + args[0] + " --guards " + flag
-		case why != "":
+		if why != "" {
 			detail = "dry run: " + why + "; set " + flag + "=1 to approve"
 		}
 		if err := cmdMark([]string{args[0], logparse.Skip, desc, detail}); err != nil {
@@ -109,15 +102,6 @@ func cmdApproveHook(args []string) error {
 		cmdMark([]string{args[0], logparse.Warn, "approval refused: " + flag, why})
 		return dryRun(why)
 	}
-	// Run directly with bash: a guard whose lookup.yml rule asks for
-	// evidence-bound approvals (which swim no longer has) can't be
-	// approved by anything, the operator's own flag included.
-	if lk, err := lookup.Load(root); err == nil {
-		if why := lk.EvidenceWhy(flag); why != "" {
-			cmdMark([]string{args[0], logparse.Warn, "approval refused: " + flag, why})
-			return dryRun(why)
-		}
-	}
 	// Run directly with bash: only a guard the header declares can be
 	// approved, as under swim run. With an approvals broker, it decides
 	// that, knowing which lane really asks (a lane may claim another's
@@ -139,36 +123,10 @@ func cmdApproveHook(args []string) error {
 		return cmdMark([]string{args[0], logparse.Approved, desc, detail})
 	}
 
-	// Run directly with bash, the lane decides for itself. Signed approvals
-	// come first: those of this exact manifest (or, from before manifests,
-	// of this script), plus the standing approvals of whoever signed the
-	// queue entry this run came from (swim approve --auto), counted
-	// together against lookup.yml.
-	snap := authority.Take(root, os.Environ())
-	d := snap.Signed(authority.Ask{Root: root, Lane: n, Flag: flag, Desc: desc, Job: job, Run: run, Script: sha, Manifest: m}, time.Now())
-	if d.OK {
-		facts := observe()
-		if err := drifted(facts); err != nil {
-			return err
-		}
-		approveRecorded = true
-		if err := cmdMark([]string{args[0], logparse.Approved, desc, d.How}); err != nil {
-			return err
-		}
-		if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Manifest: man, Guard: flag, Action: desc,
-			Method: d.Entry.Method, Approvers: d.Entry.Approvers, Observed: facts, Lookup: snap.LookupSHA}); err != nil {
-			return err
-		}
-		history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", " + d.History + ")"})
-		return nil
-	}
-	sigWhy := d.Why
-
+	// Run directly with bash, the lane decides for itself: it asks the
+	// operator on the terminal, or it's a dry run.
 	ask, why := approvalChannel(cfg)
 	if ask == nil {
-		if sigWhy != "" {
-			why = sigWhy
-		}
 		return dryRun(why)
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
@@ -232,7 +190,7 @@ func cmdApproveHook(args []string) error {
 		approver.Key = k.Public // the operator at this terminal: the runner's key
 	}
 	if err := record(root, cfg, chain.Entry{Type: "approve", Run: run, Lane: n, Job: job, Script: sha, Manifest: man, Guard: flag, Action: desc,
-		Method: method, Statement: how, Approvers: []chain.Approver{approver}, Observed: was, Lookup: lookupSHA(root)}); err != nil {
+		Method: method, Statement: how, Approvers: []chain.Approver{approver}, Observed: was}); err != nil {
 		return err
 	}
 	history.Log(root, history.Entry{Event: history.Approve, Lane: n, Job: job, Run: run, Detail: desc + "  (" + flag + ", by " + by + ")"})
@@ -246,7 +204,7 @@ const (
 	routeLauncher route = iota // swim run's launcher, through its approvals channel
 	routeRefuse                // nobody: under swim run without the channel; fail closed
 	routeFlag                  // the operator's own FLAG=1, for a lane run directly with bash
-	routeSelf                  // the lane: signed approvals, then the terminal (or a dry run)
+	routeSelf                  // the lane: the terminal (or a dry run)
 )
 
 // guardRoute decides who decides a guard, from how the lane's process was
@@ -380,10 +338,3 @@ func roundDeadline() time.Time {
 // approveRecorded is set when swim _approve has put an approval in the
 // chain itself, so the _mark it calls doesn't record it twice.
 var approveRecorded bool
-
-// approvalMismatch says a guard's reason for a dry run is a signed
-// approval of something other than what's running (another version of the
-// script, or a stale manifest).
-func approvalMismatch(why string) bool {
-	return strings.Contains(why, "approves another version of") || strings.Contains(why, ": stale: ")
-}

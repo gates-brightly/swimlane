@@ -22,12 +22,10 @@ import (
 	"github.com/gates-brightly/swimlane/internal/envfile"
 	"github.com/gates-brightly/swimlane/internal/finding"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/proc"
 	"github.com/gates-brightly/swimlane/internal/redact"
-	"github.com/gates-brightly/swimlane/internal/sigfile"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/version"
@@ -104,8 +102,6 @@ var Checks = []Check{
 	{"outputs-old", true, "round outputs in .swim/out/ older than outputs_keep that no lane uses", checkOldOutputs},
 	{"stages-old", true, "staged lane copies in .swim/runs/<run>/ older than outputs_keep, of no lane's latest round", checkOldStages},
 	{"signing-key", false, "where the runner key lives: warns when it's a file with no passphrase (a lane could read it and sign as the runner)", checkSigningKey},
-	{"evidence-rule", false, "a lookup.yml rule says evidence: true: swim no longer has evidence-bound approvals, so nothing can approve its guards (they dry-run)", checkEvidenceRules},
-	{"standing-approval", false, "a standing approval from before they expired and bound lookup.yml's rules (it still counts)", checkStandingApprovals},
 	{"remote-running", false, "a lane has run on another machine sharing the repo for over a day: this one can't tell whether that machine is still there", checkRemoteRunning},
 }
 
@@ -225,7 +221,6 @@ func checkOldOutputs(o *Options) []finding.Finding {
 
 func checkEnvFiles(o *Options) []finding.Finding {
 	var out []finding.Finding
-	lk, _ := lookup.Load(o.Root)
 	reported := map[string]bool{}
 	for n := 1; n <= o.Cfg.Lanes; n++ {
 		info, err := lane.ReadScript(o.Root, n)
@@ -240,8 +235,8 @@ func checkEnvFiles(o *Options) []finding.Finding {
 			}
 			continue
 		}
-		for _, c := range envfile.GuardConflicts(r, info, lk) {
-			out = append(out, fd(finding.Error, "env-file", c.File, "remove the line; approve with the shell, the prompt or swim approve",
+		for _, c := range envfile.GuardConflicts(r, info) {
+			out = append(out, fd(finding.Error, "env-file", c.File, "remove the line; approve with the shell or the prompt",
 				"%s (swim %d)", c.Error(), n))
 		}
 	}
@@ -417,30 +412,6 @@ func checkRemovedSettings(o *Options) []finding.Finding {
 		}
 		out = append(out, fd(finding.Warn, "removed-setting", src.file, "delete "+strings.Join(src.keys, ", "),
 			"%s: swim no longer has these settings; they're ignored", strings.Join(src.keys, ", ")))
-	}
-	return out
-}
-
-// checkEvidenceRules: a require: rule with evidence: true asks for
-// approvals bound to a round's evidence, which swim no longer has. It
-// fails closed (ignoring it would let a plain approval through), so every
-// guard it covers dry-runs until the rule changes.
-func checkEvidenceRules(o *Options) []finding.Finding {
-	lk, err := lookup.Load(o.Root)
-	if err != nil {
-		return nil
-	}
-	var out []finding.Finding
-	for _, r := range lk.Require {
-		if !r.Evidence {
-			continue
-		}
-		guards := "every guard"
-		if len(r.Guards) > 0 {
-			guards = strings.Join(r.Guards, ", ")
-		}
-		out = append(out, fd(finding.Warn, "evidence-rule", lookup.FileName, "remove `evidence: true` from the rule (re-approve what it covers if you change its terms)",
-			"a require: rule for %s says evidence: true; swim no longer has evidence-bound approvals, so nothing can approve those guards: they dry-run", guards))
 	}
 	return out
 }
@@ -665,30 +636,6 @@ func checkLock(o *Options) []finding.Finding {
 			"%s is in the old form (breaking: %d); it means syntax %s", version.LockName, l.Breaking, l.Syntaxes())}
 	}
 	return nil
-}
-
-// checkStandingApprovals warns of the standing approvals still counting
-// under the old terms: never expiring (until lookup.yml sets a
-// standing.max), or not bound to lookup.yml's rules.
-func checkStandingApprovals(o *Options) []finding.Finding {
-	lk, err := lookup.Load(o.Root)
-	if err != nil {
-		return nil
-	}
-	files, _ := sigfile.All(o.Root)
-	var out []finding.Finding
-	for _, f := range files {
-		if f.Kind != sigfile.Standing {
-			continue
-		}
-		st := f.State(lk, time.Now(), sigfile.Current{})
-		for _, w := range st.Warnings {
-			out = append(out, fd(finding.Warn, "standing-approval", o.rel(f.Path),
-				"swim revoke --auto "+f.For+", then swim approve --auto "+f.For+" again (or set standing.max in lookup.yml)",
-				"standing approval for %s's jobs: %s", f.For, w))
-		}
-	}
-	return out
 }
 
 // checkSigningKey says where the runner key lives. swim run signs a run's

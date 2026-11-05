@@ -22,10 +22,8 @@ import (
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
-	"github.com/gates-brightly/swimlane/internal/lookup"
 	"github.com/gates-brightly/swimlane/internal/notify"
 	"github.com/gates-brightly/swimlane/internal/queue"
-	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/step"
 	"github.com/gates-brightly/swimlane/internal/ui"
@@ -73,8 +71,6 @@ func cmdInit(args []string) error {
 	} else {
 		fmt.Println(".gitignore already has the swim block")
 	}
-
-	initLookup(root, cfg)
 
 	if err := ensureLock(root); err != nil {
 		return err
@@ -1026,35 +1022,4 @@ func anyPending(root string, cfg *config.Config) bool {
 		}
 	}
 	return false
-}
-
-// initLookup lists the key this machine signs with in lookup.yml, as
-// $USER: creating the file, adding the user, or adding the key to an
-// existing user. An approval by a key lookup.yml doesn't name counts for
-// nothing, so a repo is set up to sign from the start. Never fails init.
-func initLookup(root string, cfg *config.Config) {
-	if cfg.SigningMode() == config.SigningOff || !sign.Available() {
-		return
-	}
-	key, err := sign.LoadKey(cfg.SigningKey)
-	if err != nil {
-		return
-	}
-	if lk, err := lookup.Load(root); err == nil {
-		if name, ok := lk.Who(key.Public); ok {
-			fmt.Printf("lookup.yml already lists your key (%s) as %s\n", sign.Fingerprint(key.Public), name)
-			return
-		}
-	}
-	user := localUser()
-	created, err := lookup.AddKey(root, user, key.Public)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "swim init: warning: lookup.yml: %v (swim keys add NAME to list your key)\n", err)
-		return
-	}
-	verb := "added to"
-	if created {
-		verb = "wrote"
-	}
-	fmt.Printf("%s lookup.yml: %s signs with %s (commit it; teammates run swim init or swim keys add)\n", verb, user, sign.Fingerprint(key.Public))
 }

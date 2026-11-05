@@ -118,9 +118,9 @@ type Entry struct {
 	// a worker runs it with NAME=N set; any other decision is unanswered.
 	Decide    []string `yaml:"decide,omitempty"`
 	Parallel  *int     `yaml:"parallel,omitempty"`
-	Signature string   `yaml:"signature,omitempty"` // queued by swim watch --approved: the approval's statement hash
-	// The queuer's SSH signature over Statement: it proves who queued the
-	// batch (standing approvals, swim approve --auto, apply to their jobs).
+	Signature string   `yaml:"signature,omitempty"` // queued by an older swim watch --approved: the approval's statement hash
+	// The queuer's SSH signature over Statement, from an older swim that
+	// signed batches (for standing approvals, which it no longer has).
 	QueuedKey string  `yaml:"queued_key,omitempty"`
 	QueueSig  string  `yaml:"queue_sig,omitempty"`
 	Worker    *Worker `yaml:"worker,omitempty"`
