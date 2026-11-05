@@ -143,8 +143,8 @@ func Fixable(code string) bool {
 // files, expired claims, dead watches' presence files, old pinned copies,
 // and files under .swim/ swim no longer reads) and returns what it did.
 // It checks each again before removing it, and never touches config, lane
-// scripts, git, lane logs, the chain, status.yml, the queue, .swim/scripts,
-// snapshots or signoffs.
+// scripts, git, lane logs, the chain, status.yml, the queue, .swim/scripts
+// or snapshots.
 func Fix(o Options, fs []finding.Finding) ([]string, error) {
 	o.defaults()
 	var done []string

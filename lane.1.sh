@@ -5,7 +5,6 @@
 # Owner:   swim CI
 # Timeout: 10m
 # Workspace: live
-# Signoff: swim/ci
 # swim:lint-ignore-file workspace-live go build and go test read the whole checkout
 #
 # This repo's CI is seven lanes, each its own job, so the slow suites run

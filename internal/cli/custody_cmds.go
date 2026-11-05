@@ -13,7 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
-// cmdKeys shows the key this machine signs the chain (and signoffs) with.
+// cmdKeys shows the key this machine signs the chain with.
 func cmdKeys(args []string) error {
 	if len(args) > 0 {
 		return usagef("usage: swim keys")

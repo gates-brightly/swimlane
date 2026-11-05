@@ -100,7 +100,7 @@ profile generations; restore one with `cp`.
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain, and every script that ran. | No |
 | `.swim/runs/<run>/<N>/`, `.swim/runs/<run>/<N>.manifest.yml`, `.swim/runs/RUN.yml` | Staged copies and manifests; each run's timeline. | No |
-| `.swim/queue/`, `.swim/snapshots/`, `.swim/signoffs/` | Batches, snapshot output, signoffs. | No |
+| `.swim/queue/`, `.swim/snapshots/` | Batches, snapshot output. | No |
 | `.swim/laneN.pid` | Present while lane N runs. | No |
 
 `swim init` sets these up and git-ignores what shouldn't be committed.

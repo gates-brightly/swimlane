@@ -36,6 +36,7 @@ var retired = map[string]string{
 	"modules":              "modules",
 	"evidence":             "evidence-bound approvals",
 	"signatures":           "signed approvals",
+	"signoffs":             "# Signoff:",
 	"migrations":           "script migrations",
 	"msg":                  "swim msg",
 	"pause":                "swim pause",

@@ -156,20 +156,20 @@ func TestLeftoverAndFix(t *testing.T) {
 		}
 	}
 	want := "claim-expired .swim/claims/lane.4.yml watch-gone .swim/workers/far-1.yml " +
-		"leftover .swim/earmarks/ leftover .swim/groups/ leftover .swim/headless.log leftover .swim/hub.yml leftover .swim/lane1.2.claim leftover .swim/observations/ leftover .swim/out/"
+		"leftover .swim/earmarks/ leftover .swim/groups/ leftover .swim/headless.log leftover .swim/hub.yml leftover .swim/lane1.2.claim leftover .swim/observations/ leftover .swim/out/ leftover .swim/signoffs/"
 	if strings.Join(got, " ") != want {
 		t.Fatalf("found:\n%s\nwant:\n%s", strings.Join(got, " "), want)
 	}
 	done, err := Fix(o, fs)
-	if err != nil || len(done) != 9 {
+	if err != nil || len(done) != 10 {
 		t.Fatalf("fix: %v %v", done, err)
 	}
-	for _, gone := range []string{"groups", "hub.yml", "out", "lane1.2.claim", "claims/lane.4.yml", "workers/far-1.yml"} {
+	for _, gone := range []string{"groups", "hub.yml", "out", "signoffs", "lane1.2.claim", "claims/lane.4.yml", "workers/far-1.yml"} {
 		if _, err := os.Stat(filepath.Join(swim, gone)); !os.IsNotExist(err) {
 			t.Errorf("%s kept", gone)
 		}
 	}
-	for _, kept := range []string{"lane1.claim", "chain.jsonl", "status.yml", "logs/lane1.log", "queue", "scripts", "snapshots", "signoffs", "watch.lock", "claims/lane.5.yml", "workers/far-2.yml"} {
+	for _, kept := range []string{"lane1.claim", "chain.jsonl", "status.yml", "logs/lane1.log", "queue", "scripts", "snapshots", "watch.lock", "claims/lane.5.yml", "workers/far-2.yml"} {
 		if _, err := os.Stat(filepath.Join(swim, kept)); err != nil {
 			t.Errorf("%s removed", kept)
 		}

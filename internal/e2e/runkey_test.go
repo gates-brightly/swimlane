@@ -115,8 +115,13 @@ step "ok" true`)
 	if err != nil || len(links) == 0 {
 		t.Fatalf("chain: %v", err)
 	}
+	// A key without its comment: "type base64".
+	keyOnly := func(k string) string {
+		f := strings.Fields(k)
+		return strings.Join(f[:min(len(f), 2)], " ")
+	}
 	for _, l := range links {
-		if l.RunKey == nil || sign.KeyOnly(l.SignedBy()) != sign.KeyOnly(string(pub)) || l.Signer == l.SignedBy() {
+		if l.RunKey == nil || keyOnly(l.SignedBy()) != keyOnly(string(pub)) || l.Signer == l.SignedBy() {
 			t.Errorf("entry %d (%s) isn't signed by a run key the runner vouched for: signer %q, run key %+v", l.Seq, l.Type, l.Signer, l.RunKey)
 		}
 	}

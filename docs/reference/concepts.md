@@ -35,7 +35,6 @@ When you need them:
 | **dependency / lock** | `# After: 2 3` runs a lane after those pass; `# Locks: orders-db` keeps lanes sharing one from overlapping. See [running](running.md). |
 | **manifest** | What swim pins before a round starts, and runs from a read-only copy. See [manifest](manifest.md). |
 | **chain** | Every round and approval, hash-linked and signed, checked by `swim verify`. See [chain](chain.md). |
-| **signoff** | `# Signoff:` posts a passed round as a signed commit status. See [CI](ci.md#local-ci). |
 | **archive** | `swim archive N "<note>"` keeps the round's log (`laneN.prev-<name>.log`) and empties the lane. |
 
 ## Lane states

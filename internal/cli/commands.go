@@ -557,12 +557,10 @@ func runLanes(rest []string, rf runFlags) error {
 	if o.RunID == "" {
 		o.RunID = lane.NewRunID()
 	}
-	head := signoffHead(root)
 	code, err := launcher.Run(o)
 	if err != nil {
 		return err
 	}
-	signoffsAfterRun(root, cfg, o.RunID, head)
 	if code != 0 {
 		return exitError{code}
 	}

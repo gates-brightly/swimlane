@@ -162,7 +162,6 @@ swim verify                                     # old entries still verify
   losing the private key doesn't break the record.
 - **Stolen:** whoever holds the old key could have rewritten the chain
   and re-signed it, which `swim verify` can't tell from the real one.
-- `swim config signing_key` also sets the key `swim signoff` signs with.
 
 ## A file from a newer swim
 
