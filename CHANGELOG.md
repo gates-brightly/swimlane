@@ -136,6 +136,14 @@ history stays here, since `swim changelog --since` reads it.
   and no screen, as it does when stdout isn't a terminal. The pinned panel
   without its keys is `SWIM_TUI=0`.
 
+### Added
+
+- **`swim lint` warns about GNU-only tool forms (`gnu-only`).** `sed -i`
+  with no suffix, `grep -P`, `date -d`, `stat -c`, `find -printf` and
+  `timeout` are what a lane written on Linux trips on on a Mac; each
+  finding names the portable form (`sed -i.bak`, `grep -E`, the step's
+  `--timeout`, ...).
+
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 
 ### Removed

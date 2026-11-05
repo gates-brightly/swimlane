@@ -532,6 +532,57 @@ func checkBash4(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
+// gnuOnly are tool forms a stock Mac's BSD tools don't run as written:
+// a lane is written in a Linux sandbox and run on the operator's Mac.
+var gnuOnly = []struct {
+	re              *regexp.Regexp
+	tool, what, why string
+	fix             string
+}{
+	{regexp.MustCompile(`(?:^|[\s;&|(!{])sed\s(?:[^;&|]*\s)?(?:-[a-zA-Z]*i|--in-place)(?:\s|$)`), "sed", "`sed -i` with no suffix",
+		"GNU and BSD (macOS) sed read it differently", "sed -i.bak ... && rm FILE.bak (both read that)"},
+	{regexp.MustCompile(`(?:^|[\s;&|(!{])grep\s(?:[^;&|]*\s)?(?:-[a-zA-Z]*P[a-zA-Z]*|--perl-regexp)(?:[\s=]|$)`), "grep", "`grep -P`",
+		"macOS grep has no -P", "grep -E, or perl -ne"},
+	{regexp.MustCompile(`(?:^|[\s;&|(!{])date\s(?:[^;&|]*\s)?(?:-d|--date)(?:[\s='"]|$)`), "date", "`date -d`",
+		"macOS date has no -d", "date math in a python3 or perl step (date -j -f on macOS only)"},
+	{regexp.MustCompile(`(?:^|[\s;&|(!{])stat\s(?:[^;&|]*\s)?(?:-c|--format|--printf)(?:[\s='"]|$)`), "stat", "`stat -c`",
+		"macOS stat takes -f", "wc -c < FILE for a size, or ls -l"},
+	{regexp.MustCompile(`(?:^|[\s;&|(!{])find\s[^;&|]*\s-printf(?:\s|$)`), "find", "`find -printf`",
+		"macOS find has no -printf", "find ... -print, then format each path (or -exec ls -l {} +)"},
+	{cmdRE(`timeout`), "timeout", "`timeout`",
+		"macOS has no timeout command", "the step's own limit: run --timeout 5m \"label\" cmd (or # Step-Timeout:)"},
+}
+
+// checkGNUOnly: a GNU-only tool form, which a Mac's BSD tool rejects or
+// reads differently. A warning: operators on Linux, or with GNU tools on
+// PATH, run it fine (swim doctor says whether this machine's do).
+func checkGNUOnly(c *Context, s *Script) []finding.Finding {
+	var out []finding.Finding
+	for i, line := range s.v.bare {
+		if s.v.doc[i] {
+			continue
+		}
+		for _, g := range gnuOnly {
+			if g.re.MatchString(line) {
+				out = append(out, f(finding.Warn, "gnu-only", i, g.fix, "%s is GNU-only: %s", g.what, g.why))
+				break
+			}
+		}
+	}
+	return out
+}
+
+// GNUOnlyTool is the tool a gnu-only finding is about (sed, grep, date,
+// stat, find, timeout), or "".
+func GNUOnlyTool(fd finding.Finding) string {
+	for _, g := range gnuOnly {
+		if fd.Code == "gnu-only" && strings.HasPrefix(fd.Message, g.what+" ") {
+			return g.tool
+		}
+	}
+	return ""
+}
+
 var (
 	guardHeaderRE = regexp.MustCompile(`^#[ \t]?Guards:\s*(\S+)`)
 	guardUseRE    = regexp.MustCompile(`(?:^|[\s;&|(!])guard\s+([A-Za-z_][A-Za-z0-9_]*)`)

@@ -712,6 +712,9 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     stage-order (warn)     stages out of order, repeated, or change first
     bash4 (warn)           declare -A, mapfile, ${x,,}, |&, coproc, ... (macOS
                            has bash 3.2)
+    gnu-only (warn)        sed -i with no suffix, grep -P, date -d, stat -c,
+                           find -printf, timeout: a Mac's BSD tools don't run
+                           them as written (swim doctor says if this one's do)
     guard-unlisted (error) a guard flag used but not declared in # Guards:
                            (refused when it asks; a warning with # Guards: *)
     guard-dynamic (error)  guard "$FLAG" without # Guards: *
