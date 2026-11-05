@@ -48,7 +48,6 @@ func init() {
 		"watch":     {run: cmdWatch},
 		"wait":      {run: cmdWait},
 		"verify":    {run: cmdVerify},
-		"signoff":   {run: cmdSignoff},
 		"chain":     {run: cmdChain},
 		"keys":      {run: cmdKeys},
 		"doctor":    {run: cmdDoctor},

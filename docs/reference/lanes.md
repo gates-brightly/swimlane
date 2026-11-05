@@ -91,7 +91,6 @@ OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
 | `# Targets:` | What its steps talk to by default. |
 | `# Fail: soft\|hard` | `hard`: the first failed step ends the round. |
 | `# Includes:` | Repo files that are part of the round (sourced files, local modules): pinned and staged; the only repo files it may read as code. |
-| `# Signoff:` | See [CI](ci.md#local-ci). |
 | `# Workspace: live` | Run in the checkout itself, not a pinned copy (for tools that read the whole tree, like `go test`); lint warns (`workspace-live`). |
 
 ## Stages

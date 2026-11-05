@@ -1213,11 +1213,7 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, keys, plain bool,
 	history.Log(root, history.Entry{Event: history.QueueRun, Run: o.RunID, Detail: detail})
 	fmt.Printf("\nswim watch: running %s (#%d, queued by %s): lane %s\n", e.ID, e.Seq, e.By, strings.Join(ns, " "))
 
-	head := signoffHead(root)
 	code, err := launcher.Run(o)
-	if err == nil {
-		signoffsAfterRun(root, cfg, o.RunID, head)
-	}
 	res.Finished = time.Now().UTC().Format(time.RFC3339)
 	res.Exit = code
 	switch {

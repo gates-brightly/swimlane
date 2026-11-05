@@ -154,9 +154,6 @@ func keyOnly(pub string) string {
 	return strings.TrimSpace(pub)
 }
 
-// KeyOnly is a public key without its comment, for comparing keys.
-func KeyOnly(pub string) string { return keyOnly(pub) }
-
 func unarmor(armor string) string {
 	var b strings.Builder
 	for _, l := range strings.Split(armor, "\n") {

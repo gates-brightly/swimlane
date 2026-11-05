@@ -34,7 +34,7 @@ an older `go` fetches it when `GOTOOLCHAIN` allows.
 |---|---|
 | **bash 3.2 or newer** | Lane scripts and swim's lane library, which stays compatible with macOS's bash 3.2. `swim lint` warns about bash 4 features (`bash4`) and GNU-only tool forms (`gnu-only`) in lane scripts. |
 | **git** | swim finds the repo's root with git (`swim doctor` checks it). |
-| **ssh-keygen, OpenSSH 8.0 or newer** | Signing the chain and signoffs, and `swim verify`. Without it, `signing: auto` records unsigned entries; `signing: required` refuses to run. |
+| **ssh-keygen, OpenSSH 8.0 or newer** | Signing the chain, and `swim verify`. Without it, `signing: auto` records unsigned entries; `signing: required` refuses to run. |
 
 A lane in another language calls the plain CLI (`swim step "<label>" --
 cmd`, `swim guard FLAG "<action>"`) and needs only its own interpreter.

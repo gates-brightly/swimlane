@@ -38,6 +38,35 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### What changed for you
+
+- `# Signoff:` and `swim signoff verify` are gone: a passed round no
+  longer posts a signed commit status. The record of what ran stays.
+
+### Removed
+
+- **Signoffs: `# Signoff:` and `swim signoff verify`.** A lane that
+  passed on a clean, committed HEAD used to sign a statement into
+  `.swim/signoffs/COMMIT/N.json` and post a `success` commit status
+  through `gh`. One engineer approving and reading their own work doesn't
+  need a second attestation, and it stood in for CI rather than recording
+  what ran. The record stays: the chain of custody, `.swim/scripts/`,
+  lane logs and `swim verify` are unchanged. `swim run`, `swim watch` and
+  a local `swim ci` no longer sign off or post statuses. Cache, approvals
+  from others (`lookup.yml`, `swim approve`) and trust anchors
+  (`trust.yml`, `chain_anchors`) were removed in 0.20261105.4.
+
+### Upgrading
+
+- **A lane's `# Signoff:` line now does nothing:** it's an ordinary
+  header line, and the lane runs as before. Delete it.
+- **Branch protection that requires a status a signoff posted**
+  (`swim/checks`, say) will wait forever: remove that required check, or
+  have a CI job post it (`swim ci` in CI).
+- **`swim doctor --fix` deletes `.swim/signoffs/`** as leftover state.
+  Copy out any statement you want to keep first; the round it vouched
+  for stays in the chain.
+
 ## 0.20261105.6 (v0.20261105.6, 2026-11-05)
 
 ### Changed

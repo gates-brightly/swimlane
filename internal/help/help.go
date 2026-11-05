@@ -654,27 +654,6 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
                        consistent ("yes" or "no"), ok (what the exit code
                        says), broken, unsigned, amended, warnings, notes.
 `,
-	"signoff": `swim signoff verify FILE ...
-
-  A lane with # Signoff: CONTEXT is local CI: when its round passes, swim
-  (not the lane) signs a statement with the key of whoever runs the
-  launcher (swim run, swim ci run locally, or the watcher under swim
-  watch; never swim ci in a CI job): the commit and its
-  tree, the lane, its script and manifest hashes, the round id and run. It
-  goes in .swim/signoffs/COMMIT/N.json, and a success commit status named
-  CONTEXT goes to GitHub through their gh, which branch protection can
-  require. Approving the script approves the signoff. Only when the tree
-  was HEAD's as the run started and still is (no changed or untracked file
-  git doesn't ignore) and the lane script is committed; push the commit
-  first. A lane that can't be signed off says why; the run's result
-  doesn't change.
-  A signoff is an attestation, not a proof: it shows whose key vouches
-  that the lane passed on that tree, not that the round ran honestly. Keep
-  CI running on main (or on a sample) to catch a machine that differs.
-  verify checks each file's signature, that this machine's signing key
-  (signing_key, or ~/.ssh/id_ed25519) made it, and that its commit (if
-  this repo has it) still has the tree it names; exits 1 if any fails.
-`,
 	"chain": `swim chain repair
 
   Look after the chain of custody file itself (.swim/chain.jsonl).
@@ -691,7 +670,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
 `,
 	"keys": `swim keys
 
-  The key this machine signs the chain and signoffs with (signing_key, or
+  The key this machine signs the chain with (signing_key, or
   ~/.ssh/id_ed25519): its fingerprint, path and comment, and the signing
   mode (signing: auto, required or off).
 `,
@@ -832,7 +811,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
   gone watches' files, old pinned copies and the leftover files above,
   checking each again first. It never edits config, lane scripts or git,
   and never deletes lane logs, the chain, status.yml, the queue,
-  .swim/scripts, snapshots or signoffs.
+  .swim/scripts or snapshots.
 `,
 	"changelog": `swim changelog [-n N] [--since VERSION] [--all]
 
@@ -919,7 +898,7 @@ func For(name string) (string, bool) {
 var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log",
 	"step", "gate", "snapshot", "guard", "stage",
 	"archive", "note", "changelog", "version", "skill", "interrupt", "queue", "watch", "wait",
-	"verify", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
+	"verify", "chain", "keys", "ci", "lint", "doctor", "guide"}
 
 // Short is swim --help on a terminal: the commands most people need, one
 // line each, and where the rest is.
@@ -966,7 +945,7 @@ EVERYTHING ELSE (swim <command> --help, or swim guide commands)
   doctor, config, env          the environment lanes get
   archive, note                tidy up and record
   interrupt, wait              control running lanes
-  ci, signoff, changelog, version, skill
+  ci, changelog, version, skill
 `
 }
 
