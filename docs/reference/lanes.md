@@ -91,26 +91,26 @@ source lib/swim/gh.sh
 source lib/swim/os.sh
 stage check
 os_mac_gate             # gate: this is the operator's Mac
-aws_gate 123456789012   # gate: an AWS session is active, and is that account
-gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $PR_REF, snapshot its head
+aws_gate --profile sbx1 123456789012   # gate: sbx1's AWS session is active, and is that account
+gh_pr_fetch 482         # gate: fetch PR 482 (remote: origin) to $GH_PR_REF, snapshot its head
 ```
 
 | | |
 |---|---|
-| `aws_gate [ACCOUNT]` | A gate that `aws sts get-caller-identity` answers (under `AWS_PROFILE` if set), and with ACCOUNT, that it's that account. The log shows the identity. |
-| `gh_pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `PR_REF`. |
+| `aws_gate [--profile PROFILE] [ACCOUNT]` | A gate that `aws sts get-caller-identity` answers (under PROFILE, else `AWS_PROFILE` if set), and with ACCOUNT, that it's that account. The log shows the identity; an expired SSO session names the `aws sso login` that renews it. |
+| `gh_pr_fetch N [REMOTE]` | A gate that fetches pull request N's head from REMOTE (default `origin`) into `refs/remotes/REMOTE/pr/N`, with retries; snapshots the commit and sets `GH_PR_REF`. |
 | `gh_actions` / `gh_actions_gate` | True on a GitHub Actions runner (`GITHUB_ACTIONS=true`), for `if`; the gate stops the round anywhere else and logs the runner, repository, run and commit. |
 | `gh_auth_gate [LOGIN]` | A gate that `gh` is signed in, and with LOGIN, as that user. |
-| `gh_repo [REMOTE]` | Sets `REPO` (owner/name) from REMOTE's URL (default `origin`); stops the round if it isn't GitHub's. The `gh_pr_*` gates set it when unset. |
+| `gh_repo [REMOTE]` | Sets `GH_REPO` (owner/name, as `gh` reads it) from REMOTE's URL (default `origin`); stops the round if it isn't GitHub's. The `gh_pr_*` gates set it when unset. |
 | `gh_pr_state_gate N STATE...` | A gate that PR N is OPEN, MERGED, CLOSED or DRAFT (one of those given); logs its state, head and review decision. |
 | `gh_pr_head_gate N SHA` | A gate that PR N's head is still SHA (a prefix will do): what was reviewed is what it holds. |
 | `git_fetch_gate REMOTE REF...` | A gate that fetches REFs from REMOTE, with retries. |
-| `git_worktree PATH BRANCH [BASE]` | A gate that PATH (under the repo) is a worktree on a new BRANCH from BASE (default `origin/main`); rerunnable; sets `WT`. |
+| `git_worktree PATH BRANCH [BASE]` | A gate that PATH (under the repo) is a worktree on a new BRANCH from BASE (default `origin/main`); rerunnable; sets `GIT_WT`. |
 | `git_pushed_gate BRANCH [REMOTE]` | A gate that REMOTE (default `origin`) has BRANCH at the local branch's commit. |
 | `git_authors_gate "NAME <EMAIL>" RANGE [PATH]` | A gate that every commit in RANGE was authored and committed by that identity; lists any that weren't. |
 | `docker_gate` | A gate that the Docker daemon answers. |
 | `docker_compose_snapshot PROJECT [WHEN]` | Snapshot a compose project's containers, running or not (`before`, `after`). |
-| `tool_gate CMD [VERSION]` | A gate that CMD is on PATH, and with VERSION that `CMD --version` reports it, or `CMD version` when that fails (`node 20` matches v20.11.1, `go 1.27` matches go1.27.1). |
+| `tool_gate CMD [VERSION \| VERSION+]` | A gate that CMD is on PATH, and with VERSION that `CMD --version` reports it, or `CMD version` when that fails (`node 20` matches v20.11.1, `go 1.27` matches go1.27.1); `VERSION+` is that or later (`node 20+` matches v22.3.0). |
 | `os_mac` / `os_linux` | True on macOS / Linux (`uname -s`), for `if`. |
 | `os_mac_gate` / `os_linux_gate` | A gate that this is macOS / Linux; logs `uname -srm`. |
 
@@ -126,10 +126,59 @@ rest: `swim helpers add` again updates a copy, and `swim lint` says when
 an included copy was edited since (`helpers`, a warning), or this swim
 ships a different version (info). A repo's own module (`lith_` for its dev
 stack, say) is a file like these without the stamp. Helpers change at most the repo's own
-git state (refs, a new worktree), and run every command through `step`,
-`gate` or `snapshot`, so the log has it. A destructive step stays in the
-lane behind its own guard: lint reads the lane, not the files it
-includes, for guards and for bash 3.2.
+git state (refs, a new worktree), and run everything through `step`,
+`gate` or `snapshot`, so the log has it. A gate's function is one line of
+bash that runs its check as `swim _helper FUNC ARGS...`: the check is
+swim's own Go, tested with swim and pinned by its version as `gate` is,
+and what a lane approves in the copy is which check runs, with what. The
+commands a check runs (`aws`, `gh`, `git`) aren't on the command line, so
+`blocked_commands` doesn't see them; none of them change anything outside
+the repo's git state. A destructive step stays in the
+lane behind its own guard.
+
+A function that changes something says so in its comment, with a
+`# Changes: WHAT` line (`git_worktree`: a new branch and worktree in the
+repo); `swim helpers MODULE` shows it. Lint holds a lane's call of one to
+the rules for a destructive command: outside a guard block, it warns
+(`destructive`). Lint leaves swim's own modules, as shipped, to swim's
+tests; any other module a lane sources (a repo's own, an edited copy) it
+reads on its own file, as it reads a lane, for destructive and blocked
+commands, bash 3.2, BSD tools, how steps are written and secrets, leaving
+alone the body of a function that declares `# Changes:`. A disable comment
+in the module covers its own lines; one in the lane covers a module's only
+with `-file`.
+
+In the log, a helper's step shows the call, not the command it runs, and
+its `helper:` line names the function, the copy and the swim it came from:
+
+```
+  FAIL  go 1.27 (exit 1)                        0.0s  21:35:51
+        $ tool_gate go 1.27
+        | /usr/local/go/bin/go: go version go1.26.3 linux/arm64
+        | want go 1.27, got 1.26.3
+        helper: tool_gate, lib/swim/tool.sh, tool from swim 0.20261106.1
+```
+
+A helper that fails ends with one line saying what's wrong and the
+command that fixes it; that line is the step's `why:`, so the summary,
+`swim status` and `.swim.log` carry it:
+
+```
+  FAIL  AWS session active (exit 1): no AWS session (profile sbx1): aws sso login --profile sbx1
+```
+
+The call stands for the command only when the copy is this swim's module
+as shipped, byte for byte, so the command is the one in that module. An
+edited copy, another swim's version or a repo's own module shows the
+command in full, and its `helper:` line says why. Modules pass the call
+with `step`, `gate` and `snapshot`'s `--helper CALL`, which is theirs:
+lint refuses it in a lane.
+
+`swim helpers stats` reads every round in the lane logs, archives too:
+each helper's calls and failures, most failures first, with the last
+failure's why; and the checks lanes wrote by hand in 3 or more rounds of
+2 or more round goals (numbers in a label don't count, so `AWS session is
+sbx1` and `sbx2` are one check). Those are the candidates for a helper.
 
 ## Header
 

@@ -842,6 +842,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
 `,
 	"helpers": `swim helpers [MODULE]
 swim helpers add MODULE... [--dir DIR] [--force]
+swim helpers stats
 
   The lane helper modules swim ships: bash files of functions named
   <module>_<name> (aws_gate, gh_pr_fetch, git_worktree, tool_gate, ...).
@@ -860,6 +861,11 @@ swim helpers add MODULE... [--dir DIR] [--force]
   swim lint says when an included copy was edited since, or this swim
   ships a different version of it ([helpers]). swim guide lanes, "Shared
   helpers", lists the functions.
+  stats reads every round in the lane logs (archives too): each helper
+  function's calls and failures, most failures first, with the last
+  failure's why; and the checks lanes wrote by hand in 3 or more rounds of
+  2 or more round goals (numbers in a label don't count: sbx1 and sbx2 are
+  one check), the candidates for a helper.
 `,
 	"skill": `swim skill
 

@@ -8,13 +8,16 @@
 #   gh_pr_fetch 482
 #
 # Every function is gh_<name>. # Includes: pins the file with the lane, so
-# approving the lane approves it as it is. Each command runs through gate
-# or snapshot, so the log records it. Nothing here changes anything but the
-# repo's own git refs; destructive work stays in the lane, behind its own
-# guard (lint doesn't read this file). bash 3.2 and BSD tools (macOS).
+# approving the lane approves it as it is. The gates run their checks
+# through swim _helper (the check is swim's own code, as gate is); the log
+# shows the call and what the check found. Nothing here changes anything
+# but the repo's own git refs; destructive work stays in the lane, behind
+# its own guard. bash 3.2 and BSD tools (macOS).
 
-# Functions that talk to GitHub use $REPO (owner/name) when set, else the
-# repo origin points at (gh_repo sets it).
+# Functions that talk to GitHub use $GH_REPO ([HOST/]OWNER/NAME, as gh
+# reads it) when set, an exported one included, else the repo origin
+# points at (gh_repo sets it). What the modules set is prefixed by module
+# (GH_REPO, GH_PR_REF, GIT_WT), so it can't clobber a lane's own names.
 
 # _gh_fail LABEL MESSAGE: a failed gate, for a function called wrong.
 _gh_fail() {
@@ -23,8 +26,8 @@ _gh_fail() {
 
 # gh_pr_fetch N [REMOTE]: a gate that fetches pull request N's head from
 # REMOTE (default origin) into refs/remotes/REMOTE/pr/N, with retries.
-# Snapshots the commit it got and sets PR_REF to that ref for the steps
-# after it (git -C "$SWIM_ROOT" diff main..."$PR_REF").
+# Snapshots the commit it got and sets GH_PR_REF to that ref for the steps
+# after it (git -C "$SWIM_ROOT" diff main..."$GH_PR_REF").
 gh_pr_fetch() {
   _gh_pr=${1:-}
   _gh_remote=${2:-origin}
@@ -34,10 +37,10 @@ gh_pr_fetch() {
       return 1
       ;;
   esac
-  PR_REF=refs/remotes/$_gh_remote/pr/$_gh_pr
-  gate --timeout 2m --retry 2 "fetch PR $_gh_pr from $_gh_remote" \
-    git -C "${SWIM_ROOT:-.}" fetch --no-tags "$_gh_remote" "+refs/pull/$_gh_pr/head:$PR_REF"
-  snapshot "PR $_gh_pr head" git -C "${SWIM_ROOT:-.}" log -1 --format='%H %an: %s' "$PR_REF"
+  GH_PR_REF=refs/remotes/$_gh_remote/pr/$_gh_pr
+  gate --helper "gh_pr_fetch $_gh_pr${2:+ $2}" --timeout 2m --retry 2 "fetch PR $_gh_pr from $_gh_remote" \
+    git -C "${SWIM_ROOT:-.}" fetch --no-tags "$_gh_remote" "+refs/pull/$_gh_pr/head:$GH_PR_REF"
+  snapshot --helper "gh_pr_fetch $_gh_pr${2:+ $2}" "PR $_gh_pr head" git -C "${SWIM_ROOT:-.}" log -1 --format='%H %an: %s' "$GH_PR_REF"
 }
 
 # gh_actions: true on a GitHub Actions runner (GITHUB_ACTIONS=true), for
@@ -50,81 +53,54 @@ gh_actions() {
 # gh_actions_gate: a gate that this is a GitHub Actions runner. The log
 # shows the runner, repository, run and commit.
 gh_actions_gate() {
-  gate "GitHub Actions runner" bash -c '[ "${GITHUB_ACTIONS:-}" = true ] || { echo "not a GitHub Actions runner (GITHUB_ACTIONS is not true)"; exit 1; }; echo "runner ${RUNNER_NAME:-?} (${RUNNER_OS:-?}): ${GITHUB_REPOSITORY:-?} run ${GITHUB_RUN_ID:-?} at ${GITHUB_SHA:-?}"'
+  gate --helper "gh_actions_gate${*:+ $*}" "GitHub Actions runner" "${SWIM_BIN:-swim}" _helper gh_actions_gate "$@"
 }
 
 # gh_auth_gate [LOGIN]: a gate that gh is signed in, and with LOGIN, as
 # that user. The log shows who.
 gh_auth_gate() {
-  if [ -z "${1:-}" ]; then
-    gate --timeout 30s "gh is signed in" gh auth status
-    return
-  fi
-  gate --timeout 30s "gh is signed in as $1" bash -c 'got=$(gh api user --jq .login) || exit 1; echo "signed in as $got"; [ "$got" = "$1" ] || { echo "want $1"; exit 1; }' _ "$1"
+  gate --helper "gh_auth_gate${*:+ $*}" --timeout 30s "gh is signed in${1:+ as $1}" "${SWIM_BIN:-swim}" _helper gh_auth_gate "$@"
 }
 
-# gh_repo [REMOTE]: set REPO to the GitHub owner/name REMOTE (default
-# origin) points at, for gh --repo "$REPO". It runs no step; a remote that
-# isn't GitHub's stops the round.
+# gh_repo [REMOTE]: set GH_REPO to the GitHub owner/name REMOTE (default
+# origin) points at, for gh --repo "$GH_REPO". It runs no step; a remote
+# that isn't GitHub's stops the round.
 gh_repo() {
   _gh_r=${1:-origin}
   _gh_url=$(git -C "${SWIM_ROOT:-.}" remote get-url "$_gh_r" 2>/dev/null)
-  REPO=
+  GH_REPO=
   case $_gh_url in
     *github.com[:/]*/*)
-      REPO=${_gh_url#*github.com[:/]}
-      REPO=${REPO%.git}
-      REPO=${REPO%/}
+      GH_REPO=${_gh_url#*github.com[:/]}
+      GH_REPO=${GH_REPO%.git}
+      GH_REPO=${GH_REPO%/}
       ;;
   esac
-  case $REPO in
-    */*/* | /* | */ | '') REPO= ;;
+  case $GH_REPO in
+    */*/* | /* | */ | '') GH_REPO= ;;
   esac
-  if [ -z "$REPO" ]; then
+  if [ -z "$GH_REPO" ]; then
     _gh_fail "gh_repo: $_gh_r is a GitHub repo" "remote $_gh_r ($_gh_url) isn't a GitHub repo"
     return 1
   fi
 }
 
-# _gh_need_repo: REPO, from origin if unset.
+# _gh_need_repo: GH_REPO, from origin if unset.
 _gh_need_repo() {
-  [ -n "${REPO:-}" ] || gh_repo
+  [ -n "${GH_REPO:-}" ] || gh_repo
 }
 
 # gh_pr_state_gate N STATE...: a gate that pull request N is in one of the
 # states (OPEN, MERGED, CLOSED, or DRAFT for an open draft). The log shows
 # its state, head commit and review decision.
 gh_pr_state_gate() {
-  _gh_pr=${1:-}
-  case $_gh_pr in
-    '' | *[!0-9]*)
-      _gh_fail "gh_pr_state_gate: a PR number" "gh_pr_state_gate needs a pull request number, got '$_gh_pr'"
-      return 1
-      ;;
-  esac
-  shift
-  if [ $# -eq 0 ]; then
-    _gh_fail "gh_pr_state_gate: a state" "gh_pr_state_gate $_gh_pr needs the states it may be in (OPEN, MERGED, CLOSED, DRAFT)"
-    return 1
-  fi
   _gh_need_repo || return 1
-  _gh_jq='[(if .isDraft then "DRAFT" else .state end), .headRefOid, (.reviewDecision // "")] | join(" ")'
-  gate --timeout 1m "PR $_gh_pr is $*" bash -c 'pr=$1 repo=$2 jq=$3; shift 3; got=$(gh pr view "$pr" --repo "$repo" --json state,isDraft,headRefOid,reviewDecision --jq "$jq") || exit 1; echo "PR $pr in $repo: $got"; for want in "$@"; do [ "${got%% *}" = "$want" ] && exit 0; done; echo "want $*"; exit 1' _ "$_gh_pr" "$REPO" "$_gh_jq" "$@"
+  gate --helper "gh_pr_state_gate${*:+ $*}" --timeout 1m "PR ${1:-?} is ${*:2}" "${SWIM_BIN:-swim}" _helper gh_pr_state_gate --repo "$GH_REPO" "$@"
 }
 
 # gh_pr_head_gate N SHA: a gate that pull request N's head is still SHA
 # (what was reviewed or tested is what the PR holds).
 gh_pr_head_gate() {
-  case ${1:-} in
-    '' | *[!0-9]*)
-      _gh_fail "gh_pr_head_gate: a PR number" "gh_pr_head_gate needs a pull request number, got '${1:-}'"
-      return 1
-      ;;
-  esac
-  if [ -z "${2:-}" ]; then
-    _gh_fail "gh_pr_head_gate: a commit" "gh_pr_head_gate $1 needs the commit it should be at"
-    return 1
-  fi
   _gh_need_repo || return 1
-  gate --timeout 1m "PR $1 is at $2" bash -c 'got=$(gh pr view "$1" --repo "$2" --json headRefOid --jq .headRefOid) || exit 1; echo "PR $1 head: $got"; case $got in "$3"*) exit 0 ;; esac; echo "want $3"; exit 1' _ "$1" "$REPO" "$2"
+  gate --helper "gh_pr_head_gate${*:+ $*}" --timeout 1m "PR ${1:-?} is at ${2:-?}" "${SWIM_BIN:-swim}" _helper gh_pr_head_gate --repo "$GH_REPO" "$@"
 }

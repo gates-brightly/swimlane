@@ -70,6 +70,7 @@ func init() {
 		"_wrap":    {run: cmdWrap, hidden: true},
 		"_step":    {run: cmdStep, hidden: true},
 		"_lib":     {run: cmdLib, hidden: true},
+		"_helper":  {run: cmdHelperCheck, hidden: true},
 	}
 }
 

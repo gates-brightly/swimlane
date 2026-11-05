@@ -17,7 +17,7 @@ import (
 // helpersDir is where swim helpers add writes modules, under the repo.
 const helpersDir = "lib/swim"
 
-// cmdHelpers is swim helpers [MODULE | add MODULE... [--dir DIR] [--force]].
+// cmdHelpers is swim helpers [MODULE | add MODULE... [--dir DIR] [--force] | stats].
 func cmdHelpers(args []string) error {
 	var dir string
 	var force bool
@@ -41,6 +41,16 @@ func cmdHelpers(args []string) error {
 	if force || dir != "" {
 		return usagef("--dir and --force are for swim helpers add")
 	}
+	if len(rest) > 0 && rest[0] == "stats" {
+		if len(rest) > 1 {
+			return usagef("usage: swim helpers stats")
+		}
+		root, _, err := repo()
+		if err != nil {
+			return err
+		}
+		return helperStats(root)
+	}
 	// Listing and showing work anywhere; in a repo they add its copies.
 	root, cfg, rerr := repo()
 	if rerr != nil {
@@ -55,7 +65,7 @@ func cmdHelpers(args []string) error {
 		}
 		return showHelpers(root, cfg, rest[0])
 	}
-	return usagef("usage: swim helpers [MODULE | add MODULE... [--dir DIR] [--force]]")
+	return usagef("usage: swim helpers [MODULE | add MODULE... [--dir DIR] [--force] | stats]")
 }
 
 // showHelpers prints module m's functions: each one's usage and what it
@@ -82,6 +92,9 @@ func showHelpers(root string, cfg *config.Config, m string) error {
 		fmt.Printf("\n%s\n", f.Usage)
 		for _, l := range wrapWords(f.Doc, 72) {
 			fmt.Printf("    %s\n", l)
+		}
+		if f.Changes != "" {
+			fmt.Printf("    Changes: %s (lint wants a call of it inside a guard block).\n", f.Changes)
 		}
 	}
 	return nil
@@ -213,4 +226,58 @@ func wrapWords(s string, w int) []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+// helperStep is how swim _step shows a step a swim helpers function ran
+// (--helper CALL, --helper-file FILE, the file lib.sh found the function
+// in): the call for its command line when FILE is this swim's module as
+// shipped and defines the function, else the command in full (an edited
+// or unknown copy's call says nothing a reader can trust); and the
+// block's helper: line, "FUNC, FILE, how FILE stands".
+func helperStep(call, file string) (shown, line string) {
+	if call == "" {
+		return "", ""
+	}
+	fn, _, _ := strings.Cut(call, " ")
+	if file == "" {
+		return "", fn + ", (not found), the lane's own " + fn + ": shown in full"
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", fn + ", " + file + ", unreadable: shown in full"
+	}
+	// As the lane names it: relative to its workspace (the pinned copy),
+	// where bash reports the absolute path it sourced.
+	if cwd, err := os.Getwd(); err == nil && filepath.IsAbs(file) {
+		if r, err := filepath.Rel(cwd, file); err == nil && !strings.HasPrefix(r, "..") {
+			file = filepath.ToSlash(r)
+		}
+	}
+	c := helpers.Check(string(data))
+	src, _ := helpers.Source(c.Module)
+	switch {
+	case c.State == helpers.Current && strings.Contains("\n"+src, "\n"+fn+"() {"):
+		return call, fmt.Sprintf("%s, %s, %s from swim %s", fn, file, c.Module, c.From)
+	case c.State == helpers.Current:
+		return "", fmt.Sprintf("%s, %s, %s has no %s: shown in full", fn, file, c.Module, fn)
+	case c.State == helpers.Differs:
+		return "", fmt.Sprintf("%s, %s, %s from swim %s, not this swim's: shown in full", fn, file, c.Module, c.From)
+	case c.State == helpers.Edited:
+		return "", fmt.Sprintf("%s, %s, %s edited since swim helpers add wrote it: shown in full", fn, file, c.Module)
+	case c.State == helpers.Unknown:
+		return "", fmt.Sprintf("%s, %s, %s, a module this swim doesn't ship: shown in full", fn, file, c.Module)
+	}
+	return "", fmt.Sprintf("%s, %s, not a swim helpers copy: shown in full", fn, file)
+}
+
+// cmdHelperCheck is swim _helper FUNC ARGS...: the check a module's
+// function runs under gate (helpers.Run), its exit code the gate's.
+func cmdHelperCheck(args []string) error {
+	if len(args) == 0 {
+		return usagef("usage: swim _helper FUNC [ARGS...]")
+	}
+	if code := helpers.Run(args[0], args[1:], os.Stdout); code != 0 {
+		return exitError{code}
+	}
+	return nil
 }

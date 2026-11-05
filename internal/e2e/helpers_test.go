@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -61,7 +62,7 @@ aws_gate 111111111111
 gh_pr_fetch 7 upstream
 os_` + here + `_gate
 if os_` + here + ` && ! os_` + other + ` && ! gh_actions; then step "branched" true; fi
-step "the ref" git -C "$SWIM_ROOT" rev-parse --verify "$PR_REF"`)
+step "the ref" git -C "$SWIM_ROOT" rev-parse --verify "$GH_PR_REF"`)
 	out := r.mustSwimEnv(env, "run", "1", "--plain")
 	contains(t, "lint", must(r.swim("lint", "1")), "no problems found")
 	contains(t, "helpers", out, "PASS  AWS session active", "arn:aws:iam::111111111111:user/op",
@@ -175,12 +176,12 @@ esac
 	lane(`gh_auth_gate
 gh_auth_gate gates-brightly
 gh_repo
-step "repo" echo "repo=$REPO"
+step "repo" echo "repo=$GH_REPO"
 gh_pr_state_gate 7 OPEN DRAFT
 gh_pr_head_gate 7 abc1234
 git_fetch_gate upstream main
 git_worktree .worktrees/bdk-1 bdk-1 upstream/main
-step "in the worktree" git -C "$WT" branch --show-current
+step "in the worktree" git -C "$GIT_WT" branch --show-current
 git_worktree .worktrees/bdk-1 bdk-1 upstream/main
 git_pushed_gate pushed upstream
 git_authors_gate "t <t@t>" upstream/main..HEAD
@@ -200,7 +201,8 @@ tool_gate git`)
 	if strings.Contains(out, "outside a step") {
 		t.Errorf("a helper ran a command outside a step:\n%s", out)
 	}
-	contains(t, "lint", must(r.swim("lint", "1")), "no problems found")
+	// git_worktree declares it changes things: lint wants its calls guarded.
+	contains(t, "lint", must(r.swim("lint", "1")), "git_worktree changes things: a new branch and worktree in the repo (lib/swim/git.sh); it isn't inside a guard block  [destructive]", "0 errors, 2 warnings")
 
 	gitAs(t, r.root, "commit", "-q", "--allow-empty", "-m", "mine")
 	lane(`git_authors_gate "t <t@t>" upstream/main..HEAD`)
@@ -269,4 +271,116 @@ func TestHelpersCommand(t *testing.T) {
 	if out, code := r.swim("helpers", "add", "nope"); code == 0 || !strings.Contains(out, "no helper module") {
 		t.Errorf("unknown module: exit %d\n%s", code, out)
 	}
+}
+
+// A step a helper ran shows the call, not the helper's command, and its
+// helper: line names the function, the copy and the swim it came from: in
+// the log and its YAML. A copy edited since swim helpers add wrote it shows
+// the command in full, as does a function the lane defines itself.
+func TestHelperProvenance(t *testing.T) {
+	r := newRepo(t)
+	installHelpers(t, r, "os")
+	here := "linux"
+	if runtime.GOOS == "darwin" {
+		here = "mac"
+	}
+	lane := func(body string) {
+		os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: provenance\n# Includes: lib/swim/os.sh\n\nsource lib/swim/os.sh\nstage check\n"+body+"\n"), 0o755)
+	}
+	lane("os_" + here + "_gate")
+	out := r.mustSwim("run", "1", "--plain")
+	contains(t, "live", out, "$ os_"+here+"_gate\n")
+	log := r.mustSwim("log", "1")
+	contains(t, "log", log, "$ os_"+here+"_gate\n", "helper: os_"+here+"_gate, lib/swim/os.sh, os from swim ")
+	for name, s := range map[string]string{"live": out, "log": log} {
+		if strings.Contains(s, "bash -c") {
+			t.Errorf("%s shows the helper's command:\n%s", name, s)
+		}
+	}
+	contains(t, "yaml", r.mustSwim("log", "1", "--yaml"), "helper: os_"+here+"_gate, lib/swim/os.sh, os from swim ")
+
+	f := filepath.Join(r.root, "lib/swim/os.sh")
+	data, _ := os.ReadFile(f)
+	os.WriteFile(f, append(data, "# edited\n"...), 0o644)
+	r.mustSwim("run", "1", "--plain")
+	contains(t, "edited", r.mustSwim("log", "1"), "swim _helper os_"+here+"_gate\n", "os edited since swim helpers add wrote it: shown in full")
+
+	// The repo's own module (no stamp), with a function of the same name.
+	os.WriteFile(filepath.Join(r.root, "lib/mine.sh"), []byte("os_"+here+"_gate() { gate --helper \"os_"+here+"_gate\" \"mine\" true; }\n"), 0o644)
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: provenance\n# Includes: lib/mine.sh\n\nsource lib/mine.sh\nstage check\nos_"+here+"_gate\n"), 0o755)
+	r.mustSwim("run", "1", "--plain")
+	contains(t, "the repo's own", r.mustSwim("log", "1"), "$ true", "lib/mine.sh, not a swim helpers copy: shown in full")
+}
+
+// swim helpers stats: each helper's calls and failures across rounds,
+// and the checks lanes keep writing by hand (numbers aside) in different
+// work: the candidates for a helper. A rerun of one lane isn't a pattern.
+func TestHelperStats(t *testing.T) {
+	r := newRepo(t)
+	contains(t, "empty", r.mustSwim("helpers", "stats"), "no rounds in this repo's lane logs yet")
+	installHelpers(t, r, "tool")
+	for n, ver := range map[int]string{1: "", 2: " 999"} {
+		os.WriteFile(filepath.Join(r.root, "lane."+strconv.Itoa(n)+".sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: goal "+strconv.Itoa(n)+"\n# Includes: lib/swim/tool.sh\n\nsource lib/swim/tool.sh\nstage check\ngate \"AWS session is sbx"+strconv.Itoa(n)+"\" true\ntool_gate git"+ver+"\n"), 0o755)
+	}
+	r.swim("run", "1", "2", "--plain")
+	r.swim("run", "2", "--plain")
+	out := r.mustSwim("helpers", "stats")
+	contains(t, "stats", out, "3 rounds in this repo's lane logs", "      3       2  tool_gate", "want git 999, got",
+		"candidates for a helper", "       3      2       0  AWS session is sbx2")
+
+	// One lane's reruns: the same goal every time, so not a candidate.
+	r2 := newRepo(t)
+	os.WriteFile(filepath.Join(r2.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: one goal\n\nstage check\ngate \"AWS session is sbx1\" true\n"), 0o755)
+	for i := 0; i < 3; i++ {
+		r2.mustSwim("run", "1", "--plain")
+	}
+	contains(t, "reruns", r2.mustSwim("helpers", "stats"), "helpers: none ran", "checks written by hand: none repeated")
+}
+
+// A module a lane sources that isn't swim's own as shipped is linted on its
+// own file, with its own disable comments; a function that declares
+// # Changes: is left alone, and the lane's unguarded calls of it warn.
+func TestLintModules(t *testing.T) {
+	r := newRepo(t)
+	os.MkdirAll(filepath.Join(r.root, "lib"), 0o755)
+	os.WriteFile(filepath.Join(r.root, "lib/lith.sh"), []byte(`# lith_: this repo's dev stack.
+
+# lith_wipe: drop the dev data.
+lith_wipe() {
+  step "wipe" rm -rf /tmp/lith-data
+}
+
+# lith_clean: tidy up.
+lith_clean() {
+  step "clean" rm -rf /tmp/lith-cache # swim:lint-ignore destructive a cache
+}
+
+# lith_reset DB: drop and recreate DB.
+# Changes: drops the dev database.
+lith_reset() {
+  step "reset $1" rm -rf "/tmp/lith/$1"
+}
+`), 0o644)
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(`#!/usr/bin/env swim
+# swim: syntax 4
+# Round: modules
+# Includes: lib/lith.sh
+# Guards: L1_ALLOW_RESET  reset the dev db
+
+source lib/lith.sh
+stage check
+step "x" true
+stage change
+lith_reset main
+if guard L1_ALLOW_RESET "reset the dev db"; then
+  lith_reset main
+fi
+`), 0o755)
+	out := must(r.swim("lint", "1"))
+	contains(t, "modules", out,
+		`lib/lith.sh:5  warn   "rm -r" looks destructive but isn't inside a guard block (in a module lane 1 sources)  [destructive]`,
+		"declare it in the function's comment (# Changes: WHAT)",
+		"lane.1.sh:11   warn   lith_reset changes things: drops the dev database (lib/lith.sh); it isn't inside a guard block  [destructive]",
+		"0 errors, 2 warnings")
+	contains(t, "show", r.mustSwim("helpers", "git"), "Changes: a new branch and worktree in the repo")
 }

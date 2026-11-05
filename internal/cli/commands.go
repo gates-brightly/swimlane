@@ -594,7 +594,7 @@ func cmdAll(args []string) error {
 }
 
 func cmdStep(args []string) error {
-	var label, timeout, retry, backoff, retryOn, key, target string
+	var label, timeout, retry, backoff, retryOn, key, target, helper, helperFile string
 	var fresh, snap, noRetryTimeout bool
 	// Flags only before "--"; everything after is the command.
 	sep := -1
@@ -616,7 +616,8 @@ func cmdStep(args []string) error {
 	}
 	rest, err := flags{
 		bools: map[string]*bool{"new": &fresh, "snapshot": &snap, "no-retry-timeout": &noRetryTimeout},
-		strs:  map[string]*string{"label": &label, "timeout": &timeout, "retry": &retry, "backoff": &backoff, "retry-on": &retryOn, "key": &key, "target": &target},
+		strs: map[string]*string{"label": &label, "timeout": &timeout, "retry": &retry, "backoff": &backoff, "retry-on": &retryOn, "key": &key, "target": &target,
+			"helper": &helper, "helper-file": &helperFile},
 	}.parse(flagArgs)
 	if err != nil {
 		return err
@@ -695,6 +696,7 @@ func cmdStep(args []string) error {
 			target = info.Target
 		}
 	}
+	shown, helperLine := helperStep(helper, helperFile)
 	res, err := step.Run(step.Options{
 		Args: cmdArgs, Label: label, New: fresh, Snapshot: snap,
 		LogPath: logPath, Root: root, Lane: n, Lanes: cfg.Lanes,
@@ -704,6 +706,7 @@ func cmdStep(args []string) error {
 		StepTimeout: stepTimeout, StepTimeoutText: stepText, Retry: rt,
 		ExpectFail: expectFail, ExpectCodes: expectCodes,
 		Key: key, Target: target,
+		Shown: shown, Helper: helperLine,
 		Blocked: cfg.Blocked(),
 		Mask:    cfg.Masker(os.Environ()),
 		// A stop request ends the round at its next step.

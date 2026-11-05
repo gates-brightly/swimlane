@@ -38,6 +38,68 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Added
+
+- **Lint reads a repo's own modules, and `# Changes:`:** a bash module a
+  lane sources, other than swim's own as shipped (a repo's own, an edited
+  copy), is linted on its own file for destructive and blocked commands,
+  bash 3.2, BSD tools, how steps are written and secrets, with its own
+  disable comments. A function whose comment has `# Changes: WHAT` says
+  it changes something: lint leaves its body alone and warns on a lane's
+  call of it outside a guard block (`destructive`), as for any
+  destructive command. `git_worktree` declares it (a new branch and
+  worktree in the repo), so an unguarded call of it now warns; `swim
+  helpers MODULE` shows each declaration. A disable comment in a lane
+  covers a module's lines only with `-file`.
+
+- **`aws_gate --profile PROFILE [ACCOUNT]`:** gates on a named profile's
+  session (`aws_gate --profile sbx1`), as lanes gate on an environment,
+  without exporting `AWS_PROFILE` first; its expired SSO session names
+  `aws sso login --profile sbx1`.
+- **`tool_gate CMD VERSION+`:** that version or later (`tool_gate node
+  20+` passes on node 22); `tool_gate node 20` still means 20.x.
+- **`swim helpers stats`:** what the lane logs say about helpers, every
+  round, archives included: each helper function's calls and failures,
+  most failures first, with the last failure's why; and the checks lanes
+  wrote by hand in 3 or more rounds of 2 or more round goals (`AWS
+  session is sbx1` and `sbx2` are one check), the candidates for a
+  helper.
+
+### Changed
+
+- **A failed helper names the fix:** its last line, the step's why, says
+  what's wrong and the command that fixes it: `no AWS session (profile
+  sbx1): aws sso login --profile sbx1`, `gh isn't signed in: gh auth
+  login`, `signed in as A: gh auth switch --user B`, `the Docker daemon
+  isn't answering: start Docker Desktop (open -a Docker)`, `branch isn't
+  on origin: git push origin branch`, and `aws_gate ACCOUNT` names the
+  account the session is in.
+- **Helper gates are swim's own Go:** each gate's function is one line of
+  bash that runs its check as `swim _helper FUNC ARGS...` (`tool_gate`,
+  `aws_gate`, `docker_gate`, `os_*_gate`, `gh_auth_gate`,
+  `gh_actions_gate`, `gh_pr_state_gate`, `gh_pr_head_gate`,
+  `git_worktree`, `git_pushed_gate`, `git_authors_gate`), in place of a
+  quoted `bash -c` one-liner. The checks are tested in Go, and a copy
+  reads as which check runs, with what. `aws_gate` checks for a 12-digit
+  account id. Run `swim helpers add` for your modules to update copies.
+- **A helper's step shows the call, not its command:** `tool_gate go
+  1.27` is logged as `$ tool_gate go 1.27`, not a 300-character `bash -c`,
+  on the terminal and in the log, with a `helper:` line naming the
+  function, the copy and the swim it came from (`helper` in `swim log
+  --yaml`). Only a copy that is this swim's module as shipped is shown so;
+  an edited one, another swim's or a repo's own shows the command in full.
+  Run `swim helpers add` for your modules to update copies.
+
+### Upgrading
+
+- **Helpers set prefixed names:** `gh_repo` (and the `gh_pr_*` gates)
+  set `GH_REPO`, not `REPO`; `gh_pr_fetch` sets `GH_PR_REF`, not
+  `PR_REF`; `git_worktree` sets `GIT_WT`, not `WT`. A lane's own `REPO`
+  or `WT` is no longer overwritten, and an exported `GH_REPO` (gh's own)
+  is the repo the gates ask about. Your copies keep the old names until
+  `swim helpers add gh git`; rename `$REPO`, `$PR_REF` and `$WT` in your
+  lanes when you run it.
+
 ## 0.20261105.8 (v0.20261105.8, 2026-11-05)
 
 ### Fixed

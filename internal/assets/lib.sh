@@ -274,6 +274,10 @@ reached() {
 #   --key K            the step's name across rounds, logged (no spaces)
 #   --target T         what it talks to (orders-api), logged; the lane's
 #                      # Targets: by default
+#   --helper CALL      for swim helpers modules: the call this step is
+#                      (tool_gate go 1.27), whose first word is the function
+#                      running it; the log shows CALL for the command when
+#                      that function's file is this swim's module as shipped
 # _swim_misuse MSG — a step written wrong can't run, and nothing after it
 # may run as if it had passed (a gate that never checked would let the
 # change through): count it failed and stop the round, saying why in the
@@ -294,9 +298,16 @@ _swim_run_step() {
   shift
   _swim_o=
   _swim_soft=
+  _swim_helper=
   while [ $# -gt 0 ]; do
     case "$1" in
       --soft) _swim_soft=1; shift ;;
+      --helper)
+        if [ $# -lt 2 ] || [ -z "$2" ]; then
+          _swim_misuse "--helper needs the call: --helper \"tool_gate go 1.27\""
+        fi
+        _swim_helper=$2
+        shift 2 ;;
       --timeout|--retry|--backoff|--retry-on|--key|--target)
         if [ $# -lt 2 ]; then
           _swim_misuse "$1 needs a value"
@@ -331,6 +342,23 @@ _swim_run_step() {
     if [ $# -eq 0 ]; then
       _swim_misuse "step \"$_swim_label\" has a label but no command after --"
     fi
+  fi
+  if [ -n "$_swim_helper" ]; then
+    # The file that defines the helper's function, as it was sourced: swim
+    # _step reads its stamp. The function is the call's first word; a lane
+    # that defines its own names itself, and its command is shown in full.
+    _swim_hfile=
+    _swim_i=1
+    while [ "$_swim_i" -lt "${#FUNCNAME[@]}" ]; do
+      if [ "${FUNCNAME[$_swim_i]}" = "${_swim_helper%% *}" ]; then
+        _swim_hfile=${BASH_SOURCE[$_swim_i]}
+        break
+      fi
+      _swim_i=$((_swim_i + 1))
+    done
+    "$SWIM_BIN" _step $_swim_mode $_swim_o --helper "$_swim_helper" --helper-file "$_swim_hfile" --label "$_swim_label" -- "$@"
+    _swim_after_step $?
+    return
   fi
   # $_swim_o is unquoted on purpose: option values (durations, codes) have no spaces.
   "$SWIM_BIN" _step $_swim_mode $_swim_o --label "$_swim_label" -- "$@"

@@ -10,7 +10,9 @@
 #   if os_linux; then step "..." ...; fi
 #
 # Every function is os_<name>. # Includes: pins the file with the lane, so
-# approving the lane approves it as it is. Nothing here changes anything.
+# approving the lane approves it as it is. Each gate runs its check
+# through swim _helper (the check is swim's own code, as gate is); the log
+# shows the call and what the check found. Nothing here changes anything.
 # bash 3.2 and BSD tools (macOS).
 
 # os_mac / os_linux: true on macOS / Linux (uname -s), for branching. They
@@ -26,9 +28,9 @@ os_linux() {
 # os_mac_gate / os_linux_gate: a gate that this is macOS / Linux. The log
 # shows the system (uname -srm).
 os_mac_gate() {
-  gate "running on macOS" bash -c 'uname -srm; [ "$(uname -s)" = Darwin ] || { echo "not macOS"; exit 1; }'
+  gate --helper "os_mac_gate${*:+ $*}" "running on macOS" "${SWIM_BIN:-swim}" _helper os_mac_gate "$@"
 }
 
 os_linux_gate() {
-  gate "running on Linux" bash -c 'uname -srm; [ "$(uname -s)" = Linux ] || { echo "not Linux"; exit 1; }'
+  gate --helper "os_linux_gate${*:+ $*}" "running on Linux" "${SWIM_BIN:-swim}" _helper os_linux_gate "$@"
 }

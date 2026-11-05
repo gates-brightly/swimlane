@@ -22,7 +22,8 @@ type ResultDoc struct {
 	Command  string   `yaml:"command,omitempty" json:"command,omitempty"`
 	Output   []string `yaml:"output,omitempty" json:"output,omitempty"`
 	Saved    string   `yaml:"saved,omitempty" json:"saved,omitempty"`
-	Why      string   `yaml:"why,omitempty" json:"why,omitempty"` // a failed step's most telling output line
+	Why      string   `yaml:"why,omitempty" json:"why,omitempty"`       // a failed step's most telling output line
+	Helper   string   `yaml:"helper,omitempty" json:"helper,omitempty"` // the swim helpers function that ran it, its file and how that stands
 }
 
 // Counts are a round's result totals.
@@ -103,7 +104,7 @@ func (r *Round) Doc(n int) Doc {
 	}
 	for _, res := range r.Results {
 		rd := ResultDoc{Result: res.Kind, Label: res.Label, Detail: res.Detail, Stage: res.Stage, Handler: res.Handler, Step: res.Step,
-			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved, Why: res.Why}
+			Clock: res.Clock, Command: res.Cmd, Output: res.Output, Saved: res.Saved, Why: res.Why, Helper: res.Helper}
 		if res.Step {
 			dur := res.Dur
 			rd.Duration = &dur

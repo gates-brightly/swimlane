@@ -56,7 +56,7 @@ var bashOnly = map[string]bool{
 	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true, "gnu-only": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
 	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
-	"step": true, "step-pipe": true, "step-subshell": true, "guard-text": true, "run-is-step": true,
+	"step": true, "step-pipe": true, "step-subshell": true, "guard-text": true, "run-is-step": true, "modules": true,
 }
 
 // Context is what checks can see besides the script: the repo, its config
@@ -65,6 +65,10 @@ type Context struct {
 	Root string
 	// helpersSeen are the helper copies already reported this run.
 	helpersSeen map[string]bool
+	// moduleCache holds the bash modules lanes source, read once (nil:
+	// not a file); modulesSeen, those already linted this run.
+	moduleCache map[string]*module
+	modulesSeen map[string]bool
 	Cfg         *config.Config
 	Scripts     map[int]*Script // every lane 1..Lanes with a non-stub script
 
@@ -93,6 +97,7 @@ var Checks = []Check{
 	{"workspace-empty", finding.Warn, false, "a staged lane runs a tool over its whole directory (go vet ./..., gofmt -l .) with no # Includes:, so the tool reads an empty copy", checkWorkspaceEmpty},
 	{"task", finding.Error, false, "a `# Task:` name that isn't one, is a swim command, or another lane's too", checkTask},
 	{"helpers", finding.Warn, false, "an included swim helpers module edited since swim helpers add wrote it, or one this swim ships a different version of", checkHelpers},
+	{"modules", finding.Warn, false, "a bash module a lane sources, other than swim's own as shipped, linted on its own file for destructive and blocked commands, bash 3.2, BSD tools, steps and secrets (its findings carry those codes)", func(c *Context, s *Script) []finding.Finding { return modulesCheck(c, s) }},
 	{"placeholder", finding.Error, false, "a template placeholder left in", checkPlaceholder},
 	{"after", finding.Error, false, "`# After:` names an unknown lane or round id, or the lane itself", checkAfter},
 	{"cycle", finding.Error, false, "lanes wait on each other in a cycle", checkCycle},
@@ -468,7 +473,9 @@ func applyIgnores(s *Script, fs []finding.Finding) []finding.Finding {
 	igs, bad := ignores(s)
 	var out []finding.Finding
 	for _, f := range fs {
-		if !ignored(igs, f) {
+		// A line's disable comment covers its own file's line; another
+		// file's findings (a module's, a helper copy's) only a -file one.
+		if !ignored(igs, f, f.File == "" || f.File == s.Name) {
 			out = append(out, f)
 		}
 	}
@@ -478,9 +485,9 @@ func applyIgnores(s *Script, fs []finding.Finding) []finding.Finding {
 	return append(out, bad...)
 }
 
-func ignored(igs []ignore, f finding.Finding) bool {
+func ignored(igs []ignore, f finding.Finding, sameFile bool) bool {
 	for _, ig := range igs {
-		if ig.line != -1 && ig.line != f.Line-1 {
+		if ig.line != -1 && (!sameFile || ig.line != f.Line-1) {
 			continue
 		}
 		for _, c := range ig.codes {

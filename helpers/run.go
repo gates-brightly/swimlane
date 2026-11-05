@@ -1,0 +1,506 @@
+package helpers
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+)
+
+// The checks behind the modules' gates: a module's function is a line of
+// bash that runs one under gate (swim _helper FUNC ARGS...), so the logic
+// is Go, tested here, and the log shows the call. A check writes what it
+// found to its output and returns nil (the gate passes), a failure (the
+// gate fails, exit 1) or misuse (called wrong, exit 2).
+
+// failure is a check that ran and found the wrong thing.
+type failure struct{ msg string }
+
+func (f failure) Error() string { return f.msg }
+
+// misuse is a check called wrong: a missing or malformed argument.
+type misuse struct{ msg string }
+
+func (m misuse) Error() string { return m.msg }
+
+func failf(format string, a ...any) error   { return failure{fmt.Sprintf(format, a...)} }
+func misusef(format string, a ...any) error { return misuse{fmt.Sprintf(format, a...)} }
+
+// env is what a check runs with: its output, and the repo it works in.
+type env struct {
+	out  io.Writer
+	root string // $SWIM_ROOT, else "."
+}
+
+// path is p under the repo unless it's absolute.
+func (e *env) path(p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(e.root, p)
+}
+
+// show runs a command with its output in the check's.
+func (e *env) show(name string, args ...string) error {
+	c := exec.Command(name, args...)
+	c.Stdout, c.Stderr = e.out, e.out
+	return c.Run()
+}
+
+// value runs a command for its output, trimmed; on failure its output is
+// shown, since it says why.
+func (e *env) value(name string, args ...string) (string, error) {
+	var b bytes.Buffer
+	c := exec.Command(name, args...)
+	c.Stdout, c.Stderr = &b, &b
+	err := c.Run()
+	if err != nil {
+		e.out.Write(b.Bytes())
+		if ee, ok := err.(*exec.Error); ok {
+			return "", failf("%s: %v", name, ee.Err)
+		}
+		return "", failf("%s %s failed (%v)", name, strings.Join(args, " "), err)
+	}
+	return strings.TrimSpace(b.String()), nil
+}
+
+// capture runs a command for its output, trimmed, and returns what it
+// said as well, for a check that reads why it failed.
+func (e *env) capture(name string, args ...string) (string, []byte, error) {
+	return e.captureEnv(nil, name, args...)
+}
+
+// captureEnv is capture with these variables set for the command.
+func (e *env) captureEnv(vars []string, name string, args ...string) (string, []byte, error) {
+	var b bytes.Buffer
+	c := exec.Command(name, args...)
+	if len(vars) > 0 {
+		c.Env = append(os.Environ(), vars...)
+	}
+	c.Stdout, c.Stderr = &b, &b
+	err := c.Run()
+	return strings.TrimSpace(b.String()), b.Bytes(), err
+}
+
+func (e *env) printf(format string, a ...any) { fmt.Fprintf(e.out, format+"\n", a...) }
+
+// checks are the functions swim _helper runs, by the module function that
+// runs each.
+var checks = map[string]func(e *env, args []string) error{
+	"aws_gate":         awsGate,
+	"docker_gate":      dockerGate,
+	"gh_actions_gate":  ghActionsGate,
+	"gh_auth_gate":     ghAuthGate,
+	"gh_pr_state_gate": ghPRStateGate,
+	"gh_pr_head_gate":  ghPRHeadGate,
+	"git_worktree":     gitWorktree,
+	"git_pushed_gate":  gitPushedGate,
+	"git_authors_gate": gitAuthorsGate,
+	"os_mac_gate":      func(e *env, args []string) error { return osGate(e, args, "darwin", "macOS") },
+	"os_linux_gate":    func(e *env, args []string) error { return osGate(e, args, "linux", "Linux") },
+	"tool_gate":        toolGate,
+}
+
+// Run runs check fn with args, its output to out: exit 0 when it passes,
+// 1 when it fails, 2 when it's called wrong (or there's no such check).
+func Run(fn string, args []string, out io.Writer) int {
+	check, ok := checks[fn]
+	if !ok {
+		fmt.Fprintf(out, "swim _helper: no check %q\n", fn)
+		return 2
+	}
+	root := os.Getenv("SWIM_ROOT")
+	if root == "" {
+		root = "."
+	}
+	err := check(&env{out: out, root: root}, args)
+	switch err := err.(type) {
+	case nil:
+		return 0
+	case misuse:
+		fmt.Fprintln(out, err.msg)
+		return 2
+	default:
+		fmt.Fprintln(out, err.Error())
+		return 1
+	}
+}
+
+var digits = regexp.MustCompile(`^[0-9]+$`)
+
+// aws_gate [--profile PROFILE] [ACCOUNT]
+func awsGate(e *env, args []string) error {
+	profile := os.Getenv("AWS_PROFILE")
+	var cmdEnv []string
+	if len(args) > 0 && args[0] == "--profile" {
+		if len(args) < 2 || args[1] == "" || strings.HasPrefix(args[1], "-") {
+			return misusef("aws_gate --profile needs a profile name: aws_gate --profile sbx1")
+		}
+		profile, args = args[1], args[2:]
+		cmdEnv = []string{"AWS_PROFILE=" + profile}
+	}
+	if len(args) > 1 {
+		return misusef("aws_gate takes [--profile PROFILE] [ACCOUNT], got %q", strings.Join(args, " "))
+	}
+	if len(args) == 1 && (len(args[0]) != 12 || !digits.MatchString(args[0])) {
+		return misusef("aws_gate takes a 12-digit account id, got '%s' (a profile name goes after --profile)", args[0])
+	}
+	id, out, err := e.captureEnv(cmdEnv, "aws", "sts", "get-caller-identity", "--output", "json")
+	if err != nil {
+		e.out.Write(out)
+		return awsNoSession(profile, string(out), err)
+	}
+	e.printf("%s", id)
+	if len(args) == 0 {
+		return nil
+	}
+	var who struct{ Account string }
+	if err := json.Unmarshal([]byte(id), &who); err != nil {
+		return failf("sts get-caller-identity didn't answer in JSON: %v", err)
+	}
+	shown := profile
+	if shown == "" {
+		shown = "default"
+	}
+	e.printf("account %s (profile %s)", who.Account, shown)
+	if who.Account != args[0] {
+		return failf("want account %s, the session is %s (profile %s): use %s's profile (aws_gate --profile P, or AWS_PROFILE)", args[0], who.Account, shown, args[0])
+	}
+	return nil
+}
+
+// awsNoSession says why sts get-caller-identity failed, and the command
+// that fixes it, from what aws said.
+func awsNoSession(profile, said string, err error) error {
+	flag, shown := "", "default"
+	if profile != "" {
+		flag, shown = " --profile "+profile, profile
+	}
+	if ee, ok := err.(*exec.Error); ok {
+		return failf("aws: %v", ee.Err)
+	}
+	low := strings.ToLower(said)
+	switch {
+	case strings.Contains(low, "sso") || strings.Contains(low, "token has expired") || strings.Contains(low, "expiredtoken"):
+		return failf("no AWS session (profile %s): aws sso login%s", shown, flag)
+	case strings.Contains(low, "unable to locate credentials"):
+		return failf("no AWS credentials (profile %s): set AWS_PROFILE, or aws configure sso", shown)
+	case strings.Contains(low, "could not be found") && profile != "":
+		return failf("no AWS profile %s on this machine (aws configure list-profiles lists them)", profile)
+	}
+	return failf("no AWS session (profile %s): aws sts get-caller-identity failed (%v)", shown, err)
+}
+
+// docker_gate
+func dockerGate(e *env, args []string) error {
+	if len(args) > 0 {
+		return misusef("docker_gate takes no arguments")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		return failf("docker: not on PATH")
+	}
+	if err := e.show("docker", "version"); err != nil {
+		if runtime.GOOS == "darwin" {
+			return failf("the Docker daemon isn't answering: start Docker Desktop (open -a Docker)")
+		}
+		return failf("the Docker daemon isn't answering: start it (sudo systemctl start docker)")
+	}
+	return nil
+}
+
+// gh_actions_gate
+func ghActionsGate(e *env, args []string) error {
+	if len(args) > 0 {
+		return misusef("gh_actions_gate takes no arguments")
+	}
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		return failf("not a GitHub Actions runner (GITHUB_ACTIONS is not true)")
+	}
+	or := func(k string) string {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+		return "?"
+	}
+	e.printf("runner %s (%s): %s run %s at %s", or("RUNNER_NAME"), or("RUNNER_OS"), or("GITHUB_REPOSITORY"), or("GITHUB_RUN_ID"), or("GITHUB_SHA"))
+	return nil
+}
+
+// gh_auth_gate [LOGIN]
+func ghAuthGate(e *env, args []string) error {
+	switch len(args) {
+	case 0:
+		if err := e.show("gh", "auth", "status"); err != nil {
+			if _, ok := err.(*exec.Error); ok {
+				return failf("gh: not on PATH")
+			}
+			return failf("gh isn't signed in: gh auth login")
+		}
+		return nil
+	case 1:
+	default:
+		return misusef("gh_auth_gate takes at most a login, got %q", strings.Join(args, " "))
+	}
+	got, out, err := e.capture("gh", "api", "user", "--jq", ".login")
+	if err != nil {
+		e.out.Write(out)
+		if _, ok := err.(*exec.Error); ok {
+			return failf("gh: not on PATH")
+		}
+		return failf("gh isn't signed in: gh auth login")
+	}
+	e.printf("signed in as %s", got)
+	if got != args[0] {
+		return failf("want %s, signed in as %s: gh auth switch --user %s (or gh auth login)", args[0], got, args[0])
+	}
+	return nil
+}
+
+// repoFlag takes --repo OWNER/NAME off the front of args (the module
+// passes $GH_REPO, which gh_repo sets).
+func repoFlag(fn string, args []string) (string, []string, error) {
+	if len(args) < 2 || args[0] != "--repo" || args[1] == "" {
+		return "", nil, misusef("%s: no repo (gh_repo sets GH_REPO)", fn)
+	}
+	return args[1], args[2:], nil
+}
+
+// prNumber checks a pull request number.
+func prNumber(fn, n string) error {
+	if !digits.MatchString(n) {
+		return misusef("%s needs a pull request number, got '%s'", fn, n)
+	}
+	return nil
+}
+
+// gh_pr_state_gate --repo R N STATE...
+func ghPRStateGate(e *env, args []string) error {
+	repo, args, err := repoFlag("gh_pr_state_gate", args)
+	if err != nil {
+		return err
+	}
+	if len(args) == 0 {
+		return misusef("gh_pr_state_gate needs a pull request number, got ''")
+	}
+	if err := prNumber("gh_pr_state_gate", args[0]); err != nil {
+		return err
+	}
+	if len(args) == 1 {
+		return misusef("gh_pr_state_gate %s needs the states it may be in (OPEN, MERGED, CLOSED, DRAFT)", args[0])
+	}
+	jq := `[(if .isDraft then "DRAFT" else .state end), .headRefOid, (.reviewDecision // "")] | join(" ")`
+	got, err := e.value("gh", "pr", "view", args[0], "--repo", repo, "--json", "state,isDraft,headRefOid,reviewDecision", "--jq", jq)
+	if err != nil {
+		return err
+	}
+	e.printf("PR %s in %s: %s", args[0], repo, got)
+	state, _, _ := strings.Cut(got, " ")
+	for _, want := range args[1:] {
+		if state == want {
+			return nil
+		}
+	}
+	return failf("want %s", strings.Join(args[1:], " "))
+}
+
+// gh_pr_head_gate --repo R N SHA
+func ghPRHeadGate(e *env, args []string) error {
+	repo, args, err := repoFlag("gh_pr_head_gate", args)
+	if err != nil {
+		return err
+	}
+	if len(args) == 0 {
+		return misusef("gh_pr_head_gate needs a pull request number, got ''")
+	}
+	if err := prNumber("gh_pr_head_gate", args[0]); err != nil {
+		return err
+	}
+	if len(args) != 2 || args[1] == "" {
+		return misusef("gh_pr_head_gate %s needs the commit it should be at", args[0])
+	}
+	got, err := e.value("gh", "pr", "view", args[0], "--repo", repo, "--json", "headRefOid", "--jq", ".headRefOid")
+	if err != nil {
+		return err
+	}
+	e.printf("PR %s head: %s", args[0], got)
+	if !strings.HasPrefix(got, args[1]) {
+		return failf("want %s: the PR moved since; review %s before going on", args[1], got)
+	}
+	return nil
+}
+
+// git_worktree PATH BRANCH [BASE]
+func gitWorktree(e *env, args []string) error {
+	if len(args) < 2 || len(args) > 3 || args[0] == "" || args[1] == "" {
+		return misusef("git_worktree needs a path and a branch: git_worktree .worktrees/bdk-1328 bdk-1328")
+	}
+	wt, br, base := e.path(args[0]), args[1], "origin/main"
+	if len(args) == 3 {
+		base = args[2]
+	}
+	if _, err := os.Stat(filepath.Join(wt, ".git")); err == nil {
+		cur, _ := e.value("git", "-C", wt, "branch", "--show-current")
+		if cur == br {
+			e.printf("%s is on %s already", wt, br)
+			return nil
+		}
+		if cur == "" {
+			cur = "a detached HEAD"
+		}
+		return failf("%s is a worktree on %s, not %s", wt, cur, br)
+	}
+	if exec.Command("git", "-C", e.root, "show-ref", "--verify", "--quiet", "refs/heads/"+br).Run() == nil {
+		return failf("branch %s exists already (not at %s): pick another branch or path", br, wt)
+	}
+	if err := e.show("git", "-C", e.root, "worktree", "add", "--no-track", "-b", br, wt, base); err != nil {
+		return failf("git worktree add failed (%v)", err)
+	}
+	return nil
+}
+
+// git_pushed_gate BRANCH [REMOTE]
+func gitPushedGate(e *env, args []string) error {
+	if len(args) < 1 || len(args) > 2 || args[0] == "" {
+		return misusef("git_pushed_gate needs a branch")
+	}
+	remote := "origin"
+	if len(args) == 2 {
+		remote = args[1]
+	}
+	here, err := e.value("git", "-C", e.root, "rev-parse", "--verify", "refs/heads/"+args[0])
+	if err != nil {
+		return err
+	}
+	ls, err := e.value("git", "-C", e.root, "ls-remote", remote, "refs/heads/"+args[0])
+	if err != nil {
+		return err
+	}
+	there, _, _ := strings.Cut(ls, "\t")
+	shown := there
+	if shown == "" {
+		shown = "(no such branch)"
+	}
+	e.printf("local %s, %s %s", here, remote, shown)
+	if there == "" {
+		return failf("%s isn't on %s: git push %s %s", args[0], remote, remote, args[0])
+	}
+	if here != there {
+		return failf("%s on %s isn't at the local head: git push %s %s (or fetch, if %s moved)", args[0], remote, remote, args[0], remote)
+	}
+	return nil
+}
+
+// git_authors_gate "NAME <EMAIL>" RANGE [PATH]
+func gitAuthorsGate(e *env, args []string) error {
+	if len(args) < 2 || len(args) > 3 || args[0] == "" || args[1] == "" {
+		return misusef(`git_authors_gate needs an identity and a range: git_authors_gate "Name <email>" origin/main..HEAD`)
+	}
+	dir := e.root
+	if len(args) == 3 {
+		dir = e.path(args[2])
+	}
+	out, err := e.value("git", "-C", dir, "log", "--format=%h %an <%ae> | %cn <%ce>", args[1])
+	if err != nil {
+		return err
+	}
+	if out == "" {
+		e.printf("no commits in %s", args[1])
+		return nil
+	}
+	lines := strings.Split(out, "\n")
+	var bad []string
+	for _, l := range lines {
+		h, rest, _ := strings.Cut(l, " ")
+		if rest != args[0]+" | "+args[0] {
+			bad = append(bad, h+" "+rest)
+		}
+	}
+	if len(bad) == 0 {
+		e.printf("%d commits, all by %s", len(lines), args[0])
+		return nil
+	}
+	e.printf("not by %s:", args[0])
+	for _, b := range bad {
+		e.printf("%s", b)
+	}
+	return failf("%d of %d commits in %s not by %s", len(bad), len(lines), args[1], args[0])
+}
+
+// os_mac_gate / os_linux_gate
+func osGate(e *env, args []string, goos, name string) error {
+	if len(args) > 0 {
+		return misusef("os_%s_gate takes no arguments", map[string]string{"darwin": "mac", "linux": "linux"}[goos])
+	}
+	if u, err := e.value("uname", "-srm"); err == nil {
+		e.printf("%s", u)
+	}
+	if runtime.GOOS != goos {
+		return failf("not %s", name)
+	}
+	return nil
+}
+
+var versionNumber = regexp.MustCompile(`[0-9]+(\.[0-9]+)*`)
+
+// tool_gate CMD [VERSION | VERSION+]
+func toolGate(e *env, args []string) error {
+	if len(args) < 1 || len(args) > 2 || args[0] == "" {
+		return misusef("tool_gate needs a command name")
+	}
+	want, atLeast := "", false
+	if len(args) == 2 {
+		want, atLeast = strings.CutSuffix(args[1], "+")
+		if !versionNumber.MatchString(want) || versionNumber.FindString(want) != want {
+			return misusef("tool_gate %s: a version is numbers and dots, + for that or later (20, 1.27, 20+), got '%s'", args[0], args[1])
+		}
+	}
+	name := args[0]
+	p, err := exec.LookPath(name)
+	if err != nil {
+		return failf("%s: not on PATH", name)
+	}
+	// go has no --version (it exits 2): ask `CMD version` when it fails.
+	v, err := exec.Command(name, "--version").CombinedOutput()
+	if err != nil {
+		v, _ = exec.Command(name, "version").CombinedOutput()
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(string(v)), "\n")
+	e.printf("%s: %s", p, first)
+	if len(args) == 1 {
+		return nil
+	}
+	n := versionNumber.FindString(first)
+	if n == "" {
+		return failf("want %s %s, got no version", name, args[1])
+	}
+	if n == want || strings.HasPrefix(n, want+".") || (atLeast && newer(n, want)) {
+		return nil
+	}
+	return failf("want %s %s, got %s", name, args[1], n)
+}
+
+// newer: version a is later than b, number by number (1.27.1 > 1.9; a
+// missing number is 0).
+func newer(a, b string) bool {
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < max(len(as), len(bs)); i++ {
+		x, y := 0, 0
+		if i < len(as) {
+			x, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			y, _ = strconv.Atoi(bs[i])
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return false
+}
