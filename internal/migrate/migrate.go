@@ -19,13 +19,6 @@ import (
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
-// Result lists what a migration did.
-type Result struct {
-	Files   []string // repo-relative paths rewritten
-	Backup  string   // repo-relative backup directory ("" if nothing changed)
-	Skipped []string // files left alone because their lane is running
-}
-
 type file struct {
 	rel  string // relative to root
 	lane int

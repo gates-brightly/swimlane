@@ -18,7 +18,7 @@ says nothing about compatibility: lane scripts, logs and swim's state have
 syntax versions, which a repo's `.swim.lock` pins. A revision that changes
 one has **Upgrading** notes; read them and `swim lock --help` before running
 lanes. A release that changes what an approval or pin hashes says so under
-**Upgrading** ([formats](docs/formats.md)). Revisions before versioning existed are named by commit.
+**Upgrading** ([formats](docs/reference/formats.md)). Revisions before versioning existed are named by commit.
 
 Release tags live on `origin`, which is GitHub: its tags are authoritative
 (the next index is read from them), and `fj` (Forgejo) mirrors them.
