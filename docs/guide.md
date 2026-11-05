@@ -14,8 +14,9 @@ swim init
 cat .gitignore
 ```
 
-`swim init` registers the repo in your config, git-ignores lane scripts and
-swim's state, and creates `.swim/status.yml`. ([config](reference/config.md))
+`swim init` creates your config if it's missing, git-ignores lane scripts
+and swim's state, and creates `.swim/status.yml`. Settings for the repo go
+in your config under its name, `repos.NAME`. ([config](reference/config.md))
 
 ## 2. A round
 

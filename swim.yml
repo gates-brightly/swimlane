@@ -1,6 +1,0 @@
-# swim.yml: this repo's committed swim settings (the same keys as a repos
-# entry in ~/.config/swim/config.yml; your own repos entry overrides them).
-# The CI is committed lanes, listed in lane.1.sh; other lanes are for
-# rounds. GitHub Actions runs them with `swim ci`, `just ci` locally.
-header_env: [GOFLAGS, GITHUB_REF_NAME, RUNNER_OS]
-term_grace: 30s

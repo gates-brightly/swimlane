@@ -2,11 +2,11 @@ package envfile
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/lane"
 )
 
@@ -30,7 +30,7 @@ func TestParse(t *testing.T) {
 		"1A=x\n":               "expected KEY=VALUE",
 		"just words\n":         "expected KEY=VALUE",
 		"A=1\n[lane 2]\nB=2\n": "u:2: [lane N] sections go in the repo's .env.swim",
-		"[thing]\n":            "sections are [repo PATH]",
+		"[thing]\n":            "sections are [repo NAME]",
 	} {
 		if _, err := Parse("u", []byte(src), true); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: %v, want %q", src, err, want)
@@ -51,11 +51,20 @@ func TestParse(t *testing.T) {
 func TestResolvePrecedenceAndGuards(t *testing.T) {
 	xdg, root := t.TempDir(), t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdg)
+	git := exec.Command("git", "init", "-q", "-b", "feature", root)
+	if out, err := git.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	git = exec.Command("git", "-C", root, "remote", "add", "origin", "git@github.com:me/shop.git")
+	if out, err := git.CombinedOutput(); err != nil {
+		t.Fatalf("git remote: %v %s", err, out)
+	}
 	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
-	os.WriteFile(filepath.Join(xdg, "swim", "env.swim"), []byte("K=general\nG=general\n[repo "+root+"]\nK=repo\nR=repo\n[repo /elsewhere]\nK=other\n"), 0o644)
+	// Sections are keyed by the repo's name and NAME/BRANCH, the branch's
+	// over the repo's whatever their order; a path matches nothing.
+	os.WriteFile(filepath.Join(xdg, "swim", "env.swim"), []byte("K=general\nG=general\nB=general\n[repo shop/feature]\nB=branch\n[repo shop]\nK=repo\nR=repo\nB=repo\n[repo shop/main]\nB=main\n[repo "+root+"]\nK=path\nP=path\n[repo other]\nK=other\n"), 0o644)
 	os.WriteFile(filepath.Join(root, RepoFile), []byte("[lane 1]\nK=lane\n[lane 2]\nK=lane2\n"), 0o644)
-	cfg := &config.Config{Settings: config.Settings{Env: map[string]string{"K": "yml", "Y": "yml", "R": "yml"}}}
-	r, err := Resolve(root, cfg, 1)
+	r, err := Resolve(root, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,18 +72,18 @@ func TestResolvePrecedenceAndGuards(t *testing.T) {
 	for _, v := range r.Vars {
 		got[v.Key] = v.Value + "@" + v.Scope
 	}
-	want := map[string]string{"K": "lane@lane 1", "G": "general@general", "R": "repo@repo", "Y": "yml@swim.yml"}
+	want := map[string]string{"K": "lane@lane 1", "G": "general@general", "R": "repo@repo", "B": "branch@repo/branch", "P": ""}
 	for k, w := range want {
 		if got[k] != w {
 			t.Errorf("%s = %q, want %q", k, got[k], w)
 		}
 	}
-	if len(r.Sources) != 4 || r.Sources[3] != ".env.swim[lane 1]" {
+	if len(r.Sources) != 4 || !strings.HasSuffix(r.Sources[2], "env.swim[repo/branch]") || r.Sources[3] != ".env.swim[lane 1]" {
 		t.Errorf("sources %q", r.Sources)
 	}
 	h1 := r.SHA256()
 	os.WriteFile(filepath.Join(root, RepoFile), []byte("[lane 1]\nK=changed\n"), 0o644)
-	r2, _ := Resolve(root, cfg, 1)
+	r2, _ := Resolve(root, 1)
 	if h1 == "" || r2.SHA256() == h1 {
 		t.Error("env hash didn't change with a value")
 	}
@@ -86,7 +95,7 @@ func TestResolvePrecedenceAndGuards(t *testing.T) {
 	if c := GuardConflicts(r2, info); len(c) != 1 || c[0].Key != "K" || !strings.Contains(c[0].Error(), ".env.swim:2 sets K") {
 		t.Errorf("script guard: %+v", c)
 	}
-	if _, err := Check(root, cfg, 1, info); err == nil {
+	if _, err := Check(root, 1, info); err == nil {
 		t.Error("Check allowed a guard flag")
 	}
 }
@@ -103,5 +112,17 @@ func TestDuplicates(t *testing.T) {
 	}
 	if strings.Count(got, "\n") != 1 {
 		t.Errorf("want 2 duplicates (A in a repo section and T in lane 2 aren't):\n%s", got)
+	}
+}
+
+// A [repo] section keyed by a path (as swim keyed them once) is named for
+// swim doctor.
+func TestPathSections(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	os.MkdirAll(filepath.Join(xdg, "swim"), 0o755)
+	os.WriteFile(filepath.Join(xdg, "swim", "env.swim"), []byte("[repo shop]\nA=1\n[repo ~/src/web]\nA=2\n[repo /srv/api]\nA=3\n"), 0o644)
+	if got := strings.Join(PathSections(), " "); got != "~/src/web /srv/api" {
+		t.Errorf("PathSections = %q", got)
 	}
 }

@@ -18,8 +18,8 @@ In `manifest_sha256`, what the chain and a queued batch pin ([format](formats.md
 | script | The lane's file. |
 | includes | `# Includes:` matches: what the header names, never what the body seems to read. |
 | sidecar | `lane.N.yml`. |
-| runner | How it runs as the repo says: bash, short form, its `#!` line, a `swim.yml` runner. |
-| config | `swim.yml`'s policy keys (`blocked_commands`, `runners`, `signing`, `secret_env*`, `secret_patterns_auto`, `env`). |
+| runner | How it runs as the repo says: bash, short form, its `#!` line; `local .ext` for a runner from your config. |
+| config | The policy hash of no keys: once a committed `swim.yml`'s policy keys ([format](formats.md#manifest_sha256)). |
 
 Recorded but not signed, since they differ per machine: the env files'
 hash and the runner binary's path and hash. Not pinned: other binaries on

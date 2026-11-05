@@ -101,7 +101,7 @@ var Checks = []Check{
 	{"swim-bin", false, "$SWIM_BIN, or the swim lanes find on PATH, isn't this swim", checkSwimBin},
 	{"config-parse", false, "the config file doesn't load", checkConfigParse},
 	{"config-key", false, "config.yml sets a key swim doesn't read (a typo, or a removed setting): it's ignored", checkConfigKeys},
-	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
+	{"config-repo", false, "a config.yml repos: key or an env.swim [repo] section that's a path (repos are keyed by name now)", checkConfigRepo},
 	{"git", false, "git missing, or not a git repo", checkGit},
 	{"bash", false, "bash missing, or older than 4 while a lane uses a bash 4 feature (named by lane and line)", checkBash},
 	{"gnu-only", false, "a lane uses a GNU-only tool form (sed -i, grep -P, date -d, ...) this machine's tools don't run (macOS/BSD)", checkGNUOnly},
@@ -227,7 +227,7 @@ func checkEnvFiles(o *Options) []finding.Finding {
 		if err != nil || !info.Exists {
 			info = lane.Info{}
 		}
-		r, err := envfile.Resolve(o.Root, o.Cfg, n)
+		r, err := envfile.Resolve(o.Root, n)
 		if err != nil {
 			if !reported[err.Error()] {
 				reported[err.Error()] = true
@@ -374,12 +374,31 @@ func checkConfigKeys(o *Options) []finding.Finding {
 	return out
 }
 
+// checkConfigRepo points out config.yml repos: keys and env.swim [repo]
+// sections that are paths, as swim keyed repos once: they match nothing
+// now.
 func checkConfigRepo(o *Options) []finding.Finding {
-	if o.CfgErr != nil || o.Cfg.HasRepo {
+	if o.CfgErr != nil {
 		return nil
 	}
-	return []finding.Finding{fd(finding.Warn, "config-repo", o.Cfg.Path, "swim init",
-		"the config has no section for %s; built-in defaults apply", o.Root)}
+	path := o.Cfg.Path
+	if path == "" {
+		path = config.Path()
+	}
+	keys, err := config.PathKeys(path)
+	if err != nil {
+		return nil
+	}
+	var out []finding.Finding
+	for _, k := range keys {
+		out = append(out, fd(finding.Warn, "config-repo", path, "rename the key to the repo's name (swim config shows it)",
+			"repos: key %s is a path; key by repo name (e.g. %s)", k, config.RepoName(k)))
+	}
+	for _, k := range envfile.PathSections() {
+		out = append(out, fd(finding.Warn, "config-repo", envfile.UserPath(), "rename the section to the repo's name (swim config shows it)",
+			"[repo %s] is a path; key by repo name (e.g. [repo %s])", k, config.RepoName(k)))
+	}
+	return out
 }
 
 func lines(s string) []string {
@@ -471,9 +490,9 @@ func checkTracked(o *Options) []finding.Finding {
 	if err != nil {
 		return nil // checkGit reports a missing git or repo
 	}
-	// A repo with a committed swim.yml runs committed rounds in CI
-	// (swim ci): tracked lane scripts are intended there; swim state isn't.
-	ciRepo := o.Cfg != nil && o.Cfg.RepoFile != ""
+	// A repo whose committed CI runs swim ci runs committed rounds:
+	// tracked lane scripts are intended there; swim state isn't.
+	ciRepo := runsSwimCI(o.Root)
 	var files []string
 	for _, l := range lines(string(out)) {
 		if tracked(l) && !(ciRepo && laneFile(l)) {
@@ -489,6 +508,18 @@ func checkTracked(o *Options) []finding.Finding {
 	}
 	return []finding.Finding{fd(finding.Warn, "tracked", "", "untrack them yourself: git rm --cached <files> (swim never writes to git)",
 		"git tracks %s; lane scripts and swim state are per-operator and meant to be ignored", strings.Join(shown, ", "))}
+}
+
+// runsSwimCI reports whether the repo at root has a GitHub Actions
+// workflow or a .gitlab-ci.yml that runs swim ci.
+func runsSwimCI(root string) bool {
+	files, _ := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.y*ml"))
+	for _, f := range append(files, filepath.Join(root, ".gitlab-ci.yml")) {
+		if data, err := os.ReadFile(f); err == nil && strings.Contains(string(data), "swim ci") {
+			return true
+		}
+	}
+	return false
 }
 
 func pidLane(name string) (int, bool) {

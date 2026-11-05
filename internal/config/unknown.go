@@ -15,7 +15,7 @@ import (
 // ignored.
 type UnknownKey struct {
 	Key     string // as written
-	Section string // "defaults", "repos PATH" or "" (the top level)
+	Section string // "defaults", "repos NAME", "repos NAME/BRANCH" or "" (the top level)
 	Line    int
 }
 

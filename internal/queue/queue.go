@@ -77,8 +77,8 @@ type Worker struct {
 	Lease     string `yaml:"lease,omitempty"`
 }
 
-// DefaultLease is how long a worker's heartbeat holds when swim.yml or
-// the config doesn't set queue_lease.
+// DefaultLease is how long a worker's heartbeat holds when the config
+// doesn't set queue_lease.
 const DefaultLease = 2 * time.Minute
 
 // LaneResult is how one lane of a consumed entry ended.

@@ -258,7 +258,7 @@ func Run(o Options) (int, error) {
 	o.env = map[int]*envfile.Resolved{}
 	for _, n := range sel {
 		info, _ := lane.ReadScript(o.Root, n)
-		r, err := envfile.Check(o.Root, o.Cfg, n, info)
+		r, err := envfile.Check(o.Root, n, info)
 		if err != nil {
 			return 2, err
 		}

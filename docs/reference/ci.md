@@ -26,8 +26,9 @@ jobs:
           path: ".swim/logs\n.swim.log\nswim.xml"
 ```
 
-Commit `swim.yml` (the runner has no config of its own) and the lane
-scripts the job runs (`!/lane.1.sh` in `.gitignore`). `--changed[=BASE]`
+The runner has no config of its own, so `swim ci` runs on swim's
+defaults ([config](config.md)): a lane needs a `#!` line, not a
+`runners:` entry. Commit the lane scripts the job runs (`!/lane.1.sh` in `.gitignore`). `--changed[=BASE]`
 runs only rounds whose script changed, plus unpassed lanes they wait on;
 `--rerun` runs passed ones too. This repo's own CI is `swim ci` over its `lane.*.sh`.
 

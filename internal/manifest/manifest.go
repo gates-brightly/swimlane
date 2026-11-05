@@ -1,7 +1,7 @@
 // Package manifest is a round's execution manifest: everything swim can
 // pin about the operation a lane runs, built by the launcher before the
 // lane starts. It names the script and every local file it reads as code,
-// the sidecar, how the script runs and the policy part of swim.yml. Its
+// the sidecar and how the script runs. Its
 // hash, manifest_sha256, is what a round's chain entry and a queued batch
 // pin.
 //
@@ -71,16 +71,18 @@ type File struct {
 	Exec   bool   `yaml:"exec,omitempty"` // staged executable (a compiled or direct lane, a helper it runs)
 }
 
-// Policy is the policy part of the config.
+// Policy is the policy part of the config: the policy keys a repo's
+// committed swim.yml set, when swim read one. Every manifest swim writes
+// now has noPolicy; older ones keep what they recorded.
 type Policy struct {
-	SHA256  string   `yaml:"sha256"` // config.PolicyHash: the swim.yml policy keys it sets
+	SHA256  string   `yaml:"sha256"` // the policy hash (docs/reference/formats.md)
 	Version int      `yaml:"version"`
 	Keys    []string `yaml:"keys"`
 	// Rules were lookup.yml's require: rules when swim had signed
 	// approvals: no longer set, but hashed as written (an empty line).
 	Rules string `yaml:"lookup_rules,omitempty"`
-	// Set is each policy key swim.yml sets, with its value's hash: a
-	// record of what the policy was (not hashed).
+	// Set was each policy key swim.yml set, with its value's hash: a
+	// record of what the policy was (not hashed). legacy: no longer written.
 	Set map[string]string `yaml:"set,omitempty"`
 }
 
@@ -90,7 +92,7 @@ type Pinned struct {
 	Includes []File `yaml:"includes,omitempty"`
 	Sidecar  *File  `yaml:"sidecar,omitempty"`
 	// Runner is how the script runs, as the repo says it: bash, its #!
-	// line, a swim.yml runner, direct; "local .ts" for a runner from the
+	// line, direct; "local .ts" for a runner from the
 	// operator's own config (which differs per machine).
 	Runner string `yaml:"runner"`
 	Config Policy `yaml:"config"`
@@ -197,13 +199,7 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	if perr == nil {
 		m.Local.RunnerPath, m.Local.RunnerSHA = runnerBinary(plan)
 	}
-	set := cfg.PolicySet()
-	keys := make([]string, 0, len(set))
-	for k := range set {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	m.Pinned.Config = Policy{SHA256: cfg.PolicyHash(), Version: config.PolicyVersion, Keys: keys, Set: set}
+	m.Pinned.Config = noPolicy
 	m.Local.Env = envSHA
 	m.Pinned.Workspace = info.Workspace
 	m.Job = info.Job
@@ -222,6 +218,11 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 	m.SHA256 = m.Pinned.Hash(n)
 	return m, nil
 }
+
+// noPolicy is the config part every manifest pins now: the policy hash of
+// no keys set, in its frozen form, so a manifest_sha256 reads as it did
+// for a repo whose swim.yml (now gone) set no policy key.
+var noPolicy = Policy{SHA256: hash([]byte("swim policy v2\n")), Version: 3, Keys: []string{}}
 
 // Matches reports whether pin, a manifest_sha256 an approval or queue
 // entry recorded, pins this manifest.
@@ -472,8 +473,6 @@ func runnerPin(p runner.Plan, err error, script string) string {
 		return "bash (short form)"
 	case runner.Shebang:
 		return "#!" + strings.Join(words, " ")
-	case runner.RepoYML:
-		return "swim.yml " + strings.Join(words, " ")
 	}
 	return "local ." + strings.ToLower(strings.TrimPrefix(filepath.Ext(script), "."))
 }

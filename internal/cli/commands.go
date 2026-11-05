@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -43,7 +44,7 @@ func cmdInit(args []string) error {
 	}
 	root := config.RepoRoot(cwd)
 	path := config.Path()
-	created, added, err := config.EnsureRepo(path, root)
+	created, err := config.EnsureFile(path)
 	if err != nil {
 		return err
 	}
@@ -51,14 +52,10 @@ func cmdInit(args []string) error {
 	if err != nil {
 		return err
 	}
-	switch {
-	case created:
-		fmt.Printf("created %s with a section for %s\n", path, root)
-	case added:
-		fmt.Printf("added %s to %s\n", root, path)
-	default:
-		fmt.Printf("%s already configured in %s\n", root, path)
+	if created {
+		fmt.Printf("created %s\n", path)
 	}
+	fmt.Printf("config for this repo: defaults, then repos.%s in %s\n", cfg.Repo, path)
 
 	changed, err := mergeGitignore(filepath.Join(root, ".gitignore"))
 	if err != nil {
@@ -131,9 +128,9 @@ func refreshStatus(root string, cfg *config.Config) error {
 }
 
 func cmdConfig(args []string) error {
-	var pathOnly, toRepo bool
+	var pathOnly, toRepo, toBranch bool
 	var setLanes string
-	rest, err := flags{bools: map[string]*bool{"path": &pathOnly, "repo": &toRepo}, strs: map[string]*string{"lanes": &setLanes}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"path": &pathOnly, "repo": &toRepo, "branch": &toBranch}, strs: map[string]*string{"lanes": &setLanes}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -148,23 +145,29 @@ func cmdConfig(args []string) error {
 		return errNoLaneCount
 	}
 	if len(rest) > 2 {
-		return usagef("usage: swim config [edit | KEY [VALUE]] [--repo] [--path]")
+		return usagef("usage: swim config [edit | KEY [VALUE]] [--repo | --branch] [--path]")
+	}
+	if toRepo && toBranch {
+		return usagef("--repo or --branch, not both")
+	}
+	layer := config.LayerDefaults
+	if toRepo {
+		layer = config.LayerRepo
+	} else if toBranch {
+		layer = config.LayerBranch
 	}
 	if len(rest) == 0 {
-		if toRepo {
-			return usagef("--repo is for setting a key: swim config KEY VALUE --repo")
-		}
 		if ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) {
-			return cmdConfigEdit()
+			return cmdConfigEdit(layer)
+		}
+		if layer != config.LayerDefaults {
+			return usagef("--repo and --branch are for setting a key (swim config KEY VALUE --repo) or the screen")
 		}
 		return showConfig()
 	}
 	key := rest[0]
 	if key == "edit" && len(rest) == 1 {
-		if toRepo {
-			return usagef("swim config edit edits defaults; set a repo's key with swim config KEY VALUE --repo")
-		}
-		return cmdConfigEdit()
+		return cmdConfigEdit(layer)
 	}
 	if key == "lanes" {
 		return errNoLaneCount
@@ -173,8 +176,8 @@ func cmdConfig(args []string) error {
 	if !slices.Contains(config.Keys, key) && !isRunner {
 		return usagef("unknown config key %q; keys: %s, runners.EXT", key, strings.Join(config.Keys, ", "))
 	}
-	if isRunner {
-		toRepo = true // runners are per repo, like the confirmation that saves them
+	if isRunner && layer == config.LayerDefaults {
+		layer = config.LayerRepo // runners are per repo, like the confirmation that saves them
 	}
 	if len(rest) == 1 {
 		_, cfg, err := repo()
@@ -188,7 +191,7 @@ func cmdConfig(args []string) error {
 		fmt.Println(v)
 		return nil
 	}
-	return setConfigKey(key, rest[1], toRepo)
+	return setConfigKey(key, rest[1], layer)
 }
 
 // showConfig prints the effective configuration for this repo.
@@ -201,19 +204,69 @@ func showConfig() error {
 	return nil
 }
 
-// configDoc is the effective configuration as swim config shows it.
+// configDoc is the effective configuration as swim config shows it: the
+// sections that apply, then each setting with the layer it comes from.
 func configDoc(cfg *config.Config) string {
 	var b strings.Builder
-	out, _ := yaml.Marshal(map[string]any{
-		"config_file":  cfg.Path,
-		"repo":         cfg.Root,
-		"repo_section": cfg.HasRepo,
-		"repo_file":    cfg.RepoFile,
-		"effective":    cfg.Settings,
-	})
-	b.Write(out)
-	ig, tg := cfg.Graces()
-	fmt.Fprintf(&b, "interrupt: %s   # first Ctrl-C; interrupt_grace %s, term_grace %s\n", cfg.InterruptMode(), ig, tg)
+	head := &yaml.Node{Kind: yaml.MappingNode}
+	add := func(m *yaml.Node, key string, v any, comment string) {
+		var n yaml.Node
+		_ = n.Encode(v)
+		if n.Kind == yaml.SequenceNode || n.Kind == yaml.MappingNode {
+			n.Style = yaml.FlowStyle
+		}
+		n.LineComment = comment
+		m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, &n)
+	}
+	found := func(layer string) string {
+		for _, l := range cfg.Layers {
+			if l.Name == layer {
+				if l.Found {
+					return "repos." + l.Section + " is in the config"
+				}
+				return "no repos." + l.Section + " section"
+			}
+		}
+		return "detached HEAD: no branch section"
+	}
+	add(head, "config_file", cfg.Path, "")
+	add(head, "root", cfg.Root, "")
+	add(head, "repo", cfg.Repo, found(config.LayerRepo))
+	add(head, "branch", cfg.Branch, found(config.LayerBranch))
+	// Every key swim config sets, and anything else a section sets, in
+	// the order config.yml lists them.
+	eff := &yaml.Node{Kind: yaml.MappingNode}
+	var set map[string]any
+	data, _ := yaml.Marshal(cfg.Settings)
+	_ = yaml.Unmarshal(data, &set)
+	for _, key := range settingKeys() {
+		switch {
+		case key == "lanes" || key == "runners":
+		case slices.Contains(config.Keys, key):
+			// As the screen shows it (2h, not 2h0m0s), unquoted.
+			v, _ := cfg.Get(key)
+			if v = configShown(key, v); v == "—" {
+				v = ""
+			}
+			eff.Content = append(eff.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key},
+				&yaml.Node{Kind: yaml.ScalarNode, Value: v, LineComment: cfg.From(key)})
+		case set[key] != nil:
+			add(eff, key, set[key], cfg.From(key))
+		}
+	}
+	exts := make([]string, 0, len(cfg.Runners))
+	for ext := range cfg.Runners {
+		exts = append(exts, ext)
+	}
+	slices.Sort(exts)
+	for _, ext := range exts {
+		add(eff, "runners."+ext, cfg.Runners[ext], cfg.From("runners."+ext))
+	}
+	head.Content = append(head.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: "effective", LineComment: "each value, and the layer it comes from: default < defaults < repo < repo/branch"}, eff)
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	_ = enc.Encode(head)
+	_ = enc.Close()
 	b.WriteString("blocked_commands:            # no lane command may contain these\n")
 	for _, bl := range cfg.Blocked() {
 		fmt.Fprintf(&b, "  - %q\n", bl)
@@ -221,38 +274,50 @@ func configDoc(cfg *config.Config) string {
 	if sum := notifySummary(cfg, time.Now()); sum != "" {
 		fmt.Fprintf(&b, "notify_sent: %q   # %s\n", sum, notify.StatePath())
 	}
-	if !cfg.HasRepo {
-		b.WriteString("# no section for this repo; run `swim init` to add one\n")
-	}
 	return b.String()
+}
+
+// settingKeys are config.Settings' keys, in the order it declares them.
+func settingKeys() []string {
+	t := reflect.TypeOf(config.Settings{})
+	var out []string
+	for i := range t.NumField() {
+		if name, _, _ := strings.Cut(t.Field(i).Tag.Get("yaml"), ","); name != "" && name != "-" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // errNoLaneCount answers `swim config lanes N`: there's no lane count.
 var errNoLaneCount = errors.New("swim no longer has a lane count: it shows the lanes in use (a script, a current log or a running process). Start one with `swim new N`; `swim archive N` drops one")
 
-// setConfigKey writes one operator setting: under defaults:, or this
-// repo's section with --repo. lanes always goes to the repo's section
-// (lane numbers are per repo) and keeps the pending-round guard.
-func setConfigKey(key, value string, toRepo bool) error {
+// setConfigKey writes one operator setting to a layer's section:
+// defaults:, this repo's (repos.NAME, --repo) or this branch's
+// (repos.NAME/BRANCH, --branch).
+func setConfigKey(key, value, layer string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	root, path := config.RepoRoot(cwd), config.Path()
-	if err := config.SetKey(path, root, key, value, toRepo); err != nil {
+	root := config.RepoRoot(cwd)
+	cfg := &config.Config{Path: config.Path(), Root: root, Repo: config.RepoName(root), Branch: config.RepoBranch(root)}
+	section, err := cfg.Section(layer)
+	if err != nil {
+		return err
+	}
+	if err := config.SetKey(cfg.Path, section, key, value); err != nil {
 		return err
 	}
 	where := "defaults"
-	if toRepo {
-		where = "repo " + root
+	if section != "" {
+		where = "repos." + section
 	}
 	written, _ := config.Normalize(key, value)
-	fmt.Printf("%s: %s  (%s in %s)\n", key, written, where, path)
-	if !toRepo {
-		if cfg, err := config.Load(root); err == nil {
-			if v, _ := cfg.Get(key); v != written {
-				fmt.Printf("note: this repo's section sets %s: %s, which wins here (change it with --repo)\n", key, v)
-			}
+	fmt.Printf("%s: %s  (%s in %s)\n", key, written, where, cfg.Path)
+	if now, err := config.Load(cfg.Root); err == nil {
+		if v, _ := now.Get(key); v != written {
+			fmt.Printf("note: %s sets %s: %s, which wins here\n", now.From(key), key, v)
 		}
 	}
 	return nil

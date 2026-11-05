@@ -238,10 +238,10 @@ func TestDoctorBrokenConfig(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "[config-parse]") {
 		t.Fatalf("broken config: %d\n%s", code, out)
 	}
-	os.WriteFile(cfgPath, []byte("defaults:\n  lanes: 2\n  header_env: [STAGE]\n  toolchain: exit 7\n"), 0o644)
+	os.WriteFile(cfgPath, []byte("defaults:\n  lanes: 2\n  header_env: [STAGE]\n  toolchain: exit 7\nrepos:\n  /old/src/web: {}\n"), 0o644)
 	out, code = r.swim("doctor")
 	if code != 1 {
 		t.Fatalf("doctor exit %d:\n%s", code, out)
 	}
-	contains(t, "doctor", out, "[config-repo]", "unknown key lanes under defaults", "[config-key]", "toolchain \"exit 7\" fails", "[toolchain]")
+	contains(t, "doctor", out, "repos: key /old/src/web is a path; key by repo name (e.g. web)", "[config-repo]", "unknown key lanes under defaults", "[config-key]", "toolchain \"exit 7\" fails", "[toolchain]")
 }

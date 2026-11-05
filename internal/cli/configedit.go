@@ -19,14 +19,16 @@ const (
 )
 
 // cmdConfigEdit is swim config on a terminal: every setting on one
-// screen, swim watch's picker, with what it is now, its default and what
-// it takes, to change in place. Enter, Space, ← and → step a key with
-// choices; Enter on any other key types its value on the bottom line,
-// checked before it's written. It edits `defaults:` in the config file,
-// and writes only what differs from swim's default: a value set back to
-// the default leaves the file. The first write copies the file as it was
-// to config.yml-N.bak (config.Backup).
-func cmdConfigEdit() error {
+// screen, swim watch's picker, with its value at this layer, the layer it
+// comes from, its default and what it takes, to change in place. Enter,
+// Space, ← and → step a key with choices; Enter on any other key types its
+// value on the bottom line, checked before it's written. It edits the
+// layer's section of the config file (defaults:, or with --repo / --branch
+// repos.NAME / repos.NAME/BRANCH), and writes only what differs from what
+// the section would inherit: a value set back to that leaves the file. The
+// first write copies the file as it was to config.yml-N.bak
+// (config.Backup).
+func cmdConfigEdit(layer string) error {
 	if !ui.IsTTY(os.Stdin) || !ui.IsTTY(os.Stdout) {
 		return errors.New("swim config edit needs a terminal; swim config KEY VALUE sets one key")
 	}
@@ -34,10 +36,22 @@ func cmdConfigEdit() error {
 	if err != nil {
 		return err
 	}
-	root, path := config.RepoRoot(cwd), config.Path()
+	root := config.RepoRoot(cwd)
+	cfg, err := config.Read(root)
+	if err != nil {
+		return err
+	}
+	section, err := cfg.Section(layer)
+	if err != nil {
+		return err
+	}
+	path, title := cfg.Path, "defaults"
+	if section != "" {
+		title = "repos." + section
+	}
 	p := &display.Picker{In: os.Stdin, Out: os.Stdout, Color: ui.ColorEnabled(os.Stdout), HintsBelow: true, Stay: true}
 	defer p.Leave()
-	load := func() []display.PickRow { return configEditRows(path, root) }
+	load := func() []display.PickRow { return configEditRows(root, layer) }
 	// backup copies the file before the session's first write, and says
 	// where to, once.
 	backedUp := false
@@ -57,7 +71,7 @@ func cmdConfigEdit() error {
 	}
 	for {
 		typing := p.Field != nil
-		res, err := p.Pick("swim config · "+path, configEditHints, configEditKeys, load, time.Hour, nil)
+		res, err := p.Pick("swim config · "+title+" · "+path, configEditHints, configEditKeys, load, time.Hour, nil)
 		if err != nil {
 			return err
 		}
@@ -68,7 +82,7 @@ func cmdConfigEdit() error {
 		if typing {
 			// Esc, or Enter with nothing typed, keeps the value.
 			if v := strings.TrimSpace(res.Text); res.Key == display.PickEnter && v != "" {
-				p.Note = configEditSet(path, root, key, v, backup)
+				p.Note = configEditSet(root, layer, section, key, v, backup)
 			}
 			continue
 		}
@@ -85,11 +99,11 @@ func cmdConfigEdit() error {
 			p.Note = testNotify(cfg, root)
 			continue
 		}
-		cur, err := config.DefaultsIn(path)
+		cur, err := config.Read(root)
 		if err != nil {
 			return err
 		}
-		now, _ := cur.Get(key)
+		now, _ := cur.Upto(layer).Get(key)
 		cs := config.Choices(key)
 		step := 0
 		switch res.Key {
@@ -99,11 +113,11 @@ func cmdConfigEdit() error {
 				p.Note = "not written, no backup: " + err.Error()
 				continue
 			}
-			if err := config.UnsetKey(path, key); err != nil {
+			if err := config.UnsetKey(path, section, key); err != nil {
 				return err
 			}
-			def, _ := (&config.Config{}).Get(key)
-			p.Note = fmt.Sprintf("%s: back to the default, %s%s", key, def, was)
+			v, _ := cur.Below(layer).Get(key)
+			p.Note = fmt.Sprintf("%s: back to %s%s", key, inheritedFrom(cur, layer, key, configShown(key, v)), was)
 		case display.PickEnter, ' ', 'l', display.PickRight:
 			step = 1
 		case 'h', display.PickLeft:
@@ -113,7 +127,7 @@ func cmdConfigEdit() error {
 		case step == 0:
 		case cs != nil:
 			i := (slices.Index(cs, now) + step + len(cs)) % len(cs)
-			p.Note = configEditSet(path, root, key, cs[i], backup)
+			p.Note = configEditSet(root, layer, section, key, cs[i], backup)
 		case res.Key == display.PickEnter:
 			text := configShown(key, now)
 			if now == "" {
@@ -126,11 +140,15 @@ func cmdConfigEdit() error {
 	}
 }
 
-// configEditSet writes key: value under defaults, or removes the key when
-// value is swim's default, and says what it did. A valid value is backed
-// up first; one that isn't writes nothing.
-func configEditSet(path, root, key, value string, backup func() (string, error)) string {
-	def, err := config.IsDefault(key, value)
+// configEditSet writes key: value to the layer's section, or removes the
+// key when value is what the section would inherit anyway, and says what
+// it did. A valid value is backed up first; one that isn't writes nothing.
+func configEditSet(root, layer, section, key, value string, backup func() (string, error)) string {
+	cfg, err := config.Read(root)
+	if err != nil {
+		return err.Error()
+	}
+	same, err := cfg.Inherited(layer, key, value)
 	if err != nil {
 		return err.Error()
 	}
@@ -138,72 +156,87 @@ func configEditSet(path, root, key, value string, backup func() (string, error))
 	if err != nil {
 		return "not written, no backup: " + err.Error()
 	}
-	if def {
-		if err := config.UnsetKey(path, key); err != nil {
+	if same {
+		if err := config.UnsetKey(cfg.Path, section, key); err != nil {
 			return err.Error()
 		}
-		return fmt.Sprintf("%s: %s, the default (not written)%s", key, value, was)
+		return fmt.Sprintf("%s: %s, %s (not written)%s", key, value, inheritedFrom(cfg, layer, key, ""), was)
 	}
-	if err := config.SetKey(path, root, key, value, false); err != nil {
+	if err := config.SetKey(cfg.Path, section, key, value); err != nil {
 		return err.Error()
 	}
 	v, _ := config.Normalize(key, value)
 	return fmt.Sprintf("%s: %s (written)%s", key, v, was)
 }
 
-// configEditRows are the settings, as the defaults section sets them (or
-// swim's default), each with swim's default, what it takes, and what this
-// repo's section or swim.yml sets instead.
-func configEditRows(path, root string) []display.PickRow {
-	cur, err := config.DefaultsIn(path)
+// inheritedFrom says where the value a layer inherits for key comes from:
+// "the default, 5s" or "20s, as defaults sets it" (value omitted when "").
+func inheritedFrom(cfg *config.Config, layer, key, value string) string {
+	from := cfg.Below(layer).From(key)
+	if from == config.LayerDefault {
+		if value == "" {
+			return "the default"
+		}
+		return "the default, " + value
+	}
+	if value == "" {
+		return "as " + from + " sets it"
+	}
+	return value + ", as " + from + " sets it"
+}
+
+// configEditRows are the settings as the layer and those below it give
+// them, each with the layer it comes from, swim's default, what it takes,
+// and what this branch uses instead when a layer above wins.
+func configEditRows(root, layer string) []display.PickRow {
+	all, err := config.Read(root)
 	if err != nil {
 		return []display.PickRow{{Text: err.Error(), Color: ui.Red}}
 	}
-	here, _ := config.Load(root)
-	type setting struct{ key, value, def, repo string }
-	var all []setting
+	here := all.Upto(layer)
+	type setting struct{ key, value, from, def, over string }
+	var rows []setting
 	width := len("default")
 	for _, key := range config.Keys {
-		v, _ := cur.Get(key)
+		v, _ := here.Get(key)
 		def, _ := (&config.Config{}).Get(key)
-		st := setting{key: key, value: configShown(key, v), def: configShown(key, def)}
-		if here != nil {
-			if hv, err := here.Get(key); err == nil && hv != v {
-				st.repo = configShown(key, hv)
-			}
+		st := setting{key: key, value: configShown(key, v), from: here.From(key), def: configShown(key, def)}
+		if av, err := all.Get(key); err == nil && av != v {
+			st.over = configShown(key, av) + " (" + all.From(key) + ")"
 		}
 		width = max(width, min(len(st.value), 16), min(len(st.def), 16)) // a longer path runs on
-		all = append(all, st)
+		rows = append(rows, st)
 	}
-	line := func(key, value, def, hint string) string {
-		return fmt.Sprintf("%-17s %-*s  %-*s  %s", key, width, value, width, def, hint)
+	line := func(key, value, from, def, hint string) string {
+		return fmt.Sprintf("%-17s %-*s  %-11s  %-*s  %s", key, width, value, from, width, def, hint)
 	}
-	rows := []display.PickRow{
-		{Rule: true, Text: "defaults", Right: "only what isn't swim's default is written"},
-		{Text: line("", "value", "default", "takes"), Color: ui.Dim},
+	right := "only what differs from the layers below is written"
+	out := []display.PickRow{
+		{Rule: true, Text: layer, Right: right},
+		{Text: line("", "value", "from", "default", "takes"), Color: ui.Dim},
 	}
-	for _, st := range all {
+	for _, st := range rows {
 		color := ui.Bold
-		if st.value == st.def {
+		if st.from != layer {
 			color = ui.Dim
 		}
-		text := line(st.key, st.value, st.def, config.Hint(st.key))
-		if st.repo != "" {
-			text += "  · this repo uses " + st.repo
+		text := line(st.key, st.value, st.from, st.def, config.Hint(st.key))
+		if st.over != "" {
+			text += "  · here it's " + st.over
 		}
-		rows = append(rows, display.PickRow{ID: st.key, Text: text, Color: color})
-		if st.key == "notify_command" && here != nil {
+		out = append(out, display.PickRow{ID: st.key, Text: text, Color: color})
+		if st.key == "notify_command" {
 			// How the last notification went: is the endpoint working?
-			if sum := notifySummary(here, time.Now()); sum != "" {
+			if sum := notifySummary(all, time.Now()); sum != "" {
 				c := ui.Dim
 				if strings.HasPrefix(sum, "last send failed") {
 					c = ui.Red
 				}
-				rows = append(rows, display.PickRow{Text: fmt.Sprintf("%-17s %s · t sends a test", "", sum), Color: c})
+				out = append(out, display.PickRow{Text: fmt.Sprintf("%-17s %s · t sends a test", "", sum), Color: c})
 			}
 		}
 	}
-	return rows
+	return out
 }
 
 // configShown is a value as swim config shows it, and as its field starts

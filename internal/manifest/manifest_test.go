@@ -23,7 +23,7 @@ summary
 `
 
 // repo writes a repo with lane 3, what it includes and sources, a sidecar,
-// swim.yml and a lookup.yml (which swim no longer reads).
+// and a lookup.yml (which swim no longer reads).
 func repo(t *testing.T) string {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -36,7 +36,6 @@ func repo(t *testing.T) string {
 		"lib/undeclared.sh": "undeclared=1\n",
 		"lane.3.yml":        "owner: ops\n",
 		"data/rows.csv":     "a,b\n",
-		"swim.yml":          "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 2\n",
 		"lookup.yml":        "users: {}\n",
 		"notes/other.md":    "not code\n",
 	}
@@ -107,9 +106,7 @@ func TestCoverage(t *testing.T) {
 		{"sourced file", "lib/orders.sh", ". lib/deep.sh\necho changed\n", true},
 		{"file it sources", "lib/deep.sh", "deep=2\n", true},
 		{"sidecar", "lane.3.yml", "owner: someone\n", true},
-		{"swim.yml policy", "swim.yml", "blocked_commands: [\"rm -rf /\", \"curl\"]\nmax_parallel: 2\n", true},
 		{"lookup.yml rules", "lookup.yml", "users: {}\nrequire:\n  - guards: [DROP]\n    count: 2\n", false},
-		{"swim.yml other key", "swim.yml", "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 5\n", false},
 		{"lookup.yml users", "lookup.yml", "users: {bob: {keys: []}}\nrequire:\n  - guards: [DROP]\n    count: 1\n", false},
 		{"a data file", "data/rows.csv", "c,d\n", false},
 		// Only what the header names is pinned: a file the script sources

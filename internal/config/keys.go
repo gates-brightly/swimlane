@@ -154,18 +154,14 @@ func Normalize(key, value string) (string, error) {
 	return n.Value, nil
 }
 
-// SetKey sets one of Keys under `defaults:`, or with repo under root's repo
-// section (created if needed), keeping the rest of the file and its
-// comments. The file is created if missing. The value is validated first.
-func SetKey(path, root, key, value string, repo bool) error {
+// SetKey sets one of Keys in section of the config file at path: "" for
+// `defaults:`, else the repos entry of that key (swimlane, swimlane/main),
+// created if needed. The rest of the file and its comments are kept; the
+// file is created if missing. The value is validated first.
+func SetKey(path, section, key, value string) error {
 	val, err := keyValue(key, value)
 	if err != nil {
 		return err
-	}
-	if repo {
-		if _, _, err := EnsureRepo(path, root); err != nil {
-			return err
-		}
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -188,53 +184,53 @@ func SetKey(path, root, key, value string, repo bool) error {
 		return fmt.Errorf("%s: top level must be a mapping", path)
 	}
 
-	var section *yaml.Node
-	if repo {
+	var sec *yaml.Node
+	if section != "" {
 		repos := mapGet(top, "repos")
-		if repos == nil || repos.Kind != yaml.MappingNode {
-			return fmt.Errorf("%s: no repos mapping", path)
+		if repos == nil {
+			top.Content = append(top.Content, scalar("repos"), &yaml.Node{Kind: yaml.MappingNode})
+			repos = top.Content[len(top.Content)-1]
 		}
-		for i := 0; i+1 < len(repos.Content); i += 2 {
-			if sameRepo(repos.Content[i].Value, root) {
-				section = repos.Content[i+1]
-				break
-			}
+		if repos.Kind != yaml.MappingNode {
+			*repos = yaml.Node{Kind: yaml.MappingNode}
 		}
-		if section == nil {
-			return fmt.Errorf("%s: no section for %s", path, root)
+		repos.Style = 0 // render block style even if it was `{}`
+		if sec = mapGet(repos, section); sec == nil {
+			repos.Content = append(repos.Content, scalar(section), &yaml.Node{Kind: yaml.MappingNode})
+			sec = repos.Content[len(repos.Content)-1]
 		}
 	} else {
-		section = mapGet(top, "defaults")
-		if section == nil {
+		sec = mapGet(top, "defaults")
+		if sec == nil {
 			top.Content = append([]*yaml.Node{scalar("defaults"), {Kind: yaml.MappingNode}}, top.Content...)
-			section = top.Content[1]
+			sec = top.Content[1]
 		}
 	}
-	if section.Kind != yaml.MappingNode {
-		*section = yaml.Node{Kind: yaml.MappingNode}
+	if sec.Kind != yaml.MappingNode {
+		*sec = yaml.Node{Kind: yaml.MappingNode}
 	}
-	if len(section.Content) == 0 {
-		section.Style = 0 // render block style even if it was `{}`
+	if len(sec.Content) == 0 {
+		sec.Style = 0 // render block style even if it was `{}`
 	}
 
 	if ext, ok := RunnerKey(key); ok {
 		// runners.EXT is a key of the runners mapping.
-		runners := mapGet(section, "runners")
+		runners := mapGet(sec, "runners")
 		if runners == nil {
-			section.Content = append(section.Content, scalar("runners"), &yaml.Node{Kind: yaml.MappingNode})
-			runners = section.Content[len(section.Content)-1]
+			sec.Content = append(sec.Content, scalar("runners"), &yaml.Node{Kind: yaml.MappingNode})
+			runners = sec.Content[len(sec.Content)-1]
 		}
 		if runners.Kind != yaml.MappingNode {
 			*runners = yaml.Node{Kind: yaml.MappingNode}
 		}
 		runners.Style = 0
-		section, key = runners, ext
+		sec, key = runners, ext
 	}
-	if v := mapGet(section, key); v != nil {
+	if v := mapGet(sec, key); v != nil {
 		// Replace the value in place so comments on it survive.
 		v.Kind, v.Tag, v.Value, v.Style, v.Content, v.Alias = val.Kind, val.Tag, val.Value, 0, nil, nil
 	} else {
-		section.Content = append(section.Content, scalar(key), val)
+		sec.Content = append(sec.Content, scalar(key), val)
 	}
 	return writeNode(path, &doc)
 }
@@ -253,31 +249,32 @@ func Choices(key string) []string {
 	return nil
 }
 
-// IsDefault reports whether value for key is what swim uses with the key
-// unset (10s for term_grace, say). The value is
-// validated first.
-func IsDefault(key, value string) (bool, error) {
+// Inherited reports whether value for key is what the layer would get
+// with key unset there: what the layers below it give (swim's default,
+// for defaults:). The value is validated first.
+func (c *Config) Inherited(layer, key, value string) (bool, error) {
 	val, err := keyValue(key, value)
 	if err != nil {
 		return false, err
 	}
-	var c Config
+	var one Config
 	m := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{scalar(key), val}}
-	if err := m.Decode(&c.Settings); err != nil {
+	if err := m.Decode(&one.Settings); err != nil {
 		return false, err
 	}
-	got, err := c.Get(key)
+	got, err := one.Get(key)
 	if err != nil {
 		return false, err
 	}
-	def, err := (&Config{}).Get(key)
-	return err == nil && got == def, nil
+	below, err := c.Below(layer).Get(key)
+	return err == nil && got == below, nil
 }
 
-// UnsetKey removes one of Keys from `defaults:`, keeping the rest of the
-// file and its comments, so swim goes back to its default (or what a repo
-// sets). A missing file or key is no change.
-func UnsetKey(path, key string) error {
+// UnsetKey removes one of Keys from section of the config file at path
+// ("" for `defaults:`, else a repos key), keeping the rest of the file and
+// its comments, so the layers below decide it again. A missing file,
+// section or key is no change.
+func UnsetKey(path, section, key string) error {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -291,28 +288,106 @@ func UnsetKey(path, key string) error {
 	if doc.Kind == 0 || doc.Content[0].Kind != yaml.MappingNode {
 		return nil
 	}
-	section := mapGet(doc.Content[0], "defaults")
-	if section == nil || section.Kind != yaml.MappingNode {
+	sec := mapGet(doc.Content[0], "defaults")
+	if section != "" {
+		if repos := mapGet(doc.Content[0], "repos"); repos != nil && repos.Kind == yaml.MappingNode {
+			sec = mapGet(repos, section)
+		} else {
+			sec = nil
+		}
+	}
+	if sec == nil || sec.Kind != yaml.MappingNode {
 		return nil
 	}
-	for i := 0; i+1 < len(section.Content); i += 2 {
-		if section.Content[i].Value == key {
-			section.Content = slices.Delete(section.Content, i, i+2)
+	for i := 0; i+1 < len(sec.Content); i += 2 {
+		if sec.Content[i].Value == key {
+			sec.Content = slices.Delete(sec.Content, i, i+2)
 			return writeNode(path, &doc)
 		}
 	}
 	return nil
 }
 
-// DefaultsIn is what the `defaults:` section of the config file at path
-// sets, as a Config whose Get says what it means (swim's own default for
-// a key it leaves unset).
-func DefaultsIn(path string) (*Config, error) {
-	f, err := readFile(path)
-	if err != nil {
-		return nil, err
+// Section is the config file section a layer is: "" for defaults:, the
+// repo's name, or NAME/BRANCH. A branch layer on a detached HEAD is an
+// error.
+func (c *Config) Section(layer string) (string, error) {
+	switch layer {
+	case LayerDefaults:
+		return "", nil
+	case LayerRepo:
+		return c.Repo, nil
+	case LayerBranch:
+		if c.Branch == "" {
+			return "", errors.New("no branch is checked out (detached HEAD): set it for the repo instead")
+		}
+		return c.Repo + "/" + c.Branch, nil
 	}
-	return &Config{Path: path, Settings: f.Defaults}, nil
+	return "", fmt.Errorf("no config layer %q", layer)
+}
+
+// From is the layer key's effective value comes from: the last section
+// that sets it, or LayerDefault. Lists that add up (blocked_commands,
+// secret_env, secret_env_ignore) name the last section that adds to them.
+func (c *Config) From(key string) string {
+	for i := len(c.Layers) - 1; i >= 0; i-- {
+		if c.Layers[i].sets(key) {
+			return c.Layers[i].Name
+		}
+	}
+	return LayerDefault
+}
+
+// sets reports whether s sets key (a yaml key, or runners.EXT).
+func (s Settings) sets(key string) bool {
+	if ext, ok := RunnerKey(key); ok {
+		for k, v := range s.Runners {
+			if strings.ToLower(strings.TrimPrefix(k, ".")) == ext && strings.TrimSpace(v) != "" {
+				return true
+			}
+		}
+		return false
+	}
+	data, err := yaml.Marshal(s)
+	if err != nil {
+		return false
+	}
+	var m map[string]any
+	if yaml.Unmarshal(data, &m) != nil {
+		return false
+	}
+	_, ok := m[key]
+	return ok
+}
+
+// Upto is the configuration the layers up to and including layer give
+// (LayerDefault: swim's defaults alone).
+func (c *Config) Upto(layer string) *Config {
+	for i, l := range c.Layers {
+		if l.Name == layer {
+			return c.over(c.Layers[:i+1])
+		}
+	}
+	return c.over(nil)
+}
+
+// Below is the configuration the layers under layer give: what it
+// inherits.
+func (c *Config) Below(layer string) *Config {
+	for i, l := range c.Layers {
+		if l.Name == layer {
+			return c.over(c.Layers[:i])
+		}
+	}
+	return c.over(c.Layers)
+}
+
+func (c *Config) over(layers []Layer) *Config {
+	out := &Config{Path: c.Path, Root: c.Root, Repo: c.Repo, Branch: c.Branch, Layers: layers}
+	for _, l := range layers {
+		out.merge(l.Settings)
+	}
+	return out
 }
 
 // Backup copies the config file at path to path-N.bak, N one past the

@@ -9,8 +9,9 @@ import (
 // entries and queue entries pin these hashes, so a change here stales
 // every one of them. Change it only with a dual-hash transition
 // (docs/reference/formats.md). (The fixture's lookup.yml has no rules: a
-// swim that read them hashed this lane the same.)
-const goldenV2 = "8a1a8f1dbdc1e6eb0b81229e205f86b793a1a60134fef09dfc17a8f66c0fb5fe"
+// swim that read them hashed this lane the same. It has no swim.yml: a
+// swim that read one hashed this lane the same.)
+const goldenV2 = "0bd1b730c43f22950df4b08f9eed59a025d165c317895871309d53071d43b016"
 
 func TestManifestHashFrozen(t *testing.T) {
 	m := build(t, repo(t), 3)
@@ -25,21 +26,5 @@ func TestManifestHashFrozen(t *testing.T) {
 		if !strings.Contains(text, line) {
 			t.Errorf("hash text lacks %q:\n%s", line, text)
 		}
-	}
-}
-
-// Setting a policy key changes the manifest; a key outside policy doesn't.
-func TestPolicyKeyChangesManifest(t *testing.T) {
-	root := repo(t)
-	before := build(t, root, 3)
-	write(t, root, "swim.yml", "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 2\nsigning: required\n")
-	after := build(t, root, 3)
-	if after.Matches(before.SHA256) {
-		t.Fatal("setting a policy key should change the manifest")
-	}
-	// max_parallel isn't policy: changing it changes nothing.
-	write(t, root, "swim.yml", "blocked_commands: [\"rm -rf /\"]\nmax_parallel: 5\nsigning: required\n")
-	if again := build(t, root, 3); again.SHA256 != after.SHA256 {
-		t.Error("max_parallel changed the manifest")
 	}
 }

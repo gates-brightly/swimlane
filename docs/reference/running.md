@@ -113,9 +113,7 @@ shows the last under the two keys (`last sent 3m 0s ago: swimlane · run passed`
 or why it failed), and `t` on its screen sends a test; `swim doctor` warns
 (`notify-failing`) while the last send failed, and (`notify`) when
 `notify_url` doesn't answer or `notify_command`'s program isn't there, and each failure is also a
-`warn` line in the repo's `.swim.log`. Both keys belong in `config.yml`,
-never a repo's `swim.yml`: a committed file mustn't run a command no
-guard sees, or send your notifications elsewhere.
+`warn` line in the repo's `.swim.log`.
 
 ## Interrupts
 

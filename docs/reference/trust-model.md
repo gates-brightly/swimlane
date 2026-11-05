@@ -128,8 +128,8 @@ name a socket's peer the token alone decides.
 - **What runs has an execution manifest.** Before a lane starts, swim
   builds its manifest: the lane script (or a binary), its `# Includes:`
   (the only repo files it may source or import: under `swim run` a bash
-  lane that sources one it doesn't list stops), its sidecar, the runner
-  the repo names and the policy part of `swim.yml`. The round's chain
+  lane that sources one it doesn't list stops), its sidecar and the runner
+  the repo names (its `#!` line). The round's chain
   entry names its hash, and a queued batch is pinned to it.
 - **The approved bytes are the bytes that run.** The manifest's files are
   staged read-only under `.swim/runs/<run>/<N>/` before the lane waits for
@@ -337,7 +337,7 @@ Test files are under `internal/`. "Pending" names the task in
 | A lane edited after it was queued is skipped. | `TestQueueAndWatchOnce` (e2e/queue_test.go) |
 | A lane whose env files changed after it was queued is skipped. | `TestEnvFileQueuePin` (e2e/envfile_test.go) |
 | The bytes approved are the bytes that run, even if the file changes mid-run. | `TestManifestStagedBytesRun`, `TestManifestMidRunEdit` (e2e/manifest_test.go) |
-| A queued batch's approval covers sourced files, the runner and policy: a change after it was queued skips the lane. | `TestManifestApprovalBinding`, `TestManifestRunnerBinding` (e2e/manifest_test.go) |
+| A queued batch's approval covers sourced files and the runner: a change after it was queued skips the lane. | `TestManifestApprovalBinding`, `TestManifestRunnerBinding` (e2e/manifest_test.go) |
 | A queued lane whose manifest changed is skipped. | `TestManifestQueuePin` (e2e/manifest_test.go) |
 | The broker names the lane that asks; an approval is used once, by its lane. | `TestManifestRequestsFromTheLane`, `TestManifestResponseReuse` (e2e/manifest_test.go) |
 | Under `swim run`, a lane can't approve itself: `swim _mark APPROVED` is refused, and an entry written by a lane that hid from swim run fails `swim verify`. | `TestHostileLaneMarksApproved` (e2e/authority_test.go) |

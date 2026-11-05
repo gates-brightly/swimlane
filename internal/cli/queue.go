@@ -599,7 +599,7 @@ func pinLane(root string, cfg *config.Config, n int) (queue.Lane, lane.Info, err
 	if err != nil {
 		return queue.Lane{}, info, err
 	}
-	r, err := envfile.Check(root, cfg, n, info)
+	r, err := envfile.Check(root, n, info)
 	if err != nil {
 		return queue.Lane{}, info, err
 	}

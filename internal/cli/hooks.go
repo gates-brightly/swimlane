@@ -253,7 +253,7 @@ func cmdStart(args []string) error {
 	// The env files that applied (their values are in the lane's env, and
 	// masked), and their hash for the chain.
 	envSum := ""
-	if r, err := envfile.Resolve(root, cfg, n); err != nil {
+	if r, err := envfile.Resolve(root, n); err != nil {
 		return startFailed(root, cfg, n, err)
 	} else if len(r.Sources) > 0 {
 		envSum = r.SHA256()

@@ -4,7 +4,7 @@ What swim pins, byte for byte. The chain and queued batches record these
 hashes, so changing how one is computed would void every one of them.
 **Upgrading swim doesn't stale a pin** while these formats hold. Only
 changes to what you pinned do: your script, the files it includes, its
-sidecar, how it runs, or the `swim.yml` policy keys you set.
+sidecar, or how it runs.
 
 ## manifest_sha256
 
@@ -17,21 +17,18 @@ script: <path> <sha256>
 include: <path> <sha256>                         (one per pinned file, sorted by path)
 sidecar: <path> <sha256>                         (when lane.N.yml exists)
 module: <name> <version> <source> <kind> <sha256>   (only in manifests an older swim wrote for a lane with # Modules:)
-runner: <how it runs: bash, #!..., swim.yml ..., direct, local .ext>
+runner: <how it runs: bash, #!..., direct, local .ext; swim.yml ... in older manifests>
 config: <policy hash>
 lookup-rules:                                    (empty: once lookup.yml's require: rules, which swim no longer reads)
 ```
 
 **The policy hash** is the SHA-256 of `swim policy v2\n` followed by one
-line per policy key the committed `swim.yml` sets, sorted by key:
-`<key> <sha256 of the YAML "key: value">`. A key that `swim.yml` doesn't
-set adds nothing. A list or map that it writes, even an empty one, counts
-as set. The policy keys are `config.PolicyKeys`. A key that isn't policy,
-such as `max_parallel` or `interrupt`, never counts. Neither does the
-operator's own `config.yml`, which differs from machine to machine.
-
-So **a policy key that swim adds later changes nothing** for a repo that
-doesn't set it. The key goes into `PolicyKeys` and nothing else changes.
+line per policy key a repo's committed `swim.yml` set, sorted by key:
+`<key> <sha256 of the YAML "key: value">`. swim no longer reads a
+`swim.yml`, so every manifest it writes now has the hash of no keys,
+`SHA-256("swim policy v2\n")`: a lane's `manifest_sha256` is what it was
+for a repo whose `swim.yml` set no policy key. The operator's own
+`config.yml`, which differs from machine to machine, never counts.
 
 Left out on purpose, because they differ per machine: the env files'
 values, and the runner binary's path and hash (an OS update would
