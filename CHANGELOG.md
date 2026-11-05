@@ -38,6 +38,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261105.6 (v0.20261105.6, 2026-11-05)
+
 ### Changed
 
 - **The docs describe swim as it is now:** one place per topic, shorter
