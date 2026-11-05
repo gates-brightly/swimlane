@@ -72,7 +72,6 @@ type Info struct {
 	Locks           []string // Locks: resources this round needs exclusively (default none)
 	Extra           []KV     // other keys in the header block, kept and shown
 	Problems        []string // header values swim couldn't use (e.g. a bad Timeout)
-	Removed         []string // header keys of what this swim no longer has (Finally:, Matrix:, Modules:, Cache:, ...)
 	Message         string   // stub message
 	// FailHard is Fail: hard: the first failed step stops the round.
 	// Default soft. Script syntax 3.
@@ -85,9 +84,6 @@ type Info struct {
 	// local modules a Python or TypeScript lane imports: they're hashed
 	// with the script (ScriptBytes), so approvals cover them.
 	Includes []string
-	// EvidenceLines are the lines (0-based) of evidence steps (evidence
-	// "tf plan" ...), which swim no longer has: lint refuses them.
-	EvidenceLines []int
 	// DynamicGuards counts guard calls whose flag is named at run time
 	// (guard "$FLAG" ...): swim can't know them ahead.
 	DynamicGuards int
@@ -119,7 +115,7 @@ func (i Info) GuardFlags() []string {
 // the header block is kept as an extra and shown.
 var knownKeys = map[string]bool{"round": true, "task": true, "workspace": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 	"fail": true, "outputs": true, "includes": true,
-	"observe": true, "cache": true, "modules": true, "targets": true}
+	"observe": true, "targets": true}
 
 // stageNames are the stages, in order.
 var stageNames = map[string]bool{"snapshot": true, "check": true, "change": true, "verify": true}
@@ -175,9 +171,7 @@ func ReadScript(root string, n int) (Info, error) {
 //
 // The header is the lane's contract: its guards (# Guards:, "*" for flags
 // named at run time) and the files it reads (# Includes:) are what the run
-// allows. The body is read only for where
-// its stages and outcome handlers are, and where it has evidence steps
-// (see text.go).
+// allows. The body is read only for where its stages are (see text.go).
 func ParseScript(src string) Info {
 	lines := strings.Split(src, "\n")
 	for i, l := range lines {
@@ -189,7 +183,7 @@ func ParseScript(src string) Info {
 	inBlock := true
 	listed := map[string]bool{}
 	// In a bash lane, heredoc bodies and the lines of a string over several
-	// lines hold no code: they aren't read for stages, evidence or handlers.
+	// lines hold no code: they aren't read for stages.
 	var text []bool
 	if bashScript(src) {
 		text = textLines(src)
@@ -235,9 +229,6 @@ func ParseScript(src string) Info {
 		cmds := Commands(line)
 		if !info.Staged && stagesIn(line, cmds) {
 			info.Staged = true
-		}
-		if evidenceIn(line, cmds) {
-			info.EvidenceLines = append(info.EvidenceLines, i)
 		}
 	}
 	if info.Stub {
@@ -342,9 +333,6 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 		info.setFail(v, "Fail:")
 	case "Guards":
 		info.addGuard(v, listed)
-	case "Matrix", "Matrix-Exclude", "Matrix-Parallel", "Matrix-Fail", "Always", "Finally", "Rerun-Children",
-		"Handler-Timeout", "On-Success", "On-Failure", "On-Exit", "Modules", "Cache":
-		info.Removed = append(info.Removed, key)
 	default:
 		return false
 	}
@@ -388,21 +376,6 @@ func stagesIn(line string, cmds [][]Word) bool {
 		}
 	}
 	return false
-}
-
-// evidenceIn reports whether a line has an evidence step (which swim no
-// longer has): `evidence "<label>" ...`, `swim evidence`, or
-// ["evidence", ...] from another language.
-func evidenceIn(line string, cmds [][]Word) bool {
-	for _, c := range cmds {
-		if len(c) > 1 && c[0].Text == "evidence" {
-			return true
-		}
-		if rest, ok := swimCall(c); ok && len(rest) > 0 && rest[0].Text == "evidence" {
-			return true
-		}
-	}
-	return quotedThen(line, "evidence", ',')
 }
 
 // setOutputs reads Outputs: names: relative paths inside $SWIM_OUT.

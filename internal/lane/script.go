@@ -211,8 +211,6 @@ type sideFile struct {
 	Outputs  *strList `yaml:"outputs"`
 	Includes *strList `yaml:"includes"`
 	Observe  []string `yaml:"observe"`
-	Cache    *strList `yaml:"cache"`
-	Modules  *strList `yaml:"modules"`
 }
 
 // strList is a YAML list, or one scalar of space/comma separated words.
@@ -344,14 +342,6 @@ func applySidecar(path string, info *Info) error {
 	}
 	if sf.Includes != nil {
 		info.Includes = append([]string(nil), *sf.Includes...)
-	}
-	if sf.Modules != nil {
-		// modules: is gone (swim lint: removed); read, so the sidecar loads.
-		info.Removed = append(info.Removed, "Modules")
-	}
-	if sf.Cache != nil {
-		// cache: is gone too.
-		info.Removed = append(info.Removed, "Cache")
 	}
 	if sf.Outputs != nil {
 		info.setOutputs(*sf.Outputs, name+" outputs:")

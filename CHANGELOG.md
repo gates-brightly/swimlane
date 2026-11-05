@@ -93,6 +93,17 @@ history stays here, since `swim changelog --since` reads it.
   no longer shows a `scheduled` state; `swim verify` no longer checks a
   run's `scheduled_for` against its start (older chain entries keep the
   field, and their signatures still verify).
+- **swim lint's `removed` check.** It refused scripts that still used
+  what swim dropped long ago (`# Finally:`, `# Matrix:`, `# Modules:`,
+  `mod`, `swim secret`, outcome handlers, evidence steps); such a header
+  is now just an unknown header line. A manifest no longer hashes module
+  pins (no current lane has any).
+- **swim.yml's chime, chime_style, chime_min_s, schedule_tz, observe,
+  secrets_key, headless, hub and pause_warn.** No longer read: a swim.yml
+  that still sets one fails to load until the line is deleted.
+  `modules`, `secrets` and `ambient_credentials` are still read (they
+  count in the policy hash approvals are bound to), and `swim doctor`
+  still says to delete them.
 
 ### Changed
 

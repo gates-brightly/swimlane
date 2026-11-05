@@ -108,7 +108,6 @@ func TestEachCheck(t *testing.T) {
 		{name: "guard not listed", script: before(c, "stage verify\n", "if guard ALLOW_X \"x\"; then run \"x\" true; fi\n"), code: "guard-unlisted", level: finding.Error, message: "swim refuses it when it asks"},
 		{name: "guard named at run time", script: before(c, "stage verify\n", "if guard \"$FLAG\" \"x\"; then run \"x\" true; fi\n"), code: "guard-dynamic", level: finding.Error, message: "# Guards: *"},
 		{name: "guard not used", script: before(c, "# Timeout:", "# Guards: ALLOW_Z  never used\n"), code: "guard-unused", level: finding.Warn, line: 7},
-		{name: "Cache removed", script: before(c, "# Timeout:", "# Cache: terraform @infra/.terraform.lock.hcl\n"), code: "removed", level: finding.Error, line: 7, message: "# Cache: is gone"},
 		{name: "destructive outside guard", script: before(c, "stage verify\n", "run \"clean\" rm -rf build\n"), code: "destructive", level: finding.Warn},
 		{name: "destructive after else", script: replace(c, "fi\n", "else\n  run \"destroy\" terraform destroy\nfi\n"), code: "destructive", level: finding.Warn},
 		{name: "blocked from config", script: before(c, "stage verify\n", "run \"deploy\" make deploy-prod\n"), cfg: func(c *config.Config) { c.BlockedCommands = []string{"deploy-prod"} }, code: "blocked", level: finding.Error},
@@ -128,11 +127,6 @@ func TestEachCheck(t *testing.T) {
 		{name: "Requires with lanes", script: before(c, "# Timeout:", "# Requires: 2, 3\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # After:?"},
 		{name: "typo key", script: before(c, "# Timeout:", "# Lock: db\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Locks:?"},
 		{name: "swapped letters", script: before(c, "# Timeout:", "# Inlcudes: lib/x.sh\n"), code: "header-key", level: finding.Error, line: 7, message: "did you mean # Includes:?"},
-		{name: "removed header", script: before(c, "# Timeout:", "# Finally: 2\n"), code: "removed", level: finding.Error, line: 7, message: "# Finally:"},
-		{name: "Modules header", script: before(c, "# Timeout:", "# Modules: notify\n"), code: "removed", level: finding.Error, line: 7, message: "# Modules: is gone"},
-		{name: "evidence step", script: before(c, "stage verify\n", "evidence \"plan\" true\n"), code: "removed", level: finding.Error, message: "evidence steps are gone"},
-		{name: "mod call", script: before(c, "stage verify\n", "mod notify - \"done\"\n"), code: "removed", level: finding.Error, message: "mod calls a module"},
-		{name: "outcome handler", script: before(c, "stage snapshot\n", "on_failure() {\n  run \"undo\" true\n}\n"), code: "removed", level: finding.Error, line: 13, message: "on_failure"},
 		{name: "go vet on an empty stage", script: before(c, "stage verify\n", "run \"vet\" go vet ./...\n"), code: "workspace-empty", level: finding.Warn, line: 23, message: "checks nothing"},
 		{name: "gofmt in bash -c on an empty stage", script: before(c, "stage verify\n", "run \"fmt\" bash -c 'out=$(gofmt -s -l .); [ -z \"$out\" ]'\n"), code: "workspace-empty", level: finding.Warn, message: "gofmt"},
 		{name: "cross-lane read", script: before(c, "stage verify\n", "run \"read\" cat shared/report.json\n"), other: before(clean(2), "stage verify\n", "run \"fetch\" curl -fsS -o shared/report.json https://example.com\n"), code: "cross-lane", level: finding.Info, message: "lane.2.sh:23 writes"},
@@ -287,57 +281,6 @@ func TestKnownCodes(t *testing.T) {
 	}
 	if !KnownCode("set-e") || KnownCode("nope") {
 		t.Error("KnownCode")
-	}
-}
-
-// The secret store is gone: swim secret (bash, in a $(...) too) and an
-// SDK's secret.get are each an error; the words in quoted text aren't.
-func TestSecretStoreRemoved(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	c := clean(1)
-	for _, tc := range []struct{ name, line string }{
-		{"cli", "T=$(swim secret get gone)\n"},
-		{"cli in quotes", "T=\"$(swim secret get gone)\"\n"},
-		{"cli argument", "run \"query\" psql \"$(swim secret get PROD_DB)\" -c 'select 1'\n"},
-		{"python sdk", "t = swim.secret.get(\"gone\")\n"},
-		{"go sdk", "t, err := swim.Secret.Get(\"gone\")\n"},
-	} {
-		s := NewScript(1, before(c, "stage verify\n", tc.line))
-		if strings.HasSuffix(tc.name, "sdk") {
-			// An SDK lane: read as written (lane.1.py, lane.1.go).
-			s = NewScript(1, "# Round: sdk\n"+tc.line)
-			s.Name = "lane.1.py"
-		}
-		fs := lintScripts(cfg4(), map[int]*Script{1: s, 2: NewScript(2, clean(2))}, 1)
-		if len(fs) != 1 || fs[0].Code != "removed" || fs[0].Level != finding.Error || !strings.Contains(fs[0].Message, "swim secret is gone") {
-			t.Errorf("%s: %+v", tc.name, fs)
-		}
-	}
-	if fs := Lint(cfg4(), map[int]string{1: before(c, "stage verify\n", "echo 'swim secret get x'\n"), 2: clean(2)}, 1); len(fs) != 0 {
-		t.Errorf("quoted text: %+v", fs)
-	}
-}
-
-// Modules are gone: the header, mod and mod_env (bash) and an SDK's
-// module call are each an error; go mod download, and mod in quoted text,
-// aren't module calls.
-func TestModulesRemoved(t *testing.T) {
-	c := replace(before(clean(1), "# Timeout:", "# Modules: notify tf\n"), "# swim: syntax 2", "# swim: syntax 4")
-	c = before(c, "stage change\n", "run \"deps\" go mod download\nmod_env aws-session --profile p\necho \"mod notify x\"\n")
-	c = before(c, "summary\n", "mod --timeout 30s notify \"#c\" \"done\" && echo sent\n")
-	var lines []string
-	for _, f := range Lint(cfg4(), map[int]string{1: c, 2: clean(2)}, 1) {
-		if f.Code != "removed" || f.Level != finding.Error {
-			t.Errorf("finding: %+v", f)
-		}
-		lines = append(lines, fmt.Sprint(f.Line))
-	}
-	if len(lines) != 3 || lines[0] != "7" {
-		t.Errorf("removed findings on lines %v, want the header, mod_env and mod", lines)
-	}
-	py := "#!/usr/bin/env python3\n# swim: syntax 4\n# Round: r\nimport swim\nr = swim.lane()\nr.module(\"notify\", \"-\", \"hi\")\n"
-	if fs := Lint(cfg4(), map[int]string{1: py, 2: clean(2)}, 1); !strings.Contains(codes(fs), "removed") {
-		t.Errorf("an SDK module call: %+v", fs)
 	}
 }
 

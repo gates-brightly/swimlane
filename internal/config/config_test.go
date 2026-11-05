@@ -124,26 +124,21 @@ func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
 	}
 }
 
-// chime, observe, modules, guarded secrets, the hub, pause, the store and the cache were removed: a swim.yml
-// (read strictly) or config.yml that still sets their keys loads, and
+// modules and guarded secrets were removed: a swim.yml (read strictly)
+// that still sets their keys loads (they count in the policy hash), and
 // RemovedKeys names them for swim doctor.
-func TestRemovedChimeKeysStillLoad(t *testing.T) {
-	writeConfig(t, "defaults:\n  chime: true\n  chime_min_s: 30\n  secrets_key: ~/.ssh/id_ed25519\n  pause_warn: 4h\n  store_dir: off\n  cache_dir: ~/c\n  cache_max: 1GB\n")
+func TestRemovedPolicyKeysStillLoad(t *testing.T) {
 	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, RepoFileName), []byte("chime: failure\nchime_style: sound\nobserve:\n  slow_factor: 3\nmodules:\n  allow: [notify]\n"+
-		"secrets:\n  PROD_DB: { guard: ALLOW_DROP }\n  1x: { guard: 'not a flag', release: forever }\nambient_credentials: [prod-write]\n"+
-		"headless:\n  allow: [answer, run]\n  approvals: hub\nhub:\n  logs: stream\npause_warn: 2h\ncache_max: 2GB\n"), 0o644)
+	os.WriteFile(filepath.Join(root, RepoFileName), []byte("modules:\n  allow: [notify]\n"+
+		"secrets:\n  PROD_DB: { guard: ALLOW_DROP }\n  1x: { guard: 'not a flag', release: forever }\nambient_credentials: [prod-write]\n"), 0o644)
 	c, err := Load(root)
 	if err != nil {
 		t.Fatalf("a config with removed keys: %v", err)
 	}
-	if got := strings.Join(c.Repo.RemovedKeys(), ","); got != "chime,chime_style,observe,modules,secrets,ambient_credentials,headless,hub,pause_warn,cache_max" {
+	if got := strings.Join(c.Repo.RemovedKeys(), ","); got != "modules,secrets,ambient_credentials" {
 		t.Errorf("swim.yml removed keys: %q", got)
 	}
-	if got := strings.Join(c.Settings.RemovedKeys(), ","); got != "chime,chime_min_s,secrets_key,pause_warn,store_dir,cache_dir,cache_max" {
-		t.Errorf("config.yml removed keys: %q", got)
-	}
-	for _, k := range []string{"chime", "secrets_key", "pause_warn", "store_dir", "cache_dir"} {
+	for _, k := range []string{"modules", "secrets"} {
 		if _, err := c.Get(k); err == nil {
 			t.Errorf("swim config %s still answers", k)
 		}

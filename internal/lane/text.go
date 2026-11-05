@@ -149,27 +149,6 @@ func swimCall(cmd []Word) ([]Word, bool) {
 	return nil, false
 }
 
-// quotedThen reports whether line holds name in quotes ("name" or 'name'),
-// followed, past spaces, by the byte next: a call's arguments as a list,
-// ["swim", "stage", "check"] or ["evidence", ...].
-func quotedThen(line, name string, next byte) bool {
-	for _, q := range []string{`"`, `'`} {
-		pat := q + name + q
-		for from := 0; ; {
-			i := strings.Index(line[from:], pat)
-			if i < 0 {
-				break
-			}
-			rest := strings.TrimLeft(line[from+i+len(pat):], " \t")
-			if rest != "" && rest[0] == next {
-				return true
-			}
-			from += i + len(pat)
-		}
-	}
-	return false
-}
-
 // quotedAfter returns the quoted words that follow name in quotes and a
 // comma (["stage", "check"] gives "check").
 func quotedAfter(line, name string) []string {
