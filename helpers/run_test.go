@@ -78,7 +78,7 @@ func TestEveryCheckHasItsFunction(t *testing.T) {
 			}
 		}
 	}
-	for _, c := range Checks() {
+	for c := range checks {
 		if !defined[c] {
 			t.Errorf("check %s: no module documents a function %s", c, c)
 		}

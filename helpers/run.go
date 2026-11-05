@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -107,16 +106,6 @@ var checks = map[string]func(e *env, args []string) error{
 	"os_mac_gate":      func(e *env, args []string) error { return osGate(e, args, "darwin", "macOS") },
 	"os_linux_gate":    func(e *env, args []string) error { return osGate(e, args, "linux", "Linux") },
 	"tool_gate":        toolGate,
-}
-
-// Checks are the functions swim _helper runs, sorted.
-func Checks() []string {
-	var out []string
-	for k := range checks {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // Run runs check fn with args, its output to out: exit 0 when it passes,
