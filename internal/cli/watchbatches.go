@@ -821,7 +821,7 @@ func batchOutcome(root string, bp *batchProc) string {
 // A running lane: its stage, the step running (its ==> label) and for how
 // long; one that isn't: its state and the stage it got to.
 //
-//	swim 3 · stage change · ==> migrate · 0:42
+//	swim 3 · stage change · ==> migrate · 42s
 func (w *watchView) pins(lanes []int) func(color bool) []string {
 	return func(color bool) []string {
 		p := ui.Painter{On: color}
@@ -849,7 +849,7 @@ func (w *watchView) pins(lanes []int) func(color bool) []string {
 			}
 			line += stage
 			if sp, ok := step.ReadSpool(lane.Log(w.root, n)); ok {
-				line += " · " + p.Paint(ui.LaneColor(n)+ui.Bold, "==> "+ui.Safe(sp.Label)) + " · " + p.Paint(ui.Dim, display.Elapsed(sp.Elapsed()))
+				line += " · " + p.Paint(ui.LaneColor(n)+ui.Bold, "==> "+ui.Safe(sp.Label)) + " · " + p.Paint(ui.Dim, display.Duration(sp.Elapsed()))
 			} else if l != nil && l.CurrentStep != "" {
 				line += " · " + p.Paint(ui.LaneColor(n)+ui.Bold, "==> "+ui.Safe(l.CurrentStep))
 			} else {

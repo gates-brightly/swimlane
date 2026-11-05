@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -108,12 +109,7 @@ func word(state string) string {
 	return strings.ToUpper(state)
 }
 
-func dur(s float64) string {
-	d := int(s + 0.5)
-	return fmt.Sprintf("%d:%02d", d/60, d%60)
-}
-
-// Title is a lane's section title, e.g. "swim 3 PASS - Cut over (job 3f2a9c1e, 0:42)".
+// Title is a lane's section title, e.g. "swim 3 PASS - Cut over (job 3f2a9c1e, 42s)".
 func (r LaneReport) SectionTitle() string {
 	t := fmt.Sprintf("%s %s - %s", r.name(), word(r.State), r.Title)
 	var extra []string
@@ -121,7 +117,7 @@ func (r LaneReport) SectionTitle() string {
 		extra = append(extra, "job "+lane.ShortJob(r.Job))
 	}
 	if r.Round != nil {
-		extra = append(extra, dur(r.Duration))
+		extra = append(extra, display.Seconds(r.Duration))
 	}
 	if r.State == status.Skipped && r.Reason != "" {
 		extra = append(extra, r.Reason)
@@ -251,7 +247,7 @@ func Markdown(w io.Writer, reps []LaneReport, run, commit string, code int) {
 		}
 		t := ""
 		if r.Round != nil {
-			t = dur(r.Duration)
+			t = display.Seconds(r.Duration)
 		}
 		fmt.Fprintf(w, "| %s | `%s` | %s | %d | %d | %d | %s | %s |\n", r.name(), lane.ShortJob(r.Job), word(r.State),
 			pass, fail, skip, t, strings.Join(failed, "<br>"))

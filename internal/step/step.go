@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -324,9 +325,9 @@ func Run(o Options) (Result, error) {
 		retryable := a < attempts && last.exit != 0 && last.sig == nil && last.why != roundLimit &&
 			!(last.why == stepLimit && o.Retry.NoTimeout) &&
 			(len(o.Retry.On) == 0 || last.why == stepLimit || containsInt(o.Retry.On, last.exit))
-		outcome := fmt.Sprintf("exit %d (%.1fs)", last.exit, last.dur.Seconds())
+		outcome := fmt.Sprintf("exit %d (%s)", last.exit, display.Duration(last.dur))
 		if last.why == stepLimit {
-			outcome = fmt.Sprintf("stopped at the step limit %s (%.1fs)", o.StepTimeoutText, last.dur.Seconds())
+			outcome = fmt.Sprintf("stopped at the step limit %s (%s)", o.StepTimeoutText, display.Duration(last.dur))
 		}
 		if !retryable {
 			if attempts > 1 {
@@ -378,7 +379,7 @@ func Run(o Options) (Result, error) {
 	}
 
 	dur := time.Since(start)
-	ds := fmt.Sprintf("%.1fs", dur.Seconds())
+	ds := display.Duration(dur)
 	kind, detail := logparse.Pass, ""
 	switch last.why {
 	case roundLimit:
@@ -752,7 +753,7 @@ func RecordStep(logPath, kind, label, detail, cmdline string, start time.Time, d
 	if kind == logparse.Fail {
 		whyOf = func(out []string) string { return why.Of(out, "") }
 	}
-	if _, err := writeBlock(logPath, logparse.StepLine(kind, label, detail, fmt.Sprintf("%.1fs", dur.Seconds()), clock), "", whyOf); err != nil {
+	if _, err := writeBlock(logPath, logparse.StepLine(kind, label, detail, display.Duration(dur), clock), "", whyOf); err != nil {
 		return "", err
 	}
 	return logparse.ResultLine(kind, label, detail), nil
@@ -937,7 +938,7 @@ func (s *Spool) Elapsed() time.Duration {
 // step died).
 func (s *Spool) Block(detail string) []string {
 	out := []string{
-		logparse.StepLine(Running, s.Label, detail, fmt.Sprintf("%.1fs", s.Elapsed().Seconds()), s.Clock),
+		logparse.StepLine(Running, s.Label, detail, display.Duration(s.Elapsed()), s.Clock),
 		logparse.CmdPrefix + s.Cmd,
 	}
 	for _, l := range s.Output {

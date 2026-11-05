@@ -22,14 +22,14 @@ func TestNotifySummary(t *testing.T) {
 	if got := testNotify(cfg, t.TempDir()); got != "test failed: notify_command: exit status 3" {
 		t.Errorf("testNotify = %q", got)
 	}
-	if s := notifySummary(cfg, time.Now()); !strings.HasPrefix(s, "last send failed 0:00 ago: notify_command: exit status 3") {
+	if s := notifySummary(cfg, time.Now()); !strings.HasPrefix(s, "last send failed 0.0s ago: notify_command: exit status 3") {
 		t.Errorf("failed: %q", s)
 	}
 	cfg.NotifyCommand = "true"
 	if got := testNotify(cfg, t.TempDir()); !strings.HasPrefix(got, "test sent") {
 		t.Errorf("testNotify = %q", got)
 	}
-	if s := notifySummary(cfg, time.Now().Add(3*time.Minute)); s != "last sent 3:00 ago: swim: test" {
+	if s := notifySummary(cfg, time.Now().Add(3*time.Minute)); s != "last sent 3m 0s ago: swim: test" {
 		t.Errorf("sent: %q", s)
 	}
 }

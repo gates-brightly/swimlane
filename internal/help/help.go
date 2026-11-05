@@ -415,7 +415,7 @@ swim log --since <1h|TIME|RUN|JOB>
     - Header: swim version, provider, commit and branch, the lanes selected
       and why, and the guard flags set (names only, never values).
     - Live: plain output, every lane prefixed [N], step headers and results
-      included; "[N] still running: <step> (5m02s)" for a lane silent for
+      included; "[N] still running: <step> (5m 2s)" for a lane silent for
       --heartbeat (default 60s; 0 turns it off).
     - After the run: each lane's round log in its own section (::group:: on
       GitHub, collapsed sections on GitLab; failed lanes left open),

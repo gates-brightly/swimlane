@@ -79,9 +79,9 @@ func TestWatchRowsPutTookBesideAgo(t *testing.T) {
 		row[r.ID] = r.Text
 	}
 	for id, want := range map[string]string{
-		"lane:1": "1     passed     3h ago  took 4m12s r",
-		"lane:2": "2     failed     1m ago  took 3s    r",
-		"lane:3": "3     pending                       r", // no took: the column is blank
+		"lane:1": "1     passed     3h ago  took 4m 12s r",
+		"lane:2": "2     failed     1m ago  took 3.0s   r",
+		"lane:3": "3     pending                        r", // no took: the column is blank
 	} {
 		if !strings.HasPrefix(row[id], want) {
 			t.Errorf("%s: %q, want it to start %q", id, row[id], want)

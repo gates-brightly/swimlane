@@ -128,3 +128,44 @@ func TestParseEmpty(t *testing.T) {
 		t.Fatalf("r=%+v err=%v", r, err)
 	}
 }
+
+// Durations read back in every form swim has written: "1m 5s" (two
+// fields), "12s", "0.4s" and older logs' "65.0s"; a label that ends in
+// something like a duration keeps it.
+func TestDurationsReadBack(t *testing.T) {
+	log := "# swim lane log | syntax 2 | swim 1\n\n" +
+		"== ROUND 2026-10-09T12:00:00Z  job=j  t\n\n" +
+		StepLine(Pass, "short", "", "0.4s", "12:00:01") + "\n" +
+		StepLine(Pass, "sleep 2m", "", "12s", "12:00:02") + "\n" +
+		StepLine(Pass, "long", "", "1m 5s", "12:00:03") + "\n" +
+		StepLine(Pass, "longer", "", "1h 4m", "12:00:04") + "\n" +
+		"  PASS  old                                    65.0s  12:00:05\n" +
+		"\n== END PASS  pass=5 fail=0 skip=0  exit=0  1h 5m  2026-10-09T13:05:00Z  run=r-1\n"
+	r, err := Parse(strings.NewReader(log))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		label string
+		dur   float64
+	}{{"short", 0.4}, {"sleep 2m", 12}, {"long", 65}, {"longer", 3840}, {"old", 65}}
+	if len(r.Results) != len(want) {
+		t.Fatalf("results: %+v", r.Results)
+	}
+	for i, w := range want {
+		if got := r.Results[i]; got.Label != w.label || got.Dur != w.dur || !got.Step {
+			t.Errorf("result %d = %q %v, want %q %v", i, got.Label, got.Dur, w.label, w.dur)
+		}
+	}
+	if r.Duration != "1h 5m" {
+		t.Errorf("END duration = %q", r.Duration)
+	}
+	if d := r.Doc(1); d.Seconds == nil || *d.Seconds != 3900 {
+		t.Errorf("duration_s = %v", d.Seconds)
+	}
+	for _, bad := range []string{"", "5", "s", "1m5", "5s 1m", "1.5m", "1m 0.5s 1s", "-1s"} {
+		if _, ok := ParseDuration(bad); ok {
+			t.Errorf("ParseDuration(%q) ok", bad)
+		}
+	}
+}

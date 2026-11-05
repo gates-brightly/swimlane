@@ -13,7 +13,7 @@ func TestEndHeader(t *testing.T) {
 	}
 
 	passed := EndHeader(&FollowEnd{Result: "passed", Exit: &zero, Elapsed: 133 * time.Second}, 40, false)
-	if len(passed) != 1 || passed[0] != "== ✓ PASSED · 2:13 ==" {
+	if len(passed) != 1 || passed[0] != "== ✓ PASSED · 2m 13s ==" {
 		t.Errorf("passed, plain: %q", passed)
 	}
 

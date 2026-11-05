@@ -45,7 +45,7 @@ const maxEndDetails = 5
 
 // EndHeader is the header FollowPinned draws once what it follows has ended: a
 // full-width bar, green for passed, red for failed, yellow otherwise, then
-// the details. Without color the bar is "== FAILED · exit 1 · 2:13 ==".
+// the details. Without color the bar is "== FAILED · exit 1 · 2m 13s ==".
 func EndHeader(e *FollowEnd, cols int, color bool) []string {
 	if e == nil {
 		return nil
@@ -64,7 +64,7 @@ func EndHeader(e *FollowEnd, cols int, color bool) []string {
 		parts = append(parts, fmt.Sprintf("exit %d", *e.Exit))
 	}
 	if e.Elapsed > 0 {
-		parts = append(parts, Elapsed(e.Elapsed))
+		parts = append(parts, Duration(e.Elapsed))
 	}
 	text := strings.Join(parts, " · ")
 	var out []string

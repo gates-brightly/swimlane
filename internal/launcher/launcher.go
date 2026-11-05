@@ -317,7 +317,7 @@ func Run(o Options) (int, error) {
 		Plain: o.Plain || o.ev != nil,
 		Cap:   cap,
 		Title: func(now time.Time) string {
-			t := fmt.Sprintf("swim · %s · %s · %s", filepath.Base(o.Root), ref, display.Elapsed(now.Sub(start)))
+			t := fmt.Sprintf("swim · %s · %s · %s", filepath.Base(o.Root), ref, display.Duration(now.Sub(start)))
 			if n := ir.Notice(); n != "" {
 				t += " · " + n
 			}
@@ -478,7 +478,7 @@ func Run(o Options) (int, error) {
 		code = ExitDryRun
 	}
 	runDone := fmt.Sprintf("swim %s  passed=%d failed=%d skipped=%d interrupted=%d", joinInts(sel), counts[status.Passed], counts[status.Failed], counts[status.Skipped], counts[status.Interrupted])
-	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: runDone + "  " + display.Elapsed(time.Since(start))})
+	history.Log(o.Root, history.Entry{Event: history.RunDone, Run: o.RunID, Detail: runDone + "  " + display.Duration(time.Since(start))})
 	elapsed := time.Since(start)
 	printSummary(summaryOut, o.Root, sel, outcomes, start, elapsed, disp.Color())
 	stopped := ir.stopping()
@@ -715,19 +715,6 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 		}
 	}
 	now := time.Now()
-	disp.Set(n, func(v *display.LaneView) {
-		v.Exit, v.Finished = code, now
-		switch state {
-		case status.Passed:
-			v.State = display.Passed
-		case status.Skipped:
-			v.State, v.Reason = display.Skipped, reason
-		case status.Interrupted:
-			v.State = display.Interrupted
-		default:
-			v.State = display.Failed
-		}
-	})
 	// The lane script records its own final state. If it died before
 	// lane_init (syntax error, missing swim), record it here instead.
 	why := notStartedWhy(code, printed)
@@ -745,6 +732,21 @@ func finish(o Options, n int, disp *display.Display, started time.Time, startedT
 		l.ExitCode = status.Int(code)
 		l.Reason = "not started: " + why
 		l.FailedSteps = []string{logparse.ResultLine(logparse.Stop, "not started: "+why, "")}
+	})
+	// A round the script ended itself printed its own summary line: the
+	// display doesn't add another.
+	disp.Set(n, func(v *display.LaneView) {
+		v.Exit, v.Finished, v.Summarized = code, now, !died
+		switch state {
+		case status.Passed:
+			v.State = display.Passed
+		case status.Skipped:
+			v.State, v.Reason = display.Skipped, reason
+		case status.Interrupted:
+			v.State = display.Interrupted
+		default:
+			v.State = display.Failed
+		}
 	})
 	if !died && code > 128 {
 		closeKilledRound(o, n, code)
@@ -861,11 +863,11 @@ func printSummary(out io.Writer, root string, sel []int, outcomes map[int]*Outco
 		if oc.State == status.Skipped {
 			exit = "-" // the lane exited 0, but its work waits: swim run exits 3
 		}
-		fmt.Fprintf(out, "  %s %s %4s %5d %5d %5d %7s\n", label, res, exit, r.Pass, r.Fail, r.Skip, display.Elapsed(oc.Elapsed))
+		fmt.Fprintf(out, "  %s %s %4s %5d %5d %5d %7s\n", label, res, exit, r.Pass, r.Fail, r.Skip, display.Duration(oc.Elapsed))
 		if oc.State == status.Skipped {
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Yellow, oc.Reason))
 		}
-		for _, f := range r.Failed() {
+		for _, f := range r.Reasons() {
 			fmt.Fprintf(out, "  %-17s %s\n", "", p.Paint(ui.Red, f.Brief()))
 		}
 	}

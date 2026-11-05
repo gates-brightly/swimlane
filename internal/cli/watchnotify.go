@@ -97,7 +97,7 @@ func (n *watchNotes) batchDone(seq int, result string, lanes []int, took time.Du
 		n.fails++
 	}
 	n.mu.Unlock()
-	body := lanesText(lanes) + " · " + display.Elapsed(took)
+	body := lanesText(lanes) + " · " + display.Duration(took)
 	if result == "skipped" {
 		body += " · a guard dry-ran: it waits on an approval"
 	}

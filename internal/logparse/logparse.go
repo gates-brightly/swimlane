@@ -291,6 +291,30 @@ func (r *Round) Failed() []Result {
 	return out
 }
 
+// Reasons is Failed said once, for the summaries, status and .swim.log: a
+// STOP that only ends the round over a step that failed ("gate failed: X",
+// "hard failure: X" after FAIL X) is left out; one with a reason of its
+// own (a timeout, the operator) stays. The log's END keeps every one.
+func (r *Round) Reasons() []Result {
+	failed := r.Failed()
+	steps := map[string]bool{}
+	for _, f := range failed {
+		if f.Kind != Stop {
+			steps[f.Label] = true
+		}
+	}
+	var out []Result
+	for _, f := range failed {
+		if f.Kind == Stop {
+			if _, label, ok := strings.Cut(f.Label, ": "); ok && steps[label] && f.Detail == "" {
+				continue
+			}
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 // HandlerResults returns each handler that ran and its outcome: FAIL if a
 // step in it failed or it stopped, PASS if a step passed, else SKIP or none.
 func (r *Round) HandlerResults() []StageResult {
@@ -454,29 +478,62 @@ func RoundJob(line string) (string, bool) {
 	return job, ok
 }
 
-// timed splits a step's "label (detail)    1.2s  12:04:10" into the text,
-// its duration ("1.2s") and its clock time.
+// timed splits a step's "label (detail)    1m 5s  12:04:10" into the text,
+// its duration ("1m 5s") and its clock time.
 func timed(s string) (head, dur, clock string, ok bool) {
 	f := strings.Fields(s)
 	if len(f) < 3 {
 		return "", "", "", false
 	}
-	clock, dur = f[len(f)-1], f[len(f)-2]
+	clock = f[len(f)-1]
 	if len(clock) != 8 || clock[2] != ':' || clock[5] != ':' || !chars.Digits(clock[:2]) || !chars.Digits(clock[3:5]) || !chars.Digits(clock[6:]) {
 		return "", "", "", false
 	}
-	num, isDur := strings.CutSuffix(dur, "s")
-	whole, frac, dotted := strings.Cut(num, ".")
-	if !isDur || !chars.Digits(whole) || dotted && !chars.Digits(frac) {
-		return "", "", "", false
+	// The duration is one field ("0.4s", "12s") or two ("1m 5s", "1h 4m").
+	for _, k := range []int{2, 1} {
+		if len(f) < k+2 {
+			continue
+		}
+		dur = strings.Join(f[len(f)-1-k:len(f)-1], " ")
+		if _, isDur := ParseDuration(dur); !isDur {
+			continue
+		}
+		head = strings.TrimRight(s, " \t")
+		head = strings.TrimRight(strings.TrimSuffix(head, clock), " \t")
+		h, cut := strings.CutSuffix(head, dur)
+		if !cut || h == "" || !strings.ContainsAny(h[len(h)-1:], " \t") {
+			continue
+		}
+		return strings.TrimRight(h, " \t"), dur, clock, true
 	}
-	head = strings.TrimRight(s, " \t")
-	head = strings.TrimRight(strings.TrimSuffix(head, clock), " \t")
-	head, cut := strings.CutSuffix(head, dur)
-	if !cut || head == "" || !strings.ContainsAny(head[len(head)-1:], " \t") {
-		return "", "", "", false
+	return "", "", "", false
+}
+
+// ParseDuration reads a duration as swim writes it (display.Duration):
+// "0.4s", "12s", "1m 5s", "1h 4m", in seconds. Older logs' "65.0s" reads
+// too.
+func ParseDuration(s string) (float64, bool) {
+	parts := strings.Fields(s)
+	if len(parts) == 0 || len(parts) > 2 {
+		return 0, false
 	}
-	return strings.TrimRight(head, " \t"), dur, clock, true
+	units := map[byte]float64{'s': 1, 'm': 60, 'h': 3600}
+	var total float64
+	last := 4000.0 // each part's unit is smaller than the one before
+	for i, p := range parts {
+		unit, ok := units[p[len(p)-1]]
+		num := p[:len(p)-1]
+		whole, frac, dotted := strings.Cut(num, ".")
+		if !ok || unit >= last || whole == "" || !chars.Digits(whole) || dotted && (i != len(parts)-1 || unit != 1 || !chars.Digits(frac)) {
+			return 0, false
+		}
+		v, err := strconv.ParseFloat(num, 64)
+		if err != nil {
+			return 0, false
+		}
+		total, last = total+v*unit, unit
+	}
+	return total, true
 }
 
 // splitLabel separates "label (detail)": the detail is what follows the
@@ -524,7 +581,13 @@ func endV2(line string) (state string, exit int, dur string, ok bool) {
 	if !has || err != nil {
 		return "", 0, "", false
 	}
-	return f[0], exit, f[5], true
+	dur = f[5]
+	if len(f) > 6 {
+		if _, two := ParseDuration(f[5] + " " + f[6]); two {
+			dur = f[5] + " " + f[6]
+		}
+	}
+	return f[0], exit, dur, true
 }
 
 func parseV2(rd io.Reader) (*Round, error) {
@@ -602,7 +665,7 @@ func parseV2(rd io.Reader) (*Round, error) {
 			res := Result{Kind: kind, Stage: cur.Stage, Handler: cur.handler}
 			if head, dur, clock, ok := timed(rest); ok {
 				res.Step, rest, res.Clock = true, head, clock
-				res.Dur, _ = strconv.ParseFloat(strings.TrimSuffix(dur, "s"), 64)
+				res.Dur, _ = ParseDuration(dur)
 			}
 			res.Label, res.Detail = splitLabel(rest)
 			if strings.Contains(res.Detail, "interrupted") && res.Handler == "" {

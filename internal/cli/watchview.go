@@ -351,7 +351,7 @@ func (w *watchView) status() string {
 	if len(parts) == 0 {
 		parts = append(parts, "idle")
 	}
-	return strings.Join(parts, " · ") + " · " + display.Elapsed(time.Since(w.started))
+	return strings.Join(parts, " · ") + " · " + display.Duration(time.Since(w.started))
 }
 
 // askRows are the questions waiting for the operator, oldest first, each
@@ -377,7 +377,7 @@ func (w *watchView) askRows() (rows []display.PickRow, waiting map[int]watchAsk)
 			waiting[q.msg.Lane] = q
 		}
 		head := fmt.Sprintf("⚠ swim %d is blocked: waits for approval of %s  · batch #%d · %s  ·  y approve  n decline",
-			q.msg.Lane, approval.Clean(q.msg.Flag), q.seq, display.Took(now.Sub(q.since)))
+			q.msg.Lane, approval.Clean(q.msg.Flag), q.seq, display.Duration(now.Sub(q.since)))
 		rows = append(rows, display.PickRow{ID: q.key, Text: head, Color: ui.Yellow + ui.Bold})
 		lines := q.msg.Question
 		if len(lines) > 0 {
@@ -446,7 +446,7 @@ func laneTimer(l *status.Lane, state string, now time.Time) string {
 	switch l.State {
 	case status.Running, status.Waiting, status.Queued, status.Locked:
 		if d, ok := l.Ran(now); ok {
-			return display.Took(d)
+			return display.Duration(d)
 		}
 		return ""
 	}
@@ -461,7 +461,7 @@ func laneTimer(l *status.Lane, state string, now time.Time) string {
 func queueTimer(e *queue.Entry, state string, now time.Time) string {
 	if state == queue.Running && e.Worker != nil {
 		if t, err := time.Parse(time.RFC3339, e.Worker.Claimed); err == nil {
-			return display.Took(now.Sub(t))
+			return display.Duration(now.Sub(t))
 		}
 	}
 	if t, err := time.Parse(time.RFC3339, e.Created); err == nil {
@@ -475,11 +475,11 @@ func queueTimer(e *queue.Entry, state string, now time.Time) string {
 // operator; "" if neither is known.
 func roundTook(l *status.Lane) string {
 	if l.DurationS != nil && *l.DurationS >= 0 {
-		return display.Took(time.Duration(*l.DurationS * float64(time.Second)))
+		return display.Seconds(*l.DurationS)
 	}
 	if _, ok := statusTime(l.FinishedAt); ok {
 		if d, ok := l.Ran(time.Time{}); ok { // to its finish
-			return display.Took(d)
+			return display.Duration(d)
 		}
 	}
 	return ""

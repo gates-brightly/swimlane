@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
@@ -60,7 +61,7 @@ func golden(t *testing.T, name, got string) {
 
 func TestRenderPanelGolden(t *testing.T) {
 	views, now := fixture()
-	title := "swim · app · main@abc1234 · 1:12"
+	title := "swim · app · main@abc1234 · 1m 12s"
 	golden(t, "panel_plain.golden", strings.Join(RenderPanel(title, views, 80, now, false), "\n")+"\n")
 	golden(t, "panel_color.golden", strings.Join(RenderPanel(title, views, 80, now, true), "\n")+"\n")
 }
@@ -72,7 +73,7 @@ func TestRenderPanelContent(t *testing.T) {
 		t.Fatalf("got %d lines", len(lines))
 	}
 	all := strings.Join(lines, "\n")
-	for _, want := range []string{"swim 1", "swim 7", "Cut over service X to Terraform 3f2a9c1e", "⠹ waiting on swim 1 ", "waiting on swim 2, 3", "⠹ running 1:12", "PASS 1:00", "FAIL exit 2 0:30", "SKIP (swim 6 failed)", "idle"} {
+	for _, want := range []string{"swim 1", "swim 7", "Cut over service X to Terraform 3f2a9c1e", "⠹ waiting on swim 1 ", "waiting on swim 2, 3", "⠹ running 1m 12s", "PASS 1m 0s", "FAIL exit 2 30s", "SKIP (swim 6 failed)", "idle"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("panel missing %q:\n%s", want, all)
 		}
@@ -250,25 +251,30 @@ func TestPanelHidesPassedBeforeRunning(t *testing.T) {
 func TestSpan(t *testing.T) {
 	loc := time.Local
 	start := time.Date(2026, 10, 14, 14, 2, 10, 700e6, loc)
-	if got := Span(start, start.Add(89*time.Second)); got != "14:02:11 → 14:03:40 (1:29)" {
+	if got := Span(start, start.Add(89*time.Second)); got != "14:02:10 → 14:03:39 (1m 29s)" {
 		t.Errorf("span: %q", got)
 	}
-	// Times and duration agree, even under a second.
-	if got := Span(start, start.Add(600*time.Millisecond)); got != "14:02:11 → 14:02:11 (0:00)" {
+	// Clock times show the second each falls in; the duration is the real
+	// one, to a tenth.
+	if got := Span(start, start.Add(600*time.Millisecond)); got != "14:02:10 → 14:02:11 (0.6s)" {
 		t.Errorf("sub-second: %q", got)
 	}
 	late := time.Date(2026, 10, 14, 23, 59, 50, 0, loc)
-	if got := Span(late, late.Add(80*time.Second)); got != "Oct 14 23:59:50 → Oct 15 00:01:10 (1:20)" {
+	if got := Span(late, late.Add(80*time.Second)); got != "Oct 14 23:59:50 → Oct 15 00:01:10 (1m 20s)" {
 		t.Errorf("over midnight: %q", got)
 	}
 }
 
-func TestTookAndAgo(t *testing.T) {
+func TestDurationAndAgo(t *testing.T) {
 	for d, want := range map[time.Duration]string{
-		0: "0s", 42 * time.Second: "42s", 65 * time.Second: "1m5s", time.Hour + 4*time.Minute + 9*time.Second: "1h4m",
+		-time.Second: "0.0s", 0: "0.0s", 400 * time.Millisecond: "0.4s", 9940 * time.Millisecond: "9.9s", 9960 * time.Millisecond: "10s",
+		42 * time.Second: "42s", 59600 * time.Millisecond: "1m 0s", 65 * time.Second: "1m 5s", time.Hour + 4*time.Minute + 9*time.Second: "1h 4m",
 	} {
-		if got := Took(d); got != want {
-			t.Errorf("Took(%s) = %q, want %q", d, got, want)
+		if got := Duration(d); got != want {
+			t.Errorf("Duration(%s) = %q, want %q", d, got, want)
+		}
+		if s, ok := logparse.ParseDuration(Duration(d)); !ok || d >= 0 && d < time.Minute && (s-d.Seconds() > 0.5 || d.Seconds()-s > 0.5) {
+			t.Errorf("ParseDuration(%q) = %v, %v", Duration(d), s, ok)
 		}
 	}
 	for d, want := range map[time.Duration]string{

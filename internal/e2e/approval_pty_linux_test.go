@@ -62,11 +62,17 @@ func TestPromptStopsTheClock(t *testing.T) {
 	if l := r.status().Get(1); l == nil || l.PausedAt == "" {
 		t.Fatalf("lane 1 asks, but its clock runs: %+v", l)
 	}
-	// Leave it asking until the run's clock (the title's) shows 0:02: a
+	// Leave it asking until the run's clock (the title's) shows 2s: a
 	// wait long enough that a duration counting it couldn't pass below.
-	tr.waitScreen("the run's clock at 0:02", func(s string) bool {
+	tr.waitScreen("the run's clock at 2s", func(s string) bool {
 		first, _, _ := strings.Cut(s, "\n")
-		return strings.Contains(first, " 0:02")
+		_, clock, _ := strings.Cut(first, " · ")
+		for strings.Contains(clock, " · ") {
+			_, clock, _ = strings.Cut(clock, " · ")
+		}
+		clock, _, _ = strings.Cut(strings.TrimSpace(clock), "  ") // the key hints follow
+		secs, ok := logparse.ParseDuration(clock)
+		return ok && secs >= 2
 	})
 	tr.send("\r")
 	tr.waitFor("Y/N [N]")
