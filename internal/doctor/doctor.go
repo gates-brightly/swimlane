@@ -95,6 +95,7 @@ var Checks = []Check{
 	{"config-parse", false, "the config file doesn't load", checkConfigParse},
 	{"config-repo", false, "the config has no section for this repo", checkConfigRepo},
 	{"lanes-setting", false, "a `lanes:` setting (swim finds the lanes in use; it's ignored)", checkLanesSetting},
+	{"notify-failing", false, "the last notification sent to notify_url (or notify_command) failed", checkNotifyFailing},
 	{"removed-setting", false, "a setting swim no longer has (chime, schedule_tz, observe, modules, secrets, ambient_credentials, secrets_key, headless, hub, pause_warn; it's ignored)", checkRemovedSettings},
 	{"gitignore", true, "swim's .gitignore block is missing or out of date", checkGitignore},
 	{"tracked", false, "lane scripts or swim state tracked by git", checkTracked},

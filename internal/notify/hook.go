@@ -3,10 +3,12 @@ package notify
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,14 +17,15 @@ import (
 
 // Events a Note is about (SWIM_EVENT).
 const (
-	EventAsk = "ask" // a lane waits on the operator
-	EventEnd = "end" // a run or a batch ended
+	EventAsk  = "ask"  // a lane waits on the operator
+	EventEnd  = "end"  // a run or a batch ended
+	EventTest = "test" // swim config's t: is the hook working?
 )
 
 // Note is one notification, as a hook gets it: what the terminal shows
 // (Title, Body) and what a script would branch on.
 type Note struct {
-	Event  string // EventAsk or EventEnd
+	Event  string // EventAsk, EventEnd or EventTest
 	Result string // for EventEnd: passed, failed, interrupted, skipped (a guard dry-ran) or error
 	Title  string
 	Body   string
@@ -30,27 +33,47 @@ type Note struct {
 	Batch  int // swim watch's batch number (0: a swim run)
 }
 
+// NtfyCommand is what a Hook runs with notify_url and no notify_command:
+// the note as an ntfy message (title, priority, tags) POSTed to the URL.
+// --fail-with-body makes an HTTP error fail, with what the server said.
+const NtfyCommand = `curl -sS --fail-with-body -m 10 -H "Title: $SWIM_TITLE" -H "Priority: $SWIM_PRIORITY" -H "Tags: $SWIM_TAGS" -d "$SWIM_BODY" "$SWIM_NOTIFY_URL"`
+
 // hookTimeout is how long one hook command may take before it's killed.
 const hookTimeout = 15 * time.Second
 
-// Hook runs the operator's notify_command for each Note: `sh -c COMMAND` in
-// the repo root, with the Note in its environment (SWIM_EVENT, SWIM_RESULT,
-// SWIM_TITLE, SWIM_BODY, SWIM_LANES, SWIM_BATCH, SWIM_ROOT), so it can send
-// the note anywhere (curl to ntfy, a webhook, say). Commands run in the
-// background; Wait waits for them. A nil Hook runs nothing.
-type Hook struct {
-	cmd, root string
-	warn      func(string) // a command that failed, and why
-	running   sync.WaitGroup
+// HookConfig is what a Hook runs, and where it records how that went.
+type HookConfig struct {
+	Command string       // notify_command ("": NtfyCommand when URL is set)
+	URL     string       // notify_url, the command's SWIM_NOTIFY_URL
+	Root    string       // the repo: where the command runs
+	State   string       // where each send is recorded (StatePath; "": nowhere)
+	Warn    func(string) // hears of a send that failed (nil: nobody)
 }
 
-// NewHook returns the Hook for command in root (nil: no command). warn
-// hears of a command that failed or timed out (nil: nobody).
-func NewHook(command, root string, warn func(string)) *Hook {
-	if strings.TrimSpace(command) == "" {
+// Hook runs the operator's notify_command (or NtfyCommand, for notify_url)
+// for each Note: `sh -c COMMAND` in the repo root, with the Note in its
+// environment (SWIM_EVENT, SWIM_RESULT, SWIM_TITLE, SWIM_BODY, SWIM_LANES,
+// SWIM_BATCH, SWIM_ROOT, SWIM_PRIORITY, SWIM_TAGS, SWIM_NOTIFY_URL), so it
+// can send the note anywhere. Send runs it in the background; Wait waits
+// for those. A nil Hook runs nothing.
+type Hook struct {
+	c       HookConfig
+	setting string // the setting it comes from, for messages
+	running sync.WaitGroup
+}
+
+// NewHook returns the Hook c describes (nil: neither a command nor a URL).
+func NewHook(c HookConfig) *Hook {
+	c.Command, c.URL = strings.TrimSpace(c.Command), strings.TrimSpace(c.URL)
+	h := &Hook{c: c, setting: "notify_command"}
+	switch {
+	case c.Command != "":
+	case c.URL != "":
+		h.c.Command, h.setting = NtfyCommand, "notify_url"
+	default:
 		return nil
 	}
-	return &Hook{cmd: command, root: root, warn: warn}
+	return h
 }
 
 // Send starts the command for n and returns at once.
@@ -61,10 +84,23 @@ func (h *Hook) Send(n Note) {
 	h.running.Add(1)
 	go func() {
 		defer h.running.Done()
-		if err := h.run(n); err != nil && h.warn != nil {
-			h.warn(err.Error())
+		if err := h.SendNow(n); err != nil && h.c.Warn != nil {
+			h.c.Warn(err.Error())
 		}
 	}()
+}
+
+// SendNow runs the command for n and says how it went, recording that.
+func (h *Hook) SendNow(n Note) error {
+	if h == nil {
+		return errors.New("no notify_url or notify_command set")
+	}
+	err := h.run(n)
+	if err != nil {
+		err = fmt.Errorf("%s: %w", h.setting, err)
+	}
+	h.record(n, err)
+	return err
 }
 
 // Wait waits for the commands Send started (each ends by hookTimeout), so
@@ -79,9 +115,9 @@ func (h *Hook) Wait() {
 func (h *Hook) run(n Note) error {
 	ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", h.cmd)
-	cmd.Dir = h.root
-	cmd.Env = append(os.Environ(), n.env(h.root)...)
+	cmd := exec.CommandContext(ctx, "sh", "-c", h.c.Command)
+	cmd.Dir = h.c.Root
+	cmd.Env = append(os.Environ(), n.env(h.c.Root, h.c.URL)...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	// A child that keeps the output open (sh's curl, once sh is killed)
@@ -94,7 +130,7 @@ func (h *Hook) run(n Note) error {
 	if ctx.Err() != nil {
 		err = fmt.Errorf("killed after %s", hookTimeout)
 	}
-	msg := "notify_command: " + err.Error()
+	msg := err.Error()
 	if s := clean(out.String()); s != "" {
 		msg += ": " + truncate(s, 200)
 	}
@@ -102,7 +138,7 @@ func (h *Hook) run(n Note) error {
 }
 
 // env is n as the hook's environment: one line each, no controls.
-func (n Note) env(root string) []string {
+func (n Note) env(root, url string) []string {
 	lanes := make([]string, len(n.Lanes))
 	for i, l := range n.Lanes {
 		lanes[i] = strconv.Itoa(l)
@@ -111,6 +147,7 @@ func (n Note) env(root string) []string {
 	if n.Batch > 0 {
 		batch = strconv.Itoa(n.Batch)
 	}
+	priority, tags := n.urgency()
 	return []string{
 		"SWIM_EVENT=" + n.Event,
 		"SWIM_RESULT=" + n.Result,
@@ -119,7 +156,30 @@ func (n Note) env(root string) []string {
 		"SWIM_LANES=" + strings.Join(lanes, ","),
 		"SWIM_BATCH=" + batch,
 		"SWIM_ROOT=" + root,
+		"SWIM_PRIORITY=" + priority,
+		"SWIM_TAGS=" + tags,
+		"SWIM_NOTIFY_URL=" + url,
 	}
+}
+
+// urgency is n's ntfy priority and tag (an emoji's name): high for what
+// needs the operator (a question, a failure), default otherwise.
+func (n Note) urgency() (priority, tags string) {
+	switch {
+	case n.Event == EventAsk:
+		return "high", "question"
+	case n.Event == EventTest:
+		return "default", "bell"
+	}
+	switch n.Result {
+	case "passed":
+		return "default", "white_check_mark"
+	case "skipped":
+		return "default", "pause_button"
+	case "interrupted":
+		return "high", "stop_sign"
+	}
+	return "high", "x"
 }
 
 func truncate(s string, n int) string {
@@ -127,4 +187,67 @@ func truncate(s string, n int) string {
 		return string(r[:n]) + "…"
 	}
 	return s
+}
+
+// Sent is the record of the last send on this machine (StatePath).
+type Sent struct {
+	At    time.Time `json:"at"`
+	Event string    `json:"event"`
+	Title string    `json:"title"`
+	Repo  string    `json:"repo"`
+	Error string    `json:"error,omitempty"` // "" when it went
+}
+
+// StatePath is where the last send is recorded: one file per machine,
+// $XDG_STATE_HOME/swim/notify.json (~/.local/state/swim/notify.json).
+func StatePath() string {
+	if x := os.Getenv("XDG_STATE_HOME"); x != "" {
+		return filepath.Join(x, "swim", "notify.json")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "swim", "notify.json")
+}
+
+// LastSent reads the record at path (nil when nothing was sent yet).
+func LastSent(path string) (*Sent, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	var s Sent
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return &s, nil
+}
+
+// record writes how sending n went (the last send wins; best effort: a
+// record that can't be written changes nothing sent).
+func (h *Hook) record(n Note, err error) {
+	if h.c.State == "" {
+		return
+	}
+	s := Sent{At: time.Now().UTC(), Event: n.Event, Title: clean(n.Title), Repo: h.c.Root}
+	if err != nil {
+		s.Error = err.Error()
+	}
+	data, _ := json.MarshalIndent(s, "", "  ")
+	if os.MkdirAll(filepath.Dir(h.c.State), 0o755) != nil {
+		return
+	}
+	// Written whole, then renamed: swims sending at once never leave half
+	// a record.
+	tmp, terr := os.CreateTemp(filepath.Dir(h.c.State), ".notify-*.json")
+	if terr != nil {
+		return
+	}
+	_, werr := tmp.Write(append(data, '\n'))
+	if cerr := tmp.Close(); werr != nil || cerr != nil || os.Rename(tmp.Name(), h.c.State) != nil {
+		os.Remove(tmp.Name())
+	}
 }

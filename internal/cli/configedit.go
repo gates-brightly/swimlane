@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	configEditHints = "↑↓ move · Enter ←→ change · d default · q quit"
-	configEditKeys  = "dqhl " + string(display.PickEnter) + string(display.PickEsc) + string(display.PickLeft) + string(display.PickRight)
+	configEditHints = "↑↓ move · Enter ←→ change · d default · t test notify · q quit"
+	configEditKeys  = "dqhlt " + string(display.PickEnter) + string(display.PickEsc) + string(display.PickLeft) + string(display.PickRight)
 )
 
 // cmdConfigEdit is swim config on a terminal: every setting on one
@@ -74,6 +74,16 @@ func cmdConfigEdit() error {
 		}
 		if res.Key == 'q' || res.Key == display.PickEsc {
 			return nil
+		}
+		if res.Key == 't' {
+			// The notification as swim run here would send it now.
+			cfg, err := config.Load(root)
+			if err != nil {
+				p.Note = err.Error()
+				continue
+			}
+			p.Note = testNotify(cfg, root)
+			continue
 		}
 		cur, err := config.DefaultsIn(path)
 		if err != nil {
@@ -186,6 +196,16 @@ func configEditRows(path, root string) []display.PickRow {
 			text += "  · this repo uses " + st.repo
 		}
 		rows = append(rows, display.PickRow{ID: st.key, Text: text, Color: color})
+		if st.key == "notify_command" && here != nil {
+			// How the last notification went: is the endpoint working?
+			if sum := notifySummary(here, time.Now()); sum != "" {
+				c := ui.Dim
+				if strings.HasPrefix(sum, "last send failed") {
+					c = ui.Red
+				}
+				rows = append(rows, display.PickRow{Text: fmt.Sprintf("%-17s %s · t sends a test", "", sum), Color: c})
+			}
+		}
 	}
 	return rows
 }

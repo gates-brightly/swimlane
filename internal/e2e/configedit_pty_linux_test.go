@@ -76,7 +76,7 @@ func TestConfigEdit(t *testing.T) {
 	tr.send("\r") // Esc closes the field, not swim config
 	tr.waitFor("Enter saves")
 	tr.send("\x1b")
-	tr.waitFor("d default · q quit")
+	tr.waitFor("d default · t test notify · q quit")
 	tr.send("q")
 	if code, _ := tr.wait(); code != 0 {
 		t.Errorf("exit %d", code)

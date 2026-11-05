@@ -51,6 +51,17 @@ history stays here, since `swim changelog --since` reads it.
   `SWIM_BATCH`, `SWIM_ROOT`), so one `curl` sends it to ntfy, a webhook
   or a chat. It runs with or without a terminal, independent of `notify`;
   each is killed after 15s, and a failure is a `warn` line in `.swim.log`.
+- **`notify_url`: notifications to ntfy, with one short setting.** `swim
+  config notify_url https://ntfy.sh/TOPIC` (or the config screen) sends
+  them as ntfy messages, with curl: the title, `high` priority for a
+  question or a failure, and a tag for how it ended. `notify_command`
+  still wins when set, with the URL as `$SWIM_NOTIFY_URL`, and has
+  `SWIM_PRIORITY` and `SWIM_TAGS` too. Neither may be set in swim.yml.
+- **You can see whether notifications are getting through.** Each send is
+  recorded (`~/.local/state/swim/notify.json`): `swim config`'s screen
+  shows the last under the notify keys, in red when it failed, and `t`
+  sends a test; plain `swim config` prints it as `notify_sent:`, and
+  `swim doctor` warns (`notify-failing`) while the last send failed.
 
 ## 0.20261105.2 (v0.20261105.2, 2026-11-05)
 

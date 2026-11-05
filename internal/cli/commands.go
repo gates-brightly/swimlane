@@ -23,6 +23,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/launcher"
 	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/lookup"
+	"github.com/gates-brightly/swimlane/internal/notify"
 	"github.com/gates-brightly/swimlane/internal/queue"
 	"github.com/gates-brightly/swimlane/internal/sign"
 	"github.com/gates-brightly/swimlane/internal/status"
@@ -225,6 +226,9 @@ func configDoc(cfg *config.Config) string {
 	b.WriteString("blocked_commands:            # no lane command may contain these\n")
 	for _, bl := range cfg.Blocked() {
 		fmt.Fprintf(&b, "  - %q\n", bl)
+	}
+	if sum := notifySummary(cfg, time.Now()); sum != "" {
+		fmt.Fprintf(&b, "notify_sent: %q   # %s\n", sum, notify.StatePath())
 	}
 	if !cfg.HasRepo {
 		b.WriteString("# no section for this repo; run `swim init` to add one\n")

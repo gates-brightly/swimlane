@@ -71,7 +71,8 @@ type Settings struct {
 	ClaimLease         string   `yaml:"claim_lease,omitempty"`          // a lane claim (swim new, swim claim) lasts this long unless refreshed (default 2h)
 	WatchBatches       int      `yaml:"watch_batches,omitempty"`        // batches one swim watch runs at once (default 4)
 	Notify             *bool    `yaml:"notify,omitempty"`               // terminal notifications and a progress bar (OSC 777, OSC 9;4; default off)
-	NotifyCommand      string   `yaml:"notify_command,omitempty"`       // sh -c this for each notification, with SWIM_EVENT, SWIM_TITLE, ...; config.yml only
+	NotifyURL          string   `yaml:"notify_url,omitempty"`           // ntfy-style URL each notification is POSTed to (with curl); config.yml only
+	NotifyCommand      string   `yaml:"notify_command,omitempty"`       // sh -c this for each notification instead, with SWIM_EVENT, SWIM_TITLE, ...; config.yml only
 	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim); config.yml only
 	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
 	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
@@ -190,10 +191,12 @@ func Load(root string) (*Config, error) {
 			// swim.yml mustn't turn the operator's record off.
 			return nil, fmt.Errorf("%s: store_dir: belongs in %s, not the repo's swim.yml", path, c.Path)
 		}
-		if s.NotifyCommand != "" {
-			// And what runs on the operator's machine outside any lane: a
-			// committed swim.yml mustn't run a command no guard sees.
-			return nil, fmt.Errorf("%s: notify_command: belongs in %s, not the repo's swim.yml", path, c.Path)
+		if s.NotifyCommand != "" || s.NotifyURL != "" {
+			// And what runs on the operator's machine outside any lane, and
+			// where it sends what swim does: a committed swim.yml mustn't
+			// run a command no guard sees, or send the operator's
+			// notifications elsewhere.
+			return nil, fmt.Errorf("%s: notify_command: and notify_url: belong in %s, not the repo's swim.yml", path, c.Path)
 		}
 	}
 	if repo, ok := lookupRepo(f.Repos, root); ok {
@@ -391,6 +394,9 @@ func (c *Config) merge(r Settings) {
 	}
 	if r.Notify != nil {
 		c.Notify = r.Notify
+	}
+	if r.NotifyURL != "" {
+		c.NotifyURL = r.NotifyURL
 	}
 	if r.NotifyCommand != "" {
 		c.NotifyCommand = r.NotifyCommand

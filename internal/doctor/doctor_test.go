@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"github.com/gates-brightly/swimlane/internal/notify"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -263,5 +264,30 @@ func TestSigningKey(t *testing.T) {
 	o.Cfg.Signing = config.SigningOff
 	if fs := checkSigningKey(o); len(fs) != 0 {
 		t.Errorf("signing off: %+v", fs)
+	}
+}
+
+// A failed last notification warns, while notify_url or notify_command is
+// set; one that went, or none sent, doesn't.
+func TestNotifyFailing(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	o := opts(t.TempDir())
+	o.Cfg.NotifyURL = "https://ntfy.example/zach"
+	if l := only(Run(o), "notify-failing"); len(l) != 0 {
+		t.Errorf("nothing sent: %+v", l)
+	}
+	h := notify.NewHook(notify.HookConfig{Command: "echo unreachable >&2; exit 6", Root: o.Root, State: notify.StatePath()})
+	h.SendNow(notify.Note{Event: notify.EventTest, Title: "swim: test"})
+	if l := only(Run(o), "notify-failing"); len(l) != 1 || !strings.Contains(l[0].Message, "exit status 6: unreachable") {
+		t.Errorf("a failed send: %+v", l)
+	}
+	o.Cfg.NotifyURL = ""
+	if l := only(Run(o), "notify-failing"); len(l) != 0 {
+		t.Errorf("nothing set: %+v", l)
+	}
+	o.Cfg.NotifyCommand = "true"
+	notify.NewHook(notify.HookConfig{Command: "true", Root: o.Root, State: notify.StatePath()}).SendNow(notify.Note{Title: "swim run passed"})
+	if l := only(Run(o), "notify-failing"); len(l) != 0 {
+		t.Errorf("the last send went: %+v", l)
 	}
 }

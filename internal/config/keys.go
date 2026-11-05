@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,7 +18,7 @@ import (
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_command", "cache_dir", "cache_max", "cache_slug", "store_dir"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command", "cache_dir", "cache_max", "cache_slug", "store_dir"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -48,6 +49,8 @@ func (c *Config) Get(key string) (string, error) {
 		return strconv.Itoa(c.WatchBatchesFor()), nil
 	case "notify":
 		return strconv.FormatBool(c.NotifyOn()), nil
+	case "notify_url":
+		return c.NotifyURL, nil
 	case "notify_command":
 		return c.NotifyCommand, nil
 	case "cache_dir":
@@ -178,6 +181,12 @@ func keyValue(key, value string) (*yaml.Node, error) {
 			return nil, fmt.Errorf("notify must be true or false, got %q", value)
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(v)}, nil
+	case "notify_url":
+		v := strings.TrimSpace(value)
+		if u, err := url.Parse(v); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, fmt.Errorf("notify_url must be an http(s) URL, e.g. https://ntfy.sh/TOPIC, got %q", value)
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "notify_command":
 		v := strings.TrimSpace(value)
 		if v == "" {
@@ -435,6 +444,10 @@ func Hint(key string) string {
 		return "size: 500MB, 10GB"
 	case "signing_key":
 		return "SSH key path (.pub for ssh-agent)"
+	case "notify_url":
+		return "URL: https://ntfy.sh/TOPIC"
+	case "notify_command":
+		return "shell command (instead of notify_url)"
 	}
 	return ""
 }

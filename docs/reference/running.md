@@ -64,32 +64,44 @@ under it, prefixed `[N]`. With more than one lane:
 you or a run ends, and a progress bar on the terminal tab (OSC 777, OSC
 9;4, as Ghostty shows them).
 
-`notify_command` runs a command of yours at the same moments (a lane
-waits on you, a run or a `swim watch` batch ends), whether or not there's
-a terminal: `sh -c` in the repo root, with the notification in its
-environment. Use it to reach your phone, a webhook or a chat:
+`notify_url` sends the same notifications (a lane waits on you, a run or
+a `swim watch` batch ends) to an [ntfy](https://ntfy.sh) topic, whether
+or not there's a terminal, to reach your phone:
 
 ```yaml
 defaults:
-  notify_command: >-
-    curl -s -H "Title: $SWIM_TITLE" -H "Tags: $SWIM_RESULT"
-    -H "Priority: $([ "$SWIM_RESULT" = failed ] || [ "$SWIM_EVENT" = ask ] && echo high || echo default)"
-    -d "$SWIM_BODY" https://ntfy.example.com/swim
+  notify_url: https://ntfy.example.com/swim
 ```
+
+Each is an ntfy message: its title, `high` priority for a question or a
+failure, and a tag for how it ended, sent with `curl`.
+
+`notify_command` runs a command of yours instead, for anything else (a
+webhook, a chat): `sh -c` in the repo root, with the notification in its
+environment, and `notify_url` as `$SWIM_NOTIFY_URL`:
 
 | Variable | |
 |---|---|
-| `SWIM_EVENT` | `ask` (a lane waits on you) or `end` (a run or batch ended). |
+| `SWIM_EVENT` | `ask` (a lane waits on you), `end` (a run or batch ended) or `test` (`t` on `swim config`'s screen). |
 | `SWIM_RESULT` | For `end`: `passed`, `failed`, `interrupted`, `skipped` (a guard dry-ran: it waits on an approval) or `error`. |
 | `SWIM_TITLE`, `SWIM_BODY` | What the terminal notification says, one line each. |
 | `SWIM_LANES` | The lanes, `1,2,3`. |
 | `SWIM_BATCH` | `swim watch`'s batch number (empty for `swim run`). |
 | `SWIM_ROOT` | The repo. |
+| `SWIM_PRIORITY`, `SWIM_TAGS` | ntfy's: `high` for a question or a failure (else `default`), and an emoji's name for how it ended. |
+| `SWIM_NOTIFY_URL` | `notify_url`. |
 
-Quote the variables: the body carries a lane's own text. Each command is
-killed after 15s; swim waits for it before exiting, and one that fails is
-a `warn` line in `.swim.log`. It belongs in `config.yml`, never a repo's
-`swim.yml`: a committed file mustn't run a command no guard sees.
+Quote the variables: the body carries a lane's own text. Each send is
+killed after 15s; swim waits for it before exiting.
+
+Whether it's working: each send is recorded in
+`~/.local/state/swim/notify.json` (`$XDG_STATE_HOME`). `swim config`
+shows the last under the two keys (`last sent 3:00 ago: swim run passed`,
+or why it failed), and `t` on its screen sends a test; `swim doctor` warns
+(`notify-failing`) while the last send failed, and each failure is also a
+`warn` line in the repo's `.swim.log`. Both keys belong in `config.yml`,
+never a repo's `swim.yml`: a committed file mustn't run a command no
+guard sees, or send your notifications elsewhere.
 
 ## Interrupts
 
