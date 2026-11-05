@@ -1,12 +1,10 @@
 package cli
 
 import (
-	"os"
 	"testing"
 )
 
 func TestConfigShown(t *testing.T) {
-	home, _ := os.UserHomeDir()
 	for _, c := range []struct{ key, v, want string }{
 		{"term_grace", "10s", "10s"},
 		{"queue_lease", "2m0s", "2m"},
