@@ -59,7 +59,7 @@ func leakNeedles() map[string]string {
 var leakInventory = []struct{ what, re string }{
 	{"lane scripts (the test's own)", `^repo/(lane\.\d+\.(sh|py)|\.gitignore|\.swim\.lock)$`},
 	{"the project log", `^repo/\.swim\.log$`},
-	{"lane logs", `^repo/\.swim/logs/agent\d+(\.prev-[^/]+)?(\.check)?\.log$`},
+	{"lane logs", `^repo/\.swim/logs/lane\d+(\.prev-[^/]+)?(\.check)?\.log$`},
 	{"archived logs", `^repo/\.swim/logs/archive/`},
 	{"status", `^repo/\.swim/status\.yml$`},
 	{"staged lane copies and their manifests", `^repo/\.swim/runs/r-[^/]+/\d+(/|\.manifest\.yml$)`},

@@ -453,7 +453,7 @@ step "never" true`)
 	}
 
 	log := r.log(1)
-	contains(t, "lane1.log", log, "# swim log | syntax 4 | swim 1", "== ROUND ", "  Lane one\n", "  PASS  snapshot: state", "        saved: .swim/snapshots/lane1-", "  PASS  slow", "== END PASS", "exit=0")
+	contains(t, "lane1.log", log, "# swim log | syntax 4 | lane 1", "== ROUND ", "  Lane one\n", "  PASS  snapshot: state", "        saved: .swim/snapshots/lane1-", "  PASS  slow", "== END PASS", "exit=0")
 	snaps, _ := filepath.Glob(filepath.Join(r.root, ".swim", "snapshots", "lane1-*-state.txt"))
 	if len(snaps) != 1 {
 		t.Fatalf("snapshots: %v", snaps)
@@ -612,12 +612,12 @@ func TestAfterPinnedToJob(t *testing.T) {
 	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: root-jo\n", 1)), 0o755)
 
 	// A prefix shorter than 8 characters doesn't resolve.
-	if out, code := r.swim("run", "2"); code == 0 || !strings.Contains(out, "no lane holds or last ran job root-jo") {
+	if out, code := r.swim("run", "2"); code == 0 || !strings.Contains(out, "no lane holds or last ran round root-jo") {
 		t.Fatalf("short ref: %d %s", code, out)
 	}
 	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: root-job-0001\n", 1)), 0o755)
 	// The pinned job hasn't run: lane 2 alone is skipped.
-	if out, code := r.swim("run", "2"); code != 1 || !strings.Contains(out, "lane 1 (job root-job) has not passed") {
+	if out, code := r.swim("run", "2"); code != 1 || !strings.Contains(out, "lane 1 (round-id root-job) has not passed") {
 		t.Fatalf("unrun pinned dep: %d %s", code, out)
 	}
 	r.mustSwim("run", "1")
@@ -1000,7 +1000,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 	out := r.mustSwim("run", job[:8])
 	contains(t, "pinned run", out, "tag="+job, job[:8])
 	log := r.log(1)
-	contains(t, "lane1.log", log, "  job="+job+"  pinned round", "| tag="+job)
+	contains(t, "lane1.log", log, "  round-id="+job+"  pinned round", "| tag="+job)
 	if l := r.status().Get(1); l.Job != job || l.State != status.Passed {
 		t.Errorf("status after run: %+v", l)
 	}
@@ -1008,7 +1008,7 @@ func TestJobIDsAndPinning(t *testing.T) {
 
 	// Rewriting the lane replaces the job; the old pin must refuse to run.
 	r.newLane("1", "different round", "--force", "--round-id", "orders-cutover-2")
-	if out, code := r.swim("run", job); code == 0 || !strings.Contains(out, "no lane holds job") || !strings.Contains(out, "orders-cutover-2") {
+	if out, code := r.swim("run", job); code == 0 || !strings.Contains(out, "no lane holds round") || !strings.Contains(out, "orders-cutover-2") {
 		t.Errorf("stale pin: %d %s", code, out)
 	}
 	// Custom ids must be unique across lanes.
@@ -1031,7 +1031,7 @@ func TestScriptWithoutJobLineGetsOne(t *testing.T) {
 	r.script(1, "no job line", `step "x" true`)
 	r.mustSwim("run", "1")
 	l := r.status().Get(1)
-	if len(l.Job) != 36 || !strings.Contains(r.log(1), "job="+l.Job) {
+	if len(l.Job) != 36 || !strings.Contains(r.log(1), "round-id="+l.Job) {
 		t.Fatalf("generated job: %+v\n%s", l, r.log(1))
 	}
 }
@@ -1135,7 +1135,7 @@ func TestLogCommand(t *testing.T) {
 	if out, code := r.swim("log", "2"); code == 0 || !strings.Contains(out, "no current log") {
 		t.Errorf("log 2: %d %s", code, out)
 	}
-	if out, code := r.swim("log", "nosuchjob1"); code == 0 || !strings.Contains(out, "no log holds a round of job or run nosuchjob1") {
+	if out, code := r.swim("log", "nosuchjob1"); code == 0 || !strings.Contains(out, "no log holds round or run nosuchjob1") {
 		t.Errorf("log unknown job: %d %s", code, out)
 	}
 }
@@ -1202,7 +1202,7 @@ func TestLanesInUse(t *testing.T) {
 // A .swim.lock an older swim wrote is ignored.
 func TestVersionAndOldLock(t *testing.T) {
 	r := newRepo(t)
-	if out := r.mustSwim("--version"); !regexp.MustCompile(`^lane 0\.(\d{8}|dev)(\.\d+)?`).MatchString(out) || strings.Contains(out, "warning") {
+	if out := r.mustSwim("--version"); !regexp.MustCompile(`^swim 0\.(\d{8}|dev)(\.\d+)?`).MatchString(out) || strings.Contains(out, "warning") {
 		t.Errorf("--version = %q", out)
 	}
 	r.script(1, "one", `step "ok" true`)
@@ -1392,20 +1392,20 @@ func TestParallelLimit(t *testing.T) {
 	run := start(t, r.cmd(bin, "all", "--parallel", "3", "--plain"), nil)
 	// Three are inside their step at once, holding until released; the
 	// rest wait for a slot.
-	waitFor(t, func() bool { return inside(r) == 3 && states(r, 10)[status.Queued] == 7 })
+	waitFor(t, func() bool { return inside(r) == 3 && states(r, 10)[status.Waiting] == 7 })
 	r.release("go")
 	if code := run.wait(t); code != 0 {
 		t.Fatalf("run: exit %d\n%s", code, run.out.String())
 	}
 	noOverlaps(t, r)
 	s := run.out.String()
-	contains(t, "output", s, "queued (", "swim summary")
+	contains(t, "output", s, "waiting for a slot (", "swim summary")
 	for n := 1; n <= 10; n++ {
 		if st := r.status().Get(n).State; st != status.Passed {
 			t.Errorf("lane %d = %s", n, st)
 		}
 	}
-	contains(t, ".swim.log", r.mustSwim("log"), "max_parallel=3", "queued       swim ")
+	contains(t, ".swim.log", r.mustSwim("log"), "max_parallel=3", "waiting      lane ")
 
 	// Config sets the default; --parallel 0 lifts it: all ten at once.
 	cfg := filepath.Join(strings.TrimPrefix(envOf(r, "XDG_CONFIG_HOME"), ""), "swim", "config.yml")

@@ -20,11 +20,12 @@ func TestArchiveDone(t *testing.T) {
 
 	out := r.mustSwim("archive", "--passed", "shipped")
 	contains(t, "archive --passed", out, "lane1.prev-", "lane2.prev-", "lane3.prev-", "kept lane.3.sh: changed since its round ran")
-	if strings.Contains(out, "agent4") {
+	if strings.Contains(out, "lane4.prev") {
 		t.Errorf("the failed lane was archived:\n%s", out)
 	}
-	for _, n := range []int{1, 2, 3} {
-		if l := r.status().Get(n); l.State != "empty" || !strings.HasPrefix(l.LastArchive, "lane") {
+	// Lanes 1 and 2 hold a stub now: empty. Lane 3 kept its new round: ready.
+	for n, want := range map[int]string{1: "empty", 2: "empty", 3: "ready"} {
+		if l := r.status().Get(n); l.State != want || !strings.HasPrefix(l.LastArchive, "lane") {
 			t.Errorf("lane %d after archive --passed: %s %q", n, l.State, l.LastArchive)
 		}
 	}
@@ -39,7 +40,7 @@ func TestArchiveDone(t *testing.T) {
 	if !strings.Contains(readFile(t, r, "lane.3.sh"), "three again") {
 		t.Error("lane.3.sh, edited since its round, was replaced")
 	}
-	contains(t, "status", r.mustSwim("status", "1"), "stub: shipped")
+	contains(t, "status", r.mustSwim("status", "1"), "note: shipped")
 	log := r.mustSwim("log")
 	contains(t, "log", log, "archive", "shipped")
 	if strings.Contains(log, "  stub  ") {

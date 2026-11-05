@@ -252,7 +252,7 @@ func TestWatchStreamsRunningOutput(t *testing.T) {
 		return strings.Contains(s, "── Running") && strings.Contains(s, "[1]   RUNNING  hold") && strings.Contains(s, "[2]   RUNNING  hold") &&
 			strings.Contains(s, "lane1-hello") && strings.Contains(s, "lane2-hello")
 	})
-	contains(t, "the main screen", s, "Jobs", "Queue", "o stream")
+	contains(t, "the main screen", s, "Lanes", "Queue", "o stream")
 	tr.send("o")
 	tr.waitScreen("stream hidden", func(s string) bool {
 		return strings.Contains(s, "running output hidden") && !strings.Contains(s, "lane1-hello")

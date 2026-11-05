@@ -268,7 +268,7 @@ func pad(s string, w int) string {
 	return s
 }
 
-const stateWidth = 26
+const stateWidth = 30
 
 // MaxRows is the most lane rows the pinned panel shows. With more lanes,
 // it shows MaxRows-1 of them plus a line counting the hidden ones.

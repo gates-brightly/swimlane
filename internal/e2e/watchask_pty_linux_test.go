@@ -29,8 +29,8 @@ func TestWatchAsksForBatchGuards(t *testing.T) {
 	r.mustSwim("queue", "add", "2")
 	tr := r.startTUI(nil, "watch", "--batches", "2")
 	s := tr.waitScreen("both questions", func(s string) bool {
-		return strings.Contains(s, "⚠ lane 1 is blocked: waits for approval of ALLOW_ONE") &&
-			strings.Contains(s, "⚠ lane 2 is blocked: waits for approval of ALLOW_TWO")
+		return strings.Contains(s, "⚠ lane 1 is waiting for approval of ALLOW_ONE") &&
+			strings.Contains(s, "⚠ lane 2 is waiting for approval of ALLOW_TWO")
 	})
 	contains(t, "the questions", s, "batch #1", "batch #2", "y approve  n decline", "the lane says: change one", "the lane says: change two")
 	// Its presence says it asks, so swim queue add can tell the operator

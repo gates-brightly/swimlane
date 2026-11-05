@@ -51,7 +51,7 @@ func TestWatchNotifies(t *testing.T) {
 	r.mustSwim("queue", "add", "2")
 	r.mustSwim("queue", "add", "1")
 	tr := r.startTUI(nil, "watch", "--batches", "2")
-	tr.waitFor("⚠ lane 1 is blocked")
+	tr.waitFor("⚠ lane 1 is waiting for approval")
 	tr.waitScreen("the notifications", func(string) bool {
 		out := tr.output()
 		return strings.Contains(out, "\x1b]777;notify;"+from+"lane 1 needs you;approval of ALLOW_ONE: change one · batch #2\x07") &&

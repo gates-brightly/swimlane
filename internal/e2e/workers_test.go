@@ -72,22 +72,22 @@ func TestQueueRefusesBatchTheWorkerCantRun(t *testing.T) {
 	// change from here: a later pass says the same, so there's
 	// nothing more to wait for.
 	list := r.mustSwim("queue")
-	contains(t, "queue", list, "#1", "queued", "left queued: this swimmer, swim 0.20261001.1, can't run it",
-		"swim 1's script declares syntax 4, and it reads up to 3", "queued by swim 0.20261001.1")
+	contains(t, "queue", list, "#1", "queued", "left queued: the watcher, swim 0.20261001.1, can't run it",
+		"lane 1's script declares syntax 4, and it reads up to 3", "queued by swim 0.20261001.1")
 	if len(doneEntries(t, r)) != 0 {
 		t.Errorf("the batch was consumed:\n%s\n%s", list, out.String())
 	}
 	contains(t, "watch", out.String(), "#1 left queued")
-	contains(t, ".swim.log", r.mustSwim("log"), "queue-held", "#1 q-", "this swimmer, swim 0.20261001.1, can't run it")
-	contains(t, "queue show", r.mustSwim("queue", "show", "#1"), "# left queued: this swimmer, swim 0.20261001.1, can't run it")
+	contains(t, ".swim.log", r.mustSwim("log"), "queue-kept", "#1 q-", "the watcher, swim 0.20261001.1, can't run it")
+	contains(t, "queue show", r.mustSwim("queue", "show", "#1"), "# left queued: the watcher, swim 0.20261001.1, can't run it")
 
 	// A new batch is refused at queue add, naming both swims.
 	msg, code := r.swim("queue", "add", "1")
 	if code == 0 {
 		t.Fatalf("queue add with only a worker that can't run it:\n%s", msg)
 	}
-	contains(t, "queue add", msg, "no swimmer running now can run this batch",
-		"pid", "swim 0.20261001.1): swim 1's script declares syntax 4, and it reads up to 3",
+	contains(t, "queue add", msg, "no watcher running now can run this batch",
+		"pid", "swim 0.20261001.1): lane 1's script declares syntax 4, and it reads up to 3",
 		"this swim is "+version.String()+" (syntax 4)", "restart its swim watch")
 
 	// Once the worker is gone, queue add queues and warns.

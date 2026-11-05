@@ -264,7 +264,7 @@ func applySidecar(path string, info *Info) error {
 		info.After = nil
 		for _, tok := range *sf.After {
 			switch strings.ToLower(tok) {
-			case "", "swim", "-", "none":
+			case "", "swim", "lane", "-", "none":
 				continue
 			}
 			info.After = append(info.After, tok)

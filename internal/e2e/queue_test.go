@@ -337,7 +337,7 @@ func TestWaitForBatchLaneAndRun(t *testing.T) {
 	r.script(1, "long", `step "long" `+hold("go"))
 	r.script(2, "queued", `step "q" true`)
 	r.script(3, "fails", `step "f" false`)
-	contains(t, "wait when idle", r.mustSwim("wait"), "swim wait: idle")
+	contains(t, "wait when idle", r.mustSwim("wait"), "swim wait: nothing running")
 
 	busy := r.cmd(bin, "run", "1", "--plain")
 	if err := busy.Start(); err != nil {
@@ -390,7 +390,7 @@ func TestWaitForBatchLaneAndRun(t *testing.T) {
 	if out, code := r.swim("wait", "waitrun-1"); code != 1 || !strings.Contains(out, "waitrun-1: failed · lane 2,3") {
 		t.Errorf("swim wait RUN: %d\n%s", code, out)
 	}
-	if out, code := r.swim("wait", "nosuchthing"); code == 0 || !strings.Contains(out, "is no lane, queued batch, job or swim run") {
+	if out, code := r.swim("wait", "nosuchthing"); code == 0 || !strings.Contains(out, "is no lane, queued batch, round id or swim run") {
 		t.Errorf("swim wait on nothing: %d\n%s", code, out)
 	}
 }
@@ -405,7 +405,7 @@ func TestWaitNamesAQueueWithNoWorker(t *testing.T) {
 	// Waiting on the batch: --timeout gives up, exits 1, and leaves it queued.
 	start := time.Now()
 	out, code := r.swim("wait", id, "--timeout", "300ms")
-	if code != 1 || !strings.Contains(out, "still waiting after 300ms: #1 queued (not yet taken by a swimmer: swim watch)") {
+	if code != 1 || !strings.Contains(out, "still waiting after 300ms: #1 queued (not yet taken by a watcher: swim watch)") {
 		t.Fatalf("wait BATCH --timeout with no worker: %d\n%s", code, out)
 	}
 	if took := time.Since(start); took > scaled(5*time.Second) {

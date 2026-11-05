@@ -24,7 +24,7 @@ func TestLogSince(t *testing.T) {
 	}
 
 	out := r.mustSwim("log", "--since", second.Run)
-	contains(t, "since the second run", out, "run="+second.Run, "fail         lane 1  job="+second.Job, "FAIL  broken", "pass         lane 2")
+	contains(t, "since the second run", out, "run="+second.Run, "fail         lane 1  round-id="+second.Job, "FAIL  broken", "pass         lane 2")
 	if strings.Contains(out, first.Run) || strings.Contains(out, "# swim project log") {
 		t.Errorf("--since %s shows lines from before it:\n%s", second.Run, out)
 	}

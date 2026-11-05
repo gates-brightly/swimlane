@@ -236,7 +236,7 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 	case "After":
 		for _, tok := range splitList(v) {
 			switch strings.ToLower(tok) {
-			case "swim", "-", "none", "(none)":
+			case "swim", "lane", "-", "none", "(none)":
 				continue
 			}
 			info.After = append(info.After, tok)

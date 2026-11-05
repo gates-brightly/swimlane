@@ -173,7 +173,7 @@ func TestPromptSeveralLanes(t *testing.T) {
 	r.script(3, "busy", `step "work" bash -c 'for i in $(seq 1 30); do echo busy-$i; done'`)
 	tr := r.startTUI(nil, "all")
 	tr.waitScreen("both waiting", func(s string) bool {
-		return strings.Contains(s, "need approval · Enter to view swim")
+		return strings.Contains(s, "need approval · Enter to view lane")
 	})
 	tr.send("\r")
 	s := tr.waitScreen("a waiting lane", func(s string) bool { return strings.Contains(s, "y approve   n decline") })

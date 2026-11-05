@@ -165,7 +165,7 @@ func cmdLog(args []string) error {
 		}
 	}
 	if found == 0 {
-		return fmt.Errorf("no log holds a round of round id or run %s", ref)
+		return fmt.Errorf("no log holds round or run %s", ref)
 	}
 	return nil
 }

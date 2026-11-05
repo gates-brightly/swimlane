@@ -453,7 +453,7 @@ func printRunStatus(root string, cfg *config.Config, id string, p ui.Painter) er
 			}
 		case skips[n] != "":
 			found++
-			fmt.Printf("%s %s %s\n", label, p.Paint(ui.Yellow, fmt.Sprintf("%-22s", "SKIP")), skips[n])
+			fmt.Printf("%s %s %s\n", label, p.Paint(ui.Yellow, fmt.Sprintf("%-22s", status.Skipped)), skips[n])
 		case lanesInRun[n]:
 			found++
 			fmt.Printf("%s %s\n", label, p.Paint(ui.Dim, "in the run, but no record of its round"))

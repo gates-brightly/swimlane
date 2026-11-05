@@ -69,8 +69,8 @@ func TestCIGitHub(t *testing.T) {
 		"guard flags set (names only): ALLOW_Y",
 		"::warning title=lane 4%3A after root::approved without a prompt: ALLOW_Y (flag set)",
 		"[2] ==> convert", "[2] FAIL  convert (exit 1)", // step headers and results stream live
-		"::group::lane 1 PASS - root (job ", "::endgroup::",
-		"==== lane 2 FAIL - fails (job ", // a failed lane stays open
+		"::group::lane 1 passed - root (round-id ", "::endgroup::",
+		"==== lane 2 failed - fails (round-id ", // a failed lane stays open
 		"::error title=lane 2%3A fails::FAIL  convert (exit 1)",
 		"::notice title=lane 2%3A fails::drop x - 2026-10-09: dry run: set ALLOW_X=1 to approve",
 		"::notice title=swim%3A 1 lane skipped::lane 3 (lane 2 failed)",
@@ -119,7 +119,7 @@ func TestCIGitHub(t *testing.T) {
 func TestCIGitLabAndGeneric(t *testing.T) {
 	r := ciRepo(t)
 	out, _ := r.swimEnv([]string{"GITLAB_CI=true", "CI=true"}, "ci", "1")
-	contains(t, "gitlab", out, "provider gitlab", "\x1b[0Ksection_start:", "[collapsed=true]\r\x1b[0Kswim 1 PASS - root", "\x1b[0Ksection_end:")
+	contains(t, "gitlab", out, "provider gitlab", "\x1b[0Ksection_start:", "[collapsed=true]\r\x1b[0Klane 1 passed - root", "\x1b[0Ksection_end:")
 	out, _ = r.swimEnv([]string{"CI=true"}, "ci", "2")
 	contains(t, "generic", out, "provider generic", "swim: error: lane 2: fails: FAIL  convert (exit 1)")
 }
@@ -204,11 +204,11 @@ func jobOf(t *testing.T, r *repo, n int) string {
 	t.Helper()
 	data, _ := os.ReadFile(filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n)))
 	for _, line := range strings.Split(string(data), "\n") {
-		if f := strings.Fields(line); len(f) == 3 && f[0] == "#" && f[1] == "Job:" {
+		if f := strings.Fields(line); len(f) == 3 && f[0] == "#" && f[1] == "Round-ID:" {
 			return f[2]
 		}
 	}
-	t.Fatalf("no job line in lane.%d.sh", n)
+	t.Fatalf("no round id line in lane.%d.sh", n)
 	return ""
 }
 

@@ -40,7 +40,7 @@ if guard CERT_ALLOW "renew"; then step "renew" true; fi`)
 	}
 	r.script(3, "a twin", "# Task: renew-certs\n"+`step "x" true`)
 	out, _ = r.swim("lint")
-	if !regexp.MustCompile(`# Task: renew-certs is swim \d's name too`).MatchString(out) {
+	if !regexp.MustCompile(`# Task: renew-certs is lane \d's name too`).MatchString(out) {
 		t.Errorf("lint, two lanes one name:\n%s", out)
 	}
 	if out, code := r.swim("run", "renew-certs", "--plain"); code == 0 || !strings.Contains(out, "ambiguous") {
@@ -60,7 +60,7 @@ func TestTaskAfter(t *testing.T) {
 	r.script(2, "ship", "# After: build\n"+`step "ship" true`)
 	contains(t, "lint", must(r.swim("lint")), "no problems found")
 	// Lane 2 waits on the lane named build, as on swim 1.
-	contains(t, "alone", must(r.swim("run", "2", "--plain")), "lane 1's pending round has not passed")
+	contains(t, "alone", must(r.swim("run", "2", "--plain")), "lane 1's ready round has not passed")
 	contains(t, "both", r.mustSwim("run", "build", "2", "--plain"), "lane 1", "lane 2", "PASS")
 	r.script(2, "ship", "# After: nope\n"+`step "ship" true`)
 	contains(t, "lint unknown", must(r.swim("lint", "2")), "no lane is task nope")

@@ -112,7 +112,7 @@ func TestLaneClaimsSameSession(t *testing.T) {
 	r := newRepo(t)
 	r.mustSwim("new", "2", "first")
 	out, code := r.swim("new", "2", "second")
-	if code == 0 || strings.Contains(out, "claimed by") || !strings.Contains(out, "pending") {
+	if code == 0 || strings.Contains(out, "claimed by") || !strings.Contains(out, "ready round") {
 		t.Errorf("exit %d\n%s", code, out)
 	}
 }
