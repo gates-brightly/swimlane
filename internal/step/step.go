@@ -64,6 +64,14 @@ type Options struct {
 	// observe: the name its history is matched by across rounds (default
 	// its label), and what it talks to.
 	Key, Target string
+	// Shown, when set, stands for the command on the terminal and in the
+	// log's $ line: a swim helpers call (tool_gate go 1.27) whose module
+	// is this swim's as shipped. The command still runs, and blocked
+	// commands are matched, as Args.
+	Shown string
+	// Helper is the step block's helper: line (the function, its file and
+	// how that file stands), for a step a helper ran.
+	Helper string
 	// KillGrace is how long a step stopped by a time limit or an interrupt
 	// has to exit before its process group is SIGKILLed; 0 means
 	// DefaultKillGrace.
@@ -219,6 +227,9 @@ func Run(o Options) (Result, error) {
 		label = "snapshot: " + label
 	}
 	cmdline := ui.Safe(mk.String(Quote(o.Args)))
+	if o.Shown != "" {
+		cmdline = ui.Safe(mk.String(o.Shown))
+	}
 	logLabel := label
 	if logLabel == "" {
 		logLabel = shorten(cmdline, 40)
@@ -963,9 +974,12 @@ func joinInts(codes []int) string {
 	return strings.Join(parts, ",")
 }
 
-// meta are a step block's key: and target: lines.
+// meta are a step block's helper:, key: and target: lines.
 func meta(o Options) []string {
 	var out []string
+	if o.Helper != "" {
+		out = append(out, "helper: "+ui.SafeField(o.Helper))
+	}
 	if o.Key != "" {
 		out = append(out, "key: "+o.Key)
 	}

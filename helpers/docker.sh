@@ -16,7 +16,7 @@
 # docker_gate: a gate that the Docker daemon answers (Docker Desktop is up).
 # The log shows the client and server versions.
 docker_gate() {
-  gate --timeout 30s "docker is running" docker version
+  gate --helper "docker_gate" --timeout 30s "docker is running" docker version
 }
 
 # docker_compose_snapshot PROJECT [WHEN]: snapshot every container of
@@ -27,5 +27,5 @@ docker_compose_snapshot() {
     gate "docker_compose_snapshot: a project" bash -c 'echo "docker_compose_snapshot needs a compose project name"; exit 2'
     return 1
   fi
-  snapshot "$1 containers${2:+ $2}" docker ps -a --filter "label=com.docker.compose.project=$1" --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+  snapshot --helper "docker_compose_snapshot $1${2:+ $2}" "$1 containers${2:+ $2}" docker ps -a --filter "label=com.docker.compose.project=$1" --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
 }

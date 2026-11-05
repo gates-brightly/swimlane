@@ -214,3 +214,45 @@ func wrapWords(s string, w int) []string {
 	}
 	return out
 }
+
+// helperStep is how swim _step shows a step a swim helpers function ran
+// (--helper CALL, --helper-file FILE, the file lib.sh found the function
+// in): the call for its command line when FILE is this swim's module as
+// shipped and defines the function, else the command in full (an edited
+// or unknown copy's call says nothing a reader can trust); and the
+// block's helper: line, "FUNC, FILE, how FILE stands".
+func helperStep(call, file string) (shown, line string) {
+	if call == "" {
+		return "", ""
+	}
+	fn, _, _ := strings.Cut(call, " ")
+	if file == "" {
+		return "", fn + ", (not found), the lane's own " + fn + ": shown in full"
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", fn + ", " + file + ", unreadable: shown in full"
+	}
+	// As the lane names it: relative to its workspace (the pinned copy),
+	// where bash reports the absolute path it sourced.
+	if cwd, err := os.Getwd(); err == nil && filepath.IsAbs(file) {
+		if r, err := filepath.Rel(cwd, file); err == nil && !strings.HasPrefix(r, "..") {
+			file = filepath.ToSlash(r)
+		}
+	}
+	c := helpers.Check(string(data))
+	src, _ := helpers.Source(c.Module)
+	switch {
+	case c.State == helpers.Current && strings.Contains("\n"+src, "\n"+fn+"() {"):
+		return call, fmt.Sprintf("%s, %s, %s from swim %s", fn, file, c.Module, c.From)
+	case c.State == helpers.Current:
+		return "", fmt.Sprintf("%s, %s, %s has no %s: shown in full", fn, file, c.Module, fn)
+	case c.State == helpers.Differs:
+		return "", fmt.Sprintf("%s, %s, %s from swim %s, not this swim's: shown in full", fn, file, c.Module, c.From)
+	case c.State == helpers.Edited:
+		return "", fmt.Sprintf("%s, %s, %s edited since swim helpers add wrote it: shown in full", fn, file, c.Module)
+	case c.State == helpers.Unknown:
+		return "", fmt.Sprintf("%s, %s, %s, a module this swim doesn't ship: shown in full", fn, file, c.Module)
+	}
+	return "", fmt.Sprintf("%s, %s, not a swim helpers copy: shown in full", fn, file)
+}

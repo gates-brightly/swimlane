@@ -26,9 +26,9 @@ os_linux() {
 # os_mac_gate / os_linux_gate: a gate that this is macOS / Linux. The log
 # shows the system (uname -srm).
 os_mac_gate() {
-  gate "running on macOS" bash -c 'uname -srm; [ "$(uname -s)" = Darwin ] || { echo "not macOS"; exit 1; }'
+  gate --helper "os_mac_gate" "running on macOS" bash -c 'uname -srm; [ "$(uname -s)" = Darwin ] || { echo "not macOS"; exit 1; }'
 }
 
 os_linux_gate() {
-  gate "running on Linux" bash -c 'uname -srm; [ "$(uname -s)" = Linux ] || { echo "not Linux"; exit 1; }'
+  gate --helper "os_linux_gate" "running on Linux" bash -c 'uname -srm; [ "$(uname -s)" = Linux ] || { echo "not Linux"; exit 1; }'
 }

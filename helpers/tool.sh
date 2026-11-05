@@ -23,5 +23,5 @@ tool_gate() {
     gate "tool_gate: a command" bash -c 'echo "tool_gate needs a command name"; exit 2'
     return 1
   fi
-  gate --timeout 30s "$1${2:+ $2}" bash -c 'p=$(command -v "$1") || { echo "$1: not on PATH"; exit 1; }; v=$("$1" --version 2>&1) || v=$("$1" version 2>&1); v=$(printf "%s\n" "$v" | head -1); echo "$p: $v"; [ -n "$2" ] || exit 0; n=$(printf "%s\n" "$v" | grep -oE "[0-9]+(\.[0-9]+)*" | head -1); case $n in "$2" | "$2".*) exit 0 ;; esac; echo "want $1 $2, got ${n:-no version}"; exit 1' _ "$1" "${2:-}"
+  gate --helper "tool_gate $1${2:+ $2}" --timeout 30s "$1${2:+ $2}" bash -c 'p=$(command -v "$1") || { echo "$1: not on PATH"; exit 1; }; v=$("$1" --version 2>&1) || v=$("$1" version 2>&1); v=$(printf "%s\n" "$v" | head -1); echo "$p: $v"; [ -n "$2" ] || exit 0; n=$(printf "%s\n" "$v" | grep -oE "[0-9]+(\.[0-9]+)*" | head -1); case $n in "$2" | "$2".*) exit 0 ;; esac; echo "want $1 $2, got ${n:-no version}"; exit 1' _ "$1" "${2:-}"
 }

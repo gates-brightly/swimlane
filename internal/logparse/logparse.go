@@ -200,6 +200,17 @@ type Result struct {
 	// Key and Target are the step's own (step --key, --target, # Targets:),
 	// as logged: its name across rounds, what it talks to.
 	Key, Target string
+	// Helper is the step's helper: line, for a step a swim helpers
+	// function ran: "tool_gate, lib/swim/tool.sh, tool from swim
+	// 0.20261106.1" (see HelperFunc).
+	Helper string
+}
+
+// HelperFunc is the function that ran a step, from its helper: line
+// ("" for a step the lane ran itself).
+func (r Result) HelperFunc() string {
+	f, _, _ := strings.Cut(r.Helper, ", ")
+	return f
 }
 
 // Text renders the result as text, e.g. "FAIL  tf plan (exit 2)".
@@ -652,6 +663,8 @@ func parseV2(rd io.Reader) (*Round, error) {
 					res.Saved = strings.TrimPrefix(body, "saved: ")
 				case strings.HasPrefix(body, "why: "):
 					res.Why = strings.TrimPrefix(body, "why: ")
+				case strings.HasPrefix(body, "helper: "):
+					res.Helper = strings.TrimPrefix(body, "helper: ")
 				case strings.HasPrefix(body, "key: "):
 					res.Key = strings.TrimPrefix(body, "key: ")
 				case strings.HasPrefix(body, "target: "):

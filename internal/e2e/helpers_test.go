@@ -270,3 +270,42 @@ func TestHelpersCommand(t *testing.T) {
 		t.Errorf("unknown module: exit %d\n%s", code, out)
 	}
 }
+
+// A step a helper ran shows the call, not the helper's command, and its
+// helper: line names the function, the copy and the swim it came from: in
+// the log and its YAML. A copy edited since swim helpers add wrote it shows
+// the command in full, as does a function the lane defines itself.
+func TestHelperProvenance(t *testing.T) {
+	r := newRepo(t)
+	installHelpers(t, r, "os")
+	here := "linux"
+	if runtime.GOOS == "darwin" {
+		here = "mac"
+	}
+	lane := func(body string) {
+		os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: provenance\n# Includes: lib/swim/os.sh\n\nsource lib/swim/os.sh\nstage check\n"+body+"\n"), 0o755)
+	}
+	lane("os_" + here + "_gate")
+	out := r.mustSwim("run", "1", "--plain")
+	contains(t, "live", out, "$ os_"+here+"_gate\n")
+	log := r.mustSwim("log", "1")
+	contains(t, "log", log, "$ os_"+here+"_gate\n", "helper: os_"+here+"_gate, lib/swim/os.sh, os from swim ")
+	for name, s := range map[string]string{"live": out, "log": log} {
+		if strings.Contains(s, "bash -c") {
+			t.Errorf("%s shows the helper's command:\n%s", name, s)
+		}
+	}
+	contains(t, "yaml", r.mustSwim("log", "1", "--yaml"), "helper: os_"+here+"_gate, lib/swim/os.sh, os from swim ")
+
+	f := filepath.Join(r.root, "lib/swim/os.sh")
+	data, _ := os.ReadFile(f)
+	os.WriteFile(f, append(data, "# edited\n"...), 0o644)
+	r.mustSwim("run", "1", "--plain")
+	contains(t, "edited", r.mustSwim("log", "1"), "$ bash -c", "os edited since swim helpers add wrote it: shown in full")
+
+	// The repo's own module (no stamp), with a function of the same name.
+	os.WriteFile(filepath.Join(r.root, "lib/mine.sh"), []byte("os_"+here+"_gate() { gate --helper \"os_"+here+"_gate\" \"mine\" true; }\n"), 0o644)
+	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: provenance\n# Includes: lib/mine.sh\n\nsource lib/mine.sh\nstage check\nos_"+here+"_gate\n"), 0o755)
+	r.mustSwim("run", "1", "--plain")
+	contains(t, "the repo's own", r.mustSwim("log", "1"), "$ true", "lib/mine.sh, not a swim helpers copy: shown in full")
+}

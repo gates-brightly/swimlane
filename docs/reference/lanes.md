@@ -131,6 +131,24 @@ git state (refs, a new worktree), and run every command through `step`,
 lane behind its own guard: lint reads the lane, not the files it
 includes, for guards and for bash 3.2.
 
+In the log, a helper's step shows the call, not the command it runs, and
+its `helper:` line names the function, the copy and the swim it came from:
+
+```
+  FAIL  go 1.27 (exit 1)                        0.0s  21:35:51
+        $ tool_gate go 1.27
+        | /usr/local/go/bin/go: go version go1.26.3 linux/arm64
+        | want go 1.27, got 1.26.3
+        helper: tool_gate, lib/swim/tool.sh, tool from swim 0.20261106.1
+```
+
+The call stands for the command only when the copy is this swim's module
+as shipped, byte for byte, so the command is the one in that module. An
+edited copy, another swim's version or a repo's own module shows the
+command in full, and its `helper:` line says why. Modules pass the call
+with `step`, `gate` and `snapshot`'s `--helper CALL`, which is theirs:
+lint refuses it in a lane.
+
 ## Header
 
 `# Key: value` lines at the top (at most one space after `#`). Only

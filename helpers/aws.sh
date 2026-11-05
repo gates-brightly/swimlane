@@ -23,7 +23,7 @@ _aws_fail() {
 # that it is that account. The log shows who the session is.
 aws_gate() {
   if [ -z "${1:-}" ]; then
-    gate --timeout 30s "AWS session active" aws sts get-caller-identity --output json
+    gate --helper "aws_gate" --timeout 30s "AWS session active" aws sts get-caller-identity --output json
     return
   fi
   case $1 in
@@ -32,5 +32,5 @@ aws_gate() {
       return 1
       ;;
   esac
-  gate --timeout 30s "AWS session is account $1" bash -c 'got=$(aws sts get-caller-identity --query Account --output text) || exit 1; echo "account $got (profile ${AWS_PROFILE:-default})"; [ "$got" = "$1" ] || { echo "want account $1"; exit 1; }' _ "$1"
+  gate --helper "aws_gate $1" --timeout 30s "AWS session is account $1" bash -c 'got=$(aws sts get-caller-identity --query Account --output text) || exit 1; echo "account $got (profile ${AWS_PROFILE:-default})"; [ "$got" = "$1" ] || { echo "want account $1"; exit 1; }' _ "$1"
 }

@@ -35,9 +35,9 @@ gh_pr_fetch() {
       ;;
   esac
   PR_REF=refs/remotes/$_gh_remote/pr/$_gh_pr
-  gate --timeout 2m --retry 2 "fetch PR $_gh_pr from $_gh_remote" \
+  gate --helper "gh_pr_fetch $_gh_pr${2:+ $2}" --timeout 2m --retry 2 "fetch PR $_gh_pr from $_gh_remote" \
     git -C "${SWIM_ROOT:-.}" fetch --no-tags "$_gh_remote" "+refs/pull/$_gh_pr/head:$PR_REF"
-  snapshot "PR $_gh_pr head" git -C "${SWIM_ROOT:-.}" log -1 --format='%H %an: %s' "$PR_REF"
+  snapshot --helper "gh_pr_fetch $_gh_pr${2:+ $2}" "PR $_gh_pr head" git -C "${SWIM_ROOT:-.}" log -1 --format='%H %an: %s' "$PR_REF"
 }
 
 # gh_actions: true on a GitHub Actions runner (GITHUB_ACTIONS=true), for
@@ -50,17 +50,17 @@ gh_actions() {
 # gh_actions_gate: a gate that this is a GitHub Actions runner. The log
 # shows the runner, repository, run and commit.
 gh_actions_gate() {
-  gate "GitHub Actions runner" bash -c '[ "${GITHUB_ACTIONS:-}" = true ] || { echo "not a GitHub Actions runner (GITHUB_ACTIONS is not true)"; exit 1; }; echo "runner ${RUNNER_NAME:-?} (${RUNNER_OS:-?}): ${GITHUB_REPOSITORY:-?} run ${GITHUB_RUN_ID:-?} at ${GITHUB_SHA:-?}"'
+  gate --helper "gh_actions_gate" "GitHub Actions runner" bash -c '[ "${GITHUB_ACTIONS:-}" = true ] || { echo "not a GitHub Actions runner (GITHUB_ACTIONS is not true)"; exit 1; }; echo "runner ${RUNNER_NAME:-?} (${RUNNER_OS:-?}): ${GITHUB_REPOSITORY:-?} run ${GITHUB_RUN_ID:-?} at ${GITHUB_SHA:-?}"'
 }
 
 # gh_auth_gate [LOGIN]: a gate that gh is signed in, and with LOGIN, as
 # that user. The log shows who.
 gh_auth_gate() {
   if [ -z "${1:-}" ]; then
-    gate --timeout 30s "gh is signed in" gh auth status
+    gate --helper "gh_auth_gate" --timeout 30s "gh is signed in" gh auth status
     return
   fi
-  gate --timeout 30s "gh is signed in as $1" bash -c 'got=$(gh api user --jq .login) || exit 1; echo "signed in as $got"; [ "$got" = "$1" ] || { echo "want $1"; exit 1; }' _ "$1"
+  gate --helper "gh_auth_gate $1" --timeout 30s "gh is signed in as $1" bash -c 'got=$(gh api user --jq .login) || exit 1; echo "signed in as $got"; [ "$got" = "$1" ] || { echo "want $1"; exit 1; }' _ "$1"
 }
 
 # gh_repo [REMOTE]: set REPO to the GitHub owner/name REMOTE (default
@@ -109,7 +109,7 @@ gh_pr_state_gate() {
   fi
   _gh_need_repo || return 1
   _gh_jq='[(if .isDraft then "DRAFT" else .state end), .headRefOid, (.reviewDecision // "")] | join(" ")'
-  gate --timeout 1m "PR $_gh_pr is $*" bash -c 'pr=$1 repo=$2 jq=$3; shift 3; got=$(gh pr view "$pr" --repo "$repo" --json state,isDraft,headRefOid,reviewDecision --jq "$jq") || exit 1; echo "PR $pr in $repo: $got"; for want in "$@"; do [ "${got%% *}" = "$want" ] && exit 0; done; echo "want $*"; exit 1' _ "$_gh_pr" "$REPO" "$_gh_jq" "$@"
+  gate --helper "gh_pr_state_gate $_gh_pr $*" --timeout 1m "PR $_gh_pr is $*" bash -c 'pr=$1 repo=$2 jq=$3; shift 3; got=$(gh pr view "$pr" --repo "$repo" --json state,isDraft,headRefOid,reviewDecision --jq "$jq") || exit 1; echo "PR $pr in $repo: $got"; for want in "$@"; do [ "${got%% *}" = "$want" ] && exit 0; done; echo "want $*"; exit 1' _ "$_gh_pr" "$REPO" "$_gh_jq" "$@"
 }
 
 # gh_pr_head_gate N SHA: a gate that pull request N's head is still SHA
@@ -126,5 +126,5 @@ gh_pr_head_gate() {
     return 1
   fi
   _gh_need_repo || return 1
-  gate --timeout 1m "PR $1 is at $2" bash -c 'got=$(gh pr view "$1" --repo "$2" --json headRefOid --jq .headRefOid) || exit 1; echo "PR $1 head: $got"; case $got in "$3"*) exit 0 ;; esac; echo "want $3"; exit 1' _ "$1" "$REPO" "$2"
+  gate --helper "gh_pr_head_gate $1 $2" --timeout 1m "PR $1 is at $2" bash -c 'got=$(gh pr view "$1" --repo "$2" --json headRefOid --jq .headRefOid) || exit 1; echo "PR $1 head: $got"; case $got in "$3"*) exit 0 ;; esac; echo "want $3"; exit 1' _ "$1" "$REPO" "$2"
 }

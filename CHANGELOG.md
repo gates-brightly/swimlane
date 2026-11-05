@@ -38,6 +38,16 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Changed
+
+- **A helper's step shows the call, not its command:** `tool_gate go
+  1.27` is logged as `$ tool_gate go 1.27`, not a 300-character `bash -c`,
+  on the terminal and in the log, with a `helper:` line naming the
+  function, the copy and the swim it came from (`helper` in `swim log
+  --yaml`). Only a copy that is this swim's module as shipped is shown so;
+  an edited one, another swim's or a repo's own shows the command in full.
+  Run `swim helpers add` for your modules to update copies.
+
 ## 0.20261105.8 (v0.20261105.8, 2026-11-05)
 
 ### Fixed
