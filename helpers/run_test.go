@@ -75,3 +75,33 @@ func TestEveryCheckHasItsFunction(t *testing.T) {
 		}
 	}
 }
+
+// A failure's last line says what's wrong and the command that fixes it:
+// it's the step's why, which every one-line view shows.
+func TestFixHints(t *testing.T) {
+	fakePath(t, map[string]string{
+		"aws":    "echo 'Error when retrieving token from sso: Token has expired and refresh failed' >&2; exit 255\n",
+		"gh":     "echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1\n",
+		"docker": "echo 'Cannot connect to the Docker daemon' >&2; exit 1\n",
+	})
+	t.Setenv("AWS_PROFILE", "sbx1")
+	for _, c := range []struct {
+		fn   string
+		args []string
+		want string
+	}{
+		{"aws_gate", nil, "no AWS session (profile sbx1): aws sso login --profile sbx1\n"},
+		{"gh_auth_gate", nil, "gh isn't signed in: gh auth login\n"},
+		{"gh_auth_gate", []string{"zach"}, "gh isn't signed in: gh auth login\n"},
+		{"docker_gate", nil, "the Docker daemon isn't answering: start "},
+	} {
+		code, out := run(c.fn, c.args...)
+		if code != 1 || !strings.Contains(out, c.want) {
+			t.Errorf("%s %v: exit %d, want 1 ending %q:\n%s", c.fn, c.args, code, c.want, out)
+		}
+	}
+	fakePath(t, map[string]string{"aws": `echo '{"Account": "111111111111"}'` + "\n"})
+	if _, out := run("aws_gate", "222222222222"); !strings.HasSuffix(out, "want account 222222222222, the session is 111111111111 (profile sbx1): set AWS_PROFILE to 222222222222's profile\n") {
+		t.Errorf("wrong account:\n%s", out)
+	}
+}

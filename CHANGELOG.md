@@ -40,6 +40,14 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Changed
 
+- **A failed helper names the fix:** its last line, the step's why, says
+  what's wrong and the command that fixes it: `no AWS session (profile
+  sbx1): aws sso login --profile sbx1`, `gh isn't signed in: gh auth
+  login`, `signed in as A: gh auth switch --user B`, `the Docker daemon
+  isn't answering: start Docker Desktop (open -a Docker)`, `branch isn't
+  on origin: git push origin branch`, and `aws_gate ACCOUNT` names the
+  account the session is in.
+
 - **Helper gates are swim's own Go:** each gate's function is one line of
   bash that runs its check as `swim _helper FUNC ARGS...` (`tool_gate`,
   `aws_gate`, `docker_gate`, `os_*_gate`, `gh_auth_gate`,

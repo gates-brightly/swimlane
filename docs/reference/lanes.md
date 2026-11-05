@@ -148,6 +148,14 @@ its `helper:` line names the function, the copy and the swim it came from:
         helper: tool_gate, lib/swim/tool.sh, tool from swim 0.20261106.1
 ```
 
+A helper that fails ends with one line saying what's wrong and the
+command that fixes it; that line is the step's `why:`, so the summary,
+`swim status` and `.swim.log` carry it:
+
+```
+  FAIL  AWS session active (exit 1): no AWS session (profile sbx1): aws sso login --profile sbx1
+```
+
 The call stands for the command only when the copy is this swim's module
 as shipped, byte for byte, so the command is the one in that module. An
 edited copy, another swim's version or a repo's own module shows the

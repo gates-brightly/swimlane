@@ -71,6 +71,16 @@ func (e *env) value(name string, args ...string) (string, error) {
 	return strings.TrimSpace(b.String()), nil
 }
 
+// capture runs a command for its output, trimmed, and returns what it
+// said as well, for a check that reads why it failed.
+func (e *env) capture(name string, args ...string) (string, []byte, error) {
+	var b bytes.Buffer
+	c := exec.Command(name, args...)
+	c.Stdout, c.Stderr = &b, &b
+	err := c.Run()
+	return strings.TrimSpace(b.String()), b.Bytes(), err
+}
+
 func (e *env) printf(format string, a ...any) { fmt.Fprintf(e.out, format+"\n", a...) }
 
 // checks are the functions swim _helper runs, by the module function that
@@ -135,9 +145,11 @@ func awsGate(e *env, args []string) error {
 	if len(args) == 1 && (len(args[0]) != 12 || !digits.MatchString(args[0])) {
 		return misusef("aws_gate takes a 12-digit account id, got '%s'", args[0])
 	}
-	id, err := e.value("aws", "sts", "get-caller-identity", "--output", "json")
+	profile := os.Getenv("AWS_PROFILE")
+	id, out, err := e.capture("aws", "sts", "get-caller-identity", "--output", "json")
 	if err != nil {
-		return err
+		e.out.Write(out)
+		return awsNoSession(profile, string(out), err)
 	}
 	e.printf("%s", id)
 	if len(args) == 0 {
@@ -147,15 +159,37 @@ func awsGate(e *env, args []string) error {
 	if err := json.Unmarshal([]byte(id), &who); err != nil {
 		return failf("sts get-caller-identity didn't answer in JSON: %v", err)
 	}
-	profile := os.Getenv("AWS_PROFILE")
-	if profile == "" {
-		profile = "default"
+	shown := profile
+	if shown == "" {
+		shown = "default"
 	}
-	e.printf("account %s (profile %s)", who.Account, profile)
+	e.printf("account %s (profile %s)", who.Account, shown)
 	if who.Account != args[0] {
-		return failf("want account %s", args[0])
+		return failf("want account %s, the session is %s (profile %s): set AWS_PROFILE to %s's profile", args[0], who.Account, shown, args[0])
 	}
 	return nil
+}
+
+// awsNoSession says why sts get-caller-identity failed, and the command
+// that fixes it, from what aws said.
+func awsNoSession(profile, said string, err error) error {
+	flag, shown := "", "default"
+	if profile != "" {
+		flag, shown = " --profile "+profile, profile
+	}
+	if ee, ok := err.(*exec.Error); ok {
+		return failf("aws: %v", ee.Err)
+	}
+	low := strings.ToLower(said)
+	switch {
+	case strings.Contains(low, "sso") || strings.Contains(low, "token has expired") || strings.Contains(low, "expiredtoken"):
+		return failf("no AWS session (profile %s): aws sso login%s", shown, flag)
+	case strings.Contains(low, "unable to locate credentials"):
+		return failf("no AWS credentials (profile %s): set AWS_PROFILE, or aws configure sso", shown)
+	case strings.Contains(low, "could not be found") && profile != "":
+		return failf("no AWS profile %s on this machine (aws configure list-profiles lists them)", profile)
+	}
+	return failf("no AWS session (profile %s): aws sts get-caller-identity failed (%v)", shown, err)
 }
 
 // docker_gate
@@ -163,8 +197,14 @@ func dockerGate(e *env, args []string) error {
 	if len(args) > 0 {
 		return misusef("docker_gate takes no arguments")
 	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		return failf("docker: not on PATH")
+	}
 	if err := e.show("docker", "version"); err != nil {
-		return failf("docker version failed (%v)", err)
+		if runtime.GOOS == "darwin" {
+			return failf("the Docker daemon isn't answering: start Docker Desktop (open -a Docker)")
+		}
+		return failf("the Docker daemon isn't answering: start it (sudo systemctl start docker)")
 	}
 	return nil
 }
@@ -192,20 +232,27 @@ func ghAuthGate(e *env, args []string) error {
 	switch len(args) {
 	case 0:
 		if err := e.show("gh", "auth", "status"); err != nil {
-			return failf("gh auth status failed (%v)", err)
+			if _, ok := err.(*exec.Error); ok {
+				return failf("gh: not on PATH")
+			}
+			return failf("gh isn't signed in: gh auth login")
 		}
 		return nil
 	case 1:
 	default:
 		return misusef("gh_auth_gate takes at most a login, got %q", strings.Join(args, " "))
 	}
-	got, err := e.value("gh", "api", "user", "--jq", ".login")
+	got, out, err := e.capture("gh", "api", "user", "--jq", ".login")
 	if err != nil {
-		return err
+		e.out.Write(out)
+		if _, ok := err.(*exec.Error); ok {
+			return failf("gh: not on PATH")
+		}
+		return failf("gh isn't signed in: gh auth login")
 	}
 	e.printf("signed in as %s", got)
 	if got != args[0] {
-		return failf("want %s", args[0])
+		return failf("want %s, signed in as %s: gh auth switch --user %s (or gh auth login)", args[0], got, args[0])
 	}
 	return nil
 }
@@ -278,7 +325,7 @@ func ghPRHeadGate(e *env, args []string) error {
 	}
 	e.printf("PR %s head: %s", args[0], got)
 	if !strings.HasPrefix(got, args[1]) {
-		return failf("want %s", args[1])
+		return failf("want %s: the PR moved since; review %s before going on", args[1], got)
 	}
 	return nil
 }
@@ -335,8 +382,11 @@ func gitPushedGate(e *env, args []string) error {
 		shown = "(no such branch)"
 	}
 	e.printf("local %s, %s %s", here, remote, shown)
+	if there == "" {
+		return failf("%s isn't on %s: git push %s %s", args[0], remote, remote, args[0])
+	}
 	if here != there {
-		return failf("%s on %s isn't at the local head", args[0], remote)
+		return failf("%s on %s isn't at the local head: git push %s %s (or fetch, if %s moved)", args[0], remote, remote, args[0], remote)
 	}
 	return nil
 }
