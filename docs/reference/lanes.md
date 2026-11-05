@@ -136,7 +136,8 @@ block and `status.yml`.
 - Write for the operator's machine, not yours: often macOS, so bash 3.2 (no
   associative arrays, `mapfile`, `${x,,}`) and BSD tools (`sed -i.bak`; no
   `date -d`, `grep -P`, `stat -c`, `find -printf` or `timeout`: use
-  `--timeout`).
+  `--timeout`). `swim lint` warns about both (`bash4`, `gnu-only`), and
+  `swim doctor` on the operator's machine says which of them it can't run.
 - No LLM calls that decide what the round does (branching, gating,
   retries): the script the operator approved decides. One may produce an
   artifact nothing reads back.

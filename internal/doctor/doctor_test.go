@@ -11,7 +11,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/config"
 	"github.com/gates-brightly/swimlane/internal/finding"
-	"github.com/gates-brightly/swimlane/internal/sign"
 )
 
 // buildFor cross-compiles a tiny Go program for goos/goarch.
@@ -79,22 +78,21 @@ func TestPlatformCheckFlagsWrongBinaryOnPath(t *testing.T) {
 	if testing.Short() {
 		t.Skip("cross-compiles fixture binaries")
 	}
+	t.Setenv("SWIM_BIN", "") // a lane's: the PATH form is under test
 	wrong := buildFor(t, "darwin", "arm64")
 	self := buildFor(t, "linux", "amd64")
 	fs := Run(Options{Root: t.TempDir(), Cwd: t.TempDir(), Self: self, Host: "linux/amd64", PATH: filepath.Dir(wrong) + ":" + filepath.Dir(self)})
-	var platform, multiple, swimBin bool
+	var platform, swimBin bool
 	for _, f := range fs {
 		switch f.Code {
 		case "binary-platform":
 			platform = f.Level == finding.Error && strings.Contains(f.Message, "built for darwin/arm64, but this host is linux/amd64") && f.File == wrong
-		case "path-multiple":
-			multiple = strings.Contains(f.Message, wrong+" (runs)") && strings.Contains(f.Message, self+" (hidden)")
 		case "swim-bin":
-			swimBin = true
+			swimBin = strings.Contains(f.Message, "the swim on PATH ("+wrong+") isn't this swim")
 		}
 	}
-	if !platform || !multiple || !swimBin {
-		t.Errorf("platform=%v multiple=%v swim-bin=%v: %+v", platform, multiple, swimBin, fs)
+	if !platform || !swimBin {
+		t.Errorf("platform=%v swim-bin=%v: %+v", platform, swimBin, fs)
 	}
 }
 
@@ -111,7 +109,8 @@ func TestLookPathAll(t *testing.T) {
 
 func opts(root string) Options {
 	return Options{
-		Root: root, Cwd: root, Cfg: &config.Config{Root: root, HasRepo: true, Settings: config.Settings{Lanes: 4}},
+		Root: root, Cwd: root, Cfg: &config.Config{Root: root, HasRepo: true, Path: filepath.Join(root, "no-config.yml"), Settings: config.Settings{Lanes: 4}},
+		BashVersion: "5.2", GNU: func(string) bool { return true },
 		GitignoreBegin: "# >>> swim >>>", GitignoreEnd: "# <<< swim <<<", GitignoreBody: "lane.[0-9]*.sh\n.swim/\n.swim.log\n",
 	}
 }
@@ -186,76 +185,17 @@ func TestStalePIDAndFix(t *testing.T) {
 	}
 }
 
-func TestHeaderEnvSecretAndToolchain(t *testing.T) {
+func TestToolchain(t *testing.T) {
 	root := t.TempDir()
 	o := opts(root)
-	o.Cfg.HeaderEnv = []string{"STAGE", "DEPLOY_TOKEN", "DB_URL"}
-	o.Cfg.SecretEnv = []string{"DB_URL"}
 	o.Cfg.Toolchain = "echo loading; exit 3"
-	fs := Run(o)
-	sec := only(fs, "header-env-secret")
-	if len(sec) != 2 || !strings.Contains(sec[0].Message, "DEPLOY_TOKEN") || !strings.Contains(sec[1].Message, "DB_URL") {
-		t.Errorf("header_env: %+v", sec)
-	}
-	tc := only(fs, "toolchain")
+	tc := only(Run(o), "toolchain")
 	if len(tc) != 1 || tc[0].Level != finding.Error || !strings.Contains(tc[0].Message, "loading") {
 		t.Errorf("toolchain: %+v", tc)
 	}
 	o.Cfg.Toolchain = "true"
 	if tc := only(Run(o), "toolchain"); len(tc) != 0 {
 		t.Errorf("good toolchain: %+v", tc)
-	}
-}
-
-func TestLanesSetting(t *testing.T) {
-	root := t.TempDir()
-	o := opts(root)
-	if l := only(Run(o), "lanes-setting"); len(l) != 0 {
-		t.Errorf("no lanes: setting: %+v", l)
-	}
-	o.Cfg.RepoLanes = true
-	if l := only(Run(o), "lanes-setting"); len(l) != 1 || !strings.Contains(l[0].Message, "no longer used") {
-		t.Errorf("lanes: set: %+v", l)
-	}
-}
-
-// A setting swim no longer has (modules ...) is ignored, and doctor says
-// which file still sets it.
-func TestRemovedSettings(t *testing.T) {
-	o := opts(t.TempDir())
-	if l := only(Run(o), "removed-setting"); len(l) != 0 {
-		t.Errorf("none set: %+v", l)
-	}
-	o.Cfg.RepoFile = "swim.yml"
-	o.Cfg.Repo.RemovedModules, o.Cfg.Repo.RemovedSecrets = map[string]any{}, map[string]any{}
-	if l := only(Run(o), "removed-setting"); len(l) != 1 || l[0].File != "swim.yml" || !strings.Contains(l[0].Message, "modules, secrets: swim no longer has") {
-		t.Errorf("swim.yml sets modules: %+v", l)
-	}
-}
-
-// A runner key in a plain file is a warning: a lane could read it. One a
-// lane can only reach through ssh-agent is a note.
-func TestSigningKey(t *testing.T) {
-	if !sign.Available() {
-		t.Skip("ssh-keygen not installed")
-	}
-	p := filepath.Join(t.TempDir(), "runner")
-	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", p).CombinedOutput(); err != nil {
-		t.Fatalf("%v %s", err, out)
-	}
-	o := &Options{Root: t.TempDir(), Cfg: &config.Config{}}
-	o.Cfg.SigningKey = p
-	if fs := checkSigningKey(o); len(fs) != 1 || fs[0].Level != finding.Warn || !strings.Contains(fs[0].Message, "no passphrase") {
-		t.Errorf("a plain file: %+v", fs)
-	}
-	os.Remove(p)
-	o.Cfg.SigningKey = p + ".pub"
-	if fs := checkSigningKey(o); len(fs) != 1 || fs[0].Level != finding.Info || !strings.Contains(fs[0].Message, "ssh-agent") {
-		t.Errorf("in the agent only: %+v", fs)
-	}
-	o.Cfg.Signing = config.SigningOff
-	if fs := checkSigningKey(o); len(fs) != 0 {
-		t.Errorf("signing off: %+v", fs)
 	}
 }
 

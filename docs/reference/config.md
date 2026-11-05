@@ -41,6 +41,10 @@ repos:
     max_parallel: 2
 ```
 
+`config.yml` is read loosely: a key swim doesn't read (a typo, a
+removed setting) is ignored, and `swim doctor` names it with its line
+(`config-key`).
+
 A repo may commit `swim.yml` at its root with the same keys as a `repos:`
 entry: it applies over `defaults` and under your own entry, so a CI runner
 and every operator share it. Unknown keys are an error. Personal env goes
@@ -63,5 +67,9 @@ in [env files](env.md), not config. There is no lane count.
 | `.swim/laneN.pid` | Present while lane N runs. | No |
 
 `swim init` sets these up (and git-ignores what shouldn't be committed);
-`swim doctor [--fix]` checks the environment and repairs only swim's
-`.gitignore` block and stale pid files.
+`swim doctor [--fix]` checks what running swim on this machine needs
+(the swim on PATH, git, bash and the tools lanes call, the toolchain,
+where notifications go, unknown keys in `config.yml`) and the state swim
+left behind; `--fix` repairs only swim's `.gitignore` block and deletes
+leftover state (stale pid files, expired claims, files under `.swim/`
+swim no longer reads), never logs, the chain or `status.yml`.

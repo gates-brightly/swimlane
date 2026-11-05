@@ -1104,9 +1104,9 @@ func TestLanesInUse(t *testing.T) {
 	// Any lane can start: swim new 9 just works.
 	r.newLane("9", "nine")
 	contains(t, "after new 9", r.mustSwim("status"), "swim 9")
-	// A lanes: setting is ignored, and doctor says so.
+	// lanes: is no setting: in swim.yml (read strictly) it fails to load.
 	os.WriteFile(filepath.Join(r.root, "swim.yml"), []byte("lanes: 4\n"), 0o644)
-	contains(t, "doctor", must(r.swim("doctor")), "is no longer used", "[lanes-setting]")
+	contains(t, "doctor", must(r.swim("doctor")), "field lanes not found", "[config-parse]")
 }
 
 // A .swim.lock an older swim wrote is ignored.

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,8 +103,7 @@ func TestEnsureRepoCreatesAndPreservesComments(t *testing.T) {
 }
 
 // modules and guarded secrets were removed: a swim.yml (read strictly)
-// that still sets their keys loads (they count in the policy hash), and
-// RemovedKeys names them for swim doctor.
+// that still sets their keys loads (they count in the policy hash).
 func TestRemovedPolicyKeysStillLoad(t *testing.T) {
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, RepoFileName), []byte("modules:\n  allow: [notify]\n"+
@@ -112,8 +112,8 @@ func TestRemovedPolicyKeysStillLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a config with removed keys: %v", err)
 	}
-	if got := strings.Join(c.Repo.RemovedKeys(), ","); got != "modules,secrets,ambient_credentials" {
-		t.Errorf("swim.yml removed keys: %q", got)
+	if c.Repo.RemovedModules == nil || c.Repo.RemovedSecrets == nil || c.Repo.RemovedAmbientCredentials == nil {
+		t.Errorf("swim.yml removed keys not read: %+v", c.Repo)
 	}
 	for _, k := range []string{"modules", "secrets"} {
 		if _, err := c.Get(k); err == nil {
@@ -224,13 +224,12 @@ func TestRepoFile(t *testing.T) {
 	xdg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdg)
 	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("lanes: 7\nmax_parallel: 3\nblocked_commands: [terraform destroy]\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("max_parallel: 3\nblocked_commands: [terraform destroy]\n"), 0o644)
 	c, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// lanes: is read only to say it's ignored (swim doctor).
-	if c.Lanes != 1 || c.Parallel() != 3 || !c.RepoLanes || c.RepoFile == "" {
+	if c.Lanes != 1 || c.Parallel() != 3 || c.RepoFile == "" {
 		t.Fatalf("swim.yml not applied: %+v", c)
 	}
 	// The operator's repos entry wins over swim.yml.
@@ -239,9 +238,11 @@ func TestRepoFile(t *testing.T) {
 	if c, _ = Load(root); c.Parallel() != 5 {
 		t.Fatalf("precedence: parallel %d", c.Parallel())
 	}
-	os.WriteFile(filepath.Join(root, "swim.yml"), []byte("lanse: 3\n"), 0o644)
-	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "swim.yml") {
-		t.Fatalf("unknown key should be an error naming swim.yml: %v", err)
+	for _, bad := range []string{"lanse: 3\n", "lanes: 7\n"} { // lanes: is no setting: swim finds the lanes in use
+		os.WriteFile(filepath.Join(root, "swim.yml"), []byte(bad), 0o644)
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "swim.yml") {
+			t.Fatalf("%q: unknown key should be an error naming swim.yml: %v", bad, err)
+		}
 	}
 }
 
@@ -340,5 +341,34 @@ func TestBackupNumbersCopies(t *testing.T) {
 	}
 	if bak, err := Backup(filepath.Join(t.TempDir(), "none.yml")); err != nil || bak != "" {
 		t.Errorf("a missing file: %q, %v", bak, err)
+	}
+}
+
+// config.yml is read loosely: UnknownKeys names what swim doesn't read,
+// with its section and line.
+func TestUnknownKeys(t *testing.T) {
+	p := writeConfig(t, `defaults:
+  lanes: 4
+  notify_ulr: https://ntfy.sh/x
+  runners: {ts: tsx}
+repos:
+  /repo/a:
+    max_parallel: 2
+    deps: {2: [1]}
+hub: true
+`)
+	got, err := UnknownKeys(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s []string
+	for _, k := range got {
+		s = append(s, fmt.Sprintf("%s@%s:%d", k.Key, k.Section, k.Line))
+	}
+	if strings.Join(s, " ") != "lanes@defaults:2 notify_ulr@defaults:3 deps@repos /repo/a:8 hub@:9" {
+		t.Errorf("unknown keys: %v", s)
+	}
+	if got, err := UnknownKeys(filepath.Join(t.TempDir(), "none.yml")); err != nil || len(got) != 0 {
+		t.Errorf("missing file: %v %v", got, err)
 	}
 }

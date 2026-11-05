@@ -53,7 +53,7 @@ type Script struct {
 // library. (A wrapped script's guards pass their action to swim guard
 // itself, and its stages are checked as they run.)
 var bashOnly = map[string]bool{
-	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true,
+	"set-e": true, "lane-init": true, "summary": true, "stage": true, "stage-order": true, "bash4": true, "gnu-only": true,
 	"destructive": true, "blocked": true, "secret-echo": true, "cross-lane": true,
 	"guard-unlisted": true, "guard-unused": true, "guard-dynamic": true, "check-unsafe": true,
 	"step": true, "step-pipe": true, "step-subshell": true, "guard-text": true,
@@ -99,6 +99,7 @@ var Checks = []Check{
 	{"stage", finding.Error, false, "an unknown stage name", checkStage},
 	{"stage-order", finding.Warn, false, "stages out of order or repeated", checkStageOrder},
 	{"bash4", finding.Warn, false, "a bash 4 feature macOS bash 3.2 can't run", checkBash4},
+	{"gnu-only", finding.Warn, false, "a GNU-only tool form a Mac's BSD tools don't run as written (sed -i with no suffix, grep -P, date -d, stat -c, find -printf, timeout)", checkGNUOnly},
 	{"guard-unlisted", finding.Error, false, "a guard flag used but not declared in `# Guards:` (refused when it asks; a warning with `# Guards: *`)", checkGuardUnlisted},
 	{"guard-dynamic", finding.Error, false, "a guard whose flag is named at run time, without `# Guards: *`", checkGuardDynamic},
 	{"guard-unused", finding.Warn, false, "a flag listed in `# Guards:` but never used", checkGuardUnused},
@@ -142,6 +143,23 @@ func KnownCode(code string) bool {
 // empty). Stubs are skipped.
 func Run(root string, cfg *config.Config, lanes []int) ([]finding.Finding, error) {
 	return run(root, cfg, lanes, func(Check) bool { return true })
+}
+
+// Only lints every lane with just the checks named (swim doctor's bash4
+// and gnu-only), and returns only their findings.
+func Only(root string, cfg *config.Config, codes ...string) ([]finding.Finding, error) {
+	want := map[string]bool{}
+	for _, c := range codes {
+		want[c] = true
+	}
+	fs, err := run(root, cfg, nil, func(c Check) bool { return want[c.Code] })
+	out := fs[:0]
+	for _, f := range fs {
+		if want[f.Code] {
+			out = append(out, f)
+		}
+	}
+	return out, err
 }
 
 // launcherRefuses are the error-level checks the launcher already refuses

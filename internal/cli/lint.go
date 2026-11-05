@@ -125,7 +125,7 @@ func cmdDoctor(args []string) error {
 			return err
 		}
 		if len(done) == 0 {
-			fmt.Fprintln(os.Stderr, "fixed: nothing (--fix only rewrites swim's .gitignore block and removes stale pid files)")
+			fmt.Fprintln(os.Stderr, "fixed: nothing (--fix only rewrites swim's .gitignore block and removes leftover state)")
 		}
 		fs = doctor.Run(o)
 	}
@@ -135,11 +135,11 @@ func cmdDoctor(args []string) error {
 			return err
 		}
 	} else {
-		finding.WriteText(os.Stdout, fs)
+		finding.WriteCounts(os.Stdout, fs)
 		if !fix {
 			for _, f := range fs {
 				if doctor.Fixable(f.Code) {
-					fmt.Println("run `swim doctor --fix` to apply the safe fixes (swim's .gitignore block, stale pid files)")
+					fmt.Println("run `swim doctor --fix` to apply the safe fixes (swim's .gitignore block, leftover state)")
 					break
 				}
 			}

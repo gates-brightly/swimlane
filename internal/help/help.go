@@ -712,6 +712,9 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     stage-order (warn)     stages out of order, repeated, or change first
     bash4 (warn)           declare -A, mapfile, ${x,,}, |&, coproc, ... (macOS
                            has bash 3.2)
+    gnu-only (warn)        sed -i with no suffix, grep -P, date -d, stat -c,
+                           find -printf, timeout: a Mac's BSD tools don't run
+                           them as written (swim doctor says if this one's do)
     guard-unlisted (error) a guard flag used but not declared in # Guards:
                            (refused when it asks; a warning with # Guards: *)
     guard-dynamic (error)  guard "$FLAG" without # Guards: *
@@ -749,48 +752,61 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
 `,
 	"doctor": `swim doctor [--fix] [--strict] [--yaml]
 
-  Check swim's environment and this repo; prints findings like swim lint
-  and exits 1 on any error (--strict: on warnings too; --yaml: a
-  swim.doctor/v1 document). Checks [code] (level):
+  Check what running swim on this machine needs: one line per finding,
+  its fix below, then the counts (0 errors, 0 warnings when all is well).
+  Exits 1 on any error (--strict: on warnings too; --yaml: a swim.doctor/v1
+  document). Run it where lanes run (the operator's machine): the bash and
+  tool checks are about this machine's. Checks [code] (level):
     binary-platform (error)   this swim, bin/swim or a swim on PATH is built
                               for another OS/CPU (read from its ELF/Mach-O
                               header; nothing is run)
     path-missing (warn)       no swim on PATH
-    path-multiple (warn)      more than one swim on PATH: which runs, which hide
     swim-bin (warn)           $SWIM_BIN, or the first swim on PATH, isn't this one
     config-parse (error)      the config file doesn't load
+    config-key (warn)         config.yml sets a key swim doesn't read (a
+                              typo, a removed setting): named with its line
     config-repo (warn)        no config section for this repo (swim init)
-    lanes-setting (warn)      a lanes: setting, which swim ignores now
+    git (error)               git missing, or not inside a git repo
+    bash (error/warn)         no bash on PATH (error); bash older than 4
+                              here while a lane uses a bash 4 feature: each
+                              lane and line (warn)
+    gnu-only (warn)           not on Linux: a lane line using a GNU-only
+                              form (sed -i, grep -P, date -d, stat -c, find
+                              -printf, timeout) this machine's tool doesn't
+                              run (swim lint's gnu-only, checked against the
+                              tools here: GNU ones on PATH are fine)
+    toolchain (error)         config toolchain fails in bash -c (10s limit)
+    notify (warn)             notify_url doesn't answer (5s), curl is
+                              missing, or notify_command's program isn't on
+                              PATH
+    notify-failing (warn)     the last notification sent failed: swim
+                              config, then t, sends a test
     gitignore (warn)          swim's .gitignore block missing or out of date
     tracked (warn)            git tracks lane scripts or .swim/
-    stale-pid (warn)          .swim/laneN.pid naming a process that is gone
-    toolchain (error)         config toolchain fails in bash -c (30s limit)
-    git (error)               git missing, or not inside a git repo
-    header-env-secret (warn)  header_env lists a secret variable
     env-file (error)          an env file that doesn't parse, or sets a
                               lane's guard flag
+    stale-pid (warn)          .swim/laneN.pid naming a process that is gone
+    claim-expired (warn)      a lane claim in .swim/claims/ past its lease
+    watch-gone (warn)         a swim watch's .swim/workers/ file whose
+                              process is gone (this host) or whose heartbeat
+                              stopped (another host)
+    leftover (warn)           a file under .swim/ swim no longer reads
+                              (hub.yml, headless.*, groups/, observations/,
+                              out/, checkpoints/, earmarks/, lane1.2.claim,
+                              ...)
     stages-old (info)         runs' staged lane copies (.swim/runs/<run>/)
-                              older than 14 days, of no lane's latest round;
-                              --fix removes them
+                              older than 14 days, of no lane's latest round
     remote-running (warn)     a lane has run on another machine sharing the
                               repo for over a day; if that machine is gone,
                               release it (rm .swim/laneN.pid, then swim
                               status --rebuild)
-    notify-failing (warn)     the last notification sent to notify_url (or
-                              notify_command) failed: swim config, then t,
-                              sends a test
-    removed-setting (warn)    a setting swim no longer has (modules,
-                              secrets, ambient_credentials): it's ignored;
-                              delete it
-    signing-key (info/warn)   where the runner key lives: warns when it's
-                              a file with no passphrase (a lane could read
-                              it and sign as the runner); notes that a key
-                              in ssh-agent can be asked by a lane unless
-                              added with ssh-add -c
 
   --fix applies only safe local repairs, then checks again: it rewrites
-  swim's .gitignore block and removes stale pid files. It never edits
-  config, lane scripts or git.
+  swim's .gitignore block, and deletes stale pid files, expired claims,
+  gone watches' files, old staged copies and the leftover files above,
+  checking each again first. It never edits config, lane scripts or git,
+  and never deletes lane logs, the chain, status.yml, the queue,
+  .swim/scripts, snapshots or signoffs.
 `,
 	"changelog": `swim changelog [-n N] [--since VERSION] [--all]
 

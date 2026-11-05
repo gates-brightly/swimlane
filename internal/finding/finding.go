@@ -126,6 +126,22 @@ func Summary(fs []Finding) string {
 // WriteText prints one finding per line, aligned, with its fix indented
 // below, then the summary line.
 func WriteText(w io.Writer, fs []Finding) {
+	writeLines(w, fs)
+	fmt.Fprintln(w, Summary(fs))
+}
+
+// WriteCounts is WriteText closing with the counts even when there are
+// none ("0 errors, 0 warnings"): swim doctor's report.
+func WriteCounts(w io.Writer, fs []Finding) {
+	writeLines(w, fs)
+	if len(fs) == 0 {
+		fmt.Fprintln(w, "0 errors, 0 warnings")
+		return
+	}
+	fmt.Fprintln(w, Summary(fs))
+}
+
+func writeLines(w io.Writer, fs []Finding) {
 	// A long location (an absolute path) goes on a line of its own, so
 	// the rest don't pad to it and wrap in an 80-column terminal.
 	const maxWidth = 24
@@ -164,7 +180,6 @@ func WriteText(w io.Writer, fs []Finding) {
 			fmt.Fprintf(w, "%-*s         fix: %s\n", width, "", tilde(f.Fix))
 		}
 	}
-	fmt.Fprintln(w, Summary(fs))
 }
 
 // Document is the --yaml output.

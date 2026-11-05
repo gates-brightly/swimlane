@@ -101,7 +101,7 @@ reruns anything. Read the log before you run the lane again.
 
 ```sh
 swim doctor                 # [stale-pid] .swim/laneN.pid names process P, which is gone
-swim doctor --fix           # removes stale pid files (and other safe local repairs)
+swim doctor --fix           # removes stale pid files (and other leftover state)
 swim status --rebuild       # rebuilds status from the logs: the lane is now interrupted
 swim log N                  # what it did before it died
 swim run N                  # rerun it when you're sure it's safe
