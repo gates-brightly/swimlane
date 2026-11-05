@@ -78,8 +78,10 @@ history stays here, since `swim changelog --since` reads it.
   blocks until a lane's round, a queued batch or a swim run ends and exits
   with its result (0 passed, 3 dry run, 1 otherwise); `swim queue` prints
   the batch's id to wait on. A plain number is now a lane (a batch is its
-  id or `'#41'`). `swim log -f` stops by itself once the followed round
+  id or `'#41'`). `swim log --follow` stops by itself once the followed round
   ends (exit 0, whatever its result).
+
+- **`swim log -f` is `swim log --follow`,** its one spelling.
 
 - **`swim step` and `swim lib` are plumbing now: `swim _step` and `swim
   _lib`,** out of `swim --help` like swim's other internal commands. Lanes

@@ -22,28 +22,22 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow]
+// swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [--follow]
 func cmdLog(args []string) error {
 	var all, full, raw, asYAML, follow bool
-	args = append([]string(nil), args...)
-	for i, a := range args {
-		if a == "-f" {
-			args[i] = "--follow"
-		}
-	}
 	rest, err := flags{bools: map[string]*bool{"all": &all, "full": &full, "raw": &raw, "yaml": &asYAML,
 		"follow": &follow}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow]")
+		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [--follow]")
 	}
 	if asYAML && len(rest) == 0 {
 		return usagef("--yaml needs a lane or job: swim log N --yaml")
 	}
 	if follow && (len(rest) == 0 || asYAML || all) {
-		return usagef("--follow takes one lane, and no --yaml or --all: swim log N -f")
+		return usagef("--follow takes one lane, and no --yaml or --all: swim log N --follow")
 	}
 	root, cfg, err := repo()
 	if err != nil {

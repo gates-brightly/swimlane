@@ -141,7 +141,7 @@ Work a task until it's ready, dispatch it, start the next. At each
 stopping point, `swim queue` to see what finished, and pick those up
 first. When everything is dispatched, `swim wait --any <batch> <batch>`
 returns as the first ends (`swim wait` is the one command that blocks on
-work; `swim log -f` only shows it). Rules:
+work; `swim log --follow` only shows it). Rules:
 
 - Don't edit a dispatched lane: the batch is pinned, so the edit is
   skipped. `swim queue rm` it first, or wait.

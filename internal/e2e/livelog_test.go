@@ -61,7 +61,7 @@ func TestLogShowsRunningStep(t *testing.T) {
 	}
 }
 
-// swim log -f follows the round and stops by itself when it ends; swim
+// swim log --follow follows the round and stops by itself when it ends; swim
 // wait N is what exits with its result.
 func TestLogFollowStopsWhenDone(t *testing.T) {
 	long(t)
@@ -76,7 +76,7 @@ run "fails" false`)
 	defer r.release("go2")
 	defer r.release("go")
 	waitFor(t, spooled(r, 1, "tick-1"))
-	f := start(t, r.cmd(bin, "log", "1", "-f"), nil)
+	f := start(t, r.cmd(bin, "log", "1", "--follow"), nil)
 	w := start(t, r.cmd(bin, "wait", "1", "--interval", "100ms"), nil)
 	f.saw(t, "RUNNING  slow (in progress)")
 	r.release("go")
@@ -98,8 +98,8 @@ run "fails" false`)
 	}
 	// On an idle lane, -f prints the last round and stops; swim wait 1
 	// exits with it.
-	if out, code := r.swim("log", "1", "-f"); code != 0 || !strings.Contains(out, "== END FAIL") {
-		t.Errorf("idle lane, -f: exit %d\n%s", code, out)
+	if out, code := r.swim("log", "1", "--follow"); code != 0 || !strings.Contains(out, "== END FAIL") {
+		t.Errorf("idle lane, --follow: exit %d\n%s", code, out)
 	}
 	if _, code := r.swim("wait", "1"); code != 1 {
 		t.Errorf("idle lane, failed last round: swim wait 1 exit %d", code)
@@ -118,7 +118,7 @@ func TestLogFollowLateOutput(t *testing.T) {
 	defer c.Wait()
 	defer r.release("go")
 	waitFor(t, spooled(r, 1, "early"))
-	f := start(t, r.cmd(bin, "log", "1", "-f"), nil)
+	f := start(t, r.cmd(bin, "log", "1", "--follow"), nil)
 	f.saw(t, "| early")
 	r.release("go")
 	if code := f.wait(t); code != 0 {

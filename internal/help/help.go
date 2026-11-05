@@ -407,7 +407,7 @@ swim archive --done ["<note>"]
   --lane N|JOB   tie the note to a lane (and its job id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow]
+	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [--follow]
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
@@ -440,7 +440,7 @@ swim archive --done ["<note>"]
                 every round with --all, or a job's rounds; the running step is
                 a result "RUNNING" with its command, output so far and
                 duration_s. See swim guide logs.
-  -f, --follow  print lane N's (or JOB's lane's) current round, then follow it
+  --follow      print lane N's (or JOB's lane's) current round, then follow it
                 like tail -f: new log lines, and the running step's output as
                 it is written (the step's block then adds only its result
                 line). It stops by itself once the round has ended (on an
