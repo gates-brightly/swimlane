@@ -57,7 +57,7 @@ first. `swim note "<text>"` adds to it.
 ```
 
 Events: `init`, `new`, `run`, `start`, `pass`/`fail`/`interrupted`, `skip`,
-`approve`, `decline`, `run-done`, `archive`, `stub`, `note`, `lint`,
+`approve`, `decline`, `run-done`, `archive`, `note`, `lint`,
 `usage` (a command swim refused as typed). Details summarize; the evidence
 is in the lane log.
 

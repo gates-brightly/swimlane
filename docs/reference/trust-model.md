@@ -80,7 +80,7 @@ else stops it. What is enforced outside the script:
   script before it starts and at the step at run time. swim blocks none by
   itself: lanes may run git and gh (push, commit, `gh pr create`), and a
   guard is how an operator decides on one.
-- **Running lanes are protected:** swim won't rerun, edit, archive or stub a
+- **Running lanes are protected:** swim won't rerun, edit or archive a
   lane that's running.
 - **The lock:** a swim with other syntax versions than `.swim.lock` refuses
   to run lanes.

@@ -29,7 +29,7 @@ says otherwise:
   `queue show`, `log`, `report` (from your own earmark), `lint`, `history`,
   `verify`, `env`, `keys`, `doctor` (no `--fix`), `changelog`, `guide`,
   `--help`, `wait`. Add `--yaml` only to parse.
-- **Your own bookkeeping:** `swim new`, `archive`, `stub`, `note`, `claim`.
+- **Your own bookkeeping:** `swim new`, `archive`, `note`.
 - **Never:**
   - Run rounds (`swim run`, `all`, `swim N`, `./lane.N.sh`, `watch`, `ci`).
     If the user explicitly asks, only lanes with no guards that change
@@ -65,8 +65,9 @@ says otherwise:
    means exit 0: read the evidence (`swim log N | sed -n '/^-- stage
    verify/,$p'`). SKIP (dry run): nothing changed; never a result.
 7. **Close out:** record results (with the job id) where the project tracks
-   them, `swim note "<finding>"` for the next session, `swim archive N --as
-   <what-happened>`, `swim stub N "<why idle>"`. Out-of-scope findings go
+   them, `swim note "<finding>"` for the next session, `swim archive N
+   "<why idle>" --as <what-happened>` (the log is kept, the lane is free).
+   Out-of-scope findings go
    on a follow-up list, never into the round.
 
 Something looks wrong (stuck `running`, an orphaned batch, a round that
@@ -106,21 +107,19 @@ the value.
 
 The planner:
 
-- Assigns each worker one lane before it starts, and claims it for it:
-  `swim claim 4 --session worker-orders` (the worker runs with
-  `SWIM_SESSION=worker-orders`; only that session may `swim new` it). Puts
+- Assigns each worker one lane before it starts, and a session name (the
+  worker runs with `SWIM_SESSION=worker-orders`; its `swim new` claims the
+  lane, so another session's `swim new` is refused). Puts
   the goal, the exact `# After:` line, its session name and what to report
   in the worker's prompt, and records the assignment with `swim note`.
 - Writes the shared parts: cross-lane ordering, `deps:` lines for the
   operator, shared files. Checks every lane together (`swim lint`, `swim
   status`) and queues them as one batch.
-- For a shared environment: lanes declare `# Locks: NAME`; a session
-  working on it outside a lane claims it first (`swim claim NAME --for
-  30m`).
+- For a shared environment: lanes declare `# Locks: NAME`.
 
 A worker:
 
-- Writes only its own `lane.N.*`. Never `new`, `stub`, `archive` or edits
+- Writes only its own `lane.N.*`. Never `new`, `archive` or edits
   another lane. If its lane isn't free, it stops and tells the planner.
 - Puts its name in `# Owner:`, tags what it creates with `$SWIM_JOB`, keeps
   the `# Job:` line `swim new` wrote.

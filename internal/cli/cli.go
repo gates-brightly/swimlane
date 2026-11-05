@@ -39,9 +39,6 @@ func init() {
 		"step":      {run: cmdStep},
 		"lib":       {run: cmdLib},
 		"archive":   {run: cmdArchive},
-		"clean":     {run: cmdClean},
-		"claim":     {run: cmdClaim},
-		"stub":      {run: cmdStub},
 		"note":      {run: cmdNote},
 		"log":       {run: cmdLog},
 		"lock":      {run: cmdLock},
@@ -393,7 +390,7 @@ func taskLanes(root string, cfg *config.Config, name string) []int {
 // (exact, or a prefix of 8+ characters) matches the job in a lane's script on
 // disk; with lastRun it also matches the job a lane last ran. Pinning by job
 // means the command acts on exactly that job, or refuses if no lane holds it
-// any more (the script was rewritten or stubbed).
+// any more (the script was rewritten or archived).
 // laneArgs is lane references as typed, made what swim reads: "2,3" is 2
 // and 3. (A lane script's path, lane.17.sh, is read by laneRef itself.)
 // Only for commands whose arguments are all lane references.

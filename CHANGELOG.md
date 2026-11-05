@@ -42,6 +42,17 @@ history stays here, since `swim changelog --since` reads it.
 
 ### Removed
 
+- **`swim archive` empties the slot; `swim stub`, `swim clean` and `swim
+  claim` are gone.** `swim archive N ["<note>"]` archives the round's log
+  and leaves the stub `swim stub` used to write, carrying the note (a
+  script edited since its round ran is kept); `swim archive --done` does it
+  for every lane whose round passed. Words after the lanes are now the
+  note, not the archive's name: name it with `--as`. The claim `swim new`
+  takes on a lane stays, silently: `swim status` shows it, and a script's
+  `# Owner:`, only when they're someone else's; `swim new N --force` or
+  `swim archive N --force` takes it over. Resource claims (`swim claim
+  lith`), assigned claims (`--session`) and `swim.clean/v1` are gone;
+  `.swim/claims/res.*.yml` files can be deleted.
 - **Decisions and checkpoints are gone.** `decide` (bash), `swim decide`,
   `# Decisions:` (and `decisions:` in lane.N.yml) and `swim queue
   --decide` are removed, with the live view's and `swim watch`'s numbered

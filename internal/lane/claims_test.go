@@ -108,7 +108,7 @@ func TestSessionID(t *testing.T) {
 
 // A claim's expiry is written to the second, rounded up: rounded down, a
 // one-second lease taken late in a second ran out before it was read back
-// (swim claim --for 1s then crashed on the claim it had just taken).
+// (a 1s lease then crashed on the claim it had just taken).
 func TestClaimExpiryRoundsUp(t *testing.T) {
 	now := time.Date(2026, 11, 2, 21, 8, 24, 900_000_000, time.UTC)
 	for _, c := range []struct {
@@ -125,51 +125,5 @@ func TestClaimExpiryRoundsUp(t *testing.T) {
 	}
 	if got := expiresIn(now.Truncate(time.Second), time.Second); got != "2026-11-02T21:08:25Z" {
 		t.Errorf("on the second: %s", got)
-	}
-}
-
-// A claim taken for another session is that session's: its own refresh
-// keeps who assigned it, and a third session is refused.
-func TestClaimAssigned(t *testing.T) {
-	root := t.TempDir()
-	c, _, err := TakeClaimFor(root, 4, "worker", "planner", time.Hour, "", false)
-	if err != nil || c.Session != "worker" || c.AssignedBy != "planner" {
-		t.Fatalf("assigned: %+v %v", c, err)
-	}
-	if err := CheckClaim(root, 4, "worker"); err != nil {
-		t.Fatalf("the worker is refused its own lane: %v", err)
-	}
-	if err := CheckClaim(root, 4, "other"); err == nil {
-		t.Fatal("another session may take the worker's lane")
-	}
-	c, _, err = TakeClaim(root, 4, "worker", time.Hour, "job-1", false)
-	if err != nil || c.AssignedBy != "planner" || c.Job != "job-1" {
-		t.Fatalf("the worker's refresh: %+v %v", c, err)
-	}
-}
-
-// A resource's claim works as a lane's: one session holds it, another is
-// refused, and it's listed by name (a name with / included).
-func TestResourceClaims(t *testing.T) {
-	root := t.TempDir()
-	if _, _, err := TakeClaimOn(root, ResourceClaim("tf/orders"), "a", "", time.Hour, "", false); err != nil {
-		t.Fatal(err)
-	}
-	_, _, err := TakeClaimOn(root, ResourceClaim("tf/orders"), "b", "", time.Hour, "", false)
-	var ec ErrClaimed
-	if !errors.As(err, &ec) || ec.Name != "tf/orders" || !strings.Contains(err.Error(), "tf/orders is claimed by") {
-		t.Fatalf("b's claim on a's resource: %v", err)
-	}
-	if rc := ResourceClaims(root); len(rc) != 1 || rc[0].Name != "tf/orders" || rc[0].Session != "a" {
-		t.Fatalf("listed: %+v", rc)
-	}
-	if ReadClaim(root, 1) != nil {
-		t.Fatal("a resource claim reads as a lane's")
-	}
-	if c, err := ReleaseClaimOn(root, ResourceClaim("tf/orders"), "a", false); err != nil || c == nil {
-		t.Fatalf("release: %+v %v", c, err)
-	}
-	if len(ResourceClaims(root)) != 0 {
-		t.Fatal("still listed after release")
 	}
 }
