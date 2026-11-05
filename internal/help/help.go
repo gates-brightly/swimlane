@@ -774,7 +774,7 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     config-parse (error)      the config file doesn't load
     config-key (warn)         config.yml sets a key swim doesn't read (a
                               typo, a removed setting): named with its line
-    config-repo (warn)        no config section for this repo (swim init)
+    config-repo (warn)        a repos: key that's a path; key repos by name
     git (error)               git missing, or not inside a git repo
     bash (error/warn)         no bash on PATH (error); bash older than 4
                               here while a lane uses a bash 4 feature: each
@@ -791,7 +791,8 @@ swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
     notify-failing (warn)     the last notification sent failed: swim
                               config, then t, sends a test
     gitignore (warn)          swim's .gitignore block missing or out of date
-    tracked (warn)            git tracks lane scripts or .swim/
+    tracked (warn)            git tracks .swim/, or lane scripts in a repo
+                              whose CI doesn't run swim ci
     env-file (error)          an env file that doesn't parse, or sets a
                               lane's guard flag
     stale-pid (warn)          .swim/laneN.pid naming a process that is gone
