@@ -8,10 +8,10 @@ swim queue 4 5 --approve FLAG --note "cutover"   # a batch
 swim queue add                          # every pending lane, as one batch
 swim queue                              # waiting, running, orphaned, done
 swim queue show|rm|requeue ID
-swim queue 6 --wait --timeout 30m       # queue, then block for its result
 swim watch [--once] [-y]                # the swimmer
+swim wait BATCH [--timeout D]           # until that batch ends; exits with its result
+swim wait [--any] N|BATCH|RUN ...       # until those end (--any: the first)
 swim wait [--timeout D]                 # until nothing runs or is queued
-swim wait [--any] BATCH|JOB ...         # until those end (--any: the first); exits with the result
 ```
 
 ## Batches

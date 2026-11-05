@@ -331,7 +331,20 @@ func TestWatchDryRunMarked(t *testing.T) {
 	}
 }
 
-func TestWaitAndQueueWait(t *testing.T) {
+// queuedID is the batch id swim queue printed ("queued #1 (q-...): ...").
+func queuedID(t *testing.T, out string) string {
+	t.Helper()
+	_, rest, ok := strings.Cut(out, "queued #")
+	if _, rest, ok2 := strings.Cut(rest, "("); ok && ok2 {
+		if id, _, ok := strings.Cut(rest, ")"); ok {
+			return id
+		}
+	}
+	t.Fatalf("no batch id in swim queue's output:\n%s", out)
+	return ""
+}
+
+func TestWaitForBatchLaneAndRun(t *testing.T) {
 	long(t)
 	r := newRepo(t, "")
 	r.script(1, "long", `run "long" `+hold("go"))
@@ -348,10 +361,14 @@ func TestWaitAndQueueWait(t *testing.T) {
 	if out, code := r.swim("wait", "--timeout", "300ms", "--interval", "100ms"); code != 1 || !strings.Contains(out, "still busy after 300ms: swim 1 is running") {
 		t.Fatalf("wait --timeout on a busy repo: %d\n%s", code, out)
 	}
+	if out, code := r.swim("wait", "1", "--timeout", "300ms", "--interval", "100ms"); code != 1 || !strings.Contains(out, "still waiting after 300ms: swim 1 running") {
+		t.Fatalf("wait N --timeout on a running lane: %d\n%s", code, out)
+	}
 
-	// swim queue 2 --wait: shorthand for queue add, and it waits for its
-	// own batch, not for the rest of the repo.
-	q := r.cmd(bin, "queue", "2", "--wait")
+	// swim queue 2, then swim wait BATCH: it waits for that batch alone,
+	// not for the rest of the repo.
+	id := queuedID(t, r.mustSwim("queue", "2"))
+	q := r.cmd(bin, "wait", id)
 	qout := &syncBuffer{}
 	q.Stdout, q.Stderr = qout, qout
 	if err := q.Start(); err != nil {
@@ -366,57 +383,50 @@ func TestWaitAndQueueWait(t *testing.T) {
 	}
 	defer func() { syscall.Kill(-w.Process.Pid, syscall.SIGINT); w.Wait() }()
 	if err := q.Wait(); err != nil {
-		t.Fatalf("queue --wait: %v\n%s", err, qout.String())
+		t.Fatalf("swim wait BATCH: %v\n%s", err, qout.String())
 	}
-	contains(t, "queue --wait", qout.String(), "swim wait: waiting: #1 queued", "(#1): passed · swim 2")
+	contains(t, "swim wait BATCH", qout.String(), "swim wait: waiting: #1 queued", "(#1): passed · swim 2")
 	if len(doneEntries(t, r)) != 1 || r.status().Get(1).State != status.Passed {
-		t.Errorf("queue --wait returned before the work was done: %+v", r.status().Get(1))
+		t.Errorf("swim wait returned before the work was done: %+v", r.status().Get(1))
 	}
 
-	// A failing batch: --wait exits non-zero.
-	if out, code := r.swim("queue", "3", "--wait"); code != 1 || !strings.Contains(out, "(#2): failed") {
-		t.Errorf("queue --wait on a failing batch: %d\n%s", code, out)
+	// A failing batch: swim wait exits non-zero.
+	id = queuedID(t, r.mustSwim("queue", "3"))
+	if out, code := r.swim("wait", id); code != 1 || !strings.Contains(out, "(#2): failed") {
+		t.Errorf("swim wait on a failing batch: %d\n%s", code, out)
+	}
+	// A lane, and a swim run: their rounds' results.
+	if out, code := r.swim("wait", "2"); code != 0 || !strings.Contains(out, "swim 2: passed") {
+		t.Errorf("swim wait 2: %d\n%s", code, out)
+	}
+	r.swim("run", "2", "3", "--run-id", "waitrun-1", "--plain")
+	if out, code := r.swim("wait", "waitrun-1"); code != 1 || !strings.Contains(out, "waitrun-1: failed · swim 2,3") {
+		t.Errorf("swim wait RUN: %d\n%s", code, out)
+	}
+	if out, code := r.swim("wait", "nosuchthing"); code == 0 || !strings.Contains(out, "is no lane, queued batch, job or swim run") {
+		t.Errorf("swim wait on nothing: %d\n%s", code, out)
 	}
 }
 
 func TestWaitNamesAQueueWithNoWorker(t *testing.T) {
 	r := newRepo(t, "")
 	r.script(1, "q", `run "q" true`)
-	r.mustSwim("queue", "1")
+	id := queuedID(t, r.mustSwim("queue", "1"))
 	if out, code := r.swim("wait", "--timeout", "200ms", "--interval", "50ms"); code != 1 || !strings.Contains(out, "1 queued batch(es) not yet taken by a worker (swim watch)") {
 		t.Errorf("wait with a queued batch and no worker: %d\n%s", code, out)
 	}
-}
-
-func TestQueueWaitTimeout(t *testing.T) {
-	r := newRepo(t, "")
-	r.script(1, "q", `run "q" true`)
-	// No worker up: --timeout gives up, exits 1, and leaves the batch queued.
+	// Waiting on the batch: --timeout gives up, exits 1, and leaves it queued.
 	start := time.Now()
-	out, code := r.swim("queue", "1", "--timeout", "300ms")
+	out, code := r.swim("wait", id, "--timeout", "300ms")
 	if code != 1 || !strings.Contains(out, "still waiting after 300ms: #1 queued (not yet taken by a swimmer: swim watch)") {
-		t.Fatalf("queue --timeout with no worker: %d\n%s", code, out)
+		t.Fatalf("wait BATCH --timeout with no worker: %d\n%s", code, out)
 	}
 	if took := time.Since(start); took > scaled(5*time.Second) {
 		t.Errorf("--timeout 300ms took %s", took)
 	}
 	contains(t, "still queued", r.mustSwim("queue"), "#1", "queued")
-	// With a worker, it finishes within the limit and exits with the result.
-	r.mustSwim("watch", "--once")
-	r.script(2, "q2", `run "q" true`)
-	q := r.cmd(bin, "queue", "2", "--wait", "--timeout", "30s")
-	qout := &syncBuffer{}
-	q.Stdout, q.Stderr = qout, qout
-	if err := q.Start(); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, func() bool { return strings.Contains(qout.String(), "queued #") })
-	r.mustSwim("watch", "--once")
-	if err := q.Wait(); err != nil || !strings.Contains(qout.String(), "(#2): passed") {
-		t.Errorf("queue --wait --timeout with a worker: %v\n%s", err, qout.String())
-	}
-	if _, code := r.swim("queue", "1", "--timeout", "soon"); code != 2 {
-		t.Errorf("a bad --timeout should be a usage error, got %d", code)
+	if _, code := r.swim("queue", "1", "--wait"); code != 2 {
+		t.Errorf("swim queue --wait is gone (swim wait BATCH): exit %d", code)
 	}
 }
 

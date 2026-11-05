@@ -58,10 +58,11 @@ says otherwise:
    header (`# After:`), never just prose.
 4. **Check:** `swim lint N` until clean, then `swim status N` (what it
    waits on, how each guard would be decided).
-5. **Hand over** (below), then go on to other work. Never poll, and never
-   `swim queue ... --wait` while you have other work.
-6. **Read results** when `swim queue` says the batch is done: `swim status
-   N`. FAIL: `swim log N`, the failed step and those before it. PASS only
+5. **Hand over** (below), then go on to other work. Never poll. With
+   nothing else to do, `swim wait <batch>` (the id `swim queue` printed)
+   blocks until that batch ends and exits with its result.
+6. **Read results** when the batch is done (`swim wait` returned, or
+   `swim queue` says so): `swim status N`. FAIL: `swim log N`, the failed step and those before it. PASS only
    means exit 0: read the evidence (`swim log N | sed -n '/^-- stage
    verify/,$p'`). SKIP (dry run): nothing changed; never a result.
 7. **Close out:** record results (with the job id) where the project tracks
@@ -138,8 +139,9 @@ Keep one entry per task in your task list: its lanes and state (writing,
 dispatched `#41 (21: 63bdf4a9)`, fixing, waiting on the operator, done).
 Work a task until it's ready, dispatch it, start the next. At each
 stopping point, `swim queue` to see what finished, and pick those up
-first. When everything is dispatched, `swim wait --any '#42' '#43'`
-returns as the first ends. Rules:
+first. When everything is dispatched, `swim wait --any <batch> <batch>`
+returns as the first ends (`swim wait` is the one command that blocks on
+work; `swim log -f` only shows it). Rules:
 
 - Don't edit a dispatched lane: the batch is pinned, so the edit is
   skipped. `swim queue rm` it first, or wait.

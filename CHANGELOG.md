@@ -60,6 +60,14 @@ history stays here, since `swim changelog --since` reads it.
   to load. Older logs with DRIFT and MSG lines still read, and older chain
   entries keep their observed facts, outputs and inputs and still verify.
 
+- **One way to wait: `swim wait`.** `swim queue --wait` (and its
+  `--timeout`) and `swim log --until-done` are gone. `swim wait N|BATCH|RUN`
+  blocks until a lane's round, a queued batch or a swim run ends and exits
+  with its result (0 passed, 3 dry run, 1 otherwise); `swim queue` prints
+  the batch's id to wait on. A plain number is now a lane (a batch is its
+  id or `'#41'`). `swim log -f` stops by itself once the followed round
+  ends (exit 0, whatever its result).
+
 ## 0.20261105.4 (v0.20261105.4, 2026-11-05)
 
 ### Removed

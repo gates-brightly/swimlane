@@ -22,9 +22,9 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]
+// swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow]
 func cmdLog(args []string) error {
-	var all, full, raw, asYAML, follow, untilDone bool
+	var all, full, raw, asYAML, follow bool
 	args = append([]string(nil), args...)
 	for i, a := range args {
 		if a == "-f" {
@@ -32,18 +32,15 @@ func cmdLog(args []string) error {
 		}
 	}
 	rest, err := flags{bools: map[string]*bool{"all": &all, "full": &full, "raw": &raw, "yaml": &asYAML,
-		"follow": &follow, "until-done": &untilDone}}.parse(args)
+		"follow": &follow}}.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]")
+		return usagef("usage: swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow]")
 	}
 	if asYAML && len(rest) == 0 {
 		return usagef("--yaml needs a lane or job: swim log N --yaml")
-	}
-	if untilDone {
-		follow = true
 	}
 	if follow && (len(rest) == 0 || asYAML || all) {
 		return usagef("--follow takes one lane, and no --yaml or --all: swim log N -f")
@@ -76,7 +73,7 @@ func cmdLog(args []string) error {
 			return err
 		}
 		if follow {
-			return followLog(root, n, untilDone, out)
+			return followLog(root, n, out)
 		}
 		files := []string{}
 		if all {
@@ -511,14 +508,15 @@ func (lw logWriter) linesV1(lines []string) {
 // followLog prints lane n's current round and then follows it, like
 // tail -f: lines as the log gains them, and the running step's output as
 // its spool gains it (so it streams while the step runs, not only when it
-// ends). With untilDone it returns when the round has ended and the lane
-// has stopped, failing with the round's exit status; otherwise it runs
-// until interrupted.
-func followLog(root string, n int, untilDone bool, out logWriter) error {
+// ends). It returns once the round has ended and the lane has stopped
+// (whatever the round's result: swim wait N exits with that), or fails
+// when the lane stopped without ending its round. With no round yet, it
+// waits for one.
+func followLog(root string, n int, out logWriter) error {
 	logPath := lane.Log(root, n)
 	var off int64
 	var pending string // an incomplete last line of the log
-	endExit := -1      // the last round's END exit code, -1 while it runs
+	ended := false     // the last round has its END
 	streamKey := ""    // the spooled step being streamed (label + clock)
 	streamed := 0      // its output lines printed so far
 	skipBlock := false // printing a streamed step's block: skip what streamed
@@ -534,8 +532,8 @@ func followLog(root string, n int, untilDone bool, out logWriter) error {
 		last := rounds[len(rounds)-1]
 		emit(last)
 		for _, l := range last {
-			if code, ok := logparse.EndExit(l); ok {
-				endExit = code
+			if _, ok := logparse.EndExit(l); ok {
+				ended = true
 			}
 		}
 	} else {
@@ -584,10 +582,10 @@ func followLog(root string, n int, untilDone bool, out logWriter) error {
 					streamKey, skipOut, streamed, skipBlock = "", streamed, 0, true
 					continue
 				case strings.HasPrefix(l, logparse.RoundMark):
-					endExit = -1
+					ended = false
 				}
-				if code, ok := logparse.EndExit(l); ok {
-					endExit = code
+				if _, ok := logparse.EndExit(l); ok {
+					ended = true
 				}
 				show = append(show, l)
 			}
@@ -611,20 +609,16 @@ func followLog(root string, n int, untilDone bool, out logWriter) error {
 			streamed = len(sp.Output)
 			emit(show)
 		}
-		if untilDone {
-			_, running := lane.Running(root, n)
-			switch {
-			case running:
-			case endExit >= 0:
-				if endExit != 0 {
-					return exitError{endExit}
-				}
-				return nil
-			case off > 0 && !laneWaiting(root, n):
-				// A round with no END, and nothing running it: the lane
-				// died (killed, machine went down).
-				return fmt.Errorf("swim %d stopped without finishing its round (no END in its log)", n)
-			}
+		switch _, running := lane.Running(root, n); {
+		case running, laneWaiting(root, n):
+			// Running, or a swim run holds it waiting to start: its next
+			// round is coming.
+		case ended:
+			return nil
+		case off > 0:
+			// A round with no END, and nothing running it: the lane
+			// died (killed, machine went down).
+			return fmt.Errorf("swim %d stopped without finishing its round (no END in its log)", n)
 		}
 		time.Sleep(250 * time.Millisecond)
 	}

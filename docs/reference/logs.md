@@ -1,7 +1,8 @@
 # Logs
 
 ```sh
-swim log N            # a lane's latest round (--all: archives too; -f: follow; --until-done: wait, exit with its result)
+swim log N            # a lane's latest round (--all: archives too; -f: follow it until it ends)
+swim wait N           # block until lane N's round ends; exit with its result
 swim log <job|run>    # a job's rounds / one run
 swim log              # .swim.log, the project log
 swim report --earmark # everything since you last looked, then mark your place (--wait)
@@ -83,4 +84,4 @@ document carries `schema:`; fields are only added within a version.
 | others | `swim.history/v1`, `swim.queue-list/v1`, `swim.verify/v1`, ...: [compatibility](compatibility.md#stability-tiers). |
 
 Exit codes: `0` means everything selected passed; `3` means work waits on
-an approval; waits exit with the result they waited for.
+an approval; `swim wait` exits with the result it waited for.

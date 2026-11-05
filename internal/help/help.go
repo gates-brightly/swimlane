@@ -446,7 +446,7 @@ swim archive --done ["<note>"]
   --lane N|JOB   tie the note to a lane (and its job id)
   Keep notes short and factual; never include secret values.
 `,
-	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow] [--until-done]
+	"log": `swim log [N|JOB] [--all] [--full] [--raw] [--yaml] [-f|--follow]
 
   Print logs:
     swim log            the project log, .swim.log (one line per top-level action)
@@ -482,11 +482,10 @@ swim archive --done ["<note>"]
   -f, --follow  print lane N's (or JOB's lane's) current round, then follow it
                 like tail -f: new log lines, and the running step's output as
                 it is written (the step's block then adds only its result
-                line). Runs until Ctrl-C.
-  --until-done  follow until the lane has finished its round, then exit with
-                the round's exit status (0 passed); on an idle lane, print its
-                last round and exit with that. For scripts and services
-                waiting on a job: swim log 3f2a9c1e --until-done
+                line). It stops by itself once the round has ended (on an
+                idle lane, at once, after its last round; with no round yet,
+                it waits for one). To wait for a round's result, and exit
+                with it: swim wait N.
 `,
 	"ci": `swim ci [N|JOB ...] [--changed[=BASE]] [--rerun] [--junit FILE] [--provider github|gitlab|generic]
         [--require-work] [--heartbeat D] [--run-id ID]
@@ -532,7 +531,7 @@ swim archive --done ["<note>"]
   restored from a CI cache).
 `,
 	"queue": `swim queue [list] [--all] [--yaml]
-swim queue N|JOB ... [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT] [--wait] [--timeout D]
+swim queue N|JOB ... [--approve FLAG[,FLAG]]... [-y] [--parallel N] [--note TEXT]
 swim queue add [flags]           every pending round that hasn't passed
 swim queue show|rm|requeue ID
 
@@ -549,11 +548,8 @@ swim queue show|rm|requeue ID
                             FLAG,FLAG); it must be a guard of a lane in the
                             batch, so a typo fails here, not at 3am
             -y, --yes       approve every guard in the batch
-            --wait          then block until this batch ends (swim wait
-                            BATCH: not the rest of the repo), and exit with
-                            its result (0 passed, 3 dry run, 1 otherwise)
-            --timeout D     give up waiting after D (implies --wait): exit 1,
-                            saying what is still busy; the batch stays queued
+            It prints the batch's id; swim wait ID blocks until that batch
+            ends and exits with its result.
             Guards a batch doesn't approve are asked on swim watch's screen
             (on a terminal, running batches side by side), naming the lane;
             with no such swimmer they are dry runs. A guard flag in the
@@ -667,20 +663,29 @@ swim queue show|rm|requeue ID
   and exits.
 `,
 	"wait": `swim wait [--interval D] [--timeout D]
-swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
+swim wait [--any] N|BATCH|RUN ... [--interval D] [--timeout D]
 
-  With no batches named, block until swim is idle and nothing new is
-  about to start: no lane running, no swim run waiting on lanes, and no
-  batch queued or running (an orphaned batch never runs, so it doesn't
-  count). Prints what it is waiting on whenever that changes. Use it in
-  scripts to wait out the current work and the queue behind it. With
-  batches queued and no swimmer up, it waits until one starts (swim
-  watch).
-  With batches named (#41, a queue id or its first characters, or a job
-  id: the newest batch that queued it), wait for those alone, whatever
-  else runs, then print how each ended and exit as they went: 0 passed,
-  3 when one dry-ran a guard and none failed, 1 otherwise. A batch
-  orphaned by a dead swimmer counts as ended (it never runs by itself).
+  The one command that blocks until work is done.
+  With lanes, batches or runs named, wait for those alone, whatever else
+  runs, then print how each ended and exit as they went: 0 passed, 3 when
+  one dry-ran a guard and none failed, 1 otherwise.
+    N        a lane (its number, script path or task): the round it is
+             running, or the one a swim run holds it waiting to start; on an
+             idle lane, its last round (with none yet, it waits for one)
+    BATCH    a queued batch: its id as swim queue printed it, 4+ of its
+             first characters, or '#41'; a job id names the newest batch
+             that queued it. A batch orphaned by a dead swimmer counts as
+             ended (it never runs by itself).
+    RUN      a swim run id (8+ characters): every lane of that run
+  A job id no batch queued names the lane that holds or last ran it.
+  An agent queues work and waits for it: swim queue 3, then swim wait
+  q-20260101T120000Z-ab12 (waiting on the lane instead could read its
+  previous round, before a swimmer takes the batch).
+  With nothing named, block until swim is idle and nothing new is about
+  to start: no lane running, no swim run waiting on lanes, and no batch
+  queued or running (an orphaned batch never runs, so it doesn't count).
+  With batches queued and no swimmer up, it waits until one starts (swim
+  watch). Prints what it is waiting on whenever that changes.
   --any          return when the first of them ends, with its result: an
                  agent with several batches out reads that one, then
                  waits on the rest again

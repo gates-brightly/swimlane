@@ -42,3 +42,8 @@ Then read the topic for the job at hand, `swim guide <topic>`:
 | anything else | `swim guide` lists every topic |
 
 `swim <command> --help` has one command's detail.
+
+Waiting on work you handed over: `swim queue N` prints the batch's id;
+`swim wait <batch>` blocks until it ends and exits with its result (0
+passed, 3 dry run, 1 otherwise). It is the only command that waits;
+never poll.

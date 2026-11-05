@@ -4,7 +4,7 @@ Source: the UX review (item 9). The AI comes in when a round fails; it
 should read the failure, not the round.
 
 **Today:** `swim log N` prints the round step by step (internal/cli/logcmd.go:25:
-`--all`, `--full`, `--raw`, `--yaml`, `-f`, `--until-done`); `--yaml`
+`--all`, `--full`, `--raw`, `--yaml`, `-f`); `--yaml`
 gives every step parsed. Nothing narrows it to what went wrong, so an
 agent reads every PASS to find the FAIL.
 

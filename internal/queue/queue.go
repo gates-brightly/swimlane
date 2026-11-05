@@ -291,7 +291,7 @@ func List(root string, done bool) ([]*Entry, error) {
 // ClaimGrace is how long after its claim a .running entry that names no
 // worker may still be in the middle of being claimed (the worker writes
 // itself in right after the rename). List says orphaned regardless; a
-// caller waiting for the entry (swim queue --wait) gives it this long.
+// caller waiting for the entry (swim wait) gives it this long.
 const ClaimGrace = 10 * time.Second
 
 // BeingClaimed reports whether e, read as orphaned, names no worker and
