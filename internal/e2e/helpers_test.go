@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -308,4 +309,29 @@ func TestHelperProvenance(t *testing.T) {
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: provenance\n# Includes: lib/mine.sh\n\nsource lib/mine.sh\nstage check\nos_"+here+"_gate\n"), 0o755)
 	r.mustSwim("run", "1", "--plain")
 	contains(t, "the repo's own", r.mustSwim("log", "1"), "$ true", "lib/mine.sh, not a swim helpers copy: shown in full")
+}
+
+// swim helpers stats: each helper's calls and failures across rounds,
+// and the checks lanes keep writing by hand (numbers aside) in different
+// work: the candidates for a helper. A rerun of one lane isn't a pattern.
+func TestHelperStats(t *testing.T) {
+	r := newRepo(t)
+	contains(t, "empty", r.mustSwim("helpers", "stats"), "no rounds in this repo's lane logs yet")
+	installHelpers(t, r, "tool")
+	for n, ver := range map[int]string{1: "", 2: " 999"} {
+		os.WriteFile(filepath.Join(r.root, "lane."+strconv.Itoa(n)+".sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: goal "+strconv.Itoa(n)+"\n# Includes: lib/swim/tool.sh\n\nsource lib/swim/tool.sh\nstage check\ngate \"AWS session is sbx"+strconv.Itoa(n)+"\" true\ntool_gate git"+ver+"\n"), 0o755)
+	}
+	r.swim("run", "1", "2", "--plain")
+	r.swim("run", "2", "--plain")
+	out := r.mustSwim("helpers", "stats")
+	contains(t, "stats", out, "3 rounds in this repo's lane logs", "      3       2  tool_gate", "want git 999, got",
+		"candidates for a helper", "       3      2       0  AWS session is sbx2")
+
+	// One lane's reruns: the same goal every time, so not a candidate.
+	r2 := newRepo(t)
+	os.WriteFile(filepath.Join(r2.root, "lane.1.sh"), []byte("#!/usr/bin/env swim\n# swim: syntax 4\n# Round: one goal\n\nstage check\ngate \"AWS session is sbx1\" true\n"), 0o755)
+	for i := 0; i < 3; i++ {
+		r2.mustSwim("run", "1", "--plain")
+	}
+	contains(t, "reruns", r2.mustSwim("helpers", "stats"), "helpers: none ran", "checks written by hand: none repeated")
 }

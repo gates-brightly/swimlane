@@ -17,7 +17,7 @@ import (
 // helpersDir is where swim helpers add writes modules, under the repo.
 const helpersDir = "lib/swim"
 
-// cmdHelpers is swim helpers [MODULE | add MODULE... [--dir DIR] [--force]].
+// cmdHelpers is swim helpers [MODULE | add MODULE... [--dir DIR] [--force] | stats].
 func cmdHelpers(args []string) error {
 	var dir string
 	var force bool
@@ -41,6 +41,16 @@ func cmdHelpers(args []string) error {
 	if force || dir != "" {
 		return usagef("--dir and --force are for swim helpers add")
 	}
+	if len(rest) > 0 && rest[0] == "stats" {
+		if len(rest) > 1 {
+			return usagef("usage: swim helpers stats")
+		}
+		root, _, err := repo()
+		if err != nil {
+			return err
+		}
+		return helperStats(root)
+	}
 	// Listing and showing work anywhere; in a repo they add its copies.
 	root, cfg, rerr := repo()
 	if rerr != nil {
@@ -55,7 +65,7 @@ func cmdHelpers(args []string) error {
 		}
 		return showHelpers(root, cfg, rest[0])
 	}
-	return usagef("usage: swim helpers [MODULE | add MODULE... [--dir DIR] [--force]]")
+	return usagef("usage: swim helpers [MODULE | add MODULE... [--dir DIR] [--force] | stats]")
 }
 
 // showHelpers prints module m's functions: each one's usage and what it

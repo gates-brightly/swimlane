@@ -38,6 +38,15 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Added
+
+- **`swim helpers stats`:** what the lane logs say about helpers, every
+  round, archives included: each helper function's calls and failures,
+  most failures first, with the last failure's why; and the checks lanes
+  wrote by hand in 3 or more rounds of 2 or more round goals (`AWS
+  session is sbx1` and `sbx2` are one check), the candidates for a
+  helper.
+
 ### Changed
 
 - **A helper's step shows the call, not its command:** `tool_gate go

@@ -149,6 +149,12 @@ command in full, and its `helper:` line says why. Modules pass the call
 with `step`, `gate` and `snapshot`'s `--helper CALL`, which is theirs:
 lint refuses it in a lane.
 
+`swim helpers stats` reads every round in the lane logs, archives too:
+each helper's calls and failures, most failures first, with the last
+failure's why; and the checks lanes wrote by hand in 3 or more rounds of
+2 or more round goals (numbers in a label don't count, so `AWS session is
+sbx1` and `sbx2` are one check). Those are the candidates for a helper.
+
 ## Header
 
 `# Key: value` lines at the top (at most one space after `#`). Only

@@ -61,7 +61,8 @@ hand a round over, workers, several tasks at once. Follow it.
    `swim helpers gh` says. If the repo has no copy yet, `swim helpers add
    gh` writes one to `lib/swim/`; tell the operator to commit it. Never edit
    a copy (lint warns): a check the modules lack goes in the lane, and one
-   lanes keep repeating is worth proposing as a module.
+   lanes keep repeating is worth proposing as a module (`swim helpers
+   stats` lists the checks lanes keep writing by hand).
 3. **Check:** `swim lint N` until clean, then `swim status N`.
 4. **Hand over:** `swim queue N` (it runs and approves nothing; it prints
    the batch id), or give the operator `swim run N`. Never run it, and
