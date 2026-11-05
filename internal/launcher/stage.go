@@ -2,7 +2,6 @@ package launcher
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/gates-brightly/swimlane/internal/approval"
 	"github.com/gates-brightly/swimlane/internal/lane"
@@ -82,7 +81,7 @@ func stageEnv(o Options, n int, who approval.Caller) ([]string, string) {
 	if m == nil {
 		return nil, ""
 	}
-	env := []string{manifest.StageEnv + "=" + m.Dir, manifest.ManifestEnv + "=" + filepath.Join(m.Dir, manifest.FileName), "SWIM_ROOT=" + o.Root,
+	env := []string{manifest.StageEnv + "=" + m.Dir, manifest.ManifestEnv + "=" + manifest.FilePath(m.Dir), "SWIM_ROOT=" + o.Root,
 		WorkspaceEnv + "=" + m.Workspace(o.Root)}
 	tok := ""
 	if o.approvalSrv != nil {

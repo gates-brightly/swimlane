@@ -65,9 +65,9 @@ func notifySummary(cfg *config.Config, now time.Time) string {
 	case s == nil:
 		return "nothing sent yet"
 	case s.Error != "":
-		return fmt.Sprintf("last send failed %s ago: %s", display.Elapsed(now.Sub(s.At)), s.Error)
+		return fmt.Sprintf("last send failed %s ago: %s", display.Duration(now.Sub(s.At)), s.Error)
 	}
-	return fmt.Sprintf("last sent %s ago: %s", display.Elapsed(now.Sub(s.At)), s.Title)
+	return fmt.Sprintf("last sent %s ago: %s", display.Duration(now.Sub(s.At)), s.Title)
 }
 
 // testNotify sends a test notification the way swim run would here.

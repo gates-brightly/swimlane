@@ -122,7 +122,7 @@ func TestAnnotateAndSections(t *testing.T) {
 	}
 	b.Reset()
 	Sections(&b, GitHub{}, reports())
-	if s := b.String(); !strings.HasPrefix(s, "==== swim 1 FAIL - deploy (0:04) ====\n== ROUND x\n") || strings.Contains(s, "::group::") {
+	if s := b.String(); !strings.HasPrefix(s, "==== swim 1 FAIL - deploy (3.5s) ====\n== ROUND x\n") || strings.Contains(s, "::group::") {
 		t.Errorf("a failed lane stays open (no group) on GitHub:\n%s", s)
 	}
 }

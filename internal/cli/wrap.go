@@ -68,9 +68,9 @@ func cmdWrap(args []string) error {
 		return exitError{1} // _start said why
 	}
 	// "<job> <deadline epoch, 0 for none> <run> <step timeout, 0 for none>
-	// <fail mode> <timeout text>"
-	f := strings.SplitN(strings.TrimSpace(string(out)), " ", 6)
-	for len(f) < 6 {
+	// <fail mode> <start, Unix ms> <timeout text>"
+	f := strings.SplitN(strings.TrimSpace(string(out)), " ", 7)
+	for len(f) < 7 {
 		f = append(f, "")
 	}
 	logPath := lane.Log(root, n)
@@ -82,7 +82,7 @@ func cmdWrap(args []string) error {
 		"SWIM_LANE", strconv.Itoa(n), "SWIM_ROOT", root, "STEP_LOG", logPath,
 		"SWIM_PID", strconv.Itoa(pid), "SWIM_WRAPPED", "1",
 		"SWIM_JOB", f[0], "SWIM_DEADLINE", f[1], "SWIM_RUN", f[2], "SWIM_STEP_TIMEOUT", f[3],
-		"SWIM_FAIL_MODE", f[4], "SWIM_TIMEOUT", f[5],
+		"SWIM_FAIL_MODE", f[4], "SWIM_STARTED", f[5], "SWIM_TIMEOUT", f[6],
 		"SWIM_RUN_LANES", runLanes)
 
 	// The program's output goes to the terminal as it is, and (plain,

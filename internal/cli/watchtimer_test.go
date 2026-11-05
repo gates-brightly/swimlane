@@ -18,11 +18,11 @@ func TestWatchTimers(t *testing.T) {
 		state string
 		want  string
 	}{
-		{"running", &status.Lane{State: status.Running, StartedAt: at(65 * time.Second)}, "running", "1m5s"},
+		{"running", &status.Lane{State: status.Running, StartedAt: at(65 * time.Second)}, "running", "1m 5s"},
 		{"waiting", &status.Lane{State: status.Waiting, StartedAt: at(10 * time.Second)}, "waiting", "10s"},
 		// The clock stops while the round waits for the operator: 2m run,
 		// 30s answered before, 20s of a question still open.
-		{"asking", &status.Lane{State: status.Running, StartedAt: at(2 * time.Minute), PausedS: secs(30), PausedAt: now.Add(-20 * time.Second).Format(time.RFC3339Nano)}, "running", "1m10s"},
+		{"asking", &status.Lane{State: status.Running, StartedAt: at(2 * time.Minute), PausedS: secs(30), PausedAt: now.Add(-20 * time.Second).Format(time.RFC3339Nano)}, "running", "1m 10s"},
 		{"passed", &status.Lane{State: "passed", StartedAt: at(4 * time.Hour), FinishedAt: at(3 * time.Hour)}, "passed", "3h ago"},
 		{"pending", &status.Lane{State: "passed", FinishedAt: at(time.Hour)}, "pending", ""},
 		{"never ran", nil, "idle", ""},
@@ -32,7 +32,7 @@ func TestWatchTimers(t *testing.T) {
 		}
 	}
 	running := &queue.Entry{State: queue.Running, Created: *at(time.Hour), Worker: &queue.Worker{Claimed: *at(90 * time.Second)}}
-	if got := queueTimer(running, queue.Running, now); got != "1m30s" {
+	if got := queueTimer(running, queue.Running, now); got != "1m 30s" {
 		t.Errorf("running batch: %q", got)
 	}
 	waiting := &queue.Entry{State: queue.Queued, Created: *at(3 * time.Minute)}
@@ -54,14 +54,14 @@ func TestWatchRowsSayHowLongTheLastRoundTook(t *testing.T) {
 		state string
 		want  string
 	}{
-		{"passed", &status.Lane{State: status.Passed, DurationS: secs(252)}, status.Passed, "took 4m12s"},
-		{"failed", &status.Lane{State: status.Failed, DurationS: secs(3)}, status.Failed, "took 3s"},
+		{"passed", &status.Lane{State: status.Passed, DurationS: secs(252)}, status.Passed, "took 4m 12s"},
+		{"failed", &status.Lane{State: status.Failed, DurationS: secs(3)}, status.Failed, "took 3.0s"},
 		{"failed, with its first step's why", &status.Lane{State: status.Failed, DurationS: secs(3),
 			FailedSteps: []string{"FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:4: got 1", "STOP  gate failed: go test"}},
-			status.Failed, "took 3s" + "FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:4: got 1"},
-		{"interrupted, no duration", &status.Lane{State: status.Interrupted, StartedAt: at(2 * time.Hour), FinishedAt: at(time.Hour)}, status.Interrupted, "took 1h0m"},
-		{"skipped", &status.Lane{State: status.Skipped, DurationS: secs(0.4)}, status.Skipped, "took 0s"},
-		{"pending after a failure", &status.Lane{State: status.Failed, DurationS: secs(65)}, "pending", "last run failed, took 1m5s"},
+			status.Failed, "took 3.0s" + "FAIL  go test (exit 1): --- FAIL: TestX: x_test.go:4: got 1"},
+		{"interrupted, no duration", &status.Lane{State: status.Interrupted, StartedAt: at(2 * time.Hour), FinishedAt: at(time.Hour)}, status.Interrupted, "took 1h 0m"},
+		{"skipped", &status.Lane{State: status.Skipped, DurationS: secs(0.4)}, status.Skipped, "took 0.4s"},
+		{"pending after a failure", &status.Lane{State: status.Failed, DurationS: secs(65)}, "pending", "last run failed, took 1m 5s"},
 		{"pending, never ran", &status.Lane{State: status.Idle}, "pending", ""},
 		{"running", &status.Lane{State: status.Running, StartedAt: at(time.Minute)}, status.Running, ""},
 		{"no times", &status.Lane{State: status.Passed}, status.Passed, ""},

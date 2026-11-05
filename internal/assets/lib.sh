@@ -54,7 +54,8 @@ lane_init() {
     _swim_done=1
     exit 1
   fi
-  # "<job> <deadline epoch, 0 for none> <run> <step timeout, 0 for none> <timeout text>"
+  # "<job> <deadline epoch, 0 for none> <run> <step timeout, 0 for none>
+  # <fail mode> <start, Unix ms> <timeout text>"
   SWIM_JOB=${_swim_start%% *}
   _swim_start=${_swim_start#* }
   SWIM_DEADLINE=${_swim_start%% *}
@@ -64,9 +65,11 @@ lane_init() {
   SWIM_STEP_TIMEOUT=${_swim_start%% *}
   _swim_start=${_swim_start#* }
   SWIM_FAIL_MODE=${_swim_start%% *}
+  _swim_start=${_swim_start#* }
+  SWIM_STARTED=${_swim_start%% *}
   SWIM_TIMEOUT=${_swim_start#* }
   SWIM_RUN_LANES=${SWIM_RUN_LANES:-$SWIM_LANE}
-  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE
+  export SWIM_JOB SWIM_DEADLINE SWIM_RUN SWIM_RUN_LANES SWIM_STEP_TIMEOUT SWIM_TIMEOUT SWIM_FAIL_MODE SWIM_STARTED
   # A marker an earlier round's stop left behind (its shell already gone,
   # a TERM racing a Ctrl-C) would turn this round's real interrupt into a
   # failure: only this round's stop may leave one.

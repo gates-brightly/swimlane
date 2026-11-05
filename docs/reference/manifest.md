@@ -1,8 +1,10 @@
 # Manifest
 
 Before a lane waits for anything, `swim run` pins what it will run and
-stages a read-only copy under `.swim/runs/<run>/<N>/` (`$SWIM_STAGE`,
-`$SWIM_MANIFEST`). The lane runs that copy, so an edit to the working tree
+stages a read-only copy under `.swim/runs/<run>/<N>/` (`$SWIM_STAGE`),
+with its manifest beside it in `.swim/runs/<run>/<N>.manifest.yml`
+(`$SWIM_MANIFEST`), so the lane's directory holds only its pinned files.
+The lane runs that copy, so an edit to the working tree
 afterwards, even mid-round, changes nothing. Right before the lane starts,
 swim checks the copy (and a queued batch's pins) again: a mismatch refuses
 or skips the lane.

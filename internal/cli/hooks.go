@@ -294,10 +294,11 @@ func cmdStart(args []string) error {
 		failMode = "hard"
 	}
 	// stdout carries "<job> <deadline epoch or 0> <run> <step timeout or 0>
-	// <fail mode> <timeout>" back to lane_init, which exports SWIM_JOB,
-	// SWIM_DEADLINE, SWIM_RUN, SWIM_STEP_TIMEOUT, SWIM_FAIL_MODE and
-	// SWIM_TIMEOUT.
-	defer fmt.Printf("%s %d %s %s %s %s\n", job, deadline, run, stepTimeout, failMode, timeoutText)
+	// <fail mode> <start, Unix ms> <timeout>" back to lane_init, which
+	// exports SWIM_JOB, SWIM_DEADLINE, SWIM_RUN, SWIM_STEP_TIMEOUT,
+	// SWIM_FAIL_MODE, SWIM_STARTED and SWIM_TIMEOUT. SWIM_STARTED times the
+	// round to the tenth (the log's ROUND time is whole seconds).
+	defer fmt.Printf("%s %d %s %s %s %d %s\n", job, deadline, run, stepTimeout, failMode, now.UnixMilli(), timeoutText)
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		f.Branch = ref
 		l := f.Get(n)
@@ -438,10 +439,12 @@ func cmdFinish(args []string) error {
 
 	now := time.Now()
 	var dur time.Duration
-	if t, err := time.Parse(time.RFC3339, r.StartedAt); err == nil {
+	if ms, err := strconv.ParseInt(os.Getenv("SWIM_STARTED"), 10, 64); err == nil && ms > 0 {
+		dur = now.Sub(time.UnixMilli(ms))
+	} else if t, err := time.Parse(time.RFC3339, r.StartedAt); err == nil {
 		dur = now.Sub(t)
 	}
-	ds := fmt.Sprintf("%.1fs", dur.Seconds())
+	ds := display.Duration(dur)
 	ts := now.UTC().Format(time.RFC3339)
 
 	word := map[string]string{status.Passed: "PASS", status.Failed: "FAIL", status.Skipped: "SKIP", status.Interrupted: "INTERRUPTED"}[state]
@@ -472,6 +475,9 @@ func cmdFinish(args []string) error {
 	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d%s  %s\n",
 		laneBanner(p, root, n, " summary:"),
 		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, exit, display.Span(now.Add(-dur), now))
+	// In a run of several lanes this one line is the lane's: the run's
+	// summary table, last, says each lane's failures once.
+	full := len(strings.Fields(os.Getenv("SWIM_RUN_LANES"))) <= 1
 	// The stages that ran; the log keeps every one (none included).
 	var ran []logparse.StageResult
 	for _, s := range stages {
@@ -479,21 +485,26 @@ func cmdFinish(args []string) error {
 			ran = append(ran, s)
 		}
 	}
-	if len(ran) > 0 {
+	if len(ran) > 0 && full {
 		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "stages: "+logparse.StagesText(ran)))
 	}
-	if reason != "" {
-		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Yellow, reason))
-	}
-	if hs := r.HandlerResults(); len(hs) > 0 {
-		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "handlers: "+logparse.StagesText(hs)))
-	}
-	for _, f := range failed {
-		fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Red, f.Brief()))
+	if full {
+		if reason != "" {
+			fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Yellow, reason))
+		}
+		if hs := r.HandlerResults(); len(hs) > 0 {
+			fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Dim, "handlers: "+logparse.StagesText(hs)))
+		}
+		// The failures once: a STOP that restates the step above is left
+		// to the log.
+		for _, f := range r.Reasons() {
+			fmt.Fprintln(os.Stderr, "  "+p.Paint(ui.Red, f.Brief()))
+		}
 	}
 
+	// Status and .swim.log say each failure once too.
 	failedSteps := []string{}
-	for _, f := range failed {
+	for _, f := range r.Reasons() {
 		failedSteps = append(failedSteps, f.Brief())
 	}
 	err = status.Update(root, n, cfg.Lanes, func(l *status.Lane) {

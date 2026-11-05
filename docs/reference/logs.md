@@ -75,7 +75,7 @@ A `fail` line's detail ends with the failed steps, each with its why:
 x_test.go:41: got 1, want 2`.
 
 Events: `init`, `new`, `run`, `start`, `pass`/`fail`/`interrupted`, `skip`,
-`approve`, `decline`, `run-done`, `archive`, `note`, `lint`,
+`approve`, `decline`, `run-done`, `archive`, `note`,
 `usage` (a command swim refused as typed). Details summarize; the evidence
 is in the lane log.
 
@@ -98,7 +98,7 @@ document carries `schema:`; fields are only added within a version.
 | | |
 |---|---|
 | `swim run\|all --yaml` | `swim.run/v1`, one document per event as it happens: `run`, `waiting`, `locked`, `queued`, `start`, `output` (with `--yaml-output`), `step`, `finish`, `stop_requested`, `stopping`, `force_quit`, `kill`, then `summary` (result, exit, each lane's result). Same exit code. |
-| `swim log N --yaml` | `swim.log/v1`: the round as data: results with label, stage, exit, command, output, why; the running step as `RUNNING`. |
+| `swim log N --yaml` | `swim.log/v1`: the round as data: `duration` as the log says it (`1m 5s`) and `duration_s` in seconds; results with label, stage, exit, `duration_s`, command, output, why; the running step as `RUNNING`. |
 | `swim status --yaml` | `swim.status/v1`: status.yml, plus each pending lane's `pending_header` (after, guards and how each would be decided, timeout, locks, includes) and `deps`. |
 | others | `swim.queue-list/v1`, `swim.verify/v1`, ...: [compatibility](compatibility.md#stability-tiers). |
 

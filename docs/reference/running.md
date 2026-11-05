@@ -109,7 +109,7 @@ killed after 15s; swim waits for it before exiting.
 
 Whether it's working: each send is recorded in
 `~/.local/state/swim/notify.json` (`$XDG_STATE_HOME`). `swim config`
-shows the last under the two keys (`last sent 3:00 ago: swimlane · run passed`,
+shows the last under the two keys (`last sent 3m 0s ago: swimlane · run passed`,
 or why it failed), and `t` on its screen sends a test; `swim doctor` warns
 (`notify-failing`) while the last send failed, and (`notify`) when
 `notify_url` doesn't answer or `notify_command`'s program isn't there, and each failure is also a

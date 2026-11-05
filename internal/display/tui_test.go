@@ -255,7 +255,7 @@ func TestTUIFrameGolden(t *testing.T) {
 		m.addLine(i%2+1, "", fmt.Sprintf("output line %d from a lane that has quite a lot to say about what it is doing", i))
 	}
 	m.addLine(0, "", "a launcher message")
-	title := "swim · app · main@abc1234 · 1:12"
+	title := "swim · app · main@abc1234 · 1m 12s"
 	golden(t, "tui_all.golden", strings.Join(m.render(title, views, now, 18, 80), "\n")+"\n")
 	press(m, views, r('6'), enter)
 	frame := m.render(title, views, now, 18, 80)

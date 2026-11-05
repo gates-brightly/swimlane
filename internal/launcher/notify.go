@@ -108,7 +108,7 @@ func FirstFailure(root string, lanes []int) string {
 }
 
 // notifyEnd tells the operator's terminal, and notify_command, how the run
-// ended: "swimlane · run failed" / "swim 1,2,3 · 2 passed, 1 failed · 3:12", and
+// ended: "swimlane · run failed" / "swim 1,2,3 · 2 passed, 1 failed · 3m 12s", and
 // the first failed step with its why.
 func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bool, elapsed time.Duration) {
 	word, result := "passed", status.Passed
@@ -126,7 +126,7 @@ func notifyEnd(o Options, sel []int, counts map[string]int, code int, stopped bo
 			parts = append(parts, fmt.Sprintf("%d %s", counts[st], st))
 		}
 	}
-	title, body := o.Origin.Title("run "+word), fmt.Sprintf("swim %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Elapsed(elapsed))
+	title, body := o.Origin.Title("run "+word), fmt.Sprintf("swim %s · %s · %s", joinInts(sel), strings.Join(parts, ", "), display.Duration(elapsed))
 	if result == status.Failed {
 		if f := FirstFailure(o.Root, sel); f != "" {
 			body += " · " + f

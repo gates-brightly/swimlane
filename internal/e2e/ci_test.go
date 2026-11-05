@@ -223,7 +223,7 @@ func TestCIHeartbeat(t *testing.T) {
 	c := r.cmd(bin, "ci", "--heartbeat", beat.String())
 	c.Env = append(c.Env, "CI=true")
 	l := start(t, c, nil)
-	l.saw(t, "[1] still running: wait (0:0")
+	l.saw(t, "[1] still running: wait (")
 	r.release("heard")
 	if code := l.wait(t); code != 0 {
 		t.Fatalf("exit %d\n%s", code, l.out.String())

@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/failpoint"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -324,9 +325,9 @@ func Run(o Options) (Result, error) {
 		retryable := a < attempts && last.exit != 0 && last.sig == nil && last.why != roundLimit &&
 			!(last.why == stepLimit && o.Retry.NoTimeout) &&
 			(len(o.Retry.On) == 0 || last.why == stepLimit || containsInt(o.Retry.On, last.exit))
-		outcome := fmt.Sprintf("exit %d (%.1fs)", last.exit, last.dur.Seconds())
+		outcome := fmt.Sprintf("exit %d (%s)", last.exit, display.Duration(last.dur))
 		if last.why == stepLimit {
-			outcome = fmt.Sprintf("stopped at the step limit %s (%.1fs)", o.StepTimeoutText, last.dur.Seconds())
+			outcome = fmt.Sprintf("stopped at the step limit %s (%s)", o.StepTimeoutText, display.Duration(last.dur))
 		}
 		if !retryable {
 			if attempts > 1 {
@@ -378,7 +379,7 @@ func Run(o Options) (Result, error) {
 	}
 
 	dur := time.Since(start)
-	ds := fmt.Sprintf("%.1fs", dur.Seconds())
+	ds := display.Duration(dur)
 	kind, detail := logparse.Pass, ""
 	switch last.why {
 	case roundLimit:
@@ -752,7 +753,7 @@ func RecordStep(logPath, kind, label, detail, cmdline string, start time.Time, d
 	if kind == logparse.Fail {
 		whyOf = func(out []string) string { return why.Of(out, "") }
 	}
-	if _, err := writeBlock(logPath, logparse.StepLine(kind, label, detail, fmt.Sprintf("%.1fs", dur.Seconds()), clock), "", whyOf); err != nil {
+	if _, err := writeBlock(logPath, logparse.StepLine(kind, label, detail, display.Duration(dur), clock), "", whyOf); err != nil {
 		return "", err
 	}
 	return logparse.ResultLine(kind, label, detail), nil
@@ -809,8 +810,9 @@ func exitCode(cmd *exec.Cmd, err error) int {
 	return 0
 }
 
-// EnvLine records the cloud profile and configured keys. Only names listed
-// in config are printed, so secrets stay out of logs unless someone lists one.
+// EnvLine records the configured keys that are set (header_env). Only
+// names listed in config are printed, so secrets stay out of logs unless
+// someone lists one.
 func EnvLine(keys []string, mk ...*redact.Masker) string {
 	var m *redact.Masker
 	if len(mk) > 0 {
@@ -818,19 +820,16 @@ func EnvLine(keys []string, mk ...*redact.Masker) string {
 	}
 	seen := map[string]bool{}
 	var parts []string
-	for _, k := range append([]string{"AWS_PROFILE"}, keys...) {
+	for _, k := range keys {
 		if k == "" || seen[k] {
 			continue
 		}
 		seen[k] = true
 		v, ok := os.LookupEnv(k)
 		if !ok {
-			if k == "AWS_PROFILE" {
-				continue
-			}
-			v = "<unset>"
+			continue
 		}
-		if m != nil && v != "<unset>" && (m.Value(k) || m.String(v) != v) {
+		if m != nil && (m.Value(k) || m.String(v) != v) {
 			v = fmt.Sprintf("***(len %d)", len(v))
 		}
 		parts = append(parts, k+"="+v)
@@ -939,7 +938,7 @@ func (s *Spool) Elapsed() time.Duration {
 // step died).
 func (s *Spool) Block(detail string) []string {
 	out := []string{
-		logparse.StepLine(Running, s.Label, detail, fmt.Sprintf("%.1fs", s.Elapsed().Seconds()), s.Clock),
+		logparse.StepLine(Running, s.Label, detail, display.Duration(s.Elapsed()), s.Clock),
 		logparse.CmdPrefix + s.Cmd,
 	}
 	for _, l := range s.Output {

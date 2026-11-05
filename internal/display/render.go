@@ -59,6 +59,7 @@ type LaneView struct {
 	UnknownGuards int
 	Started       time.Time
 	Finished      time.Time
+	Summarized    bool // the round ended itself and printed its summary: plain output adds no result line
 	Dry           bool // a guard of this round ran as a dry run: [DRY]
 }
 
@@ -103,32 +104,28 @@ func Throbber(now time.Time) string {
 	return throbberFrames[(now.UnixMilli()/ThrobberStep.Milliseconds())%int64(len(throbberFrames))]
 }
 
-// Elapsed formats a duration as m:ss or h:mm:ss.
-func Elapsed(d time.Duration) string {
+// Duration is how long something took, the one way swim shows a
+// duration to a person: "0.4s" under ten seconds, then "12s", "1m 5s",
+// "1h 4m". logparse.ParseDuration reads it back.
+func Duration(d time.Duration) string {
 	if d < 0 {
 		d = 0
 	}
-	s := int(d.Round(time.Second).Seconds())
-	if s >= 3600 {
-		return fmt.Sprintf("%d:%02d:%02d", s/3600, s/60%60, s%60)
-	}
-	return fmt.Sprintf("%d:%02d", s/60, s%60)
-}
-
-// Took is a short running time for a list row: "42s", "1m5s", "1h4m".
-func Took(d time.Duration) string {
-	if d < 0 {
-		d = 0
+	if t := d.Round(100 * time.Millisecond); t < 10*time.Second {
+		return fmt.Sprintf("%.1fs", t.Seconds())
 	}
 	s := int(d.Round(time.Second).Seconds())
 	switch {
 	case s < 60:
 		return fmt.Sprintf("%ds", s)
 	case s < 3600:
-		return fmt.Sprintf("%dm%ds", s/60, s%60)
+		return fmt.Sprintf("%dm %ds", s/60, s%60)
 	}
-	return fmt.Sprintf("%dh%dm", s/3600, s/60%60)
+	return fmt.Sprintf("%dh %dm", s/3600, s/60%60)
 }
+
+// Seconds is Duration for a count of seconds (a status file's duration_s).
+func Seconds(s float64) string { return Duration(time.Duration(s * float64(time.Second))) }
 
 // Ago is how long ago something ended, in one unit: "12s ago", "5m ago",
 // "3h ago", "2d ago".
@@ -148,16 +145,16 @@ func Ago(d time.Duration) string {
 }
 
 // Span is a job's start and stop clock times (local) and its duration:
-// "14:02:11 → 14:03:40 (1:29)", with dates when it crossed midnight.
+// "14:02:10 → 14:03:39 (1m 29s)", with dates when it crossed midnight.
+// Each clock time is the second it falls in.
 func Span(start, end time.Time) string {
-	// Whole seconds on both ends, and the duration between them, so the
-	// three always agree.
-	start, end = start.Local().Round(time.Second), end.Local().Round(time.Second)
+	took := Duration(end.Sub(start))
+	start, end = start.Local().Truncate(time.Second), end.Local().Truncate(time.Second)
 	layout := "15:04:05"
 	if start.YearDay() != end.YearDay() || start.Year() != end.Year() {
 		layout = "Jan 2 15:04:05"
 	}
-	return fmt.Sprintf("%s → %s (%s)", start.Format(layout), end.Format(layout), Elapsed(end.Sub(start)))
+	return fmt.Sprintf("%s → %s (%s)", start.Format(layout), end.Format(layout), took)
 }
 
 // WaitingText renders "waiting on swim 1" / "waiting on swim 1, 3".
@@ -198,17 +195,17 @@ func laneStateText(v LaneView, now time.Time) (string, string) {
 			return fmt.Sprintf("%s awaiting approval: %s", thr, v.Approval), ui.Yellow
 		}
 		if v.Stopping != "" {
-			return fmt.Sprintf("%s stopping %s (%s)", thr, v.Stopping, Elapsed(v.Ran(now))), ui.Yellow
+			return fmt.Sprintf("%s stopping %s (%s)", thr, v.Stopping, Duration(v.Ran(now))), ui.Yellow
 		}
-		return thr + " running " + Elapsed(v.Ran(now)), ui.Cyan
+		return thr + " running " + Duration(v.Ran(now)), ui.Cyan
 	case Elsewhere:
-		return thr + " running elsewhere " + Elapsed(v.Ran(now)), ui.Blue
+		return thr + " running elsewhere " + Duration(v.Ran(now)), ui.Blue
 	case Passed:
-		return "PASS " + Elapsed(v.Ran(now)), ui.Green
+		return "PASS " + Duration(v.Ran(now)), ui.Green
 	case Failed:
-		return fmt.Sprintf("FAIL exit %d %s", v.Exit, Elapsed(v.Ran(now))), ui.Red
+		return fmt.Sprintf("FAIL exit %d %s", v.Exit, Duration(v.Ran(now))), ui.Red
 	case Interrupted:
-		return "INTERRUPTED " + Elapsed(v.Ran(now)), ui.Red
+		return "INTERRUPTED " + Duration(v.Ran(now)), ui.Red
 	case Skipped:
 		if v.Reason != "" {
 			return "SKIP (" + v.Reason + ")", ui.Yellow

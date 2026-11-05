@@ -45,7 +45,6 @@ const (
 	Untrash     = "untrash"      // swim trash --restore: a trashed lane's files put back
 	ClaimBroken = "claim-broken" // another session's live claim taken over (swim new or archive --force; detail: from, by, via)
 	Usage       = "usage"        // a command swim refused as typed (detail: the command and swim's message, never the arguments)
-	LintFound   = "lint"         // lint found errors (detail: the lane, the codes with counts, and what ran it: lint, run, queue)
 	// The secret store's events (swim no longer has it; older .swim.log
 	// lines keep them).
 	SecretSet = "secret-set" // swim secret set: a repo-scoped secret was stored (detail: its name, never its value)

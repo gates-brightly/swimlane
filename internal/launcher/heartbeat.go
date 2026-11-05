@@ -95,7 +95,7 @@ func (h *heartbeat) run(o Options, disp *display.Display) func() {
 							step = l.CurrentStep
 						}
 					}
-					disp.Message(fmt.Sprintf("%sstill running: %s (%s)", display.Prefix(n, disp.Color()), step, display.Elapsed(quiet[n])))
+					disp.Message(fmt.Sprintf("%sstill running: %s (%s)", display.Prefix(n, disp.Color()), step, display.Duration(quiet[n])))
 				}
 			}
 		}

@@ -134,7 +134,7 @@ func effectiveState(l *status.Lane) string {
 }
 
 // stateWord is how swim status names a lane's state: "PASS", "FAIL exit
-// 1", "waiting on swim 3", "running 0:42".
+// 1", "waiting on swim 3", "running 42s".
 func stateWord(l *status.Lane, state string, now time.Time) string {
 	word := state
 	switch state {
@@ -154,7 +154,7 @@ func stateWord(l *status.Lane, state string, now time.Time) string {
 	case status.Running:
 		word = "running"
 		if d, ok := l.Ran(now); ok { // its clock stops while it asks
-			word += " " + display.Elapsed(d)
+			word += " " + display.Duration(d)
 		}
 		if !proc.Local(l.Host) {
 			word += " on " + l.Host // its process is there, not here
@@ -236,7 +236,7 @@ func printStatus(root string, cfg *config.Config, f *status.File, only []int, p 
 			if l.FinishedAt != nil {
 				counts += "  finished " + *l.FinishedAt
 				if l.DurationS != nil {
-					counts += fmt.Sprintf(" (%s)", display.Elapsed(time.Duration(*l.DurationS*float64(time.Second))))
+					counts += fmt.Sprintf(" (%s)", display.Seconds(*l.DurationS))
 				}
 			}
 			detail(counts, ui.Dim)
@@ -328,7 +328,7 @@ func rebuildStatus(root string, cfg *config.Config) error {
 			l.Round, l.Job = r.Title, r.Job
 			l.StartedAt = status.Str(r.StartedAt)
 			l.Pass, l.Fail, l.Skip = r.Pass, r.Fail, r.Skip
-			for _, fr := range r.Failed() {
+			for _, fr := range r.Reasons() {
 				l.FailedSteps = append(l.FailedSteps, fr.Brief())
 			}
 			switch {

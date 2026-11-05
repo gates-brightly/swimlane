@@ -458,7 +458,7 @@ func (lw logWriter) lines(lines []string) {
 		if d < 0 {
 			d += 24 * time.Hour
 		}
-		return "  +" + display.Elapsed(d)
+		return "  +" + display.Duration(d)
 	}
 	var out []string // the current step's output lines, for folding
 	flush := func() {

@@ -439,8 +439,9 @@ func (c *Config) IsActive(n int) bool { return slices.Contains(c.Active, n) }
 // defaultFile is written by EnsureRepo when no config exists yet.
 const defaultFile = `# swim configuration. Global defaults, overridden per repo (keyed by git toplevel).
 defaults:
-  # Env vars recorded in every step header (values printed; never list secrets).
-  header_env: [STAGE, AWS_PROFILE, AWS_REGION]
+  # Env vars recorded in every round header when set (values printed; never
+  # list secrets), e.g. [STAGE, AWS_PROFILE, AWS_REGION].
+  header_env: []
   # Command whose output is recorded as the runtime version in step headers.
   # runtime: node --version
   # Shell line lane scripts run to load the pinned toolchain (non-interactive

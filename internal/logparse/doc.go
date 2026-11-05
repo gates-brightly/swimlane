@@ -44,7 +44,8 @@ type Doc struct {
 	Finished  bool              `yaml:"finished" json:"finished"`
 	Result    string            `yaml:"result" json:"result"` // passed | failed | skipped (a guarded step dry-ran) | interrupted | running (no END yet)
 	Exit      *int              `yaml:"exit,omitempty" json:"exit,omitempty"`
-	Duration  string            `yaml:"duration,omitempty" json:"duration,omitempty"`
+	Duration  string            `yaml:"duration,omitempty" json:"duration,omitempty"` // as the END line says it: "1m 5s"
+	Seconds   *float64          `yaml:"duration_s,omitempty" json:"duration_s,omitempty"`
 	Counts    Counts            `yaml:"counts" json:"counts"`
 	Stages    map[string]string `yaml:"stages" json:"stages"`
 	Handlers  map[string]string `yaml:"handlers,omitempty" json:"handlers,omitempty"` // outcome handlers that ran: PASS | FAIL | SKIP | none
@@ -87,6 +88,9 @@ func (r *Round) Doc(n int) Doc {
 	if r.Finished {
 		e := r.ExitCode
 		d.Exit = &e
+	}
+	if s, ok := ParseDuration(r.Duration); ok {
+		d.Seconds = &s
 	}
 	for _, st := range r.StageResults() {
 		d.Stages[st.Name] = st.State

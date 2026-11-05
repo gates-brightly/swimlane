@@ -202,7 +202,7 @@ func (ir *interrupter) gracefulLocked(s os.Signal) {
 			label = "current step"
 		}
 		ir.disp.Set(n, func(v *display.LaneView) { v.Stopping = label })
-		ir.disp.Message(fmt.Sprintf("   swim %-3d stopping  %s (%s)", n, label, display.Elapsed(time.Since(lp.started))))
+		ir.disp.Message(fmt.Sprintf("   swim %-3d stopping  %s (%s)", n, label, display.Duration(time.Since(lp.started))))
 		ir.o.ev.emit(Event{Event: "stopping", Lane: n, Label: step, At: now()})
 	}
 }

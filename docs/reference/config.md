@@ -21,7 +21,7 @@ defaults:
   secret_env_auto: true            # also *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY, ...
   secret_env_ignore: [CSRF_TOKEN]  # exempt from secret_env_auto
   secret_patterns_auto: true       # also AWS key ids, GitHub/Slack tokens, JWTs
-  header_env: [STAGE, AWS_PROFILE] # recorded in every step header (never secrets)
+  header_env: [STAGE, AWS_PROFILE] # recorded in the round header when set (none by default; never secrets)
   runtime: node --version          # recorded as the runtime version
   toolchain: . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null
   interrupt: graceful              # graceful | immediate: the first Ctrl-C
@@ -62,7 +62,7 @@ in [env files](env.md), not config. There is no lane count.
 | `.swim/status.yml` | Every lane's state. | No |
 | `.swim/logs/` | Lane logs, current and archived. | No |
 | `.swim/chain.jsonl`, `.swim/scripts/` | The chain, and every script that ran. | No (export it) |
-| `.swim/runs/<run>/<N>/`, `.swim/runs/RUN.yml` | Staged copies and manifests; each run's timeline. | No |
+| `.swim/runs/<run>/<N>/`, `.swim/runs/<run>/<N>.manifest.yml`, `.swim/runs/RUN.yml` | Staged copies and manifests; each run's timeline. | No |
 | `.swim/queue/`, `.swim/snapshots/`, `.swim/signoffs/` | Batches, snapshot output, signoffs. | No |
 | `.swim/laneN.pid` | Present while lane N runs. | No |
 

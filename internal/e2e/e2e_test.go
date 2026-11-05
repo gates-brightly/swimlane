@@ -363,7 +363,8 @@ run "never" true`)
 	if l := f.Get(2); l.Skip != 1 || l.Pass != 1 {
 		t.Errorf("swim 2 counts: %+v", l)
 	}
-	if l := f.Get(3); *l.ExitCode != 1 || len(l.FailedSteps) != 3 {
+	// Each failure once: the STOP that restates the gate stays in the log.
+	if l := f.Get(3); *l.ExitCode != 1 || len(l.FailedSteps) != 2 {
 		t.Errorf("swim 3: %+v", l)
 	}
 
@@ -390,7 +391,11 @@ run "never" true`)
 	if doc["schema"] != "swim.status/v1" || !reflect.DeepEqual(withoutKey(doc, "schema"), file) {
 		t.Errorf("status --yaml should be the file plus its schema:\n%s\n---\n%s", got, raw)
 	}
-	contains(t, "status", r.mustSwim("status"), "swim 1", "PASS", "swim 3", "FAIL exit 1", "STOP  gate failed: stops")
+	st := r.mustSwim("status")
+	contains(t, "status", st, "swim 1", "PASS", "swim 3", "FAIL exit 1", "FAIL  stops (exit 1)")
+	if strings.Contains(st, "STOP  gate failed: stops") {
+		t.Errorf("status repeats the failed gate as a STOP:\n%s", st)
+	}
 }
 
 func TestSkipPropagatesDownChain(t *testing.T) {
