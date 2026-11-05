@@ -38,6 +38,8 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+## 0.20261105.8 (v0.20261105.8, 2026-11-05)
+
 ### Fixed
 
 - **`tool_gate go 1.27` passes on Go 1.27:** go has no `--version` (it
