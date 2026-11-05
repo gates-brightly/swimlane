@@ -21,7 +21,7 @@ before or after. The scratch repo is kept afterwards in
 |---|---|---|
 | [1-guarded-change](1-guarded-change/demo.sh) | The core loop: the AI writes, a person approves, the log reports | 4 min |
 | [2-parallel-dag](2-parallel-dag/demo.sh) | A release as a DAG: parallel lanes, a lock, failure, then resuming | 4 min |
-| [3-queue-and-handoff](3-queue-and-handoff/demo.sh) | Approve a batch, a worker runs it, the AI catches up from files | 4 min |
+| [3-queue-and-handoff](3-queue-and-handoff/demo.sh) | Approve a batch, the watcher runs it, the AI catches up from files | 4 min |
 | [4-tamper-evidence](4-tamper-evidence/demo.sh) | `swim verify` catching an edited log | 3 min |
 
 For a 15-minute slot: **1**, then **3**, then **4**. That's the story of

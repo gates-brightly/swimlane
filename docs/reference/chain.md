@@ -5,12 +5,14 @@ entry per line, each holding the SHA-256 of the line before it.
 
 | Entry | Records |
 |---|---|
-| `approve` | Lane, job, script and manifest hashes, the guard and its action (older entries: the `Observe:` facts), who approved and how: prompt, preapproved (the live view), flag or queue (older entries: auto (`-y`), signature, standing, hub-signed, hub-button). |
-| `round` | Script and manifest hashes, the hash of the round's log section, result, exit, the approvals it used (older entries: the outputs it made and inputs it read). |
-| `decide` | An older swim's decision (`decide`, which swim no longer has): question, choices, the number, who and how. Still verified. |
+| `approve` | Lane, round id, script and manifest hashes, the guard and its action, who approved and how: `prompt`, `preapproved` (the live view), `flag` or `queue`. |
+| `round` | Script and manifest hashes, the hash of the round's log section, result, exit, the approvals it used. |
 | `run` | `swim run`'s attestation when its last lane exits: what each lane ran and every approval it recorded. |
-| `grant` / `revoke` | Signed approvals an older swim gave or withdrew. |
+| `amend` | `swim verify --force` acknowledged gaps or deletions. |
 | `repair` | `swim chain repair` removed a half-written last line (size, hash, the `.bak` that keeps it). |
+
+An older swim's entries (`decide`, `grant`, `revoke`, and approve methods
+like `auto` or `signature`) are still verified by their own signatures.
 
 ```sh
 swim verify                 # VERIFIED or NOT VERIFIED (exit 1; --yaml for CI)
@@ -39,8 +41,8 @@ ran are kept by hash in `.swim/scripts/`, pinned copies in `.swim/runs/`.
 VERIFIED: 418 entries, every one signed and linked; logs and scripts as recorded
 ```
 
-Every link and signature, and every round's log, kept script, pinned copy
-and inputs, must match what's recorded: any edit, removal or reordering is
+Every link and signature, and every round's log, kept script and pinned
+copy, must match what's recorded: any edit, removal or reordering is
 BROKEN. Unsigned entries after the last signed one fail as UNSIGNED unless
 `--allow-unsigned`; `--strict` also fails on warnings.
 

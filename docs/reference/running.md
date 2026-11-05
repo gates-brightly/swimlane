@@ -30,14 +30,8 @@ and includes:
           after lane 1 (ready: a dry run or failure there skips this)
 ```
 
-## Approving guards
-
-Three ways, and only three: answer the prompt (`Y/N` on a terminal, `y`/`n`
-in the live view), set the flag up front (`FLAG=1 swim run N`), or approve
-a queued batch (`swim queue N --approve FLAG`, or `y` on `swim watch`'s
-screen). `--no-prompt` answers every question no: each unset guard is a
-dry run. In CI, with `--yaml` or with no terminal nothing asks either. See
-[guards](guards.md#how-a-guard-is-decided).
+Guards ask as the round reaches them; [guards](guards.md#how-a-guard-is-decided)
+says how each is decided (`--no-prompt` answers every question no).
 
 ## Parallelism
 
@@ -76,9 +70,8 @@ the repo (origin's name, else the checkout's directory), and the branch
 when it isn't the default: `swimlane · lane 2 needs you`,
 `swimlane@fix-auth · run failed`, `swimlane · run needs approval` (a guard dry-ran), `swimlane · batch #41 passed`.
 
-`notify_url` sends the same notifications (a lane waits on you, a run or
-a `swim watch` batch ends) to an [ntfy](https://ntfy.sh) topic, whether
-or not there's a terminal, to reach your phone:
+`notify_url` sends them to an [ntfy](https://ntfy.sh) topic, terminal
+or not, to reach your phone:
 
 ```yaml
 defaults:
@@ -107,13 +100,11 @@ environment, and `notify_url` as `$SWIM_NOTIFY_URL`:
 Quote the variables: the body carries a lane's own text. Each send is
 killed after 15s; swim waits for it before exiting.
 
-Whether it's working: each send is recorded in
-`~/.local/state/swim/notify.json` (`$XDG_STATE_HOME`). `swim config`
-shows the last under the two keys (`last sent 3m 0s ago: swimlane · run passed`,
-or why it failed), and `t` on its screen sends a test; `swim doctor` warns
-(`notify-failing`) while the last send failed, and (`notify`) when
-`notify_url` doesn't answer or `notify_command`'s program isn't there, and each failure is also a
-`warn` line in the repo's `.swim.log`.
+Whether it's working: `swim config` shows the last send under the two
+keys (`last sent 3m 0s ago: swimlane · run passed`, or why it failed;
+kept in `~/.local/state/swim/notify.json`), and `t` on its screen sends a
+test. `swim doctor` warns while sends fail (`notify-failing`, `notify`),
+and each failure is a `warn` line in `.swim.log`.
 
 ## Interrupts
 
@@ -131,5 +122,4 @@ force. `swim interrupt N` stops one lane from another terminal. A lone
 lane given the terminal gets Ctrl-C directly. A lane run directly with bash
 has no launcher: Ctrl-C interrupts it at once.
 
-`swim status` shows `interrupted (its process is gone)` when a lane's process is gone; the next
-`swim run`, `swim all` or `swim watch` records it as interrupted.
+A lane whose process died: [recovery](recovery.md#a-lane-stuck-running).

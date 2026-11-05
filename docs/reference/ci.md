@@ -44,7 +44,7 @@ swim signoff verify .swim/signoffs/<commit>/1.json
 ```
 
 When the round passes on a clean, committed HEAD, swim signs a statement
-(the commit and tree, lane, script and manifest hashes, job, run) with the
+(the commit and tree, lane, script and manifest hashes, round id, run) with the
 key of whoever ran `swim run`, `swim watch` or a local `swim ci`, writes it
 to `.swim/signoffs/COMMIT/N.json`, and posts a `success` commit status named
 by the header through their `gh`. Require that status in branch protection.

@@ -22,13 +22,11 @@ config: <policy hash>
 lookup-rules:                                    (empty: once lookup.yml's require: rules, which swim no longer reads)
 ```
 
-**The policy hash** is the SHA-256 of `swim policy v2\n` followed by one
-line per policy key a repo's committed `swim.yml` set, sorted by key:
-`<key> <sha256 of the YAML "key: value">`. swim no longer reads a
-`swim.yml`, so every manifest it writes now has the hash of no keys,
-`SHA-256("swim policy v2\n")`: a lane's `manifest_sha256` is what it was
-for a repo whose `swim.yml` set no policy key. The operator's own
-`config.yml`, which differs from machine to machine, never counts.
+**The policy hash** is now always `SHA-256("swim policy v2\n")`, the hash
+of no policy keys. (An older swim added a line per policy key a repo's
+`swim.yml` set; swim no longer reads one, so a lane's `manifest_sha256` is
+what it was for a repo that set none.) The operator's `config.yml` never
+counts.
 
 Left out on purpose, because they differ per machine: the env files'
 values, and the runner binary's path and hash (an OS update would

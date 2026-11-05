@@ -30,16 +30,11 @@ swim queue rm ID            # or drop it
 requeued lane whose script or env files changed since it was queued is
 skipped, as always.
 
-A batch claimed by a watcher on **another machine** (a queue on a shared
-filesystem) can't be checked by its process. Instead, the watcher renews a
-heartbeat in the entry every third of its lease (`queue_lease`, default
-2m) while the batch runs, and the entry shows as orphaned once the
-heartbeat is older than the lease. Before you requeue it, make sure that
-watcher really stopped (a hung machine's batch may still be changing
-things); `swim queue show ID` names its host and pid. A claim by an older
-swim has no heartbeat and shows as `running?`: check that watcher, and run
-`swim queue requeue` or `rm` on the host that claimed it, where the entry
-shows as orphaned once its watcher is gone.
+A batch claimed on **another machine** (a queue on a shared filesystem)
+shows as orphaned once its watcher's heartbeat is older than
+`queue_lease` (default 2m). A hung machine's batch may still be changing
+things: check that host (`swim queue show ID` names it and the pid) before
+you requeue.
 
 ## An interrupted round
 
@@ -87,15 +82,9 @@ changes passed. The target is now half-changed.
 as interrupted`.
 
 **Why:** the lane's process died without running its traps: a closed
-terminal, SIGKILL, a crash, a reboot. `.swim/status.yml` still says
-`running`, and `.swim/laneN.pid` names a process that's gone (or a pid the
-kernel has since given to another process: the start time in
-`.swim/laneN.claim` tells them apart).
-
-The next `swim run`, `swim all`, `swim ci` or `swim watch` ends such a
-round by itself: the step that was cut off is recorded as failed, the log
-gets `END INTERRUPTED` (exit 137) and the chain a round entry. It never
-reruns anything. Read the log before you run the lane again.
+terminal, SIGKILL, a crash, a reboot. The next `swim run`, `swim all`,
+`swim ci` or `swim watch` ends such a round by itself, as
+[state](state.md#lane) describes, and never reruns anything.
 
 **Fix:**
 
@@ -107,9 +96,10 @@ swim log N                  # what it did before it died
 swim run N                  # rerun it when you're sure it's safe
 ```
 
-A dead pid file doesn't block a rerun on its own; the rebuild (or the
-next run) just makes `swim status` (and the agents reading it) tell the
-truth.
+A dead pid file doesn't block a rerun; the rebuild just makes `swim
+status` tell the truth sooner. A lane running on another machine sharing
+the repo is never taken for dead here: if that machine is gone for good,
+`rm .swim/laneN.pid` and `swim status --rebuild`.
 
 ## `swim verify` fails
 
@@ -194,7 +184,7 @@ just which                  # in a swimlane checkout: every swim on PATH, and wh
 ## See also
 
 - `swim doctor --help`: every check, and what `--fix` repairs.
-- [State machines](state.md): every state a lane, job, queue entry and
-  approval can be in.
+- [State machines](state.md): every state a lane and a queue entry can be
+  in.
 - [Trust model](trust-model.md): what `swim verify` proves and what it
   doesn't.

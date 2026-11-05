@@ -2,23 +2,54 @@
 // while swim run owns the terminal. Parallel lanes have no stdin, so the
 // lane's `guard` (through `swim _approve`) sends the request over a unix
 // socket to the launcher, which asks the operator, one request at a time,
-// and sends the answer back. The socket's path reaches lanes as
-// SWIM_APPROVAL.
+// and sends the answer back. Both ends are always the same swim binary: a
+// lane program never speaks this protocol itself, and it may change in
+// any release.
 //
-// The launcher, not the request, says who is asking: each lane process
-// gets its own token (SWIM_APPROVAL_TOKEN), registered with the lane, job
-// and manifest it was started for, and the question is built from those.
-// A request without a known token, from a process outside the lane's
-// process tree, or for a guard its script doesn't declare, is refused. The
-// lane's description is shown, labelled as the lane's. Each approval
-// carries a request id that the lane must consume, once, before it records
-// the approval; under swim run the launcher records it in the chain then
-// (Server.Record), so a lane never writes its own approval.
+// Transport. The socket is mode 0600 in a 0700 temp directory; its path
+// reaches lanes as SWIM_APPROVAL. Each lane process (each matrix cell)
+// gets its own random token, SWIM_APPROVAL_TOKEN, registered with what the
+// launcher knows of it (lane, cell, round id, run, manifest, declared
+// guards), bound to the process once it starts and revoked when it exits.
+// Where the OS names a socket's peer (Linux SO_PEERCRED, macOS
+// LOCAL_PEERPID), a request must come from the lane's process or a
+// descendant: a token read from another lane's environ, or used by a
+// process that left its lane's tree, is refused. Elsewhere the token alone
+// decides. One request per connection: one JSON line of at most
+// MaxRequest bytes, sent within 10 seconds; a larger, malformed or slower
+// one is declined and the connection closed.
 //
-// The same socket tells swim's hidden commands which lane they run for
-// (op "whoami"), so a lane can't report for another, and takes their
-// round's chain entry (op "record"): the launcher signs it, so a lane
-// needs no key.
+// Requests. With no op, ask for a guard: the lane's Lane and Job are
+// ignored for what the launcher registered for the token, and its Desc is
+// shown labelled as the lane's ("the lane says: ..."), control characters
+// removed. FlagSet says the lane's environment has FLAG=1. Op "consume"
+// uses an approved answer's request id, once, with the token it was given
+// to; under swim run the launcher records the approve entry in the chain
+// then (Server.Record) and answers its hash, so a lane never writes its
+// own approval. Op "whoami" says which lane, cell, round id and run the
+// token is for, so swim's hidden commands (_start, _mark, _stage, _finish)
+// can't report for another lane. Op "record" takes a round's chain entry:
+// the launcher signs it under the lane, round id, run and manifest it
+// registered, so a lane needs no key.
+//
+// How the launcher decides, from what it saw when the run started:
+//  1. FlagSet: approved only if the launcher's own environment (the one
+//     swim run started with, or a queued batch's --approve) has FLAG=1; a
+//     flag set inside the lane, by an env file or anything it runs, is
+//     declined with that reason.
+//  2. The operator: a pre-answer in the live view, or the prompt (the
+//     terminal, or swim watch's screen), when someone can be asked. A
+//     guard the script doesn't declare is refused before this.
+//  3. Otherwise a dry run: Approved false with Dry true, and Why saying
+//     what didn't approve it.
+//
+// Every question is declined when the lane hangs up, the run is stopping,
+// or the round's Timeout runs out. Refusals (an unknown or revoked token,
+// a process outside the lane, an undeclared guard, a reused or foreign
+// id) are shown in the live view and logged in .swim.log. When the run's
+// last lane exits the launcher appends the run's attestation, which swim
+// verify checks every approve entry against
+// (docs/reference/trust-model.md).
 package approval
 
 import (

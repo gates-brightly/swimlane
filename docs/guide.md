@@ -109,7 +109,7 @@ ls scratch.txt 2>/dev/null || echo "removed, approved in the queue"
 ```
 
 A queued batch's approval is pinned to exactly what will run: the script,
-the files it pins, how it runs, and the repo's policy. Change any of it
+the files it pins and how it runs. Change any of it
 before the watcher takes it, and the lane is skipped
 ([manifest](reference/manifest.md)):
 
