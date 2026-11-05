@@ -1,5 +1,5 @@
 // Package display draws the launcher's live view: a panel pinned to the top
-// of the terminal with one row per lane (swim 1..N), and lane output
+// of the terminal with one row per lane (lane 1..N), and lane output
 // scrolling underneath with [N] prefixes.
 package display
 
@@ -11,39 +11,52 @@ import (
 	"unicode/utf8"
 
 	"github.com/gates-brightly/swimlane/internal/lane"
+	"github.com/gates-brightly/swimlane/internal/status"
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// Lane states shown in the panel (same words as status.yml).
+// Lane states shown in the panel: status's words (status.States).
 const (
-	Idle        = "idle"
-	Starting    = "starting" // selected, about to start
-	Queued      = "queued"   // dependencies passed; waiting for a free slot (max_parallel)
-	Locked      = "locked"   // dependencies passed; waiting for a resource lock (# Locks:)
-	Waiting     = "waiting"
-	Running     = "running"
-	Passed      = "passed"
-	Failed      = "failed"
-	Skipped     = "skipped"
-	Interrupted = "interrupted"
-	Done        = "done" // passed in an earlier run; not run again
+	Ready       = status.Ready
+	Empty       = status.Empty
+	Waiting     = status.Waiting // on the lanes it runs after (WaitingOn)
+	Running     = status.Running
+	Passed      = status.Passed
+	Failed      = status.Failed
+	Skipped     = status.Skipped
+	Interrupted = status.Interrupted
+)
+
+// The panel's finer cuts of those states: what it knows besides the word,
+// shown with the word.
+const (
+	Starting  = "running:starting" // running: selected, about to start
+	SlotWait  = "waiting:slot"     // waiting for a free slot (max_parallel); QueuePos
+	LockWait  = "waiting:lock"     // waiting for a resource lock (# Locks:); LockText
+	Earlier   = "passed:earlier"   // passed in an earlier run; not run again
+	Elsewhere = "running:elsewhere"
 	// Elsewhere is a lane this run doesn't include that another swim (a
 	// concurrent swim run, swim watch) is running now: shown live, never
 	// part of this run.
-	Elsewhere = "elsewhere"
 )
+
+// Word is the state word (status.States) a panel state is shown with.
+func Word(state string) string {
+	w, _, _ := strings.Cut(state, ":")
+	return w
+}
 
 // LaneView is what the panel knows about one lane.
 type LaneView struct {
 	N         int
 	State     string
-	Round     string // round being run, or the pending round for idle lanes
-	Job       string // job id of that round
+	Round     string // round being run, or the round a ready lane holds
+	Job       string // that round's id
 	WaitingOn []int
 	Reason    string // why a lane was skipped
 	Exit      int
-	QueuePos  int    // lanes ahead of it while Queued
-	LockWait  string // while Locked, e.g. "orders-table: swim 4"
+	QueuePos  int    // lanes ahead of it while SlotWait
+	LockText  string // while LockWait, e.g. "orders-table: lane 4"
 	Stopping  string // while Running after a stop request: the step it is finishing
 	Approval  string // while Running and waiting for the operator to approve a guarded step
 	// Paused is how long the round has waited for the operator; PausedAt,
@@ -90,7 +103,7 @@ func (v *LaneView) Pause(pause bool, now time.Time) {
 
 // Active reports whether the lane is still queued, waiting or running.
 func (v LaneView) Active() bool {
-	return v.State == Starting || v.State == Queued || v.State == Locked || v.State == Waiting || v.State == Running
+	return v.State == Starting || v.State == SlotWait || v.State == LockWait || v.State == Waiting || v.State == Running
 }
 
 var throbberFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -157,14 +170,28 @@ func Span(start, end time.Time) string {
 	return fmt.Sprintf("%s → %s (%s)", start.Format(layout), end.Format(layout), took)
 }
 
-// WaitingText renders "waiting on swim 1" / "waiting on swim 1, 3".
+// WaitingText renders "waiting on lane 1" / "waiting on lane 1, 3".
 func WaitingText(deps []int) string {
+	if len(deps) == 0 {
+		return "waiting"
+	}
 	parts := make([]string, len(deps))
 	for i, d := range deps {
 		parts[i] = fmt.Sprint(d)
 	}
-	return "waiting on swim " + strings.Join(parts, ", ")
+	return "waiting on lane " + strings.Join(parts, ", ")
 }
+
+// The other reasons a lane waits, as every view says them.
+
+// WaitingLock is "waiting for lock orders-table: lane 4".
+func WaitingLock(lock string) string { return "waiting for lock " + lock }
+
+// WaitingSlot is "waiting for a slot (#2)": max_parallel lanes run.
+func WaitingSlot(pos int) string { return fmt.Sprintf("waiting for a slot (#%d)", pos) }
+
+// WaitingApproval is "waiting for approval: <what>".
+func WaitingApproval(what string) string { return "waiting for approval: " + what }
 
 // stateText returns the plain state column text and the colour for it,
 // marked [DRY] when a guard of the round ran as a dry run.
@@ -183,39 +210,40 @@ func laneStateText(v LaneView, now time.Time) (string, string) {
 	thr := Throbber(now)
 	switch v.State {
 	case Starting:
-		return thr + " starting", ui.Cyan
-	case Queued:
-		return fmt.Sprintf("%s queued (#%d)", thr, v.QueuePos+1), ui.Yellow
-	case Locked:
-		return fmt.Sprintf("%s locked (%s)", thr, v.LockWait), ui.Yellow
+		return thr + " running", ui.Cyan
+	case SlotWait:
+		return thr + " " + WaitingSlot(v.QueuePos+1), ui.Yellow
+	case LockWait:
+		return thr + " " + WaitingLock(v.LockText), ui.Yellow
 	case Waiting:
 		return thr + " " + WaitingText(v.WaitingOn), ui.Yellow
 	case Running:
 		if v.Approval != "" {
-			return fmt.Sprintf("%s awaiting approval: %s", thr, v.Approval), ui.Yellow
+			return thr + " " + WaitingApproval(v.Approval), ui.Yellow
 		}
 		if v.Stopping != "" {
-			return fmt.Sprintf("%s stopping %s (%s)", thr, v.Stopping, Duration(v.Ran(now))), ui.Yellow
+			return fmt.Sprintf("%s running, stopping %s (%s)", thr, v.Stopping, Duration(v.Ran(now))), ui.Yellow
 		}
 		return thr + " running " + Duration(v.Ran(now)), ui.Cyan
 	case Elsewhere:
 		return thr + " running elsewhere " + Duration(v.Ran(now)), ui.Blue
 	case Passed:
-		return "PASS " + Duration(v.Ran(now)), ui.Green
+		return "passed " + Duration(v.Ran(now)), ui.Green
 	case Failed:
-		return fmt.Sprintf("FAIL exit %d %s", v.Exit, Duration(v.Ran(now))), ui.Red
+		return fmt.Sprintf("failed exit %d %s", v.Exit, Duration(v.Ran(now))), ui.Red
 	case Interrupted:
-		return "INTERRUPTED " + Duration(v.Ran(now)), ui.Red
+		return "interrupted " + Duration(v.Ran(now)), ui.Red
 	case Skipped:
 		if v.Reason != "" {
-			return "SKIP (" + v.Reason + ")", ui.Yellow
+			return "skipped (" + v.Reason + ")", ui.Yellow
 		}
-		return "SKIP", ui.Yellow
+		return "skipped", ui.Yellow
+	case Earlier:
+		return "  passed (an earlier run)", ui.Green
+	case Ready:
+		return "  ready", ui.Cyan
 	}
-	if v.State == Done {
-		return "  done (passed earlier)", ui.Green
-	}
-	return "  idle", ui.Dim
+	return "  empty", ui.Dim
 }
 
 // truncate shortens s to at most w runes, marking the cut with "…".
@@ -240,7 +268,7 @@ func pad(s string, w int) string {
 	return s
 }
 
-const stateWidth = 26
+const stateWidth = 30
 
 // MaxRows is the most lane rows the pinned panel shows. With more lanes,
 // it shows MaxRows-1 of them plus a line counting the hidden ones.
@@ -254,16 +282,18 @@ func rank(state string) int {
 		return 0
 	case Failed, Interrupted:
 		return 1
-	case Starting, Queued, Locked, Waiting, Elsewhere:
+	case Starting, SlotWait, LockWait, Waiting, Elsewhere:
 		return 2
 	case Skipped:
 		return 3
 	case Passed:
 		return 4
-	case Done:
+	case Earlier:
 		return 5
+	case Ready:
+		return 6
 	}
-	return 6 // idle
+	return 7 // empty
 }
 
 // hiddenWord is how a hidden state is counted in the "more" line.
@@ -271,18 +301,10 @@ func hiddenWord(state string) string {
 	switch state {
 	case Elsewhere:
 		return "running elsewhere"
-	case Starting, Waiting:
-		return "waiting"
-	case Queued:
-		return "queued"
-	case Locked:
-		return "locked"
-	case Failed:
-		return "failed"
-	case Done:
-		return "done earlier"
+	case Earlier:
+		return "passed earlier"
 	}
-	return state
+	return Word(state)
 }
 
 // PanelRows returns how many lane rows (including the "more" line) the
@@ -339,7 +361,7 @@ func visible(views []LaneView, sel int) ([]LaneView, string) {
 }
 
 func wordRank(w string) int {
-	for _, s := range []string{Running, Failed, Interrupted, Queued, Locked, Waiting, Elsewhere, Skipped, Passed, Done, Idle} {
+	for _, s := range []string{Running, Failed, Interrupted, Waiting, Elsewhere, Skipped, Passed, Earlier, Ready, Empty} {
 		if hiddenWord(s) == w {
 			return rank(s)
 		}
@@ -368,10 +390,10 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 			maxN = v.N
 		}
 	}
-	labelW := len(fmt.Sprintf(" swim %d  ", maxN))
+	labelW := len(fmt.Sprintf(" lane %d  ", maxN))
 	shown, more := visible(views, sel)
 	for _, v := range shown {
-		label := pad(fmt.Sprintf(" swim %d", v.N), labelW)
+		label := pad(fmt.Sprintf(" lane %d", v.N), labelW)
 		if v.N == sel {
 			label = "▶" + label[1:]
 		}
@@ -397,7 +419,7 @@ func renderPanel(title string, views []LaneView, width int, now time.Time, color
 		round = truncate(round, avail)
 
 		roundColor := ""
-		if v.State == Idle || v.State == Done {
+		if v.State == Ready || v.State == Empty || v.State == Earlier {
 			roundColor = ui.Dim
 		}
 		line := p.Paint(ui.LaneColor(v.N)+ui.Bold, label) + p.Paint(stColor, st)

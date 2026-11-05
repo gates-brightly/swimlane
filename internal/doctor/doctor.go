@@ -140,7 +140,7 @@ func Fixable(code string) bool {
 }
 
 // Fix applies the safe repairs for fs (the .gitignore block, stale pid
-// files, expired claims, dead watches' presence files, old staged copies,
+// files, expired claims, dead watches' presence files, old pinned copies,
 // and files under .swim/ swim no longer reads) and returns what it did.
 // It checks each again before removing it, and never touches config, lane
 // scripts, git, lane logs, the chain, status.yml, the queue, .swim/scripts,
@@ -182,7 +182,7 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 			}
 		case "stages-old":
 			if removed := manifest.PruneStages(o.Root, stageKeep, o.keepRun()); len(removed) > 0 {
-				done = append(done, fmt.Sprintf("removed the staged copies of %d old runs from .swim/runs/", len(removed)))
+				done = append(done, fmt.Sprintf("removed the pinned copies of %d old runs from .swim/runs/", len(removed)))
 			}
 		}
 	}
@@ -190,7 +190,7 @@ func Fix(o Options, fs []finding.Finding) ([]string, error) {
 }
 
 // keepRun keeps the run of each lane's latest round (swim verify checks its
-// staged copy).
+// pinned copy).
 func (o *Options) keepRun() func(run string) bool {
 	st, _ := status.Load(o.Root)
 	return func(run string) bool {
@@ -237,7 +237,7 @@ func checkEnvFiles(o *Options) []finding.Finding {
 		}
 		for _, c := range envfile.GuardConflicts(r, info) {
 			out = append(out, fd(finding.Error, "env-file", c.File, "remove the line; approve with the shell or the prompt",
-				"%s (swim %d)", c.Error(), n))
+				"%s (lane %d)", c.Error(), n))
 		}
 	}
 	return out
@@ -554,7 +554,7 @@ func checkStalePID(o *Options) []finding.Finding {
 			pid = f[0] // pid and start time
 		}
 		out = append(out, fd(finding.Warn, "stale-pid", o.rel(lane.PIDFile(o.Root, n)), "swim doctor --fix (removes it), then swim status --rebuild",
-			"swim %d's pid file names process %s, which is gone (swim status shows the lane as \"running?\")", n, pid))
+			"lane %d's pid file names process %s, which is gone (swim status shows the lane as \"running?\")", n, pid))
 	}
 	return out
 }
@@ -624,7 +624,7 @@ func checkRemoteRunning(o *Options) []finding.Finding {
 		}
 		out = append(out, fd(finding.Warn, "remote-running", o.rel(lane.PIDFile(o.Root, l.Lane)),
 			fmt.Sprintf("if %s is gone for good: rm .swim/lane%d.pid, then swim status --rebuild", l.Host, l.Lane),
-			"swim %d has been %s on %s for %s (pid %d there); this machine can't tell whether it still is", l.Lane, l.State, l.Host, time.Since(t).Round(time.Hour), l.PID))
+			"lane %d has been %s on %s for %s (pid %d there); this machine can't tell whether it still is", l.Lane, l.State, l.Host, time.Since(t).Round(time.Hour), l.PID))
 	}
 	return out
 }

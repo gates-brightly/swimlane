@@ -23,8 +23,8 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// swim log [N|JOB|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
-// swim log --since <1h|TIME|RUN|JOB>
+// swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow]
+// swim log --since <1h|TIME|RUN|ROUND-ID>
 func cmdLog(args []string) error {
 	var all, full, raw, asYAML, follow bool
 	var since string
@@ -34,13 +34,13 @@ func cmdLog(args []string) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef("usage: swim log [N|JOB|RUN] [--all] [--full] [--raw] [--yaml] [--follow]\n       swim log --since <1h|TIME|RUN|JOB>")
+		return usagef("usage: swim log [N|ROUND-ID|RUN] [--all] [--full] [--raw] [--yaml] [--follow]\n       swim log --since <1h|TIME|RUN|ROUND-ID>")
 	}
 	if since != "" && len(rest) > 0 {
 		return usagef("--since reads the project log: swim log --since %s (swim log %s is all of it)", since, rest[0])
 	}
 	if asYAML && len(rest) == 0 {
-		return usagef("--yaml needs a lane or job: swim log N --yaml")
+		return usagef("--yaml needs a lane or round id: swim log N --yaml")
 	}
 	if follow && (len(rest) == 0 || asYAML || all) {
 		return usagef("--follow takes one lane, and no --yaml or --all: swim log N --follow")
@@ -87,9 +87,9 @@ func cmdLog(args []string) error {
 		}
 		if len(files) == 0 {
 			if all {
-				return fmt.Errorf("swim %d has no logs yet", n)
+				return fmt.Errorf("lane %d has no logs yet", n)
 			}
-			msg := fmt.Sprintf("swim %d has no current log (.swim/logs/agent%d.log)", n, n)
+			msg := fmt.Sprintf("lane %d has no current log (.swim/logs/lane%d.log)", n, n)
 			if len(archives(root, n)) > 0 {
 				msg += "; its archived logs: swim log " + ref + " --all"
 			}
@@ -127,7 +127,7 @@ func cmdLog(args []string) error {
 	// A job or run id: print its rounds from every lane's current or archived
 	// logs, in lane order.
 	if len(ref) < 8 && !lane.ValidJobID(ref) {
-		return usagef("%q is neither a lane number nor a job id (job ids need 8+ characters)", ref)
+		return usagef("%q is neither a lane number nor a round id (round ids need 8+ characters)", ref)
 	}
 	found := 0
 	for n := 1; n <= cfg.Lanes; n++ {
@@ -165,14 +165,14 @@ func cmdLog(args []string) error {
 		}
 	}
 	if found == 0 {
-		return fmt.Errorf("no log holds a round of job or run %s", ref)
+		return fmt.Errorf("no log holds round or run %s", ref)
 	}
 	return nil
 }
 
 // logSince prints the project log's lines from ref on: a time, a duration
 // back from now, or a run's or job's first line. What happened since then;
-// each round's detail is swim log JOB.
+// each round's detail is swim log ROUND-ID.
 func logSince(root, ref string, out logWriter) error {
 	data, err := os.ReadFile(history.Path(root))
 	if errors.Is(err, os.ErrNotExist) {
@@ -211,11 +211,11 @@ func sinceLine(ref string, lines []string) (from string, at int, err error) {
 		return time.Now().Add(-d).UTC().Format(time.RFC3339), 0, nil
 	}
 	for i, l := range lines {
-		if run := historyField(l, "run"); run != "" && run == ref || lane.MatchJob(historyField(l, "job"), ref) {
+		if run := historyField(l, "run"); run != "" && run == ref || lane.MatchJob(or(historyField(l, "round-id"), historyField(l, "job")), ref) {
 			return "", i, nil
 		}
 	}
-	return "", 0, usagef("--since %q: not a UTC time (2026-10-15T14:02:11Z), a duration back from now (1h, 2d), or a run id or job in %s", ref, history.FileName)
+	return "", 0, usagef("--since %q: not a UTC time (2026-10-15T14:02:11Z), a duration back from now (1h, 2d), or a run id or round id in %s", ref, history.FileName)
 }
 
 // sinceAgo reads a duration back from now: Go's (90m, 1h30m) or whole
@@ -246,7 +246,7 @@ func historyField(line, key string) string {
 
 // archives lists lane n's archived logs, oldest round first.
 func archives(root string, n int) []string {
-	files, _ := filepath.Glob(filepath.Join(lane.LogDir(root), fmt.Sprintf("agent%d.prev-*.log", n)))
+	files, _ := filepath.Glob(filepath.Join(lane.LogDir(root), fmt.Sprintf("lane%d.prev-*.log", n)))
 	type dated struct {
 		path, key string
 	}
@@ -569,7 +569,7 @@ func followLog(root string, n int, out logWriter) error {
 			}
 		}
 	} else {
-		fmt.Fprintf(out.w, "(swim %d has no round yet; waiting)\n", n)
+		fmt.Fprintf(out.w, "(lane %d has no round yet; waiting)\n", n)
 	}
 	if st, err := os.Stat(logPath); err == nil {
 		off = st.Size()
@@ -650,7 +650,7 @@ func followLog(root string, n int, out logWriter) error {
 		case off > 0:
 			// A round with no END, and nothing running it: the lane
 			// died (killed, machine went down).
-			return fmt.Errorf("swim %d stopped without finishing its round (no END in its log)", n)
+			return fmt.Errorf("lane %d stopped without finishing its round (no END in its log)", n)
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
@@ -668,7 +668,7 @@ func laneWaiting(root string, n int) bool {
 		return false
 	}
 	switch l.State {
-	case status.Waiting, status.Queued, status.Locked, status.Running:
+	case status.Waiting, status.Queued, status.Running:
 		return l.Alive()
 	}
 	return false

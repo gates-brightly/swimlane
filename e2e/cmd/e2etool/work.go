@@ -82,7 +82,7 @@ func cmdAggregate([]string) error {
 	if err != nil {
 		return err
 	}
-	job, err := env("SWIM_JOB")
+	job, err := env("SWIM_ROUND_ID")
 	if err != nil {
 		return err
 	}
@@ -384,7 +384,7 @@ func cmdStats([]string) error {
 	if err != nil {
 		return err
 	}
-	job, err := env("SWIM_JOB")
+	job, err := env("SWIM_ROUND_ID")
 	if err != nil {
 		return err
 	}
@@ -445,7 +445,7 @@ func cmdReport([]string) error {
 	if err != nil {
 		return err
 	}
-	job, err := env("SWIM_JOB")
+	job, err := env("SWIM_ROUND_ID")
 	if err != nil {
 		return err
 	}

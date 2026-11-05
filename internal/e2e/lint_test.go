@@ -112,7 +112,7 @@ func TestRunLintPreflight(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("run exit %d, want 1:\n%s", code, out)
 	}
-	contains(t, "pre-flight", out, "lane.2.sh:6", "[set-e]", "lane.3.sh:5", "[lane-init]", "not running swim 2, 3")
+	contains(t, "pre-flight", out, "lane.2.sh:6", "[set-e]", "lane.3.sh:5", "[lane-init]", "not running lane 2, 3")
 	if !strings.Contains(r.log(1), "PASS  ok") || r.log(2) != "" {
 		t.Errorf("lane 1 should run, lane 2 not:\n%s\n%s", out, r.log(1))
 	}

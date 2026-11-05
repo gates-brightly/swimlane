@@ -23,7 +23,7 @@ func TestNormalizeFillsAllLanes(t *testing.T) {
 			t.Fatalf("lane order: %+v", f.Lanes)
 		}
 	}
-	if f.Get(3).State != Passed || f.Get(1).State != Idle || f.Get(2).Script != "lane.2.sh" {
+	if f.Get(3).State != Passed || f.Get(1).State != Empty || f.Get(2).Script != "lane.2.sh" {
 		t.Fatalf("unexpected: %+v", f.Lanes)
 	}
 }
@@ -110,7 +110,7 @@ func TestWrittenFileShape(t *testing.T) {
 	}
 	data, _ := os.ReadFile(Path(root))
 	s := string(data)
-	for _, want := range []string{`"lane": 1`, `"state": "idle"`, `"state": "running"`, `"finished_at": null`, `"waiting_on": []`, `"script": "lane.2.sh"`} {
+	for _, want := range []string{`"lane": 1`, `"state": "empty"`, `"state": "running"`, `"finished_at": null`, `"waiting_on": []`, `"script": "lane.2.sh"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in:\n%s", want, s)
 		}
@@ -211,5 +211,29 @@ func TestRan(t *testing.T) {
 	}
 	if _, ok := (&Lane{}).Ran(t0); ok {
 		t.Error("never started")
+	}
+}
+
+// An older swim's status.yml says idle, locked, pending...: each reads as
+// the state it now is, and the next write says the new word.
+func TestOldStateWordsRead(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(Dir(root), 0o755)
+	old := "lanes:\n- {lane: 1, state: idle}\n- {lane: 2, state: locked}\n- {lane: 3, state: pending}\n- {lane: 4, state: done}\n- {lane: 5, state: passed}\n"
+	os.WriteFile(Path(root), []byte(old), 0o644)
+	f, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n, want := range map[int]string{1: Empty, 2: Waiting, 3: Ready, 4: Passed, 5: Passed} {
+		if got := f.Get(n).State; got != want {
+			t.Errorf("lane %d: %q, want %q", n, got, want)
+		}
+	}
+	if err := Update(root, 1, 5, func(l *Lane) {}); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(Path(root)); strings.Contains(string(data), `"idle"`) || strings.Contains(string(data), `"locked"`) {
+		t.Errorf("rewritten with old words:\n%s", data)
 	}
 }

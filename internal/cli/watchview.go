@@ -185,8 +185,9 @@ func (b *rowText) row(id, color string) display.PickRow {
 // its name in its colour, a spinner and its state in the state's colour.
 func (w *watchView) rows() []display.PickRow {
 	rows, waiting := w.askRows()
-	rows = append(rows, display.PickRow{Text: "Jobs", Rule: true})
+	rows = append(rows, display.PickRow{Text: "Lanes", Rule: true})
 	st, _ := status.Load(w.root)
+	inBatch := queuedLanes(w.root)
 	now := time.Now()
 	lanes := lane.Associated(w.root) // the lanes in use now (a long-lived view)
 	w.seen.refresh(lanes)
@@ -206,6 +207,9 @@ func (w *watchView) rows() []display.PickRow {
 			r.l = st.Get(n)
 		}
 		r.state, r.color = laneRowState(r.l, r.info)
+		if r.state == status.Ready && inBatch[n] {
+			r.state, r.color = status.Queued, ui.StateColor(status.Queued)
+		}
 		if r.l != nil {
 			r.took = laneTook(r.l, r.state)
 		}
@@ -215,7 +219,7 @@ func (w *watchView) rows() []display.PickRow {
 	}
 	for i, n := range lanes {
 		l, info, state, color := rs[i].l, rs[i].info, rs[i].state, rs[i].color
-		round, roundColor := "(no pending round)", ui.Dim
+		round, roundColor := "(no round)", ui.Dim
 		job := ""
 		if info.Pending() {
 			round, roundColor = info.Round, ""
@@ -225,7 +229,7 @@ func (w *watchView) rows() []display.PickRow {
 		} else {
 			color = ui.Dim
 		}
-		if l != nil && len(l.DryRun) > 0 && state != "pending" {
+		if l != nil && len(l.DryRun) > 0 && state != status.Ready {
 			round = display.DryMark + " " + round
 		}
 		b := &rowText{p: ui.Painter{On: true}}
@@ -238,7 +242,7 @@ func (w *watchView) rows() []display.PickRow {
 		}
 		lead := "  "
 		switch state {
-		case status.Running, status.Waiting, status.Queued, status.Locked:
+		case status.Running, status.Waiting, status.Queued:
 			lead = display.SpinMark + " " // the picker draws the throbber's frame here
 		}
 		b.add("", "  ").add(ui.StateColor(state), fmt.Sprintf("%s%-10s", lead, state))
@@ -269,14 +273,14 @@ func (w *watchView) rows() []display.PickRow {
 	rows = append(rows, display.PickRow{Text: " ", Color: ui.Dim}, display.PickRow{Text: "Queue", Rule: true})
 	if len(w.staged) > 0 {
 		rows = append(rows, display.PickRow{ID: "submit", Color: ui.Green + ui.Bold,
-			Text: fmt.Sprintf("▶ submit swim %s as one batch  (enter here, or s; x clears)", joinNums(w.staged))})
+			Text: fmt.Sprintf("▶ submit lane %s as one batch  (enter here, or s; x clears)", joinNums(w.staged))})
 	}
 	entries, err := queue.List(w.root, false)
 	if err != nil {
 		rows = append(rows, display.PickRow{Text: "  " + err.Error(), Color: ui.Red})
 	}
 	if len(entries) == 0 && err == nil {
-		rows = append(rows, display.PickRow{Text: "(empty: q on jobs, then s, queues them as one batch)", Color: ui.Dim})
+		rows = append(rows, display.PickRow{Text: "(empty: q on lanes, then s, queues them as one batch)", Color: ui.Dim})
 	}
 	queue.SortWaiting(entries)
 	anyRunning := false
@@ -296,8 +300,6 @@ func (w *watchView) rows() []display.PickRow {
 		color, stateColor := "", ui.StateColor(state)
 		lead := "  "
 		switch state {
-		case "held":
-			color, stateColor = ui.Dim, ui.Dim
 		case queue.Running:
 			lead = display.SpinMark + " "
 		case queue.Orphaned:
@@ -307,7 +309,7 @@ func (w *watchView) rows() []display.PickRow {
 		}
 		b := &rowText{p: ui.Painter{On: true}}
 		b.add(ui.Bold, fmt.Sprintf("#%-4d", e.Seq)).add(stateColor, fmt.Sprintf(" %s%-9s", lead, state))
-		b.add(ui.Dim, fmt.Sprintf(" %-7s ", queueTimer(e, state, now))).add(ui.Yellow, dry).add("", "swim ")
+		b.add(ui.Dim, fmt.Sprintf(" %-7s ", queueTimer(e, state, now))).add(ui.Yellow, dry).add("", "lane ")
 		for i, l := range e.Lanes {
 			if i > 0 {
 				b.add("", ",")
@@ -323,25 +325,25 @@ func (w *watchView) rows() []display.PickRow {
 	return rows
 }
 
-// status is the title line's right side: what the swimmer has in hand, as
+// status is the title line's right side: what the watcher has in hand, as
 // swim run's title carries its clock.
 func (w *watchView) status() string {
 	entries, _ := queue.List(w.root, false)
-	running, waiting := 0, 0
+	running, queued := 0, 0
 	for _, e := range entries {
 		switch e.State {
 		case queue.Running:
 			running++
 		case queue.Queued:
-			waiting++
+			queued++
 		}
 	}
 	var parts []string
 	if running > 0 {
 		parts = append(parts, fmt.Sprintf("%d running", running))
 	}
-	if waiting > 0 {
-		parts = append(parts, fmt.Sprintf("%d queued", waiting))
+	if queued > 0 {
+		parts = append(parts, fmt.Sprintf("%d queued", queued))
 	}
 	if w.asks != nil {
 		if n, _ := w.asks.pending(); len(n) > 0 {
@@ -349,7 +351,7 @@ func (w *watchView) status() string {
 		}
 	}
 	if len(parts) == 0 {
-		parts = append(parts, "idle")
+		parts = append(parts, "nothing running")
 	}
 	return strings.Join(parts, " · ") + " · " + display.Duration(time.Since(w.started))
 }
@@ -376,7 +378,7 @@ func (w *watchView) askRows() (rows []display.PickRow, waiting map[int]watchAsk)
 		if _, ok := waiting[q.msg.Lane]; !ok {
 			waiting[q.msg.Lane] = q
 		}
-		head := fmt.Sprintf("⚠ swim %d is blocked: waits for approval of %s  · batch #%d · %s  ·  y approve  n decline",
+		head := fmt.Sprintf("⚠ lane %d is waiting for approval of %s  · batch #%d · %s  ·  y approve  n decline",
 			q.msg.Lane, approval.Clean(q.msg.Flag), q.seq, display.Duration(now.Sub(q.since)))
 		rows = append(rows, display.PickRow{ID: q.key, Text: head, Color: ui.Yellow + ui.Bold})
 		lines := q.msg.Question
@@ -438,13 +440,13 @@ func (w *watchView) batchDry(e *queue.Entry, st *status.File) bool {
 // laneTimer is a lane row's time: how long it has been running (or
 // waiting) in this round, "1m5s", less its waits for the operator (the
 // clock stops while it asks), or how long ago its round finished, "3h
-// ago". A pending lane (a new job not run yet) shows none.
+// ago". A ready lane (a round not run yet) shows none.
 func laneTimer(l *status.Lane, state string, now time.Time) string {
-	if l == nil || state == "pending" || state == "idle" {
+	if l == nil || state == status.Ready || state == status.Empty {
 		return ""
 	}
 	switch l.State {
-	case status.Running, status.Waiting, status.Queued, status.Locked:
+	case status.Running, status.Waiting, status.Queued:
 		if d, ok := l.Ran(now); ok {
 			return display.Duration(d)
 		}
@@ -493,26 +495,25 @@ func statusTime(s *string) (time.Time, bool) {
 	return t, err == nil
 }
 
-// laneRowState is how a lane's row shows its state: a script holding a job
-// that hasn't run yet is pending, whatever its last round did.
+// laneRowState is how a lane's row shows its state: a script holding a
+// round that hasn't run yet is ready, whatever its last round did; a
+// round whose process is gone, interrupted.
 func laneRowState(l *status.Lane, info lane.Info) (string, string) {
 	if l == nil {
 		if info.Pending() {
-			return "pending", ""
+			return status.Ready, ""
 		}
-		return "idle", ui.Dim
+		return status.Empty, ui.Dim
 	}
 	state := l.State
-	active := state == status.Running || state == status.Waiting || state == status.Queued || state == status.Locked
+	active := state == status.Running || state == status.Waiting || state == status.Queued
 	if active && !l.Alive() {
-		return "stale", ui.Yellow
+		return status.Interrupted, ui.Yellow
 	}
-	if !active && info.Pending() && (state == "" || state == status.Idle || info.Job != "" && info.Job != l.Job) {
-		return "pending", ""
+	if !active && info.Pending() && (l.AtRest() || info.Job != "" && info.Job != l.Job) {
+		return status.Ready, ""
 	}
-	if state == "" {
-		state = "idle"
-	}
+	state = l.Shown(info.Pending())
 	return state, ui.StateColor(state)
 }
 
@@ -528,23 +529,23 @@ func laneTook(l *status.Lane, state string) string {
 	return ""
 }
 
-// laneRowDetail is the end of a lane's row: what a waiting, locked or
-// queued lane waits on, as swim status and swim run's view say it
-// ("waiting on swim 2, 3", "waiting for lock db", "2 ahead"); and for a
-// pending round, how its lane's last one ended ("last run failed, took
-// 4m12s"). "" for any other state (a stale row's waiting process is gone;
-// a finished round's took is its own column, laneTook).
+// laneRowDetail is the end of a lane's row: what a waiting lane waits on,
+// as swim status and swim run's view say it ("waiting on lane 2, 3",
+// "waiting for lock db", "waiting for a slot (#2)"); for a ready round,
+// how its lane's last one ended ("last round failed, took 4m12s"); for a
+// round whose process is gone, that. "" for any other state (an ended
+// round's took is its own column, laneTook).
 func laneRowDetail(l *status.Lane, state string) string {
 	if l == nil {
 		return ""
 	}
 	took := roundTook(l)
 	switch state {
-	case "pending":
+	case status.Ready:
 		switch l.State {
 		case status.Passed, status.Failed, status.Interrupted, status.Skipped:
 			if took != "" {
-				return "last run " + l.State + ", took " + took
+				return "last round " + l.State + ", took " + took
 			}
 		}
 		return ""
@@ -552,9 +553,14 @@ func laneRowDetail(l *status.Lane, state string) string {
 		if len(l.WaitingOn) > 0 {
 			return display.WaitingText(l.WaitingOn)
 		}
-		return ""
-	case status.Locked, status.Queued:
+		if l.State == status.Running {
+			return "for approval"
+		}
 		return l.Reason
+	case status.Interrupted:
+		if l.State != status.Interrupted {
+			return "its process is gone"
+		}
 	case status.Failed:
 		if len(l.FailedSteps) > 0 { // the first failed step and its why
 			return strings.TrimSpace(l.FailedSteps[0])
@@ -616,7 +622,7 @@ func (w *watchView) act(id string, key rune) string {
 		case key == 'o':
 			return w.toggleStream()
 		}
-		return fmt.Sprintf("swim %d waits for an answer: y or n; enter shows its output", n)
+		return fmt.Sprintf("lane %d waits for an answer: y or n; enter shows its output", n)
 	}
 	// The next batch: s submits it from any row (enter or q on its row
 	// too), x clears it.
@@ -625,9 +631,9 @@ func (w *watchView) act(id string, key rune) string {
 		return w.submitStaged()
 	case key == 'x':
 		if len(w.staged) == 0 {
-			return "no batch to clear (q on a job adds it)"
+			return "no batch to clear (q on a lane adds it)"
 		}
-		msg := fmt.Sprintf("cleared the next batch (swim %s); nothing queued", joinNums(w.staged))
+		msg := fmt.Sprintf("cleared the next batch (lane %s); nothing queued", joinNums(w.staged))
 		w.staged = nil
 		return msg
 	case kind == "submit":
@@ -682,7 +688,7 @@ func (w *watchView) act(id string, key rune) string {
 		return err.Error()
 	}
 	if !info.Pending() {
-		return fmt.Sprintf("swim %d holds no pending round (a stub, or no Round: line)", n)
+		return fmt.Sprintf("lane %d holds no round (it is empty: a stub, or no Round: line)", n)
 	}
 	if key == 'q' {
 		return w.stage(n)
@@ -706,13 +712,13 @@ func (w *watchView) stage(n int) string {
 		if s == n {
 			w.staged = append(w.staged[:i:i], w.staged[i+1:]...)
 			if len(w.staged) == 0 {
-				return fmt.Sprintf("swim %d out of the next batch; it's empty", n)
+				return fmt.Sprintf("lane %d out of the next batch; it's empty", n)
 			}
-			return fmt.Sprintf("swim %d out of the next batch (swim %s; s submits)", n, joinNums(w.staged))
+			return fmt.Sprintf("lane %d out of the next batch (lane %s; s submits)", n, joinNums(w.staged))
 		}
 	}
 	w.staged = append(w.staged, n)
-	return fmt.Sprintf("next batch: swim %s (q on another adds it; s submits as one batch; x clears)", joinNums(w.staged))
+	return fmt.Sprintf("next batch: lane %s (q on another adds it; s submits as one batch; x clears)", joinNums(w.staged))
 }
 
 // submitStaged queues the staged lanes as one batch, as swim queue add N M
@@ -720,7 +726,7 @@ func (w *watchView) stage(n int) string {
 // it can't be queued.
 func (w *watchView) submitStaged() string {
 	if len(w.staged) == 0 {
-		return "no batch to submit: q on jobs adds them, then s"
+		return "no batch to submit: q on lanes adds them, then s"
 	}
 	msg, err := w.queueLanes(w.staged)
 	if err != nil {
@@ -730,7 +736,7 @@ func (w *watchView) submitStaged() string {
 	return msg
 }
 
-// queueAll is Q: queue every lane holding a pending round that hasn't
+// queueAll is Q: queue every lane holding a ready round that hasn't
 // passed as one batch, as swim queue add does with no lanes named, less
 // those a waiting or running batch already holds. The next batch (q)
 // is cleared of the lanes it queues.
@@ -749,9 +755,9 @@ func (w *watchView) queueAll() string {
 	lanes := slices.DeleteFunc(slices.Clone(sel), func(n int) bool { return slices.Contains(inBatch, n) })
 	if len(lanes) == 0 {
 		if len(sel) > 0 {
-			return "nothing to queue: every pending job is in a batch already"
+			return "nothing to queue: every ready round is in a batch already"
 		}
-		return "nothing to queue: no lane holds a pending round that hasn't passed"
+		return "nothing to queue: no lane holds a ready round that hasn't passed"
 	}
 	msg, err := w.queueLanes(lanes)
 	if err != nil {
@@ -776,7 +782,7 @@ func (w *watchView) toggleStream() string {
 // itself when its lanes are free: the batch is the operator's at this
 // screen, and Ctrl-C here is what stops it. It says what it queued.
 func (w *watchView) queueLanes(lanes []int) (string, error) {
-	// Swimmers pick only under the worker lock: held from queueing to
+	// Watchers pick only under the worker lock: held from queueing to
 	// starting, no other swim watch claims the batch in between.
 	unlock := func() {}
 	if w.batches != nil {
@@ -788,11 +794,11 @@ func (w *watchView) queueLanes(lanes []int) (string, error) {
 		return "", err
 	}
 	ns := strings.ReplaceAll(joinNums(lanes), " ", "")
-	msg := fmt.Sprintf("queued swim %s as #%d (%s)", ns, b.entry.Seq, b.entry.ID)
+	msg := fmt.Sprintf("queued lane %s as #%d (%s)", ns, b.entry.Seq, b.entry.ID)
 	if bp, err := w.startHere(b.entry); err != nil {
 		msg += "; not started: " + err.Error()
 	} else if bp != nil {
-		msg = fmt.Sprintf("started swim %s as #%d (%s) here", ns, bp.e.Seq, bp.e.ID)
+		msg = fmt.Sprintf("started lane %s as #%d (%s) here", ns, bp.e.Seq, bp.e.ID)
 	}
 	switch {
 	case len(b.guards) > 0 && w.batches != nil && w.batches.asks != nil:
@@ -806,9 +812,9 @@ func (w *watchView) queueLanes(lanes []int) (string, error) {
 	return msg, nil
 }
 
-// lockWorkerSoon takes the worker lock, waiting a moment for a swimmer
+// lockWorkerSoon takes the worker lock, waiting a moment for a watcher
 // picking now (it holds the lock only while it claims). It returns a no-op
-// when the lock stays taken: the batch is then queued for any swimmer.
+// when the lock stays taken: the batch is then queued for any watcher.
 func lockWorkerSoon(root string) (unlock func()) {
 	for i := 0; i < 20; i++ {
 		u, ok, err := queue.LockWorker(root)
@@ -825,7 +831,7 @@ func lockWorkerSoon(root string) (unlock func()) {
 
 // startHere starts e, just queued from this screen, in this swim watch if
 // the queue would start it now (in turn: an older batch that can start
-// keeps its place). Nil when it waits; any swimmer may take it then.
+// keeps its place). Nil when it waits; any watcher may take it then.
 func (w *watchView) startHere(e *queue.Entry) (*batchProc, error) {
 	if w.batches == nil {
 		return nil, nil
@@ -855,7 +861,7 @@ func (w *watchView) runLane(n int) string {
 		for _, r := range running {
 			for _, l := range r.Lanes {
 				if r.State == queue.Running && l.Lane == n {
-					return fmt.Sprintf("not now: swim %d is in batch #%d", n, r.Seq)
+					return fmt.Sprintf("not now: lane %d is in batch #%d", n, r.Seq)
 				}
 			}
 		}
@@ -868,20 +874,20 @@ func (w *watchView) runLane(n int) string {
 			return err.Error()
 		}
 		if !ok {
-			return "not now: another swimmer is running a batch"
+			return "not now: another watcher is running a batch"
 		}
 		defer unlock()
 	}
-	fmt.Printf("\nswim watch: running swim %d (r)\n", n)
+	fmt.Printf("\nswim watch: running lane %d (r)\n", n)
 	err := runLanes([]string{strconv.Itoa(n)}, runFlags{})
 	var ee exitError
 	switch {
 	case err == nil:
-		return fmt.Sprintf("swim %d passed", n)
+		return fmt.Sprintf("lane %d passed", n)
 	case errors.As(err, &ee):
-		return fmt.Sprintf("swim %d ended with exit %d: swim log %d", n, ee.code, n)
+		return fmt.Sprintf("lane %d ended with exit %d: swim log %d", n, ee.code, n)
 	default:
-		return fmt.Sprintf("swim %d: %v", n, err)
+		return fmt.Sprintf("lane %d: %v", n, err)
 	}
 }
 
@@ -910,7 +916,7 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 			}
 			for _, l := range r.Lanes {
 				if mine[l.Lane] {
-					return fmt.Sprintf("not now: swim %d is in batch #%d", l.Lane, r.Seq)
+					return fmt.Sprintf("not now: lane %d is in batch #%d", l.Lane, r.Seq)
 				}
 			}
 		}
@@ -928,7 +934,7 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 		return err.Error()
 	}
 	if !ok {
-		return "not now: another swimmer is running a batch"
+		return "not now: another watcher is running a batch"
 	}
 	defer unlock()
 	if why := cantRunHere(w.root, e); why != "" {
@@ -945,7 +951,7 @@ func (w *watchView) runQueued(e *queue.Entry) string {
 // archiveLane is a on lane n: swim archive N, as on the command line (all
 // its checks: not while it runs, not without a log, not under another
 // session's claim). The lane goes idle and its log becomes
-// agentN.prev-<job>.log.
+// laneN.prev-<job>.log.
 func (w *watchView) archiveLane(n int) string {
 	c := exec.Command(self(), "archive", strconv.Itoa(n))
 	c.Dir = w.root

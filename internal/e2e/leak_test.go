@@ -59,7 +59,7 @@ func leakNeedles() map[string]string {
 var leakInventory = []struct{ what, re string }{
 	{"lane scripts (the test's own)", `^repo/(lane\.\d+\.(sh|py)|\.gitignore|\.swim\.lock)$`},
 	{"the project log", `^repo/\.swim\.log$`},
-	{"lane logs", `^repo/\.swim/logs/agent\d+(\.prev-[^/]+)?(\.check)?\.log$`},
+	{"lane logs", `^repo/\.swim/logs/lane\d+(\.prev-[^/]+)?(\.check)?\.log$`},
 	{"archived logs", `^repo/\.swim/logs/archive/`},
 	{"status", `^repo/\.swim/status\.yml$`},
 	{"staged lane copies and their manifests", `^repo/\.swim/runs/r-[^/]+/\d+(/|\.manifest\.yml$)`},
@@ -184,7 +184,7 @@ summary
 	}
 	check("swim run --plain", string(out))
 	log := r.log(1)
-	contains(t, "agent1.log", log, "raw=***", "env=***", "split=***", "gate saw ***")
+	contains(t, "lane1.log", log, "raw=***", "env=***", "split=***", "gate saw ***")
 	if strings.Contains(log, "PASS  sleep") == false {
 		t.Fatalf("the lane didn't get as far as the sleep:\n%s", log)
 	}

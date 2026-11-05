@@ -149,7 +149,7 @@ func TestBinaryLaneWithSidecar(t *testing.T) {
 		t.Fatalf("build the lane: %v %s", err, out)
 	}
 	out, _ := r.swim("status")
-	contains(t, "status before sidecar", out, "swim 3")
+	contains(t, "status before sidecar", out, "lane 3")
 	r.write("lane.3.yml", "round: compiled lane\nguards:\n  SHIP_IT: ship the build (2026-10-13)\ntimeout: 5m\nlocks: [deploy]\n", 0o644)
 	r.mustSwim("run", "3", "--plain")
 	contains(t, "log", r.log(3), "compiled lane", "script: lane.3", "timeout: 5m", "guards: SHIP_IT", "PASS  lane.3")
@@ -202,7 +202,7 @@ func TestTwoScriptsConflict(t *testing.T) {
 	r.script(1, "bash version", `step "x" true`)
 	r.write("lane.1.js", "// Round: js version\n", 0o644)
 	out, code := r.swim("run", "1", "--plain")
-	if code == 0 || !strings.Contains(out, "swim 1 has 2 scripts (lane.1.sh, lane.1.js)") {
+	if code == 0 || !strings.Contains(out, "lane 1 has 2 scripts (lane.1.sh, lane.1.js)") {
 		t.Errorf("exit %d\n%s", code, out)
 	}
 }

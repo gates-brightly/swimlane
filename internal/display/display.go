@@ -60,11 +60,11 @@ type Options struct {
 	Interactive bool
 	In          *os.File
 	// LogPath and LogLabel name lane n's log file, read by the lane view,
-	// and how it is shown (".swim/logs/agent3.log").
+	// and how it is shown (".swim/logs/lane3.log").
 	LogPath, LogLabel func(n int) string
 	// OnPre runs when the operator answers a lane's guards ahead of time in
 	// the interactive view: choice is "approved", "declined" or "" (clear).
-	// It returns what to tell them ("swim 3: pre-approved (2 guards)").
+	// It returns what to tell them ("lane 3: pre-approved (2 guards)").
 	OnPre func(lane int, choice string) string
 	// OnInterrupt runs when Ctrl-C is typed in the interactive view (raw
 	// mode turns off the terminal's own signal). nil sends SIGINT to the
@@ -304,7 +304,7 @@ func (d *Display) Set(n int, fn func(*LaneView)) {
 			d.drawLocked()
 		} else if msg := transition(before, after); msg != "" {
 			p := ui.Painter{On: d.color}
-			line := Prefix(n, d.color) + p.Paint(ui.StateColor(after.State), msg)
+			line := Prefix(n, d.color) + p.Paint(ui.StateColor(Word(after.State)), msg)
 			if d.asking {
 				d.held = append(d.held, line)
 			} else {
@@ -330,16 +330,16 @@ func transition(a, b LaneView) string {
 	switch b.State {
 	case Waiting:
 		return WaitingText(b.WaitingOn)
-	case Locked:
-		if a.State == Locked && a.LockWait == b.LockWait {
+	case LockWait:
+		if a.State == LockWait && a.LockText == b.LockText {
 			return ""
 		}
-		return "waiting for lock " + b.LockWait
-	case Queued:
-		if a.State == Queued {
+		return WaitingLock(b.LockText)
+	case SlotWait:
+		if a.State == SlotWait {
 			return "" // position changes aren't worth a line each
 		}
-		return fmt.Sprintf("queued (%d ahead)", b.QueuePos)
+		return WaitingSlot(b.QueuePos + 1)
 	case Running:
 		return "started: " + b.Round
 	case Elsewhere:
@@ -351,13 +351,13 @@ func transition(a, b LaneView) string {
 	}
 	switch b.State {
 	case Passed:
-		return "PASS (" + Duration(b.Ran(b.Finished)) + ")"
+		return "passed (" + Duration(b.Ran(b.Finished)) + ")"
 	case Failed:
-		return fmt.Sprintf("FAIL (exit %d, %s)", b.Exit, Duration(b.Ran(b.Finished)))
+		return fmt.Sprintf("failed (exit %d, %s)", b.Exit, Duration(b.Ran(b.Finished)))
 	case Interrupted:
-		return "INTERRUPTED (" + Duration(b.Ran(b.Finished)) + ")"
+		return "interrupted (" + Duration(b.Ran(b.Finished)) + ")"
 	case Skipped:
-		return "SKIP (" + b.Reason + ")"
+		return "skipped (" + b.Reason + ")"
 	}
 	return ""
 }
@@ -372,16 +372,16 @@ func (d *Display) setRegionLocked() {
 func (d *Display) titleLocked() string {
 	title := d.title(d.now())
 	if d.cap > 0 {
-		running, queued := 0, 0
+		running, slot := 0, 0
 		for _, v := range d.views {
 			switch v.State {
 			case Running:
 				running++
-			case Queued:
-				queued++
+			case SlotWait:
+				slot++
 			}
 		}
-		title += fmt.Sprintf(" · running %d/%d · queued %d", running, d.cap, queued)
+		title += fmt.Sprintf(" · running %d/%d · waiting for a slot %d", running, d.cap, slot)
 	}
 	return title
 }

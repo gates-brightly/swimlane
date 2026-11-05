@@ -53,7 +53,7 @@ func cantRunHere(root string, e *queue.Entry) string {
 	if script <= syntax.Reads {
 		return ""
 	}
-	return fmt.Sprintf("this swimmer, swim %s, can't run it: swim %d's script declares syntax %d, and it reads up to %d (queued by %s). Update this swimmer's swim and restart swim watch",
+	return fmt.Sprintf("the watcher, swim %s, can't run it: lane %d's script declares syntax %d, and it reads up to %d (queued by %s). Update the watcher's swim and restart swim watch",
 		version.String(), n, script, syntax.Reads, queuedBy(e))
 }
 
@@ -85,9 +85,9 @@ func checkWorkers(root string, e *queue.Entry, live []*queue.Presence) (refuse e
 		if script <= p.Syntax {
 			return nil, ""
 		}
-		whys = append(whys, fmt.Sprintf("  %s: swim %d's script declares syntax %d, and it reads up to %d", p.Name(), n, script, p.Syntax))
+		whys = append(whys, fmt.Sprintf("  %s: lane %d's script declares syntax %d, and it reads up to %d", p.Name(), n, script, p.Syntax))
 	}
-	return fmt.Errorf("no swimmer running now can run this batch:\n%s\nthis swim is %s (syntax %d). Update the swimmer's swim (%s, or the build that matches this one) and restart its swim watch, or run swim watch with this build",
+	return fmt.Errorf("no watcher running now can run this batch:\n%s\nthis swim is %s (syntax %d). Update the watcher's swim (%s, or the build that matches this one) and restart its swim watch, or run swim watch with this build",
 		strings.Join(whys, "\n"), version.String(), syntax.Reads, version.InstallCmd), ""
 }
 

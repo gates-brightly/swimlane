@@ -138,7 +138,7 @@ func (a *runAuthority) laneEntry(o *Options, c approval.Caller, e chain.Entry) (
 	a.recorded[k] = true
 	a.mu.Unlock()
 	if done {
-		return "", fmt.Errorf("swim %d's process already recorded its %s entry", c.Lane, e.Type)
+		return "", fmt.Errorf("lane %d's process already recorded its %s entry", c.Lane, e.Type)
 	}
 	r := chain.Entry{Type: e.Type, Run: or(c.Run, e.Run), Lane: c.Lane, Job: or(c.Job, e.Job), Round: e.Round,
 		Script: e.Script, Manifest: or(c.Manifest, e.Manifest), Result: e.Result, Exit: e.Exit, Log: e.Log,
@@ -174,7 +174,7 @@ func unprompted(o Options, c approval.Caller, e chain.Entry) {
 }
 
 func (a *runAuthority) refused(o Options, c approval.Caller, req approval.Request, why string) {
-	who := fmt.Sprintf("swim %d", c.Lane)
+	who := fmt.Sprintf("lane %d", c.Lane)
 	if c.Lane == 0 {
 		who = "a process without a lane token"
 	}

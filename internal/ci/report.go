@@ -18,7 +18,7 @@ import (
 // it ran in this run, its round from the log.
 type LaneReport struct {
 	N int
-	// Label names it: "swim 2", or for one job of a lane, "swim 1.2"; a
+	// Label names it: "lane 2", or for one job of a lane, "lane 1.2"; a
 	// lane of those gets one report each.
 	Label    string
 	Job      string
@@ -40,7 +40,7 @@ func Collect(root string, lanes []int, run string) []LaneReport {
 	st, _ := status.Load(root)
 	var out []LaneReport
 	for _, n := range lanes {
-		r := LaneReport{N: n, State: status.Skipped, Log: fmt.Sprintf(".swim/logs/agent%d.log", n)}
+		r := LaneReport{N: n, State: status.Skipped, Log: fmt.Sprintf(".swim/logs/lane%d.log", n)}
 		if st != nil {
 			if l := st.Get(n); l != nil {
 				r.Job, r.Title, r.State, r.Reason, r.Exit = l.Job, l.Round, l.State, l.Reason, l.ExitCode
@@ -65,12 +65,12 @@ func Collect(root string, lanes []int, run string) []LaneReport {
 	return out
 }
 
-// name is r's Label, or "swim N".
+// name is r's Label, or "lane N".
 func (r LaneReport) name() string {
 	if r.Label != "" {
 		return r.Label
 	}
-	return fmt.Sprintf("swim %d", r.N)
+	return fmt.Sprintf("lane %d", r.N)
 }
 
 // lastRound returns the lines of the last round in a log.
@@ -95,26 +95,15 @@ func lastRound(path string) []string {
 	return cur
 }
 
-func word(state string) string {
-	switch state {
-	case status.Passed:
-		return "PASS"
-	case status.Failed:
-		return "FAIL"
-	case status.Interrupted:
-		return "INTERRUPTED"
-	case status.Skipped:
-		return "SKIP"
-	}
-	return strings.ToUpper(state)
-}
+// word is how a report names a lane's state: the state itself.
+func word(state string) string { return state }
 
-// Title is a lane's section title, e.g. "swim 3 PASS - Cut over (job 3f2a9c1e, 42s)".
+// Title is a lane's section title, e.g. "lane 3 passed - Cut over (round-id 3f2a9c1e, 42s)".
 func (r LaneReport) SectionTitle() string {
 	t := fmt.Sprintf("%s %s - %s", r.name(), word(r.State), r.Title)
 	var extra []string
 	if r.Job != "" {
-		extra = append(extra, "job "+lane.ShortJob(r.Job))
+		extra = append(extra, "round-id "+lane.ShortJob(r.Job))
 	}
 	if r.Round != nil {
 		extra = append(extra, display.Seconds(r.Duration))
@@ -176,7 +165,7 @@ func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 				if _, ok := skipped[r.Reason]; !ok {
 					reasons = append(reasons, r.Reason)
 				}
-				skipped[r.Reason] = append(skipped[r.Reason], strings.TrimPrefix(r.name(), "swim "))
+				skipped[r.Reason] = append(skipped[r.Reason], strings.TrimPrefix(r.name(), "lane "))
 			} else if r.State == status.Failed {
 				p.Annotate(w, Error, title, or(r.Reason, "lane failed before its round started"))
 			}
@@ -203,7 +192,7 @@ func Annotate(w io.Writer, p Provider, reps []LaneReport) {
 		for _, why := range reasons {
 			ns := skipped[why]
 			total += len(ns)
-			parts = append(parts, fmt.Sprintf("swim %s (%s)", strings.Join(ns, ", "), or(why, "not run")))
+			parts = append(parts, fmt.Sprintf("lane %s (%s)", strings.Join(ns, ", "), or(why, "not run")))
 		}
 		noun := "lanes"
 		if total == 1 {
@@ -232,7 +221,7 @@ func Markdown(w io.Writer, reps []LaneReport, run, commit string, code int) {
 		fmt.Fprintf(w, " · commit `%s`", short(commit))
 	}
 	fmt.Fprintf(w, " · %d lanes\n\n", len(reps))
-	fmt.Fprintln(w, "| lane | job | result | pass | fail | skip | time | failed steps |")
+	fmt.Fprintln(w, "| lane | round-id | result | pass | fail | skip | time | failed steps |")
 	fmt.Fprintln(w, "|---|---|---|---:|---:|---:|---:|---|")
 	for _, r := range reps {
 		var pass, fail, skip int
@@ -305,7 +294,7 @@ func JUnit(w io.Writer, reps []LaneReport) error {
 	all := junitSuites{Name: "swim"}
 	for _, r := range reps {
 		s := junitSuite{Name: fmt.Sprintf("%s: %s", r.name(), r.Title), Time: fmt.Sprintf("%.1f", r.Duration)}
-		class := "swim.lane" + strings.TrimPrefix(r.name(), "swim ")
+		class := "swim.lane" + strings.TrimPrefix(r.name(), "lane ")
 		if r.Round == nil {
 			msg := or(r.Reason, "did not run")
 			c := junitCase{Name: "round", ClassName: class, Time: "0"}

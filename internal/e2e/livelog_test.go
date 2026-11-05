@@ -19,7 +19,7 @@ step "after" true`
 
 func spooled(r *repo, n int, want string) func() bool {
 	return func() bool {
-		data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"))
+		data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", "lane1.log.partial"))
 		return strings.Contains(string(data), want)
 	}
 }
@@ -27,7 +27,7 @@ func spooled(r *repo, n int, want string) func() bool {
 func TestLogShowsRunningStep(t *testing.T) {
 	r := newRepo(t)
 	r.script(1, "slow", slowLane)
-	withHeader(t, r, 1, "# Job: 7e57a110-1111-4222-8333-444455556666")
+	withHeader(t, r, 1, "# Round-ID: 7e57a110-1111-4222-8333-444455556666")
 	c := r.cmd(bin, "run", "1", "--plain")
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ step "fails" false`)
 	if code := f.wait(t); code != 0 {
 		t.Fatalf("-f should stop once the round ends: exit %d\n%s", code, f.out.String())
 	}
-	if code := w.wait(t); code != 1 || !strings.Contains(w.out.String(), "swim 1: failed") {
+	if code := w.wait(t); code != 1 || !strings.Contains(w.out.String(), "lane 1: failed") {
 		t.Fatalf("swim wait 1 should exit with the round's result (1): exit %d\n%s", code, w.out.String())
 	}
 	s := f.out.String()
@@ -137,7 +137,7 @@ func TestLogCutOffStep(t *testing.T) {
 	r.script(1, "x", `step "a" true`)
 	r.mustSwim("run", "1")
 	// A spool left by a swim _step that was killed (no lane running).
-	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"),
+	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "lane1.log.partial"),
 		[]byte("#swim-spool\tstuck\t12:00:00\tmake deploy\npartial output\n"), 0o644)
 	contains(t, "cut off", r.mustSwim("log", "1"), "RUNNING  stuck (cut off: swim stopped mid-step; recorded as FAIL when the lane next runs)", "| partial output")
 }

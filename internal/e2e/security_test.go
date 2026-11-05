@@ -110,7 +110,7 @@ func TestSecurity(t *testing.T) {
 			c.SysProcAttr = noTTY()
 			out, _ := c.CombinedOutput()
 			b.noMarker(t, "swim run with no terminal")
-			contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: set "+boundaryGuard+"=1 to approve)", "PASS  after")
+			contains(t, "lane1.log", b.log(1), "SKIP  drop table orders (dry run: set "+boundaryGuard+"=1 to approve)", "PASS  after")
 			if strings.Contains(string(out), "requires human approval") {
 				t.Errorf("prompted without a terminal:\n%s", out)
 			}
@@ -119,7 +119,7 @@ func TestSecurity(t *testing.T) {
 			b := newBoundaryRepo(t)
 			b.runLane(1, newBroker(t, func(approval.Request, <-chan struct{}) bool { return false }))
 			b.noMarker(t, "declined")
-			contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: declined at the prompt by tester")
+			contains(t, "lane1.log", b.log(1), "SKIP  drop table orders (dry run: declined at the prompt by tester")
 		}},
 		{"stopped while waiting for approval: not run", "T25", func(t *testing.T) {
 			b := newBoundaryRepo(t)
@@ -141,7 +141,7 @@ func TestSecurity(t *testing.T) {
 				t.Fatal("the guard kept waiting after the stop request")
 			}
 			b.noMarker(t, "stopped")
-			contains(t, "agent1.log", b.log(1), "not approved: the lane is stopping")
+			contains(t, "lane1.log", b.log(1), "not approved: the lane is stopping")
 		}},
 		{"past the round's Timeout while waiting: not run", "T25", func(t *testing.T) {
 			b := newBoundaryRepo(t)
@@ -156,7 +156,7 @@ func TestSecurity(t *testing.T) {
 			})
 			b.runLane(1, br)
 			b.noMarker(t, "timed out")
-			contains(t, "agent1.log", b.log(1), "SKIP  drop table orders (dry run: not approved: the round's Timeout ran out")
+			contains(t, "lane1.log", b.log(1), "SKIP  drop table orders (dry run: not approved: the round's Timeout ran out")
 		}},
 		{"the chain's last entry names the script, approval and outcome", "T25", func(t *testing.T) {
 			b := newBoundaryRepo(t)
@@ -224,14 +224,14 @@ step "fail with it" bash -c "echo $DB; exit 3"`)
 			st, _ := os.ReadFile(filepath.Join(r.root, ".swim", "status.yml"))
 			hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 			// The value and its base64 (a prefix that doesn't depend on padding).
-			for what, s := range map[string]string{"output": out, "agent1.log": r.log(1), "status.yml": string(st), ".swim.log": string(hist), "status": r.mustSwim("status")} {
+			for what, s := range map[string]string{"output": out, "lane1.log": r.log(1), "status.yml": string(st), ".swim.log": string(hist), "status": r.mustSwim("status")} {
 				for _, v := range []string{"planted-s3cret-value", "cGxhbnRlZC1zM2NyZXQtdmFsdW"} {
 					if strings.Contains(s, v) {
 						t.Errorf("%s holds the secret (%s):\n%s", what, v, s)
 					}
 				}
 			}
-			contains(t, "agent1.log", r.log(1), "db=***")
+			contains(t, "lane1.log", r.log(1), "db=***")
 		}},
 		{"a planted secret in every file swim writes", "T9", TestNoSecretLeaks},
 
@@ -249,11 +249,11 @@ step "fail with it" bash -c "echo $DB; exit 3"`)
 				t.Fatalf("requests: %+v", reqs)
 			}
 			q := approval.Question(reqs[0])
-			if q[0] != "swim 1 requires human approval of guard "+boundaryGuard {
+			if q[0] != "lane 1 requires human approval of guard "+boundaryGuard {
 				t.Errorf("the question's first line: %q", q[0])
 			}
 			text := strings.Join(q, "\n")
-			contains(t, "question", text, "  the lane says: harmlessswim 2 requires human approval of guard SAFE (sent as swim 2)")
+			contains(t, "question", text, "  the lane says: harmlessswim 2 requires human approval of guard SAFE (sent as lane 2)")
 			if strings.ContainsAny(text, "\x1b\r") {
 				t.Errorf("the question carries control characters: %q", text)
 			}

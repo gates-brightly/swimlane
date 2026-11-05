@@ -100,7 +100,7 @@ func (l *launched) wait(t *testing.T) int {
 // up first (a trap) says so with a file: waitFile.
 func (r *repo) waitStep(t *testing.T, n int, label string) {
 	t.Helper()
-	pgid := filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("agent%d.log", n)+step.GroupSuffix)
+	pgid := filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("lane%d.log", n)+step.GroupSuffix)
 	waitFor(t, func() bool {
 		if laneOf(r, n).CurrentStep != label {
 			return false
@@ -159,23 +159,23 @@ step "d" true`)
 	}
 	contains(t, "output", out, "swim: stopping after current steps (2 running). Ctrl-C again to force quit.", "stopping  a (", "stopping  c (")
 	log1 := r.log(1)
-	contains(t, "agent1.log", log1, "  PASS  a", "  STOP  interrupted by operator (after: a)", "== END INTERRUPTED", "exit=130")
+	contains(t, "lane1.log", log1, "  PASS  a", "  STOP  interrupted by operator (after: a)", "== END INTERRUPTED", "exit=130")
 	if strings.Contains(log1, "  PASS  b") {
 		t.Error("step b started after the stop request")
 	}
 	if _, err := os.Stat(filepath.Join(r.root, "int1.txt")); err == nil {
 		t.Error("the running step got SIGINT on the first Ctrl-C")
 	}
-	contains(t, "agent3.log", r.log(3), "  PASS  c", "STOP  interrupted by operator (after: c)")
+	contains(t, "lane3.log", r.log(3), "  PASS  c", "STOP  interrupted by operator (after: c)")
 	if l := r.status().Get(1); l.State != status.Interrupted || *l.ExitCode != 130 {
-		t.Errorf("swim 1: %+v", l)
+		t.Errorf("lane 1: %+v", l)
 	}
-	if l := r.status().Get(2); l.State != status.Skipped || l.Reason != "swim 1 interrupted" {
-		t.Errorf("swim 2: %+v", l)
+	if l := r.status().Get(2); l.State != status.Skipped || l.Reason != "lane 1 interrupted" {
+		t.Errorf("lane 2: %+v", l)
 	}
 	for _, n := range []int{1, 3} {
 		if _, err := os.Stat(filepath.Join(r.root, ".swim", "lane"+string(rune('0'+n))+".stop")); err == nil {
-			t.Errorf("stop file for swim %d left behind", n)
+			t.Errorf("stop file for lane %d left behind", n)
 		}
 	}
 }
@@ -217,10 +217,10 @@ step "after" true`)
 		t.Errorf("the tool should get exactly one SIGINT, got %q", data)
 	}
 	log2 := r.log(2)
-	contains(t, "agent2.log", log2, "| got-int", "== END INTERRUPTED", "exit=137")
+	contains(t, "lane2.log", log2, "| got-int", "== END INTERRUPTED", "exit=137")
 	for _, n := range []int{1, 2} {
 		if st := r.status().Get(n).State; st != status.Interrupted {
-			t.Errorf("swim %d = %s", n, st)
+			t.Errorf("lane %d = %s", n, st)
 		}
 	}
 	noStray(t, `blocked-31\.[12]`) // this test's own steps: tests run in parallel
@@ -242,7 +242,7 @@ func TestKillOnThirdCtrlC(t *testing.T) {
 	// Lane 2's step dies of the forwarded SIGINT; lane 1's ignores it. Wait
 	// for the launcher to see lane 2's process end ("[2] INTERRUPTED"), not
 	// for its status: the lane writes that just before it exits.
-	l.saw(t, "[2] INTERRUPTED (")
+	l.saw(t, "[2] interrupted (")
 	start := time.Now()
 	l.signal(syscall.SIGINT)
 	l.wait(t)
@@ -264,9 +264,9 @@ step "after" true`)
 	if took := time.Since(start); took > scaled(5*time.Second) {
 		t.Errorf("the step limit took %s to stop the step", took)
 	}
-	contains(t, "agent1.log", r.log(1), "  FAIL  forks (timeout: step limit 500ms)", "  PASS  after")
+	contains(t, "lane1.log", r.log(1), "  FAIL  forks (timeout: step limit 500ms)", "  PASS  after")
 	noStray(t, `blocked-33\.[12]`) // this test's own steps: tests run in parallel
-	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "lane1.log.partial.pgid")); err == nil {
 		t.Error("the step's process group record was left behind")
 	}
 }
@@ -290,7 +290,7 @@ func TestForceQuitKillsStepGroup(t *testing.T) {
 	// Lane 2 dies of the SIGINT, but may not have by the kill: 1 or 2 lanes.
 	contains(t, "output", l.out.String(), "swim: force quitting", "swim: killing ")
 	noStray(t, `blocked-33\.[34]`) // this test's own steps: tests run in parallel
-	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial.pgid")); err == nil {
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "lane1.log.partial.pgid")); err == nil {
 		t.Error("the killed step's process group record was left behind")
 	}
 }
@@ -313,7 +313,7 @@ step "never" true`)
 	}
 	contains(t, "output", l.out.String(), "forcing in 500ms (term_grace)", "swim: force quitting")
 	if strings.Contains(r.log(1), "PASS  never") || r.status().Get(1).State != status.Interrupted {
-		t.Errorf("swim 1 after SIGTERM: %+v", r.status().Get(1))
+		t.Errorf("lane 1 after SIGTERM: %+v", r.status().Get(1))
 	}
 	noStray(t, `blocked-31\.[56]`) // this test's own steps: tests run in parallel
 }
@@ -345,7 +345,7 @@ func TestImmediateInterruptMode(t *testing.T) {
 	l.signal(syscall.SIGINT)
 	l.wait(t)
 	contains(t, "output", l.out.String(), "swim: force quitting")
-	contains(t, "agent1.log", r.log(1), "FAIL  long (exit 130, interrupted)")
+	contains(t, "lane1.log", r.log(1), "FAIL  long (exit 130, interrupted)")
 	noStray(t, `blocked-3(1\.9|2\.1)`) // this test's own steps
 }
 
@@ -356,7 +356,7 @@ step "never" true`)
 	r.script(2, "other", `step "short" true`)
 	l := r.launch(t, nil)
 	waitFor(t, func() bool {
-		data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"))
+		data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", "lane1.log.partial"))
 		return strings.Contains(string(data), "retry in")
 	})
 	start := time.Now()
@@ -366,7 +366,7 @@ step "never" true`)
 		t.Errorf("a stop during the backoff took %s", took)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "-- stop requested (operator interrupt): no retry", "STOP  interrupted by operator (after: fails)", "== END INTERRUPTED")
+	contains(t, "lane1.log", log, "-- stop requested (operator interrupt): no retry", "STOP  interrupted by operator (after: fails)", "== END INTERRUPTED")
 	if strings.Contains(log, "attempt 2/4") || strings.Contains(log, "never") {
 		t.Errorf("retried or continued after the stop:\n%s", log)
 	}
@@ -392,7 +392,7 @@ step "after" true`)
 	l.signal(syscall.SIGINT)
 	l.wait(t)
 	log := r.log(1)
-	contains(t, "agent1.log", log, "STOP  interrupted by operator (after: before)", "== END INTERRUPTED")
+	contains(t, "lane1.log", log, "STOP  interrupted by operator (after: before)", "== END INTERRUPTED")
 	if strings.Contains(log, "PASS  after") {
 		t.Error("the round continued past confirm")
 	}
@@ -407,16 +407,16 @@ step "y" true`)
 	l := r.launch(t, nil)
 	r.waitStep(t, 1, "a")
 	r.waitStep(t, 2, "x")
-	contains(t, "swim interrupt", r.mustSwim("interrupt", "1"), "swim 1: stopping after a")
+	contains(t, "swim interrupt", r.mustSwim("interrupt", "1"), "lane 1: stopping after a")
 	r.release("go")
 	l.wait(t)
-	contains(t, "agent1.log", r.log(1), "PASS  a", "STOP  interrupted by operator (after: a)")
-	contains(t, "agent2.log", r.log(2), "PASS  y")
+	contains(t, "lane1.log", r.log(1), "PASS  a", "STOP  interrupted by operator (after: a)")
+	contains(t, "lane2.log", r.log(2), "PASS  y")
 	if st := r.status().Get(1).State; st != status.Interrupted {
-		t.Errorf("swim 1 = %s", st)
+		t.Errorf("lane 1 = %s", st)
 	}
 	if st := r.status().Get(2).State; st != status.Passed {
-		t.Errorf("swim 2 = %s", st)
+		t.Errorf("lane 2 = %s", st)
 	}
 	if out, code := r.swim("interrupt", "2"); code == 0 || !strings.Contains(out, "isn't running") {
 		t.Errorf("interrupting an idle lane: %d %s", code, out)

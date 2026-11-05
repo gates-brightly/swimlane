@@ -43,7 +43,7 @@ func Script(lane int, goal, toolchain, job, owner string) (string, error) {
 	})
 }
 
-// Stub renders a "nothing pending" placeholder.
+// Stub renders a "nothing ready" placeholder.
 func Stub(lane int, message string) (string, error) {
 	return render(stubTmpl, map[string]any{"Lane": lane, "Message": shellSafe(oneLine(message))})
 }

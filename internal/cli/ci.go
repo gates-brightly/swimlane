@@ -65,7 +65,7 @@ func cmdCi(args []string) error {
 	out := os.Stdout
 
 	// Which lanes, and why.
-	why := "every pending round that hasn't passed"
+	why := "every ready round that hasn't passed"
 	var named []int
 	pins := map[int]string{}
 	for _, a := range rest {
@@ -106,7 +106,7 @@ func cmdCi(args []string) error {
 	o := launcher.Options{Root: root, Cfg: cfg, Lanes: named, Self: self(), Out: out, Plain: true,
 		RunID: runID, Heartbeat: beat, Rerun: rerun && len(named) == 0}
 	if rerun && !changed && len(rest) == 0 {
-		why = "every pending round (--rerun: including ones that passed)"
+		why = "every ready round (--rerun: including ones that passed)"
 	}
 	sel, _, err := launcher.Select(o)
 	if err != nil {
@@ -210,7 +210,7 @@ func cmdCi(args []string) error {
 	return nil
 }
 
-// nothingToDo reports a run with no pending rounds: a notice, exit 0, or 1
+// nothingToDo reports a run with no ready rounds: a notice, exit 0, or 1
 // with --require-work.
 func nothingToDo(p ci.Provider, why string, requireWork bool) error {
 	p.Annotate(os.Stdout, ci.Notice, "swim ci: nothing to run", why)
@@ -220,7 +220,7 @@ func nothingToDo(p ci.Provider, why string, requireWork bool) error {
 	return nil
 }
 
-// pendingOnly keeps lanes whose script holds a pending round.
+// pendingOnly keeps lanes whose script holds a ready round.
 func pendingOnly(root string, lanes []int) []int {
 	var out []int
 	for _, n := range lanes {
@@ -232,7 +232,7 @@ func pendingOnly(root string, lanes []int) []int {
 }
 
 // withUnpassedDeps adds, transitively, the lanes the given ones wait on
-// whose pending round hasn't passed (they have to run first).
+// whose ready round hasn't passed (they have to run first).
 func withUnpassedDeps(root string, cfg *config.Config, lanes []int) []int {
 	st, _ := status.Load(root)
 	in := map[int]bool{}

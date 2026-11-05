@@ -193,7 +193,7 @@ func (d *Display) startInteractive() bool {
 
 // stopInteractive closes the view at the end of the run. If someone is
 // reading a lane's log or has scrolled back, it first holds the screen open
-// ("run finished · q to close") until they close it.
+// ("run ended · q to close") until they close it.
 func (d *Display) stopInteractive() {
 	it := d.tui
 	d.mu.Lock()

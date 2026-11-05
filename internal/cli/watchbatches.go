@@ -224,16 +224,16 @@ func (b *batchRunner) startable(cfg *config.Config, waiting []*queue.Entry) []*q
 // is running, or another swim run has it waiting, queued or locked.
 func laneBusy(root string, st *status.File, n int) string {
 	if pid, ok := lane.Running(root, n); ok {
-		return fmt.Sprintf("swim %d is running (pid %d)", n, pid)
+		return fmt.Sprintf("lane %d is running (pid %d)", n, pid)
 	}
 	if st == nil {
 		return ""
 	}
 	if l := st.Get(n); l != nil {
 		switch l.State {
-		case status.Waiting, status.Queued, status.Locked, status.Running:
+		case status.Waiting, status.Queued, status.Running:
 			if l.Alive() {
-				return fmt.Sprintf("swim %d is %s in another swim run (pid %d)", n, l.State, l.PID)
+				return fmt.Sprintf("lane %d is %s in another swim run (pid %d)", n, l.State, l.PID)
 			}
 		}
 	}
@@ -338,13 +338,13 @@ func (b *batchRunner) signal(sig os.Signal) {
 	}
 }
 
-// lanesText is a batch's lanes for a message: "swim 1,3".
+// lanesText is a batch's lanes for a message: "lane 1,3".
 func lanesText(lanes []int) string {
 	var ns []string
 	for _, n := range lanes {
 		ns = append(ns, strconv.Itoa(n))
 	}
-	return "swim " + strings.Join(ns, ",")
+	return "lane " + strings.Join(ns, ",")
 }
 
 // watchBatches is swim watch's loop when it runs batches side by side
@@ -517,7 +517,7 @@ func (w *watchView) showOutput(e *queue.Entry) string {
 		if e.State == queue.Queued {
 			return fmt.Sprintf("#%d hasn't started yet", e.Seq)
 		}
-		return fmt.Sprintf("#%d has no output here (another swimmer, or swim watch --batches 1 runs it on the screen)", e.Seq)
+		return fmt.Sprintf("#%d has no output here (another watcher, or swim watch --batches 1 runs it on the screen)", e.Seq)
 	}
 	end := func() *display.FollowEnd { return batchEnd(w.root, e.ID, bp) }
 	title := fmt.Sprintf("swim watch · #%d %s (%s)", e.Seq, e.ID, lanesText(laneNums(e)))
@@ -549,9 +549,9 @@ func (w *watchView) showLaneOutput(n int) string {
 	}
 	running := func() bool { _, ok := lane.Running(w.root, n); return ok }
 	if batch == nil && !running() {
-		return fmt.Sprintf("swim %d isn't running: enter follows a running lane's log (swim log %d shows its last round)", n, n)
+		return fmt.Sprintf("lane %d isn't running: enter follows a running lane's log (swim log %d shows its last round)", n, n)
 	}
-	title := fmt.Sprintf("swim watch · swim %d", n)
+	title := fmt.Sprintf("swim watch · lane %d", n)
 	views := []display.FollowView{{Name: "log", Lines: func() []string { return verboseLines(w.root, []int{n}) }}}
 	end := func() *display.FollowEnd { return laneEnd(w.root, n, running) }
 	if batch != nil {
@@ -593,10 +593,10 @@ func (w *watchView) showLaneOutput(n int) string {
 // follows the log, the running step's output included.
 func (w *watchView) showLaneLogs(n int) string {
 	if len(laneLogFiles(w.root, n)) == 0 {
-		return fmt.Sprintf("swim %d has no current log (swim log %d --all shows its archives)", n, n)
+		return fmt.Sprintf("lane %d has no current log (swim log %d --all shows its archives)", n, n)
 	}
 	running := func() bool { _, ok := lane.Running(w.root, n); return ok }
-	title := fmt.Sprintf("swim watch · swim %d · %s", n, rel(w.root, lane.Log(w.root, n)))
+	title := fmt.Sprintf("swim watch · lane %d · %s", n, rel(w.root, lane.Log(w.root, n)))
 	views := []display.FollowView{
 		{Name: "log", Lines: func() []string { return logLines(w.root, []int{n}, true) }},
 		{Name: "last round", Lines: func() []string { return logLines(w.root, []int{n}, false) }},
@@ -662,7 +662,7 @@ func batchEnd(root, id string, bp *batchProc) *display.FollowEnd {
 	end := &display.FollowEnd{}
 	if err != nil || e.Result == nil {
 		if bp == nil {
-			return &display.FollowEnd{Result: "finished"}
+			return &display.FollowEnd{Result: "ended"}
 		}
 		code := bp.code
 		end.Result, end.Exit, end.Elapsed = batchOutcome(root, bp), &code, time.Since(bp.started)
@@ -682,7 +682,7 @@ func batchEnd(root, id string, bp *batchProc) *display.FollowEnd {
 			continue
 		}
 		if l.Reason != "" {
-			end.Details = append(end.Details, fmt.Sprintf("swim %d %s: %s", l.Lane, l.Result, l.Reason))
+			end.Details = append(end.Details, fmt.Sprintf("lane %d %s: %s", l.Lane, l.Result, l.Reason))
 			continue
 		}
 		var failed []string
@@ -692,10 +692,10 @@ func batchEnd(root, id string, bp *batchProc) *display.FollowEnd {
 			}
 		}
 		if len(failed) == 0 {
-			end.Details = append(end.Details, fmt.Sprintf("swim %d %s", l.Lane, l.Result))
+			end.Details = append(end.Details, fmt.Sprintf("lane %d %s", l.Lane, l.Result))
 		}
 		for _, f := range failed {
-			end.Details = append(end.Details, fmt.Sprintf("swim %d: %s", l.Lane, strings.TrimSpace(f)))
+			end.Details = append(end.Details, fmt.Sprintf("lane %d: %s", l.Lane, strings.TrimSpace(f)))
 		}
 	}
 	if r.Error != "" {
@@ -743,7 +743,7 @@ func laneLogFiles(root string, n int) []string {
 	if _, err := os.Stat(lane.Log(root, n)); err == nil {
 		logs = append(logs, lane.Log(root, n))
 	}
-	more, _ := filepath.Glob(filepath.Join(filepath.Dir(lane.Log(root, n)), fmt.Sprintf("agent%d.*.log", n)))
+	more, _ := filepath.Glob(filepath.Join(filepath.Dir(lane.Log(root, n)), fmt.Sprintf("lane%d.*.log", n)))
 	for _, m := range more {
 		if !strings.Contains(filepath.Base(m), ".prev-") && !strings.HasSuffix(m, ".check.log") {
 			logs = append(logs, m)
@@ -764,7 +764,7 @@ func logLines(root string, lanes []int, all bool) []string {
 	var out []string
 	for _, n := range lanes {
 		for _, path := range laneLogFiles(root, n) {
-			tag := "[" + strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "agent"), ".log") + "] "
+			tag := "[" + strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "lane"), ".log") + "] "
 			if rounds, _ := splitRounds(path); len(rounds) > 0 {
 				if !all {
 					rounds = rounds[len(rounds)-1:]
@@ -821,7 +821,7 @@ func batchOutcome(root string, bp *batchProc) string {
 // A running lane: its stage, the step running (its ==> label) and for how
 // long; one that isn't: its state and the stage it got to.
 //
-//	swim 3 · stage change · ==> migrate · 42s
+//	lane 3 · stage change · ==> migrate · 42s
 func (w *watchView) pins(lanes []int) func(color bool) []string {
 	return func(color bool) []string {
 		p := ui.Painter{On: color}
@@ -834,13 +834,13 @@ func (w *watchView) pins(lanes []int) func(color bool) []string {
 			}
 			_, running := lane.Running(w.root, n)
 			running = running || l != nil && l.State == status.Running && l.Alive()
-			line := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("swim %d", n))
+			line := p.Paint(ui.LaneColor(n)+ui.Bold, fmt.Sprintf("lane %d", n))
 			stage := ""
 			if l != nil && l.Stage != "" {
 				stage = " · " + p.Paint(ui.LaneColor(n), "stage "+ui.Safe(l.Stage))
 			}
 			if !running {
-				state := "idle"
+				state := status.Empty
 				if l != nil && l.State != "" {
 					state = l.State
 				}

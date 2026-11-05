@@ -11,7 +11,7 @@ cut off halfway may have left work half done.
 ## An orphaned queue entry
 
 **You see:** `swim queue` lists an entry as
-`orphaned: its swimmer is gone (swim queue requeue N)`.
+`orphaned: its watcher is gone (swim queue requeue N)`.
 
 **Why:** a `swim watch` claimed the batch and then died (killed, a crash,
 the machine went down) before it finished. swim never runs an orphaned
@@ -20,7 +20,7 @@ batch again on its own.
 **Fix:**
 
 ```sh
-swim queue show ID          # the entry: its lanes, approvals, and the swimmer that claimed it
+swim queue show ID          # the entry: its lanes, approvals, and the watcher that claimed it
 swim log N                  # for each lane in it: how far did it get?
 swim queue requeue ID       # run it again: back of the queue, same lanes, pins and approvals
 swim queue rm ID            # or drop it
@@ -30,16 +30,16 @@ swim queue rm ID            # or drop it
 requeued lane whose script or env files changed since it was queued is
 skipped, as always.
 
-A batch claimed by a swimmer on **another machine** (a queue on a shared
-filesystem) can't be checked by its process. Instead, the swimmer renews a
+A batch claimed by a watcher on **another machine** (a queue on a shared
+filesystem) can't be checked by its process. Instead, the watcher renews a
 heartbeat in the entry every third of its lease (`queue_lease`, default
 2m) while the batch runs, and the entry shows as orphaned once the
 heartbeat is older than the lease. Before you requeue it, make sure that
-swimmer really stopped (a hung machine's batch may still be changing
+watcher really stopped (a hung machine's batch may still be changing
 things); `swim queue show ID` names its host and pid. A claim by an older
-swim has no heartbeat and shows as `running?`: check that swimmer, and run
+swim has no heartbeat and shows as `running?`: check that watcher, and run
 `swim queue requeue` or `rm` on the host that claimed it, where the entry
-shows as orphaned once its swimmer is gone.
+shows as orphaned once its watcher is gone.
 
 ## An interrupted round
 
@@ -72,7 +72,7 @@ changes passed. The target is now half-changed.
    output), whether a guard was approved.
 2. The before state is in the round's snapshots (`saved:` lines).
 3. Don't rerun blindly: only safe if its gates tell "already done by us"
-   from "not done" (resources tagged with `$SWIM_JOB`).
+   from "not done" (resources tagged with `$SWIM_ROUND_ID`).
 4. Write a recovery round: snapshot what's deployed now, gate on it, then
    finish forward or roll back behind its own guard.
 5. Next time, write the rollback as its own guarded lane before the
@@ -80,10 +80,10 @@ changes passed. The target is now half-changed.
 
 ## A lane stuck `running`
 
-**You see:** `swim status` shows `running?` (`process gone`), or a lane says
+**You see:** `swim status` shows `interrupted (its process is gone)`, or a lane says
 `running` long after anything could be running. `swim doctor` reports
 `[stale-pid]`. Or `swim run` / `swim watch` starts with
-`swim N: its process died without ending its round (pid P); recorded it
+`lane N: its process died without ending its round (pid P); recorded it
 as interrupted`.
 
 **Why:** the lane's process died without running its traps: a closed
@@ -120,7 +120,7 @@ common ones:
   was changed, removed, inserted or reordered.
 - `signature doesn't match the entry`: an entry was changed after it was
   signed.
-- `swim N's log for run R was changed after the round ended`: a lane log
+- `lane N's log for run R was changed after the round ended`: a lane log
   was edited.
 - `the kept script <sha>.sh was changed`: a copy under `.swim/scripts/` was
   edited.

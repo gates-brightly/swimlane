@@ -58,7 +58,7 @@ if guard OFF "explicitly off"; then step "off step" true; fi`)
 		t.Fatalf("lane: %v\n%s", err, out)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log,
+	contains(t, "lane1.log", log,
 		"  APPROVED  drop table a - 2026-10-12 (approved at the prompt by tester)",
 		"  PASS  drop a",
 		"  SKIP  drop table b - 2026-10-12 (dry run: declined at the prompt by tester; set DROP_B=1 to approve)",
@@ -73,8 +73,8 @@ if guard OFF "explicitly off"; then step "off step" true; fi`)
 		t.Errorf("asked: %+v", asked)
 	}
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	contains(t, ".swim.log", string(hist), "approve      swim 1", "drop table a - 2026-10-12  (DROP_A, by tester)",
-		"decline      swim 1", "drop table b - 2026-10-12  (declined at the prompt by tester)")
+	contains(t, ".swim.log", string(hist), "approve      lane 1", "drop table a - 2026-10-12  (DROP_A, by tester)",
+		"decline      lane 1", "drop table b - 2026-10-12  (declined at the prompt by tester)")
 	contains(t, "to-approve hint", string(out), "to approve: DROP_B=1 swim run 1")
 }
 
@@ -89,7 +89,7 @@ step "after" true`)
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { return len(b.requests()) == 1 })
-	if st := r.status().Get(1).CurrentStep; st != "awaiting approval: slow approval" {
+	if st := r.status().Get(1).CurrentStep; st != "waiting for approval: slow approval" {
 		t.Errorf("status current_step while waiting: %q", st)
 	}
 	// A stop request (Ctrl-C under swim run, or swim interrupt) ends the wait.
@@ -101,7 +101,7 @@ step "after" true`)
 	case <-time.After(waitDeadline):
 		t.Fatal("the guard kept waiting after the stop request")
 	}
-	contains(t, "agent1.log", r.log(1), "SKIP  slow approval (dry run: not approved: the lane is stopping; set SLOW=1 to approve)")
+	contains(t, "lane1.log", r.log(1), "SKIP  slow approval (dry run: not approved: the lane is stopping; set SLOW=1 to approve)")
 	if strings.Contains(r.log(1), "PASS  never") {
 		t.Error("the unapproved step ran")
 	}
@@ -113,7 +113,7 @@ func TestNoPromptWithoutTerminal(t *testing.T) {
 	r.script(2, "other", `step "x" true`)
 	// swim all with no terminal: no broker, lanes don't prompt on their own.
 	out := r.mustDryRun("all", "--plain")
-	contains(t, "agent1.log", r.log(1), "SKIP  risky (dry run: set FLAG_X=1 to approve)")
+	contains(t, "lane1.log", r.log(1), "SKIP  risky (dry run: set FLAG_X=1 to approve)")
 	if strings.Contains(out, "requires human approval") {
 		t.Errorf("prompted without a terminal:\n%s", out)
 	}
@@ -136,11 +136,11 @@ if guard ALLOW_OFF "explicitly off"; then step "off ran" true; fi`)
 	if c.ProcessState.ExitCode() != launcher.ExitDryRun { // ALLOW_OFF=0 dry-runs
 		t.Fatalf("ALLOW_A=1 ALLOW_B=1 swim all: %v\n%s", err, out)
 	}
-	contains(t, "agent1.log", r.log(1), "PASS  a changed", "SKIP  explicitly off (dry run: set ALLOW_OFF=1 to approve)")
+	contains(t, "lane1.log", r.log(1), "PASS  a changed", "SKIP  explicitly off (dry run: set ALLOW_OFF=1 to approve)")
 	if strings.Contains(r.log(1), "PASS  off ran") {
 		t.Error("a guard whose flag was set to 0 was approved")
 	}
-	contains(t, "agent2.log", r.log(2), "PASS  b changed")
+	contains(t, "lane2.log", r.log(2), "PASS  b changed")
 	if l := r.status().Get(1); strings.Join(l.FlagApproved, " ") != "ALLOW_A" {
 		t.Errorf("status lane 1: flag_approved %v", l.FlagApproved)
 	}
@@ -163,7 +163,7 @@ func TestGuardDeclinesOnSocketError(t *testing.T) {
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("lane: %v\n%s", err, out)
 	}
-	contains(t, "agent1.log", r.log(1), "SKIP  change x (dry run: not approved: approval: ")
+	contains(t, "lane1.log", r.log(1), "SKIP  change x (dry run: not approved: approval: ")
 	if strings.Contains(r.log(1), "PASS  x changed") {
 		t.Error("the guarded step ran without an approval")
 	}

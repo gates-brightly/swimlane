@@ -46,13 +46,13 @@ order:
    and nothing is resolved.
 2. All digits: a lane number.
 3. A task name, matched exactly.
-4. A job id, or a prefix of 8 or more characters.
+4. A round id, or a prefix of 8 or more characters.
 
 `# After:` reads a task name the same way.
 
 `swim lint` keeps these unambiguous. A task name may not be:
 - a swim command;
-- only hex digits and `-` (that could be a job id's prefix);
+- only hex digits and `-` (that could be a round id's prefix);
 - another lane's name.
 
 ## Changing a format

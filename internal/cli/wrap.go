@@ -81,7 +81,7 @@ func cmdWrap(args []string) error {
 	env = setEnv(env,
 		"SWIM_LANE", strconv.Itoa(n), "SWIM_ROOT", root, "STEP_LOG", logPath,
 		"SWIM_PID", strconv.Itoa(pid), "SWIM_WRAPPED", "1",
-		"SWIM_JOB", f[0], "SWIM_DEADLINE", f[1], "SWIM_RUN", f[2], "SWIM_STEP_TIMEOUT", f[3],
+		"SWIM_ROUND_ID", f[0], "SWIM_DEADLINE", f[1], "SWIM_RUN", f[2], "SWIM_STEP_TIMEOUT", f[3],
 		"SWIM_FAIL_MODE", f[4], "SWIM_STARTED", f[5], "SWIM_TIMEOUT", f[6],
 		"SWIM_RUN_LANES", runLanes)
 
@@ -98,7 +98,7 @@ func cmdWrap(args []string) error {
 	capture := &syncWriter{w: &step.StripWriter{W: mw}}
 
 	child := exec.Command(argv[0], argv[1:]...)
-	// Its workspace: the staged copy under swim run (SWIM_WORKSPACE).
+	// Its workspace: the pinned copy under swim run (SWIM_WORKSPACE).
 	child.Dir, child.Env, child.Stdin = or(os.Getenv("SWIM_WORKSPACE"), root), env, os.Stdin
 	child.Stdout = io.MultiWriter(os.Stdout, capture)
 	child.Stderr = io.MultiWriter(os.Stderr, capture)

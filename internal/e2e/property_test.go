@@ -51,7 +51,7 @@ func (propDAG) Generate(rnd *rand.Rand, _ int) reflect.Value {
 func (d propDAG) String() string {
 	var b strings.Builder
 	for i, l := range d.Lanes {
-		fmt.Fprintf(&b, "swim %d after %v locks %v fail %v work %dms; ", i+1, l.After, l.Locks, l.Fail, l.Work)
+		fmt.Fprintf(&b, "lane %d after %v locks %v fail %v work %dms; ", i+1, l.After, l.Locks, l.Fail, l.Work)
 	}
 	return b.String()
 }
@@ -119,15 +119,15 @@ func TestSchedulerProperties(t *testing.T) {
 			for i := range d.Lanes {
 				n := i + 1
 				if got := st.Get(n).State; got != want[i] {
-					t.Errorf("swim %d: %s, want %s", n, got, want[i])
+					t.Errorf("lane %d: %s, want %s", n, got, want[i])
 				}
 				iv, ran := ivs[n]
 				if ran != (want[i] != status.Skipped) {
-					t.Errorf("swim %d: ran %v, but it should end %s", n, ran, want[i])
+					t.Errorf("lane %d: ran %v, but it should end %s", n, ran, want[i])
 				}
 				for _, p := range d.Lanes[i].After {
 					if pv, ok := ivs[p]; ran && ok && iv.start < pv.end {
-						t.Errorf("swim %d started %.3fs before swim %d (its After:) finished", n, float64(pv.end-iv.start)/1e9, p)
+						t.Errorf("lane %d started %.3fs before lane %d (its After:) finished", n, float64(pv.end-iv.start)/1e9, p)
 					}
 				}
 			}

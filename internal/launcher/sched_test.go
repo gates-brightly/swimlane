@@ -51,7 +51,7 @@ func (schedDAG) Generate(rnd *rand.Rand, _ int) reflect.Value {
 func (d schedDAG) String() string {
 	var b strings.Builder
 	for i, l := range d.Lanes {
-		fmt.Fprintf(&b, "swim %d after %v locks %v fail %v; ", i+1, l.After, l.Locks, l.Fail)
+		fmt.Fprintf(&b, "lane %d after %v locks %v fail %v; ", i+1, l.After, l.Locks, l.Fail)
 	}
 	return b.String()
 }
@@ -178,22 +178,22 @@ func TestSchedulerProperties(t *testing.T) {
 		for i, l := range d.Lanes {
 			n := i + 1
 			if states[i] != want[i] {
-				fail("swim %d: %s, want %s", n, states[i], want[i])
+				fail("lane %d: %s, want %s", n, states[i], want[i])
 			}
 			sp, ran := spans[n]
 			if ran != (want[i] != status.Skipped) {
-				fail("swim %d: ran %v, but it should end %s", n, ran, want[i])
+				fail("lane %d: ran %v, but it should end %s", n, ran, want[i])
 			}
 			for _, p := range l.After {
 				if pv, ok := spans[p]; ran && ok && sp.start < pv.end {
-					fail("swim %d started before swim %d, which it waits for, ended", n, p)
+					fail("lane %d started before lane %d, which it waits for, ended", n, p)
 				}
 			}
 			for j := i + 1; j < len(d.Lanes); j++ {
 				a, aok := spans[n]
 				b, bok := spans[j+1]
 				if aok && bok && sharesLock(l.Locks, d.Lanes[j].Locks) && a.start < b.end && b.start < a.end {
-					fail("swim %d and swim %d share a lock and overlapped", n, j+1)
+					fail("lane %d and lane %d share a lock and overlapped", n, j+1)
 				}
 			}
 		}
@@ -224,8 +224,8 @@ func TestDepVerdict(t *testing.T) {
 		want string
 	}{
 		{Dep{Lane: 2}, passed, ""},
-		{Dep{Lane: 2}, failed, "swim 2 failed"},
-		{Dep{Lane: 2}, nil, "swim 2 did not finish"},
+		{Dep{Lane: 2}, failed, "lane 2 failed"},
+		{Dep{Lane: 2}, nil, "lane 2 did not finish"},
 	} {
 		if got := depVerdict(c.dep, c.out); got != c.want {
 			t.Errorf("%+v ended %+v: %q, want %q", c.dep, c.out, got, c.want)
@@ -239,13 +239,13 @@ func TestAwaitOutside(t *testing.T) {
 	w := depWaiter{
 		selected: map[int]bool{1: true},
 		wait:     func(int) *Outcome { waited = true; return &Outcome{State: status.Passed} },
-		outside:  func(d Dep) string { return fmt.Sprintf("swim %d hasn't passed", d.Lane) },
+		outside:  func(d Dep) string { return fmt.Sprintf("lane %d hasn't passed", d.Lane) },
 	}
 	if why := w.await([]Dep{{Lane: 1}}); why != "" || !waited {
 		t.Errorf("in the run: %q waited %v", why, waited)
 	}
 	waited = false
-	if why := w.await([]Dep{{Lane: 9}, {Lane: 1}}); why != "swim 9 hasn't passed" || waited {
+	if why := w.await([]Dep{{Lane: 9}, {Lane: 1}}); why != "lane 9 hasn't passed" || waited {
 		t.Errorf("outside the run: %q waited %v", why, waited)
 	}
 }
@@ -282,14 +282,14 @@ func TestSelectedCycleProperty(t *testing.T) {
 			}
 			for k := 0; k+1 < len(parts); k++ {
 				var a, b int
-				fmt.Sscanf(parts[k], "swim %d", &a)
-				fmt.Sscanf(parts[k+1], "swim %d", &b)
+				fmt.Sscanf(parts[k], "lane %d", &a)
+				fmt.Sscanf(parts[k+1], "lane %d", &b)
 				edge := false
 				for _, d := range deps[a] {
 					edge = edge || d.Lane == b
 				}
 				if !edge {
-					t.Errorf("cycle %q: swim %d doesn't wait on swim %d", got, a, b)
+					t.Errorf("cycle %q: lane %d doesn't wait on lane %d", got, a, b)
 					return false
 				}
 			}

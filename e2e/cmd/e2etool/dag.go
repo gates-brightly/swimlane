@@ -46,7 +46,7 @@ var (
 )
 
 // laneScripts are the repo's lane.N.sh files: under $SWIM_ROOT inside a
-// lane (which runs in its staged copy), else in the cwd.
+// lane (which runs in its pinned copy), else in the cwd.
 func laneScripts() ([]string, error) {
 	return filepath.Glob(filepath.Join(os.Getenv("SWIM_ROOT"), "lane.*.sh"))
 }

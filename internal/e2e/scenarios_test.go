@@ -309,7 +309,7 @@ func TestScenarioDag99Parallel(t *testing.T) {
 	audit := checkAudit(t, r)
 	matches(t, "values all match", audit, `^values: 89 recomputed, 89 match`)
 	matches(t, "never more than 8 at once", audit, `^concurrency: at most [1-8] lanes running at once \(limit 8\)  ok$`)
-	matches(t, "lanes queued for a slot", res.stream, `^event: queued$`)
+	matches(t, "lanes queued for a slot", res.stream, `^event: waiting$`)
 }
 
 // TestScenarioDag99Locks: lanes take locks from a pool of five; lanes
@@ -355,7 +355,7 @@ func TestScenarioDag99Retry(t *testing.T) {
 	eq(t, "lanes that passed first time were never rerun", rerun, []string(nil))
 	out, code := r.swim("all", "--plain")
 	eq(t, "third swim all exit", code, 0)
-	matches(t, "third swim all: nothing to run", out, `^swim: nothing to run: every pending job has already passed`)
+	matches(t, "third swim all: nothing to run", out, `^swim: nothing to run: every ready round has already passed`)
 }
 
 // startDag99 starts swim all --yaml on dag99 with lane 1 held mid-run
@@ -421,12 +421,12 @@ func TestScenarioDag99Interrupt(t *testing.T) {
 	}
 	c, stream, release, wait := startDag99(t, r)
 	lane := free[rand.Intn(len(free))]
-	log := filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("agent%d.log", lane))
-	when := fmt.Sprintf("swim %d started", lane)
+	log := filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("lane%d.log", lane))
+	when := fmt.Sprintf("lane %d started", lane)
 	if rand.Intn(2) == 0 {
 		waitFor(t, func() bool { _, err := os.Stat(log); return err == nil })
 	} else {
-		when = fmt.Sprintf("swim %d ended", lane)
+		when = fmt.Sprintf("lane %d ended", lane)
 		waitFor(t, func() bool { data, _ := os.ReadFile(log); return regexp.MustCompile(`(?m)^== END`).Match(data) })
 	}
 	c.Process.Signal(os.Interrupt)
@@ -441,7 +441,7 @@ func TestScenarioDag99Interrupt(t *testing.T) {
 	}
 	eq(t, "every lane passed, interrupted or skipped", len(strings.Fields(res.with("passed", "interrupted", "skipped"))), 99)
 	eq(t, "no lane started after the signal", res.afterStop, []int(nil))
-	logs, _ := filepath.Glob(filepath.Join(r.root, ".swim", "logs", "agent*.log"))
+	logs, _ := filepath.Glob(filepath.Join(r.root, ".swim", "logs", "lane*.log"))
 	for _, l := range logs {
 		data, _ := os.ReadFile(l)
 		if m := regexp.MustCompile(`(?m)^  FAIL  .*interrupted\)`).Find(data); m != nil {
@@ -512,7 +512,7 @@ func TestScenarioCIGitHub(t *testing.T) {
 	failed, _ := wantFailed(t, r)
 	var errs []int
 	seen := map[string]bool{}
-	for _, m := range regexp.MustCompile(`(?m)^::error title=swim ([0-9]+)%3A`).FindAllStringSubmatch(ciOut, -1) {
+	for _, m := range regexp.MustCompile(`(?m)^::error title=lane ([0-9]+)%3A`).FindAllStringSubmatch(ciOut, -1) {
 		if !seen[m[1]] {
 			seen[m[1]] = true
 			var n int
@@ -523,10 +523,10 @@ func TestScenarioCIGitHub(t *testing.T) {
 	sort.Ints(errs)
 	eq(t, "an ::error for each failed lane", errs, failed)
 	eq(t, "one notice for all the skipped lanes", len(regexp.MustCompile(`(?m)^::notice title=swim%3A [0-9]* lanes skipped::`).FindAllString(ciOut, -1)), 1)
-	matches(t, "failed lanes stay open", ciOut, `^==== swim 23 FAIL - `)
-	matches(t, "passed lanes fold", ciOut, `^::group::swim 1 PASS - `)
+	matches(t, "failed lanes stay open", ciOut, `^==== lane 23 failed - `)
+	matches(t, "passed lanes fold", ciOut, `^::group::lane 1 passed - `)
 	summary, _ := os.ReadFile(filepath.Join(out, "summary.md"))
-	eq(t, "job summary has every lane", len(regexp.MustCompile(`(?m)^\| swim [0-9]* \|`).FindAll(summary, -1)), 99)
+	eq(t, "job summary has every lane", len(regexp.MustCompile(`(?m)^\| lane [0-9]* \|`).FindAll(summary, -1)), 99)
 	junit, _ := os.ReadFile(filepath.Join(out, "swim.xml"))
 	eq(t, "JUnit has a suite per lane", strings.Count(string(junit), "<testsuite "), 99)
 	matches(t, "results tagged with the commit", must(r.swim("status", "--yaml")), `^    commit: `+r.git("rev-parse", "HEAD"))

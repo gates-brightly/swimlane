@@ -158,7 +158,7 @@ func intervals(t *testing.T, ls []stamp) []interval {
 		switch s.what {
 		case "start":
 			if iv.start != 0 {
-				t.Errorf("swim %d started twice in run %s", s.lane, s.run)
+				t.Errorf("lane %d started twice in run %s", s.lane, s.run)
 			}
 			iv.start = s.at
 		case "end":
@@ -238,7 +238,7 @@ step "after" touch "$SWIM_ROOT/after"`)
 		t.Fatalf("after the crash: state %q, want running until reaped", l.State)
 	}
 	restart := r.mustSwim("watch", "--once")
-	contains(t, "restart", restart, "swim 1: its process died without ending its round")
+	contains(t, "restart", restart, "lane 1: its process died without ending its round")
 	l := r.status().Get(1)
 	if l.State != status.Interrupted || l.ExitCode == nil || *l.ExitCode != 137 {
 		t.Fatalf("after the restart: %+v", l)
@@ -278,7 +278,7 @@ func TestFaultQueueClaimed(t *testing.T) {
 	waitHit(t, dir, failpoint.QueueClaimed, out)
 	crash(r, c, 0)
 
-	contains(t, "queue", r.mustSwim("queue"), "orphaned: its swimmer is gone")
+	contains(t, "queue", r.mustSwim("queue"), "orphaned: its watcher is gone")
 	r.mustSwim("watch", "--once")
 	if _, err := os.Stat(filepath.Join(r.root, "charges")); err == nil {
 		t.Fatal("a new watch ran the orphaned entry")
@@ -303,9 +303,9 @@ step "after" touch "$SWIM_ROOT/after"`)
 	pid := waitHit(t, dir, failpoint.StepAfterExit, out)
 	crash(r, c, pid)
 
-	contains(t, "queue", r.mustSwim("queue"), "orphaned: its swimmer is gone")
+	contains(t, "queue", r.mustSwim("queue"), "orphaned: its watcher is gone")
 	restart := r.mustSwim("watch", "--once")
-	contains(t, "restart", restart, "swim 1: its process died without ending its round")
+	contains(t, "restart", restart, "lane 1: its process died without ending its round")
 	if l := r.status().Get(1); l.State != status.Interrupted {
 		t.Errorf("after the restart: state %q", l.State)
 	}
@@ -343,7 +343,7 @@ step "b" true`)
 				t.Fatalf("status.yml after the crash: %v", err)
 			}
 			if st := f.Get(1).State; st == "" {
-				t.Errorf("status.yml after the crash has no state for swim 1")
+				t.Errorf("status.yml after the crash has no state for lane 1")
 			}
 			r.mustSwim("status")
 			r.mustSwim("run", "1")
@@ -443,10 +443,10 @@ step "work" true
 	per := map[string]int{}
 	for _, iv := range ivs {
 		if !runs[iv.run] {
-			t.Errorf("swim %d ran in %s, which no consumed batch names", iv.lane, iv.run)
+			t.Errorf("lane %d ran in %s, which no consumed batch names", iv.lane, iv.run)
 		}
 		if iv.start == 0 || iv.end == 0 {
-			t.Errorf("swim %d in %s: start or end missing", iv.lane, iv.run)
+			t.Errorf("lane %d in %s: start or end missing", iv.lane, iv.run)
 		}
 		per[iv.run]++
 	}
@@ -472,7 +472,7 @@ func noOverlap(t *testing.T, ivs []interval, shares func(a, b int) bool) {
 				continue
 			}
 			if b.start < a.end && a.start < b.end {
-				t.Errorf("swim %d (%s) and swim %d (%s) share a lock but overlapped", a.lane, a.run, b.lane, b.run)
+				t.Errorf("lane %d (%s) and lane %d (%s) share a lock but overlapped", a.lane, a.run, b.lane, b.run)
 			}
 		}
 	}

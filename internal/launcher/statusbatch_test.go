@@ -19,7 +19,7 @@ func TestStatusBatch(t *testing.T) {
 	b.window = time.Second // long enough that "not yet" holds on a loaded machine
 	for _, n := range []int{3, 1, 4} {
 		n := n
-		b.update(n, func(l *status.Lane) { l.State, l.Reason = status.Skipped, "swim 2 failed" })
+		b.update(n, func(l *status.Lane) { l.State, l.Reason = status.Skipped, "lane 2 failed" })
 		b.update(n, func(l *status.Lane) { l.Job = "job-" + string(rune('0'+n)) })
 	}
 	if st, _ := status.Load(root); st != nil && st.Get(3) != nil && st.Get(3).State == status.Skipped {
@@ -36,14 +36,14 @@ func TestStatusBatch(t *testing.T) {
 		return st != nil && st.Get(4) != nil && st.Get(4).State == status.Skipped
 	})
 	for _, n := range []int{1, 3, 4} {
-		if l := st.Get(n); l == nil || l.State != status.Skipped || l.Reason != "swim 2 failed" || l.Job != "job-"+string(rune('0'+n)) {
-			t.Errorf("swim %d: %+v", n, l)
+		if l := st.Get(n); l == nil || l.State != status.Skipped || l.Reason != "lane 2 failed" || l.Job != "job-"+string(rune('0'+n)) {
+			t.Errorf("lane %d: %+v", n, l)
 		}
 	}
 	b.update(5, func(l *status.Lane) { l.State = status.Skipped })
 	b.flush()
 	st, _ = status.Load(root)
 	if l := st.Get(5); l == nil || l.State != status.Skipped {
-		t.Errorf("flush didn't write swim 5: %+v", l)
+		t.Errorf("flush didn't write lane 5: %+v", l)
 	}
 }

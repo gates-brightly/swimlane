@@ -96,8 +96,8 @@ func TestViewportDropsOldest(t *testing.T) {
 
 func testTUI(t *testing.T) (*tui, []LaneView) {
 	dir := t.TempDir()
-	m := newTUI(false, func(n int) string { return filepath.Join(dir, fmt.Sprintf("agent%d.log", n)) },
-		func(n int) string { return fmt.Sprintf(".swim/logs/agent%d.log", n) })
+	m := newTUI(false, func(n int) string { return filepath.Join(dir, fmt.Sprintf("lane%d.log", n)) },
+		func(n int) string { return fmt.Sprintf(".swim/logs/lane%d.log", n) })
 	views, _ := fixture()
 	return m, views
 }
@@ -137,15 +137,15 @@ func TestTUISelection(t *testing.T) {
 	m, views := testTUI(t)
 	press(m, views, right)
 	if m.laneN != 1 {
-		t.Fatalf("→ from all: swim %d", m.laneN)
+		t.Fatalf("→ from all: lane %d", m.laneN)
 	}
 	press(m, views, right, r('l'), Key{Code: KeyTab})
 	if m.laneN != 5 {
-		t.Fatalf("→ ×3: swim %d", m.laneN)
+		t.Fatalf("→ ×3: lane %d", m.laneN)
 	}
 	press(m, views, left, r('h'))
 	if m.laneN != 2 {
-		t.Fatalf("← ×2: swim %d", m.laneN)
+		t.Fatalf("← ×2: lane %d", m.laneN)
 	}
 	press(m, views, esc)
 	if m.laneN != 0 || !m.all.follow {
@@ -153,35 +153,35 @@ func TestTUISelection(t *testing.T) {
 	}
 	press(m, views, right)
 	if m.laneN != 2 {
-		t.Fatalf("→ reopens the last lane: swim %d", m.laneN)
+		t.Fatalf("→ reopens the last lane: lane %d", m.laneN)
 	}
 	press(m, views, esc, left)
 	if m.laneN != 7 {
-		t.Fatalf("← from all opens the last lane: swim %d", m.laneN)
+		t.Fatalf("← from all opens the last lane: lane %d", m.laneN)
 	}
 	// The selection survives the lane changing state (and order).
 	views[6].State = Running
 	press(m, views, right)
 	if m.laneN != 2 {
-		t.Fatalf("after 7 started, → moves on from it (order 1 7 2 4 5 6): swim %d", m.laneN)
+		t.Fatalf("after 7 started, → moves on from it (order 1 7 2 4 5 6): lane %d", m.laneN)
 	}
 	// Digits then Enter jump to any lane in the panel, idle too.
 	press(m, views, r('3'), enter)
 	if m.laneN != 3 {
-		t.Fatalf("3 Enter: swim %d", m.laneN)
+		t.Fatalf("3 Enter: lane %d", m.laneN)
 	}
 	press(m, views, r('9'), r('9'), enter)
-	if m.laneN != 3 || !strings.Contains(m.divider(views), "no swim 99") {
-		t.Fatalf("99 Enter: swim %d, %q", m.laneN, m.divider(views))
+	if m.laneN != 3 || !strings.Contains(m.divider(views), "no lane 99") {
+		t.Fatalf("99 Enter: lane %d, %q", m.laneN, m.divider(views))
 	}
 	press(m, views, r('4'), Key{Code: KeyBackspace}, r('6'), enter)
 	if m.laneN != 6 {
-		t.Fatalf("4 ⌫ 6 Enter: swim %d", m.laneN)
+		t.Fatalf("4 ⌫ 6 Enter: lane %d", m.laneN)
 	}
 	// f narrows ← →; Esc clears it.
 	press(m, views, r('f'), r('f'), right)
 	if m.laneN != 6 || !strings.Contains(m.divider(views), "lanes: failed") {
-		t.Fatalf("failed filter: swim %d %q", m.laneN, m.divider(views))
+		t.Fatalf("failed filter: lane %d %q", m.laneN, m.divider(views))
 	}
 	press(m, views, esc)
 	if m.filter != filterEvery {
@@ -205,7 +205,7 @@ func TestTUIInterruptAndQuit(t *testing.T) {
 		t.Fatal("a lane view holds the screen at the end")
 	}
 	m.finished = true
-	if !strings.Contains(m.divider(views), "run finished · q to close") {
+	if !strings.Contains(m.divider(views), "run ended · q to close") {
 		t.Fatalf("divider %q", m.divider(views))
 	}
 	if a := m.key(esc, views); a != actNone || m.laneN != 0 {
@@ -290,13 +290,13 @@ func TestTUISelectedLaneAlwaysShown(t *testing.T) {
 	views[0].State = Running
 	press(m, views, r('3'), r('5'), enter)
 	frame := strings.Join(m.render("t", views, nowFixture(), 30, 80), "\n")
-	if !strings.Contains(frame, "▶swim 35") || !strings.Contains(frame, " swim 1 ") || !strings.Contains(frame, "… 26 more") {
+	if !strings.Contains(frame, "▶lane 35") || !strings.Contains(frame, " lane 1 ") || !strings.Contains(frame, "… 26 more") {
 		t.Fatalf("panel:\n%s", frame)
 	}
 }
 
 func TestLogTail(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "agent1.log")
+	path := filepath.Join(t.TempDir(), "lane1.log")
 	tl := newLogTail(path)
 	if lines, reset := tl.poll(); lines != nil || reset {
 		t.Fatalf("no file: %q %v", lines, reset)

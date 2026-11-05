@@ -39,7 +39,7 @@ func TestDurationsReadOneWay(t *testing.T) {
 	if strings.Count(one, "FAIL  config exists (exit 1)") != 2 || strings.Count(one, "STOP  gate failed: config exists") != 1 {
 		t.Errorf("one lane: the stream says the failure, the summary once more:\n%s", one)
 	}
-	if strings.Contains(one, "[2] FAIL (exit") || strings.Contains(run, "FAIL (exit") || strings.Contains(run, "PASS (") {
+	if strings.Contains(one, "[2] failed (exit") || strings.Contains(run, "failed (exit") || strings.Contains(run, "passed (") {
 		t.Errorf("a result line after the lane's own summary:\n%s\n%s", run, one)
 	}
 	// Status and .swim.log name the failure once too.
@@ -51,7 +51,7 @@ func TestDurationsReadOneWay(t *testing.T) {
 	}
 	// Several lanes: one summary line each in the stream, the reasons in
 	// the run's table.
-	if strings.Count(run, "FAIL  config exists (exit 1)") != 2 || !strings.Contains(run, "[2] swim 2 summary: FAIL") || strings.Contains(run, "stages: ") {
+	if strings.Count(run, "FAIL  config exists (exit 1)") != 2 || !strings.Contains(run, "[2] lane 2 summary: failed") || strings.Contains(run, "stages: ") {
 		t.Errorf("two lanes: each lane's summary is one line, the table says why:\n%s", run)
 	}
 	// The round header names no unset env, and the lane's directory holds

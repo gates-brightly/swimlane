@@ -21,52 +21,53 @@ states are in `internal/status`; the launcher (`internal/launcher`), the
 lane's own hooks (`lane_init` and `summary`, through `internal/cli/hooks.go`)
 and a few commands write them.
 
+The words are the lane states every view uses ([concepts](concepts.md#lane-states)):
+`ready`, `queued`, `waiting`, `running`, `passed`, `failed`, `skipped`,
+`interrupted`, `empty`. A status.yml an older swim wrote says `idle`,
+`locked`, `pending`, `done` and the like: each reads as the state it now is
+(`idle` is `empty`, `locked` is `waiting`, `pending` is `ready`, `done` is
+`passed`), and the next write says the new word.
+
 ```mermaid
 stateDiagram-v2
-  [*] --> idle
-  idle --> waiting: selected, with dependencies in the run
-  idle --> locked: selected, with a lock held elsewhere
-  idle --> queued: selected, no free slot
-  idle --> running: lane_init
-  waiting --> locked: dependencies passed
-  waiting --> queued: dependencies passed
-  waiting --> running: dependencies passed, lane_init
-  waiting --> skipped: a dependency failed or was skipped
-  locked --> queued: locks taken
-  locked --> running: locks taken, lane_init
-  locked --> skipped: interrupted, or the script changed since it was queued
-  queued --> running: slot taken, lane_init
-  queued --> skipped: interrupted before it started
+  [*] --> empty
+  empty --> ready: swim new, or swim status sees a round on disk
+  ready --> empty: swim archive, or the script loses its round
+  ready --> waiting: selected, with dependencies in the run, a lock held elsewhere, or no free slot
+  ready --> running: lane_init
+  waiting --> waiting: dependencies passed, now for a lock or a slot
+  waiting --> running: its turn, lane_init
+  waiting --> skipped: a dependency failed or was skipped, interrupted, or the script changed since it was queued
   running --> passed: summary, exit 0
   running --> skipped: summary, exit 0, a guarded step dry-ran
   running --> failed: a failed step or gate, any other exit
   running --> interrupted: Ctrl-C, SIGTERM, exit 129/130/137/143
   running --> interrupted: process gone, then swim run, swim watch or swim status --rebuild
-  passed --> idle: swim archive
-  failed --> idle: swim archive
-  skipped --> idle: swim archive
-  interrupted --> idle: swim archive
+  passed --> empty: swim archive
+  failed --> empty: swim archive
+  skipped --> empty: swim archive
+  interrupted --> empty: swim archive
 ```
 
 What the check enforces (`Transition`) for a lane:
 
 - **A running round only ends:** `running` goes to `passed`, `failed`,
   `skipped` (it dry-ran a guarded step) or `interrupted` (or to `running`
-  again, a new `lane_init`), never back to waiting or `idle`.
-- **A lane waiting for its turn** (`waiting`, `locked`, `queued`) moves on
-  or ends, but never goes back to `idle`.
-- **A finished result never changes in place:** `passed`, `failed`,
+  again, a new `lane_init`), never back to `waiting`, `ready` or `empty`.
+- **A lane waiting for its turn** (`queued`, `waiting`) moves on or ends,
+  but never goes back to `ready` or `empty`.
+- **An ended round's result never changes in place:** `passed`, `failed`,
   `skipped` and `interrupted` turn into one another only as a new round
   (another start time or run id). A failure never becomes a pass.
-- At rest (`idle` or finished), anything may follow: a new round, an
-  archive, a refusal, a skip.
+- At rest (`ready`, `empty`, or its round ended), anything may follow: a
+  new round, an archive, a refusal, a skip.
 
 | State | Meaning | Entered when | Leaves when |
 |---|---|---|---|
-| `idle` | No round recorded (a new lane, or its log was archived). | `swim init`, `swim archive`, `swim status --rebuild` with no log | The lane is selected in a run, or run directly with bash. |
-| `waiting` | Selected in a run; waiting for lanes it names in `After:`. | The launcher, before the lane starts | Its dependencies end. |
-| `locked` | Waiting for a resource lock (`# Locks:`). | The launcher | It takes the locks, or the run is interrupted. |
-| `queued` | Waiting for a free slot (`--parallel`, `max_parallel`). | The launcher | It gets a slot, or the run is interrupted. |
+| `empty` | No round in the slot (a new lane, a stub, or no `# Round:` line). | `swim init`, `swim archive` with a stub, `swim status` | A round is written (`ready`), or the lane is run directly with bash. |
+| `ready` | A round is written and hasn't run. | `swim new`, or `swim status` reading the script on disk | The lane is selected in a run, or archived. |
+| `queued` | Its batch is queued (`swim queue`); bare swim and swim watch show it from the queue. | `swim queue` | A watcher takes the batch. |
+| `waiting` | Selected in a run and held up, with why in `waiting_on` (lanes it names in `After:`) or `reason` (`waiting for lock orders-db: lane 4`, `waiting for a slot (#2)`). A running round that asks the operator is shown waiting (`waiting for approval: ...`) while it stays `running` in the file. | The launcher, before the lane starts | Its dependencies end, it takes its locks or a slot, or the run is interrupted. |
 | `running` | Its process is running the round. | `lane_init` (in the lane's process) | `summary`, or the process exits. |
 | `passed` | The round ended with exit 0, and every guarded step it reached was approved. | `summary`, or the launcher if the process died before `lane_init` | The lane runs again, or is archived. |
 | `failed` | A step or gate failed, the round exited non-zero, or swim refused to start it (a blocked command, no runner). | `summary`, or the launcher | As `passed`. |
@@ -93,7 +94,7 @@ Notes:
   remove `.swim/laneN.pid` and run `swim status --rebuild`.
 - **A lane whose process died** without a trap (a closed terminal,
   SIGKILL, a crash, a reboot) stays `running` in the file, and `swim
-  status` shows it as `running?`, until the next `swim run`, `swim all`,
+  status` shows it as `interrupted (its process is gone)`, until the next `swim run`, `swim all`,
   `swim ci` or `swim watch` starts: each first ends such rounds as the
   launcher ends a killed lane's (`launcher.ReapDead`): the cut-off step
   is recovered as failed, the log gets `END INTERRUPTED` (exit 137), the
@@ -102,7 +103,7 @@ Notes:
   blocked either way. See [recovery](recovery.md#a-lane-stuck-running).
 - **A claimed lane** (`swim new` takes it; `swim lint` refreshes it) has
   a lease in `.swim/claims/lane.N.yml` (owner, session, host, created,
-  expires, job) while a session writes its round. It isn't a lane state:
+  expires, round id) while a session writes its round. It isn't a lane state:
   it guards `swim new` and `archive` from other sessions (`--force` takes
   it over, logged as `claim-broken`), and ends when the lane starts
   running, is archived, or expires (an expired one is removed by the next
@@ -119,14 +120,14 @@ A queued batch is one file under `.swim/queue/`, and its name is its state
 ```mermaid
 stateDiagram-v2
   [*] --> queued: swim queue N
-  queued --> running: a swimmer claims it (rename to .running)
-  running --> done: the batch ends (Consume, to done/)
-  running --> orphaned: its swimmer's process is gone (derived)
+  queued --> running: a watcher claims it (rename to .running)
+  running --> ended: the batch ends (Consume, to done/)
+  running --> orphaned: its watcher's process is gone (derived)
   orphaned --> queued: swim queue requeue
-  done --> queued: swim queue requeue
+  ended --> queued: swim queue requeue
   queued --> removed: swim queue rm
   orphaned --> removed: swim queue rm
-  done --> removed: swim queue rm
+  ended --> removed: swim queue rm
   removed --> [*]
 ```
 
@@ -134,13 +135,13 @@ stateDiagram-v2
 |---|---|---|---|
 | `queued` | `NNNN-q-<utc>-<hex>.queue` | `swim queue N`, `swim queue requeue` | Requeue gives a new sequence number, at the back of the queue. |
 | `running` | `NNNN-....running`, with `worker:` (host, pid and start time, user, heartbeat, lease) | `swim watch` claims it (the first waiting batch it can run, or `r` on a batch in the watch screen) | Of two workers racing, exactly one rename succeeds. The worker renews `heartbeat` every third of its `lease` (`queue_lease`, default 2m) while the batch runs. |
-| `orphaned` | the same `.running` file | Not written: `swim queue` derives it. On the swimmer's host: its pid is gone, or now another process (start time). From another host: its heartbeat is older than its lease | A claim by an older worker (no heartbeat) can't be judged from another host and stays `running`. Never run again on its own. |
-| `done` | `done/NNNN-....yml`, with `result:` | `Consume`, when the batch ends: passed, failed or interrupted alike | A half-run batch is never retried on its own. |
+| `orphaned` | the same `.running` file | Not written: `swim queue` derives it. On the watcher's host: its pid is gone, or now another process (start time). From another host: its heartbeat is older than its lease | A claim by an older worker (no heartbeat) can't be judged from another host and stays `running`. Never run again on its own. |
+| ended | `done/NNNN-....yml`, with `result:` | `Consume`, when the batch ends: passed, failed or interrupted alike | `swim queue` shows its result (`passed`, `failed`, ...) as its state. A half-run batch is never retried on its own. |
 | removed | none | `swim queue rm` | Refused while `running`. |
 
 `swim queue requeue` refuses a `queued` entry (already waiting) and a
-`running` one (stop that swimmer first). `queue.Transition` holds every move
-to the diagram: consuming an entry no swimmer claimed, consuming one twice,
+`running` one (stop that watcher first). `queue.Transition` holds every move
+to the diagram: consuming an entry no watcher claimed, consuming one twice,
 or claiming a consumed one is a bug, and panics under `SWIM_CHECK_STATES`.
 
 ## Approval

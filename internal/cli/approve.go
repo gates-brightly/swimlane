@@ -13,6 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/ci"
 	"github.com/gates-brightly/swimlane/internal/config"
+	"github.com/gates-brightly/swimlane/internal/display"
 	"github.com/gates-brightly/swimlane/internal/history"
 	"github.com/gates-brightly/swimlane/internal/lane"
 	"github.com/gates-brightly/swimlane/internal/logparse"
@@ -45,7 +46,7 @@ func cmdApproveHook(args []string) error {
 		return err
 	}
 	flag, desc := args[1], cfg.Masker(os.Environ()).String(args[2])
-	job, run := os.Getenv("SWIM_JOB"), os.Getenv("SWIM_RUN")
+	job, run := os.Getenv("SWIM_ROUND_ID"), os.Getenv("SWIM_RUN")
 	dryRun := func(why string) error {
 		detail := "dry run: set " + flag + "=1 to approve"
 		if why != "" {
@@ -65,7 +66,7 @@ func cmdApproveHook(args []string) error {
 	blocked := func(why string) error {
 		cmdMark([]string{args[0], logparse.Blocked, desc, "can't be answered here: " + why})
 		history.Log(root, history.Entry{Event: history.Decline, Lane: n, Job: job, Run: run, Detail: desc + "  (blocked: " + why + ")"})
-		return endRound(root, n, 1, "guard "+flag+" can't be answered on this swimmer: "+why)
+		return endRound(root, n, 1, "guard "+flag+" can't be answered on this watcher: "+why)
 	}
 	m := laneManifest(root, cfg, n)
 	sha, man := scriptSHA(root, n), ""
@@ -111,7 +112,7 @@ func cmdApproveHook(args []string) error {
 	if ask == nil {
 		return dryRun(why)
 	}
-	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
+	status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = display.WaitingApproval(desc) })
 	req := approval.Request{Lane: n, Job: job, Flag: flag, Desc: desc,
 		Token: os.Getenv(approval.TokenEnv), Manifest: man}
 	resp := ask(req, func() bool {
@@ -208,9 +209,9 @@ func underSwimRun(string) bool {
 // records the approval in the chain as this lane uses it (_mark --request).
 func approveLaunched(root string, cfg *config.Config, laneArg string, n int, flag, desc string, flagSet bool, dryRun, blocked func(string) error) error {
 	if !flagSet {
-		status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = "awaiting approval: " + desc })
+		status.Update(root, n, cfg.Lanes, func(l *status.Lane) { l.CurrentStep = display.WaitingApproval(desc) })
 	}
-	req := approval.Request{Lane: n, Job: os.Getenv("SWIM_JOB"), Flag: flag, Desc: desc, Token: os.Getenv(approval.TokenEnv), FlagSet: flagSet}
+	req := approval.Request{Lane: n, Job: os.Getenv("SWIM_ROUND_ID"), Flag: flag, Desc: desc, Token: os.Getenv(approval.TokenEnv), FlagSet: flagSet}
 	resp, err := approval.Ask(os.Getenv(approval.EnvVar), req, func() bool {
 		return lane.StopRequested(root, n, os.Getenv("SWIM_RUN"))
 	}, roundDeadline())

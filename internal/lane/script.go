@@ -133,7 +133,7 @@ func ScriptConflict(root string, n int) error {
 	for i, p := range s {
 		names[i] = filepath.Base(p)
 	}
-	return fmt.Errorf("swim %d has %d scripts (%s); a lane has exactly one: remove or rename the others", n, len(s), strings.Join(names, ", "))
+	return fmt.Errorf("lane %d has %d scripts (%s); a lane has exactly one: remove or rename the others", n, len(s), strings.Join(names, ", "))
 }
 
 // Sidecar is lane n's metadata file, lane.N.yml (lane.N.yaml if only that
@@ -197,7 +197,8 @@ func ShortForm(src string) bool {
 // over the script's header.
 type sideFile struct {
 	Round       *string           `yaml:"round"`
-	Job         *string           `yaml:"job"`
+	RoundID     *string           `yaml:"round-id"`
+	Job         *string           `yaml:"job"` // round-id's old name (an older sidecar)
 	After       *strList          `yaml:"after"`
 	Owner       *string           `yaml:"owner"`
 	Created     *string           `yaml:"created"`
@@ -246,21 +247,24 @@ func applySidecar(path string, info *Info) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&sf); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w (keys: round, job, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, includes, cache, modules)", filepath.Base(path), err)
+		return fmt.Errorf("%s: %w (keys: round, round-id, after, owner, created, guards, timeout, step-timeout, locks, stub, fail, includes, cache, modules)", filepath.Base(path), err)
 	}
 	info.Exists = true
 	name := filepath.Base(path)
 	if sf.Round != nil {
 		info.Round = strings.TrimSpace(*sf.Round)
 	}
-	if sf.Job != nil {
-		info.Job = strings.TrimSpace(*sf.Job)
+	if sf.RoundID == nil {
+		sf.RoundID = sf.Job
+	}
+	if sf.RoundID != nil {
+		info.Job = strings.TrimSpace(*sf.RoundID)
 	}
 	if sf.After != nil {
 		info.After = nil
 		for _, tok := range *sf.After {
 			switch strings.ToLower(tok) {
-			case "", "swim", "-", "none":
+			case "", "swim", "lane", "-", "none":
 				continue
 			}
 			info.After = append(info.After, tok)

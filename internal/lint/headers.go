@@ -12,7 +12,7 @@ import (
 
 // headerKeys are the header keys swim reads, spelled as it reads them
 // (case matters: # timeout: is not # Timeout:).
-var headerKeys = []string{"Round", "Task", "Job", "After", "Owner", "Created", "Guards", "Timeout", "Step-Timeout",
+var headerKeys = []string{"Round", "Task", "Round-ID", "Job", "After", "Owner", "Created", "Guards", "Timeout", "Step-Timeout",
 	"Locks", "Includes", "Targets", "Signoff", "Workspace", "Fail", "swim"}
 
 // headerSynonyms are words agents reach for in place of a key swim reads.
@@ -54,6 +54,50 @@ func checkHeaderKey(c *Context, s *Script) []finding.Finding {
 		}
 	}
 	return out
+}
+
+// checkJobIsRoundID: # Job: is # Round-ID:'s old name; swim still reads
+// it in an older script.
+func checkJobIsRoundID(c *Context, s *Script) []finding.Finding {
+	if i := jobHeaderLine(s.v.raw); i >= 0 {
+		return []finding.Finding{f(finding.Warn, "job-is-round-id", i, "write # Round-ID: (swim lint --fix rewrites it)",
+			"# Job: is now # Round-ID:")}
+	}
+	return nil
+}
+
+// jobHeaderLine is the 0-based line of the header's # Job: (or // Job:)
+// line, or -1.
+func jobHeaderLine(lines []string) int {
+	for i, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if i == 0 && strings.HasPrefix(line, "#!") || line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "//") {
+			break
+		}
+		if rest, ok := strings.CutPrefix(line, "//"); ok {
+			line = "#" + rest
+		}
+		if key, _, ok := lane.HeaderKey(line); ok && key == "Job" {
+			return i
+		}
+	}
+	return -1
+}
+
+// renameJob rewrites src's # Job: header line to # Round-ID: (what swim
+// lint --fix does), and returns the 1-based line it changed (0: none).
+func renameJob(src string) (string, int) {
+	lines := strings.Split(src, "\n")
+	i := jobHeaderLine(lines)
+	if i < 0 {
+		return src, 0
+	}
+	at := strings.Index(lines[i], "Job:")
+	lines[i] = lines[i][:at] + "Round-ID:" + lines[i][at+len("Job:"):]
+	return strings.Join(lines, "\n"), i + 1
 }
 
 // looksLikeRefs reports whether a header value is lanes or job ids, as

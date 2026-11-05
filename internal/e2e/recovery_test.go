@@ -57,7 +57,7 @@ func TestRecoveryStaleRunningLane(t *testing.T) {
 	syscall.Kill(-c.Process.Pid, syscall.SIGKILL) // no traps run
 	c.Wait()
 
-	contains(t, "status", r.mustSwim("status"), "running?")
+	contains(t, "status", r.mustSwim("status"), "interrupted (its process is gone)")
 	out, _ := r.swim("doctor")
 	contains(t, "doctor", out, "[stale-pid]")
 	r.swim("doctor", "--fix")
@@ -98,7 +98,7 @@ func TestReapDeadLane(t *testing.T) {
 
 	kill()
 	out := r.mustSwim("watch", "--once")
-	contains(t, "watch", out, "swim 1: its process died without ending its round")
+	contains(t, "watch", out, "lane 1: its process died without ending its round")
 	if l := r.status().Get(1); l.State != "interrupted" || l.ExitCode == nil || *l.ExitCode != 137 {
 		t.Fatalf("after watch: %+v", l)
 	}
@@ -112,7 +112,7 @@ func TestReapDeadLane(t *testing.T) {
 	kill()
 	r.script(1, "rerun", `step "quick" true`)
 	out = r.mustSwim("run", "1")
-	contains(t, "run", out, "swim 1: its process died without ending its round")
+	contains(t, "run", out, "lane 1: its process died without ending its round")
 	if strings.Count(r.log(1), "== END INTERRUPTED") != 2 {
 		t.Errorf("want both killed rounds ended:\n%s", r.log(1))
 	}

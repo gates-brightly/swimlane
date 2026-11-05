@@ -10,8 +10,8 @@ import (
 func pickRows() []PickRow {
 	return []PickRow{
 		{Text: "Jobs"},
-		{ID: "lane:1", Text: "swim 1  first"},
-		{ID: "lane:2", Text: "swim 2  second"},
+		{ID: "lane:1", Text: "lane 1  first"},
+		{ID: "lane:2", Text: "lane 2  second"},
 		{Text: "Queue"},
 		{ID: "queue:a", Text: "#1 queued"},
 	}
@@ -66,7 +66,7 @@ func TestPickerMoves(t *testing.T) {
 }
 
 func TestPickerRender(t *testing.T) {
-	p := &Picker{Sel: "lane:2", Note: "queued swim 2"}
+	p := &Picker{Sel: "lane:2", Note: "queued lane 2"}
 	out := p.render("swim watch", "↑ ↓ pick", pickRows(), 40, 10)
 	if len(out) != 10 {
 		t.Fatalf("%d lines, want 10:\n%s", len(out), strings.Join(out, "\n"))
@@ -74,10 +74,10 @@ func TestPickerRender(t *testing.T) {
 	if !strings.HasPrefix(out[0], "swim watch") || !strings.HasSuffix(out[0], "↑ ↓ pick") {
 		t.Errorf("title: %q", out[0])
 	}
-	if out[3] != "  swim 1  first" || out[4] != "▸ swim 2  second" {
+	if out[3] != "  lane 1  first" || out[4] != "▸ lane 2  second" {
 		t.Errorf("rows:\n%s", strings.Join(out, "\n"))
 	}
-	if out[9] != "queued swim 2" {
+	if out[9] != "queued lane 2" {
 		t.Errorf("note: %q", out[9])
 	}
 	// Scrolled to keep the selection on a short screen.
@@ -163,8 +163,8 @@ func TestPickerStyled(t *testing.T) {
 	styled := "\x1b[36m\x1b[1mswim 1\x1b[0m  \x1b[36mrunning\x1b[0m " + strings.Repeat("x", 80)
 	rows := []PickRow{
 		{Text: "Jobs", Rule: true, Right: "o hides"},
-		{ID: "lane:1", Text: "swim 1  running " + strings.Repeat("x", 80), Styled: styled},
-		{ID: "lane:2", Text: "swim 2  passed", Styled: "\x1b[35mswim 2\x1b[0m  passed"},
+		{ID: "lane:1", Text: "lane 1  running " + strings.Repeat("x", 80), Styled: styled},
+		{ID: "lane:2", Text: "lane 2  passed", Styled: "\x1b[35mswim 2\x1b[0m  passed"},
 	}
 	out := p.render("swim watch · repo", "↑ ↓ pick  r run", rows, 40, 8)
 	plain := func(s string) string {
@@ -188,14 +188,14 @@ func TestPickerStyled(t *testing.T) {
 	if !strings.Contains(out[3], "\x1b[36m\x1b[1mswim 1") || textWidth(out[3]) != 40 || !strings.HasSuffix(plain(out[3]), "…") {
 		t.Errorf("styled row: %q (%d wide)", out[3], textWidth(out[3]))
 	}
-	if !strings.HasPrefix(out[4], "\x1b[7m▸ swim 2  passed") {
+	if !strings.HasPrefix(out[4], "\x1b[7m▸ lane 2  passed") {
 		t.Errorf("the selected row is drawn plain, reversed: %q", out[4])
 	}
 	if got := plain(out[7]); got != "↑ ↓ pick  r run" {
 		t.Errorf("bottom line: %q", got)
 	}
-	p.Note = "queued swim 2"
-	if got := plain(p.render("t", "↑ ↓ pick", rows, 40, 8)[7]); got != "queued swim 2" {
+	p.Note = "queued lane 2"
+	if got := plain(p.render("t", "↑ ↓ pick", rows, 40, 8)[7]); got != "queued lane 2" {
 		t.Errorf("a note takes the bottom line: %q", got)
 	}
 }

@@ -23,8 +23,8 @@ cp -R .swim "$DEMO_DIR/swim.backup"
 restore() { rm -rf .swim && cp -R "$DEMO_DIR/swim.backup" .swim; }
 
 scene "2. Tamper: rewrite a log to hide the failure"
-show 'grep -nE "FAIL|END" .swim/logs/agent2.log'
-show "sed -i.orig -e '/failed: FAIL/d' -e 's/FAIL  set pool_size=50 (exit 1)/PASS  set pool_size=50         /' -e 's/END FAIL  pass=3 fail=1/END PASS  pass=4 fail=0/' -e 's/change FAIL/change PASS/' .swim/logs/agent2.log && rm .swim/logs/agent2.log.orig && grep -nE 'pool_size|END' .swim/logs/agent2.log"
+show 'grep -nE "FAIL|END" .swim/logs/lane2.log'
+show "sed -i.orig -e '/failed: FAIL/d' -e 's/FAIL  set pool_size=50 (exit 1)/PASS  set pool_size=50         /' -e 's/END FAIL  pass=3 fail=1/END PASS  pass=4 fail=0/' -e 's/change FAIL/change PASS/' .swim/logs/lane2.log && rm .swim/logs/lane2.log.orig && grep -nE 'pool_size|END' .swim/logs/lane2.log"
 show 'swim verify'
 say "Each round's log section is hashed into its signed chain entry."
 restore

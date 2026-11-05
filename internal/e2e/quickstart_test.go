@@ -72,7 +72,7 @@ func TestQuickstartRuns(t *testing.T) {
 			t.Errorf("the README's lane %s doesn't lint clean (the AI is told to lint it): %v\n%s", lane, err, out)
 		}
 	}
-	log2, _ := os.ReadFile(filepath.Join(qs, ".swim", "logs", "agent2.log"))
+	log2, _ := os.ReadFile(filepath.Join(qs, ".swim", "logs", "lane2.log"))
 	contains(t, "lane 2's log", string(log2), "SKIP", "APPROVED")
 }
 
@@ -93,7 +93,7 @@ func TestTourRuns(t *testing.T) {
 		"SKIP  remove scratch.txt (quickstart) (dry run", "scratch.txt is gone", // 4
 		"approved in queue q-", "removed, approved in the queue", // 5
 		"changed since it was queued", "skipped, not run", // 5: the edit voids it
-		"SKIP (swim 3 failed)",                                     // 6
+		"skipped (lane 3 failed)",                                  // 6
 		"VERIFIED",                                                 // 8
 		"was changed after the round ended", "the edit was caught", // 8: the record catches an edit
 	)

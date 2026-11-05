@@ -307,7 +307,7 @@ func (a *watchAsks) answer(key string, k rune) string {
 	}
 	m := q.msg
 	m.Flag = approval.Clean(m.Flag)
-	who := fmt.Sprintf("swim %d (#%d)", m.Lane, q.seq)
+	who := fmt.Sprintf("lane %d (#%d)", m.Lane, q.seq)
 	var r askMsg
 	var msg string
 	switch {

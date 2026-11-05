@@ -108,7 +108,7 @@ func mergeGitignore(path string) (bool, error) {
 	return true, os.WriteFile(path, []byte(s+block), 0o644)
 }
 
-// refreshStatus records each lane's pending round from the lane scripts on disk.
+// refreshStatus records each lane's ready round from the lane scripts on disk.
 func refreshStatus(root string, cfg *config.Config) error {
 	return status.UpdateFile(root, cfg.Lanes, func(f *status.File) error {
 		for i := range f.Lanes {
@@ -121,6 +121,7 @@ func refreshStatus(root string, cfg *config.Config) error {
 			if info.Pending() {
 				l.Pending, l.PendingJob = info.Round, info.Job
 			}
+			l.Rest()
 			l.Script = lane.ScriptName(root, l.Lane)
 		}
 		return nil
@@ -326,7 +327,7 @@ func setConfigKey(key, value, layer string) error {
 func cmdNew(args []string) error {
 	var force bool
 	var job string
-	rest, err := flags{bools: map[string]*bool{"force": &force}, strs: map[string]*string{"job": &job}}.parse(args)
+	rest, err := flags{bools: map[string]*bool{"force": &force}, strs: map[string]*string{"round-id": &job}}.parse(args)
 	if err != nil {
 		return err
 	}
@@ -376,11 +377,11 @@ func cmdNew(args []string) error {
 	if job == "" {
 		job = lane.NewJobID()
 	} else if !lane.ValidJobID(job) {
-		return usagef("job id %q: use 8-64 letters, digits, '.', '_' or '-' (not all digits)", job)
+		return usagef("round id %q: use 8-64 letters, digits, '.', '_' or '-' (not all digits)", job)
 	}
 	for m := 1; m <= cfg.Lanes; m++ {
 		if info, _ := lane.ReadScript(root, m); m != n && info.Pending() && strings.EqualFold(info.Job, job) {
-			return fmt.Errorf("job %s is already in %s; job ids must be unique", job, lane.ScriptName(root, m))
+			return fmt.Errorf("round id %s is already in %s; round ids must be unique", job, lane.ScriptName(root, m))
 		}
 	}
 	content, err := assets.Script(n, goal, cfg.Toolchain, job, os.Getenv("USER"))
@@ -404,14 +405,15 @@ func cmdNew(args []string) error {
 	}
 	status.Update(root, n, cfg.Lanes, func(l *status.Lane) {
 		l.Pending, l.PendingJob = strings.Join(strings.Fields(goal), " "), job
+		l.Rest()
 	})
 	history.Log(root, history.Entry{Event: history.New, Lane: n, Job: job, Detail: goal})
 	ref := strconv.Itoa(n)
 	if task != "" {
 		ref = task
-		fmt.Printf("wrote %s (task %s, swim %d): %s\n", rel(root, lane.Script(root, n)), task, n, goal)
+		fmt.Printf("wrote %s (task %s, lane %d): %s\n", rel(root, lane.Script(root, n)), task, n, goal)
 	} else {
-		fmt.Printf("wrote %s (swim %d): %s\n", rel(root, lane.Script(root, n)), n, goal)
+		fmt.Printf("wrote %s (lane %d): %s\n", rel(root, lane.Script(root, n)), n, goal)
 	}
 	fmt.Printf("next: fill in its steps, check them with swim lint %s, then run it: swim run %s\n", ref, ref)
 	return nil
@@ -464,7 +466,7 @@ func cmdRun(args []string) error {
 }
 
 // runLanes runs the named lanes (lane numbers or job ids), or with none,
-// every pending lane.
+// every ready lane.
 func runLanes(rest []string, rf runFlags) error {
 	rest = laneArgs(rest)
 	// Catch Ctrl-C from here: one before the run starts (while lanes are
@@ -494,7 +496,7 @@ func runLanes(rest []string, rf runFlags) error {
 		return err
 	}
 	if rerun && len(rest) > 0 {
-		return usagef("--rerun is for running every pending lane; named lanes always run")
+		return usagef("--rerun is for running every ready lane; named lanes always run")
 	}
 	var lanes []int
 	pins := map[int]string{}
@@ -524,7 +526,7 @@ func runLanes(rest []string, rf runFlags) error {
 	}
 	lintSkipped := len(lanes) == 0 && runnable != nil
 	if lintSkipped {
-		lanes = runnable // every pending lane but those lint refused
+		lanes = runnable // every ready lane but those lint refused
 	}
 	// The first lane of a kind swim has no runner for: ask now, before the
 	// live view takes the terminal (runners.go).
@@ -580,7 +582,7 @@ func joinNums(ns []int) string {
 	return strings.Join(parts, ", ")
 }
 
-// cmdAll runs every lane holding a pending round: `swim run` with no lanes.
+// cmdAll runs every lane holding a ready round: `swim run` with no lanes.
 func cmdAll(args []string) error {
 	var rf runFlags
 	rest, err := rf.parse(args)
@@ -588,7 +590,7 @@ func cmdAll(args []string) error {
 		return err
 	}
 	if len(rest) > 0 {
-		return usagef("all takes no lanes (it runs every pending one); to pick lanes: swim run %s", strings.Join(rest, " "))
+		return usagef("all takes no lanes (it runs every ready one); to pick lanes: swim run %s", strings.Join(rest, " "))
 	}
 	return runLanes(nil, rf)
 }
@@ -760,22 +762,23 @@ func cmdLib(args []string) error {
 	return nil
 }
 
-// cmdArchive tidies lanes whose rounds are done: swim archive N|JOB ...
-// ["<note>"] [--as NAME] [--force], or swim archive --done ["<note>"].
-// Each lane's log becomes agentN.prev-<NAME>.log (with no name, its
+// cmdArchive tidies lanes whose rounds have ended: swim archive
+// N|ROUND-ID ... ["<note>"] [--as NAME] [--force], or swim archive
+// --passed ["<note>"].
+// Each lane's log becomes laneN.prev-<NAME>.log (with no name, its
 // round's job id) and its script a stub carrying the note: the slot is
 // empty. A script edited since its round ran holds new work: it's kept.
-// --done does it for every lane whose round passed. Arguments after the
+// --passed does it for every lane whose round passed. Arguments after the
 // lanes that are neither a lane number nor a job id are the note.
 func cmdArchive(args []string) error {
 	var as string
-	var force, done bool
-	rest, err := flags{strs: map[string]*string{"as": &as}, bools: map[string]*bool{"force": &force, "done": &done}}.parse(args)
+	var force, passed bool
+	rest, err := flags{strs: map[string]*string{"as": &as}, bools: map[string]*bool{"force": &force, "passed": &passed}}.parse(args)
 	if err != nil {
 		return err
 	}
-	if len(rest) < 1 && !done {
-		return usagef(`usage: swim archive N|JOB ... ["<note>"] [--as NAME] [--force] | swim archive --done ["<note>"]`)
+	if len(rest) < 1 && !passed {
+		return usagef(`usage: swim archive N|ROUND-ID ... ["<note>"] [--as NAME] [--force] | swim archive --passed ["<note>"]`)
 	}
 	root, cfg, err := repo()
 	if err != nil {
@@ -783,7 +786,7 @@ func cmdArchive(args []string) error {
 	}
 	var lanes []int
 	var note string
-	if done {
+	if passed {
 		note = strings.Join(rest, " ")
 		if err := refreshStatus(root, cfg); err != nil {
 			return err
@@ -836,7 +839,7 @@ func cmdArchive(args []string) error {
 			if r, _ := logparse.ParseFile(lane.Log(root, n)); r.Job != "" {
 				what = r.Job
 			} else if _, err := os.Stat(lane.Log(root, n)); err == nil {
-				problems = append(problems, fmt.Sprintf("swim %d's log has no job id; name the archive: swim archive %d --as <name>", n, n))
+				problems = append(problems, fmt.Sprintf("lane %d's log has no round id; name the archive: swim archive %d --as <name>", n, n))
 				continue
 			} else if st, _ := status.Load(root); st != nil && st.Get(n) != nil && st.Get(n).Job != "" {
 				what = st.Get(n).Job // a lane of jobs: its logs are its jobs'
@@ -878,11 +881,12 @@ func cmdArchive(args []string) error {
 		}
 		status.Update(root, pl.n, cfg.Lanes, func(l *status.Lane) {
 			l.ResetRun()
-			l.State, l.Round, l.Job = status.Idle, "", ""
+			l.State, l.Round, l.Job = status.Empty, "", ""
 			l.LastArchive = filepath.Base(dst)
 			if stub {
 				l.Pending, l.PendingJob = "", ""
 			}
+			l.Rest()
 		})
 		archived, _ := logparse.ParseFile(dst)
 		detail := filepath.Base(dst)
@@ -933,7 +937,7 @@ func cmdNote(args []string) error {
 	}
 	text := strings.TrimSpace(strings.Join(rest, " "))
 	if text == "" {
-		return usagef(`usage: swim note [--lane N|JOB] "<text>"`)
+		return usagef(`usage: swim note [--lane N|ROUND-ID] "<text>"`)
 	}
 	root, cfg, err := repo()
 	if err != nil {

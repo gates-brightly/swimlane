@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # swim: syntax 2
 # Round: DAG independent root: HTTP response headers
-# Job:   07aee2b7-be33-4c6e-9f09-2fbbbb35af2a
+# Round-ID:   07aee2b7-be33-4c6e-9f09-2fbbbb35af2a
 # After: 
 # Lane:  swim 8    Written: 2026-10-09
 #
@@ -51,7 +51,7 @@ stage change
 gate "reset $H" bash -c 'rm -rf "$H" && mkdir -p "$H"'
 step "simulated work" true
 head_of() { # head_of <name> <url>
-  step "HEAD $1" curl -sSI --max-time 15 -A "swim-demo/$SWIM_JOB" -o "$H/$1.txt" -w '%{http_code} %{url_effective}\n' "$2"
+  step "HEAD $1" curl -sSI --max-time 15 -A "swim-demo/$SWIM_ROUND_ID" -o "$H/$1.txt" -w '%{http_code} %{url_effective}\n' "$2"
 }
 head_of example https://example.com/
 head_of httpbin https://httpbin.org/get

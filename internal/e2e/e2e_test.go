@@ -295,7 +295,7 @@ func (r *repo) after(n int, deps string) {
 var afterLineRE = regexp.MustCompile(`(?m)^# After:.*$`)
 
 func (r *repo) log(n int) string {
-	data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("agent%d.log", n)))
+	data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", fmt.Sprintf("lane%d.log", n)))
 	return string(data)
 }
 
@@ -333,7 +333,7 @@ func TestInitIsIdempotent(t *testing.T) {
 		t.Fatalf(".gitignore:\n%s", gi)
 	}
 	// No lanes yet: status shows none.
-	if out := r.mustSwim("status"); strings.Contains(out, "swim 1") {
+	if out := r.mustSwim("status"); strings.Contains(out, "lane 1") {
 		t.Fatalf("status of a repo with no lanes:\n%s", out)
 	}
 }
@@ -427,7 +427,7 @@ step "never" true`)
 	}
 	s := out.String()
 	contains(t, "launcher output", s,
-		"[2] waiting on swim 1", "[4] waiting on swim 2",
+		"[2] waiting on lane 1", "[4] waiting on lane 2",
 		"[2] SKIP  delete thing (2026-10-09: test) (dry run: set TEST_ALLOW_DELETE=1 to approve)",
 		"to approve: TEST_ALLOW_DELETE=1 swim run 2",
 		"swim summary", "FAIL  fails (exit 4)", "STOP  gate failed: stops")
@@ -441,19 +441,19 @@ step "never" true`)
 	want := map[int]string{1: status.Passed, 2: status.Skipped, 3: status.Failed, 4: status.Skipped}
 	for n, st := range want {
 		if got := f.Get(n).State; got != st {
-			t.Errorf("swim %d state = %s, want %s", n, got, st)
+			t.Errorf("lane %d state = %s, want %s", n, got, st)
 		}
 	}
 	if l := f.Get(2); l.Skip != 1 || l.Pass != 1 {
-		t.Errorf("swim 2 counts: %+v", l)
+		t.Errorf("lane 2 counts: %+v", l)
 	}
 	// Each failure once: the STOP that restates the gate stays in the log.
 	if l := f.Get(3); *l.ExitCode != 1 || len(l.FailedSteps) != 2 {
-		t.Errorf("swim 3: %+v", l)
+		t.Errorf("lane 3: %+v", l)
 	}
 
 	log := r.log(1)
-	contains(t, "agent1.log", log, "# swim log | syntax 4 | swim 1", "== ROUND ", "  Lane one\n", "  PASS  snapshot: state", "        saved: .swim/snapshots/lane1-", "  PASS  slow", "== END PASS", "exit=0")
+	contains(t, "lane1.log", log, "# swim log | syntax 4 | lane 1", "== ROUND ", "  Lane one\n", "  PASS  snapshot: state", "        saved: .swim/snapshots/lane1-", "  PASS  slow", "== END PASS", "exit=0")
 	snaps, _ := filepath.Glob(filepath.Join(r.root, ".swim", "snapshots", "lane1-*-state.txt"))
 	if len(snaps) != 1 {
 		t.Fatalf("snapshots: %v", snaps)
@@ -476,7 +476,7 @@ step "never" true`)
 		t.Errorf("status --yaml should be the file plus its schema:\n%s\n---\n%s", got, raw)
 	}
 	st := r.mustSwim("status")
-	contains(t, "status", st, "swim 1", "PASS", "swim 3", "FAIL exit 1", "FAIL  stops (exit 1)")
+	contains(t, "status", st, "lane 1", "passed", "lane 3", "failed exit 1", "FAIL  stops (exit 1)")
 	if strings.Contains(st, "STOP  gate failed: stops") {
 		t.Errorf("status repeats the failed gate as a STOP:\n%s", st)
 	}
@@ -493,9 +493,9 @@ func TestSkipPropagatesDownChain(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	contains(t, "output", out, "[2] SKIP (swim 1 failed)", "[4] SKIP (swim 2 skipped)")
+	contains(t, "output", out, "[2] skipped (lane 1 failed)", "[4] skipped (lane 2 skipped)")
 	f := r.status()
-	if f.Get(2).State != status.Skipped || f.Get(4).State != status.Skipped || f.Get(4).Reason != "swim 2 skipped" {
+	if f.Get(2).State != status.Skipped || f.Get(4).State != status.Skipped || f.Get(4).Reason != "lane 2 skipped" {
 		t.Fatalf("status: 2=%+v 4=%+v", f.Get(2), f.Get(4))
 	}
 	// A skipped lane records the round it skipped, so its next run is a retry, not a new job.
@@ -519,8 +519,8 @@ if guard TEST_ALLOW_X "do x (2026-10-27: test)"; then step "do x" echo did-x; fi
 	if code != launcher.ExitDryRun {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	contains(t, "output", out, "dry run: do x", "[2] SKIP (swim 1 skipped)")
-	contains(t, "agent1.log", r.log(1), "== END SKIP  pass=0 fail=0 skip=1")
+	contains(t, "output", out, "dry run: do x", "[2] skipped (lane 1 skipped)")
+	contains(t, "lane1.log", r.log(1), "== END SKIP  pass=0 fail=0 skip=1")
 	f := r.status()
 	if l := f.Get(1); l.State != status.Skipped || l.Reason != "dry run: do x" {
 		t.Fatalf("status 1: %+v", l)
@@ -551,7 +551,7 @@ func TestRunSelectedLanesOnly(t *testing.T) {
 	if code != 1 || r.log(1) != "" || r.log(2) != "" || r.log(3) == "" {
 		t.Fatalf("wrong lanes ran (exit %d):\n%s", code, out)
 	}
-	contains(t, "output", out, "[2] SKIP (swim 1's pending round has not passed; run it too: swim run 1 ...)")
+	contains(t, "output", out, "[2] skipped (lane 1's ready round has not passed; run it too: swim run 1 ...)")
 
 	// Once lane 1's round has passed, lane 2 may run on its own.
 	r.mustSwim("1")
@@ -575,13 +575,13 @@ func TestAfterHeaderDiamond(t *testing.T) {
 	r.script(3, "child b", `gate "root output" test -s "$SWIM_ROOT/out1"`)
 	r.script(4, "join", `gate "children" true`)
 	r.after(2, "1")
-	r.after(3, "swim 1")
+	r.after(3, "lane 1")
 	r.after(4, "2, 3")
 
 	all := start(t, r.cmd(bin, "all"), nil) // every pending lane, like `swim run`
 	// The root holds until its dependents have said what they wait on.
-	all.saw(t, "[2] waiting on swim 1")
-	all.saw(t, "[4] waiting on swim 2, 3")
+	all.saw(t, "[2] waiting on lane 1")
+	all.saw(t, "[4] waiting on lane 2, 3")
 	r.release("root-go")
 	if code := all.wait(t); code != 0 {
 		t.Fatalf("swim all: exit %d\n%s", code, all.out.String())
@@ -592,7 +592,7 @@ func TestAfterHeaderDiamond(t *testing.T) {
 	}
 	for n := 1; n <= 4; n++ {
 		if st := r.status().Get(n).State; st != status.Passed {
-			t.Errorf("swim %d = %s\n%s", n, st, out)
+			t.Errorf("lane %d = %s\n%s", n, st, out)
 		}
 	}
 
@@ -605,19 +605,19 @@ func TestAfterHeaderDiamond(t *testing.T) {
 
 func TestAfterPinnedToJob(t *testing.T) {
 	r := newRepo(t)
-	r.newLane("1", "root", "--job", "root-job-0001")
+	r.newLane("1", "root", "--round-id", "root-job-0001")
 	r.script(2, "child", `step "ok" true`)
 	p := filepath.Join(r.root, "lane.2.sh")
 	data, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: root-jo\n", 1)), 0o755)
 
 	// A prefix shorter than 8 characters doesn't resolve.
-	if out, code := r.swim("run", "2"); code == 0 || !strings.Contains(out, "no lane holds or last ran job root-jo") {
+	if out, code := r.swim("run", "2"); code == 0 || !strings.Contains(out, "no lane holds or last ran round root-jo") {
 		t.Fatalf("short ref: %d %s", code, out)
 	}
 	os.WriteFile(p, []byte(strings.Replace(string(data), "\n", "\n# After: root-job-0001\n", 1)), 0o755)
 	// The pinned job hasn't run: lane 2 alone is skipped.
-	if out, code := r.swim("run", "2"); code != 1 || !strings.Contains(out, "swim 1 (job root-job) has not passed") {
+	if out, code := r.swim("run", "2"); code != 1 || !strings.Contains(out, "lane 1 (round-id root-job) has not passed") {
 		t.Fatalf("unrun pinned dep: %d %s", code, out)
 	}
 	r.mustSwim("run", "1")
@@ -641,7 +641,7 @@ step "after confirm" true`)
 		t.Fatalf("expected failure, got:\n%s", out)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "APPROVED  do x (2026-10-09: test) (TEST_ALLOW_X=1)", "PASS  do x", "STOP  not confirmed: really?")
+	contains(t, "lane1.log", log, "APPROVED  do x (2026-10-09: test) (TEST_ALLOW_X=1)", "PASS  do x", "STOP  not confirmed: really?")
 	if strings.Contains(log, "after confirm") {
 		t.Error("round continued after an unconfirmed prompt")
 	}
@@ -651,7 +651,7 @@ func TestArchiveNewAndRunningRefusals(t *testing.T) {
 	long(t)
 	r := newRepo(t)
 	r.newLane("1", "first round")
-	if out, code := r.swim("new", "1", "second"); code == 0 || !strings.Contains(out, "pending round") {
+	if out, code := r.swim("new", "1", "second"); code == 0 || !strings.Contains(out, "ready round") {
 		t.Fatalf("new over pending: %d %s", code, out)
 	}
 	if f := r.status(); f.Get(1).Pending != "first round" {
@@ -659,17 +659,17 @@ func TestArchiveNewAndRunningRefusals(t *testing.T) {
 	}
 	r.mustSwim("run", "1")
 	r.mustSwim("archive", "1", "all done", "--as", "first round")
-	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.prev-first-round.log")); err != nil {
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "lane1.prev-first-round.log")); err != nil {
 		t.Fatal(err)
 	}
-	if l := r.status().Get(1); l.State != status.Idle || l.Pending != "" || l.LastArchive != "agent1.prev-first-round.log" {
+	if l := r.status().Get(1); l.State != status.Empty || l.Pending != "" || l.LastArchive != "lane1.prev-first-round.log" {
 		t.Errorf("after archive: %+v", l)
 	}
 	contains(t, "stub", readFile(t, r, "lane.1.sh"), "# swim:stub", "all done")
-	if out, code := r.swim("run", "1"); code == 0 || !strings.Contains(out, "no pending round") {
+	if out, code := r.swim("run", "1"); code == 0 || !strings.Contains(out, "no round ready") {
 		t.Errorf("run stub: %d %s", code, out)
 	}
-	if out := r.mustSwim("run"); !strings.Contains(out, "nothing pending") {
+	if out := r.mustSwim("run"); !strings.Contains(out, "nothing ready") {
 		t.Errorf("run with only stubs: %s", out)
 	}
 	// The slot is empty: swim new needs no --force.
@@ -684,7 +684,7 @@ func TestArchiveNewAndRunningRefusals(t *testing.T) {
 	defer bg.Wait()
 	defer r.release("go")
 	waitFor(t, func() bool { l := r.status().Get(2); return l != nil && l.State == status.Running })
-	os.WriteFile(filepath.Join(r.root, "agent2.log.keep"), nil, 0o644)
+	os.WriteFile(filepath.Join(r.root, "lane2.log.keep"), nil, 0o644)
 	for _, args := range [][]string{{"archive", "2", "x"}, {"new", "2", "x", "--force"}, {"run", "2"}} {
 		if out, code := r.swim(args...); code == 0 || !strings.Contains(out, "running") {
 			t.Errorf("swim %v on running lane: %d %s", args, code, out)
@@ -712,7 +712,7 @@ step "never" true`)
 		t.Fatalf("lane script exit: %v", err)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "  FAIL  long (exit 130, interrupted)", "== END INTERRUPTED", "exit=130")
+	contains(t, "lane1.log", log, "  FAIL  long (exit 130, interrupted)", "== END INTERRUPTED", "exit=130")
 	if strings.Contains(log, "never") {
 		t.Error("round continued after Ctrl-C")
 	}
@@ -748,7 +748,7 @@ func TestStaleRunningShown(t *testing.T) {
 	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
 	syscall.Kill(-c.Process.Pid, syscall.SIGKILL) // terminal closed: no traps run
 	c.Wait()
-	contains(t, "status", r.mustSwim("status"), "running? (process gone: interrupted)", "step: long")
+	contains(t, "status", r.mustSwim("status"), "interrupted (its process is gone)", "step: long")
 	// A dead pidfile doesn't block a rerun.
 	r.script(1, "rerun", `step "quick" true`)
 	r.mustSwim("run", "1")
@@ -776,7 +776,7 @@ func TestHelp(t *testing.T) {
 	if out, code := r.swim("guide", "nope"); code != 2 || !strings.Contains(out, "topics: concepts, agents") {
 		t.Errorf("guide nope: %d %s", code, out)
 	}
-	contains(t, "run --help", r.mustSwim("run", "--help"), "waiting on swim N")
+	contains(t, "run --help", r.mustSwim("run", "--help"), "waiting on lane N")
 	contains(t, "help status", r.mustSwim("help", "status"), "--rebuild")
 	if out, code := r.swim("bogus"); code != 2 || !strings.Contains(out, "unknown command") {
 		t.Errorf("bogus: %d %s", code, out)
@@ -976,7 +976,7 @@ func laneOf(r *repo, n int) status.Lane {
 
 // swim new writes the job id in the script's header (and no longer prints
 // it: a newcomer doesn't need it, and the header is the record).
-var jobLineRE = regexp.MustCompile(`(?m)^# Job:\s+(\S+)$`)
+var jobLineRE = regexp.MustCompile(`(?m)^# Round-ID:\s+(\S+)$`)
 
 func TestJobIDsAndPinning(t *testing.T) {
 	r := newRepo(t)
@@ -993,35 +993,35 @@ func TestJobIDsAndPinning(t *testing.T) {
 	}
 
 	// Steps see the job id, so they can tag resources as "ours".
-	body := strings.Replace(string(script), `step "verify" true`, `step "tag" bash -c 'echo "tag=$SWIM_JOB"'`, 1)
+	body := strings.Replace(string(script), `step "verify" true`, `step "tag" bash -c 'echo "tag=$SWIM_ROUND_ID"'`, 1)
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(body), 0o755)
 
 	// Pin by an 8-character prefix.
 	out := r.mustSwim("run", job[:8])
 	contains(t, "pinned run", out, "tag="+job, job[:8])
 	log := r.log(1)
-	contains(t, "agent1.log", log, "  job="+job+"  pinned round", "| tag="+job)
+	contains(t, "lane1.log", log, "  round-id="+job+"  pinned round", "| tag="+job)
 	if l := r.status().Get(1); l.Job != job || l.State != status.Passed {
 		t.Errorf("status after run: %+v", l)
 	}
-	contains(t, "status by job", r.mustSwim("status", job), "swim 1", "job: "+job)
+	contains(t, "status by job", r.mustSwim("status", job), "lane 1", "round-id: "+job)
 
 	// Rewriting the lane replaces the job; the old pin must refuse to run.
-	r.newLane("1", "different round", "--force", "--job", "orders-cutover-2")
-	if out, code := r.swim("run", job); code == 0 || !strings.Contains(out, "no lane holds job") || !strings.Contains(out, "orders-cutover-2") {
+	r.newLane("1", "different round", "--force", "--round-id", "orders-cutover-2")
+	if out, code := r.swim("run", job); code == 0 || !strings.Contains(out, "no lane holds round") || !strings.Contains(out, "orders-cutover-2") {
 		t.Errorf("stale pin: %d %s", code, out)
 	}
 	// Custom ids must be unique across lanes.
-	if out, code := r.swim("new", "2", "dup", "--job", "orders-cutover-2"); code == 0 || !strings.Contains(out, "already in lane.1.sh") {
+	if out, code := r.swim("new", "2", "dup", "--round-id", "orders-cutover-2"); code == 0 || !strings.Contains(out, "already in lane.1.sh") {
 		t.Errorf("duplicate job id: %d %s", code, out)
 	}
-	if out, code := r.swim("new", "2", "bad", "--job", "12345678"); code == 0 || !strings.Contains(out, "not all digits") {
+	if out, code := r.swim("new", "2", "bad", "--round-id", "12345678"); code == 0 || !strings.Contains(out, "not all digits") {
 		t.Errorf("numeric job id: %d %s", code, out)
 	}
 
 	// Archive by the job that last ran, defaulting the name to the job id.
 	out = r.mustSwim("archive", job[:8])
-	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.prev-"+job+".log")); err != nil {
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "lane1.prev-"+job+".log")); err != nil {
 		t.Fatalf("archive by job: %v\n%s", err, out)
 	}
 }
@@ -1031,17 +1031,17 @@ func TestScriptWithoutJobLineGetsOne(t *testing.T) {
 	r.script(1, "no job line", `step "x" true`)
 	r.mustSwim("run", "1")
 	l := r.status().Get(1)
-	if len(l.Job) != 36 || !strings.Contains(r.log(1), "job="+l.Job) {
+	if len(l.Job) != 36 || !strings.Contains(r.log(1), "round-id="+l.Job) {
 		t.Fatalf("generated job: %+v\n%s", l, r.log(1))
 	}
 }
 
 func TestProjectLog(t *testing.T) {
 	r := newRepo(t)
-	r.newLane("1", "first goal", "--job", "job-one-0001")
+	r.newLane("1", "first goal", "--round-id", "job-one-0001")
 	body, _ := os.ReadFile(filepath.Join(r.root, "lane.1.sh"))
 	os.WriteFile(filepath.Join(r.root, "lane.1.sh"), []byte(strings.Replace(string(body), `gate "target is ours (tagged)" true`, `step "precheck" false`, 1)), 0o755)
-	r.newLane("2", "second goal", "--job", "job-two-0002")
+	r.newLane("2", "second goal", "--round-id", "job-two-0002")
 	r.after(2, "1")
 	r.swim("run")
 	r.script(3, "direct run", `step "ok" true`)
@@ -1070,17 +1070,17 @@ func TestProjectLog(t *testing.T) {
 	}
 	want := []string{
 		"init status",
-		"new swim 1 job=job-one-0001 first goal",
-		"new swim 2 job=job-two-0002 second goal",
-		"run swim 1,2",
-		"start swim 1 job=job-one-0001 first goal",
-		"fail swim 1 job=job-one-0001 pass=",
-		"skip swim 2 job=job-two-0002 swim 1 failed second goal",
-		"run-done swim 1,2 passed=0 failed=1 skipped=1 interrupted=0",
-		"start swim 3 job=",
-		"pass swim 3 job=",
-		"archive swim 1 job=job-one-0001 agent1.prev-job-one-0001.log precheck needs a fix",
-		"note swim 2 job=job-two-0002 rerun after lane 1 is fixed",
+		"new lane 1 round-id=job-one-0001 first goal",
+		"new lane 2 round-id=job-two-0002 second goal",
+		"run lane 1,2",
+		"start lane 1 round-id=job-one-0001 first goal",
+		"fail lane 1 round-id=job-one-0001 pass=",
+		"skip lane 2 round-id=job-two-0002 lane 1 failed second goal",
+		"run-end lane 1,2 passed=0 failed=1 skipped=1 interrupted=0",
+		"start lane 3 round-id=",
+		"pass lane 3 round-id=",
+		"archive lane 1 round-id=job-one-0001 lane1.prev-job-one-0001.log precheck needs a fix",
+		"note lane 2 round-id=job-two-0002 rerun after lane 1 is fixed",
 	}
 	if len(events) != len(want) {
 		t.Fatalf("got %d events, want %d:\n%s", len(events), len(want), data)
@@ -1099,17 +1099,17 @@ func TestProjectLog(t *testing.T) {
 
 func TestLogCommand(t *testing.T) {
 	r := newRepo(t)
-	r.newLane("1", "first round", "--job", "first-job-01")
+	r.newLane("1", "first round", "--round-id", "first-job-01")
 	r.mustSwim("run", "1")
 	r.mustSwim("archive", "1", "--as", "first")
-	r.newLane("1", "second round", "--job", "second-job-02")
+	r.newLane("1", "second round", "--round-id", "second-job-02")
 	r.mustSwim("run", "1")
 
 	// Current log only.
 	out := r.mustSwim("log", "1")
-	contains(t, "log 1", out, "job=second-job-02  second round", "== END PASS")
+	contains(t, "log 1", out, "round-id=second-job-02  second round", "== END PASS")
 	if strings.Contains(out, "first-job-01") || strings.Contains(out, "==>") {
-		t.Errorf("log 1 should be just agent1.log:\n%s", out)
+		t.Errorf("log 1 should be just lane1.log:\n%s", out)
 	}
 	if out != r.log(1) {
 		t.Errorf("piped output should be the file verbatim")
@@ -1117,25 +1117,25 @@ func TestLogCommand(t *testing.T) {
 
 	// --all: archive first, then the current log, each with a header.
 	out = r.mustSwim("log", "1", "--all")
-	a, b := strings.Index(out, "==> agent1.prev-first.log <=="), strings.Index(out, "==> agent1.log <==")
+	a, b := strings.Index(out, "==> lane1.prev-first.log <=="), strings.Index(out, "==> lane1.log <==")
 	if a < 0 || b < 0 || a > b || strings.Index(out, "first-job-01") > b || strings.Index(out, "second-job-02") < b {
 		t.Errorf("log 1 --all order:\n%s", out)
 	}
 
 	// By job, found in the archive.
 	out = r.mustSwim("log", "first-job")
-	contains(t, "log job", out, "==> agent1.prev-first.log <==", "job=first-job-01  first round")
+	contains(t, "log job", out, "==> lane1.prev-first.log <==", "round-id=first-job-01  first round")
 	if strings.Contains(out, "second round") {
 		t.Errorf("log by job leaked another round:\n%s", out)
 	}
 
 	// No argument: the project log.
-	contains(t, "log", r.mustSwim("log"), "# swim project log", "archive", "swim 1  job=first-job-01")
+	contains(t, "log", r.mustSwim("log"), "# swim project log", "archive", "lane 1  round-id=first-job-01")
 
 	if out, code := r.swim("log", "2"); code == 0 || !strings.Contains(out, "no current log") {
 		t.Errorf("log 2: %d %s", code, out)
 	}
-	if out, code := r.swim("log", "nosuchjob1"); code == 0 || !strings.Contains(out, "no log holds a round of job or run nosuchjob1") {
+	if out, code := r.swim("log", "nosuchjob1"); code == 0 || !strings.Contains(out, "no log holds round or run nosuchjob1") {
 		t.Errorf("log unknown job: %d %s", code, out)
 	}
 }
@@ -1158,7 +1158,7 @@ func TestAllSkipsPassedJobs(t *testing.T) {
 	}
 	// Everything passed: nothing to run.
 	out = r.mustSwim("all")
-	contains(t, "third all", out, "nothing to run: every pending job has already passed (swim 1,2)")
+	contains(t, "third all", out, "nothing to run: every ready round has already passed (lane 1,2)")
 	// Explicit lanes and --rerun still run passed rounds.
 	r.mustSwim("run", "1")
 	r.mustSwim("all", "--rerun")
@@ -1181,18 +1181,18 @@ func TestLanesInUse(t *testing.T) {
 	out := r.mustSwim("all")
 	contains(t, "all", out, "[1] started: one", "[6] started: six")
 	st := r.mustSwim("status")
-	contains(t, "status", st, "swim 1", "swim 6")
-	if strings.Contains(st, "swim 3") {
+	contains(t, "status", st, "lane 1", "lane 6")
+	if strings.Contains(st, "lane 3") {
 		t.Errorf("status shows a lane not in use:\n%s", st)
 	}
 	// Archived (its log kept, its script a stub), it isn't in use.
 	r.mustSwim("archive", "6", "done")
-	if st := r.mustSwim("status"); strings.Contains(st, "swim 6") {
+	if st := r.mustSwim("status"); strings.Contains(st, "lane 6") {
 		t.Errorf("status after archive 6 still shows it:\n%s", st)
 	}
 	// Any lane can start: swim new 9 just works.
 	r.newLane("9", "nine")
-	contains(t, "after new 9", r.mustSwim("status"), "swim 9")
+	contains(t, "after new 9", r.mustSwim("status"), "lane 9")
 	// lanes: is no setting: in the config it's an unknown key, and doctor
 	// says so.
 	r.repoConfig("lanes: 4\n")
@@ -1217,8 +1217,8 @@ func TestVersionAndOldLock(t *testing.T) {
 
 const v1Lane = `#!/usr/bin/env bash
 # Round: Old template round
-# Job:   old-job-0001
-# Lane:  swim 1    Written: 2026-10-01
+# Round-ID:   old-job-0001
+# Lane:  lane 1    Written: 2026-10-01
 _swim_lib=$("${SWIM_BIN:-swim}" _lib) || exit 1; eval "$_swim_lib"
 lane_init 1
 
@@ -1266,8 +1266,8 @@ func TestSyntaxTooNew(t *testing.T) {
 	}
 	os.Remove(filepath.Join(r.root, "lane.2.sh"))
 	os.MkdirAll(filepath.Join(r.root, ".swim", "logs"), 0o755)
-	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "agent3.log"), []byte("# swim log | syntax 7 | swim 3\n"), 0o644)
-	if out, code := r.swim("status"); code == 0 || !strings.Contains(out, "agent3.log uses swim syntax 7") {
+	os.WriteFile(filepath.Join(r.root, ".swim", "logs", "lane3.log"), []byte("# swim log | syntax 7 | swim 3\n"), 0o644)
+	if out, code := r.swim("status"); code == 0 || !strings.Contains(out, "lane3.log uses swim syntax 7") {
 		t.Errorf("syntax 7 log: %d %s", code, out)
 	}
 }
@@ -1281,7 +1281,7 @@ step "check" true
 stage verify
 step "verify" true`)
 	r.mustSwim("run", "1")
-	contains(t, "agent1.log", r.log(1),
+	contains(t, "lane1.log", r.log(1),
 		"  WARN  change stage without a snapshot or check stage before it",
 		"  WARN  stage check after change (expected order: snapshot, check, change, verify)",
 		"stages: snapshot none | check PASS | change PASS | verify PASS")
@@ -1314,7 +1314,7 @@ step "after" true`)
 		t.Fatalf("exit %d after %s:\n%s", code, time.Since(start), out)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "timeout: "+limit, "  FAIL  slow (timeout: Timeout "+limit+" reached)", "  STOP  timeout: the round's Timeout ("+limit+") ran out", "== END FAIL")
+	contains(t, "lane1.log", log, "timeout: "+limit, "  FAIL  slow (timeout: Timeout "+limit+" reached)", "  STOP  timeout: the round's Timeout ("+limit+") ran out", "== END FAIL")
 	if strings.Contains(log, "PASS  after") {
 		t.Error("a step ran after the timeout")
 	}
@@ -1341,13 +1341,13 @@ func TestRunID(t *testing.T) {
 	if m1[2] != "1 2 3 4" {
 		t.Errorf("SWIM_RUN_LANES = %q (skipped lanes are part of the selection)", m1[2])
 	}
-	contains(t, "agent1.log", r.log(1), "   run: "+run+" | script: lane.1.sh", "== END PASS", "  run="+run)
+	contains(t, "lane1.log", r.log(1), "   run: "+run+" | script: lane.1.sh", "== END PASS", "  run="+run)
 	st := r.status()
 	if st.LastRun != run || st.Get(1).Run != run || st.Get(4).Run != run || st.Get(4).State != status.Skipped {
 		t.Errorf("status: last_run=%s lane1=%s lane4=%+v", st.LastRun, st.Get(1).Run, st.Get(4))
 	}
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	for _, ev := range []string{"run ", "start ", "pass ", "fail ", "skip ", "run-done "} {
+	for _, ev := range []string{"run ", "start ", "pass ", "fail ", "skip ", "run-end "} {
 		found := false
 		for _, line := range strings.Split(string(hist), "\n") {
 			if f := strings.Fields(line); len(f) > 2 && f[2]+" " == ev && strings.Contains(line, "run="+run) {
@@ -1361,9 +1361,9 @@ func TestRunID(t *testing.T) {
 
 	// swim log <run>: every lane's round from that run.
 	out := r.mustSwim("log", run)
-	contains(t, "log <run>", out, "==> agent1.log <==", "==> agent2.log <==", "==> agent3.log <==", "id="+run)
+	contains(t, "log <run>", out, "==> lane1.log <==", "==> lane2.log <==", "==> lane3.log <==", "id="+run)
 	// swim status --run: lanes as of that run, including the skipped one.
-	contains(t, "status --run", r.mustSwim("status", "--run", run), "run "+run, "swim 1", "PASS", "FAIL exit 1", "SKIP", "swim 3 failed")
+	contains(t, "status --run", r.mustSwim("status", "--run", run), "run "+run, "lane 1", "passed", "failed exit 1", "skipped", "lane 3 failed")
 
 	// The next run gets a new id; --run-id is honoured.
 	r.mustSwim("run", "1", "--run-id", "pipeline-12345")
@@ -1392,20 +1392,20 @@ func TestParallelLimit(t *testing.T) {
 	run := start(t, r.cmd(bin, "all", "--parallel", "3", "--plain"), nil)
 	// Three are inside their step at once, holding until released; the
 	// rest wait for a slot.
-	waitFor(t, func() bool { return inside(r) == 3 && states(r, 10)[status.Queued] == 7 })
+	waitFor(t, func() bool { return inside(r) == 3 && states(r, 10)[status.Waiting] == 7 })
 	r.release("go")
 	if code := run.wait(t); code != 0 {
 		t.Fatalf("run: exit %d\n%s", code, run.out.String())
 	}
 	noOverlaps(t, r)
 	s := run.out.String()
-	contains(t, "output", s, "queued (", "swim summary")
+	contains(t, "output", s, "waiting for a slot (", "swim summary")
 	for n := 1; n <= 10; n++ {
 		if st := r.status().Get(n).State; st != status.Passed {
-			t.Errorf("swim %d = %s", n, st)
+			t.Errorf("lane %d = %s", n, st)
 		}
 	}
-	contains(t, ".swim.log", r.mustSwim("log"), "max_parallel=3", "queued       swim ")
+	contains(t, ".swim.log", r.mustSwim("log"), "max_parallel=3", "waiting      lane ")
 
 	// Config sets the default; --parallel 0 lifts it: all ten at once.
 	cfg := filepath.Join(strings.TrimPrefix(envOf(r, "XDG_CONFIG_HOME"), ""), "swim", "config.yml")
@@ -1528,7 +1528,7 @@ func TestResourceLocksWithinARun(t *testing.T) {
 
 	run := start(t, r.cmd(bin, "all", "--plain"), nil)
 	// One holds the lock; the other waits for it.
-	waitFor(t, func() bool { return inside(r) == 1 && states(r, 2)[status.Locked] == 1 })
+	waitFor(t, func() bool { return inside(r) == 1 && states(r, 2)[status.Waiting] == 1 })
 	r.release("go")
 	run.wait(t)
 	out := run.out.String()
@@ -1537,8 +1537,8 @@ func TestResourceLocksWithinARun(t *testing.T) {
 	if st := r.status(); st.Get(1).State != status.Failed || st.Get(2).State != status.Passed {
 		t.Fatalf("states: 1=%s 2=%s\n%s", st.Get(1).State, st.Get(2).State, out)
 	}
-	contains(t, "output", out, "waiting for lock orders-table: swim ")
-	contains(t, ".swim.log", r.mustSwim("log"), "locked       swim ")
+	contains(t, "output", out, "waiting for lock orders-table: lane ")
+	contains(t, ".swim.log", r.mustSwim("log"), "waiting      lane ")
 
 	// Locks {a}, {a,b}, {b}: no deadlock; sharers never overlap.
 	r2 := newRepo(t)
@@ -1549,16 +1549,16 @@ func TestResourceLocksWithinARun(t *testing.T) {
 	run2 := start(t, r2.cmd(bin, "all", "--plain"), nil)
 	// Some lanes hold their locks, the rest wait: never all three locked
 	// out (a deadlock), never 2 beside 1 or 3.
-	waitFor(t, func() bool { in := inside(r2); return in >= 1 && in+states(r2, 3)[status.Locked] == 3 })
+	waitFor(t, func() bool { in := inside(r2); return in >= 1 && in+states(r2, 3)[status.Waiting] == 3 })
 	r2.release("go")
 	run2.wait(t) // a deadlock never ends: it fails at the deadline
 	noOverlaps(t, r2)
 	for n := 1; n <= 3; n++ {
 		if st := r2.status().Get(n).State; st != status.Passed {
-			t.Errorf("swim %d = %s", n, st)
+			t.Errorf("lane %d = %s", n, st)
 		}
 	}
-	if out, _ := r2.swim("status"); strings.Contains(out, "held by") {
+	if out, _ := r2.swim("status"); strings.Contains(out, "lock tf/orders: ") {
 		t.Errorf("locks still held after the run:\n%s", out)
 	}
 }
@@ -1578,9 +1578,9 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { return laneOf(r, 1).State == status.Running })
-	contains(t, "status while held", r.mustSwim("status"), "lock tf/orders held by swim 1", "locks: tf/orders")
+	contains(t, "status while held", r.mustSwim("status"), "lock tf/orders: lane 1", "locks: tf/orders")
 	b := start(t, r.cmd(bin, "run", "2", "--plain"), nil)
-	b.saw(t, "waiting for lock tf/orders: another run, swim 1")
+	b.saw(t, "waiting for lock tf/orders: another run, lane 1")
 	r.release("go")
 	code := b.wait(t)
 	a.Wait()
@@ -1601,7 +1601,7 @@ func TestResourceLocksAcrossRuns(t *testing.T) {
 	syscall.Kill(-k.Process.Pid, syscall.SIGKILL)
 	k.Wait()
 	// The launcher held the lock; it's gone, so the kernel let go of it.
-	if st := r.mustSwim("status"); strings.Contains(st, "held by") {
+	if st := r.mustSwim("status"); strings.Contains(st, "lock tf/orders: ") {
 		t.Fatalf("lock left behind by a killed run:\n%s", st)
 	}
 	if out, err := r.cmd(bin, "run", "2", "--plain").CombinedOutput(); err != nil {
@@ -1614,7 +1614,7 @@ func TestBadLockNameWarns(t *testing.T) {
 	r.script(1, "bad lock", `step "x" true`)
 	withLocks(t, r, 1, "ok-name, bad*name")
 	r.mustSwim("run", "1")
-	contains(t, "agent1.log", r.log(1), `WARN  Locks: "bad*name" is not a lock name`)
+	contains(t, "lane1.log", r.log(1), `WARN  Locks: "bad*name" is not a lock name`)
 }
 
 func TestStepTimeoutAndRetry(t *testing.T) {
@@ -1632,7 +1632,7 @@ step "after" true`)
 		t.Fatalf("step limit didn't stop the step promptly: %s", took)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log,
+	contains(t, "lane1.log", log,
 		"  FAIL  slow (timeout: step limit "+limit+")",
 		"the step's time limit ("+limit+") ran out",
 		"  PASS  flaky (attempt 2/3)",
@@ -1657,7 +1657,7 @@ step --timeout 0 "unlimited" sleep `+fmt.Sprint(scaled(1500*time.Millisecond).Se
 	data, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(data), "# Round: default limit\n", "# Round: default limit\n# Step-Timeout: "+limit+"\n", 1)), 0o755)
 	r.swim("run", "2", "--plain")
-	contains(t, "agent2.log", r.log(2), "step-timeout: "+limit, "  FAIL  limited (timeout: step limit "+limit+")", "  PASS  unlimited")
+	contains(t, "lane2.log", r.log(2), "step-timeout: "+limit, "  FAIL  limited (timeout: step limit "+limit+")", "  PASS  unlimited")
 }
 
 func TestRetryRespectsRoundDeadline(t *testing.T) {
@@ -1674,7 +1674,7 @@ step "after" true`)
 		t.Fatalf("retries ran past the round's deadline: %s", took)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "no retry: the round's Timeout "+limit+" would pass first", "  FAIL  keeps failing (timeout: Timeout "+limit+" reached, attempt ", "  STOP  timeout: the round's Timeout ("+limit+") ran out")
+	contains(t, "lane1.log", log, "no retry: the round's Timeout "+limit+" would pass first", "  FAIL  keeps failing (timeout: Timeout "+limit+" reached, attempt ", "  STOP  timeout: the round's Timeout ("+limit+") ran out")
 	if strings.Contains(log, "PASS  after") {
 		t.Error("the round continued after its timeout")
 	}
@@ -1690,7 +1690,7 @@ step "never" true`)
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool {
-		data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", "agent1.log.partial"))
+		data, _ := os.ReadFile(filepath.Join(r.root, ".swim", "logs", "lane1.log.partial"))
 		return strings.Contains(string(data), "retry in")
 	})
 	start := time.Now()
@@ -1700,7 +1700,7 @@ step "never" true`)
 		t.Fatalf("Ctrl-C during backoff took %s", took)
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "interrupted while waiting to retry", "== END INTERRUPTED")
+	contains(t, "lane1.log", log, "interrupted while waiting to retry", "== END INTERRUPTED")
 	if strings.Contains(log, "never") {
 		t.Error("the round continued after Ctrl-C")
 	}
@@ -1734,7 +1734,7 @@ step "publish" make publish`)
 	if code == 0 {
 		t.Fatalf("blocked lane passed:\n%s", out)
 	}
-	contains(t, "summary", out, `blocked: lane.1.sh:7 matches "make publish"`, "[2] SKIP (swim 1 failed)")
+	contains(t, "summary", out, `blocked: lane.1.sh:7 matches "make publish"`, "[2] skipped (lane 1 failed)")
 	// A refused lane doesn't start: its log's one round is the refusal,
 	// with no step.
 	if log := r.log(1); strings.Count(log, "== ROUND ") != 1 || !strings.Contains(log, `STOP  not started: blocked: lane.1.sh:7 matches "make publish"`) || strings.Contains(log, "PASS  ") {
@@ -1753,7 +1753,7 @@ step "builds a destroy" bash -c "$CMD"
 step "never" true`)
 	r.swim("run", "3", "--plain")
 	log := r.log(3)
-	contains(t, "agent3.log", log, `  BLOCKED  builds a destroy (matched "terraform destroy"; blocked_commands)`, "  STOP  blocked command: builds a destroy", "== END FAIL", "exit=1")
+	contains(t, "lane3.log", log, `  BLOCKED  builds a destroy (matched "terraform destroy"; blocked_commands)`, "  STOP  blocked command: builds a destroy", "== END FAIL", "exit=1")
 	if strings.Contains(log, "PASS  never") {
 		t.Errorf("the round continued after a blocked command:\n%s", log)
 	}
@@ -1768,7 +1768,7 @@ step "commit" git -C "$SWIM_ROOT" commit -q --allow-empty -m one
 git -C "$SWIM_ROOT" commit -q --allow-empty -m two
 step "after" true`)
 	out4, _ := r.swim("run", "4", "--plain")
-	contains(t, "agent4.log", r.log(4), "  PASS  commit", "  PASS  after", "== END PASS")
+	contains(t, "lane4.log", r.log(4), "  PASS  commit", "  PASS  after", "== END PASS")
 	if head() == before {
 		t.Errorf("the lane's commits didn't land:\n%s", out4)
 	}
@@ -1824,7 +1824,7 @@ summary`)
 		})
 	}
 	log := r.log(1)
-	contains(t, "agent1.log", log, "masked: ", "GITHUB_TOKEN", "DD_KEY", "env: GITHUB_TOKEN=***(len 19)", "        | token=***", "  FAIL  fail with *** in the label", "reason mentions ***")
+	contains(t, "lane1.log", log, "masked: ", "GITHUB_TOKEN", "DD_KEY", "env: GITHUB_TOKEN=***(len 19)", "        | token=***", "  FAIL  fail with *** in the label", "reason mentions ***")
 	contains(t, ".swim.log", r.mustSwim("log"), "the token is ***")
 }
 
@@ -1913,17 +1913,17 @@ func TestYAMLOutput(t *testing.T) {
 		s, ok1 := pos[fmt.Sprintf("start %d", n)]
 		f, ok2 := pos[fmt.Sprintf("finish %d", n)]
 		if !ok1 || !ok2 || s > f {
-			t.Errorf("swim %d: start %d finish %d", n, s, f)
+			t.Errorf("lane %d: start %d finish %d", n, s, f)
 		}
 	}
 	if pos["start 2"] < pos["finish 1"] || pos["start 4"] < pos["finish 1"] {
 		t.Errorf("children started before their parent finished: %v", pos)
 	}
 	if _, ok := pos["start 3"]; ok {
-		t.Errorf("swim 3 should never start")
+		t.Errorf("lane 3 should never start")
 	}
 	if _, ok := pos["step 2"]; !ok {
-		t.Errorf("no step events for swim 2")
+		t.Errorf("no step events for lane 2")
 	}
 	if strings.Contains(errOut.String(), "swim summary") || strings.Contains(out.String(), "hi there") {
 		t.Errorf("no table or lane output without --yaml-output:\n%s\n%s", out.String(), errOut.String())
@@ -1936,7 +1936,7 @@ func TestYAMLOutput(t *testing.T) {
 	}
 	for _, l := range summary.Lanes {
 		if got := st.Get(l.Lane).State; got != l.Result {
-			t.Errorf("swim %d: summary %s, status.yml %s", l.Lane, l.Result, got)
+			t.Errorf("lane %d: summary %s, status.yml %s", l.Lane, l.Result, got)
 		}
 	}
 
@@ -1972,31 +1972,31 @@ func TestArchiveSeveralLanes(t *testing.T) {
 	r := newRepo(t)
 	for n := 1; n <= 3; n++ {
 		r.script(n, fmt.Sprintf("round %d", n), `step "a" true`)
-		withHeader(t, r, n, fmt.Sprintf("# Job: aaaa000%d-1111-4222-8333-444455556666", n))
+		withHeader(t, r, n, fmt.Sprintf("# Round-ID: aaaa000%d-1111-4222-8333-444455556666", n))
 	}
 	r.mustSwim("all")
 	out := r.mustSwim("archive", "1", "2", "3")
 	for n := 1; n <= 3; n++ {
-		contains(t, "archive", out, fmt.Sprintf("agent%d.log -> .swim/logs/agent%d.prev-aaaa000%d-1111-4222-8333-444455556666.log", n, n, n))
-		if st := r.status().Get(n); st.State != status.Idle || !strings.HasPrefix(st.LastArchive, fmt.Sprintf("agent%d.prev-", n)) {
-			t.Errorf("swim %d after archive: %+v", n, st)
+		contains(t, "archive", out, fmt.Sprintf("lane%d.log -> .swim/logs/lane%d.prev-aaaa000%d-1111-4222-8333-444455556666.log", n, n, n))
+		if st := r.status().Get(n); st.State != status.Empty || !strings.HasPrefix(st.LastArchive, fmt.Sprintf("lane%d.prev-", n)) {
+			t.Errorf("lane %d after archive: %+v", n, st)
 		}
 	}
 	// --as names every lane's archive; all or nothing when one can't be archived.
 	for n := 1; n <= 3; n++ {
 		r.script(n, fmt.Sprintf("round %d", n), `step "a" true`)
-		withHeader(t, r, n, fmt.Sprintf("# Job: aaaa000%d-1111-4222-8333-444455556666", n))
+		withHeader(t, r, n, fmt.Sprintf("# Round-ID: aaaa000%d-1111-4222-8333-444455556666", n))
 	}
 	r.mustSwim("all")
-	if out, code := r.swim("archive", "1", "2", "4", "--as", "batch"); code == 0 || !strings.Contains(out, "nothing archived") || !strings.Contains(out, "swim 4 has nothing to archive") {
+	if out, code := r.swim("archive", "1", "2", "4", "--as", "batch"); code == 0 || !strings.Contains(out, "nothing archived") || !strings.Contains(out, "lane 4 has nothing to archive") {
 		t.Fatalf("a lane without a log: %d %s", code, out)
 	}
-	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "agent1.log")); err != nil {
+	if _, err := os.Stat(filepath.Join(r.root, ".swim", "logs", "lane1.log")); err != nil {
 		t.Fatal("lane 1 was archived although lane 4 couldn't be")
 	}
-	contains(t, "--as", r.mustSwim("archive", "1", "2", "--as", "batch"), "agent1.prev-batch.log", "agent2.prev-batch.log")
+	contains(t, "--as", r.mustSwim("archive", "1", "2", "--as", "batch"), "lane1.prev-batch.log", "lane2.prev-batch.log")
 	// A job id is a lane too, and the words after the lanes are the note.
-	contains(t, "job id + note", r.mustSwim("archive", "aaaa0003", "cut", "over", "--as", "third"), "agent3.prev-third.log")
+	contains(t, "job id + note", r.mustSwim("archive", "aaaa0003", "cut", "over", "--as", "third"), "lane3.prev-third.log")
 	contains(t, "note", readFile(t, r, "lane.3.sh"), "# swim:stub", "cut over")
 }
 

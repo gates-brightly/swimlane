@@ -68,7 +68,7 @@ func IsScriptLine(line string) bool {
 
 // LogHeader is the first line of a lane log for lane n.
 func LogHeader(n int) string {
-	return fmt.Sprintf("# swim log | syntax %d | swim %d", Version, n)
+	return fmt.Sprintf("# swim log | syntax %d | lane %d", Version, n)
 }
 
 // IsLogHeader reports whether line is a lane log's first line (the current
@@ -147,7 +147,7 @@ func Check(file string, got int) error {
 }
 
 // CheckRepo returns ErrTooNew for the first lane script (lane.N.sh) or
-// lane log (.swim/logs/agentN*.log) under root that's newer than this swim
+// lane log (.swim/logs/laneN*.log) under root that's newer than this swim
 // reads.
 func CheckRepo(root string) error {
 	scripts, _ := filepath.Glob(filepath.Join(root, "lane.*.sh"))
@@ -160,7 +160,7 @@ func CheckRepo(root string) error {
 			return err
 		}
 	}
-	logs, _ := filepath.Glob(filepath.Join(root, ".swim", "logs", "agent*.log"))
+	logs, _ := filepath.Glob(filepath.Join(root, ".swim", "logs", "lane*.log"))
 	for _, p := range logs {
 		rel, _ := filepath.Rel(root, p)
 		if err := Check(rel, OfLogFile(p)); err != nil {

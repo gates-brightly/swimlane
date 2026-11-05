@@ -28,7 +28,7 @@ func BlockedLanes(root string, cfg *config.Config, sel []int) map[int]string {
 }
 
 // blockedIn is why lane n's script at path (the working tree's, or its
-// staged copy) is refused for a blocked command; "" if it isn't.
+// pinned copy) is refused for a blocked command; "" if it isn't.
 func blockedIn(root string, cfg *config.Config, n int, path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil || lane.IsBinary(data) {

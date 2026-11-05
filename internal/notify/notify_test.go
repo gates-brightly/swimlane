@@ -8,8 +8,8 @@ import (
 func TestNotify(t *testing.T) {
 	var b bytes.Buffer
 	n := New(&b)
-	n.Notify("swimlane · batch #12 passed", "swim 1,2 · 4m12s")
-	if got, want := b.String(), "\x1b]777;notify;swimlane · batch #12 passed;swim 1,2 · 4m12s\x07"; got != want {
+	n.Notify("swimlane · batch #12 passed", "lane 1,2 · 4m12s")
+	if got, want := b.String(), "\x1b]777;notify;swimlane · batch #12 passed;lane 1,2 · 4m12s\x07"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 	// A lane's text can't end the sequence or start another; the title

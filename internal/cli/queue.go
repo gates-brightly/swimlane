@@ -58,7 +58,7 @@ func cmdQueue(args []string) error {
 	return usagef("usage: swim queue [list|add|show|rm|requeue] (swim queue --help)")
 }
 
-// queueAdd queues a batch: the named lanes (or every pending round that
+// queueAdd queues a batch: the named lanes (or every ready round that
 // hasn't passed), pinned to the jobs they hold now, with approvals.
 func queueAdd(args []string) error {
 	var approve []string
@@ -101,7 +101,7 @@ func queueAdd(args []string) error {
 		}
 	}
 	if len(lanes) == 0 {
-		return fmt.Errorf("nothing to queue: no lane holds a pending round that hasn't passed (name lanes to queue them anyway)")
+		return fmt.Errorf("nothing to queue: no lane holds a ready round that hasn't passed (name lanes to queue them anyway)")
 	}
 	o := queueOpts{approve: approve, note: note}
 	if parallel != "" {
@@ -153,14 +153,14 @@ func queueAdd(args []string) error {
 		if asker != nil {
 			fmt.Println("  not approved yet: " + strings.Join(unapproved, ", ") + " (the operator is asked on the screen of " + asker.Name() + ")")
 		} else {
-			fmt.Println("  not approved (dry runs unless approved; no swimmer up asks for them): " + strings.Join(unapproved, ", "))
+			fmt.Println("  not approved (dry runs unless approved; no watcher up asks for them): " + strings.Join(unapproved, ", "))
 		}
 	}
 	if len(e.Approve) == 0 && asker == nil {
 		warnUnapproved(root, e)
 	}
 	if why := launcher.Busy(root, cfg); why != "" {
-		fmt.Printf("  runs when swim is idle (now: %s) and a swimmer is up: swim watch\n", why)
+		fmt.Printf("  runs when nothing else runs (now: %s) and a watcher is up: swim watch\n", why)
 	} else {
 		fmt.Println("  runs when swim watch takes it (swim watch --once runs what's queued, then exits)")
 	}
@@ -243,10 +243,10 @@ func waitTargetFor(root string, cfg *config.Config, ref string) (waitTarget, err
 	if n, err := laneRef(root, cfg, ref, true); err == nil {
 		return laneTarget(root, n), nil
 	}
-	return nil, fmt.Errorf("%q is no lane, queued batch, job or swim run (swim queue --all lists batches; swim status, lanes)", ref)
+	return nil, fmt.Errorf("%q is no lane, queued batch, round id or swim run (swim queue --all lists batches; swim status, lanes)", ref)
 }
 
-// batchTarget waits on the batch ref names. A batch whose swimmer died
+// batchTarget waits on the batch ref names. A batch whose watcher died
 // (orphaned) has ended too: it never runs on its own.
 func batchTarget(root, ref string) waitTarget {
 	return func() (*waitEnd, string, error) {
@@ -260,13 +260,13 @@ func batchTarget(root, ref string) waitTarget {
 			if e.Result != nil {
 				result = e.Result.Result
 			}
-			line := fmt.Sprintf("%s (#%d): %s · swim %s", e.ID, e.Seq, result, joinLanes(e))
+			line := fmt.Sprintf("%s (#%d): %s · lane %s", e.ID, e.Seq, result, joinLanes(e))
 			if result == queue.Orphaned {
-				line += " (its swimmer is gone; swim queue requeue " + e.ID + " runs it again)"
+				line += " (its watcher is gone; swim queue requeue " + e.ID + " runs it again)"
 			}
 			return &waitEnd{result, line}, "", nil
 		case e.State == queue.Queued:
-			return nil, fmt.Sprintf("#%d queued (not yet taken by a swimmer: swim watch)", e.Seq), nil
+			return nil, fmt.Sprintf("#%d queued (not yet taken by a watcher: swim watch)", e.Seq), nil
 		}
 		return nil, fmt.Sprintf("#%d %s", e.Seq, e.State), nil
 	}
@@ -286,23 +286,23 @@ func joinLanes(e *queue.Entry) string {
 func laneTarget(root string, n int) waitTarget {
 	return func() (*waitEnd, string, error) {
 		if _, running := lane.Running(root, n); running {
-			return nil, fmt.Sprintf("swim %d running", n), nil
+			return nil, fmt.Sprintf("lane %d running", n), nil
 		}
 		if laneWaiting(root, n) {
-			return nil, fmt.Sprintf("swim %d waiting to start", n), nil
+			return nil, fmt.Sprintf("lane %d waiting to start", n), nil
 		}
 		rounds, err := splitRounds(lane.Log(root, n))
 		if err != nil {
 			return nil, "", err
 		}
 		if len(rounds) == 0 {
-			return nil, fmt.Sprintf("swim %d has no round yet", n), nil
+			return nil, fmt.Sprintf("lane %d has no round yet", n), nil
 		}
 		result := "stopped without finishing its round (no END in its log)"
 		if st, ok := roundEnd(rounds[len(rounds)-1]); ok {
 			result = st
 		}
-		return &waitEnd{result, fmt.Sprintf("swim %d: %s", n, result)}, "", nil
+		return &waitEnd{result, fmt.Sprintf("lane %d: %s", n, result)}, "", nil
 	}
 }
 
@@ -381,12 +381,12 @@ func runTarget(root string, cfg *config.Config, id string) waitTarget {
 			}
 		}
 		if len(active) > 0 {
-			return nil, fmt.Sprintf("run %s: swim %s", id, strings.Join(active, ",")), nil
+			return nil, fmt.Sprintf("run %s: lane %s", id, strings.Join(active, ",")), nil
 		}
 		if len(lanes) == 0 {
 			return nil, "", fmt.Errorf("run %s left no round in any lane's current log", id)
 		}
-		return &waitEnd{result, fmt.Sprintf("%s: %s · swim %s", id, result, strings.Join(lanes, ","))}, "", nil
+		return &waitEnd{result, fmt.Sprintf("%s: %s · lane %s", id, result, strings.Join(lanes, ","))}, "", nil
 	}
 }
 
@@ -410,7 +410,7 @@ func findBatch(root, ref string) (*queue.Entry, error) {
 		}
 	}
 	if newest == nil {
-		return nil, fmt.Errorf("no queue entry or queued job %q (swim queue --all lists them)", ref)
+		return nil, fmt.Errorf("no queue entry or queued round %q (swim queue --all lists them)", ref)
 	}
 	return newest, nil
 }
@@ -447,7 +447,7 @@ type queueOpts struct {
 	parallel *int
 }
 
-// askingSwimmer is the first of the live swimmers whose screen asks the
+// askingSwimmer is the first of the live watchers whose screen asks the
 // operator for the batches' guards (nil for none): with one,
 // a batch's unapproved guards are asked, not dry runs.
 func askingSwimmer(live []*queue.Presence) *queue.Presence {
@@ -460,7 +460,7 @@ func askingSwimmer(live []*queue.Presence) *queue.Presence {
 }
 
 // warnUnapproved says, on stderr, which lanes of a batch that approves
-// nothing will dry-run their guards when no swimmer up asks for them: a
+// nothing will dry-run their guards when no watcher up asks for them: a
 // round that "passes" while changing nothing is easy to miss in the
 // listing above. It warns rather than refuses: queuing a guarded round
 // unapproved, for the operator to decide, is how a planner hands one over.
@@ -479,12 +479,12 @@ func warnUnapproved(root string, e *queue.Entry) {
 		if first == "" {
 			first, firstFlag = strconv.Itoa(l.Lane), flags[0]
 		}
-		lines = append(lines, fmt.Sprintf("  swim %d  %s", l.Lane, strings.Join(flags, ", ")))
+		lines = append(lines, fmt.Sprintf("  lane %d  %s", l.Lane, strings.Join(flags, ", ")))
 	}
 	if len(lines) == 0 {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "swim queue: warning: #%d approves no guards and no swimmer up asks for them, so these dry-run if it runs before one does:\n%s\n", e.Seq, strings.Join(lines, "\n"))
+	fmt.Fprintf(os.Stderr, "swim queue: warning: #%d approves no guards and no watcher up asks for them, so these dry-run if it runs before one does:\n%s\n", e.Seq, strings.Join(lines, "\n"))
 	fmt.Fprintf(os.Stderr, "  the operator decides: swim watch on a terminal asks on its screen; or swim queue %s --approve %s (each flag)\n", first, firstFlag)
 }
 
@@ -494,7 +494,7 @@ type batch struct {
 	entry  *queue.Entry
 	guards map[string]bool
 	warn   string
-	// asker is a swimmer up as it was queued whose screen asks the
+	// asker is a watcher up as it was queued whose screen asks the
 	// operator for its guards (nil for none).
 	asker *queue.Presence
 }
@@ -505,7 +505,7 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	e := &queue.Entry{By: operator(), Note: o.note, Parallel: o.parallel}
 	b := batch{entry: e}
 	// What swim run would refuse is refused now, while whoever queues it
-	// can fix it, not later, when the operator's swimmer runs it.
+	// can fix it, not later, when the operator's watcher runs it.
 	if err := queueLint(root, cfg, lanes); err != nil {
 		return b, err
 	}
@@ -541,7 +541,7 @@ func addBatch(root string, cfg *config.Config, lanes []int, o queueOpts) (batch,
 	for _, l := range e.Lanes {
 		ns = append(ns, strconv.Itoa(l.Lane))
 	}
-	detail := fmt.Sprintf("%s: swim %s", e.ID, strings.Join(ns, ","))
+	detail := fmt.Sprintf("%s: lane %s", e.ID, strings.Join(ns, ","))
 	if len(e.Approve) > 0 {
 		detail += "  approve=" + strings.Join(e.Approve, ",")
 	}
@@ -593,7 +593,7 @@ func pinLane(root string, cfg *config.Config, n int) (queue.Lane, lane.Info, err
 		return queue.Lane{}, info, err
 	}
 	if !info.Pending() {
-		return queue.Lane{}, info, fmt.Errorf("swim %d holds no pending round (a stub, or no Round: line); write one before queueing it", n)
+		return queue.Lane{}, info, fmt.Errorf("lane %d holds no round (it is empty: a stub, or no Round: line); write one before queueing it", n)
 	}
 	data, err := lane.ScriptBytes(root, n)
 	if err != nil {
@@ -697,7 +697,7 @@ func waitIdle(root string, every, limit time.Duration) error {
 			}
 		}
 		if why == "" {
-			s.say("idle")
+			s.say("nothing running")
 			return nil
 		}
 		if limit > 0 && time.Since(start) >= limit {
@@ -757,13 +757,17 @@ func queueList(args []string) error {
 		}
 		var rows []row
 		for _, e := range entries {
-			rows = append(rows, row{e, e.State})
+			state := e.State
+			if state == queue.Done && e.Result != nil {
+				state = e.Result.Result // an ended batch: how it ended
+			}
+			rows = append(rows, row{e, state})
 		}
 		return yaml.NewEncoder(os.Stdout).Encode(map[string]any{"schema": "swim.queue-list/v1", "entries": rows})
 	}
 	p := ui.Painter{On: ui.ColorEnabled(os.Stdout)}
 	if len(entries) == 0 {
-		fmt.Println("queue is empty. Queue a batch: swim queue N|JOB ... [--approve FLAG]")
+		fmt.Println("queue is empty. Queue a batch: swim queue N|ROUND-ID ... [--approve FLAG]")
 		return nil
 	}
 	held := heldReasons(root)
@@ -779,13 +783,13 @@ func queueList(args []string) error {
 			if e.Worker.Remote() {
 				state = fmt.Sprintf("running (pid %d on %s)", e.Worker.PID, e.Worker.Host)
 				if e.Worker.Heartbeat == "" {
-					state = fmt.Sprintf("running? (pid %d on %s; an older swimmer with no heartbeat: can't tell)", e.Worker.PID, e.Worker.Host)
+					state = fmt.Sprintf("running? (pid %d on %s; an older watcher with no heartbeat: can't tell)", e.Worker.PID, e.Worker.Host)
 				}
 			}
 		case queue.Orphaned:
-			state, color = "orphaned: its swimmer is gone (swim queue requeue "+strconv.Itoa(e.Seq)+")", ui.Red
+			state, color = "orphaned: its watcher is gone (swim queue requeue "+strconv.Itoa(e.Seq)+")", ui.Red
 		case queue.Done:
-			state, color = "done: "+e.Result.Result, ui.StateColor(e.Result.Result)
+			state, color = e.Result.Result, ui.StateColor(e.Result.Result)
 		case queue.Queued:
 			color = ui.Yellow
 		}
@@ -793,7 +797,7 @@ func queueList(args []string) error {
 		if len(e.Approve) > 0 {
 			appr = "  approve " + strings.Join(e.Approve, ",")
 		}
-		fmt.Printf("#%-3d %s  %s  swim %s%s  %s\n", e.Seq, e.ID, p.Paint(color, state), strings.Join(ns, ","), appr, p.Paint(ui.Dim, e.Note))
+		fmt.Printf("#%-3d %s  %s  lane %s%s  %s\n", e.Seq, e.ID, p.Paint(color, state), strings.Join(ns, ","), appr, p.Paint(ui.Dim, e.Note))
 		if why := held[e.ID]; why != "" && e.State == queue.Queued {
 			fmt.Println("     " + p.Paint(ui.Red, "left queued: "+why))
 		}
@@ -973,7 +977,7 @@ func cmdWatch(args []string) error {
 	}
 	say := func(msg string) {
 		if view != nil {
-			view.activity = "swimmer: " + msg
+			view.activity = "watcher: " + msg
 			return
 		}
 		s.say(msg)
@@ -1014,7 +1018,7 @@ func cmdWatch(args []string) error {
 			return err
 		}
 		if why := launcher.Busy(root, cfg); why != "" {
-			say(fmt.Sprintf("%d queued; waiting for swim to be idle: %s", n, why))
+			say(fmt.Sprintf("%d queued; waiting for the running lanes to end: %s", n, why))
 			sleep()
 			continue
 		}
@@ -1023,7 +1027,7 @@ func cmdWatch(args []string) error {
 			return err
 		}
 		if !ok {
-			say(fmt.Sprintf("%d queued; another swimmer is running a batch", n))
+			say(fmt.Sprintf("%d queued; another watcher is running a batch", n))
 			sleep()
 			continue
 		}
@@ -1097,9 +1101,9 @@ func heartbeatClaim(e *queue.Entry) (stop func()) {
 				switch {
 				case errors.Is(err, queue.ErrClaimLost):
 					// Requeued or removed from another host: another
-					// swimmer may run it now. Stop this run, as Ctrl-C
+					// watcher may run it now. Stop this run, as Ctrl-C
 					// would (lanes stop at their next step boundary).
-					fmt.Fprintln(os.Stderr, "swim watch: "+err.Error()+": stopping this batch (another swimmer may run it)")
+					fmt.Fprintln(os.Stderr, "swim watch: "+err.Error()+": stopping this batch (another watcher may run it)")
 					syscall.Kill(os.Getpid(), syscall.SIGINT)
 					return
 				case err != nil:
@@ -1205,9 +1209,9 @@ func runEntry(root string, cfg *config.Config, e *queue.Entry, keys, plain bool,
 	for _, n := range lanes {
 		ns = append(ns, strconv.Itoa(n))
 	}
-	detail := fmt.Sprintf("%s: swim %s  queued by %s", e.ID, strings.Join(ns, ","), e.By)
+	detail := fmt.Sprintf("%s: lane %s  queued by %s", e.ID, strings.Join(ns, ","), e.By)
 	history.Log(root, history.Entry{Event: history.QueueRun, Run: o.RunID, Detail: detail})
-	fmt.Printf("\nswim watch: running %s (#%d, queued by %s): swim %s\n", e.ID, e.Seq, e.By, strings.Join(ns, " "))
+	fmt.Printf("\nswim watch: running %s (#%d, queued by %s): lane %s\n", e.ID, e.Seq, e.By, strings.Join(ns, " "))
 
 	head := signoffHead(root)
 	code, err := launcher.Run(o)
@@ -1285,7 +1289,7 @@ func refusedDeps(root string, cfg *config.Config, lanes []int) string {
 			}
 			seen[d.Lane] = true
 			if why := lintRefusal(root, d.Lane); why != "" {
-				warns = append(warns, fmt.Sprintf("swim %d waits on swim %d, which swim lint refuses (%s): it can't pass, so swim %d will skip; fix swim %d first", n, d.Lane, why, n, d.Lane))
+				warns = append(warns, fmt.Sprintf("lane %d waits on lane %d, which swim lint refuses (%s): it can't pass, so lane %d will skip; fix lane %d first", n, d.Lane, why, n, d.Lane))
 			}
 		}
 	}

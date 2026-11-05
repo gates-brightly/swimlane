@@ -31,7 +31,7 @@ the run and `auto` records it unsigned.
 
 Each entry is synced as written. A write cut short leaves a last line with
 no newline; swim refuses to append until `swim chain repair`. Scripts that
-ran are kept by hash in `.swim/scripts/`, staged copies in `.swim/runs/`.
+ran are kept by hash in `.swim/scripts/`, pinned copies in `.swim/runs/`.
 
 ## Verify
 
@@ -39,7 +39,7 @@ ran are kept by hash in `.swim/scripts/`, staged copies in `.swim/runs/`.
 VERIFIED: 418 entries, every one signed and linked; logs and scripts as recorded
 ```
 
-Every link and signature, and every round's log, kept script, staged copy
+Every link and signature, and every round's log, kept script, pinned copy
 and inputs, must match what's recorded: any edit, removal or reordering is
 BROKEN. Unsigned entries after the last signed one fail as UNSIGNED unless
 `--allow-unsigned`; `--strict` also fails on warnings.

@@ -123,7 +123,7 @@ func TestTooNew(t *testing.T) {
 }
 
 func TestParseEmpty(t *testing.T) {
-	r, err := ParseFile("/nonexistent/agent9.log")
+	r, err := ParseFile("/nonexistent/lane9.log")
 	if err != nil || r.Found {
 		t.Fatalf("r=%+v err=%v", r, err)
 	}

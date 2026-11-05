@@ -56,7 +56,7 @@ func short12(s string) string {
 }
 
 // checkEntries checks what each chain entry recorded against what's on
-// disk: every round's kept script, staged copy, inputs and log section,
+// disk: every round's kept script, pinned copy, inputs and log section,
 // and every signed approval's signatures. A mismatch is a break (the
 // consistent level); something gone is a warning.
 func (v *verifier) checkEntries(links []chain.Link) {
@@ -68,7 +68,7 @@ func (v *verifier) checkEntries(links []chain.Link) {
 		}
 	}()
 	runs, unattested := attestations(links)
-	// Runs swim run started (their rounds ran staged copies), and those
+	// Runs swim run started (their rounds ran pinned copies), and those
 	// that were cut short (a launcher killed before it could attest).
 	launchedRun, cutShort := map[string]bool{}, map[string]bool{}
 	// Round log sections swim prune deleted (their archived logs), and when.
@@ -111,13 +111,13 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				}
 				switch {
 				case len(listed) == 0:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: a round of swim %d in run %s, which the run's attestation (entry %s) doesn't list", l.Seq, l.Lane, l.Run, seqs(att)))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: a round of lane %d in run %s, which the run's attestation (entry %s) doesn't list", l.Seq, l.Lane, l.Run, seqs(att)))
 				case !slices.ContainsFunc(listed, ran):
 					a := listed[0]
 					if l.Script != "" && a.Scripts[key] != "" && l.Script != a.Scripts[key] {
-						v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's round in run %s names script %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Script), short12(a.Scripts[key]), a.Seq))
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: lane %d's round in run %s names script %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Script), short12(a.Scripts[key]), a.Seq))
 					} else {
-						v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's round in run %s names manifest %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Manifest), short12(a.Manifests[key]), a.Seq))
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: lane %d's round in run %s names manifest %s, but the run ran %s (entry #%d)", l.Seq, l.Lane, l.Run, short12(l.Manifest), short12(a.Manifests[key]), a.Seq))
 					}
 				}
 			}
@@ -128,7 +128,7 @@ func (v *verifier) checkEntries(links []chain.Link) {
 					v.bad = append(v.bad, fmt.Sprintf("entry #%d: the kept script %s.sh was changed", l.Seq, short12(l.Script)))
 				}
 			}
-			// The round's staged copy, while it's kept (swim doctor --fix
+			// The round's pinned copy, while it's kept (swim doctor --fix
 			// prunes old stages): its manifest and files as they ran.
 			if l.Manifest != "" {
 				if m, err := manifest.Load(manifest.Dir(root, l.Run, l.Lane)); err == nil {
@@ -137,10 +137,10 @@ func (v *verifier) checkEntries(links []chain.Link) {
 						// The lane ran again under the same run id
 						// (--run-id): the stage is the later round's.
 					case m.SHA256 != l.Manifest:
-						v.bad = append(v.bad, fmt.Sprintf("entry #%d: the staged manifest of swim %d in run %s is %s, not the %s that ran", l.Seq, l.Lane, l.Run, short12(m.SHA256), short12(l.Manifest)))
+						v.bad = append(v.bad, fmt.Sprintf("entry #%d: the staged manifest of lane %d in run %s is %s, not the %s that ran", l.Seq, l.Lane, l.Run, short12(m.SHA256), short12(l.Manifest)))
 					default:
 						if err := m.Verify(); err != nil {
-							v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's staged copy in run %s: %v", l.Seq, l.Lane, l.Run, err))
+							v.bad = append(v.bad, fmt.Sprintf("entry #%d: lane %d's pinned copy in run %s: %v", l.Seq, l.Lane, l.Run, err))
 						}
 					}
 				}
@@ -150,11 +150,11 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				// for each round: this one's must be among them.
 				switch sums := roundLogHashes(root, l.Lane, l.Run); {
 				case !sums[l.Log] && prunedAt[l.Log] != "":
-					v.notes = append(v.notes, fmt.Sprintf("entry #%d: swim %d's log for run %s was pruned on %s (swim prune): its contents can't be rechecked", l.Seq, l.Lane, l.Run, prunedAt[l.Log]))
+					v.notes = append(v.notes, fmt.Sprintf("entry #%d: lane %d's log for run %s was pruned on %s (swim prune): its contents can't be rechecked", l.Seq, l.Lane, l.Run, prunedAt[l.Log]))
 				case len(sums) == 0:
 					logsGone = append(logsGone, l.Seq) // one line for them all, below
 				case !sums[l.Log]:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d's log for run %s was changed after the round ended", l.Seq, l.Lane, l.Run))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: lane %d's log for run %s was changed after the round ended", l.Seq, l.Lane, l.Run))
 				}
 			}
 		case "secret-released":
@@ -163,7 +163,7 @@ func (v *verifier) checkEntries(links []chain.Link) {
 			for _, h := range l.Approvals {
 				listed := slices.ContainsFunc(att, func(a chain.Link) bool { return slices.Contains(a.Approvals, h) })
 				if attested && !listed {
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: secret %s released to swim %d in run %s on approval %s, which swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, l.Secret, l.Lane, l.Run, short12(h), seqs(att)))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: secret %s released to lane %d in run %s on approval %s, which swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, l.Secret, l.Lane, l.Run, short12(h), seqs(att)))
 				}
 			}
 		case "repair":
@@ -175,7 +175,7 @@ func (v *verifier) checkEntries(links []chain.Link) {
 			// launcher recorded one, as an approval: one its run's
 			// attestation doesn't list was written by someone else.
 			if !attested && launchedRun[l.Run] && !cutShort[l.Run] {
-				v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for swim %d in run %s, which swim run started but never attested: nothing vouches that swim run recorded it", l.Seq, l.Guard, l.Lane, l.Run))
+				v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for lane %d in run %s, which swim run started but never attested: nothing vouches that swim run recorded it", l.Seq, l.Guard, l.Lane, l.Run))
 			}
 			if attested {
 				var by []chain.Link
@@ -186,18 +186,18 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				}
 				switch {
 				case len(by) == 0:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for swim %d in run %s that swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, l.Guard, l.Lane, l.Run, seqs(att)))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for lane %d in run %s that swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, l.Guard, l.Lane, l.Run, seqs(att)))
 				case len(by) > 1:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for swim %d in run %s that two attestations claim (entries %s)", l.Seq, l.Guard, l.Lane, l.Run, seqs(by)))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for lane %d in run %s that two attestations claim (entries %s)", l.Seq, l.Guard, l.Lane, l.Run, seqs(by)))
 				}
 			}
 			if l.Choice < 1 || l.Choice > len(l.Choices) {
-				v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for swim %d records choice %d of %d", l.Seq, l.Guard, l.Lane, l.Choice, len(l.Choices)))
+				v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for lane %d records choice %d of %d", l.Seq, l.Guard, l.Lane, l.Choice, len(l.Choices)))
 			}
 		case "approve":
 			v.approvals++
 			if !attested && launchedRun[l.Run] && !cutShort[l.Run] {
-				v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for swim %d in run %s, which swim run started but never attested: nothing vouches that swim run recorded it", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run))
+				v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for lane %d in run %s, which swim run started but never attested: nothing vouches that swim run recorded it", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run))
 			}
 			// Under swim run only the launcher records approvals: one its
 			// run's attestation doesn't list was written by someone else (a
@@ -211,9 +211,9 @@ func (v *verifier) checkEntries(links []chain.Link) {
 				}
 				switch {
 				case len(by) == 0:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for swim %d in run %s that swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run, seqs(att)))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for lane %d in run %s that swim run didn't record (its attestation, entry %s, doesn't list it)", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run, seqs(att)))
 				case len(by) > 1:
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for swim %d in run %s that two attestations claim (entries %s): only the swim run that recorded it lists it", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run, seqs(by)))
+					v.bad = append(v.bad, fmt.Sprintf("entry #%d: an approval of %s for lane %d in run %s that two attestations claim (entries %s): only the swim run that recorded it lists it", l.Seq, or(l.Guard, "a confirm"), l.Lane, l.Run, seqs(by)))
 				}
 			}
 		}

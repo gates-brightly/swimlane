@@ -1,7 +1,7 @@
 #!/usr/bin/env swim
 # swim: syntax 4
 # Round:   CI: checks (fmt, build, vet, deadcode, lint, shell syntax)
-# Job:     5c1a0011-11a7-4c1e-8d00-000000000011
+# Round-ID:     5c1a0011-11a7-4c1e-8d00-000000000011
 # Owner:   swim CI
 # Timeout: 10m
 # Workspace: live

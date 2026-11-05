@@ -15,7 +15,7 @@ import (
 // Base is where --changed diffs from. Range is the git diff argument
 // ("A..B" style is never used: either "BASE" with HEAD, or "BASE...HEAD"
 // for a merge request's merge base). All means there is no usable base (a
-// new branch): every pending round runs.
+// new branch): every ready round runs.
 type Base struct {
 	Ref   string
 	Merge bool // diff from the merge base of Ref and HEAD (pull/merge request)
@@ -30,7 +30,7 @@ func zeroSHA(s string) bool { return s != "" && strings.Trim(s, "0") == "" }
 func FindBase(getenv func(string) string, p Provider, explicit string) (Base, error) {
 	if explicit != "" {
 		if zeroSHA(explicit) {
-			return Base{All: true, Why: "--changed base is the zero SHA (new branch): every pending round"}, nil
+			return Base{All: true, Why: "--changed base is the zero SHA (new branch): every ready round"}, nil
 		}
 		return Base{Ref: explicit, Why: "since " + explicit}, nil
 	}
@@ -43,7 +43,7 @@ func FindBase(getenv func(string) string, p Provider, explicit string) (Base, er
 		before := githubBefore(getenv("GITHUB_EVENT_PATH"))
 		switch {
 		case zeroSHA(before):
-			return Base{All: true, Why: "a new branch (no before SHA): every pending round"}, nil
+			return Base{All: true, Why: "a new branch (no before SHA): every ready round"}, nil
 		case before != "":
 			return Base{Ref: before, Why: "since the push's before SHA " + short(before)}, nil
 		}
@@ -54,7 +54,7 @@ func FindBase(getenv func(string) string, p Provider, explicit string) (Base, er
 		b := getenv("CI_COMMIT_BEFORE_SHA")
 		switch {
 		case zeroSHA(b):
-			return Base{All: true, Why: "a new branch (CI_COMMIT_BEFORE_SHA is zero): every pending round"}, nil
+			return Base{All: true, Why: "a new branch (CI_COMMIT_BEFORE_SHA is zero): every ready round"}, nil
 		case b != "":
 			return Base{Ref: b, Why: "since the push's before SHA " + short(b)}, nil
 		}

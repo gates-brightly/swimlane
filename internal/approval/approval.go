@@ -264,7 +264,7 @@ func from(conn net.Conn, c Caller) string {
 		return ""
 	}
 	if c.PID == AwaitPID {
-		return "swim " + fmt.Sprint(c.Lane) + "'s process never started"
+		return "lane " + fmt.Sprint(c.Lane) + "'s process never started"
 	}
 	ok, known := peer.FromLane(conn, c.PID)
 	switch {
@@ -272,7 +272,7 @@ func from(conn net.Conn, c Caller) string {
 		return "can't tell which process sent it"
 	case !ok:
 		p, _ := peer.PID(conn)
-		return fmt.Sprintf("it came from process %d, outside swim %d's lane (its token was used by another process)", p, c.Lane)
+		return fmt.Sprintf("it came from process %d, outside lane %d's lane (its token was used by another process)", p, c.Lane)
 	}
 	return ""
 }
@@ -295,7 +295,7 @@ func (s *Server) check(req Request) (Caller, Request, string) {
 	}
 	req.RawDesc, req.Desc = req.Desc, Clean(req.Desc)
 	if req.Lane != c.Lane {
-		req.Desc = fmt.Sprintf("%s (sent as swim %d)", req.Desc, req.Lane)
+		req.Desc = fmt.Sprintf("%s (sent as lane %d)", req.Desc, req.Lane)
 	}
 	req.Lane, req.Job, req.Manifest = c.Lane, c.Job, c.Manifest
 	// A flag the lane has set is checked against swim run's own
@@ -305,7 +305,7 @@ func (s *Server) check(req Request) (Caller, Request, string) {
 		declared = declared || g == req.Flag
 	}
 	if !declared {
-		return c, req, fmt.Sprintf("guard %s isn't declared in swim %d's script (list it in # Guards:)", req.Flag, c.Lane)
+		return c, req, fmt.Sprintf("guard %s isn't declared in lane %d's script (list it in # Guards:)", req.Flag, c.Lane)
 	}
 	return c, req, ""
 }
@@ -621,11 +621,11 @@ func Whoami(path, token string) (Response, error) {
 // approves. (The chain keeps the text as given.)
 func Question(req Request) []string {
 	flag := Clean(req.Flag)
-	who := fmt.Sprintf("swim %d", req.Lane)
+	who := fmt.Sprintf("lane %d", req.Lane)
 	q := []string{who + " requires human approval of guard " + flag}
 	var facts []string
 	if req.Job != "" {
-		facts = append(facts, "job "+req.Job)
+		facts = append(facts, "round-id "+req.Job)
 	}
 	if req.Manifest != "" {
 		facts = append(facts, "manifest "+short12(req.Manifest))

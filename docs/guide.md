@@ -40,7 +40,7 @@ swim status
 
 Each `step` is logged with its command, output, exit code and time.
 PASS means exit 0, nothing more: read the output. The snapshot lists one
-file because a round runs in a staged copy of what it pins; the repo itself
+file because a round runs in a pinned copy of what it pins; the repo itself
 is `$SWIM_ROOT`. Stages say where the round is: snapshot and check only
 read. ([lanes](reference/lanes.md), [logs](reference/logs.md))
 
@@ -94,7 +94,7 @@ ls scratch.txt 2>/dev/null || echo "scratch.txt is gone"
 swim log 2 | grep -E 'SKIP|APPROVED'
 ```
 
-Unapproved, the guarded step is a dry run and the round ends SKIP: `swim
+Unapproved, the guarded step is a dry run and the round is skipped: `swim
 run` exits 3, and a lane after it won't start. On a terminal swim asks;
 `HOUR_ALLOW_RM=1` approves up front, and the log says which.
 ([guards](reference/guards.md))
@@ -110,7 +110,7 @@ ls scratch.txt 2>/dev/null || echo "removed, approved in the queue"
 
 A queued batch's approval is pinned to exactly what will run: the script,
 the files it pins, how it runs, and the repo's policy. Change any of it
-before a swimmer takes it, and the lane is skipped
+before the watcher takes it, and the lane is skipped
 ([manifest](reference/manifest.md)):
 
 ```sh
@@ -160,7 +160,7 @@ swim queue
 ```
 
 `swim queue` pins a batch to the scripts as they are now, with any
-approvals you give it. A swimmer (`swim watch`) runs batches as their lanes
+approvals you give it. The watcher (`swim watch`) runs batches as their lanes
 come free: how a session hands work to the machine that runs it.
 ([queue](reference/queue.md))
 
@@ -169,13 +169,13 @@ come free: how a session hands work to the machine that runs it.
 ```sh
 swim log --since 1h
 swim verify --allow-unsigned
-sed 's/shipped/SHIPPED/' .swim/logs/agent4.log > edited.log    # someone edits the record
-mv edited.log .swim/logs/agent4.log
+sed 's/shipped/SHIPPED/' .swim/logs/lane4.log > edited.log    # someone edits the record
+mv edited.log .swim/logs/lane4.log
 swim verify --allow-unsigned || echo "the edit was caught"
 ```
 
 `swim log` alone is the project log, one line per action; `--since 1h`
-(or a run id or job) is what happened since then. Every round and approval is hash-linked into a chain, so
+(or a run id or round id) is what happened since then. Every round and approval is hash-linked into a chain, so
 `swim verify` catches an edit, a removal or a reorder. With a signing key
 (`swim config signing_key`), drop `--allow-unsigned`. ([chain](reference/chain.md))
 

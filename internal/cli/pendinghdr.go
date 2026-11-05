@@ -13,7 +13,7 @@ import (
 	"github.com/gates-brightly/swimlane/internal/ui"
 )
 
-// pendingHeader is what a pending round's lane script header declares
+// pendingHeader is what a ready round's lane script header declares
 // (# Key: value), with each guard decided as swim run would decide it as
 // it starts: swim status shows it under the lane, and --yaml as
 // pending_header.
@@ -28,7 +28,7 @@ type pendingHeader struct {
 	Owner    string                 `yaml:"owner,omitempty"`
 }
 
-// depDoc is where one dependency of a pending round stands (--yaml deps).
+// depDoc is where one dependency of a ready round stands (--yaml deps).
 type depDoc struct {
 	Lane  int    `yaml:"lane"`
 	Job   string `yaml:"job,omitempty"`
@@ -58,12 +58,12 @@ func newStatusView(root string, cfg *config.Config) *statusView {
 	return &statusView{root: root, cfg: cfg, snap: authority.Take(os.Environ())}
 }
 
-// pending is lane l's pending round's header and state, or nil when it
-// has none to show: no pending round, one that already passed, or a lane
+// pending is lane l's ready round's header and state, or nil when it
+// has none to show: no ready round, one that already passed, or a lane
 // live in a run now (status shows the run instead).
 func (v *statusView) pending(l *status.Lane) *pendingView {
 	switch effectiveState(l) {
-	case status.Running, status.Waiting, status.Queued, status.Locked:
+	case status.Running, status.Waiting, status.Queued:
 		return nil
 	}
 	info, err := lane.ReadScript(v.root, l.Lane)

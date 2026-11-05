@@ -164,7 +164,7 @@ func cmdStart(args []string) error {
 		return startFailed(root, cfg, n, err)
 	}
 	// Chain of custody: the exact script this round runs (the launcher's
-	// staged copy), kept by hash; and with signing: required, no round
+	// pinned copy), kept by hash; and with signing: required, no round
 	// starts unsigned.
 	m := manifest.FromEnv(n)
 	scriptSum, err := keepScript(root, n, m)
@@ -172,7 +172,7 @@ func cmdStart(args []string) error {
 		return startFailed(root, cfg, n, err)
 	}
 	if _, err := runnerKey(cfg); err != nil {
-		return startFailed(root, cfg, n, fmt.Errorf("swim %d: %w (set signing_key, or signing: auto)", n, err))
+		return startFailed(root, cfg, n, fmt.Errorf("lane %d: %w (set signing_key, or signing: auto)", n, err))
 	}
 	round := info.Round
 	if round == "" {
@@ -280,7 +280,7 @@ func cmdStart(args []string) error {
 		return startFailed(root, cfg, n, err)
 	}
 	p := painter()
-	fmt.Fprintln(os.Stderr, laneBanner(p, root, n, "")+"  "+p.Paint(ui.Bold, "Round: "+round)+"  "+p.Paint(ui.Dim, "job "+job))
+	fmt.Fprintln(os.Stderr, laneBanner(p, root, n, "")+"  "+p.Paint(ui.Bold, "Round: "+round)+"  "+p.Paint(ui.Dim, "round-id "+job))
 	for _, prob := range info.Problems {
 		fmt.Fprintln(os.Stderr, p.Paint(ui.Yellow, "WARN  "+prob))
 	}
@@ -295,7 +295,7 @@ func cmdStart(args []string) error {
 	}
 	// stdout carries "<job> <deadline epoch or 0> <run> <step timeout or 0>
 	// <fail mode> <start, Unix ms> <timeout>" back to lane_init, which
-	// exports SWIM_JOB, SWIM_DEADLINE, SWIM_RUN, SWIM_STEP_TIMEOUT,
+	// exports SWIM_ROUND_ID, SWIM_DEADLINE, SWIM_RUN, SWIM_STEP_TIMEOUT,
 	// SWIM_FAIL_MODE, SWIM_STARTED and SWIM_TIMEOUT. SWIM_STARTED times the
 	// round to the tenth (the log's ROUND time is whole seconds).
 	defer fmt.Printf("%s %d %s %s %s %d %s\n", job, deadline, run, stepTimeout, failMode, now.UnixMilli(), timeoutText)
@@ -474,7 +474,7 @@ func cmdFinish(args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d%s  %s\n",
 		laneBanner(p, root, n, " summary:"),
-		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, exit, display.Span(now.Add(-dur), now))
+		p.Paint(ui.StateColor(state)+ui.Bold, state), r.Pass, r.Fail, r.Skip, exit, display.Span(now.Add(-dur), now))
 	// In a run of several lanes this one line is the lane's: the run's
 	// summary table, last, says each lane's failures once.
 	full := len(strings.Fields(os.Getenv("SWIM_RUN_LANES"))) <= 1
@@ -687,7 +687,7 @@ func cmdMark(args []string) error {
 		if k, _ := runnerKey(cfg); k != nil {
 			approver.Key = k.Public
 		}
-		if err := record(root, cfg, chain.Entry{Type: "approve", Run: os.Getenv("SWIM_RUN"), Lane: n, Job: os.Getenv("SWIM_JOB"),
+		if err := record(root, cfg, chain.Entry{Type: "approve", Run: os.Getenv("SWIM_RUN"), Lane: n, Job: os.Getenv("SWIM_ROUND_ID"),
 			Script: scriptSHA(root, n), Guard: guardFlag(detail), Action: label, Method: method, Statement: detail,
 			Approvers: []chain.Approver{approver}}); err != nil {
 			return err
@@ -714,12 +714,12 @@ func guardFlag(detail string) string {
 	return ""
 }
 
-// laneName is how this process's round reads in its own banners: "swim 2".
-func laneName(root string, n int) string { return fmt.Sprintf("swim %d", n) }
+// laneName is how this process's round reads in its own banners: "lane 2".
+func laneName(root string, n int) string { return fmt.Sprintf("lane %d", n) }
 
-// laneBanner is "swim 1.3<suffix>" in bold, "swim" in the lane's colour and
+// laneBanner is "lane 1.3<suffix>" in bold, "lane" in the lane's colour and
 // each part of the id in its own (ui.Painter.Job).
 func laneBanner(p ui.Painter, root string, n int, suffix string) string {
-	id := strings.TrimPrefix(laneName(root, n), "swim ")
-	return p.Paint(ui.LaneColor(n)+ui.Bold, "swim ") + p.Job(id, ui.Bold) + p.Paint(ui.LaneColor(n)+ui.Bold, suffix)
+	id := strings.TrimPrefix(laneName(root, n), "lane ")
+	return p.Paint(ui.LaneColor(n)+ui.Bold, "lane ") + p.Job(id, ui.Bold) + p.Paint(ui.LaneColor(n)+ui.Bold, suffix)
 }

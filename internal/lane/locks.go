@@ -149,5 +149,5 @@ func HeldLocks(root string) []HeldLock {
 
 // LockHolder is the text written into a lock file.
 func LockHolder(n int, job, run string) string {
-	return fmt.Sprintf("swim %d job=%s run=%s pid=%d since=%s", n, job, run, os.Getpid(), time.Now().UTC().Format(time.RFC3339))
+	return fmt.Sprintf("lane %d round-id=%s run=%s pid=%d since=%s", n, job, run, os.Getpid(), time.Now().UTC().Format(time.RFC3339))
 }

@@ -65,19 +65,19 @@ func TestCIGitHub(t *testing.T) {
 		t.Fatalf("a failed lane exits 1, got %d:\n%s", code, out)
 	}
 	contains(t, "ci output", out,
-		"swim ci · swim ", "provider github", "selected: every pending round that hasn't passed",
+		"swim ci · swim ", "provider github", "selected: every ready round that hasn't passed",
 		"guard flags set (names only): ALLOW_Y",
-		"::warning title=swim 4%3A after root::approved without a prompt: ALLOW_Y (flag set)",
+		"::warning title=lane 4%3A after root::approved without a prompt: ALLOW_Y (flag set)",
 		"[2] ==> convert", "[2] FAIL  convert (exit 1)", // step headers and results stream live
-		"::group::swim 1 PASS - root (job ", "::endgroup::",
-		"==== swim 2 FAIL - fails (job ", // a failed lane stays open
-		"::error title=swim 2%3A fails::FAIL  convert (exit 1)",
-		"::notice title=swim 2%3A fails::drop x - 2026-10-09: dry run: set ALLOW_X=1 to approve",
-		"::notice title=swim%3A 1 lane skipped::swim 3 (swim 2 failed)",
+		"::group::lane 1 passed - root (round-id ", "::endgroup::",
+		"==== lane 2 failed - fails (round-id ", // a failed lane stays open
+		"::error title=lane 2%3A fails::FAIL  convert (exit 1)",
+		"::notice title=lane 2%3A fails::drop x - 2026-10-09: dry run: set ALLOW_X=1 to approve",
+		"::notice title=swim%3A 1 lane skipped::lane 3 (lane 2 failed)",
 		"artifacts to upload: .swim/logs/ .swim/snapshots/ .swim.log "+junit)
 	md, _ := os.ReadFile(summary)
-	contains(t, "job summary", string(md), "## swim ci: failed", "| swim 2 |", "FAIL  convert (exit 1)", "| swim 3 |", "swim 2 failed",
-		"**Approved without a prompt:** swim 4: ALLOW_Y (flag set)")
+	contains(t, "job summary", string(md), "## swim ci: failed", "| lane 2 |", "FAIL  convert (exit 1)", "| lane 3 |", "lane 2 failed",
+		"**Approved without a prompt:** lane 4: ALLOW_Y (flag set)")
 	data, _ := os.ReadFile(junit)
 	var j struct {
 		Suites []struct {
@@ -93,7 +93,7 @@ func TestCIGitHub(t *testing.T) {
 	if l := r.status().Get(1); l.Commit != commit {
 		t.Errorf("status commit %q, want %q", l.Commit, commit)
 	}
-	contains(t, "agent1.log", r.log(1), "| commit: "+commit)
+	contains(t, "lane1.log", r.log(1), "| commit: "+commit)
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
 	contains(t, ".swim.log", string(hist), "commit="+commit)
 
@@ -119,9 +119,9 @@ func TestCIGitHub(t *testing.T) {
 func TestCIGitLabAndGeneric(t *testing.T) {
 	r := ciRepo(t)
 	out, _ := r.swimEnv([]string{"GITLAB_CI=true", "CI=true"}, "ci", "1")
-	contains(t, "gitlab", out, "provider gitlab", "\x1b[0Ksection_start:", "[collapsed=true]\r\x1b[0Kswim 1 PASS - root", "\x1b[0Ksection_end:")
+	contains(t, "gitlab", out, "provider gitlab", "\x1b[0Ksection_start:", "[collapsed=true]\r\x1b[0Klane 1 passed - root", "\x1b[0Ksection_end:")
 	out, _ = r.swimEnv([]string{"CI=true"}, "ci", "2")
-	contains(t, "generic", out, "provider generic", "swim: error: swim 2: fails: FAIL  convert (exit 1)")
+	contains(t, "generic", out, "provider generic", "swim: error: lane 2: fails: FAIL  convert (exit 1)")
 }
 
 func TestCIChanged(t *testing.T) {
@@ -165,7 +165,7 @@ func TestCIChanged(t *testing.T) {
 	ev := filepath.Join(t.TempDir(), "event.json")
 	os.WriteFile(ev, []byte(`{"before":"0000000000000000000000000000000000000000"}`), 0o644)
 	out, _ = r.swimEnv([]string{"GITHUB_ACTIONS=true", "GITHUB_EVENT_NAME=push", "GITHUB_EVENT_PATH=" + ev}, "ci", "--changed")
-	contains(t, "new branch", out, "a new branch (no before SHA): every pending round")
+	contains(t, "new branch", out, "a new branch (no before SHA): every ready round")
 }
 
 func TestCIPinsAndLanes(t *testing.T) {
@@ -184,7 +184,7 @@ func TestCIPinsAndLanes(t *testing.T) {
 	r.script(2, "two", `step "slow" `+hold("go"))
 	r.script(3, "three", `step "c" true`)
 	withHeader(t, r, 3, "# After: 2")
-	withHeader(t, r, 3, "# Job: 3f2a9c1e-aaaa-4bbb-8ccc-000000000003")
+	withHeader(t, r, 3, "# Round-ID: 3f2a9c1e-aaaa-4bbb-8ccc-000000000003")
 	job3 := jobOf(t, r, 3)
 	c := r.cmd(bin, "run", "2", job3, "--plain")
 	if err := c.Start(); err != nil {
@@ -204,11 +204,11 @@ func jobOf(t *testing.T, r *repo, n int) string {
 	t.Helper()
 	data, _ := os.ReadFile(filepath.Join(r.root, fmt.Sprintf("lane.%d.sh", n)))
 	for _, line := range strings.Split(string(data), "\n") {
-		if f := strings.Fields(line); len(f) == 3 && f[0] == "#" && f[1] == "Job:" {
+		if f := strings.Fields(line); len(f) == 3 && f[0] == "#" && f[1] == "Round-ID:" {
 			return f[2]
 		}
 	}
-	t.Fatalf("no job line in lane.%d.sh", n)
+	t.Fatalf("no round id line in lane.%d.sh", n)
 	return ""
 }
 

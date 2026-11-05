@@ -43,7 +43,7 @@ func TestCLIFormsPeopleType(t *testing.T) {
 		t.Errorf("lint through a symlink to the repo: exit %d\n%s", code, out)
 	}
 	out, code := r.swim("status", "2", "17")
-	if code != 0 || !strings.Contains(out, "swim 2 ") || !strings.Contains(out, "swim 17") || strings.Contains(out, "swim 3 ") {
+	if code != 0 || !strings.Contains(out, "lane 2 ") || !strings.Contains(out, "lane 17") || strings.Contains(out, "lane 3 ") {
 		t.Errorf("status 2 17: exit %d\n%s", code, out)
 	}
 	if out, code := r.swim("queue", "2,3"); code != 0 || !strings.Contains(out, "2 lanes") {

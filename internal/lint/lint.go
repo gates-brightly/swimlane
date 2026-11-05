@@ -87,11 +87,11 @@ var Checks = []Check{
 	{"parse", finding.Error, false, "bash can't parse the script (bash -n)", checkParse},
 	{"round", finding.Error, false, "no `# Round:` line", checkRound},
 	{"workspace-live", finding.Warn, false, "`# Workspace: live`: the lane runs in the working tree and reads files no approval covers", checkWorkspaceLive},
-	{"workspace-file", finding.Warn, false, "a staged lane names a repo file its # Includes: doesn't list (cat deploy.yaml): the staged copy doesn't have it", checkWorkspaceFile},
+	{"workspace-file", finding.Warn, false, "a staged lane names a repo file its # Includes: doesn't list (cat deploy.yaml): the pinned copy doesn't have it", checkWorkspaceFile},
 	{"workspace-empty", finding.Warn, false, "a staged lane runs a tool over its whole directory (go vet ./..., gofmt -l .) with no # Includes:, so the tool reads an empty copy", checkWorkspaceEmpty},
 	{"task", finding.Error, false, "a `# Task:` name that isn't one, is a swim command, or another lane's too", checkTask},
 	{"placeholder", finding.Error, false, "a template placeholder left in", checkPlaceholder},
-	{"after", finding.Error, false, "`# After:` names an unknown lane or job, or the lane itself", checkAfter},
+	{"after", finding.Error, false, "`# After:` names an unknown lane or round id, or the lane itself", checkAfter},
 	{"cycle", finding.Error, false, "lanes wait on each other in a cycle", checkCycle},
 	{"set-e", finding.Error, true, "`set -e` / `set -o errexit`", checkSetE},
 	{"lane-init", finding.Error, true, "no `lane_init`, or `lane_init` with the wrong lane number", checkLaneInit},
@@ -106,6 +106,7 @@ var Checks = []Check{
 	{"step", finding.Error, false, "a step, gate or snapshot written so it can't run as it reads: an unknown option, no label or command, a command for a label, a command quoted into one word, or cd/export in a step", checkStepCall},
 	// Remove after the next release (T38), with the run alias.
 	{"run-is-step", finding.Warn, false, "a call of run, the old name of step (swim lint --fix rewrites it)", checkRunIsStep},
+	{"job-is-round-id", finding.Warn, false, "a # Job: line, Round-ID's old name (swim lint --fix rewrites it)", checkJobIsRoundID},
 	{"step-subshell", finding.Error, false, "a step, gate or snapshot inside $(...), backticks or after a pipe, where its result never reaches the lane", checkStepSubshell},
 	{"step-pipe", finding.Error, false, "a pipe or redirect after a step, which applies to swim's output, not the step's command", checkStepPipe},
 	{"short-form", finding.Error, false, "a .sh lane that calls swim's steps without #!/usr/bin/env swim (or the library)", checkShortFormShebang},
@@ -317,14 +318,14 @@ func localDeps(cfg *config.Config, scripts map[int]*Script) (map[int][]int, map[
 			}
 			switch {
 			case err != nil && m == 0:
-				errs[n] = fmt.Sprintf("`# After: %s`: no lane holds job %s", ref, ref)
+				errs[n] = fmt.Sprintf("`# After: %s`: no lane holds round %s", ref, ref)
 				if lane.ValidTaskName(ref) {
 					errs[n] += " or is task " + ref
 				}
 			case !cfg.ValidLane(m):
-				errs[n] = fmt.Sprintf("`# After: %s`: no swim %d (lanes are 1..%d)", ref, m, lane.MaxLanes)
+				errs[n] = fmt.Sprintf("`# After: %s`: no lane %d (lanes are 1..%d)", ref, m, lane.MaxLanes)
 			case scripts[m] == nil && !cfg.IsActive(m):
-				errs[n] = fmt.Sprintf("`# After: %s`: no swim %d: it has no lane script, log or past run", ref, m)
+				errs[n] = fmt.Sprintf("`# After: %s`: no lane %d: it has no lane script, log or past run", ref, m)
 			case m == n:
 				errs[n] = fmt.Sprintf("`# After: %s`: a lane can't wait for itself", ref)
 			default:

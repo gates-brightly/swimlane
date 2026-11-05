@@ -60,7 +60,7 @@ func checkRound(c *Context, s *Script) []finding.Finding {
 		return nil
 	}
 	return []finding.Finding{f(finding.Error, "round", -1, fmt.Sprintf("add `# Round: <goal>` to the header (or round: to lane.%d.yml)", s.N),
-		"no `# Round:` line; swim treats the lane as having nothing pending and won't run it")}
+		"no `# Round:` line; swim treats the lane as having nothing ready and won't run it")}
 }
 
 // checkWorkspaceLive warns about a lane that runs in the working tree: a
@@ -76,12 +76,12 @@ func checkWorkspaceLive(c *Context, s *Script) []finding.Finding {
 			break
 		}
 	}
-	return []finding.Finding{f(finding.Warn, "workspace-live", line, "pin the files it reads (# Includes:) and drop the line, so it runs in its staged copy",
+	return []finding.Finding{f(finding.Warn, "workspace-live", line, "pin the files it reads (# Includes:) and drop the line, so it runs in its pinned copy",
 		"runs in the working tree (# Workspace: live): files it reads but doesn't pin can change after it's approved")}
 }
 
 // treeTools check or build their working directory when given no paths
-// (or ./...): in a staged copy with nothing pinned they read nothing, and
+// (or ./...): in a pinned copy with nothing pinned they read nothing, and
 // some pass on it (gofmt -l). Each maps to the subcommands
 // that do (nil: any).
 var treeTools = map[string][]string{
@@ -159,14 +159,14 @@ func checkWorkspaceEmpty(c *Context, s *Script) []finding.Finding {
 			texts[k] = w.Text
 		}
 		return []finding.Finding{f(finding.Warn, "workspace-empty", lc.Line, "add `# Workspace: live` to run it in the working tree, or pin what it reads with # Includes: (filepath globs, one directory each: `go.mod go.sum *.go cmd/*/*.go`)",
-			"%q runs in the lane's staged copy, which holds only %s (no # Includes:): it reads none of the repo, so it checks nothing", strings.Join(texts, " "), s.scriptName())}
+			"%q runs in the lane's pinned copy, which holds only %s (no # Includes:): it reads none of the repo, so it checks nothing", strings.Join(texts, " "), s.scriptName())}
 	}
 	return nil
 }
 
 // A repoRead is a repo file a staged lane's step names as a literal
 // argument (cat deploy.yaml, bash scripts/x.sh) without # Includes:
-// listing it: the staged copy doesn't hold it.
+// listing it: the pinned copy doesn't hold it.
 type repoRead struct {
 	Rel  string
 	Line int
@@ -213,13 +213,13 @@ func unstagedReads(root string, s *Script) []repoRead {
 }
 
 // checkWorkspaceFile warns about a staged lane that names a repo file its
-// # Includes: doesn't list: it isn't in the staged copy, so the step fails
+// # Includes: doesn't list: it isn't in the pinned copy, so the step fails
 // with "No such file or directory" under swim run.
 func checkWorkspaceFile(c *Context, s *Script) []finding.Finding {
 	var out []finding.Finding
 	for _, r := range unstagedReads(c.Root, s) {
 		out = append(out, f(finding.Warn, "workspace-file", r.Line, "add `# Includes: "+r.Rel+"` (swim lint --fix adds it), or `# Workspace: live`",
-			"%s is in the repo but not in # Includes:, so the lane's staged copy doesn't have it: the step reading it fails under swim run", r.Rel))
+			"%s is in the repo but not in # Includes:, so the lane's pinned copy doesn't have it: the step reading it fails under swim run", r.Rel))
 	}
 	return out
 }
@@ -284,7 +284,7 @@ func checkTask(c *Context, s *Script) []finding.Finding {
 	}
 	switch {
 	case !lane.ValidTaskName(t):
-		return []finding.Finding{f(finding.Error, "task", line, "use a-z, 0-9 and -, starting with a letter, at most 40 (and not only hex digits and -, which reads as a job id)",
+		return []finding.Finding{f(finding.Error, "task", line, "use a-z, 0-9 and -, starting with a letter, at most 40 (and not only hex digits and -, which reads as a round id)",
 			"# Task: %q isn't a task name: swim run can't find the lane by it", t)}
 	case isCommand(t):
 		return []finding.Finding{f(finding.Error, "task", line, "pick another name",
@@ -293,7 +293,7 @@ func checkTask(c *Context, s *Script) []finding.Finding {
 	for n, o := range c.Scripts {
 		if n != s.N && o.Info.Task == t {
 			return []finding.Finding{f(finding.Error, "task", line, "give each lane its own name",
-				"# Task: %s is swim %d's name too: swim run %s can't tell them apart", t, n, t)}
+				"# Task: %s is lane %d's name too: swim run %s can't tell them apart", t, n, t)}
 		}
 	}
 	return nil
@@ -324,7 +324,7 @@ func checkAfter(c *Context, s *Script) []finding.Finding {
 	if !ok {
 		return nil
 	}
-	fix := "name a configured lane number, a task (# Task:) or a job id a lane holds"
+	fix := "name a configured lane number, a task (# Task:) or a round id a lane holds"
 	return []finding.Finding{f(finding.Error, "after", s.headerLine("After"), fix, "%s; swim run refuses this lane", msg)}
 }
 
@@ -346,7 +346,7 @@ func checkCycle(c *Context, s *Script) []finding.Finding {
 	sort.Ints(members)
 	parts := make([]string, len(members))
 	for i, n := range members {
-		parts[i] = fmt.Sprintf("swim %d", n)
+		parts[i] = fmt.Sprintf("lane %d", n)
 	}
 	return []finding.Finding{f(finding.Error, "cycle", s.headerLine("After"),
 		"remove one of the `# After:` lines in the cycle",
@@ -392,7 +392,7 @@ func checkLaneInit(c *Context, s *Script) []finding.Finding {
 		}
 		if n, err := strconv.Atoi(arg); err == nil && n != s.N {
 			return []finding.Finding{f(finding.Error, "lane-init", i, fmt.Sprintf("lane_init %d", s.N),
-				"`lane_init %d` in %s; the round would claim swim %d's log and status", n, s.Name, n)}
+				"`lane_init %d` in %s; the round would claim lane %d's log and status", n, s.Name, n)}
 		}
 		if arg == "" {
 			return []finding.Finding{f(finding.Error, "lane-init", i, fmt.Sprintf("lane_init %d", s.N),
@@ -1004,8 +1004,8 @@ func checkCrossLane(c *Context, s *Script) []finding.Finding {
 				continue
 			}
 			reported[p] = true
-			out = append(out, f(finding.Info, "cross-lane", i, fmt.Sprintf("if it needs swim %d's output, add `# After: %d`", a, a),
-				"uses %s, which %s:%d writes, but doesn't wait for swim %d", p, o.Name, ws[p]+1, a))
+			out = append(out, f(finding.Info, "cross-lane", i, fmt.Sprintf("if it needs lane %d's output, add `# After: %d`", a, a),
+				"uses %s, which %s:%d writes, but doesn't wait for lane %d", p, o.Name, ws[p]+1, a))
 		}
 	}
 	return out

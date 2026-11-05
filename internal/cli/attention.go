@@ -36,7 +36,7 @@ type attentionItem struct{ who, what, next string }
 
 // cmdAttention is bare swim in a swim repo: what needs the operator now
 // (a failed, dry-run or interrupted round nobody has rewritten, a lane
-// asking for an answer, a lane lint refuses, a batch no swimmer will
+// asking for an answer, a lane lint refuses, a batch no watcher will
 // take), what's running, and what's ready to queue. Everything else is in
 // swim status, swim queue and swim log.
 func cmdAttention() error {
@@ -61,7 +61,7 @@ func cmdAttention() error {
 
 	queued := map[int]bool{} // lanes in a batch that hasn't ended
 	var needs, running []attentionItem
-	swimmerUp := workerRunning(root)
+	watcherUp := workerRunning(root)
 	for _, e := range entries {
 		var ns []string
 		for _, l := range e.Lanes {
@@ -69,13 +69,13 @@ func cmdAttention() error {
 			queued[l.Lane] = true
 		}
 		who := fmt.Sprintf("#%d", e.Seq)
-		lanes := "swim " + strings.Join(ns, ",")
+		lanes := "lane " + strings.Join(ns, ",")
 		switch e.State {
 		case queue.Orphaned:
-			needs = append(needs, attentionItem{who, lanes + ": its swimmer is gone", "swim queue requeue " + strconv.Itoa(e.Seq)})
+			needs = append(needs, attentionItem{who, lanes + ": its watcher is gone", "swim queue requeue " + strconv.Itoa(e.Seq)})
 		case queue.Queued:
-			if !swimmerUp {
-				needs = append(needs, attentionItem{who, lanes + ": queued, no swimmer up", "swim watch"})
+			if !watcherUp {
+				needs = append(needs, attentionItem{who, lanes + ": queued, no watcher up", "swim watch"})
 			} else {
 				running = append(running, attentionItem{who, lanes + ": queued", ""})
 			}
@@ -90,7 +90,7 @@ func cmdAttention() error {
 		if !cfg.IsActive(l.Lane) {
 			continue
 		}
-		who := "swim " + strconv.Itoa(l.Lane)
+		who := "lane " + strconv.Itoa(l.Lane)
 		state := effectiveState(l)
 		// The round that ended is still the script on disk: nobody has
 		// edited, rewritten or archived it since.
@@ -100,12 +100,12 @@ func cmdAttention() error {
 		}
 		switch {
 		case state == status.Running && l.PausedAt != "":
-			needs = append(needs, attentionItem{who, "asking for your approval where it runs", ""})
+			needs = append(needs, attentionItem{who, "waiting for approval where it runs", ""})
 			continue
 		case state == status.Running+"?" || state == status.Waiting+"?":
 			needs = append(needs, attentionItem{who, "interrupted: its process is gone", "swim log " + strconv.Itoa(l.Lane)})
 			continue
-		case state == status.Running || state == status.Waiting || state == status.Locked || state == status.Queued:
+		case state == status.Running || state == status.Waiting || state == status.Queued:
 			running = append(running, attentionItem{who, stateWord(l, state, now), ""})
 			continue
 		case current && state == status.Failed:
@@ -119,10 +119,10 @@ func cmdAttention() error {
 			}
 			continue
 		case current && state == status.Interrupted:
-			needs = append(needs, attentionItem{who, "INTERRUPTED · " + l.Round, "swim log " + strconv.Itoa(l.Lane)})
+			needs = append(needs, attentionItem{who, status.Interrupted + " · " + l.Round, "swim log " + strconv.Itoa(l.Lane)})
 			continue
 		case current && state == status.Skipped && len(l.DryRun) > 0:
-			needs = append(needs, attentionItem{who, "dry run: " + strings.Join(l.DryRun, ", ") + " not approved · " + l.Round, "swim status " + strconv.Itoa(l.Lane)})
+			needs = append(needs, attentionItem{who, "skipped: dry run, " + strings.Join(l.DryRun, ", ") + " not approved · " + l.Round, "swim status " + strconv.Itoa(l.Lane)})
 			continue
 		}
 		if fs := refused[l.Lane]; len(fs) > 0 {
@@ -159,7 +159,7 @@ func cmdAttention() error {
 	section("running", ui.Cyan, running)
 	if len(ready) > 0 {
 		fmt.Println(p.Paint(ui.Green, "ready"))
-		fmt.Printf("  swim %s%s\n", strings.Join(ready, ","), p.Paint(ui.Dim, "  → swim queue "+strings.Join(ready, " ")))
+		fmt.Printf("  lane %s%s\n", strings.Join(ready, ","), p.Paint(ui.Dim, "  → swim queue "+strings.Join(ready, " ")))
 	}
 	if len(needs)+len(running)+len(ready) == 0 {
 		fmt.Println("nothing needs you, and nothing is running.")

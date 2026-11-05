@@ -25,7 +25,7 @@ func runnerKey(cfg *config.Config) (*sign.Key, error) { return authority.Key(cfg
 func scriptsDir(root string) string { return filepath.Join(root, ".swim", "scripts") }
 
 // keepScript hashes lane n's script and keeps a copy under its hash: the
-// staged copy the launcher pinned in m, or with none (a lane run directly
+// pinned copy the launcher pinned in m, or with none (a lane run directly
 // with bash) the working tree's.
 func keepScript(root string, n int, m *manifest.Manifest) (string, error) {
 	var data []byte

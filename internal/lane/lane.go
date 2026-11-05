@@ -1,5 +1,5 @@
 // Package lane knows a lane's files: its script (lane.N.sh, or lane.N.py,
-// lane.N.ts, a binary lane.N, ...) and sidecar lane.N.yml, .swim/logs/agentN.log
+// lane.N.ts, a binary lane.N, ...) and sidecar lane.N.yml, .swim/logs/laneN.log
 // (log), .swim/laneN.pid (running marker) and .swim/snapshots/.
 package lane
 
@@ -19,11 +19,11 @@ import (
 	"github.com/gates-brightly/swimlane/internal/syntax"
 )
 
-// StubMarker identifies a "nothing pending" lane script.
+// StubMarker identifies a "nothing ready" lane script.
 const StubMarker = "# swim:stub"
 
 func Log(root string, n int) string {
-	return filepath.Join(LogDir(root), fmt.Sprintf("agent%d.log", n))
+	return filepath.Join(LogDir(root), fmt.Sprintf("lane%d.log", n))
 }
 
 // LogDir holds lane logs and their archives.
@@ -50,14 +50,14 @@ type Info struct {
 	Syntax int    // the script's syntax (1 if it declares none)
 	Round  string // Round: (required for the lane to run)
 	Task   string // Task: the lane's name (swim run NAME); "" for none
-	// Workspace is where the lane runs: "" (its staged copy, holding only
+	// Workspace is where the lane runs: "" (its pinned copy, holding only
 	// what its manifest pins) or WorkspaceLive (the repo's working tree,
 	// where it can read files nobody approved).
 	Workspace string
 	// Signoff is # Signoff: the commit status (e.g. swim/checks) swim
 	// posts, signed, when the round passes on a clean commit; "" for none.
 	Signoff string
-	Job     string   // Job: id ("" if the script has none; one is made at start)
+	Job     string   // Round-ID: ("" if the script has none; one is made at start)
 	After   []string // After: lanes or job ids this round waits for (default none)
 	Owner   string   // Owner: who wrote the round (default "")
 	Created string   // Created: date (default: the file's modification date)
@@ -105,7 +105,7 @@ func (i Info) GuardFlags() []string {
 
 // knownKeys are the header keys swim reads (lower case); any other key in
 // the header block is kept as an extra and shown.
-var knownKeys = map[string]bool{"round": true, "task": true, "workspace": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
+var knownKeys = map[string]bool{"round": true, "task": true, "workspace": true, "round-id": true, "job": true, "after": true, "owner": true, "created": true, "guards": true, "timeout": true, "step-timeout": true, "locks": true, "swim": true,
 	"fail": true, "includes": true, "targets": true}
 
 // stageNames are the stages, in order.
@@ -236,12 +236,12 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 	case "After":
 		for _, tok := range splitList(v) {
 			switch strings.ToLower(tok) {
-			case "swim", "-", "none", "(none)":
+			case "swim", "lane", "-", "none", "(none)":
 				continue
 			}
 			info.After = append(info.After, tok)
 		}
-	case "Job":
+	case "Round-ID", "Job": // Job: is Round-ID:'s old name (an older script)
 		f := strings.Fields(v)
 		if len(f) == 0 {
 			return false
@@ -463,11 +463,11 @@ func WritePID(root string, n, pid int) error {
 	}
 	defer claim.Close()
 	if err := syscall.Flock(int(claim.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("claim swim %d: %w", n, err)
+		return fmt.Errorf("claim lane %d: %w", n, err)
 	}
 	defer syscall.Flock(int(claim.Fd()), syscall.LOCK_UN)
 	if other, ok := Running(root, n); ok && other != pid {
-		return fmt.Errorf("swim %d is already running (pid %d)", n, other)
+		return fmt.Errorf("lane %d is already running (pid %d)", n, other)
 	}
 	if err := claim.Truncate(0); err != nil {
 		return err
@@ -488,7 +488,7 @@ func RemovePID(root string, n int) { os.Remove(PIDFile(root, n)) }
 type ErrRunning struct{ Lane, PID int }
 
 func (e ErrRunning) Error() string {
-	return fmt.Sprintf("swim %d is running (pid %d); never edit or move a running lane's files", e.Lane, e.PID)
+	return fmt.Sprintf("lane %d is running (pid %d); never edit or move a running lane's files", e.Lane, e.PID)
 }
 
 func refuseRunning(root string, n int) error {
@@ -521,9 +521,9 @@ func Slug(s string) string {
 	return s
 }
 
-// Archive renames lane n's logs aside, .swim/logs/agentN.log to
-// agentN.prev-<what>.log, and each job's log
-// (agentN.<job>.log) to agentN.prev-<what>.<job>.log, and returns the
+// Archive renames lane n's logs aside, .swim/logs/laneN.log to
+// laneN.prev-<what>.log, and each job's log
+// (laneN.<job>.log) to laneN.prev-<what>.<job>.log, and returns the
 // first new path. It never overwrites an existing archive. With its logs
 // archived (and a stub or no script) the lane is no longer in use
 // (Associated).
@@ -562,11 +562,11 @@ func archiveMoves(root string, n int, what string) ([][2]string, error) {
 	}
 	dir := LogDir(root)
 	var moves [][2]string
-	if _, err := os.Stat(filepath.Join(dir, fmt.Sprintf("agent%d.log", n))); err == nil {
-		moves = append(moves, [2]string{filepath.Join(dir, fmt.Sprintf("agent%d.log", n)), filepath.Join(dir, fmt.Sprintf("agent%d.prev-%s.log", n, slug))})
+	if _, err := os.Stat(filepath.Join(dir, fmt.Sprintf("lane%d.log", n))); err == nil {
+		moves = append(moves, [2]string{filepath.Join(dir, fmt.Sprintf("lane%d.log", n)), filepath.Join(dir, fmt.Sprintf("lane%d.prev-%s.log", n, slug))})
 	}
 	entries, _ := os.ReadDir(dir)
-	prefix := fmt.Sprintf("agent%d.", n)
+	prefix := fmt.Sprintf("lane%d.", n)
 	for _, e := range entries {
 		name := e.Name()
 		if name == prefix+"log" || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".log") || strings.Contains(name, ".prev-") || strings.HasSuffix(name, ".check.log") {
@@ -576,10 +576,10 @@ func archiveMoves(root string, n int, what string) ([][2]string, error) {
 		if job == "" {
 			continue
 		}
-		moves = append(moves, [2]string{filepath.Join(dir, name), filepath.Join(dir, fmt.Sprintf("agent%d.prev-%s.%s.log", n, slug, job))})
+		moves = append(moves, [2]string{filepath.Join(dir, name), filepath.Join(dir, fmt.Sprintf("lane%d.prev-%s.%s.log", n, slug, job))})
 	}
 	if len(moves) == 0 {
-		return nil, fmt.Errorf("swim %d has nothing to archive (no .swim/logs/agent%d.log, and no job logs)", n, n)
+		return nil, fmt.Errorf("lane %d has nothing to archive (no .swim/logs/lane%d.log, and no other logs)", n, n)
 	}
 	for _, m := range moves {
 		if _, err := os.Stat(m[1]); err == nil {
@@ -590,7 +590,7 @@ func archiveMoves(root string, n int, what string) ([][2]string, error) {
 }
 
 // WriteScript writes content to lane.N.sh (mode 0755) unless the lane is
-// running. Unless force is set it also refuses to replace a pending round.
+// running. Unless force is set it also refuses to replace a ready round.
 func WriteScript(root string, n int, content string, force bool) error {
 	return WriteScriptAs(root, n, "sh", content, force)
 }
@@ -598,7 +598,7 @@ func WriteScript(root string, n int, content string, force bool) error {
 // WriteScriptAs writes content to lane.N.<ext> (mode 0755) unless the lane
 // is running, replacing the lane's script in any other language and its
 // sidecar (a stub or a new round starts clean). Unless force is set it
-// refuses to replace a pending round.
+// refuses to replace a ready round.
 func WriteScriptAs(root string, n int, ext, content string, force bool) error {
 	if err := refuseRunning(root, n); err != nil {
 		return err
@@ -609,7 +609,7 @@ func WriteScriptAs(root string, n int, ext, content string, force bool) error {
 			return err
 		}
 		if info.Pending() {
-			return fmt.Errorf("swim %d already holds a pending round (%q); run it and archive/stub it first, or pass --force", n, info.Round)
+			return fmt.Errorf("lane %d already holds a ready round (%q); run it and archive/stub it first, or pass --force", n, info.Round)
 		}
 	}
 	dst := filepath.Join(root, fmt.Sprintf("lane.%d.%s", n, ext))
@@ -756,5 +756,5 @@ func ValidTaskName(s string) bool {
 }
 
 // WorkspaceLive is # Workspace: live: the lane runs in the repo's working
-// tree rather than its staged copy.
+// tree rather than its pinned copy.
 const WorkspaceLive = "live"

@@ -1,33 +1,33 @@
 # Running
 
-`swim run N ...` (or `swim N`) runs lanes; `swim all` runs every pending
+`swim run N ...` (or `swim N`) runs lanes; `swim all` runs every ready
 round that hasn't passed (`--rerun`: those too). Lanes run in parallel,
 dependencies first.
 
 ## Dependencies
 
-`# After: 2 3` (lanes, tasks or job ids) waits for those to pass in this
+`# After: 2 3` (lanes, tasks or round ids) waits for those to pass in this
 run, and skips the round if one fails or is skipped. It is the only way to
 declare a dependency. A dependency outside the run must already be
 satisfied, or the lane is skipped:
 
-- a lane: its pending round passed (an archived or empty lane never blocks);
-- a job: it's that lane's last run, and passed.
+- a lane: its ready round passed (an archived or empty lane never blocks);
+- a round id: it's that lane's last round, and passed.
 
 Cycles, unresolvable references, and an `After:` lane with no script, log
 or past run stop the run before anything starts.
 
-`swim status` shows, under each pending lane, what it waits on and where
+`swim status` shows, under each ready lane, what it waits on and where
 that stands, how each guard would be decided now, and its timeout, locks
 and includes:
 
 ```
- swim 1  pending                drop the old table
+ lane 1  ready                  drop the old table
           guard DROP_OK  drop table old_orders
                  not approved; swim run will ask (a dry run if no one answers)
           timeout 30m · locks orders-db · includes lib/tables.sh
- swim 2  pending                verify after the drop
-          after swim 1 (pending: a dry run or failure there skips this)
+ lane 2  ready                  verify after the drop
+          after lane 1 (ready: a dry run or failure there skips this)
 ```
 
 ## Approving guards
@@ -74,7 +74,7 @@ you or a run ends, and a progress bar on the terminal tab (OSC 777, OSC
 9;4, as Ghostty shows them). Each title starts with where it came from:
 the repo (origin's name, else the checkout's directory), and the branch
 when it isn't the default: `swimlane · lane 2 needs you`,
-`swimlane@fix-auth · run failed`, `swimlane · batch #41 passed`.
+`swimlane@fix-auth · run failed`, `swimlane · run needs approval` (a guard dry-ran), `swimlane · batch #41 passed`.
 
 `notify_url` sends the same notifications (a lane waits on you, a run or
 a `swim watch` batch ends) to an [ntfy](https://ntfy.sh) topic, whether
@@ -131,5 +131,5 @@ force. `swim interrupt N` stops one lane from another terminal. A lone
 lane given the terminal gets Ctrl-C directly. A lane run directly with bash
 has no launcher: Ctrl-C interrupts it at once.
 
-`swim status` shows `running?` when a lane's process is gone; the next
+`swim status` shows `interrupted (its process is gone)` when a lane's process is gone; the next
 `swim run`, `swim all` or `swim watch` records it as interrupted.

@@ -49,8 +49,8 @@ func TestQueueAndWatchOnce(t *testing.T) {
 		t.Fatalf("typo approval accepted: %d %s", code, out)
 	}
 	out := r.mustSwim("queue", "add", "--approve", "ALLOW_DROP", "--note", "batch one")
-	contains(t, "queue add", out, "queued #1 (q-", "): 2 lanes", "approvals: ALLOW_DROP", "not approved (dry runs unless approved; no swimmer up asks for them): ALLOW_OTHER")
-	contains(t, "queue list", r.mustSwim("queue"), "#1", "queued", "swim 1,2", "approve ALLOW_DROP", "batch one")
+	contains(t, "queue add", out, "queued #1 (q-", "): 2 lanes", "approvals: ALLOW_DROP", "not approved (dry runs unless approved; no watcher up asks for them): ALLOW_OTHER")
+	contains(t, "queue list", r.mustSwim("queue"), "#1", "queued", "lane 1,2", "approve ALLOW_DROP", "batch one")
 
 	// The watcher's own ALLOW_OTHER=1 must not approve the batch: only the
 	// queue entry says what may change.
@@ -61,8 +61,8 @@ func TestQueueAndWatchOnce(t *testing.T) {
 		t.Fatalf("watch: %v\n%s", err, wout)
 	}
 	contains(t, "watch", string(wout), "running q-", "skipped; consumed to .swim/queue/done/0001-q-")
-	contains(t, "agent1.log", r.log(1), "APPROVED  drop table t (ALLOW_DROP=1, approved in queue q-", "PASS  dropped")
-	contains(t, "agent2.log", r.log(2), "SKIP  other change (dry run: set ALLOW_OTHER=1 to approve)")
+	contains(t, "lane1.log", r.log(1), "APPROVED  drop table t (ALLOW_DROP=1, approved in queue q-", "PASS  dropped")
+	contains(t, "lane2.log", r.log(2), "SKIP  other change (dry run: set ALLOW_OTHER=1 to approve)")
 	if strings.Contains(r.log(2), "PASS  other changed") {
 		t.Error("the watcher's environment approved a guard the batch didn't")
 	}
@@ -71,16 +71,16 @@ func TestQueueAndWatchOnce(t *testing.T) {
 	if len(done) != 1 || done[0].Result == nil || done[0].Result.Result != "skipped" || len(done[0].Result.Lanes) != 2 || done[0].Worker == nil {
 		t.Fatalf("consumed entry: %+v", done)
 	}
-	contains(t, "queue list", r.mustSwim("queue"), "done: skipped")
+	contains(t, "queue list", r.mustSwim("queue"), "skipped")
 	hist, _ := os.ReadFile(filepath.Join(r.root, ".swim.log"))
-	contains(t, ".swim.log", string(hist), "queue ", "approve=ALLOW_DROP  batch one", "queue-run", "queue-done")
+	contains(t, ".swim.log", string(hist), "queue ", "approve=ALLOW_DROP  batch one", "queue-run", "queue-end")
 
 	// A lane rewritten after it was queued is skipped, not run.
 	r.script(1, "drop v2", `step "v2" true`)
-	withHeader(t, r, 1, "# Job: 11111111-2222-4333-8444-555555555555")
+	withHeader(t, r, 1, "# Round-ID: 11111111-2222-4333-8444-555555555555")
 	r.mustSwim("queue", "add", "1")
 	r.script(1, "drop v3", `step "v3" true`)
-	withHeader(t, r, 1, "# Job: 99999999-2222-4333-8444-555555555555")
+	withHeader(t, r, 1, "# Round-ID: 99999999-2222-4333-8444-555555555555")
 	if out, code := r.swim("watch", "--once"); code == 0 {
 		t.Errorf("a batch with a skipped lane should not pass:\n%s", out)
 	}
@@ -120,7 +120,7 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 	// Swim 2's batch doesn't wait for swim run's swim 1.
 	waitFor(t, func() bool { return len(doneEntries(t, r)) == 1 })
 	if r.status().Get(1).CurrentStep != "long" {
-		t.Errorf("swim 2's batch waited for swim run 1 to end:\n%s", out.String())
+		t.Errorf("lane 2's batch waited for swim run 1 to end:\n%s", out.String())
 	}
 	r.release("go")
 	busy.Wait()
@@ -135,7 +135,7 @@ func TestWatchWaitsForBusyLanes(t *testing.T) {
 	contains(t, "watch", out.String(), "1 queued", "waiting for their lanes")
 	// Swim 1's batch started only once swim run's round had ended.
 	if n := strings.Count(r.log(1), "== ROUND "); n != 2 {
-		t.Errorf("swim 1 ran %d rounds, want swim run's and the batch's", n)
+		t.Errorf("lane 1 ran %d rounds, want swim run's and the batch's", n)
 	}
 }
 
@@ -171,7 +171,7 @@ func TestWatchWorkersShareTheQueue(t *testing.T) {
 	}
 	for n := 1; n <= 3; n++ {
 		if c := strings.Count(r.log(n), "== ROUND "); c != 1 {
-			t.Errorf("swim %d ran %d times", n, c)
+			t.Errorf("lane %d ran %d times", n, c)
 		}
 	}
 }
@@ -190,7 +190,7 @@ func TestQueueApproveOrphanRemove(t *testing.T) {
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	contains(t, "agent2.log", r.log(2), "APPROVED  other change (ALLOW_OTHER=1, approved in queue q-", " by zach)", "PASS  other changed")
+	contains(t, "lane2.log", r.log(2), "APPROVED  other change (ALLOW_OTHER=1, approved in queue q-", " by zach)", "PASS  other changed")
 
 	// An entry claimed by a worker that died is orphaned, then requeued.
 	r.mustSwim("queue", "add", "1")
@@ -201,7 +201,7 @@ func TestQueueApproveOrphanRemove(t *testing.T) {
 	data = append(data, []byte("worker:\n  host: "+hostname()+"\n  pid: 999999\n  user: x\n  claimed: now\n")...)
 	os.WriteFile(running, data, 0o644)
 	os.Remove(files[0])
-	contains(t, "orphaned", r.mustSwim("queue"), "orphaned: its swimmer is gone")
+	contains(t, "orphaned", r.mustSwim("queue"), "orphaned: its watcher is gone")
 	contains(t, "requeue", r.mustSwim("queue", "requeue", "2"), "requeued", "(was orphaned) as #3")
 	contains(t, "rm", r.mustSwim("queue", "rm", "3"), "removed")
 	if out := r.mustSwim("queue"); strings.Contains(out, "queued") {
@@ -242,7 +242,7 @@ step "b" true`)
 	case <-time.After(waitDeadline):
 		t.Fatalf("watch didn't stop:\n%s", out.String())
 	}
-	contains(t, "agent1.log", r.log(1), "PASS  a", "STOP  interrupted by operator (after: a)")
+	contains(t, "lane1.log", r.log(1), "PASS  a", "STOP  interrupted by operator (after: a)")
 	entries := doneEntries(t, r)
 	if len(entries) != 1 || entries[0].Result.Result != "interrupted" {
 		t.Fatalf("the interrupted batch should be consumed as interrupted: %+v", entries)
@@ -265,7 +265,7 @@ func TestWatchApprovesOnlyTheBatchs(t *testing.T) {
 	w := r.cmd(bin, "watch", "--once")
 	w.Env = append(w.Env, "SWIM_USER=worker", "ALLOW_OTHER=1")
 	w.CombinedOutput()
-	contains(t, "agent1.log", r.log(1), "APPROVED  drop table t (ALLOW_DROP=1, approved in queue q-", " by zach)")
+	contains(t, "lane1.log", r.log(1), "APPROVED  drop table t (ALLOW_DROP=1, approved in queue q-", " by zach)")
 	if !strings.Contains(r.log(2), "SKIP  other change (dry run: set ALLOW_OTHER=1 to approve)") {
 		t.Errorf("an unapproved guard must dry-run, whatever the swimmer's environment:\n%s", r.log(2))
 	}
@@ -291,13 +291,13 @@ if guard "$F" "dynamic"; then step "dyn ran" true; fi`)
 	if out, code := r.swim("watch", "--once"); code != 0 {
 		t.Fatalf("watch: %d\n%s", code, out)
 	}
-	contains(t, "agent1.log", r.log(1), "APPROVED  included (ALLOW_INC=1, approved in queue q-", "PASS  inc ran")
+	contains(t, "lane1.log", r.log(1), "APPROVED  included (ALLOW_INC=1, approved in queue q-", "PASS  inc ran")
 	c := r.cmd(bin, "run", "2", "--plain")
 	c.Env = append(c.Env, "ALLOW_DYN=1")
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("ALLOW_DYN=1 swim run 2: %v\n%s", err, out)
 	}
-	contains(t, "agent2.log", r.log(2), "APPROVED  dynamic (ALLOW_DYN=1", "PASS  dyn ran")
+	contains(t, "lane2.log", r.log(2), "APPROVED  dynamic (ALLOW_DYN=1", "PASS  dyn ran")
 }
 
 // A guard nothing approves runs as a dry run, and says so: [DRY] in swim
@@ -337,7 +337,7 @@ func TestWaitForBatchLaneAndRun(t *testing.T) {
 	r.script(1, "long", `step "long" `+hold("go"))
 	r.script(2, "queued", `step "q" true`)
 	r.script(3, "fails", `step "f" false`)
-	contains(t, "wait when idle", r.mustSwim("wait"), "swim wait: idle")
+	contains(t, "wait when idle", r.mustSwim("wait"), "swim wait: nothing running")
 
 	busy := r.cmd(bin, "run", "1", "--plain")
 	if err := busy.Start(); err != nil {
@@ -345,10 +345,10 @@ func TestWaitForBatchLaneAndRun(t *testing.T) {
 	}
 	defer busy.Process.Kill()
 	waitFor(t, func() bool { return laneOf(r, 1).CurrentStep == "long" })
-	if out, code := r.swim("wait", "--timeout", "300ms", "--interval", "100ms"); code != 1 || !strings.Contains(out, "still busy after 300ms: swim 1 is running") {
+	if out, code := r.swim("wait", "--timeout", "300ms", "--interval", "100ms"); code != 1 || !strings.Contains(out, "still busy after 300ms: lane 1 is running") {
 		t.Fatalf("wait --timeout on a busy repo: %d\n%s", code, out)
 	}
-	if out, code := r.swim("wait", "1", "--timeout", "300ms", "--interval", "100ms"); code != 1 || !strings.Contains(out, "still waiting after 300ms: swim 1 running") {
+	if out, code := r.swim("wait", "1", "--timeout", "300ms", "--interval", "100ms"); code != 1 || !strings.Contains(out, "still waiting after 300ms: lane 1 running") {
 		t.Fatalf("wait N --timeout on a running lane: %d\n%s", code, out)
 	}
 
@@ -372,7 +372,7 @@ func TestWaitForBatchLaneAndRun(t *testing.T) {
 	if err := q.Wait(); err != nil {
 		t.Fatalf("swim wait BATCH: %v\n%s", err, qout.String())
 	}
-	contains(t, "swim wait BATCH", qout.String(), "swim wait: waiting: #1 queued", "(#1): passed · swim 2")
+	contains(t, "swim wait BATCH", qout.String(), "swim wait: waiting: #1 queued", "(#1): passed · lane 2")
 	if len(doneEntries(t, r)) != 1 || r.status().Get(1).State != status.Passed {
 		t.Errorf("swim wait returned before the work was done: %+v", r.status().Get(1))
 	}
@@ -383,14 +383,14 @@ func TestWaitForBatchLaneAndRun(t *testing.T) {
 		t.Errorf("swim wait on a failing batch: %d\n%s", code, out)
 	}
 	// A lane, and a swim run: their rounds' results.
-	if out, code := r.swim("wait", "2"); code != 0 || !strings.Contains(out, "swim 2: passed") {
+	if out, code := r.swim("wait", "2"); code != 0 || !strings.Contains(out, "lane 2: passed") {
 		t.Errorf("swim wait 2: %d\n%s", code, out)
 	}
 	r.swim("run", "2", "3", "--run-id", "waitrun-1", "--plain")
-	if out, code := r.swim("wait", "waitrun-1"); code != 1 || !strings.Contains(out, "waitrun-1: failed · swim 2,3") {
+	if out, code := r.swim("wait", "waitrun-1"); code != 1 || !strings.Contains(out, "waitrun-1: failed · lane 2,3") {
 		t.Errorf("swim wait RUN: %d\n%s", code, out)
 	}
-	if out, code := r.swim("wait", "nosuchthing"); code == 0 || !strings.Contains(out, "is no lane, queued batch, job or swim run") {
+	if out, code := r.swim("wait", "nosuchthing"); code == 0 || !strings.Contains(out, "is no lane, queued batch, round id or swim run") {
 		t.Errorf("swim wait on nothing: %d\n%s", code, out)
 	}
 }
@@ -405,7 +405,7 @@ func TestWaitNamesAQueueWithNoWorker(t *testing.T) {
 	// Waiting on the batch: --timeout gives up, exits 1, and leaves it queued.
 	start := time.Now()
 	out, code := r.swim("wait", id, "--timeout", "300ms")
-	if code != 1 || !strings.Contains(out, "still waiting after 300ms: #1 queued (not yet taken by a swimmer: swim watch)") {
+	if code != 1 || !strings.Contains(out, "still waiting after 300ms: #1 queued (not yet taken by a watcher: swim watch)") {
 		t.Fatalf("wait BATCH --timeout with no worker: %d\n%s", code, out)
 	}
 	if took := time.Since(start); took > scaled(5*time.Second) {
@@ -467,10 +467,10 @@ step "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 		t.Fatalf("starts %v ends %v two %v\n%s", one, oneEnd, two, out)
 	}
 	if two[0] >= oneEnd[0] {
-		t.Errorf("batch 3 (swim 2) waited for batch 1 (swim 1): started %.1fs after it ended", two[0]-oneEnd[0])
+		t.Errorf("batch 3 (lane 2) waited for batch 1 (lane 1): started %.1fs after it ended", two[0]-oneEnd[0])
 	}
 	if one[1] < oneEnd[0] {
-		t.Errorf("two batches of swim 1 overlapped: the second started %.1fs before the first ended", oneEnd[0]-one[1])
+		t.Errorf("two batches of lane 1 overlapped: the second started %.1fs before the first ended", oneEnd[0]-one[1])
 	}
 	if done := doneEntries(t, r); len(done) != 3 {
 		t.Fatalf("consumed %d of 3", len(done))
@@ -483,7 +483,7 @@ step "%[1]s end" bash -c 'date +%%s.%%N >> "$SWIM_ROOT/%[1]s.end"'`, name, work)
 	r.mustSwim("queue", "add", "2")
 	r.mustSwim("watch", "--once", "--batches", "1")
 	if oneEnd, two := times("one.end"), times("two.start"); len(oneEnd) != 1 || len(two) != 1 || two[0] < oneEnd[0] {
-		t.Errorf("--batches 1: swim 2 started at %v, swim 1 ended at %v", two, oneEnd)
+		t.Errorf("--batches 1: lane 2 started at %v, lane 1 ended at %v", two, oneEnd)
 	}
 }
 
@@ -504,7 +504,7 @@ func TestQueueWarnsUnapprovedGuards(t *testing.T) {
 		return out.String(), errb.String()
 	}
 	_, stderr := queueErr("1", "2")
-	contains(t, "warning", stderr, "approves no guards and no swimmer up asks for them, so these dry-run", "swim 1  ALLOW_DROP", "swim 2  ALLOW_OTHER",
+	contains(t, "warning", stderr, "approves no guards and no watcher up asks for them, so these dry-run", "lane 1  ALLOW_DROP", "lane 2  ALLOW_OTHER",
 		"the operator decides: swim watch on a terminal asks on its screen", "swim queue 1 --approve ALLOW_DROP")
 	for _, args := range [][]string{{"1", "--approve", "ALLOW_DROP"}, {"1", "2", "--approve", "ALLOW_DROP,ALLOW_OTHER"}} {
 		if _, stderr := queueErr(args...); strings.Contains(stderr, "approves no guards") {

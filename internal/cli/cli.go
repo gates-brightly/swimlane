@@ -330,6 +330,7 @@ func repo() (string, *config.Config, error) {
 	if err := syntax.CheckRepo(root); err != nil {
 		return "", nil, err
 	}
+	lane.RenameOldLogs(root) // agentN.log from an older swim is laneN.log
 	return root, cfg, nil
 }
 
@@ -479,7 +480,7 @@ func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, erro
 			hits = append(hits, n)
 		}
 		if info.Job != "" {
-			held = append(held, fmt.Sprintf("swim %d: %s", n, info.Job))
+			held = append(held, fmt.Sprintf("lane %d: %s", n, info.Job))
 		}
 	}
 	switch len(hits) {
@@ -487,18 +488,18 @@ func laneRef(root string, cfg *config.Config, s string, lastRun bool) (int, erro
 		return hits[0], nil
 	case 0:
 		if len(s) < 8 && !lane.ValidJobID(s) {
-			return 0, usagef("%q is neither a lane number, a task (# Task:) nor a job id (job ids need 8+ characters)%s", s, taskHint(root, cfg))
+			return 0, usagef("%q is neither a lane number, a task (# Task:) nor a round id (round ids need 8+ characters)%s", s, taskHint(root, cfg))
 		}
 		if lane.ValidTaskName(s) {
-			return 0, fmt.Errorf("no lane is task %s, and no lane holds job %s%s", s, s, taskHint(root, cfg))
+			return 0, fmt.Errorf("no lane is task %s, and no lane holds round %s%s", s, s, taskHint(root, cfg))
 		}
-		msg := fmt.Sprintf("no lane holds job %s", s)
+		msg := fmt.Sprintf("no lane holds round %s", s)
 		if len(held) > 0 {
-			msg += " (current jobs: " + strings.Join(held, ", ") + ")"
+			msg += " (current round ids: " + strings.Join(held, ", ") + ")"
 		}
 		return 0, errors.New(msg)
 	}
-	return 0, fmt.Errorf("job %s is ambiguous: matches lanes %v; use more characters", s, hits)
+	return 0, fmt.Errorf("round id %s is ambiguous: matches lanes %v; use more characters", s, hits)
 }
 
 // taskRef is ref with a task name (# Task:) or a lane script's path
@@ -544,7 +545,7 @@ func laneArg(cfg *config.Config, s string) (int, error) {
 		return 0, usagef("%q is not a lane number", s)
 	}
 	if !cfg.ValidLane(n) {
-		return 0, fmt.Errorf("no swim %d: lanes are numbered 1..%d", n, lane.MaxLanes)
+		return 0, fmt.Errorf("no lane %d: lanes are numbered 1..%d", n, lane.MaxLanes)
 	}
 	return n, nil
 }

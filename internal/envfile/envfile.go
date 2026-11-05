@@ -324,7 +324,7 @@ func Check(root string, n int, info lane.Info) (*Resolved, error) {
 		return nil, err
 	}
 	if c := GuardConflicts(r, info); len(c) > 0 {
-		return nil, fmt.Errorf("swim %d: %w", n, c[0])
+		return nil, fmt.Errorf("lane %d: %w", n, c[0])
 	}
 	return r, nil
 }

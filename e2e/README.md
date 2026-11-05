@@ -46,7 +46,7 @@ macOS runner. `SWIM_E2E_ALL_SCENARIOS=1` runs them anyway.
 - `scenarios/dag99/lanes/lane.1.sh`–`lane.9.sh` do real work: fetch,
   Markdown, stats, links, word frequency, a reconcile between branches,
   headers, a bundle. Their `# After:` lines form the first DAG.
-- `internal/e2e/dag99_test.go` writes lanes 10–99 with fresh job ids. The
+- `internal/e2e/dag99_test.go` writes lanes 10–99 with fresh round ids. The
   graph is a fixed table there, so the expected counts (197 edges, 89
   values, roots 1 8 20 21 22) never drift.
 - Lanes share `.scenario/dag/` in the scratch repo: `nodes/N.done`
@@ -72,7 +72,7 @@ arguments lists its commands:
 | `gotest-report` | this repo's CI lanes: `go test -json` as text and JUnit |
 
 Inputs come from the variables lane scripts export (`D`, `N`, `P`, `IN`, `OUT`,
-`H`, `NODE_START`, `RUN_ID`, `SWIM_JOB`). To give a scenario's lanes more
+`H`, `NODE_START`, `RUN_ID`, `SWIM_ROUND_ID`). To give a scenario's lanes more
 work, add a command in `e2e/cmd/e2etool`, not an inline interpreter.
 
 Lane scripts here are source files. A `.gitignore` exception keeps them

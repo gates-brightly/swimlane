@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # swim: syntax 2
 # Round: DAG child A (of 1): combined.html to Markdown
-# Job:   7353ee29-f742-41b0-bcd1-ebab167c75a2
+# Round-ID:   7353ee29-f742-41b0-bcd1-ebab167c75a2
 # After: 1
 # Lane:  swim 2    Written: 2026-10-09
 #
@@ -45,7 +45,7 @@ RUN_ID=$SWIM_RUN
 stage change
 export RUN_ID
 
-IN=$D/input-2.$SWIM_JOB.html
+IN=$D/input-2.$SWIM_ROUND_ID.html
 export IN
 gate "copy input to $IN" cp "$D/combined.html" "$IN"
 step "simulated work" true

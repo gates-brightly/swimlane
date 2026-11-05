@@ -88,9 +88,9 @@ func (e ErrClaimed) Error() string {
 	until := e.C.ExpiresAt().Local().Format("15:04")
 	job := ""
 	if e.C.Job != "" {
-		job = fmt.Sprintf(" (job %s)", e.C.Job)
+		job = fmt.Sprintf(" (round-id %s)", e.C.Job)
 	}
-	return fmt.Sprintf("swim %d is claimed by %s (session %s on %s) until %s%s; pick another lane, wait, or pass --force\n(set SWIM_SESSION to tell sessions apart)",
+	return fmt.Sprintf("lane %d is claimed by %s (session %s on %s) until %s%s; pick another lane, wait, or pass --force\n(set SWIM_SESSION to tell sessions apart)",
 		e.Lane, e.C.Owner, e.C.Session, e.C.Host, until, job)
 }
 

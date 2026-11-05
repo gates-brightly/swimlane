@@ -27,8 +27,8 @@ else
 fi
 pause
 show 'swim status'
-say "api and web are deployed. worker FAILED, so smoke test and announce were" \
-    "SKIPPED rather than run against a half-finished release."
+say "api and web are deployed. worker failed, so smoke test and announce were" \
+    "skipped rather than run against a half-finished release."
 pause
 
 scene "3. Fix it and carry on"
