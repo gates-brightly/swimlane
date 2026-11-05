@@ -149,8 +149,28 @@ deploy): a 20-step lane that failed at step 19 reruns from 19.
 - Snapshot first. Every destructive step behind its own guard, after a gate
   that tells "ours" (tagged) from "theirs".
 - Rerunnable: steps idempotent or detecting their own prior success.
-- End with a verification step.
-- Bash 3.2 (macOS): no associative arrays, `mapfile`, `${x,,}`.
+- End with a verification step that prints the evidence (counts, ids, "No
+  changes"): it's the part of a passing round anyone reads.
+- Check the target first: a gate that stops on the wrong account. For
+  Terraform, `snapshot "plan" terraform plan -out tfplan` in check, `terraform
+  apply tfplan` inside the guard, so what's applied is what was seen.
+- Many similar targets: one step each, fed without a pipe (`while read t; do
+  run "drain $t" ...; done < <(list-targets)`); a piped loop runs in a
+  subshell and loses its failures (lint: `step-subshell`).
+- Keep output streaming: not `out=$(cmd); echo "$out"`, but `bash -o
+  pipefail -c 'cmd | awk "{print} /bad/{b=1} END{exit b}"'`. Python CLIs
+  buffer when piped: `PYTHONUNBUFFERED=1`.
+- A lane runs in a staged copy holding the script and what `# Includes:`
+  pins. Write its own outputs to `$SWIM_OUT`; `$SWIM_ROOT` is the repo, for
+  what the round acts on.
+- Header values take no trailing `# comment`; explain on lines of their own.
+- Write for the operator's machine, not yours: often macOS, so bash 3.2 (no
+  associative arrays, `mapfile`, `${x,,}`) and BSD tools (`sed -i.bak`; no
+  `date -d`, `grep -P`, `stat -c`, `find -printf` or `timeout`: use
+  `--timeout`).
+- No LLM calls that decide what the round does (branching, gating,
+  retries): the script the operator approved decides. One may produce an
+  artifact nothing reads back.
 
 ## Lint
 

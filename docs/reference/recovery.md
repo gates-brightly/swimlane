@@ -61,6 +61,23 @@ swim all                    # run them (or: swim run N for one lane)
 A queued batch that was interrupted is consumed as `interrupted`; run it
 again with `swim queue requeue ID`.
 
+## A round that failed partway through a change
+
+**You see:** a FAIL or STOP in a round's `change` stage, after some of its
+changes passed. The target is now half-changed.
+
+**Fix:** work it out before writing anything.
+
+1. From `swim log N`: which change steps passed, which failed (exit code,
+   output), whether a guard was approved.
+2. The before state is in the round's snapshots (`saved:` lines).
+3. Don't rerun blindly: only safe if its gates tell "already done by us"
+   from "not done" (resources tagged with `$SWIM_JOB`).
+4. Write a recovery round: snapshot what's deployed now, gate on it, then
+   finish forward or roll back behind its own guard.
+5. Next time, write the rollback as its own guarded lane before the
+   change runs, and gates that make the round rerunnable.
+
 ## A lane stuck `running`
 
 **You see:** `swim status` shows `running?` (`process gone`), or a lane says
