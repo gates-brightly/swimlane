@@ -192,8 +192,8 @@ func Build(root string, cfg *config.Config, n int, envSHA string) (*Manifest, er
 		m.Pinned.Includes = append(m.Pinned.Includes, File{Path: f, SHA256: hash(d), From: FromIncludes, Exec: exec})
 	}
 	m.ScriptSHA = hash(lane.JoinScript(data, files, read))
-	// What it pins is what its header names (# Includes:, # Cache:
-	// lockfiles): nothing is found by reading its body. A repo file it
+	// What it pins is what its header names (# Includes:): nothing is
+	// found by reading its body. A repo file it
 	// sources without naming it is refused at run time.
 	info, _ := lane.ReadScript(root, n)
 	sort.Slice(m.Pinned.Includes, func(i, j int) bool { return m.Pinned.Includes[i].Path < m.Pinned.Includes[j].Path })

@@ -662,9 +662,6 @@ func cmdStep(args []string) error {
 	if logPath == "" {
 		logPath = "step.log"
 	}
-	// A step that writes a cache two writers can't share (terraform init
-	// and its plugin cache, # Cache: terraform) holds its write lock.
-	defer cacheWriteLock(cmdArgs, label)()
 	// What it talks to: --target, else the lane's # Targets: default.
 	if target == "" && n > 0 {
 		if info, err := lane.ReadScript(root, n); err == nil {

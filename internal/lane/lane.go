@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gates-brightly/swimlane/internal/cache"
 	"github.com/gates-brightly/swimlane/internal/fsutil"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/proc"
@@ -77,7 +76,7 @@ type Info struct {
 	Locks           []string // Locks: resources this round needs exclusively (default none)
 	Extra           []KV     // other keys in the header block, kept and shown
 	Problems        []string // header values swim couldn't use (e.g. a bad Timeout)
-	Removed         []string // header keys of what this swim no longer has (Finally:, Matrix:, Modules:, ...)
+	Removed         []string // header keys of what this swim no longer has (Finally:, Matrix:, Modules:, Cache:, ...)
 	Message         string   // stub message
 	// FailHard is Fail: hard: the first failed step stops the round.
 	// Default soft. Script syntax 3.
@@ -103,11 +102,6 @@ type Info struct {
 	// such as which binary PATH finds or the cloud account, read when a
 	// guard is approved and again just before it returns (observe.go).
 	Observe []Probe
-	// Cache are the tool caches the round uses (# Cache: terraform
-	// @infra/.terraform.lock.hcl): swim points each tool's download cache at
-	// a directory that outlives the round, and pins the lockfiles the tool
-	// checks the cache against (internal/cache).
-	Cache []cache.Decl
 	// Target is what the lane's steps talk to, by default (# Targets:
 	// orders-api), logged with each step; a step's --target overrides it.
 	Target string
@@ -350,14 +344,12 @@ func (info *Info) setHeader(key, v string, line int, listed map[string]bool) boo
 		}
 	case "Fail":
 		info.setFail(v, "Fail:")
-	case "Cache":
-		info.setCache(v, "Cache:")
 	case "Guards":
 		info.addGuard(v, listed)
 	case "Decisions":
 		info.addDecision(v)
 	case "Matrix", "Matrix-Exclude", "Matrix-Parallel", "Matrix-Fail", "Always", "Finally", "Rerun-Children",
-		"Handler-Timeout", "On-Success", "On-Failure", "On-Exit", "Modules":
+		"Handler-Timeout", "On-Success", "On-Failure", "On-Exit", "Modules", "Cache":
 		info.Removed = append(info.Removed, key)
 	default:
 		return false

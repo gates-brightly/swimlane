@@ -13,12 +13,10 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/gates-brightly/swimlane/internal/cache"
 )
 
 // Keys are the settings `swim config <key> [value]` reads and writes.
-var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command", "cache_dir", "cache_max", "cache_slug"}
+var Keys = []string{"interrupt", "interrupt_grace", "term_grace", "approvals", "signing", "signing_key", "msg_log_interval", "outputs_keep", "queue_lease", "claim_lease", "watch_batches", "notify", "notify_url", "notify_command"}
 
 // Get returns the effective value of one of Keys, spelled as in config.
 func (c *Config) Get(key string) (string, error) {
@@ -53,15 +51,6 @@ func (c *Config) Get(key string) (string, error) {
 		return c.NotifyURL, nil
 	case "notify_command":
 		return c.NotifyCommand, nil
-	case "cache_dir":
-		return c.CacheBase()
-	case "cache_max":
-		if n := c.CacheMaxBytes(); n > 0 {
-			return FormatSize(n), nil
-		}
-		return "0 (no cap)", nil
-	case "cache_slug":
-		return c.CacheSlugFor()
 	case "interrupt_grace", "term_grace":
 		ig, tg := c.Graces()
 		if key == "term_grace" {
@@ -137,24 +126,6 @@ func keyValue(key, value string) (*yaml.Node, error) {
 		v := strings.TrimSpace(value)
 		if d, err := time.ParseDuration(v); err != nil || d < time.Minute {
 			return nil, fmt.Errorf("claim_lease must be a duration of 1m or more, like 2h, got %q", value)
-		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "cache_dir":
-		v := strings.TrimSpace(value)
-		if !filepath.IsAbs(v) && v != "~" && !strings.HasPrefix(v, "~/") {
-			return nil, fmt.Errorf("cache_dir must be an absolute path (or ~/...), got %q", value)
-		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "cache_max":
-		v := strings.TrimSpace(value)
-		if _, err := ParseSize(v); err != nil {
-			return nil, err
-		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
-	case "cache_slug":
-		v := strings.TrimSpace(value)
-		if _, err := cache.Slug("", v); err != nil {
-			return nil, err
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case "watch_batches":
@@ -303,7 +274,7 @@ func Choices(key string) []string {
 }
 
 // IsDefault reports whether value for key is what swim uses with the key
-// unset (10s for term_grace, the OS cache directory's swim for cache_dir). The value is
+// unset (10s for term_grace, say). The value is
 // validated first.
 func IsDefault(key, value string) (bool, error) {
 	val, err := keyValue(key, value)
@@ -424,10 +395,6 @@ func Hint(key string) string {
 		return "age: 14d, 36h"
 	case "watch_batches":
 		return "number, 1 or more"
-	case "cache_dir":
-		return "absolute path or ~/..."
-	case "cache_max":
-		return "size: 500MB, 10GB"
 	case "signing_key":
 		return "SSH key path (.pub for ssh-agent)"
 	case "notify_url":

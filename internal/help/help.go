@@ -104,13 +104,6 @@ var Commands = map[string]string{
                  swim config shows the last (t on its screen sends a test),
                  swim doctor warns when it failed, and a failure is a warn
                  line in .swim.log.
-    cache_dir    an absolute path         where tool caches live (# Cache:;
-                 default ~/.cache/swim, macOS ~/Library/Caches/swim; under
-                 /tmp it gets your user id). Not in a repo's swim.yml.
-    cache_max    a size (10GB, 500MB, 0)  a run trims the repo's caches to
-                 this, least recently used first (default 10GB; 0: no cap).
-    cache_slug   a name                   the repo's cache directory (default
-                 its name and a hash of its origin remote). Not in swim.yml.
     runners.EXT  a command                the runner for lane.N.EXT scripts with
                  no #! line, e.g. swim config runners.ts tsx. Always written
                  to the repo's section; swim.yml's runners: is the default.
@@ -764,37 +757,6 @@ swim queue show|rm|requeue ID
   own with --no-tui; swim watch --once (from cron, say) runs what's queued
   and exits.
 `,
-	"cache": `swim cache [ls] [--yaml]
-swim cache rm PRESET ... | --all [--yes]
-swim cache prune [--older D] [--max SIZE]
-swim cache path [PRESET] [--ci]
-
-  The tool caches this repo's lanes keep between rounds. A lane declares
-  one in its header, with the lockfile the tool checks the cache against:
-      # Cache: terraform @infra/orders/.terraform.lock.hcl
-  and swim points the tool's own download cache (TF_PLUGIN_CACHE_DIR,
-  npm_config_cache, PIP_CACHE_DIR, GOMODCACHE) at the repo's directory for
-  that preset. See swim guide cache.
-  ls       each preset's cache: size, when it was last used and by which
-           lanes, whether a running lane holds it. --yaml: swim.cache/v1
-  rm       delete a preset's cache (asks at a terminal; --yes doesn't). A
-           cache a running lane holds isn't removed. The tools download again
-           what they need
-  prune    delete the caches last used more than D ago (--older 30d), then
-           trim to --max SIZE (default cache_max, 10GB), least recently used
-           first; never one a running lane holds
-  path     the repo's cache directory, or a preset's. --ci prints dir= and a
-           <preset>_key= line per preset the lanes use (from their lockfiles),
-           for a CI cache step around swim ci:
-               - run: swim cache path --ci >> "$GITHUB_OUTPUT"
-                 id: swimcache
-               - uses: actions/cache@v4
-                 with: {path: "${{ steps.swimcache.outputs.dir }}",
-                        key: "${{ steps.swimcache.outputs.terraform_key }}"}
-  Settings (config.yml): cache_dir (default ~/.cache/swim; under /tmp it
-  gets your user id), cache_max, cache_slug (the repo's directory name).
-  cache_dir and cache_slug aren't allowed in a repo's swim.yml.
-`,
 	"wait": `swim wait [--interval D] [--timeout D]
 swim wait [--any] BATCH|JOB ... [--interval D] [--timeout D]
 
@@ -1156,16 +1118,11 @@ swim claim N|RESOURCE --break "<reason>"
                            Finally:, Rerun-Children:, an outcome handler
                            (on_success, on_failure, on_exit), modules
                            (# Modules:, mod, mod_env, an SDK's module call),
-                           the secret store (swim secret, an SDK's
-                           secret.get), or evidence steps (use snapshot)
+                           tool caches (# Cache:), the secret store (swim
+                           secret, an SDK's secret.get), or evidence steps
+                           (use snapshot)
     outputs (warn)         an output whose name suggests secrets (output files
                            aren't masked)
-    cache (error)          a # Cache: with an unknown preset or no lockfile, a
-                           lockfile that isn't there, or pip requirements
-                           without --hash entries (swim run refuses the lane)
-    cache-bypass (warn)    npm install, pip install without --require-hashes or
-                           TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE in a
-                           lane that caches them: the cache isn't checked
     includes (error)       a Python/TypeScript lane imports a local module its
                            # Includes: doesn't list (it isn't staged: the
                            import fails under swim run)
@@ -1235,11 +1192,6 @@ swim claim N|RESOURCE --break "<reason>"
                               old terms: it never expires (until lookup.yml
                               sets standing.max), or a lookup.yml rule
                               change doesn't stale it
-    cache-dir (error)         the cache directory is a link, isn't yours, or
-                              others can write it: lanes with # Cache: won't
-                              start
-    cache-unused (info)       tool caches unused for 30 days, or the repo's
-                              caches over cache_max
     remote-running (warn)     a lane has run on another machine sharing the
                               repo for over a day; if that machine is gone,
                               release it (rm .swim/laneN.pid, then swim
@@ -1250,7 +1202,8 @@ swim claim N|RESOURCE --break "<reason>"
     removed-setting (warn)    a setting swim no longer has (chime,
                               schedule_tz, observe, modules, secrets,
                               ambient_credentials, secrets_key, headless,
-                              hub, pause_warn): it's ignored; delete it
+                              hub, pause_warn, store_dir, cache_dir,
+                              cache_max, cache_slug): it's ignored; delete it
     signing-key (info/warn)   where the runner key lives: warns when it's
                               a file with no passphrase (a lane could read
                               it and sign as the runner); notes that a key
@@ -1399,7 +1352,7 @@ func Names() []string {
 // Full is the complete --help text: the guide plus every command's detail.
 // FullOrder is the order of the command details in swim guide; every
 // command in Commands is in it (help_test checks).
-var FullOrder = []string{"init", "config", "env", "cache", "new", "run", "all", "status", "log", "report", "step", "lib",
+var FullOrder = []string{"init", "config", "env", "new", "run", "all", "status", "log", "report", "step", "lib",
 	"gate", "snapshot", "guard", "decide", "stage", "checkpoint", "drift", "stop", "msg", "input", "output",
 	"archive", "clean", "stub", "note", "lock", "changelog", "version", "skill", "interrupt", "claim", "queue", "watch", "wait", "approve", "revoke",
 	"verify", "history", "chain", "keys", "ci", "signoff", "lint", "doctor", "guide"}
@@ -1446,7 +1399,7 @@ LOGS
 
 EVERYTHING ELSE (swim <command> --help, or swim guide commands)
   revoke, verify, history, keys, chain   approvals and the record behind them
-  doctor, config, env, cache   the environment lanes get
+  doctor, config, env          the environment lanes get
   archive, clean, stub, note   tidy up and record
   interrupt, wait, claim       control running lanes
   ci, signoff, lock, changelog, version, skill

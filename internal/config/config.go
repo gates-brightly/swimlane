@@ -55,6 +55,9 @@ type Settings struct {
 	RemovedHub                any `yaml:"hub,omitempty"`
 	RemovedPauseWarn          any `yaml:"pause_warn,omitempty"`
 	RemovedStoreDir           any `yaml:"store_dir,omitempty"`
+	RemovedCacheDir           any `yaml:"cache_dir,omitempty"`
+	RemovedCacheMax           any `yaml:"cache_max,omitempty"`
+	RemovedCacheSlug          any `yaml:"cache_slug,omitempty"`
 
 	SecretEnv          []string `yaml:"secret_env,omitempty"`           // values of these variables are masked (***)
 	SecretEnvAuto      *bool    `yaml:"secret_env_auto,omitempty"`      // also *_TOKEN, *_SECRET, *_PASSWORD, ... (default true)
@@ -74,9 +77,6 @@ type Settings struct {
 	Notify             *bool    `yaml:"notify,omitempty"`               // terminal notifications and a progress bar (OSC 777, OSC 9;4; default off)
 	NotifyURL          string   `yaml:"notify_url,omitempty"`           // ntfy-style URL each notification is POSTed to (with curl); config.yml only
 	NotifyCommand      string   `yaml:"notify_command,omitempty"`       // sh -c this for each notification instead, with SWIM_EVENT, SWIM_TITLE, ...; config.yml only
-	CacheDir           string   `yaml:"cache_dir,omitempty"`            // where tool caches live (default ~/.cache/swim, macOS ~/Library/Caches/swim); config.yml only
-	CacheMax           string   `yaml:"cache_max,omitempty"`            // a repo's caches are trimmed to this (default 10GB; 0: no cap)
-	CacheSlug          string   `yaml:"cache_slug,omitempty"`           // the repo's cache directory name (default: name + remote hash); config.yml only
 	// ChainAnchors are where chain checkpoints go (file:/path; see the
 	// anchor package). They add up across config.yml and swim.yml.
 	ChainAnchors []string `yaml:"chain_anchors,omitempty"`
@@ -180,12 +180,6 @@ func Load(root string) (*Config, error) {
 		c.merge(s)
 		c.mergeRunners(s.Runners, path)
 		c.Env = s.Env
-		if s.CacheDir != "" || s.CacheSlug != "" {
-			// Where a machine keeps its caches, and which repos share one,
-			// is the operator's: a committed swim.yml could otherwise point
-			// two repos at one cache.
-			return nil, fmt.Errorf("%s: cache_dir: and cache_slug: belong in %s, not the repo's swim.yml", path, c.Path)
-		}
 		if s.NotifyCommand != "" || s.NotifyURL != "" {
 			// And what runs on the operator's machine outside any lane, and
 			// where it sends what swim does: a committed swim.yml mustn't
@@ -232,7 +226,7 @@ func (s Settings) RemovedKeys() []string {
 	}{{"chime", s.RemovedChime}, {"chime_style", s.RemovedChimeStyle}, {"chime_min_s", s.RemovedChimeMinS}, {"schedule_tz", s.RemovedScheduleTZ}, {"observe", s.RemovedObserve}, {"modules", s.RemovedModules},
 		{"secrets", s.RemovedSecrets}, {"ambient_credentials", s.RemovedAmbientCredentials}, {"secrets_key", s.RemovedSecretsKey},
 		{"headless", s.RemovedHeadless}, {"hub", s.RemovedHub}, {"pause_warn", s.RemovedPauseWarn},
-		{"store_dir", s.RemovedStoreDir}} {
+		{"store_dir", s.RemovedStoreDir}, {"cache_dir", s.RemovedCacheDir}, {"cache_max", s.RemovedCacheMax}, {"cache_slug", s.RemovedCacheSlug}} {
 		if k.v != nil {
 			out = append(out, k.name)
 		}
@@ -397,15 +391,6 @@ func (c *Config) merge(r Settings) {
 	if r.NotifyCommand != "" {
 		c.NotifyCommand = r.NotifyCommand
 	}
-	if r.CacheDir != "" {
-		c.CacheDir = r.CacheDir
-	}
-	if r.CacheMax != "" {
-		c.CacheMax = r.CacheMax
-	}
-	if r.CacheSlug != "" {
-		c.CacheSlug = r.CacheSlug
-	}
 	if r.SigningKey != "" {
 		c.SigningKey = r.SigningKey
 	}
@@ -432,11 +417,6 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateInterrupt(); err != nil {
 		return err
-	}
-	if c.CacheMax != "" {
-		if _, err := ParseSize(c.CacheMax); err != nil {
-			return err
-		}
 	}
 	if c.MaxParallel != nil && *c.MaxParallel < 0 {
 		return fmt.Errorf("max_parallel must be 0 (unlimited) or more, got %d", *c.MaxParallel)

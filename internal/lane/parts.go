@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-
-	"github.com/gates-brightly/swimlane/internal/cache"
 )
 
 // ScriptBytes is what a lane's approvals, queue pins and chain entries
@@ -25,8 +23,8 @@ func ScriptBytes(root string, n int) ([]byte, error) {
 }
 
 // ScriptParts are the files ScriptBytes hashes: the script's path and,
-// sorted, the repo-relative files it adds: # Cache: lockfiles and
-// # Includes: matches. A compiled lane adds none.
+// sorted, the repo-relative files it adds: its # Includes: matches. A
+// compiled lane adds none.
 func ScriptParts(root string, n int) (string, []string, error) {
 	path := Script(root, n)
 	data, err := os.ReadFile(path)
@@ -34,15 +32,7 @@ func ScriptParts(root string, n int) (string, []string, error) {
 		return path, nil, err
 	}
 	info := ParseScript(string(data))
-	// # Cache: lockfiles: what the tool checks the cache against, so the
-	// approval covers what it may take from the cache.
-	files := cache.Files(info.Cache)
-	if sc := Sidecar(root, n); fileExists(sc) {
-		var side Info
-		if applySidecar(sc, &side) == nil {
-			files = append(files, cache.Files(side.Cache)...)
-		}
-	}
+	var files []string
 	// # Includes: (globs): local modules and other files that are part of
 	// the round.
 	for _, g := range append(info.Includes, sideIncludes(root, n)...) {

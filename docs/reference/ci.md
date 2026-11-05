@@ -29,8 +29,7 @@ jobs:
 Commit `swim.yml` (the runner has no config of its own) and the lane
 scripts the job runs (`!/lane.1.sh` in `.gitignore`). `--changed[=BASE]`
 runs only rounds whose script changed, plus unpassed lanes they wait on;
-`--rerun` runs passed ones too. `swim cache path --ci` gives a cache step
-its keys. This repo's own CI is `swim ci` over its `lane.*.sh`.
+`--rerun` runs passed ones too. This repo's own CI is `swim ci` over its `lane.*.sh`.
 
 ## Local CI
 

@@ -31,7 +31,6 @@ script's path; several: `2 3` or `2,3`. `swim N ...` is `swim run N ...`.
 | **Environment** | |
 | `config [edit \| KEY [VALUE]]` | Settings on one screen; see [config](config.md). |
 | `env [N]` | The env a lane gets, masked, with each key's source. |
-| `cache` | Tool caches. See [cache](cache.md). |
 | `doctor [--fix]` | Check the environment. |
 | `lock [--upgrade]` / `version` / `changelog` | Syntax versions; the latest release; what changed. |
 | `skill` | How to install the Claude skill. |

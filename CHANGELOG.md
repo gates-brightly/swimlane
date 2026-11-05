@@ -40,12 +40,23 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
+### Removed
+
 - **The store is gone.** swim no longer copies what each round ran and
   wrote into `~/.local/share/swim/store`, and `swim store` is removed.
   The chain of custody and `.swim/scripts/` are unchanged, and `swim
   verify` checks them as before. `store_dir:` in `config.yml` is ignored
   (`swim doctor` says to delete it); delete `~/.local/share/swim/store`
   yourself if you like.
+- **Tool caches are gone: `swim cache`, `# Cache:` and installed-tree
+  snapshots.** Build-tool speed-ups aren't ops safety. `swim cache`
+  (`ls`, `rm`, `prune`, `path`), the lane library's `cache restore|save`
+  and swim's cache directory (`~/.cache/swim`) are no longer used: delete
+  it if you like. A lane with `# Cache:` (or a sidecar's `cache:`) is a
+  `swim lint` error (`removed`); drop the line and the tool uses its own
+  cache, as outside swim. `cache_dir`, `cache_max` and `cache_slug` are
+  ignored, and `swim doctor` says to delete them. Older chain entries keep their `cache:` restores and
+  still verify.
 
 ## 0.20261105.3 (v0.20261105.3, 2026-11-05)
 

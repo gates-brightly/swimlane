@@ -14,7 +14,7 @@ In `manifest_sha256`, what approvals sign ([format](formats.md#manifest_sha256))
 | | |
 |---|---|
 | script | The lane's file. |
-| includes | `# Includes:` matches and `# Cache:` lockfiles: what the header names, never what the body seems to read. |
+| includes | `# Includes:` matches: what the header names, never what the body seems to read. |
 | sidecar | `lane.N.yml`. |
 | runner | How it runs as the repo says: bash, short form, its `#!` line, a `swim.yml` runner. |
 | config | `swim.yml`'s policy keys (`blocked_commands`, `runners`, `approvals`, `signing`, `secret_env*`, `secret_patterns_auto`, `env`) and `lookup.yml`'s `require:`. |

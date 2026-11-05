@@ -153,8 +153,7 @@ func configEditSet(path, root, key, value string, backup func() (string, error))
 
 // configEditRows are the settings, as the defaults section sets them (or
 // swim's default), each with swim's default, what it takes, and what this
-// repo's section or swim.yml sets instead. cache_slug isn't one: it names
-// one repo's caches.
+// repo's section or swim.yml sets instead.
 func configEditRows(path, root string) []display.PickRow {
 	cur, err := config.DefaultsIn(path)
 	if err != nil {
@@ -165,9 +164,6 @@ func configEditRows(path, root string) []display.PickRow {
 	var all []setting
 	width := len("default")
 	for _, key := range config.Keys {
-		if key == "cache_slug" {
-			continue
-		}
 		v, _ := cur.Get(key)
 		def, _ := (&config.Config{}).Get(key)
 		st := setting{key: key, value: configShown(key, v), def: configShown(key, def)}
