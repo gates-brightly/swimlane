@@ -9,11 +9,14 @@
 # after, and a failed mirror push only warns (just mirror-tags retries).
 # TAG_REMOTE and MIRROR_REMOTE override the names (MIRROR_REMOTE= skips it).
 #
-# It refuses a working tree with changes, a commit origin's main doesn't
-# have yet (push it first): the tag names what's already published, and a
-# CHANGELOG.md without a section for the tag: the release workflow takes
-# the GitHub release's notes from it (scripts/release-notes.sh), and fails
-# without one. It pushes only the new tag, never other local tags.
+# It refuses a working tree with changes, and a commit origin's main doesn't
+# have yet (push it first): the tag names what's already published. The
+# release workflow takes the GitHub release's notes from CHANGELOG.md's
+# section for the tag (scripts/release-notes.sh), so when there's none yet
+# it renames ## Unreleased to the tag's heading, above a new empty
+# ## Unreleased, commits that, pushes it to origin's main and tags it. It
+# refuses an empty ## Unreleased. It pushes only the new tag (and that
+# commit), never other local tags.
 #
 # Tags are v0.<YYYYMMDD>.<index>: today's date, and 1 + the highest index
 # already tagged today (1 for the day's first release). Older tags
@@ -59,17 +62,27 @@ heading="## ${tag#v} ($tag, $(date +%Y-%m-%d))"
 if [ -n "${DRY:-}" ]; then
   echo "$tag  (would tag $head, push it to $TAG_REMOTE${MIRROR_REMOTE:+, then $MIRROR_REMOTE}: just next-tag)"
   bash ./scripts/release-notes.sh "$tag" >/dev/null 2>&1 ||
-    echo "  first: rename ## Unreleased in CHANGELOG.md to \"$heading\", above a new empty ## Unreleased, then commit and push"
+    echo "  and first move ## Unreleased in CHANGELOG.md to \"$heading\", commit and push that"
   exit 0
 fi
 
 [ -z "$(git status --porcelain --untracked-files=no)" ] || die "the working tree has changes; commit or stash them first (git status)"   # untracked files aren't in the tag
-# The notes the release workflow will publish (the tree is clean, so this
-# is HEAD's CHANGELOG.md).
-bash ./scripts/release-notes.sh "$tag" >/dev/null ||
-  die "rename ## Unreleased in CHANGELOG.md to \"$heading\", above a new empty ## Unreleased, then commit, push and run again"
 git fetch -q "$TAG_REMOTE" main || die "couldn't fetch $TAG_REMOTE main"
 git merge-base --is-ancestor HEAD "$TAG_REMOTE/main" || die "$head isn't on $TAG_REMOTE's main yet; push it first (git push $TAG_REMOTE main)"
+# The notes the release workflow will publish (the tree is clean, so this
+# is HEAD's CHANGELOG.md). Without them, ## Unreleased becomes them.
+if ! bash ./scripts/release-notes.sh "$tag" >/dev/null 2>&1; then
+  awk '/^## / { if (u) exit; u = ($0 == "## Unreleased"); next } u && NF { found = 1; exit } END { exit !found }' CHANGELOG.md ||
+    die "CHANGELOG.md's ## Unreleased is empty (or missing); write what changed there, commit, push and run again"
+  awk -v heading="$heading" '!done && $0 == "## Unreleased" { print; print ""; print heading; done = 1; next } { print }' CHANGELOG.md > CHANGELOG.md.tmp &&
+    mv CHANGELOG.md.tmp CHANGELOG.md || die "couldn't rewrite CHANGELOG.md"
+  bash ./scripts/release-notes.sh "$tag" >/dev/null || die "CHANGELOG.md still has no section for $tag (git checkout CHANGELOG.md)"
+  git commit -q -m "Release $tag" CHANGELOG.md || die "couldn't commit CHANGELOG.md (git checkout CHANGELOG.md)"
+  head=$(git rev-parse --short HEAD) || exit 1
+  git push -q "$TAG_REMOTE" HEAD:main ||
+    die "pushing $head (CHANGELOG.md's section for $tag) to $TAG_REMOTE main failed; git pull --rebase $TAG_REMOTE main, git push $TAG_REMOTE main, then run again"
+  echo "moved ## Unreleased to $heading in $head and pushed it to $TAG_REMOTE main"
+fi
 # A local tag of that name that origin doesn't have is a leftover (an
 # earlier push that failed, or a tag made by hand): origin decides.
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then

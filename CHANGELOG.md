@@ -23,17 +23,16 @@ lanes. A release that changes what an approval or pin hashes says so under
 Release tags live on `origin`, which is GitHub: its tags are authoritative
 (the next index is read from them), and `fj` (Forgejo) mirrors them.
 
-To cut a release:
-1. `DRY=1 just next-tag` prints the next tag, `v0.<today>.<index>`.
-2. Rename `## Unreleased` to `## 0.<date>.<index> (v0.<date>.<index>, <date>)`,
-   and start a new empty `## Unreleased` above it.
-3. Commit and push to origin's main, then run `just next-tag`. It tags HEAD
-   (a clean tree, already on origin's main) with the next tag, pushes it to
-   origin, then mirrors it to fj; `just mirror-tags` catches fj up on any
-   it missed. The push to origin builds the release binaries and publishes
-   the GitHub release, with this section as its notes
-   (`.github/workflows/release.yml`; `just snapshot` builds the same
-   locally into dist/).
+To cut a release, push to origin's main and run `just next-tag`
+(`DRY=1 just next-tag` prints the next tag, `v0.<today>.<index>`). With a
+clean tree already on origin's main, it renames `## Unreleased` to
+`## 0.<date>.<index> (v0.<date>.<index>, <date>)` above a new empty
+`## Unreleased`, commits and pushes that, tags it, pushes the tag to
+origin, then mirrors it to fj; `just mirror-tags` catches fj up on any it
+missed. The push to origin builds the release binaries and publishes the
+GitHub release, with this section as its notes
+(`.github/workflows/release.yml`; `just snapshot` builds the same locally
+into dist/).
 
 From the next release, each opens with **What changed for you**: at most
 ten lines, one per change you'd notice, before the full sections. The full
@@ -67,10 +66,10 @@ history stays here, since `swim changelog --since` reads it.
   links to the reference. docs/usage.md, docs/quickstart.md and
   swimlane.md are gone.
 - **`just release` is gone.** `just next-tag` is the one way to tag a
-  release. It refuses to tag until this file has a section for the tag
-  (the steps above), since the GitHub release takes its notes from it:
-  tags without one built no release. `DRY=1 just next-tag` says what to
-  name it.
+  release. It moves `## Unreleased` in this file to the tag's section,
+  commits and pushes that, then tags it, since the GitHub release takes
+  its notes from it: tags without one built no release. It refuses an
+  empty `## Unreleased`.
 - **Quieter defaults.** A first run no longer warns that it's unsigned in a
   repo with no `lookup.yml` (nothing is set up for approvals there; `swim
   verify` still says it). A run of one lane prints that lane's summary
