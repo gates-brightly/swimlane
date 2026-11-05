@@ -76,8 +76,8 @@ type Policy struct {
 	// Rules were lookup.yml's require: rules when swim had signed
 	// approvals: no longer set, but hashed as written (an empty line).
 	Rules string `yaml:"lookup_rules,omitempty"`
-	// Set is each policy key swim.yml sets, with its value's hash, so a
-	// stale approval can say which changed (not hashed).
+	// Set is each policy key swim.yml sets, with its value's hash: a
+	// record of what the policy was (not hashed).
 	Set map[string]string `yaml:"set,omitempty"`
 }
 
@@ -430,74 +430,6 @@ func (m *Manifest) ScriptBytes() ([]byte, error) {
 		}
 	}
 	return lane.JoinScript(data, files, func(f string) ([]byte, error) { return os.ReadFile(m.Path(f)) }), nil
-}
-
-// Diff says why new differs from old, an approval's pins: "config policy
-// changed (swim.yml)", "includes lib/orders.sh changed", ...
-func Diff(old, new Pinned) []string {
-	var out []string
-	if old.Script.Path != new.Script.Path || old.Script.SHA256 != new.Script.SHA256 {
-		out = append(out, "script "+new.Script.Path+" changed")
-	}
-	was := map[string]string{}
-	for _, f := range old.Includes {
-		was[f.Path] = f.SHA256
-	}
-	now := map[string]bool{}
-	for _, f := range new.Includes {
-		now[f.Path] = true
-		switch sum, ok := was[f.Path]; {
-		case !ok:
-			out = append(out, "includes "+f.Path+" added")
-		case sum != f.SHA256:
-			out = append(out, "includes "+f.Path+" changed")
-		}
-	}
-	for _, f := range old.Includes {
-		if !now[f.Path] {
-			out = append(out, "includes "+f.Path+" removed")
-		}
-	}
-	switch {
-	case old.Sidecar == nil && new.Sidecar != nil:
-		out = append(out, "sidecar "+new.Sidecar.Path+" added")
-	case old.Sidecar != nil && new.Sidecar == nil:
-		out = append(out, "sidecar "+old.Sidecar.Path+" removed")
-	case old.Sidecar != nil && *old.Sidecar != *new.Sidecar:
-		out = append(out, "sidecar "+new.Sidecar.Path+" changed")
-	}
-	if old.Runner != new.Runner {
-		out = append(out, fmt.Sprintf("runner changed (%s, now %s)", or(old.Runner, "none"), or(new.Runner, "none")))
-	}
-	out = append(out, diffPolicy(old.Config, new.Config)...)
-	if old.Config.Rules != new.Config.Rules {
-		out = append(out, "approval rules changed (lookup.yml require:, which swim no longer reads)")
-	}
-	return out
-}
-
-// diffPolicy says how swim.yml's policy changed between an approval's pins
-// and now, naming the keys when both sides recorded them.
-func diffPolicy(old, new Policy) []string {
-	if old.SHA256 == new.SHA256 {
-		return nil
-	}
-	var keys []string
-	for k, sum := range new.Set {
-		if old.Set[k] != sum {
-			keys = append(keys, k)
-		}
-	}
-	for k := range old.Set {
-		if _, ok := new.Set[k]; !ok {
-			keys = append(keys, k)
-		}
-	}
-	sort.Strings(keys)
-	if len(keys) == 0 {
-		return []string{"config policy changed (swim.yml)"}
-	}
-	return []string{"config policy changed (swim.yml: " + strings.Join(keys, ", ") + ")"}
 }
 
 // runnerPin is how the repo says the script runs, the same on every

@@ -40,12 +40,6 @@ history stays here, since `swim changelog --since` reads it.
 
 ## Unreleased
 
-### Changed
-
-- **CI fails on unreachable code.** Lane 1 runs `deadcode ./cmd/swim`
-  (golang.org/x/tools v0.52.0): a function nothing in swim can reach is
-  an error, so it is deleted rather than kept for a test.
-
 ### Removed
 
 - **Decisions and checkpoints are gone.** `decide` (bash), `swim decide`,
@@ -59,18 +53,18 @@ history stays here, since `swim changelog --since` reads it.
 - **The store is gone.** swim no longer copies what each round ran and
   wrote into `~/.local/share/swim/store`, and `swim store` is removed.
   The chain of custody and `.swim/scripts/` are unchanged, and `swim
-  verify` checks them as before. `store_dir:` in `config.yml` is ignored
-  (`swim doctor` says to delete it); delete `~/.local/share/swim/store`
+  verify` checks them as before. `store_dir:` is no longer a setting
+  (see below); delete `~/.local/share/swim/store`
   yourself if you like.
 - **Tool caches are gone: `swim cache`, `# Cache:` and installed-tree
   snapshots.** Build-tool speed-ups aren't ops safety. `swim cache`
   (`ls`, `rm`, `prune`, `path`), the lane library's `cache restore|save`
   and swim's cache directory (`~/.cache/swim`) are no longer used: delete
-  it if you like. A lane with `# Cache:` (or a sidecar's `cache:`) is a
-  `swim lint` error (`removed`); drop the line and the tool uses its own
-  cache, as outside swim. `cache_dir`, `cache_max` and `cache_slug` are
-  ignored, and `swim doctor` says to delete them. Older chain entries keep their `cache:` restores and
-  still verify.
+  it if you like. A lane's `# Cache:` line is now an ordinary
+  header line that does nothing (drop it), and a sidecar's `cache:` fails
+  to load; the tool uses its own cache, as outside swim. `cache_dir`,
+  `cache_max` and `cache_slug` are no longer settings (see below). Older
+  chain entries keep their `cache:` restores and still verify.
 - **Signed approvals and approvals from others.** `swim approve`, `swim
   revoke`, `swim keys add`, `approvals/`, `lookup.yml` (users, groups,
   `require:` rules, `standing.max`), standing approvals, `swim watch
@@ -90,9 +84,8 @@ history stays here, since `swim changelog --since` reads it.
   chain export` are gone, and so are `swim verify`'s `trusted` and
   `anchored` levels and its `--trust-pin` and `--against` flags
   (`SWIM_TRUST_PIN` too). `swim verify` checks the chain's links and
-  signatures against itself, as `consistent` did. A `chain_anchors` key
-  in swim.yml or config.yml is ignored (`swim doctor` says to delete it),
-  and the doctor checks `anchors-none`, `checkpoint-unsent` and
+  signatures against itself, as `consistent` did. `chain_anchors` is no
+  longer a setting (see below), and the doctor checks `anchors-none`, `checkpoint-unsent` and
   `trust-unpinned` and the lint check `trust` are gone.
 - **The last of `swim schedule`.** A batch an older swim queued with a
   start time (`not_before`) is no longer held for it, and the watch screen
@@ -100,16 +93,18 @@ history stays here, since `swim changelog --since` reads it.
   run's `scheduled_for` against its start (older chain entries keep the
   field, and their signatures still verify).
 - **swim lint's `removed` check.** It refused scripts that still used
-  what swim dropped long ago (`# Finally:`, `# Matrix:`, `# Modules:`,
+  what swim dropped (`# Finally:`, `# Matrix:`, `# Modules:`, `# Cache:`,
   `mod`, `swim secret`, outcome handlers, evidence steps); such a header
   is now just an unknown header line. A manifest no longer hashes module
   pins (no current lane has any).
-- **swim.yml's chime, chime_style, chime_min_s, schedule_tz, observe,
-  secrets_key, headless, hub and pause_warn.** No longer read: a swim.yml
-  that still sets one fails to load until the line is deleted.
-  `modules`, `secrets` and `ambient_credentials` are still read (they
-  count in the policy hash approvals are bound to), and `swim doctor`
-  still says to delete them.
+- **Removed settings are no longer read: chime, chime_style,
+  chime_min_s, schedule_tz, observe, secrets_key, headless, hub,
+  pause_warn, store_dir, cache_dir, cache_max, cache_slug and
+  chain_anchors.** A swim.yml that still sets one fails to load, naming
+  the key (`field cache_max not found`): delete the line. In config.yml
+  they're ignored silently. `modules`, `secrets` and
+  `ambient_credentials` are still read (they count in the policy hash
+  approvals are bound to), and `swim doctor` still says to delete them.
 
 ### Changed
 
@@ -117,6 +112,9 @@ history stays here, since `swim changelog --since` reads it.
   verifies when this machine's signing key (`signing_key`, or
   `~/.ssh/id_ed25519`) made it; `lookup.yml` and `trust.yml` no longer
   name whose key it is.
+- **CI fails on unreachable code.** Lane 1 runs `deadcode ./cmd/swim`
+  (golang.org/x/tools v0.52.0): a function nothing in swim can reach is
+  an error, so it is deleted rather than kept for a test.
 
 ## 0.20261105.3 (v0.20261105.3, 2026-11-05)
 

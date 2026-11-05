@@ -623,13 +623,6 @@ func checkGuardUnused(c *Context, s *Script) []finding.Finding {
 	return out
 }
 
-func or(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
-}
-
 var (
 	destructiveRE = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])(delete|destroy|drop)(?:$|[^A-Za-z0-9_])|(?:^|[\s;&|('"])rm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b`)
 	// Lines that only say or record something.
