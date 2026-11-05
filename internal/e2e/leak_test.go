@@ -62,7 +62,7 @@ var leakInventory = []struct{ what, re string }{
 	{"lane logs", `^repo/\.swim/logs/agent\d+(\.prev-[^/]+)?(\.check)?\.log$`},
 	{"archived logs", `^repo/\.swim/logs/archive/`},
 	{"status", `^repo/\.swim/status\.yml$`},
-	{"staged lane copies", `^repo/\.swim/runs/r-[^/]+/\d+/`},
+	{"staged lane copies and their manifests", `^repo/\.swim/runs/r-[^/]+/\d+(/|\.manifest\.yml$)`},
 	{"kept scripts", `^repo/\.swim/scripts/`},
 	{"the chain", `^repo/\.swim/(chain\.jsonl|checkpoints\.jsonl|checkpoints\.sent\.yml)$`},
 	{"the queue", `^repo/\.swim/queue/`},
