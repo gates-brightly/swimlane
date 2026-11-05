@@ -39,30 +39,3 @@ environment once as the run starts, refuses a flag the header doesn't
 declare, lets each approval be used once, and writes every approval to the
 chain itself. A lane can't approve itself. `approvals: flags` in config
 never asks.
-
-## Decisions
-
-A guard asks "may I?"; a decision asks "which way?".
-
-```bash
-# Decisions: ROLLOUT  how api 2.4.1 goes out
-decide ROLLOUT "How should api 2.4.1 roll out?" \
-  "canary: 10% for 15 minutes, then the rest" "all at once" "don't deploy"
-case $DECISION in
-  1) run "canary" deploy api 2.4.1 --percent 10 ;;
-  2) run "deploy" deploy api 2.4.1 --percent 100 ;;
-  3) stop "not deploying" ;;
-esac
-```
-
-- 2 to 9 choices. Answered by `ROLLOUT=2` in `swim run`'s environment, a
-  batch's `--decide ROLLOUT=2`, the prompt, or a number key in the live
-  view. `-y` answers none, and there is no default.
-- Unanswered (no one to ask, a value that isn't a choice, or set by the
-  lane itself): `SKIP ... decision needed`, and the round ends there as a
-  dry run.
-- Undeclared in `# Decisions:`: refused. Call it on its own line, not in
-  `$(...)` or a pipe.
-- Recorded: `DECIDED ROLLOUT: 2. all at once` in the log, a `decide` entry
-  in the chain.
-- A decision steers; it never approves. Guard the destructive branch.

@@ -45,7 +45,7 @@ type interactive struct {
 	termSig  bool          // SIGTERM or SIGHUP arrived: never hold the view open
 	quit     chan struct{} // closed when the held view may close
 	quitOnce sync.Once
-	answers  map[int]chan int // open questions' answers, by lane (ask.go): 1 yes, 0 no; a decision's choice
+	answers  map[int]chan int // open questions' answers, by lane (ask.go): 1 yes, 0 no
 }
 
 // TUIAllowed reports whether the environment lets swim use the interactive
@@ -128,16 +128,13 @@ func (d *Display) startInteractive() bool {
 				it.model.note = note
 				it.dirty = true
 				d.mu.Unlock()
-			case actYes, actNo, actChoose:
+			case actYes, actNo:
 				d.mu.Lock()
 				ch := it.answers[it.model.answerLane]
-				answer := it.model.answerChoice
 				d.mu.Unlock()
-				if act != actChoose {
-					answer = 0
-					if act == actYes {
-						answer = 1
-					}
+				answer := 0
+				if act == actYes {
+					answer = 1
 				}
 				if ch != nil {
 					select {

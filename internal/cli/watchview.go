@@ -258,7 +258,7 @@ func (w *watchView) rows() []display.PickRow {
 			b.add(ui.Dim, "  · "+ui.Safe(l.CurrentStep)) // a question says what it waits on itself
 		}
 		if asking {
-			b.add(ui.Yellow+ui.Bold, "  · "+askVerb(q)+" "+approval.Clean(q.msg.Flag))
+			b.add(ui.Yellow+ui.Bold, "  · waits for approval of "+approval.Clean(q.msg.Flag))
 			color = ui.Yellow + ui.Bold
 		}
 		if w.isStaged(n) {
@@ -374,24 +374,14 @@ func (w *watchView) askRows() (rows []display.PickRow, waiting map[int]watchAsk)
 		// Their own section, its bar in yellow: what's blocked on the
 		// operator stands out from the jobs and the queue under it.
 		keys := "y approve · n decline"
-		for _, q := range pending {
-			if q.msg.Choices > 0 {
-				keys += " · 1-9 choose"
-				break
-			}
-		}
 		rows = append(rows, display.PickRow{Text: fmt.Sprintf("⚠ Waiting for you (%d)", len(pending)), Rule: true, Color: ui.Yellow, Right: keys})
 	}
 	for i, q := range pending {
 		if _, ok := waiting[q.msg.Lane]; !ok {
 			waiting[q.msg.Lane] = q
 		}
-		keys := "y approve  n decline"
-		if q.msg.Choices > 0 {
-			keys = fmt.Sprintf("1-%d choose  n leave unanswered", q.msg.Choices)
-		}
-		head := fmt.Sprintf("⚠ swim %d is blocked: %s %s  · batch #%d · %s  ·  %s",
-			q.msg.Lane, askVerb(q), approval.Clean(q.msg.Flag), q.seq, display.Took(now.Sub(q.since)), keys)
+		head := fmt.Sprintf("⚠ swim %d is blocked: waits for approval of %s  · batch #%d · %s  ·  y approve  n decline",
+			q.msg.Lane, approval.Clean(q.msg.Flag), q.seq, display.Took(now.Sub(q.since)))
 		rows = append(rows, display.PickRow{ID: q.key, Text: head, Color: ui.Yellow + ui.Bold})
 		lines := q.msg.Question
 		if len(lines) > 0 {
@@ -412,14 +402,6 @@ func (w *watchView) askRows() (rows []display.PickRow, waiting map[int]watchAsk)
 		}
 	}
 	return rows, waiting
-}
-
-// askVerb is what a waiting question asks for.
-func askVerb(q watchAsk) string {
-	if q.msg.Choices > 0 {
-		return "waits for a decision:"
-	}
-	return "waits for approval of"
 }
 
 // batchDry says whether batch e runs (or ran) a guard as a dry run: while
@@ -639,7 +621,7 @@ func (w *watchView) act(id string, key rune) string {
 		case key == 'o':
 			return w.toggleStream()
 		}
-		return fmt.Sprintf("swim %d waits for an answer: y or n (a decision: its number); enter shows its output", n)
+		return fmt.Sprintf("swim %d waits for an answer: y or n; enter shows its output", n)
 	}
 	// The next batch: s submits it from any row (enter or q on its row
 	// too), x clears it.

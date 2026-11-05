@@ -34,8 +34,8 @@ says otherwise:
   - Run rounds (`swim run`, `all`, `swim N`, `./lane.N.sh`, `watch`, `ci`).
     If the user explicitly asks, only lanes with no guards that change
     nothing outside the repo, and say so.
-  - Approve or decide anything, in any form. Never set a variable named
-    after a guard or decision. How the operator approves is theirs: don't
+  - Approve anything, in any form. Never set a variable named after a
+    guard. How the operator approves is theirs: don't
     name it, suggest it, or write steps around it.
   - `swim interrupt`, `chain ...`, `doctor --fix`, `config`.
   - Edit `.swim/`, `.swim.log` or `~/.config/swim/` by hand: give the operator the exact lines.
@@ -84,7 +84,7 @@ run 3f2a9c1e 7b4d4e2a`, with nothing that approves.
 
 Flag every risk on its own line marked ⚠ (a change outside the repo,
 production or shared targets, a setup lane the batch pulls in, anything
-irreversible), and for every guard or decision write this block, from the
+irreversible), and for every guard write this block, from the
 script and what its snapshot and check found:
 
 ```markdown
@@ -96,8 +96,6 @@ script and what its snapshot and check found:
   - Scope: the 14 resources the snapshot lists; terraform owns them, data retained
   - Undo: `npx sst deploy --stage prod` from `v2.3.9`
   - If you say no: a dry run; nothing is removed
-- **Decision `ROLLOUT`** (swim 3): 1 canary 10% then the rest (~20 min),
-  2 all at once (~2 min), 3 don't deploy
 ```
 
 Need something from the operator first? Config or `deps:`: the exact YAML.

@@ -75,9 +75,6 @@ func (n *watchNotes) asked(q watchAsk) {
 		return
 	}
 	what := "approval of " + q.msg.Flag
-	if q.msg.Choices > 0 {
-		what = "a decision: " + q.msg.Flag
-	}
 	title := fmt.Sprintf("swim %d needs you", q.msg.Lane)
 	body := fmt.Sprintf("%s: %s · batch #%d", what, approval.Clean(q.msg.Desc), q.seq)
 	n.t.Notify(title, body)

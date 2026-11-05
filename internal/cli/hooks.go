@@ -483,18 +483,6 @@ func cmdStage(args []string) error {
 }
 
 // swim _finish N [--exit CODE]
-// keptSteps are the round's checkpointed steps it didn't run, for its
-// chain entry.
-func keptSteps(r *logparse.Round) []chain.KeptStep {
-	var out []chain.KeptStep
-	for _, res := range r.Results {
-		if res.Kind == logparse.Kept && res.Handler == "" {
-			out = append(out, chain.KeptStep{Key: or(res.Key, res.Label), Cmd: res.Checkpoint, Run: res.KeptFrom})
-		}
-	}
-	return out
-}
-
 func cmdFinish(args []string) error {
 	var exitS string
 	rest, err := flags{strs: map[string]*string{"exit": &exitS}}.parse(args)
@@ -562,8 +550,7 @@ func cmdFinish(args []string) error {
 			Script: scriptSHA(root, n), Manifest: manifestSHA(root, n), Result: state, Exit: &exit,
 			Log: chain.Hash([]byte(section)), Approvals: approvals, AutoApproved: auto,
 			EnvSHA256: laneEnvSHA(root, n), Handlers: handlerMap(r), Outputs: outSums,
-			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs),
-			Kept: keptSteps(r)}); err != nil {
+			Inputs: inputMap(inputs), InputRounds: inputRounds(inputs)}); err != nil {
 			fmt.Fprintln(os.Stderr, "swim: "+err.Error())
 		}
 	}
@@ -574,13 +561,9 @@ func cmdFinish(args []string) error {
 	if word == logparse.Skip {
 		exit = "" // the script exited 0; a dry run's work still waits (swim run exits 3)
 	}
-	kept := ""
-	if r.Kept > 0 {
-		kept = fmt.Sprintf(" kept=%d", r.Kept)
-	}
-	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d drift=%d%s%s  %s\n",
+	fmt.Fprintf(os.Stderr, "%s %s  pass=%d fail=%d skip=%d drift=%d%s  %s\n",
 		laneBanner(p, root, n, " summary:"),
-		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, kept, exit, display.Span(now.Add(-dur), now))
+		p.Paint(ui.StateColor(word)+ui.Bold, word), r.Pass, r.Fail, r.Skip, r.Drift, exit, display.Span(now.Add(-dur), now))
 	// The stages that ran; the log keeps every one (none included).
 	var ran []logparse.StageResult
 	for _, s := range stages {
@@ -621,14 +604,14 @@ func cmdFinish(args []string) error {
 			l.StartedAt = status.Str(r.StartedAt)
 		}
 		// The round's clock stopped while it waited for the operator (an
-		// approval, a decision): its duration leaves those waits out. The
+		// approval): its duration leaves those waits out. The
 		// log's END keeps the time it took end to end.
 		l.Resume(now)
 		ran := max(dur-l.Paused(now), 0)
 		l.DurationS = status.Float(ran.Round(100 * time.Millisecond).Seconds())
 		l.ExitCode = status.Int(code)
 		l.Reason = reason
-		l.Pass, l.Fail, l.Skip, l.Drift, l.Kept = r.Pass, r.Fail, r.Skip, r.Drift, r.Kept
+		l.Pass, l.Fail, l.Skip, l.Drift = r.Pass, r.Fail, r.Skip, r.Drift
 		l.FailedSteps = failedSteps
 		l.Stage = ""
 		l.Stages = []string{}
@@ -719,11 +702,6 @@ func cmdMark(args []string) error {
 		return usagef("--request and --confirm are for APPROVED marks")
 	}
 	recorded := false // the launcher put the approval in the chain
-	if args[1] == logparse.Decided && !decideMarking {
-		// Only swim _decide writes one, with the answer it was given.
-		fmt.Fprintf(os.Stderr, "swim: refused: a DECIDED mark comes from decide, with the operator's answer: a lane can't decide for itself\n")
-		return exitError{2}
-	}
 	if args[1] == logparse.Approved && request == "" && !confirmed && underSwimRun(markRoot()) {
 		fmt.Fprintf(os.Stderr, "swim: refused: an APPROVED mark under swim run needs the launcher's approval (guard asks for it): a lane can't approve itself\n")
 		return exitError{2}
@@ -748,7 +726,7 @@ func cmdMark(args []string) error {
 		label, detail = mk.String(label), mk.String(detail)
 	}
 	switch kind {
-	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Decided, logparse.Stop, logparse.Warn, logparse.Blocked, logparse.Fail:
+	case logparse.Skip, logparse.Drift, logparse.Approved, logparse.Stop, logparse.Warn, logparse.Blocked, logparse.Fail:
 	default:
 		return usagef("unknown mark kind %q", kind)
 	}
@@ -804,8 +782,6 @@ func cmdMark(args []string) error {
 			l.Skip++
 		case logparse.Drift:
 			l.Drift++
-		case logparse.Decided:
-			l.Decided = append(l.Decided, strings.TrimPrefix(line, logparse.Decided+"  "))
 		case logparse.Stop:
 			l.FailedSteps = append(l.FailedSteps, line)
 		case logparse.Blocked, logparse.Fail:

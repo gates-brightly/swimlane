@@ -16,7 +16,6 @@ import (
 
 	"github.com/gates-brightly/swimlane/internal/chain"
 	"github.com/gates-brightly/swimlane/internal/lane"
-	"github.com/gates-brightly/swimlane/internal/logparse"
 	"github.com/gates-brightly/swimlane/internal/manifest"
 	"github.com/gates-brightly/swimlane/internal/outputs"
 	"github.com/gates-brightly/swimlane/internal/sign"
@@ -458,17 +457,6 @@ func (v *verifier) checkEntries(links []chain.Link) {
 					v.bad = append(v.bad, fmt.Sprintf("entry #%d: input %s doesn't match what round %s produced (entry #%d): changed after it was produced", l.Seq, key, from, prod.Seq))
 				}
 			}
-			// Each step it kept must have passed in the run it names, as
-			// that run's log (hashed into its own round entry) shows.
-			for _, k := range l.Kept {
-				why, gone := keptWhy(root, links, l, k)
-				switch {
-				case gone:
-					v.warn = append(v.warn, fmt.Sprintf("entry #%d: swim %d kept %q from run %s, whose log is gone: the pass can't be rechecked", l.Seq, l.Lane, k.Key, k.Run))
-				case why != "":
-					v.bad = append(v.bad, fmt.Sprintf("entry #%d: swim %d kept %q from run %s, but %s", l.Seq, l.Lane, k.Key, k.Run, why))
-				}
-			}
 			if l.Log != "" {
 				// A lane run twice under one run id (--run-id) has a section
 				// for each round: this one's must be among them.
@@ -500,9 +488,10 @@ func (v *verifier) checkEntries(links []chain.Link) {
 			// Not a break: the removed bytes were never a complete entry.
 			v.notes = append(v.notes, fmt.Sprintf("entry #%d: swim chain repair %s", l.Seq, l.Action))
 		case "decide":
-			// Under swim run only the launcher records a decision, as an
-			// approval: one its run's attestation doesn't list was written
-			// by someone else.
+			// Written by a swim that had decisions (decide), which this
+			// one no longer has; they still verify. Under swim run only the
+			// launcher recorded one, as an approval: one its run's
+			// attestation doesn't list was written by someone else.
 			if !attested && launchedRun[l.Run] && !cutShort[l.Run] {
 				v.bad = append(v.bad, fmt.Sprintf("entry #%d: decision %s for swim %d in run %s, which swim run started but never attested: nothing vouches that swim run recorded it", l.Seq, l.Guard, l.Lane, l.Run))
 			}
@@ -615,39 +604,6 @@ func roundLogHashes(root string, n int, run string) map[string]bool {
 		}
 	}
 	return sums
-}
-
-// keptWhy says how kept step k of round entry l isn't backed by an
-// earlier pass ("" if it is): a round of the same lane in run k.Run before
-// l in the chain, whose log shows the step passing with the same command
-// hash. gone: that run's log isn't there to check.
-func keptWhy(root string, links []chain.Link, l chain.Link, k chain.KeptStep) (why string, gone bool) {
-	earlier := slices.ContainsFunc(links, func(e chain.Link) bool {
-		return e.Type == "round" && e.Lane == l.Lane && e.Run == k.Run && e.Seq < l.Seq
-	})
-	if !earlier {
-		return "the chain has no earlier round of it in that run", false
-	}
-	found := false
-	for _, f := range append(archives(root, l.Lane), lane.Log(root, l.Lane)) {
-		rounds, _ := roundsOf(f, k.Run)
-		for _, lines := range rounds {
-			found = true
-			r, err := logparse.ParseRound(lines)
-			if err != nil {
-				continue
-			}
-			for _, res := range r.Results {
-				if res.Kind == logparse.Pass && res.Checkpoint == k.Cmd && or(res.Key, res.Label) == k.Key {
-					return "", false
-				}
-			}
-		}
-	}
-	if !found {
-		return "", true
-	}
-	return "that run's log has no pass of it with the same command", false
 }
 
 // runStarted is when a run started, from its id (r-20261015T121857Z-...),

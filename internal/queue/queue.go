@@ -114,8 +114,9 @@ type Entry struct {
 	Lanes      []Lane   `yaml:"lanes"`
 	Approve    []string `yaml:"approve,omitempty"`     // guard flags approved for this batch
 	ApproveAll bool     `yaml:"approve_all,omitempty"` // -y: every guard
-	// Decide are the batch's answers to its lanes' decisions ("NAME=N"):
-	// a worker runs it with NAME=N set; any other decision is unanswered.
+	// Decide were an older swim's answers to its lanes' decisions
+	// ("NAME=N"; swim no longer has decisions and sets none): kept so that
+	// batch's signed statement still verifies.
 	Decide    []string `yaml:"decide,omitempty"`
 	Parallel  *int     `yaml:"parallel,omitempty"`
 	Signature string   `yaml:"signature,omitempty"` // queued by an older swim watch --approved: the approval's statement hash

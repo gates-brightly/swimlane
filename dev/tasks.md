@@ -41,7 +41,6 @@ should make that line sharper, not blur it.
 | [T21](#t21-repo-landing-page-p3) repo landing page | P3 | gap |
 | [T23](#t23-friction-from-my-own-sessions-p1) friction from my own sessions, then cuts | P1 | gap |
 | [T29](tasks/T29-ci-e2e-red-on-main.md) e2e red on main in CI | P0 | bug |
-| [T30](tasks/T30-decision-checkpoint-followups.md) decisions and checkpoints: the unbuilt parts of their specs | P2 | gap |
 | [T31](tasks/T31-watch-says-why-a-batch-waits.md) `swim watch` says why a batch waits | P2 | gap |
 | [T32](tasks/T32-log-since-fail.md) `swim log N --failed` | P2 | gap |
 | [T33](tasks/T33-requeue-from-the-failure.md) requeue a failed batch from where it stopped | P2 | gap |

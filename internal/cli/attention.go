@@ -104,7 +104,7 @@ func cmdAttention() error {
 		}
 		switch {
 		case state == status.Running && l.PausedAt != "":
-			needs = append(needs, attentionItem{who, "asking for your answer (an approval or a decision) where it runs", ""})
+			needs = append(needs, attentionItem{who, "asking for your approval where it runs", ""})
 			continue
 		case state == status.Running+"?" || state == status.Waiting+"?":
 			needs = append(needs, attentionItem{who, "interrupted: its process is gone", "swim log " + strconv.Itoa(l.Lane)})

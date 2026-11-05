@@ -6,8 +6,8 @@ entry per line, each holding the SHA-256 of the line before it.
 | Entry | Records |
 |---|---|
 | `approve` | Lane, job, script and manifest hashes, the guard and its action, the `Observe:` facts, who approved and how: prompt, preapproved (the live view), flag, queue or `-y` (older entries: signature, standing, hub-signed, hub-button). |
-| `round` | Script and manifest hashes, the hash of the round's log section, result, exit, the approvals it used, kept checkpoints, inputs read. |
-| `decide` | A decision: question, choices, the number, who and how. |
+| `round` | Script and manifest hashes, the hash of the round's log section, result, exit, the approvals it used, inputs read. |
+| `decide` | An older swim's decision (`decide`, which swim no longer has): question, choices, the number, who and how. Still verified. |
 | `run` | `swim run`'s attestation when its last lane exits: what each lane ran and every approval it recorded. |
 | `grant` / `revoke` | Signed approvals an older swim gave or withdrew. |
 | `repair` | `swim chain repair` removed a half-written last line (size, hash, the `.bak` that keeps it). |

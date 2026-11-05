@@ -6,8 +6,7 @@ Source: the UX review (item 9).
 batch back as it was: every lane, pinned to the jobs and scripts it was
 queued with (`queue.Requeue`, internal/queue/queue.go:592). Lanes that
 passed run again, and a lane whose script was fixed since is skipped as
-changed. Checkpointed steps (`run --checkpoint`) already skip on a lane's
-next run.
+changed.
 
 **Do:**
 - `swim queue requeue ID --failed`: a new batch of the lanes that didn't

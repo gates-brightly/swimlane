@@ -86,11 +86,8 @@ func notifyAsk(o Options, req approval.Request) {
 }
 
 // askText is what a question asks, for a notification: "approval of
-// DEPLOY: deploy 2.4.1" or "a decision: ROLLOUT".
+// DEPLOY: deploy 2.4.1".
 func askText(req approval.Request) string {
-	if req.Choices != nil {
-		return "a decision: " + req.Flag + ": " + req.Desc
-	}
 	return "approval of " + req.Flag + ": " + req.Desc
 }
 

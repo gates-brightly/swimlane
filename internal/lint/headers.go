@@ -12,13 +12,13 @@ import (
 
 // headerKeys are the header keys swim reads, spelled as it reads them
 // (case matters: # timeout: is not # Timeout:).
-var headerKeys = []string{"Round", "Task", "Job", "After", "Owner", "Created", "Guards", "Decisions", "Timeout", "Step-Timeout",
+var headerKeys = []string{"Round", "Task", "Job", "After", "Owner", "Created", "Guards", "Timeout", "Step-Timeout",
 	"Locks", "Includes", "Outputs", "Observe", "Targets", "Signoff", "Workspace", "Fail", "swim"}
 
 // headerSynonyms are words agents reach for in place of a key swim reads.
 var headerSynonyms = map[string]string{"depends": "After", "depends-on": "After", "dependson": "After", "requires": "After",
 	"needs": "After", "waits": "After", "wait": "After", "lock": "Locks", "include": "Includes", "guard": "Guards",
-	"decision": "Decisions", "target": "Targets", "output": "Outputs", "step-timeouts": "Step-Timeout", "steptimeout": "Step-Timeout"}
+	"target": "Targets", "output": "Outputs", "step-timeouts": "Step-Timeout", "steptimeout": "Step-Timeout"}
 
 // checkHeaderKey: a key in the header block that swim doesn't read but
 // that looks meant as one it does (another case, a synonym, a typo) is

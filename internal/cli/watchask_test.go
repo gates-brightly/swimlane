@@ -45,7 +45,7 @@ func TestWatchAskGuard(t *testing.T) {
 		got <- c.ask(approval.Request{Lane: 3, Flag: "ALLOW_DROP", Desc: "drop orders"}, nil)
 	}()
 	p := waitPending(t, a, 1)
-	if p[0].msg.Lane != 3 || p[0].seq != 7 || p[0].msg.Choices != 0 {
+	if p[0].msg.Lane != 3 || p[0].seq != 7 {
 		t.Fatalf("question = %+v", p[0])
 	}
 	if !strings.Contains(strings.Join(p[0].msg.Question, "\n"), "the lane says: drop orders") {
@@ -62,25 +62,6 @@ func TestWatchAskGuard(t *testing.T) {
 		t.Errorf("response = %+v", r)
 	}
 	waitPending(t, a, 0)
-}
-
-func TestWatchAskDecision(t *testing.T) {
-	c, a, stop := askPairForTest(t, 1)
-	defer stop()
-	got := make(chan approval.Response, 1)
-	go func() {
-		got <- c.ask(approval.Request{Lane: 2, Flag: "ROLLOUT", Desc: "how?", Choices: []string{"canary", "all"}}, nil)
-	}()
-	waitPending(t, a, 1)
-	for _, k := range []rune{'y', '3'} {
-		if msg := a.answer("", k); !strings.Contains(msg, "press 1-2") {
-			t.Errorf("%c on a decision: %q", k, msg)
-		}
-	}
-	a.answer("", '2') // no row key: the oldest
-	if r := <-got; !r.Approved || r.Choice != 2 {
-		t.Errorf("response = %+v", r)
-	}
 }
 
 // A run that stops withdraws its question; a batch that exits takes its

@@ -32,7 +32,6 @@ line says what it is by how it starts:
   BLOCKED  <label> (matched "terraform destroy"; blocked_commands)    exit 87, counts as FAIL
   SKIP  <label> (dry run: <why>)                      a guard not approved
   APPROVED  <label> (<by whom>)
-  KEPT  <label> (passed in run R; not run)            a checkpoint
   DRIFT  <what>
   STOP  <reason>
   WARN  <what>
@@ -87,4 +86,4 @@ document carries `schema:`; fields are only added within a version.
 | others | `swim.history/v1`, `swim.queue-list/v1`, `swim.verify/v1`, ...: [compatibility](compatibility.md#stability-tiers). |
 
 Exit codes: `0` means everything selected passed; `3` means work waits on
-an approval or decision; waits exit with the result they waited for.
+an approval; waits exit with the result they waited for.

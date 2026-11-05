@@ -710,7 +710,7 @@ func passesBrief(lines []string, ref string) []string {
 			continue
 		}
 		flush()
-		if kind, _, ok := logparse.SplitResult(l); ok && (kind == logparse.Pass || kind == logparse.Kept) {
+		if kind, _, ok := logparse.SplitResult(l); ok && kind == logparse.Pass {
 			inPass = true
 		}
 		out = append(out, l)

@@ -48,7 +48,6 @@ run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 | `gate [opts] "<label>" cmd [args]` | A step whose failure (after the last attempt) stops the round. |
 | `snapshot [opts] "<label>" cmd [args]` | A read-only step whose output is also saved under `.swim/snapshots/`. |
 | `guard FLAG "<action - date, reason>"` | True if FLAG is approved for this run, else logs SKIP (a dry run). See [guards](guards.md). |
-| `decide NAME "<question>" "<choice>"...` | A numbered choice; sets `DECISION`. See [decisions](guards.md#decisions). |
 | `confirm "<question>" [answer]` | The operator must type the answer (default `yes`); anything else, or no stdin, stops the round. |
 | `last_failed` / `any_failed` | True if the previous step / any step this round failed. |
 | `reached STAGE` | True if the round started STAGE or a later one. |
@@ -70,7 +69,6 @@ run "re-plan is a no-op" terraform -chdir=infra/orders plan -detailed-exitcode
 | `--retry-on CODES` | Retry only on these exit codes (`1,255`). |
 | `--no-retry-timeout` | Don't retry an attempt the limit stopped. |
 | `--soft` | In a `Fail: hard` round, this step's failure doesn't end it. |
-| `--checkpoint[=AGE]` | See [checkpoints](#checkpoints). |
 | `--key K` / `--target T` | The step's name across rounds / what it talks to (default: `# Targets:`), both logged. |
 | `--expect-fail[=CODES]` | A negative test: PASS on a non-zero exit (one of CODES), FAIL on 0. Not with `--retry`. |
 
@@ -93,7 +91,6 @@ OPS-42`) are kept and shown in the log; a value swim can't use is a WARN.
 | `# After:` | Lanes, tasks or jobs that must pass first. |
 | `# Owner:` / `# Created:` | Who wrote it / when. |
 | `# Guards: FLAG  <what it approves>` | One per flag: the only guards it can have approved. `# Guards: * <why>` lets it name flags at run time. `swim lint --fix` adds them. |
-| `# Decisions: NAME  <what it decides>` | One per decision it may ask. |
 | `# Locks:` | Resources it needs to itself (`orders-table, tf/orders`). |
 | `# Step-Timeout:` / `# Timeout:` | Default limit per step / limit for the round. |
 | `# Targets:` | What its steps talk to by default. |
@@ -117,24 +114,6 @@ In that order; leave out what you don't need. Out of order, twice, or
 `change` without snapshot and check before it: a WARN. An unknown name
 stops the round. Each stage's result (PASS, FAIL, SKIP, none) is in the END
 block and `status.yml`.
-
-## Checkpoints
-
-A run reruns the whole round. `run --checkpoint` keeps a step that passed:
-a later run of the same round logs `KEPT ... (passed in run R; not run)`
-and counts it as passed. Mark steps that are slow or mustn't happen twice
-and whose effect lives outside the repo (a bucket made, a migration, a
-deploy): a 20-step lane that failed at step 19 reruns from 19.
-
-- Kept only for the same round, key (`--key`, else the label), and command
-  (its arguments and any file they name in the stage). `=AGE` (`4h`) bounds
-  it.
-- Never a check or snapshot: those say how things are now. A kept step's
-  local files aren't in the next run's stage.
-- The chain lists each kept step with the run it passed in, and `swim
-  verify` checks that run's log.
-- `swim status` says what the next run keeps; `swim checkpoint [ls|rm]`;
-  `swim run --fresh` runs them all.
 
 ## Rules
 

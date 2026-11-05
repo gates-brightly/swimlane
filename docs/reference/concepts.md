@@ -22,9 +22,7 @@ Built from them:
 | **lock** | `# Locks: orders-db`: lanes sharing one never overlap, in either order. See [running](running.md#locks). |
 | **batch** | The lanes one `swim queue` call queued, pinned to their scripts. See [queue](queue.md). |
 | **swimmer** | A machine running the queue (`swim watch`). Not a worker: a worker is an AI subagent writing a lane. |
-| **decision** | A numbered choice a lane puts to the operator. See [guards](guards.md#decisions). |
 | **manifest** | What swim pins before a round starts. See [manifest](manifest.md). |
-| **checkpoint** | A step (`run --checkpoint`) a later run of the round keeps instead of rerunning. See [lanes](lanes.md#checkpoints). |
 | **drift** | A fact (`# Observe:`) that changed since approval: the guarded step stops. |
 | **chain** | Every round and approval, hash-linked and signed: `.swim/chain.jsonl`. See [chain](chain.md). |
 | **claim** | A lane held while a session writes it (`swim new` takes one), or a shared resource by name (`swim claim lith`). Advisory. |
